@@ -116,7 +116,7 @@ func (s *Store) validateApplicationMeta(m metadata) error {
 	if pending > (p.RetainedApplicationBytes-a.Bytes)/unsignedLimit(p.MaxInstallBytes) || pending > (p.RetainedApplicationRecords-a.Records)/unsignedLimit(p.MaxInstallWrites+3) {
 		return ErrLimit
 	}
-	if m.Applied > 0 && (!localConfiguration(m.Conf, p.LocalVoter) || !localConfiguration(m.Snap.GetMetadata().GetConfState(), p.LocalVoter) || m.ImageBytes > unsignedLimit(p.MaxImageBytes)) {
+	if m.Applied > 0 && (!applicationConfiguration(m, m.Conf) || !applicationConfiguration(m, m.Snap.GetMetadata().GetConfState()) || m.ImageBytes > unsignedLimit(p.MaxImageBytes)) {
 		return ErrInvalid
 	}
 	if a.TailBytes < pending*(frameOverhead+9) || a.TailBytes > pending*unsignedLimit(s.limits.MaxEntryBytes+9) {

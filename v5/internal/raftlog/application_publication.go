@@ -188,11 +188,25 @@ func checkPublicationHeadroom(m metadata, l Limits) error {
 		return nil
 	}
 	worst := m
-	worst.Hard = &pb.HardState{Term: new(uint64(math.MaxUint64)), Vote: new(m.App.Policy.LocalVoter), Commit: new(uint64(math.MaxUint64))}
+	vote := m.App.Policy.LocalVoter
+	if m.Rep.Config.enabled() {
+		vote = m.Rep.Config.Voters[2]
+	}
+	worst.Hard = &pb.HardState{Term: new(uint64(math.MaxUint64)), Vote: new(vote), Commit: new(uint64(math.MaxUint64))}
 	cs := &pb.ConfState{Voters: []uint64{m.App.Policy.LocalVoter}}
+	if m.Rep.Config.enabled() {
+		cs.Voters = append([]uint64(nil), m.Rep.Config.Voters[:]...)
+		cs.AutoLeave = new(false)
+	}
 	worst.Conf = cs
 	worst.Snap = &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(uint64(math.MaxUint64)), Term: new(uint64(math.MaxUint64)), ConfState: cs}}
-	return checkMetadataLimit(worst, l)
+	if err := checkMetadataLimit(worst, l); err != nil {
+		return err
+	}
+	if m.Rep.Config.enabled() && metadataBytes(worst)+readyEnvelopeBytes+applicationSnapshotDescriptorFixedBytes+unsignedLimit(proto.Size(cs)) > unsignedLimit(l.MaxReadyBytes) {
+		return ErrLimit
+	}
+	return nil
 }
 
 type publicationCapture struct {
@@ -298,6 +312,7 @@ func (s *Store) publishApplicationCut() (err error) {
 	current.SnapBytes = prospective.SnapBytes
 	current.SnapHash = prospective.SnapHash
 	current.Gen.Publication = prospective.Gen.Publication
+	current.Rep.LastActivatedManifestID = [32]byte{}
 	if err := s.validate(current); err != nil {
 		return err
 	}

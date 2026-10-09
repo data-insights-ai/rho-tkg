@@ -141,9 +141,15 @@ type ApplicationImportStatus struct {
 }
 
 // ApplicationTransferUsage separates active logical retention, staged logical
-// records and snapshot-owned capacity/count. Physical pinned storage is not known
+// records and snapshot/capability-owned capacity/count. Prepared and claim
+// reservations share the pin ceiling; ClaimImageBytes remains charged after
+// activation until claim Close. ClaimImageBytes is a subset of ClaimBytes;
+// PreparedBytes and ClaimBytes are included in PinnedLogicalBytes. Physical
+// pinned storage is not known
 // from these counters; every export snapshots the whole shared Pebble database.
 type ApplicationTransferUsage struct {
+	Prepared, Claims                                                           int
+	PreparedBytes, ClaimBytes, ClaimImageBytes                                 uint64
 	ActiveBytes, ActiveRecords, StagedBytes, StagedRecords, PinnedLogicalBytes uint64
 	Exports, ExportImageBytes, ImportImageBytes, VerifierImageBytes            int
 	Import, Verified, Verifier                                                 bool
@@ -165,6 +171,15 @@ func (s *Store) ApplicationTransferUsage() (ApplicationTransferUsage, error) {
 	u := ApplicationTransferUsage{ActiveBytes: s.meta.App.Bytes, ActiveRecords: s.meta.App.Records, PinnedLogicalBytes: s.pinnedApplicationBytes, Exports: len(s.applicationExports)}
 	for e := range s.applicationExports {
 		u.ExportImageBytes += len(e.manifest.Image)
+	}
+	for c := range s.applicationSnapshotClaims {
+		u.Claims++
+		u.ClaimBytes += c.reservation
+		u.ClaimImageBytes += uint64(cap(c.image))
+	}
+	if i := s.applicationImport; i != nil && i.prepared != nil {
+		u.Prepared = 1
+		u.PreparedBytes = i.prepared.reservation
 	}
 	u.Verifier = s.applicationVerifier
 	u.VerifierImageBytes = s.applicationVerifierImageBytes

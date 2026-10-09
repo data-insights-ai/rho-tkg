@@ -53,6 +53,7 @@ type Config struct {
 	Limits        Limits
 	Application   ApplicationPolicy
 	Generations   ApplicationGenerationLimits
+	Replication   ApplicationReplicationConfig
 	PublishedCuts ApplicationPublishedCutLimits
 	Transfer      ApplicationTransferConfig
 }
@@ -63,6 +64,8 @@ type Config struct {
 type Store struct {
 	mu                            sync.Mutex
 	publicationMu                 sync.Mutex
+	activationCommitHook          func()
+	activationAfterSyncHook       func()
 	publicationCaptureHook        func()
 	db                            *pebble.DB
 	limits                        Limits
@@ -75,6 +78,7 @@ type Store struct {
 	applicationPolicy             ApplicationPolicy
 	publicationPolicy             ApplicationPublishedCutLimits
 	applicationExports            map[*ApplicationExport]struct{}
+	applicationSnapshotClaims     map[*ApplicationSnapshotClaim]struct{}
 	applicationImport             *ApplicationImport
 	pinnedApplicationBytes        uint64
 	applicationVerifier           bool
@@ -115,6 +119,10 @@ func Open(c Config) (*Store, error) {
 		initial.Gen = generationMetadata{Limits: c.Generations, HighWater: 1, Banks: [2]applicationBank{{Generation: 1, State: bankActive}, {}}}
 	}
 	initial.Gen.Publication.Limits = c.PublishedCuts
+	initial.Rep.Config = c.Replication
+	if err := c.Replication.validate(initial, c.Limits); err != nil {
+		return nil, err
+	}
 	if c.Create {
 		if err := checkPublicationHeadroom(initial, c.Limits); err != nil {
 			return nil, err
@@ -153,7 +161,7 @@ func Open(c Config) (*Store, error) {
 		if err := errors.Join(decodeErr, closeErr); err != nil {
 			return fail(err)
 		}
-		if m.App.Policy != c.Application || m.Transfer != c.Transfer || m.Gen.Limits != c.Generations || m.Gen.Publication.Limits != c.PublishedCuts {
+		if m.App.Policy != c.Application || m.Transfer != c.Transfer || m.Gen.Limits != c.Generations || m.Gen.Publication.Limits != c.PublishedCuts || m.Rep.Config != c.Replication {
 			return fail(ErrInvalid)
 		}
 		if err := checkPublicationHeadroom(m, c.Limits); err != nil {
@@ -220,6 +228,9 @@ func validateConf(cs *pb.ConfState, last uint64) error {
 }
 
 func (s *Store) validate(m metadata) error {
+	if err := validateReplicationMeta(m, s.limits); err != nil {
+		return err
+	}
 	if err := m.Transfer.validate(m.App.Policy); err != nil {
 		return err
 	}
@@ -274,6 +285,9 @@ func (s *Store) commit(m metadata, batch *pebble.Batch) (err error) {
 		}
 	}()
 	syncActiveGeneration(&m)
+	if err := validateReplicationMeta(m, s.limits); err != nil {
+		return err
+	}
 	if err := s.validateGenerationMeta(m); err != nil {
 		return err
 	}
@@ -307,7 +321,7 @@ func (s *Store) Initialize(voters []uint64, image []byte) error {
 		return ErrInvalid
 	}
 	if s.meta.App.Policy.Enabled() {
-		if !localConfiguration(&pb.ConfState{Voters: voters}, s.meta.App.Policy.LocalVoter) {
+		if !applicationConfiguration(s.meta, &pb.ConfState{Voters: voters}) {
 			return ErrInvalid
 		}
 		if len(image) > s.meta.App.Policy.MaxImageBytes {
@@ -327,7 +341,7 @@ func (s *Store) Initialize(voters []uint64, image []byte) error {
 	if err := validateConf(cs, 1); err != nil {
 		return err
 	}
-	m := metadata{Gen: s.meta.Gen, App: s.meta.App, Transfer: s.meta.Transfer, Base: 1, BaseTerm: 1, Last: 1, Applied: 1, Hard: &pb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))}, Conf: cs, ImageBytes: uint64(len(image)), SnapBytes: uint64(len(image)), Snap: &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(uint64(1)), Term: new(uint64(1)), ConfState: cs}}}
+	m := metadata{Rep: s.meta.Rep, Gen: s.meta.Gen, App: s.meta.App, Transfer: s.meta.Transfer, Base: 1, BaseTerm: 1, Last: 1, Applied: 1, Hard: &pb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))}, Conf: cs, ImageBytes: uint64(len(image)), SnapBytes: uint64(len(image)), Snap: &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(uint64(1)), Term: new(uint64(1)), ConfState: cs}}}
 	prospective := m
 	if m.App.Policy.Enabled() {
 		prospective.App.Bytes = uint64(3*(9+appFrameBytes) + len(image))
@@ -409,6 +423,9 @@ func (s *Store) Snapshot() (*pb.Snapshot, error) {
 	defer s.mu.Unlock()
 	if err := s.check(); err != nil {
 		return nil, err
+	}
+	if s.meta.Rep.Config.enabled() {
+		return nil, raft.ErrSnapshotTemporarilyUnavailable
 	}
 	snap := proto.Clone(s.meta.Snap).(*pb.Snapshot)
 	image, err := s.loadImage(snapshotKey, s.meta.SnapBytes, s.meta.SnapHash)
@@ -571,7 +588,7 @@ func (s *Store) Persist(rd raft.Ready) (err error) {
 				return ErrInvalid
 			}
 		}
-		if !raft.IsEmptyHardState(rd.HardState) && rd.GetVote() != 0 && rd.GetVote() != s.meta.App.Policy.LocalVoter {
+		if !raft.IsEmptyHardState(rd.HardState) && !applicationVote(s.meta, rd.GetVote()) {
 			return ErrInvalid
 		}
 	}
@@ -841,7 +858,7 @@ func (s *Store) SaveCheckpoint(index uint64, cs *pb.ConfState, image []byte) err
 		return err
 	}
 	if s.meta.App.Policy.Enabled() {
-		if index == 0 || index != s.meta.Applied || !localConfiguration(cs, s.meta.App.Policy.LocalVoter) || sha256.Sum256(image) != s.meta.ImageHash {
+		if index == 0 || index != s.meta.Applied || !applicationConfiguration(s.meta, cs) || sha256.Sum256(image) != s.meta.ImageHash {
 			return ErrInvalid
 		}
 	}
@@ -1050,7 +1067,11 @@ func (s *Store) Close() error {
 	for e := range s.applicationExports {
 		err = errors.Join(err, e.closeLocked())
 	}
+	for c := range s.applicationSnapshotClaims {
+		err = errors.Join(err, s.invalidateClaim(c))
+	}
 	if i := s.applicationImport; i != nil {
+		err = errors.Join(err, s.invalidatePrepared(i))
 		i.closed = true
 		i.manifest = ApplicationSnapshotManifest{}
 		i.after = nil

@@ -17,6 +17,7 @@ import (
 // transferred values are reframed for local keys. Network validation/cancellation
 // never poisons active data. Uncertain local durable failures remain fail-stop.
 type ApplicationImport struct {
+	prepared                *PreparedApplicationSnapshot
 	after                   []byte
 	bank                    byte
 	generation              uint64
@@ -48,6 +49,9 @@ func (s *Store) BeginApplicationImport(ctx context.Context, m ApplicationSnapsho
 	}
 	tc := s.meta.Transfer
 	if !tc.enabled() || m.Identity != tc.Identity || m.Contract != tc.Contract {
+		return nil, ErrInvalid
+	}
+	if s.meta.Rep.Config.enabled() && !s.meta.Rep.Config.matches(m.ConfState) {
 		return nil, ErrInvalid
 	}
 	if m.Version == 2 && !s.meta.Gen.Publication.Limits.enabled() {
@@ -416,8 +420,15 @@ func (i *ApplicationImport) Abort() error {
 	s := i.s
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return i.abortLocked()
+}
+func (i *ApplicationImport) abortLocked() error {
+	s := i.s
 	if i.closed {
 		return nil
+	}
+	if i.prepared != nil && i.prepared.claim != nil {
+		return ErrLimit
 	}
 	if s.closed {
 		i.closed = true
@@ -437,11 +448,17 @@ func (i *ApplicationImport) Abort() error {
 		return err
 	}
 	i.closed = true
+	if i.prepared != nil {
+		s.releasePreparedOwnership(i.prepared)
+		i.prepared = nil
+	}
 	i.manifest = ApplicationSnapshotManifest{}
 	i.state.last = nil
 	i.after = nil
 	s.applicationImport = nil
-	return s.releaseGeneration(i.ref)
+	ref := i.ref
+	i.ref = nil
+	return s.releaseGeneration(ref)
 }
 func (s *Store) cleanupApplicationImport() error {
 	if s.meta.Gen.Limits.enabled() {
