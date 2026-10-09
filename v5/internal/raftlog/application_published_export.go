@@ -369,7 +369,7 @@ func snapshotConfCapacity(c *pb.ConfState) int {
 func (s *Store) loadPublishedImage() (image []byte, err error) {
 	raw, closer, err := s.db.Get(snapshotKey)
 	if err != nil {
-		return nil, errors.Join(ErrCorrupt, err)
+		return nil, imageReadFailure(err)
 	}
 	defer func() { err = errors.Join(err, closer.Close()) }()
 	if uint64(len(raw)) != s.meta.SnapBytes || len(raw) > s.meta.Transfer.Contract.MaxImageBytes || sha256.Sum256(raw) != s.meta.SnapHash {

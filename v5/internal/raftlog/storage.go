@@ -1044,7 +1044,7 @@ func (s *Store) checkEntryBounds() (err error) {
 func (s *Store) loadImage(key []byte, n uint64, hash [32]byte) (image []byte, err error) {
 	value, closer, err := s.db.Get(key)
 	if err != nil {
-		return nil, errors.Join(ErrCorrupt, err)
+		return nil, imageReadFailure(err)
 	}
 	defer func() { err = errors.Join(err, closer.Close()) }()
 	if n > unsignedLimit(s.limits.MaxSnapshotBytes) || uint64(len(value)) != n || sha256.Sum256(value) != hash {
