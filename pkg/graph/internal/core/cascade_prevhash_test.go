@@ -11,7 +11,7 @@ import (
 // BACKLOG 10e/10i: temporal_cascade.go's inserted-row PrevHash used to be
 // documented as linking to "whichever row it directly supersedes on the VT
 // axis," but the implementation linked to the "template" row (the most
-// recent non-eclipsed version) — the row the inserted row's content was
+// recent version) — the row the inserted row's content was
 // copied from. Query correctness is unaffected either way (verifyChainLinkage
 // only requires PrevHash to match SOME hash present anywhere in the entity's
 // chain — see temporal_cascade.go's file header).
@@ -43,7 +43,7 @@ func TestCascade_MidHistoryInsertion_PrevHashLinksToBase(t *testing.T) {
 	}
 
 	// Capture A's hash (the then-valid base of the [1500,2500) correction)
-	// and C's hash (the template — most recent non-eclipsed — used for a gap
+	// and C's hash (the template — the most recent version — used for a gap
 	// piece) exactly as they stand right before the cascade.
 	preHistory, err := g.Nodes.History(n.ID())
 	if err != nil {

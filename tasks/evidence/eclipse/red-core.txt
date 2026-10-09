@@ -1,0 +1,610 @@
+=== RUN   TestOneTickSpanVisible_NodeDoors
+=== PAUSE TestOneTickSpanVisible_NodeDoors
+=== RUN   TestOneTickSpanVisible_RelDoors
+=== PAUSE TestOneTickSpanVisible_RelDoors
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne
+=== PAUSE TestOneTickSpanVisible_CloseVersionAtVfPlusOne
+=== RUN   TestOneTickSpanVisible_DeleteAtVfPlusOne
+=== PAUSE TestOneTickSpanVisible_DeleteAtVfPlusOne
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece
+=== PAUSE TestOneTickSpanVisible_CascadeWidthOnePiece
+=== CONT  TestOneTickSpanVisible_NodeDoors
+=== RUN   TestOneTickSpanVisible_NodeDoors/memory
+=== CONT  TestOneTickSpanVisible_DeleteAtVfPlusOne
+=== CONT  TestOneTickSpanVisible_CloseVersionAtVfPlusOne
+=== RUN   TestOneTickSpanVisible_DeleteAtVfPlusOne/memory/node
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width1/node
+=== CONT  TestOneTickSpanVisible_RelDoors
+=== RUN   TestOneTickSpanVisible_RelDoors/memory
+=== CONT  TestOneTickSpanVisible_CascadeWidthOnePiece
+=== NAME  TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width1/node
+    one_tick_span_test.go:394: NodeAt(vf) answered the pre-close row &{ValidFrom:1791539567268 ValidTo:0 TxFrom:1791543167268 TxTo:1791543167269 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}, want ValidTo = vf+1
+    one_tick_span_test.go:397: NodeAt(vf+width) after close: err = <nil>, want ErrNoVersionValidAt
+    one_tick_span_test.go:399: NodeAt(vf+500) after close (old open row still answering): err = <nil>, want ErrNoVersionValidAt
+    one_tick_span_test.go:404: NodesAt(vf+500) after close: unexpected node 796838044264235008 in result
+    one_tick_span_test.go:404: NodesAt(vf+500) after close: result size = 1, want 0
+    one_tick_span_test.go:409: ByLabel{ValidAt: vf+500} after close: unexpected node 796838044264235008 in result
+    one_tick_span_test.go:409: ByLabel{ValidAt: vf+500} after close: result size = 1, want 0
+=== NAME  TestOneTickSpanVisible_NodeDoors/memory
+    one_tick_span_test.go:105: NodeAt(one, t): graph: no version valid at the given time (one-tick span skipped)
+    one_tick_span_test.go:111: NodeAtTx(one, t, now): graph: no version valid at the given time
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/memory/node
+=== NAME  TestOneTickSpanVisible_DeleteAtVfPlusOne/memory/node
+    one_tick_span_test.go:531: NodeAt(vf) after delete at vf+1: graph: no version valid at the given time (history row hidden)
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width1/rel
+=== NAME  TestOneTickSpanVisible_DeleteAtVfPlusOne/memory/node
+    one_tick_span_test.go:541: NodesAt(vf) after delete: missing expected node 796838044263514112
+    one_tick_span_test.go:541: NodesAt(vf) after delete: result size = 0, want 1
+    one_tick_span_test.go:546: ByLabel{ValidAt: vf} after delete: missing expected node 796838044263514112
+    one_tick_span_test.go:546: ByLabel{ValidAt: vf} after delete: result size = 0, want 1
+    one_tick_span_test.go:551: NodesDuring[vf, vf+2000) after delete: missing expected node 796838044263514112
+    one_tick_span_test.go:551: NodesDuring[vf, vf+2000) after delete: result size = 0, want 1
+=== NAME  TestOneTickSpanVisible_RelDoors/memory
+    one_tick_span_test.go:248: RelAt(one, t): graph: no version valid at the given time (one-tick span skipped)
+=== RUN   TestOneTickSpanVisible_DeleteAtVfPlusOne/memory/rel
+=== NAME  TestOneTickSpanVisible_RelDoors/memory
+    one_tick_span_test.go:254: RelAtTx(one, t, now): graph: no version valid at the given time
+    one_tick_span_test.go:262: RelsAt(t): missing expected rel 796838044269052928
+=== NAME  TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width1/rel
+    one_tick_span_test.go:445: RelAt(vf) answered the pre-close row &{ValidFrom:1791539567268 ValidTo:0 TxFrom:1791543167270 TxTo:1791543167271 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}, want ValidTo = vf+1
+=== NAME  TestOneTickSpanVisible_RelDoors/memory
+    one_tick_span_test.go:262: RelsAt(t): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width1/rel
+    one_tick_span_test.go:448: RelAt(vf+width) after close: err = <nil>, want ErrNoVersionValidAt
+=== NAME  TestOneTickSpanVisible_RelDoors/memory
+    one_tick_span_test.go:267: RelsByTypeAt(t): missing expected rel 796838044269052928
+=== NAME  TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width1/rel
+    one_tick_span_test.go:450: RelAt(vf+500) after close (old open row still answering): err = <nil>, want ErrNoVersionValidAt
+=== NAME  TestOneTickSpanVisible_RelDoors/memory
+    one_tick_span_test.go:267: RelsByTypeAt(t): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width1/rel
+    one_tick_span_test.go:455: RelsAt(vf+500) after close: unexpected rel 796838044270593024 in result
+=== NAME  TestOneTickSpanVisible_RelDoors/memory
+    one_tick_span_test.go:272: ByType{ValidAt: t}: missing expected rel 796838044269052928
+=== NAME  TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width1/rel
+    one_tick_span_test.go:455: RelsAt(vf+500) after close: result size = 1, want 0
+=== NAME  TestOneTickSpanVisible_DeleteAtVfPlusOne/memory/rel
+    one_tick_span_test.go:569: RelAt(vf) after delete at vf+1: graph: no version valid at the given time (history row hidden)
+=== NAME  TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width1/rel
+    one_tick_span_test.go:460: ByType{ValidAt: vf+500} after close: unexpected rel 796838044270593024 in result
+    one_tick_span_test.go:460: ByType{ValidAt: vf+500} after close: result size = 1, want 0
+=== NAME  TestOneTickSpanVisible_DeleteAtVfPlusOne/memory/rel
+    one_tick_span_test.go:579: RelsAt(vf) after delete: missing expected rel 796838044271739904
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width2/node
+=== NAME  TestOneTickSpanVisible_DeleteAtVfPlusOne/memory/rel
+    one_tick_span_test.go:579: RelsAt(vf) after delete: result size = 0, want 1
+    one_tick_span_test.go:584: ByType{ValidAt: vf} after delete: missing expected rel 796838044271739904
+    one_tick_span_test.go:584: ByType{ValidAt: vf} after delete: result size = 0, want 1
+=== NAME  TestOneTickSpanVisible_NodeDoors/memory
+    one_tick_span_test.go:119: NodesAt(t): missing expected node 796838044263481344
+    one_tick_span_test.go:119: NodesAt(t): result size = 1, want 2
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width2/rel
+=== NAME  TestOneTickSpanVisible_RelDoors/memory
+    one_tick_span_test.go:272: ByType{ValidAt: t}: result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_NodeDoors/memory
+    one_tick_span_test.go:124: NodesByLabelAt(t): missing expected node 796838044263481344
+    one_tick_span_test.go:124: NodesByLabelAt(t): result size = 1, want 2
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width1/node
+=== NAME  TestOneTickSpanVisible_NodeDoors/memory
+    one_tick_span_test.go:129: ByLabel{ValidAt: t}: missing expected node 796838044263481344
+    one_tick_span_test.go:129: ByLabel{ValidAt: t}: result size = 1, want 2
+    one_tick_span_test.go:134: ByLabel{ValidAt: t, TxAt: now}: missing expected node 796838044263481344
+    one_tick_span_test.go:134: ByLabel{ValidAt: t, TxAt: now}: result size = 1, want 2
+    one_tick_span_test.go:139: NodesAtTx(t, now): missing expected node 796838044263481344
+    one_tick_span_test.go:139: NodesAtTx(t, now): result size = 1, want 2
+    one_tick_span_test.go:144: Snapshot(t).Nodes: missing expected node 796838044263481344
+    one_tick_span_test.go:144: Snapshot(t).Nodes: result size = 1, want 2
+    one_tick_span_test.go:152: NodesDuring[t, t+2000): missing expected node 796838044263481344
+    one_tick_span_test.go:152: NodesDuring[t, t+2000): result size = 1, want 2
+    one_tick_span_test.go:157: ByLabel{ValidStart: t, ValidEnd: t+2000}: missing expected node 796838044263481344
+    one_tick_span_test.go:157: ByLabel{ValidStart: t, ValidEnd: t+2000}: result size = 1, want 2
+    one_tick_span_test.go:162: NodesDuringTx[t, t+2000): missing expected node 796838044263481344
+    one_tick_span_test.go:162: NodesDuringTx[t, t+2000): result size = 1, want 2
+    one_tick_span_test.go:179: NodesRelating(all): missing expected node 796838044263481344
+    one_tick_span_test.go:179: NodesRelating(all): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_RelDoors/memory
+    one_tick_span_test.go:277: ByType{ValidAt: t, TxAt: now}: missing expected rel 796838044269052928
+=== NAME  TestOneTickSpanVisible_NodeDoors/memory
+    one_tick_span_test.go:185: NodesRelating(Equals [t, t+1)): missing expected node 796838044263481344
+    one_tick_span_test.go:185: NodesRelating(Equals [t, t+1)): result size = 0, want 1
+=== NAME  TestOneTickSpanVisible_RelDoors/memory
+    one_tick_span_test.go:277: ByType{ValidAt: t, TxAt: now}: result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_DeleteAtVfPlusOne/memory/rel
+    one_tick_span_test.go:589: RelsDuring[vf, vf+2000) after delete: missing expected rel 796838044271739904
+    one_tick_span_test.go:589: RelsDuring[vf, vf+2000) after delete: result size = 0, want 1
+=== NAME  TestOneTickSpanVisible_CascadeWidthOnePiece/memory/node
+    one_tick_span_test.go:645: NodeAt(t+0).v = 1, want 2
+=== NAME  TestOneTickSpanVisible_RelDoors/memory
+    one_tick_span_test.go:282: RelsAtTx(t, now): missing expected rel 796838044269052928
+=== RUN   TestOneTickSpanVisible_NodeDoors/badger
+=== NAME  TestOneTickSpanVisible_RelDoors/memory
+    one_tick_span_test.go:282: RelsAtTx(t, now): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_CascadeWidthOnePiece/memory/node
+    one_tick_span_test.go:652: ByLabel{ValidAt: t+0}.v = 1, want 2
+    one_tick_span_test.go:657: NodesDuring[t, t+1) = [0x18134550eae0], <nil>; want the piece (v=2)
+    one_tick_span_test.go:666: NodeAtTx(t, pin after correction) = &{796838044271476736 [{v 1}] [] 0x18134550f200 0x18134550f260 <nil> 0 1 false false 1}, <nil>; want v=2
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/memory/rel
+=== NAME  TestOneTickSpanVisible_RelDoors/memory
+    one_tick_span_test.go:287: OutgoingRelsAt(start, t): missing expected rel 796838044269052928
+    one_tick_span_test.go:287: OutgoingRelsAt(start, t): result size = 1, want 2
+    one_tick_span_test.go:292: IncomingRelsAt(end, t): missing expected rel 796838044269052928
+    one_tick_span_test.go:292: IncomingRelsAt(end, t): result size = 1, want 2
+=== RUN   TestOneTickSpanVisible_DeleteAtVfPlusOne/badger/node
+=== NAME  TestOneTickSpanVisible_RelDoors/memory
+    one_tick_span_test.go:297: Snapshot(t).Relationships: missing expected rel 796838044269052928
+    one_tick_span_test.go:297: Snapshot(t).Relationships: result size = 1, want 2
+    one_tick_span_test.go:303: RelsDuring[t, t+2000): missing expected rel 796838044269052928
+    one_tick_span_test.go:303: RelsDuring[t, t+2000): result size = 1, want 2
+    one_tick_span_test.go:308: ByType{ValidStart: t, ValidEnd: t+2000}: missing expected rel 796838044269052928
+    one_tick_span_test.go:308: ByType{ValidStart: t, ValidEnd: t+2000}: result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_CascadeWidthOnePiece/memory/rel
+    one_tick_span_test.go:701: RelAt(t+0).v = 1, want 2
+=== NAME  TestOneTickSpanVisible_RelDoors/memory
+    one_tick_span_test.go:313: RelsDuringTx[t, t+2000): missing expected rel 796838044269052928
+=== NAME  TestOneTickSpanVisible_CascadeWidthOnePiece/memory/rel
+    one_tick_span_test.go:708: ByType{ValidAt: t+0}.v = 1, want 2
+=== NAME  TestOneTickSpanVisible_RelDoors/memory
+    one_tick_span_test.go:313: RelsDuringTx[t, t+2000): result size = 1, want 2
+    one_tick_span_test.go:329: RelsRelating(all): missing expected rel 796838044269052928
+=== NAME  TestOneTickSpanVisible_CascadeWidthOnePiece/memory/rel
+    one_tick_span_test.go:713: RelsDuring[t, t+1) = [0x18134530d0e0], <nil>; want the piece (v=2)
+    one_tick_span_test.go:721: RelAtTx(t, pin after correction) = &{796838044324987904 796838044324102144 796838044324560896 [{v 1}] 0x18134530d5c0 0x181345355080 <nil> 0 1 false false 1 0 0}, <nil>; want v=2
+=== NAME  TestOneTickSpanVisible_RelDoors/memory
+    one_tick_span_test.go:329: RelsRelating(all): result size = 1, want 2
+    one_tick_span_test.go:334: RelsRelating(Equals [t, t+1)): missing expected rel 796838044269052928
+    one_tick_span_test.go:334: RelsRelating(Equals [t, t+1)): result size = 0, want 1
+=== RUN   TestOneTickSpanVisible_RelDoors/badger
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/memory/node/boundary_split
+    one_tick_span_test.go:749: NodeAt(t+0) = v:1 w:<nil>, want v:1 w:x
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/memory/rel/boundary_split
+    one_tick_span_test.go:778: RelAt(t+0) = v:1 w:<nil>, want v:1 w:x
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/badger/node
+=== NAME  TestOneTickSpanVisible_NodeDoors/badger
+    one_tick_span_test.go:105: NodeAt(one, t): graph: no version valid at the given time (one-tick span skipped)
+    one_tick_span_test.go:111: NodeAtTx(one, t, now): graph: no version valid at the given time
+=== NAME  TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width1/node
+    one_tick_span_test.go:394: NodeAt(vf) answered the pre-close row &{ValidFrom:1791539567273 ValidTo:0 TxFrom:1791543167273 TxTo:1791543167274 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}, want ValidTo = vf+1
+    one_tick_span_test.go:397: NodeAt(vf+width) after close: err = <nil>, want ErrNoVersionValidAt
+=== NAME  TestOneTickSpanVisible_NodeDoors/badger
+    one_tick_span_test.go:119: NodesAt(t): missing expected node 796838044405530624
+    one_tick_span_test.go:119: NodesAt(t): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width1/node
+    one_tick_span_test.go:399: NodeAt(vf+500) after close (old open row still answering): err = <nil>, want ErrNoVersionValidAt
+=== NAME  TestOneTickSpanVisible_NodeDoors/badger
+    one_tick_span_test.go:124: NodesByLabelAt(t): missing expected node 796838044405530624
+    one_tick_span_test.go:124: NodesByLabelAt(t): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_DeleteAtVfPlusOne/badger/node
+    one_tick_span_test.go:531: NodeAt(vf) after delete at vf+1: graph: no version valid at the given time (history row hidden)
+    one_tick_span_test.go:541: NodesAt(vf) after delete: missing expected node 796838044411691008
+=== NAME  TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width1/node
+    one_tick_span_test.go:404: NodesAt(vf+500) after close: unexpected node 796838044403269632 in result
+=== NAME  TestOneTickSpanVisible_DeleteAtVfPlusOne/badger/node
+    one_tick_span_test.go:541: NodesAt(vf) after delete: result size = 0, want 1
+=== NAME  TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width1/node
+    one_tick_span_test.go:404: NodesAt(vf+500) after close: result size = 1, want 0
+=== NAME  TestOneTickSpanVisible_RelDoors/badger
+    one_tick_span_test.go:248: RelAt(one, t): graph: no version valid at the given time (one-tick span skipped)
+=== NAME  TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width1/node
+    one_tick_span_test.go:409: ByLabel{ValidAt: vf+500} after close: unexpected node 796838044403269632 in result
+=== NAME  TestOneTickSpanVisible_DeleteAtVfPlusOne/badger/node
+    one_tick_span_test.go:546: ByLabel{ValidAt: vf} after delete: missing expected node 796838044411691008
+=== NAME  TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width1/node
+    one_tick_span_test.go:409: ByLabel{ValidAt: vf+500} after close: result size = 1, want 0
+=== NAME  TestOneTickSpanVisible_NodeDoors/badger
+    one_tick_span_test.go:129: ByLabel{ValidAt: t}: missing expected node 796838044405530624
+    one_tick_span_test.go:129: ByLabel{ValidAt: t}: result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_DeleteAtVfPlusOne/badger/node
+    one_tick_span_test.go:546: ByLabel{ValidAt: vf} after delete: result size = 0, want 1
+=== NAME  TestOneTickSpanVisible_NodeDoors/badger
+    one_tick_span_test.go:134: ByLabel{ValidAt: t, TxAt: now}: missing expected node 796838044405530624
+    one_tick_span_test.go:134: ByLabel{ValidAt: t, TxAt: now}: result size = 1, want 2
+    one_tick_span_test.go:139: NodesAtTx(t, now): missing expected node 796838044405530624
+    one_tick_span_test.go:139: NodesAtTx(t, now): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_RelDoors/badger
+    one_tick_span_test.go:254: RelAtTx(one, t, now): graph: no version valid at the given time
+=== NAME  TestOneTickSpanVisible_NodeDoors/badger
+    one_tick_span_test.go:144: Snapshot(t).Nodes: missing expected node 796838044405530624
+    one_tick_span_test.go:144: Snapshot(t).Nodes: result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_RelDoors/badger
+    one_tick_span_test.go:262: RelsAt(t): missing expected rel 796838044415886336
+    one_tick_span_test.go:262: RelsAt(t): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_NodeDoors/badger
+    one_tick_span_test.go:152: NodesDuring[t, t+2000): missing expected node 796838044405530624
+    one_tick_span_test.go:152: NodesDuring[t, t+2000): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_DeleteAtVfPlusOne/badger/node
+    one_tick_span_test.go:551: NodesDuring[vf, vf+2000) after delete: missing expected node 796838044411691008
+=== NAME  TestOneTickSpanVisible_NodeDoors/badger
+    one_tick_span_test.go:157: ByLabel{ValidStart: t, ValidEnd: t+2000}: missing expected node 796838044405530624
+=== NAME  TestOneTickSpanVisible_CascadeWidthOnePiece/badger/node
+    one_tick_span_test.go:645: NodeAt(t+0).v = 1, want 2
+=== NAME  TestOneTickSpanVisible_NodeDoors/badger
+    one_tick_span_test.go:157: ByLabel{ValidStart: t, ValidEnd: t+2000}: result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_RelDoors/badger
+    one_tick_span_test.go:267: RelsByTypeAt(t): missing expected rel 796838044415886336
+    one_tick_span_test.go:267: RelsByTypeAt(t): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_DeleteAtVfPlusOne/badger/node
+    one_tick_span_test.go:551: NodesDuring[vf, vf+2000) after delete: result size = 0, want 1
+=== NAME  TestOneTickSpanVisible_RelDoors/badger
+    one_tick_span_test.go:272: ByType{ValidAt: t}: missing expected rel 796838044415886336
+    one_tick_span_test.go:272: ByType{ValidAt: t}: result size = 1, want 2
+    one_tick_span_test.go:277: ByType{ValidAt: t, TxAt: now}: missing expected rel 796838044415886336
+=== NAME  TestOneTickSpanVisible_CascadeWidthOnePiece/badger/node
+    one_tick_span_test.go:652: ByLabel{ValidAt: t+0}.v = 1, want 2
+=== NAME  TestOneTickSpanVisible_RelDoors/badger
+    one_tick_span_test.go:277: ByType{ValidAt: t, TxAt: now}: result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_NodeDoors/badger
+    one_tick_span_test.go:162: NodesDuringTx[t, t+2000): missing expected node 796838044405530624
+=== NAME  TestOneTickSpanVisible_RelDoors/badger
+    one_tick_span_test.go:282: RelsAtTx(t, now): missing expected rel 796838044415886336
+=== NAME  TestOneTickSpanVisible_NodeDoors/badger
+    one_tick_span_test.go:162: NodesDuringTx[t, t+2000): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_RelDoors/badger
+    one_tick_span_test.go:282: RelsAtTx(t, now): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_CascadeWidthOnePiece/badger/node
+    one_tick_span_test.go:657: NodesDuring[t, t+1) = [0x18136061b680], <nil>; want the piece (v=2)
+=== NAME  TestOneTickSpanVisible_RelDoors/badger
+    one_tick_span_test.go:287: OutgoingRelsAt(start, t): missing expected rel 796838044415886336
+    one_tick_span_test.go:287: OutgoingRelsAt(start, t): result size = 1, want 2
+    one_tick_span_test.go:292: IncomingRelsAt(end, t): missing expected rel 796838044415886336
+    one_tick_span_test.go:292: IncomingRelsAt(end, t): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_CascadeWidthOnePiece/badger/node
+    one_tick_span_test.go:666: NodeAtTx(t, pin after correction) = &{796838044416540672 [{v 1}] [] 0x181360630420 0x181360630480 <nil> 0 1 false false 1}, <nil>; want v=2
+=== NAME  TestOneTickSpanVisible_RelDoors/badger
+    one_tick_span_test.go:297: Snapshot(t).Relationships: missing expected rel 796838044415886336
+    one_tick_span_test.go:297: Snapshot(t).Relationships: result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_NodeDoors/badger
+    one_tick_span_test.go:179: NodesRelating(all): missing expected node 796838044405530624
+    one_tick_span_test.go:179: NodesRelating(all): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_RelDoors/badger
+    one_tick_span_test.go:303: RelsDuring[t, t+2000): missing expected rel 796838044415886336
+    one_tick_span_test.go:303: RelsDuring[t, t+2000): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_NodeDoors/badger
+    one_tick_span_test.go:185: NodesRelating(Equals [t, t+1)): missing expected node 796838044405530624
+    one_tick_span_test.go:185: NodesRelating(Equals [t, t+1)): result size = 0, want 1
+=== NAME  TestOneTickSpanVisible_RelDoors/badger
+    one_tick_span_test.go:308: ByType{ValidStart: t, ValidEnd: t+2000}: missing expected rel 796838044415886336
+    one_tick_span_test.go:308: ByType{ValidStart: t, ValidEnd: t+2000}: result size = 1, want 2
+    one_tick_span_test.go:313: RelsDuringTx[t, t+2000): missing expected rel 796838044415886336
+    one_tick_span_test.go:313: RelsDuringTx[t, t+2000): result size = 1, want 2
+    one_tick_span_test.go:329: RelsRelating(all): missing expected rel 796838044415886336
+    one_tick_span_test.go:329: RelsRelating(all): result size = 1, want 2
+    one_tick_span_test.go:334: RelsRelating(Equals [t, t+1)): missing expected rel 796838044415886336
+    one_tick_span_test.go:334: RelsRelating(Equals [t, t+1)): result size = 0, want 1
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width1/rel
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/badger/rel
+=== RUN   TestOneTickSpanVisible_NodeDoors/sharded
+=== RUN   TestOneTickSpanVisible_RelDoors/sharded
+=== RUN   TestOneTickSpanVisible_DeleteAtVfPlusOne/badger/rel
+=== NAME  TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width1/rel
+    one_tick_span_test.go:445: RelAt(vf) answered the pre-close row &{ValidFrom:1791539567276 ValidTo:0 TxFrom:1791543167278 TxTo:1791543167279 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}, want ValidTo = vf+1
+    one_tick_span_test.go:448: RelAt(vf+width) after close: err = <nil>, want ErrNoVersionValidAt
+    one_tick_span_test.go:450: RelAt(vf+500) after close (old open row still answering): err = <nil>, want ErrNoVersionValidAt
+    one_tick_span_test.go:455: RelsAt(vf+500) after close: unexpected rel 796838044514747392 in result
+    one_tick_span_test.go:455: RelsAt(vf+500) after close: result size = 1, want 0
+=== NAME  TestOneTickSpanVisible_CascadeWidthOnePiece/badger/rel
+    one_tick_span_test.go:701: RelAt(t+0).v = 1, want 2
+    one_tick_span_test.go:708: ByType{ValidAt: t+0}.v = 1, want 2
+=== NAME  TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width1/rel
+    one_tick_span_test.go:460: ByType{ValidAt: vf+500} after close: unexpected rel 796838044514747392 in result
+    one_tick_span_test.go:460: ByType{ValidAt: vf+500} after close: result size = 1, want 0
+=== NAME  TestOneTickSpanVisible_CascadeWidthOnePiece/badger/rel
+    one_tick_span_test.go:713: RelsDuring[t, t+1) = [0x181345421080], <nil>; want the piece (v=2)
+    one_tick_span_test.go:721: RelAtTx(t, pin after correction) = &{796838044514386944 796838044511731712 796838044513501184 [{v 1}] 0x1813454219e0 0x18137884b700 <nil> 0 1 false false 1 0 0}, <nil>; want v=2
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/badger/node/boundary_split
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width2/node
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width2/rel
+=== NAME  TestOneTickSpanVisible_DeleteAtVfPlusOne/badger/rel
+    one_tick_span_test.go:569: RelAt(vf) after delete at vf+1: graph: no version valid at the given time (history row hidden)
+    one_tick_span_test.go:579: RelsAt(vf) after delete: missing expected rel 796838045881959424
+    one_tick_span_test.go:579: RelsAt(vf) after delete: result size = 0, want 1
+    one_tick_span_test.go:584: ByType{ValidAt: vf} after delete: missing expected rel 796838045881959424
+    one_tick_span_test.go:584: ByType{ValidAt: vf} after delete: result size = 0, want 1
+    one_tick_span_test.go:589: RelsDuring[vf, vf+2000) after delete: missing expected rel 796838045881959424
+    one_tick_span_test.go:589: RelsDuring[vf, vf+2000) after delete: result size = 0, want 1
+=== NAME  TestOneTickSpanVisible_NodeDoors/sharded
+    one_tick_span_test.go:105: NodeAt(one, t): graph: no version valid at the given time (one-tick span skipped)
+    one_tick_span_test.go:111: NodeAtTx(one, t, now): graph: no version valid at the given time
+=== NAME  TestOneTickSpanVisible_RelDoors/sharded
+    one_tick_span_test.go:248: RelAt(one, t): graph: no version valid at the given time (one-tick span skipped)
+=== NAME  TestOneTickSpanVisible_NodeDoors/sharded
+    one_tick_span_test.go:119: NodesAt(t): missing expected node 796838045908697088
+=== NAME  TestOneTickSpanVisible_RelDoors/sharded
+    one_tick_span_test.go:254: RelAtTx(one, t, now): graph: no version valid at the given time
+    one_tick_span_test.go:262: RelsAt(t): missing expected rel 796838045912368128
+=== NAME  TestOneTickSpanVisible_NodeDoors/sharded
+    one_tick_span_test.go:119: NodesAt(t): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_RelDoors/sharded
+    one_tick_span_test.go:262: RelsAt(t): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_NodeDoors/sharded
+    one_tick_span_test.go:124: NodesByLabelAt(t): missing expected node 796838045908697088
+    one_tick_span_test.go:124: NodesByLabelAt(t): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_RelDoors/sharded
+    one_tick_span_test.go:267: RelsByTypeAt(t): missing expected rel 796838045912368128
+    one_tick_span_test.go:267: RelsByTypeAt(t): result size = 1, want 2
+    one_tick_span_test.go:272: ByType{ValidAt: t}: missing expected rel 796838045912368128
+    one_tick_span_test.go:272: ByType{ValidAt: t}: result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_NodeDoors/sharded
+    one_tick_span_test.go:129: ByLabel{ValidAt: t}: missing expected node 796838045908697088
+    one_tick_span_test.go:129: ByLabel{ValidAt: t}: result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_RelDoors/sharded
+    one_tick_span_test.go:277: ByType{ValidAt: t, TxAt: now}: missing expected rel 796838045912368128
+=== NAME  TestOneTickSpanVisible_NodeDoors/sharded
+    one_tick_span_test.go:134: ByLabel{ValidAt: t, TxAt: now}: missing expected node 796838045908697088
+    one_tick_span_test.go:134: ByLabel{ValidAt: t, TxAt: now}: result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_RelDoors/sharded
+    one_tick_span_test.go:277: ByType{ValidAt: t, TxAt: now}: result size = 1, want 2
+    one_tick_span_test.go:282: RelsAtTx(t, now): missing expected rel 796838045912368128
+    one_tick_span_test.go:282: RelsAtTx(t, now): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_NodeDoors/sharded
+    one_tick_span_test.go:139: NodesAtTx(t, now): missing expected node 796838045908697088
+    one_tick_span_test.go:139: NodesAtTx(t, now): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_RelDoors/sharded
+    one_tick_span_test.go:287: OutgoingRelsAt(start, t): missing expected rel 796838045912368128
+    one_tick_span_test.go:287: OutgoingRelsAt(start, t): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_NodeDoors/sharded
+    one_tick_span_test.go:144: Snapshot(t).Nodes: missing expected node 796838045908697088
+    one_tick_span_test.go:144: Snapshot(t).Nodes: result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_RelDoors/sharded
+    one_tick_span_test.go:292: IncomingRelsAt(end, t): missing expected rel 796838045912368128
+    one_tick_span_test.go:292: IncomingRelsAt(end, t): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_NodeDoors/sharded
+    one_tick_span_test.go:152: NodesDuring[t, t+2000): missing expected node 796838045908697088
+    one_tick_span_test.go:152: NodesDuring[t, t+2000): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_RelDoors/sharded
+    one_tick_span_test.go:297: Snapshot(t).Relationships: missing expected rel 796838045912368128
+    one_tick_span_test.go:297: Snapshot(t).Relationships: result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_NodeDoors/sharded
+    one_tick_span_test.go:157: ByLabel{ValidStart: t, ValidEnd: t+2000}: missing expected node 796838045908697088
+    one_tick_span_test.go:157: ByLabel{ValidStart: t, ValidEnd: t+2000}: result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_RelDoors/sharded
+    one_tick_span_test.go:303: RelsDuring[t, t+2000): missing expected rel 796838045912368128
+    one_tick_span_test.go:303: RelsDuring[t, t+2000): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_NodeDoors/sharded
+    one_tick_span_test.go:162: NodesDuringTx[t, t+2000): missing expected node 796838045908697088
+=== NAME  TestOneTickSpanVisible_RelDoors/sharded
+    one_tick_span_test.go:308: ByType{ValidStart: t, ValidEnd: t+2000}: missing expected rel 796838045912368128
+=== NAME  TestOneTickSpanVisible_NodeDoors/sharded
+    one_tick_span_test.go:162: NodesDuringTx[t, t+2000): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_RelDoors/sharded
+    one_tick_span_test.go:308: ByType{ValidStart: t, ValidEnd: t+2000}: result size = 1, want 2
+    one_tick_span_test.go:313: RelsDuringTx[t, t+2000): missing expected rel 796838045912368128
+    one_tick_span_test.go:313: RelsDuringTx[t, t+2000): result size = 1, want 2
+    one_tick_span_test.go:329: RelsRelating(all): missing expected rel 796838045912368128
+=== NAME  TestOneTickSpanVisible_NodeDoors/sharded
+    one_tick_span_test.go:179: NodesRelating(all): missing expected node 796838045908697088
+=== NAME  TestOneTickSpanVisible_RelDoors/sharded
+    one_tick_span_test.go:329: RelsRelating(all): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_NodeDoors/sharded
+    one_tick_span_test.go:179: NodesRelating(all): result size = 1, want 2
+=== NAME  TestOneTickSpanVisible_RelDoors/sharded
+    one_tick_span_test.go:334: RelsRelating(Equals [t, t+1)): missing expected rel 796838045912368128
+    one_tick_span_test.go:334: RelsRelating(Equals [t, t+1)): result size = 0, want 1
+=== NAME  TestOneTickSpanVisible_NodeDoors/sharded
+    one_tick_span_test.go:185: NodesRelating(Equals [t, t+1)): missing expected node 796838045908697088
+    one_tick_span_test.go:185: NodesRelating(Equals [t, t+1)): result size = 0, want 1
+=== RUN   TestOneTickSpanVisible_DeleteAtVfPlusOne/sharded/node
+=== NAME  TestOneTickSpanVisible_CascadeWidthOnePiece/badger/node/boundary_split
+    one_tick_span_test.go:749: NodeAt(t+0) = v:1 w:<nil>, want v:1 w:x
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/badger/rel/boundary_split
+=== RUN   TestOneTickSpanVisible_NodeDoors/tiered
+=== RUN   TestOneTickSpanVisible_RelDoors/tiered
+=== NAME  TestOneTickSpanVisible_CascadeWidthOnePiece/badger/rel/boundary_split
+    one_tick_span_test.go:778: RelAt(t+0) = v:1 w:<nil>, want v:1 w:x
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/sharded/width1/node
+=== NAME  TestOneTickSpanVisible_NodeDoors/tiered
+    one_tick_span_test.go:105: NodeAt(one, t): graph: no version valid at the given time (one-tick span skipped)
+    one_tick_span_test.go:111: NodeAtTx(one, t, now): graph: no version valid at the given time
+    one_tick_span_test.go:119: NodesAt(t): missing expected node 796838046370824192
+    one_tick_span_test.go:119: NodesAt(t): result size = 1, want 2
+    one_tick_span_test.go:124: NodesByLabelAt(t): missing expected node 796838046370824192
+    one_tick_span_test.go:124: NodesByLabelAt(t): result size = 1, want 2
+    one_tick_span_test.go:129: ByLabel{ValidAt: t}: missing expected node 796838046370824192
+    one_tick_span_test.go:129: ByLabel{ValidAt: t}: result size = 1, want 2
+    one_tick_span_test.go:134: ByLabel{ValidAt: t, TxAt: now}: missing expected node 796838046370824192
+    one_tick_span_test.go:134: ByLabel{ValidAt: t, TxAt: now}: result size = 1, want 2
+    one_tick_span_test.go:139: NodesAtTx(t, now): missing expected node 796838046370824192
+    one_tick_span_test.go:139: NodesAtTx(t, now): result size = 1, want 2
+    one_tick_span_test.go:144: Snapshot(t).Nodes: missing expected node 796838046370824192
+    one_tick_span_test.go:144: Snapshot(t).Nodes: result size = 1, want 2
+    one_tick_span_test.go:152: NodesDuring[t, t+2000): missing expected node 796838046370824192
+    one_tick_span_test.go:152: NodesDuring[t, t+2000): result size = 1, want 2
+    one_tick_span_test.go:157: ByLabel{ValidStart: t, ValidEnd: t+2000}: missing expected node 796838046370824192
+    one_tick_span_test.go:157: ByLabel{ValidStart: t, ValidEnd: t+2000}: result size = 1, want 2
+    one_tick_span_test.go:162: NodesDuringTx[t, t+2000): missing expected node 796838046370824192
+    one_tick_span_test.go:162: NodesDuringTx[t, t+2000): result size = 1, want 2
+    one_tick_span_test.go:179: NodesRelating(all): missing expected node 796838046370824192
+    one_tick_span_test.go:179: NodesRelating(all): result size = 1, want 2
+    one_tick_span_test.go:185: NodesRelating(Equals [t, t+1)): missing expected node 796838046370824192
+    one_tick_span_test.go:185: NodesRelating(Equals [t, t+1)): result size = 0, want 1
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/sharded/node
+--- FAIL: TestOneTickSpanVisible_NodeDoors (0.07s)
+    --- FAIL: TestOneTickSpanVisible_NodeDoors/memory (0.00s)
+    --- FAIL: TestOneTickSpanVisible_NodeDoors/badger (0.00s)
+    --- FAIL: TestOneTickSpanVisible_NodeDoors/sharded (0.05s)
+    --- FAIL: TestOneTickSpanVisible_NodeDoors/tiered (0.01s)
+=== NAME  TestOneTickSpanVisible_RelDoors/tiered
+    one_tick_span_test.go:248: RelAt(one, t): graph: no version valid at the given time (one-tick span skipped)
+    one_tick_span_test.go:254: RelAtTx(one, t, now): graph: no version valid at the given time
+    one_tick_span_test.go:262: RelsAt(t): missing expected rel 796838046744052736
+    one_tick_span_test.go:262: RelsAt(t): result size = 1, want 2
+    one_tick_span_test.go:267: RelsByTypeAt(t): missing expected rel 796838046744052736
+    one_tick_span_test.go:267: RelsByTypeAt(t): result size = 1, want 2
+    one_tick_span_test.go:272: ByType{ValidAt: t}: missing expected rel 796838046744052736
+    one_tick_span_test.go:272: ByType{ValidAt: t}: result size = 1, want 2
+    one_tick_span_test.go:277: ByType{ValidAt: t, TxAt: now}: missing expected rel 796838046744052736
+    one_tick_span_test.go:277: ByType{ValidAt: t, TxAt: now}: result size = 1, want 2
+    one_tick_span_test.go:282: RelsAtTx(t, now): missing expected rel 796838046744052736
+    one_tick_span_test.go:282: RelsAtTx(t, now): result size = 1, want 2
+    one_tick_span_test.go:287: OutgoingRelsAt(start, t): missing expected rel 796838046744052736
+    one_tick_span_test.go:287: OutgoingRelsAt(start, t): result size = 1, want 2
+    one_tick_span_test.go:292: IncomingRelsAt(end, t): missing expected rel 796838046744052736
+    one_tick_span_test.go:292: IncomingRelsAt(end, t): result size = 1, want 2
+    one_tick_span_test.go:297: Snapshot(t).Relationships: missing expected rel 796838046744052736
+    one_tick_span_test.go:297: Snapshot(t).Relationships: result size = 1, want 2
+    one_tick_span_test.go:303: RelsDuring[t, t+2000): missing expected rel 796838046744052736
+    one_tick_span_test.go:303: RelsDuring[t, t+2000): result size = 1, want 2
+    one_tick_span_test.go:308: ByType{ValidStart: t, ValidEnd: t+2000}: missing expected rel 796838046744052736
+    one_tick_span_test.go:308: ByType{ValidStart: t, ValidEnd: t+2000}: result size = 1, want 2
+    one_tick_span_test.go:313: RelsDuringTx[t, t+2000): missing expected rel 796838046744052736
+    one_tick_span_test.go:313: RelsDuringTx[t, t+2000): result size = 1, want 2
+    one_tick_span_test.go:329: RelsRelating(all): missing expected rel 796838046744052736
+    one_tick_span_test.go:329: RelsRelating(all): result size = 1, want 2
+    one_tick_span_test.go:334: RelsRelating(Equals [t, t+1)): missing expected rel 796838046744052736
+    one_tick_span_test.go:334: RelsRelating(Equals [t, t+1)): result size = 0, want 1
+--- FAIL: TestOneTickSpanVisible_RelDoors (0.08s)
+    --- FAIL: TestOneTickSpanVisible_RelDoors/memory (0.00s)
+    --- FAIL: TestOneTickSpanVisible_RelDoors/badger (0.00s)
+    --- FAIL: TestOneTickSpanVisible_RelDoors/sharded (0.05s)
+    --- FAIL: TestOneTickSpanVisible_RelDoors/tiered (0.02s)
+=== NAME  TestOneTickSpanVisible_CloseVersionAtVfPlusOne/sharded/width1/node
+    one_tick_span_test.go:394: NodeAt(vf) answered the pre-close row &{ValidFrom:1791539567351 ValidTo:0 TxFrom:1791543167351 TxTo:1791543167352 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}, want ValidTo = vf+1
+    one_tick_span_test.go:397: NodeAt(vf+width) after close: err = <nil>, want ErrNoVersionValidAt
+    one_tick_span_test.go:399: NodeAt(vf+500) after close (old open row still answering): err = <nil>, want ErrNoVersionValidAt
+    one_tick_span_test.go:404: NodesAt(vf+500) after close: unexpected node 796838046966120448 in result
+    one_tick_span_test.go:404: NodesAt(vf+500) after close: result size = 1, want 0
+    one_tick_span_test.go:409: ByLabel{ValidAt: vf+500} after close: unexpected node 796838046966120448 in result
+    one_tick_span_test.go:409: ByLabel{ValidAt: vf+500} after close: result size = 1, want 0
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/sharded/width1/rel
+=== NAME  TestOneTickSpanVisible_CascadeWidthOnePiece/sharded/node
+    one_tick_span_test.go:645: NodeAt(t+0).v = 1, want 2
+    one_tick_span_test.go:652: ByLabel{ValidAt: t+0}.v = 1, want 2
+    one_tick_span_test.go:657: NodesDuring[t, t+1) = [0x18134af0c060], <nil>; want the piece (v=2)
+    one_tick_span_test.go:666: NodeAtTx(t, pin after correction) = &{796838047393579008 [{v 1}] [] 0x18134af0d380 0x18134af0d3e0 <nil> 0 1 false false 1}, <nil>; want v=2
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/sharded/rel
+    one_tick_span_test.go:701: RelAt(t+0).v = 1, want 2
+    one_tick_span_test.go:708: ByType{ValidAt: t+0}.v = 1, want 2
+    one_tick_span_test.go:713: RelsDuring[t, t+1) = [0x18134526b380], <nil>; want the piece (v=2)
+    one_tick_span_test.go:721: RelAtTx(t, pin after correction) = &{796838047562073088 796838047555190784 796838047557779456 [{v 1}] 0x181347302120 0x181345265c00 <nil> 0 1 false false 1 0 0}, <nil>; want v=2
+=== NAME  TestOneTickSpanVisible_DeleteAtVfPlusOne/sharded/node
+    one_tick_span_test.go:531: NodeAt(vf) after delete at vf+1: graph: no version valid at the given time (history row hidden)
+    one_tick_span_test.go:541: NodesAt(vf) after delete: missing expected node 796838047582552064
+    one_tick_span_test.go:541: NodesAt(vf) after delete: result size = 0, want 1
+    one_tick_span_test.go:546: ByLabel{ValidAt: vf} after delete: missing expected node 796838047582552064
+    one_tick_span_test.go:546: ByLabel{ValidAt: vf} after delete: result size = 0, want 1
+    one_tick_span_test.go:551: NodesDuring[vf, vf+2000) after delete: missing expected node 796838047582552064
+    one_tick_span_test.go:551: NodesDuring[vf, vf+2000) after delete: result size = 0, want 1
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/sharded/node/boundary_split
+=== RUN   TestOneTickSpanVisible_DeleteAtVfPlusOne/sharded/rel
+=== NAME  TestOneTickSpanVisible_CloseVersionAtVfPlusOne/sharded/width1/rel
+    one_tick_span_test.go:445: RelAt(vf) answered the pre-close row &{ValidFrom:1791539567380 ValidTo:0 TxFrom:1791543167382 TxTo:1791543167383 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}, want ValidTo = vf+1
+    one_tick_span_test.go:448: RelAt(vf+width) after close: err = <nil>, want ErrNoVersionValidAt
+    one_tick_span_test.go:450: RelAt(vf+500) after close (old open row still answering): err = <nil>, want ErrNoVersionValidAt
+    one_tick_span_test.go:455: RelsAt(vf+500) after close: unexpected rel 796838047924945920 in result
+    one_tick_span_test.go:455: RelsAt(vf+500) after close: result size = 1, want 0
+    one_tick_span_test.go:460: ByType{ValidAt: vf+500} after close: unexpected rel 796838047924945920 in result
+    one_tick_span_test.go:460: ByType{ValidAt: vf+500} after close: result size = 1, want 0
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/sharded/width2/node
+=== NAME  TestOneTickSpanVisible_DeleteAtVfPlusOne/sharded/rel
+    one_tick_span_test.go:569: RelAt(vf) after delete at vf+1: graph: no version valid at the given time (history row hidden)
+    one_tick_span_test.go:579: RelsAt(vf) after delete: missing expected rel 796838049263584256
+    one_tick_span_test.go:579: RelsAt(vf) after delete: result size = 0, want 1
+    one_tick_span_test.go:584: ByType{ValidAt: vf} after delete: missing expected rel 796838049263584256
+    one_tick_span_test.go:584: ByType{ValidAt: vf} after delete: result size = 0, want 1
+    one_tick_span_test.go:589: RelsDuring[vf, vf+2000) after delete: missing expected rel 796838049263584256
+    one_tick_span_test.go:589: RelsDuring[vf, vf+2000) after delete: result size = 0, want 1
+=== NAME  TestOneTickSpanVisible_CascadeWidthOnePiece/sharded/node/boundary_split
+    one_tick_span_test.go:749: NodeAt(t+0) = v:1 w:<nil>, want v:1 w:x
+=== RUN   TestOneTickSpanVisible_DeleteAtVfPlusOne/tiered/node
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/sharded/rel/boundary_split
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/sharded/width2/rel
+=== NAME  TestOneTickSpanVisible_DeleteAtVfPlusOne/tiered/node
+    one_tick_span_test.go:531: NodeAt(vf) after delete at vf+1: graph: no version valid at the given time (history row hidden)
+    one_tick_span_test.go:541: NodesAt(vf) after delete: missing expected node 796838050146353152
+    one_tick_span_test.go:541: NodesAt(vf) after delete: result size = 0, want 1
+    one_tick_span_test.go:546: ByLabel{ValidAt: vf} after delete: missing expected node 796838050146353152
+    one_tick_span_test.go:546: ByLabel{ValidAt: vf} after delete: result size = 0, want 1
+    one_tick_span_test.go:551: NodesDuring[vf, vf+2000) after delete: missing expected node 796838050146353152
+    one_tick_span_test.go:551: NodesDuring[vf, vf+2000) after delete: result size = 0, want 1
+=== RUN   TestOneTickSpanVisible_DeleteAtVfPlusOne/tiered/rel
+=== NAME  TestOneTickSpanVisible_CascadeWidthOnePiece/sharded/rel/boundary_split
+    one_tick_span_test.go:778: RelAt(t+0) = v:1 w:<nil>, want v:1 w:x
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/tiered/node
+    one_tick_span_test.go:645: NodeAt(t+0).v = 1, want 2
+    one_tick_span_test.go:652: ByLabel{ValidAt: t+0}.v = 1, want 2
+    one_tick_span_test.go:657: NodesDuring[t, t+1) = [0x1813450dfce0], <nil>; want the piece (v=2)
+    one_tick_span_test.go:666: NodeAtTx(t, pin after correction) = &{796838050970009600 [{v 1}] [] 0x181345840c00 0x181345840c60 <nil> 0 1 false false 0}, <nil>; want v=2
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/tiered/rel
+=== NAME  TestOneTickSpanVisible_DeleteAtVfPlusOne/tiered/rel
+    one_tick_span_test.go:569: RelAt(vf) after delete at vf+1: graph: no version valid at the given time (history row hidden)
+    one_tick_span_test.go:579: RelsAt(vf) after delete: missing expected rel 796838051133621248
+    one_tick_span_test.go:579: RelsAt(vf) after delete: result size = 0, want 1
+    one_tick_span_test.go:584: ByType{ValidAt: vf} after delete: missing expected rel 796838051133621248
+    one_tick_span_test.go:584: ByType{ValidAt: vf} after delete: result size = 0, want 1
+    one_tick_span_test.go:589: RelsDuring[vf, vf+2000) after delete: missing expected rel 796838051133621248
+    one_tick_span_test.go:589: RelsDuring[vf, vf+2000) after delete: result size = 0, want 1
+--- FAIL: TestOneTickSpanVisible_DeleteAtVfPlusOne (0.21s)
+    --- FAIL: TestOneTickSpanVisible_DeleteAtVfPlusOne/memory/node (0.00s)
+    --- FAIL: TestOneTickSpanVisible_DeleteAtVfPlusOne/memory/rel (0.00s)
+    --- FAIL: TestOneTickSpanVisible_DeleteAtVfPlusOne/badger/node (0.00s)
+    --- FAIL: TestOneTickSpanVisible_DeleteAtVfPlusOne/badger/rel (0.05s)
+    --- FAIL: TestOneTickSpanVisible_DeleteAtVfPlusOne/sharded/node (0.05s)
+    --- FAIL: TestOneTickSpanVisible_DeleteAtVfPlusOne/sharded/rel (0.05s)
+    --- FAIL: TestOneTickSpanVisible_DeleteAtVfPlusOne/tiered/node (0.03s)
+    --- FAIL: TestOneTickSpanVisible_DeleteAtVfPlusOne/tiered/rel (0.03s)
+=== NAME  TestOneTickSpanVisible_CascadeWidthOnePiece/tiered/rel
+    one_tick_span_test.go:701: RelAt(t+0).v = 1, want 2
+    one_tick_span_test.go:708: ByType{ValidAt: t+0}.v = 1, want 2
+    one_tick_span_test.go:713: RelsDuring[t, t+1) = [0x181347000840], <nil>; want the piece (v=2)
+    one_tick_span_test.go:721: RelAtTx(t, pin after correction) = &{796838051591848960 796838051590569984 796838051591421952 [{v 1}] 0x181347320cc0 0x18134730c680 <nil> 0 1 false false 0 0 0}, <nil>; want v=2
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/tiered/node/boundary_split
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/tiered/width1/node
+    one_tick_span_test.go:394: NodeAt(vf) answered the pre-close row &{ValidFrom:1791539567529 ValidTo:0 TxFrom:1791543167529 TxTo:1791543167530 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}, want ValidTo = vf+1
+    one_tick_span_test.go:397: NodeAt(vf+width) after close: err = <nil>, want ErrNoVersionValidAt
+    one_tick_span_test.go:399: NodeAt(vf+500) after close (old open row still answering): err = <nil>, want ErrNoVersionValidAt
+    one_tick_span_test.go:404: NodesAt(vf+500) after close: unexpected node 796838052798824448 in result
+    one_tick_span_test.go:404: NodesAt(vf+500) after close: result size = 1, want 0
+    one_tick_span_test.go:409: ByLabel{ValidAt: vf+500} after close: unexpected node 796838052798824448 in result
+    one_tick_span_test.go:409: ByLabel{ValidAt: vf+500} after close: result size = 1, want 0
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/tiered/width1/rel
+=== NAME  TestOneTickSpanVisible_CascadeWidthOnePiece/tiered/node/boundary_split
+    one_tick_span_test.go:749: NodeAt(t+0) = v:1 w:<nil>, want v:1 w:x
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/tiered/rel/boundary_split
+=== NAME  TestOneTickSpanVisible_CloseVersionAtVfPlusOne/tiered/width1/rel
+    one_tick_span_test.go:445: RelAt(vf) answered the pre-close row &{ValidFrom:1791539567552 ValidTo:0 TxFrom:1791543167554 TxTo:1791543167555 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}, want ValidTo = vf+1
+    one_tick_span_test.go:448: RelAt(vf+width) after close: err = <nil>, want ErrNoVersionValidAt
+    one_tick_span_test.go:450: RelAt(vf+500) after close (old open row still answering): err = <nil>, want ErrNoVersionValidAt
+    one_tick_span_test.go:455: RelsAt(vf+500) after close: unexpected rel 796838053567890432 in result
+    one_tick_span_test.go:455: RelsAt(vf+500) after close: result size = 1, want 0
+    one_tick_span_test.go:460: ByType{ValidAt: vf+500} after close: unexpected rel 796838053567890432 in result
+    one_tick_span_test.go:460: ByType{ValidAt: vf+500} after close: result size = 1, want 0
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/tiered/width2/node
+=== NAME  TestOneTickSpanVisible_CascadeWidthOnePiece/tiered/rel/boundary_split
+    one_tick_span_test.go:778: RelAt(t+0) = v:1 w:<nil>, want v:1 w:x
+--- FAIL: TestOneTickSpanVisible_CascadeWidthOnePiece (0.30s)
+    --- FAIL: TestOneTickSpanVisible_CascadeWidthOnePiece/memory/node (0.00s)
+    --- FAIL: TestOneTickSpanVisible_CascadeWidthOnePiece/memory/rel (0.00s)
+    --- FAIL: TestOneTickSpanVisible_CascadeWidthOnePiece/memory/node/boundary_split (0.00s)
+    --- FAIL: TestOneTickSpanVisible_CascadeWidthOnePiece/memory/rel/boundary_split (0.00s)
+    --- FAIL: TestOneTickSpanVisible_CascadeWidthOnePiece/badger/node (0.00s)
+    --- FAIL: TestOneTickSpanVisible_CascadeWidthOnePiece/badger/rel (0.01s)
+    --- FAIL: TestOneTickSpanVisible_CascadeWidthOnePiece/badger/node/boundary_split (0.05s)
+    --- FAIL: TestOneTickSpanVisible_CascadeWidthOnePiece/badger/rel/boundary_split (0.01s)
+    --- FAIL: TestOneTickSpanVisible_CascadeWidthOnePiece/sharded/node (0.03s)
+    --- FAIL: TestOneTickSpanVisible_CascadeWidthOnePiece/sharded/rel (0.01s)
+    --- FAIL: TestOneTickSpanVisible_CascadeWidthOnePiece/sharded/node/boundary_split (0.06s)
+    --- FAIL: TestOneTickSpanVisible_CascadeWidthOnePiece/sharded/rel/boundary_split (0.03s)
+    --- FAIL: TestOneTickSpanVisible_CascadeWidthOnePiece/tiered/node (0.02s)
+    --- FAIL: TestOneTickSpanVisible_CascadeWidthOnePiece/tiered/rel (0.02s)
+    --- FAIL: TestOneTickSpanVisible_CascadeWidthOnePiece/tiered/node/boundary_split (0.05s)
+    --- FAIL: TestOneTickSpanVisible_CascadeWidthOnePiece/tiered/rel/boundary_split (0.03s)
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/tiered/width2/rel
+--- FAIL: TestOneTickSpanVisible_CloseVersionAtVfPlusOne (0.32s)
+    --- FAIL: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width1/node (0.00s)
+    --- FAIL: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width1/rel (0.00s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width2/node (0.00s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width2/rel (0.00s)
+    --- FAIL: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width1/node (0.01s)
+    --- FAIL: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width1/rel (0.01s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width2/node (0.00s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width2/rel (0.04s)
+    --- FAIL: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/sharded/width1/node (0.02s)
+    --- FAIL: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/sharded/width1/rel (0.03s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/sharded/width2/node (0.05s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/sharded/width2/rel (0.08s)
+    --- FAIL: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/tiered/width1/node (0.02s)
+    --- FAIL: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/tiered/width1/rel (0.02s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/tiered/width2/node (0.02s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/tiered/width2/rel (0.01s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.394s
+FAIL

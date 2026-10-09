@@ -135,9 +135,6 @@ func (c *Core) resolveNodeChainRelating(chain []*types.Node, qStart, qEnd types.
 	}
 	c.sortNodeChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
-		if eclipsedNodeBounds(chain[i]) {
-			continue
-		}
 		vStart, vEnd := c.nodeVersionBounds(chain, i)
 		rel, err := types.RelateOpen(vStart, vEnd, qStart, qEnd)
 		if err != nil {
@@ -160,9 +157,6 @@ func (c *Core) resolveNodeChainDuring(chain []*types.Node, start, end types.Inst
 	// first to preserve the "most-recent overlapping match" semantic.
 	c.sortNodeChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
-		if eclipsedNodeBounds(chain[i]) {
-			continue
-		}
 		vStart, vEnd := c.nodeVersionBounds(chain, i)
 		// Overlap: vStart < end AND (vEnd == 0 OR vEnd > start).
 		if vStart < end && (vEnd == 0 || vEnd > start) {
@@ -214,9 +208,6 @@ func (c *Core) resolveRelChainRelating(chain []*types.Relationship, qStart, qEnd
 	}
 	c.sortRelChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
-		if eclipsedRelBounds(chain[i]) {
-			continue
-		}
 		vStart, vEnd := c.relVersionBounds(chain, i)
 		rel, err := types.RelateOpen(vStart, vEnd, qStart, qEnd)
 		if err != nil {
@@ -233,9 +224,6 @@ func (c *Core) resolveRelChainRelating(chain []*types.Relationship, qStart, qEnd
 func (c *Core) resolveRelChainDuring(chain []*types.Relationship, start, end types.Instant, pred func(*types.Relationship) bool) (*types.Relationship, error) {
 	c.sortRelChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
-		if eclipsedRelBounds(chain[i]) {
-			continue
-		}
 		vStart, vEnd := c.relVersionBounds(chain, i)
 		if vStart < end && (vEnd == 0 || vEnd > start) {
 			if pred == nil || pred(chain[i]) {

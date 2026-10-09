@@ -292,7 +292,7 @@ type QueryOpts struct {
     ValidEnd        types.Instant  // Interval filter end (0 = disabled)
     TxAt            types.Instant  // Bitemporal: restrict chain to TxFrom <= TxAt (0 = no TX filter)
     TxPin           types.Instant  // Belief state: pure knowledge-time resolution, NO valid-time filter (0 = disabled)
-    IncludeEclipsed bool           // Include cascade-superseded history rows (reserved; default false)
+    IncludeEclipsed bool           // Reserved no-op, kept for API compatibility
     Depth           ShardDepth     // Shard tier filter (0 = all tiers)
     NoSort          bool           // Skip the label-scan ID sort (honoured only when After == 0)
 }
@@ -1174,10 +1174,6 @@ Recorded so future readers know these are conscious choices, not oversights:
 - **Iteration-capability matrix**: the history × deleted × depth × paged
   optional-interface grid grows combinatorially; a parameterized iteration
   interface is a breaking store-contract redesign — v5 item.
-- **Eclipsed-row explicit wire flag**: the zero-width `ValidTo==ValidFrom+1`
-  sentinel works but is an in-band magic value; an explicit flag becomes
-  cheap at the next wire-format version bump (the versioning machinery now
-  exists) — schedule together.
 - **`tier` package returning `tiered.*` types** (forces the tiered import on
   consumers) and `RecoverBackgroundError` exposure via `g.Tier()`: both are
   additive-but-coupled API changes — bundle with the next planned API pass.

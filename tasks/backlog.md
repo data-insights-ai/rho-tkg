@@ -36,6 +36,21 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 
 12. **HIGH: unique constraint bypass via SetNodeVersionInterval props (standalone, GraphTx, Batch, Session)** — found in review 2026-10-09. `cascadeNodeVersionInterval` (`core/temporal_cascade.go:81`) appends rows from a props PATCH and never consults `enforceUniqueForNode` (`core/unique_constraints.go:561`), so a cascade can give a node a value another current node already holds under `CreateUnique` / `CreateUniqueForever`, through every door that forwards to it: `Temporal().SetNodeVersionInterval`, `GraphTx.SetNodeVersionInterval` (`core/tx_mutations.go:293`), `BatchBuilder.SetNodeVersionInterval` (`core/batch_queue.go:384`, applied at `core/batch_execute.go:564`) and `Session.SetNodeVersionInterval` (`core/ingest_interval_doors.go`, strong and concurrent apply). Decide first whether a unique value is judged on the current row only (then a cascade that does not change the current row's value is fine) or on every valid-time slice it writes. Red test first: two-phase, on all four doors and all four backends — `CreateUnique(label, key)`, node A holds `v`, node B holds `w`; a cascade on B whose props patch sets `key=v` must be refused with `ErrUniqueViolation` (errors.Is) and leave B's history and `NodeAtTx` unchanged; counterpart: a patch to a free value succeeds; `UniqueForever`: a patch to a value owned forever by another node is refused. Until fixed, `CreateUnique`'s doc comment states that `SetNodeVersionInterval` is not checked. Scheduling: next.
 
+14. **A correction on a deleted entity copies the tombstone stamps** (HIGH, pre-existing, found in the
+    review of the one-tick fix 2026-10-09; the reviewer confirmed it on memory, badger, sharded and
+    tiered). `correctionTemporal` (`core/temporal_cascade.go:486-496`) starts every correction piece
+    from the template's whole `TemporalMetadata`, `TxTo` and `DeletedAt` included (node `:516`, rel
+    `:546`), and the resumption rows (`:185`/`:195` node, `:654`/`:664` rel) keep the source row's
+    `TxTo`/`DeletedAt`. On a hard-deleted entity the template is the tombstone, so `Add` → `Delete` →
+    `SetNodeVersionInterval` appends a row with `TxTo = TxFrom - 1` and a `DeletedAt`:
+    `NodeAsOf(now)` reports the entity absent while `NodeAtTx(t, now)` returns the correction (two
+    doors disagree). Red test first, all four backends, node and rel: every appended row has
+    `TxTo == 0 || TxTo >= TxFrom`, and `NodeAsOf` / `NodeAtTx` (and rel mirrors) agree after the
+    cascade. **Decision needed (lesson 46):** a cascade on a deleted entity either undeletes (the
+    appended rows are a new, live belief) or is refused with a sentinel error. Not implemented.
+    `TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow` pins today's behaviour (the cascade
+    succeeds, gap content from the newest history row); revise it with the decision.
+
 **DECIDED NO 2026-10-09 (René, relayed by the ai-soc session):** an index-provider "failure aborts the mutation" option (ai-soc request 5; ai-soc rebuilds from the change feed) and one instant per commit group (ai-soc request 7; the cut-record pin is enough). Reopen only with a consumer case the change feed or the cut-record pin cannot cover.
 
 13. **Ingest applier attributes group errors by numeric entity id, not by kind** (MEDIUM, found 2026-10-09 writing `TestSessionSetVersionInterval_FailedGroupShape`): the strong-async applier keys group-error attribution by the numeric id, so a missing node id and a missing rel id with the same number attribute errors to the wrong group. Minted snowflake ids never collide across the two generators, but caller-supplied ids (`AddByID`, `Import`) can (the rollback-snapshot rule in AGENTS.md "Data Model" already keys by kind + id for the same reason). Red test first: two groups, a node and a rel with the same numeric id, each missing; each group gets its own sentinel. Fix: key by (kind, id).
@@ -81,10 +96,6 @@ write the failing two-phase test first; drop the item if the test passes.
   needs either a separate tombstone version (store delete contract and chain shape change) or
   readers using `min(ValidTo, DeletedAt)` everywhere (column scans, segments, valid-time
   indexes). v5 replaces in-place tombstones with lifecycle closes.
-- **(KNOWN LIMITATION) 1 ms pieces look eclipsed.** A row with `ValidTo == ValidFrom + 1` is the
-  eclipse sentinel and invisible to valid-time reads. A caller-supplied 1 ms interval was always
-  affected; since the correction-base fix a `SetNodeVersionInterval` piece can also be 1 ms wide
-  when a pre-existing boundary sits 1 ms from `validFrom` or `validTo`.
 
 ---
 
@@ -229,6 +240,7 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | CI bench-gate (blocking) | 2026-07-29, `bench.yml` |
 | Item 3 (HIGH) — entity wire widened nested values (small ints, typed slices, typed nil, custom structs); DECIDED 2026-09-24: kind envelope, no write-time normalization | CHANGELOG `[4.37.0]` Fixed |
 | HIGH — badger reads dropped or replaced rows when a flush + eviction landed mid-read (scans, `NodesAsOf`/`RelsAsOf`, point-read cache fills); flush epoch + `scanSnapshot` + `LoadCleanAt`, 2026-09-24 | CHANGELOG `[Unreleased]` Fixed |
+| HIGH — one-tick `[t, t+1)` rows skipped as the eclipse sentinel (ex-KNOWN LIMITATION "1 ms pieces look eclipsed"; CloseVersion at vf+1 lost, delete at vf+1 hid history, width-1 cascade piece invisible); skip removed 2026-10-09 | CHANGELOG `[Unreleased]` Fixed "One-tick valid intervals are ordinary spans" |
 
 Recover closed investigation prose via `git log --all -- tasks/backlog.md` if needed.
 

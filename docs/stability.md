@@ -48,7 +48,7 @@ The following surfaces are **not** covered by the v4 stability promise. They are
   feedback. The callback must not retain the batch — its slices are reused between
   calls.
 - **Columnar refresh counters** (`ColumnExtendCount` / `ColumnRebuildCount` on the memory and badger stores) — telemetry for how a label's columnar snapshot was refreshed (append-extended versus fully rebuilt). Diagnostic only; not a stable metric contract
-- **`QueryOpts.IncludeEclipsed`** — reserved field with zero readers; pre-placeholder for a future cascade-edit feature (Phase 3). Consumers must not set it; it will either be implemented or removed at the next major version
+- **`QueryOpts.IncludeEclipsed`** — reserved no-op, kept for API compatibility; one-tick rows are ordinary spans (no row is skipped as "eclipsed"). Consumers must not set it; it may be removed at the next major version
 
 Do not take a production dependency on experimental surfaces without understanding the risk. If a consumer does rely on one, open a GitHub issue so the dependency is known before the surface changes.
 
