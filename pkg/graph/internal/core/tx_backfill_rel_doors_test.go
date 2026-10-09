@@ -789,3 +789,37 @@ func TestTxBackfillRel_RaceClock(t *testing.T) {
 		})
 	}
 }
+
+// Cache regression guard — the caller-instant doors report their past-dated
+// write to the as-of column cache after the store write (notePastDatedWrite,
+// W2). The cache holds NODE label columns only, so a relationship ending or
+// superseded at t cannot make a cached column stale today; what is observable
+// is the contract that the door bumps the as-of gen (DocValuesSnapshotAsOf's
+// gen is the cache epoch). Catches: a new door that forgets the report, which
+// becomes a stale read the day a relationship-backed column is cached.
+func TestTxBackfillRel_DoorsReportPastDatedWrite(t *testing.T) {
+	t.Parallel()
+	for _, be := range txbBackends() {
+		for _, d := range txbDoors() {
+			t.Run(be.name+"/"+d.name, func(t *testing.T) {
+				g := be.open(t, true)
+				f := txbBackfillRel(t, g)
+				pin := f.base + 500
+				_, genBefore, ok, err := g.Nodes.DocValuesSnapshotAsOf("Ref", []string{"k"}, pin)
+				if err != nil || !ok {
+					t.Fatalf("DocValuesSnapshotAsOf: ok=%v err=%v", ok, err)
+				}
+				if err := d.run(g, f.id, f.base+1000); err != nil {
+					t.Fatalf("%s: %v", d.name, err)
+				}
+				_, genAfter, _, err := g.Nodes.DocValuesSnapshotAsOf("Ref", []string{"k"}, pin)
+				if err != nil {
+					t.Fatalf("DocValuesSnapshotAsOf after: %v", err)
+				}
+				if genAfter == genBefore {
+					t.Fatalf("%s at a past t left the as-of gen at %d — the door does not report its past-dated write", d.name, genBefore)
+				}
+			})
+		}
+	}
+}

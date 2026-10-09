@@ -175,3 +175,17 @@ tx_backfill_rel_doors_test.go:349: [DeleteWithTx t=1791518165053 derived=1791525
 tx_backfill_rel_doors_test.go:383: [DeleteWithTx t=1791528975055 UpdatedAt=1791528975105] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
 tx_backfill_rel_doors_test.go:774: UpdateWithTx(t=1791525365019) stamped TxFrom 1791525365057
 rels_withtx_test.go:60: DeleteWithTx(t=0) err = <nil>; want ErrInvalidTxFrom, ErrTxOrder=false
+
+# RED after merging main (W2): TestTxBackfillRel_DoorsReportPastDatedWrite before the doors call notePastDatedWrite
+--- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite (0.18s)
+        tx_backfill_rel_doors_test.go:820: DeleteWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+        tx_backfill_rel_doors_test.go:820: UpdateWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+        tx_backfill_rel_doors_test.go:820: DeleteWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+        tx_backfill_rel_doors_test.go:820: UpdateWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+        tx_backfill_rel_doors_test.go:820: DeleteWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+        tx_backfill_rel_doors_test.go:820: UpdateWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+        tx_backfill_rel_doors_test.go:820: DeleteWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+        tx_backfill_rel_doors_test.go:820: UpdateWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.234s
+FAIL
