@@ -58,7 +58,10 @@ Phase 2 (parallel, after W1+W2 merged)
 - [x] W4 rel GraphTx twins + batch + ingest (merged e44e95d; red-w4.txt 152 red, green-w4.txt; all 8 doors seamed, whole-unit pre-flight refusal): R12 (rollback, door equivalence), R16 (batch/ingest: seam or explicit refusal).
 
 Phase 3
-- [ ] W5 finish: R15 cross-backend oracle, R11 over every door, docs/api.md, stale comments (§6.8), lesson 59
+- [x] W5 finish (branch worktree-agent-abdf7ef774350985f, d9f11aa..; red: evidence/red-w5-{oracle,race,facade}.txt,
+      green: evidence/green-w5.txt — full `go test ./pkg/...` and `-race` on core/storeutil/graph green, changed
+      lines 4126bb1..HEAD 90.0 % covered (-short); `make cover` / `make test-race` targets not run as such):
+      R15 cross-backend oracle, R11 over every door, docs/api.md, stale comments (§6.8), lesson 59
       amendment, CHANGELOG `[Unreleased]` 4.44.0, `make test-race`, `make cover`.
       W5 ledger (worktree agent-abdf7ef774350985f, written before the first test edit):
       - R15 in code? doors seamed (tx_order.go checkTxOrder; relationship_delete.go/node_delete.go `at` seam;
@@ -86,3 +89,21 @@ Commits: no agent attribution lines (user rule 2026-10-02). No push, no tag.
 ## Review
 
 (after phase 3)
+
+W5 findings (pre-existing, plain doors only, gate off, reproduced at 4126bb1 = v4.43.0; not fixed here, the
+oracle routes around them and says so in `txbTangled` / `txbNoTxRollback`):
+1. A bounded `SetVersionInterval` cascade appends a row whose version is above the current row's. NodeAsOf /
+   RelAsOf at a pin after the cascade answer the current row until any later write supersedes or deletes it;
+   then the history arm answers the cascade row for those same pins (a plain Update changes the past answer
+   v1 -> v2, all four backends).
+2. The next version-advancing write after such a cascade (Update, CloseVersion) reuses the cascade row's version
+   number: two rows with one version in the chain (all four backends). After it, the TxAt point door's answer at
+   a pin before a later Delete changes (v1 -> absent).
+3. `SetNodeVersionInterval` on an updated and closed node writes cascade rows whose TxTo lies below their TxFrom
+   (inherited from the archived row); the remainder row is current with a TxTo; a later Update keeps that TxTo
+   on its new version (inverted TX interval on the current row).
+4. A GraphTx rollback after `tx.UpdateRelationship` / `tx.DeleteRelationship` (or a refused
+   `UpdateRelationshipWithTx`, whose refusal comes after the snapshot) drops the cascade history row above the
+   current one on memory and badger (history 1 -> 0); sharded and tiered keep it.
+Repros: scratch tests in the session scratchpad (`zz_scratch_*`); each is one short test, worth a backlog item
+with a red test first.
