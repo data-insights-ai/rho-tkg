@@ -101,14 +101,17 @@ func (bs *Store) prefetchCascadeDeleteRows(nid types.NodeID) (cascadeDeletePrefe
 }
 
 // cascadeDeleteInner performs Phases 1+2 of DeleteNodeCascade.
-// Caller MUST hold bs.idxMu.Lock(). All ops are appended to pending under the same lock
-// so that the caller can append additional ops (e.g. tombstone history) before releasing.
+// Caller MUST hold bs.idxMu.Lock(). All ops are appended to pending under the same lock.
+// history is the with-history delete's tombstone batch (nil for a plain
+// cascade): it is published through publishMoveLocked after the preflight and
+// BEFORE Phase 2 removes the node and its relationships from the cache, so a
+// lock-free reader never sees an entity gone from its current slot and not
+// yet in history (backlog 32).
 // Returns (toDelete, corruptErr, fatalErr):
 //   - fatalErr != nil: aborted with no mutations applied.
 //   - corruptErr != nil: cleanup completed but node data was unreadable (indexes brute-force purged).
 //   - Otherwise: clean success.
-func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePrefetch) ([]RelDeleteInfo, error, error) {
-	id := nid.SnowflakeID()
+func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePrefetch, history []writeOp) ([]RelDeleteInfo, error, error) {
 	if _, exists := bs.nodeIDs[nid]; !exists {
 		return nil, nil, ErrNodeNotFound
 	}
@@ -153,11 +156,34 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 		})
 	}
 
-	// Phase 2 — Apply: all mutations use pre-read data, no reads, cannot fail.
-	for _, relID := range orphanRelIDs {
-		if err := bs.purgeOrphanRelIDLocked(relID); err != nil {
+	// The orphans' index keys are read here too, so Phase 2 starts only once
+	// every fallible read has succeeded.
+	orphanKeys := make([][][]byte, len(orphanRelIDs))
+	for i, relID := range orphanRelIDs {
+		keys, err := bs.relationshipIndexKeysForRel(relID.SnowflakeID())
+		if err != nil {
 			return nil, nil, fmt.Errorf("graph: cascade purge orphan relationship %d: %w", relID.SnowflakeID(), err)
 		}
+		orphanKeys[i] = keys
+	}
+
+	var corruptErr error
+	apply := func() { corruptErr = bs.cascadeDeleteApply(nid, prefetched, toDelete, orphanRelIDs, orphanKeys) }
+	if history == nil {
+		apply()
+	} else {
+		bs.publishMoveLocked(history, apply)
+	}
+	return toDelete, corruptErr, nil
+}
+
+// cascadeDeleteApply is cascadeDeleteInner's Phase 2 — Apply: every mutation,
+// from pre-read data, under the caller's idxMu.Lock; it cannot fail. A non-nil
+// return is the corrupt-node outcome (cleanup completed, node data unreadable).
+func (bs *Store) cascadeDeleteApply(nid types.NodeID, prefetched cascadeDeletePrefetch, toDelete []RelDeleteInfo, orphanRelIDs []types.RelID, orphanKeys [][][]byte) error {
+	id := nid.SnowflakeID()
+	for i, relID := range orphanRelIDs {
+		bs.purgeOrphanRelIDLockedWithIndexKeys(relID, orphanKeys[i])
 	}
 	for _, info := range toDelete {
 		bs.deleteRelByInfo(info)
@@ -182,7 +208,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 			// keyspace (O(keyspace) — corruption-only path).
 			toks, scanErr := bs.nodeLabelTokensFromKeyspaceLocked(nid)
 			if scanErr != nil {
-				return toDelete, fmt.Errorf("graph: cascade scrub scan: %w (after: %w)", scanErr, err), nil
+				return fmt.Errorf("graph: cascade scrub scan: %w (after: %w)", scanErr, err)
 			}
 			for _, tok := range toks {
 				ops = append(ops, writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)})
@@ -227,7 +253,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 		// this node's now-deleted row.
 		bs.nodeEpochSalt.Add(1)
 		bs.poisonAllLabels() // label-less event: no per-label append record can describe it (R3)
-		return toDelete, fmt.Errorf("graph: cascade completed with corrupt node data: %w", err), nil
+		return fmt.Errorf("graph: cascade completed with corrupt node data: %w", err)
 	}
 
 	// Build delete ops for node.
@@ -264,7 +290,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 	bs.appendOps(ops...)
 	bs.nodeCount.Add(-1)
 
-	return toDelete, nil, nil
+	return nil
 }
 
 // cascadeDeleteLocked acquires idxMu.Lock() and delegates to cascadeDeleteInner.
@@ -279,7 +305,7 @@ func (bs *Store) cascadeDeleteLocked(nid types.NodeID, prefetched cascadeDeleteP
 func (bs *Store) cascadeDeleteRouted(nid types.NodeID, prefetched cascadeDeletePrefetch, token uint64) ([]RelDeleteInfo, error, error) {
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
-	deleted, corruptErr, fatalErr := bs.cascadeDeleteInner(nid, prefetched)
+	deleted, corruptErr, fatalErr := bs.cascadeDeleteInner(nid, prefetched, nil)
 	// Emit the single hard-cascade ChangeNodeDelete under the SAME lock as the
 	// cascade ops (cascadeDeleteInner / deleteRelByInfo emit nothing themselves,
 	// so the node-cascade and with-history-delete paths each emit exactly one

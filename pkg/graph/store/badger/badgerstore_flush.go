@@ -29,6 +29,33 @@ func (bs *Store) appendOps(ops ...writeOp) {
 	bs.wbMu.Unlock()
 }
 
+// publishMoveLocked publishes a with-history write — a row moving from the
+// current slot into history (Replace*WithHistory, the label-token history
+// doors, Delete*WithHistory) — in the one order a lock-free point reader
+// cannot misread (backlog 32). The caller holds idxMu.Lock and passes the
+// door's batch, the history row(s) included, as ops, and the entity-cache
+// change (Put of the new current row, or the delete's removal) as
+// publishCurrent.
+//
+// The point readers take neither idxMu nor one snapshot: GetNode /
+// GetRelationship answer from the entity cache, the history readers from the
+// pending overlay plus a badger View, in two calls, current row first (core
+// chain_read.go). So the pending buffer holds the history row BEFORE the
+// cache changes: a reader that sees the new current row finds the moved row
+// in history; one that still sees the old current row may find it in history
+// too (the same version twice, which the chain resolver tolerates). Cache
+// first let a reader see the new current row and a history without the moved
+// row — the row a pinned read needs in neither, so NodeAtTx / NodeAsOf at a
+// pin before the move answered "absent". Both halves stay inside one idxMu
+// section, so a flush (idxMu.RLock) still commits them in one WriteBatch.
+func (bs *Store) publishMoveLocked(ops []writeOp, publishCurrent func()) {
+	bs.appendOps(ops...)
+	if bs.moveTestHook != nil {
+		bs.moveTestHook()
+	}
+	publishCurrent()
+}
+
 // flushIfNeeded is the post-mutation flush hook called by every write path
 // AFTER idxMu is released (flush takes idxMu.RLock — calling it under
 // idxMu.Lock would self-deadlock).

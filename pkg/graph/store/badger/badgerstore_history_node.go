@@ -128,8 +128,8 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	}
 	bs.getOrCreateLabelCounter(tok).Add(-1)
 
-	// Update cache and property/temporal/vector indexes for the new node state.
-	bs.nodeCache.Put(id, bs.frozenNodeRow(updatedNode))
+	// Property/temporal/vector indexes for the new node state; the cache
+	// (the new current row) is published last, by publishMoveLocked.
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
@@ -147,10 +147,7 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 		writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)},
 	)
-	if bs.moveTestHook != nil {
-		bs.moveTestHook()
-	}
-	bs.appendOps(ops...)
+	bs.publishMoveLocked(ops, func() { bs.nodeCache.Put(id, bs.frozenNodeRow(updatedNode)) })
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodePut, changePayload, token)
 	bs.idxMu.Unlock()
 	if logErr != nil {
@@ -267,8 +264,8 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	bs.getOrCreateLabelCounter(tok).Add(1)
 	bs.recordNodeLabelMembersLocked(updatedNode) // transaction-time label membership (new token)
 
-	// Update cache and property/temporal/vector indexes for the new node state.
-	bs.nodeCache.Put(id, bs.frozenNodeRow(updatedNode))
+	// Property/temporal/vector indexes for the new node state; the cache
+	// (the new current row) is published last, by publishMoveLocked.
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
@@ -286,10 +283,7 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 		writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)},
 	)
-	if bs.moveTestHook != nil {
-		bs.moveTestHook()
-	}
-	bs.appendOps(ops...)
+	bs.publishMoveLocked(ops, func() { bs.nodeCache.Put(id, bs.frozenNodeRow(updatedNode)) })
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodePut, changePayload, token)
 	bs.idxMu.Unlock()
 	if logErr != nil {
@@ -398,7 +392,6 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 		bs.idxMu.Unlock()
 		return err
 	}
-	bs.nodeCache.Put(id, bs.frozenNodeRow(current))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(current)
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(current))   // BACKLOG 10c
@@ -409,16 +402,13 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(current, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, current, id)
 
-	// Single appendOps call — atomic in the pending buffer.
+	// Single appendOps call — atomic in the pending buffer — then the cache.
 	histKey := storepkg.HistNodeKey(id, uint64(prevVersion))
 	ops = append(ops,
 		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 	)
-	if bs.moveTestHook != nil {
-		bs.moveTestHook()
-	}
-	bs.appendOps(ops...)
+	bs.publishMoveLocked(ops, func() { bs.nodeCache.Put(id, bs.frozenNodeRow(current)) })
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodePut, changePayload, token)
 	bs.idxMu.Unlock()
 	if logErr != nil {
@@ -511,25 +501,22 @@ func (bs *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 		bs.idxMu.Unlock()
 		return err
 	}
-	_, corruptErr, fatalErr := bs.cascadeDeleteInner(nid, prefetched)
+	// The tombstones (node + relationships) go to the SAME pending map, ahead
+	// of the cascade's cache removals (publishMoveLocked, backlog 32).
+	ops := make([]writeOp, 0, 1+len(relEntries))
+	ops = append(ops, writeOp{opType: writeOpSet, key: nodeHistKey, value: nodeData})
+	for _, e := range relEntries {
+		ops = append(ops, writeOp{opType: writeOpSet, key: e.key, value: e.data})
+	}
+	_, corruptErr, fatalErr := bs.cascadeDeleteInner(nid, prefetched, ops)
 	if fatalErr != nil {
 		bs.idxMu.Unlock()
 		return fatalErr
 	}
-	// Append tombstone history ops to SAME pending map before releasing lock.
-	ops := make([]writeOp, 0, 1+len(relEntries))
-	ops = append(ops, writeOp{opType: writeOpSet, key: nodeHistKey, value: nodeData})
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(nodeTombstone)) // BACKLOG 10c
-	for _, e := range relEntries {
-		ops = append(ops, writeOp{opType: writeOpSet, key: e.key, value: e.data})
-	}
 	for _, rt := range relTombstones {
 		bs.bumpRelBeliefWatermarkLocked(rt.ID, relTxFrom(rt.Tombstone)) // BACKLOG 10c
 	}
-	if bs.moveTestHook != nil {
-		bs.moveTestHook()
-	}
-	bs.appendOps(ops...)
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodeDelete, delPayload, token)
 	bs.idxMu.Unlock()
 
