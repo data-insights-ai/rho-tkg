@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -396,9 +397,46 @@ func (c *Core) validateTemporalQueryOptsScan(opts storepkg.QueryOpts) error {
 // versionInfo is the per-version summary the policy math operates on,
 // type-agnostic across node / relationship.
 type versionInfo struct {
-	version uint32
-	txFrom  types.Instant
-	hash    string
+	version  uint32
+	txFrom   types.Instant
+	hash     string
+	prevHash string
+}
+
+// anchorSafeTrim lowers a planned trim count until the kept rows (hist[trim:]
+// and the current row, when present) still form a chain verifyChainLinkage
+// accepts with the stub the trim writes (LastTrimmedHash = hist[trim-1]'s
+// hash): every kept row's PrevHash names a kept row, and the oldest kept row
+// names the trimmed boundary (backlog 24). After a bounded SetVersionInterval
+// the newest history versions can be cascade rows whose PrevHash points at an
+// older base row, and the current row's PrevHash at a row below them, so a
+// version count alone trimmed rows the hash chain still links to: the chain
+// stopped verifying and an export of it failed import. A version the chain
+// still needs is kept (the policy's bounds are lower bounds on what is kept).
+// hist is ascending by version.
+func anchorSafeTrim(hist []versionInfo, current *versionInfo, trim int) int {
+	for ; trim > 0; trim-- {
+		metas := make([]chainEntryMeta, 0, len(hist)-trim+1)
+		for _, v := range hist[trim:] {
+			metas = append(metas, chainEntryMeta{version: v.version, hash: v.hash, prevHash: v.prevHash})
+		}
+		if current != nil {
+			metas = append(metas, chainEntryMeta{version: current.version, hash: current.hash, prevHash: current.prevHash})
+		}
+		if verifyChainLinkage(metas, &compactionStub{LastTrimmedHash: hist[trim-1].hash}) {
+			return trim
+		}
+	}
+	return 0
+}
+
+// planAnchorSafeTrim is planTrim followed by anchorSafeTrim.
+func planAnchorSafeTrim(hist []versionInfo, current *versionInfo, policy RetentionPolicy) (trimCount int, boundary versionInfo, oldestKept versionInfo) {
+	trim, _, _ := planTrim(hist, policy)
+	if trim = anchorSafeTrim(hist, current, trim); trim == 0 {
+		return 0, versionInfo{}, versionInfo{}
+	}
+	return trim, hist[trim-1], hist[trim]
 }
 
 // validateRetentionPolicy rejects an empty or negative policy.
@@ -818,8 +856,15 @@ func (c *Core) planNodeCompaction(id types.NodeID, policy RetentionPolicy, now t
 	for _, h := range history {
 		infos = append(infos, nodeVersionInfo(h))
 	}
+	var current *versionInfo
+	if cur, err := c.getCurrentNode(id); err == nil {
+		vi := nodeVersionInfo(cur)
+		current = &vi
+	} else if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		return entityPlan{}, false, err
+	}
 	sort.Slice(infos, func(i, j int) bool { return infos[i].version < infos[j].version })
-	trim, boundary, oldestKept := planTrim(infos, policy)
+	trim, boundary, oldestKept := planAnchorSafeTrim(infos, current, policy)
 	if trim == 0 {
 		return entityPlan{}, false, nil
 	}
@@ -843,8 +888,15 @@ func (c *Core) planRelCompaction(id types.RelID, policy RetentionPolicy, now typ
 	for _, h := range history {
 		infos = append(infos, relVersionInfo(h))
 	}
+	var current *versionInfo
+	if cur, err := c.getCurrentRelationship(id); err == nil {
+		vi := relVersionInfo(cur)
+		current = &vi
+	} else if !errors.Is(err, storepkg.ErrRelNotFound) {
+		return entityPlan{}, false, err
+	}
 	sort.Slice(infos, func(i, j int) bool { return infos[i].version < infos[j].version })
-	trim, boundary, oldestKept := planTrim(infos, policy)
+	trim, boundary, oldestKept := planAnchorSafeTrim(infos, current, policy)
 	if trim == 0 {
 		return entityPlan{}, false, nil
 	}
@@ -864,7 +916,7 @@ func nodeVersionInfo(n *types.Node) versionInfo {
 		vi.txFrom = tm.TxFrom
 	}
 	if ig := n.Integrity(); ig != nil {
-		vi.hash = ig.Hash
+		vi.hash, vi.prevHash = ig.Hash, ig.PrevHash
 	}
 	return vi
 }
@@ -875,7 +927,7 @@ func relVersionInfo(r *types.Relationship) versionInfo {
 		vi.txFrom = tm.TxFrom
 	}
 	if ig := r.Integrity(); ig != nil {
-		vi.hash = ig.Hash
+		vi.hash, vi.prevHash = ig.Hash, ig.PrevHash
 	}
 	return vi
 }
