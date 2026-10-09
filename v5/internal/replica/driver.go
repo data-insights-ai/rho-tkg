@@ -1,0 +1,589 @@
+// Package replica owns one serialized etcd RawNode and its durable log adapter.
+// This is a V2 consensus-adapter slice, not a distributed graph transaction engine.
+package replica
+
+import (
+	"bytes"
+	"crypto/rand"
+	"encoding/binary"
+	"errors"
+	"reflect"
+	"sync"
+
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+	"go.etcd.io/raft/v3"
+	"go.etcd.io/raft/v3/confchange"
+	pb "go.etcd.io/raft/v3/raftpb"
+	"go.etcd.io/raft/v3/tracker"
+	"google.golang.org/protobuf/proto"
+)
+
+var (
+	// ErrInvalid marks rejected replica input.
+	ErrInvalid = errors.New("replica: invalid input")
+	// ErrStopped requires recovery before additional events.
+	ErrStopped = errors.New("replica: stopped; reopen required")
+	// ErrLimit marks bounded adapter admission or output exhaustion.
+	ErrLimit = errors.New("replica: resource limit")
+	// ErrUnavailable requires routing or retry at an authoritative leader.
+	ErrUnavailable = errors.New("replica: authoritative leader read unavailable")
+)
+
+// Entry is an owned application record. Empty normal records are Raft no-ops;
+// configuration records advance Applied but are not application commands.
+type Entry struct {
+	Index, Term uint64
+	Data        []byte
+}
+
+// Machine callbacks are deterministic, non-reentrant and free of network waits.
+// Restore replaces all volatile state, including effects applied since its image.
+// Apply must not independently acknowledge graph durability or publish private effects.
+// Checkpoint must honor maxBytes; the driver also rejects oversized output, but
+// cannot bound allocations performed by arbitrary application callbacks.
+type Machine interface {
+	Restore(index uint64, image []byte) error
+	Apply(Entry) error
+	Checkpoint(maxBytes int) ([]byte, error)
+}
+
+// Packet is owned serialized consensus traffic. The embedding application may
+// deliver/drop/duplicate/reorder it after the method returns. Snapshot delivery
+// failure must be reported through ReportSnapshot; enqueue is not durable receipt.
+type Packet struct {
+	From, To uint64
+	Payload  []byte
+	Snapshot bool
+}
+
+// ReadResult is a request-bound leader barrier whose index is already applied.
+type ReadResult struct {
+	Index   uint64
+	Context []byte
+}
+
+// Output owns the packets and ready read barriers from one serialized event.
+type Output struct {
+	Packets []Packet
+	Reads   []ReadResult
+	Applied uint64
+}
+
+// Config selects a provisional Pebble-backed replica. Fatal Pebble WAL/storage
+// errors terminate the embedding PROCESS; this significant candidate tradeoff
+// remains subject to engine comparison. MaxOutputBytes caps returned buffers,
+// not all RawNode live memory or the application machine.
+type Config struct {
+	ID                                    uint64
+	Store                                 *raftlog.Store
+	Machine                               Machine
+	Limits                                raftlog.Limits
+	ElectionTick, HeartbeatTick           int
+	MaxInflightMessages                   int
+	MaxInflightBytes, MaxUncommittedBytes uint64
+	MaxPacketBytes, MaxOutputBytes        int
+}
+
+// Driver serializes all RawNode operations and application callbacks.
+type Driver struct {
+	mu         sync.Mutex
+	raw        *raft.RawNode
+	store      *raftlog.Store
+	machine    Machine
+	config     Config
+	applied    uint64
+	conf       *pb.ConfState
+	stopped    error
+	readNonce  [16]byte
+	readSeq    uint64
+	reads      map[string]*pendingRead
+	readBytes  int
+	lastLeader uint64
+}
+
+// Open restores the durable checkpoint and uses its index/membership together.
+// It never bootstraps; first-open Initialize is an explicit separate store action.
+func Open(c Config) (*Driver, error) {
+	if c.Store == nil || isNilMachine(c.Machine) || c.ID == 0 || raft.IsLocalMsgTarget(c.ID) {
+		return nil, ErrInvalid
+	}
+	if c.Limits == (raftlog.Limits{}) {
+		c.Limits = c.Store.Limits()
+	} else if c.Limits != c.Store.Limits() {
+		return nil, ErrInvalid
+	}
+	if err := c.Limits.Validate(); err != nil {
+		return nil, errors.Join(ErrInvalid, err)
+	}
+	if c.ElectionTick == 0 {
+		c.ElectionTick = 10
+	}
+	if c.HeartbeatTick == 0 {
+		c.HeartbeatTick = 1
+	}
+	if c.MaxInflightMessages == 0 {
+		c.MaxInflightMessages = 16
+	}
+	if c.MaxInflightBytes == 0 {
+		c.MaxInflightBytes = 8 << 20
+	}
+	if c.MaxUncommittedBytes == 0 {
+		c.MaxUncommittedBytes = 16 << 20
+	}
+	if c.MaxPacketBytes == 0 {
+		c.MaxPacketBytes = max(c.Limits.MaxSnapshotBytes, c.Limits.MaxReadBytes) + (1 << 16)
+	}
+	if c.MaxOutputBytes == 0 {
+		c.MaxOutputBytes = 2 * c.MaxPacketBytes
+	}
+	if c.HeartbeatTick < 1 || c.ElectionTick <= c.HeartbeatTick || c.MaxInflightMessages < 1 || c.MaxInflightMessages > 256 || c.MaxInflightBytes > 64<<20 || c.MaxUncommittedBytes > 64<<20 || c.MaxPacketBytes > 65<<20 || c.MaxOutputBytes > 256<<20 || c.MaxPacketBytes < c.Limits.MaxReadBytes+(1<<16) || c.MaxOutputBytes < c.MaxPacketBytes || c.MaxInflightBytes < cReadBytes(c.Limits.MaxReadBytes) {
+		return nil, ErrInvalid
+	}
+	index, image, err := c.Store.Checkpoint()
+	if err != nil {
+		return nil, err
+	}
+	_, cs, err := c.Store.InitialState()
+	if err != nil {
+		return nil, err
+	}
+	if len(cs.GetVoters()) == 0 {
+		return nil, ErrInvalid
+	}
+	if err := c.Machine.Restore(index, image); err != nil {
+		return nil, err
+	}
+	raw, err := raft.NewRawNode(&raft.Config{ID: c.ID, Storage: c.Store, Applied: index, ElectionTick: c.ElectionTick, HeartbeatTick: c.HeartbeatTick, AsyncStorageWrites: false, ReadOnlyOption: raft.ReadOnlySafe, CheckQuorum: true, PreVote: true, MaxSizePerMsg: cReadBytes(c.Limits.MaxReadBytes), MaxCommittedSizePerReady: cReadBytes(c.Limits.MaxReadBytes), MaxUncommittedEntriesSize: c.MaxUncommittedBytes, MaxInflightMsgs: c.MaxInflightMessages, MaxInflightBytes: c.MaxInflightBytes, StepDownOnRemoval: true})
+	if err != nil {
+		return nil, err
+	}
+	d := &Driver{raw: raw, store: c.Store, machine: c.Machine, config: c, applied: index, conf: cs, reads: make(map[string]*pendingRead)}
+	if _, err := rand.Read(d.readNonce[:]); err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+func (d *Driver) check() error {
+	if d.stopped != nil {
+		return errors.Join(ErrStopped, d.stopped)
+	}
+	return nil
+}
+func (d *Driver) stop(err error) (Output, error) { d.stopped = err; return Output{}, err }
+
+// Tick advances one logical liveness tick and processes resulting work.
+func (d *Driver) Tick() (Output, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if err := d.check(); err != nil {
+		return Output{}, err
+	}
+	d.raw.Tick()
+	return d.drain()
+}
+
+// Campaign asks the established consensus implementation to run an election.
+func (d *Driver) Campaign() (Output, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if err := d.check(); err != nil {
+		return Output{}, err
+	}
+	if err := d.raw.Campaign(); err != nil {
+		return Output{}, err
+	}
+	return d.drain()
+}
+
+// Propose accepts a proposal only. It does NOT return a graph commit receipt;
+// proposals can be dropped/lost and application request-key recovery is required.
+func (d *Driver) Propose(data []byte) (Output, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if err := d.check(); err != nil {
+		return Output{}, err
+	}
+	if len(data) > d.config.Limits.MaxEntryBytes-74 {
+		return Output{}, ErrLimit
+	}
+	if err := d.raw.Propose(bytes.Clone(data)); err != nil {
+		return Output{}, err
+	}
+	return d.drain()
+}
+
+// Step rejects local-message injection and mismatched transport identities.
+func (d *Driver) Step(p Packet) (Output, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if err := d.check(); err != nil {
+		return Output{}, err
+	}
+	if len(p.Payload) > d.config.MaxPacketBytes {
+		return Output{}, ErrLimit
+	}
+	if err := preflightWire(p.Payload, 0, d.config.Limits); err != nil {
+		return Output{}, err
+	}
+	m := &pb.Message{}
+	if err := (proto.UnmarshalOptions{RecursionLimit: 8}).Unmarshal(p.Payload, m); err != nil {
+		return Output{}, errors.Join(ErrInvalid, err)
+	}
+	if m.GetTo() != d.config.ID || m.GetTo() != p.To || m.GetFrom() != p.From || m.GetFrom() == 0 || raft.IsLocalMsgTarget(m.GetFrom()) || raft.IsLocalMsg(m.GetType()) || m.GetType() == pb.MsgReadIndex || m.GetType() == pb.MsgReadIndexResp || m.GetType() < pb.MsgHup || m.GetType() > pb.MsgForgetLeader || p.Snapshot != (m.GetType() == pb.MsgSnap) {
+		return Output{}, ErrInvalid
+	}
+	if len(m.GetEntries()) > d.config.Limits.MaxReadEntries || len(m.GetSnapshot().GetData()) > d.config.Limits.MaxSnapshotBytes {
+		return Output{}, ErrLimit
+	}
+	var total int
+	for _, e := range m.GetEntries() {
+		if e == nil || len(e.GetData()) > d.config.Limits.MaxEntryBytes-74 {
+			return Output{}, ErrLimit
+		}
+		total += proto.Size(e)
+		if total > d.config.Limits.MaxReadBytes {
+			return Output{}, ErrLimit
+		}
+	}
+	if err := d.raw.Step(m); err != nil {
+		return Output{}, err
+	}
+	return d.drain()
+}
+
+type pendingRead struct {
+	user                []byte
+	index               uint64
+	resolved, cancelled bool
+}
+
+func isNilMachine(m Machine) bool {
+	if m == nil {
+		return true
+	}
+	v := reflect.ValueOf(m)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return v.IsNil()
+	}
+	return false
+}
+
+// ReadIndex is LEADER-ONLY and requires a current-term committed entry.
+// Followers/new leaders return ErrUnavailable for routing/retry without enqueue.
+// Forwarded network reads are rejected. Outstanding requests are bounded BEFORE
+// RawNode; repeating an eligible pending context reissues its unique token.
+// A leader change drops pending requests without producing any certificate.
+func (d *Driver) ReadIndex(context []byte) (Output, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if err := d.check(); err != nil {
+		return Output{}, err
+	}
+	if len(context) > 1024 {
+		return Output{}, ErrLimit
+	}
+	status := d.raw.BasicStatus()
+	if status.RaftState != raft.StateLeader {
+		return Output{}, ErrUnavailable
+	}
+	hard, _, err := d.store.InitialState()
+	if err != nil {
+		return d.stop(err)
+	}
+	term, err := d.store.Term(hard.GetCommit())
+	if err != nil {
+		return d.stop(err)
+	}
+	if term != status.GetTerm() {
+		return Output{}, ErrUnavailable
+	}
+	for token, r := range d.reads {
+		if bytes.Equal(r.user, context) {
+			if r.cancelled {
+				return Output{}, ErrInvalid
+			}
+			d.raw.ReadIndex([]byte(token))
+			return d.drain()
+		}
+	}
+
+	if len(d.reads) >= 32 || len(context) > 32768-d.readBytes || d.readSeq == ^uint64(0) {
+		return Output{}, ErrLimit
+	}
+	d.readSeq++
+	token := append(bytes.Clone(d.readNonce[:]), make([]byte, 8)...)
+	binary.BigEndian.PutUint64(token[16:], d.readSeq)
+	d.reads[string(token)] = &pendingRead{user: bytes.Clone(context)}
+	d.readBytes += len(context)
+	d.raw.ReadIndex(token)
+	return d.drain()
+}
+
+// CancelReadIndex suppresses delivery. Quota stays reserved until its response
+// or a leader change, because RawNode cannot remove an in-flight request safely.
+// Quorum loss therefore backpressures further distinct requests; it never grows
+// an unbounded hidden queue or returns a stale certificate.
+func (d *Driver) CancelReadIndex(context []byte) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if err := d.check(); err != nil {
+		return err
+	}
+	for _, r := range d.reads {
+		if bytes.Equal(r.user, context) {
+			r.cancelled = true
+			return nil
+		}
+	}
+	return ErrInvalid
+}
+
+// ReportUnreachable supplies failed network-delivery feedback.
+func (d *Driver) ReportUnreachable(id uint64) (Output, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if err := d.check(); err != nil {
+		return Output{}, err
+	}
+	d.raw.ReportUnreachable(id)
+	return d.drain()
+}
+
+// ReportSnapshot supplies snapshot delivery/application feedback.
+func (d *Driver) ReportSnapshot(id uint64, success bool) (Output, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if err := d.check(); err != nil {
+		return Output{}, err
+	}
+	status := raft.SnapshotFailure
+	if success {
+		status = raft.SnapshotFinish
+	}
+	d.raw.ReportSnapshot(id, status)
+	return d.drain()
+}
+
+// TransferLeader requests a consensus leadership transfer.
+func (d *Driver) TransferLeader(id uint64) (Output, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if err := d.check(); err != nil {
+		return Output{}, err
+	}
+	d.raw.TransferLeader(id)
+	return d.drain()
+}
+
+// ProposeConfChange accepts V1 and V2 only after checking the resulting config
+// with the library's established changer. Ownership moves remain an application protocol.
+func (d *Driver) ProposeConfChange(change pb.ConfChangeI) (Output, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if err := d.check(); err != nil {
+		return Output{}, err
+	}
+	if change == nil {
+		return Output{}, ErrInvalid
+	}
+	var cc pb.ConfChangeI
+	switch c := change.(type) {
+	case *pb.ConfChange:
+		if c == nil || len(c.ProtoReflect().GetUnknown()) != 0 {
+			return Output{}, ErrInvalid
+		}
+		if proto.Size(c) > d.config.Limits.MaxEntryBytes-74 {
+			return Output{}, ErrLimit
+		}
+		cc = proto.Clone(c).(*pb.ConfChange)
+	case *pb.ConfChangeV2:
+		if c == nil {
+			return Output{}, ErrInvalid
+		}
+		if len(c.GetChanges()) > 256 || proto.Size(c) > d.config.Limits.MaxEntryBytes-74 {
+			return Output{}, ErrLimit
+		}
+		cc = proto.Clone(c).(*pb.ConfChangeV2)
+	default:
+		return Output{}, ErrInvalid
+	}
+	if err := validateChange(d.conf, cc.AsV2(), d.applied); err != nil {
+		return Output{}, err
+	}
+	if proto.Size(cc.AsV2()) > d.config.Limits.MaxEntryBytes-74 {
+		return Output{}, ErrLimit
+	}
+	if err := d.raw.ProposeConfChange(cc); err != nil {
+		return Output{}, err
+	}
+	return d.drain()
+}
+
+func validateChange(cs *pb.ConfState, cc *pb.ConfChangeV2, last uint64) error {
+	if cc == nil || len(cc.ProtoReflect().GetUnknown()) != 0 || len(cc.GetChanges()) > 256 || cc.GetTransition() < pb.ConfChangeTransitionAuto || cc.GetTransition() > pb.ConfChangeTransitionJointExplicit {
+		return ErrInvalid
+	}
+	for _, c := range cc.GetChanges() {
+		if c == nil || len(c.ProtoReflect().GetUnknown()) != 0 || c.GetNodeId() == 0 || raft.IsLocalMsgTarget(c.GetNodeId()) || c.GetType() < pb.ConfChangeAddNode || c.GetType() > pb.ConfChangeAddLearnerNode {
+			return ErrInvalid
+		}
+	}
+	t := tracker.MakeProgressTracker(1, 1)
+	cfg, progress, err := confchange.Restore(confchange.Changer{Tracker: t, LastIndex: last}, cs)
+	if err != nil {
+		return errors.Join(ErrInvalid, err)
+	}
+	t.Config, t.Progress = cfg, progress
+	changer := confchange.Changer{Tracker: t, LastIndex: last}
+	if cc.LeaveJoint() {
+		_, _, err = changer.LeaveJoint()
+	} else if auto, joint := cc.EnterJoint(); joint {
+		_, _, err = changer.EnterJoint(auto, cc.GetChanges()...)
+	} else {
+		_, _, err = changer.Simple(cc.GetChanges()...)
+	}
+	if err != nil {
+		return errors.Join(ErrInvalid, err)
+	}
+	return nil
+}
+
+func (d *Driver) drain() (Output, error) {
+	out := Output{Applied: d.applied}
+	used := 0
+	for d.raw.HasReady() {
+		rd := d.raw.Ready()
+		if rd.SoftState != nil && rd.Lead != d.lastLeader {
+			clear(d.reads)
+			d.readBytes = 0
+			d.lastLeader = rd.Lead
+		}
+		if err := d.store.Persist(rd); err != nil {
+			return d.stop(err)
+		}
+		if !raft.IsEmptySnap(rd.Snapshot) {
+			idx := rd.Snapshot.GetMetadata().GetIndex()
+			if err := d.machine.Restore(idx, bytes.Clone(rd.Snapshot.GetData())); err != nil {
+				return d.stop(err)
+			}
+			d.applied = idx
+			d.conf = proto.Clone(rd.Snapshot.GetMetadata().GetConfState()).(*pb.ConfState)
+		}
+		for _, e := range rd.CommittedEntries {
+			if e.GetIndex() <= d.applied {
+				continue
+			}
+			if e.GetIndex() != d.applied+1 {
+				return d.stop(raftlog.ErrCorrupt)
+			}
+			switch e.GetType() {
+			case pb.EntryNormal:
+				if err := d.machine.Apply(Entry{Index: e.GetIndex(), Term: e.GetTerm(), Data: bytes.Clone(e.GetData())}); err != nil {
+					return d.stop(err)
+				}
+			case pb.EntryConfChange:
+				cc := &pb.ConfChange{}
+				if err := proto.Unmarshal(e.GetData(), cc); err != nil {
+					return d.stop(errors.Join(raftlog.ErrCorrupt, err))
+				}
+				if len(cc.ProtoReflect().GetUnknown()) != 0 {
+					return d.stop(errors.Join(raftlog.ErrCorrupt, ErrInvalid))
+				}
+				if err := validateChange(d.conf, cc.AsV2(), e.GetIndex()); err != nil {
+					return d.stop(err)
+				}
+				d.conf = d.raw.ApplyConfChange(cc)
+			case pb.EntryConfChangeV2:
+				cc := &pb.ConfChangeV2{}
+				if err := proto.Unmarshal(e.GetData(), cc); err != nil {
+					return d.stop(errors.Join(raftlog.ErrCorrupt, err))
+				}
+				if err := validateChange(d.conf, cc, e.GetIndex()); err != nil {
+					return d.stop(errors.Join(raftlog.ErrCorrupt, err))
+				}
+				d.conf = d.raw.ApplyConfChange(cc)
+			default:
+				return d.stop(raftlog.ErrCorrupt)
+			}
+			d.applied = e.GetIndex()
+		}
+		for _, m := range rd.Messages {
+			n := proto.Size(m)
+			if n > d.config.MaxPacketBytes || n > d.config.MaxOutputBytes-used {
+				return d.stop(ErrLimit)
+			}
+			b, err := proto.Marshal(m)
+			if err != nil {
+				return d.stop(err)
+			}
+			if len(b) > d.config.MaxPacketBytes || len(b) > d.config.MaxOutputBytes-used {
+				return d.stop(ErrLimit)
+			}
+			used += len(b)
+			out.Packets = append(out.Packets, Packet{From: m.GetFrom(), To: m.GetTo(), Payload: b, Snapshot: m.GetType() == pb.MsgSnap})
+		}
+		for _, r := range rd.ReadStates {
+			if pending := d.reads[string(r.RequestCtx)]; pending != nil {
+				pending.index = r.Index
+				pending.resolved = true
+			}
+		}
+		d.raw.Advance(rd)
+	}
+	for token, r := range d.reads {
+		if r.resolved && r.index <= d.applied {
+			if !r.cancelled {
+				if len(r.user) > d.config.MaxOutputBytes-used {
+					return d.stop(ErrLimit)
+				}
+				used += len(r.user)
+				out.Reads = append(out.Reads, ReadResult{Index: r.index, Context: bytes.Clone(r.user)})
+			}
+			d.readBytes -= len(r.user)
+			delete(d.reads, token)
+		}
+	}
+	out.Applied = d.applied
+	return out, nil
+}
+
+// SaveCheckpoint makes the machine's image and exact applied membership durable.
+// It does not reclaim history or create a graph cut. A failure stops this driver.
+func (d *Driver) SaveCheckpoint() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if err := d.check(); err != nil {
+		return err
+	}
+	image, err := d.machine.Checkpoint(d.config.Limits.MaxSnapshotBytes)
+	if err == nil && len(image) > d.config.Limits.MaxSnapshotBytes {
+		err = ErrLimit
+	}
+	if err == nil {
+		err = d.store.SaveCheckpoint(d.applied, d.conf, image)
+	}
+	if err != nil {
+		d.stopped = err
+	}
+	return err
+}
+
+// Applied returns volatile application progress, never a graph cut or receipt.
+func (d *Driver) Applied() uint64 { d.mu.Lock(); defer d.mu.Unlock(); return d.applied }
+
+// Close stops the driver and closes its store; it deliberately does not checkpoint.
+func (d *Driver) Close() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.stopped = ErrStopped
+	return d.store.Close()
+}
+
+func cReadBytes(n int) uint64 {
+	if n < 0 {
+		return 0
+	}
+	return uint64(n)
+}

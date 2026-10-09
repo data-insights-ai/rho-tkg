@@ -68,6 +68,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+          cache-dependency-path: "**/go.sum"
 
       - name: Benchmark merge-base
         id: bench_base
@@ -120,6 +121,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+          cache-dependency-path: "**/go.sum"
 
       - name: Resolve merge-base
         id: mergebase

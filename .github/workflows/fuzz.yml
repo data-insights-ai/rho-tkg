@@ -22,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       fuzztime:
-        description: "Per-target fuzz duration (Go duration, e.g. 60s, 5m)"
+        description: "Per-target fuzz duration (12 targets share a 30-minute job; default 60s)"
         required: false
         default: "60s"
 
@@ -36,6 +36,7 @@ concurrency:
 jobs:
   fuzz:
     runs-on: ubuntu-latest
+    # Twelve targets at the default 60s leave 18 minutes for setup/build/artifacts.
     timeout-minutes: 30
     env:
       FUZZTIME: ${{ inputs.fuzztime || '60s' }}
@@ -45,6 +46,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+          cache-dependency-path: "**/go.sum"
 
       - name: FuzzImport
         run: go test -run '^$' -fuzz=FuzzImport -fuzztime="$FUZZTIME" ./pkg/graph/internal/core/
@@ -61,6 +63,34 @@ jobs:
       - name: FuzzUnmarshalNodeWireWithKeys
         run: go test -run '^$' -fuzz=FuzzUnmarshalNodeWireWithKeys -fuzztime="$FUZZTIME" ./pkg/graph/internal/storeutil/
 
+      - name: FuzzDecodePosition (v5)
+        working-directory: v5
+        run: go test -run '^$' -fuzz=FuzzDecodePosition -fuzztime="$FUZZTIME" ./pkg/temporal/
+
+      - name: FuzzRegionSetAlgebra (v5)
+        working-directory: v5
+        run: go test -run '^$' -fuzz=FuzzRegionSetAlgebra -fuzztime="$FUZZTIME" ./pkg/temporal/
+
+      - name: FuzzDecodeScope (v5)
+        working-directory: v5
+        run: go test -run '^$' -fuzz=FuzzDecodeScope -fuzztime="$FUZZTIME" ./pkg/temporal/
+
+      - name: FuzzDecodeOpaqueDescriptor (v5)
+        working-directory: v5
+        run: go test -run '^$' -fuzz=FuzzDecodeOpaqueDescriptor -fuzztime="$FUZZTIME" ./pkg/temporal/
+
+      - name: FuzzDecodePointKnowledge (v5)
+        working-directory: v5
+        run: go test -run '^$' -fuzz=FuzzDecodePointKnowledge -fuzztime="$FUZZTIME" ./pkg/temporal/
+
+      - name: FuzzConsensusWirePreflight (v5)
+        working-directory: v5
+        run: go test -run '^$' -fuzz=FuzzConsensusWirePreflight -fuzztime="$FUZZTIME" ./internal/replica/
+
+      - name: FuzzDecodeCheckpoint (v5)
+        working-directory: v5
+        run: go test -run '^$' -fuzz=FuzzDecodeCheckpoint -fuzztime="$FUZZTIME" ./internal/idalloc/
+
       - name: Upload any new crashers
         if: failure()
         uses: actions/upload-artifact@v4
@@ -69,4 +99,7 @@ jobs:
           path: |
             pkg/graph/internal/core/testdata/fuzz/**
             pkg/graph/internal/storeutil/testdata/fuzz/**
+            v5/pkg/temporal/testdata/fuzz/**
+            v5/internal/replica/testdata/fuzz/**
+            v5/internal/idalloc/testdata/fuzz/**
           retention-days: 14

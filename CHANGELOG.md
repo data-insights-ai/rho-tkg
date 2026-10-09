@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Unreleased, incomplete v5 prototype module** (`v5/`): typed temporal
+  values/scopes/knowledge/descriptors and codecs, component-state reducer
+  primitives, bounded ID allocation and candidate Raft/Pebble replication adapters.
+  The reviewed 49-file foundation snapshot passes Go 1.26.9 checks (90.5% coverage);
+  graphstate/transaction-protocol integration and later acceptance remain open. Root build/CI
+  gates include both modules. This is not a v5 engine release: graph assembly,
+  full oracle/consumer integration, distributed transactions/cuts, substrate
+  selection and comparative capacity acceptance remain open in `tasks/backlog.md`.
+
+### Security
+
+- **Go toolchain 1.26.7 → 1.26.9** in both modules: address seven symbol-level
+  standard-library findings from `govulncheck` using the
+  [Go 1.26.9 security patch](https://go.dev/doc/devel/release#go1.26.9).
+  Root v4 post-upgrade checks pass (pkg coverage gate 86.5%). A consolidated run
+  over the growing v5 module remains pending; no other v4 API or behavior change.
+
 ## [4.50.0] - 2026-10-10
 
 Minor release, the sigma-tkgd store requests, round 4 (new public API): `g.Index().InventoryEpoch()`, a counter that

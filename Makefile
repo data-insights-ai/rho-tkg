@@ -11,6 +11,14 @@ GOLANGCI_LINT_VERSION ?= v2.13.2
 GOSEC_VERSION ?= v2.29.0
 GOVULNCHECK_VERSION ?= v1.7.0
 
+# Go's ./... excludes nested modules. Every shared gate checks both modules;
+# aggregate check/ci targets reuse these dependencies rather than rerunning v5.
+V5_TARGETS := build test test-v test-race test-integration cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker clean
+.PHONY: $(addprefix v5-,$(V5_TARGETS))
+$(foreach target,$(V5_TARGETS),$(eval $(target): v5-$(target)))
+$(addprefix v5-,$(V5_TARGETS)):
+	$(MAKE) -C v5 $(patsubst v5-%,%,$@)
+
 # Build (verify compilation)
 build:
 	go build ./...
@@ -138,11 +146,11 @@ check-metakv-reap:
 
 # Format code
 fmt:
-	gofmt -w $$(git ls-files '*.go')
+	git ls-files --cached --others --exclude-standard -z '*.go' ':!:v5/**' | xargs -0 gofmt -w
 
-# Verify formatting (fails if any tracked Go source file needs formatting).
+# Verify formatting, including new Go source files not yet tracked.
 fmt-check:
-	@unformatted=$$(gofmt -l $$(git ls-files '*.go')); \
+	@unformatted=$$(git ls-files --cached --others --exclude-standard -z '*.go' ':!:v5/**' | xargs -0 gofmt -l); \
 		test -z "$$unformatted" || (echo "Files need formatting:"; echo "$$unformatted"; exit 1)
 
 # Run golangci-lint
@@ -170,7 +178,7 @@ tools:
 # volumes so repeated runs are fast. GO_IMAGE auto-tracks go.mod.
 GO_VERSION := $(shell awk '/^go /{print $$2}' go.mod)
 GO_IMAGE   ?= golang:$(GO_VERSION)
-DOCKER_GO  = docker run --rm -v "$(CURDIR)":/src -w /src \
+DOCKER_GO  = docker run --rm -e GOTOOLCHAIN -e GOMAXPROCS -e GOFLAGS -v "$(CURDIR)":/src -w /src \
 	-v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build $(GO_IMAGE)
 
 lint-docker:

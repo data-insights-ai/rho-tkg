@@ -62,6 +62,13 @@ Status: v4.50.0. **`CHANGELOG.md` is the source of truth for version history, mi
 
 **Roadmap: `tasks/backlog.md` is the SINGLE todo/roadmap file.** Its "Remaining open work" list is the current state of open items (severity-tagged, numbered; closed items keep a one-line pointer to CHANGELOG, decided-against items keep their reopen criteria). Any open work goes there and nowhere else — not into this file. The next engine generation (v5) is developed on branch `v5` as its own module; v4 (`main`) keeps shipping fixes and features. Full per-feature detail + measured numbers live in CHANGELOG (the source of truth). External orchestration RPCs (the START→END stub-delete fan-out, the consumer-gated constraint dry-run) are out of scope here — rho-tkg already exposes the local primitives. Removed ADR files recover via `git log --all -- docs/adr/`; code comments tag their originating increment (`BACKLOG 3`, `4b`, `5B`, `B6`, `backlog 38`, …) as stable archaeology keys matching CHANGELOG's vocabulary.
 
+**Nested v5 module.** `v5/` is a separate Go module for the next engine;
+root build/test/coverage, formatting, vet, lint and security gates check both
+modules, with coverage reports in each module directory. Root `go test ./...`
+alone checks only v4. This remains the single canonical agent guidance file:
+legacy v4 ID/layout and storage rules describe v4; the reviewed contracts in
+`docs/v5/PLAN.md` govern v5, with acceptance status in `tasks/backlog.md`.
+
 **Stdlib aliasing convention.** `pkg/graph/hash` and `pkg/graph/io` shadow stdlib `hash` and `io`. Inside the local package no aliasing is needed. At consumer sites that import BOTH stdlib AND the local package, alias the LOCAL one with a `tkg` prefix (`tkghash` / `tkgio`) — leave stdlib unaliased.
 
 ## Build & Test Commands

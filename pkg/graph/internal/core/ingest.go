@@ -494,14 +494,13 @@ func (a *ingestApplier) stop() {
 // against stopIngestApplier so a session racing Close can never leave an
 // orphaned applier running behind the shutdown sweep (C1 lifecycle race).
 func (c *Core) ensureIngestApplier(queueBound int) (*ingestApplier, error) {
-	groupSize := defaultIngestGroupSize
 	c.ingestMu.Lock()
 	defer c.ingestMu.Unlock()
 	if c.closed.Load() || c.ingestClosing {
 		return nil, ErrGraphClosed
 	}
 	if c.ingest == nil {
-		a := newIngestApplier(c, groupSize, queueBound)
+		a := newIngestApplier(c, defaultIngestGroupSize, queueBound)
 		c.ingest = a
 		go a.run()
 	}
