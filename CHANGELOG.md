@@ -47,20 +47,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   badger with-history door (`Replace*WithHistory`, the label-token history doors, `Delete*WithHistory`)
   changed the entity cache, which `GetNode`/`GetRelationship` answer from, before it appended the moved row
   to the pending buffer the history readers overlay. Both happen under one `idxMu.Lock`, which the point
-  readers do not take, so a reader between the two halves saw the new current row and a history without the
-  moved row. Fix: `publishMoveLocked` appends the batch first and changes the cache last; the node delete
-  publishes its node and relationship tombstones before the cascade removes the rows from the cache (the
+  readers do not take on a cache hit (`GetNode` takes `idxMu.RLock` only on a miss), so a reader between the
+  two halves saw the new current row and a history without the moved row. Badger's own `NodeAsOf`/`RelAsOf`
+  read the current row and then scan history the same way. Fix: `publishMoveLocked` appends the batch first
+  and changes the cache last; the node delete publishes its node and relationship tombstones before the cascade removes the rows from the cache (the
   cascade now reads orphan index keys in its preflight, so no mutation precedes a fallible read). The
   resolvers keep reading the current row first (`chain_read.go`), so a reader sees the moved row at least
-  once. No lock on the read path. Cost (interleaved A/B, 6 runs each, medians, 32-core host at load 13-18):
-  point reads within noise (memory -6 % to +10 %; badger hot `NodeAtTx`/`RelAtTx` +12 % on the median,
-  +3-4 % on the best run, cold -2 % to +1 %), badger `Nodes.Update` +5 %, `Rels.Update` +1 %. Tests:
+  once. No lock on the read path. Cost: within noise. Paired runs after/before (reviewer, unpinned, 8 rounds):
+  `NodeAtTx` hot 1.034 (0.94-1.08), `RelAtTx` 0.987, `NodeAsOf` 0.975, `Nodes.Update` 0.972, `Rels.Update`
+  1.028; pinned to 4 CPUs, 10 rounds: `NodeAtTx` 214.8 -> 216.4 ns, `RelAtTx` 194.7 -> 194.1 ns. Tests:
   `TestPointDoorRace_UnderMovingWriters` (writers vs readers of every door, all five backend flavours, zero
   misses; record doors checked for monotone answers), `TestWithHistoryDoorsPublishHistoryBeforeCurrent`
   (every badger with-history door paused between its two halves, in memory, on disk, flushed: 21 of 21 red
   on main), `TestPointDoorRace_MoveBetweenChainReads` (a whole move between a resolver's two reads, every
-  backend; guard, green on main). Evidence and mutants (one door unfixed, publication order swapped at the
-  seam, interval and as-of resolvers reading history first: each red) under `tasks/evidence/point-door-race/`.
+  backend, badger's native as-of door included; guard, green on main),
+  `TestNativeAsOfReadsCurrentBeforeHistory` (a whole move between badger's `NodeAsOf`/`RelAsOf` reads; guard),
+  `TestCascadeDeleteFatalPreflightAppliesNothing` (a failed orphan-key read in the delete's preflight applies
+  nothing; guard, red under the old purge-as-read order). Evidence and mutants (one door unfixed,
+  publication order swapped at the seam, interval and as-of resolvers reading history first, the cascade removing rows before its tombstones,
+  a relationship removed before its tombstone, the native as-of door scanning history first, orphans purged as
+  read: each red) under `tasks/evidence/point-door-race/`.
 
 ## [4.46.0] - 2026-10-09
 

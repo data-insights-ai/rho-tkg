@@ -30,3 +30,14 @@ MUTANTS (each file: the diff, then the runs)
 BENCH
   bench-ab-before.txt / bench-ab-after.txt interleaved A/B, 6 runs each, main vs fix; bench-compare.md medians
   bench-before-main.txt / bench-after.txt  first, non-interleaved runs (host load 17: not used for the verdict)
+
+REVIEW ROUND (after merging main v4.46.0)
+  guard-2-native-asof-and-hook-points.txt  TestNativeAsOfReadsCurrentBeforeHistory (21) + the store test with the
+                                           hook after every current-slot change (21): 44 PASS lines incl. parents
+  mutant-A-cascade-before-tombstones       cascade removes node + rels before the tombstones: 6 store cases red
+  mutant-C-native-asof-history-first       badger NodeAsOf scans history before GetNode: 12 store cases red, core
+                                           guard red on badger and badger-disk (14 NodeAsOf cases)
+  mutant-D-rel-delete-before-tombstone     DeleteRelWithHistory removes before the tombstone: 3 red
+  mutant-E-replace-cache-first             ReplaceNodeWithHistory cache put before the batch: 3 red
+  mutant-F-orphan-purge-as-read            the old cascade order (purge each orphan as its keys are read):
+                                           TestCascadeDeleteFatalPreflightAppliesNothing red on both delete doors

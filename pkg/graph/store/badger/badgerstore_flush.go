@@ -37,8 +37,9 @@ func (bs *Store) appendOps(ops ...writeOp) {
 // change (Put of the new current row, or the delete's removal) as
 // publishCurrent.
 //
-// The point readers take neither idxMu nor one snapshot: GetNode /
-// GetRelationship answer from the entity cache, the history readers from the
+// The point readers take no snapshot and, on a cache hit, no idxMu (GetNode /
+// GetRelationship take idxMu.RLock only on a miss): they answer from the
+// entity cache, the history readers from the
 // pending overlay plus a badger View, in two calls, current row first (core
 // chain_read.go). So the pending buffer holds the history row BEFORE the
 // cache changes: a reader that sees the new current row finds the moved row

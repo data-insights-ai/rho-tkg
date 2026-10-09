@@ -9,8 +9,8 @@ import (
 )
 
 // Backlog 32: a with-history door moves the entity's current row into history
-// inside one idxMu.Lock section, but the point readers take neither idxMu nor
-// one snapshot: GetNode / GetRelationship answer from the entity cache, the
+// inside one idxMu.Lock section, but the point readers take no snapshot and,
+// on a cache hit, no idxMu: GetNode / GetRelationship answer from the entity cache, the
 // history readers from the pending-buffer overlay plus a badger View. So the
 // ORDER in which the door publishes the two halves is what a reader sees
 // mid-move. The faulty order (cache first, history second) lets a reader see

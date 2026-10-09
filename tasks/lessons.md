@@ -2006,7 +2006,8 @@ Rules:
   which is why only they were exposed (the same "synchronous shadow for most
   consumers" observation as lesson 54).
 - **Inside that section the ORDER still matters to readers that do not take
-  `idxMu` (backlog 32, 2026-10-09).** A with-history door changed the cache
+  `idxMu` (`GetNode` on a cache hit; it takes `idxMu.RLock` only on a miss)
+  (backlog 32, 2026-10-09).** A with-history door changed the cache
   (new current row) before it appended the moved row to the history overlay;
   the core resolvers read current row, then history, in two lock-free calls, so
   a reader between the two halves saw the new current row and a history
