@@ -382,8 +382,12 @@ func (bs *Store) snapshotHistoryKeyExists(txn *badgerv4.Txn, overlay historyOver
 	if known && limit < 0 {
 		return noHistoryKeyExists
 	}
+	var topVersion uint64
+	if known {
+		topVersion = uint64(limit) // #nosec G115 -- limit >= 0: known && limit < 0 returned above
+	}
 	return func(version uint64) (bool, error) {
-		if known && version > uint64(limit) {
+		if known && version > topVersion {
 			return false, nil
 		}
 		if bs.bulkAsOfKeyProbeTestHook != nil {
