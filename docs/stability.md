@@ -40,6 +40,24 @@ Removals and breaking changes land only at major-version boundaries or after a d
   documented for one day, and both known consumers (sigma-tkgd, ai-soc) were told beforehand and adapted. The
   state doors (`NodeAtTx` / `RelAtTx`, `ByLabel` / `ByType` with `ValidAt` + `TxAt`) did not change meaning.
   Future behaviour changes follow the ritual above.
+- **Unreleased (backlog 38), the re-import of a deleted ID.** Shipped as an exception to the ritual above
+  (additive-only is kept for every other surface), because the old behaviour lost data and the refused input
+  has no consistent reading:
+  - *Refused input.* `Nodes().Import` / `Rels().Import` / `Nodes().AddByIDIfAbsent` and the `GraphTx` twins
+    (`ImportNodeWithID` / `ImportRelationshipWithID`) with a `tkg_tx_from` at or below a `TxFrom` / `TxTo` /
+    `DeletedAt` of the ID's history now return `ErrTxOrder` (wraps `ErrInvalidTxFrom`) and write nothing.
+    v4.43–v4.47 stored the row; the valid-time doors then ended it at the earlier delete while `Get` and the
+    as-of doors answered it, and no stored stamp can place it once a cascade demotes it. The refusal is the
+    ordering rule `UpdateWithTx` / `DeleteWithTx` already apply. Consumer that can see it: sigma-tkgd
+    `/admin/import` (`tx.ImportNodeWithID` / `ImportRelationshipWithID` with the record's properties, under
+    `TKGD_ALLOW_TX_BACKFILL`) — such a record on a deleted ID becomes a 400 and its transaction rolls back;
+    sigma-tkgd notified 2026-10-09. Creates of IDs without history are unchanged.
+  - *Changed results on the plain doors.* A re-import of a deleted ID (with or without `tkg_tx_from`) returns
+    a row whose `Version()` is the earlier life's highest version + 1 (was 0) and whose
+    `Integrity().PrevHash` names that row (was empty); the earlier life's history is kept. When the earlier
+    life's stamps lie ahead of the clock (a delete of a row whose valid start lies ahead), the re-imported
+    row's `TxFrom` is one past them (was the clock).
+  Chains stored before keep reading as before.
 
 ## Experimental Surfaces
 

@@ -108,22 +108,65 @@ type chainProbe struct {
 	asOfCurrent bool
 }
 
-// versionOrdered returns chain in ascending version order: chain itself when it
-// already is, else a sorted copy (stable, so rows of equal version keep their
-// order). The resolver's monotonic-vs-cascade classification and the
+// versionOrdered returns chain in write order (chainWriteOrder): chain itself
+// when it already is, else a sorted copy (stable, so rows of equal key keep
+// their order). The resolver's monotonic-vs-cascade classification and the
 // positional tiling are relative to its input order (lesson 73), and
 // "history ‖ current" is NOT ascending when a bounded SetVersionInterval left
 // the current row in its slot below the rows it appended: the same chain then
 // resolved one way while the row was current and another once a delete moved
 // it to history (a closed entity read as valid again after a cascade).
 func versionOrdered[T storeutil.TemporalRow](chain []T) []T {
-	byVersion := func(a, b T) int { return cmp.Compare(a.Version(), b.Version()) }
-	if slices.IsSortedFunc(chain, byVersion) {
+	byWrite := chainWriteOrder(chain)
+	if slices.IsSortedFunc(chain, byWrite) {
 		return chain
 	}
 	out := slices.Clone(chain)
-	slices.SortStableFunc(out, byVersion)
+	slices.SortStableFunc(out, byWrite)
 	return out
+}
+
+// chainWriteOrder is the comparator of a chain's write order: by life, then
+// ascending version. A life is the span up to a hard delete the chain holds
+// (lifeEnds); a row's life is the number of deletes recorded before it. A
+// re-import stored before backlog 38 numbered its versions from 0 again, so
+// ordering by version alone interleaved the two lives and tiled an earlier
+// life's row after the re-imported one: the full chain fold lost the
+// re-imported row at the instants that row covered, while the point door's
+// current-row shortcut answered it (tiered and sharded disagreed with memory
+// and badger). Since backlog 38 a re-import starts above the chain's highest
+// version and is recorded after every stamp of the chain (lifeStart,
+// version_alloc.go), so on chains written now this order is version order;
+// the life rule stays for the chains stored before.
+func chainWriteOrder[T storeutil.TemporalRow](chain []T) func(a, b T) int {
+	var deaths []types.Instant
+	for _, r := range chain {
+		if tm := r.Temporal(); tm != nil && tm.DeletedAt != 0 {
+			deaths = append(deaths, tm.DeletedAt)
+		}
+	}
+	if len(deaths) == 0 {
+		return func(a, b T) int { return cmp.Compare(a.Version(), b.Version()) }
+	}
+	life := func(r T) int {
+		var recorded types.Instant
+		if tm := r.Temporal(); tm != nil {
+			recorded = tm.TxFrom
+		}
+		n := 0
+		for _, d := range deaths {
+			if d < recorded {
+				n++
+			}
+		}
+		return n
+	}
+	return func(a, b T) int {
+		if c := cmp.Compare(life(a), life(b)); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.Version(), b.Version())
+	}
 }
 
 // selectAsOfChain runs storeutil.SelectAsOfWithCurrent over a chain whose last

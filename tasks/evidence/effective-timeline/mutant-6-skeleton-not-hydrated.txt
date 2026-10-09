@@ -1,0 +1,508 @@
+MUTANT internal/core/effective_timeline.go
+--- old
+		if p.src >= len(metas) {
+			return p.row, true // the current row (or the resolver's normalized copy of it)
+		}
+		if full, ok := hydrated[p.src]; ok {
+			return full, true
+		}
+		full, err := c.getNodeVersion
+--- new
+		if true {
+			return p.row, true
+		}
+		if full, ok := hydrated[p.src]; ok {
+			return full, true
+		}
+		full, err := c.getNodeVersion
+=== go test ./internal/core/ -run TestEffectiveTimeline|TestAtTx
+--- FAIL: TestEffectiveTimeline_ScanDeletedEntities (0.24s)
+    --- FAIL: TestEffectiveTimeline_ScanDeletedEntities/badger/node (0.00s)
+        effective_timeline_test.go:549: node scan at pin 1791563540447:
+             got 
+              Casc: [3000,0) v2
+              Closed: [1000,4000) v1
+              Live: [1000,0) v0
+            want 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              DelAfter: [1000,0) v0
+              DelBefore: [1000,1791563540442) v0
+              Live: [1000,0) v0
+              Loses: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.35s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/badger/node (0.00s)
+        effective_timeline_test.go:811: pinned scan changed under concurrent writers:
+             before 
+              E00: [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [3000,0) v2
+              E01: [1000,0) v0
+              E03: [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/sharded/node (0.14s)
+        effective_timeline_test.go:811: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/sharded/rel (0.07s)
+        effective_timeline_test.go:811: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+--- FAIL: TestAtTxEndsAtClose (1.22s)
+    --- FAIL: TestAtTxEndsAtClose/badger/node (0.34s)
+        --- FAIL: TestAtTxEndsAtClose/badger/node/update-then-close/standalone (0.02s)
+            effective_timeline_life_end_test.go:295: node update-then-close (D=0):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540514..1791563540515 del=0 cur=false x=0
+                  v1 vf=2000 vt=0 tx=1791563540515..1791563540517 del=0 cur=false x=2
+                  v2 vf=2000 vt=4000 tx=1791563540517..0 del=0 cur=true x=2
+        --- FAIL: TestAtTxEndsAtClose/badger/node/open-cascade-then-close/standalone (0.04s)
+            effective_timeline_life_end_test.go:295: node open-cascade-then-close (D=0):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540554..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=0 tx=1791563540555..1791563540556 del=0 cur=false x=1
+                  v2 vf=2000 vt=4000 tx=1791563540556..0 del=0 cur=true x=1
+        --- FAIL: TestAtTxEndsAtClose/badger/node/bounded-cascade-then-close/standalone (0.03s)
+            effective_timeline_life_end_test.go:295: node bounded-cascade-then-close (D=0):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540581..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563540582..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=0 tx=1791563540582..1791563540583 del=0 cur=false x=0
+                  v3 vf=3000 vt=4000 tx=1791563540583..0 del=0 cur=true x=0
+        --- FAIL: TestAtTxEndsAtClose/badger/node/close-then-bounded-cascade-inside/standalone (0.06s)
+            effective_timeline_life_end_test.go:295: node close-then-bounded-cascade-inside (D=0):
+                  [ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540644..1791563540645 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563540645..0 del=0 cur=true x=0
+                  v2 vf=3000 vt=4000 tx=1791563540647..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563540647..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtClose/badger/node/close-then-gap-piece/standalone (0.03s)
+            effective_timeline_life_end_test.go:295: node close-then-gap-piece (D=0):
+                  [ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540678..1791563540679 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563540679..0 del=0 cur=true x=0
+                  v2 vf=5000 vt=6000 tx=1791563540681..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtClose/badger/node/close-then-cascade-across-the-end/standalone (0.02s)
+            effective_timeline_life_end_test.go:295: node close-then-cascade-across-the-end (D=0):
+                  [ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540701..1791563540702 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563540702..0 del=0 cur=true x=0
+                  v2 vf=3000 vt=5000 tx=1791563540704..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtClose/badger/node/update-with-end-then-bounded-cascade/standalone (0.06s)
+            effective_timeline_life_end_test.go:295: node update-with-end-then-bounded-cascade (D=0):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540758..1791563540759 del=0 cur=false x=0
+                  v1 vf=2000 vt=4000 tx=1791563540759..0 del=0 cur=true x=2
+                  v2 vf=3000 vt=4000 tx=1791563540761..0 del=0 cur=false x=2
+                  v3 vf=2500 vt=3000 tx=1791563540761..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtClose/badger/node/close-then-one-tick-at-the-end/standalone (0.02s)
+            effective_timeline_life_end_test.go:295: node close-then-one-tick-at-the-end (D=0):
+                  [ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540780..1791563540781 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563540781..0 del=0 cur=true x=0
+                  v2 vf=4000 vt=4001 tx=1791563540783..0 del=0 cur=false x=1
+--- FAIL: TestAtTxEndsAtDelete (7.81s)
+    --- FAIL: TestAtTxEndsAtDelete/badger/node (0.63s)
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/delete/standalone (0.06s)
+            effective_timeline_life_end_test.go:295: node delete (D=1791563540542):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000000000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1791563540541, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563540542 tx=1791563540541..1791563540542 del=1791563540542 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/delete/graphtx (0.06s)
+            effective_timeline_life_end_test.go:295: node delete (D=1791563540611):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000000000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1791563540610, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563540611 tx=1791563540609..1791563540611 del=1791563540611 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/delete/batch (0.02s)
+            effective_timeline_life_end_test.go:295: node delete (D=1791563540633):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000000000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1791563540632, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563540633 tx=1791563540631..1791563540633 del=1791563540633 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/delete/ingest (0.04s)
+            effective_timeline_life_end_test.go:295: node delete (D=1791563540670):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000000000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1791563540669, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563540670 tx=1791563540668..1791563540670 del=1791563540670 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/delete/DeleteWithTx (0.03s)
+            effective_timeline_life_end_test.go:295: node delete (D=1791563540705):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000000000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1791563540704, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563540705 tx=1791563540704..1791563540705 del=1791563540705 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/update-then-delete/standalone (0.01s)
+            effective_timeline_life_end_test.go:295: node update-then-delete (D=1791563540716):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000000000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1791563540715, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540713..1791563540714 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563540716 tx=1791563540714..1791563540716 del=1791563540716 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/update-then-delete/graphtx (0.02s)
+            effective_timeline_life_end_test.go:295: node update-then-delete (D=1791563540741):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000000000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1791563540740, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540737..1791563540738 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563540741 tx=1791563540738..1791563540741 del=1791563540741 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/update-then-delete/batch (0.02s)
+            effective_timeline_life_end_test.go:295: node update-then-delete (D=1791563540763):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000000000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1791563540762, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540759..1791563540760 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563540763 tx=1791563540760..1791563540763 del=1791563540763 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/update-then-delete/ingest (0.02s)
+            effective_timeline_life_end_test.go:295: node update-then-delete (D=1791563540785):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000000000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1791563540784, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540781..1791563540782 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563540785 tx=1791563540782..1791563540785 del=1791563540785 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/update-then-delete/DeleteWithTx (0.02s)
+            effective_timeline_life_end_test.go:295: node update-then-delete (D=1791563540803):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000000000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1791563540802, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540800..1791563540801 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563540803 tx=1791563540801..1791563540803 del=1791563540803 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/open-cascade-then-delete/standalone (0.02s)
+            effective_timeline_life_end_test.go:295: node open-cascade-then-delete (D=1791563540818):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000000000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1791563540817, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540816..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563540818 tx=1791563540817..1791563540818 del=1791563540818 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/open-cascade-then-delete/graphtx (0.02s)
+            effective_timeline_life_end_test.go:295: node open-cascade-then-delete (D=1791563540836):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000000000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1791563540835, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540833..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563540836 tx=1791563540834..1791563540836 del=1791563540836 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/open-cascade-then-delete/batch (0.02s)
+            effective_timeline_life_end_test.go:295: node open-cascade-then-delete (D=1791563540853):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000000000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1791563540852, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540850..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563540853 tx=1791563540851..1791563540853 del=1791563540853 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/open-cascade-then-delete/ingest (0.01s)
+            effective_timeline_life_end_test.go:295: node open-cascade-then-delete (D=1791563540865):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000000000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1791563540864, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540862..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563540865 tx=1791563540863..1791563540865 del=1791563540865 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/open-cascade-then-delete/DeleteWithTx (0.01s)
+            effective_timeline_life_end_test.go:295: node open-cascade-then-delete (D=1791563540875):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000000000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1791563540874, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540873..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563540875 tx=1791563540874..1791563540875 del=1791563540875 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/bounded-cascade-then-delete/standalone (0.01s)
+            effective_timeline_life_end_test.go:295: node bounded-cascade-then-delete (D=1791563540886):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000000000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1791563540885, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540884..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563540885..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563540886 tx=1791563540885..1791563540886 del=1791563540886 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/bounded-cascade-then-delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:295: node bounded-cascade-then-delete (D=1791563540900):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000000000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1791563540899, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540897..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563540898..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563540900 tx=1791563540898..1791563540900 del=1791563540900 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/bounded-cascade-then-delete/batch (0.01s)
+            effective_timeline_life_end_test.go:295: node bounded-cascade-then-delete (D=1791563540911):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000000000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1791563540910, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540908..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563540909..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563540911 tx=1791563540909..1791563540911 del=1791563540911 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/bounded-cascade-then-delete/ingest (0.01s)
+            effective_timeline_life_end_test.go:295: node bounded-cascade-then-delete (D=1791563540924):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000000000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1791563540923, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540921..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563540922..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563540924 tx=1791563540922..1791563540924 del=1791563540924 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/bounded-cascade-then-delete/DeleteWithTx (0.01s)
+            effective_timeline_life_end_test.go:295: node bounded-cascade-then-delete (D=1791563540934):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 4500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 6001, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000000000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1791563540933, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540932..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563540933..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563540934 tx=1791563540933..1791563540934 del=1791563540934 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/close-then-delete/standalone (0.01s)
+            effective_timeline_life_end_test.go:295: node close-then-delete (D=1791563540948):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540945..1791563540946 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563540946..1791563540948 del=1791563540948 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/close-then-delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:295: node close-then-delete (D=1791563540959):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540955..1791563540956 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563540956..1791563540959 del=1791563540959 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/close-then-delete/batch (0.01s)
+            effective_timeline_life_end_test.go:295: node close-then-delete (D=1791563540970):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540966..1791563540967 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563540967..1791563540970 del=1791563540970 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/close-then-delete/ingest (0.01s)
+            effective_timeline_life_end_test.go:295: node close-then-delete (D=1791563540980):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540976..1791563540977 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563540977..1791563540980 del=1791563540980 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/close-then-delete/DeleteWithTx (0.01s)
+            effective_timeline_life_end_test.go:295: node close-then-delete (D=1791563540991):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563540988..1791563540989 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563540989..1791563540991 del=1791563540991 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/close-bounded-inside-then-delete/standalone (0.01s)
+            effective_timeline_life_end_test.go:295: node close-bounded-inside-then-delete (D=1791563541007):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563541003..1791563541004 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563541004..1791563541007 del=1791563541007 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563541006..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563541006..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/close-bounded-inside-then-delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:295: node close-bounded-inside-then-delete (D=1791563541018):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563541013..1791563541014 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563541014..1791563541018 del=1791563541018 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563541016..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563541016..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/close-bounded-inside-then-delete/batch (0.01s)
+            effective_timeline_life_end_test.go:295: node close-bounded-inside-then-delete (D=1791563541034):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563541029..1791563541030 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563541030..1791563541034 del=1791563541034 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563541032..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563541032..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/close-bounded-inside-then-delete/ingest (0.02s)
+            effective_timeline_life_end_test.go:295: node close-bounded-inside-then-delete (D=1791563541046):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563541041..1791563541042 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563541042..1791563541046 del=1791563541046 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563541044..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563541044..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/close-bounded-inside-then-delete/DeleteWithTx (0.01s)
+            effective_timeline_life_end_test.go:295: node close-bounded-inside-then-delete (D=1791563541058):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563541054..1791563541055 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563541055..1791563541058 del=1791563541058 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563541057..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563541057..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/close-gap-then-delete/standalone (0.01s)
+            effective_timeline_life_end_test.go:295: node close-gap-then-delete (D=1791563541072):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563541068..1791563541069 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563541069..1791563541072 del=1791563541072 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563541071..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/close-gap-then-delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:295: node close-gap-then-delete (D=1791563541083):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563541078..1791563541079 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563541079..1791563541083 del=1791563541083 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563541081..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/close-gap-then-delete/batch (0.01s)
+            effective_timeline_life_end_test.go:295: node close-gap-then-delete (D=1791563541099):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563541094..1791563541095 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563541095..1791563541099 del=1791563541099 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563541097..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/close-gap-then-delete/ingest (0.01s)
+            effective_timeline_life_end_test.go:295: node close-gap-then-delete (D=1791563541110):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563541105..1791563541106 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563541106..1791563541110 del=1791563541110 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563541108..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/close-gap-then-delete/DeleteWithTx (0.01s)
+            effective_timeline_life_end_test.go:295: node close-gap-then-delete (D=1791563541120):
+                  [ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 2500, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 1000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 3999, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5000, pin after): present=false, want true ForEachNodeEffectiveByLabel(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563541116..1791563541117 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563541117..1791563541120 del=1791563541120 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563541119..0 del=0 cur=false x=1
+--- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor (9.80s)
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23719 (0.17s)
+        effective_timeline_test.go:620: label A pin 1791568001101 valid 2461:
+             ByLabel map[797505612332302336:v0 {ValidFrom:1820 ValidTo:0 TxFrom:1791568001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=anchor=1 797505612334694400:v0 {ValidFrom:2461 ValidTo:0 TxFrom:1791568001003 TxTo:1791568009000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=1]
+             scan    map[797505612332302336:v0 {ValidFrom:1820 ValidTo:0 TxFrom:1791568001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=anchor=1]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23720 (0.09s)
+        effective_timeline_test.go:620: label A pin 1791568003456 valid 1603:
+             ByLabel map[797505617718312960:v0 {ValidFrom:1287 ValidTo:0 TxFrom:1791568001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=anchor=1 797505617719459840:v0 {ValidFrom:1603 ValidTo:1769 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=0]
+             scan    map[797505617718312960:v0 {ValidFrom:1287 ValidTo:0 TxFrom:1791568001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=anchor=1]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23721 (0.12s)
+        effective_timeline_test.go:620: label A pin 1791568003000 valid 1959:
+             ByLabel map[797505620955660288:v0 {ValidFrom:1638 ValidTo:0 TxFrom:1791568001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=anchor=1 797505620956872704:v0 {ValidFrom:1959 ValidTo:0 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=0]
+             scan    map[797505620955660288:v0 {ValidFrom:1638 ValidTo:0 TxFrom:1791568001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=anchor=1]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23722 (0.08s)
+        effective_timeline_test.go:620: label A pin 1791568001003 valid 1750:
+             ByLabel map[797505624776704000:v0 {ValidFrom:1382 ValidTo:0 TxFrom:1791568001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=anchor=1 797505624780931072:v0 {ValidFrom:1750 ValidTo:2659 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=0]
+             scan    map[797505624776704000:v0 {ValidFrom:1382 ValidTo:0 TxFrom:1791568001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=anchor=1]
+--- FAIL: TestEffectiveTimeline_PointwiseOracle (31.87s)
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7399 (0.26s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505717372256256 pin 1791568001002 valid 1641:
+              point    v0 {ValidFrom:1641 ValidTo:0 TxFrom:1791568001002 TxTo:1791568004000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=0
+              timeline v0 {ValidFrom:1641 ValidTo:0 TxFrom:1791568001002 TxTo:1791568004000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+                [1641,0) v0 {ValidFrom:1641 ValidTo:0 TxFrom:1791568001002 TxTo:1791568004000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7400 (0.20s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505724336832512 pin 1791568001002 valid 1866:
+              point    v0 {ValidFrom:1866 ValidTo:3570 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=0
+              timeline v0 {ValidFrom:1866 ValidTo:3570 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+                [1866,3570) v0 {ValidFrom:1866 ValidTo:3570 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7401 (0.20s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505731466166272 pin 1791568001002 valid 2226:
+              point    v0 {ValidFrom:2226 ValidTo:4023 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=0
+              timeline v0 {ValidFrom:2226 ValidTo:4023 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+                [2226,4023) v0 {ValidFrom:2226 ValidTo:4023 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7402 (0.19s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505737732554752 pin 1791568001002 valid 1603:
+              point    v0 {ValidFrom:1603 ValidTo:0 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=0
+              timeline v0 {ValidFrom:1603 ValidTo:0 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+                [1603,0) v0 {ValidFrom:1603 ValidTo:0 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7403 (0.27s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505745215356928 pin 1791568001002 valid 1732:
+              point    v0 {ValidFrom:1732 ValidTo:0 TxFrom:1791568001002 TxTo:1791568003731 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=0
+              timeline v0 {ValidFrom:1732 ValidTo:0 TxFrom:1791568001002 TxTo:1791568003731 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+                [1732,0) v0 {ValidFrom:1732 ValidTo:0 TxFrom:1791568001002 TxTo:1791568003731 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7404 (0.34s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505752716902400 pin 1791568001002 valid 2001:
+              point    v0 {ValidFrom:2001 ValidTo:3145 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=0
+              timeline v0 {ValidFrom:2001 ValidTo:3145 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+                [2001,3145) v0 {ValidFrom:2001 ValidTo:3145 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7405 (0.14s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505763949182976 pin 1791568001002 valid 1829:
+              point    v0 {ValidFrom:1829 ValidTo:3142 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=0
+              timeline v0 {ValidFrom:1829 ValidTo:3142 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+                [1829,3142) v0 {ValidFrom:1829 ValidTo:3142 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7406 (0.22s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505768659681280 pin 1791568001002 valid 1745:
+              point    v0 {ValidFrom:1745 ValidTo:3381 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=0
+              timeline v0 {ValidFrom:1745 ValidTo:3381 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+                [1745,3381) v0 {ValidFrom:1745 ValidTo:3381 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7407 (0.19s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505775825354752 pin 1791568001002 valid 2015:
+              point    v0 {ValidFrom:2015 ValidTo:3700 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=0
+              timeline v0 {ValidFrom:2015 ValidTo:3700 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+                [2015,3700) v0 {ValidFrom:2015 ValidTo:3700 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7408 (0.19s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505784134303744 pin 1791568001002 valid 2053:
+              point    v0 {ValidFrom:2053 ValidTo:0 TxFrom:1791568001002 TxTo:1791568002000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=0
+              timeline v0 {ValidFrom:2053 ValidTo:0 TxFrom:1791568001002 TxTo:1791568002000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+                [2053,0) v0 {ValidFrom:2053 ValidTo:0 TxFrom:1791568001002 TxTo:1791568002000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7409 (0.24s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505788357672960 pin 1791568001002 valid 1953:
+              point    v0 {ValidFrom:1953 ValidTo:0 TxFrom:1791568001002 TxTo:1791568007000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=0
+              timeline v0 {ValidFrom:1953 ValidTo:0 TxFrom:1791568001002 TxTo:1791568007000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+                [1953,0) v0 {ValidFrom:1953 ValidTo:0 TxFrom:1791568001002 TxTo:1791568007000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7410 (0.27s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505796252860416 pin 1791568001002 valid 2325:
+              point    v0 {ValidFrom:2325 ValidTo:0 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=0
+              timeline v0 {ValidFrom:2325 ValidTo:0 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+                [2325,0) v0 {ValidFrom:2325 ValidTo:0 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7411 (0.33s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505806055702528 pin 1791568001002 valid 1874:
+              point    v0 {ValidFrom:1874 ValidTo:0 TxFrom:1791568001002 TxTo:1791568005079 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=0
+              timeline v0 {ValidFrom:1874 ValidTo:0 TxFrom:1791568001002 TxTo:1791568005079 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+                [1874,0) v0 {ValidFrom:1874 ValidTo:0 TxFrom:1791568001002 TxTo:1791568005079 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7412 (0.33s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505816779784192 pin 1791568001002 valid 1889:
+              point    v0 {ValidFrom:1889 ValidTo:0 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=0
+              timeline v0 {ValidFrom:1889 ValidTo:0 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+                [1889,0) v0 {ValidFrom:1889 ValidTo:0 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7413 (0.23s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505827144335360 pin 1791568001002 valid 1907:
+              point    v0 {ValidFrom:1907 ValidTo:0 TxFrom:1791568001002 TxTo:1791568014000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=0
+              timeline v0 {ValidFrom:1907 ValidTo:0 TxFrom:1791568001002 TxTo:1791568014000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+                [1907,0) v0 {ValidFrom:1907 ValidTo:0 TxFrom:1791568001002 TxTo:1791568014000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7414 (0.34s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505835039162368 pin 1791568001002 valid 2129:
+              point    v0 {ValidFrom:2129 ValidTo:0 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=0
+              timeline v0 {ValidFrom:2129 ValidTo:0 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+                [2129,0) v0 {ValidFrom:2129 ValidTo:0 TxFrom:1791568001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[0] props=
+    effective_timeline_oracle_test.go:446: pointwise checks 2363434 at 141371 (entity, pin) pairs, 84631 segments, 8251 refused pins
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	31.910s
+FAIL
+
+exit=1

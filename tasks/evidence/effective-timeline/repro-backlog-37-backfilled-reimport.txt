@@ -1,0 +1,109 @@
+=== RUN   TestZZBackfilledReImportBeforeDelete
+=== RUN   TestZZBackfilledReImportBeforeDelete/memory/node
+    zz_reimport_backfill_test.go:43: [node valid D+1 now] want [B:v0 T:v0] on every door; got:
+         ByLabel{ValidAt,TxAt} = [B:v0]
+         CountByLabelAt{ValidAt,TxAt} = [B:v0]
+         NodeAtTx = [B:v0]
+         NodesAtTx = [B:v0]
+         chain T:
+          v0 vf=1000 vt=0 tx=1791568273999..1791568274001 del=0 cur=false x=0
+          v0 vf=7000 vt=0 tx=1791568274000..0 del=0 cur=true x=9
+          v1 vf=0 vt=1791568274003 tx=1791568274001..1791568274003 del=1791568274003 cur=false x=1
+         chain B:
+          v0 vf=1000 vt=0 tx=1791568273998..0 del=0 cur=true x=0
+=== RUN   TestZZBackfilledReImportBeforeDelete/memory/rel
+    zz_reimport_backfill_test.go:43: [rel valid D+1 now] want [B:v0 T:v0] on every door; got:
+         ByType{ValidAt,TxAt} = [B:v0]
+         CountByTypeAt{ValidAt,TxAt} = [B:v0]
+         RelAtTx = [B:v0]
+         RelsAtTx = [B:v0]
+         chain T:
+          v0 vf=1000 vt=0 tx=1791568274002..1791568274004 del=0 cur=false x=0
+          v0 vf=7000 vt=0 tx=1791568274003..0 del=0 cur=true x=9
+          v1 vf=0 vt=1791568274006 tx=1791568274004..1791568274006 del=1791568274006 cur=false x=1
+         chain B:
+          v0 vf=1000 vt=0 tx=1791568274001..0 del=0 cur=true x=0
+=== RUN   TestZZBackfilledReImportBeforeDelete/badger/node
+    zz_reimport_backfill_test.go:43: [node valid D+1 now] want [B:v0 T:v0] on every door; got:
+         ByLabel{ValidAt,TxAt} = [B:v0]
+         CountByLabelAt{ValidAt,TxAt} = [B:v0]
+         NodeAtTx = [B:v0]
+         NodesAtTx = [B:v0]
+         chain T:
+          v0 vf=1000 vt=0 tx=1791568274002..1791568274004 del=0 cur=false x=0
+          v0 vf=7000 vt=0 tx=1791568274003..0 del=0 cur=true x=9
+          v1 vf=0 vt=1791568274006 tx=1791568274004..1791568274006 del=1791568274006 cur=false x=1
+         chain B:
+          v0 vf=1000 vt=0 tx=1791568274001..0 del=0 cur=true x=0
+=== RUN   TestZZBackfilledReImportBeforeDelete/badger/rel
+    zz_reimport_backfill_test.go:43: [rel valid D+1 now] want [B:v0 T:v0] on every door; got:
+         ByType{ValidAt,TxAt} = [B:v0]
+         CountByTypeAt{ValidAt,TxAt} = [B:v0]
+         RelAtTx = [B:v0]
+         RelsAtTx = [B:v0]
+         chain T:
+          v0 vf=1000 vt=0 tx=1791568274007..1791568274009 del=0 cur=false x=0
+          v0 vf=7000 vt=0 tx=1791568274008..0 del=0 cur=true x=9
+          v1 vf=0 vt=1791568274011 tx=1791568274009..1791568274011 del=1791568274011 cur=false x=1
+         chain B:
+          v0 vf=1000 vt=0 tx=1791568274006..0 del=0 cur=true x=0
+=== RUN   TestZZBackfilledReImportBeforeDelete/sharded/node
+    zz_reimport_backfill_test.go:43: [node valid D+1 now] want [B:v0 T:v0] on every door; got:
+         ByLabel{ValidAt,TxAt} = [B:v0]
+         CountByLabelAt{ValidAt,TxAt} = [B:v0]
+         NodeAtTx = [B:v0]
+         NodesAtTx = [B:v0]
+         chain T:
+          v0 vf=1000 vt=0 tx=1791568274043..1791568274045 del=0 cur=false x=0
+          v0 vf=7000 vt=0 tx=1791568274044..0 del=0 cur=true x=9
+          v1 vf=0 vt=1791568274047 tx=1791568274045..1791568274047 del=1791568274047 cur=false x=1
+         chain B:
+          v0 vf=1000 vt=0 tx=1791568274042..0 del=0 cur=true x=0
+=== RUN   TestZZBackfilledReImportBeforeDelete/sharded/rel
+    zz_reimport_backfill_test.go:43: [rel valid D+1 now] want [B:v0 T:v0] on every door; got:
+         ByType{ValidAt,TxAt} = [B:v0]
+         CountByTypeAt{ValidAt,TxAt} = [B:v0]
+         RelAtTx = [B:v0]
+         RelsAtTx = [B:v0]
+         chain T:
+          v0 vf=1000 vt=0 tx=1791568274053..1791568274055 del=0 cur=false x=0
+          v0 vf=7000 vt=0 tx=1791568274054..0 del=0 cur=true x=9
+          v1 vf=0 vt=1791568274057 tx=1791568274055..1791568274057 del=1791568274057 cur=false x=1
+         chain B:
+          v0 vf=1000 vt=0 tx=1791568274052..0 del=0 cur=true x=0
+=== RUN   TestZZBackfilledReImportBeforeDelete/tiered/node
+    zz_reimport_backfill_test.go:43: [node valid D+1 now] want [B:v0 T:v0] on every door; got:
+         ByLabel{ValidAt,TxAt} = [B:v0]
+         CountByLabelAt{ValidAt,TxAt} = [B:v0]
+         NodeAtTx = [B:v0]
+         NodesAtTx = [B:v0]
+         chain T:
+          v0 vf=1000 vt=0 tx=1791568274095..1791568274097 del=0 cur=false x=0
+          v0 vf=7000 vt=0 tx=1791568274096..0 del=0 cur=true x=9
+          v1 vf=0 vt=1791568274099 tx=1791568274097..1791568274099 del=1791568274099 cur=false x=1
+         chain B:
+          v0 vf=1000 vt=0 tx=1791568274094..0 del=0 cur=true x=0
+=== RUN   TestZZBackfilledReImportBeforeDelete/tiered/rel
+    zz_reimport_backfill_test.go:43: [rel valid D+1 now] want [B:v0 T:v0] on every door; got:
+         ByType{ValidAt,TxAt} = [B:v0]
+         CountByTypeAt{ValidAt,TxAt} = [B:v0]
+         RelAtTx = [B:v0]
+         RelsAtTx = [B:v0]
+         chain T:
+          v0 vf=1000 vt=0 tx=1791568274164..1791568274166 del=0 cur=false x=0
+          v0 vf=7000 vt=0 tx=1791568274165..0 del=0 cur=true x=9
+          v1 vf=0 vt=1791568274168 tx=1791568274166..1791568274168 del=1791568274168 cur=false x=1
+         chain B:
+          v0 vf=1000 vt=0 tx=1791568274163..0 del=0 cur=true x=0
+--- FAIL: TestZZBackfilledReImportBeforeDelete (0.16s)
+    --- FAIL: TestZZBackfilledReImportBeforeDelete/memory/node (0.00s)
+    --- FAIL: TestZZBackfilledReImportBeforeDelete/memory/rel (0.00s)
+    --- FAIL: TestZZBackfilledReImportBeforeDelete/badger/node (0.00s)
+    --- FAIL: TestZZBackfilledReImportBeforeDelete/badger/rel (0.01s)
+    --- FAIL: TestZZBackfilledReImportBeforeDelete/sharded/node (0.04s)
+    --- FAIL: TestZZBackfilledReImportBeforeDelete/sharded/rel (0.01s)
+    --- FAIL: TestZZBackfilledReImportBeforeDelete/tiered/node (0.04s)
+    --- FAIL: TestZZBackfilledReImportBeforeDelete/tiered/rel (0.07s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.200s
+FAIL

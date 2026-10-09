@@ -1,0 +1,246 @@
+MUTANT internal/core/effective_timeline.go
+--- old
+		src := -1
+
+--- new
+		if len(out) == 0 {
+			if tm := w.Temporal(); tm != nil {
+				from = tm.ValidFrom
+			}
+		}
+		src := -1
+
+=== go test ./internal/core/ -run TestEffectiveTimeline|TestAtTx
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.31s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/sharded/rel (0.01s)
+        effective_timeline_test.go:811: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E11: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_DerivedStart (0.45s)
+    --- FAIL: TestEffectiveTimeline_DerivedStart/memory/node (0.00s)
+        --- FAIL: TestEffectiveTimeline_DerivedStart/memory/node/backfill=false (0.00s)
+            effective_timeline_test.go:144: node timeline = "[0,0) v0", want "[1791563456690,0) v0" (derived start = mint instant)
+                  v0 vf=0 vt=0 tx=1791563457690..0 del=0 cur=true x=0
+        --- FAIL: TestEffectiveTimeline_DerivedStart/memory/node/backfill=true (0.00s)
+            effective_timeline_test.go:144: node timeline = "[0,0) v0", want "[1791563456692,0) v0" (derived start = mint instant)
+                  v0 vf=0 vt=0 tx=1791563397692..0 del=0 cur=true x=0
+    --- FAIL: TestEffectiveTimeline_DerivedStart/memory/rel (0.00s)
+        --- FAIL: TestEffectiveTimeline_DerivedStart/memory/rel/backfill=false (0.00s)
+            effective_timeline_test.go:144: rel timeline = "[0,0) v0", want "[1791563456693,0) v0" (derived start = mint instant)
+                  v0 vf=0 vt=0 tx=1791563457695..0 del=0 cur=true x=0
+        --- FAIL: TestEffectiveTimeline_DerivedStart/memory/rel/backfill=true (0.00s)
+            effective_timeline_test.go:144: rel timeline = "[0,0) v0", want "[1791563456693,0) v0" (derived start = mint instant)
+                  v0 vf=0 vt=0 tx=1791563397695..0 del=0 cur=true x=0
+    --- FAIL: TestEffectiveTimeline_DerivedStart/badger/node (0.06s)
+        --- FAIL: TestEffectiveTimeline_DerivedStart/badger/node/backfill=false (0.00s)
+            effective_timeline_test.go:144: node timeline = "[0,0) v0", want "[1791563456695,0) v0" (derived start = mint instant)
+                  v0 vf=0 vt=0 tx=1791563457695..0 del=0 cur=true x=0
+        --- FAIL: TestEffectiveTimeline_DerivedStart/badger/node/backfill=true (0.05s)
+            effective_timeline_test.go:144: node timeline = "[0,0) v0", want "[1791563456747,0) v0" (derived start = mint instant)
+                  v0 vf=0 vt=0 tx=1791563397747..0 del=0 cur=true x=0
+    --- FAIL: TestEffectiveTimeline_DerivedStart/badger/rel (0.03s)
+        --- FAIL: TestEffectiveTimeline_DerivedStart/badger/rel/backfill=false (0.00s)
+            effective_timeline_test.go:144: rel timeline = "[0,0) v0", want "[1791563456752,0) v0" (derived start = mint instant)
+                  v0 vf=0 vt=0 tx=1791563457754..0 del=0 cur=true x=0
+        --- FAIL: TestEffectiveTimeline_DerivedStart/badger/rel/backfill=true (0.03s)
+            effective_timeline_test.go:144: rel timeline = "[0,0) v0", want "[1791563456779,0) v0" (derived start = mint instant)
+                  v0 vf=0 vt=0 tx=1791563397781..0 del=0 cur=true x=0
+    --- FAIL: TestEffectiveTimeline_DerivedStart/sharded/node (0.13s)
+        --- FAIL: TestEffectiveTimeline_DerivedStart/sharded/node/backfill=false (0.05s)
+            effective_timeline_test.go:144: node timeline = "[0,0) v0", want "[1791563456834,0) v0" (derived start = mint instant)
+                  v0 vf=0 vt=0 tx=1791563457834..0 del=0 cur=true x=0
+        --- FAIL: TestEffectiveTimeline_DerivedStart/sharded/node/backfill=true (0.08s)
+            effective_timeline_test.go:144: node timeline = "[0,0) v0", want "[1791563456905,0) v0" (derived start = mint instant)
+                  v0 vf=0 vt=0 tx=1791563397905..0 del=0 cur=true x=0
+    --- FAIL: TestEffectiveTimeline_DerivedStart/sharded/rel (0.08s)
+        --- FAIL: TestEffectiveTimeline_DerivedStart/sharded/rel/backfill=false (0.01s)
+            effective_timeline_test.go:144: rel timeline = "[0,0) v0", want "[1791563456918,0) v0" (derived start = mint instant)
+                  v0 vf=0 vt=0 tx=1791563457920..0 del=0 cur=true x=0
+        --- FAIL: TestEffectiveTimeline_DerivedStart/sharded/rel/backfill=true (0.07s)
+            effective_timeline_test.go:144: rel timeline = "[0,0) v0", want "[1791563456987,0) v0" (derived start = mint instant)
+                  v0 vf=0 vt=0 tx=1791563397989..0 del=0 cur=true x=0
+    --- FAIL: TestEffectiveTimeline_DerivedStart/tiered/node (0.10s)
+        --- FAIL: TestEffectiveTimeline_DerivedStart/tiered/node/backfill=false (0.06s)
+            effective_timeline_test.go:144: node timeline = "[0,0) v0", want "[1791563457056,0) v0" (derived start = mint instant)
+                  v0 vf=0 vt=0 tx=1791563458056..0 del=0 cur=true x=0
+        --- FAIL: TestEffectiveTimeline_DerivedStart/tiered/node/backfill=true (0.03s)
+            effective_timeline_test.go:144: node timeline = "[0,0) v0", want "[1791563457087,0) v0" (derived start = mint instant)
+                  v0 vf=0 vt=0 tx=1791563398087..0 del=0 cur=true x=0
+    --- FAIL: TestEffectiveTimeline_DerivedStart/tiered/rel (0.05s)
+        --- FAIL: TestEffectiveTimeline_DerivedStart/tiered/rel/backfill=false (0.03s)
+            effective_timeline_test.go:144: rel timeline = "[0,0) v0", want "[1791563457113,0) v0" (derived start = mint instant)
+                  v0 vf=0 vt=0 tx=1791563458115..0 del=0 cur=true x=0
+        --- FAIL: TestEffectiveTimeline_DerivedStart/tiered/rel/backfill=true (0.03s)
+            effective_timeline_test.go:144: rel timeline = "[0,0) v0", want "[1791563457141,0) v0" (derived start = mint instant)
+                  v0 vf=0 vt=0 tx=1791563398143..0 del=0 cur=true x=0
+--- FAIL: TestEffectiveTimeline_PointwiseOracle (33.21s)
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7399 (0.10s)
+        effective_timeline_oracle_test.go:427: [memory after rollback, re-import, compaction] node 797502888063238144 pin 1791568022000: segment 0 starts at 0 (want > 0)
+                [0,0) v4 {ValidFrom:0 ValidTo:0 TxFrom:1791568022000 TxTo:0 CreatedAt:0 UpdatedAt:1791568022000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=12
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7400 (0.10s)
+        effective_timeline_oracle_test.go:427: [memory after rollback, re-import, compaction] node 797502891499520000 pin 1791568003503: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568003503 TxTo:1791568005408 CreatedAt:0 UpdatedAt:1791568003503 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=6
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7401 (0.21s)
+        effective_timeline_oracle_test.go:430: [memory after rollback, re-import, compaction] rel 797502894898873344 pin 1791568001226: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568001226 TxTo:0 CreatedAt:0 UpdatedAt:1791568001226 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797502894897364992->797502894896709632 props=k=8
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7402 (0.11s)
+        effective_timeline_oracle_test.go:427: [memory after rollback, re-import, compaction] node 797502901636399104 pin 1791568022000: segment 0 starts at 0 (want > 0)
+                [0,0) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791568022000 TxTo:0 CreatedAt:0 UpdatedAt:1791568022000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=12
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7403 (0.15s)
+        effective_timeline_oracle_test.go:427: [memory after rollback, re-import, compaction] node 797502905296846848 pin 1791568026073: segment 0 starts at 0 (want > 0)
+                [0,0) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791568026073 TxTo:0 CreatedAt:0 UpdatedAt:1791568026073 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=21
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7404 (0.16s)
+        effective_timeline_oracle_test.go:427: [memory after rollback, re-import, compaction] node 797502910224859136 pin 1791568003074: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568003074 TxTo:0 CreatedAt:0 UpdatedAt:1791568003074 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=8
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7405 (0.07s)
+        effective_timeline_oracle_test.go:427: [memory after rollback, re-import, compaction] node 797502915467411456 pin 1791568014750: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568014750 TxTo:0 CreatedAt:0 UpdatedAt:1791568014750 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=13
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7406 (0.13s)
+        effective_timeline_oracle_test.go:427: [memory after rollback, re-import, compaction] node 797502917639503872 pin 1791568022024: segment 0 starts at 0 (want > 0)
+                [0,0) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791568022024 TxTo:0 CreatedAt:0 UpdatedAt:1791568022024 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3 4] props=k=18
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7407 (0.07s)
+        effective_timeline_oracle_test.go:427: [memory after rollback, re-import, compaction] node 797502922041720832 pin 1791568002637: segment 0 starts at 0 (want > 0)
+                [0,0) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791568002637 TxTo:0 CreatedAt:0 UpdatedAt:1791568002637 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=6
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7408 (0.05s)
+        effective_timeline_oracle_test.go:427: [memory after rollback, re-import, compaction] node 797502924380176384 pin 1791568034000: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568034000 TxTo:0 CreatedAt:0 UpdatedAt:1791568034000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=21
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7409 (0.06s)
+        effective_timeline_oracle_test.go:427: [memory after rollback, re-import, compaction] node 797502926142799872 pin 1791568007000: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568007000 TxTo:0 CreatedAt:0 UpdatedAt:1791568007000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=7
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7410 (0.09s)
+        effective_timeline_oracle_test.go:427: [memory after rollback, re-import, compaction] node 797502928198369280 pin 1791568012000: segment 0 starts at 0 (want > 0)
+                [0,0) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791568012000 TxTo:0 CreatedAt:0 UpdatedAt:1791568012000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=10
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7411 (0.05s)
+        effective_timeline_oracle_test.go:427: [memory after rollback, re-import, compaction] node 797502930990759936 pin 1791568005079: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568005079 TxTo:0 CreatedAt:0 UpdatedAt:1791568005079 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=6
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7412 (0.08s)
+        effective_timeline_oracle_test.go:427: [memory after rollback, re-import, compaction] node 797502932485046272 pin 1791568013633: segment 0 starts at 0 (want > 0)
+                [0,0) v3 {ValidFrom:0 ValidTo:0 TxFrom:1791568013633 TxTo:0 CreatedAt:0 UpdatedAt:1791568013633 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=20
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7413 (0.06s)
+        effective_timeline_oracle_test.go:427: [memory after rollback, re-import, compaction] node 797502935176183808 pin 1791568014000: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568014000 TxTo:0 CreatedAt:0 UpdatedAt:1791568014000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=11
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7414 (0.10s)
+        effective_timeline_oracle_test.go:430: [memory after rollback, re-import, compaction] rel 797502937004934144 pin 1791568025322: segment 0 starts at 0 (want > 0)
+                [0,0) v4 {ValidFrom:0 ValidTo:0 TxFrom:1791568025322 TxTo:0 CreatedAt:0 UpdatedAt:1791568025322 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797502937003851776->797502937004310528 props=k=12
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7399 (0.24s)
+        effective_timeline_oracle_test.go:427: [badger after rollback, re-import, compaction] node 797502940549447680 pin 1791568022000: segment 0 starts at 0 (want > 0)
+                [0,0) v4 {ValidFrom:0 ValidTo:0 TxFrom:1791568022000 TxTo:0 CreatedAt:0 UpdatedAt:1791568022000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=12
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7400 (0.30s)
+        effective_timeline_oracle_test.go:427: [badger after rollback, re-import, compaction] node 797502948449353728 pin 1791568003503: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568003503 TxTo:1791568005408 CreatedAt:0 UpdatedAt:1791568003503 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=6
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7401 (0.53s)
+        effective_timeline_oracle_test.go:430: [badger after rollback, re-import, compaction] rel 797502958099694592 pin 1791568001226: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568001226 TxTo:0 CreatedAt:0 UpdatedAt:1791568001226 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797502958098546688->797502958097661952 props=k=8
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7402 (0.31s)
+        effective_timeline_oracle_test.go:427: [badger after rollback, re-import, compaction] node 797502975531188224 pin 1791568022000: segment 0 starts at 0 (want > 0)
+                [0,0) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791568022000 TxTo:0 CreatedAt:0 UpdatedAt:1791568022000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=12
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7403 (0.54s)
+        effective_timeline_oracle_test.go:427: [badger after rollback, re-import, compaction] node 797502985563504640 pin 1791568026073: segment 0 starts at 0 (want > 0)
+                [0,0) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791568026073 TxTo:0 CreatedAt:0 UpdatedAt:1791568026073 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=21
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7404 (0.33s)
+        effective_timeline_oracle_test.go:427: [badger after rollback, re-import, compaction] node 797503003222048768 pin 1791568003074: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568003074 TxTo:0 CreatedAt:0 UpdatedAt:1791568003074 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=8
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7405 (0.16s)
+        effective_timeline_oracle_test.go:427: [badger after rollback, re-import, compaction] node 797503013950816256 pin 1791568014750: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568014750 TxTo:0 CreatedAt:0 UpdatedAt:1791568014750 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=13
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7406 (0.24s)
+        effective_timeline_oracle_test.go:427: [badger after rollback, re-import, compaction] node 797503020035407872 pin 1791568022024: segment 0 starts at 0 (want > 0)
+                [0,0) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791568022024 TxTo:0 CreatedAt:0 UpdatedAt:1791568022024 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3 4] props=k=18
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7407 (0.18s)
+        effective_timeline_oracle_test.go:427: [badger after rollback, re-import, compaction] node 797503027145572352 pin 1791568002637: segment 0 starts at 0 (want > 0)
+                [0,0) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791568002637 TxTo:0 CreatedAt:0 UpdatedAt:1791568002637 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=6
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7408 (0.12s)
+        effective_timeline_oracle_test.go:427: [badger after rollback, re-import, compaction] node 797503032733368320 pin 1791568034000: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568034000 TxTo:0 CreatedAt:0 UpdatedAt:1791568034000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=21
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7409 (0.12s)
+        effective_timeline_oracle_test.go:427: [badger after rollback, re-import, compaction] node 797503036634136576 pin 1791568007000: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568007000 TxTo:0 CreatedAt:0 UpdatedAt:1791568007000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=7
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7410 (0.20s)
+        effective_timeline_oracle_test.go:427: [badger after rollback, re-import, compaction] node 797503040637796352 pin 1791568012000: segment 0 starts at 0 (want > 0)
+                [0,0) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791568012000 TxTo:0 CreatedAt:0 UpdatedAt:1791568012000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=10
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7411 (0.13s)
+        effective_timeline_oracle_test.go:427: [badger after rollback, re-import, compaction] node 797503046889996288 pin 1791568005079: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568005079 TxTo:0 CreatedAt:0 UpdatedAt:1791568005079 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=6
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7412 (0.25s)
+        effective_timeline_oracle_test.go:427: [badger after rollback, re-import, compaction] node 797503051926208512 pin 1791568013633: segment 0 starts at 0 (want > 0)
+                [0,0) v3 {ValidFrom:0 ValidTo:0 TxFrom:1791568013633 TxTo:0 CreatedAt:0 UpdatedAt:1791568013633 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=20
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7413 (0.20s)
+        effective_timeline_oracle_test.go:427: [badger after rollback, re-import, compaction] node 797503060125745152 pin 1791568014000: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568014000 TxTo:0 CreatedAt:0 UpdatedAt:1791568014000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=11
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7414 (0.30s)
+        effective_timeline_oracle_test.go:430: [badger after rollback, re-import, compaction] rel 797503066775946240 pin 1791568025322: segment 0 starts at 0 (want > 0)
+                [0,0) v4 {ValidFrom:0 ValidTo:0 TxFrom:1791568025322 TxTo:0 CreatedAt:0 UpdatedAt:1791568025322 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797503066768769024->797503066769850368 props=k=12
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7399 (0.34s)
+        effective_timeline_oracle_test.go:427: [tiered after rollback, re-import, compaction] node 797503759500410880 pin 1791568022000: segment 0 starts at 0 (want > 0)
+                [0,0) v4 {ValidFrom:0 ValidTo:0 TxFrom:1791568022000 TxTo:0 CreatedAt:0 UpdatedAt:1791568022000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=12
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7400 (0.51s)
+        effective_timeline_oracle_test.go:427: [tiered after rollback, re-import, compaction] node 797503770690125824 pin 1791568003503: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568003503 TxTo:1791568005408 CreatedAt:0 UpdatedAt:1791568003503 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=6
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7402 (0.43s)
+        effective_timeline_oracle_test.go:427: [tiered after rollback, re-import, compaction] node 797503808121503744 pin 1791568022000: segment 0 starts at 0 (want > 0)
+                [0,0) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791568022000 TxTo:0 CreatedAt:0 UpdatedAt:1791568022000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=12
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7403 (0.57s)
+        effective_timeline_oracle_test.go:427: [tiered after rollback, re-import, compaction] node 797503822274134016 pin 1791568026073: segment 0 starts at 0 (want > 0)
+                [0,0) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791568026073 TxTo:0 CreatedAt:0 UpdatedAt:1791568026073 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=21
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7404 (0.67s)
+        effective_timeline_oracle_test.go:427: [tiered after rollback, re-import, compaction] node 797503840798507008 pin 1791568003074: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568003074 TxTo:0 CreatedAt:0 UpdatedAt:1791568003074 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=8
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7405 (0.29s)
+        effective_timeline_oracle_test.go:427: [tiered after rollback, re-import, compaction] node 797503862590865408 pin 1791568014750: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568014750 TxTo:0 CreatedAt:0 UpdatedAt:1791568014750 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=13
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7406 (0.51s)
+        effective_timeline_oracle_test.go:427: [tiered after rollback, re-import, compaction] node 797503872566493184 pin 1791568022024: segment 0 starts at 0 (want > 0)
+                [0,0) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791568022024 TxTo:0 CreatedAt:0 UpdatedAt:1791568022024 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3 4] props=k=18
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7407 (0.36s)
+        effective_timeline_oracle_test.go:427: [tiered after rollback, re-import, compaction] node 797503889047322624 pin 1791568002637: segment 0 starts at 0 (want > 0)
+                [0,0) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791568002637 TxTo:0 CreatedAt:0 UpdatedAt:1791568002637 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=6
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7408 (0.28s)
+        effective_timeline_oracle_test.go:427: [tiered after rollback, re-import, compaction] node 797503900327411712 pin 1791568034000: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568034000 TxTo:0 CreatedAt:0 UpdatedAt:1791568034000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=21
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7409 (0.27s)
+        effective_timeline_oracle_test.go:427: [tiered after rollback, re-import, compaction] node 797503909118345216 pin 1791568007000: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568007000 TxTo:0 CreatedAt:0 UpdatedAt:1791568007000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=7
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7410 (0.39s)
+        effective_timeline_oracle_test.go:427: [tiered after rollback, re-import, compaction] node 797503918469709824 pin 1791568012000: segment 0 starts at 0 (want > 0)
+                [0,0) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791568012000 TxTo:0 CreatedAt:0 UpdatedAt:1791568012000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=10
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7411 (0.24s)
+        effective_timeline_oracle_test.go:427: [tiered after rollback, re-import, compaction] node 797503930999341056 pin 1791568005079: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568005079 TxTo:0 CreatedAt:0 UpdatedAt:1791568005079 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=6
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7412 (0.37s)
+        effective_timeline_oracle_test.go:427: [tiered after rollback, re-import, compaction] node 797503938356477952 pin 1791568013633: segment 0 starts at 0 (want > 0)
+                [0,0) v3 {ValidFrom:0 ValidTo:0 TxFrom:1791568013633 TxTo:0 CreatedAt:0 UpdatedAt:1791568013633 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=20
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7413 (0.33s)
+        effective_timeline_oracle_test.go:427: [tiered after rollback, re-import, compaction] node 797503951470460928 pin 1791568014000: segment 0 starts at 0 (want > 0)
+                [0,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791568014000 TxTo:0 CreatedAt:0 UpdatedAt:1791568014000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=11
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7414 (0.46s)
+        effective_timeline_oracle_test.go:430: [tiered after rollback, re-import, compaction] rel 797503961718686720 pin 1791568025322: segment 0 starts at 0 (want > 0)
+                [0,0) v4 {ValidFrom:0 ValidTo:0 TxFrom:1791568025322 TxTo:0 CreatedAt:0 UpdatedAt:1791568025322 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797503961712984064->797503961716785152 props=k=12
+    effective_timeline_oracle_test.go:446: pointwise checks 942143 at 51227 (entity, pin) pairs, 33317 segments, 197 refused pins
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	33.246s
+FAIL
+
+exit=1

@@ -146,7 +146,7 @@ func (tx *GraphTx) noteNodeCreateResultLocked(n *types.Node) {
 		return
 	}
 	tx.g.publishEvent(eventspkg.EventNodeCreate, types.EntityID(n.ID()), tx.g.now(), eventspkg.PriorityHigh)
-	tx.trackCreatedNodeLocked(n.ID().SnowflakeID())
+	tx.trackCreatedNodeLocked(n.ID().SnowflakeID(), n.Version())
 }
 
 func (tx *GraphTx) noteRelCreateResultLocked(r *types.Relationship) {
@@ -154,7 +154,7 @@ func (tx *GraphTx) noteRelCreateResultLocked(r *types.Relationship) {
 		return
 	}
 	tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), tx.g.now(), eventspkg.PriorityHigh)
-	tx.trackCreatedRelLocked(r.ID().SnowflakeID())
+	tx.trackCreatedRelLocked(r.ID().SnowflakeID(), r.Version())
 }
 
 // =============================================================================

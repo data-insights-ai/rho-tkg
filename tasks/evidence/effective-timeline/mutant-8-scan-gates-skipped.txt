@@ -1,0 +1,19 @@
+MUTANT internal/core/effective_timeline.go
+--- old
+	if err := c.checkScanCompactionAt(pin); err != nil {
+		return err
+	}
+	return c.checkScanRetentionAt(pin)
+--- new
+	return nil
+=== go test ./internal/core/ -run TestEffectiveTimeline|TestAtTx
+--- FAIL: TestEffectiveTimeline_CompactionAndRetention (0.00s)
+    --- FAIL: TestEffectiveTimeline_CompactionAndRetention/node (0.00s)
+        effective_timeline_test.go:391: scan of Q below the graph compaction watermark: <nil>, want ErrHistoryCompacted
+    --- FAIL: TestEffectiveTimeline_CompactionAndRetention/rel (0.00s)
+        effective_timeline_test.go:391: scan of Q below the graph compaction watermark: <nil>, want ErrHistoryCompacted
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	35.991s
+FAIL
+
+exit=1

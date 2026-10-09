@@ -20,8 +20,9 @@ import (
 //
 // Catches: a public door that forwards to its plain twin (t equal to TxFrom
 // then succeeds and the node is stamped with the clock), a rule that reads
-// only the current row (after a delete and a backfilled re-import the history
-// holds a TxTo above the current TxFrom, so t between them must refuse), an
+// only the current row (a bounded cascade that leaves the current row in its
+// slot appends a history row recorded after the current TxFrom, so t between
+// them must refuse), an
 // order refusal that does not match graph.ErrTxOrder / graph.ErrInvalidTxFrom
 // through the batch or ingest wrapping, and a refusal that still writes.
 // Counterpart: TxFrom+1 is stamped exactly (and, for the delete, on the
@@ -136,31 +137,29 @@ func TestNodesWithTx_TxBatchIngestFacade(t *testing.T) {
 					t.Fatalf("%s: cascaded rel history %v, %v; want one tombstone with TxTo = %d", d.name, rh, err, base+1)
 				}
 
-				// t below a history TxTo that lies above the current TxFrom
-				// (delete, then a backfilled re-import of the same id).
+				// t below a history TxFrom that lies above the current TxFrom: a
+				// bounded cascade before the first valid-from appends its row
+				// above the current row, which keeps its slot. (The fixture was
+				// a delete plus a backfilled re-import inside the first life,
+				// refused since backlog 38; the core tests keep that stored
+				// shape, TestTxBackfillNode_OrderEqualReversed.)
 				m, err := g.Nodes().AddWithTx(ctx, []string{"Ref"}, map[string]any{"tkg_valid_from": base - 1000, "w": int64(1)}, base)
 				if err != nil {
 					t.Fatalf("AddWithTx: %v", err)
 				}
-				if _, err := g.Nodes().Update(ctx, m.ID(), map[string]any{"w": int64(2)}); err != nil {
-					t.Fatalf("Update: %v", err)
+				if _, err := g.Temporal().SetNodeVersionInterval(ctx, m.ID(), base-3000, base-2000, map[string]any{"w": int64(2)}); err != nil {
+					t.Fatalf("SetNodeVersionInterval: %v", err)
 				}
-				if err := g.Nodes().Delete(ctx, m.ID()); err != nil {
-					t.Fatalf("Delete: %v", err)
-				}
-				if _, err := g.Nodes().Import(ctx, m.ID(), []string{"Ref"}, map[string]any{"tkg_valid_from": base - 1000, "tkg_tx_from": base + 10, "w": int64(3)}); err != nil {
-					t.Fatalf("Import: %v", err)
-				}
-				var hiTxTo types.Instant
+				var hiTxFrom types.Instant
 				mh, _ := g.Nodes().History(m.ID())
 				for _, h := range mh {
-					hiTxTo = max(hiTxTo, h.Temporal().TxTo)
+					hiTxFrom = max(hiTxFrom, h.Temporal().TxFrom)
 				}
-				if hiTxTo <= base+20 {
-					t.Fatalf("fixture: history TxTo %d not above %d", hiTxTo, base+20)
+				if cur, err := g.Nodes().Get(ctx, m.ID()); err != nil || cur.Temporal().TxFrom != base || hiTxFrom <= base+20 {
+					t.Fatalf("fixture: current %v (%v), history TxFrom %d not above %d", cur, err, hiTxFrom, base+20)
 				}
-				for _, at := range []types.Instant{base + 20, hiTxTo} {
-					refused(d.name+" below history TxTo", m.ID(), at, d.run)
+				for _, at := range []types.Instant{base + 20, hiTxFrom} {
+					refused(d.name+" below history TxFrom", m.ID(), at, d.run)
 				}
 			}
 		})

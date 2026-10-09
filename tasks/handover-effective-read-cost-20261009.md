@@ -31,7 +31,7 @@ whether or not they share the prefix, so a lookup for an entity WITHOUT history 
   passes (`noteHistoryKey`, badgerstore_history_count.go:51, under wbMu), built lazily once by the key-only `ForEachRelHistoryID` (history_rel.go:603;
   200 IDs took 0.2-0.5 ms). RAM is O(IDs with history); the belief-watermark sidecar is O(N) plus a value scan on first use (79 ms at 50 K rels).
   Surface `Rels().HasHistory(id)` / `Nodes()`; memory is `len(relHistory[id]) > 0`; tiered/sharded route by shard.
-- **1c:** `Temporal().RelEffectiveTimeline(id, pin)` returns `[from, to, row]` segments in valid-time order: sigma's per-segment loop in one call. Plain
+- **1c (done, Unreleased: `Temporal().Node/RelEffectiveTimeline` and the scan forms of backlog 27; tests, mutants and benchmarks in `tasks/evidence/effective-timeline/`):** `Temporal().RelEffectiveTimeline(id, pin)` returns `[from, to, row]` segments in valid-time order: sigma's per-segment loop in one call. Plain
   entity: the current row after 1b. Else skeletons + the cut-and-resolve of `correctionCuts` / `relCorrectionSegments` (temporal_cascade.go:384, 446),
   decode winners only. `RelAtTx` already is the point form of "effective at a pin"; no new point door.
 

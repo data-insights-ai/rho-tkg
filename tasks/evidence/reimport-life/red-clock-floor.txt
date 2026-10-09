@@ -1,0 +1,36 @@
+--- FAIL: TestReImportDoesNotAdvanceTheClock (0.67s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/memory/node (0.00s)
+        reimport_life_clock_test.go:56: [node] an unrelated create after the re-import is stamped 3368377005430, wall 1791577065427: the re-import advanced the commit clock
+        reimport_life_clock_test.go:56: [node] NowTx 3368377005431 after the re-import is ahead of the wall 1791577065427
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/memory/rel (0.00s)
+        reimport_life_clock_test.go:56: [rel] an unrelated create after the re-import is stamped 3368377005430, wall 1791577065427: the re-import advanced the commit clock
+        reimport_life_clock_test.go:56: [rel] NowTx 3368377005431 after the re-import is ahead of the wall 1791577065427
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/badger/node (0.00s)
+        reimport_life_clock_test.go:56: [node] an unrelated create after the re-import is stamped 3368377005432, wall 1791577065429: the re-import advanced the commit clock
+        reimport_life_clock_test.go:56: [node] NowTx 3368377005433 after the re-import is ahead of the wall 1791577065429
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/badger/rel (0.00s)
+        reimport_life_clock_test.go:56: [rel] an unrelated create after the re-import is stamped 3368377005435, wall 1791577065432: the re-import advanced the commit clock
+        reimport_life_clock_test.go:56: [rel] NowTx 3368377005436 after the re-import is ahead of the wall 1791577065432
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/sharded/node (0.04s)
+        reimport_life_clock_test.go:56: [node] an unrelated create after the re-import is stamped 3368377005472, wall 1791577065469: the re-import advanced the commit clock
+        reimport_life_clock_test.go:56: [node] NowTx 3368377005473 after the re-import is ahead of the wall 1791577065469
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/sharded/rel (0.00s)
+        reimport_life_clock_test.go:56: [rel] an unrelated create after the re-import is stamped 3368377005478, wall 1791577065476: the re-import advanced the commit clock
+        reimport_life_clock_test.go:56: [rel] NowTx 3368377005479 after the re-import is ahead of the wall 1791577065476
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/tiered/node (0.04s)
+        reimport_life_clock_test.go:56: [node] an unrelated create after the re-import is stamped 3368377005516, wall 1791577065513: the re-import advanced the commit clock
+        reimport_life_clock_test.go:56: [node] NowTx 3368377005517 after the re-import is ahead of the wall 1791577065513
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/tiered/rel (0.06s)
+        reimport_life_clock_test.go:56: [rel] an unrelated create after the re-import is stamped 3368377005577, wall 1791577065574: the re-import advanced the commit clock
+        reimport_life_clock_test.go:56: [rel] NowTx 3368377005578 after the re-import is ahead of the wall 1791577065574
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/badger-disk-reopen/node (0.26s)
+        reimport_life_clock_test.go:67: [node] an unrelated create after the re-import is stamped 3368377005644, wall 1791577065673: the re-import advanced the commit clock
+        reimport_life_clock_test.go:67: [node] NowTx 3368377005645 after the re-import is ahead of the wall 1791577065673
+        reimport_life_clock_test.go:81: after reopen the unrelated node is invisible at pin 1791577005755: graph: no entity version recorded at the given transaction time
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/badger-disk-reopen/rel (0.26s)
+        reimport_life_clock_test.go:67: [rel] an unrelated create after the re-import is stamped 3368377005918, wall 1791577065929: the re-import advanced the commit clock
+        reimport_life_clock_test.go:67: [rel] NowTx 3368377005919 after the re-import is ahead of the wall 1791577065929
+        reimport_life_clock_test.go:81: after reopen the unrelated node is invisible at pin 1791577006020: graph: no entity version recorded at the given transaction time
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.691s
+FAIL

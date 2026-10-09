@@ -153,6 +153,7 @@ var uniqueConstraintSentinels = []string{
 // History retention & compaction (ADR-0001)
 var compactionSentinels = []string{
 	"ErrHistoryCompacted",
+	"ErrTxPinTooNew",
 	"ErrCompactionProtectedTag",
 	"ErrInvalidRetentionPolicy",
 	"ErrCompactionChangeLogEnabled",

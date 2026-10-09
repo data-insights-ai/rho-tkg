@@ -1,0 +1,57 @@
+=== RUN   TestReImportRetentionPurge
+=== PAUSE TestReImportRetentionPurge
+=== CONT  TestReImportRetentionPurge
+=== RUN   TestReImportRetentionPurge/memory/rel=false/compacted=false
+=== RUN   TestReImportRetentionPurge/memory/rel=false/compacted=true
+    reimport_life_lifecycle_test.go:233: [node re-import after the purge] T: Verify*Chain = false, <nil>; chain:
+          v0 vf=5000 vt=0 tx=1791577298568..1791577298569 del=0 cur=false x=9
+          v1 vf=0 vt=0 tx=1791577298569..0 del=0 cur=true x=5
+=== RUN   TestReImportRetentionPurge/memory/rel=true/compacted=false
+=== RUN   TestReImportRetentionPurge/memory/rel=true/compacted=true
+    reimport_life_lifecycle_test.go:233: [rel re-import after the purge] T: Verify*Chain = false, <nil>; chain:
+          v0 vf=5000 vt=0 tx=1791577298572..1791577298573 del=0 cur=false x=9
+          v1 vf=0 vt=0 tx=1791577298573..0 del=0 cur=true x=5
+=== RUN   TestReImportRetentionPurge/badger/rel=false/compacted=false
+=== RUN   TestReImportRetentionPurge/badger/rel=false/compacted=true
+    reimport_life_lifecycle_test.go:233: [node re-import after the purge] T: Verify*Chain = false, <nil>; chain:
+          v0 vf=5000 vt=0 tx=1791577298573..1791577298574 del=0 cur=false x=9
+          v1 vf=0 vt=0 tx=1791577298574..0 del=0 cur=true x=5
+=== RUN   TestReImportRetentionPurge/badger/rel=true/compacted=false
+=== RUN   TestReImportRetentionPurge/badger/rel=true/compacted=true
+    reimport_life_lifecycle_test.go:233: [rel re-import after the purge] T: Verify*Chain = false, <nil>; chain:
+          v0 vf=5000 vt=0 tx=1791577298616..1791577298617 del=0 cur=false x=9
+          v1 vf=0 vt=0 tx=1791577298617..0 del=0 cur=true x=5
+=== RUN   TestReImportRetentionPurge/sharded/rel=false/compacted=false
+=== RUN   TestReImportRetentionPurge/sharded/rel=false/compacted=true
+=== RUN   TestReImportRetentionPurge/sharded/rel=true/compacted=false
+=== RUN   TestReImportRetentionPurge/sharded/rel=true/compacted=true
+=== RUN   TestReImportRetentionPurge/tiered/rel=false/compacted=false
+=== RUN   TestReImportRetentionPurge/tiered/rel=false/compacted=true
+    reimport_life_lifecycle_test.go:233: [node re-import after the purge] T: Verify*Chain = false, <nil>; chain:
+          v0 vf=5000 vt=0 tx=1791577298806..1791577298807 del=0 cur=false x=9
+          v1 vf=0 vt=0 tx=1791577298807..0 del=0 cur=true x=5
+=== RUN   TestReImportRetentionPurge/tiered/rel=true/compacted=false
+=== RUN   TestReImportRetentionPurge/tiered/rel=true/compacted=true
+    reimport_life_lifecycle_test.go:233: [rel re-import after the purge] T: Verify*Chain = false, <nil>; chain:
+          v0 vf=5000 vt=0 tx=1791577298831..1791577298832 del=0 cur=false x=9
+          v1 vf=0 vt=0 tx=1791577298832..0 del=0 cur=true x=5
+--- FAIL: TestReImportRetentionPurge (0.26s)
+    --- PASS: TestReImportRetentionPurge/memory/rel=false/compacted=false (0.00s)
+    --- FAIL: TestReImportRetentionPurge/memory/rel=false/compacted=true (0.00s)
+    --- PASS: TestReImportRetentionPurge/memory/rel=true/compacted=false (0.00s)
+    --- FAIL: TestReImportRetentionPurge/memory/rel=true/compacted=true (0.00s)
+    --- PASS: TestReImportRetentionPurge/badger/rel=false/compacted=false (0.00s)
+    --- FAIL: TestReImportRetentionPurge/badger/rel=false/compacted=true (0.01s)
+    --- PASS: TestReImportRetentionPurge/badger/rel=true/compacted=false (0.00s)
+    --- FAIL: TestReImportRetentionPurge/badger/rel=true/compacted=true (0.03s)
+    --- PASS: TestReImportRetentionPurge/sharded/rel=false/compacted=false (0.06s)
+    --- PASS: TestReImportRetentionPurge/sharded/rel=false/compacted=true (0.03s)
+    --- PASS: TestReImportRetentionPurge/sharded/rel=true/compacted=false (0.01s)
+    --- PASS: TestReImportRetentionPurge/sharded/rel=true/compacted=true (0.04s)
+    --- PASS: TestReImportRetentionPurge/tiered/rel=false/compacted=false (0.04s)
+    --- FAIL: TestReImportRetentionPurge/tiered/rel=false/compacted=true (0.01s)
+    --- PASS: TestReImportRetentionPurge/tiered/rel=true/compacted=false (0.01s)
+    --- FAIL: TestReImportRetentionPurge/tiered/rel=true/compacted=true (0.01s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.317s
+FAIL

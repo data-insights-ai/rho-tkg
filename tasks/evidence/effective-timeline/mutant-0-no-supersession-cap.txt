@@ -1,0 +1,908 @@
+MUTANT internal/core/chain_supersession.go
+--- old
+	var caps lifeEnds[T]
+
+--- new
+	var caps lifeEnds[T]
+	if len(chain) > 0 {
+		return nil
+	}
+
+=== go test ./internal/core/ -run TestBitemporalOracle|TestTxBackfillOracle|TestAtTxEndsAt
+--- FAIL: TestAtTxEndsAtClose (1.60s)
+    --- FAIL: TestAtTxEndsAtClose/memory/node (0.00s)
+        --- FAIL: TestAtTxEndsAtClose/memory/node/close-then-bounded-cascade-inside/standalone (0.00s)
+            effective_timeline_life_end_test.go:226: node close-then-bounded-cascade-inside (D=0):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561970561..1791561970562 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561970562..0 del=0 cur=true x=0
+                  v2 vf=3000 vt=4000 tx=1791561970564..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561970564..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtClose/memory/node/update-with-end-then-bounded-cascade/standalone (0.00s)
+            effective_timeline_life_end_test.go:226: node update-with-end-then-bounded-cascade (D=0):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561970562..1791561970563 del=0 cur=false x=0
+                  v1 vf=2000 vt=4000 tx=1791561970563..0 del=0 cur=true x=2
+                  v2 vf=3000 vt=4000 tx=1791561970565..0 del=0 cur=false x=2
+                  v3 vf=2500 vt=3000 tx=1791561970565..0 del=0 cur=false x=1
+    --- FAIL: TestAtTxEndsAtClose/memory/rel (0.00s)
+        --- FAIL: TestAtTxEndsAtClose/memory/rel/close-then-bounded-cascade-inside/standalone (0.00s)
+            effective_timeline_life_end_test.go:226: rel close-then-bounded-cascade-inside (D=0):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561970565..1791561970566 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561970566..0 del=0 cur=true x=0
+                  v2 vf=3000 vt=4000 tx=1791561970568..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561970568..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtClose/memory/rel/update-with-end-then-bounded-cascade/standalone (0.00s)
+            effective_timeline_life_end_test.go:226: rel update-with-end-then-bounded-cascade (D=0):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561970565..1791561970566 del=0 cur=false x=0
+                  v1 vf=2000 vt=4000 tx=1791561970566..0 del=0 cur=true x=2
+                  v2 vf=3000 vt=4000 tx=1791561970568..0 del=0 cur=false x=2
+                  v3 vf=2500 vt=3000 tx=1791561970568..0 del=0 cur=false x=1
+    --- FAIL: TestAtTxEndsAtClose/badger/node (0.17s)
+        --- FAIL: TestAtTxEndsAtClose/badger/node/close-then-bounded-cascade-inside/standalone (0.04s)
+            effective_timeline_life_end_test.go:226: node close-then-bounded-cascade-inside (D=0):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561970663..1791561970664 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561970664..0 del=0 cur=true x=0
+                  v2 vf=3000 vt=4000 tx=1791561970666..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561970666..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtClose/badger/node/update-with-end-then-bounded-cascade/standalone (0.00s)
+            effective_timeline_life_end_test.go:226: node update-with-end-then-bounded-cascade (D=0):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561970721..1791561970722 del=0 cur=false x=0
+                  v1 vf=2000 vt=4000 tx=1791561970722..0 del=0 cur=true x=2
+                  v2 vf=3000 vt=4000 tx=1791561970724..0 del=0 cur=false x=2
+                  v3 vf=2500 vt=3000 tx=1791561970724..0 del=0 cur=false x=1
+    --- FAIL: TestAtTxEndsAtClose/badger/rel (0.23s)
+        --- FAIL: TestAtTxEndsAtClose/badger/rel/close-then-bounded-cascade-inside/standalone (0.01s)
+            effective_timeline_life_end_test.go:226: rel close-then-bounded-cascade-inside (D=0):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561970794..1791561970795 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561970795..0 del=0 cur=true x=0
+                  v2 vf=3000 vt=4000 tx=1791561970797..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561970797..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtClose/badger/rel/update-with-end-then-bounded-cascade/standalone (0.03s)
+            effective_timeline_life_end_test.go:226: rel update-with-end-then-bounded-cascade (D=0):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561970838..1791561970839 del=0 cur=false x=0
+                  v1 vf=2000 vt=4000 tx=1791561970839..0 del=0 cur=true x=2
+                  v2 vf=3000 vt=4000 tx=1791561970841..0 del=0 cur=false x=2
+                  v3 vf=2500 vt=3000 tx=1791561970841..0 del=0 cur=false x=1
+    --- FAIL: TestAtTxEndsAtClose/sharded/node (0.30s)
+        --- FAIL: TestAtTxEndsAtClose/sharded/node/close-then-bounded-cascade-inside/standalone (0.02s)
+            effective_timeline_life_end_test.go:226: node close-then-bounded-cascade-inside (D=0):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561971164..1791561971165 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561971165..0 del=0 cur=true x=0
+                  v2 vf=3000 vt=4000 tx=1791561971167..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561971167..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtClose/sharded/node/update-with-end-then-bounded-cascade/standalone (0.02s)
+            effective_timeline_life_end_test.go:226: node update-with-end-then-bounded-cascade (D=0):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561971241..1791561971242 del=0 cur=false x=0
+                  v1 vf=2000 vt=4000 tx=1791561971242..0 del=0 cur=true x=2
+                  v2 vf=3000 vt=4000 tx=1791561971244..0 del=0 cur=false x=2
+                  v3 vf=2500 vt=3000 tx=1791561971244..0 del=0 cur=false x=1
+    --- FAIL: TestAtTxEndsAtClose/sharded/rel (0.25s)
+        --- FAIL: TestAtTxEndsAtClose/sharded/rel/close-then-bounded-cascade-inside/standalone (0.02s)
+            effective_timeline_life_end_test.go:226: rel close-then-bounded-cascade-inside (D=0):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561971404..1791561971405 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561971405..0 del=0 cur=true x=0
+                  v2 vf=3000 vt=4000 tx=1791561971407..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561971407..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtClose/sharded/rel/update-with-end-then-bounded-cascade/standalone (0.03s)
+            effective_timeline_life_end_test.go:226: rel update-with-end-then-bounded-cascade (D=0):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561971487..1791561971488 del=0 cur=false x=0
+                  v1 vf=2000 vt=4000 tx=1791561971488..0 del=0 cur=true x=2
+                  v2 vf=3000 vt=4000 tx=1791561971490..0 del=0 cur=false x=2
+                  v3 vf=2500 vt=3000 tx=1791561971490..0 del=0 cur=false x=1
+    --- FAIL: TestAtTxEndsAtClose/tiered/node (0.39s)
+        --- FAIL: TestAtTxEndsAtClose/tiered/node/close-then-bounded-cascade-inside/standalone (0.07s)
+            effective_timeline_life_end_test.go:226: node close-then-bounded-cascade-inside (D=0):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561971786..1791561971787 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561971787..0 del=0 cur=true x=0
+                  v2 vf=3000 vt=4000 tx=1791561971789..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561971789..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtClose/tiered/node/update-with-end-then-bounded-cascade/standalone (0.03s)
+            effective_timeline_life_end_test.go:226: node update-with-end-then-bounded-cascade (D=0):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561971846..1791561971847 del=0 cur=false x=0
+                  v1 vf=2000 vt=4000 tx=1791561971847..0 del=0 cur=true x=2
+                  v2 vf=3000 vt=4000 tx=1791561971849..0 del=0 cur=false x=2
+                  v3 vf=2500 vt=3000 tx=1791561971849..0 del=0 cur=false x=1
+    --- FAIL: TestAtTxEndsAtClose/tiered/rel (0.25s)
+        --- FAIL: TestAtTxEndsAtClose/tiered/rel/close-then-bounded-cascade-inside/standalone (0.03s)
+            effective_timeline_life_end_test.go:226: rel close-then-bounded-cascade-inside (D=0):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561972033..1791561972034 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561972034..0 del=0 cur=true x=0
+                  v2 vf=3000 vt=4000 tx=1791561972036..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561972036..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtClose/tiered/rel/update-with-end-then-bounded-cascade/standalone (0.03s)
+            effective_timeline_life_end_test.go:226: rel update-with-end-then-bounded-cascade (D=0):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561972097..1791561972098 del=0 cur=false x=0
+                  v1 vf=2000 vt=4000 tx=1791561972098..0 del=0 cur=true x=2
+                  v2 vf=3000 vt=4000 tx=1791561972100..0 del=0 cur=false x=2
+                  v3 vf=2500 vt=3000 tx=1791561972100..0 del=0 cur=false x=1
+--- FAIL: TestAtTxEndsAtDelete (4.62s)
+    --- FAIL: TestAtTxEndsAtDelete/memory/node (0.01s)
+        --- FAIL: TestAtTxEndsAtDelete/memory/node/close-bounded-inside-then-delete/standalone (0.00s)
+            effective_timeline_life_end_test.go:226: node close-bounded-inside-then-delete (D=1791561970572):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561970571, pin after): present=true, want false At(valid 1791561970571): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561970568..1791561970569 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561970569..1791561970572 del=1791561970572 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561970571..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561970571..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/node/close-bounded-inside-then-delete/graphtx (0.00s)
+            effective_timeline_life_end_test.go:226: node close-bounded-inside-then-delete (D=1791561970573):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561970572, pin after): present=true, want false At(valid 1791561970572): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561970568..1791561970569 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561970569..1791561970573 del=1791561970573 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561970571..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561970571..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/node/close-bounded-inside-then-delete/batch (0.00s)
+            effective_timeline_life_end_test.go:226: node close-bounded-inside-then-delete (D=1791561970574):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561970573, pin after): present=true, want false At(valid 1791561970573): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561970569..1791561970570 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561970570..1791561970574 del=1791561970574 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561970572..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561970572..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/node/close-bounded-inside-then-delete/ingest (0.00s)
+            effective_timeline_life_end_test.go:226: node close-bounded-inside-then-delete (D=1791561970574):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561970573, pin after): present=true, want false At(valid 1791561970573): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561970569..1791561970570 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561970570..1791561970574 del=1791561970574 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561970572..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561970572..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/node/close-bounded-inside-then-delete/DeleteWithTx (0.00s)
+            effective_timeline_life_end_test.go:226: node close-bounded-inside-then-delete (D=1791561970573):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561970572, pin after): present=true, want false At(valid 1791561970572): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561970569..1791561970570 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561970570..1791561970573 del=1791561970573 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561970572..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561970572..0 del=0 cur=false x=1
+    --- FAIL: TestAtTxEndsAtDelete/memory/rel (0.01s)
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/close-bounded-inside-then-delete/standalone (0.00s)
+            effective_timeline_life_end_test.go:226: rel close-bounded-inside-then-delete (D=1791561970583):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561970582, pin after): present=true, want false At(valid 1791561970582): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561970579..1791561970580 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561970580..1791561970583 del=1791561970583 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561970582..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561970582..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/close-bounded-inside-then-delete/graphtx (0.00s)
+            effective_timeline_life_end_test.go:226: rel close-bounded-inside-then-delete (D=1791561970585):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561970584, pin after): present=true, want false At(valid 1791561970584): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561970580..1791561970581 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561970581..1791561970585 del=1791561970585 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561970583..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561970583..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/close-bounded-inside-then-delete/batch (0.00s)
+            effective_timeline_life_end_test.go:226: rel close-bounded-inside-then-delete (D=1791561970585):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561970584, pin after): present=true, want false At(valid 1791561970584): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561970580..1791561970581 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561970581..1791561970585 del=1791561970585 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561970583..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561970583..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/close-bounded-inside-then-delete/ingest (0.00s)
+            effective_timeline_life_end_test.go:226: rel close-bounded-inside-then-delete (D=1791561970585):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561970584, pin after): present=true, want false At(valid 1791561970584): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561970580..1791561970581 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561970581..1791561970585 del=1791561970585 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561970583..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561970583..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/close-bounded-inside-then-delete/DeleteWithTx (0.00s)
+            effective_timeline_life_end_test.go:226: rel close-bounded-inside-then-delete (D=1791561970584):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561970583, pin after): present=true, want false At(valid 1791561970583): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561970580..1791561970581 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561970581..1791561970584 del=1791561970584 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561970583..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561970583..0 del=0 cur=false x=1
+    --- FAIL: TestAtTxEndsAtDelete/badger/node (0.57s)
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/close-bounded-inside-then-delete/standalone (0.02s)
+            effective_timeline_life_end_test.go:226: node close-bounded-inside-then-delete (D=1791561971073):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561971072, pin after): present=true, want false At(valid 1791561971072): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561971069..1791561971070 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561971070..1791561971073 del=1791561971073 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561971072..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561971072..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/close-bounded-inside-then-delete/graphtx (0.00s)
+            effective_timeline_life_end_test.go:226: node close-bounded-inside-then-delete (D=1791561971077):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561971076, pin after): present=true, want false At(valid 1791561971076): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561971072..1791561971073 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561971073..1791561971077 del=1791561971077 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561971075..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561971075..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/close-bounded-inside-then-delete/batch (0.01s)
+            effective_timeline_life_end_test.go:226: node close-bounded-inside-then-delete (D=1791561971090):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561971089, pin after): present=true, want false At(valid 1791561971089): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561971085..1791561971086 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561971086..1791561971090 del=1791561971090 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561971088..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561971088..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/close-bounded-inside-then-delete/ingest (0.00s)
+            effective_timeline_life_end_test.go:226: node close-bounded-inside-then-delete (D=1791561971094):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561971093, pin after): present=true, want false At(valid 1791561971093): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561971089..1791561971090 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561971090..1791561971094 del=1791561971094 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561971092..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561971092..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/node/close-bounded-inside-then-delete/DeleteWithTx (0.01s)
+            effective_timeline_life_end_test.go:226: node close-bounded-inside-then-delete (D=1791561971101):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561971100, pin after): present=true, want false At(valid 1791561971100): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561971097..1791561971098 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561971098..1791561971101 del=1791561971101 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561971100..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561971100..0 del=0 cur=false x=1
+    --- FAIL: TestAtTxEndsAtDelete/badger/rel (0.63s)
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/close-bounded-inside-then-delete/standalone (0.04s)
+            effective_timeline_life_end_test.go:226: rel close-bounded-inside-then-delete (D=1791561971554):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561971553, pin after): present=true, want false At(valid 1791561971553): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561971550..1791561971551 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561971551..1791561971554 del=1791561971554 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561971553..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561971553..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/close-bounded-inside-then-delete/graphtx (0.02s)
+            effective_timeline_life_end_test.go:226: rel close-bounded-inside-then-delete (D=1791561971578):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561971577, pin after): present=true, want false At(valid 1791561971577): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561971573..1791561971574 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561971574..1791561971578 del=1791561971578 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561971576..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561971576..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/close-bounded-inside-then-delete/batch (0.04s)
+            effective_timeline_life_end_test.go:226: rel close-bounded-inside-then-delete (D=1791561971608):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561971607, pin after): present=true, want false At(valid 1791561971607): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561971603..1791561971604 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561971604..1791561971608 del=1791561971608 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561971606..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561971606..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/close-bounded-inside-then-delete/ingest (0.05s)
+            effective_timeline_life_end_test.go:226: rel close-bounded-inside-then-delete (D=1791561971660):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561971659, pin after): present=true, want false At(valid 1791561971659): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561971655..1791561971656 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561971656..1791561971660 del=1791561971660 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561971658..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561971658..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/close-bounded-inside-then-delete/DeleteWithTx (0.06s)
+            effective_timeline_life_end_test.go:226: rel close-bounded-inside-then-delete (D=1791561971722):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561971721, pin after): present=true, want false At(valid 1791561971721): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561971718..1791561971719 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561971719..1791561971722 del=1791561971722 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561971721..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561971721..0 del=0 cur=false x=1
+    --- FAIL: TestAtTxEndsAtDelete/sharded/node (1.06s)
+        --- FAIL: TestAtTxEndsAtDelete/sharded/node/close-bounded-inside-then-delete/standalone (0.02s)
+            effective_timeline_life_end_test.go:226: node close-bounded-inside-then-delete (D=1791561972685):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561972684, pin after): present=true, want false At(valid 1791561972684): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561972681..1791561972682 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561972682..1791561972685 del=1791561972685 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561972684..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561972684..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/node/close-bounded-inside-then-delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:226: node close-bounded-inside-then-delete (D=1791561972702):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561972701, pin after): present=true, want false At(valid 1791561972701): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561972697..1791561972698 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561972698..1791561972702 del=1791561972702 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561972700..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561972700..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/node/close-bounded-inside-then-delete/batch (0.02s)
+            effective_timeline_life_end_test.go:226: node close-bounded-inside-then-delete (D=1791561972721):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561972720, pin after): present=true, want false At(valid 1791561972720): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561972716..1791561972717 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561972717..1791561972721 del=1791561972721 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561972719..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561972719..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/node/close-bounded-inside-then-delete/ingest (0.01s)
+            effective_timeline_life_end_test.go:226: node close-bounded-inside-then-delete (D=1791561972735):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561972734, pin after): present=true, want false At(valid 1791561972734): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561972730..1791561972731 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561972731..1791561972735 del=1791561972735 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561972733..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561972733..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/node/close-bounded-inside-then-delete/DeleteWithTx (0.02s)
+            effective_timeline_life_end_test.go:226: node close-bounded-inside-then-delete (D=1791561972756):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561972755, pin after): present=true, want false At(valid 1791561972755): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561972752..1791561972753 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561972753..1791561972756 del=1791561972756 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561972755..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561972755..0 del=0 cur=false x=1
+    --- FAIL: TestAtTxEndsAtDelete/sharded/rel (0.74s)
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/close-bounded-inside-then-delete/standalone (0.02s)
+            effective_timeline_life_end_test.go:226: rel close-bounded-inside-then-delete (D=1791561973370):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561973369, pin after): present=true, want false At(valid 1791561973369): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561973366..1791561973367 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561973367..1791561973370 del=1791561973370 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561973369..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561973369..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/close-bounded-inside-then-delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:226: rel close-bounded-inside-then-delete (D=1791561973385):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561973384, pin after): present=true, want false At(valid 1791561973384): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561973380..1791561973381 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561973381..1791561973385 del=1791561973385 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561973383..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561973383..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/close-bounded-inside-then-delete/batch (0.02s)
+            effective_timeline_life_end_test.go:226: rel close-bounded-inside-then-delete (D=1791561973405):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561973404, pin after): present=true, want false At(valid 1791561973404): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561973400..1791561973401 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561973401..1791561973405 del=1791561973405 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561973403..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561973403..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/close-bounded-inside-then-delete/ingest (0.04s)
+            effective_timeline_life_end_test.go:226: rel close-bounded-inside-then-delete (D=1791561973449):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561973448, pin after): present=true, want false At(valid 1791561973448): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561973444..1791561973445 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561973445..1791561973449 del=1791561973449 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561973447..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561973447..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/close-bounded-inside-then-delete/DeleteWithTx (0.01s)
+            effective_timeline_life_end_test.go:226: rel close-bounded-inside-then-delete (D=1791561973460):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561973459, pin after): present=true, want false At(valid 1791561973459): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561973456..1791561973457 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561973457..1791561973460 del=1791561973460 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561973459..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561973459..0 del=0 cur=false x=1
+    --- FAIL: TestAtTxEndsAtDelete/tiered/node (0.84s)
+        --- FAIL: TestAtTxEndsAtDelete/tiered/node/close-bounded-inside-then-delete/standalone (0.02s)
+            effective_timeline_life_end_test.go:226: node close-bounded-inside-then-delete (D=1791561974178):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561974177, pin after): present=true, want false At(valid 1791561974177): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561974174..1791561974175 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561974175..1791561974178 del=1791561974178 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561974177..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561974177..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/node/close-bounded-inside-then-delete/graphtx (0.02s)
+            effective_timeline_life_end_test.go:226: node close-bounded-inside-then-delete (D=1791561974203):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561974202, pin after): present=true, want false At(valid 1791561974202): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561974198..1791561974199 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561974199..1791561974203 del=1791561974203 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561974201..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561974201..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/node/close-bounded-inside-then-delete/batch (0.05s)
+            effective_timeline_life_end_test.go:226: node close-bounded-inside-then-delete (D=1791561974251):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561974250, pin after): present=true, want false At(valid 1791561974250): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561974246..1791561974247 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561974247..1791561974251 del=1791561974251 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561974249..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561974249..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/node/close-bounded-inside-then-delete/ingest (0.02s)
+            effective_timeline_life_end_test.go:226: node close-bounded-inside-then-delete (D=1791561974274):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561974273, pin after): present=true, want false At(valid 1791561974273): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561974269..1791561974270 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561974270..1791561974274 del=1791561974274 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561974272..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561974272..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/node/close-bounded-inside-then-delete/DeleteWithTx (0.02s)
+            effective_timeline_life_end_test.go:226: node close-bounded-inside-then-delete (D=1791561974296):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561974295, pin after): present=true, want false At(valid 1791561974295): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561974292..1791561974293 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561974293..1791561974296 del=1791561974296 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561974295..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561974295..0 del=0 cur=false x=1
+    --- FAIL: TestAtTxEndsAtDelete/tiered/rel (0.75s)
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/close-bounded-inside-then-delete/standalone (0.02s)
+            effective_timeline_life_end_test.go:226: rel close-bounded-inside-then-delete (D=1791561975012):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561975011, pin after): present=true, want false At(valid 1791561975011): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561975008..1791561975009 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561975009..1791561975012 del=1791561975012 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561975011..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561975011..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/close-bounded-inside-then-delete/graphtx (0.02s)
+            effective_timeline_life_end_test.go:226: rel close-bounded-inside-then-delete (D=1791561975030):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561975029, pin after): present=true, want false At(valid 1791561975029): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561975025..1791561975026 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561975026..1791561975030 del=1791561975030 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561975028..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561975028..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/close-bounded-inside-then-delete/batch (0.03s)
+            effective_timeline_life_end_test.go:226: rel close-bounded-inside-then-delete (D=1791561975065):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561975064, pin after): present=true, want false At(valid 1791561975064): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561975060..1791561975061 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561975061..1791561975065 del=1791561975065 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561975063..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561975063..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/close-bounded-inside-then-delete/ingest (0.02s)
+            effective_timeline_life_end_test.go:226: rel close-bounded-inside-then-delete (D=1791561975079):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561975078, pin after): present=true, want false At(valid 1791561975078): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561975074..1791561975075 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561975075..1791561975079 del=1791561975079 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561975077..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561975077..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/close-bounded-inside-then-delete/DeleteWithTx (0.02s)
+            effective_timeline_life_end_test.go:226: rel close-bounded-inside-then-delete (D=1791561975094):
+                  [AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 4500, pin after): present=true, want false At(valid 4500): present=true, want false AtTx(valid 5000, pin after): present=true, want false At(valid 5000): present=true, want false AtTx(valid 5999, pin after): present=true, want false At(valid 5999): present=true, want false AtTx(valid 6000, pin after): present=true, want false At(valid 6000): present=true, want false AtTx(valid 6001, pin after): present=true, want false At(valid 6001): present=true, want false AtTx(valid 1000000000, pin after): present=true, want false At(valid 1000000000): present=true, want false AtTx(valid 4000, pin after): present=true, want false At(valid 4000): present=true, want false AtTx(valid 4001, pin after): present=true, want false At(valid 4001): present=true, want false AtTx(valid 1791561975093, pin after): present=true, want false At(valid 1791561975093): present=true, want false]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791561975090..1791561975091 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791561975091..1791561975094 del=1791561975094 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791561975093..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791561975093..0 del=0 cur=false x=1
+--- FAIL: TestTxBackfillOracle_CrossBackend (12.72s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064278 (0.01s)
+        bitemporaloracle_test.go:1183: MISMATCH [NodesAtTx] seed=8064278 backend=memory
+            probe: point validAt=1791566001822 txAt=1791566033001
+            oracle: {797454179843670016#v0, 797454179844259840#v0, 797454179844390912#v2, 797454179869261824#v2, 797454179873521664#v0, 797454179873783808#v0}
+            door:   {797454179843670016#v0, 797454179844259840#v0, 797454179844390912#v2, 797454179869261824#v2, 797454179873521664#v2, 797454179873783808#v0}
+            op log (52):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(R) -> ok
+               4. linkNodes(S 797454179844521984->797454179844390912) -> ok
+               5. graphtx/Rels.UpdateWithTx(797454179845506048,t=1791566001094) closed=true -> graph: entity already closed
+               6. linkNodes(S 797454179843670016->797454179844521984) -> ok
+               7. addLabel(797454179844521984,B) -> ok
+               8. ingest_concurrent/Rels.DeleteWithTx(797454179848553472,t=1791566004775) -> ok
+               9. updateRel(797454179845768192) -> ok
+              10. deleteNode(797454179844521984) -> ok
+              11. backfillNode(tx=1791565985675) -> ok
+              12. ingest_sync/Rels.UpdateWithTx(797454179844785152,t=1791566004080) closed=false -> ok
+              13. cascadeNode(797454179844390912,[3363,5287)) -> ok
+              14. batch/Rels.DeleteWithTx(797454179844785152,t=1791566005394) -> ok
+              15. addLabel(797454179844390912,A) -> ok
+              16. closeRel(797454179845506048,3687) -> graph: entity already closed
+              17. batch/Nodes.DeleteWithTx(797454179852386304,t=1791565997044) hood=[] -> ok
+              18. addLabel(797454179844390912,B) -> ok
+              19. linkNodes(S 797454179843670016->797454179844390912) -> ok
+              20. standalone/Rels.DeleteWithTx(797454179845506048,t=1791566001824) -> ok
+              21. deleteRel(797454179845768192) -> graph: relationship not found
+              22. closeRel(797454179865560064,4196) -> graph: entity already closed
+              23. addNode -> ok
+              24. ingest_concurrent/Nodes.DeleteWithTx(797454179869261824,t=1791566019999) hood=[] -> graph: concurrent ingest group refused before any write: batch DeleteNodeWithTx (ID 797454179869261824): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791566019999 is not after the recorded TxFrom 1791566020000
+              25. updateNode(797454179844390912) -> graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 4623 <= prev 1791561970234
+              26. standalone/Nodes.UpdateWithTx(797454179844390912,t=1791566012000) closed=false -> graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791566012000 is not after the recorded version start 1791566012000
+              27. deleteRel(797454179845768192) -> graph: relationship not found
+              28. cascadeRel(797454179845768192,[1691,1871)) -> graph: entity is deleted: relationship 797454179845768192: graph: relationship not found
+              29. cascadeNode(797454179869261824,[831,1339)) -> ok
+              30. cascadeRel(797454179845768192,[2105,2106)) -> graph: entity is deleted: relationship 797454179845768192: graph: relationship not found
+              31. addNode -> ok
+              32. backfillNode(tx=1791565982562) -> ok
+              33. cascadeNode(797454179873521664,[4314,5121)) -> ok
+              34. ingest_concurrent/Rels.DeleteWithTx(797454179865560064,t=1791566015998) -> graph: concurrent ingest group refused before any write: batch DeleteRelationshipWithTx (ID 797454179865560064): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791566015998 is not after the recorded TxFrom 1791566016000
+              35. cascadeNode(797454179869261824,[3648,0)) -> ok
+              36. closeNode(797454179873521664,5726) -> ok
+              37. cascadeNode(797454179873521664,[4333,5194)) -> ok
+              38. closeNode(797454179869261824,5904) -> ok
+              39. linkNodes(S 797454179844390912->797454179873783808) -> ok
+              40. linkNodes(R 797454179843670016->797454179873783808) -> ok
+              41. linkNodes(R 797454179844390912->797454179869261824) -> ok
+              42. cascadeRel(797454179845768192,[1102,2498)) -> graph: entity is deleted: relationship 797454179845768192: graph: relationship not found
+              43. linkNodes(R 797454179843670016->797454179873783808) -> ok
+              44. ingest_concurrent/Nodes.DeleteWithTx(797454179873783808,t=1791566040243) hood=[797454179876930560 797454179877159936 797454179877716992] -> ok
+              45. standalone/Rels.UpdateWithTx(797454179865560064,t=1791566026000) closed=true -> graph: entity already closed
+              46. ingest_concurrent/Rels.DeleteWithTx(797454179865560064,t=1791566033066) -> ok
+              47. standalone/Nodes.DeleteWithTx(797454179844390912,t=1791566040521) hood=[797454179877389312] -> ok
+              48. cascadeRel(797454179877159936,[3936,0)) -> graph: entity is deleted: relationship 797454179877159936: graph: relationship not found
+              49. updateNode(797454179873521664) -> graph: entity already closed
+              50. deleteNode(797454179869261824) -> ok
+              51. addLabel(797454179873521664,A) -> graph: entity already closed
+            
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064282 (0.00s)
+        bitemporaloracle_test.go:1183: MISMATCH [RelsAtTx] seed=8064282 backend=memory
+            probe: point validAt=7660 txAt=1791566034213
+            oracle: {797454234931332096#v0, 797454234931561472#v0, 797454234933888000#v0}
+            door:   {797454234931332096#v0, 797454234931561472#v0, 797454234931659776#v0, 797454234933888000#v0}
+            op log (43):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. linkNodes(R 797454234931101696->797454234931200000) -> ok
+               5. ingest_concurrent/Rels.DeleteWithTx(797454234931332096,t=1791566001115) -> ok
+               6. cascadeRel(797454234931659776,[1744,2788)) -> ok
+               7. deleteRel(797454234931561472) -> ok
+               8. cascadeNode(797454234931200000,[1642,2152)) -> ok
+               9. linkNodes(S 797454234931101696->797454234931200000) -> ok
+              10. closeNode(797454234931200000,3495) -> graph: entity already closed
+              11. cascadeRel(797454234931659776,[1518,2815)) -> ok
+              12. ingest_sync/Rels.UpdateWithTx(797454234931659776,t=1791566007999) closed=false -> graph: batch execution had failed operations: refused before any write: batch UpdateRelationshipWithTx (ID 797454234931659776): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791566007999 is not after the recorded TxFrom 1791566008000
+              13. backfillNode(tx=1791566000199) -> ok
+              14. deleteRel(797454234933888000) -> ok
+              15. closeRel(797454234931659776,4317) -> ok
+              16. addNode -> ok
+              17. addLabel(797454234936770560,B) -> graph: entity already closed
+              18. backfillNode(tx=1791565964620) -> ok
+              19. closeNode(797454234931200000,5180) -> graph: entity already closed
+              20. addNode -> ok
+              21. backfillNode(tx=1791565971317) -> ok
+              22. updateRel(797454234931659776) -> graph: entity already closed
+              23. updateNode(797454234937491456) -> graph: entity already closed
+              24. backfillNode(tx=1791565972310) -> ok
+              25. batch/Nodes.UpdateWithTx(797454234937491456,t=1791565993706) closed=true -> graph: batch execution had failed operations: refused before any write: batch UpdateNodeWithTx (ID 797454234937491456): graph: entity already closed
+              26. batch/Nodes.DeleteWithTx(797454234937425920,t=1791566020085) hood=[] -> ok
+              27. graphtx/Nodes.UpdateWithTx(797454234931200000,t=1791566013141) closed=true -> graph: entity already closed
+              28. closeRel(797454234931659776,6559) -> graph: entity already closed
+              29. deleteRel(797454234931659776) -> ok
+              30. backfillNode(tx=1791566018710) -> ok
+              31. deleteNode(797454234942341120) -> ok
+              32. addNode -> ok
+              33. addLabel(797454234931101696,A) -> graph: entity already closed
+              34. cascadeNode(797454234937196544,[3088,0)) -> ok
+              35. addNode -> ok
+              36. deleteNode(797454234931101696) -> ok
+              37. graphtx/Nodes.UpdateWithTx(797454234942537728,t=1791566034212) closed=false -> ok
+              38. addNode -> ok
+              39. ingest_concurrent/Nodes.UpdateWithTx(797454234942537728,t=1791566034212) closed=false -> graph: concurrent ingest group refused before any write: batch UpdateNodeWithTx (ID 797454234942537728): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791566034212 is not after the recorded version start 1791566034212
+              40. ingest_concurrent/Nodes.DeleteWithTx(797454234942537728,t=1791566039922) hood=[] -> ok
+              41. graphtx/Nodes.UpdateWithTx(797454234936770560,t=1791566035787) closed=true -> graph: entity already closed
+              42. addLabel(797454234945126400,C) -> ok
+            
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064286 (0.00s)
+        bitemporaloracle_test.go:1183: MISMATCH [RelsAtTx] seed=8064286 backend=memory
+            probe: point validAt=1791566005998 txAt=1791566027349
+            oracle: {797454284241372160#v0, 797454284241536000#v0}
+            door:   {797454284241044480#v3, 797454284241372160#v0, 797454284241536000#v0}
+            op log (40):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. linkNodes(S 797454284239208448->797454284240617472) -> ok
+               5. cascadeRel(797454284241044480,[1912,3241)) -> ok
+               6. graphtx/Nodes.UpdateWithTx(797454284240617472,t=1791566002331) closed=true -> graph: entity already closed
+               7. ingest_concurrent/Nodes.DeleteWithTx(797454284240617472,t=1791566001002) hood=[797454284241536000] -> graph: concurrent ingest group refused before any write: batch DeleteNodeWithTx (ID 797454284240617472): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791566001002 is not after the recorded TxFrom 1791566001002
+               8. closeNode(797454284240617472,3836) -> graph: entity already closed
+               9. addLabel(797454284240879616,B) -> ok
+              10. backfillNode(tx=1791565970857) -> ok
+              11. ingest_concurrent/Rels.UpdateWithTx(797454284241044480,t=1791566003295) closed=true -> graph: concurrent ingest group refused before any write: batch UpdateRelationshipWithTx (ID 797454284241044480): graph: entity already closed
+              12. graphtx/Rels.UpdateWithTx(797454284241044480,t=1791566008773) closed=true -> graph: entity already closed
+              13. addLabel(797454284240879616,A) -> ok
+              14. updateRel(797454284241372160) -> ok
+              15. deleteNode(797454284240617472) -> ok
+              16. standalone/Rels.UpdateWithTx(797454284241044480,t=1791566005507) closed=true -> graph: entity already closed
+              17. deleteNode(797454284240879616) -> ok
+              18. closeRel(797454284241372160,4278) -> graph: invalid time range: close time 4278 must be after relationship valid-from 1791561973420
+              19. deleteRel(797454284241372160) -> ok
+              20. ingest_concurrent/Rels.UpdateWithTx(797454284241044480,t=1791566012913) closed=true -> graph: concurrent ingest group refused before any write: batch UpdateRelationshipWithTx (ID 797454284241044480): graph: entity already closed
+              21. updateRel(797454284241044480) -> graph: entity already closed
+              22. cascadeRel(797454284241044480,[2314,0)) -> ok
+              23. addNode -> ok
+              24. closeRel(797454284241044480,4962) -> ok
+              25. graphtx/Rels.DeleteWithTx(797454284241044480,t=1791566021509) -> ok
+              26. standalone/Nodes.UpdateWithTx(797454284249432064,t=1791565970857) closed=false -> graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791565970857 is not after the recorded TxFrom 1791565970857
+              27. linkNodes(S 797454284239208448->797454284255199232) -> ok
+              28. closeRel(797454284258804736,5240) -> ok
+              29. deleteRel(797454284241536000) -> graph: relationship not found
+              30. deleteRel(797454284241536000) -> graph: relationship not found
+              31. graphtx/Rels.UpdateWithTx(797454284258804736,t=1791566026976) closed=true -> graph: entity already closed
+              32. updateRel(797454284241536000) -> graph: relationship not found
+              33. batch/Rels.UpdateWithTx(797454284258804736,t=1791566028923) closed=true -> graph: batch execution had failed operations: refused before any write: batch UpdateRelationshipWithTx (ID 797454284258804736): graph: entity already closed
+              34. standalone/Nodes.DeleteWithTx(797454284255199232,t=1791566027349) hood=[797454284258804736] -> ok
+              35. cascadeRel(797454284241536000,[1918,4014)) -> graph: entity is deleted: relationship 797454284241536000: graph: relationship not found
+              36. linkNodes(R 797454284239208448->797454284249432064) -> ok
+              37. deleteNode(797454284249432064) -> ok
+              38. deleteRel(797454284258804736) -> graph: relationship not found
+              39. cascadeRel(797454284241536000,[3597,0)) -> graph: entity is deleted: relationship 797454284241536000: graph: relationship not found
+            
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064287 (0.00s)
+        bitemporaloracle_test.go:1183: MISMATCH [NodesAtTx] seed=8064287 backend=memory
+            probe: point validAt=4996 txAt=1791566013593
+            oracle: {797454284314411008#v0, 797454284314705920#v0, 797454284314836992#v0, 797454284321259520#v0, 797454284330893312#v0, 797454284335448064#v0}
+            door:   {797454284314411008#v0, 797454284314705920#v0, 797454284314836992#v0, 797454284314968064#v1, 797454284321259520#v0, 797454284330893312#v0, 797454284335448064#v0}
+            op log (42):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(R) -> ok
+               4. linkNodes(R 797454284314836992->797454284314968064) -> ok
+               5. addLabel(797454284314836992,B) -> ok
+               6. updateNode(797454284314968064) -> ok
+               7. closeNode(797454284314968064,3331) -> ok
+               8. updateNode(797454284314836992) -> graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 3496 <= prev 1791561973422
+               9. updateNode(797454284314968064) -> graph: entity already closed
+              10. standalone/Nodes.DeleteWithTx(797454284314836992,t=1791566002000) hood=[797454284315689984] -> graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791566002000 is not after the recorded version start 1791566002000
+              11. updateRel(797454284315689984) -> ok
+              12. batch/Nodes.UpdateWithTx(797454284314968064,t=1791566008733) closed=true -> graph: batch execution had failed operations: refused before any write: batch UpdateNodeWithTx (ID 797454284314968064): graph: entity already closed
+              13. addNode -> ok
+              14. addLabel(797454284321259520,C) -> ok
+              15. deleteRel(797454284315067392) -> ok
+              16. cascadeNode(797454284314968064,[1021,2061)) -> ok
+              17. batch/Nodes.DeleteWithTx(797454284314968064,t=1791566013592) hood=[797454284315689984] -> ok
+              18. closeNode(797454284321259520,4243) -> graph: invalid time range: close time 4243 must be after node valid-from 1791561973422
+              19. graphtx/Rels.DeleteWithTx(797454284315395072,t=1791566004504) -> ok
+              20. addLabel(797454284321259520,A) -> ok
+              21. backfillNode(tx=1791565976431) -> ok
+              22. deleteNode(797454284314836992) -> ok
+              23. deleteNode(797454284330893312) -> ok
+              24. standalone/Nodes.DeleteWithTx(797454284321259520,t=1791566014026) hood=[] -> ok
+              25. cascadeRel(797454284315689984,[4894,0)) -> graph: entity is deleted: relationship 797454284315689984: graph: relationship not found
+              26. deleteRel(797454284315689984) -> graph: relationship not found
+              27. cascadeRel(797454284315689984,[1587,0)) -> graph: entity is deleted: relationship 797454284315689984: graph: relationship not found
+              28. cascadeRel(797454284315689984,[4883,5601)) -> graph: entity is deleted: relationship 797454284315689984: graph: relationship not found
+              29. backfillNode(tx=1791565978815) -> ok
+              30. cascadeNode(797454284335448064,[4408,0)) -> ok
+              31. batch/Nodes.UpdateWithTx(797454284335448064,t=1791566031365) closed=false -> ok
+              32. cascadeRel(797454284315689984,[3153,0)) -> graph: entity is deleted: relationship 797454284315689984: graph: relationship not found
+              33. updateRel(797454284315689984) -> graph: relationship not found
+              34. cascadeRel(797454284315689984,[4927,5590)) -> graph: entity is deleted: relationship 797454284315689984: graph: relationship not found
+              35. deleteNode(797454284335448064) -> ok
+              36. addNode -> ok
+              37. batch/Nodes.DeleteWithTx(797454284340101120,t=1791566040999) hood=[] -> graph: batch execution had failed operations: refused before any write: batch DeleteNodeWithTx (ID 797454284340101120): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791566040999 is not after the recorded TxFrom 1791566041000
+              38. deleteNode(797454284340101120) -> ok
+              39. addNode -> ok
+              40. backfillNode(tx=1791566039927) -> ok
+              41. batch/Nodes.UpdateWithTx(797454284342362112,t=1791566044999) closed=true -> graph: batch execution had failed operations: refused before any write: batch UpdateNodeWithTx (ID 797454284342362112): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791566044999 is not after the recorded TxFrom 1791566045000
+            
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064292 (0.00s)
+        bitemporaloracle_test.go:1183: MISMATCH [RelsAtTx] seed=8064292 backend=memory
+            probe: point validAt=1791566020998 txAt=1791566046001
+            oracle: {797454330118145024#v3, 797454330120504320#v0, 797454330127942656#v0}
+            door:   {797454330118145024#v3, 797454330120504320#v0, 797454330122568704#v0, 797454330127942656#v0}
+            op log (53):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(R) -> ok
+               4. linkNodes(R 797454330117652480->797454330117947392) -> ok
+               5. addNode -> ok
+               6. addNode -> ok
+               7. ingest_concurrent/Rels.DeleteWithTx(797454330118636544,t=1791566002085) -> ok
+               8. addNode -> ok
+               9. addLabel(797454330120273920,C) -> ok
+              10. linkNodes(S 797454330118012928->797454330117947392) -> ok
+              11. backfillNode(tx=1791566003485) -> ok
+              12. updateNode(797454330118733824) -> ok
+              13. closeNode(797454330118012928,5435) -> ok
+              14. graphtx/Rels.UpdateWithTx(797454330118505472,t=1791566006375) closed=false -> ok
+              15. addNode -> ok
+              16. backfillNode(tx=1791565956475) -> ok
+              17. updateNode(797454330118733824) -> ok
+              18. addNode -> ok
+              19. addLabel(797454330122207232,A) -> ok
+              20. linkNodes(S 797454330117947392->797454330122436608) -> ok
+              21. ingest_concurrent/Rels.DeleteWithTx(797454330118505472,t=1791566013935) -> ok
+              22. ingest_sync/Nodes.UpdateWithTx(797454330117947392,t=1791566001002) closed=false -> graph: batch execution had failed operations: refused before any write: batch UpdateNodeWithTx (ID 797454330117947392): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791566001002 is not after the recorded TxFrom 1791566001002
+              23. addLabel(797454330118733824,B) -> ok
+              24. cascadeNode(797454330122207232,[6606,7634)) -> ok
+              25. ingest_sync/Nodes.DeleteWithTx(797454330117947392,t=1791566001001) hood=[797454330122568704 797454330120504320] -> graph: batch execution had failed operations: refused before any write: batch DeleteNodeWithTx (ID 797454330117947392): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791566001001 is not after the recorded TxFrom 1791566001002
+              26. backfillNode(tx=1791565972661) -> ok
+              27. backfillNode(tx=1791566003673) -> ok
+              28. cascadeNode(797454330127548416,[1719,1720)) -> ok
+              29. updateNode(797454330127450112) -> ok
+              30. closeNode(797454330122207232,7703) -> graph: invalid time range: close time 7703 must be after node valid-from 1791561974820
+              31. updateNode(797454330118012928) -> graph: entity already closed
+              32. linkNodes(S 797454330117652480->797454330122436608) -> ok
+              33. deleteNode(797454330122207232) -> ok
+              34. ingest_sync/Nodes.UpdateWithTx(797454330118799360,t=1791566005431) closed=false -> ok
+              35. standalone/Rels.UpdateWithTx(797454330127942656,t=1791566031537) closed=false -> ok
+              36. batch/Rels.UpdateWithTx(797454330118145024,t=1791566006640) closed=false -> ok
+              37. updateNode(797454330127548416) -> ok
+              38. addNode -> ok
+              39. ingest_concurrent/Rels.DeleteWithTx(797454330122568704,t=1791566017000) -> graph: concurrent ingest group refused before any write: batch DeleteRelationshipWithTx (ID 797454330122568704): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791566017000 is not after the recorded TxFrom 1791566017000
+              40. closeRel(797454330122568704,9214) -> ok
+              41. cascadeRel(797454330122568704,[2111,2898)) -> ok
+              42. deleteRel(797454330122568704) -> ok
+              43. deleteRel(797454330120504320) -> ok
+              44. ingest_sync/Nodes.UpdateWithTx(797454330118012928,t=1791566035866) closed=true -> graph: batch execution had failed operations: refused before any write: batch UpdateNodeWithTx (ID 797454330118012928): graph: entity already closed
+              45. ingest_concurrent/Nodes.UpdateWithTx(797454330122272768,t=1791565956473) closed=true -> graph: concurrent ingest group refused before any write: batch UpdateNodeWithTx (ID 797454330122272768): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791565956473 is not after the recorded TxFrom 1791565956475
+              46. cascadeNode(797454330122436608,[4631,0)) -> ok
+              47. cascadeRel(797454330118145024,[5763,0)) -> ok
+              48. cascadeRel(797454330118145024,[1911,2726)) -> ok
+              49. addNode -> ok
+              50. cascadeRel(797454330127942656,[6183,0)) -> ok
+              51. standalone/Nodes.UpdateWithTx(797454330118012928,t=1791566038891) closed=true -> graph: entity already closed
+              52. updateRel(797454330118145024) -> ok
+            
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064308 (0.00s)
+        bitemporaloracle_test.go:1183: MISMATCH [RelsAtTx] seed=8064308 backend=memory
+            probe: point validAt=7333 txAt=1791566015000
+            oracle: {797454459472217088#v2, 797454459472544768#v0, 797454459472675840#v0}
+            door:   {797454459472217088#v2, 797454459472544768#v2, 797454459472675840#v0}
+            op log (47):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. linkNodes(S 797454459471953920->797454459472084992) -> ok
+               5. cascadeNode(797454459471953920,[1732,2942)) -> ok
+               6. deleteNode(797454459472084992) -> ok
+               7. cascadeRel(797454459472217088,[3466,3801)) -> ok
+               8. addNode -> ok
+               9. cascadeNode(797454459471953920,[855,2797)) -> ok
+              10. backfillNode(tx=1791566005336) -> ok
+              11. cascadeRel(797454459472544768,[1976,3732)) -> ok
+              12. deleteRel(797454459472217088) -> ok
+              13. cascadeRel(797454459472675840,[2020,0)) -> graph: entity is deleted: relationship 797454459472675840: graph: relationship not found
+              14. closeRel(797454459472544768,4006) -> ok
+              15. addNode -> ok
+              16. addLabel(797454459475165184,C) -> ok
+              17. deleteRel(797454459472675840) -> graph: relationship not found
+              18. deleteNode(797454459474051072) -> ok
+              19. updateRel(797454459472544768) -> graph: entity already closed
+              20. deleteNode(797454459475165184) -> ok
+              21. linkNodes(S 797454459471298560->797454459474444288) -> ok
+              22. backfillNode(tx=1791565964966) -> ok
+              23. ingest_concurrent/Rels.UpdateWithTx(797454459472544768,t=1791566012708) closed=true -> graph: concurrent ingest group refused before any write: batch UpdateRelationshipWithTx (ID 797454459472544768): graph: entity already closed
+              24. cascadeRel(797454459472675840,[2928,4743)) -> graph: entity is deleted: relationship 797454459472675840: graph: relationship not found
+              25. standalone/Nodes.UpdateWithTx(797454459471953920,t=1791566013288) closed=true -> graph: entity already closed
+              26. batch/Nodes.DeleteWithTx(797454459471953920,t=1791566014703) hood=[] -> ok
+              27. cascadeNode(797454459474444288,[808,1674)) -> ok
+              28. cascadeNode(797454459474444288,[5284,0)) -> ok
+              29. ingest_sync/Rels.UpdateWithTx(797454459472544768,t=1791566019524) closed=true -> graph: batch execution had failed operations: refused before any write: batch UpdateRelationshipWithTx (ID 797454459472544768): graph: entity already closed
+              30. graphtx/Rels.DeleteWithTx(797454459475723264,t=1791566020832) -> ok
+              31. linkNodes(S 797454459471298560->797454459475853312) -> ok
+              32. closeNode(797454459474444288,5993) -> ok
+              33. updateRel(797454459488175104) -> ok
+              34. deleteNode(797454459475853312) -> ok
+              35. linkNodes(S 797454459471298560->797454459474444288) -> ok
+              36. linkNodes(S 797454459471298560->797454459474444288) -> ok
+              37. deleteRel(797454459488896000) -> ok
+              38. ingest_concurrent/Rels.DeleteWithTx(797454459472544768,t=1791566034471) -> ok
+              39. linkNodes(S 797454459471298560->797454459474444288) -> ok
+              40. cascadeNode(797454459474444288,[7333,0)) -> ok
+              41. standalone/Rels.DeleteWithTx(797454459491615744,t=1791566036096) -> ok
+              42. ingest_concurrent/Rels.DeleteWithTx(797454459488994304,t=1791566038938) -> ok
+              43. deleteNode(797454459474444288) -> ok
+              44. deleteRel(797454459472675840) -> graph: relationship not found
+              45. addNode -> ok
+              46. deleteRel(797454459488175104) -> graph: relationship not found
+            
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064315 (0.00s)
+        bitemporaloracle_test.go:1183: MISMATCH [NodesAtTx] seed=8064315 backend=memory
+            probe: point validAt=1791566023002 txAt=1791566017667
+            oracle: {797454503514996736#v0, 797454503515553792#v0, 797454503515684864#v0, 797454503522697216#v0, 797454503536099328#v0}
+            door:   {797454503514996736#v0, 797454503515553792#v0, 797454503515684864#v2, 797454503522697216#v0, 797454503536099328#v0}
+            op log (49):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. linkNodes(S 797454503514996736->797454503515848704) -> ok
+               5. batch/Rels.DeleteWithTx(797454503516308480,t=1791566001200) -> ok
+               6. backfillNode(tx=1791565947199) -> ok
+               7. cascadeNode(797454503515684864,[989,3018)) -> ok
+               8. standalone/Nodes.DeleteWithTx(797454503518535680,t=1791565960968) hood=[] -> ok
+               9. deleteRel(797454503515980800) -> ok
+              10. updateRel(797454503516374016) -> graph: entity already closed
+              11. updateRel(797454503516374016) -> graph: entity already closed
+              12. updateNode(797454503515848704) -> ok
+              13. updateRel(797454503516374016) -> graph: entity already closed
+              14. graphtx/Nodes.UpdateWithTx(797454503515848704,t=1791566010770) closed=false -> ok
+              15. addNode -> ok
+              16. closeNode(797454503515848704,3866) -> graph: invalid time range: close time 3866 must be after node valid-from 1791561980112
+              17. backfillNode(tx=1791565968735) -> ok
+              18. closeNode(797454503515684864,4619) -> ok
+              19. cascadeRel(797454503516374016,[4361,4362)) -> ok
+              20. ingest_concurrent/Nodes.UpdateWithTx(797454503515684864,t=1791566016756) closed=true -> graph: concurrent ingest group refused before any write: batch UpdateNodeWithTx (ID 797454503515684864): graph: entity already closed
+              21. ingest_concurrent/Nodes.DeleteWithTx(797454503515848704,t=1791566017667) hood=[797454503516374016] -> ok
+              22. cascadeRel(797454503516374016,[2958,4710)) -> graph: entity is deleted: relationship 797454503516374016: graph: relationship not found
+              23. deleteNode(797454503522435072) -> ok
+              24. addLabel(797454503515684864,C) -> graph: entity already closed
+              25. cascadeNode(797454503515684864,[4692,0)) -> ok
+              26. updateNode(797454503515684864) -> ok
+              27. addLabel(797454503522697216,A) -> ok
+              28. updateNode(797454503522697216) -> graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 4927 <= prev 1791561980112
+              29. addNode -> ok
+              30. updateRel(797454503516374016) -> graph: relationship not found
+              31. graphtx/Nodes.DeleteWithTx(797454503527940096,t=1791566028000) hood=[] -> graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791566028000 is not after the recorded TxFrom 1791566028000
+              32. graphtx/Nodes.UpdateWithTx(797454503515684864,t=1791566027361) closed=false -> ok
+              33. batch/Nodes.DeleteWithTx(797454503527940096,t=1791566030999) hood=[] -> ok
+              34. deleteRel(797454503516374016) -> graph: relationship not found
+              35. cascadeNode(797454503522697216,[843,0)) -> ok
+              36. addLabel(797454503515684864,C) -> ok
+              37. updateRel(797454503516374016) -> graph: relationship not found
+              38. graphtx/Nodes.UpdateWithTx(797454503522697216,t=1791566035708) closed=false -> ok
+              39. addLabel(797454503515684864,B) -> ok
+              40. cascadeNode(797454503522697216,[3661,5745)) -> ok
+              41. deleteNode(797454503522697216) -> ok
+              42. updateNode(797454503515684864) -> ok
+              43. updateRel(797454503516374016) -> graph: relationship not found
+              44. backfillNode(tx=1791566016383) -> ok
+              45. cascadeNode(797454503536099328,[5765,0)) -> ok
+              46. updateNode(797454503536099328) -> ok
+              47. linkNodes(S 797454503515684864->797454503536099328) -> ok
+              48. batch/Nodes.UpdateWithTx(797454503536099328,t=1791566047520) closed=false -> ok
+            
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064317 (0.01s)
+        bitemporaloracle_test.go:1183: MISMATCH [NodesAtTx] seed=8064317 backend=memory
+            probe: point validAt=6619 txAt=1791566018001
+            oracle: {797454512015966208#v0, 797454512016752640#v0, 797454512017178624#v0, 797454512018456576#v0, 797454512018587648#v0, 797454512031596544#v0}
+            door:   {797454512015966208#v0, 797454512016752640#v0, 797454512017178624#v0, 797454512018456576#v0, 797454512018587648#v1, 797454512031596544#v0}
+            op log (43):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. linkNodes(S 797454512015966208->797454512017178624) -> ok
+               5. backfillNode(tx=1791565959494) -> ok
+               6. closeNode(797454512018194432,3479) -> graph: entity already closed
+               7. addNode -> ok
+               8. addNode -> ok
+               9. cascadeNode(797454512018587648,[2240,0)) -> ok
+              10. addLabel(797454512016949248,A) -> ok
+              11. linkNodes(R 797454512016949248->797454512017178624) -> ok
+              12. ingest_concurrent/Nodes.DeleteWithTx(797454512018194432,t=1791565959494) hood=[] -> graph: concurrent ingest group refused before any write: batch DeleteNodeWithTx (ID 797454512018194432): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791565959494 is not after the recorded TxFrom 1791565959494
+              13. closeNode(797454512018587648,4535) -> ok
+              14. ingest_sync/Nodes.UpdateWithTx(797454512018194432,t=1791565974141) closed=true -> graph: batch execution had failed operations: refused before any write: batch UpdateNodeWithTx (ID 797454512018194432): graph: entity already closed
+              15. standalone/Nodes.DeleteWithTx(797454512018587648,t=1791566010590) hood=[] -> ok
+              16. closeRel(797454512017998848,4666) -> ok
+              17. updateNode(797454512018194432) -> graph: entity already closed
+              18. updateNode(797454512016949248) -> graph: entity already closed
+              19. updateRel(797454512017998848) -> graph: entity already closed
+              20. deleteRel(797454512017998848) -> ok
+              21. deleteRel(797454512019244032) -> ok
+              22. cascadeRel(797454512017343488,[5160,0)) -> ok
+              23. deleteNode(797454512018456576) -> ok
+              24. deleteRel(797454512017343488) -> ok
+              25. deleteNode(797454512017178624) -> ok
+              26. closeRel(797454512017835008,5707) -> ok
+              27. updateRel(797454512017835008) -> graph: entity already closed
+              28. deleteRel(797454512017835008) -> ok
+              29. ingest_concurrent/Nodes.UpdateWithTx(797454512016949248,t=1791566001002) closed=true -> graph: concurrent ingest group refused before any write: batch UpdateNodeWithTx (ID 797454512016949248): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791566001002 is not after the recorded TxFrom 1791566001002
+              30. graphtx/Nodes.DeleteWithTx(797454512016949248,t=1791566021790) hood=[] -> ok
+              31. deleteNode(797454512018194432) -> ok
+              32. backfillNode(tx=1791566009667) -> ok
+              33. linkNodes(R 797454512015966208->797454512031596544) -> ok
+              34. ingest_sync/Nodes.UpdateWithTx(797454512031596544,t=1791566026471) closed=false -> ok
+              35. addNode -> ok
+              36. batch/Rels.DeleteWithTx(797454512031794176,t=1791566040538) -> ok
+              37. deleteNode(797454512031596544) -> ok
+              38. addNode -> ok
+              39. addNode -> ok
+              40. graphtx/Nodes.DeleteWithTx(797454512038641664,t=1791566046198) hood=[] -> ok
+              41. addNode -> ok
+              42. addNode -> ok
+            
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	15.243s
+FAIL
+
+exit=1

@@ -561,12 +561,14 @@ func (c *Core) nodeAtFullChain(id types.NodeID, current *types.Node, validAt, tx
 // the (history ‖ current) chain from store.TemporalMetaHistoryCapability
 // skeletons (version + numeric temporal only — no properties/labels/hashes
 // materialized), runs THE SAME resolveNodeChain point resolution over them,
-// then hydrates only the winning version with a store point read and re-runs
-// the resolver with the winner hydrated. The two runs select identically by
-// construction (selection reads only Version/ID/Temporal, which skeleton and
-// full row share verbatim), and the second run applies the TxAt tombstone
-// normalization (lesson 60) to the FULL row — a skeleton never leaves this
-// function. handled=false declines the fast path (winner hydration failed,
+// then hydrates only the winning version with a store point read and gives it
+// the TxAt normalization the resolver's filter gives a chain row (lesson 60;
+// nodeRowAtTx) — the row a resolve over the hydrated chain would select, since
+// selection reads only Version/ID/Temporal, which skeleton and full row share
+// verbatim. A skeleton never leaves this function. The winner's origin is
+// told by its (version, TxFrom), not its version alone: in a chain stored
+// before backlog 38 a re-imported ID's current row shares version numbers
+// with the earlier life's history. handled=false declines the fast path (winner hydration failed,
 // e.g. a concurrent trim landed between the two reads) and the caller falls
 // back to the full-chain fold — an accelerator can be slower, never wrong.
 func (c *Core) nodeAtViaTemporalMeta(id types.NodeID, current *types.Node, validAt, txAt types.Instant) (*types.Node, bool, error) {
@@ -580,19 +582,17 @@ func (c *Core) nodeAtViaTemporalMeta(id types.NodeID, current *types.Node, valid
 	// ordered is the pristine ascending-version chain — THE resolver input
 	// contract (getNodeHistory rows are ascending by version; monotonicity
 	// detection and positional tiling are both relative to that order). The
-	// resolver may SORT its argument in place (cascade chains), so each of
-	// the two resolve runs below gets its OWN copy of ordered; feeding the
-	// first run's sorted output into the second run would flip the
-	// monotonic-vs-cascade branch and silently change bounds derivation.
+	// resolver may SORT its argument in place (cascade chains), so it gets
+	// its own copy (lesson 73).
 	ordered := make([]*types.Node, 0, len(metas)+1)
-	skelIndex := make(map[uint32]int, len(metas))
+	skeletons := make(map[skeletonKey]struct{}, len(metas))
 	for _, m := range metas {
 		s := types.NewNode(id, 0, nil)
 		s.SetVersion(m.Version)
 		if m.Temporal != nil {
 			s.SetTemporal(m.Temporal)
 		}
-		skelIndex[m.Version] = len(ordered)
+		skeletons[skeletonKeyOf(m.Version, m.Temporal)] = struct{}{}
 		ordered = append(ordered, s)
 	}
 	if current != nil {
@@ -603,10 +603,12 @@ func (c *Core) nodeAtViaTemporalMeta(id types.NodeID, current *types.Node, valid
 	if err != nil {
 		return nil, true, err
 	}
-	// Winner-origin detection is by VERSION (the winner may be the resolver's
-	// normalized deep copy, so pointer identity cannot be used here).
-	idx, fromSkeleton := skelIndex[winner.Version()]
-	if !fromSkeleton {
+	// Winner-origin detection is by (version, TxFrom): the winner may be the
+	// resolver's normalized deep copy, so pointer identity cannot be used.
+	if winner == current {
+		return winner, true, nil
+	}
+	if _, fromSkeleton := skeletons[skeletonKeyOf(winner.Version(), winner.Temporal())]; !fromSkeleton {
 		// Winner derived from the current row — already a full row (possibly
 		// the resolver's normalized copy of it).
 		return winner, true, nil
@@ -615,10 +617,26 @@ func (c *Core) nodeAtViaTemporalMeta(id types.NodeID, current *types.Node, valid
 	if err != nil {
 		return nil, false, nil
 	}
-	chain := append([]*types.Node(nil), ordered...)
-	chain[idx] = full
-	res, err := c.resolveNodeChain(chain, probe, nil)
-	return res, true, err
+	if txAt == 0 {
+		return full, true, nil
+	}
+	res, ok := nodeRowAtTx(full, txAt)
+	if !ok {
+		return nil, false, nil
+	}
+	return res, true, nil
+}
+
+// skeletonKey identifies a history row among a chain's skeletons: version and
+// TxFrom (a re-import stored before backlog 38 reuses versions, never the
+// instant of the same write).
+type skeletonKey struct {
+	version uint32
+	txFrom  types.Instant
+}
+
+func skeletonKeyOf(version uint32, tm *types.TemporalMetadata) skeletonKey {
+	return skeletonKey{version: version, txFrom: beliefTx(tm)}
 }
 
 // RelAt returns the version of a relationship that was valid at the given instant.
@@ -708,18 +726,16 @@ func (c *Core) relAtViaTemporalMeta(id types.RelID, current *types.Relationship,
 	if current == nil && len(metas) == 0 {
 		return nil, true, storepkg.ErrRelNotFound
 	}
-	// ordered/copy discipline — see nodeAtViaTemporalMeta: the resolver may
-	// sort its argument in place, so each resolve run gets its own copy of
-	// the pristine ascending-version chain.
+	// ordered/copy discipline and winner origin — see nodeAtViaTemporalMeta.
 	ordered := make([]*types.Relationship, 0, len(metas)+1)
-	skelIndex := make(map[uint32]int, len(metas))
+	skeletons := make(map[skeletonKey]struct{}, len(metas))
 	for _, m := range metas {
 		s := types.NewRelationship(id, 0, 0, 0)
 		s.SetVersion(m.Version)
 		if m.Temporal != nil {
 			s.SetTemporal(m.Temporal)
 		}
-		skelIndex[m.Version] = len(ordered)
+		skeletons[skeletonKeyOf(m.Version, m.Temporal)] = struct{}{}
 		ordered = append(ordered, s)
 	}
 	if current != nil {
@@ -730,18 +746,24 @@ func (c *Core) relAtViaTemporalMeta(id types.RelID, current *types.Relationship,
 	if err != nil {
 		return nil, true, err
 	}
-	idx, fromSkeleton := skelIndex[winner.Version()]
-	if !fromSkeleton {
+	if winner == current {
+		return winner, true, nil
+	}
+	if _, fromSkeleton := skeletons[skeletonKeyOf(winner.Version(), winner.Temporal())]; !fromSkeleton {
 		return winner, true, nil
 	}
 	full, err := c.getRelVersion(id, winner.Version())
 	if err != nil {
 		return nil, false, nil
 	}
-	chain := append([]*types.Relationship(nil), ordered...)
-	chain[idx] = full
-	res, err := c.resolveRelChain(chain, probe, nil)
-	return res, true, err
+	if txAt == 0 {
+		return full, true, nil
+	}
+	res, ok := relRowAtTx(full, txAt)
+	if !ok {
+		return nil, false, nil
+	}
+	return res, true, nil
 }
 
 // NeighborsAt returns all neighbor nodes reachable from nodeID via

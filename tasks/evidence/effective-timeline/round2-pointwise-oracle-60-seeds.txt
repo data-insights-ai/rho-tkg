@@ -1,0 +1,3 @@
+    effective_timeline_oracle_test.go:463: pointwise checks 11804049 at 722976 (entity, pin) pairs, 429149 segments, 46179 refused pins
+--- PASS: TestEffectiveTimeline_PointwiseOracle (81.99s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	82.025s

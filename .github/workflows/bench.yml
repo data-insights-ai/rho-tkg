@@ -46,7 +46,7 @@ jobs:
       # "Ingest" is a deliberate prefix match covering every ingest variant.
       # PinnedRelPropertyLookup runs its 20k canary size here (backlog 8); the
       # 100k / 1M measurement sizes are set with RHO_TKG_PINNED_REL_SIZES.
-      BENCH_FILTER: "Benchmark(PointReadHit|LabelScan10k|TwoHop|TemporalPoint|AsOfPin|Ingest|BulkAddNodes10k|ANNSearch10k|OrderedTopK|CompositeLookup|RelPropertyLookup10k|RelHistoryPlain|RelHasHistory|PinnedRelPropertyLookup)"
+      BENCH_FILTER: "Benchmark(PointReadHit|LabelScan10k|TwoHop|TemporalPoint|AsOfPin|Ingest|BulkAddNodes10k|ANNSearch10k|OrderedTopK|CompositeLookup|RelPropertyLookup10k|RelHistoryPlain|RelHasHistory|RelEffectiveTimeline|RelEffectiveLoop|ForEachRelEffectiveByType|NodeAtTxLongChain|NodeEffectiveTimelineLongChain|PinnedRelPropertyLookup)"
     steps:
       - uses: actions/checkout@v7
         with:

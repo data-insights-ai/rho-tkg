@@ -168,8 +168,24 @@ func (e *oracleEntity) txFilter(txAt types.Instant) []oracleRow {
 	out := e.txFilterCaptureOrder(txAt)
 	// The resolver classifies a chain in ascending VERSION order (lesson 73):
 	// e.rows is history ‖ current, which is not version-ordered when a bounded
-	// cascade left the current row below the rows it appended.
-	sort.SliceStable(out, func(i, j int) bool { return out[i].version < out[j].version })
+	// cascade left the current row below the rows it appended. Rows of a later
+	// life (recorded after a delete the chain holds: a re-imported ID, whose
+	// versions start again) order after every row of the earlier life.
+	life := func(r oracleRow) int {
+		n := 0
+		for _, x := range e.rows {
+			if x.deletedAt != 0 && x.deletedAt < r.txFrom {
+				n++
+			}
+		}
+		return n
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if li, lj := life(out[i]), life(out[j]); li != lj {
+			return li < lj
+		}
+		return out[i].version < out[j].version
+	})
 	return out
 }
 
@@ -272,11 +288,15 @@ func (e *oracleEntity) pointVisible(validAt, txAt types.Instant) (oracleRow, boo
 	}
 	// Slow path (cascade): newest BELIEF covering version wins. BACKLOG 10b:
 	// own-interval bounds, not positional — see ownBounds.
+	// A belief does not answer at t once a newer REPLACING write (an Update,
+	// CloseVersion or label change: its row is recorded at the TxTo of the
+	// row it replaced) asserted the state from its own start S <= t on, and
+	// the belief started at or before S (replacedAt, stated per instant).
 	best := -1
 	for i := range chain {
 		vs, ve := e.ownBounds(chain[i])
 		ve = capAtLifeEnd(ve, lifeEnd(chain, chain[i]))
-		if vs <= validAt && (ve == 0 || ve > validAt) {
+		if vs <= validAt && (ve == 0 || ve > validAt) && !e.replacedAt(chain, chain[i], validAt) {
 			if best < 0 || beliefNewer(chain[i], chain[best]) {
 				best = i
 			}
@@ -326,6 +346,31 @@ func lifeEnd(chain []oracleRow, r oracleRow) types.Instant {
 		}
 	}
 	return end
+}
+
+// replacedAt reports whether belief x no longer answers at valid instant t:
+// some row s of the (txAt-filtered) chain is a replacing write's row — a row
+// r with a TxTo after its TxFrom and no tombstone was replaced at s's TxFrom,
+// below s's version — s is a newer belief than x, and x started at or before
+// s, which started at or before t. A brute-force restatement of the belief
+// definition, independent of the engine's supersessionCaps sweep.
+func (e *oracleEntity) replacedAt(chain []oracleRow, x oracleRow, t types.Instant) bool {
+	for _, s := range chain {
+		if !beliefNewer(s, x) {
+			continue
+		}
+		replacing := false
+		for _, r := range chain {
+			if r.txTo != 0 && r.deletedAt == 0 && r.txTo > r.txFrom && r.txTo == s.txFrom && r.version < s.version {
+				replacing = true
+				break
+			}
+		}
+		if replacing && e.effVF(x) <= e.effVF(s) && e.effVF(s) <= t {
+			return true
+		}
+	}
+	return false
 }
 
 // capAtLifeEnd caps a valid end (0 = open) at a life end (0 = none).

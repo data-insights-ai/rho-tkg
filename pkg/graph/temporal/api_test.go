@@ -236,6 +236,10 @@ type temporalOpsSpy struct {
 	lastLabel   string
 	lastRelType string
 	lastKey     string
+	lastPin     types.Instant
+
+	nodeSegs []NodeSegment
+	relSegs  []RelSegment
 }
 
 func (s *temporalOpsSpy) record(name string) { s.calls = append(s.calls, name) }

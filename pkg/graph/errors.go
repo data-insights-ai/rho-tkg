@@ -147,7 +147,9 @@ var (
 	ErrUniqueUnsupportedType       = core.ErrUniqueUnsupportedType
 	ErrUniqueEventLabelUnsupported = core.ErrUniqueEventLabelUnsupported
 	// History retention & compaction (ADR-0001).
-	ErrHistoryCompacted           = core.ErrHistoryCompacted
+	ErrHistoryCompacted = core.ErrHistoryCompacted
+	// Effective timeline pin ahead of the commit clock.
+	ErrTxPinTooNew                = core.ErrTxPinTooNew
 	ErrCompactionProtectedTag     = core.ErrCompactionProtectedTag
 	ErrInvalidRetentionPolicy     = core.ErrInvalidRetentionPolicy
 	ErrCompactionChangeLogEnabled = core.ErrCompactionChangeLogEnabled
