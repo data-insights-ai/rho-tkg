@@ -112,6 +112,9 @@ func (bs *Store) propertyIndexDiskOp(propertyKey, valueKey string, id snowflake.
 // here — the ONE seam every node-mutation door already funnels through —
 // rather than at each of those door call sites individually.
 func (bs *Store) maintainPropertyIndexesAdd(n *types.Node, id snowflake.ID) []writeOp {
+	// Every door that writes a current node row calls Add, so it also records
+	// the row into the property membership sidecars (backlog 8).
+	bs.recordNodePropTxLocked(n)
 	indexpkg.AddNodeToCompositeIndexes(bs.compositeIndexes, bs.compositeIndexesByLabel, n, id)
 	if !bs.propIdxOnDisk {
 		indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, n, id)
