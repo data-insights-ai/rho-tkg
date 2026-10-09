@@ -461,6 +461,15 @@ func (tx *GraphTx) DeleteRelationship(id types.RelID) error {
 		return err
 	}
 	defer tx.unlockActiveCoreWrite()
+	return tx.deleteRelationshipAtLocked(id, 0)
+}
+
+// deleteRelationshipAtLocked is the body of DeleteRelationship and
+// DeleteRelationshipWithTx: snapshot the row and its history for Rollback,
+// delete through the shared seam (at == 0: the plain clock stamp; at != 0: a
+// caller instant already gated by resolveCallerTxInstant), then record the
+// deletion. Caller holds lockActiveCoreWrite.
+func (tx *GraphTx) deleteRelationshipAtLocked(id types.RelID, at types.Instant) error {
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return err
 	}
@@ -477,7 +486,7 @@ func (tx *GraphTx) DeleteRelationship(id types.RelID) error {
 	}
 
 	// Perform the actual deletion (internal — tx already holds c.mu.Lock).
-	if err := tx.g.deleteRelationshipInternal(tx.doorCtx(), id, 0); err != nil {
+	if err := tx.g.deleteRelationshipInternal(tx.doorCtx(), id, at); err != nil {
 		return err
 	}
 
@@ -492,6 +501,73 @@ func (tx *GraphTx) DeleteRelationship(id types.RelID) error {
 
 	return nil
 }
+
+// --- Relationship doors at a caller transaction instant (W4) ---------------
+
+// DeleteRelationshipWithTx is DeleteRelationship stamping the tombstone with
+// the caller's transaction instant (TxTo = DeletedAt = txTo), with the gates
+// and refusals of Rels().DeleteWithTx: txTo must be a positive instant not in
+// the future (ErrInvalidTxFrom), then Config.AllowTxBackfill
+// (ErrTxBackfillDisabled); under the entity lock it must follow every
+// recorded TxFrom/TxTo and the version start, and no recorded close may lie at
+// or after it (ErrTxOrder). Snapshot, rollback and commit behave exactly as
+// DeleteRelationship: Rollback restores the row and its history.
+func (tx *GraphTx) DeleteRelationshipWithTx(id types.RelID, txTo types.Instant) error {
+	if err := tx.lockActiveCoreWrite(); err != nil {
+		return err
+	}
+	defer tx.unlockActiveCoreWrite()
+	at, err := tx.g.resolveCallerTxInstant(txTo)
+	if err != nil {
+		return err
+	}
+	defer tx.g.notePastDatedWrite(at) // after the store write (as-of cache)
+	return tx.deleteRelationshipAtLocked(id, at)
+}
+
+// UpdateRelationshipWithTx is UpdateRelationship stamping the change with the
+// caller's transaction instant: the superseded version's TxTo and the new
+// version's TxFrom and UpdatedAt are txFrom. Gates and refusals as
+// Rels().UpdateWithTx; an update that changes nothing (nil or empty map,
+// values equal to the current ones) is refused with ErrTxOrder after the
+// existence check. Snapshot and rollback as UpdateRelationship.
+func (tx *GraphTx) UpdateRelationshipWithTx(id types.RelID, updates map[string]any, txFrom types.Instant) (*types.Relationship, error) {
+	if err := tx.lockActiveCoreWrite(); err != nil {
+		return nil, err
+	}
+	defer tx.unlockActiveCoreWrite()
+	at, err := tx.g.resolveCallerTxInstant(txFrom)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.g.notePastDatedWrite(at) // after the store write (as-of cache)
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return nil, err
+	}
+	if len(updates) == 0 {
+		if _, err := tx.g.getCurrentRelationship(id); err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: an update at t %d with no changes records nothing", ErrTxOrder, at)
+	}
+	prov, tmp, preparedUpdates, err := tx.g.prepareUpdateProperties(updates, "update relationship")
+	if err != nil {
+		return nil, err
+	}
+	tmp.txAt = at
+	// Snapshot before the seam (a refused call leaves the row as snapshotted,
+	// so Rollback restores what is already there).
+	if err := tx.snapshotRelLocked(id.SnowflakeID()); err != nil {
+		return nil, err
+	}
+	r, mutated, err := tx.g.updateRelationshipPreparedInternal(tx.doorCtx(), id, prov, tmp, preparedUpdates)
+	if err == nil && mutated {
+		tx.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
+	}
+	return r, err
+}
+
+// --- end of the W4 relationship caller-instant block -----------------------
 
 func (tx *GraphTx) deletedNodeHistorySnapshot(id types.NodeID, node *types.Node) ([]*types.Node, uint32, bool, error) {
 	if tx.g.historyTrim == nil {

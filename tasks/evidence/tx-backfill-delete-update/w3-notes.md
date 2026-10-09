@@ -23,7 +23,7 @@ stubs, every failure behavioural), `green-w3.txt` (356 subtests green under -rac
   (`tx_mutations_node_withtx.go`; bodies shared with the plain twins via `deleteNodeAt`/`updateNodeAt`),
   `BatchBuilder.DeleteNodeWithTx/UpdateNodeWithTx`, `Session.DeleteNodeWithTx/UpdateNodeWithTx` (ingest sync and
   concurrent). Batch/ingest gate at queue time; the order/close/no-op rules run at apply under the entity locks
-  and fail that op only. The GraphTx twins gate before the tx lock (value, then privilege), as the standalone
+  (after the W4 merge: in the shared whole-unit pre-flight, see below — a refusal refuses the unit). The GraphTx twins gate before the tx lock (value, then privilege), as the standalone
   doors gate before c.mu.
 - Seams: `deleteNodeInternal(ctx, id, at)` -> `deleteNodeLocked(..., at)`; `updateNodeAtInternal(ctx, id, m, at)`
   and `updateTemporal.txAt` consumed by `updateNodePreparedInternal`. at == 0 = today (R0 green before and after).
@@ -53,6 +53,23 @@ stubs, every failure behavioural), `green-w3.txt` (356 subtests green under -rac
 - R13 replica fixture: the cascaded rel needed an explicit valid-from — with a derived one (mint time = now) the
   cascade rightly refused t (R9 behaviour).
 - Self-loops are rejected by default validation; R9's counterpart uses a second inbound rel and a Ref->Ref rel.
+
+## After merging main (W4)
+
+- One shared whole-unit pre-flight: W4's `precheckRelCallerTxOps`/`hasRelCallerTx` became
+  `precheckCallerTxOps(callerTxUnit)` / `callerTxUnit.hasCallerTx()` (`batch_callertx_preflight.go`), called
+  from Batch.Execute and the concurrent ingest apply, and used by the strong-mode isolation in
+  `applyCommitGroup`. It checks node and rel caller-instant ops together, before any write: node update
+  (`checkNodeCallerUpdate`, extracted from the seam like W4's `checkRelCallerUpdate`), node delete
+  (`precheckNodeCascade` -> `checkNodeCascadeCallerTx` under LockMany on node + cascaded rels), rel ops (W4's).
+- One-op-per-entity, extended: node ops count node creates/updates/deletes/cascades; rel ops now also count the
+  rels every node delete of the unit (plain or caller-instant) cascades; a caller-instant node delete also
+  refuses a rel create ending at the node and any other op on one of its cascaded rels.
+- Batch/ingest `UpdateNodeWithTx` refuses an empty map at queue time (as W4's rel twin).
+- Red: `red-w3-preflight.txt` (the node unit tests against the rel-only pre-flight behaviour). Mutations, each
+  red then restored: node-delete cascades not counted; rel-create endpoint not counted; other ops on a cascaded
+  rel ignored; node one-op rule off.
+- Green: `green-w3.txt` (658 subtests incl. W1/W2/W4 tests, -race); `make test-race` on the merged tree.
 
 ## Open for phase 3
 

@@ -910,7 +910,13 @@ func TestTxBackfillNode_NoopUpdateRefuses(t *testing.T) {
 					assertNodeTxOrderRefusal(t, g, f.id, tc.name, before, err, "")
 				}
 				missing := g.Nodes.NextID()
-				for _, m := range []map[string]any{nil, {"w": int64(5)}} {
+				// The batch and ingest doors refuse an empty update at queue
+				// time (as their relationship twins), before any lookup.
+				maps := []map[string]any{{"w": int64(5)}}
+				if fam.name == "standalone" || fam.name == "graphtx" {
+					maps = append(maps, nil)
+				}
+				for _, m := range maps {
 					if err := fam.upd(t, g, missing, m, at); !errors.Is(err, storepkg.ErrNodeNotFound) {
 						t.Fatalf("UpdateWithTx(missing, %v) err = %v; want ErrNodeNotFound", m, err)
 					}

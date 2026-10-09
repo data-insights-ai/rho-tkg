@@ -481,7 +481,10 @@ func (b *BatchBuilder) DeleteNode(id types.NodeID) error {
 // Nodes().DeleteWithTx). txTo is gated at queue time — a positive instant not
 // in the future (ErrInvalidTxFrom), then Config.AllowTxBackfill
 // (ErrTxBackfillDisabled); the order and close rules (ErrTxOrder) run at
-// Execute under the entity locks and fail that operation only.
+// Execute in the whole-unit pre-flight (precheckCallerTxOps): one refused
+// caller-instant op refuses the whole batch with nothing written, and the
+// delete must be the only op of the batch on the node and on every
+// relationship it cascades.
 func (b *BatchBuilder) DeleteNodeWithTx(id types.NodeID, txTo types.Instant) error {
 	if err := b.lockOpen(); err != nil {
 		return err
@@ -509,9 +512,12 @@ func (b *BatchBuilder) DeleteNodeWithTx(id types.NodeID, txTo types.Instant) err
 
 // UpdateNodeWithTx queues a node update like UpdateNode stamped with the
 // caller's transaction instant txFrom (see Nodes().UpdateWithTx). txFrom is
-// gated at queue time (ErrInvalidTxFrom, then ErrTxBackfillDisabled); the
-// order rule and the no-op refusal (ErrTxOrder) run at Execute under the
-// entity lock and fail that operation only.
+// gated at queue time (ErrInvalidTxFrom, then ErrTxBackfillDisabled); an
+// empty update is refused now (ErrTxOrder). The order rule and an update that
+// changes nothing are decided in Execute's whole-unit pre-flight
+// (precheckCallerTxOps): one refused caller-instant op refuses the whole batch
+// with nothing written, and the update must be the only op of the batch on
+// the node.
 func (b *BatchBuilder) UpdateNodeWithTx(id types.NodeID, updates map[string]any, txFrom types.Instant) error {
 	if err := b.lockOpen(); err != nil {
 		return err
@@ -532,6 +538,10 @@ func (b *BatchBuilder) UpdateNodeWithTx(id types.NodeID, updates map[string]any,
 	at, err := b.g.resolveCallerTxInstant(txFrom)
 	if err != nil {
 		return err
+	}
+	if len(updates) == 0 {
+		// As UpdateRelationshipWithTx: no version to stamp at t.
+		return fmt.Errorf("%w: an update at t %d with no changes records nothing", ErrTxOrder, at)
 	}
 	queuedUpdate, err := b.g.prepareQueuedUpdateProperties(updates, "batch update node")
 	if err != nil {

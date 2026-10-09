@@ -146,14 +146,11 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 		return nil, false, err
 	}
 	if tmp.txAt != 0 {
-		if err := c.checkNodeCallerTx(id, current, tmp.txAt, c.nodeCurrentVersionStart(current)); err != nil {
+		if err := c.checkNodeCallerUpdate(id, current, prov, tmp, updates); err != nil {
 			return nil, false, err
 		}
 	}
 	if !nodePreparedUpdateMutates(current, prov, tmp, updates) {
-		if tmp.txAt != 0 {
-			return nil, false, fmt.Errorf("%w: an update at t %d with no changes records nothing", ErrTxOrder, tmp.txAt)
-		}
 		c.opNodeReads.Add(1)
 		return current, false, nil
 	}

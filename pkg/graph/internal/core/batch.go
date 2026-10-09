@@ -12,7 +12,10 @@ import (
 // Operations are eagerly validated when added, then executed sequentially
 // when Execute is called. Partial success is possible — individual
 // operation failures are collected in BatchResult.Errors and surfaced via
-// an Execute error wrapping ErrBatchFailed.
+// an Execute error wrapping ErrBatchFailed. Exception: a batch carrying
+// caller-instant relationship ops (DeleteRelationshipWithTx,
+// UpdateRelationshipWithTx) is refused WHOLE, before any write, when one of
+// them would be refused (batch_rel_withtx.go).
 //
 // Queue methods and Execute are serialized internally. Execute is one-shot:
 // once replay begins, later queue calls or Execute calls return ErrBatchDone.
@@ -62,6 +65,7 @@ type BatchBuilder struct {
 	relUpdates   []pendingRelUpdate
 	nodeDeletes  []pendingNodeDelete
 	relDeletes   []types.RelID
+	relTxDeletes []pendingRelTxDelete // DeleteRelationshipWithTx (batch_rel_withtx.go)
 	nodeCascades []pendingNodeCascade
 	relCascades  []pendingRelCascade
 }

@@ -106,6 +106,7 @@ type ingestGroup struct {
 	relUpdates   []pendingRelUpdate
 	nodeDeletes  []pendingNodeDelete
 	relDeletes   []types.RelID
+	relTxDeletes []pendingRelTxDelete
 	nodeCascades []pendingNodeCascade
 	relCascades  []pendingRelCascade
 	seqHi        uint64
@@ -116,7 +117,7 @@ type ingestGroup struct {
 
 func (g *ingestGroup) count() int {
 	return len(g.nodes) + len(g.rels) + len(g.nodeUpdates) + len(g.relUpdates) +
-		len(g.nodeDeletes) + len(g.relDeletes) + len(g.nodeCascades) + len(g.relCascades)
+		len(g.nodeDeletes) + len(g.relDeletes) + len(g.relTxDeletes) + len(g.nodeCascades) + len(g.relCascades)
 }
 
 func (g *ingestGroup) empty() bool { return g.count() == 0 }
@@ -226,12 +227,34 @@ func (a *ingestApplier) drainRemaining() {
 	}
 }
 
-// applyCommitGroup merges the coalesced groups into one BatchBuilder and runs
+// applyCommitGroup applies the drained groups in seq order. Groups are
+// coalesced into one Batch.Execute (applyCommitSegment), except a group that
+// carries a caller-instant node or relationship op (batch_callertx_preflight.go): it is
+// applied in a unit of its own, so its whole-unit pre-flight refusal fails
+// that group only and never a sibling producer's group.
+func (a *ingestApplier) applyCommitGroup(batch []*ingestGroup) {
+	start := 0
+	for i, g := range batch {
+		if !g.callerTxUnit().hasCallerTx() {
+			continue
+		}
+		if i > start {
+			a.applyCommitSegment(batch[start:i])
+		}
+		a.applyCommitSegment(batch[i : i+1])
+		start = i + 1
+	}
+	if start < len(batch) {
+		a.applyCommitSegment(batch[start:])
+	}
+}
+
+// applyCommitSegment merges the coalesced groups into one BatchBuilder and runs
 // the tested apply path (Batch.Execute) — one txMu+mu.Lock, one flush, one
 // contiguous LSN run, one PublishBatch. Then it advances the applied watermark
 // and acks sync submitters. Reuses the batch applier verbatim rather than
 // building a second write path (feasibility §6d).
-func (a *ingestApplier) applyCommitGroup(batch []*ingestGroup) {
+func (a *ingestApplier) applyCommitSegment(batch []*ingestGroup) {
 	// groupCommit coalesces per-mutation flushes on capable stores. Every
 	// submitter waits for the final grouped flush before acknowledgement.
 	bb := &BatchBuilder{g: a.c, groupCommit: true}
@@ -249,6 +272,7 @@ func (a *ingestApplier) applyCommitGroup(batch []*ingestGroup) {
 		bb.relUpdates = append(bb.relUpdates, g.relUpdates...)
 		bb.nodeDeletes = append(bb.nodeDeletes, g.nodeDeletes...)
 		bb.relDeletes = append(bb.relDeletes, g.relDeletes...)
+		bb.relTxDeletes = append(bb.relTxDeletes, g.relTxDeletes...)
 		bb.nodeCascades = append(bb.nodeCascades, g.nodeCascades...)
 		bb.relCascades = append(bb.relCascades, g.relCascades...)
 		if g.seqHi > maxSeq {
@@ -272,6 +296,9 @@ func (a *ingestApplier) applyCommitGroup(batch []*ingestGroup) {
 		for _, id := range g.relDeletes {
 			idToGroup[types.EntityID(id)] = g
 		}
+		for _, d := range g.relTxDeletes {
+			idToGroup[types.EntityID(d.id)] = g
+		}
 		for _, pc := range g.nodeCascades {
 			idToGroup[types.EntityID(pc.id)] = g
 		}
@@ -283,7 +310,7 @@ func (a *ingestApplier) applyCommitGroup(batch []*ingestGroup) {
 	var result *BatchResult
 	var applyErr error
 	if bb.nodes != nil || bb.rels != nil || bb.nodeUpdates != nil || bb.relUpdates != nil ||
-		bb.nodeDeletes != nil || bb.relDeletes != nil || bb.nodeCascades != nil || bb.relCascades != nil {
+		bb.nodeDeletes != nil || bb.relDeletes != nil || bb.relTxDeletes != nil || bb.nodeCascades != nil || bb.relCascades != nil {
 		result, applyErr = bb.Execute()
 	}
 
@@ -828,7 +855,9 @@ func (s *Session) DeleteNode(id types.NodeID) error {
 
 // DeleteNodeWithTx accumulates a cascade node delete stamped with the caller's
 // transaction instant txTo (see BatchBuilder.DeleteNodeWithTx: gated now, the
-// order and close rules at apply).
+// order and close rules in the apply unit's pre-flight). A group carrying a
+// caller-instant op is applied on its own, never coalesced with sibling
+// groups, so its refusal fails that group only.
 func (s *Session) DeleteNodeWithTx(id types.NodeID, txTo types.Instant) error {
 	if err := s.lockOpen(); err != nil {
 		return err
@@ -878,18 +907,7 @@ func (s *Session) Submit() (SubmitToken, error) {
 	if err := s.lockOpen(); err != nil {
 		return SubmitToken{}, err
 	}
-	b := s.b
-	g := &ingestGroup{
-		nodes:        b.nodes,
-		rels:         b.rels,
-		nodeUpdates:  b.nodeUpdates,
-		relUpdates:   b.relUpdates,
-		nodeDeletes:  b.nodeDeletes,
-		relDeletes:   b.relDeletes,
-		nodeCascades: b.nodeCascades,
-		relCascades:  b.relCascades,
-	}
-	if g.empty() {
+	if batchIntentCount(s.b) == 0 {
 		s.mu.Unlock()
 		return SubmitToken{}, nil
 	}
@@ -902,14 +920,7 @@ func (s *Session) Submit() (SubmitToken, error) {
 	// assigning fresh nil slices here means later prepares append into brand-new
 	// arrays and never realloc into g's — the same isolation NewBatchBuilder
 	// provided, without the close-check.
-	b.nodes = nil
-	b.rels = nil
-	b.nodeUpdates = nil
-	b.relUpdates = nil
-	b.nodeDeletes = nil
-	b.relDeletes = nil
-	b.nodeCascades = nil
-	b.relCascades = nil
+	g := s.b.takeIngestGroup()
 
 	if s.opts.Concurrent {
 		// Concurrent mode (§14): self-apply on the caller thread under the
@@ -965,5 +976,5 @@ func (s *Session) Close() error {
 // batchIntentCount counts prepared intents in a builder (session-side only).
 func batchIntentCount(b *BatchBuilder) int {
 	return len(b.nodes) + len(b.rels) + len(b.nodeUpdates) + len(b.relUpdates) +
-		len(b.nodeDeletes) + len(b.relDeletes) + len(b.nodeCascades) + len(b.relCascades)
+		len(b.nodeDeletes) + len(b.relDeletes) + len(b.relTxDeletes) + len(b.nodeCascades) + len(b.relCascades)
 }

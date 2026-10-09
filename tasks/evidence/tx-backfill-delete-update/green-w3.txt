@@ -1,33 +1,61 @@
-# W3 GREEN under -race: node doors implemented (seam at deleteNodeLocked/updateNodePreparedInternal); make test-race exit 0 (81 packages ok)
-# go test -race ./pkg/graph/internal/core/ ./pkg/graph/ ./pkg/graph/nodes/ -run 'TestTxBackfillNode_|TestNodesWithTx_|TestAPIWithTxDoorsForwardInstantVerbatim|TestAPIForwardsEveryMethod|TestAPINilReceivers' -v
+# W3 GREEN under -race after merging main (W4): node doors + shared whole-unit pre-flight (precheckCallerTxOps); node, rel (W1/W4), as-of cache (W2) tests
+# go test -race ./pkg/graph/internal/core/ ./pkg/graph/ ./pkg/graph/nodes/ -run 'TestTxBackfillNode_|TestTxBackfillRel|TestRelsWithTx_|TestNodesWithTx_|TestAsOfCache_|TestAPIWithTxDoorsForwardInstantVerbatim|TestAPIForwardsEveryMethod|TestAPINilReceivers' -v
 ## top-level results
---- PASS: TestTxBackfillNode_PrimaryCacheStale (1.10s)
---- PASS: TestTxBackfillNode_ReplicaDropsNode (0.51s)
+--- PASS: TestAsOfCache_PrimaryCacheStale (0.71s)
+--- PASS: TestAsOfCache_RelBackfillDoorsReportPastDatedWrite (0.00s)
+--- PASS: TestAsOfCache_ReplicaDeleteStaleCache (0.57s)
+--- PASS: TestAsOfCache_ReplicaPutBelowCachedPin (0.16s)
+--- PASS: TestAsOfCache_ReplicaRelDeleteFeedsDetector (0.00s)
+--- PASS: TestTxBackfillNode_PrimaryCacheStale (0.91s)
+--- PASS: TestTxBackfillNode_ReplicaDropsNode (0.44s)
 --- PASS: TestTxBackfillNode_CascadeForeignStub (0.13s)
---- PASS: TestTxBackfillNode_GateOff (0.47s)
---- PASS: TestTxBackfillNode_Duplicates (0.54s)
---- PASS: TestTxBackfillNode_ScheduledCloseAfterT (0.78s)
---- PASS: TestTxBackfillNode_CloseCollision (0.86s)
---- PASS: TestTxBackfillNode_InvalidInstant (1.00s)
---- PASS: TestTxBackfillNode_OrderValidStart (1.12s)
---- PASS: TestTxBackfillNode_OrderEqualReversed (1.21s)
---- PASS: TestTxBackfillNode_NoopUpdateRefuses (1.61s)
---- PASS: TestTxBackfillNode_UpdateStamps (1.65s)
---- PASS: TestTxBackfillNode_DeleteIgnoresT (1.83s)
---- PASS: TestTxBackfillNode_TxRollbackEquiv (1.88s)
---- PASS: TestTxBackfillNode_RaceClock (2.84s)
---- PASS: TestTxBackfillNode_PlainDoorsUnchanged (3.64s)
---- PASS: TestTxBackfillNode_CascadeOrder (4.47s)
-ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	7.379s
---- PASS: TestNodesWithTx_FacadeRefusesAndStampsT (0.10s)
-ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.166s
+--- PASS: TestTxBackfillRel_NoopUpdateRefuses (0.47s)
+--- PASS: TestTxBackfillRel_DeleteIgnoresT (0.60s)
+--- PASS: TestTxBackfillRelW4_IngestCoalescedGroups (0.72s)
+--- PASS: TestTxBackfillRel_UpdateStamps (0.72s)
+--- PASS: TestTxBackfillRel_CloseCollision (0.82s)
+--- PASS: TestTxBackfillRel_Duplicates (0.87s)
+--- PASS: TestTxBackfillNode_IngestCoalescedGroups (0.88s)
+--- PASS: TestTxBackfillRel_ScheduledCloseAfterT (0.91s)
+--- PASS: TestTxBackfillRel_GateOff (0.93s)
+--- PASS: TestTxBackfillNode_GateOff (0.96s)
+--- PASS: TestTxBackfillNode_Duplicates (0.66s)
+--- PASS: TestTxBackfillRelW4_TxRollbackEquiv (1.28s)
+--- PASS: TestTxBackfillNode_CloseCollision (1.38s)
+--- PASS: TestTxBackfillRel_InvalidInstant (1.40s)
+--- PASS: TestTxBackfillNode_ScheduledCloseAfterT (1.47s)
+--- PASS: TestTxBackfillRel_OrderEqualReversed (1.68s)
+--- PASS: TestTxBackfillNode_OrderEqualReversed (1.94s)
+--- PASS: TestTxBackfillNode_InvalidInstant (1.64s)
+--- PASS: TestTxBackfillRel_OrderValidStart (2.25s)
+--- PASS: TestTxBackfillRelW4_CloseCollision (2.33s)
+--- PASS: TestTxBackfillRelW4_ScheduledCloseAfterT (2.39s)
+--- PASS: TestTxBackfillRelW4_BatchIngestDoors (2.40s)
+--- PASS: TestTxBackfillNode_OrderValidStart (1.77s)
+--- PASS: TestTxBackfillNode_UpdateStamps (2.66s)
+--- PASS: TestTxBackfillNode_NoopUpdateRefuses (2.74s)
+--- PASS: TestTxBackfillNode_UnitPreflight (2.91s)
+--- PASS: TestTxBackfillNode_DeleteIgnoresT (3.01s)
+--- PASS: TestTxBackfillNode_TxRollbackEquiv (3.10s)
+--- PASS: TestTxBackfillRel_PlainDoorsUnchanged (3.73s)
+--- PASS: TestTxBackfillRel_DoorsReportPastDatedWrite (3.74s)
+--- PASS: TestTxBackfillNode_RaceClock (4.18s)
+--- PASS: TestTxBackfillRel_RaceClock (4.34s)
+--- PASS: TestTxBackfillRelW4_DoorEquivalence (4.74s)
+--- PASS: TestTxBackfillNode_PlainDoorsUnchanged (4.82s)
+--- PASS: TestTxBackfillNode_CascadeOrder (5.59s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	9.788s
+--- PASS: TestRelsWithTx_TxBatchIngestFacade (0.12s)
+--- PASS: TestRelsWithTx_FacadeRefusesAndStampsT (0.19s)
+--- PASS: TestNodesWithTx_FacadeRefusesAndStampsT (0.20s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.311s
 --- PASS: TestAPINilReceiversReturnErrNilGraphOrZero (0.00s)
---- PASS: TestAPIWithTxDoorsForwardInstantVerbatim (0.00s)
 --- PASS: TestAPIForwardsEveryMethod (0.00s)
-ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes	1.022s
+--- PASS: TestAPIWithTxDoorsForwardInstantVerbatim (0.00s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes	1.016s
 
 ## subtest counts
 FAIL subtests: 0
-PASS subtests: 356
+PASS subtests: 658
 
 ## first failure message per test site
