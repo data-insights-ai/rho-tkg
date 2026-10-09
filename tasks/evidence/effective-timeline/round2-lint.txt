@@ -1,13 +1,3 @@
-Fr 09 Okt 2026 20:33:55 CEST
-pkg/graph/internal/core/temporal_cascade.go:162:13: nilness: tautological condition: non-nil != nil (govet)
-	if current != nil {
-	           ^
-pkg/graph/internal/core/temporal_cascade.go:281:25: nilness: tautological condition: non-nil != nil (govet)
-	if curIsNew && current != nil {
-	                       ^
-pkg/graph/internal/core/temporal_cascade.go:312:14: nilness: tautological condition: non-nil != nil (govet)
-		if current != nil {
-		           ^
-3 issues:
-* govet: 3
-exit=1
+Fr 09 Okt 2026 20:53:12 CEST
+0 issues.
+exit=0

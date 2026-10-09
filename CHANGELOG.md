@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `NodeAtTx(id, t, pin)` / `RelAtTx` returns, and none contains `t` where that door answers `ErrNoVersionValidAt`
   — the state door's interval form (`NodeAsOf` stays the record door: the newest row recorded by a pin).
   `ValidFrom` is the effective start and never 0: a row without a recorded valid-from (a plain create without
-  `tkg_valid_from`, an `AddWithTx` backfill) starts at the ID's mint instant (`storeutil.SnowflakeInstant`), a
+  `tkg_valid_from`, an `AddWithTx` backfill) starts at the ID's mint instant (`types.NodeID.MintInstant()`), a
   later version without one at its `UpdatedAt`; a deleted entity's last segment ends at the delete instant; an
   entity created after the pin returns nil, nil. Rows are shared frozen pointers (DeepCopy to mutate). Errors:
   pin `<= 0` → `ErrInvalidTimeRange`; a pin above the commit clock (`PeekTx`) → the new `ErrTxPinTooNew`; below
