@@ -1,0 +1,11 @@
+--- PASS: TestBenchGateIgnoresCustomMetricBlocks (0.00s)
+--- PASS: TestBenchGateStillCatchesTimeRegression (0.00s)
+    bench_gate_test.go:66: a +200 % time swing on an allocs-only family row with stable allocs failed the gate: exit status 1
+        bench-compare: REGRESSION PinnedRelPropertyLookup/memory/20000/1type/nochurn/matches200/pinned-32: baseline=9.7039e-05s current=0.000292747s (+201.68% > 30%)
+--- FAIL: TestBenchGateFamilyTimeSwingOnAllocsOnlyRowPasses (0.00s)
+    bench_gate_test.go:76: allocs 1,423 -> 106,555 on a family row passed the gate: err=<nil>
+--- FAIL: TestBenchGateFamilyAllocsRegressionFails (0.00s)
+--- PASS: TestBenchGateFamilyCanaryTimeRegressionFails (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/bench	0.007s
+FAIL

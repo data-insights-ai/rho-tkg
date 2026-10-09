@@ -342,9 +342,18 @@ func BenchmarkPinnedScanScaling(b *testing.B) {
 // The pinned sub-benchmark reports the lazy sidecar build of the first pinned
 // lookup (build-ms); the timed loop is the steady state. Bytes per posting are
 // measured on the structure itself (BenchmarkPropertyTxMembersBytesPerPosting in
-// pkg/graph/internal/index): a heap delta around a badger lookup is noise. Sizes: RHO_TKG_PINNED_REL_SIZES (comma list,
-// default 20000 — the bench-gate canary; the measured report used
-// 100000,1000000). Fixture writes go through g.Batch() in groups.
+// pkg/graph/internal/index): a heap delta around a badger lookup is noise.
+// Fixture writes go through g.Batch() in groups.
+//
+// Default (the bench-gate canary, RHO_TKG_PINNED_REL_SIZES unset): 20 000 rels,
+// memory and badger, every profile, matches200/{pinned,current} = 24 rows. The
+// gate (bench-gate.awk) checks all of them on allocs/op (+10 %) and only the 8
+// rows of 1type/sigma and 5types/unrelated-x10 on time: on a loaded runner the
+// time of identical code swings tens of percent (sharded and broad most), while
+// allocs/op does not move and the regression that matters — the lookup falling
+// back to the history fold — multiplies it. Setting RHO_TKG_PINNED_REL_SIZES
+// (comma list; the measured report used 100000,1000000) runs the full matrix:
+// sharded too, and the broad lookup.
 
 type pinnedRelProfile struct {
 	name          string
@@ -561,10 +570,39 @@ func buildPinnedRelFixture(tb testing.TB, be pinnedRelBackend, n int, prof pinne
 	return fx
 }
 
+// pinnedRelFullMatrix reports whether the measurement matrix (sharded and the
+// broad lookup) runs: only when sizes are set explicitly.
+func pinnedRelFullMatrix() bool { return os.Getenv("RHO_TKG_PINNED_REL_SIZES") != "" }
+
+// pinnedRelRows returns the sub-benchmark names one run produces (without the
+// top-level name and the -GOMAXPROCS suffix), in run order.
+func pinnedRelRows(sizes []int, full bool) []string {
+	var out []string
+	for _, n := range sizes {
+		for _, be := range pinnedRelBackends() {
+			if be.name == "sharded" && !full {
+				continue
+			}
+			for _, prof := range pinnedRelProfiles {
+				base := fmt.Sprintf("%s/%d/%s", be.name, n, prof.name)
+				out = append(out, base+"/matches200/pinned", base+"/matches200/current")
+				if full {
+					out = append(out, base+"/broad/pinned")
+				}
+			}
+		}
+	}
+	return out
+}
+
 // BenchmarkPinnedRelPropertyLookup — see the block comment above.
 func BenchmarkPinnedRelPropertyLookup(b *testing.B) {
+	full := pinnedRelFullMatrix()
 	for _, n := range pinnedRelSizes(b) {
 		for _, be := range pinnedRelBackends() {
+			if be.name == "sharded" && !full {
+				continue // measurement matrix only (RHO_TKG_PINNED_REL_SIZES)
+			}
 			for _, prof := range pinnedRelProfiles {
 				b.Run(fmt.Sprintf("%s/%d/%s", be.name, n, prof.name), func(b *testing.B) {
 					fx := buildPinnedRelFixture(b, be, n, prof)
@@ -584,9 +622,11 @@ func BenchmarkPinnedRelPropertyLookup(b *testing.B) {
 					b.Run("matches200/current", func(b *testing.B) {
 						lookup(b, "seat", fx.seatWant, storepkg.QueryOpts{})
 					})
-					b.Run("broad/pinned", func(b *testing.B) {
-						lookup(b, "grp", fx.grpWant, storepkg.QueryOpts{TxPin: fx.pin})
-					})
+					if full {
+						b.Run("broad/pinned", func(b *testing.B) {
+							lookup(b, "grp", fx.grpWant, storepkg.QueryOpts{TxPin: fx.pin})
+						})
+					}
 				})
 			}
 		}
