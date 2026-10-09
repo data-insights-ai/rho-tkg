@@ -4,6 +4,7 @@ go 1.26.9
 
 require (
 	github.com/cockroachdb/pebble/v2 v2.1.7
+	github.com/golang/snappy v0.0.5-0.20231225225746-43d5d4cd4e0e
 	go.etcd.io/raft/v3 v3.7.0
 	google.golang.org/protobuf v1.36.11
 )
@@ -23,7 +24,6 @@ require (
 	github.com/getsentry/sentry-go v0.27.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
-	github.com/golang/snappy v0.0.5-0.20231225225746-43d5d4cd4e0e // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
