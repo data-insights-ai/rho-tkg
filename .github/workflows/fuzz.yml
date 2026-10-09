@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
     inputs:
       fuzztime:
-        description: "Per-target fuzz duration (18 targets share a 30-minute job; default 60s)"
+        description: "Per-target fuzz duration (22 targets share a 40-minute job; default 60s)"
         required: false
         default: "60s"
 
@@ -37,8 +37,8 @@ concurrency:
 jobs:
   fuzz:
     runs-on: ubuntu-latest
-    # Eighteen targets at 60s leave 12 nominal minutes for setup/build/artifacts.
-    timeout-minutes: 30
+    # Twenty-two targets at 60s leave 18 nominal minutes for setup/build/artifacts.
+    timeout-minutes: 40
     env:
       FUZZTIME: ${{ inputs.fuzztime || '60s' }}
     steps:
@@ -116,6 +116,22 @@ jobs:
         working-directory: v5
         run: go test -run '^$' -fuzz=FuzzCatalogDecoders -fuzztime="$FUZZTIME" ./internal/graphstore/
 
+      - name: FuzzApplicationSnapshotManifest (v5)
+        working-directory: v5
+        run: go test -run '^$' -fuzz=FuzzApplicationSnapshotManifest -fuzztime="$FUZZTIME" ./internal/raftlog/
+
+      - name: FuzzApplicationSnapshotImportNeverChangesActive (v5)
+        working-directory: v5
+        run: go test -run '^$' -fuzz=FuzzApplicationSnapshotImportNeverChangesActive -fuzztime="$FUZZTIME" ./internal/raftlog/
+
+      - name: FuzzPageDecoders (v5)
+        working-directory: v5
+        run: go test -run '^$' -fuzz=FuzzPageDecoders -fuzztime="$FUZZTIME" ./internal/graphstore/
+
+      - name: FuzzAssociationStoredEnvelopeFraming (v5)
+        working-directory: v5
+        run: go test -run '^$' -fuzz=FuzzAssociationStoredEnvelopeFraming -fuzztime="$FUZZTIME" ./internal/graphstore/
+
       - name: Upload any new crashers
         if: failure()
         uses: actions/upload-artifact@v4
@@ -126,6 +142,7 @@ jobs:
             pkg/graph/internal/storeutil/testdata/fuzz/**
             v5/pkg/temporal/testdata/fuzz/**
             v5/internal/state/testdata/fuzz/**
+            v5/internal/raftlog/testdata/fuzz/**
             v5/internal/replica/testdata/fuzz/**
             v5/internal/idalloc/testdata/fuzz/**
             v5/internal/timeblock/testdata/fuzz/**

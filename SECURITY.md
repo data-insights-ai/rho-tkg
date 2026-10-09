@@ -85,7 +85,7 @@ process. Pointers into the code for anyone auditing this library:
     (`pkg/graph/internal/storeutil/wire_fuzz_test.go`) — the checked wire
     decode/validate path for nodes and relationships.
 
-  The unreleased nested v5 module adds thirteen targets:
+  The unreleased nested v5 module adds seventeen targets:
 
   - `FuzzDecodePosition`, `FuzzRegionSetAlgebra`, `FuzzDecodeScope`,
     `FuzzDecodeOpaqueDescriptor`, `FuzzDecodePointKnowledge`
@@ -104,7 +104,17 @@ process. Pointers into the code for anyone auditing this library:
   - `FuzzCatalogDecoders` (`v5/internal/graphstore/codec_test.go`) — bounded
     local-root, catalog and value decode/round-trip admission.
 
-  All eighteen run weekly (and on-demand) with a bounded per-target fuzztime
+  - `FuzzApplicationSnapshotManifest`,
+    `FuzzApplicationSnapshotImportNeverChangesActive`
+    (`v5/internal/raftlog/application_snapshot_fuzz_test.go`) — bounded snapshot
+    manifest admission and dormant import preserving active application state.
+  - `FuzzPageDecoders` (`v5/internal/graphstore/page_codec_test.go`) — bounded
+    component directory/checkpoint/patch decoding.
+  - `FuzzAssociationStoredEnvelopeFraming`
+    (`v5/internal/graphstore/association_codec_test.go`) — stored assertion
+    association envelope framing and canonical decode admission.
+
+  All twenty-two run weekly (and on-demand) with a bounded per-target fuzztime
   in `.github/workflows/fuzz.yml`; each seed corpus also runs as an ordinary
   test in root `make test` for v4 or `make -C v5 test` for v5. The anchor+delta history decoders
   (`FuzzDecodeNodeHistoryDelta`, `FuzzDecodeRelHistoryDelta`,

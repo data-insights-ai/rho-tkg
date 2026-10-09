@@ -78,7 +78,7 @@ registry or reverse dependency on sigma's internal IR into rho.
 | Duration | A specified elapsed-amount or shift operation with units and laws | A metric, symmetric distance, or invertibility |
 | Metric or distance | A named operation with stated laws and units | Ordering, identity, or a default distance between intervals |
 | Knowledge | What positions/scopes are possible, measured or merely nominal | Occupied duration or statistical independence |
-| Interpretation | Occurrence, state, observation, constraint, derived assertion | A physical row shape |
+| Interpretation | Occurrence, state, observation, constraint, derived assertion, asserted relation (a supplied relationship fact, not a constraint or inferred consequence) | A physical row shape |
 | Granularity | A versioned grouping/abstraction and interpretation policy | Exact unit conversion or source accuracy |
 | Representation | Exact codec, column layout and compression | Any change in the preceding meanings |
 | Access structure | Database index or adjacency directory; sigma may build its own computation arrangements | The meaning of predicates or the truth of unindexed facts |

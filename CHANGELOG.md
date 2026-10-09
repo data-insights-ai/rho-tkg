@@ -73,7 +73,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   roots, complete change/outcome envelopes and the applied checkpoint commit in
   one synchronous Pebble batch. Local historical views survive log reclamation;
   retained-data quotas backpressure writes. Application mode requires one local
-  voter, with no application GC or transferable snapshots. `eb2f421` bounds
+  voter, with no application GC. Bounded dormant snapshot export/import now
+  exists (`7caf9d3`); activation and Raft application multi-voter integration
+  remain absent. `eb2f421` bounds
   retained/returned slice capacities and Scan work/output ledgers; these are
   caller-visible capacity bounds, not physical allocator, heap or RSS accounting.
   This storage prerequisite is not a durable production graph engine.
@@ -83,8 +85,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   root and bounded staging build on retained application views. Pure assertion
   records/codecs preserve supplied interpretation, role, placement and knowledge
   with exact current replay and immediate-predecessor validation. Assertion
-  storage attachment and graph pages/materializer/Host integration remain open;
+  attachment and component pages are now bounded local prototypes (`e1d38da`,
+  `a2bd71c`); full graph/materializer/Host integration remains open;
   these primitives do not establish a production graph engine or capacity result.
+
+- **Explicit-axis Instant compatibility** (`5e87390`): public `types.Instant`,
+  `InstantPosition` and `InstantFromPosition` preserve a caller-supplied Z/Q
+  millisecond axis and refuse mismatch, fractional/range and Q×N loss. They
+  select no global default or Unix origin; graph/importer integration stays open.
+
+- **Shared catalog operation caps** (`4d64350`, `00c978c`): immutable
+  `ApplicationView.ReadLimits` exposes configured per-call maxima; nested
+  catalog reads and value materialization share aggregate operation budgets,
+  narrowed by smaller application limits. Ledgers are logical/capacity bounds,
+  not heap/RSS or comparative efficiency results.
+
+- **Bounded dormant application transfer** (`7caf9d3`): export of the captured applied checkpoint and retained history,
+  canonical chunks and verified import preserve active state while
+  staging an inactive bank. Worker full gates pass (90.2% v5 coverage), with
+  parent raftlog race/coverage (87.4%). Verification grants no activation or
+  certified cut; multi-voter application integration and topology transfer stay open.
+
+- **Bounded local component pages** (`a2bd71c`): immutable directory,
+  checkpoint and patch pages preserve retained reads and sequential CDC groups;
+  private staging checks references and exact before images. Parent graphstore
+  race/coverage passes (85.9%); worker new production coverage is 83.28%.
+  Replay cost and provisional limits require efficiency/vendor acceptance.
+
+- **Stored assertion associations** (`e1d38da`): independently revisioned
+  graph-qualified associations retain retractions, explicit immutable primary
+  bindings and bounded target postings. `AssertedRelation` preserves a supplied
+  relationship fact, distinct from constraint or inference. Parent assertion/
+  graphstore race coverage is 95.4%/86.6%; new association code is 89.06%, with
+  direct public coverage at least 82.1%. Association scope does not automatically
+  change target life coverage; one posting per page remains a prototype.
+  Full graph/materializer/Host, efficiency/vendor acceptance and every V0–V7
+  phase gate remain open. Rho stores data; sigma owns reasoning.
 
 - **Pure application batch preflight** (`738719e`):
   `ApplicationPolicy.Preflight(batch, concreteRaftLimits)` shares installation

@@ -75,7 +75,7 @@ and reference JSON specify contracts/evidence, not completed engine gates.
 |---|---|
 | V0 | Historical reference subset accepted. Broader independent revised models, profile units/import mapping, consumer door/capacity acceptance and numerical limit/threshold decisions remain open |
 | V1 | Reviewed/implemented temporal primitives and codecs (exact scalar/tuple values, scopes/regions/Allen, point knowledge and opaque descriptors), plus component-state reducer primitives. Graphstate `Plan`/`Project` and the byte-identical 16-fixture/52-assertion Go path accepted (local `e5b23d9`), including bounded page/type/uniqueness/CDC-delta behavior. Graph-engine/storage integration, remaining revised models and full V1 acceptance stay open |
-| V2 | Candidate Raft/Pebble log/replica adapter independently validated as an adapter only. Bounded idalloc primitive independently validated on Go 1.26.9 (99.3% coverage; eight source/config hashes match). Bounded two-group transaction correctness prototype accepted (`92312ae`; independent 24-source/config checks, scoped combined coverage 86.3%). Six-process crash-functional slice accepted (`f3a1ee7`); power-loss/multi-host durability and global cross-process cut transport stay open. Full graph transaction/cut integration and serial-history oracle, production graph identity reuse/fencing, application GC and transferable snapshots, physical-host durability, comparative costs/faults and engine selection remain open |
+| V2 | Candidate Raft/Pebble log/replica adapter independently validated as an adapter only. Bounded idalloc primitive independently validated on Go 1.26.9 (99.3% coverage; eight source/config hashes match). Bounded two-group transaction correctness prototype accepted (`92312ae`; independent 24-source/config checks, scoped combined coverage 86.3%). Six-process crash-functional slice accepted (`f3a1ee7`); power-loss/multi-host durability and global cross-process cut transport stay open. Full graph transaction/cut integration and serial-history oracle, production graph identity reuse/fencing, application GC, dormant-snapshot activation and Raft application multi-voter integration, physical-host durability, comparative costs/faults and engine selection remain open |
 | V3 | Coordinate timeblock candidate independently validated (local commit `fa0c982`; scoped temporal+block coverage 95.7%, no exported method at 0%). Full engine seal/merge/recovery, paged structures and all-in budget/byte-ledger measurements remain open; resident-buffer prototype timings do not close V3 |
 | V4 | Production read/change APIs, historical cross-door parity, gap-free leased feed handoff and pinned sigma access-contract build and nonempty mutation-then-historical tests (the current signature/empty smoke is insufficient) |
 | V5 | Distributed access across 1/2/4/8 partitions, cross-edge/stall/rebalance/feed cases and sigma workload parity |
@@ -109,8 +109,9 @@ rational graph values and public default-axis/import adapters.
 The canonical revised-corpus adapter (`ac45629`, extended by `6efc9a3`) now
 checks 21 native executable contracts, seven byte-preservation-only cases, five
 real unsupported-predicate refusals and nine pending records. Seven additions
-execute numerical helper contracts only; public default-axis/Instant/importer
-integration remains open. Nominal/opaque refusals
+execute numerical helper contracts only; graph default-axis selection and importer
+integration remain open; explicit-axis Instant helpers are separately accepted below.
+Nominal/opaque refusals
 are explicitly type-level probes. Four graph cases use immutable test map
 views, not durable storage or certified cuts. The original historical 16/52
 and independent 42-case revision-3 corpus remain unchanged. Independent isolated
@@ -175,7 +176,10 @@ fraction/range/domain/mapping refusals. Reference/origin identity remains the
 caller's responsibility. Parent isolated full v5 build/vet/race/coverage and
 pinned Docker lint/security/vulnerability gates pass; 119 snapshot sources
 match. Common microbenchmark paths allocate zero, without a production capacity
-claim. Public default graph axis/Instant and importer integration remain open.
+claim. Explicit-axis `types.Instant` binding/encoding helpers are accepted as
+`5e87390`: Z/Q millisecond axis identity is supplied by the caller, with exact
+mismatch/fraction/range/Q×N refusals. Graph default-axis selection and importer
+integration remain open.
 The separately accepted `6efc9a3` adapter update executes seven numerical
 helper contracts without closing those integration obligations.
 
@@ -185,8 +189,8 @@ deadline expiry. Recovery assertions and deadlines remain intact. Twenty
 repetitions across six crash modes (120 subtests), full serial race, coverage,
 build/vet and pinned gates pass; the parent independently checked 122 hashes
 and focused race. This corrects test evidence, not product persistence behavior.
-Accepted catalog/assertion prerequisites are recorded below; graph pages and
-transactional assertion attachment remain open.
+Accepted catalog/assertion, component-page and association prerequisites are
+recorded below; full graph/materializer/Host integration remains open.
 
 `ApplicationPolicy.Preflight` (`738719e`) is a pure shared batch shape/work
 check with logical retained-byte/record output and zero usage on error. Concrete
@@ -209,18 +213,21 @@ Local accepted prerequisites also include bounded state/change codecs
 atomic retained ApplicationBatch/root/CDC/outcome storage in the same Pebble
 batch (`c99e1dc`) and cached ID recipient fencing across the actual two-group,
 six-process scalar protocol (`de9e0b7`). Application storage is singleton-voter
-only with retained-data quota backpressure; application GC, transferable
-snapshots and production graph assembly remain open. Allocation-service
+only with retained-data quota backpressure; bounded dormant export/import
+(`7caf9d3`) is now accepted, but activation, Raft application multi-voter
+integration, application GC and production graph assembly remain open.
+Allocation-service
 authority is separate from recipient/session epochs; production graph identity
-reuse validation remains open. Production graph pages/materializer/Host
-integration remain open;
-public default graph axis/Instant and importer integration remain open.
+reuse validation remains open. Full graph/materializer/Host integration, graph
+default-axis selection and importer integration remain open.
 
 Accepted local prerequisites `667e9c1` (pure assertion records/codecs) and
-`a308f8f` (bounded namespace catalogs/root/staging) do not install graph pages,
-transactional assertion attachment or a materializer/Host. Assertion currently
-supports five interpretation kinds; a sixth relation kind and integration design
-remain pending. Parent combined isolated v5 build/vet/race/coverage passes
+`a308f8f` (bounded namespace catalogs/root/staging) remain local foundations.
+Bounded component pages (`a2bd71c`) and stored assertion associations (`e1d38da`)
+are now accepted separately below; no full graph/materializer/Host exists.
+`AssertedRelation` is the sixth interpretation: a supplied relationship fact,
+not a constraint or inference. Parent combined isolated v5 build/vet/race/coverage
+passes
 (90.2%, 137 stable hashes); individual assertion coverage is 95.4% and catalog
 88.6%. Worker pinned Docker gates pass; catalog vulnerability checks find zero
 reachable and four uncalled advisories. Provisional catalog bytes are root 116,
@@ -232,6 +239,38 @@ v5 files with their Git blobs; Go 1.26.9 full v5 race (ten packages) and vet pas
 The committed comparison-input checker passes 17 tests, 93 complete outputs and
 three code-mutant refusals, including input/answer metadata tamper checks. These
 are source/fixture checks, not graph materializer or vendor benchmark acceptance.
+
+`ApplicationView.ReadLimits` (`4d64350`) reports immutable configured per-call
+row/byte maxima, not remaining quota, a valid view or a lease. Shared catalog
+operation caps (`00c978c`) charge nested lookups and value materialization under
+one budget narrowed by smaller application limits; parent graphstore/raftlog
+race and scoped vet pass. These are logical/capacity bounds, not heap/RSS.
+
+Dormant application snapshot transfer (`7caf9d3`) is independently accepted:
+451 review-input hashes match; worker full gates pass (90.2% v5 coverage), and
+parent raftlog race/coverage passes (87.4%). Export of the captured applied checkpoint and retained history uses bounded
+canonical chunks to import into an inactive bank; even verified imports never
+change active state. Activation, Raft application multi-voter integration,
+certified cuts and production topology transfer remain open.
+
+Component pages (`a2bd71c`) are accepted as a bounded local directory/checkpoint/
+patch prototype: 154 snapshot hashes match; parent graphstore race coverage is
+85.9%; worker new production coverage is 83.28%. Historical reads, exact before images,
+addressability and ordered CDC groups are checked. Limits are provisional:
+On an Apple M4 Max, the 64-cell-leaf fixture with 31 patches measured about
+1.1 MB/4,142 allocations per read versus checkpoint-only about 70 KB/262
+allocations. This small fixture is not efficiency or vendor acceptance.
+
+Assertion associations (`e1d38da`) are accepted with independently retained
+revisions/retractions, explicit immutable primary bindings and bounded target
+postings. The 167-file snapshot matches; parent assertion/graphstore race
+coverage is 95.4%/86.6%, new association production code 89.06%, and every public
+method has direct coverage at least 82.1%. Association scope does not change
+node/relationship life coverage automatically. One posting per page is a
+prototype, not a tuned access path. Full graph/materializer/Host integration,
+efficiency/vendor acceptance and all V0–V7 phase gates remain open; rho owns
+database preservation/access and sigma owns reasoning.
+
 Historical entity-declaration review artifacts (`a538b08`) remain unapplied to
 canonical Go; they do not close attachment or phase acceptance. The revised
 adapter split remains 21 native / 7 preservation / 5 refusal / 9 pending.
