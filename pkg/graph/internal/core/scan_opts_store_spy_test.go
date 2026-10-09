@@ -8,7 +8,9 @@ package core
 // path (nodesByLabelLocked / relsByTypeLocked and their siblings).
 //
 // The spy embeds the memory store and records every QueryOpts-taking store
-// method that receives an active temporal filter. Faulty implementation caught:
+// method that receives an active temporal filter. The battery calls every Core
+// read door that takes QueryOpts (the facade's Iter / IterByLabel wrap ForEach /
+// ForEachByLabel), the GraphTx read mirrors included. Faulty implementation caught:
 // any door that hands temporal opts to the store's current-row shortcut — before
 // the fix, ScanNodeColumns and ScanRelColumns (named type and every type).
 
@@ -109,6 +111,16 @@ func (s *optsSpyStore) ForEachRelByTypePropertyRange(tok uint16, key string, lo,
 	return s.Store.ForEachRelByTypePropertyRange(tok, key, lo, hi, inclLo, inclHi, o, fn)
 }
 
+func (s *optsSpyStore) NodesByLabelAndProperties(tok uint16, values map[string]any, o storepkg.QueryOpts) ([]*types.Node, error) {
+	s.note("NodesByLabelAndProperties", o)
+	return s.Store.NodesByLabelAndProperties(tok, values, o)
+}
+
+func (s *optsSpyStore) SearchNearestNodes(tok uint16, key string, query []float32, k int, o storepkg.QueryOpts) ([]*types.Node, error) {
+	s.note("SearchNearestNodes", o)
+	return s.Store.SearchNearestNodes(tok, key, query, k, o)
+}
+
 // The capabilities below are badger-only; the spy offers them so a door that
 // would forward temporal opts to them is caught on the memory-backed spy too.
 
@@ -136,7 +148,10 @@ func TestScanDoorsNeverForwardTemporalOptsToStore(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	a, err := g.Nodes.Add(ctx, []string{"S"}, map[string]any{"v": int64(1), "s": "x", "tkg_valid_from": types.Instant(1000)})
+	if err := g.Index.CreateVector("S", "emb", 2, storepkg.DistanceCosine); err != nil {
+		t.Fatalf("CreateVector: %v", err)
+	}
+	a, err := g.Nodes.Add(ctx, []string{"S"}, map[string]any{"v": int64(1), "s": "x", "emb": []float32{1, 0}, "tkg_valid_from": types.Instant(1000)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +181,9 @@ func TestScanDoorsNeverForwardTemporalOptsToStore(t *testing.T) {
 	}
 	ok := func(door string, err error) {
 		t.Helper()
-		if err != nil && !errors.Is(err, storepkg.ErrIndexNotFound) {
+		// ErrIndexNotFound: no index on the spy; ErrVectorSearchTxPinUnsupported:
+		// the vector doors decline TxPin (fail closed, documented).
+		if err != nil && !errors.Is(err, storepkg.ErrIndexNotFound) && !errors.Is(err, ErrVectorSearchTxPinUnsupported) {
 			t.Errorf("%s: %v", door, err)
 		}
 	}
@@ -180,12 +197,22 @@ func TestScanDoorsNeverForwardTemporalOptsToStore(t *testing.T) {
 		ok("Nodes.CountByLabelAt", err)
 		_, err = g.Nodes.ByLabelAndProperty("S", "v", int64(1), o)
 		ok("Nodes.ByLabelAndProperty", err)
+		_, err = g.Nodes.ByLabelAndProperties("S", map[string]any{"v": int64(1), "s": "x"}, o)
+		ok("Nodes.ByLabelAndProperties", err)
+		_, err = g.Index.SearchNearest("S", "emb", []float32{1, 0}, 2, o)
+		ok("Index.SearchNearest", err)
+		_, err = g.Index.SearchNearestScored("S", "emb", []float32{1, 0}, 2, o)
+		ok("Index.SearchNearestScored", err)
 		_, err = g.Nodes.All(o)
 		ok("Nodes.All", err)
 		ok("Nodes.ForEach", g.Nodes.ForEach(o, anyNode))
 		ok("Nodes.ForEachByLabelPropertyRange", g.Nodes.ForEachByLabelPropertyRange("S", "v", 0, 10, true, true, o, anyNode))
 		ok("Nodes.ForEachByLabelPropertyRangeOrdered", g.Nodes.ForEachByLabelPropertyRangeOrdered("S", "v", 0, 10, true, true, false, o, anyNode))
 		ok("Nodes.ForEachByLabelPropertyPrefix", g.Nodes.ForEachByLabelPropertyPrefix("S", "s", "", false, o, anyNode))
+		_, _, err = g.Nodes.RangeCardinality("S", "v", 0, 10, true, true, o)
+		ok("Nodes.RangeCardinality", err)
+		_, _, err = g.Rels.RangeCardinality("R", "v", 0, 10, true, true, o)
+		ok("Rels.RangeCardinality", err)
 		_, err = g.ScanNodeColumns("S", []string{"v"}, o, func(*storepkg.ColumnBatch) bool { return true })
 		ok("ScanNodeColumns", err)
 
@@ -209,6 +236,29 @@ func TestScanDoorsNeverForwardTemporalOptsToStore(t *testing.T) {
 		for _, typ := range []string{"R", ""} {
 			_, err = g.ScanRelColumns(typ, []string{"v"}, o, func(*storepkg.RelColumnBatch) bool { return true })
 			ok(fmt.Sprintf("ScanRelColumns(%q)", typ), err)
+		}
+
+		// GraphTx read mirrors (every GraphTx read taking QueryOpts).
+		tx, err := g.BeginTx()
+		if err != nil {
+			t.Fatalf("BeginTx: %v", err)
+		}
+		_, err = tx.AllNodes(o)
+		ok("GraphTx.AllNodes", err)
+		_, err = tx.NodesByLabel("S", o)
+		ok("GraphTx.NodesByLabel", err)
+		_, err = tx.NodesByLabelAndProperty("S", "v", int64(1), o)
+		ok("GraphTx.NodesByLabelAndProperty", err)
+		_, err = tx.AllRels(o)
+		ok("GraphTx.AllRels", err)
+		_, err = tx.RelsByType("R", o)
+		ok("GraphTx.RelsByType", err)
+		_, err = tx.SearchNearest("S", "emb", []float32{1, 0}, 2, o)
+		ok("GraphTx.SearchNearest", err)
+		_, err = tx.SearchNearestScored("S", "emb", []float32{1, 0}, 2, o)
+		ok("GraphTx.SearchNearestScored", err)
+		if err := tx.Rollback(); err != nil {
+			t.Fatalf("Rollback: %v", err)
 		}
 	}
 
