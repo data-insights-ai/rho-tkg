@@ -28,8 +28,9 @@ import (
 // fault-injecting decorator, unique_claims_fault_test.go) × every door that
 // claims: Add, AddWithTx, Import, AddByIDIfAbsent, GetOrCreateByKey, Update,
 // UpdateWithTx, UpdateInPlace, CompareAndSetProperty, AddLabel, the GraphTx
-// twins, BatchBuilder AddNode/UpdateNode/UpdateNodeWithTx and the ingest
-// Session (strong-sync, strong-async, concurrent).
+// twins, BatchBuilder AddNode/AddNodes/UpdateNode/UpdateNodeWithTx and the
+// ingest Session AddNode/AddNodes/UpdateNode/UpdateNodeWithTx (strong-sync,
+// strong-async, concurrent).
 //
 // Catches: a door that keeps the claim of a write that never landed (a later
 // Add of the value is refused as "permanently owned"), a failed second claim
@@ -231,6 +232,9 @@ func claimDoors() []claimDoor {
 		{name: "batch-AddNode", kind: claimCreate, group: true, run: func(g *graphpkg.Graph, _ types.NodeID, p map[string]any) error {
 			return claimBatch(g, func(b *graphpkg.BatchBuilder) error { _, err := b.AddNode(ref, p); return err })
 		}},
+		{name: "batch-AddNodes", kind: claimCreate, group: true, run: func(g *graphpkg.Graph, _ types.NodeID, p map[string]any) error {
+			return claimBatch(g, func(b *graphpkg.BatchBuilder) error { return b.AddNodes(ref, p, 1) })
+		}},
 		{name: "batch-UpdateNode", kind: claimUpdate, group: true, run: func(g *graphpkg.Graph, id types.NodeID, p map[string]any) error {
 			return claimBatch(g, func(b *graphpkg.BatchBuilder) error { return b.UpdateNode(id, p) })
 		}},
@@ -244,6 +248,9 @@ func claimDoors() []claimDoor {
 		doors = append(doors,
 			claimDoor{name: "session-" + m.name + "-AddNode", kind: claimCreate, group: true, run: func(g *graphpkg.Graph, _ types.NodeID, p map[string]any) error {
 				return claimSession(g, m, func(s *ingest.Session) error { _, err := s.AddNode(ref, p); return err })
+			}},
+			claimDoor{name: "session-" + m.name + "-AddNodes", kind: claimCreate, group: true, run: func(g *graphpkg.Graph, _ types.NodeID, p map[string]any) error {
+				return claimSession(g, m, func(s *ingest.Session) error { return s.AddNodes(ref, p, 1) })
 			}},
 			claimDoor{name: "session-" + m.name + "-UpdateNode", kind: claimUpdate, group: true, run: func(g *graphpkg.Graph, id types.NodeID, p map[string]any) error {
 				return claimSession(g, m, func(s *ingest.Session) error { return s.UpdateNode(id, p) })
