@@ -2,10 +2,73 @@ package core
 
 import (
 	"errors"
+	"slices"
 	"testing"
 
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
+
+// TestAsOfLabelCountAfterCascadeBelowLabelChange: a node gains label X; a
+// bounded cascade then corrects an interval where the older version (without
+// X) was valid, so its rows carry no X and sit above the current row, which
+// keeps its slot. At a pin after the cascade the as-of row is the newest row
+// recorded — a correction row without X — so ByLabel(X){TxPin}, NodesAsOf
+// filtered by X and CountByLabelAt(X){TxPin} all exclude the node, before and
+// after a later write. Catches a count arm that decides from the current row
+// while a row above it was recorded (the rows match ByLabel(C) either way, so
+// only a label that differs between the rows tells). Every backend; the
+// count arm is the core one on sharded and tiered.
+func TestAsOfLabelCountAfterCascadeBelowLabelChange(t *testing.T) {
+	t.Parallel()
+	for _, be := range txbBackends() {
+		t.Run(be.name, func(t *testing.T) {
+			g := be.open(t, false)
+			useTestClock(t, g)
+			e := newCCEnt(t, g, false)
+			b := e.add("B", 1000, nil)
+			id := e.add("T", 1000, nil)
+			if err := g.Nodes.AddLabel(e.ctx, types.NodeID(b), "X"); err != nil {
+				t.Fatalf("AddLabel(B): %v", err)
+			}
+			if err := g.Nodes.AddLabel(e.ctx, types.NodeID(id), "X"); err != nil {
+				t.Fatalf("AddLabel(T): %v", err)
+			}
+			e.mustCascade(id, 1500, 1600, map[string]any{"x": int64(1)})
+			pin := e.pin()
+			if rows := e.chain(id); rows[len(rows)-1].current {
+				t.Fatalf("fixture: the current row must stay below the cascade rows:%s", e.chainString(id))
+			}
+			check := func(phase string) {
+				t.Helper()
+				opts := storepkg.QueryOpts{TxPin: pin}
+				byLabel := e.nodes(g.Nodes.ByLabel("X", opts))
+				n, err := g.Nodes.CountByLabelAt("X", opts)
+				if err != nil {
+					t.Fatalf("CountByLabelAt: %v", err)
+				}
+				asOf, err := g.Temporal.NodesAsOf(pin)
+				if err != nil {
+					t.Fatalf("NodesAsOf: %v", err)
+				}
+				var withX []*types.Node
+				for _, x := range asOf {
+					if slices.Contains(g.Nodes.Labels(x), "X") {
+						withX = append(withX, x)
+					}
+				}
+				want := ccVer("B", 1)
+				if got := e.nodes(withX, nil); byLabel != want || got != want || n != 1 {
+					t.Fatalf("[%s] ByLabel(X){TxPin}=[%s] NodesAsOf∩X=[%s] CountByLabelAt(X){TxPin}=%d; want [%s] and 1:%s",
+						phase, byLabel, got, n, want, e.chainString(id))
+				}
+			}
+			check("after the cascade")
+			e.mustUpdate(id, map[string]any{"x": int64(9)})
+			check("after a later update")
+		})
+	}
+}
 
 // TestTxRefusedUpdateWithTxTakesNoSnapshot: a GraphTx caller-instant update
 // that is refused (t not after the chain's stamps, an update that changes

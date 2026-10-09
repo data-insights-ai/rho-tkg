@@ -298,9 +298,41 @@ func (e *ccEnt) point(door string, one func(id int64) (uint32, error), absent ..
 	return e.render(m)
 }
 
+// withCount adds a count door: it renders the set door's string when the
+// count equals that set's size, else "count=N" (so a count that disagrees
+// with the scan fails the every-door comparison).
+func (e *ccEnt) withCount(doors map[string]string, setDoor, countDoor string, n int, err error) map[string]string {
+	e.t.Helper()
+	if err != nil {
+		e.t.Fatalf("%s: %v", countDoor, err)
+	}
+	set := doors[setDoor]
+	size := 0
+	if set != "" {
+		size = len(strings.Split(set, " "))
+	}
+	if n == size {
+		doors[countDoor] = set
+	} else {
+		doors[countDoor] = fmt.Sprintf("count=%d", n)
+	}
+	return doors
+}
+
 // asOfDoors renders the belief-state doors at pin: the named point door, the
-// named set door and the generic TxPin door.
+// named set door, the generic TxPin door and its count door.
 func (e *ccEnt) asOfDoors(pin types.Instant) map[string]string {
+	e.t.Helper()
+	opts := storepkg.QueryOpts{TxPin: pin}
+	if e.rel {
+		n, err := e.g.Rels.CountByTypeAt(ccType, opts)
+		return e.withCount(e.asOfDoorsNoCount(pin), "ByType{TxPin}", "CountByTypeAt{TxPin}", n, err)
+	}
+	n, err := e.g.Nodes.CountByLabelAt(ccLabel, opts)
+	return e.withCount(e.asOfDoorsNoCount(pin), "ByLabel{TxPin}", "CountByLabelAt{TxPin}", n, err)
+}
+
+func (e *ccEnt) asOfDoorsNoCount(pin types.Instant) map[string]string {
 	e.t.Helper()
 	if e.rel {
 		return map[string]string{
@@ -331,8 +363,19 @@ func (e *ccEnt) asOfDoors(pin types.Instant) map[string]string {
 }
 
 // atTxDoors renders the bitemporal point doors at (validAt, txAt): named point,
-// named set, generic ValidAt+TxAt.
+// named set, generic ValidAt+TxAt and its count door.
 func (e *ccEnt) atTxDoors(validAt, txAt types.Instant) map[string]string {
+	e.t.Helper()
+	opts := storepkg.QueryOpts{ValidAt: validAt, TxAt: txAt}
+	if e.rel {
+		n, err := e.g.Rels.CountByTypeAt(ccType, opts)
+		return e.withCount(e.atTxDoorsNoCount(validAt, txAt), "ByType{ValidAt,TxAt}", "CountByTypeAt{ValidAt,TxAt}", n, err)
+	}
+	n, err := e.g.Nodes.CountByLabelAt(ccLabel, opts)
+	return e.withCount(e.atTxDoorsNoCount(validAt, txAt), "ByLabel{ValidAt,TxAt}", "CountByLabelAt{ValidAt,TxAt}", n, err)
+}
+
+func (e *ccEnt) atTxDoorsNoCount(validAt, txAt types.Instant) map[string]string {
 	e.t.Helper()
 	if e.rel {
 		return map[string]string{
