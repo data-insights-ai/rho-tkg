@@ -47,8 +47,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   cases, 18,192 interval pairs, 600 component mutations and 88 accepted/39
   refused protocol histories. Owner-qualified node/relationship property
   schemas (`844e065`) resolve same-name schema collisions. The revised native
-  adapter (`ac45629`) checks 14 executable contracts, seven preservation-only
-  cases and five unsupported-predicate refusals; 16 cases remain pending.
+  adapter (`ac45629`, extended by `6efc9a3`) checks 21 executable contracts,
+  seven preservation-only cases and five unsupported-predicate refusals; nine
+  cases remain pending. Seven additions exercise numerical helpers only.
   Nominal/opaque refusals are type-level probes; four graph cases use immutable
   test maps, not durable storage or cuts. Full V0/V1 acceptance remains open.
 
@@ -118,6 +119,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   lengths, not a shipping format. Axis dictionaries, IDs/revisions/properties,
   indexes/logs and engine costs are excluded: no vendor comparison or B/fact
   claim, and no V3 completion.
+
+### Fixed
+
+- **v5 crash-test seams** (`0dd55f2`): children wait after successfully requesting
+  self-SIGKILL; the scalar parent requires actual SIGKILL without deadline expiry.
+  This prevents an asynchronous kill from running cleanup before the intended
+  crash. Existing recovery assertions/deadlines remain; product persistence
+  behavior is unchanged.
 
 ### Security
 

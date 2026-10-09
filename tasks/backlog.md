@@ -106,16 +106,19 @@ overlay evidence, not engine or V1 acceptance. Remaining native doors include
 interpretation/role metadata, graph-qualified references, descriptor/knowledge/
 rational graph values and public default-axis/import adapters.
 
-The canonical revised-corpus adapter is accepted locally as `ac45629`: 14
-native executable contracts, seven byte-preservation-only cases, five real
-unsupported-predicate refusals and 16 pending records. Nominal/opaque refusals
+The canonical revised-corpus adapter (`ac45629`, extended by `6efc9a3`) now
+checks 21 native executable contracts, seven byte-preservation-only cases, five
+real unsupported-predicate refusals and nine pending records. Seven additions
+execute numerical helper contracts only; public default-axis/Instant/importer
+integration remains open. Nominal/opaque refusals
 are explicitly type-level probes. Four graph cases use immutable test map
 views, not durable storage or certified cuts. The original historical 16/52
 and independent 42-case revision-3 corpus remain unchanged. Independent isolated
-v5 build/vet/race/coverage and pinned lint/security/vulnerability gates pass
-(90.0% total coverage; 115 source/config/fixture hashes checked). Remaining
-attachments, public APIs, store/cut integration and import/unit mapping remain
-open; this closes no V0–V7 phase gate.
+graphstate+temporal race and v5 build/vet/coverage/pinned gates pass
+(90.2% total coverage; 121 frozen source/config/fixture hashes checked). The
+first full-race run failed an asynchronous self-SIGKILL harness; its exact failure
+is retained, and a serial retry passed. Remaining attachments, public APIs,
+store/cut integration and import mapping remain open; no V0–V7 gate is closed.
 
 Three independent regression findings are resolved by local commit `e5712e1`:
 unreachable allocator receipts (`first < sequence`), omitted ScopeValue axis
@@ -173,8 +176,16 @@ caller's responsibility. Parent isolated full v5 build/vet/race/coverage and
 pinned Docker lint/security/vulnerability gates pass; 119 snapshot sources
 match. Common microbenchmark paths allocate zero, without a production capacity
 claim. Public default graph axis/Instant and importer integration remain open.
-The revised adapter split stays 14 native / 7 preservation / 5 refusal / 16
-pending until a separately reviewed adapter update.
+The separately accepted `6efc9a3` adapter update executes seven numerical
+helper contracts without closing those integration obligations.
+
+Crash-harness correction `0dd55f2` blocks children after successful self-SIGKILL
+requests at four seams; the scalar parent now requires actual SIGKILL without
+deadline expiry. Recovery assertions and deadlines remain intact. Twenty
+repetitions across six crash modes (120 subtests), full serial race, coverage,
+build/vet and pinned gates pass; the parent independently checked 122 hashes
+and focused race. This corrects test evidence, not product persistence behavior.
+Graphstore and the new assertion package remain unaccepted.
 
 `ApplicationPolicy.Preflight` (`738719e`) is a pure shared batch shape/work
 check with logical retained-byte/record output and zero usage on error. Concrete
