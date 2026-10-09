@@ -1,0 +1,13 @@
+--- FAIL: TestBulkAsOfPresence_SkipsKeyProbeWithoutHistory (0.02s)
+    --- FAIL: TestBulkAsOfPresence_SkipsKeyProbeWithoutHistory/rel (0.20s)
+        badgerstore_asof_bulk_presence_test.go:368: 30 key probes for 7 entities with history and 23 without: entities without history were probed
+    --- FAIL: TestBulkAsOfPresence_SkipsKeyProbeWithoutHistory/node (0.24s)
+        badgerstore_asof_bulk_presence_test.go:368: 30 key probes for 7 entities with history and 23 without: entities without history were probed
+--- FAIL: TestBulkAsOfPresence_EquivalentAcrossStates (0.00s)
+    --- FAIL: TestBulkAsOfPresence_EquivalentAcrossStates/rel (0.40s)
+        badgerstore_asof_bulk_presence_test.go:228: flushed: the bulk door left the presence set unbuilt
+    --- FAIL: TestBulkAsOfPresence_EquivalentAcrossStates/node (0.40s)
+        badgerstore_asof_bulk_presence_test.go:228: flushed: the bulk door left the presence set unbuilt
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	2.925s
+FAIL

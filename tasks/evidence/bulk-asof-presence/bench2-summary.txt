@@ -1,0 +1,21 @@
+main before the as-of change (09bb265^)
+  BenchmarkNodesAsOfBulk/history=none      min   31.4 ms  median   39.1 ms  allocs/op 302320
+  BenchmarkNodesAsOfBulk/history=one       min   43.8 ms  median   53.9 ms  allocs/op 400508
+  BenchmarkNodesAsOfBulk/history=three     min   47.5 ms  median   52.6 ms  allocs/op 416657
+  BenchmarkRelsAsOfBulk/history=none       min   33.0 ms  median   41.0 ms  allocs/op 273499
+  BenchmarkRelsAsOfBulk/history=one        min   53.1 ms  median   60.9 ms  allocs/op 426042
+  BenchmarkRelsAsOfBulk/history=three      min   51.9 ms  median   59.2 ms  allocs/op 399211
+presence for no-history only (previous commit)
+  BenchmarkNodesAsOfBulk/history=none      min   31.7 ms  median   37.7 ms  allocs/op 327670
+  BenchmarkNodesAsOfBulk/history=one       min   63.6 ms  median   72.5 ms  allocs/op 546328
+  BenchmarkNodesAsOfBulk/history=three     min   75.8 ms  median   89.5 ms  allocs/op 557313
+  BenchmarkRelsAsOfBulk/history=none       min   34.6 ms  median   41.5 ms  allocs/op 335400
+  BenchmarkRelsAsOfBulk/history=one        min   74.4 ms  median   82.9 ms  allocs/op 573769
+  BenchmarkRelsAsOfBulk/history=three      min   82.0 ms  median   88.2 ms  allocs/op 563760
+with the top version
+  BenchmarkNodesAsOfBulk/history=none      min   32.5 ms  median   35.3 ms  allocs/op 317665
+  BenchmarkNodesAsOfBulk/history=one       min   48.6 ms  median   57.2 ms  allocs/op 449168
+  BenchmarkNodesAsOfBulk/history=three     min   51.1 ms  median   54.8 ms  allocs/op 446661
+  BenchmarkRelsAsOfBulk/history=none       min   35.6 ms  median   40.1 ms  allocs/op 313130
+  BenchmarkRelsAsOfBulk/history=one        min   57.4 ms  median   69.6 ms  allocs/op 468220
+  BenchmarkRelsAsOfBulk/history=three      min   54.5 ms  median   65.3 ms  allocs/op 460273

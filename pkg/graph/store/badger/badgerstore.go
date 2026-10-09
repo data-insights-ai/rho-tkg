@@ -728,6 +728,18 @@ type Store struct {
 	// undercounting fix). Set only from the owning test.
 	bulkAsOfScanTestHook func(index int)
 
+	// bulkAsOfKeyProbeTestHook, when non-nil, is invoked by the bulk as-of
+	// scans' history key existence check for every entity not answered by the
+	// history presence set (bulkPresence). Set only from the owning test.
+	bulkAsOfKeyProbeTestHook func()
+
+	// bulkAsOfOverlayTestHook, when non-nil, is invoked by NodesAsOf/RelsAsOf
+	// right after the write-buffer overlay is captured and before the shared
+	// transaction opens: a history delete landing here is NOT in the scan's
+	// snapshot, which is what the presence set's delete counter, read before the
+	// capture (bulkPresence), must catch. Set only from the owning test.
+	bulkAsOfOverlayTestHook func()
+
 	// replaceRelPrefetchTestHook, when non-nil, is invoked by ReplaceRelationship
 	// right after prefetchRelWithRev returns and BEFORE idxMu.Lock() is acquired.
 	// Production leaves it nil (zero overhead); tests use it to deterministically
