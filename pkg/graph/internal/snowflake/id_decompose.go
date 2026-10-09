@@ -8,31 +8,20 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/internal/idlayout"
 )
 
 // Epoch is the custom epoch for all snowflake ID generation
-// (2026-01-01 UTC). Lives in this package so the Layout that depends on
-// it can be shared by every package in pkg/graph (graph layer, locks,
-// indexes, backends) without an import cycle on pkg/graph itself.
-var Epoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+// (2026-01-01 UTC). Its single definition lives in pkg/internal/idlayout so
+// pkg/types (the public NodeID/RelID.MintInstant doors) and every package in
+// pkg/graph share one epoch without an import cycle on pkg/graph itself.
+var Epoch = idlayout.Epoch
 
 // Layout is the package-level snowflake.Layout matching the graph's
-// snowflake generators. Used by standalone functions
-// (entityValidFrom, shardIndex, DecomposeID) that don't have access to a
-// *Node. Lives in pkg/graph/internal/snowflake so all subpackages can share
-// a single layout without coupling on pkg/graph.
-var Layout = func() snowflake.Layout {
-	l, err := snowflake.NewLayout(
-		snowflake.WithEpoch(Epoch),
-		snowflake.WithMicroseconds(),
-		snowflake.WithNodeBits(5),
-		snowflake.WithStepBits(10),
-	)
-	if err != nil {
-		panic("graph: SnowflakeLayout: " + err.Error())
-	}
-	return l
-}()
+// snowflake generators, shared with pkg/types through pkg/internal/idlayout.
+// Used by standalone functions (shardIndex, DecomposeID) that don't have
+// access to a *Node.
+var Layout = idlayout.Layout
 
 // IDComponents holds the decomposed fields of a snowflake ID.
 type IDComponents struct {
