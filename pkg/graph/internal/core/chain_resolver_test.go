@@ -140,6 +140,20 @@ func TestResolveChainRelating_WhiteBox(t *testing.T) {
 	if got.Version() != 1 {
 		t.Fatalf("{Equals [50,51)}: version = %d, want 1", got.Version())
 	}
+	// The tiling the one-tick row produces: v0 [10,50), v1 [50,51), a gap
+	// [51,60), v2 [60,∞). A resolver that skips v1 tiles v0 to 60, so 55 would
+	// answer v0 and v0 would no longer Meet [50,100).
+	got, err = c.resolveNodeChain(build(), chainProbe{kind: probePoint, validAt: 45}, nil)
+	if err != nil || got.Version() != 0 {
+		t.Fatalf("point 45: got %v, %v; want v0", got, err)
+	}
+	if _, err := c.resolveNodeChain(build(), chainProbe{kind: probePoint, validAt: 55}, nil); !errors.Is(err, storepkg.ErrNoVersionValidAt) {
+		t.Fatalf("point 55 (gap [51,60)): err = %v, want ErrNoVersionValidAt", err)
+	}
+	got, err = c.resolveNodeChain(build(), chainProbe{kind: probeRelate, validStart: 50, validEnd: 100, rels: types.Meets.Set()}, nil)
+	if err != nil || got.Version() != 0 {
+		t.Fatalf("{Meets [50,100)}: got %v, %v; want v0 [10,50)", got, err)
+	}
 
 	// {During}: no version is inside b → ErrNoVersionValidAt.
 	if _, err := c.resolveNodeChain(build(), chainProbe{kind: probeRelate, validStart: 100, validEnd: 200, rels: types.During.Set()}, nil); !errors.Is(err, storepkg.ErrNoVersionValidAt) {
@@ -170,6 +184,17 @@ func TestResolveChainRelating_WhiteBox(t *testing.T) {
 	}
 	if gotR.Version() != 1 {
 		t.Fatalf("rel {Equals [50,51)}: version = %d, want 1", gotR.Version())
+	}
+	gotR, err = c.resolveRelChain(buildR(), chainProbe{kind: probePoint, validAt: 45}, nil)
+	if err != nil || gotR.Version() != 0 {
+		t.Fatalf("rel point 45: got %v, %v; want v0", gotR, err)
+	}
+	if _, err := c.resolveRelChain(buildR(), chainProbe{kind: probePoint, validAt: 55}, nil); !errors.Is(err, storepkg.ErrNoVersionValidAt) {
+		t.Fatalf("rel point 55 (gap [51,60)): err = %v, want ErrNoVersionValidAt", err)
+	}
+	gotR, err = c.resolveRelChain(buildR(), chainProbe{kind: probeRelate, validStart: 50, validEnd: 100, rels: types.Meets.Set()}, nil)
+	if err != nil || gotR.Version() != 0 {
+		t.Fatalf("rel {Meets [50,100)}: got %v, %v; want v0 [10,50)", gotR, err)
 	}
 	gotR, err = c.resolveRelChain(buildR(), chainProbe{kind: probeRelate, validStart: 100, validEnd: 200, rels: types.Contains.Set()}, nil)
 	if err != nil {
