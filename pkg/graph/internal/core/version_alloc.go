@@ -25,6 +25,19 @@ import (
 // version current+1 does: the common case costs one point read that misses;
 // only an entity whose chain holds rows above the current row (a cascade that
 // left the current row in place) reads its history to find the top.
+//
+// Density is an assumption, shared with the as-of fast paths (memory
+// history[v+1], badger's point read of key current+1, the core fallback) and
+// the GraphTx rollback snapshot. Every write path of this package keeps it. A
+// gap directly above the current row — a direct Store.TruncateNodeHistory /
+// TrimNodeHistoryFrom that removed version current+1 but kept a higher one, or
+// a re-import over an earlier life compacted below its top — makes all of
+// them answer "no row above": the allocator then hands out current+1 again
+// (unique, since that key is free, but below the surviving higher row, so the
+// newest write is no longer the highest version), and the as-of door answers
+// the current row where SelectAsOfWithCurrent over the whole chain would
+// answer the higher row. Memory, badger and the core fallback agree with each
+// other in that case (all probe current+1).
 
 // nodeHasHistoryAbove reports whether node id has a history row at version
 // v+1, i.e. (versions being dense) any row above v.
