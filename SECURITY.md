@@ -85,7 +85,21 @@ process. Pointers into the code for anyone auditing this library:
     (`pkg/graph/internal/storeutil/wire_fuzz_test.go`) — the checked wire
     decode/validate path for nodes and relationships.
 
-  These five run weekly (and on-demand) with a bounded per-target fuzztime
+  The unreleased nested v5 module adds eleven targets:
+
+  - `FuzzDecodePosition`, `FuzzRegionSetAlgebra`, `FuzzDecodeScope`,
+    `FuzzDecodeOpaqueDescriptor`, `FuzzDecodePointKnowledge`
+    (`v5/pkg/temporal/`) — exact values, scopes and descriptors.
+  - `FuzzStateCodec` (`v5/internal/state/codec_fuzz_test.go`) — canonical
+    component-state/change-group decoding, recomputed ledgers and input ownership.
+  - `FuzzConsensusWirePreflight` (`v5/internal/replica/`),
+    `FuzzDecodeCheckpoint` (`v5/internal/idalloc/`), and `FuzzOpen`
+    (`v5/internal/timeblock/`) — bounded consensus/checkpoint/block admission.
+  - `FuzzGraphstateDeltaAndHistoryParity` (`v5/internal/graphstate/`) and
+    `FuzzStrictApplicationAndCheckpoint` (`v5/internal/txnproto/`) — bounded
+    historical projection and transaction/application/checkpoint parity.
+
+  All sixteen run weekly (and on-demand) with a bounded per-target fuzztime
   in `.github/workflows/fuzz.yml`; each seed corpus also runs as an ordinary
   test in `make test`. The anchor+delta history decoders
   (`FuzzDecodeNodeHistoryDelta`, `FuzzDecodeRelHistoryDelta`,

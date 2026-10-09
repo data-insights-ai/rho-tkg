@@ -35,9 +35,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Tests check whole transactions, retained old cuts, reordered/duplicate delivery
   and durable reopen across prepare/decision/application/checkpoint/quorum-loss
   boundaries. This proves neither power-loss/multi-host durability nor global
-  cross-process cut transport. Allocator integration, ownership fencing,
-  retention/CDC and FoundationDB comparison/faults remain open; V2 is incomplete
-  and no engine is selected.
+  cross-process cut transport. Later allocator, retention and comparator
+  prerequisites are recorded below; full graph integration, comparative faults
+  and V2 acceptance remain open, and no engine is selected.
+
+- **Bounded v5 component codecs and independent reference checks**: canonical
+  state/change-group envelopes bind the known axis and enforce independent
+  encoded-byte and metadata/reference limits (`a00a544`); payload dictionaries
+  still need storage verification. The independent Python suite (`f46ac898`)
+  preserves the historical 16-case/52-assertion subset and checks 42 revised
+  cases, 18,192 interval pairs, 600 component mutations and 88 accepted/39
+  refused protocol histories. Owner-qualified node/relationship property
+  schemas (`844e065`) resolve same-name schema collisions. Production native
+  differential coverage and full V0/V1 acceptance remain open.
+
+- **Atomic retained v5 application storage** (`c99e1dc`): immutable KV versions,
+  roots, complete change/outcome envelopes and the applied checkpoint commit in
+  one synchronous Pebble batch. Local historical views survive log reclamation;
+  retained-data quotas backpressure writes. Application mode requires one local
+  voter, with no application GC or transferable snapshots. `eb2f421` bounds
+  retained/returned slice capacities and Scan work/output ledgers; these are
+  caller-visible capacity bounds, not physical allocator, heap or RSS accounting.
+  This storage prerequisite is not a durable production graph engine.
+
+- **Independently fenced v5 ID recipients** (`de9e0b7`): the actual two-group,
+  six-process scalar protocol separates allocation-service authority from
+  recipient/session epochs and permits cached local issuance during allocator
+  unavailability. Receipt-floor, ScopeValue axis-byte and Host read-identity
+  regressions are fixed (`e5712e1`). Production graph identity reuse validation
+  and delayed same-session fence replay remain open in `tasks/backlog.md`.
+
+- **Native FoundationDB functional comparator** (`04d4fb3`): comparison of the
+  bounded transaction prototype is reproducible; comparative capacity/fault
+  acceptance and engine selection remain open. The v5 candidate through
+  `eb2f421` independently passes build/vet/full race/coverage and pinned Docker
+  lint/gosec/govulncheck (89.7% coverage; zero reachable vulnerabilities).
+  Final consolidated root+v5 CI and distributed/consumer acceptance remain open.
 
 - **Unreleased coordinate timeblock candidate** (local `fa0c982`): Z/Q axes
   with exact int64 endpoints and separate point/span layouts; fractions, wide
@@ -61,11 +94,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
+- **Unreleased v5 replica input admission** (`1a446a8`): malformed/empty
+  proposals, invalid snapshot membership and nonconsecutive append indexes
+  fail closed; finite term exhaustion is rejected. Valid follower forwarding
+  and protobuf nonzero-boolean behavior are preserved. This bounds malformed
+  input handling and does not establish Byzantine safety.
+
 - **Go toolchain 1.26.7 → 1.26.9** in both modules: address seven symbol-level
   standard-library findings from `govulncheck` using the
   [Go 1.26.9 security patch](https://go.dev/doc/devel/release#go1.26.9).
-  Root v4 post-upgrade checks pass (pkg coverage gate 86.5%). A consolidated run
-  over the growing v5 module remains pending; no other v4 API or behavior change.
+  Root v4 post-upgrade checks pass (pkg coverage gate 86.5%). An independent run
+  over v5 through `eb2f421` passes with zero reachable vulnerabilities; two
+  imported-package and two required-module advisories are unreachable. Final
+  consolidated root+v5 CI remains pending; no other v4 API or behavior change.
 
 ## [4.50.0] - 2026-10-10
 

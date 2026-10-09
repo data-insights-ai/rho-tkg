@@ -1,7 +1,8 @@
 name: Fuzz
 
-# Weekly (and on-demand) bounded fuzz run over the five trust-boundary decode
-# harnesses documented in SECURITY.md's "Fuzz harnesses" section: the
+# Weekly (and on-demand) bounded fuzz run over the v4 trust-boundary decode
+# and v5 temporal/state/protocol harnesses documented in SECURITY.md's
+# "Fuzz harnesses" section: the
 # end-to-end import pipeline, the change-log replica-apply decode path (same
 # untrusted-stream contract as import — BACKLOG 12g), and the checked
 # wire-decode/validate path for nodes and relationships. Each target's own
@@ -22,7 +23,7 @@ on:
   workflow_dispatch:
     inputs:
       fuzztime:
-        description: "Per-target fuzz duration (15 targets share a 30-minute job; default 60s)"
+        description: "Per-target fuzz duration (16 targets share a 30-minute job; default 60s)"
         required: false
         default: "60s"
 
@@ -36,7 +37,7 @@ concurrency:
 jobs:
   fuzz:
     runs-on: ubuntu-latest
-    # Fifteen targets at the default 60s leave 15 minutes for setup/build/artifacts.
+    # Sixteen targets at 60s leave 14 nominal minutes for setup/build/artifacts.
     timeout-minutes: 30
     env:
       FUZZTIME: ${{ inputs.fuzztime || '60s' }}
@@ -83,6 +84,10 @@ jobs:
         working-directory: v5
         run: go test -run '^$' -fuzz=FuzzDecodePointKnowledge -fuzztime="$FUZZTIME" ./pkg/temporal/
 
+      - name: FuzzStateCodec (v5)
+        working-directory: v5
+        run: go test -run '^$' -fuzz=FuzzStateCodec -fuzztime="$FUZZTIME" ./internal/state/
+
       - name: FuzzConsensusWirePreflight (v5)
         working-directory: v5
         run: go test -run '^$' -fuzz=FuzzConsensusWirePreflight -fuzztime="$FUZZTIME" ./internal/replica/
@@ -112,6 +117,7 @@ jobs:
             pkg/graph/internal/core/testdata/fuzz/**
             pkg/graph/internal/storeutil/testdata/fuzz/**
             v5/pkg/temporal/testdata/fuzz/**
+            v5/internal/state/testdata/fuzz/**
             v5/internal/replica/testdata/fuzz/**
             v5/internal/idalloc/testdata/fuzz/**
             v5/internal/timeblock/testdata/fuzz/**

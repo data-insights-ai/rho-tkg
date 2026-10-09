@@ -75,12 +75,88 @@ and reference JSON specify contracts/evidence, not completed engine gates.
 |---|---|
 | V0 | Historical reference subset accepted. Broader independent revised models, profile units/import mapping, consumer door/capacity acceptance and numerical limit/threshold decisions remain open |
 | V1 | Reviewed/implemented temporal primitives and codecs (exact scalar/tuple values, scopes/regions/Allen, point knowledge and opaque descriptors), plus component-state reducer primitives. Graphstate `Plan`/`Project` and the byte-identical 16-fixture/52-assertion Go path accepted (local `e5b23d9`), including bounded page/type/uniqueness/CDC-delta behavior. Graph-engine/storage integration, remaining revised models and full V1 acceptance stay open |
-| V2 | Candidate Raft/Pebble log/replica adapter independently validated as an adapter only. Bounded idalloc primitive independently validated on Go 1.26.9 (99.3% coverage; eight source/config hashes match). Bounded two-group transaction correctness prototype accepted (`92312ae`; independent 24-source/config checks, scoped combined coverage 86.3%). Six-process crash-functional slice accepted (`f3a1ee7`); power-loss/multi-host durability and global cross-process cut transport stay open. Full graph transaction/cut integration and serial-history oracle, allocator/ownership fencing, retention/CDC, physical-host durability, transactional-KV comparison and engine selection remain open |
+| V2 | Candidate Raft/Pebble log/replica adapter independently validated as an adapter only. Bounded idalloc primitive independently validated on Go 1.26.9 (99.3% coverage; eight source/config hashes match). Bounded two-group transaction correctness prototype accepted (`92312ae`; independent 24-source/config checks, scoped combined coverage 86.3%). Six-process crash-functional slice accepted (`f3a1ee7`); power-loss/multi-host durability and global cross-process cut transport stay open. Full graph transaction/cut integration and serial-history oracle, production graph identity reuse/fencing, application GC and transferable snapshots, physical-host durability, comparative costs/faults and engine selection remain open |
 | V3 | Coordinate timeblock candidate independently validated (local commit `fa0c982`; scoped temporal+block coverage 95.7%, no exported method at 0%). Full engine seal/merge/recovery, paged structures and all-in budget/byte-ledger measurements remain open; resident-buffer prototype timings do not close V3 |
 | V4 | Production read/change APIs, historical cross-door parity, gap-free leased feed handoff and pinned sigma access-contract build and nonempty mutation-then-historical tests (the current signature/empty smoke is insufficient) |
 | V5 | Distributed access across 1/2/4/8 partitions, cross-edge/stall/rebalance/feed cases and sigma workload parity |
 | V6 | Provenance-aware importer and ambiguity report, consumer-repository migrations, retained-cut/CDC agreement and restore on a different topology |
 | V7 | Versioned contracts/limits, full CI/race/coverage/security, distributed matrix and consumer suites; measured comparative space/time acceptance against Neo4j/TigerGraph/Memgraph plus v4, with reviewed excess-cost exceptions |
+
+The [independent reference suite](../docs/v5/reference/independent/README.md)
+is integrated locally. `python3 -B docs/v5/reference/independent/check.py` passes
+20 temporal and 18 protocol tests, the unchanged historical 16/52, 42 revised
+case records (corpus revision 3), 18,192 interval pairs, 600 component mutations,
+88 accepted protocol histories and 39 required refusals. Generated artifacts
+are deterministic. These are independent mathematical/declarative checks;
+production differential adapters, durable capture and phase acceptance remain open.
+
+The historical independent revised component/primitive comparison against a
+SHA-pinned schema-owner overlay passed 22 of the 42 records, with 16 required integrations
+and four declarative obligations explicitly open. The unchanged full E02
+same-name node/relationship property golden and new E19 strict-life correction
+case passed. Owner-qualified schema support is committed as `844e065`; that
+does not make the overlay comparison or its supplementary tests canonical.
+The canonical native differential adapter remains in progress.
+Its supplementary tests checked 64 complete historical answers, 12 atomic
+refusals and four candidate faults with 128 retained-answer rechecks; scoped
+normal/race/vet passed at 85.9% graphstate coverage. These remain historical
+overlay evidence, not engine or V1 acceptance. Remaining native doors include
+interpretation/role metadata, graph-qualified references, descriptor/knowledge/
+rational graph values and default Instant/unit adapters.
+
+Three independent regression findings are resolved by local commit `e5712e1`:
+unreachable allocator receipts (`first < sequence`), omitted ScopeValue axis
+metadata in read/delta ledgers, and repeated questions sharing an older pending
+ReadIndex barrier. A separate Git-archive checkout of that exact commit passes
+Go 1.26.9 full-package race tests and vet for idalloc, graphstate, txnproto and
+replica, including the committed regression tests and six-process harness.
+The [candidate patches](../docs/v5/reference/independent/regressions/README.md)
+remain historical review alternatives and must not be applied again; committed
+implementations differ. Broader graph differential coverage, fresh all-module
+CI and full V0–V7 acceptance remain pending. These checks do not establish
+distributed per-issuer allocation or full Fresh-cut orchestration.
+
+Further replica input-admission regressions are resolved in committed `1a446a8`:
+empty/malformed proposals and invalid snapshot membership could panic before
+ordinary error handling, and nonconsecutive append indexes could acknowledge a
+missing entry. The committed guards preserve valid follower forwarding and
+protobuf nonzero-boolean behavior and reject exhausted finite terms. The exact
+candidate committed as `1a446a8` was independently validated with nested
+build/vet/race/coverage and pinned Docker gates on Go 1.26.9. The earlier
+portable guard patch remains historical review data and must not be reapplied.
+This is input-admission evidence, not a claim of Byzantine safety or divergence
+from a valid peer schedule.
+
+The application output-capacity finding is resolved in canonical local source
+`eb2f421`: Scan charges returned row-slice capacity and visited-key work, while
+point/root/change/outcome copies expose exact capacity. The reproduced 651-byte
+page retaining at least 1,018 bytes, 103-byte envelope returning capacity 112,
+and 3-byte root returning/retaining capacity 8 are now regression cases.
+The [portable output-capacity patch](../docs/v5/reference/independent/regressions/application-output-capacity.patch)
+and [validation](../docs/v5/reference/independent/regressions/application-output-capacity-validation.json)
+remain immutable historical evidence against `c99e1dc`, not current-source patches.
+These are caller-visible capacities, not physical heap/RSS measurements.
+
+**Open — recipient fence replay:** in `de9e0b7`, a delayed duplicate
+writer-allocation fence can regress the same active recipient to fenced and
+reset its last sequence. Genuine Host proofs on both groups reproduce it.
+The [portable recipient replay patch](../docs/v5/reference/independent/regressions/recipient-fence-replay.patch)
+and [validation](../docs/v5/reference/independent/regressions/recipient-fence-replay-validation.json)
+record an isolated phase-monotonicity fix passing stock-plus-independent
+normal/race/vet and parent focused race, preserving prior-fenced B recovery.
+The 38 stock files matched `de9e0b7`; integration and current-source review
+remain pending. It is not yet resolved in canonical source.
+
+Local accepted prerequisites also include bounded state/change codecs
+(`a00a544`), the native FoundationDB functional comparator (`04d4fb3`),
+atomic retained ApplicationBatch/root/CDC/outcome storage in the same Pebble
+batch (`c99e1dc`) and cached ID recipient fencing across the actual two-group,
+six-process scalar protocol (`de9e0b7`). Application storage is singleton-voter
+only with retained-data quota backpressure; application GC, transferable
+snapshots and production graph assembly remain open. Allocation-service
+authority is separate from recipient/session epochs; production graph identity
+reuse validation remains open. Native 42-case differential integration and
+production graphstore design are in progress, not accepted.
 
 Reviewed foundations are committed locally as `6ef233c`; the coordinate block
 candidate is `fa0c982`. Neither is a v5 release or phase-completion claim.
@@ -88,7 +164,7 @@ candidate is `fa0c982`. Neither is a v5 release or phase-completion claim.
 Go 1.26.9 review checkpoint: the parent independently SHA-pinned and validated
 49 temporal/state/raftlog/replica files with build, vet, race, `make cover`, lint,
 gosec and govulncheck: combined coverage 90.5%, no exported method at 0%.
-Raft sources still match that snapshot. Root v4 build/vet/lint/security/vulncheck,
+Those hashes identify that historical foundation only. Root v4 build/vet/lint/security/vulncheck,
 MetaKV checks and coverage gates pass (pkg coverage 86.5%); its full race run
 failed only the version-metadata assertion, then focused ingest/docs race passed
 after the metadata/private-helper fix. These are separate checks, not one
@@ -106,7 +182,8 @@ prepare, decision, partial-application, unresolved-checkpoint and quorum-loss
 boundaries. Reproduce from `v5/`:
 `go test -race -count=1 -run '^TestTwoGroupsSixProcessesDurableBoundaryRecovery$' ./internal/txnproto`.
 This is process-crash functional evidence, not power-loss, multi-host or global
-cross-process cut transport acceptance. Native FDB smoke is parent-verified;
+cross-process cut transport acceptance. Native FDB functional comparison is
+accepted as `04d4fb3`;
 comparative costs/faults remain pending. Full graph transaction/cut integration
 remains open.
 Idalloc's independent Go 1.26.9 build/vet/race/coverage/lint/gosec/govulncheck pass
@@ -116,6 +193,14 @@ establish cross-partition correctness or complete certified cuts. Pebble's fatal
 storage paths stop the embedding process; persistent Create/EIO and ENOSPC reopen
 faults required a supervisor deadline, with actual injection markers and the
 prior acknowledged prefix preserved. This tradeoff remains part of selection.
+
+Current candidate checkpoint through `eb2f421`: independent nested-module
+build/vet/full race/coverage and pinned Docker lint/gosec/govulncheck pass
+(89.7% total coverage; zero reachable vulnerabilities, two imported-package
+and two required-module advisories unreachable). This supersedes earlier
+scoped validation only for current-candidate checks; historical artifacts stay
+unchanged. Final full-root+v5 CI, physical capacity, distributed matrix and
+consumer acceptance remain pending. Every V0–V7 phase gate remains open.
 
 Embedded-first fallback release eligibility requires its applicable local gates;
 it leaves V2/V5 and distributed V6/V7 pending. Full V0–V7 completion requires all
