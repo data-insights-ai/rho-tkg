@@ -56,9 +56,15 @@ chains stored by v4.43–v4.47 (re-import at version 0) as before.
   because the latter is not determinable without a format change (above) and would leave the valid-time
   and as-of doors disagreeing after a cascade. A create of a fresh ID (no history) keeps accepting any
   past instant.
-* **The plain door raises the clock floor past the chain's stamps** (`advanceInstantFloor(maxStamp)`)
-  before it stamps `c.now()`: the import and every later write on the entity follow the delete, also
-  when the delete was stamped ahead of the clock.
+* **The plain door stamps its own row past the chain's stamps** (`validInstantAfter(c.now(), maxStamp)`),
+  like the delete's stamp, without moving the commit clock. (Review round 1: the first cut raised the
+  commit-clock floor to `maxStamp`; `maxStamp` can be a `DeletedAt` derived from caller valid time, so a
+  delete 50 years ahead moved every later write of every entity 50 years ahead and, on a badger reopen,
+  hid them at current pins — `red-clock-floor.txt`. Dropped.) Known limit, the open 2026-09-24 item
+  "Future transaction time from `validInstantAfter`": a later plain Update of such a row is stamped at the
+  clock, below the re-import.
+* **A chain whose rows a retention purge removed after a compaction** keeps its stub; the re-import
+  continues above `TrimmedThroughVersion` and links to `LastTrimmedHash` (`stubLifeStart`).
 * **GraphTx rollback of a created ID removes rows from the created version on**
   (`TrimNodeHistoryFrom`; without the capability, the rows below are rewritten from a copy) instead of
   the whole history.

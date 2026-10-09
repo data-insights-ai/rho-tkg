@@ -42,3 +42,54 @@ FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	5.841s
 FAIL
 FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.057s
 FAIL
+=== m5b
+--- FAIL: TestLifeStartOf (0.00s)
+--- FAIL: TestReImportAfterDeleteAheadOfClock (0.31s)
+    --- FAIL: TestReImportAfterDeleteAheadOfClock/memory/node (0.00s)
+    --- FAIL: TestReImportAfterDeleteAheadOfClock/memory/rel (0.01s)
+    --- FAIL: TestReImportAfterDeleteAheadOfClock/badger/node (0.01s)
+    --- FAIL: TestReImportAfterDeleteAheadOfClock/badger/rel (0.01s)
+    --- FAIL: TestReImportAfterDeleteAheadOfClock/sharded/node (0.10s)
+    --- FAIL: TestReImportAfterDeleteAheadOfClock/sharded/rel (0.08s)
+    --- FAIL: TestReImportAfterDeleteAheadOfClock/tiered/node (0.02s)
+    --- FAIL: TestReImportAfterDeleteAheadOfClock/tiered/rel (0.09s)
+--- FAIL: TestReImportDoesNotAdvanceTheClock (0.50s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/memory/node (0.00s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/memory/rel (0.00s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/badger/node (0.02s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/badger/rel (0.00s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/sharded/node (0.01s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/sharded/rel (0.09s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/tiered/node (0.07s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/tiered/rel (0.01s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/badger-disk-reopen/node (0.12s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/badger-disk-reopen/rel (0.17s)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	6.342s
+=== m8
+--- FAIL: TestReImportDoesNotAdvanceTheClock (0.93s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/memory/node (0.00s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/memory/rel (0.00s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/badger/node (0.02s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/badger/rel (0.01s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/sharded/node (0.01s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/sharded/rel (0.09s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/tiered/node (0.04s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/tiered/rel (0.08s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/badger-disk-reopen/node (0.39s)
+    --- FAIL: TestReImportDoesNotAdvanceTheClock/badger-disk-reopen/rel (0.29s)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	5.873s
+=== m9
+--- FAIL: TestStubLifeStart (0.00s)
+--- FAIL: TestReImportRetentionPurge (0.56s)
+    --- FAIL: TestReImportRetentionPurge/memory/rel=false/compacted=true (0.00s)
+    --- FAIL: TestReImportRetentionPurge/memory/rel=true/compacted=true (0.00s)
+    --- FAIL: TestReImportRetentionPurge/badger/rel=false/compacted=true (0.01s)
+    --- FAIL: TestReImportRetentionPurge/badger/rel=true/compacted=true (0.01s)
+    --- FAIL: TestReImportRetentionPurge/tiered/rel=false/compacted=true (0.01s)
+    --- FAIL: TestReImportRetentionPurge/tiered/rel=true/compacted=true (0.05s)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	7.725s
+=== m10
+--- FAIL: TestReImportTxRollbackCopyPathReportsFaults (0.00s)
+    --- FAIL: TestReImportTxRollbackCopyPathReportsFaults/node/version_put (0.00s)
+    --- FAIL: TestReImportTxRollbackCopyPathReportsFaults/rel/version_put (0.00s)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.246s

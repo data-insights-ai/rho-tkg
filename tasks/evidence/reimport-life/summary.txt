@@ -2,24 +2,26 @@ Re-import of a deleted ID (backlog 38 + 2026-09-24 "(HIGH?) Re-import of a delet
 
 DECISION
   decision.md                        the two bugs, the brute-force belief definition for the shape, why refuse
-                                     (not order by version), what the fix does
+                                     (not order by version), what the fix does; review round 1 changes
 
 RED (new tests against main's production code, test files of this branch)
-  red-main-production-code-core.txt  10 of 12 new core tests red (KeepsEveryLife, AboveCascadeRows,
-                                     BackfillMustFollowTheChain, BackfillRefusalLeavesNoToken, AfterDeleteAheadOfClock,
-                                     TxRollbackRestoresEarlierLife, ReplicaApply, ExportImportRoundTrip,
-                                     CompactionAcrossLives, LifeOracle); four backends, node and rel
+  red-main-production-code-core.txt  10 of 12 new core tests red, four backends, node and rel
   red-main-production-code-facade.txt TestReImportContinuesTheChainFacade red on all four backends
-  guards-green-on-main.txt           guards (pass on main by design): OldChainReadsAsBefore, RetentionPurge,
-                                     AsOfBackfilledReImportOfDeletedID, Tx Backfill Node/Rel OrderEqualReversed
+  guards-green-on-main.txt           guards (pass on main by design): OldChainReadsAsBefore, RetentionPurge (first
+                                     cut), AsOfBackfilledReImportOfDeletedID, TxBackfill Node/Rel OrderEqualReversed
+  review round 1:
+  red-clock-floor.txt                TestReImportDoesNotAdvanceTheClock red on the first cut (floor raise): 10 of 10,
+                                     an unrelated create stamped 50 years ahead; badger disk reopen: the row invisible
+  red-purge-stub.txt                 TestReImportRetentionPurge compacted legs red (memory, badger, tiered; node, rel):
+                                     re-import at version 0 under the stub, Verify*Chain false
 
 MUTANTS
-  mutants.md / mutants-raw.txt       8 mutants, each red (M3 needed the strengthened old-chain guard)
+  mutants.md / mutants-raw.txt       12 mutants, each red
 
-GREEN (final tree)
+GREEN (final tree, after merging main ec9f7ad)
   green-full-suite.txt               go test ./pkg/... -count=1: 35 packages ok
   green-race.txt                     go test -race: core, storeutil, store, store/{badger,memory,sharded,tiered}, graph: ok
-  green-final-core-graph.txt         core + graph after the last test file
-  coverage-new-code.txt              lifeStartOf, begin, nodeLifeStart 100 %, relLifeStart 92.9 %, removeCreated* 77.8 %
+  coverage-new-code.txt              lifeStartOf, checkCallerTx, txFrom, stubLifeStart, removeCreated* 100 %;
+                                     nodeLifeStart 92.3 %, relLifeStart 90.0 %
   lint-docker.txt                    golangci-lint: 0 issues
   security-docker.txt                gosec: exit 0
