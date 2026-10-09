@@ -19,11 +19,18 @@ func (s *Store) DurableFlushSupported() bool {
 // attempted; the errors are joined, and a failed slot keeps its pending
 // operations for the next flush.
 func (s *Store) DurableFlush() error {
-	if err := s.checkOpen(); err != nil {
-		return err
+	if s == nil {
+		return ErrNilStore
 	}
 	if s.inMemory {
 		return fmt.Errorf("graph: sharded: durable flush of an in-memory store: %w", storecontract.ErrCapabilityNotSupported)
+	}
+	// Hold s.mu (read) for the whole fold: Close takes it exclusively before
+	// closing the shards, so no shard is closed under a flush.
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return ErrStoreClosed
 	}
 	var errs []error
 	for i, shard := range s.shards {
