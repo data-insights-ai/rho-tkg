@@ -45,29 +45,13 @@ echo "bench-compare: comparing $old (old) vs $new (new), threshold ${threshold}%
 "$benchstat_bin" -format csv "$old" "$new" 2>/dev/null > "$csv_report"
 
 # Scan only the sec/op table (the first metric block in benchstat's CSV
-# output; a later B/op or allocs/op header line ends it) and flag any row
+# output; the next block's header line ends it, whatever its unit — B/op,
+# allocs/op or a custom b.ReportMetric unit such as build-ms) and flag any row
 # — including the trailing "geomean" aggregate row — whose current sec/op
 # exceeds its baseline sec/op by more than $threshold percent. A benchmark
 # name column is always non-empty for a data row; the per-table file-name
 # line and the metric header line both have an empty first column, so
 # `$1 != ""` alone excludes them without needing to track line order.
-awk -v thr="$threshold" '
-  BEGIN { FS = "," }
-  /^,sec\/op,/ { in_block = 1; next }
-  /^,B\/op,/ || /^,allocs\/op,/ { in_block = 0; next }
-  in_block && $1 != "" {
-    name = $1
-    base = $2 + 0
-    cur  = $4 + 0
-    if (base > 0) {
-      pct = (cur - base) / base * 100
-      if (pct > thr) {
-        printf "bench-compare: REGRESSION %s: baseline=%ss current=%ss (+%.2f%% > %s%%)\n", name, $2, $4, pct, thr
-        bad = 1
-      }
-    }
-  }
-  END { if (bad) { exit 1 } }
-' "$csv_report"
+LC_ALL=C awk -v thr="$threshold" -f "$(dirname "$0")/bench-gate.awk" "$csv_report"
 
 echo "bench-compare: no scenario regressed time by more than ${threshold}% — ok"

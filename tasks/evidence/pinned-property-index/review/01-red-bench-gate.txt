@@ -1,0 +1,15 @@
+=== RUN   TestBenchGateIgnoresCustomMetricBlocks
+    bench_gate_test.go:32: identical times with a noisy custom metric failed the gate: exit status 1
+        bench-compare: REGRESSION PinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/pinned-32: baseline=3.54s current=5.186s (+66,67% > 30%)
+        bench-compare: REGRESSION geomean: baseline=3.54s current=5.186s (+66,67% > 30%)
+--- FAIL: TestBenchGateIgnoresCustomMetricBlocks (0.00s)
+=== RUN   TestBenchGateStillCatchesTimeRegression
+    bench_gate_test.go:46: gate flagged the unchanged benchmark (its build-ms moved):
+        bench-compare: REGRESSION PinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/current-32: baseline=1.429e-05s current=2.05e-05s (+100,00% > 30%)
+        bench-compare: REGRESSION geomean: baseline=3.6705056872316666e-05s current=4.3962938937245754e-05s (+33,33% > 30%)
+        bench-compare: REGRESSION PinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/pinned-32: baseline=3.54s current=5.186s (+66,67% > 30%)
+        bench-compare: REGRESSION geomean: baseline=3.54s current=5.186s (+66,67% > 30%)
+--- FAIL: TestBenchGateStillCatchesTimeRegression (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/bench	0.005s
+FAIL
