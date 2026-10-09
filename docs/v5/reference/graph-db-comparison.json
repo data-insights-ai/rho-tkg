@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "research_date": "2026-10-09",
+  "status": "official-document-research-and-comparison-protocol-only",
+  "owner_acceptance": {
+    "goal": "Efficient in both space and time for large data. Space at least as efficient as comparable supported Neo4j, TigerGraph and Memgraph configurations, preferably better; excess only with quantified, causally isolated justification and explicit review.",
+    "fixed_deployment": null,
+    "absolute_slo": null,
+    "provisional_not_accepted": {
+      "throughput_or_p99_regression_percent": 10,
+      "one_to_four_partition_scaling_percent": 70
+    }
+  },
+  "execution": {
+    "harness_implemented": false,
+    "vendor_installations_verified": false,
+    "benchmark_runs": [],
+    "results": null,
+    "acceptance": "pending actual comparisons and reviewed exceptions; documentation and marketing figures are not measurements"
+  },
+  "vendor_candidates": [
+    {
+      "vendor": "Neo4j",
+      "candidate_version": "2026.09.0",
+      "version_status": "Official current Docker documentation names this release; pin image digest and recheck support at execution.",
+      "local": "Community single instance, aligned format; also test licensed Enterprise block format when available rather than treating CE as the strongest vendor baseline.",
+      "replicated": "Enterprise, three primary copies for one-failure write availability; synchronous writer acknowledgements, asynchronous secondaries reported separately. A replicated database is not equivalent to rho cross-partition transactions.",
+      "availability": "Official Docker CE and EE images; Enterprise requires license acceptance and valid evaluation/use entitlement, not just an environment flag.",
+      "accounting": "JVM heap and off-heap/page cache, OS cache, graph/index files and retained transaction logs; capture checkpoint/warmup policy.",
+      "mapping_limit": "Null removes a property; present-null needs an explicit representation in feature lanes.",
+      "source_refs": [
+        "neo4j_docker",
+        "neo4j_editions",
+        "neo4j_formats",
+        "neo4j_memory",
+        "neo4j_metrics",
+        "neo4j_logs",
+        "neo4j_cluster",
+        "neo4j_null"
+      ]
+    },
+    {
+      "vendor": "TigerGraph",
+      "candidate_version": "4.2.5 LTS",
+      "version_status": "4.2 release notes date this LTS September 2, 2026; not a claim that 4.2 is the only/current release family. Verify actual available build/digest and support before execution.",
+      "local": "Community single Linux server or Docker; documented combined graph/vector cap 300 GB, no HA. Docker docs require x86 (ARM unsupported), minimum 4 cores/8 GB and recommend 8 cores/24 GB for small evaluation, not dataset capacity.",
+      "replicated": "Licensed full TigerGraph DB on Linux/cluster; Community cannot supply this lane.",
+      "availability": "Official Docker image and native Linux deployment options; record the actual build, edition, resource limits and effective configuration.",
+      "durability": "Transaction docs state read-committed MVCC, disk WAL and completion after every replica updates; verify concrete settings/acknowledgement with fault tests, not infer serializability.",
+      "accounting": "All gadmin services and GPE/GSE memory, disk/WAL and replicas; gadmin metric mem/disk/net plus external host/cgroup accounting. Container memory includes active page cache, unlike host metrics.",
+      "mapping_limit": "Parallel same-type edges require discriminator identities; account explicit reverse-edge copies separately from logical edges.",
+      "source_refs": [
+        "tigergraph_release",
+        "tigergraph_editions",
+        "tigergraph_docker",
+        "tigergraph_license",
+        "tigergraph_transactions",
+        "tigergraph_metrics",
+        "tigergraph_edges"
+      ]
+    },
+    {
+      "vendor": "Memgraph",
+      "candidate_version": "3.13.1",
+      "version_status": "Official database release notes identify September 14, 2026; Lab version is a different product. Recheck image/digest/support before execution.",
+      "local": "IN_MEMORY_TRANSACTIONAL; persist snapshots and WAL. Explicit flush-every-n-tx=1 for synchronous local WAL durability, rather than documented default 100000; configure valid periodic snapshots.",
+      "optional_disk": "ON_DISK_TRANSACTIONAL remains experimental and does not support replication; exploratory local disk lane only, not the required production replicated baseline.",
+      "replicated": "Community data replication with manual failover; Enterprise HA adds automatic failover. STRICT_SYNC aborts if required replica fails; SYNC can commit on MAIN despite unavailable replica. Neither policy is silently equated to quorum durability.",
+      "availability": "Official Docker deployment; Enterprise trial/license needed for HA and HTTP monitoring; record actual license/memory limits. No license acquired here.",
+      "accounting": "SHOW STORAGE INFO (including current database), process/cgroup RSS and snapshots/WAL/RocksDB/index costs; allocator-tracked bytes do not substitute for total memory.",
+      "source_refs": [
+        "memgraph_release",
+        "memgraph_docker",
+        "memgraph_storage",
+        "memgraph_durability",
+        "memgraph_config",
+        "memgraph_replication",
+        "memgraph_replication_modes",
+        "memgraph_enterprise",
+        "memgraph_monitoring"
+      ]
+    }
+  ],
+  "protocol": {
+    "environment": "Use the same declared native x86-64 Linux hardware or equal isolated resources for official supported vendor paths; record CPU, RAM cap, swap, NUMA, disk/fs, kernel/container versions and network. Docker Desktop/emulation results are not silently pooled with native results. No fixed owner deployment inferred.",
+    "pins": [
+      "rho commits/module versions",
+      "vendor version/edition/build/image digest",
+      "license tier/capacity/expiry and eligibility for intended benchmark use",
+      "complete effective configuration",
+      "dataset seed/checksum/mapping version",
+      "index definitions/query plans",
+      "client/driver versions and concurrency/batch sizes"
+    ],
+    "lanes": [
+      {
+        "id": "basic-graph-durable-local",
+        "contract": "Identical directed graph, stable external node/edge IDs, parallel edges, labels/types and exact common scalar properties; one partition, one copy; matched durable transaction acknowledgement. Include vendor defaults and justified supported tuning with equal tuning effort.",
+        "operations": [
+          "offline bulk import (separate result)",
+          "online append/upsert/update/delete",
+          "ID lookup",
+          "label/type/property equality and range",
+          "in/out adjacency",
+          "bounded expansion with exact output",
+          "projected scan and full-row scan",
+          "restart/recovery/checkpoint/compaction"
+        ]
+      },
+      {
+        "id": "memory-only-local",
+        "contract": "Separate explicitly non-durable lane only where supported. Never use it to beat a durable baseline."
+      },
+      {
+        "id": "temporal-history-overhead",
+        "contract": "Add retained revisions, exact points/spans/rationals, lives, corrections, uncertainty, explicit null and provenance independently then together. Use lossless reification when no native capability exists; label emulation cost/support and compare identical historical answers. No history-free baseline counted as equivalent."
+      },
+      {
+        "id": "replicated-distributed-overhead",
+        "contract": "Separate replication and partitioning. Declare acknowledgement/fault semantics, replicas/coordinators/partition count, ownership/change-cut requirements and communication. Match capabilities or explicitly mark unsupported; replication alone does not validate rho partitioned transactions."
+      }
+    ],
+    "dataset_ledger": [
+      "source signal rows",
+      "logical node identities",
+      "logical directed edge identities including multiplicity",
+      "label/type memberships",
+      "node and edge property-entry counts by type and exact payload bytes",
+      "current assertions versus retained revisions and deleted identities",
+      "temporal pieces/descriptor bytes/provenance records",
+      "physical reified/reverse/auxiliary records",
+      "per-copy and all-replica totals"
+    ],
+    "sizes": {
+      "corresponding_hop_relationships": [
+        107113,
+        408282,
+        1584150
+      ],
+      "real_days": "BO 58.8M records / BA 36.9M rows are reported inventory inputs; representative datasets still to obtain. Reported 400\u2013700 rows/s is unverified arrival shape.",
+      "large_data": "Include fit-in-RAM and exceeds-RAM data plus bounded memory sweeps; use supported resource settings and explicit out-of-capacity results, not fabricated success.",
+      "source_signal_row_size_labels": [
+        "790 K",
+        "3.15 M",
+        "12.6 M"
+      ],
+      "count_rule": "Source-size labels are rounded; executable dataset manifests must supply exact source/node/edge/property counts and checksums before measuring."
+    },
+    "correctness": "Independent canonical oracle validates IDs, multiplicity, exact values, deletions and retained historical output. Assert two events at equal coordinates remain distinct. Do not coerce precision, collapse edges, omit indexes or drop provenance to improve scores.",
+    "run_design": "At least five fresh comparable runs per configuration; randomized/alternating engine order, fixed seeds/concurrency/transaction work and disclosed tuning. Separate cold OS/engine cache runs, warmed steady state, sustained ingest, maintenance and recovery; never clear only one engine cache.",
+    "time_ledger": [
+      "completed logical mutations/second and complete result rows/second",
+      "p50/p95/p99 client-visible ingest/commit/read latency, error/timeouts/retries",
+      "load/build-index/warmup/restart/replay/scrub times",
+      "CPU/allocations/GC, disk and network bytes, amplification, coordination rounds",
+      "server execution versus client transport/serialization versus sigma reasoning (separate; rho gains no solver credit)"
+    ],
+    "byte_ledger": [
+      "steady and peak heap/allocator tracked bytes",
+      "process-tree RSS/PSS and mmap resident/address-space sizes",
+      "cgroup memory.current/stat anonymous/file/page-cache and host memory accounting",
+      "apparent and allocated on-disk graph data, indexes, dictionaries/catalog, WAL/logs, provenance/history, checkpoints/snapshots and compaction/import temporary files",
+      "each service/replica/coordinator and full deployment totals; client/sigma costs separately and combined"
+    ],
+    "accounting_rule": "Heap, mmap and file cache may overlap RSS/cgroup views. Keep category measurements and a non-double-counted deployment total; never sum overlapping categories. Report absolute bytes and normalized bytes per logical entity/property/revision with counts; fixed service overhead is visible, not silently subtracted.",
+    "reporting": [
+      "all five raw runs, median, range/dispersion and confidence/measurement resolution",
+      "exact output cardinality/checksum and failed/unsupported operations",
+      "per-vendor/configuration space-time resource curves and ratios (no arbitrary composite score)",
+      "peak versus post-maintenance steady state at matched retention",
+      "no vendor-marketing bytes/fact or throughput substituted for observed evidence"
+    ],
+    "excess_justification_required_fields": [
+      "vendor/config/workload",
+      "absolute and percent byte/latency excess with uncertainty",
+      "required semantic/durability benefit",
+      "feature-on/off or component counterfactual proving incremental cost without changing the base workload",
+      "remaining unexplained base-graph overhead",
+      "alternatives evaluated",
+      "reviewer/decision/date"
+    ],
+    "acceptance": "Compare rho with each vendor using semantically equivalent supported configurations; prefer improvements in both dimensions. Every excess requires a quantified causally isolated justification and explicit review. Missing license, dataset, capability or experiment leaves that comparison pending; no majority-vote or best-case-only winner claim."
+  },
+  "sources": {
+    "neo4j_docker": "https://neo4j.com/docs/operations-manual/current/docker/introduction/",
+    "neo4j_editions": "https://neo4j.com/docs/operations-manual/current/introduction/",
+    "neo4j_formats": "https://neo4j.com/docs/operations-manual/current/database-internals/store-formats/",
+    "neo4j_memory": "https://neo4j.com/docs/operations-manual/current/performance/memory-configuration/",
+    "neo4j_metrics": "https://neo4j.com/docs/operations-manual/current/monitoring/metrics/essential/",
+    "neo4j_logs": "https://neo4j.com/docs/operations-manual/current/database-internals/transaction-logs/",
+    "neo4j_cluster": "https://neo4j.com/docs/operations-manual/current/clustering/introduction/",
+    "neo4j_null": "https://neo4j.com/docs/getting-started/cypher/updating/",
+    "tigergraph_release": "https://www.tigergraph.com/docs/tigergraph-server/4.2/release-notes/",
+    "tigergraph_editions": "https://www.tigergraph.com/docs/tigergraph-server/4.2/intro/comparison-of-editions",
+    "tigergraph_docker": "https://www.tigergraph.com/docs/tigergraph-server/4.2/getting-started/docker",
+    "tigergraph_license": "https://www.tigergraph.com/docs/tigergraph-server/4.2/installation/license",
+    "tigergraph_transactions": "https://www.tigergraph.com/docs/tigergraph-server/4.2/intro/transaction-and-acid",
+    "tigergraph_metrics": "https://www.tigergraph.com/docs/tigergraph-server/4.2/system-management/system-metrics",
+    "tigergraph_edges": "https://www.tigergraph.com/docs/tigergraph-server/4.2/api/upsert-rest",
+    "memgraph_release": "https://memgraph.com/docs/release-notes",
+    "memgraph_docker": "https://memgraph.com/docs/getting-started/install-memgraph/docker.md",
+    "memgraph_storage": "https://memgraph.com/docs/fundamentals/storage-memory-usage.md",
+    "memgraph_durability": "https://memgraph.com/docs/fundamentals/data-durability.md",
+    "memgraph_config": "https://memgraph.com/docs/database-management/configuration",
+    "memgraph_replication": "https://memgraph.com/docs/clustering/replication.md",
+    "memgraph_replication_modes": "https://memgraph.com/docs/clustering/replication/how-replication-works.md",
+    "memgraph_enterprise": "https://memgraph.com/docs/database-management/enabling-memgraph-enterprise.md",
+    "memgraph_monitoring": "https://memgraph.com/docs/database-management/monitoring.md"
+  },
+  "evidence_limits": "Official documentation describes deployment capabilities and configuration constraints. Vendor/runtime, durability, capacity and comparative performance support require independent verification."
+}

@@ -174,7 +174,9 @@ Solver selection and supported logic fragments are sigma decisions. The
 [implementation plan](PLAN.md) requires a replicated two-partition correctness
 slice before format freeze, then compact storage, typed access/change APIs,
 distributed integration, migration and release gates; if that slice fails its
-gate, v5 ships embedded single-partition with the same contracts first
-(Revision 2026-10-09). The
+gate, an embedded-first v5 release remains eligible once its applicable local,
+migration, consumer and release gates pass, with partition limits advertised
+(Revision 2026-10-09). That fallback leaves distributed acceptance open; full
+V0–V7 completion still requires V2/V5 and the distributed V6/V7 gates. The
 [research assessment](RESEARCH-REVIEW.md) distinguishes evidence for rho's data
 contracts from evidence for sigma's reasoning algorithms.

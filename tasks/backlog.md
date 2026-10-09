@@ -57,6 +57,83 @@ item; two traced, unreproduced HIGH? findings in item 4. Next step: item 34, the
 
 ---
 
+## Open — v5 V0–V7 acceptance
+
+Specification and evidence checklist: [PLAN.md §8](../docs/v5/PLAN.md#8-implementation-sequence).
+Pinned fixtures: [consumer contracts](../docs/v5/reference/consumer-contracts.json)
+and [migration obligations](../docs/v5/reference/consumer-migration.json) are
+reviewed specification/inventory evidence; consumer integration acceptance stays open.
+[Substrate evaluation](../docs/v5/reference/substrate-evaluation.json) is
+research/execution-plan evidence only; no engine selection or V2/V3 acceptance.
+The original five recovered `docs/v5/reference/` files are byte-verified and
+reviewed as the accepted historical 16-case/52-assertion subset and bounded
+design examples. They remain unchanged; this subset does not establish broader
+V0 or production/distributed acceptance. The reviewed PLAN/DISCUSSION/RESEARCH
+and reference JSON specify contracts/evidence, not completed engine gates.
+
+| Phase | Pending acceptance evidence |
+|---|---|
+| V0 | Historical reference subset accepted. Broader independent revised models, profile units/import mapping, consumer door/capacity acceptance and numerical limit/threshold decisions remain open |
+| V1 | Reviewed/implemented temporal primitives and codecs (exact scalar/tuple values, scopes/regions/Allen, point knowledge and opaque descriptors), plus component-state reducer primitives. Graphstate `Plan`/`Project` and the byte-identical 16-fixture/52-assertion Go path accepted (local `e5b23d9`), including bounded page/type/uniqueness/CDC-delta behavior. Graph-engine/storage integration, remaining revised models and full V1 acceptance stay open |
+| V2 | Candidate Raft/Pebble log/replica adapter independently validated as an adapter only. Bounded idalloc primitive independently validated on Go 1.26.9 (99.3% coverage; eight source/config hashes match). Bounded two-group transaction correctness prototype accepted (`92312ae`; independent 24-source/config checks, scoped combined coverage 86.3%). Six-process crash-functional slice accepted (`f3a1ee7`); power-loss/multi-host durability and global cross-process cut transport stay open. Full graph transaction/cut integration and serial-history oracle, allocator/ownership fencing, retention/CDC, physical-host durability, transactional-KV comparison and engine selection remain open |
+| V3 | Coordinate timeblock candidate independently validated (local commit `fa0c982`; scoped temporal+block coverage 95.7%, no exported method at 0%). Full engine seal/merge/recovery, paged structures and all-in budget/byte-ledger measurements remain open; resident-buffer prototype timings do not close V3 |
+| V4 | Production read/change APIs, historical cross-door parity, gap-free leased feed handoff and pinned sigma access-contract build and nonempty mutation-then-historical tests (the current signature/empty smoke is insufficient) |
+| V5 | Distributed access across 1/2/4/8 partitions, cross-edge/stall/rebalance/feed cases and sigma workload parity |
+| V6 | Provenance-aware importer and ambiguity report, consumer-repository migrations, retained-cut/CDC agreement and restore on a different topology |
+| V7 | Versioned contracts/limits, full CI/race/coverage/security, distributed matrix and consumer suites; measured comparative space/time acceptance against Neo4j/TigerGraph/Memgraph plus v4, with reviewed excess-cost exceptions |
+
+Reviewed foundations are committed locally as `6ef233c`; the coordinate block
+candidate is `fa0c982`. Neither is a v5 release or phase-completion claim.
+
+Go 1.26.9 review checkpoint: the parent independently SHA-pinned and validated
+49 temporal/state/raftlog/replica files with build, vet, race, `make cover`, lint,
+gosec and govulncheck: combined coverage 90.5%, no exported method at 0%.
+Raft sources still match that snapshot. Root v4 build/vet/lint/security/vulncheck,
+MetaKV checks and coverage gates pass (pkg coverage 86.5%); its full race run
+failed only the version-metadata assertion, then focused ingest/docs race passed
+after the metadata/private-helper fix. These are separate checks, not one
+consolidated all-module CI run. Graphstate's independent 54-source/config
+snapshot matches and passes build/vet/race/coverage/lint/gosec/govulncheck:
+combined temporal+state+graphstate coverage 89.7%, every exported method covered
+(worker graphstate-only coverage 83.5%). Txnproto's independent 24-source/config
+snapshot matches and passes the same checks: raftlog+replica+txnproto coverage
+86.3%, no exported method at 0% (worker txnproto-only 88.2%; bounded fuzz 33,284
+executions). The 25-file six-process snapshot is independently accepted as
+`f3a1ee7`: focused txnproto race, snapshot coverage and pinned lint pass (86.3%).
+It checks whole transactions and old cuts after correction/reopen with durable
+private directories, owned child kill/wait and reversed/duplicate delivery at
+prepare, decision, partial-application, unresolved-checkpoint and quorum-loss
+boundaries. Reproduce from `v5/`:
+`go test -race -count=1 -run '^TestTwoGroupsSixProcessesDurableBoundaryRecovery$' ./internal/txnproto`.
+This is process-crash functional evidence, not power-loss, multi-host or global
+cross-process cut transport acceptance. Native FDB smoke is parent-verified;
+comparative costs/faults remain pending. Full graph transaction/cut integration
+remains open.
+Idalloc's independent Go 1.26.9 build/vet/race/coverage/lint/gosec/govulncheck pass
+at 99.3%; eight source/config hashes match the reviewed snapshot.
+Full V1/V2 remain open and no engine is selected. Candidate adapter tests do not
+establish cross-partition correctness or complete certified cuts. Pebble's fatal
+storage paths stop the embedding process; persistent Create/EIO and ENOSPC reopen
+faults required a supervisor deadline, with actual injection markers and the
+prior acknowledged prefix preserved. This tradeoff remains part of selection.
+
+Embedded-first fallback release eligibility requires its applicable local gates;
+it leaves V2/V5 and distributed V6/V7 pending. Full V0–V7 completion requires all
+of them. Owner criterion (2026-10-09): large-data space/time efficiency; space
+at least comparable to Neo4j/TigerGraph/Memgraph, preferably better, with any
+excess quantified, causally isolated and reviewed. No fixed deployment/SLO was
+requested. The [comparison protocol](../docs/v5/reference/graph-db-comparison.json)
+is research/planned measurement only: licenses/configurations, runnable harness,
+representative data, five-run byte/latency evidence and excess-cost ledger remain
+pending. The 10%/70% thresholds are provisional, not owner-accepted gates.
+Reported day sizes are inventory inputs and 400–700 rows/s is an unverified
+arrival shape. Baseline sizes count source signal rows; their HOP counts are
+107,113/408,282/1,584,150. Initial implementation numerical bounds specified are 64 KiB input/value/descriptor bytes,
+4,096 magnitude bits and 4,096 region pieces; V1 validation remains pending
+before V2 format freeze, with no implied performance acceptance.
+
+---
+
 ## Open
 
 ### 0. Column segments on NVMe (ADR-0011)

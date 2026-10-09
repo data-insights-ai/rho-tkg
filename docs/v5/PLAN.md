@@ -61,7 +61,7 @@ registry or reverse dependency on sigma's internal IR into rho.
 | Database snapshots | Opaque certified cuts over logical commit rounds | Local log offsets, source clocks and reasoning frontiers are different coordinates |
 | Coordination | Partition-local commit fast path; coordinated cross-partition transactions and fresh cuts | Avoid a global data sequencer without pretending global consistency is free |
 | IDs | Graph-qualified opaque 64-bit IDs from durable allocation blocks | No clock dependence; current ownership is a separate, movable directory entry |
-| Release criterion | Distributed and local database correctness, sigma compatibility and measured cost together | Distribution is a v5 requirement; reasoning workloads test the interface end to end |
+| Full V0–V7 completion | Distributed and local database correctness, sigma compatibility and measured cost together | Embedded-first release eligibility (§5.2) does not discharge distributed gates |
 
 ## 2 What is represented
 
@@ -537,8 +537,12 @@ replicated entry. No other data partition or global sequencer participates.
 Revision 2026-10-09: no consumer runs partitions today (ai-soc embeds one
 process on badger; sigma-tkgd uses single-primary change-log replication for
 read replicas). The one-partition path is therefore a shippable product on its
-own: if V2 does not pass, v5 ships embedded single-partition with the same
-value, access and change contracts, and the cross-partition protocol follows.
+own: if V2 does not pass, an embedded-first v5 release remains eligible after
+its applicable local, migration, consumer and release gates pass. It keeps the
+same value, access and change contracts with one-partition capability limits
+explicitly advertised. This fallback does not complete V2, V5 or the distributed
+parts of V6/V7: full V0–V7 completion still requires their distributed evidence.
+A local simulator or prototype cannot certify those gates.
 Cross-partition 2PC can still wait for a failed/unreachable participant or
 coordinator quorum. Timeouts initiate decision recovery; they cannot unilaterally
 abort a possibly committed transaction. Consensus replication improves recovery
@@ -715,9 +719,11 @@ dependency, reasoning-IR executor or solver package is introduced into rho.
 
 Revision 2026-10-09: v5 code starts on branch `v5`, created from main `32568c4`
 (v4.43.0 plus the `DeleteWithTx` / `UpdateWithTx` doors). The September draft,
-its 16 fixtures, `reference/design_checks.py` and `reference/README.md` are not
-in this repository; V0's first task checks them into `docs/v5/reference/` or
-removes every reference to them. Carry forward current column codecs, integrity
+its 16 fixtures/52 assertions, `reference/design_checks.py` and
+`reference/README.md` have been recovered locally in `docs/v5/reference/`
+(five files, including the historical draft). Recovery supplies reference
+evidence; V0 requires a reviewed, tracked corpus and additional independent
+models for the revised contracts. Carry forward current column codecs, integrity
 checks, batch interfaces and trust-boundary tests where contracts match (the
 list is in the review, §7); do not copy old transaction semantics (its must-not-
 copy list, same section). v4 keeps taking consumer features (owner decision
@@ -727,10 +733,10 @@ baseline in §8a.
 | Phase | Deliverable | Required exit evidence |
 |---|---|---|
 | V0 Specification | Specify temporal value/access contracts, rho/sigma ownership and deployment consistency; inventory consumer data; independent database/reference models | Every coverage row identifies preservation, native access and sigma evaluation separately; failure cases have expected outcomes; IDs/cuts and provisional formats reviewed together |
-| V1 Values and state | Typed profiles, exact rational codec/comparison, regions, state reducer, tuple ordering, finite-support predicates and descriptor preservation | Original 16/52 once checked in (V0); rho-owned portions of E01–E10/E13–E14/E19–E20; independent boundary/differential tests, no solver/runtime implementation |
+| V1 Values and state | Typed profiles, exact rational codec/comparison, regions, state reducer, tuple ordering, finite-support predicates and descriptor preservation | Recovered 16 cases/52 assertions after corpus review (V0); rho-owned portions of E01–E10/E13–E14/E19–E20; independent boundary/differential tests, no solver/runtime implementation |
 | V2 Distributed correctness slice | Two logical partitions, three replicas each in simulation; log/VFS, durable IDs, locks, decisions, cuts and ownership transfer; external transactional-KV comparison | E15–E18; independent serial-history/cut oracle; process-kill and message-fault schedules; no acknowledged durable loss or mixed transaction; engine selection recorded |
 | V3 Compact engine | Arena memtables, typed blocks, paged catalog/indexes, seal/merge/recovery and budgets | Full byte ledger, no per-fact resident object growth, bounded replay; single-partition fast path compared with v4 |
-| V4 Read and change API | Typed projected scans, temporal selections, complete histories, access negotiation/statistics, atomic changes and snapshot-to-feed handoff | Named/generic/row/column parity; corrections leaving a selector; replay and retention boundaries; sigma adapter contract fixtures preserve E09–E13/E21 inputs; sigma's `access` contract compiles and its tests pass against v5 (§8a) |
+| V4 Read and change API | Typed projected scans, temporal selections, complete histories, access negotiation/statistics, atomic changes and snapshot-to-feed handoff | Named/generic/row/column parity; corrections leaving a selector; replay and retention boundaries; sigma adapter contract fixtures preserve E09–E13/E21 inputs; sigma's pinned `access` contract compiles and mutation-then-historical adapter tests pass against v5 (§8a); signature/empty smoke tests are insufficient |
 | V5 Integrated distributed access | Locality-aware routing, synchronous endpoint postings, temporal indexes, distributed scans/expansion, resumable cuts/feeds | All read doors agree across 1/2/4/8 partitions; cross-edge, stalled participant, rebalance and feed bootstrap cases; existing sigma workloads consume identical inputs/results |
 | V6 Migration and operations | Importer, consumer migration contract (§8a), backup/restore, retention/erase and segment tiering | Canonical parity for defined v4 mapping, ambiguity report, restore on different topology, retained-cut/CDC agreement; sigma/ai-soc adapters validated in their own repos; the named semantic changes in §8a each have a consumer-side change recorded |
 | V7 Release | Versioned public API/wire/descriptor contracts and operational limits | Full repository CI/coverage/race/security gates; distributed database matrix; existing consumer suites and agreed integration fixtures; measured capacity accepted |
@@ -742,27 +748,66 @@ the representation/access contract and agreed compatibility tests; it does not
 claim that every research evaluator exists or schedule those implementations
 as rho deliverables. Integration failures must be attributed to the owning layer.
 
+### Acceptance evidence checklist
+
+Each phase exit attaches reproducible commands, commit IDs, inputs and output
+artifacts to its review. This checklist specifies acceptance; current completion
+and missing evidence are recorded only in [the backlog](../../tasks/backlog.md).
+Reference checks establish their stated subset, never production completion.
+
+| Phase | Concrete acceptance record |
+|---|---|
+| V0 | Reviewed tracked reference corpus; profile/axis unit and exact ms import mappings; versioned consumer door and capacity inventory; independent model inputs/expected failures; agreed limits distinguished from proposed thresholds |
+| V1 | Go differential runs against the unchanged 16/52 corpus and revised E-case models; node/relationship two-phase exact-set tests, boundary/fuzz/codec failures and direct public API coverage |
+| V2 | Two-partition/three-replica fault schedules plus real durable process-kill/restart runs; serial-history/cut oracle results for E15–E18; stale-owner/allocator rejection, decision recovery and predicate-conflict tests; comparable transactional-KV evaluation and engine decision |
+| V3 | Byte ledger at 790 K/3.15 M/12.6 M source signal rows (107,113/408,282/1,584,150 HOP relationships); seal/merge/crash/reopen oracle results; heap/RSS/page-cache and replay measurements proving budgets and no per-fact resident growth; equivalent v4 fast-path comparison |
+| V4 | Named/generic/row/column exact-set historical parity; byte-limit/cancellation/borrow-lifetime tests; selector-exit before/after groups, lease expiry, replay and concurrent snapshot/feed handoff; pinned sigma access-contract build and mutation-then-historical tests, including nonempty `NodeByIDAt` tests that fail if options are ignored |
+| V5 | 1/2/4/8-partition read/expand/feed result parity, three replicas and specified cross-partition mixes; stalled participant, cross-edge, pagination, leader loss and rebalance schedules; sigma workload parity with pinned versions |
+| V6 | Writer/format-provenance import corpus, canonical parity and explicit ambiguity report; retained-cut/CDC agreement after backup/restore to a different topology, retention/erase/tiering checks; sigma/ai-soc repository commits and adapter tests for every semantic change |
+| V7 | Versioned API/wire/descriptors and documented limits; full version-matched CI, coverage/race/security output; distributed matrix and pinned consumer suite results; reproducible space/time comparisons against all three vendors and v4 at declared V0 resource profiles, excess-cost exceptions reviewed, proposed thresholds resolved explicitly |
+
 ### 8a Consumer compatibility (Revision 2026-10-09)
 
-sigma-tkgd calls rho from 258 non-test files across 14 packages; its Cypher
-adapter isolates rho behind one contract (`internal/cypher/core/access/contract.go`
-and `contract_optional.go`: Catalog, Scan, Lookup, EqualityIndex, OrderedIndex,
-Adjacency, Statistics, Snapshot, Columns, Epoch, Lend, Ordinals, Degrees,
-CountsAt, HistoryCounter, CommittedPin, RelColumns, EndpointOrdinals, ScanOrder,
-IndexMaintenance), the Tyla adapter uses a handful of doors (`ScanRelSegments`,
-`ScanNodeColumns`, `ByLabel`/`ByType`, `*ForNodesAtPin`, `Resolve()`). ai-soc's
-engine uses 27 files on badger with `AllowTxBackfill`, `RelSegments`, `SegmentDir`.
+The compatibility baseline is pinned to sigma-tkgd commit
+`6aadc2b3651f68ad43bc2704e7820602651d4403` (rho v4.43.0) and ai-soc commit
+`9a26e689aa3cc8576e7235210a23d85bc8ca6416` (engine rho v4.40.0,
+sigma v0.10.1). The earlier 258-file/14-package and 27-file counts describe the
+review snapshot; they are not a fresh inventory measurement at these pins.
+
+Sigma's Cypher adapter boundary includes `internal/cypher/core/access/contract.go`,
+`contract_optional.go` and `contract_runtime.go`: Catalog, Scan, Lookup,
+EqualityIndex, OrderedIndex, Adjacency, Statistics, Snapshot, Columns, Epoch,
+Lend, Ordinals, Degrees, CountsAt, HistoryCounter, CommittedPin, RelColumns,
+EndpointOrdinals, ScanOrder and IndexMaintenance, plus writer/transaction/batch,
+CostStater/ColumnStatement, Epochs/EpochFold, Snapshots, RelWalk, OrderedScan and
+RuntimeSource. The Tyla adapter also needs `ScanRelSegments`, `ScanNodeColumns`,
+`ByLabel`/`ByType`, `*ForNodesAtPin` and `Resolve()`. ai-soc embeds badger with
+`AllowTxBackfill`, `RelSegments` and `SegmentDir`.
+
+Pinned inventory: [consumer-contracts.json](reference/consumer-contracts.json);
+migration obligations: [consumer-migration.json](reference/consumer-migration.json).
+
+The existing `contract_test.go` checks signatures and empty smoke behavior;
+its `NodeByIDAt` probe ignores options. V4 requires nonempty, mutation-then-query
+historical tests with exact sets and negative assertions at the pinned adapters.
+A build or that smoke suite alone cannot establish semantic compatibility.
 
 1. Keep the names: `types.NodeID` / `RelID` stay opaque 64-bit IDs,
    `types.Instant` is the int64 millisecond codec of the default axis,
    `Node` / `Relationship` accessor names and `graph.QueryOpts` field names stay.
    Most consumer sites then compile with an import-path change.
-2. sigma's `access` contract is a v5 acceptance fixture (V4 exit evidence).
+2. sigma's pinned `access` contract and adversarial historical adapter tests
+   are v5 acceptance fixtures (V4 exit evidence).
 3. Optional `compat` façade over the v5 engine for the v4 sub-API doors
    (`g.Nodes()`, `g.Rels()`, `g.Temporal()`, `g.Replication()`, …), shipped with
-   v5.0 and removed at v5.1. It cannot bridge semantics v5 changes on purpose:
-   one-tick spans as points, `TxAt` implying valid-at-now, the dirty-read
-   `GraphTx`, placement-encoded IDs. Those are listed per consumer in V6.
+   v5.0, retained (and optionally deprecated) throughout v5. Removing a shipped
+   public façade at v5.1 would break the major-version API contract; removal
+   belongs in the next major. An earlier retirement requires an explicitly
+   agreed consumer-only contract that never promises a public v5 API. It cannot
+   bridge semantics v5 changes on purpose: automatic event inference from
+   one-tick spans is prohibited and genuine spans retain their interpretation;
+   `TxAt` no longer implies valid-at-now, other readers cannot observe a
+   `GraphTx`'s private writes, and IDs no longer encode placement. Those changes are listed per consumer in V6.
 
 Evolving v4 into v5 in place is not planned: the ID, time-type and transaction
 changes break the `pkg/types` shapes; the isolated branch with the three levers
@@ -770,10 +815,53 @@ above keeps the edge thin.
 
 ### Performance gates
 
-Use the existing 790 K, 3.15 M and 12.6 M synthday sizes, plus representative
-consumer data: ai-soc reports one BO day of 58.8 M records and one BA day of
-36.9 M rows at 400–700 rows/s with bursts (Revision 2026-10-09; the earlier
-22.8 M-row figure is superseded). Add non-SOC data:
+Owner acceptance, 2026-10-09: handle large datasets efficiently in both space
+and time. Space should be at least as efficient as comparable supported
+Neo4j, TigerGraph and Memgraph configurations, preferably better. Any excess
+requires a quantified, causally isolated justification and explicit review;
+extra temporal features do not excuse unexplained base-graph overhead. There is
+no fixed deployment or absolute SLO. Use declared resource profiles and measured
+space/time curves rather than inventing an owner-approved machine or latency cap.
+The [comparison protocol](reference/graph-db-comparison.json) records official
+vendor deployment constraints and the required experiments; it contains no results.
+
+Compare identical basic directed property graphs first: stable logical node/edge
+IDs, parallel-edge multiplicity, labels, exact common property types, values and
+index/query obligations. Report logical identities, property entries/payload bytes,
+source rows and physical records separately. History, exact temporal values,
+uncertainty/provenance and distributed consistency are additional lanes with
+lossless mappings and correctness oracles; native support and explicit reification
+are identified separately. Count every retained revision and auxiliary record.
+Do not compare a latest-only graph with rho's retained history as if they stored
+the same information, or use unsupported vendor settings to claim a win.
+
+Pin versions, editions, licenses, image digests, storage formats, queries, index
+sets and acknowledgement/fsync/replication policies. Measure online durable ingest
+separately from offline bulk load and memory-only modes; include checkpoint,
+compaction, restart and cold/warm reads. Repeat each comparable configuration at
+least five times with randomized order, report dispersion and p50/p95/p99 ingest,
+commit and read latencies, useful completed throughput, failures and exact outputs.
+Include all services, clients and replicas with separately attributed costs.
+The byte ledger includes heap/allocator usage, RSS/PSS, mapped pages, OS page cache,
+disk data/index/WAL/catalog/provenance and replica totals, at steady state and peak.
+These views overlap: report a non-double-counted cgroup/host memory total alongside
+the breakdown, never add heap and mapped pages to RSS as independent consumption.
+
+An excess-cost ledger identifies the comparator, workload, bytes/latency delta,
+required semantic benefit, feature-on/off or equivalent component evidence,
+alternatives and review disposition. Report base-graph inefficiency separately
+from unavoidable retained-information costs; no exception is accepted merely by
+naming a feature. Full acceptance requires actual reproducible comparisons against
+all three vendors and reviewed exceptions; unavailable licenses/data remain an
+explicit missing comparison, never a marketing-number substitute.
+
+Use the existing 790 K, 3.15 M and 12.6 M synthday **source signal rows**,
+which produce 107,113, 408,282 and 1,584,150 HOP relationships respectively;
+keep source rows and graph facts separate in every byte/throughput denominator.
+For representative consumer data, ai-soc reports one BO day of 58.8 M records
+and one BA day of 36.9 M rows (Revision 2026-10-09; the earlier 22.8 M-row
+figure is superseded). Its reported 400–700 rows/s with bursts is an unverified
+arrival shape, not an accepted throughput target or v5 measurement. Add non-SOC data:
 rational intervals, graphs with deletions, schedules, uncertain/correlated events
 and fragmented state corrections. Measure their storage/access costs directly;
 run supported reasoning workloads through sigma as a separate integration suite.
@@ -798,7 +886,8 @@ no full database rescan to produce a retained local transaction's change group.
 Sigma's incremental evaluation costs are separate integration measurements;
 result/dependency work cannot be charged to rho's scan throughput.
 
-Proposed review thresholds, not measured results: no >10% throughput/p99
+Proposed review thresholds, neither measured results nor owner-accepted gates:
+no >10% throughput/p99
 regression against the semantically equivalent baseline without an explicit
 tradeoff; >=70% scaling efficiency from 1 to 4 partitions for balanced independent
 ingest and partition-local scans at equal per-partition resources. Global joins,
@@ -806,9 +895,11 @@ hot keys and cross-partition commit are measured separately, not forced to meet
 an impossible locality assumption. Use at least five comparable runs and report
 dispersion, hardware, replication and durability settings.
 
-Absolute capacity and latency targets are fixed from the consumer inventory at
-V0. The historical 1 TB raw/day target is not an achieved facts/s rate. Missing
-representative data leaves the capacity gate pending, never an inferred success.
+The owner set no fixed absolute capacity, latency SLO or deployment. V0 records
+reproducible resource/dataset profiles for the comparative space/time goal; later
+workload-specific SLOs require their own agreement. The historical 1 TB raw/day
+figure is a stress target, not an achieved facts/s rate. Missing representative
+data or vendor comparisons leaves acceptance pending, never an inferred success.
 
 ## 9 Migration, open choices and evidence
 
@@ -819,9 +910,13 @@ Never infer an event from a one-millisecond interval. Preserve raw source times,
 exact property kinds, source IDs and original hashes as legacy evidence.
 
 Revision 2026-10-09: a v4 row with `ValidTo == ValidFrom + 1` cannot be
-classified at import in general, but no v4 writer has produced the eclipse
-sentinel since commit 994df82 (2026-06-12, append-only cascade); a store whose
-history starts after that date imports one-tick rows as genuine spans. v4's
+classified at import from its width or dates alone. Commit 994df82
+(2026-06-12, append-only cascade) removed the known eclipse writer; it does not
+prove which binaries, imports or copied histories wrote a particular store.
+Import one-tick rows as genuine spans only with verified writer/format provenance
+that excludes sentinel encoding for those rows. Otherwise preserve legacy
+evidence and report ambiguity; never infer an event. A history starting after
+2026-06-12 alone is insufficient provenance. v4's
 default unit is the millisecond; V0 declares the default axis unit per profile
 and the importer's millisecond-to-unit mapping, preserving raw source times
 (ai-soc carries 100 ns source times as a property).
@@ -839,10 +934,10 @@ New canonical hashes are versioned; old segment roots cannot become v5 roots.
 |---|---|
 | Fine-grained concurrency | Conservative serializable locks first; OCC/read-refresh only after equivalent model/fault tests and contention measurements |
 | Fresh-cut cost | Batched logical fences and resolved certificates; compare timestamp-service and dependency-vector alternatives at V2/V5 before API freeze |
-| Numerical and symbolic limits | Exact codecs/native predicates with bounded big-number work and payload sizes; V0/V1 set and verify database limits; sigma sets solver limits separately |
+| Numerical and symbolic limits | Initial implementation limits specified: 64 KiB input/value/descriptor bytes, 4,096 magnitude bits and 4,096 region pieces; pending V1 adversarial validation before V2 format freeze, not performance acceptance; sigma sets solver limits separately |
 | Physical block thresholds | Homogeneous fast paths with measured mixed/sparse alternatives; V3 determines thresholds |
 | Catalog and consensus libraries | Benchmark/license/version review and fault-injection seams at V2/V3; public contracts hide implementation types |
-| Build versus transactional substrate | Compare the embedded proposal with an existing transactional KV foundation at V2; choose once against embedding, column access, failure semantics and cost requirements |
+| Build versus transactional substrate | [Substrate evaluation](reference/substrate-evaluation.json) is research and an execution plan only; no engine selected. Execute the comparable V2 spike before choosing against embedding, column access, failure semantics and cost requirements |
 | Native predicate coverage | Select useful exact database predicates per profile; expose residuals explicitly; sigma owns broader evaluation and solver-fragment guarantees |
 | External consistency | Baseline modes as §5.3; stronger real-time ordering must select and measure an explicit protocol |
 
@@ -854,10 +949,11 @@ contracts and docs/architecture.md. v4's sharded batch contract is atomic per
 shard, not cross-shard; v5 cannot inherit a stronger guarantee by renaming it.
 Current segment work supersedes the old plan's proposal to stop v4 at S1.
 
-The original oracle and the design checks (`reference/design_checks.py`,
-scope in `reference/README.md`, both pending check-in under `docs/v5/reference/`,
-Revision 2026-10-09) are reference evidence, not an engine benchmark or
-distributed implementation proof.
+The recovered original oracle and design checks
+([design_checks.py](reference/design_checks.py), scope in
+[reference/README.md](reference/README.md), Revision 2026-10-09) are local
+reference evidence, not an engine benchmark or distributed implementation proof.
+Tracked-corpus acceptance and production gate status are recorded only in the backlog.
 No engine code or production configuration changes in this design revision.
 Implementation must follow direct public API coverage, node/relationship parity,
 two-phase historical tests, exact-set adversarial assertions, errors.Is checks,

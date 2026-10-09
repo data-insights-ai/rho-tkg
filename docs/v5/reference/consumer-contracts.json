@@ -1,0 +1,1034 @@
+{
+  "exported_values": [
+    {
+      "declaration": "DirNone Direction = iota",
+      "file": "internal/cypher/core/access/direction.go",
+      "line": 6,
+      "name": "DirNone"
+    },
+    {
+      "declaration": "DirRight",
+      "file": "internal/cypher/core/access/direction.go",
+      "line": 7,
+      "name": "DirRight"
+    },
+    {
+      "declaration": "DirLeft",
+      "file": "internal/cypher/core/access/direction.go",
+      "line": 8,
+      "name": "DirLeft"
+    },
+    {
+      "declaration": "DirBoth",
+      "file": "internal/cypher/core/access/direction.go",
+      "line": 9,
+      "name": "DirBoth"
+    },
+    {
+      "declaration": "ErrCapabilityNotSupported = graph.ErrCapabilityNotSupported",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 31,
+      "name": "ErrCapabilityNotSupported"
+    },
+    {
+      "declaration": "ErrIndexNotFound = graph.ErrIndexNotFound",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 33,
+      "name": "ErrIndexNotFound"
+    },
+    {
+      "declaration": "ErrOrderedScanTemporal = graph.ErrOrderedScanTemporal",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 35,
+      "name": "ErrOrderedScanTemporal"
+    },
+    {
+      "declaration": "ErrNodeNotFound = graph.ErrNodeNotFound",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 37,
+      "name": "ErrNodeNotFound"
+    },
+    {
+      "declaration": "ErrRelNotFound = graph.ErrRelNotFound",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 39,
+      "name": "ErrRelNotFound"
+    },
+    {
+      "declaration": "ErrNoVersionAsOf = graph.ErrNoVersionAsOf",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 41,
+      "name": "ErrNoVersionAsOf"
+    },
+    {
+      "declaration": "ErrNoVersionValidAt = graph.ErrNoVersionValidAt",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 43,
+      "name": "ErrNoVersionValidAt"
+    },
+    {
+      "declaration": "ErrInvalidTimeRange = graph.ErrInvalidTimeRange",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 45,
+      "name": "ErrInvalidTimeRange"
+    },
+    {
+      "declaration": "ErrIndexExists = graph.ErrIndexExists",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 47,
+      "name": "ErrIndexExists"
+    },
+    {
+      "declaration": "ErrRelPropertyIndexUnsupported = graph.ErrRelPropertyIndexUnsupported",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 49,
+      "name": "ErrRelPropertyIndexUnsupported"
+    },
+    {
+      "declaration": "ErrTemporalIndexExists = graph.ErrTemporalIndexExists",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 51,
+      "name": "ErrTemporalIndexExists"
+    },
+    {
+      "declaration": "ErrTemporalIndexNotFound = graph.ErrTemporalIndexNotFound",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 53,
+      "name": "ErrTemporalIndexNotFound"
+    },
+    {
+      "declaration": "ErrUniqueConstraintExists = graph.ErrUniqueConstraintExists",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 55,
+      "name": "ErrUniqueConstraintExists"
+    },
+    {
+      "declaration": "ErrUniqueConstraintNotFound = graph.ErrUniqueConstraintNotFound",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 57,
+      "name": "ErrUniqueConstraintNotFound"
+    },
+    {
+      "declaration": "ErrUniqueViolationExisting = graph.ErrUniqueViolationExisting",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 59,
+      "name": "ErrUniqueViolationExisting"
+    },
+    {
+      "declaration": "ErrUniqueUnsupportedType = graph.ErrUniqueUnsupportedType",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 61,
+      "name": "ErrUniqueUnsupportedType"
+    },
+    {
+      "declaration": "ErrUniqueEventLabelUnsupported = graph.ErrUniqueEventLabelUnsupported",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 63,
+      "name": "ErrUniqueEventLabelUnsupported"
+    },
+    {
+      "declaration": "ErrValidFromBeforePrevious = graph.ErrValidFromBeforePrevious",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 65,
+      "name": "ErrValidFromBeforePrevious"
+    },
+    {
+      "declaration": "ErrAlreadyClosed = graph.ErrAlreadyClosed",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 67,
+      "name": "ErrAlreadyClosed"
+    }
+  ],
+  "interfaces": [
+    {
+      "file": "internal/cypher/core/access/contract.go",
+      "line": 9,
+      "members": [
+        "Labels(n *types.Node) []string",
+        "HasLabel(n *types.Node, label string) bool",
+        "RelType(r *types.Relationship) string",
+        "NodeShadowProperty(n *types.Node, key string) (any, bool)",
+        "RelShadowProperty(r *types.Relationship, key string) (any, bool)"
+      ],
+      "name": "Catalog",
+      "public": true,
+      "family": "required"
+    },
+    {
+      "file": "internal/cypher/core/access/contract.go",
+      "line": 21,
+      "members": [
+        "ByLabel(label string, opts ScanOpts) ([]*types.Node, error)",
+        "ForEachByLabel(label string, opts ScanOpts, fn func(*types.Node) bool) error",
+        "All(opts ScanOpts) ([]*types.Node, error)",
+        "ForEachRelsByType(typeName string, opts ScanOpts, fn func(*types.Relationship) bool) error",
+        "ForEachRels(opts ScanOpts, fn func(*types.Relationship) bool) error"
+      ],
+      "name": "Scan",
+      "public": true,
+      "family": "required"
+    },
+    {
+      "file": "internal/cypher/core/access/contract.go",
+      "line": 33,
+      "members": [
+        "NodeByID(ctx context.Context, id types.NodeID) (*types.Node, error)",
+        "NodeByIDAt(ctx context.Context, id types.NodeID, opts ScanOpts) (*types.Node, error)",
+        "NodesByIDs(ids []types.NodeID) ([]*types.Node, error)",
+        "RelByID(ctx context.Context, id types.RelID) (*types.Relationship, error)"
+      ],
+      "name": "Lookup",
+      "public": true,
+      "family": "required"
+    },
+    {
+      "file": "internal/cypher/core/access/contract.go",
+      "line": 43,
+      "members": [
+        "NodesByLabelProperty(label, key string, value any, opts ScanOpts) ([]*types.Node, error)",
+        "NodesByLabelProperties(label string, values map[string]any, opts ScanOpts) ([]*types.Node, error)",
+        "RelsByTypeProperty(typeName, key string, value any, opts ScanOpts) ([]*types.Relationship, error)",
+        "Composites(label string) ([][]string, error)"
+      ],
+      "name": "EqualityIndex",
+      "public": true,
+      "family": "required"
+    },
+    {
+      "file": "internal/cypher/core/access/contract.go",
+      "line": 53,
+      "members": [
+        "ForEachNodeByLabelPropertyRange(label, key string, min, max float64, inclMin, inclMax bool, opts ScanOpts, fn func(*types.Node) bool) error",
+        "ForEachNodeByLabelPropertyRangeOrdered(label, key string, min, max float64, inclMin, inclMax, desc bool, opts ScanOpts, fn func(*types.Node) bool) error",
+        "ForEachNodeByLabelPropertyPrefix(label, key, prefix string, desc bool, opts ScanOpts, fn func(*types.Node) bool) error",
+        "ForEachRelByTypePropertyRangeOrdered(typeName, key string, min, max float64, inclMin, inclMax, desc bool, opts ScanOpts, fn func(*types.Relationship) bool) error",
+        "NodeRangeCardinality(label, key string, min, max float64, inclMin, inclMax bool, opts ScanOpts) (count int64, exact bool, err error)",
+        "RelRangeCardinality(typeName, key string, min, max float64, inclMin, inclMax bool, opts ScanOpts) (count int64, exact bool, err error)"
+      ],
+      "name": "OrderedIndex",
+      "public": true,
+      "family": "required"
+    },
+    {
+      "file": "internal/cypher/core/access/contract.go",
+      "line": 67,
+      "members": [
+        "Outgoing(nodeID types.NodeID, typeName string) ([]*types.Relationship, error)",
+        "Incoming(nodeID types.NodeID, typeName string) ([]*types.Relationship, error)",
+        "ForEachAdjacentEndpoint(nodeID types.NodeID, typeName string, incoming bool, fn func(rel types.RelID, other types.NodeID) bool) error",
+        "ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string, incoming bool, opts ScanOpts, fn func(rel types.RelID, other types.NodeID) bool) error",
+        "ForEachAdjacentRelAt(nodeID types.NodeID, typeName string, incoming bool, opts ScanOpts, fn func(*types.Relationship) bool) error",
+        "OutgoingDegree(nodeID types.NodeID, typeName string) (int, error)",
+        "IncomingDegree(nodeID types.NodeID, typeName string) (int, error)"
+      ],
+      "name": "Adjacency",
+      "public": true,
+      "family": "required"
+    },
+    {
+      "file": "internal/cypher/core/access/contract.go",
+      "line": 83,
+      "members": [
+        "NodeCount() (int, error)",
+        "RelCount() (int, error)",
+        "NodeCountByLabel(label string) (int, error)",
+        "RelCountByType(typeName string) (int, error)",
+        "AllLabelCounts() (map[string]int, error)",
+        "AllRelTypeCounts() (map[string]int, error)",
+        "NodePropertyStats(label, key string) (PropertyStats, error)",
+        "NodePropertyTypeClassCounts(label, key string) (PropertyTypeClassCounts, error)",
+        "RelPropertyTypeClassCounts(typeName, key string) (PropertyTypeClassCounts, error)",
+        "NodeCountByLabelAndPropertyKey(label, key string) (int, error)"
+      ],
+      "name": "Statistics",
+      "public": true,
+      "family": "required"
+    },
+    {
+      "file": "internal/cypher/core/access/contract.go",
+      "line": 105,
+      "members": [
+        "NodesAsOf(txTime types.Instant) ([]*types.Node, error)",
+        "RelsAsOf(txTime types.Instant) ([]*types.Relationship, error)",
+        "NodesAtTx(validAt, txAt types.Instant) ([]*types.Node, error)",
+        "RelsAtTx(validAt, txAt types.Instant) ([]*types.Relationship, error)",
+        "NodesDuringTx(from, to, txAt types.Instant) ([]*types.Node, error)",
+        "RelsDuringTx(from, to, txAt types.Instant) ([]*types.Relationship, error)",
+        "NodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node, error)",
+        "ResolveAsOf(name string) (types.Instant, bool, error)",
+        "RelateNodes(x, y *types.Node) (types.AllenRelation, error)",
+        "RelateRels(x, y *types.Relationship) (types.AllenRelation, error)"
+      ],
+      "name": "Snapshot",
+      "public": true,
+      "family": "required"
+    },
+    {
+      "file": "internal/cypher/core/access/contract.go",
+      "line": 127,
+      "members": [
+        "TxPin() types.Instant"
+      ],
+      "name": "AsOf",
+      "public": true,
+      "family": "required"
+    },
+    {
+      "file": "internal/cypher/core/access/contract.go",
+      "line": 131,
+      "members": [
+        "Catalog",
+        "Scan",
+        "Lookup",
+        "EqualityIndex",
+        "OrderedIndex",
+        "Adjacency",
+        "Statistics",
+        "Snapshot"
+      ],
+      "name": "Source",
+      "public": true,
+      "family": "required"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 9,
+      "members": [
+        "ForEachDocValues(label string, keys []string, fn func(id types.NodeID, vals []any, present []bool) bool) (gen uint64, ok bool, err error)",
+        "ForEachDocValuesMulti(labels []string, keys []string, fn func(id types.NodeID, vals []any, present []bool) bool) (gen uint64, ok bool, err error)",
+        "ForEachDocValuesAsOf(label string, keys []string, txAt types.Instant, fn func(id types.NodeID, vals []any, present []bool) bool) (gen uint64, ok bool, err error)",
+        "DocValuesSnapshot(label string, keys []string) (types.NodeColumnReader, uint64, bool, error)",
+        "ForEachDocValuesByLabels(labels, keys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)"
+      ],
+      "name": "Columns",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 21,
+      "members": [
+        "NodeMutationEpoch() uint64",
+        "NodeLabelMutationEpoch(label string) uint64",
+        "RelMutationEpoch() uint64"
+      ],
+      "name": "Epoch",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 29,
+      "members": [
+        "LendNode(ctx context.Context, id types.NodeID) (*types.Node, error)",
+        "LendRel(ctx context.Context, id types.RelID) (*types.Relationship, error)"
+      ],
+      "name": "Lend",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 35,
+      "members": [
+        "MaxNodeOrdinal() (uint32, bool, error)",
+        "MaxRelOrdinal() (uint32, bool, error)"
+      ],
+      "name": "Ordinals",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 45,
+      "members": [
+        "RelTypeDegrees(typeName string) (RelTypeDegrees, error)"
+      ],
+      "name": "Degrees",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 58,
+      "members": [
+        "NodeCountByLabelAt(label string, opts ScanOpts) (int, error)",
+        "RelCountByTypeAt(typeName string, opts ScanOpts) (int, error)"
+      ],
+      "name": "CountsAt",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 64,
+      "members": [
+        "HistoryCounts() (nodes, rels int, ok bool)"
+      ],
+      "name": "HistoryCounter",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 68,
+      "members": [
+        "CommittedTx() (types.Instant, error)"
+      ],
+      "name": "CommittedPin",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 72,
+      "members": [
+        "ReadCosts() (ReadCosts, bool)"
+      ],
+      "name": "CostStater",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 76,
+      "members": [
+        "DocValuesColumn(label, key string) (built, known bool)"
+      ],
+      "name": "ColumnStatement",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 80,
+      "members": [
+        "ForEachRelColumns(typeName string, fn func(ids []types.RelID, ordinals []uint32, starts, ends []types.NodeID, startOrdinals, endOrdinals []uint32) bool) (bool, error)"
+      ],
+      "name": "RelColumns",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 84,
+      "members": [
+        "ForEachAdjacentEndpointOrdinal(nodeID types.NodeID, typeName string, incoming bool,\n\tfn func(rel types.RelID, relOrdinal uint32, other types.NodeID, otherOrdinal uint32) bool) error"
+      ],
+      "name": "EndpointOrdinals",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 89,
+      "members": [
+        "AddNodes(labels []string, props []map[string]any) ([]*types.Node, error)"
+      ],
+      "name": "TxNodes",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 93,
+      "members": [
+        "AddRelationships(typeName string, rels []RelCreate) ([]*types.Relationship, error)"
+      ],
+      "name": "TxRels",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 97,
+      "members": [
+        "NodeScanKeepsOrder(label string) bool",
+        "RelScanKeepsOrder(typeName string) bool"
+      ],
+      "name": "ScanOrder",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 103,
+      "members": [
+        "MutationEpochs() (nodes, rels uint64)"
+      ],
+      "name": "Epochs",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 107,
+      "members": [
+        "Epoch(labels []string) (nodes, rels uint64)"
+      ],
+      "name": "EpochFold",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 111,
+      "members": [
+        "CreateProperty(label, key string) error",
+        "DeleteProperty(label, key string) error",
+        "CreateRelProperty(typeName, key string) error",
+        "DeleteRelProperty(typeName, key string) error",
+        "CreateComposite(label string, keys []string) error",
+        "DeleteComposite(label string, keys []string) error",
+        "CreateTemporal(label string) error",
+        "DeleteTemporal(label string) error",
+        "CreateRelTemporal(typeName string) error",
+        "DeleteRelTemporal(typeName string) error",
+        "CreateUnique(ctx context.Context, label, propertyKey string) error",
+        "DropUnique(ctx context.Context, label, propertyKey string) error"
+      ],
+      "name": "IndexMaintenance",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 137,
+      "members": [
+        "NewBatch() (Batch, error)"
+      ],
+      "name": "BulkWriter",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 141,
+      "members": [
+        "AddNode(labels []string, props map[string]any) error",
+        "AddNodes(labels []string, props map[string]any, n int) error",
+        "Execute() error"
+      ],
+      "name": "Batch",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 149,
+      "members": [
+        "Begin(ctx context.Context) (WriteTx, error)"
+      ],
+      "name": "Writer",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 153,
+      "members": [
+        "AddNode(labels []string, props map[string]any) (*types.Node, error)",
+        "AddRel(typeName string, start, end *types.Node, props map[string]any) (*types.Relationship, error)",
+        "GetOrCreateNodeByKey(label, key string, value any, extraProps map[string]any) (node *types.Node, created bool, err error)",
+        "AddNodeLabel(id types.NodeID, label string) error",
+        "RemoveNodeLabel(id types.NodeID, label string) error",
+        "SetNodeProperty(id types.NodeID, key string, value any) error",
+        "DeleteNodeProperty(id types.NodeID, key string) error",
+        "SetRelProperty(id types.RelID, key string, value any) error",
+        "DeleteRelProperty(id types.RelID, key string) error",
+        "UpdateNode(id types.NodeID, updates map[string]any) (*types.Node, error)",
+        "UpdateRel(id types.RelID, updates map[string]any) (*types.Relationship, error)",
+        "DeleteNode(id types.NodeID) error",
+        "DeleteRel(id types.RelID) error",
+        "NodesByLabelProperty(label, key string, value any, opts ScanOpts) ([]*types.Node, error)",
+        "Labels(n *types.Node) []string",
+        "RelType(r *types.Relationship) string",
+        "Commit() error",
+        "Rollback() error",
+        "CommittedLSN() uint64"
+      ],
+      "name": "WriteTx",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 193,
+      "members": [
+        "Source",
+        "Columns",
+        "Epoch",
+        "IndexMaintenance"
+      ],
+      "name": "FullSource",
+      "public": true,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 200,
+      "members": [
+        "HasPropertyIndex(label, key string) bool"
+      ],
+      "name": "propertyIndexProber",
+      "public": false,
+      "family": "optional"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_runtime.go",
+      "line": 9,
+      "members": [
+        "NewAsOfSnapshot(ctx context.Context, txTime, validAt, validStart, validEnd types.Instant, maxNodes int) (AsOf, error)",
+        "NewLazyAsOfSnapshot(txTime types.Instant) AsOf",
+        "SnapshotNodesByLabel(ctx context.Context, snap AsOf, label string) ([]*types.Node, error)",
+        "SnapshotNode(ctx context.Context, snap AsOf, id types.NodeID) (*types.Node, error)"
+      ],
+      "name": "Snapshots",
+      "public": true,
+      "family": "runtime"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_runtime.go",
+      "line": 19,
+      "members": [
+        "RelCandidates(ctx context.Context, snap AsOf, sourceID types.NodeID, dir Direction, typeNames []string, opts ScanOpts) ([]*types.Relationship, error)",
+        "ForEachAdjacentRel(nodeID types.NodeID, relType string, incoming bool, opts ScanOpts, fn func(*types.Relationship) bool) error"
+      ],
+      "name": "RelWalk",
+      "public": true,
+      "family": "runtime"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_runtime.go",
+      "line": 25,
+      "members": [
+        "ForEachNodeInRange(label, key string, min, max float64, inclMin, inclMax bool, fn func(*types.Node) bool) (used bool, err error)",
+        "ForEachNodeWithPrefix(label, key, prefix string, desc bool, fn func(*types.Node) bool) (used bool, err error)"
+      ],
+      "name": "OrderedScan",
+      "public": true,
+      "family": "runtime"
+    },
+    {
+      "file": "internal/cypher/core/access/contract_runtime.go",
+      "line": 31,
+      "members": [
+        "Source",
+        "Snapshots",
+        "RelWalk",
+        "OrderedScan"
+      ],
+      "name": "RuntimeSource",
+      "public": true,
+      "family": "runtime"
+    }
+  ],
+  "public_functions": [
+    {
+      "file": "internal/cypher/core/access/capability.go",
+      "line": 3,
+      "name": "ColumnsOf",
+      "signature": "func(src Source) (Columns, bool)"
+    },
+    {
+      "file": "internal/cypher/core/access/capability.go",
+      "line": 8,
+      "name": "EpochOf",
+      "signature": "func(src Source) (Epoch, bool)"
+    },
+    {
+      "file": "internal/cypher/core/access/capability.go",
+      "line": 13,
+      "name": "EpochsFor",
+      "signature": "func(src Source, labels []string) (nodes, rels uint64)"
+    },
+    {
+      "file": "internal/cypher/core/access/capability.go",
+      "line": 21,
+      "name": "IndexMaintenanceOf",
+      "signature": "func(src Source) (IndexMaintenance, bool)"
+    },
+    {
+      "file": "internal/cypher/core/access/capability.go",
+      "line": 26,
+      "name": "BulkWriterOf",
+      "signature": "func(src Source) (BulkWriter, bool)"
+    },
+    {
+      "file": "internal/cypher/core/access/capability.go",
+      "line": 31,
+      "name": "WriterOf",
+      "signature": "func(src Source) (Writer, bool)"
+    },
+    {
+      "file": "internal/cypher/core/access/capability.go",
+      "line": 36,
+      "name": "HasPropertyIndex",
+      "signature": "func(src Source, label, key string) bool"
+    },
+    {
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 9,
+      "name": "HasValidTimePin",
+      "signature": "func(opts ScanOpts) bool"
+    },
+    {
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 26,
+      "name": "Present",
+      "signature": "func() int64"
+    }
+  ],
+  "sources": [
+    {
+      "path": "internal/cypher/core/access/capability.go",
+      "sha256": "f79114058a57686a78afe898b139b8e4b28edc08bb597cbc48b36a69f5d5d985",
+      "imports": {}
+    },
+    {
+      "path": "internal/cypher/core/access/contract.go",
+      "sha256": "1961ca984a70cb960c4f3ac56bbd9385970d55daab53757cd6f69a2968874a99",
+      "imports": {
+        "context": "context",
+        "types": "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+      }
+    },
+    {
+      "path": "internal/cypher/core/access/contract_optional.go",
+      "sha256": "d1420d4ee5345065aa0bdc89cb1c3f463b54d98acefecbb4abcd9542d6196287",
+      "imports": {
+        "context": "context",
+        "types": "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+      }
+    },
+    {
+      "path": "internal/cypher/core/access/contract_runtime.go",
+      "sha256": "78d0ecbafba59f0cb8e9e22f017aeae111ea9d35de183f65c432891c9beb9c54",
+      "imports": {
+        "context": "context",
+        "types": "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+      }
+    },
+    {
+      "path": "internal/cypher/core/access/direction.go",
+      "sha256": "0e6056448df813684898e5acf5fe1519e7404e823886bf53db0ca9ce18893ddd",
+      "imports": {}
+    },
+    {
+      "path": "internal/cypher/core/access/doc.go",
+      "sha256": "e7fc2ba3c9a1358a387f26e197d3cb9787be9e3ec34b5d1c2cc5c9937e1f242e",
+      "imports": {}
+    },
+    {
+      "path": "internal/cypher/core/access/opts.go",
+      "sha256": "381309b7fe6d59a701a68427396e9152b9db68b88925b24b90cf113af23ffc29",
+      "imports": {
+        "graph": "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+      }
+    }
+  ],
+  "types": [
+    {
+      "alias": false,
+      "definition": "struct {\n\tMaxOut, MaxIn, Starts, Ends int64\n}",
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 41,
+      "name": "RelTypeDegrees",
+      "public": true
+    },
+    {
+      "alias": false,
+      "definition": "struct {\n\tBackend  string\n\tHeldRows int\n\n\tLendHeld, LendDecoded                 float64\n\tScanRowHeld, ScanRowDecoded           float64\n\tAdjacencyRelHeld, AdjacencyRelDecoded float64\n}",
+      "file": "internal/cypher/core/access/contract_optional.go",
+      "line": 49,
+      "name": "ReadCosts",
+      "public": true
+    },
+    {
+      "alias": false,
+      "definition": "int",
+      "file": "internal/cypher/core/access/direction.go",
+      "line": 3,
+      "name": "Direction",
+      "public": true
+    },
+    {
+      "alias": true,
+      "definition": "graph.QueryOpts",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 7,
+      "name": "ScanOpts",
+      "public": true
+    },
+    {
+      "alias": true,
+      "definition": "graph.PropertyStats",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 13,
+      "name": "PropertyStats",
+      "public": true
+    },
+    {
+      "alias": true,
+      "definition": "graph.RelCreate",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 15,
+      "name": "RelCreate",
+      "public": true
+    },
+    {
+      "alias": false,
+      "definition": "struct {\n\tNumeric int64\n\tNaN     int64\n\tString  int64\n\tBool    int64\n\tOther   int64\n\tMissing int64\n}",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 17,
+      "name": "PropertyTypeClassCounts",
+      "public": true
+    },
+    {
+      "alias": false,
+      "definition": "struct {\n\tTotalNodes    int\n\tTotalRels     int\n\tLabelCounts   map[string]int\n\tRelTypeCounts map[string]int\n}",
+      "file": "internal/cypher/core/access/opts.go",
+      "line": 70,
+      "name": "Cardinality",
+      "public": true
+    }
+  ],
+  "schema_version": 1,
+  "kind": "pinned-consumer-signature-inventory",
+  "captured_date": "2026-10-09",
+  "consumer": {
+    "repository": "sigma-tkgd",
+    "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+    "rho_dependency": "github.com/data-insights-ai/rho-tkg/v4 v4.43.0"
+  },
+  "evidence_level": "Source signatures and documented adapter behavior; not behavioral acceptance or v5 compatibility proof.",
+  "ownership": {
+    "rho": "Own independent public-API fixtures, exact storage/access contracts and database consistency.",
+    "sigma": "Own actual internal access contract, v5 adapter, query planning, joins, temporal operators, reasoning and solver tests."
+  },
+  "extraction": {
+    "method": "Go go/parser AST, go/format canonical rendering; every non-test access/*.go file in lexicographic path order",
+    "scope": "All interface declarations including unexported propertyIndexProber; all named noninterface types, exported values and exported function signatures. Interface members retain embedding and direct method declarations.",
+    "drift_check": "Re-extract sources at the consumer commit. Compare source SHA256, interface names/public flags, members, type definitions/aliases and exported sentinel/value declarations. A changed hash requires review even if signatures match.",
+    "consumer_internal_import": "prohibited; fixture data only; sigma runs actual internal contract compile tests in sigma repository."
+  },
+  "semantics": [
+    {
+      "id": "capability-negotiation",
+      "rule": "Structural assertions may decline optional doors. used/ok/exact booleans have distinct meanings; unavailable must not become exact-empty.",
+      "evidence": [
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/cypher/core/access/capability.go",
+          "sha256": "f79114058a57686a78afe898b139b8e4b28edc08bb597cbc48b36a69f5d5d985",
+          "matching_lines": [
+            3
+          ],
+          "anchor": "func ColumnsOf"
+        },
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/cypher/core/access/contract_runtime.go",
+          "sha256": "78d0ecbafba59f0cb8e9e22f017aeae111ea9d35de183f65c432891c9beb9c54",
+          "matching_lines": [
+            26,
+            28
+          ],
+          "anchor": "used bool"
+        },
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/cypher/core/access/contract.go",
+          "sha256": "1961ca984a70cb960c4f3ac56bbd9385970d55daab53757cd6f69a2968874a99",
+          "matching_lines": [
+            62,
+            64
+          ],
+          "anchor": "exact bool"
+        }
+      ]
+    },
+    {
+      "id": "typed-aliases-and-errors",
+      "rule": "ScanOpts, PropertyStats and RelCreate are aliases to rho graph types; sentinel identities must support errors.Is across adapter layers.",
+      "evidence": [
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/cypher/core/access/opts.go",
+          "sha256": "381309b7fe6d59a701a68427396e9152b9db68b88925b24b90cf113af23ffc29",
+          "matching_lines": [
+            7
+          ],
+          "anchor": "type ScanOpts"
+        },
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/cypher/core/access/opts.go",
+          "sha256": "381309b7fe6d59a701a68427396e9152b9db68b88925b24b90cf113af23ffc29",
+          "matching_lines": [
+            31
+          ],
+          "anchor": "ErrCapabilityNotSupported"
+        }
+      ]
+    },
+    {
+      "id": "ordered-edge-feed",
+      "rule": "Tyla segment facts require strictly ascending relationship IDs, matching row feed order. Capability decline precedes the first batch. Storage order does not imply temporal precedence.",
+      "evidence": [
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/tyla/source/graph/edge_columns.go",
+          "sha256": "02a37470b6eb9a5b3a19ad652e68630bd60d76e591eb463e08d65b4b17281d65",
+          "matching_lines": [
+            41
+          ],
+          "anchor": "Order: the facts"
+        },
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/tyla/source/graph/edge_columns.go",
+          "sha256": "02a37470b6eb9a5b3a19ad652e68630bd60d76e591eb463e08d65b4b17281d65",
+          "matching_lines": [
+            38
+          ],
+          "anchor": "door declines before"
+        }
+      ]
+    },
+    {
+      "id": "temporal-complete-input",
+      "rule": "Preserve full histories and annotation pieces requested by sigma CompleteSnapshot. Rho does not evaluate box, Since/Until, joins or annotations.",
+      "evidence": [
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/query/ir/time.go",
+          "sha256": "46f3c8680ebbd54c3eaf57bd8353e0c823562dc24f6bd2fb92f38135c5450e41",
+          "matching_lines": [
+            34
+          ],
+          "anchor": "projected onto"
+        },
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/query/ir/time.go",
+          "sha256": "46f3c8680ebbd54c3eaf57bd8353e0c823562dc24f6bd2fb92f38135c5450e41",
+          "matching_lines": [
+            31,
+            32,
+            163
+          ],
+          "anchor": "empty window"
+        },
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/query/ir/program_time.go",
+          "sha256": "804991978433b961f8eb0dee8990ad1ce0dc94e7aa2bf4d36179a80859890994",
+          "matching_lines": [
+            21,
+            69
+          ],
+          "anchor": "CompleteSnapshot"
+        }
+      ]
+    },
+    {
+      "id": "signature-probe-limit",
+      "rule": "Existing graphAccessProbe verifies signatures and empty graph reachability only; it is not behavioral acceptance and its NodeByIDAt ignores opts. Its assertions cover a subset of the complete manifest.",
+      "evidence": [
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/cypher/core/access/contract_test.go",
+          "sha256": "1b688121d63d5c564248d634cf0e6645fd609962bd1c2914e06ff9d0f25a2273",
+          "matching_lines": [
+            368
+          ],
+          "anchor": "not a behavioural test"
+        },
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/cypher/core/access/contract_test.go",
+          "sha256": "1b688121d63d5c564248d634cf0e6645fd609962bd1c2914e06ff9d0f25a2273",
+          "matching_lines": [
+            72
+          ],
+          "anchor": "_ access.ScanOpts"
+        }
+      ]
+    }
+  ],
+  "acceptance": {
+    "signature_compile": "pending against rho v5 public API and sigma actual adapter",
+    "behavior": "pending; required independent historical, adversarial, order, exactness, cancellation and capability-decline checks",
+    "current_status_authority": "tasks/backlog.md",
+    "fixture_not_roadmap": true
+  },
+  "borrowed_type_contracts": [
+    {
+      "name": "graph.QueryOpts",
+      "implementation": "store.QueryOpts",
+      "repository": "rho-tkg",
+      "commit": "b1193dc055b10ae7854570eedd5c2ef719f4a82f",
+      "path": "pkg/graph/store/opts.go",
+      "sha256": "6a00a97daaf270c08e9914042b43fb4d32afabb0de5b27a185141e1bf1e73aee",
+      "fields": [
+        {
+          "name": "Limit",
+          "type": "int"
+        },
+        {
+          "name": "After",
+          "type": "types.EntityID"
+        },
+        {
+          "name": "ValidAt",
+          "type": "types.Instant"
+        },
+        {
+          "name": "ValidStart",
+          "type": "types.Instant"
+        },
+        {
+          "name": "ValidEnd",
+          "type": "types.Instant"
+        },
+        {
+          "name": "TxAt",
+          "type": "types.Instant"
+        },
+        {
+          "name": "TxPin",
+          "type": "types.Instant"
+        },
+        {
+          "name": "IncludeEclipsed",
+          "type": "bool"
+        },
+        {
+          "name": "Depth",
+          "type": "ShardDepth"
+        },
+        {
+          "name": "NoSort",
+          "type": "bool"
+        }
+      ],
+      "zero_semantics": "v4 zero disables temporal filters; v5 adaptation must provide explicit zero-coordinate selections. TxPin mutually exclusive with TxAt and validity fields. NoSort ignored for After > 0; pagination requires sorted order."
+    }
+  ],
+  "public_functions_receiver_notes": {
+    "Present": "PropertyTypeClassCounts value receiver; return sum of Numeric, NaN, String, Bool, Other (excluding Missing)"
+  }
+}

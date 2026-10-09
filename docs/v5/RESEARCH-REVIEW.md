@@ -194,12 +194,17 @@ meets embedding/deployment requirements and materially reduces implementation
 risk without violating the cost gates, select it before format freeze. This is
 one engine selection decision, not a commitment to maintain multiple divergent
 public backends.
+The pinned [substrate evaluation](reference/substrate-evaluation.json) records
+research and the proposed execution plan; it selects no engine and establishes
+no V2/V3 production acceptance.
 
 ## Evidence limits
 
 The central mathematical examples and old state fixtures have executable checks
-in `reference/` (pending check-in under `docs/v5/reference/`, Revision
-2026-10-09). Their ownership is explicit: value/state and
+in the five locally recovered files under [reference/](reference/README.md)
+(Revision 2026-10-09). Recovery is local evidence; tracked-corpus acceptance
+and implementation status belong in [the backlog](../../tasks/backlog.md).
+Their ownership is explicit: value/state and
 database-cut checks inform rho; STN, joins and recursive examples illustrate sigma
 consumer requirements. They validate neither production implementations nor
 workload performance or the full distributed protocol.

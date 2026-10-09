@@ -1,0 +1,488 @@
+{
+  "schema_version": 1,
+  "kind": "consumer-adaptation-acceptance-obligations",
+  "captured_date": "2026-10-09",
+  "pinned_commits": {
+    "rho-tkg": "b1193dc055b10ae7854570eedd5c2ef719f4a82f",
+    "sigma-tkgd": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+    "ai-assisted-soc-v2": "9a26e689aa3cc8576e7235210a23d85bc8ca6416"
+  },
+  "scope": "Data-only fixture obligations, not a second roadmap; live task status remains tasks/backlog.md. No consumer implementation is modified.",
+  "evidence_level": "Verified source behavior and signatures; no v5 behavioral acceptance executed. Source hashes bind evidence to actual content; repository commit identifies checked-out revision.",
+  "boundaries": {
+    "rho": "values, preservation, graph components, storage, native exact access, certified cuts and complete changes",
+    "sigma": "adapter, IR, relational and temporal execution, inference, solver and computation progress",
+    "ai_soc": "source semantics, materialization and product parity"
+  },
+  "obligations": [
+    {
+      "id": "explicit-zero-and-unplaced",
+      "consumer": "sigma-tkgd",
+      "ownership": "sigma-tkgd adapter; rho public storage/access contract",
+      "required_adaptation": "Replace (0,0)=Eternal and to=0=infinite sentinels with explicit scope forms; zero is an ordinary coordinate.",
+      "evidence": [
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/tyla/source/graph/values.go",
+          "sha256": "de21dffa02be8df6d54b6affcd26fc5c5893fb31de31dc232b288f48131ac354",
+          "matching_lines": [
+            190
+          ],
+          "anchor": "func validInterval"
+        }
+      ],
+      "required_tests": [
+        "Point(0), finite bound 0, Unplaced, All, and infinite right remain distinct through row and column adapters."
+      ],
+      "acceptance_status": "pending-v5"
+    },
+    {
+      "id": "points-and-window-compensation",
+      "consumer": "ai-assisted-soc-v2",
+      "ownership": "ai-assisted-soc-v2 adapter; rho public storage/access contract",
+      "required_adaptation": "Replace deliberate epsilon-widened degenerate observations with explicit points and adapt paired window compensation. Never reinterpret genuine one-tick spans solely by width.",
+      "evidence": [
+        {
+          "repository": "ai-assisted-soc-v2",
+          "commit": "9a26e689aa3cc8576e7235210a23d85bc8ca6416",
+          "path": "engine/materialize.go",
+          "sha256": "2b28f129a735612321c41c34d5780eedfdeec709f00ea55e73821e9b02a6228c",
+          "matching_lines": [
+            211
+          ],
+          "anchor": "const MaterializeEpsilonMs"
+        },
+        {
+          "repository": "ai-assisted-soc-v2",
+          "commit": "9a26e689aa3cc8576e7235210a23d85bc8ca6416",
+          "path": "engine/materialize.go",
+          "sha256": "2b28f129a735612321c41c34d5780eedfdeec709f00ea55e73821e9b02a6228c",
+          "matching_lines": [
+            215
+          ],
+          "anchor": "func (m *Materialized) validRange"
+        },
+        {
+          "repository": "ai-assisted-soc-v2",
+          "commit": "9a26e689aa3cc8576e7235210a23d85bc8ca6416",
+          "path": "engine/programs.go",
+          "sha256": "a8f706ee5dc481ca87b4d72c66e6f9085038088b8a3405e950834197fb4a8af5",
+          "matching_lines": [
+            78
+          ],
+          "anchor": "func engineWindowMs"
+        }
+      ],
+      "required_tests": [
+        "Exact quiet-gap floor and adjacent points match kernel answers after paired adaptation.",
+        "Genuine one-tick span remains a span; degenerate source observation remains a point."
+      ],
+      "acceptance_status": "pending-v5"
+    },
+    {
+      "id": "axis-unit-conversion",
+      "consumer": "ai-assisted-soc-v2",
+      "ownership": "ai-assisted-soc-v2 adapter; rho public storage/access contract",
+      "required_adaptation": "Declare units and rounding when mapping source seconds into the default millisecond axis; retain original source times as provenance when available.",
+      "evidence": [
+        {
+          "repository": "ai-assisted-soc-v2",
+          "commit": "9a26e689aa3cc8576e7235210a23d85bc8ca6416",
+          "path": "engine/materialize.go",
+          "sha256": "2b28f129a735612321c41c34d5780eedfdeec709f00ea55e73821e9b02a6228c",
+          "matching_lines": [
+            194
+          ],
+          "anchor": "func (m *Materialized) ms"
+        }
+      ],
+      "required_tests": [
+        "Submillisecond differences survive an explicitly selected exact profile or produce declared conversion evidence; no inferred higher precision."
+      ],
+      "acceptance_status": "pending-v5"
+    },
+    {
+      "id": "source-ingestion-vs-db-commit",
+      "consumer": "ai-assisted-soc-v2",
+      "ownership": "ai-assisted-soc-v2 adapter; rho public storage/access contract",
+      "required_adaptation": "Move latest supporting signal ingestion time from AddWithTx database backfill into explicit source ingestion provenance. Database revisions commit at certified new cuts.",
+      "evidence": [
+        {
+          "repository": "ai-assisted-soc-v2",
+          "commit": "9a26e689aa3cc8576e7235210a23d85bc8ca6416",
+          "path": "engine/materialize.go",
+          "sha256": "2b28f129a735612321c41c34d5780eedfdeec709f00ea55e73821e9b02a6228c",
+          "matching_lines": [
+            127
+          ],
+          "anchor": "func (m *Materialized) txFromSupport"
+        },
+        {
+          "repository": "ai-assisted-soc-v2",
+          "commit": "9a26e689aa3cc8576e7235210a23d85bc8ca6416",
+          "path": "engine/materialize.go",
+          "sha256": "2b28f129a735612321c41c34d5780eedfdeec709f00ea55e73821e9b02a6228c",
+          "matching_lines": [
+            367
+          ],
+          "anchor": "g.Rels().AddWithTx"
+        },
+        {
+          "repository": "ai-assisted-soc-v2",
+          "commit": "9a26e689aa3cc8576e7235210a23d85bc8ca6416",
+          "path": "engine/engine.go",
+          "sha256": "ce6accd65af79e023df88a98947f72f3c64edfdbd263ed26b0196be04ac081b2",
+          "matching_lines": [
+            298
+          ],
+          "anchor": "AllowTxBackfill:"
+        }
+      ],
+      "required_tests": [
+        "Late old-source assertion preserves source time but cannot enter an earlier certified database cut."
+      ],
+      "acceptance_status": "pending-v5"
+    },
+    {
+      "id": "snapshot-validity-separation",
+      "consumer": "sigma-tkgd",
+      "ownership": "sigma-tkgd adapter; rho public storage/access contract",
+      "required_adaptation": "Translate TxPin/TxAt to explicit snapshot and validity selections; never inherit TxAt implicit valid-now filtering.",
+      "evidence": [
+        {
+          "repository": "rho-tkg",
+          "commit": "b1193dc055b10ae7854570eedd5c2ef719f4a82f",
+          "path": "pkg/graph/store/opts.go",
+          "sha256": "6a00a97daaf270c08e9914042b43fb4d32afabb0de5b27a185141e1bf1e73aee",
+          "matching_lines": [
+            51
+          ],
+          "anchor": "IMPLICIT valid-at-now"
+        },
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/cypher/source/graphsource/snapshot.go",
+          "sha256": "12f8789b3c62e80a1028c5cb326251d4239275f97bf8eec6c6214dee91a6b738",
+          "matching_lines": [
+            128
+          ],
+          "anchor": "opts := access.ScanOpts{TxPin:"
+        }
+      ],
+      "required_tests": [
+        "Past-valid facts remain visible at a pure database cut.",
+        "Bitemporal point/range selection uses explicit validity and historical labels/properties."
+      ],
+      "acceptance_status": "pending-v5"
+    },
+    {
+      "id": "certified-cut-handles",
+      "consumer": "sigma-tkgd",
+      "ownership": "sigma-tkgd adapter; rho public storage/access contract",
+      "required_adaptation": "Adapt scalar snapshot TxPin and CommittedTx to certified cut handles and retention leases without treating a maximum timestamp as a certificate.",
+      "evidence": [
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/cypher/core/access/contract.go",
+          "sha256": "1961ca984a70cb960c4f3ac56bbd9385970d55daab53757cd6f69a2968874a99",
+          "matching_lines": [
+            128
+          ],
+          "anchor": "TxPin()"
+        },
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/cypher/source/graphsource/snapshot.go",
+          "sha256": "12f8789b3c62e80a1028c5cb326251d4239275f97bf8eec6c6214dee91a6b738",
+          "matching_lines": [
+            284
+          ],
+          "anchor": "func (s Source) CommittedTx"
+        }
+      ],
+      "required_tests": [
+        "Eager/lazy snapshots and all scan/adjacency doors agree at a cut after later mutation/deletion.",
+        "Expired or unresolved cuts are distinguishable from exact-empty."
+      ],
+      "acceptance_status": "pending-v5"
+    },
+    {
+      "id": "transaction-isolation-and-receipts",
+      "consumer": "sigma-tkgd",
+      "ownership": "sigma-tkgd adapter; rho public storage/access contract",
+      "required_adaptation": "Adapt GraphTx wrapper to v5 isolation, private writes, atomic visibility and durable receipts; CommittedLSN uint64 is not a distributed cut certificate.",
+      "evidence": [
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/cypher/source/graphsource/writer.go",
+          "sha256": "42eff8440ac10421db5ca6acab176769043bddfd97b8c914d9e3d7b1bf9ca71a",
+          "matching_lines": [
+            32
+          ],
+          "anchor": "type writeTx struct"
+        },
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/cypher/source/graphsource/writer.go",
+          "sha256": "42eff8440ac10421db5ca6acab176769043bddfd97b8c914d9e3d7b1bf9ca71a",
+          "matching_lines": [
+            102
+          ],
+          "anchor": "CommittedLSN"
+        }
+      ],
+      "required_tests": [
+        "Concurrent reader sees none or all of a committed multi-component transaction.",
+        "Rollback hides private writes; ambiguous/durable outcomes and errors.Is sentinels propagate."
+      ],
+      "acceptance_status": "pending-v5"
+    },
+    {
+      "id": "opaque-id-and-enumeration-order",
+      "consumer": "sigma-tkgd",
+      "ownership": "sigma-tkgd adapter; rho public storage/access contract",
+      "required_adaptation": "Keep opaque 64-bit IDs and explicit ascending-ID enumeration where required; remove placement assumptions and separate enumeration from temporal order.",
+      "evidence": [
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/tyla/source/graph/terms.go",
+          "sha256": "ca0cf8e8642b79667a52b62deac91b624846047ce2bcfb9239687b1d94f68101",
+          "matching_lines": [
+            14
+          ],
+          "anchor": "SnowflakeID().Int64()"
+        },
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/tyla/source/graph/edge_columns.go",
+          "sha256": "02a37470b6eb9a5b3a19ad652e68630bd60d76e591eb463e08d65b4b17281d65",
+          "matching_lines": [
+            128
+          ],
+          "anchor": "strictly ascending"
+        }
+      ],
+      "required_tests": [
+        "Row/column fact sequences agree across sealing, rebalance and 1/2/4/8 partitions.",
+        "Duplicate coordinates preserve distinct IDs."
+      ],
+      "acceptance_status": "pending-v5"
+    },
+    {
+      "id": "typed-value-normalization",
+      "consumer": "sigma-tkgd",
+      "ownership": "sigma-tkgd adapter; rho public storage/access contract",
+      "required_adaptation": "Extend normalization explicitly for new exact values; do not turn unsupported rational/temporal/uncertainty kinds into nil or erase temporal kind through an ISO string conversion.",
+      "evidence": [
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/tyla/source/graph/values.go",
+          "sha256": "de21dffa02be8df6d54b6affcd26fc5c5893fb31de31dc232b288f48131ac354",
+          "matching_lines": [
+            136
+          ],
+          "anchor": "func NormalizeValue"
+        },
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/tyla/source/graph/values.go",
+          "sha256": "de21dffa02be8df6d54b6affcd26fc5c5893fb31de31dc232b288f48131ac354",
+          "matching_lines": [
+            177
+          ],
+          "anchor": "func isoTemporalProps"
+        }
+      ],
+      "required_tests": [
+        "1/3, temporal kind, present-null and missing round-trip independently with row/column parity.",
+        "Unsupported profile is explicit decline/error."
+      ],
+      "acceptance_status": "pending-v5"
+    },
+    {
+      "id": "complete-reasoning-inputs",
+      "consumer": "sigma-tkgd",
+      "ownership": "rho stores complete exact inputs; sigma owns IR and evaluation",
+      "required_adaptation": "Keep complete snapshots, endpoint and annotation pieces before sigma operator evaluation. Preserve projection-before-box and empty-window semantics in sigma tests.",
+      "evidence": [
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/query/ir/time.go",
+          "sha256": "46f3c8680ebbd54c3eaf57bd8353e0c823562dc24f6bd2fb92f38135c5450e41",
+          "matching_lines": [
+            34
+          ],
+          "anchor": "projected onto"
+        },
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/query/ir/time.go",
+          "sha256": "46f3c8680ebbd54c3eaf57bd8353e0c823562dc24f6bd2fb92f38135c5450e41",
+          "matching_lines": [
+            31,
+            32,
+            163
+          ],
+          "anchor": "empty window"
+        },
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/query/ir/program_time.go",
+          "sha256": "804991978433b961f8eb0dee8990ad1ce0dc94e7aa2bf4d36179a80859890994",
+          "matching_lines": [
+            21,
+            69
+          ],
+          "anchor": "CompleteSnapshot"
+        }
+      ],
+      "required_tests": [
+        "E09/E21 complete input preservation in rho; actual window/join/annotation evaluation and retractions in sigma."
+      ],
+      "acceptance_status": "pending-v5"
+    },
+    {
+      "id": "source-support-sidecar",
+      "consumer": "ai-assisted-soc-v2",
+      "ownership": "ai-assisted-soc-v2 adapter; rho public storage/access contract",
+      "required_adaptation": "Preserve explicit support/provenance references from kernel maps; do not assume HOP row properties contain support or duplicated t_lo/t_hi.",
+      "evidence": [
+        {
+          "repository": "ai-assisted-soc-v2",
+          "commit": "9a26e689aa3cc8576e7235210a23d85bc8ca6416",
+          "path": "engine/materialize.go",
+          "sha256": "2b28f129a735612321c41c34d5780eedfdeec709f00ea55e73821e9b02a6228c",
+          "matching_lines": [
+            349
+          ],
+          "anchor": "No `support` property"
+        }
+      ],
+      "required_tests": [
+        "Imported HOP resolves its exact supporting source identities without reconstructing them from latest state."
+      ],
+      "acceptance_status": "pending-v5"
+    },
+    {
+      "id": "segment-config-and-lifetimes",
+      "consumer": "ai-assisted-soc-v2",
+      "ownership": "ai-assisted-soc-v2 adapter; rho public storage/access contract",
+      "required_adaptation": "Adapt HOP declaration, memory budget and fresh temporary segment directory lifecycle to v5 storage contracts.",
+      "evidence": [
+        {
+          "repository": "ai-assisted-soc-v2",
+          "commit": "9a26e689aa3cc8576e7235210a23d85bc8ca6416",
+          "path": "engine/engine.go",
+          "sha256": "ce6accd65af79e023df88a98947f72f3c64edfdbd263ed26b0196be04ac081b2",
+          "matching_lines": [
+            276
+          ],
+          "anchor": "func reasonerRelSegments"
+        },
+        {
+          "repository": "ai-assisted-soc-v2",
+          "commit": "9a26e689aa3cc8576e7235210a23d85bc8ca6416",
+          "path": "engine/engine.go",
+          "sha256": "ce6accd65af79e023df88a98947f72f3c64edfdbd263ed26b0196be04ac081b2",
+          "matching_lines": [
+            247
+          ],
+          "anchor": "func OpenWithSegmentDir"
+        },
+        {
+          "repository": "ai-assisted-soc-v2",
+          "commit": "9a26e689aa3cc8576e7235210a23d85bc8ca6416",
+          "path": "engine/engine.go",
+          "sha256": "ce6accd65af79e023df88a98947f72f3c64edfdbd263ed26b0196be04ac081b2",
+          "matching_lines": [
+            301
+          ],
+          "anchor": "SegmentDir:"
+        }
+      ],
+      "required_tests": [
+        "Declared/undeclared and row/column answers agree across seals and reopen; directory ownership and cleanup remain explicit."
+      ],
+      "acceptance_status": "pending-v5"
+    },
+    {
+      "id": "generic-lookup-temporal-parity",
+      "consumer": "sigma-tkgd",
+      "ownership": "sigma-tkgd adapter; rho public storage/access contract",
+      "required_adaptation": "Review NodeByIDAt actual adapter: it currently handles valid-time fields but falls back to current NodeByID for options carrying only tx pins. Map all supported v5 selector dimensions explicitly.",
+      "evidence": [
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/cypher/source/graphsource/adapter.go",
+          "sha256": "f02c50488b44e1cda8a33f8fecea6d04796c53a33c28dac7f3e207707f7fb69f",
+          "matching_lines": [
+            65
+          ],
+          "anchor": "func (s Source) NodeByIDAt"
+        },
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/cypher/core/access/contract_test.go",
+          "sha256": "1b688121d63d5c564248d634cf0e6645fd609962bd1c2914e06ff9d0f25a2273",
+          "matching_lines": [
+            72
+          ],
+          "anchor": "_ access.ScanOpts"
+        }
+      ],
+      "required_tests": [
+        "Create X, mutate Y, then point lookup with historical cut returns X; generic lookup equals named/history/column doors."
+      ],
+      "acceptance_status": "pending-v5"
+    },
+    {
+      "id": "declared-vs-effective-relationship-view",
+      "consumer": "sigma-tkgd",
+      "ownership": "sigma-tkgd adapter; rho public storage/access contract",
+      "required_adaptation": "Select declared/effective relationship view explicitly rather than allowing the chosen scan/snapshot/adjacency door to determine endpoint-life masking.",
+      "evidence": [
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/cypher/source/graphsource/snapshot.go",
+          "sha256": "12f8789b3c62e80a1028c5cb326251d4239275f97bf8eec6c6214dee91a6b738",
+          "matching_lines": [
+            64,
+            263
+          ],
+          "anchor": "RelsAsOf(txTime)"
+        },
+        {
+          "repository": "sigma-tkgd",
+          "commit": "6aadc2b3651f68ad43bc2704e7820602651d4403",
+          "path": "internal/cypher/source/graphsource/snapshot.go",
+          "sha256": "12f8789b3c62e80a1028c5cb326251d4239275f97bf8eec6c6214dee91a6b738",
+          "matching_lines": [
+            223,
+            235
+          ],
+          "anchor": "OutgoingForNodesAtPin"
+        }
+      ],
+      "required_tests": [
+        "Close endpoint life, retain asserted edge evidence, reopen life; every selected view agrees across read doors."
+      ],
+      "acceptance_status": "pending-v5"
+    }
+  ]
+}

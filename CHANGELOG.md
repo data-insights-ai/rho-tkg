@@ -12,10 +12,52 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   values/scopes/knowledge/descriptors and codecs, component-state reducer
   primitives, bounded ID allocation and candidate Raft/Pebble replication adapters.
   The reviewed 49-file foundation snapshot passes Go 1.26.9 checks (90.5% coverage);
-  graphstate/transaction-protocol integration and later acceptance remain open. Root build/CI
-  gates include both modules. This is not a v5 engine release: graph assembly,
-  full oracle/consumer integration, distributed transactions/cuts, substrate
+  bounded graphstate and transaction-protocol prototypes are also validated,
+  while durable engine integration and later acceptance remain open. Root build/CI
+  gates include both modules. This is not a v5 engine release: durable graph
+  assembly, full oracle/consumer integration, distributed transactions/cuts, substrate
   selection and comparative capacity acceptance remain open in `tasks/backlog.md`.
+
+- **Reviewed graphstate prototype** (local `e5b23d9`): `Plan`/`Project` passes
+  the accepted 16-case/52-assertion, byte-identical local fixture corpus with
+  bounded pages, typing, uniqueness and CDC deltas. Independent 54-source/config
+  snapshot checks pass (build/vet/race/coverage/lint/gosec/govulncheck); combined
+  temporal+state+graphstate coverage 89.7%, no exported method at 0%
+  (graphstate-only worker coverage 83.5%). Storage/graph-engine integration and
+  full V1 acceptance remain open.
+
+- **Reviewed two-group transaction correctness prototype** (local `92312ae`):
+  independent 24-source/config hashes match; build/vet/race/coverage/lint/gosec/
+  govulncheck pass with combined raftlog+replica+txnproto coverage 86.3%, no
+  exported method at 0% (worker txnproto-only 88.2%; bounded fuzz 33,284 executions).
+  Six-process crash-functional slice independently accepted (`f3a1ee7`): focused
+  race, snapshot coverage and pinned lint pass (25 matching files, 86.3% combined).
+  Tests check whole transactions, retained old cuts, reordered/duplicate delivery
+  and durable reopen across prepare/decision/application/checkpoint/quorum-loss
+  boundaries. This proves neither power-loss/multi-host durability nor global
+  cross-process cut transport. Allocator integration, ownership fencing,
+  retention/CDC and FoundationDB comparison/faults remain open; V2 is incomplete
+  and no engine is selected.
+
+- **Unreleased coordinate timeblock candidate** (local `fa0c982`): Z/Q axes
+  with exact int64 endpoints and separate point/span layouts; fractions, wide
+  endpoints and Q×N decline exactly. Independent build/vet/race/coverage/lint/
+  gosec/govulncheck pass: scoped 34-file temporal+block coverage 95.7%, every
+  exported method covered (block-only worker coverage 98.4%). Five-run
+  `BenchmarkLayouts` lane: 4,096 coordinate rows, 204 spans, ordered input:
+
+  | Layout | Raw B/coordinate row | Median scan ns/row | Scan range ns/block |
+  |---|---:|---:|---:|
+  | Partitioned | 4.536 | 4.759 | 19,403–19,611 |
+  | Sparse | 2.930 | 5.187 | 20,681–21,920 |
+  | Tagged | 5.155 | 6.232 | 25,381–25,701 |
+
+  Sparse trades about 9% scan latency for space against Partitioned; no universal
+  winner or format freeze. Hot scans/lookups allocate zero; Open reads resident
+  buffers, not cold storage. Snappy figures estimate 4 KiB chunks plus 4-byte
+  lengths, not a shipping format. Axis dictionaries, IDs/revisions/properties,
+  indexes/logs and engine costs are excluded: no vendor comparison or B/fact
+  claim, and no V3 completion.
 
 ### Security
 

@@ -1,0 +1,418 @@
+{
+  "schema_version": 1,
+  "review_date": "2026-10-09",
+  "status": "research-and-execution-plan-only",
+  "selection": {
+    "provisional_consensus_library": "go.etcd.io/raft/v3@v3.7.0",
+    "provisional_api": "raft.RawNode; one serialized event loop per replica; AsyncStorageWrites=false; ReadOnlySafe",
+    "transactional_comparator": "FoundationDB 7.3.77, Go binding pinned to release commit, API version 730",
+    "engine_selected": false,
+    "reason": "RawNode provides explicit deterministic message/tick/Ready seams and leaves storage/transport under the embedding boundary. It is an established consensus implementation, not an existing cross-partition transaction engine. FoundationDB supplies the latter and must be compared before choosing the engine.",
+    "decision_rule": "Choose only after equivalent correctness and durability runs. Hard deployment constraints can disqualify a candidate; measured cost or maintenance risk can justify a tradeoff. No custom consensus protocol and no preference-based dismissal of transactional KV.",
+    "results": null,
+    "executed_engine_spikes": [],
+    "limits": "This artifact does not certify V2, V3 or a production distributed database. Commands below are the proposed harness interface, not commands already implemented or run."
+  },
+  "candidate_adapter_checkpoint": {
+    "status": "partial-candidate-adapter-independently-validated-full-V2-open",
+    "scope": "v5/internal/raftlog and v5/internal/replica implement a candidate durable log/RawNode adapter with scoped message/storage and real subprocess fault tests. They are adapter tests, not full V2 acceptance.",
+    "full_v2_pending": [
+      "cross-partition transactions and certified cuts",
+      "independent serial-history/cut oracle over the graph contract",
+      "allocator integration and ownership fencing/transfer",
+      "FoundationDB comparison and engine selection"
+    ],
+    "pebble_fail_stop_tradeoff": {
+      "pin": "github.com/cockroachdb/pebble/v2@v2.1.7",
+      "behavior": "Fatal WAL commit, MANIFEST and fatal background failure paths invoke Fatalf; the default logger exits the whole embedding process. Not every storage error is fatal: ordinary returned errors must still be propagated.",
+      "adapter_contract": "Preserve fail-stop semantics. Do not install a returning/no-op Fatalf logger to pretend a damaged commit pipeline can continue or report success.",
+      "real_subprocess_evidence": "Parent independently validated the existing adapter subprocess fault tests in v5/internal/replica/fatal_test.go. Fatal I/O preserves the prior acknowledged prefix on reopen; an interrupted operation remains unknown until recovered. Persistent Create/EIO and ENOSPC reopen faults required supervisor termination after the deadline; tests require the actual injection marker and assert no successful return/packet, then recover the acknowledged prefix. This is adapter-only evidence, not full V2 acceptance.",
+      "selection_obligation": "Review process-wide availability impact and restart/recovery requirements against the embedding contract and alternatives before selecting the engine.",
+      "source_refs": [
+        "pebble-fatal-logger",
+        "pebble-fatal-commit",
+        "pebble-fatal-manifest",
+        "pebble-fatal-background"
+      ]
+    },
+    "validation": {
+      "toolchain": "Go 1.26.9",
+      "source_scope": "Parent independently SHA-pinned 49 temporal/state/raftlog/replica files; Raft sources unchanged from reviewed snapshot.",
+      "checks_passed": [
+        "build",
+        "vet",
+        "race",
+        "make cover",
+        "lint",
+        "gosec",
+        "govulncheck"
+      ],
+      "combined_coverage_percent": 90.5,
+      "exported_methods_at_zero_coverage": 0,
+      "limits": "Scoped foundation snapshot, not a consolidated run of the growing v5 module, cross-partition protocol proof, engine selection or V2 completion."
+    },
+    "idalloc_checkpoint": {
+      "status": "bounded-primitive-independently-validated-integration-open",
+      "toolchain": "Go 1.26.9",
+      "source_scope": "Eight source/config hashes verified identical to the independently validated snapshot.",
+      "checks_passed": ["build", "vet", "race", "make cover", "lint", "gosec", "govulncheck"],
+      "coverage_percent": 99.3,
+      "limits": "Primitive checks do not establish allocator integration or distributed ownership correctness; full V1/V2 remain open."
+    }
+  },
+  "ownership": {
+    "rho": "Database reducers, durable replication adapters, locks/validation, decisions, IDs, ownership fencing, certified cuts, indexes and complete changes.",
+    "embedding_application": "Processes, transport and deployment; the spike executable is test support, not a library server or public network API.",
+    "sigma": "Reasoning, rule execution, joins, computational frontiers and solvers. Neither comparator executes reasoning inside rho."
+  },
+  "verification": {
+    "method": "Primary release pages plus GitHub releases/latest and commits/tag APIs; pinned raw source inspection. Raw tag contents for raft node.go/storage.go and FDB transaction.go were also fetched by immutable commit and matched byte-for-byte.",
+    "documentation_drift": "Unversioned FoundationDB documentation currently advertises 8.0.0 and developer-guide search results also reference 7.4.7. This evaluation uses 7.3.77 source/docs and does not infer released capabilities from those other documentation versions.",
+    "foundationdb_readme_drift": "The 7.3.77 Go README still mentions historical C client versions. transaction.go explicitly selects FDB_API_VERSION 730. Verify the actual 7.3.77 native client/headers in the build; do not use the README's old client range as compatibility evidence.",
+    "recheck_before_implementation": "Refresh releases, vulnerability/license checks and binding build compatibility. Pin checksums and container digests in the executable spike output."
+  },
+  "versions": [
+    {
+      "name": "etcd Raft",
+      "module": "go.etcd.io/raft/v3",
+      "release": "v3.7.0",
+      "published_at": "2026-06-23T13:40:04Z",
+      "commit": "b867cf13f6bc0dae21204302df97bc2355c3af55",
+      "go_directive": "1.26",
+      "toolchain_directive": "go1.26.4",
+      "license": "Apache-2.0",
+      "sources": ["raft-release", "raft-module", "raft-license", "raft-rawnode", "raft-storage", "raft-ready"]
+    },
+    {
+      "name": "FoundationDB",
+      "module": "github.com/apple/foundationdb/bindings/go",
+      "import": "github.com/apple/foundationdb/bindings/go/src/fdb",
+      "release": "7.3.77",
+      "published_at": "2026-04-16T19:24:36Z",
+      "commit": "3ea44ce1d9003ad095e408039e1f755c319c4dfb",
+      "binding_pin": "github.com/apple/foundationdb/bindings/go@3ea44ce1d9003ad095e408039e1f755c319c4dfb",
+      "go_directive": null,
+      "native_api_version": 730,
+      "native_requirement": "CGO, foundationdb/fdb_c.h and matching libfdb_c client runtime; external fdbserver cluster",
+      "license": "Apache-2.0",
+      "sources": ["fdb-release", "fdb-module", "fdb-license", "fdb-transaction", "fdb-database", "fdb-limitations"]
+    },
+    {
+      "name": "Pebble catalog candidate",
+      "module": "github.com/cockroachdb/pebble/v2",
+      "release": "v2.1.7",
+      "published_at": "2026-08-24T16:59:34Z",
+      "commit": "66d468e449bbd52ddf9e53c3a7cdec37e885aaee",
+      "go_directive": "1.23",
+      "license": "BSD-3-Clause",
+      "role": "Embedded ordered KV catalog/log-storage candidate, not a distributed transaction substitute. Pebble columnar SST blocks do not themselves implement rho's typed temporal graph column API.",
+      "sources": ["pebble-release", "pebble-module", "pebble-license", "pebble-readme", "pebble-options"]
+    },
+    {
+      "name": "HashiCorp Raft alternative",
+      "module": "github.com/hashicorp/raft",
+      "release": "v1.8.0",
+      "published_at": "2026-09-16T14:45:55Z",
+      "commit": "0f543c056e7e577a54b819a62116335c9661a13a",
+      "go_directive": "1.25.0",
+      "license": "MPL-2.0",
+      "assessment": "Credible embedded Go consensus alternative with FSM/storage/transport contracts. Still requires rho cross-group transactions and cuts; it does not remove that obligation. RawNode is provisionally favored for deterministic externally driven ticks and Ready ordering in the smallest model/fault harness, not on performance claims.",
+      "sources": ["hashicorp-release", "hashicorp-module", "hashicorp-license", "hashicorp-readme"]
+    }
+  ],
+  "raft_integration": {
+    "source_refs": ["raft-rawnode", "raft-storage", "raft-ready", "raft-config", "raft-doc"],
+    "api_checks": [
+      "v3.7.0 uses protobuf pointers: RawNode.Step(*raftpb.Message), Ready.Entries []*raftpb.Entry and embedded *raftpb.HardState. Do not copy v3.6 value-based example signatures.",
+      "NewRawNode(*raft.Config) (*raft.RawNode,error); Tick(); Propose([]byte) error; HasReady() bool; Ready() raft.Ready; Advance(raft.Ready). RawNode is not thread-safe.",
+      "ReadIndex([]byte) yields request-bound ReadStates; wait until the local state machine has applied through that index before answering its authoritative state. A ReadIndex barrier within one group is not a graph cut.",
+      "ProposeConfChange(raftpb.ConfChangeI) and ApplyConfChange(raftpb.ConfChangeI) retain membership in snapshots. Use ConfChangeV2/joint consensus for membership changes; bucket ownership transfer is a separate rho protocol.",
+      "ReportUnreachable, ReportSnapshot and TransferLeader cover transport feedback and planned failover. TickQuiesced is deprecated and excluded."
+    ],
+    "storage_contract": {
+      "methods": [
+        "InitialState() (*raftpb.HardState,*raftpb.ConfState,error)",
+        "Entries(lo,hi,maxSize uint64) ([]*raftpb.Entry,error)",
+        "Term(i uint64) (uint64,error)",
+        "LastIndex() (uint64,error)",
+        "FirstIndex() (uint64,error)",
+        "Snapshot() (*raftpb.Snapshot,error)"
+      ],
+      "obligations": [
+        "Persist each Ready's entries/hard state/snapshot before outbound messages; honor MustSync. Start with the stricter synchronous path rather than pipelined storage completion messages.",
+        "Appending from index i replaces the suffix >=i. Keep entry-term boundary metadata through compaction. Return the library's compacted/unavailable/snapshot-unavailable sentinels correctly.",
+        "Advance only after the batch's persistence and application handling completes. Keep returned entries immutable and bound log/cache/Ready/transport byte buffers.",
+        "Reopen from stable HardState, ConfState, snapshot and remaining log, with a durable applied checkpoint. The checkpoint never leads graph effects; replay is idempotent after a crash between installation and checkpoint.",
+        "MemoryStorage alone is not durable; it can cache/reconstruct a bounded persisted log but cannot justify a durable receipt.",
+        "A Raft snapshot must encode rho intents, read/predicate locks, immutable decisions, allocation high-water, floors, epochs, deduplication and retained-cut/feed metadata, not merely current graph rows."
+      ]
+    },
+    "initial_config": {
+      "AsyncStorageWrites": false,
+      "ReadOnlyOption": "raft.ReadOnlySafe",
+      "CheckQuorum": true,
+      "PreVote": true,
+      "ElectionTick": 10,
+      "HeartbeatTick": 1,
+      "tick_interval_ms_for_process_tests": 100,
+      "resource_limits": "Choose finite message, uncommitted-log, inflight and committed-Ready byte limits; include them in results. These timing values are spike settings, not availability promises.",
+      "lease_based_reads": "Excluded from the baseline: correctness must survive arbitrary wall-clock rollback/pause. Logical Tick advances only election/liveness; transaction rounds come from persisted reducer state."
+    },
+    "test_seams": [
+      {
+        "name": "VFS/stable storage",
+        "contract": "Wrap create/open/write/read/sync/rename/remove/directory-sync and record an operation ordinal. Model volatile bytes separately from synced durable bytes; crash discards the former.",
+        "faults": ["short write", "torn tail", "EIO", "ENOSPC", "file sync failure", "directory sync failure", "crash between snapshot rename and durable manifest", "corrupt verified page"],
+        "proof": "Failed persistence cannot send a durability-dependent Raft reply or produce a rho durable receipt. Corruption fails closed; never fabricate empty state. Real SIGKILL/reopen complements simulated power-loss semantics."
+      },
+      {
+        "name": "Clock/scheduler",
+        "contract": "The embedding scheduler drives RawNode.Tick. Inject deterministic tick/event ordering and seeded liveness scheduling; wall time is a separate injected value for metrics/lease expiration.",
+        "faults": ["paused node", "clock jump forward", "clock rollback", "unequal tick rates", "election during prepare/fence"],
+        "proof": "IDs, round fences and safety do not depend on wall clocks or near-simultaneous actions. Liveness is assessed only after restored quorum and fair delivery."
+      },
+      {
+        "name": "Network",
+        "contract": "Serialize/own messages in the replica loop, then enqueue immutable frames through application transport. Test transport has explicit deliver/drop/duplicate/reorder/partition/heal operations and bounded bytes.",
+        "faults": ["lost prepare reply", "lost decision reply", "duplicated decision/apply", "asymmetric partition", "old-leader delayed messages", "snapshot failure"],
+        "proof": "Unknown result stays unknown until durable recovery/dedup resolves it; minority never returns fresh or durable success. Public rho APIs hide Raft/protobuf types."
+      }
+    ]
+  },
+  "comparison": [
+    {
+      "dimension": "Transactions and conflicts",
+      "embedded_raft": "Raft orders one partition; rho must implement recoverable cross-group 2PC plus complete key/predicate locking and decision recovery. Start with coarse partition/range locks for a small exact slice.",
+      "foundationdb": "Use one ordinary FDB transaction over both graph key prefixes. Rely on read/write conflict ranges, not a second rho 2PC. Explicitly read invariants/absence and add ranges where required; blind writes and Snapshot() do not validate a read footprint.",
+      "source_refs": ["fdb-guide", "fdb-transaction"]
+    },
+    {
+      "dimension": "Snapshots, cuts and retained history",
+      "embedded_raft": "rho owns MVCC, prepare resolution, fences and retained certificates. Quorum reads and complete installation precede certification.",
+      "foundationdb": "Use one fresh read version for the whole ordinary read transaction. Retained rho At(cut), arbitrarily long scans and CDC need an application version/history layer; the bounded native MVCC window is not an indefinitely retained cut. Test paging from retained immutable generations across fresh small transactions.",
+      "source_refs": ["fdb-limitations", "fdb-transaction"]
+    },
+    {
+      "dimension": "Embedding and deployment",
+      "embedded_raft": "Go consensus core embeds in the application's process with application-provided transport/storage; local one-partition mode can share reducer semantics.",
+      "foundationdb": "Go embeds the client, requiring CGO/native client and external fdbserver roles. If the hard requirement is no separate DB server or no native client, this is a deployment disqualification, not proof of bad cost. The plan currently lets the application supply processes: an external runtime must therefore be evaluated explicitly rather than assumed prohibited.",
+      "source_refs": ["raft-doc", "fdb-go-readme", "fdb-transaction", "fdb-config"]
+    },
+    {
+      "dimension": "Native columns and publication",
+      "embedded_raft": "Direct typed segments/column pages can derive from the authoritative partition log; catalog/manifest checkpoints must be replay-safe.",
+      "foundationdb": "FDB exposes ordered bytes, not rho typed temporal columns. Compare chunked immutable column pages plus a small atomic manifest transaction with row KV as a reference. Upload chunks before publication, bind length/hash/generation, and GC only unreferenced/unpinned generations. Serving local cached files requires a manifest/version completeness check.",
+      "source_refs": ["fdb-transaction", "fdb-limitations"],
+      "interpretation": "The chunk/publication mechanism is a proposed rho layer, not a claimed FDB feature. Do not place all segment bytes in a single transaction."
+    },
+    {
+      "dimension": "Durability and failures",
+      "embedded_raft": "Majority durable acknowledgement must be established by the Ready/VFS integration. A replicated entry in unsynced RAM does not pass.",
+      "foundationdb": "FDB commit returns after redundant durable logging under configured redundancy. Verify the deployed triple-redundancy configuration/status and injected failures. Native unknown/cancelled commit results still require a rho request-key/digest record committed with effects.",
+      "source_refs": ["fdb-guide", "fdb-transaction", "fdb-config"]
+    },
+    {
+      "dimension": "Fault injection",
+      "embedded_raft": "Expose deterministic storage/network/tick seams and independent transaction/cut oracle, then kill six real replica processes and reopen durable files.",
+      "foundationdb": "Upstream deterministic simulation is substantial engineering evidence, not proof of our layer. Run actual cluster process/network faults and layer publication/CDC faults. Full upstream simulation requires a source build/Flow workload; do not claim Go client hooks reproduce FDB's internal simulator.",
+      "source_refs": ["fdb-testing", "fdb-paper"]
+    },
+    {
+      "dimension": "Cost and limits",
+      "embedded_raft": "Count consensus log, catalog WAL/checkpoints, columns, all three replicas, locks/intents, decision/cut/pin/dedup metadata, replay and application work.",
+      "foundationdb": "7.3.77 documents 10,000-byte keys, 100,000-byte values, 10,000,000-byte affected transaction data and roughly five-second transaction lifetime. Count native client memory plus every server role, duplicated rows/columns, retained history, chunk fetches, retries and publication metadata. Actual bytes/latencies are unmeasured.",
+      "source_refs": ["fdb-limitations"]
+    },
+    {
+      "dimension": "Embedded KV alternatives",
+      "embedded_raft": "Compare paged Pebble v2.1.7 with Badger under identical catalog records/cache budgets after removing v4 resident per-row maps. Pebble batches/snapshots/FS seam are useful; none supplies cross-group transactions by itself.",
+      "foundationdb": "An embedded local KV is not a fair replacement for FDB distributed transaction guarantees. HashiCorp Raft is another consensus integration candidate, not a transactional-KV equivalent.",
+      "source_refs": ["pebble-readme", "pebble-options", "hashicorp-readme"]
+    }
+  ],
+  "protocol_proof_obligations": [
+    {
+      "id": "P01",
+      "case": "Coordinator outside the data scope",
+      "schedule": "Tx touches A/B, coordinator is B, requested scope is A. B durably commits at 120 but A only has a prepare; collect A's applied high-water at 100 and pause B decision lookup.",
+      "required": "Fresh A cut must resolve the durable coordinator record or return unavailable; it cannot omit the acknowledged commit. Prepare metadata binds coordinator authority/epoch. After(receipt) includes the same TxID even when coordinator is outside scope.",
+      "negative_test": "Certifying solely from A's applied high-water or ignoring an inaccessible decision must fail the independent oracle."
+    },
+    {
+      "id": "P02",
+      "case": "Prepare proposal straddles a fence",
+      "schedule": "Validation samples floor 90; enqueue prepare; apply durable fence B=100 before prepare is applied. Also schedule A prepare before fence and B prepare after its fence.",
+      "required": "Prepare/fence ordering is authoritative at replicated reducer application. Every post-fence yes vote binds floor >=100 and immutable effect digest; coordinator commits strictly above all voted floors. Stale pre-proposal floor must be raised or the prepare rejected/revalidated.",
+      "negative_test": "A post-fence prepare voting 90 permits a later commit <=100 and invalidates an already published cut. Include delayed local-commit proposals and leader change between fence persistence/application."
+    },
+    {
+      "id": "P03",
+      "case": "Old prepare resolution and application",
+      "schedule": "Old Tx can decide at 90; fence at 100; decision durable; apply A only; query A/B; kill coordinator leader and replay duplicate resolve messages.",
+      "required": "No undecided eligible prepare remains when certifying. Install every committed local effect <=B atomically with its indexes/postings/history; require certified follower apply positions. A resolved decision without local installation is insufficient.",
+      "negative_test": "Fence-only certification, resolve-only certification and current-index-only historical reads must fail E15/E16/E18."
+    },
+    {
+      "id": "P04",
+      "case": "Participant-set and decision immutability",
+      "schedule": "Freeze A/B, delay one vote, try to add a uniqueness/endpoint participant or reuse TxID with different payload; race recovery abort against a late commit proposal.",
+      "required": "Participant set, epochs, request digest and prepared effect digests are immutable before decision. Any discovered extra dependency restarts before prepare. COMMIT requires matching yes votes from every frozen participant; ABORT/COMMIT decisions never change. Timeout alone cannot abort a possibly committed transaction.",
+      "negative_test": "One-participant receipt for a cross-edge, digest mismatch acceptance and conflicting durable decisions must all be rejected."
+    },
+    {
+      "id": "P05",
+      "case": "Historical read followed by write",
+      "schedule": "Pin C, observe endpoint alive/empty unique range/temporal predicate. Concurrent Tx changes it at C+1; historical Tx attempts dependent write. Include a value change and return to original value with a different life/revision.",
+      "required": "Acquire the complete current read/predicate footprint and re-evaluate or restart before preparing. Include absent keys, empty ranges, temporal overlap, endpoint LifeIDs, unique keys, topology/catalog/profile dependencies and any history-derived predicate. One immutable old snapshot or current value equality alone cannot validate every such dependency.",
+      "negative_test": "Both write-skew branches, insertion into previously empty range and life ABA must fail if validation ignores those dependencies."
+    },
+    {
+      "id": "P06",
+      "case": "Locks and conflict serialization across failover",
+      "schedule": "Prepare Tx1 with durable key/predicate locks; kill leader; Tx2 overlaps keys/range; recover Tx1 COMMIT or ABORT while delivering duplicate prepare.",
+      "required": "Rebuild prepared lock ownership before admitting conflicting work. Priority/TxID order prevents deadlock; bounded retry is explicit. Atomicity tests alone are insufficient: independent serial-history oracle must also reject lost updates, write skew and phantoms.",
+      "negative_test": "Dropping read locks during replay may leave whole transactions atomic but nonserializable; the serial oracle must catch that."
+    },
+    {
+      "id": "P07",
+      "case": "Ownership transfer, deduplication and retained pins",
+      "schedule": "Pin snapshot/feed at C; lose reply to committed request K; fence old bucket; transfer and restart target; replay K and delayed old-epoch write/allocator messages; compact old owner.",
+      "required": "Handoff carries retained base/tail, floors, prepared locks/intents and their decisions/coordinator authority, request-key/payload bindings/lease state, allocation high-water, cut/feed pins and lineage. Catalog activation requires durable handoff and epoch fencing. Historical reads and gap-free feed continue or explicitly expire; never silently restart at current state.",
+      "negative_test": "Retry K returns identical result/IDs; different payload under K is rejected. Old owner cannot acknowledge success. Old-cut exact set survives old-owner compaction while the pin remains active."
+    },
+    {
+      "id": "P08",
+      "case": "Durable ID block reservation and exhaustion",
+      "schedule": "Crash immediately before/after quorum reservation, mint part of block, restart allocator, transfer owner and deliver old allocation acknowledgement.",
+      "required": "Nonoverlapping graph-qualified opaque 64-bit ranges are durably reserved before issuance. Persist next allocation high-water and allocation authority epoch; do not recycle unused reserved IDs after uncertainty. IDs do not depend on time or placement; exhaustion returns an explicit error.",
+      "negative_test": "No issued ID ever repeats across crash/retry/transfer. Stale authority cannot allocate or commit as current owner."
+    },
+    {
+      "id": "P09",
+      "case": "Pin publication and reclamation race",
+      "schedule": "Collect topology/cut certificate, pause before lease publication, run reaper/segment GC, then return snapshot token; race transfer with feed cursor allocation.",
+      "required": "Durably establish/pin the retained certificate, descriptors, decisions, lineage and feed start before returning success. Reclamation observes those same pins. Expiration does not turn retained reads into partial exact-empty answers.",
+      "negative_test": "A token returned after needed versions/decisions were reclaimed must fail creation rather than succeed and lose history."
+    }
+  ],
+  "executable_spike_plan": {
+    "implementation_state": "not implemented by this artifact",
+    "command_working_directory": "v5/ (the isolated github.com/data-insights-ai/rho-tkg/v5 module); proposed harness/package paths below are relative to that directory",
+    "smallest_scope": "Integer scalar key/value state plus one cross-partition relationship with two endpoint postings. Use a single coarse lock per partition initially, explicit TxID/request digest, durable ID blocks, a tiny MVCC history, transaction envelopes and cut/pin certificates. No generic graph planner, reasoning executor, large column codec or new consensus algorithm.",
+    "proposed_test_support": [
+      "internal/v5substrate: adapter harness, fault VFS, deterministic scheduler/network, independent serial-history/cut oracle",
+      "cmd/v2-substrate-spike: test-only driver/replica modes, filesystem/process/network fault schedules, metrics JSONL",
+      "tests/v5substrate: seed/schedule corpus and checked expected failures for P01-P09/E15-E18"
+    ],
+    "embedded_topology": {
+      "logical_partitions": ["A", "B"],
+      "replicas_per_partition": 3,
+      "voters": ["A1", "A2", "A3", "B1", "B2", "B3"],
+      "coordinator": "Coordinator record lives in one of these two existing groups; do not add an unreplicated coordinator or hidden third group. A scope-only read can have its coordinator in B.",
+      "catalog_and_allocator": "For the slice, replicated in A and included in its snapshots; participant epochs validated from pinned catalog state. Measure this service and include A loss in the fault matrix.",
+      "durable_mode": "Six separate replica processes, six separate data directories; initially one host for functional crash tests, then three hosts with one A and one B replica on each host for fault-domain/durability and cost runs.",
+      "transfer": "Move a bucket A->B while keeping exactly these two three-voter groups; test membership separately using ConfChangeV2 without pretending a seventh voter is part of the fixed baseline."
+    },
+    "foundationdb_topology": {
+      "logical_partitions": "Two key prefixes A/B, one native FDB transaction across them",
+      "replication": "Configure triple redundancy with sufficient independent physical machines and verify config/status before load. The pinned configuration table requires three live machines for progress and at least four machines for fault tolerance (five-plus is recommended), with five ideal coordinators. Three machines holding three copies cannot establish the same one-machine-loss availability as Raft majority-of-three. Record every coordinator, transaction, log and storage role/process.",
+      "physical_caveat": "FDB dynamically shards storage and separates commit roles. Two prefixes on six workers are not two Raft groups with three replicas. Use at least four independent machines for a one-machine-loss progress comparison, disclose the greater minimum machine count, and report any five-machine recommended configuration separately. Do not hide extra roles; compare declared fault tolerance and total resources.",
+      "comparison_modes": ["all effects/history/CDC as KV", "immutable chunked columns plus transactional manifest with retained versioning"],
+      "idempotency": "Read request-key/digest record and write result plus all effects/CDC in the same ordinary FDB transaction. Keep callbacks free of external effects because Transact retries. Pre-reserved immutable TxID/IDs remain fixed through retry; accept no duplicate graph effect after unknown commit."
+    },
+    "oracle": {
+      "independence": "Represent transactions and exact graph states in a simple separate map/history model. It must not use implementation floor/fence/lock guards as its acceptance rule.",
+      "checks": [
+        "Search for a serial order respecting actual conflict dependencies and acknowledged operation boundaries under the stated consistency mode; do not demand unpromised global real-time round ordering.",
+        "At each certified cut compare exact sets of entities, labels/properties, relationship owner and both endpoint postings against entire transaction effects; assert forbidden partial and phantom states.",
+        "Historical cut answers remain equal after later writes, index corrections, leader loss, transfer and reopen. Current-state substitution must fail.",
+        "Classify unknown outcomes as pending until recovered; distinguish abort, unavailable, expired and exact-empty. Verify complete CDC groups and no snapshot-to-feed gaps/duplicates beyond declared replay.",
+        "Delete/reopen endpoint lives and test relationship life masking versus identity-reference observation; no old-edge rebinding."
+      ],
+      "existing_reference_limit": "design_checks.py explores one already-prepared transaction with atomic decisions. Its 480 schedules/80 certified reads are not Raft, conflict, delayed prepare, failure or transfer validation. Keep it unchanged and add this independent model."
+    },
+    "fault_campaign": [
+      "For every P01-P09 schedule, crash before/after each stable-storage transition; repeat with old/new leader, delayed/reordered/duplicate messages and serializable read/write conflicts.",
+      "Process-kill each leader after first prepare, after all prepares before decision, after decision before reply, after A installation before B installation and during snapshot/checkpoint publication; restart from durable directories.",
+      "Lose one replica per group, isolate a leader, lose two replicas of a group, kill coordinator quorum and heal. Require explicit unavailable while quorum cannot establish fresh/durable work; require recovery after quorum and fair delivery return.",
+      "Exercise VFS sync/rename/ENOSPC faults; SIGKILL alone does not simulate power loss because the OS cache survives. Preserve exact fault traces and durable-image hashes.",
+      "FDB: drop client commit reply, kill transaction/storage/log roles, partition fault domains, retry request key, fail chunk upload/manifest publication and race GC/pins. Native transaction internals differ: assert identical external invariants, not fake rho prepare-stage hooks in FDB.",
+      "Bound exploratory schedules before random soak: enumerate event orderings for two conflicting transactions, one fence and one transfer; then use fixed recorded seeds. Publish minimal counterexamples with an independent oracle replay."
+    ],
+    "planned_commands": [
+      {
+        "command": "go test -race -count=1 ./internal/v5substrate/...",
+        "requires": "Implement deterministic adapter/model tests, pinned raft dependency and checked schedules first.",
+        "output": "Test output plus source/seed/config digest; no disk-latency claims from this simulation."
+      },
+      {
+        "command": "go run ./cmd/v2-substrate-spike fault --substrate=raft --partitions=2 --replicas=3 --storage=disk --schedule=tests/v5substrate/cuts.json --seed=20261009 --output=/tmp/rho-v2-raft-fault",
+        "requires": "Implement parent driver spawning exactly six replica child processes with private durable dirs and controlled transport/VFS hooks.",
+        "output": "Process-kill/restart history, receipts, certificates, oracle outcomes and stable image hashes."
+      },
+      {
+        "command": "CGO_ENABLED=1 go run ./cmd/v2-substrate-spike fault --substrate=fdb --cluster-file=/tmp/rho-v2-fdb/fdb.cluster --schedule=tests/v5substrate/cuts.json --seed=20261009 --output=/tmp/rho-v2-fdb-fault",
+        "requires": "Provision pinned 7.3.77 native client/server, API 730, triple redundancy on at least four independent machines for one-machine-loss progress, status check and role-aware kill/network hooks. Record cluster status before/after."
+      },
+      {
+        "command": "go run ./cmd/v2-substrate-spike bench --substrate=raft --partitions=2 --replicas=3 --durability=quorum-sync --cross-percent=0,10,50,100 --runs=5 --seed=20261009 --output=/tmp/rho-v2-raft-bench",
+        "requires": "Pass faults first; populate fixed scalar/cross-edge workload and identical retained-history/index/CDC outputs."
+      },
+      {
+        "command": "CGO_ENABLED=1 go run ./cmd/v2-substrate-spike bench --substrate=fdb --cluster-file=/tmp/rho-v2-fdb/fdb.cluster --layout=kv,chunked-columns --cross-percent=0,10,50,100 --runs=5 --seed=20261009 --output=/tmp/rho-v2-fdb-bench",
+        "requires": "Same facts, predicates, receipts, retention horizon, process-tree resource allowance, fault tolerance and verified disk durability as the raft run."
+      }
+    ],
+    "measurement_matrix": {
+      "fact_counts": [10000, 100000, 1000000],
+      "cross_partition_transaction_percent": [0, 10, 50, 100],
+      "writers": [1, 8, 32],
+      "workloads": ["partition-local create/update", "cross-edge with endpoint-life and uniqueness checks", "contended key and empty-range predicate", "Fresh/Stable/After/At reads", "late state correction and retained old-cut index scan", "snapshot-to-feed replay", "immutable column publication/scan", "transfer under write and retained pins"],
+      "network_profiles": "Measure loopback overhead separately; actual three-host LAN then declared injected RTT distributions (1, 20, 100 ms). These RTTs are test settings, not measured WAN links.",
+      "minimum_comparable_repetitions": 5,
+      "report": ["useful committed facts and transactions/s", "p50/p95/p99 including retry/wait and failure recovery", "heap/allocations/GC and native-client RSS", "all server-role RSS/mmap/page cache", "disk raw/compressed bytes with replicas, logs, history, columns, indexes and metadata", "bytes/fact with source rows and graph facts distinguished", "network bytes and coordination messages/rounds", "write/read amplification, fsync count/latency, replay tail and open time", "lock/intents/dedup/pins/certificates budget occupancy", "oracle result and output cardinality"],
+      "gate": "Zero semantic/durable divergence is mandatory. No performance acceptance threshold is fabricated here; apply V0 consumer targets and the plan's proposed regression/scaling thresholds only after review. Separate exact 2x3 functional evidence from differently shaped FDB deployment cost."
+    },
+    "selection_evidence_required": [
+      "Reproducible source commits/module checksums/native-client and container digests, hardware/filesystem/kernel, role topology, replication and sync policy.",
+      "Independent serial/cut oracle passes with preserved histories and seeds, real process-kill/restart results and VFS fault image evidence.",
+      "A written deployment verdict distinguishing strict in-process-only constraints from optional application-supplied external processes.",
+      "Comparable total cost ledger; historical/cut/CDC/column layers included for both options; no row-only FDB baseline presented as equivalent native columns.",
+      "Engine/library selection before format freeze, plus remaining unsupported capabilities and maintenance obligations. A passing simulator or this research artifact alone cannot close V2."
+    ]
+  },
+  "sources": [
+    {"id": "raft-release", "url": "https://github.com/etcd-io/raft/releases/tag/v3.7.0", "verified": "Latest release confirmed by https://api.github.com/repos/etcd-io/raft/releases/latest"},
+    {"id": "raft-module", "url": "https://raw.githubusercontent.com/etcd-io/raft/v3.7.0/go.mod"},
+    {"id": "raft-license", "url": "https://raw.githubusercontent.com/etcd-io/raft/v3.7.0/LICENSE"},
+    {"id": "raft-rawnode", "url": "https://raw.githubusercontent.com/etcd-io/raft/v3.7.0/rawnode.go"},
+    {"id": "raft-storage", "url": "https://raw.githubusercontent.com/etcd-io/raft/v3.7.0/storage.go", "sha256": "22020183114fe7555bc44ebda1b5b0d67de6534b0c8735c08c8667a0bd245403"},
+    {"id": "raft-ready", "url": "https://raw.githubusercontent.com/etcd-io/raft/v3.7.0/node.go", "sha256": "311ece789019299836c97ca24908a52ca0e96ea11d3c81109444b41f625607a9"},
+    {"id": "raft-config", "url": "https://raw.githubusercontent.com/etcd-io/raft/v3.7.0/raft.go"},
+    {"id": "raft-doc", "url": "https://raw.githubusercontent.com/etcd-io/raft/v3.7.0/doc.go"},
+    {"id": "fdb-release", "url": "https://github.com/apple/foundationdb/releases/tag/7.3.77", "verified": "Latest release confirmed by https://api.github.com/repos/apple/foundationdb/releases/latest"},
+    {"id": "fdb-module", "url": "https://raw.githubusercontent.com/apple/foundationdb/7.3.77/bindings/go/go.mod"},
+    {"id": "fdb-license", "url": "https://raw.githubusercontent.com/apple/foundationdb/7.3.77/LICENSE"},
+    {"id": "fdb-go-readme", "url": "https://raw.githubusercontent.com/apple/foundationdb/7.3.77/bindings/go/README.md"},
+    {"id": "fdb-transaction", "url": "https://raw.githubusercontent.com/apple/foundationdb/7.3.77/bindings/go/src/fdb/transaction.go", "sha256": "65a78692b89c527771aeeeaf134eea9fbc64b2854cac462c31c28ec6cf220ae3"},
+    {"id": "fdb-database", "url": "https://raw.githubusercontent.com/apple/foundationdb/7.3.77/bindings/go/src/fdb/database.go"},
+    {"id": "fdb-guide", "url": "https://raw.githubusercontent.com/apple/foundationdb/7.3.77/documentation/sphinx/source/developer-guide.rst"},
+    {"id": "fdb-limitations", "url": "https://raw.githubusercontent.com/apple/foundationdb/7.3.77/documentation/sphinx/source/known-limitations.rst", "sha256": "9deb4a931bf646984df94c6a0fd546715dbd43874cdc59dcb21d0a3936eb3996"},
+    {"id": "fdb-config", "url": "https://raw.githubusercontent.com/apple/foundationdb/7.3.77/documentation/sphinx/source/configuration.rst"},
+    {"id": "fdb-testing", "url": "https://raw.githubusercontent.com/apple/foundationdb/7.3.77/documentation/sphinx/source/testing.rst"},
+    {"id": "fdb-paper", "url": "https://www.foundationdb.org/files/fdb-paper.pdf"},
+    {"id": "pebble-release", "url": "https://github.com/cockroachdb/pebble/releases/tag/v2.1.7", "verified": "Latest release confirmed by https://api.github.com/repos/cockroachdb/pebble/releases/latest"},
+    {"id": "pebble-module", "url": "https://raw.githubusercontent.com/cockroachdb/pebble/v2.1.7/go.mod"},
+    {"id": "pebble-license", "url": "https://raw.githubusercontent.com/cockroachdb/pebble/v2.1.7/LICENSE"},
+    {"id": "pebble-readme", "url": "https://raw.githubusercontent.com/cockroachdb/pebble/v2.1.7/README.md"},
+    {"id": "pebble-options", "url": "https://raw.githubusercontent.com/cockroachdb/pebble/v2.1.7/options.go"},
+    {"id": "pebble-fatal-logger", "url": "https://raw.githubusercontent.com/cockroachdb/pebble/v2.1.7/internal/base/logger.go"},
+    {"id": "pebble-fatal-commit", "url": "https://raw.githubusercontent.com/cockroachdb/pebble/v2.1.7/db.go"},
+    {"id": "pebble-fatal-manifest", "url": "https://raw.githubusercontent.com/cockroachdb/pebble/v2.1.7/version_set.go"},
+    {"id": "pebble-fatal-background", "url": "https://raw.githubusercontent.com/cockroachdb/pebble/v2.1.7/compaction.go"},
+    {"id": "hashicorp-release", "url": "https://github.com/hashicorp/raft/releases/tag/v1.8.0", "verified": "Latest release confirmed by https://api.github.com/repos/hashicorp/raft/releases/latest"},
+    {"id": "hashicorp-module", "url": "https://raw.githubusercontent.com/hashicorp/raft/v1.8.0/go.mod"},
+    {"id": "hashicorp-license", "url": "https://raw.githubusercontent.com/hashicorp/raft/v1.8.0/LICENSE"},
+    {"id": "hashicorp-readme", "url": "https://raw.githubusercontent.com/hashicorp/raft/v1.8.0/README.md"}
+  ]
+}

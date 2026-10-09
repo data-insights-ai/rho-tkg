@@ -22,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       fuzztime:
-        description: "Per-target fuzz duration (12 targets share a 30-minute job; default 60s)"
+        description: "Per-target fuzz duration (15 targets share a 30-minute job; default 60s)"
         required: false
         default: "60s"
 
@@ -36,7 +36,7 @@ concurrency:
 jobs:
   fuzz:
     runs-on: ubuntu-latest
-    # Twelve targets at the default 60s leave 18 minutes for setup/build/artifacts.
+    # Fifteen targets at the default 60s leave 15 minutes for setup/build/artifacts.
     timeout-minutes: 30
     env:
       FUZZTIME: ${{ inputs.fuzztime || '60s' }}
@@ -91,6 +91,18 @@ jobs:
         working-directory: v5
         run: go test -run '^$' -fuzz=FuzzDecodeCheckpoint -fuzztime="$FUZZTIME" ./internal/idalloc/
 
+      - name: FuzzOpen (v5/timeblock)
+        working-directory: v5
+        run: go test -run '^$' -fuzz=FuzzOpen -fuzztime="$FUZZTIME" ./internal/timeblock/
+
+      - name: FuzzGraphstateDeltaAndHistoryParity (v5)
+        working-directory: v5
+        run: go test -run '^$' -fuzz=FuzzGraphstateDeltaAndHistoryParity -fuzztime="$FUZZTIME" ./internal/graphstate/
+
+      - name: FuzzStrictApplicationAndCheckpoint (v5)
+        working-directory: v5
+        run: go test -run '^$' -fuzz=FuzzStrictApplicationAndCheckpoint -fuzztime="$FUZZTIME" ./internal/txnproto/
+
       - name: Upload any new crashers
         if: failure()
         uses: actions/upload-artifact@v4
@@ -102,4 +114,7 @@ jobs:
             v5/pkg/temporal/testdata/fuzz/**
             v5/internal/replica/testdata/fuzz/**
             v5/internal/idalloc/testdata/fuzz/**
+            v5/internal/timeblock/testdata/fuzz/**
+            v5/internal/graphstate/testdata/fuzz/**
+            v5/internal/txnproto/testdata/fuzz/**
           retention-days: 14

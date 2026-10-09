@@ -1,0 +1,2346 @@
+{
+  "version": 1,
+  "time_unit": "integer UTC microsecond test instants",
+  "cases": [
+    {
+      "id": "SEM01",
+      "schema": {
+        "properties": {
+          "country": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "name": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "citizenship": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "set"
+          },
+          "weight": {
+            "owner": "edge",
+            "type": "I64",
+            "cardinality": "scalar"
+          },
+          "email": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar",
+            "unique": true
+          }
+        }
+      },
+      "steps": [
+        {
+          "system": "S1",
+          "operations": [
+            {
+              "op": "create_vertex",
+              "id": "A",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {
+                "country": "Austria"
+              },
+              "labels": []
+            }
+          ]
+        },
+        {
+          "system": "S2",
+          "operations": [
+            {
+              "op": "set",
+              "owner": "A",
+              "valid": [
+                10,
+                "+inf"
+              ],
+              "key": "country",
+              "value": "Germany"
+            }
+          ]
+        },
+        {
+          "system": "S1",
+          "valid": 15,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {
+                  "country": "Austria"
+                },
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "system": "S2",
+          "valid": 5,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {
+                  "country": "Austria"
+                },
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "system": "S2",
+          "valid": 10,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {
+                  "country": "Germany"
+                },
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "system": "S2",
+          "valid": 100,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {
+                  "country": "Germany"
+                },
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "SEM02",
+      "schema": {
+        "properties": {
+          "country": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "name": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "citizenship": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "set"
+          },
+          "weight": {
+            "owner": "edge",
+            "type": "I64",
+            "cardinality": "scalar"
+          },
+          "email": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar",
+            "unique": true
+          }
+        }
+      },
+      "steps": [
+        {
+          "system": "S1",
+          "operations": [
+            {
+              "op": "create_vertex",
+              "id": "A",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {
+                "country": "Austria"
+              },
+              "labels": []
+            }
+          ]
+        },
+        {
+          "system": "S2",
+          "operations": [
+            {
+              "op": "set",
+              "owner": "A",
+              "valid": [
+                30,
+                "+inf"
+              ],
+              "key": "country",
+              "value": "Netherlands"
+            }
+          ]
+        },
+        {
+          "system": "S3",
+          "operations": [
+            {
+              "op": "set",
+              "owner": "A",
+              "valid": [
+                10,
+                20
+              ],
+              "key": "country",
+              "value": "Germany"
+            }
+          ]
+        },
+        {
+          "system": "S3",
+          "valid": 9,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {
+                  "country": "Austria"
+                },
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "system": "S3",
+          "valid": 10,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {
+                  "country": "Germany"
+                },
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "system": "S3",
+          "valid": 20,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {
+                  "country": "Austria"
+                },
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "system": "S3",
+          "valid": 30,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {
+                  "country": "Netherlands"
+                },
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "system": "S2",
+          "valid": 15,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {
+                  "country": "Austria"
+                },
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "SEM03",
+      "schema": {
+        "properties": {
+          "country": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "name": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "citizenship": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "set"
+          },
+          "weight": {
+            "owner": "edge",
+            "type": "I64",
+            "cardinality": "scalar"
+          },
+          "email": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar",
+            "unique": true
+          }
+        }
+      },
+      "steps": [
+        {
+          "system": "S1",
+          "operations": [
+            {
+              "op": "create_vertex",
+              "id": "A",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {
+                "name": "Ada"
+              },
+              "labels": [
+                "Person"
+              ]
+            },
+            {
+              "op": "create_vertex",
+              "id": "B",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {},
+              "labels": []
+            },
+            {
+              "op": "create_edge",
+              "id": "E",
+              "source": "A",
+              "target": "B",
+              "type": "LINK",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {
+                "weight": 1
+              }
+            }
+          ]
+        },
+        {
+          "system": "S2",
+          "operations": [
+            {
+              "op": "unset",
+              "owner": "A",
+              "valid": [
+                10,
+                "+inf"
+              ],
+              "key": "name"
+            },
+            {
+              "op": "remove_label",
+              "owner": "A",
+              "valid": [
+                10,
+                "+inf"
+              ],
+              "label": "Person"
+            },
+            {
+              "op": "unset",
+              "owner": "E",
+              "valid": [
+                10,
+                "+inf"
+              ],
+              "key": "weight"
+            }
+          ]
+        },
+        {
+          "system": "S2",
+          "valid": 10,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "E": {
+                "life": 1,
+                "source": "A",
+                "target": "B",
+                "type": "LINK",
+                "properties": {}
+              }
+            }
+          }
+        },
+        {
+          "system": "S1",
+          "valid": 10,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {
+                  "name": "Ada"
+                },
+                "labels": [
+                  "Person"
+                ]
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "E": {
+                "life": 1,
+                "source": "A",
+                "target": "B",
+                "type": "LINK",
+                "properties": {
+                  "weight": 1
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "SEM04",
+      "schema": {
+        "properties": {
+          "country": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "name": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "citizenship": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "set"
+          },
+          "weight": {
+            "owner": "edge",
+            "type": "I64",
+            "cardinality": "scalar"
+          },
+          "email": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar",
+            "unique": true
+          }
+        }
+      },
+      "steps": [
+        {
+          "system": "S1",
+          "operations": [
+            {
+              "op": "create_vertex",
+              "id": "A",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {
+                "country": "Austria"
+              },
+              "labels": []
+            },
+            {
+              "op": "create_vertex",
+              "id": "B",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {},
+              "labels": []
+            },
+            {
+              "op": "create_edge",
+              "id": "E",
+              "source": "A",
+              "target": "B",
+              "type": "LINK",
+              "valid": [
+                5,
+                "+inf"
+              ],
+              "properties": {}
+            }
+          ]
+        },
+        {
+          "system": "S2",
+          "operations": [
+            {
+              "op": "close",
+              "owner": "A",
+              "valid": [
+                20,
+                "+inf"
+              ]
+            }
+          ]
+        },
+        {
+          "system": "S3",
+          "operations": [
+            {
+              "op": "reopen",
+              "owner": "A",
+              "valid": [
+                30,
+                "+inf"
+              ]
+            }
+          ]
+        },
+        {
+          "system": "S4",
+          "operations": [
+            {
+              "op": "correct",
+              "owner": "A",
+              "valid": [
+                20,
+                30
+              ],
+              "present": true,
+              "life": 1
+            }
+          ]
+        },
+        {
+          "system": "S2",
+          "valid": 25,
+          "expect": {
+            "nodes": {
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "system": "S3",
+          "valid": 35,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 2,
+                "properties": {},
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "system": "S4",
+          "valid": 25,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {
+                  "country": "Austria"
+                },
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "E": {
+                "life": 1,
+                "source": "A",
+                "target": "B",
+                "type": "LINK",
+                "properties": {}
+              }
+            }
+          }
+        },
+        {
+          "system": "S4",
+          "valid": 35,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 2,
+                "properties": {},
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "system": "S1",
+          "valid": 35,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {
+                  "country": "Austria"
+                },
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "E": {
+                "life": 1,
+                "source": "A",
+                "target": "B",
+                "type": "LINK",
+                "properties": {}
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "SEM05",
+      "schema": {
+        "properties": {
+          "country": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "name": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "citizenship": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "set"
+          },
+          "weight": {
+            "owner": "edge",
+            "type": "I64",
+            "cardinality": "scalar"
+          },
+          "email": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar",
+            "unique": true
+          }
+        }
+      },
+      "steps": [
+        {
+          "system": "S1",
+          "operations": [
+            {
+              "op": "create_vertex",
+              "id": "A",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {},
+              "labels": []
+            },
+            {
+              "op": "create_vertex",
+              "id": "B",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {},
+              "labels": []
+            },
+            {
+              "op": "create_edge",
+              "id": "E",
+              "source": "A",
+              "target": "B",
+              "type": "LINK",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {}
+            }
+          ]
+        },
+        {
+          "system": "S2",
+          "operations": [
+            {
+              "op": "close",
+              "owner": "E",
+              "valid": [
+                10,
+                "+inf"
+              ]
+            }
+          ]
+        },
+        {
+          "system": "S2",
+          "valid": 10,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "system": "S1",
+          "valid": 10,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "E": {
+                "life": 1,
+                "source": "A",
+                "target": "B",
+                "type": "LINK",
+                "properties": {}
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "SEM06",
+      "schema": {
+        "properties": {
+          "country": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "name": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "citizenship": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "set"
+          },
+          "weight": {
+            "owner": "edge",
+            "type": "I64",
+            "cardinality": "scalar"
+          },
+          "email": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar",
+            "unique": true
+          }
+        }
+      },
+      "steps": [
+        {
+          "system": "S1",
+          "operations": [
+            {
+              "op": "create_vertex",
+              "id": "A",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {},
+              "labels": []
+            },
+            {
+              "op": "create_vertex",
+              "id": "B",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {},
+              "labels": []
+            },
+            {
+              "op": "create_edge",
+              "id": "E",
+              "source": "A",
+              "target": "B",
+              "type": "LINK",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {
+                "weight": 1
+              }
+            }
+          ]
+        },
+        {
+          "system": "S2",
+          "operations": [
+            {
+              "op": "close",
+              "owner": "A",
+              "valid": [
+                20,
+                "+inf"
+              ]
+            }
+          ]
+        },
+        {
+          "system": "S3",
+          "operations": [
+            {
+              "op": "set",
+              "owner": "E",
+              "valid": [
+                20,
+                "+inf"
+              ],
+              "key": "weight",
+              "value": 7
+            }
+          ]
+        },
+        {
+          "system": "S4",
+          "operations": [
+            {
+              "op": "correct",
+              "owner": "A",
+              "valid": [
+                20,
+                "+inf"
+              ],
+              "present": true
+            }
+          ]
+        },
+        {
+          "system": "S3",
+          "valid": 25,
+          "expect": {
+            "nodes": {
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "system": "S4",
+          "valid": 25,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "E": {
+                "life": 1,
+                "source": "A",
+                "target": "B",
+                "type": "LINK",
+                "properties": {
+                  "weight": 7
+                }
+              }
+            }
+          }
+        },
+        {
+          "system": "S1",
+          "valid": 25,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "E": {
+                "life": 1,
+                "source": "A",
+                "target": "B",
+                "type": "LINK",
+                "properties": {
+                  "weight": 1
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "SEM07",
+      "schema": {
+        "properties": {
+          "country": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "name": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "citizenship": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "set"
+          },
+          "weight": {
+            "owner": "edge",
+            "type": "I64",
+            "cardinality": "scalar"
+          },
+          "email": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar",
+            "unique": true
+          }
+        }
+      },
+      "steps": [
+        {
+          "system": "S1",
+          "operations": [
+            {
+              "op": "create_vertex",
+              "id": "A",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {},
+              "labels": []
+            },
+            {
+              "op": "create_vertex",
+              "id": "B",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {},
+              "labels": []
+            },
+            {
+              "op": "create_edge",
+              "id": "E1",
+              "source": "A",
+              "target": "B",
+              "type": "LINK",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {}
+            },
+            {
+              "op": "create_edge",
+              "id": "E2",
+              "source": "A",
+              "target": "B",
+              "type": "LINK",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {}
+            }
+          ]
+        },
+        {
+          "system": "S2",
+          "operations": [
+            {
+              "op": "close",
+              "owner": "E1",
+              "valid": [
+                10,
+                "+inf"
+              ]
+            }
+          ]
+        },
+        {
+          "system": "S1",
+          "valid": 10,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "E1": {
+                "life": 1,
+                "source": "A",
+                "target": "B",
+                "type": "LINK",
+                "properties": {}
+              },
+              "E2": {
+                "life": 1,
+                "source": "A",
+                "target": "B",
+                "type": "LINK",
+                "properties": {}
+              }
+            }
+          }
+        },
+        {
+          "system": "S2",
+          "valid": 10,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "E2": {
+                "life": 1,
+                "source": "A",
+                "target": "B",
+                "type": "LINK",
+                "properties": {}
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "SEM08",
+      "schema": {
+        "properties": {
+          "country": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "name": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "citizenship": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "set"
+          },
+          "weight": {
+            "owner": "edge",
+            "type": "I64",
+            "cardinality": "scalar"
+          },
+          "email": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar",
+            "unique": true
+          }
+        }
+      },
+      "steps": [
+        {
+          "system": "S1",
+          "operations": [
+            {
+              "op": "create_vertex",
+              "id": "A",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {
+                "country": "Austria"
+              },
+              "labels": []
+            }
+          ]
+        },
+        {
+          "system": "FAILED",
+          "operations": [
+            {
+              "op": "set",
+              "owner": "A",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "key": "country",
+              "value": "Germany"
+            },
+            {
+              "op": "create_edge",
+              "id": "E",
+              "source": "A",
+              "target": "MISSING",
+              "type": "LINK",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {}
+            }
+          ],
+          "expect_error": "NOT_FOUND"
+        },
+        {
+          "system": "S1",
+          "valid": 15,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {
+                  "country": "Austria"
+                },
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "SEM09",
+      "schema": {
+        "properties": {
+          "country": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "name": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "citizenship": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "set"
+          },
+          "weight": {
+            "owner": "edge",
+            "type": "I64",
+            "cardinality": "scalar"
+          },
+          "email": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar",
+            "unique": true
+          }
+        }
+      },
+      "steps": [
+        {
+          "system": "S1",
+          "operations": [
+            {
+              "op": "create_vertex",
+              "id": "A",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {},
+              "labels": []
+            }
+          ]
+        },
+        {
+          "system": "BAD1",
+          "operations": [
+            {
+              "op": "set",
+              "owner": "A",
+              "valid": [
+                10,
+                10
+              ],
+              "key": "country",
+              "value": "Germany"
+            }
+          ],
+          "expect_error": "INVALID_INTERVAL"
+        },
+        {
+          "system": "BAD2",
+          "operations": [
+            {
+              "op": "set",
+              "owner": "A",
+              "key": "country",
+              "value": "Germany"
+            }
+          ],
+          "expect_error": "VALIDITY_REQUIRED"
+        },
+        {
+          "system": "BAD3",
+          "operations": [
+            {
+              "op": "set",
+              "owner": "A",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "key": "country",
+              "value": 7
+            }
+          ],
+          "expect_error": "TYPE_MISMATCH"
+        },
+        {
+          "system": "S1",
+          "valid": 20,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "SEM10",
+      "schema": {
+        "properties": {
+          "country": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "name": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "citizenship": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "set"
+          },
+          "weight": {
+            "owner": "edge",
+            "type": "I64",
+            "cardinality": "scalar"
+          },
+          "email": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar",
+            "unique": true
+          }
+        }
+      },
+      "steps": [
+        {
+          "system": "S1",
+          "operations": [
+            {
+              "op": "create_vertex",
+              "id": "A",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {},
+              "labels": []
+            }
+          ]
+        },
+        {
+          "system": "BAD1",
+          "operations": [
+            {
+              "op": "reopen",
+              "owner": "A",
+              "valid": [
+                10,
+                "+inf"
+              ]
+            }
+          ],
+          "expect_error": "LIFECYCLE_OVERLAP"
+        },
+        {
+          "system": "S2",
+          "operations": [
+            {
+              "op": "close",
+              "owner": "A",
+              "valid": [
+                10,
+                "+inf"
+              ]
+            }
+          ]
+        },
+        {
+          "system": "S3",
+          "operations": [
+            {
+              "op": "reopen",
+              "owner": "A",
+              "valid": [
+                20,
+                "+inf"
+              ]
+            }
+          ]
+        },
+        {
+          "system": "BAD2",
+          "operations": [
+            {
+              "op": "correct",
+              "owner": "A",
+              "valid": [
+                10,
+                "+inf"
+              ],
+              "present": true
+            }
+          ],
+          "expect_error": "LIFECYCLE_OVERLAP"
+        },
+        {
+          "system": "S3",
+          "valid": 15,
+          "expect": {
+            "nodes": {},
+            "edges": {}
+          }
+        },
+        {
+          "system": "S3",
+          "valid": 25,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 2,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "SEM11",
+      "schema": {
+        "properties": {
+          "country": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "name": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "citizenship": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "set"
+          },
+          "weight": {
+            "owner": "edge",
+            "type": "I64",
+            "cardinality": "scalar"
+          },
+          "email": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar",
+            "unique": true
+          }
+        }
+      },
+      "steps": [
+        {
+          "system": "S1",
+          "operations": [
+            {
+              "op": "create_vertex",
+              "id": "A",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {},
+              "labels": []
+            },
+            {
+              "op": "add",
+              "owner": "A",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "key": "citizenship",
+              "value": "Austrian"
+            }
+          ]
+        },
+        {
+          "system": "S2",
+          "operations": [
+            {
+              "op": "add",
+              "owner": "A",
+              "valid": [
+                10,
+                "+inf"
+              ],
+              "key": "citizenship",
+              "value": "German"
+            }
+          ]
+        },
+        {
+          "system": "S3",
+          "operations": [
+            {
+              "op": "remove",
+              "owner": "A",
+              "valid": [
+                10,
+                20
+              ],
+              "key": "citizenship",
+              "value": "Austrian"
+            }
+          ]
+        },
+        {
+          "system": "S2",
+          "valid": 15,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {
+                  "citizenship": [
+                    "Austrian",
+                    "German"
+                  ]
+                },
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "system": "S3",
+          "valid": 15,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {
+                  "citizenship": [
+                    "German"
+                  ]
+                },
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "system": "S3",
+          "valid": 20,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {
+                  "citizenship": [
+                    "Austrian",
+                    "German"
+                  ]
+                },
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "system": "BAD",
+          "operations": [
+            {
+              "op": "add",
+              "owner": "A",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "key": "country",
+              "value": "France"
+            }
+          ],
+          "expect_error": "TYPE_MISMATCH"
+        }
+      ]
+    },
+    {
+      "id": "SEM12",
+      "schema": {
+        "properties": {
+          "country": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "name": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "citizenship": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "set"
+          },
+          "weight": {
+            "owner": "edge",
+            "type": "I64",
+            "cardinality": "scalar"
+          },
+          "email": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar",
+            "unique": true
+          }
+        }
+      },
+      "steps": [
+        {
+          "system": "S1",
+          "operations": [
+            {
+              "op": "create_vertex",
+              "id": "A",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {},
+              "labels": []
+            },
+            {
+              "op": "set",
+              "owner": "A",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "key": "name",
+              "value": null
+            }
+          ]
+        },
+        {
+          "system": "S2",
+          "operations": [
+            {
+              "op": "unset",
+              "owner": "A",
+              "valid": [
+                10,
+                20
+              ],
+              "key": "name"
+            }
+          ]
+        },
+        {
+          "system": "S2",
+          "valid": 5,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {
+                  "name": null
+                },
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "system": "S2",
+          "valid": 15,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "system": "S2",
+          "valid": 25,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {
+                  "name": null
+                },
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "SEM13",
+      "schema": {
+        "properties": {
+          "country": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "name": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "citizenship": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "set"
+          },
+          "weight": {
+            "owner": "edge",
+            "type": "I64",
+            "cardinality": "scalar"
+          },
+          "email": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar",
+            "unique": true
+          }
+        }
+      },
+      "steps": [
+        {
+          "system": "S1",
+          "operations": [
+            {
+              "op": "create_vertex",
+              "id": "A",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {
+                "email": "x@example.test"
+              },
+              "labels": []
+            }
+          ]
+        },
+        {
+          "system": "S2",
+          "operations": [
+            {
+              "op": "close",
+              "owner": "A",
+              "valid": [
+                10,
+                "+inf"
+              ]
+            }
+          ]
+        },
+        {
+          "system": "S3",
+          "operations": [
+            {
+              "op": "create_vertex",
+              "id": "B",
+              "valid": [
+                10,
+                "+inf"
+              ],
+              "properties": {
+                "email": "x@example.test"
+              },
+              "labels": []
+            }
+          ]
+        },
+        {
+          "system": "BAD",
+          "operations": [
+            {
+              "op": "correct",
+              "owner": "A",
+              "valid": [
+                10,
+                "+inf"
+              ],
+              "present": true
+            }
+          ],
+          "expect_error": "UNIQUE_OVERLAP"
+        },
+        {
+          "system": "S3",
+          "valid": 20,
+          "expect": {
+            "nodes": {
+              "B": {
+                "life": 1,
+                "properties": {
+                  "email": "x@example.test"
+                },
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "system": "S1",
+          "valid": 20,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {
+                  "email": "x@example.test"
+                },
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "SEM14",
+      "schema": {
+        "properties": {
+          "country": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "name": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "citizenship": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "set"
+          },
+          "weight": {
+            "owner": "edge",
+            "type": "I64",
+            "cardinality": "scalar"
+          },
+          "email": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar",
+            "unique": true
+          }
+        }
+      },
+      "steps": [
+        {
+          "system": "S1",
+          "operations": [
+            {
+              "op": "create_vertex",
+              "id": "A",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {},
+              "labels": []
+            },
+            {
+              "op": "create_vertex",
+              "id": "B",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {},
+              "labels": []
+            },
+            {
+              "op": "create_vertex",
+              "id": "C",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {},
+              "labels": []
+            },
+            {
+              "op": "create_edge",
+              "id": "E1",
+              "source": "A",
+              "target": "B",
+              "type": "LINK",
+              "valid": [
+                0,
+                10
+              ],
+              "properties": {}
+            },
+            {
+              "op": "create_edge",
+              "id": "E2",
+              "source": "B",
+              "target": "C",
+              "type": "LINK",
+              "valid": [
+                10,
+                20
+              ],
+              "properties": {}
+            }
+          ]
+        },
+        {
+          "system": "S1",
+          "valid": 9,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              },
+              "C": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "E1": {
+                "life": 1,
+                "source": "A",
+                "target": "B",
+                "type": "LINK",
+                "properties": {}
+              }
+            }
+          }
+        },
+        {
+          "system": "S1",
+          "valid": 10,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              },
+              "C": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "E2": {
+                "life": 1,
+                "source": "B",
+                "target": "C",
+                "type": "LINK",
+                "properties": {}
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "SEM15",
+      "schema": {
+        "properties": {
+          "country": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "name": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "citizenship": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "set"
+          },
+          "weight": {
+            "owner": "edge",
+            "type": "I64",
+            "cardinality": "scalar"
+          },
+          "email": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar",
+            "unique": true
+          }
+        }
+      },
+      "steps": [
+        {
+          "system": "S1",
+          "operations": [
+            {
+              "op": "create_vertex",
+              "id": "A",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {},
+              "labels": []
+            },
+            {
+              "op": "create_vertex",
+              "id": "B",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {},
+              "labels": []
+            },
+            {
+              "op": "create_edge",
+              "id": "E",
+              "source": "A",
+              "target": "B",
+              "type": "LINK",
+              "valid": [
+                0,
+                "+inf"
+              ],
+              "properties": {}
+            }
+          ]
+        },
+        {
+          "system": "S2",
+          "operations": [
+            {
+              "op": "close",
+              "owner": "A",
+              "valid": [
+                10,
+                20
+              ]
+            }
+          ]
+        },
+        {
+          "system": "BAD",
+          "operations": [
+            {
+              "op": "set",
+              "owner": "A",
+              "valid": [
+                10,
+                20
+              ],
+              "key": "country",
+              "value": "Austria"
+            }
+          ],
+          "expect_error": "OWNER_VALIDITY"
+        },
+        {
+          "system": "S2",
+          "valid": 9,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "E": {
+                "life": 1,
+                "source": "A",
+                "target": "B",
+                "type": "LINK",
+                "properties": {}
+              }
+            }
+          }
+        },
+        {
+          "system": "S2",
+          "valid": 10,
+          "expect": {
+            "nodes": {
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "system": "S2",
+          "valid": 20,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "E": {
+                "life": 1,
+                "source": "A",
+                "target": "B",
+                "type": "LINK",
+                "properties": {}
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "SEM16",
+      "schema": {
+        "properties": {
+          "country": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "name": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar"
+          },
+          "citizenship": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "set"
+          },
+          "weight": {
+            "owner": "edge",
+            "type": "I64",
+            "cardinality": "scalar"
+          },
+          "email": {
+            "owner": "vertex",
+            "type": "String",
+            "cardinality": "scalar",
+            "unique": true
+          }
+        }
+      },
+      "steps": [
+        {
+          "system": "S1",
+          "operations": [
+            {
+              "op": "create_vertex",
+              "id": "A",
+              "valid": [
+                0,
+                10
+              ],
+              "properties": {},
+              "labels": []
+            },
+            {
+              "op": "create_vertex",
+              "id": "B",
+              "valid": [
+                10,
+                "+inf"
+              ],
+              "properties": {},
+              "labels": []
+            }
+          ]
+        },
+        {
+          "system": "BAD",
+          "operations": [
+            {
+              "op": "create_edge",
+              "id": "E",
+              "source": "A",
+              "target": "B",
+              "type": "LINK",
+              "valid": [
+                9,
+                11
+              ],
+              "properties": {}
+            }
+          ],
+          "expect_error": "OWNER_VALIDITY"
+        },
+        {
+          "system": "S1",
+          "valid": 9,
+          "expect": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "system": "S1",
+          "valid": 10,
+          "expect": {
+            "nodes": {
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        }
+      ]
+    }
+  ]
+}
