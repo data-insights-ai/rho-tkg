@@ -35,6 +35,7 @@ import (
 	"time"
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -344,6 +345,17 @@ func assertSameRows[ID comparable](t *testing.T, what string, got, want map[ID]s
 	}
 }
 
+// pagedOpts derives the paging probes at ValidAt 1500 from the reference's
+// sorted IDs: a Limit, an After (skips the first row), and both together.
+func pagedOpts(ids []int64) []graphpkg.QueryOpts {
+	after := types.EntityID(ids[0])
+	return []graphpkg.QueryOpts{
+		{ValidAt: 1500, Limit: 2},
+		{ValidAt: 1500, After: after},
+		{ValidAt: 1500, After: after, Limit: 2},
+	}
+}
+
 func columnScanNative(b storeBackend) bool { return b.name == "memory" || b.name == "badger" }
 
 // TestScanDoorsAgreeWithByLabelOpts_NodeColumns catches the current-row
@@ -370,12 +382,19 @@ func TestScanDoorsAgreeWithByLabelOpts_NodeColumns(t *testing.T) {
 			assertSameRows(t, tc.name+"/ScanNodeColumns", got, ref)
 		}
 
-		// Pagination survives the exact path.
-		paged := graphpkg.QueryOpts{ValidAt: 1500, Limit: 2}
-		if got, ok, err := nodeRowsFromColumns(t, g, paged); err != nil {
-			t.Errorf("paged ScanNodeColumns: %v", err)
-		} else if ok {
-			assertSameRows(t, "paged ScanNodeColumns", got, nodeRowsByLabel(t, g, paged))
+		// Pagination (Limit, After, both) survives the exact path.
+		for _, paged := range pagedOpts(sortedIDKeys(nodeRowsByLabel(t, g, graphpkg.QueryOpts{ValidAt: 1500}))) {
+			want := nodeRowsByLabel(t, g, paged)
+			if len(want) == 0 {
+				t.Fatalf("paged reference %+v is empty: the case asserts nothing", paged)
+			}
+			got, ok, err := nodeRowsFromColumns(t, g, paged)
+			switch {
+			case err != nil:
+				t.Errorf("paged ScanNodeColumns %+v: %v", paged, err)
+			case ok:
+				assertSameRows(t, fmt.Sprintf("paged ScanNodeColumns %+v", paged), got, want)
+			}
 		}
 
 		// TxPin with a valid-time filter is a query error, as on ByLabel.
@@ -383,8 +402,8 @@ func TestScanDoorsAgreeWithByLabelOpts_NodeColumns(t *testing.T) {
 		if _, err := g.Nodes().ByLabel(scanLabel, conflict); !errors.Is(err, graphpkg.ErrConflictingTemporalOpts) {
 			t.Fatalf("ByLabel conflict err = %v, want ErrConflictingTemporalOpts", err)
 		}
-		if _, ok, err := nodeRowsFromColumns(t, g, conflict); ok && !errors.Is(err, graphpkg.ErrConflictingTemporalOpts) {
-			t.Errorf("ScanNodeColumns conflict err = %v, want ErrConflictingTemporalOpts", err)
+		if _, ok, err := nodeRowsFromColumns(t, g, conflict); columnScanNative(b) && (!ok || !errors.Is(err, graphpkg.ErrConflictingTemporalOpts)) {
+			t.Errorf("ScanNodeColumns conflict: ok=%v err=%v, want ok and ErrConflictingTemporalOpts", ok, err)
 		}
 	})
 }
@@ -415,17 +434,24 @@ func TestScanDoorsAgreeWithByLabelOpts_RelColumns(t *testing.T) {
 			}
 		}
 
-		paged := graphpkg.QueryOpts{ValidAt: 1500, Limit: 2}
-		if got, ok, err := relRowsFromColumns(t, g, scanRelType, paged); err != nil {
-			t.Errorf("paged ScanRelColumns: %v", err)
-		} else if ok {
-			assertSameRows(t, "paged ScanRelColumns", got, relRowsByType(t, g, paged))
+		for _, paged := range pagedOpts(sortedIDKeys(relRowsByType(t, g, graphpkg.QueryOpts{ValidAt: 1500}))) {
+			want := relRowsByType(t, g, paged)
+			if len(want) == 0 {
+				t.Fatalf("paged reference %+v is empty: the case asserts nothing", paged)
+			}
+			got, ok, err := relRowsFromColumns(t, g, scanRelType, paged)
+			switch {
+			case err != nil:
+				t.Errorf("paged ScanRelColumns %+v: %v", paged, err)
+			case ok:
+				assertSameRows(t, fmt.Sprintf("paged ScanRelColumns %+v", paged), got, want)
+			}
 		}
 
 		conflict := graphpkg.QueryOpts{TxPin: fx.pin, ValidAt: 1500}
 		for _, relType := range []string{scanRelType, ""} {
-			if _, ok, err := relRowsFromColumns(t, g, relType, conflict); ok && !errors.Is(err, graphpkg.ErrConflictingTemporalOpts) {
-				t.Errorf("ScanRelColumns(%q) conflict err = %v, want ErrConflictingTemporalOpts", relType, err)
+			if _, ok, err := relRowsFromColumns(t, g, relType, conflict); columnScanNative(b) && (!ok || !errors.Is(err, graphpkg.ErrConflictingTemporalOpts)) {
+				t.Errorf("ScanRelColumns(%q) conflict: ok=%v err=%v, want ok and ErrConflictingTemporalOpts", relType, ok, err)
 			}
 		}
 	})
@@ -699,6 +725,97 @@ func TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound(t *testing
 			if nodes != 1 || rels != 1 {
 				t.Errorf("desc=%v: 2^53+1 under exclusive min 2^53: node offered %d times, rel %d times, want 1 each", desc, nodes, rels)
 			}
+		}
+	})
+}
+
+// TestScanDoorsTemporalOpts_ColumnScansFailClosedBelowWatermarks pins the scan
+// validation on the column doors: a pin below the history-compaction watermark
+// is ErrHistoryCompacted and a pin below the retention watermark is
+// ErrRetentionExpired, exactly as on ByLabel / ByType. Faulty implementations
+// caught: a column door that validates only the TxPin conflict (or nothing) and
+// answers from the trimmed history or the purged range.
+func TestScanDoorsTemporalOpts_ColumnScansFailClosedBelowWatermarks(t *testing.T) {
+	ctx := context.Background()
+	scanErrs := func(t *testing.T, g *graphpkg.Graph, opts graphpkg.QueryOpts) (nodeOK bool, nodeErr error, relOK []bool, relErr []error) {
+		t.Helper()
+		nodeOK, nodeErr = g.ScanNodeColumns(scanLabel, []string{scanNodeKey}, opts, func(*graphpkg.ColumnBatch) bool { return true })
+		for _, typ := range []string{scanRelType, ""} {
+			ok, err := g.ScanRelColumns(typ, []string{scanRelKey}, opts, func(*graphpkg.RelColumnBatch) bool { return true })
+			relOK, relErr = append(relOK, ok), append(relErr, err)
+		}
+		return
+	}
+	assertAll := func(t *testing.T, what string, b storeBackend, g *graphpkg.Graph, opts graphpkg.QueryOpts, want error) {
+		t.Helper()
+		if _, err := g.Nodes().ByLabel(scanLabel, opts); !errors.Is(err, want) {
+			t.Fatalf("%s: ByLabel err = %v, want %v (reference door)", what, err, want)
+		}
+		if _, err := g.Rels().ByType(scanRelType, opts); !errors.Is(err, want) {
+			t.Fatalf("%s: ByType err = %v, want %v (reference door)", what, err, want)
+		}
+		if !columnScanNative(b) {
+			return
+		}
+		nodeOK, nodeErr, relOK, relErr := scanErrs(t, g, opts)
+		if !nodeOK || !errors.Is(nodeErr, want) {
+			t.Errorf("%s: ScanNodeColumns ok=%v err=%v, want ok and %v", what, nodeOK, nodeErr, want)
+		}
+		for i := range relOK {
+			if !relOK[i] || !errors.Is(relErr[i], want) {
+				t.Errorf("%s: ScanRelColumns[%d] ok=%v err=%v, want ok and %v", what, i, relOK[i], relErr[i], want)
+			}
+		}
+	}
+
+	t.Run("compaction", func(t *testing.T) {
+		for _, b := range allStoreBackends() {
+			if !columnScanNative(b) {
+				continue
+			}
+			t.Run(b.name, func(t *testing.T) {
+				g := b.open(t)
+				fx := buildScanOptsFixture(t, g)
+				// Two more versions each, so a KeepVersions:1 trim removes the
+				// versions recorded at fx.pin and below.
+				for i := 0; i < 2; i++ {
+					for id := range fx.nodes {
+						_, _ = g.Nodes().Update(ctx, id, map[string]any{"bump": int64(i)})
+					}
+					for id := range fx.rels {
+						_, _ = g.Rels().Update(ctx, id, map[string]any{"bump": int64(i)})
+					}
+				}
+				if _, err := g.Admin().CompactHistoryNodes(ctx, adminpkg.RetentionPolicy{KeepVersions: 1}); err != nil {
+					t.Fatalf("CompactHistoryNodes: %v", err)
+				}
+				if _, err := g.Admin().CompactHistoryRels(ctx, adminpkg.RetentionPolicy{KeepVersions: 1}); err != nil {
+					t.Fatalf("CompactHistoryRels: %v", err)
+				}
+				assertAll(t, "TxPin below compaction", b, g, graphpkg.QueryOpts{TxPin: fx.pin}, graphpkg.ErrHistoryCompacted)
+				assertAll(t, "TxAt below compaction", b, g, graphpkg.QueryOpts{TxAt: fx.pin, ValidAt: 1500}, graphpkg.ErrHistoryCompacted)
+			})
+		}
+	})
+
+	t.Run("retention", func(t *testing.T) {
+		for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) { c.AllowRetentionPurge = true }) {
+			if !columnScanNative(b) {
+				continue
+			}
+			t.Run(b.name, func(t *testing.T) {
+				g := b.open(t)
+				buildScanOptsFixture(t, g)
+				if _, err := g.Nodes().Add(ctx, []string{"Old"}, nil); err != nil {
+					t.Fatal(err)
+				}
+				before := types.Instant(time.Now().Add(24 * time.Hour).UnixMilli())
+				if _, err := g.Admin().PurgeExpiredNodes(ctx, adminpkg.PurgePolicy{Label: "Old", Mode: adminpkg.PurgeByAge, Before: before}); err != nil {
+					t.Fatalf("PurgeExpiredNodes: %v", err)
+				}
+				assertAll(t, "ValidAt below retention", b, g, graphpkg.QueryOpts{ValidAt: 1500}, graphpkg.ErrRetentionExpired)
+				assertAll(t, "interval below retention", b, g, graphpkg.QueryOpts{ValidStart: 1500, ValidEnd: 2500}, graphpkg.ErrRetentionExpired)
+			})
 		}
 	})
 }
