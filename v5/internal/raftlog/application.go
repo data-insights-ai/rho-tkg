@@ -445,6 +445,8 @@ func (s *Store) ReclaimApplication() error {
 	if s == nil {
 		return ErrInvalid
 	}
+	s.publicationMu.Lock()
+	defer s.publicationMu.Unlock()
 	s.mu.Lock()
 	if err := s.check(); err != nil {
 		s.mu.Unlock()
@@ -459,7 +461,7 @@ func (s *Store) ReclaimApplication() error {
 	needed := (s.meta.LogCount >= p.ReclaimEntries || s.meta.LogBytes > s.limits.MaxRetainedBytes-headroom || s.meta.LogCount > s.limits.MaxRetainedEntries-2) && s.meta.Applied > s.meta.Base
 	s.mu.Unlock()
 	if needed {
-		return s.PublishSnapshot()
+		return s.publishSnapshot()
 	}
 	return nil
 }

@@ -38,16 +38,21 @@ type applicationBank struct {
 	State                                                               applicationBankState
 }
 type generationMetadata struct {
-	Limits    ApplicationGenerationLimits
-	HighWater uint64
-	Active    byte
-	Banks     [2]applicationBank
+	Publication publicationMetadata
+	Limits      ApplicationGenerationLimits
+	HighWater   uint64
+	Active      byte
+	Banks       [2]applicationBank
 }
 
 const generationMetaBytes = 4 + 4*8 + 2*7*8
 
 func appendGenerationMeta(b []byte, g generationMetadata) []byte {
-	b = append(b, 'A', 'G', 1, 0)
+	version := byte(1)
+	if g.Publication.Limits.enabled() {
+		version = 2
+	}
+	b = append(b, 'A', 'G', version, 0)
 	for _, n := range []uint64{g.Limits.MaxBytes, g.Limits.MaxRecords, g.HighWater, uint64(g.Active)} {
 		b = binary.BigEndian.AppendUint64(b, n)
 	}
@@ -56,12 +61,16 @@ func appendGenerationMeta(b []byte, g generationMetadata) []byte {
 			b = binary.BigEndian.AppendUint64(b, n)
 		}
 	}
+	if g.Publication.Limits.enabled() {
+		b = appendPublicationMeta(b, g.Publication)
+	}
 	return b
 }
 func decodeGenerationMeta(b []byte) (generationMetadata, []byte, error) {
-	if len(b) < generationMetaBytes || !bytes.Equal(b[:4], []byte{'A', 'G', 1, 0}) {
+	if len(b) < generationMetaBytes || (!bytes.Equal(b[:4], []byte{'A', 'G', 1, 0}) && !bytes.Equal(b[:4], []byte{'A', 'G', 2, 0})) {
 		return generationMetadata{}, nil, ErrCorrupt
 	}
+	version2 := b[2] == 2
 	var n [18]uint64
 	for j := range n {
 		n[j] = binary.BigEndian.Uint64(b[4+j*8:])
@@ -77,7 +86,15 @@ func decodeGenerationMeta(b []byte) (generationMetadata, []byte, error) {
 	if !g.Limits.enabled() || g.Limits.MaxBytes > 1<<40 || g.Limits.MaxRecords > 1<<40 || g.Limits.MaxBytes == 0 || g.Limits.MaxRecords == 0 {
 		return generationMetadata{}, nil, ErrCorrupt
 	}
-	return g, b[generationMetaBytes:], nil
+	tail := b[generationMetaBytes:]
+	if version2 {
+		var err error
+		g.Publication, tail, err = decodePublicationMeta(tail)
+		if err != nil {
+			return generationMetadata{}, nil, err
+		}
+	}
+	return g, tail, nil
 }
 func syncActiveGeneration(m *metadata) {
 	if !m.Gen.Limits.enabled() || m.Gen.Active > 1 {
@@ -157,6 +174,9 @@ func (s *Store) validateGenerationMeta(m metadata) error {
 	if m.Last < m.Applied {
 		return ErrInvalid
 	}
+	if err := validatePublicationMeta(m); err != nil {
+		return err
+	}
 	return generationCharge(m, m.Last-m.Applied)
 }
 func (s *Store) activeBank() byte { return s.meta.Gen.Active }
@@ -228,7 +248,7 @@ func (s *Store) releaseGeneration(r *generationRef) error {
 		return err
 	}
 	b := s.meta.Gen.Banks[r.bank]
-	if b.Generation == r.generation && b.State == bankRetired {
+	if b.Generation == r.generation && b.State == bankRetired && !holdsPublishedGeneration(s.meta, r.bank, r.generation) {
 		return s.clearGenerationBank(r.bank, r.generation)
 	}
 	return nil
@@ -236,6 +256,9 @@ func (s *Store) releaseGeneration(r *generationRef) error {
 func (s *Store) clearGenerationBank(bank byte, generation uint64) error {
 	if bank > 1 || bank == s.activeBank() || s.meta.Gen.Banks[bank].Generation != generation {
 		return ErrInvalid
+	}
+	if holdsPublishedGeneration(s.meta, bank, generation) {
+		return ErrLimit
 	}
 	if r := s.generationRefs[bank]; r != nil && r.refs != 0 {
 		return ErrLimit

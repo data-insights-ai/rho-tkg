@@ -29,6 +29,9 @@ func metadataBytes(m metadata) uint64 {
 	}
 	if m.Gen.Limits.enabled() {
 		n += generationMetaBytes
+		if m.Gen.Publication.Limits.enabled() {
+			n += publicationMetaBytes
+		}
 	}
 	return n
 }

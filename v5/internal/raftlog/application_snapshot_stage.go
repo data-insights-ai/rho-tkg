@@ -421,6 +421,13 @@ func (i *ApplicationImport) Abort() error {
 func (s *Store) cleanupApplicationImport() error {
 	if s.meta.Gen.Limits.enabled() {
 		bank := byte(1) - s.activeBank()
+		if holdsPublishedGeneration(s.meta, bank, s.meta.Gen.Banks[bank].Generation) {
+			batch := s.db.NewBatch()
+			if err := batch.Delete(dormantKey, nil); err != nil {
+				return errors.Join(err, batch.Close())
+			}
+			return s.commit(s.meta, batch)
+		}
 		return s.clearGenerationBank(bank, s.meta.Gen.Banks[bank].Generation)
 	}
 	batch := s.db.NewBatch()

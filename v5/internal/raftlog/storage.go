@@ -47,13 +47,14 @@ func (l Limits) Validate() error {
 
 // Config selects explicit first-open-only creation; recovery never creates a missing DB.
 type Config struct {
-	Dir         string
-	FS          vfs.FS
-	Create      bool
-	Limits      Limits
-	Application ApplicationPolicy
-	Generations ApplicationGenerationLimits
-	Transfer    ApplicationTransferConfig
+	Dir           string
+	FS            vfs.FS
+	Create        bool
+	Limits        Limits
+	Application   ApplicationPolicy
+	Generations   ApplicationGenerationLimits
+	PublishedCuts ApplicationPublishedCutLimits
+	Transfer      ApplicationTransferConfig
 }
 
 // Store implements durable raft.Storage with bounded reads and no per-entry RAM index.
@@ -61,6 +62,8 @@ type Config struct {
 // fail-stop tradeoff requires evaluation before engine selection.
 type Store struct {
 	mu                            sync.Mutex
+	publicationMu                 sync.Mutex
+	publicationCaptureHook        func()
 	db                            *pebble.DB
 	limits                        Limits
 	meta                          metadata
@@ -70,6 +73,7 @@ type Store struct {
 	views, viewBytes              int
 	generationRefs                [2]*generationRef
 	applicationPolicy             ApplicationPolicy
+	publicationPolicy             ApplicationPublishedCutLimits
 	applicationExports            map[*ApplicationExport]struct{}
 	applicationImport             *ApplicationImport
 	pinnedApplicationBytes        uint64
@@ -103,11 +107,18 @@ func Open(c Config) (*Store, error) {
 	if err := c.Generations.validate(c.Application, c.Transfer); err != nil {
 		return nil, err
 	}
+	if err := c.PublishedCuts.validate(c.Generations); err != nil {
+		return nil, err
+	}
 	initial := metadata{Hard: &pb.HardState{}, Conf: &pb.ConfState{}, Snap: &pb.Snapshot{}, ImageHash: sha256.Sum256(nil), SnapHash: sha256.Sum256(nil), App: applicationMetadata{Policy: c.Application}, Transfer: c.Transfer}
 	if c.Generations.enabled() {
 		initial.Gen = generationMetadata{Limits: c.Generations, HighWater: 1, Banks: [2]applicationBank{{Generation: 1, State: bankActive}, {}}}
 	}
+	initial.Gen.Publication.Limits = c.PublishedCuts
 	if c.Create {
+		if err := checkPublicationHeadroom(initial, c.Limits); err != nil {
+			return nil, err
+		}
 		if err := checkMetadataLimit(initial, c.Limits); err != nil {
 			return nil, err
 		}
@@ -119,7 +130,7 @@ func Open(c Config) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Store{db: db, limits: c.Limits, canInitialize: c.Create, applicationPolicy: c.Application}
+	s := &Store{db: db, limits: c.Limits, canInitialize: c.Create, applicationPolicy: c.Application, publicationPolicy: c.PublishedCuts}
 	fail := func(err error) (*Store, error) { return nil, errors.Join(err, db.Close()) }
 	if c.Create {
 		s.meta = initial
@@ -142,8 +153,11 @@ func Open(c Config) (*Store, error) {
 		if err := errors.Join(decodeErr, closeErr); err != nil {
 			return fail(err)
 		}
-		if m.App.Policy != c.Application || m.Transfer != c.Transfer || m.Gen.Limits != c.Generations {
+		if m.App.Policy != c.Application || m.Transfer != c.Transfer || m.Gen.Limits != c.Generations || m.Gen.Publication.Limits != c.PublishedCuts {
 			return fail(ErrInvalid)
+		}
+		if err := checkPublicationHeadroom(m, c.Limits); err != nil {
+			return fail(err)
 		}
 		if err := s.validate(m); err != nil {
 			return fail(fmt.Errorf("%w: metadata: %v", ErrCorrupt, err))
@@ -321,7 +335,7 @@ func (s *Store) Initialize(voters []uint64, image []byte) error {
 		prospective.App.Through = 1
 		syncActiveGeneration(&prospective)
 	}
-	if err := s.validateGenerationMeta(prospective); err != nil {
+	if err := generationCharge(prospective, 0); err != nil {
 		return err
 	}
 	if err := checkMetadataLimit(m, s.limits); err != nil {
@@ -342,6 +356,12 @@ func (s *Store) Initialize(voters []uint64, image []byte) error {
 	}
 	if m.App.Policy.Enabled() {
 		if err := s.addInitialApplication(b, &m, image); err != nil {
+			_ = b.Close()
+			return err
+		}
+	}
+	if m.Gen.Publication.Limits.enabled() {
+		if err := bindPublication(&m, m.Gen.Active, m.Gen.Banks[m.Gen.Active].Generation, m.App.Bytes, m.App.Records); err != nil {
 			_ = b.Close()
 			return err
 		}
@@ -855,6 +875,14 @@ func (s *Store) SaveCheckpoint(index uint64, cs *pb.ConfState, image []byte) err
 // the caller confirms its image retains every application/CDC/pin obligation.
 // It may publish ONLY the current durable checkpoint, never an unapplied index.
 func (s *Store) PublishSnapshot() error {
+	s.publicationMu.Lock()
+	defer s.publicationMu.Unlock()
+	return s.publishSnapshot()
+}
+func (s *Store) publishSnapshot() error {
+	if s.publicationPolicy.enabled() {
+		return s.publishApplicationCut()
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.check(); err != nil {
@@ -1010,6 +1038,8 @@ func (s *Store) loadImage(key []byte, n uint64, hash [32]byte) (image []byte, er
 
 // Close releases the database and is safe to repeat.
 func (s *Store) Close() error {
+	s.publicationMu.Lock()
+	defer s.publicationMu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
