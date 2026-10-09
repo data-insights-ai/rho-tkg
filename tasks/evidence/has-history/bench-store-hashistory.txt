@@ -1,0 +1,30 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelHasHistory/entities=200K/density=0.1%/build-32   	    6630	    183831 ns/op	       200.0 ids	  105207 B/op	    1723 allocs/op
+BenchmarkRelHasHistory/entities=200K/density=0.1%/hit-32     	121797787	        11.14 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/entities=200K/density=0.1%/miss-32    	100000000	        10.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/entities=200K/density=1%/build-32     	     622	   1700312 ns/op	      2000 ids	 1085518 B/op	   16498 allocs/op
+BenchmarkRelHasHistory/entities=200K/density=1%/hit-32       	100000000	        10.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/entities=200K/density=1%/miss-32      	100000000	        10.48 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/entities=1000K/density=0.1%/build-32  	    1410	    868817 ns/op	      1000 ids	  531458 B/op	    7205 allocs/op
+BenchmarkRelHasHistory/entities=1000K/density=0.1%/hit-32    	100000000	        10.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/entities=1000K/density=0.1%/miss-32   	100000000	        10.37 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/entities=1000K/density=1%/build-32    	     122	   9236971 ns/op	     10000 ids	 5283058 B/op	   80730 allocs/op
+BenchmarkRelHasHistory/entities=1000K/density=1%/hit-32      	100000000	        11.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/entities=1000K/density=1%/miss-32     	100000000	        10.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHasHistory/entities=200K/density=0.1%/build-32  	    6424	    166778 ns/op	       200.0 ids	  101840 B/op	    1717 allocs/op
+BenchmarkNodeHasHistory/entities=200K/density=0.1%/hit-32    	126436676	         9.284 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHasHistory/entities=200K/density=0.1%/miss-32   	95917932	        10.70 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHasHistory/entities=200K/density=1%/build-32    	     601	   1688316 ns/op	      2000 ids	 1052535 B/op	   16429 allocs/op
+BenchmarkNodeHasHistory/entities=200K/density=1%/hit-32      	100000000	        10.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHasHistory/entities=200K/density=1%/miss-32     	100000000	        10.45 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=0.1%/build-32 	     621	   1960124 ns/op	      1000 ids	  572710 B/op	   12305 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=0.1%/hit-32   	99991050	        11.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=0.1%/miss-32  	100000000	        10.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/build-32   	      61	  19492555 ns/op	     10000 ids	 5616917 B/op	  122314 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/hit-32     	98281764	        15.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/miss-32    	106171263	        10.62 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	82.908s

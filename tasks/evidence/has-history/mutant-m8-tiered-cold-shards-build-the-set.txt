@@ -1,0 +1,7 @@
+$ go test ./pkg/graph/store/tiered/ -run TestTieredHistoryPresence -count=1
+--- FAIL: TestTieredHistoryPresence_ColdClosedShard (0.43s)
+    tieredstore_history_presence_test.go:206: shardCfg(cold=true).HistoryPresenceProbeOnly = false, want true
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.702s
+FAIL
+exit=1

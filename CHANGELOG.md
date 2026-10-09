@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`g.Nodes().HasHistory(id)` / `g.Rels().HasHistory(id) (bool, error)`: whether an entity has a history row,
+  without reading one** (handover `tasks/handover-effective-read-cost-20261009.md` fix 1b, backlog 20). sigma-tkgd's
+  effective-state read on a pinned scan called `History` once per entity to learn whether the current row alone
+  answers; on badger that was one prefix scan per entity (1.4-2 us store level after 4.44.1, about 1 us plus 12
+  allocs at the core door on a 10 K fixture), most of it for entities that have no history. `HasHistory` equals
+  `len(History(id)) > 0` at every moment: pending and in-flight (`flushing`) writes, flush, reopen, compaction,
+  truncation and GraphTx rollback trims, retention purge, exact erasure, `Clear`, replica apply and import
+  (`TestHasHistoryDifferential`, randomized on memory, badger on disk with reopens, tiered and sharded). Optional
+  `store.HistoryPresenceCapability` (`HasNodeHistory` / `HasRelHistory`); a store without it is answered from
+  `History`. Memory reads its history map; sharded asks the owning slot; tiered walks exactly the shards
+  `GetNodeHistory` / `GetRelHistory` read (reference + archive, archive + reference, the deleted-entity fan-out),
+  and a cold shard is opened the way `History` opens it and answers by a per-ID key probe
+  (`badger.Config.HistoryPresenceProbeOnly`, set on cold shards) instead of building a set. Badger keeps a RAM set
+  of the IDs with history rows: built on the first call by one key-only scan (`ForEach*HistoryID`, write buffer
+  included), maintained where every history key enters the write buffer (`noteHistoryKey`, under `wbMu`): a SET
+  adds the ID, a DELETE marks it for a per-ID key probe on the next read. Writes during the build's scan and
+  during a probe are kept by a per-ID write generation (lessons 63 / 74, deterministic hook tests), and `Clear`
+  excludes builds. RAM: about 25-40 B per ID with history (10 K IDs: about 0.3 MB), reported by
+  `badger.Store.HistoryPresenceStats()`. Measured (`BenchmarkRelHasHistory` / `BenchmarkNodeHasHistory`, badger on
+  disk, reopened, set built): 9-15 ns and 0 allocs for a hit or a miss at 200 K and 1 M entities with history on
+  0.1 % or 1 % of them; the build costs about 1-2 us per ID with history (1 M entities at 1 %: 9 ms rel, 19 ms
+  node). Core door on the `./bench` fixture (`BenchmarkRelHasHistory`, registered in the bench gate beside the new
+  `BenchmarkRelHistoryPlain`): 19-26 ns, 0 allocs, against 1.0-1.2 us and 12 allocs for `Rels().History` of a plain
+  relationship on badger. Additive surface: `nodes.Ops` and `rels.Ops` gain `HasHistory`.
+
 ## [4.45.0] - 2026-10-09
 
 Minor release: the tiered store gains composite indexes and relationship temporal indexes (ai-soc

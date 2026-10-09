@@ -1,0 +1,78 @@
+--- FAIL: TestHistoryPresence_ErrorsMatchHistoryDoor (0.01s)
+    --- FAIL: TestHistoryPresence_ErrorsMatchHistoryDoor/node (0.00s)
+        badgerstore_history_presence_test.go:104: has(0) = <nil>, want ErrInvalidStoreMutation
+    --- FAIL: TestHistoryPresence_ErrorsMatchHistoryDoor/rel (0.00s)
+        badgerstore_history_presence_test.go:104: has(0) = <nil>, want ErrInvalidStoreMutation
+--- FAIL: TestHistoryPresence_BuildSeesPendingAndFlushing (0.08s)
+    --- FAIL: TestHistoryPresence_BuildSeesPendingAndFlushing/node/pending (0.00s)
+        badgerstore_history_presence_test.go:134: node pending, first call: has(10) = false, history has 1 rows
+    --- FAIL: TestHistoryPresence_BuildSeesPendingAndFlushing/node/flushing (0.03s)
+        badgerstore_history_presence_test.go:144: node flushing, first call: has(20) = false, history has 1 rows
+    --- FAIL: TestHistoryPresence_BuildSeesPendingAndFlushing/rel/pending (0.03s)
+        badgerstore_history_presence_test.go:134: rel pending, first call: has(10) = false, history has 1 rows
+    --- FAIL: TestHistoryPresence_BuildSeesPendingAndFlushing/rel/flushing (0.01s)
+        badgerstore_history_presence_test.go:144: rel flushing, first call: has(20) = false, history has 1 rows
+--- FAIL: TestHistoryPresence_DeleteMaintenance (0.10s)
+    --- FAIL: TestHistoryPresence_DeleteMaintenance/node (0.06s)
+        badgerstore_history_presence_test.go:173: node built: has(30) = false, history has 3 rows
+    --- FAIL: TestHistoryPresence_DeleteMaintenance/rel (0.05s)
+        badgerstore_history_presence_test.go:173: rel built: has(30) = false, history has 3 rows
+--- FAIL: TestHistoryPresence_ProbeSeesFlushingDeletes (0.00s)
+    --- FAIL: TestHistoryPresence_ProbeSeesFlushingDeletes/node (0.00s)
+        badgerstore_history_presence_test.go:228: node built: has(40) = false, history has 1 rows
+    --- FAIL: TestHistoryPresence_ProbeSeesFlushingDeletes/rel (0.00s)
+        badgerstore_history_presence_test.go:228: rel built: has(40) = false, history has 1 rows
+--- FAIL: TestHistoryPresence_FailedFlushRequeue (0.03s)
+    --- FAIL: TestHistoryPresence_FailedFlushRequeue/node (0.03s)
+        badgerstore_history_presence_test.go:251: node after failed flush: has(50) = false, history has 1 rows
+    --- FAIL: TestHistoryPresence_FailedFlushRequeue/rel (0.00s)
+        badgerstore_history_presence_test.go:251: rel after failed flush: has(50) = false, history has 1 rows
+--- FAIL: TestHistoryPresence_Clear (0.01s)
+    --- FAIL: TestHistoryPresence_Clear/node (0.00s)
+        badgerstore_history_presence_test.go:278: node built: has(60) = false, history has 1 rows
+    --- FAIL: TestHistoryPresence_Clear/rel (0.01s)
+        badgerstore_history_presence_test.go:278: rel built: has(60) = false, history has 1 rows
+--- FAIL: TestHistoryPresence_BuildGuardKeepsWritesDuringScan (0.07s)
+    --- FAIL: TestHistoryPresence_BuildGuardKeepsWritesDuringScan/node (0.03s)
+        badgerstore_history_presence_test.go:332: node lost its only row during the scan: test expectation wrong: history(70) has 1 rows, want presence false
+    --- FAIL: TestHistoryPresence_BuildGuardKeepsWritesDuringScan/rel (0.03s)
+        badgerstore_history_presence_test.go:332: rel lost its only row during the scan: test expectation wrong: history(70) has 1 rows, want presence false
+--- FAIL: TestHistoryPresence_ClearDuringBuild (0.01s)
+    --- FAIL: TestHistoryPresence_ClearDuringBuild/node (0.01s)
+        badgerstore_history_presence_test.go:368: node cleared during build: test expectation wrong: history(80) has 1 rows, want presence false
+    --- FAIL: TestHistoryPresence_ClearDuringBuild/rel (0.01s)
+        badgerstore_history_presence_test.go:368: rel cleared during build: test expectation wrong: history(80) has 1 rows, want presence false
+--- FAIL: TestHistoryPresence_ProbeOnly (0.04s)
+    --- FAIL: TestHistoryPresence_ProbeOnly/node (0.03s)
+        badgerstore_history_presence_test.go:385: node pending: has(90) = false, history has 1 rows
+    --- FAIL: TestHistoryPresence_ProbeOnly/rel (0.01s)
+        badgerstore_history_presence_test.go:385: rel pending: has(90) = false, history has 1 rows
+2026/10/09 15:26:14 ERROR graph: flush failed error="graph: write batch flush: injected"
+2026/10/09 15:26:14 ERROR graph: flush failed error="graph: write batch flush: injected"
+2026/10/09 15:26:15 ERROR graph: flush failed error="graph: write batch flush: injected"
+2026/10/09 15:26:15 ERROR graph: flush failed error="graph: write batch flush: injected"
+--- FAIL: TestHistoryPresence_RandomizedDifferential (1.00s)
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=1 (0.10s)
+        badgerstore_history_presence_test.go:433: step 2 put: has(2) = false, history has 1 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=2 (0.11s)
+        badgerstore_history_presence_test.go:433: step 6 put: has(10) = false, history has 1 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=3 (0.12s)
+        badgerstore_history_presence_test.go:433: step 3 put: has(13) = false, history has 1 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=4 (0.18s)
+        badgerstore_history_presence_test.go:433: step 3 put: has(5) = false, history has 1 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=1 (0.11s)
+        badgerstore_history_presence_test.go:433: step 2 put: has(2) = false, history has 1 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=2 (0.10s)
+        badgerstore_history_presence_test.go:433: step 6 put: has(10) = false, history has 1 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=3 (0.11s)
+        badgerstore_history_presence_test.go:433: step 3 put: has(13) = false, history has 1 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=4 (0.16s)
+        badgerstore_history_presence_test.go:433: step 3 put: has(5) = false, history has 1 rows
+--- FAIL: TestHistoryPresence_ConcurrentBuildWithWriters (0.02s)
+    --- FAIL: TestHistoryPresence_ConcurrentBuildWithWriters/node (0.01s)
+        badgerstore_history_presence_test.go:566: reader 3: seeded has(8) = false, <nil>
+    --- FAIL: TestHistoryPresence_ConcurrentBuildWithWriters/rel (0.01s)
+        badgerstore_history_presence_test.go:566: reader 3: seeded has(8) = false, <nil>
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.420s
+FAIL

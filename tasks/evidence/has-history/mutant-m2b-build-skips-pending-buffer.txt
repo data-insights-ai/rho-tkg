@@ -1,0 +1,45 @@
+$ go test ./pkg/graph/store/badger/ -run TestHistoryPresence -count=1
+--- FAIL: TestHistoryPresence_BuildSeesPendingAndFlushing (0.08s)
+    --- FAIL: TestHistoryPresence_BuildSeesPendingAndFlushing/node/pending (0.00s)
+        badgerstore_history_presence_test.go:134: node pending, first call: has(10) = false, history has 1 rows
+    --- FAIL: TestHistoryPresence_BuildSeesPendingAndFlushing/node/flushing (0.03s)
+        badgerstore_history_presence_test.go:144: node flushing, first call: has(20) = false, history has 1 rows
+--- FAIL: TestHistoryPresence_RandomizedDifferential (3.83s)
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=2 (0.23s)
+        badgerstore_history_presence_test.go:442: step 119 put: has(8) = false, history has 1 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=3 (0.28s)
+        badgerstore_history_presence_test.go:442: step 29 put: has(9) = false, history has 1 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=4 (0.21s)
+        badgerstore_history_presence_test.go:442: step 3 put: has(5) = false, history has 1 rows
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	4.812s
+FAIL
+exit=1
+
+$ go test ./pkg/graph/ -run TestHasHistoryDifferential -count=1
+--- FAIL: TestHasHistoryDifferential (14.71s)
+    --- FAIL: TestHasHistoryDifferential/badger-disk/seed=2 (1.32s)
+        has_history_test.go:375: badger-disk seed 2: successful ops map[addRel:6 cascadeNode:2 cascadeRel:6 clear:4 closeOrLabel:1 compact:6 deleteNode:1 deleteRel:2 erase:7 flush:5 purge:4 reopen:8 txCommit:8 txCreateUpdate:22 txRollback:14 txUpdateNode:8 txUpdateRel:8 updateNode:4 updateRel:7]
+        has_history_test.go:393: imported: node 797163401347432448 HasHistory=false store=false, History has 1 rows
+    --- FAIL: TestHasHistoryDifferential/badger-disk/seed=3 (0.52s)
+        has_history_test.go:371: step 14 updateNode: node 797163413273706496 HasHistory=false store=false, History has 1 rows
+    --- FAIL: TestHasHistoryDifferential/tiered-disk/seed=1 (2.73s)
+        has_history_test.go:375: tiered-disk seed 1: successful ops map[addRel:5 cascadeNode:1 cascadeRel:2 clear:3 closeOrLabel:2 compact:8 deleteNode:6 deleteRel:1 purge:6 reopen:6 txCommit:9 txCreateUpdate:16 txRollback:7 txUpdateNode:3 updateNode:5 updateRel:1]
+        has_history_test.go:393: imported: node 797163499042897920 HasHistory=false store=false, History has 1 rows
+    --- FAIL: TestHasHistoryDifferential/tiered-disk/seed=2 (3.44s)
+        has_history_test.go:375: tiered-disk seed 2: successful ops map[addRel:6 cascadeNode:2 cascadeRel:6 clear:4 closeOrLabel:1 compact:6 deleteNode:1 deleteRel:2 purge:4 reopen:8 txCommit:8 txCreateUpdate:22 txRollback:14 txUpdateNode:8 txUpdateRel:8 updateNode:4 updateRel:8]
+        has_history_test.go:393: imported: node 797163610052984832 HasHistory=false store=false, History has 1 rows
+    --- FAIL: TestHasHistoryDifferential/tiered-disk/seed=3 (1.17s)
+        has_history_test.go:371: step 14 updateNode: node 797163636120190976 HasHistory=false store=false, History has 1 rows
+    --- FAIL: TestHasHistoryDifferential/sharded-disk/seed=1 (1.61s)
+        has_history_test.go:375: sharded-disk seed 1: successful ops map[addRel:5 cascadeNode:1 cascadeRel:2 clear:3 closeOrLabel:2 deleteNode:6 deleteRel:1 purge:6 reopen:6 txCommit:9 txCreateUpdate:16 txRollback:7 txUpdateNode:3 updateNode:5 updateRel:1]
+        has_history_test.go:393: imported: node 797163708584722432 HasHistory=false store=false, History has 1 rows
+    --- FAIL: TestHasHistoryDifferential/sharded-disk/seed=2 (2.05s)
+        has_history_test.go:375: sharded-disk seed 2: successful ops map[addRel:6 cascadeNode:2 cascadeRel:6 clear:4 closeOrLabel:1 deleteNode:1 deleteRel:2 purge:4 reopen:8 txCommit:8 txCreateUpdate:22 txRollback:14 txUpdateNode:8 txUpdateRel:8 updateNode:4 updateRel:8]
+        has_history_test.go:393: imported: node 797163773712760832 HasHistory=false store=false, History has 1 rows
+    --- FAIL: TestHasHistoryDifferential/sharded-disk/seed=3 (0.84s)
+        has_history_test.go:371: step 14 updateNode: node 797163792243916800 HasHistory=false store=false, History has 1 rows
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	14.743s
+FAIL
+exit=1

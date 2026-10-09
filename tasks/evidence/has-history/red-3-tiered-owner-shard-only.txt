@@ -1,0 +1,8 @@
+--- FAIL: TestTieredHistoryPresence_RoutingShapes (0.19s)
+    --- FAIL: TestTieredHistoryPresence_RoutingShapes/archived,_history_only_on_the_reference_shard_(C) (0.07s)
+        tieredstore_history_presence_test.go:79: archived, ref-only history: HasNodeHistory = false, <nil>; GetNodeHistory has 1 rows
+    --- FAIL: TestTieredHistoryPresence_RoutingShapes/cross-shard_relationships (0.01s)
+        tieredstore_history_presence_test.go:131: cross-shard deleted: HasRelHistory = false, <nil>; GetRelHistory has 2 rows
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	1.938s
+FAIL
