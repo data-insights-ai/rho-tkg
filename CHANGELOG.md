@@ -17,7 +17,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the delete on while the as-of doors read it present; no stamp can place it in the new life once a cascade
   demotes it (the reasoning and the brute-force definition: `tasks/evidence/reimport-life/decision.md`). A
   create of an ID without history keeps accepting any past instant; the plain door (no `tkg_tx_from`) is never
-  refused. **Migration:** a caller that replays a deleted ID's second life with its original instant passes
+  refused (what it returns changes, see Fixed). Seen by sigma-tkgd's `/admin/import` (`tx.ImportNodeWithID` /
+  `ImportRelationshipWithID` with the record's properties under `TKGD_ALLOW_TX_BACKFILL`): such a record on a
+  deleted ID now fails the request and rolls its transaction back; sigma-tkgd notified 2026-10-09.
+  **Migration:** a caller that replays a deleted ID's second life with its original instant passes
   an instant after the delete (`DeletedAt` of the newest history row + 1), or imports without
   `tkg_tx_from`. `docs/stability.md` lists the exception. Tests: `TestReImportBackfillMustFollowTheChain`
   (t inside the first life, at the last update, at D-1, at D: refused on every door, four backends, node and
@@ -40,9 +43,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   history. Fix (`core/version_alloc.go` `lifeStart`): the re-import continues the ID's chain — its version is
   one above the highest version stored for the ID (tombstone and cascade rows above it included), found under
   the entity lock like every appended row, and its `PrevHash` is that row's hash, so the chain verifies across
-  lives; it is recorded after every stamp of the chain (the plain door raises the transaction-clock floor past
-  them — a delete of a row whose valid start lies ahead is stamped ahead of the clock — and a caller instant at
-  or below them is refused, see Changed). Versions then grow in write order across lives and the read side's
+  lives; it is recorded after every stamp of the chain (a caller instant at or below them is refused, see
+  Changed; the plain door stamps its row at the clock, or one past the chain's largest stamp when that lies
+  ahead of the clock — a delete of a row whose valid start lies ahead is stamped after it — on that row only,
+  like the delete: the commit clock is not moved). A chain whose rows a retention purge removed after a
+  history compaction keeps its compaction stub; a re-import of that ID continues above the stub's trimmed
+  versions and links to its last trimmed hash (it restarted at version 0 under the stub and failed
+  `Verify*Chain`). Versions then grow in write order across lives and the read side's
   life rule (a row's life = deletes recorded before its `TxFrom`) equals version order; the rule is unchanged
   and still reads the chains stored before. The `GraphTx` rollback of a created ID removes the rows from the
   created version on (`TrimNodeHistoryFrom`, or a rewrite of the rows below on stores without it) instead of
@@ -53,16 +60,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   0` as "created" must use the create event or `AddByIDIfAbsent`'s `created` instead. Chains written by
   v4.43–v4.47 keep their state: rows already overwritten stay lost, their `Verify*Chain` stays false, and every
   door answers them as before (`TestReImportOldChainReadsAsBefore`, `TestAsOfBackfilledReImportOfDeletedID`,
-  guards green on main); a re-import onto such a chain starts above its highest stored version. Tests (four
-  backends, node and rel, named and generic doors against the brute-force oracle, rule 15 pins):
-  `TestReImportKeepsEveryLife` (plain and backfilled-after-D re-imports, valid start before/after D, then
-  update, bounded cascade, close, a second delete and a third life), `TestReImportAboveCascadeRows`,
-  `TestReImportAfterDeleteAheadOfClock`, `TestReImportTxRollbackRestoresEarlierLife`,
-  `TestReImportReplicaApply`, `TestReImportExportImportRoundTrip`, `TestReImportCompactionAcrossLives`,
-  `TestReImportRetentionPurge` (guard), `TestReImportLifeOracle` (generative: random ops with plain, accepted
-  and refused re-imports; no history row lost, pins stable, every door equals the oracle, chains verify).
-  Red on main: 10 of 12 core tests and the facade test; mutants (allocator at 0, allocator above the tombstone
-  only, write order or life ends ignoring the tombstone, refusal off by one, no clock floor, no predecessor
+  guards green on main); a re-import onto such a chain starts above its highest stored version. Known limit
+  (the open 2026-09-24 item "Future transaction time from `validInstantAfter`", unchanged): after a delete
+  stamped ahead of the clock, the re-import's row is stamped ahead too, so pins taken now do not see it, and a
+  later plain Update of it is stamped at the clock, below the re-import. Tests (four backends, node and rel,
+  named and generic doors against the brute-force oracle, rule 15 pins): `TestReImportKeepsEveryLife` (plain
+  and backfilled-after-D re-imports, valid start before/after D, then update, bounded cascade, close, a second
+  delete and a third life), `TestReImportAboveCascadeRows`, `TestReImportAfterDeleteAheadOfClock`,
+  `TestReImportDoesNotAdvanceTheClock` (a delete 50 years ahead, a plain re-import, then an unrelated create
+  is stamped at the wall clock; badger on disk reopened: the unrelated row visible at a current pin),
+  `TestReImportTxRollbackRestoresEarlierLife`, `TestReImportTxRollbackCopyPathReportsFaults` (the copy path
+  of stores without the rollback-trim capability reports a failing read or put), `TestReImportReplicaApply`,
+  `TestReImportExportImportRoundTrip`, `TestReImportCompactionAcrossLives`, `TestReImportRetentionPurge`
+  (purge, then re-import and `Verify*Chain`, with and without a compaction before the purge),
+  `TestReImportLifeOracle` (generative: random ops with plain, accepted and refused re-imports; no history row
+  lost, pins stable, every door equals the oracle, chains verify), `TestLifeStartOf`, `TestStubLifeStart`.
+  Red on main: 10 of 12 core tests and the facade test; the purge-stub legs red on memory, badger and tiered;
+  mutants (allocator at 0, allocator above the tombstone only, write order or life ends ignoring the
+  tombstone, refusal off by one, plain door stamped at the clock, a commit-clock floor raise, no predecessor
   hash, rollback truncating everything) each red: `tasks/evidence/reimport-life/`.
 
 ## [4.47.0] - 2026-10-09
