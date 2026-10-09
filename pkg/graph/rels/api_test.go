@@ -53,6 +53,8 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "UpdateInPlaceWithContext", run: func() error { _, err := nilAPI.UpdateInPlace(ctx, relID, nil); return err }},
 		{name: "Delete", run: func() error { return nilAPI.Delete(context.Background(), relID) }},
 		{name: "DeleteWithContext", run: func() error { return nilAPI.Delete(ctx, relID) }},
+		{name: "DeleteWithTx", run: func() error { return nilAPI.DeleteWithTx(ctx, relID, 1000) }},
+		{name: "UpdateWithTx", run: func() error { _, err := nilAPI.UpdateWithTx(ctx, relID, nil, 1000); return err }},
 		{name: "Import", run: func() error { _, err := nilAPI.Import(ctx, relID, "KNOWS", nil, nil, nil); return err }},
 		{name: "All", run: func() error { _, err := nilAPI.All(opts); return err }},
 		{name: "ForEach", run: func() error { return nilAPI.ForEach(opts, func(*types.Relationship) bool { return true }) }},
@@ -190,6 +192,8 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "UpdateInPlaceWithContext", run: func() error { _, err := api.UpdateInPlace(ctx, relID, nil); return err }},
 		{name: "Delete", run: func() error { return api.Delete(context.Background(), relID) }},
 		{name: "DeleteWithContext", run: func() error { return api.Delete(ctx, relID) }},
+		{name: "DeleteWithTx", run: func() error { return api.DeleteWithTx(ctx, relID, 1000) }},
+		{name: "UpdateWithTx", run: func() error { _, err := api.UpdateWithTx(ctx, relID, nil, 1000); return err }},
 		{name: "Import", run: func() error { _, err := api.Import(ctx, relID, "KNOWS", nil, nil, nil); return err }},
 		{name: "All", run: func() error { _, err := api.All(opts); return err }},
 		{name: "ForEach", run: func() error { return api.ForEach(opts, func(*types.Relationship) bool { return true }) }},
@@ -270,7 +274,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		"Add", "Add", "AddWithTx", "AddByID", "AddByID",
 		"AddByIDIfAbsent", "AddByIDIfAbsent", "AddByIDForeignEnd", "RecordForeignIncoming", "Get", "Get", "Lend", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
-		"Delete", "Delete", "Import", "All",
+		"Delete", "Delete", "DeleteWithTx", "UpdateWithTx", "Import", "All",
 		"ForEach", "ForEach", "ForEachOutgoing", "ForEachIncoming", "ByType",
 		"ForEachByType", "ForEachOutgoing", "ForEachIncoming", "ForEachAdjacentEndpoint", "Count", "CountByType",
 		"Outgoing", "Incoming", "OutgoingForNodes", "IncomingForNodes",
@@ -309,6 +313,9 @@ type relOpsSpy struct {
 	lastType   string
 	lastKey    string
 	lastOpts   storepkg.QueryOpts
+	lastTx     types.Instant
+
+	lastUpdates map[string]any
 }
 
 func (s *relOpsSpy) record(name string) { s.calls = append(s.calls, name) }
@@ -426,6 +433,21 @@ func (s *relOpsSpy) Delete(ctx context.Context, id types.RelID) error {
 	s.record("Delete")
 	s.lastRelID = id
 	return s.err
+}
+
+func (s *relOpsSpy) DeleteWithTx(ctx context.Context, id types.RelID, txTo types.Instant) error {
+	s.record("DeleteWithTx")
+	s.lastRelID = id
+	s.lastTx = txTo
+	return s.err
+}
+
+func (s *relOpsSpy) UpdateWithTx(ctx context.Context, id types.RelID, updates map[string]any, txFrom types.Instant) (*types.Relationship, error) {
+	s.record("UpdateWithTx")
+	s.lastRelID = id
+	s.lastTx = txFrom
+	s.lastUpdates = updates
+	return nil, s.err
 }
 
 func (s *relOpsSpy) DeleteWithContext(ctx context.Context, id types.RelID) error {
@@ -769,5 +791,38 @@ func TestCountByTypeAtForwards(t *testing.T) {
 	}
 	if spy.lastType != "KNOWS" || spy.lastOpts != opts {
 		t.Fatalf("forwarded %q %+v", spy.lastType, spy.lastOpts)
+	}
+}
+
+// The caller-instant doors must hand the instant, id and update map to the ops
+// verbatim. Catches a facade that drops the instant (forwards 0, which the
+// core reads as invalid), swaps it for the clock, forwards to the plain
+// Delete/Update, or rewrites the update map (e.g. injecting a reserved
+// tkg_tx_from/tkg_tx_to property instead of passing the argument).
+func TestAPIWithTxDoorsForwardInstantVerbatim(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name string
+		at   types.Instant
+	}{{"min", 1}, {"typical", 1767268800000}, {"negative passes through to core validation", -7}} {
+		ops := &relOpsSpy{}
+		api := New(ops)
+		if err := api.DeleteWithTx(ctx, 42, tc.at); err != nil {
+			t.Fatalf("%s: DeleteWithTx: %v", tc.name, err)
+		}
+		if len(ops.calls) != 1 || ops.calls[0] != "DeleteWithTx" || ops.lastRelID != 42 || ops.lastTx != tc.at {
+			t.Fatalf("%s: DeleteWithTx forwarded calls=%v id=%v at=%d; want [DeleteWithTx] 42 %d", tc.name, ops.calls, ops.lastRelID, ops.lastTx, tc.at)
+		}
+		upd := map[string]any{"w": int64(2)}
+		if _, err := api.UpdateWithTx(ctx, 43, upd, tc.at); err != nil {
+			t.Fatalf("%s: UpdateWithTx: %v", tc.name, err)
+		}
+		if len(ops.calls) != 2 || ops.calls[1] != "UpdateWithTx" || ops.lastRelID != 43 || ops.lastTx != tc.at {
+			t.Fatalf("%s: UpdateWithTx forwarded calls=%v id=%v at=%d; want [.. UpdateWithTx] 43 %d", tc.name, ops.calls, ops.lastRelID, ops.lastTx, tc.at)
+		}
+		if len(ops.lastUpdates) != 1 || ops.lastUpdates["w"] != int64(2) {
+			t.Fatalf("%s: UpdateWithTx forwarded updates %v; want exactly {w:2}", tc.name, ops.lastUpdates)
+		}
 	}
 }

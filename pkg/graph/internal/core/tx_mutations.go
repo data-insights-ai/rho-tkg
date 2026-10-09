@@ -456,7 +456,7 @@ func (tx *GraphTx) DeleteRelationship(id types.RelID) error {
 	}
 
 	// Perform the actual deletion (internal — tx already holds c.mu.Lock).
-	if err := tx.g.deleteRelationshipInternal(tx.doorCtx(), id); err != nil {
+	if err := tx.g.deleteRelationshipInternal(tx.doorCtx(), id, 0); err != nil {
 		return err
 	}
 

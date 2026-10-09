@@ -44,9 +44,56 @@ func (r *RelOps) Update(ctx context.Context, id types.RelID, updates map[string]
 	return rel, err
 }
 
+// UpdateWithTx updates a relationship like Update but stamps the change with
+// the caller's transaction instant: the superseded version's TxTo and the new
+// version's TxFrom and UpdatedAt are txFrom. Gates, in order: txFrom must be a
+// positive instant not in the future (ErrInvalidTxFrom), then
+// Config.AllowTxBackfill (ErrTxBackfillDisabled); under the entity lock txFrom
+// must follow every TxFrom/TxTo recorded for the relationship and the current
+// version's start, and the update must change something (ErrTxOrder, wrapping
+// ErrInvalidTxFrom). Reserved keys (tkg_tx_from, tkg_tx_to) stay rejected in
+// updates; the instant travels only as the argument. The commit clock is not
+// moved by txFrom.
+func (r *RelOps) UpdateWithTx(ctx context.Context, id types.RelID, updates map[string]any, txFrom types.Instant) (*types.Relationship, error) {
+	c := r.c
+	if err := c.checkWritable(); err != nil {
+		return nil, err
+	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+	at, err := c.resolveCallerTxInstant(txFrom)
+	if err != nil {
+		return nil, err
+	}
+	defer c.notePastDatedWrite(at) // after the store write (as-of cache)
+	var (
+		rel     *types.Relationship
+		mutated bool
+	)
+	ep, closeErr := c.runUnderRLock(func() {
+		rel, mutated, err = c.updateRelationshipAtInternal(ctx, id, updates, at)
+	})
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	if err == nil && mutated {
+		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelUpdate, EntityID: types.EntityID(id), Timestamp: c.now(), Priority: eventspkg.PriorityNormal})
+	}
+	return rel, err
+}
+
 // updateRelationshipInternal is the lock-free implementation of RelOps.Update.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, bool, error) {
+	return c.updateRelationshipAtInternal(ctx, id, updates, 0)
+}
+
+// updateRelationshipAtInternal is updateRelationshipInternal with a caller
+// transaction instant at (0 = the clock; at != 0 already gated by
+// resolveCallerTxInstant). An empty map with a caller instant is refused
+// (ErrTxOrder) after the existence check: there is no version to stamp at.
+func (c *Core) updateRelationshipAtInternal(ctx context.Context, id types.RelID, updates map[string]any, at types.Instant) (*types.Relationship, bool, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, false, err
 	}
@@ -56,6 +103,9 @@ func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, u
 
 	if len(updates) == 0 {
 		current, err := c.getCurrentRelationship(id)
+		if err == nil && at != 0 {
+			return nil, false, fmt.Errorf("%w: an update at t %d with no changes records nothing", ErrTxOrder, at)
+		}
 		if err == nil {
 			c.opRelReads.Add(1)
 		}
@@ -66,6 +116,7 @@ func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, u
 	if err != nil {
 		return nil, false, err
 	}
+	tmp.txAt = at
 	return c.updateRelationshipPreparedInternal(ctx, id, prov, tmp, updates)
 }
 
@@ -94,7 +145,15 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 	if err := checkCtx(ctx); err != nil {
 		return nil, false, err
 	}
+	if tmp.txAt != 0 {
+		if err := c.checkRelCallerTx(id, current, tmp.txAt, c.relCurrentVersionStart(current)); err != nil {
+			return nil, false, err
+		}
+	}
 	if !relPreparedUpdateMutates(current, prov, tmp, updates) {
+		if tmp.txAt != 0 {
+			return nil, false, fmt.Errorf("%w: an update at t %d with no changes records nothing", ErrTxOrder, tmp.txAt)
+		}
 		c.opRelReads.Add(1)
 		return current, false, nil
 	}
@@ -148,7 +207,12 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 
 	current.SetVersion(nextVersion)
 
-	now := c.relVersionUpdateInstant(current)
+	// The plain doors stamp the clock floor; a caller instant (checked above,
+	// under the lock) is stamped verbatim.
+	now := tmp.txAt
+	if now == 0 {
+		now = c.relVersionUpdateInstant(current)
+	}
 	tm := current.Temporal()
 	if tm == nil {
 		tm = &types.TemporalMetadata{}

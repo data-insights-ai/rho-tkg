@@ -422,6 +422,16 @@ var (
 	// wall-clock at write, and the feature is backfill).
 	ErrInvalidTxFrom = errors.New("graph: backfilled tkg_tx_from must be a positive instant not in the future")
 
+	// ErrTxOrder is returned by a door that ends or supersedes belief at a
+	// caller-supplied transaction instant t (Rels().DeleteWithTx,
+	// Rels().UpdateWithTx) when t cannot be placed on the entity's chain: t is
+	// not after every TxFrom/TxTo recorded for the entity, not after the
+	// current version's start (UpdatedAt or effective ValidFrom), a recorded
+	// close (ValidTo) lies at or after a delete's t, or an update at t records
+	// no change. The wrapped error names the conflicting stamp. It wraps
+	// ErrInvalidTxFrom, so errors.Is matches both.
+	ErrTxOrder = fmt.Errorf("graph: caller transaction instant does not follow the entity's recorded history (%w)", ErrInvalidTxFrom)
+
 	// ErrInvalidClockAdvance is returned by TempOps.AdvanceClock when the
 	// caller-supplied floor target lands implausibly far ahead of wall-clock
 	// (see maxClockAdvanceSkewMillis) — the same bug class lesson 59 closed for
@@ -760,9 +770,11 @@ type Config struct {
 	// import scope" gate from §4.1 — enable it only in a controlled re-ingest
 	// so a documented historical Erkenntniszeit (e.g. 2026-01-15 12:00) is
 	// reproducible via AS OF SYSTEM TIME; leave off in production, where any
-	// tkg_tx_from is rejected with ErrTxBackfillDisabled. Backfill applies to
-	// CREATES only — updates/deletes keep the monotonic system TxFrom (a
-	// correction recorded now is stamped now). TxFrom is not part of the
+	// tkg_tx_from is rejected with ErrTxBackfillDisabled. The plain update and
+	// delete doors keep the monotonic system clock (a correction recorded now
+	// is stamped now); only the explicit Rels().DeleteWithTx / UpdateWithTx
+	// doors end or supersede belief at a caller instant, under the same gate
+	// and an order check against the recorded chain (ErrTxOrder). TxFrom is not part of the
 	// integrity hash, so a backfilled row still verifies and replicates verbatim.
 	AllowTxBackfill bool
 

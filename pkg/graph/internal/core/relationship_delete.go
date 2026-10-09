@@ -53,7 +53,7 @@ func (r *RelOps) Delete(ctx context.Context, id types.RelID) error {
 	}
 	var err error
 	ep, closeErr := c.runUnderRLock(func() {
-		err = c.deleteRelationshipInternal(ctx, id)
+		err = c.deleteRelationshipInternal(ctx, id, 0)
 	})
 	if closeErr != nil {
 		return closeErr
@@ -64,9 +64,47 @@ func (r *RelOps) Delete(ctx context.Context, id types.RelID) error {
 	return err
 }
 
-// deleteRelationshipInternal is the lock-free implementation of RelOps.Delete.
+// DeleteWithTx deletes a relationship like Delete but stamps the tombstone
+// with the caller's transaction instant: TxTo = DeletedAt = txTo, ValidTo
+// clamped to txTo when the row is open. Gates, in order: txTo must be a
+// positive instant not in the future (ErrInvalidTxFrom), then
+// Config.AllowTxBackfill (ErrTxBackfillDisabled); under the entity lock txTo
+// must follow every TxFrom/TxTo recorded for the relationship and the current
+// version's start, and no recorded close may lie at or after txTo (ErrTxOrder,
+// wrapping ErrInvalidTxFrom). The commit clock is not moved by txTo.
+func (r *RelOps) DeleteWithTx(ctx context.Context, id types.RelID, txTo types.Instant) error {
+	c := r.c
+	if err := c.checkWritable(); err != nil {
+		return err
+	}
+	if err := checkCtx(ctx); err != nil {
+		return err
+	}
+	at, err := c.resolveCallerTxInstant(txTo)
+	if err != nil {
+		return err
+	}
+	defer c.notePastDatedWrite(at) // after the store write (as-of cache)
+	ep, closeErr := c.runUnderRLock(func() {
+		err = c.deleteRelationshipInternal(ctx, id, at)
+	})
+	if closeErr != nil {
+		return closeErr
+	}
+	if err == nil {
+		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelDelete, EntityID: types.EntityID(id), Timestamp: c.now(), Priority: eventspkg.PriorityCritical})
+	}
+	return err
+}
+
+// deleteRelationshipInternal is the lock-free implementation of RelOps.Delete
+// and RelOps.DeleteWithTx. at == 0 stamps the tombstone at
+// deleteInstantForRelationship (the plain doors: clock floor, moved past a
+// colliding close); at != 0 is a caller instant already gated by
+// resolveCallerTxInstant, checked here under the entity lock (checkTxOrder,
+// checkCallerDeleteCloses) and stamped verbatim, never moved.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
-func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID) error {
+func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID, at types.Instant) error {
 	if err := checkCtx(ctx); err != nil {
 		return err
 	}
@@ -89,6 +127,14 @@ func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID) e
 	if err := checkCtx(ctx); err != nil {
 		return err
 	}
+	if at != 0 {
+		if err := c.checkRelCallerTx(id, current, at, c.relTxDeleteStart(current)); err != nil {
+			return err
+		}
+		if err := checkCallerDeleteCloses(at, current.Temporal()); err != nil {
+			return err
+		}
+	}
 	if err := c.checkpointDirtyRegistriesBeforeMutation("delete relationship"); err != nil {
 		return err
 	}
@@ -96,7 +142,10 @@ func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID) e
 		return err
 	}
 
-	now := c.deleteInstantForRelationship(current)
+	now := at
+	if now == 0 {
+		now = c.deleteInstantForRelationship(current)
+	}
 	tmR := current.Temporal()
 	if tmR == nil {
 		tmR = &types.TemporalMetadata{}

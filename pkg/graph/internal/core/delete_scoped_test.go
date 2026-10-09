@@ -139,7 +139,7 @@ func TestDeleteRelationshipInternal_ScopedTokenRoutesThroughScopedDoor(t *testin
 	}
 	ctx := withScopeToken(context.Background(), token)
 
-	if err := c.deleteRelationshipInternal(ctx, r.InternalID()); err != nil {
+	if err := c.deleteRelationshipInternal(ctx, r.InternalID(), 0); err != nil {
 		t.Fatalf("deleteRelationshipInternal: %v", err)
 	}
 
@@ -193,7 +193,7 @@ func TestDeleteRelationshipInternal_NoTokenRoutesThroughPlainDoor(t *testing.T) 
 		t.Fatalf("LastCommittedLSN: %v", err)
 	}
 
-	if err := c.deleteRelationshipInternal(context.Background(), r.InternalID()); err != nil {
+	if err := c.deleteRelationshipInternal(context.Background(), r.InternalID(), 0); err != nil {
 		t.Fatalf("deleteRelationshipInternal: %v", err)
 	}
 

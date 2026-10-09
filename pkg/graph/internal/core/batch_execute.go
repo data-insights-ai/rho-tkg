@@ -580,7 +580,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 
 	// 5. Delete relationships (internal — batch already holds c.mu.Lock).
 	for _, id := range b.relDeletes {
-		if err := b.g.deleteRelationshipInternal(context.Background(), id); err != nil {
+		if err := b.g.deleteRelationshipInternal(context.Background(), id, 0); err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
 				Op:  "DeleteRelationship",
