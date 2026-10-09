@@ -69,11 +69,29 @@ type chainKernel[T interface {
 	storeutil.TemporalRow
 }] struct {
 	rowAtTx   func(T, types.Instant) (T, bool)
-	sortVF    func(T) types.Instant
-	sortChain func([]T) bool
-	ownBounds func(T) (types.Instant, types.Instant)
-	posBounds func([]T, int) (types.Instant, types.Instant)
+	sortVF    func(*Core, T) types.Instant
+	sortChain func(*Core, []T) bool
+	ownBounds func(*Core, T) (types.Instant, types.Instant)
+	posBounds func(*Core, []T, int) (types.Instant, types.Instant)
 }
+
+// The node and relationship kernels (method expressions: no allocation).
+var (
+	nodeKernel = &chainKernel[*types.Node]{
+		rowAtTx:   nodeRowAtTx,
+		sortVF:    (*Core).nodeSortValidFrom,
+		sortChain: (*Core).sortNodeChainForResolve,
+		ownBounds: (*Core).nodeOwnBounds,
+		posBounds: (*Core).nodeVersionBounds,
+	}
+	relKernel = &chainKernel[*types.Relationship]{
+		rowAtTx:   relRowAtTx,
+		sortVF:    (*Core).relSortValidFrom,
+		sortChain: (*Core).sortRelChainForResolve,
+		ownBounds: (*Core).relOwnBounds,
+		posBounds: (*Core).relVersionBounds,
+	}
+)
 
 // effInterval is one row's covering interval [s, e) (e == 0: open) in the
 // arm the resolver takes, with its selection priority (higher wins).
@@ -100,7 +118,26 @@ type effInterval struct {
 func effectivePieces[T interface {
 	comparable
 	storeutil.TemporalRow
-}](k *chainKernel[T], chain []T, pin types.Instant) []effPiece[T] {
+}](c *Core, k *chainKernel[T], chain []T, pin types.Instant) []effPiece[T] {
+	if len(chain) == 1 {
+		// An entity without history: the sweep below on one row, without its
+		// allocations (one row is monotonic; its positional bounds, capped by
+		// its own life end, are its one piece).
+		r, ok := k.rowAtTx(chain[0], pin)
+		if !ok {
+			return nil
+		}
+		one := chain[:1]
+		if r != chain[0] {
+			one = []T{r}
+		}
+		s, e := k.posBounds(c, one, 0)
+		e = chainLifeEnds(one).end(r, e)
+		if e != 0 && e <= s {
+			return nil
+		}
+		return []effPiece[T]{{from: s, to: e, row: r}}
+	}
 	order := make([]int, len(chain))
 	for i := range order {
 		order[i] = i
@@ -122,23 +159,23 @@ func effectivePieces[T interface {
 
 	// The resolver's classification and order (it sorts its argument).
 	arr := slices.Clone(filtered)
-	cascade := k.sortChain(arr)
+	cascade := k.sortChain(c, arr)
 	var superseded []types.Instant
 	if cascade {
 		sc := getSupersessionScratch()
 		defer putSupersessionScratch(sc)
-		superseded = supersessionCaps(arr, k.sortVF, sc)
+		superseded = supersessionCaps(arr, func(r T) types.Instant { return k.sortVF(c, r) }, sc)
 	}
 	ivs := make([]effInterval, 0, len(arr))
 	for i, r := range arr {
 		var s, e types.Instant
 		if cascade {
-			s, e = k.ownBounds(r)
+			s, e = k.ownBounds(c, r)
 			if superseded != nil {
 				e = capEnd(e, superseded[i])
 			}
 		} else {
-			s, e = k.posBounds(arr, i)
+			s, e = k.posBounds(c, arr, i)
 		}
 		e = caps.end(r, e)
 		if e != 0 && e <= s {
@@ -245,32 +282,12 @@ func (h *effHeap) pop() {
 	*h = a
 }
 
-func (c *Core) nodeKernel() *chainKernel[*types.Node] {
-	return &chainKernel[*types.Node]{
-		rowAtTx:   nodeRowAtTx,
-		sortVF:    c.nodeSortValidFrom,
-		sortChain: c.sortNodeChainForResolve,
-		ownBounds: c.nodeOwnBounds,
-		posBounds: c.nodeVersionBounds,
-	}
-}
-
-func (c *Core) relKernel() *chainKernel[*types.Relationship] {
-	return &chainKernel[*types.Relationship]{
-		rowAtTx:   relRowAtTx,
-		sortVF:    c.relSortValidFrom,
-		sortChain: c.sortRelChainForResolve,
-		ownBounds: c.relOwnBounds,
-		posBounds: c.relVersionBounds,
-	}
-}
-
 func (c *Core) nodeEffectivePieces(chain []*types.Node, pin types.Instant) []effPiece[*types.Node] {
-	return effectivePieces(c.nodeKernel(), chain, pin)
+	return effectivePieces(c, nodeKernel, chain, pin)
 }
 
 func (c *Core) relEffectivePieces(chain []*types.Relationship, pin types.Instant) []effPiece[*types.Relationship] {
-	return effectivePieces(c.relKernel(), chain, pin)
+	return effectivePieces(c, relKernel, chain, pin)
 }
 
 // NodeEffectiveTimeline returns node id's state over valid time as recorded at
