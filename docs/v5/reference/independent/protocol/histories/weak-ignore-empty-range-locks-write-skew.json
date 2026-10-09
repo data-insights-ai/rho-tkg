@@ -1,0 +1,300 @@
+{
+  "epochs": {
+    "A": 1,
+    "B": 1
+  },
+  "events": [
+    {
+      "digest": "677ad270b0d037d7e72239358b7417dd7e443a20e4ce06578a017aa42a036bda",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "kind": "register",
+      "participants": [
+        "A",
+        "B"
+      ],
+      "position": 1,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "digest": "677ad270b0d037d7e72239358b7417dd7e443a20e4ce06578a017aa42a036bda",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "floor": 0,
+      "group": "A",
+      "kind": "prepare",
+      "position": 1,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "digest": "677ad270b0d037d7e72239358b7417dd7e443a20e4ce06578a017aa42a036bda",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "floor": 0,
+      "group": "B",
+      "kind": "prepare",
+      "position": 2,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "digest": "26d0b1ba9073e1373aa50b819e81077926e6e45d6d9f95f30c4869fd3a175350",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "kind": "register",
+      "participants": [
+        "A",
+        "B"
+      ],
+      "position": 3,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "digest": "26d0b1ba9073e1373aa50b819e81077926e6e45d6d9f95f30c4869fd3a175350",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "floor": 0,
+      "group": "A",
+      "kind": "prepare",
+      "position": 2,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "digest": "26d0b1ba9073e1373aa50b819e81077926e6e45d6d9f95f30c4869fd3a175350",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "floor": 0,
+      "group": "B",
+      "kind": "prepare",
+      "position": 4,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "kind": "decision",
+      "outcome": "commit",
+      "position": 5,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "round": 10,
+      "tx": "t1"
+    },
+    {
+      "effects": {
+        "A/unique/1": {
+          "op": "put",
+          "value": 1
+        }
+      },
+      "group": "A",
+      "kind": "install",
+      "position": 3,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "effects": {},
+      "group": "B",
+      "kind": "install",
+      "position": 6,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "kind": "ack",
+      "result": {
+        "decision": "commit",
+        "digest": "677ad270b0d037d7e72239358b7417dd7e443a20e4ce06578a017aa42a036bda",
+        "ids": [],
+        "round": 10,
+        "tx": "t1"
+      },
+      "tx": "t1"
+    },
+    {
+      "kind": "decision",
+      "outcome": "commit",
+      "position": 7,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "round": 20,
+      "tx": "t2"
+    },
+    {
+      "effects": {},
+      "group": "A",
+      "kind": "install",
+      "position": 4,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "effects": {
+        "B/unique/2": {
+          "op": "put",
+          "value": 2
+        }
+      },
+      "group": "B",
+      "kind": "install",
+      "position": 8,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "kind": "ack",
+      "result": {
+        "decision": "commit",
+        "digest": "26d0b1ba9073e1373aa50b819e81077926e6e45d6d9f95f30c4869fd3a175350",
+        "ids": [],
+        "round": 20,
+        "tx": "t2"
+      },
+      "tx": "t2"
+    },
+    {
+      "kind": "final",
+      "scope": [
+        "A",
+        "B"
+      ],
+      "values": {
+        "A/unique/1": 1,
+        "B/unique/2": 2
+      }
+    }
+  ],
+  "groups": {
+    "A": [
+      "A1",
+      "A2",
+      "A3"
+    ],
+    "B": [
+      "B1",
+      "B2",
+      "B3"
+    ]
+  },
+  "initial": {},
+  "name": "weak-ignore-empty-range-locks-write-skew",
+  "observation": {
+    "assumption": "All accepted durable group transitions are captured through certificate watermarks; absence of an event alone is not evidence.",
+    "client_reads_complete": true,
+    "durable_events_complete": true,
+    "groups": [
+      "A",
+      "B"
+    ]
+  },
+  "schema_version": 1,
+  "topology": 1,
+  "transactions": {
+    "t1": {
+      "coordinator": "B",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "historical": false,
+      "ids": [],
+      "participants": [
+        "A",
+        "B"
+      ],
+      "reads": [
+        {
+          "hi": "B/unique0",
+          "kind": "range",
+          "lo": "B/unique/",
+          "values": {}
+        }
+      ],
+      "request_key": "request",
+      "writes": {
+        "A/unique/1": {
+          "op": "put",
+          "value": 1
+        }
+      }
+    },
+    "t2": {
+      "coordinator": "B",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "historical": false,
+      "ids": [],
+      "participants": [
+        "A",
+        "B"
+      ],
+      "reads": [
+        {
+          "hi": "A/unique0",
+          "kind": "range",
+          "lo": "A/unique/",
+          "values": {}
+        }
+      ],
+      "request_key": "second",
+      "writes": {
+        "B/unique/2": {
+          "op": "put",
+          "value": 2
+        }
+      }
+    }
+  }
+}

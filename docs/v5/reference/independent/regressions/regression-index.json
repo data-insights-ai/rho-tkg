@@ -1,0 +1,86 @@
+{
+  "broader_graph_integration": "pending",
+  "regressions": [
+    {
+      "baseline_commit": "6ef233c19acb38d11a6cf82350f833208b345eaf",
+      "canonical_integration": {
+        "apply_candidate_again": false,
+        "candidate_implementation_differs": true,
+        "commit": "e5712e1651ee22ca142b5978d400649d8e0f5744",
+        "package_race": "pass",
+        "verification": "canonical-integration.json",
+        "vet": "pass"
+      },
+      "id": "idalloc-receipt-floor",
+      "intended_behavior": "Reject impossible states during marshal/decode; preserve transfer sequence zero with nonzero high-water, reachable final reservation, exact replay and no wrap.",
+      "patch": "idalloc-receipt-floor-fix.patch",
+      "patch_sha256": "dccdeba2e09bdccfdd6f0227d74b13042c51fbd8b6b0f172848ff0f304788ac0",
+      "proof_scope": "Isolated primitive validation and direct checkpoint regressions; distributed grant/quorum/session binding remains pending.",
+      "readiness": "condition resolved in committed implementation; candidate patch is historical data",
+      "synthetic_condition": "A CRC/digest-valid checkpoint claims a nonzero request sequence greater than its receipt first ID, although every earlier successful request consumed at least one ID.",
+      "validation": "idalloc-validation.json"
+    },
+    {
+      "baseline_commit": "42d00f47b26c5c95d2c91a0f8e14d6ef5817362c",
+      "canonical_integration": {
+        "apply_candidate_again": false,
+        "candidate_implementation_differs": true,
+        "commit": "e5712e1651ee22ca142b5978d400649d8e0f5744",
+        "package_race": "pass",
+        "verification": "canonical-integration.json",
+        "vet": "pass"
+      },
+      "id": "host-read-identity",
+      "intended_behavior": "Keep distinct per-session read operation IDs, admission IDs and completion IDs so newer request cannot consume the older barrier; reject overflow and retain bounded admission.",
+      "patch": "host-read-identity.patch",
+      "patch_sha256": "b1aeaf57e2cf8b0065bbf677d213f5aee96fe2a41e82ddaeb79776007f9609f5",
+      "proof_scope": "Clean patch-only pinned module tests, race/vet, original suites and six-process harness; caller routing migration and broader V2/V5 remain pending.",
+      "readiness": "condition resolved in committed implementation; candidate patch is historical data",
+      "synthetic_condition": "Old follower read responses are delayed while another leader commits, then a new request repeats the same query.",
+      "validation": "host-validation.json"
+    },
+    {
+      "baseline_source_head": "6ef233c19acb38d11a6cf82350f833208b345eaf",
+      "baseline_source_pin": "118b1a6513bdc646",
+      "baseline_source_tree_sha256": "118b1a6513bdc6460318f460c976319a8820187aca8ec0ca6ba2d14011fc240d",
+      "canonical_integration": {
+        "apply_candidate_again": false,
+        "candidate_implementation_differs": true,
+        "commit": "e5712e1651ee22ca142b5978d400649d8e0f5744",
+        "package_race": "pass",
+        "verification": "canonical-integration.json",
+        "vet": "pass"
+      },
+      "case_status": {
+        "missing_required_integration": 17,
+        "model_only_policy_or_declarative": 4,
+        "supported": 20
+      },
+      "compatibility": "Prototype ValueRef declared size includes complete retained scalar metadata after this patch; equality-key bytes remain unchanged. Persistent payload-handle interpretation needs canonical owner review.",
+      "id": "graph-scalar-axis-metadata",
+      "intended_behavior": "Charge complete retained scalar metadata and aggregate supplied scalar inputs; resource refusal returns empty entities, lives, values, patches and dependencies without changing the source view.",
+      "patch": "graph-scalar-axis-footprint.patch",
+      "patch_sha256": "c25af08b43f0024f359827816baa0cdf11f3d5ad5238b01c17ed60aa8a6b44b3",
+      "proof_scope": "Clean isolated stock plus self-contained scalar-accounting regression tests; byte ledger policy, not measured heap/RSS or production capacity.",
+      "readiness": "condition resolved in committed implementation; candidate patch is historical data",
+      "synthetic_condition": "A scalar scope retains exactly 32000 bytes in its AxisDefinition Reference while MaxReadBytes or MaxDeltaBytes is 8192 bytes.",
+      "validation": "graph-validation.json",
+      "whole41_case_integration_complete": false
+    },
+    {
+      "baseline_driver_sha256": "afda86c69dc55e4191b6db5ebb36f02c25a72ba2668df1d266ed9fb181cc3aef",
+      "canonical_application_performed": false,
+      "current_stock_driver_sha256": "9a01a9ac4e08d1ea447f3330fdc65ac6517814f3360358bef477cd23f9d4697a",
+      "id": "replica-input-admission",
+      "intended_behavior": "Reject malformed input before Raft state mutation while preserving legal protobuf nonzero booleans and valid follower forwarding.",
+      "patch": "replica-input-guards.patch",
+      "patch_sha256": "0a9545c52fe458c0531f97a0238004b549f6e48ac7348945d5d295cdb183810d",
+      "proof_scope": "Admission robustness only; original pinned full tests/race/vet and drifted-stock apply/scoped tests are separate evidence. No BFT, divergence, full V2 or production resource-admission claim.",
+      "readiness": "reviewed frozen patch available; canonical integration pending",
+      "synthetic_condition": "Malformed Raft append/proposal/snapshot or configuration input can reach RawNode before semantic admission guards reject it.",
+      "validation": "replica-input-validation.json"
+    }
+  ],
+  "schema_version": 1,
+  "scope": "Reviewed regression evidence and historical candidate patch data; three conditions resolved in committed code. Not full CI or phase completion."
+}

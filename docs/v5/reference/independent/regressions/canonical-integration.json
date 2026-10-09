@@ -1,0 +1,48 @@
+{
+  "broader_graph_integration": "pending",
+  "candidate_patches": "Historical reviewed alternatives; committed implementations differ. Do not apply these three candidate patches to the integrated source.",
+  "commands": [
+    {
+      "command": "go test -race -count=1 ./internal/idalloc ./internal/graphstate ./internal/txnproto ./internal/replica",
+      "cwd": "v5",
+      "exit": 0
+    },
+    {
+      "command": "GOWORK=off GOTOOLCHAIN=local go vet ./internal/idalloc ./internal/graphstate ./internal/txnproto ./internal/replica",
+      "cwd": "v5",
+      "exit": 0,
+      "result": "passed"
+    }
+  ],
+  "commit": "e5712e1651ee22ca142b5978d400649d8e0f5744",
+  "committed_source_sha256": {
+    "v5/internal/graphstate/limits.go": "f7e9c2ee3de6330d1dd6e5d5d2aefc30855a37cf5c954c2cd4c6c3dbd9b4839d",
+    "v5/internal/graphstate/planner.go": "3355843ae00d29deed7ae9d60cdde40372a1e133a9fc8bbddd5bf8e156b039cc",
+    "v5/internal/graphstate/project.go": "ca4f4835d5369cd09f3c0d9d2b2cee2c3ef392cce3dbfdbf008b59a4f7c8363a",
+    "v5/internal/graphstate/reader.go": "72e1b125dd97004837e60cf982c6567ce946e1291a26136bf4b9873c8000e22f",
+    "v5/internal/graphstate/value.go": "839c7c49efc865baaa34c2a085947cc6ff24ddb2827e5a3d223637ec731e08c0",
+    "v5/internal/idalloc/allocator.go": "1cae3f18aa0b268de54d6930c4bf4184f7b83a5ee6bebd1838cbfa9d82e33cab",
+    "v5/internal/idalloc/checkpoint.go": "1964c3af5e46bec632ddb4c21020c39c939684fd70f6d10bb6e3c4f5462baa93",
+    "v5/internal/replica/driver.go": "afda86c69dc55e4191b6db5ebb36f02c25a72ba2668df1d266ed9fb181cc3aef",
+    "v5/internal/txnproto/host.go": "d79671076d7d27a476c6a32feacfa26a05d65f3df5c28b612178e61101ecd942"
+  },
+  "full_ci_completed": false,
+  "full_phase_completed": false,
+  "packages": {
+    "graphstate": "pass",
+    "idalloc": "pass",
+    "replica": "pass",
+    "txnproto": "pass"
+  },
+  "resolved_conditions": [
+    "idalloc-receipt-floor",
+    "host-read-identity",
+    "graph-scalar-axis-metadata"
+  ],
+  "schema_version": 1,
+  "scope": "Committed source full package race checks, including original and committed regression tests; not all-module CI or full V0-V7 acceptance",
+  "source_checkout": "90-file git archive of committed source",
+  "source_manifest_sha256": "a69897a9fdd653c3771af10f991a1d72f5df733f1e7ae49ea1ab78331d0dc64e",
+  "source_parent_verification_sha256": "2ceed89fb903e64216a9db05ce2fecfbed7353686756dd915bbd4245c325f132",
+  "toolchain": "go1.26.9"
+}

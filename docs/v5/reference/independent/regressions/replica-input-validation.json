@@ -1,0 +1,120 @@
+{
+  "canonical_application_performed": false,
+  "compatibility": "Nonzero protobuf boolean wire values and valid follower proposal/configuration forwarding remain supported.",
+  "current_stock_proof": {
+    "apply_check": "pass against current9a01a9ac driver and current stock files; read-only",
+    "driver_sha256": "9a01a9ac4e08d1ea447f3330fdc65ac6517814f3360358bef477cd23f9d4697a",
+    "files_changed_after_test": [],
+    "files_still_stable": true,
+    "full_current_stock_race_vet": "not established by this artifact",
+    "matches_original_baseline": false,
+    "scoped_tests": "pass on stable captured stock with only approved patch applied; all original package helpers compile"
+  },
+  "current_stock_source_sha256": {
+    "internal/raftlog/application.go": "0865a3d6a2ae45a2ab8e9db2a34ddee91d26c36ce2d91cbfc37afab7e3ce5dd0",
+    "internal/raftlog/application_test.go": "01e999097868a894b4ca76f64b0fc256f486100600d0e249d7a857ac0f9a42b4",
+    "internal/raftlog/codec.go": "0cb8de421e9ac3e8476435b44410dc779a88cc1a19b47a6a7ce9e26620633d83",
+    "internal/raftlog/errors.go": "fa16afd2e3605992551f41a70d41a0f8773617f6b1a91a8210fa8a7d4944db22",
+    "internal/raftlog/ledger_test.go": "821a41227962d727298832bfba59948f8e26c7ab05b51c0caae51f0f27051d8b",
+    "internal/raftlog/storage.go": "cb446b722d87432a66cb5948e9d134ca8ce6d08756a0b000a3fb541814fd35a0",
+    "internal/raftlog/storage_test.go": "fa3aa1fc43440b3c6f0d47acd6ec8f558e7f0f76a9397ea1bb6072ad2831c242",
+    "internal/raftlog/term_test.go": "2049efce6d8901a6afda47dc70ec846532c257ce6475a73c640bf6d2f8cd59bb",
+    "internal/replica/config_unknown_test.go": "73310999b229433b296f0783d58dba6f51d35b679669fb2a6ec564b80f5b86d7",
+    "internal/replica/driver.go": "9a01a9ac4e08d1ea447f3330fdc65ac6517814f3360358bef477cd23f9d4697a",
+    "internal/replica/driver_test.go": "b4bd5b9dc48ed812c546e5d2339693de063a0b05ad68f1a8ef032f086f17d561",
+    "internal/replica/fatal_test.go": "5d654eb160aa20930647b994d907f41ffdc89c5ea94f96dad0e0727a2ba8c0ef",
+    "internal/replica/wire.go": "a4275a44ffeb3ae46a539d2479eeb31977f38799c3f374e75bdd3c6d3d0209af",
+    "internal/replica/wire_test.go": "7f179f13f7625583dd1b0d0ec91b6e19c54bef5136286b4160ae0eba0c6e5ed1"
+  },
+  "fixed_original_baseline_source_sha256": {
+    "internal/raftlog/codec.go": "a2bec5faba76dacca552885fdf7367fe99f9b6a65c0555ae5cdea3061aaa0917",
+    "internal/raftlog/errors.go": "fa16afd2e3605992551f41a70d41a0f8773617f6b1a91a8210fa8a7d4944db22",
+    "internal/raftlog/ledger_test.go": "821a41227962d727298832bfba59948f8e26c7ab05b51c0caae51f0f27051d8b",
+    "internal/raftlog/storage.go": "bff42380cae70ac2dd626eaac63b819a0ee04d80c2108ccef791fbd5b6f2bebb",
+    "internal/raftlog/storage_test.go": "fa3aa1fc43440b3c6f0d47acd6ec8f558e7f0f76a9397ea1bb6072ad2831c242",
+    "internal/raftlog/term_test.go": "2049efce6d8901a6afda47dc70ec846532c257ce6475a73c640bf6d2f8cd59bb",
+    "internal/replica/config_unknown_test.go": "73310999b229433b296f0783d58dba6f51d35b679669fb2a6ec564b80f5b86d7",
+    "internal/replica/driver.go": "62339d4a02073b0e6be6115f1909f179ff0f0f568c7a6785e243e081511cd8c5",
+    "internal/replica/driver_test.go": "b4bd5b9dc48ed812c546e5d2339693de063a0b05ad68f1a8ef032f086f17d561",
+    "internal/replica/fatal_test.go": "5d654eb160aa20930647b994d907f41ffdc89c5ea94f96dad0e0727a2ba8c0ef",
+    "internal/replica/semantic_test.go": "e1eb04c852718967516921535fe6b6c98b5a09b773828830495e72fa60e639b0",
+    "internal/replica/wire.go": "3ac38d1e8741b6f981f905dba85d30af692d1f4ff95b57c839b00e201af769de",
+    "internal/replica/wire_test.go": "7f179f13f7625583dd1b0d0ec91b6e19c54bef5136286b4160ae0eba0c6e5ed1"
+  },
+  "frozen_patch_import_cleanup": {
+    "assertion_and_code_body_unchanged": true,
+    "scoped_tests": "pass on frozen fix-candidate underGo1.26.9"
+  },
+  "live_integration": "pending",
+  "original_baseline_proof": {
+    "coverage_percent": {
+      "combined": 85.5,
+      "raftlog": 82.3,
+      "replica": 89.5
+    },
+    "new_functions_percent": {
+      "decodeIncomingChange": 89.5,
+      "preflightWire": 94.6,
+      "validateIncoming": 96.3,
+      "validateSnapshotConf": 88.9
+    },
+    "race_original_plus_new": "pass",
+    "unit_original_plus_new": "pass",
+    "vet_both_packages": "pass"
+  },
+  "original_baseline_source_sha256": {
+    "go.mod": "3bf8baf02d354420ddf87b8865f20b854bb606f04e0f0988f0f9eed2d89e8a24",
+    "go.sum": "5679a7aa94d5ee71f5737dea65a4fa71ed69109c45b877b1dd1639ae5e6e60f0",
+    "internal/raftlog/codec.go": "a2bec5faba76dacca552885fdf7367fe99f9b6a65c0555ae5cdea3061aaa0917",
+    "internal/raftlog/errors.go": "fa16afd2e3605992551f41a70d41a0f8773617f6b1a91a8210fa8a7d4944db22",
+    "internal/raftlog/ledger_test.go": "821a41227962d727298832bfba59948f8e26c7ab05b51c0caae51f0f27051d8b",
+    "internal/raftlog/storage.go": "bff42380cae70ac2dd626eaac63b819a0ee04d80c2108ccef791fbd5b6f2bebb",
+    "internal/raftlog/storage_test.go": "fa3aa1fc43440b3c6f0d47acd6ec8f558e7f0f76a9397ea1bb6072ad2831c242",
+    "internal/raftlog/term_test.go": "2049efce6d8901a6afda47dc70ec846532c257ce6475a73c640bf6d2f8cd59bb",
+    "internal/replica/config_unknown_test.go": "73310999b229433b296f0783d58dba6f51d35b679669fb2a6ec564b80f5b86d7",
+    "internal/replica/driver.go": "afda86c69dc55e4191b6db5ebb36f02c25a72ba2668df1d266ed9fb181cc3aef",
+    "internal/replica/driver_test.go": "b4bd5b9dc48ed812c546e5d2339693de063a0b05ad68f1a8ef032f086f17d561",
+    "internal/replica/fatal_test.go": "5d654eb160aa20930647b994d907f41ffdc89c5ea94f96dad0e0727a2ba8c0ef",
+    "internal/replica/wire.go": "a4275a44ffeb3ae46a539d2479eeb31977f38799c3f374e75bdd3c6d3d0209af",
+    "internal/replica/wire_test.go": "7f179f13f7625583dd1b0d0ec91b6e19c54bef5136286b4160ae0eba0c6e5ed1"
+  },
+  "patch_sha256": "0a9545c52fe458c0531f97a0238004b549f6e48ac7348945d5d295cdb183810d",
+  "pinned_raft_source_sha256": {
+    "confchange/confchange.go": "b4e082d86bb67bff630a5f1465d5fedf794a6806d47bd420c705b9de8291d6b3",
+    "confchange/restore.go": "744a5f97b4a9cc7d561ef96a155f8759102fa6553b651cff4f6901dada2007d1",
+    "log.go": "58316f5ae5a7e02067f83b9715af04ad375e1ba3e96f89ccd166e5cf947544d2",
+    "raft.go": "d3d8fa573e1488e3aa35b9b997ba943454f3f357740a550d4bcc44d81975f07f",
+    "raftpb/raft.proto": "bd0fcbc7b76b85843c038af64bc6ea6ef0863d06335ecab79cb66144ad1aebd1",
+    "rawnode.go": "531cac8b286fd6e0bcd430c12053590325b9b00d113a584b8d3e6d1314c50f05"
+  },
+  "proof_limits": [
+    "Input admission robustness only",
+    "No Byzantine safety or divergent-replica protection claim",
+    "No full V2 transaction or ownership certification",
+    "No production resource-admission proof",
+    "Original baseline full test/race/vet differs from drifted current-stock scoped proof"
+  ],
+  "reproduction_commands": [
+    {
+      "command": "git apply --check docs/v5/reference/independent/regressions/replica-input-guards.patch",
+      "cwd": "."
+    },
+    {
+      "command": "GOTOOLCHAIN=go1.26.9 GOWORK=off go test -count=1 -coverprofile=replica-input.cover.out ./internal/replica ./internal/raftlog",
+      "cwd": "v5"
+    },
+    {
+      "command": "GOTOOLCHAIN=go1.26.9 GOWORK=off go test -race -count=1 ./internal/replica ./internal/raftlog",
+      "cwd": "v5"
+    },
+    {
+      "command": "GOTOOLCHAIN=go1.26.9 GOWORK=off go vet ./internal/replica ./internal/raftlog",
+      "cwd": "v5"
+    }
+  ],
+  "reproduction_commands_kind": "Portable verification commands; supplied validation preserves outcomes, not exact original shell invocations.",
+  "schema_version": 1,
+  "scope": "adapter semantic admission hardening; not Byzantine safety, V2 transaction/ownership certification or production resource admission",
+  "source_validation_sha256": "e5d5da48f0ffad8790ceebe8f8c097b383d625eca39fefee9facdd742740fe17",
+  "toolchain": "go1.26.9"
+}

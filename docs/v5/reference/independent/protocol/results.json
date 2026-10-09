@@ -1,0 +1,3610 @@
+{
+  "all_expected_outcomes_matched": true,
+  "positive_interleavings": 70,
+  "positive_named_histories": 18,
+  "reports": [
+    {
+      "expected_accept": true,
+      "name": "E15-cross-effects-apply-lag-crash-duplicate",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "E15-cross-effects-apply-lag-crash-duplicate",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "E16-unresolved-old-prepare-must-block",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "E16-unresolved-old-prepare-must-block",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "local-fast-path-abort-private-effects",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "local-fast-path-abort-private-effects",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "local"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "E17-E18-retained-cut-correction-transfer-reopen",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "E17-E18-retained-cut-correction-transfer-reopen",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "P08-reservation-uncertainty-restart-stale-allocator",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "P08-reservation-uncertainty-restart-stale-allocator",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "two-conflicting-transactions-revalidated-history",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "two-conflicting-transactions-revalidated-history",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "E17-stable-bucket-A-moves-to-owner-B",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "E17-stable-bucket-A-moves-to-owner-B",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "fine-grained-A-prepares-concurrent-B-serializes",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "fine-grained-A-prepares-concurrent-B-serializes",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "Fresh-includes-unacked-outside-scope-decision",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "Fresh-includes-unacked-outside-scope-decision",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "durable-unacked-commit-survives-restart",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "durable-unacked-commit-survives-restart",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "durable-acked-commit-survives-restart",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "durable-acked-commit-survives-restart",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "durable-unacked-abort-survives-restart",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "durable-unacked-abort-survives-restart",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "durable-acked-abort-survives-restart",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "durable-acked-abort-survives-restart",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "local-commit-after-prepared-abort-resolution",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "local-commit-after-prepared-abort-resolution",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "local"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "local-after-move-original-bucket-epoch",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "local-after-move-original-bucket-epoch",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "local"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "local-full-key-read-bucket-footprint",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "local-full-key-read-bucket-footprint",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "local"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "local-full-range-read-bucket-footprint",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "local-full-range-read-bucket-footprint",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "local"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "local-historical-write-revalidated",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "local-historical-write-revalidated",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "local"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-01234567",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-01234567",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-01243567",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-01243567",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-01245367",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-01245367",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-01245637",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-01245637",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-01245673",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-01245673",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-01423567",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-01423567",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-01425367",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-01425367",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-01425637",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-01425637",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-01425673",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-01425673",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-01452367",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-01452367",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-01452637",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-01452637",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-01452673",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-01452673",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-01456237",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-01456237",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-01456273",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-01456273",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-01456723",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-01456723",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-04123567",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-04123567",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-04125367",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-04125367",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-04125637",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-04125637",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-04125673",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-04125673",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-04152367",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-04152367",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-04152637",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-04152637",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-04152673",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-04152673",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-04156237",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-04156237",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-04156273",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-04156273",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-04156723",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-04156723",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-04512367",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-04512367",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-04512637",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-04512637",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-04512673",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-04512673",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-04516237",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-04516237",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-04516273",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-04516273",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-04516723",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-04516723",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-04561237",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-04561237",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-04561273",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-04561273",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-04561723",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-04561723",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-04567123",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-04567123",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-40123567",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-40123567",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-40125367",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-40125367",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-40125637",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-40125637",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-40125673",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-40125673",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-40152367",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-40152367",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-40152637",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-40152637",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-40152673",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-40152673",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-40156237",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-40156237",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-40156273",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-40156273",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-40156723",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-40156723",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-40512367",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-40512367",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-40512637",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-40512637",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-40512673",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-40512673",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-40516237",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-40516237",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-40516273",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-40516273",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-40516723",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-40516723",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-40561237",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-40561237",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-40561273",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-40561273",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-40561723",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-40561723",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-40567123",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-40567123",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-45012367",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-45012367",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-45012637",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-45012637",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-45012673",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-45012673",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-45016237",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-45016237",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-45016273",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-45016273",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-45016723",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-45016723",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-45061237",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-45061237",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-45061273",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-45061273",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-45061723",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-45061723",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-45067123",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-45067123",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-45601237",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-45601237",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-45601273",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-45601273",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-45601723",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-45601723",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-45607123",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-45607123",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": true,
+      "name": "independent-same-round-45670123",
+      "required_counterexample": null,
+      "result": {
+        "accepted": true,
+        "history": "independent-same-round-45670123",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": []
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-mixed-graph-and-endpoint-postings",
+      "required_counterexample": "nonserializable_or_wrong_snapshot",
+      "result": {
+        "accepted": false,
+        "history": "weak-mixed-graph-and-endpoint-postings",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "first_mismatch": {
+            "actual": {
+              "A/edge/r": {
+                "from": 1,
+                "to": 2
+              },
+              "A/node/1": {
+                "label": "old",
+                "life": 1
+              },
+              "A/out/1/r": 1,
+              "B/node/2": {
+                "life": 1
+              }
+            },
+            "expected": {
+              "A/edge/r": {
+                "from": 1,
+                "to": 2
+              },
+              "A/node/1": {
+                "label": "old",
+                "life": 1
+              },
+              "A/out/1/r": 1,
+              "B/in/2/r": 1,
+              "B/node/2": {
+                "life": 1
+              }
+            },
+            "read_event": 23
+          },
+          "orders_tried": 1
+        },
+        "serial_witness": null,
+        "violations": [
+          {
+            "code": "nonserializable_or_wrong_snapshot",
+            "detail": {
+              "first_mismatch": {
+                "actual": {
+                  "A/edge/r": {
+                    "from": 1,
+                    "to": 2
+                  },
+                  "A/node/1": {
+                    "label": "old",
+                    "life": 1
+                  },
+                  "A/out/1/r": 1,
+                  "B/node/2": {
+                    "life": 1
+                  }
+                },
+                "expected": {
+                  "A/edge/r": {
+                    "from": 1,
+                    "to": 2
+                  },
+                  "A/node/1": {
+                    "label": "old",
+                    "life": 1
+                  },
+                  "A/out/1/r": 1,
+                  "B/in/2/r": 1,
+                  "B/node/2": {
+                    "life": 1
+                  }
+                },
+                "read_event": 23
+              },
+              "orders_tried": 1
+            },
+            "event": 27
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-acknowledged-decision-lost-after-restart",
+      "required_counterexample": "lost_acknowledged_decision",
+      "result": {
+        "accepted": false,
+        "history": "weak-acknowledged-decision-lost-after-restart",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1"
+        ],
+        "violations": [
+          {
+            "code": "lost_acknowledged_decision",
+            "detail": {
+              "group": "B",
+              "tx": "t1"
+            },
+            "event": 15
+          },
+          {
+            "code": "lost_durable_decision",
+            "detail": {
+              "group": "B",
+              "outcome": "commit",
+              "tx": "t1"
+            },
+            "event": 15
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-wrong-request-key-replay-ids",
+      "required_counterexample": "replay_binding",
+      "result": {
+        "accepted": false,
+        "history": "weak-wrong-request-key-replay-ids",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1"
+        ],
+        "violations": [
+          {
+            "code": "ack_binding",
+            "detail": {
+              "actual": {
+                "decision": "commit",
+                "digest": "7ea932dcd03f134e4ff197ff4d3a8d8323fff638f5956f0ae0c4e1d046b9d2a7",
+                "ids": [
+                  1,
+                  2,
+                  3,
+                  999
+                ],
+                "round": 10,
+                "tx": "t1"
+              },
+              "expected": {
+                "decision": "commit",
+                "digest": "7ea932dcd03f134e4ff197ff4d3a8d8323fff638f5956f0ae0c4e1d046b9d2a7",
+                "ids": [
+                  1,
+                  2,
+                  3
+                ],
+                "round": 10,
+                "tx": "t1"
+              }
+            },
+            "event": 9
+          },
+          {
+            "code": "replay_binding",
+            "detail": {
+              "digest": "7ea932dcd03f134e4ff197ff4d3a8d8323fff638f5956f0ae0c4e1d046b9d2a7",
+              "kind": "replay",
+              "request_key": "request",
+              "result": {
+                "decision": "commit",
+                "digest": "7ea932dcd03f134e4ff197ff4d3a8d8323fff638f5956f0ae0c4e1d046b9d2a7",
+                "ids": [
+                  1,
+                  2,
+                  3,
+                  999
+                ],
+                "round": 10,
+                "tx": "t1"
+              },
+              "status": "known"
+            },
+            "event": 25
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-one-replica-durability-ack",
+      "required_counterexample": "quorum",
+      "result": {
+        "accepted": false,
+        "history": "weak-one-replica-durability-ack",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "first_mismatch": {
+            "actual": {
+              "A/edge/r": {
+                "from": 1,
+                "to": 2
+              },
+              "A/node/1": {
+                "label": "old",
+                "life": 1
+              },
+              "A/out/1/r": 1,
+              "B/in/2/r": 1,
+              "B/node/2": {
+                "life": 1
+              }
+            },
+            "expected": {},
+            "read_event": 23
+          },
+          "orders_tried": 1
+        },
+        "serial_witness": null,
+        "violations": [
+          {
+            "code": "ack_without_decision",
+            "detail": "t1",
+            "event": 9
+          },
+          {
+            "code": "after_missing_receipt",
+            "detail": {
+              "after": "t1",
+              "cut": "c20",
+              "kind": "read",
+              "mode": "After",
+              "scope": [
+                "A",
+                "B"
+              ],
+              "served_by": {
+                "A": "A",
+                "B": "B"
+              },
+              "status": "ok",
+              "topology": 1,
+              "values": {
+                "A/edge/r": {
+                  "from": 1,
+                  "to": 2
+                },
+                "A/node/1": {
+                  "label": "old",
+                  "life": 1
+                },
+                "A/out/1/r": 1,
+                "B/in/2/r": 1,
+                "B/node/2": {
+                  "life": 1
+                }
+              }
+            },
+            "event": 24
+          },
+          {
+            "code": "install_without_decision",
+            "detail": "t1",
+            "event": 11
+          },
+          {
+            "code": "install_without_decision",
+            "detail": "t1",
+            "event": 17
+          },
+          {
+            "code": "invented_replay",
+            "detail": {
+              "digest": "7ea932dcd03f134e4ff197ff4d3a8d8323fff638f5956f0ae0c4e1d046b9d2a7",
+              "kind": "replay",
+              "request_key": "request",
+              "result": {
+                "decision": "commit",
+                "digest": "7ea932dcd03f134e4ff197ff4d3a8d8323fff638f5956f0ae0c4e1d046b9d2a7",
+                "ids": [
+                  1,
+                  2,
+                  3
+                ],
+                "round": 10,
+                "tx": "t1"
+              },
+              "status": "known"
+            },
+            "event": 25
+          },
+          {
+            "code": "invented_replay",
+            "detail": {
+              "digest": "different-payload",
+              "kind": "replay",
+              "request_key": "request",
+              "status": "conflict"
+            },
+            "event": 26
+          },
+          {
+            "code": "nonserializable_or_wrong_snapshot",
+            "detail": {
+              "first_mismatch": {
+                "actual": {
+                  "A/edge/r": {
+                    "from": 1,
+                    "to": 2
+                  },
+                  "A/node/1": {
+                    "label": "old",
+                    "life": 1
+                  },
+                  "A/out/1/r": 1,
+                  "B/in/2/r": 1,
+                  "B/node/2": {
+                    "life": 1
+                  }
+                },
+                "expected": {},
+                "read_event": 23
+              },
+              "orders_tried": 1
+            },
+            "event": 27
+          },
+          {
+            "code": "partial_effects",
+            "detail": {
+              "actual": {
+                "A/edge/r": {
+                  "op": "put",
+                  "value": {
+                    "from": 1,
+                    "to": 2
+                  }
+                },
+                "A/node/1": {
+                  "op": "put",
+                  "value": {
+                    "label": "old",
+                    "life": 1
+                  }
+                },
+                "A/out/1/r": {
+                  "op": "put",
+                  "value": 1
+                }
+              },
+              "expected": {},
+              "group": "A",
+              "tx": "t1"
+            },
+            "event": 11
+          },
+          {
+            "code": "partial_effects",
+            "detail": {
+              "actual": {
+                "B/in/2/r": {
+                  "op": "put",
+                  "value": 1
+                },
+                "B/node/2": {
+                  "op": "put",
+                  "value": {
+                    "life": 1
+                  }
+                }
+              },
+              "expected": {},
+              "group": "B",
+              "tx": "t1"
+            },
+            "event": 17
+          },
+          {
+            "code": "quorum",
+            "detail": {
+              "group": "B",
+              "reachable": [
+                "B1",
+                "B2",
+                "B3"
+              ],
+              "replicas": [
+                "B1"
+              ]
+            },
+            "event": 8
+          },
+          {
+            "code": "unresolved_prepare",
+            "detail": {
+              "coordinator": "B",
+              "group": "A",
+              "tx": "t1"
+            },
+            "event": 22
+          },
+          {
+            "code": "unresolved_prepare",
+            "detail": {
+              "coordinator": "B",
+              "group": "B",
+              "tx": "t1"
+            },
+            "event": 22
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-current-index-substituted-for-old-cut",
+      "required_counterexample": "nonserializable_or_wrong_snapshot",
+      "result": {
+        "accepted": false,
+        "history": "weak-current-index-substituted-for-old-cut",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "first_mismatch": {
+            "actual": {
+              "A/node/1": {
+                "label": "new",
+                "life": 1
+              },
+              "B/index/new/1": 1
+            },
+            "expected": {
+              "A/node/1": {
+                "label": "old",
+                "life": 1
+              },
+              "B/index/old/1": 1
+            },
+            "read_event": 22
+          },
+          "orders_tried": 2
+        },
+        "serial_witness": null,
+        "violations": [
+          {
+            "code": "nonserializable_or_wrong_snapshot",
+            "detail": {
+              "first_mismatch": {
+                "actual": {
+                  "A/node/1": {
+                    "label": "new",
+                    "life": 1
+                  },
+                  "B/index/new/1": 1
+                },
+                "expected": {
+                  "A/node/1": {
+                    "label": "old",
+                    "life": 1
+                  },
+                  "B/index/old/1": 1
+                },
+                "read_event": 22
+              },
+              "orders_tried": 2
+            },
+            "event": 24
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-stale-owner-accepts-delayed-write",
+      "required_counterexample": "stale_owner_accepted",
+      "result": {
+        "accepted": false,
+        "history": "weak-stale-owner-accepts-delayed-write",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": [
+          {
+            "code": "stale_owner_accepted",
+            "detail": {
+              "epoch": 1,
+              "group": "A",
+              "kind": "stale_write",
+              "status": "accepted"
+            },
+            "event": 18
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-recycle-id-after-crash",
+      "required_counterexample": "invalid_id_issuance",
+      "result": {
+        "accepted": false,
+        "history": "weak-recycle-id-after-crash",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [],
+        "violations": [
+          {
+            "code": "invalid_id_issuance",
+            "detail": {
+              "epoch": 1,
+              "group": "A",
+              "kind": "mint",
+              "reservation": "r2",
+              "status": "issued",
+              "value": 1
+            },
+            "event": 5
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-old-allocator-issues-after-transfer",
+      "required_counterexample": "invalid_id_issuance",
+      "result": {
+        "accepted": false,
+        "history": "weak-old-allocator-issues-after-transfer",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [],
+        "violations": [
+          {
+            "code": "invalid_id_issuance",
+            "detail": {
+              "epoch": 1,
+              "group": "A",
+              "kind": "mint",
+              "reservation": "r1",
+              "status": "issued",
+              "value": 2
+            },
+            "event": 7
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-aborted-private-write-visible",
+      "required_counterexample": "nonserializable_or_wrong_snapshot",
+      "result": {
+        "accepted": false,
+        "history": "weak-aborted-private-write-visible",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "first_mismatch": {
+            "actual": {
+              "A/phantom": 99,
+              "A/x": 1
+            },
+            "expected": {
+              "A/x": 1
+            },
+            "read_event": 11
+          },
+          "orders_tried": 1
+        },
+        "serial_witness": null,
+        "violations": [
+          {
+            "code": "nonserializable_or_wrong_snapshot",
+            "detail": {
+              "first_mismatch": {
+                "actual": {
+                  "A/phantom": 99,
+                  "A/x": 1
+                },
+                "expected": {
+                  "A/x": 1
+                },
+                "read_event": 11
+              },
+              "orders_tried": 1
+            },
+            "event": 12
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-conflicting-transactions-share-round",
+      "required_counterexample": "nonserializable_or_wrong_snapshot",
+      "result": {
+        "accepted": false,
+        "history": "weak-conflicting-transactions-share-round",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "first_mismatch": {
+            "dependency": [
+              "t1",
+              "t2"
+            ],
+            "rounds": [
+              10,
+              10
+            ]
+          },
+          "orders_tried": 2
+        },
+        "serial_witness": null,
+        "violations": [
+          {
+            "code": "ack_binding",
+            "detail": {
+              "actual": {
+                "decision": "commit",
+                "digest": "d4cf552c6ff4b7a0b7546351ee3b551c29e9397108f24444228e0fb8d299f2e4",
+                "ids": [],
+                "round": 20,
+                "tx": "t2"
+              },
+              "expected": {
+                "decision": "commit",
+                "digest": "d4cf552c6ff4b7a0b7546351ee3b551c29e9397108f24444228e0fb8d299f2e4",
+                "ids": [],
+                "round": 10,
+                "tx": "t2"
+              }
+            },
+            "event": 11
+          },
+          {
+            "code": "decision_floor",
+            "detail": {
+              "floor": 10,
+              "group": "A",
+              "round": 10,
+              "tx": "t2"
+            },
+            "event": 9
+          },
+          {
+            "code": "nonserializable_or_wrong_snapshot",
+            "detail": {
+              "first_mismatch": {
+                "dependency": [
+                  "t1",
+                  "t2"
+                ],
+                "rounds": [
+                  10,
+                  10
+                ]
+              },
+              "orders_tried": 2
+            },
+            "event": 14
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-historical-write-without-revalidation",
+      "required_counterexample": "historical_write_unvalidated",
+      "result": {
+        "accepted": false,
+        "history": "weak-historical-write-without-revalidation",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": [
+          {
+            "code": "fence_evidence",
+            "detail": {
+              "actual": 11,
+              "group": "A",
+              "provided": 12
+            },
+            "event": 12
+          },
+          {
+            "code": "historical_write_unvalidated",
+            "detail": "t2",
+            "event": 7
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-prepare-before-delayed-registration",
+      "required_counterexample": "prepare_before_registration",
+      "result": {
+        "accepted": false,
+        "history": "weak-prepare-before-delayed-registration",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": [
+          {
+            "code": "position",
+            "detail": {
+              "group": "A",
+              "position": 1
+            },
+            "event": 2
+          },
+          {
+            "code": "prepare_before_registration",
+            "detail": "t1",
+            "event": 0
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-certificate-without-complete-capture",
+      "required_counterexample": "incomplete_history",
+      "result": {
+        "accepted": false,
+        "history": "weak-certificate-without-complete-capture",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": [
+          {
+            "code": "incomplete_history",
+            "detail": "capture must explicitly include every accepted durable event in declared groups",
+            "event": 13
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-scope-expansion-and-stale-topology",
+      "required_counterexample": "scope_expansion",
+      "result": {
+        "accepted": false,
+        "history": "weak-scope-expansion-and-stale-topology",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": [
+          {
+            "code": "scope_expansion",
+            "detail": {
+              "cut": "old",
+              "kind": "read",
+              "mode": "At",
+              "scope": [
+                "A"
+              ],
+              "served_by": {
+                "A": "A",
+                "B": "B"
+              },
+              "status": "ok",
+              "topology": 2,
+              "values": {
+                "A/node/1": {
+                  "label": "old",
+                  "life": 1
+                },
+                "B/index/old/1": 1
+              }
+            },
+            "event": 22
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-ignore-undecided-coordinator-outside-scope",
+      "required_counterexample": "unresolved_prepare",
+      "result": {
+        "accepted": false,
+        "history": "weak-ignore-undecided-coordinator-outside-scope",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [],
+        "violations": [
+          {
+            "code": "unresolved_prepare",
+            "detail": {
+              "coordinator": "B",
+              "group": "A",
+              "tx": "t1"
+            },
+            "event": 5
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-ignore-empty-range-locks-write-skew",
+      "required_counterexample": "nonserializable_or_wrong_snapshot",
+      "result": {
+        "accepted": false,
+        "history": "weak-ignore-empty-range-locks-write-skew",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "first_mismatch": {
+            "read": {
+              "hi": "A/unique0",
+              "kind": "range",
+              "lo": "A/unique/",
+              "values": {}
+            },
+            "serial_state_observation": {
+              "values": {
+                "A/unique/1": 1
+              }
+            },
+            "transaction": "t2"
+          },
+          "orders_tried": 2
+        },
+        "serial_witness": null,
+        "violations": [
+          {
+            "code": "nonserializable_or_wrong_snapshot",
+            "detail": {
+              "first_mismatch": {
+                "read": {
+                  "hi": "A/unique0",
+                  "kind": "range",
+                  "lo": "A/unique/",
+                  "values": {}
+                },
+                "serial_state_observation": {
+                  "values": {
+                    "A/unique/1": 1
+                  }
+                },
+                "transaction": "t2"
+              },
+              "orders_tried": 2
+            },
+            "event": 14
+          },
+          {
+            "code": "prepared_conflict",
+            "detail": {
+              "group": "A",
+              "holds_locks": "t1",
+              "tx": "t2"
+            },
+            "event": 4
+          },
+          {
+            "code": "prepared_conflict",
+            "detail": {
+              "group": "B",
+              "holds_locks": "t1",
+              "tx": "t2"
+            },
+            "event": 5
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-absent-key-read-locks-write-skew",
+      "required_counterexample": "nonserializable_or_wrong_snapshot",
+      "result": {
+        "accepted": false,
+        "history": "weak-absent-key-read-locks-write-skew",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "first_mismatch": {
+            "read": {
+              "exists": false,
+              "key": "A/unique/1",
+              "kind": "key",
+              "value": null
+            },
+            "serial_state_observation": {
+              "exists": true,
+              "value": 1
+            },
+            "transaction": "t2"
+          },
+          "orders_tried": 2
+        },
+        "serial_witness": null,
+        "violations": [
+          {
+            "code": "ack_binding",
+            "detail": {
+              "actual": {
+                "decision": "commit",
+                "digest": "26d0b1ba9073e1373aa50b819e81077926e6e45d6d9f95f30c4869fd3a175350",
+                "ids": [],
+                "round": 20,
+                "tx": "t2"
+              },
+              "expected": {
+                "decision": "commit",
+                "digest": "8f47835bf8eddb579ba6a6f3f773c3fa12e8b4d6d409241bae25d9170c8c1f25",
+                "ids": [],
+                "round": 20,
+                "tx": "t2"
+              }
+            },
+            "event": 13
+          },
+          {
+            "code": "ack_binding",
+            "detail": {
+              "actual": {
+                "decision": "commit",
+                "digest": "677ad270b0d037d7e72239358b7417dd7e443a20e4ce06578a017aa42a036bda",
+                "ids": [],
+                "round": 10,
+                "tx": "t1"
+              },
+              "expected": {
+                "decision": "commit",
+                "digest": "cb6693c19c0a93c3556e8f529571e76dc40d2791093b03a6f8c1d27431af1213",
+                "ids": [],
+                "round": 10,
+                "tx": "t1"
+              }
+            },
+            "event": 9
+          },
+          {
+            "code": "nonserializable_or_wrong_snapshot",
+            "detail": {
+              "first_mismatch": {
+                "read": {
+                  "exists": false,
+                  "key": "A/unique/1",
+                  "kind": "key",
+                  "value": null
+                },
+                "serial_state_observation": {
+                  "exists": true,
+                  "value": 1
+                },
+                "transaction": "t2"
+              },
+              "orders_tried": 2
+            },
+            "event": 14
+          },
+          {
+            "code": "prepared_conflict",
+            "detail": {
+              "group": "A",
+              "holds_locks": "t1",
+              "tx": "t2"
+            },
+            "event": 4
+          },
+          {
+            "code": "prepared_conflict",
+            "detail": {
+              "group": "B",
+              "holds_locks": "t1",
+              "tx": "t2"
+            },
+            "event": 5
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-post-fence-prepare-votes-stale-floor",
+      "required_counterexample": "stale_floor",
+      "result": {
+        "accepted": false,
+        "history": "weak-post-fence-prepare-votes-stale-floor",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "first_mismatch": {
+            "actual": {
+              "A/x": 0
+            },
+            "expected": {
+              "A/x": 1
+            },
+            "read_event": 3
+          },
+          "orders_tried": 1
+        },
+        "serial_witness": null,
+        "violations": [
+          {
+            "code": "nonserializable_or_wrong_snapshot",
+            "detail": {
+              "first_mismatch": {
+                "actual": {
+                  "A/x": 0
+                },
+                "expected": {
+                  "A/x": 1
+                },
+                "read_event": 3
+              },
+              "orders_tried": 1
+            },
+            "event": 6
+          },
+          {
+            "code": "stale_floor",
+            "detail": {
+              "current": 100,
+              "floor": 90,
+              "group": "A",
+              "tx": "t1"
+            },
+            "event": 4
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-timeout-overwrites-durable-commit",
+      "required_counterexample": "decision_change",
+      "result": {
+        "accepted": false,
+        "history": "weak-timeout-overwrites-durable-commit",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1"
+        ],
+        "violations": [
+          {
+            "code": "decision_change",
+            "detail": {
+              "new": {
+                "outcome": "abort",
+                "round": null
+              },
+              "previous": {
+                "outcome": "commit",
+                "round": 10
+              },
+              "tx": "t1"
+            },
+            "event": 9
+          },
+          {
+            "code": "fence_evidence",
+            "detail": {
+              "actual": 21,
+              "group": "A",
+              "provided": 20
+            },
+            "event": 23
+          },
+          {
+            "code": "fence_evidence",
+            "detail": {
+              "actual": 22,
+              "group": "B",
+              "provided": 21
+            },
+            "event": 23
+          },
+          {
+            "code": "fresh_reuses_pre_request_barrier",
+            "detail": {
+              "collection_at": 20,
+              "cut": "c20"
+            },
+            "event": 24
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-new-tx-routed-to-old-owner-after-move",
+      "required_counterexample": "registration_routing",
+      "result": {
+        "accepted": false,
+        "history": "weak-new-tx-routed-to-old-owner-after-move",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": [
+          {
+            "code": "ack_binding",
+            "detail": {
+              "actual": {
+                "decision": "commit",
+                "digest": "97f7f0bf9ca015445a79b27f1f4ba6ba85d826dc2d0d6755551f0ba8696d529b",
+                "ids": [],
+                "round": 30,
+                "tx": "t2"
+              },
+              "expected": {
+                "decision": "commit",
+                "digest": "8e4debaed9154e3cf0b78fa381651a2b1040e7d422c5137e2f6495408d4337c4",
+                "ids": [],
+                "round": 30,
+                "tx": "t2"
+              }
+            },
+            "event": 13
+          },
+          {
+            "code": "missing_prepare",
+            "detail": {
+              "group": "A",
+              "tx": "t2"
+            },
+            "event": 11
+          },
+          {
+            "code": "prepare_binding",
+            "detail": {
+              "digest": "97f7f0bf9ca015445a79b27f1f4ba6ba85d826dc2d0d6755551f0ba8696d529b",
+              "epochs": {
+                "A": 2
+              },
+              "floor": 20,
+              "group": "B",
+              "kind": "prepare",
+              "position": 3,
+              "replicas": [
+                "B1",
+                "B2"
+              ],
+              "tx": "t2"
+            },
+            "event": 10
+          },
+          {
+            "code": "registration_binding",
+            "detail": {
+              "digest": "97f7f0bf9ca015445a79b27f1f4ba6ba85d826dc2d0d6755551f0ba8696d529b",
+              "epochs": {
+                "A": 2
+              },
+              "kind": "register",
+              "participants": [
+                "B"
+              ],
+              "position": 2,
+              "replicas": [
+                "B1",
+                "B2"
+              ],
+              "tx": "t2"
+            },
+            "event": 9
+          },
+          {
+            "code": "registration_routing",
+            "detail": {
+              "epochs": {
+                "A": 2
+              },
+              "owners": {
+                "A": "B"
+              },
+              "participants": [
+                "A"
+              ],
+              "tx": "t2"
+            },
+            "event": 9
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-new-cut-served-with-old-owner-coverage",
+      "required_counterexample": "topology",
+      "result": {
+        "accepted": false,
+        "history": "weak-new-cut-served-with-old-owner-coverage",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": [
+          {
+            "code": "topology",
+            "detail": {
+              "id": "new",
+              "owners": {
+                "A": "A"
+              },
+              "round": 40,
+              "scope": [
+                "A"
+              ],
+              "topology": 2
+            },
+            "event": 16
+          },
+          {
+            "code": "uncertified_read",
+            "detail": {
+              "cut": "new",
+              "kind": "read",
+              "mode": "At",
+              "scope": [
+                "A"
+              ],
+              "served_by": {
+                "A": "B"
+              },
+              "status": "ok",
+              "topology": 2,
+              "values": {
+                "A/node/1": {
+                  "label": "new",
+                  "life": 1
+                }
+              }
+            },
+            "event": 17
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-move-discards-retained-history",
+      "required_counterexample": "incomplete_handoff",
+      "result": {
+        "accepted": false,
+        "history": "weak-move-discards-retained-history",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": [
+          {
+            "code": "incomplete_handoff",
+            "detail": {
+              "event": {
+                "bucket": "A",
+                "floor": 20,
+                "from": "A",
+                "group": "A",
+                "installed": [],
+                "kind": "transfer",
+                "new_epoch": 2,
+                "old_epoch": 1,
+                "position": 6,
+                "prepared": [],
+                "replicas": [
+                  "A1",
+                  "A2"
+                ],
+                "retained_lineage": true,
+                "target_replicas": [
+                  "B1",
+                  "B2"
+                ],
+                "to": "B"
+              },
+              "required_installed": [
+                "t1"
+              ],
+              "required_prepared": []
+            },
+            "event": 7
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-Fresh-reuses-old-cut-before-unacked-decision",
+      "required_counterexample": "fresh_missing_durable_decision",
+      "result": {
+        "accepted": false,
+        "history": "weak-Fresh-reuses-old-cut-before-unacked-decision",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": [
+          {
+            "code": "fresh_missing_durable_decision",
+            "detail": {
+              "cut_round": 20,
+              "round": 30,
+              "tx": "t2"
+            },
+            "event": 16
+          },
+          {
+            "code": "fresh_reuses_pre_request_barrier",
+            "detail": {
+              "collection_at": 12,
+              "cut": "old"
+            },
+            "event": 16
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-Fresh-ignores-outside-scope-coordinator",
+      "required_counterexample": "incomplete_authoritative_collection",
+      "result": {
+        "accepted": false,
+        "history": "weak-Fresh-ignores-outside-scope-coordinator",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": [
+          {
+            "code": "incomplete_authoritative_collection",
+            "detail": {
+              "provided": [
+                "A"
+              ],
+              "required": [
+                "A",
+                "B"
+              ]
+            },
+            "event": 12
+          },
+          {
+            "code": "quorum",
+            "detail": {
+              "group": "B",
+              "reachable": [
+                "B1",
+                "B2",
+                "B3"
+              ],
+              "replicas": []
+            },
+            "event": 12
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-current-read-served-by-retired-owner",
+      "required_counterexample": "scope_expansion",
+      "result": {
+        "accepted": false,
+        "history": "weak-current-read-served-by-retired-owner",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t1",
+          "t2"
+        ],
+        "violations": [
+          {
+            "code": "scope_expansion",
+            "detail": {
+              "cut": "new",
+              "kind": "read",
+              "mode": "At",
+              "scope": [
+                "A"
+              ],
+              "served_by": {
+                "A": "A"
+              },
+              "status": "ok",
+              "topology": 2,
+              "values": {
+                "A/node/1": {
+                  "label": "new",
+                  "life": 1
+                }
+              }
+            },
+            "event": 17
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "unsupported-active-intent-transfer",
+      "required_counterexample": "unsupported_active_intent_transfer",
+      "result": {
+        "accepted": false,
+        "history": "unsupported-active-intent-transfer",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [],
+        "violations": [
+          {
+            "code": "unsupported_active_intent_transfer",
+            "detail": {
+              "declared_prepared": [
+                "t1"
+              ],
+              "observed_prepared": [
+                "t1"
+              ],
+              "outstanding_requirement": "V2/V5 active-intent handoff semantics are unimplemented; resolve prepares before this artifact can check quiescent transfer"
+            },
+            "event": 2
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-durable-unacked-commit-lost-restart",
+      "required_counterexample": "lost_durable_decision",
+      "result": {
+        "accepted": false,
+        "history": "weak-durable-unacked-commit-lost-restart",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t"
+        ],
+        "violations": [
+          {
+            "code": "lost_durable_decision",
+            "detail": {
+              "group": "B",
+              "outcome": "commit",
+              "tx": "t"
+            },
+            "event": 6
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-durable-acked-commit-lost-restart",
+      "required_counterexample": "lost_durable_decision",
+      "result": {
+        "accepted": false,
+        "history": "weak-durable-acked-commit-lost-restart",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "t"
+        ],
+        "violations": [
+          {
+            "code": "lost_acknowledged_decision",
+            "detail": {
+              "group": "B",
+              "tx": "t"
+            },
+            "event": 7
+          },
+          {
+            "code": "lost_durable_decision",
+            "detail": {
+              "group": "B",
+              "outcome": "commit",
+              "tx": "t"
+            },
+            "event": 7
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-durable-unacked-abort-lost-restart",
+      "required_counterexample": "lost_durable_decision",
+      "result": {
+        "accepted": false,
+        "history": "weak-durable-unacked-abort-lost-restart",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [],
+        "violations": [
+          {
+            "code": "lost_durable_decision",
+            "detail": {
+              "group": "B",
+              "outcome": "abort",
+              "tx": "t"
+            },
+            "event": 6
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-durable-acked-abort-lost-restart",
+      "required_counterexample": "lost_durable_decision",
+      "result": {
+        "accepted": false,
+        "history": "weak-durable-acked-abort-lost-restart",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [],
+        "violations": [
+          {
+            "code": "lost_acknowledged_decision",
+            "detail": {
+              "group": "B",
+              "tx": "t"
+            },
+            "event": 7
+          },
+          {
+            "code": "lost_durable_decision",
+            "detail": {
+              "group": "B",
+              "outcome": "abort",
+              "tx": "t"
+            },
+            "event": 7
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-local-commit-bypasses-prepared-lock",
+      "required_counterexample": "prepared_conflict",
+      "result": {
+        "accepted": false,
+        "history": "weak-local-commit-bypasses-prepared-lock",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "local"
+        ],
+        "violations": [
+          {
+            "code": "prepared_conflict",
+            "detail": {
+              "group": "A",
+              "holds_locks": "prepared",
+              "tx": "local"
+            },
+            "event": 3
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-local-after-move-stale-logical-bucket-epoch",
+      "required_counterexample": "local_routing",
+      "result": {
+        "accepted": false,
+        "history": "weak-local-after-move-stale-logical-bucket-epoch",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "local"
+        ],
+        "violations": [
+          {
+            "code": "local_routing",
+            "detail": {
+              "epochs": {
+                "A": 1
+              },
+              "owners": {
+                "A": "B"
+              },
+              "participants": [
+                "B"
+              ],
+              "tx": "local"
+            },
+            "event": 1
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-local-key-read-routed-outside-single-participant",
+      "required_counterexample": "local_routing",
+      "result": {
+        "accepted": false,
+        "history": "weak-local-key-read-routed-outside-single-participant",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "local"
+        ],
+        "violations": [
+          {
+            "code": "local_routing",
+            "detail": {
+              "epochs": {
+                "A": 1,
+                "B": 2
+              },
+              "owners": {
+                "A": "A",
+                "B": "B"
+              },
+              "participants": [
+                "A"
+              ],
+              "tx": "local"
+            },
+            "event": 0
+          },
+          {
+            "code": "not_local",
+            "detail": "local",
+            "event": 0
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-local-key-read-missing-bucket-epoch",
+      "required_counterexample": "local_routing",
+      "result": {
+        "accepted": false,
+        "history": "weak-local-key-read-missing-bucket-epoch",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "local"
+        ],
+        "violations": [
+          {
+            "code": "local_routing",
+            "detail": {
+              "epochs": {
+                "A": 1
+              },
+              "owners": {
+                "A": "A",
+                "B": "A"
+              },
+              "participants": [
+                "A"
+              ],
+              "tx": "local"
+            },
+            "event": 0
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-local-key-read-stale-bucket-epoch",
+      "required_counterexample": "local_routing",
+      "result": {
+        "accepted": false,
+        "history": "weak-local-key-read-stale-bucket-epoch",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "local"
+        ],
+        "violations": [
+          {
+            "code": "local_routing",
+            "detail": {
+              "epochs": {
+                "A": 1,
+                "B": 1
+              },
+              "owners": {
+                "A": "A",
+                "B": "A"
+              },
+              "participants": [
+                "A"
+              ],
+              "tx": "local"
+            },
+            "event": 0
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-local-range-read-routed-outside-single-participant",
+      "required_counterexample": "local_routing",
+      "result": {
+        "accepted": false,
+        "history": "weak-local-range-read-routed-outside-single-participant",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "local"
+        ],
+        "violations": [
+          {
+            "code": "local_routing",
+            "detail": {
+              "epochs": {
+                "A": 1,
+                "B": 2
+              },
+              "owners": {
+                "A": "A",
+                "B": "B"
+              },
+              "participants": [
+                "A"
+              ],
+              "tx": "local"
+            },
+            "event": 0
+          },
+          {
+            "code": "not_local",
+            "detail": "local",
+            "event": 0
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-local-range-read-missing-bucket-epoch",
+      "required_counterexample": "local_routing",
+      "result": {
+        "accepted": false,
+        "history": "weak-local-range-read-missing-bucket-epoch",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "local"
+        ],
+        "violations": [
+          {
+            "code": "local_routing",
+            "detail": {
+              "epochs": {
+                "A": 1
+              },
+              "owners": {
+                "A": "A",
+                "B": "A"
+              },
+              "participants": [
+                "A"
+              ],
+              "tx": "local"
+            },
+            "event": 0
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-local-range-read-stale-bucket-epoch",
+      "required_counterexample": "local_routing",
+      "result": {
+        "accepted": false,
+        "history": "weak-local-range-read-stale-bucket-epoch",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "local"
+        ],
+        "violations": [
+          {
+            "code": "local_routing",
+            "detail": {
+              "epochs": {
+                "A": 1,
+                "B": 1
+              },
+              "owners": {
+                "A": "A",
+                "B": "A"
+              },
+              "participants": [
+                "A"
+              ],
+              "tx": "local"
+            },
+            "event": 0
+          }
+        ]
+      }
+    },
+    {
+      "expected_accept": false,
+      "name": "weak-local-historical-write-without-revalidation",
+      "required_counterexample": "historical_write_unvalidated",
+      "result": {
+        "accepted": false,
+        "history": "weak-local-historical-write-without-revalidation",
+        "schema_version": 1,
+        "scope": "bounded declarative history validation; not implementation/consensus/disk proof",
+        "search": {
+          "orders_tried": 1
+        },
+        "serial_witness": [
+          "local"
+        ],
+        "violations": [
+          {
+            "code": "historical_write_unvalidated",
+            "detail": "local",
+            "event": 0
+          }
+        ]
+      }
+    }
+  ],
+  "schema_version": 1,
+  "scope": "independent bounded declarative oracle; not production, Raft, fsync, process-kill or V2 acceptance evidence",
+  "weakened_variants": 39
+}

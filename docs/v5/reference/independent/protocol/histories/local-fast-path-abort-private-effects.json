@@ -1,0 +1,273 @@
+{
+  "epochs": {
+    "A": 1,
+    "B": 1
+  },
+  "events": [
+    {
+      "epoch": 1,
+      "kind": "local_commit",
+      "position": 1,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "round": 5,
+      "tx": "local"
+    },
+    {
+      "kind": "ack",
+      "result": {
+        "decision": "commit",
+        "digest": "36dc85b5e7272c4e611279f2fd043df67de3b3844becdc444f8bd12cefb259f0",
+        "ids": [],
+        "round": 5,
+        "tx": "local"
+      },
+      "tx": "local"
+    },
+    {
+      "digest": "4fe47f68a5fd9411f185dbf6953ede83a28318a00d1e33c4a7258aa5000b7057",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "kind": "register",
+      "participants": [
+        "A",
+        "B"
+      ],
+      "position": 1,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "aborted"
+    },
+    {
+      "digest": "4fe47f68a5fd9411f185dbf6953ede83a28318a00d1e33c4a7258aa5000b7057",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "floor": 5,
+      "group": "A",
+      "kind": "prepare",
+      "position": 2,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "aborted"
+    },
+    {
+      "kind": "unknown_reply",
+      "tx": "aborted"
+    },
+    {
+      "kind": "decision",
+      "outcome": "abort",
+      "position": 2,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "round": null,
+      "tx": "aborted"
+    },
+    {
+      "effects": {},
+      "group": "A",
+      "kind": "install",
+      "position": 3,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "aborted"
+    },
+    {
+      "kind": "ack",
+      "result": {
+        "decision": "abort",
+        "digest": "4fe47f68a5fd9411f185dbf6953ede83a28318a00d1e33c4a7258aa5000b7057",
+        "ids": [],
+        "round": null,
+        "tx": "aborted"
+      },
+      "tx": "aborted"
+    },
+    {
+      "epoch": 1,
+      "group": "A",
+      "kind": "fence",
+      "position": 4,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "round": 10
+    },
+    {
+      "epoch": 1,
+      "group": "B",
+      "kind": "fence",
+      "position": 3,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "round": 10
+    },
+    {
+      "coverage": {
+        "A": {
+          "complete": true,
+          "prepared": [],
+          "through": 4
+        },
+        "B": {
+          "complete": true,
+          "prepared": [],
+          "through": 3
+        }
+      },
+      "cut": {
+        "id": "c10",
+        "owners": {
+          "A": "A",
+          "B": "B"
+        },
+        "round": 10,
+        "scope": [
+          "A",
+          "B"
+        ],
+        "topology": 1
+      },
+      "durable": {
+        "A": [
+          "A1",
+          "A2"
+        ],
+        "B": [
+          "B1",
+          "B2"
+        ]
+      },
+      "fence_events": {
+        "A": 8,
+        "B": 9
+      },
+      "kind": "certify"
+    },
+    {
+      "cut": "c10",
+      "kind": "read",
+      "mode": "At",
+      "scope": [
+        "A",
+        "B"
+      ],
+      "served_by": {
+        "A": "A",
+        "B": "B"
+      },
+      "status": "ok",
+      "topology": 1,
+      "values": {
+        "A/x": 1
+      }
+    },
+    {
+      "kind": "final",
+      "scope": [
+        "A",
+        "B"
+      ],
+      "values": {
+        "A/x": 1
+      }
+    }
+  ],
+  "groups": {
+    "A": [
+      "A1",
+      "A2",
+      "A3"
+    ],
+    "B": [
+      "B1",
+      "B2",
+      "B3"
+    ]
+  },
+  "initial": {
+    "A/x": 0
+  },
+  "name": "local-fast-path-abort-private-effects",
+  "observation": {
+    "assumption": "All accepted durable group transitions are captured through certificate watermarks; absence of an event alone is not evidence.",
+    "client_reads_complete": true,
+    "durable_events_complete": true,
+    "groups": [
+      "A",
+      "B"
+    ]
+  },
+  "schema_version": 1,
+  "topology": 1,
+  "transactions": {
+    "aborted": {
+      "coordinator": "B",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "historical": false,
+      "ids": [],
+      "participants": [
+        "A",
+        "B"
+      ],
+      "reads": [
+        {
+          "exists": false,
+          "key": "A/missing",
+          "kind": "key",
+          "value": null
+        }
+      ],
+      "request_key": "abort-request",
+      "writes": {
+        "A/phantom": {
+          "op": "put",
+          "value": 99
+        },
+        "B/y": {
+          "op": "put",
+          "value": 99
+        }
+      }
+    },
+    "local": {
+      "coordinator": "A",
+      "epochs": {
+        "A": 1
+      },
+      "historical": false,
+      "ids": [],
+      "participants": [
+        "A"
+      ],
+      "reads": [],
+      "request_key": "request",
+      "writes": {
+        "A/x": {
+          "op": "put",
+          "value": 1
+        }
+      }
+    }
+  }
+}

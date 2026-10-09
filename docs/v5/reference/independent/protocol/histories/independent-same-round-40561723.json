@@ -1,0 +1,232 @@
+{
+  "epochs": {
+    "A": 1,
+    "B": 1
+  },
+  "events": [
+    {
+      "digest": "1362c18c8290a28dd9e24fc69cfd6afe57a27c86ec2b18cf69ae7907c007b3c9",
+      "epochs": {
+        "B": 1
+      },
+      "kind": "register",
+      "participants": [
+        "B"
+      ],
+      "position": 1,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "kind": "deliver",
+      "message": "message-4"
+    },
+    {
+      "digest": "36dc85b5e7272c4e611279f2fd043df67de3b3844becdc444f8bd12cefb259f0",
+      "epochs": {
+        "A": 1
+      },
+      "kind": "register",
+      "participants": [
+        "A"
+      ],
+      "position": 1,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "kind": "deliver",
+      "message": "message-0"
+    },
+    {
+      "digest": "1362c18c8290a28dd9e24fc69cfd6afe57a27c86ec2b18cf69ae7907c007b3c9",
+      "epochs": {
+        "B": 1
+      },
+      "floor": 0,
+      "group": "B",
+      "kind": "prepare",
+      "position": 2,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "kind": "duplicate",
+      "message": "message-5"
+    },
+    {
+      "kind": "decision",
+      "outcome": "commit",
+      "position": 3,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "round": 10,
+      "tx": "t2"
+    },
+    {
+      "kind": "deliver",
+      "message": "message-6"
+    },
+    {
+      "digest": "36dc85b5e7272c4e611279f2fd043df67de3b3844becdc444f8bd12cefb259f0",
+      "epochs": {
+        "A": 1
+      },
+      "floor": 0,
+      "group": "A",
+      "kind": "prepare",
+      "position": 2,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "kind": "duplicate",
+      "message": "message-1"
+    },
+    {
+      "effects": {
+        "B/y": {
+          "op": "put",
+          "value": 2
+        }
+      },
+      "group": "B",
+      "kind": "install",
+      "position": 4,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "kind": "duplicate",
+      "message": "message-7"
+    },
+    {
+      "kind": "decision",
+      "outcome": "commit",
+      "position": 3,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "round": 10,
+      "tx": "t1"
+    },
+    {
+      "kind": "deliver",
+      "message": "message-2"
+    },
+    {
+      "effects": {
+        "A/x": {
+          "op": "put",
+          "value": 1
+        }
+      },
+      "group": "A",
+      "kind": "install",
+      "position": 4,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "kind": "duplicate",
+      "message": "message-3"
+    },
+    {
+      "kind": "final",
+      "scope": [
+        "A",
+        "B"
+      ],
+      "values": {
+        "A/x": 1,
+        "B/y": 2
+      }
+    }
+  ],
+  "groups": {
+    "A": [
+      "A1",
+      "A2",
+      "A3"
+    ],
+    "B": [
+      "B1",
+      "B2",
+      "B3"
+    ]
+  },
+  "initial": {},
+  "name": "independent-same-round-40561723",
+  "observation": {
+    "assumption": "All accepted durable group transitions are captured through certificate watermarks; absence of an event alone is not evidence.",
+    "client_reads_complete": true,
+    "durable_events_complete": true,
+    "groups": [
+      "A",
+      "B"
+    ]
+  },
+  "schema_version": 1,
+  "topology": 1,
+  "transactions": {
+    "t1": {
+      "coordinator": "A",
+      "epochs": {
+        "A": 1
+      },
+      "historical": false,
+      "ids": [],
+      "participants": [
+        "A"
+      ],
+      "reads": [],
+      "request_key": "request",
+      "writes": {
+        "A/x": {
+          "op": "put",
+          "value": 1
+        }
+      }
+    },
+    "t2": {
+      "coordinator": "B",
+      "epochs": {
+        "B": 1
+      },
+      "historical": false,
+      "ids": [],
+      "participants": [
+        "B"
+      ],
+      "reads": [],
+      "request_key": "second",
+      "writes": {
+        "B/y": {
+          "op": "put",
+          "value": 2
+        }
+      }
+    }
+  }
+}

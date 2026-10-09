@@ -1,0 +1,114 @@
+{
+  "epochs": {
+    "A": 1,
+    "B": 1
+  },
+  "events": [
+    {
+      "epoch": 1,
+      "group": "A",
+      "hi": 10,
+      "id": "r1",
+      "kind": "reserve",
+      "lo": 1,
+      "position": 1,
+      "replicas": [
+        "A1",
+        "A2"
+      ]
+    },
+    {
+      "epoch": 1,
+      "group": "A",
+      "kind": "mint",
+      "reservation": "r1",
+      "status": "issued",
+      "value": 1
+    },
+    {
+      "group": "A",
+      "kind": "crash",
+      "replica": "A1"
+    },
+    {
+      "group": "A",
+      "kind": "restart",
+      "replica": "A1"
+    },
+    {
+      "epoch": 1,
+      "group": "A",
+      "hi": 20,
+      "id": "r2",
+      "kind": "reserve",
+      "lo": 10,
+      "position": 2,
+      "replicas": [
+        "A1",
+        "A2"
+      ]
+    },
+    {
+      "epoch": 1,
+      "group": "A",
+      "kind": "mint",
+      "reservation": "r2",
+      "status": "issued",
+      "value": 10
+    },
+    {
+      "group": "A",
+      "kind": "transfer",
+      "new_epoch": 2,
+      "old_epoch": 1,
+      "position": 3,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "retained_lineage": true
+    },
+    {
+      "epoch": 1,
+      "group": "A",
+      "kind": "mint",
+      "reservation": "r1",
+      "status": "issued",
+      "value": 2
+    },
+    {
+      "epoch": 2,
+      "group": "A",
+      "kind": "mint",
+      "reservation": "r2",
+      "status": "rejected",
+      "value": 11
+    }
+  ],
+  "groups": {
+    "A": [
+      "A1",
+      "A2",
+      "A3"
+    ],
+    "B": [
+      "B1",
+      "B2",
+      "B3"
+    ]
+  },
+  "initial": {},
+  "name": "weak-old-allocator-issues-after-transfer",
+  "observation": {
+    "assumption": "All accepted durable group transitions are captured through certificate watermarks; absence of an event alone is not evidence.",
+    "client_reads_complete": true,
+    "durable_events_complete": true,
+    "groups": [
+      "A",
+      "B"
+    ]
+  },
+  "schema_version": 1,
+  "topology": 1,
+  "transactions": {}
+}

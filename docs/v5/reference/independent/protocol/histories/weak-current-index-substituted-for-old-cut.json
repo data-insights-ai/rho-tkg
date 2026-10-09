@@ -1,0 +1,462 @@
+{
+  "epochs": {
+    "A": 1,
+    "B": 1
+  },
+  "events": [
+    {
+      "digest": "d27652f06b8f4104dffaa67b27f0bfc2e0a30095e1ff220c263008c0957aeb51",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "kind": "register",
+      "participants": [
+        "A",
+        "B"
+      ],
+      "position": 1,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "digest": "d27652f06b8f4104dffaa67b27f0bfc2e0a30095e1ff220c263008c0957aeb51",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "floor": 0,
+      "group": "A",
+      "kind": "prepare",
+      "position": 1,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "digest": "d27652f06b8f4104dffaa67b27f0bfc2e0a30095e1ff220c263008c0957aeb51",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "floor": 0,
+      "group": "B",
+      "kind": "prepare",
+      "position": 2,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "kind": "decision",
+      "outcome": "commit",
+      "position": 3,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "round": 10,
+      "tx": "t1"
+    },
+    {
+      "effects": {
+        "A/node/1": {
+          "op": "put",
+          "value": {
+            "label": "old",
+            "life": 1
+          }
+        }
+      },
+      "group": "A",
+      "kind": "install",
+      "position": 2,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "effects": {
+        "B/index/old/1": {
+          "op": "put",
+          "value": 1
+        }
+      },
+      "group": "B",
+      "kind": "install",
+      "position": 4,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "kind": "ack",
+      "result": {
+        "decision": "commit",
+        "digest": "d27652f06b8f4104dffaa67b27f0bfc2e0a30095e1ff220c263008c0957aeb51",
+        "ids": [],
+        "round": 10,
+        "tx": "t1"
+      },
+      "tx": "t1"
+    },
+    {
+      "epoch": 1,
+      "group": "A",
+      "kind": "fence",
+      "position": 3,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "round": 20
+    },
+    {
+      "epoch": 1,
+      "group": "B",
+      "kind": "fence",
+      "position": 5,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "round": 20
+    },
+    {
+      "coverage": {
+        "A": {
+          "complete": true,
+          "prepared": [],
+          "through": 3
+        },
+        "B": {
+          "complete": true,
+          "prepared": [],
+          "through": 5
+        }
+      },
+      "cut": {
+        "id": "old",
+        "owners": {
+          "A": "A",
+          "B": "B"
+        },
+        "round": 20,
+        "scope": [
+          "A",
+          "B"
+        ],
+        "topology": 1
+      },
+      "durable": {
+        "A": [
+          "A1",
+          "A2"
+        ],
+        "B": [
+          "B1",
+          "B2"
+        ]
+      },
+      "fence_events": {
+        "A": 7,
+        "B": 8
+      },
+      "kind": "certify"
+    },
+    {
+      "digest": "f0b911d45e23d926b789f6799c41767f688fdd01b3bd6c2b944d49271b2a1bba",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "kind": "register",
+      "participants": [
+        "A",
+        "B"
+      ],
+      "position": 6,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "digest": "f0b911d45e23d926b789f6799c41767f688fdd01b3bd6c2b944d49271b2a1bba",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "floor": 20,
+      "group": "A",
+      "kind": "prepare",
+      "position": 4,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "digest": "f0b911d45e23d926b789f6799c41767f688fdd01b3bd6c2b944d49271b2a1bba",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "floor": 20,
+      "group": "B",
+      "kind": "prepare",
+      "position": 7,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "kind": "decision",
+      "outcome": "commit",
+      "position": 8,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "round": 30,
+      "tx": "t2"
+    },
+    {
+      "effects": {
+        "A/node/1": {
+          "op": "put",
+          "value": {
+            "label": "new",
+            "life": 1
+          }
+        }
+      },
+      "group": "A",
+      "kind": "install",
+      "position": 5,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "effects": {
+        "B/index/new/1": {
+          "op": "put",
+          "value": 1
+        },
+        "B/index/old/1": {
+          "op": "delete"
+        }
+      },
+      "group": "B",
+      "kind": "install",
+      "position": 9,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "kind": "ack",
+      "result": {
+        "decision": "commit",
+        "digest": "f0b911d45e23d926b789f6799c41767f688fdd01b3bd6c2b944d49271b2a1bba",
+        "ids": [],
+        "round": 30,
+        "tx": "t2"
+      },
+      "tx": "t2"
+    },
+    {
+      "group": "A",
+      "kind": "transfer",
+      "new_epoch": 2,
+      "old_epoch": 1,
+      "position": 6,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "retained_lineage": true
+    },
+    {
+      "epoch": 1,
+      "group": "A",
+      "kind": "stale_write",
+      "status": "rejected"
+    },
+    {
+      "group": "A",
+      "kind": "crash",
+      "replica": "A1"
+    },
+    {
+      "group": "A",
+      "kind": "restart",
+      "replica": "A1"
+    },
+    {
+      "decisions": [],
+      "epoch": 2,
+      "floor": 30,
+      "group": "A",
+      "installed": [
+        "t1",
+        "t2"
+      ],
+      "kind": "recover",
+      "prepared": []
+    },
+    {
+      "cut": "old",
+      "kind": "read",
+      "mode": "At",
+      "scope": [
+        "A",
+        "B"
+      ],
+      "served_by": {
+        "A": "A",
+        "B": "B"
+      },
+      "status": "ok",
+      "topology": 1,
+      "values": {
+        "A/node/1": {
+          "label": "new",
+          "life": 1
+        },
+        "B/index/new/1": 1
+      }
+    },
+    {
+      "cut": "old",
+      "kind": "expire"
+    },
+    {
+      "cut": "old",
+      "kind": "read",
+      "mode": "At",
+      "scope": [
+        "A",
+        "B"
+      ],
+      "status": "expired"
+    }
+  ],
+  "groups": {
+    "A": [
+      "A1",
+      "A2",
+      "A3"
+    ],
+    "B": [
+      "B1",
+      "B2",
+      "B3"
+    ]
+  },
+  "initial": {},
+  "name": "weak-current-index-substituted-for-old-cut",
+  "observation": {
+    "assumption": "All accepted durable group transitions are captured through certificate watermarks; absence of an event alone is not evidence.",
+    "client_reads_complete": true,
+    "durable_events_complete": true,
+    "groups": [
+      "A",
+      "B"
+    ]
+  },
+  "schema_version": 1,
+  "topology": 1,
+  "transactions": {
+    "t1": {
+      "coordinator": "B",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "historical": false,
+      "ids": [],
+      "participants": [
+        "A",
+        "B"
+      ],
+      "reads": [],
+      "request_key": "request",
+      "writes": {
+        "A/node/1": {
+          "op": "put",
+          "value": {
+            "label": "old",
+            "life": 1
+          }
+        },
+        "B/index/old/1": {
+          "op": "put",
+          "value": 1
+        }
+      }
+    },
+    "t2": {
+      "coordinator": "B",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "historical": false,
+      "ids": [],
+      "participants": [
+        "A",
+        "B"
+      ],
+      "reads": [
+        {
+          "exists": true,
+          "key": "A/node/1",
+          "kind": "key",
+          "revision": "t1",
+          "value": {
+            "label": "old",
+            "life": 1
+          }
+        }
+      ],
+      "request_key": "correction",
+      "writes": {
+        "A/node/1": {
+          "op": "put",
+          "value": {
+            "label": "new",
+            "life": 1
+          }
+        },
+        "B/index/new/1": {
+          "op": "put",
+          "value": 1
+        },
+        "B/index/old/1": {
+          "op": "delete"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,142 @@
+{
+  "epochs": {
+    "A": 1,
+    "B": 1
+  },
+  "events": [
+    {
+      "digest": "8366bb41eb0f07beb0974111fab88bcd30664f80fe19de6892638612d742116a",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "kind": "register",
+      "participants": [
+        "A",
+        "B"
+      ],
+      "position": 1,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t"
+    },
+    {
+      "digest": "8366bb41eb0f07beb0974111fab88bcd30664f80fe19de6892638612d742116a",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "floor": 0,
+      "group": "A",
+      "kind": "prepare",
+      "position": 1,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t"
+    },
+    {
+      "digest": "8366bb41eb0f07beb0974111fab88bcd30664f80fe19de6892638612d742116a",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "floor": 0,
+      "group": "B",
+      "kind": "prepare",
+      "position": 2,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t"
+    },
+    {
+      "kind": "decision",
+      "outcome": "commit",
+      "position": 3,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "round": 10,
+      "tx": "t"
+    },
+    {
+      "group": "B",
+      "kind": "crash",
+      "replica": "B1"
+    },
+    {
+      "group": "B",
+      "kind": "restart",
+      "replica": "B1"
+    },
+    {
+      "decisions": [],
+      "epoch": 1,
+      "floor": 0,
+      "group": "B",
+      "installed": [],
+      "kind": "recover",
+      "prepared": [
+        "t"
+      ]
+    }
+  ],
+  "groups": {
+    "A": [
+      "A1",
+      "A2",
+      "A3"
+    ],
+    "B": [
+      "B1",
+      "B2",
+      "B3"
+    ]
+  },
+  "initial": {},
+  "name": "weak-durable-unacked-commit-lost-restart",
+  "observation": {
+    "assumption": "All accepted durable group transitions are captured through certificate watermarks; absence of an event alone is not evidence.",
+    "client_reads_complete": true,
+    "durable_events_complete": true,
+    "groups": [
+      "A",
+      "B"
+    ]
+  },
+  "schema_version": 1,
+  "topology": 1,
+  "transactions": {
+    "t": {
+      "coordinator": "B",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "historical": false,
+      "ids": [],
+      "participants": [
+        "A",
+        "B"
+      ],
+      "reads": [],
+      "request_key": "request",
+      "writes": {
+        "A/x": {
+          "op": "put",
+          "value": 1
+        },
+        "B/y": {
+          "op": "put",
+          "value": 1
+        }
+      }
+    }
+  }
+}

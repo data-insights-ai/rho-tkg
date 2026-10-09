@@ -1,0 +1,402 @@
+{
+  "epochs": {
+    "A": 1,
+    "B": 1
+  },
+  "events": [
+    {
+      "digest": "79775e1337e648f1392d07417340fdee6df051a029114aac36e2e50349a07ba2",
+      "epochs": {
+        "A": 1
+      },
+      "kind": "register",
+      "participants": [
+        "A"
+      ],
+      "position": 1,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "digest": "79775e1337e648f1392d07417340fdee6df051a029114aac36e2e50349a07ba2",
+      "epochs": {
+        "A": 1
+      },
+      "floor": 0,
+      "group": "A",
+      "kind": "prepare",
+      "position": 2,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "kind": "decision",
+      "outcome": "commit",
+      "position": 3,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "round": 10,
+      "tx": "t1"
+    },
+    {
+      "effects": {
+        "A/node/1": {
+          "op": "put",
+          "value": {
+            "label": "old",
+            "life": 1
+          }
+        }
+      },
+      "group": "A",
+      "kind": "install",
+      "position": 4,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "kind": "ack",
+      "result": {
+        "decision": "commit",
+        "digest": "79775e1337e648f1392d07417340fdee6df051a029114aac36e2e50349a07ba2",
+        "ids": [],
+        "round": 10,
+        "tx": "t1"
+      },
+      "tx": "t1"
+    },
+    {
+      "epoch": 1,
+      "group": "A",
+      "kind": "fence",
+      "position": 5,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "round": 20
+    },
+    {
+      "coverage": {
+        "A": {
+          "complete": true,
+          "prepared": [],
+          "through": 5
+        }
+      },
+      "cut": {
+        "id": "old",
+        "owners": {
+          "A": "A"
+        },
+        "round": 20,
+        "scope": [
+          "A"
+        ],
+        "topology": 1
+      },
+      "durable": {
+        "A": [
+          "A1",
+          "A2"
+        ]
+      },
+      "fence_events": {
+        "A": 5
+      },
+      "kind": "certify"
+    },
+    {
+      "bucket": "A",
+      "floor": 20,
+      "from": "A",
+      "group": "A",
+      "installed": [
+        "t1"
+      ],
+      "kind": "transfer",
+      "new_epoch": 2,
+      "old_epoch": 1,
+      "position": 6,
+      "prepared": [],
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "retained_lineage": true,
+      "target_replicas": [
+        "B1",
+        "B2"
+      ],
+      "to": "B"
+    },
+    {
+      "bucket": "A",
+      "epoch": 1,
+      "group": "A",
+      "kind": "stale_write",
+      "status": "rejected"
+    },
+    {
+      "digest": "97f7f0bf9ca015445a79b27f1f4ba6ba85d826dc2d0d6755551f0ba8696d529b",
+      "epochs": {
+        "A": 2
+      },
+      "kind": "register",
+      "participants": [
+        "B"
+      ],
+      "position": 2,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "digest": "97f7f0bf9ca015445a79b27f1f4ba6ba85d826dc2d0d6755551f0ba8696d529b",
+      "epochs": {
+        "A": 2
+      },
+      "floor": 20,
+      "group": "B",
+      "kind": "prepare",
+      "position": 3,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "kind": "decision",
+      "outcome": "commit",
+      "position": 4,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "round": 30,
+      "tx": "t2"
+    },
+    {
+      "effects": {
+        "A/node/1": {
+          "op": "put",
+          "value": {
+            "label": "new",
+            "life": 1
+          }
+        }
+      },
+      "group": "B",
+      "kind": "install",
+      "position": 5,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "kind": "ack",
+      "result": {
+        "decision": "commit",
+        "digest": "97f7f0bf9ca015445a79b27f1f4ba6ba85d826dc2d0d6755551f0ba8696d529b",
+        "ids": [],
+        "round": 30,
+        "tx": "t2"
+      },
+      "tx": "t2"
+    },
+    {
+      "digest": "79775e1337e648f1392d07417340fdee6df051a029114aac36e2e50349a07ba2",
+      "kind": "replay",
+      "request_key": "request",
+      "result": {
+        "decision": "commit",
+        "digest": "79775e1337e648f1392d07417340fdee6df051a029114aac36e2e50349a07ba2",
+        "ids": [],
+        "round": 10,
+        "tx": "t1"
+      },
+      "status": "known"
+    },
+    {
+      "epoch": 1,
+      "group": "B",
+      "kind": "fence",
+      "position": 6,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "round": 40
+    },
+    {
+      "coverage": {
+        "B": {
+          "complete": true,
+          "prepared": [],
+          "through": 6
+        }
+      },
+      "cut": {
+        "id": "new",
+        "owners": {
+          "A": "B"
+        },
+        "round": 40,
+        "scope": [
+          "A"
+        ],
+        "topology": 2
+      },
+      "durable": {
+        "B": [
+          "B1",
+          "B2"
+        ]
+      },
+      "fence_events": {
+        "B": 15
+      },
+      "kind": "certify"
+    },
+    {
+      "cut": "new",
+      "kind": "read",
+      "mode": "At",
+      "scope": [
+        "A"
+      ],
+      "served_by": {
+        "A": "B"
+      },
+      "status": "ok",
+      "topology": 2,
+      "values": {
+        "A/node/1": {
+          "label": "new",
+          "life": 1
+        }
+      }
+    },
+    {
+      "cut": "old",
+      "kind": "read",
+      "mode": "At",
+      "scope": [
+        "A"
+      ],
+      "served_by": {
+        "A": "A"
+      },
+      "status": "ok",
+      "topology": 1,
+      "values": {
+        "A/node/1": {
+          "label": "old",
+          "life": 1
+        }
+      }
+    }
+  ],
+  "groups": {
+    "A": [
+      "A1",
+      "A2",
+      "A3"
+    ],
+    "B": [
+      "B1",
+      "B2",
+      "B3"
+    ]
+  },
+  "initial": {},
+  "name": "weak-new-tx-routed-to-old-owner-after-move",
+  "observation": {
+    "assumption": "All accepted durable group transitions are captured through certificate watermarks; absence of an event alone is not evidence.",
+    "client_reads_complete": true,
+    "durable_events_complete": true,
+    "groups": [
+      "A",
+      "B"
+    ]
+  },
+  "ownership": {
+    "A": "A",
+    "B": "B"
+  },
+  "schema_version": 1,
+  "topology": 1,
+  "transactions": {
+    "t1": {
+      "coordinator": "A",
+      "epochs": {
+        "A": 1
+      },
+      "historical": false,
+      "ids": [],
+      "participants": [
+        "A"
+      ],
+      "reads": [],
+      "request_key": "request",
+      "writes": {
+        "A/node/1": {
+          "op": "put",
+          "value": {
+            "label": "old",
+            "life": 1
+          }
+        }
+      }
+    },
+    "t2": {
+      "coordinator": "B",
+      "epochs": {
+        "A": 2
+      },
+      "historical": false,
+      "ids": [],
+      "participants": [
+        "A"
+      ],
+      "reads": [
+        {
+          "exists": true,
+          "key": "A/node/1",
+          "kind": "key",
+          "revision": "t1",
+          "value": {
+            "label": "old",
+            "life": 1
+          }
+        }
+      ],
+      "request_key": "second",
+      "writes": {
+        "A/node/1": {
+          "op": "put",
+          "value": {
+            "label": "new",
+            "life": 1
+          }
+        }
+      }
+    }
+  }
+}

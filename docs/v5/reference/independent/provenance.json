@@ -1,0 +1,208 @@
+{
+  "canonical_go_correction_followup": {
+    "acceptance_boundary": "These three Go fixes do not establish broader model/engine, consumer or distributed V0/V1/V2 acceptance.",
+    "commit": "e5712e1651ee22ca142b5978d400649d8e0f5744",
+    "date": "2026-10-09",
+    "historical_provenance_context": "The current reviewed_regression_artifacts object, canonical_go_application_performed_by_packaging_agent=false field and canonical-integration.json remain unchanged historical packaging/package-verification evidence.",
+    "method": "Canonical owner independently reproduced the three external regression failure mechanisms and reimplemented the Go fixes; the supplied external patches were not applied.",
+    "v5_validation": {
+      "build": "passed",
+      "coverage_percent": 90.0,
+      "lint": "passed",
+      "race": "passed",
+      "security": "passed",
+      "vet": "passed",
+      "vulnerability": "passed"
+    },
+    "validation_source": "Reported by the canonical owner in this review session; commit existence and touched files independently read."
+  },
+  "corpus_revisions": [
+    {
+      "case": "SEM03-06-node-rel-property-history",
+      "change": "Atomic-failure bad edge source A to fully live B; missing target and expected NOT_FOUND unchanged.",
+      "historical_parity_sha256_unchanged": "db5fb91a336debb94ed8175a8dabcb373adcec355cb773c39ce00fb5f04cd5b0",
+      "previous_revised_corpus_sha256": "99528d91745b3d3c5c8610d04cd2ee2f5e1913ed70ebd1ef7aa59bc8d3728c8a",
+      "reason": "Original input also violated closed source life; the contract specifies no error precedence. This correction isolates the intended failure after a tentative relationship Set.",
+      "reviewed_corrected_source_sha256": {
+        "temporal/generate_corpus.py": "6634ef99aeff20a626409694bc76937c6b307d879d7ae458efb4f0fb2fa59546",
+        "temporal/test_reference_model.py": "1c8e4657c5c47f9cbe25f8a29ab791a5a1b7e26d45cfab2f2c44dfca7848cdea"
+      },
+      "revision": 2
+    },
+    {
+      "case": "E19-strict-life-bound-presence-correction",
+      "change": "Strict life-bound presence correction checks the original endpoint LifeIDs; masked declared property edits remain allowed.",
+      "historical_fixture_sha256_unchanged": "0598d593bd39ccf95ea2737bb55b0358631cfc6009a03f35b8f39101a7a4f6f2",
+      "historical_parity_sha256_unchanged": "db5fb91a336debb94ed8175a8dabcb373adcec355cb773c39ce00fb5f04cd5b0",
+      "previous_revised_corpus_sha256": "680cb35904e9b82401739e0fe57422e4a406cc57f3b6cbe2965421cb3520cb7a",
+      "reason": "Independent review reproduced acceptance of new strict placement outside the originally bound endpoint lives.",
+      "revised_corpus_sha256": "263de8c0c2bfd078747bd26cc46c0b3e2f5897b264698bc2f891e5c0eeb06f85",
+      "revision": 3
+    }
+  ],
+  "description": "Reviewed independent acceptance source hashes before canonical integration; no machine-specific source paths.",
+  "merge_lineage": {
+    "accepted_python_sources_sha256": {
+      "check.py": "1868b5545cfc3e495ac8291c4241776082d8d662d36db76885b941138ec93158",
+      "protocol/corpus.py": "cd349fe912ba0c2f60f31b3d77d6715c3df2b8639584fead6faf6d3ea48b2675",
+      "protocol/oracle.py": "a132b4e4981f3dcea485b7ee5dea0df48a906cdfcda4a75bec5ff9f1a5589d3a",
+      "protocol/test_oracle.py": "e741baa1a1485d84cb51077da1ba4cde1a334f357bc5fdbe27aee2a428165950",
+      "temporal/generate_corpus.py": "737166ad789f4aa583ae8cecd3f86d50c8b4417723e3432f830d3b10b90a1e9e",
+      "temporal/reference_model.py": "863390e7b81c11d8e4ea28749c159c840321358211797bc9ff39cc658ba19ab3",
+      "temporal/test_reference_model.py": "73854402da1db870a2aa749d8263d4dc601a934b6c246039b451bcec433e48af"
+    },
+    "accepted_source_candidate_provenance_sha256": "44daf9c27070002768bd253a4e8d786cb9656d0d887ef1b7112329813c4dc0ce",
+    "all_current_canonical_original_fields_retained": true,
+    "all_newer_external_regression_json_patch_index_artifacts_retained_byte_identical": true,
+    "canonical_baseline_provenance_sha256": "bb8a054feaf4e60eb0c3d01fef38a6d08c8e767bb9ded0340c6e0d5b985464e7",
+    "historical_fixture_sha256_unchanged": "0598d593bd39ccf95ea2737bb55b0358631cfc6009a03f35b8f39101a7a4f6f2",
+    "historical_parity_sha256_unchanged": "db5fb91a336debb94ed8175a8dabcb373adcec355cb773c39ce00fb5f04cd5b0",
+    "original_frozen_correction_provenance_sha256": "8f8347aaae0f90e1322b07722dbb65fb3d066f322cfe86bb0085d305b3d672cb",
+    "review_corrections_record_context": "review_corrections retains original hashes and red-test evidence from the frozen correction copy. Current README/provenance/regression README add context without revising historical artifacts; validation.json records current file hashes.",
+    "revision": 3,
+    "scope": "Final isolated metadata reconciliation including the newly arrived fourth replica-input candidate; overlay only already accepted Python/tests/generated corpus corrections. No canonical writes or new source corrections."
+  },
+  "review_corrections": [
+    {
+      "changes": [
+        "Recovery requires every captured quorum-durable COMMIT and ABORT decision, with or without client acknowledgement; this schema has no decision reclamation event.",
+        "One-partition commits validate the complete read/write logical-bucket routing and epochs, historical revalidation and outstanding prepared read/mutation locks. A range read can cover more than its lower-endpoint bucket.",
+        "Strict life-bound presence correction validates placement against originally bound endpoint LifeIDs, without forbidding masked declared property edits.",
+        "Added positive counterparts and expected-refusal histories; revised corpus revision 3; original16/52 and historical parity bytes unchanged."
+      ],
+      "correction_author": "Codex independent reference review; original source authorship remains unattributed.",
+      "date": "2026-10-09",
+      "mapping_limits": "No new whole-set Unset, edge-label, arbitrary typed-property, join or component-qualified CDC implementation or acceptance.",
+      "original_provenance_records": "The sources and earlier corpus_revisions entries are retained unchanged.",
+      "protocol_histories_added": [
+        "protocol/histories/durable-acked-abort-survives-restart.json",
+        "protocol/histories/durable-acked-commit-survives-restart.json",
+        "protocol/histories/durable-unacked-abort-survives-restart.json",
+        "protocol/histories/durable-unacked-commit-survives-restart.json",
+        "protocol/histories/local-after-move-original-bucket-epoch.json",
+        "protocol/histories/local-commit-after-prepared-abort-resolution.json",
+        "protocol/histories/local-full-key-read-bucket-footprint.json",
+        "protocol/histories/local-full-range-read-bucket-footprint.json",
+        "protocol/histories/local-historical-write-revalidated.json",
+        "protocol/histories/weak-durable-acked-abort-lost-restart.json",
+        "protocol/histories/weak-durable-acked-commit-lost-restart.json",
+        "protocol/histories/weak-durable-unacked-abort-lost-restart.json",
+        "protocol/histories/weak-durable-unacked-commit-lost-restart.json",
+        "protocol/histories/weak-local-after-move-stale-logical-bucket-epoch.json",
+        "protocol/histories/weak-local-commit-bypasses-prepared-lock.json",
+        "protocol/histories/weak-local-historical-write-without-revalidation.json",
+        "protocol/histories/weak-local-key-read-missing-bucket-epoch.json",
+        "protocol/histories/weak-local-key-read-routed-outside-single-participant.json",
+        "protocol/histories/weak-local-key-read-stale-bucket-epoch.json",
+        "protocol/histories/weak-local-range-read-missing-bucket-epoch.json",
+        "protocol/histories/weak-local-range-read-routed-outside-single-participant.json",
+        "protocol/histories/weak-local-range-read-stale-bucket-epoch.json"
+      ],
+      "protocol_results_sha256_after": "3ed1f9662262fecc572deb0e065831778bfeba09f77297fcef8d52634162834e",
+      "protocol_results_sha256_before": "396611bd3f6f7aabbfc196c57e15baae25c1deeac168fe66b4074d3f885a5020",
+      "red_before_implementation": {
+        "checks": [
+          {
+            "command": [
+              "python3",
+              "-B",
+              "-m",
+              "unittest",
+              "-v",
+              "test_oracle.IndependentHistoryOracleTests.test_recovery_retains_every_durable_commit_and_abort_even_without_ack",
+              "test_oracle.IndependentHistoryOracleTests.test_local_commit_honors_prepared_mutation_and_read_locks",
+              "test_oracle.IndependentHistoryOracleTests.test_local_commit_checks_logical_bucket_epochs_after_move",
+              "test_oracle.IndependentHistoryOracleTests.test_local_commit_routes_and_fences_full_key_and_range_read_footprint",
+              "test_oracle.IndependentHistoryOracleTests.test_local_historical_write_requires_revalidation"
+            ],
+            "cwd": "protocol",
+            "exit": 1,
+            "failures": 16,
+            "result": "regressions fail before oracle/model implementation edits",
+            "tests": 5
+          },
+          {
+            "command": [
+              "python3",
+              "-B",
+              "-m",
+              "unittest",
+              "-v",
+              "test_reference_model.ReferenceTests.test_life_bound_presence_corrections_verify_original_endpoint_lives"
+            ],
+            "cwd": "temporal",
+            "exit": 1,
+            "failures": 1,
+            "result": "regressions fail before oracle/model implementation edits",
+            "tests": 1
+          }
+        ],
+        "scope": "test-first correction evidence; no production or phase acceptance",
+        "source_sha256_before_implementation": {
+          "protocol/oracle.py": "e79ffbbbd45d0929289a076d25de6196891424cc5420eb04cd12acece6d06231",
+          "protocol/test_oracle.py": "e741baa1a1485d84cb51077da1ba4cde1a334f357bc5fdbe27aee2a428165950",
+          "temporal/reference_model.py": "680593dccd1b2150c647133f17ce05d14d16b1562e26e4f370e77d3cc453c8b6",
+          "temporal/test_reference_model.py": "73854402da1db870a2aa749d8263d4dc601a934b6c246039b451bcec433e48af"
+        }
+      },
+      "revision": 1,
+      "scope": "Four confirmed independent oracle/model corrections in an isolated copy; no canonical or production edits and no V0/V1/V2 acceptance.",
+      "sources_sha256_after": {
+        "README.md": "abc61d4b906328fceed3048723c1ad860d832b363d326dc27e2379695d4a4170",
+        "check.py": "1868b5545cfc3e495ac8291c4241776082d8d662d36db76885b941138ec93158",
+        "protocol/corpus.py": "cd349fe912ba0c2f60f31b3d77d6715c3df2b8639584fead6faf6d3ea48b2675",
+        "protocol/oracle.py": "a132b4e4981f3dcea485b7ee5dea0df48a906cdfcda4a75bec5ff9f1a5589d3a",
+        "protocol/test_oracle.py": "e741baa1a1485d84cb51077da1ba4cde1a334f357bc5fdbe27aee2a428165950",
+        "temporal/generate_corpus.py": "737166ad789f4aa583ae8cecd3f86d50c8b4417723e3432f830d3b10b90a1e9e",
+        "temporal/reference_model.py": "863390e7b81c11d8e4ea28749c159c840321358211797bc9ff39cc658ba19ab3",
+        "temporal/test_reference_model.py": "73854402da1db870a2aa749d8263d4dc601a934b6c246039b451bcec433e48af"
+      },
+      "sources_sha256_before": {
+        "README.md": "7515599737067a9af4e6d48a03559f45052fad78b47ef9d90299bb71b86d15a7",
+        "check.py": "8539b5e5492a53be7a813cd7270dd15faab87d3077509d65262ddde489592ae6",
+        "protocol/corpus.py": "40c81f53c2dd2f6a14922922edd470c80387d5ab4bc9ffd1b535d594bdbf3268",
+        "protocol/oracle.py": "e79ffbbbd45d0929289a076d25de6196891424cc5420eb04cd12acece6d06231",
+        "protocol/test_oracle.py": "6332e3d92b54cfab18610a8a89195c4ee088445557494f40f62dcfc5cfdd0e94",
+        "temporal/generate_corpus.py": "0d5c12935e2df139b8f4ea9f88afe5dbf5ac3fdb0f60b4a626eda4185f58996a",
+        "temporal/reference_model.py": "680593dccd1b2150c647133f17ce05d14d16b1562e26e4f370e77d3cc453c8b6",
+        "temporal/test_reference_model.py": "1c8e4657c5c47f9cbe25f8a29ab791a5a1b7e26d45cfab2f2c44dfca7848cdea"
+      }
+    }
+  ],
+  "reviewed_regression_artifacts": {
+    "canonical_go_application_performed_by_packaging_agent": false,
+    "canonical_integration_record": "regressions/canonical-integration.json",
+    "graph_source_verification_sha256": "7b162de8b8d6a6e4b2a5ba82dab1eac8e6924063a9ec8ea06893d9ccd5767d9f",
+    "host_source_validation_sha256": "051759bd7744e75264921def3c1b70d10251edf0c6ab3c0653dfcfdbe079762c",
+    "idalloc_source_validation_sha256": "a239ed1d19a80048cc8b5b9d13d276c6a1233be13097203074554f7259f7d8a0",
+    "index": "regressions/regression-index.json",
+    "replica_input_source_validation_sha256": "e5d5da48f0ffad8790ceebe8f8c097b383d625eca39fefee9facdd742740fe17"
+  },
+  "schema_version": 1,
+  "sources": {
+    "protocol/corpus.py": {
+      "integration_change": "none; byte-identical",
+      "reviewed_source_sha256": "40c81f53c2dd2f6a14922922edd470c80387d5ab4bc9ffd1b535d594bdbf3268"
+    },
+    "protocol/oracle.py": {
+      "integration_change": "canonical JSON-content ordering of returned violations only; acceptance and checks unchanged",
+      "reviewed_source_sha256": "37500d0f277926c8a0a93ef4a66e4b9930d14f006d601f970f5bd311978cd817"
+    },
+    "protocol/test_oracle.py": {
+      "integration_change": "none; byte-identical",
+      "reviewed_source_sha256": "6332e3d92b54cfab18610a8a89195c4ee088445557494f40f62dcfc5cfdd0e94"
+    },
+    "temporal/generate_corpus.py": {
+      "integration_change": "location-relative historical fixture default and optional --fixture; module description; reviewed corpus revision 2 isolates missing-target failure and records correction",
+      "reviewed_source_sha256": "4e5a7a1009234071d01aa4a7b795a61f4a968d44951df06ef923ef7dde50c8da"
+    },
+    "temporal/reference_model.py": {
+      "integration_change": "none; byte-identical",
+      "reviewed_source_sha256": "680593dccd1b2150c647133f17ce05d14d16b1562e26e4f370e77d3cc453c8b6"
+    },
+    "temporal/test_reference_model.py": {
+      "integration_change": "reviewed corpus revision 2 adds atomic current/earlier snapshot nonmutation assertions; initial reviewed source hash retained",
+      "reviewed_source_sha256": "7960da9e8412c14a84df694ffe0faebbde03a4974a2bbb805a54f74f58487214"
+    }
+  }
+}

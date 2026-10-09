@@ -1,0 +1,90 @@
+{
+  "epochs": {
+    "A": 1,
+    "B": 2
+  },
+  "events": [
+    {
+      "epoch": 1,
+      "kind": "local_commit",
+      "position": 1,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "round": 5,
+      "tx": "local"
+    },
+    {
+      "kind": "final",
+      "scope": [
+        "A",
+        "B"
+      ],
+      "values": {
+        "A/x": 1,
+        "B/y": 0
+      }
+    }
+  ],
+  "groups": {
+    "A": [
+      "A1",
+      "A2",
+      "A3"
+    ],
+    "B": [
+      "B1",
+      "B2",
+      "B3"
+    ]
+  },
+  "initial": {
+    "B/y": 0
+  },
+  "name": "local-full-key-read-bucket-footprint",
+  "observation": {
+    "assumption": "All accepted durable group transitions are captured through certificate watermarks; absence of an event alone is not evidence.",
+    "client_reads_complete": true,
+    "durable_events_complete": true,
+    "groups": [
+      "A",
+      "B"
+    ]
+  },
+  "ownership": {
+    "A": "A",
+    "B": "A"
+  },
+  "schema_version": 1,
+  "topology": 1,
+  "transactions": {
+    "local": {
+      "coordinator": "A",
+      "epochs": {
+        "A": 1,
+        "B": 2
+      },
+      "historical": false,
+      "ids": [],
+      "participants": [
+        "A"
+      ],
+      "reads": [
+        {
+          "exists": true,
+          "key": "B/y",
+          "kind": "key",
+          "value": 0
+        }
+      ],
+      "request_key": "request",
+      "writes": {
+        "A/x": {
+          "op": "put",
+          "value": 1
+        }
+      }
+    }
+  }
+}

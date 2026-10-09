@@ -1,0 +1,901 @@
+{
+  "assertions": 52,
+  "cases": 16,
+  "default_codec_units": "int64 milliseconds",
+  "normalization": "Explicit us/1000; integral Z can refuse nonintegral ms; dense Q preserves exact fractions.",
+  "outcomes": [
+    {
+      "case": "SEM01",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {
+              "country": "Austria"
+            }
+          }
+        }
+      },
+      "step": 2
+    },
+    {
+      "case": "SEM01",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {
+              "country": "Austria"
+            }
+          }
+        }
+      },
+      "step": 3
+    },
+    {
+      "case": "SEM01",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {
+              "country": "Germany"
+            }
+          }
+        }
+      },
+      "step": 4
+    },
+    {
+      "case": "SEM01",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {
+              "country": "Germany"
+            }
+          }
+        }
+      },
+      "step": 5
+    },
+    {
+      "case": "SEM02",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {
+              "country": "Austria"
+            }
+          }
+        }
+      },
+      "step": 3
+    },
+    {
+      "case": "SEM02",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {
+              "country": "Germany"
+            }
+          }
+        }
+      },
+      "step": 4
+    },
+    {
+      "case": "SEM02",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {
+              "country": "Austria"
+            }
+          }
+        }
+      },
+      "step": 5
+    },
+    {
+      "case": "SEM02",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {
+              "country": "Netherlands"
+            }
+          }
+        }
+      },
+      "step": 6
+    },
+    {
+      "case": "SEM02",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {
+              "country": "Austria"
+            }
+          }
+        }
+      },
+      "step": 7
+    },
+    {
+      "case": "SEM03",
+      "projection": {
+        "edges": {
+          "E": {
+            "life": 1,
+            "properties": {},
+            "source": "A",
+            "target": "B",
+            "type": "LINK"
+          }
+        },
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          },
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 2
+    },
+    {
+      "case": "SEM03",
+      "projection": {
+        "edges": {
+          "E": {
+            "life": 1,
+            "properties": {
+              "weight": 1
+            },
+            "source": "A",
+            "target": "B",
+            "type": "LINK"
+          }
+        },
+        "nodes": {
+          "A": {
+            "labels": [
+              "Person"
+            ],
+            "life": 1,
+            "properties": {
+              "name": "Ada"
+            }
+          },
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 3
+    },
+    {
+      "case": "SEM04",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 4
+    },
+    {
+      "case": "SEM04",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 2,
+            "properties": {}
+          },
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 5
+    },
+    {
+      "case": "SEM04",
+      "projection": {
+        "edges": {
+          "E": {
+            "life": 1,
+            "properties": {},
+            "source": "A",
+            "target": "B",
+            "type": "LINK"
+          }
+        },
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {
+              "country": "Austria"
+            }
+          },
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 6
+    },
+    {
+      "case": "SEM04",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 2,
+            "properties": {}
+          },
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 7
+    },
+    {
+      "case": "SEM04",
+      "projection": {
+        "edges": {
+          "E": {
+            "life": 1,
+            "properties": {},
+            "source": "A",
+            "target": "B",
+            "type": "LINK"
+          }
+        },
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {
+              "country": "Austria"
+            }
+          },
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 8
+    },
+    {
+      "case": "SEM05",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          },
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 2
+    },
+    {
+      "case": "SEM05",
+      "projection": {
+        "edges": {
+          "E": {
+            "life": 1,
+            "properties": {},
+            "source": "A",
+            "target": "B",
+            "type": "LINK"
+          }
+        },
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          },
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 3
+    },
+    {
+      "case": "SEM06",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 4
+    },
+    {
+      "case": "SEM06",
+      "projection": {
+        "edges": {
+          "E": {
+            "life": 1,
+            "properties": {
+              "weight": 7
+            },
+            "source": "A",
+            "target": "B",
+            "type": "LINK"
+          }
+        },
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          },
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 5
+    },
+    {
+      "case": "SEM06",
+      "projection": {
+        "edges": {
+          "E": {
+            "life": 1,
+            "properties": {
+              "weight": 1
+            },
+            "source": "A",
+            "target": "B",
+            "type": "LINK"
+          }
+        },
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          },
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 6
+    },
+    {
+      "case": "SEM07",
+      "projection": {
+        "edges": {
+          "E1": {
+            "life": 1,
+            "properties": {},
+            "source": "A",
+            "target": "B",
+            "type": "LINK"
+          },
+          "E2": {
+            "life": 1,
+            "properties": {},
+            "source": "A",
+            "target": "B",
+            "type": "LINK"
+          }
+        },
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          },
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 2
+    },
+    {
+      "case": "SEM07",
+      "projection": {
+        "edges": {
+          "E2": {
+            "life": 1,
+            "properties": {},
+            "source": "A",
+            "target": "B",
+            "type": "LINK"
+          }
+        },
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          },
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 3
+    },
+    {
+      "case": "SEM08",
+      "error": "NOT_FOUND",
+      "step": 1
+    },
+    {
+      "case": "SEM08",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {
+              "country": "Austria"
+            }
+          }
+        }
+      },
+      "step": 2
+    },
+    {
+      "case": "SEM09",
+      "error": "INVALID_INTERVAL",
+      "step": 1
+    },
+    {
+      "case": "SEM09",
+      "error": "VALIDITY_REQUIRED",
+      "step": 2
+    },
+    {
+      "case": "SEM09",
+      "error": "TYPE_MISMATCH",
+      "step": 3
+    },
+    {
+      "case": "SEM09",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 4
+    },
+    {
+      "case": "SEM10",
+      "error": "LIFECYCLE_OVERLAP",
+      "step": 1
+    },
+    {
+      "case": "SEM10",
+      "error": "LIFECYCLE_OVERLAP",
+      "step": 4
+    },
+    {
+      "case": "SEM10",
+      "projection": {
+        "edges": {},
+        "nodes": {}
+      },
+      "step": 5
+    },
+    {
+      "case": "SEM10",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 2,
+            "properties": {}
+          }
+        }
+      },
+      "step": 6
+    },
+    {
+      "case": "SEM11",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {
+              "citizenship": [
+                "Austrian",
+                "German"
+              ]
+            }
+          }
+        }
+      },
+      "step": 3
+    },
+    {
+      "case": "SEM11",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {
+              "citizenship": [
+                "German"
+              ]
+            }
+          }
+        }
+      },
+      "step": 4
+    },
+    {
+      "case": "SEM11",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {
+              "citizenship": [
+                "Austrian",
+                "German"
+              ]
+            }
+          }
+        }
+      },
+      "step": 5
+    },
+    {
+      "case": "SEM11",
+      "error": "TYPE_MISMATCH",
+      "step": 6
+    },
+    {
+      "case": "SEM12",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {
+              "name": null
+            }
+          }
+        }
+      },
+      "step": 2
+    },
+    {
+      "case": "SEM12",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 3
+    },
+    {
+      "case": "SEM12",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {
+              "name": null
+            }
+          }
+        }
+      },
+      "step": 4
+    },
+    {
+      "case": "SEM13",
+      "error": "UNIQUE_OVERLAP",
+      "step": 3
+    },
+    {
+      "case": "SEM13",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {
+              "email": "x@example.test"
+            }
+          }
+        }
+      },
+      "step": 4
+    },
+    {
+      "case": "SEM13",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {
+              "email": "x@example.test"
+            }
+          }
+        }
+      },
+      "step": 5
+    },
+    {
+      "case": "SEM14",
+      "projection": {
+        "edges": {
+          "E1": {
+            "life": 1,
+            "properties": {},
+            "source": "A",
+            "target": "B",
+            "type": "LINK"
+          }
+        },
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          },
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          },
+          "C": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 1
+    },
+    {
+      "case": "SEM14",
+      "projection": {
+        "edges": {
+          "E2": {
+            "life": 1,
+            "properties": {},
+            "source": "B",
+            "target": "C",
+            "type": "LINK"
+          }
+        },
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          },
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          },
+          "C": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 2
+    },
+    {
+      "case": "SEM15",
+      "error": "OWNER_VALIDITY",
+      "step": 2
+    },
+    {
+      "case": "SEM15",
+      "projection": {
+        "edges": {
+          "E": {
+            "life": 1,
+            "properties": {},
+            "source": "A",
+            "target": "B",
+            "type": "LINK"
+          }
+        },
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          },
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 3
+    },
+    {
+      "case": "SEM15",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 4
+    },
+    {
+      "case": "SEM15",
+      "projection": {
+        "edges": {
+          "E": {
+            "life": 1,
+            "properties": {},
+            "source": "A",
+            "target": "B",
+            "type": "LINK"
+          }
+        },
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          },
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 5
+    },
+    {
+      "case": "SEM16",
+      "error": "OWNER_VALIDITY",
+      "step": 1
+    },
+    {
+      "case": "SEM16",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "A": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 2
+    },
+    {
+      "case": "SEM16",
+      "projection": {
+        "edges": {},
+        "nodes": {
+          "B": {
+            "labels": [],
+            "life": 1,
+            "properties": {}
+          }
+        }
+      },
+      "step": 3
+    }
+  ],
+  "schema": "rho-v5-independent-historical-parity",
+  "source_sha256": "0598d593bd39ccf95ea2737bb55b0358631cfc6009a03f35b8f39101a7a4f6f2",
+  "source_units": "integer UTC microsecond test instants",
+  "version": 1
+}

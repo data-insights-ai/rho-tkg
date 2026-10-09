@@ -1,0 +1,96 @@
+{
+  "epochs": {
+    "A": 1,
+    "B": 1
+  },
+  "events": [
+    {
+      "bucket": "A",
+      "floor": 0,
+      "from": "A",
+      "group": "A",
+      "installed": [],
+      "kind": "transfer",
+      "new_epoch": 2,
+      "old_epoch": 1,
+      "position": 1,
+      "prepared": [],
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "retained_lineage": true,
+      "target_replicas": [
+        "B1",
+        "B2"
+      ],
+      "to": "B"
+    },
+    {
+      "epoch": 1,
+      "kind": "local_commit",
+      "position": 2,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "round": 5,
+      "tx": "local"
+    },
+    {
+      "kind": "final",
+      "scope": [
+        "A"
+      ],
+      "values": {
+        "A/x": 1
+      }
+    }
+  ],
+  "groups": {
+    "A": [
+      "A1",
+      "A2",
+      "A3"
+    ],
+    "B": [
+      "B1",
+      "B2",
+      "B3"
+    ]
+  },
+  "initial": {},
+  "name": "weak-local-after-move-stale-logical-bucket-epoch",
+  "observation": {
+    "assumption": "All accepted durable group transitions are captured through certificate watermarks; absence of an event alone is not evidence.",
+    "client_reads_complete": true,
+    "durable_events_complete": true,
+    "groups": [
+      "A",
+      "B"
+    ]
+  },
+  "schema_version": 1,
+  "topology": 1,
+  "transactions": {
+    "local": {
+      "coordinator": "B",
+      "epochs": {
+        "A": 1
+      },
+      "historical": false,
+      "ids": [],
+      "participants": [
+        "B"
+      ],
+      "reads": [],
+      "request_key": "request",
+      "writes": {
+        "A/x": {
+          "op": "put",
+          "value": 1
+        }
+      }
+    }
+  }
+}

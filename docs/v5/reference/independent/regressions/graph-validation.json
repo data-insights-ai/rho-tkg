@@ -1,0 +1,116 @@
+{
+  "atomic_refusal": {
+    "empty_dependencies": true,
+    "empty_entities": true,
+    "empty_lives": true,
+    "empty_patches": true,
+    "empty_values": true,
+    "unchanged_source_view": true
+  },
+  "baseline_pin_kind": "captured source-tree SHA-256 prefix, not a Git commit",
+  "baseline_source_head": "6ef233c19acb38d11a6cf82350f833208b345eaf",
+  "baseline_source_pin": "118b1a6513bdc646",
+  "baseline_source_sha256": {
+    "internal/graphstate/limits.go": "f7e9c2ee3de6330d1dd6e5d5d2aefc30855a37cf5c954c2cd4c6c3dbd9b4839d",
+    "internal/graphstate/planner.go": "3355843ae00d29deed7ae9d60cdde40372a1e133a9fc8bbddd5bf8e156b039cc",
+    "internal/graphstate/project.go": "feded08e3886dd8c1d8d729e661accc113ac68a12643c06fce8db160585cadd2",
+    "internal/graphstate/reader.go": "d6db84f2c3577416b7d7a731b40256c6f9b98682d68c5c0d8a2aaa4f0d532259",
+    "internal/graphstate/value.go": "b3fef2cdc32638d146cf66faa3f5755e9764074725fa7df41581bbbfd808452e"
+  },
+  "baseline_source_tree_sha256": "118b1a6513bdc6460318f460c976319a8820187aca8ec0ca6ba2d14011fc240d",
+  "candidate_patch_application_to_integrated_source": "do not apply",
+  "canonical_application_performed": false,
+  "canonical_integration_record": "canonical-integration.json",
+  "case_status": {
+    "missing_required_integration": 17,
+    "model_only_policy_or_declarative": 4,
+    "supported": 20
+  },
+  "clean_stock_and_bundled_tests": "passed",
+  "command_path_normalization": "Coverage destinations replaced with relative module-local graphstate.coverage.out; Go arguments and package scope otherwise unchanged.",
+  "commands": [
+    {
+      "command": [
+        "go",
+        "test",
+        "./internal/graphstate",
+        "-count=1",
+        "-coverprofile=graphstate.coverage.out"
+      ],
+      "cwd": "v5",
+      "exit": 0,
+      "toolchain": "go1.26.9",
+      "workspace_mode": "off"
+    },
+    {
+      "command": [
+        "go",
+        "test",
+        "-race",
+        "./internal/graphstate",
+        "-count=1"
+      ],
+      "cwd": "v5",
+      "exit": 0,
+      "toolchain": "go1.26.9",
+      "workspace_mode": "off"
+    },
+    {
+      "command": [
+        "go",
+        "vet",
+        "./internal/graphstate"
+      ],
+      "cwd": "v5",
+      "exit": 0,
+      "toolchain": "go1.26.9",
+      "workspace_mode": "off"
+    },
+    {
+      "command": [
+        "go",
+        "tool",
+        "cover",
+        "-func=graphstate.coverage.out"
+      ],
+      "cwd": "v5",
+      "exit": 0,
+      "toolchain": "go1.26.9",
+      "workspace_mode": "off"
+    }
+  ],
+  "compatibility": "Prototype ValueRef declared size includes complete retained scalar metadata after this patch; equality-key bytes remain unchanged. Persistent payload-handle interpretation needs canonical owner review.",
+  "coverage_percent": 84.0,
+  "exact_regression_condition": {
+    "axis_reference_bytes": 32000,
+    "budget_bytes": 8192,
+    "budget_fields": [
+      "MaxReadBytes",
+      "MaxDeltaBytes"
+    ]
+  },
+  "fixed_source_sha256": {
+    "internal/graphstate/limits.go": "79a005045477046658831da8d3452ecbfd1f6b1acfe70ce79cccbbb02d9cd0ee",
+    "internal/graphstate/planner.go": "8c8fe5166ec1a11c54a3eb52a627fbfc6b73040a4a3702646ab1d1e46e36dbbc",
+    "internal/graphstate/project.go": "eac2eb5a71f66129e42df47ccf671a8d4a3faae7910ba325db94f86cdb7f80f8",
+    "internal/graphstate/reader.go": "5c30bf93249b67f26e445a9295d9b43aec3caaebe801d1d676f4dd792ca649a3",
+    "internal/graphstate/scalar_scope_budget_regression_test.go": "5702613fbfcb44655c9ec3e82a2f0289d037217ae380f167ca76144266fa44d2",
+    "internal/graphstate/value.go": "d53e98fc51825db240217d7ec6820a58459d8183841ab044c5feb7a3d46f0757"
+  },
+  "historical_corpus": {
+    "assertions": 52,
+    "cases": 16,
+    "fixture_sha256": "0598d593bd39ccf95ea2737bb55b0358631cfc6009a03f35b8f39101a7a4f6f2",
+    "unchanged": true
+  },
+  "live_integration": "condition resolved in committed implementation e5712e1651ee22ca142b5978d400649d8e0f5744",
+  "patch_sha256": "c25af08b43f0024f359827816baa0cdf11f3d5ad5238b01c17ed60aa8a6b44b3",
+  "proof_scope": "Clean isolated stock plus self-contained scalar-accounting regression tests; byte ledger policy, not measured heap/RSS or production capacity.",
+  "race": "passed",
+  "record_scope": "Historical isolated candidate validation; committed implementation differs.",
+  "schema_version": 1,
+  "source_verification_sha256": "7b162de8b8d6a6e4b2a5ba82dab1eac8e6924063a9ec8ea06893d9ccd5767d9f",
+  "toolchain": "go1.26.9",
+  "vet": "passed",
+  "whole41_case_integration_complete": false
+}

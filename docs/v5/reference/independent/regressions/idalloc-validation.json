@@ -1,0 +1,54 @@
+{
+  "baseline_commit": "6ef233c19acb38d11a6cf82350f833208b345eaf",
+  "baseline_commit_evidence": "Packaging independently matched all six supplied baseline hashes to this commit; source validation did not record a commit.",
+  "baseline_source_sha256": {
+    "go.mod": "5016e0aea752ee5ff6fc4e22de916cbc1bdfdb23ade193642c2b449d1a6d74a2",
+    "go.sum": "5679a7aa94d5ee71f5737dea65a4fa71ed69109c45b877b1dd1639ae5e6e60f0",
+    "internal/idalloc/allocator.go": "b820450ff3aeaeee4931bb37f92e0a39c975d38b0c0fb4c62c9ba896bf5f2c4d",
+    "internal/idalloc/allocator_test.go": "14d835f8ee39fc2a571fb17f7e555daecb8e6fc1e60ea22ad107cedab90cf455",
+    "internal/idalloc/checkpoint.go": "1964c3af5e46bec632ddb4c21020c39c939684fd70f6d10bb6e3c4f5462baa93",
+    "internal/idalloc/checkpoint_test.go": "67f5892851e0da9d457481f1d196fae6cfafaf5f7c0b3f97493b84b7316e6590"
+  },
+  "candidate_patch_application_to_integrated_source": "do not apply",
+  "canonical_application_performed": false,
+  "canonical_integration_record": "canonical-integration.json",
+  "coverage_boundary": "99.3 percent includes the extra independent review suite, whose snapshot source is not bundled in this three-file clean patch.",
+  "coverage_percent": 99.3,
+  "fixed_source_sha256": {
+    "internal/idalloc/allocator.go": "5812aee41c7d75c2d89dbe2af29424c2726db399f96e4438a46d86c316536e17",
+    "internal/idalloc/allocator_test.go": "b30afd8c175eac08afd192233f2b756e8f54ceb0336acb878a13bee5929235fb",
+    "internal/idalloc/checkpoint.go": "1964c3af5e46bec632ddb4c21020c39c939684fd70f6d10bb6e3c4f5462baa93",
+    "internal/idalloc/checkpoint_receipt_floor_test.go": "24a7be4d59b2e87b2078f6da5c5252fdff5093fa7a140123cdd462606fbad9df",
+    "internal/idalloc/checkpoint_test.go": "67f5892851e0da9d457481f1d196fae6cfafaf5f7c0b3f97493b84b7316e6590",
+    "internal/idalloc/independent_review_test.go": "0362652d6f87faf69f240475f3673d5a58ceb05221751a42bab4df549921a06a"
+  },
+  "live_integration": "condition resolved in committed implementation e5712e1651ee22ca142b5978d400649d8e0f5744",
+  "no_assertions_removed_or_weakened": true,
+  "original_and_independent_race": "pass",
+  "original_and_independent_unit": "pass",
+  "patch_sha256": "dccdeba2e09bdccfdd6f0227d74b13042c51fbd8b6b0f172848ff0f304788ac0",
+  "public_methods_zero_coverage": 0,
+  "record_scope": "Historical isolated candidate validation; committed implementation differs.",
+  "schema_version": 1,
+  "scope": "isolated ready-to-integrate primitive fix; distributed issuance remains pending",
+  "source_apply_check": "pass against current canonical worktree, read-only",
+  "source_validation_sha256": "a239ed1d19a80048cc8b5b9d13d276c6a1233be13097203074554f7259f7d8a0",
+  "toolchain": "go1.26.9",
+  "uncovered_code": "Reserve final-sequence exhaustion branch is unreachable for a validated uint64 request after earlier ordering/replay checks; no artificial invalid state used to force it",
+  "verification_commands": [
+    {
+      "command": "GOTOOLCHAIN=go1.26.9 go test -count=1 -coverprofile=idalloc.cover.out ./internal/idalloc",
+      "cwd": "v5"
+    },
+    {
+      "command": "GOTOOLCHAIN=go1.26.9 go test -race -count=1 ./internal/idalloc",
+      "cwd": "v5"
+    },
+    {
+      "command": "GOTOOLCHAIN=go1.26.9 go vet ./internal/idalloc",
+      "cwd": "v5"
+    }
+  ],
+  "verification_commands_kind": "portable reproduction commands; exact shell invocations were not preserved in supplied validation",
+  "vet": "pass"
+}

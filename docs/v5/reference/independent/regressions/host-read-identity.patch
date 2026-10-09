@@ -1,0 +1,376 @@
+diff --git a/v5/internal/txnproto/host.go b/v5/internal/txnproto/host.go
+--- a/v5/internal/txnproto/host.go
++++ b/v5/internal/txnproto/host.go
+@@ -1,7 +1,9 @@
+ package txnproto
+ 
+ import (
++	"crypto/rand"
+ 	"encoding/json"
++	"math"
+ 	"sync"
+ 	"unicode/utf8"
+ 
+@@ -9,8 +11,23 @@
+ 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
+ )
+ 
++// ReadID identifies one Host.Read operation. Session changes on OpenHost;
++// Sequence distinguishes attempts only within that session. Neither field is a TxID,
++// commit round, database cut, or source-causality coordinate.
++type ReadID struct {
++	Session  [16]byte
++	Sequence uint64
++}
++
++type readRequest struct {
++	Version uint8
++	ID      ReadID
++	Query   Query
++}
++
+ // Reply is either authoritative request-bound evidence or explicit unavailability.
+ type Reply struct {
++	ID    ReadID
+ 	Query Query
+ 	Proof Proof
+ 	Err   error
+@@ -19,6 +36,9 @@
+ // Event owns consensus traffic and completed authoritative application reads.
+ // Submit acceptance and Applied progress are never transaction acknowledgements.
+ type Event struct {
++	// ID is set only when this Event accepts a new Host.Read operation. Tick/Step
++	// completions carry their originating ID on each Reply instead.
++	ID      ReadID
+ 	Packets []replica.Packet
+ 	Replies []Reply
+ }
+@@ -28,13 +48,22 @@
+ // Embedding transport must authenticate group/peer identity under the crash-only
+ // model. These opaque in-process capabilities are not Byzantine signatures.
+ type Host struct {
+-	mu      sync.Mutex
+-	driver  *replica.Driver
+-	machine *Machine
++	mu           sync.Mutex
++	driver       *replica.Driver
++	machine      *Machine
++	readSession  [16]byte
++	readSequence uint64
+ }
+ 
+ // OpenHost attaches the protocol to an already initialized durable replica store.
+ func OpenHost(c Config, s *raftlog.Store, id uint64) (*Host, error) {
++	var session [16]byte
++	if _, err := rand.Read(session[:]); err != nil {
++		return nil, err
++	}
++	if session == [16]byte{} {
++		return nil, ErrUnavailable
++	}
+ 	m, err := New(c)
+ 	if err != nil {
+ 		return nil, err
+@@ -43,7 +72,7 @@
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	return &Host{driver: d, machine: m}, nil
++	return &Host{driver: d, machine: m, readSession: session}, nil
+ }
+ func (h *Host) event(out replica.Output, err error) (Event, error) {
+ 	if err != nil {
+@@ -52,10 +81,11 @@
+ 	e := Event{Packets: out.Packets}
+ 	proofBytes := 0
+ 	for _, r := range out.Reads {
+-		q, err := decode[Query](r.Context, 1024)
+-		if err != nil || r.Index > out.Applied || h.driver.Applied() < r.Index {
++		request, err := decode[readRequest](r.Context, 1024)
++		if err != nil || request.Version != 1 || request.ID.Session != h.readSession || request.ID.Sequence == 0 || request.ID.Sequence > h.readSequence || checkQuery(request.Query) != nil || r.Index > out.Applied || h.driver.Applied() < r.Index {
+ 			return Event{}, ErrInvalid
+ 		}
++		q := request.Query
+ 		v, err := h.machine.answer(q, out.Applied)
+ 		if err == nil {
+ 			b, _ := json.Marshal(v)
+@@ -65,7 +95,7 @@
+ 				proofBytes += len(b)
+ 			}
+ 		}
+-		reply := Reply{Query: q, Err: err}
++		reply := Reply{ID: request.ID, Query: q, Err: err}
+ 		if err == nil {
+ 			reply.Proof = Proof{v}
+ 		}
+@@ -132,6 +162,10 @@
+ // Read requests a leader-only, request-bound quorum barrier. No returned Reply
+ // until Driver.ReadIndex has completed AND the barrier is applied. Quorum loss
+ // returns/preserves unavailability; a caller cannot assert a quorum boolean.
++// Every call starts a distinct operation, even for an identical Query. Event.ID
++// correlates later Reply.ID completions. New attempts never reuse an earlier
++// quorum barrier. Driver admission bounds outstanding contexts to 32/32 KiB.
++// Overflow declines new operations until a new Host session is opened.
+ func (h *Host) Read(q Query) (Event, error) {
+ 	if h == nil {
+ 		return Event{}, ErrInvalid
+@@ -141,9 +175,19 @@
+ 	if err := checkQuery(q); err != nil {
+ 		return Event{}, err
+ 	}
+-	b, _ := json.Marshal(q)
++	if h.readSequence == math.MaxUint64 {
++		return Event{}, ErrLimit
++	}
++	h.readSequence++
++	id := ReadID{Session: h.readSession, Sequence: h.readSequence}
++	b, _ := json.Marshal(readRequest{Version: 1, ID: id, Query: q})
+ 	o, e := h.driver.ReadIndex(b)
+-	return h.event(o, e)
++	event, err := h.event(o, e)
++	if err != nil {
++		return Event{}, err
++	}
++	event.ID = id
++	return event, nil
+ }
+ 
+ // SaveCheckpoint publishes the complete reducer image at the driver's applied
+diff --git a/v5/internal/txnproto/read_identity_test.go b/v5/internal/txnproto/read_identity_test.go
+new file mode 100644
+--- /dev/null
++++ b/v5/internal/txnproto/read_identity_test.go
+@@ -0,0 +1,233 @@
++package txnproto
++
++import (
++	"encoding/json"
++	"errors"
++	"math"
++	"testing"
++
++	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
++)
++
++func TestReadIdentityBoundsAndOverflow(t *testing.T) {
++	n := newNetwork(t)
++	n.drop[2], n.drop[3] = true, true
++	packets := []replica.Packet{}
++	ids := map[ReadID]bool{}
++	for range 32 {
++		event, err := n.hosts[1].Read(Query{Kind: Current})
++		if err != nil || event.ID == (ReadID{}) || ids[event.ID] || len(event.Replies) != 0 {
++			t.Fatalf("admission identity: %+v %v", event, err)
++		}
++		ids[event.ID] = true
++		packets = append(packets, event.Packets...)
++	}
++	event, err := n.hosts[1].Read(Query{Kind: Current})
++	if !errors.Is(err, replica.ErrLimit) || event.ID != (ReadID{}) {
++		t.Fatalf("unbounded new operation: %+v %v", event, err)
++	}
++	delete(n.drop, 2)
++	delete(n.drop, 3)
++	n.run(t, 1, Event{Packets: packets}, nil)
++	delivered := map[ReadID]bool{}
++	for _, reply := range n.replies[1] {
++		if reply.Err != nil || !ids[reply.ID] || delivered[reply.ID] {
++			t.Fatalf("unbound/duplicate completion: %+v", reply)
++		}
++		delivered[reply.ID] = true
++	}
++	if len(delivered) != 32 {
++		t.Fatalf("lost completions: %d", len(delivered))
++	}
++	n.hosts[1].readSequence = math.MaxUint64 - 1
++	last, lastErr := n.hosts[1].Read(Query{Kind: Current})
++	if lastErr != nil || last.ID.Sequence != math.MaxUint64 {
++		t.Fatal("last nonoverflowing identity rejected", last, lastErr)
++	}
++	n.run(t, 1, last, nil)
++	event, err = n.hosts[1].Read(Query{Kind: Current})
++	if !errors.Is(err, ErrLimit) || event.ID != (ReadID{}) {
++		t.Fatalf("sequence overflow: %+v %v", event, err)
++	}
++	var missing *Host
++	if event, err = missing.Read(Query{Kind: Current}); !errors.Is(err, ErrInvalid) || event.ID != (ReadID{}) {
++		t.Fatal(event, err)
++	}
++}
++
++func TestReadIdentityRestartRejectsGenuineDelayedResponse(t *testing.T) {
++	n := newNetwork(t)
++	first, err := n.hosts[1].Read(Query{Kind: Current})
++	if err != nil {
++		t.Fatal(err)
++	}
++	delayed := []replica.Packet{}
++	for _, packet := range first.Packets {
++		if packet.To != 2 && packet.To != 3 {
++			continue
++		}
++		event, err := n.hosts[packet.To].Step(packet)
++		if err != nil {
++			t.Fatal(err)
++		}
++		for _, response := range event.Packets {
++			if response.To == 1 {
++				delayed = append(delayed, response)
++			}
++		}
++	}
++	if len(delayed) == 0 {
++		t.Fatal("no genuine old response")
++	}
++	n.reopen(t, 1)
++	n.elect(t, 1)
++	second, err := n.hosts[1].Read(Query{Kind: Current})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if first.ID.Session == second.ID.Session || second.ID == (ReadID{}) {
++		t.Fatal("restart reused operation namespace")
++	}
++	for _, packet := range delayed {
++		event, err := n.hosts[1].Step(packet)
++		if err != nil {
++			t.Fatal(err)
++		}
++		for _, reply := range event.Replies {
++			if reply.ID == first.ID || reply.ID == second.ID {
++				t.Fatal("old response completed restarted operation", reply)
++			}
++		}
++	}
++	n.replies[1] = nil
++	n.run(t, 1, second, nil)
++	found := false
++	for _, reply := range n.replies[1] {
++		if reply.ID == second.ID {
++			if reply.Err != nil {
++				t.Fatal(reply.Err)
++			}
++			found = true
++		}
++	}
++	if !found {
++		t.Fatal("fresh restarted operation did not complete")
++	}
++}
++
++func TestReadEnvelopeCanonicalBoundsAndStaleIdentity(t *testing.T) {
++	n := newNetwork(t)
++	h := n.hosts[1]
++	initial := h.readSequence
++	if _, err := h.Read(Query{Kind: "invalid"}); !errors.Is(err, ErrInvalid) || h.readSequence != initial {
++		t.Fatal("invalid input consumed operation", err)
++	}
++	n.read(t, 1, Query{Kind: Current})
++	var worst [16]byte
++	for i := range worst {
++		worst[i] = 255
++	}
++	request := readRequest{Version: 1, ID: ReadID{Session: worst, Sequence: math.MaxUint64}, Query: Query{Kind: Registration, TxID: string(make([]byte, 128))}}
++	wire, err := json.Marshal(request)
++	if err != nil || len(wire) > 1024 {
++		t.Fatalf("legal envelope exceeds driver bound: %d %v", len(wire), err)
++	}
++	// Negative-only unit guard checks: no fabricated read can yield Proof. Actual
++	// authority/restart regressions above use genuine Host-produced packets.
++	index := h.driver.Applied()
++	for _, change := range []func(*readRequest){func(r *readRequest) { r.Version = 2 }, func(r *readRequest) { r.ID.Session = [16]byte{} }, func(r *readRequest) { r.ID.Sequence = 0 }, func(r *readRequest) { r.ID.Sequence = h.readSequence + 1 }} {
++		bad := readRequest{Version: 1, ID: ReadID{Session: h.readSession, Sequence: h.readSequence}, Query: Query{Kind: Current}}
++		change(&bad)
++		b, _ := json.Marshal(bad)
++		event, err := h.event(replica.Output{Applied: index, Reads: []replica.ReadResult{{Index: index, Context: b}}}, nil)
++		if !errors.Is(err, ErrInvalid) || len(event.Replies) != 0 {
++			t.Fatal("unowned stale read minted authority", event, err)
++		}
++	}
++}
++
++func TestReadIdentityConstructorRejectsMalformedConfig(t *testing.T) {
++	if host, err := OpenHost(Config{}, nil, 1); !errors.Is(err, ErrInvalid) || host != nil {
++		t.Fatalf("malformed config admitted host: %v %v", host, err)
++	}
++}
++
++// A second client asks the same question after a new leader acknowledged a
++// mutation. A held heartbeat reply for the first client's older read must not
++// satisfy the new client's request. Every held packet is produced by a real Host.
++func TestReadIdentityHeldOldReplyCannotCompleteLaterQuery(t *testing.T) {
++	n := newNetwork(t)
++	query := Query{Kind: Current}
++	first, err := n.hosts[1].Read(query)
++	if err != nil || len(first.Replies) != 0 || first.ID == (ReadID{}) {
++		t.Fatalf("first read fixture: %+v %v", first, err)
++	}
++	delayed := []replica.Packet{}
++	for _, packet := range first.Packets {
++		if packet.To != 2 && packet.To != 3 {
++			continue
++		}
++		event, err := n.hosts[packet.To].Step(packet)
++		if err != nil {
++			t.Fatal(err)
++		}
++		for _, response := range event.Packets {
++			if response.To == 1 {
++				delayed = append(delayed, response)
++			}
++		}
++	}
++	if len(delayed) == 0 {
++		t.Fatal("no genuine delayed first-read response")
++	}
++	n.drop[1] = true // Old leader remains paused; replicas2/3 elect another leader.
++	n.elect(t, 2)
++	mutation := tx("new-leader-write", 0, participant(0, 0, Effect{Key: "fresh", Value: 7}))
++	p, e := Local(mutation)
++	n.submit(t, 2, p, e)
++	acknowledged := n.read(t, 2, Query{Kind: Decided, TxID: mutation.ID})
++	if !acknowledged.View().Decision.Commit {
++		t.Fatal("new leader did not commit")
++	}
++	authoritativeNow := n.read(t, 2, query).View()
++	if authoritativeNow.State.Values["fresh"].Value != 7 {
++		t.Fatal("new-leader mutation missing")
++	}
++	// A distinct later read begins after that authoritative decision observation.
++	second, err := n.hosts[1].Read(query)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(second.Replies) != 0 {
++		t.Fatal("minority answered without a message")
++	}
++	if second.ID == (ReadID{}) || second.ID == first.ID {
++		t.Fatal("new operation reused first read identity")
++	}
++	completed, err := n.hosts[1].Step(delayed[0])
++	if err != nil {
++		t.Fatal(err)
++	}
++	firstCompletions := 0
++	for _, reply := range completed.Replies {
++		if reply.Query == query && reply.Err == nil {
++			view := reply.Proof.View()
++			if reply.ID == second.ID {
++				if value, exists := view.State.Values["fresh"]; !exists || value.Value != 7 {
++					t.Fatalf("new operation accepted earlier stale completion: %+v", view)
++				}
++			} else if reply.ID != first.ID {
++				t.Fatal("completion has no originating operation")
++			} else {
++				firstCompletions++
++				if len(view.State.Values) != 0 {
++					t.Fatal("first reply did not preserve pre-mutation observation", view)
++				}
++			}
++		}
++	}
++
++	if firstCompletions != 1 {
++		t.Fatalf("first operation completed %d times", firstCompletions)
++	}
++}

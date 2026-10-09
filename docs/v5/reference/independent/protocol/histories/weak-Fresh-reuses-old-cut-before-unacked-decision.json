@@ -1,0 +1,350 @@
+{
+  "epochs": {
+    "A": 1,
+    "B": 1
+  },
+  "events": [
+    {
+      "digest": "36dc85b5e7272c4e611279f2fd043df67de3b3844becdc444f8bd12cefb259f0",
+      "epochs": {
+        "A": 1
+      },
+      "kind": "register",
+      "participants": [
+        "A"
+      ],
+      "position": 1,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "digest": "36dc85b5e7272c4e611279f2fd043df67de3b3844becdc444f8bd12cefb259f0",
+      "epochs": {
+        "A": 1
+      },
+      "floor": 0,
+      "group": "A",
+      "kind": "prepare",
+      "position": 2,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "kind": "decision",
+      "outcome": "commit",
+      "position": 3,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "round": 10,
+      "tx": "t1"
+    },
+    {
+      "effects": {
+        "A/x": {
+          "op": "put",
+          "value": 1
+        }
+      },
+      "group": "A",
+      "kind": "install",
+      "position": 4,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "epoch": 1,
+      "group": "A",
+      "kind": "fence",
+      "position": 5,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "round": 20
+    },
+    {
+      "coverage": {
+        "A": {
+          "complete": true,
+          "prepared": [],
+          "through": 5
+        }
+      },
+      "cut": {
+        "id": "old",
+        "owners": {
+          "A": "A"
+        },
+        "round": 20,
+        "scope": [
+          "A"
+        ],
+        "topology": 1
+      },
+      "durable": {
+        "A": [
+          "A1",
+          "A2"
+        ]
+      },
+      "fence_events": {
+        "A": 4
+      },
+      "kind": "certify"
+    },
+    {
+      "digest": "d8fe41b94911c5e4d5d874c13c1cb4d97813a3d157b6d9a5c64208beb72f4425",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "kind": "register",
+      "participants": [
+        "A",
+        "B"
+      ],
+      "position": 1,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "digest": "d8fe41b94911c5e4d5d874c13c1cb4d97813a3d157b6d9a5c64208beb72f4425",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "floor": 20,
+      "group": "A",
+      "kind": "prepare",
+      "position": 6,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "digest": "d8fe41b94911c5e4d5d874c13c1cb4d97813a3d157b6d9a5c64208beb72f4425",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "floor": 0,
+      "group": "B",
+      "kind": "prepare",
+      "position": 2,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "kind": "decision",
+      "outcome": "commit",
+      "position": 3,
+      "replicas": [
+        "B1",
+        "B2"
+      ],
+      "round": 30,
+      "tx": "t2"
+    },
+    {
+      "kind": "drop",
+      "message": "decision-reply-to-client"
+    },
+    {
+      "id": "r",
+      "kind": "read_begin",
+      "scope": [
+        "A"
+      ]
+    },
+    {
+      "available": true,
+      "id": "collect",
+      "kind": "collect",
+      "quorums": {
+        "A": [
+          "A1",
+          "A2"
+        ],
+        "B": [
+          "B1",
+          "B2"
+        ]
+      },
+      "request": "r",
+      "scope": [
+        "A"
+      ]
+    },
+    {
+      "effects": {
+        "A/x": {
+          "op": "put",
+          "value": 2
+        }
+      },
+      "group": "A",
+      "kind": "install",
+      "position": 7,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "epoch": 1,
+      "group": "A",
+      "kind": "fence",
+      "position": 8,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "round": 40
+    },
+    {
+      "coverage": {
+        "A": {
+          "complete": true,
+          "prepared": [],
+          "through": 8
+        }
+      },
+      "cut": {
+        "id": "new",
+        "owners": {
+          "A": "A"
+        },
+        "round": 40,
+        "scope": [
+          "A"
+        ],
+        "topology": 1
+      },
+      "durable": {
+        "A": [
+          "A1",
+          "A2"
+        ]
+      },
+      "fence_events": {
+        "A": 14
+      },
+      "kind": "certify"
+    },
+    {
+      "collection": "collect",
+      "cut": "old",
+      "kind": "read",
+      "mode": "Fresh",
+      "scope": [
+        "A"
+      ],
+      "served_by": {
+        "A": "A"
+      },
+      "status": "ok",
+      "topology": 1,
+      "values": {
+        "A/x": 1
+      }
+    }
+  ],
+  "groups": {
+    "A": [
+      "A1",
+      "A2",
+      "A3"
+    ],
+    "B": [
+      "B1",
+      "B2",
+      "B3"
+    ]
+  },
+  "initial": {},
+  "name": "weak-Fresh-reuses-old-cut-before-unacked-decision",
+  "observation": {
+    "assumption": "All accepted durable group transitions are captured through certificate watermarks; absence of an event alone is not evidence.",
+    "client_reads_complete": true,
+    "durable_events_complete": true,
+    "groups": [
+      "A",
+      "B"
+    ]
+  },
+  "schema_version": 1,
+  "topology": 1,
+  "transactions": {
+    "t1": {
+      "coordinator": "A",
+      "epochs": {
+        "A": 1
+      },
+      "historical": false,
+      "ids": [],
+      "participants": [
+        "A"
+      ],
+      "reads": [],
+      "request_key": "request",
+      "writes": {
+        "A/x": {
+          "op": "put",
+          "value": 1
+        }
+      }
+    },
+    "t2": {
+      "coordinator": "B",
+      "epochs": {
+        "A": 1,
+        "B": 1
+      },
+      "historical": false,
+      "ids": [],
+      "participants": [
+        "A",
+        "B"
+      ],
+      "reads": [
+        {
+          "exists": true,
+          "key": "A/x",
+          "kind": "key",
+          "value": 1
+        }
+      ],
+      "request_key": "second",
+      "writes": {
+        "A/x": {
+          "op": "put",
+          "value": 2
+        },
+        "B/y": {
+          "op": "put",
+          "value": 2
+        }
+      }
+    }
+  }
+}

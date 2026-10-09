@@ -1,0 +1,121 @@
+--- a/v5/internal/idalloc/allocator.go
++++ b/v5/internal/idalloc/allocator.go
+@@ -152,7 +152,9 @@
+ 		return s.count == 0 && s.first == 0 && s.digest == ([32]byte{})
+ 	}
+ 	r := Request{Graph: s.graph, Authority: s.authority, Sequence: s.sequence, Count: s.count}
+-	return s.count <= s.maxBlock && (Reservation{Request: r, First: s.first, Last: s.high}).validFor(r) && s.digest == r.Digest()
++	// Each earlier successful request consumed at least one ID; a transfer
++	// restarts the sequence while preserving the allocation high-water.
++	return s.first >= s.sequence && s.count <= s.maxBlock && (Reservation{Request: r, First: s.first, Last: s.high}).validFor(r) && s.digest == r.Digest()
+ }
+ 
+ // Reserve computes a candidate next state and tentative block. replay is true
+--- a/v5/internal/idalloc/allocator_test.go
++++ b/v5/internal/idalloc/allocator_test.go
+@@ -470,13 +470,27 @@
+ 	requireError(t, err, ErrExhausted)
+ 	// Max request sequence cannot wrap into a fresh zero sequence.
+ 	s, r = fixture(t)
+-	r.Sequence = math.MaxUint64
+-	s.sequence = r.Sequence
+-	s.count = r.Count
+-	s.first = 1
+-	s.high = r.Count
++	// Summarize the reachable prefix of MaxUint64-1 one-ID reservations,
++	// then execute the actual final request instead of inventing a receipt.
++	r.Sequence = math.MaxUint64 - 1
++	r.Count = 1
++	s.sequence, s.count = r.Sequence, r.Count
++	s.first, s.high = r.Sequence, r.Sequence
+ 	s.digest = r.Digest()
+-	_, _, replay, err := Reserve(&s, r)
++	r.Sequence++
++	final, finalBlock, replay, err := Reserve(&s, r)
++	if err != nil || replay || finalBlock.First != math.MaxUint64 || finalBlock.Last != math.MaxUint64 || final.sequence != math.MaxUint64 {
++		t.Fatalf("final reservation=%+v state=%+v replay=%v error=%v", finalBlock, final, replay, err)
++	}
++	image, err := MarshalCheckpoint(&final)
++	if err != nil {
++		t.Fatal(err)
++	}
++	s, err = DecodeCheckpoint(image)
++	if err != nil {
++		t.Fatal(err)
++	}
++	_, _, replay, err = Reserve(&s, r)
+ 	if err != nil || !replay {
+ 		t.Fatal("final sequence replay failed")
+ 	}
+--- /dev/null
++++ b/v5/internal/idalloc/checkpoint_receipt_floor_test.go
+@@ -0,0 +1,69 @@
++package idalloc
++
++import (
++	"bytes"
++	"encoding/binary"
++	"errors"
++	"testing"
++)
++
++// CRC and request digest consistency cannot establish that a receipt could
++// result from the allocator's sequence of positive, contiguous reservations.
++func TestCheckpointReceiptRequiresAllocationFloor(t *testing.T) {
++	state, request := fixture(t)
++	request.Count = 1
++	state, _, _, err := Reserve(&state, request)
++	if err != nil {
++		t.Fatal(err)
++	}
++	valid, err := MarshalCheckpoint(&state)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, receipt := range []struct {
++		name                         string
++		sequence, first, high, count uint64
++	}{
++		{"sequence exceeds highwater", 2, 1, 1, 1},
++		{"sequence exceeds first but not highwater", 3, 2, 3, 2},
++	} {
++		t.Run(receipt.name, func(t *testing.T) {
++			invalid := state
++			invalid.sequence, invalid.first, invalid.high, invalid.count = receipt.sequence, receipt.first, receipt.high, receipt.count
++			r := request
++			r.Sequence, r.Count = receipt.sequence, receipt.count
++			invalid.digest = r.Digest()
++			if _, err := MarshalCheckpoint(&invalid); !errors.Is(err, ErrInvalid) {
++				t.Fatalf("MarshalCheckpoint accepted impossible receipt: %v", err)
++			}
++			image := bytes.Clone(valid)
++			binary.BigEndian.PutUint64(image[45:53], receipt.high)
++			binary.BigEndian.PutUint64(image[61:69], receipt.sequence)
++			binary.BigEndian.PutUint64(image[69:77], receipt.count)
++			binary.BigEndian.PutUint64(image[77:85], receipt.first)
++			copy(image[85:117], invalid.digest[:])
++			checksum(image)
++			if _, err := DecodeCheckpoint(image); !errors.Is(err, ErrCorrupt) {
++				t.Fatalf("DecodeCheckpoint accepted CRC/digest-valid impossible receipt: %v", err)
++			}
++		})
++	}
++	// A transferred authority resets sequence but retains every reserved ID;
++	// the floor guard must not reject its nonzero high-water initial receipt.
++	authority, err := NewAuthority([16]byte{3}, 2)
++	if err != nil {
++		t.Fatal(err)
++	}
++	transferred, err := Transfer(&state, request.Authority, authority)
++	if err != nil {
++		t.Fatal(err)
++	}
++	image, err := MarshalCheckpoint(&transferred)
++	if err != nil {
++		t.Fatal(err)
++	}
++	restored, err := DecodeCheckpoint(image)
++	if err != nil || restored.high != 1 || restored.sequence != 0 {
++		t.Fatal(restored, err)
++	}
++}

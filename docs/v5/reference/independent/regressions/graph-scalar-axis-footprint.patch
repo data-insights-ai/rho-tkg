@@ -1,0 +1,416 @@
+--- a/v5/internal/graphstate/limits.go
++++ b/v5/internal/graphstate/limits.go
+@@ -11,6 +11,9 @@
+ // Byte ledgers count conservative fixed record headers, variable names, canonical
+ // scopes/values and axis definitions. They are not Go heap/RSS measurements;
+ // embedding storage independently budgets decoded pages and referenced payloads.
++// MaxReadBytes also independently bounds the aggregate supplied scalar inputs.
++// Full scope-axis definitions are charged per scalar occurrence; no dictionary
++// sharing is inferred merely from equal axis IDs. Equality-key bytes are unchanged.
+ type Limits struct {
+ 	Component                                                                                    state.Limits
+ 	MaxOperations, MaxPages, MaxRows, MaxReadBytes, MaxDeltaBytes, MaxDependencies, MaxNameBytes int
+--- a/v5/internal/graphstate/value.go
++++ b/v5/internal/graphstate/value.go
+@@ -133,6 +133,26 @@
+ 	return b, nil
+ }
+ 
++// metadataBytes accounts a materialized scalar's complete immutable axis
++// definition separately from its unchanged canonical equality-key bytes.
++// Definitions are charged per occurrence; this ledger does not infer sharing
++// from an ID or promise a measured Go heap cost.
++func (v Scalar) metadataBytes(l Limits) (int, error) {
++	b, err := v.bytes(l)
++	if err != nil {
++		return 0, err
++	}
++	n := len(b)
++	if v.kind == ScalarScope {
++		definition := axisBytes(v.scope.Axis())
++		if definition > l.MaxReadBytes-n {
++			return 0, ErrResourceLimit
++		}
++		n += definition
++	}
++	return n, nil
++}
++
+ // Equal compares declared typed values with finite-F64 numeric zero semantics.
+ func (v Scalar) Equal(other Scalar, l Limits) (bool, error) {
+ 	l, err := l.resolve()
+--- a/v5/internal/graphstate/reader.go
++++ b/v5/internal/graphstate/reader.go
+@@ -106,11 +106,11 @@
+ 	}
+ 	for _, v := range []Scalar{d.Value, d.Unique.Value} {
+ 		if v.Kind() != ScalarInvalid {
+-			data, err := v.bytes(e.limits)
++			n, err := v.metadataBytes(e.limits)
+ 			if err != nil {
+ 				return err
+ 			}
+-			bytes += len(data)
++			bytes += n
+ 		}
+ 	}
+ 	if err := e.output(bytes); err != nil {
+@@ -272,11 +272,11 @@
+ 	if !read.Found || read.ID != id {
+ 		return Scalar{}, ErrContradictoryRead
+ 	}
+-	b, err := read.Value.bytes(e.limits)
++	n, err := read.Value.metadataBytes(e.limits)
+ 	if err != nil {
+ 		return Scalar{}, err
+ 	}
+-	if err := e.charge(1, len(b)); err != nil {
++	if err := e.charge(1, n); err != nil {
+ 		return Scalar{}, err
+ 	}
+ 	return read.Value, nil
+@@ -289,9 +289,13 @@
+ 	if err != nil {
+ 		return state.ValueRef{}, err
+ 	}
++	n, err := v.metadataBytes(e.limits)
++	if err != nil {
++		return state.ValueRef{}, err
++	}
+ 	if id, ok := e.identity[key]; ok {
+-		return state.NewValueRef(uint64(id), uint64(len(key)))
+-	} // #nosec G115 -- key byte length nonnegative and budget bounded.
++		return state.NewValueRef(uint64(id), uint64(n))
++	} // #nosec G115 -- complete immutable scalar metadata is nonnegative and budget bounded.
+ 	read, err := e.view.ValueIdentity(e.ctx, v)
+ 	if err != nil {
+ 		return state.ValueRef{}, err
+@@ -302,7 +306,7 @@
+ 	if err := e.dep(Dependency{Kind: ValueIdentityDependency, Value: v, Version: read.Version, Absent: !read.Found}); err != nil {
+ 		return state.ValueRef{}, err
+ 	}
+-	if err := e.charge(1, len(key)); err != nil {
++	if err := e.charge(1, n); err != nil {
+ 		return state.ValueRef{}, err
+ 	}
+ 	id := read.ID
+@@ -335,14 +339,14 @@
+ 			return state.ValueRef{}, ErrAlreadyExists
+ 		}
+ 		id = fresh
+-		if err := e.output(8 + len(key)); err != nil {
++		if err := e.output(8 + n); err != nil {
+ 			return state.ValueRef{}, err
+ 		}
+ 		e.delta.Values = append(e.delta.Values, ValueWrite{id, v})
+ 		e.values[id] = v
+ 	}
+ 	e.identity[key] = id
+-	return state.NewValueRef(uint64(id), uint64(len(key))) // #nosec G115 -- canonical payload key is budget bounded.
++	return state.NewValueRef(uint64(id), uint64(n)) // #nosec G115 -- complete immutable scalar metadata is budget bounded.
+ }
+ 
+ type pageTracker struct {
+--- a/v5/internal/graphstate/planner.go
++++ b/v5/internal/graphstate/planner.go
+@@ -31,6 +31,7 @@
+ 	if len(ops) > l.MaxOperations {
+ 		return Delta{}, ErrResourceLimit
+ 	}
++	scalarInputBytes := 0
+ 	for _, op := range ops {
+ 		if err := mutationScope(op.Scope, l); err != nil {
+ 			return Delta{}, err
+@@ -45,6 +46,16 @@
+ 		}
+ 		if op.Kind == CreateRelationship && !validName(op.Record.Type, l) {
+ 			return Delta{}, ErrInvalidInput
++		}
++		if op.Kind == Set || op.Kind == Add || op.Kind == Remove {
++			n, err := op.Value.metadataBytes(l)
++			if err != nil {
++				return Delta{}, err
++			}
++			if n > l.MaxReadBytes-scalarInputBytes {
++				return Delta{}, ErrResourceLimit
++			}
++			scalarInputBytes += n
+ 		}
+ 	}
+ 	if revision.ID() == 0 {
+--- a/v5/internal/graphstate/project.go
++++ b/v5/internal/graphstate/project.go
+@@ -144,11 +144,11 @@
+ 			if scalar.Kind() != ScalarNull && scalar.Kind() != definition.Type {
+ 				return Projection{}, ErrContradictoryRead
+ 			}
+-			data, err := scalar.bytes(l)
+-			if err != nil {
+-				return Projection{}, err
+-			}
+-			if err := e.output(16 + len(key.Name) + len(data)); err != nil {
++			n, err := scalar.metadataBytes(l)
++			if err != nil {
++				return Projection{}, err
++			}
++			if err := e.output(16 + len(key.Name) + n); err != nil {
+ 				return Projection{}, err
+ 			}
+ 			properties[key.Name] = PropertyValue{Name: key.Name, Cardinality: ScalarCardinality, Scalar: scalar}
+@@ -160,11 +160,11 @@
+ 			if scalar.Kind() != definition.Type {
+ 				return Projection{}, ErrContradictoryRead
+ 			}
+-			data, err := scalar.bytes(l)
+-			if err != nil {
+-				return Projection{}, err
+-			}
+-			if err := e.output(16 + len(key.Name) + len(data)); err != nil {
++			n, err := scalar.metadataBytes(l)
++			if err != nil {
++				return Projection{}, err
++			}
++			if err := e.output(16 + len(key.Name) + n); err != nil {
+ 				return Projection{}, err
+ 			}
+ 			entry := properties[key.Name]
+--- /dev/null
++++ b/v5/internal/graphstate/scalar_scope_budget_regression_test.go
+@@ -0,0 +1,237 @@
++package graphstate
++
++import (
++	"errors"
++	"strings"
++	"testing"
++
++	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
++	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
++)
++
++func TestScalarScopeRegressionScopeSharingNodeRelationshipFullAxisFootprint(t *testing.T) {
++	v := newFixtureView(t)
++	v.defs["nodeScope"] = PropertyDefinition{Name: "nodeScope", Owner: Node, Type: ScalarScope, Cardinality: ScalarCardinality}
++	v.defs["relScope"] = PropertyDefinition{Name: "relScope", Owner: Relationship, Type: ScalarScope, Cardinality: ScalarCardinality}
++	d := v.axis.Descriptor()
++	d.ID[0] = 8
++	d.Reference = strings.Repeat("axis-ref-", 400)
++	a, err := temporal.NewAxis(d, temporal.Limits{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	scope, _ := temporal.All(a)
++	wire, err := temporal.AppendScope(nil, scope, temporal.Limits{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	fullBytes := len(wire) + 1 + 27 + len(d.Reference) + len(d.CanonicalUnit)
++	r, _ := state.NewRevision(1, 1)
++	owned := testSpan(t, v.axis, 0, 10)
++	ops := []Operation{{Kind: CreateNode, Owner: 1, Life: 1, Scope: owned}, {Kind: CreateNode, Owner: 2, Life: 1, Scope: owned}, {Kind: CreateRelationship, Owner: 3, Life: 1, Scope: owned, Record: EntityRecord{Type: "LINK", Source: 1, Target: 2, Mode: LifeBound}, Binding: LifeRecord{SourceLife: 1, TargetLife: 1}},
++		{Kind: Set, Owner: 1, Life: 1, Scope: owned, Name: "nodeScope", Value: ScopeValue(scope), ValueID: 77}, {Kind: Set, Owner: 3, Life: 1, Scope: owned, Name: "relScope", Value: ScopeValue(scope), ValueID: 78}}
++	delta, err := Plan(t.Context(), v, ops, r, Limits{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(delta.Values) != 1 || delta.Values[0].ID != 77 {
++		t.Fatal("canonical typed value sharing changed", delta.Values)
++	}
++	for _, patch := range delta.Patches {
++		if patch.Key.Kind != ScalarProperty {
++			continue
++		}
++		for _, change := range patch.Changes {
++			if change.After().Value().ID() != 77 || change.After().Value().PayloadBytes() != uint64(fullBytes) {
++				t.Errorf("owner%d reference ledger lacks full axis: ID=%d bytes=%d want=%d", patch.Key.Owner, change.After().Value().ID(), change.After().Value().PayloadBytes(), fullBytes)
++			}
++		}
++	}
++	v.install(t, delta)
++	replayed, err := Plan(t.Context(), v, []Operation{{Kind: Set, Owner: 1, Life: 1, Scope: owned, Name: "nodeScope", Value: ScopeValue(scope), ValueID: 99}, {Kind: Set, Owner: 3, Life: 1, Scope: owned, Name: "relScope", Value: ScopeValue(scope), ValueID: 100}}, r, Limits{})
++	if err != nil || len(replayed.Patches) != 0 || len(replayed.Values) != 0 {
++		t.Fatal("shared ScopeValue replay must retain full-cell identity and emit no CDC", err)
++	}
++	for _, owner := range []EntityID{1, 3} {
++		p, err := Project(t.Context(), v, owner, testPosition(t, v.axis, 5), Effective, Limits{})
++		if err != nil || len(p.Properties) != 1 {
++			t.Fatal(err)
++		}
++		got, ok := p.Properties[0].Scalar.Scope()
++		if !ok || got.Axis().DefinitionHash() != a.DefinitionHash() {
++			t.Fatal("node/relationship scope preservation diverged")
++		}
++	}
++	key, err := ScopeValue(scope).EqualityKey(Limits{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	wantKey := string(append([]byte{byte(ScalarScope)}, wire...))
++	if key != wantKey {
++		t.Fatal("accounting must not alter canonical equality bytes")
++	}
++	conflict := d
++	conflict.Reference += "different-definition"
++	b, err := temporal.NewAxis(conflict, temporal.Limits{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	other, _ := temporal.All(b)
++	if _, err := scope.SameSupport(other, temporal.Limits{}); !errors.Is(err, temporal.ErrAxisMismatch) {
++		t.Fatal("same-ID definitions silently compared", err)
++	}
++	same, err := ScopeValue(scope).Equal(ScopeValue(other), Limits{})
++	if err != nil || same {
++		t.Fatal("different axis definitions collapsed to one scalar identity", err)
++	}
++}
++
++func TestScalarScopeRegressionNodeRelationshipNullRetractionExactReplay(t *testing.T) {
++	v := newFixtureView(t)
++	for _, d := range []PropertyDefinition{{Name: "nodeNull", Owner: Node, Type: ScalarString, Cardinality: ScalarCardinality}, {Name: "relNull", Owner: Relationship, Type: ScalarString, Cardinality: ScalarCardinality}} {
++		v.defs[d.Name] = d
++	}
++	owned := testSpan(t, v.axis, 0, 10)
++	r, _ := state.NewRevision(1, 1)
++	delta, err := Plan(t.Context(), v, []Operation{{Kind: CreateNode, Owner: 1, Life: 1, Scope: owned}, {Kind: CreateNode, Owner: 2, Life: 1, Scope: owned}, {Kind: CreateRelationship, Owner: 3, Life: 1, Scope: owned, Record: EntityRecord{Type: "LINK", Source: 1, Target: 2, Mode: LifeBound}, Binding: LifeRecord{SourceLife: 1, TargetLife: 1}},
++		{Kind: Set, Owner: 1, Life: 1, Scope: owned, Name: "nodeNull", Value: Null()}, {Kind: Set, Owner: 3, Life: 1, Scope: owned, Name: "relNull", Value: Null()}}, r, Limits{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	v.install(t, delta)
++	old := v.clone()
++	replay, err := Plan(t.Context(), v, []Operation{{Kind: Set, Owner: 1, Life: 1, Scope: owned, Name: "nodeNull", Value: Null()}, {Kind: Set, Owner: 3, Life: 1, Scope: owned, Name: "relNull", Value: Null()}}, r, Limits{})
++	if err != nil || len(replay.Patches) != 0 {
++		t.Fatal("exact node/relationship replay emitted CDC", err)
++	}
++	r2, _ := state.NewRevision(2, 2)
++	window := testSpan(t, v.axis, 3, 7)
++	removed, err := Plan(t.Context(), v, []Operation{{Kind: Unset, Owner: 1, Life: 1, Scope: window, Name: "nodeNull"}, {Kind: Unset, Owner: 3, Life: 1, Scope: window, Name: "relNull"}}, r2, Limits{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, patch := range removed.Patches {
++		if len(patch.Changes) != 1 {
++			t.Fatal("exact CDC count", len(patch.Changes))
++		}
++		c := patch.Changes[0]
++		if !c.Before().Present() || !c.Before().Value().IsNull() || c.Before().Revision() != r || c.After().Present() || c.After().Revision() != r2 {
++			t.Fatal("null/retraction full-cell CDC identity changed")
++		}
++		same, err := c.Scope().SameSupport(window, temporal.Limits{})
++		if err != nil || !same {
++			t.Fatal(err)
++		}
++	}
++	v.install(t, removed)
++	for _, owner := range []EntityID{1, 3} {
++		prior, err := Project(t.Context(), old, owner, testPosition(t, v.axis, 5), Effective, Limits{})
++		if err != nil || len(prior.Properties) != 1 || prior.Properties[0].Scalar.Kind() != ScalarNull {
++			t.Fatal("old view lost null", err)
++		}
++		current, err := Project(t.Context(), v, owner, testPosition(t, v.axis, 5), Effective, Limits{})
++		if err != nil || len(current.Properties) != 0 {
++			t.Fatal("current view lost retraction", err)
++		}
++		tail, err := Project(t.Context(), v, owner, testPosition(t, v.axis, 7), Effective, Limits{})
++		if err != nil || len(tail.Properties) != 1 {
++			t.Fatal("half-open null tail lost", err)
++		}
++	}
++}
++
++func TestScalarScopeRegressionScopeProjectionExactByteLimits(t *testing.T) {
++	v := newFixtureView(t)
++	v.defs["scope"] = PropertyDefinition{Name: "scope", Owner: Node, Type: ScalarScope, Cardinality: ScalarCardinality}
++	d := v.axis.Descriptor()
++	d.ID[0] = 9
++	d.Reference = strings.Repeat("property-axis-definition-", 200)
++	a, err := temporal.NewAxis(d, temporal.Limits{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	scope, _ := temporal.All(a)
++	r, _ := state.NewRevision(1, 1)
++	owned := testSpan(t, v.axis, 0, 10)
++	delta, err := Plan(t.Context(), v, []Operation{{Kind: CreateNode, Owner: 1, Life: 1, Scope: owned}, {Kind: Set, Owner: 1, Life: 1, Scope: owned, Name: "scope", Value: ScopeValue(scope), ValueID: 1}}, r, Limits{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	v.install(t, delta)
++	for _, target := range []string{"MaxReadBytes", "MaxDeltaBytes"} {
++		t.Run(target, func(t *testing.T) {
++			run := func(cap int) (Projection, error) {
++				l := DefaultLimits()
++				if target == "MaxReadBytes" {
++					l.MaxReadBytes = cap
++				} else {
++					l.MaxDeltaBytes = cap
++				}
++				return Project(t.Context(), v, 1, testPosition(t, v.axis, 5), Effective, l)
++			}
++			lo, hi := 1, 64<<20
++			for lo < hi {
++				mid := lo + (hi-lo)/2
++				_, err := run(mid)
++				if err == nil {
++					hi = mid
++				} else if errors.Is(err, ErrResourceLimit) || errors.Is(err, temporal.ErrResourceLimit) || errors.Is(err, state.ErrResourceLimit) {
++					lo = mid + 1
++				} else {
++					t.Fatal(err)
++				}
++			}
++			p, err := run(lo)
++			if err != nil || len(p.Properties) != 1 {
++				t.Fatal("exact fit", err)
++			}
++			_, err = run(lo - 1)
++			if !errors.Is(err, ErrResourceLimit) && !errors.Is(err, temporal.ErrResourceLimit) && !errors.Is(err, state.ErrResourceLimit) {
++				t.Fatal("one-byte lower", err)
++			}
++			minimumFull := 27 + len(d.Reference) + len(d.CanonicalUnit)
++			if lo < minimumFull {
++				t.Errorf("%s minimum%d is smaller than carried axis metadata%d", target, lo, minimumFull)
++			}
++			t.Log(target, "minimum fitting", lo, "axis metadata", minimumFull)
++		})
++	}
++}
++
++func TestScalarScopeRegressionAxisDefinitionRefusal(t *testing.T) {
++	for _, target := range []string{"MaxReadBytes", "MaxDeltaBytes"} {
++		t.Run(target, func(t *testing.T) {
++			v := newFixtureView(t)
++			v.defs["span"] = PropertyDefinition{Name: "span", Owner: Node, Type: ScalarScope, Cardinality: ScalarCardinality}
++			before := v.clone()
++			d := v.axis.Descriptor()
++			d.ID[0] = 2
++			d.Reference = strings.Repeat("R", 32000)
++			a, err := temporal.NewAxis(d, temporal.Limits{})
++			if err != nil {
++				t.Fatal(err)
++			}
++			scope, _ := temporal.All(a)
++			l := DefaultLimits()
++			if target == "MaxReadBytes" {
++				l.MaxReadBytes = 8192
++			} else {
++				l.MaxDeltaBytes = 8192
++			}
++			r, _ := state.NewRevision(1, 1)
++			delta, err := Plan(t.Context(), v, []Operation{{Kind: CreateNode, Owner: 1, Life: 1, Scope: testSpan(t, v.axis, 0, 10)}, {Kind: Set, Owner: 1, Life: 1, Scope: testSpan(t, v.axis, 0, 10), Name: "span", Value: ScopeValue(scope), ValueID: 1}}, r, l)
++			if !errors.Is(err, ErrResourceLimit) && !errors.Is(err, temporal.ErrResourceLimit) && !errors.Is(err, state.ErrResourceLimit) {
++				t.Fatalf("%s=8192 accepted ScopeValue owning32000-byte axis Reference: err=%v values=%d patches=%d deps=%d", target, err, len(delta.Values), len(delta.Patches), len(delta.Dependencies))
++			}
++			if len(delta.Entities)+len(delta.Lives)+len(delta.Values)+len(delta.Patches)+len(delta.Dependencies) != 0 {
++				t.Fatal("resource refusal returned partial transaction metadata")
++			}
++			if len(v.entities)+len(v.lives)+len(v.values)+len(v.components) != 0 ||
++				v.Identity() != before.Identity() || v.Graph() != before.Graph() ||
++				v.axis.DefinitionHash() != before.axis.DefinitionHash() ||
++				len(v.defs) != len(before.defs) || v.defs["span"] != before.defs["span"] {
++				t.Fatal("resource refusal mutated the empty source view")
++			}
++		})
++	}
++}

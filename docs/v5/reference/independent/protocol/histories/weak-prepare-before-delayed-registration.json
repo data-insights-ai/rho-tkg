@@ -1,0 +1,310 @@
+{
+  "epochs": {
+    "A": 1,
+    "B": 1
+  },
+  "events": [
+    {
+      "digest": "01d68e76e5068927c34034a9cbeffd890065f99c0b52a04a5691837c27c7ec78",
+      "epochs": {
+        "A": 1
+      },
+      "floor": 0,
+      "group": "A",
+      "kind": "prepare",
+      "position": 2,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "kind": "validate",
+      "reads": [
+        {
+          "exists": true,
+          "key": "A/x",
+          "kind": "key",
+          "value": 0
+        }
+      ],
+      "tx": "t1"
+    },
+    {
+      "digest": "01d68e76e5068927c34034a9cbeffd890065f99c0b52a04a5691837c27c7ec78",
+      "epochs": {
+        "A": 1
+      },
+      "kind": "register",
+      "participants": [
+        "A"
+      ],
+      "position": 1,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "kind": "decision",
+      "outcome": "commit",
+      "position": 3,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "round": 10,
+      "tx": "t1"
+    },
+    {
+      "effects": {
+        "A/x": {
+          "op": "put",
+          "value": 1
+        }
+      },
+      "group": "A",
+      "kind": "install",
+      "position": 4,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t1"
+    },
+    {
+      "kind": "ack",
+      "result": {
+        "decision": "commit",
+        "digest": "01d68e76e5068927c34034a9cbeffd890065f99c0b52a04a5691837c27c7ec78",
+        "ids": [],
+        "round": 10,
+        "tx": "t1"
+      },
+      "tx": "t1"
+    },
+    {
+      "digest": "d4cf552c6ff4b7a0b7546351ee3b551c29e9397108f24444228e0fb8d299f2e4",
+      "epochs": {
+        "A": 1
+      },
+      "kind": "register",
+      "participants": [
+        "A"
+      ],
+      "position": 5,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "kind": "validate",
+      "reads": [
+        {
+          "exists": true,
+          "key": "A/x",
+          "kind": "key",
+          "revision": "t1",
+          "value": 1
+        }
+      ],
+      "tx": "t2"
+    },
+    {
+      "digest": "d4cf552c6ff4b7a0b7546351ee3b551c29e9397108f24444228e0fb8d299f2e4",
+      "epochs": {
+        "A": 1
+      },
+      "floor": 10,
+      "group": "A",
+      "kind": "prepare",
+      "position": 6,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "kind": "decision",
+      "outcome": "commit",
+      "position": 7,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "round": 20,
+      "tx": "t2"
+    },
+    {
+      "effects": {
+        "A/x": {
+          "op": "put",
+          "value": 2
+        }
+      },
+      "group": "A",
+      "kind": "install",
+      "position": 8,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "tx": "t2"
+    },
+    {
+      "kind": "ack",
+      "result": {
+        "decision": "commit",
+        "digest": "d4cf552c6ff4b7a0b7546351ee3b551c29e9397108f24444228e0fb8d299f2e4",
+        "ids": [],
+        "round": 20,
+        "tx": "t2"
+      },
+      "tx": "t2"
+    },
+    {
+      "epoch": 1,
+      "group": "A",
+      "kind": "fence",
+      "position": 9,
+      "replicas": [
+        "A1",
+        "A2"
+      ],
+      "round": 30
+    },
+    {
+      "coverage": {
+        "A": {
+          "complete": true,
+          "prepared": [],
+          "through": 9
+        }
+      },
+      "cut": {
+        "id": "c30",
+        "owners": {
+          "A": "A"
+        },
+        "round": 30,
+        "scope": [
+          "A"
+        ],
+        "topology": 1
+      },
+      "durable": {
+        "A": [
+          "A1",
+          "A2"
+        ]
+      },
+      "fence_events": {
+        "A": 12
+      },
+      "kind": "certify"
+    },
+    {
+      "cut": "c30",
+      "kind": "read",
+      "mode": "At",
+      "scope": [
+        "A"
+      ],
+      "served_by": {
+        "A": "A"
+      },
+      "status": "ok",
+      "topology": 1,
+      "values": {
+        "A/x": 2
+      }
+    }
+  ],
+  "groups": {
+    "A": [
+      "A1",
+      "A2",
+      "A3"
+    ],
+    "B": [
+      "B1",
+      "B2",
+      "B3"
+    ]
+  },
+  "initial": {
+    "A/x": 0
+  },
+  "name": "weak-prepare-before-delayed-registration",
+  "observation": {
+    "assumption": "All accepted durable group transitions are captured through certificate watermarks; absence of an event alone is not evidence.",
+    "client_reads_complete": true,
+    "durable_events_complete": true,
+    "groups": [
+      "A",
+      "B"
+    ]
+  },
+  "schema_version": 1,
+  "topology": 1,
+  "transactions": {
+    "t1": {
+      "coordinator": "A",
+      "epochs": {
+        "A": 1
+      },
+      "historical": false,
+      "ids": [],
+      "participants": [
+        "A"
+      ],
+      "reads": [
+        {
+          "exists": true,
+          "key": "A/x",
+          "kind": "key",
+          "value": 0
+        }
+      ],
+      "request_key": "request",
+      "writes": {
+        "A/x": {
+          "op": "put",
+          "value": 1
+        }
+      }
+    },
+    "t2": {
+      "coordinator": "A",
+      "epochs": {
+        "A": 1
+      },
+      "historical": true,
+      "ids": [],
+      "participants": [
+        "A"
+      ],
+      "reads": [
+        {
+          "exists": true,
+          "key": "A/x",
+          "kind": "key",
+          "revision": "t1",
+          "value": 1
+        }
+      ],
+      "request_key": "second",
+      "writes": {
+        "A/x": {
+          "op": "put",
+          "value": 2
+        }
+      }
+    }
+  }
+}

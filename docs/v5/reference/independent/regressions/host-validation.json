@@ -1,0 +1,58 @@
+{
+  "candidate_host_sha256": "4f7c4b8858cb424fd3717d4cc1d8b25406b32d034064811a42a7206cb1bf9443",
+  "candidate_patch_application_to_integrated_source": "do not apply",
+  "canonical_application_performed": false,
+  "canonical_apply_check": {
+    "command": "git apply --check <READY-read-identity.patch>",
+    "exit": 0,
+    "mutated_canonical": false
+  },
+  "canonical_integration_record": "canonical-integration.json",
+  "command_path_normalization": "Coverage output destination changed to a relative module-local path; arguments and package scope otherwise preserved.",
+  "commands": [
+    {
+      "command": "GOTOOLCHAIN=go1.26.9 go test -count=1 -coverprofile=read-identity.cover.out ./internal/txnproto ./internal/replica",
+      "cwd": "v5",
+      "exit": 0,
+      "log_sha256": "52cee0417e5439c2b931e55922d5065719a67b653b0e9404ca060125cf1fc516"
+    },
+    {
+      "command": "GOTOOLCHAIN=go1.26.9 go test -race -count=1 ./internal/txnproto ./internal/replica",
+      "cwd": "v5",
+      "exit": 0,
+      "log_sha256": "e4ce3fc7307da9a832d128dc42f5108f2209728e7ee4c82b5a3361c9265a9b37"
+    },
+    {
+      "command": "GOTOOLCHAIN=go1.26.9 go vet ./internal/txnproto ./internal/replica",
+      "cwd": "v5",
+      "exit": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "coverage": {
+    "Host.Read": 100.0,
+    "OpenHost": 83.3,
+    "event": 95.0,
+    "replica": 87.8,
+    "txnproto": 88.4
+  },
+  "developer_absolute_paths_in_patch": false,
+  "full_V2_V5_completed": false,
+  "live_integration": "condition resolved in committed implementation e5712e1651ee22ca142b5978d400649d8e0f5744",
+  "patch": "host-read-identity.patch",
+  "patch_sha256": "b1aeaf57e2cf8b0065bbf677d213f5aee96fe2a41e82ddaeb79776007f9609f5",
+  "producer_head": "42d00f47b26c5c95d2c91a0f8e14d6ef5817362c",
+  "producer_host_sha256": "39171f5ae254505dc6d00e2903dd51b60d09607db79fdf3e4309783c1a12f263",
+  "production_files_changed": [
+    "internal/txnproto/host.go"
+  ],
+  "record_scope": "Historical isolated candidate validation; committed implementation differs.",
+  "schema_version": 1,
+  "source_proof": "Only clean patch applied to an 85-file pinned module copy; original suites and six-process harness validated.",
+  "source_validation_sha256": "051759bd7744e75264921def3c1b70d10251edf0c6ab3c0653dfcfdbe079762c",
+  "status": "READY-for-reviewed-canonical-integration",
+  "test_files_added": [
+    "internal/txnproto/read_identity_test.go"
+  ],
+  "toolchain": "go1.26.9"
+}
