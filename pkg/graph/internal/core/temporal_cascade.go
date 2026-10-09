@@ -159,9 +159,7 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	// belief — no holes, no leaks.
 	preChain := make([]*types.Node, 0, len(history)+1)
 	preChain = append(preChain, history...)
-	if current != nil {
-		preChain = append(preChain, current)
-	}
+	preChain = append(preChain, current) // non-nil: a deleted entity was refused above
 	preChain = versionOrdered(preChain) // the resolver's input contract (lesson 73)
 
 	// Resumption: re-assert, from newVT onward, whatever value held AT newVT in
@@ -278,7 +276,7 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	// Write: append the new rows, never touching existing ones. The store keeps
 	// one "current" KV slot; place newCurrent there (demoting the prior current
 	// to a history row — its bytes are unchanged, only its slot moves).
-	if curIsNew && current != nil {
+	if curIsNew {
 		// The store's current slot cannot change label tokens (ReplaceNode
 		// rejects it). A correction row's labels come from its base row, and
 		// the only row that can take the slot is the open tail, whose base is
@@ -309,12 +307,10 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 		written = append(written, r)
 	}
 	if curIsNew {
-		if current != nil {
-			if err := c.putNodeVersionScopedAware(ctx, id, current.Version(), current); err != nil {
-				return nil, uniqueHold.writeFailed(written, fmt.Errorf("graph: cascade demote current to history: %w", err))
-			}
-			written = append(written, current)
+		if err := c.putNodeVersionScopedAware(ctx, id, current.Version(), current); err != nil {
+			return nil, uniqueHold.writeFailed(written, fmt.Errorf("graph: cascade demote current to history: %w", err))
 		}
+		written = append(written, current)
 		if err := c.replaceNodeScopedAware(ctx, newCurrent); err != nil {
 			return nil, uniqueHold.writeFailed(written, fmt.Errorf("graph: cascade replace current: %w", err))
 		}
