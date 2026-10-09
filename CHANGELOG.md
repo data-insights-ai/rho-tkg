@@ -21,9 +21,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `GetNodeHistory` / `GetRelHistory` read (reference + archive, archive + reference, the deleted-entity fan-out),
   and a cold shard is opened the way `History` opens it and answers by a per-ID key probe
   (`badger.Config.HistoryPresenceProbeOnly`, set on cold shards) instead of building a set. Badger keeps a RAM set
-  of the IDs with history rows: built on the first call by one key-only scan (`ForEach*HistoryID`, write buffer
-  included), maintained where every history key enters the write buffer (`noteHistoryKey`, under `wbMu`): a SET
-  adds the ID, a DELETE marks it for a per-ID key probe on the next read. Writes during the build's scan and
+  of the IDs with history rows and their highest history version: built on the first call by one key-only scan (write
+  buffer included), maintained where every history key enters the write buffer (`noteHistoryKey`, under `wbMu`): a
+  SET adds the ID and raises its top, a DELETE marks it for a per-ID key probe on the next read. Writes during the build's scan and
   during a probe are kept by a per-ID write generation (lessons 63 / 74, deterministic hook tests), and `Clear`
   excludes builds and drops the set (the next call rebuilds; a failed drop leaves no stale set). RAM, measured
   (live heap after GC around one build, `setB/id` in the build benchmark): 30 B per ID at 10 K IDs, 40 B at
@@ -66,28 +66,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **Bulk badger `NodesAsOf` / `RelsAsOf` no longer read the key above the current version for entities without
-  history.** The pin-stable as-of rule made the bulk scan look for a row at `current+1` for every entity (a
-  badger point read each, measured +0.6 us per entity without history, +1.2 us with one history row; about +0.6 s
-  per 1 M entities; it hit sigma-tkgd's tx-only `AS OF`), while the point doors already gated on `HasNodeHistory` /
-  `HasRelHistory`. The bulk doors now use the history presence set: it is built BEFORE the scan takes `idxMu` (a
-  build is a key-only scan of the history keyspace; nothing is held, so the lock order flushMu -> idxMu ->
-  buildMu -> wbMu is unchanged), and inside the scan an ID in neither the `has` nor the `unknown` set reads as
-  having no history. The set is live while the scan reads an older snapshot (overlay captured once, then one
-  badger transaction), so a negative is trusted only if the set was built when the scan began and no history
-  delete was noted since just before the overlay capture (new `deletes` counter; the trim doors take no `idxMu`,
-  so a delete can land mid-scan); without deletes the set only grows, hence a live negative implies a snapshot
-  negative. Unknown IDs, a delete since scan start, an unbuilt set (a `Clear` between the build and the lock) and
-  `HistoryPresenceProbeOnly` stores fall back to the snapshot key read, as before. Measured (`BenchmarkNodesAsOfBulk`
-  / `BenchmarkRelsAsOfBulk`, 20 K entities, three builds run interleaved on a loaded 32-core host, minimum of 8
-  runs): no history, nodes 44.2 -> 34.0 ms and rels 46.9 -> 37.1 ms (before the as-of rule change: 31.4 / 33.8 ms,
-  so +8 % / +10 %), allocations 453 K -> 346 K per scan. **Known limit:** with one history row per entity the key
-  read is still needed (the presence set says "has history", not which versions), 63.9 -> 66.7 ms nodes and
-  75.1 -> 70.0 ms rels against 41.8 / 50.6 ms before the rule change; the read is about a quarter of the scan
-  (`profile-nodes-history-one.txt` in `tasks/evidence/bulk-asof-presence/`: the existence closure is 20 % of the scan, mostly the badger Get). Closing it needs the highest history version per ID in
-  the set. Tests: `TestBulkAsOfPresence_*` (probe count, unknown IDs, delete mid-scan, probe-only, randomized
-  chains across pending / flushed / trimmed / deleted / reopened / cleared states, writers racing scans under
-  `-race`), evidence `tasks/evidence/bulk-asof-presence/`.
+- **Bulk badger `NodesAsOf` / `RelsAsOf` no longer read the key above the current version per entity.** The
+  pin-stable as-of rule made the bulk scan look for a row at `current+1` for every entity (a badger point read
+  each, measured +0.6 us per entity without history, +1.2 us with one history row; about +0.6 s per 1 M entities;
+  it hit sigma-tkgd's tx-only `AS OF`), while the point doors already gated on `HasNodeHistory` /
+  `HasRelHistory`. The history presence set now keeps the highest history version per ID (a `uint32` top; no
+  measurable RAM: the map slot was already padded, 30.1 B per ID at 10 K IDs before and after), and the bulk
+  doors answer "is there a row at that version" from it: an ID without history, or with every row below the
+  current version, costs no key read. The set is built BEFORE the scan takes `idxMu` (a build is a key-only scan
+  of the history keyspace; nothing is held, so the lock order flushMu -> idxMu -> buildMu -> wbMu is
+  unchanged). Maintenance is at the one place every history key passes (`noteHistoryKey`): a SET raises the top;
+  a DELETE (trim, truncate, compaction, rollback trim, retention purge, exact erasure) marks the ID unknown, and
+  so does a SET into an unknown ID (rows the delete left may sit above it), each under a fresh stamp so a probe in
+  flight does not install a stale top; the next `HasHistory` read resolves the exact top by one reverse seek; the
+  build reads the highest version per ID (single-row IDs cost one `Next`, others one reverse seek), merges a SET
+  noted during the scan by max, and `Clear` drops it all. The set is live while the scan reads an older snapshot
+  (overlay captured once, then one badger transaction), so an answer is used only if the set was built when the
+  scan began, the ID is not unknown, its top is bounded, and no history delete was noted since just before the
+  overlay capture (new `deletes` counter; the trim doors take no `idxMu`, so a delete can land mid-scan, and a
+  probe may since have resolved a lower top). Otherwise the scan reads the key as before, so a `Clear` between
+  build and lock, probe-only stores (`HistoryPresenceProbeOnly`) and unknown IDs stay correct. The answer is
+  "no key at a version above the top", never "a key exists", so chains with version gaps behave exactly as the
+  point doors. Measured (`BenchmarkNodesAsOfBulk` / `BenchmarkRelsAsOfBulk`, 20 K entities with no, one or three
+  history rows below the current row; three builds run interleaved on a loaded 32-core host, minimum of 8 runs,
+  ms): nodes none 31.4 -> 31.7 (before the as-of rule change 31.4), one 43.8 -> 63.6 -> 48.6, three 47.5 ->
+  75.8 -> 51.1; rels none 33.0 / 34.6 / 35.6, one 53.1 -> 74.4 -> 57.4, three 51.9 -> 82.0 -> 54.5 (each triple:
+  before the as-of rule change, presence for entities without history only, with the top version): within 3-11 %
+  of the figures before the rule change at the minimum, 14 % at the median for rels with one row. Build cost
+  2-7 us per ID (1 M entities at 1 %: rel 20-28 ms, node 56-68 ms; before: 25 / 23-32 ms). Tests: `TestBulkAsOfPresence_*` (probe
+  counts per state, unknown IDs, delete mid-scan, probe-only, build merge, randomized chains across pending /
+  flushed / trimmed / deleted / reopened / cleared, writers racing scans under `-race`),
+  `TestHistoryPresenceNoteTop`, `TestScanHistoryTopsAndProbeMatchHistory`, 12 mutants each red; evidence
+  `tasks/evidence/bulk-asof-presence/`.
 
 - **One version allocator: a write after a bounded cascade no longer reuses a cascade row's version** (backlog
   18). The cascade gave its rows `maxVersion+1` while Update, `CloseVersion`, label add/remove and property CAS
