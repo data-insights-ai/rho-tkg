@@ -69,7 +69,7 @@ Wave 2 (parallel, start now, merge after wave 1) → v4.45.0
 - [x] J effective timeline + scan forms (merged 3d7cbfe after two Opus review rounds; released v4.47.0 = b3eb884, gate exit 0, cover 87.0 %); v4.46.0 = fac763a released earlier (cascade correctness, HasHistory, unique via cascade, bulk as-of).
 - [x] K point as-of doors race (backlog 32; merged 68f99ad after two review rounds: badger with-history doors publish history first; native as-of guard, mutants A-F deterministic, cost within noise; evidence/point-door-race/; backlog 37 filed)
 - [x] Mint instant (backlog 36; merged 8afb1f0: NodeID/RelID.MintInstant, shared idlayout, shadow fallbacks)
-- [ ] L re-import across lives (Opus afe0c5a9…; backlog 38 + the 2026-09-24 re-import overwrite = DATA LOSS): continue version numbering across lives; red first.
+- [x] L re-import across lives (merged ac9f42a after two Opus review rounds: version continuation + PrevHash link, backfilled re-import at/below the chain stamps refused with ErrTxOrder (stability exception, sigma notified), rollback trims own rows only, own-row stamp without moving the clock, stub-aware life start; evidence/reimport-life/; backlog 38 and the 2026-09-24 entry closed; 39, 40 filed)
 - [ ] M pinned property lookups sidecar (Opus a7b09646…; handover 1, backlog 8).
 - [ ] Next: LatestStamps (30), broader effective scans (35), update-door claims (29), interval rewrites at a caller instant (34), badger scan cost (33), state column doors (28), retention (21).
 
