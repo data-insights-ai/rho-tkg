@@ -774,3 +774,328 @@ func (w *world) runPropertyProbe(backend string, seed uint64, snap *snapshot, p 
 		}
 	}
 }
+
+// --- T2: the property doors agree ---
+
+// indexMode is which property indexes a T2 run declares: none (the fold),
+// every key, or only the node key "seat" (a composite lookup then intersects
+// one sidecar and leaves "zone" to the resolver).
+type indexMode string
+
+const (
+	indexNone     indexMode = "none"
+	indexAll      indexMode = "all"
+	indexSeatOnly indexMode = "seat-only"
+)
+
+// declarePropertyIndexes declares the T2 indexes after the first writes
+// registered the type and label (a wrapper's inner store has no core DDL).
+func declarePropertyIndexes(t *testing.T, be pinnedPropBackend, g *Core, mode indexMode) {
+	t.Helper()
+	if mode == indexNone {
+		return
+	}
+	keys := []string{"seat", "zone"}
+	if mode == indexSeatOnly {
+		keys = keys[:1]
+	}
+	if be.wrapped != nil {
+		inner := be.wrapped(g)
+		tTok, _ := g.relTypes.Lookup("T")
+		lTok, _ := g.labels.Lookup("L")
+		if err := inner.CreateRelPropertyIndex(tTok, "seat"); err != nil {
+			t.Fatalf("inner CreateRelPropertyIndex: %v", err)
+		}
+		for _, k := range keys {
+			if err := inner.CreatePropertyIndex(lTok, k); err != nil {
+				t.Fatalf("inner CreatePropertyIndex(%s): %v", k, err)
+			}
+		}
+		return
+	}
+	if be.canIndex {
+		if err := g.Index.CreateRelProperty("T", "seat"); err != nil {
+			t.Fatalf("CreateRelProperty: %v", err)
+		}
+	}
+	for _, k := range keys {
+		if err := g.Index.CreateProperty("L", k); err != nil {
+			t.Fatalf("CreateProperty(%s): %v", k, err)
+		}
+	}
+}
+
+// TestPinnedPropertyDoorsAgree is T2 (rule 17): for every backend and index
+// mode, the named doors (RelsByTypePropertyAt / During, NodesByLabelPropertyAt
+// / During) equal the generic doors (ByTypeAndProperty / ByLabelAndProperty
+// with ValidAt, ValidStart+ValidEnd, TxAt, TxPin), ByLabelAndProperties
+// (composite) answers through the intersection, and every answer equals the
+// same door with the sidecars declined. Literal sets at a few instants keep
+// the equalities from being vacuous.
+//
+// Faulty implementations caught: a named door still seeding from the whole
+// type but pruning with the sidecar (no fault) versus seeding from the
+// matches and NOT unioning history (r2 ended, r3 deleted), a composite
+// intersection that drops a member when one key has no index (seat-only mode:
+// "zone" must constrain nothing), intersecting with the wrong pair's set, the
+// label carried by another row than the value (n2 gains L after the value
+// changed back), and the pin prune applied to a pure valid-time read.
+func TestPinnedPropertyDoorsAgree(t *testing.T) {
+	ctx := context.Background()
+	for _, be := range pinnedPropBackends() {
+		modes := []indexMode{indexNone, indexAll, indexSeatOnly}
+		if be.name == "tiered" {
+			// tiered declines rel property indexes and allows node ones only
+			// on reference labels: the fold arm only.
+			modes = []indexMode{indexNone}
+		}
+		for _, mode := range modes {
+			t.Run(fmt.Sprintf("%s/index=%s", be.name, mode), func(t *testing.T) {
+				g := be.open(t)
+				a, err := g.Nodes.Add(ctx, []string{"P"}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				b, _ := g.Nodes.Add(ctx, []string{"P"}, nil)
+				vf := func(v int64) types.Instant { return types.Instant(v) }
+				addRel := func(seat int64, from int64, extra map[string]any) types.RelID {
+					props := map[string]any{"seat": seat, "tkg_valid_from": vf(from)}
+					for k, v := range extra {
+						props[k] = v
+					}
+					r, err := g.Rels.Add(ctx, "T", a, b, props)
+					if err != nil {
+						t.Fatalf("add rel: %v", err)
+					}
+					return r.ID()
+				}
+				updRel := func(id types.RelID, u map[string]any) {
+					if _, err := g.Rels.Update(ctx, id, u); err != nil {
+						t.Fatalf("update rel: %v", err)
+					}
+				}
+				addNode := func(labels []string, seat int64, zone string, from int64) types.NodeID {
+					n, err := g.Nodes.Add(ctx, labels, map[string]any{"seat": seat, "zone": zone, "tkg_valid_from": vf(from)})
+					if err != nil {
+						t.Fatalf("add node: %v", err)
+					}
+					return n.ID()
+				}
+				updNode := func(id types.NodeID, u map[string]any) {
+					if _, err := g.Nodes.Update(ctx, id, u); err != nil {
+						t.Fatalf("update node: %v", err)
+					}
+				}
+				var pins []types.Instant
+				pin := func() {
+					p, err := g.Temporal.NowTx()
+					if err != nil {
+						t.Fatal(err)
+					}
+					pins = append(pins, p)
+				}
+
+				r1 := addRel(1, 1000, nil)
+				n1 := addNode([]string{"L"}, 1, "a", 1000)
+				declarePropertyIndexes(t, be, g, mode)
+				pin()
+				r2 := addRel(1, 1500, map[string]any{"tkg_valid_to": vf(2500)})
+				r3 := addRel(2, 1200, nil)
+				r4 := addRel(1, 1800, nil)
+				n2 := addNode([]string{"M"}, 1, "a", 1100)
+				n3 := addNode([]string{"L"}, 1, "a", 1500)
+				pin()
+				updRel(r1, map[string]any{"seat": int64(2), "tkg_valid_from": vf(2000)})
+				updNode(n1, map[string]any{"zone": "b", "tkg_valid_from": vf(2000)})
+				updNode(n2, map[string]any{"seat": int64(5), "tkg_valid_from": vf(1600)})
+				pin()
+				// n2 carried seat 1 under M only; it gains L on a row carrying
+				// seat 1 again (valid from the label change's wall stamp).
+				updNode(n2, map[string]any{"seat": int64(1), "tkg_valid_from": vf(2600)})
+				if err := g.Nodes.AddLabel(ctx, n2, "L"); err != nil {
+					t.Fatalf("AddLabel: %v", err)
+				}
+				updRel(r1, map[string]any{"seat": int64(1), "tkg_valid_from": vf(3000)})
+				updRel(r4, map[string]any{"seat": int64(3)})
+				updNode(n1, map[string]any{"seat": int64(2), "tkg_valid_from": vf(3000)})
+				pin()
+				if err := g.Rels.Delete(ctx, r3); err != nil {
+					t.Fatalf("delete r3: %v", err)
+				}
+				if err := g.Nodes.Delete(ctx, n3); err != nil {
+					t.Fatalf("delete n3: %v", err)
+				}
+				if err := g.Nodes.RemoveLabel(ctx, n2, "L"); err != nil {
+					t.Fatalf("RemoveLabel: %v", err)
+				}
+				pin()
+
+				rels := func(fn func() ([]*types.Relationship, error)) relVersionSet {
+					t.Helper()
+					got, err := fn()
+					if err != nil {
+						t.Fatalf("rel door: %v", err)
+					}
+					return relVersionSetOf(got)
+				}
+				nodes := func(fn func() ([]*types.Node, error)) map[types.NodeID]uint32 {
+					t.Helper()
+					got, err := fn()
+					if err != nil {
+						t.Fatalf("node door: %v", err)
+					}
+					return nodeSetVer(got)
+				}
+				keysOf := func(s relVersionSet) relVersionSet {
+					out := relVersionSet{}
+					for id := range s {
+						out[id] = 0
+					}
+					return out
+				}
+				nodeKeysOf := func(s map[types.NodeID]uint32) map[types.NodeID]uint32 {
+					out := map[types.NodeID]uint32{}
+					for id := range s {
+						out[id] = 0
+					}
+					return out
+				}
+
+				// Literal anchors (pure valid time, current knowledge).
+				for _, c := range []struct {
+					at   int64
+					seat int64
+					want relVersionSet
+				}{
+					{1100, 1, relVersionSet{r1: 0}},
+					{2100, 1, relVersionSet{r2: 0, r4: 0}},
+					{3100, 1, relVersionSet{r1: 2, r4: 0}},
+					{1300, 2, relVersionSet{r3: 0}},
+				} {
+					got := rels(func() ([]*types.Relationship, error) {
+						return g.Rels.ByTypeAndProperty("T", "seat", c.seat, storepkg.QueryOpts{ValidAt: vf(c.at)})
+					})
+					if !relVersionSetsEqual(got, c.want) {
+						t.Fatalf("ValidAt %d seat=%d: got %v, want %v", c.at, c.seat, got, c.want)
+					}
+				}
+				if got := nodes(func() ([]*types.Node, error) {
+					return g.Nodes.ByLabelAndProperties("L", map[string]any{"seat": int64(1), "zone": "a"}, storepkg.QueryOpts{ValidAt: vf(1700)})
+				}); !nodeMapsEqual(got, map[types.NodeID]uint32{n1: 0, n3: 0}) {
+					t.Fatalf("composite ValidAt 1700: got %v, want {n1:0 n3:0}", fmtNodeVer(got))
+				}
+
+				instants := []int64{900, 1000, 1100, 1250, 1500, 1700, 1900, 2000, 2100, 2499, 2500, 2600, 2900, 3000, 3100, 5000}
+				txs := append([]types.Instant{0}, pins...)
+				for _, at := range instants {
+					for _, seat := range []int64{1, 2, 3, 5} {
+						for _, tx := range txs {
+							opts := storepkg.QueryOpts{ValidAt: vf(at), TxAt: tx}
+							generic := rels(func() ([]*types.Relationship, error) { return g.Rels.ByTypeAndProperty("T", "seat", seat, opts) })
+							var fold relVersionSet
+							withoutPropertySidecars(g, func() {
+								fold = rels(func() ([]*types.Relationship, error) { return g.Rels.ByTypeAndProperty("T", "seat", seat, opts) })
+							})
+							if !relVersionSetsEqual(generic, fold) {
+								t.Fatalf("rel %+v seat=%d: indexed %v != fold %v", opts, seat, generic, fold)
+							}
+							if tx == 0 {
+								named := rels(func() ([]*types.Relationship, error) { return g.Temporal.RelsByTypePropertyAt("T", "seat", seat, vf(at)) })
+								if !relVersionSetsEqual(generic, named) {
+									t.Fatalf("rel At %d seat=%d: generic %v != named %v", at, seat, generic, named)
+								}
+							}
+							ngeneric := nodes(func() ([]*types.Node, error) { return g.Nodes.ByLabelAndProperty("L", "seat", seat, opts) })
+							var nfold map[types.NodeID]uint32
+							withoutPropertySidecars(g, func() {
+								nfold = nodes(func() ([]*types.Node, error) { return g.Nodes.ByLabelAndProperty("L", "seat", seat, opts) })
+							})
+							if !nodeMapsEqual(ngeneric, nfold) {
+								t.Fatalf("node %+v seat=%d: indexed %v != fold %v", opts, seat, fmtNodeVer(ngeneric), fmtNodeVer(nfold))
+							}
+							if tx == 0 {
+								named := nodes(func() ([]*types.Node, error) { return g.Temporal.NodesByLabelPropertyAt("L", "seat", seat, vf(at)) })
+								if !nodeMapsEqual(ngeneric, named) {
+									t.Fatalf("node At %d seat=%d: generic %v != named %v", at, seat, fmtNodeVer(ngeneric), fmtNodeVer(named))
+								}
+							}
+							for _, zone := range []string{"a", "b"} {
+								vals := map[string]any{"seat": seat, "zone": zone}
+								comp := nodes(func() ([]*types.Node, error) { return g.Nodes.ByLabelAndProperties("L", vals, opts) })
+								var cfold map[types.NodeID]uint32
+								withoutPropertySidecars(g, func() {
+									cfold = nodes(func() ([]*types.Node, error) { return g.Nodes.ByLabelAndProperties("L", vals, opts) })
+								})
+								if !nodeMapsEqual(comp, cfold) {
+									t.Fatalf("composite %+v %v: indexed %v != fold %v", opts, vals, fmtNodeVer(comp), fmtNodeVer(cfold))
+								}
+							}
+						}
+					}
+				}
+				for i, s := range instants {
+					for _, e := range instants[i+1:] {
+						for _, seat := range []int64{1, 2} {
+							for _, tx := range txs {
+								opts := storepkg.QueryOpts{ValidStart: vf(s), ValidEnd: vf(e), TxAt: tx}
+								generic := rels(func() ([]*types.Relationship, error) { return g.Rels.ByTypeAndProperty("T", "seat", seat, opts) })
+								var fold relVersionSet
+								withoutPropertySidecars(g, func() {
+									fold = rels(func() ([]*types.Relationship, error) { return g.Rels.ByTypeAndProperty("T", "seat", seat, opts) })
+								})
+								if !relVersionSetsEqual(generic, fold) {
+									t.Fatalf("rel %+v seat=%d: indexed %v != fold %v", opts, seat, generic, fold)
+								}
+								ngeneric := nodes(func() ([]*types.Node, error) { return g.Nodes.ByLabelAndProperty("L", "seat", seat, opts) })
+								var nfold map[types.NodeID]uint32
+								withoutPropertySidecars(g, func() {
+									nfold = nodes(func() ([]*types.Node, error) { return g.Nodes.ByLabelAndProperty("L", "seat", seat, opts) })
+								})
+								if !nodeMapsEqual(ngeneric, nfold) {
+									t.Fatalf("node %+v seat=%d: indexed %v != fold %v", opts, seat, fmtNodeVer(ngeneric), fmtNodeVer(nfold))
+								}
+								if tx == 0 {
+									named := rels(func() ([]*types.Relationship, error) {
+										return g.Temporal.RelsByTypePropertyDuring("T", "seat", seat, vf(s), vf(e))
+									})
+									if !relVersionSetsEqual(keysOf(generic), keysOf(named)) {
+										t.Fatalf("rel During [%d,%d) seat=%d: generic %v != named %v", s, e, seat, generic, named)
+									}
+									nnamed := nodes(func() ([]*types.Node, error) {
+										return g.Temporal.NodesByLabelPropertyDuring("L", "seat", seat, vf(s), vf(e))
+									})
+									if !nodeMapsEqual(nodeKeysOf(ngeneric), nodeKeysOf(nnamed)) {
+										t.Fatalf("node During [%d,%d) seat=%d: generic %v != named %v", s, e, seat, fmtNodeVer(ngeneric), fmtNodeVer(nnamed))
+									}
+								}
+							}
+						}
+					}
+				}
+				for _, p := range pins {
+					for _, seat := range []int64{1, 2, 5} {
+						opts := storepkg.QueryOpts{TxPin: p}
+						generic := rels(func() ([]*types.Relationship, error) { return g.Rels.ByTypeAndProperty("T", "seat", seat, opts) })
+						asOf := relsAsOfMatching(t, g, p, "T", "seat", seat)
+						if !relVersionSetsEqual(generic, asOf) {
+							t.Fatalf("rel TxPin %d seat=%d: %v != RelsAsOf %v", p, seat, generic, asOf)
+						}
+						comp := nodes(func() ([]*types.Node, error) {
+							return g.Nodes.ByLabelAndProperties("L", map[string]any{"seat": seat, "zone": "a"}, opts)
+						})
+						var cfold map[types.NodeID]uint32
+						withoutPropertySidecars(g, func() {
+							cfold = nodes(func() ([]*types.Node, error) {
+								return g.Nodes.ByLabelAndProperties("L", map[string]any{"seat": seat, "zone": "a"}, opts)
+							})
+						})
+						if !nodeMapsEqual(comp, cfold) {
+							t.Fatalf("composite TxPin %d seat=%d: indexed %v != fold %v", p, seat, fmtNodeVer(comp), fmtNodeVer(cfold))
+						}
+					}
+				}
+				_ = r2
+			})
+		}
+	}
+}
