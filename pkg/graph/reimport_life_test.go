@@ -39,6 +39,9 @@ func TestReImportContinuesTheChainFacade(t *testing.T) {
 				reimport func(id int64, props map[string]any) (v uint32, prev string, err error)
 				history  func(id int64) ([]uint32, []string, error)
 				verify   func(id int64) (bool, error)
+				// doors: every import door of the kind (the refusal is checked
+				// on each, rule 4).
+				doors map[string]func(id int64, props map[string]any) error
 			}
 			kinds := []kind{
 				{
@@ -73,6 +76,18 @@ func TestReImportContinuesTheChainFacade(t *testing.T) {
 						return vs, hashes, err
 					},
 					verify: func(id int64) (bool, error) { return g.Hash().VerifyNodeChain(types.NodeID(id)) },
+					doors: map[string]func(int64, map[string]any) error{
+						"Nodes.AddByIDIfAbsent": func(id int64, props map[string]any) error {
+							_, _, err := g.Nodes().AddByIDIfAbsent(ctx, types.NodeID(id), []string{"Ev"}, props)
+							return err
+						},
+						"GraphTx.ImportNodeWithID": func(id int64, props map[string]any) error {
+							return g.Tx().Run(func(tx *graphpkg.GraphTx) error {
+								_, err := tx.ImportNodeWithID(ctx, types.NodeID(id), []string{"Ev"}, props)
+								return err
+							})
+						},
+					},
 				},
 				{
 					name: "rel",
@@ -106,6 +121,14 @@ func TestReImportContinuesTheChainFacade(t *testing.T) {
 						return vs, hashes, err
 					},
 					verify: func(id int64) (bool, error) { return g.Hash().VerifyRelChain(types.RelID(id)) },
+					doors: map[string]func(int64, map[string]any) error{
+						"GraphTx.ImportRelationshipWithID": func(id int64, props map[string]any) error {
+							return g.Tx().Run(func(tx *graphpkg.GraphTx) error {
+								_, err := tx.ImportRelationshipWithID(ctx, types.RelID(id), "LINK", s, e, props)
+								return err
+							})
+						},
+					},
 				},
 			}
 			for _, k := range kinds {
@@ -138,13 +161,22 @@ func TestReImportContinuesTheChainFacade(t *testing.T) {
 				if d == 0 || d >= tomb {
 					t.Fatalf("%s fixture: delete stamp %d, pin %d", k.name, d, tomb)
 				}
-				for _, at := range []types.Instant{d - 1, d} {
-					_, _, err := k.reimport(id, map[string]any{"tkg_tx_from": at, "w": int64(9)})
-					if !errors.Is(err, graphpkg.ErrTxOrder) || !errors.Is(err, graphpkg.ErrInvalidTxFrom) {
-						t.Fatalf("%s backfilled re-import at %d (delete %d): err = %v; want ErrTxOrder wrapping ErrInvalidTxFrom", k.name, at, d, err)
-					}
-					if vs2, _, _ := k.history(id); len(vs2) != 2 {
-						t.Fatalf("%s refused re-import changed the history: %v", k.name, vs2)
+				k.doors["Import"] = func(id int64, props map[string]any) error {
+					_, _, err := k.reimport(id, props)
+					return err
+				}
+				for name, door := range k.doors {
+					for _, at := range []types.Instant{d - 1, d} {
+						err := door(id, map[string]any{"tkg_tx_from": at, "w": int64(9)})
+						if !errors.Is(err, graphpkg.ErrTxOrder) || !errors.Is(err, graphpkg.ErrInvalidTxFrom) {
+							t.Fatalf("%s %s backfilled re-import at %d (delete %d): err = %v; want ErrTxOrder wrapping ErrInvalidTxFrom", k.name, name, at, d, err)
+						}
+						if vs2, _, _ := k.history(id); len(vs2) != 2 {
+							t.Fatalf("%s %s refused re-import changed the history: %v", k.name, name, vs2)
+						}
+						if ok, err := k.verify(id); err != nil || !ok {
+							t.Fatalf("%s %s refused re-import: Verify*Chain = %v, %v", k.name, name, ok, err)
+						}
 					}
 				}
 				v, prev, err := k.reimport(id, map[string]any{"w": int64(9)})
