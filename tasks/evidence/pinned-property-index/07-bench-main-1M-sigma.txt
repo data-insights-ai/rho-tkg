@@ -1,0 +1,10 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/bench
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkPinnedRelPropertyLookup/memory/1000000/1type/nochurn/matches200/pinned-32         	       1	    263811 ns/op	         0.1870 build-ms	  106576 B/op	    1421 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/1000000/1type/sigma/matches200/pinned-32           	       1	 462053242 ns/op	       362.8 build-ms	99784720 B/op	 1053475 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/1000000/1type/nochurn/matches200/pinned-32         	       1	   2484634 ns/op	         2.721 build-ms	 1235944 B/op	   14112 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/1000000/1type/sigma/matches200/pinned-32           	       1	3325469181 ns/op	      3840 build-ms	2475995064 B/op	22805453 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/bench	88.104s

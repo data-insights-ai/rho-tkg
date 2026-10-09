@@ -8,6 +8,52 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Temporal property lookups cost the value's ever-members, not the history of the graph** (backlog 8, requested
+  by sigma-tkgd's realtime ingest; handover `tasks/handover-pinned-index-churn-20261009.md`, recommendation D).
+  `g.Rels().ByTypeAndProperty` and `g.Nodes().ByLabelAndProperty` / `ByLabelAndProperties` with `TxPin`, `TxAt`,
+  `ValidAt` or `ValidStart`+`ValidEnd`, and the named `RelsByTypePropertyAt` / `RelsByTypePropertyDuring` /
+  `NodesByLabelPropertyAt` / `NodesByLabelPropertyDuring`, folded EVERY ID with a history row, of every type, into
+  their candidates and loaded each chain. With a declared property index they now resolve only the current matches
+  united with the value's ever-members from a new optional store capability,
+  `store.RelPropertyTxMembershipCapability.ForEachRelPropertyTxMember(typeTok, key, valueKey, fn)` and its node twin
+  `NodePropertyTxMembershipCapability` (keyed like the index, (label, key): a node row counts only if it carries the
+  label and the value itself), minus members whose earliest row carrying the value was recorded after the effective
+  pin. The sidecar is append-only (a sound superset: the chain resolver stays the authority, so indexed and unindexed
+  doors answer the same), RAM-only, built lazily per index on the first temporal lookup and recorded at every row
+  write (memory: the four row seams `storedRel`/`historyRel`/`storedNode`/`historyNode`; badger: the current-row index
+  maintenance seam and every history-row door), dropped by Clear, an index drop, retention purge and exact erasure.
+  memory, badger and sharded (union of the shards) implement it; tiered and wrapper stores decline and keep the
+  full-history fold. `store.PropertyTxMembershipStatsCapability` reports built sidecars, postings, builds and build
+  time. `ByLabelAndProperties` intersects the sidecars of the keys that have a single-key index. The named rel doors
+  now seed from the current property matches instead of the whole type.
+  Measured (`BenchmarkPinnedRelPropertyLookup`, 32-core x86, shared machine; one value with 200 current matches,
+  sigma profile = 20 % of the rels revised, 5 % deleted; evidence `tasks/evidence/pinned-property-index/`):
+
+  | pinned 200-match lookup | main | this change |
+  |---|---|---|
+  | memory, 100 k, sigma | 13.8 ms | 0.095 ms |
+  | badger, 100 k, sigma | 227 ms | 0.127 ms |
+  | sharded, 100 k, sigma | 221 ms | 0.179 ms |
+  | badger, 100 k, 5 types, unrelated churn x10 | 789 ms | 0.128 ms |
+  | memory, 1 M, sigma | 462 ms (1 sample) | 0.097 ms |
+  | badger, 1 M, sigma | 3.33 s (1 sample) | 0.113 ms |
+
+  Targets met at 1 M: churned vs no-churn 1.10x (memory), 0.83x (badger), 0.80x (sharded) (target <= 2x); unrelated
+  churn x1 -> x10: +10 % / +11 % / -7 % ns/op, allocs/op identical (target +-20 %). Lazy build of one sidecar at
+  1 M sigma: memory 0.62 s, badger 3.7 s, sharded 3.1 s (100 k: 49 / 299 / 316 ms), once per index after open; on
+  badger the build does not hold the write lock (writers record into the sidecar while it scans; a Clear or drop
+  during the scan discards it, bounded retry). RAM: 25 B per posting at 1 M and 10 M postings (200 per value),
+  30 B (20 000 per value), 97-117 B when every value is distinct (first posting of a value held inline); one posting
+  per (rel, distinct value ever carried). Current (unpinned) lookups and writes: allocs/op unchanged; time within the shared machine's
+  order-dependent noise band (BulkAddNodes10k memory +15 % main-first, -10 % branch-first; `08-regression.txt`), no
+  consistent regression. Tests: T1 `TestPinnedByTypeAndPropertyEqualsPinnedScan` (exact sets per pin, 7
+  backends with and without the index; green on main as a guard), T5 `TestPinnedPropertyLookupLoadsOnlyEverMembers`
+  (chain loads = the value's ever-members, stable under 10x churn; red on main: 50 loads vs 10), T2
+  `TestPinnedPropertyDoorsAgree`, T3 the property doors in `TestBitemporalOracleHarness` (indexed vs unindexed vs
+  oracle), T4 `TestPinnedPropertyLookupLifecycle` (late index, drop/re-create, truncate, compaction, reset, purge,
+  reopen, replica apply, unflushed reads), store door matrices in `pkg/graph/store/property_tx_members_test.go`,
+  badger build windows in `badgerstore_propertytxmembers_test.go`; 18 of 18 mutants red.
+
 - **`types.NodeID.MintInstant()` / `types.RelID.MintInstant()` (`types.Instant`): the public derivation of an ID's
   derived valid-from** (backlog 36, requested by sigma-tkgd for its adoption of the rule "`ValidFrom` 0 = unset; the
   derived start is the ID's mint instant" on unpinned reads and column scans, which carry no derived start and where

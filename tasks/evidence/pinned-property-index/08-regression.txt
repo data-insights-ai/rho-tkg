@@ -1,0 +1,50 @@
+# main (aa26ca6) vs branch, interleaved 3 rounds x count=2, -benchtime=0.3s, shared 32-core machine
+
+| benchmark | main ns/op (median of 6) | branch ns/op | delta | allocs main/branch |
+|---|---|---|---|---|
+| BenchmarkBulkAddNodes10k/badger-32 | 16658226 | 18699960 | +12.3 % | 191182 / 191182 |
+| BenchmarkBulkAddNodes10k/memory-32 | 8983983 | 9663704 | +7.6 % | 70257 / 70257 |
+| BenchmarkIngest10kBatch/badger-32 | 23749111 | 23314578 | -1.8 % | 300968 / 300968 |
+| BenchmarkIngest10kBatch/memory-32 | 17844780 | 17949868 | +0.6 % | 180048 / 180046 |
+| BenchmarkIngest1kSingle/badger-32 | 2901844 | 2855640 | -1.6 % | 25252 / 25252 |
+| BenchmarkIngest1kSingle/memory-32 | 1507107 | 1387966 | -7.9 % | 11846 / 11846 |
+| BenchmarkLabelScan10k/badger/nosort-32 | 636209 | 605866 | -4.8 % | 4387 / 3593 |
+| BenchmarkLabelScan10k/badger/sorted-32 | 1093502 | 1146008 | +4.8 % | 4269 / 3435 |
+| BenchmarkLabelScan10k/memory/nosort-32 | 208311 | 227569 | +9.2 % | 2 / 2 |
+| BenchmarkLabelScan10k/memory/sorted-32 | 692254 | 688383 | -0.6 % | 2 / 2 |
+| BenchmarkRelPropertyLookup10k/badger/indexed-32 | 256 | 263 | +2.5 % | 6 / 6 |
+| BenchmarkRelPropertyLookup10k/badger/scan-32 | 1548356 | 1545087 | -0.2 % | 14934 / 14373 |
+| BenchmarkRelPropertyLookup10k/memory/indexed-32 | 272 | 290 | +6.6 % | 6 / 6 |
+| BenchmarkRelPropertyLookup10k/memory/scan-32 | 966350 | 988023 | +2.2 % | 10005 / 10005 |
+| BenchmarkTwoHop/badger-32 | 2322 | 2548 | +9.7 % | 22 / 22 |
+| BenchmarkTwoHop/memory-32 | 635 | 698 | +10.0 % | 9 / 9 |
+
+# run 2: 6 rounds x count=2, main first in each round
+
+| benchmark | main ns/op (median of 6) | branch ns/op | delta | allocs main/branch |
+|---|---|---|---|---|
+| BenchmarkBulkAddNodes10k/badger-32 | 16112769 | 17531164 | +8.8 % | 191182 / 191182 |
+| BenchmarkBulkAddNodes10k/memory-32 | 8639893 | 9953464 | +15.2 % | 70257 / 70257 |
+| BenchmarkIngest1kSingle/badger-32 | 2852124 | 2730704 | -4.3 % | 25252 / 25252 |
+| BenchmarkIngest1kSingle/memory-32 | 1568994 | 1329376 | -15.3 % | 11846 / 11846 |
+| BenchmarkRelPropertyLookup10k/badger/indexed-32 | 253 | 255 | +0.6 % | 6 / 6 |
+| BenchmarkRelPropertyLookup10k/badger/scan-32 | 1482540 | 1498746 | +1.1 % | 14882 / 14486 |
+| BenchmarkRelPropertyLookup10k/memory/indexed-32 | 251 | 260 | +3.4 % | 6 / 6 |
+| BenchmarkRelPropertyLookup10k/memory/scan-32 | 918708 | 937841 | +2.1 % | 10005 / 10005 |
+| BenchmarkTwoHop/badger-32 | 2214 | 2217 | +0.1 % | 22 / 22 |
+| BenchmarkTwoHop/memory-32 | 670 | 704 | +5.0 % | 9 / 9 |
+
+# run 3: 6 rounds x count=2, BRANCH first in each round (order control)
+
+| benchmark | main ns/op (median of 6) | branch ns/op | delta | allocs main/branch |
+|---|---|---|---|---|
+| BenchmarkBulkAddNodes10k/badger-32 | 17701117 | 16563736 | -6.4 % | 191182 / 191182 |
+| BenchmarkBulkAddNodes10k/memory-32 | 9009620 | 8124164 | -9.8 % | 70257 / 70257 |
+| BenchmarkIngest1kSingle/badger-32 | 2938685 | 2755227 | -6.2 % | 25252 / 25252 |
+| BenchmarkIngest1kSingle/memory-32 | 1352390 | 1345749 | -0.5 % | 11846 / 11846 |
+
+# Reading: allocs/op identical everywhere (the write seams add a len()==0 check
+# when no sidecar is built). Time deltas flip sign with the run order (BulkAddNodes10k
+# memory +15.2 % main-first, -9.8 % branch-first; the untouched TwoHop moved +10 % in
+# run 1): the shared 32-core machine's noise band is ~+-10-15 %, so a +-5 % claim is
+# not resolvable here; no consistent regression was observed.
