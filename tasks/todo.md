@@ -38,7 +38,7 @@ Phase 1 (parallel)
       Red tests R14 (AddWithTx today), R13 (crafted delete records via ApplyChange).
 
 Phase 2 (parallel, after W1+W2 merged)
-- [ ] W3 nodes: node DeleteWithTx/UpdateWithTx standalone + GraphTx twins, cascade one instant + order check on
+- [x] W3 nodes (merged 18f8924; r0-before-w3 72 green, red-w3 284 red, green-w3 658 under -race): node DeleteWithTx/UpdateWithTx standalone + GraphTx twins, cascade one instant + order check on
       every cascaded rel (R9), `nodes.Ops` + fakes, node R0-R10, R13/R14 for the node doors.
 - [x] W4 rel GraphTx twins + batch + ingest (merged e44e95d; red-w4.txt 152 red, green-w4.txt; all 8 doors seamed, whole-unit pre-flight refusal): R12 (rollback, door equivalence), R16 (batch/ingest: seam or explicit refusal).
 
