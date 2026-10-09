@@ -6,12 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Ingest session interval corrections
+### Added
 
-#### Added
-
-- **`Session.SetNodeVersionInterval` / `Session.SetRelVersionInterval`: grow a valid interval through
-  the ingest session.** Requested by ai-soc (a burst fact `[vs, ve)` grows to `[vs, ve')` as new
+- **Ingest session interval corrections: `Session.SetNodeVersionInterval` /
+  `Session.SetRelVersionInterval` grow a valid interval through the ingest session.** Requested by ai-soc (a burst fact `[vs, ve)` grows to `[vs, ve')` as new
   events arrive; the producer already writes through the session and had to leave it for the
   standalone `Temporal()` door to record the correction). The two methods queue the same
   append-only cascade `Temporal().SetNodeVersionInterval` / `SetRelVersionInterval` and the
@@ -28,17 +26,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   while sibling groups commit; a closed or nil session returns `ErrIngestClosed` /
   `ErrNilSession`. Tests: `TestSessionSetRelVersionInterval_TwoPhase` and the node twin (memory,
   badger, tiered, sharded; strong sync, strong async, concurrent), `TestSessionSetVersionInterval_*`,
-  `TestSessionIntervalDoors_MatchStandaloneAndBatch`.
+  `TestSessionIntervalDoors_MatchStandaloneAndBatch`. Known gap, on all four doors alike
+  (`Temporal()`, `GraphTx`, `BatchBuilder`, `Session`): `SetNodeVersionInterval` does not check
+  unique constraints, so its props patch can give a node a value another node holds
+  (`tasks/backlog.md` item 12).
 
-#### Changed (comments and docs only)
+### Changed
 
-- The change-feed comment no longer says a rolled-back transaction appears as forward plus
+- **Comments and docs only.** The change-feed comment no longer says a rolled-back transaction appears as forward plus
   compensating operations: since the scoped log a rolled-back or uncommitted `GraphTx` emits no
   records (and `TxChangeLogScope` is implemented by tiered and sharded as well). The op-log
   section of `docs/architecture.md` says so; lesson 55 notes it is superseded for `GraphTx`.
 - `CreateRelTemporal` is documented as declined on tiered only (sharded implements it).
 - `CreateUnique` lists the doors its enforcement covers: the standalone node doors, the batch,
-  `GraphTx` and the ingest session in both modes.
+  `GraphTx` and the ingest session in both modes, and says `SetNodeVersionInterval` is not checked.
 
 ## [4.43.0] - 2026-10-08
 

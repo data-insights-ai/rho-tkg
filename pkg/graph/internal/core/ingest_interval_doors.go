@@ -18,6 +18,10 @@ import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 // entity-lock-bounded write; an apply-time failure (unknown id, a refused
 // interval) fails the group that queued it with the real sentinel and leaves
 // that group's other ops to commit (partial success, as the Batch door).
+//
+// Not checked: unique constraints. The props patch can give the node a value
+// another node holds under CreateUnique; the cascade kernel has no
+// enforceUniqueForNode call on any of its four doors (tasks/backlog.md item 12).
 
 // SetNodeVersionInterval accumulates a valid-time correction for node id over
 // [validFrom, validTo) (validTo == 0 means open-ended). props is a PATCH over
