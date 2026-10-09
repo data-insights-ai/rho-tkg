@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.47.0] - 2026-10-09
+
+Minor release: the effective-timeline doors (`g.Temporal().NodeEffectiveTimeline` / `RelEffectiveTimeline` and the
+scan forms `ForEachRelEffectiveByType` / `ForEachNodeEffectiveByLabel`, which include entities deleted before the
+pin), `types.NodeID.MintInstant` / `RelID.MintInstant`, the badger with-history doors publishing the history row
+before the current row (point as-of doors no longer miss an entity while a writer moves its row), and two
+read-time fixes to chains that already exist: a replaced row now ends where its replacer starts (a closed entity no
+longer reads valid again after a later bounded cascade) and re-imported IDs sort by life then version (tiered and
+sharded agree with memory and badger). **Read the `### Fixed` migration blocks before upgrading from 4.46.x: answers
+for chains with a close followed by a bounded cascade, and for re-imported IDs on tiered and sharded, change;
+pins before the replacing write are unchanged.** Gates on the released tree: `make ci-docker` exit 0; sigma-tkgd,
+ai-soc engine and agent-bookkeeping build and vet against it.
+
 ### Added
 
 - **`g.Temporal().NodeEffectiveTimeline(id, pin)` / `RelEffectiveTimeline(id, pin)`: the entity's state over
