@@ -1,0 +1,199 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-09",
+  "status": "worker-validated-bounded-functional-spike-parent-review-pending",
+  "engine_selected": false,
+  "scope": "Optional independent scalar transactional comparator, not a public rho backend or V2/V3/V7 completion.",
+  "commands": [
+    "cd tools/v5-substrate/fdb && make cover",
+    "cd tools/v5-substrate/fdb && make static"
+  ],
+  "source_sha256": {
+    ".gitignore": "defc758c6720f3e63dbe47182a9c485a47eeed2999b3903f8dbfbdca4c906499",
+    ".dockerignore": "0d400629c8094c064d97fcf683dd29ac5b62856c38d2f3dc67ef67329b80ddda",
+    "Dockerfile": "9c5ab44af96390894f1b9921acf20ce53f26b12c60df544427f0d6eb1aa16aa3",
+    "Makefile": "93bdd5d497bb7135817163a3a9c5c53dd025560024edf565acf806406245cf5c",
+    "README.md": "3dd62080d448816d7d856451e4a6497840e5d263050d940ea09a1b0ce5f171a8",
+    "check-static.sh": "cf592af1d053f8a15fd226b6d60645c2b12aa1e150eb02b39e5ed179017b431e",
+    "go.mod": "15d92f0904b97b3fec0e0b23427994a095963da9b4afde3c20a32573e4e4672f",
+    "go.sum": "26bcf694e1b27910d09b654fcb3a852970358127d82581474e47c9afaba96618",
+    "main.go": "56e2e249800007c86e74a9ceda4327963da48f3b0156caa6edd8de246a6b9150",
+    "state.go": "5e56453570356ed47c0171883d9a507eded6d88f273451839189397c3737a2d2",
+    "fault.go": "b849ee70161dd36099154e762023350f2c3b055fd238aac750372c8fcd3d1d3e",
+    "state_test.go": "6e221f4097b13ce34c82652d207dcb95be48848d3efafb1bc76fd920ee33670d",
+    "run-local.sh": "f592c70e5292f2330a19d744d98ee01073db2a16d4171d7e1f8b6e030f4f2f77"
+  },
+  "pins": {
+    "foundationdb": "7.3.77",
+    "release_commit": "3ea44ce1d9003ad095e408039e1f755c319c4dfb",
+    "go_binding": "v0.0.0-20260416192139-3ea44ce1d900",
+    "api": 730,
+    "go": "1.26.9 linux/arm64",
+    "native_image_digest": "sha256:c61744624e479d370a0120176e518bb569a2a18ee9abceaf7022c4367b54f1db",
+    "go_image_digest": "sha256:0275e2ab63da9ae2f4f714b2c5a20544b2470d1867919633ebb8d4a8a3d8e6e0",
+    "built_client_image_id": "sha256:883f24f71cddbfff24cdaaedd82b6e08597146deaccc051ebc9712281405bf72",
+    "client_sha256": "cd080617d5ba235aeb9916b258a6a840bee5cc21e54be3599614e2aca58d605d",
+    "header_archive_sha256": "73b1efca62bf1779e0d4d62131514c96f689db82865695618086e73a057ea385",
+    "missing_header_from_pinned_source_sha256": "82ea67e61592873c637e228764f5921179a710826be558ee0d1703023913e14d",
+    "license": "FDB Apache-2.0; base/subcomponents separately licensed"
+  },
+  "topology": {
+    "host": "Apple M4 Max, 128 GiB RAM",
+    "docker": "Desktop 4.89.0 / Engine29.7.2 linux/arm64",
+    "physical_hosts": 1,
+    "emulated": false,
+    "logical_prefixes": [
+      "g0/",
+      "g1/"
+    ],
+    "physical_fdb_shards_not_asserted": true,
+    "localities": [
+      "zone0",
+      "zone1",
+      "zone2",
+      "zone3"
+    ],
+    "coordinators": 3,
+    "replication": "triple",
+    "storage_engine": "ssd-2",
+    "pre_fault_roles": {
+      "zone0": [
+        "cluster_controller",
+        "coordinator",
+        "storage",
+        "resolver"
+      ],
+      "zone3": [
+        "grv_proxy",
+        "log",
+        "storage"
+      ],
+      "zone1": [
+        "master",
+        "data_distributor",
+        "ratekeeper",
+        "consistency_scan",
+        "coordinator",
+        "log",
+        "storage"
+      ],
+      "zone2": [
+        "coordinator",
+        "commit_proxy",
+        "log",
+        "storage"
+      ]
+    },
+    "host_ports_published": false,
+    "server_container_cap_bytes": 2147483648,
+    "server_resident_setting_mib": 1536,
+    "storage_and_cache_settings_mib_each": 128
+  },
+  "checks": {
+    "build": "pass",
+    "vet": "pass",
+    "race": "pass",
+    "coverage_percent": 80.7,
+    "exported_methods": 0,
+    "lint": "0 issues, v2.13.2 with repository config",
+    "gosec": "pass v2.29.0; one audited bounded conversion G115 annotation",
+    "govulncheck": "no Go vulnerabilities found, v1.7.0; native runtime excluded",
+    "independent_serial_whole_effect_oracle": "pass",
+    "native_pre_fence_conflict_and_paged_history_over_six_seconds": "pass",
+    "native_errors_observed": [
+      1020,
+      1101
+    ],
+    "native_commit_unknown_result_1021_observed": false,
+    "client_sigkill_before_native_commit": "zero effects, same-key retry installs once",
+    "client_sigkill_after_native_commit_before_external_reply": "whole outcome recovered, no duplicate revisions",
+    "one_zone_loss": "new whole transaction and retained-cut checks passed",
+    "all_server_loss": "sequential SIGKILL, all four down before any restart; current and old cut reproduced",
+    "initial_and_final_readiness": "healthy + full_replication + min_replicas_remaining>=3 + exact observed four zones",
+    "cleanup": "owned containers/network/data volumes/client image tag removed"
+  },
+  "resources": {
+    "units": "bytes",
+    "server_cgroup_peaks_across_observed_lifetimes": {
+      "zone0": 67092480,
+      "zone1": 73121792,
+      "zone2": 69185536,
+      "zone3": 68571136
+    },
+    "server_peak_sum_upper_bound": 277970944,
+    "test_client_cgroup_peak_including_compile_and_race": 375205888,
+    "server_peak_sum_plus_test_client_peak_upper_bound": 653176832,
+    "final_server_cgroup_current_samples": {
+      "zone0": 63471616,
+      "zone1": 66621440,
+      "zone2": 59449344,
+      "zone3": 56844288
+    },
+    "final_server_sample_sum": 246386688,
+    "sample_timestamps": [
+      "2026-10-09T13:53:26.889406584Z",
+      "2026-10-09T13:53:26.889238876Z",
+      "2026-10-09T13:53:26.890299626Z",
+      "2026-10-09T13:53:26.889237959Z"
+    ],
+    "disk_by_zone": [
+      {
+        "zone": "zone0",
+        "data_allocated_bytes": 210210816,
+        "trace_allocated_bytes": 1069056
+      },
+      {
+        "zone": "zone1",
+        "data_allocated_bytes": 211197952,
+        "trace_allocated_bytes": 1593344
+      },
+      {
+        "zone": "zone2",
+        "data_allocated_bytes": 105086976,
+        "trace_allocated_bytes": 1445888
+      },
+      {
+        "zone": "zone3",
+        "data_allocated_bytes": 211197952,
+        "trace_allocated_bytes": 1032192
+      }
+    ],
+    "disk_allocated_total": 742834176,
+    "limits": "Peak sums are upper bounds across different instants. Final parallel cgroup values are near-time samples, not observed deployment peak. Docker stats is an after-run snapshot and may subtract inactive cache. Tiny functional workload, bootstrap allocations, not steady-state/capacity/vendor cost acceptance."
+  },
+  "artifacts": {
+    "functional_run": "artifacts/rho-v5-fdb-1791553899-19460",
+    "static_run": "artifacts/rho-v5-fdb-static-1791553766-16040",
+    "failed_telemetry_run": "artifacts/rho-v5-fdb-1791553735-15622 (status5s timeout after successful zone-loss commit; failure retained, launcher now retries telemetry without changing app outcomes)",
+    "selected_sha256": {
+      "tests.txt": "7fe788f31f31343dc0c79fd53a91d2865f2439a9a7ba2b8aa7a8943816005912",
+      "coverage.out": "cbe3f4164143719a2d9bae834d821f7efae6851b31f51ea6fef7abdbcb25d77b",
+      "status.json": "6ea2518db8cdd3d263fc622e97935650f50dfa7732107ef18c8c40bc5d2f5d9c",
+      "status-before-zone-loss.json": "47f933a25ac23678b221f7f755a25db035c1bc6a44dc245bc61455da06c5b6cb",
+      "status-with-zone-loss.json": "a93cb585b85ff5827a9d29ea8c3b7f64135d2c6227467511d6680a00aecfec3b",
+      "status-reopened.json": "b667e6bd9663e422017048f4ae168f3df6c36a8124e56f6cf753e1dd4b09eceb",
+      "status-after.json": "f31c0a4b776f136103451f5cb7ac1c41f99b24f280486eba32d8fd11e0e4601a",
+      "native.txt": "03e60436aa0a9fb1db725d4bb1d5f55435fe2fee88a1da79e9cfd92ac4717a3a",
+      "source-sha256.txt": "3f2b9edce5e21ebde80ea4322709ac97a1a864b5000dd0548386d34ed1f37a7c",
+      "before-child-marker.json": "6dc257ec1c3712dfd29ab225849605aa62d63bc68491120e99ffc1a712e850db",
+      "after-child-marker.json": "5a7de06b4085a288f810d75840c0a232189e9cdba120f8e65034d0dd40227ce0",
+      "all-server-kill.txt": "a92cf82c03fe804899f7a835ab1f3d3f76a62dd3b1f74d2708bac58fc851ca67",
+      "all-server-restart.txt": "a92cf82c03fe804899f7a835ab1f3d3f76a62dd3b1f74d2708bac58fc851ca67"
+    }
+  },
+  "limitations": [
+    "No physical-host/power-loss/network-fault-domain proof.",
+    "FDB native global commit-version ordering/services still participate; two app prefixes are not physical partition isolation.",
+    "Coarse generations/ranges and retained application-history overhead are untuned.",
+    "Request and TxID bindings are coordinator scoped; no allocator/global-routing integration.",
+    "Absent request is UNKNOWN after ambiguous commit; same-key/digest transaction retry only.",
+    "Application logical quotas do not bound native/server/cache/materialization costs.",
+    "No typed columns, CDC, GC/retention, ownership transfer, large-data performance, vendor comparison or engine-selection verdict."
+  ],
+  "primary_sources": [
+    "https://github.com/apple/foundationdb/releases/tag/7.3.77",
+    "https://raw.githubusercontent.com/apple/foundationdb/3ea44ce1d9003ad095e408039e1f755c319c4dfb/LICENSE",
+    "https://raw.githubusercontent.com/apple/foundationdb/3ea44ce1d9003ad095e408039e1f755c319c4dfb/bindings/go/src/fdb/transaction.go",
+    "https://raw.githubusercontent.com/apple/foundationdb/3ea44ce1d9003ad095e408039e1f755c319c4dfb/documentation/sphinx/source/known-limitations.rst"
+  ]
+}
