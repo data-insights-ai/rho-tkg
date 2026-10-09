@@ -288,7 +288,9 @@ func TestTxBackfillNode_ReplicaDropsNode(t *testing.T) {
 				if err != nil {
 					t.Fatalf("seed b: %v", err)
 				}
-				ra, err := primary.Rels.AddWithTx(ctx, "R", a, b, nil, base)
+				// The rel's valid-from is explicit: a derived one (its mint
+				// time, now) would lie after t and rightly refuse the cascade.
+				ra, err := primary.Rels.AddWithTx(ctx, "R", a, b, map[string]any{"tkg_valid_from": base - txbHour}, base)
 				if err != nil {
 					t.Fatalf("seed rel: %v", err)
 				}
@@ -380,7 +382,7 @@ func TestTxBackfillNode_CascadeForeignStub(t *testing.T) {
 			t.Fatalf("co-located rel %d tombstone %+v; want TxTo = DeletedAt = %d", rid, *rt, at)
 		}
 	}
-	if in, err := g.store.IncomingRelationships(f.id, 0); err != nil || len(in) != 0 {
-		t.Fatalf("incoming after delete = %d, %v; want 0 (stub removed)", len(in), err)
+	if in, err := g.store.IncomingRelationships(f.id, 0); (err != nil && !errors.Is(err, storepkg.ErrNodeNotFound)) || len(in) != 0 {
+		t.Fatalf("incoming after delete = %d, %v; want none (stub removed)", len(in), err)
 	}
 }

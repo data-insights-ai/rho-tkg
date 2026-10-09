@@ -251,13 +251,20 @@ func TestTxBackfillNode_InvalidInstant(t *testing.T) {
 				x := txbWall() + txbHour
 				next := func() types.Instant { x += 1000; clk.at.Store(int64(x)); return x }
 				for _, d := range txbNodeDoors() {
+					// The door's own clock read is the first future bound:
+					// BeginTx reserves one instant (StartInstant) before a
+					// GraphTx twin gates, so its reading is x+1, not x.
+					reads := types.Instant(0)
+					if strings.HasPrefix(d.name, "graphtx/") {
+						reads = 1
+					}
 					for _, tc := range []struct {
 						name string
 						at   func() types.Instant
 					}{
 						{"zero", func() types.Instant { next(); return 0 }},
 						{"negative", func() types.Instant { next(); return -1 }},
-						{"clock+1", func() types.Instant { return next() + 1 }},
+						{"clock+1", func() types.Instant { return next() + reads + 1 }},
 						{"MaxInt64", func() types.Instant { next(); return math.MaxInt64 }},
 					} {
 						phase := d.name + "/" + tc.name
@@ -778,7 +785,11 @@ func TestTxBackfillNode_CascadeOrder(t *testing.T) {
 				f := txbBackfillNodeFix(t, g)
 				extra := txbBackfillRelBetween(t, g, f.id, f.ev2, f.base+10, map[string]any{"tkg_valid_from": f.vf})
 				back := txbBackfillRelBetween(t, g, f.ev1, f.id, f.base+20, map[string]any{"tkg_valid_from": f.vf})
-				all := []types.RelID{f.out, f.in, extra.ID(), back.ID()}
+				// A Ref -> Ref rel: shard-local on tiered (the store's own
+				// cascade path), beside the cross-shard Ref <-> Ev rels.
+				peer := txbBackfillNodeAt(t, g, "Ref", f.base, map[string]any{"tkg_valid_from": f.vf})
+				local := txbBackfillRelBetween(t, g, f.id, peer.ID(), f.base+30, map[string]any{"tkg_valid_from": f.vf})
+				all := []types.RelID{f.out, f.in, extra.ID(), back.ID(), local.ID()}
 				at := f.base + 1000
 				if err := fam.del(t, g, f.id, at); err != nil {
 					t.Fatalf("DeleteWithTx: %v", err)
@@ -796,7 +807,7 @@ func TestTxBackfillNode_CascadeOrder(t *testing.T) {
 					pin  types.Instant
 					refs []types.NodeID
 					rels []types.RelID
-				}{{at - 1, []types.NodeID{f.id}, all}, {at, nil, nil}} {
+				}{{at - 1, []types.NodeID{f.id, peer.ID()}, all}, {at, []types.NodeID{peer.ID()}, nil}} {
 					rows, err := g.Nodes.ByLabel("Ref", storepkg.QueryOpts{TxPin: tc.pin})
 					if err != nil {
 						t.Fatalf("ByLabel: %v", err)
