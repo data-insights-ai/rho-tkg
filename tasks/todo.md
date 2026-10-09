@@ -14,7 +14,7 @@ Wave 1 (parallel) → v4.44.0
 - [ ] A W5-finish (Opus): R15 cross-backend oracle, R11 over every door, docs/api.md, lesson 59 amendment,
       CHANGELOG 4.44.0 section for the `*WithTx` doors. In code? doors yes (W1-W4 merged), oracle no.
       Red: `TestTxBackfillOracle_*` fails against a door stubbed to the plain stamp. Proof: evidence/w5/.
-- [ ] B eclipse-skip (Opus): remove `eclipsedNodeBounds`/`eclipsedRelBounds` skips (temporal_cascade.go:63-77;
+- [x] B eclipse-skip (Opus; merged cea6ab2 after Opus review: code confirmed complete, 5 doc fixes + white-box tiling probes applied; red 45/53 + oracle 67 + mutant 9, green 62, race green, evidence/eclipse/; backlog 14 filed (cascade copies tombstone stamps, HIGH)): remove `eclipsedNodeBounds`/`eclipsedRelBounds` skips (temporal_cascade.go:63-77;
       chain_resolver.go:138,163,217,236; temporal.go:258,279,495,549,564,648; cascade template/piece sites).
       In code? skip yes, writer no since 994df82. Red: `TestOneTickSpanVisible_*` — RelAt(t), RelsDuring,
       ByType{ValidAt}, RelsRelating, NodeAt, CloseVersion(vf+1), Delete landing at vf+1, width-1 cascade piece;
