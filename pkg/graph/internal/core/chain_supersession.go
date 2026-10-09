@@ -70,6 +70,7 @@ func supersessionCaps[T storeutil.TemporalRow](chain []T, start func(T) types.In
 	replaced := sc.replaced[:0]
 	for i, r := range chain {
 		tm := r.Temporal()
+		starts[i] = start(r)
 		versions[i] = r.Version()
 		txs[i] = beliefTx(tm)
 		if tm != nil && tm.TxTo > tm.TxFrom && tm.DeletedAt == 0 {
@@ -90,9 +91,6 @@ func supersessionCaps[T storeutil.TemporalRow](chain []T, start func(T) types.In
 		slices.SortFunc(replaced, byTx)
 	}
 	clear(caps)
-	for i, r := range chain {
-		starts[i] = start(r)
-	}
 	// replacing: a row recorded at the TxTo of a lower version it replaced
 	// (replaced is sorted by TxTo, then version: the first match is the
 	// lowest version replaced at that instant).
@@ -158,11 +156,19 @@ func supersessionCaps[T storeutil.TemporalRow](chain []T, start func(T) types.In
 			stack = append(stack, p)
 		}
 		for p := i; p >= j; p-- {
-			// Usually p is older than the whole stack (falling start, falling
-			// write time): then the answer is the top.
+			// m: the first stack position not newer than p. Usually p is older
+			// than the whole stack, or than all of it but itself (falling start,
+			// falling write time), so the search gallops down from the top.
 			lo, hi := 0, len(stack)
 			if hi > 0 && newer(stack[hi-1], p) {
 				lo = hi
+			} else if hi > 0 {
+				k, step := hi-1, 1 // stack[k] is not newer than p
+				for k-step >= 0 && !newer(stack[k-step], p) {
+					k -= step
+					step *= 2
+				}
+				lo, hi = max(0, k-step+1), k
 			}
 			for lo < hi {
 				mid := int(uint(lo+hi) >> 1)
@@ -186,6 +192,10 @@ func supersessionCaps[T storeutil.TemporalRow](chain []T, start func(T) types.In
 	}
 	return caps
 }
+
+// startsOf returns the starts supersessionCaps computed for its last chain of
+// length n (the resolver's own-bounds arm reads them instead of recomputing).
+func (sc *supersessionScratch) startsOf(n int) []types.Instant { return sc.inst[:n] }
 
 // supersessionScratch is supersessionCaps' reusable working memory (a long
 // chain needs several arrays of its length per point resolve).

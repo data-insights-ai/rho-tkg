@@ -283,10 +283,14 @@ func (c *Core) resolveNodeVersionAtCapped(chain []*types.Node, t types.Instant, 
 	sc := getSupersessionScratch()
 	defer putSupersessionScratch(sc)
 	superseded := supersessionCaps(chain, c.nodeSortValidFrom, sc)
+	starts := sc.startsOf(len(chain)) // nodeOwnBounds' start, computed once
 	var best *types.Node
 	for i := range chain {
 		entry := chain[i]
-		vStart, vEnd := c.nodeOwnBounds(entry)
+		vStart, vEnd := starts[i], types.Instant(0) // nodeOwnBounds: own ValidTo, 0 = open
+		if tm := entry.Temporal(); tm != nil {
+			vEnd = tm.ValidTo
+		}
 		if superseded != nil {
 			vEnd = capEnd(vEnd, superseded[i])
 		}
@@ -586,10 +590,14 @@ func (c *Core) resolveRelVersionAtCapped(chain []*types.Relationship, t types.In
 	sc := getSupersessionScratch()
 	defer putSupersessionScratch(sc)
 	superseded := supersessionCaps(chain, c.relSortValidFrom, sc)
+	starts := sc.startsOf(len(chain)) // relOwnBounds' start, computed once
 	var best *types.Relationship
 	for i := range chain {
 		entry := chain[i]
-		vStart, vEnd := c.relOwnBounds(entry)
+		vStart, vEnd := starts[i], types.Instant(0) // relOwnBounds: own ValidTo, 0 = open
+		if tm := entry.Temporal(); tm != nil {
+			vEnd = tm.ValidTo
+		}
 		if superseded != nil {
 			vEnd = capEnd(vEnd, superseded[i])
 		}
