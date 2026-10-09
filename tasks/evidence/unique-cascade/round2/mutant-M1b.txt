@@ -1,0 +1,134 @@
+=== mutant M1b-skip-tx-door
+diff --git a/pkg/graph/internal/core/temporal_cascade.go b/pkg/graph/internal/core/temporal_cascade.go
+index 97e4602..292420c 100644
+--- a/pkg/graph/internal/core/temporal_cascade.go
++++ b/pkg/graph/internal/core/temporal_cascade.go
+@@ -90,6 +90,8 @@ import (
+ // Node cascade
+ // =============================================================================
+ 
++type mutantSkipKey struct{}
++
+ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, newVF, newVT types.Instant, props map[string]any) (*types.Node, error) {
+ 	if err := storepkg.ValidateNodeID(id); err != nil {
+ 		return nil, err
+@@ -293,7 +295,12 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID,
+ 	// every kernel check and before the first write; the value stripes stay
+ 	// held across every write below.
+ 	// A failed write withdraws the UniqueForever claims no written row carries.
+-	uniqueHold, err := c.enforceUniqueForCascade(id, current, appended, newCurrent, curIsNew, newVT, props)
++	uniqueHold, err := func() (*cascadeUniqueHold, error) {
++		if ctx.Value(mutantSkipKey{}) != nil {
++			return &cascadeUniqueHold{}, nil
++		}
++		return c.enforceUniqueForCascade(id, current, appended, newCurrent, curIsNew, newVT, props)
++	}()
+ 	if err != nil {
+ 		return nil, err
+ 	}
+diff --git a/pkg/graph/internal/core/tx_mutations.go b/pkg/graph/internal/core/tx_mutations.go
+index 4f20a7a..bce97af 100644
+--- a/pkg/graph/internal/core/tx_mutations.go
++++ b/pkg/graph/internal/core/tx_mutations.go
+@@ -319,7 +319,7 @@ func (tx *GraphTx) SetNodeVersionInterval(id types.NodeID, validFrom, validTo ty
+ 		return nil, err
+ 	}
+ 
+-	n, err := tx.g.cascadeNodeVersionInterval(tx.doorCtx(), id, validFrom, validTo, props)
++	n, err := tx.g.cascadeNodeVersionInterval(context.WithValue(tx.doorCtx(), mutantSkipKey{}, true), id, validFrom, validTo, props)
+ 	if err == nil && n != nil {
+ 		tx.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
+ 	}
+--- go test -run TestUniqueCascade_ ./pkg/graph/ (exit 1)
+--- FAIL: TestUniqueCascade_OpenEndedOntoHeldValueRefused (3.89s)
+    --- FAIL: TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/tx/current (0.00s)
+        unique_cascade_test.go:247: cascade onto A's value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/tx/forever (0.00s)
+        unique_cascade_test.go:247: cascade onto A's value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/tx/current (0.09s)
+        unique_cascade_test.go:247: cascade onto A's value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/tx/forever (0.01s)
+        unique_cascade_test.go:247: cascade onto A's value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/tx/current (0.15s)
+        unique_cascade_test.go:247: cascade onto A's value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/tx/forever (0.08s)
+        unique_cascade_test.go:247: cascade onto A's value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/tx/current (0.14s)
+        unique_cascade_test.go:247: cascade onto A's value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/tx/forever (0.12s)
+        unique_cascade_test.go:247: cascade onto A's value: err = <nil>, want ErrUniqueViolation
+--- FAIL: TestUniqueCascade_PastFreeValueClaimsForeverOnly (3.90s)
+    --- FAIL: TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/tx/forever (0.00s)
+        unique_cascade_test.go:343: UniqueForever: Add with a value B wrote into its past: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/tx/forever (0.00s)
+        unique_cascade_test.go:343: UniqueForever: Add with a value B wrote into its past: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/tx/forever (0.02s)
+        unique_cascade_test.go:343: UniqueForever: Add with a value B wrote into its past: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/tx/forever (0.13s)
+        unique_cascade_test.go:343: UniqueForever: Add with a value B wrote into its past: err = <nil>, want ErrUniqueViolation
+--- FAIL: TestUniqueCascade_PastIntervalOntoHeldValue (4.01s)
+    --- FAIL: TestUniqueCascade_PastIntervalOntoHeldValue/memory/tx/forever (0.00s)
+        unique_cascade_test.go:277: UniqueForever past patch onto an owned value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_PastIntervalOntoHeldValue/badger/tx/forever (0.04s)
+        unique_cascade_test.go:277: UniqueForever past patch onto an owned value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_PastIntervalOntoHeldValue/tiered/tx/forever (0.08s)
+        unique_cascade_test.go:277: UniqueForever past patch onto an owned value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_PastIntervalOntoHeldValue/sharded/tx/forever (0.14s)
+        unique_cascade_test.go:277: UniqueForever past patch onto an owned value: err = <nil>, want ErrUniqueViolation
+--- FAIL: TestUniqueCascade_FloatRefused (4.05s)
+    --- FAIL: TestUniqueCascade_FloatRefused/memory/tx/current (0.00s)
+        unique_cascade_test.go:450: float patch: err = <nil>, want ErrUniqueUnsupportedType
+    --- FAIL: TestUniqueCascade_FloatRefused/memory/tx/forever (0.00s)
+        unique_cascade_test.go:450: float patch: err = <nil>, want ErrUniqueUnsupportedType
+    --- FAIL: TestUniqueCascade_FloatRefused/badger/tx/current (0.01s)
+        unique_cascade_test.go:450: float patch: err = <nil>, want ErrUniqueUnsupportedType
+    --- FAIL: TestUniqueCascade_FloatRefused/badger/tx/forever (0.01s)
+        unique_cascade_test.go:450: float patch: err = <nil>, want ErrUniqueUnsupportedType
+    --- FAIL: TestUniqueCascade_FloatRefused/tiered/tx/current (0.10s)
+        unique_cascade_test.go:450: float patch: err = <nil>, want ErrUniqueUnsupportedType
+    --- FAIL: TestUniqueCascade_FloatRefused/tiered/tx/forever (0.09s)
+        unique_cascade_test.go:450: float patch: err = <nil>, want ErrUniqueUnsupportedType
+    --- FAIL: TestUniqueCascade_FloatRefused/sharded/tx/current (0.12s)
+        unique_cascade_test.go:450: float patch: err = <nil>, want ErrUniqueUnsupportedType
+    --- FAIL: TestUniqueCascade_FloatRefused/sharded/tx/forever (0.14s)
+        unique_cascade_test.go:450: float patch: err = <nil>, want ErrUniqueUnsupportedType
+--- FAIL: TestUniqueCascade_RefusalClaimsNothing (4.10s)
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/memory/tx/current (0.00s)
+        unique_cascade_test.go:469: patch with one taken value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/memory/tx/forever (0.00s)
+        unique_cascade_test.go:469: patch with one taken value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/badger/tx/current (0.09s)
+        unique_cascade_test.go:469: patch with one taken value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/badger/tx/forever (0.07s)
+        unique_cascade_test.go:469: patch with one taken value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/tiered/tx/current (0.11s)
+        unique_cascade_test.go:469: patch with one taken value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/tiered/tx/forever (0.19s)
+        unique_cascade_test.go:469: patch with one taken value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/sharded/tx/current (0.12s)
+        unique_cascade_test.go:469: patch with one taken value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/sharded/tx/forever (0.16s)
+        unique_cascade_test.go:469: patch with one taken value: err = <nil>, want ErrUniqueViolation
+--- FAIL: TestUniqueCascade_ConcurrentOneWinner (4.11s)
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/memory/tx/current (0.00s)
+        unique_cascade_test.go:629: round 0: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/memory/tx/forever (0.00s)
+        unique_cascade_test.go:629: round 0: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/badger/tx/current (0.01s)
+        unique_cascade_test.go:629: round 0: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/badger/tx/forever (0.05s)
+        unique_cascade_test.go:629: round 0: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/tiered/tx/current (0.11s)
+        unique_cascade_test.go:629: round 0: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/tiered/tx/forever (0.10s)
+        unique_cascade_test.go:629: round 0: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/sharded/tx/current (0.13s)
+        unique_cascade_test.go:629: round 0: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/sharded/tx/forever (0.14s)
+        unique_cascade_test.go:629: round 0: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	4.387s
+FAIL
+--- go test -run TestUniqueCascade_ ./pkg/graph/internal/core/ (exit 0)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.307s
+=== M1b-skip-tx-door: RED (killed), 46 failing (sub)tests

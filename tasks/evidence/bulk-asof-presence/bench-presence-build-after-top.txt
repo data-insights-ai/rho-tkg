@@ -1,0 +1,10 @@
+BenchmarkRelHasHistory/entities=1000K/density=1%/build-32   	       3	  27689756 ns/op	     10000 ids	        30.11 setB/id	 8255594 B/op	  150975 allocs/op
+BenchmarkRelHasHistory/entities=1000K/density=1%/build-32   	       3	  20312194 ns/op	     10000 ids	        30.12 setB/id	 8262474 B/op	  150987 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/build-32  	       3	  67822457 ns/op	     10000 ids	        30.11 setB/id	 8842784 B/op	  234074 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/build-32  	       3	  56239428 ns/op	     10000 ids	        30.11 setB/id	 8884021 B/op	  234150 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	36.537s
+BenchmarkRelHasHistory/entities=200K/density=0.1%/build-32   	       3	    486562 ns/op	       200.0 ids	        52.32 setB/id	  162304 B/op	    3156 allocs/op
+BenchmarkRelHasHistory/entities=200K/density=1%/build-32     	       3	   4458978 ns/op	      2000 ids	        39.72 setB/id	 1674480 B/op	   30961 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	6.752s

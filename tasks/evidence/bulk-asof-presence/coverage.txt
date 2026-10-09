@@ -1,0 +1,10 @@
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_history_presence.go:61:		note						100.0%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_history_presence.go:195:		ensureHistoryPresenceBuilt			100.0%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_history_presence.go:230:		beginBulkPresence				100.0%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_history_presence.go:238:		none						100.0%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_txtime.go:380:			snapshotHistoryKeyExists			100.0%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_txtime.go:402:			noHistoryKeyExists				100.0%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_txtime.go:667:			nodeAsOfInTxn					87.5%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_txtime.go:681:			relAsOfInTxn					87.5%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_txtime.go:720:			NodesAsOf					86.0%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_txtime.go:818:			RelsAsOf					86.0%

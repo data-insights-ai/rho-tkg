@@ -53,19 +53,22 @@ Wave 2 (parallel, start now, merge after wave 1) → v4.45.0
       happy-path-only tests, attribution lines, pushes) to me.
 
 ## Wave 3 (HIGH correctness bugs, same root; René default = take the listed default, state it) → v4.46.0
-- [ ] G cascade correctness (Opus; backlog 14 + 18 + 19 + handover-effective-read-cost §2 / fix 2a): one version
+- [x] G cascade correctness (Opus; merged dae5c05 after two Opus review rounds: old-data shapes pin-stable, as-of cost fixed, migration note; evidence/cascade-correctness/; semantic change recorded as documented exception; backlog 14 + 18 + 19 + handover-effective-read-cost §2 / fix 2a): one version
       allocator for every appended row, appended rows never carry TxTo/DeletedAt (14 second trigger, unconditional),
       a cascade on a deleted entity is REFUSED with a sentinel (default; lesson 46), GraphTx rollback keeps the higher-
       version cascade row (full-copy snapshot when any history row version > current, `check*CallerUpdate` before the
       snapshot), Delete after a bounded cascade ends the entity in declared reads. Remove the W5 oracle skips
       (`txbTangled`, `txbNoTxRollback`) with the fixes. Red first: acceptance tests 1, 2, 4 of the handover + the
       backlog 18/19/14 tests; evidence/cascade-correctness/.
-- [ ] H HasHistory presence (Opus; handover §1 fix 1b): `Rels().HasHistory(id)` / `Nodes().HasHistory(id)`,
+- [x] H HasHistory presence (Opus; merged 2310ec3 after review: per-key overlay fix, Clear reset, measured 30 B/ID; handover §1 fix 1b): `Rels().HasHistory(id)` / `Nodes().HasHistory(id)`,
       badger RAM set maintained at `noteHistoryKey`, built lazily by a key-only scan; memory/tiered/sharded; acceptance
       test 3; BenchmarkRelHasHistory; evidence/has-history/.
-- [ ] I unique bypass (Opus; backlog 12): enforce CreateUnique on `SetNodeVersionInterval` props patches on all four
+- [x] I unique bypass (Opus; merged cae3b5c after two review rounds: check on the built rows, claims withdrawn on failed write, backlog 12 closed; backlog 29 = same fault in the update door; backlog 12): enforce CreateUnique on `SetNodeVersionInterval` props patches on all four
       doors (Temporal, GraphTx, Batch, Session), UniqueCurrent and UniqueForever; evidence/unique-cascade/.
-- [ ] Then 1c `RelEffectiveTimeline` (after G merges), handover 1 (backlog 8), handover 2 (backlog 21).
+- [x] Bulk as-of presence (Sonnet→Opus rounds; merged d7049e5 after Opus review: top version per ID, forward-walk build 2.5–4× faster than main, N13 ordering hook, gap guard; evidence/bulk-asof-presence/)
+- [ ] J effective timeline + scan forms (Opus; candidate 7261cf9 handed to sigma; review a562a3ef… running): merge, then v4.46.0 gate and tag (or fold J into it).
+- [ ] K point as-of doors race (backlog 32; Opus a620e67d… running).
+- [ ] Next: handover 1 (backlog 8), LatestStamps (30), badger scan cost (33), update-door claims (29), state column doors (28), handover 2 (backlog 21).
 
 ## Review
 

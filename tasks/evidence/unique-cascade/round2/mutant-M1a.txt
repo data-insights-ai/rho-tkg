@@ -1,0 +1,142 @@
+=== mutant M1a-skip-temporal-door
+diff --git a/pkg/graph/internal/core/temporal_cascade.go b/pkg/graph/internal/core/temporal_cascade.go
+index 97e4602..292420c 100644
+--- a/pkg/graph/internal/core/temporal_cascade.go
++++ b/pkg/graph/internal/core/temporal_cascade.go
+@@ -90,6 +90,8 @@ import (
+ // Node cascade
+ // =============================================================================
+ 
++type mutantSkipKey struct{}
++
+ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, newVF, newVT types.Instant, props map[string]any) (*types.Node, error) {
+ 	if err := storepkg.ValidateNodeID(id); err != nil {
+ 		return nil, err
+@@ -293,7 +295,12 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID,
+ 	// every kernel check and before the first write; the value stripes stay
+ 	// held across every write below.
+ 	// A failed write withdraws the UniqueForever claims no written row carries.
+-	uniqueHold, err := c.enforceUniqueForCascade(id, current, appended, newCurrent, curIsNew, newVT, props)
++	uniqueHold, err := func() (*cascadeUniqueHold, error) {
++		if ctx.Value(mutantSkipKey{}) != nil {
++			return &cascadeUniqueHold{}, nil
++		}
++		return c.enforceUniqueForCascade(id, current, appended, newCurrent, curIsNew, newVT, props)
++	}()
+ 	if err != nil {
+ 		return nil, err
+ 	}
+diff --git a/pkg/graph/internal/core/temporal_queries.go b/pkg/graph/internal/core/temporal_queries.go
+index 9dbf89a..952c78e 100644
+--- a/pkg/graph/internal/core/temporal_queries.go
++++ b/pkg/graph/internal/core/temporal_queries.go
+@@ -1330,7 +1330,7 @@ func (t *TempOps) SetNodeVersionInterval(ctx context.Context, id types.NodeID, v
+ 		opErr  error
+ 	)
+ 	_, closeErr := c.runUnderRLock(func() {
+-		result, opErr = c.cascadeNodeVersionInterval(ctx, id, validFrom, validTo, props)
++		result, opErr = c.cascadeNodeVersionInterval(context.WithValue(ctx, mutantSkipKey{}, true), id, validFrom, validTo, props)
+ 	})
+ 	if closeErr != nil {
+ 		return nil, closeErr
+--- go test -run TestUniqueCascade_ ./pkg/graph/ (exit 1)
+--- FAIL: TestUniqueCascade_PastIntervalOntoHeldValue (3.96s)
+    --- FAIL: TestUniqueCascade_PastIntervalOntoHeldValue/memory/temporal/forever (0.00s)
+        unique_cascade_test.go:277: UniqueForever past patch onto an owned value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_PastIntervalOntoHeldValue/badger/temporal/forever (0.01s)
+        unique_cascade_test.go:277: UniqueForever past patch onto an owned value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_PastIntervalOntoHeldValue/tiered/temporal/forever (0.09s)
+        unique_cascade_test.go:277: UniqueForever past patch onto an owned value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_PastIntervalOntoHeldValue/sharded/temporal/forever (0.13s)
+        unique_cascade_test.go:277: UniqueForever past patch onto an owned value: err = <nil>, want ErrUniqueViolation
+--- FAIL: TestUniqueCascade_RefusalClaimsNothing (4.01s)
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/memory/temporal/current (0.00s)
+        unique_cascade_test.go:469: patch with one taken value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/memory/temporal/forever (0.00s)
+        unique_cascade_test.go:469: patch with one taken value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/badger/temporal/current (0.01s)
+        unique_cascade_test.go:469: patch with one taken value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/badger/temporal/forever (0.01s)
+        unique_cascade_test.go:469: patch with one taken value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/tiered/temporal/current (0.16s)
+        unique_cascade_test.go:469: patch with one taken value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/tiered/temporal/forever (0.10s)
+        unique_cascade_test.go:469: patch with one taken value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/sharded/temporal/current (0.15s)
+        unique_cascade_test.go:469: patch with one taken value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/sharded/temporal/forever (0.12s)
+        unique_cascade_test.go:469: patch with one taken value: err = <nil>, want ErrUniqueViolation
+--- FAIL: TestUniqueCascade_PastFreeValueClaimsForeverOnly (4.03s)
+    --- FAIL: TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/temporal/forever (0.00s)
+        unique_cascade_test.go:343: UniqueForever: Add with a value B wrote into its past: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/temporal/forever (0.01s)
+        unique_cascade_test.go:343: UniqueForever: Add with a value B wrote into its past: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/temporal/forever (0.09s)
+        unique_cascade_test.go:343: UniqueForever: Add with a value B wrote into its past: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/temporal/forever (0.13s)
+        unique_cascade_test.go:343: UniqueForever: Add with a value B wrote into its past: err = <nil>, want ErrUniqueViolation
+--- FAIL: TestUniqueCascade_OpenEndedOntoHeldValueRefused (4.12s)
+    --- FAIL: TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/temporal/current (0.00s)
+        unique_cascade_test.go:247: cascade onto A's value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/temporal/forever (0.00s)
+        unique_cascade_test.go:247: cascade onto A's value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/temporal/current (0.00s)
+        unique_cascade_test.go:247: cascade onto A's value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/temporal/forever (0.01s)
+        unique_cascade_test.go:247: cascade onto A's value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/temporal/current (0.17s)
+        unique_cascade_test.go:247: cascade onto A's value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/temporal/forever (0.13s)
+        unique_cascade_test.go:247: cascade onto A's value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/temporal/current (0.12s)
+        unique_cascade_test.go:247: cascade onto A's value: err = <nil>, want ErrUniqueViolation
+    --- FAIL: TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/temporal/forever (0.13s)
+        unique_cascade_test.go:247: cascade onto A's value: err = <nil>, want ErrUniqueViolation
+--- FAIL: TestUniqueCascade_FloatRefused (4.21s)
+    --- FAIL: TestUniqueCascade_FloatRefused/memory/temporal/current (0.00s)
+        unique_cascade_test.go:450: float patch: err = <nil>, want ErrUniqueUnsupportedType
+    --- FAIL: TestUniqueCascade_FloatRefused/memory/temporal/forever (0.00s)
+        unique_cascade_test.go:450: float patch: err = <nil>, want ErrUniqueUnsupportedType
+    --- FAIL: TestUniqueCascade_FloatRefused/badger/temporal/current (0.01s)
+        unique_cascade_test.go:450: float patch: err = <nil>, want ErrUniqueUnsupportedType
+    --- FAIL: TestUniqueCascade_FloatRefused/badger/temporal/forever (0.02s)
+        unique_cascade_test.go:450: float patch: err = <nil>, want ErrUniqueUnsupportedType
+    --- FAIL: TestUniqueCascade_FloatRefused/tiered/temporal/current (0.18s)
+        unique_cascade_test.go:450: float patch: err = <nil>, want ErrUniqueUnsupportedType
+    --- FAIL: TestUniqueCascade_FloatRefused/tiered/temporal/forever (0.14s)
+        unique_cascade_test.go:450: float patch: err = <nil>, want ErrUniqueUnsupportedType
+    --- FAIL: TestUniqueCascade_FloatRefused/sharded/temporal/current (0.15s)
+        unique_cascade_test.go:450: float patch: err = <nil>, want ErrUniqueUnsupportedType
+    --- FAIL: TestUniqueCascade_FloatRefused/sharded/temporal/forever (0.15s)
+        unique_cascade_test.go:450: float patch: err = <nil>, want ErrUniqueUnsupportedType
+--- FAIL: TestUniqueCascade_ConcurrentOneWinner (4.25s)
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/memory/temporal/current (0.00s)
+        unique_cascade_test.go:629: round 0: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/memory/temporal/forever (0.00s)
+        unique_cascade_test.go:629: round 0: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/badger/temporal/current (0.11s)
+        unique_cascade_test.go:629: round 0: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/badger/temporal/forever (0.11s)
+        unique_cascade_test.go:629: round 0: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/tiered/temporal/current (0.14s)
+        unique_cascade_test.go:629: round 0: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/tiered/temporal/forever (0.12s)
+        unique_cascade_test.go:629: round 0: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/sharded/temporal/current (0.12s)
+        unique_cascade_test.go:629: round 0: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/sharded/temporal/forever (0.14s)
+        unique_cascade_test.go:629: round 0: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	4.650s
+FAIL
+--- go test -run TestUniqueCascade_ ./pkg/graph/internal/core/ (exit 1)
+--- FAIL: TestUniqueCascade_HoldsOldValueStripe (0.00s)
+    unique_cascade_lock_test.go:144: cascade finished (err=<nil>) while the OLD value's stripe was held: it must hold both stripes
+--- FAIL: TestUniqueCascade_StripeHeldAcrossStoreWrite (0.00s)
+    unique_cascade_lock_test.go:230: Update onto v finished (err=<nil>) while the cascade claiming v was inside its store write
+--- FAIL: TestUniqueCascade_StoreWriteFailureKeepsWrittenClaim (0.00s)
+    unique_cascade_lock_test.go:416: Add with a value the node already wrote: err = <nil>, want ErrUniqueViolation
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.005s
+FAIL
+=== M1a-skip-temporal-door: RED (killed), 49 failing (sub)tests

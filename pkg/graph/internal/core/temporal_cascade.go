@@ -289,22 +289,34 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 			return nil, fmt.Errorf("graph: cascade new current row: %w", err)
 		}
 	}
+	// Unique constraints (unique_cascade.go): the built rows are judged after
+	// every kernel check and before the first write; the value stripes stay
+	// held across every write below.
+	// A failed write withdraws the UniqueForever claims no written row carries.
+	uniqueHold, err := c.enforceUniqueForCascade(id, current, appended, newCurrent, curIsNew, newVT, props)
+	if err != nil {
+		return nil, err
+	}
+	defer uniqueHold.release()
+	written := make([]*types.Node, 0, len(appended)+1)
 	for _, r := range appended {
 		if r == newCurrent {
 			continue // written via ReplaceNode below
 		}
 		if err := c.putNodeVersionScopedAware(ctx, id, r.Version(), r); err != nil {
-			return nil, fmt.Errorf("graph: cascade put appended version: %w", err)
+			return nil, uniqueHold.writeFailed(written, fmt.Errorf("graph: cascade put appended version: %w", err))
 		}
+		written = append(written, r)
 	}
 	if curIsNew {
 		if current != nil {
 			if err := c.putNodeVersionScopedAware(ctx, id, current.Version(), current); err != nil {
-				return nil, fmt.Errorf("graph: cascade demote current to history: %w", err)
+				return nil, uniqueHold.writeFailed(written, fmt.Errorf("graph: cascade demote current to history: %w", err))
 			}
+			written = append(written, current)
 		}
 		if err := c.replaceNodeScopedAware(ctx, newCurrent); err != nil {
-			return nil, fmt.Errorf("graph: cascade replace current: %w", err)
+			return nil, uniqueHold.writeFailed(written, fmt.Errorf("graph: cascade replace current: %w", err))
 		}
 	}
 

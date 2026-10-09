@@ -1,0 +1,133 @@
+Presence build, 10 K IDs with three history rows each (1 M entities at 1 %), 7 rounds interleaved, host load 15-25
+merge-base (main, ID-only build)
+  BenchmarkRelHasHistory/entities=1000K/density=1%/build     min  10.4 ms  median  12.5 ms  setB/id 30.13
+  BenchmarkNodeHasHistory/entities=1000K/density=1%/build    min  19.9 ms  median  23.7 ms  setB/id 30.11
+branch (tops build)
+  BenchmarkRelHasHistory/entities=1000K/density=1%/build     min   4.1 ms  median   5.2 ms  setB/id 30.11
+  BenchmarkNodeHasHistory/entities=1000K/density=1%/build    min   4.9 ms  median   6.6 ms  setB/id 30.11
+
+## mb round 0
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelHasHistory/entities=1000K/density=1%/build-32   	       3	  45758563 ns/op	     10000 ids	        30.13 setB/id	 5275226 B/op	   80717 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/build-32  	       3	  38763044 ns/op	     10000 ids	        30.11 setB/id	 5605968 B/op	  122295 allocs/op
+PASS
+
+## new round 0
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelHasHistory/entities=1000K/density=1%/build-32   	       3	   6733607 ns/op	     10000 ids	        30.11 setB/id	 1299202 B/op	    1557 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/build-32  	       3	   6563113 ns/op	     10000 ids	        30.11 setB/id	 1296858 B/op	    1323 allocs/op
+PASS
+
+## mb round 1
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelHasHistory/entities=1000K/density=1%/build-32   	       3	  18551711 ns/op	     10000 ids	        30.14 setB/id	 5285325 B/op	   80809 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/build-32  	       3	  28235643 ns/op	     10000 ids	        30.12 setB/id	 5618413 B/op	  122316 allocs/op
+PASS
+
+## new round 1
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelHasHistory/entities=1000K/density=1%/build-32   	       3	   5701837 ns/op	     10000 ids	        30.08 setB/id	 1298952 B/op	    1546 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/build-32  	       3	   6059540 ns/op	     10000 ids	        30.08 setB/id	 1296960 B/op	    1325 allocs/op
+PASS
+
+## mb round 2
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelHasHistory/entities=1000K/density=1%/build-32   	       3	  18941179 ns/op	     10000 ids	        30.11 setB/id	 5269061 B/op	   80336 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/build-32  	       3	  51590456 ns/op	     10000 ids	        30.09 setB/id	 5560778 B/op	  122213 allocs/op
+PASS
+
+## new round 2
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelHasHistory/entities=1000K/density=1%/build-32   	       3	   5249435 ns/op	     10000 ids	        30.13 setB/id	 1298888 B/op	    1539 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/build-32  	       3	  12196822 ns/op	     10000 ids	        30.12 setB/id	 1297077 B/op	    1329 allocs/op
+PASS
+
+## mb round 3
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelHasHistory/entities=1000K/density=1%/build-32   	       3	  11991546 ns/op	     10000 ids	        30.09 setB/id	 5284253 B/op	   80706 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/build-32  	       3	  21837935 ns/op	     10000 ids	        30.11 setB/id	 5619077 B/op	  122318 allocs/op
+PASS
+
+## new round 3
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelHasHistory/entities=1000K/density=1%/build-32   	       3	   4459677 ns/op	     10000 ids	        30.11 setB/id	 1298882 B/op	    1550 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/build-32  	       3	   5455859 ns/op	     10000 ids	        30.09 setB/id	 1296960 B/op	    1325 allocs/op
+PASS
+
+## mb round 4
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelHasHistory/entities=1000K/density=1%/build-32   	       3	  10671735 ns/op	     10000 ids	        30.14 setB/id	 5284661 B/op	   80710 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/build-32  	       3	  23718746 ns/op	     10000 ids	        30.11 setB/id	 5619168 B/op	  122322 allocs/op
+PASS
+
+## new round 4
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelHasHistory/entities=1000K/density=1%/build-32   	       3	   7520481 ns/op	     10000 ids	        30.11 setB/id	 1297800 B/op	    1404 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/build-32  	       3	  19108378 ns/op	     10000 ids	        30.11 setB/id	 1297088 B/op	    1327 allocs/op
+PASS
+
+## mb round 5
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelHasHistory/entities=1000K/density=1%/build-32   	       3	  12456555 ns/op	     10000 ids	        30.09 setB/id	 5267930 B/op	   78578 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/build-32  	       3	  22797011 ns/op	     10000 ids	        30.11 setB/id	 5618037 B/op	  122315 allocs/op
+PASS
+
+## new round 5
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelHasHistory/entities=1000K/density=1%/build-32   	       3	   4062812 ns/op	     10000 ids	        30.11 setB/id	 1299085 B/op	    1552 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/build-32  	       3	   6889080 ns/op	     10000 ids	        30.14 setB/id	 1297112 B/op	    1327 allocs/op
+PASS
+
+## mb round 6
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelHasHistory/entities=1000K/density=1%/build-32   	       3	  10398433 ns/op	     10000 ids	        30.11 setB/id	 5282397 B/op	   80412 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/build-32  	       3	  19853811 ns/op	     10000 ids	        30.12 setB/id	 5619128 B/op	  122318 allocs/op
+PASS
+
+## new round 6
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelHasHistory/entities=1000K/density=1%/build-32   	       3	   4661595 ns/op	     10000 ids	        30.11 setB/id	 1299034 B/op	    1551 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/build-32  	       3	   4904513 ns/op	     10000 ids	        30.09 setB/id	 1297042 B/op	    1330 allocs/op
+PASS

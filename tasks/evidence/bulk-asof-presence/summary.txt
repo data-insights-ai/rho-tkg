@@ -1,0 +1,28 @@
+Bulk as-of presence check - evidence index
+
+Decision: option (a). Lock order flushMu -> idxMu -> buildMu -> wbMu is untouched: the presence set is built before the
+bulk door takes idxMu (ensureHistoryPresenceBuilt); inside the hold only p.mu.RLock (a leaf) and an atomic load are taken.
+Option (b) (documented limit) was not needed for the no-history case; the one-history-row case is a documented limit of
+the set's content (it holds IDs, not versions), see CHANGELOG [Unreleased] Fixed.
+
+RED before the code (red-1-before-code.txt):
+  TestBulkAsOfPresence_SkipsKeyProbeWithoutHistory   30 key probes for 7 entities with history (node and rel)
+  TestBulkAsOfPresence_EquivalentAcrossStates        "the bulk door left the presence set unbuilt" (equivalence itself
+                                                     was green at that commit: checked once with the assertion off)
+GUARDS (green before and after the code; they exist to turn red for a wrong shortcut - mutants.txt):
+  _UnknownIDStillProbed, _DeleteMidScanKeepsSnapshot, _ProbeOnlyStillCorrect, _WritersRace, and the equivalence stages
+  flushed / pending / trimmed / reopened / cleared. Mutants M1..M7 are all caught (mutants.txt):
+  M1 unknown read as none, M2 delete counter ignored, M3 built/probe-only guard dropped, M4 node door reads the rel set,
+  M5 set not built before the scan, M6 delete counter never advanced, M7 has-hit ignored.
+GREEN after the code: green-1-after-code.txt; go test -race ./pkg/graph/store/badger -run 'AsOf|HistoryPresence' -count=2 ok.
+Coverage of new code (coverage.txt): 100 % of the new functions; NodesAsOf / RelsAsOf 86 % (build-error branch).
+
+Benchmarks (bench-summary.txt, bench-paired-*.txt: three binaries run interleaved, 8 rounds, host load average 15-25;
+min ms per 20 K entities):
+                         main before as-of rule   main now (no check)   with check
+  nodes, no history              31.4                    44.2               34.0   (+8 % vs before the rule)
+  rels,  no history              33.8                    46.9               37.1   (+10 %)
+  nodes, one history row         41.8                    63.9               66.7   (not improved)
+  rels,  one history row         50.6                    75.1               70.0   (not improved)
+Earlier unpaired runs (bench-before.txt, bench-after.txt, bench-main-before-asof-change.txt) ran at different host loads
+and are not comparable with each other.

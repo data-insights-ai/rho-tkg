@@ -1,0 +1,15 @@
+main before the as-of change (09bb265^)
+  BenchmarkNodesAsOfBulk/history=none      min   31.4 ms  median   38.8 ms  allocs/op 278443
+  BenchmarkNodesAsOfBulk/history=one       min   41.8 ms  median   66.0 ms  allocs/op 396550
+  BenchmarkRelsAsOfBulk/history=none       min   33.8 ms  median   43.6 ms  allocs/op 287563
+  BenchmarkRelsAsOfBulk/history=one        min   50.6 ms  median   60.1 ms  allocs/op 404962
+main now, no presence check (331746b)
+  BenchmarkNodesAsOfBulk/history=none      min   44.2 ms  median   47.6 ms  allocs/op 453269
+  BenchmarkNodesAsOfBulk/history=one       min   63.9 ms  median   71.8 ms  allocs/op 559960
+  BenchmarkRelsAsOfBulk/history=none       min   46.9 ms  median   58.3 ms  allocs/op 459662
+  BenchmarkRelsAsOfBulk/history=one        min   75.1 ms  median   93.9 ms  allocs/op 563068
+with presence check
+  BenchmarkNodesAsOfBulk/history=none      min   34.0 ms  median   41.5 ms  allocs/op 346088
+  BenchmarkNodesAsOfBulk/history=one       min   66.7 ms  median   85.8 ms  allocs/op 563417
+  BenchmarkRelsAsOfBulk/history=none       min   37.1 ms  median   44.3 ms  allocs/op 333682
+  BenchmarkRelsAsOfBulk/history=one        min   70.0 ms  median  125.1 ms  allocs/op 539158

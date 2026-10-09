@@ -1,0 +1,14 @@
+Round 3 - review fixes
+
+1. Ordering "delete counter read BEFORE the overlay capture" (beginBulkPresence before snapshotHistoryOverlay) was
+   load-bearing and untested. New hook bulkAsOfOverlayTestHook (after the capture, before the transaction opens) and
+   TestBulkAsOfPresence_CounterReadBeforeOverlayCapture (guard; node and rel). Mutant N13 (counter read after the
+   capture, both doors) is red: mutants-2.txt.
+2. TestBulkAsOfPresence_VersionGapsMatchPointDoors (guard): 5 gap chains x node/rel x reopen x 17 pins, bulk == point
+   doors. Not compared with the SelectAsOf oracle: both doors disagree with it on gaps on main (backlog item 31).
+3. Build scan: red-3-build-scan-cost.txt (guard TestHistoryPresenceBuildScanCost red on the 3-row shape, x1.97 of the ID-only
+   scan). Fix: walk an ID's rows forward, reverse-seek only past 16 rows. After: 3 rows x0.35, 12 rows ~x1.0, 1 row x0.15,
+   40 rows x2.5-4 (limit 6: a reverse seek plus a seek to the next ID). Randomized build-vs-rows differential
+   (TestScanHistoryTopsAndProbeMatchHistory) now includes IDs deeper than the forward walk.
+   bench-build-vs-mergebase.txt (7 interleaved rounds, 10 K IDs x 3 rows, min): rel 10.4 -> 4.1 ms, node 19.9 -> 4.9 ms.
+   The earlier "node build 56-68 ms" figure in summary-2.txt is superseded.

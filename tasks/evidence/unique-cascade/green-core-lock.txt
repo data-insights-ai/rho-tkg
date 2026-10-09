@@ -1,0 +1,8 @@
+=== RUN   TestCascadeUnique_HoldsOldValueStripe
+--- PASS: TestCascadeUnique_HoldsOldValueStripe (0.15s)
+=== RUN   TestCascadeUnique_BoundedCurrentScopeTakesNoStripe
+--- PASS: TestCascadeUnique_BoundedCurrentScopeTakesNoStripe (0.00s)
+=== RUN   TestCascadeUnique_StripeHeldAcrossStoreWrite
+--- PASS: TestCascadeUnique_StripeHeldAcrossStoreWrite (0.15s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.306s
