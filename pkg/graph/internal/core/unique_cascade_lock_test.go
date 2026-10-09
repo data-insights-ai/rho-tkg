@@ -324,6 +324,69 @@ func TestUniqueCascade_StoreWriteFailureWithdrawsUnwrittenClaim(t *testing.T) {
 	}
 }
 
+// cascadeMetaFailStore is a cascadeFailStore whose MetaSet fails once armed,
+// so the withdrawal's registry persist fails.
+type cascadeMetaFailStore struct {
+	*cascadeFailStore
+	failMeta bool
+}
+
+func (s *cascadeMetaFailStore) NodesByLabelAndProperty(labelToken uint16, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	return s.Store.NodesByLabelAndProperty(labelToken, key, value, opts)
+}
+
+func (s *cascadeMetaFailStore) MetaSet(key string, value []byte) error {
+	s.mu.Lock()
+	fail := s.failMeta
+	s.mu.Unlock()
+	if fail {
+		return errInjectedWrite
+	}
+	return s.Store.MetaSet(key, value)
+}
+
+// GUARD on the withdrawal's persist-failure branch (written with it): when the
+// registry cannot be persisted, the withdrawal keeps the claim in memory too
+// (memory never diverges from disk) and the cascade returns both failures.
+// Catches: a withdrawal that drops the in-memory claim although the persisted
+// registry still holds it (after reopen the value would be owned again).
+func TestUniqueCascade_StoreWriteFailureWithdrawPersistFailureKeepsClaim(t *testing.T) {
+	st := &cascadeMetaFailStore{cascadeFailStore: &cascadeFailStore{Store: memory.New()}}
+	c, err := New(Config{Store: st})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	ctx := context.Background()
+	if err := c.Constraints.CreateUniqueForever(ctx, "Ref", "k"); err != nil {
+		t.Fatalf("CreateUniqueForever: %v", err)
+	}
+	a := addRefK(t, c, "a")
+	st.arm(a.ID(), true, true)
+	tok, _ := c.labels.Lookup("Ref")
+	cp := a.DeepCopy()
+	if err := cp.SetProperty("k", "z"); err != nil {
+		t.Fatal(err)
+	}
+	vk, _ := cp.IndexablePropertyValueKey("k")
+	// Fail the registry persist only after the claim was made: claim, then
+	// fail the write, then the withdrawal's persist fails.
+	if _, err := c.claimForever(tok, "k", vk, a.ID()); err != nil {
+		t.Fatalf("claimForever: %v", err)
+	}
+	st.mu.Lock()
+	st.failMeta = true
+	st.mu.Unlock()
+	hold := &cascadeUniqueHold{c: c, id: a.ID(), claims: []cascadeUniqueTuple{{labelTok: tok, key: "k", valueKey: vk}}}
+	err = hold.writeFailed(nil, errInjectedWrite)
+	if !errors.Is(err, errInjectedWrite) || err.Error() == errInjectedWrite.Error() {
+		t.Fatalf("writeFailed with a failing persist: err = %v, want the write failure joined with the withdrawal failure", err)
+	}
+	if err := c.checkForeverOwnership(tok, "k", vk, a.ID()+1); !errors.Is(err, ErrUniqueViolation) {
+		t.Fatalf("after a failed withdrawal persist, the in-memory claim must stay: err = %v", err)
+	}
+}
+
 // GUARD (passes before the fix too): when the write that fails comes AFTER a
 // correction row carrying "z" was stored, "z" was written by the node, so its
 // UniqueForever claim stays. Catches: a withdrawal that ignores which rows
