@@ -764,6 +764,7 @@ func (bs *Store) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, error) {
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = true
+		opts.Prefix = prefix // bound the scan and the value prefetch to this entity (backlog 20)
 		it := txn.NewIterator(opts)
 		defer it.Close()
 
@@ -876,6 +877,7 @@ func (bs *Store) nodeHistoryVersionsFromPrefix(prefix []byte, startVersion uint3
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = true
+		opts.Prefix = prefix // bound the scan and the value prefetch to this entity (backlog 20)
 		it := txn.NewIterator(opts)
 		defer it.Close()
 
