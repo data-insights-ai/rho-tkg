@@ -44,6 +44,12 @@ func (r *RelOps) Update(ctx context.Context, id types.RelID, updates map[string]
 	return rel, err
 }
 
+// UpdateWithTx — RED STUB (W1 step 2): ignores txFrom and runs the plain
+// door, so the behavioural tests fail red before the seam lands.
+func (r *RelOps) UpdateWithTx(ctx context.Context, id types.RelID, updates map[string]any, txFrom types.Instant) (*types.Relationship, error) {
+	return r.Update(ctx, id, updates)
+}
+
 // updateRelationshipInternal is the lock-free implementation of RelOps.Update.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, bool, error) {

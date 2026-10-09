@@ -416,6 +416,16 @@ var (
 	// wall-clock at write, and the feature is backfill).
 	ErrInvalidTxFrom = errors.New("graph: backfilled tkg_tx_from must be a positive instant not in the future")
 
+	// ErrTxOrder is returned by a door that ends or supersedes belief at a
+	// caller-supplied transaction instant t (Rels().DeleteWithTx,
+	// Rels().UpdateWithTx) when t cannot be placed on the entity's chain: t is
+	// not after every TxFrom/TxTo recorded for the entity, not after the
+	// current version's start (UpdatedAt or effective ValidFrom), a recorded
+	// close (ValidTo) lies at or after a delete's t, or an update at t records
+	// no change. The wrapped error names the conflicting stamp. It wraps
+	// ErrInvalidTxFrom, so errors.Is matches both.
+	ErrTxOrder = fmt.Errorf("graph: caller transaction instant does not follow the entity's recorded history (%w)", ErrInvalidTxFrom)
+
 	// ErrInvalidClockAdvance is returned by TempOps.AdvanceClock when the
 	// caller-supplied floor target lands implausibly far ahead of wall-clock
 	// (see maxClockAdvanceSkewMillis) — the same bug class lesson 59 closed for

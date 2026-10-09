@@ -130,6 +130,7 @@ var temporalSentinels = []string{
 var backfillSentinels = []string{
 	"ErrTxBackfillDisabled",
 	"ErrInvalidTxFrom",
+	"ErrTxOrder",
 }
 
 // Named as-of tags sentinels (§4.2)

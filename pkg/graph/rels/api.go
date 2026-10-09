@@ -33,8 +33,10 @@ type Ops interface {
 	ScanKeepsOrder(typeName string) (bool, error)
 	GetByIDs(ids []types.RelID) ([]*types.Relationship, error)
 	Update(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error)
+	UpdateWithTx(ctx context.Context, id types.RelID, updates map[string]any, txFrom types.Instant) (*types.Relationship, error)
 	UpdateInPlace(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error)
 	Delete(ctx context.Context, id types.RelID) error
+	DeleteWithTx(ctx context.Context, id types.RelID, txTo types.Instant) error
 	Import(ctx context.Context, id types.RelID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error)
 
 	All(opts storepkg.QueryOpts) ([]*types.Relationship, error)
@@ -235,6 +237,22 @@ func (a *API) Update(ctx context.Context, id types.RelID, updates map[string]any
 	return ops.Update(ctx, id, updates)
 }
 
+// UpdateWithTx updates the relationship like Update but stamps the
+// caller-supplied txFrom as the transaction instant of the change: the
+// superseded version's TxTo and the new version's TxFrom and UpdatedAt are
+// txFrom instead of the system clock. Requires Config.AllowTxBackfill
+// (ErrTxBackfillDisabled); txFrom must be a positive instant not in the future
+// (ErrInvalidTxFrom) and must follow every stamp recorded for the relationship
+// and the current version's start, and the update must change something
+// (ErrTxOrder, which wraps ErrInvalidTxFrom). The commit clock is not moved.
+func (a *API) UpdateWithTx(ctx context.Context, id types.RelID, updates map[string]any, txFrom types.Instant) (*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.UpdateWithTx(ctx, id, updates, txFrom)
+}
+
 // UpdateInPlace updates a relationship in place honoring ctx (no version branch).
 func (a *API) UpdateInPlace(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	ops, err := a.ready()
@@ -251,6 +269,23 @@ func (a *API) Delete(ctx context.Context, id types.RelID) error {
 		return err
 	}
 	return ops.Delete(ctx, id)
+}
+
+// DeleteWithTx deletes the relationship like Delete but ends its belief at the
+// caller-supplied transaction instant txTo: the tombstone carries
+// TxTo = DeletedAt = txTo, so a read pinned before txTo still sees the
+// relationship and a read pinned at or after it does not. Requires
+// Config.AllowTxBackfill (ErrTxBackfillDisabled); txTo must be a positive
+// instant not in the future (ErrInvalidTxFrom) and must follow every stamp
+// recorded for the relationship and the current version's start; a recorded
+// close (ValidTo) at or after txTo refuses (ErrTxOrder, which wraps
+// ErrInvalidTxFrom). The commit clock is not moved.
+func (a *API) DeleteWithTx(ctx context.Context, id types.RelID, txTo types.Instant) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.DeleteWithTx(ctx, id, txTo)
 }
 
 // Import imports a relationship with a caller-supplied ID honoring ctx.

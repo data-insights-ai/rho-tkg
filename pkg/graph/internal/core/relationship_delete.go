@@ -64,6 +64,12 @@ func (r *RelOps) Delete(ctx context.Context, id types.RelID) error {
 	return err
 }
 
+// DeleteWithTx — RED STUB (W1 step 2): ignores txTo and runs the plain door,
+// so the behavioural tests fail red before the seam lands.
+func (r *RelOps) DeleteWithTx(ctx context.Context, id types.RelID, txTo types.Instant) error {
+	return r.Delete(ctx, id)
+}
+
 // deleteRelationshipInternal is the lock-free implementation of RelOps.Delete.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID) error {

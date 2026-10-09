@@ -208,6 +208,7 @@ These sentinels are declared in `pkg/graph/store/errors.go` and have **no alias 
 |----------|---------|---------|---------------|
 | `ErrTxBackfillDisabled` | core | Transaction-time backfill is disabled (gate not set) | `g.Nodes().AddWithTx()`, `g.Rels().AddWithTx()`, `tkg_tx_from` property on Add when `Config.AllowTxBackfill=false` |
 | `ErrInvalidTxFrom` | core | Backfilled `tkg_tx_from` is invalid (non-positive or in the future) | `g.Nodes().AddWithTx()`, `g.Rels().AddWithTx()` with invalid timestamp |
+| `ErrTxOrder` | core | Caller transaction instant does not follow the entity's recorded history (wraps `ErrInvalidTxFrom`) | `g.Rels().DeleteWithTx()`, `g.Rels().UpdateWithTx()` |
 
 ## Named As-Of Tags (§4.2)
 

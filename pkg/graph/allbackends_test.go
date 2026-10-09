@@ -21,9 +21,16 @@ type storeBackend struct {
 
 // allStoreBackends lists memory, badger, tiered and sharded. Each open builds
 // a fresh graph closed at test cleanup.
-func allStoreBackends() []storeBackend {
+func allStoreBackends() []storeBackend { return allStoreBackendsWith(nil) }
+
+// allStoreBackendsWith is allStoreBackends with mut applied to every Config
+// (nil = unchanged) before the graph is opened.
+func allStoreBackendsWith(mut func(*graphpkg.Config)) []storeBackend {
 	newGraph := func(t *testing.T, cfg graphpkg.Config) *graphpkg.Graph {
 		t.Helper()
+		if mut != nil {
+			mut(&cfg)
+		}
 		g, err := graphpkg.New(cfg)
 		if err != nil {
 			t.Fatalf("graph.New: %v", err)
