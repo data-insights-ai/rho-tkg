@@ -6,53 +6,52 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Tiered store: composite and relationship temporal indexes
+### Added
 
-#### Added
+- **Tiered store: composite and relationship temporal indexes (backlog 10, ai-soc request 3).**
+  `tiered.Store` implements `RelTypeTemporalIndexCapability`, `RelTypeTemporalCandidateCapability`,
+  `CompositePropertyIndexCapability` and `CompositeIndexIntrospectionCapability`, so
+  `g.Index().CreateRelTemporal` / `CreateComposite` / `ListComposites` / `ListRelTemporal` work on
+  tiered instead of returning `ErrCapabilityNotSupported` (ai-soc keeps the tiered store for weeks
+  of retention and wants device + process-id + creation-time composites and time indexes on raw
+  edge types). Same shape as sharded: each shard builds and maintains its own badger index over its
+  own rows; nothing moves on rotation. The reference shard anchors the definitions — create reaches
+  it last, drop leaves it last, a failed fan-out undoes the shards it changed, store open repairs
+  every open shard to it. Composites cover every shard, event labels included, and lookups fold the
+  shards like `NodesByLabelAndProperty` (archive at `DepthAll`, event shards by depth). The rel
+  temporal prune asks the open event shards in the query's depth and the reference shard while no
+  archive exists (`ArchiveNode` leaves a moved relationship's history on the reference shard).
+  `badger.Store.CompositePropertyIndexDefs()` lists every composite definition for the anchor copy.
+- **Hot + warm bound for the tiered relationship temporal index (default, not a flag).** A cold
+  shard keeps none: a rotation that demotes a shard frees its index, a cold shard opens with the
+  definitions discarded instead of rebuilt (new `badger.Config.DropRelTemporalIndexesAtOpen`), the
+  DDL never opens a cold shard or touches the archive for it, and a promotion
+  (`PromoteColdShardsAtOpen`, the only promotion door) rebuilds it from the anchor at open. A cold
+  shard's relationships are never pruned, so every answer is unchanged
+  (`TestTieredRelTemporalPrune_DemotePromoteParityWithBadger`).
+- **Measured before building** (`pkg/graph/internal/index/index_budget_test.go`,
+  `bench/index_budget_test.go`). Resident per indexed row on each shard carrying the index: rel
+  temporal index **156 B/relationship**, 3-key composite **310 B/node** with distinct tuples (index
+  structures alone, 1 M and 4 M rows). A build — and the rebuild a warm shard pays when it opens or
+  is promoted, entries being RAM-only — runs at **0.018–0.021 M rels/s** (badger, synthhop HOP,
+  107 k and 408 k rows); a composite at 0.12 M nodes/s. At ai-soc's 400–700 rows/s (36.9–58.8 M
+  rows a day, 258–412 M a week; one indexed relationship per row) an index on every shard would hold
+  40–64 GB for a week; with the hot + warm bound and `ColdAfter` = 1 day it holds **≈ 5.8–9.2 GB
+  per indexed type**, and a reopened or promoted day shard rebuilds in **29–54 min**. Composites
+  are not bounded: ~310 B per indexed node on every open shard, rebuilt on every open.
 
-- `tiered.Store` implements `RelTypeTemporalIndexCapability`, `RelTypeTemporalCandidateCapability`,
-  `CompositePropertyIndexCapability` and `CompositeIndexIntrospectionCapability` (backlog 10, ai-soc
-  request 3: ai-soc keeps the tiered store for weeks of retention and wants device + process-id +
-  creation-time composites and time indexes on raw edge types). `g.Index().CreateRelTemporal` /
-  `CreateComposite` / `ListComposites` / `ListRelTemporal` now work on tiered instead of returning
-  `ErrCapabilityNotSupported`. Same shape as sharded: every shard (reference, archive, every event
-  shard, cold shards opened for the DDL, the hot shard a later rotation opens) builds and maintains its
-  own badger index over its own rows; nothing moves on rotation. The reference shard anchors the
-  definitions: create reaches it last, drop leaves it last, a failed fan-out undoes the shards it
-  changed, and store open repairs every open shard to the anchor. Composite indexes accept event
-  labels (their nodes spread over the event shards). Lookups fold the shards like
-  `NodesByLabelAndProperty` (archive at `DepthAll`, event shards by depth).
-- The rel temporal candidate prune asks the open event shards in the query's depth (never opens a
-  cold shard; a shard left out only keeps its ids) and the reference shard while no archive exists
-  (`ArchiveNode` leaves a moved relationship's history on the reference shard).
-- `badger.Store.CompositePropertyIndexDefs()` lists every composite definition (the tiered anchor
-  copies them onto a shard that opens later).
+### Fixed
 
-#### Fixed
-
-- `badger.Store.PutRelEntityAndOut` / `DeleteRelEntityAndOut` (the tiered cross-shard split-write
-  doors) now maintain the relationship-type temporal envelope like `PutRelationship` / delete do:
-  a cross-shard row was never pruned, and a deleted one stayed covered.
-
-#### Measured (before building; `pkg/graph/internal/index/index_budget_test.go`, `bench/index_budget_test.go`)
-
-- Resident per indexed row, per open shard: rel temporal index **156 B/relationship**, 3-key composite
-  **310 B/node** with distinct tuples (index structures alone, 1 M and 4 M rows). Building — also the
-  rebuild a shard pays every time it opens, since entries are RAM-only — runs at **0.018–0.021 M
-  rels/s** for the rel temporal index (badger, synthhop HOP, 107 k and 408 k rows) and 0.12 M nodes/s
-  for a composite.
-- ai-soc at 400–700 rows/s (36.9–58.8 M rows a day, 258–412 M a week), one indexed relationship per
-  row: **5.8–9.2 GB a day, 40–64 GB a week** if every shard is open, and **29–54 min** to rebuild one
-  day's shard on reopen. A week does not fit a plausible budget.
-
-#### Limits
-
-- Resident cost grows with the rows on open shards; a cold shard frees its entries when it closes and
-  rebuilds them (minutes per day of rows) when a read reopens it. Proposed bound, not built: keep the
-  rel temporal index on hot + warm shards only (drop on cold demotion, re-create on promotion); cold
-  ids are then kept by the prune, answers unchanged.
-- Relationship property indexes stay declined on tiered; the node `TemporalCandidateCapability` is
-  still not implemented there.
+- **Badger split-write doors maintain the relationship temporal envelope.**
+  `PutRelEntityAndOut` / `DeleteRelEntityAndOut` (the tiered cross-shard doors) now extend / purge
+  the rel-type temporal envelope like `PutRelationship` / delete: a cross-shard row was never
+  pruned, and a deleted one stayed covered.
+- **Imported relationship versions stay findable with a rel temporal index (memory, badger).**
+  `g.IO().Import` replays history through `PutRelVersion`, which did not join the version into the
+  envelope: with `CreateRelTemporal` done first, an imported past version vanished from
+  `Rels().ByType(type, QueryOpts{ValidAt})` and `Temporal().RelsByTypeAt`
+  (`TestRelTemporalIndex_ImportedHistoryVersionStaysFindable`). A live relationship's version now
+  extends its envelope; one without a current row stays uncovered and is never pruned.
 
 ## [4.43.0] - 2026-10-08
 
