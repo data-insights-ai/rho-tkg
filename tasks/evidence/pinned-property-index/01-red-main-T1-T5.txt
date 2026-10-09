@@ -1,0 +1,41 @@
+# Item M red run on main (aa26ca6 + test-only chainLoadTestHook), 2026-10-09T19:23:55.866167Z
+# go test ./pkg/graph/internal/core/ -run 'TestPinnedByTypeAndPropertyEqualsPinnedScan|TestPinnedPropertyLookupLoadsOnlyEverMembers' -count=1 -v
+# T5 RED on memory/badger/sharded rel+node (loads track churn: 50 chains vs 10 ever-members).
+# T1 GREEN on main: a GUARD (the full-history fold is correct, only slow); its fault-finding power is proven by mutants of the new code.
+
+--- PASS: TestPinnedByTypeAndPropertyEqualsPinnedScan (0.79s)
+    --- PASS: TestPinnedByTypeAndPropertyEqualsPinnedScan/memory/index=true/warm=false (0.01s)
+    --- PASS: TestPinnedByTypeAndPropertyEqualsPinnedScan/memory/index=true/warm=true (0.01s)
+    --- PASS: TestPinnedByTypeAndPropertyEqualsPinnedScan/memory/index=false/warm=false (0.01s)
+    --- PASS: TestPinnedByTypeAndPropertyEqualsPinnedScan/memory-segments/index=true/warm=false (0.07s)
+    --- PASS: TestPinnedByTypeAndPropertyEqualsPinnedScan/memory-segments/index=true/warm=true (0.07s)
+    --- PASS: TestPinnedByTypeAndPropertyEqualsPinnedScan/memory-segments/index=false/warm=false (0.13s)
+    --- PASS: TestPinnedByTypeAndPropertyEqualsPinnedScan/badger/index=true/warm=false (0.03s)
+    --- PASS: TestPinnedByTypeAndPropertyEqualsPinnedScan/badger/index=true/warm=true (0.03s)
+    --- PASS: TestPinnedByTypeAndPropertyEqualsPinnedScan/badger/index=false/warm=false (0.02s)
+    --- PASS: TestPinnedByTypeAndPropertyEqualsPinnedScan/badger-delta/index=true/warm=false (0.06s)
+    --- PASS: TestPinnedByTypeAndPropertyEqualsPinnedScan/badger-delta/index=true/warm=true (0.06s)
+    --- PASS: TestPinnedByTypeAndPropertyEqualsPinnedScan/badger-delta/index=false/warm=false (0.03s)
+    --- PASS: TestPinnedByTypeAndPropertyEqualsPinnedScan/sharded/index=true/warm=false (0.04s)
+    --- PASS: TestPinnedByTypeAndPropertyEqualsPinnedScan/sharded/index=true/warm=true (0.03s)
+    --- PASS: TestPinnedByTypeAndPropertyEqualsPinnedScan/sharded/index=false/warm=false (0.04s)
+    --- PASS: TestPinnedByTypeAndPropertyEqualsPinnedScan/tiered/index=false/warm=false (0.09s)
+    --- PASS: TestPinnedByTypeAndPropertyEqualsPinnedScan/wrapper/index=true/warm=false (0.01s)
+    --- PASS: TestPinnedByTypeAndPropertyEqualsPinnedScan/wrapper/index=true/warm=true (0.02s)
+    --- PASS: TestPinnedByTypeAndPropertyEqualsPinnedScan/wrapper/index=false/warm=false (0.02s)
+    pinned_property_index_test.go:565: churn x1 {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:1791573816750 IncludeEclipsed:false Depth:0 NoSort:false}: lookup loaded 50 chains, want 10 (the value's ever-members)
+    pinned_property_index_test.go:627: churn x1 {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:1791573816746 IncludeEclipsed:false Depth:0 NoSort:false}: lookup loaded 50 chains, want 10 (the value's ever-members)
+    pinned_property_index_test.go:565: churn x1 {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:1791573816755 IncludeEclipsed:false Depth:0 NoSort:false}: lookup loaded 50 chains, want 10 (the value's ever-members)
+    pinned_property_index_test.go:627: churn x1 {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:1791573816758 IncludeEclipsed:false Depth:0 NoSort:false}: lookup loaded 50 chains, want 10 (the value's ever-members)
+    pinned_property_index_test.go:565: churn x1 {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:1791573816772 IncludeEclipsed:false Depth:0 NoSort:false}: lookup loaded 50 chains, want 10 (the value's ever-members)
+    pinned_property_index_test.go:627: churn x1 {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:1791573816790 IncludeEclipsed:false Depth:0 NoSort:false}: lookup loaded 50 chains, want 10 (the value's ever-members)
+--- FAIL: TestPinnedPropertyLookupLoadsOnlyEverMembers (0.05s)
+    --- FAIL: TestPinnedPropertyLookupLoadsOnlyEverMembers/memory/rel (0.00s)
+    --- FAIL: TestPinnedPropertyLookupLoadsOnlyEverMembers/memory/node (0.00s)
+    --- FAIL: TestPinnedPropertyLookupLoadsOnlyEverMembers/badger/rel (0.01s)
+    --- FAIL: TestPinnedPropertyLookupLoadsOnlyEverMembers/badger/node (0.01s)
+    --- FAIL: TestPinnedPropertyLookupLoadsOnlyEverMembers/sharded/rel (0.01s)
+    --- FAIL: TestPinnedPropertyLookupLoadsOnlyEverMembers/sharded/node (0.02s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.885s
+FAIL

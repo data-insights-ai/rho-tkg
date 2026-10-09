@@ -83,6 +83,12 @@ type Core struct {
 	// (tiered), so the query falls back to the full-history candidate fold.
 	labelTxMembers   storepkg.LabelTxMembershipCapability
 	relTypeTxMembers storepkg.RelTypeTxMembershipCapability
+	// chainLoadTestHook, when set (tests only), is called once per candidate a
+	// generic temporal door hands to the per-entity resolver
+	// (findNodeVersionForOpts / findRelVersionForOpts): one call = one version
+	// chain loaded. It lets a test assert the STRUCTURAL cost of a pinned lookup
+	// (chain loads), which wall time cannot pin. nil in production.
+	chainLoadTestHook func()
 	// belief watermarks (BACKLOG 10c): a store that maintains, per entity, the
 	// maximum TxFrom ever recorded across its whole version chain lets
 	// nodeAtLockedTx/relAtLockedTx take a SAFE current-row-only fast path for

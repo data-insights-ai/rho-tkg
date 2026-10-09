@@ -1125,6 +1125,9 @@ func (c *Core) normalizeTxAtOnlyOpts(opts storepkg.QueryOpts) storepkg.QueryOpts
 // matches. Returns storepkg.ErrNoVersionValidAt if no overlapping version satisfies
 // pred. pred==nil means "any overlapping version".
 func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, pred func(*types.Node) bool) (*types.Node, error) {
+	if c.chainLoadTestHook != nil {
+		c.chainLoadTestHook()
+	}
 	if opts.TxPin != 0 {
 		// Belief-state pin: pure knowledge-time resolution, NO valid-time
 		// filter. Delegate to the SAME resolver the named as-of door uses
@@ -1173,6 +1176,9 @@ func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, 
 
 // findRelVersionForOpts is the relationship counterpart of findNodeVersionForOpts.
 func (c *Core) findRelVersionForOpts(id types.RelID, opts storepkg.QueryOpts, pred func(*types.Relationship) bool) (*types.Relationship, error) {
+	if c.chainLoadTestHook != nil {
+		c.chainLoadTestHook()
+	}
 	if opts.TxPin != 0 {
 		// Belief-state pin — see findNodeVersionForOpts. Delegates to the same
 		// relAsOfLocked the named RelAsOf / RelsAsOf door uses.
