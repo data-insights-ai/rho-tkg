@@ -52,7 +52,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `Rels().ByType(QueryOpts{ValidAt})` lost its past version (memory, whose delete keeps the
   envelope, answered; `TestRelTemporalIndex_RolledBackDeleteKeepsPastVersion`). The tiered
   split-write rollback (`DeleteRelIncoming` failing after `DeleteRelEntityAndOut`) had the same
-  hole. The envelope is now append-only on delete, as in memory; only exact erasure removes it.
+  hole. The envelope is now append-only on delete, as in memory; exact erasure and the retention
+  purge (which erase the history too) remove it, now in memory as well.
 - **Imported relationship versions stay findable with a rel temporal index (memory, badger).**
   `g.IO().Import` replays history through `PutRelVersion`, which did not join the version into the
   envelope: with `CreateRelTemporal` done first, an imported past version vanished from

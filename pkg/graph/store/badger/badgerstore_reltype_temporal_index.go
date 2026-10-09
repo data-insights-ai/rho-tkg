@@ -216,8 +216,9 @@ func (bs *Store) maintainRelTypeTemporalIndexesRemove(r *types.Relationship, id 
 }
 
 // maintainRelTypeTemporalIndexesPurge removes a relationship from every
-// rel-type temporal envelope. Only exact erasure calls it — there every row of
-// the relationship, history included, is gone. A plain delete keeps the
+// rel-type temporal envelope. Exact erasure and the retention purge doors
+// (PurgeRelationshipByInfo, PurgeAdjacentRelsForNode) call it — there every row
+// of the relationship, history included, is gone. A plain delete keeps the
 // envelope (append-only): the history stays and the envelope stays a sound
 // superset of it.
 func (bs *Store) maintainRelTypeTemporalIndexesPurge(id snowflake.ID) {
