@@ -1052,7 +1052,8 @@ func (s *Store) Close() error {
 	}
 	if i := s.applicationImport; i != nil {
 		i.closed = true
-		i.manifest.Image = nil
+		i.manifest = ApplicationSnapshotManifest{}
+		i.after = nil
 		i.state.last = nil
 		s.applicationImport = nil
 		err = errors.Join(err, s.releaseGeneration(i.ref))

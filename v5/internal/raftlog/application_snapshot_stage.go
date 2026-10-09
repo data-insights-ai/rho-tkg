@@ -17,6 +17,7 @@ import (
 // transferred values are reframed for local keys. Network validation/cancellation
 // never poisons active data. Uncertain local durable failures remain fail-stop.
 type ApplicationImport struct {
+	after                   []byte
 	bank                    byte
 	generation              uint64
 	ref                     *generationRef
@@ -47,6 +48,9 @@ func (s *Store) BeginApplicationImport(ctx context.Context, m ApplicationSnapsho
 	}
 	tc := s.meta.Transfer
 	if !tc.enabled() || m.Identity != tc.Identity || m.Contract != tc.Contract {
+		return nil, ErrInvalid
+	}
+	if m.Version == 2 && !s.meta.Gen.Publication.Limits.enabled() {
 		return nil, ErrInvalid
 	}
 	if s.applicationImport != nil {
@@ -110,6 +114,12 @@ func (i *ApplicationImport) descriptor() []byte {
 	if i.verified {
 		flags |= 2
 	}
+	if i.manifest.Version == 2 {
+		b[2] = 3
+		b = append(b, i.manifest.CutID[:]...)
+		b = binary.BigEndian.AppendUint32(b, uint32(len(i.after))) // #nosec G115 -- AS2 cursor length is contract-bounded before admission.
+		b = append(b, i.after...)
+	}
 	return append(b, flags)
 }
 func (i *ApplicationImport) check(ctx context.Context) error {
@@ -139,8 +149,11 @@ func (i *ApplicationImport) Append(ctx context.Context, c ApplicationSnapshotChu
 	if err := i.check(ctx); err != nil {
 		return err
 	}
-	if i.final || c.Sequence != i.sequence || len(c.Data) == 0 && !c.Final {
+	if i.final || c.Sequence != i.sequence {
 		return ErrInvalid
+	}
+	if err := i.validateChunkHeader(c); err != nil {
+		return err
 	}
 	l := s.meta.Transfer.Limits
 	if len(c.Data) > l.MaxChunkBytes {
@@ -153,6 +166,9 @@ func (i *ApplicationImport) Append(ctx context.Context, c ApplicationSnapshotChu
 			return err
 		}
 		rows++
+		if i.manifest.Version == 2 && (bytes.Compare(k, i.after) <= 0 || bytes.Compare(k, c.After) > 0) {
+			return ErrInvalid
+		}
 		if rows > l.MaxChunkRows {
 			return ErrLimit
 		}
@@ -169,6 +185,9 @@ func (i *ApplicationImport) Append(ctx context.Context, c ApplicationSnapshotChu
 	if err != nil {
 		return err
 	}
+	if i.manifest.Version == 2 && (c.Visited < uint64(rows) || c.VisitedBytes < uint64(len(c.Data))) {
+		return ErrInvalid
+	}
 	if c.Final {
 		if err := state.complete(i.manifest); err != nil {
 			return err
@@ -181,6 +200,9 @@ func (i *ApplicationImport) Append(ctx context.Context, c ApplicationSnapshotChu
 	next.state = state
 	next.sequence++
 	next.final = c.Final
+	if i.manifest.Version == 2 {
+		next.after = copyApplicationBytes(c.After)
+	}
 	prospective := s.meta
 	if prospective.Gen.Limits.enabled() {
 		bank := &prospective.Gen.Banks[i.bank]
@@ -399,7 +421,9 @@ func (i *ApplicationImport) Abort() error {
 	}
 	if s.closed {
 		i.closed = true
-		i.manifest.Image = nil
+		i.manifest = ApplicationSnapshotManifest{}
+		i.after = nil
+		i.state.last = nil
 		return nil
 	}
 	if err := s.check(); err != nil {
@@ -413,8 +437,9 @@ func (i *ApplicationImport) Abort() error {
 		return err
 	}
 	i.closed = true
-	i.manifest.Image = nil
+	i.manifest = ApplicationSnapshotManifest{}
 	i.state.last = nil
+	i.after = nil
 	s.applicationImport = nil
 	return s.releaseGeneration(i.ref)
 }

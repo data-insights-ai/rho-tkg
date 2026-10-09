@@ -104,7 +104,11 @@ func (c ApplicationTransferConfig) validate(p ApplicationPolicy) error {
 // immutable local applied index, not a certified database cut. Image and ConfState
 // are owned bounded copies. Local generation IDs/policies and HardState are absent.
 // The digest binds ordered canonical records; ManifestID binds all metadata too.
+// Version zero or one selects the original AS1 bytes; AS1 decode normalizes to
+// zero. Version two explicitly binds a published CutID. Other versions refuse.
 type ApplicationSnapshotManifest struct {
+	Version                          uint32
+	CutID                            [32]byte
 	Identity                         ApplicationIdentity
 	Contract                         ApplicationContract
 	Index, Term                      uint64
@@ -115,11 +119,18 @@ type ApplicationSnapshotManifest struct {
 }
 
 // ApplicationSnapshotChunk is one bounded ordered canonical page. Final marks
-// exact completion; empty non-final pages and trailing pages are rejected.
+// exact completion. AS1 (Version zero/one) rejects empty non-final pages and
+// requires all AS2 fields zero. AS2 counts visited physical work, including
+// skipped future rows; those sender-declared counts are limits, not evidence
+// proving unseen data. After is an owned canonical physical progress cursor.
 type ApplicationSnapshotChunk struct {
-	Sequence uint64
-	Data     []byte
-	Final    bool
+	Version               uint32
+	CutID, ManifestID     [32]byte
+	After                 []byte
+	Visited, VisitedBytes uint64
+	Sequence              uint64
+	Data                  []byte
+	Final                 bool
 }
 
 // ApplicationImportStatus reports dormant evidence only, with no activation authority.

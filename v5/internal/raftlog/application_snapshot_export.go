@@ -17,6 +17,7 @@ import (
 // framing/copy work is at most two page buffers plus that lookahead. There is no
 // whole-database image or retained iterator/key map. Store.Close invalidates handles.
 type ApplicationExport struct {
+	published     *publishedExportState
 	bank          byte
 	generation    uint64
 	ref           *generationRef
@@ -188,6 +189,9 @@ func (e *ApplicationExport) Manifest() (ApplicationSnapshotManifest, error) {
 	if err := e.s.check(); err != nil {
 		return ApplicationSnapshotManifest{}, err
 	}
+	if e.published != nil && !e.published.ready {
+		return ApplicationSnapshotManifest{}, ErrInvalid
+	}
 	return cloneSnapshotManifest(e.manifest), nil
 }
 func appendBoundedSnapshot(dst, k, v []byte, limit int) []byte {
@@ -225,6 +229,9 @@ func (e *ApplicationExport) Next(ctx context.Context, b ReadBudget) (chunk Appli
 	}
 	if e.final {
 		return chunk, ErrInvalid
+	}
+	if e.published != nil {
+		return e.nextPublished(ctx, b)
 	}
 	l := s.meta.Transfer.Limits
 	if b.Rows < 1 || b.Bytes < 1 {
@@ -306,8 +313,9 @@ func (e *ApplicationExport) closeLocked() error {
 	e.closed = true
 	delete(e.s.applicationExports, e)
 	e.s.pinnedApplicationBytes -= e.pinBytes
-	e.manifest.Image = nil
+	e.manifest = ApplicationSnapshotManifest{}
 	e.after = nil
+	e.published = nil
 	err := e.snapshot.Close()
 	e.snapshot = nil
 	if err != nil {

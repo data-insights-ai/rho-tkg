@@ -92,6 +92,9 @@ func canonicalConf(c *pb.ConfState) *pb.ConfState {
 	return cs
 }
 func validateManifest(m ApplicationSnapshotManifest) error {
+	if m.Version > 2 || m.Version != 2 && m.CutID != [32]byte{} {
+		return ErrInvalid
+	}
 	if err := m.Identity.validate(); err != nil {
 		return err
 	}
@@ -126,8 +129,20 @@ func validateManifest(m ApplicationSnapshotManifest) error {
 			return ErrCorrupt
 		}
 	}
-	_, _, err := snapshotTotals(m)
-	return err
+	b, r, err := snapshotTotals(m)
+	if err != nil {
+		return err
+	}
+	if m.Version == 2 {
+		id, err := cutID(ApplicationCutReference{Identity: m.Identity, Contract: m.Contract, Index: m.Index, Term: m.Term, ConfState: m.ConfState, ImageBytes: uint64(len(m.Image)), ImageHash: m.ImageHash, RetainedBytes: b, RetainedRecords: r})
+		if err != nil {
+			return err
+		}
+		if id != m.CutID {
+			return ErrCorrupt
+		}
+	}
+	return nil
 }
 
 // EncodeApplicationSnapshotManifest emits a bounded canonical transfer header.
@@ -140,8 +155,16 @@ func EncodeApplicationSnapshotManifest(m ApplicationSnapshotManifest) ([]byte, e
 	if err != nil {
 		return nil, err
 	}
-	b := make([]byte, 0, snapshotManifestOverhead+len(cs)+len(m.Image))
-	b = append(b, 'A', 'S', 1, 0)
+	capacity := snapshotManifestOverhead + len(cs) + len(m.Image)
+	if m.Version == 2 {
+		capacity += 32
+	}
+	b := make([]byte, 0, capacity)
+	version := byte(1)
+	if m.Version == 2 {
+		version = 2
+	}
+	b = append(b, 'A', 'S', version, 0)
 	b = appendIdentity(b, m.Identity)
 	b = appendContract(b, m.Contract)
 	b = binary.BigEndian.AppendUint64(b, m.Index)
@@ -155,6 +178,9 @@ func EncodeApplicationSnapshotManifest(m ApplicationSnapshotManifest) ([]byte, e
 	b = append(b, m.RecordsHash[:]...)
 	b = binary.BigEndian.AppendUint32(b, uint32(len(cs)))
 	b = binary.BigEndian.AppendUint32(b, uint32(len(m.Image)))
+	if m.Version == 2 {
+		b = append(b, m.CutID[:]...)
+	}
 	b = append(b, cs...)
 	b = append(b, m.Image...)
 	return b, nil
@@ -166,8 +192,14 @@ func DecodeApplicationSnapshotManifest(b []byte, maxImageBytes int) (Application
 	if maxImageBytes < 1 || maxImageBytes > 64<<20 {
 		return m, ErrInvalid
 	}
-	if len(b) < snapshotManifestOverhead || len(b) > maxSnapshotManifestBytes || !bytes.Equal(b[:4], []byte{'A', 'S', 1, 0}) {
+	if len(b) < snapshotManifestOverhead || len(b) > maxSnapshotManifestBytes+32 || (!bytes.Equal(b[:4], []byte{'A', 'S', 1, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 2, 0})) {
 		return m, ErrCorrupt
+	}
+	if b[2] == 2 {
+		m.Version = 2
+		if len(b) < snapshotManifestOverhead+32 {
+			return m, ErrCorrupt
+		}
 	}
 	m.Identity = readIdentity(b[4:44])
 	var err error
@@ -191,6 +223,10 @@ func DecodeApplicationSnapshotManifest(b []byte, maxImageBytes int) (Application
 	cn := uint64(binary.BigEndian.Uint32(b[offset:]))
 	in := uint64(binary.BigEndian.Uint32(b[offset+4:]))
 	offset += 8
+	if m.Version == 2 {
+		copy(m.CutID[:], b[offset:offset+32])
+		offset += 32
+	}
 	if cn > 32768 || in > uint64(maxImageBytes) {
 		return ApplicationSnapshotManifest{}, ErrLimit
 	}
@@ -208,6 +244,12 @@ func DecodeApplicationSnapshotManifest(b []byte, maxImageBytes int) (Application
 	return m, nil
 } // #nosec G115 -- cn <= 32768 and input lengths checked before indexing/conversion.
 func manifestID(m ApplicationSnapshotManifest) ([32]byte, error) {
+	if m.Version == 2 {
+		if err := validateManifest(m); err != nil {
+			return [32]byte{}, err
+		}
+		return publishedManifestID(m), nil
+	}
 	b, err := EncodeApplicationSnapshotManifest(m)
 	if err != nil {
 		return [32]byte{}, err
@@ -221,7 +263,12 @@ func manifestID(m ApplicationSnapshotManifest) ([32]byte, error) {
 }
 func snapshotSeed(m ApplicationSnapshotManifest) [32]byte {
 	h := sha256.New()
-	_, _ = h.Write([]byte("rho-tkg:application-snapshot-records:v1\x00"))
+	if m.Version == 2 {
+		_, _ = h.Write([]byte("rho-tkg:application-snapshot-records:v2\x00"))
+		_, _ = h.Write(m.CutID[:])
+	} else {
+		_, _ = h.Write([]byte("rho-tkg:application-snapshot-records:v1\x00"))
+	}
 	_, _ = h.Write(appendContract(appendIdentity(nil, m.Identity), m.Contract))
 	var ns [16]byte
 	binary.BigEndian.PutUint64(ns[:8], m.Index)
