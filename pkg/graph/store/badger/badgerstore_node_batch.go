@@ -456,6 +456,11 @@ func (bs *Store) purgeOrphanRelIDLockedWithIndexKeys(rid types.RelID, indexKeys 
 // between a View-first scan and a later `flushing` read would get no delete and
 // stay on disk as an orphan.
 func (bs *Store) relationshipIndexKeysForRel(relID snowflake.ID) ([][]byte, error) {
+	if h := bs.relIndexKeysTestErr; h != nil {
+		if err := h(); err != nil {
+			return nil, err
+		}
+	}
 	keys := make([][]byte, 0)
 	seen := make(map[string]struct{})
 

@@ -760,6 +760,13 @@ type Store struct {
 	// there. Set only from the owning test.
 	asOfAfterCurrentTestHook func()
 
+	// relIndexKeysTestErr, when non-nil, is consulted first by
+	// relationshipIndexKeysForRel (the fallible read of an orphan
+	// relationship's index keys); a non-nil return is that read's error.
+	// Production leaves it nil; tests fail one read of a cascade's preflight to
+	// prove a fatal error applies nothing. Set only from the owning test.
+	relIndexKeysTestErr func() error
+
 	// replaceRelPrefetchTestHook, when non-nil, is invoked by ReplaceRelationship
 	// right after prefetchRelWithRev returns and BEFORE idxMu.Lock() is acquired.
 	// Production leaves it nil (zero overhead); tests use it to deterministically
