@@ -1,6 +1,6 @@
 # Handover: a pinned property lookup costs the size of the history, not the number of matches
 
-**DONE 2026-10-09** — recommendation D implemented (property membership sidecar, memory / badger / sharded, rel and node); CHANGELOG `[Unreleased]`, evidence `tasks/evidence/pinned-property-index/`.
+**STATUS 2026-10-10: DONE in v4.48.0** — recommendation D implemented (property membership sidecar, memory / badger / sharded, rel and node; tiered declines and folds as before); CHANGELOG `[4.48.0]` Added "Temporal property lookups cost the value's ever-members", backlog item 8 closed, evidence `tasks/evidence/pinned-property-index/`. RAM measured: 25-30 B per posting (97-117 B when every value is distinct). File:line citations below are at v4.43.0.
 
 Date 2026-10-09. From the sigma-tkgd realtime ingest work (stream B, branch `impl/pushdown`).
 Code is cited at v4.43.0 (`46f63fa`); the files cited are unchanged at HEAD `c688821` except `core.go`. Nothing here is
