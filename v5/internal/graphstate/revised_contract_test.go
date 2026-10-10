@@ -21,6 +21,7 @@ const (
 	revisedNative       revisedLane = "executable-native"
 	revisedPreservation revisedLane = "byte-preservation-only"
 	revisedRefusal      revisedLane = "unsupported-native-predicate"
+	revisedExclusion    revisedLane = "typed-boundary-exclusion"
 	revisedPending      revisedLane = "pending-graph-attachment-or-public-api"
 )
 
@@ -39,21 +40,21 @@ var revisedRules = map[string]revisedRule{
 	"E03-E08-support-QN":                              {"region", revisedNative, ""},
 	"E02-components-correction-retraction":            {"component", revisedNative, ""},
 	"SEM12-null-revision-replay":                      {"component", revisedNative, ""},
-	"E01-event-multiplicity":                          {"graph", revisedPending, "EntityRecord does not attach interpretation and temporal role."},
-	"E01-E03-interpretation-independent-of-support-Z": {"graph", revisedPending, "Equal support cannot substitute for missing interpretation and temporal role."},
+	"E01-event-multiplicity":                          {"graph", revisedNative, ""},
+	"E01-E03-interpretation-independent-of-support-Z": {"graph", revisedNative, ""},
 	"E19-close-reopen-identity-reference":             {"graph", revisedNative, ""},
 	"E19-strict-life-bound-presence-correction":       {"graph", revisedNative, ""},
 	"SEM03-06-node-rel-property-history":              {"graph", revisedNative, ""},
-	"SEM14-16-endpoint-boundary":                      {"graph", revisedPending, "Wrong-graph refusal needs the embedding/public qualified-handle boundary."},
+	"SEM14-16-endpoint-boundary":                      {"graph", revisedNative, ""},
 	"E02-disjoint-native-region":                      {"graph", revisedNative, ""},
-	"E06-preservation":                                {"graph", revisedPreservation, "Opaque envelope bytes only; graph attachment/shared-constraint interpretation pending."},
-	"E10-preservation":                                {"graph", revisedPreservation, "Opaque envelope bytes only; graph attachment pending; no STN evaluation."},
-	"E13-preservation":                                {"graph", revisedPreservation, "Opaque envelope bytes only; graph attachment pending; no calendar evaluation."},
-	"E14-preservation":                                {"graph", revisedPreservation, "Opaque envelope bytes only; declared typed property/axis attachment is not supplied by this JSON record."},
-	"E20-preservation":                                {"graph", revisedPreservation, "Opaque envelope bytes only; atomic graph summary/coverage attachment pending."},
-	"E07-causal-records":                              {"graph", revisedPending, "Asserted relation interpretation and temporal role cannot be dropped."},
-	"E04-exact-nearby-values":                         {"value", revisedPreservation, "Exact scalar preservation only; no event-ID attachment or caller rounding implementation is claimed."},
-	"E09-source-history-derived-fraction":             {"region", revisedPreservation, "Supplied source/result scopes round-trip only; no join/shift or graph-history attachment is claimed."},
+	"E06-preservation":                                {"graph", revisedPreservation, "Typed attached descriptor/property history; preservation only, no payload evaluator."},
+	"E10-preservation":                                {"graph", revisedPreservation, "Typed attached descriptor/property history; preservation only, no payload evaluator."},
+	"E13-preservation":                                {"graph", revisedPreservation, "Typed attached descriptor/property history; preservation only, no payload evaluator."},
+	"E14-preservation":                                {"graph", revisedPreservation, "Typed attached descriptor/property history; preservation only, no payload evaluator."},
+	"E20-preservation":                                {"graph", revisedPreservation, "Typed attached descriptor/property history; preservation only, no payload evaluator."},
+	"E07-causal-records":                              {"graph", revisedNative, ""},
+	"E04-exact-nearby-values":                         {"value", revisedPreservation, "Exact scalar fixture plus separate event/source attachment/history tests; no rho rounding implementation."},
+	"E09-source-history-derived-fraction":             {"region", revisedPreservation, "Supplied-scope fixture plus separate source/result/revision attachment/history tests; no rho join/shift."},
 	"E05-possible-only":                               {"knowledge", revisedNative, ""},
 	"E05-definite":                                    {"knowledge", revisedNative, ""},
 	"E05-empty-hard-support":                          {"knowledge", revisedNative, ""},
@@ -62,17 +63,17 @@ var revisedRules = map[string]revisedRule{
 	"E05-decline-nominal":                             {"knowledge", revisedRefusal, "Type-level refusal probe only: corpus supplies no source nominal coordinate."},
 	"E05-decline-opaque_correlated_constraint":        {"knowledge", revisedRefusal, "Type-level refusal probe using the complete uninterpreted record as opaque envelope payload."},
 	"E05-decline-unspecified":                         {"knowledge", revisedRefusal, "Native unspecified-evidence predicate refusal."},
-	"V0-units-us-to-ms-Z-1000":                        {"unit_mapping", revisedNative, "Numerical helper contract only; default graph axis, public Instant API and importer remain pending."},
-	"V0-units-us-to-ms-Q-1":                           {"unit_mapping", revisedNative, "Numerical helper contract only; default graph axis, public Instant API and importer remain pending."},
-	"V0-units-us-to-ms-Q-1001":                        {"unit_mapping", revisedNative, "Numerical helper contract only; default graph axis, public Instant API and importer remain pending."},
-	"V0-units-us-to-ms-Z-1":                           {"unit_mapping", revisedNative, "Numerical helper contract only; default graph axis, public Instant API and importer remain pending."},
-	"V0-default-ms-identity":                          {"unit_mapping", revisedNative, "Numerical helper contract only; default graph axis, public Instant API and importer remain pending."},
-	"V0-default-instant-codec-range":                  {"codec_contract", revisedNative, "Numerical helper contract only; default graph axis, public Instant API and importer remain pending."},
-	"V0-order-only-no-seconds":                        {"unit_mapping", revisedNative, "Numerical helper contract only; default graph axis, public Instant API and importer remain pending."},
+	"V0-units-us-to-ms-Z-1000":                        {"unit_mapping", revisedNative, "Numerical fixture only; public value bindings are tested separately; durable default registration/import are V2/V6."},
+	"V0-units-us-to-ms-Q-1":                           {"unit_mapping", revisedNative, "Numerical fixture only; public value bindings are tested separately; durable default registration/import are V2/V6."},
+	"V0-units-us-to-ms-Q-1001":                        {"unit_mapping", revisedNative, "Numerical fixture only; public value bindings are tested separately; durable default registration/import are V2/V6."},
+	"V0-units-us-to-ms-Z-1":                           {"unit_mapping", revisedNative, "Numerical fixture only; public value bindings are tested separately; durable default registration/import are V2/V6."},
+	"V0-default-ms-identity":                          {"unit_mapping", revisedNative, "Numerical fixture only; public value bindings are tested separately; durable default registration/import are V2/V6."},
+	"V0-default-instant-codec-range":                  {"codec_contract", revisedNative, "Numerical fixture only; public value bindings are tested separately; durable default registration/import are V2/V6."},
+	"V0-order-only-no-seconds":                        {"unit_mapping", revisedNative, "Numerical fixture only; public value bindings are tested separately; durable default registration/import are V2/V6."},
 	"V6-one-tick-import-ambiguity":                    {"import_contract", revisedPending, "Importer/writer-provenance ambiguity reporting is not implemented here."},
-	"strict-symbolic-placement-decline":               {"failure", revisedPending, "No symbolic graph-placement attachment; translating it to Unplaced would change the input."},
+	"strict-symbolic-placement-decline":               {"failure", revisedExclusion, "Native Scope excludes symbolic input by type; adapter refusal only, not executable Plan(symbolic) evidence."},
 	"axis-conflicting-definition-empty":               {"failure", revisedNative, ""},
-	"budget-variable-name-axis-change-ledger":         {"budget", revisedPending, "Reference JSON ledgers are not Go metadata/wire/heap byte policies."},
+	"budget-variable-name-axis-change-ledger":         {"budget", revisedPending, "Oracle JSON byte contract is not a Go policy; separate actual Go metadata/state/CDC capacity tests cover V1."},
 	"dependency-absence-phantom-budget-contract":      {"transaction_contract", revisedPending, "Complete dependency validation/installation requires the embedding transaction/store."},
 	"replay-request-vs-revision-contract":             {"transaction_contract", revisedPending, "Durable request-key replay/retention lease is separate from component replay."},
 	"budget-tight-Z-replay-no-transient-successor":    {"component", revisedNative, ""},
@@ -429,7 +430,7 @@ func TestRevisedCorpusAccountingDoesNotClaimPendingAcceptance(t *testing.T) {
 		}
 		t.Logf("%s: %s; %s", record.ID, rule.lane, rule.gap)
 	}
-	for lane, want := range map[revisedLane]int{revisedNative: 21, revisedPreservation: 7, revisedRefusal: 5, revisedPending: 9} {
+	for lane, want := range map[revisedLane]int{revisedNative: 25, revisedPreservation: 7, revisedRefusal: 5, revisedPending: 4, revisedExclusion: 1} {
 		if counts[lane] != want {
 			t.Fatal("case accounting", counts)
 		}
@@ -490,8 +491,15 @@ func TestRevisedAdapterRejectsUnknownFieldsKindsAndMetadataInsteadOfDroppingThem
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := revisedTranslateGraph(record, graph); !errors.Is(err, errRevisedPending) {
-				t.Fatalf("unattached interpretation/role must be refused: %s: %v", record.ID, err)
+			for i := range graph.Steps {
+				for j := range graph.Steps[i].Operations {
+					if graph.Steps[i].Operations[j].Interpretation != "" {
+						graph.Steps[i].Operations[j].Interpretation = "unknown-token"
+					}
+				}
+			}
+			if _, err := revisedTranslateGraph(record, graph); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("unknown interpretation must refuse", err)
 			}
 		}
 	}

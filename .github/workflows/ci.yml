@@ -39,7 +39,27 @@ jobs:
       - run: make vet
       - run: make build
       - run: make test
+      # Root v4 has large oracle suites. Keep package/test scheduling finite
+      # without dropping tests or changing Go's default package timeout.
+      - name: Root race tests with bounded concurrency
+        if: matrix.module == '.'
+        env:
+          GOFLAGS: "-p=1 -parallel=2"
+          GOMAXPROCS: "2"
+          GOMEMLIMIT: "2GiB"
+        run: |
+          uname -a
+          nproc
+          free -h
+          for resource in /sys/fs/cgroup/cpu.max /sys/fs/cgroup/memory.max /sys/fs/cgroup/cpu/cpu.cfs_quota_us /sys/fs/cgroup/cpu/cpu.cfs_period_us /sys/fs/cgroup/memory/memory.limit_in_bytes; do
+            if [ -r "$resource" ]; then
+              printf '%s: ' "$resource"
+              cat "$resource"
+            fi
+          done
+          make test-race
       - run: make test-race
+        if: matrix.module != '.'
   coverage:
     runs-on: ubuntu-latest
     timeout-minutes: 20

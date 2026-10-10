@@ -51,20 +51,17 @@ type Target struct {
 }
 
 // Interpretation is supplied assertion meaning, independent of support shape.
-type Interpretation uint8
+type Interpretation = graphstate.Interpretation
 
 // Interpretations neither run a solver nor establish state persistence.
 const (
-	Occurrence Interpretation = iota + 1
-	State
-	Observation
-	Constraint
-	Derived
-	// AssertedRelation preserves an explicitly supplied relationship fact,
-	// distinct from a restriction on possible values/placements (Constraint).
-	// Endpoints/predicate remain graph data. No ordering or inference follows;
-	// attachment must verify that the target is a graph relationship.
-	AssertedRelation
+	Occurrence  = graphstate.InterpretationOccurrence
+	State       = graphstate.InterpretationState
+	Observation = graphstate.InterpretationObservation
+	Constraint  = graphstate.InterpretationConstraint
+	Derived     = graphstate.InterpretationDerivedAssertion
+	// AssertedRelation remains a supplied relationship fact, never inference.
+	AssertedRelation = graphstate.InterpretationAssertedRelation
 )
 
 // TemporalRole names the meaning of an asserted placement association.

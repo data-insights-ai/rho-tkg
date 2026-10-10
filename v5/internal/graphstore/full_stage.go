@@ -138,6 +138,11 @@ func cloneOperations(ctx context.Context, v *ReadView, ops []graphstate.Operatio
 					return nil, callerError(err)
 				}
 			}
+			if op.Value.Kind() == graphstate.ScalarDescriptor {
+				if err := v.inputCost(descriptorOwnedBacking(len(key) - 1)); err != nil {
+					return nil, err
+				}
+			}
 			op.Value, err = decodeScalar([]byte(key), valueAxis, hasAxis, v.c.limits)
 			if err != nil {
 				return nil, callerError(err)

@@ -74,7 +74,7 @@ and reference JSON specify contracts/evidence, not completed engine gates.
 | Phase | Status and remaining acceptance evidence |
 |---|---|
 | V0 | Specification accepted: independent criterion review and refreshed reference/design checks pass. Contracts, profile/unit/import policy, current-v4 delta and reproducible resource/dataset test profiles are reviewed below. Implementation, consumer execution and measured capacity retain their separate phase gates |
-| V1 | Reviewed/implemented temporal primitives and codecs (exact scalar/tuple values, scopes/regions/Allen, point knowledge and opaque descriptors), plus component-state reducer primitives. Graphstate `Plan`/`Project` and the byte-identical 16-fixture/52-assertion Go path accepted (local `e5b23d9`), including bounded page/type/uniqueness/CDC-delta behavior. Pure value/state preservation, remaining revised models and phase-specific Go evidence still require V1 acceptance; durable engine/storage and certified-cut integration belong to V2/V3 and remain separate |
+| V1 | Values/state accepted: unchanged 16/52 and revised rho-owned cases pass through typed primitives and `Plan`/`Project`, including immutable interpretation/native-axis roles, attached descriptor/source-revision history, graph-qualified refusals, independent state/complete-CDC capacity assertions and the pure Q/ms default-axis binding. Node/relationship retained-view exact sets, boundary/differential/fuzz/codec refusals and direct new-method coverage pass. Durable default registration, request/dependency installation and graph/cut integration remain V2; consumer adapters V4 and provenance-aware import V6 |
 | V2 | Candidate Raft/Pebble log/replica adapter independently validated as an adapter only. Bounded idalloc primitive independently validated on Go 1.26.9 (99.3% coverage; eight source/config hashes match). Bounded two-group transaction correctness prototype accepted (`92312ae`; independent 24-source/config checks, scoped combined coverage 86.3%). Six-process crash-functional slice accepted (`f3a1ee7`); power-loss/multi-host durability and global cross-process cut transport stay open. Full graph transaction/cut integration and serial-history oracle, production graph identity reuse/fencing, application GC, end-to-end Driver snapshot activation and Raft application multi-voter integration, physical-host durability, comparative costs/faults and engine selection remain open |
 | V3 | Coordinate timeblock candidate independently validated (local commit `fa0c982`; scoped temporal+block coverage 95.7%, no exported method at 0%). Full engine seal/merge/recovery, paged structures and all-in budget/byte-ledger measurements remain open; resident-buffer prototype timings do not close V3 |
 | V4 | Production read/change APIs, historical cross-door parity, gap-free leased feed handoff and pinned sigma access-contract build and nonempty mutation-then-historical tests (the current signature/empty smoke is insufficient) |
@@ -99,6 +99,27 @@ Fresh `check.py --write-validation`, ordinary `check.py` and original
 Corpus/oracle/consumer pins are unchanged. This closes specification V0 only;
 declared resources are test configurations, not deployed/proven capacity or an
 owner SLO. No solver, engine, consumer-integration or performance acceptance follows.
+
+V1 value/state acceptance, 2026-10-10: independent source and criterion reviews
+pass on the v4.50.0 rebase. The unchanged 16-case/52-assertion corpus and revised
+rho-owned cases include actual graph attachments and retained-view tests; symbolic
+placement remains an explicit native type/adapter exclusion, with no sigma solver
+execution claimed. Go metadata/CDC limits have independent exact-cost controls;
+they are not heap/RSS or comparative capacity measurements.
+
+Go 1.26.9 `make fmt-check`, `make check`, full `make test-race` and `make cover`
+pass. Final test additions were rechecked with the graphstate race suite and full
+coverage: 20,005/22,595 statements (88.5%), all new public methods 100%, no changed
+production file below 80%. Pinned golangci-lint v2.13.2, gosec v2.29.0 and
+govulncheck v1.7.0 pass. Three 10-second fuzz campaigns pass: opaque descriptors
+1,254,206 executions, graphstate/history parity 12,781 and state codec 1,392,848.
+The final validation input manifest is SHA-256
+`635a1e46131227dffd014f7da133d251fadabf1ae79d4052db4823ee14a0b2c3`;
+the coalesced coverage profile is
+`e072d3037d7aa8b6ef7b90048f872bad1e53bbbb77daefec3ec05284d0de7ba2`.
+These close V1 only. Full hosted repository CI, engine/distributed integration,
+consumer execution and measured capacity retain their later acceptance gates.
+V2 is the next implementation phase; V3–V7 stay held until their predecessors close.
 
 The phase table above records current acceptance. The following entries retain
 the scope of their historical component validations.

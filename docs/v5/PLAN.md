@@ -1003,7 +1003,7 @@ New canonical hashes are versioned; old segment roots cannot become v5 roots.
 |---|---|
 | Fine-grained concurrency | Conservative serializable locks first; OCC/read-refresh only after equivalent model/fault tests and contention measurements |
 | Fresh-cut cost | Batched logical fences and resolved certificates; compare timestamp-service and dependency-vector alternatives at V2/V5 before API freeze |
-| Numerical and symbolic limits | Initial implementation limits specified: 64 KiB input/value/descriptor bytes, 4,096 magnitude bits and 4,096 region pieces; pending V1 adversarial validation before V2 format freeze, not performance acceptance; sigma sets solver limits separately |
+| Numerical and symbolic limits | Initial implementation limits specified: 64 KiB input/value/descriptor bytes, 4,096 magnitude bits and 4,096 region pieces; V1 adversarial evidence is recorded in the backlog, with V2 format freeze and performance acceptance separate; sigma sets solver limits separately |
 | Physical block thresholds | Homogeneous fast paths with measured mixed/sparse alternatives; V3 determines thresholds |
 | Catalog and consensus libraries | Benchmark/license/version review and fault-injection seams at V2/V3; public contracts hide implementation types |
 | Build versus transactional substrate | [Substrate evaluation](reference/substrate-evaluation.json) is research and an execution plan only; no engine selected. Execute the comparable V2 spike before choosing against embedding, column access, failure semantics and cost requirements |

@@ -56,7 +56,7 @@ func TestRevisedExecutableNativeGoldenAnswers(t *testing.T) {
 			}
 		})
 	}
-	if executed != 21 {
+	if executed != 25 {
 		t.Fatal("native acceptance count", executed)
 	}
 }
@@ -363,7 +363,7 @@ func revisedOpaque(record revisedRecord) (temporal.OpaqueDescriptor, error) {
 func TestRevisedUnsupportedNativePredicatesAreActualSentinelRefusals(t *testing.T) {
 	count := 0
 	for _, record := range revisedLoad(t) {
-		if revisedRules[record.ID].lane != revisedRefusal {
+		if revisedRules[record.ID].lane != revisedRefusal || record.Kind != "knowledge" {
 			continue
 		}
 		count++

@@ -170,6 +170,12 @@ func validSchema(d graphstate.PropertyDefinition, l materializerLimits) bool {
 	return validGraphName(d.Name, l) && (d.Owner == graphstate.Node || d.Owner == graphstate.Relationship) && d.Type >= graphstate.ScalarString && d.Type <= graphstate.ScalarScope && (d.Cardinality == graphstate.ScalarCardinality || d.Cardinality == graphstate.SetCardinality) && d.Unique <= graphstate.UniqueMembers && (d.Unique != graphstate.UniqueScalar || d.Cardinality == graphstate.ScalarCardinality) && (d.Unique != graphstate.UniqueMembers || d.Cardinality == graphstate.SetCardinality)
 }
 func writeSchema(w *boundedWriter, d graphstate.PropertyDefinition) {
+	if d.Type == graphstate.ScalarDescriptor {
+		if w.err == nil {
+			w.err = errors.Join(errInvalid, graphstate.ErrUnsupported)
+		}
+		return
+	}
 	w.text(d.Name)
 	w.add([]byte{byte(d.Owner), byte(d.Type), byte(d.Cardinality), byte(d.Unique)})
 }
@@ -360,6 +366,12 @@ func readScope(c *graphCursor, t axisTable, l materializerLimits) temporal.Scope
 	return s
 }
 func writeScalar(w *boundedWriter, s graphstate.Scalar, t axisTable, l materializerLimits) {
+	if s.Kind() == graphstate.ScalarDescriptor {
+		if w.err == nil {
+			w.err = errors.Join(errInvalid, graphstate.ErrUnsupported)
+		}
+		return
+	}
 	if s.Kind() == graphstate.ScalarInvalid {
 		w.field(nil)
 		w.u32(0)
@@ -444,6 +456,12 @@ func readScalar(c *graphCursor, t axisTable, l materializerLimits) graphstate.Sc
 	return graphstate.Scalar{}
 }
 func writeEntity(w *boundedWriter, e graphstate.EntityRecord, t axisTable) {
+	if e.Interpretation != 0 || e.TemporalRole != 0 {
+		if w.err == nil {
+			w.err = errors.Join(errInvalid, graphstate.ErrUnsupported)
+		}
+		return
+	}
 	w.u64(uint64(e.ID))
 	w.tag(byte(e.Kind))
 	w.u32(t.index(e.Axis))
@@ -500,6 +518,9 @@ func validateGraphRequest(r graphRequest, l materializerLimits) error {
 		for i, d := range r.schemas {
 			if len(d.Name) > l.catalog.MaxNameBytes {
 				return errLimit
+			}
+			if d.Type == graphstate.ScalarDescriptor {
+				return errors.Join(errInvalid, graphstate.ErrUnsupported)
 			}
 			if !validSchema(d, l) {
 				return errInvalid

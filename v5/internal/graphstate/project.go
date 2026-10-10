@@ -37,7 +37,7 @@ func Project(ctx context.Context, v ReadView, id EntityID, p temporal.Position, 
 		return Projection{}, err
 	}
 	out := Projection{Record: record, Exists: exists}
-	if err := e.output(64 + len(record.Type) + axisBytes(record.Axis)); err != nil {
+	if err := e.output(entityBytes(record)); err != nil {
 		return Projection{}, err
 	}
 	if !exists {

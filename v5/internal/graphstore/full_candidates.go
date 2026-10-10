@@ -84,6 +84,12 @@ func (v *ReadView) UniqueCandidates(ctx context.Context, predicate graphstate.Un
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
+	if predicate.Definition.Type == graphstate.ScalarDescriptor {
+		if err := v.check(ctx); err != nil {
+			return graphstate.ClaimPage{}, err
+		}
+		return graphstate.ClaimPage{}, callerError(graphstate.ErrUnsupported)
+	}
 	if budget.Rows < 1 || budget.Bytes < 1 || !validProperty(predicate.Definition, v.c.limits) || predicate.Definition.Unique == graphstate.UniqueNone || predicate.Value.Kind() != predicate.Definition.Type && predicate.Value.Kind() != graphstate.ScalarNull || predicate.Window.Kind() == temporal.ScopeInvalid || predicate.Window.Kind() == temporal.ScopeUnplaced {
 		return graphstate.ClaimPage{}, ErrInvalid
 	}

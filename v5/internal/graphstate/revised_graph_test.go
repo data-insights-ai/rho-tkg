@@ -29,16 +29,16 @@ type revisedGraphAdapter struct {
 func revisedTranslateGraph(record revisedRecord, graph revisedGraph) (*revisedGraphAdapter, error) {
 	for _, operations := range revisedGraphOperationGroups(graph) {
 		for _, operation := range operations {
-			if operation.Interpretation != "" || operation.TemporalRole != "" || operation.Graph != "" || operation.Axis != "" {
-				return nil, fmt.Errorf("%w: graph interpretation/role or public qualified handle", errRevisedPending)
+			if _, _, err := revisedDeclarations(operation); err != nil {
+				return nil, err
 			}
 			for _, value := range operation.Properties {
-				if _, err := revisedScalar(value); err != nil {
+				if _, err := revisedAttachedScalar(record, value); err != nil {
 					return nil, err
 				}
 			}
 			if operation.Value != nil {
-				if _, err := revisedScalar(operation.Value); err != nil {
+				if _, err := revisedAttachedScalar(record, operation.Value); err != nil {
 					return nil, err
 				}
 			}
@@ -64,6 +64,11 @@ func revisedTranslateGraph(record revisedRecord, graph revisedGraph) (*revisedGr
 		for _, kind := range []EntityKind{Node, Relationship} {
 			definitions[ownerSchemaKey{kind, "v"}] = PropertyDefinition{"v", kind, ScalarString, ScalarCardinality, UniqueNone}
 		}
+	case "E01-event-multiplicity", "E01-E03-interpretation-independent-of-support-Z", "E07-causal-records":
+	case "SEM14-16-endpoint-boundary":
+		definitions[ownerSchemaKey{Node, "x"}] = PropertyDefinition{"x", Node, ScalarI64, ScalarCardinality, UniqueNone}
+	case "E06-preservation", "E10-preservation", "E13-preservation", "E14-preservation", "E20-preservation":
+		definitions[ownerSchemaKey{Node, "descriptor"}] = PropertyDefinition{"descriptor", Node, ScalarDescriptor, ScalarCardinality, UniqueNone}
 	default:
 		return nil, fmt.Errorf("%w: no reviewed complete graph binding for %s", errRevisedPending, record.ID)
 	}
@@ -123,7 +128,7 @@ func revisedMutationScope(operation revisedOperation, axis temporal.Axis, defini
 		return temporal.Scope{}, err
 	}
 	if region.Kind != "region" {
-		return temporal.Scope{}, fmt.Errorf("revised adapter: unknown/native-inexpressible placement %s", region.Kind)
+		return temporal.Scope{}, fmt.Errorf("%w: symbolic/native-inexpressible placement %s", ErrUnsupported, region.Kind)
 	}
 	parts := make([]temporal.Scope, len(region.Pieces))
 	for i, piece := range region.Pieces {
@@ -171,8 +176,9 @@ func (adapter *revisedGraphAdapter) operations(view *fixtureView, raw []revisedO
 		if err := revisedValidateOperation(item); err != nil {
 			return nil, err
 		}
-		if item.Interpretation != "" || item.TemporalRole != "" || item.Graph != "" || item.Axis != "" {
-			return nil, fmt.Errorf("%w: metadata cannot be erased", errRevisedPending)
+		interpretation, role, err := revisedDeclarations(item)
+		if err != nil {
+			return nil, err
 		}
 		name := item.Owner
 		if name == "" {
@@ -192,11 +198,19 @@ func (adapter *revisedGraphAdapter) operations(view *fixtureView, raw []revisedO
 				}
 			}
 		}
-		scope, err := revisedMutationScope(item, view.axis, adapter.graph.Axis)
+		operationAxis, operationDefinition := view.axis, adapter.graph.Axis
+		if item.Axis != "" {
+			operationDefinition.Identity = item.Axis
+			operationAxis, err = revisedAxisValue(operationDefinition)
+			if err != nil {
+				return nil, err
+			}
+		}
+		scope, err := revisedMutationScope(item, operationAxis, operationDefinition)
 		if err != nil {
 			return nil, err
 		}
-		operation := Operation{Owner: owner, Life: life, Scope: scope, Name: item.Key}
+		operation := Operation{Owner: owner, Life: life, Scope: scope, Name: item.Key, Record: EntityRecord{Interpretation: interpretation, TemporalRole: role}}
 		switch item.Op {
 		case "create_vertex":
 			operation.Kind = CreateNode
@@ -219,7 +233,7 @@ func (adapter *revisedGraphAdapter) operations(view *fixtureView, raw []revisedO
 			default:
 				return nil, errors.New("revised adapter: unknown reference mode")
 			}
-			operation.Record = EntityRecord{Type: item.Type, Source: source, Target: target, Mode: mode}
+			operation.Record = EntityRecord{Type: item.Type, Source: source, Target: target, Mode: mode, Interpretation: interpretation, TemporalRole: role}
 			if mode == LifeBound {
 				sourceLife, targetLife := createdLives[source], createdLives[target]
 				if sourceLife == 0 {
@@ -261,7 +275,7 @@ func (adapter *revisedGraphAdapter) operations(view *fixtureView, raw []revisedO
 			operation.Kind, operation.Name = RemoveLabel, item.Label
 		}
 		if item.Value != nil {
-			operation.Value, err = revisedScalar(item.Value)
+			operation.Value, err = revisedAttachedScalar(adapter.record, item.Value)
 			if err != nil {
 				return nil, err
 			}
@@ -270,7 +284,7 @@ func (adapter *revisedGraphAdapter) operations(view *fixtureView, raw []revisedO
 		}
 		operations = append(operations, operation)
 		for _, key := range slices.Sorted(maps.Keys(item.Properties)) {
-			value, err := revisedScalar(item.Properties[key])
+			value, err := revisedAttachedScalar(adapter.record, item.Properties[key])
 			if err != nil {
 				return nil, err
 			}
@@ -293,6 +307,16 @@ func revisedProjectedScalar(value Scalar) (any, error) {
 		return result, nil
 	case ScalarBool:
 		result, _ := value.BoolValue()
+		return result, nil
+	case ScalarDescriptor:
+		d, ok := value.Descriptor()
+		if !ok {
+			return nil, ErrInvalidInput
+		}
+		var result any
+		if err := revisedStrictJSON(d.Spec().Payload, &result); err != nil {
+			return nil, err
+		}
 		return result, nil
 	case ScalarI64:
 		result, _ := value.Int64Value()
@@ -350,6 +374,12 @@ func (adapter *revisedGraphAdapter) project(t testing.TB, view *fixtureView, rea
 			}
 		}
 		row := map[string]any{"life": uint64(projection.Life), "properties": properties}
+		if projection.Record.Interpretation != 0 {
+			row["interpretation"] = revisedInterpretationName(projection.Record.Interpretation)
+		}
+		if projection.Record.TemporalRole != 0 {
+			row["temporal_role"] = revisedRoleName(projection.Record.TemporalRole)
+		}
 		if projection.Record.Kind == Node {
 			labels := slices.Clone(projection.Labels)
 			if labels == nil {
@@ -418,11 +448,15 @@ func revisedViewDigest(t testing.TB, view *fixtureView) [32]byte {
 	entities := []any{}
 	for _, id := range slices.Sorted(maps.Keys(view.entities)) {
 		record := view.entities[id]
-		entities = append(entities, map[string]any{"id": record.ID, "kind": record.Kind, "axis": record.Axis.Descriptor(), "type": record.Type, "source": record.Source, "target": record.Target, "mode": record.Mode})
+		entities = append(entities, map[string]any{"id": record.ID, "kind": record.Kind, "axis": record.Axis.Descriptor(), "type": record.Type, "source": record.Source, "target": record.Target, "mode": record.Mode, "interpretation": record.Interpretation, "temporal_role": record.TemporalRole})
 	}
 	values := []any{}
 	for _, id := range slices.Sorted(maps.Keys(view.values)) {
-		values = append(values, map[string]any{"id": id, "kind": view.values[id].Kind(), "value": view.values[id].Render()})
+		key, err := view.values[id].EqualityKey(Limits{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		values = append(values, map[string]any{"id": id, "kind": view.values[id].Kind(), "value": view.values[id].Render(), "canonical": key})
 	}
 	raw, err := json.Marshal(struct {
 		Entities   []any
@@ -438,6 +472,10 @@ func revisedViewDigest(t testing.TB, view *fixtureView) [32]byte {
 
 func revisedGraphError(code string) error {
 	switch code {
+	case "GRAPH_MISMATCH":
+		return ErrNamespace
+	case "AXIS_MISMATCH":
+		return temporal.ErrAxisMismatch
 	case "NOT_FOUND":
 		return ErrNotFound
 	case "OWNER_VALIDITY":
@@ -489,7 +527,7 @@ func revisedRunGraph(t *testing.T, record revisedRecord) {
 			t.Fatal(err)
 		}
 		before := revisedViewDigest(t, adapter.view)
-		delta, err := Plan(t.Context(), adapter.view, operations, revision, Limits{})
+		delta, err := PlanQualified(t.Context(), adapter.view, revisedOperationGraph(adapter.view.Graph(), step.Operations), operations, revision, Limits{})
 		if err != nil {
 			t.Fatal(step.Snapshot, err)
 		}
@@ -526,7 +564,7 @@ func revisedRunGraph(t *testing.T, record revisedRecord) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		delta, err := Plan(t.Context(), view, operations, revision, Limits{})
+		delta, err := PlanQualified(t.Context(), view, revisedOperationGraph(view.Graph(), failure.Operations), operations, revision, Limits{})
 		want := revisedGraphError(failure.ExpectedError)
 		if want == nil || !errors.Is(err, want) {
 			t.Fatal("exact native failure", failure.ExpectedError, err)
@@ -549,7 +587,7 @@ func revisedRunGraph(t *testing.T, record revisedRecord) {
 func TestRevisedPendingGraphBindingsAreRejectedRatherThanWeaklyTranslated(t *testing.T) {
 	for _, record := range revisedLoad(t) {
 		rule := revisedRules[record.ID]
-		if record.Kind != "graph" || rule.lane == revisedNative {
+		if record.Kind != "graph" || rule.lane != revisedPending {
 			continue
 		}
 		graph, err := revisedGraphRecord(record)

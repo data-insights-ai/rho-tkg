@@ -98,6 +98,13 @@ func (q *pageReader) exactComponentOutput(s state.State, w temporal.Scope, budge
 	return s, w, err
 }
 func scalarVariableOwned(value graphstate.Scalar, keyBytes int, l Limits) (int, error) {
+	if value.Kind() == graphstate.ScalarDescriptor {
+		key, err := value.EqualityKey(l.valueLimits())
+		if err != nil {
+			return 0, err
+		}
+		return descriptorOwnedBacking(len(key) - 1), nil
+	}
 	if text, ok := value.StringValue(); ok {
 		return len(text), nil
 	}
@@ -116,9 +123,6 @@ func scalarVariableOwned(value graphstate.Scalar, keyBytes int, l Limits) (int, 
 // compact-region interval/wide-coordinate backing. Primitive catalogs keep
 // their existing wire ledger; Full source budgets also charge materialization.
 func (q *reader) preflightFullValue(src []byte) error {
-	if q.full == nil && q.fullView == nil && !isFullTopology(q.c.root.topology) {
-		return nil
-	}
 	c, err := inspectRecord(src, q.c.root.namespace, valueRecord, q.c.limits)
 	if err != nil {
 		return err
@@ -130,6 +134,12 @@ func (q *reader) preflightFullValue(src []byte) error {
 	if err != nil {
 		return err
 	}
+	if len(key) > 0 && graphstate.ScalarKind(key[0]) == graphstate.ScalarDescriptor {
+		return q.materialize(descriptorOwnedBacking(len(key) - 1))
+	}
+	if q.full == nil && q.fullView == nil && !isFullTopology(q.c.root.topology) {
+		return nil
+	}
 	if len(key) > 0 && graphstate.ScalarKind(key[0]) == graphstate.ScalarScope {
 		backing, err := scopeOwnedBacking(key[1:])
 		if err != nil {
@@ -139,3 +149,9 @@ func (q *reader) preflightFullValue(src []byte) error {
 	}
 	return nil
 }
+
+// DO1 references use at least62 wire bytes each. Eight times delivered bytes
+// plus512 covers owned Spec/reference slots, name/payload copies and bounded
+// codec scratch conservatively, without calling Spec (which itself copies).
+// This is a representation/work allowance, not measured heap or RSS.
+func descriptorOwnedBacking(wireBytes int) int { return 512 + 8*wireBytes }

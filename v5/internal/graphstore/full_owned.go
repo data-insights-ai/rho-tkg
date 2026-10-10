@@ -98,6 +98,11 @@ func (q *pageReader) ownScalar(value graphstate.Scalar) (graphstate.Scalar, erro
 			return graphstate.Scalar{}, err
 		}
 	}
+	if value.Kind() == graphstate.ScalarDescriptor {
+		if err := q.q.materialize(descriptorOwnedBacking(len(key) - 1)); err != nil {
+			return graphstate.Scalar{}, err
+		}
+	}
 	return decodeScalar([]byte(key), axis, hasAxis, q.q.c.limits)
 }
 func (q *pageReader) ownDelta(delta graphstate.Delta, groups []ComponentChangeGroup, outputLimit int) (graphstate.Delta, []ComponentChangeGroup, error) {

@@ -8,9 +8,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
 
-// The seven records in this lane prove envelope/scalar/supplied-scope
-// preservation only. They do not pass graph attachment, event identity,
-// correlated solving, calendar evaluation, join/shift or summary acceptance.
+// Standalone envelope checks remain separate from attached graph history tests.
+// Neither executes correlated solving, calendar evaluation or join/shift.
 func TestRevisedOpaqueEnvelopePreservationDoesNotClaimSemanticOrGraphAcceptance(t *testing.T) {
 	count := 0
 	for _, record := range revisedLoad(t) {

@@ -12,6 +12,7 @@ import (
 
 // Planner errors distinguish invalid input, constraints and incomplete readers.
 var (
+	ErrNamespace         = errors.New("graphstate: graph namespace mismatch")
 	ErrInvalidInput      = errors.New("graphstate: invalid input")
 	ErrNilView           = errors.New("graphstate: nil view")
 	ErrInvalidView       = errors.New("graphstate: invalid or changing read view")
@@ -98,7 +99,8 @@ type ComponentKey struct {
 	Member ValueID
 }
 
-// EntityRecord is immutable identity/endpoints and its declared native life axis.
+// EntityRecord retains immutable identity/endpoints, native axis and optional
+// supplied interpretation/role. Lifecycle changes do not revise declarations.
 type EntityRecord struct {
 	ID             EntityID
 	Kind           EntityKind
@@ -106,6 +108,8 @@ type EntityRecord struct {
 	Type           string
 	Source, Target EntityID
 	Mode           ReferenceMode
+	Interpretation Interpretation
+	TemporalRole   TemporalRole
 }
 
 // LifeRecord retains endpoint bindings even after all its presence is closed.

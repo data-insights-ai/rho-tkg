@@ -167,11 +167,14 @@ func (e *engine) entity(id EntityID) (EntityRecord, bool, error) {
 	if err := e.source(read.View); err != nil {
 		return EntityRecord{}, false, err
 	}
-	if err := e.charge(1, 64+len(read.Record.Type)+axisBytes(read.Record.Axis)); err != nil {
+	if err := e.charge(1, entityBytes(read.Record)); err != nil {
 		return EntityRecord{}, false, err
 	}
 	if err := e.dep(Dependency{Kind: EntityDependency, Owner: id, Version: read.Version, Absent: !read.Found}); err != nil {
 		return EntityRecord{}, false, err
+	}
+	if !validDeclarations(read.Record) || !read.Found && (read.Record.Interpretation != 0 || read.Record.TemporalRole != 0) {
+		return EntityRecord{}, false, ErrContradictoryRead
 	}
 	if read.Found {
 		if read.Record.ID != id || (read.Record.Kind != Node && read.Record.Kind != Relationship) {
@@ -248,8 +251,11 @@ func (e *engine) property(owner EntityKind, name string) (PropertyDefinition, er
 		return PropertyDefinition{}, ErrSchemaMismatch
 	}
 	d := read.Record
-	if d.Name != name || d.Owner != owner || d.Type < ScalarString || d.Type > ScalarScope || (d.Cardinality != ScalarCardinality && d.Cardinality != SetCardinality) {
+	if d.Name != name || d.Owner != owner || d.Type < ScalarString || d.Type > ScalarDescriptor || (d.Cardinality != ScalarCardinality && d.Cardinality != SetCardinality) {
 		return PropertyDefinition{}, ErrSchemaMismatch
+	}
+	if d.Type == ScalarDescriptor && (d.Cardinality != ScalarCardinality || d.Unique != UniqueNone) {
+		return PropertyDefinition{}, ErrUnsupported
 	}
 	if d.Unique > UniqueMembers || d.Unique == UniqueScalar && d.Cardinality != ScalarCardinality || d.Unique == UniqueMembers && d.Cardinality != SetCardinality {
 		return PropertyDefinition{}, ErrUnsupported

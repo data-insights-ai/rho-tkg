@@ -240,9 +240,12 @@ func readAxis(src []byte, n Namespace, l Limits) (temporal.Axis, error) {
 	return a, nil
 }
 func validProperty(d graphstate.PropertyDefinition, l Limits) bool {
-	return validName(d.Name, l) && (d.Owner == graphstate.Node || d.Owner == graphstate.Relationship) && d.Type >= graphstate.ScalarString && d.Type <= graphstate.ScalarScope && (d.Cardinality == graphstate.ScalarCardinality || d.Cardinality == graphstate.SetCardinality) && d.Unique <= graphstate.UniqueMembers && (d.Unique != graphstate.UniqueScalar || d.Cardinality == graphstate.ScalarCardinality) && (d.Unique != graphstate.UniqueMembers || d.Cardinality == graphstate.SetCardinality)
+	return validName(d.Name, l) && (d.Owner == graphstate.Node || d.Owner == graphstate.Relationship) && d.Type >= graphstate.ScalarString && d.Type <= graphstate.ScalarDescriptor && (d.Cardinality == graphstate.ScalarCardinality || d.Cardinality == graphstate.SetCardinality) && d.Unique <= graphstate.UniqueMembers && (d.Unique != graphstate.UniqueScalar || d.Cardinality == graphstate.ScalarCardinality) && (d.Unique != graphstate.UniqueMembers || d.Cardinality == graphstate.SetCardinality) && (d.Type != graphstate.ScalarDescriptor || d.Cardinality == graphstate.ScalarCardinality && d.Unique == graphstate.UniqueNone)
 }
 func encodeProperty(n Namespace, d graphstate.PropertyDefinition, l Limits) ([]byte, error) {
+	if d.Type == graphstate.ScalarDescriptor && (d.Cardinality != graphstate.ScalarCardinality || d.Unique != graphstate.UniqueNone) {
+		return nil, callerError(graphstate.ErrUnsupported)
+	}
 	if !validProperty(d, l) {
 		return nil, ErrInvalid
 	}
@@ -269,7 +272,7 @@ func readProperty(src []byte, n Namespace, l Limits) (graphstate.PropertyDefinit
 	return d, nil
 }
 func validEntity(r graphstate.EntityRecord, l Limits) bool {
-	if r.ID == 0 {
+	if r.ID == 0 || !r.Interpretation.Valid() || !r.TemporalRole.Valid() {
 		return false
 	}
 	switch r.Kind {
@@ -293,10 +296,28 @@ func encodeEntity(n Namespace, r graphstate.EntityRecord, l Limits) ([]byte, err
 	if err != nil {
 		return nil, callerError(err)
 	}
+	if r.Interpretation != 0 || r.TemporalRole != 0 {
+		b[2] = 2
+		b = append(b, byte(r.Interpretation), byte(r.TemporalRole))
+	}
 	return checkRecord(b, l)
 }
 func readEntity(src []byte, n Namespace, l Limits) (graphstate.EntityRecord, error) {
-	c, err := inspectRecord(src, n, entityRecord, l)
+	version := byte(1)
+	var c cursor
+	var err error
+	if len(src) >= 4 && src[2] == 2 {
+		version = 2
+		if len(src) > l.MaxRecordBytes {
+			return graphstate.EntityRecord{}, ErrResourceLimit
+		}
+		if len(src) < 28 || !bytes.Equal(src[:4], []byte{'G', 'C', 2, byte(entityRecord)}) || !bytes.Equal(src[4:20], n.Graph[:]) || binary.BigEndian.Uint64(src[20:28]) != n.Partition {
+			return graphstate.EntityRecord{}, ErrCorrupt
+		}
+		c = cursor{src: src[28:]}
+	} else {
+		c, err = inspectRecord(src, n, entityRecord, l)
+	}
 	if err != nil {
 		return graphstate.EntityRecord{}, err
 	}
@@ -325,6 +346,17 @@ func readEntity(src []byte, n Namespace, l Limits) (graphstate.EntityRecord, err
 		return graphstate.EntityRecord{}, err
 	}
 	r := graphstate.EntityRecord{ID: graphstate.EntityID(id), Kind: graphstate.EntityKind(tags[0]), Mode: graphstate.ReferenceMode(tags[1]), Source: graphstate.EntityID(source), Target: graphstate.EntityID(target), Type: string(name), Axis: axis}
+	if version == 2 {
+		declarations, err := c.take(2)
+		if err != nil {
+			return graphstate.EntityRecord{}, err
+		}
+		r.Interpretation = graphstate.Interpretation(declarations[0])
+		r.TemporalRole = graphstate.TemporalRole(declarations[1])
+		if r.Interpretation == 0 && r.TemporalRole == 0 {
+			return graphstate.EntityRecord{}, ErrCorrupt
+		}
+	}
 	if !validEntity(r, l) || c.done() != nil {
 		return graphstate.EntityRecord{}, ErrCorrupt
 	}
@@ -409,6 +441,14 @@ func decodeScalar(key []byte, axis temporal.Axis, hasAxis bool, l Limits) (graph
 					return v, nil
 				}
 			}
+		}
+	case graphstate.ScalarDescriptor:
+		d, err := temporal.DecodeOpaqueDescriptor(key[1:], l.Temporal)
+		if err == nil {
+			return graphstate.DescriptorValue(d)
+		}
+		if errors.Is(err, temporal.ErrResourceLimit) {
+			return graphstate.Scalar{}, errors.Join(ErrResourceLimit, err)
 		}
 	case graphstate.ScalarScope:
 		s, err := temporal.DecodeScope(key[1:], axis, l.Temporal)

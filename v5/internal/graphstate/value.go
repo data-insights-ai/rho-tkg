@@ -1,7 +1,9 @@
 package graphstate
 
 import (
+	"cmp"
 	"encoding/binary"
+	"errors"
 	"math"
 	"strconv"
 
@@ -20,18 +22,20 @@ const (
 	ScalarI64
 	ScalarF64
 	ScalarScope
+	ScalarDescriptor
 )
 
 // Scalar is immutable typed data, not a boxed universal row payload. Finite F64
 // is numeric: signed zeros canonicalize to +0. Raw source bits require separate
 // provenance/opaque preservation; no IEEE source-bit guarantee is made here.
 type Scalar struct {
-	kind    ScalarKind
-	text    string
-	i64     int64
-	f64     float64
-	boolean bool
-	scope   temporal.Scope
+	kind       ScalarKind
+	text       string
+	i64        int64
+	f64        float64
+	boolean    bool
+	scope      temporal.Scope
+	descriptor *temporal.OpaqueDescriptor
 }
 
 // Null constructs a present-null scalar; absence is an Unset operation.
@@ -60,6 +64,25 @@ func F64(v float64) (Scalar, error) {
 // ScopeValue preserves a temporal value without changing its owner's scope.
 func ScopeValue(v temporal.Scope) Scalar { return Scalar{kind: ScalarScope, scope: v} }
 
+// DescriptorValue preserves a previously constructed immutable envelope. It
+// validates no payload semantics and does not reapply default child limits;
+// the caller's operation limits still bound emission, planning and storage.
+func DescriptorValue(d temporal.OpaqueDescriptor) (Scalar, error) {
+	if d.SupportLevel() != temporal.DescriptorPreservationOnly {
+		return Scalar{}, ErrInvalidInput
+	}
+	return Scalar{kind: ScalarDescriptor, descriptor: new(d)}, nil
+}
+
+// Descriptor returns the immutable child only for a typed descriptor scalar.
+// Its Spec accessor owns mutable copies. Zero/other scalars return zero,false.
+func (v Scalar) Descriptor() (temporal.OpaqueDescriptor, bool) {
+	if v.kind != ScalarDescriptor || v.descriptor == nil {
+		return temporal.OpaqueDescriptor{}, false
+	}
+	return *v.descriptor, true
+}
+
 // Kind returns its exact type, or invalid for the zero value.
 func (v Scalar) Kind() ScalarKind { return v.kind }
 
@@ -78,7 +101,8 @@ func (v Scalar) Float64Value() (float64, bool) { return v.f64, v.kind == ScalarF
 // Scope returns only a preserved immutable temporal property value.
 func (v Scalar) Scope() (temporal.Scope, bool) { return v.scope, v.kind == ScalarScope }
 
-// EqualityKey is a deterministic typed key, not an ordered numeric index key.
+// EqualityKey is a deterministic typed key, not an ordered index key. Descriptor
+// keys identify exact preserved envelopes, never payload semantic equivalence.
 func (v Scalar) EqualityKey(l Limits) (string, error) {
 	l, err := l.resolve()
 	if err != nil {
@@ -91,7 +115,7 @@ func (v Scalar) EqualityKey(l Limits) (string, error) {
 	return string(b), nil
 }
 func (v Scalar) bytes(l Limits) ([]byte, error) {
-	if v.kind < ScalarNull || v.kind > ScalarScope {
+	if v.kind < ScalarNull || v.kind > ScalarDescriptor {
 		return nil, ErrInvalidInput
 	}
 	b := []byte{byte(v.kind)}
@@ -120,6 +144,22 @@ func (v Scalar) bytes(l Limits) ([]byte, error) {
 			bits = 0
 		}
 		b = binary.BigEndian.AppendUint64(b, bits)
+	case ScalarDescriptor:
+		if v.descriptor == nil {
+			return nil, ErrInvalidInput
+		}
+		tl := l.Component.Temporal
+		td := temporal.DefaultLimits()
+		tl.MaxValueBytes = min(cmp.Or(tl.MaxValueBytes, td.MaxValueBytes), max(1, l.MaxReadBytes-1))
+		tl.MaxDescriptorBytes = min(cmp.Or(tl.MaxDescriptorBytes, td.MaxDescriptorBytes), max(1, l.MaxReadBytes-1))
+		wire, err := temporal.AppendOpaqueDescriptor(nil, *v.descriptor, tl)
+		if err != nil {
+			if errors.Is(err, temporal.ErrResourceLimit) {
+				return nil, errors.Join(ErrResourceLimit, err)
+			}
+			return nil, err
+		}
+		b = append(b, wire...)
 	case ScalarScope:
 		wire, err := temporal.AppendScope(nil, v.scope, l.Component.Temporal)
 		if err != nil {
@@ -145,6 +185,7 @@ func (v Scalar) retainedBytes(canonicalBytes int) int {
 }
 
 // Equal compares declared typed values with finite-F64 numeric zero semantics.
+// Descriptor equality means exact envelope identity only, not solver equality.
 func (v Scalar) Equal(other Scalar, l Limits) (bool, error) {
 	l, err := l.resolve()
 	if err != nil {
@@ -174,6 +215,8 @@ func (v Scalar) Render() string {
 		return strconv.FormatInt(v.i64, 10)
 	case ScalarF64:
 		return strconv.FormatFloat(v.f64, 'g', -1, 64)
+	case ScalarDescriptor:
+		return "" // No payload interpretation or implicit JSON rendering.
 	default:
 		return ""
 	}

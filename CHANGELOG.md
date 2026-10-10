@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added v5 immutable entity interpretation and native-axis roles, preservation-only
+  descriptor properties, and graph-qualified `Plan`/`Project` boundaries. Legacy
+  undeclared entity/assertion bytes remain unchanged; declarations use entity-only
+  GC2, while legacy graph command/change formats explicitly refuse unsupported
+  metadata or descriptor schemas. A pure graph-qualified Q/ms default-axis binding
+  preserves exact integral-ms `Instant` compatibility. V1 value/state acceptance
+  is complete; durable default registration, transaction installation and certified
+  cuts remain V2 work, tracked in `tasks/backlog.md`.
+
 - Added fresh-store opt-in immutable v5 application control storage, co-installed
   synchronously with graph versions and root/change/outcome envelopes. Separate
   graph/control ledgers share retained, pending-install, generation and staging

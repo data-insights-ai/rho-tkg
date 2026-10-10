@@ -29,7 +29,7 @@ func validPostingKey(k postingKey, l Limits) bool {
 	switch k.family {
 	case uniquePostingRecord:
 		expected := postingKey{family: k.family, owner: k.owner, scalar: k.scalar, name: k.name, value: k.value, component: k.component}
-		return k == expected && (k.owner == graphstate.Node || k.owner == graphstate.Relationship) && k.scalar >= graphstate.ScalarString && k.scalar <= graphstate.ScalarScope && validName(k.name, l) && k.value != 0 && validComponent(k.component, l) && k.component.Name == k.name && (k.component.Kind == graphstate.ScalarProperty || k.component.Kind == graphstate.SetMember)
+		return k == expected && (k.owner == graphstate.Node || k.owner == graphstate.Relationship) && k.scalar >= graphstate.ScalarString && k.scalar <= graphstate.ScalarDescriptor && validName(k.name, l) && k.value != 0 && validComponent(k.component, l) && k.component.Name == k.name && (k.component.Kind == graphstate.ScalarProperty || k.component.Kind == graphstate.SetMember)
 	case canonicalIncidentRecord:
 		expected := postingKey{family: k.family, endpoint: k.endpoint, mode: k.mode, relationship: k.relationship, roles: k.roles}
 		return k == expected && k.endpoint != 0 && k.relationship != 0 && (k.mode == graphstate.LifeBound || k.mode == graphstate.IdentityReference) && k.roles > 0 && k.roles <= 3

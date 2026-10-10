@@ -38,6 +38,13 @@ func Plan(ctx context.Context, v ReadView, ops []Operation, revision state.Revis
 		if op.Owner == 0 || op.Life == 0 || op.Kind < CreateNode || op.Kind > Remove {
 			return Delta{}, ErrInvalidInput
 		}
+		if op.Kind == CreateNode || op.Kind == CreateRelationship {
+			if !validDeclarations(op.Record) {
+				return Delta{}, ErrUnsupported
+			}
+		} else if op.Record.Interpretation != 0 || op.Record.TemporalRole != 0 {
+			return Delta{}, ErrInvalidInput
+		}
 		if op.Kind == AddLabel || op.Kind == RemoveLabel || op.Kind >= Set {
 			if !validName(op.Name, l) {
 				return Delta{}, ErrInvalidInput
@@ -207,7 +214,7 @@ func (e *engine) create(op Operation) error {
 			return ErrInvalidInput
 		}
 	}
-	if err := e.output(64 + len(record.Type) + axisBytes(record.Axis)); err != nil {
+	if err := e.output(entityBytes(record)); err != nil {
 		return err
 	}
 	e.entities[op.Owner] = record
