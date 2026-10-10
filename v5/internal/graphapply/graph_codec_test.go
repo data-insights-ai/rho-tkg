@@ -261,7 +261,7 @@ func TestOwnedRegionPreflightExactBoundaryAndMetadata(t *testing.T) {
 func TestTypedCDCBindingSchemasAndPhysicalIndependence(t *testing.T) {
 	l := defaultMaterializerLimits()
 	n := codecNamespace()
-	g := graphChanges{ns: n, initialized: true, topology: 1, schema: 1, indexVersion: 2, schemas: []graphstate.PropertyDefinition{{Name: "answer", Owner: graphstate.Node, Type: graphstate.ScalarScope, Cardinality: graphstate.ScalarCardinality}}}
+	g := graphChanges{ns: n, initialized: true, topology: 1, schema: 1, schemas: []graphstate.PropertyDefinition{{Name: "answer", Owner: graphstate.Node, Type: graphstate.ScalarScope, Cardinality: graphstate.ScalarCardinality}}}
 	logical, err := encodeGraphChanges(g, l)
 	if err != nil {
 		t.Fatal(err)

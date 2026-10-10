@@ -66,17 +66,17 @@ func (m *materializer) catalog(v *raftlog.ApplicationView) (*graphstore.Catalog,
 	if err != nil {
 		return nil, graphstore.Root{}, err
 	}
-	if t.TopologyEpoch != 1 || t.SchemaVersion != 1 || t.IndexVersion != 0 && t.IndexVersion != 2 {
+	if t.TopologyEpoch != 1 || t.SchemaVersion != 1 {
 		return nil, graphstore.Root{}, graphstore.ErrTopologyUnsupported
-	}
-	if rootReady(r) && r.SemanticEpoch() == 0 {
-		return nil, graphstore.Root{}, errCorrupt
 	}
 	return c, r, nil
 }
-func rootReady(r graphstore.Root) bool {
+
+// IndexVersion is a physical format, never a Full coverage claim. Zero only
+// classifies the bootstrap door; supported formats belong to graphstore.
+func isBootstrapRoot(r graphstore.Root) bool {
 	t, err := r.SinglePartition()
-	return err == nil && t.IndexVersion == 2
+	return err == nil && t.IndexVersion == 0
 }
 func (m *materializer) Restore(index uint64, image []byte) (err error) {
 	if m == nil || m.store == nil || index == 0 {
@@ -98,8 +98,14 @@ func (m *materializer) Restore(index uint64, image []byte) (err error) {
 	if err != nil {
 		return err
 	}
-	q := reader{ctx: context.Background(), view: v, ns: m.ns, base: base, limits: m.limits.allocation}
-	if !rootReady(r) {
+	l := m.limits.allocation
+	l.readRows = min(l.readRows, m.limits.sourceRows)
+	l.readBytes = min(l.readBytes, m.limits.sourceBytes)
+	q := reader{ctx: context.Background(), view: v, ns: m.ns, base: base, limits: l, bytes: cap(base.Image)}
+	if q.bytes > l.readBytes {
+		return errLimit
+	}
+	if isBootstrapRoot(r) {
 		seed, err := graphstore.NewRoot(r.Namespace(), m.owner)
 		if err != nil {
 			return err
@@ -109,16 +115,52 @@ func (m *materializer) Restore(index uint64, image []byte) (err error) {
 		}
 		return q.emptyProof()
 	}
+	return m.checkInitialized(&q, c, r)
+}
+
+// Guard metadata includes fixed decoded command/reader state, empty cursor maps
+// and descriptor/fingerprint scratch. Four image copies are charged separately.
+// Variable tree-root decode backing is bounded by the source ledger within the
+// remaining output headroom. This is conservative representation, not heap/RSS.
+const readinessMetadataBytes = 4096
+
+func (m *materializer) checkInitialized(q *reader, c *graphstore.Catalog, root graphstore.Root) error {
+	retained := graphResultMetadataBytes + readinessMetadataBytes + 4*cap(q.base.Image)
+	if retained >= m.limits.outputBytes {
+		return errLimit
+	}
+	l, err := m.graphBudget(q)
+	if err != nil {
+		return err
+	}
+	// Source/decode accounting includes temporary variable root pages as well as
+	// conservative fixed reader costs. Counting it additionally is deliberate;
+	// it prevents a large physical root from evading the outer retention cap.
+	l.MaxSourceBytes = min(l.MaxSourceBytes, m.limits.outputBytes-retained)
+	v, err := graphstore.OpenReadView(q.ctx, c, l)
+	if err != nil {
+		return err
+	}
+	work := v.Work()
+	if err := v.Close(); err != nil {
+		return err
+	}
+	if work.Records > q.limits.readRows-q.rows || work.Bytes > q.limits.readBytes-q.bytes {
+		return errLimit
+	}
+	q.rows += work.Records
+	q.bytes += work.Bytes
+	// Full is checked BEFORE logical co-initialization. No physical version is
+	// interpreted as a ready graph, and no control outcome masks corrupt state.
+	if root.SemanticEpoch() == 0 {
+		return errCorrupt
+	}
 	if _, found, err := q.allocator(); err != nil {
 		return err
 	} else if !found {
 		return errCorrupt
 	}
-	view, err := graphstore.OpenReadView(context.Background(), c, m.limits.graph)
-	if err != nil {
-		return err
-	}
-	return view.Close()
+	return nil
 }
 func sameBase(a, b raftlog.ApplicationRoot) bool {
 	return a.Generation == b.Generation && a.Index == b.Index && a.ImageHash == b.ImageHash && bytes.Equal(a.Image, b.Image)
@@ -514,7 +556,15 @@ func (m *materializer) Stage(entry replica.Entry, budget raftlog.ApplicationBudg
 		control, decodeErr = decodeRequest(entry.Data, l)
 	}
 
-	bootstrap := (control.kind == initGraph || control.kind == initAllocator) && !rootReady(root)
+	bootstrap := (control.kind == initGraph || control.kind == initAllocator) && isBootstrapRoot(root)
+	if !isBootstrapRoot(root) && control.kind != graphOperations {
+		// Post-init attempts never use their schemas. Release that decoded backing
+		// before the guarded reader, including recognized malformed init records.
+		r.schemas = nil
+		if err := m.checkInitialized(&q, c, root); err != nil {
+			return raftlog.ApplicationBatch{}, err
+		}
+	}
 	o = outcome{ns: m.ns, kind: control.kind, identity: control.identity(), index: entry.Index, hash: hash, disposition: applied, reason: reasonInvalid}
 	// Reserve no quota here: prove exact minimum deterministic rejection framing
 	// before expensive Plan. Driver admission is the serialized reservation.
@@ -537,13 +587,8 @@ func (m *materializer) Stage(entry replica.Entry, budget raftlog.ApplicationBudg
 		return m.reject(&q, o, hash, !bootstrap, budget)
 	}
 	if !isGraph {
-		if !rootReady(root) {
+		if isBootstrapRoot(root) {
 			return raftlog.ApplicationBatch{}, errNotInitialized
-		}
-		if _, found, err := q.allocator(); err != nil {
-			return raftlog.ApplicationBatch{}, err
-		} else if !found {
-			return raftlog.ApplicationBatch{}, errCorrupt
 		}
 		o, _, err = q.transition(control, entry.Index)
 		if err != nil {
@@ -555,7 +600,7 @@ func (m *materializer) Stage(entry replica.Entry, budget raftlog.ApplicationBudg
 	}
 	var effects graphstore.GraphEffects
 	if r.kind == initGraph {
-		if rootReady(root) {
+		if !isBootstrapRoot(root) {
 			o.reason = reasonAlreadyInitialized
 			return m.reject(&q, o, hash, true, budget)
 		}
@@ -578,8 +623,11 @@ func (m *materializer) Stage(entry replica.Entry, budget raftlog.ApplicationBudg
 			}
 		}
 	} else {
-		if !rootReady(root) {
+		if isBootstrapRoot(root) {
 			return raftlog.ApplicationBatch{}, errNotInitialized
+		}
+		if root.SemanticEpoch() == 0 {
+			return raftlog.ApplicationBatch{}, errCorrupt
 		}
 		if _, found, err := q.allocator(); err != nil {
 			return raftlog.ApplicationBatch{}, err
@@ -625,7 +673,7 @@ func (m *materializer) Stage(entry replica.Entry, budget raftlog.ApplicationBudg
 			return raftlog.ApplicationBatch{}, err
 		}
 		changes.initialized = true
-		changes.topology, changes.schema, changes.indexVersion = topology.TopologyEpoch, topology.SchemaVersion, topology.IndexVersion
+		changes.topology, changes.schema = topology.TopologyEpoch, topology.SchemaVersion
 		changes.schemas = r.schemas
 	}
 	// The decoded command arrays are no longer retained during composition.

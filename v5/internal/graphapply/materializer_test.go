@@ -133,7 +133,7 @@ func TestMaterializerOnlyCoInitializesGraphAndAllocator(t *testing.T) {
 		t.Fatal(root, err)
 	}
 	cdc, err := decodeChangeEnvelope(b.Changes, o, f.m.limits)
-	if err != nil || !cdc.initialized || cdc.indexVersion != 2 {
+	if err != nil || !cdc.initialized || cdc.topology != 1 || cdc.schema != 1 {
 		t.Fatal(cdc, err)
 	}
 	replay, replayed := f.commit(t, graphInit(t))
@@ -1322,7 +1322,7 @@ func TestMaterializerMissingAllocatorAndHiddenBootstrapDataFailClosed(t *testing
 				if err != nil {
 					t.Fatal(err)
 				}
-				changes := graphChanges{ns: f.n, initialized: true, topology: 1, schema: 1, indexVersion: 2}
+				changes := graphChanges{ns: f.n, initialized: true, topology: 1, schema: 1}
 				logical, err := encodeGraphChanges(changes, f.m.limits)
 				if err != nil {
 					t.Fatal(err)

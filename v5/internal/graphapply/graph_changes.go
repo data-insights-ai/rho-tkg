@@ -16,14 +16,14 @@ import (
 // root. It is not yet a standalone portable public CDC feed or erase contract.
 // Readiness/schema initialization is a semantic effect, even with no entities.
 type graphChanges struct {
-	ns                             namespace
-	initialized                    bool
-	topology, schema, indexVersion uint64
-	schemas                        []graphstate.PropertyDefinition
-	entities                       []graphstate.EntityRecord
-	lives                          []graphstate.LifeRecord
-	values                         []graphstate.ValueWrite
-	groups                         []graphstore.ComponentChangeGroup
+	ns               namespace
+	initialized      bool
+	topology, schema uint64
+	schemas          []graphstate.PropertyDefinition
+	entities         []graphstate.EntityRecord
+	lives            []graphstate.LifeRecord
+	values           []graphstate.ValueWrite
+	groups           []graphstore.ComponentChangeGroup
 }
 
 func (g graphChanges) nonempty() bool {
@@ -81,7 +81,7 @@ func validateGraphChanges(g graphChanges, l materializerLimits) error {
 		return errInvalid
 	}
 	if g.initialized {
-		if g.topology != 1 || g.schema != 1 || g.indexVersion != 2 || len(g.entities)+len(g.lives)+len(g.values)+len(g.groups) != 0 {
+		if g.topology != 1 || g.schema != 1 || len(g.entities)+len(g.lives)+len(g.values)+len(g.groups) != 0 {
 			return errInvalid
 		}
 		for i, d := range g.schemas {
@@ -95,7 +95,7 @@ func validateGraphChanges(g graphChanges, l materializerLimits) error {
 				}
 			}
 		}
-	} else if g.topology != 0 || g.schema != 0 || g.indexVersion != 0 || len(g.schemas) != 0 {
+	} else if g.topology != 0 || g.schema != 0 || len(g.schemas) != 0 {
 		return errInvalid
 	}
 	if len(g.schemas) > l.maxSchemas || len(g.entities) > l.maxClaims || len(g.lives) > l.maxClaims || len(g.values) > l.maxClaims || len(g.groups) > l.graph.Pages.MaxPatches {
@@ -126,6 +126,17 @@ func validateGraphChanges(g graphChanges, l materializerLimits) error {
 	}
 	return nil
 }
+
+// GCD1 originally copied the physical index format into this eight-byte slot.
+// All valid retained records used 2 for initialization and 0 otherwise. Keep
+// those exact bytes as reserved compatibility data, not logical state, format
+// negotiation or evidence of coverage. The initialized flag carries meaning.
+func gcd1LegacySlot(initialized bool) uint64 {
+	if initialized {
+		return 2
+	}
+	return 0
+}
 func emitGraphChanges(w *boundedWriter, g graphChanges, t axisTable, l materializerLimits) {
 	w.add([]byte{'G', 'C', 'D', 1})
 	w.add(g.ns.graph[:])
@@ -137,7 +148,7 @@ func emitGraphChanges(w *boundedWriter, g graphChanges, t axisTable, l materiali
 	}
 	w.u64(g.topology)
 	w.u64(g.schema)
-	w.u64(g.indexVersion)
+	w.u64(gcd1LegacySlot(g.initialized))
 	w.u32(len(g.schemas))
 	for _, d := range g.schemas {
 		writeSchema(w, d)
@@ -210,7 +221,10 @@ func decodeGraphChanges(b []byte, n namespace, l materializerLimits) (graphChang
 		return graphChanges{}, errCorrupt
 	}
 	g.initialized = flag == 1
-	g.topology, g.schema, g.indexVersion = c.u64(), c.u64(), c.u64()
+	g.topology, g.schema = c.u64(), c.u64()
+	if slot := c.u64(); c.err != nil || slot != gcd1LegacySlot(g.initialized) {
+		return graphChanges{}, errCorrupt
+	}
 	count := c.count(l.maxSchemas, 8)
 	if !c.charge(64 * count) {
 		return graphChanges{}, c.err

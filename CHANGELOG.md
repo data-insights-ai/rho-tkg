@@ -227,6 +227,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **v5 initialization and readiness compatibility**: logical initialization is
+  independent of physical index format; GCD1 retains its fixed legacy slot and
+  exact historical bytes/digests. Full readiness checks actual descriptors and
+  roots, with shared Restore/Stage source and output bounds. Physical version
+  numbers never certify coverage; no Driver or V0–V7 gate is completed.
+
 - **v5 required point-read error classification**: `Open`, application-root
   publication and final log `Scrub` checks preserve operational read/close causes
   without adding `ErrCorrupt`; live failures retain their cause through the
