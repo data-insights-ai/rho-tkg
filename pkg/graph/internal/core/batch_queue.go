@@ -456,24 +456,7 @@ func (b *BatchBuilder) SetRelVersionInterval(id types.RelID, validFrom, validTo 
 // Returns ErrBatchDone if Execute has already started, or ErrGraphClosed if
 // the underlying graph has been closed since the builder was constructed.
 func (b *BatchBuilder) DeleteNode(id types.NodeID) error {
-	if err := b.lockOpen(); err != nil {
-		return err
-	}
-	defer b.mu.Unlock()
-
-	if err := b.g.checkOpen(); err != nil {
-		return err
-	}
-	rtok := b.g.mu.RLockShard(uint(b.genLane))
-	defer b.g.mu.RUnlockShard(rtok)
-	if b.g.closed.Load() {
-		return ErrGraphClosed
-	}
-	if err := storepkg.ValidateNodeID(id); err != nil {
-		return err
-	}
-	b.nodeDeletes = append(b.nodeDeletes, pendingNodeDelete{id: id})
-	return nil
+	return b.queueNodeDelete(id, 0, false, false)
 }
 
 // DeleteNodeWithTx queues a node delete like DeleteNode whose cascade is
@@ -486,6 +469,29 @@ func (b *BatchBuilder) DeleteNode(id types.NodeID) error {
 // delete must be the only op of the batch on the node and on every
 // relationship it cascades.
 func (b *BatchBuilder) DeleteNodeWithTx(id types.NodeID, txTo types.Instant) error {
+	return b.queueNodeDelete(id, txTo, true, false)
+}
+
+// RetractNode queues a node retraction (cascade, see Nodes().Retract): the
+// node's and every cascaded relationship's tombstone are marked Retracted.
+// Like DeleteNode it fails on its own at Execute (an unknown ID, an ID already
+// deleted or retracted) while the batch keeps its other ops.
+func (b *BatchBuilder) RetractNode(id types.NodeID) error {
+	return b.queueNodeDelete(id, 0, false, true)
+}
+
+// RetractNodeWithTx queues a node retraction at the caller's transaction
+// instant txTo, gated and pre-flighted exactly as DeleteNodeWithTx (one
+// refused caller-instant op refuses the whole batch with nothing written; the
+// retraction must be the only op of the batch on the node and on every
+// relationship it cascades).
+func (b *BatchBuilder) RetractNodeWithTx(id types.NodeID, txTo types.Instant) error {
+	return b.queueNodeDelete(id, txTo, true, true)
+}
+
+// queueNodeDelete is the body of the four node end queue doors: withTx gates
+// txTo as a caller instant now (the order rules run at Execute).
+func (b *BatchBuilder) queueNodeDelete(id types.NodeID, txTo types.Instant, withTx, retract bool) error {
 	if err := b.lockOpen(); err != nil {
 		return err
 	}
@@ -502,11 +508,14 @@ func (b *BatchBuilder) DeleteNodeWithTx(id types.NodeID, txTo types.Instant) err
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return err
 	}
-	at, err := b.g.resolveCallerTxInstant(txTo)
-	if err != nil {
-		return err
+	var at types.Instant
+	if withTx {
+		var err error
+		if at, err = b.g.resolveCallerTxInstant(txTo); err != nil {
+			return err
+		}
 	}
-	b.nodeDeletes = append(b.nodeDeletes, pendingNodeDelete{id: id, at: at})
+	b.nodeDeletes = append(b.nodeDeletes, pendingNodeDelete{id: id, at: at, retract: retract})
 	return nil
 }
 

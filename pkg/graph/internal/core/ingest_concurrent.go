@@ -447,15 +447,15 @@ func (c *Core) applyConcurrentUpdatesAndDeletes(
 	}
 
 	for _, id := range g.relDeletes {
-		if err := c.deleteRelationshipInternal(ctx, id, 0); err != nil {
+		if err := c.deleteRelationshipInternal(ctx, id, tombstoneSpec{}); err != nil {
 			fail("DeleteRelationship", types.EntityID(id), err)
 		} else {
 			emit(eventspkg.EventRelDelete, types.EntityID(id), c.now(), eventspkg.PriorityCritical)
 		}
 	}
 	for _, d := range g.relTxDeletes {
-		if err := c.deleteRelationshipInternal(ctx, d.id, d.at); err != nil {
-			fail("DeleteRelationshipWithTx", types.EntityID(d.id), err)
+		if err := c.deleteRelationshipInternal(ctx, d.id, d.spec()); err != nil {
+			fail(d.opName(), types.EntityID(d.id), err)
 		} else {
 			emit(eventspkg.EventRelDelete, types.EntityID(d.id), c.now(), eventspkg.PriorityCritical)
 		}
@@ -463,9 +463,9 @@ func (c *Core) applyConcurrentUpdatesAndDeletes(
 
 	for _, pd := range g.nodeDeletes {
 		id := pd.id
-		cascadeRelIDs, err := c.deleteNodeInternal(ctx, id, pd.at)
+		cascadeRelIDs, err := c.deleteNodeInternal(ctx, id, pd.spec())
 		if err != nil {
-			fail("DeleteNode", types.EntityID(id), err)
+			fail(pd.opName(), types.EntityID(id), err)
 		} else {
 			ts := c.now()
 			for _, rid := range cascadeRelIDs {

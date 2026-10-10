@@ -33,10 +33,29 @@ import (
 // order the caller did not ask for. Successive writes on one relationship go
 // in successive units.
 
-// pendingRelTxDelete is a queued relationship delete at a caller instant.
+// pendingRelTxDelete is a queued relationship delete carrying a tombstone
+// spec: a caller instant (DeleteRelationshipWithTx, RetractRelationshipWithTx;
+// at != 0) and/or the retraction marker (RetractRelationship,
+// RetractRelationshipWithTx). A plain DeleteRelationship queues in relDeletes.
+// Only at != 0 makes it a caller-instant op (hasCallerTx, the pre-flight).
 type pendingRelTxDelete struct {
-	id types.RelID
-	at types.Instant
+	id      types.RelID
+	at      types.Instant
+	retract bool
+}
+
+func (d pendingRelTxDelete) spec() tombstoneSpec { return tombstoneSpec{at: d.at, retract: d.retract} }
+
+// opName names the queued door in a BatchError.
+func (d pendingRelTxDelete) opName() string {
+	switch {
+	case d.retract && d.at != 0:
+		return "RetractRelationshipWithTx"
+	case d.retract:
+		return "RetractRelationship"
+	default:
+		return "DeleteRelationshipWithTx"
+	}
 }
 
 // DeleteRelationshipWithTx queues a relationship delete whose tombstone carries
@@ -47,6 +66,27 @@ type pendingRelTxDelete struct {
 // ErrBatchDone if Execute has already started, or ErrGraphClosed if the graph
 // has been closed since the builder was constructed.
 func (b *BatchBuilder) DeleteRelationshipWithTx(id types.RelID, txTo types.Instant) error {
+	return b.queueRelEnd(id, txTo, true, false)
+}
+
+// RetractRelationship queues a relationship retraction (see Rels().Retract).
+// Like DeleteRelationship it fails on its own at Execute (an unknown ID, an
+// ID already deleted or retracted) while the batch keeps its other ops.
+func (b *BatchBuilder) RetractRelationship(id types.RelID) error {
+	return b.queueRelEnd(id, 0, false, true)
+}
+
+// RetractRelationshipWithTx queues a relationship retraction at the caller's
+// transaction instant txTo, gated and pre-flighted exactly as
+// DeleteRelationshipWithTx (one refused caller-instant op refuses the whole
+// batch with nothing written).
+func (b *BatchBuilder) RetractRelationshipWithTx(id types.RelID, txTo types.Instant) error {
+	return b.queueRelEnd(id, txTo, true, true)
+}
+
+// queueRelEnd is the body of the relationship end queue doors that carry a
+// tombstone spec: withTx gates txTo as a caller instant now.
+func (b *BatchBuilder) queueRelEnd(id types.RelID, txTo types.Instant, withTx, retract bool) error {
 	if err := b.lockOpen(); err != nil {
 		return err
 	}
@@ -60,14 +100,17 @@ func (b *BatchBuilder) DeleteRelationshipWithTx(id types.RelID, txTo types.Insta
 	if b.g.closed.Load() {
 		return ErrGraphClosed
 	}
-	at, err := b.g.resolveCallerTxInstant(txTo)
-	if err != nil {
-		return err
+	var at types.Instant
+	if withTx {
+		var err error
+		if at, err = b.g.resolveCallerTxInstant(txTo); err != nil {
+			return err
+		}
 	}
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return err
 	}
-	b.relTxDeletes = append(b.relTxDeletes, pendingRelTxDelete{id: id, at: at})
+	b.relTxDeletes = append(b.relTxDeletes, pendingRelTxDelete{id: id, at: at, retract: retract})
 	return nil
 }
 
@@ -120,6 +163,27 @@ func (s *Session) DeleteRelationshipWithTx(id types.RelID, txTo types.Instant) e
 	}
 	defer s.mu.Unlock()
 	return s.b.DeleteRelationshipWithTx(id, txTo)
+}
+
+// RetractRelationship accumulates a relationship retraction (see
+// BatchBuilder.RetractRelationship).
+func (s *Session) RetractRelationship(id types.RelID) error {
+	if err := s.lockOpen(); err != nil {
+		return err
+	}
+	defer s.mu.Unlock()
+	return s.b.RetractRelationship(id)
+}
+
+// RetractRelationshipWithTx accumulates a relationship retraction at a caller
+// instant (see BatchBuilder.RetractRelationshipWithTx and
+// Session.DeleteRelationshipWithTx).
+func (s *Session) RetractRelationshipWithTx(id types.RelID, txTo types.Instant) error {
+	if err := s.lockOpen(); err != nil {
+		return err
+	}
+	defer s.mu.Unlock()
+	return s.b.RetractRelationshipWithTx(id, txTo)
 }
 
 // UpdateRelationshipWithTx accumulates a relationship update at a caller

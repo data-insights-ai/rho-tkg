@@ -1,0 +1,964 @@
+--- FAIL: TestRetraction_DoorMatrix (0.00s)
+    --- FAIL: TestRetraction_DoorMatrix/memory/standalone/node (0.03s)
+        retraction_doors_test.go:148: NodeAt v=1791623356615 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956642, captured at 1791623956634):
+              got:
+                n:799485349589745664: v0 {ValidFrom:1791623356615 ValidTo:0 TxFrom:1791623956615 TxTo:1791623956621 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349591121920: v0 {ValidFrom:1791623356615 ValidTo:0 TxFrom:1791623956616 TxTo:1791623956623 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349627789312: v0 {ValidFrom:1791623356615 ValidTo:0 TxFrom:1791623956617 TxTo:1791623956625 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485349589745664: v0 {ValidFrom:1791623356615 ValidTo:0 TxFrom:1791623956615 TxTo:1791623956621 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349627789312: v0 {ValidFrom:1791623356615 ValidTo:0 TxFrom:1791623956617 TxTo:1791623956625 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/badger/graphtxWithTx/node (0.04s)
+        retraction_doors_test.go:148: NodeAt v=1791623356623 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956642, captured at 1791623956641):
+              got:
+                n:799485349827346432: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956623 TxTo:1791623956629 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349830688768: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956631 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349832654848: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956633 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485349827346432: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956623 TxTo:1791623956629 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349832654848: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956633 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/badger/ingestSyncWithTx/node (0.04s)
+        retraction_doors_test.go:148: NodeAt v=1791623356624 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956643, captured at 1791623956642):
+              got:
+                n:799485349871681536: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956630 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349872467968: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956632 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349873483776: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485349871681536: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956630 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349873483776: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/badger/ingestSync/node (0.04s)
+        retraction_doors_test.go:148: NodeAt v=1791623356624 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956662, captured at 1791623956643):
+              got:
+                n:799485349859557376: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956630 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349865390080: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956632 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349865684992: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485349859557376: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956630 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349865684992: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/badger/standaloneWithTx/node (0.04s)
+        retraction_doors_test.go:148: NodeAt v=1791623356624 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956643, captured at 1791623956642):
+              got:
+                n:799485349885640704: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956630 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349886918656: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956632 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349887115264: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485349885640704: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956630 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349887115264: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/badger/ingestConcurrentWithTx/node (0.05s)
+        retraction_doors_test.go:148: NodeAt v=1791623356624 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956643, captured at 1791623956642):
+              got:
+                n:799485349861425152: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956630 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349876236288: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956632 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349876924416: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485349861425152: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956630 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349876924416: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/badger/ingestConcurrent/node (0.05s)
+        retraction_doors_test.go:148: NodeAt v=1791623356624 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956661, captured at 1791623956643):
+              got:
+                n:799485349871517696: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956630 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349874434048: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956632 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349874761728: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485349871517696: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956630 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349874761728: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/badger/standalone/node (0.05s)
+        retraction_doors_test.go:148: NodeAt v=1791623356624 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956662, captured at 1791623956643):
+              got:
+                n:799485349860081664: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956630 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349862342656: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956632 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349862637568: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485349860081664: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956630 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349862637568: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/badger/batchWithTx/node (0.05s)
+        retraction_doors_test.go:148: NodeAt v=1791623356623 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956642, captured at 1791623956641):
+              got:
+                n:799485349832851456: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956623 TxTo:1791623956629 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349833965568: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956631 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349834194944: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956633 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485349832851456: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956623 TxTo:1791623956629 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349834194944: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956633 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/badger/batch/node (0.05s)
+        retraction_doors_test.go:148: NodeAt v=1791623356623 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956663, captured at 1791623956643):
+              got:
+                n:799485349856575488: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956630 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349859262464: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956632 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349860442112: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485349856575488: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956630 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349860442112: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/badger/graphtx/node (0.05s)
+        retraction_doors_test.go:148: NodeAt v=1791623356631 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956667, captured at 1791623956650):
+              got:
+                n:799485350102597632: v0 {ValidFrom:1791623356631 ValidTo:0 TxFrom:1791623956631 TxTo:1791623956637 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350104498176: v0 {ValidFrom:1791623356631 ValidTo:0 TxFrom:1791623956632 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485350106398720: v0 {ValidFrom:1791623356631 ValidTo:0 TxFrom:1791623956633 TxTo:1791623956641 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485350102597632: v0 {ValidFrom:1791623356631 ValidTo:0 TxFrom:1791623956631 TxTo:1791623956637 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350106398720: v0 {ValidFrom:1791623356631 ValidTo:0 TxFrom:1791623956633 TxTo:1791623956641 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/memory/batchWithTx/node (0.01s)
+        retraction_doors_test.go:148: NodeAt v=1791623356668 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956687, captured at 1791623956686):
+              got:
+                n:799485351321894912: v0 {ValidFrom:1791623356668 ValidTo:0 TxFrom:1791623956668 TxTo:1791623956674 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351322779648: v0 {ValidFrom:1791623356668 ValidTo:0 TxFrom:1791623956669 TxTo:1791623956676 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351323369472: v0 {ValidFrom:1791623356668 ValidTo:0 TxFrom:1791623956670 TxTo:1791623956678 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485351321894912: v0 {ValidFrom:1791623356668 ValidTo:0 TxFrom:1791623956668 TxTo:1791623956674 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351323369472: v0 {ValidFrom:1791623356668 ValidTo:0 TxFrom:1791623956670 TxTo:1791623956678 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/standalone/node (0.07s)
+        retraction_doors_test.go:148: NodeAt v=1791623356625 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956678, captured at 1791623956644):
+              got:
+                n:799485349894356992: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956631 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349895733248: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956633 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349896028160: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956627 TxTo:1791623956635 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485349894356992: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956631 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349896028160: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956627 TxTo:1791623956635 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/batchWithTx/node (0.07s)
+        retraction_doors_test.go:148: NodeAt v=1791623356629 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956648, captured at 1791623956647):
+              got:
+                n:799485350040797184: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956635 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350042992640: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956630 TxTo:1791623956637 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485350044237824: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956631 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485350040797184: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956635 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350044237824: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956631 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/badger/batch/rel (0.07s)
+        retraction_doors_test.go:148: Snapshot v=1791623356623 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956659, captured at 1791623956642):
+              got:
+                n:799485349833211904: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956623 TxTo:1791623956629 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349834588160: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956631 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349835341824: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956633 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485349837079552: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956635 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485349840356352: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956627 TxTo:1791623956637 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485349840847872: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956628 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485349833211904: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956623 TxTo:1791623956629 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349834588160: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956631 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349835341824: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956633 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485349840356352: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956627 TxTo:1791623956637 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485349840847872: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956628 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/badger/ingestConcurrentWithTx/rel (0.07s)
+        retraction_doors_test.go:148: Snapshot v=1791623356623 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956642, captured at 1791623956641):
+              got:
+                n:799485349827346432: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956623 TxTo:1791623956629 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349830131712: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956631 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349830918144: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956633 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485349832000512: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956635 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485349833475072: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956627 TxTo:1791623956637 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485349833835520: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956628 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485349827346432: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956623 TxTo:1791623956629 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349830131712: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956631 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349830918144: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956633 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485349833475072: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956627 TxTo:1791623956637 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485349833835520: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956628 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/badger/ingestConcurrent/rel (0.08s)
+        retraction_doors_test.go:148: Snapshot v=1791623356623 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956651, captured at 1791623956642):
+              got:
+                n:799485349837864960: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956623 TxTo:1791623956629 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349839142912: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956631 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349839765504: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956633 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485349840782336: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956635 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485349842420736: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956627 TxTo:1791623956637 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485349843141632: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956628 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485349837864960: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956623 TxTo:1791623956629 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349839142912: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956631 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349839765504: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956633 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485349842420736: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956627 TxTo:1791623956637 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485349843141632: v0 {ValidFrom:1791623356623 ValidTo:0 TxFrom:1791623956628 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/badger/graphtxWithTx/rel (0.08s)
+        retraction_doors_test.go:148: Snapshot v=1791623356625 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956644, captured at 1791623956643):
+              got:
+                n:799485349906317312: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956631 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349908447232: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956633 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349908709376: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956627 TxTo:1791623956635 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485349909922816: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956628 TxTo:1791623956637 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485349911102464: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485349911561216: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956630 TxTo:1791623956641 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485349906317312: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956631 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349908447232: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956633 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349908709376: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956627 TxTo:1791623956635 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485349911102464: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485349911561216: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956630 TxTo:1791623956641 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/badger/standaloneWithTx/rel (0.08s)
+        retraction_doors_test.go:148: Snapshot v=1791623356627 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956647, captured at 1791623956646):
+              got:
+                n:799485350012289024: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956628 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350024904704: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956636 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485350026346496: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956630 TxTo:1791623956638 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485350029689856: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956631 TxTo:1791623956640 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485350031655936: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956632 TxTo:1791623956642 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485350032114688: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956633 TxTo:1791623956644 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485350012289024: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956628 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350024904704: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956636 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485350026346496: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956630 TxTo:1791623956638 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485350031655936: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956632 TxTo:1791623956642 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485350032114688: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956633 TxTo:1791623956644 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/badger/ingestSync/rel (0.08s)
+        retraction_doors_test.go:148: Snapshot v=1791623356625 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956663, captured at 1791623956644):
+              got:
+                n:799485349901991936: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956631 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349904220160: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956633 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349904547840: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956627 TxTo:1791623956635 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485349905728512: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956628 TxTo:1791623956637 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485349907334144: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485349907629056: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956630 TxTo:1791623956641 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485349901991936: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956631 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349904220160: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956633 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349904547840: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956627 TxTo:1791623956635 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485349907334144: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485349907629056: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956630 TxTo:1791623956641 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/badger/graphtx/rel (0.08s)
+        retraction_doors_test.go:148: Snapshot v=1791623356624 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956659, captured at 1791623956643):
+              got:
+                n:799485349870927872: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956630 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349881348096: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956632 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349882068992: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485349883479040: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956627 TxTo:1791623956636 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485349886166016: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956628 TxTo:1791623956638 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485349886657536: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956640 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485349870927872: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956630 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349881348096: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956632 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349882068992: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485349886166016: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956628 TxTo:1791623956638 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485349886657536: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956640 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/batch/node (0.08s)
+        retraction_doors_test.go:148: NodeAt v=1791623356632 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956695, captured at 1791623956651):
+              got:
+                n:799485350127697920: v0 {ValidFrom:1791623356632 ValidTo:0 TxFrom:1791623956632 TxTo:1791623956638 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350129238016: v0 {ValidFrom:1791623356632 ValidTo:0 TxFrom:1791623956633 TxTo:1791623956640 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485350129664000: v0 {ValidFrom:1791623356632 ValidTo:0 TxFrom:1791623956634 TxTo:1791623956642 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485350127697920: v0 {ValidFrom:1791623356632 ValidTo:0 TxFrom:1791623956632 TxTo:1791623956638 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350129664000: v0 {ValidFrom:1791623356632 ValidTo:0 TxFrom:1791623956634 TxTo:1791623956642 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/memory/ingestSyncWithTx/rel (0.03s)
+        retraction_doors_test.go:148: Snapshot v=1791623356668 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956688, captured at 1791623956687):
+              got:
+                n:799485351329759232: v0 {ValidFrom:1791623356668 ValidTo:0 TxFrom:1791623956669 TxTo:1791623956675 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351330185216: v0 {ValidFrom:1791623356668 ValidTo:0 TxFrom:1791623956670 TxTo:1791623956677 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351332118528: v0 {ValidFrom:1791623356668 ValidTo:0 TxFrom:1791623956671 TxTo:1791623956679 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485351332905984: v0 {ValidFrom:1791623356668 ValidTo:0 TxFrom:1791623956672 TxTo:1791623956681 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485351333790720: v0 {ValidFrom:1791623356668 ValidTo:0 TxFrom:1791623956673 TxTo:1791623956683 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485351333954560: v0 {ValidFrom:1791623356668 ValidTo:0 TxFrom:1791623956674 TxTo:1791623956685 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485351329759232: v0 {ValidFrom:1791623356668 ValidTo:0 TxFrom:1791623956669 TxTo:1791623956675 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351330185216: v0 {ValidFrom:1791623356668 ValidTo:0 TxFrom:1791623956670 TxTo:1791623956677 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351332118528: v0 {ValidFrom:1791623356668 ValidTo:0 TxFrom:1791623956671 TxTo:1791623956679 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485351333790720: v0 {ValidFrom:1791623356668 ValidTo:0 TxFrom:1791623956673 TxTo:1791623956683 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485351333954560: v0 {ValidFrom:1791623356668 ValidTo:0 TxFrom:1791623956674 TxTo:1791623956685 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/memory/ingestConcurrent/node (0.02s)
+        retraction_doors_test.go:148: NodeAt v=1791623356686 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956706, captured at 1791623956705):
+              got:
+                n:799485351898808320: v0 {ValidFrom:1791623356686 ValidTo:0 TxFrom:1791623956686 TxTo:1791623956692 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351899103232: v0 {ValidFrom:1791623356686 ValidTo:0 TxFrom:1791623956687 TxTo:1791623956694 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351899561984: v0 {ValidFrom:1791623356686 ValidTo:0 TxFrom:1791623956688 TxTo:1791623956696 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485351898808320: v0 {ValidFrom:1791623356686 ValidTo:0 TxFrom:1791623956686 TxTo:1791623956692 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351899561984: v0 {ValidFrom:1791623356686 ValidTo:0 TxFrom:1791623956688 TxTo:1791623956696 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/badger/standalone/rel (0.08s)
+        retraction_doors_test.go:148: Snapshot v=1791623356627 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956668, captured at 1791623956648):
+              got:
+                n:799485350022316032: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956635 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350024740864: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956630 TxTo:1791623956637 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485350025723904: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956631 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485350029263872: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956632 TxTo:1791623956641 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485350031066112: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956633 TxTo:1791623956643 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485350031655936: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956634 TxTo:1791623956645 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485350022316032: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956635 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350024740864: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956630 TxTo:1791623956637 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485350025723904: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956631 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485350031066112: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956633 TxTo:1791623956643 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485350031655936: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956634 TxTo:1791623956645 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/graphtx/node (0.06s)
+        retraction_doors_test.go:148: NodeAt v=1791623356646 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956699, captured at 1791623956665):
+              got:
+                n:799485350590742528: v0 {ValidFrom:1791623356646 ValidTo:0 TxFrom:1791623956646 TxTo:1791623956652 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350592053248: v0 {ValidFrom:1791623356646 ValidTo:0 TxFrom:1791623956647 TxTo:1791623956654 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485350592315392: v0 {ValidFrom:1791623356646 ValidTo:0 TxFrom:1791623956648 TxTo:1791623956656 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485350590742528: v0 {ValidFrom:1791623356646 ValidTo:0 TxFrom:1791623956646 TxTo:1791623956652 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350592315392: v0 {ValidFrom:1791623356646 ValidTo:0 TxFrom:1791623956648 TxTo:1791623956656 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/badger/ingestSyncWithTx/rel (0.09s)
+        retraction_doors_test.go:148: Snapshot v=1791623356624 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956643, captured at 1791623956642):
+              got:
+                n:799485349858148352: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956630 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349861294080: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956632 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349872140288: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485349873320960: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956627 TxTo:1791623956636 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485349874566144: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956628 TxTo:1791623956638 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485349874828288: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956640 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485349858148352: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956630 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349861294080: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956632 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349872140288: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485349874566144: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956628 TxTo:1791623956638 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485349874828288: v0 {ValidFrom:1791623356624 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956640 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/memory/ingestConcurrentWithTx/node (0.02s)
+        retraction_doors_test.go:148: NodeAt v=1791623356683 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956702, captured at 1791623956701):
+              got:
+                n:799485351818002432: v0 {ValidFrom:1791623356683 ValidTo:0 TxFrom:1791623956683 TxTo:1791623956689 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351818788864: v0 {ValidFrom:1791623356683 ValidTo:0 TxFrom:1791623956684 TxTo:1791623956691 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351829143552: v0 {ValidFrom:1791623356683 ValidTo:0 TxFrom:1791623956685 TxTo:1791623956693 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485351818002432: v0 {ValidFrom:1791623356683 ValidTo:0 TxFrom:1791623956683 TxTo:1791623956689 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351829143552: v0 {ValidFrom:1791623356683 ValidTo:0 TxFrom:1791623956685 TxTo:1791623956693 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/memory/ingestSyncWithTx/node (0.01s)
+        retraction_doors_test.go:148: NodeAt v=1791623356693 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956712, captured at 1791623956711):
+              got:
+                n:799485352125923328: v0 {ValidFrom:1791623356693 ValidTo:0 TxFrom:1791623956693 TxTo:1791623956699 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352126316544: v0 {ValidFrom:1791623356693 ValidTo:0 TxFrom:1791623956694 TxTo:1791623956701 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485352127201280: v0 {ValidFrom:1791623356693 ValidTo:0 TxFrom:1791623956695 TxTo:1791623956703 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485352125923328: v0 {ValidFrom:1791623356693 ValidTo:0 TxFrom:1791623956693 TxTo:1791623956699 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352127201280: v0 {ValidFrom:1791623356693 ValidTo:0 TxFrom:1791623956695 TxTo:1791623956703 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/badger/batchWithTx/rel (0.09s)
+        retraction_doors_test.go:148: Snapshot v=1791623356622 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956642, captured at 1791623956641):
+              got:
+                n:799485349837078528: v0 {ValidFrom:1791623356622 ValidTo:0 TxFrom:1791623956623 TxTo:1791623956629 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349841567744: v0 {ValidFrom:1791623356622 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956631 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349842386944: v0 {ValidFrom:1791623356622 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956633 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485349843895296: v0 {ValidFrom:1791623356622 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956635 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485349845566464: v0 {ValidFrom:1791623356622 ValidTo:0 TxFrom:1791623956627 TxTo:1791623956637 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485349846123520: v0 {ValidFrom:1791623356622 ValidTo:0 TxFrom:1791623956628 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485349837078528: v0 {ValidFrom:1791623356622 ValidTo:0 TxFrom:1791623956623 TxTo:1791623956629 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349841567744: v0 {ValidFrom:1791623356622 ValidTo:0 TxFrom:1791623956624 TxTo:1791623956631 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349842386944: v0 {ValidFrom:1791623356622 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956633 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485349845566464: v0 {ValidFrom:1791623356622 ValidTo:0 TxFrom:1791623956627 TxTo:1791623956637 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485349846123520: v0 {ValidFrom:1791623356622 ValidTo:0 TxFrom:1791623956628 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/graphtx/node (0.09s)
+        retraction_doors_test.go:148: NodeAt v=1791623356629 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956704, captured at 1791623956648):
+              got:
+                n:799485350041583616: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956635 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350046367744: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956630 TxTo:1791623956637 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485350047973376: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956631 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485350041583616: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956635 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350047973376: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956631 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/graphtxWithTx/node (0.09s)
+        retraction_doors_test.go:148: NodeAt v=1791623356634 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956653, captured at 1791623956652):
+              got:
+                n:799485350210568192: v0 {ValidFrom:1791623356634 ValidTo:0 TxFrom:1791623956634 TxTo:1791623956640 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350211813376: v0 {ValidFrom:1791623356634 ValidTo:0 TxFrom:1791623956635 TxTo:1791623956642 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485350212370432: v0 {ValidFrom:1791623356634 ValidTo:0 TxFrom:1791623956636 TxTo:1791623956644 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485350210568192: v0 {ValidFrom:1791623356634 ValidTo:0 TxFrom:1791623956634 TxTo:1791623956640 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350212370432: v0 {ValidFrom:1791623356634 ValidTo:0 TxFrom:1791623956636 TxTo:1791623956644 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/memory/ingestConcurrentWithTx/rel (0.04s)
+        retraction_doors_test.go:148: Snapshot v=1791623356680 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956699, captured at 1791623956698):
+              got:
+                n:799485351694630912: v0 {ValidFrom:1791623356680 ValidTo:0 TxFrom:1791623956680 TxTo:1791623956686 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351696072704: v0 {ValidFrom:1791623356680 ValidTo:0 TxFrom:1791623956681 TxTo:1791623956688 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351696891904: v0 {ValidFrom:1791623356680 ValidTo:0 TxFrom:1791623956682 TxTo:1791623956690 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485351697417216: v0 {ValidFrom:1791623356680 ValidTo:0 TxFrom:1791623956683 TxTo:1791623956692 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485351697679360: v0 {ValidFrom:1791623356680 ValidTo:0 TxFrom:1791623956684 TxTo:1791623956694 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485351697777664: v0 {ValidFrom:1791623356680 ValidTo:0 TxFrom:1791623956685 TxTo:1791623956696 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485351694630912: v0 {ValidFrom:1791623356680 ValidTo:0 TxFrom:1791623956680 TxTo:1791623956686 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351696072704: v0 {ValidFrom:1791623356680 ValidTo:0 TxFrom:1791623956681 TxTo:1791623956688 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351696891904: v0 {ValidFrom:1791623356680 ValidTo:0 TxFrom:1791623956682 TxTo:1791623956690 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485351697679360: v0 {ValidFrom:1791623356680 ValidTo:0 TxFrom:1791623956684 TxTo:1791623956694 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485351697777664: v0 {ValidFrom:1791623356680 ValidTo:0 TxFrom:1791623956685 TxTo:1791623956696 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/memory/batch/node (0.02s)
+        retraction_doors_test.go:148: NodeAt v=1791623356701 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956722, captured at 1791623956720):
+              got:
+                n:799485352382824448: v0 {ValidFrom:1791623356701 ValidTo:0 TxFrom:1791623956701 TxTo:1791623956707 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352383184896: v0 {ValidFrom:1791623356701 ValidTo:0 TxFrom:1791623956702 TxTo:1791623956709 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485352383774720: v0 {ValidFrom:1791623356701 ValidTo:0 TxFrom:1791623956703 TxTo:1791623956711 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485352382824448: v0 {ValidFrom:1791623356701 ValidTo:0 TxFrom:1791623956701 TxTo:1791623956707 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352383774720: v0 {ValidFrom:1791623356701 ValidTo:0 TxFrom:1791623956703 TxTo:1791623956711 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/memory/ingestSync/node (0.03s)
+        retraction_doors_test.go:148: NodeAt v=1791623356694 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956720, captured at 1791623956713):
+              got:
+                n:799485352177139712: v0 {ValidFrom:1791623356694 ValidTo:0 TxFrom:1791623956694 TxTo:1791623956700 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352177500160: v0 {ValidFrom:1791623356694 ValidTo:0 TxFrom:1791623956695 TxTo:1791623956702 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485352177729536: v0 {ValidFrom:1791623356694 ValidTo:0 TxFrom:1791623956696 TxTo:1791623956704 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485352177139712: v0 {ValidFrom:1791623356694 ValidTo:0 TxFrom:1791623956694 TxTo:1791623956700 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352177729536: v0 {ValidFrom:1791623356694 ValidTo:0 TxFrom:1791623956696 TxTo:1791623956704 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/standaloneWithTx/node (0.10s)
+        retraction_doors_test.go:148: NodeAt v=1791623356636 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956655, captured at 1791623956654):
+              got:
+                n:799485350260703232: v0 {ValidFrom:1791623356636 ValidTo:0 TxFrom:1791623956636 TxTo:1791623956642 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350261817344: v0 {ValidFrom:1791623356636 ValidTo:0 TxFrom:1791623956637 TxTo:1791623956644 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485350262112256: v0 {ValidFrom:1791623356636 ValidTo:0 TxFrom:1791623956638 TxTo:1791623956646 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485350260703232: v0 {ValidFrom:1791623356636 ValidTo:0 TxFrom:1791623956636 TxTo:1791623956642 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350262112256: v0 {ValidFrom:1791623356636 ValidTo:0 TxFrom:1791623956638 TxTo:1791623956646 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/memory/graphtxWithTx/node (0.02s)
+        retraction_doors_test.go:148: NodeAt v=1791623356699 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956718, captured at 1791623956717):
+              got:
+                n:799485352314437632: v0 {ValidFrom:1791623356699 ValidTo:0 TxFrom:1791623956699 TxTo:1791623956705 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352314929152: v0 {ValidFrom:1791623356699 ValidTo:0 TxFrom:1791623956700 TxTo:1791623956707 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485352319025152: v0 {ValidFrom:1791623356699 ValidTo:0 TxFrom:1791623956701 TxTo:1791623956709 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485352314437632: v0 {ValidFrom:1791623356699 ValidTo:0 TxFrom:1791623956699 TxTo:1791623956705 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352319025152: v0 {ValidFrom:1791623356699 ValidTo:0 TxFrom:1791623956701 TxTo:1791623956709 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/memory/ingestConcurrent/rel (0.04s)
+        retraction_doors_test.go:148: Snapshot v=1791623356684 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956704, captured at 1791623956703):
+              got:
+                n:799485351830290432: v0 {ValidFrom:1791623356684 ValidTo:0 TxFrom:1791623956684 TxTo:1791623956690 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351830650880: v0 {ValidFrom:1791623356684 ValidTo:0 TxFrom:1791623956685 TxTo:1791623956692 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351830945792: v0 {ValidFrom:1791623356684 ValidTo:0 TxFrom:1791623956686 TxTo:1791623956694 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485351831634944: v0 {ValidFrom:1791623356684 ValidTo:0 TxFrom:1791623956687 TxTo:1791623956696 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485351832388608: v0 {ValidFrom:1791623356684 ValidTo:0 TxFrom:1791623956688 TxTo:1791623956698 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485351832552448: v0 {ValidFrom:1791623356684 ValidTo:0 TxFrom:1791623956689 TxTo:1791623956700 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485351830290432: v0 {ValidFrom:1791623356684 ValidTo:0 TxFrom:1791623956684 TxTo:1791623956690 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351830650880: v0 {ValidFrom:1791623356684 ValidTo:0 TxFrom:1791623956685 TxTo:1791623956692 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351830945792: v0 {ValidFrom:1791623356684 ValidTo:0 TxFrom:1791623956686 TxTo:1791623956694 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485351832388608: v0 {ValidFrom:1791623356684 ValidTo:0 TxFrom:1791623956688 TxTo:1791623956698 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485351832552448: v0 {ValidFrom:1791623356684 ValidTo:0 TxFrom:1791623956689 TxTo:1791623956700 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/memory/graphtx/rel (0.04s)
+        retraction_doors_test.go:148: Snapshot v=1791623356697 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956719, captured at 1791623956716):
+              got:
+                n:799485352254930944: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956697 TxTo:1791623956703 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352255258624: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956698 TxTo:1791623956705 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485352255815680: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956699 TxTo:1791623956707 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485352256603136: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956700 TxTo:1791623956709 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485352256963584: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956701 TxTo:1791623956711 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485352257094656: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956702 TxTo:1791623956713 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485352254930944: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956697 TxTo:1791623956703 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352255258624: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956698 TxTo:1791623956705 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485352255815680: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956699 TxTo:1791623956707 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485352256963584: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956701 TxTo:1791623956711 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485352257094656: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956702 TxTo:1791623956713 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/batch/node (0.09s)
+        retraction_doors_test.go:148: NodeAt v=1791623356671 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956724, captured at 1791623956690):
+              got:
+                n:799485351421542400: v0 {ValidFrom:1791623356671 ValidTo:0 TxFrom:1791623956671 TxTo:1791623956677 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351422853120: v0 {ValidFrom:1791623356671 ValidTo:0 TxFrom:1791623956672 TxTo:1791623956679 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351423213568: v0 {ValidFrom:1791623356671 ValidTo:0 TxFrom:1791623956673 TxTo:1791623956681 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485351421542400: v0 {ValidFrom:1791623356671 ValidTo:0 TxFrom:1791623956671 TxTo:1791623956677 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351423213568: v0 {ValidFrom:1791623356671 ValidTo:0 TxFrom:1791623956673 TxTo:1791623956681 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/standalone/node (0.14s)
+        retraction_doors_test.go:148: NodeAt v=1791623356625 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956716, captured at 1791623956644):
+              got:
+                n:799485349901991936: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956631 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349903990784: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956633 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349904285696: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956627 TxTo:1791623956635 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485349901991936: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956625 TxTo:1791623956631 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349904285696: v0 {ValidFrom:1791623356625 ValidTo:0 TxFrom:1791623956627 TxTo:1791623956635 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/memory/ingestSync/rel (0.07s)
+        retraction_doors_test.go:148: Snapshot v=1791623356687 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956708, captured at 1791623956706):
+              got:
+                n:799485351933018112: v0 {ValidFrom:1791623356687 ValidTo:0 TxFrom:1791623956687 TxTo:1791623956693 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351933313024: v0 {ValidFrom:1791623356687 ValidTo:0 TxFrom:1791623956688 TxTo:1791623956695 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351934066688: v0 {ValidFrom:1791623356687 ValidTo:0 TxFrom:1791623956689 TxTo:1791623956697 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485351934755840: v0 {ValidFrom:1791623356687 ValidTo:0 TxFrom:1791623956690 TxTo:1791623956699 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485351935247360: v0 {ValidFrom:1791623356687 ValidTo:0 TxFrom:1791623956691 TxTo:1791623956701 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485351935378432: v0 {ValidFrom:1791623356687 ValidTo:0 TxFrom:1791623956692 TxTo:1791623956703 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485351933018112: v0 {ValidFrom:1791623356687 ValidTo:0 TxFrom:1791623956687 TxTo:1791623956693 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351933313024: v0 {ValidFrom:1791623356687 ValidTo:0 TxFrom:1791623956688 TxTo:1791623956695 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351934066688: v0 {ValidFrom:1791623356687 ValidTo:0 TxFrom:1791623956689 TxTo:1791623956697 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485351935247360: v0 {ValidFrom:1791623356687 ValidTo:0 TxFrom:1791623956691 TxTo:1791623956701 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485351935378432: v0 {ValidFrom:1791623356687 ValidTo:0 TxFrom:1791623956692 TxTo:1791623956703 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/memory/graphtxWithTx/rel (0.06s)
+        retraction_doors_test.go:148: Snapshot v=1791623356697 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956716, captured at 1791623956715):
+              got:
+                n:799485352273084416: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956697 TxTo:1791623956703 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352273412096: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956698 TxTo:1791623956705 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485352273739776: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956699 TxTo:1791623956707 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485352274265088: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956700 TxTo:1791623956709 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485352274723840: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956701 TxTo:1791623956711 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485352275117056: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956702 TxTo:1791623956713 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485352273084416: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956697 TxTo:1791623956703 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352273412096: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956698 TxTo:1791623956705 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485352273739776: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956699 TxTo:1791623956707 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485352274723840: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956701 TxTo:1791623956711 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485352275117056: v0 {ValidFrom:1791623356697 ValidTo:0 TxFrom:1791623956702 TxTo:1791623956713 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/memory/batchWithTx/rel (0.06s)
+        retraction_doors_test.go:148: Snapshot v=1791623356696 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956715, captured at 1791623956714):
+              got:
+                n:799485352236417024: v0 {ValidFrom:1791623356696 ValidTo:0 TxFrom:1791623956696 TxTo:1791623956702 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352236711936: v0 {ValidFrom:1791623356696 ValidTo:0 TxFrom:1791623956697 TxTo:1791623956704 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485352236941312: v0 {ValidFrom:1791623356696 ValidTo:0 TxFrom:1791623956698 TxTo:1791623956706 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485352237499392: v0 {ValidFrom:1791623356696 ValidTo:0 TxFrom:1791623956699 TxTo:1791623956708 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485352238220288: v0 {ValidFrom:1791623356696 ValidTo:0 TxFrom:1791623956700 TxTo:1791623956710 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485352238384128: v0 {ValidFrom:1791623356696 ValidTo:0 TxFrom:1791623956701 TxTo:1791623956712 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485352236417024: v0 {ValidFrom:1791623356696 ValidTo:0 TxFrom:1791623956696 TxTo:1791623956702 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352236711936: v0 {ValidFrom:1791623356696 ValidTo:0 TxFrom:1791623956697 TxTo:1791623956704 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485352236941312: v0 {ValidFrom:1791623356696 ValidTo:0 TxFrom:1791623956698 TxTo:1791623956706 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485352238220288: v0 {ValidFrom:1791623356696 ValidTo:0 TxFrom:1791623956700 TxTo:1791623956710 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485352238384128: v0 {ValidFrom:1791623356696 ValidTo:0 TxFrom:1791623956701 TxTo:1791623956712 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/graphtxWithTx/node (0.10s)
+        retraction_doors_test.go:148: NodeAt v=1791623356671 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956690, captured at 1791623956689):
+              got:
+                n:799485351426818048: v0 {ValidFrom:1791623356671 ValidTo:0 TxFrom:1791623956671 TxTo:1791623956677 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351429799936: v0 {ValidFrom:1791623356671 ValidTo:0 TxFrom:1791623956672 TxTo:1791623956679 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351430356992: v0 {ValidFrom:1791623356671 ValidTo:0 TxFrom:1791623956673 TxTo:1791623956681 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485351426818048: v0 {ValidFrom:1791623356671 ValidTo:0 TxFrom:1791623956671 TxTo:1791623956677 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351430356992: v0 {ValidFrom:1791623356671 ValidTo:0 TxFrom:1791623956673 TxTo:1791623956681 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/standaloneWithTx/node (0.10s)
+        retraction_doors_test.go:148: NodeAt v=1791623356671 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956690, captured at 1791623956689):
+              got:
+                n:799485351412334592: v0 {ValidFrom:1791623356671 ValidTo:0 TxFrom:1791623956671 TxTo:1791623956677 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351414202368: v0 {ValidFrom:1791623356671 ValidTo:0 TxFrom:1791623956672 TxTo:1791623956679 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351414890496: v0 {ValidFrom:1791623356671 ValidTo:0 TxFrom:1791623956673 TxTo:1791623956681 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485351412334592: v0 {ValidFrom:1791623356671 ValidTo:0 TxFrom:1791623956671 TxTo:1791623956677 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351414890496: v0 {ValidFrom:1791623356671 ValidTo:0 TxFrom:1791623956673 TxTo:1791623956681 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/memory/batch/rel (0.11s)
+        retraction_doors_test.go:148: Snapshot v=1791623356702 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956754, captured at 1791623956721):
+              got:
+                n:799485352430796800: v0 {ValidFrom:1791623356702 ValidTo:0 TxFrom:1791623956702 TxTo:1791623956708 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352431058944: v0 {ValidFrom:1791623356702 ValidTo:0 TxFrom:1791623956703 TxTo:1791623956710 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485352431321088: v0 {ValidFrom:1791623356702 ValidTo:0 TxFrom:1791623956704 TxTo:1791623956712 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485352431977472: v0 {ValidFrom:1791623356702 ValidTo:0 TxFrom:1791623956705 TxTo:1791623956714 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485352432567296: v0 {ValidFrom:1791623356702 ValidTo:0 TxFrom:1791623956706 TxTo:1791623956716 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485352433910784: v0 {ValidFrom:1791623356702 ValidTo:0 TxFrom:1791623956707 TxTo:1791623956718 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485352430796800: v0 {ValidFrom:1791623356702 ValidTo:0 TxFrom:1791623956702 TxTo:1791623956708 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352431058944: v0 {ValidFrom:1791623356702 ValidTo:0 TxFrom:1791623956703 TxTo:1791623956710 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485352431321088: v0 {ValidFrom:1791623356702 ValidTo:0 TxFrom:1791623956704 TxTo:1791623956712 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485352432567296: v0 {ValidFrom:1791623356702 ValidTo:0 TxFrom:1791623956706 TxTo:1791623956716 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485352433910784: v0 {ValidFrom:1791623356702 ValidTo:0 TxFrom:1791623956707 TxTo:1791623956718 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/memory/standaloneWithTx/node (0.04s)
+        retraction_doors_test.go:148: NodeAt v=1791623356766 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956785, captured at 1791623956784):
+              got:
+                n:799485354510909440: v0 {ValidFrom:1791623356766 ValidTo:0 TxFrom:1791623956766 TxTo:1791623956772 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485354511761408: v0 {ValidFrom:1791623356766 ValidTo:0 TxFrom:1791623956767 TxTo:1791623956774 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485354512646144: v0 {ValidFrom:1791623356766 ValidTo:0 TxFrom:1791623956768 TxTo:1791623956776 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485354510909440: v0 {ValidFrom:1791623356766 ValidTo:0 TxFrom:1791623956766 TxTo:1791623956772 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485354512646144: v0 {ValidFrom:1791623356766 ValidTo:0 TxFrom:1791623956768 TxTo:1791623956776 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/memory/graphtx/node (0.05s)
+        retraction_doors_test.go:148: NodeAt v=1791623356759 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956813, captured at 1791623956778):
+              got:
+                n:799485354308206592: v0 {ValidFrom:1791623356759 ValidTo:0 TxFrom:1791623956759 TxTo:1791623956765 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485354309255168: v0 {ValidFrom:1791623356759 ValidTo:0 TxFrom:1791623956760 TxTo:1791623956767 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485354309910528: v0 {ValidFrom:1791623356759 ValidTo:0 TxFrom:1791623956761 TxTo:1791623956769 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485354308206592: v0 {ValidFrom:1791623356759 ValidTo:0 TxFrom:1791623956759 TxTo:1791623956765 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485354309910528: v0 {ValidFrom:1791623356759 ValidTo:0 TxFrom:1791623956761 TxTo:1791623956769 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/standaloneWithTx/rel (0.22s)
+        retraction_doors_test.go:148: Snapshot v=1791623356630 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956649, captured at 1791623956648):
+              got:
+                n:799485350072909824: v0 {ValidFrom:1791623356630 ValidTo:0 TxFrom:1791623956630 TxTo:1791623956636 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350074613760: v0 {ValidFrom:1791623356630 ValidTo:0 TxFrom:1791623956631 TxTo:1791623956638 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485350075138048: v0 {ValidFrom:1791623356630 ValidTo:0 TxFrom:1791623956632 TxTo:1791623956640 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485350077072384: v0 {ValidFrom:1791623356630 ValidTo:0 TxFrom:1791623956633 TxTo:1791623956642 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485350078612480: v0 {ValidFrom:1791623356630 ValidTo:0 TxFrom:1791623956634 TxTo:1791623956644 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485350079693824: v0 {ValidFrom:1791623356630 ValidTo:0 TxFrom:1791623956635 TxTo:1791623956646 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485350072909824: v0 {ValidFrom:1791623356630 ValidTo:0 TxFrom:1791623956630 TxTo:1791623956636 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350074613760: v0 {ValidFrom:1791623356630 ValidTo:0 TxFrom:1791623956631 TxTo:1791623956638 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485350075138048: v0 {ValidFrom:1791623356630 ValidTo:0 TxFrom:1791623956632 TxTo:1791623956640 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485350078612480: v0 {ValidFrom:1791623356630 ValidTo:0 TxFrom:1791623956634 TxTo:1791623956644 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485350079693824: v0 {ValidFrom:1791623356630 ValidTo:0 TxFrom:1791623956635 TxTo:1791623956646 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/graphtxWithTx/rel (0.22s)
+        retraction_doors_test.go:148: Snapshot v=1791623356629 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956648, captured at 1791623956647):
+              got:
+                n:799485350026674176: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956635 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350036275200: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956630 TxTo:1791623956637 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485350037028864: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956631 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485350043321344: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956632 TxTo:1791623956641 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485350046073856: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956633 TxTo:1791623956643 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485350046401536: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956634 TxTo:1791623956645 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485350026674176: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956635 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350036275200: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956630 TxTo:1791623956637 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485350037028864: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956631 TxTo:1791623956639 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485350046073856: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956633 TxTo:1791623956643 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485350046401536: v0 {ValidFrom:1791623356629 ValidTo:0 TxFrom:1791623956634 TxTo:1791623956645 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/memory/standalone/rel (0.04s)
+        retraction_doors_test.go:148: Snapshot v=1791623356808 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956828, captured at 1791623956827):
+              got:
+                n:799485355897651200: v0 {ValidFrom:1791623356808 ValidTo:0 TxFrom:1791623956808 TxTo:1791623956814 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485355899224064: v0 {ValidFrom:1791623356808 ValidTo:0 TxFrom:1791623956809 TxTo:1791623956816 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485355900567552: v0 {ValidFrom:1791623356808 ValidTo:0 TxFrom:1791623956810 TxTo:1791623956818 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485355932156928: v0 {ValidFrom:1791623356808 ValidTo:0 TxFrom:1791623956811 TxTo:1791623956820 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485355933926400: v0 {ValidFrom:1791623356808 ValidTo:0 TxFrom:1791623956812 TxTo:1791623956822 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485355934254080: v0 {ValidFrom:1791623356808 ValidTo:0 TxFrom:1791623956813 TxTo:1791623956824 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485355897651200: v0 {ValidFrom:1791623356808 ValidTo:0 TxFrom:1791623956808 TxTo:1791623956814 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485355899224064: v0 {ValidFrom:1791623356808 ValidTo:0 TxFrom:1791623956809 TxTo:1791623956816 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485355900567552: v0 {ValidFrom:1791623356808 ValidTo:0 TxFrom:1791623956810 TxTo:1791623956818 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485355933926400: v0 {ValidFrom:1791623356808 ValidTo:0 TxFrom:1791623956812 TxTo:1791623956822 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485355934254080: v0 {ValidFrom:1791623356808 ValidTo:0 TxFrom:1791623956813 TxTo:1791623956824 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/memory/standaloneWithTx/rel (0.09s)
+        retraction_doors_test.go:148: Snapshot v=1791623356755 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956777, captured at 1791623956776):
+              got:
+                n:799485354175168512: v0 {ValidFrom:1791623356755 ValidTo:0 TxFrom:1791623956755 TxTo:1791623956764 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485354177560576: v0 {ValidFrom:1791623356755 ValidTo:0 TxFrom:1791623956756 TxTo:1791623956766 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485354178510848: v0 {ValidFrom:1791623356755 ValidTo:0 TxFrom:1791623956757 TxTo:1791623956768 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485354373645312: v0 {ValidFrom:1791623356755 ValidTo:0 TxFrom:1791623956761 TxTo:1791623956770 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485354375316480: v0 {ValidFrom:1791623356755 ValidTo:0 TxFrom:1791623956762 TxTo:1791623956772 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485354375578624: v0 {ValidFrom:1791623356755 ValidTo:0 TxFrom:1791623956763 TxTo:1791623956774 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485354175168512: v0 {ValidFrom:1791623356755 ValidTo:0 TxFrom:1791623956755 TxTo:1791623956764 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485354177560576: v0 {ValidFrom:1791623356755 ValidTo:0 TxFrom:1791623956756 TxTo:1791623956766 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485354178510848: v0 {ValidFrom:1791623356755 ValidTo:0 TxFrom:1791623956757 TxTo:1791623956768 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485354375316480: v0 {ValidFrom:1791623356755 ValidTo:0 TxFrom:1791623956762 TxTo:1791623956772 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485354375578624: v0 {ValidFrom:1791623356755 ValidTo:0 TxFrom:1791623956763 TxTo:1791623956774 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/ingestConcurrentWithTx/node (0.15s)
+        retraction_doors_test.go:148: NodeAt v=1791623356717 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956737, captured at 1791623956736):
+              got:
+                n:799485352935587840: v0 {ValidFrom:1791623356717 ValidTo:0 TxFrom:1791623956718 TxTo:1791623956724 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352936996864: v0 {ValidFrom:1791623356717 ValidTo:0 TxFrom:1791623956719 TxTo:1791623956726 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485352937521152: v0 {ValidFrom:1791623356717 ValidTo:0 TxFrom:1791623956720 TxTo:1791623956728 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485352935587840: v0 {ValidFrom:1791623356717 ValidTo:0 TxFrom:1791623956718 TxTo:1791623956724 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352937521152: v0 {ValidFrom:1791623356717 ValidTo:0 TxFrom:1791623956720 TxTo:1791623956728 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/batch/rel (0.20s)
+        retraction_doors_test.go:148: Snapshot v=1791623356663 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956718, captured at 1791623956682):
+              got:
+                n:799485351160905728: v0 {ValidFrom:1791623356663 ValidTo:0 TxFrom:1791623956663 TxTo:1791623956669 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351163265024: v0 {ValidFrom:1791623356663 ValidTo:0 TxFrom:1791623956664 TxTo:1791623956671 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351163691008: v0 {ValidFrom:1791623356663 ValidTo:0 TxFrom:1791623956665 TxTo:1791623956673 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485351165854720: v0 {ValidFrom:1791623356663 ValidTo:0 TxFrom:1791623956666 TxTo:1791623956675 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485351167001600: v0 {ValidFrom:1791623356663 ValidTo:0 TxFrom:1791623956667 TxTo:1791623956677 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485351167656960: v0 {ValidFrom:1791623356663 ValidTo:0 TxFrom:1791623956668 TxTo:1791623956679 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485351160905728: v0 {ValidFrom:1791623356663 ValidTo:0 TxFrom:1791623956663 TxTo:1791623956669 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351163265024: v0 {ValidFrom:1791623356663 ValidTo:0 TxFrom:1791623956664 TxTo:1791623956671 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351163691008: v0 {ValidFrom:1791623356663 ValidTo:0 TxFrom:1791623956665 TxTo:1791623956673 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485351167001600: v0 {ValidFrom:1791623356663 ValidTo:0 TxFrom:1791623956667 TxTo:1791623956677 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485351167656960: v0 {ValidFrom:1791623356663 ValidTo:0 TxFrom:1791623956668 TxTo:1791623956679 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/standalone/rel (0.26s)
+        retraction_doors_test.go:148: Snapshot v=1791623356626 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956701, captured at 1791623956645):
+              got:
+                n:799485349928599552: v0 {ValidFrom:1791623356626 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956632 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349929943040: v0 {ValidFrom:1791623356626 ValidTo:0 TxFrom:1791623956627 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349930139648: v0 {ValidFrom:1791623356626 ValidTo:0 TxFrom:1791623956628 TxTo:1791623956636 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485349930730496: v0 {ValidFrom:1791623356626 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956638 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485349931746304: v0 {ValidFrom:1791623356626 ValidTo:0 TxFrom:1791623956630 TxTo:1791623956640 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485349931910144: v0 {ValidFrom:1791623356626 ValidTo:0 TxFrom:1791623956631 TxTo:1791623956642 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485349928599552: v0 {ValidFrom:1791623356626 ValidTo:0 TxFrom:1791623956626 TxTo:1791623956632 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485349929943040: v0 {ValidFrom:1791623356626 ValidTo:0 TxFrom:1791623956627 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485349930139648: v0 {ValidFrom:1791623356626 ValidTo:0 TxFrom:1791623956628 TxTo:1791623956636 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485349931746304: v0 {ValidFrom:1791623356626 ValidTo:0 TxFrom:1791623956630 TxTo:1791623956640 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485349931910144: v0 {ValidFrom:1791623356626 ValidTo:0 TxFrom:1791623956631 TxTo:1791623956642 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/standaloneWithTx/rel (0.22s)
+        retraction_doors_test.go:148: Snapshot v=1791623356672 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956691, captured at 1791623956690):
+              got:
+                n:799485351441694720: v0 {ValidFrom:1791623356672 ValidTo:0 TxFrom:1791623956672 TxTo:1791623956678 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351443628032: v0 {ValidFrom:1791623356672 ValidTo:0 TxFrom:1791623956673 TxTo:1791623956680 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351444185088: v0 {ValidFrom:1791623356672 ValidTo:0 TxFrom:1791623956674 TxTo:1791623956682 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485351446053888: v0 {ValidFrom:1791623356672 ValidTo:0 TxFrom:1791623956675 TxTo:1791623956684 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485351446873088: v0 {ValidFrom:1791623356672 ValidTo:0 TxFrom:1791623956676 TxTo:1791623956686 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485351447397376: v0 {ValidFrom:1791623356672 ValidTo:0 TxFrom:1791623956677 TxTo:1791623956688 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485351441694720: v0 {ValidFrom:1791623356672 ValidTo:0 TxFrom:1791623956672 TxTo:1791623956678 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351443628032: v0 {ValidFrom:1791623356672 ValidTo:0 TxFrom:1791623956673 TxTo:1791623956680 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351444185088: v0 {ValidFrom:1791623356672 ValidTo:0 TxFrom:1791623956674 TxTo:1791623956682 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485351446873088: v0 {ValidFrom:1791623356672 ValidTo:0 TxFrom:1791623956676 TxTo:1791623956686 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485351447397376: v0 {ValidFrom:1791623356672 ValidTo:0 TxFrom:1791623956677 TxTo:1791623956688 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/graphtx/rel (0.24s)
+        retraction_doors_test.go:148: Snapshot v=1791623356675 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956746, captured at 1791623956694):
+              got:
+                n:799485351536820224: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956675 TxTo:1791623956681 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351539245056: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956676 TxTo:1791623956683 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351539671040: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956677 TxTo:1791623956685 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485351541900288: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956678 TxTo:1791623956687 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485351543538688: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956679 TxTo:1791623956689 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485351543997440: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956680 TxTo:1791623956691 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485351536820224: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956675 TxTo:1791623956681 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351539245056: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956676 TxTo:1791623956683 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351539671040: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956677 TxTo:1791623956685 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485351543538688: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956679 TxTo:1791623956689 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485351543997440: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956680 TxTo:1791623956691 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/graphtx/rel (0.29s)
+        retraction_doors_test.go:148: Snapshot v=1791623356627 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956699, captured at 1791623956647):
+              got:
+                n:799485350006456320: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956628 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350009438208: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956636 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485350010191872: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956630 TxTo:1791623956638 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485350014321664: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956631 TxTo:1791623956640 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485350023496704: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956632 TxTo:1791623956642 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485350024283136: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956633 TxTo:1791623956644 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485350006456320: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956628 TxTo:1791623956634 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485350009438208: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956629 TxTo:1791623956636 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485350010191872: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956630 TxTo:1791623956638 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485350023496704: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956632 TxTo:1791623956642 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485350024283136: v0 {ValidFrom:1791623356627 ValidTo:0 TxFrom:1791623956633 TxTo:1791623956644 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/graphtxWithTx/rel (0.25s)
+        retraction_doors_test.go:148: Snapshot v=1791623356667 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956686, captured at 1791623956685):
+              got:
+                n:799485351276576768: v0 {ValidFrom:1791623356667 ValidTo:0 TxFrom:1791623956667 TxTo:1791623956673 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351288635392: v0 {ValidFrom:1791623356667 ValidTo:0 TxFrom:1791623956668 TxTo:1791623956675 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351289192448: v0 {ValidFrom:1791623356667 ValidTo:0 TxFrom:1791623956669 TxTo:1791623956677 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485351294436352: v0 {ValidFrom:1791623356667 ValidTo:0 TxFrom:1791623956670 TxTo:1791623956679 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485351295845376: v0 {ValidFrom:1791623356667 ValidTo:0 TxFrom:1791623956671 TxTo:1791623956681 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485351296369664: v0 {ValidFrom:1791623356667 ValidTo:0 TxFrom:1791623956672 TxTo:1791623956683 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485351276576768: v0 {ValidFrom:1791623356667 ValidTo:0 TxFrom:1791623956667 TxTo:1791623956673 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351288635392: v0 {ValidFrom:1791623356667 ValidTo:0 TxFrom:1791623956668 TxTo:1791623956675 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351289192448: v0 {ValidFrom:1791623356667 ValidTo:0 TxFrom:1791623956669 TxTo:1791623956677 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485351295845376: v0 {ValidFrom:1791623356667 ValidTo:0 TxFrom:1791623956671 TxTo:1791623956681 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485351296369664: v0 {ValidFrom:1791623356667 ValidTo:0 TxFrom:1791623956672 TxTo:1791623956683 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/standalone/rel (0.25s)
+        retraction_doors_test.go:148: Snapshot v=1791623356675 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956755, captured at 1791623956694):
+              got:
+                n:799485351558774784: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956675 TxTo:1791623956681 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351560511488: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956676 TxTo:1791623956683 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351561658368: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956677 TxTo:1791623956685 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485351565165568: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956678 TxTo:1791623956687 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485351566476288: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956679 TxTo:1791623956689 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485351566935040: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956680 TxTo:1791623956691 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485351558774784: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956675 TxTo:1791623956681 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485351560511488: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956676 TxTo:1791623956683 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485351561658368: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956677 TxTo:1791623956685 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485351566476288: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956679 TxTo:1791623956689 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485351566935040: v0 {ValidFrom:1791623356675 ValidTo:0 TxFrom:1791623956680 TxTo:1791623956691 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/ingestConcurrentWithTx/rel (0.23s)
+        retraction_doors_test.go:148: Snapshot v=1791623356716 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956735, captured at 1791623956734):
+              got:
+                n:799485352883683328: v0 {ValidFrom:1791623356716 ValidTo:0 TxFrom:1791623956716 TxTo:1791623956722 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352884928512: v0 {ValidFrom:1791623356716 ValidTo:0 TxFrom:1791623956717 TxTo:1791623956724 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485352885387264: v0 {ValidFrom:1791623356716 ValidTo:0 TxFrom:1791623956718 TxTo:1791623956726 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485352886338560: v0 {ValidFrom:1791623356716 ValidTo:0 TxFrom:1791623956719 TxTo:1791623956728 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485352887059456: v0 {ValidFrom:1791623356716 ValidTo:0 TxFrom:1791623956720 TxTo:1791623956730 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485352887321600: v0 {ValidFrom:1791623356716 ValidTo:0 TxFrom:1791623956721 TxTo:1791623956732 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485352883683328: v0 {ValidFrom:1791623356716 ValidTo:0 TxFrom:1791623956716 TxTo:1791623956722 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352884928512: v0 {ValidFrom:1791623356716 ValidTo:0 TxFrom:1791623956717 TxTo:1791623956724 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485352885387264: v0 {ValidFrom:1791623356716 ValidTo:0 TxFrom:1791623956718 TxTo:1791623956726 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485352887059456: v0 {ValidFrom:1791623356716 ValidTo:0 TxFrom:1791623956720 TxTo:1791623956730 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485352887321600: v0 {ValidFrom:1791623356716 ValidTo:0 TxFrom:1791623956721 TxTo:1791623956732 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/ingestConcurrent/node (0.23s)
+        retraction_doors_test.go:148: NodeAt v=1791623356805 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956928, captured at 1791623956825):
+              got:
+                n:799485355805245440: v0 {ValidFrom:1791623356805 ValidTo:0 TxFrom:1791623956805 TxTo:1791623956812 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485355860819968: v0 {ValidFrom:1791623356805 ValidTo:0 TxFrom:1791623956807 TxTo:1791623956814 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485355861868544: v0 {ValidFrom:1791623356805 ValidTo:0 TxFrom:1791623956808 TxTo:1791623956816 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485355805245440: v0 {ValidFrom:1791623356805 ValidTo:0 TxFrom:1791623956805 TxTo:1791623956812 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485355861868544: v0 {ValidFrom:1791623356805 ValidTo:0 TxFrom:1791623956808 TxTo:1791623956816 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/ingestSync/node (0.23s)
+        retraction_doors_test.go:148: NodeAt v=1791623356829 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956940, captured at 1791623956850):
+              got:
+                n:799485356582764544: v0 {ValidFrom:1791623356829 ValidTo:0 TxFrom:1791623956829 TxTo:1791623956837 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485356680511488: v0 {ValidFrom:1791623356829 ValidTo:0 TxFrom:1791623956832 TxTo:1791623956839 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485356681428992: v0 {ValidFrom:1791623356829 ValidTo:0 TxFrom:1791623956833 TxTo:1791623956841 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485356582764544: v0 {ValidFrom:1791623356829 ValidTo:0 TxFrom:1791623956829 TxTo:1791623956837 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485356681428992: v0 {ValidFrom:1791623356829 ValidTo:0 TxFrom:1791623956833 TxTo:1791623956841 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/ingestSyncWithTx/rel (0.25s)
+        retraction_doors_test.go:148: Snapshot v=1791623356714 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956733, captured at 1791623956732):
+              got:
+                n:799485352812314624: v0 {ValidFrom:1791623356714 ValidTo:0 TxFrom:1791623956714 TxTo:1791623956720 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352813821952: v0 {ValidFrom:1791623356714 ValidTo:0 TxFrom:1791623956715 TxTo:1791623956722 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485352814280704: v0 {ValidFrom:1791623356714 ValidTo:0 TxFrom:1791623956716 TxTo:1791623956724 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485352815920128: v0 {ValidFrom:1791623356714 ValidTo:0 TxFrom:1791623956717 TxTo:1791623956726 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485352817591296: v0 {ValidFrom:1791623356714 ValidTo:0 TxFrom:1791623956718 TxTo:1791623956728 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485352817918976: v0 {ValidFrom:1791623356714 ValidTo:0 TxFrom:1791623956719 TxTo:1791623956730 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485352812314624: v0 {ValidFrom:1791623356714 ValidTo:0 TxFrom:1791623956714 TxTo:1791623956720 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352813821952: v0 {ValidFrom:1791623356714 ValidTo:0 TxFrom:1791623956715 TxTo:1791623956722 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485352814280704: v0 {ValidFrom:1791623356714 ValidTo:0 TxFrom:1791623956716 TxTo:1791623956724 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485352817591296: v0 {ValidFrom:1791623356714 ValidTo:0 TxFrom:1791623956718 TxTo:1791623956728 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485352817918976: v0 {ValidFrom:1791623356714 ValidTo:0 TxFrom:1791623956719 TxTo:1791623956730 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/batchWithTx/node (0.21s)
+        retraction_doors_test.go:148: NodeAt v=1791623356884 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956903, captured at 1791623956902):
+              got:
+                n:799485358402502656: v0 {ValidFrom:1791623356884 ValidTo:0 TxFrom:1791623956884 TxTo:1791623956890 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485358405156864: v0 {ValidFrom:1791623356884 ValidTo:0 TxFrom:1791623956885 TxTo:1791623956892 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485358405746688: v0 {ValidFrom:1791623356884 ValidTo:0 TxFrom:1791623956886 TxTo:1791623956894 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485358402502656: v0 {ValidFrom:1791623356884 ValidTo:0 TxFrom:1791623956884 TxTo:1791623956890 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485358405746688: v0 {ValidFrom:1791623356884 ValidTo:0 TxFrom:1791623956886 TxTo:1791623956894 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/ingestConcurrent/rel (0.26s)
+        retraction_doors_test.go:148: Snapshot v=1791623356709 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956860, captured at 1791623956728):
+              got:
+                n:799485352647720960: v0 {ValidFrom:1791623356709 ValidTo:0 TxFrom:1791623956709 TxTo:1791623956715 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352652800000: v0 {ValidFrom:1791623356709 ValidTo:0 TxFrom:1791623956710 TxTo:1791623956717 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485352655126528: v0 {ValidFrom:1791623356709 ValidTo:0 TxFrom:1791623956711 TxTo:1791623956719 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485352656995328: v0 {ValidFrom:1791623356709 ValidTo:0 TxFrom:1791623956712 TxTo:1791623956721 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485352659092480: v0 {ValidFrom:1791623356709 ValidTo:0 TxFrom:1791623956713 TxTo:1791623956723 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485352659584000: v0 {ValidFrom:1791623356709 ValidTo:0 TxFrom:1791623956714 TxTo:1791623956725 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485352647720960: v0 {ValidFrom:1791623356709 ValidTo:0 TxFrom:1791623956709 TxTo:1791623956715 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485352652800000: v0 {ValidFrom:1791623356709 ValidTo:0 TxFrom:1791623956710 TxTo:1791623956717 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485352655126528: v0 {ValidFrom:1791623356709 ValidTo:0 TxFrom:1791623956711 TxTo:1791623956719 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485352659092480: v0 {ValidFrom:1791623356709 ValidTo:0 TxFrom:1791623956713 TxTo:1791623956723 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485352659584000: v0 {ValidFrom:1791623356709 ValidTo:0 TxFrom:1791623956714 TxTo:1791623956725 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/ingestConcurrent/node (0.24s)
+        retraction_doors_test.go:148: NodeAt v=1791623356921 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956959, captured at 1791623956940):
+              got:
+                n:799485359604203520: v0 {ValidFrom:1791623356921 ValidTo:0 TxFrom:1791623956921 TxTo:1791623956927 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485359606005760: v0 {ValidFrom:1791623356921 ValidTo:0 TxFrom:1791623956922 TxTo:1791623956929 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485359606497280: v0 {ValidFrom:1791623356921 ValidTo:0 TxFrom:1791623956923 TxTo:1791623956931 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485359604203520: v0 {ValidFrom:1791623356921 ValidTo:0 TxFrom:1791623956921 TxTo:1791623956927 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485359606497280: v0 {ValidFrom:1791623356921 ValidTo:0 TxFrom:1791623956923 TxTo:1791623956931 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/ingestSyncWithTx/node (0.25s)
+        retraction_doors_test.go:148: NodeAt v=1791623356921 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956940, captured at 1791623956939):
+              got:
+                n:799485359608299520: v0 {ValidFrom:1791623356921 ValidTo:0 TxFrom:1791623956921 TxTo:1791623956927 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485359610626048: v0 {ValidFrom:1791623356921 ValidTo:0 TxFrom:1791623956922 TxTo:1791623956929 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485359611478016: v0 {ValidFrom:1791623356921 ValidTo:0 TxFrom:1791623956923 TxTo:1791623956931 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485359608299520: v0 {ValidFrom:1791623356921 ValidTo:0 TxFrom:1791623956921 TxTo:1791623956927 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485359611478016: v0 {ValidFrom:1791623356921 ValidTo:0 TxFrom:1791623956923 TxTo:1791623956931 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/ingestConcurrentWithTx/node (0.25s)
+        retraction_doors_test.go:148: NodeAt v=1791623356918 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956937, captured at 1791623956936):
+              got:
+                n:799485359521366016: v0 {ValidFrom:1791623356918 ValidTo:0 TxFrom:1791623956918 TxTo:1791623956924 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485359525724160: v0 {ValidFrom:1791623356918 ValidTo:0 TxFrom:1791623956919 TxTo:1791623956926 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485359527198720: v0 {ValidFrom:1791623356918 ValidTo:0 TxFrom:1791623956920 TxTo:1791623956928 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485359521366016: v0 {ValidFrom:1791623356918 ValidTo:0 TxFrom:1791623956918 TxTo:1791623956924 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485359527198720: v0 {ValidFrom:1791623356918 ValidTo:0 TxFrom:1791623956920 TxTo:1791623956928 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/ingestSync/rel (0.23s)
+        retraction_doors_test.go:148: Snapshot v=1791623356888 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956942, captured at 1791623956907):
+              got:
+                n:799485358526988288: v0 {ValidFrom:1791623356888 ValidTo:0 TxFrom:1791623956888 TxTo:1791623956894 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485358530134016: v0 {ValidFrom:1791623356888 ValidTo:0 TxFrom:1791623956889 TxTo:1791623956896 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485358531477504: v0 {ValidFrom:1791623356888 ValidTo:0 TxFrom:1791623956890 TxTo:1791623956898 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485358556677120: v0 {ValidFrom:1791623356888 ValidTo:0 TxFrom:1791623956891 TxTo:1791623956900 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485358559298560: v0 {ValidFrom:1791623356888 ValidTo:0 TxFrom:1791623956892 TxTo:1791623956902 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485358560084992: v0 {ValidFrom:1791623356888 ValidTo:0 TxFrom:1791623956893 TxTo:1791623956904 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485358526988288: v0 {ValidFrom:1791623356888 ValidTo:0 TxFrom:1791623956888 TxTo:1791623956894 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485358530134016: v0 {ValidFrom:1791623356888 ValidTo:0 TxFrom:1791623956889 TxTo:1791623956896 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485358531477504: v0 {ValidFrom:1791623356888 ValidTo:0 TxFrom:1791623956890 TxTo:1791623956898 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485358559298560: v0 {ValidFrom:1791623356888 ValidTo:0 TxFrom:1791623956892 TxTo:1791623956902 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485358560084992: v0 {ValidFrom:1791623356888 ValidTo:0 TxFrom:1791623956893 TxTo:1791623956904 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/ingestSyncWithTx/node (0.28s)
+        retraction_doors_test.go:148: NodeAt v=1791623356935 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956954, captured at 1791623956953):
+              got:
+                n:799485360065642496: v0 {ValidFrom:1791623356935 ValidTo:0 TxFrom:1791623956935 TxTo:1791623956941 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485360067837952: v0 {ValidFrom:1791623356935 ValidTo:0 TxFrom:1791623956936 TxTo:1791623956943 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485360068493312: v0 {ValidFrom:1791623356935 ValidTo:0 TxFrom:1791623956937 TxTo:1791623956945 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485360065642496: v0 {ValidFrom:1791623356935 ValidTo:0 TxFrom:1791623956935 TxTo:1791623956941 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485360068493312: v0 {ValidFrom:1791623356935 ValidTo:0 TxFrom:1791623956937 TxTo:1791623956945 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/batchWithTx/rel (0.24s)
+        retraction_doors_test.go:148: Snapshot v=1791623356877 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956896, captured at 1791623956895):
+              got:
+                n:799485358164312064: v0 {ValidFrom:1791623356877 ValidTo:0 TxFrom:1791623956877 TxTo:1791623956883 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485358168309760: v0 {ValidFrom:1791623356877 ValidTo:0 TxFrom:1791623956878 TxTo:1791623956885 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485358169489408: v0 {ValidFrom:1791623356877 ValidTo:0 TxFrom:1791623956879 TxTo:1791623956887 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485358229783552: v0 {ValidFrom:1791623356877 ValidTo:0 TxFrom:1791623956880 TxTo:1791623956889 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485358232863744: v0 {ValidFrom:1791623356877 ValidTo:0 TxFrom:1791623956881 TxTo:1791623956891 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485358233977856: v0 {ValidFrom:1791623356877 ValidTo:0 TxFrom:1791623956882 TxTo:1791623956893 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485358164312064: v0 {ValidFrom:1791623356877 ValidTo:0 TxFrom:1791623956877 TxTo:1791623956883 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485358168309760: v0 {ValidFrom:1791623356877 ValidTo:0 TxFrom:1791623956878 TxTo:1791623956885 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485358169489408: v0 {ValidFrom:1791623356877 ValidTo:0 TxFrom:1791623956879 TxTo:1791623956887 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485358232863744: v0 {ValidFrom:1791623356877 ValidTo:0 TxFrom:1791623956881 TxTo:1791623956891 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485358233977856: v0 {ValidFrom:1791623356877 ValidTo:0 TxFrom:1791623956882 TxTo:1791623956893 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/ingestSyncWithTx/rel (0.25s)
+        retraction_doors_test.go:148: Snapshot v=1791623356906 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956926, captured at 1791623956925):
+              got:
+                n:799485359130443776: v0 {ValidFrom:1791623356906 ValidTo:0 TxFrom:1791623956907 TxTo:1791623956913 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485359133032448: v0 {ValidFrom:1791623356906 ValidTo:0 TxFrom:1791623956908 TxTo:1791623956915 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485359133917184: v0 {ValidFrom:1791623356906 ValidTo:0 TxFrom:1791623956909 TxTo:1791623956917 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485359137096704: v0 {ValidFrom:1791623356906 ValidTo:0 TxFrom:1791623956910 TxTo:1791623956919 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485359139259392: v0 {ValidFrom:1791623356906 ValidTo:0 TxFrom:1791623956911 TxTo:1791623956921 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485359140045824: v0 {ValidFrom:1791623356906 ValidTo:0 TxFrom:1791623956912 TxTo:1791623956923 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485359130443776: v0 {ValidFrom:1791623356906 ValidTo:0 TxFrom:1791623956907 TxTo:1791623956913 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485359133032448: v0 {ValidFrom:1791623356906 ValidTo:0 TxFrom:1791623956908 TxTo:1791623956915 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485359133917184: v0 {ValidFrom:1791623356906 ValidTo:0 TxFrom:1791623956909 TxTo:1791623956917 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485359139259392: v0 {ValidFrom:1791623356906 ValidTo:0 TxFrom:1791623956911 TxTo:1791623956921 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485359140045824: v0 {ValidFrom:1791623356906 ValidTo:0 TxFrom:1791623956912 TxTo:1791623956923 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/ingestConcurrentWithTx/rel (0.28s)
+        retraction_doors_test.go:148: Snapshot v=1791623356915 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956934, captured at 1791623956933):
+              got:
+                n:799485359415099392: v0 {ValidFrom:1791623356915 ValidTo:0 TxFrom:1791623956915 TxTo:1791623956921 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485359418081280: v0 {ValidFrom:1791623356915 ValidTo:0 TxFrom:1791623956916 TxTo:1791623956923 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485359418802176: v0 {ValidFrom:1791623356915 ValidTo:0 TxFrom:1791623956917 TxTo:1791623956925 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485359420179456: v0 {ValidFrom:1791623356915 ValidTo:0 TxFrom:1791623956918 TxTo:1791623956927 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485359421391872: v0 {ValidFrom:1791623356915 ValidTo:0 TxFrom:1791623956919 TxTo:1791623956929 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485359421948928: v0 {ValidFrom:1791623356915 ValidTo:0 TxFrom:1791623956920 TxTo:1791623956931 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485359415099392: v0 {ValidFrom:1791623356915 ValidTo:0 TxFrom:1791623956915 TxTo:1791623956921 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485359418081280: v0 {ValidFrom:1791623356915 ValidTo:0 TxFrom:1791623956916 TxTo:1791623956923 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485359418802176: v0 {ValidFrom:1791623356915 ValidTo:0 TxFrom:1791623956917 TxTo:1791623956925 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485359421391872: v0 {ValidFrom:1791623356915 ValidTo:0 TxFrom:1791623956919 TxTo:1791623956929 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485359421948928: v0 {ValidFrom:1791623356915 ValidTo:0 TxFrom:1791623956920 TxTo:1791623956931 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/batchWithTx/rel (0.29s)
+        retraction_doors_test.go:148: Snapshot v=1791623356904 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956923, captured at 1791623956922):
+              got:
+                n:799485359032795136: v0 {ValidFrom:1791623356904 ValidTo:0 TxFrom:1791623956904 TxTo:1791623956910 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485359087616000: v0 {ValidFrom:1791623356904 ValidTo:0 TxFrom:1791623956905 TxTo:1791623956912 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485359091744768: v0 {ValidFrom:1791623356904 ValidTo:0 TxFrom:1791623956906 TxTo:1791623956914 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485359115043840: v0 {ValidFrom:1791623356904 ValidTo:0 TxFrom:1791623956907 TxTo:1791623956916 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485359118812160: v0 {ValidFrom:1791623356904 ValidTo:0 TxFrom:1791623956908 TxTo:1791623956918 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485359119401984: v0 {ValidFrom:1791623356904 ValidTo:0 TxFrom:1791623956909 TxTo:1791623956920 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485359032795136: v0 {ValidFrom:1791623356904 ValidTo:0 TxFrom:1791623956904 TxTo:1791623956910 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485359087616000: v0 {ValidFrom:1791623356904 ValidTo:0 TxFrom:1791623956905 TxTo:1791623956912 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485359091744768: v0 {ValidFrom:1791623356904 ValidTo:0 TxFrom:1791623956906 TxTo:1791623956914 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485359118812160: v0 {ValidFrom:1791623356904 ValidTo:0 TxFrom:1791623956908 TxTo:1791623956918 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485359119401984: v0 {ValidFrom:1791623356904 ValidTo:0 TxFrom:1791623956909 TxTo:1791623956920 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/ingestConcurrent/rel (0.28s)
+        retraction_doors_test.go:148: Snapshot v=1791623356932 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956968, captured at 1791623956951):
+              got:
+                n:799485359961866240: v0 {ValidFrom:1791623356932 ValidTo:0 TxFrom:1791623956932 TxTo:1791623956938 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485359966683136: v0 {ValidFrom:1791623356932 ValidTo:0 TxFrom:1791623956933 TxTo:1791623956940 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485359968190464: v0 {ValidFrom:1791623356932 ValidTo:0 TxFrom:1791623956934 TxTo:1791623956942 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485359970845696: v0 {ValidFrom:1791623356932 ValidTo:0 TxFrom:1791623956935 TxTo:1791623956944 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485359972680704: v0 {ValidFrom:1791623356932 ValidTo:0 TxFrom:1791623956936 TxTo:1791623956946 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485359976317952: v0 {ValidFrom:1791623356932 ValidTo:0 TxFrom:1791623956937 TxTo:1791623956948 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485359961866240: v0 {ValidFrom:1791623356932 ValidTo:0 TxFrom:1791623956932 TxTo:1791623956938 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485359966683136: v0 {ValidFrom:1791623356932 ValidTo:0 TxFrom:1791623956933 TxTo:1791623956940 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485359968190464: v0 {ValidFrom:1791623356932 ValidTo:0 TxFrom:1791623956934 TxTo:1791623956942 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485359972680704: v0 {ValidFrom:1791623356932 ValidTo:0 TxFrom:1791623956936 TxTo:1791623956946 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485359976317952: v0 {ValidFrom:1791623356932 ValidTo:0 TxFrom:1791623956937 TxTo:1791623956948 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/ingestSync/node (0.25s)
+        retraction_doors_test.go:148: NodeAt v=1791623356969 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956998, captured at 1791623956988):
+              got:
+                n:799485361172414464: v0 {ValidFrom:1791623356969 ValidTo:0 TxFrom:1791623956969 TxTo:1791623956975 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485361175920640: v0 {ValidFrom:1791623356969 ValidTo:0 TxFrom:1791623956970 TxTo:1791623956977 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485361177624576: v0 {ValidFrom:1791623356969 ValidTo:0 TxFrom:1791623956971 TxTo:1791623956979 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+              want:
+                n:799485361172414464: v0 {ValidFrom:1791623356969 ValidTo:0 TxFrom:1791623956969 TxTo:1791623956975 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485361177624576: v0 {ValidFrom:1791623356969 ValidTo:0 TxFrom:1791623956971 TxTo:1791623956979 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/ingestSync/rel (0.30s)
+        retraction_doors_test.go:148: Snapshot v=1791623356923 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623956971, captured at 1791623956942):
+              got:
+                n:799485359664726016: v0 {ValidFrom:1791623356923 ValidTo:0 TxFrom:1791623956923 TxTo:1791623956929 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485359666364416: v0 {ValidFrom:1791623356923 ValidTo:0 TxFrom:1791623956924 TxTo:1791623956931 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485359666790400: v0 {ValidFrom:1791623356923 ValidTo:0 TxFrom:1791623956925 TxTo:1791623956933 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485359667741696: v0 {ValidFrom:1791623356923 ValidTo:0 TxFrom:1791623956926 TxTo:1791623956935 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485359669412864: v0 {ValidFrom:1791623356923 ValidTo:0 TxFrom:1791623956927 TxTo:1791623956937 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485359670035456: v0 {ValidFrom:1791623356923 ValidTo:0 TxFrom:1791623956928 TxTo:1791623956939 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485359664726016: v0 {ValidFrom:1791623356923 ValidTo:0 TxFrom:1791623956923 TxTo:1791623956929 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485359666364416: v0 {ValidFrom:1791623356923 ValidTo:0 TxFrom:1791623956924 TxTo:1791623956931 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485359666790400: v0 {ValidFrom:1791623356923 ValidTo:0 TxFrom:1791623956925 TxTo:1791623956933 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485359669412864: v0 {ValidFrom:1791623356923 ValidTo:0 TxFrom:1791623956927 TxTo:1791623956937 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485359670035456: v0 {ValidFrom:1791623356923 ValidTo:0 TxFrom:1791623956928 TxTo:1791623956939 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/batch/rel (0.23s)
+        retraction_doors_test.go:148: Snapshot v=1791623356979 at pin 0 (current belief: retracted entities absent at every valid time; T=1791623957011, captured at 1791623956998):
+              got:
+                n:799485361492262912: v0 {ValidFrom:1791623356979 ValidTo:0 TxFrom:1791623956979 TxTo:1791623956985 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485361494065152: v0 {ValidFrom:1791623356979 ValidTo:0 TxFrom:1791623956980 TxTo:1791623956987 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485361494786048: v0 {ValidFrom:1791623356979 ValidTo:0 TxFrom:1791623956981 TxTo:1791623956989 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485361495245824: v0 {ValidFrom:1791623356979 ValidTo:0 TxFrom:1791623956982 TxTo:1791623956991 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rx,w=1}
+                r:799485361496294400: v0 {ValidFrom:1791623356979 ValidTo:0 TxFrom:1791623956983 TxTo:1791623956993 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485361496753152: v0 {ValidFrom:1791623356979 ValidTo:0 TxFrom:1791623956984 TxTo:1791623956995 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+              want:
+                n:799485361492262912: v0 {ValidFrom:1791623356979 ValidTo:0 TxFrom:1791623956979 TxTo:1791623956985 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=a,n=1}
+                n:799485361494065152: v0 {ValidFrom:1791623356979 ValidTo:0 TxFrom:1791623956980 TxTo:1791623956987 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=x,n=10}
+                n:799485361494786048: v0 {ValidFrom:1791623356979 ValidTo:0 TxFrom:1791623956981 TxTo:1791623956989 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=y,n=20}
+                r:799485361496294400: v0 {ValidFrom:1791623356979 ValidTo:0 TxFrom:1791623956983 TxTo:1791623956993 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=ry,w=2}
+                r:799485361496753152: v0 {ValidFrom:1791623356979 ValidTo:0 TxFrom:1791623956984 TxTo:1791623956995 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=rxy,w=3}
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.843s
+FAIL

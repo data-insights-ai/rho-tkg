@@ -44,24 +44,7 @@ func (r *RelOps) Get(ctx context.Context, id types.RelID) (*types.Relationship, 
 // Delete removes a relationship from the store.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) Delete(ctx context.Context, id types.RelID) error {
-	c := r.c
-	if err := c.checkWritable(); err != nil {
-		return err
-	}
-	if err := checkCtx(ctx); err != nil {
-		return err
-	}
-	var err error
-	ep, closeErr := c.runUnderRLock(func() {
-		err = c.deleteRelationshipInternal(ctx, id, 0)
-	})
-	if closeErr != nil {
-		return closeErr
-	}
-	if err == nil {
-		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelDelete, EntityID: types.EntityID(id), Timestamp: c.now(), Priority: eventspkg.PriorityCritical})
-	}
-	return err
+	return r.c.endRelationship(ctx, id, 0, false, false)
 }
 
 // DeleteWithTx deletes a relationship like Delete but stamps the tombstone
@@ -73,20 +56,51 @@ func (r *RelOps) Delete(ctx context.Context, id types.RelID) error {
 // version's start, and no recorded close may lie at or after txTo (ErrTxOrder,
 // wrapping ErrInvalidTxFrom). The commit clock is not moved by txTo.
 func (r *RelOps) DeleteWithTx(ctx context.Context, id types.RelID, txTo types.Instant) error {
-	c := r.c
+	return r.c.endRelationship(ctx, id, txTo, true, false)
+}
+
+// Retract ends belief in the relationship (backlog 43): its tombstone is
+// Delete's (TxTo = DeletedAt = the delete instant T) marked Retracted, and a
+// read pinned at or after T finds the relationship at NO valid time — not
+// only after T, as after a Delete — while a read pinned before T answers
+// exactly as before. Current-state reads lose it like after a Delete.
+// Errors: ErrRelNotFound for an unknown ID; an ID already deleted or
+// retracted is refused with an error matching both ErrEntityDeleted and
+// ErrRelNotFound.
+func (r *RelOps) Retract(ctx context.Context, id types.RelID) error {
+	return r.c.endRelationship(ctx, id, 0, false, true)
+}
+
+// RetractWithTx is Retract at the caller's transaction instant txTo, with
+// DeleteWithTx's gates and refusals (ErrInvalidTxFrom, ErrTxBackfillDisabled,
+// ErrTxOrder against the whole chain, a recorded close at or after txTo); the
+// commit clock is not moved by txTo.
+func (r *RelOps) RetractWithTx(ctx context.Context, id types.RelID, txTo types.Instant) error {
+	return r.c.endRelationship(ctx, id, txTo, true, true)
+}
+
+// endRelationship is the body of the four relationship end doors (Delete,
+// DeleteWithTx, Retract, RetractWithTx): withTx gates txTo as a caller
+// instant and reports the past-dated write after the store write.
+func (c *Core) endRelationship(ctx context.Context, id types.RelID, txTo types.Instant, withTx, retract bool) error {
 	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	if err := checkCtx(ctx); err != nil {
 		return err
 	}
-	at, err := c.resolveCallerTxInstant(txTo)
-	if err != nil {
-		return err
+	spec := tombstoneSpec{retract: retract}
+	if withTx {
+		at, err := c.resolveCallerTxInstant(txTo)
+		if err != nil {
+			return err
+		}
+		spec.at = at
+		defer c.notePastDatedWrite(at) // after the store write (as-of cache)
 	}
-	defer c.notePastDatedWrite(at) // after the store write (as-of cache)
+	var err error
 	ep, closeErr := c.runUnderRLock(func() {
-		err = c.deleteRelationshipInternal(ctx, id, at)
+		err = c.deleteRelationshipInternal(ctx, id, spec)
 	})
 	if closeErr != nil {
 		return closeErr
@@ -97,14 +111,16 @@ func (r *RelOps) DeleteWithTx(ctx context.Context, id types.RelID, txTo types.In
 	return err
 }
 
-// deleteRelationshipInternal is the lock-free implementation of RelOps.Delete
-// and RelOps.DeleteWithTx. at == 0 stamps the tombstone at
-// deleteInstantForRelationship (the plain doors: clock floor, moved past a
-// colliding close); at != 0 is a caller instant already gated by
-// resolveCallerTxInstant, checked here under the entity lock (checkTxOrder,
-// checkCallerDeleteCloses) and stamped verbatim, never moved.
+// deleteRelationshipInternal is the lock-free implementation of the
+// relationship end doors (endRelationship and the GraphTx, Batch and ingest
+// twins). spec.at == 0 stamps the tombstone at deleteInstantForRelationship
+// (the plain doors: clock floor, moved past a colliding close); spec.at != 0
+// is a caller instant already gated by resolveCallerTxInstant, checked here
+// under the entity lock (checkTxOrder, checkCallerDeleteCloses) and stamped
+// verbatim, never moved. spec.retract marks the tombstone as a retraction.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
-func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID, at types.Instant) error {
+func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID, spec tombstoneSpec) error {
+	at := spec.at
 	if err := checkCtx(ctx); err != nil {
 		return err
 	}
@@ -148,7 +164,7 @@ func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID, a
 		tmR = &types.TemporalMetadata{}
 		current.SetTemporal(tmR)
 	}
-	stampDeleteTombstone(tmR, now)
+	stampDeleteTombstone(tmR, now, spec.retract)
 
 	// Single atomic call: PutRelVersion + DeleteRelationship. Routes through
 	// the BACKLOG 11f scoped sibling when ctx carries a scoped change-log

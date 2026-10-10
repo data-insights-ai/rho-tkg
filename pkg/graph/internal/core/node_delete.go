@@ -83,27 +83,7 @@ func (n *NodeOps) Get(ctx context.Context, id types.NodeID) (*types.Node, error)
 // Acquires c.mu.RLock (panic-safe) for transaction isolation — blocked
 // while a tx holds c.mu.Lock.
 func (n *NodeOps) Delete(ctx context.Context, id types.NodeID) error {
-	c := n.c
-	if err := c.checkWritable(); err != nil {
-		return err
-	}
-	if err := checkCtx(ctx); err != nil {
-		return err
-	}
-	var (
-		cascadeRelIDs []types.RelID
-		err           error
-	)
-	ep, closeErr := c.runUnderRLock(func() {
-		cascadeRelIDs, err = c.deleteNodeInternal(ctx, id, 0)
-	})
-	if closeErr != nil {
-		return closeErr
-	}
-	if err == nil && ep != nil {
-		dispatchEvent(ep, cascadeDeleteEvents(id, cascadeRelIDs, c.now())...)
-	}
-	return err
+	return n.c.endNode(ctx, id, 0, false, false)
 }
 
 // DeleteWithTx deletes a node and its relationships like Delete but stamps
@@ -117,21 +97,56 @@ func (n *NodeOps) Delete(ctx context.Context, id types.NodeID) error {
 // txTo on any of them (ErrTxOrder, wrapping ErrInvalidTxFrom). Any refusal
 // changes nothing. The commit clock is not moved by txTo.
 func (n *NodeOps) DeleteWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error {
-	c := n.c
+	return n.c.endNode(ctx, id, txTo, true, false)
+}
+
+// Retract ends belief in the node and in every relationship it has (backlog
+// 43): the cascade is Delete's — one instant T on the node's tombstone and on
+// every cascaded relationship's, relationship tombstones written with the
+// node's in one store call — and every tombstone is marked Retracted. A read
+// pinned at or after T finds none of them at ANY valid time (after a Delete
+// the past stays readable); a read pinned before T answers exactly as before.
+// Errors: ErrNodeNotFound for an unknown ID; an ID already deleted or
+// retracted is refused with an error matching both ErrEntityDeleted and
+// ErrNodeNotFound.
+func (n *NodeOps) Retract(ctx context.Context, id types.NodeID) error {
+	return n.c.endNode(ctx, id, 0, false, true)
+}
+
+// RetractWithTx is Retract at the caller's transaction instant txTo, with
+// DeleteWithTx's gates and refusals on the node and on every cascaded
+// relationship (ErrInvalidTxFrom, ErrTxBackfillDisabled, ErrTxOrder, a
+// recorded close at or after txTo); any refusal changes nothing, and the
+// commit clock is not moved by txTo.
+func (n *NodeOps) RetractWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error {
+	return n.c.endNode(ctx, id, txTo, true, true)
+}
+
+// endNode is the body of the four node end doors (Delete, DeleteWithTx,
+// Retract, RetractWithTx): withTx gates txTo as a caller instant and reports
+// the past-dated write after the store write.
+func (c *Core) endNode(ctx context.Context, id types.NodeID, txTo types.Instant, withTx, retract bool) error {
 	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	if err := checkCtx(ctx); err != nil {
 		return err
 	}
-	at, err := c.resolveCallerTxInstant(txTo)
-	if err != nil {
-		return err
+	spec := tombstoneSpec{retract: retract}
+	if withTx {
+		at, err := c.resolveCallerTxInstant(txTo)
+		if err != nil {
+			return err
+		}
+		spec.at = at
+		defer c.notePastDatedWrite(at) // after the store write (as-of cache)
 	}
-	defer c.notePastDatedWrite(at) // after the store write (as-of cache)
-	var cascadeRelIDs []types.RelID
+	var (
+		cascadeRelIDs []types.RelID
+		err           error
+	)
 	ep, closeErr := c.runUnderRLock(func() {
-		cascadeRelIDs, err = c.deleteNodeInternal(ctx, id, at)
+		cascadeRelIDs, err = c.deleteNodeInternal(ctx, id, spec)
 	})
 	if closeErr != nil {
 		return closeErr
@@ -142,12 +157,13 @@ func (n *NodeOps) DeleteWithTx(ctx context.Context, id types.NodeID, txTo types.
 	return err
 }
 
-// deleteNodeInternal is the lock-free implementation of NodeOps.Delete and
-// NodeOps.DeleteWithTx. at == 0 stamps the cascade at
-// deleteInstantForNodeCascade (the plain doors); at != 0 is a caller instant
-// already gated by resolveCallerTxInstant, checked in Phase B under the full
-// entity lock (checkNodeCascadeCallerTx) and stamped verbatim on the node and
-// every cascaded relationship, never moved.
+// deleteNodeInternal is the lock-free implementation of the node end doors
+// (endNode and the GraphTx, Batch and ingest twins). spec.at == 0 stamps the
+// cascade at deleteInstantForNodeCascade (the plain doors); spec.at != 0 is a
+// caller instant already gated by resolveCallerTxInstant, checked in Phase B
+// under the full entity lock (checkNodeCascadeCallerTx) and stamped verbatim
+// on the node and every cascaded relationship, never moved. spec.retract
+// marks every tombstone of the cascade as a retraction.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 //
 // Two-phase locking with TOCTOU retry:
@@ -155,7 +171,7 @@ func (n *NodeOps) DeleteWithTx(ctx context.Context, id types.NodeID, txTo types.
 //	Phase A (node lock only): confirm node exists, read adjacency, collect all entity IDs.
 //	Phase B (all entities locked): re-read node + adjacency, verify adjacency unchanged, then mutate.
 //	If adjacency changed between phases, retry from Phase A.
-func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID, at types.Instant) ([]types.RelID, error) {
+func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID, spec tombstoneSpec) ([]types.RelID, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -276,7 +292,7 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID, at types
 				return
 			}
 
-			relIDs, phaseBErr = c.deleteNodeLocked(ctx, id, current, outRels2, inRels2, at)
+			relIDs, phaseBErr = c.deleteNodeLocked(ctx, id, current, outRels2, inRels2, spec)
 			done = true
 		}()
 		if retry {
@@ -352,11 +368,13 @@ func sameIDSet(a, b []snowflake.ID) bool {
 // atomic DeleteNodeWithHistory call (replaces PutRelVersion×N + PutNodeVersion +
 // DeleteNodeCascade with one compound store operation).
 //
-// at != 0 is a caller instant: the order and close rules run on the node and
-// on every cascaded relationship (the Phase-B rows) before the first write, and
-// at is the one instant of every tombstone. at == 0 is the plain doors'
-// deleteInstantForNodeCascade.
-func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *types.Node, outRels, inRels []*types.Relationship, at types.Instant) ([]types.RelID, error) {
+// spec.at != 0 is a caller instant: the order and close rules run on the node
+// and on every cascaded relationship (the Phase-B rows) before the first
+// write, and spec.at is the one instant of every tombstone. spec.at == 0 is
+// the plain doors' deleteInstantForNodeCascade. spec.retract marks the node's
+// and every cascaded relationship's tombstone alike.
+func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *types.Node, outRels, inRels []*types.Relationship, spec tombstoneSpec) ([]types.RelID, error) {
+	at := spec.at
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -402,7 +420,7 @@ func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *t
 				tmR = &types.TemporalMetadata{}
 				tombstone.SetTemporal(tmR)
 			}
-			stampDeleteTombstone(tmR, now)
+			stampDeleteTombstone(tmR, now, spec.retract)
 			relTombstones = append(relTombstones, storepkg.RelTombstone{
 				ID:          types.RelID(rid),
 				PrevVersion: r.Version(),
@@ -418,7 +436,7 @@ func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *t
 		tmN = &types.TemporalMetadata{}
 		current.SetTemporal(tmN)
 	}
-	stampDeleteTombstone(tmN, now)
+	stampDeleteTombstone(tmN, now, spec.retract)
 
 	// Single atomic call: PutRelVersion×N + PutNodeVersion + DeleteNodeCascade.
 	// Routes through the BACKLOG 11f scoped sibling when ctx carries a scoped

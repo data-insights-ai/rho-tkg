@@ -36,6 +36,8 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "Delete", run: func() error { return nilAPI.Delete(context.Background(), id) }},
 		{name: "DeleteWithContext", run: func() error { return nilAPI.Delete(ctx, id) }},
 		{name: "DeleteWithTx", run: func() error { return nilAPI.DeleteWithTx(ctx, id, 1000) }},
+		{name: "Retract", run: func() error { return nilAPI.Retract(ctx, id) }},
+		{name: "RetractWithTx", run: func() error { return nilAPI.RetractWithTx(ctx, id, 1000) }},
 		{name: "UpdateWithTx", run: func() error { _, err := nilAPI.UpdateWithTx(ctx, id, nil, 1000); return err }},
 		{name: "Import", run: func() error { _, err := nilAPI.Import(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "AddByIDIfAbsent", run: func() error { _, _, err := nilAPI.AddByIDIfAbsent(ctx, id, []string{"Node"}, nil); return err }},
@@ -140,6 +142,8 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "Delete", run: func() error { return api.Delete(context.Background(), id) }},
 		{name: "DeleteWithContext", run: func() error { return api.Delete(ctx, id) }},
 		{name: "DeleteWithTx", run: func() error { return api.DeleteWithTx(ctx, id, 1000) }},
+		{name: "Retract", run: func() error { return api.Retract(ctx, id) }},
+		{name: "RetractWithTx", run: func() error { return api.RetractWithTx(ctx, id, 1000) }},
 		{name: "UpdateWithTx", run: func() error { _, err := api.UpdateWithTx(ctx, id, nil, 1000); return err }},
 		{name: "Import", run: func() error { _, err := api.Import(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "AddByIDIfAbsent", run: func() error { _, _, err := api.AddByIDIfAbsent(ctx, id, []string{"Node"}, nil); return err }},
@@ -204,7 +208,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	wantCalls := []string{
 		"Add", "Add", "AddWithTx", "Get", "Get", "Lend", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
-		"Delete", "Delete", "DeleteWithTx", "UpdateWithTx", "Import", "AddByIDIfAbsent", "GetOrCreateByKey", "All", "ForEach", "ForEach", "ByLabel", "ByLabelAndProperty", "ByLabelAndProperties",
+		"Delete", "Delete", "DeleteWithTx", "Retract", "RetractWithTx", "UpdateWithTx", "Import", "AddByIDIfAbsent", "GetOrCreateByKey", "All", "ForEach", "ForEach", "ByLabel", "ByLabelAndProperty", "ByLabelAndProperties",
 		"Count", "CountByLabel", "SetProperty", "DeleteProperty",
 		"CompareAndSetProperty", "CompareAndSetProperty",
 		"AddLabel", "RemoveLabel", "CloseVersion", "History", "HasHistory", "VersionAfter", "VersionBefore",
@@ -329,6 +333,19 @@ func (s *nodeOpsSpy) Delete(ctx context.Context, id types.NodeID) error {
 
 func (s *nodeOpsSpy) DeleteWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error {
 	s.record("DeleteWithTx")
+	s.lastID = id
+	s.lastTx = txTo
+	return s.err
+}
+
+func (s *nodeOpsSpy) Retract(ctx context.Context, id types.NodeID) error {
+	s.record("Retract")
+	s.lastID = id
+	return s.err
+}
+
+func (s *nodeOpsSpy) RetractWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error {
+	s.record("RetractWithTx")
 	s.lastID = id
 	s.lastTx = txTo
 	return s.err
@@ -731,5 +748,32 @@ func TestAPILatestStampsForwardsAnswer(t *testing.T) {
 	var nilAPI *API
 	if _, _, _, err := nilAPI.LatestStamps(1); !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("nil API LatestStamps = %v, want ErrNilGraph", err)
+	}
+}
+
+// Backlog 43: the retraction doors must reach Ops.Retract / Ops.RetractWithTx
+// with the id and the instant verbatim. Catches a facade that forwards a
+// retraction to Delete / DeleteWithTx (Retract as Delete: the past stays
+// readable), drops the instant, or swaps the id.
+func TestAPIRetractDoorsForwardVerbatim(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ops := &nodeOpsSpy{}
+	api := New(ops)
+	if err := api.Retract(ctx, 41); err != nil {
+		t.Fatalf("Retract: %v", err)
+	}
+	if len(ops.calls) != 1 || ops.calls[0] != "Retract" || ops.lastID != 41 {
+		t.Fatalf("Retract forwarded calls=%v id=%v; want [Retract] 41", ops.calls, ops.lastID)
+	}
+	for _, at := range []types.Instant{1, 1767268800000, -7} {
+		ops := &nodeOpsSpy{}
+		api := New(ops)
+		if err := api.RetractWithTx(ctx, 42, at); err != nil {
+			t.Fatalf("RetractWithTx(%d): %v", at, err)
+		}
+		if len(ops.calls) != 1 || ops.calls[0] != "RetractWithTx" || ops.lastID != 42 || ops.lastTx != at {
+			t.Fatalf("RetractWithTx forwarded calls=%v id=%v at=%d; want [RetractWithTx] 42 %d", ops.calls, ops.lastID, ops.lastTx, at)
+		}
 	}
 }

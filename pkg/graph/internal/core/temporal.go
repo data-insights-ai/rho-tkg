@@ -118,6 +118,16 @@ func (c *Core) deleteInstantClearOfCloses(at types.Instant, tms ...*types.Tempor
 	return at
 }
 
+// tombstoneSpec is how a delete door ends an entity (backlog 43): at is a
+// caller transaction instant already gated by resolveCallerTxInstant (0 = the
+// plain doors' clock instant), retract marks every tombstone the door writes
+// as a retraction (types.TemporalMetadata.Retracted): belief in the life it
+// ends ends at the tombstone's instant for every valid time.
+type tombstoneSpec struct {
+	at      types.Instant
+	retract bool
+}
+
 // stampDeleteTombstone turns tm (the final version of an entity being hard
 // deleted, already a private copy) into its delete tombstone at instant at.
 // It is the ONE place the tombstone temporal stamps are decided; every delete
@@ -130,8 +140,9 @@ func (c *Core) deleteInstantClearOfCloses(at types.Instant, tms ...*types.Tempor
 // reader pinned before the delete then reset the delete-stamped ValidTo to 0,
 // reporting the closed entity as open-ended (a later write changing a
 // historical answer). DeletedAt and TxTo are always the delete instant.
-func stampDeleteTombstone(tm *types.TemporalMetadata, at types.Instant) {
+func stampDeleteTombstone(tm *types.TemporalMetadata, at types.Instant, retract bool) {
 	tm.DeletedAt = at
+	tm.Retracted = retract
 	if tm.ValidTo == 0 || tm.ValidTo > at {
 		tm.ValidTo = at
 	}

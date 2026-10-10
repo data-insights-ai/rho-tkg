@@ -383,12 +383,13 @@ func (tx *GraphTx) DeleteRelationshipProperty(id types.RelID, key string) error 
 // Delegates the actual deletion to Graph.Nodes.Delete.
 // Holds tx.mu for the whole call — see AddNode.
 func (tx *GraphTx) DeleteNode(id types.NodeID) error {
-	return tx.deleteNodeAt(id, 0)
+	return tx.deleteNodeAt(id, tombstoneSpec{})
 }
 
-// deleteNodeAt is DeleteNode with a caller transaction instant at (0 = the
-// clock; see DeleteNodeWithTx).
-func (tx *GraphTx) deleteNodeAt(id types.NodeID, at types.Instant) error {
+// deleteNodeAt is DeleteNode with a tombstone spec: a caller transaction
+// instant (0 = the clock; see DeleteNodeWithTx) and the retraction marker
+// (RetractNode, RetractNodeWithTx).
+func (tx *GraphTx) deleteNodeAt(id types.NodeID, spec tombstoneSpec) error {
 	if err := tx.lockActiveCoreWrite(); err != nil {
 		return err
 	}
@@ -451,7 +452,7 @@ func (tx *GraphTx) deleteNodeAt(id types.NodeID, at types.Instant) error {
 	}
 
 	// Perform the actual deletion (internal — tx already holds c.mu.Lock).
-	cascadeRelIDs, err := tx.g.deleteNodeInternal(tx.doorCtx(), id, at)
+	cascadeRelIDs, err := tx.g.deleteNodeInternal(tx.doorCtx(), id, spec)
 	if err != nil {
 		return err
 	}
@@ -480,15 +481,16 @@ func (tx *GraphTx) DeleteRelationship(id types.RelID) error {
 		return err
 	}
 	defer tx.unlockActiveCoreWrite()
-	return tx.deleteRelationshipAtLocked(id, 0)
+	return tx.deleteRelationshipAtLocked(id, tombstoneSpec{})
 }
 
-// deleteRelationshipAtLocked is the body of DeleteRelationship and
-// DeleteRelationshipWithTx: snapshot the row and its history for Rollback,
-// delete through the shared seam (at == 0: the plain clock stamp; at != 0: a
-// caller instant already gated by resolveCallerTxInstant), then record the
-// deletion. Caller holds lockActiveCoreWrite.
-func (tx *GraphTx) deleteRelationshipAtLocked(id types.RelID, at types.Instant) error {
+// deleteRelationshipAtLocked is the body of DeleteRelationship,
+// DeleteRelationshipWithTx, RetractRelationship and RetractRelationshipWithTx:
+// snapshot the row and its history for Rollback, delete through the shared
+// seam (spec.at == 0: the plain clock stamp; spec.at != 0: a caller instant
+// already gated by resolveCallerTxInstant; spec.retract: the retraction
+// marker), then record the deletion. Caller holds lockActiveCoreWrite.
+func (tx *GraphTx) deleteRelationshipAtLocked(id types.RelID, spec tombstoneSpec) error {
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return err
 	}
@@ -505,7 +507,7 @@ func (tx *GraphTx) deleteRelationshipAtLocked(id types.RelID, at types.Instant) 
 	}
 
 	// Perform the actual deletion (internal — tx already holds c.mu.Lock).
-	if err := tx.g.deleteRelationshipInternal(tx.doorCtx(), id, at); err != nil {
+	if err := tx.g.deleteRelationshipInternal(tx.doorCtx(), id, spec); err != nil {
 		return err
 	}
 
@@ -541,7 +543,36 @@ func (tx *GraphTx) DeleteRelationshipWithTx(id types.RelID, txTo types.Instant) 
 		return err
 	}
 	defer tx.g.notePastDatedWrite(at) // after the store write (as-of cache)
-	return tx.deleteRelationshipAtLocked(id, at)
+	return tx.deleteRelationshipAtLocked(id, tombstoneSpec{at: at})
+}
+
+// RetractRelationship is DeleteRelationship writing a retraction tombstone
+// (see Rels().Retract): at pins at or after its instant the relationship is
+// absent at every valid time. Snapshot, rollback and commit behave exactly as
+// DeleteRelationship: Rollback restores the row and its history (no marker
+// survives).
+func (tx *GraphTx) RetractRelationship(id types.RelID) error {
+	if err := tx.lockActiveCoreWrite(); err != nil {
+		return err
+	}
+	defer tx.unlockActiveCoreWrite()
+	return tx.deleteRelationshipAtLocked(id, tombstoneSpec{retract: true})
+}
+
+// RetractRelationshipWithTx is RetractRelationship at the caller's
+// transaction instant txTo, with DeleteRelationshipWithTx's gates and
+// refusals (ErrInvalidTxFrom, ErrTxBackfillDisabled, ErrTxOrder).
+func (tx *GraphTx) RetractRelationshipWithTx(id types.RelID, txTo types.Instant) error {
+	if err := tx.lockActiveCoreWrite(); err != nil {
+		return err
+	}
+	defer tx.unlockActiveCoreWrite()
+	at, err := tx.g.resolveCallerTxInstant(txTo)
+	if err != nil {
+		return err
+	}
+	defer tx.g.notePastDatedWrite(at) // after the store write (as-of cache)
+	return tx.deleteRelationshipAtLocked(id, tombstoneSpec{at: at, retract: true})
 }
 
 // UpdateRelationshipWithTx is UpdateRelationship stamping the change with the

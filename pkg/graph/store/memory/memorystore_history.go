@@ -1186,6 +1186,8 @@ func relCopyVisibleAtTxTime(r *types.Relationship, txTime types.Instant) *types.
 // close was clamped to the delete), so it reopens; any other ValidTo is a close
 // recorded before the delete and is kept. The delete doors guarantee the marker
 // is unambiguous (stampDeleteTombstone / deleteInstantClearOfCloses in core).
+// A retraction recorded after txTime is removed with its delete (backlog 43):
+// the row reads as it was believed then.
 func normalizeTemporalVisibleAtTxTime(tm *types.TemporalMetadata, txTime types.Instant) {
 	if tm == nil {
 		return
@@ -1198,6 +1200,7 @@ func normalizeTemporalVisibleAtTxTime(tm *types.TemporalMetadata, txTime types.I
 			tm.ValidTo = 0
 		}
 		tm.DeletedAt = 0
+		tm.Retracted = false
 	}
 }
 

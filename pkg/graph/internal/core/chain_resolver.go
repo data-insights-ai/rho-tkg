@@ -2,6 +2,7 @@ package core
 
 import (
 	"cmp"
+	"math"
 	"slices"
 
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -186,7 +187,25 @@ func selectAsOfChain[T storeutil.TemporalRow](chain []T, pin types.Instant, last
 // row's life is the span up to the first delete recorded at or after it, so a
 // re-imported ID's later rows (recorded after the delete) are not capped. A
 // nil map caps nothing.
+//
+// A retraction (backlog 43: a tombstone marked Retracted) caps its life at
+// retractedLife, before every valid instant: the life it ends answers at no
+// valid time. The chain is TxAt-filtered and normalized, so the tombstone
+// still carries its delete only at pins at or after the retraction; at an
+// earlier pin it is an ordinary row and nothing is capped.
 type lifeEnds[T comparable] map[T]types.Instant
+
+// retractedLife is the life end of a retracted life: every valid end is
+// capped to it, so no row of the life covers any instant (end) and every
+// interval of the life is empty (cut).
+const retractedLife = types.Instant(math.MinInt64)
+
+// chainDeath is one delete a chain holds: its instant and whether it was a
+// retraction.
+type chainDeath struct {
+	at        types.Instant
+	retracted bool
+}
 
 // chainLifeEnds builds the lifeEnds of a (TxAt-filtered, tombstone-normalized)
 // chain: nil when no row carries a DeletedAt.
@@ -194,24 +213,29 @@ func chainLifeEnds[T interface {
 	comparable
 	storeutil.TemporalRow
 }](chain []T) lifeEnds[T] {
-	var deaths []types.Instant
+	var deaths []chainDeath
 	for _, r := range chain {
 		if tm := r.Temporal(); tm != nil && tm.DeletedAt != 0 {
-			deaths = append(deaths, tm.DeletedAt)
+			deaths = append(deaths, chainDeath{at: tm.DeletedAt, retracted: tm.Retracted})
 		}
 	}
 	if len(deaths) == 0 {
 		return nil
 	}
-	slices.Sort(deaths)
+	slices.SortFunc(deaths, func(a, b chainDeath) int { return cmp.Compare(a.at, b.at) })
 	caps := make(lifeEnds[T], len(chain))
 	for _, r := range chain {
 		var recorded types.Instant
 		if tm := r.Temporal(); tm != nil {
 			recorded = tm.TxFrom
 		}
-		if i, _ := slices.BinarySearch(deaths, recorded); i < len(deaths) {
-			caps[r] = deaths[i]
+		i, _ := slices.BinarySearchFunc(deaths, recorded, func(d chainDeath, t types.Instant) int { return cmp.Compare(d.at, t) })
+		if i < len(deaths) {
+			if deaths[i].retracted {
+				caps[r] = retractedLife
+			} else {
+				caps[r] = deaths[i].at
+			}
 		}
 	}
 	return caps

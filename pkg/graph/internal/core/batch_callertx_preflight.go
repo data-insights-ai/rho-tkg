@@ -43,8 +43,10 @@ func (g *ingestGroup) callerTxUnit() callerTxUnit {
 // strong-mode ingest group that does is applied in a unit of its own
 // (applyCommitGroup), so its refusal fails that group only.
 func (u callerTxUnit) hasCallerTx() bool {
-	if len(u.relTxDeletes) > 0 {
-		return true
+	for i := range u.relTxDeletes {
+		if u.relTxDeletes[i].at != 0 {
+			return true
+		}
 	}
 	for i := range u.relUpdates {
 		if u.relUpdates[i].update.temporal.txAt != 0 {
@@ -150,7 +152,7 @@ func (c *Core) precheckCallerTxOps(u callerTxUnit) error {
 		ids, err := c.nodeAdjacentRelIDs(d.id)
 		if err != nil {
 			if d.at != 0 {
-				return BatchError{Op: "DeleteNodeWithTx", ID: types.EntityID(d.id), Err: err}
+				return BatchError{Op: d.callerTxOpName(), ID: types.EntityID(d.id), Err: err}
 			}
 			continue // a plain delete fails on its own at apply
 		}
@@ -194,7 +196,7 @@ func (c *Core) precheckCallerTxOps(u callerTxUnit) error {
 			continue
 		}
 		refuse := func(err error) error {
-			return BatchError{Op: "DeleteNodeWithTx", ID: types.EntityID(d.id), Err: err}
+			return BatchError{Op: d.callerTxOpName(), ID: types.EntityID(d.id), Err: err}
 		}
 		if nodeTouched[d.id] > 1 || endpointOfCreate[d.id] {
 			return refuse(another("node", int64(d.id), d.at))
@@ -238,7 +240,10 @@ func (c *Core) precheckCallerTxOps(u callerTxUnit) error {
 	}
 	for i := range u.relTxDeletes {
 		d := u.relTxDeletes[i]
-		if err := check("DeleteRelationshipWithTx", d.id, d.at, func(current *types.Relationship) error {
+		if d.at == 0 {
+			continue // a plain RetractRelationship fails on its own at apply
+		}
+		if err := check(d.opName(), d.id, d.at, func(current *types.Relationship) error {
 			return c.checkRelCallerDelete(d.id, current, d.at)
 		}); err != nil {
 			return err
