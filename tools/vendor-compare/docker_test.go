@@ -249,6 +249,33 @@ func TestDockerImmutableIDReplacementAndObservationIdentity(t *testing.T) {
 		t.Fatal("observation identity changed", err)
 	}
 }
+func TestDockerUsesExactPackagedExecutablesForNoninteractiveCommands(t *testing.T) {
+	base := ownedFakeCommand(t, false)
+	var scripts []string
+	controller := &DockerController{waitReady: func(context.Context) error { return nil }}
+	controller.command = func(ctx context.Context, args ...string) ([]byte, error) {
+		if len(args) == 8 && args[0] == "docker" && args[1] == "exec" {
+			script := args[7]
+			if strings.Contains(script, "gadmin ") || strings.Contains(script, "gsql ") {
+				if !strings.HasPrefix(script, "/home/tigergraph/tigergraph/app/4.2.5/cmd/") {
+					return nil, ErrContract
+				}
+				scripts = append(scripts, script)
+			}
+		}
+		return base(ctx, args...)
+	}
+	if _, err := controller.Prepare(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.Reopen(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{gadminExecutable + " start all", gsqlExecutable + " version", gsqlExecutable + " /opt/vendor-compare/schema.gsql", gadminExecutable + " stop all -y", gadminExecutable + " start all"}
+	if !slices.Equal(scripts, want) {
+		t.Fatal("packaged command binding", scripts, want)
+	}
+}
 func TestDockerReplacementDuringReadOnlyPreflightAndVolumeRecreation(t *testing.T) {
 	for _, fault := range []string{"container-prestart", "recreated-volume"} {
 		t.Run(fault, func(t *testing.T) {

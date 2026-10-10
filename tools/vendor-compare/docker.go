@@ -21,6 +21,11 @@ import (
 //go:embed deploy/tigergraph-schema.gsql
 var schema []byte
 
+const (
+	gadminExecutable = "/home/tigergraph/tigergraph/app/4.2.5/cmd/gadmin"
+	gsqlExecutable   = "/home/tigergraph/tigergraph/app/4.2.5/cmd/gsql"
+)
+
 type commandFunc func(context.Context, ...string) ([]byte, error)
 type cappedOutput struct {
 	buffer   bytes.Buffer
@@ -271,10 +276,10 @@ func (d *DockerController) Prepare(ctx context.Context) (Identity, error) {
 	if _, _, err := d.owned(ctx); err != nil {
 		return Identity{}, err
 	}
-	if _, err := d.commandIn(ctx, "gadmin start all"); err != nil {
+	if _, err := d.commandIn(ctx, gadminExecutable+" start all"); err != nil {
 		return Identity{}, err
 	}
-	data, err := d.commandIn(ctx, "gsql version")
+	data, err := d.commandIn(ctx, gsqlExecutable+" version")
 	if err != nil {
 		return Identity{}, err
 	}
@@ -285,7 +290,7 @@ func (d *DockerController) Prepare(ctx context.Context) (Identity, error) {
 	if err := d.checkSchema(ctx); err != nil {
 		return Identity{}, err
 	}
-	data, err = d.commandIn(ctx, "gsql /opt/vendor-compare/schema.gsql")
+	data, err = d.commandIn(ctx, gsqlExecutable+" /opt/vendor-compare/schema.gsql")
 	if err != nil {
 		return Identity{}, err
 	}
@@ -317,7 +322,7 @@ func (d *DockerController) Reopen(ctx context.Context) error {
 	if _, _, err := d.owned(ctx); err != nil {
 		return err
 	}
-	if _, err := d.commandIn(ctx, "gadmin stop all -y"); err != nil {
+	if _, err := d.commandIn(ctx, gadminExecutable+" stop all -y"); err != nil {
 		return err
 	}
 	if _, err := d.command(ctx, "docker", "restart", d.containerID); err != nil {
@@ -329,7 +334,7 @@ func (d *DockerController) Reopen(ctx context.Context) error {
 	if err := d.checkSchema(ctx); err != nil {
 		return err
 	}
-	if _, err := d.commandIn(ctx, "gadmin start all"); err != nil {
+	if _, err := d.commandIn(ctx, gadminExecutable+" start all"); err != nil {
 		return err
 	}
 	return d.ready(ctx)

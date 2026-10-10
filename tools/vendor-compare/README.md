@@ -29,7 +29,9 @@ restart use a pinned full container ID; replacement and observation identity
 changes refuse. These metadata checks are not atomic against arbitrary host
 administration. Native graph/type/discriminator schema verification remains
 unfinished. The controller starts services, creates the named schema and
-restarts the same container. It does not create containers or download images.
+restarts the same container. Noninteractive commands use fixed versioned paths
+for the packaged `gadmin` and `gsql` executables. It does not create containers
+or download images.
 
 The `--out` option selects a new local artifact directory outside Git worktrees.
 Omitting it selects an owned temporary location returned to the caller. The
