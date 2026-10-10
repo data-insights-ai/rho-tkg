@@ -231,7 +231,12 @@ func newLazyReadFixture(t *testing.T, door string) *lazyReadFixture {
 	return f
 }
 func lazyReadOptions(cfg Config) *pebble.Options {
-	opts := &pebble.Options{FS: cfg.FS, CacheSize: 1, MemTableSize: cfg.Limits.MemTableBytes, FormatMajorVersion: pebble.FormatValueSeparation}
+	// Checksum controls damage the exact physical block proved by priming.
+	// A background compaction can otherwise copy its healthy bytes to a new
+	// blob before Verify creates its fresh iterator. Manual fixture Compact still
+	// builds genuine lazy values; ordinary adapter Open compatibility is proved
+	// separately before any handle or private staging-backend preparation.
+	opts := &pebble.Options{FS: cfg.FS, CacheSize: 1, MemTableSize: cfg.Limits.MemTableBytes, FormatMajorVersion: pebble.FormatValueSeparation, DisableAutomaticCompactions: true}
 	opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
 		return pebble.ValueSeparationPolicy{Enabled: true, MinimumSize: 1, MaxBlobReferenceDepth: 1}
 	}
