@@ -208,18 +208,21 @@ runnable example.
 
 | Feature | What it gives you |
 |---|---|
-| Bitemporal queries | Valid-time × transaction-time point/interval queries (`NodeAtTx`, `NodesAsOf`, `NodeAt`, `RelsDuring`, …) |
+| Bitemporal queries | Valid-time × transaction-time point/interval queries (`NodeAtTx`, `NodesAsOf`, `NodeAt`, `RelsDuring`, …) and an entity's whole valid-time state at a pin in one call (`NodeEffectiveTimeline`, `ForEachRelEffectiveByType`) |
 | Append-only version history | Every update/delete keeps prior versions; stored rows are never mutated |
 | Hash-chained integrity | SHA-256 chain per entity; `g.Hash().VerifyNodeChain`/`VerifyRelChain` detect tampering or corruption |
 | Named as-of marks | `TagAsOf`/`ResolveAsOf` give a durable name to a transaction-time pin (§4.2) |
-| Transaction-time backfill | `AddWithTx` reproduces a documented historical knowledge state at re-ingest, gated by `Config.AllowTxBackfill` (§4.1) |
+| Transaction-time backfill | `AddWithTx`, `UpdateWithTx` and `DeleteWithTx` record a create, supersession or ending at a caller's transaction instant (re-ingest of a documented historical knowledge state), gated by `Config.AllowTxBackfill` and refused with `ErrTxOrder` when the instant does not follow the entity's chain (§4.1) |
 | CDC change-log | Durable ordered op-log (`Config.ChangeLog`) with monotonic LSNs; tail via `g.Replication().ForEachChange` |
 | Byte-exact read replicas | `Config.ReadOnlyReplica` + `ApplyChange`/`ApplyChanges` reproduce a primary's rows verbatim (Phase 1: log-shipped bootstrap + tail; orchestration/failover automation is external) |
 | Delta backups | `g.IO().ExportSince`/`ImportMerge` ship and replay only what changed since a cursor |
 | One-call backups | `g.IO().BackupTo`/`BackupDeltaTo` write deterministic, LSN-named backup files; `graph.RestoreInto` replays a full+delta set — see [Backups](#backups) |
-| Property, temporal, and vector indexes | Property equality/range lookups, high-frequency temporal buckets, and k-NN vector search — approximate HNSW by default, with an exact brute-force escape hatch (`VectorIndexOptions.UseBruteForce` via `CreateVectorIndexWithOptions`) |
+| Property, temporal, and vector indexes | Property equality/range lookups, high-frequency temporal buckets, and k-NN vector search — approximate HNSW by default, with an exact brute-force escape hatch (`VectorIndexOptions.UseBruteForce` via `g.Index().CreateVectorWithOptions`) |
 | Encryption at rest | `Config.EncryptionKey` (AES-128/192/256) encrypts every Badger-backed shard; requires `BlockCacheSize`/`IndexCacheSize` > 0 (validated at `New`, never a Badger panic) |
 | Transactions & batches | `g.Tx()` (serialized against other transactions; write-through with compensating rollback — not isolated from concurrent standalone reads/writes, see [architecture](docs/architecture.md#transaction-isolation--what-v4-actually-guarantees)) and `g.Batch()` (bulk ops, atomic against readers, with partial-failure reporting) |
+| Unique constraints | `g.Constraints().CreateUnique` (current state) and `CreateUniqueForever` (a value is owned by its first holder forever), enforced on every node write door (standalone, tx, batch, ingest, interval rewrites) |
+| Durable commit | `Config.DurableCommit` makes `Tx().Run`, `Batch().Run` (`BatchBuilder.Execute`) and the strong ingest applier return only after the group is on disk (`ErrCommitNotDurable` otherwise) |
+| History compaction & retention | `g.Admin().CompactHistoryNodes`/`CompactHistoryRels` trim old versions behind a verifiable stub; `PurgeExpiredNodes` (gated by `Config.AllowRetentionPurge`) hard-removes the aged-out nodes of a label |
 | Event bus | Sync/async hooks on every mutation, for building your own indexes or side effects |
 
 ## Backups
@@ -271,6 +274,8 @@ leave the stdlib import unaliased.
 - [`docs/architecture.md`](docs/architecture.md) — Architecture & Concurrency: system boundaries, entity lock manager, multi-phase iteration, and thread safety.
 - [`docs/persistence.md`](docs/persistence.md) — Storage interfaces, `badger.Store`, `tiered.Store`, and EXPERIMENTAL `sharded.Store` slot-topology persistence.
 - [`docs/design.md`](docs/design.md) — Design invariants: protocol guarantees, referential integrity, defensive copying, and error sentinels.
+- [`docs/errors.md`](docs/errors.md) — Error sentinels reference: every public sentinel and the doors that return it.
+- [`docs/query-planners.md`](docs/query-planners.md) — Query planner statistics: cardinality estimates, index-usability checks, staleness detection.
 - [`docs/stability.md`](docs/stability.md) — API Stability & Deprecation Policy: v4 stability promise, experimental surfaces, and release conventions.
 - [`docs/SPEC.md`](docs/SPEC.md) — Formal specifications and algorithms.
 
