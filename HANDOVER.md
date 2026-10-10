@@ -266,6 +266,8 @@ Done and verified this session (do not redo): see §2 table plus CHANGELOG; the 
 
 ---
 
+**Efficiency rules (René 2026-10-10, lesson 79): batch PATCH releases (one gate), authors run lint+security before reporting, one review round per feature branch (none for doc/comment-only), briefs name only the 5-8 key files, backlog items only for a consumer request or a failing test, never stop a running agent unless asked.**
+
 **Model rule (René 2026-10-10): documentation-review agents (md files vs code) use `model: "sonnet"`; feature builds and code reviews stay Opus; escalate to Opus only if a Sonnet result needs a second fix round.**
 
 ## Appendix A — agent prompt skeleton that produced the good results (fill the <>)

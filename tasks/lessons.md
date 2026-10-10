@@ -2498,3 +2498,18 @@ TDD rule for every NEW item, including ones I delegate and ones I do myself.
   tests and says so in the commit.
 - **Detector:** `grep -rn 't.Skip' pkg | grep -v 'sharded does not support'` against the change; evidence files
   whose red run is missing; "unaffected" claims without a test.
+
+## 79. Process Cost: Batch Releases, Author-Run Gates, One Review Round, Short Briefs
+
+- **Trigger:** René 2026-10-10: "i think there is a lot of inefficient work" after a session of six releases, two to three
+  review rounds per branch, lint/security failures found only after merging, 30-file reading lists in every brief, eight agents
+  for a documentation pass whose findings were mostly stale wording, two stopped agents, and many unrequested backlog items.
+- **Rules:** (1) release in batches as PATCH versions (one gate, one consumer build, one message), not per merged branch;
+  (2) the author runs `make lint-docker` and `make security-docker` before reporting (already in the brief: reject a report
+  without them); (3) one reviewer round per feature branch, the fix round goes to the same agent, a second review only for a
+  blocker; doc-only and comment-only changes get the docs tests and a diff read, no reviewer; (4) a brief names the 5-8 files
+  that matter and points to HANDOVER/AGENTS for the rest; (5) file a backlog item only for a consumer request or a failing
+  test; (6) never stop a running agent unless the user asks, let it finish and use the result.
+- **Not cut:** the failing test first, break-the-code cases and the release gate (lessons 77/78): they found the real bugs.
+- **Detector:** more than one review round on a branch, a lint finding after a merge, a brief with more than ten file names,
+  a backlog item with no named requester or test.
