@@ -114,7 +114,8 @@ Not committed anywhere else: nothing. `git status` clean (except this file and t
    whole chain incl. re-imported lives, ONE caller instant `t` for every appended row, commit clock not advanced,
    `notePastDatedWrite`, whole-unit pre-flight in batch/ingest, replica reproduces stamps, plain doors unchanged, W5
    oracle `tx_backfill_oracle_test.go` gets the op). Prompt basis: Appendix A with backlog 34 + handover
-   `tasks/handover-tx-backfill-delete-update-20261009.md` as the spec.
+   `tasks/handover-tx-backfill-delete-update-20261009.md` as the spec. (An agent launch for this was REJECTED by René in the turn before
+   the docs review; do not start it before the retraction door unless he says so.)
 2. **Backlog 33 + 42, then 41** (badger read cost): current-row stamps capability reading only the temporal tail on an
    entity-cache miss (LatestStamps cache miss today 6.5–7.1 µs, 25 allocs; sharded/tiered 8–12 allocs); effective-timeline
    scan gather reading each rel once (13–17 µs/rel on badger vs 1.3 µs memory); then merge the stamps sidecar into the
@@ -136,9 +137,11 @@ doors vs version gaps), 37 (tiered rollback restore window), 39 (stubs survive `
 earlier life). Older: 0 (column segments S4/S6/S7), 1–5, 7. Also: RAM budget for property sidecars; `NodesByLabelAt`
 still folds all history instead of using the K1 sidecar.
 
-**Known doc drift to fix**: `tasks/backlog.md` header line "Remaining open work … HIGH: items 12, 14, 18, 19" is stale
-(all closed); item 10's text still says "BUILT on branch …" (merged in v4.45.0); item 11 and 6 are done (v4.44.0); item 20
-is partly done (1a v4.44.1, 1b/1c, 2a done) — check what remains.
+**Doc drift: FIXED 2026-10-10** by a full review of every `*.md` against the code at v4.49.0 (six groups, merged `daee363`).
+`tasks/backlog.md` is now ONE open table (0–47, status checked in the code) followed by a section per item; the Closed table
+points every closed item at its release in `CHANGELOG.md`. Use that table, not the list above, for the open set. New items
+from the review: 44 commit-clock floor saved only at Close (MEDIUM), 45 internal sentinels without an exported alias, 46 stale
+code comments, 47 unverified claims (`NodesByLabelAt` vs K1, RAM budget for sidecars).
 
 ## 8. Environment facts and traps
 
@@ -183,7 +186,7 @@ belief definition separately".
 | `/home/renework2023/Work/2026/datainsights/rho-tkg` | `main` (this commit) | yes | the only worktree of ours; clean |
 | `/tmp/claude-1000/-home-renework2023-Work-2026-datainsights-sigma-tkgd/a2d498b9-aa4c-4865-a7c8-f9c94a767c33/scratchpad/v446/rho` | `6bef04a` detached | **no** (sigma-tkgd session's scratch checkout of the first timeline candidate) | leave alone; stale candidate, never merged |
 
-Agent worktrees created this session were all merged (and removed) or removed unchanged; the last two were
+The six doc-review worktrees (2026-10-10, groups A–F) were merged (`daee363` and earlier) and removed. Agent worktrees created this session were all merged (and removed) or removed unchanged; the last two were
 `agent-a4dbe9cf09a163ad4` (backlog 34: removed by the harness when stopped, nothing committed) and `agent-a3f21bd141e76b243`
 (backlog 33/42/41: only one untracked baseline file, saved into `tasks/evidence/badger-read-cost/` on main, worktree and
 branch deleted).
@@ -200,17 +203,16 @@ Remote branches: `origin/main`, `origin/v5` (Markus). Tags on origin: `v4.44.0 �
 Merge-and-remove rule for future agent worktrees (CLAUDE.md): merge the branch back, `git worktree unlock` + `git worktree remove --force`,
 `git branch -d` BEFORE calling a task done (git refuses `-d` while a merge is uncommitted — commit the merge first).
 
-## 11. TODO (the live ledger; `tasks/todo.md` mirrors it but its "Next wave" line is stale)
+## 11. TODO (the live ledger; `tasks/todo.md` mirrors it)
 
 Legend: [ ] open, (S) = waits for sigma, (R) = waits for René's decision.
 
-0. [ ] **NEXT STEP — backlog 43 "Retraction: a way to say this was never true"** (`Retract`/`RetractWithTx` + GraphTx, Batch,
+0. [ ] **NEXT STEP — backlog 43 (sigma-tkgd signed off the spec 2026-10-10: LatestStamps unchanged, History marks the retraction on the tombstone, defaults fine) "Retraction: a way to say this was never true"** (`Retract`/`RetractWithTx` + GraphTx, Batch,
    Session twins). Requested by ai-soc (recovery ends the edges of unfinished commit groups, retracts wrong records),
    confirmed by René 2026-10-10. History of the thread, so nobody is confused: sigma first relayed René's decision
    'Delete = validity end, retraction stays an explicit ENDED fact in ai-soc, no door' (kept: Delete is unchanged); then René
    asked for the door as the next step. Semantics: tx-time "belief ends at T; at pins >= T absent for every valid time; at pins
-   < T unchanged"; full door list, open design points with defaults (marker as a reserved stored property on the tombstone,
-   life cap at −∞ in `lifeEnds`, additive/minor) and the red-test list are in backlog 43. Workflow: spec check against the
+   < T unchanged"; full door list, open design points with defaults (marker as an additive `Retracted` field in the temporal block + wire tag — a reserved property is IMPOSSIBLE, `tkg_` keys are rejected; life cap at −∞ in `lifeEnds`, additive/minor) and the red-test list are in backlog 43. Workflow: spec check against the
    code first (the `tkg_` reserved-key rules, `lifeEnds`, supersession rule, timeline sweep), then Opus agent with Appendix A,
    reviewer, fix round, lint+security, merge, gate, tag v4.50.0 with the other pending items, tell ai-soc (and the new
    sigma session) the exact signatures.
@@ -220,9 +222,8 @@ Legend: [ ] open, (S) = waits for sigma, (R) = waits for René's decision.
 4. (moved up: see item 0 below — the retraction door is the NEXT STEP)
 5. [ ] Backlog 28 state column fast path (design first; sigma numbers inside the item) (S).
 6. [ ] Backlog 21 retention (PurgeExpiredRels, per-type gate) — handover `tasks/handover-overview-retention-20261009.md` (S, not blocking).
-7. [ ] Residual backlog: 13, 15, 16, 22, 23, 25, 26, 31, 37, 39, 40 (see §7), RAM budget for property sidecars,
-   `NodesByLabelAt` via K1, older items 0–5, 7.
-8. [ ] Fix the doc drift listed in §7 (backlog header, item 10/11/6/20 text, stale `tasks/todo.md` "Next wave").
+7. [ ] Residual backlog: the open table in `tasks/backlog.md` (13, 15, 16, 22, 23, 25, 26, 31, 37, 39, 40, 44, 45, 46, 47, older 0–5, 7, 10).
+8. [x] Doc drift fixed by the full md review (see §7); keep the md files in step with every release (René: "keep the md files up2date").
 9. [ ] Delete the stale `wip/badger-scan-flush-evict` branch after René confirms (R).
 10. [ ] (R) Answer: keep behaviour changes as named stability exceptions (default) or ship through the deprecation ritual.
 11. [ ] Optional: write the v4→v5 importer reference tests Markus might want (note on main: `tasks/v4-changes-for-v5-importer-20261010.md`);
@@ -381,3 +382,16 @@ done
   reviewer probes, benchmark outputs) — the evidence worth keeping was copied into `tasks/evidence/`.
 - Global instructions (`~/CLAUDE.md`) and the repo's `CLAUDE.md`/`AGENTS.md` load automatically; the standing rules in §1
   repeat the ones that mattered.
+
+## 13. Documentation review 2026-10-10 (René: "review all md files with the current code base.. and keep the md files up2date")
+
+Six review groups, each in a worktree, merged `daee363`: A AGENTS/README/CONTRIBUTING/SECURITY (names and Config
+fields corrected, vector search is HNSW by default, fuzz targets all listed), B architecture/design/persistence/dependencies
+(capability counts, lock order, GraphTx locking, sidecars, `DurableCommit`, segment directories), C SPEC/errors/api/stability
+(ID range is ~8.9 years to 2034-12, Relationship is 96 B, wire v2, `PurgeExpiredRels` does not exist, error rows both
+directions), D query-planners/ADR-0011/bench README/perf docs (backend matrix, re-measured allocs, March snapshots marked
+historical), E backlog/todo/handover files (restructured), F CHANGELOG 4.44–4.49 (two Fixed entries moved from 4.46.0 to 4.47.0,
+superseded-by notes). No code was changed. **Rule going forward**: every release updates README/AGENTS version line, CHANGELOG,
+`docs/api.md`, `docs/errors.md`, and the backlog Closed table in the same commit as the code; the docs-consistency tests
+(`go test ./pkg/graph/internal/core ./pkg/graph -run 'Doc|Errors'`) guard the version line and the error inventory only.
+Not verified by the review: benchmark numbers quoted from the CHANGELOG, cross-repo claims (ai-soc/sigma releases), licence texts.
