@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.50.0] - 2026-10-10
+
+Minor release, the sigma-tkgd store requests, round 4 (new public API): `g.Index().InventoryEpoch()`, a counter that
+moves on every index create, drop and clear, so a reader can tell in one comparison whether the index inventory
+changed; range counts from prefix sums as an opt-in per property index
+(`CreatePropertyWithOptions(label, key, PropertyIndexOptions{RangeCounts: true})`, `CreateRelPropertyWithOptions`),
+O(log chunks) per count for about 42 ns more per index write on that index only, plain indexes unchanged; a NaN range
+bound counts 0 and sharded answers `RelRangeCardinality`; the memory store's `ForEachAdjacentEndpointOrdinal`
+allocates nothing per call. Additive; an older binary loads a `RangeCounts` index as a plain one.
+
 ### Added
 
 - **`g.Index().InventoryEpoch() uint64`: the index-inventory epoch** (sigma-tkgd round 4 R1, task record C4n: each
