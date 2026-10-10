@@ -1,7 +1,7 @@
 # v4 changes since 32568c4 that the v4 → v5 importer and the v5 migration contract must account for
 
 Date 2026-10-10. For Markus (branch `v5`, `docs/v5/PLAN.md` §9 "Migration"). Source of truth is `CHANGELOG.md` on main
-(v4.44.0 … v4.49.0); this note lists only what changes how a v4 store must be READ or MAPPED. Nothing here edits the v5 branch.
+(v4.44.0 … v4.50.0 at cutoff `95a1de39e424d6b8dd25f372645280667135c8ae`); this note lists only what changes how a v4 store must be READ or MAPPED. Nothing here edits the v5 branch.
 
 ## 1. The as-of rule changed (v4.46.0)
 
@@ -27,10 +27,11 @@ belief at the pin), not by "current row" and not by raw `Get`/`History` order; t
 
 ## 3. One-tick intervals are ordinary spans (v4.44.0)
 
-A row `[t, t+1)` is a normal one-millisecond span on every temporal door. No v4 writer has produced the old "eclipse"
-sentinel since commit 994df82 (2026-06-12); a store whose history starts after that date imports one-tick rows as
-genuine spans (PLAN §9 said the row could not be classified; it can, by that date). `QueryOpts.IncludeEclipsed` is a
-reserved no-op.
+A row `[t, t+1)` is read as an ordinary one-millisecond span by current v4 doors; `QueryOpts.IncludeEclipsed` is a
+reserved no-op. Commit 994df82 (2026-06-12) removed the known eclipse writer, but dates alone do not establish which
+binary, import or copied history wrote a store. PLAN §9 governs: import one-tick rows as genuine spans only with
+verified writer/format provenance excluding sentinel encoding for those rows. Otherwise preserve raw evidence and
+report ambiguity; never infer an event, and do not treat a post-2026-06-12 history start as sufficient provenance.
 
 ## 4. Closes and deletes read differently (v4.47.0, v4.46.0)
 
@@ -70,3 +71,23 @@ chains with version gaps or collided versions stored by old releases answer in t
 - Tests worth reusing as import oracles: `core/bitemporaloracle*_test.go`, `effective_timeline_oracle_test.go`
   (pointwise equality, 3 M checks), `tx_backfill_oracle_test.go`, `reimport_life_oracle_test.go`, and the evidence
   folders under `tasks/evidence/` (cascade-correctness, effective-timeline, reimport-life, latest-stamps).
+
+## 8. Belief retraction and row-format protection (v4.49.1 / v4.49.2)
+
+`Retract` / `RetractWithTx` on nodes and relationships, GraphTx, Batch and ingest are distinct from Delete: at pins
+at/after T the retracted life answers at no valid time; pins before T are unchanged. Node retraction cascades at one
+instant; re-import may start a new visible life. Preserve `TemporalMetadata.Retracted`, tombstones, raw audit/source
+fields and hashes; map belief retraction separately from a validity-end close. The marker is not in the content hash.
+Only retraction tombstones now emit `fv=3` with `rx`; ordinary rows and the store marker stay 2. Current readers accept
+fv<=3, including v4.49.1's fv=2+rx rows. Older readers fail closed on fv3 but can misread already-written fv2+rx as a
+plain Delete: upgrade every reader before retraction writers; a date/version of an export alone cannot repair that.
+
+## 9. Additional consumer doors at the v4.50.0 cutoff
+
+`Index().InventoryEpoch()` is a nonpersistent per-Graph DDL invalidation counter, not a data epoch or cut.
+`CreatePropertyWithOptions` / `CreateRelPropertyWithOptions` and `PropertyOptions` / `RelPropertyOptions` expose opt-in
+`RangeCounts`; unsupported stores refuse rather than drop options, and old readers may load optional persisted rc as
+a plain index. Range counts remain non-temporal, answer NaN bounds as 0 where exact, and sharded relationship counts
+sum each owned row once. Endpoint-ordinal adjacency retains ID order and callback isolation; the memory allocation
+improvement changes cost, not semantics. Carry these doors/capabilities into the migration inventory; historical
+consumer pins and measured v4.43 runs are not relabeled as v4.50.0 acceptance. See CHANGELOG `[4.50.0]` and PLAN §8a.

@@ -1765,6 +1765,8 @@
     "candidates/instant-units/instant-units-validation.json": "8374488259b73896dac8c7eb183ae7625bcedba1e87d24205642a3a87014a678",
     "candidates/instant-units/instant-units.patch": "e3c528f09aced8b1c7ea2961e3f141fbacc52b765a0d89bb5ed406ec6a3f50d7",
     "check.py": "1868b5545cfc3e495ac8291c4241776082d8d662d36db76885b941138ec93158",
+    "comparison-harness/README.md": "0625e788b29503c66d88997dab85eaa0f75bf294094982585342541e0fa8898c",
+    "comparison-harness/review.json": "63caee07c0b9e9f087c6450face55964fa57116b13ee5df66c5d10e192791a95",
     "comparison-inputs/README.md": "9b36dc6f6309b753657f737866fbdbd25babc598aa6ef4e3797bcc6dc9da3d0c",
     "comparison-inputs/check.py": "ce850177927e0be9390496b0dd867489ab481cd89fbbd01dd455ced57235706e",
     "comparison-inputs/contract-pin.json": "8ce319dbd6aa212205893b6a0caa0b848c090b34da040a40213fbc3c013daf34",
@@ -2029,16 +2031,14 @@
     "temporal/historical-parity-v1.json": "db5fb91a336debb94ed8175a8dabcb373adcec355cb773c39ce00fb5f04cd5b0",
     "temporal/reference_model.py": "863390e7b81c11d8e4ea28749c159c840321358211797bc9ff39cc658ba19ab3",
     "temporal/revised-acceptance-v1.json": "263de8c0c2bfd078747bd26cc46c0b3e2f5897b264698bc2f891e5c0eeb06f85",
-    "temporal/test_reference_model.py": "73854402da1db870a2aa749d8263d4dc601a934b6c246039b451bcec433e48af",
-    "comparison-harness/README.md": "0625e788b29503c66d88997dab85eaa0f75bf294094982585342541e0fa8898c",
-    "comparison-harness/review.json": "63caee07c0b9e9f087c6450face55964fa57116b13ee5df66c5d10e192791a95"
+    "temporal/test_reference_model.py": "73854402da1db870a2aa749d8263d4dc601a934b6c246039b451bcec433e48af"
   },
   "private_path_scrub": "all text artifacts checked; no developer absolute paths or recovery-directory references",
   "python_version": "3.14.3",
   "schema_version": 1,
   "scope": "independent finite mathematical/declarative reference validation; no production, performance, process-kill or full V0/V1/V2 claims",
   "source_contract_sha256": {
-    "../../PLAN.md": "0f7c3ef438545656a490f02869fb8a7e859cbc9ff66763de1b1199da74b711df",
+    "../../PLAN.md": "ecaded24345aec7734622aadd3fbfccd5906530c550fc9284868148628b46db3",
     "../substrate-evaluation.json": "67e67b3e68741e725a180d2395d2f019341a37c04b41ae8cf57d8887dc4ea935",
     "../temporal-fixtures.json": "0598d593bd39ccf95ea2737bb55b0358631cfc6009a03f35b8f39101a7a4f6f2"
   }

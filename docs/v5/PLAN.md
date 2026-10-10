@@ -180,6 +180,49 @@ with residual evaluation required in sigma. It must never silently omit possible
 matches. Sigma tracks approximation and solver completeness independently; a
 complete database scan does not certify a complete inference.
 
+### Default axis and exact millisecond compatibility
+
+Policy revision 2026-10-10: the default physical-time compatibility axis is
+**RationalQ in milliseconds**, with a versioned POSIX epoch convention:
+coordinate 0 is 1970-01-01T00:00:00Z and one unit is one POSIX millisecond.
+This specifies a coordinate convention, not leap-aware elapsed-time arithmetic.
+Persist its complete descriptor and axis identity in each graph; temporal roles
+remain separate. There is no process-global singleton or implicit default in
+`InstantPosition`, `InstantFromPosition`, `InstantMillis` or `ConvertUnits`.
+Graph default selection and importer implementation remain later integration work.
+
+| Profile / axis choice | Unit and reference policy | Exact compatibility boundary |
+|---|---|---|
+| Default physical-time RationalQ | `millisecond`; versioned POSIX epoch convention above | v4 integer t maps to t/1 exactly; fractions remain valid Q coordinates, while `types.Instant` encodes only integral signed int64 milliseconds |
+| Explicit IntegerZ | Declared step/ordinal unit and reference; an expressly selected physical Z axis may use `millisecond` | Z/ms Instant helpers remain valid; Z requires integral coordinates and does not inherit seconds or a metric from its order |
+| Other RationalQ axes | Explicit canonical unit, origin/reference and descriptor version | Exact fractions are preserved; neither matching units nor equal numbers establish axis/reference identity |
+| Lexicographic Q×N | Declared model-coordinate unit/reference; the microstep is an ordinal reaction coordinate | A physical model coordinate may use milliseconds, but microsteps have no implied elapsed duration; scalar Instant/ConvertUnits doors refuse Q×N rather than discard them |
+| Causal, calendar or symbolic models | Explicit identity/order, calendar/clock rules and capabilities as applicable | No default scalar metric or implicit milliseconds; unsupported native predicates decline explicitly |
+
+The unchanged historical Z/microsecond fixtures keep their original axes and
+answers; adopting a graph default never remaps stored descriptors. Domain and
+unit are independent: int64 milliseconds are a finite exact codec subset of Q,
+not a claim that the physical-time domain is discrete or limited to that range.
+Duration/metric capabilities require separate declared laws; this default supplies
+neither a leap-second model nor an elapsed metric for order-only axes.
+
+Import v4 Unix-millisecond fields exactly into the declared compatibility axis:
+`t -> t/1`, with the original bound inclusivity and span interpretation retained.
+Do not round fractions, widen points or infer an event from a one-tick span.
+Preserve raw temporal fields, source identities, property kinds and hashes;
+legacy zero/unset/infinity fields are interpreted by the verified v4 field/reader
+contract, not by the v5 rule that coordinate zero is ordinary. In particular,
+v4 unset valid-from uses its documented effective-start fallback, while an open
+valid-to maps to explicit positive infinity.
+
+A caller-qualified microsecond axis uses exact `t -> 1000*t`; the existing
+`ConvertUnits` supports identical units and microsecond/millisecond conversion
+only. Seconds, 100 ns source units, calendar shifts and origin changes need an
+explicit adapter rule; no support for those mappings is inferred from that helper.
+The caller must establish the same reference/origin before unit conversion.
+Raw higher-resolution observations remain source/provenance values rather than
+being silently truncated into the compatibility codec or made database cuts.
+
 ### 2.4 Scopes, constraints and uncertainty
 
 Fast scope forms are Unplaced, Point, Span and finite RegionSet. Multi-axis
@@ -757,7 +800,7 @@ Reference checks establish their stated subset, never production completion.
 
 | Phase | Concrete acceptance record |
 |---|---|
-| V0 | Reviewed tracked reference corpus; profile/axis unit and exact ms import mappings; versioned consumer door and capacity inventory; independent model inputs/expected failures; agreed limits distinguished from proposed thresholds |
+| V0 | Reviewed tracked reference corpus; profile/axis unit and exact ms import mappings above; current-v4 delta at `95a1de39`/v4.50.0 alongside historical consumer pins; declared test resource/dataset profiles and versioned consumer door/capacity inventory; independent model inputs/expected failures; agreed limits distinguished from proposed thresholds |
 | V1 | Go differential runs against the unchanged 16/52 corpus and revised E-case models; node/relationship two-phase exact-set tests, boundary/fuzz/codec failures and direct public API coverage |
 | V2 | Two-partition/three-replica fault schedules plus real durable process-kill/restart runs; serial-history/cut oracle results for E15–E18; stale-owner/allocator rejection, decision recovery and predicate-conflict tests; comparable transactional-KV evaluation and engine decision |
 | V3 | Byte ledger at 790 K/3.15 M/12.6 M source signal rows (107,113/408,282/1,584,150 HOP relationships); seal/merge/crash/reopen oracle results; heap/RSS/page-cache and replay measurements proving budgets and no per-fact resident growth; equivalent v4 fast-path comparison |
@@ -808,6 +851,32 @@ A build or that smoke suite alone cannot establish semantic compatibility.
    one-tick spans is prohibited and genuine spans retain their interpretation;
    `TxAt` no longer implies valid-at-now, other readers cannot observe a
    `GraphTx`'s private writes, and IDs no longer encode placement. Those changes are listed per consumer in V6.
+
+#### Current v4 compatibility delta (cutoff 2026-10-10)
+
+The current rho source baseline for this acceptance record is main
+`95a1de39e424d6b8dd25f372645280667135c8ae`, **v4.50.0**. This extends the
+historical consumer inventories above; their commits/hashes and old reproduction
+runs remain historical and unchanged. It does not assert that those consumers
+have upgraded or that a v5 adapter/importer has passed.
+
+| Current v4 contract | Required v5 mapping / consumer obligation |
+|---|---|
+| `Delete` versus `Retract` / `RetractWithTx` (v4.49.1/4.49.2), including GraphTx, Batch and ingest twins | Preserve validity-end versus belief-retraction semantics. After retraction T the ended life answers at no valid time at pins >=T; earlier pins remain unchanged, re-import can start a new life, and raw tombstone/provenance survives. Do not map retraction as an ordinary validity close. |
+| Retraction row `fv=3`, optional `rx`; other rows/store marker remain 2 | Decode fv<=3 and preserve the marker explicitly; unsupported readers must fail closed. v4.49.1's earlier fv=2+rx rows still need marker-aware readers and remain unprotected against older binaries. Old hashes do not prove marker preservation. Upgrade all readers before retraction writers. |
+| As-of record doors versus state/timeline doors (v4.46/4.47) | `*AsOf` / pure TxPin select the newest recorded row; `*AtTx` and effective timelines resolve valid-time state at a belief pin. Use effective timelines as the state-import oracle; relationship timelines are declared, so endpoint masking is a separate chosen view. Never substitute current Get or raw History order. |
+| Life/write order, corrected versions and re-import (v4.46/4.48) | New rows use unique increasing versions across lives with PrevHash continuity; TxFrom need not increase with version. Preserve old duplicate/gapped/lossy chains as evidence and report ambiguity/loss rather than synthesize missing rows or atomic transaction boundaries. |
+| `Index().InventoryEpoch()` (v4.50.0) | Preserve the per-Graph index-DDL invalidation door: read before inventory, recheck afterward; freshness covers completed DDL, not serialization of an in-progress DDL operation. Epoch 0 at New, nonpersistent, unrelated to data mutation epochs or certified cuts. Completed failed DDL can advance it; unchanged refusals do not. |
+| Property-index options and range counts (v4.50.0) | Preserve `CreatePropertyWithOptions` / `CreateRelPropertyWithOptions`, `PropertyOptions` / `RelPropertyOptions` and `RangeCounts` capability negotiation. Plain indexes remain plain; unsupported tiered/on-disk/wrapper paths must not silently ignore an option. Optional persisted rc may reopen as plain on an older binary, preserving answers without promising the acceleration. |
+| Range-cardinality and ordinal adjacency (v4.50.0) | Preserve exact/declined range-count distinction, NaN-bound zero on answering indexes, sharded relationship count-once, and relationship-ID ordered endpoint ordinals/callback isolation. Counts remain non-temporal unless the door declares otherwise; v4's allocation improvement is not a v5 performance result. |
+
+The pinned source and release contracts are recorded in
+[the importer handover](../../tasks/v4-changes-for-v5-importer-20261010.md).
+Preserve raw audit/author/signature/source-time evidence, original hashes and
+format/writer provenance separately from v5 revision IDs and synthetic import
+cuts. v4's retraction marker is not in its content hash, and timestamp sorting
+cannot reconstruct missing global transaction groups. PLAN §9's stronger
+writer/format-provenance ambiguity rule governs the handover's one-tick case.
 
 Evolving v4 into v5 in place is not planned: the ID, time-type and transaction
 changes break the `pkg/types` shapes; the isolated branch with the three levers
@@ -917,9 +986,9 @@ Import one-tick rows as genuine spans only with verified writer/format provenanc
 that excludes sentinel encoding for those rows. Otherwise preserve legacy
 evidence and report ambiguity; never infer an event. A history starting after
 2026-06-12 alone is insufficient provenance. v4's
-default unit is the millisecond; V0 declares the default axis unit per profile
-and the importer's millisecond-to-unit mapping, preserving raw source times
-(ai-soc carries 100 ns source times as a property).
+default unit is the millisecond; the policy/table in §2.3 fixes the compatibility
+Q/ms axis and exact per-profile import boundary without changing existing Z/us
+fixtures. Preserve raw source times (ai-soc carries 100 ns times as a property).
 
 v4 entity history does not establish a complete global atomic transaction history.
 Sorting TxFrom cannot recover missing transaction boundaries: one `GraphTx`

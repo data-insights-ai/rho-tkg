@@ -71,16 +71,37 @@ design examples. They remain unchanged; this subset does not establish broader
 V0 or production/distributed acceptance. The reviewed PLAN/DISCUSSION/RESEARCH
 and reference JSON specify contracts/evidence, not completed engine gates.
 
-| Phase | Pending acceptance evidence |
+| Phase | Status and remaining acceptance evidence |
 |---|---|
-| V0 | Historical reference subset accepted. Broader independent revised models, profile units/import mapping, consumer door/capacity acceptance and numerical limit/threshold decisions remain open |
-| V1 | Reviewed/implemented temporal primitives and codecs (exact scalar/tuple values, scopes/regions/Allen, point knowledge and opaque descriptors), plus component-state reducer primitives. Graphstate `Plan`/`Project` and the byte-identical 16-fixture/52-assertion Go path accepted (local `e5b23d9`), including bounded page/type/uniqueness/CDC-delta behavior. Graph-engine/storage integration, remaining revised models and full V1 acceptance stay open |
+| V0 | Specification accepted: independent criterion review and refreshed reference/design checks pass. Contracts, profile/unit/import policy, current-v4 delta and reproducible resource/dataset test profiles are reviewed below. Implementation, consumer execution and measured capacity retain their separate phase gates |
+| V1 | Reviewed/implemented temporal primitives and codecs (exact scalar/tuple values, scopes/regions/Allen, point knowledge and opaque descriptors), plus component-state reducer primitives. Graphstate `Plan`/`Project` and the byte-identical 16-fixture/52-assertion Go path accepted (local `e5b23d9`), including bounded page/type/uniqueness/CDC-delta behavior. Pure value/state preservation, remaining revised models and phase-specific Go evidence still require V1 acceptance; durable engine/storage and certified-cut integration belong to V2/V3 and remain separate |
 | V2 | Candidate Raft/Pebble log/replica adapter independently validated as an adapter only. Bounded idalloc primitive independently validated on Go 1.26.9 (99.3% coverage; eight source/config hashes match). Bounded two-group transaction correctness prototype accepted (`92312ae`; independent 24-source/config checks, scoped combined coverage 86.3%). Six-process crash-functional slice accepted (`f3a1ee7`); power-loss/multi-host durability and global cross-process cut transport stay open. Full graph transaction/cut integration and serial-history oracle, production graph identity reuse/fencing, application GC, end-to-end Driver snapshot activation and Raft application multi-voter integration, physical-host durability, comparative costs/faults and engine selection remain open |
 | V3 | Coordinate timeblock candidate independently validated (local commit `fa0c982`; scoped temporal+block coverage 95.7%, no exported method at 0%). Full engine seal/merge/recovery, paged structures and all-in budget/byte-ledger measurements remain open; resident-buffer prototype timings do not close V3 |
 | V4 | Production read/change APIs, historical cross-door parity, gap-free leased feed handoff and pinned sigma access-contract build and nonempty mutation-then-historical tests (the current signature/empty smoke is insufficient) |
 | V5 | Distributed access across 1/2/4/8 partitions, cross-edge/stall/rebalance/feed cases and sigma workload parity |
 | V6 | Provenance-aware importer and ambiguity report, consumer-repository migrations, retained-cut/CDC agreement and restore on a different topology |
 | V7 | Versioned contracts/limits, full CI/race/coverage/security, distributed matrix and consumer suites; measured comparative space/time acceptance against Neo4j/TigerGraph/Memgraph plus v4, with reviewed excess-cost exceptions |
+
+V0 specification acceptance, 2026-10-10:
+
+| Criterion | Accepted evidence | Remaining phase |
+|---|---|---|
+| Contracts/ownership and IDs/cuts/formats | [PLAN §§2–5/8](../docs/v5/PLAN.md) separates preservation, native access and sigma evaluation, with explicit failure outcomes | V1 implementation; V2–V5 database/storage/access |
+| Independent corpus/models | [Reference validation](../docs/v5/reference/independent/validation.json): 38 tests, unchanged 16/52, 42 revised records, 18,192 pairs, 600 mutations, 88 accepted/39 refused protocol histories; ordinary freshness check passes | V1 Go differential/attachments; V2 durable fault/cut evidence |
+| Units and compatibility | PLAN §2.3: Q/ms/POSIX1970 default policy, exact integral-ms Instant codec, explicit other axes and conversion/refusal boundaries | V1 default-axis factory/binding; V2 persistence; V6 importer |
+| Versioned consumer/data inventory | [Pinned doors](../docs/v5/reference/consumer-contracts.json), [migration obligations](../docs/v5/reference/consumer-migration.json), PLAN §8a current `95a1de39`/v4.50.0 delta and declared datasets | V4 actual adapters; V6 migration; V7 representative runs |
+| Resource profiles and limits | [Comparison protocol](../docs/v5/reference/graph-db-comparison.json): future native test configurations, one-factor/pinned-mixed dataset controls, separate local functional lanes; initial numerical limits distinguished from proposed performance thresholds | V2–V3 fault/cost evidence; V7 measured comparative capacity |
+| Import provenance | PLAN §9 and reconciled [v4 handover](v4-changes-for-v5-importer-20261010.md): verified writer/format provenance; dates/one-tick width alone are insufficient | V6 implementation/ambiguity report |
+
+Fresh `check.py --write-validation`, ordinary `check.py` and original
+`design_checks.py` pass. Original design checks retain 16/52, 20,000 domain pairs,
+480 schedules/80 certified-read examples and the weak-cut counterexample.
+Corpus/oracle/consumer pins are unchanged. This closes specification V0 only;
+declared resources are test configurations, not deployed/proven capacity or an
+owner SLO. No solver, engine, consumer-integration or performance acceptance follows.
+
+The phase table above records current acceptance. The following entries retain
+the scope of their historical component validations.
 
 The [independent reference suite](../docs/v5/reference/independent/README.md)
 is integrated locally. `python3 -B docs/v5/reference/independent/check.py` passes

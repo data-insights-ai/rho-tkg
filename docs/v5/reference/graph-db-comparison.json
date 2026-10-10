@@ -200,7 +200,137 @@
       "alternatives evaluated",
       "reviewer/decision/date"
     ],
-    "acceptance": "Compare rho with each vendor using semantically equivalent supported configurations; prefer improvements in both dimensions. Every excess requires a quantified causally isolated justification and explicit review. Missing license, dataset, capability or experiment leaves that comparison pending; no majority-vote or best-case-only winner claim."
+    "acceptance": "Compare rho with each vendor using semantically equivalent supported configurations; prefer improvements in both dimensions. Every excess requires a quantified causally isolated justification and explicit review. Missing license, dataset, capability or experiment leaves that comparison pending; no majority-vote or best-case-only winner claim.",
+    "resource_profiles": {
+      "status": "declared-future-test-configurations-not-owner-SLO-or-achieved-runs",
+      "native_lane": {
+        "os": "Linux",
+        "architecture": "amd64",
+        "resource_unit": "one isolated replica; identical limits for each compared engine and each replica",
+        "swap_bytes": 0,
+        "disk_medium": "dedicated NVMe or isolated declared NVMe quota; filesystem/kernel/model recorded at execution",
+        "profiles": [
+          {
+            "id": "native-small",
+            "cpu_cores": 4,
+            "memory_gib": 16,
+            "disk_gib": 256
+          },
+          {
+            "id": "native-medium",
+            "cpu_cores": 8,
+            "memory_gib": 32,
+            "disk_gib": 512
+          },
+          {
+            "id": "native-large",
+            "cpu_cores": 16,
+            "memory_gib": 64,
+            "disk_gib": 1024
+          }
+        ],
+        "cpu_allocation": "Exclusive cores or declared isolated vCPU quota; record actual CPU model, SMT, pinning and cgroup settings."
+      },
+      "replication_rule": "Use the same profile per replica; report one-copy and complete three-replica, partition and coordinator totals. Scaling 1/2/4/8 partitions adds equal per-replica resources, not a fixed-total-resource efficiency claim. Record shared-device/contention placement and actual network separately.",
+      "functional_lane": {
+        "id": "local-functional",
+        "os": "macOS or explicitly recorded emulation",
+        "purpose": "correctness/reopen/adaptation only",
+        "rule": "Record actual host/toolchain/limits. Do not pool its timings or RSS with native Linux amd64 comparisons."
+      },
+      "execution_preflight": "Pin actual supported edition/image/license and effective CPU/cgroup memory/disk/cache/fsync settings. Unsupported or out-of-capacity configurations are reported explicitly; no production cap is raised or unsupported vendor setting used to force completion."
+    },
+    "dataset_profiles": {
+      "status": "declared-workloads-with-mandatory-manifest-before-execution",
+      "baseline": [
+        {
+          "id": "synthday-small",
+          "source_signal_row_size_label": "790 K",
+          "hop_relationships": 107113
+        },
+        {
+          "id": "synthday-medium",
+          "source_signal_row_size_label": "3.15 M",
+          "hop_relationships": 408282
+        },
+        {
+          "id": "synthday-large",
+          "source_signal_row_size_label": "12.6 M",
+          "hop_relationships": 1584150
+        }
+      ],
+      "resource_matrix": "Run each baseline dataset at each supported native resource profile; record completion/refusal and actual fit/exceeds-RAM classification from the full byte ledger, never from source-row labels alone.",
+      "semantic_dimensions": {
+        "point_span_percent_pairs": [
+          [
+            100,
+            0
+          ],
+          [
+            95,
+            5
+          ],
+          [
+            50,
+            50
+          ],
+          [
+            0,
+            100
+          ]
+        ],
+        "uncertainty_percent": [
+          0,
+          1,
+          10,
+          100
+        ],
+        "retained_revisions_per_changed_identity": [
+          1,
+          8,
+          64
+        ],
+        "deleted_identity_percent": [
+          0,
+          10,
+          50
+        ],
+        "correction_fragments": [
+          1,
+          8,
+          64
+        ],
+        "ingest_order": [
+          "ordered",
+          "late"
+        ],
+        "topology_controls": [
+          "parallel edge IDs",
+          "self-loops",
+          "hot owners",
+          "long spans",
+          "distinct and shared opposite endpoints"
+        ],
+        "exact_values": [
+          "integral milliseconds",
+          "nonintegral rationals including 1/3",
+          "wide coordinates",
+          "Q\u00d7N microsteps"
+        ],
+        "source_scope": "Add available BO/BA day manifests and non-SOC schedules/correlated events; reported inventory sizes are not fabricated datasets.",
+        "sampling_rule": "Use one-factor controls against a declared baseline plus explicitly pinned mixed profiles covering relevant interactions. Record every selected dimension and seed in the manifest; the listed values do not mandate the full Cartesian product."
+      },
+      "manifest_required_fields": [
+        "generator/source version and fixed seed where generated",
+        "checksum and mapping/profile versions",
+        "exact source rows; node/edge identities and multiplicity",
+        "label/type memberships; property entries/types/payload bytes",
+        "current assertions; retained revisions; deleted/retracted lives",
+        "temporal pieces; raw source/provenance; reified/reverse/auxiliary records",
+        "index definitions and expected complete canonical answer checksums"
+      ],
+      "historical_rule": "Original corpus axes/source pins and old native-v4 basic-current runs remain unchanged; current-v4 compatibility audit is a separate 95a1de39/v4.50.0 record. No generated fixture or benchmark result is claimed by these configurations."
+    }
   },
   "sources": {
     "neo4j_docker": "https://neo4j.com/docs/operations-manual/current/docker/introduction/",
