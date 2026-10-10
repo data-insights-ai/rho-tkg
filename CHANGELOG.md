@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added fresh-store opt-in immutable v5 application control storage, co-installed
+  synchronously with graph versions and root/change/outcome envelopes. Separate
+  graph/control ledgers share retained, pending-install, generation and staging
+  quotas. AS4 snapshot transfer and actual Raft Ready activation preserve control
+  records; current empty/declaration-only seed proofs validate control and
+  generation metadata without counting controls as graph records. This prerequisite
+  grants no public Host, certified graph cuts, semantic GC, global identity readiness
+  or physical RSS/capacity acceptance.
+
 - Added replicated declared-partition co-initialization and ID-allocation controls with separate source/home authority, completed ReadIndex proofs, immutable retry outcomes, recipient fencing and bounded cached ranges. Actual snapshot installation and reopen tests preserve allocator state and retained control history. These controls do not yet admit graph mutations or certify distributed graph cuts.
 
 - Added bounded, metadata-only ownership declarations with explicit pending and published root states and owned staging effects. Declaration records and local ownership are validated against the root and durable application binding from the same retained view. GR1/GR2 bytes remain unchanged; declaration publication does not establish graph readiness or cut authority.

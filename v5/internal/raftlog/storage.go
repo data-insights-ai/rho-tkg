@@ -47,6 +47,7 @@ func (l Limits) Validate() error {
 
 // Config selects explicit first-open-only creation; recovery never creates a missing DB.
 type Config struct {
+	Controls ApplicationControlConfig
 	// SemanticContractID opts fresh RLM6 into an immutable materializer agreement.
 	// Zero preserves older formats; existing stores cannot acquire/change it.
 	SemanticContractID ApplicationSemanticContractID
@@ -122,8 +123,14 @@ func Open(c Config) (*Store, error) {
 		initial.Gen = generationMetadata{Limits: c.Generations, HighWater: 1, Banks: [2]applicationBank{{Generation: 1, State: bankActive}, {}}}
 	}
 	initial.Gen.Publication.Limits = c.PublishedCuts
+	initial.Gen.ControlEnabled = c.Controls.enabled()
+	initial.Gen.Publication.ControlEnabled = c.Controls.enabled()
 	initial.Rep.Config = c.Replication
 	initial.Rep.SemanticContractID = c.SemanticContractID
+	initial.Controls.Config = c.Controls
+	if err := c.Controls.validate(initial); err != nil {
+		return nil, err
+	}
 	if c.SemanticContractID != (ApplicationSemanticContractID{}) && !c.Replication.enabled() {
 		return nil, ErrInvalid
 	}
@@ -168,7 +175,7 @@ func Open(c Config) (*Store, error) {
 		if err := errors.Join(decodeErr, closeErr); err != nil {
 			return fail(err)
 		}
-		if m.App.Policy != c.Application || m.Transfer != c.Transfer || m.Gen.Limits != c.Generations || m.Gen.Publication.Limits != c.PublishedCuts || m.Rep.Config != c.Replication || m.Rep.SemanticContractID != c.SemanticContractID {
+		if m.App.Policy != c.Application || m.Transfer != c.Transfer || m.Gen.Limits != c.Generations || m.Gen.Publication.Limits != c.PublishedCuts || m.Rep.Config != c.Replication || m.Rep.SemanticContractID != c.SemanticContractID || m.Controls.Config != c.Controls {
 			return fail(ErrInvalid)
 		}
 		if err := checkPublicationHeadroom(m, c.Limits); err != nil {
@@ -241,6 +248,9 @@ func validateConf(cs *pb.ConfState, last uint64) error {
 }
 
 func (s *Store) validate(m metadata) error {
+	if err := validateControlMeta(m); err != nil {
+		return err
+	}
 	if err := validateReplicationMeta(m, s.limits); err != nil {
 		return err
 	}
@@ -354,7 +364,7 @@ func (s *Store) Initialize(voters []uint64, image []byte) error {
 	if err := validateConf(cs, 1); err != nil {
 		return err
 	}
-	m := metadata{Rep: s.meta.Rep, Gen: s.meta.Gen, App: s.meta.App, Transfer: s.meta.Transfer, Base: 1, BaseTerm: 1, Last: 1, Applied: 1, Hard: &pb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))}, Conf: cs, ImageBytes: uint64(len(image)), SnapBytes: uint64(len(image)), Snap: &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(uint64(1)), Term: new(uint64(1)), ConfState: cs}}}
+	m := metadata{Controls: s.meta.Controls, Rep: s.meta.Rep, Gen: s.meta.Gen, App: s.meta.App, Transfer: s.meta.Transfer, Base: 1, BaseTerm: 1, Last: 1, Applied: 1, Hard: &pb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))}, Conf: cs, ImageBytes: uint64(len(image)), SnapBytes: uint64(len(image)), Snap: &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(uint64(1)), Term: new(uint64(1)), ConfState: cs}}}
 	prospective := m
 	if m.App.Policy.Enabled() {
 		prospective.App.Bytes = uint64(3*(9+appFrameBytes) + len(image))

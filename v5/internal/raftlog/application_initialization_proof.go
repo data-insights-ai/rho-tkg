@@ -48,6 +48,12 @@ func (v *ApplicationView) ProveOnlyApplicationKV(ctx context.Context, expected K
 	if v.bank != s.activeBank() || v.generation != s.activeGeneration() || v.index != s.meta.Applied {
 		return root, work, ErrInvalid
 	}
+	if err = validateControlMeta(s.meta); err != nil {
+		return root, work, v.fail(err)
+	}
+	if err = s.validateGenerationMeta(s.meta); err != nil {
+		return root, work, v.fail(err)
+	}
 	a := s.meta.App
 	if !a.Policy.Enabled() || a.Through != v.index || a.Through == 0 || a.Through > (math.MaxUint64-1)/3 || uint64(len(v.image)) != s.meta.ImageBytes || len(v.image) > p.MaxImageBytes {
 		return root, work, v.fail(ErrCorrupt)

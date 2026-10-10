@@ -34,3 +34,25 @@ func (p ApplicationPolicy) Preflight(batch ApplicationBatch, limits Limits) (App
 	}
 	return ApplicationBatchUsage{RetainedBytes: retained, RetainedRecords: records}, nil
 }
+
+// ApplicationControlBatchUsage separates the immutable control subtotal from
+// aggregate growth while preserving the original two-field result type.
+type ApplicationControlBatchUsage struct {
+	ApplicationBatchUsage
+	ControlBytes, ControlRecords uint64
+}
+
+// PreflightControlBatch is the same pure joint installation check as Preflight,
+// with the control subtotal additionally reported. It grants no mode, absence,
+// reservation, commit or authority; every error returns zero usage.
+func (p ApplicationPolicy) PreflightControlBatch(batch ApplicationBatch, limits Limits) (ApplicationControlBatchUsage, error) {
+	aggregate, err := p.Preflight(batch, limits)
+	if err != nil {
+		return ApplicationControlBatchUsage{}, err
+	}
+	cb, cr, _, err := controlGrowth(p, batch)
+	if err != nil {
+		return ApplicationControlBatchUsage{}, err
+	}
+	return ApplicationControlBatchUsage{ApplicationBatchUsage: aggregate, ControlBytes: cb, ControlRecords: cr}, nil
+}

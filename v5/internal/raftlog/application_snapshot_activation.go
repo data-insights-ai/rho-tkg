@@ -94,9 +94,10 @@ func (s *Store) PersistApplicationReady(rd raft.Ready, c *ApplicationSnapshotCla
 	target := &m.Gen.Banks[c.p.bank]
 	target.State = bankActive
 	target.ReservedBytes, target.ReservedRecords = 0, 0
-	m.App.Through, m.App.Bytes, m.App.Records = idx, target.Bytes, target.Records
+	m.Controls.Bytes, m.Controls.Records = target.ControlBytes, target.ControlRecords
+	m.App.Through, m.App.Bytes, m.App.Records = idx, target.Bytes-target.ControlBytes, target.Records-target.ControlRecords
 	m.Rep.LastActivatedManifestID = c.manifestID
-	if err := bindPublication(&m, c.p.bank, c.p.generation, m.App.Bytes, m.App.Records); err != nil {
+	if err := bindPublication(&m, c.p.bank, c.p.generation, target.Bytes, target.Records); err != nil {
 		return root, err
 	}
 	if m.Gen.Publication.ID != c.p.i.manifest.CutID {
@@ -163,6 +164,11 @@ func (s *Store) PersistApplicationReady(rd raft.Ready, c *ApplicationSnapshotCla
 	}
 	if clearOld {
 		if err := batch.DeleteRange([]byte{bankTag(old.Gen.Active, appDataTag)}, []byte{bankTag(old.Gen.Active, appOutcomeTag) + 1}, nil); err != nil {
+			return fail(err)
+		}
+	}
+	if clearOld && m.Controls.Config.enabled() {
+		if err := batch.DeleteRange([]byte{controlBankTag(old.Gen.Active)}, []byte{controlBankTag(old.Gen.Active) + 1}, nil); err != nil {
 			return fail(err)
 		}
 	}

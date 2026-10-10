@@ -67,7 +67,8 @@ func (s *Store) BeginApplicationExport(ctx context.Context) (*ApplicationExport,
 		s.mu.Unlock()
 		return nil, err
 	}
-	pin := s.meta.App.Bytes + s.meta.LogBytes + s.meta.ImageBytes + s.meta.SnapBytes + uint64(len(metaBytes)+3)
+	totalBytes, _ := applicationTotals(s.meta)
+	pin := totalBytes + s.meta.LogBytes + s.meta.ImageBytes + s.meta.SnapBytes + uint64(len(metaBytes)+3)
 	if s.meta.Gen.Limits.enabled() {
 		for j, b := range s.meta.Gen.Banks {
 			if byte(j) != s.activeBank() {
@@ -244,7 +245,7 @@ func (e *ApplicationExport) Next(ctx context.Context, b ReadBudget) (chunk Appli
 	if b.Rows > l.MaxChunkRows || b.Bytes > l.MaxChunkBytes {
 		return chunk, ErrLimit
 	}
-	it, err := e.snapshot.NewIter(&pebble.IterOptions{LowerBound: []byte{bankTag(e.bank, appDataTag)}, UpperBound: []byte{bankTag(e.bank, appOutcomeTag) + 1}})
+	it, err := newApplicationIterator(e.snapshot.NewIter, e.bank, e.manifest.controls())
 	if err != nil {
 		s.poison = err
 		return chunk, err
@@ -294,8 +295,7 @@ func (e *ApplicationExport) Next(ctx context.Context, b ReadBudget) (chunk Appli
 				s.poison = inspectErr
 				return chunk, inspectErr
 			}
-			canonical := copyApplicationBytes(k)
-			canonical[0] -= e.bank * 4
+			canonical := canonicalApplicationKey(e.bank, k)
 			data = appendBoundedSnapshot(data, canonical, appFrame(canonical, value, deleted), b.Bytes)
 		}
 		last = copyApplicationBytes(k)

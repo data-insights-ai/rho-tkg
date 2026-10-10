@@ -5,8 +5,6 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-
-	"github.com/cockroachdb/pebble/v2"
 )
 
 // ApplicationImport owns the sole inactive application bank. Verified contents
@@ -49,6 +47,9 @@ func (s *Store) BeginApplicationImport(ctx context.Context, m ApplicationSnapsho
 	}
 	tc := s.meta.Transfer
 	if m.SemanticContractID != s.meta.Rep.SemanticContractID {
+		return nil, ErrInvalid
+	}
+	if m.controls() != s.meta.Controls.Config.enabled() {
 		return nil, ErrInvalid
 	}
 	if !tc.enabled() || m.Identity != tc.Identity || m.Contract != tc.Contract {
@@ -126,6 +127,11 @@ func (i *ApplicationImport) descriptor() []byte {
 		b = append(b, i.manifest.CutID[:]...)
 		b = binary.BigEndian.AppendUint32(b, uint32(len(i.after))) // #nosec G115 -- AS2 cursor length is contract-bounded before admission.
 		b = append(b, i.after...)
+	}
+	if i.manifest.controls() {
+		b[2] = 4
+		b = binary.BigEndian.AppendUint64(b, i.state.controlBytes)
+		b = binary.BigEndian.AppendUint64(b, i.state.controlRows)
 	}
 	return append(b, flags)
 }
@@ -214,6 +220,7 @@ func (i *ApplicationImport) Append(ctx context.Context, c ApplicationSnapshotChu
 	if prospective.Gen.Limits.enabled() {
 		bank := &prospective.Gen.Banks[i.bank]
 		bank.Bytes, bank.Records = state.bytes, state.rows
+		bank.ControlBytes, bank.ControlRecords = state.controlBytes, state.controlRows
 		if err := s.validateGenerationMeta(prospective); err != nil {
 			return err
 		}
@@ -224,8 +231,7 @@ func (i *ApplicationImport) Append(ctx context.Context, c ApplicationSnapshotChu
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		local := copyApplicationBytes(k)
-		local[0] += i.bank * 4
+		local := localApplicationKey(i.bank, k)
 		// accept already verified the canonical frame; local physical key hashes
 		// are reconstructed rather than copied from the sender.
 		value, deleted, err := inspectAppFrame(k, v, len(v)-appFrameBytes)
@@ -349,15 +355,14 @@ func (i *ApplicationImport) Verify(ctx context.Context) (err error) {
 func (i *ApplicationImport) verifyPage(ctx context.Context, m ApplicationSnapshotManifest, state snapshotVerifier) (next snapshotVerifier, complete bool, err error) {
 	s := i.s
 	l := s.meta.Transfer.Limits
-	it, err := s.db.NewIter(&pebble.IterOptions{LowerBound: []byte{bankTag(i.bank, appDataTag)}, UpperBound: []byte{bankTag(i.bank, appOutcomeTag) + 1}})
+	it, err := newApplicationIterator(s.db.NewIter, i.bank, m.controls())
 	if err != nil {
 		return state, false, err
 	}
 	defer func() { err = errors.Join(err, it.Close()) }()
 	valid := it.First()
 	if len(state.last) > 0 {
-		after := copyApplicationBytes(state.last)
-		after[0] += i.bank * 4
+		after := localApplicationKey(i.bank, state.last)
 		valid = it.SeekGE(after)
 		if valid && bytes.Equal(it.Key(), after) {
 			valid = it.Next()
@@ -387,8 +392,7 @@ func (i *ApplicationImport) verifyPage(ctx context.Context, m ApplicationSnapsho
 		if err != nil {
 			return state, false, err
 		}
-		k := copyApplicationBytes(local)
-		k[0] -= i.bank * 4
+		k := canonicalApplicationKey(i.bank, local)
 		canonical := appFrame(k, value, deleted)
 		state, err = state.accept(m, k, canonical)
 		if err != nil {

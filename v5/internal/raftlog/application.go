@@ -113,7 +113,8 @@ func (s *Store) validateApplicationMeta(m metadata) error {
 		return ErrLimit
 	}
 	pending := m.Last - m.Applied
-	if pending > (p.RetainedApplicationBytes-a.Bytes)/unsignedLimit(p.MaxInstallBytes) || pending > (p.RetainedApplicationRecords-a.Records)/unsignedLimit(p.MaxInstallWrites+3) {
+	totalBytes, totalRecords := applicationTotals(m)
+	if pending > (p.RetainedApplicationBytes-totalBytes)/unsignedLimit(p.MaxInstallBytes) || pending > (p.RetainedApplicationRecords-totalRecords)/unsignedLimit(p.MaxInstallWrites+3) {
 		return ErrLimit
 	}
 	if m.Applied > 0 && (!applicationConfiguration(m, m.Conf) || !applicationConfiguration(m, m.Snap.GetMetadata().GetConfState()) || m.ImageBytes > unsignedLimit(p.MaxImageBytes)) {
@@ -288,6 +289,7 @@ type ApplicationBatch struct {
 	Image            []byte
 	Writes           []KV
 	Changes, Outcome []byte
+	ControlPuts      []ApplicationControlPut
 }
 
 // ApplicationBudget bounds conservative encoded installation staging including
@@ -309,7 +311,7 @@ func (s *Store) ApplicationBudget() ApplicationBudget {
 }
 
 func (p ApplicationPolicy) measure(b ApplicationBatch) (uint64, uint64, error) {
-	if len(b.Writes) > p.MaxInstallWrites || len(b.Image) > p.MaxImageBytes || len(b.Changes) > p.MaxChangeBytes || len(b.Outcome) > p.MaxOutcomeBytes {
+	if len(b.Writes)+len(b.ControlPuts) > p.MaxInstallWrites || len(b.Image) > p.MaxImageBytes || len(b.Changes) > p.MaxChangeBytes || len(b.Outcome) > p.MaxOutcomeBytes {
 		return 0, 0, ErrLimit
 	}
 	retained := uint64(3*(9+appFrameBytes) + len(b.Image) + len(b.Changes) + len(b.Outcome))
@@ -328,10 +330,16 @@ func (p ApplicationPolicy) measure(b ApplicationBatch) (uint64, uint64, error) {
 			return 0, 0, ErrLimit
 		}
 	}
+	cb, cr, cw, err := controlGrowth(p, b)
+	if err != nil {
+		return 0, 0, err
+	}
+	retained += cb
+	work += cw
 	if work > unsignedLimit(p.MaxInstallBytes) {
 		return 0, 0, ErrLimit
 	}
-	return retained, uint64(len(b.Writes) + 3), nil
+	return retained, uint64(len(b.Writes)+3) + cr, nil
 }
 
 // InstallApplication synchronously co-commits immutable KV versions, a retained
@@ -359,14 +367,24 @@ func (s *Store) InstallApplication(index uint64, b ApplicationBatch) error {
 	if err != nil {
 		return err
 	}
-	if added > p.RetainedApplicationBytes-s.meta.App.Bytes || count > p.RetainedApplicationRecords-s.meta.App.Records {
+	if len(b.ControlPuts) > 0 && !s.meta.Controls.Config.enabled() {
+		return ErrInvalid
+	}
+	cb, cr, _, err := controlGrowth(p, b)
+	if err != nil {
+		return err
+	}
+	retained, rows := applicationTotals(s.meta)
+	if added > p.RetainedApplicationBytes-retained || count > p.RetainedApplicationRecords-rows {
 		return ErrLimit
 	}
 	prospective := s.meta
 	prospective.Applied = index
 	prospective.App.Through = index
-	prospective.App.Bytes += added
-	prospective.App.Records += count
+	prospective.App.Bytes += added - cb
+	prospective.App.Records += count - cr
+	prospective.Controls.Bytes += cb
+	prospective.Controls.Records += cr
 	syncActiveGeneration(&prospective)
 	if err := generationCharge(prospective, prospective.Last-index); err != nil {
 		return err
@@ -388,19 +406,42 @@ func (s *Store) InstallApplication(index uint64, b ApplicationBatch) error {
 	m.Applied = index
 	m.App.Through = index
 	m.App.TailBytes -= size
-	m.App.Bytes += added
-	m.App.Records += count
+	m.App.Bytes += added - cb
+	m.App.Records += count - cr
+	m.Controls.Bytes += cb
+	m.Controls.Records += cr
 	m.ImageBytes = uint64(len(b.Image))
 	m.ImageHash = sha256.Sum256(b.Image)
 	syncActiveGeneration(&m)
 	if err := s.validate(m); err != nil {
 		return err
 	}
+	work := 2*added + uint64(len(b.Image)+1024) + uint64(64*(len(b.Writes)+len(b.ControlPuts)))
+	for _, w := range b.ControlPuts {
+		work += 128 + 4*controlPhysicalKeyBytes(w.Key)
+	}
+	limit := unsignedLimit(p.MaxInstallBytes)
+	if work > limit {
+		return ErrLimit
+	}
+	for _, w := range b.ControlPuts {
+		n, e := s.controlAbsent(w.Key, limit-work)
+		if e != nil {
+			return e
+		}
+		work += n
+	}
 	batch := s.db.NewBatch()
 	fail := func(e error) error { return errors.Join(e, batch.Close()) }
 	for _, w := range b.Writes {
 		k := bankVersionKey(s.activeBank(), w.Key, index)
 		if err := batch.Set(k, appFrame(k, w.Value, w.Deleted), nil); err != nil {
+			return fail(err)
+		}
+	}
+	for _, w := range b.ControlPuts {
+		k := controlVersionKey(s.activeBank(), w.Key, index)
+		if err := batch.Set(k, appFrame(k, w.Value, false), nil); err != nil {
 			return fail(err)
 		}
 	}
@@ -439,8 +480,9 @@ func (s *Store) AdmitApplication(commandBytes int) error {
 		return ErrLimit
 	}
 	count := s.meta.Last - s.meta.Applied + 2
+	totalBytes, totalRecords := applicationTotals(s.meta)
 	extra := uint64(commandBytes + 2*(frameOverhead+9))
-	if count > p.MaxTailEntries || extra > p.MaxTailBytes-s.meta.App.TailBytes || s.meta.LogCount+2 > s.limits.MaxRetainedEntries || extra > s.limits.MaxRetainedBytes-s.meta.LogBytes || count > (p.RetainedApplicationBytes-s.meta.App.Bytes)/unsignedLimit(p.MaxInstallBytes) || count > (p.RetainedApplicationRecords-s.meta.App.Records)/unsignedLimit(p.MaxInstallWrites+3) {
+	if count > p.MaxTailEntries || extra > p.MaxTailBytes-s.meta.App.TailBytes || s.meta.LogCount+2 > s.limits.MaxRetainedEntries || extra > s.limits.MaxRetainedBytes-s.meta.LogBytes || count > (p.RetainedApplicationBytes-totalBytes)/unsignedLimit(p.MaxInstallBytes) || count > (p.RetainedApplicationRecords-totalRecords)/unsignedLimit(p.MaxInstallWrites+3) {
 		return ErrLimit
 	}
 	return generationCharge(s.meta, count)
@@ -888,6 +930,7 @@ type ApplicationUsage struct {
 	RetainedBytes, RetainedRecords, TailBytes, TailEntries uint64
 	CheckpointBytes, SnapshotBytes                         uint64
 	Views, ViewBytes                                       int
+	GraphBytes, GraphRecords, ControlBytes, ControlRecords uint64
 }
 
 // ApplicationUsage returns a serialized accounting snapshot.
@@ -904,7 +947,22 @@ func (s *Store) ApplicationUsage() (ApplicationUsage, error) {
 		return ApplicationUsage{}, ErrInvalid
 	}
 	m := s.meta
-	return ApplicationUsage{m.App.Bytes, m.App.Records, m.App.TailBytes, m.Last - m.Applied, m.ImageBytes, m.SnapBytes, s.views, s.viewBytes}, nil
+	totalBytes, totalRecords := applicationTotals(m)
+	return ApplicationUsage{RetainedBytes: totalBytes, RetainedRecords: totalRecords, TailBytes: m.App.TailBytes, TailEntries: m.Last - m.Applied, CheckpointBytes: m.ImageBytes, SnapshotBytes: m.SnapBytes, Views: s.views, ViewBytes: s.viewBytes, GraphBytes: m.App.Bytes, GraphRecords: m.App.Records, ControlBytes: m.Controls.Bytes, ControlRecords: m.Controls.Records}, nil
+}
+
+// admitScrubControlKey owns the next canonical control key only after stored
+// shape and index validation. Previous is the last admitted canonical key.
+func admitScrubControlKey(bank byte, key, previous []byte, maxKeyBytes int, applied uint64) ([]byte, error) {
+	_, index, err := decodeControlKey(bank, key, maxKeyBytes)
+	if err != nil || index > applied {
+		return nil, ErrCorrupt
+	}
+	canonical := canonicalApplicationKey(bank, key)
+	if sameControlLogical(previous, canonical, maxKeyBytes) {
+		return nil, ErrCorrupt
+	}
+	return canonical, nil
 }
 
 // ScrubApplication verifies every immutable version/root/change/outcome in
@@ -927,7 +985,7 @@ func (s *Store) ScrubApplication(ctx context.Context) (err error) {
 	if !p.Enabled() {
 		return ErrInvalid
 	}
-	it, err := s.db.NewIter(&pebble.IterOptions{LowerBound: []byte{bankTag(s.activeBank(), appDataTag)}, UpperBound: []byte{bankTag(s.activeBank(), appOutcomeTag) + 1}})
+	it, err := newApplicationIterator(s.db.NewIter, s.activeBank(), s.meta.Controls.Config.enabled())
 	if err != nil {
 		s.poison = err
 		return err
@@ -939,15 +997,31 @@ func (s *Store) ScrubApplication(ctx context.Context) (err error) {
 			s.poison = err
 		}
 	}()
-	var total, records uint64
+	var total, records, controlBytes, controlRecords uint64
+	var previousControl []byte
 	var envelopes [3]uint64
 	for valid := it.First(); valid; valid = it.Next() {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		key := it.Key()
+		raw, readErr := it.ValueAndErr()
+		if readErr != nil {
+			return storedReadFailure(readErr)
+		}
+		cost := uint64(len(key)) + uint64(len(raw))
+		if total > p.RetainedApplicationBytes || controlBytes > p.RetainedApplicationBytes-total || cost > p.RetainedApplicationBytes-total-controlBytes || records > p.RetainedApplicationRecords || controlRecords >= p.RetainedApplicationRecords-records {
+			return ErrCorrupt
+		}
 		limit := p.MaxValueBytes
-		if key[0] == bankTag(s.activeBank(), appDataTag) {
+		isControl := key[0] == controlBankTag(s.activeBank())
+		if isControl {
+			canonical, err := admitScrubControlKey(s.activeBank(), key, previousControl, p.MaxKeyBytes, s.meta.Applied)
+			if err != nil {
+				return err
+			}
+			previousControl = canonical
+		} else if key[0] == bankTag(s.activeBank(), appDataTag) {
 			_, index, err := decodeBankAppKey(s.activeBank(), key, p.MaxKeyBytes)
 			if err != nil || index > s.meta.Applied {
 				return errors.Join(ErrCorrupt, err)
@@ -971,25 +1045,22 @@ func (s *Store) ScrubApplication(ctx context.Context) (err error) {
 				limit = p.MaxOutcomeBytes
 			}
 		}
-		raw, readErr := it.ValueAndErr()
-		if readErr != nil {
-			return storedReadFailure(readErr)
-		}
 		_, deleted, err := inspectAppFrame(key, raw, limit)
 		if err != nil || deleted && key[0] != bankTag(s.activeBank(), appDataTag) {
 			return errors.Join(ErrCorrupt, err)
 		}
-		cost := uint64(len(key) + len(raw))
-		if cost > p.RetainedApplicationBytes-total || records >= p.RetainedApplicationRecords {
-			return ErrCorrupt
+		if isControl {
+			controlBytes += cost
+			controlRecords++
+		} else {
+			total += cost
+			records++
 		}
-		total += cost
-		records++
 	}
 	if err := it.Error(); err != nil {
 		return err
 	}
-	if total != s.meta.App.Bytes || records != s.meta.App.Records {
+	if total != s.meta.App.Bytes || records != s.meta.App.Records || controlBytes != s.meta.Controls.Bytes || controlRecords != s.meta.Controls.Records {
 		return ErrCorrupt
 	}
 	for _, index := range envelopes {

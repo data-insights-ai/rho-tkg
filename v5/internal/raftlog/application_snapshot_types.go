@@ -41,7 +41,7 @@ func (c ApplicationContract) numbers() []uint64 {
 	return []uint64{uint64(c.Version), unsignedLimit(c.MaxKeyBytes), unsignedLimit(c.MaxValueBytes), unsignedLimit(c.MaxImageBytes), unsignedLimit(c.MaxPageRows), unsignedLimit(c.MaxPageBytes), unsignedLimit(c.MaxInstallWrites), unsignedLimit(c.MaxInstallBytes), unsignedLimit(c.MaxChangeBytes), unsignedLimit(c.MaxOutcomeBytes)}
 }
 func (c ApplicationContract) validate() error {
-	if c.Version != 1 {
+	if c.Version != 1 && c.Version != 2 {
 		return ErrInvalid
 	}
 	for _, n := range c.numbers()[1:] {
@@ -89,7 +89,11 @@ func (c ApplicationTransferConfig) validate(p ApplicationPolicy) error {
 	if !c.enabled() {
 		return nil
 	}
-	if !p.Enabled() || c.Contract != ApplicationContractForPolicy(p) {
+	if !p.Enabled() || c.Contract.Version != 1 && c.Contract.Version != 2 || func() bool {
+		want := ApplicationContractForPolicy(p)
+		want.Version = c.Contract.Version
+		return c.Contract != want
+	}() {
 		return ErrInvalid
 	}
 	if err := c.Identity.validate(); err != nil {
@@ -119,6 +123,7 @@ type ApplicationSnapshotManifest struct {
 	Image                            []byte
 	ImageHash, RecordsHash           [32]byte
 	NamespaceBytes, NamespaceRecords [4]uint64
+	ControlBytes, ControlRecords     uint64
 }
 
 // ApplicationSnapshotChunk is one bounded ordered canonical page. Final marks
@@ -172,7 +177,8 @@ func (s *Store) ApplicationTransferUsage() (ApplicationTransferUsage, error) {
 	if !s.meta.Transfer.enabled() {
 		return ApplicationTransferUsage{}, ErrInvalid
 	}
-	u := ApplicationTransferUsage{ActiveBytes: s.meta.App.Bytes, ActiveRecords: s.meta.App.Records, PinnedLogicalBytes: s.pinnedApplicationBytes, Exports: len(s.applicationExports)}
+	totalBytes, totalRecords := applicationTotals(s.meta)
+	u := ApplicationTransferUsage{ActiveBytes: totalBytes, ActiveRecords: totalRecords, PinnedLogicalBytes: s.pinnedApplicationBytes, Exports: len(s.applicationExports)}
 	for e := range s.applicationExports {
 		u.ExportImageBytes += len(e.manifest.Image)
 	}
@@ -211,5 +217,8 @@ func snapshotTotals(m ApplicationSnapshotManifest) (uint64, uint64, error) {
 		b += m.NamespaceBytes[j]
 		r += m.NamespaceRecords[j]
 	}
-	return b, r, nil
+	if m.ControlBytes > math.MaxUint64-b || m.ControlRecords > math.MaxUint64-r {
+		return 0, 0, ErrLimit
+	}
+	return b + m.ControlBytes, r + m.ControlRecords, nil
 }

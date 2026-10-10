@@ -36,13 +36,15 @@ const (
 type applicationBank struct {
 	Generation, Through, Bytes, Records, ReservedBytes, ReservedRecords uint64
 	State                                                               applicationBankState
+	ControlBytes, ControlRecords                                        uint64
 }
 type generationMetadata struct {
-	Publication publicationMetadata
-	Limits      ApplicationGenerationLimits
-	HighWater   uint64
-	Active      byte
-	Banks       [2]applicationBank
+	ControlEnabled bool
+	Publication    publicationMetadata
+	Limits         ApplicationGenerationLimits
+	HighWater      uint64
+	Active         byte
+	Banks          [2]applicationBank
 }
 
 const generationMetaBytes = 4 + 4*8 + 2*7*8
@@ -51,6 +53,9 @@ func appendGenerationMeta(b []byte, g generationMetadata) []byte {
 	version := byte(1)
 	if g.Publication.Limits.enabled() {
 		version = 2
+	}
+	if g.ControlEnabled {
+		version = 3
 	}
 	b = append(b, 'A', 'G', version, 0)
 	for _, n := range []uint64{g.Limits.MaxBytes, g.Limits.MaxRecords, g.HighWater, uint64(g.Active)} {
@@ -61,16 +66,23 @@ func appendGenerationMeta(b []byte, g generationMetadata) []byte {
 			b = binary.BigEndian.AppendUint64(b, n)
 		}
 	}
+	if g.ControlEnabled {
+		for _, bank := range g.Banks {
+			b = binary.BigEndian.AppendUint64(b, bank.ControlBytes)
+			b = binary.BigEndian.AppendUint64(b, bank.ControlRecords)
+		}
+	}
 	if g.Publication.Limits.enabled() {
 		b = appendPublicationMeta(b, g.Publication)
 	}
 	return b
 }
 func decodeGenerationMeta(b []byte) (generationMetadata, []byte, error) {
-	if len(b) < generationMetaBytes || (!bytes.Equal(b[:4], []byte{'A', 'G', 1, 0}) && !bytes.Equal(b[:4], []byte{'A', 'G', 2, 0})) {
+	if len(b) < generationMetaBytes || (!bytes.Equal(b[:4], []byte{'A', 'G', 1, 0}) && !bytes.Equal(b[:4], []byte{'A', 'G', 2, 0}) && !bytes.Equal(b[:4], []byte{'A', 'G', 3, 0})) {
 		return generationMetadata{}, nil, ErrCorrupt
 	}
-	version2 := b[2] == 2
+	version3 := b[2] == 3
+	version2 := b[2] == 2 || version3
 	var n [18]uint64
 	for j := range n {
 		n[j] = binary.BigEndian.Uint64(b[4+j*8:])
@@ -81,12 +93,23 @@ func decodeGenerationMeta(b []byte) (generationMetadata, []byte, error) {
 	g := generationMetadata{Limits: ApplicationGenerationLimits{n[0], n[1]}, HighWater: n[2], Active: byte(n[3])} // #nosec G115 -- n[3] is checked <= 1 before conversion to a bank tag.
 	for j := range g.Banks {
 		o := 4 + j*7
-		g.Banks[j] = applicationBank{n[o], n[o+1], n[o+2], n[o+3], n[o+4], n[o+5], applicationBankState(n[o+6])}
+		g.Banks[j] = applicationBank{Generation: n[o], Through: n[o+1], Bytes: n[o+2], Records: n[o+3], ReservedBytes: n[o+4], ReservedRecords: n[o+5], State: applicationBankState(n[o+6])}
 	}
 	if !g.Limits.enabled() || g.Limits.MaxBytes > 1<<40 || g.Limits.MaxRecords > 1<<40 || g.Limits.MaxBytes == 0 || g.Limits.MaxRecords == 0 {
 		return generationMetadata{}, nil, ErrCorrupt
 	}
 	tail := b[generationMetaBytes:]
+	if version3 {
+		if len(tail) < 32 {
+			return generationMetadata{}, nil, ErrCorrupt
+		}
+		g.ControlEnabled = true
+		for j := range g.Banks {
+			g.Banks[j].ControlBytes = binary.BigEndian.Uint64(tail[j*16:])
+			g.Banks[j].ControlRecords = binary.BigEndian.Uint64(tail[j*16+8:])
+		}
+		tail = tail[32:]
+	}
 	if version2 {
 		var err error
 		g.Publication, tail, err = decodePublicationMeta(tail)
@@ -101,7 +124,9 @@ func syncActiveGeneration(m *metadata) {
 		return
 	}
 	b := &m.Gen.Banks[m.Gen.Active]
-	b.Through, b.Bytes, b.Records = m.App.Through, m.App.Bytes, m.App.Records
+	bytes, records := applicationTotals(*m)
+	b.Through, b.Bytes, b.Records = m.App.Through, bytes, records
+	b.ControlBytes, b.ControlRecords = m.Controls.Bytes, m.Controls.Records
 }
 func generationCharge(m metadata, pending uint64) error {
 	g := m.Gen
@@ -133,13 +158,20 @@ func (s *Store) validateGenerationMeta(m metadata) error {
 		}
 		return nil
 	}
+	if g.ControlEnabled != m.Controls.Config.enabled() {
+		return ErrInvalid
+	}
 	if err := g.Limits.validate(m.App.Policy, m.Transfer); err != nil {
 		return err
 	}
 	if g.Active > 1 || g.HighWater == 0 || g.HighWater != max(g.Banks[0].Generation, g.Banks[1].Generation) || g.Banks[0].Generation != 0 && g.Banks[0].Generation == g.Banks[1].Generation {
 		return ErrInvalid
 	}
+	totalBytes, totalRecords := applicationTotals(m)
 	for j, b := range g.Banks {
+		if b.ControlBytes > b.Bytes || b.ControlRecords > b.Records || !g.ControlEnabled && (b.ControlBytes != 0 || b.ControlRecords != 0) {
+			return ErrInvalid
+		}
 		if b.State > bankRetired || b.Generation > g.HighWater {
 			return ErrInvalid
 		}
@@ -153,7 +185,7 @@ func (s *Store) validateGenerationMeta(m metadata) error {
 			return ErrLimit
 		}
 		if byte(j) == g.Active {
-			if b.State != bankActive || b.Generation == 0 || b.Through != m.App.Through || b.Bytes != m.App.Bytes || b.Records != m.App.Records || b.ReservedBytes != 0 || b.ReservedRecords != 0 {
+			if b.State != bankActive || b.Generation == 0 || b.Through != m.App.Through || b.Bytes != totalBytes || b.Records != totalRecords || b.ControlBytes != m.Controls.Bytes || b.ControlRecords != m.Controls.Records || b.ReservedBytes != 0 || b.ReservedRecords != 0 {
 				return ErrInvalid
 			}
 		} else {
@@ -268,6 +300,11 @@ func (s *Store) clearGenerationBank(bank byte, generation uint64) error {
 	b := s.db.NewBatch()
 	if err := b.DeleteRange([]byte{bankTag(bank, appDataTag)}, []byte{bankTag(bank, appOutcomeTag) + 1}, nil); err != nil {
 		return errors.Join(err, b.Close())
+	}
+	if s.meta.Controls.Config.enabled() {
+		if err := b.DeleteRange([]byte{controlBankTag(bank)}, []byte{controlBankTag(bank) + 1}, nil); err != nil {
+			return errors.Join(err, b.Close())
+		}
 	}
 	if err := b.Delete(dormantKey, nil); err != nil {
 		return errors.Join(err, b.Close())

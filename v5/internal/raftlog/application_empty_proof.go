@@ -24,6 +24,12 @@ func (v *ApplicationView) ProveNoApplicationData(ctx context.Context) (Applicati
 	if v.bank != s.activeBank() || v.generation != s.activeGeneration() || v.index != s.meta.Applied || hash != s.meta.ImageHash {
 		return ApplicationRoot{}, ErrInvalid
 	}
+	if err := validateControlMeta(s.meta); err != nil {
+		return ApplicationRoot{}, v.fail(err)
+	}
+	if err := s.validateGenerationMeta(s.meta); err != nil {
+		return ApplicationRoot{}, v.fail(err)
+	}
 	a := s.meta.App
 	if !a.Policy.Enabled() || a.Through != v.index || a.Through == 0 || a.Through > math.MaxUint64/3 || uint64(len(v.image)) != s.meta.ImageBytes || len(v.image) > a.Policy.MaxImageBytes {
 		return ApplicationRoot{}, v.fail(ErrCorrupt)

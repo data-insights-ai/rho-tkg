@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"errors"
 
-	"github.com/cockroachdb/pebble/v2"
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 )
@@ -35,12 +34,19 @@ func publishedManifestID(m ApplicationSnapshotManifest) [32]byte {
 	if m.Version == 3 {
 		domain = append([]byte("rho-tkg:application-snapshot-manifest:v3\x00"), m.SemanticContractID[:]...)
 	}
+	if m.Version == 4 {
+		domain = append([]byte("rho-tkg:application-snapshot-manifest:v4\x00"), m.SemanticContractID[:]...)
+	}
 	b := append(domain, m.CutID[:]...)
 	b = append(b, m.RecordsHash[:]...)
 	for _, ns := range [][4]uint64{m.NamespaceBytes, m.NamespaceRecords} {
 		for _, n := range ns {
 			b = binary.BigEndian.AppendUint64(b, n)
 		}
+	}
+	if m.Version == 4 {
+		b = binary.BigEndian.AppendUint64(b, m.ControlBytes)
+		b = binary.BigEndian.AppendUint64(b, m.ControlRecords)
 	}
 	return sha256.Sum256(b)
 }
@@ -74,7 +80,8 @@ func (s *Store) BeginPublishedApplicationExport(ctx context.Context, id [32]byte
 		return nil, raft.ErrSnapOutOfDate
 	}
 	// All components are policy-bounded at admission, hence this sum cannot wrap.
-	pin := s.meta.App.Bytes + s.meta.LogBytes + s.meta.ImageBytes + s.meta.SnapBytes + metadataBytes(s.meta) + 3
+	totalBytes, _ := applicationTotals(s.meta)
+	pin := totalBytes + s.meta.LogBytes + s.meta.ImageBytes + s.meta.SnapBytes + metadataBytes(s.meta) + 3
 	for j, b := range s.meta.Gen.Banks {
 		if byte(j) != s.activeBank() {
 			pin += b.Bytes
@@ -97,8 +104,9 @@ func (s *Store) BeginPublishedApplicationExport(ctx context.Context, id [32]byte
 		return nil, err
 	}
 	cut := cutReference(s.meta)
-	m := ApplicationSnapshotManifest{Version: semanticManifestVersion(cut.SemanticContractID), SemanticContractID: cut.SemanticContractID, CutID: id, Identity: cut.Identity, Contract: cut.Contract, Index: cut.Index, Term: cut.Term, ConfState: canonicalConf(cut.ConfState), Image: image, ImageHash: cut.ImageHash}
-	m.NamespaceRecords = [4]uint64{p.Records - 3*m.Index, m.Index, m.Index, m.Index}
+	m := ApplicationSnapshotManifest{Version: s.meta.manifestVersion(), SemanticContractID: cut.SemanticContractID, CutID: id, Identity: cut.Identity, Contract: cut.Contract, Index: cut.Index, Term: cut.Term, ConfState: canonicalConf(cut.ConfState), Image: image, ImageHash: cut.ImageHash}
+	m.ControlBytes, m.ControlRecords = p.ControlBytes, p.ControlRecords
+	m.NamespaceRecords = [4]uint64{p.Records - p.ControlRecords - 3*m.Index, m.Index, m.Index, m.Index}
 	for j := range m.NamespaceBytes {
 		m.NamespaceBytes[j] = p.Bytes
 	}
@@ -161,9 +169,10 @@ func (e *ApplicationExport) BuildManifest(ctx context.Context, b ReadBudget) (bo
 		m := e.manifest
 		m.NamespaceBytes = state.namespaceBytes
 		m.RecordsHash = state.digest
+		m.ControlBytes, m.ControlRecords = state.controlBytes, state.controlRows
 		// The image was checked at capture. Its cut ID must agree with the exact
 		// verified totals; no full-image encode/hash is hidden in this page's finish.
-		id, err := cutID(ApplicationCutReference{SemanticContractID: m.SemanticContractID, Identity: m.Identity, Contract: m.Contract, Index: m.Index, Term: m.Term, ConfState: m.ConfState, ImageBytes: uint64(len(m.Image)), ImageHash: m.ImageHash, RetainedBytes: state.bytes, RetainedRecords: state.rows})
+		id, err := cutID(ApplicationCutReference{SemanticContractID: m.SemanticContractID, Identity: m.Identity, Contract: m.Contract, Index: m.Index, Term: m.Term, ConfState: m.ConfState, ImageBytes: uint64(len(m.Image)), ImageHash: m.ImageHash, RetainedBytes: state.bytes, RetainedRecords: state.rows, ControlBytes: state.controlBytes, ControlRecords: state.controlRows})
 		if err != nil || id != m.CutID {
 			s.poison = ErrCorrupt
 			return false, ErrCorrupt
@@ -203,15 +212,14 @@ func (e *ApplicationExport) publishedPage(ctx context.Context, b ReadBudget, bui
 	if base > b.Bytes {
 		return chunk, state, ErrLimit
 	}
-	it, err := e.snapshot.NewIter(&pebble.IterOptions{LowerBound: []byte{bankTag(e.bank, appDataTag)}, UpperBound: []byte{bankTag(e.bank, appOutcomeTag) + 1}})
+	it, err := newApplicationIterator(e.snapshot.NewIter, e.bank, m.controls())
 	if err != nil {
 		return chunk, state, err
 	}
 	defer func() { err = errors.Join(err, it.Close()) }()
 	valid := it.First()
 	if len(e.after) > 0 {
-		after := copyApplicationBytes(e.after)
-		after[0] += e.bank * 4
+		after := localApplicationKey(e.bank, e.after)
 		valid = it.SeekGE(after)
 		if valid && bytes.Equal(it.Key(), after) {
 			valid = it.Next()
@@ -238,8 +246,7 @@ func (e *ApplicationExport) publishedPage(ctx context.Context, b ReadBudget, bui
 			}
 			break
 		}
-		k := copyApplicationBytes(local)
-		k[0] -= e.bank * 4
+		k := canonicalApplicationKey(e.bank, local)
 		index, err := snapshotCursorIndex(k, m.Contract)
 		if err != nil {
 			return chunk, state, err
@@ -287,6 +294,10 @@ func (e *ApplicationExport) publishedPage(ctx context.Context, b ReadBudget, bui
 func snapshotCursorIndex(k []byte, c ApplicationContract) (uint64, error) {
 	if len(k) == 0 {
 		return 0, ErrInvalid
+	}
+	if c.Version == 2 && k[0] == controlTag {
+		_, index, err := decodeControlKey(0, k, c.MaxKeyBytes)
+		return index, err
 	}
 	if k[0] == appDataTag {
 		_, index, err := decodeAppKey(k, c.MaxKeyBytes)
@@ -394,6 +405,9 @@ func importDescriptorBytes(i *ApplicationImport) int {
 	}
 	if i.manifest.Version >= 2 {
 		n += 32 + 4 + len(i.after)
+	}
+	if i.manifest.controls() {
+		n += 16
 	}
 	return n
 }

@@ -18,7 +18,7 @@ const applicationSnapshotClaimFixedBytes uint64 = 2048
 // It contains no application image, local generation/voter policy or HardState.
 // Encoding does not prove receipt, Raft acceptance or authorize activation.
 func EncodeApplicationSnapshotDescriptor(m ApplicationSnapshotManifest) ([]byte, error) {
-	if m.Version != 2 && m.Version != 3 {
+	if m.Version != 2 && m.Version != 3 && m.Version != 4 {
 		return nil, ErrInvalid
 	}
 	if err := validateManifest(m); err != nil {
@@ -31,13 +31,16 @@ func EncodeApplicationSnapshotDescriptor(m ApplicationSnapshotManifest) ([]byte,
 	if err != nil {
 		return nil, err
 	}
-	b := make([]byte, 0, descriptorFixedBytes(m.SemanticContractID)+len(cs))
+	b := make([]byte, 0, descriptorBytesForContract(m.SemanticContractID, m.Contract)+len(cs))
 	version := byte(1)
-	if m.Version == 3 {
+	if m.Version >= 3 {
 		version = 2
 	}
+	if m.Version == 4 {
+		version = 3
+	}
 	b = append(b, 'A', 'D', version, 0)
-	if m.Version == 3 {
+	if m.Version >= 3 {
 		b = append(b, m.SemanticContractID[:]...)
 	}
 	b = appendIdentity(b, m.Identity)
@@ -48,6 +51,10 @@ func EncodeApplicationSnapshotDescriptor(m ApplicationSnapshotManifest) ([]byte,
 	}
 	for _, n := range []uint64{m.Index, m.Term, uint64(len(m.Image)), totals, rows} {
 		b = binary.BigEndian.AppendUint64(b, n)
+	}
+	if m.controls() {
+		b = binary.BigEndian.AppendUint64(b, m.ControlBytes)
+		b = binary.BigEndian.AppendUint64(b, m.ControlRecords)
 	}
 	b = append(b, m.ImageHash[:]...)
 	b = append(b, m.CutID[:]...)
@@ -104,7 +111,7 @@ func (i *ApplicationImport) Prepare() (*PreparedApplicationSnapshot, error) {
 	if err := i.check(context.Background()); err != nil {
 		return nil, err
 	}
-	if !s.meta.Rep.Config.enabled() || i.manifest.Version != semanticManifestVersion(s.meta.Rep.SemanticContractID) || i.manifest.SemanticContractID != s.meta.Rep.SemanticContractID || !i.final || !i.verified || !s.meta.Rep.Config.matches(i.manifest.ConfState) {
+	if !s.meta.Rep.Config.enabled() || i.manifest.Version != s.meta.manifestVersion() || i.manifest.SemanticContractID != s.meta.Rep.SemanticContractID || !i.final || !i.verified || !s.meta.Rep.Config.matches(i.manifest.ConfState) {
 		return nil, ErrInvalid
 	}
 	if i.prepared != nil {
