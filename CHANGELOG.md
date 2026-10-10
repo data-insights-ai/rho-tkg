@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`g.Index().InventoryEpoch() uint64`: the index-inventory epoch** (sigma-tkgd round 4 R1, task record C4n: each
+  reopen of a kept snapshot probed `HasProperty` for every indexed property, about 100 ns, because nothing moved
+  when an index was created or dropped). One counter per Graph, held by the core, so it is the same on memory,
+  badger, tiered and sharded: it advances after every property, relationship-property, composite, temporal,
+  relationship-type temporal, high-frequency and vector index create or drop that reached the store (a unique
+  constraint's implicit property index included), after a failed one too (its partial state may have been visible
+  to a concurrent reader; the rollback drop is counted the same way), and after every store `Clear`
+  (`Admin().Reset`, a replica's applied `ChangeClear`). It stays put for a refusal that changed nothing
+  (`ErrIndexExists`, `ErrIndexNotFound`, `ErrTemporalIndexExists` / `NotFound`, `ErrVectorIndexExists` /
+  `NotFound`, `ErrRelPropertyIndexUnsupported`, `ErrCapabilityNotSupported`, tiered `ErrEventPropertyIndex`), for
+  a call rejected by validation or a closed / read-only graph, for data writes and for reads. Contract: read the
+  epoch before reading the inventory; while a later read returns the same value, that view is current with respect
+  to every create or drop that has returned (a create or drop still running may already be visible in the store
+  before it advances the epoch, as it is to `HasProperty` today). 0 at `New`, not persisted; `IndexProvider`
+  registrations are not index inventory. `index.Ops` gains `InventoryEpoch`. `BenchmarkIndexInventoryEpoch`:
+  1.8 ns against 149-157 ns for four `HasProperty` probes (memory and badger), 0 allocs. Tests:
+  `TestIndexInventoryEpochAdvancesExactlyOnInventoryChanges` (every kind on every backend: create, duplicate, drop,
+  drop again, validation refusals, reads and writes, unique constraint, Reset), `TestIndexInventoryEpochConcurrentDDL`
+  (-race), `TestIndexDDLAdvancesExceptOnRefusals`, and the replica clear in
+  `TestApplyChangeRecord_ChangeClearReapsCoreStateLikeReset`; mutants under `tasks/evidence/cypher-round4/`. The
+  doc comments that said "no index-DDL epoch" now point at it.
+
 ### Performance
 
 - **Memory store: `Rels().ForEachAdjacentEndpointOrdinal` allocates nothing per call** (sigma-tkgd round 4 R3,

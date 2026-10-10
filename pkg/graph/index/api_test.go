@@ -381,3 +381,21 @@ func TestTemporalIndexListingForwards(t *testing.T) {
 		t.Fatalf("HasRelTemporal = %v %v", ok, err)
 	}
 }
+
+func (s *indexOpsSpy) InventoryEpoch() uint64 {
+	s.record("InventoryEpoch")
+	return 7
+}
+
+func TestInventoryEpochForwards(t *testing.T) {
+	var nilAPI *API
+	if got := nilAPI.InventoryEpoch(); got != 0 {
+		t.Fatalf("nil InventoryEpoch = %d, want 0", got)
+	}
+	if got := New((*indexOpsSpy)(nil)).InventoryEpoch(); got != 0 {
+		t.Fatalf("typed-nil InventoryEpoch = %d, want 0", got)
+	}
+	if got := New(&indexOpsSpy{}).InventoryEpoch(); got != 7 {
+		t.Fatalf("InventoryEpoch = %d, want 7", got)
+	}
+}

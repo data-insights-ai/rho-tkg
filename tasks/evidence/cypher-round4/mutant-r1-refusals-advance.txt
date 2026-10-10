@@ -1,0 +1,17 @@
+# R1 mutant: refusals advance too
+--- FAIL: TestIndexInventoryEpochAdvancesExactlyOnInventoryChanges (0.01s)
+    --- FAIL: TestIndexInventoryEpochAdvancesExactlyOnInventoryChanges/memory (0.00s)
+        index_inventory_epoch_test.go:84: CreateProperty again refused (graph: property index already exists): epoch 1 -> 2, want unchanged
+    --- FAIL: TestIndexInventoryEpochAdvancesExactlyOnInventoryChanges/badger (0.01s)
+        index_inventory_epoch_test.go:84: CreateProperty again refused (graph: property index already exists): epoch 1 -> 2, want unchanged
+    --- FAIL: TestIndexInventoryEpochAdvancesExactlyOnInventoryChanges/tiered (0.00s)
+        index_inventory_epoch_test.go:66: CreateProperty on an event label refused (graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "P": graph: property indexes only supported for reference entities in Store): epoch 0 -> 2, want unchanged
+    --- FAIL: TestIndexInventoryEpochAdvancesExactlyOnInventoryChanges/sharded (0.00s)
+        index_inventory_epoch_test.go:84: CreateProperty again refused (graph: property index already exists): epoch 1 -> 2, want unchanged
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.226s
+--- FAIL: TestIndexDDLAdvancesExceptOnRefusals (0.00s)
+    index_inventory_epoch_test.go:41: after graph: property index already exists: epoch 4, want 3
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.286s
+FAIL

@@ -38,15 +38,15 @@ func (i *IndexOps) CreateProperty(label, propertyKey string) error {
 			if !labelFinished {
 				_ = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
 					fmt.Errorf("panic during property index create"),
-					func() error { return cap.DropPropertyIndex(tok, propertyKey) },
+					func() error { return c.indexDDL(cap.DropPropertyIndex(tok, propertyKey)) },
 					storepkg.ErrIndexNotFound,
 					storepkg.ErrIndexExists,
 				)
 			}
 		}()
 		err = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
-			cap.CreatePropertyIndex(tok, propertyKey),
-			func() error { return cap.DropPropertyIndex(tok, propertyKey) },
+			c.indexDDL(cap.CreatePropertyIndex(tok, propertyKey)),
+			func() error { return c.indexDDL(cap.DropPropertyIndex(tok, propertyKey)) },
 			storepkg.ErrIndexNotFound,
 			storepkg.ErrIndexExists,
 		)
@@ -77,7 +77,7 @@ func (i *IndexOps) DeleteProperty(label, propertyKey string) error {
 		if err != nil {
 			return err
 		}
-		return cap.DropPropertyIndex(tok, propertyKey)
+		return c.indexDDL(cap.DropPropertyIndex(tok, propertyKey))
 	})
 }
 
@@ -118,15 +118,15 @@ func (i *IndexOps) CreateComposite(label string, keys []string) error {
 			if !labelFinished {
 				_ = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
 					fmt.Errorf("panic during composite index create"),
-					func() error { return cap.DropCompositePropertyIndex(tok, keys) },
+					func() error { return c.indexDDL(cap.DropCompositePropertyIndex(tok, keys)) },
 					storepkg.ErrIndexNotFound,
 					storepkg.ErrIndexExists,
 				)
 			}
 		}()
 		err = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
-			cap.CreateCompositePropertyIndex(tok, keys),
-			func() error { return cap.DropCompositePropertyIndex(tok, keys) },
+			c.indexDDL(cap.CreateCompositePropertyIndex(tok, keys)),
+			func() error { return c.indexDDL(cap.DropCompositePropertyIndex(tok, keys)) },
 			storepkg.ErrIndexNotFound,
 			storepkg.ErrIndexExists,
 		)
@@ -158,7 +158,7 @@ func (i *IndexOps) DeleteComposite(label string, keys []string) error {
 		if err != nil {
 			return err
 		}
-		return cap.DropCompositePropertyIndex(tok, keys)
+		return c.indexDDL(cap.DropCompositePropertyIndex(tok, keys))
 	})
 }
 
@@ -167,9 +167,8 @@ func (i *IndexOps) DeleteComposite(label string, keys []string) error {
 // orderings of the same key set are distinct definitions and are both
 // listed). Unregistered labels return an empty slice, not an error. The
 // returned slices are caller-owned copies. O(definitions on the label) —
-// cheap enough to call per query plan; there is NO index-DDL
-// epoch/invalidation signal, so callers should not cache the answer across
-// DDL they do not control. Backends without composite-index introspection
+// cheap enough to call per query plan; a caller that caches the answer
+// revalidates it with InventoryEpoch. Backends without composite-index introspection
 // (wrappers) return storepkg.ErrCapabilityNotSupported.
 func (i *IndexOps) ListComposites(label string) ([][]string, error) {
 	c := i.c
@@ -420,15 +419,15 @@ func (i *IndexOps) CreateTemporal(label string) error {
 			if !labelFinished {
 				_ = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
 					fmt.Errorf("panic during temporal index create"),
-					func() error { return cap.DropTemporalIndex(tok) },
+					func() error { return c.indexDDL(cap.DropTemporalIndex(tok)) },
 					storepkg.ErrTemporalIndexNotFound,
 					storepkg.ErrTemporalIndexExists,
 				)
 			}
 		}()
 		err = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
-			cap.CreateTemporalIndex(tok),
-			func() error { return cap.DropTemporalIndex(tok) },
+			c.indexDDL(cap.CreateTemporalIndex(tok)),
+			func() error { return c.indexDDL(cap.DropTemporalIndex(tok)) },
 			storepkg.ErrTemporalIndexNotFound,
 			storepkg.ErrTemporalIndexExists,
 		)
@@ -456,7 +455,7 @@ func (i *IndexOps) DeleteTemporal(label string) error {
 		if err != nil {
 			return err
 		}
-		return cap.DropTemporalIndex(tok)
+		return c.indexDDL(cap.DropTemporalIndex(tok))
 	})
 }
 
@@ -497,15 +496,15 @@ func (i *IndexOps) CreateHighFrequency(label string, bucketSize time.Duration) e
 			if !labelFinished {
 				_ = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
 					fmt.Errorf("panic during high-frequency index create"),
-					func() error { return cap.DropHighFrequencyIndex(tok) },
+					func() error { return c.indexDDL(cap.DropHighFrequencyIndex(tok)) },
 					storepkg.ErrTemporalIndexNotFound,
 					storepkg.ErrTemporalIndexExists,
 				)
 			}
 		}()
 		err = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
-			cap.CreateHighFrequencyIndex(tok, bucketSize),
-			func() error { return cap.DropHighFrequencyIndex(tok) },
+			c.indexDDL(cap.CreateHighFrequencyIndex(tok, bucketSize)),
+			func() error { return c.indexDDL(cap.DropHighFrequencyIndex(tok)) },
 			storepkg.ErrTemporalIndexNotFound,
 			storepkg.ErrTemporalIndexExists,
 		)
@@ -533,7 +532,7 @@ func (i *IndexOps) DeleteHighFrequency(label string) error {
 		if err != nil {
 			return err
 		}
-		return cap.DropHighFrequencyIndex(tok)
+		return c.indexDDL(cap.DropHighFrequencyIndex(tok))
 	})
 }
 
@@ -589,7 +588,7 @@ func (i *IndexOps) CreateVectorWithOptions(label, propertyKey string, dims int, 
 			if !labelFinished {
 				_ = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
 					fmt.Errorf("panic during vector index create"),
-					func() error { return cap.DropVectorIndex(tok, propertyKey) },
+					func() error { return c.indexDDL(cap.DropVectorIndex(tok, propertyKey)) },
 					storepkg.ErrVectorIndexNotFound,
 					storepkg.ErrVectorIndexExists,
 				)
@@ -597,13 +596,13 @@ func (i *IndexOps) CreateVectorWithOptions(label, propertyKey string, dims int, 
 		}()
 		var createErr error
 		if c.vectorIndexOptions != nil {
-			createErr = c.vectorIndexOptions.CreateVectorIndexWithOptions(tok, propertyKey, dims, metric, opts)
+			createErr = c.indexDDL(c.vectorIndexOptions.CreateVectorIndexWithOptions(tok, propertyKey, dims, metric, opts))
 		} else {
-			createErr = cap.CreateVectorIndex(tok, propertyKey, dims, metric)
+			createErr = c.indexDDL(cap.CreateVectorIndex(tok, propertyKey, dims, metric))
 		}
 		err = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
 			createErr,
-			func() error { return cap.DropVectorIndex(tok, propertyKey) },
+			func() error { return c.indexDDL(cap.DropVectorIndex(tok, propertyKey)) },
 			storepkg.ErrVectorIndexNotFound,
 			storepkg.ErrVectorIndexExists,
 		)
@@ -634,7 +633,7 @@ func (i *IndexOps) DeleteVector(label, propertyKey string) error {
 		if err != nil {
 			return err
 		}
-		return cap.DropVectorIndex(tok, propertyKey)
+		return c.indexDDL(cap.DropVectorIndex(tok, propertyKey))
 	})
 }
 

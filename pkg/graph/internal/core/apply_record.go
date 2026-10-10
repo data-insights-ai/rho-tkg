@@ -200,7 +200,9 @@ func (c *Core) applyChangeRecordInnerLocked(rec storepkg.ChangeRecord) error {
 		// replica's id_slot_lease is data-independent orchestrator state that
 		// must survive a ChangeClear apply too, not just a primary-side Reset.
 		leaseBytes := c.captureIDSlotLeaseForReset()
-		if err := c.store.Clear(); err != nil {
+		err := c.store.Clear()
+		c.indexEpoch.Add(1) // Clear drops every index (R1), also when it fails part way
+		if err != nil {
 			return err
 		}
 		// A replica applying ChangeClear must reproduce the exact state a

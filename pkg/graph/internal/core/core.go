@@ -248,6 +248,10 @@ type Core struct {
 	// hasUniqueConstraints is the lock-free fast path: when false, the write
 	// doors skip the uniqueMu.RLock + enforcement entirely.
 	hasUniqueConstraints atomic.Bool
+	// indexEpoch is the index-inventory epoch (round 4 R1): advanced after every
+	// index create/drop that reached the store and after every store Clear
+	// (index_inventory_epoch.go).
+	indexEpoch atomic.Uint64
 	// uniqueOwners is the durable UniqueForever value-ownership registry
 	// (ADR-0002 Stage F): ownerKey(labelTok, propKey, valueKey) -> owning NodeID.
 	// A value once claimed is barred from every OTHER entity forever, across

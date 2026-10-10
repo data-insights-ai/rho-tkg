@@ -1,0 +1,6 @@
+# R1 mutant: a replica ChangeClear does not advance
+--- FAIL: TestApplyChangeRecord_ChangeClearReapsCoreStateLikeReset (0.00s)
+    apply_change_clear_test.go:89: InventoryEpoch after ChangeClear apply = 2, want 3 — the dropped indexes not signalled
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.416s
+FAIL

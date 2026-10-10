@@ -46,15 +46,15 @@ func (i *IndexOps) CreateRelProperty(typeName, propertyKey string) error {
 			if !typeFinished {
 				_ = c.restoreNewRelTypeIndexOnError(snapshot, allocated, typeName,
 					fmt.Errorf("panic during relationship property index create"),
-					func() error { return cap.DropRelPropertyIndex(tok, propertyKey) },
+					func() error { return c.indexDDL(cap.DropRelPropertyIndex(tok, propertyKey)) },
 					storepkg.ErrIndexNotFound,
 					storepkg.ErrIndexExists,
 				)
 			}
 		}()
 		err = c.restoreNewRelTypeIndexOnError(snapshot, allocated, typeName,
-			cap.CreateRelPropertyIndex(tok, propertyKey),
-			func() error { return cap.DropRelPropertyIndex(tok, propertyKey) },
+			c.indexDDL(cap.CreateRelPropertyIndex(tok, propertyKey)),
+			func() error { return c.indexDDL(cap.DropRelPropertyIndex(tok, propertyKey)) },
 			storepkg.ErrIndexNotFound,
 			storepkg.ErrIndexExists,
 		)
@@ -86,7 +86,7 @@ func (i *IndexOps) DeleteRelProperty(typeName, propertyKey string) error {
 		if err != nil {
 			return err
 		}
-		return cap.DropRelPropertyIndex(tok, propertyKey)
+		return c.indexDDL(cap.DropRelPropertyIndex(tok, propertyKey))
 	})
 }
 
@@ -124,15 +124,15 @@ func (i *IndexOps) CreateRelTemporal(typeName string) error {
 			if !typeFinished {
 				_ = c.restoreNewRelTypeIndexOnError(snapshot, allocated, typeName,
 					fmt.Errorf("panic during relationship temporal index create"),
-					func() error { return cap.DropRelTemporalIndex(tok) },
+					func() error { return c.indexDDL(cap.DropRelTemporalIndex(tok)) },
 					storepkg.ErrTemporalIndexNotFound,
 					storepkg.ErrTemporalIndexExists,
 				)
 			}
 		}()
 		err = c.restoreNewRelTypeIndexOnError(snapshot, allocated, typeName,
-			cap.CreateRelTemporalIndex(tok),
-			func() error { return cap.DropRelTemporalIndex(tok) },
+			c.indexDDL(cap.CreateRelTemporalIndex(tok)),
+			func() error { return c.indexDDL(cap.DropRelTemporalIndex(tok)) },
 			storepkg.ErrTemporalIndexNotFound,
 			storepkg.ErrTemporalIndexExists,
 		)
@@ -160,7 +160,7 @@ func (i *IndexOps) DeleteRelTemporal(typeName string) error {
 		if err != nil {
 			return err
 		}
-		return cap.DropRelTemporalIndex(tok)
+		return c.indexDDL(cap.DropRelTemporalIndex(tok))
 	})
 }
 

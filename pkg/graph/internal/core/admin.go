@@ -260,7 +260,9 @@ func (a *AdminOps) Reset() error {
 	// orchestrator's failover hint, not graph data — it must survive Reset
 	// like the label/reltype/property-key registries do, not be wiped.
 	leaseBytes := c.captureIDSlotLeaseForReset()
-	if err := c.store.Clear(); err != nil {
+	err := c.store.Clear()
+	c.indexEpoch.Add(1) // Clear drops every index (R1), also when it fails part way
+	if err != nil {
 		// Clear is not atomic: a backend that wipes the MetaKV keyspace and then
 		// faults has already destroyed both Preserve-classified keys. Returning
 		// here loses them permanently (leaseBytes captured, then discarded), so

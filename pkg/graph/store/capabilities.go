@@ -913,9 +913,9 @@ type CompositeIndexIntrospectionCapability interface {
 	// entry per definition; distinct orderings of the same key set are
 	// distinct definitions). Unregistered labels return an empty slice, not
 	// an error. The returned slices are caller-owned copies. O(definitions
-	// on the label) — cheap enough to call per query; there is NO index-DDL
-	// epoch/invalidation signal, so cache-averse callers should simply call
-	// it each time.
+	// on the label) — cheap enough to call per query. The store keeps no
+	// index-DDL epoch; the graph's g.Index().InventoryEpoch is the
+	// invalidation signal for a cached answer.
 	ListCompositePropertyIndexes(labelToken uint16) ([][]string, error)
 }
 
@@ -927,7 +927,8 @@ type CompositeIndexIntrospectionCapability interface {
 type PropertyIndexIntrospectionCapability interface {
 	// HasPropertyIndex reports whether a property index exists on
 	// (labelToken, propertyKey). Unregistered labels return false, not an
-	// error. O(1) — no index-DDL epoch/invalidation signal, call per plan.
+	// error. O(1). The store keeps no index-DDL epoch; the graph's
+	// g.Index().InventoryEpoch is the invalidation signal for a cached answer.
 	HasPropertyIndex(labelToken uint16, propertyKey string) (bool, error)
 }
 

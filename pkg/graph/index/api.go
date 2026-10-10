@@ -44,6 +44,7 @@ type Ops interface {
 	RegisterProvider(p IndexProvider) error
 	UnregisterProvider(name string) error
 	Providers() []string
+	InventoryEpoch() uint64
 }
 
 // API is the index sub-API accessor.
@@ -84,8 +85,8 @@ func (a *API) DeleteProperty(label, propertyKey string) error {
 // propertyKey) (BACKLOG 21b) — a planner existence door mirroring
 // HasComposite, so a query planner can prove the single-key accelerated path
 // exists before routing an equality/range predicate to it instead of a label
-// scan + post-filter. Unregistered labels return false. There is NO
-// index-DDL epoch/invalidation signal, so call it per plan. Backends without
+// scan + post-filter. Unregistered labels return false. Call it per plan,
+// or cache the answer and revalidate it with InventoryEpoch. Backends without
 // property-index introspection return store.ErrCapabilityNotSupported.
 func (a *API) HasProperty(label, propertyKey string) (bool, error) {
 	ops, err := a.ready()
@@ -158,9 +159,8 @@ func (a *API) DeleteComposite(label string, keys []string) error {
 // routing a multi-property equality match through ByLabelAndProperties, so a
 // missing definition keeps the single-key property-index plan instead of
 // silently regressing to a label scan + post-filter. Unregistered labels
-// return false. O(definitions on the label); there is NO index-DDL
-// epoch/invalidation signal, so call it per plan rather than caching across
-// DDL you do not control. Backends without composite-index introspection
+// return false. O(definitions on the label); call it per plan, or cache the
+// answer and revalidate it with InventoryEpoch. Backends without composite-index introspection
 // (wrappers) return store.ErrCapabilityNotSupported.
 func (a *API) HasComposite(label string, keys []string) (bool, error) {
 	ops, err := a.ready()
@@ -400,4 +400,30 @@ func (a *API) Providers() []string {
 		return nil
 	}
 	return apiutil.CloneSlice(a.ops.Providers())
+}
+
+// InventoryEpoch returns the index-inventory epoch: a counter that advances
+// when the set of indexes, or the state of one, may have changed — after every
+// property, relationship-property, composite, temporal, relationship-type
+// temporal, high-frequency or vector index create or drop that reached the
+// store (a unique constraint's implicit property index included; a failed
+// create or drop too, since a concurrent reader may have seen its partial
+// state), and after Admin().Reset or a replica's applied clear. It does not
+// advance for a create or drop refused without a change (ErrIndexExists,
+// ErrIndexNotFound and their temporal and vector twins,
+// ErrRelPropertyIndexUnsupported, ErrCapabilityNotSupported, the tiered
+// store's ErrEventPropertyIndex), for a call
+// rejected by validation, for data writes or for reads. Identical on every
+// backend; one atomic load.
+//
+// A caller that keeps a view of the inventory (HasProperty, ListComposites,
+// VectorIndexInfo, …) reads the epoch BEFORE reading the inventory; while a
+// later InventoryEpoch returns the same value, that view is current. The value
+// is per Graph (0 at New, not persisted). A nil Graph returns 0.
+func (a *API) InventoryEpoch() uint64 {
+	ops, err := a.ready()
+	if err != nil {
+		return 0
+	}
+	return ops.InventoryEpoch()
 }

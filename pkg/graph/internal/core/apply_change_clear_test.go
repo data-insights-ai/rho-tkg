@@ -73,10 +73,20 @@ func TestApplyChangeRecord_ChangeClearReapsCoreStateLikeReset(t *testing.T) {
 
 	_ = a // silence unused if node identity isn't needed further
 
+	// 6. The index-inventory epoch (round 4 R1): the unique constraints'
+	// implicit property indexes moved it; the clear drops them, so it moves.
+	epochBefore := g.Index.InventoryEpoch()
+	if epochBefore == 0 {
+		t.Fatal("InventoryEpoch 0 after the implicit property indexes — test setup broken")
+	}
+
 	// Apply a synthetic ChangeClear, exactly as a replica tailing a primary's
 	// Admin.Reset() would.
 	if err := g.Repl.ApplyChange(storepkg.ChangeRecord{LSN: 1, Tag: storepkg.ChangeClear}); err != nil {
 		t.Fatalf("ApplyChange(ChangeClear): %v", err)
+	}
+	if got := g.Index.InventoryEpoch(); got != epochBefore+1 {
+		t.Fatalf("InventoryEpoch after ChangeClear apply = %d, want %d — the dropped indexes not signalled", got, epochBefore+1)
 	}
 
 	if got, _ := g.Stats.Get(); got.NodesAdded != 0 {
