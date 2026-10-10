@@ -7,6 +7,9 @@ running, no monitors running, no open worktrees of ours**. Read this file, then 
 
 ## 1. User's last requests (verbatim order, newest first)
 
+0. "for the next step: rho-tkg lacks is a way to say 'this was never true'.. also add it to the handover.md.. request from
+   ai-soc" — **NEXT STEP (René, 2026-10-10, after the handover was written; this OVERRIDES the earlier relayed decision
+   'no Retract door needed' — newest user message wins).** Spec = `tasks/backlog.md` item 43. Added to §11 as item 1.
 1. "stop all tasks and write a comprehensive handover.md" — DONE (this file). Both running agents and the origin
    watch were stopped; nothing was lost (see §6).
 2. "continue" — I had just started two agents (both stopped, see §6): interval rewrites at a caller instant (backlog 34)
@@ -201,13 +204,20 @@ Merge-and-remove rule for future agent worktrees (CLAUDE.md): merge the branch b
 
 Legend: [ ] open, (S) = waits for sigma, (R) = waits for René's decision.
 
+0. [ ] **NEXT STEP — backlog 43 "Retraction: a way to say this was never true"** (`Retract`/`RetractWithTx` + GraphTx, Batch,
+   Session twins). Requested by ai-soc (recovery ends the edges of unfinished commit groups, retracts wrong records),
+   confirmed by René 2026-10-10. History of the thread, so nobody is confused: sigma first relayed René's decision
+   'Delete = validity end, retraction stays an explicit ENDED fact in ai-soc, no door' (kept: Delete is unchanged); then René
+   asked for the door as the next step. Semantics: tx-time "belief ends at T; at pins >= T absent for every valid time; at pins
+   < T unchanged"; full door list, open design points with defaults (marker as a reserved stored property on the tombstone,
+   life cap at −∞ in `lifeEnds`, additive/minor) and the red-test list are in backlog 43. Workflow: spec check against the
+   code first (the `tkg_` reserved-key rules, `lifeEnds`, supersession rule, timeline sweep), then Opus agent with Appendix A,
+   reviewer, fix round, lint+security, merge, gate, tag v4.50.0 with the other pending items, tell ai-soc (and the new
+   sigma session) the exact signatures.
 1. [ ] **Restart backlog 34** `Set{Node,Rel}VersionIntervalWithTx` (all doors) — sigma replay need.
 2. [ ] **Restart backlog 33 + 42 (+ 41 last)** badger read cost — baseline saved in `tasks/evidence/badger-read-cost/`.
 3. [ ] Backlog 35 broader effective scans — signatures CONFIRMED by sigma 2026-10-10 (all five, as recorded in the backlog item).
-4. [x] **Retraction door: DECIDED NO (René, 2026-10-10, relayed by sigma-tkgd via ai-soc)**: retraction stays an explicit
-   "ended" fact in ai-soc; rho-tkg needs NO `Retract`/`RetractWithTx` door; `Delete` keeps its validity-end meaning
-   (past stays readable at later pins). My proposal (tombstone marked as retraction, life capped at −∞ in `lifeEnds`) is
-   not built and not in the backlog; reopen only with a new consumer case.
+4. (moved up: see item 0 below — the retraction door is the NEXT STEP)
 5. [ ] Backlog 28 state column fast path (design first; sigma numbers inside the item) (S).
 6. [ ] Backlog 21 retention (PurgeExpiredRels, per-type gate) — handover `tasks/handover-overview-retention-20261009.md` (S, not blocking).
 7. [ ] Residual backlog: 13, 15, 16, 22, 23, 25, 26, 31, 37, 39, 40 (see §7), RAM budget for property sidecars,
@@ -244,6 +254,9 @@ Done and verified this session (do not redo): see §2 table plus CHANGELOG; the 
 - **Segments never merge distinct rows with equal content**: a segment names the stored record that answers it.
 - **Process**: one reviewer per branch always found something real; fix rounds go to the same agent; lint+security on the
   branch before merging (lesson, not yet written); never accept an oracle that restates the rule as evidence for the rule.
+- **Retraction (reversal)**: first answered by analysis (no existing way; proposal Retract/RetractWithTx), then relayed as 'no door
+  needed' (René via sigma/ai-soc), then René asked for it as the next step. The model fits: a transaction-time tombstone
+  marked as a retraction, life capped at −∞; Delete stays validity-end. Not built; backlog 43 holds the spec.
 - **Things I got wrong (so you do not repeat them)**: dropped sigma's backlog item 10 by overwriting a block (restored
   as 21); told ai-soc "adjacent identical rows merge" (wrong; corrected); said sigma could use a mint-instant helper
   before checking package layout; merged branches without running lint/security first (3 gate re-runs); deleted an old
