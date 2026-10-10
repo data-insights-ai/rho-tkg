@@ -1,0 +1,14 @@
+# Old-binary experiment (backlog 43), 2026-10-10
+# new binary = this branch; old binary = fc90801 (the base, before the retraction)
+# newwriter (scratchpad/oldbin/newwriter): badger dir on disk + IO export holding a node retracted
+#   (valid from an hour ago, updated once) with one cascaded relationship.
+# oldreader (scratchpad/oldbin/oldreader, go.mod replace -> archive of fc90801): opens the SAME badger
+#   dir, and imports the export into a memory graph.
+NEW binary: NodeAtTx(retracted, past valid, now) err=graph: no version valid at the given time; RelAtTx err=graph: no version valid at the given time; history marker=true
+OLD binary, badger dir written by the new binary: NodeAtTx(retracted, past valid, now) = true (err=<nil>); RelAtTx = true (err=<nil>); Get err=graph: node not found; history rows=2 (err=<nil>)
+OLD binary, import of the new binary's export: NodeAtTx(retracted, past valid, now) = true (err=<nil>); RelAtTx = true (err=<nil>); Get err=graph: node not found; history rows=2 (err=<nil>)
+# Reading: the old binary opens the data and imports it without error (the wire format version
+# stays 2; the unknown map key "rx" is skipped by the old decoder), and reads the retraction as a
+# plain Delete: the past valid time stays readable at pins after the retraction. A mixed-version
+# replica set therefore answers differently for retracted entities -> upgrade replicas (and every
+# reader of exports / badger dirs) before any writer uses a Retract door.

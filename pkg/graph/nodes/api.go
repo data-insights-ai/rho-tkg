@@ -34,6 +34,8 @@ type Ops interface {
 	UpdateInPlace(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error)
 	Delete(ctx context.Context, id types.NodeID) error
 	DeleteWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error
+	Retract(ctx context.Context, id types.NodeID) error
+	RetractWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error
 	Import(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, error)
 	AddByIDIfAbsent(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, bool, error)
 	GetOrCreateByKey(ctx context.Context, label, propertyKey string, value any, extraProps map[string]any) (*types.Node, bool, error)
@@ -275,6 +277,40 @@ func (a *API) DeleteWithTx(ctx context.Context, id types.NodeID, txTo types.Inst
 		return err
 	}
 	return ops.DeleteWithTx(ctx, id, txTo)
+}
+
+// Retract says "this node was never true" (backlog 43): it removes the node
+// and its relationships like Delete, but marks every tombstone of the cascade
+// as a retraction, so a read pinned at or after the retraction instant T
+// finds the node and those relationships at NO valid time (after a Delete the
+// past stays readable at later pins), while a read pinned before T answers
+// exactly as before. Delete ends validity; Retract ends belief. History keeps
+// the tombstones (Temporal().Retracted == true), HasHistory stays true,
+// LatestStamps reports deleted with txTo >= T, and current-state reads lose
+// the node as after a Delete. Errors: ErrNodeNotFound for an unknown ID; a
+// node already deleted or retracted is refused with an error matching both
+// ErrEntityDeleted and ErrNodeNotFound.
+func (a *API) Retract(ctx context.Context, id types.NodeID) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.Retract(ctx, id)
+}
+
+// RetractWithTx is Retract at the caller-supplied transaction instant txTo,
+// with DeleteWithTx's contract: Config.AllowTxBackfill (ErrTxBackfillDisabled);
+// txTo positive and not in the future (ErrInvalidTxFrom); after every stamp
+// recorded for the node and each cascaded relationship and their current
+// versions' starts, and no recorded close at or after txTo (ErrTxOrder, which
+// wraps ErrInvalidTxFrom). A refusal changes nothing; the commit clock is not
+// moved.
+func (a *API) RetractWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.RetractWithTx(ctx, id, txTo)
 }
 
 // Import imports a node with a caller-supplied ID honoring ctx.

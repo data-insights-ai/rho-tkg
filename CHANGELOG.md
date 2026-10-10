@@ -6,6 +6,73 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Retraction: a way to say "this was never true"** (backlog 43, requested by ai-soc — recovery ends the edges of
+  unfinished commit groups and retracts wrong records, and sigma-tkgd's effective read must agree; spec signed off by
+  sigma-tkgd). `Nodes().Retract(ctx, id)` / `Rels().Retract(ctx, id)` and `Nodes().RetractWithTx(ctx, id, txTo)` /
+  `Rels().RetractWithTx(ctx, id, txTo)`, with the twins `GraphTx.RetractNode` / `RetractNodeWithTx` /
+  `RetractRelationship` / `RetractRelationshipWithTx` and the `BatchBuilder` and ingest `Session` (strong and
+  concurrent mode) queue doors of the same names; `rels.Ops` / `nodes.Ops` gain `Retract` and `RetractWithTx`.
+  **`Delete` ends validity, `Retract` ends belief:** after a `Delete` at `D` a read pinned at or after `D` still finds
+  the entity at its past valid times; after a retraction at `T` a read pinned at or after `T` finds it at **no valid
+  time** — every state door (`NodeAt`/`NodeAtTx`/`*AtTx`/`*DuringTx`/`*Relating`, generic `ByLabel`/`ByType`/`All`
+  with `ValidAt`/`ValidStart`+`ValidEnd`/`TxAt`, property lookups on their sidecars, adjacency doors with pins,
+  `Snapshot`/`Diff`, column scans, `CountByLabelAt`/`CountByTypeAt`), every record door (`*AsOf`, `TxPin`: absent, as
+  after a delete) and the effective timelines (empty; the scan forms leave the entity out) — while a read pinned
+  before `T` answers byte for byte as before the retraction. A node retraction cascades like a node delete: one
+  instant on the node's tombstone and on every relationship it has, written in one store call, all retracted. The
+  tombstone is `Delete`'s (`TxTo = DeletedAt = T`) marked by a new field `types.TemporalMetadata.Retracted`
+  (false on a delete): `History` returns it, `HasHistory` stays true, `LatestStamps` (signature unchanged) reports
+  `deleted` with `txTo = T`, current-state reads lose the entity as after a delete, `UniqueCurrent` frees the value
+  and `UniqueForever` keeps the claim, history compaction keeps the tombstone with its marker, a retention purge
+  removes the entity whole or keeps it marked, and a re-import of a retracted ID starts a new visible life
+  (versions continue). `RetractWithTx` has `DeleteWithTx`'s contract unchanged (`ErrInvalidTxFrom`, then
+  `ErrTxBackfillDisabled` without `Config.AllowTxBackfill`, then `ErrTxOrder` against the whole chain of the node and
+  of every cascaded relationship and for a recorded close at or after `t`; the commit clock is not advanced; the
+  batch and ingest units pre-flight it with the whole unit and require it to be the only op on its entities). An ID
+  that never existed returns `ErrNodeNotFound` / `ErrRelNotFound`; an ID already deleted or retracted is refused with
+  an error matching both `ErrEntityDeleted` and the not-found sentinel, nothing written (decision: a delete's
+  tombstone is not upgraded to a retraction; allowing it later is additive). Events: the delete events.
+  How it reads: the chain resolver drops every row of a retracted life (the rows since the previous delete, by the
+  life rule of `chainLifeEnds`) from the pinned, normalized chain before anything is resolved (`dropRetractedLives`,
+  the one seam every state door and the timeline sweep use) — so the retracted life neither answers nor keeps
+  superseding or bounding an earlier life, which then answers as it did before the retracted life was recorded (a
+  cap at minus infinity left a hole there; the red run is in the evidence). The pinned-read normalizers clear the
+  marker with a post-pin delete. Wire: an optional msgpack key `rx` on `NodeWire` / `RelWire` written only on a
+  retraction tombstone (before the v2 tail; every other row is byte-identical; no `fv` bump, SPEC §9.1a), decoded by
+  the full and partial decoders, the scanner, delta history, export/import and the change feed; checked decode and
+  Store writes refuse `rx` without `da`. Not in the content hash. `TemporalMetadata` grows from 96 to 104 B (the
+  112 B allocation class) on rows outside the compact frozen form; first versions in the memory cache are unaffected.
+  Read cost on chains without a marker, paired base vs branch on the same host (`BenchmarkPointDoors`,
+  `BenchmarkScanColumnsTemporalOpts`):
+
+  allocs/op are identical on every row (the gated metric): `PointDoors` `NodeAtTx` / `RelAtTx` / `NodeAsOf` hot and
+  cold on memory and badger (4-62 allocs), `ByLabel` with `ValidAt` / `TxPin` (memory 98,114 / 80,113). B/op grows by
+  the larger temporal block where a row is copied (badger `RelAtTx` hot 353 -> 369 B, memory `ByLabel{ValidAt}`
+  10.03 -> 10.38 MB, +3.5 %). Time medians over 6-10 alternated runs moved between -3 % and +13 % with overlapping
+  ranges on a shared 32-core host (load 10-70); a second pass of the scan rows gave +0.8 % / +1.9 %: time is
+  inconclusive on this host, no regression is resolved beyond its noise (evidence `15-bench-ab.txt`).
+
+  Tests (evidence `tasks/evidence/retraction/`): the door matrix — 10 doors (standalone, GraphTx, Batch, ingest strong
+  and concurrent; plain and at a caller instant) x memory, badger, sharded, tiered x node and relationship x 56 read
+  door families x 8 valid instants, every answer captured before and compared at pins before `T` (byte-identical),
+  at `T` and after (the retracted entities removed, the bystanders exact); the contract and lifecycle tests through
+  the facade (marker on the cascade at one instant, `LatestStamps`, `HasHistory`, refusals, gates and order, rollback,
+  whole-unit refusal, unique claims, re-import, compaction, retention purge, export/import, replica apply comparing
+  the marker directly — it is not in the hash); a retracted life next to an earlier life it superseded; the W5 and
+  effective-timeline oracles draw retractions through every door; a brute-force oracle written apart from the
+  resolver (the graph must answer like one whose retracted lives were never recorded, built from the export with
+  the rows removed at the store); a guard that chains without a marker answer as before (golden generated by the
+  same test on the pre-retraction code). Mutants: 26 of 26 red (`14-mutants.txt`; M8/M10 first hit two sites and were re-run as two-site mutants).
+
+  **Migration:** additive; no existing answer changes (no stored row carries the marker). **Upgrade every reader
+  before any writer uses a retraction door** — replicas, importers, and any older binary that opens a badger
+  directory: an older binary skips the unknown `rx` key and reads a retraction as a plain delete (the past stays
+  readable at pins after it), so a mixed-version replica set answers differently for retracted entities
+  (`tasks/evidence/retraction/13-old-binary-degrades-to-delete.txt`). Callers that implement `nodes.Ops` /
+  `rels.Ops` themselves add the two methods.
+
 ## [4.49.0] - 2026-10-10
 
 Minor release: `Nodes().LatestStamps(id)` / `Rels().LatestStamps(id)` (an entity's newest transaction stamps without

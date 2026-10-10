@@ -1,0 +1,5 @@
+--- FAIL: TestStoreWritesRejectOrphanRetractionMarker (0.00s)
+    invariants_retracted_test.go:23: ValidateNodeWrite(orphan marker) = <nil>, want ErrInvalidStoreMutation
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.006s
+FAIL

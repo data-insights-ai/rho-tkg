@@ -54,6 +54,8 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "Delete", run: func() error { return nilAPI.Delete(context.Background(), relID) }},
 		{name: "DeleteWithContext", run: func() error { return nilAPI.Delete(ctx, relID) }},
 		{name: "DeleteWithTx", run: func() error { return nilAPI.DeleteWithTx(ctx, relID, 1000) }},
+		{name: "Retract", run: func() error { return nilAPI.Retract(ctx, relID) }},
+		{name: "RetractWithTx", run: func() error { return nilAPI.RetractWithTx(ctx, relID, 1000) }},
 		{name: "UpdateWithTx", run: func() error { _, err := nilAPI.UpdateWithTx(ctx, relID, nil, 1000); return err }},
 		{name: "Import", run: func() error { _, err := nilAPI.Import(ctx, relID, "KNOWS", nil, nil, nil); return err }},
 		{name: "All", run: func() error { _, err := nilAPI.All(opts); return err }},
@@ -194,6 +196,8 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "Delete", run: func() error { return api.Delete(context.Background(), relID) }},
 		{name: "DeleteWithContext", run: func() error { return api.Delete(ctx, relID) }},
 		{name: "DeleteWithTx", run: func() error { return api.DeleteWithTx(ctx, relID, 1000) }},
+		{name: "Retract", run: func() error { return api.Retract(ctx, relID) }},
+		{name: "RetractWithTx", run: func() error { return api.RetractWithTx(ctx, relID, 1000) }},
 		{name: "UpdateWithTx", run: func() error { _, err := api.UpdateWithTx(ctx, relID, nil, 1000); return err }},
 		{name: "Import", run: func() error { _, err := api.Import(ctx, relID, "KNOWS", nil, nil, nil); return err }},
 		{name: "All", run: func() error { _, err := api.All(opts); return err }},
@@ -276,7 +280,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		"Add", "Add", "AddWithTx", "AddByID", "AddByID",
 		"AddByIDIfAbsent", "AddByIDIfAbsent", "AddByIDForeignEnd", "RecordForeignIncoming", "Get", "Get", "Lend", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
-		"Delete", "Delete", "DeleteWithTx", "UpdateWithTx", "Import", "All",
+		"Delete", "Delete", "DeleteWithTx", "Retract", "RetractWithTx", "UpdateWithTx", "Import", "All",
 		"ForEach", "ForEach", "ForEachOutgoing", "ForEachIncoming", "ByType",
 		"ForEachByType", "ForEachOutgoing", "ForEachIncoming", "ForEachAdjacentEndpoint", "Count", "CountByType",
 		"Outgoing", "Incoming", "OutgoingForNodes", "IncomingForNodes",
@@ -442,6 +446,19 @@ func (s *relOpsSpy) Delete(ctx context.Context, id types.RelID) error {
 
 func (s *relOpsSpy) DeleteWithTx(ctx context.Context, id types.RelID, txTo types.Instant) error {
 	s.record("DeleteWithTx")
+	s.lastRelID = id
+	s.lastTx = txTo
+	return s.err
+}
+
+func (s *relOpsSpy) Retract(ctx context.Context, id types.RelID) error {
+	s.record("Retract")
+	s.lastRelID = id
+	return s.err
+}
+
+func (s *relOpsSpy) RetractWithTx(ctx context.Context, id types.RelID, txTo types.Instant) error {
+	s.record("RetractWithTx")
 	s.lastRelID = id
 	s.lastTx = txTo
 	return s.err
@@ -888,5 +905,32 @@ func TestAPILatestStampsForwardsAnswer(t *testing.T) {
 	var nilAPI *API
 	if _, _, _, err := nilAPI.LatestStamps(1); !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("nil API LatestStamps = %v, want ErrNilGraph", err)
+	}
+}
+
+// Backlog 43: the retraction doors must reach Ops.Retract / Ops.RetractWithTx
+// with the id and the instant verbatim. Catches a facade that forwards a
+// retraction to Delete / DeleteWithTx (Retract as Delete: the past stays
+// readable), drops the instant, or swaps the id.
+func TestAPIRetractDoorsForwardVerbatim(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ops := &relOpsSpy{}
+	api := New(ops)
+	if err := api.Retract(ctx, 41); err != nil {
+		t.Fatalf("Retract: %v", err)
+	}
+	if len(ops.calls) != 1 || ops.calls[0] != "Retract" || ops.lastRelID != 41 {
+		t.Fatalf("Retract forwarded calls=%v id=%v; want [Retract] 41", ops.calls, ops.lastRelID)
+	}
+	for _, at := range []types.Instant{1, 1767268800000, -7} {
+		ops := &relOpsSpy{}
+		api := New(ops)
+		if err := api.RetractWithTx(ctx, 42, at); err != nil {
+			t.Fatalf("RetractWithTx(%d): %v", at, err)
+		}
+		if len(ops.calls) != 1 || ops.calls[0] != "RetractWithTx" || ops.lastRelID != 42 || ops.lastTx != at {
+			t.Fatalf("RetractWithTx forwarded calls=%v id=%v at=%d; want [RetractWithTx] 42 %d", ops.calls, ops.lastRelID, ops.lastTx, at)
+		}
 	}
 }

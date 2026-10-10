@@ -47,6 +47,9 @@ func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	if w.DeletedAt != 0 {
 		fields++
 	}
+	if w.Retracted {
+		fields++
+	}
 	if w.CreatedBy != "" {
 		fields++
 	}
@@ -141,6 +144,11 @@ func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	}
 	if w.DeletedAt != 0 {
 		if err := encodeStringInt64Field(enc, "da", w.DeletedAt); err != nil {
+			return err
+		}
+	}
+	if w.Retracted {
+		if err := encodeStringBoolField(enc, "rx", w.Retracted); err != nil {
 			return err
 		}
 	}
@@ -239,6 +247,9 @@ func (w RelWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 		fields++
 	}
 	if w.DeletedAt != 0 {
+		fields++
+	}
+	if w.Retracted {
 		fields++
 	}
 	if w.CreatedBy != "" {
@@ -342,6 +353,11 @@ func (w RelWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	}
 	if w.DeletedAt != 0 {
 		if err := encodeStringInt64Field(enc, "da", w.DeletedAt); err != nil {
+			return err
+		}
+	}
+	if w.Retracted {
+		if err := encodeStringBoolField(enc, "rx", w.Retracted); err != nil {
 			return err
 		}
 	}

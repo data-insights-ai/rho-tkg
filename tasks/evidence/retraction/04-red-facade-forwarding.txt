@@ -1,0 +1,13 @@
+--- FAIL: TestAPIRetractDoorsForwardVerbatim (0.00s)
+    api_test.go:767: Retract forwarded calls=[Delete] id=41; want [Retract] 41
+--- FAIL: TestAPIForwardsEveryMethod (0.00s)
+    api_test.go:222: call[14] = Delete, want Retract; all calls [Add Add AddWithTx Get Get Lend GetByIDs Update Update UpdateInPlace UpdateInPlace Delete Delete DeleteWithTx Delete DeleteWithTx UpdateWithTx Import AddByIDIfAbsent GetOrCreateByKey All ForEach ForEach ByLabel ByLabelAndProperty ByLabelAndProperties Count CountByLabel SetProperty DeleteProperty CompareAndSetProperty CompareAndSetProperty AddLabel RemoveLabel CloseVersion History HasHistory VersionAfter VersionBefore HasLabel Labels Labels PrimaryLabel NextID]
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes	0.006s
+--- FAIL: TestAPIForwardsEveryMethod (0.00s)
+    api_test.go:297: call[20] = Delete, want Retract; all calls [Add Add AddWithTx AddByID AddByID AddByIDIfAbsent AddByIDIfAbsent AddByIDForeignEnd RecordForeignIncoming Get Get Lend GetByIDs Update Update UpdateInPlace UpdateInPlace Delete Delete DeleteWithTx Delete DeleteWithTx UpdateWithTx Import All ForEach ForEach ForEachOutgoing ForEachIncoming ByType ForEachByType ForEachOutgoing ForEachIncoming ForEachAdjacentEndpoint Count CountByType Outgoing Incoming OutgoingForNodes IncomingForNodes OutgoingForNodesAtTx IncomingForNodesAtTx OutgoingForNodesAtPin IncomingForNodesAtPin SetProperty DeleteProperty CompareAndSetProperty CompareAndSetProperty CloseVersion History HasHistory VersionAfter VersionBefore HasType Type NextID]
+--- FAIL: TestAPIRetractDoorsForwardVerbatim (0.00s)
+    api_test.go:924: Retract forwarded calls=[Delete] id=41; want [Retract] 41
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/rels	0.007s
+FAIL

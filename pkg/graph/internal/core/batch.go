@@ -171,11 +171,35 @@ type pendingNodeUpdate struct {
 }
 
 // pendingNodeDelete is a queued node delete. at is the caller transaction
-// instant of a DeleteNodeWithTx (gated at queue time by
-// resolveCallerTxInstant; 0 = the plain DeleteNode, stamped by the clock).
+// instant of a DeleteNodeWithTx / RetractNodeWithTx (gated at queue time by
+// resolveCallerTxInstant; 0 = the plain DeleteNode / RetractNode, stamped by
+// the clock); retract marks the cascade's tombstones as retractions.
 type pendingNodeDelete struct {
-	id types.NodeID
-	at types.Instant
+	id      types.NodeID
+	at      types.Instant
+	retract bool
+}
+
+func (d pendingNodeDelete) spec() tombstoneSpec { return tombstoneSpec{at: d.at, retract: d.retract} }
+
+// opName names the queued door in a BatchError at apply.
+func (d pendingNodeDelete) opName() string {
+	switch {
+	case d.retract && d.at != 0:
+		return "RetractNodeWithTx"
+	case d.retract:
+		return "RetractNode"
+	default:
+		return "DeleteNode"
+	}
+}
+
+// callerTxOpName names a caller-instant node delete in the pre-flight.
+func (d pendingNodeDelete) callerTxOpName() string {
+	if d.retract {
+		return "RetractNodeWithTx"
+	}
+	return "DeleteNodeWithTx"
 }
 
 // pendingNodeCallerTx returns the lowest caller transaction instant among the

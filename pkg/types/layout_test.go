@@ -28,7 +28,10 @@ func TestRelationshipStructSize(t *testing.T) {
 func TestTemporalMetadataStructSize(t *testing.T) {
 	t.Parallel()
 
-	const want = 96
+	// 96 B until the retraction marker (Retracted bool, backlog 43) took one
+	// more 8-byte word: 104 B, the 112 B allocator class. Rows the compact
+	// frozen form holds (first versions) do not allocate it.
+	const want = 104
 	got := unsafe.Sizeof(TemporalMetadata{})
 	if got != want {
 		t.Fatalf("TemporalMetadata struct size = %d bytes, want %d bytes", got, want)

@@ -46,6 +46,14 @@ type TemporalMetadata struct {
 	UpdatedBy string
 	// baseEntityID links to the original entity in a version chain.
 	baseEntityID EntityID
+	// Retracted marks a delete tombstone written by a Retract door: belief in
+	// the life this tombstone ends ends at DeletedAt (= TxTo) for every valid
+	// time — at a transaction-time pin at or after DeletedAt the entity is
+	// absent at every valid instant of that life, at an earlier pin nothing
+	// changes. A plain Delete's tombstone (validity ends at DeletedAt, the
+	// past stays readable) carries false. Only meaningful together with
+	// DeletedAt != 0; stores reject it otherwise.
+	Retracted bool
 }
 
 // BaseEntityID returns the opaque ID linking to the original entity in a

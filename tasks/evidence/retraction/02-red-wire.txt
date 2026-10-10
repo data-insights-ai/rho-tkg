@@ -1,0 +1,13 @@
+--- FAIL: TestRetractedMarker_FullWireRoundTrip (0.00s)
+    wire_retracted_test.go:65: node marker lost in the full wire round trip: &{ValidFrom:100 ValidTo:900 TxFrom:300 TxTo:900 CreatedAt:0 UpdatedAt:300 DeletedAt:900 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+--- FAIL: TestRetractedMarker_CheckedDecodeRejectsOrphanMarker (0.00s)
+    wire_retracted_test.go:235: node row with rx and no da was admitted
+--- FAIL: TestRetractedMarker_HistoryDelta (0.00s)
+    wire_retracted_test.go:186: node delta Meta dropped the marker: &{ValidFrom:100 ValidTo:900 TxFrom:300 TxTo:900 CreatedAt:0 UpdatedAt:300 DeletedAt:900 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+--- FAIL: TestRetractedMarker_PartialDecode (0.00s)
+    wire_retracted_test.go:132: scanner dropped the marker: {FormatVersion:2 Version:3 HasTemporal:true ValidFrom:100 ValidTo:900 TxFrom:300 TxTo:900 CreatedAt:0 UpdatedAt:300 DeletedAt:900 Retracted:false}
+--- FAIL: TestRetractedMarker_PlainRowBytesUnchanged (0.00s)
+    wire_retracted_test.go:107: retracted tombstone does not carry rx=true: 8fa26676cc02a26964d30000000000001092a2706c01a2656c9102a1709283a16ba16ea176d30000000000000007a174cc0683a16ba46e616d65a176ac77726f6e67207265636f7264a174cc0ea17603a26874c3a27666d30000000000000064a27674d30000000000000384a27561d3000000000000012ca26461d30000000000000384a168a6616263313233a27068a6646566343536a27466d3000000000000012ca27474d30000000000000384
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	0.006s
+FAIL

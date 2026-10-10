@@ -50,29 +50,34 @@ type NodeWire struct {
 	// FormatVersion is the per-row wire format version. 0 means the row was
 	// written before versioning existed (decode as version 1). See
 	// CurrentWireFormatVersion for the bump protocol.
-	FormatVersion      uint8          `msgpack:"fv,omitempty"`
-	ID                 int64          `msgpack:"id"`
-	PrimaryLabel       int            `msgpack:"pl"`
-	ExtraLabels        []int          `msgpack:"el,omitempty"`
-	Properties         []PropertyWire `msgpack:"p,omitempty"`
-	Version            int            `msgpack:"v"`
-	HasTemporal        bool           `msgpack:"ht,omitempty"`
-	ValidFrom          int64          `msgpack:"vf,omitempty"`
-	ValidTo            int64          `msgpack:"vt,omitempty"`
-	TxFrom             int64          `msgpack:"tf,omitempty"`
-	TxTo               int64          `msgpack:"tt,omitempty"`
-	CreatedAt          int64          `msgpack:"ca,omitempty"`
-	UpdatedAt          int64          `msgpack:"ua,omitempty"`
-	DeletedAt          int64          `msgpack:"da,omitempty"`
-	CreatedBy          string         `msgpack:"cb,omitempty"`
-	UpdatedBy          string         `msgpack:"ub,omitempty"`
-	BaseEntityID       int64          `msgpack:"be,omitempty"`
-	Hash               string         `msgpack:"h,omitempty"`
-	PrevHash           string         `msgpack:"ph,omitempty"`
-	AuthorID           string         `msgpack:"aid,omitempty"`
-	Signature          []byte         `msgpack:"sig,omitempty"`
-	AuthorizedBy       string         `msgpack:"aby,omitempty"`
-	AuthorizationLevel uint8          `msgpack:"al,omitempty"`
+	FormatVersion uint8          `msgpack:"fv,omitempty"`
+	ID            int64          `msgpack:"id"`
+	PrimaryLabel  int            `msgpack:"pl"`
+	ExtraLabels   []int          `msgpack:"el,omitempty"`
+	Properties    []PropertyWire `msgpack:"p,omitempty"`
+	Version       int            `msgpack:"v"`
+	HasTemporal   bool           `msgpack:"ht,omitempty"`
+	ValidFrom     int64          `msgpack:"vf,omitempty"`
+	ValidTo       int64          `msgpack:"vt,omitempty"`
+	TxFrom        int64          `msgpack:"tf,omitempty"`
+	TxTo          int64          `msgpack:"tt,omitempty"`
+	CreatedAt     int64          `msgpack:"ca,omitempty"`
+	UpdatedAt     int64          `msgpack:"ua,omitempty"`
+	DeletedAt     int64          `msgpack:"da,omitempty"`
+	// Retracted is types.TemporalMetadata.Retracted (backlog 43): an
+	// optional key emitted only on a retraction tombstone, so every other
+	// row encodes exactly as before. A binary that predates it skips the key
+	// (unknown map keys are skipped) and reads the tombstone as a Delete.
+	Retracted          bool   `msgpack:"rx,omitempty"`
+	CreatedBy          string `msgpack:"cb,omitempty"`
+	UpdatedBy          string `msgpack:"ub,omitempty"`
+	BaseEntityID       int64  `msgpack:"be,omitempty"`
+	Hash               string `msgpack:"h,omitempty"`
+	PrevHash           string `msgpack:"ph,omitempty"`
+	AuthorID           string `msgpack:"aid,omitempty"`
+	Signature          []byte `msgpack:"sig,omitempty"`
+	AuthorizedBy       string `msgpack:"aby,omitempty"`
+	AuthorizationLevel uint8  `msgpack:"al,omitempty"`
 }
 
 // RelWire is the msgpack wire format for Relationship entities.
@@ -80,32 +85,37 @@ type RelWire struct {
 	// FormatVersion is the per-row wire format version. 0 means the row was
 	// written before versioning existed (decode as version 1). See
 	// CurrentWireFormatVersion for the bump protocol.
-	FormatVersion      uint8          `msgpack:"fv,omitempty"`
-	ID                 int64          `msgpack:"id"`
-	RelType            int            `msgpack:"rt"`
-	StartID            int64          `msgpack:"s"`
-	EndID              int64          `msgpack:"e"`
-	Properties         []PropertyWire `msgpack:"p,omitempty"`
-	Version            int            `msgpack:"v"`
-	HasTemporal        bool           `msgpack:"ht,omitempty"`
-	ValidFrom          int64          `msgpack:"vf,omitempty"`
-	ValidTo            int64          `msgpack:"vt,omitempty"`
-	TxFrom             int64          `msgpack:"tf,omitempty"`
-	TxTo               int64          `msgpack:"tt,omitempty"`
-	CreatedAt          int64          `msgpack:"ca,omitempty"`
-	UpdatedAt          int64          `msgpack:"ua,omitempty"`
-	DeletedAt          int64          `msgpack:"da,omitempty"`
-	CreatedBy          string         `msgpack:"cb,omitempty"`
-	UpdatedBy          string         `msgpack:"ub,omitempty"`
-	BaseEntityID       int64          `msgpack:"be,omitempty"`
-	Hash               string         `msgpack:"h,omitempty"`
-	PrevHash           string         `msgpack:"ph,omitempty"`
-	FromNodeHash       string         `msgpack:"fnh,omitempty"`
-	ToNodeHash         string         `msgpack:"tnh,omitempty"`
-	AuthorID           string         `msgpack:"aid,omitempty"`
-	Signature          []byte         `msgpack:"sig,omitempty"`
-	AuthorizedBy       string         `msgpack:"aby,omitempty"`
-	AuthorizationLevel uint8          `msgpack:"al,omitempty"`
+	FormatVersion uint8          `msgpack:"fv,omitempty"`
+	ID            int64          `msgpack:"id"`
+	RelType       int            `msgpack:"rt"`
+	StartID       int64          `msgpack:"s"`
+	EndID         int64          `msgpack:"e"`
+	Properties    []PropertyWire `msgpack:"p,omitempty"`
+	Version       int            `msgpack:"v"`
+	HasTemporal   bool           `msgpack:"ht,omitempty"`
+	ValidFrom     int64          `msgpack:"vf,omitempty"`
+	ValidTo       int64          `msgpack:"vt,omitempty"`
+	TxFrom        int64          `msgpack:"tf,omitempty"`
+	TxTo          int64          `msgpack:"tt,omitempty"`
+	CreatedAt     int64          `msgpack:"ca,omitempty"`
+	UpdatedAt     int64          `msgpack:"ua,omitempty"`
+	DeletedAt     int64          `msgpack:"da,omitempty"`
+	// Retracted is types.TemporalMetadata.Retracted (backlog 43): an
+	// optional key emitted only on a retraction tombstone, so every other
+	// row encodes exactly as before. A binary that predates it skips the key
+	// (unknown map keys are skipped) and reads the tombstone as a Delete.
+	Retracted          bool   `msgpack:"rx,omitempty"`
+	CreatedBy          string `msgpack:"cb,omitempty"`
+	UpdatedBy          string `msgpack:"ub,omitempty"`
+	BaseEntityID       int64  `msgpack:"be,omitempty"`
+	Hash               string `msgpack:"h,omitempty"`
+	PrevHash           string `msgpack:"ph,omitempty"`
+	FromNodeHash       string `msgpack:"fnh,omitempty"`
+	ToNodeHash         string `msgpack:"tnh,omitempty"`
+	AuthorID           string `msgpack:"aid,omitempty"`
+	Signature          []byte `msgpack:"sig,omitempty"`
+	AuthorizedBy       string `msgpack:"aby,omitempty"`
+	AuthorizationLevel uint8  `msgpack:"al,omitempty"`
 }
 
 // PropertyWire is the msgpack wire format for a single property key-value pair.
@@ -174,6 +184,7 @@ func NodeToWireChecked(n *types.Node) (NodeWire, error) {
 		w.CreatedAt = int64(tm.CreatedAt)
 		w.UpdatedAt = int64(tm.UpdatedAt)
 		w.DeletedAt = int64(tm.DeletedAt)
+		w.Retracted = tm.Retracted
 		w.CreatedBy = tm.CreatedBy
 		w.UpdatedBy = tm.UpdatedBy
 		w.BaseEntityID = int64(tm.BaseEntityID().SnowflakeID())
@@ -239,6 +250,7 @@ func applyNodeWireFields(n *types.Node, w NodeWire, props types.PropertySlice) e
 			CreatedAt: types.Instant(w.CreatedAt),
 			UpdatedAt: types.Instant(w.UpdatedAt),
 			DeletedAt: types.Instant(w.DeletedAt),
+			Retracted: w.Retracted,
 			CreatedBy: w.CreatedBy,
 			UpdatedBy: w.UpdatedBy,
 		}
@@ -321,6 +333,7 @@ func RelToWireChecked(r *types.Relationship) (RelWire, error) {
 		w.CreatedAt = int64(tm.CreatedAt)
 		w.UpdatedAt = int64(tm.UpdatedAt)
 		w.DeletedAt = int64(tm.DeletedAt)
+		w.Retracted = tm.Retracted
 		w.CreatedBy = tm.CreatedBy
 		w.UpdatedBy = tm.UpdatedBy
 		w.BaseEntityID = int64(tm.BaseEntityID().SnowflakeID())
@@ -379,6 +392,7 @@ func applyRelWireFields(r *types.Relationship, w RelWire, props types.PropertySl
 			CreatedAt: types.Instant(w.CreatedAt),
 			UpdatedAt: types.Instant(w.UpdatedAt),
 			DeletedAt: types.Instant(w.DeletedAt),
+			Retracted: w.Retracted,
 			CreatedBy: w.CreatedBy,
 			UpdatedBy: w.UpdatedBy,
 		}
@@ -599,6 +613,9 @@ func validateNodeWireFields(w NodeWire) error {
 	if w.ValidFrom != 0 && w.ValidTo != 0 && w.ValidFrom >= w.ValidTo {
 		return fmt.Errorf("node wire: valid_from %d must be before valid_to %d", w.ValidFrom, w.ValidTo)
 	}
+	if w.Retracted && w.DeletedAt == 0 {
+		return fmt.Errorf("node wire: retraction marker on a row without deleted_at")
+	}
 	return nil
 }
 
@@ -610,6 +627,7 @@ func nodeWireHasTemporalPayload(w NodeWire) bool {
 		w.CreatedAt != 0 ||
 		w.UpdatedAt != 0 ||
 		w.DeletedAt != 0 ||
+		w.Retracted ||
 		w.CreatedBy != "" ||
 		w.UpdatedBy != "" ||
 		w.BaseEntityID != 0
@@ -659,6 +677,9 @@ func validateRelWireFields(w RelWire) error {
 	if w.ValidFrom != 0 && w.ValidTo != 0 && w.ValidFrom >= w.ValidTo {
 		return fmt.Errorf("relationship wire: valid_from %d must be before valid_to %d", w.ValidFrom, w.ValidTo)
 	}
+	if w.Retracted && w.DeletedAt == 0 {
+		return fmt.Errorf("relationship wire: retraction marker on a row without deleted_at")
+	}
 	return nil
 }
 
@@ -670,6 +691,7 @@ func relWireHasTemporalPayload(w RelWire) bool {
 		w.CreatedAt != 0 ||
 		w.UpdatedAt != 0 ||
 		w.DeletedAt != 0 ||
+		w.Retracted ||
 		w.CreatedBy != "" ||
 		w.UpdatedBy != "" ||
 		w.BaseEntityID != 0

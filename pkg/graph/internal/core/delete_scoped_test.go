@@ -41,7 +41,7 @@ func TestDeleteNodeInternal_ScopedTokenRoutesThroughScopedDoor(t *testing.T) {
 	}
 	ctx := withScopeToken(context.Background(), token)
 
-	if _, err := c.deleteNodeInternal(ctx, n.InternalID(), 0); err != nil {
+	if _, err := c.deleteNodeInternal(ctx, n.InternalID(), tombstoneSpec{}); err != nil {
 		t.Fatalf("deleteNodeInternal: %v", err)
 	}
 
@@ -94,7 +94,7 @@ func TestDeleteNodeInternal_NoTokenRoutesThroughPlainDoor(t *testing.T) {
 	// No scope was ever opened, so a plain (non-scoped) call must be
 	// immediately visible — regression guard: an accidental unconditional
 	// scope check must not swallow the record.
-	if _, err := c.deleteNodeInternal(context.Background(), n.InternalID(), 0); err != nil {
+	if _, err := c.deleteNodeInternal(context.Background(), n.InternalID(), tombstoneSpec{}); err != nil {
 		t.Fatalf("deleteNodeInternal: %v", err)
 	}
 
@@ -139,7 +139,7 @@ func TestDeleteRelationshipInternal_ScopedTokenRoutesThroughScopedDoor(t *testin
 	}
 	ctx := withScopeToken(context.Background(), token)
 
-	if err := c.deleteRelationshipInternal(ctx, r.InternalID(), 0); err != nil {
+	if err := c.deleteRelationshipInternal(ctx, r.InternalID(), tombstoneSpec{}); err != nil {
 		t.Fatalf("deleteRelationshipInternal: %v", err)
 	}
 
@@ -193,7 +193,7 @@ func TestDeleteRelationshipInternal_NoTokenRoutesThroughPlainDoor(t *testing.T) 
 		t.Fatalf("LastCommittedLSN: %v", err)
 	}
 
-	if err := c.deleteRelationshipInternal(context.Background(), r.InternalID(), 0); err != nil {
+	if err := c.deleteRelationshipInternal(context.Background(), r.InternalID(), tombstoneSpec{}); err != nil {
 		t.Fatalf("deleteRelationshipInternal: %v", err)
 	}
 

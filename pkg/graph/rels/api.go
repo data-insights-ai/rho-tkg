@@ -37,6 +37,8 @@ type Ops interface {
 	UpdateInPlace(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error)
 	Delete(ctx context.Context, id types.RelID) error
 	DeleteWithTx(ctx context.Context, id types.RelID, txTo types.Instant) error
+	Retract(ctx context.Context, id types.RelID) error
+	RetractWithTx(ctx context.Context, id types.RelID, txTo types.Instant) error
 	Import(ctx context.Context, id types.RelID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error)
 
 	All(opts storepkg.QueryOpts) ([]*types.Relationship, error)
@@ -288,6 +290,34 @@ func (a *API) DeleteWithTx(ctx context.Context, id types.RelID, txTo types.Insta
 		return err
 	}
 	return ops.DeleteWithTx(ctx, id, txTo)
+}
+
+// Retract says "this relationship was never true" (backlog 43): it removes the
+// relationship like Delete but marks its tombstone as a retraction, so a read
+// pinned at or after the retraction instant T finds it at NO valid time (after
+// a Delete the past stays readable at later pins), while a read pinned before
+// T answers exactly as before. Delete ends validity; Retract ends belief.
+// History keeps the tombstone (Temporal().Retracted == true), HasHistory stays
+// true, LatestStamps reports deleted with txTo >= T. Errors: ErrRelNotFound
+// for an unknown ID; a relationship already deleted or retracted is refused
+// with an error matching both ErrEntityDeleted and ErrRelNotFound.
+func (a *API) Retract(ctx context.Context, id types.RelID) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.Retract(ctx, id)
+}
+
+// RetractWithTx is Retract at the caller-supplied transaction instant txTo,
+// with DeleteWithTx's contract (ErrTxBackfillDisabled, ErrInvalidTxFrom,
+// ErrTxOrder). A refusal changes nothing; the commit clock is not moved.
+func (a *API) RetractWithTx(ctx context.Context, id types.RelID, txTo types.Instant) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.RetractWithTx(ctx, id, txTo)
 }
 
 // Import imports a relationship with a caller-supplied ID honoring ctx.

@@ -1,0 +1,20 @@
+--- FAIL: TestRetraction_RetractedLifeShapesNoOtherLife (0.56s)
+    --- FAIL: TestRetraction_RetractedLifeShapesNoOtherLife/memory/node (0.00s)
+        retraction_lives_test.go:133: valid 2000 after the retraction of L2: got "" (graph: no version valid at the given time); want L1's answer before L2 existed: "v0 {ValidFrom:1000 ValidTo:1791624681483 TxFrom:1791624681482 TxTo:1791624681483 CreatedAt:0 UpdatedAt:0 DeletedAt:1791624681483 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=1}" (<nil>)
+    --- FAIL: TestRetraction_RetractedLifeShapesNoOtherLife/memory/rel (0.00s)
+        retraction_lives_test.go:133: valid 2000 after the retraction of L2: got "" (graph: no version valid at the given time); want L1's answer before L2 existed: "v0 {ValidFrom:1000 ValidTo:1791624681485 TxFrom:1791624681484 TxTo:1791624681485 CreatedAt:0 UpdatedAt:0 DeletedAt:1791624681485 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=1}" (<nil>)
+    --- FAIL: TestRetraction_RetractedLifeShapesNoOtherLife/badger/node (0.03s)
+        retraction_lives_test.go:133: valid 2000 after the retraction of L2: got "" (graph: no version valid at the given time); want L1's answer before L2 existed: "v0 {ValidFrom:1000 ValidTo:1791624681508 TxFrom:1791624681507 TxTo:1791624681508 CreatedAt:0 UpdatedAt:0 DeletedAt:1791624681508 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=1}" (<nil>)
+    --- FAIL: TestRetraction_RetractedLifeShapesNoOtherLife/badger/rel (0.02s)
+        retraction_lives_test.go:133: valid 2000 after the retraction of L2: got "" (graph: no version valid at the given time); want L1's answer before L2 existed: "v0 {ValidFrom:1000 ValidTo:1791624681521 TxFrom:1791624681520 TxTo:1791624681521 CreatedAt:0 UpdatedAt:0 DeletedAt:1791624681521 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=1}" (<nil>)
+    --- FAIL: TestRetraction_RetractedLifeShapesNoOtherLife/sharded/node (0.17s)
+        retraction_lives_test.go:133: valid 2000 after the retraction of L2: got "" (graph: no version valid at the given time); want L1's answer before L2 existed: "v0 {ValidFrom:1000 ValidTo:1791624681685 TxFrom:1791624681684 TxTo:1791624681685 CreatedAt:0 UpdatedAt:0 DeletedAt:1791624681685 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=1}" (<nil>)
+    --- FAIL: TestRetraction_RetractedLifeShapesNoOtherLife/sharded/rel (0.02s)
+        retraction_lives_test.go:133: valid 2000 after the retraction of L2: got "" (graph: no version valid at the given time); want L1's answer before L2 existed: "v0 {ValidFrom:1000 ValidTo:1791624681716 TxFrom:1791624681715 TxTo:1791624681716 CreatedAt:0 UpdatedAt:0 DeletedAt:1791624681716 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=1}" (<nil>)
+    --- FAIL: TestRetraction_RetractedLifeShapesNoOtherLife/tiered/node (0.07s)
+        retraction_lives_test.go:133: valid 2000 after the retraction of L2: got "" (graph: no version valid at the given time); want L1's answer before L2 existed: "v0 {ValidFrom:1000 ValidTo:1791624681771 TxFrom:1791624681770 TxTo:1791624681771 CreatedAt:0 UpdatedAt:0 DeletedAt:1791624681771 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=1}" (<nil>)
+    --- FAIL: TestRetraction_RetractedLifeShapesNoOtherLife/tiered/rel (0.25s)
+        retraction_lives_test.go:133: valid 2000 after the retraction of L2: got "" (graph: no version valid at the given time); want L1's answer before L2 existed: "v0 {ValidFrom:1000 ValidTo:1791624682017 TxFrom:1791624682016 TxTo:1791624682017 CreatedAt:0 UpdatedAt:0 DeletedAt:1791624682017 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} {k=1}" (<nil>)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.674s
+FAIL

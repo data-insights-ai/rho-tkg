@@ -603,7 +603,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 
 	// 5. Delete relationships (internal — batch already holds c.mu.Lock).
 	for _, id := range b.relDeletes {
-		if err := b.g.deleteRelationshipInternal(context.Background(), id, 0); err != nil {
+		if err := b.g.deleteRelationshipInternal(context.Background(), id, tombstoneSpec{}); err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
 				Op:  "DeleteRelationship",
@@ -615,12 +615,13 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			b.g.publishEvent(eventspkg.EventRelDelete, types.EntityID(id), b.g.now(), eventspkg.PriorityCritical)
 		}
 	}
-	// 5b. Delete relationships at a caller instant (passed the pre-flight).
+	// 5b. Relationship deletes carrying a tombstone spec: a caller instant
+	// (passed the pre-flight) and/or the retraction marker.
 	for _, d := range b.relTxDeletes {
-		if err := b.g.deleteRelationshipInternal(context.Background(), d.id, d.at); err != nil {
+		if err := b.g.deleteRelationshipInternal(context.Background(), d.id, d.spec()); err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
-				Op:  "DeleteRelationshipWithTx",
+				Op:  d.opName(),
 				ID:  types.EntityID(d.id),
 				Err: err,
 			})
@@ -633,11 +634,11 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	// 6. Delete nodes (internal — batch already holds c.mu.Lock).
 	for _, pd := range b.nodeDeletes {
 		id := pd.id
-		cascadeRelIDs, err := b.g.deleteNodeInternal(context.Background(), id, pd.at)
+		cascadeRelIDs, err := b.g.deleteNodeInternal(context.Background(), id, pd.spec())
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
-				Op:  "DeleteNode",
+				Op:  pd.opName(),
 				ID:  types.EntityID(id),
 				Err: err,
 			})

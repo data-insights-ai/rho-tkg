@@ -98,6 +98,10 @@ func TestScanWireTemporalMeta_MatchesSafeUnmarshal(t *testing.T) {
 				DeletedAt: types.Instant(randomTimestamp(rng)),
 				CreatedBy: "creator",
 			})
+			// The retraction marker (backlog 43) rides on tombstones.
+			if tm := n.Temporal(); tm.DeletedAt != 0 && rng.Intn(2) == 0 {
+				tm.Retracted = true
+			}
 		}
 		raw, err := MarshalNodeWire(n)
 		if err != nil {
@@ -137,6 +141,9 @@ func TestScanWireTemporalMeta_MatchesSafeUnmarshal(t *testing.T) {
 		"deep nesting value": append([]byte{0x81, 0xa1, 'p'}, deep...),
 		"trailing garbage":   append(mustHex(t, goldenV1NodeMinimal), 0xc0),
 		"int key":            {0x81, 0x01, 0x02},
+		// rx with a non-bool value: the scanner must decline (the reference
+		// decoder classifies it), never read it as a marker.
+		"rx non-bool": {0x81, 0xa2, 'r', 'x', 0x01},
 	}
 	for name, raw := range adversarial {
 		check(name, raw, false)

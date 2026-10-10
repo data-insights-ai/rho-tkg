@@ -104,9 +104,9 @@ type effInterval struct {
 // effectivePieces answers the point resolver for every valid instant at once:
 // nil when nothing was recorded by the pin.
 //
-// The resolver's input is filterNodeChainByTxAt(versionOrdered(chain), pin)
-// with its lifeEnds; built here row by row so each kept row remembers where it
-// came from. The resolver then classifies the chain once
+// The resolver's input is dropRetractedLives(filterNodeChainByTxAt(
+// versionOrdered(chain), pin)) with its lifeEnds; built here row by row so
+// each kept row remembers where it came from. The resolver then classifies the chain once
 // (sortNodeChainForResolve) and, in either arm, answers at t the covering row
 // of highest priority: the monotonic arm the highest position whose positional
 // [vStart, vEnd) covers t, the own-bounds arm the newest belief whose own
@@ -126,6 +126,9 @@ func effectivePieces[T interface {
 		r, ok := k.rowAtTx(chain[0], pin)
 		if !ok {
 			return nil
+		}
+		if tm := r.Temporal(); tm != nil && tm.DeletedAt != 0 && tm.Retracted {
+			return nil // a retracted life (dropRetractedLives)
 		}
 		one := chain[:1]
 		if r != chain[0] {
@@ -152,6 +155,7 @@ func effectivePieces[T interface {
 			origin[r] = i
 		}
 	}
+	filtered = dropRetractedLives(filtered)
 	if len(filtered) == 0 {
 		return nil
 	}

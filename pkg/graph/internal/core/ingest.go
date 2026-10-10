@@ -865,6 +865,27 @@ func (s *Session) DeleteNodeWithTx(id types.NodeID, txTo types.Instant) error {
 	return s.b.DeleteNodeWithTx(id, txTo)
 }
 
+// RetractNode accumulates a cascade node retraction (see
+// BatchBuilder.RetractNode).
+func (s *Session) RetractNode(id types.NodeID) error {
+	if err := s.lockOpen(); err != nil {
+		return err
+	}
+	defer s.mu.Unlock()
+	return s.b.RetractNode(id)
+}
+
+// RetractNodeWithTx accumulates a cascade node retraction at the caller's
+// transaction instant txTo (see BatchBuilder.RetractNodeWithTx and
+// Session.DeleteNodeWithTx).
+func (s *Session) RetractNodeWithTx(id types.NodeID, txTo types.Instant) error {
+	if err := s.lockOpen(); err != nil {
+		return err
+	}
+	defer s.mu.Unlock()
+	return s.b.RetractNodeWithTx(id, txTo)
+}
+
 // UpdateNodeWithTx accumulates a node update stamped with the caller's
 // transaction instant txFrom (see BatchBuilder.UpdateNodeWithTx).
 func (s *Session) UpdateNodeWithTx(id types.NodeID, updates map[string]any, txFrom types.Instant) error {

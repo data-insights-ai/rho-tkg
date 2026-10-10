@@ -1,0 +1,164 @@
+--- FAIL: TestRetraction_DoorMatrix (0.00s)
+    --- FAIL: TestRetraction_DoorMatrix/tiered/batch/node (0.02s)
+        retraction_doors_test.go:54: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Pers": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestRetraction_DoorMatrix/tiered/graphtx/rel (0.02s)
+        retraction_doors_test.go:54: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Pers": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestRetraction_DoorMatrix/tiered/ingestConcurrentWithTx/node (0.02s)
+        retraction_doors_test.go:54: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Pers": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestRetraction_DoorMatrix/tiered/ingestConcurrentWithTx/rel (0.02s)
+        retraction_doors_test.go:54: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Pers": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestRetraction_DoorMatrix/memory/graphtxWithTx/rel (0.02s)
+        retraction_doors_test.go:126: graphtxWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561099 ValidTo:1791623861118 TxFrom:1791623861111 TxTo:1791623861118 CreatedAt:0 UpdatedAt:1791623861111 DeletedAt:1791623861118 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/standaloneWithTx/rel (0.02s)
+        retraction_doors_test.go:54: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Pers": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestRetraction_DoorMatrix/tiered/graphtxWithTx/node (0.02s)
+        retraction_doors_test.go:54: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Pers": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestRetraction_DoorMatrix/tiered/standalone/node (0.02s)
+        retraction_doors_test.go:54: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Pers": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestRetraction_DoorMatrix/memory/batch/rel (0.02s)
+        retraction_doors_test.go:126: batch: the tombstone does not carry the retraction marker: {ValidFrom:1791623561097 ValidTo:1791623861118 TxFrom:1791623861109 TxTo:1791623861118 CreatedAt:0 UpdatedAt:1791623861109 DeletedAt:1791623861118 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/memory/ingestSync/rel (0.02s)
+        retraction_doors_test.go:126: ingestSync: the tombstone does not carry the retraction marker: {ValidFrom:1791623561098 ValidTo:1791623861121 TxFrom:1791623861112 TxTo:1791623861121 CreatedAt:0 UpdatedAt:1791623861112 DeletedAt:1791623861121 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/memory/ingestConcurrentWithTx/node (0.02s)
+        retraction_doors_test.go:126: ingestConcurrentWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561096 ValidTo:1791623861116 TxFrom:1791623861105 TxTo:1791623861116 CreatedAt:0 UpdatedAt:1791623861105 DeletedAt:1791623861116 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/memory/standalone/node (0.02s)
+        retraction_doors_test.go:126: standalone: the tombstone does not carry the retraction marker: {ValidFrom:1791623561095 ValidTo:1791623861118 TxFrom:1791623861104 TxTo:1791623861118 CreatedAt:0 UpdatedAt:1791623861104 DeletedAt:1791623861118 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/memory/ingestConcurrentWithTx/rel (0.02s)
+        retraction_doors_test.go:126: ingestConcurrentWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561097 ValidTo:1791623861116 TxFrom:1791623861109 TxTo:1791623861116 CreatedAt:0 UpdatedAt:1791623861109 DeletedAt:1791623861116 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/graphtx/node (0.02s)
+        retraction_doors_test.go:54: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Pers": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestRetraction_DoorMatrix/memory/batchWithTx/node (0.02s)
+        retraction_doors_test.go:126: batchWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561097 ValidTo:1791623861116 TxFrom:1791623861105 TxTo:1791623861116 CreatedAt:0 UpdatedAt:1791623861105 DeletedAt:1791623861116 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/memory/ingestConcurrent/rel (0.02s)
+        retraction_doors_test.go:126: ingestConcurrent: the tombstone does not carry the retraction marker: {ValidFrom:1791623561097 ValidTo:1791623861119 TxFrom:1791623861109 TxTo:1791623861119 CreatedAt:0 UpdatedAt:1791623861109 DeletedAt:1791623861119 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/memory/graphtx/rel (0.02s)
+        retraction_doors_test.go:126: graphtx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561103 ValidTo:1791623861124 TxFrom:1791623861115 TxTo:1791623861124 CreatedAt:0 UpdatedAt:1791623861115 DeletedAt:1791623861124 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/memory/batchWithTx/rel (0.02s)
+        retraction_doors_test.go:126: batchWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561098 ValidTo:1791623861117 TxFrom:1791623861110 TxTo:1791623861117 CreatedAt:0 UpdatedAt:1791623861110 DeletedAt:1791623861117 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/ingestConcurrent/rel (0.02s)
+        retraction_doors_test.go:54: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Pers": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestRetraction_DoorMatrix/memory/ingestSyncWithTx/node (0.02s)
+        retraction_doors_test.go:126: ingestSyncWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561100 ValidTo:1791623861119 TxFrom:1791623861108 TxTo:1791623861119 CreatedAt:0 UpdatedAt:1791623861108 DeletedAt:1791623861119 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/graphtxWithTx/rel (0.03s)
+        retraction_doors_test.go:54: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Pers": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestRetraction_DoorMatrix/memory/graphtxWithTx/node (0.03s)
+        retraction_doors_test.go:126: graphtxWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561100 ValidTo:1791623861119 TxFrom:1791623861108 TxTo:1791623861119 CreatedAt:0 UpdatedAt:1791623861108 DeletedAt:1791623861119 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/memory/ingestSync/node (0.03s)
+        retraction_doors_test.go:126: ingestSync: the tombstone does not carry the retraction marker: {ValidFrom:1791623561099 ValidTo:1791623861129 TxFrom:1791623861107 TxTo:1791623861129 CreatedAt:0 UpdatedAt:1791623861107 DeletedAt:1791623861129 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/memory/ingestSyncWithTx/rel (0.03s)
+        retraction_doors_test.go:126: ingestSyncWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561098 ValidTo:1791623861118 TxFrom:1791623861111 TxTo:1791623861118 CreatedAt:0 UpdatedAt:1791623861111 DeletedAt:1791623861118 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/batch/rel (0.03s)
+        retraction_doors_test.go:54: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Pers": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestRetraction_DoorMatrix/memory/standaloneWithTx/rel (0.02s)
+        retraction_doors_test.go:126: standaloneWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561113 ValidTo:1791623861132 TxFrom:1791623861125 TxTo:1791623861132 CreatedAt:0 UpdatedAt:1791623861125 DeletedAt:1791623861132 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/memory/standaloneWithTx/node (0.02s)
+        retraction_doors_test.go:126: standaloneWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561114 ValidTo:1791623861133 TxFrom:1791623861122 TxTo:1791623861133 CreatedAt:0 UpdatedAt:1791623861122 DeletedAt:1791623861133 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/memory/graphtx/node (0.03s)
+        retraction_doors_test.go:126: graphtx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561113 ValidTo:1791623861142 TxFrom:1791623861121 TxTo:1791623861142 CreatedAt:0 UpdatedAt:1791623861121 DeletedAt:1791623861142 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/memory/batch/node (0.05s)
+        retraction_doors_test.go:126: batch: the tombstone does not carry the retraction marker: {ValidFrom:1791623561103 ValidTo:1791623861145 TxFrom:1791623861111 TxTo:1791623861145 CreatedAt:0 UpdatedAt:1791623861111 DeletedAt:1791623861145 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/memory/ingestConcurrent/node (0.06s)
+        retraction_doors_test.go:126: ingestConcurrent: the tombstone does not carry the retraction marker: {ValidFrom:1791623561097 ValidTo:1791623861159 TxFrom:1791623861108 TxTo:1791623861159 CreatedAt:0 UpdatedAt:1791623861108 DeletedAt:1791623861159 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/memory/standalone/rel (0.04s)
+        retraction_doors_test.go:126: standalone: the tombstone does not carry the retraction marker: {ValidFrom:1791623561116 ValidTo:1791623861160 TxFrom:1791623861128 TxTo:1791623861160 CreatedAt:0 UpdatedAt:1791623861128 DeletedAt:1791623861160 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/badger/standalone/node (0.11s)
+        retraction_doors_test.go:126: standalone: the tombstone does not carry the retraction marker: {ValidFrom:1791623561106 ValidTo:1791623861164 TxFrom:1791623861117 TxTo:1791623861164 CreatedAt:0 UpdatedAt:1791623861117 DeletedAt:1791623861164 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/badger/standaloneWithTx/rel (0.10s)
+        retraction_doors_test.go:126: standaloneWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561123 ValidTo:1791623861142 TxFrom:1791623861135 TxTo:1791623861142 CreatedAt:0 UpdatedAt:1791623861135 DeletedAt:1791623861142 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/badger/ingestConcurrentWithTx/rel (0.12s)
+        retraction_doors_test.go:126: ingestConcurrentWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561104 ValidTo:1791623861123 TxFrom:1791623861116 TxTo:1791623861123 CreatedAt:0 UpdatedAt:1791623861116 DeletedAt:1791623861123 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/badger/ingestConcurrentWithTx/node (0.13s)
+        retraction_doors_test.go:126: ingestConcurrentWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561112 ValidTo:1791623861131 TxFrom:1791623861120 TxTo:1791623861131 CreatedAt:0 UpdatedAt:1791623861120 DeletedAt:1791623861131 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/badger/ingestConcurrent/rel (0.15s)
+        retraction_doors_test.go:126: ingestConcurrent: the tombstone does not carry the retraction marker: {ValidFrom:1791623561111 ValidTo:1791623861223 TxFrom:1791623861123 TxTo:1791623861223 CreatedAt:0 UpdatedAt:1791623861123 DeletedAt:1791623861223 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/badger/graphtx/rel (0.14s)
+        retraction_doors_test.go:126: graphtx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561124 ValidTo:1791623861210 TxFrom:1791623861139 TxTo:1791623861210 CreatedAt:0 UpdatedAt:1791623861139 DeletedAt:1791623861210 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/standalone/rel (0.17s)
+        retraction_doors_test.go:54: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Pers": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestRetraction_DoorMatrix/badger/ingestConcurrent/node (0.18s)
+        retraction_doors_test.go:126: ingestConcurrent: the tombstone does not carry the retraction marker: {ValidFrom:1791623561120 ValidTo:1791623861278 TxFrom:1791623861128 TxTo:1791623861278 CreatedAt:0 UpdatedAt:1791623861128 DeletedAt:1791623861278 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/standaloneWithTx/node (0.18s)
+        retraction_doors_test.go:54: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Pers": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestRetraction_DoorMatrix/badger/graphtx/node (0.18s)
+        retraction_doors_test.go:126: graphtx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561122 ValidTo:1791623861279 TxFrom:1791623861130 TxTo:1791623861279 CreatedAt:0 UpdatedAt:1791623861130 DeletedAt:1791623861279 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/ingestSyncWithTx/rel (0.18s)
+        retraction_doors_test.go:54: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Pers": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestRetraction_DoorMatrix/tiered/ingestConcurrent/node (0.18s)
+        retraction_doors_test.go:54: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Pers": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestRetraction_DoorMatrix/tiered/ingestSyncWithTx/node (0.15s)
+        retraction_doors_test.go:54: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Pers": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestRetraction_DoorMatrix/badger/ingestSyncWithTx/rel (0.18s)
+        retraction_doors_test.go:126: ingestSyncWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561122 ValidTo:1791623861141 TxFrom:1791623861134 TxTo:1791623861141 CreatedAt:0 UpdatedAt:1791623861134 DeletedAt:1791623861141 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/ingestSync/node (0.05s)
+        retraction_doors_test.go:54: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Pers": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestRetraction_DoorMatrix/tiered/ingestSync/rel (0.08s)
+        retraction_doors_test.go:54: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Pers": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestRetraction_DoorMatrix/tiered/batchWithTx/node (0.02s)
+        retraction_doors_test.go:54: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Pers": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestRetraction_DoorMatrix/badger/ingestSyncWithTx/node (0.20s)
+        retraction_doors_test.go:126: ingestSyncWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561124 ValidTo:1791623861145 TxFrom:1791623861134 TxTo:1791623861145 CreatedAt:0 UpdatedAt:1791623861134 DeletedAt:1791623861145 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/tiered/batchWithTx/rel (0.03s)
+        retraction_doors_test.go:54: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Pers": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestRetraction_DoorMatrix/sharded/standalone/node (0.22s)
+        retraction_doors_test.go:126: standalone: the tombstone does not carry the retraction marker: {ValidFrom:1791623561112 ValidTo:1791623861305 TxFrom:1791623861120 TxTo:1791623861305 CreatedAt:0 UpdatedAt:1791623861120 DeletedAt:1791623861305 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/badger/ingestSync/node (0.21s)
+        retraction_doors_test.go:126: ingestSync: the tombstone does not carry the retraction marker: {ValidFrom:1791623561245 ValidTo:1791623861333 TxFrom:1791623861263 TxTo:1791623861333 CreatedAt:0 UpdatedAt:1791623861263 DeletedAt:1791623861333 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/badger/standaloneWithTx/node (0.20s)
+        retraction_doors_test.go:126: standaloneWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561278 ValidTo:1791623861297 TxFrom:1791623861286 TxTo:1791623861297 CreatedAt:0 UpdatedAt:1791623861286 DeletedAt:1791623861297 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/badger/batchWithTx/node (0.22s)
+        retraction_doors_test.go:126: batchWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561262 ValidTo:1791623861287 TxFrom:1791623861276 TxTo:1791623861287 CreatedAt:0 UpdatedAt:1791623861276 DeletedAt:1791623861287 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/badger/graphtxWithTx/rel (0.12s)
+        retraction_doors_test.go:126: graphtxWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561275 ValidTo:1791623861294 TxFrom:1791623861287 TxTo:1791623861294 CreatedAt:0 UpdatedAt:1791623861287 DeletedAt:1791623861294 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/badger/graphtxWithTx/node (0.22s)
+        retraction_doors_test.go:126: graphtxWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561279 ValidTo:1791623861298 TxFrom:1791623861287 TxTo:1791623861298 CreatedAt:0 UpdatedAt:1791623861287 DeletedAt:1791623861298 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/ingestConcurrent/rel (0.11s)
+        retraction_doors_test.go:126: ingestConcurrent: the tombstone does not carry the retraction marker: {ValidFrom:1791623561288 ValidTo:1791623861351 TxFrom:1791623861300 TxTo:1791623861351 CreatedAt:0 UpdatedAt:1791623861300 DeletedAt:1791623861351 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/badger/ingestSync/rel (0.23s)
+        retraction_doors_test.go:126: ingestSync: the tombstone does not carry the retraction marker: {ValidFrom:1791623561274 ValidTo:1791623861351 TxFrom:1791623861287 TxTo:1791623861351 CreatedAt:0 UpdatedAt:1791623861287 DeletedAt:1791623861351 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/badger/batch/rel (0.21s)
+        retraction_doors_test.go:126: batch: the tombstone does not carry the retraction marker: {ValidFrom:1791623561303 ValidTo:1791623861352 TxFrom:1791623861315 TxTo:1791623861352 CreatedAt:0 UpdatedAt:1791623861315 DeletedAt:1791623861352 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/batch/node (0.24s)
+        retraction_doors_test.go:126: batch: the tombstone does not carry the retraction marker: {ValidFrom:1791623561278 ValidTo:1791623861354 TxFrom:1791623861287 TxTo:1791623861354 CreatedAt:0 UpdatedAt:1791623861287 DeletedAt:1791623861354 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/ingestSyncWithTx/rel (0.23s)
+        retraction_doors_test.go:126: ingestSyncWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561294 ValidTo:1791623861313 TxFrom:1791623861306 TxTo:1791623861313 CreatedAt:0 UpdatedAt:1791623861306 DeletedAt:1791623861313 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/badger/batchWithTx/rel (0.23s)
+        retraction_doors_test.go:126: batchWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561290 ValidTo:1791623861310 TxFrom:1791623861303 TxTo:1791623861310 CreatedAt:0 UpdatedAt:1791623861303 DeletedAt:1791623861310 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/badger/standalone/rel (0.20s)
+        retraction_doors_test.go:126: standalone: the tombstone does not carry the retraction marker: {ValidFrom:1791623561310 ValidTo:1791623861358 TxFrom:1791623861322 TxTo:1791623861358 CreatedAt:0 UpdatedAt:1791623861322 DeletedAt:1791623861358 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/standaloneWithTx/rel (0.24s)
+        retraction_doors_test.go:126: standaloneWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561267 ValidTo:1791623861293 TxFrom:1791623861286 TxTo:1791623861293 CreatedAt:0 UpdatedAt:1791623861286 DeletedAt:1791623861293 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/badger/batch/node (0.20s)
+        retraction_doors_test.go:126: batch: the tombstone does not carry the retraction marker: {ValidFrom:1791623561310 ValidTo:1791623861363 TxFrom:1791623861318 TxTo:1791623861363 CreatedAt:0 UpdatedAt:1791623861318 DeletedAt:1791623861363 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/ingestSync/rel (0.07s)
+        retraction_doors_test.go:126: ingestSync: the tombstone does not carry the retraction marker: {ValidFrom:1791623561312 ValidTo:1791623861360 TxFrom:1791623861325 TxTo:1791623861360 CreatedAt:0 UpdatedAt:1791623861325 DeletedAt:1791623861360 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/graphtxWithTx/node (0.25s)
+        retraction_doors_test.go:126: graphtxWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561272 ValidTo:1791623861291 TxFrom:1791623861280 TxTo:1791623861291 CreatedAt:0 UpdatedAt:1791623861280 DeletedAt:1791623861291 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/graphtxWithTx/rel (0.26s)
+        retraction_doors_test.go:126: graphtxWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561281 ValidTo:1791623861311 TxFrom:1791623861304 TxTo:1791623861311 CreatedAt:0 UpdatedAt:1791623861304 DeletedAt:1791623861311 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/graphtx/node (0.26s)
+        retraction_doors_test.go:126: graphtx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561278 ValidTo:1791623861369 TxFrom:1791623861286 TxTo:1791623861369 CreatedAt:0 UpdatedAt:1791623861286 DeletedAt:1791623861369 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/ingestSync/node (0.08s)
+        retraction_doors_test.go:126: ingestSync: the tombstone does not carry the retraction marker: {ValidFrom:1791623561320 ValidTo:1791623861366 TxFrom:1791623861328 TxTo:1791623861366 CreatedAt:0 UpdatedAt:1791623861328 DeletedAt:1791623861366 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/batchWithTx/rel (0.08s)
+        retraction_doors_test.go:126: batchWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561317 ValidTo:1791623861338 TxFrom:1791623861331 TxTo:1791623861338 CreatedAt:0 UpdatedAt:1791623861331 DeletedAt:1791623861338 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/graphtx/rel (0.26s)
+        retraction_doors_test.go:126: graphtx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561287 ValidTo:1791623861368 TxFrom:1791623861299 TxTo:1791623861368 CreatedAt:0 UpdatedAt:1791623861299 DeletedAt:1791623861368 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/ingestConcurrent/node (0.09s)
+        retraction_doors_test.go:126: ingestConcurrent: the tombstone does not carry the retraction marker: {ValidFrom:1791623561304 ValidTo:1791623861369 TxFrom:1791623861312 TxTo:1791623861369 CreatedAt:0 UpdatedAt:1791623861312 DeletedAt:1791623861369 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/ingestConcurrentWithTx/node (0.16s)
+        retraction_doors_test.go:126: ingestConcurrentWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561296 ValidTo:1791623861315 TxFrom:1791623861304 TxTo:1791623861315 CreatedAt:0 UpdatedAt:1791623861304 DeletedAt:1791623861315 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/batch/rel (0.08s)
+        retraction_doors_test.go:126: batch: the tombstone does not carry the retraction marker: {ValidFrom:1791623561319 ValidTo:1791623861367 TxFrom:1791623861331 TxTo:1791623861367 CreatedAt:0 UpdatedAt:1791623861331 DeletedAt:1791623861367 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/ingestConcurrentWithTx/rel (0.18s)
+        retraction_doors_test.go:126: ingestConcurrentWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561327 ValidTo:1791623861346 TxFrom:1791623861339 TxTo:1791623861346 CreatedAt:0 UpdatedAt:1791623861339 DeletedAt:1791623861346 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/standalone/rel (0.09s)
+        retraction_doors_test.go:126: standalone: the tombstone does not carry the retraction marker: {ValidFrom:1791623561317 ValidTo:1791623861377 TxFrom:1791623861329 TxTo:1791623861377 CreatedAt:0 UpdatedAt:1791623861329 DeletedAt:1791623861377 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/standaloneWithTx/node (0.09s)
+        retraction_doors_test.go:126: standaloneWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561323 ValidTo:1791623861342 TxFrom:1791623861331 TxTo:1791623861342 CreatedAt:0 UpdatedAt:1791623861331 DeletedAt:1791623861342 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/batchWithTx/node (0.08s)
+        retraction_doors_test.go:126: batchWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561316 ValidTo:1791623861335 TxFrom:1791623861324 TxTo:1791623861335 CreatedAt:0 UpdatedAt:1791623861324 DeletedAt:1791623861335 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+    --- FAIL: TestRetraction_DoorMatrix/sharded/ingestSyncWithTx/node (0.09s)
+        retraction_doors_test.go:126: ingestSyncWithTx: the tombstone does not carry the retraction marker: {ValidFrom:1791623561319 ValidTo:1791623861338 TxFrom:1791623861327 TxTo:1791623861338 CreatedAt:0 UpdatedAt:1791623861327 DeletedAt:1791623861338 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.556s
+FAIL
