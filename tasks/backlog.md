@@ -49,6 +49,9 @@ item; two traced, unreproduced HIGH? findings in item 4. Next step: item 43 (ret
 | 42 | FEATURE (perf) | A current-row stamps capability | open; restart with 33 |
 | 43 | FEATURE — NEXT STEP | Retraction: a way to say "this was never true" | open, not built (the agent was stopped before committing anything); spec below |
 | 44 | MEDIUM (traced, not reproduced) | Commit-clock floor persisted only at Close | open; filed 2026-10-10 from `tasks/review-v5-plan-vs-code-20261009.md` §6.5 |
+| 45 | MEDIUM (API) | Internal sentinels reach callers but have no exported alias; `ErrMixedNumericColumn` is outside the errors inventory test | open; found by the doc review of `docs/errors.md` 2026-10-10 |
+| 46 | LOW (stale comments) | Code comments that contradict the code or cite ADRs no longer in `docs/adr/` | open; found by the doc reviews 2026-10-10 |
+| 47 | LOW (unverified claims) | `NodesByLabelAt` vs K1; a RAM budget for the property sidecars | open; each needs a real check before it becomes work |
 
 ---
 
@@ -349,6 +352,37 @@ Everything the handover `tasks/handover-effective-read-cost-20261009.md` asked f
 A crash after a burst whose monotonic floor outran the wall reopens with `NowTx` below committed stamps (lesson 71's reopen case on the crash path): `persistInstantFloor` is called only from `Close` (`core/core.go`, `core/instant_floor.go:129`), and `seedInstantFloor` reseeds only from that watermark. Red test first: a crash-shaped child (exit without `Close`) after writes stamped ahead of the wall, reopen, assert `NowTx()` and a fresh write's `TxFrom` exceed every stored `TxFrom`. Fix candidates: persist the floor with the durable commit / flush, or reseed from the newest stored stamp at open.
 
 ---
+
+### 45. Internal sentinels reach callers but have no exported alias
+
+*MEDIUM (API)* — found by the doc review of `docs/errors.md` (group C, 2026-10-10).
+
+`ErrNilCallback` (`pkg/graph/internal/grapherr/errors.go:13`), `ErrCommitClockExhausted` and `ErrForeignStampImplausible`
+(`pkg/graph/internal/core/core.go`) can be returned to callers, but no public package re-exports them, so `errors.Is` cannot
+name them; `pkg/graph/temporal/api.go:474` even tells callers to expect `ErrNilCallback`. `graph.ErrMixedNumericColumn`
+(`pkg/graph/column_scan.go`) lives outside the `errors.go` inventory that `errors_doc_test.go` / `errors_identity_test.go` pin.
+Red tests first: for each sentinel, a public-layer test that `errors.Is(err, graph.ErrX)` holds for a real failing call (nil callback on a
+Tx/Temporal door, clock exhaustion by `AdvanceClock` to the limit, an implausible foreign stamp on replica apply, a mixed numeric column
+scan); the inventory test fails when an exported error is missing from `errors.go` or `docs/errors.md`. Fix: export aliases in
+`pkg/graph/errors.go` (additive), move `ErrMixedNumericColumn` into the inventory, add rows to `docs/errors.md`.
+
+### 46. Code comments that contradict the code or cite ADRs that no longer exist
+
+*LOW (stale comments)* — found by the doc reviews (groups C, D, 2026-10-10).
+
+`pkg/types/node.go:30` says "88 bytes" (the struct is 96 B, `pkg/types/layout_test.go`); `pkg/graph/internal/core/ingest_lanes.go:79-80`
+says the lane range is [0,127] (it is 0-15); `pkg/graph/store/tiered/tieredstore_property_stats.go:19` and `bench/ingest_pipeline_test.go`
+cite ADR-0005 / ADR-0006, which are no longer in `docs/adr/` (recover with `git log --all -- docs/adr/`, or rewrite the comment to state the
+rule itself). Comment-only change; the docs-consistency tests must stay green.
+
+### 47. Claims that need a real check before they become work
+
+*LOW (unverified)* — carried from HANDOVER.md §7 and left unfiled by the doc review of the tasks files (group E).
+
+(a) "`NodesByLabelAt` still folds all history instead of using the K1 sidecar": `NodesByLabelAt` is a valid-time door and K1 is
+transaction-time membership; verify whether the named door can use K1 at all (a two-phase test with a churned label, memory/badger)
+before filing a fix. (b) "A RAM budget for the property sidecars": v4.48.0 measured 25-30 B per posting (97-117 B near-unique) and defined
+no budget; reopen only if a consumer reports memory pressure; then design a per-store budget that drops a sidecar and falls back to the fold.
 
 ## v5
 
