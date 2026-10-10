@@ -44,6 +44,15 @@ func newMaterializer(s *raftlog.Store, n namespace, owner uint64, l materializer
 		return nil, errInvalid
 	}
 	m := &materializer{s, n, owner, l}
+	binding := s.ApplicationBinding()
+	if err := replica.ValidateApplicationMachineBinding(binding, m); err != nil {
+		return nil, errors.Join(errInvalid, err)
+	}
+	// Group is the store-level incarnation, not the ownership epoch or voter.
+	// The factory can independently check only its graph/partition namespace.
+	if binding != (raftlog.ApplicationBinding{}) && (binding.Identity.Graph != [16]byte(n.graph) || binding.Identity.Partition != n.partition) {
+		return nil, graphstore.ErrNamespace
+	}
 	index, image, err := s.Checkpoint()
 	if err != nil {
 		return nil, err
