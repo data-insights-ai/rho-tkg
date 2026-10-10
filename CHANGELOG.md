@@ -227,6 +227,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **v5 actual Raft Ready compatibility**: AS2/AS3 receiver activation accepts
+  absent versus explicit-false AutoLeave produced by the pinned RawNode. Real
+  unmodified Ready snapshots preserve the donor descriptor, CutID and durable
+  root across reopen. Strict claim acquisition and ordered fixed-three membership
+  remain unchanged; true/unknown/mismatched membership and empty ignored or
+  fast-forward Ready refuse activation. No Driver or V0–V7 gate is completed.
+
 - **v5 correctness follow-ups**: prospective metadata obeys `MaxReadyBytes`
   across entry-free Ready/create/initialize/save/publish/reopen (`306606a`).
   Uniqueness revisits matching immutable endpoint lives for LifeBound and skips

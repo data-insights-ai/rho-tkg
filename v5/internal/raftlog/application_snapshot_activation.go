@@ -1,9 +1,11 @@
 package raftlog
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"errors"
 	"math"
+	"slices"
 
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
@@ -39,7 +41,7 @@ func (s *Store) PersistApplicationReady(rd raft.Ready, c *ApplicationSnapshotCla
 	if err := c.p.live(); err != nil {
 		return root, err
 	}
-	if raft.IsEmptySnap(rd.Snapshot) || !proto.Equal(rd.Snapshot, c.expected) {
+	if raft.IsEmptySnap(rd.Snapshot) || !applicationSnapshotReadyMatches(rd.Snapshot, c.expected) {
 		return root, ErrInvalid
 	}
 	if len(rd.Entries) > 4096 {
@@ -211,4 +213,26 @@ func (s *Store) PersistApplicationReady(rd raft.Ready, c *ApplicationSnapshotCla
 	// Keep the expected/image/ref until claim Close, so concurrent lifecycle calls
 	// cannot revoke the in-flight owner after durable activation but before Restore.
 	return root, nil
+}
+
+// The pinned Raft normalizes absent AutoLeave to explicit false while accepting
+// a snapshot. Admit only that presence difference in the actual Ready; retain
+// the claimed descriptor/membership bytes for durable cut identity. This is not
+// generic protobuf equivalence and neither input is mutated or copied.
+func applicationSnapshotReadyMatches(actual, expected *pb.Snapshot) bool {
+	if actual == nil || expected == nil || len(actual.Data) == 0 || len(actual.Data) > applicationSnapshotDescriptorLimit || len(expected.Data) == 0 || len(expected.Data) > applicationSnapshotDescriptorLimit || len(actual.ProtoReflect().GetUnknown()) != 0 || len(expected.ProtoReflect().GetUnknown()) != 0 {
+		return false
+	}
+	a, e := actual.GetMetadata(), expected.GetMetadata()
+	if a == nil || e == nil || a.Index == nil || e.Index == nil || a.Term == nil || e.Term == nil || a.GetIndex() == 0 || a.GetTerm() == 0 || a.GetIndex() != e.GetIndex() || a.GetTerm() != e.GetTerm() || len(a.ProtoReflect().GetUnknown()) != 0 || len(e.ProtoReflect().GetUnknown()) != 0 {
+		return false
+	}
+	ac, ec := a.GetConfState(), e.GetConfState()
+	if ac == nil || ec == nil || len(ac.ProtoReflect().GetUnknown()) != 0 || len(ec.ProtoReflect().GetUnknown()) != 0 || ac.GetAutoLeave() || ec.GetAutoLeave() || len(ac.Voters) != 3 || len(ec.Voters) != 3 || len(ac.Learners) != 0 || len(ec.Learners) != 0 || len(ac.VotersOutgoing) != 0 || len(ec.VotersOutgoing) != 0 || len(ac.LearnersNext) != 0 || len(ec.LearnersNext) != 0 {
+		return false
+	}
+	if ec.Voters[0] == 0 || ec.Voters[0] >= ec.Voters[1] || ec.Voters[1] >= ec.Voters[2] || !slices.Equal(ac.Voters, ec.Voters) {
+		return false
+	}
+	return bytes.Equal(actual.Data, expected.Data)
 }
