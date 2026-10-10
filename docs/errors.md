@@ -220,7 +220,7 @@ Declared by one store package and returned by its constructor or its own doors; 
 | `ErrEncryptionRequiresBlockCache` | badger | `EncryptionKey` set with `BlockCacheSize` 0 (Badger would panic at open) | `badger.New()` |
 | `ErrEncryptionRequiresIndexCache` | badger | `EncryptionKey` set with `IndexCacheSize` 0 (Badger would panic at the first encrypted flush) | `badger.New()` |
 
-Two core sentinels have no exported alias and can reach a caller only as an error message: the commit clock reaching its maximum (`ErrCommitClockExhausted`, defence in depth) and `RecordForeignIncoming` refusing a foreign stamp implausibly far past the host clock (`ErrForeignStampImplausible`).
+Three internal sentinels have no exported alias and can reach a caller only as an error message: a nil callback on the callback scan doors (`ErrNilCallback`, e.g. `g.Temporal().ForEachNodeEffectiveByLabel` / `ForEachRelEffectiveByType`, the adjacent-ordinal and `ForEach*` scans), the commit clock reaching its maximum (`ErrCommitClockExhausted`, defence in depth) and `RecordForeignIncoming` refusing a foreign stamp implausibly far past the host clock (`ErrForeignStampImplausible`).
 
 ## Store-Internal Sentinels (Not Re-Exported Through pkg/graph)
 
