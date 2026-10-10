@@ -259,8 +259,36 @@ func TestSinglePartitionRootMethodsPreserveDeclaration(t *testing.T) {
 	if _, err := malformed.SinglePartition(); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
 	}
+	// Known physical index versions preserve declaration metadata by value;
+	// a root declaration alone does not prove that index pages exist.
+	for _, version := range []uint64{1, 2, 3} {
+		known := r
+		known.topology.index = version
+		reserved, first, err := known.ReservePhysical(1)
+		if err != nil || first != 1 || reserved.next != 2 || known.next != 1 {
+			t.Fatal("known format reservation changed original root", version, reserved, err)
+		}
+		advanced, err := reserved.AdvanceEffects([32]byte{1})
+		if err != nil || advanced.epoch != 1 || advanced.topology != known.topology {
+			t.Fatal("known format lost declaration", version, advanced, err)
+		}
+		wire, err := EncodeRoot(advanced)
+		if err != nil {
+			t.Fatal(version, err)
+		}
+		decoded, err := DecodeRoot(wire)
+		if err != nil || decoded != advanced {
+			t.Fatal("known format roundtrip", version, decoded, err)
+		}
+		topology, err := decoded.SinglePartition()
+		want := wantTopology()
+		want.IndexVersion = version
+		if err != nil || topology != want {
+			t.Fatal("known format topology", version, topology, err)
+		}
+	}
 	malformed = r
-	malformed.topology.index = 3
+	malformed.topology.index = 4
 	if _, err := EncodeRoot(malformed); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
 	}
@@ -303,7 +331,7 @@ func TestSinglePartitionRootCodecFailClosed(t *testing.T) {
 	for _, tc := range []struct {
 		offset int
 		value  uint64
-	}{{20, 0}, {28, 0}, {44, 0}, {84, 0}, {84, 2}, {92, 0}, {92, 2}, {100, 3}} {
+	}{{20, 0}, {28, 0}, {44, 0}, {84, 0}, {84, 2}, {92, 0}, {92, 2}, {100, 4}} {
 		b := bytes.Clone(wire)
 		binary.BigEndian.PutUint64(b[tc.offset:], tc.value)
 		checksum := sha256.Sum256(b[:len(b)-32])

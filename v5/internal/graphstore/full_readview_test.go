@@ -178,18 +178,25 @@ func TestFullNilPartialLifetimeAndInvalidLimits(t *testing.T) {
 func TestFullSourceRowsExhaustionIsNotOneExtraRead(t *testing.T) {
 	f := newFullFixture(t, GraphLimits{})
 	c := f.catalog(t, f.index)
-	v, err := OpenReadView(t.Context(), c, GraphLimits{MaxSourceRows: 5})
+	// Fresh format3 must validate its descriptor and all five physical roots.
+	if _, err := OpenReadView(t.Context(), c, GraphLimits{MaxSourceRows: 5}); !errors.Is(err, ErrResourceLimit) || c.fullViews != 0 || c.fullViewBytes != 0 {
+		t.Fatal("one-short fresh Full constructor retained ownership", err)
+	}
+	v, err := OpenReadView(t.Context(), c, GraphLimits{MaxSourceRows: 6})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer v.Close()
 	before := v.Work()
+	if before.Records != 6 || before.DirectoryPages != 5 {
+		t.Fatal("fresh Full skipped descriptor/root validation", before)
+	}
 	if _, err := v.Entity(t.Context(), 1); !errors.Is(err, ErrResourceLimit) || v.Work() != before {
 		t.Fatal("exhausted allowance performed extra lookup", v.Work(), err)
 	}
 	revision, _ := state.NewRevision(1, 0)
-	effects, err := StageOperations(t.Context(), c, nil, revision, GraphLimits{MaxSourceRows: 5})
-	if err != nil || effects.Work.Records != 5 || effects.Root != c.root {
+	effects, err := StageOperations(t.Context(), c, nil, revision, GraphLimits{MaxSourceRows: 6})
+	if err != nil || effects.Work.Records != 6 || effects.Root != c.root {
 		t.Fatal("zero-read no-op failed or overspent", effects.Work, err)
 	}
 	// Initializer's one descriptor-absence lookup leaves zero rows. Its remaining

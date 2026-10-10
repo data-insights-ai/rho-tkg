@@ -186,7 +186,7 @@ func TestGuardedStageActualHistoricalMutationAndABA(t *testing.T) {
 	absent := fixtureGuard(t, f)
 	f.apply(t, graphstate.Operation{Kind: graphstate.CreateNode, Owner: 1, Life: 11, Scope: scope}, graphstate.Operation{Kind: graphstate.Set, Owner: 1, Life: 11, Name: "ordinary", Scope: scope, Value: graphstate.I64(7), ValueID: 99})
 	revision, _ := state.NewRevision(100, 0)
-	if _, w, err := guardedStage(t, f, absent, nil, revision, GraphLimits{}); !errors.Is(err, ErrReadConflict) || w.Records != 5 {
+	if _, w, err := guardedStage(t, f, absent, nil, revision, GraphLimits{}); !errors.Is(err, ErrReadConflict) || w.Records != 6 {
 		t.Fatal(w, err)
 	}
 	beforeIndex := f.index
@@ -206,7 +206,7 @@ func TestGuardedStageActualHistoricalMutationAndABA(t *testing.T) {
 	if oldKey != newKey || oldKey == middleKey || a.SemanticEpoch == f.root.epoch {
 		t.Fatal("ABA did not change retained history", old, middle, now)
 	}
-	if _, w, err := guardedStage(t, f, a, nil, revision, GraphLimits{}); !errors.Is(err, ErrReadConflict) || w.Records != 5 {
+	if _, w, err := guardedStage(t, f, a, nil, revision, GraphLimits{}); !errors.Is(err, ErrReadConflict) || w.Records != 6 {
 		t.Fatal(w, err)
 	}
 	current := fixtureGuard(t, f)
@@ -318,10 +318,17 @@ func TestGuardedStageResourceAndOperationalRefusalsPublishNothing(t *testing.T) 
 			assertGuardCounters(t, c, guardCounters{})
 		}
 	}
-	for _, l := range []GraphLimits{{MaxSourceBytes: 6000}, {Pages: PageLimits{MaxChangeBytes: 1}}, {MaxOutputBytes: 1024}} {
+	// Fit exactly the checked Full open and guard comparison, then refuse the
+	// first input ownership charge. The physical format changes open cost;
+	// production defaults and the refusal boundary itself remain unchanged.
+	guardOnlyBytes := opened.Bytes + semanticGuardMetadataBytes
+	for _, l := range []GraphLimits{{MaxSourceBytes: guardOnlyBytes}, {Pages: PageLimits{MaxChangeBytes: 1}}, {MaxOutputBytes: 1024}} {
 		e, w, err := StageGuardedOperations(t.Context(), c, g, []graphstate.Operation{{Kind: graphstate.AddLabel, Owner: 1, Life: 11, Scope: scope, Name: "late"}}, revision, l)
 		if !errors.Is(err, ErrResourceLimit) || !reflect.DeepEqual(e, GraphEffects{}) || w.Records < opened.Records || w.Bytes < opened.Bytes {
 			t.Fatal(e, w, err)
+		}
+		if l.MaxSourceBytes == guardOnlyBytes && (w.Records != opened.Records || w.Bytes != guardOnlyBytes) {
+			t.Fatal("post-open refusal lost checked Full/guard work", w, opened, guardOnlyBytes)
 		}
 		assertGuardCounters(t, c, guardCounters{})
 	}
@@ -418,7 +425,7 @@ func TestGuardedStageEncounteredCorruptionBeatsConflictAndZeroEpoch(t *testing.T
 			if !errors.Is(err, expected) || errors.Is(err, ErrReadConflict) || !reflect.DeepEqual(e, GraphEffects{}) {
 				t.Fatal(e, w, err)
 			}
-			if name == "full-zero-epoch" && w.Records != 5 {
+			if name == "full-zero-epoch" && w.Records != 6 {
 				t.Fatal("checked Full work lost", w)
 			}
 			if name != "full-zero-epoch" && w != (PageWork{}) {
