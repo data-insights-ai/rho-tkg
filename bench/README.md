@@ -6,14 +6,17 @@ shared harness (`harness_test.go`). Every scenario is a `func BenchmarkX(b
 *testing.B)` with one `b.Run("memory", ...)` and one `b.Run("badger", ...)`
 sub-benchmark, EXCEPT `ANNSearch10k` (memory-only — see its note below),
 `PinnedScanScaling`, and `ChangeLogTxSerialization` (Badger-only — see their
-notes below). Read-only scenarios (`PointReadHit`, `LabelScan10k`, `TwoHop`,
-`TemporalPoint`, `AsOfPin`, `PinnedScanScaling`) build their fixture once per
-(scenario, backend) pair using the `for b.Loop() { ... }` protocol (Go 1.24+)
-so the setup cost is paid exactly once, never repeated across the testing
-framework's timing-calibration passes.
+notes below); `PinnedRelPropertyLookup` adds a third, `sharded`, arm only when
+`RHO_TKG_PINNED_REL_SIZES` is set. Read-only scenarios (`PointReadHit`,
+`LabelScan10k`, `TwoHop`, `TemporalPoint`, `AsOfPin`, `PinnedScanScaling`, and
+the history, effective-timeline, ordered, lookup and stamp scenarios in the
+table below) build their fixture once per (scenario, backend) pair using the
+`for b.Loop() { ... }` protocol (Go 1.24+) so the setup cost is paid exactly
+once, never repeated across the testing framework's timing-calibration passes.
 
-The four write scenarios (`Ingest1kSingle`, `Ingest10kBatch`,
-`BulkAddNodes10k` in `ingest_test.go`, and `ChangeLogTxSerialization` in
+The write scenarios (`Ingest1kSingle`, `Ingest10kBatch`,
+`BulkAddNodes10k` in `ingest_test.go`, the ingest-pipeline family in
+`ingest_pipeline_test.go`, and `ChangeLogTxSerialization` in
 `changelog_tx_test.go`) are the opposite shape — each iteration *writes*
 (thousands of new nodes, or a concurrent-goroutine write workload) — so they
 deliberately use the classic `for i := 0; i < b.N; i++ { ... }` loop instead,
@@ -39,10 +42,13 @@ re-fires) and why the classic `b.N` loop is the correct shape here instead.
 | `AsOfPin` | `g.Temporal().NodesAsOf` (transaction-time query) pinned to the middle of a 5-round update history via `NowTx()` |
 | `RelHistoryPlain` | `g.Rels().History` for a relationship without history among 10k relationships of which 1 % hold history (the per-entity cost an effective-state read paid before `HasHistory`, handover effective-read-cost §1) |
 | `RelHasHistory` | `g.Rels().HasHistory` on the same fixture, `miss` (plain) and `hit` (updated) sub-variants; badger's RAM set is built by a warm-up call outside the timed loop |
-| `RelEffectiveTimeline` | `g.Temporal().RelEffectiveTimeline` at a pin over 200 K relationships (`BENCH_EFFECTIVE_RELS` overrides) of which 1 % carry a bounded correction; `plain` (one segment, no history) and `cascaded` (three segments) sub-variants; the fixture is built once per backend per process |
+| `RelEffectiveTimeline` | `g.Temporal().RelEffectiveTimeline` at a pin over 200 K relationships (`BENCH_EFFECTIVE_RELS` overrides) of which 1 % carry a bounded correction; `plain` (one segment, no history), `plain-hot` (64 plain relationships cycled, so their rows stay in the store's caches) and `cascaded` (three segments) sub-variants; the fixture is built once per backend per process |
 | `NodeAtTxLongChain` / `NodeEffectiveTimelineLongChain` | one node with n = 300 / 1000 / 3000 Updates and one bounded correction (a non-monotonic chain: the resolver's own-bounds arm and its supersession rule run on every read): `NodeAtTx` at the correction, and the whole timeline (n + 3 segments) |
-| `RelEffectiveLoop` | the consumer loop the timeline replaces on the same fixture: `Get` + `History` + `RelAtTx` at every row bound |
-| `ForEachRelEffectiveByType` | one full `g.Temporal().ForEachRelEffectiveByType` scan of the fixture at the pin; `ns/rel` is the per-relationship cost |
+| `RelEffectiveLoop` | the consumer loop the timeline replaces on the same fixture and sub-variants: `Get` + `History` + `RelAtTx` at every row bound |
+| `ForEachRelEffectiveByType` | one full `g.Temporal().ForEachRelEffectiveByType` scan of the fixture at the pin; `ns/rel` (a custom metric, not read by the time gate) is the per-relationship cost |
+| `OrderedTopK` | `g.Nodes().ForEachByLabelPropertyRangeOrdered` top-10 (`ordered`, the LIMIT pushed into the index) against the pre-K3a `collect-then-limit` shape (a full label scan, sorted, truncated) over 100 k distinct values (`docs/query-planners.md` "Ordered / top-k range scan") |
+| `CompositeLookupVsSingleIndexPlusFilter` | `g.Nodes().ByLabelAndProperties` over a composite index (`composite_lookup`) against a single-key index plus a caller-side post-filter (`single_index_plus_filter`) on 100 k nodes whose first key (5 values) is unselective and whose composite pair (x 50 regions) is selective |
+| `RelPropertyLookup10k` | `g.Rels().ByTypeAndProperty` with a relationship property index (`indexed`) against the type scan plus filter (`scan`) over 10 k relationships where a selective weight matches one |
 | `Ingest1kSingle` | 1,000 nodes ingested one at a time via `g.Nodes().Add` (the no-batching baseline) |
 | `Ingest10kBatch` | 10,000 nodes ingested via `BatchBuilder.AddNode` + one `Execute` |
 | `BulkAddNodes10k` | 10,000 nodes ingested via the write-only `BatchBuilder.AddNodes` bulk path |
@@ -50,9 +56,10 @@ re-fires) and why the classic `b.N` loop is the correct shape here instead.
 | `PinnedScanScaling` | Historical M1 measurement (original write-up retired; scenario remains in-tree): `ByLabel` plain vs `TxPin`/`TxAt`-pinned vs `NodesAsOf`-filtered, across {10k,100k} entities x {1,5,5+20%-deleted}-version churn x {broad,selective} label selectivity — BadgerInMemory only. Quantifies whether a pinned/as-of scan costs `O(current matches)` like plain `ByLabel` or `O(everything that ever had history)`. |
 | `PinnedRelPropertyLookup` | Backlog 8: `g.Rels().ByTypeAndProperty` with `TxPin` (200 matches) vs the same lookup without a pin, 1 or 5 types, profiles nochurn / sigma (20 % revised, 5 % deleted) / unrelated churn x1 and x10; reports the lazy sidecar build as `build-ms` (never gated). Default: 20 000 rels, memory and badger, 24 rows (the bench-gate canary). `RHO_TKG_PINNED_REL_SIZES=100000,1000000` runs the measurement matrix: sharded too, and a broad 5 % value. Gate: allocs-gated; time rows reported, not gated, on shared hosts; opt-in time canary (see below) |
 | `LatestStamps` | Backlog 30: `g.Rels().LatestStamps` on one relationship with 0 (`plain`), 100 and 1,000 history versions (updates plus corrections whose pieces are appended above the current row), memory and badger; the badger sidecar is built by a warm-up call. Gate: allocs-gated with the `PinnedRelPropertyLookup` family (the door is 0 allocs/op; a 0 allocs/op row fails as soon as it allocates — the History fold it replaces allocates per row) |
+| `IngestPipeline`, `IngestConcurrent`, `IngestPipelineChangeLog`, `IngestConcurrentChangeLog`, `IngestSingleDurable`, `IngestPipelineDurable` | the ingest session family (`ingest_pipeline_test.go`): 10 k node-creates through the prepare-parallel / apply-sequential pipeline at 1 and 8 producers, the concurrent self-applying mode, the change-log on versus off, and the durable pair on a real badger directory with `SyncWrites`, 1,000 creates (single `Add` against the pipeline's group commit). All of them match the gate's `Ingest` prefix |
 | `ChangeLogTxSerialization` | Historical M2 measurement (original write-up retired; scenario remains in-tree): aggregate ops/sec for standalone `Add` vs tx-per-batch (`Begin`->10x`AddNode`->`Commit`) at {1,4,16} concurrent goroutines, `Config.ChangeLog` on/off — a manual goroutine-fan-out harness reporting a custom `ops/sec` metric (not `ns/op`), since throughput scaling with goroutine count — not single-call latency — is what's under test. BadgerInMemory only (`ChangeLog` is a Badger/memory capability). |
 
-`ANNSearch10k` note: measured locally (Apple M4 Max, `-benchtime=200x`) at
+`ANNSearch10k` note: measured locally when the scenario was added (Apple M4 Max, `-benchtime=200x`; figures as recorded, not re-run since) at
 ~193µs/op (`hnsw`) vs ~816µs/op (`bruteforce`) — roughly a 4x speedup at this
 10k-point, single-query-vector-at-a-time scale. Brute-force is already a fast
 flat scan at 10k points (a 128-dim linear scan is cheap in absolute terms), so
@@ -84,7 +91,8 @@ numbers live in CHANGELOG and ADR-0011 §6.
 ## Running
 
 ```bash
-# Every benchmark, once each (the mandatory CI-equivalent smoke gate):
+# Every benchmark, once each (a smoke check that all of them still run; no CI
+# job runs this - the PR gate is bench.yml below):
 go test -bench=. -benchtime=1x -run '^$' ./bench
 
 # The informal/local suite (fixed 0.3s per sub-benchmark, one count):
@@ -94,13 +102,16 @@ make bench
 make bench-baseline
 
 # Compare the current working tree against that baseline (installs
-# benchstat if missing) and fail if any scenario regressed time by >15%:
+# benchstat if missing) and fail if any time-gated scenario regressed by >15%
+# (REGRESSION_THRESHOLD_PCT) or an allocs-gated row (PinnedRelPropertyLookup,
+# LatestStamps) allocates more than ALLOCS_THRESHOLD_PCT (10) above baseline:
 make bench-check
 ```
 
 `bench/local-baseline.txt` (written by `make bench-baseline`) and the scratch
 files `make bench-check` produces (`bench/local-current.txt`,
-`bench/local-benchstat.csv`) are all gitignored (`bench/local-*`) — baselines
+`bench/local-benchstat.csv`; `BENCH_CURRENT` and `BENCH_REPORT_CSV` override the
+paths) are all gitignored (`bench/local-*`) — baselines
 are **per-machine**, never commit one or compare a baseline captured on one
 machine/instant against a run on another; hardware and background load swamp
 real regressions at this scale.
@@ -111,7 +122,8 @@ real regressions at this scale.
   significance test needs several samples per side to say anything other
   than "~" (not significant) — at `n=1` it *always* prints "~" in its
   human-readable delta column, even for a real 100x regression. `bench-check`
-  therefore does not read that column: `bench/bench-check.sh` uses
+  therefore does not read that column: `bench/bench-compare.sh` (which
+  `bench/bench-check.sh` and the CI gate delegate to) uses
   `benchstat -format csv` (which prints the raw per-file numbers
   unconditionally) and computes the percentage itself, so real regressions
   are still caught even without statistical significance.
@@ -157,7 +169,15 @@ comparator (`bench/bench-compare.sh` — the same threshold logic
   absorbing single-sample scheduler spikes) and FAILS the check when a core
   scenario's median time regresses beyond `REGRESSION_THRESHOLD_PCT=30`
   (deliberately looser than the 15% local gate — GitHub-hosted runners are
-  noisier than a dedicated machine). The two multi-minute measurement
+  noisier than a dedicated machine). Two `go test` runs feed it: the
+  `BENCH_FILTER` set (`PointReadHit`, `LabelScan10k`, `TwoHop`,
+  `TemporalPoint`, `AsOfPin`, the `Ingest` prefix, `BulkAddNodes10k`,
+  `ANNSearch10k`, `OrderedTopK`, the `CompositeLookup` prefix,
+  `RelPropertyLookup10k`, `RelHistoryPlain`, `RelHasHistory`,
+  `RelEffectiveTimeline`, `RelEffectiveLoop`, `ForEachRelEffectiveByType`,
+  `NodeAtTxLongChain`, `NodeEffectiveTimelineLongChain`; `-count=3`) and the
+  `PINNED_REL_FILTER` set (`PinnedRelPropertyLookup`, `LatestStamps`;
+  `-count=5`), both at `-benchtime=0.3s`. The two multi-minute measurement
   STUDIES (`PinnedScanScaling`, `ChangeLogTxSerialization`) are excluded
   from the gate via the `-bench` filter — they are one-off measurement
   campaigns, not regression canaries. The gate rules live in
@@ -167,7 +187,8 @@ comparator (`bench/bench-compare.sh` — the same threshold logic
   benchmark family — `PinnedRelPropertyLookup` and `LatestStamps`
   (`ALLOCS_GATE_FAMILY`) — is **allocs-gated** (`ALLOCS_THRESHOLD_PCT=10`,
   5 samples; a row with a 0 allocs/op baseline fails as soon as it allocates);
-  its time rows are reported, not gated, on shared hosts. Reason: identical code swung
+  its time rows are reported, not gated, on shared hosts (the aggregate
+  `geomean` row is recomputed over the time-gated rows only). Reason: identical code swung
   +42..+178 % in time on that family while allocs/op did not move at all, and
   the regression it exists to catch — the lookup falling back to the history
   fold — shows as 1,423 -> 106,555 allocs/op. Opt-in time canary for quiet
