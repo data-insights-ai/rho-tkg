@@ -4,7 +4,7 @@ This document lists all dependencies of `github.com/data-insights-ai/rho-tkg/v4`
 
 `go list -m all` reports 36 dependency modules (plus the main module itself); the
 table below has 36 rows, one per dependency, kept in sync with that output
-(refreshed 2026-09-24 for the v4.37.0 line).
+(re-checked 2026-10-10 against v4.49.0 / `go 1.26.9`: no module or version changed since the v4.37.0 refresh).
 
 **License Assertion:** All dependencies use licenses from the set {Apache-2.0, BSD-2-Clause, BSD-3-Clause, MIT, ISC}. Every row in the table below carries one of these five licenses.
 
@@ -53,4 +53,4 @@ table below has 36 rows, one per dependency, kept in sync with that output
 
 - All licenses have been verified by reading the LICENSE file in the module cache.
 - ISC (used by `github.com/davecgh/go-spew`) is a permissive, MIT-equivalent license (no copyleft, no additional redistribution obligations) — included in the license allowlist above.
-- Direct dependencies are few (`rho-snowflake-2026`, `msgpack/v5`, `badger/v4`); the OpenTelemetry modules arrive transitively via Badger and are not used by this library's own call graph.
+- Direct dependencies are few: `rho-snowflake-2026`, `msgpack/v5`, `badger/v4`, and `klauspost/compress`, required directly because a test imports it (`pkg/graph/internal/storeutil/wire_b3_ondisk_gate_test.go`; raised to v1.18.7 in v4.36.1, past known vulnerabilities) — no production package imports it. The OpenTelemetry modules arrive transitively via Badger and are not used by this library's own call graph.
