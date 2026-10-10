@@ -266,6 +266,8 @@ Done and verified this session (do not redo): see §2 table plus CHANGELOG; the 
 
 ---
 
+**Model rule (René 2026-10-10): documentation-review agents (md files vs code) use `model: "sonnet"`; feature builds and code reviews stay Opus; escalate to Opus only if a Sonnet result needs a second fix round.**
+
 ## Appendix A — agent prompt skeleton that produced the good results (fill the <>)
 
 ```
