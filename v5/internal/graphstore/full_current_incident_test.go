@@ -4,8 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
-	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
+	"math"
 	"reflect"
 	"slices"
 	"strings"
@@ -14,6 +13,8 @@ import (
 
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
 
 type incidentAtReader interface {
@@ -408,6 +409,7 @@ func TestIncidentAtNilInvalidAndClosedReaderSentinels(t *testing.T) {
 		t.Fatal("nil reader", err)
 	}
 	v := f.view(t, f.index)
+	//nolint:staticcheck // SA1012: exercise the deliberate nil-context rejection contract.
 	if _, err := v.IncidentAt(nil, query, 0, budget); !errors.Is(err, ErrInvalid) {
 		t.Fatal("nil context", err)
 	}
@@ -756,5 +758,207 @@ func TestIncidentScratchDistinctEndpointsPointsAndRetainedCursors(t *testing.T) 
 			}
 		}
 		exactIncidentAt(t, p.got, want)
+	}
+}
+
+func TestCurrentPresenceConstructorFailuresExposeExactAttemptedWork(t *testing.T) {
+	f := cpFixture(t, temporal.ProfileIntegerZ)
+	cpSeedRelationships(t, f)
+	f.commit(t, nil, []currentPresenceAtom{cpNativeAtom(t, f, 1, 11, 3, 31, "75", cpSource)})
+	c := openCatalog(t, f.db, f.index, Limits{})
+	defer c.view.Close()
+	query := currentPresenceQuery{endpoint: 1, at: cpTestPosition(t, f.axis, "75", 0), direction: cpSource}
+	probe, work, err := newCurrentPresenceIteratorWork(t.Context(), c, f.tree, query, f.limits)
+	if err != nil || probe == nil || work.Records != 1 || work.Bytes <= c.rootImageBytes {
+		t.Fatal("constructor baseline lacks one axis witness", work, err)
+	}
+	_ = probe.close()
+	app, err := c.view.Root()
+	if err != nil {
+		t.Fatal(err)
+	}
+	capacity, scratch := cpPositionBudget(query.at, f.limits.codec.temporal)
+	coordinateOwned := capacity + max(0, capacity-52) + scratch
+	beforeCoordinate := work.Bytes - cap(app.Image) - coordinateOwned
+	fixed := cpIteratorOwned + cpTreeOperationOwned + cpPredicateOwned + cpIteratorFrameOwned*f.limits.codec.maxLevels
+	counters := readGuardCounters(c)
+	root := c.root
+	for _, tc := range []struct {
+		name     string
+		capBytes int
+		want     PageWork
+	}{
+		{"fixed-backing", 1152, PageWork{Bytes: c.rootImageBytes}},
+		{"axis-backing", c.rootImageBytes + fixed + 95, PageWork{Bytes: c.rootImageBytes + fixed}},
+		{"coordinate-backing", work.Bytes - cap(app.Image) - 1, PageWork{Records: 1, Bytes: beforeCoordinate}},
+		{"image-backing", work.Bytes - 1, PageWork{Records: 1, Bytes: work.Bytes - cap(app.Image)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l := f.limits
+			l.pages.MaxCheckpointBytes, l.pages.MaxWorkBytes = 1024, tc.capBytes
+			it, attempted, err := newCurrentPresenceIteratorWork(t.Context(), c, f.tree, query, l)
+			if !errors.Is(err, ErrResourceLimit) || it != nil || attempted != tc.want {
+				t.Fatal("unpublished constructor lost exact source work", attempted, tc.want, err)
+			}
+			assertGuardCounters(t, c, counters)
+			if c.root != root || c.poison != nil {
+				t.Fatal("resource refusal changed authority", c.root, c.poison)
+			}
+			if _, err := c.view.Root(); err != nil {
+				t.Fatal("refusal closed borrowed view", err)
+			}
+		})
+	}
+	t.Run("coordinate-policy", func(t *testing.T) {
+		l := f.limits
+		l.codec.temporal.MaxMagnitudeBits = 1
+		it, attempted, err := newCurrentPresenceIteratorWork(t.Context(), c, f.tree, query, l)
+		want := PageWork{Records: 1, Bytes: work.Bytes - cap(app.Image)}
+		if it != nil || !errors.Is(err, ErrResourceLimit) || !errors.Is(err, temporal.ErrResourceLimit) || attempted != want {
+			t.Fatal("encoding policy failure lost precharged work/cause", attempted, want, err)
+		}
+		assertGuardCounters(t, c, counters)
+	})
+	t.Run("wide-scratch", func(t *testing.T) {
+		n, err := temporal.ParseInteger(strings.Repeat("9", 1000), temporal.Limits{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wide := query
+		wide.at, err = temporal.IntegerPosition(f.axis, n)
+		if err != nil {
+			t.Fatal(err)
+		}
+		l := f.limits
+		l.codec.maxScratchBytes = 8192
+		it, attempted, err := newCurrentPresenceIteratorWork(t.Context(), c, f.tree, wide, l)
+		want := PageWork{Records: 1, Bytes: beforeCoordinate}
+		if it != nil || !errors.Is(err, ErrResourceLimit) || attempted != want {
+			t.Fatal("wide scratch allocated/published before refusal", attempted, want, err)
+		}
+		assertGuardCounters(t, c, counters)
+	})
+	for _, tc := range []struct {
+		name  string
+		at    temporal.Position
+		ctx   context.Context
+		cause error
+	}{
+		{"nil-context", query.at, nil, ErrInvalid},
+		{"invalid-axis", temporal.Position{}, t.Context(), temporal.ErrInvalidAxis},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			q := query
+			q.at = tc.at
+			it, attempted, err := newCurrentPresenceIteratorWork(tc.ctx, c, f.tree, q, f.limits)
+			if it != nil || !errors.Is(err, tc.cause) || !errors.Is(err, ErrInvalid) || attempted != (PageWork{}) {
+				t.Fatal("pre-reader rejection consumed/published source", attempted, err)
+			}
+			assertGuardCounters(t, c, counters)
+		})
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if it, attempted, err := newCurrentPresenceIteratorWork(ctx, c, f.tree, query, f.limits); it != nil || !errors.Is(err, context.Canceled) || attempted != (PageWork{}) {
+		t.Fatal("early cancellation work", attempted, err)
+	}
+	closed := openCatalog(t, f.db, f.index, Limits{})
+	_ = closed.view.Close()
+	if it, attempted, err := newCurrentPresenceIteratorWork(t.Context(), closed, f.tree, query, f.limits); it != nil || !errors.Is(err, raftlog.ErrClosed) || attempted != (PageWork{}) {
+		t.Fatal("closed borrow work/cause", attempted, err)
+	}
+	// Calibrate the final context check from a completed constructor. It must
+	// charge the same actual source without publishing any cursor/iterator.
+	count := &fullCancelContext{Context: t.Context()}
+	it, counted, err := newCurrentPresenceIteratorWork(count, c, f.tree, query, f.limits)
+	if err != nil || it == nil || counted != work || count.calls < 2 {
+		t.Fatal(counted, work, count.calls, err)
+	}
+	_ = it.close()
+	it, attempted, err := newCurrentPresenceIteratorWork(&fullCancelContext{Context: t.Context(), cancelAt: count.calls}, c, f.tree, query, f.limits)
+	if it != nil || !errors.Is(err, context.Canceled) || attempted != work {
+		t.Fatal("late cancellation published/lost constructor work", attempted, work, err)
+	}
+	assertGuardCounters(t, c, counters)
+	it, _, err = newCurrentPresenceIteratorWork(t.Context(), c, f.tree, query, f.limits)
+	if err != nil {
+		t.Fatal("constructor refusal consumed borrowed authority", err)
+	}
+	defer it.close()
+	page, err := it.next(t.Context(), 0, graphstate.ReadBudget{Rows: 1, Bytes: 4096})
+	if err != nil || !page.complete || len(page.candidates) != 1 || page.candidates[0] != (currentPresenceCandidate{3, 31, cpSource}) || it.cursor != 0 {
+		t.Fatal("retry exact candidate", page, err)
+	}
+}
+
+func TestCurrentPresenceConstructorCorruptCurrentAxisKeepsRetainedCandidate(t *testing.T) {
+	f := cpFixture(t, temporal.ProfileIntegerZ)
+	cpSeedRelationships(t, f)
+	f.commit(t, nil, []currentPresenceAtom{cpNativeAtom(t, f, 1, 11, 3, 31, "75", cpSource)})
+	old := openCatalog(t, f.db, f.index, Limits{})
+	defer old.view.Close()
+	query := currentPresenceQuery{endpoint: 1, at: cpTestPosition(t, f.axis, "75", 0), direction: cpSource}
+	// The application frame is correctly checksummed; only its stored axis
+	// record is malformed. Current corruption must not contaminate the old cut.
+	_, index := commitRows(t, f.db, f.root, []raftlog.KV{{Key: axisKey(f.root.namespace, f.axis.Descriptor().ID), Value: []byte("invalid persisted axis")}})
+	current := openCatalog(t, f.db, index, Limits{})
+	defer current.view.Close()
+	q, err := current.reader(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, axisErr := q.axis(f.axis.Descriptor().ID)
+	if !errors.Is(axisErr, ErrCorrupt) || q.rows != 1 {
+		t.Fatal("corruption fixture did not decode one real axis", axisErr)
+	}
+	fixed := cpIteratorOwned + cpTreeOperationOwned + cpPredicateOwned + cpIteratorFrameOwned*f.limits.codec.maxLevels
+	want := PageWork{Records: 1, Bytes: q.bytes + fixed + 96}
+	before := readGuardCounters(current)
+	it, attempted, err := newCurrentPresenceIteratorWork(t.Context(), current, f.tree, query, f.limits)
+	if it != nil || !errors.Is(err, ErrCorrupt) || attempted != want {
+		t.Fatal("corrupt current constructor hid attempted work", attempted, want, err)
+	}
+	assertGuardCounters(t, current, before)
+	if _, err := current.view.Root(); err != nil {
+		t.Fatal("corruption closed caller borrow", err)
+	}
+	if _, err := current.Root(); !errors.Is(err, ErrPoisoned) {
+		t.Fatal("corrupt current catalog remained usable", err)
+	}
+	it, _, err = newCurrentPresenceIteratorWork(t.Context(), old, f.tree, query, f.limits)
+	if err != nil || it == nil {
+		t.Fatal("current corruption leaked into retained cut", err)
+	}
+	defer it.close()
+	page, err := it.next(t.Context(), 0, graphstate.ReadBudget{Rows: 1, Bytes: 4096})
+	if err != nil || !page.complete || len(page.candidates) != 1 || page.candidates[0] != (currentPresenceCandidate{3, 31, cpSource}) {
+		t.Fatal("retained exact candidate lost", page, err)
+	}
+}
+
+func TestIncidentAtSmallCoordinatePreflightSignedBoundaries(t *testing.T) {
+	axis := testAxis(t, 1, temporal.ProfileIntegerZ)
+	for _, tc := range []struct {
+		value    int64
+		capacity int
+	}{{math.MinInt64, 63}, {-1, 56}, {0, 55}, {math.MaxInt64, 63}} {
+		at, err := temporal.IntegerPosition(axis, temporal.Int64(tc.value))
+		if err != nil {
+			t.Fatal(err)
+		}
+		capacity, _ := cpPositionBudget(at, temporal.Limits{})
+		wire, err := temporal.AppendPosition(make([]byte, 0, capacity), at, temporal.Limits{})
+		if err != nil || capacity != tc.capacity || len(wire) != tc.capacity || cap(wire) != tc.capacity {
+			t.Fatal("signed magnitude escaped exact preflight", tc.value, capacity, len(wire), cap(wire), err)
+		}
+		decoded, err := temporal.DecodePosition(wire, axis, temporal.Limits{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		n, ok := decoded.Integer()
+		actual, small := n.Int64()
+		if !ok || !small || actual != tc.value {
+			t.Fatal("signed magnitude failed roundtrip", tc.value, actual, err)
+		}
 	}
 }

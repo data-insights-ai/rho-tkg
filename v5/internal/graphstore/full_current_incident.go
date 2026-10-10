@@ -5,9 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"slices"
+
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
-	"slices"
 )
 
 // IncidentDirection selects endpoint roles, independently of lifecycle visibility.
@@ -253,7 +254,7 @@ func (v *ReadView) IncidentAt(ctx context.Context, query IncidentAtQuery, token 
 			}
 		}
 	}()
-	it.op.pageStage.pageReader = q
+	it.op.pageReader = q
 	it.op.q.fullView = &v.descriptor
 	it.op.limits.pages = q.limits
 	it.op.limits.pages.MaxCursorBytes = v.limits.Pages.MaxCursorBytes - (v.cursorBytes + v.pages.cursorBytes - old.bytes)

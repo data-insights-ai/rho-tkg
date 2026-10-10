@@ -2,11 +2,11 @@ package graphstore
 
 import (
 	"errors"
-	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
 	"reflect"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
 

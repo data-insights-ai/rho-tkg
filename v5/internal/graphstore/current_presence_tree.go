@@ -1290,7 +1290,7 @@ func cpPositionBudget(p temporal.Position, l temporal.Limits) (int, int) {
 		}
 		var magnitude uint64
 		if v < 0 {
-			magnitude = uint64(-(v + 1)) + 1
+			magnitude = uint64(-(v + 1)) + 1 // #nosec G115 -- v<0 makes -(v+1) nonnegative and <=MaxInt64; unsigned +1 represents MinInt64 magnitude.
 		} else {
 			magnitude = uint64(v)
 		}

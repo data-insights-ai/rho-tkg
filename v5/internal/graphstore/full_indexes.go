@@ -69,7 +69,7 @@ func (q *reader) fullDescriptor(r Root) (fullIndexDescriptor, bool, error) {
 		return fullIndexDescriptor{}, false, err
 	}
 	tags, err := c.take(4)
-	if err != nil || tags[0] != 2 || tags[1] != byte(r.topology.index) || tags[2] != 0 || tags[3] != 0 || tags[1] != 2 && tags[1] != 3 {
+	if err != nil || tags[0] != 2 || uint64(tags[1]) != r.topology.index || tags[2] != 0 || tags[3] != 0 || tags[1] != 2 && tags[1] != 3 {
 		return fullIndexDescriptor{}, false, ErrCorrupt
 	}
 	var v [4]uint64
