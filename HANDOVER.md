@@ -207,7 +207,7 @@ Merge-and-remove rule for future agent worktrees (CLAUDE.md): merge the branch b
 
 Legend: [ ] open, (S) = waits for sigma, (R) = waits for René's decision.
 
-0. [x] **Backlog 43 retraction: RELEASED as v4.49.1 (de06846, 2026-10-10; gate exit 0, cover 87.3 %; sigma-tkgd and ai-soc notified, both fine)**. Earlier note: MERGED to main (2026-10-10, merge `5e646e3` + two test-seed fixes). `Retract`/`RetractWithTx`
+0. [x] **Backlog 43 retraction: RELEASED as v4.49.1 (de06846), hardened in v4.49.2 (fv=3 on retraction rows so old binaries fail closed; batch relationship delete queue order); gates exit 0, cover 87.3 %**. Earlier note: MERGED to main (2026-10-10, merge `5e646e3` + two test-seed fixes). `Retract`/`RetractWithTx`
    on Nodes/Rels and the GraphTx/Batch/Session twins; marker = optional wire key `rx` on the tombstone (`TemporalMetadata.Retracted`,
    no fv bump); a retracted life is DROPPED from the pinned chain (`dropRetractedLives`), not capped at −∞ (a cap left a hole when a
    re-import follows a delete; red run `tasks/evidence/retraction/09-*`). Decisions: unknown ID → not found; already deleted/retracted →
@@ -215,7 +215,7 @@ Legend: [ ] open, (S) = waits for sigma, (R) = waits for René's decision.
    Delete (mixed-version replicas diverge; upgrade readers first; open question: per-row `fv=3` on retraction tombstones so old binaries
    fail closed). NOT DONE: the Opus review round (stopped), `go test -race` on the full package set, `make cover`; the 3.7k-line test suite
    was never shortened (René: too long; the stopped rewrite target was <= 900 lines with the 26-mutant driver as gate, see
-   `tasks/evidence/retraction/14-mutants.txt`). Next tag is a PATCH (v4.49.2).
+   `tasks/evidence/retraction/14-mutants.txt`). Next tag is a PATCH (v4.49.3).
    STOPPED branches with uncommitted work (not merged, worktrees kept): `worktree-agent-adcfa76ae8b4c0dfe` (backlog 34, 20 uncommitted
    files, 0 commits) and `worktree-agent-aa4b0ebc0683fcb3f` (backlog 42, 23 uncommitted files, 0 commits).
 1. [ ] **Restart backlog 34** `Set{Node,Rel}VersionIntervalWithTx` (all doors) — sigma replay need.
@@ -230,7 +230,7 @@ Legend: [ ] open, (S) = waits for sigma, (R) = waits for René's decision.
 10. [ ] (R) Answer: keep behaviour changes as named stability exceptions (default) or ship through the deprecation ritual.
 11. [ ] Optional: write the v4→v5 importer reference tests Markus might want (note on main: `tasks/v4-changes-for-v5-importer-20261010.md`);
     re-arm the origin watch (§8) if René still wants to follow `v5`.
-12. [ ] **PATCH VERSIONS ONLY** (René 2026-10-10: "just patch versions.. no minor versions until asked"). The next tag is v4.49.2 (then .3 …), also for additive features such as the retraction door; no v4.50.0 until he asks. Gate, tag, notify consumers as before.
+12. [ ] **PATCH VERSIONS ONLY** (René 2026-10-10: "just patch versions.. no minor versions until asked"). The next tag is v4.49.3 (then .4 …), also for additive features such as the retraction door; no v4.50.0 until he asks. Gate, tag, notify consumers as before.
 
 Done and verified this session (do not redo): see §2 table plus CHANGELOG; the ledger rows in `tasks/todo.md` carry the evidence paths.
 

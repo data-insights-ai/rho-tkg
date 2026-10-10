@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.49.2] - 2026-10-10
+
+Patch release, two fixes to the retraction door shipped in 4.49.1 (found by the Opus review): a retraction row now
+carries row format version 3, so a binary older than 4.49.1 fails closed on it instead of reading it as a plain Delete
+(tombstones already written by 4.49.1 stay unprotected), and a Batch or ingest Session applies relationship deletes in
+queue order.
+
 ### Changed
 
 - **A retraction tombstone is written at row format version 3, so an older binary fails closed on it** (backlog 43

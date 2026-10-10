@@ -1,4 +1,4 @@
-# Architecture — tkg/v4 (v4.49.1)
+# Architecture — tkg/v4 (v4.49.2)
 
 Temporal Knowledge Graph v4 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
@@ -1162,7 +1162,7 @@ Import treats record streams as untrusted input. `ImportOptions.MaxStagedBytes =
 | v3.0.66 | `GraphTx.GetNode`, `GraphTx.AddRelationshipByID`, `GraphTx.AddRelationshipByIDIfAbsent` for transactional graph writes |
 | v3.0.67 | Cross-shard incoming relationship type filter fix — `inIdx` changed from `map[ID]struct{}` to `map[ID]uint16` (relID → typeToken; today `inEdge{startNodeID, typeToken}`) |
 
-The table records the v3.0 build-out only. Every later release (v3.0.68 – v4.49.1) is in `CHANGELOG.md`; the sections above describe the current code.
+The table records the v3.0 build-out only. Every later release (v3.0.68 – v4.49.2) is in `CHANGELOG.md`; the sections above describe the current code.
 
 ---
 
