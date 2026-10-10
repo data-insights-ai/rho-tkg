@@ -368,7 +368,11 @@ func (i *ApplicationImport) verifyPage(ctx context.Context, m ApplicationSnapsho
 		if err := ctx.Err(); err != nil {
 			return state, false, err
 		}
-		local, raw := it.Key(), it.Value()
+		local := it.Key()
+		raw, readErr := it.ValueAndErr()
+		if readErr != nil {
+			return state, false, storedReadFailure(readErr)
+		}
 		if len(local) > 2*m.Contract.MaxKeyBytes+11 || len(raw) > max(m.Contract.MaxValueBytes, m.Contract.MaxImageBytes, m.Contract.MaxChangeBytes, m.Contract.MaxOutcomeBytes)+appFrameBytes {
 			return state, false, ErrCorrupt
 		}

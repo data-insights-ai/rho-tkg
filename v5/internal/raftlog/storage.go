@@ -543,7 +543,12 @@ func (s *Store) entries(lo, hi, maxSize uint64) (entries []*pb.Entry, err error)
 			s.poison = ErrCorrupt
 			return nil, ErrCorrupt
 		}
-		e, before, hash, err := decodeEntry(index, it.Value(), s.limits.MaxEntryBytes)
+		raw, readErr := it.ValueAndErr()
+		if readErr != nil {
+			s.poison = storedReadFailure(readErr)
+			return nil, s.poison
+		}
+		e, before, hash, err := decodeEntry(index, raw, s.limits.MaxEntryBytes)
 		if err != nil || before != prev || e.GetTerm() < previousTerm || e.GetTerm() > s.meta.Hard.GetTerm() {
 			s.poison = ErrCorrupt
 			return nil, errors.Join(ErrCorrupt, err)
@@ -826,12 +831,16 @@ func (s *Store) rangeBytes(lo, hi uint64) (total uint64, err error) {
 		if !bytes.Equal(it.Key(), entryKey(index)) {
 			return 0, ErrCorrupt
 		}
-		term, before, hash, err := inspectEntry(index, it.Value(), s.limits.MaxEntryBytes)
+		raw, readErr := it.ValueAndErr()
+		if readErr != nil {
+			return 0, storedReadFailure(readErr)
+		}
+		term, before, hash, err := inspectEntry(index, raw, s.limits.MaxEntryBytes)
 		if err != nil || before != prev || term < previousTerm || term > s.meta.Hard.GetTerm() {
 			return 0, errors.Join(ErrCorrupt, err)
 		}
 		prev, previousTerm = hash, term
-		n += uint64(len(it.Key()) + len(it.Value()))
+		n += uint64(len(it.Key()) + len(raw))
 		index++
 	}
 	if err := it.Error(); err != nil {

@@ -269,7 +269,12 @@ func (e *ApplicationExport) Next(ctx context.Context, b ReadBudget) (chunk Appli
 		if err := ctx.Err(); err != nil {
 			return ApplicationSnapshotChunk{}, err
 		}
-		k, v := it.Key(), it.Value()
+		k := it.Key()
+		v, readErr := it.ValueAndErr()
+		if readErr != nil {
+			s.poison = storedReadFailure(readErr)
+			return ApplicationSnapshotChunk{}, s.poison
+		}
 		if len(v) < appFrameBytes || len(k) > 2*e.manifest.Contract.MaxKeyBytes+11 || len(v) > max(e.manifest.Contract.MaxValueBytes, e.manifest.Contract.MaxImageBytes, e.manifest.Contract.MaxChangeBytes, e.manifest.Contract.MaxOutcomeBytes)+appFrameBytes {
 			s.poison = ErrCorrupt
 			return ApplicationSnapshotChunk{}, ErrCorrupt

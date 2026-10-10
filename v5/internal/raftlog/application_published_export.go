@@ -223,7 +223,11 @@ func (e *ApplicationExport) publishedPage(ctx context.Context, b ReadBudget, bui
 		if err := ctx.Err(); err != nil {
 			return ApplicationSnapshotChunk{}, p.verifier, err
 		}
-		local, raw := it.Key(), it.Value()
+		local := it.Key()
+		raw, readErr := it.ValueAndErr()
+		if readErr != nil {
+			return chunk, state, storedReadFailure(readErr)
+		}
 		if len(local) == 0 || len(local) > 2*m.Contract.MaxKeyBytes+11 || len(raw) < appFrameBytes || len(raw) > max(m.Contract.MaxValueBytes, m.Contract.MaxImageBytes, m.Contract.MaxChangeBytes, m.Contract.MaxOutcomeBytes)+appFrameBytes {
 			return chunk, state, ErrCorrupt
 		}

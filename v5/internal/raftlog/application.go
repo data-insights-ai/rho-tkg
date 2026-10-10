@@ -659,7 +659,11 @@ func (v *ApplicationView) Get(ctx context.Context, key []byte, maxBytes int) (ou
 	if e != nil || !bytes.Equal(actual, key) || index > v.index {
 		return KV{}, false, v.fail(errors.Join(ErrCorrupt, e))
 	}
-	value, deleted, e := inspectAppFrame(physical, it.Value(), p.MaxValueBytes)
+	raw, readErr := it.ValueAndErr()
+	if readErr != nil {
+		return KV{}, false, v.fail(storedReadFailure(readErr))
+	}
+	value, deleted, e := inspectAppFrame(physical, raw, p.MaxValueBytes)
 	if e != nil {
 		return KV{}, false, v.fail(e)
 	}
@@ -753,7 +757,11 @@ func (v *ApplicationView) Scan(ctx context.Context, lower, upper, after []byte, 
 			if e != nil || !bytes.Equal(actual, key) || version > v.index {
 				return ApplicationPage{}, v.fail(errors.Join(ErrCorrupt, e))
 			}
-			value, deleted, e = inspectAppFrame(it.Key(), it.Value(), p.MaxValueBytes)
+			raw, readErr := it.ValueAndErr()
+			if readErr != nil {
+				return ApplicationPage{}, v.fail(storedReadFailure(readErr))
+			}
+			value, deleted, e = inspectAppFrame(it.Key(), raw, p.MaxValueBytes)
 			if e != nil {
 				return ApplicationPage{}, v.fail(e)
 			}
@@ -963,11 +971,15 @@ func (s *Store) ScrubApplication(ctx context.Context) (err error) {
 				limit = p.MaxOutcomeBytes
 			}
 		}
-		_, deleted, err := inspectAppFrame(key, it.Value(), limit)
+		raw, readErr := it.ValueAndErr()
+		if readErr != nil {
+			return storedReadFailure(readErr)
+		}
+		_, deleted, err := inspectAppFrame(key, raw, limit)
 		if err != nil || deleted && key[0] != bankTag(s.activeBank(), appDataTag) {
 			return errors.Join(ErrCorrupt, err)
 		}
-		cost := uint64(len(key) + len(it.Value()))
+		cost := uint64(len(key) + len(raw))
 		if cost > p.RetainedApplicationBytes-total || records >= p.RetainedApplicationRecords {
 			return ErrCorrupt
 		}

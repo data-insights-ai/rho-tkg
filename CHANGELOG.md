@@ -227,6 +227,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **v5 deferred value-read error classification**: application/log iterator
+  reads and snapshot transfer pages fetch each value once and check read errors
+  before decoding. Operational value-block failures retain their cause and existing
+  poison/cleanup behavior; damaged frames and backend-marked corruption retain
+  their diagnosis. On value-read failure, export cursors/digests stay unchanged
+  and dormant import verification stays unsealed.
+
 - **v5 initialization and readiness compatibility**: logical initialization is
   independent of physical index format; GCD1 retains its fixed legacy slot and
   exact historical bytes/digests. Full readiness checks actual descriptors and
