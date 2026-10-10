@@ -1,6 +1,9 @@
 package memory
 
 import (
+	"context"
+	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -213,10 +216,38 @@ func TestCreateTemporalIndex_ConcurrentMutationDuringScanIsReconciled(t *testing
 		}
 	}
 
+	// This one-replacement/no-history fixture gets latest-only placeholder
+	// membership only when its writes complete DURING Phase 2.
+	// A writer racing past Phase 3 may legally widen an already observed B4
+	// envelope instead, so enforce the phase rather than the CI scheduler.
+	phase2Started := make(chan struct{})
+	mutationsDone := make(chan struct{})
+	var once sync.Once
+	phase2ScanHook = func() {
+		once.Do(func() {
+			close(phase2Started)
+			<-mutationsDone
+		})
+	}
+	t.Cleanup(func() { phase2ScanHook = nil })
+	writerContext, cancelWriter := context.WithCancel(t.Context())
+	defer cancelWriter()
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
+		defer close(mutationsDone)
+		select {
+		case <-phase2Started:
+		case <-writerContext.Done():
+			return
+		}
+		ms.mu.RLock()
+		live := ms.temporalIndexes[10]
+		building := live != nil && live.Building && live.Mutated != nil
+		ms.mu.RUnlock()
+		if !building {
+			t.Error("writer did not enter the promised Phase 2")
+			return
+		}
 		for i := int64(1); i <= 2_000; i++ {
 			if err := ms.DeleteNode(types.NodeID(i)); err != nil {
 				t.Errorf("DeleteNode(%d): %v", i, err)
@@ -231,12 +262,24 @@ func TestCreateTemporalIndex_ConcurrentMutationDuringScanIsReconciled(t *testing
 				return
 			}
 		}
-	}()
+	})
 
-	if err := ms.CreateTemporalIndex(10); err != nil {
-		t.Fatalf("CreateTemporalIndex: %v", err)
+	err := ms.CreateTemporalIndex(10)
+	select {
+	case <-phase2Started:
+		// The hook joined the writer before Phase 3 could publish.
+	default:
+		cancelWriter()
+		wg.Wait()
+		phase2ScanHook = nil
+		t.Fatal("CreateTemporalIndex never invoked Phase 2 hook", err)
 	}
+	cancelWriter()
 	wg.Wait()
+	phase2ScanHook = nil
+	if err != nil {
+		t.Fatal("CreateTemporalIndex", err)
+	}
 
 	ms.mu.RLock()
 	ti := ms.temporalIndexes[10]
@@ -494,5 +537,144 @@ func TestCreateVectorIndexWithOptions_ConcurrentMutationDuringScanIsReconciled(t
 	}
 	if !present[snowflake.ID(n)] {
 		t.Fatalf("untouched node %d missing from vector index", n)
+	}
+}
+
+func assertTemporalCurrentNodeIDs(t *testing.T, ms *Store, at types.Instant, want ...types.NodeID) {
+	t.Helper()
+	got, err := ms.NodesByLabel(10, QueryOpts{ValidAt: at})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := make([]types.NodeID, len(got))
+	for i, n := range got {
+		ids[i] = n.ID()
+	}
+	if !slices.Equal(ids, want) {
+		t.Fatalf("current point%d IDs=%v, want exact%v", at, ids, want)
+	}
+}
+
+func TestCreateTemporalIndex_Phase2StaleFetchedRowDoesNotOverwriteMutation(t *testing.T) {
+	ms := New()
+	t.Cleanup(func() { _ = ms.Close() })
+	original := memNode(1, 10)
+	original.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000})
+	if err := ms.PutNode(original); err != nil {
+		t.Fatal(err)
+	}
+	// The only snapshot row is fetched before the hook. Force a separate writer
+	// to replace it before the scan can append that stale1000 backfill interval.
+	phase2Started, done := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	phase2ScanHook = func() { once.Do(func() { close(phase2Started); <-done }) }
+	t.Cleanup(func() { phase2ScanHook = nil })
+	writerContext, cancelWriter := context.WithCancel(t.Context())
+	defer cancelWriter()
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		defer close(done)
+		select {
+		case <-phase2Started:
+		case <-writerContext.Done():
+			return
+		}
+		ms.mu.RLock()
+		live := ms.temporalIndexes[10]
+		building := live != nil && live.Building && live.Mutated != nil
+		ms.mu.RUnlock()
+		if !building {
+			t.Error("writer did not enter Phase2")
+			return
+		}
+		updated := memNode(1, 10)
+		updated.SetTemporal(&types.TemporalMetadata{ValidFrom: 5000})
+		if err := ms.ReplaceNode(updated); err != nil {
+			t.Error(err)
+		}
+	})
+	err := ms.CreateTemporalIndex(10)
+	select {
+	case <-phase2Started:
+		// The hook joined the writer before Phase 3 could publish.
+	default:
+		cancelWriter()
+		wg.Wait()
+		phase2ScanHook = nil
+		t.Fatal("CreateTemporalIndex never invoked Phase 2 hook", err)
+	}
+	cancelWriter()
+	wg.Wait()
+	phase2ScanHook = nil
+	if err != nil {
+		t.Fatal("CreateTemporalIndex", err)
+	}
+	ms.mu.RLock()
+	ti := ms.temporalIndexes[10]
+	from, to, ok := ti.EnvelopeOf(snowflake.ID(1))
+	building := ti.Building
+	ms.mu.RUnlock()
+	if !ok || from != 5000 || to != 0 || building {
+		t.Fatal("stale backfill overwrote completed mutation", from, to, ok, building)
+	}
+	current, err := ms.GetNode(types.NodeID(1))
+	if err != nil || current.Temporal().ValidFrom != 5000 {
+		t.Fatal("current replacement lost", current, err)
+	}
+	assertTemporalCurrentNodeIDs(t, ms, 1500)
+	assertTemporalCurrentNodeIDs(t, ms, 5500, types.NodeID(1))
+}
+
+func TestCreateTemporalIndex_PublishedEnvelopeIsSupersetOfCurrentResults(t *testing.T) {
+	ms := New()
+	t.Cleanup(func() { _ = ms.Close() })
+	for id := int64(1); id <= 4; id++ {
+		n := memNode(id, 10)
+		from := types.Instant(1000)
+		if id == 4 {
+			from = 9000
+		}
+		n.SetTemporal(&types.TemporalMetadata{ValidFrom: from})
+		if err := ms.PutNode(n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := ms.CreateTemporalIndex(10); err != nil {
+		t.Fatal(err)
+	}
+	assertTemporalCurrentNodeIDs(t, ms, 1500, types.NodeID(1), types.NodeID(2), types.NodeID(3))
+	updated := memNode(1, 10)
+	updated.SetTemporal(&types.TemporalMetadata{ValidFrom: 5000})
+	if err := ms.ReplaceNode(updated); err != nil {
+		t.Fatal(err)
+	}
+	if err := ms.DeleteNode(types.NodeID(2)); err != nil {
+		t.Fatal(err)
+	}
+	ms.mu.RLock()
+	ti := ms.temporalIndexes[10]
+	for _, id := range []snowflake.ID{1, 2, 3} {
+		from, to, ok := ti.EnvelopeOf(id)
+		if !ok || from != 1000 || to != 0 {
+			ms.mu.RUnlock()
+			t.Fatal("published B4 envelope shrank", id, from, to, ok)
+		}
+	}
+	ms.mu.RUnlock()
+	// The wider index must never expose an old/deleted current row. Exact point
+	// and interval results stay authoritative after both changes.
+	assertTemporalCurrentNodeIDs(t, ms, 1500, types.NodeID(3))
+	assertTemporalCurrentNodeIDs(t, ms, 5500, types.NodeID(1), types.NodeID(3))
+	assertTemporalCurrentNodeIDs(t, ms, 9500, types.NodeID(1), types.NodeID(3), types.NodeID(4))
+	interval, err := ms.NodesByLabel(10, QueryOpts{ValidStart: 2000, ValidEnd: 3000})
+	if err != nil || len(interval) != 1 || interval[0].ID() != types.NodeID(3) {
+		t.Fatal("envelope false positives escaped interval filter", interval, err)
+	}
+	if _, err := ms.GetNode(types.NodeID(2)); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatal("deleted current row returned", err)
+	}
+	phantom, err := ms.NodesByLabel(99, QueryOpts{ValidAt: 5500})
+	if err != nil || len(phantom) != 0 {
+		t.Fatal("phantom label returned current rows", phantom, err)
 	}
 }
