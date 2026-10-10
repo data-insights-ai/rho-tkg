@@ -11,8 +11,10 @@ import (
 // BenchmarkLatestStamps measures g.Rels().LatestStamps on one relationship
 // with 0 ("plain"), 100 and 1,000 history versions (updates; every tenth
 // step a bounded correction plus a correction inside it, whose pieces are
-// appended above the current row), memory and badger (backlog 30). The door
-// is 0 allocs/op on a built sidecar and a cached current row; the regression
+// appended above the current row), memory and badger (backlog 30). On these
+// two backends the door is 0 allocs/op on a built sidecar and a cached current
+// row (tiered and sharded allocate per call: routing, and sharded copies the
+// current row); the regression
 // it exists to catch — the door falling back to the History fold — allocates
 // per history row (2,638 allocs/op at 100 versions, 230,388 at 10,000 on
 // badger), so the family is allocs-gated (bench-gate.awk). 1,000 keeps the

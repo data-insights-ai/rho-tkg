@@ -23,7 +23,9 @@ Decisions
   each history value's temporal fields, tracking under wbMu, maintained at
   noteHistoryKey, per-ID unknown + stamp guard, Clear reset under buildMu).
   tiered: the History shard walk (generic, shared with HasHistory), cold
-  shards per ID; sharded: slot.
+  shards per ID; two or more shards with rows -> fold GetNodeHistory itself
+  (it keeps one copy per version; exact, paid only by multi-shard history);
+  sharded: slot.
 
 Files
 01-red-compile.txt            tests written first: no API (compile red)
@@ -37,5 +39,8 @@ Files
 14-bench-hit.txt              badger store-half hit/miss ns/op
 15-bench-write-path.txt       badger Update end-to-end, sidecar unbuilt vs built (noise-bound)
 15b-bench-note.txt            badger per-history-write note cost, untracked vs built
-20-mutants.txt                19 mutants, each red
+16-bench-rotating.txt         rotating IDs, 5 K and 20 K rels, memory/badger/tiered/sharded (allocs, cache misses)
+20-mutants.txt                23 mutants, each red (M14 superseded by M19/M20 after the tiered fix)
+40-red-tiered-dup.txt         review fix 1: duplicate version across shards, red before the fix
+41-green-tiered-dup.txt       same tests green after it
 30-build-vet.txt, 31-test-pkg.txt, 32-race.txt, 33-lint.txt, 34-security.txt, 35-cover.txt   gates

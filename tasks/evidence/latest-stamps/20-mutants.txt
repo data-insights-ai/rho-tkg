@@ -157,3 +157,27 @@ M18 memory: tamper door keeps the cached entry: RED
     memorystore_history_stamps_test.go:37: after the tamper rewrite = (300, 400, true, <nil>), want (100, 200, true)
     FAIL
     FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.003s
+M12g badger: overwrite folded like an append (graph-level differential only): GREEN (mutant survived)
+  ./pkg/graph/ green
+M19 tiered: shard count not summed (folds duplicate versions across shards): RED
+  ./pkg/graph/store/tiered/ RED
+    --- FAIL: TestTieredHistoryStamps_DuplicateVersionAcrossShards (0.09s)
+    --- FAIL: TestTieredHistoryStamps_DuplicateVersionAcrossShards/node,_reference_live,_archive_copy_higher (0.03s)
+    tieredstore_history_stamps_test.go:291: duplicate v1, owner copy kept: NodeHistoryStamps = (500, 600, true, <nil>), history folds to (100, 200, true)
+    --- FAIL: TestTieredHistoryStamps_DuplicateVersionAcrossShards/node,_reference_live,_archive_copy_lower (0.02s)
+M20 tiered: multi-shard fallback removed: RED
+  ./pkg/graph/store/tiered/ RED
+    --- FAIL: TestTieredHistoryStamps_DuplicateVersionAcrossShards (0.14s)
+    --- FAIL: TestTieredHistoryStamps_DuplicateVersionAcrossShards/node,_reference_live,_archive_copy_higher (0.02s)
+    tieredstore_history_stamps_test.go:291: duplicate v1, owner copy kept: NodeHistoryStamps = (500, 600, true, <nil>), history folds to (100, 200, true)
+    --- FAIL: TestTieredHistoryStamps_DuplicateVersionAcrossShards/node,_reference_live,_archive_copy_lower (0.05s)
+M12g badger: overwrite folded like an append (graph-level differential only, with storeOverwrite): RED
+    --- FAIL: TestLatestStampsDifferential (3.55s)
+    --- FAIL: TestLatestStampsDifferential/badger-disk/seed=1 (0.16s)
+    latest_stamps_test.go:706: step 40 storeOverwrite: node 798390621720772608 store history stamps = (1791590548174, 1791590548301, true), History folds to (895795274087, 0, true) over 1 rows
+    --- FAIL: TestLatestStampsDifferential/badger-disk/seed=2 (0.31s)
+M15g memory: overwrite folded like an append (graph-level differential only, with storeOverwrite): RED
+    --- FAIL: TestLatestStampsDifferential (14.19s)
+    --- FAIL: TestLatestStampsDifferential/memory/seed=1 (0.01s)
+    latest_stamps_test.go:706: step 73 storeOverwrite: rel 798390917669061632 store history stamps = (1791590557256, 1791590561018, true), History folds to (895795278628, 0, true) over 1 rows
+    --- FAIL: TestLatestStampsDifferential/memory/seed=2 (0.00s)

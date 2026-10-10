@@ -159,8 +159,11 @@ func (bs *Store) HistoryStampsStats() HistoryStampsStats {
 // pending and in-flight writes included, without reading a row. The first call
 // builds the RAM sidecar by one scan of the node history values (temporal
 // fields only); later calls are a map lookup, or one read of the ID's rows
-// after a delete or a lowering overwrite. An ID whose rows exist but fail to
-// decode reports the decode error.
+// after a delete or a lowering overwrite. Only each row's temporal block is
+// decoded: a row whose temporal block fails to decode reports the error; a row
+// whose body is corrupt but whose temporal block decodes is answered, while
+// GetNodeHistory reports that row's decode error (HasNodeHistory has the same
+// asymmetry).
 func (bs *Store) NodeHistoryStamps(id types.NodeID) (types.Instant, types.Instant, bool, error) {
 	if err := bs.checkOpen(); err != nil {
 		return 0, 0, false, err
