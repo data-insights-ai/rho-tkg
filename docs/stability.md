@@ -9,6 +9,8 @@ Within the v4 major version (v4.0.0 through v4.x.x), the following surfaces are 
 - **Store contract types** in `pkg/graph/store` (`Store` interface, `QueryOpts`, `ShardDepth`, `DistanceMetric`, sentinel errors)
 - **Error sentinels** (`ErrNodeNotFound`, `ErrNilGraph`, `ErrReadOnlyReplica`, etc.) — their identities and the guarantees they represent are fixed for the lifetime of v4
 - **Type aliases** re-exported from `pkg/graph` (e.g. `Config`, `ValidationLimits`, `GraphStats`)
+- **Column segments** (ADR-0011, accepted): `Config.RelSegments` / `SegmentDir` / `SegmentMemoryBudget`, `g.ScanRelSegments`, `g.Admin().SealRelSegments` / `RelSegmentStats`
+- **Doors added in v4.44–v4.49** are stable additive surface: `Nodes()` / `Rels()` `DeleteWithTx`, `UpdateWithTx`, `HasHistory`, `LatestStamps`; the `*WithTx` twins on `GraphTx`, `BatchBuilder` and the ingest `Session`; ingest `Session.SetNodeVersionInterval` / `SetRelVersionInterval`; `Temporal()` `NodeEffectiveTimeline` / `RelEffectiveTimeline` / `ForEachNodeEffectiveByLabel` / `ForEachRelEffectiveByType`; `types.NodeID` / `RelID` `.MintInstant()`, `types.Node` / `Relationship` `.TxStamps()`; `Config.DurableCommit`; the sentinels `ErrTxOrder`, `ErrEntityDeleted`, `ErrTxPinTooNew`, `ErrCommitNotDurable`; the optional store capabilities `HistoryPresenceCapability`, `HistoryStampsCapability`, `RelPropertyTxMembershipCapability` / `NodePropertyTxMembershipCapability`, `DurableFlushCapability`. Their statistics doors are diagnostics (see Experimental Surfaces)
 
 Breaking changes are reserved for v5.0.0 or later.
 
@@ -37,10 +39,10 @@ Removals and breaking changes land only at major-version boundaries or after a d
   the pin" (pin-stable: a later write can never change an answer at an earlier pin). It is shipped without the
   deprecation period because the old rule was a correctness bug (answers at an earlier pin changed after a later
   write; a Delete after a bounded cascade left the entity valid in declared reads, backlog 18 / 20), it had been
-  documented for one day, and both known consumers (sigma-tkgd, ai-soc) were told beforehand and adapted. The
+  documented for less than a day (v4.44.0 and v4.46.0 both shipped on 2026-10-09), and both known consumers (sigma-tkgd, ai-soc) were told beforehand and adapted. The
   state doors (`NodeAtTx` / `RelAtTx`, `ByLabel` / `ByType` with `ValidAt` + `TxAt`) did not change meaning.
   Future behaviour changes follow the ritual above.
-- **Unreleased (backlog 38), the re-import of a deleted ID.** Shipped as an exception to the ritual above
+- **v4.48.0 (backlog 38), the re-import of a deleted ID.** Shipped as an exception to the ritual above
   (additive-only is kept for every other surface), because the old behaviour lost data and the refused input
   has no consistent reading:
   - *Refused input.* `Nodes().Import` / `Rels().Import` / `Nodes().AddByIDIfAbsent` and the `GraphTx` twins
@@ -50,20 +52,22 @@ Removals and breaking changes land only at major-version boundaries or after a d
     as-of doors answered it, and no stored stamp can place it once a cascade demotes it. The refusal is the
     ordering rule `UpdateWithTx` / `DeleteWithTx` already apply. Consumer that can see it: sigma-tkgd
     `/admin/import` (`tx.ImportNodeWithID` / `ImportRelationshipWithID` with the record's properties, under
-    `TKGD_ALLOW_TX_BACKFILL`) — such a record on a deleted ID becomes a 400 and its transaction rolls back;
+    `TKGD_ALLOW_TX_BACKFILL`) — such a record on a deleted ID fails the request and its transaction rolls back;
     sigma-tkgd notified 2026-10-09. Creates of IDs without history are unchanged.
   - *Changed results on the plain doors.* A re-import of a deleted ID (with or without `tkg_tx_from`) returns
     a row whose `Version()` is the earlier life's highest version + 1 (was 0) and whose
     `Integrity().PrevHash` names that row (was empty); the earlier life's history is kept. When the earlier
     life's stamps lie ahead of the clock (a delete of a row whose valid start lies ahead), the re-imported
     row's `TxFrom` is one past them (was the clock).
-  Chains stored before keep reading as before.
+  Chains stored before keep reading as before; rows that v4.43–v4.47 already overwrote stay lost (no migration).
+  Migration for a refused caller: pass an instant after the delete (`DeletedAt` of the newest history row + 1),
+  or import without `tkg_tx_from`.
 
 ## Experimental Surfaces
 
 The following surfaces are **not** covered by the v4 stability promise. They are either in active development or pending a future decision and may be removed, changed incompatibly, or stabilized with different semantics at **any time** — including within a minor release.
 
-- **Replication Phase-1 API** (`g.Replication().ApplyChange`, `ApplyChanges`, `AppliedLSN`, `SetAppliedLSN`, `RegistrySnapshot`, `IDSlotLease`, `SetIDSlotLease`, `Watch`) — read-replica foundation, available but subject to refinement as horizontal-scaling matures
+- **Replication Phase-1 API** (`g.Replication().ApplyChange`, `ApplyChanges`, `AppliedLSN`, `SetAppliedLSN`, `RegistrySnapshot`, `IDSlotLease`, `SetIDSlotLease`, `Watch`, and the replica wiring `g.SetReplicationSource`) — read-replica foundation, available but subject to refinement as horizontal-scaling matures
 - **`g.Tier()` sub-API** (tiered-store admin: `Archive`, `Restore`, `ForceRotate`, `ListShards`, `RebuildCatalog`, `Repair`, `VerifyShard`) — tiered-store backend-specific operations, not part of the generic graph contract
 - **`sharded.Store`** (`pkg/graph/store/sharded`, ADR-0007) — slot-topology backend over N Badger shards. S1–S5 (mandatory store, batches/cascade, change-log, ingest lanes, index/stats parity) are implemented and tested, but the public surface remains experimental until horizontal multi-machine routing is productized
 - **DocValues reader types** (`types.NodeColumnReader` and related) — performance-oriented columnar access, API shape pending use-case feedback from query planners
@@ -77,19 +81,21 @@ The following surfaces are **not** covered by the v4 stability promise. They are
   feedback. The callback must not retain the batch — its slices are reused between
   calls.
 - **Columnar refresh counters** (`ColumnExtendCount` / `ColumnRebuildCount` on the memory and badger stores) — telemetry for how a label's columnar snapshot was refreshed (append-extended versus fully rebuilt). Diagnostic only; not a stable metric contract
+- **RAM-sidecar statistics** (`badger.Store.HistoryPresenceStats()` / `HistoryStampsStats()`, `store.PropertyTxMembershipStatsCapability`) — sizes, build counts and build times of the in-memory sidecars behind `HasHistory`, `LatestStamps` and the pinned property lookups. Diagnostic only, like the counters above; the doors they describe are stable
 - **`QueryOpts.IncludeEclipsed`** — reserved no-op, kept for API compatibility; one-tick rows are ordinary spans (no row is skipped as "eclipsed"). Consumers must not set it; it may be removed at the next major version
 
 Do not take a production dependency on experimental surfaces without understanding the risk. If a consumer does rely on one, open a GitHub issue so the dependency is known before the surface changes.
 
 ## Release Conventions
 
-- **CHANGELOG.md is the source of truth** for version history. Each release is dated; a version bumped in `go.mod` must have a corresponding entry in CHANGELOG.
+- **CHANGELOG.md is the source of truth** for version history. Each release is dated; every release tag (`vX.Y.Z`) has a `## [X.Y.Z] - date` section in CHANGELOG (the module path carries only the major version, `/v4`).
 - **Versions batch multiple changes.** A single feature, bug fix, or test improvement may span multiple internal commits (via rebase or squash) but appears as one bullet in the public CHANGELOG under the version it ships in.
-- **Docs-consistency check:** `pkg/graph/internal/core/docs_consistency_test.go` pins the current release from the topmost `## [x.y.z]` heading in `CHANGELOG.md` against fixed strings in `AGENTS.md` and `docs/architecture.md`, and pins the Go version from `go.mod` against `README.md` / `AGENTS.md` / `docs/architecture.md`. Stale status lines fail that test.
+- **Docs-consistency check:** `pkg/graph/internal/core/docs_consistency_test.go` pins the current release from the topmost `## [x.y.z]` heading in `CHANGELOG.md` against fixed strings in `README.md`, `AGENTS.md` and `docs/architecture.md`, and pins the Go version from `go.mod` against `README.md` / `AGENTS.md` / `docs/architecture.md`. Stale status lines fail that test.
 
 ## See Also
 
-- `CHANGELOG.md` for the full release history
-- `docs/api.md` for the complete API reference
+- [`CHANGELOG.md`](../CHANGELOG.md) for the full release history
+- [`docs/api.md`](api.md) for the API reference (`go doc` on each `pkg/graph` sub-package is the complete method list)
+- [`docs/errors.md`](errors.md) for every public error sentinel
 - Lessons in `tasks/lessons.md` document patterns, anti-patterns, and historical context
 
