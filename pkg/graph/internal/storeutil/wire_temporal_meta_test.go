@@ -75,7 +75,7 @@ func TestDecodeWireTemporalMeta(t *testing.T) {
 	if err := SafeUnmarshal(future, &fw); err != nil {
 		t.Fatalf("decode for future-stamp: %v", err)
 	}
-	fw.FormatVersion = CurrentWireFormatVersion + 1
+	fw.FormatVersion = RetractedWireFormatVersion + 1
 	futureBuf, err := marshalWirePooled(fw)
 	if err != nil {
 		t.Fatalf("marshal future: %v", err)

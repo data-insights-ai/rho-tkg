@@ -8,9 +8,10 @@ func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	// v2+ emits tf/tt as a fixed-width, always-present trailing slot (last two
 	// map entries); v1/legacy keeps the omitempty mid-map form. See
 	// wire_temporal_tail.go.
-	v2 := w.FormatVersion >= 2
+	fv := emittedRowFormatVersion(w.FormatVersion, w.Retracted)
+	v2 := fv >= 2
 	fields := 3 // id, pl, v
-	if w.FormatVersion != 0 {
+	if fv != 0 {
 		fields++
 	}
 	if len(w.ExtraLabels) > 0 {
@@ -81,8 +82,8 @@ func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	if err := enc.EncodeMapLen(fields); err != nil {
 		return err
 	}
-	if w.FormatVersion != 0 {
-		if err := encodeStringUint8Field(enc, "fv", w.FormatVersion); err != nil {
+	if fv != 0 {
+		if err := encodeStringUint8Field(enc, "fv", fv); err != nil {
 			return err
 		}
 	}
@@ -213,9 +214,10 @@ func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 func (w RelWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	// v2+ emits tf/tt as a fixed-width, always-present trailing slot; v1/legacy
 	// keeps the omitempty mid-map form. See wire_temporal_tail.go.
-	v2 := w.FormatVersion >= 2
+	fv := emittedRowFormatVersion(w.FormatVersion, w.Retracted)
+	v2 := fv >= 2
 	fields := 5 // id, rt, s, e, v
-	if w.FormatVersion != 0 {
+	if fv != 0 {
 		fields++
 	}
 	if len(w.Properties) > 0 {
@@ -289,8 +291,8 @@ func (w RelWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	if err := enc.EncodeMapLen(fields); err != nil {
 		return err
 	}
-	if w.FormatVersion != 0 {
-		if err := encodeStringUint8Field(enc, "fv", w.FormatVersion); err != nil {
+	if fv != 0 {
+		if err := encodeStringUint8Field(enc, "fv", fv); err != nil {
 			return err
 		}
 	}

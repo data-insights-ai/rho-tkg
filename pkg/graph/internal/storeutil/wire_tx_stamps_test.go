@@ -75,7 +75,7 @@ func TestHistoryValueTxStamps(t *testing.T) {
 	}
 
 	newer := NodeToWire(n)
-	newer.FormatVersion = CurrentWireFormatVersion + 1
+	newer.FormatVersion = RetractedWireFormatVersion + 1
 	newerRaw, err := MarshalNodeWireStruct(newer)
 	if err != nil {
 		t.Fatal(err)

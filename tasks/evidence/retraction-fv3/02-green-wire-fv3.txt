@@ -1,0 +1,4 @@
+=== RUN   TestRetractedRow_FormatVersion3
+--- PASS: TestRetractedRow_FormatVersion3 (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	0.002s

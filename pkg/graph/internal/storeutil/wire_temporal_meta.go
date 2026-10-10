@@ -60,9 +60,8 @@ func DecodeWireTemporalMeta(raw []byte) (uint32, *types.TemporalMetadata, error)
 			return 0, nil, err
 		}
 	}
-	if w.FormatVersion > CurrentWireFormatVersion {
-		return 0, nil, fmt.Errorf("wire temporal meta: row format version %d, this binary supports up to %d: %w",
-			w.FormatVersion, CurrentWireFormatVersion, storepkg.ErrWireFormatVersionUnsupported)
+	if err := checkRowFormatVersion("wire temporal meta", w.FormatVersion); err != nil {
+		return 0, nil, err
 	}
 	if w.Version < 0 {
 		return 0, nil, fmt.Errorf("wire temporal meta: negative version %d: %w", w.Version, storepkg.ErrCorruptWire)
@@ -113,9 +112,8 @@ func DecodeWireTxStamps(raw []byte) (txFrom, txTo, deletedAt types.Instant, err 
 			return 0, 0, 0, err
 		}
 	}
-	if w.FormatVersion > CurrentWireFormatVersion {
-		return 0, 0, 0, fmt.Errorf("wire tx stamps: row format version %d, this binary supports up to %d: %w",
-			w.FormatVersion, CurrentWireFormatVersion, storepkg.ErrWireFormatVersionUnsupported)
+	if err := checkRowFormatVersion("wire tx stamps", w.FormatVersion); err != nil {
+		return 0, 0, 0, err
 	}
 	if w.Version < 0 {
 		return 0, 0, 0, fmt.Errorf("wire tx stamps: negative version %d: %w", w.Version, storepkg.ErrCorruptWire)
