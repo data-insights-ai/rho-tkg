@@ -59,7 +59,7 @@ func OpenReadView(ctx context.Context, c *Catalog, l GraphLimits) (view *ReadVie
 	if err := c.check(ctx); err != nil {
 		return nil, err
 	}
-	if !isFullTopology(c.root.topology) {
+	if c.root.hasOwnershipDeclaration() || !isFullTopology(c.root.topology) {
 		return nil, ErrTopologyUnsupported
 	}
 	// Charge the retained descriptor/limits/base image/page-reader/map headers.

@@ -54,7 +54,7 @@ func EncodeRoot(r Root) ([]byte, error) {
 func DecodeRoot(src []byte) (Root, error) {
 	primitive := len(src) == rootBytes && bytes.Equal(src[:4], []byte{'G', 'R', 1, 1})
 	single := len(src) == singlePartitionRootBytes && bytes.Equal(src[:4], []byte{'G', 'R', 2, 2})
-	declared := len(src) == ownershipRootBytes && bytes.Equal(src[:3], []byte{'G', 'R', 3}) && (src[3] == ownershipPending || src[3] == ownershipPublished)
+	declared := len(src) == ownershipRootBytes && bytes.Equal(src[:3], []byte{'G', 'R', 3}) && (src[3] == ownershipPending || src[3] == ownershipPublished || src[3] == ownershipInitialized)
 	if !primitive && !single && !declared {
 		return Root{}, ErrCorrupt
 	}

@@ -16,6 +16,7 @@ import (
 const ownershipDeclarationRecord byte = 0x16
 const ownershipPending byte = 3
 const ownershipPublished byte = 4
+const ownershipInitialized byte = 5
 const ownershipRecordFixedBytes = 64
 const ownershipKeyBytes = 57
 const ownershipEntryBytes = 32

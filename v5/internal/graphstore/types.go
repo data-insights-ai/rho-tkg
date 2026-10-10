@@ -105,7 +105,19 @@ func (r Root) validate() error {
 		return ErrInvalid
 	}
 	if r.hasOwnershipDeclaration() {
-		if r.ownershipDigest == ([32]byte{}) || (r.ownershipMode != ownershipPending && r.ownershipMode != ownershipPublished) || r.topology.epoch == 0 || r.topology.schema != 1 || r.topology.index != 0 {
+		if r.ownershipDigest == ([32]byte{}) || r.topology.epoch == 0 || r.topology.schema != 1 {
+			return ErrInvalid
+		}
+		switch r.ownershipMode {
+		case ownershipPending, ownershipPublished:
+			if r.topology.index != 0 {
+				return ErrInvalid
+			}
+		case ownershipInitialized:
+			if r.topology.index != 3 {
+				return ErrInvalid
+			}
+		default:
 			return ErrInvalid
 		}
 		return nil

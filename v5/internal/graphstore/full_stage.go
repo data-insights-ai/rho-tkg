@@ -220,26 +220,59 @@ func InitializeGraphIndexes(ctx context.Context, c *Catalog, schemas []graphstat
 		return GraphEffects{}, c.failure(ErrCorrupt)
 	}
 	pages := l.Pages
-	pages.MaxWorkRecords = min(pages.MaxWorkRecords, l.MaxSourceRows-initial.rows)
-	pages.MaxWorkBytes = min(pages.MaxWorkBytes, l.MaxSourceBytes-initial.bytes)
-	if pages.MaxWorkBytes < c.rootImageBytes+fullStageMetadataBytes {
-		return GraphEffects{}, ErrResourceLimit
+	effects, _, err := initializeFullStorage(ctx, c, schemas, base, pages, l, PageWork{Records: initial.rows, Bytes: initial.bytes}, nil)
+	return effects, err
+}
+
+// initializeFullStorage shares the physical builder, not initialization admission.
+// Its caller has already proved the original application state and namespace.
+func initializeFullStorage(ctx context.Context, c *Catalog, schemas []graphstate.PropertyDefinition, base raftlog.ApplicationRoot, pages PageLimits, l GraphLimits, prior PageWork, extra []raftlog.KV) (effects GraphEffects, work PageWork, err error) {
+	work = prior
+	rows := min(pages.MaxWorkRecords, l.MaxSourceRows-prior.Records)
+	bytes := min(pages.MaxWorkBytes, l.MaxSourceBytes-prior.Bytes)
+	if rows < 0 || bytes < c.rootImageBytes+fullStageMetadataBytes {
+		return GraphEffects{}, work, ErrResourceLimit
 	}
 	s, err := allocateFullStage(c, fullStageState{root: c.root, pages: pages})
 	if err != nil {
-		return GraphEffects{}, err
+		return GraphEffects{}, work, err
 	}
 	defer func() { _ = s.Close() }()
-	var work PageWork
 	err = s.operation(ctx, func(reader *reader) error {
 		p := pageStage{&pageReader{q: reader, limits: pages}, c.root}
 		p.allocation = &p.root
+		defer func() {
+			_ = p.budget()
+			work = addWork(prior, p.work)
+		}()
+		// Policy stays resolved and immutable. Remaining aggregate allowance is
+		// operation authority on the reader, including explicit zero-row exhaustion.
+		reader.maxRows, reader.maxBytes = rows, bytes
+		reader.denyReads = rows == 0
+		if err := reader.materialize(0); err != nil {
+			return err
+		}
+		for _, row := range extra {
+			if err := reader.put(row.Key, row.Value); err != nil {
+				return err
+			}
+		}
 		if err := p.budget(); err != nil {
 			return err
 		}
 		for _, definition := range schemas {
 			if err := ctx.Err(); err != nil {
 				return err
+			}
+			if c.root.hasOwnershipDeclaration() {
+				if !validProperty(definition, c.limits) {
+					return ErrInvalid
+				}
+				// The local initializer charges its bounded key/wire scratch before
+				// encoding. GR2 initialization retains its existing work contract.
+				if err := reader.materialize(128 + 2*len(definition.Name)); err != nil {
+					return err
+				}
 			}
 			wire, err := encodeProperty(c.root.namespace, definition, c.limits)
 			if err != nil {
@@ -253,7 +286,9 @@ func InitializeGraphIndexes(ctx context.Context, c *Catalog, schemas []graphstat
 				return err
 			}
 		}
-		p.root.topology = fullTopology
+		if !p.root.hasOwnershipDeclaration() {
+			p.root.topology = fullTopology
+		}
 		keys, err := p.newComponentKeyTree(keyTreeLimits(pages))
 		if err != nil {
 			return err
@@ -286,13 +321,14 @@ func InitializeGraphIndexes(ctx context.Context, c *Catalog, schemas []graphstat
 			return err
 		}
 		reader.full = &fullStageState{p.root, descriptor, pages}
-		work = addWork(PageWork{Records: initial.rows, Bytes: initial.bytes}, p.work)
+		work = addWork(prior, p.work)
 		return nil
 	})
 	if err != nil {
-		return GraphEffects{}, err
+		return GraphEffects{}, work, err
 	}
-	return fullEffects(s, base, graphstate.Delta{}, nil, work, l)
+	effects, err = fullEffects(s, base, graphstate.Delta{}, nil, work, l)
+	return effects, work, err
 }
 func (q *pageStage) stageCanonical(entity graphstate.EntityRecord) error {
 	for _, key := range canonicalIncidentKeys(entity) {
@@ -407,9 +443,9 @@ func stageOperations(ctx context.Context, c *Catalog, ops []graphstate.Operation
 	}
 	stagePages := l.Pages
 	rows, bytes := v.remaining()
-	stagePages.MaxWorkRecords = min(stagePages.MaxWorkRecords, rows)
-	stagePages.MaxWorkBytes = min(stagePages.MaxWorkBytes, bytes)
-	if stagePages.MaxWorkBytes < c.rootImageBytes+fullStageMetadataBytes {
+	rows = min(stagePages.MaxWorkRecords, rows)
+	bytes = min(stagePages.MaxWorkBytes, bytes)
+	if rows < 0 || bytes < c.rootImageBytes+fullStageMetadataBytes {
 		return GraphEffects{}, PageWork{}, ErrResourceLimit
 	}
 	s, err := newFullStage(ctx, c, v.descriptor, stagePages)
@@ -427,6 +463,11 @@ func stageOperations(ctx context.Context, c *Catalog, ops []graphstate.Operation
 			}
 			stagedWork.Records, stagedWork.Bytes = base.rows, base.bytes
 		}()
+		base.maxRows, base.maxBytes = rows, bytes
+		base.denyReads = rows == 0
+		if err := base.materialize(0); err != nil {
+			return err
+		}
 		// Reserve the already charged staging authority while Plan uses this view.
 		reserved := base.bytes
 		original := v.limits.MaxSourceBytes
@@ -439,6 +480,9 @@ func stageOperations(ctx context.Context, c *Catalog, ops []graphstate.Operation
 			return planFailure(err)
 		}
 		rows, bytes := v.remaining()
+		if rows < 0 || bytes < base.bytes {
+			return ErrResourceLimit
+		}
 		base.maxRows = min(stagePages.MaxWorkRecords, rows)
 		base.maxBytes = min(stagePages.MaxWorkBytes, bytes)
 		base.denyReads = base.maxRows == 0

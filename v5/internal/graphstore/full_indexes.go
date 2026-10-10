@@ -10,7 +10,7 @@ import (
 )
 
 func validFullDescriptor(d fullIndexDescriptor, r Root) bool {
-	if !isFullTopology(r.topology) || d.owner != r.owner || d.topology != r.topology.epoch || d.schema != r.topology.schema || d.format != r.topology.index {
+	if !physicalFullTopology(r) || d.owner != r.owner || d.topology != r.topology.epoch || d.schema != r.topology.schema || d.format != r.topology.index {
 		return false
 	}
 	roots := []postingTreeRoot{{d.keys.id, d.keys.level, d.keys.count, componentKeyTreeRecord}, d.unique, d.canonical, d.declared}

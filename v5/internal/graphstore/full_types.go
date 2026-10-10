@@ -66,6 +66,15 @@ var fullTopology = topologyDeclaration{epoch: 1, schema: 1, index: 3}
 
 func isFullTopology(t topologyDeclaration) bool { return t == legacyFullTopology || t == fullTopology }
 
+// physicalFullTopology identifies local storage representation only. Complete
+// graph coverage remains the narrower GR2 single-partition contract above.
+func physicalFullTopology(r Root) bool {
+	if r.hasOwnershipDeclaration() {
+		return r.ownershipMode == ownershipInitialized && r.topology.epoch != 0 && r.topology.schema == 1 && r.topology.index == 3
+	}
+	return isFullTopology(r.topology)
+}
+
 const fullStageMetadataBytes = 512
 const fullStageBaseBytes = 128 + fullStageMetadataBytes
 const fullViewMetadataBytes = 1536

@@ -28,6 +28,7 @@ type Catalog struct {
 	stages, records, stageBytes int
 	fullViews, fullViewBytes    int
 	hash                        func(string) [32]byte // fixed production hash; private collision-test seam
+	localFull                   *fullIndexDescriptor  // fixed checked local storage; no complete-graph authority
 }
 
 func equalityDigest(key string) [32]byte {
@@ -131,7 +132,13 @@ func (c *Catalog) reader(ctx context.Context) (*reader, error) {
 	if c.rootImageBytes > c.limits.MaxReadBytes {
 		return nil, ErrResourceLimit
 	}
-	return &reader{c: c, ctx: ctx, bytes: c.rootImageBytes}, nil
+	q := &reader{c: c, ctx: ctx, bytes: c.rootImageBytes, fullView: c.localFull}
+	if c.localFull != nil {
+		if err := q.materialize(fullStageMetadataBytes); err != nil {
+			return nil, err
+		}
+	}
+	return q, nil
 }
 func (q *reader) get(key []byte) ([]byte, bool, error) {
 	l := q.c.limits
