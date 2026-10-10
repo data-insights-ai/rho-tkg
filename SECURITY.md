@@ -2,8 +2,9 @@
 
 tkg/v4 is an embedded Go library (no network listener, no server process).
 Its trust boundary is **untrusted bytes handed to the process** — a corrupt
-on-disk row, a hostile `Import`/`ImportMerge` stream, or a replayed change-log
-record from `Replication().ApplyChange` — not a network attack surface.
+on-disk row, a hostile `Import`/`ImportMerge` stream, a replayed change-log
+record from `Replication().ApplyChange`, or a tampered segment file under
+`Config.SegmentDir` — not a network attack surface.
 
 ## Supported versions
 
@@ -18,6 +19,7 @@ for older v4 minors, and v3.x is no longer maintained.
 | v4.x (latest) | Yes |
 | < v4.x (older minors) | No — upgrade |
 | v3.x | No |
+| v5 (branch `v5`, own module) | Not released — in development, no support yet |
 
 ## Reporting a vulnerability
 
@@ -85,7 +87,12 @@ process. Pointers into the code for anyone auditing this library:
 
   These five run weekly (and on-demand) with a bounded per-target fuzztime
   in `.github/workflows/fuzz.yml`; each seed corpus also runs as an ordinary
-  test in `make test`. Run any of them locally with, e.g.:
+  test in `make test`. The anchor+delta history decoders
+  (`FuzzDecodeNodeHistoryDelta`, `FuzzDecodeRelHistoryDelta`,
+  `pkg/graph/internal/storeutil/wire_history_delta_fuzz_test.go`) and the
+  column-segment reader (`FuzzOpen`, `FuzzOpenResealed`,
+  `pkg/graph/internal/segment/fuzz_test.go`; `FuzzOpenWithNodeDict`,
+  `dicts_test.go`) run their seed corpora in `make test` only. Run any of them locally with, e.g.:
 
   ```bash
   go test -fuzz=FuzzImport -fuzztime=60s ./pkg/graph/internal/core/
@@ -95,8 +102,9 @@ process. Pointers into the code for anyone auditing this library:
 
 - Network-level attacks: this library has no listener, no RPC surface, and no
   authentication layer — that belongs to the consuming application.
-- Vector search is brute-force k-NN, not a production ANN index; it is not a
-  hardened attack surface distinct from the property/index read paths above.
+- Vector search (approximate HNSW by default, exact brute force on request)
+  is not a hardened attack surface distinct from the property/index read
+  paths above.
 - Log-shipped read replicas (`Config.ReadOnlyReplica`) are Phase 1 only:
   byte-exact apply of a trusted primary's change feed. There is no built-in
   authentication of the feed's origin or transport encryption — a consumer
