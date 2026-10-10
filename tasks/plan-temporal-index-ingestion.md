@@ -1,6 +1,9 @@
 # TKG support for indexed temporal replay
 
-Date: 2026-09-09. Status: planned; no implementation or performance claim.
+Date: 2026-09-09. **Status 2026-10-10:** R0-R3 and R5 done (R3/R5 shipped in v4.35.1, `store.GroupCommitCapability`);
+R4 (async outcome ambiguity) stays conditional and unbuilt — not needed while AI-SOC uses synchronous sessions.
+Durable-on-return commit (`Config.DurableCommit`, v4.44.0) later added an fsync per commit group.
+Original status line: planned; no implementation or performance claim.
 Repository inspected: main at fdddc3d, v4.35.0 plus local modifications.
 Consumer plan: [AI-SOC](../../ai-soc/ai-soc-main/backup/v34/doc-20260905/temporal-index-plan.md) (archived; superseded in the AI-SOC repo, kept here only as the plan's original cross-repo reference).
 

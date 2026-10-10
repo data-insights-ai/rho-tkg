@@ -1,5 +1,9 @@
 # Handover: purge relationships by age, gate retention reads per type (sigma-tkgd temporal overview)
 
+**STATUS 2026-10-10: OPEN** (`tasks/backlog.md` item 21; no `PurgeExpiredRels` in the tree at v4.49.0). §7's release
+note is stale: it ships in the next minor after v4.49.0. File:line citations below are at main `0622da6` (v4.43.0 +
+unreleased) and have moved since.
+
 Date 2026-10-09. From sigma-tkgd `tasks/design-temporal-overview.md` §6 (decided 2026-10-09). Cited at main `0622da6` (code identical to `32568c4`,
 the DeleteWithTx/UpdateWithTx merge). Nothing implemented. Tests first, run red (AGENTS.md rules 15-17). Probes below were throwaway tests, not committed.
 sigma keeps a long-lived overview (nodes `Overview`+`ov_*`, rels `OV_PAIR`), written back once per cut, and lets raw event RELATIONSHIPS age out.

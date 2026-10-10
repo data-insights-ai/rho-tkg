@@ -1,5 +1,11 @@
 # Handover: end and supersede belief at a chosen transaction instant (`DeleteWithTx`, `UpdateWithTx`)
 
+**STATUS 2026-10-10: DONE in v4.44.0** (`DeleteWithTx` / `UpdateWithTx` and their GraphTx, Batch and ingest twins,
+`ErrTxOrder`; CHANGELOG `[4.44.0]` Added; evidence `tasks/evidence/tx-backfill-delete-update/`). Still open from this
+spec: lifting the R8 refusal (caller-instant delete over a recorded close at or after t) = `tasks/backlog.md` item 7;
+the same caller instant for interval rewrites = backlog item 34. File:line citations are at v4.43.0 (`4126bb1`) and
+have moved since; the text below is the original spec.
+
 Date 2026-10-09. From the sigma-tkgd realtime ingest design
 (`sigma-tkgd/tasks/design-realtime-ingest-session.md` §4, branch `design/realtime-ingest-session`).
 Code is cited at v4.43.0 (`4126bb1`). Nothing here is implemented. Tests first, run red, then code.

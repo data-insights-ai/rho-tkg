@@ -6,6 +6,21 @@ Inputs: `~/Downloads/PLAN.md`, `RESEARCH-REVIEW.md`, `DISCUSSION.md` (all dated 
 (temporal model, storage, transactions/consistency, access API/indexes, consumer inventory), each cross-checked at
 the cited lines; two probe tests run in a scratch copy (memory and badger), nothing written into the repo.
 
+## Status at 2026-10-10 (main at v4.49.0; the body below is the dated review and is not edited)
+
+| Item | State |
+|---|---|
+| §6.1 eclipse skip hides one-tick rows | done, v4.44.0 (CHANGELOG `[4.44.0]` Fixed "One-tick valid intervals are ordinary spans") |
+| §6.2 column / ordered range scans ignore `TxAt`/`TxPin` | done, v4.44.0 (`[4.44.0]` Fixed "Column and range scans answer temporal options"); interval semantics of the range folds left open as `tasks/backlog.md` item 16 |
+| §6.3 stale contracts (`changefeed.go`, `temporal_cascade.go` header, `index/api.go`, `constraints/unique.go`) | done, v4.44.0 (`[4.44.0]` Changed "Comments and docs only"; cascade header rewritten with the eclipse fix) |
+| §6.4 `RelAsOf` / `Get` keep the old closed row after a finite cascade extension | answered in v4: the state doors (`NodeAtTx` / `RelAtTx`, `ByType{ValidAt, TxAt}`) and the one-call `Node/RelEffectiveTimeline` (v4.47.0); since v4.46.0 the record doors answer the newest row recorded by the pin. The v5 E02 point stands |
+| §6.5 instant floor persisted only at Close | open, filed as backlog item 44 (still only `Close` calls `persistInstantFloor`) |
+| §9.1 check in the plan's reference material | done: branch `v5` with `docs/v5/` (plan commit `b1193dc`, tag `v5-plan-20261009`); `v5` is now Markus Nissl's work in the separate module `v5/` |
+| §9.2 decide ai-soc items 3, 4, 5, 7 | done 2026-10-09: 3 yes (shipped v4.45.0), 4 withdrawn, 5 and 7 no (backlog DO NOT BUILD) |
+| §9.3 red tests + fixes for §6.1 and §6.2 | done, v4.44.0 (evidence `tasks/evidence/eclipse/`, `tasks/evidence/scan-opts/`) |
+| §9.4 release v4.44.0 | done (`f7cd0ba`) |
+| §9.5 V0 axis units, capacity inventory, V2 fallback | v5 branch work (Markus); not tracked on main |
+
 ## 1. Verdict
 
 The plan's **direction is right and is backed by v4's own scar tissue**: every semantic rule it insists on
