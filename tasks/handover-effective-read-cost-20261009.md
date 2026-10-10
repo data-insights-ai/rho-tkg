@@ -1,5 +1,10 @@
 # Handover: History reads cost a value prefetch, and a delete after a bounded cascade leaves the entity readable
 
+**STATUS 2026-10-10: DONE except the RelAtTx benchmarks.** Fix 1a in v4.44.1, 1b (`HasHistory`) in v4.46.0, 1c
+(`Node/RelEffectiveTimeline` + scan forms) in v4.47.0, 2a in v4.46.0, one-tick rows (§3) in v4.44.0. Not done:
+`BenchmarkRelAtTx/{plain,cascaded}/{hot,cold}` and its targets (`tasks/backlog.md` item 20). File:line citations below
+are at main `dc6aa5b` (v4.43.0 + unreleased) and have moved since.
+
 Date 2026-10-09. From sigma-tkgd stream "effective" (pins v4.43.0). Verified at main `dc6aa5b` with throwaway tests in a scratch copy
 (memory, badger on disk and reopened, tiered; not committed). Nothing here is implemented. Tests first, run red (AGENTS.md rules 15-17).
 
@@ -27,11 +32,11 @@ whether or not they share the prefix, so a lookup for an entity WITHOUT history 
 | `HasHistory(id)` (new) | - | <= 0.1 us, 0 allocs |
 
 - **1a, now, own commit:** `opts.Prefix = prefix` at the four sites (node and rel mirrors). 1 M entities x 1.8 us = 1.8 s per scan: 8x better, not enough.
-- **1b (done, Unreleased: `Nodes()/Rels().HasHistory`, `store.HistoryPresenceCapability`; tests and mutants in `tasks/evidence/has-history/`):** per-entity presence without a row-format change. Badger keeps a RAM set of IDs with history rows, updated where every history key already
+- **1b (done, v4.46.0: `Nodes()/Rels().HasHistory`, `store.HistoryPresenceCapability`; tests and mutants in `tasks/evidence/has-history/`):** per-entity presence without a row-format change. Badger keeps a RAM set of IDs with history rows, updated where every history key already
   passes (`noteHistoryKey`, badgerstore_history_count.go:51, under wbMu), built lazily once by the key-only `ForEachRelHistoryID` (history_rel.go:603;
   200 IDs took 0.2-0.5 ms). RAM is O(IDs with history); the belief-watermark sidecar is O(N) plus a value scan on first use (79 ms at 50 K rels).
   Surface `Rels().HasHistory(id)` / `Nodes()`; memory is `len(relHistory[id]) > 0`; tiered/sharded route by shard.
-- **1c (done, Unreleased: `Temporal().Node/RelEffectiveTimeline` and the scan forms of backlog 27; tests, mutants and benchmarks in `tasks/evidence/effective-timeline/`):** `Temporal().RelEffectiveTimeline(id, pin)` returns `[from, to, row]` segments in valid-time order: sigma's per-segment loop in one call. Plain
+- **1c (done, v4.47.0: `Temporal().Node/RelEffectiveTimeline` and the scan forms of backlog 27; tests, mutants and benchmarks in `tasks/evidence/effective-timeline/`):** `Temporal().RelEffectiveTimeline(id, pin)` returns `[from, to, row]` segments in valid-time order: sigma's per-segment loop in one call. Plain
   entity: the current row after 1b. Else skeletons + the cut-and-resolve of `correctionCuts` / `relCorrectionSegments` (temporal_cascade.go:384, 446),
   decode winners only. `RelAtTx` already is the point form of "effective at a pin"; no new point door.
 
@@ -54,7 +59,7 @@ excludes it"), SelectAsOf's own doc and lesson 62, which assumed the delete hits
   take `maxVersion+1` above the current slot, temporal_cascade.go:119-128): design 2a together with 18's single version allocator.
 - **2b, not before v5:** delete appends closing rows; the change-log record and replica apply (apply_record.go:671) must carry them; old data stays wrong.
 
-**3. One-tick rows.** Fixed on main by `30cfea0` (CHANGELOG [Unreleased]). At v4.43.0 `SetRelVersionInterval` over `[v, v+1)` fails ("cascade requires at least one
+**3. One-tick rows.** Fixed on main by `30cfea0` (shipped in v4.44.0). At v4.43.0 `SetRelVersionInterval` over `[v, v+1)` fails ("cascade requires at least one
 non-eclipsed version") and RelAt/RelsAt miss the row on all three backends; on main all pass. Ship in the next tag and tell sigma.
 
 ## Acceptance tests (first, red output kept; memory, badger, tiered, sharded; node and rel)
@@ -71,4 +76,4 @@ Benchmarks (ReportAllocs, into bench-gate): `BenchmarkRelHistory/density={0,0.1%
 
 Note 2026-10-10: sigma's cut check and late-belief detection no longer need a History read per entity: backlog 30 added
 `Nodes()/Rels().LatestStamps(id)` (memory/badger hot loop 31-83 ns, 0 allocs at 0-10,000 versions; rotating IDs 43-100 ns
-cached, tiered/sharded 0.45-1.6 us, a badger cache miss 6.5-7.1 us; CHANGELOG [Unreleased] Added).
+cached, tiered/sharded 0.45-1.6 us, a badger cache miss 6.5-7.1 us; CHANGELOG `[4.49.0]` Added).
