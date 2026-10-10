@@ -373,7 +373,7 @@ scan); the inventory test fails when an exported error is missing from `errors.g
 `pkg/types/node.go:30` says "88 bytes" (the struct is 96 B, `pkg/types/layout_test.go`); `pkg/graph/internal/core/ingest_lanes.go:79-80`
 says the lane range is [0,127] (it is 0-15); `pkg/graph/store/tiered/tieredstore_property_stats.go:19` and `bench/ingest_pipeline_test.go`
 cite ADR-0005 / ADR-0006, which are no longer in `docs/adr/` (recover with `git log --all -- docs/adr/`, or rewrite the comment to state the
-rule itself); the header of `pkg/graph/internal/core/effective_timeline.go` (~lines 10-20) describes resolving each piece with the point resolver, but the code (`effectivePieces`, ~line 115) uses one max-heap sweep. Comment-only change; the docs-consistency tests must stay green.
+rule itself); the header of `pkg/graph/internal/core/effective_timeline.go` (~lines 10-20) describes resolving each piece with the point resolver, but the code (`effectivePieces`, ~line 115) uses one max-heap sweep. Also stale lesson citations: `pkg/graph/store/badger/badgerstore_property_stats.go:38` cites lesson 62 for the write-generation guard (it is lesson 63); `pkg/graph/store/store.go:30` and the `B33`/`B7`/`B36` citations in `docs/architecture.md` use an old B-numbering that no longer exists in `tasks/lessons.md`. Comment-only change; the docs-consistency tests must stay green.
 
 ### 47. Claims that need a real check before they become work
 
