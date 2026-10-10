@@ -522,6 +522,7 @@ type NodeWire struct {
     CreatedAt    int64   `msgpack:"ca,omitempty"`
     UpdatedAt    int64   `msgpack:"ua,omitempty"`
     DeletedAt    int64   `msgpack:"da,omitempty"`
+    Retracted    bool    `msgpack:"rx,omitempty"`  // retraction tombstone marker (backlog 43); only with da != 0
     CreatedBy    string  `msgpack:"cb,omitempty"`
     UpdatedBy    string  `msgpack:"ub,omitempty"`
     BaseEntityID int64   `msgpack:"be,omitempty"`
@@ -562,7 +563,8 @@ Source: `pkg/graph/internal/storeutil/wire.go`. All three types have
 hand-written `EncodeMsgpack` implementations (`wire_encode.go`; hot-path
 optimization — no reflective omitempty checks). Any new field must be added to the
 custom encoder as well as the struct tag (lesson 39). No entity-row field was
-added in 4.44.0–4.49.0.
+added in 4.44.0–4.49.0; `rx` (unreleased, backlog 43) is the first since: the
+encoder writes it, before the v2 `tf`/`tt` tail, only on a retraction tombstone.
 
 ### 9.1a Wire Format Versioning
 
@@ -599,6 +601,17 @@ for a `TemporalValue`, `["\x00tkg.k", tag, payload]` / `["\x00tkg.k", tag]`
 for a typed scalar/container or typed nil, `["\x00tkg.c", type, pointer, msgpack]`
 for a registered struct (`wire_nested_temporal.go`). These were added without an
 `fv` bump: older rows decode as before.
+
+The retraction marker `rx` (`types.TemporalMetadata.Retracted`, unreleased,
+backlog 43) was added the same way, without an `fv` bump: it is an optional
+key written only on a retraction tombstone, so every other row encodes byte
+for byte as before, and it is decoded by the full decoder, the selection-scope
+partial decoder and its scanner, the delta-history `Meta`, export/import and
+the change feed alike. Checked decode and Store writes refuse `rx` on a row
+without `da` (`DeletedAt`). An older binary skips the unknown key: it opens the
+data and imports it without error and reads a retraction as a plain delete
+(the past stays readable at pins after it) — upgrade every reader before a
+writer uses a retraction door.
 
 Checked wire reconstruction and direct Store history writes reject finite
 temporal intervals where both `ValidFrom` and `ValidTo` are present but
