@@ -1,0 +1,14 @@
+ 10:12:27 up 10 days,  1:28, 16 users,  load average: 4,66, 8,61, 9,40
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkLatestStampsRotating/rels=5000/memory-32         	28587254	        40.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/memory-32         	27708864	        42.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/memory-32         	25727786	        42.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/badger-32         	15066536	        73.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/badger-32         	13399371	        77.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/badger-32         	10857577	       144.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/tiered-32         	  991713	      1090 ns/op	     771 B/op	      12 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/tiered-32         	  932502	      1194 ns/op	     780 B/op	      12 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/tiered-32         	
