@@ -3,14 +3,18 @@ package graphstore
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"io"
+	"math/rand/v2"
 	"path"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
@@ -38,7 +42,7 @@ func boundBootstrapOpen(t *testing.T, cfg raftlog.Config) *raftlog.Store {
 	})
 	return s
 }
-func boundBootstrapFiles(t *testing.T, fs vfs.FS, dir string) [32]byte {
+func boundBootstrapFiles(t *testing.T, fs vfs.FS, dir string, files map[string][32]byte) [32]byte {
 	t.Helper()
 	names, e := fs.List(dir)
 	if e != nil {
@@ -53,7 +57,7 @@ func boundBootstrapFiles(t *testing.T, fs vfs.FS, dir string) [32]byte {
 			t.Fatal(e)
 		}
 		if info.IsDir() {
-			sum := boundBootstrapFiles(t, fs, filename)
+			sum := boundBootstrapFiles(t, fs, filename, files)
 			_, _ = h.Write(sum[:])
 			continue
 		}
@@ -66,6 +70,7 @@ func boundBootstrapFiles(t *testing.T, fs vfs.FS, dir string) [32]byte {
 		if e != nil {
 			t.Fatal(e)
 		}
+		files[filename] = sha256.Sum256(b)
 		_, _ = h.Write([]byte(name))
 		_, _ = h.Write([]byte{0})
 		_, _ = h.Write(b)
@@ -75,8 +80,95 @@ func boundBootstrapFiles(t *testing.T, fs vfs.FS, dir string) [32]byte {
 	return sum
 }
 
+// CrashClone with 100% atomically captures a crash image including current data
+// blocks. It may retain prior synced directory entries after unsynced removals,
+// or synced tails after truncation: this is NOT an exact-current-FS guarantee.
+// The fingerprint compares complete recovered raw KV plus public state; active
+// Store writes use Sync. Power-loss durability is tested separately.
+func boundBootstrapClone(t *testing.T, fs vfs.FS) *vfs.MemFS {
+	t.Helper()
+	memory, ok := fs.(*vfs.MemFS)
+	if !ok {
+		t.Fatal("bootstrap fingerprint requires its bounded crashable MemFS fixture")
+	}
+	return memory.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 100, RNG: rand.New(rand.NewPCG(1, 2))}) // #nosec G404 -- 100% crash-image capture, no randomized acceptance or security use.
+}
+
+// The crash-image clone is immutable to the live store. ReadOnly replays its WAL into a
+// private reader without creating tables/options or scheduling background writes.
+// Every raw key/value is included, including mutable metadata, root/snapshot
+// bytes, and every versioned application/CDC/outcome record. Length delimiters
+// avoid ambiguous concatenation; these tiny test diagnostics are not an engine
+// key map or a physical-file-layout promise.
+func boundBootstrapRecords(t *testing.T, fs vfs.FS, cfg raftlog.Config) ([32]byte, map[string][32]byte) {
+	t.Helper()
+	limits := cfg.Limits
+	if limits == (raftlog.Limits{}) {
+		limits = raftlog.DefaultLimits()
+	}
+	db, err := pebble.Open(cfg.Dir, &pebble.Options{FS: fs, ReadOnly: true, ErrorIfNotExists: true, CacheSize: limits.CacheBytes, MemTableSize: limits.MemTableBytes, MemTableStopWritesThreshold: 2, MaxOpenFiles: 74, FormatMajorVersion: pebble.FormatMinSupported})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	it, err := db.NewIter(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := it.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	h := sha256.New()
+	_, _ = h.Write([]byte("rho-v5:test:bootstrap-raw-kv:v1\x00"))
+	records := make(map[string][32]byte)
+	var length [8]byte
+	for more := it.First(); more; more = it.Next() {
+		value, err := it.ValueAndErr()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, field := range [][]byte{it.Key(), value} {
+			binary.BigEndian.PutUint64(length[:], uint64(len(field)))
+			_, _ = h.Write(length[:])
+			_, _ = h.Write(field)
+		}
+		records[hex.EncodeToString(it.Key())] = sha256.Sum256(value)
+	}
+	if err := it.Error(); err != nil {
+		t.Fatal(err)
+	}
+	var result [32]byte
+	copy(result[:], h.Sum(nil))
+	return result, records
+}
+
+func boundBootstrapChangedKeys(before, after map[string][32]byte) []string {
+	var changed []string
+	for key, value := range before {
+		if next, found := after[key]; !found {
+			changed = append(changed, "removed:"+key)
+		} else if next != value {
+			changed = append(changed, "changed:"+key)
+		}
+	}
+	for key := range after {
+		if _, found := before[key]; !found {
+			changed = append(changed, "added:"+key)
+		}
+	}
+	slices.Sort(changed)
+	return changed
+}
+
 type boundBootstrapState struct {
-	files              [32]byte
+	content, layout    [32]byte
+	files, records     map[string][32]byte
 	image, hard, conf  []byte
 	index, first, last uint64
 	usage              raftlog.ApplicationUsage
@@ -121,16 +213,58 @@ func boundBootstrapSnapshot(t *testing.T, s *raftlog.Store, cfg raftlog.Config) 
 	if e != nil {
 		t.Fatal(e)
 	}
-	return boundBootstrapState{boundBootstrapFiles(t, cfg.FS, cfg.Dir), b, hb, cb, i, first, last, usage, transfer, s.ApplicationBinding()}
+	clone := boundBootstrapClone(t, cfg.FS)
+	files := make(map[string][32]byte)
+	layout := boundBootstrapFiles(t, clone, cfg.Dir, files)
+	content, records := boundBootstrapRecords(t, clone, cfg)
+	return boundBootstrapState{content: content, layout: layout, files: files, records: records, image: b, hard: hb, conf: cb, index: i, first: first, last: last, usage: usage, transfer: transfer, binding: s.ApplicationBinding()}
 }
 func boundBootstrapUnchanged(t *testing.T, before, after boundBootstrapState) {
 	t.Helper()
-	if before.files != after.files || before.index != after.index || before.first != after.first || before.last != after.last || before.usage != after.usage || before.transfer != after.transfer || before.binding != after.binding || !bytes.Equal(before.image, after.image) || !bytes.Equal(before.hard, after.hard) || !bytes.Equal(before.conf, after.conf) {
-		t.Fatal("refusal changed complete physical fingerprint/metadata/ledgers")
+	var changed []string
+	if before.content != after.content {
+		changed = append(changed, "complete raw KV content")
+	}
+	if before.index != after.index {
+		changed = append(changed, "checkpoint index")
+	}
+	if before.first != after.first {
+		changed = append(changed, "first log index")
+	}
+	if before.last != after.last {
+		changed = append(changed, "last log index")
+	}
+	if before.usage != after.usage {
+		changed = append(changed, "application usage")
+	}
+	if before.transfer != after.transfer {
+		changed = append(changed, "transfer usage")
+	}
+	if before.binding != after.binding {
+		changed = append(changed, "binding")
+	}
+	if !bytes.Equal(before.image, after.image) {
+		changed = append(changed, "checkpoint image")
+	}
+	if !bytes.Equal(before.hard, after.hard) {
+		changed = append(changed, "HardState")
+	}
+	if !bytes.Equal(before.conf, after.conf) {
+		changed = append(changed, "ConfState")
+	}
+	fileChanges := boundBootstrapChangedKeys(before.files, after.files)
+	if len(changed) != 0 {
+		t.Fatalf("refusal changed %v; raw KV changes=%v; physical diagnostic file changes=%v", changed, boundBootstrapChangedKeys(before.records, after.records), fileChanges)
+	}
+	// Recovery flush/compaction/obsolete-file housekeeping may rewrite physical
+	// layout while preserving EVERY persisted logical key and all public ledgers.
+	if before.layout != after.layout {
+		t.Logf("unchanged complete raw KV/metadata/ledgers; physical diagnostic changes=%v", fileChanges)
 	}
 }
+
 func TestBoundBootstrapExactSeedAndLegacyParity(t *testing.T) {
-	cfg := boundBootstrapConfig(vfs.NewMem())
+	cfg := boundBootstrapConfig(vfs.NewCrashableMem())
 	s := boundBootstrapOpen(t, cfg)
 	if e := BootstrapBoundSinglePartition(s, s.ApplicationBinding(), 3, [3]uint64{1, 2, 3}); e != nil {
 		t.Fatal(e)
@@ -211,7 +345,7 @@ func TestBoundBootstrapExactSeedAndLegacyParity(t *testing.T) {
 	boundBootstrapUnchanged(t, stable, boundBootstrapSnapshot(t, s, cfg))
 }
 func TestBoundBootstrapBindingVotersAndOwnerRefusals(t *testing.T) {
-	cfg := boundBootstrapConfig(vfs.NewMem())
+	cfg := boundBootstrapConfig(vfs.NewCrashableMem())
 	s := boundBootstrapOpen(t, cfg)
 	binding := s.ApplicationBinding()
 	if e := BootstrapBoundSinglePartition(nil, binding, 3, [3]uint64{1, 2, 3}); !errors.Is(e, ErrInvalid) {
@@ -288,7 +422,7 @@ func TestBoundBootstrapBindingVotersAndOwnerRefusals(t *testing.T) {
 	}
 }
 func TestBoundBootstrapRecoveredEmptyAndPrimitiveCannotPromote(t *testing.T) {
-	cfg := boundBootstrapConfig(vfs.NewMem())
+	cfg := boundBootstrapConfig(vfs.NewCrashableMem())
 	s := boundBootstrapOpen(t, cfg)
 	if e := s.Close(); e != nil {
 		t.Fatal(e)
@@ -336,7 +470,7 @@ func TestBoundBootstrapIndependentQuotaEdges(t *testing.T) {
 	for _, dimension := range []string{"image", "generation bytes", "generation records"} {
 		for _, short := range []bool{true, false} {
 			t.Run(dimension+map[bool]string{true: "/short", false: "/exact"}[short], func(t *testing.T) {
-				cfg := boundBootstrapConfig(vfs.NewMem())
+				cfg := boundBootstrapConfig(vfs.NewCrashableMem())
 				switch dimension {
 				case "image":
 					cfg.Application.MaxImageBytes = 140
@@ -372,7 +506,7 @@ func TestBoundBootstrapIndependentQuotaEdges(t *testing.T) {
 	// Legal Open preflights larger worst-case metadata/descriptor headroom than
 	// Initialize. A low metadata cap is an Open refusal, never a fabricated
 	// Initialize branch. Existing raftlog metadata tests own exact sizing.
-	cfg := boundBootstrapConfig(vfs.NewMem())
+	cfg := boundBootstrapConfig(vfs.NewCrashableMem())
 	cfg.Limits = raftlog.DefaultLimits()
 	cfg.Limits.MaxEntryBytes = 256
 	cfg.Limits.MaxReadBytes = 512
@@ -382,7 +516,7 @@ func TestBoundBootstrapIndependentQuotaEdges(t *testing.T) {
 	}
 }
 func TestBoundBootstrapConcurrentExactlyOneWinner(t *testing.T) {
-	cfg := boundBootstrapConfig(vfs.NewMem())
+	cfg := boundBootstrapConfig(vfs.NewCrashableMem())
 	s := boundBootstrapOpen(t, cfg)
 	binding := s.ApplicationBinding()
 	results := make(chan error, 8)
@@ -412,4 +546,112 @@ func TestBoundBootstrapConcurrentExactlyOneWinner(t *testing.T) {
 	if e != nil || usage.RetainedBytes != 275 || usage.RetainedRecords != 3 {
 		t.Fatal(usage, e)
 	}
+}
+
+func TestBoundBootstrapFingerprintIncludesWALOnlyRecordsBeforeClose(t *testing.T) {
+	cfg := boundBootstrapConfig(vfs.NewCrashableMem())
+	s := boundBootstrapOpen(t, cfg)
+	if err := BootstrapBoundSinglePartition(s, s.ApplicationBinding(), 3, [3]uint64{1, 2, 3}); err != nil {
+		t.Fatal(err)
+	}
+	clone := boundBootstrapClone(t, cfg.FS)
+	names, err := clone.List(cfg.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range names {
+		if strings.HasSuffix(name, ".sst") {
+			t.Fatal("fixture must exercise WAL-only recovery before Close", name)
+		}
+	}
+	_, records := boundBootstrapRecords(t, clone, cfg)
+	want, err := hex.DecodeString(boundBootstrapGolden)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 6 || records["03"] != sha256.Sum256(want) || records["04"] != sha256.Sum256(want) {
+		t.Fatal("read-only WAL replay omitted complete durable seed records", records)
+	}
+	for _, key := range []string{"00", "090000000000000001", "0a0000000000000001", "0b0000000000000001"} {
+		if _, found := records[key]; !found {
+			t.Fatal("raw metadata/root/change/outcome missing before Close", key)
+		}
+	}
+	if _, image, err := s.Checkpoint(); err != nil || !bytes.Equal(image, want) {
+		t.Fatal("clone reader affected original live store", err)
+	}
+}
+
+func TestBoundBootstrapFingerprintSeparatesHousekeepingAndChangedRawKV(t *testing.T) {
+	cfg := boundBootstrapConfig(vfs.NewCrashableMem())
+	s := boundBootstrapOpen(t, cfg)
+	if err := BootstrapBoundSinglePartition(s, s.ApplicationBinding(), 3, [3]uint64{1, 2, 3}); err != nil {
+		t.Fatal(err)
+	}
+	before := boundBootstrapSnapshot(t, s, cfg)
+	// An ignored sidecar is a deterministic physical-layout difference. It is
+	// deliberately not synced: the 100% crash-image clone includes current writes.
+	note := path.Join(cfg.Dir, "bootstrap-housekeeping-note")
+	f, err := cfg.FS.Create(note, vfs.WriteCategoryUnspecified)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte("harmless physical fixture housekeeping")
+	// MemFS deliberately mutates Write's input under Pebble race invariants.
+	// Capture the independent expected bytes before handing that buffer away.
+	expectedPayload := sha256.Sum256(payload)
+	if n, err := f.Write(payload); err != nil || n != len(payload) {
+		t.Fatal(n, err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	after := boundBootstrapSnapshot(t, s, cfg)
+	if before.layout == after.layout {
+		t.Fatalf("sidecar did not change diagnostic layout: before=%x after=%x files=%v", before.layout, after.layout, boundBootstrapChangedKeys(before.files, after.files))
+	}
+	if actual, found := after.files[note]; !found || actual != expectedPayload {
+		t.Fatalf("sidecar capture differs: present=%t actual=%x expected=%x", found, actual, expectedPayload)
+	}
+	if before.content != after.content {
+		t.Fatalf("sidecar changed recovered raw KV: before=%x after=%x keys=%v", before.content, after.content, boundBootstrapChangedKeys(before.records, after.records))
+	}
+	boundBootstrapUnchanged(t, before, after)
+	if err := cfg.FS.Remove(note); err != nil {
+		t.Fatal(err)
+	}
+	// Crash images may retain an unsynced removal. Sync the containing directory
+	// before asserting absence rather than assuming 100% means exact deletion.
+	directory, err := cfg.FS.OpenDir(cfg.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := errors.Join(directory.Sync(), directory.Close()); err != nil {
+		t.Fatal(err)
+	}
+	removed := boundBootstrapSnapshot(t, s, cfg)
+	if _, found := removed.files[note]; found {
+		t.Fatal("synced directory removal retained housekeeping file")
+	}
+	boundBootstrapUnchanged(t, before, removed)
+
+	// Change a real raw persisted KV in an independent clone. Root/ledger field
+	// comparisons alone would miss this key; the complete fingerprint must not.
+	mutant := boundBootstrapClone(t, cfg.FS)
+	db, err := pebble.Open(cfg.Dir, &pebble.Options{FS: mutant, ErrorIfNotExists: true, FormatMajorVersion: pebble.FormatMinSupported, CacheSize: 4 << 20, MemTableSize: 1 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, value := []byte("unexpected-bootstrap-key"), []byte("synced changed raw KV")
+	if err := db.Set(key, value, pebble.Sync); err != nil {
+		t.Fatal(err)
+	}
+	changed, changedRecords := boundBootstrapRecords(t, boundBootstrapClone(t, mutant), cfg)
+	if changed == before.content || changedRecords[hex.EncodeToString(key)] != sha256.Sum256(value) || len(changedRecords) != len(before.records)+1 {
+		t.Fatal("complete raw fingerprint accepted a changed persisted KV", changedRecords)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	boundBootstrapUnchanged(t, before, boundBootstrapSnapshot(t, s, cfg))
 }
