@@ -227,6 +227,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **v5 required point-read error classification**: `Open`, application-root
+  publication and final log `Scrub` checks preserve operational read/close causes
+  without adding `ErrCorrupt`; live failures retain their cause through the
+  existing poisoned-handle path. Missing, damaged or inconsistent required
+  evidence still reports corruption. Failure/poison behavior is otherwise retained.
+
 - **v5 actual Raft Ready compatibility**: AS2/AS3 receiver activation accepts
   absent versus explicit-false AutoLeave produced by the pinned RawNode. Real
   unmodified Ready snapshots preserve the donor descriptor, CutID and durable

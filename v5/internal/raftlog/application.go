@@ -231,16 +231,23 @@ func (s *Store) appGet(key []byte, maxBytes int) ([]byte, bool, error) {
 }
 func (s *Store) verifyApplicationRoot(index uint64) error {
 	image, found, err := s.appGet(bankIndexKey(s.activeBank(), appRootTag, index), s.meta.App.Policy.MaxImageBytes)
-	if err != nil || !found || uint64(len(image)) != s.meta.ImageBytes || sha256.Sum256(image) != s.meta.ImageHash {
-		return errors.Join(ErrCorrupt, err)
+	if err != nil {
+		return storedReadFailure(err)
+	}
+	if !found || uint64(len(image)) != s.meta.ImageBytes || sha256.Sum256(image) != s.meta.ImageHash {
+		return ErrCorrupt
 	}
 	for _, tag := range []byte{appChangeTag, appOutcomeTag} {
 		limit := s.meta.App.Policy.MaxChangeBytes
 		if tag == appOutcomeTag {
 			limit = s.meta.App.Policy.MaxOutcomeBytes
 		}
-		if _, found, err := s.appGet(bankIndexKey(s.activeBank(), tag, index), limit); err != nil || !found {
-			return errors.Join(ErrCorrupt, err)
+		_, found, err := s.appGet(bankIndexKey(s.activeBank(), tag, index), limit)
+		if err != nil {
+			return storedReadFailure(err)
+		}
+		if !found {
+			return ErrCorrupt
 		}
 	}
 	return nil

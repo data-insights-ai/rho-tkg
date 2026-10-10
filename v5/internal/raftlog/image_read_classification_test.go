@@ -215,7 +215,7 @@ func TestImageReadFailureClassifierPreservesBackendAndOperationalCauses(t *testi
 		{"nil", nil, nil, false}, {"operational", cause, cause, false}, {"wrapped", fmt.Errorf("read: %w", cause), cause, false}, {"missing", pebble.ErrNotFound, pebble.ErrNotFound, true}, {"wrapped missing", fmt.Errorf("read: %w", pebble.ErrNotFound), pebble.ErrNotFound, true}, {"backend marked", fmt.Errorf("backend: %w", marked), cause, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := imageReadFailure(tc.err)
+			got := storedReadFailure(tc.err)
 			if !errors.Is(got, tc.cause) || errors.Is(got, ErrCorrupt) != tc.corrupt {
 				t.Fatal(got)
 			}

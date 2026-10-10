@@ -189,12 +189,18 @@ func Open(c Config) (*Store, error) {
 		// Check bounds and roots without decoding the whole retained log at open.
 		if m.Last > m.Base {
 			first, prev, _, err := s.get(m.Base + 1)
-			if err != nil || prev != m.BaseHash || first.GetTerm() < m.BaseTerm || first.GetTerm() > m.Hard.GetTerm() {
-				return fail(errors.Join(ErrCorrupt, err))
+			if err != nil {
+				return fail(storedReadFailure(err))
+			}
+			if prev != m.BaseHash || first.GetTerm() < m.BaseTerm || first.GetTerm() > m.Hard.GetTerm() {
+				return fail(ErrCorrupt)
 			}
 			last, _, hash, err := s.get(m.Last)
-			if err != nil || hash != m.LastHash || last.GetTerm() < first.GetTerm() || last.GetTerm() > m.Hard.GetTerm() {
-				return fail(errors.Join(ErrCorrupt, err))
+			if err != nil {
+				return fail(storedReadFailure(err))
+			}
+			if hash != m.LastHash || last.GetTerm() < first.GetTerm() || last.GetTerm() > m.Hard.GetTerm() {
+				return fail(ErrCorrupt)
 			}
 		}
 	}
@@ -996,9 +1002,13 @@ func (s *Store) Scrub() error {
 	}
 	if last > s.meta.Base {
 		_, _, hash, err := s.get(last)
-		if err != nil || hash != s.meta.LastHash {
+		if err != nil {
+			s.poison = storedReadFailure(err)
+			return s.poison
+		}
+		if hash != s.meta.LastHash {
 			s.poison = ErrCorrupt
-			return errors.Join(ErrCorrupt, err)
+			return ErrCorrupt
 		}
 	} else if s.meta.LastHash != s.meta.BaseHash {
 		s.poison = ErrCorrupt
@@ -1051,7 +1061,7 @@ func (s *Store) checkEntryBounds() (err error) {
 func (s *Store) loadImage(key []byte, n uint64, hash [32]byte) (image []byte, err error) {
 	value, closer, err := s.db.Get(key)
 	if err != nil {
-		return nil, imageReadFailure(err)
+		return nil, storedReadFailure(err)
 	}
 	defer func() { err = errors.Join(err, closer.Close()) }()
 	if n > unsignedLimit(s.limits.MaxSnapshotBytes) || uint64(len(value)) != n || sha256.Sum256(value) != hash {
