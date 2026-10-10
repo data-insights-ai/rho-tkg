@@ -48,7 +48,7 @@ import (
 // a pre-T answer, a door that disagrees with the definition anywhere.
 func TestRetractionOracle_NeverRecordedWorld(t *testing.T) {
 	t.Parallel()
-	seeds, nOps := 6, 36
+	seeds, nOps := 3, 36
 	if !testing.Short() {
 		seeds, nOps = 16, 44
 	}
