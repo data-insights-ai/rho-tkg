@@ -1,0 +1,415 @@
+{
+  "all114_reference_files_preserved": true,
+  "captured_source_build_limits": {
+    "captured_v5_build": "fails unchanged active draft full_readview.go43/632: graphstate.ReadView missing IncidentRelationships",
+    "full_root_v5_CI": "not established; source drafts preserved and no phase/release completion",
+    "root_build": "matched Go1.26.9 passed"
+  },
+  "checks": [
+    "build",
+    "normal",
+    "race",
+    "vet",
+    "cover",
+    "fmt",
+    "lint",
+    "security",
+    "vulncheck",
+    "exports"
+  ],
+  "compiler": {
+    "binary_sha256": "318dee99db233501f6c419fbb4616e5a345ed0b831dbd6c7669b24e1ff8e9e2e",
+    "effective_build_environment": {
+      "CGO_ENABLED": "1",
+      "GOAMD64": "",
+      "GOARCH": "arm64",
+      "GOARM64": "v8.0",
+      "GOHOSTARCH": "arm64",
+      "GOHOSTOS": "darwin",
+      "GOOS": "darwin",
+      "GOVERSION": "go1.26.9"
+    },
+    "environment": {
+      "GOENV": "off",
+      "GOFLAGS": "-mod=readonly",
+      "GOPROXY": "off",
+      "GOSUMDB": "off",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off"
+    },
+    "native_arch": "arm64",
+    "native_os": "darwin",
+    "version": "go version go1.26.9 darwin/arm64"
+  },
+  "completion_sha256": "ae4b896a2e3f173a6071a0ef916a4b337e6a0d20dea485aee47c2cf688e9a01a",
+  "coverage": [
+    "github.com/data-insights-ai/rho-tkg/tools/graph-compare/run.go:155:\t\t\tverifySource\t\t82.9%",
+    "github.com/data-insights-ai/rho-tkg/tools/graph-compare/run.go:419:\t\t\tRun\t\t\t80.0%",
+    "total:\t\t\t\t\t\t\t\t\t\t\t(statements)\t\t83.0%"
+  ],
+  "evidence_limits": [
+    "Completion manifest published last; no crash-atomic whole-directory or power-loss publication guarantee",
+    "Private serial runner; MaxVisited limits delivered callbacks only, not native internal work/memory",
+    "No vendors, services, benchmarks or complete phase acceptance",
+    "Full current-root/v5 release gates and remote CI execution are separate; external tool gates do not complete them",
+    "All3vendors, native-v5, retained/temporal/distributed/full comparative profiles remain pending"
+  ],
+  "exports_inventory": {
+    "badger": {
+      "current": 92,
+      "pending_history": 1,
+      "reopened_current": 23
+    },
+    "memory": {
+      "current": 92,
+      "pending_history": 1,
+      "reopened_current": 0
+    }
+  },
+  "original_parent_verification_sha256": "7f6e5f499b686e416a6749bde7836c1f09824feeb4e2ddd8e2b925264b155130",
+  "original_worker_review_sha256": "5f5af697a1f70a98ca660e787e755dce19aa6f843051ad1eca5c0577ecce31cf",
+  "parent_integration_review": {
+    "accepted_Go_delta_lines": 571,
+    "all25_frozen_files_and_patch_independently_matched": true,
+    "complete_reproducer_lines": 353,
+    "literal_inventory": {
+      "badger_current": 92,
+      "badger_r3_reopen": 23,
+      "memory_current": 92,
+      "separate_history_pending": 1
+    },
+    "parent_checks": [
+      "build",
+      "normal",
+      "race",
+      "vet",
+      "cover",
+      "fmt",
+      "exports"
+    ],
+    "parent_complete_reproduction_sha256": "f8d7d0950e749baf99e619a723cd25b998702aba3458363cef6ab0df741b46e0",
+    "parent_runner_seconds": 1.561,
+    "parent_runner_tests": 10,
+    "parent_toolchain": "go1.26.9",
+    "reference_files": 114,
+    "runner_test_lines": 198,
+    "source_files": 1438
+  },
+  "publication": "Exclusive new destination; completion manifest last; no crash-atomic whole-directory or power-loss publication claim",
+  "reference_pin_sha256": "771f4854792d49fd2619327a2c1544196be62c91d18ea5d75a25a1b591e6b7f5",
+  "release_source": {
+    "commit": "4126bb108cd3fae2f0818052d08a31f0b5466c6e",
+    "content_inventory_sha256": "25814bd41daab2174b8ad085bf205b7726af3f65fc17119b48001fd08f43e907",
+    "file_count": 1438,
+    "historical_source_manifest_sha256": "9a5ea82bc338272926dec54e7c0ba563dfbba6f782516fd39fc04bb949baccfb",
+    "observed_archive_sha256": "ec402ebc2d33742b95672a6eae0e22ab85e4e6fee7e8b203f8ec6d353a496174",
+    "tree": "4c2ca34b38cd7ec394dfa4c83ea18350197400b2"
+  },
+  "runner_adversarial_tests": 10,
+  "runs": {
+    "badger": {
+      "costs": {
+        "AllocatedBytes": 1101824,
+        "ApparentBytes": 1079983,
+        "disk_files": [
+          {
+            "allocated_bytes": 32768,
+            "apparent_bytes": 30922,
+            "name": "000001.sst"
+          },
+          {
+            "allocated_bytes": 4096,
+            "apparent_bytes": 20,
+            "name": "000001.vlog"
+          },
+          {
+            "allocated_bytes": 4096,
+            "apparent_bytes": 373,
+            "name": "000002.sst"
+          },
+          {
+            "allocated_bytes": 4096,
+            "apparent_bytes": 20,
+            "name": "000002.vlog"
+          },
+          {
+            "allocated_bytes": 1048576,
+            "apparent_bytes": 1048576,
+            "name": "DISCARD"
+          },
+          {
+            "allocated_bytes": 4096,
+            "apparent_bytes": 28,
+            "name": "KEYREGISTRY"
+          },
+          {
+            "allocated_bytes": 4096,
+            "apparent_bytes": 44,
+            "name": "MANIFEST"
+          }
+        ],
+        "disk_scope": "Observed all native Badger files after close, including retained history/index/dictionary/integrity/WAL costs; no semantic-category or disk-quota claim",
+        "memory_scope": "Observed whole harness process heap snapshot with native engine/adapter; includes temporary/native caches; no isolated engine memory or peak claim",
+        "process_heap_alloc_bytes": 97574304,
+        "unmeasured": [
+          "RSS/PSS",
+          "mmap/page cache",
+          "cgroup/host total",
+          "peak heap/disk",
+          "disk bytes by semantic category",
+          "internal storage/fsync calls",
+          "CPU/latency/throughput"
+        ]
+      },
+      "native_history_cost": {
+        "nodes_with_history": 3,
+        "rels_with_history": 3,
+        "scope": "Exact native count of IDs with history, including deleted identities; not total versions"
+      },
+      "pending_history_answers": 1,
+      "public_native_api_calls": {
+        "graph_close": 2,
+        "graph_reopen": 1,
+        "history_counts": 1,
+        "incoming_scan": 6,
+        "node_index_create": 1,
+        "node_labels": 1445,
+        "node_range_candidates": 5,
+        "nodes_delete": 1,
+        "nodes_get": 154,
+        "nodes_import": 33,
+        "nodes_scan": 40,
+        "nodes_update": 1,
+        "outgoing_scan": 29,
+        "rel_type": 1659,
+        "rels_delete": 2,
+        "rels_get": 16,
+        "rels_import": 66,
+        "rels_scan": 25,
+        "rels_update": 1,
+        "tx_begin": 1,
+        "tx_commit": 1,
+        "tx_update_node": 1
+      },
+      "report_sha256": "04cbed855ec173a85bfa5b9721b8764c04e685faeb55a446eaac54ed31b99b98",
+      "validated_current_answers": 92,
+      "validated_r3_reopen_answers": 23
+    },
+    "memory": {
+      "costs": {
+        "AllocatedBytes": 0,
+        "ApparentBytes": 0,
+        "disk_files": null,
+        "disk_scope": "Memory backend is explicitly nondurable; no native durable store directory",
+        "memory_scope": "Observed whole harness process heap snapshot with native engine/adapter; includes temporary/native caches; no isolated engine memory or peak claim",
+        "process_heap_alloc_bytes": 2029088,
+        "unmeasured": [
+          "RSS/PSS",
+          "mmap/page cache",
+          "cgroup/host total",
+          "peak heap/disk",
+          "disk bytes by semantic category",
+          "internal storage/fsync calls",
+          "CPU/latency/throughput"
+        ]
+      },
+      "native_history_cost": {
+        "nodes_with_history": 3,
+        "rels_with_history": 3,
+        "scope": "Exact native count of IDs with history, including deleted identities; not total versions"
+      },
+      "pending_history_answers": 1,
+      "public_native_api_calls": {
+        "graph_close": 1,
+        "history_counts": 1,
+        "incoming_scan": 5,
+        "node_index_create": 1,
+        "node_labels": 1178,
+        "node_range_candidates": 4,
+        "nodes_delete": 1,
+        "nodes_get": 150,
+        "nodes_import": 33,
+        "nodes_scan": 36,
+        "nodes_update": 1,
+        "outgoing_scan": 24,
+        "range_fallback": 4,
+        "rel_type": 1332,
+        "rels_delete": 2,
+        "rels_get": 13,
+        "rels_import": 66,
+        "rels_scan": 20,
+        "rels_update": 1,
+        "tx_begin": 1,
+        "tx_commit": 1,
+        "tx_update_node": 1
+      },
+      "report_sha256": "589cfc0a47a7fdcbe4777c3b6e3bf56b20f2f3cd3d301f337247bdc66f719889",
+      "validated_current_answers": 92,
+      "validated_r3_reopen_answers": 0
+    }
+  },
+  "scanners": {
+    "container": {
+      "architecture": "arm64",
+      "compiler": "go version go1.26.9 linux/arm64",
+      "image_id": "sha256:f1f0bcc2c524a3ced375fcb4d1ecb7aa371aa7070e112599aaca45cc02d0101b",
+      "os": "linux",
+      "scope": "Static/security tooling in cached Linux container; no hardware/performance equivalence"
+    },
+    "golangci-lint": {
+      "buildinfo_sha256": "056a185de4e71e21b5878977b6df4d0479ed69f58d3bd9d9f466de7ba7d949e8",
+      "module": "github.com/golangci/golangci-lint/v2",
+      "version": "v2.13.2"
+    },
+    "gosec": {
+      "buildinfo_sha256": "e1a661e99d3d50a0166950c1a46396fb085e31dbd11e0c999592b57f35d28036",
+      "module": "github.com/securego/gosec/v2",
+      "version": "v2.29.0"
+    },
+    "govulncheck": {
+      "buildinfo_sha256": "b1ca42d862d592ab0649b07c40adbba7daa3b27ca10c7205bd42f570418c6dd5",
+      "module": "golang.org/x/vuln",
+      "version": "v1.7.0"
+    }
+  },
+  "schema_version": 1,
+  "scope": "Supported native-v4 current correctness only; no vendor/native-v5/performance/phase acceptance",
+  "source_comments": "Shipped go.mod is1.26.7; exact source compiled with explicitly selected1.26.9. Old9a5/ec402 receipt hashes are historical, not runtime tar/content proof.",
+  "source_pin_sha256": "7336760a9be3bc3885c08307cf5aad05181e602d06b35d22bb298213c7580476",
+  "status": "independently reviewed and applied native-v4 current correctness integration; no release/phase acceptance",
+  "tool_files_sha256": {
+    "tools/graph-compare/Makefile": "231b3c4df8cd5754ebc8ec2da0aece37fe7d6836f6ffbf644818d9431b0eb783",
+    "tools/graph-compare/README.md": "3a19d808d06faf1c746dfc1ff7cd0b22d50f2bfc469bb7a8360a36381b2474a3",
+    "tools/graph-compare/adapter.go": "8eacfeb52a92052f8cace6716a2a9ea08ee417682b7b8a8814d2b555479b16bb",
+    "tools/graph-compare/cmd/graph-compare/main.go": "bd6dfdccbae1c595305523c5bcc9f3fc5f85f353e0981e5567f5222e4371b35a",
+    "tools/graph-compare/cmd/graph-compare/main_test.go": "5ee167800fa7b0dcab1fb41d865ec3a1b43b13e2c4c09d44233fa4799c46368f",
+    "tools/graph-compare/contract.go": "5b26db15954edf36b588a99d362ab0c268f959f3907406198e92895e24eeaec1",
+    "tools/graph-compare/go.mod": "a5869d4b19c19633aede5211836f18c09c5451bf75158c9b07989e20b852cd4b",
+    "tools/graph-compare/go.sum": "2cef9af000163049b76b78f405b0e49ea0aa06feffc38f40a7cf4fafb11fd310",
+    "tools/graph-compare/pins/reference.json": "771f4854792d49fd2619327a2c1544196be62c91d18ea5d75a25a1b591e6b7f5",
+    "tools/graph-compare/pins/source.json": "7336760a9be3bc3885c08307cf5aad05181e602d06b35d22bb298213c7580476",
+    "tools/graph-compare/reproduce.py": "42545b62fee9ac97a46bf926876af34a832c9defd68c2007e130180e3bf68d02",
+    "tools/graph-compare/run.go": "e2205bbe8bdd69a6dbe204e485555bd1f0d94d6a2f0dfb6377ecf716f177a6dc",
+    "tools/graph-compare/slice_test.go": "14d07f35668cb1eaaaa53c895f8b42dbd7295b31771ba0ca2f6a3b30ad7247e7",
+    "tools/graph-compare/test_reproduce.py": "db3c04e41dd8eab7221176f475e230c5d42e03f53fc51628607bbdeba58a5bed"
+  },
+  "workflow_actionlint": "passed",
+  "historical_receipt_note": "All preexisting fields record the historical review, including captured draft build failures and historical file digests. The fresh current-file receipt is separate.",
+  "historical_receipt_sha256": "6612a279b2fa0dfe9cd404bfd7a6a135afaffd08557d7bd66698c20180b27dd1",
+  "current_parent_receipt": {
+    "review_date": "2026-10-10",
+    "source_base": "e0a7482e78ed0c227047f3424fe61940096397d9",
+    "scope": "Fresh parent acceptance of pinned native-v4 basic current functional prerequisite; integration pending exact reviewed allowlist, no vendor/native-v5/performance/phase acceptance",
+    "tool_files_sha256": {
+      "tools/graph-compare/Makefile": "231b3c4df8cd5754ebc8ec2da0aece37fe7d6836f6ffbf644818d9431b0eb783",
+      "tools/graph-compare/README.md": "3a19d808d06faf1c746dfc1ff7cd0b22d50f2bfc469bb7a8360a36381b2474a3",
+      "tools/graph-compare/adapter.go": "8eacfeb52a92052f8cace6716a2a9ea08ee417682b7b8a8814d2b555479b16bb",
+      "tools/graph-compare/cmd/graph-compare/main.go": "bd6dfdccbae1c595305523c5bcc9f3fc5f85f353e0981e5567f5222e4371b35a",
+      "tools/graph-compare/cmd/graph-compare/main_test.go": "5ee167800fa7b0dcab1fb41d865ec3a1b43b13e2c4c09d44233fa4799c46368f",
+      "tools/graph-compare/contract.go": "5b26db15954edf36b588a99d362ab0c268f959f3907406198e92895e24eeaec1",
+      "tools/graph-compare/go.mod": "a5869d4b19c19633aede5211836f18c09c5451bf75158c9b07989e20b852cd4b",
+      "tools/graph-compare/go.sum": "2cef9af000163049b76b78f405b0e49ea0aa06feffc38f40a7cf4fafb11fd310",
+      "tools/graph-compare/pins/reference.json": "771f4854792d49fd2619327a2c1544196be62c91d18ea5d75a25a1b591e6b7f5",
+      "tools/graph-compare/pins/source.json": "7336760a9be3bc3885c08307cf5aad05181e602d06b35d22bb298213c7580476",
+      "tools/graph-compare/reproduce.py": "7994c38b91eab999bf401fd6dc893a56590cdfc2e79f057c80c738938b6d48a7",
+      "tools/graph-compare/run.go": "e2205bbe8bdd69a6dbe204e485555bd1f0d94d6a2f0dfb6377ecf716f177a6dc",
+      "tools/graph-compare/slice_test.go": "14d07f35668cb1eaaaa53c895f8b42dbd7295b31771ba0ca2f6a3b30ad7247e7",
+      "tools/graph-compare/test_reproduce.py": "db3c04e41dd8eab7221176f475e230c5d42e03f53fc51628607bbdeba58a5bed"
+    },
+    "historical_reconciliation": {
+      "matching_hashes": 13,
+      "total_hashes": 14,
+      "differences": {
+        "tools/graph-compare/reproduce.py": {
+          "historical": "42545b62fee9ac97a46bf926876af34a832c9defd68c2007e130180e3bf68d02",
+          "current": "7994c38b91eab999bf401fd6dc893a56590cdfc2e79f057c80c738938b6d48a7"
+        }
+      },
+      "meaning": "Historical receipt remains unchanged. Current reproduce.py was independently reviewed/tested; this is a reconciled older fingerprint, not a new concurrent edit."
+    },
+    "checks": [
+      "race",
+      "cover",
+      "exports",
+      "build",
+      "vet",
+      "fmt",
+      "lint",
+      "security",
+      "vulncheck"
+    ],
+    "python_adversarial_tests": {
+      "count": 10,
+      "passed": true,
+      "seconds": 0.886,
+      "scope": "live files; source hashes subsequently frozen and unchanged"
+    },
+    "coverage_percent": 83.0,
+    "exports_inventory": {
+      "badger": {
+        "current": 92,
+        "pending_history": 1,
+        "reopened_current": 23
+      },
+      "memory": {
+        "current": 92,
+        "pending_history": 1,
+        "reopened_current": 0
+      }
+    },
+    "source": {
+      "commit": "4126bb108cd3fae2f0818052d08a31f0b5466c6e",
+      "content_inventory_sha256": "25814bd41daab2174b8ad085bf205b7726af3f65fc17119b48001fd08f43e907",
+      "file_count": 1438,
+      "historical_source_manifest_sha256": "9a5ea82bc338272926dec54e7c0ba563dfbba6f782516fd39fc04bb949baccfb",
+      "observed_archive_sha256": "ec402ebc2d33742b95672a6eae0e22ab85e4e6fee7e8b203f8ec6d353a496174",
+      "tree": "4c2ca34b38cd7ec394dfa4c83ea18350197400b2"
+    },
+    "source_pin_sha256": "7336760a9be3bc3885c08307cf5aad05181e602d06b35d22bb298213c7580476",
+    "reference_pin_sha256": "771f4854792d49fd2619327a2c1544196be62c91d18ea5d75a25a1b591e6b7f5",
+    "reference_files": 114,
+    "receipt_files_sha256": {
+      "parent-review.json": "ec4d176ee554a0a30ac96c9581530f238c102a661fa14da2affbdac6955129be",
+      "source-check.json": "81575a7b7383783b02b4de802d244d24ec2547eef709bd42d6824957f4ce8d35",
+      "outputs/completion.json": "4a4046461331b8a8dc419f500a07bc7b9d5e88c71291cdacc57f1b22fd7b8d8b",
+      "remaining-gates/completion.json": "f1b24292abc2272863e17c9b2b6fe02106161bf356a57a1d56ee50f41ecacd5b",
+      "parent-workflow-validation.json": "ecd19faea92600b872ae017ceb982cc35209a3c975c62a24e9452baa7e01807b"
+    },
+    "workflow": {
+      "version": "v1.7.12; built with go1.26.3 darwin/arm64",
+      "workflow_sha256": {
+        ".github/workflows/ci.yml": "a0c43f0bfb9613f7d06c8688d2b30607ce697e4fe8a99088572be08b74a5faa3",
+        ".github/workflows/security.yml": "302f1443f8f64eeb8625b06f95c3b67de660c0290adb445b310c83850a1706be"
+      },
+      "observed_exit_code": 0,
+      "shellcheck_enabled": false,
+      "pyflakes_enabled": false,
+      "remote_CI_executed": false,
+      "scope": "Syntax/static workflow check only. Shellcheck and pyflakes disabled; no remote CI execution."
+    },
+    "scratch_go_mod_sha256": "00a88ea294c91f248f5be015761f63233fae040985be3af335dabcddcfd81c17",
+    "scratch_go_mod_note": "Reviewed runner creates the controlled relative replacement in scratch; this derived hash differs from the unchanged checked-in module hash.",
+    "excluded": [
+      "vendors",
+      "native-v5",
+      "retained/temporal/distributed answer lanes",
+      "comparative resource/performance profiles",
+      "RSS/peak/global resource limits",
+      "phase/release acceptance"
+    ],
+    "comparison_protocol_note": "graph-db-comparison.json is outside the 114-file runtime pin. The unchanged contract-pin.json records its earlier research-document hash as historical provenance; no reference package or pin is regenerated."
+  },
+  "post_validation_deltas": [
+    {
+      "date": "2026-10-10",
+      "file": "tools/graph-compare/go.mod",
+      "validated_snapshot_sha256": "a5869d4b19c19633aede5211836f18c09c5451bf75158c9b07989e20b852cd4b",
+      "current_sha256": "7bc699b2d7eace649b368ba7974569fdc552b4a59c52734f21ae49debec9222d",
+      "change": "Removed only one extra terminal newline byte; module directives/dependency bytes are unchanged.",
+      "directives_unchanged": true,
+      "tool_gates_rerun": false,
+      "derived_scratch_behavior": "Parent verification remains separate; no new execution receipt is invented.",
+      "historical_reconciliation": "Historical13/14 and fresh parent14-file receipt remain dated pre-delta evidence; this whitespace correction is separate."
+    }
+  ]
+}

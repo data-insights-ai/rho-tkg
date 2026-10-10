@@ -41,3 +41,7 @@ coverage.pkg.out
 # bench/ suite: per-machine baselines and bench-check scratch output —
 # never committed (see bench/README.md).
 bench/local-*
+
+# Owned comparison tool artifacts are never source or acceptance records.
+tools/graph-compare/artifacts/
+tools/graph-compare/__pycache__/

@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Pinned native-v4 correctness reproduction tool** (`tools/graph-compare/`):
+  trusted commit/tree/content and 114-file reference pins reproduce the accepted
+  92 Memory + 92 synchronous Badger + 23 reopened current answers with an explicit
+  Go 1.26.9 compiler. One history query per backend remains pending. Isolated workspaces,
+  dependency verification and per-module CI preserve the shipped v4 baseline;
+  no vendor, native-v5, performance or phase acceptance is established.
+
 - **Unreleased, incomplete v5 prototype module** (`v5/`): typed temporal
   values/scopes/knowledge/descriptors and codecs, component-state reducer
   primitives, bounded ID allocation and candidate Raft/Pebble replication adapters.

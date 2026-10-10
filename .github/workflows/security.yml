@@ -1,35 +1,56 @@
 name: Security scan
-
-# Weekly (and on-demand) gosec + govulncheck sweep. Both scanners are blocking;
-# the same gate also runs per change in CI, while this schedule catches newly
-# published vulnerability-database entries even when the repository is idle.
-
 on:
   schedule:
     - cron: '0 3 * * 1'
   workflow_dispatch:
-
-# Least-privilege default: checkout + local gosec/govulncheck only.
 permissions:
   contents: read
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
+env:
+  V5_DISPATCH: "0"
+  COMPARE_DISPATCH: "0"
+  GOTOOLCHAIN: local
+  GOWORK: "off"
 jobs:
   security:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      matrix:
+        include:
+          - module: .
+            go_mod: go.mod
+          - module: v5
+            go_mod: v5/go.mod
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ matrix.go_mod }}
           cache: true
           cache-dependency-path: "**/go.sum"
       - run: make tools
+        working-directory: .
       - name: gosec
         run: make security
       - name: govulncheck
         run: make vulncheck
+  comparison-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: tools/graph-compare/go.mod
+          cache: true
+          cache-dependency-path: tools/graph-compare/go.sum
+      - run: make -C tools/graph-compare tools
+      - run: make compare-ci CHECKS=security,vulncheck REPRO_FLAGS=--allow-dependency-download

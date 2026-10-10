@@ -69,6 +69,12 @@ alone checks only v4. This remains the single canonical agent guidance file:
 legacy v4 ID/layout and storage rules describe v4; the reviewed contracts in
 `docs/v5/PLAN.md` govern v5, with acceptance status in `tasks/backlog.md`.
 
+**Pinned comparison tool module.** `tools/graph-compare/` is a separate Go1.26.9
+correctness tool. Root aggregate gates explicitly dispatch its checks; CI uses
+one separate compiler-matched job, with independent coverage/security results.
+It compiles an isolated exact shipped v4 archive, never current root code. Its
+92/92/23 current/reopen answers do not establish vendor/performance/phase acceptance.
+
 **Stdlib aliasing convention.** `pkg/graph/hash` and `pkg/graph/io` shadow stdlib `hash` and `io`. Inside the local package no aliasing is needed. At consumer sites that import BOTH stdlib AND the local package, alias the LOCAL one with a `tkg` prefix (`tkghash` / `tkgio`) — leave stdlib unaliased.
 
 ## Build & Test Commands

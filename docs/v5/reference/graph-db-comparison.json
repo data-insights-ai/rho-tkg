@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "research_date": "2026-10-09",
-  "status": "official-document-research-and-comparison-protocol-only",
+  "status": "official-document-research-and-partial-native-v4-basic-current-functional-prerequisite",
   "owner_acceptance": {
     "goal": "Efficient in both space and time for large data. Space at least as efficient as comparable supported Neo4j, TigerGraph and Memgraph configurations, preferably better; excess only with quantified, causally isolated justification and explicit review.",
     "fixed_deployment": null,
@@ -12,11 +12,32 @@
     }
   },
   "execution": {
-    "harness_implemented": false,
+    "harness_implemented": true,
     "vendor_installations_verified": false,
     "benchmark_runs": [],
     "results": null,
-    "acceptance": "pending actual comparisons and reviewed exceptions; documentation and marketing figures are not measurements"
+    "acceptance": "Basic-current native-v4 functional prerequisite reviewed only; actual vendor/native-v5/retained/temporal/distributed/resource/performance comparisons and reviewed exceptions remain pending",
+    "harness_scope": "Partial pinned native-v4 basic CURRENT correctness only; no vendor/native-v5/history/performance harness acceptance",
+    "full_comparison_harness_implemented": false,
+    "functional_validation": {
+      "review": "independent/comparison-harness/review.json#current_parent_receipt",
+      "rho_commit": "4126bb108cd3fae2f0818052d08a31f0b5466c6e",
+      "source_files": 1438,
+      "reference_files": 114,
+      "exports_inventory": {
+        "badger": {
+          "current": 92,
+          "pending_history": 1,
+          "reopened_current": 23
+        },
+        "memory": {
+          "current": 92,
+          "pending_history": 1,
+          "reopened_current": 0
+        }
+      },
+      "scope": "92 Memory + 92 synchronous Badger + 23 Badger current reopen answers; one history query per backend remains pending"
+    }
   },
   "vendor_candidates": [
     {
@@ -207,5 +228,12 @@
     "memgraph_enterprise": "https://memgraph.com/docs/database-management/enabling-memgraph-enterprise.md",
     "memgraph_monitoring": "https://memgraph.com/docs/database-management/monitoring.md"
   },
-  "evidence_limits": "Official documentation describes deployment capabilities and configuration constraints. Vendor/runtime, durability, capacity and comparative performance support require independent verification."
+  "evidence_limits": "Official documentation describes deployment capabilities and configuration constraints. Vendor/runtime, durability, capacity and comparative performance support require independent verification. The implemented pinned tool validates partial basic-current native-v4 answers only; native-v5, retained/temporal/distributed lanes, complete resource profiles and V0\u2013V7 acceptance remain open.",
+  "execution_reconciliation": {
+    "date": "2026-10-10",
+    "previous_status": "official-document-research-and-comparison-protocol-only",
+    "previous_harness_implemented": false,
+    "previous_evidence_limits": "Official documentation describes deployment capabilities and configuration constraints. Vendor/runtime, durability, capacity and comparative performance support require independent verification.",
+    "correction": "Fresh parent checks establish an implemented/executed partial basic-current native-v4 correctness tool, not the full comparison protocol."
+  }
 }

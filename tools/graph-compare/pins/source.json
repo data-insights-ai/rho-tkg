@@ -1,0 +1,10 @@
+{
+  "commit": "4126bb108cd3fae2f0818052d08a31f0b5466c6e",
+  "content_inventory_sha256": "25814bd41daab2174b8ad085bf205b7726af3f65fc17119b48001fd08f43e907",
+  "file_count": 1438,
+  "historical_archive_sha256": "ec402ebc2d33742b95672a6eae0e22ab85e4e6fee7e8b203f8ec6d353a496174",
+  "historical_source_manifest_sha256": "9a5ea82bc338272926dec54e7c0ba563dfbba6f782516fd39fc04bb949baccfb",
+  "release": "v4.43.0",
+  "schema_version": 1,
+  "tree": "4c2ca34b38cd7ec394dfa4c83ea18350197400b2"
+}

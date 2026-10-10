@@ -159,3 +159,6 @@ are unavailable for the graph-only fixture. No vendor adapter, benchmark harness
 comparative performance result or V7 acceptance is established. Run its checker
 separately; the main checker below hashes reference artifacts and retains its
 existing mathematical/declarative validation scope.
+
+
+The [pinned native-v4 correctness prerequisite](comparison-harness/README.md) reproduces the accepted92/92/23 current/reopen outputs through an isolated shipped-release archive. The separate history query, vendor/native-v5 comparisons and all performance/phase gates remain pending.

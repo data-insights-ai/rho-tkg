@@ -283,6 +283,11 @@ independent suite also passes. The parent verified all 116 artifact hashes.
 This is a benchmark fixture/input-integrity prerequisite, not a vendor benchmark
 or space/latency acceptance result.
 
+TigerGraph's documented Docker image targets x86-64. ARM hosts require
+emulation, which does not substitute for native-x86 performance acceptance.
+Vendor adapters must preserve edge multiplicity, property presence and
+complete query results, with reverse-edge and service costs counted explicitly.
+
 The five follow-ups through `9752e7c` are accepted local foundations; their
 Ready/lifecycle/binding, bootstrap and generation contracts are in CHANGELOG Unreleased.
 Generation snapshot checks pin 1,966 inputs and pass Go 1.26.9 full v5
@@ -809,3 +814,8 @@ Recover closed investigation prose via `git log --all -- tasks/backlog.md` if ne
   in-RAM `BlockCanMatch` cover the need. Reopen only if a consumer needs a block-level
   pre-I/O prune that those cannot express without breaking full-membership snapshots
   (see CHANGELOG `[4.27.0]`).
+
+
+### Reviewed native-v4 comparison prerequisite
+
+The pinned correctness tool reproduces 92 Memory +92 synchronous Badger +23 reopened current answers against shipped v4.43.0. One retained-history query is pending. All three vendor comparisons, native-v5 integration, full declared resource/performance profiles and V0–V7 acceptance remain open; see the portable comparison-harness proof and tool README.

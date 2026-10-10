@@ -15,9 +15,24 @@ GOVULNCHECK_VERSION ?= v1.7.0
 # aggregate check/ci targets reuse these dependencies rather than rerunning v5.
 V5_TARGETS := build test test-v test-race test-integration cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker clean
 .PHONY: $(addprefix v5-,$(V5_TARGETS))
+V5_DISPATCH ?= 1
+ifeq ($(V5_DISPATCH),1)
 $(foreach target,$(V5_TARGETS),$(eval $(target): v5-$(target)))
+endif
 $(addprefix v5-,$(V5_TARGETS)):
 	$(MAKE) -C v5 $(patsubst v5-%,%,$@)
+
+# Comparison is an isolated tool module, never the current v4 source baseline.
+# CI runs it once in a compiler-matched job; local aggregate gates include it.
+COMPARE_DISPATCH ?= 1
+COMPARE_GO ?= go
+COMPARE_TARGETS := build test test-v test-race test-integration cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker clean ci ci-docker
+.PHONY: $(addprefix compare-,$(COMPARE_TARGETS))
+ifeq ($(COMPARE_DISPATCH),1)
+$(foreach target,$(filter-out ci ci-docker,$(COMPARE_TARGETS)),$(eval $(target): compare-$(target)))
+endif
+$(addprefix compare-,$(COMPARE_TARGETS)):
+	$(MAKE) -C tools/graph-compare GO_BIN="$(COMPARE_GO)" $(patsubst compare-%,%,$@)
 
 # Build (verify compilation)
 build:
@@ -146,11 +161,11 @@ check-metakv-reap:
 
 # Format code
 fmt:
-	git ls-files --cached --others --exclude-standard -z '*.go' ':!:v5/**' | xargs -0 gofmt -w
+	git ls-files --cached --others --exclude-standard -z '*.go' ':!:v5/**' ':!:tools/graph-compare/**' | xargs -0 gofmt -w
 
 # Verify formatting, including new Go source files not yet tracked.
 fmt-check:
-	@unformatted=$$(git ls-files --cached --others --exclude-standard -z '*.go' ':!:v5/**' | xargs -0 gofmt -l); \
+	@unformatted=$$(git ls-files --cached --others --exclude-standard -z '*.go' ':!:v5/**' ':!:tools/graph-compare/**' | xargs -0 gofmt -l); \
 		test -z "$$unformatted" || (echo "Files need formatting:"; echo "$$unformatted"; exit 1)
 
 # Run golangci-lint
