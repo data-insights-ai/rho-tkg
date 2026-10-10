@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added replicated declared-partition co-initialization and ID-allocation controls with separate source/home authority, completed ReadIndex proofs, immutable retry outcomes, recipient fencing and bounded cached ranges. Actual snapshot installation and reopen tests preserve allocator state and retained control history. These controls do not yet admit graph mutations or certify distributed graph cuts.
+
 - Added bounded, metadata-only ownership declarations with explicit pending and published root states and owned staging effects. Declaration records and local ownership are validated against the root and durable application binding from the same retained view. GR1/GR2 bytes remain unchanged; declaration publication does not establish graph readiness or cut authority.
 
 - Added bounded local declared-partition initialization and reusable same-view empty/declaration-only seed proofs. Initialization stages schema and five real Full storage roots; local catalogs expose checked point reads and refuse complete graph views, paging, and graph staging. GR1/GR2 bytes remain unchanged; initialized GR3 uses mode5/index3 and supplies no distributed lease, grant, or cut authority. Valid exhausted aggregate budgets now return `ErrResourceLimit` without changing validated page policy.

@@ -42,6 +42,12 @@ func outcomeKey(r request) []byte {
 	return append(recordKey(r.ns, tag), id[:]...)
 }
 func (q *reader) get(key []byte) ([]byte, bool, error) {
+	return q.getBounded(key, max(idalloc.CheckpointSize, outcomeBytes, grantBytes, recipientBytes))
+}
+func (q *reader) getBounded(key []byte, valueBytes int) ([]byte, bool, error) {
+	if valueBytes < 0 || valueBytes > 16<<20 {
+		return nil, false, errInvalid
+	}
 	if err := q.ctx.Err(); err != nil {
 		return nil, false, err
 	}
@@ -49,7 +55,7 @@ func (q *reader) get(key []byte) ([]byte, bool, error) {
 		return nil, false, errLimit
 	}
 	q.rows++
-	maxBytes := min(len(key)+max(idalloc.CheckpointSize, outcomeBytes, grantBytes, recipientBytes), q.limits.readBytes-q.bytes-64, q.view.ReadLimits().Bytes)
+	maxBytes := min(len(key)+valueBytes, q.limits.readBytes-q.bytes-64, q.view.ReadLimits().Bytes)
 	row, found, err := q.view.Get(q.ctx, key, maxBytes)
 	if err != nil {
 		if errors.Is(err, raftlog.ErrLimit) {
