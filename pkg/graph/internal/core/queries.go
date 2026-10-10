@@ -114,7 +114,7 @@ func (n *NodeOps) RangeCardinality(label, propKey string, min, max float64, incl
 
 // relRangeCardinalityScanner is the OPTIONAL store capability behind
 // RelOps.RangeCardinality — the relationship mirror of nodeRangeCardinalityScanner
-// (memory + badger; rel property indexes are RAM-only, so tiered/sharded decline).
+// (memory, badger and sharded; tiered declines).
 type relRangeCardinalityScanner interface {
 	RelRangeCardinality(relTypeToken uint16, propKey string, min, max float64, inclMin, inclMax bool) (int64, bool, error)
 }
@@ -123,7 +123,7 @@ type relRangeCardinalityScanner interface {
 // of the type's relationships whose numeric propKey value lies in [min,max] summed
 // directly from the rel property index's per-value bucket sizes — O(distinct values
 // in range), NO rel scan. exact=false declines (the caller scans-and-counts) when the
-// store lacks the capability (tiered/sharded — rel indexes are RAM-only), the index
+// store lacks the capability (tiered), the index
 // is absent or poisoned, or a temporal filter is set (the index is valid-time
 // agnostic). The bounds MUST capture the whole predicate (caller-enforced). This is
 // the rel ordering-soundness primitive for the ORDER BY r.prop LIMIT k push-down.

@@ -488,8 +488,8 @@ func (a *API) ForEachByTypePropertyRangeOrdered(typeName, propKey string, min, m
 // propKey value lies in [min,max] (inclusivity per flags), summed from the rel
 // property index's per-value bucket sizes — O(distinct values in range), NO rel
 // scan. exact=false declines (the caller scans-and-counts) when the fast path is
-// unusable: no store capability (rel indexes are RAM-only, so tiered/sharded
-// decline), no/poisoned index, or a temporal filter in opts. The relationship mirror
+// unusable: no store capability (tiered: a rel index cannot span its event
+// shards), no/poisoned index, or a temporal filter in opts. The relationship mirror
 // of nodes.API.RangeCardinality (rule 2) and the rel ordering-soundness primitive
 // for the ORDER BY r.prop LIMIT k push-down.
 func (a *API) RangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {

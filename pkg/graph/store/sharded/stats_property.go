@@ -82,7 +82,7 @@ type perShardCardinality struct {
 	exact bool
 }
 
-// NodeRangeCardinality sums each shard's O(bitmap) range count. The total is
+// NodeRangeCardinality sums each shard's prefix-sum range count. The total is
 // EXACT only if every shard reported exact — a single inexact shard (missing or
 // poisoned index) makes the whole sum inexact, so the caller falls back to a
 // scan. Because a property index is fanned out to EVERY shard, the common case
@@ -94,9 +94,32 @@ func (s *Store) NodeRangeCardinality(token uint16, propKey string, min, max floa
 	if err := storecontract.ValidateLabelToken(token); err != nil {
 		return 0, false, err
 	}
+	return s.sumRangeCardinality(func(shard *badgerShard) (int64, bool, error) {
+		return shard.NodeRangeCardinality(token, propKey, min, max, inclMin, inclMax)
+	})
+}
+
+// RelRangeCardinality is the relationship mirror (round 4 R2): each slot's
+// rel property index counts the relationships whose rows it holds, and a
+// relationship's row lives on its own ID's slot only, so the sum counts each
+// once. Exact only when every slot answered exactly.
+func (s *Store) RelRangeCardinality(relTypeToken uint16, propKey string, min, max float64, inclMin, inclMax bool) (int64, bool, error) {
+	if err := s.checkOpen(); err != nil {
+		return 0, false, err
+	}
+	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
+		return 0, false, err
+	}
+	return s.sumRangeCardinality(func(shard *badgerShard) (int64, bool, error) {
+		return shard.RelRangeCardinality(relTypeToken, propKey, min, max, inclMin, inclMax)
+	})
+}
+
+// sumRangeCardinality sums one range count per shard; inexact if any shard is.
+func (s *Store) sumRangeCardinality(count func(*badgerShard) (int64, bool, error)) (int64, bool, error) {
 	per := make([]perShardCardinality, len(s.shards))
 	err := s.forEachShardErr(func(idx int, shard *badgerShard) error {
-		c, exact, e := shard.NodeRangeCardinality(token, propKey, min, max, inclMin, inclMax)
+		c, exact, e := count(shard)
 		per[idx] = perShardCardinality{count: c, exact: exact}
 		return e
 	})

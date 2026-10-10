@@ -205,3 +205,24 @@ func TestExactInt64FromVK_BareUintPrefixIsFullWidth(t *testing.T) {
 		t.Fatalf("exactInt64FromVK(u32:MaxUint32) = (%d, %v), want (4294967295, true)", n, ok)
 	}
 }
+
+// A NaN bound compares false with every value, so the count is 0. (The walk
+// counted every value from min on when max was NaN.)
+func TestRangeCardinality_NaNBoundCountsNothing(t *testing.T) {
+	t.Parallel()
+	pi := NewPropertyIndex()
+	for i := range 10 {
+		pi.AddKey(snowflake.ID(i+1), fmt.Sprintf("i64:%d", i))
+	}
+	nan := math.NaN()
+	for _, c := range []struct{ lo, hi float64 }{{nan, 5}, {0, nan}, {nan, nan}, {math.Inf(-1), nan}} {
+		for _, im := range []bool{true, false} {
+			for _, ix := range []bool{true, false} {
+				got, ok := pi.RangeCardinality(c.lo, c.hi, im, ix)
+				if !ok || got != 0 {
+					t.Fatalf("[%v,%v] incl(%v,%v) = %d, %v; want 0, true", c.lo, c.hi, im, ix, got, ok)
+				}
+			}
+		}
+	}
+}

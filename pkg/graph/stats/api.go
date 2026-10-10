@@ -315,7 +315,7 @@ func (a *API) RangeCardinality(label, propKey string, min, max float64, inclMin,
 // RelRangeCardinality is the relationship mirror of RangeCardinality (rule 2): an
 // O(distinct values in range) bucket-sum count from the REL property index, with
 // exact=false when the fast path declines (no capability — rel indexes are RAM-only,
-// so tiered/sharded decline; no/poisoned index; or a temporal filter in opts). The
+// so tiered declines; no/poisoned index; or a temporal filter in opts). The
 // rel ordering-soundness primitive for the ORDER BY r.prop LIMIT k push-down.
 func (a *API) RelRangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
 	ops, err := a.ready()

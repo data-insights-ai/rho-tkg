@@ -30,6 +30,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestApplyChangeRecord_ChangeClearReapsCoreStateLikeReset`; mutants under `tasks/evidence/cypher-round4/`. The
   doc comments that said "no index-DDL epoch" now point at it.
 
+- **Sharded `RelRangeCardinality`** (round 4): the sharded store sums its slots' relationship range counts (a
+  relationship's row lives on its own slot only, so each is counted once), so `Rels().RangeCardinality` answers there
+  as on memory and badger instead of declining. Tests: `TestShardedRelRangeCardinality` (store door: relationships on
+  several slots, update, delete, token 0, closed store) and `TestRangeCardinalityMatchesIteration` (the node and
+  relationship doors against iteration on all four backends; tiered declines both).
+
+### Fixed
+
+- **A NaN bound in `RangeCardinality` counts 0.** The walk counted every value from `min` on when `max` was NaN (a NaN
+  compares false with every value). Red run: `TestRangeCardinality_NaNBoundCountsNothing`
+  (`tasks/evidence/cypher-round4/red-nan-sharded-rel.txt`).
+
 ### Performance
 
 - **Memory store: `Rels().ForEachAdjacentEndpointOrdinal` allocates nothing per call** (sigma-tkgd round 4 R3,

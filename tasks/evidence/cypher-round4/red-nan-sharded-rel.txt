@@ -1,0 +1,9 @@
+# red (base 46128137): NaN bound and sharded relationship range count
+--- FAIL: TestRangeCardinality_NaNBoundCountsNothing (0.00s)
+    property_index_rangecount_test.go:223: [0,NaN] incl(true,true) = 10, true; want 0, true
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	0.199s
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded [build failed]
+--- FAIL: TestRangeCardinalityMatchesIteration (0.15s)
+    --- FAIL: TestRangeCardinalityMatchesIteration/sharded (0.02s)
+        range_cardinality_iteration_test.go:147: loaded rels: [1595.5,2401] declined
