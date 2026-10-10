@@ -12,8 +12,8 @@ Coverage spans three sources:
 
 | Sentinel | Package | Meaning | Typical Doors |
 |----------|---------|---------|---------------|
-| `ErrNodeNotFound` | store | Node does not exist in the graph | `g.Nodes().Get()`, `g.Temporal().NodeAt*()`, all rel mutations requiring node validation |
-| `ErrRelNotFound` | store | Relationship does not exist | `g.Rels().Get()`, `g.Temporal().RelAt*()` |
+| `ErrNodeNotFound` | store | Node does not exist in the graph | `g.Nodes().Get()`, `g.Nodes().LatestStamps()` (an ID without any row), `g.Temporal().NodeAt*()`, all rel mutations requiring node validation |
+| `ErrRelNotFound` | store | Relationship does not exist | `g.Rels().Get()`, `g.Rels().LatestStamps()` (an ID without any row), `g.Temporal().RelAt*()` |
 | `ErrNodeExists` | store | Node with the caller-supplied ID already exists | `g.Nodes().Import()`, `g.IO().Import()` (when ID collision occurs) |
 | `ErrRelExists` | store | Relationship with the caller-supplied ID already exists | `g.Rels().Import()`, `g.IO().Import()` (when ID collision occurs) |
 
@@ -51,7 +51,7 @@ Coverage spans three sources:
 | Sentinel | Package | Meaning | Typical Doors |
 |----------|---------|---------|---------------|
 | `ErrEmptyName` | registry | Label, relationship type, or property key name cannot be empty | `g.Nodes().Add*()` with blank label, `g.Rels().Add*()` with blank type |
-| `ErrRegistryNotEmpty` | registry | Registry cannot be cleared while entities exist | `g.Admin().Reset()` when data remains |
+| `ErrRegistryNotEmpty` | registry | A token registry's bulk name import was asked to load into a non-empty registry. Consumed inside `g.IO().Import()`: an identical existing mapping is accepted, a different one is returned as `ErrIncompatibleRegistry`. No public door returns it today (`g.Admin().Reset()` keeps the registries) | none (internal to `g.IO().Import()`) |
 
 ## Temporal & Constraints
 
@@ -100,7 +100,7 @@ Coverage spans three sources:
 | Sentinel | Package | Meaning | Typical Doors |
 |----------|---------|---------|---------------|
 | `ErrGraphClosed` | core | Graph is closed (no operations permitted) | All API calls after `g.Close()` |
-| `ErrAlreadyClosed` | core | Entity is already closed | Direct entity-level close calls (uncommon) |
+| `ErrAlreadyClosed` | core | The entity's current version is closed (`ValidTo` set, e.g. by `CloseVersion`); a mutation of it or a second close is refused | `g.Nodes()` / `g.Rels()` `CloseVersion()` (second close), `Update()`, `UpdateWithTx()`, `UpdateInPlace()`, `CompareAndSetProperty()`, and the `GraphTx` update doors on a closed entity |
 | `ErrNotTieredStore` | core | Operation requires a tiered store but a different backend is configured | `g.Tier().Archive()`, `g.Tier().Restore()` on non-tiered backends |
 | `ErrReadOnlyReplica` | core | Write operation on a read-only replica | `g.Nodes().Add*()`, mutations on `ReadOnlyReplica=true` graph |
 | `ErrNilGraph` | core | Pointer to Graph is nil | Chained accessor calls on nil graph |
@@ -112,8 +112,8 @@ Coverage spans three sources:
 |----------|---------|---------|---------------|
 | `ErrNilContext` | core | Context is nil; context.Background() required | All methods requiring `context.Context` |
 | `ErrNilTxCallback` | core | Transaction callback is nil | `g.Tx().Run()`, `g.Tx().RunContext()` with nil callback |
-| `ErrBatchFailed` | core | Batch had one or more failed operations | `g.Batch().Execute()` |
-| `ErrBatchDone` | core | Batch already executed (cannot reuse) | Multiple `g.Batch().Execute()` calls on the same batch |
+| `ErrBatchFailed` | core | Batch had one or more failed operations, a caller-instant unit was refused before any write, or (with `Config.DurableCommit`) the durable flush failed — then it wraps `ErrCommitNotDurable` too. Queue-time validation errors (e.g. `ErrNoLabels`) are returned by the queue method itself, not by `Execute` | `BatchBuilder.Execute()` (`g.Batch().New()`), `g.Batch().Run()` / `RunContext()` |
+| `ErrBatchDone` | core | Batch already executed (cannot reuse) | A second `Execute()`, or any queue method, on a `BatchBuilder` whose `Execute` has begun |
 | `ErrInvalidTimeRange` | core | Supplied time range is invalid (start >= end or negative bounds). Aliases `store.ErrInvalidTimeRange`. Distinct identity from `types.ErrInvalidTimeRange` (see pkg/types Sentinels below) despite the identical name | `g.Temporal().NodesDuring()`, `g.Temporal().RelsDuring()`, `QueryOpts.ValidStart`/`ValidEnd` validation, `g.Nodes().CloseVersion()` with `t == 0` |
 
 ## Ingest Pipeline (ADR-0006)
@@ -121,7 +121,7 @@ Coverage spans three sources:
 | Sentinel | Package | Meaning | Typical Doors |
 |----------|---------|---------|---------------|
 | `ErrIngestClosed` | core | The ingest pipeline (graph + applier) is closed before the work could be applied — an enqueue racing `Close` is rejected cleanly with this sentinel (never accepted-then-dropped, never hung) | `g.Ingest()` `Session.Submit()` / `Session.Close()`, `g.Ingest().WaitApplied()` |
-| `ErrNilSession` | core | An `ingest.Session` method was called on a nil `*Session`. `ingest.Session` is a type alias for `core.Session` (not a wrapper), so this is reachable directly through the public surface | Any `*ingest.Session` method (`AddNode`, `AddRelationship`, `UpdateNode`, `UpdateRelationship`, `DeleteNode`, `DeleteRelationship`, `Submit`, `Close`) called on a nil receiver |
+| `ErrNilSession` | core | An `ingest.Session` method was called on a nil `*Session`. `ingest.Session` is a type alias for `core.Session` (not a wrapper), so this is reachable directly through the public surface | Any error-returning `*ingest.Session` method (`AddNode`, `AddNodes`, `AddRelationship`, `UpdateNode` / `UpdateNodeWithTx`, `UpdateRelationship` / `UpdateRelationshipWithTx`, `DeleteNode` / `DeleteNodeWithTx`, `DeleteRelationship` / `DeleteRelationshipWithTx`, `SetNodeVersionInterval` / `SetRelVersionInterval`, `Submit`, `Close`) called on a nil receiver (`Pending` returns 0) |
 
 ## I/O Operations
 
@@ -154,11 +154,11 @@ Coverage spans three sources:
 | `ErrPrimaryRegistryStale` | store | Primary's registry snapshot has not yet caught up to the change record (retryable) | `g.Replication().ApplyChange()` during token refetch |
 | `ErrRegistryDiverged` | store | Replica's registry is not a prefix of primary's (fatal, re-bootstrap required) | `g.Replication().ApplyChange()` during token refetch |
 
-## Replication Status
+## Transaction Handles
 
 | Sentinel | Package | Meaning | Typical Doors |
 |----------|---------|---------|---------------|
-| `ErrTxDone` | store | Transaction already committed or rolled back (no further operations) | `g.Tx()` methods after `Commit()` or `Rollback()` |
+| `ErrTxDone` | store | Transaction already committed or rolled back (no further operations) | `GraphTx` methods (`g.Tx().Begin()`) after `Commit()` or `Rollback()` |
 
 ## Integrity & Wire
 
@@ -174,7 +174,7 @@ Sentinels guarding the on-disk / on-wire trust boundary: format compatibility an
 
 | Sentinel | Package | Meaning | Typical Doors |
 |----------|---------|---------|---------------|
-| `ErrCapabilityNotSupported` | store | Required optional Store capability is not implemented by the configured backend | `g.Replication().ApplyChange()` on memory store, `g.IO().ExportSince()` on tiered store without change-log, `g.Replication().Watch()` on its very first pull — either no change-feed capability at all (e.g. tiered) or a badger/memory store whose change-log is present but disabled (`store.ChangeLogStatusCapability.ChangeLogEnabled() == false`), mirroring the same fail-closed check as `Watermark`/`ExportSince`; `graph.New` with `Config.RelSegments` on a backend without column segments (ADR-0011 S2: every backend but memory), or with `Config.SegmentDir` on a backend without `store.RelSegmentDirCapability` (S3) |
+| `ErrCapabilityNotSupported` | store | Required optional Store capability is not implemented by the configured backend | `g.Replication().ApplyChange()` on memory store, `g.IO().ExportSince()` on tiered store without change-log, `g.Replication().Watch()` on its very first pull — either no change-feed capability at all (e.g. tiered) or a badger/memory store whose change-log is present but disabled (`store.ChangeLogStatusCapability.ChangeLogEnabled() == false`), mirroring the same fail-closed check as `Watermark`/`ExportSince`; `graph.New` with `Config.RelSegments` on a backend without column segments (ADR-0011 S2: every backend but memory), or with `Config.SegmentDir` on a backend without `store.RelSegmentDirCapability` (S3); `graph.New` with `Config.DurableCommit` on a store without stable storage (memory store, `BadgerInMemory`, an in-memory tiered or sharded store) |
 | `ErrRelSegmentDeclaration` | store | A `Config.RelSegments` entry is malformed (blank type, `tkg_`/blank/duplicate column, unknown kind, `IntegrityBlockRows` not 0 or a power of two ≤ 4,096), a type is declared twice, `SegmentMemoryBudget` is negative, or a store re-declaration conflicts with an existing one (ADR-0011); `Config.SegmentDir` whitespace-only or set without `RelSegments`; the segment directory's manifest lists a type that is not declared identically (name, token, columns, `IntegrityBlockRows`); `DeclareRelSegment` after `OpenRelSegmentDir`, or `OpenRelSegmentDir` twice, with no declared type, or after an in-RAM seal (S3) | `graph.New`; `store.RelSegmentCapability.DeclareRelSegment` |
 | `ErrRelSegmentNotDeclared` | store | The relationship type is not declared as a bulk (segment) type | `g.Admin().SealRelSegments()`, `g.Admin().RelSegmentStats()` |
 | `ErrRelSegmentDirLocked` | store | `Config.SegmentDir` is held (flock on its `LOCK` file) by another open graph or store (ADR-0011 S3) | `graph.New`; `store.RelSegmentDirCapability.OpenRelSegmentDir` |
@@ -183,13 +183,44 @@ Sentinels guarding the on-disk / on-wire trust boundary: format compatibility an
 
 ## TieredStore Reference/Event Ontology
 
-Sentinels enforcing `tiered.Store`'s reference-vs-event primary-label class boundary (see CLAUDE.md's TieredStore section). Declared in `pkg/graph/store/tiered` and reachable through three DIFFERENT sub-APIs depending on which door the caller used, so they are re-exported centrally in `pkg/graph/errors.go` rather than in a single sub-API package's own `errors.go`.
+Sentinels enforcing `tiered.Store`'s reference-vs-event primary-label class boundary (see [`docs/architecture.md` § tiered.Store](architecture.md#tieredstore-pkggraphstoretiered)). Declared in `pkg/graph/store/tiered` and reachable through three DIFFERENT sub-APIs depending on which door the caller used, so they are re-exported centrally in `pkg/graph/errors.go` rather than in a single sub-API package's own `errors.go`.
 
 | Sentinel | Package | Meaning | Typical Doors |
 |----------|---------|---------|---------------|
 | `ErrNotReferenceEntity` | tiered | The target entity is not a reference entity — event entities cannot be archived | `g.Tier().Archive()` / `Restore()` on an event-classed node |
 | `ErrEventPropertyIndex` | tiered | Property indexes are reference-entities-only on a tiered store | `g.Index().CreateProperty()` on an event-classed label |
 | `ErrPrimaryLabelClassMutation` | tiered | A label mutation would change the primary label's reference↔event ontology class (routing depends on this class, so flipping it mid-flight would fragment the version chain across shards) | `g.Nodes().AddLabel()` / `RemoveLabel()` — surfaced from the store-level label-token doors (`AddNodeLabelToken` / `RemoveNodeLabelToken` and their `WithHistory` variants) |
+
+## Column Scans (Experimental)
+
+| Sentinel | Package | Meaning | Typical Doors |
+|----------|---------|---------|---------------|
+| `ErrMixedNumericColumn` | store | A requested column holds both integral and floating values, so it has no single type; the scan refuses rather than widening. Also declared as `graph.ErrMixedNumericColumn` (same value, in `pkg/graph/column_scan.go`, outside the `errors.go` inventory) | `g.ScanNodeColumns()`, `g.ScanRelColumns()`, `store.ScanColumnsFromNodes()` |
+
+## Replication Helpers
+
+| Sentinel | Package | Meaning | Typical Doors |
+|----------|---------|---------|---------------|
+| `ErrNoEntityIdentity` | replication | A well-formed change record names no single entity (the store-global `ChangeMeta` and `ChangeClear` records); a CDC consumer handles these out of band | `replication.DecodeChangeIdentity()` |
+
+## Backend-Specific Sentinels
+
+Declared by one store package and returned by its constructor or its own doors; not aliased into `pkg/graph`. Import the backend package to match them.
+
+| Sentinel | Package | Meaning | Typical Doors |
+|----------|---------|---------|---------------|
+| `ErrCatalogConflict` | sharded | The persisted slot catalog disagrees with the config (claimed range, discipline, a missing shard directory). Experimental backend (ADR-0007) | `sharded.New()` |
+| `ErrCatalogCorrupt` | sharded | The persisted slot catalog blob cannot be decoded | `sharded.New()` |
+| `ErrForeignEndpointLocal` | sharded | A foreign-endpoint door was reached with an endpoint whose slot is local; use the ordinary door (ADR-0010 §3.2) | `sharded.Store.PutRelationshipForeignEnd()` and its incoming mirror |
+| `ErrChangeLogWatermarkUnreadable` | tiered | The change-log reseed watermark on the reference shard is unreadable at open; the feed doors fail closed, primary reads/writes keep working. Recover with `RecoverChangeLog` | the tiered store's change-feed doors, reached through `g.Replication()` |
+| `ErrCrossShardArchiveRel` | tiered | **LEGACY — no longer returned**; archive/restore migrate relationship placement instead. Kept for `errors.Is` compatibility | none |
+| `ErrDrainTimeout` | tiered | A bounded active-request drain did not reach zero (signals a checkin leak), wrapped into the close error | `g.Close()` / `tiered.Store.Close()` |
+| `ErrOversizedWAL` | badger | The data dir holds a WAL that cannot be opened safely at the configured `MemTableSize` (read-only open, or a WAL from a memtable above the 1 GB cap); open once writable at a large enough `MemTableSize` | `badger.New()`, `graph.New()` on a badger dir |
+| `ErrInvalidEncryptionKeyLength` | badger | `EncryptionKey` length is not 0, 16, 24 or 32 bytes | `badger.New()` |
+| `ErrEncryptionRequiresBlockCache` | badger | `EncryptionKey` set with `BlockCacheSize` 0 (Badger would panic at open) | `badger.New()` |
+| `ErrEncryptionRequiresIndexCache` | badger | `EncryptionKey` set with `IndexCacheSize` 0 (Badger would panic at the first encrypted flush) | `badger.New()` |
+
+Two core sentinels have no exported alias and can reach a caller only as an error message: the commit clock reaching its maximum (`ErrCommitClockExhausted`, defence in depth) and `RecordForeignIncoming` refusing a foreign stamp implausibly far past the host clock (`ErrForeignStampImplausible`).
 
 ## Store-Internal Sentinels (Not Re-Exported Through pkg/graph)
 
@@ -199,17 +230,18 @@ These sentinels are declared in `pkg/graph/store/errors.go` and have **no alias 
 |----------|---------|---------|---------------|
 | `ErrStoreClosed` | store | The backing store instance has been closed; returned directly by store-implementation methods, independent of the graph-level `ErrGraphClosed` check | Any `Store` interface method called on a closed `badger.Store` / `memory.Store` / `tiered.Store`. Most graph-façade doors intercept with `ErrGraphClosed` first (via `core.checkOpen()`), so this is chiefly visible to a caller driving a `store.Store` implementation directly (custom wiring, store-level tests) |
 | `ErrVersionNotFound` | store | The requested history version *number* does not exist for the entity (version-number lookup, distinct from a time-based query) | Store-level `GetNodeVersion(id, version)` / `GetRelVersion(id, version)`. Consumed and converted internally by most public callers — `g.Nodes().VersionBefore()` / `VersionAfter()` fold it into `(nil, nil)` or `ErrNodeNotFound`; `g.Temporal().NodeAsOf()` / `RelAsOf()` fold it into `ErrNoVersionAsOf` — but a default-branch conflict check in `g.IO().Import()` can still surface it raw on an unexpected store error |
-| `ErrInvalidStoreMutation` | store | A `Store` implementation returned a result violating its documented contract (mismatched ID, non-ascending order, wrong row count, dangling adjacency reference), or a backend-specific mutation guard rejected the write (deleting a node that still has live relationships via a raw store call, a nil iteration callback, a write attempted against a read-only badger store) | Internal `store_validation.go` invariant checks that wrap a misbehaving custom `Store`; direct `memory.Store` / `badger.Store` / `tiered.Store` method calls that bypass the graph façade's cascade-safe doors |
+| `ErrInvalidStoreMutation` | store | A `Store` implementation returned a result violating its documented contract (mismatched ID, non-ascending order, wrong row count, dangling adjacency reference), or a backend-specific mutation guard rejected the write (deleting a node that still has live relationships via a raw store call, a nil iteration callback, a write attempted against a read-only badger store) | Internal `store_validation.go` invariant checks that wrap a misbehaving custom `Store`; direct `memory.Store` / `badger.Store` / `tiered.Store` method calls that bypass the graph façade's cascade-safe doors; leaks raw from `g.Nodes()` / `g.Rels()` `HasHistory()` and `LatestStamps()` for a zero or negative ID |
 | `ErrChangesNotAscending` | store | A batch passed to `ApplyChanges` is not in strictly ascending LSN order | `g.Replication().ApplyChanges(recs)` — the successful ascending prefix before the out-of-order record is still applied and watermarked; this sentinel itself is not re-exported through `pkg/graph` or `pkg/graph/replication` |
+| `ErrInvalidForeignIncoming` | store | Malformed `store.ForeignIncomingEdge` descriptor (zero rel ID, empty type name, zero endpoint ID, or zero attest-time) (ADR-0010) | `g.Rels().RecordForeignIncoming()` |
 | `ErrSlotNotLocal` | store | A PARTITIONED store was handed an entity whose snowflake slot it does not own (its authority lives on another partition — ADR-0007/0010). Re-exported as `sharded.ErrSlotNotLocal` (same value) | A point read or write routed to the wrong `sharded.Store` partition (an ID whose slot is unclaimed fails closed — see api.md's Sharded store section); also raised inside `g.IO().Import()` when a re-shard would drop a non-empty slot, where it drives the import rollback |
 
 ## Transaction-Time Backfill (§4.1)
 
 | Sentinel | Package | Meaning | Typical Doors |
 |----------|---------|---------|---------------|
-| `ErrTxBackfillDisabled` | core | Transaction-time backfill is disabled (gate not set) | `g.Nodes().AddWithTx()`, `g.Rels().AddWithTx()`, `tkg_tx_from` property on Add when `Config.AllowTxBackfill=false` |
-| `ErrInvalidTxFrom` | core | Backfilled `tkg_tx_from` is invalid (non-positive or in the future) | `g.Nodes().AddWithTx()`, `g.Rels().AddWithTx()` with invalid timestamp |
-| `ErrTxOrder` | core | Caller transaction instant does not follow the entity's recorded history (wraps `ErrInvalidTxFrom`) | `g.Nodes()`/`g.Rels()` `DeleteWithTx()` / `UpdateWithTx()`, `GraphTx.DeleteNodeWithTx()` / `UpdateNodeWithTx()` / `DeleteRelationshipWithTx()` / `UpdateRelationshipWithTx()`, the `BatchBuilder` and ingest `Session` doors of the same names (a refusal in a batch or ingest unit refuses the whole unit; also returned for a caller-instant delete over a recorded close at or after t, an update at t that changes nothing, and a second op on the same entity in one unit) |
+| `ErrTxBackfillDisabled` | core | Transaction-time backfill is disabled (gate not set) | `g.Nodes()` / `g.Rels()` `AddWithTx()`, `UpdateWithTx()`, `DeleteWithTx()` and their `GraphTx` / `BatchBuilder` / ingest `Session` twins, a `tkg_tx_from` property on Add / Import, when `Config.AllowTxBackfill=false` |
+| `ErrInvalidTxFrom` | core | Backfilled `tkg_tx_from` or caller instant is invalid: negative or after the graph's current clock, or 0 on the `*WithTx` doors (a `tkg_tx_from` of 0 means unset). `ErrTxOrder` wraps it | `g.Nodes()` / `g.Rels()` `AddWithTx()`, `UpdateWithTx()`, `DeleteWithTx()` and their twins, a `tkg_tx_from` property, with an invalid instant |
+| `ErrTxOrder` | core | Caller transaction instant does not follow the entity's recorded history (wraps `ErrInvalidTxFrom`) | `g.Nodes()`/`g.Rels()` `DeleteWithTx()` / `UpdateWithTx()`, `GraphTx.DeleteNodeWithTx()` / `UpdateNodeWithTx()` / `DeleteRelationshipWithTx()` / `UpdateRelationshipWithTx()`, the `BatchBuilder` and ingest `Session` doors of the same names (a refusal in a batch or ingest unit refuses the whole unit; also returned for a caller-instant delete over a recorded close at or after t, an update at t that changes nothing, and a second op on the same entity in one unit). Since v4.48.0 also a re-import of a deleted ID whose `tkg_tx_from` is at or below any `TxFrom` / `TxTo` / `DeletedAt` of the ID's chain: `g.Nodes().Import()` / `AddByIDIfAbsent()`, `g.Rels().Import()`, `GraphTx.ImportNodeWithID()` / `ImportRelationshipWithID()`; nothing is written (see `docs/stability.md`) |
 
 ## Named As-Of Tags (§4.2)
 
@@ -220,11 +252,11 @@ These sentinels are declared in `pkg/graph/store/errors.go` and have **no alias 
 
 ## Unique Property Constraints (ADR-0002)
 
-Unique property constraints (`g.Constraints().CreateUnique(...)`) forbid two current nodes carrying the same value for a constrained `(label, property)`. Enforcement covers the standalone node doors (Add / AddWithTx / AddByIDIfAbsent / Update / UpdateInPlace / CompareAndSetProperty / AddLabel), `BatchBuilder.AddNode`/`UpdateNode`, `GraphTx.AddNode`/`UpdateNode`, `SetNodeVersionInterval` on every door (`Temporal()`, `GraphTx`, `BatchBuilder`, ingest `Session`; an open-ended patch is checked for both scopes, a bounded one against `UniqueForever` only), and `g.IO().Import` (default-strict — a duplicate rolls the whole import back; `ImportOptions.SkipUniqueValidation` opts a trusted restore out). Replica apply reproduces rows verbatim and does NOT enforce.
+Unique property constraints (`g.Constraints().CreateUnique(...)`) forbid two current nodes carrying the same value for a constrained `(label, property)`. Enforcement covers the standalone node doors (Add / AddWithTx / GetOrCreateByKey / AddByIDIfAbsent / Import / Update / UpdateWithTx / UpdateInPlace / CompareAndSetProperty / AddLabel), `BatchBuilder.AddNode`/`AddNodes`/`UpdateNode`/`UpdateNodeWithTx`, `GraphTx.AddNode`/`ImportNodeWithID`/`GetOrCreateByKey`/`UpdateNode`/`UpdateNodeWithTx`/`AddNodeLabel`, the ingest `Session` (creates, `UpdateNode`, `UpdateNodeWithTx`; strong and concurrent mode), `SetNodeVersionInterval` on every door (`Temporal()`, `GraphTx`, `BatchBuilder`, ingest `Session`; an open-ended patch is checked for both scopes, a bounded one against `UniqueForever` only), and `g.IO().Import` (default-strict — a duplicate rolls the whole import back; `ImportOptions.SkipUniqueValidation` opts a trusted restore out). Replica apply reproduces rows verbatim and does NOT enforce. Since v4.49.0 every door that claims a `UniqueForever` value withdraws the claims its call made when the call fails (a value the node owned before the call is kept); only a crash between the claim's MetaKV write and the row write can still leave a claim without its row (`ReleaseOwnership` frees it).
 
 | Sentinel | Package | Meaning | Typical Doors |
 |----------|---------|---------|---------------|
-| `ErrUniqueViolation` | core | A write would make two current nodes hold the same value for a constrained `(label, property)`, a `UniqueForever` value already owned by another entity was claimed, or an import stream carried a duplicate. Wrapped with the label, key, and winning/owning entity ID | `g.Nodes().Add()` / `AddWithTx()` / `AddByIDIfAbsent()` / `Update()` / `UpdateInPlace()` / `CompareAndSetProperty()` / `AddLabel()`, `BatchBuilder.AddNode()`/`UpdateNode()`, `GraphTx.AddNode()`/`UpdateNode()`, `SetNodeVersionInterval()` (`Temporal()`, `GraphTx`, `BatchBuilder`, ingest `Session`), and `g.IO().Import()` into a duplicate value |
+| `ErrUniqueViolation` | core | A write would make two current nodes hold the same value for a constrained `(label, property)`, a `UniqueForever` value already owned by another entity was claimed, or an import stream carried a duplicate. Wrapped with the label, key, and winning/owning entity ID | Every enforcing door listed above (node creates, imports, updates, label adds, `SetNodeVersionInterval()` on all four doors) and `g.IO().Import()` into a duplicate value |
 | `ErrUniqueViolationExisting` | core | `CreateUnique` found existing duplicate values; the constraint is NOT installed. Wrapped with up to five offender IDs | `g.Constraints().CreateUnique()` over duplicated data |
 | `ErrUniqueConstraintExists` | core | A unique constraint already exists for the `(label, property)`, or the registry is at capacity | `g.Constraints().CreateUnique()` |
 | `ErrUniqueConstraintNotFound` | core | No unique constraint exists for the `(label, property)`, or `ReleaseOwnership` was called without a `UniqueForever` constraint on the pair | `g.Constraints().DropUnique()` / `ReleaseOwnership()` |
@@ -247,7 +279,7 @@ History compaction (`g.Admin().CompactHistoryNodes(...)` / `CompactHistoryRels(.
 | `ErrRetentionPurgeChangeLogEnabled` | core | The change-log is enabled but the store cannot emit the `ChangeRangePurge` predicate record (no `RangePurgeLogCapability`), so a purge would remove data locally without telling a replica — a silent divergence, refused. Defensive: no in-tree backend hits it (the native purge stores also implement `RangePurgeLogCapability`); it guards a future/partial backend | `g.Admin().PurgeExpiredNodes()` |
 | `ErrInvalidPurgePolicy` | core | The `PurgePolicy` is missing its `Label`, carries a non-positive `Before`, or names an unsupported `Mode` | `g.Admin().PurgeExpiredNodes()` |
 | `ErrResetDisabled` | core | `g.Admin().Reset()` (a whole-graph destructive wipe — every entity, index, history row, named as-of tag, and unique-constraint definition) was called but the graph was not opened with `Config.AllowReset`. Mirrors `ErrRetentionPurgeDisabled`'s safety-valve pattern (BACKLOG 13d) | `g.Admin().Reset()` |
-| `ErrCommitNotDurable` | core | `Config.DurableCommit` is set and the store's durable flush failed after the group was applied: the group is committed in memory (visible, not rolled back, change-log records minted) but not on disk. It stays in the pending write buffer and the next successful flush (the next durable commit, an empty `Tx().Run`, the background flush, or `Close`) persists it; until then a crash can lose it. The store error is wrapped alongside | `GraphTx.Commit`, `g.Tx().Run*`, `Batch.Execute`, ingest `Session.Submit` (strong mode) |
+| `ErrCommitNotDurable` | core | `Config.DurableCommit` is set and the store's durable flush failed after the group was applied: the group is committed in memory (visible, not rolled back, change-log records minted) but not on disk. It stays in the pending write buffer and the next successful flush (the next durable commit, an empty `Tx().Run`, the background flush, or `Close`) persists it; until then a crash can lose it. The store error is wrapped alongside; from `BatchBuilder.Execute` the error also wraps `ErrBatchFailed` (the result carries a `durable-commit` `BatchError`). Standalone mutations and concurrent-mode ingest are not covered by `DurableCommit` and never return it | `GraphTx.Commit`, `g.Tx().Run` / `RunContext` / `RunWithLSN` (with the committed LSN), `BatchBuilder.Execute`, the strong ingest applier (`Session.Submit` / `g.Ingest().WaitApplied()`) |
 | `ErrExactErasureDisabled` | core | The bounded legal-erasure door was called without the explicit `Config.AllowExactErasure` safety opt-in | `g.Admin().ExactErase()` |
 | `ErrInvalidExactErasureRequest` | core | The exact-erasure request is empty, contains a non-positive node/relationship ID, or omits positive relationship-closure bounds for node erasure | `g.Admin().ResolveExactErasure()` / `g.Admin().ExactErase()` |
 | `ErrExactErasureRelationshipEscape` | store | A current or historical relationship version touching a declared node has an identity absent from the declared relationship set. The operation refuses before writing and never widens caller scope implicitly | `g.Admin().ExactErase()` / direct `store.ExactErasureCapability` |
@@ -316,17 +348,21 @@ func main() {
 		}
 	}
 
-	// Batch operations report accumulated failures
+	// Batch operations: queue-time validation fails the queue call itself,
+	// apply-time failures are collected and reported by Execute.
 	bb, err := g.Batch().New()
 	if err != nil {
 		log.Fatal(err)
 	}
-	bb.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	bb.AddNode([]string{"Person"}, nil) // missing name
-	if _, err := bb.Execute(); err != nil {
-		if errors.Is(err, graph.ErrBatchFailed) {
-			log.Println("Batch had failures — check individual operation results")
-		}
+	if _, err := bb.AddNode([]string{"Person"}, map[string]any{"name": "Alice"}); err != nil {
+		log.Fatal(err)
+	}
+	if _, err := bb.AddNode(nil, nil); errors.Is(err, graph.ErrNoLabels) {
+		log.Println("rejected at queue time — not part of the batch")
+	}
+	_ = bb.UpdateNode(types.NodeID(999999), map[string]any{"x": 1}) // unknown ID: fails at Execute
+	if res, err := bb.Execute(); errors.Is(err, graph.ErrBatchFailed) {
+		log.Printf("%d operation(s) failed — see res.Errors", res.Failed)
 	}
 }
 ```
