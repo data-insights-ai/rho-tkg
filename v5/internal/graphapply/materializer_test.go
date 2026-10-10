@@ -722,7 +722,7 @@ func (c *crashMaterializer) Restore(index uint64, image []byte) error {
 	}
 	// Installation is already synced by Driver; kill BEFORE volatile publication.
 	if c.mode == "installed-before-restore" && root.SemanticEpoch() == c.epoch {
-		return syscall.Kill(os.Getpid(), syscall.SIGKILL)
+		return materializerKillSelfForCrashTest()
 	}
 	return c.m.Restore(index, image)
 }
@@ -738,7 +738,7 @@ func (c *crashMaterializer) Stage(e replica.Entry, b raftlog.ApplicationBudget) 
 		c.completed = false
 	}
 	if selected && c.mode == "committed-before-stage" {
-		return raftlog.ApplicationBatch{}, syscall.Kill(os.Getpid(), syscall.SIGKILL)
+		return raftlog.ApplicationBatch{}, materializerKillSelfForCrashTest()
 	}
 	out, err := c.m.Stage(e, b)
 	if err != nil {
@@ -748,9 +748,21 @@ func (c *crashMaterializer) Stage(e replica.Entry, b raftlog.ApplicationBudget) 
 		c.completed = true
 	}
 	if selected && c.mode == "staged-before-install" {
-		return raftlog.ApplicationBatch{}, syscall.Kill(os.Getpid(), syscall.SIGKILL)
+		return raftlog.ApplicationBatch{}, materializerKillSelfForCrashTest()
 	}
 	return out, nil
+}
+
+// Signal delivery may return before OS termination. Do not return an empty
+// successful batch to Driver or run cleanup after a successful request. Timer
+// sleeps avoid a Go deadlock exit; the parent deadline bounds failure.
+func materializerKillSelfForCrashTest() error {
+	if err := syscall.Kill(os.Getpid(), syscall.SIGKILL); err != nil {
+		return err
+	}
+	for {
+		time.Sleep(time.Hour)
+	}
 }
 
 // Safe, read-only failure evidence. No retry or state change hides the seam.

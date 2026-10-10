@@ -221,9 +221,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   admission, ordered typed CDC and immutable request outcomes; exact replay
   precedes current fences, and local resource refusals publish no outcome.
   Go 1.26.9 frozen v5 gates pass (88.8% whole v5, 82.96% new production;
-  each new file at least 80%). This is not acceptance: an unexplained InitGraph
-  crash-test rejection remains a release blocker in `tasks/backlog.md`.
-  Three hundred non-reproduced seams are not a fix. Public Host, prior-read
+  each new file at least 80%). The identified crash-harness blocker is closed
+  by the test-only self-SIGKILL correction below; public Host, prior-read
   transactions, distributed traffic and all V0–V7 acceptance remain open.
 
 ### Fixed
@@ -241,6 +240,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   This prevents an asynchronous kill from running cleanup before the intended
   crash. Existing recovery assertions/deadlines remain; product persistence
   behavior is unchanged.
+
+- **Materializer crash-harness correction**: all three callbacks wait after a
+  successful self-SIGKILL request. A labelled real child observed `Kill` returning `nil`
+  returning; a separate no-signal model reproduced the empty-successful-batch
+  → Install `raftlog.ErrInvalid` → child exit 1 chain from the preserved first
+  failure. This explains the unsafe harness path without replaying its original
+  OS schedule. Six real SIGKILL/recovery seams and frozen Go 1.26.9 full v5
+  race, build, vet, coverage and pinned lint pass with production guards unchanged.
+  Only this harness blocker closes; distributed and V0–V7 acceptance remain open.
 
 ### Security
 

@@ -480,6 +480,12 @@ Mutation-verify every "knob is applied" test by dropping the `With...` call; on-
 while the store is OPEN (clean Close truncates files); `db.Opts()` witnesses
 BlockCacheSize/NumCompactors, which leave no file footprint.
 
+A successful self-SIGKILL request may return before process termination. Crash
+callbacks must never return to the driver or run cleanup after signal success:
+use the established timer-sleep loop until death (return only on signal error).
+The parent must require actual SIGKILL and assert its deadline did not expire;
+a timeout kill cannot witness the intended crash seam.
+
 ## 46. A Correction Is A New Belief — Never Mutate A Stored Row To Express It
 
 Trigger: a valid-time correction (`SetNodeVersionInterval` cascade).
