@@ -1,0 +1,65 @@
+# Red run of the naive (presence-only) store skeletons: store matrix, tiered, sharded.
+# Two concurrent runs wrote this file; their lines interleave (the per-mutant reds are in 20-mutants.txt).
+--- FAIL: TestHistoryStampsMatchHistoryFold (0.47s)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/badger/node/checked--- FAIL: TestHistoryStamps_BuildSeesPendingAndFlushing (0.09s)
+--- FAIL: TestHistoryStamps_Maintenance (0.15s)
+--- FAIL: TestHistoryStamps_BuildGuardKeepsWritesDuringScan (0.01s)
+--- FAIL: TestHistoryStamps_ProbeKeepsWriteDuringProbe (0.01s)
+--- FAIL: TestHistoryStamps_BuildAcrossCommitWindow (0.02s)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	600.016s
+--- FAIL: TestTieredHistoryStamps_RoutingShapes (0.19s)
+--- FAIL: TestTieredHistoryStamps_ColdClosedShard (0.40s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.693s
+--- FAIL: TestHistoryStampsSharded (0.01s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	0.014s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes	0.004s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/rels	0.005s
+FAIL
+ode/checked (0.05s)
+        history_stamps_test.go:254: node two rows: stamps(10) = (0, 0, true, <nil>), history folds to (300, 200, true)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/badger-delta/node/first-call-at-end (0.02s)
+        history_stamps_test.go:279: node first call after the sequence: stamps(10) = (0, 0, true, <nil>), history folds to (600, 700, true)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/badger-delta/rel/checked (0.02s)
+        history_stamps_test.go:254: rel two rows: stamps(10) = (0, 0, true, <nil>), history folds to (300, 200, true)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/badger-delta/rel/first-call-at-end (0.02s)
+        history_stamps_test.go:279: rel first call after the sequence: stamps(10) = (0, 0, true, <nil>), history folds to (600, 700, true)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/sharded/node/checked (0.02s)
+        history_stamps_test.go:254: node two rows: stamps(10) = (0, 0, true, <nil>), history folds to (300, 200, true)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/sharded/node/first-call-at-end (0.00s)
+        history_stamps_test.go:279: node first call after the sequence: stamps(10) = (0, 0, true, <nil>), history folds to (600, 700, true)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/sharded/rel/checked (0.04s)
+        history_stamps_test.go:254: rel two rows: stamps(10) = (0, 0, true, <nil>), history folds to (300, 200, true)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/sharded/rel/first-call-at-end (0.09s)
+        history_stamps_test.go:279: rel first call after the sequence: stamps(10) = (0, 0, true, <nil>), history folds to (600, 700, true)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/tiered/node/checked (0.03s)
+        history_stamps_test.go:254: node two rows: stamps(10) = (0, 0, true, <nil>), history folds to (300, 200, true)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/tiered/node/first-call-at-end (0.03s)
+        history_stamps_test.go:279: node first call after the sequence: stamps(10) = (0, 0, true, <nil>), history folds to (600, 700, true)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/tiered/rel/checked (0.03s)
+        history_stamps_test.go:254: rel two rows: stamps(10) = (0, 0, true, <nil>), history folds to (300, 200, true)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/tiered/rel/first-call-at-end (0.04s)
+        history_stamps_test.go:279: rel first call after the sequence: stamps(10) = (0, 0, true, <nil>), history folds to (600, 700, true)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.626s
+--- FAIL: TestHistoryStampsSharded (0.01s)
+    history_stamps_test.go:33: slot 0 node = (0, 0, true, <nil>), want (1000, 1001, true)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	0.020s
+--- FAIL: TestTieredHistoryStamps_RoutingShapes (0.32s)
+    --- FAIL: TestTieredHistoryStamps_RoutingShapes/event_live_(B) (0.01s)
+        tieredstore_history_stamps_test.go:83: history: NodeHistoryStamps = (0, 0, true, <nil>), history folds to (300, 305, true)
+    --- FAIL: TestTieredHistoryStamps_RoutingShapes/reference_live,_history_on_the_reference_shard_and_on_the_archive_(A) (0.01s)
+        tieredstore_history_stamps_test.go:97: reference only: NodeHistoryStamps = (0, 0, true, <nil>), history folds to (100, 200, true)
+    --- FAIL: TestTieredHistoryStamps_RoutingShapes/archived,_history_on_the_reference_shard_(C) (0.12s)
+        tieredstore_history_stamps_test.go:125: archived, max TxTo on the reference shard: NodeHistoryStamps = (0, 0, true, <nil>), history folds to (300, 900, true)
+    --- FAIL: TestTieredHistoryStamps_RoutingShapes/deleted,_history_on_two_shards_(D_fan-out) (0.08s)
+        tieredstore_history_stamps_test.go:154: deleted rel, max on another shard: RelHistoryStamps = (0, 0, true, <nil>), history folds to (50, 60, true)
+    --- FAIL: TestTieredHistoryStamps_RoutingShapes/cross-shard_relationships (0.09s)
+        tieredstore_history_stamps_test.go:166: cross-shard history: RelHistoryStamps = (0, 0, true, <nil>), history folds to (33, 44, true)
+--- FAIL: TestTieredHistoryStamps_ColdClosedShard (0.53s)
+    tieredstore_history_stamps_test.go:211: live on cold: NodeHistoryStamps = (0, 0, true, <nil>), history folds to (100, 200, true)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	1.005s
+FAIL

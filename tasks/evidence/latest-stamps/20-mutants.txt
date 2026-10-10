@@ -1,0 +1,183 @@
+M1 badger: max not raised on a history put: RED
+  ./pkg/graph/store/badger/ RED
+    --- FAIL: TestHistoryStamps_Maintenance (0.19s)
+    --- FAIL: TestHistoryStamps_Maintenance/node (0.09s)
+    badgerstore_history_stamps_test.go:208: node raise: stamps(40) = (100, 200, true, <nil>), history folds to (300, 200, true)
+    --- FAIL: TestHistoryStamps_Maintenance/rel (0.09s)
+  ./pkg/graph/ RED
+    --- FAIL: TestLatestStampsDifferential (2.65s)
+    --- FAIL: TestLatestStampsDifferential/badger-disk/seed=1 (0.28s)
+    latest_stamps_test.go:681: step 16 updateWithTx: node 798289276414492672 store history stamps = (1791587455483, 1791587455485, true), History folds to (1791587455485, 1791587455489, true) over 2 rows
+    --- FAIL: TestLatestStampsDifferential/badger-disk/seed=2 (0.19s)
+M2 memory: max not raised on a history put: RED
+  ./pkg/graph/store/ RED
+    --- FAIL: TestHistoryStampsMatchHistoryFold (0.50s)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/memory/node/checked (0.00s)
+    history_stamps_test.go:254: node delete stamp: stamps(10) = (300, 200, true, <nil>), history folds to (300, 900, true)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/memory/rel/checked (0.00s)
+  ./pkg/graph/ RED
+    --- FAIL: TestLatestStampsDifferential (11.56s)
+    --- FAIL: TestLatestStampsDifferential/memory/seed=1 (0.00s)
+    latest_stamps_test.go:681: step 20 updateRel: rel 798289651549537280 store history stamps = (1791587466871, 1791587466873, true), History folds to (1791587466873, 1791587466883, true) over 2 rows
+    --- FAIL: TestLatestStampsDifferential/memory/seed=2 (0.00s)
+M3 core: current row stamps not folded: RED
+  ./pkg/graph/ RED
+    --- FAIL: TestLatestStampsDifferential (1.67s)
+    --- FAIL: TestLatestStampsDifferential/memory/seed=1 (0.01s)
+    latest_stamps_test.go:430: seeded: node 798290250233970688 LatestStamps = (0, 0, deleted=false), want (1791587485077, 0, deleted=false)
+    --- FAIL: TestLatestStampsDifferential/memory/seed=2 (0.00s)
+M4 fold: tombstone DeletedAt ignored: RED
+  ./pkg/graph/store/ RED
+    --- FAIL: TestHistoryStampsMatchHistoryFold (0.29s)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/memory/node/checked (0.00s)
+    history_stamps_test.go:254: node delete stamp: stamps(10) = (300, 200, true, <nil>), history folds to (300, 900, true)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/memory/node/first-call-at-end (0.00s)
+  ./pkg/graph/store/badger/ RED
+    --- FAIL: TestHistoryStamps_BuildSeesPendingAndFlushing (0.10s)
+    --- FAIL: TestHistoryStamps_BuildSeesPendingAndFlushing/node/flushing (0.01s)
+    badgerstore_history_stamps_test.go:154: node flushing, first call: stamps(20) = (100, 0, true, <nil>), history folds to (100, 300, true)
+    --- FAIL: TestHistoryStamps_BuildSeesPendingAndFlushing/rel/flushing (0.04s)
+M4b badger: tombstone rows skipped by the maintenance: RED
+  ./pkg/graph/store/badger/ RED
+    --- FAIL: TestHistoryStamps_Maintenance (0.12s)
+    --- FAIL: TestHistoryStamps_Maintenance/node (0.06s)
+    badgerstore_history_stamps_test.go:210: node delete stamp: stamps(40) = (300, 200, true, <nil>), history folds to (300, 900, true)
+    --- FAIL: TestHistoryStamps_Maintenance/rel (0.06s)
+  ./pkg/graph/ RED
+    --- FAIL: TestLatestStampsDifferential (2.09s)
+    --- FAIL: TestLatestStampsDifferential/badger-disk/seed=1 (0.07s)
+    latest_stamps_test.go:681: step 2 deleteWithTx: rel 798291399082476544 store history stamps = (0, 0, false), History folds to (1791587520143, 1791587520161, true) over 1 rows
+    --- FAIL: TestLatestStampsDifferential/badger-disk/seed=2 (0.08s)
+M5 badger: history DELETE does not invalidate: RED
+  ./pkg/graph/store/badger/ RED
+    --- FAIL: TestHistoryStamps_Maintenance (0.14s)
+    --- FAIL: TestHistoryStamps_Maintenance/node (0.07s)
+    badgerstore_history_stamps_test.go:221: node trim the max row: stamps(40) = (260, 200, true, <nil>), history folds to (100, 200, true)
+    --- FAIL: TestHistoryStamps_Maintenance/rel (0.06s)
+  ./pkg/graph/ RED
+    --- FAIL: TestLatestStampsDifferential (7.40s)
+    --- FAIL: TestLatestStampsDifferential/badger-disk/seed=1 (0.37s)
+    latest_stamps_test.go:681: step 19 txRollback: node 798292045469253632 store history stamps = (1791587539870, 1791587539872, true), History folds to (0, 0, false) over 0 rows
+    --- FAIL: TestLatestStampsDifferential/badger-disk/seed=2 (0.15s)
+M6 memory: row removal not detected (count check off): RED
+  ./pkg/graph/store/ RED
+    --- FAIL: TestHistoryStampsMatchHistoryFold (0.61s)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/memory/node/checked (0.00s)
+    history_stamps_test.go:254: node trim from 2: stamps(10) = (400, 500, true, <nil>), history folds to (100, 200, true)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/memory/rel/checked (0.00s)
+  ./pkg/graph/ RED
+    --- FAIL: TestLatestStampsDifferential (11.74s)
+    --- FAIL: TestLatestStampsDifferential/memory/seed=1 (0.00s)
+    latest_stamps_test.go:681: step 32 txRollback: node 798292556934676480 store history stamps = (1791587555570, 1791587555572, true), History folds to (1791587555533, 1791587555533, true) over 2 rows
+    --- FAIL: TestLatestStampsDifferential/memory/seed=2 (0.00s)
+M7 badger: build scan reads keys only: RED
+  ./pkg/graph/store/badger/ RED
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger [build failed]
+    FAIL
+  ./pkg/graph/ RED
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph [build failed]
+    FAIL
+M8 badger: stamps survive Clear: RED
+  ./pkg/graph/store/badger/ RED
+    --- FAIL: TestHistoryStamps_ClearDuringBuild (0.43s)
+    --- FAIL: TestHistoryStamps_ClearDuringBuild/node (0.22s)
+    badgerstore_history_stamps_test.go:403: node cleared while the build was in its window: stamps(80) = (100, 200, true, <nil>), history folds to (0, 0, false)
+    --- FAIL: TestHistoryStamps_ClearDuringBuild/rel (0.21s)
+  ./pkg/graph/ RED
+    --- FAIL: TestLatestStampsDifferential (8.26s)
+    --- FAIL: TestLatestStampsDifferential/badger-disk/seed=1 (0.15s)
+    latest_stamps_test.go:681: step 10 clear: node 798293617813651456 store history stamps = (1791587587848, 1791587587863, true), History folds to (0, 0, false) over 0 rows
+    --- FAIL: TestLatestStampsDifferential/badger-disk/seed=2 (0.58s)
+M9 core: re-imported life reports deleted: RED
+  ./pkg/graph/ RED
+    --- FAIL: TestLatestStampsDifferential (1.69s)
+    --- FAIL: TestLatestStampsDifferential/memory/seed=1 (0.01s)
+    latest_stamps_test.go:681: step 0 txCommit: node 798294108297428992 LatestStamps = (1791587602833, 1791587602833, deleted=true), want (1791587602833, 1791587602833, deleted=false)
+    --- FAIL: TestLatestStampsDifferential/memory/seed=2 (0.00s)
+M10 badger: build install overwrites IDs noted during the scan: RED
+  ./pkg/graph/store/badger/ RED
+    --- FAIL: TestHistoryStamps_BuildGuardKeepsWritesDuringScan (0.02s)
+    --- FAIL: TestHistoryStamps_BuildGuardKeepsWritesDuringScan/node (0.01s)
+    badgerstore_history_stamps_test.go:277: node lost its max row during the scan: stamps(70) = (900, 200, true, <nil>), history folds to (100, 200, true)
+    --- FAIL: TestHistoryStamps_BuildGuardKeepsWritesDuringScan/rel (0.01s)
+M11 badger: probe installs without its stamp check: RED
+  ./pkg/graph/store/badger/ RED
+    --- FAIL: TestHistoryStamps_ProbeKeepsWriteDuringProbe (0.03s)
+    --- FAIL: TestHistoryStamps_ProbeKeepsWriteDuringProbe/node (0.02s)
+    badgerstore_history_stamps_test.go:327: node after the write in the probe window: stamps(100) = (100, 101, true, <nil>), history folds to (700, 750, true)
+    --- FAIL: TestHistoryStamps_ProbeKeepsWriteDuringProbe/rel (0.02s)
+M12 badger: overwrite folded like an append: RED
+  ./pkg/graph/store/badger/ RED
+    --- FAIL: TestHistoryStamps_Maintenance (0.20s)
+    --- FAIL: TestHistoryStamps_Maintenance/node (0.10s)
+    badgerstore_history_stamps_test.go:215: node overwrite lowers: stamps(40) = (300, 900, true, <nil>), history folds to (250, 900, true)
+    --- FAIL: TestHistoryStamps_Maintenance/rel (0.10s)
+  ./pkg/graph/store/ RED
+    --- FAIL: TestHistoryStampsMatchHistoryFold (0.67s)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/badger/node/checked (0.02s)
+    history_stamps_test.go:254: node overwrite lowers TxFrom: stamps(10) = (300, 900, true, <nil>), history folds to (250, 900, true)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/badger/rel/checked (0.08s)
+M13 badger: build reads the badger view before the overlay: RED
+  ./pkg/graph/store/badger/ RED
+    --- FAIL: TestHistoryStamps_BuildSeesPendingAndFlushing (0.29s)
+    --- FAIL: TestHistoryStamps_BuildSeesPendingAndFlushing/node/buffered_overwrite_and_delete_over_committed_rows (0.10s)
+    badgerstore_history_stamps_test.go:181: node buffered overwrite: stamps(30) = (900, 950, true, <nil>), history folds to (300, 200, true)
+    --- FAIL: TestHistoryStamps_BuildSeesPendingAndFlushing/rel/buffered_overwrite_and_delete_over_committed_rows (0.02s)
+M14 tiered: first shard answer kept instead of the fold: RED
+  ./pkg/graph/store/tiered/ RED
+    --- FAIL: TestTieredHistoryStamps_RoutingShapes (0.18s)
+    --- FAIL: TestTieredHistoryStamps_RoutingShapes/reference_live,_history_on_the_reference_shard_and_on_the_archive_(A) (0.05s)
+    tieredstore_history_stamps_test.go:102: archive holds the max: NodeHistoryStamps = (100, 200, true, <nil>), history folds to (500, 600, true)
+    --- FAIL: TestTieredHistoryStamps_RoutingShapes/archived,_history_on_the_reference_shard_(C) (0.04s)
+M15 memory: overwrite folded like an append: RED
+  ./pkg/graph/store/ RED
+    --- FAIL: TestHistoryStampsMatchHistoryFold (0.51s)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/memory/node/checked (0.00s)
+    history_stamps_test.go:254: node overwrite lowers TxFrom: stamps(10) = (300, 900, true, <nil>), history folds to (250, 900, true)
+    --- FAIL: TestHistoryStampsMatchHistoryFold/memory/rel/checked (0.00s)
+M16 core: fallback ignores the history rows: RED
+  ./pkg/graph/ RED
+    --- FAIL: TestLatestStampsFallbackWithoutCapability (0.00s)
+    latest_stamps_test.go:897: past correction: rel = (1791587690948, 0, false, <nil>), want {from:1791587690949 to:0 deleted:false found:true headFrom:1791587690948}
+    FAIL
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	14.944s
+M17 types: compact row TxFrom dropped: RED
+  ./pkg/types/ RED
+    --- FAIL: TestNodeTxStamps (0.00s)
+    tx_stamps_test.go:41: compact = (0, 0, 0), want (11, 0, 0)
+    FAIL
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/types	0.002s
+  ./pkg/graph/ RED
+    --- FAIL: TestLatestStampsDifferential (10.64s)
+    --- FAIL: TestLatestStampsDifferential/memory/seed=1 (0.00s)
+    latest_stamps_test.go:430: seeded: node 798297308675571712 LatestStamps = (0, 0, deleted=false), want (1791587700484, 0, deleted=false)
+    --- FAIL: TestLatestStampsDifferential/memory/seed=2 (0.00s)
+M18 memory: tamper door keeps the cached entry: RED
+    --- FAIL: TestMemoryHistoryStampsTamperDoorAndZeroValue (0.00s)
+    memorystore_history_stamps_test.go:37: after the tamper rewrite = (300, 400, true, <nil>), want (100, 200, true)
+    FAIL
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.003s
+M12g badger: overwrite folded like an append (graph-level differential only): GREEN (mutant survived)
+  ./pkg/graph/ green
+M19 tiered: shard count not summed (folds duplicate versions across shards): RED
+  ./pkg/graph/store/tiered/ RED
+    --- FAIL: TestTieredHistoryStamps_DuplicateVersionAcrossShards (0.09s)
+    --- FAIL: TestTieredHistoryStamps_DuplicateVersionAcrossShards/node,_reference_live,_archive_copy_higher (0.03s)
+    tieredstore_history_stamps_test.go:291: duplicate v1, owner copy kept: NodeHistoryStamps = (500, 600, true, <nil>), history folds to (100, 200, true)
+    --- FAIL: TestTieredHistoryStamps_DuplicateVersionAcrossShards/node,_reference_live,_archive_copy_lower (0.02s)
+M20 tiered: multi-shard fallback removed: RED
+  ./pkg/graph/store/tiered/ RED
+    --- FAIL: TestTieredHistoryStamps_DuplicateVersionAcrossShards (0.14s)
+    --- FAIL: TestTieredHistoryStamps_DuplicateVersionAcrossShards/node,_reference_live,_archive_copy_higher (0.02s)
+    tieredstore_history_stamps_test.go:291: duplicate v1, owner copy kept: NodeHistoryStamps = (500, 600, true, <nil>), history folds to (100, 200, true)
+    --- FAIL: TestTieredHistoryStamps_DuplicateVersionAcrossShards/node,_reference_live,_archive_copy_lower (0.05s)
+M12g badger: overwrite folded like an append (graph-level differential only, with storeOverwrite): RED
+    --- FAIL: TestLatestStampsDifferential (3.55s)
+    --- FAIL: TestLatestStampsDifferential/badger-disk/seed=1 (0.16s)
+    latest_stamps_test.go:706: step 40 storeOverwrite: node 798390621720772608 store history stamps = (1791590548174, 1791590548301, true), History folds to (895795274087, 0, true) over 1 rows
+    --- FAIL: TestLatestStampsDifferential/badger-disk/seed=2 (0.31s)
+M15g memory: overwrite folded like an append (graph-level differential only, with storeOverwrite): RED
+    --- FAIL: TestLatestStampsDifferential (14.19s)
+    --- FAIL: TestLatestStampsDifferential/memory/seed=1 (0.01s)
+    latest_stamps_test.go:706: step 73 storeOverwrite: rel 798390917669061632 store history stamps = (1791590557256, 1791590561018, true), History folds to (895795278628, 0, true) over 1 rows
+    --- FAIL: TestLatestStampsDifferential/memory/seed=2 (0.00s)

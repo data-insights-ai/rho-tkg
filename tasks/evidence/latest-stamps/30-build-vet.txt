@@ -1,0 +1,2 @@
+build+vet: ok
+gofmt -l pkg bench: []

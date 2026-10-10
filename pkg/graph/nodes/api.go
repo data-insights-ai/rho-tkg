@@ -72,6 +72,7 @@ type Ops interface {
 	CloseVersion(ctx context.Context, id types.NodeID, t types.Instant) error
 	History(id types.NodeID) ([]*types.Node, error)
 	HasHistory(id types.NodeID) (bool, error)
+	LatestStamps(id types.NodeID) (txFrom, txTo types.Instant, deleted bool, err error)
 	VersionAfter(id types.NodeID, version uint32) (*types.Node, error)
 	VersionBefore(id types.NodeID, version uint32) (*types.Node, error)
 
@@ -725,6 +726,24 @@ func (a *API) HasHistory(id types.NodeID) (bool, error) {
 		return false, err
 	}
 	return ops.HasHistory(id)
+}
+
+// LatestStamps returns the node's newest transaction stamps over ALL its rows
+// (the current row and every history row: superseded versions, rows a
+// version-interval cascade appended after the current row's TxFrom, the
+// delete tombstone) without reading the history: txFrom is the largest
+// TxFrom, txTo the largest TxTo or DeletedAt (0 when no row was ended),
+// deleted is true when the node has rows but no current row (hard-deleted; a
+// re-imported ID whose newest life is live is not deleted). It equals the
+// fold of Get and History at every moment. Errors: ErrNodeNotFound for an ID
+// without any row, ErrNilGraph, ErrGraphClosed, an invalid ID
+// (ErrInvalidStoreMutation).
+func (a *API) LatestStamps(id types.NodeID) (txFrom, txTo types.Instant, deleted bool, err error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, 0, false, err
+	}
+	return ops.LatestStamps(id)
 }
 
 // VersionAfter returns the next version for the given node.

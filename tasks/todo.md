@@ -71,7 +71,8 @@ Wave 2 (parallel, start now, merge after wave 1) → v4.45.0
 - [x] Mint instant (backlog 36; merged 8afb1f0: NodeID/RelID.MintInstant, shared idlayout, shadow fallbacks)
 - [x] L re-import across lives (merged ac9f42a after two Opus review rounds: version continuation + PrevHash link, backfilled re-import at/below the chain stamps refused with ErrTxOrder (stability exception, sigma notified), rollback trims own rows only, own-row stamp without moving the clock, stub-aware life start; evidence/reimport-life/; backlog 38 and the 2026-09-24 entry closed; 39, 40 filed)
 - [x] M pinned property lookups sidecar (merged bdf1adc after three review rounds: no soundness counterexample; K1 unstamped-row fix + every-row recording; memory read-lock fast path; per-sidecar badger build lock; bench gate comparator fixed, PinnedRel family allocs-gated, opt-in time canary; evidence/pinned-property-index/; v4.48.0 = bd787bd, gate exit 0, cover 87.1 %)
-- [ ] Next wave: LatestStamps (30), broader effective scans (35; waiting for sigma's signature confirmation), update-door claims (29), interval rewrites at a caller instant (34), badger scan cost (33), state column doors (28), retention (21), RAM budget for property sidecars, NodesByLabelAt via K1, backlog 24-26/31/37/39/40 residuals.
+- [x] N LatestStamps (backlog 30; merged after review: no stale answer on memory/badger in 48×300 differential steps + 40 graph seeds; tiered matches History's dedup exactly; backlog 41, 42 filed) and O update-door claims (backlog 29; merged f9607e4 after review)
+- [ ] Next wave: broader effective scans (35; waiting for sigma's signature confirmation), interval rewrites at a caller instant (34), badger scan cost (33), state column doors (28), retention (21), RAM budget for property sidecars, NodesByLabelAt via K1, backlog 24-26/31/37/39/40 residuals.
 
 ## Review
 

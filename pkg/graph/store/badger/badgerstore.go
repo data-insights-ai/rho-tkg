@@ -532,6 +532,17 @@ type Store struct {
 	// historyPresenceProbeHook, when non-nil, runs after a per-ID probe and
 	// before it installs its answer. Set only from the owning test.
 	historyPresenceProbeHook func()
+	// History stamps (store.HistoryStampsCapability,
+	// badgerstore_history_stamps.go): per kind, a RAM sidecar of the newest
+	// TxFrom / TxTo-or-DeletedAt over each ID's history rows, built once by a
+	// value scan on the first NodeHistoryStamps / RelHistoryStamps call and
+	// maintained by noteHistoryKey under wbMu. historyPresenceProbeOnly also
+	// keeps it unbuilt (per-ID computation). The hooks mirror the presence
+	// hooks (build window, probe window). Set only from the owning test.
+	histNodeStamps         historyStamps
+	histRelStamps          historyStamps
+	historyStampsBuildHook func()
+	historyStampsProbeHook func()
 	// clearDropTestHook, when non-nil, runs in Clear right before the keyspace
 	// drop; a non-nil error is returned as the drop's failure. Test only.
 	clearDropTestHook func() error
@@ -2109,6 +2120,10 @@ func (bs *Store) Clear() error {
 	defer bs.histNodePresence.buildMu.Unlock()
 	bs.histRelPresence.buildMu.Lock()
 	defer bs.histRelPresence.buildMu.Unlock()
+	bs.histNodeStamps.buildMu.Lock() // the stamps sidecars likewise (buildMu -> wbMu)
+	defer bs.histNodeStamps.buildMu.Unlock()
+	bs.histRelStamps.buildMu.Lock()
+	defer bs.histRelStamps.buildMu.Unlock()
 
 	// Clear in-memory indexes.
 	bs.nodeIDs = make(map[types.NodeID]struct{})
@@ -2210,6 +2225,8 @@ func (bs *Store) Clear() error {
 	bs.histRelEpoch.Add(1)
 	bs.histNodePresence.resetLocked()
 	bs.histRelPresence.resetLocked()
+	bs.histNodeStamps.resetLocked()
+	bs.histRelStamps.resetLocked()
 	// Drop any snapshot a just-completed flush parked (the success path clears it,
 	// but a leaked/in-flight snapshot must not survive the wipe below — otherwise
 	// rangePending would resurface pre-Clear history keys as phantom IDs).

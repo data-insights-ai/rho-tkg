@@ -1,0 +1,38 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/bench
+BenchmarkLatestStamps/memory/plain-32	1000	147.00 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/memory/versions=100-32	1000	96.00 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/memory/versions=10000-32	1000	93.00 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/badger/plain-32	1000	249.00 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/badger/versions=100-32	1000	144.00 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/badger/versions=10000-32	1000	147.00 ns/op	0 B/op	0 allocs/op
+BenchmarkRelPropertyLookup10k/memory/indexed-32	1000	261 ns/op	0 B/op	6 allocs/op
+BenchmarkLatestStamps/memory/plain-32	1000	148.47 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/memory/versions=100-32	1000	96.96 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/memory/versions=10000-32	1000	93.93 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/badger/plain-32	1000	251.49 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/badger/versions=100-32	1000	145.44 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/badger/versions=10000-32	1000	148.47 ns/op	0 B/op	0 allocs/op
+BenchmarkRelPropertyLookup10k/memory/indexed-32	1000	264 ns/op	0 B/op	6 allocs/op
+BenchmarkLatestStamps/memory/plain-32	1000	149.94 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/memory/versions=100-32	1000	97.92 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/memory/versions=10000-32	1000	94.86 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/badger/plain-32	1000	253.98 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/badger/versions=100-32	1000	146.88 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/badger/versions=10000-32	1000	149.94 ns/op	0 B/op	0 allocs/op
+BenchmarkRelPropertyLookup10k/memory/indexed-32	1000	266 ns/op	0 B/op	6 allocs/op
+BenchmarkLatestStamps/memory/plain-32	1000	151.41 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/memory/versions=100-32	1000	98.88 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/memory/versions=10000-32	1000	95.79 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/badger/plain-32	1000	256.47 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/badger/versions=100-32	1000	148.32 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/badger/versions=10000-32	1000	151.41 ns/op	0 B/op	0 allocs/op
+BenchmarkRelPropertyLookup10k/memory/indexed-32	1000	269 ns/op	0 B/op	6 allocs/op
+BenchmarkLatestStamps/memory/plain-32	1000	152.88 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/memory/versions=100-32	1000	99.84 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/memory/versions=10000-32	1000	96.72 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/badger/plain-32	1000	258.96 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/badger/versions=100-32	1000	149.76 ns/op	0 B/op	0 allocs/op
+BenchmarkLatestStamps/badger/versions=10000-32	1000	152.88 ns/op	0 B/op	0 allocs/op
+BenchmarkRelPropertyLookup10k/memory/indexed-32	1000	271 ns/op	0 B/op	6 allocs/op

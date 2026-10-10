@@ -411,6 +411,23 @@ func (r *Relationship) ValidRange() (from, to Instant, ok bool) {
 	return r.temporal.ValidFrom, r.temporal.ValidTo, true
 }
 
+// TxStamps returns the relationship's transaction stamps (TxFrom, TxTo,
+// DeletedAt); zeros when it carries no temporal metadata. Like ValidRange it
+// returns values, so it allocates nothing on a frozen row, where Temporal()
+// copies.
+func (r *Relationship) TxStamps() (txFrom, txTo, deletedAt Instant) {
+	if r == nil {
+		return 0, 0, 0
+	}
+	if r.meta != nil {
+		return r.meta.txFrom, 0, 0
+	}
+	if r.temporal == nil {
+		return 0, 0, 0
+	}
+	return r.temporal.TxFrom, r.temporal.TxTo, r.temporal.DeletedAt
+}
+
 // SetTemporal sets the relationship's temporal metadata.
 func (r *Relationship) SetTemporal(tm *TemporalMetadata) {
 	if r == nil {

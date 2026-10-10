@@ -1,0 +1,14 @@
+--- FAIL: TestBenchGateLatestStampsZeroAllocsRegressionFails (0.00s)
+    bench_gate_test.go:207: allocs 0 -> 230,388 on a LatestStamps row passed the gate: err=<nil>
+--- FAIL: TestBenchGateLatestStampsTimeSwingPassesByDefault (0.00s)
+    bench_gate_test.go:220: a +200 % time swing on LatestStamps rows with flat allocs failed the default gate: exit status 1
+        bench-compare: REGRESSION LatestStamps/memory/plain-32: baseline=4.998e-08s current=1.4994e-07s (+200.00% > 30%)
+        bench-compare: REGRESSION LatestStamps/memory/versions=100-32: baseline=3.264e-08s current=9.792e-08s (+200.00% > 30%)
+        bench-compare: REGRESSION LatestStamps/memory/versions=10000-32: baseline=3.162e-08s current=9.486e-08s (+200.00% > 30%)
+        bench-compare: REGRESSION LatestStamps/badger/plain-32: baseline=8.466e-08s current=2.5398e-07s (+200.00% > 30%)
+        bench-compare: REGRESSION LatestStamps/badger/versions=100-32: baseline=4.896e-08s current=1.4688e-07s (+200.00% > 30%)
+        bench-compare: REGRESSION LatestStamps/badger/versions=10000-32: baseline=4.998e-08s current=1.4994e-07s (+200.00% > 30%)
+        bench-compare: REGRESSION geomean (time-gated rows): +156.43% > 30%
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/bench	0.015s
+FAIL

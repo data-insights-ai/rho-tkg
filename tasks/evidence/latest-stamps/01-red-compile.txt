@@ -1,0 +1,40 @@
+# github.com/data-insights-ai/rho-tkg/v4/pkg/types [github.com/data-insights-ai/rho-tkg/v4/pkg/types.test]
+pkg/types/tx_stamps_test.go:13:26: nilNode.TxStamps undefined (type *Node has no field or method TxStamps)
+pkg/types/tx_stamps_test.go:17:23: bare.TxStamps undefined (type *Node has no field or method TxStamps)
+pkg/types/tx_stamps_test.go:22:20: n.TxStamps undefined (type *Node has no field or method TxStamps)
+pkg/types/tx_stamps_test.go:27:25: frozen.TxStamps undefined (type *Node has no field or method TxStamps)
+pkg/types/tx_stamps_test.go:30:62: frozen.TxStamps undefined (type *Node has no field or method TxStamps)
+pkg/types/tx_stamps_test.go:40:26: compact.TxStamps undefined (type *Node has no field or method TxStamps)
+pkg/types/tx_stamps_test.go:43:63: compact.TxStamps undefined (type *Node has no field or method TxStamps)
+pkg/types/tx_stamps_test.go:48:19: n.TxStamps undefined (type *Node has no field or method TxStamps)
+pkg/types/tx_stamps_test.go:51:24: frozen.TxStamps undefined (type *Node has no field or method TxStamps)
+pkg/types/tx_stamps_test.go:58:25: nilRel.TxStamps undefined (type *Relationship has no field or method TxStamps)
+pkg/types/tx_stamps_test.go:58:25: too many errors
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes.test]
+pkg/graph/nodes/api_test.go:716:41: New(spy).LatestStamps undefined (type *API has no field or method LatestStamps)
+pkg/graph/nodes/api_test.go:725:52: New(&nodeOpsSpy{…}).LatestStamps undefined (type *API has no field or method LatestStamps)
+pkg/graph/nodes/api_test.go:728:45: New((*nodeOpsSpy)(nil)).LatestStamps undefined (type *API has no field or method LatestStamps)
+pkg/graph/nodes/api_test.go:732:28: nilAPI.LatestStamps undefined (type *API has no field or method LatestStamps)
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/rels [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/rels.test]
+pkg/graph/rels/api_test.go:873:41: New(spy).LatestStamps undefined (type *API has no field or method LatestStamps)
+pkg/graph/rels/api_test.go:882:51: New(&relOpsSpy{…}).LatestStamps undefined (type *API has no field or method LatestStamps)
+pkg/graph/rels/api_test.go:885:44: New((*relOpsSpy)(nil)).LatestStamps undefined (type *API has no field or method LatestStamps)
+pkg/graph/rels/api_test.go:889:28: nilAPI.LatestStamps undefined (type *API has no field or method LatestStamps)
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+# [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger]
+vet: pkg/graph/store/badger/badgerstore_history_stamps_test.go:27:18: undefined: HistoryStampsStats
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded.test]
+pkg/graph/store/sharded/history_stamps_test.go:32:28: st.NodeHistoryStamps undefined (type *Store has no field or method NodeHistoryStamps)
+pkg/graph/store/sharded/history_stamps_test.go:35:28: st.RelHistoryStamps undefined (type *Store has no field or method RelHistoryStamps)
+pkg/graph/store/sharded/history_stamps_test.go:38:28: st.NodeHistoryStamps undefined (type *Store has no field or method NodeHistoryStamps)
+pkg/graph/store/sharded/history_stamps_test.go:43:24: st.NodeHistoryStamps undefined (type *Store has no field or method NodeHistoryStamps)
+pkg/graph/store/sharded/history_stamps_test.go:46:24: st.RelHistoryStamps undefined (type *Store has no field or method RelHistoryStamps)
+pkg/graph/store/sharded/history_stamps_test.go:56:25: st.NodeHistoryStamps undefined (type *Store has no field or method NodeHistoryStamps)
+pkg/graph/store/sharded/history_stamps_test.go:60:25: st.RelHistoryStamps undefined (type *Store has no field or method RelHistoryStamps)
+pkg/graph/store/sharded/history_stamps_test.go:67:24: st.NodeHistoryStamps undefined (type *Store has no field or method NodeHistoryStamps)
+pkg/graph/store/sharded/history_stamps_test.go:70:24: st.RelHistoryStamps undefined (type *Store has no field or method RelHistoryStamps)
+pkg/graph/store/sharded/history_stamps_test.go:74:30: nilStore.NodeHistoryStamps undefined (type *Store has no field or method NodeHistoryStamps)
+pkg/graph/store/sharded/history_stamps_test.go:74:30: too many errors
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered
+# [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered]
+vet: pkg/graph/store/tiered/tieredstore_history_stamps_test.go:47:25: ts.NodeHistoryStamps undefined (type *Store has no field or method NodeHistoryStamps)

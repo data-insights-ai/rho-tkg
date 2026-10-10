@@ -481,6 +481,22 @@ func (n *Node) ValidRange() (from, to Instant, ok bool) {
 	return n.temporal.ValidFrom, n.temporal.ValidTo, true
 }
 
+// TxStamps returns the node's transaction stamps (TxFrom, TxTo, DeletedAt);
+// zeros when it carries no temporal metadata. Like ValidRange it returns
+// values, so it allocates nothing on a frozen row, where Temporal() copies.
+func (n *Node) TxStamps() (txFrom, txTo, deletedAt Instant) {
+	if n == nil {
+		return 0, 0, 0
+	}
+	if n.meta != nil {
+		return n.meta.txFrom, 0, 0
+	}
+	if n.temporal == nil {
+		return 0, 0, 0
+	}
+	return n.temporal.TxFrom, n.temporal.TxTo, n.temporal.DeletedAt
+}
+
 // SetTemporal sets the node's temporal metadata.
 func (n *Node) SetTemporal(tm *TemporalMetadata) {
 	if n == nil {

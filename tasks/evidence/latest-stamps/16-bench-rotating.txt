@@ -1,0 +1,25 @@
+BenchmarkLatestStampsRotating/rels=5000/memory-32         	24907374	        43.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/memory-32         	28726406	        54.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/memory-32         	26258754	        43.11 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/badger-32         	15404034	        99.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/badger-32         	14669386	        75.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/badger-32         	16315281	        93.35 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/tiered-32         	 1520882	      1411 ns/op	     775 B/op	      12 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/tiered-32         	 1260392	      1594 ns/op	     777 B/op	      12 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/tiered-32         	 1000000	      1317 ns/op	     779 B/op	      12 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/sharded-32        	 2407974	       454.9 ns/op	     709 B/op	       8 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/sharded-32        	 2027368	       503.7 ns/op	     709 B/op	       8 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/sharded-32        	 1000000	      1212 ns/op	     710 B/op	       8 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/memory-32        	21780734	        72.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/memory-32        	19578622	        57.80 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/memory-32        	16184317	       114.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/badger-32        	  412731	      6548 ns/op	    2225 B/op	      26 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/badger-32        	  366090	      7003 ns/op	    2218 B/op	      25 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/badger-32        	  361644	      7134 ns/op	    2217 B/op	      25 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/tiered-32        	  236062	      8832 ns/op	    2991 B/op	      38 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/tiered-32        	  195333	      6943 ns/op	    2987 B/op	      38 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/tiered-32        	  237412	      8882 ns/op	    3008 B/op	      38 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/sharded-32       	  350498	      7454 ns/op	    2924 B/op	      34 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/sharded-32       	  207060	      9635 ns/op	    2907 B/op	      33 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/sharded-32       	  326832	      7681 ns/op	    2934 B/op	      34 allocs/op
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	85.426s

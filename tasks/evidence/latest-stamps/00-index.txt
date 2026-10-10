@@ -1,0 +1,46 @@
+Backlog 30 — Nodes().LatestStamps / Rels().LatestStamps (evidence index, 2026-10-10)
+
+Decisions
+- txFrom = max TxFrom over all rows (current row + every history row).
+- txTo = max over all rows of max(TxTo, DeletedAt); 0 when no row was ended
+  (a tombstone's DeletedAt counts even where TxTo is unset; core-written
+  tombstones carry TxTo == DeletedAt).
+- deleted = the entity has rows but no current row. A re-imported ID whose
+  newest life is live reads false; an ID without any row is
+  ErrNodeNotFound / ErrRelNotFound.
+- Semantics = the fold of Get + History at every moment (compaction, purge and
+  erasure remove rows from both).
+- Structure: the current row is lent (O(1), new zero-alloc TxStamps accessor);
+  only the history half is a sidecar (store.HistoryStampsCapability). A mirror
+  of the current row in the sidecar was not built: a plain ReplaceNode
+  (UpdateInPlace, rollback restore, replica apply) can LOWER the current
+  row's stamps, which a running max cannot express (lesson 57), while the row
+  itself is an exact O(1) source on every backend.
+  memory: per-ID cache keyed to the ID's history row count, kept at the one
+  history-row seam (putNodeHistoryRowLocked / putRelHistoryRowLocked);
+  removals need no hook (the count falls).
+  badger: sidecar beside the presence set, its protocol (lazy build reading
+  each history value's temporal fields, tracking under wbMu, maintained at
+  noteHistoryKey, per-ID unknown + stamp guard, Clear reset under buildMu).
+  tiered: the History shard walk (generic, shared with HasHistory), cold
+  shards per ID; two or more shards with rows -> fold GetNodeHistory itself
+  (it keeps one copy per version; exact, paid only by multi-shard history);
+  sharded: slot.
+
+Files
+01-red-compile.txt            tests written first: no API (compile red)
+02-red-naive-graph.txt        naive head-only door + presence-only stores: graph tests red
+03-red-naive-stores.txt       naive stores: store/tiered/sharded red (two concurrent runs interleaved)
+04-red-naive-badger.txt       naive badger: all 11 badger window/differential tests red
+10-bench-door.txt             BenchmarkLatestStamps door vs History scan (memory, badger; plain/100/10,000)
+11-red-bench-gate.txt         bench-gate red before the awk change (LatestStamps not allocs-gated, 0 baseline)
+12-bench-gate-family.txt      bench/ BenchmarkLatestStamps (the gated family rows)
+13-bench-build.txt            badger build cost + setB/id at 200 K / 1 M entities, 1 % with history
+14-bench-hit.txt              badger store-half hit/miss ns/op
+15-bench-write-path.txt       badger Update end-to-end, sidecar unbuilt vs built (noise-bound)
+15b-bench-note.txt            badger per-history-write note cost, untracked vs built
+16-bench-rotating.txt         rotating IDs, 5 K and 20 K rels, memory/badger/tiered/sharded (allocs, cache misses)
+20-mutants.txt                23 mutants, each red (M14 superseded by M19/M20 after the tiered fix)
+40-red-tiered-dup.txt         review fix 1: duplicate version across shards, red before the fix
+41-green-tiered-dup.txt       same tests green after it
+30-build-vet.txt, 31-test-pkg.txt, 32-race.txt, 33-lint.txt, 34-security.txt, 35-cover.txt   gates

@@ -1,0 +1,34 @@
+--- FAIL: TestLatestStampsDifferential (1.30s)
+        latest_stamps_test.go:594: step 0 updateRel: rel 798238595432219648 store history stamps = (0, 0, true), History folds to (1791585908707, 1791585908709, true) over 1 rows
+        latest_stamps_test.go:594: step 4 deleteRel: rel 798238595442279424 store history stamps = (0, 0, true), History folds to (1791585908706, 1791585908719, true) over 1 rows
+        latest_stamps_test.go:594: step 0 updateRel: rel 798238595452470272 store history stamps = (0, 0, true), History folds to (1791585908706, 1791585908709, true) over 1 rows
+        latest_stamps_test.go:594: step 0 updateRel: rel 798238596856218624 store history stamps = (0, 0, true), History folds to (1791585908746, 1791585908748, true) over 1 rows
+        latest_stamps_test.go:594: step 4 deleteRel: rel 798238598940623872 store history stamps = (0, 0, true), History folds to (1791585908810, 1791585908823, true) over 1 rows
+        latest_stamps_test.go:594: step 0 updateRel: rel 798238601281602560 store history stamps = (0, 0, true), History folds to (1791585908879, 1791585908882, true) over 1 rows
+        latest_stamps_test.go:594: step 0 updateRel: rel 798238608096461824 store history stamps = (0, 0, true), History folds to (1791585909086, 1791585909088, true) over 1 rows
+        latest_stamps_test.go:594: step 4 deleteRel: rel 798238615274193920 store history stamps = (0, 0, true), History folds to (1791585909304, 1791585909317, true) over 1 rows
+        latest_stamps_test.go:594: step 0 updateRel: rel 798238622271177728 store history stamps = (0, 0, true), History folds to (1791585909517, 1791585909520, true) over 1 rows
+        latest_stamps_test.go:594: step 0 updateRel: rel 798238628022027264 store history stamps = (0, 0, true), History folds to (1791585909698, 1791585909700, true) over 1 rows
+        latest_stamps_test.go:594: step 4 deleteRel: rel 798238632115864576 store history stamps = (0, 0, true), History folds to (1791585909823, 1791585909836, true) over 1 rows
+        latest_stamps_test.go:594: step 0 updateRel: rel 798238636309054464 store history stamps = (0, 0, true), History folds to (1791585909948, 1791585909951, true) over 1 rows
+--- FAIL: TestLatestStampsDoorContract (0.03s)
+        latest_stamps_test.go:687: updated: node LatestStamps = (1791585910000, 0, false, <nil>), want (1791585910000, 1791585910000, false)
+        latest_stamps_test.go:687: updated: node LatestStamps = (1791585910005, 0, false, <nil>), want (1791585910005, 1791585910005, false)
+        latest_stamps_test.go:687: updated: node LatestStamps = (1791585910018, 0, false, <nil>), want (1791585910018, 1791585910018, false)
+        latest_stamps_test.go:687: updated: node LatestStamps = (1791585910032, 0, false, <nil>), want (1791585910032, 1791585910032, false)
+--- FAIL: TestLatestStampsFallbackWithoutCapability (0.00s)
+    latest_stamps_test.go:807: deleted: rel = (0, 0, false, graph: relationship not found), want {from:1791585910035 to:1791585910055 deleted:true found:true headFrom:0}
+--- FAIL: TestLatestStampsImport (0.92s)
+        latest_stamps_test.go:869: imported: node 798238639114125312 store history stamps = (0, 0, true), History folds to (1791585910031, 1791585910042, true) over 1 rows
+        latest_stamps_test.go:869: imported: node 798238640115875840 store history stamps = (0, 0, true), History folds to (1791585910062, 1791585910082, true) over 1 rows
+        latest_stamps_test.go:869: imported: node 798238647661756416 store history stamps = (0, 0, true), History folds to (1791585910292, 1791585910329, true) over 1 rows
+        latest_stamps_test.go:869: imported: node 798238660978409472 store history stamps = (0, 0, true), History folds to (1791585910698, 1791585910720, true) over 1 rows
+--- FAIL: TestLatestStampsReplicaApply (0.04s)
+        latest_stamps_test.go:984: replica after: node 798238669151602688 store history stamps = (0, 0, true), History folds to (1791585910948, 1791585910959, true) over 1 rows
+        latest_stamps_test.go:984: replica after: node 798238670176421888 store history stamps = (0, 0, true), History folds to (1791585910979, 1791585910990, true) over 1 rows
+--- FAIL: TestLatestStampsConcurrentWriters (0.17s)
+        latest_stamps_test.go:1099: final node 798238670305787904 = (1791585912191, 0, false, <nil>), want {from:1791585912191 to:1791585912170 deleted:false found:true headFrom:1791585912191}
+        latest_stamps_test.go:1099: final node 798238672739991552 = (1791585912190, 0, false, <nil>), want {from:1791585912190 to:1791585912190 deleted:false found:true headFrom:1791585912190}
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	2.536s
+FAIL

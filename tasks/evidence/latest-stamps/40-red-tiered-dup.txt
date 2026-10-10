@@ -1,0 +1,12 @@
+--- FAIL: TestTieredHistoryStamps_DuplicateVersionAcrossShards (0.15s)
+    --- FAIL: TestTieredHistoryStamps_DuplicateVersionAcrossShards/node,_reference_live,_archive_copy_higher (0.01s)
+        tieredstore_history_stamps_test.go:291: duplicate v1, owner copy kept: NodeHistoryStamps = (500, 600, true, <nil>), history folds to (100, 200, true)
+    --- FAIL: TestTieredHistoryStamps_DuplicateVersionAcrossShards/node,_reference_live,_archive_copy_lower (0.08s)
+        tieredstore_history_stamps_test.go:306: duplicate v1, archive delete stamp dropped: NodeHistoryStamps = (500, 900, true, <nil>), history folds to (500, 600, true)
+    --- FAIL: TestTieredHistoryStamps_DuplicateVersionAcrossShards/rel,_reference_live,_archive_copy_higher (0.02s)
+        tieredstore_history_stamps_test.go:318: duplicate v1, owner copy kept: RelHistoryStamps = (500, 600, true, <nil>), history folds to (100, 200, true)
+    --- FAIL: TestTieredHistoryStamps_DuplicateVersionAcrossShards/node,_archived,_reference_copy_higher (0.05s)
+        tieredstore_history_stamps_test.go:332: archived, duplicate v1, archive copy kept: NodeHistoryStamps = (500, 600, true, <nil>), history folds to (100, 200, true)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.181s
+FAIL

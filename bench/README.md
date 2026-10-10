@@ -49,6 +49,7 @@ re-fires) and why the classic `b.N` loop is the correct shape here instead.
 | `ANNSearch10k` | `g.Index().SearchNearest` (k=10) over a 10k x 128-dim vector index, `hnsw` (default approximate engine) vs `bruteforce` (`VectorIndexOptions.UseBruteForce`) sub-variants — memory backend only (the vector index is store-level in-memory regardless of which Store backend hosts the node rows, so the badger sub-benchmark would be redundant) |
 | `PinnedScanScaling` | Historical M1 measurement (original write-up retired; scenario remains in-tree): `ByLabel` plain vs `TxPin`/`TxAt`-pinned vs `NodesAsOf`-filtered, across {10k,100k} entities x {1,5,5+20%-deleted}-version churn x {broad,selective} label selectivity — BadgerInMemory only. Quantifies whether a pinned/as-of scan costs `O(current matches)` like plain `ByLabel` or `O(everything that ever had history)`. |
 | `PinnedRelPropertyLookup` | Backlog 8: `g.Rels().ByTypeAndProperty` with `TxPin` (200 matches) vs the same lookup without a pin, 1 or 5 types, profiles nochurn / sigma (20 % revised, 5 % deleted) / unrelated churn x1 and x10; reports the lazy sidecar build as `build-ms` (never gated). Default: 20 000 rels, memory and badger, 24 rows (the bench-gate canary). `RHO_TKG_PINNED_REL_SIZES=100000,1000000` runs the measurement matrix: sharded too, and a broad 5 % value. Gate: allocs-gated; time rows reported, not gated, on shared hosts; opt-in time canary (see below) |
+| `LatestStamps` | Backlog 30: `g.Rels().LatestStamps` on one relationship with 0 (`plain`), 100 and 1,000 history versions (updates plus corrections whose pieces are appended above the current row), memory and badger; the badger sidecar is built by a warm-up call. Gate: allocs-gated with the `PinnedRelPropertyLookup` family (the door is 0 allocs/op; a 0 allocs/op row fails as soon as it allocates — the History fold it replaces allocates per row) |
 | `ChangeLogTxSerialization` | Historical M2 measurement (original write-up retired; scenario remains in-tree): aggregate ops/sec for standalone `Add` vs tx-per-batch (`Begin`->10x`AddNode`->`Commit`) at {1,4,16} concurrent goroutines, `Config.ChangeLog` on/off — a manual goroutine-fan-out harness reporting a custom `ops/sec` metric (not `ns/op`), since throughput scaling with goroutine count — not single-call latency — is what's under test. BadgerInMemory only (`ChangeLog` is a Badger/memory capability). |
 
 `ANNSearch10k` note: measured locally (Apple M4 Max, `-benchtime=200x`) at
@@ -163,9 +164,10 @@ comparator (`bench/bench-compare.sh` — the same threshold logic
   `bench/bench-gate.awk` (tests: `bench_gate_test.go` over real benchstat CSV
   fixtures in `testdata/gate/`): only the `sec/op` block is read as time
   (a custom `b.ReportMetric` unit such as `build-ms` is ignored), and one
-  benchmark family — `PinnedRelPropertyLookup` (`ALLOCS_GATE_FAMILY`) — is
-  **allocs-gated** (`ALLOCS_THRESHOLD_PCT=10`, 5 samples); its time rows are
-  reported, not gated, on shared hosts. Reason: identical code swung
+  benchmark family — `PinnedRelPropertyLookup` and `LatestStamps`
+  (`ALLOCS_GATE_FAMILY`) — is **allocs-gated** (`ALLOCS_THRESHOLD_PCT=10`,
+  5 samples; a row with a 0 allocs/op baseline fails as soon as it allocates);
+  its time rows are reported, not gated, on shared hosts. Reason: identical code swung
   +42..+178 % in time on that family while allocs/op did not move at all, and
   the regression it exists to catch — the lookup falling back to the history
   fold — shows as 1,423 -> 106,555 allocs/op. Opt-in time canary for quiet

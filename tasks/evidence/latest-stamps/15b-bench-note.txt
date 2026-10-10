@@ -1,0 +1,7 @@
+BenchmarkHistoryStampsNote/untracked-32         	73468606	        15.47 ns/op	      24 B/op	       1 allocs/op
+BenchmarkHistoryStampsNote/untracked-32         	77189876	        33.36 ns/op	      24 B/op	       1 allocs/op
+BenchmarkHistoryStampsNote/untracked-32         	69756164	        27.41 ns/op	      24 B/op	       1 allocs/op
+BenchmarkHistoryStampsNote/built-32             	 9721699	       194.5 ns/op	      24 B/op	       1 allocs/op
+BenchmarkHistoryStampsNote/built-32             	 8322744	       127.8 ns/op	      24 B/op	       1 allocs/op
+BenchmarkHistoryStampsNote/built-32             	 9310335	       204.2 ns/op	      24 B/op	       1 allocs/op
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	15.765s

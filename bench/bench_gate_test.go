@@ -191,3 +191,32 @@ func TestPinnedRelGateMatrixMatchesTheGate(t *testing.T) {
 		t.Fatalf("full matrix has %d rows, want 54", len(full))
 	}
 }
+
+// The LatestStamps family (backlog 30) joins the allocs-gated family: its door
+// is 0 allocs/op and the regression it exists to catch — the door falling back
+// to the History fold — costs 230,388 allocs/op at 10,000 versions. A zero
+// baseline cannot be gated in percent, so a family row with 0 allocs/op fails
+// as soon as it allocates. The latest-* fixtures are real benchstat CSV of the
+// latest-*.txt files beside them (5 samples each).
+//
+// Faulty gates caught: a family regex without LatestStamps (the row is only
+// time-gated, so the +74,000,000 % row fails on time, not allocs — and passes
+// when the fold is fast enough), and a percent rule that skips a 0 baseline.
+func TestBenchGateLatestStampsZeroAllocsRegressionFails(t *testing.T) {
+	out, err := runGate(t, "testdata/gate/latest-allocs.csv", "thr=1000000000")
+	wantGateFailure(t, out, err, "allocs 0 -> 230,388 on a LatestStamps row")
+	if !strings.Contains(out, "ALLOCS REGRESSION LatestStamps/badger/versions=10000") {
+		t.Fatalf("gate output does not name the allocs regression:\n%s", out)
+	}
+	if strings.Contains(out, "LatestStamps/memory") {
+		t.Fatalf("gate flagged a row whose allocs did not move:\n%s", out)
+	}
+}
+
+// Faulty gate caught: time-gating the LatestStamps family (identical code
+// swings on shared hosts; its 30-80 ns rows swing more than most).
+func TestBenchGateLatestStampsTimeSwingPassesByDefault(t *testing.T) {
+	if out, err := runGate(t, "testdata/gate/latest-timeswing.csv"); err != nil {
+		t.Fatalf("a +200 %% time swing on LatestStamps rows with flat allocs failed the default gate: %v\n%s", err, out)
+	}
+}
