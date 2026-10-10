@@ -1,0 +1,16 @@
+MUTANT fv always 2: KILLED (28 failing assertions)
+    wire_retracted_fv3_test.go:201: node retracted / full checked: fv=2, want 3
+    wire_retracted_fv3_test.go:220: node retracted / full checked: fv<=2 reader got rx=true err=<nil>, want ErrWireFormatVersionUnsupported
+    wire_retracted_fv3_test.go:201: node retracted / partial scanner: fv=2, want 3
+MUTANT fv 3 on every row: KILLED (45 failing assertions)
+    wire_retracted_fv3_test.go:201: node plain delete / full checked: fv=3, want 2
+    wire_retracted_fv3_test.go:204: node plain delete: plain row bytes differ from v4.49.1:
+    wire_retracted_fv3_test.go:223: node plain delete / full checked: fv<=2 reader rejected a plain row: node wire: row format version 3, this binary supports up to 2: graph: on-disk wire format version n
+MUTANT partial decoder rejects fv 3: KILLED (5 failing assertions)
+    wire_retracted_fv3_test.go:207: node retracted / partial scanner: decode rx=false err=wire temporal meta: row format version 4, this binary supports up to 3: graph: on-disk wire format version not sup
+    wire_retracted_fv3_test.go:207: rel retracted / partial scanner: decode rx=false err=wire temporal meta: row format version 4, this binary supports up to 3: graph: on-disk wire format version not supp
+    wire_retracted_fv3_test.go:223: node plain delete / partial scanner: fv<=2 reader rejected a plain row: wire temporal meta: row format version 3, this binary supports up to 2: graph: on-disk wire form
+MUTANT plain rel delete runs before the spec'd ones: KILLED (3 failing assertions)
+    retraction_queue_order_test.go:71: batch/rel retractFirst=true: tombstone &{ValidFrom:1791630703545 ValidTo:1791631003565 TxFrom:1791631003561 TxTo:1791631003565 CreatedAt:0 UpdatedAt:1791631003561 De
+    retraction_queue_order_test.go:71: ingestSync/rel retractFirst=true: tombstone &{ValidFrom:1791630703545 ValidTo:1791631003565 TxFrom:1791631003561 TxTo:1791631003565 CreatedAt:0 UpdatedAt:17916310035
+    retraction_queue_order_test.go:71: ingestConcurrent/rel retractFirst=true: tombstone &{ValidFrom:1791630703546 ValidTo:1791631003565 TxFrom:1791631003562 TxTo:1791631003565 CreatedAt:0 UpdatedAt:17916

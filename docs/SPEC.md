@@ -563,8 +563,8 @@ Source: `pkg/graph/internal/storeutil/wire.go`. All three types have
 hand-written `EncodeMsgpack` implementations (`wire_encode.go`; hot-path
 optimization — no reflective omitempty checks). Any new field must be added to the
 custom encoder as well as the struct tag (lesson 39). No entity-row field was
-added in 4.44.0–4.49.0; `rx` (unreleased, backlog 43) is the first since: the
-encoder writes it, before the v2 `tf`/`tt` tail, only on a retraction tombstone.
+added in 4.44.0–4.49.0; `rx` (4.49.1, backlog 43) is the first since: the
+encoder writes it, before the v2 `tf`/`tt` tail, only on a retraction tombstone, and raises that row's `fv` to 3.
 
 ### 9.1a Wire Format Versioning
 
@@ -579,12 +579,16 @@ The row format is versioned at two levels (since 4.6.0). The current
   patches the stamped values in place (`PatchWireTemporalTail`,
   `wire_temporal_tail.go`). Decoders accept v1 and v2 transparently (msgpack
   map keys are self-describing).
+- **v3, per row only** (`storeutil.RetractedWireFormatVersion`, unreleased):
+  the v2 layout with the retraction marker `rx` set. Only a retraction
+  tombstone is written at `fv=3`; every other row stays `fv=2` byte for byte,
+  and the per-store marker stays 2. Decoders accept `fv <= 3`.
 
 - **Per row**: `FormatVersion` (`fv`). Absent (all pre-4.6.0 rows) decodes as
-  0 and is treated as version 1 — the layouts are identical. A checked decode
-  of a row whose version exceeds `storeutil.CurrentWireFormatVersion` fails
-  closed with `store.ErrWireFormatVersionUnsupported`; rows are never
-  zero-fill-misdecoded.
+  0 and is treated as version 1 — the layouts are identical. A decode (checked,
+  selection-scope partial and its scanner, delta-history `Meta`) of a row whose
+  version exceeds the highest this binary reads (3) fails closed with
+  `store.ErrWireFormatVersionUnsupported`; rows are never zero-fill-misdecoded.
 - **Per store**: the badger meta key `wire_format_version` (big-endian
   uint16) is verified at open BEFORE any row decode — newer marker fails the
   open with the same sentinel; absent marker (pre-versioning directory) is
@@ -602,16 +606,20 @@ for a typed scalar/container or typed nil, `["\x00tkg.c", type, pointer, msgpack
 for a registered struct (`wire_nested_temporal.go`). These were added without an
 `fv` bump: older rows decode as before.
 
-The retraction marker `rx` (`types.TemporalMetadata.Retracted`, unreleased,
-backlog 43) was added the same way, without an `fv` bump: it is an optional
-key written only on a retraction tombstone, so every other row encodes byte
-for byte as before, and it is decoded by the full decoder, the selection-scope
-partial decoder and its scanner, the delta-history `Meta`, export/import and
-the change feed alike. Checked decode and Store writes refuse `rx` on a row
-without `da` (`DeletedAt`). An older binary skips the unknown key: it opens the
-data and imports it without error and reads a retraction as a plain delete
-(the past stays readable at pins after it) — upgrade every reader before a
-writer uses a retraction door.
+The retraction marker `rx` (`types.TemporalMetadata.Retracted`, 4.49.1,
+backlog 43) is an optional key written only on a retraction tombstone, and
+since the release after 4.49.1 that row carries `fv=3`, so every other row
+encodes byte for byte as before. It is decoded by the full decoder, the
+selection-scope partial decoder and its scanner, the delta-history `Meta`,
+export/import and the change feed alike. Checked decode and Store writes refuse
+`rx` on a row without `da` (`DeletedAt`). A binary that reads `fv <= 2` (4.49.0
+and older) still opens a store, an export or a change feed that holds no
+retraction, and fails closed with `ErrWireFormatVersionUnsupported` on every
+read or import that touches a `fv=3` tombstone (measured:
+`tasks/evidence/retraction-fv3/05-old-binary-fails-closed.txt`). Tombstones
+4.49.1 wrote (`fv=2` + `rx`) still decode as retractions here, but an older
+binary skips their unknown key and reads them as a plain delete (the past stays
+readable at pins after it): upgrade every reader of such data.
 
 Checked wire reconstruction and direct Store history writes reject finite
 temporal intervals where both `ValidFrom` and `ValidTo` are present but
