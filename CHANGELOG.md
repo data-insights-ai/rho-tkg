@@ -242,8 +242,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   behavior is unchanged.
 
 - **Materializer crash-harness correction**: all three callbacks wait after a
-  successful self-SIGKILL request. A labelled real child observed `Kill` returning `nil`
-  returning; a separate no-signal model reproduced the empty-successful-batch
+  successful self-SIGKILL request. A labelled real child observed `Kill` returning `nil`;
+  a separate no-signal model reproduced the empty-successful-batch
   → Install `raftlog.ErrInvalid` → child exit 1 chain from the preserved first
   failure. This explains the unsafe harness path without replaying its original
   OS schedule. Six real SIGKILL/recovery seams and frozen Go 1.26.9 full v5
