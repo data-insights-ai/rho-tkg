@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
@@ -532,5 +533,228 @@ func TestIncidentAtSharedOppositePresenceReplaysBoundedPerCall(t *testing.T) {
 	// This must fail when every eligible relationship replays the same node.
 	if metric.Work.PatchPages > 1+2*metric.Calls {
 		t.Fatal("same opposite presence replayed per fact", metric.Calls, metric.Work)
+	}
+}
+
+func TestIncidentScratchPostingHitsPreserveRootParentAndKeyFences(t *testing.T) {
+	f := pilotFixture(t, 64, true)
+	c, close := pilotQueryCatalog(t, f)
+	defer close()
+	for _, kind := range []recordKind{canonicalIncidentRecord, declaredIncidentRecord} {
+		for _, fault := range []string{"root-level", "root-count", "child-level", "child-count", "child-first", "child-last", "payload", "policy", "mutable", "cancel"} {
+			t.Run(fmt.Sprintf("%d/%s", kind, fault), func(t *testing.T) {
+				v, err := OpenReadView(t.Context(), c, GraphLimits{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer v.Close()
+				q, err := v.begin(t.Context(), graphstate.ReadBudget{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				s, err := newIncidentScratch(q, &v.descriptor, f.position(t, 75))
+				if err != nil {
+					t.Fatal(err)
+				}
+				root := v.descriptor.canonical
+				if kind == declaredIncidentRecord {
+					root = v.descriptor.declared
+				}
+				if root.level != 1 {
+					t.Fatal("fixture lacks root/leaf fences", root)
+				}
+				key := postingTestKey(kind, 13)
+				limits := keyTreeLimits(q.limits)
+				found, err := s.hasPosting(root, key, limits)
+				if err != nil || !found {
+					t.Fatal(found, err)
+				}
+				before := q.q.rows
+				found, err = s.hasPosting(root, key, limits)
+				if err != nil || !found || q.q.rows != before {
+					t.Fatal("hit re-decoded page", found, err)
+				}
+				index := 0
+				if kind == declaredIncidentRecord {
+					index = 1
+				}
+				n := &s.posting[index].node
+				child := &n.children[postingKeyChildIndex(*n, key)]
+				want := ErrCorrupt
+				switch fault {
+				case "root-level":
+					root.level++
+				case "root-count":
+					root.count++
+				case "child-level":
+					n.level++
+					root.level++
+				case "child-count":
+					child.count++
+					root.count++
+				case "child-first":
+					child.first.roles ^= 3
+				case "child-last":
+					child.last.roles ^= 3
+				case "payload":
+					key.roles = 2
+				case "policy":
+					limits.maxKeys = 2
+					want = ErrResourceLimit
+				case "mutable":
+					q.q.pending = make(map[string]raftlog.KV)
+					want = ErrInvalid
+				case "cancel":
+					ctx, cancel := context.WithCancel(t.Context())
+					cancel()
+					q.q.ctx = ctx
+					want = context.Canceled
+				}
+				found, err = s.hasPosting(root, key, limits)
+				if found || !errors.Is(err, want) {
+					t.Fatal("cached binding/policy violation accepted", found, err, want)
+				}
+			})
+		}
+	}
+}
+
+func TestIncidentScratchPostingEvictsOnlyBoundedNonRootPages(t *testing.T) {
+	f := pilotFixture(t, 256, true)
+	c, close := pilotQueryCatalog(t, f)
+	defer close()
+	v, err := OpenReadView(t.Context(), c, pilotQueryLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.Close()
+	q, err := v.begin(t.Context(), graphstate.ReadBudget{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := newIncidentScratch(q, &v.descriptor, f.position(t, 75))
+	if err != nil {
+		t.Fatal(err)
+	}
+	limits := keyTreeLimits(q.limits)
+	for _, kind := range []recordKind{canonicalIncidentRecord, declaredIncidentRecord} {
+		root := v.descriptor.canonical
+		if kind == declaredIncidentRecord {
+			root = v.descriptor.declared
+		}
+		for id := uint64(3); id < 269; id++ {
+			key := postingTestKey(kind, id)
+			if id < 13 {
+				key.roles = 3
+			}
+			found, err := s.hasPosting(root, key, limits)
+			if err != nil || !found {
+				t.Fatal(id, kind, found, err)
+			}
+			if s.postingBytes > incidentPostingOwnedLimit {
+				t.Fatal("scratch ownership grew", s.postingBytes)
+			}
+		}
+	}
+	if !s.posting[0].valid || !s.posting[1].valid || s.posting[0].node.id != v.descriptor.canonical.id || s.posting[1].node.id != v.descriptor.declared.id {
+		t.Fatal("root slots evicted", s.posting)
+	}
+	// Both trees have more than the four non-root slots. Returning to the
+	// first leaf must decode it again, with all ordinary fences preserved.
+	before := q.q.rows
+	found, err := s.hasPosting(v.descriptor.canonical, postingKey{family: canonicalIncidentRecord, endpoint: 1, mode: graphstate.LifeBound, relationship: 3, roles: 3}, limits)
+	if err != nil || !found || q.q.rows <= before {
+		t.Fatal("non-root slots failed to evict", found, err, before, q.q.rows)
+	}
+}
+
+func TestIncidentScratchDistinctEndpointsPointsAndRetainedCursors(t *testing.T) {
+	f := newFullFixture(t, GraphLimits{})
+	whole := f.span(t, 0, 100)
+	f.apply(t, graphstate.Operation{Kind: graphstate.CreateNode, Owner: 1, Life: 11, Scope: whole})
+	for id := graphstate.EntityID(2); id <= 7; id++ {
+		f.apply(t, graphstate.Operation{Kind: graphstate.CreateNode, Owner: id, Life: 11, Scope: whole})
+		f.apply(t, graphstate.Operation{Kind: graphstate.CreateRelationship, Owner: id + 100, Life: 31, Scope: whole, Record: graphstate.EntityRecord{Type: "R", Source: 1, Target: id, Mode: graphstate.LifeBound}, Binding: graphstate.LifeRecord{SourceLife: 11, TargetLife: 11}})
+	}
+	old := f.index
+	for _, id := range []graphstate.EntityID{2, 4, 6} {
+		f.apply(t, graphstate.Operation{Kind: graphstate.Close, Owner: id, Life: 11, Scope: f.span(t, 50, 100)})
+	}
+	retained, current := f.view(t, old), f.view(t, f.index)
+	defer retained.Close()
+	defer retained.c.view.Close()
+	defer current.Close()
+	defer current.c.view.Close()
+	at25, _ := temporal.IntegerPosition(f.axis, temporal.Int64(25))
+	at75, _ := temporal.IntegerPosition(f.axis, temporal.Int64(75))
+	q, err := current.begin(t.Context(), graphstate.ReadBudget{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := newIncidentScratch(q, &current.descriptor, at75)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id := graphstate.EntityID(2); id <= 7; id++ {
+		life, err := s.presenceAt(id)
+		want := graphstate.LifeID(11)
+		if id%2 == 0 {
+			want = 0
+		}
+		if err != nil || life != want {
+			t.Fatal("wrong point presence", id, life, err)
+		}
+	}
+	before := q.q.rows
+	if life, err := s.presenceAt(7); err != nil || life != 11 || q.q.rows != before {
+		t.Fatal("scalar hit missed", life, err)
+	}
+	if life, err := s.presenceAt(2); err != nil || life != 0 || q.q.rows <= before {
+		t.Fatal("distinct scalar witnesses did not evict", life, err)
+	}
+	// One-call scratch must not be reachable from the q retained by a cursor.
+	if unsafe.Sizeof(*s) > incidentScratchOwned {
+		t.Fatal("fixed scratch allowance too small", unsafe.Sizeof(*s))
+	}
+	for _, typ := range []reflect.Type{reflect.TypeFor[reader](), reflect.TypeFor[pageReader](), reflect.TypeFor[fullCurrentCursor]()} {
+		for i := range typ.NumField() {
+			if typ.Field(i).Type == reflect.TypeFor[*incidentScratch]() {
+				t.Fatal("scratch retained by published cursor", typ)
+			}
+		}
+	}
+	probes := []struct {
+		v        *ReadView
+		at       temporal.Position
+		cursor   graphstate.Cursor
+		got      []IncidentAtCandidate
+		complete bool
+	}{{v: retained, at: at75}, {v: current, at: at25}, {v: current, at: at75}}
+	for range 8 {
+		for i := range probes {
+			p := &probes[i]
+			if p.complete {
+				continue
+			}
+			page, err := p.v.IncidentAt(t.Context(), IncidentAtQuery{Endpoint: 1, At: p.at, Direction: IncidentBoth, Visible: graphstate.Effective}, p.cursor, graphstate.ReadBudget{Rows: 1, Bytes: 4096})
+			if err != nil {
+				t.Fatal(i, page, err)
+			}
+			p.got = append(p.got, page.Candidates...)
+			p.cursor = page.Next
+			p.complete = page.Complete
+		}
+	}
+	for i, p := range probes {
+		if !p.complete || p.cursor != 0 {
+			t.Fatal("interleaved cursor incomplete", i, p)
+		}
+		var want []IncidentAtCandidate
+		for id := graphstate.EntityID(2); id <= 7; id++ {
+			if i != 2 || id%2 == 1 {
+				want = append(want, IncidentAtCandidate{id + 100, 31, IncidentSource})
+			}
+		}
+		exactIncidentAt(t, p.got, want)
 	}
 }

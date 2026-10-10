@@ -158,3 +158,67 @@ func TestPostingSplitsDuplicateIdentityAndLateFailuresAreAtomic(t *testing.T) {
 		_ = s.Close()
 	}
 }
+
+func TestPostingDecoderChargesActualCountOnceBeforeOwnership(t *testing.T) {
+	f := newFullFixture(t, GraphLimits{})
+	c := f.catalog(t, f.index)
+	defer c.view.Close()
+	root := c.root
+	root.next = 100
+	limits := defaultComponentKeyTreeLimits()
+	limits.maxPageBytes = 64 << 10
+	for _, kind := range []recordKind{uniquePostingRecord, canonicalIncidentRecord, declaredIncidentRecord} {
+		for _, branch := range []bool{false, true} {
+			for _, count := range []int{2, 64} {
+				node := postingTreeNode{kind: kind, id: 1}
+				variable := 0
+				for i := range count {
+					key := postingTestKey(kind, uint64(i+1))
+					variable += len(key.name) + len(key.component.Name)
+					if branch {
+						node.level = 1
+						node.children = append(node.children, postingTreeChild{uint64(i + 2), 1, key, key})
+						variable += len(key.name) + len(key.component.Name)
+					} else {
+						node.keys = append(node.keys, key)
+					}
+				}
+				wire, err := encodePostingKeyTreeNode(node, c, limits)
+				if err != nil {
+					t.Fatal(err)
+				}
+				key := physicalKey(root.namespace, kind, 1)
+				delivered := cap(key) + cap(wire) + 64
+				fixed := 128 + 320*count
+				decode := func(capBytes int) (postingTreeNode, *reader, error) {
+					q := &reader{c: &Catalog{root: root, limits: c.limits}, ctx: t.Context(), maxBytes: capBytes, pending: map[string]raftlog.KV{string(key): {Key: key, Value: wire}}}
+					p := &pageReader{q: q, limits: DefaultPageLimits()}
+					n, err := p.postingTreeNode(1, kind, limits)
+					return n, q, err
+				}
+				n, q, err := decode(delivered + fixed + variable)
+				if err != nil || n.summary() != node.summary() || q.bytes != delivered+fixed+variable || q.rows != 1 {
+					t.Fatal("actual decoded ownership charged twice or omitted", kind, branch, count, q.bytes, delivered, fixed, variable, err)
+				}
+				n, q, err = decode(delivered + fixed - 1)
+				if !errors.Is(err, ErrResourceLimit) || n.id != 0 || q.bytes != delivered || q.rows != 1 {
+					t.Fatal("fixed backing not refused before ownership", kind, branch, count, q.bytes, err)
+				}
+				if branch {
+					// A duplicate far from its first occurrence must be rejected
+					// by the bounded previous-child scan after a real decode.
+					bad := slices.Clone(wire)
+					entryBytes := 16 + 2*len(appendPostingKey(nil, node.children[0].first))
+					binary.BigEndian.PutUint64(bad[41+(count-1)*entryBytes:], node.children[0].id)
+					original := wire
+					wire = bad
+					_, _, err = decode(1 << 20)
+					wire = original
+					if !errors.Is(err, ErrCorrupt) {
+						t.Fatal("far duplicate child accepted", kind, count, err)
+					}
+				}
+			}
+		}
+	}
+}

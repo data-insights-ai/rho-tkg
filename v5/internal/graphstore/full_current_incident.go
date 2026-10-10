@@ -259,7 +259,7 @@ func (v *ReadView) IncidentAt(ctx context.Context, query IncidentAtQuery, token 
 	it.op.limits.pages.MaxCursorBytes = v.limits.Pages.MaxCursorBytes - (v.cursorBytes + v.pages.cursorBytes - old.bytes)
 	// Native output is operation-local scratch, not a second published quota.
 	it.outputBytes = 0
-	scratch, err := newIncidentScratch(q, &v.descriptor)
+	scratch, err := newIncidentScratch(q, &v.descriptor, query.At)
 	if err != nil {
 		return IncidentAtPage{}, v.finish(q, err)
 	}
@@ -369,7 +369,7 @@ func (q *pageReader) includeCurrentCandidate(cursor *fullCurrentCursor, candidat
 		active := cursor.endpointLife
 		if endpoint.id != query.Endpoint {
 			var err error
-			active, err = scratch.presenceAt(endpoint.id, query.At)
+			active, err = scratch.presenceAt(endpoint.id)
 			if err != nil {
 				return false, err
 			}
@@ -385,9 +385,10 @@ const incidentScratchOwned = 2048
 const incidentPostingOwnedLimit = 128 << 10
 
 type incidentPostingSlot struct {
-	node  postingTreeNode
-	age   uint64
-	valid bool
+	node   postingTreeNode
+	limits postingTreeLimits
+	age    uint64
+	valid  bool
 }
 type incidentPresenceSlot struct {
 	id    graphstate.EntityID
@@ -400,6 +401,7 @@ type incidentPresenceSlot struct {
 type incidentScratch struct {
 	q            *pageReader
 	descriptor   *fullIndexDescriptor
+	at           temporal.Position
 	posting      [6]incidentPostingSlot
 	presence     [4]incidentPresenceSlot
 	clock        uint64
@@ -407,14 +409,14 @@ type incidentScratch struct {
 	postingBytes int
 }
 
-func newIncidentScratch(q *pageReader, d *fullIndexDescriptor) (*incidentScratch, error) {
+func newIncidentScratch(q *pageReader, d *fullIndexDescriptor, at temporal.Position) (*incidentScratch, error) {
 	if q.q.full != nil || q.q.stage != nil || q.q.pending != nil || q.q.fullView != d {
 		return nil, ErrInvalid
 	}
 	if err := q.q.materialize(incidentScratchOwned); err != nil {
 		return nil, err
 	}
-	return &incidentScratch{q: q, descriptor: d}, nil
+	return &incidentScratch{q: q, descriptor: d, at: at}, nil
 }
 func incidentPostingBytes(n postingTreeNode) int { return 128 + 320*(len(n.keys)+len(n.children)) }
 func (s *incidentScratch) postingNode(id uint64, kind recordKind, l postingTreeLimits, root bool) (postingTreeNode, error) {
@@ -433,7 +435,7 @@ func (s *incidentScratch) postingNode(id uint64, kind recordKind, l postingTreeL
 	s.clock++
 	for i := range s.posting {
 		slot := &s.posting[i]
-		if slot.valid && slot.node.id == id && slot.node.kind == kind {
+		if slot.valid && slot.node.id == id && slot.node.kind == kind && slot.limits == l {
 			slot.age = s.clock
 			return slot.node, nil
 		}
@@ -468,7 +470,7 @@ func (s *incidentScratch) postingNode(id uint64, kind recordKind, l postingTreeL
 		return postingTreeNode{}, ErrResourceLimit
 	}
 	s.postingBytes += bytes - old
-	s.posting[index] = incidentPostingSlot{node: n, age: s.clock, valid: true}
+	s.posting[index] = incidentPostingSlot{node: n, limits: l, age: s.clock, valid: true}
 	return n, nil
 }
 func (s *incidentScratch) hasPosting(root postingTreeRoot, key postingKey, l postingTreeLimits) (bool, error) {
@@ -500,7 +502,10 @@ func (s *incidentScratch) hasPosting(root postingTreeRoot, key postingKey, l pos
 	}
 	return found, nil
 }
-func (s *incidentScratch) presenceAt(id graphstate.EntityID, at temporal.Position) (graphstate.LifeID, error) {
+func (s *incidentScratch) presenceAt(id graphstate.EntityID) (graphstate.LifeID, error) {
+	if s.q.q.full != nil || s.q.q.stage != nil || s.q.q.pending != nil || s.q.q.fullView != s.descriptor {
+		return 0, ErrInvalid
+	}
 	if err := s.q.q.ctx.Err(); err != nil {
 		return 0, err
 	}
@@ -509,7 +514,7 @@ func (s *incidentScratch) presenceAt(id graphstate.EntityID, at temporal.Positio
 			return slot.life, nil
 		}
 	}
-	life, err := s.q.presenceAt(id, at)
+	life, err := s.q.presenceAt(id, s.at)
 	if err != nil {
 		return 0, err
 	}
