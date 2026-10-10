@@ -168,3 +168,87 @@ for GraphTx), 35 (eclipse skip removed). Candidate lessons NOT yet written (add 
 agent branches before merge", "a read-time rule that changes answers on stored data needs an old-data fixture test
 written with the old code", "an oracle that restates the rule is not independent evidence — write the brute-force
 belief definition separately".
+
+---
+
+## 10. All worktrees and branches (state at 2026-10-10 ~10:40, after "also all worktrees … into handover.md")
+
+`git worktree list`:
+
+| Path | HEAD | Ours? | State / action |
+|---|---|---|---|
+| `/home/renework2023/Work/2026/datainsights/rho-tkg` | `main` (this commit) | yes | the only worktree of ours; clean |
+| `/tmp/claude-1000/-home-renework2023-Work-2026-datainsights-sigma-tkgd/a2d498b9-aa4c-4865-a7c8-f9c94a767c33/scratchpad/v446/rho` | `6bef04a` detached | **no** (sigma-tkgd session's scratch checkout of the first timeline candidate) | leave alone; stale candidate, never merged |
+
+Agent worktrees created this session were all merged (and removed) or removed unchanged; the last two were
+`agent-a4dbe9cf09a163ad4` (backlog 34: removed by the harness when stopped, nothing committed) and `agent-a3f21bd141e76b243`
+(backlog 33/42/41: only one untracked baseline file, saved into `tasks/evidence/badger-read-cost/` on main, worktree and
+branch deleted).
+
+Local branches:
+
+| Branch | Commit | Status |
+|---|---|---|
+| `main` | = `origin/main` | release line; all tags v4.44.0–v4.49.0 reachable |
+| `v5` (local) | `b1193dc` (behind `origin/v5` by 87) | our docs-only v5 plan commit; `origin/v5` is Markus's work now — **do not push or reset it**; `git fetch` then read only |
+| `wip/badger-scan-flush-evict` | `42de1f3` | OLD (pre-session) stopped-mid-task branch from v4.36: "test + candidate fix, unverified"; topic was fixed on main since (CHANGELOG [Unreleased]/Fixed 2026-09-24 "badger reads dropped or replaced rows when a flush + eviction landed mid-read"); candidate for deletion after René confirms |
+
+Remote branches: `origin/main`, `origin/v5` (Markus). Tags on origin: `v4.44.0 … v4.49.0`, `v5-plan-20261009`.
+Merge-and-remove rule for future agent worktrees (CLAUDE.md): merge the branch back, `git worktree unlock` + `git worktree remove --force`,
+`git branch -d` BEFORE calling a task done (git refuses `-d` while a merge is uncommitted — commit the merge first).
+
+## 11. TODO (the live ledger; `tasks/todo.md` mirrors it but its "Next wave" line is stale)
+
+Legend: [ ] open, (S) = waits for sigma, (R) = waits for René's decision.
+
+1. [ ] **Restart backlog 34** `Set{Node,Rel}VersionIntervalWithTx` (all doors) — sigma replay need.
+2. [ ] **Restart backlog 33 + 42 (+ 41 last)** badger read cost — baseline saved in `tasks/evidence/badger-read-cost/`.
+3. [ ] Backlog 35 broader effective scans — signatures CONFIRMED by sigma 2026-10-10 (all five, as recorded in the backlog item).
+4. [ ] **(R/S) Retraction door**: sigma passed a question from ai-soc/René: ai-soc needs "belief ends at T; at pins ≥ T
+   absent for every valid time; at pins < T unchanged"; René decided `Delete` = VALIDITY END (past stays readable at later
+   pins). My proposal (sent): `Nodes()/Rels().Retract(ctx,id)` / `RetractWithTx(ctx,id,t)` + GraphTx/Batch/Session twins,
+   tombstone marked as retraction, caps the life at −∞ in `lifeEnds` (core/chain_resolver.go), all read doors answer absent,
+   timeline empty, History/LatestStamps still show the rows. Open design points listed in the message: marker storage
+   (flag in the temporal block vs shadow property; additive wire, replica/export carry, hash coverage), interplay with
+   backlog 25, UniqueForever claim kept as for Delete. Waiting for René/ai-soc to choose "rho adds the door" vs "ai-soc
+   models an ENDED fact". Nothing built.
+5. [ ] Backlog 28 state column fast path (design first; sigma numbers inside the item) (S).
+6. [ ] Backlog 21 retention (PurgeExpiredRels, per-type gate) — handover `tasks/handover-overview-retention-20261009.md` (S, not blocking).
+7. [ ] Residual backlog: 13, 15, 16, 22, 23, 25, 26, 31, 37, 39, 40 (see §7), RAM budget for property sidecars,
+   `NodesByLabelAt` via K1, older items 0–5, 7.
+8. [ ] Fix the doc drift listed in §7 (backlog header, item 10/11/6/20 text, stale `tasks/todo.md` "Next wave").
+9. [ ] Delete the stale `wip/badger-scan-flush-evict` branch after René confirms (R).
+10. [ ] (R) Answer: keep behaviour changes as named stability exceptions (default) or ship through the deprecation ritual.
+11. [ ] Optional: write the v4→v5 importer reference tests Markus might want (note on main: `tasks/v4-changes-for-v5-importer-20261010.md`);
+    re-arm the origin watch (§8) if René still wants to follow `v5`.
+12. [ ] Next release: v4.50.0 (minor) when items 1–2 are merged; headline the behaviour changes, gate, tag, notify consumers.
+
+Done and verified this session (do not redo): see §2 table plus CHANGELOG; the ledger rows in `tasks/todo.md` carry the evidence paths.
+
+## 12. Decision log (the reasoning behind the non-obvious choices; "cot" read as: why, not a transcript)
+
+- **Order of work**: HIGH correctness bugs found by reviews first (cascade/version collisions/rollback, unique bypass,
+  re-import data loss), consumer-blocking features next (timeline doors, HasHistory, LatestStamps), perf items after.
+  Reason: silent wrong answers on a bitemporal store are worse than slow reads, and sigma/ai-soc pin the latest tag.
+- **As-of rule**: pin-stable "newest row recorded by the pin" over "current row while current": the old rule changed
+  answers at EARLIER pins after later writes (lesson 62), and restoring the old meaning needs a persisted slot marker
+  (wire change = v5). Cost: a documented exception and consumer migration (sigma moved to state doors).
+- **Re-import**: refuse the ambiguous backfilled input (ErrTxOrder) instead of ordering by version: the stored rows cannot
+  distinguish a demoted import from a first-life cascade row without a life marker; refusing keeps write order = TxFrom
+  order = version order for every chain written from now.
+- **Clock handling**: a re-import never advances the shared commit clock (found by review: a delete stamped via valid time
+  50 years ahead would have pushed every writer's clock; lesson 71 territory).
+- **Tiered**: rel temporal index only on hot+warm shards (156 B/rel measured; 40–64 GB/week if every shard were indexed at
+  ai-soc rates); cold rows are never pruned, answers unchanged.
+- **Pinned property sidecar**: K1-style superset (resolver stays the authority) instead of an exact version index (a
+  second as-of rule would drift); lazy build; the PinnedRel bench family gated on allocs/op only because timing on shared
+  hosts swung +42…+178 % on identical code while allocs were exactly stable.
+- **LatestStamps**: sidecar over history rows only, current row read directly (a running max cannot be lowered by a plain
+  ReplaceNode); tiered matches `History`'s dedup of a version present on two shards exactly (contract stays literal).
+- **Segments never merge distinct rows with equal content**: a segment names the stored record that answers it.
+- **Process**: one reviewer per branch always found something real; fix rounds go to the same agent; lint+security on the
+  branch before merging (lesson, not yet written); never accept an oracle that restates the rule as evidence for the rule.
+- **Things I got wrong (so you do not repeat them)**: dropped sigma's backlog item 10 by overwriting a block (restored
+  as 21); told ai-soc "adjacent identical rows merge" (wrong; corrected); said sigma could use a mint-instant helper
+  before checking package layout; merged branches without running lint/security first (3 gate re-runs); deleted an old
+  agent worktree that held three uncommitted files without checking first (the replacement agent re-created the oracle).

@@ -73,7 +73,7 @@ Wave 2 (parallel, start now, merge after wave 1) → v4.45.0
 - [x] M pinned property lookups sidecar (merged bdf1adc after three review rounds: no soundness counterexample; K1 unstamped-row fix + every-row recording; memory read-lock fast path; per-sidecar badger build lock; bench gate comparator fixed, PinnedRel family allocs-gated, opt-in time canary; evidence/pinned-property-index/; v4.48.0 = bd787bd, gate exit 0, cover 87.1 %)
 - [x] v4.49.0 = aedc56d released (N + O; gate exit 0, cover 87.2 %).
 - [x] N LatestStamps (backlog 30; merged after review: no stale answer on memory/badger in 48×300 differential steps + 40 graph seeds; tiered matches History's dedup exactly; backlog 41, 42 filed) and O update-door claims (backlog 29; merged f9607e4 after review)
-- [ ] Next wave: broader effective scans (35; waiting for sigma's signature confirmation), interval rewrites at a caller instant (34), badger scan cost (33), state column doors (28), retention (21), RAM budget for property sidecars, NodesByLabelAt via K1, backlog 24-26/31/37/39/40 residuals.
+- [ ] STOPPED 2026-10-10: see HANDOVER.md §11 (live TODO). Restart: backlog 34, then 33/42/41, then 35 (signatures confirmed by sigma), retraction door decision pending (René/ai-soc).
 
 ## Review
 
