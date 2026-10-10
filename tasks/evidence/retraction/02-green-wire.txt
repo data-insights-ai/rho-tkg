@@ -1,0 +1,11 @@
+=== RUN   TestRetractedMarker_FullWireRoundTrip
+=== RUN   TestRetractedMarker_PlainRowBytesUnchanged
+=== RUN   TestRetractedMarker_PartialDecode
+=== RUN   TestRetractedMarker_HistoryDelta
+=== RUN   TestRetractedMarker_CheckedDecodeRejectsOrphanMarker
+--- PASS: TestRetractedMarker_PlainRowBytesUnchanged (0.00s)
+--- PASS: TestRetractedMarker_CheckedDecodeRejectsOrphanMarker (0.00s)
+--- PASS: TestRetractedMarker_PartialDecode (0.00s)
+--- PASS: TestRetractedMarker_HistoryDelta (0.00s)
+--- PASS: TestRetractedMarker_FullWireRoundTrip (0.00s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	0.003s

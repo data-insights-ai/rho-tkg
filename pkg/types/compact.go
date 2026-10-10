@@ -81,7 +81,7 @@ func lowerHexNibble(c byte) (byte, bool) {
 // and tx from.
 func temporalFitsCompact(tm *TemporalMetadata) bool {
 	return tm.TxTo == 0 && tm.CreatedAt == 0 && tm.UpdatedAt == 0 && tm.DeletedAt == 0 &&
-		tm.CreatedBy == "" && tm.UpdatedBy == "" && tm.baseEntityID == 0
+		tm.CreatedBy == "" && tm.UpdatedBy == "" && tm.baseEntityID == 0 && !tm.Retracted
 }
 
 // compactRelMeta packs tm and ig, or reports false when the compact form

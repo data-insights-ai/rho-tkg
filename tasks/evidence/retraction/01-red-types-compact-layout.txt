@@ -1,0 +1,10 @@
+--- FAIL: TestCompactFormDropsNoMetadataField (0.00s)
+    compact_fields_test.go:138: TemporalMetadata.Retracted: compact relationship dropped temporal data (compact form used: true): got &{ValidFrom:1787443200000 ValidTo:1787443200900 TxFrom:1787443230000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}, want &{ValidFrom:1787443200000 ValidTo:1787443200900 TxFrom:1787443230000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:true}
+    compact_fields_test.go:138: TemporalMetadata.Retracted: thawed compact relationship differs from the source
+    compact_fields_test.go:139: TemporalMetadata.Retracted: compact node dropped temporal data (compact form used: true): got &{ValidFrom:1787443200000 ValidTo:1787443200900 TxFrom:1787443230000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}, want &{ValidFrom:1787443200000 ValidTo:1787443200900 TxFrom:1787443230000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:true}
+    compact_fields_test.go:139: TemporalMetadata.Retracted: thawed compact node differs from the source
+--- FAIL: TestTemporalMetadataStructSize (0.00s)
+    layout_test.go:34: TemporalMetadata struct size = 104 bytes, want 96 bytes
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/types	3.606s
+FAIL
