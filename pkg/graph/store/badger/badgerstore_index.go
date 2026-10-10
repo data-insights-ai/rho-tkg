@@ -28,6 +28,14 @@ import (
 //
 // Returns ErrIndexExists if the index already exists.
 func (bs *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) error {
+	return bs.CreatePropertyIndexWithOptions(labelToken, propertyKey, storecontract.PropertyIndexOptions{})
+}
+
+// CreatePropertyIndexWithOptions is CreatePropertyIndex with
+// storecontract.PropertyIndexOptions (round 4 R2). The options persist with
+// the definition. RangeCounts needs the RAM index: with PropertyIndexOnDisk it
+// is refused (ErrCapabilityNotSupported).
+func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey string, opts storecontract.PropertyIndexOptions) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -36,6 +44,9 @@ func (bs *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) erro
 	}
 	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
 		return err
+	}
+	if bs.propIdxOnDisk && opts.RangeCounts {
+		return fmt.Errorf("graph: create property index: range counts need the RAM index, not PropertyIndexOnDisk: %w", storecontract.ErrCapabilityNotSupported)
 	}
 	if bs.propIdxOnDisk {
 		if _, ok := bs.propKeyTokenFor(propertyKey); !ok {
@@ -51,7 +62,7 @@ func (bs *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) erro
 		bs.idxMu.Unlock()
 		return ErrIndexExists
 	}
-	liveIdx := indexpkg.NewPropertyIndex()
+	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts)
 	liveIdx.Mutated = make(map[snowflake.ID]struct{})
 	bs.propertyIndexes[key] = liveIdx
 	nids, idErr := bs.labelNodeIDsSnapshotLocked(labelToken)
@@ -194,9 +205,13 @@ func (bs *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 }
 
 // propIdxDef is the serialization format for property index definitions.
+// RangeCounts (round 4 R2) is written only when set, so a plain index's
+// definition stays byte-identical; a binary without the field skips it and
+// loads the index plain (its range counts then walk).
 type propIdxDef struct {
 	LabelToken  uint16 `msgpack:"l"`
 	PropertyKey string `msgpack:"p"`
+	RangeCounts bool   `msgpack:"rc,omitempty"`
 }
 
 // vectorIdxDef is the serialization format for vector index definitions.
@@ -962,7 +977,7 @@ func (bs *Store) persistPropertyIndexDefs() {
 		if idx == nil || idx.Mutated != nil {
 			continue
 		}
-		defs = append(defs, propIdxDef{LabelToken: key.LabelToken, PropertyKey: key.PropertyKey})
+		defs = append(defs, propIdxDef{LabelToken: key.LabelToken, PropertyKey: key.PropertyKey, RangeCounts: idx.RangeCounts()})
 	}
 	if len(defs) == 0 {
 		bs.appendOps(writeOp{opType: writeOpDelete, key: storepkg.PropIndexDefsKey})

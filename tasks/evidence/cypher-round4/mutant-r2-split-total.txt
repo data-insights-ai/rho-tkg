@@ -1,0 +1,4 @@
+# mutant: a split keeps the left total
+--- FAIL: TestCountedChunks_DrainedChunkBetweenFullNeighbours (0.00s)
+    property_index_prefixcount_test.go:242: filled: [-1,1e+09] = 7171, want 5119 (chunks 3)
+--- FAIL: TestRangeCardinality_PlainIndexKeepsNoCounts (0.12s)

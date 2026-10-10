@@ -21,6 +21,14 @@ var _ storecontract.RelPropertyIndexCapability = (*Store)(nil)
 // CreateRelPropertyIndex builds a rel-property index over (relTypeToken,
 // propertyKey) on every shard. Returns ErrIndexExists if it already exists.
 func (s *Store) CreateRelPropertyIndex(relTypeToken uint16, propertyKey string) error {
+	return s.CreateRelPropertyIndexWithOptions(relTypeToken, propertyKey, storecontract.PropertyIndexOptions{})
+}
+
+var _ storecontract.RelPropertyIndexOptionsCapability = (*Store)(nil)
+
+// CreateRelPropertyIndexWithOptions builds the rel index with the same options
+// on every shard.
+func (s *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, propertyKey string, opts storecontract.PropertyIndexOptions) error {
 	if err := s.checkOpen(); err != nil {
 		return err
 	}
@@ -31,7 +39,9 @@ func (s *Store) CreateRelPropertyIndex(relTypeToken uint16, propertyKey string) 
 		return err
 	}
 	return s.fanOutUniformCreate(
-		func(shard *badgerShard) error { return shard.CreateRelPropertyIndex(relTypeToken, propertyKey) },
+		func(shard *badgerShard) error {
+			return shard.CreateRelPropertyIndexWithOptions(relTypeToken, propertyKey, opts)
+		},
 		func(shard *badgerShard) error { return shard.DropRelPropertyIndex(relTypeToken, propertyKey) },
 	)
 }

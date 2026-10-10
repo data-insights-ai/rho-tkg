@@ -34,16 +34,54 @@ func inRange(v, lo, hi float64, inclLo, inclHi bool) bool {
 // (about 3,000 distinct values), mixes integers, fractions, strings, NaN and
 // missing values, and is checked again after updates and deletes moved and
 // drained values.
+//
+// Run twice: plain indexes (the walk) and indexes created with RangeCounts
+// (prefix sums, round 4 R2; tiered refuses the option with
+// ErrCapabilityNotSupported and creates nothing, so it declines as before).
 func TestRangeCardinalityMatchesIteration(t *testing.T) {
+	for _, mode := range []struct {
+		name string
+		opts graphpkg.PropertyIndexOptions
+	}{{"plain", graphpkg.PropertyIndexOptions{}}, {"rangecounts", graphpkg.PropertyIndexOptions{RangeCounts: true}}} {
+		t.Run(mode.name, func(t *testing.T) { rangeCardinalityMatchesIteration(t, mode.opts) })
+	}
+}
+
+func rangeCardinalityMatchesIteration(t *testing.T, opts graphpkg.PropertyIndexOptions) {
 	for _, b := range allStoreBackends() {
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)
 			ctx := context.Background()
 			rng := rand.New(rand.NewSource(0x4242)) //nolint:gosec // deterministic test
-			if err := g.Index().CreateProperty("P", "v"); err != nil && b.name != "tiered" {
-				t.Fatal(err)
+			nodeErr := g.Index().CreatePropertyWithOptions("P", "v", opts)
+			relErr := g.Index().CreateRelPropertyWithOptions("R", "v", opts)
+			switch {
+			case b.name != "tiered" && (nodeErr != nil || relErr != nil):
+				t.Fatal(nodeErr, relErr)
+			case b.name == "tiered" && opts.RangeCounts:
+				if !errors.Is(nodeErr, graphpkg.ErrCapabilityNotSupported) || !errors.Is(relErr, graphpkg.ErrCapabilityNotSupported) {
+					t.Fatalf("tiered with RangeCounts: %v, %v; want ErrCapabilityNotSupported", nodeErr, relErr)
+				}
+				if has, _ := g.Index().HasProperty("P", "v"); has {
+					t.Fatal("tiered created an index for a refused option")
+				}
 			}
-			relIndexed := g.Index().CreateRelProperty("R", "v") == nil
+			for _, side := range []struct {
+				name string
+				get  func() (graphpkg.PropertyIndexOptions, bool, error)
+			}{
+				{"node", func() (graphpkg.PropertyIndexOptions, bool, error) { return g.Index().PropertyOptions("P", "v") }},
+				{"rel", func() (graphpkg.PropertyIndexOptions, bool, error) { return g.Index().RelPropertyOptions("R", "v") }},
+			} {
+				got, ok, err := side.get()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if b.name != "tiered" && (!ok || got != opts) {
+					t.Fatalf("%s options = %+v, %v; want %+v", side.name, got, ok, opts)
+				}
+			}
+			relIndexed := relErr == nil
 			value := func() any {
 				switch rng.Intn(10) {
 				case 0:
@@ -114,7 +152,7 @@ func TestRangeCardinalityMatchesIteration(t *testing.T) {
 					}{
 						{"nodes", nodeVals, func() (int64, bool, error) {
 							return g.Nodes().RangeCardinality("P", "v", lo, hi, il, ih, graphpkg.QueryOpts{})
-						}, b.name != "tiered"},
+						}, nodeErr == nil && b.name != "tiered"},
 						{"rels", relVals, func() (int64, bool, error) {
 							return g.Rels().RangeCardinality("R", "v", lo, hi, il, ih, graphpkg.QueryOpts{})
 						}, relIndexed && b.name != "tiered"},

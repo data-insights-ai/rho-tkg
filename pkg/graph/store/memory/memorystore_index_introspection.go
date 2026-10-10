@@ -111,3 +111,43 @@ func (ms *Store) HasRelPropertyIndex(relTypeToken uint16, propertyKey string) (b
 	_, ok := ms.relPropertyIndexes[indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}]
 	return ok, nil
 }
+
+var (
+	_ storecontract.PropertyIndexOptionsCapability    = (*Store)(nil)
+	_ storecontract.RelPropertyIndexOptionsCapability = (*Store)(nil)
+)
+
+// PropertyIndexOptions returns the options the index on (labelToken,
+// propertyKey) was created with; ok=false when there is none.
+func (ms *Store) PropertyIndexOptions(labelToken uint16, propertyKey string) (storecontract.PropertyIndexOptions, bool, error) {
+	if ms == nil {
+		return storecontract.PropertyIndexOptions{}, false, ErrNilStore
+	}
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return storecontract.PropertyIndexOptions{}, false, err
+	}
+	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+		return storecontract.PropertyIndexOptions{}, false, err
+	}
+	idx, ok := ms.propertyIndexes[indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}]
+	return storecontract.PropertyIndexOptions{RangeCounts: idx.RangeCounts()}, ok, nil
+}
+
+// RelPropertyIndexOptions is the relationship mirror of PropertyIndexOptions.
+func (ms *Store) RelPropertyIndexOptions(relTypeToken uint16, propertyKey string) (storecontract.PropertyIndexOptions, bool, error) {
+	if ms == nil {
+		return storecontract.PropertyIndexOptions{}, false, ErrNilStore
+	}
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return storecontract.PropertyIndexOptions{}, false, err
+	}
+	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
+		return storecontract.PropertyIndexOptions{}, false, err
+	}
+	idx, ok := ms.relPropertyIndexes[indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}]
+	return storecontract.PropertyIndexOptions{RangeCounts: idx.RangeCounts()}, ok, nil
+}

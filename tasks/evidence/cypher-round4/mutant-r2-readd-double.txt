@@ -1,0 +1,4 @@
+# mutant: a re-add of a present entry counts twice
+--- FAIL: TestRangeCardinality_PlainIndexKeepsNoCounts (0.12s)
+--- FAIL: TestRangeCardinality_PrefixSumsVsIteration (0.42s)
+    --- FAIL: TestRangeCardinality_PrefixSumsVsIteration/trial0 (0.06s)

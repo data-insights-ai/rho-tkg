@@ -27,6 +27,14 @@ var _ storecontract.PropertyIndexCapability = (*Store)(nil)
 // every shard. Returns ErrIndexExists if the index already exists (uniformly
 // across shards).
 func (s *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) error {
+	return s.CreatePropertyIndexWithOptions(labelToken, propertyKey, storecontract.PropertyIndexOptions{})
+}
+
+var _ storecontract.PropertyIndexOptionsCapability = (*Store)(nil)
+
+// CreatePropertyIndexWithOptions builds the index with the same options on
+// every shard (each persists them with its definition).
+func (s *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey string, opts storecontract.PropertyIndexOptions) error {
 	if err := s.checkOpen(); err != nil {
 		return err
 	}
@@ -37,7 +45,9 @@ func (s *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) error
 		return err
 	}
 	return s.fanOutUniformCreate(
-		func(shard *badgerShard) error { return shard.CreatePropertyIndex(labelToken, propertyKey) },
+		func(shard *badgerShard) error {
+			return shard.CreatePropertyIndexWithOptions(labelToken, propertyKey, opts)
+		},
 		func(shard *badgerShard) error { return shard.DropPropertyIndex(labelToken, propertyKey) },
 	)
 }

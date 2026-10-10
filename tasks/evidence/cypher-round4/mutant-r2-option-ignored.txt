@@ -1,0 +1,4 @@
+# mutant: every index counted (the option ignored)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	2.943s
+--- FAIL: TestRangeCardinalityMatchesIteration (0.26s)
+    --- FAIL: TestRangeCardinalityMatchesIteration/plain (0.07s)

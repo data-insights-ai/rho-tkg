@@ -1656,7 +1656,7 @@ func (bs *Store) loadIndexesScan() error {
 					continue
 				}
 				seenProperty[key] = struct{}{}
-				idx := indexpkg.NewPropertyIndex()
+				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts)
 				if nodeIDs, ok := bs.labelIdx[def.LabelToken]; ok {
 					for nodeID := range nodeIDs {
 						rawID := nodeID.SnowflakeID()
@@ -1725,7 +1725,7 @@ func (bs *Store) loadIndexesScan() error {
 					continue
 				}
 				seenRelProperty[key] = struct{}{}
-				idx := indexpkg.NewPropertyIndex()
+				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts)
 				if relIDs, ok := bs.typeIdx[def.RelTypeToken]; ok {
 					for relID := range relIDs {
 						rawID := relID.SnowflakeID()

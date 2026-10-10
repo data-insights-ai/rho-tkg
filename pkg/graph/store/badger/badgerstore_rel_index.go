@@ -27,6 +27,7 @@ import (
 type relPropIdxDef struct {
 	RelTypeToken uint16 `msgpack:"t"`
 	PropertyKey  string `msgpack:"p"`
+	RangeCounts  bool   `msgpack:"rc,omitempty"` // round 4 R2; written only when set
 }
 
 // CreateRelPropertyIndex creates a relationship property index for the given
@@ -40,6 +41,13 @@ type relPropIdxDef struct {
 //
 // Returns ErrIndexExists if the index already exists.
 func (bs *Store) CreateRelPropertyIndex(relTypeToken uint16, propertyKey string) error {
+	return bs.CreateRelPropertyIndexWithOptions(relTypeToken, propertyKey, storecontract.PropertyIndexOptions{})
+}
+
+// CreateRelPropertyIndexWithOptions is CreateRelPropertyIndex with
+// storecontract.PropertyIndexOptions (round 4 R2); the options persist with
+// the definition.
+func (bs *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, propertyKey string, opts storecontract.PropertyIndexOptions) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -57,7 +65,7 @@ func (bs *Store) CreateRelPropertyIndex(relTypeToken uint16, propertyKey string)
 		bs.idxMu.Unlock()
 		return ErrIndexExists
 	}
-	liveIdx := indexpkg.NewPropertyIndex()
+	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts)
 	liveIdx.Mutated = make(map[snowflake.ID]struct{})
 	bs.relPropertyIndexes[key] = liveIdx
 	rids := bs.relTypeRelIDsSnapshotLocked(relTypeToken)
@@ -306,7 +314,7 @@ func (bs *Store) persistRelPropertyIndexDefs() {
 		if idx == nil || idx.Mutated != nil {
 			continue // still being created (Phase 2) — not yet durable
 		}
-		defs = append(defs, relPropIdxDef{RelTypeToken: key.RelTypeToken, PropertyKey: key.PropertyKey})
+		defs = append(defs, relPropIdxDef{RelTypeToken: key.RelTypeToken, PropertyKey: key.PropertyKey, RangeCounts: idx.RangeCounts()})
 	}
 	if len(defs) == 0 {
 		bs.appendOps(writeOp{opType: writeOpDelete, key: storepkg.RelPropIndexDefsKey})

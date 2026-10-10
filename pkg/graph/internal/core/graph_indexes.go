@@ -14,6 +14,15 @@ import (
 // CreateProperty creates a property index on the given label and property key.
 // Resolves or creates the label token. Returns storepkg.ErrIndexExists if the index already exists.
 func (i *IndexOps) CreateProperty(label, propertyKey string) error {
+	return i.CreatePropertyWithOptions(label, propertyKey, storepkg.PropertyIndexOptions{})
+}
+
+// CreatePropertyWithOptions is CreateProperty with storepkg.PropertyIndexOptions
+// (round 4 R2: RangeCounts). Zero options are CreateProperty exactly. Non-zero
+// options need storepkg.PropertyIndexOptionsCapability; a store without it
+// (tiered, wrappers) returns ErrCapabilityNotSupported before anything is
+// created, rather than creating a plain index.
+func (i *IndexOps) CreatePropertyWithOptions(label, propertyKey string, opts storepkg.PropertyIndexOptions) error {
 	c := i.c
 	if err := c.checkWritable(); err != nil {
 		return err
@@ -28,6 +37,14 @@ func (i *IndexOps) CreateProperty(label, propertyKey string) error {
 		cap, err := c.propertyIndexCap()
 		if err != nil {
 			return err
+		}
+		create := func(tok uint16) error { return cap.CreatePropertyIndex(tok, propertyKey) }
+		if opts != (storepkg.PropertyIndexOptions{}) {
+			oc, ok := c.store.(storepkg.PropertyIndexOptionsCapability)
+			if !ok {
+				return fmt.Errorf("%w: PropertyIndexOptionsCapability", storepkg.ErrCapabilityNotSupported)
+			}
+			create = func(tok uint16) error { return oc.CreatePropertyIndexWithOptions(tok, propertyKey, opts) }
 		}
 		tok, labelSnapshot, allocatedLabel, err := c.getOrCreateLabelWithSnapshot(label)
 		if err != nil {
@@ -45,7 +62,7 @@ func (i *IndexOps) CreateProperty(label, propertyKey string) error {
 			}
 		}()
 		err = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
-			c.indexDDL(cap.CreatePropertyIndex(tok, propertyKey)),
+			c.indexDDL(create(tok)),
 			func() error { return c.indexDDL(cap.DropPropertyIndex(tok, propertyKey)) },
 			storepkg.ErrIndexNotFound,
 			storepkg.ErrIndexExists,

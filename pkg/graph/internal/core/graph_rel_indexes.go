@@ -22,6 +22,15 @@ import (
 // to future matching relationships. Returns store.ErrIndexExists if the index
 // already exists, store.ErrRelPropertyIndexUnsupported on the tiered store.
 func (i *IndexOps) CreateRelProperty(typeName, propertyKey string) error {
+	return i.CreateRelPropertyWithOptions(typeName, propertyKey, storepkg.PropertyIndexOptions{})
+}
+
+// CreateRelPropertyWithOptions is CreateRelProperty with
+// storepkg.PropertyIndexOptions (round 4 R2), the relationship mirror of
+// CreatePropertyWithOptions: zero options are CreateRelProperty exactly;
+// non-zero options without storepkg.RelPropertyIndexOptionsCapability return
+// ErrCapabilityNotSupported before anything is created.
+func (i *IndexOps) CreateRelPropertyWithOptions(typeName, propertyKey string, opts storepkg.PropertyIndexOptions) error {
 	c := i.c
 	if err := c.checkWritable(); err != nil {
 		return err
@@ -36,6 +45,14 @@ func (i *IndexOps) CreateRelProperty(typeName, propertyKey string) error {
 		cap, err := c.relPropertyIndexCap()
 		if err != nil {
 			return err
+		}
+		create := func(tok uint16) error { return cap.CreateRelPropertyIndex(tok, propertyKey) }
+		if opts != (storepkg.PropertyIndexOptions{}) {
+			oc, ok := c.store.(storepkg.RelPropertyIndexOptionsCapability)
+			if !ok {
+				return fmt.Errorf("%w: RelPropertyIndexOptionsCapability", storepkg.ErrCapabilityNotSupported)
+			}
+			create = func(tok uint16) error { return oc.CreateRelPropertyIndexWithOptions(tok, propertyKey, opts) }
 		}
 		tok, snapshot, allocated, err := c.getOrCreateRelTypeWithSnapshot(typeName)
 		if err != nil {
@@ -53,7 +70,7 @@ func (i *IndexOps) CreateRelProperty(typeName, propertyKey string) error {
 			}
 		}()
 		err = c.restoreNewRelTypeIndexOnError(snapshot, allocated, typeName,
-			c.indexDDL(cap.CreateRelPropertyIndex(tok, propertyKey)),
+			c.indexDDL(create(tok)),
 			func() error { return c.indexDDL(cap.DropRelPropertyIndex(tok, propertyKey)) },
 			storepkg.ErrIndexNotFound,
 			storepkg.ErrIndexExists,

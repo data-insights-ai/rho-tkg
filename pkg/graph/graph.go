@@ -305,6 +305,12 @@ const (
 // hatch) and its tuning. Zero value = documented defaults.
 type VectorIndexOptions = store.VectorIndexOptions
 
+// PropertyIndexOptions aliases store.PropertyIndexOptions — accepted by
+// g.Index().CreatePropertyWithOptions / CreateRelPropertyWithOptions
+// (RangeCounts: prefix-sum range counts, opt-in per index). Zero value = the
+// plain index.
+type PropertyIndexOptions = store.PropertyIndexOptions
+
 // RelSegmentSpec aliases store.RelSegmentSpec — one entry of
 // Config.RelSegments, declaring a bulk relationship type whose rows the store
 // seals into column segments (ADR-0011).

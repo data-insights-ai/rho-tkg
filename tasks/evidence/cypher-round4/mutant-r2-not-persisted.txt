@@ -1,0 +1,4 @@
+# mutant: badger does not persist the option
+--- FAIL: TestPropertyIndexOptionsSurviveReopen (0.17s)
+    --- FAIL: TestPropertyIndexOptionsSurviveReopen/badger (0.07s)
+        property_index_options_test.go:115: after reopen node v: options {RangeCounts:false} true <nil>, want {RangeCounts:true}

@@ -57,6 +57,12 @@ func (ms *Store) NodeRangeCardinality(labelToken uint16, propertyKey string, min
 //
 // Returns ErrIndexExists if the index already exists.
 func (ms *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) error {
+	return ms.CreatePropertyIndexWithOptions(labelToken, propertyKey, storecontract.PropertyIndexOptions{})
+}
+
+// CreatePropertyIndexWithOptions is CreatePropertyIndex with
+// storecontract.PropertyIndexOptions (round 4 R2: RangeCounts).
+func (ms *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey string, opts storecontract.PropertyIndexOptions) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -83,7 +89,7 @@ func (ms *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) erro
 		ms.mu.Unlock()
 		return ErrIndexExists
 	}
-	liveIdx := indexpkg.NewPropertyIndex()
+	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts)
 	liveIdx.Mutated = make(map[snowflake.ID]struct{})
 	ms.propertyIndexes[key] = liveIdx
 	nids := ms.labelNodeIDsSnapshotLocked(labelToken)

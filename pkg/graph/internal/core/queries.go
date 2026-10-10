@@ -78,9 +78,11 @@ type nodeRangeCardinalityScanner interface {
 }
 
 // RangeCardinality returns the count of the label's nodes whose numeric propKey
-// value lies in [min,max] (inclusivity per flags), summed directly from the
-// property index's sorted per-value bucket sizes — O(distinct values in range),
-// NO node scan. exact=false declines — the caller must scan-and-count — when the
+// value lies in [min,max] (inclusivity per flags) from the property index, NO
+// node scan: two prefix sums on an index created with
+// PropertyIndexOptions.RangeCounts (round 4 R2: O(log chunks) plus at most 512
+// counts each), else summed from the per-value bucket sizes — O(distinct values
+// in range). exact=false declines — the caller must scan-and-count — when the
 // store lacks the capability, the index is absent, the index is poisoned (it
 // holds an integer magnitude past 2^53, where float64 sort keys can collide), or
 // a temporal filter is set (the index is valid-time agnostic). Fractional values

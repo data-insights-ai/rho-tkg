@@ -113,13 +113,23 @@ func (d *hfIdxDef) DecodeMsgpack(dec *msgpack.Decoder) error {
 // --- propIdxDef ---
 
 func (d propIdxDef) EncodeMsgpack(enc *msgpack.Encoder) error {
-	if err := enc.EncodeMapLen(2); err != nil {
+	fields := 2
+	if d.RangeCounts {
+		fields++
+	}
+	if err := enc.EncodeMapLen(fields); err != nil {
 		return err
 	}
 	if err := idxWireEncodeStringUint16Field(enc, "l", d.LabelToken); err != nil {
 		return err
 	}
-	return idxWireEncodeStringStringField(enc, "p", d.PropertyKey)
+	if err := idxWireEncodeStringStringField(enc, "p", d.PropertyKey); err != nil {
+		return err
+	}
+	if d.RangeCounts {
+		return idxWireEncodeStringBoolField(enc, "rc", true)
+	}
+	return nil
 }
 
 func (d *propIdxDef) DecodeMsgpack(dec *msgpack.Decoder) error {
@@ -137,6 +147,8 @@ func (d *propIdxDef) DecodeMsgpack(dec *msgpack.Decoder) error {
 			d.LabelToken, err = dec.DecodeUint16()
 		case "p":
 			d.PropertyKey, err = dec.DecodeString()
+		case "rc":
+			d.RangeCounts, err = dec.DecodeBool()
 		default:
 			err = dec.Skip()
 		}
@@ -289,13 +301,23 @@ func (d *compositeIdxDef) DecodeMsgpack(dec *msgpack.Decoder) error {
 // --- relPropIdxDef ---
 
 func (d relPropIdxDef) EncodeMsgpack(enc *msgpack.Encoder) error {
-	if err := enc.EncodeMapLen(2); err != nil {
+	fields := 2
+	if d.RangeCounts {
+		fields++
+	}
+	if err := enc.EncodeMapLen(fields); err != nil {
 		return err
 	}
 	if err := idxWireEncodeStringUint16Field(enc, "t", d.RelTypeToken); err != nil {
 		return err
 	}
-	return idxWireEncodeStringStringField(enc, "p", d.PropertyKey)
+	if err := idxWireEncodeStringStringField(enc, "p", d.PropertyKey); err != nil {
+		return err
+	}
+	if d.RangeCounts {
+		return idxWireEncodeStringBoolField(enc, "rc", true)
+	}
+	return nil
 }
 
 func (d *relPropIdxDef) DecodeMsgpack(dec *msgpack.Decoder) error {
@@ -313,6 +335,8 @@ func (d *relPropIdxDef) DecodeMsgpack(dec *msgpack.Decoder) error {
 			d.RelTypeToken, err = dec.DecodeUint16()
 		case "p":
 			d.PropertyKey, err = dec.DecodeString()
+		case "rc":
+			d.RangeCounts, err = dec.DecodeBool()
 		default:
 			err = dec.Skip()
 		}

@@ -45,6 +45,10 @@ type Ops interface {
 	UnregisterProvider(name string) error
 	Providers() []string
 	InventoryEpoch() uint64
+	CreatePropertyWithOptions(label, propertyKey string, opts storepkg.PropertyIndexOptions) error
+	CreateRelPropertyWithOptions(typeName, propertyKey string, opts storepkg.PropertyIndexOptions) error
+	PropertyOptions(label, propertyKey string) (storepkg.PropertyIndexOptions, bool, error)
+	RelPropertyOptions(typeName, propertyKey string) (storepkg.PropertyIndexOptions, bool, error)
 }
 
 // API is the index sub-API accessor.
@@ -426,4 +430,57 @@ func (a *API) InventoryEpoch() uint64 {
 		return 0
 	}
 	return ops.InventoryEpoch()
+}
+
+// CreatePropertyWithOptions is CreateProperty with store.PropertyIndexOptions.
+// RangeCounts (opt-in per index, round 4 R2) makes the index keep each
+// numeric value's multiplicity and per-chunk prefix sums, so
+// g.Nodes().RangeCardinality on it is two prefix sums — O(log chunks) plus at
+// most 512 per-value counts each, independent of the range's width — instead
+// of a walk over the range's distinct values. It costs about 35 ns more per
+// index add or remove of a numeric value and 8 B per distinct value; an index
+// created without it has exactly the plain index's structure and write cost.
+// The options are fixed at creation and persist with the definition (badger,
+// sharded: every slot). Non-zero options on a store that cannot keep them
+// (tiered, badger with PropertyIndexOnDisk, wrapper stores) return
+// store.ErrCapabilityNotSupported and create nothing. Zero options are
+// CreateProperty.
+func (a *API) CreatePropertyWithOptions(label, propertyKey string, opts storepkg.PropertyIndexOptions) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.CreatePropertyWithOptions(label, propertyKey, opts)
+}
+
+// CreateRelPropertyWithOptions is the relationship mirror of
+// CreatePropertyWithOptions (g.Rels().RangeCardinality; memory, badger and
+// sharded keep the options, tiered has no relationship property indexes).
+func (a *API) CreateRelPropertyWithOptions(typeName, propertyKey string, opts storepkg.PropertyIndexOptions) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.CreateRelPropertyWithOptions(typeName, propertyKey, opts)
+}
+
+// PropertyOptions returns the options the property index on (label,
+// propertyKey) was created with; ok=false when there is none. A planner reads
+// RangeCounts here to know whether RangeCardinality on the index is the
+// prefix-sum count or the walk.
+func (a *API) PropertyOptions(label, propertyKey string) (storepkg.PropertyIndexOptions, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.PropertyIndexOptions{}, false, err
+	}
+	return ops.PropertyOptions(label, propertyKey)
+}
+
+// RelPropertyOptions is the relationship mirror of PropertyOptions.
+func (a *API) RelPropertyOptions(typeName, propertyKey string) (storepkg.PropertyIndexOptions, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.PropertyIndexOptions{}, false, err
+	}
+	return ops.RelPropertyOptions(typeName, propertyKey)
 }

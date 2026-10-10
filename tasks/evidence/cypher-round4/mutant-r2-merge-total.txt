@@ -1,0 +1,4 @@
+# mutant: a merge drops the right total
+--- FAIL: TestRangeCardinality_PrefixSumsVsIteration (2.25s)
+    --- FAIL: TestRangeCardinality_PrefixSumsVsIteration/trial0 (0.27s)
+    --- FAIL: TestRangeCardinality_PrefixSumsVsIteration/trial1 (0.34s)

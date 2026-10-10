@@ -485,9 +485,10 @@ func (a *API) ForEachByTypePropertyRangeOrdered(typeName, propKey string, min, m
 }
 
 // RangeCardinality returns the count of the type's relationships whose numeric
-// propKey value lies in [min,max] (inclusivity per flags), summed from the rel
-// property index's per-value bucket sizes — O(distinct values in range), NO rel
-// scan. exact=false declines (the caller scans-and-counts) when the fast path is
+// propKey value lies in [min,max] (inclusivity per flags) from the rel property
+// index, NO rel scan: two prefix sums on an index created with
+// PropertyIndexOptions.RangeCounts (O(log chunks) plus at most 512 counts
+// each), else the walk over the range's distinct values (the default). exact=false declines (the caller scans-and-counts) when the fast path is
 // unusable: no store capability (tiered: a rel index cannot span its event
 // shards), no/poisoned index, or a temporal filter in opts. The relationship mirror
 // of nodes.API.RangeCardinality (rule 2) and the rel ordering-soundness primitive

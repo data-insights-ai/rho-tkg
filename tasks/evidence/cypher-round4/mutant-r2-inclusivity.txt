@@ -1,0 +1,4 @@
+# mutant: bound inclusivity ignored at a key
+--- FAIL: TestCountedChunks_DrainedChunkBetweenFullNeighbours (0.00s)
+    property_index_prefixcount_test.go:242: filled: [0,600] = 2224, want 2225 (chunks 3)
+--- FAIL: TestRangeCardinality_PrefixSumsVsIteration (0.08s)

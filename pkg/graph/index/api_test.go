@@ -399,3 +399,54 @@ func TestInventoryEpochForwards(t *testing.T) {
 		t.Fatalf("InventoryEpoch = %d, want 7", got)
 	}
 }
+
+func (s *indexOpsSpy) CreatePropertyWithOptions(string, string, storepkg.PropertyIndexOptions) error {
+	s.record("CreatePropertyWithOptions")
+	return s.err
+}
+
+func (s *indexOpsSpy) CreateRelPropertyWithOptions(string, string, storepkg.PropertyIndexOptions) error {
+	s.record("CreateRelPropertyWithOptions")
+	return s.err
+}
+
+func (s *indexOpsSpy) PropertyOptions(string, string) (storepkg.PropertyIndexOptions, bool, error) {
+	s.record("PropertyOptions")
+	return storepkg.PropertyIndexOptions{RangeCounts: true}, true, s.err
+}
+
+func (s *indexOpsSpy) RelPropertyOptions(string, string) (storepkg.PropertyIndexOptions, bool, error) {
+	s.record("RelPropertyOptions")
+	return storepkg.PropertyIndexOptions{RangeCounts: true}, true, s.err
+}
+
+func TestPropertyIndexOptionsForward(t *testing.T) {
+	var nilAPI *API
+	opts := storepkg.PropertyIndexOptions{RangeCounts: true}
+	if err := nilAPI.CreatePropertyWithOptions("L", "k", opts); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil CreatePropertyWithOptions: %v", err)
+	}
+	if err := nilAPI.CreateRelPropertyWithOptions("T", "k", opts); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil CreateRelPropertyWithOptions: %v", err)
+	}
+	if _, _, err := nilAPI.PropertyOptions("L", "k"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil PropertyOptions: %v", err)
+	}
+	if _, _, err := nilAPI.RelPropertyOptions("T", "k"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil RelPropertyOptions: %v", err)
+	}
+	wantErr := errors.New("boom")
+	api := New(&indexOpsSpy{err: wantErr})
+	if err := api.CreatePropertyWithOptions("L", "k", opts); !errors.Is(err, wantErr) {
+		t.Fatalf("CreatePropertyWithOptions: %v", err)
+	}
+	if err := api.CreateRelPropertyWithOptions("T", "k", opts); !errors.Is(err, wantErr) {
+		t.Fatalf("CreateRelPropertyWithOptions: %v", err)
+	}
+	if o, ok, err := api.PropertyOptions("L", "k"); !errors.Is(err, wantErr) || !ok || !o.RangeCounts {
+		t.Fatalf("PropertyOptions = %+v %v %v", o, ok, err)
+	}
+	if o, ok, err := api.RelPropertyOptions("T", "k"); !errors.Is(err, wantErr) || !ok || !o.RangeCounts {
+		t.Fatalf("RelPropertyOptions = %+v %v %v", o, ok, err)
+	}
+}

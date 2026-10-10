@@ -494,11 +494,16 @@ func (a *API) ForEachByLabelPropertyPrefix(label, propKey, prefix string, desc b
 }
 
 // RangeCardinality returns the count of the label's nodes whose numeric propKey
-// value lies within [min, max] (inclusivity per flags), summed from the property
-// index's sorted per-value bucket sizes (R1) — O(distinct values in range), NO
-// node scan. The second return is exact: false means the index declined (absent /
-// poisoned by an integer past 2^53 / temporal opts) and the caller must
-// scan-and-count. Fractional values and bounds are counted exactly. The bounds
+// value lies within [min, max] (inclusivity per flags) from the property index,
+// NO node scan. Cost depends on how the index was created: with
+// PropertyIndexOptions.RangeCounts (round 4 R2) two prefix sums over the
+// per-value counts, O(log chunks) plus at most 512 counts each, independent of
+// the range's width; without it (the default) a walk over the range's distinct
+// values summing their bucket sizes, O(distinct values in range) — the
+// contract as it always was. The second return is exact: false (count 0) when
+// the door does not answer — no index, a backend without the count (tiered,
+// badger with PropertyIndexOnDisk), an index poisoned by an integer past 2^53,
+// or temporal opts — and the caller must scan-and-count. A NaN bound counts 0. Fractional values and bounds are counted exactly. The bounds
 // must already capture the WHOLE predicate. See core.NodeOps.RangeCardinality.
 func (a *API) RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
 	ops, err := a.ready()

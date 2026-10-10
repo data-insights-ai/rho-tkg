@@ -30,6 +30,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestApplyChangeRecord_ChangeClearReapsCoreStateLikeReset`; mutants under `tasks/evidence/cypher-round4/`. The
   doc comments that said "no index-DDL epoch" now point at it.
 
+- **Range counts from prefix sums, opt-in per index: `PropertyIndexOptions{RangeCounts: true}`** (sigma-tkgd round 4
+  R2, task records C4h question 5 and C4n: `RangeCardinality` walked the range's distinct values, a map lookup each).
+  `g.Index().CreatePropertyWithOptions(label, key, opts)` / `CreateRelPropertyWithOptions(typeName, key, opts)` create
+  a single-key property index with options, `PropertyOptions` / `RelPropertyOptions` read them back
+  (`graph.PropertyIndexOptions` = `store.PropertyIndexOptions`; store doors `store.PropertyIndexOptionsCapability` /
+  `RelPropertyIndexOptionsCapability`; `index.Ops` gains the four methods). An index created with `RangeCounts` keeps
+  each numeric value's multiplicity next to its key in the ordered view, the total of each chunk and a Fenwick tree
+  over the totals (`sorted_chunks.go`, counted mode); `Nodes()` / `Rels()` / `Stats()` `RangeCardinality` on it is the
+  counts between the ends when both fall in one chunk, else two prefix sums, each O(log chunks) plus at most 512
+  per-value counts — independent of how many values or entries the range holds. **An index created without the
+  option is unchanged**: same structure (no counts, totals or tree; set-mode code untouched), same write cost, same
+  `RangeCardinality` walk over the range's distinct values — the existing contract, not a fallback. Where the door
+  does not answer it still returns `exact=false` with count 0. The option is fixed at creation and persists with the
+  definition: badger writes key `rc` in the property and relationship-property definitions only when set (plain
+  definitions stay byte-identical; a binary without the field skips it and loads the index plain), sharded passes it
+  to every slot, memory keeps it for the process; index DDL is not replicated, as before. Refused with
+  `ErrCapabilityNotSupported`, nothing created and the inventory epoch unmoved: tiered (it has no range count),
+  badger with `PropertyIndexOnDisk` (the counts need the RAM index), wrapper stores without the capability. Measured
+  (`BenchmarkPropertyIndexAddRemove`, 100,000 adds and removes over 1,000 values, three interleaved base/branch rounds
+  of three, load about 6.5; `tasks/evidence/cypher-round4/bench-r2-optin-interleaved.txt`): plain index base
+  23.8-26.1 ms (median 24.6), branch 23.8-25.6 ms (median 24.7), 9,500,6xx B and 22,048 allocs on both; with
+  `RangeCounts` 32.3-34.1 ms (median 33.0, +34 %, about 42 ns per add or remove; 8 B more per distinct value plus
+  8 B per chunk). `BenchmarkRangeCardinality` (100,000 entries, 0 allocs; plain = base): broad range over 100 values
+  plain 571-583 ns, counted 25 ns; 10,000 values 64 us -> 88 ns; 100,000 values 829-844 us -> 55 ns; narrow (5
+  values) 43-52 -> 18-29 ns. Tests: `TestRangeCardinality_PrefixSumsVsIteration` (counted index up to about 6,000
+  distinct values over several chunks; re-adds, moves, deletes, purge, drained chunks; counts, totals and prefix sums
+  checked against the buckets after every step), `TestCountedChunks_DrainedChunkBetweenFullNeighbours`,
+  `TestRangeCardinality_PlainIndexKeepsNoCounts` (a plain index never grows counts and answers like its counted
+  twin), `TestRangeCardinalityMatchesIteration` (plain and counted indexes on all four backends against iteration),
+  `TestPropertyIndexOptionsSurviveReopen` (badger and sharded directories), `TestPropertyIndexOptionsRefusedOnDiskIndex`,
+  `TestIdxDefRangeCountsWire`, `TestPropertyIndexOptionsForward`; mutants under `tasks/evidence/cypher-round4/`.
+
 - **Sharded `RelRangeCardinality`** (round 4): the sharded store sums its slots' relationship range counts (a
   relationship's row lives on its own slot only, so each is counted once), so `Rels().RangeCardinality` answers there
   as on memory and badger instead of declining. Tests: `TestShardedRelRangeCardinality` (store door: relationships on

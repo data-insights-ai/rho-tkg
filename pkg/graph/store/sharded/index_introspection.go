@@ -68,3 +68,26 @@ func (s *Store) HasRelPropertyIndex(relTypeToken uint16, propertyKey string) (bo
 	}
 	return s.anchor().HasRelPropertyIndex(relTypeToken, propertyKey)
 }
+
+// PropertyIndexOptions reads the options from the anchor shard (every shard
+// holds the same definition).
+func (s *Store) PropertyIndexOptions(labelToken uint16, propertyKey string) (storecontract.PropertyIndexOptions, bool, error) {
+	if err := s.checkOpen(); err != nil {
+		return storecontract.PropertyIndexOptions{}, false, err
+	}
+	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+		return storecontract.PropertyIndexOptions{}, false, err
+	}
+	return s.anchor().PropertyIndexOptions(labelToken, propertyKey)
+}
+
+// RelPropertyIndexOptions is the relationship mirror, from the anchor shard.
+func (s *Store) RelPropertyIndexOptions(relTypeToken uint16, propertyKey string) (storecontract.PropertyIndexOptions, bool, error) {
+	if err := s.checkOpen(); err != nil {
+		return storecontract.PropertyIndexOptions{}, false, err
+	}
+	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
+		return storecontract.PropertyIndexOptions{}, false, err
+	}
+	return s.anchor().RelPropertyIndexOptions(relTypeToken, propertyKey)
+}

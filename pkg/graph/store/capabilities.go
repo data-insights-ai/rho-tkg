@@ -845,6 +845,41 @@ type PropertyIndexCapability interface {
 	NodesByLabelAndProperty(labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error)
 }
 
+// PropertyIndexOptions configures a single-key property index (node or
+// relationship) at creation. The zero value is the index as it always was.
+type PropertyIndexOptions struct {
+	// RangeCounts (round 4 R2) keeps each numeric value's multiplicity and
+	// per-chunk prefix sums in the index's ordered view, so RangeCardinality
+	// answers with two prefix sums — O(log chunks) plus at most 512 per-value
+	// counts each, independent of the range's width — instead of walking the
+	// range's distinct values. Cost: about 35 ns more per index add or remove
+	// of a numeric value and 8 B per distinct value (plus 8 B per 512-1,024
+	// values). Off, writes and memory are exactly as without the option.
+	// Fixed at creation; persisted with the definition where definitions
+	// persist. Not available with badger's PropertyIndexOnDisk
+	// (ErrCapabilityNotSupported).
+	RangeCounts bool
+}
+
+// PropertyIndexOptionsCapability is OPTIONAL: creating a node property index
+// with PropertyIndexOptions, and reading back the options an index was
+// created with. A store without it creates only plain indexes; the graph
+// refuses non-zero options there with ErrCapabilityNotSupported instead of
+// dropping them.
+type PropertyIndexOptionsCapability interface {
+	CreatePropertyIndexWithOptions(labelToken uint16, propertyKey string, opts PropertyIndexOptions) error
+	// PropertyIndexOptions returns the options of the index on (labelToken,
+	// propertyKey), or ok=false when there is none.
+	PropertyIndexOptions(labelToken uint16, propertyKey string) (opts PropertyIndexOptions, ok bool, err error)
+}
+
+// RelPropertyIndexOptionsCapability is the relationship mirror of
+// PropertyIndexOptionsCapability.
+type RelPropertyIndexOptionsCapability interface {
+	CreateRelPropertyIndexWithOptions(relTypeToken uint16, propertyKey string, opts PropertyIndexOptions) error
+	RelPropertyIndexOptions(relTypeToken uint16, propertyKey string) (opts PropertyIndexOptions, ok bool, err error)
+}
+
 // RelPropertyIndexCapability is the relationship mirror of
 // PropertyIndexCapability (Node/Rel parity), keyed by rel-type token instead
 // of label token. OPTIONAL — a backend that has no use for accelerated

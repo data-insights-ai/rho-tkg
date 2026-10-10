@@ -174,6 +174,11 @@ func (pi *PropertyIndex) addOrdered(id snowflake.ID, vk string) {
 	if pi.numBuckets == nil {
 		pi.numBuckets = make(map[float64]map[snowflake.ID]struct{})
 	}
+	if pi.rangeCounts {
+		pi.addOrderedCounted(id, k)
+		pi.noteNumericPrecision(vk) // R1: flag >2^53 integers (float64 key collision)
+		return
+	}
 	bucket, exists := pi.numBuckets[k]
 	if !exists {
 		bucket = make(map[snowflake.ID]struct{})
@@ -182,6 +187,21 @@ func (pi *PropertyIndex) addOrdered(id snowflake.ID, vk string) {
 	}
 	bucket[id] = struct{}{}
 	pi.noteNumericPrecision(vk) // R1: flag >2^53 integers (float64 key collision)
+}
+
+// addOrderedCounted is addOrdered's bucket step for an index with range
+// counts: the key's multiplicity is its bucket's size, so it moves only when
+// id was not already in the bucket.
+func (pi *PropertyIndex) addOrderedCounted(id snowflake.ID, k float64) {
+	bucket, exists := pi.numBuckets[k]
+	if !exists {
+		bucket = make(map[snowflake.ID]struct{})
+		pi.numBuckets[k] = bucket
+	}
+	if _, present := bucket[id]; !present {
+		bucket[id] = struct{}{}
+		pi.numKeys.addCount(k, 1)
+	}
 }
 
 // removeOrdered removes id from vk's numeric bucket, if any.
@@ -197,10 +217,20 @@ func (pi *PropertyIndex) removeOrdered(id snowflake.ID, vk string) {
 	if !exists {
 		return
 	}
-	delete(bucket, id)
-	if len(bucket) == 0 {
-		delete(pi.numBuckets, k)
-		pi.numKeys.remove(k)
+	if pi.rangeCounts {
+		if _, present := bucket[id]; present {
+			delete(bucket, id)
+			pi.numKeys.addCount(k, -1) // drops the key with its last member
+		}
+		if len(bucket) == 0 {
+			delete(pi.numBuckets, k)
+		}
+	} else {
+		delete(bucket, id)
+		if len(bucket) == 0 {
+			delete(pi.numBuckets, k)
+			pi.numKeys.remove(k)
+		}
 	}
 	pi.noteNumericPrecisionRemoved(vk) // BACKLOG 16j: symmetric with addOrdered's noteNumericPrecision
 }
@@ -212,10 +242,18 @@ func (pi *PropertyIndex) purgeOrdered(id snowflake.ID) {
 		return
 	}
 	for k, bucket := range pi.numBuckets {
+		if pi.rangeCounts {
+			if _, present := bucket[id]; !present {
+				continue
+			}
+			pi.numKeys.addCount(k, -1)
+		}
 		delete(bucket, id)
 		if len(bucket) == 0 {
 			delete(pi.numBuckets, k)
-			pi.numKeys.remove(k)
+			if !pi.rangeCounts {
+				pi.numKeys.remove(k)
+			}
 		}
 	}
 }

@@ -27,6 +27,12 @@ import (
 // Phase 2 reads *types.Relationship rows (also frozen/immutable-once-cached,
 // same safety argument). Returns ErrIndexExists if the index already exists.
 func (ms *Store) CreateRelPropertyIndex(relTypeToken uint16, propertyKey string) error {
+	return ms.CreateRelPropertyIndexWithOptions(relTypeToken, propertyKey, storecontract.PropertyIndexOptions{})
+}
+
+// CreateRelPropertyIndexWithOptions is CreateRelPropertyIndex with
+// storecontract.PropertyIndexOptions (round 4 R2: RangeCounts).
+func (ms *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, propertyKey string, opts storecontract.PropertyIndexOptions) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -52,7 +58,7 @@ func (ms *Store) CreateRelPropertyIndex(relTypeToken uint16, propertyKey string)
 		ms.mu.Unlock()
 		return ErrIndexExists
 	}
-	liveIdx := indexpkg.NewPropertyIndex()
+	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts)
 	liveIdx.Mutated = make(map[snowflake.ID]struct{})
 	ms.relPropertyIndexes[key] = liveIdx
 	var rids []types.RelID

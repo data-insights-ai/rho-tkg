@@ -43,6 +43,13 @@ type PropertyIndex struct {
 	// and staying imprecise is the safe direction (falls back to the exact
 	// scan) rather than risking a wrong exact count.
 	numImpreciseCount int
+
+	// rangeCounts (round 4 R2, opt-in per index): the ordered numeric view
+	// keeps each value's multiplicity and per-chunk prefix sums (numKeys in
+	// counted mode), so RangeCardinality is two prefix sums instead of a walk
+	// over the range's distinct values. Fixed at creation. Off, the view and
+	// its write cost are exactly what they were before the option existed.
+	rangeCounts bool
 }
 
 // NewPropertyIndex creates an empty property index.
@@ -50,6 +57,19 @@ func NewPropertyIndex() *PropertyIndex {
 	return &PropertyIndex{
 		Entries: make(map[string]map[snowflake.ID]struct{}),
 	}
+}
+
+// NewPropertyIndexWith creates an empty property index; rangeCounts selects
+// the counted ordered view (see the rangeCounts field).
+func NewPropertyIndexWith(rangeCounts bool) *PropertyIndex {
+	pi := NewPropertyIndex()
+	pi.rangeCounts = rangeCounts
+	return pi
+}
+
+// RangeCounts reports whether the index was created with range counts.
+func (pi *PropertyIndex) RangeCounts() bool {
+	return pi != nil && pi.rangeCounts
 }
 
 // Add inserts a node ID into the index for the given property value.

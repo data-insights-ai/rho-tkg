@@ -95,15 +95,22 @@ func (pi *PropertyIndex) noteNumericPrecisionRemoved(vk string) {
 }
 
 // RangeCardinality returns the count of indexed nodes whose numeric value lies
-// in [min,max] (inclusivity per flags), summed directly from the ordered
-// bucket sizes — O(distinct values in range), NO node fetches. ok=false declines
-// (the caller scans) when the index holds an integer past 2^53 whose float64
-// sort key may collide. A NaN bound counts 0. The bounds must already capture
-// the WHOLE predicate and
-// the query must be non-temporal — the caller enforces that.
+// in [min,max] (inclusivity per flags), NO node fetches: on an index created
+// with range counts from two prefix sums over the per-value counts (O(log
+// chunks) plus at most 512 counts each, independent of the range's width),
+// otherwise summed from the ordered bucket sizes — O(distinct values in
+// range). ok=false declines (the caller scans) when the index holds an integer
+// past 2^53 whose float64 sort key may collide. A NaN bound counts 0. The
+// bounds must already capture the WHOLE predicate and the query must be
+// non-temporal — the caller enforces that.
 func (pi *PropertyIndex) RangeCardinality(min, max float64, inclMin, inclMax bool) (int64, bool) {
 	if pi == nil || pi.numImpreciseCount > 0 {
 		return 0, false
+	}
+	if pi.rangeCounts {
+		// Round 4 R2: two prefix sums over the per-value counts, O(log chunks)
+		// plus at most 512 counts each; a NaN bound counts 0 there too.
+		return pi.numKeys.countRange(min, max, inclMin, inclMax), true
 	}
 	if pi.numBuckets == nil || math.IsNaN(min) || math.IsNaN(max) {
 		// No numeric values, or a NaN bound (it compares false with every

@@ -1,0 +1,4 @@
+# mutant: a count change skips the prefix sums
+--- FAIL: TestRangeCardinality_PrefixSumsVsIteration (0.05s)
+    --- FAIL: TestRangeCardinality_PrefixSumsVsIteration/trial0 (0.01s)
+        property_index_prefixcount_test.go:134: chunk 1: prefix sum 1154, want 1877
