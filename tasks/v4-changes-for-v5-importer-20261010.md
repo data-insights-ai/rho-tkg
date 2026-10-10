@@ -17,7 +17,7 @@ belief at the pin), not by "current row" and not by raw `Get`/`History` order; t
 ## 2. Version numbering and stamps on appended rows (v4.46.0)
 
 - One allocator for every appended row: versions are unique and increase in write order per entity. Chains written by
-  v4.43–v4.45 can hold two rows with ONE version (a cascade row numbered `maxVersion+1` collided with the next Update's
+  v4.45 and earlier (since the append-only cascade 994df82, v4.9.0) can hold two rows with ONE version (a cascade row numbered `maxVersion+1` collided with the next Update's
   `current.Version()+1`, backlog 18) and rows with `TxTo < TxFrom` (cascade pieces copied the template's stamps, backlog 14).
   The read side tolerates both; the importer must not assume version uniqueness or `TxFrom ≤ TxTo` on OLD chains.
 - Appended rows carry no `TxTo` / `DeletedAt`. A cascade on a deleted entity is refused (`ErrEntityDeleted`).
@@ -25,7 +25,7 @@ belief at the pin), not by "current row" and not by raw `Get`/`History` order; t
   instants), and one `GraphTx`/Batch spans many instants: transaction boundaries cannot be recovered from `TxFrom`
   order (already in PLAN §9; the v4.44 `*WithTx` doors add caller-chosen instants).
 
-## 3. One-tick intervals are ordinary spans (v4.47.0)
+## 3. One-tick intervals are ordinary spans (v4.44.0)
 
 A row `[t, t+1)` is a normal one-millisecond span on every temporal door. No v4 writer has produced the old "eclipse"
 sentinel since commit 994df82 (2026-06-12); a store whose history starts after that date imports one-tick rows as
