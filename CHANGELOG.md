@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Performance
+
+- **Memory store: `Rels().ForEachAdjacentEndpointOrdinal` allocates nothing per call** (sigma-tkgd round 4 R3,
+  task record C4n: 0.11 GB of allocations in an expand profile). The door collected the adjacency's IDs, then its
+  rows, then the other endpoints' ordinals into three new slices per call, and took the read lock once per
+  relationship. It now reads the relationship rows and the other endpoints' ordinals under one read lock into a
+  pooled buffer of values (relationship ID, both ordinals, other endpoint), sorts it by relationship ID and calls
+  `fn` after releasing the lock; a call from inside `fn` takes its own buffer, and a buffer above 16,384 entries
+  is not pooled. Order, isolation and errors are unchanged; a store with declared segment types keeps the
+  segment-aware path. `BenchmarkAdjacentEndpointOrdinalCall/memory` (one call, two relationships): 83-84 ->
+  59-61 ns, 24 B / 2 allocs -> 0 B / 0 allocs; `BenchmarkAdjacentEndpointOrdinals/memory/ordinal-door` (20,000
+  calls, 36,000 relationships): 4.11-4.21 -> 3.34-3.47 ms, 56,001 -> 20,001 allocs (the remaining one per call is
+  the benchmark's own callback closure). Badger unchanged (112-113 ns, 2 allocs). Test:
+  `TestMemoryAdjacentEndpointOrdinalOrderNestingAllocs` (order over slice and hash adjacency sets, a nested call on
+  another node, 0 allocs per call outside -race); red run and mutants under `tasks/evidence/cypher-round4/`.
+
 ## [4.49.2] - 2026-10-10
 
 Patch release, two fixes to the retraction door shipped in 4.49.1 (found by the Opus review): a retraction row now

@@ -1,0 +1,6 @@
+# R3 mutant: one shared buffer instead of the pool
+--- FAIL: TestMemoryAdjacentEndpointOrdinalOrderNestingAllocs (0.00s)
+    memorystore_adjacent_ordinals_test.go:104: the outer call's sequence changed under a nested call
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.426s
+FAIL

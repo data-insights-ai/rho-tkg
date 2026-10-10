@@ -99,3 +99,51 @@ func BenchmarkAdjacentEndpointOrdinals(b *testing.B) {
 		})
 	}
 }
+
+// BenchmarkAdjacentEndpointOrdinalCall: one ForEachAdjacentEndpointOrdinal
+// call per op over a node with 2 outgoing KNOWS relationships, one callback
+// built outside the loop, so B/op and allocs/op are the door's own (round 4
+// R3: memory allocated three slices per call).
+func BenchmarkAdjacentEndpointOrdinalCall(b *testing.B) {
+	for _, backend := range []struct {
+		name string
+		cfg  graphpkg.Config
+	}{
+		{"memory", graphpkg.Config{SnowflakeNodeID: 0}},
+		{"badger", graphpkg.Config{SnowflakeNodeID: 0, BadgerInMemory: true}},
+	} {
+		b.Run(backend.name, func(b *testing.B) {
+			g, err := graphpkg.New(backend.cfg)
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer g.Close()
+			ctx := context.Background()
+			hub, err := g.Nodes().Add(ctx, []string{"P"}, nil)
+			if err != nil {
+				b.Fatal(err)
+			}
+			for range 2 {
+				n, err := g.Nodes().Add(ctx, []string{"P"}, nil)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if _, err := g.Rels().Add(ctx, "KNOWS", hub, n, nil); err != nil {
+					b.Fatal(err)
+				}
+			}
+			var seen int
+			fn := func(types.RelID, uint32, types.NodeID, uint32) bool { seen++; return true }
+			id := hub.ID()
+			b.ReportAllocs()
+			for b.Loop() {
+				if err := g.Rels().ForEachAdjacentEndpointOrdinal(id, "KNOWS", false, fn); err != nil {
+					b.Fatal(err)
+				}
+			}
+			if seen == 0 {
+				b.Fatal("no edges")
+			}
+		})
+	}
+}

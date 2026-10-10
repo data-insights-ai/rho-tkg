@@ -1,0 +1,6 @@
+# R3 mutant: no sort (emit in set order)
+--- FAIL: TestMemoryAdjacentEndpointOrdinalOrderNestingAllocs (0.00s)
+    memorystore_adjacent_ordinals_test.go:80: 799699486551967744 incoming=false type="": not in relationship-ID order
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.317s
+FAIL

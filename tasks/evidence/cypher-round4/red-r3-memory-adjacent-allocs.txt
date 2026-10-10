@@ -1,0 +1,6 @@
+# R3 red: new test against the base memory door (main 7d6e55ca)
+--- FAIL: TestMemoryAdjacentEndpointOrdinalOrderNestingAllocs (0.01s)
+    memorystore_adjacent_ordinals_test.go:115: 10 allocations per call, want 0
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.446s
+FAIL
