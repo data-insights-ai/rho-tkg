@@ -152,7 +152,7 @@ func (c *Core) precheckCallerTxOps(u callerTxUnit) error {
 		ids, err := c.nodeAdjacentRelIDs(d.id)
 		if err != nil {
 			if d.at != 0 {
-				return BatchError{Op: d.callerTxOpName(), ID: types.EntityID(d.id), Err: err}
+				return BatchError{Op: d.callerTxOpName(), ID: types.EntityID(d.id), Err: c.nodeEndMissingErr(d, err)}
 			}
 			continue // a plain delete fails on its own at apply
 		}
@@ -196,7 +196,7 @@ func (c *Core) precheckCallerTxOps(u callerTxUnit) error {
 			continue
 		}
 		refuse := func(err error) error {
-			return BatchError{Op: d.callerTxOpName(), ID: types.EntityID(d.id), Err: err}
+			return BatchError{Op: d.callerTxOpName(), ID: types.EntityID(d.id), Err: c.nodeEndMissingErr(d, err)}
 		}
 		if nodeTouched[d.id] > 1 || endpointOfCreate[d.id] {
 			return refuse(another("node", int64(d.id), d.at))
@@ -211,7 +211,7 @@ func (c *Core) precheckCallerTxOps(u callerTxUnit) error {
 		}
 	}
 
-	check := func(op string, id types.RelID, at types.Instant, run func(current *types.Relationship) error) error {
+	check := func(op string, id types.RelID, at types.Instant, retract bool, run func(current *types.Relationship) error) error {
 		refuse := func(err error) error { return BatchError{Op: op, ID: types.EntityID(id), Err: err} }
 		if relTouched[id] > 1 {
 			return refuse(another("relationship", int64(id), at))
@@ -220,6 +220,9 @@ func (c *Core) precheckCallerTxOps(u callerTxUnit) error {
 		defer c.entityLocks.UnlockEntity(id.SnowflakeID())
 		current, err := c.getCurrentRelationship(id)
 		if err != nil {
+			if retract {
+				err = c.retractMissingRelErr(id, err)
+			}
 			return refuse(err)
 		}
 		if err := run(current); err != nil {
@@ -232,7 +235,7 @@ func (c *Core) precheckCallerTxOps(u callerTxUnit) error {
 		if pu.update.temporal.txAt == 0 {
 			continue
 		}
-		if err := check("UpdateRelationshipWithTx", pu.id, pu.update.temporal.txAt, func(current *types.Relationship) error {
+		if err := check("UpdateRelationshipWithTx", pu.id, pu.update.temporal.txAt, false, func(current *types.Relationship) error {
 			return c.checkRelCallerUpdate(pu.id, current, pu.update.provenance, pu.update.temporal, pu.update.properties)
 		}); err != nil {
 			return err
@@ -243,13 +246,23 @@ func (c *Core) precheckCallerTxOps(u callerTxUnit) error {
 		if d.at == 0 {
 			continue // a plain RetractRelationship fails on its own at apply
 		}
-		if err := check(d.opName(), d.id, d.at, func(current *types.Relationship) error {
+		if err := check(d.opName(), d.id, d.at, d.retract, func(current *types.Relationship) error {
 			return c.checkRelCallerDelete(d.id, current, d.at)
 		}); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// nodeEndMissingErr is the pre-flight's refusal error for a queued node end
+// whose node has no current row: a retraction classifies it exactly as the
+// seam does (retractMissingNodeErr), a delete keeps the lookup's error.
+func (c *Core) nodeEndMissingErr(d pendingNodeDelete, err error) error {
+	if d.retract {
+		return c.retractMissingNodeErr(d.id, err)
+	}
+	return err
 }
 
 // precheckNodeCascade runs the seam's cascade refusals for a caller-instant

@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"time"
@@ -171,7 +172,14 @@ func (c *Core) endNode(ctx context.Context, id types.NodeID, txTo types.Instant,
 //	Phase A (node lock only): confirm node exists, read adjacency, collect all entity IDs.
 //	Phase B (all entities locked): re-read node + adjacency, verify adjacency unchanged, then mutate.
 //	If adjacency changed between phases, retry from Phase A.
-func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID, spec tombstoneSpec) ([]types.RelID, error) {
+func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID, spec tombstoneSpec) (_ []types.RelID, err error) {
+	if spec.retract {
+		defer func() {
+			if err != nil {
+				err = c.retractMissingNodeErr(id, err)
+			}
+		}()
+	}
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -311,6 +319,18 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID, spec tom
 
 	return nil, fmt.Errorf("graph: delete node %d: adjacency changed after %d retries (final attempt locked %d entities but observed %d under lock — concurrent relationship churn on this node; retry once writers settle)",
 		id, maxRetries, lastLockSet, lastObserved)
+}
+
+// retractMissingNodeErr is retractMissingRelErr for nodes: ErrNodeNotFound
+// for an ID that never existed, nodeDeletedErr (ErrEntityDeleted and
+// ErrNodeNotFound) for one deleted or retracted already; any other error
+// passes through. The node itself is the only node a cascade looks up, so a
+// not-found error of deleteNodeInternal is about it.
+func (c *Core) retractMissingNodeErr(id types.NodeID, err error) error {
+	if !errors.Is(err, storepkg.ErrNodeNotFound) || errors.Is(err, ErrEntityDeleted) {
+		return err
+	}
+	return c.cascadeMissingNodeErr(id)
 }
 
 // collectDeleteIDs builds a deduplicated slice of all entity IDs involved in a

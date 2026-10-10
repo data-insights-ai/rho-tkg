@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -111,6 +112,19 @@ func (c *Core) endRelationship(ctx context.Context, id types.RelID, txTo types.I
 	return err
 }
 
+// retractMissingRelErr classifies a retraction of a relationship without a
+// current row (backlog 43): ErrRelNotFound when the ID never existed,
+// relDeletedErr (ErrEntityDeleted and ErrRelNotFound) when it was deleted or
+// retracted already. A Delete's tombstone is never turned into a retraction:
+// the door refuses instead (fail closed; allowing it later is additive). err
+// is the current-row lookup's error; any other error passes through.
+func (c *Core) retractMissingRelErr(id types.RelID, err error) error {
+	if !errors.Is(err, storepkg.ErrRelNotFound) || errors.Is(err, ErrEntityDeleted) {
+		return err
+	}
+	return c.cascadeMissingRelErr(id)
+}
+
 // deleteRelationshipInternal is the lock-free implementation of the
 // relationship end doors (endRelationship and the GraphTx, Batch and ingest
 // twins). spec.at == 0 stamps the tombstone at deleteInstantForRelationship
@@ -138,6 +152,9 @@ func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID, s
 	// Read current state for tombstone.
 	current, err := c.getCurrentRelationship(id)
 	if err != nil {
+		if spec.retract {
+			return c.retractMissingRelErr(id, err)
+		}
 		return err
 	}
 	if err := checkCtx(ctx); err != nil {

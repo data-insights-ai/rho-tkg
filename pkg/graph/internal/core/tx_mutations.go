@@ -401,6 +401,9 @@ func (tx *GraphTx) deleteNodeAt(id types.NodeID, spec tombstoneSpec) error {
 	// Snapshot the node before deletion.
 	node, err := tx.g.getCurrentNode(id)
 	if err != nil {
+		if spec.retract {
+			return tx.g.retractMissingNodeErr(id, err)
+		}
 		return err
 	}
 	nodeCopy := node.DeepCopy()
@@ -498,6 +501,9 @@ func (tx *GraphTx) deleteRelationshipAtLocked(id types.RelID, spec tombstoneSpec
 	// Snapshot the relationship before deletion.
 	rel, err := tx.g.getCurrentRelationship(id)
 	if err != nil {
+		if spec.retract {
+			return tx.g.retractMissingRelErr(id, err)
+		}
 		return err
 	}
 	relCopy := rel.DeepCopy()
