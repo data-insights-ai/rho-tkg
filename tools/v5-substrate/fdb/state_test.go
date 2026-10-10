@@ -206,7 +206,7 @@ func TestWholeTransactionHistoryAndPagedFence(t *testing.T) {
 	}
 	mustSubmit(t, h, tx(c, "scope-round", 0, part(c, 0, 3)))
 	only := mustCut(t, h, []uint8{0}, nil)
-	if _, e = h.at(cut{certificate{c.Graph, c.Topology, c.Epochs, []uint8{0, 1}, only.record.Round}}, 1, nil); !errors.Is(e, errUnavailable) {
+	if _, e = h.at(cut{certificate{Graph: c.Graph, Topology: c.Topology, Epochs: c.Epochs, Scope: []uint8{0, 1}, Round: only.record.Round, Groups: only.record.Groups}}, 1, nil); !errors.Is(e, errUnavailable) {
 		t.Fatal("expanded certificate accepted", e)
 	}
 }
@@ -495,12 +495,123 @@ func TestNativeFenceRejectsInFlightHistoryBelowClosedCut(t *testing.T) {
 	exact(t, h, mustCut(t, h, []uint8{0, 1}, &o), modelAt([]whole{{delayed, o.Round}}, o.Round))
 }
 
+func nativeOwnerRows(t *testing.T, h *harness, group uint8) map[string][]byte {
+	t.Helper()
+	result, err := h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+		return tr.GetRange(prefixRange(h.prefix(group)), fdb.RangeOptions{Limit: 32}).GetSliceWithError()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nativeRows := result.([]fdb.KeyValue)
+	if len(nativeRows) >= 32 {
+		t.Fatal("whole-owner fixture snapshot hit its bounded row limit")
+	}
+	rows := map[string][]byte{}
+	for _, row := range nativeRows {
+		rows[string(row.Key)] = bytes.Clone(row.Value)
+	}
+	return rows
+}
+
+// Literal byte widths come from the independent max-width Go-JSON/key ledger.
+// Read actual stored native records, not just the admission helper's estimate.
+func assertNativeMaxWidthLedger(t *testing.T, h *harness, hasCut bool, groupBytes, outcomeBytes int, charged uint64) {
+	t.Helper()
+	rows := nativeOwnerRows(t, h, 0)
+	configBytes, metaBytes := 954, 97
+	if h.config.Limits.Bytes == 16384 {
+		configBytes = 955
+	}
+	if hasCut {
+		metaBytes = 98
+	}
+	expected := []struct {
+		kind                 string
+		keyBytes, valueBytes int
+	}{
+		{"meta/config", 277, configBytes}, {"meta/state", 275, metaBytes},
+		{"changes", 319, groupBytes}, {"current", 274, 69}, {"history", 291, 69},
+		{"request", 302, outcomeBytes}, {"id", 281, outcomeBytes},
+	}
+	if hasCut {
+		expected = append(expected, struct {
+			kind                 string
+			keyBytes, valueBytes int
+		}{"cut", 3884, 905})
+	}
+	if len(rows) != len(expected) {
+		t.Fatalf("native record inventory: got%d want%d", len(rows), len(expected))
+	}
+	for _, want := range expected {
+		found := 0
+		for key, encoded := range rows {
+			kind := key[len(h.prefix(0)):]
+			match := false
+			switch want.kind {
+			case "meta/config":
+				match = key == string(h.key(0, "meta", "config"))
+			case "meta/state":
+				match = key == string(h.key(0, "meta", "state"))
+			default:
+				match = len(kind) > len(want.kind) && kind[:len(want.kind)+1] == want.kind+"/"
+			}
+			if match {
+				found++
+				if len(key) != want.keyBytes || len(encoded) != want.valueBytes {
+					t.Fatalf("%s native bytes key=%d value=%d want%d/%d", want.kind, len(key), len(encoded), want.keyBytes, want.valueBytes)
+				}
+			}
+		}
+		if found != 1 {
+			t.Fatalf("%s record count%d", want.kind, found)
+		}
+	}
+	m, err := decode[metadata](rows[string(h.key(0, "meta", "state"))])
+	if err != nil || m.Bytes != charged {
+		t.Fatal("actual charged metadata", m, charged, err)
+	}
+}
+
+func TestMaximumEscapedGraphMinimumBudgetCutRefusalIsAtomic(t *testing.T) {
+	c := defaults()
+	//128 SOH bytes have the same maximum escaped width as the original128NUL
+	// fixture, but a distinct immutable graph/config namespace in one cluster.
+	c.Graph = string(bytes.Repeat([]byte{1}, 128))
+	c.Topology, c.Epochs = ^uint64(0), [2]uint64{^uint64(0), ^uint64(0)}
+	c.Limits.Bytes = 8192
+	h := fixture(t, c)
+	if h.metadataReservation(0) != 1733 {
+		t.Fatal("literal reserve", h.metadataReservation(0))
+	}
+	x := tx(c, "max-width", 0, part(c, 0, 0, effect{Key: "key", Value: -1}))
+	o := mustSubmit(t, h, x)
+	// SOH changes the payload digest: group1396 and outcome237 bytes differ
+	// from NUL's1401/242. The independently derived admission ledger is5208.
+	assertNativeMaxWidthLedger(t, h, false, 1396, 237, 5208)
+	before := [2]map[string][]byte{nativeOwnerRows(t, h, 0), nativeOwnerRows(t, h, 1)}
+	if _, err := h.fresh([]uint8{0, 1}, &o); !errors.Is(err, errLimit) {
+		t.Fatal("4789-byte certificate should exceed8192 budget", err)
+	}
+	after := [2]map[string][]byte{nativeOwnerRows(t, h, 0), nativeOwnerRows(t, h, 1)}
+	if !reflect.DeepEqual(after, before) {
+		t.Fatal("refused cut wrote metadata/certificate/history", before, after)
+	}
+	current, err := h.current()
+	if err != nil || !reflect.DeepEqual(current.Values, [2]map[string]value{{"key": {-1, 1, 1, false, "max-width"}}, {}}) {
+		t.Fatal("refused cut changed acknowledged state", current, err)
+	}
+	if recovered, err := h.recover(0, x.Request); err != nil || recovered != o {
+		t.Fatal("refused cut lost outcome", recovered, err)
+	}
+}
+
 func TestMetadataReservationMaximumWidthsAndCorruptQuotaCounters(t *testing.T) {
 	c := defaults()
 	c.Graph = string(make([]byte, 128))
 	c.Topology = ^uint64(0)
 	c.Epochs = [2]uint64{^uint64(0), ^uint64(0)}
-	c.Limits.Bytes = 8192
+	c.Limits.Bytes = 16384 // Format2 max-width submit+cut charges10013 bytes; leave overflow-test headroom.
 	h := fixture(t, c)
 	if h.metadataReservation(0) <= 1024 || h.metadataReservation(0) >= 8192 {
 		t.Fatal("escaped/worst-width reservation", h.metadataReservation(0))
@@ -528,7 +639,9 @@ func TestMetadataReservationMaximumWidthsAndCorruptQuotaCounters(t *testing.T) {
 	}
 	x := tx(c, "max-width", 0, part(c, 0, 0, effect{Key: "key", Value: -1}))
 	o := mustSubmit(t, h, x)
+	assertNativeMaxWidthLedger(t, h, false, 1401, 242, 5224)
 	old := mustCut(t, h, []uint8{0, 1}, &o)
+	assertNativeMaxWidthLedger(t, h, true, 1401, 242, 10013)
 	exact(t, h, old, modelAt([]whole{{x, o.Round}}, o.Round))
 	var saved metadata
 	_, e = h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) { var e error; saved, e = h.meta(tr, 0); return nil, e })

@@ -39,14 +39,28 @@ func main() {
 }
 
 func run() error {
-	if len(os.Args) != 2 || (os.Args[1] != "smoke" && !strings.HasPrefix(os.Args[1], "fault-")) {
-		return fmt.Errorf("usage: fdb-spike smoke")
+	if len(os.Args) != 2 || (os.Args[1] != "smoke" && os.Args[1] != "graph-smoke" && !strings.HasPrefix(os.Args[1], "fault-") && !strings.HasPrefix(os.Args[1], "graph-fault-")) {
+		return fmt.Errorf("usage: fdb-spike smoke|graph-smoke|fault-*|graph-fault-*")
 	}
 	db, err := openDB()
 	if err != nil {
 		return err
 	}
 	defer db.Close()
+	if os.Args[1] == "graph-smoke" {
+		graph := os.Getenv("FDB_GRAPH_FIXTURE")
+		if graph == "" {
+			graph = "graph-functional"
+		}
+		h, err := newHarness(db, graphConfig(graph))
+		if err != nil {
+			return err
+		}
+		return runGraphSmoke(h)
+	}
+	if strings.HasPrefix(os.Args[1], "graph-fault-") {
+		return runGraphFault(db, os.Args[1])
+	}
 	if strings.HasPrefix(os.Args[1], "fault-") {
 		return runFault(db, os.Args[1])
 	}

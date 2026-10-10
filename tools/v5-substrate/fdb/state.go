@@ -25,10 +25,12 @@ var (
 
 type limits struct{ Bytes, Transactions, Versions, Certificates uint64 }
 type config struct {
+	Format   uint8
 	Graph    string
 	Topology uint64
 	Epochs   [2]uint64
 	Limits   limits
+	Nodes    [2]uint64 `json:",omitzero"`
 }
 type read struct {
 	Key     string
@@ -52,6 +54,7 @@ type transaction struct {
 	Coordinator  uint8
 	Dependency   uint64
 	Participants []participant
+	GraphChange  *graphCommand `json:",omitempty"`
 }
 type value struct {
 	Value          int64
@@ -65,14 +68,16 @@ type outcome struct {
 	Digest              [32]byte
 	ID, Request, Reason string
 	Coordinator         uint8
+	Sequence            uint64
 }
-type metadata struct{ Floor, Generation, Versions, Transactions, Certificates, Bytes uint64 }
+type metadata struct{ Floor, Generation, Versions, Transactions, Certificates, Bytes, Groups uint64 }
 type certificate struct {
 	Graph    string
 	Topology uint64
 	Epochs   [2]uint64
 	Scope    []uint8
 	Round    uint64
+	Groups   [2]uint64
 }
 type cut struct{ record certificate }
 type snapshot struct {
@@ -85,7 +90,7 @@ type harness struct {
 }
 
 func defaults() config {
-	return config{"fixture", 1, [2]uint64{7, 11}, limits{4 << 20, 256, 4096, 256}}
+	return config{Format: 2, Graph: "fixture", Topology: 1, Epochs: [2]uint64{7, 11}, Limits: limits{4 << 20, 256, 4096, 256}}
 }
 func validName(s string) bool { return s != "" && len(s) <= 128 && utf8.ValidString(s) }
 func wire(v any) ([]byte, error) {
@@ -168,7 +173,7 @@ func (h *harness) meta(tr fdb.ReadTransaction, g uint8) (metadata, error) {
 	if e != nil {
 		return m, e
 	}
-	if !ok || m.Bytes < h.metadataReservation(g) || m.Bytes > h.config.Limits.Bytes || m.Versions > h.config.Limits.Versions || m.Transactions > h.config.Limits.Transactions || m.Certificates > h.config.Limits.Certificates {
+	if !ok || m.Bytes < h.metadataReservation(g) || m.Bytes > h.config.Limits.Bytes || m.Versions > h.config.Limits.Versions || m.Transactions > h.config.Limits.Transactions || m.Groups > m.Transactions || m.Certificates > h.config.Limits.Certificates {
 		return m, errInvalid
 	}
 	return m, nil
@@ -179,7 +184,7 @@ func (h *harness) meta(tr fdb.ReadTransaction, g uint8) (metadata, error) {
 // measured separately and is NOT bounded by this application admission quota.
 func (h *harness) metadataReservation(g uint8) uint64 {
 	b, _ := wire(h.config)
-	m, _ := wire(metadata{math.MaxUint64, math.MaxUint64, math.MaxUint64, math.MaxUint64, math.MaxUint64, math.MaxUint64})
+	m, _ := wire(metadata{Floor: math.MaxUint64, Generation: math.MaxUint64, Versions: math.MaxUint64, Transactions: math.MaxUint64, Certificates: math.MaxUint64, Bytes: math.MaxUint64, Groups: math.MaxUint64})
 	return uint64(len(h.key(g, "meta", "config")) + len(b) + len(h.key(g, "meta", "state")) + len(m))
 }
 func (h *harness) checkConfig(tr fdb.ReadTransaction, g uint8) error {
@@ -202,7 +207,7 @@ func put(tr fdb.Transaction, k fdb.Key, v any) error {
 }
 func newHarness(db fdb.Database, c config) (*harness, error) {
 	l := c.Limits
-	if !validName(c.Graph) || c.Topology == 0 || c.Epochs[0] == 0 || c.Epochs[1] == 0 || l.Bytes < 8192 || l.Bytes > 16<<20 || l.Transactions < 1 || l.Transactions > 1024 || l.Versions < 1 || l.Versions > 65536 || l.Certificates < 1 || l.Certificates > 1024 {
+	if c.Format != 2 || !validGraphConfig(c) || !validName(c.Graph) || c.Topology == 0 || c.Epochs[0] == 0 || c.Epochs[1] == 0 || l.Bytes < 8192 || l.Bytes > 16<<20 || l.Transactions < 1 || l.Transactions > 1024 || l.Versions < 1 || l.Versions > 65536 || l.Certificates < 1 || l.Certificates > 1024 {
 		return nil, errInvalid
 	}
 	h := &harness{db, c}
@@ -267,7 +272,7 @@ func (h *harness) validate(x transaction) error {
 	if !found {
 		return errInvalid
 	}
-	return nil
+	return h.validateGraphShape(x)
 }
 func (h *harness) submit(x transaction) (outcome, error) {
 	if h == nil {
@@ -310,6 +315,18 @@ func (h *harness) execute(tr fdb.Transaction, x transaction, digest [32]byte) (o
 	if ok {
 		if old.Digest != digest || old.ID != x.ID || !idOK || binding != old {
 			return outcome{}, errMismatch
+		}
+		if old.Commit {
+			group, exists, e := get[changeGroup](tr, h.changeKey(old.Coordinator, old.Sequence, old.Request))
+			if e != nil {
+				return outcome{}, e
+			}
+			if !exists {
+				return outcome{}, errUnavailable
+			}
+			if e = h.validateChange(group); e != nil || group.Outcome != old {
+				return outcome{}, errors.Join(errMismatch, e)
+			}
 		}
 		return old, nil
 	}
@@ -362,12 +379,22 @@ func (h *harness) execute(tr fdb.Transaction, x transaction, digest [32]byte) (o
 	if ms[x.Coordinator].Transactions >= h.config.Limits.Transactions {
 		return outcome{}, errLimit
 	}
+	if x.GraphChange != nil {
+		graphReason, e := h.checkGraphNative(tr, x)
+		if e != nil {
+			return outcome{}, e
+		}
+		if graphReason != "" {
+			reason = graphReason
+		}
+	}
 	o := outcome{Commit: reason == "", Digest: digest, ID: x.ID, Request: x.Request, Reason: reason, Coordinator: x.Coordinator}
 	if o.Commit {
 		if floor == math.MaxUint64 {
 			return outcome{}, errLimit
 		}
 		o.Round = floor + 1
+		o.Sequence = ms[x.Coordinator].Groups + 1
 		for _, p := range x.Participants {
 			m := ms[p.Group]
 			if uint64(len(p.Effects)) > h.config.Limits.Versions-m.Versions || len(p.Effects) > 0 && m.Generation == math.MaxUint64 {
@@ -408,6 +435,27 @@ func (h *harness) execute(tr fdb.Transaction, x transaction, digest [32]byte) (o
 		return nil
 	}
 	if o.Commit {
+		group := changeGroup{Tx: x, Outcome: o}
+		for _, p := range x.Participants {
+			for _, f := range p.Effects {
+				prev := current[p.Group][f.Key]
+				after := value{f.Value, prev.Version + 1, o.Round, f.Delete, x.ID}
+				var before *value
+				if prev.Version != 0 {
+					before = new(prev)
+				}
+				group.Writes = append(group.Writes, changedValue{p.Group, f.Key, before, after})
+			}
+		}
+		if e = h.validateChange(group); e != nil {
+			return outcome{}, e
+		}
+		if e = account(x.Coordinator, h.changeKey(x.Coordinator, o.Sequence, x.Request), group, nil, false); e != nil {
+			return outcome{}, e
+		}
+		m := ms[x.Coordinator]
+		m.Groups++
+		ms[x.Coordinator] = m
 		for _, p := range x.Participants {
 			g := p.Group
 			for _, f := range p.Effects {
@@ -476,6 +524,17 @@ func (h *harness) fresh(scope []uint8, after *outcome) (cut, error) {
 	result, e := h.db.Transact(func(tr fdb.Transaction) (any, error) {
 		round := uint64(1)
 		ms := [2]metadata{}
+		var groups [2]uint64
+		for g := uint8(0); g < 2; g++ {
+			if e := h.checkConfig(tr, g); e != nil {
+				return nil, e
+			}
+			m, e := h.meta(tr, g)
+			if e != nil {
+				return nil, e
+			}
+			groups[g] = m.Groups
+		}
 		if after != nil {
 			if !after.Commit || after.Coordinator > 1 {
 				return nil, errInvalid
@@ -500,7 +559,7 @@ func (h *harness) fresh(scope []uint8, after *outcome) (cut, error) {
 			ms[g] = m
 			round = max(round, m.Floor)
 		}
-		cert := certificate{h.config.Graph, h.config.Topology, h.config.Epochs, scope, round}
+		cert := certificate{Graph: h.config.Graph, Topology: h.config.Topology, Epochs: h.config.Epochs, Scope: scope, Round: round, Groups: groups}
 		b, e := wire(cert)
 		if e != nil {
 			return nil, e
@@ -540,7 +599,7 @@ func (h *harness) fresh(scope []uint8, after *outcome) (cut, error) {
 	return result.(cut), nil
 }
 func sameCertificate(a, b certificate) bool {
-	return a.Graph == b.Graph && a.Topology == b.Topology && a.Epochs == b.Epochs && a.Round == b.Round && slices.Equal(a.Scope, b.Scope)
+	return a.Graph == b.Graph && a.Topology == b.Topology && a.Epochs == b.Epochs && a.Round == b.Round && a.Groups == b.Groups && slices.Equal(a.Scope, b.Scope)
 }
 func (h *harness) verifyCut(tr fdb.ReadTransaction, c cut) error {
 	r := c.record

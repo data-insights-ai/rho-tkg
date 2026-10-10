@@ -195,5 +195,126 @@
     "https://raw.githubusercontent.com/apple/foundationdb/3ea44ce1d9003ad095e408039e1f755c319c4dfb/LICENSE",
     "https://raw.githubusercontent.com/apple/foundationdb/3ea44ce1d9003ad095e408039e1f755c319c4dfb/bindings/go/src/fdb/transaction.go",
     "https://raw.githubusercontent.com/apple/foundationdb/3ea44ce1d9003ad095e408039e1f755c319c4dfb/documentation/sphinx/source/known-limitations.rst"
-  ]
+  ],
+  "graph_extension": {
+    "date": "2026-10-10",
+    "status": "bounded-fixed-graph-native-unit-and-static-validation",
+    "engine_selected": false,
+    "phase_complete": false,
+    "scope": "Declared graph-qualified node IDs/LifeIDs, one cross-owner edge with both postings, retained exact-state reads and complete transaction CDC. Independent literal sequential oracle, not general concurrent serializability.",
+    "current_validation_source_sha256": {
+      "graph_fault.go": "de7fc82a0e619f69181c49d5024c4969ae66c3e1c77a472de84be2caa009e605",
+      "graph_run.go": "966782e1ebb9c631596f5c98ddc42f54f3a79c2fc0aec5384cfdccc12b97f3fb",
+      "go.mod": "15d92f0904b97b3fec0e0b23427994a095963da9b4afde3c20a32573e4e4672f",
+      "changes.go": "1348141cf3a0d9b433daeecda2b45bbea71cb65e080bc581297011504e3b1022",
+      "graph_oracle.go": "7a27850683ab0ea01160470a9a2be315ba31797fcb8ddf624741fdb3a99d613e",
+      "Dockerfile": "9c5ab44af96390894f1b9921acf20ce53f26b12c60df544427f0d6eb1aa16aa3",
+      "Makefile": "93bdd5d497bb7135817163a3a9c5c53dd025560024edf565acf806406245cf5c",
+      "check-static.sh": "cf592af1d053f8a15fd226b6d60645c2b12aa1e150eb02b39e5ed179017b431e",
+      "go.sum": "26bcf694e1b27910d09b654fcb3a852970358127d82581474e47c9afaba96618",
+      "graph_slice_test.go": "4b56553aa137e8a2b0519046f98de186d5c11df84d198559d580e87a9de3626a",
+      "README.md": "c91d7d9ece25cd6d8acad4a6a5e00affda7dc134ae7a22273cf011940728b424",
+      "fault_contract_test.go": "459e6d8c10ccc9a3eebd4002c437d45f45162d7a48c62fca6455ad0ae350bbb7",
+      ".dockerignore": "0d400629c8094c064d97fcf683dd29ac5b62856c38d2f3dc67ef67329b80ddda",
+      ".gitignore": "defc758c6720f3e63dbe47182a9c485a47eeed2999b3903f8dbfbdca4c906499",
+      "state_test.go": "5e09bc4e5e29306595681063c063c3a244b521db187d456c6b0396b32444df57",
+      "run-local.sh": "f592c70e5292f2330a19d744d98ee01073db2a16d4171d7e1f8b6e030f4f2f77",
+      "fault.go": "b849ee70161dd36099154e762023350f2c3b055fd238aac750372c8fcd3d1d3e",
+      "state.go": "01baf627ffe76256b78b285ab9148275e7d48315ecb9be7aac8a00656a9c6d41",
+      "graph_slice.go": "43c342c392d779c49fcd984ac87d3554de29569b23e946f8f37d075c6162145b",
+      "main.go": "c1ffd98e662c56a2734780afd5b631977d1699a5e987e7240b73d434655ae1a0",
+      "evidence/functional-20261009.json": "c8ed1a3c2a5c9143ca8a60d9c4765fd52240edbfe629b13ea49ff439f5b143e1"
+    },
+    "native_runtime": {
+      "foundationdb": "7.3.77",
+      "go_binding_api": 730,
+      "go": "1.26.9 linux/arm64",
+      "image": "golang@sha256:0275e2ab63da9ae2f4f714b2c5a20544b2470d1867919633ebb8d4a8a3d8e6e0",
+      "server_asset_sha256": "2991a4d6676a57fc6905728e2a7d4c69acad3b8c8f03393e038680f67ec48832",
+      "physical_hosts": 1,
+      "localities": 4,
+      "independent_physical_fault_domains": false,
+      "native_fdb_container_image_used": false
+    },
+    "checks": {
+      "build": "pass",
+      "vet": "pass",
+      "race": "pass",
+      "native_tests_passed": 27,
+      "native_tests_failed": 0,
+      "coverage": {
+        "covered": 1102,
+        "statements": 1311
+      },
+      "file_coverage": {
+        "changes.go": {
+          "covered": 77,
+          "statements": 92,
+          "percent": 83.69565217391305
+        },
+        "fault.go": {
+          "covered": 85,
+          "statements": 134,
+          "percent": 63.43283582089552
+        },
+        "graph_fault.go": {
+          "covered": 151,
+          "statements": 181,
+          "percent": 83.42541436464089
+        },
+        "graph_oracle.go": {
+          "covered": 91,
+          "statements": 94,
+          "percent": 96.80851063829788
+        },
+        "graph_run.go": {
+          "covered": 60,
+          "statements": 71,
+          "percent": 84.50704225352112
+        },
+        "graph_slice.go": {
+          "covered": 215,
+          "statements": 253,
+          "percent": 84.9802371541502
+        },
+        "main.go": {
+          "covered": 46,
+          "statements": 56,
+          "percent": 82.14285714285714
+        },
+        "state.go": {
+          "covered": 377,
+          "statements": 430,
+          "percent": 87.67441860465117
+        }
+      },
+      "new_exported_production_methods": 0,
+      "lint": "pass v2.13.2",
+      "gosec": "pass v2.29.0",
+      "govulncheck": "pass v1.7.0; native runtime excluded"
+    },
+    "artifacts_sha256": {
+      "native_terminal_receipt": "8310a456b5cb60b07bce76377e5a3500c6c02c6ae7a989952f8113aaca717061",
+      "native_raw_manifest": "1a0b0d5bdeac857b0265f6dc52e5239f6ce8c829b525fd7bc8501141822552c7",
+      "native_unit_stdout": "4336e0f8649379297e1741573a488f64511bd2267c4039709238026738940040",
+      "native_statement_coverage": "abdca464e31178378f55a9e9273f82a089e39746df503cd56dd8ff5f19094c34",
+      "static_terminal_receipt": "d81c202280ee98ed623274baba1b695353c9f3f4032573bd1fdb7f3779ad947f",
+      "static_raw_manifest": "0b39905e665da41d28092b73ce39f0d7f860c2d1b8b229b226f14d44b254e4b7"
+    },
+    "graph_process_fault_evidence": {
+      "source_manifest_sha256": "ab0c66f8f7ecf5bc19947ed32bd765dbc866d8e39eb21cda414baa726220a65f",
+      "terminal_receipt_sha256": "dd7d3f748ff8b0cc7be5d5766d20f2b2804112249527f454f73ac16117706a9f",
+      "raw_manifest_sha256": "45a85bd4390955d1b8dc0232b1cfdcb46375459780b893247a7ac75ce6299335",
+      "checks": "Actual client SIGKILL before native Commit, after Commit/before reply; all four server IDs stopped before same-ID/data restart; exact graph/history/CDC verified.",
+      "current_source_fault_suite_rerun": false
+    },
+    "limits": [
+      "All published source hashes bind their stated snapshots; current README prose is a documentation-only successor to tested source.",
+      "Existing scalar fault.go coverage remains below80%; no exclusions used.",
+      "Four same-host containers do not prove independent-machine, power-loss or network-fault durability.",
+      "Request/TxID bindings remain coordinator scoped; no allocator, global routing, ownership transfer or retention-pin/GC integration.",
+      "Small literal sequential histories do not establish general V2 real-time/concurrent serializability.",
+      "Complete comparable storage/replica/client/shared-VM/cache/logical cost attribution remains unavailable; no performance or engine-selection verdict."
+    ]
+  }
 }
