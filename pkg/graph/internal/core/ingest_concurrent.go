@@ -73,6 +73,7 @@ func (c *Core) applyIngestGroupConcurrent(g *ingestGroup, lane uint16) error {
 	defer c.notePastDatedWrite(pendingPastDated(g.nodes, g.rels))
 	defer c.notePastDatedWrite(pendingNodeCallerTx(g.nodeUpdates, g.nodeDeletes))
 	defer c.notePastDatedWrite(relCallerPastDated(g.relUpdates, g.relDeletes))
+	defer c.notePastDatedWrite(cascadeCallerPastDated(g.nodeCascades, g.relCascades))
 
 	var refused error
 	ep, closeErr := c.runUnderRLockShard(uint(lane), func() {
@@ -432,15 +433,15 @@ func (c *Core) applyConcurrentUpdatesAndDeletes(
 	}
 
 	for _, pc := range g.nodeCascades {
-		if _, err := c.cascadeNodeVersionInterval(ctx, pc.id, pc.validFrom, pc.validTo, pc.props); err != nil {
-			fail("SetNodeVersionInterval", types.EntityID(pc.id), err)
+		if _, err := c.cascadeNodeVersionInterval(ctx, pc.id, pc.validFrom, pc.validTo, pc.props, pc.at); err != nil {
+			fail(cascadeOpName("Node", pc.at), types.EntityID(pc.id), err)
 		} else {
 			emit(eventspkg.EventNodeUpdate, types.EntityID(pc.id), c.now(), eventspkg.PriorityNormal)
 		}
 	}
 	for _, pc := range g.relCascades {
-		if _, err := c.cascadeRelVersionInterval(ctx, pc.id, pc.validFrom, pc.validTo, pc.props); err != nil {
-			fail("SetRelVersionInterval", types.EntityID(pc.id), err)
+		if _, err := c.cascadeRelVersionInterval(ctx, pc.id, pc.validFrom, pc.validTo, pc.props, pc.at); err != nil {
+			fail(cascadeOpName("Rel", pc.at), types.EntityID(pc.id), err)
 		} else {
 			emit(eventspkg.EventRelUpdate, types.EntityID(pc.id), c.now(), eventspkg.PriorityNormal)
 		}

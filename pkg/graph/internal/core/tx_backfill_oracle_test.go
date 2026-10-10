@@ -21,7 +21,8 @@ import (
 //
 // A seeded random sequence interleaves plain creates, AddWithTx backfills,
 // Update, Delete, CloseVersion, SetVersionInterval and label changes with the
-// caller-instant doors — node and relationship DeleteWithTx / UpdateWithTx,
+// caller-instant doors — node and relationship DeleteWithTx / UpdateWithTx and
+// SetVersionIntervalWithTx (tx_backfill_oracle_interval_test.go),
 // each through a randomly chosen door (standalone, GraphTx, Batch, ingest
 // strong, ingest concurrent) — on memory, badger (in-memory), sharded and
 // tiered (anchor "Ref" on the reference shard, so relationships to it cross
@@ -418,7 +419,7 @@ func txbTombstoneNode(o *txbOracle, id types.NodeID, v uint32) types.TemporalMet
 
 func (o *txbOracle) callerOp() {
 	fam := o.rng.IntN(5)
-	switch o.rng.IntN(6) {
+	switch o.rng.IntN(8) {
 	case 0:
 		o.nodeCallerDelete(fam)
 	case 1:
@@ -429,8 +430,12 @@ func (o *txbOracle) callerOp() {
 		o.relCallerUpdate(fam)
 	case 4:
 		o.nodeRetract(fam, o.rng.IntN(4) != 0)
-	default:
+	case 5:
 		o.relRetract(fam, o.rng.IntN(4) != 0)
+	case 6:
+		o.nodeCallerInterval(fam) // tx_backfill_oracle_interval_test.go
+	default:
+		o.relCallerInterval(fam)
 	}
 }
 
@@ -1147,7 +1152,7 @@ func TestTxBackfillOracle_CrossBackend(t *testing.T) {
 	// Coverage of the generator itself: every door family accepted at least
 	// one op of each kind, and refusals happened.
 	for _, f := range txbNodeFamilies() {
-		for _, k := range []string{"/node-delete", "/node-update", "/rel-delete", "/rel-update"} {
+		for _, k := range []string{"/node-delete", "/node-update", "/rel-delete", "/rel-update", "/node-interval", "/rel-interval"} {
 			if accepted[f.name+k] == 0 {
 				t.Errorf("generator never accepted %s%s over %d seeds", f.name, k, seeds)
 			}

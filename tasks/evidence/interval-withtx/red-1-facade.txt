@@ -1,0 +1,12 @@
+# RED facade — temporal.API stubs forward to the plain ops, core doors stubbed. go test ./pkg/graph/temporal/ -run IntervalWithTx -count=1 -v; go test ./pkg/graph/ -run TestIntervalWithTx_PublicDoors -count=1 -v. NilReceivers passes on the stub (guard: the stub keeps the ready() check).
+# Top-level results:
+--- PASS: TestAPIIntervalWithTxNilReceivers (0.00s)
+--- FAIL: TestAPIIntervalWithTxForwardsInstantVerbatim (0.00s)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal	0.003s
+--- FAIL: TestIntervalWithTx_PublicDoors (0.43s)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.463s
+# Subtests: 40 FAIL, 0 PASS
+# Failure messages (deduplicated, instants -> N, count):
+     20 interval_withtx_doors_test.go:216: node gate off err = <nil>; want graph.ErrTxBackfillDisabled
+     20 interval_withtx_doors_test.go:157: t = TxFrom err = <nil>; want graph.ErrTxOrder wrapping graph.ErrInvalidTxFrom
+      1 api_interval_withtx_test.go:58: min: node forwarded calls=[SetNodeVersionInterval] {id:0 vf:0 vt:0 props:map[] tx:0}; want [SetNodeVersionIntervalWithTx] {id:42 vf:1000 vt:2000 props:map[gone:<nil> w:2] tx:1}

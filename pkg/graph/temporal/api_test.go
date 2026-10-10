@@ -237,6 +237,7 @@ type temporalOpsSpy struct {
 	lastRelType string
 	lastKey     string
 	lastPin     types.Instant
+	lastIv      ivCall
 
 	nodeSegs []NodeSegment
 	relSegs  []RelSegment
@@ -418,6 +419,18 @@ func (s *temporalOpsSpy) SetNodeVersionInterval(ctx context.Context, id types.No
 
 func (s *temporalOpsSpy) SetRelVersionInterval(ctx context.Context, id types.RelID, validFrom, validTo types.Instant, props map[string]any) (*types.Relationship, error) {
 	s.record("SetRelVersionInterval")
+	return nil, s.err
+}
+
+func (s *temporalOpsSpy) SetNodeVersionIntervalWithTx(ctx context.Context, id types.NodeID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant) (*types.Node, error) {
+	s.record("SetNodeVersionIntervalWithTx")
+	s.lastIv = ivCall{id: int64(id), vf: validFrom, vt: validTo, props: props, tx: txFrom}
+	return nil, s.err
+}
+
+func (s *temporalOpsSpy) SetRelVersionIntervalWithTx(ctx context.Context, id types.RelID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant) (*types.Relationship, error) {
+	s.record("SetRelVersionIntervalWithTx")
+	s.lastIv = ivCall{id: int64(id), vf: validFrom, vt: validTo, props: props, tx: txFrom}
 	return nil, s.err
 }
 

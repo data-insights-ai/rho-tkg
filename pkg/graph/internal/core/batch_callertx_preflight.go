@@ -9,7 +9,8 @@ import (
 
 // The whole-unit pre-flight of a Batch or ingest group that carries
 // caller-instant ops — node and relationship alike (DeleteNodeWithTx,
-// UpdateNodeWithTx, DeleteRelationshipWithTx, UpdateRelationshipWithTx). One
+// UpdateNodeWithTx, DeleteRelationshipWithTx, UpdateRelationshipWithTx,
+// SetNodeVersionIntervalWithTx, SetRelVersionIntervalWithTx). One
 // pre-flight for both kinds, because they interact: a node delete at t
 // tombstones every relationship of the node at t, so a caller-instant op on
 // one of those relationships, or a plain one, in the same unit is an op on the
@@ -62,6 +63,16 @@ func (u callerTxUnit) hasCallerTx() bool {
 			return true
 		}
 	}
+	for i := range u.nodeCascades {
+		if u.nodeCascades[i].at != 0 {
+			return true
+		}
+	}
+	for i := range u.relCascades {
+		if u.relCascades[i].at != 0 {
+			return true
+		}
+	}
 	return false
 }
 
@@ -103,7 +114,9 @@ func (c *Core) nodeAdjacentRelIDs(id types.NodeID) ([]types.RelID, error) {
 //   - the entity exists and the seam's own refusals pass, under the entity
 //     locks the seam takes: checkNodeCallerUpdate, checkNodeCascadeCallerTx
 //     (the node and every cascaded relationship), checkRelCallerUpdate,
-//     checkRelCallerDelete.
+//     checkRelCallerDelete, and for the valid-time corrections
+//     checkNodeCallerCascade / checkRelCallerCascade (a hard-deleted entity:
+//     ErrEntityDeleted; the order rule over the whole chain).
 //
 // Under Batch.Execute's exclusive lock nothing lands between this check and
 // the write. The concurrent ingest mode runs under the shared lock: a racing
@@ -203,6 +216,37 @@ func (c *Core) precheckCallerTxOps(u callerTxUnit) error {
 			}
 		}
 		if err := c.precheckNodeCascade(d.id, cascaded[d.id], d.at); err != nil {
+			return refuse(err)
+		}
+	}
+
+	for i := range u.nodeCascades {
+		pc := &u.nodeCascades[i]
+		if pc.at == 0 {
+			continue
+		}
+		refuse := func(err error) error {
+			return BatchError{Op: "SetNodeVersionIntervalWithTx", ID: types.EntityID(pc.id), Err: err}
+		}
+		if nodeTouched[pc.id] > 1 {
+			return refuse(another("node", int64(pc.id), pc.at))
+		}
+		if err := c.checkNodeCallerCascade(pc.id, pc.at); err != nil {
+			return refuse(err)
+		}
+	}
+	for i := range u.relCascades {
+		pc := &u.relCascades[i]
+		if pc.at == 0 {
+			continue
+		}
+		refuse := func(err error) error {
+			return BatchError{Op: "SetRelVersionIntervalWithTx", ID: types.EntityID(pc.id), Err: err}
+		}
+		if relTouched[pc.id] > 1 {
+			return refuse(another("relationship", int64(pc.id), pc.at))
+		}
+		if err := c.checkRelCallerCascade(pc.id, pc.at); err != nil {
 			return refuse(err)
 		}
 	}

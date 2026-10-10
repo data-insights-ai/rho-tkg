@@ -1,0 +1,12 @@
+# RED oracle — new op kinds against the stubs. TXB_ORACLE_SEEDS=6 go test ./pkg/graph/internal/core/ -run TestTxBackfillOracle_CrossBackend -short -count=1
+# Top-level results:
+--- FAIL: TestTxBackfillOracle_CrossBackend (0.00s)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.006s
+# Subtests: 6 FAIL, 0 PASS
+# Failure messages (deduplicated, instants -> N, count):
+      1 tx_backfill_oracle_interval_test.go:136: [memory] ingest_sync/SetRelVersionIntervalWithTx(N,[4887,0),t=N): appended v1 tx=N..0 upd=N del=0; want TxFrom = UpdatedAt = t = N, no retraction
+      1 tx_backfill_oracle_interval_test.go:136: [memory] ingest_concurrent/SetRelVersionIntervalWithTx(N,[2781,0),t=N): appended v1 tx=N..0 upd=N del=0; want TxFrom = UpdatedAt = t = N, no retraction
+      1 tx_backfill_oracle_interval_test.go:136: [memory] batch/SetRelVersionIntervalWithTx(N,[3109,0),t=N): appended v1 tx=N..0 upd=N del=0; want TxFrom = UpdatedAt = t = N, no retraction
+      1 tx_backfill_oracle_interval_test.go:127: [memory] standalone/SetRelVersionIntervalWithTx(N,[2908,0),t=N): err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+      1 tx_backfill_oracle_interval_test.go:103: [memory] ingest_sync/SetNodeVersionIntervalWithTx(N,[1642,2466),t=N): appended v1 tx=N..0 upd=N del=0; want TxFrom = UpdatedAt = t = N, no retraction
+      1 tx_backfill_oracle_interval_test.go:103: [memory] graphtx/SetNodeVersionIntervalWithTx(N,[1299,0),t=N): appended v1 tx=N..0 upd=N del=0; want TxFrom = UpdatedAt = t = N, no retraction

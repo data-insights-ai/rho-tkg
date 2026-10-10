@@ -1350,7 +1350,7 @@ func (t *TempOps) SetNodeVersionInterval(ctx context.Context, id types.NodeID, v
 		opErr  error
 	)
 	_, closeErr := c.runUnderRLock(func() {
-		result, opErr = c.cascadeNodeVersionInterval(ctx, id, validFrom, validTo, props)
+		result, opErr = c.cascadeNodeVersionInterval(ctx, id, validFrom, validTo, props, 0)
 	})
 	if closeErr != nil {
 		return nil, closeErr
@@ -1372,7 +1372,7 @@ func (t *TempOps) SetRelVersionInterval(ctx context.Context, id types.RelID, val
 		opErr  error
 	)
 	_, closeErr := c.runUnderRLock(func() {
-		result, opErr = c.cascadeRelVersionInterval(ctx, id, validFrom, validTo, props)
+		result, opErr = c.cascadeRelVersionInterval(ctx, id, validFrom, validTo, props, 0)
 	})
 	if closeErr != nil {
 		return nil, closeErr

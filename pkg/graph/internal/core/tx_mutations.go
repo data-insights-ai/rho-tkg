@@ -298,17 +298,21 @@ func (tx *GraphTx) UpdateRelationship(id types.RelID, updates map[string]any) (*
 }
 
 // SetNodeVersionInterval runs the full cascade timeline edit inside the
-// transaction. The cascade reads + writes multiple history rows under the
-// entity lock. Rollback support is partial: the tx snapshot captures the
-// current row (restored on rollback), but per-version history-row edits
-// made by the cascade are NOT undone. Callers that need full rollback for
-// cascades should run the cascade OUTSIDE the tx.
+// transaction. The cascade appends rows under the entity lock; the tx snapshot
+// captures the current row and its history before the first write, so
+// Rollback removes the appended rows and restores the current slot.
 func (tx *GraphTx) SetNodeVersionInterval(id types.NodeID, validFrom, validTo types.Instant, props map[string]any) (*types.Node, error) {
 	if err := tx.lockActiveCoreWrite(); err != nil {
 		return nil, err
 	}
 	defer tx.unlockActiveCoreWrite()
+	return tx.setNodeVersionIntervalLocked(id, validFrom, validTo, props, 0)
+}
 
+// setNodeVersionIntervalLocked is the body of SetNodeVersionInterval and
+// SetNodeVersionIntervalWithTx (at = 0: the clock; else the gated caller
+// instant). The caller holds the active-core write lock.
+func (tx *GraphTx) setNodeVersionIntervalLocked(id types.NodeID, validFrom, validTo types.Instant, props map[string]any, at types.Instant) (*types.Node, error) {
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
 	}
@@ -319,7 +323,7 @@ func (tx *GraphTx) SetNodeVersionInterval(id types.NodeID, validFrom, validTo ty
 		return nil, err
 	}
 
-	n, err := tx.g.cascadeNodeVersionInterval(tx.doorCtx(), id, validFrom, validTo, props)
+	n, err := tx.g.cascadeNodeVersionInterval(tx.doorCtx(), id, validFrom, validTo, props, at)
 	if err == nil && n != nil {
 		tx.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
 	}
@@ -332,7 +336,11 @@ func (tx *GraphTx) SetRelVersionInterval(id types.RelID, validFrom, validTo type
 		return nil, err
 	}
 	defer tx.unlockActiveCoreWrite()
+	return tx.setRelVersionIntervalLocked(id, validFrom, validTo, props, 0)
+}
 
+// setRelVersionIntervalLocked mirrors setNodeVersionIntervalLocked.
+func (tx *GraphTx) setRelVersionIntervalLocked(id types.RelID, validFrom, validTo types.Instant, props map[string]any, at types.Instant) (*types.Relationship, error) {
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err
 	}
@@ -343,7 +351,7 @@ func (tx *GraphTx) SetRelVersionInterval(id types.RelID, validFrom, validTo type
 		return nil, err
 	}
 
-	r, err := tx.g.cascadeRelVersionInterval(tx.doorCtx(), id, validFrom, validTo, props)
+	r, err := tx.g.cascadeRelVersionInterval(tx.doorCtx(), id, validFrom, validTo, props, at)
 	if err == nil && r != nil {
 		tx.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
 	}

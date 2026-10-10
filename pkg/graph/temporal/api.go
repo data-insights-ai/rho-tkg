@@ -67,6 +67,10 @@ type Ops interface {
 	// on overlap at read time. See SetNodeVersionInterval on API.
 	SetNodeVersionInterval(ctx context.Context, id types.NodeID, validFrom, validTo types.Instant, props map[string]any) (*types.Node, error)
 	SetRelVersionInterval(ctx context.Context, id types.RelID, validFrom, validTo types.Instant, props map[string]any) (*types.Relationship, error)
+	// The same correction recorded at a caller transaction instant txFrom
+	// (Config.AllowTxBackfill). See SetNodeVersionIntervalWithTx on API.
+	SetNodeVersionIntervalWithTx(ctx context.Context, id types.NodeID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant) (*types.Node, error)
+	SetRelVersionIntervalWithTx(ctx context.Context, id types.RelID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant) (*types.Relationship, error)
 
 	// Snapshot/Diff
 	Snapshot(t types.Instant) (*GraphSnapshot, error)
@@ -568,6 +572,36 @@ func (a *API) SetRelVersionInterval(ctx context.Context, id types.RelID, validFr
 		return nil, err
 	}
 	return ops.SetRelVersionInterval(ctx, id, validFrom, validTo, props)
+}
+
+// SetNodeVersionIntervalWithTx records the correction of
+// SetNodeVersionInterval at the caller's transaction instant txFrom (a replay
+// whose records carry their own knowledge time, e.g. a burst that grows from
+// [vs, ve) to [vs, ve')): every row it appends carries TxFrom = UpdatedAt =
+// txFrom, so reads pinned before txFrom keep the uncorrected belief and reads
+// pinned at or after it see the correction. Requires Config.AllowTxBackfill
+// (ErrTxBackfillDisabled); txFrom must be a positive instant not in the future
+// (ErrInvalidTxFrom) and after every TxFrom, TxTo, UpdatedAt and DeletedAt
+// recorded on the node's chain, also on rows outside [validFrom, validTo)
+// (ErrTxOrder, wrapping ErrInvalidTxFrom). validFrom may lie after txFrom. A
+// hard-deleted node returns ErrEntityDeleted. The commit clock is not advanced
+// by txFrom. A refusal writes nothing.
+func (a *API) SetNodeVersionIntervalWithTx(ctx context.Context, id types.NodeID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant) (*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.SetNodeVersionIntervalWithTx(ctx, id, validFrom, validTo, props, txFrom)
+}
+
+// SetRelVersionIntervalWithTx is the relationship counterpart of
+// SetNodeVersionIntervalWithTx.
+func (a *API) SetRelVersionIntervalWithTx(ctx context.Context, id types.RelID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant) (*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.SetRelVersionIntervalWithTx(ctx, id, validFrom, validTo, props, txFrom)
 }
 
 // Snapshot captures the graph state at t. EFFECTIVE view: a relationship is

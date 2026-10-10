@@ -383,6 +383,13 @@ func (b *BatchBuilder) UpdateRelationship(id types.RelID, updates map[string]any
 // executed as part of Batch.Execute. Each cascade is its own
 // entity-lock-bounded write inside Execute; failures are tracked per-op.
 func (b *BatchBuilder) SetNodeVersionInterval(id types.NodeID, validFrom, validTo types.Instant, props map[string]any) error {
+	return b.queueNodeCascade(id, validFrom, validTo, props, 0, false)
+}
+
+// queueNodeCascade is the queue door of SetNodeVersionInterval and (withTx)
+// SetNodeVersionIntervalWithTx, whose txFrom is gated here (value, then
+// privilege) after the id. Nothing is queued on a refusal.
+func (b *BatchBuilder) queueNodeCascade(id types.NodeID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant, withTx bool) error {
 	if err := b.lockOpen(); err != nil {
 		return err
 	}
@@ -399,26 +406,52 @@ func (b *BatchBuilder) SetNodeVersionInterval(id types.NodeID, validFrom, validT
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return err
 	}
+	var at types.Instant
+	if withTx {
+		var err error
+		if at, err = b.g.resolveCallerTxInstant(txFrom); err != nil {
+			return err
+		}
+	}
+	if err := validateCascadeInterval(validFrom, validTo); err != nil {
+		return err
+	}
+	b.nodeCascades = append(b.nodeCascades, pendingNodeCascade{id: id, validFrom: validFrom, validTo: validTo, props: copyCascadeProps(props), at: at})
+	return nil
+}
+
+// validateCascadeInterval is the queue-time interval check of the cascade
+// doors (the kernel repeats it).
+func validateCascadeInterval(validFrom, validTo types.Instant) error {
 	if validFrom == 0 {
 		return ErrInvalidTimeRange
 	}
 	if validTo != 0 && validFrom >= validTo {
 		return ErrInvalidTimeRange
 	}
-	// Defensive copy of props — the caller may mutate the map after queueing.
-	var cp map[string]any
-	if props != nil {
-		cp = make(map[string]any, len(props))
-		for k, v := range props {
-			cp[k] = v
-		}
-	}
-	b.nodeCascades = append(b.nodeCascades, pendingNodeCascade{id: id, validFrom: validFrom, validTo: validTo, props: cp})
 	return nil
+}
+
+// copyCascadeProps is a defensive copy of a queued patch — the caller may
+// mutate the map after queueing. nil stays nil.
+func copyCascadeProps(props map[string]any) map[string]any {
+	if props == nil {
+		return nil
+	}
+	cp := make(map[string]any, len(props))
+	for k, v := range props {
+		cp[k] = v
+	}
+	return cp
 }
 
 // SetRelVersionInterval queues a relationship cascade. See SetNodeVersionInterval.
 func (b *BatchBuilder) SetRelVersionInterval(id types.RelID, validFrom, validTo types.Instant, props map[string]any) error {
+	return b.queueRelCascade(id, validFrom, validTo, props, 0, false)
+}
+
+// queueRelCascade mirrors queueNodeCascade for relationships.
+func (b *BatchBuilder) queueRelCascade(id types.RelID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant, withTx bool) error {
 	if err := b.lockOpen(); err != nil {
 		return err
 	}
@@ -435,20 +468,17 @@ func (b *BatchBuilder) SetRelVersionInterval(id types.RelID, validFrom, validTo 
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return err
 	}
-	if validFrom == 0 {
-		return ErrInvalidTimeRange
-	}
-	if validTo != 0 && validFrom >= validTo {
-		return ErrInvalidTimeRange
-	}
-	var cp map[string]any
-	if props != nil {
-		cp = make(map[string]any, len(props))
-		for k, v := range props {
-			cp[k] = v
+	var at types.Instant
+	if withTx {
+		var err error
+		if at, err = b.g.resolveCallerTxInstant(txFrom); err != nil {
+			return err
 		}
 	}
-	b.relCascades = append(b.relCascades, pendingRelCascade{id: id, validFrom: validFrom, validTo: validTo, props: cp})
+	if err := validateCascadeInterval(validFrom, validTo); err != nil {
+		return err
+	}
+	b.relCascades = append(b.relCascades, pendingRelCascade{id: id, validFrom: validFrom, validTo: validTo, props: copyCascadeProps(props), at: at})
 	return nil
 }
 
