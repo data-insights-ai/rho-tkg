@@ -75,7 +75,7 @@ License: Apache-2.0
 - All struct fields unexported. Access through methods only.
 - Packed by descending field alignment (verified with `unsafe.Sizeof`).
 - `ExtraLabelTokens()`, `Properties()`, `DeepCopy()`, `ToMap()` always return independent copies; `NewPropertySlice` and single-property setters also copy accepted reference values before storage and validate registered custom values after `DeepCopyValue`.
-- `Temporal()` and `Integrity()` return internal pointers (no copy).
+- `Temporal()` and `Integrity()` return internal pointers (no copy) on unfrozen entities and independent copies on frozen (store-cached) rows.
 - Token 0 is reserved/invalid. `HasLabelToken(0)` always returns false.
 - Graph-level registry resolution, import, and persistence rehydration enforce the same empty/whitespace and `MaxNameLength` checks as mutation/query paths before accepting label or relationship-type names; non-error lookup helpers fail closed for malformed names.
 
@@ -551,7 +551,7 @@ under `idxMu` and use that row for label/type/adjacency cleanup. After acquiring
 is corruption or an operational read failure and is returned. Only cascade
 delete has a cleanup-and-return-corruption fallback.
 
-**LRU caches (`entityLRU[V]`):**
+**Entity caches (`index.EntityCache[V]`: an N-way `ShardedCache` over `Cache[V]` LRUs, `internal/index/lru.go` / `sharded.go`; byte-budgeted with `CacheBudgetBytes`):**
 - Dirty tracking with monotonic `dirtyVer` counter
 - Tombstone support for deletions
 - Dirty entries never evicted (soft capacity)
