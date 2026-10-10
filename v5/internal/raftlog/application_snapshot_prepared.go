@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
+
+	"github.com/cockroachdb/pebble/v2"
 
 	pb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
@@ -73,6 +76,8 @@ func EncodeApplicationSnapshotDescriptor(m ApplicationSnapshotManifest) ([]byte,
 // A live claim freezes Abort/Prepared.Close; only that claim's owner can release
 // it. Dormant evidence remains after a non-activating claim is released.
 type PreparedApplicationSnapshot struct {
+	self                       *PreparedApplicationSnapshot
+	readers                    int
 	reservation                uint64
 	s                          *Store
 	i                          *ApplicationImport
@@ -125,6 +130,7 @@ func (i *ApplicationImport) Prepare() (*PreparedApplicationSnapshot, error) {
 		return nil, err
 	}
 	p := &PreparedApplicationSnapshot{reservation: preparedSnapshotFixedBytes, s: s, i: i, bank: i.bank, generation: i.generation, baseGeneration: s.activeGeneration(), descriptor: descriptor, manifestID: i.id}
+	p.self = p
 	i.prepared = p
 	s.pinnedApplicationBytes += p.reservation
 	return p, nil
@@ -146,7 +152,7 @@ func (p *PreparedApplicationSnapshot) live() error {
 // Claim clones the bounded expected snapshot; later caller mutation cannot
 // change the binding. The caller keeps expected unchanged during this call.
 func (p *PreparedApplicationSnapshot) Claim(expected *pb.Snapshot) (*ApplicationSnapshotClaim, error) {
-	if p == nil || p.s == nil || p.i == nil || expected == nil {
+	if p == nil || p.s == nil || p.i == nil || p.self != p || expected == nil {
 		return nil, ErrInvalid
 	}
 	s := p.s
@@ -155,7 +161,7 @@ func (p *PreparedApplicationSnapshot) Claim(expected *pb.Snapshot) (*Application
 	if err := p.live(); err != nil {
 		return nil, err
 	}
-	if p.claim != nil {
+	if p.claim != nil || p.readers != 0 {
 		return nil, ErrLimit
 	}
 	if len(expected.Data) > applicationSnapshotDescriptorLimit || proto.Size(expected.GetMetadata()) > 128 {
@@ -189,7 +195,7 @@ func (p *PreparedApplicationSnapshot) Claim(expected *pb.Snapshot) (*Application
 // Close revokes an unclaimed prepared import. ErrLimit preserves an in-flight
 // claim; it cannot be revoked by a caller retaining only Prepared.
 func (p *PreparedApplicationSnapshot) Close() error {
-	if p == nil || p.s == nil || p.i == nil {
+	if p == nil || p.s == nil || p.i == nil || p.self != p {
 		return ErrInvalid
 	}
 	s := p.s
@@ -198,7 +204,7 @@ func (p *PreparedApplicationSnapshot) Close() error {
 	if p.closed {
 		return nil
 	}
-	if p.claim != nil {
+	if p.claim != nil || p.readers != 0 {
 		return ErrLimit
 	}
 	return p.i.abortLocked()
@@ -275,4 +281,76 @@ func (s *Store) ClaimPreparedApplicationSnapshot(p *PreparedApplicationSnapshot,
 		return nil, ErrInvalid
 	}
 	return p.Claim(expected)
+}
+
+// OpenReadView owns one verified staging-bank root. It grants no activation
+// authority. All versions admitted by Prepare reuse genuine ApplicationView
+// readers, with shared view quotas and a finite1024+exactimage transfer pin.
+func (p *PreparedApplicationSnapshot) OpenReadView(ctx context.Context, index uint64, maxImageBytes int) (*ApplicationView, error) {
+	if p == nil || p.s == nil || p.i == nil || p.self != p || ctx == nil || index == 0 || maxImageBytes < 1 {
+		return nil, ErrInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	s := p.s
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := p.live(); err != nil {
+		return nil, err
+	}
+	if p.claim != nil {
+		return nil, ErrLimit
+	}
+	policy := s.meta.App.Policy
+	if index > p.i.manifest.Index {
+		return nil, ErrInvalid
+	}
+	if maxImageBytes > policy.MaxImageBytes || s.views >= policy.MaxViews {
+		return nil, ErrLimit
+	}
+	key := bankIndexKey(p.bank, appRootTag, index)
+	raw, closer, err := s.db.Get(key)
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			err = ErrCorrupt
+		}
+		s.poison = err
+		return nil, err
+	}
+	data, deleted, inspectErr := inspectAppFrame(key, raw, policy.MaxImageBytes)
+	if deleted {
+		inspectErr = ErrCorrupt
+	}
+	reservation := preparedSnapshotFixedBytes + uint64(len(data))
+	var refusal error
+	if inspectErr == nil {
+		if len(data) > maxImageBytes || len(data) > policy.MaxViewBytes-s.viewBytes {
+			refusal = ErrLimit
+		} else {
+			refusal = s.admitSnapshotOwnership(reservation)
+		}
+	}
+	var owned []byte
+	if inspectErr == nil && refusal == nil {
+		owned = copyApplicationBytes(data)
+	}
+	if err := errors.Join(inspectErr, closer.Close()); err != nil {
+		s.poison = err
+		return nil, err
+	}
+	if refusal != nil {
+		return nil, refusal
+	}
+	ref, err := s.pinGeneration(p.bank)
+	if err != nil {
+		return nil, err
+	}
+	v := &ApplicationView{s: s, index: index, image: owned, bank: p.bank, generation: p.generation, ref: ref, prepared: p, reservation: reservation}
+	s.views++
+	s.viewBytes += len(owned)
+	s.pinnedApplicationBytes += reservation
+	p.readers++
+	s.registerApplicationView(v)
+	return v, nil
 }

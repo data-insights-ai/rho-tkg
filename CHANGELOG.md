@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added v5 bounded immutable control pages and view-bound active/prepared-cut
+  census. Verified AS2/AS3/AS4 imports expose owned reads of their actual
+  staging bank and retained roots. Shared view and transfer-pin quotas bound
+  ownership; copied/unregistered handles refuse, and live prepared readers
+  block Abort/Prepared.Close and snapshot claims. These storage reads grant
+  no activation or registered Host admission.
+
 - Added v5 registered Genesis materialization through actual quorum commit.
   Immutable OriginSeed retains its original entry index/term and GR2 Initialize
   source across higher-term replay, prefix compaction and durable reopen.

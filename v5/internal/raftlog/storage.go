@@ -78,6 +78,7 @@ type Store struct {
 	canInitialize                 bool
 	closed                        bool
 	views, viewBytes              int
+	applicationViews              *ApplicationView
 	generationRefs                [2]*generationRef
 	applicationPolicy             ApplicationPolicy
 	publicationPolicy             ApplicationPublishedCutLimits
@@ -1099,6 +1100,8 @@ func (s *Store) Close() error {
 		return nil
 	}
 	s.closed = true
+	// Exact view owners remain registered for caller Close. No v.mu is taken
+	// under s.mu; closed-store reads fail before accessing invalidated imports.
 	var err error
 	for e := range s.applicationExports {
 		err = errors.Join(err, e.closeLocked())

@@ -544,14 +544,17 @@ type ApplicationRoot struct {
 // ApplicationView reads immutable MVCC versions at one retained root. It pins
 // no backend snapshot and keeps no per-record index. Close serializes with reads.
 type ApplicationView struct {
-	bank       byte
-	generation uint64
-	ref        *generationRef
-	mu         sync.Mutex
-	s          *Store
-	index      uint64
-	image      []byte
-	closed     bool
+	self, next  *ApplicationView
+	prepared    *PreparedApplicationSnapshot
+	reservation uint64
+	bank        byte
+	generation  uint64
+	ref         *generationRef
+	mu          sync.Mutex
+	s           *Store
+	index       uint64
+	image       []byte
+	closed      bool
 }
 
 // ApplicationView opens a bounded root handle. Roots never expire in this slice;
@@ -604,10 +607,12 @@ func (s *Store) ApplicationView(index uint64) (*ApplicationView, error) {
 	}
 	s.views++
 	s.viewBytes += len(owned)
-	return &ApplicationView{s: s, index: index, image: owned, bank: s.activeBank(), generation: s.activeGeneration(), ref: ref}, nil
+	v := &ApplicationView{s: s, index: index, image: owned, bank: s.activeBank(), generation: s.activeGeneration(), ref: ref}
+	s.registerApplicationView(v)
+	return v, nil
 }
 func (v *ApplicationView) lock(ctx context.Context) error {
-	if v == nil || ctx == nil {
+	if v == nil || v.s == nil || v.self != v || ctx == nil {
 		return ErrInvalid
 	}
 	v.mu.Lock()
@@ -620,6 +625,11 @@ func (v *ApplicationView) lock(ctx context.Context) error {
 		return err
 	}
 	v.s.mu.Lock()
+	if !v.s.ownsApplicationView(v) {
+		v.s.mu.Unlock()
+		v.mu.Unlock()
+		return ErrInvalid
+	}
 	if v.generation != 0 && v.s.meta.Gen.Banks[v.bank].Generation != v.generation {
 		v.s.mu.Unlock()
 		v.mu.Unlock()
@@ -629,6 +639,19 @@ func (v *ApplicationView) lock(ctx context.Context) error {
 		v.s.mu.Unlock()
 		v.mu.Unlock()
 		return err
+	}
+	if v.prepared != nil {
+		p := v.prepared
+		if p.s != v.s || p.self != p || p.bank != v.bank || p.generation != v.generation {
+			v.s.mu.Unlock()
+			v.mu.Unlock()
+			return ErrInvalid
+		}
+		if err := p.live(); err != nil {
+			v.s.mu.Unlock()
+			v.mu.Unlock()
+			return err
+		}
 	}
 	return nil
 }
@@ -646,7 +669,7 @@ func (v *ApplicationView) Root() (ApplicationRoot, error) {
 
 // Close releases root accounting and is safe to repeat, including after Store.Close.
 func (v *ApplicationView) Close() error {
-	if v == nil {
+	if v == nil || v.s == nil || v.self != v {
 		return ErrInvalid
 	}
 	v.mu.Lock()
@@ -656,11 +679,22 @@ func (v *ApplicationView) Close() error {
 	}
 	v.s.mu.Lock()
 	defer v.s.mu.Unlock()
+	if !v.s.ownsApplicationView(v) {
+		return ErrInvalid
+	}
+	v.s.unregisterApplicationView(v)
 	v.closed = true
 	v.s.views--
 	v.s.viewBytes -= len(v.image)
 	v.image = nil
-	return v.s.releaseGeneration(v.ref)
+	if v.prepared != nil {
+		v.prepared.readers--
+	}
+	v.s.pinnedApplicationBytes -= v.reservation
+	v.reservation = 0
+	ref := v.ref
+	v.ref = nil
+	return v.s.releaseGeneration(ref)
 }
 func (v *ApplicationView) iterator(lower, upper []byte) (*pebble.Iterator, error) {
 	return v.s.db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})

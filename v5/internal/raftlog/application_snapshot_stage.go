@@ -438,7 +438,7 @@ func (i *ApplicationImport) abortLocked() error {
 	if i.closed {
 		return nil
 	}
-	if i.prepared != nil && i.prepared.claim != nil {
+	if i.prepared != nil && (i.prepared.claim != nil || i.prepared.readers != 0) {
 		return ErrLimit
 	}
 	if s.closed {
