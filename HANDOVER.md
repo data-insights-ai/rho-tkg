@@ -64,7 +64,7 @@ re-runs this session were caused by findings that came in through merged branche
 
 ## 4. Consumers and who to talk to
 
-- **sigma-tkgd** session `sigma-tkgd-c3` (socket `uds:/run/user/1000/cc-socks/3891112.sock`). Pins the latest tag. Uses:
+- **sigma-tkgd** session `sigma-tkgd-c3` (socket `uds:/run/user/1000/cc-socks/3891112.sock`) — **that session is STOPPED; the next sigma session will announce a NEW name to us (the old name goes away); until then messages to the old address will not be answered**. Pins the latest tag. Uses:
   timeline doors, scan forms, `HasHistory`, `LatestStamps`, `MintInstant`. Moved its pinned reads to the STATE doors.
   Open from sigma: confirm the signatures of the broader effective scans (backlog 35), interval rewrites at a caller
   instant (34), state column fast path (28, sigma measured 1M-node pinned count: badger 13–14 s vs 1.4 s unpinned),
@@ -204,14 +204,10 @@ Legend: [ ] open, (S) = waits for sigma, (R) = waits for René's decision.
 1. [ ] **Restart backlog 34** `Set{Node,Rel}VersionIntervalWithTx` (all doors) — sigma replay need.
 2. [ ] **Restart backlog 33 + 42 (+ 41 last)** badger read cost — baseline saved in `tasks/evidence/badger-read-cost/`.
 3. [ ] Backlog 35 broader effective scans — signatures CONFIRMED by sigma 2026-10-10 (all five, as recorded in the backlog item).
-4. [ ] **(R/S) Retraction door**: sigma passed a question from ai-soc/René: ai-soc needs "belief ends at T; at pins ≥ T
-   absent for every valid time; at pins < T unchanged"; René decided `Delete` = VALIDITY END (past stays readable at later
-   pins). My proposal (sent): `Nodes()/Rels().Retract(ctx,id)` / `RetractWithTx(ctx,id,t)` + GraphTx/Batch/Session twins,
-   tombstone marked as retraction, caps the life at −∞ in `lifeEnds` (core/chain_resolver.go), all read doors answer absent,
-   timeline empty, History/LatestStamps still show the rows. Open design points listed in the message: marker storage
-   (flag in the temporal block vs shadow property; additive wire, replica/export carry, hash coverage), interplay with
-   backlog 25, UniqueForever claim kept as for Delete. Waiting for René/ai-soc to choose "rho adds the door" vs "ai-soc
-   models an ENDED fact". Nothing built.
+4. [x] **Retraction door: DECIDED NO (René, 2026-10-10, relayed by sigma-tkgd via ai-soc)**: retraction stays an explicit
+   "ended" fact in ai-soc; rho-tkg needs NO `Retract`/`RetractWithTx` door; `Delete` keeps its validity-end meaning
+   (past stays readable at later pins). My proposal (tombstone marked as retraction, life capped at −∞ in `lifeEnds`) is
+   not built and not in the backlog; reopen only with a new consumer case.
 5. [ ] Backlog 28 state column fast path (design first; sigma numbers inside the item) (S).
 6. [ ] Backlog 21 retention (PurgeExpiredRels, per-type gate) — handover `tasks/handover-overview-retention-20261009.md` (S, not blocking).
 7. [ ] Residual backlog: 13, 15, 16, 22, 23, 25, 26, 31, 37, 39, 40 (see §7), RAM budget for property sidecars,
