@@ -1,0 +1,2 @@
+    retraction_oracle_test.go:82: 512 retractions (204 next to an earlier life), 922096 answers compared
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	60.613s
