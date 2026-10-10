@@ -11,7 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Minor release: `Nodes().LatestStamps(id)` / `Rels().LatestStamps(id)` (an entity's newest transaction stamps without
 reading its history: sigma-tkgd's cut check and late-belief detection spent 88 % of the CPU of ai-soc's real-data run
 in History reads at 8.3 ms per entity at 10,000 versions), and every `UniqueForever`-claiming door now withdraws its
-claim when the call fails (MEDIUM: a failed update/create write used to leave the value permanently owned). Gates on the
+claim when the call fails (MEDIUM: a failed update/create write used to leave the value permanently owned; a
+panicking store put in a concurrent-ingest create no longer leaves its value stripes locked). Gates on the
 released tree: `make ci-docker` exit 0; sigma-tkgd, ai-soc engine and agent-bookkeeping build and vet against it.
 
 ### Added
@@ -54,8 +55,8 @@ released tree: `make ci-docker` exit 0; sigma-tkgd, ai-soc engine and agent-book
   rels) memory 43-55 ns and badger 75-100 ns, 0 allocs; sharded 0.45-1.2 us (8 allocs, 709 B: it is not a trusted
   native store, so the current row is copied) and tiered 1.3-1.6 us (12 allocs, 777 B: shard routing); at 20,000 rels,
   where half the current rows miss badger's default 10 K-entry cache and a miss reads and decodes the row, badger
-  6.5-7.1 us (25 allocs), tiered 6.9-8.9 us, sharded 7.5-9.6 us, memory 58-114 ns. Store
-  half on a reopened badger store, 1 % of the entities with three history rows: 11-20 ns, 0 allocs for a hit or a
+  6.5-7.1 us (25 allocs), tiered 6.9-8.9 us, sharded 7.5-9.6 us, memory 58-114 ns. The sidecar
+  half alone (the capability call, no current row) on a reopened badger store, 1 % of the entities with three history rows: 11-20 ns, 0 allocs for a hit or a
   miss at 200 K and 1 M entities; the one-time build of the first call 1.4-4.5 ms at 200 K and 7.8 ms (rel) /
   20.9 ms (node) at 1 M entities (`Benchmark{Rel,Node}HistoryStamps`); RAM 66 B per ID with history at 10 K IDs,
   85 B at 2 K (map growth; `badger.Store.HistoryStampsStats()` reports it). A built sidecar adds 100-180 ns and no
@@ -121,7 +122,8 @@ sigma-tkgd's handover: a pinned `ByTypeAndProperty` at 100 k relationships with 
 tx-from is at or below any stamp of that ID's chain now returns `ErrTxOrder` and writes nothing (the documented
 exception in `docs/stability.md`; sigma-tkgd's `/admin/import` is the one known caller that can see it); a plain
 re-import's `Version()` is the earlier life's top + 1 instead of 0.** The older label and relationship-type
-sidecars (K1) also stop pruning rows with an unset (0) first `TxFrom` for `TxAt` reads. Gates on the released
+sidecars (K1) also stop pruning rows with an unset (0) first `TxFrom` for `TxAt` reads, and the bench gate no longer
+reads a custom benchmark metric as time. Gates on the released
 tree: `make ci-docker` exit 0; sigma-tkgd, ai-soc engine and agent-bookkeeping build and vet against it.
 
 ### Added
@@ -282,7 +284,7 @@ pin), `types.NodeID.MintInstant` / `RelID.MintInstant`, the badger with-history 
 before the current row (point as-of doors no longer miss an entity while a writer moves its row), and two
 read-time fixes to chains that already exist: a replaced row now ends where its replacer starts (a closed entity no
 longer reads valid again after a later bounded cascade) and re-imported IDs sort by life then version (tiered and
-sharded agree with memory and badger). **Read the `### Fixed` migration blocks before upgrading from 4.46.x: answers
+sharded agree with memory and badger); `tkg_valid_from = 0` is documented and guarded as unset in every door. **Read the `### Fixed` migration blocks before upgrading from 4.46.x: answers
 for chains with a close followed by a bounded cascade, and for re-imported IDs on tiered and sharded, change;
 pins before the replacing write are unchanged.** Gates on the released tree: `make ci-docker` exit 0; sigma-tkgd,
 ai-soc engine and agent-bookkeeping build and vet against it.
@@ -310,8 +312,8 @@ ai-soc engine and agent-bookkeeping build and vet against it.
   7.4-8.8 ms per call; the first round re-resolved every piece, O(n^3)). Only the rows that answer are decoded. A
   plain entity costs its row read and the history presence bit. The read holds the entity's exclusive lock (readers
   of one entity serialize), so a concurrent Update / Delete cannot make the entity read as unknown. The point doors
-  (`NodeAtTx` / `RelAtTx` and the scans built on them) do not take it and can still miss an entity for the
-  duration of such a write on badger and sharded (pre-existing, backlog 32). No `context.Context` on these doors
+  (`NodeAtTx` / `RelAtTx` and the scans built on them) do not take it; they used to miss an entity for the
+  duration of such a write on badger and sharded (pre-existing, backlog 32; fixed in this release, see Fixed). No `context.Context` on these doors
   (like `ForEachByType`).
 - **Scan forms (backlog 27): `g.Temporal().ForEachRelEffectiveByType(typeName, pin, fn)` /
   `ForEachNodeEffectiveByLabel(label, pin, fn)`** stream the timeline of every relationship of the type (node that
@@ -418,14 +420,57 @@ ai-soc engine and agent-bookkeeping build and vet against it.
   publication order swapped at the seam, interval and as-of resolvers reading history first, the cascade removing rows before its tombstones,
   a relationship removed before its tombstone, the native as-of door scanning history first, orphans purged as
   read: each red) under `tasks/evidence/point-door-race/`.
+- **A replacing write (Update, `CloseVersion`, a label change, a property CAS) ends every older belief that started
+  at or before its row's start — also once a cascade made the chain non-monotonic** (consumer report, sigma-tkgd,
+  effective timeline; completed after review). The point resolver's own-bounds arm (a chain a `SetVersionInterval`
+  made non-monotonic) read every row over its own interval, so after a close an older open row answered again
+  beyond it wherever no newer row reached: `NodeAt` / `NodeAtTx(t, pin)` / `RelAt*`, `NodesAt[Tx]` / `RelsAt[Tx]`,
+  `ByLabel` / `ByType{ValidAt[, TxAt]}`, `Snapshot` and the effective timeline answered a row at `t >= 4000` after
+  `CloseVersion(4000)`. A cascade BEFORE the close is enough to trigger it: the cascade moves the genesis out of the
+  current slot without a `TxTo`, so only the row the close replaced carries one. Rule now
+  (`supersessionCaps`, `chain_supersession.go`, the monotonic arm's "a row ends where the next starts" stated for
+  the own-bounds arm): a replacing row `s` — one recorded at the `TxTo` of a row it replaced — ends, at its start
+  `S`, every belief older than `s` (`TxFrom`, then version) that started at or before `S`; older beliefs that start
+  after `S` and newer ones are untouched; when `s` was recorded after the pin nothing changes at that pin. One
+  O(n log n) pass per resolve (no allocation in steady state). Read seam only; repairs existing chains.
+  **Migration — what changes** (`NodeAtTx` / `RelAtTx` at a pin after the last write, and the unpinned doors; every
+  backend, node and rel; `tasks/evidence/effective-timeline/migration-table-main-then-branch.txt`):
+
+  | Shape (Add vf=1000 first; cascades as `[from,to)`) | t | 4.46.0 | now | correct |
+  |---|---|---|---|---|
+  | `CloseVersion(4000)` → cascade `[2000,3000)` | 5000 | v0 (the pre-close row) | none | none |
+  | Update `[2000,4000)` → cascade `[2500,3000)` | 5000 | v0 | none | none |
+  | cascade `[2000,3000)` → `CloseVersion(4000)` → cascade `[1500,1800)` | 5000 | v2 | none | none |
+  | cascade `[2000,∞)` → `CloseVersion(4000)` → cascade `[1500,1800)` | 5000 | v1 | none | none |
+  | cascade `[2000,3000)` → Update vf=3500 → `CloseVersion(4000)` → cascade `[1500,1800)` | 5000 | v3 | none | none |
+  | the same shapes | 3500 | unchanged | unchanged | — |
+  | monotonic chains (Updates, `CloseVersion`, no cascade) | any | unchanged | unchanged | — |
+  | cascade `[2000,∞)` → Update vf=4500 | 3500 / 5000 | v1 / v2 | v1 / v2 | — |
+
+  Pins before the replacing write are unchanged (the rule needs the replacing row recorded by the pin). Tests:
+  `TestAtTxEndsAtClose` / `TestAtTxEndsAtDelete` (hand-written windows, four backends, node and rel, every delete
+  door; the point, `*AtTx`, generic `{ValidAt, TxAt}`, `NodesAtTx` / `RelsAtTx`, interval and scan-form doors; the
+  review repros cascade-close-cascade, open-cascade-close-cascade, cascade-update-close-cascade and its delete; the
+  delete instant, consumer report (2), holds on main and stays as a guard) and the cross-backend oracle, whose model
+  now states the belief definition by brute force per instant (`replacedAt`) instead of restating the engine's caps;
+  mutants (cap only the replaced row — the first-round rule —, ignore belief age, strict start) each red.
+- **A re-imported ID's rows order after the earlier life's**: a re-import numbers its versions from 0 again, and
+  the resolver's version-ordered chain interleaved the two lives, so where the re-import's valid start lay before
+  the first life's later rows tiered and sharded (full chain fold) answered the first life's row while memory and
+  badger (current-row shortcut) answered the re-imported row. The chain is ordered by life (deletes recorded before
+  the row), then version (`chainWriteOrder`). **Migration — what changes:** Add vf=1000 → Update (starts at its
+  write time U) → Delete at D → `Import` vf=5000: tiered and sharded answered the first life's Update row on
+  `[U, D)` and nothing from D on, now the re-imported row on all of `[5000, ∞)` (memory and badger already did); `t < 5000` and pins
+  before the import are unchanged. Test: `TestAtTxReImportOverlapsEarlierLife`. Not covered here (backlog 38): a
+  backfilled re-import whose `tkg_tx_from` lies inside the deleted life joined that life and read absent from the
+  delete instant on (pre-existing; refused with `ErrTxOrder` since 4.48.0).
 
 ## [4.46.0] - 2026-10-09
 
 Minor release: cascade correctness (one version allocator for every appended row, appended rows carry no
 `TxTo`/`DeletedAt`, `ErrEntityDeleted`, GraphTx rollback keeps cascade rows, delete after a bounded cascade ends
 the entity in every read door, compaction keeps the hash anchors), the pin-stable as-of rule, `HasHistory`,
-`CreateUnique` on `SetNodeVersionInterval` patches, bulk as-of presence, `Config.DurableCommit` fixes and the
-history-presence overlay fix. **Read this before upgrading from 4.45.x: the record doors `NodeAsOf` / `RelAsOf`
+`CreateUnique` on `SetNodeVersionInterval` patches, bulk as-of presence and the badger history-ID overlay fix. **Read this before upgrading from 4.45.x: the record doors `NodeAsOf` / `RelAsOf`
 / `NodesAsOf` / `RelsAsOf` and the `TxPin` scans answer "the newest row recorded by the pin", which after a
 bounded cascade is the corrected slice and no longer the current row; for "the state at valid time t as recorded at
 the pin" call `NodeAtTx` / `RelAtTx` or `ByLabel` / `ByType` with `ValidAt` + `TxAt` (see `### Changed` and the
@@ -492,50 +537,6 @@ ai-soc engine and agent-bookkeeping build and vet against it.
 
 ### Fixed
 
-- **A replacing write (Update, `CloseVersion`, a label change, a property CAS) ends every older belief that started
-  at or before its row's start — also once a cascade made the chain non-monotonic** (consumer report, sigma-tkgd,
-  effective timeline; completed after review). The point resolver's own-bounds arm (a chain a `SetVersionInterval`
-  made non-monotonic) read every row over its own interval, so after a close an older open row answered again
-  beyond it wherever no newer row reached: `NodeAt` / `NodeAtTx(t, pin)` / `RelAt*`, `NodesAt[Tx]` / `RelsAt[Tx]`,
-  `ByLabel` / `ByType{ValidAt[, TxAt]}`, `Snapshot` and the effective timeline answered a row at `t >= 4000` after
-  `CloseVersion(4000)`. A cascade BEFORE the close is enough to trigger it: the cascade moves the genesis out of the
-  current slot without a `TxTo`, so only the row the close replaced carries one. Rule now
-  (`supersessionCaps`, `chain_supersession.go`, the monotonic arm's "a row ends where the next starts" stated for
-  the own-bounds arm): a replacing row `s` — one recorded at the `TxTo` of a row it replaced — ends, at its start
-  `S`, every belief older than `s` (`TxFrom`, then version) that started at or before `S`; older beliefs that start
-  after `S` and newer ones are untouched; when `s` was recorded after the pin nothing changes at that pin. One
-  O(n log n) pass per resolve (no allocation in steady state). Read seam only; repairs existing chains.
-  **Migration — what changes** (`NodeAtTx` / `RelAtTx` at a pin after the last write, and the unpinned doors; every
-  backend, node and rel; `tasks/evidence/effective-timeline/migration-table-main-then-branch.txt`):
-
-  | Shape (Add vf=1000 first; cascades as `[from,to)`) | t | main (4.45 + G) | now | correct |
-  |---|---|---|---|---|
-  | `CloseVersion(4000)` → cascade `[2000,3000)` | 5000 | v0 (the pre-close row) | none | none |
-  | Update `[2000,4000)` → cascade `[2500,3000)` | 5000 | v0 | none | none |
-  | cascade `[2000,3000)` → `CloseVersion(4000)` → cascade `[1500,1800)` | 5000 | v2 | none | none |
-  | cascade `[2000,∞)` → `CloseVersion(4000)` → cascade `[1500,1800)` | 5000 | v1 | none | none |
-  | cascade `[2000,3000)` → Update vf=3500 → `CloseVersion(4000)` → cascade `[1500,1800)` | 5000 | v3 | none | none |
-  | the same shapes | 3500 | unchanged | unchanged | — |
-  | monotonic chains (Updates, `CloseVersion`, no cascade) | any | unchanged | unchanged | — |
-  | cascade `[2000,∞)` → Update vf=4500 | 3500 / 5000 | v1 / v2 | v1 / v2 | — |
-
-  Pins before the replacing write are unchanged (the rule needs the replacing row recorded by the pin). Tests:
-  `TestAtTxEndsAtClose` / `TestAtTxEndsAtDelete` (hand-written windows, four backends, node and rel, every delete
-  door; the point, `*AtTx`, generic `{ValidAt, TxAt}`, `NodesAtTx` / `RelsAtTx`, interval and scan-form doors; the
-  review repros cascade-close-cascade, open-cascade-close-cascade, cascade-update-close-cascade and its delete; the
-  delete instant, consumer report (2), holds on main and stays as a guard) and the cross-backend oracle, whose model
-  now states the belief definition by brute force per instant (`replacedAt`) instead of restating the engine's caps;
-  mutants (cap only the replaced row — the first-round rule —, ignore belief age, strict start) each red.
-- **A re-imported ID's rows order after the earlier life's**: a re-import numbers its versions from 0 again, and
-  the resolver's version-ordered chain interleaved the two lives, so where the re-import's valid start lay before
-  the first life's later rows tiered and sharded (full chain fold) answered the first life's row while memory and
-  badger (current-row shortcut) answered the re-imported row. The chain is ordered by life (deletes recorded before
-  the row), then version (`chainWriteOrder`). **Migration — what changes:** Add vf=1000 → Update (starts at its
-  write time U) → Delete at D → `Import` vf=5000: tiered and sharded answered the first life's Update row on
-  `[U, D)` and nothing from D on, now the re-imported row on all of `[5000, ∞)` (memory and badger already did); `t < 5000` and pins
-  before the import are unchanged. Test: `TestAtTxReImportOverlapsEarlierLife`. Not covered (backlog 38): a
-  backfilled re-import whose `tkg_tx_from` lies inside the deleted life joins that life and reads absent from the
-  delete instant on (pre-existing).
 - **Bulk badger `NodesAsOf` / `RelsAsOf` no longer read the key above the current version per entity.** The
   pin-stable as-of rule made the bulk scan look for a row at `current+1` for every entity (a badger point read
   each, measured +0.6 us per entity without history, +1.2 us with one history row; about +0.6 s per 1 M entities;
@@ -645,12 +646,14 @@ ai-soc engine and agent-bookkeeping build and vet against it.
   `TxFrom` inside the first life, the first life's rows above the re-imported current version outranked it and
   `NodeAsOf(now)` read absent while `Get` and `NodeAt` read the imported row. Rows above the current version that
   carry a retraction (`TxTo` at or after their `TxFrom`) are an earlier life and never answer for the current row.
-  Test: `TestAsOfBackfilledReImportOfDeletedID`.
+  Test: `TestAsOfBackfilledReImportOfDeletedID`. Superseded in 4.48.0: an import whose `tkg_tx_from` lies at or below
+  any stamp of the deleted ID's chain is now refused with `ErrTxOrder`; this rule remains for chains already stored.
 - **The chain resolver reads chains in version order** (lesson 73). `history ‖ current` is not version-ordered
   when a cascade left the current row below its rows; the resolver classified such a chain as a cascade chain while
   the row was current (a closed entity read valid again after a later gap correction) and as monotonic once a
   delete moved the row into history, so the same pin answered differently. Found by the W5 oracle once its skips
-  were removed; shape `closed-then-gap` in the tests above.
+  were removed; shape `closed-then-gap` in the tests above. Refined in 4.47.0: the order is life, then version
+  (see "A re-imported ID's rows order after the earlier life's" under 4.47.0 Fixed).
 - **GraphTx rollback keeps the cascade rows above the current version** (backlog 19, memory and badger). The
   snapshot took the trim path, and Rollback trimmed every history row at or above `current.Version()`; it now
   copies the history when a row lies at or above it. A caller-instant `tx.UpdateNodeWithTx` /
@@ -771,7 +774,7 @@ sigma-tkgd, `tasks/handover-effective-read-cost-20261009.md`, fix 1a). Gates on 
 Minor release: transaction-time endings and supersessions at a caller instant (`DeleteWithTx` /
 `UpdateWithTx` on every write door, `ErrTxOrder`), one-tick valid intervals visible on every temporal
 door, column and range scans answering temporal `QueryOpts` exactly, ingest session interval
-corrections, the opt-in `Config.DurableCommit`, Go 1.26.9. Gates on the released tree: `make ci-docker`
+corrections, the opt-in `Config.DurableCommit`, the as-of column cache invalidated after a past-dated write lands, Go 1.26.9. Gates on the released tree: `make ci-docker`
 (fmt-check, vet, lint-docker, build, test-race, security-docker, vulncheck-docker, cover-gate 86.6 %,
 check-metakv-reap) exit 0; sigma-tkgd, ai-soc engine and agent-bookkeeping build and vet against it.
 
@@ -884,8 +887,8 @@ reproduces the stamps from the change feed and reports the past-dated tombstones
   before the apply still see `[vs, ve)` and the old values, and a pin after it sees `[vs, ve')`
   with the new ones. `props` is a patch over the state valid at each instant (nil keeps every
   property) and is copied at queue time. `Get` keeps returning the head row, and `RelAsOf` /
-  `NodeAsOf` at a pin after the correction still answer that head row; the appended rows appear in
-  `History` and in `*AtTx` reads. Refusals: an interval with `validFrom == 0` or `validTo != 0 &&
+  `NodeAsOf` at a pin after the correction still answer that head row (reversed in 4.46.0: the as-of doors answer
+  the newest row recorded by the pin); the appended rows appear in `History` and in `*AtTx` reads. Refusals: an interval with `validFrom == 0` or `validTo != 0 &&
   validFrom >= validTo` returns `ErrInvalidTimeRange` at queue time and a zero or negative id an
   `ErrInvalidStoreMutation` error, both with nothing queued; an unknown id fails its own group at
   apply with `ErrNodeNotFound` / `ErrRelNotFound` (the group's `Submit` / `WaitApplied` result)
@@ -895,7 +898,7 @@ reproduces the stamps from the change feed and reports the past-dated tombstones
   `TestSessionIntervalDoors_MatchStandaloneAndBatch`. Known gap, on all four doors alike
   (`Temporal()`, `GraphTx`, `BatchBuilder`, `Session`): `SetNodeVersionInterval` does not check
   unique constraints, so its props patch can give a node a value another node holds
-  (`tasks/backlog.md` item 12).
+  (`tasks/backlog.md` item 12; fixed in 4.46.0, see its Fixed section).
 
 ### Changed
 
@@ -911,7 +914,7 @@ reproduces the stamps from the change feed and reports the past-dated tombstones
   section of `docs/architecture.md` says so; lesson 55 notes it is superseded for `GraphTx`.
 - `CreateRelTemporal` is documented as declined on tiered only (sharded implements it).
 - `CreateUnique` lists the doors its enforcement covers: the standalone node doors, the batch,
-  `GraphTx` and the ingest session in both modes, and says `SetNodeVersionInterval` is not checked.
+  `GraphTx` and the ingest session in both modes, and says `SetNodeVersionInterval` is not checked (superseded in 4.46.0: it is checked).
 
 ### Fixed
 
