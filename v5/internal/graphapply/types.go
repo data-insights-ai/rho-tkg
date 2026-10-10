@@ -1,7 +1,7 @@
-// Package graphapply contains private, bounded allocation/request groundwork.
-// It supplies no Host, graph operation path, read view or durability authority.
-// The future outer assembler calls these helpers and the validated graphstore
-// stager, then publishes exactly one application batch and its graphstore root.
+// Package graphapply contains the private bounded single-partition materializer
+// and allocation/request reducers. It supplies no public Host, historical-read
+// transaction door, distributed activation or durability acknowledgement. The
+// serialized replica driver installs its one atomic application batch.
 package graphapply
 
 import (
@@ -52,7 +52,7 @@ type request struct {
 }
 
 func (r request) identity() [16]byte {
-	if r.kind == initAllocator {
+	if r.kind == initAllocator || r.kind == initGraph {
 		return [16]byte(r.attempt)
 	}
 	return [16]byte(r.id)
@@ -159,7 +159,7 @@ func (l limits) validate() error {
 			return errInvalid
 		}
 	}
-	if l.readRows > 64 || l.stageRows > 16 {
+	if l.readRows > 65536 || l.stageRows > 4096 {
 		return errInvalid
 	}
 	return nil

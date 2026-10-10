@@ -24,6 +24,7 @@ type reader struct {
 	writes         []raftlog.KV
 	stageBytes     int
 	allocatorFound bool
+	allocatorInfo  idalloc.View
 }
 
 func recordKey(n namespace, tag byte) []byte       { return appendNamespace([]byte{'g', 'a', tag}, n) }
@@ -34,7 +35,7 @@ func grantKey(n namespace, s idalloc.RecipientSession, sequence uint64) []byte {
 }
 func outcomeKey(r request) []byte {
 	tag := byte(4)
-	if r.kind == initAllocator {
+	if r.kind == initAllocator || r.kind == initGraph {
 		tag = 5
 	}
 	id := r.identity()
@@ -44,7 +45,7 @@ func (q *reader) get(key []byte) ([]byte, bool, error) {
 	if err := q.ctx.Err(); err != nil {
 		return nil, false, err
 	}
-	if q.rows == q.limits.readRows || len(key)+64 > q.limits.readBytes-q.bytes {
+	if q.rows >= q.limits.readRows || len(key)+64 > q.limits.readBytes-q.bytes {
 		return nil, false, errLimit
 	}
 	q.rows++
@@ -89,6 +90,7 @@ func (q *reader) allocator() (idalloc.State, bool, error) {
 		return idalloc.State{}, false, errors.Join(errCorrupt, err)
 	}
 	q.allocatorFound = true
+	q.allocatorInfo = v
 	return s, true, nil
 }
 func (q *reader) recipient(id [16]byte) (recipientRecord, bool, error) {
@@ -341,9 +343,9 @@ func checkEffects(e allocationEffects, l limits, p raftlog.ApplicationPolicy, rl
 	}
 	return nil
 }
-func finishEffects(q *reader, o outcome, hash [32]byte, mapRecord bool, p raftlog.ApplicationPolicy, rl raftlog.Limits) (allocationEffects, error) {
+func collectEffects(q *reader, o outcome, hash [32]byte, mapRecord bool) (allocationEffects, error) {
 	o.hash = hash
-	envelope, err := encodeOutcome(o)
+	envelope, err := encodeAnyOutcome(o)
 	if err != nil {
 		return allocationEffects{}, err
 	}
@@ -353,12 +355,20 @@ func finishEffects(q *reader, o outcome, hash [32]byte, mapRecord bool, p raftlo
 			return allocationEffects{}, err
 		}
 	}
-	writes := make([]raftlog.KV, len(q.writes))
-	copy(writes, q.writes)
+	// Transfer the private touched slice; no reader/view-backed alias escapes.
+	writes := q.writes
 	slices.SortFunc(writes, func(a, b raftlog.KV) int { return bytes.Compare(a.Key, b.Key) })
 	e := allocationEffects{base: q.base, writes: writes, outcome: o, envelope: envelope}
 	if len(q.writes) > 0 && (!mapRecord || len(q.writes) > 1) {
 		e.changes = owned(envelope)
+	}
+	return e, nil
+}
+
+func finishEffects(q *reader, o outcome, hash [32]byte, mapRecord bool, p raftlog.ApplicationPolicy, rl raftlog.Limits) (allocationEffects, error) {
+	e, err := collectEffects(q, o, hash, mapRecord)
+	if err != nil {
+		return allocationEffects{}, err
 	}
 	if err := checkEffects(e, q.limits, p, rl); err != nil {
 		return allocationEffects{}, err
@@ -416,7 +426,7 @@ func stageAllocation(ctx context.Context, view *raftlog.ApplicationView, n names
 		return allocationEffects{}, err
 	}
 	if found {
-		old, err := decodeOutcome(wire, n)
+		old, err := decodeAnyOutcome(wire, n)
 		if err != nil {
 			return allocationEffects{}, err
 		}
