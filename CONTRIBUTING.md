@@ -44,7 +44,7 @@ after the first run):
 make lint-docker        # golangci-lint v2 (reads .golangci.yml)
 make security-docker    # gosec
 make vulncheck-docker   # govulncheck
-make ci-docker          # full gate: fmt-check + vet + lint-docker + build + test-race + security-docker + vulncheck-docker + cover-gate
+make ci-docker          # full gate: fmt-check + vet + lint-docker + build + test-race + security-docker + vulncheck-docker + cover-gate + check-metakv-reap
 ```
 
 The security tools are version-pinned by the Makefile. Both `gosec` and
@@ -88,9 +88,8 @@ it fail for the right reason, then implement the minimal change to pass.
 bugs — not a bug log. When you fix a defect that exposes a genuinely new,
 reusable pattern (not already covered):
 
-1. Find the next sequential number: `grep '^## B' tasks/lessons.md` (or
-   `grep '^## [0-9]'`, depending on the file's current numbering scheme) and
-   use the next integer.
+1. Find the next sequential number: `grep '^## [0-9]' tasks/lessons.md | tail -1`
+   and use the next integer.
 2. Check there is no duplicate — same title or same underlying code pattern
    — before adding a new entry.
 3. Keep the entry short: the failure shape, the fix, and the rule that
@@ -116,7 +115,10 @@ actually fixed a real defect.
   `AGENTS.md`, and `docs/architecture.md`. If your change touches any of
   those files, run
   `go test -run TestDocsMetadataMatchesSourceOfTruth ./pkg/graph/internal/core/`
-  before opening the PR.
+  before opening the PR. A new public error sentinel needs a row in
+  `docs/errors.md`: `TestErrorsDocumentation` and
+  `TestGraphErrorsFileInventoryComplete` (`pkg/graph/errors_doc_test.go`)
+  fail otherwise.
 
 ## Pull request checklist
 
@@ -129,11 +131,15 @@ actually fixed a real defect.
 - [ ] `tasks/lessons.md` has a new entry only if you fixed a real, reusable-pattern defect
 - [ ] The docs-consistency test still passes
 
-## Fuzzing (local only — not in CI)
+## Fuzzing
 
-The trust-boundary fuzz harnesses (`FuzzWireToNodeChecked`, `FuzzWireToRelChecked`,
-`FuzzUnmarshalNodeWireWithKeys` in `pkg/graph/internal/storeutil`; `FuzzImport` in
-`pkg/graph/internal/core`) run their seed corpora as ordinary tests in `make test`.
+The trust-boundary fuzz harnesses (`FuzzImport`, `FuzzApplyChange` in
+`pkg/graph/internal/core`; `FuzzWireToNodeChecked`, `FuzzWireToRelChecked`,
+`FuzzUnmarshalNodeWireWithKeys`, `FuzzDecodeNodeHistoryDelta`,
+`FuzzDecodeRelHistoryDelta` in `pkg/graph/internal/storeutil`; `FuzzOpen`,
+`FuzzOpenResealed`, `FuzzOpenWithNodeDict` in `pkg/graph/internal/segment`) run
+their seed corpora as ordinary tests in `make test`. The first five also get a
+bounded weekly run in `.github/workflows/fuzz.yml` (non-blocking, scheduled).
 Deep fuzz sessions are a local, deliberate activity — run one when you change a
 decode/import surface:
 
