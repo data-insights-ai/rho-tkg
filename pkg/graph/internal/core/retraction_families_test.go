@@ -41,7 +41,7 @@ func (w *rtWorld) joining(a, b types.NodeID) types.RelID {
 	}
 	return 0
 }
-func (w *rtWorld) relIDs() []types.RelID   { return []types.RelID{w.rx, w.ry, w.rxy} }
+func (w *rtWorld) relIDs() []types.RelID { return []types.RelID{w.rx, w.ry, w.rxy} }
 
 // pointNodes runs a point door over every node of the world.
 func pointNodes(w *rtWorld, get func(id types.NodeID) (*types.Node, error)) (answer, bool, error) {
