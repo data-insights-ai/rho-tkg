@@ -221,7 +221,8 @@ func latestStampsGraph(t *testing.T, st storepkg.Store) *graphpkg.Graph {
 // label, delete, DeleteWithTx, re-import of a deleted ID (a second life),
 // GraphTx commit and rollback, compaction, retention purge, exact erasure,
 // Clear, flush, reopen - on memory, badger on disk (writes left unflushed),
-// tiered and sharded, nodes and relationships. After EVERY step LatestStamps
+// badger with delta-encoded history, tiered and sharded, nodes and
+// relationships. After EVERY step LatestStamps
 // equals the oracle for every ID ever created plus IDs that never existed,
 // and the store's history half equals the fold of History. After a reopen or
 // a Clear a burst leaves SETs and DELETEs of one entity in the write buffer
@@ -237,7 +238,7 @@ func TestLatestStampsDifferential(t *testing.T) {
 	if testing.Short() {
 		steps = 70
 	}
-	for _, b := range hasHistoryBackends() {
+	for _, b := range latestStampsBackends() {
 		total := map[string]int{}
 		cov := &stampsCoverage{}
 		for _, seed := range hasHistorySeeds() {
@@ -251,7 +252,7 @@ func TestLatestStampsDifferential(t *testing.T) {
 		// (summed over the seeds), and the states where a head-only or
 		// history-blind door is wrong must have been reached.
 		if steps >= 100 && !t.Failed() {
-			for _, must := range []string{"updateNode", "updateRel", "cascadeNode", "cascadeRel", "pastCascade", "deleteNode", "deleteRel", "reimport", "txRollback", "updateWithTx", "deleteWithTx", "addNodeWithTx", "updateInPlace", "compact", "erase"} {
+			for _, must := range []string{"updateNode", "updateRel", "cascadeNode", "cascadeRel", "pastCascade", "deleteNode", "deleteRel", "reimport", "txRollback", "updateWithTx", "deleteWithTx", "addNodeWithTx", "updateInPlace", "compact", "erase", "storeOverwrite"} {
 				if total[must+"Unsupported"] > 0 {
 					continue // the backend declines the door (erasure: tiered, sharded; compaction: sharded)
 				}
@@ -267,6 +268,20 @@ func TestLatestStampsDifferential(t *testing.T) {
 			}
 		}
 	}
+}
+
+// latestStampsBackends is hasHistoryBackends plus badger with delta-encoded
+// history rows (anchor every third version): the sidecar's build and every
+// maintained write then decode delta values, and a moved row lands as a delta
+// over an earlier anchor.
+func latestStampsBackends() []hasHistoryBackend {
+	return append(hasHistoryBackends(), hasHistoryBackend{name: "badger-delta-disk", reopen: true, open: func(t *testing.T, dir string) (storepkg.Store, func() error) {
+		st, err := badger.New(badger.Config{Dir: dir, FlushInterval: time.Hour, HistoryDeltaEncoding: true, HistoryAnchorInterval: 3})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return st, st.Flush
+	}})
 }
 
 func runLatestStampsDifferential(t *testing.T, b hasHistoryBackend, seed int64, steps int, cov *stampsCoverage) map[string]int {
@@ -430,7 +445,7 @@ func runLatestStampsDifferential(t *testing.T, b hasHistoryBackend, seed int64, 
 	assertLatestStampsAgree(t, "seeded", g, st, ns, rs, cov)
 
 	for step := 0; step < steps; step++ {
-		op := r.Intn(118)
+		op := r.Intn(124)
 		name := ""
 		switch {
 		case op < 8:
@@ -663,6 +678,16 @@ func runLatestStampsDifferential(t *testing.T, b hasHistoryBackend, seed int64, 
 				if err := flush(); err != nil {
 					t.Fatalf("flush: %v", err)
 				}
+				ok[name]++
+			}
+		case op < 118:
+			// A store-door rewrite of an existing history version with LOWER
+			// stamps (PutNodeVersion / PutRelVersion: the door replica apply
+			// and restores use; no graph door lowers a stored row today): the
+			// overwritten row may have held the max, so a sidecar that folds
+			// every write like an append keeps a stamp no row carries.
+			name = "storeOverwrite"
+			if storeOverwriteLower(t, g, st, liveNode(), liveRel(), r.Intn(2) == 0) {
 				ok[name]++
 			}
 		default:
@@ -1218,4 +1243,55 @@ func TestLatestStampsConcurrentWriters(t *testing.T) {
 			}
 		})
 	}
+}
+
+// storeOverwriteLower rewrites the history row holding the entity's largest
+// TxFrom with every stamp lowered, through the store's version door, and
+// reports whether it found one (node when node is true, else rel).
+func storeOverwriteLower(t *testing.T, g *graphpkg.Graph, st storepkg.Store, nid types.NodeID, rid types.RelID, node bool) bool {
+	t.Helper()
+	lower := func(tm *types.TemporalMetadata) {
+		tm.TxFrom /= 2
+		tm.TxTo, tm.DeletedAt = 0, 0
+	}
+	if node {
+		hist, err := g.Nodes().History(nid)
+		if err != nil || len(hist) == 0 {
+			return false
+		}
+		top := hist[0]
+		for _, h := range hist {
+			if h.Temporal() != nil && (top.Temporal() == nil || h.Temporal().TxFrom > top.Temporal().TxFrom) {
+				top = h
+			}
+		}
+		if top.Temporal() == nil {
+			return false
+		}
+		row := top.DeepCopy()
+		lower(row.Temporal())
+		if err := st.PutNodeVersion(nid, row.Version(), row); err != nil {
+			t.Fatalf("store overwrite node %d v%d: %v", nid, row.Version(), err)
+		}
+		return true
+	}
+	hist, err := g.Rels().History(rid)
+	if err != nil || len(hist) == 0 {
+		return false
+	}
+	top := hist[0]
+	for _, h := range hist {
+		if h.Temporal() != nil && (top.Temporal() == nil || h.Temporal().TxFrom > top.Temporal().TxFrom) {
+			top = h
+		}
+	}
+	if top.Temporal() == nil {
+		return false
+	}
+	row := top.DeepCopy()
+	lower(row.Temporal())
+	if err := st.PutRelVersion(rid, row.Version(), row); err != nil {
+		t.Fatalf("store overwrite rel %d v%d: %v", rid, row.Version(), err)
+	}
+	return true
 }

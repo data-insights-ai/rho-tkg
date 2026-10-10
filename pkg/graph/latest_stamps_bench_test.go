@@ -10,6 +10,8 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -18,8 +20,9 @@ import (
 // correction that appends rows above the head), memory and badger on disk,
 // against the History scan it replaces (sigma-tkgd's latestStamps today: Get,
 // HasHistory, History, fold; 8.3 ms at 10,000 versions in ai-soc's profile).
-// The sidecar is built by a warm-up call; badger's current row is cached
-// (the hit path; a cold row adds one point read).
+// The sidecar is built by a warm-up call; badger's current row is cached.
+// This is one ID in a hot loop; BenchmarkLatestStampsRotating is the typical
+// case (IDs rotating, tiered and sharded, entity-cache misses).
 //
 //	go test ./pkg/graph/ -run '^$' -bench 'BenchmarkLatestStamps' -benchmem
 func BenchmarkLatestStamps(b *testing.B) {
@@ -199,6 +202,94 @@ func BenchmarkUpdateStampsMaintenance(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				if _, err := g.Rels().Update(ctx, ids[i%len(ids)], map[string]any{"w": int64(-i)}); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+// BenchmarkLatestStampsRotating is the typical case next to the hot loop of
+// BenchmarkLatestStamps: the ID changes every call, over 5,000 relationships
+// (every current row fits badger's default 10 K-entry cache) and 20,000 (half
+// of them do not: a miss reads and decodes the current row), 1 % with ten
+// history rows, the four backends on disk with their default caches. Memory
+// and badger lend the current row; tiered and sharded pay their routing, and
+// sharded copies the current row (it is not a trusted native store and has no
+// lend door).
+//
+//	go test ./pkg/graph/ -run '^$' -bench 'BenchmarkLatestStampsRotating' -benchmem
+func BenchmarkLatestStampsRotating(b *testing.B) {
+	const stride = 100
+	for _, rels := range []int{5_000, 20_000} {
+		for _, backend := range []string{"memory", "badger", "tiered", "sharded"} {
+			benchLatestStampsRotating(b, backend, rels, stride)
+		}
+	}
+}
+
+func benchLatestStampsRotating(b *testing.B, backend string, rels, stride int) {
+	{
+		b.Run(fmt.Sprintf("rels=%d/%s", rels, backend), func(b *testing.B) {
+			ctx := context.Background()
+			var st storepkg.Store
+			switch backend {
+			case "memory":
+				st = memory.New()
+			case "badger":
+				bs, err := badger.New(badger.Config{Dir: b.TempDir()})
+				if err != nil {
+					b.Fatal(err)
+				}
+				st = bs
+			case "tiered":
+				ts, err := tiered.New(tiered.Config{DataDir: b.TempDir(), ShardWindow: 7 * 24 * time.Hour})
+				if err != nil {
+					b.Fatal(err)
+				}
+				st = ts
+			default:
+				ss, err := sharded.New(sharded.Config{Dir: b.TempDir(), BaseSlot: 0, SlotCount: 2})
+				if err != nil {
+					b.Fatal(err)
+				}
+				st = ss
+			}
+			g, err := graphpkg.New(graphpkg.Config{Store: st})
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.Cleanup(func() { _ = g.Close() })
+			var nodes []types.NodeID
+			for i := 0; i < 1000; i++ {
+				n, err := g.Nodes().Add(ctx, []string{"Host"}, nil)
+				if err != nil {
+					b.Fatal(err)
+				}
+				nodes = append(nodes, n.ID())
+			}
+			ids := make([]types.RelID, 0, rels)
+			for i := 0; i < rels; i++ {
+				r, err := g.Rels().AddByID(ctx, "SEEN", nodes[i%len(nodes)], nodes[(i*7+1)%len(nodes)], map[string]any{"w": int64(i)})
+				if err != nil {
+					b.Fatal(err)
+				}
+				ids = append(ids, r.ID())
+				if i%stride == 0 {
+					for v := 0; v < 10; v++ {
+						if _, err := g.Rels().Update(ctx, r.ID(), map[string]any{"w": int64(-v)}); err != nil {
+							b.Fatal(err)
+						}
+					}
+				}
+			}
+			if _, _, _, err := g.Rels().LatestStamps(ids[0]); err != nil { // builds the sidecars
+				b.Fatal(err)
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, _, _, err := g.Rels().LatestStamps(ids[(i*7919)%len(ids)]); err != nil {
 					b.Fatal(err)
 				}
 			}
