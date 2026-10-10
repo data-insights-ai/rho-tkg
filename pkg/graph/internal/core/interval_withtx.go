@@ -80,7 +80,9 @@ func (c *Core) cascadeInstant(at types.Instant, chain []*types.TemporalMetadata)
 }
 
 // temporalsOf returns the temporal blocks of rows (history, then current).
-func temporalsOf[T interface{ Temporal() *types.TemporalMetadata }](history []T, current T) []*types.TemporalMetadata {
+func temporalsOf[T interface {
+	Temporal() *types.TemporalMetadata
+}](history []T, current T) []*types.TemporalMetadata {
 	out := make([]*types.TemporalMetadata, 0, len(history)+1)
 	for _, h := range history {
 		out = append(out, h.Temporal())

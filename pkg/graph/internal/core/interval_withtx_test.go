@@ -830,7 +830,7 @@ func TestIntervalWithTx_TwoPhase(t *testing.T) {
 	}
 }
 
-// 7 — the sigma-tkgd shape: a burst fact grows [vs,ve) -> [vs,ve') -> [vs,ve'')
+// 7 — the sigma-tkgd shape: a burst fact grows [vs,ve) -> [vs,ve') -> [vs,ve”)
 // at the record instants t1 < t2 of a replayed stream.
 //
 // Catches: a door that stamps the growth at the clock (at pin t1 the fact
