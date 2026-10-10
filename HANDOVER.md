@@ -214,7 +214,7 @@ Legend: [ ] open, (S) = waits for sigma, (R) = waits for René's decision.
    asked for the door as the next step. Semantics: tx-time "belief ends at T; at pins >= T absent for every valid time; at pins
    < T unchanged"; full door list, open design points with defaults (marker as an additive `Retracted` field in the temporal block + wire tag — a reserved property is IMPOSSIBLE, `tkg_` keys are rejected; life cap at −∞ in `lifeEnds`, additive/minor) and the red-test list are in backlog 43. Workflow: spec check against the
    code first (the `tkg_` reserved-key rules, `lifeEnds`, supersession rule, timeline sweep), then Opus agent with Appendix A,
-   reviewer, fix round, lint+security, merge, gate, gate, tag as a PATCH release (v4.49.1, not v4.50.0), tell ai-soc (and the new
+   reviewer, fix round, lint+security, merge, gate, tag as a PATCH release (v4.49.1, not v4.50.0), tell ai-soc (and the new
    sigma session) the exact signatures.
 1. [ ] **Restart backlog 34** `Set{Node,Rel}VersionIntervalWithTx` (all doors) — sigma replay need.
 2. [ ] **Restart backlog 33 + 42 (+ 41 last)** badger read cost — baseline saved in `tasks/evidence/badger-read-cost/`.
