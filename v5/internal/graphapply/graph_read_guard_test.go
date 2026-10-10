@@ -667,7 +667,7 @@ func TestGuardedGraphEncounteredDescriptorCorruptionBeatsStaleRead(t *testing.T)
 	f.commit(t, r)
 	var descriptor raftlog.KV
 	for _, row := range initialized.Writes {
-		if len(row.Value) == 160 && bytes.Equal(row.Value[:3], []byte{'G', 'C', 1}) && bytes.Equal(row.Value[28:32], []byte{2, 2, 0, 0}) {
+		if len(row.Value) == 216 && bytes.Equal(row.Value[:3], []byte{'G', 'C', 1}) && bytes.Equal(row.Value[28:32], []byte{2, 3, 0, 0}) {
 			descriptor = raftlog.KV{Key: owned(row.Key), Value: owned(row.Value)}
 		}
 	}

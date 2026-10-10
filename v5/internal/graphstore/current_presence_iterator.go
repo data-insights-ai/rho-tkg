@@ -99,88 +99,94 @@ func cpPredicateHash(n Namespace, tree currentPresenceTreeRoot, p cpPredicate, g
 	return out
 }
 func newCurrentPresenceIterator(ctx context.Context, c *Catalog, tree currentPresenceTreeRoot, query currentPresenceQuery, l currentPresenceTreeLimits) (*currentPresenceIterator, error) {
+	it, _, err := newCurrentPresenceIteratorWork(ctx, c, tree, query, l)
+	return it, err
+}
+func newCurrentPresenceIteratorWork(ctx context.Context, c *Catalog, tree currentPresenceTreeRoot, query currentPresenceQuery, l currentPresenceTreeLimits) (iterator *currentPresenceIterator, work PageWork, err error) {
+	var r *reader
+	defer func() {
+		if r != nil {
+			work = PageWork{Records: r.rows, Bytes: r.bytes}
+		}
+	}()
 	if err := cpCheckContext(ctx); err != nil {
-		return nil, err
+		return nil, PageWork{}, err
 	}
 	if c == nil {
-		return nil, ErrInvalid
+		return nil, PageWork{}, ErrInvalid
 	}
 	if err := l.validate(); err != nil {
-		return nil, err
+		return nil, PageWork{}, err
 	}
 	pages, err := l.pages.resolve()
 	if err != nil {
-		return nil, err
+		return nil, PageWork{}, err
 	}
 	l.pages = pages
 	if query.endpoint == 0 || query.mode != 0 && query.mode != graphstate.LifeBound && query.mode != graphstate.IdentityReference || query.direction == 0 || query.direction & ^(cpSource|cpTarget) != 0 || query.typ != "" && !validName(query.typ, c.limits) {
-		return nil, ErrInvalid
+		return nil, PageWork{}, ErrInvalid
 	}
 	if tree.id == 0 || tree.digest == ([32]byte{}) || tree.id >= c.root.next {
-		return nil, ErrInvalid
+		return nil, PageWork{}, ErrInvalid
 	}
 	if err := query.at.Axis().Validate(l.codec.temporal); err != nil {
-		return nil, callerError(err)
+		return nil, PageWork{}, callerError(err)
 	}
-	r, err := c.reader(ctx)
+	r, err = c.reader(ctx)
 	if err != nil {
-		return nil, err
+		return nil, PageWork{}, err
 	}
 	r.maxRows, r.maxBytes = l.pages.MaxWorkRecords, l.pages.MaxWorkBytes
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, PageWork{}, err
 	}
 	if err := r.materialize(cpIteratorOwned + cpTreeOperationOwned + cpPredicateOwned + cpIteratorFrameOwned*l.codec.maxLevels + 2*len(query.typ)); err != nil {
-		return nil, err
+		return nil, PageWork{}, err
 	}
 	q := &cpTreeOperation{pageStage: &pageStage{pageReader: &pageReader{q: r, limits: l.pages}, root: c.root}, limits: l, cache: make(map[uint64]currentPresencePage), dirty: make(map[uint64][]byte)}
 
 	d := query.at.Axis().Descriptor()
 	if err := q.charge(96); err != nil {
-		return nil, err
+		return nil, PageWork{}, err
 	}
 	axis, found, err := r.axis(d.ID)
 	if err != nil {
-		return nil, c.failure(err)
+		return nil, PageWork{}, c.failure(err)
 	}
 	if !found || axis.Descriptor() != d || axis.DefinitionHash() != query.at.Axis().DefinitionHash() {
-		return nil, errors.Join(ErrInvalid, temporal.ErrAxisMismatch)
-	}
-	remaining := q.remainingBytes()
-	if remaining < 2*(52+3) {
-		return nil, ErrResourceLimit
+		return nil, PageWork{}, errors.Join(ErrInvalid, temporal.ErrAxisMismatch)
 	}
 	tl := l.codec.temporal
-	tl.MaxValueBytes = min(remaining/2, cmpDefaultTemporalValueBytes(tl))
-	tl.MaxInputBytes = min(remaining/2, cmpDefaultTemporalInputBytes(tl))
-	encoded, err := temporal.AppendPosition(nil, query.at, tl)
+	capacity, scratch := cpPositionBudget(query.at, tl)
+	if scratch > l.codec.maxScratchBytes {
+		return nil, PageWork{}, ErrResourceLimit
+	}
+	// The encoded buffer, validation scratch and retained coordinate copy are
+	// all charged before encoding; errors preserve the unpublished iterator.
+	if err := q.charge(capacity + max(0, capacity-52) + scratch); err != nil {
+		return nil, PageWork{}, err
+	}
+	encoded, err := temporal.AppendPosition(make([]byte, 0, capacity), query.at, tl)
 	if err != nil {
-		return nil, callerError(err)
-	}
-	queryScratch := 2048 + 64*(len(encoded)-52+32)
-	if queryScratch > l.codec.maxScratchBytes {
-		return nil, ErrResourceLimit
-	}
-	if err := q.charge(cap(encoded) + len(encoded) - 52); err != nil {
-		return nil, err
+		return nil, PageWork{}, callerError(err)
 	}
 	p := cpPredicate{query.endpoint, query.life, currentPresenceAxis{d.ID, axis.DefinitionHash(), d.Profile}, query.mode, query.direction, strings.Clone(query.typ), exactCopy(encoded[52:])}
 	app, err := c.view.Root()
 	if err != nil {
-		return nil, err
+		return nil, PageWork{}, err
 	}
 	if err := q.charge(cap(app.Image)); err != nil {
-		return nil, err
+		return nil, PageWork{}, err
 	}
 	it := &currentPresenceIterator{c: c, op: q, tree: tree, predicate: p, generation: app.Generation, index: app.Index, imageHash: app.ImageHash, frames: make([]cpIteratorFrame, 0, l.codec.maxLevels)}
 	it.binding = cpPredicateHash(c.root.namespace, tree, p, app.Generation, app.Index, app.ImageHash)
 	if it.retainedBytes(nil, nil) > l.pages.MaxCursorBytes {
-		return nil, ErrResourceLimit
+		return nil, PageWork{}, ErrResourceLimit
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, PageWork{}, err
 	}
-	return it, nil
+	return it, PageWork{}, nil
 }
 func cmpDefaultTemporalValueBytes(l temporal.Limits) int {
 	if l.MaxValueBytes == 0 {
@@ -318,6 +324,9 @@ func (q *cpTreeOperation) candidateWitness(a currentPresenceAtom, p cpPredicate)
 				matched = cpSource
 			}
 		}
+	}
+	if q.q.fullView != nil && matched != 0 {
+		q.witness = currentPresenceWitness{entity, life}
 	}
 	return currentPresenceCandidate{a.relationship, a.life, matched}, matched != 0, nil
 }
@@ -548,6 +557,7 @@ func (it *currentPresenceIterator) next(ctx context.Context, token graphstate.Cu
 	}
 	it.frames, it.last, it.started, it.done, it.cursor = frames, last, started, done, next
 	it.op.cache = attempt.cache
+	it.op.witness = attempt.witness
 	it.outputBytes += cpCandidatePageOwned + cpCandidateOwned*cap(out)
 	attempt.counters.PageWork = attempt.work
 	return currentPresenceCandidatePage{out, next, done, attempt.counters, visited}, nil

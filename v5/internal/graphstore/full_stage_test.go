@@ -45,8 +45,8 @@ func newFullFixture(t *testing.T, l GraphLimits) *fullFixture {
 	if c.fullViews != 0 || c.stages != 0 || c.records != 0 || c.stageBytes != 0 {
 		t.Fatal("initializer leaked handles")
 	}
-	if effects.Root.next != 5 || effects.Root.epoch != 0 || effects.Root.effect != root.effect {
-		t.Fatal("initialization lacks four real roots or advanced semantics")
+	if effects.Root.next != 6 || effects.Root.epoch != 0 || effects.Root.effect != root.effect {
+		t.Fatal("initialization lacks five real roots or advanced semantics")
 	}
 	f.install(t, effects)
 	return f

@@ -31,13 +31,19 @@ func declaredIncidentKeys(r graphstate.EntityRecord, life graphstate.LifeRecord)
 	second.roles = 2
 	return []postingKey{first, second}
 }
+
+type postingMembershipLookup func(postingTreeRoot, postingKey, postingTreeLimits) (bool, error)
+
 func (q *pageReader) checkCanonical(r graphstate.EntityRecord) error {
+	return q.checkCanonicalWithLookup(r, q.hasPostingKey)
+}
+func (q *pageReader) checkCanonicalWithLookup(r graphstate.EntityRecord, lookup postingMembershipLookup) error {
 	d, err := q.fullDescriptor()
 	if err != nil {
 		return err
 	}
 	for _, key := range canonicalIncidentKeys(r) {
-		found, err := q.hasPostingKey(d.canonical, key, keyTreeLimits(q.limits))
+		found, err := lookup(d.canonical, key, keyTreeLimits(q.limits))
 		if err != nil {
 			return err
 		}
@@ -55,7 +61,10 @@ func (q *pageReader) checkCanonical(r graphstate.EntityRecord) error {
 	return nil
 }
 func (q *pageReader) checkDeclared(r graphstate.EntityRecord, life graphstate.LifeRecord) error {
-	if err := q.checkCanonical(r); err != nil {
+	return q.checkDeclaredWithLookup(r, life, q.hasPostingKey)
+}
+func (q *pageReader) checkDeclaredWithLookup(r graphstate.EntityRecord, life graphstate.LifeRecord, lookup postingMembershipLookup) error {
+	if err := q.checkCanonicalWithLookup(r, lookup); err != nil {
 		return err
 	}
 	if r.Mode != graphstate.LifeBound {
@@ -66,7 +75,7 @@ func (q *pageReader) checkDeclared(r graphstate.EntityRecord, life graphstate.Li
 		return err
 	}
 	for _, key := range declaredIncidentKeys(r, life) {
-		found, err := q.hasPostingKey(d.declared, key, keyTreeLimits(q.limits))
+		found, err := lookup(d.declared, key, keyTreeLimits(q.limits))
 		if err != nil {
 			return err
 		}
@@ -134,7 +143,7 @@ func (q *pageReader) rawKey(k graphstate.ComponentKey, cell state.Cell) (posting
 	return key, true, nil
 }
 func (q *pageReader) checkRawCell(k graphstate.ComponentKey, cell state.Cell) error {
-	if q.q.c.root.topology != fullTopology && q.q.full == nil && q.q.fullView == nil {
+	if !isFullTopology(q.q.c.root.topology) && q.q.full == nil && q.q.fullView == nil {
 		return nil
 	}
 	key, present, err := q.rawKey(k, cell)

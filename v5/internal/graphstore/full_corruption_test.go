@@ -3,6 +3,7 @@ package graphstore
 import (
 	"encoding/binary"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
@@ -10,7 +11,7 @@ import (
 )
 
 func TestFullIndexRootAndBindingCorruptionNeverReturnsPartialView(t *testing.T) {
-	for _, mutation := range []string{"descriptor-missing", "descriptor-owner", "descriptor-format", "descriptor-count", "keys-missing", "unique-missing", "canonical-missing", "declared-missing", "canonical-role", "declared-role", "raw-canonical", "raw-owner", "raw-member", "metadata-missing"} {
+	for _, mutation := range []string{"descriptor-missing", "descriptor-owner", "descriptor-format", "descriptor-count", "own-missing", "own-digest", "own-count", "own-id", "own-level", "own-family", "keys-missing", "unique-missing", "canonical-missing", "declared-missing", "canonical-role", "declared-role", "raw-canonical", "raw-owner", "raw-member", "metadata-missing"} {
 		t.Run(mutation, func(t *testing.T) {
 			f := newFullFixture(t, GraphLimits{})
 			scope := f.span(t, 0, 10)
@@ -36,6 +37,18 @@ func TestFullIndexRootAndBindingCorruptionNeverReturnsPartialView(t *testing.T) 
 				binary.BigEndian.PutUint64(wire[56:64], 99)
 			case "descriptor-count":
 				binary.BigEndian.PutUint64(wire[104:112], d.unique.count+1)
+			case "own-missing":
+				row = raftlog.KV{Key: physicalKey(c.root.namespace, currentPresenceRecord, d.own.id), Deleted: true}
+			case "own-digest":
+				wire[184] ^= 1
+			case "own-count":
+				binary.BigEndian.PutUint64(wire[176:184], d.own.count+1)
+			case "own-id":
+				binary.BigEndian.PutUint64(wire[168:176], d.canonical.id)
+			case "own-level":
+				wire[161] = 8
+			case "own-family":
+				wire[160] = byte(canonicalIncidentRecord)
 			case "keys-missing":
 				row = raftlog.KV{Key: physicalKey(c.root.namespace, componentKeyTreeRecord, d.keys.id), Deleted: true}
 			case "unique-missing":
@@ -88,7 +101,7 @@ func TestFullIndexRootAndBindingCorruptionNeverReturnsPartialView(t *testing.T) 
 			_ = c.view.Close()
 			bad := f.catalog(t, f.index)
 			v, err := OpenReadView(t.Context(), bad, GraphLimits{})
-			constructorFailure := mutation == "descriptor-missing" || mutation == "descriptor-owner" || mutation == "descriptor-format" || mutation == "descriptor-count" || mutation == "keys-missing" || mutation == "unique-missing" || mutation == "canonical-missing" || mutation == "declared-missing"
+			constructorFailure := strings.HasPrefix(mutation, "own-") || mutation == "descriptor-missing" || mutation == "descriptor-owner" || mutation == "descriptor-format" || mutation == "descriptor-count" || mutation == "keys-missing" || mutation == "unique-missing" || mutation == "canonical-missing" || mutation == "declared-missing"
 			if constructorFailure {
 				if !errors.Is(err, ErrCorrupt) || v != nil || bad.fullViews != 0 || bad.fullViewBytes != 0 {
 					t.Fatal("corrupt index advertised Full", v, err)

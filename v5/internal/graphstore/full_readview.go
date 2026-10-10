@@ -30,6 +30,7 @@ type ReadView struct {
 	cursorBytes, outputBytes int
 	handleBytes              int
 	work                     PageWork
+	currentWork              currentPresenceTreeWork
 	closed                   bool
 }
 type fullContinuation struct {
@@ -39,6 +40,7 @@ type fullContinuation struct {
 	posting      postingKey
 	relationship graphstate.EntityID
 	bytes        int
+	current      *fullCurrentCursor
 }
 
 var _ graphstate.ReadView = (*ReadView)(nil)
@@ -57,7 +59,7 @@ func OpenReadView(ctx context.Context, c *Catalog, l GraphLimits) (view *ReadVie
 	if err := c.check(ctx); err != nil {
 		return nil, err
 	}
-	if c.root.topology != fullTopology {
+	if !isFullTopology(c.root.topology) {
 		return nil, ErrTopologyUnsupported
 	}
 	// Charge the retained descriptor/limits/base image/page-reader/map headers.
@@ -181,6 +183,11 @@ func (v *ReadView) Close() error {
 	}
 	v.closed = true
 	_ = v.pages.Close()
+	for _, cursor := range v.cursors {
+		if cursor.current != nil {
+			_ = cursor.current.iterator.close()
+		}
+	}
 	v.cursors = nil
 	v.cursorBytes = 0
 	v.base.Image = nil

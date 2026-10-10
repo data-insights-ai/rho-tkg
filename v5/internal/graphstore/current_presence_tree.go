@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"math"
+	"math/bits"
 	"slices"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
@@ -58,6 +59,11 @@ type cpTreeOperation struct {
 	cache    map[uint64]currentPresencePage // bounded touched PAGE cache, never per-fact resident state
 	dirty    map[uint64][]byte
 	counters currentPresenceTreeWork
+	witness  currentPresenceWitness // one Full residual witness, cleared before cursor retention
+}
+type currentPresenceWitness struct {
+	entity graphstate.EntityRecord
+	life   graphstate.LifeRecord
 }
 
 const (
@@ -925,14 +931,6 @@ func stageCurrentPresenceAtoms(ctx context.Context, s *Stage, root Root, tree cu
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := base.materialize(cpTreeOperationOwned + cpTreeResultOwned); err != nil {
-			return err
-		}
-		q := cpTreeOperation{pageStage: &pageStage{pageReader: &pageReader{q: base, limits: l.pages}, root: root}, limits: l, cache: make(map[uint64]currentPresencePage), dirty: make(map[uint64][]byte)}
-		q.allocation = &q.root
-		if err := q.budget(); err != nil {
-			return err
-		}
 		if err := validatePrivateRoot(s, root); err != nil {
 			return err
 		}
@@ -941,134 +939,10 @@ func stageCurrentPresenceAtoms(ctx context.Context, s *Stage, root Root, tree cu
 				return ErrInvalid
 			}
 		}
-		old, err := cpCloneEdits(&q, before)
-		if err != nil {
-			return err
-		}
-		fresh, err := cpCloneEdits(&q, after)
-		if err != nil {
-			return err
-		}
-		var n currentPresencePage
-		if tree.id == 0 {
-			if tree != (currentPresenceTreeRoot{}) || len(old) != 0 {
-				return ErrInvalid
-			}
-			id, err := q.reserve()
-			if err != nil {
-				return err
-			}
-			n = currentPresencePage{id: id}
-			if err := q.charge(cpPageOwned); err != nil {
-				return err
-			}
-		} else {
-			n, err = q.load(tree)
-			if err != nil {
-				return err
-			}
-		}
-		// Verify all before images before mutation/reservation. No arbitrary Delta
-		// entrypoint exists; native edits must match the captured tree exactly.
-		for _, a := range old {
-			actual, found, e := q.findAtom(n, a)
-			if e != nil {
-				return e
-			}
-			if !found || !cpAtomEqual(actual, a) {
-				return errors.Join(ErrInvalid, ErrPatchConflict)
-			}
-		}
-		refs, err := q.mutate(n, old, fresh)
-		if err != nil {
-			return err
-		}
-		if len(refs) == 0 || tree.id == 0 && len(old)+len(fresh) == 0 {
-			empty := currentPresencePage{id: n.id}
-			wire, e := q.encode(empty)
-			if e != nil {
-				return e
-			}
-			ref, e := q.retain(empty, wire)
-			if e != nil {
-				return e
-			}
-			if err := q.charge(cpReferenceOwned); err != nil {
-				return err
-			}
-			refs = []cpReference{ref}
-		}
-		for len(refs) > 1 {
-			level := refs[0].level + 1
-			if int(level) >= l.codec.maxLevels {
-				return ErrResourceLimit
-			}
-			id, e := q.reserve()
-			if e != nil {
-				return e
-			}
-			refs, e = q.branchParts(id, level, refs)
-			if e != nil {
-				return e
-			}
-		}
-		final := refs[0]
-		if final.child.count == math.MaxUint64 {
-			return ErrResourceLimit
-		}
-		// Write only reachable dirty pages. Unreachable split/rebalance temporaries
-		// consumed reservations/work but never become additional retained KV rows.
-		if err := q.charge(128 + cpCacheEntryOwned*len(q.cache)); err != nil {
-			return err
-		}
-		reachable := map[uint64]bool{}
-		var visit func(cpReference) error
-		visit = func(ref cpReference) error {
-			if reachable[ref.child.id] {
-				return ErrCorrupt
-			}
-			reachable[ref.child.id] = true
-			p, dirty := q.cache[ref.child.id]
-			if !dirty {
-				return nil
-			}
-			if _, changed := q.dirty[p.id]; !changed {
-				return nil
-			}
-			for _, ch := range p.children {
-				if sub, ok := q.cache[ch.id]; ok {
-					if err := visit(cpReference{ch, sub, sub.level}); err != nil {
-						return err
-					}
-				}
-			}
-			return nil
-		}
-		if err := visit(final); err != nil {
-			return err
-		}
-		for id, wire := range q.dirty {
-			if !reachable[id] {
-				continue
-			}
-			key := physicalKey(q.root.namespace, currentPresenceRecord, id)
-			if err := q.charge(2*len(key) + len(wire) + 64); err != nil {
-				return err
-			}
-			if err := base.put(key, wire); err != nil {
-				return err
-			}
-			q.counters.FinalPageWrites++
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := q.budget(); err != nil {
-			return err
-		}
-		q.counters.PageWork = q.work
-		result = stagedCurrentPresence{q.root, currentPresenceTreeRoot{final.child.id, final.child.count, final.child.digest, final.level}, q.counters}
-		return nil
+		p := pageStage{pageReader: &pageReader{q: base, limits: l.pages}, root: root}
+		var err error
+		result, err = stageCurrentPresenceInOperation(&p, tree, before, after, l)
+		return err
 	})
 	if err != nil {
 		return stagedCurrentPresence{}, err
@@ -1254,4 +1128,185 @@ func (q *cpTreeOperation) appendReference(refs []cpReference, ref cpReference) (
 	out := make([]cpReference, len(refs), needed)
 	copy(out, refs)
 	return append(out, ref), nil
+}
+
+// Shared private operation: Full supplies its existing reader, pending writes,
+// allocation floor and ledger. The outer Stage.operation owns publication.
+func stageCurrentPresenceInOperation(p *pageStage, tree currentPresenceTreeRoot, before, after []currentPresenceAtom, l currentPresenceTreeLimits) (stagedCurrentPresence, error) {
+	if err := l.validate(); err != nil {
+		return stagedCurrentPresence{}, err
+	}
+	if len(before)+len(after) > l.maxEdits || uint64(len(after)) > math.MaxUint64-tree.count {
+		return stagedCurrentPresence{}, ErrResourceLimit
+	}
+	if err := p.q.materialize(cpTreeOperationOwned + cpTreeResultOwned); err != nil {
+		return stagedCurrentPresence{}, err
+	}
+	q := cpTreeOperation{pageStage: p, limits: l, cache: make(map[uint64]currentPresencePage), dirty: make(map[uint64][]byte)}
+	q.allocation = &p.root
+	if err := q.budget(); err != nil {
+		return stagedCurrentPresence{}, err
+	}
+	old, err := cpCloneEdits(&q, before)
+	if err != nil {
+		return stagedCurrentPresence{}, err
+	}
+	fresh, err := cpCloneEdits(&q, after)
+	if err != nil {
+		return stagedCurrentPresence{}, err
+	}
+	var n currentPresencePage
+	if tree.id == 0 {
+		if tree != (currentPresenceTreeRoot{}) || len(old) != 0 {
+			return stagedCurrentPresence{}, ErrInvalid
+		}
+		id, err := q.reserve()
+		if err != nil {
+			return stagedCurrentPresence{}, err
+		}
+		n = currentPresencePage{id: id}
+		if err := q.charge(cpPageOwned); err != nil {
+			return stagedCurrentPresence{}, err
+		}
+	} else {
+		n, err = q.load(tree)
+		if err != nil {
+			return stagedCurrentPresence{}, err
+		}
+	}
+	// Verify all before images before mutation/reservation. No arbitrary Delta
+	// entrypoint exists; native edits must match the captured tree exactly.
+	for _, a := range old {
+		actual, found, e := q.findAtom(n, a)
+		if e != nil {
+			return stagedCurrentPresence{}, e
+		}
+		if !found || !cpAtomEqual(actual, a) {
+			return stagedCurrentPresence{}, errors.Join(ErrInvalid, ErrPatchConflict)
+		}
+	}
+	refs, err := q.mutate(n, old, fresh)
+	if err != nil {
+		return stagedCurrentPresence{}, err
+	}
+	if len(refs) == 0 || tree.id == 0 && len(old)+len(fresh) == 0 {
+		empty := currentPresencePage{id: n.id}
+		wire, e := q.encode(empty)
+		if e != nil {
+			return stagedCurrentPresence{}, e
+		}
+		ref, e := q.retain(empty, wire)
+		if e != nil {
+			return stagedCurrentPresence{}, e
+		}
+		if err := q.charge(cpReferenceOwned); err != nil {
+			return stagedCurrentPresence{}, err
+		}
+		refs = []cpReference{ref}
+	}
+	for len(refs) > 1 {
+		level := refs[0].level + 1
+		if int(level) >= l.codec.maxLevels {
+			return stagedCurrentPresence{}, ErrResourceLimit
+		}
+		id, e := q.reserve()
+		if e != nil {
+			return stagedCurrentPresence{}, e
+		}
+		refs, e = q.branchParts(id, level, refs)
+		if e != nil {
+			return stagedCurrentPresence{}, e
+		}
+	}
+	final := refs[0]
+	if final.child.count == math.MaxUint64 {
+		return stagedCurrentPresence{}, ErrResourceLimit
+	}
+	// Write only reachable dirty pages. Unreachable split/rebalance temporaries
+	// consumed reservations/work but never become additional retained KV rows.
+	if err := q.charge(128 + cpCacheEntryOwned*len(q.cache)); err != nil {
+		return stagedCurrentPresence{}, err
+	}
+	reachable := map[uint64]bool{}
+	var visit func(cpReference) error
+	visit = func(ref cpReference) error {
+		if reachable[ref.child.id] {
+			return ErrCorrupt
+		}
+		reachable[ref.child.id] = true
+		p, dirty := q.cache[ref.child.id]
+		if !dirty {
+			return nil
+		}
+		if _, changed := q.dirty[p.id]; !changed {
+			return nil
+		}
+		for _, ch := range p.children {
+			if sub, ok := q.cache[ch.id]; ok {
+				if err := visit(cpReference{ch, sub, sub.level}); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	if err := visit(final); err != nil {
+		return stagedCurrentPresence{}, err
+	}
+	for id, wire := range q.dirty {
+		if !reachable[id] {
+			continue
+		}
+		key := physicalKey(q.root.namespace, currentPresenceRecord, id)
+		if err := q.charge(2*len(key) + len(wire) + 64); err != nil {
+			return stagedCurrentPresence{}, err
+		}
+		if err := q.q.put(key, wire); err != nil {
+			return stagedCurrentPresence{}, err
+		}
+		q.counters.FinalPageWrites++
+	}
+	if err := q.q.ctx.Err(); err != nil {
+		return stagedCurrentPresence{}, err
+	}
+	if err := q.budget(); err != nil {
+		return stagedCurrentPresence{}, err
+	}
+	q.counters.PageWork = q.work
+	return stagedCurrentPresence{q.root, currentPresenceTreeRoot{final.child.id, final.child.count, final.child.digest, final.level}, q.counters}, nil
+}
+
+// cpPositionBudget requires no coordinate encoding or numeric scratch. Inline
+// components have exact wire sizes; wide components reserve the configured
+// magnitude ceiling, which AppendPosition rechecks before any widening work.
+func cpPositionBudget(p temporal.Position, l temporal.Limits) (int, int) {
+	defaults := temporal.DefaultLimits()
+	l.MaxMagnitudeBits = cmp.Or(l.MaxMagnitudeBits, defaults.MaxMagnitudeBits)
+	l.MaxValueBytes = cmp.Or(l.MaxValueBytes, defaults.MaxValueBytes)
+	integerBytes := func(n temporal.Integer) int {
+		v, small := n.Int64()
+		if !small {
+			return 3 + (l.MaxMagnitudeBits+7)/8
+		}
+		var magnitude uint64
+		if v < 0 {
+			magnitude = uint64(-(v + 1)) + 1
+		} else {
+			magnitude = uint64(v)
+		}
+		return 3 + (bits.Len64(magnitude)+7)/8
+	}
+	payload := 0
+	switch p.Profile() {
+	case temporal.ProfileIntegerZ:
+		n, _ := p.Integer()
+		payload = integerBytes(n)
+	case temporal.ProfileRationalQ:
+		r, _ := p.Rational()
+		payload = integerBytes(r.Numerator()) + integerBytes(r.Denominator())
+	case temporal.ProfileLexicographicQN:
+		r, n, _ := p.Lex()
+		payload = integerBytes(r.Numerator()) + integerBytes(r.Denominator()) + integerBytes(n)
+	}
+	return min(l.MaxValueBytes, 52+payload), 4096 + 64*(payload+32)
 }

@@ -79,13 +79,16 @@ func validatePostingKeyTreeNode(n postingTreeNode, c *Catalog, l postingTreeLimi
 	if len(n.children) > l.maxChildren {
 		return ErrResourceLimit
 	}
-	seen := make(map[uint64]bool, len(n.children))
 	var count uint64
 	for i, child := range n.children {
-		if child.id == 0 || child.id == n.id || seen[child.id] || child.count == 0 || child.count > math.MaxUint64-count || child.first.family != n.kind || child.last.family != n.kind || !validPostingKey(child.first, c.limits) || !validPostingKey(child.last, c.limits) || comparePostingKeys(child.first, child.last) > 0 || i > 0 && comparePostingKeys(n.children[i-1].last, child.first) >= 0 {
+		if child.id == 0 || child.id == n.id || child.count == 0 || child.count > math.MaxUint64-count || child.first.family != n.kind || child.last.family != n.kind || !validPostingKey(child.first, c.limits) || !validPostingKey(child.last, c.limits) || comparePostingKeys(child.first, child.last) > 0 || i > 0 && comparePostingKeys(n.children[i-1].last, child.first) >= 0 {
 			return ErrInvalid
 		}
-		seen[child.id] = true
+		for _, previous := range n.children[:i] {
+			if previous.id == child.id {
+				return ErrInvalid
+			}
+		}
 		count += child.count
 	}
 	return nil
@@ -164,13 +167,21 @@ func (q *pageReader) postingTreeNode(id uint64, kind recordKind, l postingTreeLi
 	if int(level) >= l.maxLevels || int(count) > maximum {
 		return postingTreeNode{}, ErrResourceLimit
 	}
+	// Count is bounded by the actual wire and policy before ownership exists.
+	// Charge fixed decoded backing once, before keys/children allocation.
+	if err := q.q.materialize(128 + 320*int(count)); err != nil {
+		return postingTreeNode{}, err
+	}
+	if err := q.budget(); err != nil {
+		return postingTreeNode{}, err
+	}
 	n := postingTreeNode{id: id, level: int(level), kind: kind}
 	if level == 0 {
 		n.keys = make([]postingKey, int(count))
 	} else {
 		n.children = make([]postingTreeChild, int(count))
 	}
-	bytes := 128 + 320*int(count)
+	bytes := 0
 	for i := range int(count) {
 		var child postingTreeChild
 		if level > 0 {

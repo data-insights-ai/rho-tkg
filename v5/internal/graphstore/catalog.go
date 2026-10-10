@@ -186,7 +186,7 @@ func (q *reader) axis(id temporal.AxisID) (temporal.Axis, bool, error) {
 	if err != nil || !found {
 		return temporal.Axis{}, found, err
 	}
-	if q.full != nil || q.fullView != nil || q.c.root.topology == fullTopology {
+	if q.full != nil || q.fullView != nil || isFullTopology(q.c.root.topology) {
 		if err := q.materialize(96); err != nil {
 			return temporal.Axis{}, false, err
 		}
@@ -219,7 +219,7 @@ func (q *reader) property(owner graphstate.EntityKind, name string) (graphstate.
 	if err != nil || !found {
 		return graphstate.PropertyDefinition{}, found, err
 	}
-	if q.full != nil || q.fullView != nil || q.c.root.topology == fullTopology {
+	if q.full != nil || q.fullView != nil || isFullTopology(q.c.root.topology) {
 		if err := q.materialize(64); err != nil {
 			return graphstate.PropertyDefinition{}, false, err
 		}
@@ -244,7 +244,7 @@ func (q *reader) entity(ref EntityRef) (graphstate.EntityRecord, bool, error) {
 	if err != nil || !found {
 		return graphstate.EntityRecord{}, found, err
 	}
-	if q.full != nil || q.fullView != nil || q.c.root.topology == fullTopology {
+	if q.full != nil || q.fullView != nil || isFullTopology(q.c.root.topology) {
 		if err := q.materialize(192); err != nil {
 			return graphstate.EntityRecord{}, false, err
 		}
@@ -279,7 +279,7 @@ func (q *reader) life(ref LifeRef) (graphstate.LifeRecord, bool, error) {
 	if err != nil || !found {
 		return graphstate.LifeRecord{}, found, err
 	}
-	if q.full != nil || q.fullView != nil || q.c.root.topology == fullTopology {
+	if q.full != nil || q.fullView != nil || isFullTopology(q.c.root.topology) {
 		if err := q.materialize(64); err != nil {
 			return graphstate.LifeRecord{}, false, err
 		}
@@ -337,7 +337,7 @@ func (q *reader) value(ref ValueRef) (ValueEntry, []byte, bool, error) {
 	if err != nil || !found {
 		return ValueEntry{}, nil, found, err
 	}
-	if q.full != nil || q.fullView != nil || q.c.root.topology == fullTopology {
+	if q.full != nil || q.fullView != nil || isFullTopology(q.c.root.topology) {
 		if err := q.materialize(256); err != nil {
 			return ValueEntry{}, nil, false, err
 		}

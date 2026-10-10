@@ -197,8 +197,8 @@ func TestPhysicalFullFormatDoesNotAuthorizeControlsOrInitializationOutcomes(t *t
 			b := batchAt(q.base)
 			b.Writes = []raftlog.KV{descriptor}
 			installIncompleteFixture(t, f, b)
-			if declaration, err := root.SinglePartition(); err != nil || declaration.IndexVersion != 2 || isBootstrapRoot(root) {
-				t.Fatal("not physical format2 fixture", declaration, err)
+			if declaration, err := root.SinglePartition(); err != nil || declaration.IndexVersion != 3 || isBootstrapRoot(root) {
+				t.Fatal("not physical format3 fixture", declaration, err)
 			}
 			if _, err := newMaterializer(f.s, f.n, 1, f.m.limits); !errors.Is(err, graphstore.ErrCorrupt) {
 				t.Fatal("Restore skipped actual Full proof", err)

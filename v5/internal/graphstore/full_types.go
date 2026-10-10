@@ -61,7 +61,10 @@ type GraphEffects struct {
 	OwnedBytes int
 }
 
-var fullTopology = topologyDeclaration{epoch: 1, schema: 1, index: 2}
+var legacyFullTopology = topologyDeclaration{epoch: 1, schema: 1, index: 2}
+var fullTopology = topologyDeclaration{epoch: 1, schema: 1, index: 3}
+
+func isFullTopology(t topologyDeclaration) bool { return t == legacyFullTopology || t == fullTopology }
 
 const fullStageMetadataBytes = 512
 const fullStageBaseBytes = 128 + fullStageMetadataBytes
@@ -71,6 +74,7 @@ type fullIndexDescriptor struct {
 	owner, topology, schema, format uint64
 	keys                            componentKeyTreeRoot
 	unique, canonical, declared     postingTreeRoot
+	own                             currentPresenceTreeRoot
 }
 type fullStageState struct {
 	root       Root

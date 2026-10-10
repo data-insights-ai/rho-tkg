@@ -116,7 +116,7 @@ func scalarVariableOwned(value graphstate.Scalar, keyBytes int, l Limits) (int, 
 // compact-region interval/wide-coordinate backing. Primitive catalogs keep
 // their existing wire ledger; Full source budgets also charge materialization.
 func (q *reader) preflightFullValue(src []byte) error {
-	if q.full == nil && q.fullView == nil && q.c.root.topology != fullTopology {
+	if q.full == nil && q.fullView == nil && !isFullTopology(q.c.root.topology) {
 		return nil
 	}
 	c, err := inspectRecord(src, q.c.root.namespace, valueRecord, q.c.limits)

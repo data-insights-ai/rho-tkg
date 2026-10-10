@@ -171,7 +171,7 @@ func fullEffects(s *Stage, base raftlog.ApplicationRoot, delta graphstate.Delta,
 	return GraphEffects{Base: base, Root: s.full.root, Writes: writes, Groups: groups, Dependencies: delta.Dependencies, Delta: delta, Work: work, OwnedBytes: fixed + variable}, nil
 }
 
-// InitializeGraphIndexes computes fresh-only Full index/schema effects. All four
+// InitializeGraphIndexes computes fresh-only Full index/schema effects. All five
 // roots are actual empty pages; the exact returned base must also guard the
 // outer allocator/request initialization and single final installation.
 func InitializeGraphIndexes(ctx context.Context, c *Catalog, schemas []graphstate.PropertyDefinition, l GraphLimits) (GraphEffects, error) {
@@ -195,7 +195,7 @@ func InitializeGraphIndexes(ctx context.Context, c *Catalog, schemas []graphstat
 	if c.root.topology != bootstrapTopology || c.root.epoch != 0 || c.root.next != 1 || c.root.effect != seed.effect {
 		return GraphEffects{}, ErrTopologyUnsupported
 	}
-	if len(schemas) > c.limits.MaxStageRecords-5 {
+	if len(schemas) > c.limits.MaxStageRecords-6 {
 		return GraphEffects{}, ErrResourceLimit
 	}
 	if l.MaxSourceBytes < 2*c.rootImageBytes+fullStageMetadataBytes {
@@ -270,7 +270,11 @@ func InitializeGraphIndexes(ctx context.Context, c *Catalog, schemas []graphstat
 		if err != nil {
 			return err
 		}
-		descriptor := fullIndexDescriptor{p.root.owner, p.root.topology.epoch, p.root.topology.schema, 2, keys, unique, canonical, declared}
+		own, err := stageCurrentPresenceInOperation(&p, currentPresenceTreeRoot{}, nil, nil, fullPresenceLimits(p.pageReader))
+		if err != nil {
+			return err
+		}
+		descriptor := fullIndexDescriptor{owner: p.root.owner, topology: p.root.topology.epoch, schema: p.root.topology.schema, format: 3, keys: keys, unique: unique, canonical: canonical, declared: declared, own: own.tree}
 		wire, err := encodeFullDescriptor(descriptor, p.root, c.limits)
 		if err != nil {
 			return err
@@ -513,6 +517,7 @@ func stageOperations(ctx context.Context, c *Catalog, ops []graphstate.Operation
 		}
 		groups = make([]ComponentChangeGroup, 0, len(planned.Patches))
 		changeBytes := 0
+		presence := fullPresenceStage{p: &p}
 		for _, patch := range planned.Patches {
 			group, err := p.validatePatch(patch)
 			if err != nil {
@@ -531,11 +536,39 @@ func stageOperations(ctx context.Context, c *Catalog, ops []graphstate.Operation
 				return ErrResourceLimit
 			}
 			changeBytes += cost
+			var entity graphstate.EntityRecord
+			var before []presenceRun
+			var envelope temporal.Scope
+			if base.full.descriptor.format == 3 && patch.Key.Kind == graphstate.Presence {
+				var found bool
+				entity, found, err = base.entity(EntityRef{c.root.namespace.Graph, patch.Key.Owner})
+				if err != nil {
+					return err
+				}
+				if !found {
+					return ErrCorrupt
+				}
+				if entity.Kind == graphstate.Relationship {
+					before, envelope, err = readPresenceRuns(p.pageReader, patch.Key, patch.Owned, true)
+					if err != nil {
+						return err
+					}
+				}
+			}
 			if err := p.stageRaw(patch); err != nil {
 				return err
 			}
 			if err := p.installPatch(patch); err != nil {
 				return err
+			}
+			if entity.Kind == graphstate.Relationship {
+				after, _, err := readPresenceRuns(p.pageReader, patch.Key, envelope, false)
+				if err != nil {
+					return err
+				}
+				if err := presence.repair(entity, before, after); err != nil {
+					return err
+				}
 			}
 			if err := p.budget(); err != nil {
 				return err

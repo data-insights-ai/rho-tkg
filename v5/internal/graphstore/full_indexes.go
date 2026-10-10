@@ -10,7 +10,7 @@ import (
 )
 
 func validFullDescriptor(d fullIndexDescriptor, r Root) bool {
-	if r.topology != fullTopology || d.owner != r.owner || d.topology != r.topology.epoch || d.schema != r.topology.schema || d.format != r.topology.index {
+	if !isFullTopology(r.topology) || d.owner != r.owner || d.topology != r.topology.epoch || d.schema != r.topology.schema || d.format != r.topology.index {
 		return false
 	}
 	roots := []postingTreeRoot{{d.keys.id, d.keys.level, d.keys.count, componentKeyTreeRecord}, d.unique, d.canonical, d.declared}
@@ -25,13 +25,24 @@ func validFullDescriptor(d fullIndexDescriptor, r Root) bool {
 			}
 		}
 	}
+	if d.format == 2 {
+		return d.own == (currentPresenceTreeRoot{})
+	}
+	if d.format != 3 || d.own.id == 0 || d.own.id >= r.next || d.own.digest == ([32]byte{}) || d.own.level >= 8 || d.own.level > 0 && d.own.count < 2 {
+		return false
+	}
+	for _, root := range roots {
+		if root.id == d.own.id {
+			return false
+		}
+	}
 	return true
 }
 func encodeFullDescriptor(d fullIndexDescriptor, r Root, l Limits) ([]byte, error) {
 	if !validFullDescriptor(d, r) {
 		return nil, ErrInvalid
 	}
-	b := append(recordHeader(r.namespace, componentIndexDescriptorRecord), 2, 2, 0, 0)
+	b := append(recordHeader(r.namespace, componentIndexDescriptorRecord), 2, byte(d.format), 0, 0)
 	for _, v := range []uint64{d.owner, d.topology, d.schema, d.format} {
 		b = binary.BigEndian.AppendUint64(b, v)
 	}
@@ -39,6 +50,12 @@ func encodeFullDescriptor(d fullIndexDescriptor, r Root, l Limits) ([]byte, erro
 		b = append(b, byte(t.kind), byte(t.level), 0, 0, 0, 0, 0, 0)
 		b = binary.BigEndian.AppendUint64(b, t.id)
 		b = binary.BigEndian.AppendUint64(b, t.count)
+	}
+	if d.format == 3 {
+		b = append(b, byte(currentPresenceRecord), d.own.level, 0, 0, 0, 0, 0, 0)
+		b = binary.BigEndian.AppendUint64(b, d.own.id)
+		b = binary.BigEndian.AppendUint64(b, d.own.count)
+		b = append(b, d.own.digest[:]...)
 	}
 	return checkRecord(b, l)
 } // #nosec G115 -- four typed families and levels validated against eight.
@@ -52,7 +69,7 @@ func (q *reader) fullDescriptor(r Root) (fullIndexDescriptor, bool, error) {
 		return fullIndexDescriptor{}, false, err
 	}
 	tags, err := c.take(4)
-	if err != nil || !bytes.Equal(tags, []byte{2, 2, 0, 0}) {
+	if err != nil || tags[0] != 2 || tags[1] != byte(r.topology.index) || tags[2] != 0 || tags[3] != 0 || tags[1] != 2 && tags[1] != 3 {
 		return fullIndexDescriptor{}, false, ErrCorrupt
 	}
 	var v [4]uint64
@@ -79,7 +96,27 @@ func (q *reader) fullDescriptor(r Root) (fullIndexDescriptor, bool, error) {
 		}
 		roots[i] = postingTreeRoot{id, int(flags[1]), count, recordKind(flags[0])}
 	}
-	d := fullIndexDescriptor{v[0], v[1], v[2], v[3], componentKeyTreeRoot{roots[0].id, roots[0].level, roots[0].count}, roots[1], roots[2], roots[3]}
+	d := fullIndexDescriptor{owner: v[0], topology: v[1], schema: v[2], format: v[3], keys: componentKeyTreeRoot{roots[0].id, roots[0].level, roots[0].count}, unique: roots[1], canonical: roots[2], declared: roots[3]}
+	if tags[1] == 3 {
+		flags, err := c.take(8)
+		if err != nil || flags[0] != byte(currentPresenceRecord) || !bytes.Equal(flags[2:], []byte{0, 0, 0, 0, 0, 0}) {
+			return fullIndexDescriptor{}, false, ErrCorrupt
+		}
+		d.own.level = flags[1]
+		d.own.id, err = c.number()
+		if err != nil {
+			return fullIndexDescriptor{}, false, err
+		}
+		d.own.count, err = c.number()
+		if err != nil {
+			return fullIndexDescriptor{}, false, err
+		}
+		digest, err := c.take(32)
+		if err != nil {
+			return fullIndexDescriptor{}, false, err
+		}
+		copy(d.own.digest[:], digest)
+	}
 	if c.done() != nil || !validFullDescriptor(d, r) {
 		return fullIndexDescriptor{}, false, ErrCorrupt
 	}
@@ -108,7 +145,7 @@ func (q *pageReader) membershipRoot() (componentKeyTreeRoot, componentKeyTreeLim
 	if q.q.indexes != nil {
 		return q.q.indexes.descriptor.tree, q.q.indexes.limits, nil
 	}
-	if q.q.full != nil || q.q.fullView != nil || q.q.c.root.topology == fullTopology {
+	if q.q.full != nil || q.q.fullView != nil || isFullTopology(q.q.c.root.topology) {
 		d, err := q.fullDescriptor()
 		return d.keys, keyTreeLimits(q.limits), err
 	}
@@ -137,6 +174,15 @@ func (q *pageReader) validateFullRoots(d fullIndexDescriptor) error {
 	}
 	for _, root := range []postingTreeRoot{d.unique, d.canonical, d.declared} {
 		if _, err := q.postingTreeRoot(root, keyTreeLimits(q.limits)); err != nil {
+			return err
+		}
+	}
+	if d.format == 3 {
+		if err := q.q.materialize(cpTreeOperationOwned); err != nil {
+			return err
+		}
+		op := cpTreeOperation{pageStage: &pageStage{pageReader: q, root: q.q.c.root}, limits: fullPresenceLimits(q), cache: make(map[uint64]currentPresencePage), dirty: make(map[uint64][]byte)}
+		if _, err := op.load(d.own); err != nil {
 			return err
 		}
 	}
