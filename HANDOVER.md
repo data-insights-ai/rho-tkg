@@ -10,7 +10,7 @@ running, no monitors running, no open worktrees of ours**. Read this file, then 
 1. "stop all tasks and write a comprehensive handover.md" — DONE (this file). Both running agents and the origin
    watch were stopped; nothing was lost (see §6).
 2. "continue" — I had just started two agents (both stopped, see §6): interval rewrites at a caller instant (backlog 34)
-   and badger read costs (backlog 33 + 42 + 41). **First thing to do next: restart those two (prompts in §7).**
+   and badger read costs (backlog 33 + 42 + 41). **First thing to do next: restart those two (prompt skeleton in Appendix A, specs in the backlog items).**
 3. Standing rules René gave during the session (also in CLAUDE.md / lessons 77, 78 / memory):
    - "Always clean solutions to new items.. no hacks or shortcuts .. always write a no-happy-path test before the code"
      (tests name the faulty implementation, written and run RED first, evidence kept under `tasks/evidence/<item>/`;
@@ -97,8 +97,8 @@ re-runs this session were caused by findings that came in through merged branche
 
 | Task | State | Action |
 |---|---|---|
-| P: `Set*VersionIntervalWithTx` (backlog 34) | agent stopped before reporting; no worktree left, nothing committed | restart (§7) |
-| Q: badger read costs (backlog 33 + 42 + 41) | agent stopped after capturing one baseline; worktree removed; baseline saved as `tasks/evidence/badger-read-cost/01-baseline-latest-stamps-rotating.txt` (LatestStamps rotating, rels=5000: memory ≈ 41 ns, badger ≈ 74 ns, 0 allocs) | restart (§7); that file is the only artefact |
+| P: `Set*VersionIntervalWithTx` (backlog 34) | agent stopped before reporting; no worktree left, nothing committed | restart (prompt skeleton in Appendix A) |
+| Q: badger read costs (backlog 33 + 42 + 41) | agent stopped after capturing one baseline; worktree removed; baseline saved as `tasks/evidence/badger-read-cost/01-baseline-latest-stamps-rotating.txt` (LatestStamps rotating, rels=5000: memory ≈ 41 ns, badger ≈ 74 ns, 0 allocs) | restart (prompt skeleton in Appendix A); that file is the only artefact |
 | origin watch | stopped | re-arm if still wanted (§8) |
 | other sessions' processes (`go test … TestBOWholeEndToEnd`, `go test -race ./aisoc/...`) | belong to ai-soc/sigma, not ours | leave alone |
 
@@ -110,8 +110,8 @@ Not committed anywhere else: nothing. `git status` clean (except this file and t
    Session: mirror `DeleteWithTx/UpdateWithTx` (`AllowTxBackfill` gate, `ErrInvalidTxFrom`, `ErrTxOrder` against the
    whole chain incl. re-imported lives, ONE caller instant `t` for every appended row, commit clock not advanced,
    `notePastDatedWrite`, whole-unit pre-flight in batch/ingest, replica reproduces stamps, plain doors unchanged, W5
-   oracle `tx_backfill_oracle_test.go` gets the op). Prompt basis: see `git log`/ledger or rewrite from backlog 34 + handover
-   `tasks/handover-tx-backfill-delete-update-20261009.md`.
+   oracle `tx_backfill_oracle_test.go` gets the op). Prompt basis: Appendix A with backlog 34 + handover
+   `tasks/handover-tx-backfill-delete-update-20261009.md` as the spec.
 2. **Backlog 33 + 42, then 41** (badger read cost): current-row stamps capability reading only the temporal tail on an
    entity-cache miss (LatestStamps cache miss today 6.5–7.1 µs, 25 allocs; sharded/tiered 8–12 allocs); effective-timeline
    scan gather reading each rel once (13–17 µs/rel on badger vs 1.3 µs memory); then merge the stamps sidecar into the
@@ -252,3 +252,123 @@ Done and verified this session (do not redo): see §2 table plus CHANGELOG; the 
   as 21); told ai-soc "adjacent identical rows merge" (wrong; corrected); said sigma could use a mint-instant helper
   before checking package layout; merged branches without running lint/security first (3 gate re-runs); deleted an old
   agent worktree that held three uncommitted files without checking first (the replacement agent re-created the oracle).
+
+
+---
+
+## Appendix A — agent prompt skeleton that produced the good results (fill the <>)
+
+```
+You work in your own git worktree of the Go repo rho-tkg (module github.com/data-insights-ai/rho-tkg/v4), branched from
+main (<version>). Item <X> = tasks/backlog.md item <N> (<who asked, why>). Read FIRST: AGENTS.md (Session Protocol, Testing
+Rules 1-17, <Concurrency/Persistence>), tasks/lessons.md <relevant numbers> and 78, the backlog item, the handover
+<tasks/handover-….md>, and the code you build on: <files with the mechanism, named precisely>.
+THE BUG/FEATURE: <measured symptom, file:line cause, repro>.
+TASK: <clean root-cause solution at the shared seam; decisions to take with the default stated; compatibility: no wire/
+format change unless allowed; old stored data keeps reading as before>.
+TDD, break-the-code only, red first, evidence under tasks/evidence/<item>/: <the faulty implementations to name and the
+inputs that break them>; two-phase tests (rule 15); both doors (rule 17); node/rel parity (rule 2); errors.Is (rule 4);
+every new public method a direct test (rule 1); mutants (each red); guards labelled; no skips.
+Docs: CHANGELOG `## [Unreleased]` -> `### Added/Fixed/Changed` with measured numbers (+ migration block for read-side
+changes), docs/api.md, AGENTS.md only if a stable line changes; close the backlog item (Closed table + line; edit ONLY it).
+Rules: go build/vet, gofmt -l pkg bench empty, go test ./pkg/... -count=1, go test -race on <packages>, then
+make lint-docker AND make security-docker on your branch BEFORE reporting; coverage of new code >= 80 %. Small conventional
+commits, NO attribution lines of any kind. Do not push, tag or merge; do not edit tasks/todo.md. Never use pkill/pgrep -f.
+Another agent works in parallel on <area>: do not touch <files>.
+Final report: branch, commits, red/green evidence with counts, decisions, files touched, measured numbers, open items.
+```
+
+Reviewer skeleton: "Read-only MR review … (do not edit/commit/merge/push; no pkill -f; scratch exports only under the
+scratchpad, a FRESH directory per export). Follow AGENTS.md MR Review Protocol exactly. Verify the author's claims with
+fresh experiments (old-data fixtures written with the OLD code, your own brute-force model, mutants re-run, perf paired
+A/B), `git merge-tree $(git merge-base main HEAD) main HEAD | grep -c '^<<<<<<<'`, attribution lines
+`git log main..HEAD --format=%B | grep -ci 'co-authored\|claude'`, lint/security evidence real. Report MERGE / FIX FIRST with
+file:line findings."  Resume the same agent with SendMessage for fix rounds.
+
+## Appendix B — consumer build check (recreate if /tmp is gone)
+
+For each consumer `C` in `~/Work/2026/datainsights/sigma-tkgd`, `~/Work/2026/datainsights/ai-soc/ai-soc-main/engine`,
+`~/Work/2026/bds421/sigma/agent-bookkeeping`: `mkdir -p $S/<name>; cp C/go.mod C/go.sum $S/<name>/;
+(cd $S/<name> && go mod edit -replace github.com/data-insights-ai/rho-tkg/v4=/home/renework2023/Work/2026/datainsights/rho-tkg go.mod)`
+then `cd C && GOFLAGS=-mod=mod go build -modfile=$S/<name>/go.mod ./... && GOFLAGS=-mod=mod go vet -modfile=$S/<name>/go.mod ./...`
+(all three built and vetted clean against v4.49.0).
+
+## Appendix C — the origin watch (Monitor tool, timeout 1800000 ms, re-arm on expiry; one at a time, two overlap and double-report)
+
+```bash
+#!/usr/bin/env bash
+# Watches origin of rho-tkg for pushes by anyone but "dev team" (this machine's git user),
+# plus every new/deleted branch or tag, plus PR and issue changes. One line per event.
+cd /home/renework2023/Work/2026/datainsights/rho-tkg || exit 1
+ME="dev team"
+
+declare -A P
+load() { # name of assoc array to fill from ls-remote
+  local -n arr=$1; arr=()
+  local sha ref
+  while read -r sha ref; do [ -n "$ref" ] && arr["$ref"]=$sha; done < <(git ls-remote --heads --tags origin 2>/dev/null)
+}
+load P
+[ ${#P[@]} -eq 0 ] && { echo "watch: initial ls-remote failed"; exit 1; }
+
+prs() { gh pr list --state all --limit 30 --json number,title,state,headRefName,updatedAt,author \
+  --jq '.[] | "PR #\(.number) [\(.state)] \(.headRefName) by \(.author.login): \(.title) @\(.updatedAt)"' 2>/dev/null | sort; }
+issues() { gh issue list --state all --limit 30 --json number,title,state,updatedAt,author \
+  --jq '.[] | "ISSUE #\(.number) [\(.state)] by \(.author.login): \(.title) @\(.updatedAt)"' 2>/dev/null | sort; }
+prevprs=$(prs); previss=$(issues)
+
+echo "watch armed: ${#P[@]} refs, $(echo "$prevprs" | grep -c .) PRs"
+while true; do
+  sleep 60
+  declare -A C; load C
+  if [ ${#C[@]} -gt 0 ]; then
+    git fetch -q origin --prune --tags 2>/dev/null
+    for ref in "${!C[@]}"; do
+      new=${C[$ref]}; old=${P[$ref]:-}
+      [ "$new" = "$old" ] && continue
+      short=${ref#refs/heads/}; short=${short#refs/tags/}
+      case "$ref" in *'^{}') continue ;; esac
+      if [ -z "$old" ]; then
+        case "$ref" in
+          refs/tags/*) echo "NEW TAG $short -> ${new:0:7}" ;;
+          *) echo "NEW BRANCH $short @ ${new:0:7}: $(git log -1 --format='%an: %s' "$new" 2>/dev/null | cut -c1-120)" ;;
+        esac
+      else
+        range="$old..$new"
+        authors=$(git log --format='%an' "$range" 2>/dev/null | sort -u)
+        if [ -z "$authors" ]; then
+          echo "REF MOVED (force-push or rewind) $short ${old:0:7} -> ${new:0:7}"
+        elif echo "$authors" | grep -qvx "$ME"; then
+          n=$(git rev-list --count "$range" 2>/dev/null)
+          echo "PUSH $short +$n commit(s) by $(echo "$authors" | grep -vx "$ME" | paste -sd, -):"
+          git log --format='  %h %an: %s' "$range" 2>/dev/null | grep -v " $ME:" | head -5 | cut -c1-140
+        fi
+      fi
+    done
+    for ref in "${!P[@]}"; do
+      [ -z "${C[$ref]:-}" ] && case "$ref" in *'^{}') ;; *) echo "DELETED ${ref#refs/*/}" ;; esac
+    done
+    P=(); for k in "${!C[@]}"; do P[$k]=${C[$k]}; done
+  fi
+  unset C
+  curprs=$(prs)
+  if [ -n "$curprs" ] && [ "$curprs" != "$prevprs" ]; then
+    comm -13 <(echo "$prevprs") <(echo "$curprs"); prevprs=$curprs
+  fi
+  curiss=$(issues)
+  if [ -n "$curiss" ] && [ "$curiss" != "$previss" ]; then
+    comm -13 <(echo "$previss") <(echo "$curiss"); previss=$curiss
+  fi
+done
+```
+
+## Appendix D — what a fresh session can and cannot rely on
+
+- CAN: everything in the repo at `main` (`HANDOVER.md`, `CHANGELOG.md`, `tasks/lessons.md`, `tasks/backlog.md`,
+  `tasks/todo.md`, `tasks/evidence/**`, `docs/**`, git tags) and the memory notes in
+  `~/.claude/projects/-home-renework2023-Work-2026-datainsights-rho-tkg/memory/`.
+- CANNOT: the cross-session socket addresses in §4 (they belong to sessions that may have ended; use `ListAgents` to find
+  live ones), any agent context or ids from this session, the `/tmp/claude-1000/…/scratchpad` files (scratch exports,
+  reviewer probes, benchmark outputs) — the evidence worth keeping was copied into `tasks/evidence/`.
+- Global instructions (`~/CLAUDE.md`) and the repo's `CLAUDE.md`/`AGENTS.md` load automatically; the standing rules in §1
+  repeat the ones that mattered.
