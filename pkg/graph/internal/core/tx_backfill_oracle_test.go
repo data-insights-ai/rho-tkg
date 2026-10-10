@@ -74,6 +74,9 @@ type txbIntent struct {
 	rid          types.RelID
 	at           types.Instant
 	prev, atView string
+	// valids: a retraction's intent also renders the point door at these
+	// valid instants (retractSweep); at pin t every one must be absent.
+	valids []types.Instant
 }
 
 // txbRelFamily is one door family for the relationship caller-instant doors
@@ -415,15 +418,19 @@ func txbTombstoneNode(o *txbOracle, id types.NodeID, v uint32) types.TemporalMet
 
 func (o *txbOracle) callerOp() {
 	fam := o.rng.IntN(5)
-	switch o.rng.IntN(4) {
+	switch o.rng.IntN(6) {
 	case 0:
 		o.nodeCallerDelete(fam)
 	case 1:
 		o.nodeCallerUpdate(fam)
 	case 2:
 		o.relCallerDelete(fam)
-	default:
+	case 3:
 		o.relCallerUpdate(fam)
+	case 4:
+		o.nodeRetract(fam, o.rng.IntN(4) != 0)
+	default:
+		o.relRetract(fam, o.rng.IntN(4) != 0)
 	}
 }
 
@@ -638,6 +645,199 @@ func (o *txbOracle) relCallerUpdate(fam int) {
 	o.checkIntent(txbIntent{desc: desc, rid: id, at: at}, prev, txbWantView(now.Version()))
 }
 
+// rtxbDoor returns door family fam (0..4: standalone, GraphTx, Batch, ingest
+// strong, ingest concurrent) of the retraction doors, at a caller instant or
+// plain.
+func rtxbDoor(fam int, withTx bool) retractDoor {
+	var out []retractDoor
+	for _, d := range retractDoors() {
+		if d.withTx == withTx {
+			out = append(out, d)
+		}
+	}
+	return out[fam]
+}
+
+// retractSweep renders the point door at every valid instant the entity's
+// rows name, at pin: after a retraction recorded by the pin every entry must
+// be absent — the past a Delete keeps readable included (backlog 43).
+func (o *txbOracle) retractSweep(isNode bool, nid types.NodeID, rid types.RelID, valids []types.Instant, pin types.Instant) string {
+	var b strings.Builder
+	for _, v := range valids {
+		var (
+			ver uint32
+			err error
+		)
+		if isNode {
+			var n *types.Node
+			if n, err = o.g.Temporal.NodeAtTx(nid, v, pin); err == nil {
+				ver = n.Version()
+			}
+		} else {
+			var r *types.Relationship
+			if r, err = o.g.Temporal.RelAtTx(rid, v, pin); err == nil {
+				ver = r.Version()
+			}
+		}
+		switch {
+		case err == nil:
+			fmt.Fprintf(&b, " %d:v%d", v, ver)
+		case errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) || errors.Is(err, storepkg.ErrRelNotFound):
+			fmt.Fprintf(&b, " %d:-", v)
+		default:
+			o.fail("retract sweep at %d/%d: %v", v, pin, err)
+		}
+	}
+	return b.String()
+}
+
+// entityValids is every valid instant an entity's rows name (starts, ends,
+// each -1), the instants where a Delete keeps the past readable.
+func entityValids(e *oracleEntity) []types.Instant {
+	set := map[types.Instant]bool{e.sfFallback: true}
+	for _, r := range e.rows {
+		for _, v := range []types.Instant{r.validFrom, r.validTo, r.updatedAt} {
+			if v > 1 {
+				set[v], set[v-1] = true, true
+			}
+		}
+	}
+	out := make([]types.Instant, 0, len(set))
+	for v := range set {
+		out = append(out, v)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+func allAbsent(sweep string) bool { return !strings.Contains(sweep, ":v") }
+
+// nodeRetract retracts a live node — at a caller instant (withTx) or plain —
+// through door family fam. Checks: the refused t (at or below a recorded
+// stamp) writes nothing; the node's and every cascaded relationship's
+// tombstone carry the marker at ONE instant (the caller's t); at pin t (and t-1
+// for the plain door: the instant before its own) the node and its
+// relationships answer at NO valid instant the rows name, while pin t-1
+// answers exactly as before the op; the intents are re-checked at the end of
+// the sequence (rule 15).
+func (o *txbOracle) nodeRetract(fam int, withTx bool) {
+	alive := o.aliveNodes()
+	if len(alive) == 0 {
+		return
+	}
+	id := alive[o.rng.IntN(len(alive))]
+	hood := txbHoodRels(o.t, o.g, id)
+	node := captureNode(o.t, o.g, id)
+	ents := []*oracleEntity{node}
+	for _, r := range hood {
+		ents = append(ents, captureRel(o.t, o.g, r, ""))
+	}
+	d := rtxbDoor(fam, withTx)
+	vers := make([]uint32, len(ents))
+	for i, e := range ents {
+		vers[i] = txbLive(e)
+	}
+	var at types.Instant
+	ok := true
+	if withTx {
+		lo, _ := txbBounds(ents...)
+		_, nodeMaxTx := txbBounds(node)
+		at, ok = o.pickT(lo, nodeMaxTx)
+	} else {
+		o.tick() // the plain door stamps the clock: one tick above every stamp
+		at = o.x
+	}
+	desc := fmt.Sprintf("%s/RetractNode(%v,t=%d) hood=%v", d.name, id, at, hood)
+	beforeR := o.render(id, hood...)
+	before := snapHood(o.t, o.g, id, hood...)
+	prevNode := o.nodeView(id, at-1)
+	nodeValids := entityValids(node)
+	prevSweep := o.retractSweep(true, id, 0, nodeValids, at-1)
+	prevRels := make([]string, len(hood))
+	relValids := make([][]types.Instant, len(hood))
+	prevRelSweeps := make([]string, len(hood))
+	for i, r := range hood {
+		prevRels[i] = o.relView(r, at-1)
+		relValids[i] = entityValids(ents[i+1])
+		prevRelSweeps[i] = o.retractSweep(false, 0, r, relValids[i], at-1)
+	}
+	err := d.node(o.t, o.g, id, at)
+	o.record(desc, err)
+	if !ok {
+		o.refusedOrder(desc, err)
+		o.unchanged(desc, beforeR, o.render(id, hood...))
+		assertHoodUnchanged(o.t, o.g, desc, before, id)
+		return
+	}
+	if err != nil {
+		o.fail("%s: %v", desc, err)
+	}
+	o.nodeAlive[id] = false
+	o.accepted[fmt.Sprintf("%s/node-retract", d.name)]++
+	tm := txbTombstoneNode(o, id, vers[0])
+	if !tm.Retracted || tm.TxTo != tm.DeletedAt || (withTx && tm.DeletedAt != at) {
+		o.fail("%s: node tombstone v%d %+v; want the marker, TxTo = DeletedAt (= t for the caller door)", desc, vers[0], tm)
+	}
+	at = tm.DeletedAt
+	// Pin t-1 answers exactly as before the op, the point sweep included
+	// (for the plain door the views were taken at the clock reading below its
+	// own instant: nothing was recorded in between).
+	o.checkIntent(txbIntent{desc: desc, isNode: true, nid: id, at: at, valids: nodeValids}, prevNode+" sweep="+prevSweep, txbWantView(0))
+	for i, r := range hood {
+		rt := txbTombstoneRel(o, r, vers[i+1])
+		if !rt.Retracted || rt.DeletedAt != at || rt.TxTo != at {
+			o.fail("%s: cascaded rel %v tombstone v%d %+v; want the marker at %d", desc, r, vers[i+1], rt, at)
+		}
+		o.checkIntent(txbIntent{desc: desc + fmt.Sprintf(" cascaded %v", r), rid: r, at: at, valids: relValids[i]}, prevRels[i]+" sweep="+prevRelSweeps[i], txbWantView(0))
+	}
+}
+
+// relRetract is nodeRetract for a live relationship.
+func (o *txbOracle) relRetract(fam int, withTx bool) {
+	live := o.liveRels()
+	if len(live) == 0 {
+		return
+	}
+	id := live[o.rng.IntN(len(live))]
+	rel := captureRel(o.t, o.g, id, "")
+	d := rtxbDoor(fam, withTx)
+	ver := txbLive(rel)
+	var at types.Instant
+	ok := true
+	if withTx {
+		lo, maxTx := txbBounds(rel)
+		at, ok = o.pickT(lo, maxTx)
+	} else {
+		o.tick()
+		at = o.x
+	}
+	desc := fmt.Sprintf("%s/RetractRelationship(%v,t=%d)", d.name, id, at)
+	before := snapRel(o.t, o.g, id)
+	beforeR := o.render(0, id)
+	prev := o.relView(id, at-1)
+	valids := entityValids(rel)
+	prevSweep := o.retractSweep(false, 0, id, valids, at-1)
+	err := d.rel(o.t, o.g, id, at)
+	o.record(desc, err)
+	if !ok {
+		o.refusedOrder(desc, err)
+		o.unchanged(desc, beforeR, o.render(0, id))
+		assertRelUnchanged(o.t, desc, before, snapRel(o.t, o.g, id))
+		return
+	}
+	if err != nil {
+		o.fail("%s: %v", desc, err)
+	}
+	o.relAlive[id] = false
+	o.accepted[fmt.Sprintf("%s/rel-retract", d.name)]++
+	tm := txbTombstoneRel(o, id, ver)
+	if !tm.Retracted || tm.TxTo != tm.DeletedAt || (withTx && tm.DeletedAt != at) {
+		o.fail("%s: tombstone v%d %+v; want the marker, TxTo = DeletedAt (= t for the caller door)", desc, ver, tm)
+	}
+	at = tm.DeletedAt
+	o.checkIntent(txbIntent{desc: desc, rid: id, at: at, valids: valids}, prev+" sweep="+prevSweep, txbWantView(0))
+}
+
 // render is every row of node nid (if non-zero) and of rels, stamps and
 // version, for the nothing-changed checks (their failure prints the op log).
 func (o *txbOracle) render(nid types.NodeID, rels ...types.RelID) string {
@@ -686,10 +886,16 @@ func (o *txbOracle) chainString(in txbIntent) string {
 }
 
 func (o *txbOracle) view(in txbIntent, pin types.Instant) string {
+	v := ""
 	if in.isNode {
-		return o.nodeView(in.nid, pin)
+		v = o.nodeView(in.nid, pin)
+	} else {
+		v = o.relView(in.rid, pin)
 	}
-	return o.relView(in.rid, pin)
+	if len(in.valids) > 0 {
+		v += " sweep=" + o.retractSweep(in.isNode, in.nid, in.rid, in.valids, pin)
+	}
+	return v
 }
 
 // checkIntent: right after the op, pin t answers what the far-future pin
@@ -709,6 +915,11 @@ func (o *txbOracle) checkIntent(in txbIntent, prevBefore, wantAt string) {
 	if !strings.HasPrefix(in.atView, wantAt+" ") {
 		o.fail("%s: pin t answers %s; want %s", in.desc, in.atView, wantAt)
 	}
+	if len(in.valids) > 0 {
+		if sweep := o.retractSweep(in.isNode, in.nid, in.rid, in.valids, in.at); !allAbsent(sweep) {
+			o.fail("%s: pin t (the retraction) still answers at a valid time:%s\n chain %s", in.desc, sweep, o.chainString(in))
+		}
+	}
 	o.intents = append(o.intents, in)
 }
 
@@ -717,7 +928,7 @@ func (o *txbOracle) checkIntent(in txbIntent, prevBefore, wantAt string) {
 func (o *txbOracle) canon(s *snapshot) string {
 	var b strings.Builder
 	row := func(r oracleRow) {
-		fmt.Fprintf(&b, " [v%d vf=%d vt=%d tx=%d..%d del=%d upd=%d %v]", r.version, r.validFrom, r.validTo, r.txFrom, r.txTo, r.deletedAt, r.updatedAt, r.labels)
+		fmt.Fprintf(&b, " [v%d vf=%d vt=%d tx=%d..%d del=%d rx=%v upd=%d %v]", r.version, r.validFrom, r.validTo, r.txFrom, r.txTo, r.deletedAt, r.retracted, r.updatedAt, r.labels)
 	}
 	for i, id := range o.allNodeIDs() {
 		fmt.Fprintf(&b, "n%d:", i)
@@ -939,6 +1150,13 @@ func TestTxBackfillOracle_CrossBackend(t *testing.T) {
 		for _, k := range []string{"/node-delete", "/node-update", "/rel-delete", "/rel-update"} {
 			if accepted[f.name+k] == 0 {
 				t.Errorf("generator never accepted %s%s over %d seeds", f.name, k, seeds)
+			}
+		}
+	}
+	for _, d := range retractDoors() {
+		for _, k := range []string{"/node-retract", "/rel-retract"} {
+			if accepted[d.name+k] == 0 {
+				t.Errorf("generator never accepted %s%s over %d seeds", d.name, k, seeds)
 			}
 		}
 	}

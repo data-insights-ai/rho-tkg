@@ -78,6 +78,7 @@ type oracleRow struct {
 	version   uint32
 	labels    []string // node label set on this version ("" set for rels)
 	seatVK    string   // canonical value key of the "seat" property ("" = absent; backlog 8)
+	retracted bool     // the retraction marker of a tombstone (backlog 43)
 }
 
 // oracleEntity is the captured chain for one entity, in engine chain order:
@@ -165,7 +166,7 @@ func (e *oracleEntity) bounds(chain []oracleRow, i int) (types.Instant, types.In
 // its ValidTo equals the DeletedAt stamp the interval re-opens (0). Rows are
 // copied by value, so the captured model is never mutated.
 func (e *oracleEntity) txFilter(txAt types.Instant) []oracleRow {
-	out := e.txFilterCaptureOrder(txAt)
+	out := dropRetractedLivesModel(e.txFilterCaptureOrder(txAt))
 	// The resolver classifies a chain in ascending VERSION order (lesson 73):
 	// e.rows is history ‖ current, which is not version-ordered when a bounded
 	// cascade left the current row below the rows it appended. Rows of a later
@@ -203,6 +204,7 @@ func (e *oracleEntity) txFilterCaptureOrder(txAt types.Instant) []oracleRow {
 				r.validTo = 0
 			}
 			r.deletedAt = 0
+			r.retracted = false // nor its retraction (backlog 43)
 			if r.txTo > txAt {
 				r.txTo = 0
 			}
@@ -330,6 +332,28 @@ func (e *oracleEntity) intervalVisible(s, end, txAt types.Instant, pred func(ora
 		}
 	}
 	return oracleRow{}, false
+}
+
+// dropRetractedLivesModel states retraction (backlog 43) for the model: a life
+// whose end — the delete lifeEnd names for its rows — is a retraction known at
+// the pin was never a belief, so its rows are not candidates of anything (they
+// neither answer nor bound or supersede another life's rows). Rows of the
+// other lives stay, in their order.
+func dropRetractedLivesModel(rows []oracleRow) []oracleRow {
+	out := make([]oracleRow, 0, len(rows))
+	for _, r := range rows {
+		end := lifeEnd(rows, r)
+		gone := false
+		for _, x := range rows {
+			if end != 0 && x.deletedAt == end && x.retracted {
+				gone = true
+			}
+		}
+		if !gone {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // lifeEnd is the instant r's life ended in a (txAt-filtered) chain: the first
@@ -506,6 +530,7 @@ func nodeRow(g *Core, n *types.Node) oracleRow {
 		r.validFrom, r.validTo = tm.ValidFrom, tm.ValidTo
 		r.txFrom, r.txTo = tm.TxFrom, tm.TxTo
 		r.deletedAt, r.updatedAt = tm.DeletedAt, tm.UpdatedAt
+		r.retracted = tm.Retracted
 	}
 	return r
 }
@@ -518,6 +543,7 @@ func relRow(r *types.Relationship) oracleRow {
 		out.validFrom, out.validTo = tm.ValidFrom, tm.ValidTo
 		out.txFrom, out.txTo = tm.TxFrom, tm.TxTo
 		out.deletedAt, out.updatedAt = tm.DeletedAt, tm.UpdatedAt
+		out.retracted = tm.Retracted
 	}
 	return out
 }
