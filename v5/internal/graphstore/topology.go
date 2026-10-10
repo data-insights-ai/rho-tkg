@@ -2,6 +2,7 @@ package graphstore
 
 import (
 	"errors"
+	"slices"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
@@ -61,12 +62,71 @@ func BootstrapSinglePartition(s *raftlog.Store, n Namespace, ownershipEpoch uint
 	if identity != (raftlog.ApplicationIdentity{}) && (identity.Graph != n.Graph || identity.Partition != n.Partition) {
 		return ErrNamespace
 	}
-	r.topology = bootstrapTopology
-	image, err := EncodeRoot(r)
+	image, err := emptySinglePartitionImage(r)
 	if err != nil {
 		return err
 	}
 	if err := s.Initialize([]uint64{p.LocalVoter}, image); err != nil {
+		if errors.Is(err, raftlog.ErrInvalid) {
+			return errors.Join(ErrInvalid, err)
+		}
+		if errors.Is(err, raftlog.ErrLimit) {
+			return errors.Join(ErrResourceLimit, err)
+		}
+		return err
+	}
+	return nil
+}
+
+// emptySinglePartitionImage encodes only a freshly checked NewRoot supplied by
+// the bootstrap doors below/above. No public door accepts a caller root/image.
+func emptySinglePartitionImage(r Root) ([]byte, error) {
+	r.topology = bootstrapTopology
+	return EncodeRoot(r)
+}
+
+// BootstrapBoundSinglePartition initializes only a fresh, semantic-bound store
+// with its exact fixed-three membership. The configured binding is checked before
+// constructing a deterministic empty graph seed; Store.Initialize remains the
+// fresh-state, membership, generation-budget and synchronous publication authority.
+// This seed has no allocator/schema/Full readiness, issuance, cut or lease.
+// Logical InitGraph co-initialization and machine agreement remain separate.
+func BootstrapBoundSinglePartition(s *raftlog.Store, expected raftlog.ApplicationBinding, ownershipEpoch uint64, voters [3]uint64) error {
+	if s == nil {
+		return ErrInvalid
+	}
+	p := s.ApplicationLimits()
+	if !p.Enabled() {
+		return ErrTopologyUnsupported
+	}
+	if err := expected.Validate(); err != nil {
+		return errors.Join(ErrInvalid, err)
+	}
+	actual := s.ApplicationBinding()
+	if err := actual.Validate(); err != nil {
+		return errors.Join(ErrInvalid, err)
+	}
+	if actual.Identity.Graph != expected.Identity.Graph || actual.Identity.Partition != expected.Identity.Partition {
+		return ErrNamespace
+	}
+	if actual != expected {
+		return ErrInvalid
+	}
+	if voters[0] == 0 || voters[1] <= voters[0] || voters[2] <= voters[1] {
+		return ErrInvalid
+	}
+	if !slices.Contains(voters[:], p.LocalVoter) {
+		return ErrInvalid
+	}
+	r, err := NewRoot(Namespace{Graph: expected.Identity.Graph, Partition: expected.Identity.Partition}, ownershipEpoch)
+	if err != nil {
+		return err
+	}
+	image, err := emptySinglePartitionImage(r)
+	if err != nil {
+		return err
+	}
+	if err := s.Initialize(voters[:], image); err != nil {
 		if errors.Is(err, raftlog.ErrInvalid) {
 			return errors.Join(ErrInvalid, err)
 		}
