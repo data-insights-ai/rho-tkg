@@ -33,28 +33,33 @@ import (
 // order the caller did not ask for. Successive writes on one relationship go
 // in successive units.
 
-// pendingRelTxDelete is a queued relationship delete carrying a tombstone
-// spec: a caller instant (DeleteRelationshipWithTx, RetractRelationshipWithTx;
-// at != 0) and/or the retraction marker (RetractRelationship,
-// RetractRelationshipWithTx). A plain DeleteRelationship queues in relDeletes.
+// pendingRelDelete is a queued relationship delete with its tombstone spec:
+// none (DeleteRelationship), a caller instant (DeleteRelationshipWithTx,
+// RetractRelationshipWithTx; at != 0) and/or the retraction marker
+// (RetractRelationship, RetractRelationshipWithTx). Every relationship delete
+// door queues in the one list relDeletes, so a unit applies them in queue
+// order (a Retract then a Delete of one relationship: the Retract writes the
+// tombstone, the node twin pendingNodeDelete does the same).
 // Only at != 0 makes it a caller-instant op (hasCallerTx, the pre-flight).
-type pendingRelTxDelete struct {
+type pendingRelDelete struct {
 	id      types.RelID
 	at      types.Instant
 	retract bool
 }
 
-func (d pendingRelTxDelete) spec() tombstoneSpec { return tombstoneSpec{at: d.at, retract: d.retract} }
+func (d pendingRelDelete) spec() tombstoneSpec { return tombstoneSpec{at: d.at, retract: d.retract} }
 
 // opName names the queued door in a BatchError.
-func (d pendingRelTxDelete) opName() string {
+func (d pendingRelDelete) opName() string {
 	switch {
 	case d.retract && d.at != 0:
 		return "RetractRelationshipWithTx"
 	case d.retract:
 		return "RetractRelationship"
-	default:
+	case d.at != 0:
 		return "DeleteRelationshipWithTx"
+	default:
+		return "DeleteRelationship"
 	}
 }
 
@@ -110,7 +115,7 @@ func (b *BatchBuilder) queueRelEnd(id types.RelID, txTo types.Instant, withTx, r
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return err
 	}
-	b.relTxDeletes = append(b.relTxDeletes, pendingRelTxDelete{id: id, at: at, retract: retract})
+	b.relDeletes = append(b.relDeletes, pendingRelDelete{id: id, at: at, retract: retract})
 	return nil
 }
 
@@ -207,12 +212,11 @@ func (b *BatchBuilder) takeIngestGroup() *ingestGroup {
 		relUpdates:   b.relUpdates,
 		nodeDeletes:  b.nodeDeletes,
 		relDeletes:   b.relDeletes,
-		relTxDeletes: b.relTxDeletes,
 		nodeCascades: b.nodeCascades,
 		relCascades:  b.relCascades,
 	}
 	b.nodes, b.rels, b.nodeUpdates, b.relUpdates = nil, nil, nil, nil
-	b.nodeDeletes, b.relDeletes, b.relTxDeletes = nil, nil, nil
+	b.nodeDeletes, b.relDeletes = nil, nil
 	b.nodeCascades, b.relCascades = nil, nil
 	return g
 }
@@ -220,13 +224,13 @@ func (b *BatchBuilder) takeIngestGroup() *ingestGroup {
 // relCallerPastDated is the lowest caller instant among the queued
 // relationship ops (0 = none), reported via notePastDatedWrite after the
 // unit's store writes.
-func relCallerPastDated(relUpdates []pendingRelUpdate, relTxDeletes []pendingRelTxDelete) types.Instant {
+func relCallerPastDated(relUpdates []pendingRelUpdate, relDeletes []pendingRelDelete) types.Instant {
 	var t types.Instant
 	for i := range relUpdates {
 		t = minPastDated(t, relUpdates[i].update.temporal.txAt)
 	}
-	for i := range relTxDeletes {
-		t = minPastDated(t, relTxDeletes[i].at)
+	for i := range relDeletes {
+		t = minPastDated(t, relDeletes[i].at)
 	}
 	return t
 }

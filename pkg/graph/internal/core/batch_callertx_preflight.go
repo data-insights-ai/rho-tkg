@@ -25,26 +25,25 @@ type callerTxUnit struct {
 	nodeUpdates  []pendingNodeUpdate
 	relUpdates   []pendingRelUpdate
 	nodeDeletes  []pendingNodeDelete
-	relDeletes   []types.RelID
-	relTxDeletes []pendingRelTxDelete
+	relDeletes   []pendingRelDelete
 	nodeCascades []pendingNodeCascade
 	relCascades  []pendingRelCascade
 }
 
 func (b *BatchBuilder) callerTxUnit() callerTxUnit {
-	return callerTxUnit{b.nodes, b.rels, b.nodeUpdates, b.relUpdates, b.nodeDeletes, b.relDeletes, b.relTxDeletes, b.nodeCascades, b.relCascades}
+	return callerTxUnit{b.nodes, b.rels, b.nodeUpdates, b.relUpdates, b.nodeDeletes, b.relDeletes, b.nodeCascades, b.relCascades}
 }
 
 func (g *ingestGroup) callerTxUnit() callerTxUnit {
-	return callerTxUnit{g.nodes, g.rels, g.nodeUpdates, g.relUpdates, g.nodeDeletes, g.relDeletes, g.relTxDeletes, g.nodeCascades, g.relCascades}
+	return callerTxUnit{g.nodes, g.rels, g.nodeUpdates, g.relUpdates, g.nodeDeletes, g.relDeletes, g.nodeCascades, g.relCascades}
 }
 
 // hasCallerTx reports whether the unit carries any caller-instant op. A
 // strong-mode ingest group that does is applied in a unit of its own
 // (applyCommitGroup), so its refusal fails that group only.
 func (u callerTxUnit) hasCallerTx() bool {
-	for i := range u.relTxDeletes {
-		if u.relTxDeletes[i].at != 0 {
+	for i := range u.relDeletes {
+		if u.relDeletes[i].at != 0 {
 			return true
 		}
 	}
@@ -128,7 +127,7 @@ func (c *Core) precheckCallerTxOps(u callerTxUnit) error {
 		nodeTouched[u.nodeCascades[i].id]++
 	}
 	endpointOfCreate := make(map[types.NodeID]bool, 2*len(u.rels))
-	relTouched := make(map[types.RelID]int, len(u.rels)+len(u.relUpdates)+len(u.relDeletes)+len(u.relCascades)+len(u.relTxDeletes))
+	relTouched := make(map[types.RelID]int, len(u.rels)+len(u.relUpdates)+len(u.relCascades)+len(u.relDeletes))
 	for i := range u.rels {
 		relTouched[u.rels[i].rel.ID()]++
 		endpointOfCreate[u.rels[i].startID] = true
@@ -137,14 +136,11 @@ func (c *Core) precheckCallerTxOps(u callerTxUnit) error {
 	for i := range u.relUpdates {
 		relTouched[u.relUpdates[i].id]++
 	}
-	for _, id := range u.relDeletes {
-		relTouched[id]++
-	}
 	for i := range u.relCascades {
 		relTouched[u.relCascades[i].id]++
 	}
-	for i := range u.relTxDeletes {
-		relTouched[u.relTxDeletes[i].id]++
+	for i := range u.relDeletes {
+		relTouched[u.relDeletes[i].id]++
 	}
 	cascaded := make(map[types.NodeID][]types.RelID, len(u.nodeDeletes))
 	for i := range u.nodeDeletes {
@@ -241,10 +237,10 @@ func (c *Core) precheckCallerTxOps(u callerTxUnit) error {
 			return err
 		}
 	}
-	for i := range u.relTxDeletes {
-		d := u.relTxDeletes[i]
+	for i := range u.relDeletes {
+		d := u.relDeletes[i]
 		if d.at == 0 {
-			continue // a plain RetractRelationship fails on its own at apply
+			continue // a plain Delete/RetractRelationship fails on its own at apply
 		}
 		if err := check(d.opName(), d.id, d.at, d.retract, func(current *types.Relationship) error {
 			return c.checkRelCallerDelete(d.id, current, d.at)
