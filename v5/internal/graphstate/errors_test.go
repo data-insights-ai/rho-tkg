@@ -3,6 +3,7 @@ package graphstate
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
@@ -86,8 +87,12 @@ func TestReadErrorsPropagateAtEveryLayer(t *testing.T) {
 			t.Fatal(stage, err)
 		}
 	}
-	if _, err := Plan(t.Context(), faultView{v, "incident", failure}, []Operation{{Kind: Close, Owner: 1, Life: 1, Scope: all}}, r, Limits{}); !errors.Is(err, failure) {
-		t.Fatal(err)
+
+	commitOps(t, v, 2, Operation{Kind: Close, Owner: 1, Life: 1, Scope: all})
+	r, _ = state.NewRevision(3, 0)
+	delta, err := Plan(t.Context(), faultView{v, "incident", failure}, []Operation{{Kind: Correct, Owner: 1, Life: 1, Scope: all, Present: true}}, r, Limits{})
+	if !errors.Is(err, failure) || !reflect.DeepEqual(delta, Delta{}) {
+		t.Fatal(delta, err)
 	}
 }
 func TestFailClosedRecordSchemaAndValueShapes(t *testing.T) {

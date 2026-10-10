@@ -80,7 +80,7 @@ func TestIdentityReferenceEndpointMutationDoesNotReadForeignAxis(t *testing.T) {
 				Operation{Kind: Close, Owner: endpoint, Life: 1, Scope: testSpan(t, v.axis, 10, 20)},
 				Operation{Kind: Reopen, Owner: endpoint, Life: 2, Scope: testSpan(t, v.axis, 12, 20)},
 			)
-			if got := incidentPrefixes(d); !reflect.DeepEqual(got, []lifeKey{{endpoint, 1}, {endpoint, 2}}) {
+			if got := incidentPrefixes(d); !reflect.DeepEqual(got, []lifeKey{{endpoint, 2}}) {
 				t.Fatalf("endpoint change invalidated unrelated relationship properties: %v", got)
 			}
 			for _, mode := range []Visibility{Declared, Effective} {
@@ -164,7 +164,7 @@ func (v incidentFaultView) Life(ctx context.Context, id EntityID, life LifeID) (
 	return r, err
 }
 
-func TestEndpointInvalidationRejectsContradictoryIncidentMetadata(t *testing.T) {
+func TestEndpointRestorationRejectsContradictoryIncidentMetadata(t *testing.T) {
 	v := newFixtureView(t)
 	whole := testSpan(t, v.axis, 0, 20)
 	commitIncident(t, v, 1,
@@ -172,6 +172,7 @@ func TestEndpointInvalidationRejectsContradictoryIncidentMetadata(t *testing.T) 
 		Operation{Kind: CreateNode, Owner: 2, Life: 1, Scope: whole},
 		Operation{Kind: CreateRelationship, Owner: 3, Life: 1, Scope: whole, Record: EntityRecord{Type: "BOUND", Source: 1, Target: 2, Mode: LifeBound}, Binding: LifeRecord{SourceLife: 1, TargetLife: 1}},
 	)
+	commitIncident(t, v, 2, Operation{Kind: Close, Owner: 1, Life: 1, Scope: whole})
 	failure := errors.New("incident metadata unavailable")
 	for _, fault := range []string{"entity error", "missing entity", "node candidate", "foreign endpoint", "life error", "missing life"} {
 		t.Run(fault, func(t *testing.T) {
@@ -179,7 +180,7 @@ func TestEndpointInvalidationRejectsContradictoryIncidentMetadata(t *testing.T) 
 			if fault == "entity error" || fault == "life error" {
 				want = failure
 			}
-			d, err := planIncident(t, incidentFaultView{v, fault, failure}, 2, Operation{Kind: Close, Owner: 1, Life: 1, Scope: whole})
+			d, err := planIncident(t, incidentFaultView{v, fault, failure}, 3, Operation{Kind: Correct, Owner: 1, Life: 1, Scope: whole, Present: true})
 			if !errors.Is(err, want) || !reflect.DeepEqual(d, Delta{}) {
 				t.Fatalf("untrusted incident candidate accepted: %+v, %v", d, err)
 			}
@@ -231,8 +232,8 @@ func TestLifeBoundEndpointInvalidatesOnlyImmutableBinding(t *testing.T) {
 			)
 			beforeClose := v.clone()
 			d := commitIncident(t, v, 4, Operation{Kind: Close, Owner: 1, Life: 2, Scope: testSpan(t, v.axis, 12, 14)})
-			if got := incidentPrefixes(d); !reflect.DeepEqual(got, []lifeKey{{1, 2}, {4, 2}}) {
-				t.Fatalf("nonmatching endpoint life entered uniqueness footprint: %v", got)
+			if got := incidentPrefixes(d); len(got) != 0 {
+				t.Fatalf("pure endpoint retraction expanded uniqueness footprint: %v", got)
 			}
 			for _, check := range []struct {
 				view   *fixtureView
@@ -256,10 +257,15 @@ func TestLifeBoundEndpointInvalidatesOnlyImmutableBinding(t *testing.T) {
 			} {
 				projectIncident(t, check.view, check.id, v.axis, check.at, check.mode, check.active, check.life, check.code)
 			}
+			// Actual additions still expand exactly the matching immutable binding.
+			d = commitIncident(t, v, 5, Operation{Kind: Correct, Owner: 1, Life: 2, Scope: testSpan(t, v.axis, 12, 14), Present: true})
+			if got := incidentPrefixes(d); !reflect.DeepEqual(got, []lifeKey{{1, 2}, {4, 2}}) {
+				t.Fatalf("nonmatching endpoint life entered restoration footprint: %v", got)
+			}
 			// Restoring the old endpoint life reactivates its retained edge claim;
 			// omitting all incident checks would silently accept this conflict.
-			commitIncident(t, v, 5, Operation{Kind: Close, Owner: 1, Life: 2, Scope: testSpan(t, v.axis, 10, 12)})
-			d, err := planIncident(t, v, 6, Operation{Kind: Correct, Owner: 1, Life: 1, Scope: testSpan(t, v.axis, 10, 12), Present: true})
+			commitIncident(t, v, 6, Operation{Kind: Close, Owner: 1, Life: 2, Scope: testSpan(t, v.axis, 10, 12)})
+			d, err := planIncident(t, v, 7, Operation{Kind: Correct, Owner: 1, Life: 1, Scope: testSpan(t, v.axis, 10, 12), Present: true})
 			if !errors.Is(err, ErrUniqueOverlap) || !reflect.DeepEqual(d, Delta{}) {
 				t.Fatalf("matching old binding failed to check uniqueness: %+v, %v", d, err)
 			}

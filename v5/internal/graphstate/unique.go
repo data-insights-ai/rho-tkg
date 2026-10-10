@@ -249,7 +249,15 @@ func (e *engine) validateUniqueness() error {
 		if !found {
 			return ErrContradictoryRead
 		}
+
 		for _, change := range patch.Changes {
+			// Explicit absence only removes owner/endpoint life support, so it
+			// cannot add an effective uniqueness claim. Other mutations still
+			// validate their claims against the final overlay, including this
+			// removal; restoration/addition keeps the incident checks below.
+			if !change.After().Present() {
+				continue
+			}
 			ids := []LifeID{}
 			if change.Before().Present() {
 				ids = append(ids, LifeID(change.Before().Value().ID()))
