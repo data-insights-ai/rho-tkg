@@ -72,7 +72,7 @@ func (c *Core) applyIngestGroupConcurrent(g *ingestGroup, lane uint16) error {
 	// past-dated write after the group's store writes below (deferred).
 	defer c.notePastDatedWrite(pendingPastDated(g.nodes, g.rels))
 	defer c.notePastDatedWrite(pendingNodeCallerTx(g.nodeUpdates, g.nodeDeletes))
-	defer c.notePastDatedWrite(relCallerPastDated(g.relUpdates, g.relTxDeletes))
+	defer c.notePastDatedWrite(relCallerPastDated(g.relUpdates, g.relDeletes))
 
 	var refused error
 	ep, closeErr := c.runUnderRLockShard(uint(lane), func() {
@@ -446,14 +446,7 @@ func (c *Core) applyConcurrentUpdatesAndDeletes(
 		}
 	}
 
-	for _, id := range g.relDeletes {
-		if err := c.deleteRelationshipInternal(ctx, id, tombstoneSpec{}); err != nil {
-			fail("DeleteRelationship", types.EntityID(id), err)
-		} else {
-			emit(eventspkg.EventRelDelete, types.EntityID(id), c.now(), eventspkg.PriorityCritical)
-		}
-	}
-	for _, d := range g.relTxDeletes {
+	for _, d := range g.relDeletes {
 		if err := c.deleteRelationshipInternal(ctx, d.id, d.spec()); err != nil {
 			fail(d.opName(), types.EntityID(d.id), err)
 		} else {

@@ -12,3 +12,6 @@ OLD binary, import of the new binary's export: NodeAtTx(retracted, past valid, n
 # plain Delete: the past valid time stays readable at pins after the retraction. A mixed-version
 # replica set therefore answers differently for retracted entities -> upgrade replicas (and every
 # reader of exports / badger dirs) before any writer uses a Retract door.
+# Superseded (unreleased, after 4.49.1): a retraction tombstone is now written at fv=3 and a 4.49.0
+# reader fails closed on it (../retraction-fv3/05-old-binary-fails-closed.txt); the degradation above
+# remains true only for tombstones 4.49.1 already wrote (fv=2 + rx).

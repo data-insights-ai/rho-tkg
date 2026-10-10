@@ -1,0 +1,6 @@
+=== RUN   TestRetraction_UnitKeepsQueueOrder
+=== PAUSE TestRetraction_UnitKeepsQueueOrder
+=== CONT  TestRetraction_UnitKeepsQueueOrder
+--- PASS: TestRetraction_UnitKeepsQueueOrder (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.005s

@@ -64,8 +64,7 @@ type BatchBuilder struct {
 	nodeUpdates  []pendingNodeUpdate
 	relUpdates   []pendingRelUpdate
 	nodeDeletes  []pendingNodeDelete
-	relDeletes   []types.RelID
-	relTxDeletes []pendingRelTxDelete // DeleteRelationshipWithTx (batch_rel_withtx.go)
+	relDeletes   []pendingRelDelete // DeleteRelationshipWithTx (batch_rel_withtx.go)
 	nodeCascades []pendingNodeCascade
 	relCascades  []pendingRelCascade
 }

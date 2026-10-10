@@ -201,7 +201,7 @@ func TestFutureVersionFailsClosedTail(t *testing.T) {
 	t.Parallel()
 
 	// Simulate an older reader: a v2 binary reading a v3 row must reject.
-	future := NodeWire{FormatVersion: CurrentWireFormatVersion + 1, ID: 1, PrimaryLabel: 1}
+	future := NodeWire{FormatVersion: RetractedWireFormatVersion + 1, ID: 1, PrimaryLabel: 1}
 	data, err := msgpack.Marshal(future)
 	if err != nil {
 		t.Fatalf("marshal future: %v", err)

@@ -1,0 +1,12 @@
+# Old-binary experiment rerun after the fv=3 bump, 2026-10-10 (same harness as ../retraction/13).
+# new binary = this branch (retraction rows written at fv=3); old binary = fc90801 (v4.49.0 base, reads fv <= 2).
+# newwriter: badger dir + IO export holding a node retracted (valid from an hour ago, updated once)
+#   with one cascaded relationship. oldreader: opens the SAME badger dir, imports the export into memory.
+NEW binary: NodeAtTx(retracted, past valid, now) err=graph: no version valid at the given time; RelAtTx err=graph: no version valid at the given time; history marker=true
+OLD binary, badger dir written by the new binary: NodeAtTx(retracted, past valid, now) = false (err=graph: scan history temporal meta: wire temporal meta: row format version 3, this binary supports up to 2: graph: on-disk wire format version not supported by this binary); RelAtTx = false (err=... row format version 3 ... not supported by this binary); Get err=graph: node not found; history rows=0 (err=graph: decode node version: node wire: row format version 3, this binary supports up to 2: graph: on-disk wire format version not supported by this binary)
+OLD binary, import of the new binary's export: Import err = import: node history 799711930832551936: graph: corrupt export record: node wire: row format version 3, this binary supports up to 2: graph: on-disk wire format version not supported by this binary
+# Reading: the old binary still OPENS the directory (store-level marker stays 2), but every read that
+# touches a retraction tombstone fails closed with ErrWireFormatVersionUnsupported instead of answering
+# the past (was: NodeAtTx/RelAtTx = true, history rows=2), and the import of an export holding a
+# retraction is refused. Tombstones v4.49.1 already wrote (fv=2 + rx) are NOT protected: an old binary
+# still reads those as a plain Delete (../retraction/13).

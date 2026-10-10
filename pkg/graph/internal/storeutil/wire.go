@@ -16,7 +16,8 @@ const (
 // NodeWire/RelWire from this release on. Rows persisted before versioning
 // existed decode with FormatVersion == 0 and are treated as version 1 — the
 // two layouts are identical, the explicit field simply makes future layouts
-// self-describing. Decoding a row with a version GREATER than this constant
+// self-describing. Decoding a row with a version GREATER than
+// maxReadableWireFormatVersion (RetractedWireFormatVersion, below)
 // fails closed with store.ErrWireFormatVersionUnsupported instead of silently
 // zero-filling fields this binary does not know about.
 //
@@ -35,6 +36,40 @@ const (
 // no version branch is needed on read; the fv guard still fails a FUTURE
 // version closed with ErrWireFormatVersionUnsupported. See wire_temporal_tail.go.
 const CurrentWireFormatVersion = 2
+
+// RetractedWireFormatVersion is the per-row format version of a retraction
+// tombstone (Retracted, map key "rx", backlog 43). The layout is v2's; the
+// bump exists so a binary that predates the marker (it decodes fv <= 2 and
+// skips the unknown key "rx", which would answer a retraction as a plain
+// Delete) fails closed with store.ErrWireFormatVersionUnsupported. Only rows
+// with Retracted carry it: every other row, and the store-level format marker,
+// stay at CurrentWireFormatVersion, so an older binary still opens stores,
+// exports and change feeds that hold no retraction. Rows v4.49.1 wrote (fv=2
+// plus "rx") still decode as retractions.
+const RetractedWireFormatVersion = 3
+
+// maxReadableWireFormatVersion is the highest per-row format version every
+// decoder accepts. A variable only so a test can play an older reader.
+var maxReadableWireFormatVersion uint8 = RetractedWireFormatVersion
+
+// checkRowFormatVersion fails a row written by a newer release closed.
+func checkRowFormatVersion(what string, fv uint8) error {
+	if fv > maxReadableWireFormatVersion {
+		return fmt.Errorf("%s: row format version %d, this binary supports up to %d: %w",
+			what, fv, maxReadableWireFormatVersion, storepkg.ErrWireFormatVersionUnsupported)
+	}
+	return nil
+}
+
+// emittedRowFormatVersion is the fv an encoder writes: a retraction tombstone
+// is raised to RetractedWireFormatVersion (v2 layout), every other row keeps
+// the version it carries, so its bytes are unchanged.
+func emittedRowFormatVersion(fv uint8, retracted bool) uint8 {
+	if retracted && fv < RetractedWireFormatVersion {
+		return RetractedWireFormatVersion
+	}
+	return fv
+}
 
 // NodeWire is the msgpack wire format for Node entities.
 // All token values are stored as int (maps to msgpack integer).
@@ -572,9 +607,8 @@ func ValidateNodeWire(w NodeWire) error {
 }
 
 func validateNodeWireFields(w NodeWire) error {
-	if w.FormatVersion > CurrentWireFormatVersion {
-		return fmt.Errorf("node wire: row format version %d, this binary supports up to %d: %w",
-			w.FormatVersion, CurrentWireFormatVersion, storepkg.ErrWireFormatVersionUnsupported)
+	if err := checkRowFormatVersion("node wire", w.FormatVersion); err != nil {
+		return err
 	}
 	if w.ID <= 0 {
 		return fmt.Errorf("node wire: id must be positive, got %d", w.ID)
@@ -646,9 +680,8 @@ func ValidateRelWire(w RelWire) error {
 }
 
 func validateRelWireFields(w RelWire) error {
-	if w.FormatVersion > CurrentWireFormatVersion {
-		return fmt.Errorf("relationship wire: row format version %d, this binary supports up to %d: %w",
-			w.FormatVersion, CurrentWireFormatVersion, storepkg.ErrWireFormatVersionUnsupported)
+	if err := checkRowFormatVersion("relationship wire", w.FormatVersion); err != nil {
+		return err
 	}
 	if w.ID <= 0 {
 		return fmt.Errorf("relationship wire: id must be positive, got %d", w.ID)

@@ -134,7 +134,7 @@ func mapKeys(m map[string]any) []string {
 func TestWireFormatVersionFutureRowFailsClosed(t *testing.T) {
 	t.Parallel()
 
-	nw := NodeWire{FormatVersion: CurrentWireFormatVersion + 1, ID: 100, PrimaryLabel: 1}
+	nw := NodeWire{FormatVersion: RetractedWireFormatVersion + 1, ID: 100, PrimaryLabel: 1}
 	if err := ValidateNodeWire(nw); !errors.Is(err, storecontract.ErrWireFormatVersionUnsupported) {
 		t.Fatalf("ValidateNodeWire(future) = %v, want ErrWireFormatVersionUnsupported", err)
 	}
@@ -142,7 +142,7 @@ func TestWireFormatVersionFutureRowFailsClosed(t *testing.T) {
 		t.Fatalf("WireToNodeChecked(future) returned (%v, %v), want (nil, error)", n, err)
 	}
 
-	rw := RelWire{FormatVersion: CurrentWireFormatVersion + 1, ID: 100, RelType: 1, StartID: 1, EndID: 2}
+	rw := RelWire{FormatVersion: RetractedWireFormatVersion + 1, ID: 100, RelType: 1, StartID: 1, EndID: 2}
 	if err := ValidateRelWire(rw); !errors.Is(err, storecontract.ErrWireFormatVersionUnsupported) {
 		t.Fatalf("ValidateRelWire(future) = %v, want ErrWireFormatVersionUnsupported", err)
 	}

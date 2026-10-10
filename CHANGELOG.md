@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **A retraction tombstone is written at row format version 3, so an older binary fails closed on it** (backlog 43
+  review). 4.49.1 wrote the marker as an optional key at `fv=2`, which a 4.49.0 binary skips: it read a retraction as
+  a plain Delete (the past stayed readable after it). Now only rows with `Retracted` carry `fv=3`; every other row is
+  byte-identical (`fv=2`) and the store-level format marker stays 2, so an older binary still opens stores, exports
+  and change feeds that hold no retraction. Measured with a 4.49.0 reader
+  (`tasks/evidence/retraction-fv3/05-old-binary-fails-closed.txt`): it opens a directory holding retractions, and
+  every read or import touching a retraction returns `ErrWireFormatVersionUnsupported`. This binary decodes
+  `fv <= 3` on every door and still reads 4.49.1's `fv=2` + `rx` tombstones as retractions; those already-written
+  tombstones stay unprotected: an older binary still reads them as a plain Delete.
+
+### Fixed
+
+- **A Batch or ingest `Session` applies relationship deletes in queue order.** `RetractRelationship(r);
+  DeleteRelationship(r)` in one unit ran the plain delete first (two queues), leaving a plain tombstone
+  (`Retracted=false`) and reporting the retraction as failed. Every relationship delete door now queues in one list
+  with its tombstone spec, as the node doors already did: the first op writes the tombstone, the second fails on the
+  deleted relationship.
+
 ## [4.49.1] - 2026-10-10
 
 Patch release (patch versions only until a minor is asked for): the retraction door, `Retract` / `RetractWithTx` on

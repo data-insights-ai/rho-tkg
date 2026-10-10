@@ -1,0 +1,32 @@
+--- FAIL: TestRetractedRow_FormatVersion3 (0.00s)
+    wire_retracted_fv3_test.go:201: node retracted / full checked: fv=2, want 3
+    wire_retracted_fv3_test.go:220: node retracted / full checked: fv<=2 reader got rx=true err=<nil>, want ErrWireFormatVersionUnsupported
+    wire_retracted_fv3_test.go:201: node retracted / partial scanner: fv=2, want 3
+    wire_retracted_fv3_test.go:220: node retracted / partial scanner: fv<=2 reader got rx=true err=<nil>, want ErrWireFormatVersionUnsupported
+    wire_retracted_fv3_test.go:201: node retracted / partial slow: fv=2, want 3
+    wire_retracted_fv3_test.go:220: node retracted / partial slow: fv<=2 reader got rx=true err=<nil>, want ErrWireFormatVersionUnsupported
+    wire_retracted_fv3_test.go:201: node retracted / tx stamps: fv=2, want 3
+    wire_retracted_fv3_test.go:220: node retracted / tx stamps: fv<=2 reader got rx=false err=<nil>, want ErrWireFormatVersionUnsupported
+    wire_retracted_fv3_test.go:201: node retracted / change feed put: fv=2, want 3
+    wire_retracted_fv3_test.go:220: node retracted / change feed put: fv<=2 reader got rx=true err=<nil>, want ErrWireFormatVersionUnsupported
+    wire_retracted_fv3_test.go:201: node retracted / history delta: fv=2, want 3
+    wire_retracted_fv3_test.go:220: node retracted / history delta: fv<=2 reader got rx=true err=<nil>, want ErrWireFormatVersionUnsupported
+    wire_retracted_fv3_test.go:201: node retracted / history delta stamps: fv=2, want 3
+    wire_retracted_fv3_test.go:220: node retracted / history delta stamps: fv<=2 reader got rx=false err=<nil>, want ErrWireFormatVersionUnsupported
+    wire_retracted_fv3_test.go:201: rel retracted / full checked: fv=2, want 3
+    wire_retracted_fv3_test.go:220: rel retracted / full checked: fv<=2 reader got rx=true err=<nil>, want ErrWireFormatVersionUnsupported
+    wire_retracted_fv3_test.go:201: rel retracted / partial scanner: fv=2, want 3
+    wire_retracted_fv3_test.go:220: rel retracted / partial scanner: fv<=2 reader got rx=true err=<nil>, want ErrWireFormatVersionUnsupported
+    wire_retracted_fv3_test.go:201: rel retracted / partial slow: fv=2, want 3
+    wire_retracted_fv3_test.go:220: rel retracted / partial slow: fv<=2 reader got rx=true err=<nil>, want ErrWireFormatVersionUnsupported
+    wire_retracted_fv3_test.go:201: rel retracted / tx stamps: fv=2, want 3
+    wire_retracted_fv3_test.go:220: rel retracted / tx stamps: fv<=2 reader got rx=false err=<nil>, want ErrWireFormatVersionUnsupported
+    wire_retracted_fv3_test.go:201: rel retracted / change feed put: fv=2, want 3
+    wire_retracted_fv3_test.go:220: rel retracted / change feed put: fv<=2 reader got rx=true err=<nil>, want ErrWireFormatVersionUnsupported
+    wire_retracted_fv3_test.go:201: rel retracted / history delta: fv=2, want 3
+    wire_retracted_fv3_test.go:220: rel retracted / history delta: fv<=2 reader got rx=true err=<nil>, want ErrWireFormatVersionUnsupported
+    wire_retracted_fv3_test.go:201: rel retracted / history delta stamps: fv=2, want 3
+    wire_retracted_fv3_test.go:220: rel retracted / history delta stamps: fv<=2 reader got rx=false err=<nil>, want ErrWireFormatVersionUnsupported
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	0.002s
+FAIL

@@ -1,0 +1,7 @@
+--- FAIL: TestRetraction_UnitKeepsQueueOrder (0.00s)
+    retraction_queue_order_test.go:71: batch/rel retractFirst=true: tombstone &{ValidFrom:1791630484300 ValidTo:1791630784320 TxFrom:1791630784316 TxTo:1791630784320 CreatedAt:0 UpdatedAt:1791630784316 DeletedAt:1791630784320 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}, unit err=graph: entity is deleted: relationship 799709079167042560: graph: relationship not found; want Retracted=true and the second op refused
+    retraction_queue_order_test.go:71: ingestSync/rel retractFirst=true: tombstone &{ValidFrom:1791630484301 ValidTo:1791630784321 TxFrom:1791630784317 TxTo:1791630784321 CreatedAt:0 UpdatedAt:1791630784317 DeletedAt:1791630784321 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}, unit err=graph: entity is deleted: relationship 799709079190209536: graph: relationship not found; want Retracted=true and the second op refused
+    retraction_queue_order_test.go:71: ingestConcurrent/rel retractFirst=true: tombstone &{ValidFrom:1791630484301 ValidTo:1791630784320 TxFrom:1791630784317 TxTo:1791630784320 CreatedAt:0 UpdatedAt:1791630784317 DeletedAt:1791630784320 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false}, unit err=graph: concurrent ingest RetractRelationship (799709079207609344): graph: entity is deleted: relationship 799709079207609344: graph: relationship not found; want Retracted=true and the second op refused
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.012s
+FAIL

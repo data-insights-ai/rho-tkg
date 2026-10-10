@@ -581,6 +581,6 @@ func (b *BatchBuilder) DeleteRelationship(id types.RelID) error {
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return err
 	}
-	b.relDeletes = append(b.relDeletes, id)
+	b.relDeletes = append(b.relDeletes, pendingRelDelete{id: id})
 	return nil
 }

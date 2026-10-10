@@ -105,8 +105,7 @@ type ingestGroup struct {
 	nodeUpdates  []pendingNodeUpdate
 	relUpdates   []pendingRelUpdate
 	nodeDeletes  []pendingNodeDelete
-	relDeletes   []types.RelID
-	relTxDeletes []pendingRelTxDelete
+	relDeletes   []pendingRelDelete
 	nodeCascades []pendingNodeCascade
 	relCascades  []pendingRelCascade
 	seqHi        uint64
@@ -117,7 +116,7 @@ type ingestGroup struct {
 
 func (g *ingestGroup) count() int {
 	return len(g.nodes) + len(g.rels) + len(g.nodeUpdates) + len(g.relUpdates) +
-		len(g.nodeDeletes) + len(g.relDeletes) + len(g.relTxDeletes) + len(g.nodeCascades) + len(g.relCascades)
+		len(g.nodeDeletes) + len(g.relDeletes) + len(g.nodeCascades) + len(g.relCascades)
 }
 
 // ingestApplier is the single-writer apply stage. One per Core, started lazily.
@@ -270,7 +269,6 @@ func (a *ingestApplier) applyCommitSegment(batch []*ingestGroup) {
 		bb.relUpdates = append(bb.relUpdates, g.relUpdates...)
 		bb.nodeDeletes = append(bb.nodeDeletes, g.nodeDeletes...)
 		bb.relDeletes = append(bb.relDeletes, g.relDeletes...)
-		bb.relTxDeletes = append(bb.relTxDeletes, g.relTxDeletes...)
 		bb.nodeCascades = append(bb.nodeCascades, g.nodeCascades...)
 		bb.relCascades = append(bb.relCascades, g.relCascades...)
 		if g.seqHi > maxSeq {
@@ -291,10 +289,7 @@ func (a *ingestApplier) applyCommitSegment(batch []*ingestGroup) {
 		for _, pd := range g.nodeDeletes {
 			idToGroup[types.EntityID(pd.id)] = g
 		}
-		for _, id := range g.relDeletes {
-			idToGroup[types.EntityID(id)] = g
-		}
-		for _, d := range g.relTxDeletes {
+		for _, d := range g.relDeletes {
 			idToGroup[types.EntityID(d.id)] = g
 		}
 		for _, pc := range g.nodeCascades {
@@ -308,7 +303,7 @@ func (a *ingestApplier) applyCommitSegment(batch []*ingestGroup) {
 	var result *BatchResult
 	var applyErr error
 	if bb.nodes != nil || bb.rels != nil || bb.nodeUpdates != nil || bb.relUpdates != nil ||
-		bb.nodeDeletes != nil || bb.relDeletes != nil || bb.relTxDeletes != nil || bb.nodeCascades != nil || bb.relCascades != nil {
+		bb.nodeDeletes != nil || bb.relDeletes != nil || bb.nodeCascades != nil || bb.relCascades != nil {
 		result, applyErr = bb.Execute()
 	}
 
@@ -996,5 +991,5 @@ func (s *Session) Close() error {
 // batchIntentCount counts prepared intents in a builder (session-side only).
 func batchIntentCount(b *BatchBuilder) int {
 	return len(b.nodes) + len(b.rels) + len(b.nodeUpdates) + len(b.relUpdates) +
-		len(b.nodeDeletes) + len(b.relDeletes) + len(b.relTxDeletes) + len(b.nodeCascades) + len(b.relCascades)
+		len(b.nodeDeletes) + len(b.relDeletes) + len(b.nodeCascades) + len(b.relCascades)
 }

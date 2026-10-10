@@ -70,7 +70,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	// Likewise the caller instants of the queued node updates/deletes
 	// (UpdateNodeWithTx, DeleteNodeWithTx).
 	defer b.g.notePastDatedWrite(pendingNodeCallerTx(b.nodeUpdates, b.nodeDeletes))
-	defer b.g.notePastDatedWrite(relCallerPastDated(b.relUpdates, b.relTxDeletes))
+	defer b.g.notePastDatedWrite(relCallerPastDated(b.relUpdates, b.relDeletes))
 
 	// Buffer events during batch execution; dispatch after c.mu.Unlock.
 	var batchEvents []eventspkg.Event
@@ -601,23 +601,10 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		}
 	}
 
-	// 5. Delete relationships (internal — batch already holds c.mu.Lock).
-	for _, id := range b.relDeletes {
-		if err := b.g.deleteRelationshipInternal(context.Background(), id, tombstoneSpec{}); err != nil {
-			result.Failed++
-			result.Errors = append(result.Errors, BatchError{
-				Op:  "DeleteRelationship",
-				ID:  types.EntityID(id),
-				Err: err,
-			})
-		} else {
-			result.Deleted++
-			b.g.publishEvent(eventspkg.EventRelDelete, types.EntityID(id), b.g.now(), eventspkg.PriorityCritical)
-		}
-	}
-	// 5b. Relationship deletes carrying a tombstone spec: a caller instant
-	// (passed the pre-flight) and/or the retraction marker.
-	for _, d := range b.relTxDeletes {
+	// 5. Delete relationships in queue order (internal — batch already holds
+	// c.mu.Lock); each carries its tombstone spec: none (DeleteRelationship), a
+	// caller instant (passed the pre-flight) and/or the retraction marker.
+	for _, d := range b.relDeletes {
 		if err := b.g.deleteRelationshipInternal(context.Background(), d.id, d.spec()); err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
