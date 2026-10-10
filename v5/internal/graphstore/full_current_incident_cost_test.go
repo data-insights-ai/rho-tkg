@@ -5,13 +5,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
+	"slices"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
+	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
 
 type incidentPilotMetric struct {
@@ -97,9 +104,17 @@ func pilotQueryCatalog(t *testing.T, f *currentIncidentFixture) (*Catalog, func(
 		}
 	}
 }
-func pilotCurrent(t *testing.T, f *currentIncidentFixture, l GraphLimits) (out incidentPilotMetric, err error) {
+func pilotCurrent(t *testing.T, f *currentIncidentFixture, l GraphLimits) (incidentPilotMetric, error) {
 	t.Helper()
-	c, close := pilotQueryCatalog(t, f)
+	return pilotCurrentAt(t, f, f.index, f.position(t, 75), l)
+}
+func pilotCurrentAt(t *testing.T, f *currentIncidentFixture, index uint64, at temporal.Position, l GraphLimits) (out incidentPilotMetric, err error) {
+	t.Helper()
+	// Capture the requested application index without mutating the fixture's
+	// current construction state. Catalog obtains its actual root from that cut.
+	captured := *f
+	captured.index = index
+	c, close := pilotQueryCatalog(t, &captured)
 	defer close()
 	out.CatalogLimits = c.limits
 	var before, after runtime.MemStats
@@ -120,7 +135,7 @@ func pilotCurrent(t *testing.T, f *currentIncidentFixture, l GraphLimits) (out i
 		out.Work = v.Work()
 		out.Native = v.currentWork
 	}()
-	query := IncidentAtQuery{Endpoint: 1, Life: 11, At: f.position(t, 75), Direction: IncidentBoth, Type: "R", Visible: graphstate.Effective}
+	query := IncidentAtQuery{Endpoint: 1, Life: 11, At: at, Direction: IncidentBoth, Type: "R", Visible: graphstate.Effective}
 	var cursor graphstate.Cursor
 	for range 4096 {
 		page, e := v.IncidentAt(t.Context(), query, cursor, out.CallerBudget)
@@ -331,4 +346,169 @@ func pilotBudgetDescriptor(t *testing.T, l GraphLimits) GraphLimits {
 	}
 	l.Planner = defaults
 	return l
+}
+
+func requireUnmaskedIncidentPilotComplete(t *testing.T, f *currentIncidentFixture, index uint64, at temporal.Position, want []IncidentAtCandidate) incidentPilotMetric {
+	t.Helper()
+	metric, err := pilotCurrentAt(t, f, index, at, GraphLimits{})
+	// This is an acceptance assertion, unlike the small refusal diagnostics.
+	// Partial pages or a resource refusal cannot establish a complete answer.
+	if err != nil || !metric.Complete || metric.Refusal != "" {
+		t.Fatal("current point query did not complete under literal defaults", index, metric, err)
+	}
+	exactIncidentAt(t, slices.Clone(metric.Candidates), slices.Clone(want))
+	if metric.Native.WitnessEntityCalls != len(want) || metric.Native.WitnessLifeCalls != len(want) {
+		t.Fatal("own-ended owner payload was admitted", index, metric.Native, len(want))
+	}
+	return metric
+}
+
+// Opt-in real disk population gate. Normal CI compiles this code but builds no
+// large fixture. Each subtest closes/removes its one store before the next lane.
+// RHO_FULL_INCIDENT_MEASURE=1 RHO_FULL_INCIDENT_SIZES=10000,100000
+// RHO_FULL_INCIDENT_OUTPUT optionally names an existing external output directory.
+func TestIncidentAtLargeOwnEndedDefaultPopulation(t *testing.T) {
+	if testing.Short() || os.Getenv("RHO_FULL_INCIDENT_MEASURE") != "1" {
+		t.Skip("explicit large disk current-point measurement opt-in required")
+	}
+	sizes := os.Getenv("RHO_FULL_INCIDENT_SIZES")
+	if sizes == "" {
+		sizes = "10000,100000"
+	}
+	for text := range strings.SplitSeq(sizes, ",") {
+		n, err := strconv.Atoi(text)
+		if err != nil || n != 10_000 && n != 100_000 {
+			t.Fatal("select only10000 or100000", text)
+		}
+		for _, early := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%d/active-first-%t", n, early), func(t *testing.T) {
+				f, build, helperAfter, ended := buildCurrentIncidentPopulation(t, n, early, vfs.Default, filepath.Join(t.TempDir(), "store"))
+				activeStart := graphstate.EntityID(n + 3)
+				if early {
+					activeStart = 3
+				}
+				before := make([]IncidentAtCandidate, 10)
+				after := make([]IncidentAtCandidate, 10)
+				for i := range before {
+					before[i] = IncidentAtCandidate{activeStart + graphstate.EntityID(i), 31, IncidentSource}
+					after[i] = before[i]
+				}
+				restored := graphstate.EntityID(3)
+				if early {
+					restored = 13
+				}
+				after[0] = IncidentAtCandidate{restored, 31, IncidentSource}
+				// Expected atoms derive directly from workload IDs and mutations,
+				// independently of native index maintenance and the helper's oracle.
+				afterIDs := make([]graphstate.EntityID, 10)
+				for i, candidate := range after {
+					afterIDs[i] = candidate.Relationship
+				}
+				slices.Sort(afterIDs)
+				currentAssertIDs(t, helperAfter, afterIDs)
+				if build.Active != 10 || build.Ended != n || build.BeforeCorrection >= build.AfterCorrection || build.CorrectionWork.PatchPages == 0 {
+					t.Fatal("population/correction evidence missing", build)
+				}
+				point := f.position(t, 75)
+				old := requireUnmaskedIncidentPilotComplete(t, f, build.BeforeCorrection, point, before)
+				current := requireUnmaskedIncidentPilotComplete(t, f, build.AfterCorrection, point, after)
+				// The unchanged historical adapter may refuse under its literal
+				// aggregate defaults. Such a row stays explicitly incomplete.
+				baseline, err := pilotBaseline(t, f, ended, GraphLimits{})
+				pilotRefusal(t, &baseline, err)
+				if baseline.Refusal != "" && len(baseline.Candidates) != 0 {
+					t.Fatal("refused historical baseline retained a partial selection", baseline)
+				}
+				if baseline.Complete {
+					exactIncidentAt(t, slices.Clone(baseline.Candidates), slices.Clone(after))
+				}
+				if err := f.db.Close(); err != nil {
+					t.Fatal(err)
+				}
+				f.config.Create = false
+				f.db, err = raftlog.Open(f.config)
+				if err != nil {
+					t.Fatal(err)
+				}
+				reopenedOld := requireUnmaskedIncidentPilotComplete(t, f, build.BeforeCorrection, point, before)
+				reopenedCurrent := requireUnmaskedIncidentPilotComplete(t, f, build.AfterCorrection, point, after)
+				fixture, err := f.StageLimits.resolve()
+				if err != nil {
+					t.Fatal(err)
+				}
+				fixture = pilotBudgetDescriptor(t, fixture)
+				catalog, close := f.catalog(t, f.index)
+				fixtureCatalog := catalog.limits
+				close()
+				data, err := json.MarshalIndent(struct {
+					Contract, Base, Toolchain, Interpretation            string
+					Build                                                currentIncidentBuild
+					FixtureLimits                                        GraphLimits
+					FixtureCatalog                                       Limits
+					Before, After                                        []IncidentAtCandidate
+					Old, Current, ReopenedOld, ReopenedCurrent, Baseline incidentPilotMetric
+				}{"Full IncidentAt point75/IntegerZ; endpoint1/life11/typeR/Effective/Both;10 own-present lives vs ended history; literal query defaults", os.Getenv("RHO_FULL_INCIDENT_BASE"), runtime.Version(), "Real bounded Plan→Stage→Install; at most16 operations with unchanged construction allowance and smaller atomic units on resource refusal. No direct tree population. Build retained bytes/disk/work are fixture costs, not total production/RSS. Current answers must complete and have exactly10 entity/life witnesses; baseline refusals are incomplete diagnostics. Native inherited PageWork fields are last-attempt only; metric.Work is cumulative. Four warm/reopened reads, not cold-cache latency claims. Allocations include process background work. No O(active) claim for opposite-masked own-present candidates.", build, fixture, fixtureCatalog, before, after, old, current, reopenedOld, reopenedCurrent, baseline}, "", "  ")
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Log("LARGE_CURRENT_INCIDENT " + string(data))
+				if output := os.Getenv("RHO_FULL_INCIDENT_OUTPUT"); output != "" {
+					if err := os.WriteFile(filepath.Join(output, fmt.Sprintf("full-current-incident-%d-active-first-%t.json", n, early)), append(data, '\n'), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestIncidentAtDistinctOppositeMasksDiscloseResidualWork(t *testing.T) {
+	f := newCurrentIncidentFixture(t, vfs.NewMem(), "distinct-opposite-cost")
+	whole := f.span(t, 0, 100)
+	f.apply(t, graphstate.Operation{Kind: graphstate.CreateNode, Owner: 1, Life: 11, Scope: whole})
+	var all, active []IncidentAtCandidate
+	for id := graphstate.EntityID(2); id <= 7; id++ {
+		f.apply(t, graphstate.Operation{Kind: graphstate.CreateNode, Owner: id, Life: 11, Scope: whole})
+		f.apply(t, graphstate.Operation{Kind: graphstate.CreateRelationship, Owner: id + 100, Life: 31, Scope: whole, Record: graphstate.EntityRecord{Type: "R", Source: 1, Target: id, Mode: graphstate.LifeBound}, Binding: graphstate.LifeRecord{SourceLife: 11, TargetLife: 11}})
+		candidate := IncidentAtCandidate{id + 100, 31, IncidentSource}
+		all = append(all, candidate)
+		if id%2 == 1 {
+			active = append(active, candidate)
+		}
+	}
+	oldIndex := f.index
+	ownRoot := func(index uint64) currentPresenceTreeRoot {
+		c, close := f.catalog(t, index)
+		defer close()
+		q, err := c.reader(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		d, found, err := q.fullDescriptor(c.root)
+		if err != nil || !found {
+			t.Fatal(err)
+		}
+		return d.own
+	}
+	beforeRoot := ownRoot(oldIndex)
+	for _, id := range []graphstate.EntityID{2, 4, 6} {
+		f.apply(t, graphstate.Operation{Kind: graphstate.Close, Owner: id, Life: 11, Scope: f.span(t, 50, 100)})
+	}
+	if ownRoot(f.index) != beforeRoot {
+		t.Fatal("node closure rewrote relationship own support")
+	}
+	old := requireUnmaskedIncidentPilotComplete(t, f, oldIndex, f.position(t, 75), all)
+	early := requireUnmaskedIncidentPilotComplete(t, f, f.index, f.position(t, 25), all)
+	current, err := pilotCurrent(t, f, GraphLimits{})
+	if err != nil || !current.Complete {
+		t.Fatal("distinct residual query failed", current, err)
+	}
+	exactIncidentAt(t, slices.Clone(current.Candidates), slices.Clone(active))
+	// All six own-present candidates require ordinary binding/endpoint proofs,
+	// including those masked by a different node. Four scalar slots cannot turn
+	// distinct endpoints into an active-only cost bound.
+	if current.Native.WitnessEntityCalls != 6 || current.Native.WitnessLifeCalls != 6 || current.Native.ResidualRecords < 30 || current.Work.PatchPages <= 1 {
+		t.Fatal("masked residual work disappeared", current.Native, current.Work)
+	}
+	t.Logf("DISTINCT_OPPOSITE_CURRENT old=%+v early=%+v current=%+v", old, early, current)
 }

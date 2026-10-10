@@ -62,6 +62,11 @@ func OpenCatalog(view *raftlog.ApplicationView, n Namespace, ownershipEpoch uint
 	if root.owner != ownershipEpoch {
 		return nil, ErrStaleOwner
 	}
+	// Ownership-declaration roots are metadata-only. No legacy Catalog/index/Full
+	// capability may infer graph readiness from their topology fields.
+	if root.hasOwnershipDeclaration() {
+		return nil, ErrTopologyUnsupported
+	}
 	return &Catalog{view: view, root: root, rootImageBytes: len(image.Image), limits: l, hash: equalityDigest}, nil
 }
 func (c *Catalog) check(ctx context.Context) error {

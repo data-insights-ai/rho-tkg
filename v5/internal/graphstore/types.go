@@ -81,6 +81,8 @@ type Root struct {
 	owner, epoch, next uint64
 	effect             [32]byte
 	topology           topologyDeclaration
+	ownershipDigest    [32]byte
+	ownershipMode      byte
 }
 
 // NewRoot creates an empty local-root descriptor without allocating logical IDs.
@@ -101,6 +103,12 @@ func (r Root) validate() error {
 	}
 	if r.owner == 0 || r.next == 0 || r.effect == ([32]byte{}) {
 		return ErrInvalid
+	}
+	if r.hasOwnershipDeclaration() {
+		if r.ownershipDigest == ([32]byte{}) || (r.ownershipMode != ownershipPending && r.ownershipMode != ownershipPublished) || r.topology.epoch == 0 || r.topology.schema != 1 || r.topology.index != 0 {
+			return ErrInvalid
+		}
+		return nil
 	}
 	if r.topology != (topologyDeclaration{}) && r.topology != bootstrapTopology && r.topology != keysOnlyTopology && !isFullTopology(r.topology) {
 		return ErrInvalid

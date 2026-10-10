@@ -446,7 +446,7 @@ func validatePrivateRoot(s *Stage, r Root) error {
 	if r.owner != baseline.owner {
 		return errors.Join(ErrInvalid, ErrStaleOwner)
 	}
-	if r.topology != baseline.topology || r.epoch != baseline.epoch || r.effect != baseline.effect || r.next < baseline.next {
+	if r.topology != baseline.topology || r.ownershipMode != baseline.ownershipMode || r.ownershipDigest != baseline.ownershipDigest || r.epoch != baseline.epoch || r.effect != baseline.effect || r.next < baseline.next {
 		return ErrInvalid
 	}
 	for _, row := range s.writes {

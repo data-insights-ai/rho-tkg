@@ -16,6 +16,7 @@ import (
 const (
 	rootBytes                = 116 // Primitive v1 image; retained for byte-for-byte compatibility.
 	singlePartitionRootBytes = rootBytes + 3*8
+	ownershipRootBytes       = singlePartitionRootBytes + 32
 )
 
 // EncodeRoot returns a constant-size owned provisional local root image. Its
@@ -28,6 +29,9 @@ func EncodeRoot(r Root) ([]byte, error) {
 	if r.topology != (topologyDeclaration{}) {
 		header = []byte{'G', 'R', 2, 2}
 	}
+	if r.hasOwnershipDeclaration() {
+		header = []byte{'G', 'R', 3, r.ownershipMode}
+	}
 	b := append(header, r.namespace.Graph[:]...)
 	for _, n := range []uint64{r.namespace.Partition, r.owner, r.epoch, r.next} {
 		b = binary.BigEndian.AppendUint64(b, n)
@@ -38,6 +42,9 @@ func EncodeRoot(r Root) ([]byte, error) {
 			b = binary.BigEndian.AppendUint64(b, n)
 		}
 	}
+	if r.hasOwnershipDeclaration() {
+		b = append(b, r.ownershipDigest[:]...)
+	}
 	digest := sha256.Sum256(b)
 	return exactCopy(append(b, digest[:]...)), nil
 }
@@ -47,7 +54,8 @@ func EncodeRoot(r Root) ([]byte, error) {
 func DecodeRoot(src []byte) (Root, error) {
 	primitive := len(src) == rootBytes && bytes.Equal(src[:4], []byte{'G', 'R', 1, 1})
 	single := len(src) == singlePartitionRootBytes && bytes.Equal(src[:4], []byte{'G', 'R', 2, 2})
-	if !primitive && !single {
+	declared := len(src) == ownershipRootBytes && bytes.Equal(src[:3], []byte{'G', 'R', 3}) && (src[3] == ownershipPending || src[3] == ownershipPublished)
+	if !primitive && !single && !declared {
 		return Root{}, ErrCorrupt
 	}
 	bodyBytes := len(src) - sha256.Size
@@ -62,11 +70,15 @@ func DecodeRoot(src []byte) (Root, error) {
 	r.epoch = binary.BigEndian.Uint64(src[36:44])
 	r.next = binary.BigEndian.Uint64(src[44:52])
 	copy(r.effect[:], src[52:84])
-	if single {
+	if single || declared {
 		r.topology = topologyDeclaration{binary.BigEndian.Uint64(src[84:92]), binary.BigEndian.Uint64(src[92:100]), binary.BigEndian.Uint64(src[100:108])}
-		if r.topology != bootstrapTopology && r.topology != keysOnlyTopology && !isFullTopology(r.topology) {
+		if single && r.topology != bootstrapTopology && r.topology != keysOnlyTopology && !isFullTopology(r.topology) {
 			return Root{}, ErrCorrupt
 		}
+	}
+	if declared {
+		r.ownershipMode = src[3]
+		copy(r.ownershipDigest[:], src[108:140])
 	}
 	if err := r.validate(); err != nil {
 		return Root{}, ErrCorrupt

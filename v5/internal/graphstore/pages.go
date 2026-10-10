@@ -424,7 +424,7 @@ func (q *pageReader) findLeaf(m componentMeta, w temporal.Scope) (directoryPage,
 
 // NewPageReader creates a bounded cursor owner over a borrowed immutable view.
 // It is a local paging capability, not a distributed certified cut or lease.
-// Initialization copies only the fixed GR1/GR2 image (at most 140 bytes) and
+// Initialization copies only the fixed supported root image (at most 172 bytes) and
 // bounded fixed identity-hash scratch, separately from operation LastWork.
 func NewPageReader(c *Catalog, l PageLimits) (*PageReader, error) {
 	if c == nil {

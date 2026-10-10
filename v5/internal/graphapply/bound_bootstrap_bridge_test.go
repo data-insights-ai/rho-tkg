@@ -72,6 +72,9 @@ func TestBoundBootstrapBridgeRealInitHistoryAndReopen(t *testing.T) {
 		queue := make([]replica.Packet, 0, 128)
 		enqueue := func(next replica.Output) {
 			t.Helper()
+			if len(next.SnapshotSends) != 0 {
+				t.Fatal("bridge unexpectedly owns a snapshot send")
+			}
 			n := 64 * (cap(queue) + cap(next.Packets))
 			for _, p := range queue {
 				n += cap(p.Payload)
@@ -111,6 +114,8 @@ func TestBoundBootstrapBridgeRealInitHistoryAndReopen(t *testing.T) {
 		pump(out)
 		ident, _, e := commandIdentity(wire)
 		checkErr(e)
+		expectedIndex := drivers[0].Applied()
+		expectedHash := sha256.Sum256(wire)
 		var original outcome
 		for j, s := range stores {
 			v, e := s.ApplicationView(drivers[j].Applied())
@@ -121,7 +126,7 @@ func TestBoundBootstrapBridgeRealInitHistoryAndReopen(t *testing.T) {
 				t.Fatal("no installed original outcome", e)
 			}
 			o, e := decodeAnyOutcome(row.Value, n)
-			if e != nil || o.reason != reasonNone || o.disposition != applied {
+			if e != nil || o.kind != ident.kind || o.identity != ident.identity() || o.hash != expectedHash || o.index != expectedIndex || o.reason != reasonNone || o.disposition != applied {
 				t.Fatal(o, e)
 			}
 			if j == 0 {

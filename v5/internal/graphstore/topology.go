@@ -30,7 +30,7 @@ func (r Root) SinglePartition() (SinglePartitionTopology, error) {
 	if err := r.validate(); err != nil {
 		return SinglePartitionTopology{}, err
 	}
-	if r.topology == (topologyDeclaration{}) {
+	if r.hasOwnershipDeclaration() || r.topology == (topologyDeclaration{}) {
 		return SinglePartitionTopology{}, ErrTopologyUnsupported
 	}
 	return SinglePartitionTopology{r.namespace.Graph, r.namespace.Partition, r.owner, r.topology.epoch, r.topology.schema, r.topology.index}, nil

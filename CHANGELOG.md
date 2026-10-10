@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added bounded, metadata-only ownership declarations with explicit pending and published root states and owned staging effects. Declaration records and local ownership are validated against the root and durable application binding from the same retained view. GR1/GR2 bytes remain unchanged; declaration publication does not establish graph readiness or cut authority.
+
 - **Pinned native-v4 correctness reproduction tool** (`tools/graph-compare/`):
   trusted commit/tree/content and 114-file reference pins reproduce the accepted
   92 Memory + 92 synchronous Badger + 23 reopened current answers with an explicit
