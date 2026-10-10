@@ -37,6 +37,11 @@ func (o *tinyGraphOracle) changed(index uint64) {
 func (o *tinyGraphOracle) tail(index uint64) {
 	o.versions[index] = map[uint64]processFact{1: {Exists: true}, 3: {Exists: true, Active: true, Life: 4, Labels: []string{"Y"}, Answer: "tail"}}
 }
+
+// A retry/current-term no-op is another applied coordinate, not another graph effect.
+func (o *tinyGraphOracle) retrySame(index uint64) {
+	o.versions[index] = map[uint64]processFact{1: {Exists: true}, 3: {Exists: true, Active: true, Life: 4, Labels: []string{"Y"}, Answer: "new"}}
+}
 func compareProcessFact(got, want processFact) error {
 	if got.Exists != want.Exists || got.Active != want.Active || got.Life != want.Life || got.Answer != want.Answer || !slices.Equal(got.Labels, want.Labels) {
 		return fmt.Errorf("exact fact mismatch: got %+v want %+v", got, want)

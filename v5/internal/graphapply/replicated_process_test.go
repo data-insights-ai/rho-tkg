@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -57,6 +58,9 @@ const (
 	processHold
 	processHeldProject
 	processHoldClose
+	processGuardRequest
+	processArmLeaderKill
+	processEntryRecord
 )
 
 // IPC IDs identify this process event only. No storage/send/prepared capability
@@ -165,7 +169,7 @@ func decodeProcessRequest(b []byte) (processRequest, error) {
 	r := processRequest{incarnation: c.array(), sequence: c.u64(), op: c.tag(), index: c.u64(), entity: c.u64()}
 	r.data = c.field(processFrameBytes)
 	r.packet = processDecodePacket(&c)
-	if r.sequence == 0 || r.op < processCampaign || r.op > processHoldClose || len(c.b) != 0 {
+	if r.sequence == 0 || r.op < processCampaign || r.op > processEntryRecord || len(c.b) != 0 {
 		c.err = errCorrupt
 	}
 	return r, c.err
@@ -531,7 +535,7 @@ type processRemoteError struct {
 
 func (e processRemoteError) Error() string { return fmt.Sprintf("remote tag=%d: %s", e.code, e.detail) }
 func (e processRemoteError) Is(target error) bool {
-	for i, sentinel := range []error{raftlog.ErrInvalid, replica.ErrInvalid, raftlog.ErrLimit, replica.ErrLimit, errInvalid, errLimit, graphstore.ErrResourceLimit} {
+	for i, sentinel := range []error{raftlog.ErrInvalid, replica.ErrInvalid, raftlog.ErrLimit, replica.ErrLimit, errInvalid, errLimit, graphstore.ErrResourceLimit, replica.ErrUnavailable} {
 		if target == sentinel && e.mask&(1<<i) != 0 {
 			return true
 		}
@@ -540,7 +544,7 @@ func (e processRemoteError) Is(target error) bool {
 }
 func processCauseMask(err error) uint16 {
 	var mask uint16
-	for i, sentinel := range []error{raftlog.ErrInvalid, replica.ErrInvalid, raftlog.ErrLimit, replica.ErrLimit, errInvalid, errLimit, graphstore.ErrResourceLimit} {
+	for i, sentinel := range []error{raftlog.ErrInvalid, replica.ErrInvalid, raftlog.ErrLimit, replica.ErrLimit, errInvalid, errLimit, graphstore.ErrResourceLimit, replica.ErrUnavailable} {
 		if errors.Is(err, sentinel) {
 			mask |= 1 << i
 		}
@@ -552,6 +556,128 @@ func processResponseError(r processResponse) error {
 		return nil
 	}
 	return processRemoteError{r.causeMask, r.code, r.detail}
+}
+
+// One exact command only. The fixed hash metadata is diagnostic, never a
+// client receipt, persistent cursor or another application implementation.
+type leaderKillMaterializer struct {
+	m                                       *materializer
+	ctx                                     context.Context
+	marker                                  string
+	armed                                   bool
+	hash, rootHash, outcomeHash, changeHash [32]byte
+	identity                                [16]byte
+	index, term, generation                 uint64
+}
+
+func (c *leaderKillMaterializer) SemanticContractID() raftlog.ApplicationSemanticContractID {
+	return c.m.SemanticContractID()
+}
+func (c *leaderKillMaterializer) arm(wire []byte) error {
+	if c.armed {
+		return errLimit
+	}
+	r, err := decodeGraphRequest(wire, c.m.limits)
+	if err != nil {
+		return err
+	}
+	if r.kind != guardedGraphOperations || r.ns != c.m.ns {
+		return errInvalid
+	}
+	c.hash = sha256.Sum256(wire)
+	c.identity = r.identity()
+	c.armed = true
+	return nil
+}
+func (c *leaderKillMaterializer) Stage(e replica.Entry, budget raftlog.ApplicationBudget) (raftlog.ApplicationBatch, error) {
+	b, err := c.m.Stage(e, budget)
+	if err != nil {
+		return b, err
+	}
+	if c.armed && sha256.Sum256(e.Data) == c.hash {
+		o, err := decodeAnyOutcome(b.Outcome, c.m.ns)
+		if err != nil {
+			return raftlog.ApplicationBatch{}, err
+		}
+		if o.kind != guardedGraphOperations || o.disposition != applied || o.reason != reasonNone || o.identity != c.identity || o.hash != c.hash || o.index != e.Index || len(b.Changes) == 0 {
+			return raftlog.ApplicationBatch{}, errInvalid
+		}
+		c.index, c.term, c.generation = e.Index, e.Term, e.Generation
+		c.rootHash = sha256.Sum256(b.Image)
+		c.outcomeHash = sha256.Sum256(b.Outcome)
+		c.changeHash = sha256.Sum256(b.Changes)
+	}
+	return b, nil
+}
+func (c *leaderKillMaterializer) Restore(index uint64, image []byte) error {
+	// Real Restore first: Driver has already synchronously installed this batch.
+	if err := c.m.Restore(index, image); err != nil {
+		return err
+	}
+	if !c.armed || c.index == 0 || c.index != index {
+		return nil
+	}
+	if err := c.ctx.Err(); err != nil {
+		return err
+	}
+	installed, actual, err := c.m.store.Checkpoint()
+	if err != nil {
+		return err
+	}
+	hard, _, err := c.m.store.InitialState()
+	if err != nil {
+		return err
+	}
+	term, err := c.m.store.Term(index)
+	if err != nil {
+		return err
+	}
+	outcome, err := c.m.store.ApplicationRecord(c.ctx, index, true, 64<<10)
+	if err != nil {
+		return err
+	}
+	changes, err := c.m.store.ApplicationRecord(c.ctx, index, false, 1<<20)
+	if err != nil {
+		return err
+	}
+	if installed != index || hard.GetCommit() < index || term != c.term || c.m.store.ApplicationGeneration() != c.generation || sha256.Sum256(actual) != c.rootHash || sha256.Sum256(outcome) != c.outcomeHash || sha256.Sum256(changes) != c.changeHash {
+		return errCorrupt
+	}
+	marker, err := processEncoding(func(w *boundedWriter) {
+		w.add([]byte("GKM1"))
+		w.add(c.identity[:])
+		w.add(c.hash[:])
+		w.u64(index)
+		w.u64(term)
+		w.u64(c.generation)
+		w.add(c.rootHash[:])
+		w.add(c.outcomeHash[:])
+		w.add(c.changeHash[:])
+	})
+	if err != nil {
+		return err
+	}
+	if len(marker) > 256 {
+		return errLimit
+	}
+	f, err := os.OpenFile(c.marker, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	n, writeErr := f.Write(marker)
+	if writeErr == nil && n != len(marker) {
+		writeErr = io.ErrShortWrite
+	}
+	err = errors.Join(writeErr, f.Sync(), f.Close())
+	if err != nil {
+		return err
+	}
+	if err := c.ctx.Err(); err != nil {
+		return err
+	}
+	// Driver has not updated Applied, emitted Ready messages or returned Output;
+	// child response framing cannot execute until this callback returns.
+	return materializerKillSelfForCrashTest()
 }
 
 type processSendOwner struct {
@@ -838,7 +964,8 @@ func TestReplicatedGraphChild(t *testing.T) {
 		_ = s.Close()
 		t.Fatal(err)
 	}
-	d, err := replica.Open(replica.Config{ID: id, Store: s, ApplicationMachine: m, ApplicationSnapshotSends: replica.ApplicationSnapshotSendLimits{MaxOffers: 2, MaxOwnedBytes: 4 << 20}})
+	machine := &leaderKillMaterializer{m: m, ctx: t.Context(), marker: filepath.Join(filepath.Dir(cfg.Dir), "leader-kill.marker")}
+	d, err := replica.Open(replica.Config{ID: id, Store: s, ApplicationMachine: machine, ApplicationSnapshotSends: replica.ApplicationSnapshotSendLimits{MaxOffers: 2, MaxOwnedBytes: 4 << 20}})
 	if err != nil {
 		_ = s.Close()
 		t.Fatal(err)
@@ -1079,6 +1206,30 @@ func TestReplicatedGraphChild(t *testing.T) {
 			err = owners.held.Close()
 			owners.held = nil
 			owners.heldID = 0
+		case processGuardRequest:
+			if owners.held == nil || owners.heldID != r.index {
+				err = errInvalid
+				break
+			}
+			var command graphRequest
+			command, err = decodeGraphRequest(r.data, m.limits)
+			if err == nil && (command.kind != graphOperations || command.ns != n) {
+				err = errInvalid
+			}
+			if err == nil {
+				response.aux, err = owners.held.Request(command.id, command.operations, command.revision, command.claims)
+			}
+		case processArmLeaderKill:
+			if id != 1 {
+				err = errInvalid
+			} else {
+				err = machine.arm(r.data)
+			}
+		case processEntryRecord:
+			response.outcome, err = s.ApplicationRecord(context.Background(), r.index, true, 64<<10)
+			if err == nil {
+				response.changes, err = s.ApplicationRecord(context.Background(), r.index, false, 1<<20)
+			}
 		case processClose:
 			if failure := os.Getenv("RHO_GRAPH_PROCESS_CLOSE_FAILURE"); failure != "" {
 				if failure == "eof" {

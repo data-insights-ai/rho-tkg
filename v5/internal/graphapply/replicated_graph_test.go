@@ -7,9 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"syscall"
 	"testing"
 	"time"
 
@@ -110,6 +113,357 @@ func (n *tinyGraphTransport) commit(t *testing.T, follower, leader uint64, wire 
 }
 
 type snapshotGraphCommands struct{ init, recipient, grant, created, changed, tail []byte }
+
+func decodeLeaderKillMarker(b []byte) (leaderKillMaterializer, error) {
+	if len(b) > 256 {
+		return leaderKillMaterializer{}, errLimit
+	}
+	c := graphCursor{b: b}
+	if !bytes.Equal(c.take(4), []byte("GKM1")) {
+		return leaderKillMaterializer{}, errCorrupt
+	}
+	m := leaderKillMaterializer{identity: c.array()}
+	copy(m.hash[:], c.take(32))
+	m.index = c.u64()
+	m.term = c.u64()
+	m.generation = c.u64()
+	copy(m.rootHash[:], c.take(32))
+	copy(m.outcomeHash[:], c.take(32))
+	copy(m.changeHash[:], c.take(32))
+	if len(c.b) != 0 || m.index == 0 || m.term == 0 || m.generation != 1 {
+		c.err = errCorrupt
+	}
+	return m, c.err
+}
+
+// This returns only on the intended leader callback death, never hides a
+// successful decoded RPC/Output or an application receipt already returned.
+func deliverUntilLeaderDeath(t *testing.T, n *tinyGraphTransport) {
+	t.Helper()
+	for len(n.queue) > 0 {
+		if n.delivered >= processDeliveries {
+			t.Fatal("bounded kill schedule")
+		}
+		p := n.queue[0]
+		n.queue[0] = replica.Packet{}
+		n.queue = n.queue[1:]
+		n.queuedBytes -= cap(p.Payload) + 64
+		n.delivered++
+		if n.blocked[p.From] || n.blocked[p.To] {
+			continue
+		}
+		if p.To != 1 {
+			n.enqueue(t, n.nodes[p.To].call(t, processRequest{op: processStep, packet: p}))
+			continue
+		}
+		if p.From != 2 {
+			t.Fatal("unexpected peer triggered target step", p.From)
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		r, err := n.nodes[1].exchange(ctx, processRequest{op: processStep, packet: p})
+		ctxErr := ctx.Err()
+		cancel()
+		if err == nil {
+			n.enqueue(t, r)
+			continue
+		}
+		if ctxErr != nil || t.Context().Err() != nil || !errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			t.Fatal("death is not complete-frame EOF before deadline", err, ctxErr)
+		}
+		ctx, cancel = context.WithTimeout(t.Context(), 10*time.Second)
+		reaped := n.nodes[1].shutdown(ctx, true)
+		cancel()
+		if errors.Is(reaped, context.DeadlineExceeded) || errors.Is(reaped, context.Canceled) {
+			t.Fatal("reaping deadline/cancellation cannot prove intended death", reaped)
+		}
+		if _, ok := errors.AsType[*exec.ExitError](reaped); !ok {
+			t.Fatal("missing actual process death", reaped)
+		}
+		if n.nodes[1].cmd.ProcessState == nil {
+			t.Fatal("intended death has not been reaped", reaped)
+		}
+		status, ok := n.nodes[1].cmd.ProcessState.Sys().(syscall.WaitStatus)
+		if !ok || !status.Signaled() || status.Signal() != syscall.SIGKILL {
+			t.Fatal("not intended SIGKILL", n.nodes[1].cmd.ProcessState)
+		}
+		if err := n.nodes[1].cmd.Process.Signal(syscall.Signal(0)); !errors.Is(err, os.ErrProcessDone) {
+			t.Fatal("dead leader not reaped", err)
+		}
+		return
+	}
+	t.Fatal("durable/pre-output kill boundary not reached")
+}
+
+func TestReplicatedGraphLeaderDiesAfterCommitBeforeReceipt(t *testing.T) {
+	if os.Getenv("RHO_GRAPH_PROCESS_CHILD") == "1" {
+		t.Skip("parent only")
+	}
+	start := time.Now()
+	dir, err := os.MkdirTemp(os.Getenv("RHO_GRAPH_PROCESS_ARTIFACT"), "rho-graph-kill-stores-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log("retained kill fixture directory", dir)
+	all := map[uint64]*graphProcess{}
+	var launched []*graphProcess
+	for id := uint64(1); id <= 6; id++ {
+		all[id] = startGraphProcess(t, filepath.Join(dir, fmt.Sprint(id)), id)
+		launched = append(launched, all[id])
+	}
+	a := tinyGraphTransport{nodes: map[uint64]*graphProcess{1: all[1], 2: all[2], 3: all[3]}, blocked: map[uint64]bool{}}
+	b := tinyGraphTransport{nodes: map[uint64]*graphProcess{4: all[4], 5: all[5], 6: all[6]}}
+	an, _, _ := processNamespace(1)
+	bn, _, _ := processNamespace(4)
+	ac := tinySnapshotCommands(t, an)
+	bc := tinySnapshotCommands(t, bn)
+	var createdA, createdB uint64
+	var bOriginals []struct {
+		wire     []byte
+		response processResponse
+	}
+	for _, g := range []struct {
+		n                *tinyGraphTransport
+		leader, follower uint64
+		ns               namespace
+		c                snapshotGraphCommands
+	}{{&a, 1, 3, an, ac}, {&b, 4, 6, bn, bc}} {
+		g.n.event(t, g.leader, processRequest{op: processCampaign})
+		for _, wire := range [][]byte{g.c.init, g.c.recipient, g.c.grant, g.c.created} {
+			r := g.n.commit(t, g.follower, g.leader, wire, g.ns)
+			o, err := decodeAnyOutcome(r.outcome, g.ns)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if g.leader == 1 {
+				createdA = o.index
+			} else {
+				createdB = o.index
+				bOriginals = append(bOriginals, struct {
+					wire     []byte
+					response processResponse
+				}{wire, r})
+			}
+		}
+	}
+	bBefore := map[uint64]processResponse{}
+	for _, id := range []uint64{4, 5, 6} {
+		bBefore[id] = all[id].call(t, processRequest{op: processStateOp})
+	}
+	barrier := a.barrier(t, 1, []byte("before-guarded-submit"))
+	if barrier != createdA {
+		t.Fatal("unexpected pre-submit index", barrier, createdA)
+	}
+	oracle := newTinyGraphOracle()
+	oracle.created(createdA)
+	held := all[2].call(t, processRequest{op: processHold, index: createdA})
+	if len(held.handles) != 1 {
+		t.Fatal("missing actual read-session owner")
+	}
+	handle := held.handles[0]
+	oldImage := assertHeldSnapshotFacts(t, all[2], handle, createdA, 1, oracle)
+	minted := all[2].call(t, processRequest{op: processGuardRequest, index: handle, data: ac.changed})
+	wire := minted.aux
+	guarded, err := decodeGraphRequest(wire, defaultMaterializerLimits())
+	if err != nil || guarded.kind != guardedGraphOperations || guarded.readBase.group != ([16]byte{41}) {
+		t.Fatal("not actual guarded request", guarded, err)
+	}
+	all[1].call(t, processRequest{op: processArmLeaderKill, data: wire})
+	a.blocked[3] = true
+	proposal := all[1].call(t, processRequest{op: processPropose, data: wire})
+	if proposal.applied != createdA || len(proposal.outcome) != 0 {
+		t.Fatal("proposal unexpectedly supplied target application receipt")
+	}
+	a.enqueue(t, proposal)
+	deliverUntilLeaderDeath(t, &a)
+	markerPath := filepath.Join(dir, "leader-kill.marker")
+	markerInfo, err := os.Stat(markerPath)
+	if err != nil || markerInfo.Size() < 0 || markerInfo.Size() > 256 {
+		t.Fatal("bounded marker framing", err)
+	}
+	markerBytes, err := os.ReadFile(markerPath)
+	if err != nil {
+		t.Fatal("synced boundary diagnostic absent", err)
+	}
+	marker, err := decodeLeaderKillMarker(markerBytes)
+	if err != nil || marker.hash != sha256.Sum256(wire) || marker.identity != guarded.identity() || marker.index != createdA+1 {
+		t.Fatal("wrong committed kill target", marker, err)
+	}
+	// Controller-only marker; the simulated client has performed NO target
+	// Lookup/EntryRecord before death or before the identical retry below.
+	a.blocked[1] = true
+	a.blocked[3] = false
+	// Keep the dead peer in the membership/route table; blocked delivery never calls it.
+	ticks := 0
+	campaigns := 0
+	newLeaderBarrier := uint64(0)
+	for ticks < 40 && newLeaderBarrier == 0 {
+		for _, id := range []uint64{2, 3} {
+			a.event(t, id, processRequest{op: processTick})
+		}
+		ticks++
+		if (ticks == 10 || ticks == 20) && campaigns < 2 {
+			a.event(t, 2, processRequest{op: processCampaign})
+			campaigns++
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		r, e := all[2].exchange(ctx, processRequest{op: processRead, data: []byte("failover-current-term")})
+		cancel()
+		if e != nil {
+			t.Fatal(e)
+		}
+		if err := processResponseError(r); err != nil {
+			if !errors.Is(err, replica.ErrUnavailable) {
+				t.Fatal(err)
+			}
+			continue
+		}
+		a.enqueue(t, r)
+		a.drain(t)
+		if len(a.reads) != 1 || !bytes.Equal(a.reads[0].Context, []byte("failover-current-term")) {
+			t.Fatal("failover barrier mismatch")
+		}
+		newLeaderBarrier = a.reads[0].Index
+		a.reads = nil
+	}
+	if newLeaderBarrier <= marker.index {
+		t.Fatal("new leader has not committed current-term no-op", newLeaderBarrier, marker.index)
+	}
+	beforeRetry := all[2].call(t, processRequest{op: processStateOp})
+	if sha256.Sum256(beforeRetry.image) != marker.rootHash {
+		t.Fatal("failover no-op changed original graph root")
+	}
+	root, err := graphstore.DecodeRoot(beforeRetry.image)
+	if err != nil || root.SemanticEpoch() == guarded.readBase.guard.SemanticEpoch || root.EffectDigest() == guarded.readBase.guard.EffectDigest {
+		t.Fatal("guard not stale after original mutation", root, err)
+	}
+	oracle.changed(marker.index)
+	oracle.retrySame(beforeRetry.applied)
+	// Identical bytes; no refreshed guard, modified request ID or reminted IDs.
+	a.event(t, 2, processRequest{op: processPropose, data: wire})
+	afterRetry := all[2].call(t, processRequest{op: processStateOp})
+	retryIndex := beforeRetry.applied + 1
+	if afterRetry.applied != retryIndex || !bytes.Equal(afterRetry.image, beforeRetry.image) {
+		t.Fatal("retry changed graph or did not apply once", beforeRetry.applied, afterRetry.applied)
+	}
+	barrier = a.barrier(t, 2, []byte("first-client-retry-receipt"))
+	if barrier < retryIndex {
+		t.Fatal("retry barrier behind entry")
+	}
+	retry := all[2].call(t, processRequest{op: processEntryRecord, index: retryIndex})
+	o, err := decodeAnyOutcome(retry.outcome, an)
+	if err != nil || o.disposition != requestReplay || o.reason != reasonNone || o.index != marker.index || o.hash != marker.hash || o.identity != marker.identity || len(retry.changes) != 0 {
+		t.Fatal("actual retry entry is not original-index replay", o, err)
+	}
+	original := all[2].call(t, processRequest{op: processLookup, data: wire})
+	originalOutcome, err := decodeAnyOutcome(original.outcome, an)
+	if err != nil || originalOutcome.disposition != applied || originalOutcome.index != marker.index || sha256.Sum256(original.outcome) != marker.outcomeHash || sha256.Sum256(original.changes) != marker.changeHash {
+		t.Fatal("immutable original mapping/CDC changed", originalOutcome, err)
+	}
+	oracle.retrySame(retryIndex)
+	for _, id := range []uint64{2, 3} {
+		assertSnapshotFacts(t, all[id], createdA, barrier, 1, oracle)
+		assertSnapshotFacts(t, all[id], marker.index, barrier, 1, oracle)
+		assertSnapshotFacts(t, all[id], retryIndex, barrier, 1, oracle)
+		r := all[id].call(t, processRequest{op: processLookup, data: wire})
+		if !bytes.Equal(r.outcome, original.outcome) || !bytes.Equal(r.changes, original.changes) {
+			t.Fatal("original replica parity", id)
+		}
+		r = all[id].call(t, processRequest{op: processEntryRecord, index: retryIndex})
+		if !bytes.Equal(r.outcome, retry.outcome) || len(r.changes) != 0 {
+			t.Fatal("retry entry parity", id)
+		}
+	}
+	if !bytes.Equal(oldImage, assertHeldSnapshotFacts(t, all[2], handle, createdA, 1, oracle)) {
+		t.Fatal("failover/retry moved original held read")
+	}
+	all[2].call(t, processRequest{op: processHoldClose, index: handle})
+	oldNonce := all[1].incarnation
+	all[1] = startGraphProcess(t, filepath.Join(dir, "1"), 1, "RHO_GRAPH_PROCESS_REOPEN=1")
+	launched = append(launched, all[1])
+	a.nodes[1] = all[1]
+	a.blocked[1] = false
+	reopened := all[1].call(t, processRequest{op: processStateOp})
+	if reopened.incarnation == oldNonce || reopened.applied != marker.index || sha256.Sum256(reopened.image) != marker.rootHash || reopened.stats[statGeneration] != 1 {
+		t.Fatal("old leader durable checkpoint not recovered", reopened.stats)
+	}
+	for range 3 {
+		a.event(t, 2, processRequest{op: processTick})
+	}
+	barrier = a.barrier(t, 2, []byte("old-leader-rejoined"))
+	for _, id := range []uint64{1, 2, 3} {
+		for _, index := range []uint64{createdA, marker.index, retryIndex} {
+			assertSnapshotFacts(t, all[id], index, barrier, 1, oracle)
+		}
+		r := all[id].call(t, processRequest{op: processLookup, data: wire})
+		if !bytes.Equal(r.outcome, original.outcome) || !bytes.Equal(r.changes, original.changes) {
+			t.Fatal("rejoin original outcome/CDC parity", id)
+		}
+		r = all[id].call(t, processRequest{op: processEntryRecord, index: retryIndex})
+		if !bytes.Equal(r.outcome, retry.outcome) || len(r.changes) != 0 {
+			t.Fatal("rejoin replay-entry parity", id)
+		}
+	}
+	for _, id := range []uint64{4, 5, 6} {
+		r := all[id].call(t, processRequest{op: processStateOp})
+		if r.stats != bBefore[id].stats || !bytes.Equal(r.image, bBefore[id].image) || r.cutID != bBefore[id].cutID || r.manifestID != bBefore[id].manifestID {
+			t.Fatal("distinct B checkpoint/ledger changed", id)
+		}
+	}
+	boracle := newTinyGraphOracle()
+	boracle.created(createdB)
+	bbarrier := b.barrier(t, 4, []byte("distinct-B-after-leader-kill"))
+	for _, id := range []uint64{4, 5, 6} {
+		assertSnapshotFacts(t, all[id], createdB, bbarrier, 1, boracle)
+		for _, saved := range bOriginals {
+			r := all[id].call(t, processRequest{op: processLookup, data: saved.wire})
+			if !bytes.Equal(r.outcome, saved.response.outcome) || !bytes.Equal(r.changes, saved.response.changes) {
+				t.Fatal("B original records changed", id)
+			}
+		}
+	}
+	measurement := tinyProcessMeasurement{Scope: "ONE post-synced-install/realRestore pre-Output leader SIGKILL + identical stale-guard retry + rejoin; distinct sole-partition graphs; no snapshot/matrix/cut claim", Processes: 6, Packets: a.delivered + b.delivered, MaxQueueCount: max(a.maxQueueCount, b.maxQueueCount), MaxQueueBytes: max(a.maxQueueBytes, b.maxQueueBytes), StoreDirectory: dir}
+	var rpcCount uint64
+	for _, p := range launched {
+		rpcCount += p.sequence
+		measurement.MaxIPCFrameBytes = max(measurement.MaxIPCFrameBytes, p.maxFrame)
+	}
+	if rpcCount+uint64(measurement.Packets) > processDeliveries {
+		t.Fatal("bounded total kill schedule")
+	}
+	for _, p := range all {
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		err := p.shutdown(ctx, false)
+		cancel()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for id := 1; id <= 6; id++ {
+		size, err := processStoreBytes(filepath.Join(dir, fmt.Sprint(id)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		measurement.ClosedStoreFileBytes += size
+	}
+	if measurement.ClosedStoreFileBytes > 256<<20 {
+		t.Fatal("closed stores exceed cap")
+	}
+	measurement.WallSeconds = time.Since(start).Seconds()
+	report := struct {
+		tinyProcessMeasurement
+		ElectionTicks, Campaigns                   int
+		RPCCount, OriginalIndex, RetryAppliedIndex uint64
+		MarkerBytes                                int
+	}{measurement, ticks, campaigns, rpcCount, marker.index, retryIndex, len(markerBytes)}
+	data, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(dir, "measurement.json"), append(data, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("leader kill measurement: %s", data)
+}
 
 func tinySnapshotCommands(t *testing.T, n namespace) snapshotGraphCommands {
 	t.Helper()
