@@ -312,6 +312,21 @@ access measurement, seal/merge/recovery and database-wide physical heap/RSS/page
 and comparative capacity gates. Representation ledgers do not prove physical memory
 bounds. These are prerequisites; no V0–V7 phase or public engine release is closed.
 
+**TEST-GAP / release blocker — materializer crash rejection:** development
+checkpoint `ec314a4` does not close materializer acceptance. The first frozen
+root `make test-race` failed
+`TestMaterializerCommittedCrashNeverBecomesAbort/staged-before-install`:
+child InitGraph `d.Propose` returned `raftlog.ErrInvalid` before the intended
+SIGKILL (child exit 1; parent deadline did not expire). The rejecting
+Reclaim/Admit/PersistReady/Stage/proof/Install layer remains unidentified.
+Preserved failure: `/tmp/rho-v5-materializer-hy828w6y/race.log`.
+Three hundred isolated seam non-reproductions, one labelled package pass and
+R2 full v5 gate success are not a fix. Gate: reproduce/identify the rejection
+under the original multi-package contention, explain or correct its cause,
+and pass the actual SIGKILL/recovery schedule with unchanged freshness guards.
+R2 adds test-only Stage-entry/completion and safe checkpoint/usage diagnostics;
+no public Host or distributed/materializer phase acceptance is granted.
+
 Binding validation (`0e4c96b`) adds accepted correctness cost; optimization
 remains pending. Five interleaved Go 1.26.9/M4 Max/GOMAXPROCS=4
 MemFS/Pebble runs measured checkpoint reads 179.979→189.265 µs (+5.16%),

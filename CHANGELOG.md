@@ -215,6 +215,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   certified distributed cuts, the 10-active versus 10k/100k-ended access gate,
   all-in physical/comparative capacity and V0–V7 acceptance remain open.
 
+- **Private single-partition materializer development checkpoint** (`ec314a4`):
+  InitGraph co-initializes Full indexes/schema and allocator state in one
+  application batch. Current-root operations compose qualified identity/grant
+  admission, ordered typed CDC and immutable request outcomes; exact replay
+  precedes current fences, and local resource refusals publish no outcome.
+  Go 1.26.9 frozen v5 gates pass (88.8% whole v5, 82.96% new production;
+  each new file at least 80%). This is not acceptance: an unexplained InitGraph
+  crash-test rejection remains a release blocker in `tasks/backlog.md`.
+  Three hundred non-reproduced seams are not a fix. Public Host, prior-read
+  transactions, distributed traffic and all V0–V7 acceptance remain open.
+
 ### Fixed
 
 - **v5 correctness follow-ups**: prospective metadata obeys `MaxReadyBytes`
