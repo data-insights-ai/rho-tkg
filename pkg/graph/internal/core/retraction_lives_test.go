@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -142,7 +141,7 @@ func TestRetraction_RetractedLifeShapesNoOtherLife(t *testing.T) {
 					t.Fatalf("timeline after the retraction of L2:\n got  %s (%v)\n want %s", got, err, want)
 				}
 				if l2, err := timeline(pinL2); err != nil || l2 == want {
-					t.Fatal(fmt.Sprintf("fixture: L2's timeline must differ from L1's: %q (%v)", l2, err))
+					t.Fatalf("fixture: L2's timeline must differ from L1's: %q (%v)", l2, err)
 				}
 			})
 		}
