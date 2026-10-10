@@ -1,0 +1,42 @@
+CREATE VERTEX VCNode20261010 (
+  PRIMARY_ID vc_node_id STRING,
+  vc_labels SET<STRING>,
+  p_bool BOOL, has_p_bool BOOL,
+  p_i64 INT, has_p_i64 BOOL,
+  p_f64 DOUBLE, has_p_f64 BOOL,
+  p_text STRING, has_p_text BOOL,
+  p_optional INT, has_p_optional BOOL
+)
+CREATE DIRECTED EDGE VCHOP20261010 (
+  FROM VCNode20261010, TO VCNode20261010,
+  DISCRIMINATOR(vc_edge_id STRING), vc_id STRING,
+  p_bool BOOL, has_p_bool BOOL,
+  p_i64 INT, has_p_i64 BOOL,
+  p_f64 DOUBLE, has_p_f64 BOOL,
+  p_text STRING, has_p_text BOOL,
+  p_optional INT, has_p_optional BOOL
+) WITH REVERSE_EDGE="VCRHOP20261010"
+CREATE DIRECTED EDGE VCREL120261010 (
+  FROM VCNode20261010, TO VCNode20261010,
+  DISCRIMINATOR(vc_edge_id STRING), vc_id STRING,
+  p_bool BOOL, has_p_bool BOOL,
+  p_i64 INT, has_p_i64 BOOL,
+  p_f64 DOUBLE, has_p_f64 BOOL,
+  p_text STRING, has_p_text BOOL,
+  p_optional INT, has_p_optional BOOL
+) WITH REVERSE_EDGE="VCRREL120261010"
+CREATE DIRECTED EDGE VCREL220261010 (
+  FROM VCNode20261010, TO VCNode20261010,
+  DISCRIMINATOR(vc_edge_id STRING), vc_id STRING,
+  p_bool BOOL, has_p_bool BOOL,
+  p_i64 INT, has_p_i64 BOOL,
+  p_f64 DOUBLE, has_p_f64 BOOL,
+  p_text STRING, has_p_text BOOL,
+  p_optional INT, has_p_optional BOOL
+) WITH REVERSE_EDGE="VCRREL220261010"
+CREATE GRAPH VCGraph20261010 (
+  VCNode20261010,
+  VCHOP20261010, VCRHOP20261010,
+  VCREL120261010, VCRREL120261010,
+  VCREL220261010, VCRREL220261010
+)

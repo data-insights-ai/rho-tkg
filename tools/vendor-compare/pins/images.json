@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "tigergraph": {
+    "version": "4.2.5",
+    "reference": "tigergraph/tigergraph:4.2.5@sha256:78a3d62604527ba8686930465554fc3a419bf4b4de5c3d2d50202825a5308d49",
+    "platform": "linux/amd64",
+    "durable_acknowledgement": "ack=all requests GPE acknowledgement; fsync/power-loss unverified",
+    "architecture_requirement": "linux/amd64 image; ARM hosts require emulation"
+  }
+}

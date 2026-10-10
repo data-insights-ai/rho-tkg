@@ -1,0 +1,28 @@
+name: rho-vendor-tg-20261010
+services:
+  tigergraph:
+    image: tigergraph/tigergraph:4.2.5@sha256:78a3d62604527ba8686930465554fc3a419bf4b4de5c3d2d50202825a5308d49
+    platform: linux/amd64
+    container_name: rho-vendor-tg-20261010-db
+    labels:
+      io.rho.vendor-compare.scope: tg20261010
+    tty: true
+    stdin_open: true
+    restart: "no"
+    cpus: 4
+    mem_limit: 12g
+    memswap_limit: 12g
+    ports:
+      - "127.0.0.1:19240:14240"
+    ulimits:
+      nofile:
+        soft: 1000000
+        hard: 1000000
+    volumes:
+      - tigergraph-home:/home/tigergraph
+      - ./tigergraph-schema.gsql:/opt/vendor-compare/schema.gsql:ro
+volumes:
+  tigergraph-home:
+    name: rho-vendor-tg-20261010-home
+    labels:
+      io.rho.vendor-compare.scope: tg20261010
