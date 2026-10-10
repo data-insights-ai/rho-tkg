@@ -1,8 +1,9 @@
 # TigerGraph functional adapter (unfinished)
 
 This standalone Go 1.26.9 module implements the basic-current graph mapping for
-TigerGraph 4.2.5. Support is unfinished: build, REST/schema compatibility and
-functional validation remain pending. The existing native-v4 tool and its
+TigerGraph 4.2.5. Support is unfinished: native REST/schema compatibility and
+functional validation remain pending. Build, vet and fake-transport unit/race
+checks pass; coverage requirements remain unmet. The existing native-v4 tool and its
 114-file comparison reference stay unchanged.
 
 The functional contract requires all 92 staged current answers and all 23 r3
@@ -21,13 +22,25 @@ container and volume names `rho-vendor-tg-20261010`,
 `rho-vendor-tg-20261010-db` and `rho-vendor-tg-20261010-home`.
 The REST proxy binds to 127.0.0.1:19240 at `/restpp`. The default container
 limits are 4 CPUs and 12 GiB, without additional swap allowance. The controller
-verifies project, image, volume and endpoint identity before operations. It
-starts services, checks the version/schema hash, creates the named schema and
+verifies the image, project/scope labels, task volume identity, exact mount and
+loopback port inventories, and CPU/memory/swap limits before service operations.
+Schema-file hashes are checked before the first service mutation. Commands and
+restart use a pinned full container ID; replacement and observation identity
+changes refuse. These metadata checks are not atomic against arbitrary host
+administration. Native graph/type/discriminator schema verification remains
+unfinished. The controller starts services, creates the named schema and
 restarts the same container. It does not create containers or download images.
 
-The `--out` option selects local artifacts. External-path enforcement and
-automatic temporary-directory selection are unfinished; execution requires
-completing the outside-Git guard. Outputs have no upload or hosting integration.
+The `--out` option selects a new local artifact directory outside Git worktrees.
+Omitting it selects an owned temporary location returned to the caller. The
+shared runner resolves parent symlinks, checks Git metadata/indirection on
+ancestors and verifies Git classification with repository environment overrides
+removed. Existing or dangling destinations and unknown classifications refuse
+before staging or vendor operations. Rooted, exclusive artifact writes recheck
+parent/destination identities. These checks do not make repository creation or
+hostile directory relocation atomic with filesystem writes. Outputs have no
+upload or hosting integration. Guard tests use temporary repositories and fake
+vendor transports.
 A partially loaded database remains available when an operation fails.
 
 ```sh

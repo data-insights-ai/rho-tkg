@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -76,6 +75,7 @@ type Identity struct {
 type Report struct {
 	SchemaVersion         int       `json:"schema_version"`
 	Status                string    `json:"status"`
+	OutputDirectory       string    `json:"output_directory"`
 	DatasetSHA256         string    `json:"dataset_sha256"`
 	Identity              Identity  `json:"identity"`
 	Answers               []Answer  `json:"answers"`
@@ -98,16 +98,6 @@ type fixture struct {
 }
 
 func checksum(data []byte) string { hash := sha256.Sum256(data); return hex.EncodeToString(hash[:]) }
-func fileHash(path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	digest := sha256.New()
-	_, readErr := io.Copy(digest, file)
-	closeErr := file.Close()
-	return hex.EncodeToString(digest.Sum(nil)), errors.Join(readErr, closeErr)
-}
 func nilInterface(value any) bool {
 	if value == nil {
 		return true
@@ -350,31 +340,45 @@ func exportAnswer(ctx context.Context, backend Backend, request Request, path st
 // Run writes a local completion receipt only after all 92 current and 23 restarted native answers
 // match. Failure may leave the owned vendor instance mutated, never a completion receipt.
 func Run(ctx context.Context, config Config, backend Backend, lifecycle Lifecycle, validator Validator) (Report, error) {
-	if ctx == nil || nilInterface(backend) || nilInterface(lifecycle) || nilInterface(validator) || config.Reference == "" || config.Output == "" || !config.Limits.valid() {
+	if ctx == nil || nilInterface(backend) || nilInterface(lifecycle) || nilInterface(validator) || config.Reference == "" || !config.Limits.valid() {
 		return Report{}, ErrContract
 	}
 	if err := ctx.Err(); err != nil {
 		return Report{}, err
 	}
-	if _, err := os.Lstat(config.Output); !errors.Is(err, os.ErrNotExist) {
-		return Report{}, ErrContract
-	}
-	parent := filepath.Dir(config.Output)
-	info, err := os.Stat(parent)
-	if err != nil || !info.IsDir() {
-		return Report{}, errors.Join(ErrContract, err)
-	}
-	work, err := os.MkdirTemp(parent, ".vendor-compare-")
+	guard, err := guardOutput(ctx, config.Output, outsideGit)
 	if err != nil {
 		return Report{}, err
 	}
-	defer func() { _ = os.RemoveAll(work) }() // Only this newly owned staging directory.
+	defer func() { _ = guard.close() }()
+	config.Output = guard.path
+	work, err := os.MkdirTemp(guard.parent, ".vendor-compare-")
+	if err != nil {
+		return Report{}, err
+	}
+	workLeaf := filepath.Base(work)
+	workInfo, err := guard.root.Lstat(workLeaf)
+	if err != nil {
+		return Report{}, err
+	}
+	defer func() {
+		current, err := guard.root.Lstat(workLeaf)
+		if err == nil && current.IsDir() && os.SameFile(current, workInfo) {
+			_ = guard.root.RemoveAll(workLeaf)
+		}
+	}()
+	if err := guard.recheck(ctx); err != nil {
+		return Report{}, err
+	}
 	reference := filepath.Join(work, "reference")
 	if err := copyReference(config.Reference, reference); err != nil {
 		return Report{}, err
 	}
 	f, err := readFixture(reference)
 	if err != nil {
+		return Report{}, err
+	}
+	if err := guard.recheck(ctx); err != nil {
 		return Report{}, err
 	}
 	identity, err := lifecycle.Prepare(ctx)
@@ -384,7 +388,7 @@ func Run(ctx context.Context, config Config, backend Backend, lifecycle Lifecycl
 	if identity.Vendor != "TigerGraph" || identity.Version != "4.2.5" || identity.ImageReference != ImageReference || identity.Platform != "linux/amd64" || identity.Project != ProjectName || identity.ContainerID == "" || identity.HostArchitecture == "" || identity.DeclaredCopies != 1 || identity.DeclaredPartitions != 1 {
 		return Report{}, ErrContract
 	}
-	report := Report{SchemaVersion: 1, DatasetSHA256: f.id, Identity: identity, Pending: []string{"history.retained-versions", "native-v5", "Neo4j", "Memgraph", "durable/power-loss acknowledgement", "native-x86 comparable performance", "retained/temporal/distributed lanes"},
+	report := Report{SchemaVersion: 1, OutputDirectory: guard.path, DatasetSHA256: f.id, Identity: identity, Pending: []string{"history.retained-versions", "native-v5", "Neo4j", "Memgraph", "durable/power-loss acknowledgement", "native-x86 comparable performance", "retained/temporal/distributed lanes"},
 		Durability:  "Upserts request ack=all and gsql-atomic-level:atomic; GPE acknowledgement/readback and graceful container restart do not establish fsync, power-loss or quorum durability.",
 		Limitations: []string{"Frozen 32-node/64-edge fixture only; no large-data capacity or benchmark acceptance.", "Native REST scans, client predicates/projections and recursive adjacency walks; no native index/planner equivalence claim.", "One declared partition/copy; every observed forward/reverse/helper row is separately accounted.", "ARM Docker Desktop amd64 emulation must be labeled; never substitutes for native x86 comparisons.", "Cost receipt explicitly remains incomplete wherever metrics or categories are unavailable.", "Output artifacts are local and must remain outside Git worktrees."}}
 	for _, row := range append(slices.Clone(f.nodes), f.edges...) {
@@ -395,7 +399,13 @@ func Run(ctx context.Context, config Config, backend Backend, lifecycle Lifecycl
 	next := 0
 	validate := func(query Query, phase string) error {
 		path := filepath.Join(work, phase+"."+query.ID+".jsonl")
+		if err := guard.recheck(ctx); err != nil {
+			return err
+		}
 		if err := exportAnswer(ctx, backend, query.Request, path, config.Limits); err != nil {
+			return err
+		}
+		if err := guard.recheck(ctx); err != nil {
 			return err
 		}
 		answer, err := validator.Validate(ctx, reference, query, path, f.id)
@@ -427,6 +437,9 @@ func Run(ctx context.Context, config Config, backend Backend, lifecycle Lifecycl
 	}
 	if next != len(f.events) || report.CurrentAnswers != 92 {
 		return Report{}, ErrContract
+	}
+	if err := guard.recheck(ctx); err != nil {
+		return Report{}, err
 	}
 	if err := lifecycle.Reopen(ctx); err != nil {
 		return Report{}, err
@@ -465,12 +478,15 @@ func Run(ctx context.Context, config Config, backend Backend, lifecycle Lifecycl
 	if err != nil {
 		return Report{}, err
 	}
+	if err := guard.recheck(ctx); err != nil {
+		return Report{}, err
+	}
 	if err := os.WriteFile(filepath.Join(work, "completion.json"), append(data, '\n'), 0600); err != nil {
 		return Report{}, err
 	}
 	// Reserve destination atomically. Write complete answers before the completion marker.
 	// An interrupted write may leave incomplete owned artifacts without a completion marker.
-	if err := os.Mkdir(config.Output, 0700); err != nil {
+	if err := guard.create(ctx); err != nil {
 		return Report{}, err
 	}
 	entries, err := os.ReadDir(work)
@@ -486,6 +502,11 @@ func Run(ctx context.Context, config Config, backend Backend, lifecycle Lifecycl
 		}
 		return strings.Compare(a.Name(), b.Name())
 	})
+	sourceRoot, err := guard.root.OpenRoot(workLeaf)
+	if err != nil {
+		return Report{}, err
+	}
+	defer func() { _ = sourceRoot.Close() }()
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -493,7 +514,7 @@ func Run(ctx context.Context, config Config, backend Backend, lifecycle Lifecycl
 		if err := ctx.Err(); err != nil {
 			return Report{}, err
 		}
-		if err := os.Link(filepath.Join(work, entry.Name()), filepath.Join(config.Output, entry.Name())); err != nil {
+		if err := guard.copyFile(ctx, sourceRoot, entry.Name()); err != nil {
 			return Report{}, err
 		}
 	}

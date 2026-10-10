@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,13 +22,17 @@ import (
 var schema []byte
 
 type commandFunc func(context.Context, ...string) ([]byte, error)
-type cappedOutput struct{ bytes.Buffer }
+type cappedOutput struct {
+	buffer   bytes.Buffer
+	limitErr error
+}
 
 func (w *cappedOutput) Write(data []byte) (int, error) {
-	if len(data) > 32<<20-w.Len() {
+	if len(data) > 32<<20-w.buffer.Len() {
+		w.limitErr = ErrLimit
 		return 0, ErrLimit
 	}
-	return w.Buffer.Write(data)
+	return w.buffer.Write(data)
 }
 func execute(ctx context.Context, args ...string) ([]byte, error) {
 	if ctx == nil || len(args) == 0 {
@@ -38,17 +44,19 @@ func execute(ctx context.Context, args ...string) ([]byte, error) {
 	cmd.Stdout = &output
 	cmd.Stderr = &output
 	err := cmd.Run()
-	if err != nil {
-		return nil, fmt.Errorf("%w: command refused output_sha256=%s", errors.Join(err, ctx.Err()), checksum(output.Bytes()))
+	if err != nil || output.limitErr != nil {
+		return nil, fmt.Errorf("%w: command refused output_sha256=%s", errors.Join(err, ctx.Err(), output.limitErr), checksum(output.buffer.Bytes()))
 	}
-	return output.Bytes(), nil
+	return output.buffer.Bytes(), nil
 }
 
 // DockerController never pulls or creates containers/volumes. It only admits the
 // fixed labeled deployment configured by the bundled Compose definition.
 type DockerController struct {
-	command   commandFunc
-	waitReady func(context.Context) error
+	mu                                      sync.Mutex
+	command                                 commandFunc
+	waitReady                               func(context.Context) error
+	containerID, imageID, volumeFingerprint string
 }
 
 // NewDockerController creates an inert controller; deployment commands are explicit.
@@ -67,13 +75,25 @@ type containerInspect struct {
 	} `json:"State"`
 	HostConfig struct {
 		PortBindings map[string][]struct{ HostIP, HostPort string } `json:"PortBindings"`
+		NanoCPUs     int64                                          `json:"NanoCpus"`
+		Memory       int64                                          `json:"Memory"`
+		MemorySwap   int64                                          `json:"MemorySwap"`
+		Privileged   bool                                           `json:"Privileged"`
+		NetworkMode  string                                         `json:"NetworkMode"`
 	} `json:"HostConfig"`
 	Mounts []struct {
-		Type, Name, Destination string
-		RW                      bool
+		Type, Name, Source, Destination string
+		RW                              bool
 	} `json:"Mounts"`
 }
 
+func fullID(id string) bool {
+	if len(id) != 64 || strings.ToLower(id) != id {
+		return false
+	}
+	_, err := hex.DecodeString(id)
+	return err == nil
+}
 func (d *DockerController) owned(ctx context.Context) (containerInspect, Identity, error) {
 	if d == nil || d.command == nil || ctx == nil {
 		return containerInspect{}, Identity{}, ErrContract
@@ -86,23 +106,63 @@ func (d *DockerController) owned(ctx context.Context) (containerInspect, Identit
 	if err := json.Unmarshal(data, &container); err != nil {
 		return containerInspect{}, Identity{}, err
 	}
-	if container.ID == "" || !container.State.Running || container.Config.Image != ImageReference || container.Config.Labels["com.docker.compose.project"] != ProjectName || container.Config.Labels["io.rho.vendor-compare.scope"] != "tg20261010" {
+	if !fullID(container.ID) || !strings.HasPrefix(container.Image, "sha256:") || !fullID(strings.TrimPrefix(container.Image, "sha256:")) || !container.State.Running || container.Config.Image != ImageReference || container.Config.Labels["com.docker.compose.project"] != ProjectName || container.Config.Labels["io.rho.vendor-compare.scope"] != "tg20261010" {
+		return containerInspect{}, Identity{}, ErrContract
+	}
+	if container.HostConfig.NanoCPUs != 4_000_000_000 || container.HostConfig.Memory != 12<<30 || container.HostConfig.MemorySwap != 12<<30 || container.HostConfig.Privileged || container.HostConfig.NetworkMode != ProjectName+"_default" {
 		return containerInspect{}, Identity{}, ErrContract
 	}
 	ports := container.HostConfig.PortBindings["14240/tcp"]
-	if len(ports) != 1 || ports[0].HostIP != "127.0.0.1" || ports[0].HostPort != "19240" {
+	if len(container.HostConfig.PortBindings) != 1 || len(ports) != 1 || ports[0].HostIP != "127.0.0.1" || ports[0].HostPort != "19240" {
 		return containerInspect{}, Identity{}, ErrContract
 	}
-	home := false
+	if len(container.Mounts) != 2 {
+		return containerInspect{}, Identity{}, ErrContract
+	}
+	home, schemaMount := false, false
+	var homeSource string
 	for _, mount := range container.Mounts {
 		if mount.Destination == "/home/tigergraph" {
 			if mount.Type != "volume" || mount.Name != "rho-vendor-tg-20261010-home" || !mount.RW {
 				return containerInspect{}, Identity{}, ErrContract
 			}
+			if home {
+				return containerInspect{}, Identity{}, ErrContract
+			}
 			home = true
+			homeSource = mount.Source
+		} else if mount.Destination == "/opt/vendor-compare/schema.gsql" {
+			if schemaMount || mount.Type != "bind" || mount.RW {
+				return containerInspect{}, Identity{}, ErrContract
+			}
+			schemaMount = true
+		} else {
+			return containerInspect{}, Identity{}, ErrContract
 		}
 	}
-	if !home {
+	if !home || !schemaMount {
+		return containerInspect{}, Identity{}, ErrContract
+	}
+	data, err = d.command(ctx, "docker", "volume", "inspect", "--format", "{{json .}}", "rho-vendor-tg-20261010-home")
+	if err != nil {
+		return containerInspect{}, Identity{}, err
+	}
+	var volume struct {
+		Name, Driver, Mountpoint, CreatedAt string
+		Labels                              map[string]string
+	}
+	if err := json.Unmarshal(data, &volume); err != nil {
+		return containerInspect{}, Identity{}, err
+	}
+	if volume.Name != "rho-vendor-tg-20261010-home" || volume.Driver != "local" || volume.Mountpoint == "" || volume.Mountpoint != homeSource || volume.CreatedAt == "" || volume.Labels["com.docker.compose.project"] != ProjectName || volume.Labels["com.docker.compose.volume"] != "tigergraph-home" || volume.Labels["io.rho.vendor-compare.scope"] != "tg20261010" {
+		return containerInspect{}, Identity{}, ErrContract
+	}
+	volumeIdentity, err := json.Marshal(volume)
+	if err != nil {
+		return containerInspect{}, Identity{}, err
+	}
+	fingerprint := checksum(volumeIdentity)
+	if d.containerID != "" && (d.containerID != container.ID || d.imageID != container.Image || d.volumeFingerprint != fingerprint) {
 		return containerInspect{}, Identity{}, ErrContract
 	}
 	data, err = d.command(ctx, "docker", "image", "inspect", "--format", "{{json .}}", container.Image)
@@ -132,11 +192,28 @@ func (d *DockerController) owned(ctx context.Context) (containerInspect, Identit
 	if arch == "x86_64" || arch == "amd64" {
 		mode = "native amd64; functional evidence only"
 	}
+	d.containerID = container.ID
+	d.imageID = container.Image
+	d.volumeFingerprint = fingerprint
 	id := Identity{Vendor: "TigerGraph", Version: "4.2.5", ImageReference: ImageReference, ImageID: container.Image, Platform: "linux/amd64", HostArchitecture: arch, ExecutionMode: mode, Project: ProjectName, ContainerID: container.ID, DeclaredCopies: 1, DeclaredPartitions: 1}
 	return container, id, nil
 }
 func (d *DockerController) commandIn(ctx context.Context, script string) ([]byte, error) {
-	return d.command(ctx, "docker", "exec", "--user", "tigergraph", ContainerName, "bash", "-lc", script)
+	if d == nil || d.command == nil || ctx == nil || !fullID(d.containerID) {
+		return nil, ErrContract
+	}
+	return d.command(ctx, "docker", "exec", "--user", "tigergraph", d.containerID, "bash", "-lc", script)
+}
+func (d *DockerController) checkSchema(ctx context.Context) error {
+	data, err := d.commandIn(ctx, "sha256sum /opt/vendor-compare/schema.gsql")
+	if err != nil {
+		return err
+	}
+	parts := strings.Fields(string(data))
+	if len(parts) != 2 || parts[0] != checksum(schema) || parts[1] != "/opt/vendor-compare/schema.gsql" {
+		return ErrContract
+	}
+	return nil
 }
 func (d *DockerController) ready(ctx context.Context) error {
 	if d.waitReady != nil {
@@ -153,13 +230,17 @@ func (d *DockerController) ready(ctx context.Context) error {
 		}
 		response, err := client.Do(request)
 		if err == nil {
-			data, readErr := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+			data, readErr := io.ReadAll(io.LimitReader(response.Body, 1<<20+1))
 			closeErr := response.Body.Close()
 			var envelope struct {
 				Error *bool `json:"error"`
 			}
-			if readErr == nil && closeErr == nil && response.StatusCode == http.StatusOK && json.Unmarshal(data, &envelope) == nil && envelope.Error != nil && !*envelope.Error {
-				return nil
+			if readErr == nil && closeErr == nil && len(data) <= 1<<20 && response.StatusCode == http.StatusOK {
+				decoder := json.NewDecoder(bytes.NewReader(data))
+				decoder.UseNumber()
+				if walkJSON(decoder, 0) == nil && json.Unmarshal(data, &envelope) == nil && envelope.Error != nil && !*envelope.Error {
+					return nil
+				}
 			}
 		}
 		select {
@@ -173,12 +254,23 @@ func (d *DockerController) ready(ctx context.Context) error {
 // Prepare starts services and creates the namespaced schema in the owned instance.
 // It refuses a different version/image/owner and never drops an existing schema.
 func (d *DockerController) Prepare(ctx context.Context) (Identity, error) {
+	if d == nil || ctx == nil {
+		return Identity{}, ErrContract
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	_, identity, err := d.owned(ctx)
 	if err != nil {
 		return Identity{}, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
+	if err := d.checkSchema(ctx); err != nil {
+		return Identity{}, err
+	}
+	if _, _, err := d.owned(ctx); err != nil {
+		return Identity{}, err
+	}
 	if _, err := d.commandIn(ctx, "gadmin start all"); err != nil {
 		return Identity{}, err
 	}
@@ -190,13 +282,8 @@ func (d *DockerController) Prepare(ctx context.Context) (Identity, error) {
 		return Identity{}, ErrContract
 	}
 	identity.VersionOutputSHA256 = checksum(data)
-	data, err = d.commandIn(ctx, "sha256sum /opt/vendor-compare/schema.gsql")
-	if err != nil {
+	if err := d.checkSchema(ctx); err != nil {
 		return Identity{}, err
-	}
-	parts := strings.Fields(string(data))
-	if len(parts) < 1 || parts[0] != checksum(schema) {
-		return Identity{}, ErrContract
 	}
 	data, err = d.commandIn(ctx, "gsql /opt/vendor-compare/schema.gsql")
 	if err != nil {
@@ -214,18 +301,32 @@ func (d *DockerController) Prepare(ctx context.Context) (Identity, error) {
 // Reopen gracefully stops services, restarts only the owned container and waits
 // for reads. This is not SIGKILL, multi-host or power-loss durability evidence.
 func (d *DockerController) Reopen(ctx context.Context) error {
+	if d == nil || ctx == nil {
+		return ErrContract
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	if _, _, err := d.owned(ctx); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
-	if _, err := d.commandIn(ctx, "gadmin stop all -y"); err != nil {
-		return err
-	}
-	if _, err := d.command(ctx, "docker", "restart", ContainerName); err != nil {
+	if err := d.checkSchema(ctx); err != nil {
 		return err
 	}
 	if _, _, err := d.owned(ctx); err != nil {
+		return err
+	}
+	if _, err := d.commandIn(ctx, "gadmin stop all -y"); err != nil {
+		return err
+	}
+	if _, err := d.command(ctx, "docker", "restart", d.containerID); err != nil {
+		return err
+	}
+	if _, _, err := d.owned(ctx); err != nil {
+		return err
+	}
+	if err := d.checkSchema(ctx); err != nil {
 		return err
 	}
 	if _, err := d.commandIn(ctx, "gadmin start all"); err != nil {
@@ -255,6 +356,11 @@ func parseCounters(data []byte) (map[string]uint64, error) {
 // Observe samples whole-container cgroup and whole-home volume costs. Every
 // missing category remains unavailable; Complete never silently becomes true.
 func (d *DockerController) Observe(ctx context.Context) (Costs, error) {
+	if d == nil || ctx == nil {
+		return Costs{}, ErrContract
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	container, _, err := d.owned(ctx)
 	if err != nil {
 		return Costs{}, err
@@ -336,6 +442,9 @@ func (d *DockerController) Observe(ctx context.Context) (Costs, error) {
 		out.ContainerWritableLayer = measured(*container.SizeRW, "bytes", "Docker inspect SizeRw; apparent writable-layer snapshot, allocation unmeasured")
 	}
 	out.ObservationErrors = append(out.ObservationErrors, "metrics are samples; observer runs inside container and is included")
+	if _, _, err := d.owned(ctx); err != nil {
+		return Costs{}, err
+	}
 	return out, nil
 }
 

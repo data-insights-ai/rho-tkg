@@ -177,6 +177,9 @@ func nativeProperties(attrs map[string]json.RawMessage) (map[string]Cell, error)
 		case "bool":
 			value, err = nativeBool(raw)
 		case "text":
+			if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+				return nil, ErrContract
+			}
 			var s string
 			err = strictJSON(raw, &s)
 			value = s

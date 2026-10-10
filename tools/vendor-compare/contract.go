@@ -8,7 +8,6 @@ import (
 	"io"
 	"math"
 	"strconv"
-	"strings"
 	"unicode/utf8"
 )
 
@@ -129,8 +128,86 @@ type Adjacency struct {
 	Type   string `json:"type"`
 }
 
+// validJSONUnicode checks raw UTF-8 and escaped surrogate pairs before a JSON
+// decoder can repair them. JSON grammar and value types remain decoder checks.
+func validJSONUnicode(data []byte) bool {
+	if !utf8.Valid(data) {
+		return false
+	}
+	for i := 0; i < len(data); {
+		if data[i] != '"' {
+			i++
+			continue
+		}
+		i++
+		closed := false
+		for i < len(data) && !closed {
+			if data[i] == '"' {
+				i++
+				closed = true
+				continue
+			}
+			if data[i] != '\\' {
+				i++
+				continue
+			}
+			if i+1 >= len(data) {
+				return false
+			}
+			if data[i+1] != 'u' {
+				i += 2
+				continue
+			}
+			if i+6 > len(data) {
+				return false
+			}
+			code, ok := jsonHex16(data[i+2 : i+6])
+			if !ok {
+				return false
+			}
+			i += 6
+			if code >= 0xd800 && code <= 0xdbff {
+				if i+6 > len(data) || data[i] != '\\' || data[i+1] != 'u' {
+					return false
+				}
+				low, ok := jsonHex16(data[i+2 : i+6])
+				if !ok || low < 0xdc00 || low > 0xdfff {
+					return false
+				}
+				i += 6
+			} else if code >= 0xdc00 && code <= 0xdfff {
+				return false
+			}
+		}
+		if !closed {
+			return false
+		}
+	}
+	return true
+}
+func jsonHex16(data []byte) (uint16, bool) {
+	if len(data) != 4 {
+		return 0, false
+	}
+	var code uint16
+	for _, c := range data {
+		var digit byte
+		switch {
+		case c >= '0' && c <= '9':
+			digit = c - '0'
+		case c >= 'a' && c <= 'f':
+			digit = c - 'a' + 10
+		case c >= 'A' && c <= 'F':
+			digit = c - 'A' + 10
+		default:
+			return 0, false
+		}
+		code = code<<4 | uint16(digit)
+	}
+	return code, true
+}
 func strictJSON(b []byte, dst any) error {
-	if len(b) > 1<<20 || !utf8.Valid(b) {
+	if len(b) > 1<<20 || !validJSONUnicode(b) {
 		return ErrContract
 	}
 	d := json.NewDecoder(bytes.NewReader(b))
@@ -224,7 +301,7 @@ func (c Cell) Native() (any, error) {
 		}
 		return nil, ErrContract
 	case "text":
-		if c.Bits != "" || len(c.Value) == 0 || bytes.Equal(c.Value, []byte("null")) {
+		if c.Bits != "" || len(c.Value) == 0 || bytes.Equal(bytes.TrimSpace(c.Value), []byte("null")) || !validJSONUnicode(c.Value) {
 			return nil, ErrContract
 		}
 		var s string
@@ -280,12 +357,14 @@ func cellFromNative(v any) (Cell, error) {
 func fmtHex(n uint64) string { return fmt.Sprintf("%016x", n) }
 func validateRequest(r Request) error {
 	if r.Op == "lookup" {
-		_, err := nativeID(r.ID, r.Kind)
-		return err
+		if !validID(r.ID, r.Kind) {
+			return ErrContract
+		}
+		return nil
 	}
 	if r.Op == "adjacency" || r.Op == "expand" {
-		if _, err := nativeID(r.ID, "node"); err != nil {
-			return err
+		if !validID(r.ID, "node") {
+			return ErrContract
 		}
 		if r.Op == "adjacency" && r.Direction != "in" && r.Direction != "out" {
 			return ErrContract

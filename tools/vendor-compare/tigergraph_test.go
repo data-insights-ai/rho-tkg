@@ -51,6 +51,7 @@ type fakeTiger struct {
 	refuse      bool
 	skip        bool
 	dropReverse bool
+	nullText    bool
 }
 
 func newFake(t *testing.T) (*fakeTiger, *TigerGraph) {
@@ -176,7 +177,11 @@ func (f *fakeTiger) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		var rows []nativeNode
 		for _, row := range f.nodes {
-			rows = append(rows, nativeNode{ID: row.ID, Type: NodeType, Attributes: plainAttrs(row)})
+			attrs := plainAttrs(row)
+			if f.nullText {
+				attrs["p_text"] = json.RawMessage("null")
+			}
+			rows = append(rows, nativeNode{ID: row.ID, Type: NodeType, Attributes: attrs})
 		}
 		if rows == nil {
 			rows = []nativeNode{}
@@ -234,6 +239,68 @@ func collect(t *testing.T, client *TigerGraph, request Request) []any {
 		t.Fatal(err)
 	}
 	return rows
+}
+func TestRequestIDsPreserveExternalBoundsAndRefuseBeforeTransport(t *testing.T) {
+	_, client := newFake(t)
+	for _, op := range []string{"lookup", "adjacency", "expand"} {
+		kinds := []string{"node"}
+		if op == "lookup" {
+			kinds = append(kinds, "edge")
+		}
+		for _, kind := range kinds {
+			prefix, wrong := "n:", "e:"
+			if kind == "edge" {
+				prefix, wrong = wrong, prefix
+			}
+			for _, id := range []string{"", prefix + "0", prefix + strings.Repeat("0", 15), prefix + strings.Repeat("0", 17), prefix + strings.Repeat("A", 16), prefix + strings.Repeat("g", 16), wrong + strings.Repeat("0", 16)} {
+				request := Request{Op: op, Kind: kind, ID: id, Direction: "out", MaxDepth: 1}
+				if validID(id, kind) {
+					t.Fatal("invalid identity accepted", kind, id)
+				}
+				if err := validateRequest(request); !errors.Is(err, ErrContract) {
+					t.Fatal(request, err)
+				}
+				before, _ := client.Traffic()
+				callbacks := 0
+				if err := client.Query(t.Context(), request, func(any) error { callbacks++; return nil }); !errors.Is(err, ErrContract) {
+					t.Fatal(request, err)
+				}
+				after, _ := client.Traffic()
+				if before.Requests != after.Requests || callbacks != 0 {
+					t.Fatal("refusal performed work", request, before, after, callbacks)
+				}
+			}
+			for _, suffix := range []string{strings.Repeat("0", 16), strings.Repeat("f", 16)} {
+				request := Request{Op: op, Kind: kind, ID: prefix + suffix, Direction: "out", MaxDepth: 1}
+				if !validID(request.ID, kind) {
+					t.Fatal("external bound refused", request)
+				}
+				if err := validateRequest(request); err != nil {
+					t.Fatal(request, err)
+				}
+				before, _ := client.Traffic()
+				if err := client.Query(t.Context(), request, func(any) error { t.Fatal("empty transport returned phantom"); return nil }); err != nil {
+					t.Fatal(request, err)
+				}
+				after, _ := client.Traffic()
+				if after.Requests <= before.Requests {
+					t.Fatal("valid control never reached transport", request)
+				}
+			}
+		}
+	}
+	request := Request{Op: "lookup", Kind: "unknown", ID: nodeID(0)}
+	if err := validateRequest(request); !errors.Is(err, ErrContract) {
+		t.Fatal(err)
+	}
+	before, _ := client.Traffic()
+	if err := client.Query(t.Context(), request, func(any) error { t.Fatal("invalid kind callback"); return nil }); !errors.Is(err, ErrContract) {
+		t.Fatal(err)
+	}
+	after, _ := client.Traffic()
+	if after.Requests != before.Requests {
+		t.Fatal("invalid kind reached transport")
+	}
 }
 func TestTigerGraphExactNativeRowsAndRepeatedWalks(t *testing.T) {
 	_, client := newFake(t)
@@ -426,5 +493,90 @@ func TestExactAttributesAndScalarBranches(t *testing.T) {
 		if _, err := cell.Native(); !errors.Is(err, ErrContract) {
 			t.Fatal(err)
 		}
+	}
+}
+func TestNativeTextNullRefusesDecodeAndMutationReadback(t *testing.T) {
+	row := literalNodes()[0]
+	attrs := plainAttrs(row)
+	props, err := nativeProperties(attrs)
+	if err != nil || string(props["p_text"].Value) != `""` {
+		t.Fatal("present empty text control", props, err)
+	}
+	for _, raw := range []string{"null", " \t null\n"} {
+		attrs["p_text"] = json.RawMessage(raw)
+		if _, err := nativeProperties(attrs); !errors.Is(err, ErrContract) {
+			t.Error("native null normalized into empty text", raw, err)
+		}
+	}
+	state, client := newFake(t)
+	if err := client.Load(t.Context(), row); err != nil {
+		t.Fatal("empty text readback control", err)
+	}
+	state.mu.Lock()
+	state.nullText = true
+	state.mu.Unlock()
+	callbacks := 0
+	if err := client.Query(t.Context(), Request{Op: "lookup", Kind: "node", ID: row.ID}, func(any) error { callbacks++; return nil }); !errors.Is(err, ErrContract) || callbacks != 0 {
+		t.Error("null query readback admitted", err, callbacks)
+	}
+	state, client = newFake(t)
+	state.mu.Lock()
+	state.nullText = true
+	state.mu.Unlock()
+	if err := client.Load(t.Context(), row); !errors.Is(err, ErrContract) {
+		t.Error("null mutation readback acknowledged", err)
+	}
+}
+func TestCommonTextNullAndMalformedInputsRefuseBeforeMutation(t *testing.T) {
+	for _, raw := range []string{`""`, " \t \"\"\n", `"null"`} {
+		cell := Cell{Type: "text", Value: json.RawMessage(raw)}
+		value, err := cell.Native()
+		want := ""
+		if raw == `"null"` {
+			want = "null"
+		}
+		if err != nil || value != want {
+			t.Fatal("quoted text control", raw, value, err)
+		}
+		row := literalNodes()[0]
+		row.Properties["p_text"] = cell
+		if _, err := attributes(row); err != nil {
+			t.Fatal("quoted attribute control", raw, err)
+		}
+	}
+	for _, raw := range []string{"null", " \t null\n", "", "unquoted"} {
+		t.Run(fmt.Sprintf("raw-%q", raw), func(t *testing.T) {
+			cell := Cell{Type: "text", Value: json.RawMessage(raw)}
+			if _, err := cell.Native(); !errors.Is(err, ErrContract) {
+				t.Error("unsupported common text admitted", raw, err)
+			}
+			row := literalNodes()[0]
+			row.Properties["p_text"] = cell
+			if _, err := attributes(row); !errors.Is(err, ErrContract) {
+				t.Error("unsupported attributes admitted", raw, err)
+			}
+			_, client := newFake(t)
+			if err := client.Load(t.Context(), row); !errors.Is(err, ErrContract) {
+				t.Error("unsupported Load admitted", raw, err)
+			}
+			traffic, _ := client.Traffic()
+			if traffic.ByMethod["POST"] != 0 || traffic.ByMethod["DELETE"] != 0 {
+				t.Error("invalid Load mutated native state", traffic)
+			}
+			_, client = newFake(t)
+			if err := client.Load(t.Context(), literalNodes()[0]); err != nil {
+				t.Fatal(err)
+			}
+			for _, event := range []Event{{Revision: 1, Op: "update", Kind: "node", ID: nodeID(0), Set: map[string]Cell{"p_text": cell}}, {Revision: 1, Op: "upsert", Row: row}, {Revision: 1, Op: "append", Row: Entity{Kind: "node", ID: nodeID(9), Labels: row.Labels, Properties: row.Properties}}} {
+				before, _ := client.Traffic()
+				if err := client.Apply(t.Context(), event); !errors.Is(err, ErrContract) {
+					t.Error("unsupported Apply admitted", event.Op, raw, err)
+				}
+				after, _ := client.Traffic()
+				if before.ByMethod["POST"] != after.ByMethod["POST"] || before.ByMethod["DELETE"] != after.ByMethod["DELETE"] {
+					t.Error("invalid Apply mutated native state", event.Op, before, after)
+				}
+			}
+		})
 	}
 }
