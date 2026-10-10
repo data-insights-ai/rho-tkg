@@ -125,7 +125,7 @@ Not committed anywhere else: nothing. `git status` clean (except this file and t
    `NodesEffectiveByIDs`/`RelsEffectiveByIDs`, optional `ForEachNodeEffectiveByLabels`.
 4. **Backlog 28** state column fast path (design first; numbers in the item), **21** retention (handover
    `tasks/handover-overview-retention-20261009.md`), then the residual list below.
-5. Keep consumers informed after each tag (messages with the migration points); keep v4.50.0 as the next minor.
+5. Keep consumers informed after each MERGE (messages with the migration points); NO tag or version bump until René asks.
 
 ### Open backlog items (verify each line's status before acting; headers drift)
 
@@ -214,7 +214,7 @@ Legend: [ ] open, (S) = waits for sigma, (R) = waits for René's decision.
    asked for the door as the next step. Semantics: tx-time "belief ends at T; at pins >= T absent for every valid time; at pins
    < T unchanged"; full door list, open design points with defaults (marker as an additive `Retracted` field in the temporal block + wire tag — a reserved property is IMPOSSIBLE, `tkg_` keys are rejected; life cap at −∞ in `lifeEnds`, additive/minor) and the red-test list are in backlog 43. Workflow: spec check against the
    code first (the `tkg_` reserved-key rules, `lifeEnds`, supersession rule, timeline sweep), then Opus agent with Appendix A,
-   reviewer, fix round, lint+security, merge, gate, tag v4.50.0 with the other pending items, tell ai-soc (and the new
+   reviewer, fix round, lint+security, merge, gate, merge to main under [Unreleased] (NO tag until René asks), tell ai-soc (and the new
    sigma session) the exact signatures.
 1. [ ] **Restart backlog 34** `Set{Node,Rel}VersionIntervalWithTx` (all doors) — sigma replay need.
 2. [ ] **Restart backlog 33 + 42 (+ 41 last)** badger read cost — baseline saved in `tasks/evidence/badger-read-cost/`.
@@ -228,7 +228,7 @@ Legend: [ ] open, (S) = waits for sigma, (R) = waits for René's decision.
 10. [ ] (R) Answer: keep behaviour changes as named stability exceptions (default) or ship through the deprecation ritual.
 11. [ ] Optional: write the v4→v5 importer reference tests Markus might want (note on main: `tasks/v4-changes-for-v5-importer-20261010.md`);
     re-arm the origin watch (§8) if René still wants to follow `v5`.
-12. [ ] Next release: v4.50.0 (minor) when items 1–2 are merged; headline the behaviour changes, gate, tag, notify consumers.
+12. [ ] **NO RELEASE until René asks** (2026-10-10: "do not USE minor patch version until asked"). Merge to main, CHANGELOG under `## [Unreleased]`, no tag, no version-line bump, no tag announcement to consumers (tell them it is on main, unreleased). When he asks: pick the number with him (the old plan was v4.50.0), gate, tag, notify.
 
 Done and verified this session (do not redo): see §2 table plus CHANGELOG; the ledger rows in `tasks/todo.md` carry the evidence paths.
 
