@@ -11,9 +11,12 @@ import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 // len(GetNodeHistory(id)) > 0). An ID without history answers zeros and
 // false; an invalid id fails like the history door. Memory keeps a per-ID
 // cache validated against the ID's row count; badger keeps a lazily built RAM
-// sidecar maintained where every history key enters the write buffer;
-// sharded routes by slot; tiered walks the shards GetNodeHistory reads. A
-// store without it is answered from the history rows.
+// sidecar maintained where every history key enters the write buffer (it
+// decodes each row's temporal block only: a row whose body is corrupt but whose
+// temporal block decodes is answered where the history door fails); sharded
+// routes by slot; tiered walks the shards GetNodeHistory reads and, when two or
+// more of them hold rows, folds GetNodeHistory itself (it keeps one copy per
+// version). A store without it is answered from the history rows.
 type HistoryStampsCapability interface {
 	NodeHistoryStamps(id types.NodeID) (txFrom, txTo types.Instant, has bool, err error)
 	RelHistoryStamps(id types.RelID) (txFrom, txTo types.Instant, has bool, err error)

@@ -268,3 +268,67 @@ func TestTieredHistoryStamps_Errors(t *testing.T) {
 		t.Fatalf("closed RelHistoryStamps = %v, want ErrStoreClosed", err)
 	}
 }
+
+// The same history version on two shards with different stamps (reachable
+// only through version reuse: old collided chains, backlog 26). History keeps
+// ONE copy per version — the first source's (mergeNodeHistorySources /
+// mergeRelHistorySources: owner first, then the archive or the reference
+// shard) — so the stamps must fold that copy only. A walk that folds every
+// shard's answer reports the dropped copy's stamps (the review's repro: History
+// folds to (100, 200), the fold over both copies to (500, 600)). Checked in
+// both directions (the owner's copy higher, the other's higher) and for an
+// archived entity, whose owner is the archive.
+func TestTieredHistoryStamps_DuplicateVersionAcrossShards(t *testing.T) {
+	t.Run("node, reference live, archive copy higher", func(t *testing.T) {
+		e := newBranchTestEnv(t)
+		n := e.newRefNode(t)
+		if err := e.ts.PutNodeVersion(n.ID(), 1, stampedNodeRow(n, 1, 100, 200, 0)); err != nil {
+			t.Fatal(err)
+		}
+		if err := mustArchiveStore(t, e.ts).PutNodeVersion(n.ID(), 1, stampedNodeRow(n, 1, 500, 600, 0)); err != nil {
+			t.Fatal(err)
+		}
+		expectNodeStamps(t, e.ts, "duplicate v1, owner copy kept", n.ID(), 100, 200, true)
+		if err := e.ts.PutNodeVersion(n.ID(), 2, stampedNodeRow(n, 2, 300, 0, 0)); err != nil {
+			t.Fatal(err)
+		}
+		expectNodeStamps(t, e.ts, "plus an owner-only v2", n.ID(), 300, 200, true)
+	})
+	t.Run("node, reference live, archive copy lower", func(t *testing.T) {
+		e := newBranchTestEnv(t)
+		n := e.newRefNode(t)
+		if err := e.ts.PutNodeVersion(n.ID(), 1, stampedNodeRow(n, 1, 500, 600, 0)); err != nil {
+			t.Fatal(err)
+		}
+		if err := mustArchiveStore(t, e.ts).PutNodeVersion(n.ID(), 1, stampedNodeRow(n, 1, 100, 0, 900)); err != nil {
+			t.Fatal(err)
+		}
+		expectNodeStamps(t, e.ts, "duplicate v1, archive delete stamp dropped", n.ID(), 500, 600, true)
+	})
+	t.Run("rel, reference live, archive copy higher", func(t *testing.T) {
+		e := newBranchTestEnv(t)
+		a, b := e.newRefNode(t), e.newRefNode(t)
+		r := e.putRelBetween(t, a, b)
+		if err := e.ts.PutRelVersion(r.ID(), 1, stampedRelRow(r, 1, 100, 200, 0)); err != nil {
+			t.Fatal(err)
+		}
+		if err := mustArchiveStore(t, e.ts).PutRelVersion(r.ID(), 1, stampedRelRow(r, 1, 500, 600, 0)); err != nil {
+			t.Fatal(err)
+		}
+		expectRelStamps(t, e.ts, "duplicate v1, owner copy kept", r.ID(), 100, 200, true)
+	})
+	t.Run("node, archived, reference copy higher", func(t *testing.T) {
+		e := newBranchTestEnv(t)
+		n := e.newRefNode(t)
+		if err := e.ts.PutNodeVersion(n.ID(), 1, stampedNodeRow(n, 1, 500, 600, 0)); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.ts.ArchiveNode(n.ID()); err != nil {
+			t.Fatal(err)
+		}
+		if err := mustArchiveStore(t, e.ts).PutNodeVersion(n.ID(), 1, stampedNodeRow(n, 1, 100, 200, 0)); err != nil {
+			t.Fatal(err)
+		}
+		expectNodeStamps(t, e.ts, "archived, duplicate v1, archive copy kept", n.ID(), 100, 200, true)
+	})
+}
