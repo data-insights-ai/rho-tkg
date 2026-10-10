@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	initGraph       commandKind = 5
-	graphOperations commandKind = 6
+	initGraph              commandKind = 5
+	graphOperations        commandKind = 6
+	guardedGraphOperations commandKind = 7
 )
 
 type bindingRole byte
@@ -33,7 +34,17 @@ type freshBinding struct {
 	id    uint64
 	grant grantReference
 }
+
+func isGraphMutation(kind commandKind) bool {
+	return kind == graphOperations || kind == guardedGraphOperations
+}
+func isGraphCommand(kind commandKind) bool { return kind == initGraph || isGraphMutation(kind) }
+func validGraphWire(version byte, kind commandKind) bool {
+	return version == 2 && (kind == initGraph || kind == graphOperations) || version == 3 && kind == guardedGraphOperations
+}
+
 type graphRequest struct {
+	readBase   graphReadBase
 	ns         namespace
 	kind       commandKind
 	id         requestID
@@ -87,7 +98,7 @@ func (l materializerLimits) validate() error {
 
 // Allowances cover fixed metadata independently tested against typed Go values;
 // variable backing is separately charged. These are not heap/RSS guarantees.
-const graphRequestMetadataBytes = 256
+const graphRequestMetadataBytes = 384
 const operationMetadataBytes = 640
 const claimMetadataBytes = 128
 const axisMetadataBytes = 128

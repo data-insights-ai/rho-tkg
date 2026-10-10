@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
@@ -482,6 +483,12 @@ func validateGraphRequest(r graphRequest, l materializerLimits) error {
 	if !r.ns.valid() || r.identity() == ([16]byte{}) {
 		return errInvalid
 	}
+	if r.kind != guardedGraphOperations && r.readBase != (graphReadBase{}) {
+		return errInvalid
+	}
+	if r.kind == guardedGraphOperations && !r.readBase.valid(r.ns) {
+		return errInvalid
+	}
 	if len(r.operations) > l.maxOperations || len(r.claims) > l.maxClaims || len(r.schemas) > l.maxSchemas {
 		return errLimit
 	}
@@ -504,7 +511,7 @@ func validateGraphRequest(r graphRequest, l materializerLimits) error {
 				}
 			}
 		}
-	case graphOperations:
+	case graphOperations, guardedGraphOperations:
 		if r.attempt != (bootstrapAttemptID{}) || r.authority != (idalloc.Authority{}) || r.maxBlock != 0 || len(r.schemas) > 0 || r.revision.ID() == 0 || len(r.operations) == 0 {
 			return errInvalid
 		}
@@ -532,7 +539,11 @@ func validateGraphRequest(r graphRequest, l materializerLimits) error {
 	return nil
 }
 func emitGraphRequest(w *boundedWriter, r graphRequest, t axisTable, l materializerLimits) {
-	w.add([]byte{'G', 'R', 'Q', 2})
+	version := byte(2)
+	if r.kind == guardedGraphOperations {
+		version = 3
+	}
+	w.add([]byte{'G', 'R', 'Q', version})
 	w.tag(byte(r.kind))
 	w.add(r.ns.graph[:])
 	w.u64(r.ns.partition)
@@ -546,6 +557,15 @@ func emitGraphRequest(w *boundedWriter, r graphRequest, t axisTable, l materiali
 			writeSchema(w, d)
 		}
 		return
+	}
+	if r.kind == guardedGraphOperations {
+		w.add(r.readBase.group[:])
+		g := r.readBase.guard
+		w.u64(g.OwnershipEpoch)
+		w.u64(g.TopologyEpoch)
+		w.u64(g.SchemaVersion)
+		w.u64(g.SemanticEpoch)
+		w.add(g.EffectDigest[:])
 	}
 	w.u64(r.revision.ID())
 	w.u64(r.revision.Provenance())
@@ -609,7 +629,14 @@ func decodeGraphRequest(b []byte, l materializerLimits) (graphRequest, error) {
 	if err := l.validate(); err != nil {
 		return graphRequest{}, err
 	}
-	body, err := graphBody(b, "GRQ\x02", l.commandBytes)
+	if len(b) < 5 || !validGraphWire(b[3], commandKind(b[4])) {
+		return graphRequest{}, errCorrupt
+	}
+	magic := "GRQ\x02"
+	if b[3] == 3 {
+		magic = "GRQ\x03"
+	}
+	body, err := graphBody(b, magic, l.commandBytes)
 	if err != nil {
 		return graphRequest{}, err
 	}
@@ -634,8 +661,15 @@ func decodeGraphRequest(b []byte, l materializerLimits) (graphRequest, error) {
 				r.schemas[i] = readSchema(&c, l)
 			}
 		}
-	case graphOperations:
+	case graphOperations, guardedGraphOperations:
 		r.id = requestID(id)
+		if r.kind == guardedGraphOperations {
+			r.readBase.group = c.array()
+			g := &r.readBase.guard
+			g.Namespace = graphstore.Namespace{Graph: graphstate.GraphID(r.ns.graph), Partition: r.ns.partition}
+			g.OwnershipEpoch, g.TopologyEpoch, g.SchemaVersion, g.SemanticEpoch = c.u64(), c.u64(), c.u64(), c.u64()
+			copy(g.EffectDigest[:], c.take(32))
+		}
 		r.revision, err = state.NewRevision(c.u64(), c.u64())
 		n := c.count(l.maxAxes, 27)
 		if !c.charge(axisMetadataBytes * n) {
@@ -690,8 +724,22 @@ func decodeGraphRequest(b []byte, l materializerLimits) (graphRequest, error) {
 	}
 	return r, nil
 }
+func validGraphOutcomeReason(kind commandKind, why reason) bool {
+	switch why {
+	case reasonNone, reasonInvalid, reasonMismatch:
+		return isGraphCommand(kind)
+	case reasonStale:
+		return isGraphMutation(kind)
+	case reasonAlreadyInitialized:
+		return kind == initGraph
+	case reasonReadConflict:
+		return kind == guardedGraphOperations
+	default:
+		return false
+	}
+}
 func encodeGraphOutcome(o outcome) ([]byte, error) {
-	if !o.ns.valid() || o.kind != initGraph && o.kind != graphOperations || o.identity == ([16]byte{}) || o.hash == ([32]byte{}) || o.index == 0 || o.disposition != applied && o.disposition != requestReplay || o.reason > reasonAlreadyInitialized || o.reason == reasonExhausted || o.kind == initGraph && o.reason == reasonStale || o.kind == graphOperations && o.reason == reasonAlreadyInitialized || o.grant != (idalloc.Grant{}) || o.grantIndex != 0 {
+	if !o.ns.valid() || !isGraphCommand(o.kind) || o.identity == ([16]byte{}) || o.hash == ([32]byte{}) || o.index == 0 || o.disposition != applied && o.disposition != requestReplay || !validGraphOutcomeReason(o.kind, o.reason) || o.grant != (idalloc.Grant{}) || o.grantIndex != 0 {
 		return nil, errInvalid
 	}
 	b := appendNamespace([]byte{'G', 'R', 'O', 2, byte(o.kind)}, o.ns)
@@ -728,7 +776,7 @@ func decodeAnyOutcome(b []byte, n namespace) (outcome, error) {
 	return decodeOutcome(b, n)
 }
 func encodeAnyOutcome(o outcome) ([]byte, error) {
-	if o.kind == initGraph || o.kind == graphOperations {
+	if isGraphCommand(o.kind) {
 		return encodeGraphOutcome(o)
 	}
 	return encodeOutcome(o)

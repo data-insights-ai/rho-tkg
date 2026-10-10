@@ -16,10 +16,11 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
 
-// materializer is an internal singleton ApplicationMachine, not a Host or a
-// transaction door based on prior client reads. Operations plan at the current
-// serialized applied root. PLAN5.2 footprint validation for historical client
-// transactions and distributed prepare/decision remain separate obligations.
+// materializer is a private same-partition ApplicationMachine, not a Host.
+// Unconditional operations plan at the current serialized applied root; private
+// guarded requests validate a whole-partition logical read base before Plan.
+// Certified cuts, multi-partition footprint validation and distributed
+// prepare/decision remain separate PLAN5.2/5.3 obligations.
 // Stage never installs; errors after Raft commit stop the driver, not abort it.
 // Distributed application traffic requires separately agreed semantic command
 // policy plus the complete replicated admission/ownership protocol; this private
@@ -220,8 +221,8 @@ func sharedReplay(q *reader, r request, hash [32]byte, index uint64) (outcome, b
 	if old.identity != r.identity() || old.index > q.base.Index || old.disposition == requestReplay {
 		return outcome{}, false, errCorrupt
 	}
-	// Payload mismatch precedes current command-kind/state checks, across ARQ1
-	// and GRQ2. The immutable original mapping is never overwritten.
+	// Payload mismatch precedes current command-kind/state checks, across ARQ1,
+	// GRQ2 and GRQ3. The immutable original mapping is never overwritten.
 	if old.hash != hash {
 		return outcome{ns: q.ns, kind: r.kind, identity: r.identity(), hash: hash, index: index, disposition: applied, reason: reasonMismatch}, true, nil
 	}
@@ -235,10 +236,10 @@ func commandIdentity(b []byte) (request, bool, error) {
 	if len(b) < requestHeaderBytes || len(b) > 4<<20 {
 		return request{}, false, errCorrupt
 	}
-	graph := bytes.Equal(b[:4], []byte{'G', 'R', 'Q', 2})
+	graph := bytes.Equal(b[:4], []byte{'G', 'R', 'Q', 2}) || bytes.Equal(b[:4], []byte{'G', 'R', 'Q', 3})
 	control := bytes.Equal(b[:4], []byte{'A', 'R', 'Q', 1})
 	kind := commandKind(b[4])
-	if !graph && !control || graph && kind != initGraph && kind != graphOperations || control && requestSize(kind) == 0 {
+	if !graph && !control || graph && !validGraphWire(b[3], kind) || control && requestSize(kind) == 0 {
 		return request{}, false, errCorrupt
 	}
 	c := graphCursor{b: b[5:]}
@@ -263,6 +264,9 @@ func businessGraphReason(err error) (reason, bool) {
 	// and policy. They are operational, never durable replicated rejections.
 	if errors.Is(err, graphstate.ErrResourceLimit) || errors.Is(err, graphstore.ErrResourceLimit) || errors.Is(err, temporal.ErrResourceLimit) || errors.Is(err, state.ErrResourceLimit) || errors.Is(err, errLimit) || errors.Is(err, raftlog.ErrLimit) {
 		return reasonNone, false
+	}
+	if errors.Is(err, graphstore.ErrReadConflict) {
+		return reasonReadConflict, true
 	}
 	for _, expected := range []error{graphstate.ErrInvalidInput, graphstate.ErrValidityRequired, graphstate.ErrEmptyMutation, graphstate.ErrUnsupported, graphstate.ErrNotFound, graphstate.ErrAlreadyExists, graphstate.ErrOwnerValidity, graphstate.ErrLifecycleOverlap, graphstate.ErrSchemaMismatch, graphstate.ErrTypeMismatch, graphstate.ErrUniqueOverlap} {
 		if errors.Is(err, expected) {
@@ -313,7 +317,7 @@ func (m *materializer) finish(q *reader, o outcome, hash [32]byte, mapRecord boo
 		}
 		retained = retainedCompositionBytes(q, graph, changes)
 		size := outcomeBytes
-		if o.kind == initGraph || o.kind == graphOperations {
+		if isGraphCommand(o.kind) {
 			size = graphOutcomeBytes
 		}
 		// Encoding owns private body+sealed copy. Mapping additionally owns its
@@ -416,12 +420,7 @@ func (m *materializer) chargeGraph(q *reader, g graphstore.GraphEffects) error {
 	if !sameBase(q.base, g.Base) {
 		return errInvalid
 	}
-	if g.Work.Records > q.limits.readRows-q.rows || g.Work.Bytes > q.limits.readBytes-q.bytes {
-		return errLimit
-	}
-	q.rows += g.Work.Records
-	q.bytes += g.Work.Bytes
-	return nil
+	return chargeGraphWork(q, g.Work)
 }
 func findBinding(claims []freshBinding, role bindingRole, owner graphstate.EntityID, id uint64) (freshBinding, bool) {
 	for _, c := range claims {
@@ -566,7 +565,7 @@ func (m *materializer) Stage(entry replica.Entry, budget raftlog.ApplicationBudg
 	}
 
 	bootstrap := (control.kind == initGraph || control.kind == initAllocator) && isBootstrapRoot(root)
-	if !isBootstrapRoot(root) && control.kind != graphOperations {
+	if !isBootstrapRoot(root) && !isGraphMutation(control.kind) {
 		// Post-init attempts never use their schemas. Release that decoded backing
 		// before the guarded reader, including recognized malformed init records.
 		r.schemas = nil
@@ -608,6 +607,7 @@ func (m *materializer) Stage(entry replica.Entry, budget raftlog.ApplicationBudg
 		return b, err
 	}
 	var effects graphstore.GraphEffects
+	var guardedWork graphstore.PageWork
 	if r.kind == initGraph {
 		if !isBootstrapRoot(root) {
 			o.reason = reasonAlreadyInitialized
@@ -643,11 +643,28 @@ func (m *materializer) Stage(entry replica.Entry, budget raftlog.ApplicationBudg
 		} else if !found {
 			return raftlog.ApplicationBatch{}, errCorrupt
 		}
+		if r.kind == guardedGraphOperations {
+			group, scopeErr := graphReadScope(q.ctx, m.store, m.ns, &q)
+			if scopeErr != nil {
+				return raftlog.ApplicationBatch{}, scopeErr
+			}
+			if group != r.readBase.group {
+				return raftlog.ApplicationBatch{}, errInvalid
+			}
+		}
 		gl, limitErr := m.graphBudget(&q)
 		if limitErr != nil {
 			err = limitErr
 		} else {
-			effects, err = graphstore.StageOperations(q.ctx, c, r.operations, r.revision, gl)
+			if r.kind == guardedGraphOperations {
+				effects, guardedWork, err = graphstore.StageGuardedOperations(q.ctx, c, r.readBase.guard, r.operations, r.revision, gl)
+				// Charge the separately returned source work once, including conflict.
+				if chargeErr := chargeGraphWork(&q, guardedWork); chargeErr != nil {
+					return raftlog.ApplicationBatch{}, errors.Join(chargeErr, err)
+				}
+			} else {
+				effects, err = graphstore.StageOperations(q.ctx, c, r.operations, r.revision, gl)
+			}
 		}
 		o.reason = reasonNone
 	}
@@ -662,10 +679,14 @@ func (m *materializer) Stage(entry replica.Entry, budget raftlog.ApplicationBudg
 	if o.reason != reasonNone {
 		return m.reject(&q, o, hash, !bootstrap, budget)
 	}
-	if err := m.chargeGraph(&q, effects); err != nil {
+	if r.kind == guardedGraphOperations {
+		if !sameBase(q.base, effects.Base) || effects.Work != guardedWork {
+			return raftlog.ApplicationBatch{}, errInvalid
+		}
+	} else if err := m.chargeGraph(&q, effects); err != nil {
 		return raftlog.ApplicationBatch{}, err
 	}
-	if r.kind == graphOperations {
+	if isGraphMutation(r.kind) {
 		why, err := admitDelta(&q, r, effects.Delta)
 		if err != nil {
 			return raftlog.ApplicationBatch{}, err

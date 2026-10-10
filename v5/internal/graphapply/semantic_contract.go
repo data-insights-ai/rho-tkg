@@ -12,8 +12,9 @@ import (
 // and independent allocator/recipient fences; request/bootstrap/recovery rules;
 // and logical CDC/epoch/digest canonicalization. Meaning changes require an
 // explicit new agreement and conformance evidence.
-const semanticContractDescriptor = "rho-tkg:graphapply:semantic-contract:v1\x00" +
+const semanticContractDescriptor = "rho-tkg:graphapply:semantic-contract:v2\x00" +
 	"current-root-commands=1\x00" +
+	"prior-graph-reads=1\x00" +
 	"typed-native-values=1\x00" +
 	"graph-components=1\x00" +
 	"allocation-admission=1\x00" +

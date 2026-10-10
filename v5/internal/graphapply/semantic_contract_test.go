@@ -15,7 +15,7 @@ import (
 
 func TestSemanticContractIDFixedGoldenValueOwnershipAndMethod(t *testing.T) {
 	// Independent fixed SHA-256 vectors, reviewed before implementation.
-	const expected = "65cf602d484307ec3d716f967111a5e75fe7ce61fec191620c8f490cf684384f"
+	const expected = "a10ac0e55a14f64f4a7bcb652f138aefb742b6302d65a5da68aff3d866b50671"
 	id := SemanticContractID()
 	if id == (raftlog.ApplicationSemanticContractID{}) || hex.EncodeToString(id[:]) != expected {
 		t.Fatal("semantic agreement changed", id)
@@ -39,9 +39,9 @@ func TestSemanticContractIDFixedGoldenValueOwnershipAndMethod(t *testing.T) {
 			t.Fatal("namespace or local policy entered semantic ID")
 		}
 	}
-	const changed = "rho-tkg:graphapply:semantic-contract:v1\x00current-root-commands=1\x00typed-native-values=1\x00graph-components=2\x00allocation-admission=1\x00request-recovery=1\x00logical-effects=1\x00"
+	const changed = "rho-tkg:graphapply:semantic-contract:v2\x00current-root-commands=1\x00prior-graph-reads=2\x00typed-native-values=1\x00graph-components=1\x00allocation-admission=1\x00request-recovery=1\x00logical-effects=1\x00"
 	other := sha256.Sum256([]byte(changed))
-	if hex.EncodeToString(other[:]) != "e264af57595b1642d9fe91faee5335b750a0157f024c29a392511f1578a9f077" || raftlog.ApplicationSemanticContractID(other) == again {
+	if hex.EncodeToString(other[:]) != "36b91c855ae7c49eacf9ce62e819734206506b58929ad39f3d65e933ee29a5af" || raftlog.ApplicationSemanticContractID(other) == again {
 		t.Fatal("meaning revision did not change agreement", other)
 	}
 }

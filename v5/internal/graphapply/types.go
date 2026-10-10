@@ -128,6 +128,7 @@ const (
 	reasonExhausted
 	reasonAlreadyInitialized
 	reasonLimit
+	reasonReadConflict reason = 8 // 7 remains reserved/invalid.
 )
 
 type outcome struct {
