@@ -207,15 +207,17 @@ Merge-and-remove rule for future agent worktrees (CLAUDE.md): merge the branch b
 
 Legend: [ ] open, (S) = waits for sigma, (R) = waits for René's decision.
 
-0. [ ] **NEXT STEP — backlog 43 (sigma-tkgd signed off the spec 2026-10-10: LatestStamps unchanged, History marks the retraction on the tombstone, defaults fine) "Retraction: a way to say this was never true"** (`Retract`/`RetractWithTx` + GraphTx, Batch,
-   Session twins). Requested by ai-soc (recovery ends the edges of unfinished commit groups, retracts wrong records),
-   confirmed by René 2026-10-10. History of the thread, so nobody is confused: sigma first relayed René's decision
-   'Delete = validity end, retraction stays an explicit ENDED fact in ai-soc, no door' (kept: Delete is unchanged); then René
-   asked for the door as the next step. Semantics: tx-time "belief ends at T; at pins >= T absent for every valid time; at pins
-   < T unchanged"; full door list, open design points with defaults (marker as an additive `Retracted` field in the temporal block + wire tag — a reserved property is IMPOSSIBLE, `tkg_` keys are rejected; life cap at −∞ in `lifeEnds`, additive/minor) and the red-test list are in backlog 43. Workflow: spec check against the
-   code first (the `tkg_` reserved-key rules, `lifeEnds`, supersession rule, timeline sweep), then Opus agent with Appendix A,
-   reviewer, fix round, lint+security, merge, gate, tag as a PATCH release (v4.49.1, not v4.50.0), tell ai-soc (and the new
-   sigma session) the exact signatures.
+0. [x] **Backlog 43 retraction: MERGED to main, UNRELEASED** (2026-10-10, merge `5e646e3` + two test-seed fixes). `Retract`/`RetractWithTx`
+   on Nodes/Rels and the GraphTx/Batch/Session twins; marker = optional wire key `rx` on the tombstone (`TemporalMetadata.Retracted`,
+   no fv bump); a retracted life is DROPPED from the pinned chain (`dropRetractedLives`), not capped at −∞ (a cap left a hole when a
+   re-import follows a delete; red run `tasks/evidence/retraction/09-*`). Decisions: unknown ID → not found; already deleted/retracted →
+   refused (`ErrEntityDeleted` + not-found); events as for delete; no `tkg_retracted` shadow key. Old binaries read a retraction as a plain
+   Delete (mixed-version replicas diverge; upgrade readers first; open question: per-row `fv=3` on retraction tombstones so old binaries
+   fail closed). NOT DONE: the Opus review round (stopped), `go test -race` on the full package set, `make cover`; the 3.7k-line test suite
+   was never shortened (René: too long; the stopped rewrite target was <= 900 lines with the 26-mutant driver as gate, see
+   `tasks/evidence/retraction/14-mutants.txt`). Tell sigma-tkgd/ai-soc: on main, not tagged; the next tag is a PATCH (v4.49.1).
+   STOPPED branches with uncommitted work (not merged, worktrees kept): `worktree-agent-adcfa76ae8b4c0dfe` (backlog 34, 20 uncommitted
+   files, 0 commits) and `worktree-agent-aa4b0ebc0683fcb3f` (backlog 42, 23 uncommitted files, 0 commits).
 1. [ ] **Restart backlog 34** `Set{Node,Rel}VersionIntervalWithTx` (all doors) — sigma replay need.
 2. [ ] **Restart backlog 33 + 42 (+ 41 last)** badger read cost — baseline saved in `tasks/evidence/badger-read-cost/`.
 3. [ ] Backlog 35 broader effective scans — signatures CONFIRMED by sigma 2026-10-10 (all five, as recorded in the backlog item).
