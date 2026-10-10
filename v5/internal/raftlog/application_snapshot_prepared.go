@@ -257,3 +257,15 @@ func (s *Store) releasePreparedOwnership(p *PreparedApplicationSnapshot) {
 	s.pinnedApplicationBytes -= p.reservation
 	p.reservation = 0
 }
+
+// ClaimPreparedApplicationSnapshot admits an exact verified receiver capability
+// only for this Store, before its embedding Driver changes RawNode. A token from
+// another Store refuses before descriptor sizing/copying or ownership mutation.
+// The existing Claim lock/lifetime/generation checks remain authoritative; Store
+// identity is immutable and neither this method nor Claim grants Raft acceptance.
+func (s *Store) ClaimPreparedApplicationSnapshot(p *PreparedApplicationSnapshot, expected *pb.Snapshot) (*ApplicationSnapshotClaim, error) {
+	if s == nil || p == nil || p.s != s {
+		return nil, ErrInvalid
+	}
+	return p.Claim(expected)
+}

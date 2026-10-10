@@ -334,3 +334,84 @@ func validateSnapshotConf(cs *pb.ConfState, index uint64) error {
 	}
 	return nil
 }
+
+// preflightApplicationMessage follows successful generic preflight. It still
+// consumes safely and checks exact actual transport fields before protobuf.
+func preflightApplicationMessage(b []byte, p Packet, snapshot bool) error {
+	var from, to uint64
+	kind := pb.MsgHup
+	entries := 0
+	for len(b) > 0 {
+		num, typ, n := protowire.ConsumeTag(b)
+		if n < 0 {
+			return ErrInvalid
+		}
+		b = b[n:]
+		switch typ {
+		case protowire.VarintType:
+			v, n := protowire.ConsumeVarint(b)
+			if n < 0 {
+				return ErrInvalid
+			}
+			b = b[n:]
+			switch num {
+			case 1:
+				if v > uint64(pb.MsgForgetLeader) {
+					return ErrInvalid
+				}
+				kind = pb.MessageType(v)
+			case 2:
+				to = v
+			case 3:
+				from = v
+			}
+		case protowire.BytesType:
+			blob, n := protowire.ConsumeBytes(b)
+			if n < 0 {
+				return ErrInvalid
+			}
+			b = b[n:]
+			if num == 7 {
+				entries++
+				if err := preflightNormalApplicationEntry(blob); err != nil {
+					return err
+				}
+			}
+		default:
+			return ErrInvalid
+		}
+	}
+	if from != p.From || to != p.To || from == 0 || raft.IsLocalMsgTarget(from) || raft.IsLocalMsg(kind) || kind == pb.MsgReadIndex || kind == pb.MsgReadIndexResp || kind < pb.MsgHup || kind > pb.MsgForgetLeader || p.Snapshot != snapshot || (kind == pb.MsgSnap) != snapshot || kind == pb.MsgProp && entries != 1 {
+		return ErrInvalid
+	}
+	return nil
+}
+func preflightNormalApplicationEntry(b []byte) error {
+	for len(b) > 0 {
+		num, typ, n := protowire.ConsumeTag(b)
+		if n < 0 {
+			return ErrInvalid
+		}
+		b = b[n:]
+		switch typ {
+		case protowire.VarintType:
+			v, n := protowire.ConsumeVarint(b)
+			if n < 0 {
+				return ErrInvalid
+			}
+			b = b[n:]
+			if num == 1 && v != uint64(pb.EntryNormal) {
+				return ErrInvalid
+			}
+		case protowire.BytesType:
+			_, n := protowire.ConsumeBytes(b)
+			if n < 0 {
+				return ErrInvalid
+			}
+			b = b[n:]
+		default:
+			return ErrInvalid
+		}
+	}
+	return nil
+}

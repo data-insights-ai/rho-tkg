@@ -15,7 +15,8 @@ import (
 )
 
 // ApplicationSnapshotSendLimits reserves finite sender-owned capacity. Zero
-// disables the sender foundation. This does not enable application traffic.
+// disables the sender capability. Bound fixed-three ApplicationMachine mode
+// requires an explicit valid policy; legacy modes retain their existing fences.
 // MaxOffers includes detached owners until cleanup finishes. MaxOwnedBytes
 // charges retained manifest image capacity and fixed objects/protobuf/descriptor
 // allowance plus a fixed sender registry/control reservation, separately from the Store's export pin ledger and returned copies.
@@ -61,6 +62,7 @@ type SnapshotSend struct {
 	self                                                 *SnapshotSend
 	cleaning                                             bool
 	closeErr                                             error
+	pageOwner                                            *applicationEvent
 	slot                                                 int
 	originTerm                                           uint64
 	d                                                    *Driver
@@ -209,12 +211,13 @@ func (e *SnapshotSend) begin(ctx context.Context, replay bool) (*raftlog.Applica
 	if !replay && e.ready {
 		return nil, nil
 	}
-	if d.snapshotSender.busy {
+	if d.snapshotSender.busy || d.event != nil || d.closeOwner != nil {
 		return nil, ErrUnavailable
 	}
 	if replay && (!e.bound || e.final) {
 		return nil, ErrInvalid
 	}
+	e.pageOwner = d.beginCleanup()
 	d.snapshotSender.busy = true
 	e.working = true
 	return e.export, nil
@@ -244,7 +247,9 @@ func (e *SnapshotSend) finish(err error, ready bool, m raftlog.ApplicationSnapsh
 			err = raftlog.ErrClosed
 		}
 	}
-	d.unlock()
+	owner := e.pageOwner
+	e.pageOwner = nil
+	_, err = d.finishEvent(owner, Output{}, err)
 	return err
 }
 
@@ -333,18 +338,21 @@ func (e *SnapshotSend) Next(ctx context.Context, b raftlog.ReadBudget) (raftlog.
 // SealSnapshotSend enables the next callback to consume this exact verified
 // unbound owner. No scan/image copy occurs under Driver.mu. A later publication
 // does not move it. Raft retry is required; Seal itself does not send a message.
-func (d *Driver) SealSnapshotSend(e *SnapshotSend) error {
+func (d *Driver) SealSnapshotSend(e *SnapshotSend) (err error) {
 	if d == nil {
 		return ErrInvalid
 	}
 	d.mu.Lock()
-	defer d.unlock()
+	owner, err := d.beginEvent()
+	if err != nil {
+		_, err = d.failEventAdmission(err)
+		return err
+	}
+	defer func() { _, err = d.finishEvent(owner, Output{}, err) }()
 	if err := e.liveLocked(d); err != nil {
 		return err
 	}
-	if err := d.check(); err != nil {
-		return err
-	}
+
 	status := d.raw.BasicStatus()
 	if status.RaftState != raft.StateLeader || status.GetTerm() != e.originTerm {
 		d.detachSnapshotSend(e)
@@ -399,18 +407,20 @@ func (d *Driver) bindSnapshotSend(m *pb.Message) (*SnapshotSend, error) {
 // ReportSnapshotSend applies feedback only to this incarnation/offer/peer/term.
 // Success requires final replay; stale feedback cannot affect a replacement.
 // The caller still decides whether receiver delivery actually succeeded.
-func (d *Driver) ReportSnapshotSend(e *SnapshotSend, success bool) (Output, error) {
+func (d *Driver) ReportSnapshotSend(e *SnapshotSend, success bool) (out Output, err error) {
 	if d == nil {
 		return Output{}, ErrInvalid
 	}
 	d.mu.Lock()
-	defer d.unlock()
+	owner, err := d.beginEvent()
+	if err != nil {
+		return d.failEventAdmission(err)
+	}
+	defer func() { out, err = d.finishEvent(owner, out, err) }()
 	if err := e.liveLocked(d); err != nil {
 		return Output{}, err
 	}
-	if err := d.check(); err != nil {
-		return Output{}, err
-	}
+
 	status := d.raw.BasicStatus()
 	if !e.bound || status.RaftState != raft.StateLeader || status.GetTerm() != e.term || success && !e.final {
 		return Output{}, ErrInvalid
@@ -463,6 +473,10 @@ func (d *Driver) revokeSnapshotSends() {
 // unlock releases Store-backed owners only after Driver.mu is released. Slots
 // stay charged until cleanup finishes, including canceled in-flight pages.
 func (d *Driver) unlock() {
+	if d.event != nil {
+		d.mu.Unlock()
+		return
+	}
 	if d.snapshotSender == nil {
 		d.mu.Unlock()
 		return
@@ -476,21 +490,7 @@ func (d *Driver) unlock() {
 		for _, e := range pending[:count] {
 			err := e.export.Close()
 			d.mu.Lock()
-			e.export = nil
-			e.manifest = raftlog.ApplicationSnapshotManifest{}
-			e.snapshot = nil
-			e.descriptor = nil
-			d.snapshotSender.ownedBytes -= e.ownedBytes
-			e.ownedBytes = 0
-			d.snapshotSender.offers[e.slot] = nil
-			e.closeErr = err
-			close(e.done)
-			if err != nil {
-				d.snapshotSender.cleanupErr = errors.Join(d.snapshotSender.cleanupErr, err)
-				d.snapshotSender.captureFailure(err)
-				d.stopped = errors.Join(d.stopped, err)
-				d.revokeSnapshotSends()
-			}
+			d.completeSnapshotCleanup(e, err)
 			d.mu.Unlock()
 		}
 		d.mu.Lock()
@@ -522,7 +522,11 @@ func (e *SnapshotSend) Close() error {
 	}
 	d.detachSnapshotSend(e)
 	done := e.done
-	d.unlock()
+	if d.event == nil {
+		_, _ = d.finishEvent(d.beginCleanup(), Output{}, nil)
+	} else {
+		d.mu.Unlock()
+	}
 	<-done
 	return e.closeErr
 }

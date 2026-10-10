@@ -9,6 +9,7 @@ import (
 	"errors"
 	"math"
 	"reflect"
+	"slices"
 	"sync"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
@@ -59,7 +60,8 @@ type Machine interface {
 // ApplicationMachine stages private bytes for the same-store durable KV/root
 // capability. Stage must honor the supplied budget before allocating output;
 // storage rechecks framing and totals. Restore publishes only the synced root.
-// This provisional integration is restricted to a durable singleton voter.
+// Unbound mode remains singleton-only; semantic-bound RLM6 supports its exact
+// fixed three voters and prepared snapshot protocol. Configuration changes stay closed.
 type ApplicationMachine interface {
 	Restore(index uint64, image []byte) error
 	Stage(Entry, raftlog.ApplicationBudget) (raftlog.ApplicationBatch, error)
@@ -67,7 +69,8 @@ type ApplicationMachine interface {
 
 // Packet is owned serialized consensus traffic. The embedding application may
 // deliver/drop/duplicate/reorder it after the method returns. Snapshot delivery
-// failure must be reported through ReportSnapshot; enqueue is not durable receipt.
+// failure uses ReportSnapshot in scalar mode or the exact SnapshotSend owner in
+// bound application mode; enqueue is not durable receipt.
 type Packet struct {
 	From, To uint64
 	Payload  []byte
@@ -113,6 +116,10 @@ type Config struct {
 type Driver struct {
 	mu                 sync.Mutex
 	snapshotSender     *applicationSnapshotSender
+	binding            raftlog.ApplicationBinding
+	event              *applicationEvent
+	closeOwner         *applicationClose
+	claimCleanupErr    error
 	raw                *raft.RawNode
 	store              *raftlog.Store
 	machine            Machine
@@ -177,11 +184,30 @@ func Open(c Config) (*Driver, error) {
 	if err := c.ApplicationSnapshotSends.validate(c); err != nil {
 		return nil, err
 	}
-	index, image, err := c.Store.Checkpoint()
-	if err != nil {
-		return nil, err
+	binding := c.Store.ApplicationBinding()
+	var hard *pb.HardState
+	var cs *pb.ConfState
+	var index uint64
+	var image []byte
+	var err error
+	if binding != (raftlog.ApplicationBinding{}) {
+		hard, cs, err = c.Store.InitialState()
+		if err != nil {
+			return nil, err
+		}
+		if err = ValidateApplicationMachineBinding(binding, c.ApplicationMachine); err != nil {
+			return nil, err
+		}
+		if c.ApplicationSnapshotSends == (ApplicationSnapshotSendLimits{}) {
+			return nil, ErrInvalid
+		}
+		index, image, err = c.Store.Checkpoint()
+	} else {
+		index, image, err = c.Store.Checkpoint()
+		if err == nil {
+			hard, cs, err = c.Store.InitialState()
+		}
 	}
-	hard, cs, err := c.Store.InitialState()
 	if err != nil {
 		return nil, err
 	}
@@ -189,8 +215,17 @@ func Open(c Config) (*Driver, error) {
 		return nil, ErrLimit
 	}
 	app := c.Store.ApplicationLimits()
-	if app.Enabled() != !isNilMachine(c.ApplicationMachine) || app.Enabled() && (c.ID != app.LocalVoter || len(cs.GetVoters()) != 1 || cs.GetVoters()[0] != c.ID || len(cs.GetVotersOutgoing()) != 0 || len(cs.GetLearners()) != 0 || len(cs.GetLearnersNext()) != 0 || cs.GetAutoLeave()) {
+	if app.Enabled() != !isNilMachine(c.ApplicationMachine) {
 		return nil, ErrInvalid
+	}
+	if app.Enabled() {
+		voters := 1
+		if binding != (raftlog.ApplicationBinding{}) {
+			voters = 3
+		}
+		if c.ID != app.LocalVoter || len(cs.GetVoters()) != voters || !slices.Contains(cs.GetVoters(), c.ID) || len(cs.GetVotersOutgoing()) != 0 || len(cs.GetLearners()) != 0 || len(cs.GetLearnersNext()) != 0 || cs.GetAutoLeave() {
+			return nil, ErrInvalid
+		}
 	}
 	if len(cs.GetVoters()) == 0 {
 		return nil, ErrInvalid
@@ -204,7 +239,7 @@ func Open(c Config) (*Driver, error) {
 	if restoreErr != nil {
 		return nil, restoreErr
 	}
-	d := &Driver{store: c.Store, machine: c.Machine, applicationMachine: c.ApplicationMachine, config: c, applied: index, conf: cs, reads: make(map[string]*pendingRead)}
+	d := &Driver{binding: binding, store: c.Store, machine: c.Machine, applicationMachine: c.ApplicationMachine, config: c, applied: index, conf: cs, reads: make(map[string]*pendingRead)}
 	if _, err := rand.Read(d.readNonce[:]); err != nil {
 		return nil, err
 	}
@@ -222,6 +257,9 @@ func Open(c Config) (*Driver, error) {
 }
 
 func (d *Driver) check() error {
+	if d.event != nil && !d.event.rawPhase {
+		return ErrUnavailable
+	}
 	if d.stopped != nil {
 		return errors.Join(ErrStopped, d.stopped)
 	}
@@ -248,24 +286,26 @@ func (d *Driver) stop(err error) (Output, error) {
 
 // Tick advances one logical liveness tick and processes resulting work.
 // At the finite term ceiling it returns ErrLimit before election advancement.
-func (d *Driver) Tick() (Output, error) {
+func (d *Driver) Tick() (out Output, err error) {
 	d.mu.Lock()
-	defer d.unlock()
-	if err := d.check(); err != nil {
-		return Output{}, err
+	owner, err := d.beginEvent()
+	if err != nil {
+		return d.failEventAdmission(err)
 	}
+	defer func() { out, err = d.finishEvent(owner, out, err) }()
 	d.raw.Tick()
 	return d.drain()
 }
 
 // Campaign asks the established consensus implementation to run an election.
 // At the finite term ceiling it returns ErrLimit before advancing RawNode.
-func (d *Driver) Campaign() (Output, error) {
+func (d *Driver) Campaign() (out Output, err error) {
 	d.mu.Lock()
-	defer d.unlock()
-	if err := d.check(); err != nil {
-		return Output{}, err
+	owner, err := d.beginEvent()
+	if err != nil {
+		return d.failEventAdmission(err)
 	}
+	defer func() { out, err = d.finishEvent(owner, out, err) }()
 	if err := d.raw.Campaign(); err != nil {
 		return Output{}, err
 	}
@@ -274,12 +314,13 @@ func (d *Driver) Campaign() (Output, error) {
 
 // Propose accepts a proposal only. It does NOT return a graph commit receipt;
 // proposals can be dropped/lost and application request-key recovery is required.
-func (d *Driver) Propose(data []byte) (Output, error) {
+func (d *Driver) Propose(data []byte) (out Output, err error) {
 	d.mu.Lock()
-	defer d.unlock()
-	if err := d.check(); err != nil {
-		return Output{}, err
+	owner, err := d.beginEvent()
+	if err != nil {
+		return d.failEventAdmission(err)
 	}
+	defer func() { out, err = d.finishEvent(owner, out, err) }()
 	if len(data) > d.config.Limits.MaxEntryBytes-74 {
 		return Output{}, ErrLimit
 	}
@@ -301,14 +342,33 @@ func (d *Driver) Propose(data []byte) (Output, error) {
 // It also rejects local-message injection and mismatched transport identities.
 // MaxUint64 transport terms are unsupported; a TimeoutNow that would elect
 // beyond the finite ceiling returns ErrLimit before any term/state change.
-func (d *Driver) Step(p Packet) (Output, error) {
+func (d *Driver) Step(p Packet) (out Output, err error) {
 	d.mu.Lock()
-	defer d.unlock()
-	if err := d.check(); err != nil {
-		return Output{}, err
+	var owner *applicationEvent
+	if d.boundApplication() {
+		owner, err = d.beginPacketEvent()
+	} else {
+		owner, err = d.beginEvent()
 	}
+	if err != nil {
+		return d.failEventAdmission(err)
+	}
+	defer func() { out, err = d.finishEvent(owner, out, err) }()
 	if d.applicationMachine != nil {
-		return Output{}, ErrInvalid
+		if !d.boundApplication() {
+			return Output{}, ErrInvalid
+		}
+		m, err := d.decodeBoundPacket(p, false)
+		if err != nil {
+			return Output{}, err
+		}
+		if err := d.validateBoundMessage(m, false); err != nil {
+			return Output{}, err
+		}
+		if err := d.raw.Step(m); err != nil {
+			return Output{}, err
+		}
+		return d.drain()
 	}
 	if len(p.Payload) > d.config.MaxPacketBytes {
 		return Output{}, ErrLimit
@@ -394,12 +454,13 @@ func isNilMachine(m any) bool {
 // Forwarded network reads are rejected. Outstanding requests are bounded BEFORE
 // RawNode; repeating an eligible pending context reissues its unique token.
 // A leader change drops pending requests without producing any certificate.
-func (d *Driver) ReadIndex(context []byte) (Output, error) {
+func (d *Driver) ReadIndex(context []byte) (out Output, err error) {
 	d.mu.Lock()
-	defer d.unlock()
-	if err := d.check(); err != nil {
-		return Output{}, err
+	owner, err := d.beginEvent()
+	if err != nil {
+		return d.failEventAdmission(err)
 	}
+	defer func() { out, err = d.finishEvent(owner, out, err) }()
 	if len(context) > 1024 {
 		return Output{}, ErrLimit
 	}
@@ -444,12 +505,14 @@ func (d *Driver) ReadIndex(context []byte) (Output, error) {
 // or a leader change, because RawNode cannot remove an in-flight request safely.
 // Quorum loss therefore backpressures further distinct requests; it never grows
 // an unbounded hidden queue or returns a stale certificate.
-func (d *Driver) CancelReadIndex(context []byte) error {
+func (d *Driver) CancelReadIndex(context []byte) (err error) {
 	d.mu.Lock()
-	defer d.unlock()
-	if err := d.check(); err != nil {
+	owner, err := d.beginEvent()
+	if err != nil {
+		_, err = d.failEventAdmission(err)
 		return err
 	}
+	defer func() { _, err = d.finishEvent(owner, Output{}, err) }()
 	for _, r := range d.reads {
 		if bytes.Equal(r.user, context) {
 			r.cancelled = true
@@ -460,13 +523,17 @@ func (d *Driver) CancelReadIndex(context []byte) error {
 }
 
 // ReportUnreachable supplies failed network-delivery feedback.
-func (d *Driver) ReportUnreachable(id uint64) (Output, error) {
+func (d *Driver) ReportUnreachable(id uint64) (out Output, err error) {
 	d.mu.Lock()
-	defer d.unlock()
-	if err := d.check(); err != nil {
-		return Output{}, err
+	owner, err := d.beginEvent()
+	if err != nil {
+		return d.failEventAdmission(err)
 	}
-	if d.applicationMachine != nil {
+	defer func() { out, err = d.finishEvent(owner, out, err) }()
+	if d.applicationMachine != nil && !d.boundApplication() {
+		return Output{}, ErrInvalid
+	}
+	if d.boundApplication() && (id == d.config.ID || !slices.Contains(d.conf.Voters, id)) {
 		return Output{}, ErrInvalid
 	}
 	d.raw.ReportUnreachable(id)
@@ -474,12 +541,13 @@ func (d *Driver) ReportUnreachable(id uint64) (Output, error) {
 }
 
 // ReportSnapshot supplies snapshot delivery/application feedback.
-func (d *Driver) ReportSnapshot(id uint64, success bool) (Output, error) {
+func (d *Driver) ReportSnapshot(id uint64, success bool) (out Output, err error) {
 	d.mu.Lock()
-	defer d.unlock()
-	if err := d.check(); err != nil {
-		return Output{}, err
+	owner, err := d.beginEvent()
+	if err != nil {
+		return d.failEventAdmission(err)
 	}
+	defer func() { out, err = d.finishEvent(owner, out, err) }()
 	if d.applicationMachine != nil || d.snapshotSender != nil {
 		return Output{}, ErrInvalid
 	}
@@ -492,12 +560,13 @@ func (d *Driver) ReportSnapshot(id uint64, success bool) (Output, error) {
 }
 
 // TransferLeader requests a consensus leadership transfer.
-func (d *Driver) TransferLeader(id uint64) (Output, error) {
+func (d *Driver) TransferLeader(id uint64) (out Output, err error) {
 	d.mu.Lock()
-	defer d.unlock()
-	if err := d.check(); err != nil {
-		return Output{}, err
+	owner, err := d.beginEvent()
+	if err != nil {
+		return d.failEventAdmission(err)
 	}
+	defer func() { out, err = d.finishEvent(owner, out, err) }()
 	if d.applicationMachine != nil {
 		return Output{}, ErrInvalid
 	}
@@ -508,12 +577,13 @@ func (d *Driver) TransferLeader(id uint64) (Output, error) {
 // ProposeConfChange checks V1/V2 schema before admission. The leader checks
 // resulting membership with the library changer; lagging followers may forward
 // against a newer leader membership. Ownership moves remain an application protocol.
-func (d *Driver) ProposeConfChange(change pb.ConfChangeI) (Output, error) {
+func (d *Driver) ProposeConfChange(change pb.ConfChangeI) (out Output, err error) {
 	d.mu.Lock()
-	defer d.unlock()
-	if err := d.check(); err != nil {
-		return Output{}, err
+	owner, err := d.beginEvent()
+	if err != nil {
+		return d.failEventAdmission(err)
 	}
+	defer func() { out, err = d.finishEvent(owner, out, err) }()
 	if d.applicationMachine != nil {
 		return Output{}, ErrInvalid
 	}
@@ -617,16 +687,31 @@ func (d *Driver) drain() (Output, error) {
 		if err := d.checkApplicationReady(rd); err != nil {
 			return d.stop(err)
 		}
-		if err := d.store.Persist(rd); err != nil {
-			return d.stop(err)
-		}
-		if !raft.IsEmptySnap(rd.Snapshot) {
-			idx := rd.Snapshot.GetMetadata().GetIndex()
-			if err := d.machine.Restore(idx, bytes.Clone(rd.Snapshot.GetData())); err != nil {
+		if d.boundApplication() && !raft.IsEmptySnap(rd.Snapshot) {
+			if d.event == nil || d.event.claim == nil {
+				return d.stop(ErrInvalid)
+			}
+			root, err := d.store.PersistApplicationReady(rd, d.event.claim)
+			if err != nil {
 				return d.stop(err)
 			}
-			d.applied = idx
+			if err := d.applicationMachine.Restore(root.Index, root.Image); err != nil {
+				return d.stop(err)
+			}
+			d.applied = root.Index
 			d.conf = proto.Clone(rd.Snapshot.GetMetadata().GetConfState()).(*pb.ConfState)
+		} else {
+			if err := d.store.Persist(rd); err != nil {
+				return d.stop(err)
+			}
+			if !raft.IsEmptySnap(rd.Snapshot) {
+				idx := rd.Snapshot.GetMetadata().GetIndex()
+				if err := d.machine.Restore(idx, bytes.Clone(rd.Snapshot.GetData())); err != nil {
+					return d.stop(err)
+				}
+				d.applied = idx
+				d.conf = proto.Clone(rd.Snapshot.GetMetadata().GetConfState()).(*pb.ConfState)
+			}
 		}
 		for _, e := range rd.CommittedEntries {
 			if e.GetIndex() <= d.applied {
@@ -693,6 +778,10 @@ func (d *Driver) drain() (Output, error) {
 			}
 		}
 		for _, m := range rd.Messages {
+			envelope := 0
+			if d.boundApplication() {
+				envelope = applicationPacketHeaderBytes
+			}
 			ordinaryLimit := d.config.MaxOutputBytes
 			if d.snapshotSender != nil {
 				ordinaryLimit -= d.snapshotSender.policy.MaxOffers * snapshotSendOutputBytes
@@ -709,23 +798,37 @@ func (d *Driver) drain() (Output, error) {
 					if err != nil {
 						return d.stop(err)
 					}
-					out.Packets = append(out.Packets, Packet{From: m.GetFrom(), To: m.GetTo(), Payload: b, Snapshot: true})
+					packet := Packet{From: m.GetFrom(), To: m.GetTo(), Payload: b, Snapshot: true}
+					if d.boundApplication() {
+						packet, err = EncodeApplicationPacket(d.binding, packet, d.config.MaxPacketBytes)
+						if err != nil {
+							return d.stop(err)
+						}
+					}
+					out.Packets = append(out.Packets, packet)
 					continue
 				}
 			}
 			n := proto.Size(m)
-			if n > d.config.MaxPacketBytes || n > ordinaryLimit-used {
+			if n+envelope > d.config.MaxPacketBytes || n+envelope > ordinaryLimit-used {
 				return d.stop(ErrLimit)
 			}
 			b, err := proto.Marshal(m)
 			if err != nil {
 				return d.stop(err)
 			}
-			if len(b) > d.config.MaxPacketBytes || len(b) > ordinaryLimit-used {
+			if len(b)+envelope > d.config.MaxPacketBytes || len(b)+envelope > ordinaryLimit-used {
 				return d.stop(ErrLimit)
 			}
-			used += len(b)
-			out.Packets = append(out.Packets, Packet{From: m.GetFrom(), To: m.GetTo(), Payload: b, Snapshot: m.GetType() == pb.MsgSnap})
+			packet := Packet{From: m.GetFrom(), To: m.GetTo(), Payload: b, Snapshot: m.GetType() == pb.MsgSnap}
+			if d.boundApplication() {
+				packet, err = EncodeApplicationPacket(d.binding, packet, d.config.MaxPacketBytes)
+				if err != nil {
+					return d.stop(err)
+				}
+			}
+			used += len(packet.Payload)
+			out.Packets = append(out.Packets, packet)
 		}
 		for _, r := range rd.ReadStates {
 			if pending := d.reads[string(r.RequestCtx)]; pending != nil {
@@ -757,12 +860,14 @@ func (d *Driver) drain() (Output, error) {
 
 // SaveCheckpoint makes the machine's image and exact applied membership durable.
 // It does not reclaim history or create a graph cut. A failure stops this driver.
-func (d *Driver) SaveCheckpoint() error {
+func (d *Driver) SaveCheckpoint() (err error) {
 	d.mu.Lock()
-	defer d.unlock()
-	if err := d.check(); err != nil {
+	owner, err := d.beginEvent()
+	if err != nil {
+		_, err = d.failEventAdmission(err)
 		return err
 	}
+	defer func() { _, err = d.finishEvent(owner, Output{}, err) }()
 	if d.applicationMachine != nil {
 		index, _, err := d.store.Checkpoint()
 		if err == nil && index != d.applied {
@@ -791,6 +896,9 @@ func (d *Driver) Applied() uint64 { d.mu.Lock(); defer d.unlock(); return d.appl
 
 // Close stops the driver and closes its store; it deliberately does not checkpoint.
 func (d *Driver) Close() error {
+	if d.fencedApplication() {
+		return d.closeApplication()
+	}
 	d.mu.Lock()
 	if d.stopped == nil {
 		d.stopped = ErrStopped
@@ -842,7 +950,7 @@ func (d *Driver) checkApplicationReady(rd raft.Ready) error {
 	if d.applicationMachine == nil {
 		return nil
 	}
-	if !raft.IsEmptySnap(rd.Snapshot) {
+	if !raft.IsEmptySnap(rd.Snapshot) && (!d.boundApplication() || d.event == nil || d.event.claim == nil) {
 		return ErrInvalid
 	}
 	for _, e := range rd.Entries {
@@ -855,7 +963,7 @@ func (d *Driver) checkApplicationReady(rd raft.Ready) error {
 			return ErrInvalid
 		}
 	}
-	if len(rd.Messages) != 0 {
+	if len(rd.Messages) != 0 && !d.boundApplication() {
 		return ErrInvalid
 	}
 	return nil
