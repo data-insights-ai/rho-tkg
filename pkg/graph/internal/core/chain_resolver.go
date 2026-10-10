@@ -2,7 +2,6 @@ package core
 
 import (
 	"cmp"
-	"math"
 	"slices"
 
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -53,6 +52,9 @@ import (
 //   - Predicate-anywhere interval matching: a version that satisfied the
 //     predicate during ANY part of [start, end) is found even when a later
 //     overlapping version no longer matches (rule 16), in resolveNodeChainDuring.
+//   - Retracted lives (backlog 43): every row of a life a retraction recorded
+//     by the pin ended is dropped before selection (dropRetractedLives) — the
+//     life answers at no valid time and shapes no other life's answer.
 //   - The as-of retraction rule: if the decisive newest belief was already
 //     retracted/deleted by the pin, the entity is ABSENT — never fall through to
 //     an older open row (lesson 62). Both the newest-belief-by-version selection
@@ -187,25 +189,7 @@ func selectAsOfChain[T storeutil.TemporalRow](chain []T, pin types.Instant, last
 // row's life is the span up to the first delete recorded at or after it, so a
 // re-imported ID's later rows (recorded after the delete) are not capped. A
 // nil map caps nothing.
-//
-// A retraction (backlog 43: a tombstone marked Retracted) caps its life at
-// retractedLife, before every valid instant: the life it ends answers at no
-// valid time. The chain is TxAt-filtered and normalized, so the tombstone
-// still carries its delete only at pins at or after the retraction; at an
-// earlier pin it is an ordinary row and nothing is capped.
 type lifeEnds[T comparable] map[T]types.Instant
-
-// retractedLife is the life end of a retracted life: every valid end is
-// capped to it, so no row of the life covers any instant (end) and every
-// interval of the life is empty (cut).
-const retractedLife = types.Instant(math.MinInt64)
-
-// chainDeath is one delete a chain holds: its instant and whether it was a
-// retraction.
-type chainDeath struct {
-	at        types.Instant
-	retracted bool
-}
 
 // chainLifeEnds builds the lifeEnds of a (TxAt-filtered, tombstone-normalized)
 // chain: nil when no row carries a DeletedAt.
@@ -213,32 +197,72 @@ func chainLifeEnds[T interface {
 	comparable
 	storeutil.TemporalRow
 }](chain []T) lifeEnds[T] {
-	var deaths []chainDeath
+	var deaths []types.Instant
 	for _, r := range chain {
 		if tm := r.Temporal(); tm != nil && tm.DeletedAt != 0 {
-			deaths = append(deaths, chainDeath{at: tm.DeletedAt, retracted: tm.Retracted})
+			deaths = append(deaths, tm.DeletedAt)
 		}
 	}
 	if len(deaths) == 0 {
 		return nil
 	}
-	slices.SortFunc(deaths, func(a, b chainDeath) int { return cmp.Compare(a.at, b.at) })
+	slices.Sort(deaths)
 	caps := make(lifeEnds[T], len(chain))
 	for _, r := range chain {
 		var recorded types.Instant
 		if tm := r.Temporal(); tm != nil {
 			recorded = tm.TxFrom
 		}
-		i, _ := slices.BinarySearchFunc(deaths, recorded, func(d chainDeath, t types.Instant) int { return cmp.Compare(d.at, t) })
-		if i < len(deaths) {
-			if deaths[i].retracted {
-				caps[r] = retractedLife
-			} else {
-				caps[r] = deaths[i].at
-			}
+		if i, _ := slices.BinarySearch(deaths, recorded); i < len(deaths) {
+			caps[r] = deaths[i]
 		}
 	}
 	return caps
+}
+
+// chainDeath is one delete a chain holds: its instant and whether it was a
+// retraction (backlog 43).
+type chainDeath struct {
+	at        types.Instant
+	retracted bool
+}
+
+// dropRetractedLives removes from a TxAt-filtered, tombstone-normalized chain
+// every row of a life a retraction ended (backlog 43): the tombstone marked
+// Retracted — it still carries its delete only when the retraction was
+// recorded by the pin, the normalizer removed every later one — and every row
+// whose life it ends by chainLifeEnds' rule (the first delete recorded at or
+// after the row). A retracted life was never true: its rows cover no valid
+// instant AND shape no other row's answer — no positional end, no
+// supersession of an earlier life (a cap would keep both). Rows keep their
+// order (the resolver classifies by it, lesson 73). A chain without a
+// recorded retraction is returned as is, without allocation.
+func dropRetractedLives[T storeutil.TemporalRow](chain []T) []T {
+	var deaths []chainDeath
+	retracted := false
+	for _, r := range chain {
+		if tm := r.Temporal(); tm != nil && tm.DeletedAt != 0 {
+			deaths = append(deaths, chainDeath{at: tm.DeletedAt, retracted: tm.Retracted})
+			retracted = retracted || tm.Retracted
+		}
+	}
+	if !retracted {
+		return chain
+	}
+	slices.SortFunc(deaths, func(a, b chainDeath) int { return cmp.Compare(a.at, b.at) })
+	out := make([]T, 0, len(chain))
+	for _, r := range chain {
+		var recorded types.Instant
+		if tm := r.Temporal(); tm != nil {
+			recorded = tm.TxFrom
+		}
+		i, _ := slices.BinarySearchFunc(deaths, recorded, func(d chainDeath, t types.Instant) int { return cmp.Compare(d.at, t) })
+		if i < len(deaths) && deaths[i].retracted {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
 }
 
 // end caps a row's valid end at its life end (0 = open).
@@ -268,7 +292,7 @@ func (c *Core) resolveNodeChain(chain []*types.Node, probe chainProbe, pred func
 	if probe.kind == probeAsOf {
 		return c.resolveNodeChainAsOf(chain, probe.tx, probe.asOfCurrent)
 	}
-	chain = filterNodeChainByTxAt(versionOrdered(chain), probe.tx)
+	chain = dropRetractedLives(filterNodeChainByTxAt(versionOrdered(chain), probe.tx))
 	if len(chain) == 0 {
 		return nil, storepkg.ErrNoVersionValidAt
 	}
@@ -354,7 +378,7 @@ func (c *Core) resolveRelChain(chain []*types.Relationship, probe chainProbe, pr
 	if probe.kind == probeAsOf {
 		return c.resolveRelChainAsOf(chain, probe.tx, probe.asOfCurrent)
 	}
-	chain = filterRelChainByTxAt(versionOrdered(chain), probe.tx)
+	chain = dropRetractedLives(filterRelChainByTxAt(versionOrdered(chain), probe.tx))
 	if len(chain) == 0 {
 		return nil, storepkg.ErrNoVersionValidAt
 	}
