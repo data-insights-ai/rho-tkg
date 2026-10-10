@@ -350,41 +350,79 @@ func (q *pageStage) stageRaw(patch graphstate.ComponentPatch) error {
 // catalog/page/index/ordered CDC effect in one operation. It accepts no Delta,
 // supplies no grant/request admission and never installs or advances semantics.
 func StageOperations(ctx context.Context, c *Catalog, ops []graphstate.Operation, revision state.Revision, l GraphLimits) (GraphEffects, error) {
+	effects, _, err := stageOperations(ctx, c, ops, revision, l, nil)
+	return effects, err
+}
+
+func stageOperations(ctx context.Context, c *Catalog, ops []graphstate.Operation, revision state.Revision, l GraphLimits, guard *SemanticGuard) (effects GraphEffects, work PageWork, err error) {
 	if c == nil || ctx == nil {
-		return GraphEffects{}, ErrInvalid
+		return GraphEffects{}, PageWork{}, ErrInvalid
 	}
-	l, err := l.resolve()
+	l, err = l.resolve()
 	if err != nil {
-		return GraphEffects{}, err
+		return GraphEffects{}, PageWork{}, err
 	}
 	if l.MaxOutputBytes < 512+c.rootImageBytes {
-		return GraphEffects{}, ErrResourceLimit
+		return GraphEffects{}, PageWork{}, ErrResourceLimit
+	}
+	if guard != nil {
+		if err := guard.validate(); err != nil {
+			return GraphEffects{}, PageWork{}, err
+		}
+		if semanticGuardWorkBytes > l.MaxOutputBytes-(512+c.rootImageBytes) {
+			return GraphEffects{}, PageWork{}, ErrResourceLimit
+		}
+		l.MaxOutputBytes -= semanticGuardWorkBytes
 	}
 	v, err := OpenReadView(ctx, c, l)
 	if err != nil {
-		return GraphEffects{}, err
+		return GraphEffects{}, PageWork{}, err
 	}
-	defer func() { _ = v.Close() }()
+	var stagedWork PageWork
+	defer func() {
+		work = addWork(v.Work(), stagedWork)
+		_ = v.Close()
+		if err != nil {
+			effects = GraphEffects{}
+		}
+	}()
+	if guard != nil {
+		if err := v.inputCost(semanticGuardMetadataBytes); err != nil {
+			return GraphEffects{}, PageWork{}, err
+		}
+		if err := ctx.Err(); err != nil {
+			return GraphEffects{}, PageWork{}, err
+		}
+		if err := guard.compare(c.root); err != nil {
+			return GraphEffects{}, PageWork{}, err
+		}
+	}
 	owned, err := cloneOperations(ctx, v, ops)
 	if err != nil {
-		return GraphEffects{}, err
+		return GraphEffects{}, PageWork{}, err
 	}
 	stagePages := l.Pages
 	rows, bytes := v.remaining()
 	stagePages.MaxWorkRecords = min(stagePages.MaxWorkRecords, rows)
 	stagePages.MaxWorkBytes = min(stagePages.MaxWorkBytes, bytes)
 	if stagePages.MaxWorkBytes < c.rootImageBytes+fullStageMetadataBytes {
-		return GraphEffects{}, ErrResourceLimit
+		return GraphEffects{}, PageWork{}, ErrResourceLimit
 	}
 	s, err := newFullStage(ctx, c, v.descriptor, stagePages)
 	if err != nil {
-		return GraphEffects{}, err
+		return GraphEffects{}, PageWork{}, err
 	}
 	defer func() { _ = s.Close() }()
 	var delta graphstate.Delta
 	var groups []ComponentChangeGroup
-	var work PageWork
 	err = s.operation(ctx, func(base *reader) error {
+		var pages *pageReader
+		defer func() {
+			if pages != nil {
+				stagedWork = pages.work
+			}
+			stagedWork.Records, stagedWork.Bytes = base.rows, base.bytes
+		}()
 		// Reserve the already charged staging authority while Plan uses this view.
 		reserved := base.bytes
 		original := v.limits.MaxSourceBytes
@@ -402,6 +440,7 @@ func StageOperations(ctx context.Context, c *Catalog, ops []graphstate.Operation
 		base.denyReads = base.maxRows == 0
 		p := pageStage{&pageReader{q: base, limits: stagePages}, c.root}
 		p.allocation = &p.root
+		pages = p.pageReader
 		if err := p.budget(); err != nil {
 			return err
 		}
@@ -530,7 +569,11 @@ func StageOperations(ctx context.Context, c *Catalog, ops []graphstate.Operation
 		return nil
 	})
 	if err != nil {
-		return GraphEffects{}, err
+		return GraphEffects{}, PageWork{}, err
 	}
-	return fullEffects(s, v.base, delta, groups, work, l)
+	effects, err = fullEffects(s, v.base, delta, groups, work, l)
+	if err == nil && guard != nil {
+		effects.OwnedBytes += semanticGuardWorkBytes
+	}
+	return effects, work, err
 }
