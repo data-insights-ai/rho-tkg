@@ -74,8 +74,8 @@ and reference JSON specify contracts/evidence, not completed engine gates.
 | Phase | Status and remaining acceptance evidence |
 |---|---|
 | V0 | Specification accepted: independent criterion review and refreshed reference/design checks pass. Contracts, profile/unit/import policy, current-v4 delta and reproducible resource/dataset test profiles are reviewed below. Implementation, consumer execution and measured capacity retain their separate phase gates |
-| V1 | Values/state accepted: unchanged 16/52 and revised rho-owned cases pass through typed primitives and `Plan`/`Project`, including immutable interpretation/native-axis roles, attached descriptor/source-revision history, graph-qualified refusals, independent state/complete-CDC capacity assertions and the pure Q/ms default-axis binding. Node/relationship retained-view exact sets, boundary/differential/fuzz/codec refusals and direct new-method coverage pass. Durable default registration, request/dependency installation and graph/cut integration remain V2; consumer adapters V4 and provenance-aware import V6 |
-| V2 | Candidate Raft/Pebble log/replica adapter independently validated as an adapter only. Bounded idalloc primitive independently validated on Go 1.26.9 (99.3% coverage; eight source/config hashes match). Bounded two-group transaction correctness prototype accepted (`92312ae`; independent 24-source/config checks, scoped combined coverage 86.3%). Six-process crash-functional slice accepted (`f3a1ee7`); power-loss/multi-host durability and global cross-process cut transport stay open. Full graph transaction/cut integration and serial-history oracle, production graph identity reuse/fencing, application GC, end-to-end Driver snapshot activation and Raft application multi-voter integration, physical-host durability, comparative costs/faults and engine selection remain open |
+| V1 | Values/state accepted: unchanged 16/52 and revised rho-owned cases pass through typed primitives and `Plan`/`Project`, including immutable interpretation/native-axis roles, attached descriptor/source-revision history, graph-qualified refusals, independent state/complete-CDC capacity assertions and the pure Q/ms default-axis binding. Node/relationship retained-view exact sets, boundary/differential/fuzz/codec refusals and direct new-method coverage pass. Durable default registration is covered by the V2 checkpoint below; request/dependency installation and graph/cut integration remain V2, consumer adapters V4 and provenance-aware import V6 |
+| V2 | Active, not accepted. Durable replicated graph history and actual three-voter snapshot activation exist for sole-partition graphs; the six-process graph fixture uses two distinct graphs. Same-graph declared-partition initialization, durable default-axis designation and shared allocation exist, but those partitions refuse graph mutations. The separately validated two-group transaction/cut prototype operates on scalar values. Remaining work connects actual graph dependencies/effects to durable prepare/decision/resolve and certified graph reads, then proves ownership transfer, recovery and the independent serial-history/cut oracle. Production identity reuse/fencing, application GC, physical-host durability and comparable transactional-KV fault/cost evidence with an explicit engine decision remain open |
 | V3 | Coordinate timeblock candidate independently validated (local commit `fa0c982`; scoped temporal+block coverage 95.7%, no exported method at 0%). Full engine seal/merge/recovery, paged structures and all-in budget/byte-ledger measurements remain open; resident-buffer prototype timings do not close V3 |
 | V4 | Production read/change APIs, historical cross-door parity, gap-free leased feed handoff and pinned sigma access-contract build and nonempty mutation-then-historical tests (the current signature/empty smoke is insufficient) |
 | V5 | Distributed access across 1/2/4/8 partitions, cross-edge/stall/rebalance/feed cases and sigma workload parity |
@@ -117,9 +117,41 @@ The final validation input manifest is SHA-256
 `635a1e46131227dffd014f7da133d251fadabf1ae79d4052db4823ee14a0b2c3`;
 the coalesced coverage profile is
 `e072d3037d7aa8b6ef7b90048f872bad1e53bbbb77daefec3ec05284d0de7ba2`.
-These close V1 only. Full hosted repository CI, engine/distributed integration,
-consumer execution and measured capacity retain their later acceptance gates.
-V2 is the next implementation phase; V3–V7 stay held until their predecessors close.
+These close V1 only. Hosted [CI run 38073307322](https://github.com/data-insights-ai/rho-tkg/actions/runs/38073307322)
+also passes on `725a8b78`, including both modules' race, security and coverage
+jobs; push-only lint is skipped there and covered by the pinned local run above.
+Engine/distributed integration, consumer execution and measured capacity retain
+their later acceptance gates.
+V2 is active; V3–V7 stay held until their predecessors close.
+
+V2 default-axis genesis prerequisite accepted, 2026-10-10: one graph's two
+declared partitions, with three disk-backed voters each, preserve the exact
+HOME-selected default descriptor through leader change, retry, reopen and actual
+snapshot activation. Wrong or missing retained-view bindings fail closed.
+Parent build/vet/normal/race/coverage and pinned lint/security/vulnerability gates
+pass; final combined coverage is 88.7%, every changed production file exceeds
+80%, and all three new public helpers have direct tests. The additive registered
+intent codecs remain inert. This checkpoint grants no graph-write or certified-cut
+authority and does not close V2.
+
+V2 completion sequence: one implementation package at a time, independently
+reviewed and validated before the next package starts.
+
+1. Enable checked partition-local graph staging. Durable default-axis designation
+   and replicated recovery are accepted above; graph writes remain unavailable
+   on declared partitions until this next package passes its own tests.
+2. Integrate actual graph dependencies and complete effects with durable
+   prepare/decision/resolve. The acceptance fixture is one GraphID, two declared
+   partitions, three replicas each, remotely owned endpoints and one cross-edge
+   with both endpoint postings. Scalar transactions and two distinct graphs do
+   not satisfy this gate.
+3. Certify current and retained historical graph reads. A delayed participant
+   installation must not expose a mixed transaction; old cuts must preserve the
+   old exact state, including endpoint lives and postings.
+4. Pass the same-graph E15–E18 serial-history/cut oracle under process and message
+   faults, recovery and ownership transfer; complete the equivalent transactional-KV
+   comparison and record the engine decision. Only then can V2 close under
+   PLAN §8; V3–V7 retain their own acceptance requirements.
 
 The phase table above records current acceptance. The following entries retain
 the scope of their historical component validations.

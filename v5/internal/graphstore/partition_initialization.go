@@ -8,6 +8,8 @@ import (
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
+	"github.com/data-insights-ai/rho-tkg/v5/pkg/types"
 )
 
 // BootstrapBoundOwnership installs only a fresh, semantic-bound pending seed.
@@ -155,6 +157,21 @@ func checkDeclaredPartitionSeed(ctx context.Context, view *raftlog.ApplicationVi
 // effects or grant complete graph coverage. The outer materializer co-composes
 // allocator/configuration/request/CDC effects and performs one installation.
 func InitializeDeclaredPartition(ctx context.Context, view *raftlog.ApplicationView, declaration OwnershipDeclaration, schemas []graphstate.PropertyDefinition, limits Limits, graphLimits GraphLimits, budget OwnershipBudget) (effects GraphEffects, work PageWork, err error) {
+	return initializeDeclaredPartition(ctx, view, declaration, types.DefaultAxisBinding{}, schemas, limits, graphLimits, budget)
+}
+
+// InitializeDeclaredPartitionWithDefaultAxis atomically stages the supplied
+// graph-local default descriptor with the same five roots/schema/declaration
+// builder. The outer genesis materializer owns designation authority and install;
+// this helper proves no graph-wide readiness, lease or distributed cut.
+func InitializeDeclaredPartitionWithDefaultAxis(ctx context.Context, view *raftlog.ApplicationView, declaration OwnershipDeclaration, binding types.DefaultAxisBinding, schemas []graphstate.PropertyDefinition, limits Limits, graphLimits GraphLimits, budget OwnershipBudget) (GraphEffects, PageWork, error) {
+	if err := binding.Check(types.GraphID(declaration.Graph()), binding.Axis(), limits.Temporal); err != nil {
+		return GraphEffects{}, PageWork{}, callerError(err)
+	}
+	return initializeDeclaredPartition(ctx, view, declaration, binding, schemas, limits, graphLimits, budget)
+}
+
+func initializeDeclaredPartition(ctx context.Context, view *raftlog.ApplicationView, declaration OwnershipDeclaration, binding types.DefaultAxisBinding, schemas []graphstate.PropertyDefinition, limits Limits, graphLimits GraphLimits, budget OwnershipBudget) (effects GraphEffects, work PageWork, err error) {
 	gl, err := graphLimits.resolve()
 	if err != nil {
 		return effects, work, err
@@ -173,7 +190,11 @@ func InitializeDeclaredPartition(ctx context.Context, view *raftlog.ApplicationV
 	if err != nil {
 		return effects, work, err
 	}
-	if len(schemas) > resolved.MaxStageRecords-7 {
+	axisRecords := 0
+	if binding != (types.DefaultAxisBinding{}) {
+		axisRecords = 1
+	}
+	if len(schemas) > resolved.MaxStageRecords-7-axisRecords {
 		return effects, work, ErrResourceLimit
 	}
 	pending := root.ownershipMode == ownershipPending
@@ -201,7 +222,7 @@ func InitializeDeclaredPartition(ctx context.Context, view *raftlog.ApplicationV
 	if pending {
 		extra = []raftlog.KV{declarationKV}
 	}
-	return initializeFullStorage(ctx, c, schemas, base, pages, gl, prior, extra)
+	return initializeFullStorageWithDefaultAxis(ctx, c, binding, schemas, base, pages, gl, prior, extra)
 }
 
 // OpenPartitionCatalog validates one installed local partition's declaration,
@@ -285,5 +306,78 @@ func OpenPartitionCatalog(ctx context.Context, view *raftlog.ApplicationView, lo
 		return nil, work, err
 	}
 	c.localFull = &descriptor
+	return c, work, nil
+}
+
+// OpenPartitionCatalogWithDefaultAxis checks the expected complete designation's
+// axis record on this same retained view. The caller must recover the authoritative
+// genesis configuration from that view; this is not a caller default-selection door.
+// All source work includes opening and axis validation; errors return no catalog.
+func OpenPartitionCatalogWithDefaultAxis(ctx context.Context, view *raftlog.ApplicationView, local Namespace, ownershipEpoch uint64, binding types.DefaultAxisBinding, limits Limits, graphLimits GraphLimits, budget OwnershipBudget) (*Catalog, PageWork, error) {
+	if err := binding.Check(types.GraphID(local.Graph), binding.Axis(), limits.Temporal); err != nil {
+		return nil, PageWork{}, callerError(err)
+	}
+	if err := budget.validate(); err != nil {
+		return nil, PageWork{}, err
+	}
+	gl, err := graphLimits.resolve()
+	if err != nil {
+		return nil, PageWork{}, err
+	}
+	resolved, err := limits.resolve()
+	if err != nil {
+		return nil, PageWork{}, err
+	}
+	budget.SourceRows = min(budget.SourceRows, resolved.MaxReadRows, gl.MaxSourceRows, gl.Pages.MaxWorkRecords)
+	budget.SourceBytes = min(budget.SourceBytes, resolved.MaxReadBytes, gl.MaxSourceBytes, gl.Pages.MaxWorkBytes)
+	budget.OutputBytes = min(budget.OutputBytes, gl.MaxOutputBytes)
+	axisOutput := 256 + axisVariableBytes(binding.Axis())
+	if axisOutput >= budget.OutputBytes {
+		return nil, PageWork{}, ErrResourceLimit
+	}
+	opening := budget
+	opening.OutputBytes -= axisOutput
+	c, work, err := OpenPartitionCatalog(ctx, view, local, ownershipEpoch, resolved, gl, opening)
+	if err != nil {
+		return nil, work, err
+	}
+	// A default descriptor has a known exact maximum record. Narrow only this
+	// immutable checked read, not the catalog's policy or generic axis codec.
+	boundedCatalog := &Catalog{view: c.view, root: c.root, rootImageBytes: c.rootImageBytes, limits: c.limits, hash: c.hash, localFull: c.localFull}
+	descriptorBytes := 27 + axisVariableBytes(binding.Axis())
+	boundedCatalog.limits.MaxRecordBytes = min(boundedCatalog.limits.MaxRecordBytes, 28+32+descriptorBytes)
+	q, err := boundedCatalog.reader(ctx)
+	if err != nil {
+		return nil, work, err
+	}
+	q.maxRows, q.maxBytes = budget.SourceRows-work.Records, budget.SourceBytes-work.Bytes
+	q.denyReads = q.maxRows == 0
+	if q.maxRows < 1 || q.maxBytes < c.rootImageBytes {
+		return nil, work, ErrResourceLimit
+	}
+	// Reserve the full bounded descriptor decoder's struct, string copies and
+	// canonical hash scratch BEFORE reading/decoding. A hostile longer record is
+	// refused by Get before copying; malformed lengths cannot exceed delivered wire.
+	if err := q.materialize(96 + 6*descriptorBytes); err != nil {
+		return nil, addWork(work, PageWork{Bytes: q.bytes}), err
+	}
+	wire, found, err := q.get(axisKey(local, binding.Axis().Descriptor().ID))
+	var axis temporal.Axis
+	if err == nil && found {
+		axis, err = readAxis(wire, local, boundedCatalog.limits)
+	}
+	work = addWork(work, PageWork{Records: q.rows, Bytes: q.bytes})
+	if err != nil {
+		return nil, work, c.failure(err)
+	}
+	if !found {
+		return nil, work, c.failure(ErrCorrupt)
+	}
+	if err := binding.Check(types.GraphID(local.Graph), axis, resolved.Temporal); err != nil {
+		return nil, work, c.failure(errors.Join(ErrCorrupt, err))
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, work, err
+	}
 	return c, work, nil
 }

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -14,26 +15,40 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
+	"github.com/data-insights-ai/rho-tkg/v5/pkg/types"
 )
 
 // Only test-local fixture/transport ownership lives here. The accepted ordinary
 // Init fixture remains unchanged; this scenario needs actual disk reopen and
 // separately owned snapshot packets rather than its snapshot-refusing pump.
-func newDeclaredSnapshotGroup(t *testing.T, d graphstore.OwnershipDeclaration) *declaredTestGroup {
+func newDeclaredDiskGroup(t *testing.T, d graphstore.OwnershipDeclaration, partition uint64, agreement raftlog.ApplicationSemanticContractID) *declaredTestGroup {
 	t.Helper()
-	const partition = 3
 	entry, found := d.Partition(partition)
 	if !found {
 		t.Fatal("snapshot fixture lacks home")
 	}
 	g := &declaredTestGroup{t: t, declaration: d, ns: namespace{graph: idalloc.GraphID(d.Graph()), partition: partition}}
 	directory := t.TempDir()
+	if agreement == graphGenesisSemanticContractID() {
+		var err error
+		directory, err = os.MkdirTemp("", "rho-v5-graph-genesis-disk-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if t.Failed() {
+				t.Log("failure store preserved:", directory)
+			} else if err := os.RemoveAll(directory); err != nil {
+				t.Error(err)
+			}
+		})
+	}
 	for j := range 3 {
 		id := uint64(j + 1)
 		p := raftlog.DefaultApplicationPolicy(id)
 		p.MaxImageBytes, p.MaxInstallWrites = 172, 256
 		p.RetainedApplicationRecords, p.RetainedApplicationBytes = 8192, 16<<20
-		cfg := raftlog.Config{Dir: filepath.Join(directory, fmt.Sprint(id)), Create: true, Application: p, Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(g.ns.graph), Partition: partition, Group: entry.Group}, Contract: raftlog.ApplicationContractForPolicy(p), Limits: raftlog.DefaultApplicationTransferLimits()}, Generations: raftlog.ApplicationGenerationLimits{MaxBytes: 32 << 20, MaxRecords: 16384}, PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 4096}, Replication: raftlog.ApplicationReplicationConfig{Voters: [3]uint64{1, 2, 3}}, SemanticContractID: declaredSemanticContractID()}
+		cfg := raftlog.Config{Dir: filepath.Join(directory, fmt.Sprint(id)), Create: true, Application: p, Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(g.ns.graph), Partition: partition, Group: entry.Group}, Contract: raftlog.ApplicationContractForPolicy(p), Limits: raftlog.DefaultApplicationTransferLimits()}, Generations: raftlog.ApplicationGenerationLimits{MaxBytes: 32 << 20, MaxRecords: 16384}, PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 4096}, Replication: raftlog.ApplicationReplicationConfig{Voters: [3]uint64{1, 2, 3}}, SemanticContractID: agreement}
 		s, err := raftlog.Open(cfg)
 		if err != nil {
 			t.Fatal(err)
@@ -47,7 +62,7 @@ func newDeclaredSnapshotGroup(t *testing.T, d graphstore.OwnershipDeclaration) *
 		if err := graphstore.BootstrapBoundOwnership(s, s.ApplicationBinding(), d, [3]uint64{1, 2, 3}); err != nil {
 			t.Fatal(err)
 		}
-		m, err := newDeclaredMaterializer(s, g.ns, d, defaultMaterializerLimits())
+		m, err := newDeclaredMaterializerWithAgreement(s, g.ns, d, defaultMaterializerLimits(), agreement)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -208,17 +223,26 @@ func assertDeclaredSnapshotView(t *testing.T, view *raftlog.ApplicationView, g *
 	if err != nil || cfg.home != 3 || cfg.maxBlock != 16 || cfg.checkGenesisDeclaration(g.declaration) != nil {
 		t.Fatal(cfg, err)
 	}
+	if cfg.version() == 2 {
+		checked, _, err := graphstore.OpenPartitionCatalogWithDefaultAxis(t.Context(), view, graphstore.Namespace{Graph: graphstate.GraphID(g.ns.graph), Partition: g.ns.partition}, 2, cfg.defaultAxis, graphstore.Limits{}, graphstore.GraphLimits{}, b)
+		if err != nil || checked == nil {
+			t.Fatal("snapshot/reopen default descriptor", err)
+		}
+	}
 }
 
 func TestDeclaredInitSnapshotRetainedControlHistoryTailAndReopen(t *testing.T) {
+	testDeclaredInitSnapshotRetainedControlHistoryTailAndReopen(t, declaredSemanticContractID(), types.DefaultAxisBinding{})
+}
+func testDeclaredInitSnapshotRetainedControlHistoryTailAndReopen(t *testing.T, agreement raftlog.ApplicationSemanticContractID, binding types.DefaultAxisBinding) {
 	d := declaredTestDeclaration(t, []graphstore.PartitionOwnership{{Partition: 3, OwnershipEpoch: 2, Group: [16]byte{4}}, {Partition: 8, OwnershipEpoch: 3, Group: [16]byte{4}}})
-	g := newDeclaredSnapshotGroup(t, d)
+	g := newDeclaredDiskGroup(t, d, 3, agreement)
 	n := &declaredSnapshotTransport{t: t, g: g, queue: make([]replica.Packet, 0, 128)}
 	a, err := idalloc.NewAuthority([16]byte{7}, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := declaredInitCommand{ns: g.ns, attempt: bootstrapAttemptID{11}, declaration: d, authority: a, maxBlock: 16, schemas: []graphstate.PropertyDefinition{{Name: "p", Owner: graphstate.Node, Type: graphstate.ScalarI64, Cardinality: graphstate.ScalarCardinality}}}
+	r := declaredInitCommand{ns: g.ns, attempt: bootstrapAttemptID{11}, declaration: d, authority: a, maxBlock: 16, defaultAxis: binding, schemas: []graphstate.PropertyDefinition{{Name: "p", Owner: graphstate.Node, Type: graphstate.ScalarI64, Cardinality: graphstate.ScalarCardinality}}}
 	initWire, err := encodeDeclaredInit(r, defaultMaterializerLimits())
 	if err != nil {
 		t.Fatal(err)
@@ -249,7 +273,11 @@ func TestDeclaredInitSnapshotRetainedControlHistoryTailAndReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertDeclaredInitCDC(t, initCDC, initOutcome)
+	if binding == (types.DefaultAxisBinding{}) {
+		assertDeclaredInitCDC(t, initCDC, initOutcome)
+	} else {
+		assertGraphGenesisInitializationCDC(t, initCDC, r, binding)
+	}
 	n.dropFollower = true
 	var changedMapping []byte
 	var changedIndex uint64
@@ -315,7 +343,7 @@ func TestDeclaredInitSnapshotRetainedControlHistoryTailAndReopen(t *testing.T) {
 		t.Fatal("real owned MsgSnap required, not log replay")
 	}
 	manifest, err := n.send.Manifest()
-	if err != nil || manifest.Version != 3 || manifest.Index != changedIndex || manifest.SemanticContractID != declaredSemanticContractID() || manifest.Identity != g.stores[2].ApplicationBinding().Identity {
+	if err != nil || manifest.Version != 3 || manifest.Index != changedIndex || manifest.SemanticContractID != agreement || manifest.Identity != g.stores[2].ApplicationBinding().Identity {
 		t.Fatal(manifest, err)
 	}
 	imported, err := g.stores[2].BeginApplicationImport(t.Context(), manifest)
@@ -488,7 +516,7 @@ func TestDeclaredInitSnapshotRetainedControlHistoryTailAndReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	m, err := newDeclaredMaterializer(reopened, g.ns, d, defaultMaterializerLimits())
+	m, err := newDeclaredMaterializerWithAgreement(reopened, g.ns, d, defaultMaterializerLimits(), agreement)
 	if err != nil {
 		t.Fatal(err)
 	}

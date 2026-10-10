@@ -9,6 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
+	"github.com/data-insights-ai/rho-tkg/v5/pkg/types"
 )
 
 // genesisAllocationConfig is immutable graph-qualified configuration. Home is
@@ -22,6 +23,7 @@ type genesisAllocationConfig struct {
 	home        uint64
 	maxBlock    uint64
 	schemas     [32]byte
+	defaultAxis types.DefaultAxisBinding
 }
 
 const genesisConfigBytes = 140
@@ -43,7 +45,7 @@ const genesisObservationBytes = 344
 func (g genesisObservation) valid() bool {
 	c := g.configuration
 	s := g.source.scope
-	return g.source.valid() && c.valid() && s.graph == c.graph && s.partition == c.home && s.topology == c.topology && s.declaration == c.declaration && g.epoch != 0 && g.effect != ([32]byte{})
+	return g.source.valid() && c.valid() && s.graph == c.graph && s.partition == c.home && s.topology == c.topology && s.declaration == c.declaration && s.semantic == c.semanticContractID() && g.epoch != 0 && g.effect != ([32]byte{})
 }
 
 func encodeGenesisObservation(g genesisObservation) ([]byte, error) {
@@ -54,8 +56,8 @@ func encodeGenesisObservation(g genesisObservation) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	b := make([]byte, 0, genesisObservationBytes)
-	b = append(b, 'A', 'G', 'I', 1)
+	b := make([]byte, 0, g.wireBytes())
+	b = append(b, 'A', 'G', 'I', g.configuration.version())
 	b = appendAllocationScope(b, g.source.scope)
 	b = binary.BigEndian.AppendUint64(b, g.source.index)
 	b = append(b, configuration...)
@@ -65,18 +67,23 @@ func encodeGenesisObservation(g genesisObservation) ([]byte, error) {
 }
 
 func decodeGenesisObservation(b []byte) (genesisObservation, error) {
-	body, err := wireBody(b, "AGI\x01", genesisObservationBytes)
+	version, size := byte(1), genesisObservationBytes
+	if len(b) >= 4 && b[3] == 2 {
+		version, size = 2, graphGenesisObservationBytes
+	}
+	body, err := wireBody(b, string([]byte{'A', 'G', 'I', version}), size)
 	if err != nil {
 		return genesisObservation{}, err
 	}
 	d := decoder{b: body}
 	g := genesisObservation{source: allocationCoordinate{scope: readAllocationScope(&d), index: d.number()}}
-	g.configuration, err = decodeGenesisAllocationConfig(d.b[:genesisConfigBytes], g.source.scope.graph)
-	d.b = d.b[genesisConfigBytes:]
+	configBytes := size - (genesisObservationBytes - genesisConfigBytes)
+	g.configuration, err = decodeGenesisAllocationConfig(d.b[:configBytes], g.source.scope.graph)
+	d.b = d.b[configBytes:]
 	g.epoch = d.number()
 	copy(g.effect[:], d.b[:32])
 	d.b = d.b[32:]
-	if err != nil || len(d.b) != 0 || !g.valid() {
+	if err != nil || len(d.b) != 0 || !g.valid() || g.configuration.version() != version {
 		return genesisObservation{}, errCorrupt
 	}
 	return g, nil
@@ -90,6 +97,7 @@ type declaredInitCommand struct {
 	maxBlock    uint64
 	schemas     []graphstate.PropertyDefinition
 	genesis     genesisObservation
+	defaultAxis types.DefaultAxisBinding
 }
 
 func (r declaredInitCommand) validate(l materializerLimits) (genesisAllocationConfig, error) {
@@ -99,9 +107,15 @@ func (r declaredInitCommand) validate(l materializerLimits) (genesisAllocationCo
 	if _, found := r.declaration.Partition(r.ns.partition); !found {
 		return genesisAllocationConfig{}, errInvalid
 	}
-	cfg, err := newGenesisAllocationConfig(r.declaration, r.schemas, r.maxBlock, l)
+	cfg, err := newGenesisAllocationConfigVersion(r.declaration, r.schemas, r.maxBlock, l, r.version() == 5)
 	if err != nil {
 		return genesisAllocationConfig{}, err
+	}
+	if r.defaultAxis != (types.DefaultAxisBinding{}) {
+		if err := r.defaultAxis.Check(types.GraphID(r.ns.graph), r.defaultAxis.Axis(), l.catalog.Temporal); err != nil {
+			return genesisAllocationConfig{}, encodingFailure(errors.Join(errInvalid, err))
+		}
+		cfg.defaultAxis = r.defaultAxis
 	}
 	if r.ns.partition == cfg.home {
 		if r.authority.Owner() == ([16]byte{}) || r.authority.Epoch() == 0 || r.genesis != (genesisObservation{}) {
@@ -118,7 +132,10 @@ func (r declaredInitCommand) validate(l materializerLimits) (genesisAllocationCo
 	return cfg, nil
 }
 
-const declaredInitMetadataBytes = 1024
+// Portable fixed reservation: command656 + config208 + two64-byte writers +
+// cursor56 =1048 bytes on the supported64-bit layout, rounded up to1088.
+// Descriptor/schema backing and nested codec scratch are separately8*wire.
+const declaredInitMetadataBytes = 1088
 
 func declaredInitDecodeCost(wireBytes, partitions, schemas int) int {
 	return declaredInitMetadataBytes + 8*wireBytes + 64*partitions + 64*schemas
@@ -133,9 +150,12 @@ func declaredInitWireBytes(r declaredInitCommand, l materializerLimits) (int, er
 	}
 	variant := 24
 	if r.genesis != (genesisObservation{}) {
-		variant = genesisObservationBytes
+		variant = r.genesis.wireBytes()
 	}
 	n := requestHeaderBytes + 8 + 4 + 32*r.declaration.Len() + 32 + 1 + variant + 8 + 4 + sha256.Size
+	if r.defaultAxis != (types.DefaultAxisBinding{}) {
+		n += defaultAxisDescriptorBytes
+	}
 	for _, d := range r.schemas {
 		if len(d.Name) > l.commandBytes-n-8 {
 			return 0, errLimit
@@ -149,7 +169,7 @@ func declaredInitWireBytes(r declaredInitCommand, l materializerLimits) (int, er
 }
 
 func emitDeclaredInit(w *boundedWriter, r declaredInitCommand) {
-	w.add([]byte{'G', 'R', 'Q', 4, byte(initDeclaredPartition)})
+	w.add([]byte{'G', 'R', 'Q', r.version(), byte(initDeclaredPartition)})
 	w.add(r.ns.graph[:])
 	w.u64(r.ns.partition)
 	w.add(r.attempt[:])
@@ -176,9 +196,12 @@ func emitDeclaredInit(w *boundedWriter, r declaredInitCommand) {
 		w.add(wire)
 	}
 	w.u64(r.maxBlock)
+	if r.version() == 5 {
+		writeAxis(w, r.defaultAxis.Axis(), defaultMaterializerLimits())
+	}
 	w.u32(len(r.schemas))
 	for _, d := range r.schemas {
-		writeSchema(w, d)
+		writeGenesisSchema(w, d, r.version() == 5)
 	}
 }
 
@@ -210,10 +233,10 @@ func decodeDeclaredInit(b []byte, l materializerLimits) (declaredInitCommand, er
 	if len(b) > 4<<20 {
 		return declaredInitCommand{}, errLimit
 	}
-	if len(b) < requestHeaderBytes || !bytes.Equal(b[:5], []byte{'G', 'R', 'Q', 4, byte(initDeclaredPartition)}) {
+	if len(b) < requestHeaderBytes || b[3] != 4 && b[3] != 5 || !bytes.Equal(b[:3], []byte{'G', 'R', 'Q'}) || commandKind(b[4]) != initDeclaredPartition {
 		return declaredInitCommand{}, errCorrupt
 	}
-	body, err := graphBody(b, "GRQ\x04", l.commandBytes)
+	body, err := graphBody(b, string([]byte{'G', 'R', 'Q', b[3]}), l.commandBytes)
 	if err != nil {
 		return declaredInitCommand{}, err
 	}
@@ -254,7 +277,11 @@ func decodeDeclaredInit(b []byte, l materializerLimits) (declaredInitCommand, er
 	case 1:
 		r.authority, err = idalloc.NewAuthority(c.array(), c.u64())
 	case 0:
-		wire := c.take(genesisObservationBytes)
+		observationBytes := genesisObservationBytes
+		if b[3] == 5 {
+			observationBytes = graphGenesisObservationBytes
+		}
+		wire := c.take(observationBytes)
 		if c.err != nil {
 			return declaredInitCommand{}, c.err
 		}
@@ -266,6 +293,16 @@ func decodeDeclaredInit(b []byte, l materializerLimits) (declaredInitCommand, er
 		return declaredInitCommand{}, errors.Join(errCorrupt, err)
 	}
 	r.maxBlock = c.u64()
+	if b[3] == 5 {
+		axis := readAxis(&c, l)
+		if c.err != nil {
+			return declaredInitCommand{}, encodingFailure(c.err)
+		}
+		r.defaultAxis, err = types.BindDefaultAxis(types.GraphID(r.ns.graph), axis, l.catalog.Temporal)
+		if err != nil {
+			return declaredInitCommand{}, encodingFailure(errors.Join(errCorrupt, err))
+		}
+	}
 	count = c.count(l.maxSchemas, 8)
 	if c.err != nil || !c.charge(64*count) {
 		return declaredInitCommand{}, c.err
@@ -296,7 +333,7 @@ func declaredCommandIdentity(b []byte, n namespace) ([16]byte, error) {
 	if len(b) < requestHeaderBytes || len(b) > 4<<20 {
 		return [16]byte{}, errCorrupt
 	}
-	initialization := bytes.Equal(b[:5], []byte{'G', 'R', 'Q', 4, byte(initDeclaredPartition)})
+	initialization := (b[3] == 4 || b[3] == 5) && bytes.Equal(b[:3], []byte{'G', 'R', 'Q'}) && commandKind(b[4]) == initDeclaredPartition
 	allocation := bytes.Equal(b[:4], []byte{'A', 'Q', 'P', 1}) && isAllocationProtocolCommand(commandKind(b[4]))
 	if !initialization && !allocation {
 		return [16]byte{}, errCorrupt
@@ -399,7 +436,11 @@ func encodeDeclaredInitialization(r declaredInitCommand, cfg genesisAllocationCo
 		return nil, err
 	}
 	return boundedEncoding(maxBytes, func(w *boundedWriter) {
-		w.add([]byte{'G', 'C', 'D', 2})
+		version := byte(2)
+		if cfg.version() == 2 {
+			version = 3
+		}
+		w.add([]byte{'G', 'C', 'D', version})
 		w.add(r.ns.graph[:])
 		w.u64(r.ns.partition)
 		w.u64(cfg.topology)
@@ -409,18 +450,21 @@ func encodeDeclaredInitialization(r declaredInitCommand, cfg genesisAllocationCo
 		w.u64(cfg.maxBlock)
 		w.add(cfg.schemas[:])
 		w.add(digest[:])
+		if cfg.version() == 2 {
+			writeAxis(w, cfg.defaultAxis.Axis(), defaultMaterializerLimits())
+		}
 		w.u32(len(r.schemas))
 		for _, d := range r.schemas {
-			writeSchema(w, d)
+			writeGenesisSchema(w, d, cfg.version() == 2)
 		}
 	})
 }
 
 func (c genesisAllocationConfig) valid() bool {
-	return c.graph != (idalloc.GraphID{}) && c.topology != 0 && c.declaration != ([32]byte{}) && c.home != 0 && c.maxBlock != 0 && c.maxBlock <= idalloc.MaxBlockSize && c.schemas != ([32]byte{})
+	return c.graph != (idalloc.GraphID{}) && c.topology != 0 && c.declaration != ([32]byte{}) && c.home != 0 && c.maxBlock != 0 && c.maxBlock <= idalloc.MaxBlockSize && c.schemas != ([32]byte{}) && c.validDefaultAxis()
 }
 
-func genesisSchemaDigest(graph idalloc.GraphID, schemas []graphstate.PropertyDefinition, l materializerLimits) ([32]byte, error) {
+func genesisSchemaDigestVersion(graph idalloc.GraphID, schemas []graphstate.PropertyDefinition, l materializerLimits, graphGenesis bool) ([32]byte, error) {
 	if err := l.validate(); err != nil {
 		return [32]byte{}, err
 	}
@@ -447,7 +491,7 @@ func genesisSchemaDigest(graph idalloc.GraphID, schemas []graphstate.PropertyDef
 		if len(d.Name) > l.catalog.MaxNameBytes {
 			return [32]byte{}, errLimit
 		}
-		if !validSchema(d, l) {
+		if !validGenesisSchema(d, l, graphGenesis) {
 			return [32]byte{}, errInvalid
 		}
 		if i > 0 {
@@ -458,11 +502,15 @@ func genesisSchemaDigest(graph idalloc.GraphID, schemas []graphstate.PropertyDef
 		}
 	}
 	wire, err := boundedEncoding(l.commandBytes, func(w *boundedWriter) {
-		w.add([]byte("rho-tkg:genesis-schemas:v1\x00"))
+		domain := "rho-tkg:genesis-schemas:v1\x00"
+		if graphGenesis {
+			domain = "rho-tkg:genesis-schemas:v2\x00"
+		}
+		w.add([]byte(domain))
 		w.add(graph[:])
 		w.u32(len(schemas))
 		for _, d := range schemas {
-			writeSchema(w, d)
+			writeGenesisSchema(w, d, graphGenesis)
 		}
 	})
 	if err != nil {
@@ -472,6 +520,9 @@ func genesisSchemaDigest(graph idalloc.GraphID, schemas []graphstate.PropertyDef
 }
 
 func newGenesisAllocationConfig(d graphstore.OwnershipDeclaration, schemas []graphstate.PropertyDefinition, maxBlock uint64, l materializerLimits) (genesisAllocationConfig, error) {
+	return newGenesisAllocationConfigVersion(d, schemas, maxBlock, l, false)
+}
+func newGenesisAllocationConfigVersion(d graphstore.OwnershipDeclaration, schemas []graphstate.PropertyDefinition, maxBlock uint64, l materializerLimits, graphGenesis bool) (genesisAllocationConfig, error) {
 	if err := l.validate(); err != nil {
 		return genesisAllocationConfig{}, err
 	}
@@ -479,7 +530,7 @@ func newGenesisAllocationConfig(d graphstore.OwnershipDeclaration, schemas []gra
 	if !found || d.Graph() == (graphstate.GraphID{}) || d.TopologyEpoch() == 0 || d.Digest() == ([32]byte{}) || maxBlock == 0 || maxBlock > idalloc.MaxBlockSize {
 		return genesisAllocationConfig{}, errInvalid
 	}
-	hash, err := genesisSchemaDigest(idalloc.GraphID(d.Graph()), schemas, l)
+	hash, err := genesisSchemaDigestVersion(idalloc.GraphID(d.Graph()), schemas, l, graphGenesis)
 	if err != nil {
 		return genesisAllocationConfig{}, err
 	}
@@ -489,6 +540,9 @@ func newGenesisAllocationConfig(d graphstore.OwnershipDeclaration, schemas []gra
 func encodeGenesisAllocationConfig(c genesisAllocationConfig) ([]byte, error) {
 	if !c.valid() {
 		return nil, errInvalid
+	}
+	if c.version() == 2 {
+		return encodeGraphGenesisConfig(c)
 	}
 	b := make([]byte, 0, genesisConfigBytes)
 	b = append(b, 'G', 'A', 'C', 1)
@@ -502,6 +556,9 @@ func encodeGenesisAllocationConfig(c genesisAllocationConfig) ([]byte, error) {
 }
 
 func decodeGenesisAllocationConfig(b []byte, graph idalloc.GraphID) (genesisAllocationConfig, error) {
+	if len(b) >= 4 && b[3] == 2 {
+		return decodeGraphGenesisConfig(b, graph)
+	}
 	body, err := wireBody(b, "GAC\x01", genesisConfigBytes)
 	if err != nil {
 		return genesisAllocationConfig{}, err
@@ -524,7 +581,11 @@ func (c genesisAllocationConfig) digest() ([32]byte, error) {
 	if err != nil {
 		return [32]byte{}, err
 	}
-	b := append([]byte("rho-tkg:genesis-allocation:v1\x00"), wire[:len(wire)-sha256.Size]...)
+	domain := "rho-tkg:genesis-allocation:v1\x00"
+	if c.version() == 2 {
+		domain = "rho-tkg:graph-genesis:v1\x00"
+	}
+	b := append([]byte(domain), wire[:len(wire)-sha256.Size]...)
 	return sha256.Sum256(b), nil
 }
 

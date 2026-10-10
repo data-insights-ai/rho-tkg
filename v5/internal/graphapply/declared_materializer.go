@@ -25,15 +25,26 @@ type declaredMaterializer struct {
 	declaration graphstore.OwnershipDeclaration
 	binding     raftlog.ApplicationBinding
 	limits      materializerLimits
+	agreement   raftlog.ApplicationSemanticContractID
 }
 
 var _ replica.ApplicationMachine = (*declaredMaterializer)(nil)
 
-func (*declaredMaterializer) SemanticContractID() raftlog.ApplicationSemanticContractID {
+func (m *declaredMaterializer) SemanticContractID() raftlog.ApplicationSemanticContractID {
+	if m != nil && m.agreement != (raftlog.ApplicationSemanticContractID{}) {
+		return m.agreement
+	}
 	return declaredSemanticContractID()
 }
 
 func newDeclaredMaterializer(s *raftlog.Store, n namespace, d graphstore.OwnershipDeclaration, l materializerLimits) (*declaredMaterializer, error) {
+	return newDeclaredMaterializerWithAgreement(s, n, d, l, declaredSemanticContractID())
+}
+
+func newDeclaredMaterializerWithAgreement(s *raftlog.Store, n namespace, d graphstore.OwnershipDeclaration, l materializerLimits, agreement raftlog.ApplicationSemanticContractID) (*declaredMaterializer, error) {
+	if agreement != declaredSemanticContractID() && agreement != graphGenesisSemanticContractID() {
+		return nil, errInvalid
+	}
 	if s == nil || !n.valid() || idalloc.GraphID(d.Graph()) != n.graph {
 		return nil, errInvalid
 	}
@@ -45,7 +56,7 @@ func newDeclaredMaterializer(s *raftlog.Store, n namespace, d graphstore.Ownersh
 		return nil, errInvalid
 	}
 	binding := s.ApplicationBinding()
-	m := &declaredMaterializer{store: s, ns: n, owner: entry.OwnershipEpoch, declaration: d, binding: binding, limits: l}
+	m := &declaredMaterializer{store: s, ns: n, owner: entry.OwnershipEpoch, declaration: d, binding: binding, limits: l, agreement: agreement}
 	if err := replica.ValidateApplicationMachineBinding(binding, m); err != nil || binding == (raftlog.ApplicationBinding{}) {
 		return nil, errors.Join(errInvalid, err)
 	}
@@ -123,7 +134,24 @@ func (m *declaredMaterializer) initialized(q *reader) (genesisAllocationConfig, 
 	if err != nil {
 		return genesisAllocationConfig{}, err
 	}
-	c, work, err := graphstore.OpenPartitionCatalog(q.ctx, q.view, graphstore.Namespace{Graph: graphstate.GraphID(m.ns.graph), Partition: m.ns.partition}, m.owner, m.limits.catalog, m.limits.graph, b)
+	var cfg genesisAllocationConfig
+	if m.SemanticContractID() == graphGenesisSemanticContractID() {
+		cfg, err = m.readGenesisConfig(q)
+		if err != nil {
+			return genesisAllocationConfig{}, err
+		}
+		b, err = m.ownershipBudget(q)
+		if err != nil {
+			return genesisAllocationConfig{}, err
+		}
+	}
+	var c *graphstore.Catalog
+	var work graphstore.PageWork
+	if m.SemanticContractID() == graphGenesisSemanticContractID() {
+		c, work, err = graphstore.OpenPartitionCatalogWithDefaultAxis(q.ctx, q.view, graphstore.Namespace{Graph: graphstate.GraphID(m.ns.graph), Partition: m.ns.partition}, m.owner, cfg.defaultAxis, m.limits.catalog, m.limits.graph, b)
+	} else {
+		c, work, err = graphstore.OpenPartitionCatalog(q.ctx, q.view, graphstore.Namespace{Graph: graphstate.GraphID(m.ns.graph), Partition: m.ns.partition}, m.owner, m.limits.catalog, m.limits.graph, b)
+	}
 	if chargeErr := chargeGraphWork(q, work); chargeErr != nil {
 		return genesisAllocationConfig{}, errors.Join(chargeErr, err)
 	}
@@ -134,19 +162,11 @@ func (m *declaredMaterializer) initialized(q *reader) (genesisAllocationConfig, 
 	if err != nil || root.SemanticEpoch() == 0 {
 		return genesisAllocationConfig{}, errors.Join(errCorrupt, err)
 	}
-	wire, found, err := q.get(genesisConfigurationKey(m.ns))
-	if err != nil {
-		return genesisAllocationConfig{}, err
-	}
-	if !found {
-		return genesisAllocationConfig{}, errCorrupt
-	}
-	cfg, err := decodeGenesisAllocationConfig(wire, m.ns.graph)
-	if err != nil {
-		return genesisAllocationConfig{}, err
-	}
-	if err := cfg.checkGenesisDeclaration(m.declaration); err != nil {
-		return genesisAllocationConfig{}, errors.Join(errCorrupt, err)
+	if m.SemanticContractID() != graphGenesisSemanticContractID() {
+		cfg, err = m.readGenesisConfig(q)
+		if err != nil {
+			return genesisAllocationConfig{}, err
+		}
 	}
 	_, present, err := q.allocator()
 	if err != nil {
@@ -231,6 +251,13 @@ func (m *declaredMaterializer) finish(q *reader, o outcome, hash [32]byte, mapRe
 		}
 		for _, d := range r.schemas {
 			retained += 64 + len(d.Name)
+		}
+		if m.SemanticContractID() == graphGenesisSemanticContractID() {
+			outer, err := graphGenesisOuterOutput(*r, m.limits, q.base)
+			if err != nil {
+				return raftlog.ApplicationBatch{}, err
+			}
+			retained = max(retained, effects.OwnedBytes+outer)
 		}
 		if retained > m.limits.outputBytes {
 			return raftlog.ApplicationBatch{}, errLimit
@@ -319,6 +346,15 @@ func (m *declaredMaterializer) Stage(entry replica.Entry, budget raftlog.Applica
 		}
 		return b, nil
 	}
+	if len(entry.Data) >= 5 && commandKind(entry.Data[4]) == initDeclaredPartition {
+		version := byte(4)
+		if m.SemanticContractID() == graphGenesisSemanticContractID() {
+			version = 5
+		}
+		if entry.Data[3] != version {
+			return raftlog.ApplicationBatch{}, errCorrupt
+		}
+	}
 	identity, err := declaredCommandIdentity(entry.Data, m.ns)
 	if err != nil {
 		return raftlog.ApplicationBatch{}, err
@@ -332,6 +368,10 @@ func (m *declaredMaterializer) Stage(entry replica.Entry, budget raftlog.Applica
 	if found {
 		if info.Root().SemanticEpoch() == 0 {
 			if err := m.seed(&q); err != nil {
+				return raftlog.ApplicationBatch{}, err
+			}
+		} else if m.SemanticContractID() == graphGenesisSemanticContractID() {
+			if _, err := m.initialized(&q); err != nil {
 				return raftlog.ApplicationBatch{}, err
 			}
 		}
@@ -398,7 +438,23 @@ func (m *declaredMaterializer) Stage(entry replica.Entry, budget raftlog.Applica
 	if err != nil {
 		return raftlog.ApplicationBatch{}, err
 	}
-	effects, work, err := graphstore.InitializeDeclaredPartition(q.ctx, view, m.declaration, r.schemas, m.limits.catalog, m.limits.graph, remaining)
+	if m.SemanticContractID() == graphGenesisSemanticContractID() {
+		outer, err := graphGenesisOuterOutput(r, m.limits, q.base)
+		if err != nil {
+			return raftlog.ApplicationBatch{}, err
+		}
+		if outer >= m.limits.outputBytes {
+			return raftlog.ApplicationBatch{}, errLimit
+		}
+		remaining.OutputBytes = min(remaining.OutputBytes, m.limits.outputBytes-outer)
+	}
+	var effects graphstore.GraphEffects
+	var work graphstore.PageWork
+	if m.SemanticContractID() == graphGenesisSemanticContractID() {
+		effects, work, err = graphstore.InitializeDeclaredPartitionWithDefaultAxis(q.ctx, view, m.declaration, r.defaultAxis, r.schemas, m.limits.catalog, m.limits.graph, remaining)
+	} else {
+		effects, work, err = graphstore.InitializeDeclaredPartition(q.ctx, view, m.declaration, r.schemas, m.limits.catalog, m.limits.graph, remaining)
+	}
 	if chargeErr := chargeGraphWork(&q, work); chargeErr != nil {
 		return raftlog.ApplicationBatch{}, errors.Join(chargeErr, err)
 	}

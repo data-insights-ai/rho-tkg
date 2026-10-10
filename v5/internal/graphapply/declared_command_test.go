@@ -45,7 +45,10 @@ func TestDeclaredGenesisConfigurationIndependentGoldenAndFixedBacking(t *testing
 	if got != c {
 		t.Fatal("decoded configuration aliases input")
 	}
-	if unsafe.Sizeof(c) > 128 {
+	// The complete binding increases the in-memory type, not GAC1 wire bytes.
+	// Two fixed config values plus64 codec-header bytes fit the512 metadata;
+	// descriptor strings/hash/encoder backing are separately priced by8*wire.
+	if 2*unsafe.Sizeof(c)+64 > genesisCodecMetadataBytes {
 		t.Fatalf("fixed configuration allowance insufficient: %d", unsafe.Sizeof(c))
 	}
 }
@@ -278,7 +281,7 @@ func TestDeclaredInitHostAdmissionUsesReplicaDecoderHeadroom(t *testing.T) {
 	}
 	// Independently use the documented decoder ledger. An encoder-only 2x
 	// allowance used to admit commands that this same-policy decoder refused.
-	required := 1024 + 8*len(wire) + 64*d.Len()
+	required := 1088 + 8*len(wire) + 64*d.Len()
 	for _, dimension := range []string{"owned", "wire"} {
 		for _, delta := range []int{-1, 0, 1} {
 			t.Run(dimension+string(rune('b'+delta)), func(t *testing.T) {

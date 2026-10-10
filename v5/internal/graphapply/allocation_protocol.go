@@ -50,7 +50,7 @@ func (s allocationScope) valid() bool {
 }
 
 func (s allocationScope) check(d graphstore.OwnershipDeclaration, cfg genesisAllocationConfig) error {
-	if !s.valid() || s.semantic != declaredSemanticContractID() || s.graph != cfg.graph || graphstate.GraphID(s.graph) != d.Graph() || s.topology != d.TopologyEpoch() || s.declaration != d.Digest() {
+	if !s.valid() || s.semantic != cfg.semanticContractID() || s.graph != cfg.graph || graphstate.GraphID(s.graph) != d.Graph() || s.topology != d.TopologyEpoch() || s.declaration != d.Digest() {
 		return errInvalid
 	}
 	if err := cfg.checkGenesisDeclaration(d); err != nil {

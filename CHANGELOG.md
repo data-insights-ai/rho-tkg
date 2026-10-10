@@ -8,14 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added durable graph-qualified default-axis genesis for declared v5 partitions.
+  HOME selects the complete Q/ms/POSIX descriptor once; other partitions adopt
+  that same completed configuration proof. Initialization co-installs the axis,
+  schema, physical roots and configuration, with retained-view validation on
+  replay, reopen and snapshot activation. A separate semantic agreement preserves
+  older allocation-only formats. This prerequisite enables neither graph writes
+  on declared partitions nor distributed graph cuts; V2 remains open.
+
 - Added v5 immutable entity interpretation and native-axis roles, preservation-only
   descriptor properties, and graph-qualified `Plan`/`Project` boundaries. Legacy
   undeclared entity/assertion bytes remain unchanged; declarations use entity-only
   GC2, while legacy graph command/change formats explicitly refuse unsupported
   metadata or descriptor schemas. A pure graph-qualified Q/ms default-axis binding
   preserves exact integral-ms `Instant` compatibility. V1 value/state acceptance
-  is complete; durable default registration, transaction installation and certified
-  cuts remain V2 work, tracked in `tasks/backlog.md`.
+  is complete; transaction installation and certified cuts remain V2 work,
+  tracked in `tasks/backlog.md`.
 
 - Added fresh-store opt-in immutable v5 application control storage, co-installed
   synchronously with graph versions and root/change/outcome envelopes. Separate

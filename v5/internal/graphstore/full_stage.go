@@ -10,6 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
+	"github.com/data-insights-ai/rho-tkg/v5/pkg/types"
 )
 
 func planFailure(err error) error {
@@ -232,6 +233,9 @@ func InitializeGraphIndexes(ctx context.Context, c *Catalog, schemas []graphstat
 // initializeFullStorage shares the physical builder, not initialization admission.
 // Its caller has already proved the original application state and namespace.
 func initializeFullStorage(ctx context.Context, c *Catalog, schemas []graphstate.PropertyDefinition, base raftlog.ApplicationRoot, pages PageLimits, l GraphLimits, prior PageWork, extra []raftlog.KV) (effects GraphEffects, work PageWork, err error) {
+	return initializeFullStorageWithDefaultAxis(ctx, c, types.DefaultAxisBinding{}, schemas, base, pages, l, prior, extra)
+}
+func initializeFullStorageWithDefaultAxis(ctx context.Context, c *Catalog, binding types.DefaultAxisBinding, schemas []graphstate.PropertyDefinition, base raftlog.ApplicationRoot, pages PageLimits, l GraphLimits, prior PageWork, extra []raftlog.KV) (effects GraphEffects, work PageWork, err error) {
 	work = prior
 	rows := min(pages.MaxWorkRecords, l.MaxSourceRows-prior.Records)
 	bytes := min(pages.MaxWorkBytes, l.MaxSourceBytes-prior.Bytes)
@@ -264,6 +268,19 @@ func initializeFullStorage(ctx context.Context, c *Catalog, schemas []graphstate
 		}
 		if err := p.budget(); err != nil {
 			return err
+		}
+		if binding != (types.DefaultAxisBinding{}) {
+			// Reserve known descriptor/hash/codec/key copies before stageAxis encodes.
+			axisBytes := 27 + axisVariableBytes(binding.Axis())
+			if err := reader.materialize(512 + 6*axisBytes); err != nil {
+				return err
+			}
+			if err := reader.stageAxis(binding.Axis()); err != nil {
+				return err
+			}
+			if err := p.budget(); err != nil {
+				return err
+			}
 		}
 		for _, definition := range schemas {
 			if err := ctx.Err(); err != nil {
