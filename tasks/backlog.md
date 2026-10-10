@@ -440,7 +440,7 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Item 38 + review 2026-09-24 "(HIGH?) Re-import of a deleted ID" (HIGH, data loss) | `[4.48.0]` Changed "A backfilled re-import of a deleted ID must be recorded after the ID's chain", Fixed "a re-import of a deleted ID no longer overwrites the earlier life's history"; evidence `tasks/evidence/reimport-life/` |
 | Item 29 (MEDIUM) — a failed node write left its `UniqueForever` value owned (crash consistency between claim and row: v5 PLAN §5.2) | `[4.49.0]` Fixed; evidence `tasks/evidence/unique-claims/` |
 | Item 30 (FEATURE, perf) — `Nodes()/Rels().LatestStamps(id)` | `[4.49.0]` Added; evidence `tasks/evidence/latest-stamps/` |
-| Item 43 (FEATURE, ai-soc) — retraction: `Retract` / `RetractWithTx` on every write door, "this was never true" | `[Unreleased]` Added "Retraction: a way to say this was never true"; evidence `tasks/evidence/retraction/` |
+| Item 43 (FEATURE, ai-soc) — retraction: `Retract` / `RetractWithTx` on every write door, "this was never true" | `[4.49.1]` Added "Retraction: a way to say this was never true"; evidence `tasks/evidence/retraction/` |
 
 Recover closed investigation prose via `git log --all -- tasks/backlog.md` if needed.
 

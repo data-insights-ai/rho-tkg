@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.49.1] - 2026-10-10
+
+Patch release (patch versions only until a minor is asked for): the retraction door, `Retract` / `RetractWithTx` on
+`Nodes()` / `Rels()` and the `GraphTx`, `BatchBuilder` and ingest `Session` twins, for "this was never true": belief ends
+at the transaction instant T and from T on the entity is absent for every valid time, while every earlier pin is
+unchanged. `Delete` keeps its validity-end meaning. Additive; a binary older than this release reads a retraction as a
+plain Delete, so upgrade every reader before any writer uses `Retract` (migration block in the entry).
+
 ### Added
 
 - **Retraction: a way to say "this was never true"** (backlog 43, requested by ai-soc — recovery ends the edges of
