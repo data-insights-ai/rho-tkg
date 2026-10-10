@@ -48,13 +48,16 @@ func (s *Store) BeginApplicationImport(ctx context.Context, m ApplicationSnapsho
 		return nil, err
 	}
 	tc := s.meta.Transfer
+	if m.SemanticContractID != s.meta.Rep.SemanticContractID {
+		return nil, ErrInvalid
+	}
 	if !tc.enabled() || m.Identity != tc.Identity || m.Contract != tc.Contract {
 		return nil, ErrInvalid
 	}
 	if s.meta.Rep.Config.enabled() && !s.meta.Rep.Config.matches(m.ConfState) {
 		return nil, ErrInvalid
 	}
-	if m.Version == 2 && !s.meta.Gen.Publication.Limits.enabled() {
+	if m.Version >= 2 && !s.meta.Gen.Publication.Limits.enabled() {
 		return nil, ErrInvalid
 	}
 	if s.applicationImport != nil {
@@ -118,7 +121,7 @@ func (i *ApplicationImport) descriptor() []byte {
 	if i.verified {
 		flags |= 2
 	}
-	if i.manifest.Version == 2 {
+	if i.manifest.Version >= 2 {
 		b[2] = 3
 		b = append(b, i.manifest.CutID[:]...)
 		b = binary.BigEndian.AppendUint32(b, uint32(len(i.after))) // #nosec G115 -- AS2 cursor length is contract-bounded before admission.
@@ -170,7 +173,7 @@ func (i *ApplicationImport) Append(ctx context.Context, c ApplicationSnapshotChu
 			return err
 		}
 		rows++
-		if i.manifest.Version == 2 && (bytes.Compare(k, i.after) <= 0 || bytes.Compare(k, c.After) > 0) {
+		if i.manifest.Version >= 2 && (bytes.Compare(k, i.after) <= 0 || bytes.Compare(k, c.After) > 0) {
 			return ErrInvalid
 		}
 		if rows > l.MaxChunkRows {
@@ -189,7 +192,7 @@ func (i *ApplicationImport) Append(ctx context.Context, c ApplicationSnapshotChu
 	if err != nil {
 		return err
 	}
-	if i.manifest.Version == 2 && (c.Visited < uint64(rows) || c.VisitedBytes < uint64(len(c.Data))) {
+	if i.manifest.Version >= 2 && (c.Visited < uint64(rows) || c.VisitedBytes < uint64(len(c.Data))) {
 		return ErrInvalid
 	}
 	if c.Final {
@@ -204,7 +207,7 @@ func (i *ApplicationImport) Append(ctx context.Context, c ApplicationSnapshotChu
 	next.state = state
 	next.sequence++
 	next.final = c.Final
-	if i.manifest.Version == 2 {
+	if i.manifest.Version >= 2 {
 		next.after = copyApplicationBytes(c.After)
 	}
 	prospective := s.meta

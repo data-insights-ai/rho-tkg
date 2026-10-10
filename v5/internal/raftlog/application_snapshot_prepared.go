@@ -14,11 +14,11 @@ const applicationSnapshotDescriptorFixedBytes = 4 + 40 + 80 + 5*8 + 3*32 + 4
 const preparedSnapshotFixedBytes uint64 = 1024
 const applicationSnapshotClaimFixedBytes uint64 = 2048
 
-// EncodeApplicationSnapshotDescriptor binds an AS2 cut and verified manifest.
+// EncodeApplicationSnapshotDescriptor binds an AS2/AS3 cut and verified manifest.
 // It contains no application image, local generation/voter policy or HardState.
 // Encoding does not prove receipt, Raft acceptance or authorize activation.
 func EncodeApplicationSnapshotDescriptor(m ApplicationSnapshotManifest) ([]byte, error) {
-	if m.Version != 2 {
+	if m.Version != 2 && m.Version != 3 {
 		return nil, ErrInvalid
 	}
 	if err := validateManifest(m); err != nil {
@@ -31,8 +31,15 @@ func EncodeApplicationSnapshotDescriptor(m ApplicationSnapshotManifest) ([]byte,
 	if err != nil {
 		return nil, err
 	}
-	b := make([]byte, 0, applicationSnapshotDescriptorFixedBytes+len(cs))
-	b = append(b, 'A', 'D', 1, 0)
+	b := make([]byte, 0, descriptorFixedBytes(m.SemanticContractID)+len(cs))
+	version := byte(1)
+	if m.Version == 3 {
+		version = 2
+	}
+	b = append(b, 'A', 'D', version, 0)
+	if m.Version == 3 {
+		b = append(b, m.SemanticContractID[:]...)
+	}
 	b = appendIdentity(b, m.Identity)
 	b = appendContract(b, m.Contract)
 	totals, rows, err := snapshotTotals(m)
@@ -55,7 +62,7 @@ func EncodeApplicationSnapshotDescriptor(m ApplicationSnapshotManifest) ([]byte,
 } // #nosec G115 -- ConfState wire size checked <=64 before uint32 encoding.
 
 // PreparedApplicationSnapshot is a receiver-local, same-Store capability for a
-// final synced verified AS2 import. It never proves Raft accepted the snapshot.
+// final synced verified AS2/AS3 import. It never proves Raft accepted the snapshot.
 // A live claim freezes Abort/Prepared.Close; only that claim's owner can release
 // it. Dormant evidence remains after a non-activating claim is released.
 type PreparedApplicationSnapshot struct {
@@ -84,7 +91,7 @@ type ApplicationSnapshotClaim struct {
 	closed, consumed bool
 }
 
-// Prepare admits one bounded local capability only after the AS2 import is
+// Prepare admits one bounded local capability only after the AS2/AS3 import is
 // final and its complete verification seal has been synced. It scans no source
 // rows and is idempotent for the same live import.
 func (i *ApplicationImport) Prepare() (*PreparedApplicationSnapshot, error) {
@@ -97,7 +104,7 @@ func (i *ApplicationImport) Prepare() (*PreparedApplicationSnapshot, error) {
 	if err := i.check(context.Background()); err != nil {
 		return nil, err
 	}
-	if !s.meta.Rep.Config.enabled() || i.manifest.Version != 2 || !i.final || !i.verified || !s.meta.Rep.Config.matches(i.manifest.ConfState) {
+	if !s.meta.Rep.Config.enabled() || i.manifest.Version != semanticManifestVersion(s.meta.Rep.SemanticContractID) || i.manifest.SemanticContractID != s.meta.Rep.SemanticContractID || !i.final || !i.verified || !s.meta.Rep.Config.matches(i.manifest.ConfState) {
 		return nil, ErrInvalid
 	}
 	if i.prepared != nil {

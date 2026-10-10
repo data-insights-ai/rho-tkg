@@ -92,7 +92,7 @@ func canonicalConf(c *pb.ConfState) *pb.ConfState {
 	return cs
 }
 func validateManifest(m ApplicationSnapshotManifest) error {
-	if m.Version > 2 || m.Version != 2 && m.CutID != [32]byte{} {
+	if m.Version > 3 || m.Version < 2 && m.CutID != [32]byte{} || m.Version < 3 && m.SemanticContractID != (ApplicationSemanticContractID{}) || m.Version == 3 && m.SemanticContractID == (ApplicationSemanticContractID{}) {
 		return ErrInvalid
 	}
 	if err := m.Identity.validate(); err != nil {
@@ -133,8 +133,8 @@ func validateManifest(m ApplicationSnapshotManifest) error {
 	if err != nil {
 		return err
 	}
-	if m.Version == 2 {
-		id, err := cutID(ApplicationCutReference{Identity: m.Identity, Contract: m.Contract, Index: m.Index, Term: m.Term, ConfState: m.ConfState, ImageBytes: uint64(len(m.Image)), ImageHash: m.ImageHash, RetainedBytes: b, RetainedRecords: r})
+	if m.Version >= 2 {
+		id, err := cutID(ApplicationCutReference{SemanticContractID: m.SemanticContractID, Identity: m.Identity, Contract: m.Contract, Index: m.Index, Term: m.Term, ConfState: m.ConfState, ImageBytes: uint64(len(m.Image)), ImageHash: m.ImageHash, RetainedBytes: b, RetainedRecords: r})
 		if err != nil {
 			return err
 		}
@@ -156,13 +156,16 @@ func EncodeApplicationSnapshotManifest(m ApplicationSnapshotManifest) ([]byte, e
 		return nil, err
 	}
 	capacity := snapshotManifestOverhead + len(cs) + len(m.Image)
-	if m.Version == 2 {
+	if m.Version >= 2 {
+		capacity += 32
+	}
+	if m.Version == 3 {
 		capacity += 32
 	}
 	b := make([]byte, 0, capacity)
 	version := byte(1)
-	if m.Version == 2 {
-		version = 2
+	if m.Version >= 2 {
+		version = byte(m.Version)
 	}
 	b = append(b, 'A', 'S', version, 0)
 	b = appendIdentity(b, m.Identity)
@@ -178,8 +181,11 @@ func EncodeApplicationSnapshotManifest(m ApplicationSnapshotManifest) ([]byte, e
 	b = append(b, m.RecordsHash[:]...)
 	b = binary.BigEndian.AppendUint32(b, uint32(len(cs)))
 	b = binary.BigEndian.AppendUint32(b, uint32(len(m.Image)))
-	if m.Version == 2 {
+	if m.Version >= 2 {
 		b = append(b, m.CutID[:]...)
+	}
+	if m.Version == 3 {
+		b = append(b, m.SemanticContractID[:]...)
 	}
 	b = append(b, cs...)
 	b = append(b, m.Image...)
@@ -192,13 +198,31 @@ func DecodeApplicationSnapshotManifest(b []byte, maxImageBytes int) (Application
 	if maxImageBytes < 1 || maxImageBytes > 64<<20 {
 		return m, ErrInvalid
 	}
-	if len(b) < snapshotManifestOverhead || len(b) > maxSnapshotManifestBytes+32 || (!bytes.Equal(b[:4], []byte{'A', 'S', 1, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 2, 0})) {
+	if len(b) < snapshotManifestOverhead || (!bytes.Equal(b[:4], []byte{'A', 'S', 1, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 2, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 3, 0})) {
 		return m, ErrCorrupt
 	}
-	if b[2] == 2 {
-		m.Version = 2
-		if len(b) < snapshotManifestOverhead+32 {
+	// Preserve the original AS1/AS2 envelope ceiling and refusal classification.
+	maxBytes := maxSnapshotManifestBytes + 32
+	if b[2] == 3 {
+		maxBytes += 32
+	}
+	if len(b) > maxBytes {
+		return m, ErrCorrupt
+	}
+	if b[2] >= 2 {
+		m.Version = uint32(b[2])
+		extra := 32
+		if m.Version == 3 {
+			extra += 32
+		}
+		if len(b) < snapshotManifestOverhead+extra {
 			return m, ErrCorrupt
+		}
+	}
+	if m.Version == 3 {
+		var zero ApplicationSemanticContractID
+		if bytes.Equal(b[snapshotManifestOverhead+32:snapshotManifestOverhead+64], zero[:]) {
+			return ApplicationSnapshotManifest{}, ErrInvalid
 		}
 	}
 	m.Identity = readIdentity(b[4:44])
@@ -223,8 +247,12 @@ func DecodeApplicationSnapshotManifest(b []byte, maxImageBytes int) (Application
 	cn := uint64(binary.BigEndian.Uint32(b[offset:]))
 	in := uint64(binary.BigEndian.Uint32(b[offset+4:]))
 	offset += 8
-	if m.Version == 2 {
+	if m.Version >= 2 {
 		copy(m.CutID[:], b[offset:offset+32])
+		offset += 32
+	}
+	if m.Version == 3 {
+		copy(m.SemanticContractID[:], b[offset:offset+32])
 		offset += 32
 	}
 	if cn > 32768 || in > uint64(maxImageBytes) {
@@ -244,7 +272,7 @@ func DecodeApplicationSnapshotManifest(b []byte, maxImageBytes int) (Application
 	return m, nil
 } // #nosec G115 -- cn <= 32768 and input lengths checked before indexing/conversion.
 func manifestID(m ApplicationSnapshotManifest) ([32]byte, error) {
-	if m.Version == 2 {
+	if m.Version >= 2 {
 		if err := validateManifest(m); err != nil {
 			return [32]byte{}, err
 		}
@@ -263,10 +291,15 @@ func manifestID(m ApplicationSnapshotManifest) ([32]byte, error) {
 }
 func snapshotSeed(m ApplicationSnapshotManifest) [32]byte {
 	h := sha256.New()
-	if m.Version == 2 {
+	switch m.Version {
+	case 3:
+		_, _ = h.Write([]byte("rho-tkg:application-snapshot-records:v3\x00"))
+		_, _ = h.Write(m.SemanticContractID[:])
+		_, _ = h.Write(m.CutID[:])
+	case 2:
 		_, _ = h.Write([]byte("rho-tkg:application-snapshot-records:v2\x00"))
 		_, _ = h.Write(m.CutID[:])
-	} else {
+	default:
 		_, _ = h.Write([]byte("rho-tkg:application-snapshot-records:v1\x00"))
 	}
 	_, _ = h.Write(appendContract(appendIdentity(nil, m.Identity), m.Contract))
@@ -383,4 +416,34 @@ func (v snapshotVerifier) complete(m ApplicationSnapshotManifest) error {
 		}
 	}
 	return nil
+}
+
+// DecodeApplicationSnapshotManifestForBinding refuses unbound or cross-scoped
+// headers before protobuf/image allocation. Expected must contain the complete
+// immutable namespace and nonzero semantic agreement. Returned bytes are owned.
+func DecodeApplicationSnapshotManifestForBinding(b []byte, maxImageBytes int, expected ApplicationBinding) (ApplicationSnapshotManifest, error) {
+	if err := expected.Validate(); err != nil {
+		return ApplicationSnapshotManifest{}, err
+	}
+	if maxImageBytes < 1 || maxImageBytes > 64<<20 {
+		return ApplicationSnapshotManifest{}, ErrInvalid
+	}
+	if len(b) >= 4 && (bytes.Equal(b[:4], []byte{'A', 'S', 1, 0}) || bytes.Equal(b[:4], []byte{'A', 'S', 2, 0})) {
+		return ApplicationSnapshotManifest{}, ErrInvalid
+	}
+	if len(b) < snapshotManifestOverhead+64 || len(b) > maxSnapshotManifestBytes+64 || !bytes.Equal(b[:4], []byte{'A', 'S', 3, 0}) {
+		return ApplicationSnapshotManifest{}, ErrCorrupt
+	}
+	if readIdentity(b[4:44]) != expected.Identity || !bytes.Equal(b[snapshotManifestOverhead+32:snapshotManifestOverhead+64], expected.SemanticContractID[:]) {
+		return ApplicationSnapshotManifest{}, ErrInvalid
+	}
+	cn := uint64(binary.BigEndian.Uint32(b[snapshotManifestOverhead-8:]))
+	in := uint64(binary.BigEndian.Uint32(b[snapshotManifestOverhead-4:]))
+	if cn > 32768 || in > uint64(maxImageBytes) {
+		return ApplicationSnapshotManifest{}, ErrLimit
+	}
+	if cn+in != uint64(len(b)-snapshotManifestOverhead-64) { // #nosec G115 -- fixed AS3 header <= len(b) <= 64MiB+bounded header before subtraction/conversion.
+		return ApplicationSnapshotManifest{}, ErrCorrupt
+	}
+	return DecodeApplicationSnapshotManifest(b, maxImageBytes)
 }

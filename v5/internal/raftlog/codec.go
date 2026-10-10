@@ -34,7 +34,7 @@ func metadataBytes(m metadata) uint64 {
 		}
 	}
 	if m.Rep.Config.enabled() {
-		n += replicationMetaBytes
+		n += replicationMetadataBytes(m.Rep)
 	}
 	return n
 }

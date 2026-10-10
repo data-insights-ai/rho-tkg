@@ -53,6 +53,10 @@ func (s *Store) BeginApplicationExport(ctx context.Context) (*ApplicationExport,
 		s.mu.Unlock()
 		return nil, err
 	}
+	if s.meta.Rep.SemanticContractID != (ApplicationSemanticContractID{}) {
+		s.mu.Unlock()
+		return nil, ErrInvalid
+	}
 	tc := s.meta.Transfer
 	if !tc.enabled() || s.meta.Applied == 0 {
 		s.mu.Unlock()

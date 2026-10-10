@@ -33,6 +33,7 @@ func (l ApplicationPublishedCutLimits) validate(g ApplicationGenerationLimits) e
 // a transfer manifest supplies the verified canonical history digest separately.
 // Local bank/generation, voter identity and HardState are intentionally absent.
 type ApplicationCutReference struct {
+	SemanticContractID                         ApplicationSemanticContractID
 	Identity                                   ApplicationIdentity
 	Contract                                   ApplicationContract
 	Index, Term                                uint64
@@ -79,7 +80,7 @@ func decodePublicationMeta(b []byte) (publicationMetadata, []byte, error) {
 }
 func cutReference(m metadata) ApplicationCutReference {
 	p := m.Gen.Publication
-	return ApplicationCutReference{Identity: m.Transfer.Identity, Contract: m.Transfer.Contract, Index: m.Base, Term: m.BaseTerm, ConfState: m.Snap.GetMetadata().GetConfState(), ImageBytes: m.SnapBytes, ImageHash: m.SnapHash, RetainedBytes: p.Bytes, RetainedRecords: p.Records, ID: p.ID}
+	return ApplicationCutReference{SemanticContractID: m.Rep.SemanticContractID, Identity: m.Transfer.Identity, Contract: m.Transfer.Contract, Index: m.Base, Term: m.BaseTerm, ConfState: m.Snap.GetMetadata().GetConfState(), ImageBytes: m.SnapBytes, ImageHash: m.SnapHash, RetainedBytes: p.Bytes, RetainedRecords: p.Records, ID: p.ID}
 }
 func cutID(c ApplicationCutReference) ([32]byte, error) {
 	if err := c.Identity.validate(); err != nil {
@@ -101,7 +102,11 @@ func cutID(c ApplicationCutReference) ([32]byte, error) {
 	if err != nil {
 		return [32]byte{}, err
 	}
-	b := appendIdentity([]byte("rho-tkg:published-application-cut:v1\x00"), c.Identity)
+	domain := []byte("rho-tkg:published-application-cut:v1\x00")
+	if c.SemanticContractID != (ApplicationSemanticContractID{}) {
+		domain = append([]byte("rho-tkg:published-application-cut:v2\x00"), c.SemanticContractID[:]...)
+	}
+	b := appendIdentity(domain, c.Identity)
 	b = appendContract(b, c.Contract)
 	for _, n := range []uint64{c.Index, c.Term, c.ImageBytes, c.RetainedBytes, c.RetainedRecords} {
 		b = binary.BigEndian.AppendUint64(b, n)
@@ -203,7 +208,7 @@ func checkPublicationHeadroom(m metadata, l Limits) error {
 	if err := checkMetadataLimit(worst, l); err != nil {
 		return err
 	}
-	if m.Rep.Config.enabled() && metadataBytes(worst)+readyEnvelopeBytes+applicationSnapshotDescriptorFixedBytes+unsignedLimit(proto.Size(cs)) > unsignedLimit(l.MaxReadyBytes) {
+	if m.Rep.Config.enabled() && metadataBytes(worst)+readyEnvelopeBytes+unsignedLimit(descriptorFixedBytes(m.Rep.SemanticContractID))+unsignedLimit(proto.Size(cs)) > unsignedLimit(l.MaxReadyBytes) {
 		return ErrLimit
 	}
 	return nil

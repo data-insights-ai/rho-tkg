@@ -60,6 +60,7 @@ func applicationVote(m metadata, vote uint64) bool {
 // preserves it; a later local publication clears it rather than reusing it for
 // the new cut. Activation always requires a live verified claim independently.
 type replicationMetadata struct {
+	SemanticContractID      ApplicationSemanticContractID
 	Config                  ApplicationReplicationConfig
 	LastActivatedManifestID [32]byte
 }
@@ -67,14 +68,22 @@ type replicationMetadata struct {
 const replicationMetaBytes = 4 + 3*8 + 32
 
 func appendReplicationMeta(b []byte, r replicationMetadata) []byte {
-	b = append(b, 'A', 'R', 1, 0)
+	version := byte(1)
+	if r.SemanticContractID != (ApplicationSemanticContractID{}) {
+		version = 2
+	}
+	b = append(b, 'A', 'R', version, 0)
 	for _, id := range r.Config.Voters {
 		b = binary.BigEndian.AppendUint64(b, id)
 	}
-	return append(b, r.LastActivatedManifestID[:]...)
+	b = append(b, r.LastActivatedManifestID[:]...)
+	if version == 2 {
+		b = append(b, r.SemanticContractID[:]...)
+	}
+	return b
 }
 func decodeReplicationMeta(b []byte) (replicationMetadata, []byte, error) {
-	if len(b) < replicationMetaBytes || !bytes.Equal(b[:4], []byte{'A', 'R', 1, 0}) {
+	if len(b) < replicationMetaBytes || (!bytes.Equal(b[:4], []byte{'A', 'R', 1, 0}) && !bytes.Equal(b[:4], []byte{'A', 'R', 2, 0})) {
 		return replicationMetadata{}, nil, ErrCorrupt
 	}
 	var r replicationMetadata
@@ -82,7 +91,18 @@ func decodeReplicationMeta(b []byte) (replicationMetadata, []byte, error) {
 		r.Config.Voters[j] = binary.BigEndian.Uint64(b[4+j*8:])
 	}
 	copy(r.LastActivatedManifestID[:], b[28:60])
-	return r, b[60:], nil
+	tail := b[60:]
+	if b[2] == 2 {
+		if len(tail) < 32 {
+			return r, nil, ErrCorrupt
+		}
+		copy(r.SemanticContractID[:], tail[:32])
+		tail = tail[32:]
+		if r.SemanticContractID == (ApplicationSemanticContractID{}) {
+			return r, nil, ErrCorrupt
+		}
+	}
+	return r, tail, nil
 }
 func validateReplicationMeta(m metadata, l Limits) error {
 	if !m.Rep.Config.enabled() {

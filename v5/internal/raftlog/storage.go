@@ -47,15 +47,18 @@ func (l Limits) Validate() error {
 
 // Config selects explicit first-open-only creation; recovery never creates a missing DB.
 type Config struct {
-	Dir           string
-	FS            vfs.FS
-	Create        bool
-	Limits        Limits
-	Application   ApplicationPolicy
-	Generations   ApplicationGenerationLimits
-	Replication   ApplicationReplicationConfig
-	PublishedCuts ApplicationPublishedCutLimits
-	Transfer      ApplicationTransferConfig
+	// SemanticContractID opts fresh RLM6 into an immutable materializer agreement.
+	// Zero preserves older formats; existing stores cannot acquire/change it.
+	SemanticContractID ApplicationSemanticContractID
+	Dir                string
+	FS                 vfs.FS
+	Create             bool
+	Limits             Limits
+	Application        ApplicationPolicy
+	Generations        ApplicationGenerationLimits
+	Replication        ApplicationReplicationConfig
+	PublishedCuts      ApplicationPublishedCutLimits
+	Transfer           ApplicationTransferConfig
 }
 
 // Store implements durable raft.Storage with bounded reads and no per-entry RAM index.
@@ -120,6 +123,10 @@ func Open(c Config) (*Store, error) {
 	}
 	initial.Gen.Publication.Limits = c.PublishedCuts
 	initial.Rep.Config = c.Replication
+	initial.Rep.SemanticContractID = c.SemanticContractID
+	if c.SemanticContractID != (ApplicationSemanticContractID{}) && !c.Replication.enabled() {
+		return nil, ErrInvalid
+	}
 	if err := c.Replication.validate(initial, c.Limits); err != nil {
 		return nil, err
 	}
@@ -161,7 +168,7 @@ func Open(c Config) (*Store, error) {
 		if err := errors.Join(decodeErr, closeErr); err != nil {
 			return fail(err)
 		}
-		if m.App.Policy != c.Application || m.Transfer != c.Transfer || m.Gen.Limits != c.Generations || m.Gen.Publication.Limits != c.PublishedCuts || m.Rep.Config != c.Replication {
+		if m.App.Policy != c.Application || m.Transfer != c.Transfer || m.Gen.Limits != c.Generations || m.Gen.Publication.Limits != c.PublishedCuts || m.Rep.Config != c.Replication || m.Rep.SemanticContractID != c.SemanticContractID {
 			return fail(ErrInvalid)
 		}
 		if err := checkPublicationHeadroom(m, c.Limits); err != nil {

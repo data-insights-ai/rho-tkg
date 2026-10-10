@@ -22,8 +22,9 @@ func (n ApplicationIdentity) validate() error {
 	return nil
 }
 
-// ApplicationContract versions the shared deterministic application format and
-// staging/read bounds. Local voters, retained quotas, views and log reclamation
+// ApplicationContract versions shared storage/wire and staging/read bounds.
+// It does not bind materializer meaning; an explicit ApplicationSemanticContractID
+// supplies that agreement. Local voters, retained quotas, views and reclamation
 // remain local. This prerequisite does not yet integrate a replicated machine.
 type ApplicationContract struct {
 	Version                                                            uint32
@@ -105,8 +106,10 @@ func (c ApplicationTransferConfig) validate(p ApplicationPolicy) error {
 // are owned bounded copies. Local generation IDs/policies and HardState are absent.
 // The digest binds ordered canonical records; ManifestID binds all metadata too.
 // Version zero or one selects the original AS1 bytes; AS1 decode normalizes to
-// zero. Version two explicitly binds a published CutID. Other versions refuse.
+// zero. Version two binds an unbound CutID; version three requires and binds
+// SemanticContractID. Older formats require its zero value. Other versions refuse.
 type ApplicationSnapshotManifest struct {
+	SemanticContractID               ApplicationSemanticContractID
 	Version                          uint32
 	CutID                            [32]byte
 	Identity                         ApplicationIdentity
@@ -122,7 +125,8 @@ type ApplicationSnapshotManifest struct {
 // exact completion. AS1 (Version zero/one) rejects empty non-final pages and
 // requires all AS2 fields zero. AS2 counts visited physical work, including
 // skipped future rows; those sender-declared counts are limits, not evidence
-// proving unseen data. After is an owned canonical physical progress cursor.
+// proving unseen data. AS3 uses the same progress fields with semantic-bound
+// CutID/ManifestID and Version three. After is an owned canonical progress cursor.
 type ApplicationSnapshotChunk struct {
 	Version               uint32
 	CutID, ManifestID     [32]byte

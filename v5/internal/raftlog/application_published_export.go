@@ -31,7 +31,11 @@ type publishedExportState struct {
 // canonical history and namespace ledgers without copying/hashing the image a
 // second time. Callers first validate or verify the manifest and its image.
 func publishedManifestID(m ApplicationSnapshotManifest) [32]byte {
-	b := append([]byte("rho-tkg:application-snapshot-manifest:v2\x00"), m.CutID[:]...)
+	domain := []byte("rho-tkg:application-snapshot-manifest:v2\x00")
+	if m.Version == 3 {
+		domain = append([]byte("rho-tkg:application-snapshot-manifest:v3\x00"), m.SemanticContractID[:]...)
+	}
+	b := append(domain, m.CutID[:]...)
 	b = append(b, m.RecordsHash[:]...)
 	for _, ns := range [][4]uint64{m.NamespaceBytes, m.NamespaceRecords} {
 		for _, n := range ns {
@@ -93,7 +97,7 @@ func (s *Store) BeginPublishedApplicationExport(ctx context.Context, id [32]byte
 		return nil, err
 	}
 	cut := cutReference(s.meta)
-	m := ApplicationSnapshotManifest{Version: 2, CutID: id, Identity: cut.Identity, Contract: cut.Contract, Index: cut.Index, Term: cut.Term, ConfState: canonicalConf(cut.ConfState), Image: image, ImageHash: cut.ImageHash}
+	m := ApplicationSnapshotManifest{Version: semanticManifestVersion(cut.SemanticContractID), SemanticContractID: cut.SemanticContractID, CutID: id, Identity: cut.Identity, Contract: cut.Contract, Index: cut.Index, Term: cut.Term, ConfState: canonicalConf(cut.ConfState), Image: image, ImageHash: cut.ImageHash}
 	m.NamespaceRecords = [4]uint64{p.Records - 3*m.Index, m.Index, m.Index, m.Index}
 	for j := range m.NamespaceBytes {
 		m.NamespaceBytes[j] = p.Bytes
@@ -159,7 +163,7 @@ func (e *ApplicationExport) BuildManifest(ctx context.Context, b ReadBudget) (bo
 		m.RecordsHash = state.digest
 		// The image was checked at capture. Its cut ID must agree with the exact
 		// verified totals; no full-image encode/hash is hidden in this page's finish.
-		id, err := cutID(ApplicationCutReference{Identity: m.Identity, Contract: m.Contract, Index: m.Index, Term: m.Term, ConfState: m.ConfState, ImageBytes: uint64(len(m.Image)), ImageHash: m.ImageHash, RetainedBytes: state.bytes, RetainedRecords: state.rows})
+		id, err := cutID(ApplicationCutReference{SemanticContractID: m.SemanticContractID, Identity: m.Identity, Contract: m.Contract, Index: m.Index, Term: m.Term, ConfState: m.ConfState, ImageBytes: uint64(len(m.Image)), ImageHash: m.ImageHash, RetainedBytes: state.bytes, RetainedRecords: state.rows})
 		if err != nil || id != m.CutID {
 			s.poison = ErrCorrupt
 			return false, ErrCorrupt
@@ -273,7 +277,7 @@ func (e *ApplicationExport) publishedPage(ctx context.Context, b ReadBudget, bui
 		}
 		last = copyApplicationBytes(e.after)
 	}
-	chunk = ApplicationSnapshotChunk{Version: 2, CutID: m.CutID, ManifestID: p.manifestID, Sequence: e.sequence, Data: data, After: last, Visited: uint64(rows), VisitedBytes: uint64(work), Final: !valid}
+	chunk = ApplicationSnapshotChunk{Version: m.Version, CutID: m.CutID, ManifestID: p.manifestID, Sequence: e.sequence, Data: data, After: last, Visited: uint64(rows), VisitedBytes: uint64(work), Final: !valid}
 	return chunk, state, nil
 }
 func snapshotCursorIndex(k []byte, c ApplicationContract) (uint64, error) {
@@ -321,7 +325,7 @@ func (e *ApplicationExport) nextPublished(ctx context.Context, b ReadBudget) (Ap
 // Completion is separately proved by ordered emitted frames, all envelope runs,
 // exact ledgers and the manifest digest; skipped source records are not trusted.
 func (i *ApplicationImport) validateChunkHeader(c ApplicationSnapshotChunk) error {
-	if i.manifest.Version != 2 {
+	if i.manifest.Version < 2 {
 		if c.Version > 1 || c.CutID != [32]byte{} || c.ManifestID != [32]byte{} || len(c.After) != 0 || c.Visited != 0 || c.VisitedBytes != 0 || len(c.Data) == 0 && !c.Final {
 			return ErrInvalid
 		}
@@ -329,7 +333,7 @@ func (i *ApplicationImport) validateChunkHeader(c ApplicationSnapshotChunk) erro
 	}
 	p := i.s.meta.Gen.Publication.Limits
 	l := i.s.meta.Transfer.Limits
-	if !p.enabled() || c.Version != 2 || c.CutID != i.manifest.CutID || c.ManifestID != i.id {
+	if !p.enabled() || c.Version != i.manifest.Version || c.CutID != i.manifest.CutID || c.ManifestID != i.id {
 		return ErrInvalid
 	}
 	if i.sequence >= p.MaxTransferChunks {
@@ -384,7 +388,7 @@ func importDescriptorBytes(i *ApplicationImport) int {
 	if i.generation != 0 {
 		n += 16
 	}
-	if i.manifest.Version == 2 {
+	if i.manifest.Version >= 2 {
 		n += 32 + 4 + len(i.after)
 	}
 	return n
