@@ -2,6 +2,7 @@ package graphapply
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
 	"math"
 
@@ -168,4 +169,116 @@ func decodeGenesisCommand(wire []byte, budget registeredJournalBudget) (register
 		return registeredGenesisSource{}, err
 	}
 	return source, nil
+}
+
+// All codec work is admitted before fixed reads, checksum scans or output backing.
+type registeredOrigin struct {
+	source      registeredGenesisSource
+	index, term uint64
+}
+
+func registeredGenesisIdentity(s registeredGenesisSource) (key [47]byte, lineage [32]byte) {
+	copy(key[:], "HKS1")
+	key[4] = 1
+	copy(key[5:21], s.Scope.Graph[:])
+	binary.BigEndian.PutUint64(key[21:29], s.Scope.Partition)
+	copy(key[29:45], s.Scope.Group[:])
+	binary.BigEndian.PutUint16(key[45:47], 1)
+	var input [86]byte
+	copy(input[:36], "rho-tkg:registered-genesis-scope:v1\x00")
+	binary.BigEndian.PutUint32(input[36:40], 46)
+	copy(input[40:44], "JGS1")
+	binary.BigEndian.PutUint16(input[44:46], 1)
+	copy(input[46:62], s.Scope.Graph[:])
+	binary.BigEndian.PutUint64(input[62:70], s.Scope.Partition)
+	copy(input[70:86], s.Scope.Group[:])
+	return key, sha256.Sum256(input[:])
+}
+
+func encodeRegisteredOrigin(s registeredGenesisSource, index, term uint64, b registeredJournalBudget) ([]byte, []byte, error) {
+	//2560 fixed +244 validation +86 lineage +346 checksum +425 emission +425 backing =4086.
+	if err := reserveRegisteredJournal(b, 244+86+346, 425, 0, 425); err != nil {
+		return nil, nil, err
+	}
+	if err := validateRegisteredGenesisSource(s); err != nil {
+		return nil, nil, err
+	}
+	if index < 3 || term <= s.SourceTerm {
+		return nil, nil, errInvalid
+	}
+	key, lineage := registeredGenesisIdentity(s)
+	out := make([]byte, 0, 378)
+	out = append(out, "HCR1"...)
+	out = binary.BigEndian.AppendUint16(out, 1)
+	out = append(out, 1, 0)
+	out = append(out, s.Scope.Graph[:]...)
+	out = binary.BigEndian.AppendUint64(out, s.Scope.Partition)
+	out = append(out, s.Scope.Group[:]...)
+	out = append(out, lineage[:]...)
+	out = binary.BigEndian.AppendUint16(out, 1)
+	out = binary.BigEndian.AppendUint64(out, index)
+	out = binary.BigEndian.AppendUint32(out, 252)
+	out = appendRegisteredGenesisSource(out, s)
+	out = binary.BigEndian.AppendUint64(out, term)
+	sum := sha256.Sum256(out)
+	out = append(out, sum[:]...)
+	ownedKey := make([]byte, 47)
+	copy(ownedKey, key[:])
+	return ownedKey, out, nil
+}
+
+func decodeRegisteredOrigin(wire []byte, b registeredJournalBudget) (registeredOrigin, error) {
+	//2560 fixed +378 frame +346 checksum +86 lineage +3059 decoder +255 wrapper emission/backing =6939.
+	if err := reserveRegisteredJournal(b, 378+346+86+3059, 255, 0, 255); err != nil {
+		return registeredOrigin{}, err
+	}
+	if len(wire) != 378 || !bytes.Equal(wire[:8], []byte{'H', 'C', 'R', '1', 0, 1, 1, 0}) || binary.BigEndian.Uint16(wire[80:82]) != 1 || binary.BigEndian.Uint32(wire[90:94]) != 252 {
+		return registeredOrigin{}, errCorrupt
+	}
+	sum := sha256.Sum256(wire[:346])
+	if !bytes.Equal(sum[:], wire[346:]) {
+		return registeredOrigin{}, errCorrupt
+	}
+	command := make([]byte, 11, 255)
+	copy(command, "GJQ1")
+	binary.BigEndian.PutUint16(command[4:6], 1)
+	binary.BigEndian.PutUint32(command[7:11], 244)
+	command = append(command, wire[94:338]...)
+	source, err := decodeGenesisCommand(command, registeredJournalBudget{3059})
+	if err != nil {
+		return registeredOrigin{}, err
+	}
+	_, lineage := registeredGenesisIdentity(source)
+	index, term := binary.BigEndian.Uint64(wire[82:90]), binary.BigEndian.Uint64(wire[338:346])
+	if index < 3 || term <= source.SourceTerm || !bytes.Equal(wire[8:24], source.Scope.Graph[:]) || binary.BigEndian.Uint64(wire[24:32]) != source.Scope.Partition || !bytes.Equal(wire[32:48], source.Scope.Group[:]) || !bytes.Equal(wire[48:80], lineage[:]) {
+		return registeredOrigin{}, errCorrupt
+	}
+	return registeredOrigin{source, index, term}, nil
+}
+
+func encodeRegisteredGenesisOutcome(s registeredGenesisSource, index, term, evaluation uint64, status byte, b registeredJournalBudget) ([]byte, error) {
+	//2560 fixed +244 validation +86 lineage +113 checksum +145 emission/backing +47 key =3340.
+	if err := reserveRegisteredJournal(b, 244+86+113, 145, 0, 145+47); err != nil {
+		return nil, err
+	}
+	if err := validateRegisteredGenesisSource(s); err != nil {
+		return nil, err
+	}
+	if index < 3 || term <= s.SourceTerm || evaluation < index || status != 4 && status != 5 || status == 4 && evaluation != index {
+		return nil, errInvalid
+	}
+	key, lineage := registeredGenesisIdentity(s)
+	out := make([]byte, 0, 145)
+	out = append(out, "JOR1"...)
+	out = binary.BigEndian.AppendUint16(out, 1)
+	out = append(out, status)
+	out = binary.BigEndian.AppendUint64(out, evaluation)
+	out = binary.BigEndian.AppendUint16(out, 0)
+	out = append(out, 1)
+	out = append(out, key[:]...)
+	out = binary.BigEndian.AppendUint64(out, index)
+	out = binary.BigEndian.AppendUint64(out, term)
+	out = append(out, lineage[:]...)
+	sum := sha256.Sum256(out)
+	return append(out, sum[:]...), nil
 }

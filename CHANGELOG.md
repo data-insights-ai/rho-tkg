@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added v5 registered Genesis materialization through actual quorum commit.
+  Immutable OriginSeed retains its original entry index/term and GR2 Initialize
+  source across higher-term replay, prefix compaction and durable reopen.
+  Native, race, coverage and cached offline scanner checks are qualified;
+  Register, public Host, registered AS4 snapshot acceptance and V2 remain open.
+
 - Added durable graph-qualified default-axis genesis for declared v5 partitions.
   HOME selects the complete Q/ms/POSIX descriptor once; other partitions adopt
   that same completed configuration proof. Initialization co-installs the axis,
