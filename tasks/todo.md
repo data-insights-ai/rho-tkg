@@ -41,4 +41,4 @@ ledgers of 2026-10-09/10 (per-step red tests, merges, reviews) are in git histor
 - [ ] 21 retention `PurgeExpiredRels` + per-type gate (sigma, not blocking).
 - [ ] Residual backlog: 0–5, 7, 10 (remaining), 13, 15, 16, 20 (RelAtTx benchmarks), 22, 23, 25, 26, 31, 37, 39, 40, 44.
 - [ ] (René) delete the stale `wip/badger-scan-flush-evict` branch; named stability exceptions vs deprecation ritual.
-- [ ] Next release v4.49.3 (PATCH only, René 2026-10-10: no minor versions until asked) when 43 / 34 / 33 are merged; gate, tag, notify sigma-tkgd and ai-soc.
+- [ ] Next release v4.50.1 (PATCH only; v4.50.0 was released by Markus 2026-10-10, René 2026-10-10: no minor versions until asked) when 43 / 34 / 33 are merged; gate, tag, notify sigma-tkgd and ai-soc.

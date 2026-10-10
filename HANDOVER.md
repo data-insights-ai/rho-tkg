@@ -215,7 +215,7 @@ Legend: [ ] open, (S) = waits for sigma, (R) = waits for René's decision.
    Delete (mixed-version replicas diverge; upgrade readers first; open question: per-row `fv=3` on retraction tombstones so old binaries
    fail closed). NOT DONE: the Opus review round (stopped), `go test -race` on the full package set, `make cover`; the 3.7k-line test suite
    was never shortened (René: too long; the stopped rewrite target was <= 900 lines with the 26-mutant driver as gate, see
-   `tasks/evidence/retraction/14-mutants.txt`). Next tag is a PATCH (v4.49.3).
+   `tasks/evidence/retraction/14-mutants.txt`). Next tag is a PATCH (v4.50.1).
    STOPPED branches with uncommitted work (not merged, worktrees kept): `worktree-agent-adcfa76ae8b4c0dfe` (backlog 34, 20 uncommitted
    files, 0 commits) and `worktree-agent-aa4b0ebc0683fcb3f` (backlog 42, 23 uncommitted files, 0 commits).
 1. [ ] **Restart backlog 34** `Set{Node,Rel}VersionIntervalWithTx` (all doors) — sigma replay need.
@@ -230,7 +230,7 @@ Legend: [ ] open, (S) = waits for sigma, (R) = waits for René's decision.
 10. [ ] (R) Answer: keep behaviour changes as named stability exceptions (default) or ship through the deprecation ritual.
 11. [ ] Optional: write the v4→v5 importer reference tests Markus might want (note on main: `tasks/v4-changes-for-v5-importer-20261010.md`);
     re-arm the origin watch (§8) if René still wants to follow `v5`.
-12. [ ] **PATCH VERSIONS ONLY** (René 2026-10-10: "just patch versions.. no minor versions until asked"). The next tag is v4.49.3 (then .4 …), also for additive features such as the retraction door; no v4.50.0 until he asks. Gate, tag, notify consumers as before.
+12. [ ] **PATCH VERSIONS ONLY** (René 2026-10-10: "just patch versions.. no minor versions until asked"). The next tag is v4.50.1 (then .2 …) because Markus released v4.50.0 (see below), also for additive features such as the retraction door; no v4.50.0 until he asks. Gate, tag, notify consumers as before.
 
 Done and verified this session (do not redo): see §2 table plus CHANGELOG; the ledger rows in `tasks/todo.md` carry the evidence paths.
 
@@ -401,3 +401,14 @@ superseded-by notes). No code was changed. **Rule going forward**: every release
 `docs/api.md`, `docs/errors.md`, and the backlog Closed table in the same commit as the code; the docs-consistency tests
 (`go test ./pkg/graph/internal/core ./pkg/graph -run 'Doc|Errors'`) guard the version line and the error inventory only.
 Not verified by the review: benchmark numbers quoted from the CHANGELOG, cross-repo claims (ai-soc/sigma releases), licence texts.
+
+## 14. Outside release on main: v4.50.0 (Markus Nissl, 2026-10-10 16:02) — read this first
+
+Found by the origin watcher. Five commits pushed straight to `main` (linear on my 5b9c06f, 72 files, +2958/-94) plus the annotated
+tag **v4.50.0**, a MINOR release, after René had said "just patch versions.. no minor versions until asked". Content (CHANGELOG
+4.50.0, "sigma-tkgd store requests, round 4"): `g.Index().InventoryEpoch()`, opt-in range counts from prefix sums
+(`CreatePropertyWithOptions` / `CreateRelPropertyWithOptions` with `PropertyIndexOptions{RangeCounts: true}`), NaN range bound counts 0,
+sharded `RelRangeCardinality`, allocation-free `ForEachAdjacentEndpointOrdinal` on memory. Additive; an older binary loads a RangeCounts
+index as a plain one. My checks only: local main fast-forwarded to d6fff48, build, gofmt, docs-consistency tests green, no attribution
+lines; NOT run: `make ci-docker` on it. Nothing was reverted or deleted. Open for René: accept v4.50.0 as released (default, nothing
+to do), or retag; and tell Markus/sigma-tkgd the patch-only rule if it still stands. My next release is therefore v4.50.1.
