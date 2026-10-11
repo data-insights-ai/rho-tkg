@@ -1,0 +1,21 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-short",
+    "-count=1",
+    "-json",
+    "-coverpkg=./internal/graphapply,./internal/graphstore",
+    "-coverprofile=../tasks/evidence/v2-remote-e16/scenario-normal.cover",
+    "-run",
+    "^TestRemoteE16PreparedCommit90AfterObserved100RequiresResolvedCertificate$",
+    "./internal/graphapply"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 683.688,
+  "elapsed_s": 7.643,
+  "exit_code": 0,
+  "reason": "completed"
+}

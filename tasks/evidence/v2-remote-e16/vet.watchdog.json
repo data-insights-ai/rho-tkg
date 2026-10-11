@@ -1,0 +1,14 @@
+{
+  "command": [
+    "go",
+    "vet",
+    "./internal/graphapply"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 187.859,
+  "elapsed_s": 1.12,
+  "exit_code": 0,
+  "reason": "completed"
+}

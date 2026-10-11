@@ -1,0 +1,14 @@
+{
+  "command": [
+    "make",
+    "lint-docker",
+    "DOCKER_GO=docker run --rm --memory=4g --cpus=2 -e GOTOOLCHAIN=go1.26.9 -e GOMAXPROCS=2 -e GOMEMLIMIT=2GiB -e GOFLAGS=-p=1 -e GOWORK=off -v /var/tmp/rho-v5-v2-remote-e16-20261011:/src -w /src/v5 -v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build golang:1.26.9"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 27.969,
+  "elapsed_s": 14.924,
+  "exit_code": 0,
+  "reason": "completed"
+}

@@ -1,0 +1,7 @@
+diff --git a/v5/internal/graphapply/certified_graph_cut.go b/v5/internal/graphapply/certified_graph_cut.go
+index 169b3aa1..614fce13 100644
+--- a/v5/internal/graphapply/certified_graph_cut.go
++++ b/v5/internal/graphapply/certified_graph_cut.go
+@@ -282 +282 @@ func (m *declaredMaterializer) stageGraphCut(q *reader, entry replica.Entry, bud
+-				return refuse(graphCutPending)
++				return refuse(graphCutApplied)

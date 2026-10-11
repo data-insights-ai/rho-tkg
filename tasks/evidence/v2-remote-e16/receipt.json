@@ -1,0 +1,236 @@
+{
+  "accepted_base": "30dd0881745d95e190b77db26d5a390e89ddfaa6",
+  "scope": "E16 physical six-process certification guard; test-only changes; no E17/E18 acceptance",
+  "source_files": {
+    "v5/internal/graphapply/replicated_process_test.go": "11ecdac95691273254a7c9c01c98cbcdc8cf0a1ea016b6b4b816812abc4f1921",
+    "v5/internal/graphapply/remote_certified_e16_test.go": "55dcca4e7a6ebb2011d1d6a5ed0dbb42ca60206fb78d2cc444f54a09657e7598"
+  },
+  "production_source_unchanged": true,
+  "accepted_e15_production_files_exact_hash_checked": 194,
+  "inherited_e15_receipt": "../v2-remote-e15/final/receipt.json",
+  "inherited_e15_receipt_sha256": "0818736268bebe13481d0fbb9428466a612a4281f6d71f832dd8e08b424ffbd5",
+  "inherited_e15_core_production_coverage": {
+    "covered_statements": 18517,
+    "total_statements": 21273,
+    "percent": 87.045,
+    "new_production_statements": 0
+  },
+  "checks": {
+    "scenario-normal": {
+      "exit_code": 0,
+      "reason": "completed",
+      "wall_seconds": 7.643,
+      "peak_tree_rss_mib": 683.688,
+      "watchdog": "scenario-normal.watchdog.json",
+      "watchdog_sha256": "b0d6e46b102557c2a8862c16aeb316218d6f61a207881426bd44bf67f6fddd27",
+      "log": "scenario-normal.jsonl",
+      "log_sha256": "caaa5b2a6896172d8be2f6809022162539034e67a84b9b2294a049dc550a2ec6",
+      "parent_terminal_events": [
+        {
+          "name": "TestRemoteE16PreparedCommit90AfterObserved100RequiresResolvedCertificate",
+          "action": "pass",
+          "elapsed_seconds": 2.59
+        }
+      ]
+    },
+    "e15-diagnostic": {
+      "exit_code": 0,
+      "reason": "completed",
+      "wall_seconds": 7.961,
+      "peak_tree_rss_mib": 654.422,
+      "watchdog": "e15-diagnostic.watchdog.json",
+      "watchdog_sha256": "9afe2ad1ceffad45738c7a261c245bc347b3db955c2ed8b5484e037798d7eec0",
+      "log": "e15-diagnostic.jsonl",
+      "log_sha256": "f3967f58c096122b392829a5ae9ee6bbc51baa498abe611804317f8b45bbd061",
+      "parent_terminal_events": [
+        {
+          "name": "TestRemoteE15CertifiedReadClosesDelayedBAndRetainsOldCut",
+          "action": "pass",
+          "elapsed_seconds": 2.37
+        }
+      ]
+    },
+    "focused-race": {
+      "exit_code": 0,
+      "reason": "completed",
+      "wall_seconds": 38.335,
+      "peak_tree_rss_mib": 675.531,
+      "watchdog": "focused-race.watchdog.json",
+      "watchdog_sha256": "3c3ae63cb2d84bc09fca3b3075b5211c51e84afce5f8c8173e2f4418363519f8",
+      "log": "focused-race.jsonl",
+      "log_sha256": "ef80f07bf32f3b36da1cbb97df96c2467776d9a410dcb6914116b14cb5929040",
+      "parent_terminal_events": [
+        {
+          "name": "TestCertifiedGraphPreFenceCommitResolvesBelowReadFence",
+          "action": "pass",
+          "elapsed_seconds": 2.17
+        },
+        {
+          "name": "TestCertifiedGraphE16UnresolvedLowPrepareBlocksHigherObservedRound",
+          "action": "pass",
+          "elapsed_seconds": 2.26
+        },
+        {
+          "name": "TestGraphProcessCutSubmissionCancellationIsOperationFailure",
+          "action": "pass",
+          "elapsed_seconds": 0.57
+        },
+        {
+          "name": "TestGraphSourceProcessQueuedCancellationRepliesOnceToOriginalPausedRequest",
+          "action": "pass",
+          "elapsed_seconds": 0
+        },
+        {
+          "name": "TestRemoteE15CertifiedReadClosesDelayedBAndRetainsOldCut",
+          "action": "pass",
+          "elapsed_seconds": 10.18
+        },
+        {
+          "name": "TestRemoteE16PreparedCommit90AfterObserved100RequiresResolvedCertificate",
+          "action": "pass",
+          "elapsed_seconds": 10.46
+        },
+        {
+          "name": "TestReplicatedProcessProtocolBoundaries",
+          "action": "pass",
+          "elapsed_seconds": 0
+        }
+      ]
+    },
+    "harness-cohort-normal": {
+      "exit_code": 0,
+      "reason": "completed",
+      "wall_seconds": 5.182,
+      "peak_tree_rss_mib": 418.484,
+      "watchdog": "harness-cohort-normal.watchdog.json",
+      "watchdog_sha256": "c278baef18212a799080446b605c1c3964e58f97e7e443b36a4cd950427bbec6",
+      "log": "harness-cohort-normal.jsonl",
+      "log_sha256": "73dc445ea6363df2753ecfa9710fdfdcde1421ec75f81d712faadb26f384ddef",
+      "parent_terminal_events": [
+        {
+          "name": "TestCertifiedGraphPreFenceCommitResolvesBelowReadFence",
+          "action": "pass",
+          "elapsed_seconds": 1.64
+        },
+        {
+          "name": "TestCertifiedGraphE16UnresolvedLowPrepareBlocksHigherObservedRound",
+          "action": "pass",
+          "elapsed_seconds": 1.71
+        },
+        {
+          "name": "TestGraphProcessCutSubmissionCancellationIsOperationFailure",
+          "action": "pass",
+          "elapsed_seconds": 0.47
+        },
+        {
+          "name": "TestGraphSourceProcessQueuedCancellationRepliesOnceToOriginalPausedRequest",
+          "action": "pass",
+          "elapsed_seconds": 0
+        },
+        {
+          "name": "TestReplicatedProcessProtocolBoundaries",
+          "action": "pass",
+          "elapsed_seconds": 0
+        }
+      ]
+    },
+    "vet": {
+      "exit_code": 0,
+      "reason": "completed",
+      "wall_seconds": 1.12,
+      "peak_tree_rss_mib": 187.859,
+      "watchdog": "vet.watchdog.json",
+      "watchdog_sha256": "fd9c9fbafdbdee6fb3840ebd44f79dd350285b9df93fbb79ce7630985022aeb6",
+      "log": "vet.log",
+      "log_sha256": "8a7121b2adf5a796ab45e3a1ecd68a134bd954204e39cbfef122af4ca9eed427",
+      "parent_terminal_events": []
+    },
+    "lint": {
+      "exit_code": 0,
+      "reason": "completed",
+      "wall_seconds": 14.924,
+      "peak_tree_rss_mib": 27.969,
+      "watchdog": "lint.watchdog.json",
+      "watchdog_sha256": "a7c1e8c777d1d1883dc9525b843d544aad105255980f27ded084bbb2c169daa6",
+      "log": "lint.log",
+      "log_sha256": "39795404008f6fb882a8b5482a6978606316fe3150f21910270c3de33baec314",
+      "parent_terminal_events": []
+    },
+    "security": {
+      "exit_code": 0,
+      "reason": "completed",
+      "wall_seconds": 2.194,
+      "peak_tree_rss_mib": 28.0,
+      "watchdog": "security.watchdog.json",
+      "watchdog_sha256": "b349a904e85b421cacd97ddaae5c09afd969e705a376894d92c2b98500ab5260",
+      "log": "security.log",
+      "log_sha256": "eefad29b4f78031d6303d8ccdc63b5730fbb25771e430444aaa4a4ab3c6c44a2",
+      "parent_terminal_events": []
+    },
+    "pending-outcome-mutant": {
+      "exit_code": 1,
+      "reason": "command-failed",
+      "wall_seconds": 9.793,
+      "peak_tree_rss_mib": 683.047,
+      "watchdog": "pending-outcome-mutant.watchdog.json",
+      "watchdog_sha256": "06859973d06a14dd5eb2f221ee4f26ea77f43c0de179a7671f59218bda62c3c0",
+      "log": "pending-outcome-mutant.jsonl",
+      "log_sha256": "d4fb217b9a779c6294727ba1d2a55924be498d284d6660e330f9c4325ef5e4df",
+      "parent_terminal_events": [
+        {
+          "name": "TestRemoteE16PreparedCommit90AfterObserved100RequiresResolvedCertificate",
+          "action": "fail",
+          "elapsed_seconds": 2.1
+        }
+      ]
+    },
+    "initial-fixture-normal": {
+      "exit_code": 1,
+      "reason": "command-failed",
+      "wall_seconds": 12.6,
+      "peak_tree_rss_mib": 709.797,
+      "watchdog": "initial-fixture-normal.watchdog.json",
+      "watchdog_sha256": "88b267aa52cff8e46140d4c6a5f278162eaa62ed75bcb7348673c7f15f014ccf",
+      "log": "initial-fixture-normal.jsonl",
+      "log_sha256": "df4d0f088f7abe56ba4df30949659d9baed5d208f7195a3599866d1157ba8c39",
+      "parent_terminal_events": [
+        {
+          "name": "TestRemoteE16PreparedCommit90AfterObserved100RequiresResolvedCertificate",
+          "action": "fail",
+          "elapsed_seconds": 1.56
+        }
+      ]
+    }
+  },
+  "negative_control": {
+    "isolated_worktree": "/var/tmp/rho-v5-v2-e16-pending-mutant-20261011",
+    "single_edit": "stageGraphCut: pending resource owner returns graphCutApplied instead of graphCutPending",
+    "expected_failure": "cut command lacks actual typed outcome or emitted graph CDC: result status1 where pending2 required",
+    "all_six_child_reaps_successful": true,
+    "calls": 1232,
+    "packets": 300
+  },
+  "fixture_failure": {
+    "classification": "nonregression test-input mistake",
+    "cause": "oracle helper submitted4IDs beyond fixed max3; batching{1,3,17}+{7} keeps all assertions and caps",
+    "original_test": "initial-fixture.txt",
+    "original_test_sha256": "344c1d749ca3189a573f1716c668c7417c509949bb4eaf37beffce1422b425e0"
+  },
+  "resource_env": {
+    "GOTOOLCHAIN": "go1.26.9",
+    "GOMAXPROCS": 2,
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off",
+    "watchdog_rss_mib": 4096,
+    "watchdog_seconds": 180,
+    "docker_memory": "4g",
+    "docker_cpus": 2
+  },
+  "local_only_artifacts": "rho-certified-process-* database directories and full local .cover profiles are deliberately excluded from commit; their logs/watchdogs and source/coverage hashes remain qualified",
+  "local_coverage_profiles": {
+    "initial-fixture-normal.cover": "f3f8cb2a11a7dcd974954a07681fb498a865dab43c38051da845e3918cc1f32a",
+    "scenario-normal.cover": "917d3bc210d5e68f287f7edb40958608e97a3403043b2fd36e629540f7ba3821",
+    "harness-cohort-normal.cover": "34a5bb3987c20e0136de043226f16b581b9285891917678e92c4ce7e324099b7"
+  }
+}
