@@ -1,0 +1,18 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-count=1",
+    "-json",
+    "-run",
+    "^TestGraphSourceSixProcessesPausedPeerKeepsNativeLaneAndCancels$",
+    "./internal/graphapply"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 640.031,
+  "elapsed_s": 8.58,
+  "exit_code": 0,
+  "reason": "completed"
+}

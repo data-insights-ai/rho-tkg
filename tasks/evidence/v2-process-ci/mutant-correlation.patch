@@ -1,0 +1,12 @@
+--- v5/internal/graphapply/graph_source_process_test.go
++++ v5/internal/graphapply/graph_source_process_test.go
+@@ -224,6 +224,9 @@
+ 	case got := <-ch:
+ 		return got.response, got.err
+ 	case <-ctx.Done():
++		m.mu.Lock()
++		delete(m.pending, seq)
++		m.mu.Unlock()
+ 		// Cancel delivery is not worker termination. Keep the original response
+ 		// correlation until the child has released its operation/cleanup owner.
+ 		// The same three-second cleanup bound as retained-source Close prevents

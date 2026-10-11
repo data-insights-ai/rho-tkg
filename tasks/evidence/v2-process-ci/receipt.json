@@ -1,0 +1,143 @@
+{
+  "scope": "fixture-only canceled process request terminal synchronization; no production graph API/data/protocol changes",
+  "base": "dbb27c697b0dbc1bb9d6bf4b7db2391b8fb04f0d",
+  "source_manifest": "final-source.json",
+  "source_manifest_sha256": "f688af21e3c281d9e10033f3a4d7cb47303ee7af706292f7cefaa44859bfbfea",
+  "delta": [
+    "v5/internal/graphapply/graph_source_process_cancel_test.go",
+    "v5/internal/graphapply/graph_source_process_test.go"
+  ],
+  "production_go_files": 189,
+  "production_go_unchanged": true,
+  "results": "results.json",
+  "results_sha256": "d3712506c66cd9b110aa39feccc7d4a0be02a13cec5621c4823799e07dcd1849",
+  "normal_race_native_linux": {
+    "listed": 11,
+    "passed_each": 11,
+    "skipped_each": 0,
+    "actual_six_process_scenarios_each": 4,
+    "successful_reaps_each_scenario": 6,
+    "linux_platform": "linux/arm64",
+    "image": "golang:1.26.9",
+    "image_digest": "sha256:f1f0bcc2c524a3ced375fcb4d1ecb7aa371aa7070e112599aaca45cc02d0101b"
+  },
+  "scanners_static": [
+    {
+      "name": "static",
+      "log": "static.log",
+      "sha256": "f05134e57ec6bf3852f485d63fd22deccabdcbd958f7ca700434f8f52afa685f",
+      "watchdog": "static.watchdog.json",
+      "command": [
+        "make",
+        "fmt-check",
+        "vet",
+        "build"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "lint",
+      "log": "lint.log",
+      "sha256": "39b0a5d9d78d8d9aed3e3f0fadc5bac8e59e4f6d0029edf4de21cce7295e5117",
+      "watchdog": "lint.watchdog.json",
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--memory=4g",
+        "--memory-swap=4g",
+        "--cpus=2",
+        "-e",
+        "GOTOOLCHAIN=local",
+        "-e",
+        "GOMAXPROCS=2",
+        "-e",
+        "GOFLAGS=-p=1",
+        "-e",
+        "GOMEMLIMIT=2GiB",
+        "-e",
+        "GOWORK=off",
+        "-v",
+        "/var/tmp/rho-v5-v2-process-ci-fix-20261011:/src",
+        "-w",
+        "/src/v5",
+        "-v",
+        "rho-tkg-gocache:/go",
+        "-v",
+        "rho-tkg-buildcache:/root/.cache/go-build",
+        "golang:1.26.9",
+        "sh",
+        "-c",
+        "go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 && golangci-lint run --config ../.golangci.yml --max-same-issues=0 --max-issues-per-linter=0 ./..."
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "security",
+      "log": "security.log",
+      "sha256": "b78238c56a873d203a9c0d5c510e9b2480817a20ff2c36096c7d4b24aa8e8dd6",
+      "watchdog": "security.watchdog.json",
+      "command": [
+        "make",
+        "security-docker",
+        "DOCKER_GO=docker run --rm --memory=4g --memory-swap=4g --cpus=2 -e GOTOOLCHAIN=local -e GOMAXPROCS=2 -e GOFLAGS=-p=1 -e GOMEMLIMIT=2GiB -e GOWORK=off -v /var/tmp/rho-v5-v2-process-ci-fix-20261011:/src -w /src/v5 -v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build golang:1.26.9"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "vuln",
+      "log": "vuln.log",
+      "sha256": "2f32b5d7ac6954216d19996616521175cf5f52b4a197285397c4d43503a197d2",
+      "watchdog": "vuln.watchdog.json",
+      "command": [
+        "make",
+        "vulncheck-docker",
+        "DOCKER_GO=docker run --rm --memory=4g --memory-swap=4g --cpus=2 -e GOTOOLCHAIN=local -e GOMAXPROCS=2 -e GOFLAGS=-p=1 -e GOMEMLIMIT=2GiB -e GOWORK=off -v /var/tmp/rho-v5-v2-process-ci-fix-20261011:/src -w /src/v5 -v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build golang:1.26.9"
+      ],
+      "exit_code": 0,
+      "qualification": "0 reachable vulnerabilities;2package/2module advisory findings may overlap, not asserted as4distinct CVEs"
+    }
+  ],
+  "red": {
+    "primary": "existing-linux.jsonl",
+    "qualified_mac_counterpart": "existing-normal.jsonl was PASS and is a guard",
+    "cause_diagnostic": "diagnostic-linux.jsonl: native sourceServe/sourceOpen refused errLimit at actual voter1 workers2/control0; parent returned cancellation before child terminal",
+    "deterministic": "terminal-red.jsonl: original correlation retired early; peer-death cause lost",
+    "original_bytes": [
+      "baseline-source.json",
+      "baseline-graph_source_process_test.go.txt",
+      "diagnostic-graph_source_process_test.go.txt",
+      "terminal-red-source.json",
+      "terminal-red-test.go.txt",
+      "terminal-red.patch"
+    ]
+  },
+  "mutant": {
+    "patch": "mutant-correlation.patch",
+    "source": "mutant-correlation-source.json",
+    "log": "mutant-correlation.jsonl",
+    "result": "KILLED at exact retained-correlation assertion; one isolated shared-seam edit"
+  },
+  "coverage": {
+    "fresh_parent_profile": "final.cover",
+    "profile_sha256": "e0cfe53ae492d47e042cc64631ce237ce477d3603ce5927333e81c56b16d4c1a",
+    "qualification": "Go coverage excludes *_test.go. All189production files unchanged, so accepted process-slice production coverage/method maps are conserved; fresh focused parent profile is not claimed as full module coverage. Native six-child execution asserted independently.",
+    "accepted_receipt": "../v2-process/first-slice-acceptance.json + first-slice-evidence.tar.gz (accepted883b6122 production bytes/method coverage)",
+    "public_methods_added": 0,
+    "production_statements_changed": 0
+  },
+  "limits": {
+    "watchdog_rss_mib": 4096,
+    "watchdog_seconds": 180,
+    "docker_memory": "4g",
+    "docker_cpus": 2,
+    "GOMAXPROCS": 2,
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off",
+    "cleanup_wait_seconds": 3,
+    "existing_worker_frame_queue_caps_unchanged": true
+  },
+  "review": "same reviewer no source blocker; final receipt check pending",
+  "commit": null
+}

@@ -1,0 +1,84 @@
+diff --git a/v5/internal/graphapply/graph_source_process_test.go b/v5/internal/graphapply/graph_source_process_test.go
+index 5970d169..772ef304 100644
+--- a/v5/internal/graphapply/graph_source_process_test.go
++++ b/v5/internal/graphapply/graph_source_process_test.go
+@@ -224,12 +224,26 @@ func (m *graphProcessMux) exchange(ctx context.Context, r processRequest) (proce
+ 	case got := <-ch:
+ 		return got.response, got.err
+ 	case <-ctx.Done():
+-		m.mu.Lock()
+-		delete(m.pending, seq)
+-		m.hub.changed()
+-		m.mu.Unlock()
++		// Cancel delivery is not worker termination. Keep the original response
++		// correlation until the child has released its operation/cleanup owner.
++		// The same three-second cleanup bound as retained-source Close prevents
++		// unavailable child/pipe traffic from turning cancellation into a wait.
++		cleanup, stopCleanup := context.WithTimeout(m.hub.ctx, 3*time.Second)
++		stopFailure := context.AfterFunc(cleanup, func() { m.fail(cleanup.Err()) })
++		defer func() { stopFailure(); stopCleanup() }()
+ 		_, sendErr := m.send(processRequest{op: processSourceCancel, index: seq}, nil)
+-		return processResponse{}, errors.Join(ctx.Err(), sendErr)
++		if sendErr != nil {
++			return processResponse{}, errors.Join(ctx.Err(), sendErr, cleanup.Err())
++		}
++		select {
++		case got := <-ch:
++			return got.response, errors.Join(ctx.Err(), got.err)
++		case <-cleanup.Done():
++			m.fail(cleanup.Err())
++			return processResponse{}, errors.Join(ctx.Err(), cleanup.Err())
++		case <-m.hub.ctx.Done():
++			return processResponse{}, errors.Join(ctx.Err(), m.hub.ctx.Err())
++		}
+ 	case <-m.hub.ctx.Done():
+ 		return processResponse{}, m.hub.ctx.Err()
+ 	}
+@@ -826,6 +840,25 @@ type graphProcessWorkerResult struct {
+ 	err      error
+ }
+ 
++// Queued requests have not acquired native owners. Cancellation still closes
++// their exact original response correlation, once, on the event lane.
++func cancelGraphProcessQueued(sequence uint64, paused *[]processRequest, barrier **processRequest, respond func(processRequest, processResponse, error) error) error {
++	if *barrier != nil && (*barrier).sequence == sequence {
++		original := **barrier
++		*barrier = nil
++		if err := respond(original, processResponse{}, context.Canceled); err != nil {
++			return err
++		}
++	}
++	for i, original := range *paused {
++		if original.sequence == sequence {
++			*paused = append((*paused)[:i], (*paused)[i+1:]...)
++			return respond(original, processResponse{}, context.Canceled)
++		}
++	}
++	return nil
++}
++
+ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProcessOwners, init declaredInitCommand) {
+ 	t.Helper()
+ 	ctx, cancel := context.WithCancel(t.Context())
+@@ -1244,18 +1277,13 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
+ 					ch <- graphProcessPumpReply{body: bytes.Clone(r.data), err: replyErr}
+ 				}
+ 			case processSourceCancel:
+-				if pauseBarrier != nil && pauseBarrier.sequence == r.index {
+-					pauseBarrier = nil
+-				}
+ 				if stop := workers[r.index]; stop != nil {
+ 					stop()
+ 				}
+-				for i, q := range paused {
+-					if q.sequence == r.index {
+-						paused = append(paused[:i], paused[i+1:]...)
+-						break
+-					}
++				if err := cancelGraphProcessQueued(r.index, &paused, &pauseBarrier, respond); err != nil {
++					t.Fatal(err)
+ 				}
++
+ 			case processSourcePausedBarrier:
+ 				if len(paused) > 0 {
+ 					response.handles = []uint64{uint64(len(paused)), uint64(len(workers))}

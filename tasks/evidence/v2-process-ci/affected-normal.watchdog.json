@@ -1,0 +1,20 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-count=1",
+    "-json",
+    "-coverpkg=./...",
+    "-coverprofile=/var/tmp/rho-v5-v2-process-ci-fix-20261011/tasks/evidence/v2-process-ci/affected.cover",
+    "-run",
+    "^(TestGraphSourceProcess|TestGraphSourceSixProcesses|TestReplicatedCertifiedGraphSixProcesses)",
+    "./internal/graphapply"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 684.297,
+  "elapsed_s": 19.981,
+  "exit_code": 0,
+  "reason": "completed"
+}

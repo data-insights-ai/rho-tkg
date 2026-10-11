@@ -1,0 +1,259 @@
+{
+  "names": [
+    "TestGraphSourceProcessCanceledExchangeDeadlineRetiresUnconfirmedOwner",
+    "TestGraphSourceProcessCanceledExchangePeerDeathCannotBeTerminalSuccess",
+    "TestGraphSourceProcessCanceledExchangeRetainsOriginalUntilTerminal",
+    "TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput",
+    "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts",
+    "TestGraphSourceProcessPumpQueueSkipsCanceledWithoutStallingNext",
+    "TestGraphSourceProcessQueuedCancellationRepliesOnceToOriginalPausedRequest",
+    "TestGraphSourceSixProcessesPausedPeerKeepsNativeLaneAndCancels",
+    "TestReplicatedCertifiedGraphSixProcessesCrossEdge",
+    "TestReplicatedCertifiedGraphSixProcessesLocalControls",
+    "TestReplicatedCertifiedGraphSixProcessesLocalCrossEdgeRefusalRemainsHealthy"
+  ],
+  "gates": {
+    "final-normal": {
+      "top_level": 11,
+      "pass": 11,
+      "skip": 0,
+      "fail": 0,
+      "six_child_scenarios": [
+        [
+          6,
+          6,
+          6
+        ],
+        [
+          6,
+          6,
+          6
+        ],
+        [
+          6,
+          6,
+          6
+        ],
+        [
+          6,
+          6,
+          6
+        ]
+      ],
+      "watchdog": {
+        "command": [
+          "go",
+          "test",
+          "-count=1",
+          "-json",
+          "-coverpkg=./...",
+          "-coverprofile=/var/tmp/rho-v5-v2-process-ci-fix-20261011/tasks/evidence/v2-process-ci/final.cover",
+          "-run",
+          "^(TestGraphSourceProcess|TestGraphSourceSixProcesses|TestReplicatedCertifiedGraphSixProcesses)",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 649.031,
+        "elapsed_s": 14.486,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "log_sha256": "2fdf0680eab85e1235541da5b78f45a3d34b8d474e51a3fd64f94c94722540e2"
+    },
+    "final-race": {
+      "top_level": 11,
+      "pass": 11,
+      "skip": 0,
+      "fail": 0,
+      "six_child_scenarios": [
+        [
+          6,
+          6,
+          6
+        ],
+        [
+          6,
+          6,
+          6
+        ],
+        [
+          6,
+          6,
+          6
+        ],
+        [
+          6,
+          6,
+          6
+        ]
+      ],
+      "watchdog": {
+        "command": [
+          "go",
+          "test",
+          "-count=1",
+          "-json",
+          "-race",
+          "-run",
+          "^(TestGraphSourceProcess|TestGraphSourceSixProcesses|TestReplicatedCertifiedGraphSixProcesses)",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 631.234,
+        "elapsed_s": 49.837,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "log_sha256": "c931916f279de6260361bd190fe5401c1bcba04056a0c49c43b5f24074171f3f"
+    },
+    "final-linux-normal": {
+      "top_level": 11,
+      "pass": 11,
+      "skip": 0,
+      "fail": 0,
+      "six_child_scenarios": [
+        [
+          6,
+          6,
+          6
+        ],
+        [
+          6,
+          6,
+          6
+        ],
+        [
+          6,
+          6,
+          6
+        ],
+        [
+          6,
+          6,
+          6
+        ]
+      ],
+      "watchdog": {
+        "command": [
+          "docker",
+          "run",
+          "--rm",
+          "--memory=4g",
+          "--memory-swap=4g",
+          "--cpus=2",
+          "-e",
+          "GOTOOLCHAIN=local",
+          "-e",
+          "GOMAXPROCS=2",
+          "-e",
+          "GOFLAGS=-p=1",
+          "-e",
+          "GOMEMLIMIT=2GiB",
+          "-e",
+          "GOWORK=off",
+          "-v",
+          "/var/tmp/rho-v5-v2-process-ci-fix-20261011:/src",
+          "-w",
+          "/src/v5",
+          "-v",
+          "rho-tkg-gocache:/go",
+          "-v",
+          "rho-tkg-buildcache:/root/.cache/go-build",
+          "golang:1.26.9",
+          "go",
+          "test",
+          "-count=1",
+          "-json",
+          "-run",
+          "^(TestGraphSourceProcess|TestGraphSourceSixProcesses|TestReplicatedCertifiedGraphSixProcesses)",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 26.172,
+        "elapsed_s": 9.355,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "log_sha256": "2ce562500416c4eff28ec4dcb607361d77e968b4972ec2249a5ef891be2dba46"
+    },
+    "final-linux-race": {
+      "top_level": 11,
+      "pass": 11,
+      "skip": 0,
+      "fail": 0,
+      "six_child_scenarios": [
+        [
+          6,
+          6,
+          6
+        ],
+        [
+          6,
+          6,
+          6
+        ],
+        [
+          6,
+          6,
+          6
+        ],
+        [
+          6,
+          6,
+          6
+        ]
+      ],
+      "watchdog": {
+        "command": [
+          "docker",
+          "run",
+          "--rm",
+          "--memory=4g",
+          "--memory-swap=4g",
+          "--cpus=2",
+          "-e",
+          "GOTOOLCHAIN=local",
+          "-e",
+          "GOMAXPROCS=2",
+          "-e",
+          "GOFLAGS=-p=1",
+          "-e",
+          "GOMEMLIMIT=2GiB",
+          "-e",
+          "GOWORK=off",
+          "-v",
+          "/var/tmp/rho-v5-v2-process-ci-fix-20261011:/src",
+          "-w",
+          "/src/v5",
+          "-v",
+          "rho-tkg-gocache:/go",
+          "-v",
+          "rho-tkg-buildcache:/root/.cache/go-build",
+          "golang:1.26.9",
+          "go",
+          "test",
+          "-count=1",
+          "-json",
+          "-race",
+          "-run",
+          "^(TestGraphSourceProcess|TestGraphSourceSixProcesses|TestReplicatedCertifiedGraphSixProcesses)",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 26.281,
+        "elapsed_s": 94.684,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "log_sha256": "6197b6bd80965a11db7f51ca3afc77b1638b37a837306dfa951c9773f64aa273"
+    }
+  }
+}

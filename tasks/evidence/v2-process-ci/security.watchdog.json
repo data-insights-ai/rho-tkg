@@ -1,0 +1,14 @@
+{
+  "command": [
+    "make",
+    "security-docker",
+    "DOCKER_GO=docker run --rm --memory=4g --memory-swap=4g --cpus=2 -e GOTOOLCHAIN=local -e GOMAXPROCS=2 -e GOFLAGS=-p=1 -e GOMEMLIMIT=2GiB -e GOWORK=off -v /var/tmp/rho-v5-v2-process-ci-fix-20261011:/src -w /src/v5 -v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build golang:1.26.9"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 28.25,
+  "elapsed_s": 1.943,
+  "exit_code": 0,
+  "reason": "completed"
+}

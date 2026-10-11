@@ -1,0 +1,11 @@
+docker run --rm --memory=4g --memory-swap=4g --cpus=2 -e GOTOOLCHAIN=local -e GOMAXPROCS=2 -e GOFLAGS=-p=1 -e GOMEMLIMIT=2GiB -e GOWORK=off -v /var/tmp/rho-v5-v2-process-ci-fix-20261011:/src -w /src/v5 -v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build golang:1.26.9 sh -c 'go install golang.org/x/vuln/cmd/govulncheck@v1.7.0 && govulncheck ./...'
+=== Symbol Results ===
+
+No vulnerabilities found.
+
+Your code is affected by 0 vulnerabilities.
+This scan also found 2 vulnerabilities in packages you import and 2
+vulnerabilities in modules you require, but your code doesn't appear to call
+these vulnerabilities.
+Use '-show verbose' for more details.
+limit: {"command": ["make", "vulncheck-docker", "DOCKER_GO=docker run --rm --memory=4g --memory-swap=4g --cpus=2 -e GOTOOLCHAIN=local -e GOMAXPROCS=2 -e GOFLAGS=-p=1 -e GOMEMLIMIT=2GiB -e GOWORK=off -v /var/tmp/rho-v5-v2-process-ci-fix-20261011:/src -w /src/v5 -v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build golang:1.26.9"], "rss_limit_mib": 4096.0, "wall_limit_s": 180.0, "sample_interval_s": 0.25, "peak_tree_rss_mib": 28.234, "elapsed_s": 4.71, "exit_code": 0, "reason": "completed"}

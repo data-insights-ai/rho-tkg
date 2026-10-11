@@ -1,0 +1,45 @@
+diff --git a/v5/internal/graphapply/graph_source_process_test.go b/v5/internal/graphapply/graph_source_process_test.go
+index 5970d169..6b28eacc 100644
+--- a/v5/internal/graphapply/graph_source_process_test.go
++++ b/v5/internal/graphapply/graph_source_process_test.go
+@@ -4,6 +4,7 @@ import (
+ 	"bytes"
+ 	"context"
+ 	"errors"
++	"fmt"
+ 	"io"
+ 	"os"
+ 	"sync"
+@@ -11,6 +12,7 @@ import (
+ 	"time"
+ 
+ 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
++	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
+ 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
+ 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
+ )
+@@ -1001,6 +1003,12 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
+ 				return errLimit
+ 			}
+ 		} else if len(workers)-len(controlWorkers) >= processSourceWorkers {
++			var kind byte
++			if r.op == processSourceServe {
++				request, _ := decodeGraphSourceRequest(r.data)
++				kind = request.kind
++			}
++			fmt.Fprintf(os.Stderr, "source-worker-refusal voter=%d op=%d kind=%d workers=%d control=%d paused=%d\n", h.machine.store.ApplicationLimits().LocalVoter, r.op, kind, len(workers), len(controlWorkers), len(paused))
+ 			return errLimit
+ 		}
+ 		if control {
+@@ -1389,7 +1397,10 @@ func TestGraphSourceSixProcessesPausedPeerKeepsNativeLaneAndCancels(t *testing.T
+ 	n.all[4].call(t, processRequest{op: processSourcePause})
+ 	// Synchronize on worker terminal responses before inspecting native owners.
+ 	// Quiescent coordinator reads exercise the same persistent endpoint streams.
+-	n.all[1].call(t, processRequest{op: processSourceObserve, entity: 1})
++	if _, err := n.all[1].exchange(t.Context(), processRequest{op: processSourceObserve, entity: 1}); err != nil {
++		stderr, _ := n.all[1].stderr.state()
++		t.Fatalf("post-cancel Observe: limit=%v unavailable=%v invalid=%v canceled=%v err=%v native=%s", errors.Is(err, errLimit), errors.Is(err, graphstore.ErrSourceUnavailable), errors.Is(err, errInvalid), errors.Is(err, context.Canceled), err, stderr)
++	}
+ 	drainCtx, stopDrain := context.WithTimeout(t.Context(), 10*time.Second)
+ 	defer stopDrain()
+ 	if err := drainGraphProcessMuxes(drainCtx, n.all); err != nil {
