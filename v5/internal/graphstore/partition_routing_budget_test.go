@@ -603,3 +603,94 @@ func TestLookupPublishedRangeDirectNilCancellationNamespaceAndBorrowLifetime(t *
 		t.Fatal(err)
 	}
 }
+
+// Guard direct canonical routing emission under invalid/short record policy and
+// a corrupt full-table digest; neither refusal changes the immutable definition.
+func TestGuardRoutingEncodingPolicyDigestAndOwnedWire(t *testing.T) {
+	d := ownershipDecl(t, 1)
+	owners := []BucketOwnership{{Kind: IdentityRoutingBucket, Partition: 1, Epoch: 1}, {Kind: UniqueRoutingBucket, Partition: 1, Epoch: 1}, {Kind: AxisRoutingBucket, Partition: 1, Epoch: 1}}
+	r, err := NewPartitionRouting(d, 1, 0, owners, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := EncodePartitionRouting(r, d, Limits{})
+	if err != nil || len(wire) != 168 {
+		t.Fatal(len(wire), err)
+	}
+	bad := r
+	bad.digest[0] ^= 1
+	for _, tc := range []struct {
+		routing PartitionRouting
+		limits  Limits
+		want    error
+	}{
+		{r, Limits{MaxReadRows: -1}, ErrInvalid},
+		{r, Limits{Temporal: temporal.Limits{MaxDescriptorBytes: 1}, MaxValueBytes: 1, MaxRecordBytes: 167}, ErrResourceLimit},
+		{bad, Limits{}, ErrInvalid},
+	} {
+		if got, err := EncodePartitionRouting(tc.routing, d, tc.limits); !errors.Is(err, tc.want) || got != nil {
+			t.Fatal(got, err)
+		}
+	}
+	// Independent framing: 105 fixed bytes plus three 21-byte bucket entries.
+	exact := Limits{Temporal: temporal.Limits{MaxDescriptorBytes: 1}, MaxValueBytes: 1, MaxRecordBytes: 168}
+	got, err := EncodePartitionRouting(r, d, exact)
+	if err != nil || !bytes.Equal(got, wire) {
+		t.Fatal(got, err)
+	}
+	owners[0].Epoch = 9
+	clear(got)
+	again, err := EncodePartitionRouting(r, d, exact)
+	if err != nil || !bytes.Equal(again, wire) {
+		t.Fatal("routing retained mutable input/output", err)
+	}
+}
+
+// Guard fixed reservation and borrowed-view read failures, using only the stock
+// retained-view fixture. This provides no quorum or new IO/fault producer claim.
+func TestGuardRoutingBoundedGetZeroFailuresAndBorrowedView(t *testing.T) {
+	store, d, _, _, at := partitionAuthorityFixture(t)
+	view := ownershipView(t, store, at)
+	key := RoutingDefinitionKey(Namespace{Graph: d.Graph(), Partition: 3})
+	original, found, err := view.Get(t.Context(), key, 4096)
+	if err != nil || !found {
+		t.Fatal(found, err)
+	}
+	keyCopy := bytes.Clone(key)
+	// Key construction/copies own a 128-byte fixed slot and four key copies;
+	// the delivered exact-cap key/value is a distinct owner.
+	fixed := 128 + 4*len(key)
+	payload := len(key) + len(original.Value)
+	cancelled, cancel := context.WithCancel(t.Context())
+	cancel()
+	for _, tc := range []struct {
+		ctx       context.Context
+		cap, used int
+		want      error
+	}{
+		{t.Context(), fixed - 1, 0, ErrResourceLimit},
+		{t.Context(), fixed, fixed, ErrResourceLimit},
+		{t.Context(), fixed + payload - 1, fixed, raftlog.ErrLimit},
+		{cancelled, fixed + payload, fixed, context.Canceled},
+	} {
+		budget, _ := graphstate.NewOutputBudget(tc.cap)
+		got, present, err := routingGetBounded(tc.ctx, view, key, 4096, budget)
+		if !errors.Is(err, tc.want) || present || !reflect.DeepEqual(got, raftlog.KV{}) || budget.Used() != tc.used || !bytes.Equal(key, keyCopy) {
+			t.Fatal(tc.cap, got, present, err, budget.Used())
+		}
+		if _, err := view.Root(); err != nil {
+			t.Fatal("refusal consumed borrowed view", err)
+		}
+	}
+	budget, _ := graphstate.NewOutputBudget(fixed + payload)
+	got, found, err := routingGetBounded(t.Context(), view, key, 4096, budget)
+	if err != nil || !found || !reflect.DeepEqual(got, original) || budget.Used() != fixed+payload {
+		t.Fatal(got, found, err, budget.Used())
+	}
+	clear(got.Key)
+	clear(got.Value)
+	again, found, err := view.Get(t.Context(), key, 4096)
+	if err != nil || !found || !reflect.DeepEqual(again, original) || !bytes.Equal(key, keyCopy) {
+		t.Fatal("read outputs changed retained input", err)
+	}
+}
