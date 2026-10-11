@@ -212,7 +212,7 @@ func TestRegisteredRuntimeGuardOperationAndClosedStore(t *testing.T) {
 		t.Fatal("closed Restore", err)
 	}
 	batch, err := m.Stage(replica.Entry{Term: 1}, raftlog.ApplicationBudget{Writes: 1, Bytes: 4096, ImageBytes: 140, ChangeBytes: 1, OutcomeBytes: 145})
-	if !errors.Is(err, raftlog.ErrClosed) || !reflect.DeepEqual(batch, raftlog.ApplicationBatch{}) {
+	if !errors.Is(err, raftlog.ErrClosed) || !reflect.ValueOf(batch).IsZero() {
 		t.Fatal("closed Stage must be zero", err)
 	}
 }
@@ -271,24 +271,24 @@ func TestRegisteredRuntimeGuardActualCommittedCommandsAndFences(t *testing.T) {
 				invalid := actual
 				change(&invalid)
 				batch, err := m.Stage(invalid, g.stores[0].ApplicationBudget())
-				if !errors.Is(err, errInvalid) || !reflect.DeepEqual(batch, raftlog.ApplicationBatch{}) {
+				if !errors.Is(err, errInvalid) || !reflect.ValueOf(batch).IsZero() {
 					t.Fatal("invalid direct fence must be zero", err)
 				}
 			}
 			batch, err := m.Stage(actual, raftlog.ApplicationBudget{})
-			if !errors.Is(err, errInvalid) || !reflect.DeepEqual(batch, raftlog.ApplicationBatch{}) {
+			if !errors.Is(err, errInvalid) || !reflect.ValueOf(batch).IsZero() {
 				t.Fatal("empty direct budget must be zero", err)
 			}
 			limited := g.stores[0].ApplicationBudget()
 			limited.ImageBytes = 139
 			batch, err = m.Stage(actual, limited)
-			if !errors.Is(err, errLimit) || !reflect.DeepEqual(batch, raftlog.ApplicationBatch{}) {
+			if !errors.Is(err, errLimit) || !reflect.ValueOf(batch).IsZero() {
 				t.Fatal("image budget before command output", err)
 			}
 			oversize := actual
 			oversize.Data = make([]byte, (4<<20)+12)
 			batch, err = m.Stage(oversize, g.stores[0].ApplicationBudget())
-			if !errors.Is(err, errLimit) || !reflect.DeepEqual(batch, raftlog.ApplicationBatch{}) {
+			if !errors.Is(err, errLimit) || !reflect.ValueOf(batch).IsZero() {
 				t.Fatal("oversize invalid input must be zero", err)
 			}
 			if !bytes.Equal(image, base.Image) {

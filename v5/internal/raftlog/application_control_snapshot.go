@@ -13,12 +13,16 @@ type applicationIterator struct {
 	open     func(*pebble.IterOptions) (*pebble.Iterator, error)
 	bank     byte
 	controls bool
+	recovery bool
 	part     int
 	err      error
 }
 
-func newApplicationIterator(open func(*pebble.IterOptions) (*pebble.Iterator, error), bank byte, controls bool) (*applicationIterator, error) {
+func newApplicationIterator(open func(*pebble.IterOptions) (*pebble.Iterator, error), bank byte, controls bool, recovery ...bool) (*applicationIterator, error) {
 	a := &applicationIterator{open: open, bank: bank, controls: controls}
+	if len(recovery) > 0 {
+		a.recovery = recovery[0]
+	}
 	err := a.reset(0)
 	return a, err
 }
@@ -34,6 +38,10 @@ func (a *applicationIterator) reset(part int) error {
 	lo, hi := bankTag(a.bank, appDataTag), bankTag(a.bank, appOutcomeTag)+1
 	if part == 1 {
 		lo = controlBankTag(a.bank)
+		hi = lo + 1
+	}
+	if part == 2 {
+		lo = recoveryRootTag + a.bank
 		hi = lo + 1
 	}
 	var err error
@@ -53,6 +61,12 @@ func (a *applicationIterator) advance(valid bool) bool {
 		if a.reset(1) != nil {
 			return false
 		}
+		return a.advance(a.it.First())
+	}
+	if a.part < 2 && a.recovery {
+		if a.reset(2) != nil {
+			return false
+		}
 		return a.it.First()
 	}
 	return false
@@ -63,6 +77,9 @@ func (a *applicationIterator) SeekGE(k []byte) bool {
 	part := 0
 	if len(k) > 0 && k[0] == controlBankTag(a.bank) {
 		part = 1
+	}
+	if len(k) > 0 && k[0] == recoveryRootTag+a.bank {
+		part = 2
 	}
 	if part != a.part {
 		if a.reset(part) != nil {
@@ -87,7 +104,9 @@ func (a *applicationIterator) Close() error {
 }
 func canonicalApplicationKey(bank byte, key []byte) []byte {
 	b := copyApplicationBytes(key)
-	if b[0] == controlBankTag(bank) {
+	if b[0] == recoveryRootTag+bank {
+		b[0] = recoveryRootTag
+	} else if b[0] == controlBankTag(bank) {
 		b[0] = controlTag
 	} else {
 		b[0] -= bank * 4
@@ -96,15 +115,21 @@ func canonicalApplicationKey(bank byte, key []byte) []byte {
 }
 func localApplicationKey(bank byte, key []byte) []byte {
 	b := copyApplicationBytes(key)
-	if b[0] == controlTag {
+	switch b[0] {
+	case recoveryRootTag:
+		b[0] = recoveryRootTag + bank
+	case controlTag:
 		b[0] = controlBankTag(bank)
-	} else {
+	default:
 		b[0] += bank * 4
 	}
 	return b
 }
-func (m ApplicationSnapshotManifest) controls() bool { return m.Version == 4 }
+func (m ApplicationSnapshotManifest) controls() bool { return m.Version >= 4 }
 func (m metadata) manifestVersion() uint32 {
+	if m.Recovery.Config.enabled() {
+		return 5
+	}
 	if m.Controls.Config.enabled() {
 		return 4
 	}
@@ -112,8 +137,11 @@ func (m metadata) manifestVersion() uint32 {
 }
 func descriptorBytesForContract(id ApplicationSemanticContractID, c ApplicationContract) int {
 	n := descriptorFixedBytes(id)
-	if c.Version == 2 {
+	if c.Version >= 2 {
 		n += 16
+	}
+	if c.Version == 3 {
+		n += 48
 	}
 	return n
 }

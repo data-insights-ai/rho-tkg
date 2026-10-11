@@ -50,7 +50,7 @@ func (s allocationScope) valid() bool {
 }
 
 func (s allocationScope) check(d graphstore.OwnershipDeclaration, cfg genesisAllocationConfig) error {
-	if !s.valid() || s.semantic != cfg.semanticContractID() || s.graph != cfg.graph || graphstate.GraphID(s.graph) != d.Graph() || s.topology != d.TopologyEpoch() || s.declaration != d.Digest() {
+	if !s.valid() || !configurationSemanticMatches(cfg, s.semantic) || s.graph != cfg.graph || graphstate.GraphID(s.graph) != d.Graph() || s.topology != d.TopologyEpoch() || s.declaration != d.Digest() {
 		return errInvalid
 	}
 	if err := cfg.checkGenesisDeclaration(d); err != nil {
@@ -135,11 +135,11 @@ func (g protocolGrant) valid(n namespace) bool {
 	}
 	p := g.publication
 	if p == (graphstore.RangePublication{}) {
-		return g.source.scope.semantic != partitionWriteSemanticContractID()
+		return !partitionGraphAgreement(g.source.scope.semantic)
 	}
 	// Immutable allocation provenance remains exact even when current routing
 	// later moves or fences this range. The latter is not encoded in APG2.
-	return p.Validate() == nil && g.source.scope.semantic == partitionWriteSemanticContractID() &&
+	return p.Validate() == nil && partitionGraphAgreement(g.source.scope.semantic) &&
 		p.Graph == graphstate.GraphID(n.graph) && p.Configuration == g.configuration &&
 		p.First == g.grant.Reservation.First && p.Last == g.grant.Reservation.Last &&
 		p.SourcePartition == g.source.scope.partition && p.SourceIndex == g.source.index

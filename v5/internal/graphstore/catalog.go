@@ -274,6 +274,18 @@ func (q *reader) entity(ref EntityRef) (graphstate.EntityRecord, bool, error) {
 	if ref.ID == 0 {
 		return graphstate.EntityRecord{}, false, ErrInvalid
 	}
+	if t := q.transaction(); t != nil {
+		partition, err := t.owner(q, uint64(ref.ID))
+		if err != nil {
+			return graphstate.EntityRecord{}, false, err
+		}
+		if partition != q.c.root.namespace.Partition {
+			var r graphstate.EntityRecord
+			var found bool
+			err = q.onPartition(partition, func() error { var e error; r, found, e = q.entity(ref); return e })
+			return r, found, err
+		}
+	}
 	if q.route != nil {
 		if err := q.route.owner(q, uint64(ref.ID)); err != nil {
 			return graphstate.EntityRecord{}, false, err
@@ -313,6 +325,18 @@ func (q *reader) life(ref LifeRef) (graphstate.LifeRecord, bool, error) {
 	}
 	if ref.Owner == 0 || ref.ID == 0 {
 		return graphstate.LifeRecord{}, false, ErrInvalid
+	}
+	if t := q.transaction(); t != nil {
+		partition, err := t.owner(q, uint64(ref.Owner))
+		if err != nil {
+			return graphstate.LifeRecord{}, false, err
+		}
+		if partition != q.c.root.namespace.Partition {
+			var r graphstate.LifeRecord
+			var found bool
+			err = q.onPartition(partition, func() error { var e error; r, found, e = q.life(ref); return e })
+			return r, found, err
+		}
 	}
 	if q.route != nil {
 		if err := q.route.owner(q, uint64(ref.Owner)); err != nil {
@@ -376,6 +400,19 @@ func (q *reader) value(ref ValueRef) (ValueEntry, []byte, bool, error) {
 	}
 	if ref.ID == 0 {
 		return ValueEntry{}, nil, false, ErrInvalid
+	}
+	if t := q.transaction(); t != nil {
+		partition, err := t.owner(q, uint64(ref.ID))
+		if err != nil {
+			return ValueEntry{}, nil, false, err
+		}
+		if partition != q.c.root.namespace.Partition {
+			var r ValueEntry
+			var wire []byte
+			var found bool
+			err = q.onPartition(partition, func() error { var e error; r, wire, found, e = q.value(ref); return e })
+			return r, wire, found, err
+		}
 	}
 	if q.route != nil {
 		if err := q.route.owner(q, uint64(ref.ID)); err != nil {
@@ -748,6 +785,15 @@ func (s *Stage) Property(ctx context.Context, d graphstate.PropertyDefinition) e
 // coverage belongs to validated graph planning; remote references are not forced
 // into this partition's entity catalog.
 func (q *reader) stageEntity(ref EntityRef, r graphstate.EntityRecord) error {
+	if t := q.transaction(); t != nil && t.installation != nil {
+		partition, err := t.owner(q, uint64(ref.ID))
+		if err != nil {
+			return err
+		}
+		if partition != q.c.root.namespace.Partition {
+			return q.onPartition(partition, func() error { return q.stageEntity(ref, r) })
+		}
+	}
 	if err := q.graph(ref.Graph); err != nil {
 		return err
 	}
@@ -786,6 +832,15 @@ func (s *Stage) Entity(ctx context.Context, ref EntityRef, r graphstate.EntityRe
 // Life stages owner/binding identity; temporal coverage and remote endpoint
 // references are validated by the graph planner, not this catalog layer.
 func (q *reader) stageLife(ref LifeRef, r graphstate.LifeRecord) error {
+	if t := q.transaction(); t != nil && t.installation != nil {
+		partition, err := t.owner(q, uint64(ref.Owner))
+		if err != nil {
+			return err
+		}
+		if partition != q.c.root.namespace.Partition {
+			return q.onPartition(partition, func() error { return q.stageLife(ref, r) })
+		}
+	}
 	if err := q.graph(ref.Graph); err != nil {
 		return err
 	}
@@ -821,6 +876,15 @@ func (s *Stage) Life(ctx context.Context, ref LifeRef, r graphstate.LifeRecord) 
 	return s.operation(ctx, func(q *reader) error { return q.stageLife(ref, r) })
 }
 func (q *reader) stageValue(ref ValueRef, value graphstate.Scalar, key string) error {
+	if t := q.transaction(); t != nil && t.installation != nil {
+		partition, err := t.owner(q, uint64(ref.ID))
+		if err != nil {
+			return err
+		}
+		if partition != q.c.root.namespace.Partition {
+			return q.onPartition(partition, func() error { return q.stageValue(ref, value, key) })
+		}
+	}
 	if err := q.graph(ref.Graph); err != nil {
 		return err
 	}

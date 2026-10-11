@@ -91,7 +91,7 @@ func TestSharedStageThenComposerRefusesConsumedAllowanceWithoutReset(t *testing.
 				t.Fatal("fitting stage+composition guard", err)
 			}
 			original, err := f.stage(t, wire)
-			if err != nil || !reflect.DeepEqual(original, batch) {
+			if err != nil || !equalGuardedApplicationBatch(original, batch) {
 				t.Fatal("shared allowance changed exact legacy effects", err)
 			}
 		})
@@ -248,7 +248,7 @@ func TestSharedComposerWideNumericAdmissionPrecedesLogicalEncoding(t *testing.T)
 		t.Fatal("wide numeric fitting full-composer guard", err)
 	}
 	original, err := f.stage(t, wire)
-	if err != nil || !reflect.DeepEqual(actual, original) {
+	if err != nil || !equalGuardedApplicationBatch(actual, original) {
 		t.Fatal("wide fitting composer changed complete batch semantics", err)
 	}
 

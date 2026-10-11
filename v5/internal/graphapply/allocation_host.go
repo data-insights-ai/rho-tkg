@@ -8,6 +8,7 @@ import (
 	"errors"
 	"math"
 	"sync"
+	"sync/atomic"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
@@ -45,10 +46,12 @@ type allocationReply struct {
 }
 
 type allocationEvent struct {
-	readID        allocationReadID
-	packets       []replica.Packet
-	snapshotSends []*replica.SnapshotSend
-	replies       []allocationReply
+	readID          allocationReadID
+	packets         []replica.Packet
+	snapshotSends   []*replica.SnapshotSend
+	replies         []allocationReply
+	crossReplies    []crossReply
+	capacityReplies []crossCapacityReply
 }
 
 // allocationProposal is an owned source-created command. Its private constructor
@@ -63,15 +66,21 @@ type allocationProposal struct {
 // graph/partition/group tuple under the crash-fault model; these opaque process
 // capabilities are not cryptographic/Byzantine quorum certificates.
 type allocationHost struct {
-	mu         sync.Mutex
-	driver     *replica.Driver
-	machine    *declaredMaterializer
-	session    [16]byte
-	sequence   uint64
-	pending    map[allocationReadID]allocationQuery
-	recipients map[[16]byte]*allocationRecipientHandle
-	closed     bool
-	closeErr   error
+	mu       sync.Mutex
+	driver   *replica.Driver
+	machine  *declaredMaterializer
+	session  [16]byte
+	sequence uint64
+	// Foreign proof consumers cannot acquire this Host's event mutex while
+	// holding another Host's mutex. Publish only these monotone issuer facts.
+	issuedReads     atomic.Uint64
+	ended           atomic.Bool
+	pending         map[allocationReadID]allocationQuery
+	crossPending    map[allocationReadID]crossQuery
+	capacityPending map[allocationReadID]crossCapacityQuestion
+	recipients      map[[16]byte]*allocationRecipientHandle
+	closed          bool
+	closeErr        error
 }
 
 const allocationReadContextBytes = 101
@@ -128,6 +137,28 @@ func (h *allocationHost) event(out replica.Output, eventErr error) (allocationEv
 		return allocationEvent{}, errLimit
 	}
 	for _, ready := range out.Reads {
+		if bytes.HasPrefix(ready.Context, []byte{'G', 'C', 'C', 1}) {
+			if ready.Index > out.Applied || h.driver.Applied() < ready.Index {
+				return allocationEvent{}, errInvalid
+			}
+			reply, err := h.completeCrossCapacityRead(ready.Context, out.Applied)
+			if err != nil {
+				return allocationEvent{}, err
+			}
+			e.capacityReplies = append(e.capacityReplies, reply)
+			continue
+		}
+		if bytes.HasPrefix(ready.Context, []byte{'G', 'C', 'R', 1}) {
+			if ready.Index > out.Applied || h.driver.Applied() < ready.Index {
+				return allocationEvent{}, errInvalid
+			}
+			reply, err := h.completeCrossRead(ready.Context, out.Applied)
+			if err != nil {
+				return allocationEvent{}, err
+			}
+			e.crossReplies = append(e.crossReplies, reply)
+			continue
+		}
 		id, query, err := decodeAllocationReadContext(ready.Context)
 		if err != nil || id.session != h.session || id.sequence > h.sequence || ready.Index > out.Applied || h.driver.Applied() < ready.Index {
 			return allocationEvent{}, errors.Join(errInvalid, err)
@@ -196,8 +227,16 @@ func (h *allocationHost) Submit(p allocationProposal) (allocationEvent, error) {
 	if p.target != local || len(p.wire) < requestHeaderBytes || len(p.wire) > h.machine.limits.commandBytes {
 		return allocationEvent{}, errInvalid
 	}
-	if isPartitionGraphWire(p.wire) {
-		if h.machine.SemanticContractID() != partitionWriteSemanticContractID() {
+	if isCrossPartitionWire(p.wire) {
+		if h.machine.SemanticContractID() != crossPartitionSemanticContractID() {
+			return allocationEvent{}, errInvalid
+		}
+		r, _, err := decodeCrossCommand(p.wire, h.machine.limits)
+		if err != nil || r.ns != h.machine.ns {
+			return allocationEvent{}, errors.Join(errInvalid, err)
+		}
+	} else if isPartitionGraphWire(p.wire) {
+		if !partitionGraphAgreement(h.machine.SemanticContractID()) {
 			return allocationEvent{}, errInvalid
 		}
 		r, err := decodePartitionGraphCommand(p.wire, h.machine.limits)
@@ -212,7 +251,7 @@ func (h *allocationHost) Submit(p allocationProposal) (allocationEvent, error) {
 		if err != nil {
 			return allocationEvent{}, err
 		}
-		if r.semanticContractID() != h.machine.SemanticContractID() {
+		if r.semanticContractID() != h.machine.SemanticContractID() && (r.version() != 6 || h.machine.SemanticContractID() != crossPartitionSemanticContractID()) {
 			return allocationEvent{}, errInvalid
 		}
 
@@ -257,10 +296,11 @@ func (h *allocationHost) Read(q allocationQuery) (allocationEvent, error) {
 	if err := q.validate(h.machine.ns.graph); err != nil {
 		return allocationEvent{}, err
 	}
-	if h.sequence == math.MaxUint64 || len(h.pending) >= 16 {
+	if h.sequence == math.MaxUint64 || len(h.pending)+len(h.crossPending)+len(h.capacityPending) >= 16 {
 		return allocationEvent{}, errLimit
 	}
 	h.sequence++
+	h.issuedReads.Store(h.sequence)
 	id := allocationReadID{session: h.session, sequence: h.sequence}
 	h.pending[id] = q
 	out, err := h.driver.ReadIndex(encodeAllocationReadContext(id, q))
@@ -286,7 +326,10 @@ func (h *allocationHost) Close() error {
 		return h.closeErr
 	}
 	h.closed = true
+	h.ended.Store(true)
 	clear(h.pending)
+	clear(h.crossPending)
+	clear(h.capacityPending)
 	clear(h.recipients)
 	h.closeErr = h.driver.Close()
 	return h.closeErr

@@ -161,7 +161,7 @@ func (m *declaredMaterializer) readGenesisConfig(q *reader) (genesisAllocationCo
 	if err != nil {
 		return genesisAllocationConfig{}, err
 	}
-	if cfg.semanticContractID() != m.SemanticContractID() {
+	if !configurationSemanticMatches(cfg, m.SemanticContractID()) {
 		return genesisAllocationConfig{}, errCorrupt
 	}
 	if err := cfg.checkGenesisDeclaration(m.declaration); err != nil {

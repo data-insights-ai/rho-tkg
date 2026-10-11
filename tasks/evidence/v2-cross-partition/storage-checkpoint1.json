@@ -1,0 +1,53 @@
+{
+  "base": "94743005a2d144967c6ec859aedc0c499bde4bb0",
+  "scope": "Focused native Store recovery reservation installation/current-owner admission and Initialize preservation only",
+  "checkpoints": [
+    {
+      "checkpoint": "mode-red1",
+      "exit_code": 1,
+      "source_manifest_sha256": "931d1dfc4dbcaa1a1cdf0fdb1465012550e1a246c16f22e59ac6c69ec28aad1e",
+      "parent_verified_inputs": 2276,
+      "source_overlays": [
+        "tasks/backlog.md",
+        "v5/internal/graphapply/cross_partition_gap_test.go",
+        "v5/internal/raftlog/application.go",
+        "v5/internal/raftlog/application_generation.go",
+        "v5/internal/raftlog/application_recovery.go",
+        "v5/internal/raftlog/application_recovery_test.go",
+        "v5/internal/raftlog/codec.go",
+        "v5/internal/raftlog/storage.go"
+      ]
+    },
+    {
+      "checkpoint": "storage-green3",
+      "exit_code": 0,
+      "source_manifest_sha256": "df0fa0434260ef1258be9dba9e648ee718feacf2b49117769d37c5d784546d0a",
+      "parent_verified_inputs": 2276,
+      "source_overlays": [
+        "tasks/backlog.md",
+        "v5/internal/graphapply/cross_partition_gap_test.go",
+        "v5/internal/raftlog/application.go",
+        "v5/internal/raftlog/application_generation.go",
+        "v5/internal/raftlog/application_recovery.go",
+        "v5/internal/raftlog/application_recovery_test.go",
+        "v5/internal/raftlog/codec.go",
+        "v5/internal/raftlog/storage.go"
+      ]
+    }
+  ],
+  "green_tests": 6,
+  "observed": [
+    "Initialize retains selected Version 1 and RLM8 persisted metadata.",
+    "Installed reservation owner is retained and 3000 bytes of future credits cause ordinary admission to return ErrLimit.",
+    "Disabled stores return ErrInvalid for unsupported reservation fields."
+  ],
+  "qualification": "Raw status.json classification strings were copied from an earlier RED fixture and are inaccurate for these runs. Exit statuses, actual logs and the checkpoint labels here determine the outcomes. These are focused normal tests, not race/coverage/final acceptance or cross-partition graph success.",
+  "remaining": [
+    "Queued reservation/use projection before proposals and follower persistence",
+    "Forwarded proposals and ordered multi-entry Ready handling",
+    "Bound recovery phase consumption, replay and suffix replacement",
+    "Snapshot reservation transfer and atomic replacement",
+    "Actual cross-partition graph prepare/decision/resolve"
+  ],
+  "archive_sha256": "1661ae192baa097d60cc10fc6f19bc2d8a44e243de11de438b3142797b970efe"
+}

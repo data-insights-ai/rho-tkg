@@ -294,7 +294,7 @@ func TestApplicationGenerationCleanupRejectsActiveStaleAndPinnedBanks(t *testing
 	}
 	m = s.meta
 	m.App.Policy.MaxInstallBytes = 0
-	if err := generationCharge(m, 1); !errors.Is(err, ErrInvalid) {
+	if err := generationCharge(m, 1, DefaultLimits()); !errors.Is(err, ErrInvalid) {
 		t.Fatal("invalid reservation denominator admitted", err)
 	}
 }

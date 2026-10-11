@@ -21,7 +21,7 @@ const applicationSnapshotClaimFixedBytes uint64 = 2048
 // It contains no application image, local generation/voter policy or HardState.
 // Encoding does not prove receipt, Raft acceptance or authorize activation.
 func EncodeApplicationSnapshotDescriptor(m ApplicationSnapshotManifest) ([]byte, error) {
-	if m.Version != 2 && m.Version != 3 && m.Version != 4 {
+	if m.Version != 2 && m.Version != 3 && m.Version != 4 && m.Version != 5 {
 		return nil, ErrInvalid
 	}
 	if err := validateManifest(m); err != nil {
@@ -39,8 +39,11 @@ func EncodeApplicationSnapshotDescriptor(m ApplicationSnapshotManifest) ([]byte,
 	if m.Version >= 3 {
 		version = 2
 	}
-	if m.Version == 4 {
+	if m.Version >= 4 {
 		version = 3
+	}
+	if m.Version == 5 {
+		version = 4
 	}
 	b = append(b, 'A', 'D', version, 0)
 	if m.Version >= 3 {
@@ -58,6 +61,12 @@ func EncodeApplicationSnapshotDescriptor(m ApplicationSnapshotManifest) ([]byte,
 	if m.controls() {
 		b = binary.BigEndian.AppendUint64(b, m.ControlBytes)
 		b = binary.BigEndian.AppendUint64(b, m.ControlRecords)
+	}
+	if m.Version == 5 {
+		b = binary.BigEndian.AppendUint64(b, m.RecoveryBytes)
+		b = binary.BigEndian.AppendUint64(b, m.RecoveryRecords)
+		sum := recoveryRootDigest(m.RecoveryReservation)
+		b = append(b, sum[:]...)
 	}
 	b = append(b, m.ImageHash[:]...)
 	b = append(b, m.CutID[:]...)
@@ -287,6 +296,9 @@ func (s *Store) ClaimPreparedApplicationSnapshot(p *PreparedApplicationSnapshot,
 // authority. All versions admitted by Prepare reuse genuine ApplicationView
 // readers, with shared view quotas and a finite1024+exactimage transfer pin.
 func (p *PreparedApplicationSnapshot) OpenReadView(ctx context.Context, index uint64, maxImageBytes int) (*ApplicationView, error) {
+	return p.openReadView(ctx, index, maxImageBytes, nil)
+}
+func (p *PreparedApplicationSnapshot) openReadView(ctx context.Context, index uint64, maxImageBytes int, claim *ApplicationSnapshotClaim) (*ApplicationView, error) {
 	if p == nil || p.s == nil || p.i == nil || p.self != p || ctx == nil || index == 0 || maxImageBytes < 1 {
 		return nil, ErrInvalid
 	}
@@ -299,7 +311,7 @@ func (p *PreparedApplicationSnapshot) OpenReadView(ctx context.Context, index ui
 	if err := p.live(); err != nil {
 		return nil, err
 	}
-	if p.claim != nil {
+	if p.claim != nil && (claim == nil || p.claim != claim || claim.closed || claim.consumed) {
 		return nil, ErrLimit
 	}
 	policy := s.meta.App.Policy

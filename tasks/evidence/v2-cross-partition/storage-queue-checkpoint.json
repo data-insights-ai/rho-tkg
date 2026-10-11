@@ -1,0 +1,115 @@
+{
+  "scope": "Focused queued recovery-capacity storage checkpoints; not graph transaction acceptance",
+  "checkpoints": [
+    {
+      "checkpoint": "queued-red1",
+      "base": "94743005a2d144967c6ec859aedc0c499bde4bb0",
+      "exit_code": 1,
+      "source_manifest_sha256": "afacae9fd7b64b6204b6dd213635ac95003273ab1124a1bd5383993fc69772f9",
+      "parent_verified_inputs": 2277,
+      "source_overlays": [
+        "v5/internal/graphapply/cross_partition_gap_test.go",
+        "v5/internal/raftlog/application_recovery.go",
+        "v5/internal/raftlog/application_recovery_admission.go",
+        "v5/internal/raftlog/application_recovery_test.go",
+        "tasks/backlog.md",
+        "v5/internal/raftlog/application.go",
+        "v5/internal/raftlog/application_generation.go",
+        "v5/internal/raftlog/codec.go",
+        "v5/internal/raftlog/storage.go"
+      ]
+    },
+    {
+      "checkpoint": "queued-boundary-red1",
+      "base": "94743005a2d144967c6ec859aedc0c499bde4bb0",
+      "exit_code": 1,
+      "source_manifest_sha256": "88cda1c7361e0e2b7a234f3644d09423d6c1acdfc36566b954dee8c3cfe9b7be",
+      "parent_verified_inputs": 2278,
+      "source_overlays": [
+        "tasks/backlog.md",
+        "v5/internal/graphapply/cross_partition_gap_test.go",
+        "v5/internal/raftlog/application.go",
+        "v5/internal/raftlog/application_generation.go",
+        "v5/internal/raftlog/application_generation_codec_test.go",
+        "v5/internal/raftlog/application_recovery.go",
+        "v5/internal/raftlog/application_recovery_admission.go",
+        "v5/internal/raftlog/application_recovery_queue.go",
+        "v5/internal/raftlog/application_recovery_test.go",
+        "v5/internal/raftlog/codec.go",
+        "v5/internal/raftlog/storage.go"
+      ]
+    },
+    {
+      "checkpoint": "queued-boundary-green2",
+      "base": "94743005a2d144967c6ec859aedc0c499bde4bb0",
+      "exit_code": 0,
+      "source_manifest_sha256": "6277aa3a8ce81bee2f37ae51400e47465dd966d6960ae97ae55ce80792b26a25",
+      "parent_verified_inputs": 2278,
+      "source_overlays": [
+        "tasks/backlog.md",
+        "v5/internal/graphapply/cross_partition_gap_test.go",
+        "v5/internal/raftlog/application.go",
+        "v5/internal/raftlog/application_generation.go",
+        "v5/internal/raftlog/application_generation_codec_test.go",
+        "v5/internal/raftlog/application_recovery.go",
+        "v5/internal/raftlog/application_recovery_admission.go",
+        "v5/internal/raftlog/application_recovery_queue.go",
+        "v5/internal/raftlog/application_recovery_test.go",
+        "v5/internal/raftlog/codec.go",
+        "v5/internal/raftlog/storage.go"
+      ]
+    },
+    {
+      "checkpoint": "queued-retry-red2",
+      "base": "94743005a2d144967c6ec859aedc0c499bde4bb0",
+      "exit_code": 1,
+      "source_manifest_sha256": "33c976dcd7a56310cb0c4cd35098c034a1bec1fa85ac7e4ecd505a5f043a0dbd",
+      "parent_verified_inputs": 2278,
+      "source_overlays": [
+        "tasks/backlog.md",
+        "v5/internal/graphapply/cross_partition_gap_test.go",
+        "v5/internal/raftlog/application.go",
+        "v5/internal/raftlog/application_generation.go",
+        "v5/internal/raftlog/application_generation_codec_test.go",
+        "v5/internal/raftlog/application_recovery.go",
+        "v5/internal/raftlog/application_recovery_admission.go",
+        "v5/internal/raftlog/application_recovery_queue.go",
+        "v5/internal/raftlog/application_recovery_test.go",
+        "v5/internal/raftlog/codec.go",
+        "v5/internal/raftlog/storage.go"
+      ]
+    },
+    {
+      "checkpoint": "queued-retry-green1",
+      "base": "94743005a2d144967c6ec859aedc0c499bde4bb0",
+      "exit_code": 0,
+      "source_manifest_sha256": "92c4011b12af5ae71b897819a364a7a356cfed96574b87996af5ff165702bbeb",
+      "parent_verified_inputs": 2278,
+      "source_overlays": [
+        "tasks/backlog.md",
+        "v5/internal/graphapply/cross_partition_gap_test.go",
+        "v5/internal/raftlog/application.go",
+        "v5/internal/raftlog/application_generation.go",
+        "v5/internal/raftlog/application_generation_codec_test.go",
+        "v5/internal/raftlog/application_recovery.go",
+        "v5/internal/raftlog/application_recovery_admission.go",
+        "v5/internal/raftlog/application_recovery_queue.go",
+        "v5/internal/raftlog/application_recovery_test.go",
+        "v5/internal/raftlog/codec.go",
+        "v5/internal/raftlog/storage.go"
+      ]
+    }
+  ],
+  "green_tests": 12,
+  "observed": [
+    "A queued registration retains and charges its future completion obligation before application.",
+    "The canonical one-credit 137-byte queued reservation decodes and survives real reopen.",
+    "Three pre-reserved 200-byte completion phases fit a 4096-byte quota even when their generic worst-case pending charge would be 4992 bytes.",
+    "Pending projection preserves the applied reservation.",
+    "Duplicate queued completion commands retain their exact installation bounds while consuming future phase credit once.",
+    "Uncommitted suffix replacement and rejected phase use preserve applied ownership and metadata."
+  ],
+  "qualification": "Focused normal tests only. Parent independently checked all archived source hashes, the actual RED/GREEN logs and changed queue logic. Driver/forwarded integration, snapshots, full race/coverage and actual graph protocol remain open. Earlier invalid preparation and fixture attempts are retained locally and not counted as semantic evidence.",
+  "archive_sha256": "0cc20eaee086bb4e9f157fa63d989d79e8027cda0a7125d16b7db314cd3ec3da",
+  "archive_bytes": 911820
+}

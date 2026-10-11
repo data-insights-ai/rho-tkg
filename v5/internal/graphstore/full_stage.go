@@ -421,6 +421,12 @@ func initializeFullStorageWithDefaultAxis(ctx context.Context, c *Catalog, bindi
 }
 func (q *pageStage) stageCanonical(entity graphstate.EntityRecord) error {
 	for _, key := range canonicalIncidentKeys(entity) {
+		if t := q.q.transaction(); t != nil && t.installation != nil {
+			if err := q.insertRoutedPosting(key); err != nil {
+				return err
+			}
+			continue
+		}
 		tree, err := q.insertPostingKey(q.q.full.descriptor.canonical, key, keyTreeLimits(q.limits))
 		if err != nil {
 			return err
@@ -434,6 +440,12 @@ func (q *pageStage) stageDeclared(entity graphstate.EntityRecord, life graphstat
 		return err
 	}
 	for _, key := range declaredIncidentKeys(entity, life) {
+		if t := q.q.transaction(); t != nil && t.installation != nil {
+			if err := q.insertRoutedPosting(key); err != nil {
+				return err
+			}
+			continue
+		}
 		tree, err := q.insertPostingKey(q.q.full.descriptor.declared, key, keyTreeLimits(q.limits))
 		if err != nil {
 			return err
@@ -452,7 +464,7 @@ func (q *pageStage) stageRaw(patch graphstate.ComponentPatch) error {
 			return err
 		}
 		if present {
-			found, err := q.hasPostingKey(q.q.full.descriptor.unique, before, keyTreeLimits(q.limits))
+			found, err := q.routedUniqueMembership(q.q.full.descriptor.unique, before)
 			if err != nil {
 				return err
 			}
@@ -465,6 +477,12 @@ func (q *pageStage) stageRaw(patch graphstate.ComponentPatch) error {
 			return err
 		}
 		if present {
+			if t := q.q.transaction(); t != nil && t.installation != nil {
+				if err := q.insertRoutedPosting(after); err != nil {
+					return err
+				}
+				continue
+			}
 			root, err := q.insertPostingKey(q.q.full.descriptor.unique, after, keyTreeLimits(q.limits))
 			if err != nil {
 				return err
@@ -626,78 +644,139 @@ func stageOpenedOperations(ctx context.Context, c *Catalog, v *ReadView, ops []g
 		if err := base.materialize(0); err != nil {
 			return err
 		}
-		for _, entity := range planned.Entities {
-			ref := EntityRef{c.root.namespace.Graph, entity.ID}
-			if _, found, err := base.entity(ref); err != nil {
-				return err
-			} else if found {
-				return callerError(graphstate.ErrAlreadyExists)
-			}
-			if err := base.stageEntity(ref, entity); err != nil {
-				return err
-			}
+		planned, groups, err = installFullPlan(&p, planned, l, arena)
+		if err != nil {
+			return err
 		}
-		for _, entity := range planned.Entities {
-			if entity.Kind == graphstate.Relationship {
-				if err := p.stageCanonical(entity); err != nil {
-					return err
-				}
-			}
+		if err := p.budget(); err != nil {
+			return err
 		}
-		for _, life := range planned.Lives {
-			ref := LifeRef{c.root.namespace.Graph, life.Owner, life.Life}
-			if _, found, err := base.life(ref); err != nil {
-				return err
-			} else if found {
-				return callerError(graphstate.ErrAlreadyExists)
-			}
-			if err := base.stageLife(ref, life); err != nil {
-				return err
-			}
-			entity, found, err := base.entity(EntityRef{c.root.namespace.Graph, life.Owner})
-			if err != nil {
-				return err
-			}
-			if !found {
-				return ErrCorrupt
-			}
-			if entity.Kind == graphstate.Relationship {
-				if err := p.stageDeclared(entity, life); err != nil {
-					return err
-				}
-			}
+		base.full.root = p.root
+		encoded, err := encodeFullDescriptor(base.full.descriptor, p.root, c.limits)
+		if err != nil {
+			return err
 		}
-		for _, value := range planned.Values {
-			ref := ValueRef{c.root.namespace.Graph, value.ID}
-			if _, _, found, err := base.value(ref); err != nil {
-				return err
-			} else if found {
-				return callerError(graphstate.ErrAlreadyExists)
-			}
-			key, err := p.equalityKey(value.Value)
-			if err != nil {
-				return err
-			}
-			if _, found, err := base.local(key); err != nil {
-				return err
-			} else if found {
-				return ErrCorrupt
-			}
-			if err := base.stageValue(ref, value.Value, key); err != nil {
-				return err
-			}
+		if err := base.put(componentIndexDescriptorKey(c.root.namespace), encoded); err != nil {
+			return err
 		}
-		if len(planned.Patches) > l.Pages.MaxPatches {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		delta = planned
+		work = addWork(v.Work(), p.work)
+		if work.Records > l.MaxSourceRows || work.Bytes > l.MaxSourceBytes {
 			return ErrResourceLimit
 		}
-		if err := arena.Reserve(fullGroupOutputBytes * len(planned.Patches)); err != nil {
-			return callerError(err)
+		return nil
+	})
+	if err != nil {
+		return GraphEffects{}, PageWork{}, err
+	}
+	effects, err = fullEffects(s, v.base, delta, groups, work, l)
+	if err == nil && guard != nil {
+		effects.OwnedBytes += semanticGuardWorkBytes
+	}
+	return effects, work, err
+}
+
+func selectedGraphOutputBudget(l GraphLimits, parent *graphstate.OutputBudget) (*graphstate.OutputBudget, error) {
+	if parent == nil {
+		budget, err := graphstate.NewOutputBudget(l.MaxOutputBytes)
+		return budget, callerError(err)
+	}
+	budget, err := parent.Child(l.MaxOutputBytes)
+	if err != nil {
+		return nil, callerError(err)
+	}
+	if budget.Remaining() < fullViewMetadataBytes+512 {
+		return nil, ErrResourceLimit
+	}
+	return budget, nil
+}
+
+// installFullPlan is the single physical installer after typed planning. Its
+// callers supply internally planned effects, never caller Delta admission.
+func installFullPlan(p *pageStage, planned graphstate.Delta, l GraphLimits, arena *graphstate.OutputBudget) (graphstate.Delta, []ComponentChangeGroup, error) {
+	base, c := p.q, p.q.c
+	for _, entity := range planned.Entities {
+		ref := EntityRef{c.root.namespace.Graph, entity.ID}
+		if _, found, err := base.entity(ref); err != nil {
+			return graphstate.Delta{}, nil, err
+		} else if found {
+			return graphstate.Delta{}, nil, callerError(graphstate.ErrAlreadyExists)
 		}
-		groups = make([]ComponentChangeGroup, 0, len(planned.Patches))
-		changeBytes := 0
-		presence := fullPresenceStage{p: &p}
-		for _, patch := range planned.Patches {
-			group, err := p.validatePatch(patch)
+		if err := base.stageEntity(ref, entity); err != nil {
+			return graphstate.Delta{}, nil, err
+		}
+	}
+	for _, entity := range planned.Entities {
+		if entity.Kind == graphstate.Relationship {
+			if err := p.stageCanonical(entity); err != nil {
+				return graphstate.Delta{}, nil, err
+			}
+		}
+	}
+	for _, life := range planned.Lives {
+		ref := LifeRef{c.root.namespace.Graph, life.Owner, life.Life}
+		if _, found, err := base.life(ref); err != nil {
+			return graphstate.Delta{}, nil, err
+		} else if found {
+			return graphstate.Delta{}, nil, callerError(graphstate.ErrAlreadyExists)
+		}
+		if err := base.stageLife(ref, life); err != nil {
+			return graphstate.Delta{}, nil, err
+		}
+		entity, found, err := base.entity(EntityRef{c.root.namespace.Graph, life.Owner})
+		if err != nil {
+			return graphstate.Delta{}, nil, err
+		}
+		if !found {
+			return graphstate.Delta{}, nil, ErrCorrupt
+		}
+		if entity.Kind == graphstate.Relationship {
+			if err := p.stageDeclared(entity, life); err != nil {
+				return graphstate.Delta{}, nil, err
+			}
+		}
+	}
+	for _, value := range planned.Values {
+		ref := ValueRef{c.root.namespace.Graph, value.ID}
+		if _, _, found, err := base.value(ref); err != nil {
+			return graphstate.Delta{}, nil, err
+		} else if found {
+			return graphstate.Delta{}, nil, callerError(graphstate.ErrAlreadyExists)
+		}
+		key, err := p.equalityKey(value.Value)
+		if err != nil {
+			return graphstate.Delta{}, nil, err
+		}
+		if _, found, err := base.local(key); err != nil {
+			return graphstate.Delta{}, nil, err
+		} else if found {
+			return graphstate.Delta{}, nil, ErrCorrupt
+		}
+		if err := base.stageValue(ref, value.Value, key); err != nil {
+			return graphstate.Delta{}, nil, err
+		}
+	}
+	if len(planned.Patches) > l.Pages.MaxPatches {
+		return graphstate.Delta{}, nil, ErrResourceLimit
+	}
+	if err := arena.Reserve(fullGroupOutputBytes * len(planned.Patches)); err != nil {
+		return graphstate.Delta{}, nil, callerError(err)
+	}
+	groups := make([]ComponentChangeGroup, 0, len(planned.Patches))
+	changeBytes := 0
+	for _, patch := range planned.Patches {
+		if t := p.q.transaction(); t != nil && t.installation != nil {
+			t.installation.active = &patch
+		}
+		var group ComponentChangeGroup
+		err := p.withPrimary(patch.Key.Owner, func(p *pageStage) error {
+			base, c := p.q, p.q.c
+			presence := fullPresenceStage{p: p}
+			var err error
+			group, err = p.validatePatch(patch)
 			if err != nil {
 				return err
 			}
@@ -754,55 +833,26 @@ func stageOpenedOperations(ctx context.Context, c *Catalog, v *ReadView, ops []g
 			if err := p.budget(); err != nil {
 				return err
 			}
-			groups = append(groups, group)
-		}
-		normalized, ownedGroups, err := p.ownDelta(planned, groups, l.MaxOutputBytes)
+			return nil
+		})
 		if err != nil {
-			return err
+			return graphstate.Delta{}, nil, err
 		}
-		planned, groups = normalized, ownedGroups
-		if err := p.budget(); err != nil {
-			return err
+		if t := p.q.transaction(); t != nil && t.installation != nil {
+			i := t.installation
+			wire, e := state.AppendChanges(nil, group.Owned.Axis(), group.Changes, l.Pages.codecLimits(c))
+			if e != nil {
+				return graphstate.Delta{}, nil, e
+			}
+			tags, e := i.changeTags(group.Key, group.Changes, wire, true)
+			if e != nil {
+				return graphstate.Delta{}, nil, e
+			}
+			i.groupTags = append(i.groupTags, tags)
+			i.produced = append(i.produced, patch)
+			i.active = nil
 		}
-		base.full.root = p.root
-		encoded, err := encodeFullDescriptor(base.full.descriptor, p.root, c.limits)
-		if err != nil {
-			return err
-		}
-		if err := base.put(componentIndexDescriptorKey(c.root.namespace), encoded); err != nil {
-			return err
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		delta = planned
-		work = addWork(v.Work(), p.work)
-		if work.Records > l.MaxSourceRows || work.Bytes > l.MaxSourceBytes {
-			return ErrResourceLimit
-		}
-		return nil
-	})
-	if err != nil {
-		return GraphEffects{}, PageWork{}, err
+		groups = append(groups, group)
 	}
-	effects, err = fullEffects(s, v.base, delta, groups, work, l)
-	if err == nil && guard != nil {
-		effects.OwnedBytes += semanticGuardWorkBytes
-	}
-	return effects, work, err
-}
-
-func selectedGraphOutputBudget(l GraphLimits, parent *graphstate.OutputBudget) (*graphstate.OutputBudget, error) {
-	if parent == nil {
-		budget, err := graphstate.NewOutputBudget(l.MaxOutputBytes)
-		return budget, callerError(err)
-	}
-	budget, err := parent.Child(l.MaxOutputBytes)
-	if err != nil {
-		return nil, callerError(err)
-	}
-	if budget.Remaining() < fullViewMetadataBytes+512 {
-		return nil, ErrResourceLimit
-	}
-	return budget, nil
+	return p.ownDelta(planned, groups, l.MaxOutputBytes)
 }

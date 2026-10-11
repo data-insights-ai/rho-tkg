@@ -11,9 +11,11 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
 )
 
-func isPartitionGraphWire(data []byte) bool { return len(data) >= 5 && string(data[:4]) == "PGQ\x01" }
+func isPartitionGraphWire(data []byte) bool {
+	return len(data) >= 5 && string(data[:3]) == "PGQ" && (data[3] == 1 || data[3] == 2)
+}
 func (m *declaredMaterializer) stagePartitionGraph(q *reader, info graphstore.OwnershipRead, entry replica.Entry, budget raftlog.ApplicationBudget) (raftlog.ApplicationBatch, error) {
-	if m.SemanticContractID() != partitionWriteSemanticContractID() {
+	if !partitionGraphAgreement(m.SemanticContractID()) || (m.SemanticContractID() == crossPartitionSemanticContractID()) != (entry.Data[3] == 2) {
 		return raftlog.ApplicationBatch{}, errCorrupt
 	}
 	if info.Root().SemanticEpoch() == 0 {
@@ -36,6 +38,15 @@ func (m *declaredMaterializer) stagePartitionGraph(q *reader, info graphstore.Ow
 		return raftlog.ApplicationBatch{}, errInvalid
 	}
 	hash := sha256.Sum256(entry.Data)
+	if m.SemanticContractID() == crossPartitionSemanticContractID() {
+		if _, present, e := crossCurrent(q, crossTransactionID(r.request.ns, r.request.id)); e != nil {
+			return raftlog.ApplicationBatch{}, e
+		} else if present {
+			o := outcome{ns: m.ns, kind: r.request.kind, identity: r.request.identity(), index: entry.Index, disposition: applied, reason: reasonMismatch}
+			legacy := materializer{store: m.store, ns: m.ns, owner: m.owner, limits: m.limits}
+			return legacy.finishWithCodec(q, o, hash, false, budget, nil, graphChanges{}, true)
+		}
+	}
 	old, found, err := sharedReplayWithDecoder(q, request{ns: m.ns, kind: r.request.kind, id: r.request.id}, hash, entry.Index, decodePartitionMappedOutcome)
 	if err != nil {
 		return raftlog.ApplicationBatch{}, err
@@ -45,6 +56,16 @@ func (m *declaredMaterializer) stagePartitionGraph(q *reader, info graphstore.Ow
 		return legacy.finishWithCodec(q, old, hash, false, budget, nil, graphChanges{}, true)
 	}
 	result := outcome{ns: m.ns, kind: r.request.kind, identity: r.request.identity(), index: entry.Index, disposition: applied}
+	if m.SemanticContractID() == crossPartitionSemanticContractID() {
+		lock, e := crossLock(q)
+		if e != nil {
+			return raftlog.ApplicationBatch{}, e
+		}
+		if lock != ([16]byte{}) {
+			result.reason = reasonPreparedConflict
+			return legacy.finishWithCodec(q, result, hash, true, budget, nil, graphChanges{}, true)
+		}
+	}
 	if r.request.kind == guardedGraphOperations {
 		expected := r.request.readBase.guard
 		actual := graphstore.SemanticGuard{Namespace: info.Root().Namespace(), OwnershipEpoch: m.owner, TopologyEpoch: m.declaration.TopologyEpoch(), SchemaVersion: 1, SemanticEpoch: info.Root().SemanticEpoch(), EffectDigest: info.Root().EffectDigest()}
@@ -219,7 +240,7 @@ func (h *allocationHost) PreparePartitionGraphOperations(id requestID, ops []gra
 	if h.closed {
 		return allocationProposal{}, replica.ErrStopped
 	}
-	if h.machine == nil || h.driver == nil || h.machine.SemanticContractID() != partitionWriteSemanticContractID() {
+	if h.machine == nil || h.driver == nil || !partitionGraphAgreement(h.machine.SemanticContractID()) {
 		return allocationProposal{}, errInvalid
 	}
 	cfg, err := h.currentConfiguration()
@@ -235,6 +256,9 @@ func (h *allocationHost) PreparePartitionGraphOperations(id requestID, ops []gra
 		return allocationProposal{}, err
 	}
 	r := partitionGraphCommand{configuration: digest, declaration: h.machine.declaration.Digest(), routing: cfg.routingDigest, request: graphRequest{ns: h.machine.ns, kind: graphOperations, id: id, revision: revision, operations: ops, claims: claims}}
+	if h.machine.SemanticContractID() == crossPartitionSemanticContractID() {
+		r.version = 2
+	}
 	wire, err := encodePartitionGraphCommand(r, h.machine.limits)
 	if err != nil {
 		return allocationProposal{}, err

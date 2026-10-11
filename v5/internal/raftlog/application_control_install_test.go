@@ -52,7 +52,7 @@ func boundedControlStore(t *testing.T, edit func(*Config)) *Store {
 	tc.Contract = contract
 	cfg := Config{Dir: "bounded-control", FS: vfs.NewMem(), Create: true, Application: p, Transfer: tc, Controls: ctrl, Generations: ApplicationGenerationLimits{2 << 30, 2000000}, PublishedCuts: ApplicationPublishedCutLimits{10000}, Replication: ApplicationReplicationConfig{[3]uint64{1, 2, 3}}, SemanticContractID: ApplicationSemanticContractID{41}}
 	edit(&cfg)
-	cfg.Transfer.Contract, err = ApplicationContractForPolicyWithControls(cfg.Application, ctrl)
+	cfg.Transfer.Contract, err = ApplicationContractForPolicyWithRecovery(cfg.Application, ctrl, cfg.Recovery)
 	if err != nil {
 		t.Fatal(err)
 	}

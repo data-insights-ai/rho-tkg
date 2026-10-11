@@ -128,7 +128,7 @@ func syncActiveGeneration(m *metadata) {
 	b.Through, b.Bytes, b.Records = m.App.Through, bytes, records
 	b.ControlBytes, b.ControlRecords = m.Controls.Bytes, m.Controls.Records
 }
-func generationCharge(m metadata, pending uint64) error {
+func generationCharge(m metadata, pending uint64, l Limits) error {
 	g := m.Gen
 	if !g.Limits.enabled() {
 		return nil
@@ -138,14 +138,22 @@ func generationCharge(m metadata, pending uint64) error {
 		totalBytes += max(b.Bytes, b.ReservedBytes)
 		totalRecords += max(b.Records, b.ReservedRecords)
 	}
-	if totalBytes > g.Limits.MaxBytes || totalRecords > g.Limits.MaxRecords {
+	protected, pendingBytes, pendingRecords, err := recoveryProjected(m, l, pending)
+	if err != nil {
+		return err
+	}
+	protected.bytes += m.Recovery.Staged.bytes
+	protected.records += m.Recovery.Staged.records
+	if totalBytes > g.Limits.MaxBytes || totalRecords > g.Limits.MaxRecords || protected.bytes > g.Limits.MaxBytes-totalBytes || protected.records > g.Limits.MaxRecords-totalRecords {
 		return ErrLimit
 	}
+	totalBytes += protected.bytes
+	totalRecords += protected.records
 	p := m.App.Policy
 	if p.MaxInstallBytes < 1 || p.MaxInstallWrites < 1 {
 		return ErrInvalid
 	}
-	if pending > (g.Limits.MaxBytes-totalBytes)/unsignedLimit(p.MaxInstallBytes) || pending > (g.Limits.MaxRecords-totalRecords)/unsignedLimit(p.MaxInstallWrites+3) {
+	if pendingBytes > g.Limits.MaxBytes-totalBytes || pendingRecords > g.Limits.MaxRecords-totalRecords {
 		return ErrLimit
 	}
 	return nil
@@ -209,7 +217,7 @@ func (s *Store) validateGenerationMeta(m metadata) error {
 	if err := validatePublicationMeta(m); err != nil {
 		return err
 	}
-	return generationCharge(m, m.Last-m.Applied)
+	return generationCharge(m, m.Last-m.Applied, s.limits)
 }
 func (s *Store) activeBank() byte { return s.meta.Gen.Active }
 func (s *Store) activeGeneration() uint64 {
@@ -297,12 +305,20 @@ func (s *Store) clearGenerationBank(bank byte, generation uint64) error {
 	}
 	m := s.meta
 	m.Gen.Banks[bank] = applicationBank{Generation: generation, State: bankFree}
+	if m.Recovery.Config.enabled() {
+		m.Recovery.Staged = applicationRecoveryGrowth{}
+	}
 	b := s.db.NewBatch()
 	if err := b.DeleteRange([]byte{bankTag(bank, appDataTag)}, []byte{bankTag(bank, appOutcomeTag) + 1}, nil); err != nil {
 		return errors.Join(err, b.Close())
 	}
 	if s.meta.Controls.Config.enabled() {
 		if err := b.DeleteRange([]byte{controlBankTag(bank)}, []byte{controlBankTag(bank) + 1}, nil); err != nil {
+			return errors.Join(err, b.Close())
+		}
+	}
+	if s.meta.Recovery.Config.enabled() {
+		if err := b.DeleteRange([]byte{recoveryRootTag + bank}, []byte{recoveryRootTag + bank + 1}, nil); err != nil {
 			return errors.Join(err, b.Close())
 		}
 	}
@@ -327,6 +343,16 @@ func (s *Store) reserveGeneration(m ApplicationSnapshotManifest) (metadata, byte
 	if err != nil {
 		return prospective, bank, err
 	}
+	if m.Version == 5 {
+		future, futureErr := recoveryGrowthIfPresent(m.RecoveryReservation, s.meta.App.Policy, s.limits)
+		if futureErr != nil {
+			return prospective, bank, futureErr
+		}
+		if err := recoveryFits(future, size, rows, 0, 0, s.meta.App.Policy, s.limits); err != nil {
+			return prospective, bank, err
+		}
+		prospective.Recovery.Staged = future
+	}
 	prospective.Gen.HighWater++
 	prospective.Gen.Banks[bank] = applicationBank{Generation: prospective.Gen.HighWater, Through: m.Index, ReservedBytes: size, ReservedRecords: rows, State: bankStaging}
 	if err := s.validateGenerationMeta(prospective); err != nil {
@@ -342,6 +368,9 @@ func (s *Store) retireImport(i *ApplicationImport) error {
 	}
 	m := s.meta
 	b := &m.Gen.Banks[bank]
+	if m.Recovery.Config.enabled() {
+		m.Recovery.Staged = applicationRecoveryGrowth{}
+	}
 	b.State = bankRetired
 	b.ReservedBytes, b.ReservedRecords = 0, 0
 	batch := s.db.NewBatch()

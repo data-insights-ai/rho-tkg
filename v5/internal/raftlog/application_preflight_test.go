@@ -155,6 +155,24 @@ func TestApplicationPolicyPreflightInvalidConfiguration(t *testing.T) {
 		})
 	}
 }
+
+// Admission is an opaque identity token; its Store contains error/lifecycle
+// state outside this pure comparison. Every other batch field stays exact,
+// including nil versus empty slices and nested KV/control payloads.
+func equalPreflightBatch(a, b ApplicationBatch) bool {
+	return a.RecoveryAdmission == b.RecoveryAdmission &&
+		reflect.DeepEqual(a.RecoveryReserve, b.RecoveryReserve) &&
+		reflect.DeepEqual(a.RecoveryUse, b.RecoveryUse) &&
+		a.BaseGeneration == b.BaseGeneration &&
+		a.BaseImageHash == b.BaseImageHash &&
+		a.BaseIndex == b.BaseIndex &&
+		reflect.DeepEqual(a.Image, b.Image) &&
+		reflect.DeepEqual(a.Writes, b.Writes) &&
+		reflect.DeepEqual(a.Changes, b.Changes) &&
+		reflect.DeepEqual(a.Outcome, b.Outcome) &&
+		reflect.DeepEqual(a.ControlPuts, b.ControlPuts)
+}
+
 func TestApplicationPolicyPreflightDoesNotMutate(t *testing.T) {
 	p, b := preflightFixture()
 	_, before := preflightFixture()
@@ -163,7 +181,7 @@ func TestApplicationPolicyPreflightDoesNotMutate(t *testing.T) {
 	if _, err := p.Preflight(b, l); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(b, before) || p != originalPolicy || l != originalLimits {
+	if !equalPreflightBatch(b, before) || p != originalPolicy || l != originalLimits {
 		t.Fatal("success mutated input")
 	}
 	b.Writes[2].Key = []byte("a")
@@ -171,7 +189,7 @@ func TestApplicationPolicyPreflightDoesNotMutate(t *testing.T) {
 	if _, err := p.Preflight(b, l); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(b, before) || p != originalPolicy || l != originalLimits {
+	if !equalPreflightBatch(b, before) || p != originalPolicy || l != originalLimits {
 		t.Fatal("failure mutated input")
 	}
 }

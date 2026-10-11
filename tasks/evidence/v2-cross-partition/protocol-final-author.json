@@ -1,0 +1,171 @@
+{
+  "classification": "Author-scope final gates; combined integration and independent review pending",
+  "base": "fd37fa0a0850aa85607bf10e0467f379230cd3cc",
+  "verified_source_files": 399,
+  "source_manifest_sha256": "fd4743b37c87ff7ef5010447af37548f20cc540a715bde5a8b0122559659047e",
+  "source_tar_sha256": "d240c7c163c25432784e03391df1cfeb0d96ff92ee3bfcaa1d8251af6020bd1a",
+  "archive": "protocol-final-author.tar.gz",
+  "archive_sha256": "58020d824f169d568834602cf739c753b1c30dad9121672c9fc7f1b2089b49d0",
+  "archive_bytes": 1924595,
+  "files": [
+    {
+      "path": "base.txt",
+      "sha256": "28bbbee70548cc7e0f519308a2fd880761b40f6326aba2adc2411ab7b57595bb"
+    },
+    {
+      "path": "coverage-direct-public.json",
+      "sha256": "d06b90c2cfdb1ec20a1b4e62440eb52fff9a7e1742f0ff111ff01682021e2c71"
+    },
+    {
+      "path": "coverage-files.json",
+      "sha256": "414f6acc7adc03fe763264ffd2b528a5109aadba22f11ba151d78139490331fe"
+    },
+    {
+      "path": "coverage-functions.txt",
+      "sha256": "91feafb5298d643eaa61af3f29e0bc41f5d70818e2402e5b924b831099837e04"
+    },
+    {
+      "path": "coverage-owned-production.json",
+      "sha256": "3a8208a8ee9cca0f4fe63555b5c7de5e57e69f66ae0f26e485d693987cb061b2"
+    },
+    {
+      "path": "coverage.out",
+      "sha256": "14f4d758d8406083b406c527236a2b2b676889b5323911ae24abd1893619dc69"
+    },
+    {
+      "path": "lint-command.json",
+      "sha256": "f0f569ed6b83f75806bc4b620c3af10c042aaa125e75bea45a912f2c0c816bb6"
+    },
+    {
+      "path": "lint.json",
+      "sha256": "bc8a0fe56c9a65f76299fd76c1e3ee427c90a7bee21f6702184e4903351bafb3"
+    },
+    {
+      "path": "lint.log",
+      "sha256": "ad27efb5fa9a81f62cfb350658d7db9175708c484d0ce9f5e3dd9f207aea829f"
+    },
+    {
+      "path": "normal-command.json",
+      "sha256": "64b48afa65680f35aa28c0ba068cd0f7509941aa93d38eff7a84b8fdfaa7906b"
+    },
+    {
+      "path": "normal.json",
+      "sha256": "f8c4b0f323a94b0cb07f9897b96b28e7c79329c119eca9e93382f43273c32c4e"
+    },
+    {
+      "path": "normal.log",
+      "sha256": "db52466eee2f544401efdc367dfe3cf18d2ed0221d2127543a46c1be4eee66fe"
+    },
+    {
+      "path": "race-command.json",
+      "sha256": "11faab69866a6780e03d35bfec0d6f90b2ab3060eace42980b9f7a663d80ad5e"
+    },
+    {
+      "path": "race.json",
+      "sha256": "3837802275c667fa2a70c779d3cdfb1738d1bf74fc5f1aa1af21ac14da69cf76"
+    },
+    {
+      "path": "race.log",
+      "sha256": "cbd43072e2bbc6a6c63d1977b50d975c255f46e29646a195f05f660d70be03f9"
+    },
+    {
+      "path": "scanner-build-metadata.txt",
+      "sha256": "81b8f0eaa23250e4ec8897bb8c1f7ec5310c597f48fca34b22628f66d0183ea3"
+    },
+    {
+      "path": "security-command.json",
+      "sha256": "45c4259aa6e48ec04d1831a3e6891dcd77374c43b373e324cd65d68956662034"
+    },
+    {
+      "path": "security.json",
+      "sha256": "a01647ca885fd7a1e83d084efcf4d5787244a0b4f17d491153be4e301465e977"
+    },
+    {
+      "path": "security.log",
+      "sha256": "f9c15f1f79ef9f5b9f59b7ed375e42b96c3b689108e9e768887cff8e00d488fb"
+    },
+    {
+      "path": "source-hashes.json",
+      "sha256": "fd4743b37c87ff7ef5010447af37548f20cc540a715bde5a8b0122559659047e"
+    },
+    {
+      "path": "source.tar",
+      "sha256": "d240c7c163c25432784e03391df1cfeb0d96ff92ee3bfcaa1d8251af6020bd1a"
+    },
+    {
+      "path": "verification-after-scanners.json",
+      "sha256": "e700e8605135303f7fb9278a5d6430e9cb9afde4e3e6aefe5759fb858dc9e42a"
+    },
+    {
+      "path": "verification-final.json",
+      "sha256": "bdb3442b8ef386db8345940d124c9bdf9d7767e03b15b98c93a2123c9467c54e"
+    }
+  ],
+  "gates": {
+    "normal": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-timeout=150s",
+        "-coverprofile=/var/tmp/rho-v5-v2-graph-acceptance-evidence-20261011/final-author5/coverage.out",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 497.578,
+      "elapsed_s": 127.268,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "race": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-race",
+        "-count=1",
+        "-timeout=150s",
+        "-run",
+        "^(TestCrossPartition|TestCrossRecovery|TestPartitionGraphVersions)",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 458.469,
+      "elapsed_s": 128.786,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "lint": {
+      "command": [
+        "make",
+        "lint-docker",
+        "DOCKER_GO=docker run --rm --memory=4g --memory-swap=4g --cpus=2 -e GOTOOLCHAIN=local -e GOMAXPROCS=2 -e GOFLAGS=-p=1 -e GOMEMLIMIT=2GiB -e GOPROXY=https://proxy.golang.org -e GOSUMDB=sum.golang.org -v /var/tmp/rho-v5-v2-graph-acceptance-evidence-20261011/final-author5/source:/src -w /src/v5 -v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build golang:1.26.9"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 27.797,
+      "elapsed_s": 13.265,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "security": {
+      "command": [
+        "make",
+        "security-docker",
+        "DOCKER_GO=docker run --rm --memory=4g --memory-swap=4g --cpus=2 -e GOTOOLCHAIN=local -e GOMAXPROCS=2 -e GOFLAGS=-p=1 -e GOMEMLIMIT=2GiB -e GOPROXY=https://proxy.golang.org -e GOSUMDB=sum.golang.org -v /var/tmp/rho-v5-v2-graph-acceptance-evidence-20261011/final-author5/source:/src -w /src/v5 -v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build golang:1.26.9"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 27.938,
+      "elapsed_s": 1.974,
+      "exit_code": 0,
+      "reason": "completed"
+    }
+  },
+  "qualification": "Full graphapply normal/coverage; CrossPartition/CrossRecovery/PartitionGraphVersions race; whole-author-v5 pinned lint/security. Docker host watchdog RSS is not container peak RSS. External integration changes are tested separately."
+}

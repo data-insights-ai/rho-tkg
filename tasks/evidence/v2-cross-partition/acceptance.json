@@ -1,0 +1,56 @@
+{
+  "phase": "V2",
+  "package": 2,
+  "name": "Same-graph cross-partition prepare, decision and resolution",
+  "accepted": true,
+  "source_manifest_sha256": "05a91666717441e100f9bf0617dbbcac418b7f5b7503a2f2cdd7957b1b53d187",
+  "source_files": 412,
+  "base": "728db8eec8158d452f3e5d011ea5b89ba440a633",
+  "upstream_v4": "95a1de39e424d6b8dd25f372645280667135c8ae",
+  "included_external_v5": "9600d634dc32f3bee8b8c901fdfbbdcbe8b04426",
+  "acceptance_scope": [
+    "One GraphID; two declared partitions; three disk-backed voters per partition; actual Host/Driver proposal and completed quorum-read paths",
+    "Complete routed dependencies and primary/secondary effects including both cross-edge endpoint postings",
+    "Persisted prepared kernels and locks; conflicting local writes refuse; resolution uses retained authority and prepared state",
+    "Immutable decisions and exact retry outcomes; qualified transaction identity preserves coordinator-local retry keys",
+    "Reserved installed and queued completion capacity; precise refusal before consensus mutation; deterministic loser recovery does not convert absent authority to ABORT",
+    "Retained state, exact CDC/history, snapshot activation, leader changes and durable reopen; independent review regressions corrected"
+  ],
+  "review_corrections": [
+    "Graph/coordinator/raw-request-key-qualified transaction ID; old cross semantic agreement refused",
+    "Native pending-install creation admission charges recovery envelope using canonical helper",
+    "Prepared AS5 reader preserves full immutable recovery contract; existing AS2/AS4 unchanged"
+  ],
+  "remaining_V2": [
+    "Certified current and retained historical distributed graph reads",
+    "Independent same-graph serial-history/cut oracle under process/message faults and ownership transfer",
+    "Production identity reuse and fencing, application garbage collection, physical-host durability",
+    "Comparable transactional-KV fault/cost evidence and explicit engine decision"
+  ],
+  "qualification": "This package does not certify distributed graph cuts, multi-host durability, storage capacity/performance or the full V2 phase. rho owns storage; reasoning remains in sigma.",
+  "accepted_date": "2026-10-11",
+  "scope_status": "Locally accepted; hosted validation of the eventual integrated push recorded separately",
+  "validation": {
+    "covered_statements": 27153,
+    "total_statements": 30788,
+    "coverage_percent": 88.19345199428349,
+    "changed_production_files": 46,
+    "all_changed_production_at_least_80": true,
+    "added_exported_declarations": 47,
+    "all_added_exported_nonzero_and_directly_tested": true,
+    "graphapply_race_tests": 232,
+    "race_disjoint_groups": [
+      33,
+      199
+    ],
+    "pinned_scanners": "lint/security pass; vulncheck zero reachable vulnerabilities, unreachable package/module advisories retained in raw log",
+    "resource_policy": "4 GiB process tree;180 seconds each invocation; Go1.26.9"
+  },
+  "evidence": {
+    "final": "combined-final.json",
+    "independent_review": "combined-final.tar.gz:review/FINAL_ACCEPTANCE.md",
+    "corrections": "review-corrections.json",
+    "initial_combined": "combined-gates1.json",
+    "original_independent_findings": "independent-review1.json"
+  }
+}

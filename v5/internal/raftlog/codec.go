@@ -31,6 +31,9 @@ func metadataBytes(m metadata) uint64 {
 		n += generationMetaBytes
 		if m.Gen.Publication.Limits.enabled() {
 			n += publicationMetaBytes
+			if m.Gen.Publication.RecoveryEnabled {
+				n += 48
+			}
 		}
 	}
 	if m.Rep.Config.enabled() {
@@ -38,6 +41,9 @@ func metadataBytes(m metadata) uint64 {
 	}
 	if m.Controls.Config.enabled() {
 		n += controlMetaBytes + 32 + 16
+	}
+	if m.Recovery.Config.enabled() {
+		n += unsignedLimit(recoveryMetadataBytes(m.Recovery))
 	}
 	return n
 }
@@ -124,6 +130,7 @@ type metadata struct {
 	Rep                                                                      replicationMetadata
 	Transfer                                                                 ApplicationTransferConfig
 	Controls                                                                 controlMetadata
+	Recovery                                                                 applicationRecoveryMetadata
 }
 
 func encodeMeta(m metadata) ([]byte, error) {
@@ -142,6 +149,9 @@ func encodeMeta(m metadata) ([]byte, error) {
 	}
 	if m.Controls.Config.enabled() {
 		magic = "RLM7"
+	}
+	if m.Recovery.Config.enabled() {
+		magic = "RLM8"
 	}
 	b := append([]byte(magic), make([]byte, 32)...)
 	for _, n := range []uint64{m.Base, m.BaseTerm, m.Last, m.Applied, m.LogBytes, m.LogCount, m.ImageBytes, m.SnapBytes} {
@@ -174,6 +184,9 @@ func encodeMeta(m metadata) ([]byte, error) {
 	if m.Controls.Config.enabled() {
 		b = appendControlMeta(b, m.Controls)
 	}
+	if m.Recovery.Config.enabled() {
+		b = appendRecoveryMetadata(b, m.Recovery)
+	}
 	h := sha256.Sum256(b[36:])
 	copy(b[4:36], h[:])
 	return b, nil
@@ -181,10 +194,11 @@ func encodeMeta(m metadata) ([]byte, error) {
 
 func decodeMeta(b []byte, l Limits) (metadata, error) {
 	m := metadata{Hard: &pb.HardState{}, Conf: &pb.ConfState{}, Snap: &pb.Snapshot{}}
-	if len(b) < metadataOverhead || len(b) > maxMetadataBytes || (string(b[:4]) != "RLM2" && string(b[:4]) != "RLM3" && string(b[:4]) != "RLM4" && string(b[:4]) != "RLM5" && string(b[:4]) != "RLM6" && string(b[:4]) != "RLM7") {
+	if len(b) < metadataOverhead || len(b) > maxMetadataBytes || (string(b[:4]) != "RLM2" && string(b[:4]) != "RLM3" && string(b[:4]) != "RLM4" && string(b[:4]) != "RLM5" && string(b[:4]) != "RLM6" && string(b[:4]) != "RLM7" && string(b[:4]) != "RLM8") {
 		return m, ErrCorrupt
 	}
-	version7 := string(b[:4]) == "RLM7"
+	version8 := string(b[:4]) == "RLM8"
+	version7 := string(b[:4]) == "RLM7" || version8
 	version6 := string(b[:4]) == "RLM6" || version7
 	version5 := string(b[:4]) == "RLM5" || version6
 	version4 := string(b[:4]) == "RLM4" || version5
@@ -259,6 +273,13 @@ func decodeMeta(b []byte, l Limits) (metadata, error) {
 	if version7 {
 		var err error
 		m.Controls, b, err = decodeControlMeta(b)
+		if err != nil {
+			return m, err
+		}
+	}
+	if version8 {
+		var err error
+		m.Recovery, b, err = decodeRecoveryMetadata(b, m.App.Policy, l)
 		if err != nil {
 			return m, err
 		}

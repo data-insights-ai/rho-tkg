@@ -28,6 +28,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   These codecs grant no inventory, Register, factory, snapshot activation or
   Host readiness authority.
 
+- Added v5 same-graph cross-partition prepare/decision/resolve, including routed
+  endpoint postings, persisted prepared kernels, immutable decisions and exact
+  retry outcomes. Applied and queued completion reservations protect decision
+  and resolution capacity; deterministic contention recovery preserves an
+  existing COMMIT and never turns missing authority into an abort vote. AS5
+  snapshots retain reservation history and prepared locks. Transaction identities
+  include the graph, coordinator and original retry key; pending-install admission
+  charges recovery envelopes, and prepared snapshot contracts retain the recovery
+  policy. Certified distributed
+  graph reads, broader fault/ownership evidence and full V2 acceptance remain
+  open in `tasks/backlog.md`.
+
 - Added checked partition-local v5 graph mutations on declared partitions,
   preserving node/relationship interpretation, native axes and opaque descriptor
   values. HOME-published ID ranges and same-view routing bind local dependency
@@ -36,8 +48,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   planning, staging and result composition without widening existing limits;
   it is not a heap/RSS bound. Retained graph history and typed change records
   survive nonempty snapshot activation, leader change and durable reopen.
-  Existing command formats remain unchanged. Cross-partition transactions,
-  certified distributed graph reads and full V2 acceptance remain open.
+  Existing command formats remain unchanged. Certified distributed graph reads
+  and full V2 acceptance remain open.
 
 - Added v5 retained-view RootAt and ApplicationRecord reads within the
   captured bank/generation, including verified prepared and retired banks.

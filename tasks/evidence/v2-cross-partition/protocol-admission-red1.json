@@ -1,0 +1,56 @@
+{
+  "classification": "Actual failing regression before correction",
+  "base": "fd37fa0a0850aa85607bf10e0467f379230cd3cc",
+  "verified_source_files": 395,
+  "source_manifest_sha256": "25fe5c896be873bc573d8282d68ddf25715a8fdc4308e02df688d3b90d6937af",
+  "source_tar_sha256": "3c1632096c5379bdbb4ddbc221b0cef6c71d581dbfeec776a1f05b0525520f89",
+  "archive": "protocol-admission-red1.tar.gz",
+  "archive_sha256": "f36a0da20e33a56fbb4fd1c52a577b694ed28232746528519b932da163ddca2b",
+  "archive_bytes": 1721930,
+  "files": [
+    {
+      "path": "base.txt",
+      "sha256": "28bbbee70548cc7e0f519308a2fd880761b40f6326aba2adc2411ab7b57595bb"
+    },
+    {
+      "path": "run.json",
+      "sha256": "dcb57e687de2ad44256954afc12b0a1becfe5064f375254d6af6bab9a095da25"
+    },
+    {
+      "path": "source-hashes.json",
+      "sha256": "25fe5c896be873bc573d8282d68ddf25715a8fdc4308e02df688d3b90d6937af"
+    },
+    {
+      "path": "source.tar",
+      "sha256": "3c1632096c5379bdbb4ddbc221b0cef6c71d581dbfeec776a1f05b0525520f89"
+    },
+    {
+      "path": "test.log",
+      "sha256": "1dd3b55729ae8af2d2e550eeebdbdfb6586bce4b9998ce32c0505953b099b897"
+    }
+  ],
+  "run": {
+    "command": [
+      "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+      "test",
+      "-count=1",
+      "-timeout=150s",
+      "-run",
+      "^(TestCrossPartitionReservedCompletion|TestCrossPartitionInsufficientCompletion|TestCrossPartitionUnissued|TestCrossPartitionManifestProof|TestCrossPartitionRecoveryVerifier)",
+      "./internal/graphapply"
+    ],
+    "rss_limit_mib": 4096.0,
+    "wall_limit_s": 180.0,
+    "sample_interval_s": 0.25,
+    "peak_tree_rss_mib": 424.656,
+    "elapsed_s": 11.436,
+    "exit_code": 1,
+    "reason": "command-failed"
+  },
+  "failing_tests": [
+    "--- FAIL: TestCrossPartitionReservedCompletionSurvivesOrdinaryCliffForwardingAndExactQueuedRetry (1.83s)",
+    "--- FAIL: TestCrossPartitionUnissuedCompletedReadSequenceMustNotCreateTransaction (1.12s)",
+    "--- FAIL: TestCrossPartitionManifestProofAndAggregateRefusalsLeaveNoOutput (1.11s)"
+  ],
+  "qualification": "Future source sequence and aggregate verifier bounds are actual RED. The provisional capacity ErrInvalid is separately qualified and is not final capacity acceptance."
+}

@@ -341,7 +341,7 @@ func TestMaterializerResourceRefusalsAreOperationalAndRetryAfterRelief(t *testin
 			}
 			f.m.limits = original
 			actual, err := f.stage(t, wire)
-			if err != nil || !reflect.DeepEqual(actual, expected) {
+			if err != nil || !equalGuardedApplicationBatch(actual, expected) {
 				t.Fatal("resource relief changed deterministic effects", err)
 			}
 		})
@@ -569,7 +569,7 @@ func TestProductionControlResourceLimitsNeverBecomeOutcomes(t *testing.T) {
 	}
 	f.m.limits = original
 	actual, err := f.stage(t, wire)
-	if err != nil || !reflect.DeepEqual(actual, expected) {
+	if err != nil || !equalGuardedApplicationBatch(actual, expected) {
 		t.Fatal(err)
 	}
 	// A wrapped local resource error takes precedence over a constraint sentinel.
@@ -1215,7 +1215,7 @@ func TestCombinedOwnedOutputPreflightsEachNewBuffer(t *testing.T) {
 			if !errors.Is(err, errLimit) || len(b.Outcome) != 0 {
 				t.Fatal(err)
 			}
-		} else if err != nil || !reflect.DeepEqual(b, expected) {
+		} else if err != nil || !equalGuardedApplicationBatch(b, expected) {
 			t.Fatal(delta, err)
 		}
 	}

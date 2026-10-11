@@ -230,6 +230,15 @@ func Open(c Config) (*Driver, error) {
 	if len(cs.GetVoters()) == 0 {
 		return nil, ErrInvalid
 	}
+	if c.Store.ApplicationRecovery().Version != 0 {
+		verifier, ok := c.ApplicationMachine.(raftlog.ApplicationRecoveryVerifier)
+		if !ok || isNilMachine(verifier) {
+			return nil, ErrInvalid
+		}
+		if err := c.Store.BindApplicationRecoveryVerifier(binding, verifier); err != nil {
+			return nil, err
+		}
+	}
 	var restoreErr error
 	if app.Enabled() {
 		restoreErr = c.ApplicationMachine.Restore(index, image)
@@ -328,7 +337,7 @@ func (d *Driver) Propose(data []byte) (out Output, err error) {
 		if err := d.store.ReclaimApplication(); err != nil {
 			return d.stop(err)
 		}
-		if err := d.store.AdmitApplication(len(data)); err != nil {
+		if err := d.admitApplicationData(data); err != nil {
 			return Output{}, err
 		}
 	}
@@ -729,6 +738,9 @@ func (d *Driver) drain() (Output, error) {
 				if d.applicationMachine != nil {
 					b, err := d.applicationMachine.Stage(entry, d.store.ApplicationBudget())
 					if err != nil {
+						return d.stop(err)
+					}
+					if err := d.bindApplicationRecoveryBatch(entry.Index, &b); err != nil {
 						return d.stop(err)
 					}
 					if err := d.store.InstallApplication(entry.Index, b); err != nil {

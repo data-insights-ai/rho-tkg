@@ -184,6 +184,48 @@ func (s *fullPresenceStage) repair(entity graphstate.EntityRecord, before, after
 		}
 	}
 	l := fullPresenceLimits(s.p.pageReader)
+	if t := s.p.q.transaction(); t != nil && t.installation != nil {
+		for _, source := range t.views {
+			partition := source.c.root.namespace.Partition
+			err := t.installation.onPartition(s.p.q, partition, func(p *pageStage) error {
+				if err := p.q.materialize(cpAtomOwned * (len(remove) + len(insert))); err != nil {
+					return err
+				}
+				localRemove, localInsert := make([]currentPresenceAtom, 0, len(remove)), make([]currentPresenceAtom, 0, len(insert))
+				for _, a := range remove {
+					owner, e := t.owner(p.q, uint64(a.endpoint))
+					if e != nil {
+						return e
+					}
+					if owner == partition {
+						localRemove = append(localRemove, a)
+					}
+				}
+				for _, a := range insert {
+					owner, e := t.owner(p.q, uint64(a.endpoint))
+					if e != nil {
+						return e
+					}
+					if owner == partition {
+						localInsert = append(localInsert, a)
+					}
+				}
+				if len(localRemove) == 0 && len(localInsert) == 0 {
+					return nil
+				}
+				out, e := stageCurrentPresenceInOperation(p, p.q.full.descriptor.own, localRemove, localInsert, fullPresenceLimits(p.pageReader))
+				if e != nil {
+					return e
+				}
+				p.q.full.descriptor.own = out.tree
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	out, err := stageCurrentPresenceInOperation(s.p, s.p.q.full.descriptor.own, remove, insert, l)
 	if err != nil {
 		return err

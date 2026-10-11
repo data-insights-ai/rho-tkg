@@ -1,0 +1,55 @@
+{
+  "base": "94743005a2d144967c6ec859aedc0c499bde4bb0",
+  "scope": "Routed graphstore reader and per-participant private effects; no replicated transaction acceptance",
+  "checkpoints": [
+    {
+      "checkpoint": "green-reader-attempt1",
+      "parent_verified_inputs": 376,
+      "source_manifest_sha256": "4794b274f06bd78017c34463b2664a1a88e781bcf0856e434808e1b1a7367599",
+      "source_overlays": [
+        "v5/internal/graphstore/partition_transaction_stage.go",
+        "v5/internal/graphstore/partition_transaction_view.go",
+        "v5/internal/graphstore/partition_transaction_view_test.go",
+        "v5/internal/graphstore/catalog.go",
+        "v5/internal/graphstore/full_bindings.go",
+        "v5/internal/graphstore/full_presence_stage.go",
+        "v5/internal/graphstore/full_stage.go",
+        "v5/internal/graphstore/pages.go",
+        "v5/internal/graphstore/pages_stage.go",
+        "v5/internal/graphstore/partition_identity.go",
+        "v5/internal/graphstore/partition_scope.go"
+      ],
+      "exit_code": 0
+    },
+    {
+      "checkpoint": "green-transaction-attempt1",
+      "parent_verified_inputs": 377,
+      "source_manifest_sha256": "a9d35d8529d10778e88c73fa7260f6cbd8be36c14c2fd581397e0d1bc618c898",
+      "source_overlays": [
+        "v5/internal/graphstore/partition_transaction_stage.go",
+        "v5/internal/graphstore/partition_transaction_stage_test.go",
+        "v5/internal/graphstore/partition_transaction_view.go",
+        "v5/internal/graphstore/partition_transaction_view_test.go",
+        "v5/internal/graphstore/catalog.go",
+        "v5/internal/graphstore/full_bindings.go",
+        "v5/internal/graphstore/full_presence_stage.go",
+        "v5/internal/graphstore/full_stage.go",
+        "v5/internal/graphstore/pages.go",
+        "v5/internal/graphstore/pages_stage.go",
+        "v5/internal/graphstore/partition_identity.go",
+        "v5/internal/graphstore/partition_scope.go"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "observed": [
+    "Mapped remote entity/value absence resolves at its actual source.",
+    "One graph cross-edge installs both endpoint posting sets, with retained old views remaining empty.",
+    "Global scalar identity resolves to a remote ValueID without publishing unused alias IDs.",
+    "Explicit new-state/CDC revision slots bind to the final revision.",
+    "A co-committed local prepared kernel restores at a later application index and stages with remote views closed; no old RootAt dependency."
+  ],
+  "qualification": "Focused normal tests only. Storage fixture installs are not quorum transactions; no durable protocol/Host, certified-cut, snapshot transfer or full race/coverage acceptance follows. The cross-source cursor guard was added after this frozen checkpoint and is not included in its passing claim.",
+  "archive_sha256": "1a28467fca66fe844e8dae838a097f74854c057552212c1da5bd3e8ce485c1c2",
+  "archive_bytes": 126178
+}

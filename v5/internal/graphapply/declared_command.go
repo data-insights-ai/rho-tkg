@@ -46,7 +46,7 @@ const genesisObservationBytes = 344
 func (g genesisObservation) valid() bool {
 	c := g.configuration
 	s := g.source.scope
-	return g.source.valid() && c.valid() && s.graph == c.graph && s.partition == c.home && s.topology == c.topology && s.declaration == c.declaration && s.semantic == c.semanticContractID() && g.epoch != 0 && g.effect != ([32]byte{})
+	return g.source.valid() && c.valid() && s.graph == c.graph && s.partition == c.home && s.topology == c.topology && s.declaration == c.declaration && configurationSemanticMatches(c, s.semantic) && g.epoch != 0 && g.effect != ([32]byte{})
 }
 
 func encodeGenesisObservation(g genesisObservation) ([]byte, error) {

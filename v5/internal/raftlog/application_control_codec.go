@@ -48,16 +48,19 @@ func decodeControlKey(bank byte, b []byte, limit int) ([]byte, uint64, error) {
 	return decodeTaggedAppKey(b, limit, controlBankTag(bank))
 }
 func applicationTotals(m metadata) (uint64, uint64) {
-	return m.App.Bytes + m.Controls.Bytes, m.App.Records + m.Controls.Records
+	return m.App.Bytes + m.Controls.Bytes + m.Recovery.Bytes, m.App.Records + m.Controls.Records + m.Recovery.Records
 }
 func (c ApplicationControlConfig) validate(m metadata) error {
 	if !c.enabled() {
-		if c != (ApplicationControlConfig{}) || m.Controls != (controlMetadata{}) || m.Transfer.Contract.Version == 2 {
+		if c != (ApplicationControlConfig{}) || m.Controls != (controlMetadata{}) || m.Transfer.Contract.Version >= 2 {
 			return ErrInvalid
 		}
 		return nil
 	}
-	if c.Version != 1 || !m.App.Policy.Enabled() || !m.Rep.Config.enabled() || m.Rep.SemanticContractID == (ApplicationSemanticContractID{}) || m.Transfer.Contract.Version != 2 || !m.Gen.Limits.enabled() || !m.Gen.Publication.Limits.enabled() {
+	if c.Version != 1 || !m.App.Policy.Enabled() || !m.Rep.Config.enabled() || m.Rep.SemanticContractID == (ApplicationSemanticContractID{}) || m.Transfer.Contract.Version != 2 && m.Transfer.Contract.Version != 3 || !m.Gen.Limits.enabled() || !m.Gen.Publication.Limits.enabled() {
+		return ErrInvalid
+	}
+	if (m.Transfer.Contract.Version == 3) != m.Recovery.Config.enabled() {
 		return ErrInvalid
 	}
 	return nil

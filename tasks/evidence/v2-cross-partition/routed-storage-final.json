@@ -1,0 +1,72 @@
+{
+  "scope": "Final routed graphstore author slice; combined V2 package 2 acceptance remains open",
+  "base": "94743005a2d144967c6ec859aedc0c499bde4bb0",
+  "parent_verified_inputs": 377,
+  "source_manifest_sha256": "ef4cef88d20e66336bc357fd78fb65addd367d7a02f7aa352f122350c25d56b3",
+  "source_overlays": [
+    "v5/internal/graphstore/catalog.go",
+    "v5/internal/graphstore/full_bindings.go",
+    "v5/internal/graphstore/full_presence_stage.go",
+    "v5/internal/graphstore/full_stage.go",
+    "v5/internal/graphstore/pages.go",
+    "v5/internal/graphstore/pages_stage.go",
+    "v5/internal/graphstore/partition_identity.go",
+    "v5/internal/graphstore/partition_scope.go",
+    "v5/internal/graphstore/partition_transaction_stage.go",
+    "v5/internal/graphstore/partition_transaction_stage_test.go",
+    "v5/internal/graphstore/partition_transaction_view.go",
+    "v5/internal/graphstore/partition_transaction_view_test.go"
+  ],
+  "integrated_source_matches": true,
+  "normal": {
+    "command": [
+      "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+      "test",
+      "-count=1",
+      "-coverprofile=/var/tmp/rho-v5-v2-routed-graph-20261011-evidence/freeze-candidate1/coverage.out",
+      "-run",
+      "^TestPartitionTransaction",
+      "./internal/graphstore"
+    ],
+    "rss_limit_mib": 4096.0,
+    "wall_limit_s": 180.0,
+    "sample_interval_s": 0.25,
+    "peak_tree_rss_mib": 627.625,
+    "elapsed_s": 4.439,
+    "exit_code": 0,
+    "reason": "completed"
+  },
+  "race": {
+    "command": [
+      "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+      "test",
+      "-race",
+      "-count=1",
+      "-run",
+      "^TestPartitionTransaction",
+      "./internal/graphstore"
+    ],
+    "rss_limit_mib": 4096.0,
+    "wall_limit_s": 180.0,
+    "sample_interval_s": 0.25,
+    "peak_tree_rss_mib": 570.203,
+    "elapsed_s": 9.874,
+    "exit_code": 0,
+    "reason": "completed"
+  },
+  "parent_recomputed_coverage": {
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/partition_transaction_stage.go": {
+      "covered": 951,
+      "statements": 1134,
+      "percent": 83.86243386243386
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/partition_transaction_view.go": {
+      "covered": 342,
+      "statements": 373,
+      "percent": 91.68900804289544
+    }
+  },
+  "qualification": "Focused graphstore normal/race evidence. Full integrated module gates and independent review remain open. These tests do not establish replicated transaction, certified graph-read, physical-host durability or comparative performance acceptance.",
+  "archive_sha256": "b50b3edcb0264bcf2974b7cc9a782f98cb39f9b0fb5dcd0f133e1d50070b698f",
+  "archive_bytes": 127723
+}

@@ -47,6 +47,7 @@ func (l Limits) Validate() error {
 
 // Config selects explicit first-open-only creation; recovery never creates a missing DB.
 type Config struct {
+	Recovery ApplicationRecoveryConfig
 	Controls ApplicationControlConfig
 	// SemanticContractID opts fresh RLM6 into an immutable materializer agreement.
 	// Zero preserves older formats; existing stores cannot acquire/change it.
@@ -81,6 +82,7 @@ type Store struct {
 	applicationViews              *ApplicationView
 	generationRefs                [2]*generationRef
 	applicationPolicy             ApplicationPolicy
+	recoveryVerifier              ApplicationRecoveryVerifier
 	publicationPolicy             ApplicationPublishedCutLimits
 	applicationExports            map[*ApplicationExport]struct{}
 	applicationSnapshotClaims     map[*ApplicationSnapshotClaim]struct{}
@@ -129,6 +131,11 @@ func Open(c Config) (*Store, error) {
 	initial.Rep.Config = c.Replication
 	initial.Rep.SemanticContractID = c.SemanticContractID
 	initial.Controls.Config = c.Controls
+	initial.Recovery.Config = c.Recovery
+	initial.Gen.Publication.RecoveryEnabled = c.Recovery.enabled()
+	if err := validateRecoveryMetadata(initial, c.Limits); err != nil {
+		return nil, err
+	}
 	if err := c.Controls.validate(initial); err != nil {
 		return nil, err
 	}
@@ -176,7 +183,7 @@ func Open(c Config) (*Store, error) {
 		if err := errors.Join(decodeErr, closeErr); err != nil {
 			return fail(err)
 		}
-		if m.App.Policy != c.Application || m.Transfer != c.Transfer || m.Gen.Limits != c.Generations || m.Gen.Publication.Limits != c.PublishedCuts || m.Rep.Config != c.Replication || m.Rep.SemanticContractID != c.SemanticContractID || m.Controls.Config != c.Controls {
+		if m.App.Policy != c.Application || m.Transfer != c.Transfer || m.Gen.Limits != c.Generations || m.Gen.Publication.Limits != c.PublishedCuts || m.Rep.Config != c.Replication || m.Rep.SemanticContractID != c.SemanticContractID || m.Controls.Config != c.Controls || m.Recovery.Config != c.Recovery {
 			return fail(ErrInvalid)
 		}
 		if err := checkPublicationHeadroom(m, c.Limits); err != nil {
@@ -186,6 +193,9 @@ func Open(c Config) (*Store, error) {
 			return fail(fmt.Errorf("%w: metadata: %v", ErrCorrupt, err))
 		}
 		s.meta = m
+		if err := s.verifyRecoveryQueue(); err != nil {
+			return fail(err)
+		}
 		if c.Application.Enabled() && m.Applied > 0 {
 			if err := s.verifyApplicationRoot(m.Applied); err != nil {
 				return fail(err)
@@ -249,6 +259,9 @@ func validateConf(cs *pb.ConfState, last uint64) error {
 }
 
 func (s *Store) validate(m metadata) error {
+	if err := validateRecoveryMetadata(m, s.limits); err != nil {
+		return err
+	}
 	if err := validateControlMeta(m); err != nil {
 		return err
 	}
@@ -309,6 +322,9 @@ func (s *Store) commit(m metadata, batch *pebble.Batch) (err error) {
 		}
 	}()
 	syncActiveGeneration(&m)
+	if err := validateRecoveryMetadata(m, s.limits); err != nil {
+		return err
+	}
 	if err := validateReplicationMeta(m, s.limits); err != nil {
 		return err
 	}
@@ -365,7 +381,7 @@ func (s *Store) Initialize(voters []uint64, image []byte) error {
 	if err := validateConf(cs, 1); err != nil {
 		return err
 	}
-	m := metadata{Controls: s.meta.Controls, Rep: s.meta.Rep, Gen: s.meta.Gen, App: s.meta.App, Transfer: s.meta.Transfer, Base: 1, BaseTerm: 1, Last: 1, Applied: 1, Hard: &pb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))}, Conf: cs, ImageBytes: uint64(len(image)), SnapBytes: uint64(len(image)), Snap: &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(uint64(1)), Term: new(uint64(1)), ConfState: cs}}}
+	m := metadata{Recovery: s.meta.Recovery, Controls: s.meta.Controls, Rep: s.meta.Rep, Gen: s.meta.Gen, App: s.meta.App, Transfer: s.meta.Transfer, Base: 1, BaseTerm: 1, Last: 1, Applied: 1, Hard: &pb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))}, Conf: cs, ImageBytes: uint64(len(image)), SnapBytes: uint64(len(image)), Snap: &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(uint64(1)), Term: new(uint64(1)), ConfState: cs}}}
 	prospective := m
 	if m.App.Policy.Enabled() {
 		prospective.App.Bytes = uint64(3*(9+appFrameBytes) + len(image))
@@ -373,7 +389,7 @@ func (s *Store) Initialize(voters []uint64, image []byte) error {
 		prospective.App.Through = 1
 		syncActiveGeneration(&prospective)
 	}
-	if err := generationCharge(prospective, 0); err != nil {
+	if err := generationCharge(prospective, 0, s.limits); err != nil {
 		return err
 	}
 	if err := checkMetadataLimit(m, s.limits); err != nil {
@@ -600,10 +616,17 @@ func (s *Store) entries(lo, hi, maxSize uint64) (entries []*pb.Entry, err error)
 // handle. Never install a returning/no-op Fatalf: other fatal paths include
 // background invariants and assume termination. Uncertain outcomes are not aborts.
 func (s *Store) Persist(rd raft.Ready) (err error) {
+	recoveryReady, err := s.classifyRecoveryReady(rd.Entries)
+	if err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.check(); err != nil {
 		return err
+	}
+	if recoveryReady != nil && !recoveryReady.matches(s) {
+		return ErrInvalid
 	}
 	if s.meta.App.Policy.Enabled() {
 		if s.meta.Applied == 0 && (!raft.IsEmptyHardState(rd.HardState) || len(rd.Entries) > 0 || !raft.IsEmptySnap(rd.Snapshot)) {
@@ -634,6 +657,9 @@ func (s *Store) Persist(rd raft.Ready) (err error) {
 		return ErrLimit
 	}
 	prospective := s.meta
+	if recoveryReady != nil {
+		prospective.Recovery.Queued = recoveryReady.Queued
+	}
 	if !raft.IsEmptyHardState(rd.HardState) {
 		prospective.Hard = rd.HardState
 	}
@@ -665,7 +691,12 @@ func (s *Store) Persist(rd raft.Ready) (err error) {
 		if last < s.meta.Applied || last == math.MaxUint64 {
 			return ErrInvalid
 		}
-		if err := generationCharge(s.meta, last-s.meta.Applied); err != nil {
+		generationMeta := s.meta
+		generationMeta.Last = last
+		if recoveryReady != nil {
+			generationMeta.Recovery.Queued = recoveryReady.Queued
+		}
+		if err := generationCharge(generationMeta, last-s.meta.Applied, s.limits); err != nil {
 			return err
 		}
 	}
@@ -677,6 +708,9 @@ func (s *Store) Persist(rd raft.Ready) (err error) {
 	}
 	m := s.meta
 	m.Hard = proto.Clone(m.Hard).(*pb.HardState)
+	if recoveryReady != nil {
+		m.Recovery.Queued = recoveryReady.Queued
+	}
 	batch := s.db.NewBatch()
 	defer func() {
 		if closeErr := batch.Close(); closeErr != nil {

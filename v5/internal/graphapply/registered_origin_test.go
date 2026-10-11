@@ -134,7 +134,7 @@ func TestRegisteredGenesisNilCallbackContracts(t *testing.T) {
 		t.Fatal("nil Restore", err)
 	}
 	batch, err := m.Stage(replica.Entry{}, raftlog.ApplicationBudget{})
-	if !errors.Is(err, errInvalid) || !reflect.DeepEqual(batch, raftlog.ApplicationBatch{}) {
+	if !errors.Is(err, errInvalid) || !reflect.ValueOf(batch).IsZero() {
 		t.Fatal("nil Stage must be zero", err)
 	}
 	machine, err := newRegisteredMaterializer(nil, registeredOperationLimits{8 << 20, 8 << 20})

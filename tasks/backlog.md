@@ -75,7 +75,7 @@ and reference JSON specify contracts/evidence, not completed engine gates.
 |---|---|
 | V0 | Specification accepted: independent criterion review and refreshed reference/design checks pass. Contracts, profile/unit/import policy, current-v4 delta and reproducible resource/dataset test profiles are reviewed below. Implementation, consumer execution and measured capacity retain their separate phase gates |
 | V1 | Values/state accepted: unchanged 16/52 and revised rho-owned cases pass through typed primitives and `Plan`/`Project`, including immutable interpretation/native-axis roles, attached descriptor/source-revision history, graph-qualified refusals, independent state/complete-CDC capacity assertions and the pure Q/ms default-axis binding. Node/relationship retained-view exact sets, boundary/differential/fuzz/codec refusals and direct new-method coverage pass. Durable default registration is covered by the V2 checkpoint below; request/dependency installation and graph/cut integration remain V2, consumer adapters V4 and provenance-aware import V6 |
-| V2 | Active, not accepted. Checked partition-local graph writes are accepted on both declared partitions of one GraphID, with three disk-backed voters each, retained history, nonempty snapshot activation, failover and reopen. Default-axis designation, shared allocation and explicit local authority are preserved. Remaining work connects actual cross-partition graph dependencies/effects to durable prepare/decision/resolve and certified graph reads, then proves ownership transfer, recovery and the independent serial-history/cut oracle. Production identity reuse/fencing, application GC, physical-host durability and comparable transactional-KV fault/cost evidence with an explicit engine decision remain open |
+| V2 | Active, not accepted. Checked partition-local graph writes are accepted on both declared partitions of one GraphID, with three disk-backed voters each, retained history, nonempty snapshot activation, failover and reopen. Default-axis designation, shared allocation and explicit local authority are preserved. Same-graph cross-partition prepare/decision/resolve is also accepted below. Remaining work certifies current/historical graph reads, then proves ownership transfer, recovery and the independent serial-history/cut oracle. Production identity reuse/fencing, application GC, physical-host durability and comparable transactional-KV fault/cost evidence with an explicit engine decision remain open |
 | V3 | Coordinate timeblock candidate independently validated (local commit `fa0c982`; scoped temporal+block coverage 95.7%, no exported method at 0%). Full engine seal/merge/recovery, paged structures and all-in budget/byte-ledger measurements remain open; resident-buffer prototype timings do not close V3 |
 | V4 | Production read/change APIs, historical cross-door parity, gap-free leased feed handoff and pinned sigma access-contract build and nonempty mutation-then-historical tests (the current signature/empty smoke is insufficient) |
 | V5 | Distributed access across 1/2/4/8 partitions, cross-edge/stall/rebalance/feed cases and sigma workload parity |
@@ -157,11 +157,39 @@ reviewed and validated before the next package starts.
    history API commit has its own normal/race and final full coverage checks;
    the earlier whole-module race applies to unchanged existing code. No physical
    multi-host, cross-partition transaction or capacity acceptance is implied.
-2. Integrate actual graph dependencies and complete effects with durable
-   prepare/decision/resolve. The acceptance fixture is one GraphID, two declared
-   partitions, three replicas each, remotely owned endpoints and one cross-edge
-   with both endpoint postings. Scalar transactions and two distinct graphs do
-   not satisfy this gate.
+   Hosted runs [38099226753](https://github.com/data-insights-ai/rho-tkg/actions/runs/38099226753)
+   and [38101440673](https://github.com/data-insights-ai/rho-tkg/actions/runs/38101440673)
+   passed the v5 jobs but timed out in the v4 core race package; both terminal
+   failure logs are retained. Removing the explicit two-CPU override alone was
+   insufficient. CI-only `fd37fa0a` also permits four test scenarios on the
+   four-CPU runner, preserving package serialization, memory policy, all tests
+   and timeouts. Its [hosted run 38103685212](https://github.com/data-insights-ai/rho-tkg/actions/runs/38103685212)
+   now passes both modules' normal/race, coverage and security jobs plus comparison
+   correctness. Push-only lint is skipped and covered by the accepted local
+   pinned run. This closes the hosted scheduling follow-up for this checkpoint;
+   later cross-partition work still requires its own combined validation.
+2. **Accepted 2026-10-11 — cross-partition graph prepare/decision/resolve.**
+   One GraphID, two declared partitions and three disk-backed voters each now
+   install actual graph dependencies/effects, including both cross-edge endpoint
+   postings, through durable prepare/decision/resolve. Prepared kernels and locks,
+   immutable decisions, exact retries, retained history/CDC, snapshot activation,
+   failover and reopen pass. Installed and queued reservations protect completion;
+   admission refusal never substitutes for an authoritative abort vote.
+   The same independent reviewer verified both blocking corrections: transaction
+   IDs now bind graph/coordinator/original retry key, and pending-install admission
+   charges native recovery envelopes. The separately arriving AS5 contract reader
+   preserves the complete recovery policy.
+   [Acceptance](evidence/v2-cross-partition/acceptance.json) and
+   [final combined evidence](evidence/v2-cross-partition/combined-final.json)
+   record 27,153/30,788 statements (88.19%), all 46 changed production files
+   above 80%, all 47 added exported declarations directly exercised, exhaustive
+   normal/race scope and passing pinned scanners. Six unchanged package/dependency
+   profiles are carried by verified hashes; all six affected packages were rerun.
+   [Original failures and corrections](evidence/v2-cross-partition/review-corrections.json)
+   retain actual REDs and qualified fixture failures. Earlier checkpoint archives
+   remain available in the same evidence directory. This closes this write
+   package only; certified distributed reads, multi-host durability, capacity
+   acceptance and full V2 remain open. Hosted checks follow the integrated push.
 3. Certify current and retained historical graph reads. A delayed participant
    installation must not expose a mixed transaction; old cuts must preserve the
    old exact state, including endpoint lives and postings.

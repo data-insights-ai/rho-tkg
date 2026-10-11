@@ -28,13 +28,17 @@ func newPartitionWriteMaterializer(s *raftlog.Store, n namespace, d graphstore.O
 	return newDeclaredMaterializerWithAgreement(s, n, d, l, partitionWriteSemanticContractID())
 }
 func (m *declaredMaterializer) requiresDefaultAxis() bool {
-	return m.SemanticContractID() == graphGenesisSemanticContractID() || m.SemanticContractID() == partitionWriteSemanticContractID()
+	return m.SemanticContractID() == graphGenesisSemanticContractID() || partitionGraphAgreement(m.SemanticContractID())
 }
 func (h *allocationHost) PreparePartitionInitialization(partition uint64, attempt bootstrapAttemptID, schemas []graphstate.PropertyDefinition, maxBlock uint64, binding types.DefaultAxisBinding, routing graphstore.PartitionRouting, genesis allocationProof) (allocationProposal, error) {
 	if routing.Digest() == ([32]byte{}) || binding == (types.DefaultAxisBinding{}) {
 		return allocationProposal{}, errInvalid
 	}
-	return h.prepareInitialization(partition, attempt, schemas, maxBlock, binding, genesis, partitionWriteSemanticContractID(), new(routing))
+	agreement := partitionWriteSemanticContractID()
+	if h != nil && h.machine != nil && h.machine.SemanticContractID() == crossPartitionSemanticContractID() {
+		agreement = crossPartitionSemanticContractID()
+	}
+	return h.prepareInitialization(partition, attempt, schemas, maxBlock, binding, genesis, agreement, new(routing))
 }
 func (m *declaredMaterializer) readRouting(q *reader, cfg genesisAllocationConfig) (graphstore.PartitionRouting, error) {
 	if cfg.version() != 3 || cfg.routingDigest == ([32]byte{}) {

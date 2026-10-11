@@ -1,0 +1,30 @@
+{
+  "base": "94743005a2d144967c6ec859aedc0c499bde4bb0",
+  "classification": "Store integration RED after recovery types/configuration/codec scaffolding, before reservation installation and admission enforcement. Arithmetic/ownership cases are passing guards.",
+  "tests_failed": [
+    "TestRecoveryReserveIgnoredByInstallationCannotProtectFutureCompletion",
+    "TestRecoveryReserveMustNotBeSilentlyIgnoredByDisabledLegacyStore"
+  ],
+  "observed": {
+    "recovery_owner_persisted": false,
+    "ordinary_admission_error": null,
+    "legacy_unsupported_reservation_error": null
+  },
+  "exit_code": 1,
+  "source_manifest_sha256": "d73d49045611620ff4fd8b6756e3a5ec6015e6e4c0d06d1424118c32cd196bf8",
+  "source_inputs_verified_by_parent": 2276,
+  "source_qualification": "Frozen source hashes independently verified against the pre-run manifest. Three sources reconstructed after edits, as explicitly recorded in the archived reconstruction receipt. Archive contains the base commit reference and changed/new input overlays; .txt suffixes prevent accidental Go compilation.",
+  "overlay_files": [
+    "tasks/backlog.md",
+    "v5/internal/graphapply/cross_partition_gap_test.go",
+    "v5/internal/raftlog/application.go",
+    "v5/internal/raftlog/application_generation.go",
+    "v5/internal/raftlog/application_recovery.go",
+    "v5/internal/raftlog/application_recovery_test.go",
+    "v5/internal/raftlog/codec.go",
+    "v5/internal/raftlog/storage.go"
+  ],
+  "archive_sha256": "c636ecd0cd5f5041a0930679d43b08ba8d8c8eb19d4c41400681c76b628a35e9",
+  "status": "RED retained; full admission, recovery-use, snapshot and graph transaction integration remains open",
+  "qualification": "The first test selected Version 1 at Open, but the captured Initialize metadata literal omitted Recovery and reset the initialized store to disabled mode. This RED demonstrates missing end-to-end preservation/enforcement; it does not isolate an enabled-store admission defect. A separate Initialize regression and subsequent enabled-mode test are required."
+}

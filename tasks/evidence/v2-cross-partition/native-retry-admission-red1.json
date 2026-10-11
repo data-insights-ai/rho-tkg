@@ -1,0 +1,63 @@
+{
+  "scope": "Queued exact completion retry exceeds protected pending capacity after proposal acceptance, stopping a healthy Driver",
+  "base": "94743005a2d144967c6ec859aedc0c499bde4bb0",
+  "source_manifest_sha256": "175a27c83799975d0f128a331fe311f0cae587af17ff4b37cdd80612eda38c2a",
+  "parent_verified_inputs": 2281,
+  "source_overlays": [
+    "tasks/backlog.md",
+    "v5/internal/graphapply/cross_partition_gap_test.go",
+    "v5/internal/raftlog/application.go",
+    "v5/internal/raftlog/application_control_codec.go",
+    "v5/internal/raftlog/application_control_install_test.go",
+    "v5/internal/raftlog/application_control_snapshot.go",
+    "v5/internal/raftlog/application_generation.go",
+    "v5/internal/raftlog/application_generation_codec_test.go",
+    "v5/internal/raftlog/application_publication.go",
+    "v5/internal/raftlog/application_published_export.go",
+    "v5/internal/raftlog/application_recovery.go",
+    "v5/internal/raftlog/application_recovery_admission.go",
+    "v5/internal/raftlog/application_recovery_history.go",
+    "v5/internal/raftlog/application_recovery_queue.go",
+    "v5/internal/raftlog/application_recovery_test.go",
+    "v5/internal/raftlog/application_snapshot_activation.go",
+    "v5/internal/raftlog/application_snapshot_codec.go",
+    "v5/internal/raftlog/application_snapshot_export.go",
+    "v5/internal/raftlog/application_snapshot_prepared.go",
+    "v5/internal/raftlog/application_snapshot_stage.go",
+    "v5/internal/raftlog/application_snapshot_types.go",
+    "v5/internal/raftlog/codec.go",
+    "v5/internal/raftlog/storage.go",
+    "v5/internal/replica/application_recovery.go",
+    "v5/internal/replica/application_recovery_test.go",
+    "v5/internal/replica/application_replication.go",
+    "v5/internal/replica/driver.go"
+  ],
+  "test": "TestRecoveryDriverQueuedExactRetryMustRefuseBeforeRawNodeAndKeepFirstCompletion",
+  "run": {
+    "command": [
+      "go",
+      "test",
+      "-count=1",
+      "-timeout=150s",
+      "-v",
+      "./internal/replica",
+      "-run",
+      "^TestRecoveryDriverQueuedExactRetryMustRefuseBeforeRawNodeAndKeepFirstCompletion$"
+    ],
+    "rss_limit_mib": 4096.0,
+    "wall_limit_s": 180.0,
+    "sample_interval_s": 0.25,
+    "peak_tree_rss_mib": 399.891,
+    "elapsed_s": 3.612,
+    "exit_code": 1,
+    "reason": "command-failed"
+  },
+  "observed": [
+    "Three undelivered exact completion copies fit the unchanged configured retained-byte limit.",
+    "The fourth copy passes proposal admission but fails persistence, joining ErrLimit with ErrStopped.",
+    "Both local Propose and actual forwarded MsgProp reproduce the same failure."
+  ],
+  "qualification": "Source-frozen semantic RED before prospective pending-admission correction. Test fixture uses actual retained completed-control reads for replay no-op. No production profile or limit was raised. Does not establish final acceptance.",
+  "archive_sha256": "6d970c684559fb0de42996f3b86e5da944cbbb6aac493aee27c60d0748b73e2d",
+  "archive_bytes": 241053
+}

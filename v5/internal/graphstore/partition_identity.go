@@ -16,6 +16,18 @@ func identityAuthorityKey(n Namespace, tag byte, hash [32]byte, ordinal uint64) 
 	return key
 }
 func (s *partitionReadScope) identity(q *reader, key string) (graphstate.ValueID, bool, error) {
+	if s.transaction != nil {
+		o, err := s.routing.Bucket(IdentityRoutingBucket, []byte(key))
+		if err != nil {
+			return 0, false, err
+		}
+		if o.Partition != q.c.root.namespace.Partition {
+			var id graphstate.ValueID
+			var found bool
+			err = q.onPartition(o.Partition, func() error { var e error; id, found, e = q.route.identity(q, key); return e })
+			return id, found, err
+		}
+	}
 	if err := q.materialize(128 + 3*len(key)); err != nil {
 		return 0, false, err
 	}
@@ -68,6 +80,15 @@ func (s *partitionReadScope) identity(q *reader, key string) (graphstate.ValueID
 	return 0, false, nil
 }
 func (s *partitionReadScope) registerIdentity(q *reader, key string, id graphstate.ValueID) error {
+	if s.transaction != nil {
+		o, err := s.routing.Bucket(IdentityRoutingBucket, []byte(key))
+		if err != nil {
+			return err
+		}
+		if o.Partition != q.c.root.namespace.Partition {
+			return q.onPartition(o.Partition, func() error { return q.route.registerIdentity(q, key, id) })
+		}
+	}
 	if id == 0 {
 		return ErrInvalid
 	}
@@ -122,6 +143,19 @@ func (q *reader) canonicalIdentity(key string) (ValueEntry, bool, error) {
 	canonical, authoritative, err := q.route.identity(q, key)
 	if err != nil {
 		return ValueEntry{}, false, err
+	}
+	if q.transaction() != nil {
+		if !authoritative {
+			return ValueEntry{}, false, nil
+		}
+		entry, stored, found, err := q.value(ValueRef{q.c.root.namespace.Graph, canonical})
+		if err != nil {
+			return ValueEntry{}, false, err
+		}
+		if !found || !bytes.Equal(stored, []byte(key)) {
+			return ValueEntry{}, false, ErrCorrupt
+		}
+		return entry, true, nil
 	}
 	entry, found, err := q.local(key)
 	if err != nil {

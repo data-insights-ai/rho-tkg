@@ -42,7 +42,7 @@ func newDeclaredMaterializer(s *raftlog.Store, n namespace, d graphstore.Ownersh
 }
 
 func newDeclaredMaterializerWithAgreement(s *raftlog.Store, n namespace, d graphstore.OwnershipDeclaration, l materializerLimits, agreement raftlog.ApplicationSemanticContractID) (*declaredMaterializer, error) {
-	if agreement != declaredSemanticContractID() && agreement != graphGenesisSemanticContractID() && agreement != partitionWriteSemanticContractID() {
+	if agreement != declaredSemanticContractID() && agreement != graphGenesisSemanticContractID() && !partitionGraphAgreement(agreement) {
 		return nil, errInvalid
 	}
 	if s == nil || !n.valid() || idalloc.GraphID(d.Graph()) != n.graph {
@@ -225,6 +225,12 @@ func (m *declaredMaterializer) Restore(index uint64, image []byte) (err error) {
 		return m.seed(&q)
 	}
 	_, err = m.initialized(&q)
+	if err == nil && m.SemanticContractID() == crossPartitionSemanticContractID() {
+		_, _, err = m.readCrossResourceOwner(&q)
+	}
+	if err == nil && m.SemanticContractID() == crossPartitionSemanticContractID() {
+		err = m.checkCrossLock(&q)
+	}
 	return err
 }
 
@@ -366,12 +372,15 @@ func (m *declaredMaterializer) Stage(entry replica.Entry, budget raftlog.Applica
 		if m.requiresDefaultAxis() {
 			version = 5
 		}
-		if m.SemanticContractID() == partitionWriteSemanticContractID() {
+		if partitionGraphAgreement(m.SemanticContractID()) {
 			version = 6
 		}
 		if entry.Data[3] != version {
 			return raftlog.ApplicationBatch{}, errCorrupt
 		}
+	}
+	if isCrossPartitionWire(entry.Data) {
+		return m.stageCrossPartition(&q, info, entry, budget)
 	}
 	if isPartitionGraphWire(entry.Data) {
 		return m.stagePartitionGraph(&q, info, entry, budget)
@@ -382,7 +391,7 @@ func (m *declaredMaterializer) Stage(entry replica.Entry, budget raftlog.Applica
 	}
 	hash := sha256.Sum256(entry.Data)
 	kind := commandKind(entry.Data[4])
-	old, found, err := declaredReplay(&q, kind, identity, hash, entry.Index, m.SemanticContractID() == partitionWriteSemanticContractID())
+	old, found, err := declaredReplay(&q, kind, identity, hash, entry.Index, partitionGraphAgreement(m.SemanticContractID()))
 	if err != nil {
 		return raftlog.ApplicationBatch{}, err
 	}
@@ -412,6 +421,16 @@ func (m *declaredMaterializer) Stage(entry replica.Entry, budget raftlog.Applica
 		cfg, err := m.initialized(&q)
 		if err != nil {
 			return raftlog.ApplicationBatch{}, err
+		}
+		if m.SemanticContractID() == crossPartitionSemanticContractID() {
+			lock, e := crossLock(&q)
+			if e != nil {
+				return raftlog.ApplicationBatch{}, e
+			}
+			if lock != ([16]byte{}) {
+				o := outcome{ns: m.ns, kind: kind, identity: identity, hash: hash, index: entry.Index, disposition: applied, reason: reasonStale}
+				return m.finish(&q, o, hash, true, budget, nil, nil, cfg)
+			}
 		}
 		scope := allocationScope{graph: m.ns.graph, partition: m.ns.partition, group: m.binding.Identity.Group, ownership: m.owner, topology: m.declaration.TopologyEpoch(), declaration: m.declaration.Digest(), semantic: m.binding.SemanticContractID}
 		allocator := allocationRecordReader{q: &q, scope: scope, config: cfg, declaration: m.declaration}

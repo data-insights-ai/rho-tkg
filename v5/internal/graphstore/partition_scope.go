@@ -14,6 +14,7 @@ import (
 // partitionReadScope is an immutable-view routing proof. Fixed range witnesses
 // can be reused only within that exact captured view; no per-fact cache grows.
 type partitionReadScope struct {
+	transaction   *PartitionTransactionView
 	routing       PartitionRouting
 	binding       types.DefaultAxisBinding
 	configuration [32]byte
@@ -29,6 +30,10 @@ type partitionReadScope struct {
 func (s *partitionReadScope) owner(q *reader, id uint64) error {
 	if s == nil || id == 0 {
 		return ErrInvalid
+	}
+	if s.transaction != nil {
+		_, err := s.transaction.owner(q, id)
+		return err
 	}
 	for _, w := range s.ranges {
 		if w.publication.Contains(id) {
@@ -205,6 +210,13 @@ func (s *partitionReadScope) bucket(q *reader, kind RoutingBucketKind, key []byt
 		return err
 	}
 	if owner.Partition != s.namespace.Partition {
+		if s.transaction != nil {
+			_, err := s.transaction.source(owner.Partition)
+			if err != nil {
+				return err
+			}
+			return q.materialize(128)
+		}
 		return ErrRemoteParticipant
 	}
 	return q.materialize(128)
@@ -220,6 +232,25 @@ func (s *partitionReadScope) axis(q *reader, a temporal.Axis, encoded []byte, re
 		return nil
 	}
 	id := a.Descriptor().ID
+	if s.transaction != nil {
+		o, err := s.routing.Bucket(AxisRoutingBucket, id[:])
+		if err != nil {
+			return err
+		}
+		if o.Partition != q.c.root.namespace.Partition {
+			return q.onPartition(o.Partition, func() error {
+				wire := encoded
+				if registration {
+					var e error
+					wire, e = encodeAxis(q.c.root.namespace, a, q.c.limits)
+					if e != nil {
+						return e
+					}
+				}
+				return q.route.axis(q, a, wire, registration)
+			})
+		}
+	}
 	if err := s.bucket(q, AxisRoutingBucket, id[:]); err != nil {
 		return err
 	}
@@ -272,6 +303,15 @@ func (s *partitionReadScope) previewAxis(q *reader, a temporal.Axis) error {
 		return nil
 	}
 	id := a.Descriptor().ID
+	if s.transaction != nil {
+		o, err := s.routing.Bucket(AxisRoutingBucket, id[:])
+		if err != nil {
+			return err
+		}
+		if o.Partition != q.c.root.namespace.Partition {
+			return q.onPartition(o.Partition, func() error { return q.route.previewAxis(q, a) })
+		}
+	}
 	if err := s.bucket(q, AxisRoutingBucket, id[:]); err != nil {
 		return err
 	}

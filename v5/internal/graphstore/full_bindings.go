@@ -50,7 +50,7 @@ func (q *pageReader) checkCanonicalWithLookup(r graphstate.EntityRecord, lookup 
 		return err
 	}
 	for _, key := range canonicalIncidentKeys(r) {
-		found, err := lookup(d.canonical, key, keyTreeLimits(q.limits))
+		found, err := q.routedPostingMembership(d.canonical, key, lookup)
 		if err != nil {
 			return err
 		}
@@ -82,7 +82,7 @@ func (q *pageReader) checkDeclaredWithLookup(r graphstate.EntityRecord, life gra
 		return err
 	}
 	for _, key := range declaredIncidentKeys(r, life) {
-		found, err := lookup(d.declared, key, keyTreeLimits(q.limits))
+		found, err := q.routedPostingMembership(d.declared, key, lookup)
 		if err != nil {
 			return err
 		}
@@ -166,7 +166,7 @@ func (q *pageReader) checkRawCell(k graphstate.ComponentKey, cell state.Cell) er
 	if err != nil {
 		return err
 	}
-	found, err := q.hasPostingKey(d.unique, key, keyTreeLimits(q.limits))
+	found, err := q.routedUniqueMembership(d.unique, key)
 	if err != nil {
 		return err
 	}
@@ -176,6 +176,18 @@ func (q *pageReader) checkRawCell(k graphstate.ComponentKey, cell state.Cell) er
 	return nil
 }
 func (q *pageReader) validateRawCandidate(k postingKey, definition graphstate.PropertyDefinition, canonical graphstate.ValueID) error {
+	if t := q.q.transaction(); t != nil {
+		partition, err := t.owner(q.q, uint64(k.component.Owner))
+		if err != nil {
+			return err
+		}
+		if partition != q.q.c.root.namespace.Partition {
+			return q.q.onPartition(partition, func() error {
+				p := pageReader{q: q.q, limits: q.limits}
+				return p.validateRawCandidate(k, definition, canonical)
+			})
+		}
+	}
 	if k.owner != definition.Owner || k.name != definition.Name || k.scalar != definition.Type || k.value != canonical {
 		return ErrCorrupt
 	}

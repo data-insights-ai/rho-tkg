@@ -262,7 +262,7 @@ func (d *Driver) validateBoundMessage(m *pb.Message, wantSnapshot bool) error {
 			_, err = d.stop(err)
 			return err
 		}
-		if err := d.store.AdmitApplication(len(m.Entries[0].Data)); err != nil {
+		if err := d.admitApplicationData(m.Entries[0].Data); err != nil {
 			return err
 		}
 	}

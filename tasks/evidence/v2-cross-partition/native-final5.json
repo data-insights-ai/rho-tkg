@@ -1,0 +1,214 @@
+{
+  "scope": "Final native storage slice: reserved completion, phase retirement, pending retry admission, exact-cut recovery roots and scrub",
+  "base": "94743005a2d144967c6ec859aedc0c499bde4bb0",
+  "source_manifest_sha256": "760b45889c9ddd1f80234affd918a14cc1ff73cb77cf3d85499c43514b7fb882",
+  "parent_verified_inputs": 2281,
+  "source_overlays": [
+    "tasks/backlog.md",
+    "v5/internal/graphapply/cross_partition_gap_test.go",
+    "v5/internal/raftlog/application.go",
+    "v5/internal/raftlog/application_control_codec.go",
+    "v5/internal/raftlog/application_control_install_test.go",
+    "v5/internal/raftlog/application_control_snapshot.go",
+    "v5/internal/raftlog/application_generation.go",
+    "v5/internal/raftlog/application_generation_codec_test.go",
+    "v5/internal/raftlog/application_publication.go",
+    "v5/internal/raftlog/application_published_export.go",
+    "v5/internal/raftlog/application_recovery.go",
+    "v5/internal/raftlog/application_recovery_admission.go",
+    "v5/internal/raftlog/application_recovery_history.go",
+    "v5/internal/raftlog/application_recovery_queue.go",
+    "v5/internal/raftlog/application_recovery_test.go",
+    "v5/internal/raftlog/application_snapshot_activation.go",
+    "v5/internal/raftlog/application_snapshot_codec.go",
+    "v5/internal/raftlog/application_snapshot_export.go",
+    "v5/internal/raftlog/application_snapshot_prepared.go",
+    "v5/internal/raftlog/application_snapshot_stage.go",
+    "v5/internal/raftlog/application_snapshot_types.go",
+    "v5/internal/raftlog/codec.go",
+    "v5/internal/raftlog/storage.go",
+    "v5/internal/replica/application_recovery.go",
+    "v5/internal/replica/application_recovery_test.go",
+    "v5/internal/replica/application_replication.go",
+    "v5/internal/replica/driver.go"
+  ],
+  "owned_paths": [
+    {
+      "path": "v5/internal/raftlog/application.go",
+      "sha256": "9725c45f8e5d730602eef85231a55535013146c78ba939289a7b2adc67789047"
+    },
+    {
+      "path": "v5/internal/raftlog/application_control_codec.go",
+      "sha256": "7df587ec08aacf369951863e9ed2e49daee056a9c347d31ea0c755c02e3b063f"
+    },
+    {
+      "path": "v5/internal/raftlog/application_control_install_test.go",
+      "sha256": "b4b3843065eee453ab4e6d96bf2c17efa78fdfee491407b558636ed411cbc536"
+    },
+    {
+      "path": "v5/internal/raftlog/application_control_snapshot.go",
+      "sha256": "82a7cee8934e17913fcfbd75a445512b52ac01e8b0923923a38bd8ef34560ae0"
+    },
+    {
+      "path": "v5/internal/raftlog/application_generation.go",
+      "sha256": "48a755f1eafd42346215c8bf1f64a47c52c9497966d6d64286b771b98e0a53dd"
+    },
+    {
+      "path": "v5/internal/raftlog/application_generation_codec_test.go",
+      "sha256": "a94ae432e60562d6925bccf4da36710d02a37985b8e2b7e5586bfdb01fad9b16"
+    },
+    {
+      "path": "v5/internal/raftlog/application_publication.go",
+      "sha256": "81d67f22647749052dc66e2c47055a124bffee973c5ed7fc089ddc4cc2b9d761"
+    },
+    {
+      "path": "v5/internal/raftlog/application_published_export.go",
+      "sha256": "8e0f9f99b767a65d4318415a0fbc8816b9a8028f31acb580b1bc7662e448061b"
+    },
+    {
+      "path": "v5/internal/raftlog/application_recovery.go",
+      "sha256": "164c37477da2234b689ad41879a02fd1d986db82a91bc77ab7030da8426aeddf"
+    },
+    {
+      "path": "v5/internal/raftlog/application_recovery_admission.go",
+      "sha256": "b60b9eec33ab139223aabc1f14dfde8b10aba1af2727fb6d01754a646fa33f28"
+    },
+    {
+      "path": "v5/internal/raftlog/application_recovery_history.go",
+      "sha256": "d5693fffacf56ed61ab5517cd4a776796a4eb975c61dfd48b0d4b7b556ba8839"
+    },
+    {
+      "path": "v5/internal/raftlog/application_recovery_queue.go",
+      "sha256": "498143a09d420a12ef5f5b00f14252968039711d1f2dbfe0e6e9f7835a54fa48"
+    },
+    {
+      "path": "v5/internal/raftlog/application_recovery_test.go",
+      "sha256": "9980f2f6a18158ec99186a108a4ea57e89415243a99f53e4b00a71150f14d19e"
+    },
+    {
+      "path": "v5/internal/raftlog/application_snapshot_activation.go",
+      "sha256": "c15258bc16f058f1e9faa42a03bcad7ca7099191a5a0bfe84ed30442d0caf77c"
+    },
+    {
+      "path": "v5/internal/raftlog/application_snapshot_codec.go",
+      "sha256": "d9930d693431f4d10956ea8ebc96069f17fe6a053e4be53c7b86edf96ff339bd"
+    },
+    {
+      "path": "v5/internal/raftlog/application_snapshot_export.go",
+      "sha256": "8574ecb0d9f29c2459ca7774062df50d8d53fecbfa61c5fc305224d7eaa4edbc"
+    },
+    {
+      "path": "v5/internal/raftlog/application_snapshot_prepared.go",
+      "sha256": "fd23a071e696abfd665eedf495d47f87e9428b5f0de04ed3749289a5f07d8694"
+    },
+    {
+      "path": "v5/internal/raftlog/application_snapshot_stage.go",
+      "sha256": "90933923019b44c9b1f3974839e8f377a73161fc3ff658ffe32948ae1ed5c854"
+    },
+    {
+      "path": "v5/internal/raftlog/application_snapshot_types.go",
+      "sha256": "3ad4385ee29c92f20bf6a12c89510752d6003094c7a1c9c7e072eb08334c1252"
+    },
+    {
+      "path": "v5/internal/raftlog/codec.go",
+      "sha256": "129f4097f052dff3ac38596052134a7cf36a8a40a8f68d0c4db161934676db86"
+    },
+    {
+      "path": "v5/internal/raftlog/storage.go",
+      "sha256": "83ae7226e1ea1b1a078bc9cc166b2fbe6380ad6af8f36fb063f669c4512b06df"
+    },
+    {
+      "path": "v5/internal/replica/application_recovery.go",
+      "sha256": "358bdcc13838dd0693fc3cb159d7fb1c1c2ab44cc86effb321bd0cf86f5793bc"
+    },
+    {
+      "path": "v5/internal/replica/application_recovery_test.go",
+      "sha256": "a7974dcba7079d595871a229cb3af7b7ccd0afb5fb001dbb5a9c4db7deb87cc2"
+    },
+    {
+      "path": "v5/internal/replica/application_replication.go",
+      "sha256": "1bec67406997b59f2842df2205562ba0a041621ffe1c2f6d6f91d8b3b204cee2"
+    },
+    {
+      "path": "v5/internal/replica/driver.go",
+      "sha256": "7b9bb08b067d064d8f12877f336e867a1d7ecb9f0e783de9dec18867f97eda29"
+    }
+  ],
+  "normal": {
+    "command": [
+      "go",
+      "test",
+      "-short",
+      "-coverprofile=/var/tmp/rho-v5-v2-cross-partition-native-final5-20261011/coverage.out",
+      "-covermode=atomic",
+      "-count=1",
+      "-timeout=150s",
+      "-v",
+      "./internal/raftlog",
+      "./internal/replica"
+    ],
+    "rss_limit_mib": 4096.0,
+    "wall_limit_s": 180.0,
+    "sample_interval_s": 0.25,
+    "peak_tree_rss_mib": 425.75,
+    "elapsed_s": 21.71,
+    "exit_code": 0,
+    "reason": "completed"
+  },
+  "race": {
+    "command": [
+      "go",
+      "test",
+      "-race",
+      "-count=1",
+      "-timeout=150s",
+      "-v",
+      "./internal/raftlog",
+      "./internal/replica",
+      "-run",
+      "^TestRecovery"
+    ],
+    "rss_limit_mib": 4096.0,
+    "wall_limit_s": 180.0,
+    "sample_interval_s": 0.25,
+    "peak_tree_rss_mib": 551.156,
+    "elapsed_s": 8.02,
+    "exit_code": 0,
+    "reason": "completed"
+  },
+  "new_file_coverage": {
+    "github.com/data-insights-ai/rho-tkg/v5/internal/raftlog/application_recovery.go": {
+      "covered": 141,
+      "total": 164,
+      "percent": 85.98
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/raftlog/application_recovery_admission.go": {
+      "covered": 126,
+      "total": 152,
+      "percent": 82.89
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/raftlog/application_recovery_history.go": {
+      "covered": 179,
+      "total": 215,
+      "percent": 83.26
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/raftlog/application_recovery_queue.go": {
+      "covered": 261,
+      "total": 310,
+      "percent": 84.19
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/replica/application_recovery.go": {
+      "covered": 11,
+      "total": 12,
+      "percent": 91.67
+    }
+  },
+  "observed": [
+    "Actual local and forwarded retry overload refuses before consensus mutation; already admitted copies complete.",
+    "Terminal ABORT retires only its earlier unused phases, keeps resolve, and replay cannot recredit after replacement/reopen.",
+    "Active, historical and prepared native owner reads bind the captured root; scrub includes retained native roots and validates current metadata agreement."
+  ],
+  "qualification": "Full two-package normal/coverage plus focused Recovery race. Inputs and raw results independently hash-verified by root. Final graph author gates, whole-module combined validation and independent package review remain pending; this is not full V2 or capacity acceptance.",
+  "archive_sha256": "ed6784c361730821b4f0161481a7d02e5914b71d9b3fdb1c7521ac5ceffac1e1",
+  "archive_bytes": 313460
+}

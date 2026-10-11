@@ -1,0 +1,54 @@
+{
+  "classification": "Actual failing regression before correction",
+  "base": "fd37fa0a0850aa85607bf10e0467f379230cd3cc",
+  "verified_source_files": 396,
+  "source_manifest_sha256": "1d4306502fcca5c77ac5063069f153fff5a710b74c1650657d619b7eaff98444",
+  "source_tar_sha256": "8cc0f819dacbd3b4643ec0c9256fa7db2077137190e911509c4efaa2d54678ab",
+  "archive": "protocol-shared-budget-red1.tar.gz",
+  "archive_sha256": "142e697e39e5c79e0f8ae1789a199d36f58d08fbbff01f714dfe0e1abdeaad3f",
+  "archive_bytes": 1726485,
+  "files": [
+    {
+      "path": "base.txt",
+      "sha256": "28bbbee70548cc7e0f519308a2fd880761b40f6326aba2adc2411ab7b57595bb"
+    },
+    {
+      "path": "run.json",
+      "sha256": "ccc26825002d81a701af0e85261e2f82c0c94c21819ca79376732c066ca6b9af"
+    },
+    {
+      "path": "source-hashes.json",
+      "sha256": "1d4306502fcca5c77ac5063069f153fff5a710b74c1650657d619b7eaff98444"
+    },
+    {
+      "path": "source.tar",
+      "sha256": "8cc0f819dacbd3b4643ec0c9256fa7db2077137190e911509c4efaa2d54678ab"
+    },
+    {
+      "path": "test.log",
+      "sha256": "f579d8d540a15b4221bea3f8ac6c23484f617661ef53b85307067f016c5bda5c"
+    }
+  ],
+  "run": {
+    "command": [
+      "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+      "test",
+      "-count=1",
+      "-timeout=150s",
+      "-run",
+      "^(TestCrossPartitionMixedPending|TestCrossPartitionStatusAndManifest)",
+      "./internal/graphapply"
+    ],
+    "rss_limit_mib": 4096.0,
+    "wall_limit_s": 180.0,
+    "sample_interval_s": 0.25,
+    "peak_tree_rss_mib": 429.469,
+    "elapsed_s": 7.243,
+    "exit_code": 1,
+    "reason": "command-failed"
+  },
+  "failing_tests": [
+    "--- FAIL: TestCrossPartitionMixedPendingReadsMustShareSixteenRequestLimit (0.46s)",
+    "--- FAIL: TestCrossPartitionStatusAndManifestMustShareSourceRowBudget (1.13s)"
+  ]
+}

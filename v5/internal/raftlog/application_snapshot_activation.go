@@ -22,6 +22,10 @@ func (s *Store) PersistApplicationReady(rd raft.Ready, c *ApplicationSnapshotCla
 	if s == nil || c == nil || c.p == nil || c.p.i == nil || c.p.s != s {
 		return root, ErrInvalid
 	}
+	recoveryReady, classificationErr := s.classifyRecoverySnapshotReady(rd, c)
+	if classificationErr != nil {
+		return root, classificationErr
+	}
 	s.publicationMu.Lock()
 	defer s.publicationMu.Unlock()
 	s.mu.Lock()
@@ -73,6 +77,15 @@ func (s *Store) PersistApplicationReady(rd raft.Ready, c *ApplicationSnapshotCla
 		return root, ErrInvalid
 	}
 	m := old
+	if old.Recovery.Config.enabled() {
+		if c.p.i.manifest.Version != 5 {
+			return root, ErrInvalid
+		}
+		m.Recovery = applicationRecoveryMetadata{Config: old.Recovery.Config, Reservation: c.p.i.manifest.RecoveryReservation, Bytes: c.p.i.manifest.RecoveryBytes, Records: c.p.i.manifest.RecoveryRecords}
+		if recoveryReady != nil {
+			m.Recovery.Queued = recoveryReady.Queued
+		}
+	}
 	if !raft.IsEmptyHardState(rd.HardState) {
 		h := rd.HardState
 		if h.GetTerm() < old.Hard.GetTerm() || h.GetCommit() < old.Hard.GetCommit() || h.GetTerm() == old.Hard.GetTerm() && old.Hard.GetVote() != 0 && h.GetVote() != old.Hard.GetVote() || !applicationVote(m, h.GetVote()) {
@@ -95,7 +108,7 @@ func (s *Store) PersistApplicationReady(rd raft.Ready, c *ApplicationSnapshotCla
 	target.State = bankActive
 	target.ReservedBytes, target.ReservedRecords = 0, 0
 	m.Controls.Bytes, m.Controls.Records = target.ControlBytes, target.ControlRecords
-	m.App.Through, m.App.Bytes, m.App.Records = idx, target.Bytes-target.ControlBytes, target.Records-target.ControlRecords
+	m.App.Through, m.App.Bytes, m.App.Records = idx, target.Bytes-target.ControlBytes-m.Recovery.Bytes, target.Records-target.ControlRecords-m.Recovery.Records
 	m.Rep.LastActivatedManifestID = c.manifestID
 	if err := bindPublication(&m, c.p.bank, c.p.generation, target.Bytes, target.Records); err != nil {
 		return root, err
@@ -164,6 +177,11 @@ func (s *Store) PersistApplicationReady(rd raft.Ready, c *ApplicationSnapshotCla
 	}
 	if clearOld {
 		if err := batch.DeleteRange([]byte{bankTag(old.Gen.Active, appDataTag)}, []byte{bankTag(old.Gen.Active, appOutcomeTag) + 1}, nil); err != nil {
+			return fail(err)
+		}
+	}
+	if clearOld && m.Recovery.Config.enabled() {
+		if err := batch.DeleteRange([]byte{recoveryRootTag + old.Gen.Active}, []byte{recoveryRootTag + old.Gen.Active + 1}, nil); err != nil {
 			return fail(err)
 		}
 	}

@@ -55,7 +55,170 @@
       "gosec": "2.29.0",
       "govulncheck": "1.7.0"
     },
-    "vulnerability_qualification": "Zero reachable vulnerabilities; noncalled imported/required advisories are preserved in the raw report."
+    "vulnerability_qualification": "Zero reachable vulnerabilities; noncalled imported/required advisories are preserved in the raw report.",
+    "hosted_ci": {
+      "conclusion": "failure",
+      "headSha": "94743005a2d144967c6ec859aedc0c499bde4bb0",
+      "jobs": [
+        {
+          "completedAt": "2026-10-11T00:42:24Z",
+          "conclusion": "success",
+          "failedSteps": [],
+          "name": "comparison-correctness",
+          "startedAt": "2026-10-11T00:40:28Z"
+        },
+        {
+          "completedAt": "2026-10-11T00:41:53Z",
+          "conclusion": "success",
+          "failedSteps": [],
+          "name": "security (v5, v5/go.mod)",
+          "startedAt": "2026-10-11T00:40:28Z"
+        },
+        {
+          "completedAt": "2026-10-11T00:41:33Z",
+          "conclusion": "success",
+          "failedSteps": [],
+          "name": "coverage (v5, v5/go.mod)",
+          "startedAt": "2026-10-11T00:40:28Z"
+        },
+        {
+          "completedAt": "2026-10-11T01:13:07Z",
+          "conclusion": "failure",
+          "failedSteps": [
+            "Root race tests with bounded concurrency"
+          ],
+          "name": "test (., go.mod)",
+          "startedAt": "2026-10-11T00:40:28Z"
+        },
+        {
+          "completedAt": "2026-10-11T00:42:33Z",
+          "conclusion": "success",
+          "failedSteps": [],
+          "name": "security (., go.mod)",
+          "startedAt": "2026-10-11T00:40:28Z"
+        },
+        {
+          "completedAt": "2026-10-11T00:46:28Z",
+          "conclusion": "success",
+          "failedSteps": [],
+          "name": "test (v5, v5/go.mod)",
+          "startedAt": "2026-10-11T00:40:28Z"
+        },
+        {
+          "completedAt": "2026-10-11T00:43:32Z",
+          "conclusion": "success",
+          "failedSteps": [],
+          "name": "coverage (., go.mod)",
+          "startedAt": "2026-10-11T00:40:28Z"
+        },
+        {
+          "completedAt": "2026-10-11T00:40:26Z",
+          "conclusion": "skipped",
+          "failedSteps": [],
+          "name": "lint",
+          "startedAt": "2026-10-11T00:40:26Z"
+        }
+      ],
+      "status": "completed",
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38099226753",
+      "failure_observed": "v4 pkg/graph/internal/core exceeded Go package timeout at 600 seconds; no DATA RACE diagnostic in the failed-step log. Cause and corrective action under investigation; overall hosted gate is not passing.",
+      "failed_log": "hosted-ci-38099226753-failed.log.gz",
+      "failed_log_sha256": "caf6ff13466b1aa36efb2943e7c425d9c20db0e56c766a3ba54437a43fc4237e",
+      "followup": {
+        "commit": "43cccc879832c6470aaa48fbe148e788d4b76f83",
+        "change": "Remove only explicit root-job GOMAXPROCS=2 override; Go selects CPU quota/affinity. Preserve package/test concurrency, 2GiB soft memory target, all tests and default timeout.",
+        "evidence_basis": "Timed out core/tiered sources, dependencies and workflow are byte-identical to 55dc0e30, whose root hosted race gate passed. At failure current leaf tests ran for 3 and 7 seconds; no data race or deadlock demonstrated. Scheduling/resource exhaustion is a diagnosis to test, not an accepted result.",
+        "run": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38101440673",
+        "head_sha": "43cccc879832c6470aaa48fbe148e788d4b76f83",
+        "status": "completed",
+        "conclusion": "failure",
+        "jobs": [
+          {
+            "name": "comparison-correctness",
+            "conclusion": "success",
+            "startedAt": "2026-10-11T01:19:23Z",
+            "completedAt": "2026-10-11T01:20:55Z",
+            "failedSteps": []
+          },
+          {
+            "name": "security (v5, v5/go.mod)",
+            "conclusion": "success",
+            "startedAt": "2026-10-11T01:19:24Z",
+            "completedAt": "2026-10-11T01:20:51Z",
+            "failedSteps": []
+          },
+          {
+            "name": "test (., go.mod)",
+            "conclusion": "failure",
+            "startedAt": "2026-10-11T01:19:58Z",
+            "completedAt": "2026-10-11T01:52:44Z",
+            "failedSteps": [
+              "Root race tests with bounded concurrency"
+            ]
+          },
+          {
+            "name": "security (., go.mod)",
+            "conclusion": "success",
+            "startedAt": "2026-10-11T01:19:24Z",
+            "completedAt": "2026-10-11T01:21:30Z",
+            "failedSteps": []
+          },
+          {
+            "name": "coverage (v5, v5/go.mod)",
+            "conclusion": "success",
+            "startedAt": "2026-10-11T01:19:24Z",
+            "completedAt": "2026-10-11T01:20:32Z",
+            "failedSteps": []
+          },
+          {
+            "name": "test (v5, v5/go.mod)",
+            "conclusion": "success",
+            "startedAt": "2026-10-11T01:19:23Z",
+            "completedAt": "2026-10-11T01:23:04Z",
+            "failedSteps": []
+          },
+          {
+            "name": "coverage (., go.mod)",
+            "conclusion": "success",
+            "startedAt": "2026-10-11T01:19:24Z",
+            "completedAt": "2026-10-11T01:23:59Z",
+            "failedSteps": []
+          },
+          {
+            "name": "lint",
+            "conclusion": "skipped",
+            "startedAt": "2026-10-11T01:19:22Z",
+            "completedAt": "2026-10-11T01:19:22Z",
+            "failedSteps": []
+          }
+        ],
+        "failure_observed": "v4 pkg/graph/internal/core again reached the unchanged 600-second package timeout. Active TestReImportKeepsEveryLife sharded/node leaves had run for 2 and 4 seconds; no DATA RACE diagnostic. Removing the explicit GOMAXPROCS=2 override did not close the gate. Further workload/scheduling diagnosis remains open.",
+        "failed_log": "hosted-ci-38101440673-failed.log.gz",
+        "failed_log_sha256": "f48fc8926b37edd12ea3f95c69b92bf52ccfa993da12fd746706e7fbbbdff53e",
+        "scheduling_successor": {
+          "commit": "fd37fa0a0850aa85607bf10e0467f379230cd3cc",
+          "change": "Allow four parallel test scenarios instead of two on the observed four-CPU runner. Package serialization, 2GiB soft memory target, every test/race assertion and default timeout are unchanged.",
+          "evidence_basis": "Two terminal dumps show 322 and 348 testing.T.Parallel waiters, respectively, with only two active short-lived re-import scenario leaves. This is a scheduling hypothesis requiring hosted validation.",
+          "run": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38103685212",
+          "head_sha": "fd37fa0a0850aa85607bf10e0467f379230cd3cc",
+          "status": "completed",
+          "conclusion": "success",
+          "evidence": "hosted-ci-38103685212.json",
+          "terminal_log": "hosted-ci-38103685212-success.log.gz",
+          "terminal_log_sha256": "c7461e242482f56b92792e169d80b664fc6786dd0585be833e91628f2922a196",
+          "root_core_race_seconds": 560.146,
+          "qualification": "Both modules normal/race, coverage, security/vulnerability and comparison-correctness jobs pass. Push-only lint is skipped and remains covered by the accepted pinned local checks. No tests, race assertions, memory caps or timeouts were relaxed. This run excludes later uncommitted cross-partition work and the two external local codec commits."
+        }
+      }
+    },
+    "current_hosted_ci": {
+      "head_sha": "fd37fa0a0850aa85607bf10e0467f379230cd3cc",
+      "run": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38103685212",
+      "status": "completed",
+      "conclusion": "success",
+      "evidence": "hosted-ci-38103685212.json",
+      "qualification": "Both modules normal/race, coverage, security/vulnerability and comparison-correctness jobs pass. Push-only lint is skipped and remains covered by the accepted pinned local checks. No tests, race assertions, memory caps or timeouts were relaxed. This run excludes later uncommitted cross-partition work and the two external local codec commits."
+    }
   },
   "limits": [
     "Local disk-backed replicas do not prove physical multi-host durability.",

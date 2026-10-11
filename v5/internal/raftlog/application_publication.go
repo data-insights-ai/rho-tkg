@@ -33,6 +33,8 @@ func (l ApplicationPublishedCutLimits) validate(g ApplicationGenerationLimits) e
 // a transfer manifest supplies the verified canonical history digest separately.
 // Local bank/generation, voter identity and HardState are intentionally absent.
 type ApplicationCutReference struct {
+	RecoveryBytes, RecoveryRecords             uint64
+	RecoveryHash                               [32]byte
 	SemanticContractID                         ApplicationSemanticContractID
 	Identity                                   ApplicationIdentity
 	Contract                                   ApplicationContract
@@ -44,13 +46,16 @@ type ApplicationCutReference struct {
 }
 
 type publicationMetadata struct {
-	ControlEnabled               bool
-	ControlBytes, ControlRecords uint64
-	Limits                       ApplicationPublishedCutLimits
-	Bank                         byte
-	Generation, Bytes, Records   uint64
-	ID                           [32]byte
-	Valid                        bool
+	RecoveryEnabled                bool
+	RecoveryBytes, RecoveryRecords uint64
+	RecoveryHash                   [32]byte
+	ControlEnabled                 bool
+	ControlBytes, ControlRecords   uint64
+	Limits                         ApplicationPublishedCutLimits
+	Bank                           byte
+	Generation, Bytes, Records     uint64
+	ID                             [32]byte
+	Valid                          bool
 }
 
 const publicationMetaBytes = 4 + 6*8 + 32
@@ -59,6 +64,9 @@ func appendPublicationMeta(b []byte, p publicationMetadata) []byte {
 	version := byte(1)
 	if p.ControlEnabled {
 		version = 2
+	}
+	if p.RecoveryEnabled {
+		version = 3
 	}
 	b = append(b, 'A', 'P', version, 0)
 	var valid uint64
@@ -73,10 +81,15 @@ func appendPublicationMeta(b []byte, p publicationMetadata) []byte {
 		b = binary.BigEndian.AppendUint64(b, p.ControlBytes)
 		b = binary.BigEndian.AppendUint64(b, p.ControlRecords)
 	}
+	if p.RecoveryEnabled {
+		b = binary.BigEndian.AppendUint64(b, p.RecoveryBytes)
+		b = binary.BigEndian.AppendUint64(b, p.RecoveryRecords)
+		b = append(b, p.RecoveryHash[:]...)
+	}
 	return b
 }
 func decodePublicationMeta(b []byte) (publicationMetadata, []byte, error) {
-	if len(b) < publicationMetaBytes || (!bytes.Equal(b[:4], []byte{'A', 'P', 1, 0}) && !bytes.Equal(b[:4], []byte{'A', 'P', 2, 0})) {
+	if len(b) < publicationMetaBytes || (!bytes.Equal(b[:4], []byte{'A', 'P', 1, 0}) && !bytes.Equal(b[:4], []byte{'A', 'P', 2, 0}) && !bytes.Equal(b[:4], []byte{'A', 'P', 3, 0})) {
 		return publicationMetadata{}, nil, ErrCorrupt
 	}
 	var n [6]uint64
@@ -89,7 +102,7 @@ func decodePublicationMeta(b []byte) (publicationMetadata, []byte, error) {
 	p := publicationMetadata{Limits: ApplicationPublishedCutLimits{n[0]}, Valid: n[1] == 1, Bank: byte(n[2]), Generation: n[3], Bytes: n[4], Records: n[5]} // #nosec G115 -- n[2] is checked <= 1 before conversion to a bank tag.
 	copy(p.ID[:], b[52:84])
 	tail := b[publicationMetaBytes:]
-	if b[2] == 2 {
+	if b[2] >= 2 {
 		if len(tail) < 16 {
 			return publicationMetadata{}, nil, ErrCorrupt
 		}
@@ -98,11 +111,21 @@ func decodePublicationMeta(b []byte) (publicationMetadata, []byte, error) {
 		p.ControlRecords = binary.BigEndian.Uint64(tail[8:16])
 		tail = tail[16:]
 	}
+	if b[2] == 3 {
+		if len(tail) < 48 {
+			return publicationMetadata{}, nil, ErrCorrupt
+		}
+		p.RecoveryEnabled = true
+		p.RecoveryBytes = binary.BigEndian.Uint64(tail[:8])
+		p.RecoveryRecords = binary.BigEndian.Uint64(tail[8:16])
+		copy(p.RecoveryHash[:], tail[16:48])
+		tail = tail[48:]
+	}
 	return p, tail, nil
 }
 func cutReference(m metadata) ApplicationCutReference {
 	p := m.Gen.Publication
-	return ApplicationCutReference{SemanticContractID: m.Rep.SemanticContractID, Identity: m.Transfer.Identity, Contract: m.Transfer.Contract, Index: m.Base, Term: m.BaseTerm, ConfState: m.Snap.GetMetadata().GetConfState(), ImageBytes: m.SnapBytes, ImageHash: m.SnapHash, RetainedBytes: p.Bytes, RetainedRecords: p.Records, ID: p.ID, ControlBytes: p.ControlBytes, ControlRecords: p.ControlRecords}
+	return ApplicationCutReference{RecoveryBytes: p.RecoveryBytes, RecoveryRecords: p.RecoveryRecords, RecoveryHash: p.RecoveryHash, SemanticContractID: m.Rep.SemanticContractID, Identity: m.Transfer.Identity, Contract: m.Transfer.Contract, Index: m.Base, Term: m.BaseTerm, ConfState: m.Snap.GetMetadata().GetConfState(), ImageBytes: m.SnapBytes, ImageHash: m.SnapHash, RetainedBytes: p.Bytes, RetainedRecords: p.Records, ID: p.ID, ControlBytes: p.ControlBytes, ControlRecords: p.ControlRecords}
 }
 func cutID(c ApplicationCutReference) ([32]byte, error) {
 	if err := c.Identity.validate(); err != nil {
@@ -128,7 +151,7 @@ func cutID(c ApplicationCutReference) ([32]byte, error) {
 	if c.SemanticContractID != (ApplicationSemanticContractID{}) {
 		domain = append([]byte("rho-tkg:published-application-cut:v2\x00"), c.SemanticContractID[:]...)
 	}
-	if c.Contract.Version == 2 {
+	if c.Contract.Version >= 2 {
 		domain = append([]byte("rho-tkg:published-application-cut:v3\x00"), c.SemanticContractID[:]...)
 	} else if c.ControlBytes != 0 || c.ControlRecords != 0 {
 		return [32]byte{}, ErrInvalid
@@ -136,14 +159,27 @@ func cutID(c ApplicationCutReference) ([32]byte, error) {
 	if c.ControlBytes > c.RetainedBytes || c.ControlRecords > c.RetainedRecords || c.Index > (c.RetainedRecords-c.ControlRecords)/3 {
 		return [32]byte{}, ErrInvalid
 	}
+	if c.Contract.Version == 3 {
+		domain = append([]byte("rho-tkg:published-application-cut:v4\x00"), c.SemanticContractID[:]...)
+		if c.RecoveryRecords != c.Index || c.RecoveryBytes > c.RetainedBytes-c.ControlBytes || c.RecoveryRecords > c.RetainedRecords-c.ControlRecords || c.RecoveryHash == ([32]byte{}) {
+			return [32]byte{}, ErrInvalid
+		}
+	} else if c.RecoveryBytes != 0 || c.RecoveryRecords != 0 || c.RecoveryHash != ([32]byte{}) {
+		return [32]byte{}, ErrInvalid
+	}
 	b := appendIdentity(domain, c.Identity)
 	b = appendContract(b, c.Contract)
 	for _, n := range []uint64{c.Index, c.Term, c.ImageBytes, c.RetainedBytes, c.RetainedRecords} {
 		b = binary.BigEndian.AppendUint64(b, n)
 	}
-	if c.Contract.Version == 2 {
+	if c.Contract.Version >= 2 {
 		b = binary.BigEndian.AppendUint64(b, c.ControlBytes)
 		b = binary.BigEndian.AppendUint64(b, c.ControlRecords)
+	}
+	if c.Contract.Version == 3 {
+		b = binary.BigEndian.AppendUint64(b, c.RecoveryBytes)
+		b = binary.BigEndian.AppendUint64(b, c.RecoveryRecords)
+		b = append(b, c.RecoveryHash[:]...)
 	}
 	b = append(b, c.ImageHash[:]...)
 	b = binary.BigEndian.AppendUint64(b, uint64(len(cs)))
@@ -155,6 +191,11 @@ func bindPublication(m *metadata, bank byte, generation, retainedBytes, retained
 	m.Gen.Publication.Bytes, m.Gen.Publication.Records = retainedBytes, retainedRecords
 	m.Gen.Publication.Valid = true
 	m.Gen.Publication.ControlBytes, m.Gen.Publication.ControlRecords = m.Controls.Bytes, m.Controls.Records
+	if m.Recovery.Config.enabled() {
+		m.Gen.Publication.RecoveryBytes = m.Recovery.Bytes
+		m.Gen.Publication.RecoveryRecords = m.Recovery.Records
+		m.Gen.Publication.RecoveryHash = recoveryRootDigest(m.Recovery.Reservation)
+	}
 	id, err := cutID(cutReference(*m))
 	if err != nil {
 		return err
@@ -173,6 +214,9 @@ func validatePublicationMeta(m metadata) error {
 			return ErrInvalid
 		}
 		return nil
+	}
+	if p.RecoveryEnabled != m.Recovery.Config.enabled() || p.RecoveryBytes > p.Bytes || p.RecoveryRecords > p.Records || !p.RecoveryEnabled && (p.RecoveryBytes != 0 || p.RecoveryRecords != 0 || p.RecoveryHash != ([32]byte{})) {
+		return ErrInvalid
 	}
 	if p.ControlEnabled != m.Controls.Config.enabled() || p.ControlBytes > p.Bytes || p.ControlRecords > p.Records || !p.ControlEnabled && (p.ControlBytes != 0 || p.ControlRecords != 0) {
 		return ErrInvalid

@@ -41,7 +41,7 @@ func (c ApplicationContract) numbers() []uint64 {
 	return []uint64{uint64(c.Version), unsignedLimit(c.MaxKeyBytes), unsignedLimit(c.MaxValueBytes), unsignedLimit(c.MaxImageBytes), unsignedLimit(c.MaxPageRows), unsignedLimit(c.MaxPageBytes), unsignedLimit(c.MaxInstallWrites), unsignedLimit(c.MaxInstallBytes), unsignedLimit(c.MaxChangeBytes), unsignedLimit(c.MaxOutcomeBytes)}
 }
 func (c ApplicationContract) validate() error {
-	if c.Version != 1 && c.Version != 2 {
+	if c.Version != 1 && c.Version != 2 && c.Version != 3 {
 		return ErrInvalid
 	}
 	for _, n := range c.numbers()[1:] {
@@ -89,7 +89,7 @@ func (c ApplicationTransferConfig) validate(p ApplicationPolicy) error {
 	if !c.enabled() {
 		return nil
 	}
-	if !p.Enabled() || c.Contract.Version != 1 && c.Contract.Version != 2 || func() bool {
+	if !p.Enabled() || c.Contract.Version != 1 && c.Contract.Version != 2 && c.Contract.Version != 3 || func() bool {
 		want := ApplicationContractForPolicy(p)
 		want.Version = c.Contract.Version
 		return c.Contract != want
@@ -113,6 +113,8 @@ func (c ApplicationTransferConfig) validate(p ApplicationPolicy) error {
 // zero. Version two binds an unbound CutID; version three requires and binds
 // SemanticContractID. Older formats require its zero value. Other versions refuse.
 type ApplicationSnapshotManifest struct {
+	RecoveryReservation              ApplicationRecoveryReservation
+	RecoveryBytes, RecoveryRecords   uint64
 	SemanticContractID               ApplicationSemanticContractID
 	Version                          uint32
 	CutID                            [32]byte
@@ -217,6 +219,11 @@ func snapshotTotals(m ApplicationSnapshotManifest) (uint64, uint64, error) {
 		b += m.NamespaceBytes[j]
 		r += m.NamespaceRecords[j]
 	}
+	if m.RecoveryBytes > math.MaxUint64-b || m.RecoveryRecords > math.MaxUint64-r {
+		return 0, 0, ErrLimit
+	}
+	b += m.RecoveryBytes
+	r += m.RecoveryRecords
 	if m.ControlBytes > math.MaxUint64-b || m.ControlRecords > math.MaxUint64-r {
 		return 0, 0, ErrLimit
 	}

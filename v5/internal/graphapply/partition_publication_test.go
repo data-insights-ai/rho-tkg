@@ -591,7 +591,7 @@ func TestFinalReviewRegressedRangeEpochStaysCorruptThroughMaterializerAndGrantAd
 		t.Fatal(err)
 	}
 	refused, err := h.machine.Stage(replica.Entry{Index: next + 1, Generation: base.Generation, Data: proposal.wire}, h.machine.store.ApplicationBudget())
-	if !errors.Is(err, graphstore.ErrCorrupt) || !reflect.DeepEqual(refused, raftlog.ApplicationBatch{}) {
+	if !errors.Is(err, graphstore.ErrCorrupt) || !reflect.ValueOf(refused).IsZero() {
 		t.Fatal("materializer treated regressed lineage as business rejection", err)
 	}
 	afterIndex, afterImage, err := h.machine.store.Checkpoint()

@@ -1,0 +1,31 @@
+{
+  "base": "94743005a2d144967c6ec859aedc0c499bde4bb0",
+  "scope": "Focused Store completion-phase consumption; not distributed graph acceptance",
+  "source_manifest_sha256": "127ae347047eefdeb310b80073816788058005c3ca9af4aea597cad02fc5cf46",
+  "parent_verified_inputs": 2277,
+  "source_overlays": [
+    "v5/internal/graphapply/cross_partition_gap_test.go",
+    "v5/internal/raftlog/application_recovery.go",
+    "v5/internal/raftlog/application_recovery_admission.go",
+    "v5/internal/raftlog/application_recovery_test.go",
+    "tasks/backlog.md",
+    "v5/internal/raftlog/application.go",
+    "v5/internal/raftlog/application_generation.go",
+    "v5/internal/raftlog/codec.go",
+    "v5/internal/raftlog/storage.go"
+  ],
+  "normal_tests_passed": 7,
+  "exit_code": 0,
+  "observed": [
+    "An opaque same-store, exact-command admission permits consuming the bound completion credit through actual committed-entry installation.",
+    "Existing reservation ownership, quota and initialization tests remain passing."
+  ],
+  "qualification": "The preceding diagnostic failure used an uncommitted test entry and is a fixture error, not a production defect. This corrected run is focused normal validation only; no race, coverage, queued/follower, snapshot or graph-protocol acceptance is established.",
+  "remaining": [
+    "Queued/follower reservation and use projection",
+    "Snapshot transfer and atomic replacement",
+    "Actual cross-partition graph prepare/decision/resolve"
+  ],
+  "archive_sha256": "45fad6c107431f880ac7b6a2cd04c5214036751548650f8a4ad7a4135732f708",
+  "archive_bytes": 176415
+}

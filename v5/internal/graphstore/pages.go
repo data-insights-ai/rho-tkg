@@ -194,6 +194,9 @@ func (q *pageReader) validateCell(k graphstate.ComponentKey, definition graphsta
 }
 func (q *pageReader) validPhysical(id uint64) bool {
 	next := q.q.c.root.next
+	if q.q.full != nil {
+		next = q.q.full.root.next
+	}
 	if q.allocation != nil {
 		next = q.allocation.next
 	}

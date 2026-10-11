@@ -1,0 +1,37 @@
+{
+  "classification": "Independent package2 review: two reproduced P1 blockers; correction recheck pending",
+  "source_manifest_sha256": "543543c282f179a5a49584b9cc12fed7fd5426cb7685117f1b7b3c8284ee40fa",
+  "original_inputs_verified": 402,
+  "isolated_probe_files": 2,
+  "archive": "independent-review1.tar.gz",
+  "archive_sha256": "8fc863111bf9b400375f7d0a5f09e9bb91a49c5ebb47f12f36056da072acc0e9",
+  "archive_bytes": 1686514,
+  "artifact_hashes": {
+    "reproduction-source.tar.gz": "fd2582ae1ee62f8211e1e71e2f6ca5ccd203c59e1d10951f428774738c58de85",
+    "reproduction-source.json": "110c4249577ab68378e7d6069e92f5a12f751bcaaafab98080af1f9f143de50b",
+    "REVIEW.md": "54208297918b9d76e208814a961041e3f2cb7ccd466f53ffb88308b8dc4534ee",
+    "BLOCKER-1.md": "76136a4d2107df14363fe1beab689d52298617873e6d03a866621e1441ee6fa6",
+    "BLOCKER-2.md": "ef54ec313c9abffbe989319c9904b3cfb546477d51fd8334b225c3500983bb05",
+    "progress.log": "c088ca002bb037ced01c50db1d4e17b73a2ef623a98ff32f65b0ac07f00cb6ec",
+    "progress-watchdog.json": "1702a8d99041625e167e4b748dcac7cfdd226531fe72e2f9f0aee03c427b35bd",
+    "duplicate.log": "0be98196286bd84a8face91b1b6f0ef357588484dfdf31b8f4b2a533dbfc973d",
+    "duplicate-watchdog.json": "2df702a51a8b13d9485cb549642412ec275e7d57d3bf8e8eb3bfe5b136a770e6",
+    "creation.log": "a7249291bd3bb3ca51f5b8c77720e30dee8f0571f7dd8fe427e9a8cb06926f3a",
+    "creation-watchdog.json": "5c1553a83e72fc1e4694748ef14f54c5e13f7febf1e856e3de6af8501a940b1b"
+  },
+  "blocking_findings": [
+    {
+      "id": "P1-identity",
+      "scope": "Same raw request key at different coordinators creates conflicting durable transactions with no recoverable loser.",
+      "reproduction": "TestIndependentSameRequestIDTwoCoordinatorsHaveRecoverableProgress",
+      "exit_code": 1
+    },
+    {
+      "id": "P1-pending-records",
+      "scope": "Native creation admission undercharges queued ordinary recovery-root envelopes and admits a proposal that serialized persistence refuses.",
+      "reproduction": "TestIndependentRecoveryCreationCannotUnderchargePendingRecordCliff",
+      "exit_code": 1
+    }
+  ],
+  "qualification": "First identity reproduction uses six disk voters and completed quorum reads. Native reproduction directly establishes admission/Persist disagreement; Driver stopping follows reviewed code, not a separately executed Driver probe. The unrelated external prepared-contract integration correction is not accepted by this review."
+}

@@ -8,12 +8,13 @@ import (
 // partitionGraphCommand is a typed proposal, not a caller Delta or grant. Its
 // graph-local genesis fences are revalidated by the materializer's retained view.
 type partitionGraphCommand struct {
+	version                             byte
 	configuration, declaration, routing [32]byte
 	request                             graphRequest
 }
 
 func (r partitionGraphCommand) validate(l materializerLimits) error {
-	if r.configuration == ([32]byte{}) || r.declaration == ([32]byte{}) || r.routing == ([32]byte{}) || !isGraphMutation(r.request.kind) {
+	if r.version > 2 || r.configuration == ([32]byte{}) || r.declaration == ([32]byte{}) || r.routing == ([32]byte{}) || !isGraphMutation(r.request.kind) {
 		return errInvalid
 	}
 	return validateGraphRequest(r.request, l)
@@ -40,8 +41,12 @@ func encodePartitionGraphCommand(r partitionGraphCommand, l materializerLimits) 
 	if _, err := decodeTypedGraphRequest(inner, nested, true); err != nil {
 		return nil, err
 	}
+	version := r.version
+	if version == 0 {
+		version = 1
+	}
 	return boundedEncoding(l.commandBytes, func(w *boundedWriter) {
-		w.add([]byte{'P', 'G', 'Q', 1})
+		w.add([]byte{'P', 'G', 'Q', version})
 		w.tag(byte(r.request.kind))
 		w.add(r.request.ns.graph[:])
 		w.u64(r.request.ns.partition)
@@ -63,7 +68,13 @@ func decodePartitionGraphCommandOwned(b []byte, l materializerLimits, admitted *
 	if err := l.validate(); err != nil {
 		return partitionGraphCommand{}, err
 	}
-	body, err := graphBody(b, "PGQ\x01", l.commandBytes)
+	version := byte(1)
+	magic := "PGQ\x01"
+	if len(b) >= 4 && b[3] == 2 {
+		version = 2
+		magic = "PGQ\x02"
+	}
+	body, err := graphBody(b, magic, l.commandBytes)
 	if err != nil {
 		return partitionGraphCommand{}, err
 	}
@@ -77,6 +88,9 @@ func decodePartitionGraphCommandOwned(b []byte, l materializerLimits, admitted *
 	partition := c.u64()
 	identity := c.array()
 	var r partitionGraphCommand
+	if version == 2 {
+		r.version = 2
+	}
 	copy(r.configuration[:], c.take(32))
 	copy(r.declaration[:], c.take(32))
 	copy(r.routing[:], c.take(32))
@@ -116,10 +130,11 @@ func decodePartitionGraphCommandOwned(b []byte, l materializerLimits, admitted *
 const (
 	reasonRemoteParticipant reason = 9
 	reasonRoutingUnknown    reason = 10
+	reasonPreparedConflict  reason = 11
 )
 
 func validTypedGraphOutcomeReason(kind commandKind, why reason, partition bool) bool {
-	if partition && (why == reasonRemoteParticipant || why == reasonRoutingUnknown) {
+	if partition && (why == reasonRemoteParticipant || why == reasonRoutingUnknown || why == reasonPreparedConflict) {
 		return isGraphMutation(kind)
 	}
 	return validGraphOutcomeReason(kind, why)

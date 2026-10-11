@@ -230,7 +230,7 @@ func TestPhysicalFullFormatDoesNotAuthorizeControlsOrInitializationOutcomes(t *t
 					t.Fatal(err)
 				}
 				staged, err := f.stage(t, wire)
-				if !errors.Is(err, graphstore.ErrCorrupt) || !reflect.DeepEqual(staged, raftlog.ApplicationBatch{}) {
+				if !errors.Is(err, graphstore.ErrCorrupt) || !reflect.ValueOf(staged).IsZero() {
 					t.Fatal("false readiness produced outcome", staged, err)
 				}
 				afterIndex, afterImage, err := f.s.Checkpoint()
@@ -338,10 +338,10 @@ func TestInitializedGuardSharesOuterBudgetsAndRetriesAfterRelief(t *testing.T) {
 					if dimension == "output" {
 						wanted = graphstore.ErrResourceLimit
 					}
-					if !errors.Is(err, wanted) || !reflect.DeepEqual(b, raftlog.ApplicationBatch{}) {
+					if !errors.Is(err, wanted) || !reflect.ValueOf(b).IsZero() {
 						t.Fatal("wrong operational refusal", b, err)
 					}
-				} else if err != nil || !reflect.DeepEqual(b, baseline) {
+				} else if err != nil || !equalGuardedApplicationBatch(b, baseline) {
 					t.Fatal("relief changed control effects", b, err)
 				}
 				afterIndex, afterRoot, err := f.s.Checkpoint()
@@ -494,7 +494,7 @@ func TestInitializedGuardVariableRootBackingUsesOuterOutputHeadroom(t *testing.T
 	limits := f.m.limits
 	f.m.limits.outputBytes = graphResultMetadataBytes + readinessMetadataBytes + 4*cap(q.base.Image) + smallWork.Bytes
 	b, err := f.stage(t, wire)
-	if !errors.Is(err, graphstore.ErrResourceLimit) || !reflect.DeepEqual(b, raftlog.ApplicationBatch{}) {
+	if !errors.Is(err, graphstore.ErrResourceLimit) || !reflect.ValueOf(b).IsZero() {
 		t.Fatal("large root bypassed outer output bound", b, err)
 	}
 	afterIndex, afterRoot, err := f.s.Checkpoint()
@@ -503,7 +503,7 @@ func TestInitializedGuardVariableRootBackingUsesOuterOutputHeadroom(t *testing.T
 	}
 	f.m.limits = limits
 	relieved, err := f.stage(t, wire)
-	if err != nil || !reflect.DeepEqual(relieved, baseline) {
+	if err != nil || !equalGuardedApplicationBatch(relieved, baseline) {
 		t.Fatal("resource relief changed logical control effects", relieved, err)
 	}
 }
@@ -542,7 +542,7 @@ func TestCorruptAllocatorCoInitNeverBecomesGraphBusinessRejection(t *testing.T) 
 	}
 	for _, wire := range [][]byte{controlWire, initWire, opsWire} {
 		b, err := f.stage(t, wire)
-		if !errors.Is(err, errCorrupt) || !reflect.DeepEqual(b, raftlog.ApplicationBatch{}) {
+		if !errors.Is(err, errCorrupt) || !reflect.ValueOf(b).IsZero() {
 			t.Fatal("corruption became business outcome", b, err)
 		}
 	}

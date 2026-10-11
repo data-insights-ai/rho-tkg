@@ -1,0 +1,67 @@
+{
+  "scope": "Native recovery snapshot owner replacement and reopen; not complete graph snapshot acceptance",
+  "checkpoints": [
+    {
+      "checkpoint": "recovery-snapshot-red1",
+      "base": "94743005a2d144967c6ec859aedc0c499bde4bb0",
+      "exit_code": 1,
+      "source_manifest_sha256": "deffcb33b5cc24a9e1c4530f2b60acb13d4d7bb4e386dc3817cb0c7e64863c3f",
+      "parent_verified_inputs": 2278,
+      "source_overlays": [
+        "tasks/backlog.md",
+        "v5/internal/graphapply/cross_partition_gap_test.go",
+        "v5/internal/raftlog/application.go",
+        "v5/internal/raftlog/application_generation.go",
+        "v5/internal/raftlog/application_generation_codec_test.go",
+        "v5/internal/raftlog/application_recovery.go",
+        "v5/internal/raftlog/application_recovery_admission.go",
+        "v5/internal/raftlog/application_recovery_queue.go",
+        "v5/internal/raftlog/application_recovery_test.go",
+        "v5/internal/raftlog/codec.go",
+        "v5/internal/raftlog/storage.go"
+      ]
+    },
+    {
+      "checkpoint": "recovery-snapshot-green1",
+      "base": "94743005a2d144967c6ec859aedc0c499bde4bb0",
+      "exit_code": 0,
+      "source_manifest_sha256": "edb3015459ba4aa6cd851eaaa36bb784e11064b0db5ab9ed703c1f5e62772f8f",
+      "parent_verified_inputs": 2280,
+      "source_overlays": [
+        "tasks/backlog.md",
+        "v5/internal/graphapply/cross_partition_gap_test.go",
+        "v5/internal/raftlog/application.go",
+        "v5/internal/raftlog/application_control_codec.go",
+        "v5/internal/raftlog/application_control_install_test.go",
+        "v5/internal/raftlog/application_control_snapshot.go",
+        "v5/internal/raftlog/application_generation.go",
+        "v5/internal/raftlog/application_generation_codec_test.go",
+        "v5/internal/raftlog/application_publication.go",
+        "v5/internal/raftlog/application_published_export.go",
+        "v5/internal/raftlog/application_recovery.go",
+        "v5/internal/raftlog/application_recovery_admission.go",
+        "v5/internal/raftlog/application_recovery_history.go",
+        "v5/internal/raftlog/application_recovery_queue.go",
+        "v5/internal/raftlog/application_recovery_test.go",
+        "v5/internal/raftlog/application_snapshot_activation.go",
+        "v5/internal/raftlog/application_snapshot_codec.go",
+        "v5/internal/raftlog/application_snapshot_export.go",
+        "v5/internal/raftlog/application_snapshot_prepared.go",
+        "v5/internal/raftlog/application_snapshot_stage.go",
+        "v5/internal/raftlog/application_snapshot_types.go",
+        "v5/internal/raftlog/codec.go",
+        "v5/internal/raftlog/storage.go",
+        "v5/internal/replica/application_recovery.go",
+        "v5/internal/replica/application_replication.go",
+        "v5/internal/replica/driver.go"
+      ]
+    }
+  ],
+  "observed": [
+    "The RED used actual RawNode Ready activation at index4/generation2 and incorrectly retained the receiver old Alpha reservation instead of imported Beta.",
+    "The GREEN replaces Alpha with Beta from the imported snapshot and preserves Beta through durable reopen."
+  ],
+  "qualification": "One focused native correctness test. The source-cut versus later live-reservation guard, complete Driver and graph snapshot integration, final race/coverage/security and independent review remain separate gates. Runtime scheduling handoff was ambiguous; no performance or concurrent aggregate resource acceptance is claimed.",
+  "archive_sha256": "1c8ba3cd1f35e5807b9e21ebd78100a5bcb16395d881a04c06b5be393e45bc9c",
+  "archive_bytes": 414164
+}

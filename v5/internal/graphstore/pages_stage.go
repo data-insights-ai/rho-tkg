@@ -22,6 +22,9 @@ func (q *pageStage) reserve() (uint64, error) {
 		return 0, err
 	}
 	q.root = root
+	if q.q.full != nil {
+		q.q.full.root = root
+	}
 	return id, nil
 }
 func (q *pageStage) putDirectory(d directoryPage) error {
@@ -111,6 +114,9 @@ func (q *pageStage) checkpointLeaf(d directoryPage, s state.State) ([]childPage,
 		}
 		b, err := encodeCheckpoint(q.root.namespace, id, d.Key, s, q.q.c, q.limits)
 		if err != nil {
+			return nil, err
+		}
+		if err := q.captureStateRecord(physicalKey(q.root.namespace, checkpointRecord, id), b, d.Key, s); err != nil {
 			return nil, err
 		}
 		if err := q.q.put(physicalKey(q.root.namespace, checkpointRecord, id), b); err != nil {
@@ -233,6 +239,9 @@ func (q *pageStage) updateLeaf(d directoryPage, p graphstate.ComponentPatch) ([]
 	}
 	if d.TailRecords == q.limits.MaxTailRecords || len(wire) > q.limits.MaxTailBytes-d.TailBytes || len(physical) > q.limits.MaxTailAtoms-d.TailAtoms || current.Usage().Pieces() > q.limits.MaxCells {
 		return q.checkpointLeaf(d, current)
+	}
+	if err := q.captureChangeRecord(physicalKey(q.root.namespace, patchRecord, id), wire, patch); err != nil {
+		return nil, err
 	}
 	if err := q.q.put(physicalKey(q.root.namespace, patchRecord, id), wire); err != nil {
 		return nil, err

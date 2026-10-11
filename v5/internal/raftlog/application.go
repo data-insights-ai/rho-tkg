@@ -114,7 +114,18 @@ func (s *Store) validateApplicationMeta(m metadata) error {
 	}
 	pending := m.Last - m.Applied
 	totalBytes, totalRecords := applicationTotals(m)
-	if pending > (p.RetainedApplicationBytes-totalBytes)/unsignedLimit(p.MaxInstallBytes) || pending > (p.RetainedApplicationRecords-totalRecords)/unsignedLimit(p.MaxInstallWrites+3) {
+	protected, pendingBytes, pendingRecords, err := recoveryProjected(m, s.limits, pending)
+	if err != nil {
+		return err
+	}
+	protected.logBytes += m.Recovery.Staged.logBytes
+	protected.logRecords += m.Recovery.Staged.logRecords
+	if err := recoveryFits(protected, totalBytes, totalRecords, m.LogBytes, m.LogCount, p, s.limits); err != nil {
+		return err
+	}
+	totalBytes += protected.bytes
+	totalRecords += protected.records
+	if pendingBytes > p.RetainedApplicationBytes-totalBytes || pendingRecords > p.RetainedApplicationRecords-totalRecords {
 		return ErrLimit
 	}
 	if m.Applied > 0 && (!applicationConfiguration(m, m.Conf) || !applicationConfiguration(m, m.Snap.GetMetadata().GetConfState()) || m.ImageBytes > unsignedLimit(p.MaxImageBytes)) {
@@ -238,6 +249,12 @@ func (s *Store) verifyApplicationRoot(index uint64) error {
 	if !found || uint64(len(image)) != s.meta.ImageBytes || sha256.Sum256(image) != s.meta.ImageHash {
 		return ErrCorrupt
 	}
+	if s.meta.Recovery.Config.enabled() {
+		r, e := s.loadRecoveryRootAt(s.activeBank(), index)
+		if e != nil || !sameRecoveryReservation(r, s.meta.Recovery.Reservation) {
+			return errors.Join(ErrCorrupt, e)
+		}
+	}
 	for _, tag := range []byte{appChangeTag, appOutcomeTag} {
 		limit := s.meta.App.Policy.MaxChangeBytes
 		if tag == appOutcomeTag {
@@ -254,6 +271,15 @@ func (s *Store) verifyApplicationRoot(index uint64) error {
 	return nil
 }
 func (s *Store) addInitialApplication(b *pebble.Batch, m *metadata, image []byte) error {
+	if m.Recovery.Config.enabled() {
+		key := appIndexKey(recoveryRootTag+m.Gen.Active, 1)
+		value := appFrame(key, appendRecoveryRoot(m.Recovery.Reservation), false)
+		if err := b.Set(key, value, nil); err != nil {
+			return err
+		}
+		m.Recovery.Bytes = uint64(len(key) + len(value))
+		m.Recovery.Records = 1
+	}
 	for _, v := range []struct {
 		tag  byte
 		data []byte
@@ -283,13 +309,16 @@ type KV struct {
 // BaseGeneration must match the captured local physical generation in RLM5;
 // zero is the legacy binding, never replicated semantic time/effect identity.
 type ApplicationBatch struct {
-	BaseGeneration   uint64
-	BaseImageHash    [32]byte
-	BaseIndex        uint64
-	Image            []byte
-	Writes           []KV
-	Changes, Outcome []byte
-	ControlPuts      []ApplicationControlPut
+	RecoveryAdmission *ApplicationRecoveryAdmission
+	RecoveryReserve   *ApplicationRecoveryReservation
+	RecoveryUse       *ApplicationRecoveryUse
+	BaseGeneration    uint64
+	BaseImageHash     [32]byte
+	BaseIndex         uint64
+	Image             []byte
+	Writes            []KV
+	Changes, Outcome  []byte
+	ControlPuts       []ApplicationControlPut
 }
 
 // ApplicationBudget bounds conservative encoded installation staging including
@@ -363,7 +392,32 @@ func (s *Store) InstallApplication(index uint64, b ApplicationBatch) error {
 	if !p.Enabled() || index != s.meta.Applied+1 || index > s.meta.Hard.GetCommit() || b.BaseIndex != s.meta.Applied || b.BaseImageHash != s.meta.ImageHash {
 		return ErrInvalid
 	}
+	if b.RecoveryReserve != nil || b.RecoveryUse != nil {
+		if !s.meta.Recovery.Config.enabled() {
+			return ErrInvalid
+		}
+		if b.RecoveryUse != nil && (b.RecoveryReserve != nil || b.RecoveryAdmission == nil) {
+			return ErrInvalid
+		}
+	}
+	recoveryState := s.meta.Recovery
+	if b.RecoveryReserve != nil {
+		var reserveErr error
+		recoveryState, reserveErr = recoveryState.reserve(*b.RecoveryReserve, p, s.limits)
+		if reserveErr != nil {
+			return reserveErr
+		}
+	} else if b.RecoveryUse != nil {
+		var consumeErr error
+		recoveryState, _, consumeErr = recoveryState.consume(*b.RecoveryUse)
+		if consumeErr != nil {
+			return consumeErr
+		}
+	}
 	added, count, err := p.measure(b)
+	if recoveryState.Config.enabled() {
+		added, count, err = p.measureRecovery(b, recoveryState.Reservation)
+	}
 	if err != nil {
 		return err
 	}
@@ -374,19 +428,68 @@ func (s *Store) InstallApplication(index uint64, b ApplicationBatch) error {
 	if err != nil {
 		return err
 	}
+	// A cached completed Use may stage a no-op rather than consume a phase again.
+	// Its pending charge still bounds the actual installation; neither replay nor
+	// terminal retirement transfers that protected backing to arbitrary traffic.
+	for _, q := range s.meta.Recovery.Queued {
+		if q.Index == index && q.Purpose.Use != nil && (added > q.Credit.RetainedBytes || count > q.Credit.RetainedRecords) {
+			return ErrLimit
+		}
+	}
 	retained, rows := applicationTotals(s.meta)
 	if added > p.RetainedApplicationBytes-retained || count > p.RetainedApplicationRecords-rows {
 		return ErrLimit
 	}
 	prospective := s.meta
+	if b.RecoveryUse != nil {
+		entry, _, _, readErr := s.get(index)
+		if readErr != nil {
+			s.poison = readErr
+			return readErr
+		}
+		if !b.RecoveryAdmission.matches(s, entry.GetData(), *b.RecoveryUse) {
+			return ErrInvalid
+		}
+		var credit ApplicationRecoveryCredit
+		prospective.Recovery, credit, err = prospective.Recovery.consume(*b.RecoveryUse)
+		if err != nil {
+			return err
+		}
+		if added > credit.RetainedBytes || count > credit.RetainedRecords {
+			return ErrLimit
+		}
+	}
+	if b.RecoveryReserve != nil {
+		if recoveryMetadataFixedBytes+recoveryCreditBytes*len(b.RecoveryReserve.Credits) > maxMetadataBytes {
+			return ErrLimit
+		}
+		future, err := recoveryGrowth(*b.RecoveryReserve, p, s.limits)
+		if err != nil {
+			return err
+		}
+		if err := recoveryFits(future, retained+added, rows+count, s.meta.LogBytes, s.meta.LogCount, p, s.limits); err != nil {
+			return err
+		}
+		prospective.Recovery, err = prospective.Recovery.reserve(*b.RecoveryReserve, p, s.limits)
+		if err != nil {
+			return err
+		}
+	}
+	prospective.Recovery = prospective.Recovery.afterApplied(index)
 	prospective.Applied = index
 	prospective.App.Through = index
-	prospective.App.Bytes += added - cb
-	prospective.App.Records += count - cr
+	rb, rr := uint64(0), uint64(0)
+	if recoveryState.Config.enabled() {
+		rb, rr, _ = ApplicationRecoveryRootOverhead(len(recoveryState.Reservation.Credits))
+		prospective.Recovery.Bytes += rb
+		prospective.Recovery.Records += rr
+	}
+	prospective.App.Bytes += added - cb - rb
+	prospective.App.Records += count - cr - rr
 	prospective.Controls.Bytes += cb
 	prospective.Controls.Records += cr
 	syncActiveGeneration(&prospective)
-	if err := generationCharge(prospective, prospective.Last-index); err != nil {
+	if err := generationCharge(prospective, prospective.Last-index, s.limits); err != nil {
 		return err
 	}
 	e, _, _, err := s.get(index)
@@ -403,11 +506,12 @@ func (s *Store) InstallApplication(index uint64, b ApplicationBatch) error {
 		return ErrCorrupt
 	}
 	m := s.meta
+	m.Recovery = prospective.Recovery
 	m.Applied = index
 	m.App.Through = index
 	m.App.TailBytes -= size
-	m.App.Bytes += added - cb
-	m.App.Records += count - cr
+	m.App.Bytes += added - cb - rb
+	m.App.Records += count - cr - rr
 	m.Controls.Bytes += cb
 	m.Controls.Records += cr
 	m.ImageBytes = uint64(len(b.Image))
@@ -432,6 +536,12 @@ func (s *Store) InstallApplication(index uint64, b ApplicationBatch) error {
 		work += n
 	}
 	batch := s.db.NewBatch()
+	if recoveryState.Config.enabled() {
+		key := appIndexKey(recoveryRootTag+s.activeBank(), index)
+		if err := batch.Set(key, appFrame(key, appendRecoveryRoot(recoveryState.Reservation), false), nil); err != nil {
+			return errors.Join(err, batch.Close())
+		}
+	}
 	fail := func(e error) error { return errors.Join(e, batch.Close()) }
 	for _, w := range b.Writes {
 		k := bankVersionKey(s.activeBank(), w.Key, index)
@@ -472,6 +582,10 @@ func (s *Store) AdmitApplication(commandBytes int) error {
 	if err := s.check(); err != nil {
 		return err
 	}
+	return s.admitApplicationLocked(commandBytes)
+}
+
+func (s *Store) admitApplicationLocked(commandBytes int) error {
 	p := s.meta.App.Policy
 	if !p.Enabled() || s.meta.Applied == 0 || commandBytes < 0 {
 		return ErrInvalid
@@ -481,11 +595,24 @@ func (s *Store) AdmitApplication(commandBytes int) error {
 	}
 	count := s.meta.Last - s.meta.Applied + 2
 	totalBytes, totalRecords := applicationTotals(s.meta)
+	protected, pendingBytes, pendingRecords, err := recoveryProjected(s.meta, s.limits, count)
+	if err != nil {
+		return err
+	}
+	protected.logBytes += s.meta.Recovery.Staged.logBytes
+	protected.logRecords += s.meta.Recovery.Staged.logRecords
+	if err := recoveryFits(protected, totalBytes, totalRecords, s.meta.LogBytes, s.meta.LogCount, p, s.limits); err != nil {
+		return err
+	}
+	totalBytes += protected.bytes
+	totalRecords += protected.records
+	logBytes := s.meta.LogBytes + protected.logBytes
+	logRecords := s.meta.LogCount + protected.logRecords
 	extra := uint64(commandBytes + 2*(frameOverhead+9))
-	if count > p.MaxTailEntries || extra > p.MaxTailBytes-s.meta.App.TailBytes || s.meta.LogCount+2 > s.limits.MaxRetainedEntries || extra > s.limits.MaxRetainedBytes-s.meta.LogBytes || count > (p.RetainedApplicationBytes-totalBytes)/unsignedLimit(p.MaxInstallBytes) || count > (p.RetainedApplicationRecords-totalRecords)/unsignedLimit(p.MaxInstallWrites+3) {
+	if count > p.MaxTailEntries || extra > p.MaxTailBytes-s.meta.App.TailBytes || logRecords+2 > s.limits.MaxRetainedEntries || extra > s.limits.MaxRetainedBytes-logBytes || pendingBytes > p.RetainedApplicationBytes-totalBytes || pendingRecords > p.RetainedApplicationRecords-totalRecords {
 		return ErrLimit
 	}
-	return generationCharge(s.meta, count)
+	return generationCharge(s.meta, count, s.limits)
 }
 
 // ReclaimApplication replaces the local recovery base only at its configured
@@ -961,6 +1088,7 @@ func (s *Store) ApplicationRecord(ctx context.Context, index uint64, outcome boo
 // RetainedBytes covers all immutable application namespaces. Do not interpret
 // their sum as physical disk, heap or OS-cache consumption.
 type ApplicationUsage struct {
+	RecoveryBytes, RecoveryRecords                         uint64
 	RetainedBytes, RetainedRecords, TailBytes, TailEntries uint64
 	CheckpointBytes, SnapshotBytes                         uint64
 	Views, ViewBytes                                       int
@@ -982,7 +1110,7 @@ func (s *Store) ApplicationUsage() (ApplicationUsage, error) {
 	}
 	m := s.meta
 	totalBytes, totalRecords := applicationTotals(m)
-	return ApplicationUsage{RetainedBytes: totalBytes, RetainedRecords: totalRecords, TailBytes: m.App.TailBytes, TailEntries: m.Last - m.Applied, CheckpointBytes: m.ImageBytes, SnapshotBytes: m.SnapBytes, Views: s.views, ViewBytes: s.viewBytes, GraphBytes: m.App.Bytes, GraphRecords: m.App.Records, ControlBytes: m.Controls.Bytes, ControlRecords: m.Controls.Records}, nil
+	return ApplicationUsage{RetainedBytes: totalBytes, RetainedRecords: totalRecords, TailBytes: m.App.TailBytes, TailEntries: m.Last - m.Applied, CheckpointBytes: m.ImageBytes, SnapshotBytes: m.SnapBytes, Views: s.views, ViewBytes: s.viewBytes, GraphBytes: m.App.Bytes, GraphRecords: m.App.Records, ControlBytes: m.Controls.Bytes, ControlRecords: m.Controls.Records, RecoveryBytes: m.Recovery.Bytes, RecoveryRecords: m.Recovery.Records}, nil
 }
 
 // admitScrubControlKey owns the next canonical control key only after stored
@@ -1019,7 +1147,7 @@ func (s *Store) ScrubApplication(ctx context.Context) (err error) {
 	if !p.Enabled() {
 		return ErrInvalid
 	}
-	it, err := newApplicationIterator(s.db.NewIter, s.activeBank(), s.meta.Controls.Config.enabled())
+	it, err := newApplicationIterator(s.db.NewIter, s.activeBank(), s.meta.Controls.Config.enabled(), s.meta.Recovery.Config.enabled())
 	if err != nil {
 		s.poison = err
 		return err
@@ -1031,7 +1159,7 @@ func (s *Store) ScrubApplication(ctx context.Context) (err error) {
 			s.poison = err
 		}
 	}()
-	var total, records, controlBytes, controlRecords uint64
+	var total, records, controlBytes, controlRecords, recoveryBytes, recoveryRecords, recoveryThrough uint64
 	var previousControl []byte
 	var envelopes [3]uint64
 	for valid := it.First(); valid; valid = it.Next() {
@@ -1044,12 +1172,24 @@ func (s *Store) ScrubApplication(ctx context.Context) (err error) {
 			return storedReadFailure(readErr)
 		}
 		cost := uint64(len(key)) + uint64(len(raw))
-		if total > p.RetainedApplicationBytes || controlBytes > p.RetainedApplicationBytes-total || cost > p.RetainedApplicationBytes-total-controlBytes || records > p.RetainedApplicationRecords || controlRecords >= p.RetainedApplicationRecords-records {
+		aggregateBytes, aggregateRecords := total+controlBytes+recoveryBytes, records+controlRecords+recoveryRecords
+		if aggregateBytes > p.RetainedApplicationBytes || cost > p.RetainedApplicationBytes-aggregateBytes || aggregateRecords >= p.RetainedApplicationRecords {
 			return ErrCorrupt
 		}
 		limit := p.MaxValueBytes
 		isControl := key[0] == controlBankTag(s.activeBank())
-		if isControl {
+		isRecovery := key[0] == recoveryRootTag+s.activeBank()
+		if isRecovery {
+			if len(key) != 9 {
+				return ErrCorrupt
+			}
+			index := binary.BigEndian.Uint64(key[1:])
+			if index != recoveryThrough+1 || index > s.meta.Applied {
+				return ErrCorrupt
+			}
+			recoveryThrough = index
+			limit = min(p.MaxValueBytes, maxMetadataBytes)
+		} else if isControl {
 			canonical, err := admitScrubControlKey(s.activeBank(), key, previousControl, p.MaxKeyBytes, s.meta.Applied)
 			if err != nil {
 				return err
@@ -1079,11 +1219,21 @@ func (s *Store) ScrubApplication(ctx context.Context) (err error) {
 				limit = p.MaxOutcomeBytes
 			}
 		}
-		_, deleted, err := inspectAppFrame(key, raw, limit)
+		data, deleted, err := inspectAppFrame(key, raw, limit)
 		if err != nil || deleted && key[0] != bankTag(s.activeBank(), appDataTag) {
 			return errors.Join(ErrCorrupt, err)
 		}
-		if isControl {
+		if isRecovery {
+			owner, count, err := inspectRecoveryOwner(data, p, s.limits)
+			if err != nil {
+				return err
+			}
+			if recoveryThrough == s.meta.Applied && (owner != (ApplicationRecoveryOwner{ID: s.meta.Recovery.Reservation.ID, Digest: s.meta.Recovery.Reservation.Digest}) || count != len(s.meta.Recovery.Reservation.Credits) || sha256.Sum256(data) != recoveryRootDigest(s.meta.Recovery.Reservation)) {
+				return ErrCorrupt
+			}
+			recoveryBytes += cost
+			recoveryRecords++
+		} else if isControl {
 			controlBytes += cost
 			controlRecords++
 		} else {
@@ -1094,7 +1244,7 @@ func (s *Store) ScrubApplication(ctx context.Context) (err error) {
 	if err := it.Error(); err != nil {
 		return err
 	}
-	if total != s.meta.App.Bytes || records != s.meta.App.Records || controlBytes != s.meta.Controls.Bytes || controlRecords != s.meta.Controls.Records {
+	if total != s.meta.App.Bytes || records != s.meta.App.Records || controlBytes != s.meta.Controls.Bytes || controlRecords != s.meta.Controls.Records || recoveryBytes != s.meta.Recovery.Bytes || recoveryRecords != s.meta.Recovery.Records || s.meta.Recovery.Config.enabled() && recoveryThrough != s.meta.Applied {
 		return ErrCorrupt
 	}
 	for _, index := range envelopes {

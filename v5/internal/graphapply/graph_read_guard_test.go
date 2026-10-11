@@ -349,7 +349,7 @@ func TestGraphReadBoundGroupAndUnboundNonSingletonRefusal(t *testing.T) {
 		t.Fatal(err)
 	}
 	rejected, err := bound.stage(t, badWire)
-	if !errors.Is(err, errInvalid) || !reflect.DeepEqual(rejected, raftlog.ApplicationBatch{}) {
+	if !errors.Is(err, errInvalid) || !reflect.ValueOf(rejected).IsZero() {
 		t.Fatal(rejected, err)
 	}
 	o, _ := commitConditionalWire(t, bound, wire)
@@ -370,7 +370,7 @@ func TestGraphReadBoundGroupAndUnboundNonSingletonRefusal(t *testing.T) {
 	parsed.id = requestID{45}
 	wrong, _ := encodeGraphRequest(parsed, legacy.m.limits)
 	b, err := legacy.stage(t, wrong)
-	if !errors.Is(err, errInvalid) || !reflect.DeepEqual(b, raftlog.ApplicationBatch{}) {
+	if !errors.Is(err, errInvalid) || !reflect.ValueOf(b).IsZero() {
 		t.Fatal(b, err)
 	}
 	identity := raftlog.ApplicationIdentity{Graph: [16]byte(legacy.n.graph), Partition: legacy.n.partition, Group: [16]byte{77}}
@@ -592,7 +592,7 @@ func TestGuardedGraphResourcePriorityAndAtomicRefusal(t *testing.T) {
 		if dimension == "rows" || dimension == "output" {
 			expected = graphstore.ErrResourceLimit
 		}
-		if !errors.Is(err, expected) || !reflect.DeepEqual(b, raftlog.ApplicationBatch{}) {
+		if !errors.Is(err, expected) || !reflect.ValueOf(b).IsZero() {
 			t.Fatal(dimension, b, err)
 		}
 		index, image, _ := f.s.Checkpoint()
@@ -645,7 +645,7 @@ func TestGraphReadAllocatorIsValidatedOnSelectedHistoricalView(t *testing.T) {
 		t.Fatal(err)
 	}
 	b, err := f.stage(t, wire)
-	if !errors.Is(err, errCorrupt) || !reflect.DeepEqual(b, raftlog.ApplicationBatch{}) {
+	if !errors.Is(err, errCorrupt) || !reflect.ValueOf(b).IsZero() {
 		t.Fatal(b, err)
 	}
 }
@@ -688,11 +688,31 @@ func TestGuardedGraphEncounteredDescriptorCorruptionBeatsStaleRead(t *testing.T)
 	installIncompleteFixture(t, f, raftlog.ApplicationBatch{BaseGeneration: base.Generation, BaseIndex: base.Index, BaseImageHash: base.ImageHash, Image: base.Image, Writes: []raftlog.KV{descriptor}})
 	before, _ := f.s.ApplicationUsage()
 	b, err := f.stage(t, wire)
-	if !errors.Is(err, graphstore.ErrCorrupt) || errors.Is(err, graphstore.ErrReadConflict) || !reflect.DeepEqual(b, raftlog.ApplicationBatch{}) {
+	if !errors.Is(err, graphstore.ErrCorrupt) || errors.Is(err, graphstore.ErrReadConflict) || !reflect.ValueOf(b).IsZero() {
 		t.Fatal("corruption became durable conflict", b, err)
 	}
 	assertNoReadSessionLeaks(t, f.s, before)
 }
+
+// equalGuardedApplicationBatch checks every installation field, including future
+// additions. The opaque admission is compared by identity without visiting Store
+// locks/errors; other fields retain deep equality, including nil versus empty.
+func equalGuardedApplicationBatch(a, b raftlog.ApplicationBatch) bool {
+	av, bv := reflect.ValueOf(a), reflect.ValueOf(b)
+	for i := range av.NumField() {
+		if av.Type().Field(i).Name == "RecoveryAdmission" {
+			if a.RecoveryAdmission != b.RecoveryAdmission {
+				return false
+			}
+			continue
+		}
+		if !reflect.DeepEqual(av.Field(i).Interface(), bv.Field(i).Interface()) {
+			return false
+		}
+	}
+	return true
+}
+
 func TestGuardedGraphSharedControlDedupAndStageOutputHeadroom(t *testing.T) {
 	f := readyGraphFixture(t)
 	r := graphCodecRequest(t)
@@ -743,7 +763,7 @@ func TestGuardedGraphSharedControlDedupAndStageOutputHeadroom(t *testing.T) {
 		} else if err != nil {
 			t.Fatal("unexpected aggregate cliff error", err)
 		} else {
-			if !reflect.DeepEqual(candidate, expected) {
+			if !equalGuardedApplicationBatch(candidate, expected) {
 				t.Fatal("cliff calibration changed complete batch")
 			}
 			hi = mid
@@ -770,10 +790,10 @@ func TestGuardedGraphSharedControlDedupAndStageOutputHeadroom(t *testing.T) {
 				if dimension == "output" {
 					resource = resource || errors.Is(err, graphstore.ErrResourceLimit)
 				}
-				if !resource || !reflect.DeepEqual(b, raftlog.ApplicationBatch{}) {
+				if !resource || !reflect.ValueOf(b).IsZero() {
 					t.Fatal(dimension, delta, b, err)
 				}
-			} else if err != nil || !reflect.DeepEqual(b, expected) {
+			} else if err != nil || !equalGuardedApplicationBatch(b, expected) {
 				t.Fatal(dimension, delta, b, err)
 			}
 			i, image, _ := f.s.Checkpoint()

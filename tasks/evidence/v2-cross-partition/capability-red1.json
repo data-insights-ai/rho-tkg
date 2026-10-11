@@ -1,0 +1,27 @@
+{
+  "base": "94743005a2d144967c6ec859aedc0c499bde4bb0",
+  "classification": "Failing capability baseline for missing cross-partition graph integration, not a regression in the correctly refusing local-only door.",
+  "test": "TestCrossPartitionGraphPrepareResolveMissingCompleteEndpointEffects",
+  "source_inputs_verified_by_parent": 2274,
+  "observed": {
+    "same_graph_partitions": [
+      3,
+      8
+    ],
+    "disk_voters_per_partition": 3,
+    "existing_endpoints": [
+      1,
+      17
+    ],
+    "attempted_relationship": 3,
+    "reasonRemoteParticipant": 9,
+    "tentative_request_mapping_writes": 1,
+    "graph_cdc_bytes": 0,
+    "checkpoint_unchanged": true
+  },
+  "exit_code": 1,
+  "production_edits_before_test": false,
+  "archive_sha256": "37278bb0d46dde15af0fa27946c0fb46e84705fae4416ee6a36b3e684ff3eb99",
+  "test_sha256": "a067b3713c26941905182e06f7e27466867a6de008a9490a99085f713528b8d1",
+  "status": "RED retained; implementation and package2 acceptance open"
+}
