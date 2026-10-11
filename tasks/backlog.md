@@ -222,6 +222,13 @@ reviewed and validated before the next package starts.
    faults, recovery and ownership transfer; complete the equivalent transactional-KV
    comparison and record the engine decision. Only then can V2 close under
    PLAN §8; V3–V7 retain their own acceptance requirements.
+   The [first six-process counterexample](evidence/v2-process/first-slice-red.json)
+   is independently reviewed: local controls pass in normal/race, while the
+   cross-edge acceptance fails with the correct local remote-participant refusal.
+   Neither graph nor CDC has partial effects; subsequent writes remain healthy
+   and all six children are reaped. The archived test patch establishes the next
+   missing orchestration path; it is not installed as a failing branch test.
+   Its quiescent local observations do not establish certified cuts or E15–E18.
 
 The phase table above records current acceptance. The following entries retain
 the scope of their historical component validations.

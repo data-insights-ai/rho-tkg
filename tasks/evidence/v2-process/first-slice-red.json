@@ -1,0 +1,171 @@
+{
+  "phase": "V2",
+  "package": 4,
+  "slice": "same-graph six-process cross-edge original RED",
+  "date": "2026-10-11",
+  "accepted": false,
+  "review_verdict": "ready_for_next_production_seam",
+  "base": "0f430e44fba4ec1550272b14adaebb696a6d5090",
+  "production_unchanged": true,
+  "test_patch_only": true,
+  "archive": "first-slice-red.tar.gz",
+  "archive_sha256": "84a332d61f56c3d667d32dab6ab86e2239a60d0379173936aa4dd49b1c2979f9",
+  "archive_bytes": 54951,
+  "author_receipt_sha256": "0e5f72203b213acafd553ee7aa0ea85e5a35481aa9462967190344b7ea0c0e26",
+  "files": [
+    {
+      "path": "author/cross-edge-red-normal.jsonl",
+      "sha256": "984ea8e6f579f8dd4ba9c4da1b5198a7416585645f8b1c9808ca7499aee300a9",
+      "bytes": 30722
+    },
+    {
+      "path": "author/cross-edge-red-normal.stderr",
+      "sha256": "16be7428b158a90f7ca19860d6e61c390504babc24e205100375596aa5c636d0",
+      "bytes": 313
+    },
+    {
+      "path": "author/cross-edge-red-normal.watchdog.json",
+      "sha256": "f2ae8c9b5a2230499d835bb7423b142243f92fd513fe54f00e3907cc7fcaa475",
+      "bytes": 356
+    },
+    {
+      "path": "author/cross-edge-red-race.jsonl",
+      "sha256": "aa738f0a7cdef2bfb1c9a01accc90919f05f1b59e92ace2f3b8317a61c0565d6",
+      "bytes": 30717
+    },
+    {
+      "path": "author/cross-edge-red-race.stderr",
+      "sha256": "c953c117d8800f64d755cc28e63be48ca9abe41c5812522ad0d8c0d02089b53b",
+      "bytes": 322
+    },
+    {
+      "path": "author/cross-edge-red-race.watchdog.json",
+      "sha256": "b9663be7285415030c0d1a151c07b6099da09bd8409e2eaf05fa38332121237a",
+      "bytes": 369
+    },
+    {
+      "path": "author/first-slice-receipt.json",
+      "sha256": "0e5f72203b213acafd553ee7aa0ea85e5a35481aa9462967190344b7ea0c0e26",
+      "bytes": 8123
+    },
+    {
+      "path": "author/fixture-first-source.json",
+      "sha256": "c560e57fd56519082473bfd9befe9e3153078d031016240186e5c22b7dc54ac8",
+      "bytes": 450
+    },
+    {
+      "path": "author/fixture-first.patch",
+      "sha256": "72a27e83c64ab9d9c40818dbece376c431d40fea40a43ed0f37daeb34cc254b5",
+      "bytes": 29229
+    },
+    {
+      "path": "author/fixture-second.patch",
+      "sha256": "4b57164b290b89c263fc77402beaa8e2b1d5d023fe5cf1c737a615a2737acab1",
+      "bytes": 29338
+    },
+    {
+      "path": "author/positive-normal-first.jsonl",
+      "sha256": "fc1c1d9580a32fc2204c6962116966f7476e87d77a93dac1cdb5eca2c43c66ff",
+      "bytes": 14350
+    },
+    {
+      "path": "author/positive-normal-first.stderr",
+      "sha256": "a0b640afe139defee828b2bceeaa3247cc9dda1abbd201f5c14c85fb22caf497",
+      "bytes": 359
+    },
+    {
+      "path": "author/positive-normal-first.watchdog.json",
+      "sha256": "d68757fa5c52d3b36c1d4ebc6d41a52945540b4d87768a75274d92f171bf4903",
+      "bytes": 402
+    },
+    {
+      "path": "author/positive-normal-second.jsonl",
+      "sha256": "53eb3d2da43187ac4e8b2e8d79b740bfa8445ca005a0e9ee0c16c582dc20acd9",
+      "bytes": 27749
+    },
+    {
+      "path": "author/positive-normal-second.stderr",
+      "sha256": "9d210a3d52aacec8284a6c606c8e1b83e3aa874a5307c757595b1d8512b396bd",
+      "bytes": 359
+    },
+    {
+      "path": "author/positive-normal-second.watchdog.json",
+      "sha256": "9d0a1f9f7d6d39ebddf4f83f3990a03faab7f2c99f02532f14500ba7bc9292c8",
+      "bytes": 402
+    },
+    {
+      "path": "author/positive-normal.jsonl",
+      "sha256": "8feccddc665a9183330781c6cdc94d893c5a2394aee4417b53abe1fb956b7c6a",
+      "bytes": 30871
+    },
+    {
+      "path": "author/positive-normal.stderr",
+      "sha256": "2dbcdb90dd00d202bf326fc43d8ae5fe99338a4dc411f5f031be4e4d92e7049e",
+      "bytes": 353
+    },
+    {
+      "path": "author/positive-normal.watchdog.json",
+      "sha256": "788b189b0af74a1c0b410808b63f3b12135147eee532c895b76893d6cec5d9b5",
+      "bytes": 396
+    },
+    {
+      "path": "author/positive-race.jsonl",
+      "sha256": "fff3553feb4e8b3c98495ca89fd89be0a5d131551ca292a4d4c11d3d01ab58f6",
+      "bytes": 30871
+    },
+    {
+      "path": "author/positive-race.stderr",
+      "sha256": "411d14ed632c1ebf674aa7513d4071dbfe1572759c33a7cac722275d98f341a5",
+      "bytes": 364
+    },
+    {
+      "path": "author/positive-race.watchdog.json",
+      "sha256": "9eaa1e50a0932ad3e00f959785ec8d9f29b0f55e3afc69d8858fbe0efee73d4a",
+      "bytes": 411
+    },
+    {
+      "path": "author/production-source.json",
+      "sha256": "2af1304d2da7c7fb9066ffa1c1d3791ef4a80f2a37f78c6842a41207f541504d",
+      "bytes": 20369
+    },
+    {
+      "path": "author/red-source.json",
+      "sha256": "21cb9a4e5aac29fc84103bbef8bc5c9e1f7dd2a09d40c54e6f629104314a0cb7",
+      "bytes": 478
+    },
+    {
+      "path": "author/red-source.patch",
+      "sha256": "acad632904324358e3fde1fdb9b8ce80b1c772343c3e047ece5edc60f13d6452",
+      "bytes": 29398
+    },
+    {
+      "path": "review/REVIEW.md",
+      "sha256": "b068870c1219ba9f367597777be9c26f8322acf657b1d922813498d2d04650b0",
+      "bytes": 6112
+    },
+    {
+      "path": "review/receipt.json",
+      "sha256": "da3fc89779ca2e184c8119d5b624dea3f5ccdc2e84d5774269414d17171664a6",
+      "bytes": 743
+    }
+  ],
+  "validation": {
+    "verdict": "ready_for_next_production_seam",
+    "package4_accepted": false,
+    "blocking_fixture_findings": [],
+    "nonblocking_defects": [],
+    "production_changes": [],
+    "source_manifest_sha256": "21cb9a4e5aac29fc84103bbef8bc5c9e1f7dd2a09d40c54e6f629104314a0cb7",
+    "exact_diff_sha256": "acad632904324358e3fde1fdb9b8ce80b1c772343c3e047ece5edc60f13d6452",
+    "positive_normal_exit": 0,
+    "positive_race_exit": 0,
+    "original_cross_edge_normal_exit": 1,
+    "original_cross_edge_race_exit": 1,
+    "red_reason": "reasonRemoteParticipant=9",
+    "all_six_reaped_on_all_four_runs": true,
+    "current_quiescent_observation_only": true,
+    "reviewer_runtime": false,
+    "report_sha256": "b068870c1219ba9f367597777be9c26f8322acf657b1d922813498d2d04650b0"
+  },
+  "qualification": "Positive local controls pass in normal/race; cross-edge feature acceptance deliberately fails with the correct local reasonRemoteParticipant refusal. No partial graph or CDC effects, subsequent local writes remain healthy, all six children reaped. This archived test patch is not installed into the branch test surface. Observations are local quiescent views, not certified cross-partition cuts or an independent serial-history proof. Package 4 and full V2 remain open."
+}
