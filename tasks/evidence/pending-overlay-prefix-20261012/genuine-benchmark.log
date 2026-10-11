@@ -1,0 +1,9 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: Apple M4 Max
+BenchmarkIdentityOverlayGenuineBatch1000Snapshots/legacyfalse-16         	      16	  70231224 ns/op	  768685 B/op	    3009 allocs/op
+BenchmarkIdentityOverlayGenuineBatch1000Snapshots/legacytrue-16          	      13	  88249500 ns/op	80689076 B/op	 1002016 allocs/op
+BenchmarkIdentityOverlayGenuineBatch1000PropertyLookups-16               	      15	  75967406 ns/op	 2353110 B/op	   26014 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	7.190s

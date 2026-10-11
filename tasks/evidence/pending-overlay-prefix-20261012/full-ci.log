@@ -1,0 +1,56 @@
+go vet ./...
+docker run --rm -v "/private/var/tmp/rho-pending-overlay-prefix-20261012":/src -w /src -v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build golang:1.26.9 sh -c 'go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 && golangci-lint run ./...'
+0 issues.
+go build ./...
+go test -short -race -count=1 ./...
+ok  	github.com/data-insights-ai/rho-tkg/v4/bench	1.801s
+ok  	github.com/data-insights-ai/rho-tkg/v4/bench/temporalreplay	3.997s
+ok  	github.com/data-insights-ai/rho-tkg/v4/internal/synthhop	1.237s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	154.100s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin	1.502s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/constraints	1.307s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events	1.629s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/hash	1.315s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/index	1.306s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest	1.326s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/apiutil	1.206s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	246.143s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate	1.247s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr	1.246s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	17.712s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity	1.245s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/locks	1.550s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry	1.415s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segdir	2.044s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segment	22.114s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/snowflake	1.243s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	4.511s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io	2.148s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes	1.707s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ontology	1.240s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/rels	1.708s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/replication	2.200s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/resolve	1.452s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/stats	1.450s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	2.750s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	169.225s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	204.137s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	7.141s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	69.955s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal	1.468s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/tier	1.541s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/internal/idlayout	1.264s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/types	1.428s
+?   	github.com/data-insights-ai/rho-tkg/v4/pkg/types/internal/collisionone	[no test files]
+?   	github.com/data-insights-ai/rho-tkg/v4/pkg/types/internal/collisiontwo	[no test files]
+ok  	github.com/data-insights-ai/rho-tkg/v4/tutorials/001_basic_graph	1.471s
+ok  	github.com/data-insights-ai/rho-tkg/v4/tutorials/002_temporal	1.411s
+ok  	github.com/data-insights-ai/rho-tkg/v4/tutorials/003_badger_persistence	1.419s
+ok  	github.com/data-insights-ai/rho-tkg/v4/tutorials/004_full_features	1.409s
+ok  	github.com/data-insights-ai/rho-tkg/v4/tutorials/005_performance	1.445s
+docker run --rm -v "/private/var/tmp/rho-pending-overlay-prefix-20261012":/src -w /src -v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build golang:1.26.9 sh -c 'go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0 && gosec -quiet ./...'
+docker run --rm -v "/private/var/tmp/rho-pending-overlay-prefix-20261012":/src -w /src -v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build golang:1.26.9 sh -c 'go install golang.org/x/vuln/cmd/govulncheck@v1.7.0 && govulncheck ./...'
+No vulnerabilities found.
+coverage gate: total=87.2% >= min=80% — ok
+go test -count=1 -run '^TestMetaKVReapPolicyCoversEveryKey$' ./pkg/graph/internal/core/
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.550s

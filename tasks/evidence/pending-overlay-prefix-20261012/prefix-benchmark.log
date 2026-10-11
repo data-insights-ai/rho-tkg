@@ -1,0 +1,10 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: Apple M4 Max
+BenchmarkIdentityOverlayPrefix/keys1000/legacyfalse-16         	  148848	      8115 ns/op	      80 B/op	       1 allocs/op
+BenchmarkIdentityOverlayPrefix/keys1000/legacytrue-16          	   62016	     20036 ns/op	   80000 B/op	    1000 allocs/op
+BenchmarkIdentityOverlayPrefix/keys10000/legacyfalse-16        	   15685	     77188 ns/op	      80 B/op	       1 allocs/op
+BenchmarkIdentityOverlayPrefix/keys10000/legacytrue-16         	    5514	    223094 ns/op	  800002 B/op	   10000 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	5.092s

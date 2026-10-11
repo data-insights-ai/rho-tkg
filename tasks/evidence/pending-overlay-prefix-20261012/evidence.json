@@ -1,0 +1,68 @@
+{
+  "base_commit": "11a1106426e779a9b6f926e3b4c687a63af5e934",
+  "branch": "codex/pending-overlay-prefix-20261012",
+  "production_scope": "one helper currentKeyOverlay; same lock/order/matching snapshot before disk; no format or schema change",
+  "source_sha256": {
+    "pkg/graph/store/badger/badgerstore_identity_iteration.go": "60311db201523b14b44ccd41f6b5b2126e1967009789a749a37070f2d5c911e7",
+    "pkg/graph/store/badger/badgerstore_identity_overlay_test.go": "f507e4e8baf080dc379233c2f73113bab61a179f91031156200fa6cf7996ddac"
+  },
+  "profile_source": {
+    "binary": "/private/var/tmp/oa-profiler-actual-image-bin",
+    "module": "v4.50.2-0.20261011220716-11a1106426e7",
+    "cpu": "/tmp/oa-profiler-cpu.pprof",
+    "alloc_before": "/tmp/oa-profiler-allocs-before.pprof",
+    "alloc_after": "/tmp/oa-profiler-allocs-after.pprof",
+    "sampled_alloc_line23": "8.89 GB /119297707 objects (pprof display units)",
+    "sampled_map_growth_line29": "3 MB /4917 objects (pprof display units)"
+  },
+  "genuine": {
+    "fixture": "closed native Erv derivative; only1000 hash-keyed metadata nodes copied into a fresh temporary backend",
+    "sha256": "36f2729073b15a2351459f1df7b8730db190d29bc8383627b76db1eb77561221",
+    "states": [
+      "pending",
+      "parked flushing",
+      "failed flush requeue",
+      "actual concurrent flush",
+      "durable"
+    ],
+    "snapshots1000": {
+      "legacy_bytes": 80689076,
+      "patched_bytes": 768685,
+      "legacy_allocations": 1002016,
+      "patched_allocations": 3009,
+      "legacy_ns": 88249500,
+      "patched_ns": 70231224
+    }
+  },
+  "prefix_control": {
+    "unrelated1000": {
+      "legacy_bytes": 80000,
+      "patched_bytes": 80,
+      "legacy_allocations": 1000,
+      "patched_allocations": 1
+    },
+    "unrelated10000": {
+      "legacy_bytes": 800002,
+      "patched_bytes": 80,
+      "legacy_allocations": 10000,
+      "patched_allocations": 1
+    },
+    "matching_snapshot_cost": "fixed matching-count map allocations measured separately; genuine shared keys across labels preserve the entire candidate map before exact label filtering"
+  },
+  "gates": {
+    "full": "GOTOOLCHAIN=go1.26.9 make ci-docker; actual exec exit0",
+    "includes": [
+      "fmt-check",
+      "vet",
+      "lint",
+      "build",
+      "full test-race",
+      "security",
+      "vulncheck",
+      "cover-gate",
+      "metadata-key reap checks"
+    ],
+    "focused_race_seconds": 36.731
+  },
+  "limits": "Traversal remains O(flushing+pending operations). Benchmarks are local same-process helper/genuine-batch comparisons; server throughput after rollout remains unmeasured. Compact reverse branch b37bb34a is untouched."
+}

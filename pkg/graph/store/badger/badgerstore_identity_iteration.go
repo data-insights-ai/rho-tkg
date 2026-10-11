@@ -19,15 +19,24 @@ import (
 // opening the disk snapshot: a completed flush cannot disappear from both.
 func (bs *Store) currentKeyOverlay(prefix []byte, size int) map[string]writeOp {
 	var overlay map[string]writeOp
-	bs.rangePending(func(key string, op writeOp) {
-		if len(key) != size || !strings.HasPrefix(key, string(prefix)) {
-			return
+	// Property-value prefixes can exceed the compiler's stack conversion
+	// buffer. Convert once per snapshot, not once per unrelated buffered key.
+	prefixKey := string(prefix)
+	bs.wbMu.Lock()
+	defer bs.wbMu.Unlock()
+	// Keep the same oldest-first precedence as rangePending, without a
+	// per-key callback. Only matching encoded ops enter the owned snapshot.
+	for _, buffered := range [2]map[string]writeOp{bs.flushing, bs.pending} {
+		for key, op := range buffered {
+			if len(key) != size || !strings.HasPrefix(key, prefixKey) {
+				continue
+			}
+			if overlay == nil {
+				overlay = make(map[string]writeOp)
+			}
+			overlay[key] = op
 		}
-		if overlay == nil {
-			overlay = make(map[string]writeOp)
-		}
-		overlay[key] = op
-	})
+	}
 	return overlay
 }
 
