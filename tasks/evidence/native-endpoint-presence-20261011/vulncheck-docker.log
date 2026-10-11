@@ -1,0 +1,5 @@
+docker run --rm -v "/private/var/tmp/rho-legal-native-endpoint-presence-20261011":/src -w /src -v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build golang:1.26.9 sh -c 'go install golang.org/x/vuln/cmd/govulncheck@v1.7.0 && govulncheck ./...'
+No vulnerabilities found.
+real 5.60
+user 0.01
+sys 0.01

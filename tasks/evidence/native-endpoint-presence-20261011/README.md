@@ -1,7 +1,11 @@
 # Native endpoint presence
 
 Local patch on `codex/legal-native-endpoint-presence-20261011`, based on
-published v4.50.1 (`09e58d36`). No push, tag, release, or deployment.
+published v4.50.1 (`09e58d36`), then rebased onto fetched remote main
+`efbedc28170c6b04aa28a0e957fc16c4424100c6`. The upstream delta changes
+only HANDOVER.md, docs/v5-analysis.md and tasks/todo.md.
+Release metadata is prepared for v4.50.2 in this isolated branch.
+No push, tag, release, or deployment.
 
 ## Contract
 
@@ -34,6 +38,9 @@ boundary facts; they do not assert legal truth.
 - `go vet ./...`: passed, final run 1.64 seconds; `make fmt-check` passed.
 - `make build` and `check-metakv-reap`: passed; lifecycle policy test 0.473 seconds.
 - `golangci-lint run ./...`: passed after import-only cleanup; final cached run 23.51 seconds.
+- Pinned Docker lint: passed, zero issues, 34.97 seconds.
+- Pinned Docker security: passed, 20.95 seconds.
+- Pinned Docker vulnerability scan: passed, no vulnerabilities found, 5.60 seconds.
 - Full, partial, delta, nested and fixed-tail codecs preserve endpoint presence.
 - Four backend probes cover exact closed-zero ends, zero starts, indexed
   point/window queries, counts, pinned retraction, retrospective correction,
@@ -46,7 +53,18 @@ boundary facts; they do not assert legal truth.
 
 ## Remaining release gates
 
-Review/rebase against current main, finish security/vulnerability gates,
-test fresh Sigma integration and the OA typed adapter, approve and publish a
-version, then pin/build/test the consumer. Current main remained clean during
-this work; its independently advanced head was `d6fff484782007beaef0efba1530d30f445e247d`.
+Confirm downstream Sigma and OA typed adapter results, approve and publish
+v4.50.2 through the normal release path, then pin/build/test the consumers
+without permanent local replacements. Recheck remote main before promotion.
+Local main remains unchanged and clean at
+`d6fff484782007beaef0efba1530d30f445e247d`; its newer remote head is the
+integrated revision above.
+
+## Integrated source identity
+
+Before and after remote-main rebase, the complete `pkg` subtree is
+`4f8071777806a99c16918273e0b8f4feeaca4e52`. The prior tested source commit
+is `6c92c5a8d35e503a0fa13872b8cd7b8faee8a3f3`; the rebased source commit is
+`0deaab94067ac49754e121fbfd6d02a1cd495d41`.
+The v4.50.2 tag was absent at the read-only remote check.
+Release documentation consistency passes against the candidate metadata.

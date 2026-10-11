@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.50.2] - 2026-10-11
+
+Patch release: exact finite Unix epoch zero and explicit unbounded valid-time
+endpoints across native storage and temporal queries. Scalar Instant APIs retain
+their legacy zero defaults. **Writable stores advance to wire format v4; older
+binaries refuse them, so downgrade requires a pre-upgrade backup.**
+
 ### Added
 
 - Exact typed valid-time endpoints: `types.TemporalEndpoint{Value, Finite}` and
