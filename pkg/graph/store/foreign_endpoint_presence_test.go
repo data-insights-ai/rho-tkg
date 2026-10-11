@@ -2,8 +2,9 @@ package store
 
 import (
 	"errors"
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestForeignIncomingEndpointPresenceValidation(t *testing.T) {
