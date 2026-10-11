@@ -1,0 +1,2 @@
+ok  	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	18.448s
+limit: {"command": ["go", "-C", "v5", "test", "./internal/graphapply", "-run", "^TestCertified", "-count=1"], "rss_limit_mib": 4096.0, "wall_limit_s": 180.0, "sample_interval_s": 0.25, "peak_tree_rss_mib": 536.141, "elapsed_s": 21.917, "exit_code": 0, "reason": "completed"}

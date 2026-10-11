@@ -1,0 +1,152 @@
+2026/10/11 09:04:31 Found 0 WALs
+raft2026/10/11 09:04:31 INFO: 1 switched to configuration voters=(1 2 3)
+raft2026/10/11 09:04:31 INFO: 1 became follower at term 1
+raft2026/10/11 09:04:31 INFO: newRaft 1 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/11 09:04:31 Found 0 WALs
+raft2026/10/11 09:04:31 INFO: 2 switched to configuration voters=(1 2 3)
+raft2026/10/11 09:04:31 INFO: 2 became follower at term 1
+raft2026/10/11 09:04:31 INFO: newRaft 2 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/11 09:04:31 Found 0 WALs
+raft2026/10/11 09:04:31 INFO: 3 switched to configuration voters=(1 2 3)
+raft2026/10/11 09:04:31 INFO: 3 became follower at term 1
+raft2026/10/11 09:04:31 INFO: newRaft 3 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+raft2026/10/11 09:04:31 INFO: 1 is starting a new election at term 1
+raft2026/10/11 09:04:31 INFO: 1 became pre-candidate at term 1
+raft2026/10/11 09:04:31 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 2 at term 1
+raft2026/10/11 09:04:31 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 3 at term 1
+raft2026/10/11 09:04:31 INFO: 1 received MsgPreVoteResp from 1 at term 1
+raft2026/10/11 09:04:31 INFO: 1 has received 1 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/11 09:04:31 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/11 09:04:31 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/11 09:04:31 INFO: 1 received MsgPreVoteResp from 2 at term 1
+raft2026/10/11 09:04:31 INFO: 1 has received 2 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/11 09:04:31 INFO: 1 became candidate at term 2
+raft2026/10/11 09:04:31 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 2 at term 2
+raft2026/10/11 09:04:31 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 3 at term 2
+raft2026/10/11 09:04:31 INFO: 1 received MsgVoteResp from 1 at term 2
+raft2026/10/11 09:04:31 INFO: 1 has received 1 MsgVoteResp votes and 0 vote rejections
+raft2026/10/11 09:04:31 INFO: 2 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/11 09:04:31 INFO: 2 became follower at term 2
+raft2026/10/11 09:04:31 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/11 09:04:31 INFO: 3 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/11 09:04:31 INFO: 3 became follower at term 2
+raft2026/10/11 09:04:31 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/11 09:04:31 INFO: 1 received MsgVoteResp from 2 at term 2
+raft2026/10/11 09:04:31 INFO: 1 has received 2 MsgVoteResp votes and 0 vote rejections
+raft2026/10/11 09:04:31 INFO: 1 became leader at term 2
+2026/10/11 09:04:31 Found 0 WALs
+raft2026/10/11 09:04:31 INFO: 1 switched to configuration voters=(1 2 3)
+raft2026/10/11 09:04:31 INFO: 1 became follower at term 1
+raft2026/10/11 09:04:31 INFO: newRaft 1 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/11 09:04:31 Found 0 WALs
+raft2026/10/11 09:04:31 INFO: 2 switched to configuration voters=(1 2 3)
+raft2026/10/11 09:04:31 INFO: 2 became follower at term 1
+raft2026/10/11 09:04:31 INFO: newRaft 2 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/11 09:04:31 Found 0 WALs
+raft2026/10/11 09:04:31 INFO: 3 switched to configuration voters=(1 2 3)
+raft2026/10/11 09:04:31 INFO: 3 became follower at term 1
+raft2026/10/11 09:04:31 INFO: newRaft 3 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+raft2026/10/11 09:04:31 INFO: 1 is starting a new election at term 1
+raft2026/10/11 09:04:31 INFO: 1 became pre-candidate at term 1
+raft2026/10/11 09:04:31 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 2 at term 1
+raft2026/10/11 09:04:31 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 3 at term 1
+raft2026/10/11 09:04:31 INFO: 1 received MsgPreVoteResp from 1 at term 1
+raft2026/10/11 09:04:31 INFO: 1 has received 1 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/11 09:04:31 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/11 09:04:31 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/11 09:04:31 INFO: 1 received MsgPreVoteResp from 2 at term 1
+raft2026/10/11 09:04:31 INFO: 1 has received 2 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/11 09:04:31 INFO: 1 became candidate at term 2
+raft2026/10/11 09:04:31 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 2 at term 2
+raft2026/10/11 09:04:31 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 3 at term 2
+raft2026/10/11 09:04:31 INFO: 1 received MsgVoteResp from 1 at term 2
+raft2026/10/11 09:04:31 INFO: 1 has received 1 MsgVoteResp votes and 0 vote rejections
+raft2026/10/11 09:04:31 INFO: 2 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/11 09:04:31 INFO: 2 became follower at term 2
+raft2026/10/11 09:04:31 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/11 09:04:31 INFO: 3 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/11 09:04:31 INFO: 3 became follower at term 2
+raft2026/10/11 09:04:31 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/11 09:04:31 INFO: 1 received MsgVoteResp from 2 at term 2
+raft2026/10/11 09:04:31 INFO: 1 has received 2 MsgVoteResp votes and 0 vote rejections
+raft2026/10/11 09:04:31 INFO: 1 became leader at term 2
+--- FAIL: TestCertifiedGraphReviewEarlyAbortClosesWithoutResolvingAbsentParticipant (1.23s)
+    certified_graph_review_corrections_test.go:41: healthy early ABORT made Fresh fail graphapply: invalid input
+2026/10/11 09:04:32 Found 0 WALs
+raft2026/10/11 09:04:32 INFO: 1 switched to configuration voters=(1 2 3)
+raft2026/10/11 09:04:32 INFO: 1 became follower at term 1
+raft2026/10/11 09:04:32 INFO: newRaft 1 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/11 09:04:32 Found 0 WALs
+raft2026/10/11 09:04:32 INFO: 2 switched to configuration voters=(1 2 3)
+raft2026/10/11 09:04:32 INFO: 2 became follower at term 1
+raft2026/10/11 09:04:32 INFO: newRaft 2 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/11 09:04:32 Found 0 WALs
+raft2026/10/11 09:04:32 INFO: 3 switched to configuration voters=(1 2 3)
+raft2026/10/11 09:04:32 INFO: 3 became follower at term 1
+raft2026/10/11 09:04:32 INFO: newRaft 3 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+raft2026/10/11 09:04:32 INFO: 1 is starting a new election at term 1
+raft2026/10/11 09:04:32 INFO: 1 became pre-candidate at term 1
+raft2026/10/11 09:04:32 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 2 at term 1
+raft2026/10/11 09:04:32 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 3 at term 1
+raft2026/10/11 09:04:32 INFO: 1 received MsgPreVoteResp from 1 at term 1
+raft2026/10/11 09:04:32 INFO: 1 has received 1 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/11 09:04:32 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/11 09:04:32 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/11 09:04:32 INFO: 1 received MsgPreVoteResp from 2 at term 1
+raft2026/10/11 09:04:32 INFO: 1 has received 2 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/11 09:04:32 INFO: 1 became candidate at term 2
+raft2026/10/11 09:04:32 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 2 at term 2
+raft2026/10/11 09:04:32 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 3 at term 2
+raft2026/10/11 09:04:32 INFO: 1 received MsgVoteResp from 1 at term 2
+raft2026/10/11 09:04:32 INFO: 1 has received 1 MsgVoteResp votes and 0 vote rejections
+raft2026/10/11 09:04:32 INFO: 2 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/11 09:04:32 INFO: 2 became follower at term 2
+raft2026/10/11 09:04:32 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/11 09:04:32 INFO: 3 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/11 09:04:32 INFO: 3 became follower at term 2
+raft2026/10/11 09:04:32 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/11 09:04:32 INFO: 1 received MsgVoteResp from 2 at term 2
+raft2026/10/11 09:04:32 INFO: 1 has received 2 MsgVoteResp votes and 0 vote rejections
+raft2026/10/11 09:04:32 INFO: 1 became leader at term 2
+2026/10/11 09:04:32 Found 0 WALs
+raft2026/10/11 09:04:32 INFO: 1 switched to configuration voters=(1 2 3)
+raft2026/10/11 09:04:32 INFO: 1 became follower at term 1
+raft2026/10/11 09:04:32 INFO: newRaft 1 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/11 09:04:32 Found 0 WALs
+raft2026/10/11 09:04:32 INFO: 2 switched to configuration voters=(1 2 3)
+raft2026/10/11 09:04:32 INFO: 2 became follower at term 1
+raft2026/10/11 09:04:32 INFO: newRaft 2 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/11 09:04:32 Found 0 WALs
+raft2026/10/11 09:04:32 INFO: 3 switched to configuration voters=(1 2 3)
+raft2026/10/11 09:04:32 INFO: 3 became follower at term 1
+raft2026/10/11 09:04:32 INFO: newRaft 3 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+raft2026/10/11 09:04:32 INFO: 1 is starting a new election at term 1
+raft2026/10/11 09:04:32 INFO: 1 became pre-candidate at term 1
+raft2026/10/11 09:04:32 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 2 at term 1
+raft2026/10/11 09:04:32 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 3 at term 1
+raft2026/10/11 09:04:32 INFO: 1 received MsgPreVoteResp from 1 at term 1
+raft2026/10/11 09:04:32 INFO: 1 has received 1 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/11 09:04:32 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/11 09:04:32 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/11 09:04:32 INFO: 1 received MsgPreVoteResp from 2 at term 1
+raft2026/10/11 09:04:32 INFO: 1 has received 2 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/11 09:04:32 INFO: 1 became candidate at term 2
+raft2026/10/11 09:04:32 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 2 at term 2
+raft2026/10/11 09:04:32 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 3 at term 2
+raft2026/10/11 09:04:32 INFO: 1 received MsgVoteResp from 1 at term 2
+raft2026/10/11 09:04:32 INFO: 1 has received 1 MsgVoteResp votes and 0 vote rejections
+raft2026/10/11 09:04:32 INFO: 2 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/11 09:04:32 INFO: 2 became follower at term 2
+raft2026/10/11 09:04:32 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/11 09:04:32 INFO: 3 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/11 09:04:32 INFO: 3 became follower at term 2
+raft2026/10/11 09:04:32 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/11 09:04:32 INFO: 1 received MsgVoteResp from 2 at term 2
+raft2026/10/11 09:04:32 INFO: 1 has received 2 MsgVoteResp votes and 0 vote rejections
+raft2026/10/11 09:04:32 INFO: 1 became leader at term 2
+--- FAIL: TestCertifiedGraphReviewOversizedScopeRefusesBeforeAllocation (0.42s)
+    certified_graph_review_corrections_test.go:69: known oversized scope allocated 1 times before rejection
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	1.977s
+FAIL
+limit: {"command": ["go", "-C", "v5", "test", "./internal/graphapply", "-run", "^TestCertifiedGraphReview", "-count=1"], "rss_limit_mib": 4096.0, "wall_limit_s": 180.0, "sample_interval_s": 0.25, "peak_tree_rss_mib": 541.672, "elapsed_s": 6.024, "exit_code": 1, "reason": "command-failed"}

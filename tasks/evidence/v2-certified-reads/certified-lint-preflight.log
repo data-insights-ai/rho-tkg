@@ -1,0 +1,19 @@
+docker run --rm --memory=4g --memory-swap=4g --cpus=2 -e GOTOOLCHAIN=local -e GOMAXPROCS=2 -e GOFLAGS=-p=1 -e GOMEMLIMIT=2GiB -e GOWORK=off -v /var/tmp/rho-v5-v2-certified-reads-20261011:/src -w /src/v5 -v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build golang:1.26.9 sh -c 'go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 && golangci-lint run --config ../.golangci.yml ./...'
+v5/internal/graphapply/certified_graph_contract.go:4:1: File is not properly formatted (goimports)
+	"crypto/sha256"
+^
+v5/internal/graphapply/certified_graph_acceptance_test.go:458:20: SA1012: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (staticcheck)
+	if v, e := c.Open(nil, graphReadRequest{}, nil); !errors.Is(e, errInvalid) || v != nil {
+	                  ^
+v5/internal/graphapply/certified_graph_guards_test.go:172:34: SA1012: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (staticcheck)
+	if _, e := h.AtGraphCertificate(nil, certificate); !errors.Is(e, errInvalid) {
+	                                ^
+v5/internal/graphapply/certified_graph_contract.go:21:125: newCertifiedGraphMaterializer - result 0 (*github.com/data-insights-ai/rho-tkg/v5/internal/graphapply.declaredMaterializer) is never used (unparam)
+func newCertifiedGraphMaterializer(s *raftlog.Store, n namespace, d graphstore.OwnershipDeclaration, l materializerLimits) (*declaredMaterializer, error) {
+                                                                                                                            ^
+4 issues:
+* goimports: 1
+* staticcheck: 2
+* unparam: 1
+make: *** [lint-docker] Error 1
+limit: {"command": ["make", "lint-docker", "DOCKER_GO=docker run --rm --memory=4g --memory-swap=4g --cpus=2 -e GOTOOLCHAIN=local -e GOMAXPROCS=2 -e GOFLAGS=-p=1 -e GOMEMLIMIT=2GiB -e GOWORK=off -v /var/tmp/rho-v5-v2-certified-reads-20261011:/src -w /src/v5 -v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build golang:1.26.9"], "rss_limit_mib": 4096.0, "wall_limit_s": 180.0, "sample_interval_s": 0.25, "peak_tree_rss_mib": 28.078, "elapsed_s": 20.692, "exit_code": 2, "reason": "command-failed"}

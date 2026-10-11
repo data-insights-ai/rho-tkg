@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added internal v5 certified graph reads with Fresh, Stable, At and After
+  modes over declared partitions. Separate durable read fences, resolved
+  certificates and retained graph/routing round prefixes prevent mixed
+  cross-partition answers and preserve old endpoint, component and index state.
+  Followers verify applied certificate positions; scoped reads refuse missing
+  authority, and cumulative budgets and owned handles bound retained readers.
+  A distinct semantic binding refuses older write-only stores. Public consumer
+  APIs, ownership transfer, engine comparison and full V2 remain open.
+
 - Added bounded read-only v5 registry inventory audits for current and genuine
   prepared cuts. Reciprocal controls, complete canonical originals, retained
   roots/outcomes and physical-record census are checked through finite phases
@@ -42,8 +51,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   snapshots retain reservation history and prepared locks. Transaction identities
   include the graph, coordinator and original retry key; pending-install admission
   charges recovery envelopes, and prepared snapshot contracts retain the recovery
-  policy. Certified distributed
-  graph reads, broader fault/ownership evidence and full V2 acceptance remain
+  policy. Broader fault/ownership evidence and full V2 acceptance remain
   open in `tasks/backlog.md`.
 
 - Added checked partition-local v5 graph mutations on declared partitions,
@@ -54,8 +62,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   planning, staging and result composition without widening existing limits;
   it is not a heap/RSS bound. Retained graph history and typed change records
   survive nonempty snapshot activation, leader change and durable reopen.
-  Existing command formats remain unchanged. Certified distributed graph reads
-  and full V2 acceptance remain open.
+  Existing command formats remain unchanged. Public graph APIs and full V2
+  acceptance remain open.
 
 - Added v5 retained-view RootAt and ApplicationRecord reads within the
   captured bank/generation, including verified prepared and retired banks.

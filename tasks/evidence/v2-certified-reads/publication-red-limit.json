@@ -1,0 +1,17 @@
+{
+  "command": [
+    "go",
+    "test",
+    "./internal/graphapply",
+    "-run",
+    "^TestCertifiedReadPublicationNeedsMappedRound$",
+    "-count=1"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 514.859,
+  "elapsed_s": 7.985,
+  "exit_code": 1,
+  "reason": "command-failed"
+}

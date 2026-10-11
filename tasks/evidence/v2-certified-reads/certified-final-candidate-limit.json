@@ -1,0 +1,20 @@
+{
+  "command": [
+    "go",
+    "-C",
+    "v5",
+    "test",
+    "./internal/graphapply",
+    "-run",
+    "^TestCertified",
+    "-count=1",
+    "-coverprofile=../tasks/evidence/v2-certified-reads/certified-initial-coverage.out"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 555.578,
+  "elapsed_s": 29.422,
+  "exit_code": 0,
+  "reason": "completed"
+}

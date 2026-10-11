@@ -1,0 +1,8 @@
+file=v5/internal/graphapply/certified_graph_cut.go
+original_sha256=fe83223320b20db243ba144a2aa8b92c2f5dcfec76a2c3137750182d15b3b1b9
+replace:
+if present {
+				return refuse(graphCutPending)
+			}
+with:
+if false && present { return refuse(graphCutPending) }

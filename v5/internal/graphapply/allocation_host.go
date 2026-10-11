@@ -52,6 +52,7 @@ type allocationEvent struct {
 	replies         []allocationReply
 	crossReplies    []crossReply
 	capacityReplies []crossCapacityReply
+	cutReplies      []graphCutReply
 }
 
 // allocationProposal is an owned source-created command. Its private constructor
@@ -78,6 +79,7 @@ type allocationHost struct {
 	pending         map[allocationReadID]allocationQuery
 	crossPending    map[allocationReadID]crossQuery
 	capacityPending map[allocationReadID]crossCapacityQuestion
+	cutPending      map[allocationReadID]graphCutQuery
 	recipients      map[[16]byte]*allocationRecipientHandle
 	closed          bool
 	closeErr        error
@@ -137,6 +139,17 @@ func (h *allocationHost) event(out replica.Output, eventErr error) (allocationEv
 		return allocationEvent{}, errLimit
 	}
 	for _, ready := range out.Reads {
+		if bytes.HasPrefix(ready.Context, []byte{'G', 'S', 'R', 1}) {
+			if ready.Index > out.Applied || h.driver.Applied() < ready.Index {
+				return allocationEvent{}, errInvalid
+			}
+			r, readErr := h.completeGraphCutRead(ready.Context, out.Applied)
+			if readErr != nil {
+				return allocationEvent{}, readErr
+			}
+			e.cutReplies = append(e.cutReplies, r)
+			continue
+		}
 		if bytes.HasPrefix(ready.Context, []byte{'G', 'C', 'C', 1}) {
 			if ready.Index > out.Applied || h.driver.Applied() < ready.Index {
 				return allocationEvent{}, errInvalid
@@ -227,8 +240,13 @@ func (h *allocationHost) Submit(p allocationProposal) (allocationEvent, error) {
 	if p.target != local || len(p.wire) < requestHeaderBytes || len(p.wire) > h.machine.limits.commandBytes {
 		return allocationEvent{}, errInvalid
 	}
-	if isCrossPartitionWire(p.wire) {
-		if h.machine.SemanticContractID() != crossPartitionSemanticContractID() {
+	if isGraphCutWire(p.wire) {
+		c, e := decodeGraphCutCommand(p.wire)
+		if e != nil || !h.machine.certifiedReads() || c.scope != h.machine.scope() {
+			return allocationEvent{}, errors.Join(errInvalid, e)
+		}
+	} else if isCrossPartitionWire(p.wire) {
+		if !crossGraphAgreement(h.machine.SemanticContractID()) {
 			return allocationEvent{}, errInvalid
 		}
 		r, _, err := decodeCrossCommand(p.wire, h.machine.limits)
@@ -251,7 +269,7 @@ func (h *allocationHost) Submit(p allocationProposal) (allocationEvent, error) {
 		if err != nil {
 			return allocationEvent{}, err
 		}
-		if r.semanticContractID() != h.machine.SemanticContractID() && (r.version() != 6 || h.machine.SemanticContractID() != crossPartitionSemanticContractID()) {
+		if r.semanticContractID() != h.machine.SemanticContractID() && (r.version() != 6 || !crossGraphAgreement(h.machine.SemanticContractID())) {
 			return allocationEvent{}, errInvalid
 		}
 
@@ -296,7 +314,7 @@ func (h *allocationHost) Read(q allocationQuery) (allocationEvent, error) {
 	if err := q.validate(h.machine.ns.graph); err != nil {
 		return allocationEvent{}, err
 	}
-	if h.sequence == math.MaxUint64 || len(h.pending)+len(h.crossPending)+len(h.capacityPending) >= 16 {
+	if h.sequence == math.MaxUint64 || len(h.pending)+len(h.crossPending)+len(h.capacityPending)+len(h.cutPending) >= 16 {
 		return allocationEvent{}, errLimit
 	}
 	h.sequence++
@@ -330,6 +348,7 @@ func (h *allocationHost) Close() error {
 	clear(h.pending)
 	clear(h.crossPending)
 	clear(h.capacityPending)
+	clear(h.cutPending)
 	clear(h.recipients)
 	h.closeErr = h.driver.Close()
 	return h.closeErr

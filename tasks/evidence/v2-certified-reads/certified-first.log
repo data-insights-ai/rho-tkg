@@ -1,0 +1,6 @@
+# github.com/data-insights-ai/rho-tkg/v5/internal/graphapply [github.com/data-insights-ai/rho-tkg/v5/internal/graphapply.test]
+internal/graphapply/certified_graph_reader.go:256:26: first.machine.currentConfiguration undefined (type *declaredMaterializer has no field or method currentConfiguration)
+internal/graphapply/certified_graph_acceptance_test.go:12:2: "github.com/data-insights-ai/rho-tkg/v5/internal/raftlog" imported and not used
+FAIL	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply [build failed]
+FAIL
+limit: {"command": ["go", "test", "./internal/graphapply", "-run", "^TestCertified", "-count=1"], "rss_limit_mib": 4096.0, "wall_limit_s": 180.0, "sample_interval_s": 0.25, "peak_tree_rss_mib": 287.312, "elapsed_s": 3.039, "exit_code": 1, "reason": "command-failed"}

@@ -1,0 +1,78 @@
+2026/10/11 08:46:43 Found 0 WALs
+raft2026/10/11 08:46:44 INFO: 1 switched to configuration voters=(1 2 3)
+raft2026/10/11 08:46:44 INFO: 1 became follower at term 1
+raft2026/10/11 08:46:44 INFO: newRaft 1 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/11 08:46:44 Found 0 WALs
+raft2026/10/11 08:46:44 INFO: 2 switched to configuration voters=(1 2 3)
+raft2026/10/11 08:46:44 INFO: 2 became follower at term 1
+raft2026/10/11 08:46:44 INFO: newRaft 2 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/11 08:46:44 Found 0 WALs
+raft2026/10/11 08:46:44 INFO: 3 switched to configuration voters=(1 2 3)
+raft2026/10/11 08:46:44 INFO: 3 became follower at term 1
+raft2026/10/11 08:46:44 INFO: newRaft 3 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+raft2026/10/11 08:46:44 INFO: 1 is starting a new election at term 1
+raft2026/10/11 08:46:44 INFO: 1 became pre-candidate at term 1
+raft2026/10/11 08:46:44 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 2 at term 1
+raft2026/10/11 08:46:44 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 3 at term 1
+raft2026/10/11 08:46:44 INFO: 1 received MsgPreVoteResp from 1 at term 1
+raft2026/10/11 08:46:44 INFO: 1 has received 1 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/11 08:46:44 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/11 08:46:44 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/11 08:46:44 INFO: 1 received MsgPreVoteResp from 2 at term 1
+raft2026/10/11 08:46:44 INFO: 1 has received 2 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/11 08:46:44 INFO: 1 became candidate at term 2
+raft2026/10/11 08:46:44 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 2 at term 2
+raft2026/10/11 08:46:44 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 3 at term 2
+raft2026/10/11 08:46:44 INFO: 1 received MsgVoteResp from 1 at term 2
+raft2026/10/11 08:46:44 INFO: 1 has received 1 MsgVoteResp votes and 0 vote rejections
+raft2026/10/11 08:46:44 INFO: 2 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/11 08:46:44 INFO: 2 became follower at term 2
+raft2026/10/11 08:46:44 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/11 08:46:44 INFO: 3 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/11 08:46:44 INFO: 3 became follower at term 2
+raft2026/10/11 08:46:44 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/11 08:46:44 INFO: 1 received MsgVoteResp from 2 at term 2
+raft2026/10/11 08:46:44 INFO: 1 has received 2 MsgVoteResp votes and 0 vote rejections
+raft2026/10/11 08:46:44 INFO: 1 became leader at term 2
+2026/10/11 08:46:44 Found 0 WALs
+raft2026/10/11 08:46:44 INFO: 1 switched to configuration voters=(1 2 3)
+raft2026/10/11 08:46:44 INFO: 1 became follower at term 1
+raft2026/10/11 08:46:44 INFO: newRaft 1 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/11 08:46:44 Found 0 WALs
+raft2026/10/11 08:46:44 INFO: 2 switched to configuration voters=(1 2 3)
+raft2026/10/11 08:46:44 INFO: 2 became follower at term 1
+raft2026/10/11 08:46:44 INFO: newRaft 2 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/11 08:46:44 Found 0 WALs
+raft2026/10/11 08:46:44 INFO: 3 switched to configuration voters=(1 2 3)
+raft2026/10/11 08:46:44 INFO: 3 became follower at term 1
+raft2026/10/11 08:46:44 INFO: newRaft 3 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+raft2026/10/11 08:46:44 INFO: 1 is starting a new election at term 1
+raft2026/10/11 08:46:44 INFO: 1 became pre-candidate at term 1
+raft2026/10/11 08:46:44 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 2 at term 1
+raft2026/10/11 08:46:44 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 3 at term 1
+raft2026/10/11 08:46:44 INFO: 1 received MsgPreVoteResp from 1 at term 1
+raft2026/10/11 08:46:44 INFO: 1 has received 1 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/11 08:46:44 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/11 08:46:44 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/11 08:46:44 INFO: 1 received MsgPreVoteResp from 2 at term 1
+raft2026/10/11 08:46:44 INFO: 1 has received 2 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/11 08:46:44 INFO: 1 became candidate at term 2
+raft2026/10/11 08:46:44 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 2 at term 2
+raft2026/10/11 08:46:44 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 3 at term 2
+raft2026/10/11 08:46:44 INFO: 1 received MsgVoteResp from 1 at term 2
+raft2026/10/11 08:46:44 INFO: 1 has received 1 MsgVoteResp votes and 0 vote rejections
+raft2026/10/11 08:46:44 INFO: 2 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/11 08:46:44 INFO: 2 became follower at term 2
+raft2026/10/11 08:46:44 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/11 08:46:44 INFO: 3 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/11 08:46:44 INFO: 3 became follower at term 2
+raft2026/10/11 08:46:44 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/11 08:46:44 INFO: 1 received MsgVoteResp from 2 at term 2
+raft2026/10/11 08:46:44 INFO: 1 has received 2 MsgVoteResp votes and 0 vote rejections
+raft2026/10/11 08:46:44 INFO: 1 became leader at term 2
+--- FAIL: TestCertifiedGraphCollectionFenceRaceExcludesHigherInstalledState (1.36s)
+    certified_graph_acceptance_test.go:273: exact projection 1 {{1 1 {{[31 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 2 1 posix-unix-epoch:1970-01-01T00:00:00Z:v1 millisecond} [133 125 72 184 224 38 114 67 117 188 118 251 8 250 33 255 6 16 253 193 2 138 102 100 221 98 97 90 86 134 136 239]}  0 0 0 3 1} true true 2 [after-collection] [] [{0 false false 0 0} {0 false false 0 0}] [{1 [4 191 75 184 96 44 210 155 81 164 96 181 225 105 152 174] 18 false 1 0 0  0 {0  0 0 false {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []} <nil>} {0 0 0  0} {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []} {0 0 0 } {{ 0 0 0 0} {0  0 0 false {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []} <nil>} {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []}} {0 0 {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []}}} {6 [4 191 75 184 96 44 210 155 81 164 96 181 225 105 152 174] 18 false 0 0 0  0 {0  0 0 false {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []} <nil>} {1 0 1  0} {{{[31 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 2 1 posix-unix-epoch:1970-01-01T00:00:00Z:v1 millisecond} [133 125 72 184 224 38 114 67 117 188 118 251 8 250 33 255 6 16 253 193 2 138 102 100 221 98 97 90 86 134 136 239]} 3 [{{2 {{{[31 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 2 1 posix-unix-epoch:1970-01-01T00:00:00Z:v1 millisecond} [133 125 72 184 224 38 114 67 117 188 118 251 8 250 33 255 6 16 253 193 2 138 102 100 221 98 97 90 86 134 136 239]} {0 <nil>} {{5 <nil>} {0 <nil>}} {0 <nil>}} true} {2 {{{[31 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 2 1 posix-unix-epoch:1970-01-01T00:00:00Z:v1 millisecond} [133 125 72 184 224 38 114 67 117 188 118 251 8 250 33 255 6 16 253 193 2 138 102 100 221 98 97 90 86 134 136 239]} {0 <nil>} {{5 <nil>} {0 <nil>}} {0 <nil>}} true}}]} {0 0 0 } {{ 0 0 0 0} {0  0 0 false {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []} <nil>} {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []}} {0 0 {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []}}} {2 [4 191 75 184 96 44 210 155 81 164 96 181 225 105 152 174] 18 false 1 0 2  0 {0  0 0 false {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []} <nil>} {0 0 0  0} {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []} {0 0 0 } {{ 0 0 0 0} {0  0 0 false {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []} <nil>} {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []}} {0 0 {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []}}} {1 [4 191 75 184 96 44 210 155 81 164 96 181 225 105 152 174] 18 false 1 0 0  0 {0  0 0 false {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []} <nil>} {0 0 0  0} {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []} {0 0 0 } {{ 0 0 0 0} {0  0 0 false {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []} <nil>} {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []}} {0 0 {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []}}} {7 [4 191 75 184 96 44 210 155 81 164 96 181 225 105 152 174] 18 false 0 0 0  0 {0  0 0 false {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []} <nil>} {0 0 0  0} {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []} {1 2 0 } {{ 0 0 0 0} {0  0 0 false {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []} <nil>} {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []}} {0 0 {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []}}} {6 [4 191 75 184 96 44 210 155 81 164 96 181 225 105 152 174] 18 false 0 0 0  0 {0  0 0 false {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []} <nil>} {1 2 2 after-collection 0} {{{[31 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 2 1 posix-unix-epoch:1970-01-01T00:00:00Z:v1 millisecond} [133 125 72 184 224 38 114 67 117 188 118 251 8 250 33 255 6 16 253 193 2 138 102 100 221 98 97 90 86 134 136 239]} 3 [{{2 {{{[31 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 2 1 posix-unix-epoch:1970-01-01T00:00:00Z:v1 millisecond} [133 125 72 184 224 38 114 67 117 188 118 251 8 250 33 255 6 16 253 193 2 138 102 100 221 98 97 90 86 134 136 239]} {0 <nil>} {{5 <nil>} {0 <nil>}} {0 <nil>}} true} {2 {{{[31 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 2 1 posix-unix-epoch:1970-01-01T00:00:00Z:v1 millisecond} [133 125 72 184 224 38 114 67 117 188 118 251 8 250 33 255 6 16 253 193 2 138 102 100 221 98 97 90 86 134 136 239]} {0 <nil>} {{5 <nil>} {0 <nil>}} {0 <nil>}} true}}]} {0 0 0 } {{ 0 0 0 0} {0  0 0 false {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []} <nil>} {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []}} {0 0 {{{[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 0 0  } [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} 0 []}}}]} <nil>
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	1.744s
+FAIL
+limit: {"command": ["go", "-C", "v5", "test", "./internal/graphapply", "-run", "^TestCertifiedGraphCollectionFenceRaceExcludesHigherInstalledState$", "-count=1"], "rss_limit_mib": 4096.0, "wall_limit_s": 180.0, "sample_interval_s": 0.25, "peak_tree_rss_mib": 541.609, "elapsed_s": 6.308, "exit_code": 1, "reason": "command-failed"}

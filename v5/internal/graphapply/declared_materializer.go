@@ -191,6 +191,9 @@ func (m *declaredMaterializer) initialized(q *reader) (genesisAllocationConfig, 
 		if _, err := readPartitionRoundFloor(q, configuration); err != nil {
 			return genesisAllocationConfig{}, err
 		}
+		if err := m.checkCertifiedPrerequisites(q, configuration); err != nil {
+			return genesisAllocationConfig{}, err
+		}
 	}
 	return cfg, nil
 }
@@ -225,10 +228,10 @@ func (m *declaredMaterializer) Restore(index uint64, image []byte) (err error) {
 		return m.seed(&q)
 	}
 	_, err = m.initialized(&q)
-	if err == nil && m.SemanticContractID() == crossPartitionSemanticContractID() {
+	if err == nil && crossGraphAgreement(m.SemanticContractID()) {
 		_, _, err = m.readCrossResourceOwner(&q)
 	}
-	if err == nil && m.SemanticContractID() == crossPartitionSemanticContractID() {
+	if err == nil && crossGraphAgreement(m.SemanticContractID()) {
 		err = m.checkCrossLock(&q)
 	}
 	return err
@@ -312,6 +315,32 @@ func (m *declaredMaterializer) finish(q *reader, o outcome, hash [32]byte, mapRe
 			return raftlog.ApplicationBatch{}, errCorrupt
 		}
 	}
+	if m.certifiedReads() && cfg.version() == 3 && (effects != nil || !bytes.Equal(b.Image, q.base.Image)) {
+		configuration, e := cfg.digest()
+		if e != nil {
+			return raftlog.ApplicationBatch{}, e
+		}
+		round := uint64(0)
+		if effects == nil {
+			installed, e := readPartitionRoundFloor(q, configuration)
+			if e != nil {
+				return raftlog.ApplicationBatch{}, e
+			}
+			floor, e := m.allocationFloor(q, configuration, installed)
+			if e != nil {
+				return raftlog.ApplicationBatch{}, e
+			}
+			if floor >= math.MaxUint64-1 {
+				return raftlog.ApplicationBatch{}, errLimit
+			}
+			round = floor + 1
+			if e := writePartitionRoundFloor(q, configuration, round); e != nil {
+				return raftlog.ApplicationBatch{}, e
+			}
+			b.Writes = q.writes
+		}
+		return m.finishPartitionRoundMap(q, b, configuration, round, o.index, budget, 0)
+	}
 	if err := m.preflight(b, budget); err != nil {
 		return raftlog.ApplicationBatch{}, err
 	}
@@ -379,6 +408,9 @@ func (m *declaredMaterializer) Stage(entry replica.Entry, budget raftlog.Applica
 			return raftlog.ApplicationBatch{}, errCorrupt
 		}
 	}
+	if isGraphCutWire(entry.Data) {
+		return m.stageGraphCut(&q, entry, budget)
+	}
 	if isCrossPartitionWire(entry.Data) {
 		return m.stageCrossPartition(&q, info, entry, budget)
 	}
@@ -422,7 +454,7 @@ func (m *declaredMaterializer) Stage(entry replica.Entry, budget raftlog.Applica
 		if err != nil {
 			return raftlog.ApplicationBatch{}, err
 		}
-		if m.SemanticContractID() == crossPartitionSemanticContractID() {
+		if crossGraphAgreement(m.SemanticContractID()) {
 			lock, e := crossLock(&q)
 			if e != nil {
 				return raftlog.ApplicationBatch{}, e
@@ -525,6 +557,11 @@ func (m *declaredMaterializer) Stage(entry replica.Entry, budget raftlog.Applica
 		}
 		if err := writePartitionRoundFloor(&q, configuration, 0); err != nil {
 			return raftlog.ApplicationBatch{}, err
+		}
+		if m.certifiedReads() {
+			if err := q.put(graphFenceKey(m.ns), encodeGraphFence(configuration, 0)); err != nil {
+				return raftlog.ApplicationBatch{}, err
+			}
 		}
 	}
 	if m.ns.partition == cfg.home {

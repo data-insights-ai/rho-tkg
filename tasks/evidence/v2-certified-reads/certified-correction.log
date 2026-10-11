@@ -1,0 +1,2 @@
+ok  	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	23.281s	coverage: 44.7% of statements
+limit: {"command": ["go", "-C", "v5", "test", "./internal/graphapply", "-run", "^TestCertified", "-count=1", "-coverprofile=../tasks/evidence/v2-certified-reads/certified-initial-coverage.out"], "rss_limit_mib": 4096.0, "wall_limit_s": 180.0, "sample_interval_s": 0.25, "peak_tree_rss_mib": 572.0, "elapsed_s": 27.275, "exit_code": 0, "reason": "completed"}

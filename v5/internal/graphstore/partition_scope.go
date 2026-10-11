@@ -11,6 +11,9 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/types"
 )
 
+// ErrScopeUnavailable refuses a required authority outside selected read coverage.
+var ErrScopeUnavailable = errors.New("graphstore: required authority is outside read scope")
+
 // partitionReadScope is an immutable-view routing proof. Fixed range witnesses
 // can be reused only within that exact captured view; no per-fact cache grows.
 type partitionReadScope struct {

@@ -35,8 +35,8 @@ func (h *allocationHost) PreparePartitionInitialization(partition uint64, attemp
 		return allocationProposal{}, errInvalid
 	}
 	agreement := partitionWriteSemanticContractID()
-	if h != nil && h.machine != nil && h.machine.SemanticContractID() == crossPartitionSemanticContractID() {
-		agreement = crossPartitionSemanticContractID()
+	if h != nil && h.machine != nil && crossGraphAgreement(h.machine.SemanticContractID()) {
+		agreement = h.machine.SemanticContractID()
 	}
 	return h.prepareInitialization(partition, attempt, schemas, maxBlock, binding, genesis, agreement, new(routing))
 }

@@ -18,8 +18,20 @@ func newCrossPartitionNetwork(t *testing.T) *allocationTestNetwork {
 	return newCrossPartitionNetworkWithPolicy(t, nil)
 }
 func newCrossPartitionNetworkWithPolicy(t *testing.T, adjust func(*raftlog.ApplicationPolicy)) *allocationTestNetwork {
+	return newCrossPartitionNetworkAgreement(t, adjust, crossPartitionSemanticContractID())
+}
+func newCertifiedGraphNetwork(t *testing.T) *allocationTestNetwork {
+	return newCrossPartitionNetworkAgreement(t, nil, certifiedGraphSemanticContractID())
+}
+func newCrossPartitionNetworkAgreement(t *testing.T, adjust func(*raftlog.ApplicationPolicy), agreement raftlog.ApplicationSemanticContractID) *allocationTestNetwork {
+	return newCrossPartitionNetworkSpecification(t, adjust, agreement, nil)
+}
+func newCrossPartitionNetworkSpecification(t *testing.T, adjust func(*raftlog.ApplicationPolicy), agreement raftlog.ApplicationSemanticContractID, spec func(*declaredInitCommand)) *allocationTestNetwork {
 	t.Helper()
 	r := partitionCodecRequest(t, 1, defaultMaterializerLimits())
+	if spec != nil {
+		spec(&r)
+	}
 	n := &allocationTestNetwork{t: t, d: r.declaration, pending: make(map[[16]byte]allocationProof)}
 	for group, partition := range []uint64{3, 8} {
 		for member := range 3 {
@@ -39,7 +51,7 @@ func newCrossPartitionNetworkWithPolicy(t *testing.T, adjust func(*raftlog.Appli
 				t.Fatal(err)
 			}
 			part, _ := n.d.Partition(partition)
-			cfg := raftlog.Config{Dir: filepath.Join(t.TempDir(), fmt.Sprintf("partition%d-member%d", partition, id)), Create: true, Application: p, Controls: controls, Recovery: recovery, Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(n.d.Graph()), Partition: partition, Group: part.Group}, Contract: contract, Limits: raftlog.DefaultApplicationTransferLimits()}, Generations: raftlog.ApplicationGenerationLimits{MaxBytes: 32 << 20, MaxRecords: 16384}, PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 4096}, Replication: raftlog.ApplicationReplicationConfig{Voters: [3]uint64{1, 2, 3}}, SemanticContractID: crossPartitionSemanticContractID()}
+			cfg := raftlog.Config{Dir: filepath.Join(t.TempDir(), fmt.Sprintf("partition%d-member%d", partition, id)), Create: true, Application: p, Controls: controls, Recovery: recovery, Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(n.d.Graph()), Partition: partition, Group: part.Group}, Contract: contract, Limits: raftlog.DefaultApplicationTransferLimits()}, Generations: raftlog.ApplicationGenerationLimits{MaxBytes: 32 << 20, MaxRecords: 16384}, PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 4096}, Replication: raftlog.ApplicationReplicationConfig{Voters: [3]uint64{1, 2, 3}}, SemanticContractID: agreement}
 			n.configs[group][member] = cfg
 			s, err := raftlog.Open(cfg)
 			if err != nil {
@@ -53,7 +65,12 @@ func newCrossPartitionNetworkWithPolicy(t *testing.T, adjust func(*raftlog.Appli
 			if err := graphstore.BootstrapBoundOwnership(s, s.ApplicationBinding(), n.d, [3]uint64{1, 2, 3}); err != nil {
 				t.Fatal(err)
 			}
-			m, err := newCrossPartitionMaterializer(s, namespace{idalloc.GraphID(n.d.Graph()), partition}, n.d, defaultMaterializerLimits())
+			var m *declaredMaterializer
+			if agreement == certifiedGraphSemanticContractID() {
+				m, err = newCertifiedGraphMaterializer(s, namespace{idalloc.GraphID(n.d.Graph()), partition}, n.d, defaultMaterializerLimits())
+			} else {
+				m, err = newCrossPartitionMaterializer(s, namespace{idalloc.GraphID(n.d.Graph()), partition}, n.d, defaultMaterializerLimits())
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -75,13 +92,13 @@ func newCrossPartitionNetworkWithPolicy(t *testing.T, adjust func(*raftlog.Appli
 		n.pump(group, event)
 	}
 	h := n.hosts[0][0]
-	p, err := h.PreparePartitionInitialization(3, bootstrapAttemptID{1}, partitionWriteSchemas(), 16, graphGenesisBinding(t), *r.routing, allocationProof{})
+	p, err := h.PreparePartitionInitialization(3, bootstrapAttemptID{1}, partitionWriteSchemas(), r.maxBlock, graphGenesisBinding(t), *r.routing, allocationProof{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	n.submit(0, p)
 	proof := n.read(0, allocationQuery{kind: observeConfiguration})
-	p, err = h.PreparePartitionInitialization(8, bootstrapAttemptID{2}, partitionWriteSchemas(), 16, graphGenesisBinding(t), *r.routing, proof)
+	p, err = h.PreparePartitionInitialization(8, bootstrapAttemptID{2}, partitionWriteSchemas(), r.maxBlock, graphGenesisBinding(t), *r.routing, proof)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -549,7 +566,7 @@ func crossReopenAll(t *testing.T, n *allocationTestNetwork) {
 				t.Fatal("durable reopen", err)
 			}
 			part := cfg.Transfer.Identity.Partition
-			m, err := newCrossPartitionMaterializer(s, namespace{idalloc.GraphID(n.d.Graph()), part}, n.d, defaultMaterializerLimits())
+			m, err := newDeclaredMaterializerWithAgreement(s, namespace{idalloc.GraphID(n.d.Graph()), part}, n.d, defaultMaterializerLimits(), cfg.SemanticContractID)
 			if err != nil {
 				t.Fatal("prepared graph restore", err)
 			}

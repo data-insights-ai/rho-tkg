@@ -1,0 +1,7 @@
+{
+  "baseline": "40104a61853d2de9628f39e0042be94ade494ba1",
+  "source": "publication-red-source.go.txt",
+  "failure_class": "observed-routing-publication-missing-round-map",
+  "run": "publication-red.log",
+  "supervision": "publication-red-limit.json"
+}

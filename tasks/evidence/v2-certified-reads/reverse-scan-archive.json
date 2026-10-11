@@ -1,0 +1,67 @@
+{
+  "scope": "Bounded reverse MVCC scan helper; complete certified-read package acceptance remains open",
+  "archive": "reverse-scan.tar.gz",
+  "archive_sha256": "5ec579290fcdd555bee8272ca5ebadd956cdc968b8ff39773927f24ed1e962d6",
+  "files": [
+    {
+      "path": "rho-v5-v2-reverse-cover.out",
+      "sha256": "d792343fe30595fd6d678661829610b454b0d3a5a02d3ab0ebd9a8e1bd97a7c6"
+    },
+    {
+      "path": "rho-v5-v2-reverse-lint.json",
+      "sha256": "273b976fd809e8128f2daec8809857b264c846840841fb2889a2548187372407"
+    },
+    {
+      "path": "rho-v5-v2-reverse-mutant-inclusive-key.json",
+      "sha256": "982c461979241fb16f95badeebe3828c2ef4ad667bb4f660e3594033fac5cc68"
+    },
+    {
+      "path": "rho-v5-v2-reverse-mutant-inclusive-key.log",
+      "sha256": "1923b514688d9c142468c686f1698b79d41310785332abfe26f29f81085a44a9"
+    },
+    {
+      "path": "rho-v5-v2-reverse-mutant-oldest-version.json",
+      "sha256": "a53ed4c0e2afa2be3ad52dbdf8a082f73563e2c0f2c5ca88a8a9dfe0cfc966cf"
+    },
+    {
+      "path": "rho-v5-v2-reverse-mutant-oldest-version.log",
+      "sha256": "352cc59140e296498f9627654c52cda89518b52994ec170b51815d1bc433e559"
+    },
+    {
+      "path": "rho-v5-v2-reverse-mutants.json",
+      "sha256": "0cc803d3ff660ef4e37f7488de20d1677db613612a7a2c465f94ab79d0602c96"
+    },
+    {
+      "path": "rho-v5-v2-reverse-normal.json",
+      "sha256": "9458378e8cadcd69ee3a8d53728d0a65e555c00bc4c2d8d245107b2aecf2018e"
+    },
+    {
+      "path": "rho-v5-v2-reverse-provenance-budget.json",
+      "sha256": "ae615327db06dbdb1f6629489ea30376d42d672a52292a30d93f2389ee0d210a"
+    },
+    {
+      "path": "rho-v5-v2-reverse-provenance.log",
+      "sha256": "93830c9a7778bdeb5f7e870e31de1d35bc8c146b0e2022d1936f835a3e765178"
+    },
+    {
+      "path": "rho-v5-v2-reverse-race-cover.json",
+      "sha256": "5e43f513d4b2abce191146e51c884ddbf450ce72ace88881da79d6dc941ea991"
+    },
+    {
+      "path": "rho-v5-v2-reverse-receipt.json",
+      "sha256": "f47917c1dde0401fe530a19411fdf8a61c88884cbc8dcef3d9a08da3e5f5388e"
+    },
+    {
+      "path": "rho-v5-v2-reverse-security.json",
+      "sha256": "5b4e48871b65972c303c7cdf91536547a070f8b242104378af131dbdb1f1fc45"
+    },
+    {
+      "path": "rho-v5-v2-reverse-source.json",
+      "sha256": "f2c93319dbd21abecf8908f104e0004f781515f29cb79b7b1e15bad9f97c1a21"
+    },
+    {
+      "path": "rho-v5-v2-reverse-vuln.json",
+      "sha256": "5103a42470b6bc12c92c9e45d0e5207e4cc4158c3a4a85a57ce23a7557b7c74a"
+    }
+  ]
+}

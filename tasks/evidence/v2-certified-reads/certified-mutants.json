@@ -1,0 +1,26 @@
+[
+  {
+    "name": "current-root",
+    "file": "v5/internal/graphapply/certified_graph_cut.go",
+    "test": "TestCertifiedGraphCollectionFenceRaceExcludesHigherInstalledState",
+    "exit": 1,
+    "original_sha256": "fe83223320b20db243ba144a2aa8b92c2f5dcfec76a2c3137750182d15b3b1b9",
+    "mutated_sha256": "5e90f260886b51decc2da4bb0c1e0172cf1201009f21ce136c8f892a8e0abccc"
+  },
+  {
+    "name": "ignore-owner",
+    "file": "v5/internal/graphapply/certified_graph_cut.go",
+    "test": "TestCertifiedGraphRegistrationOnlyOwnerPreventsClosureWithoutStoppingDriver",
+    "exit": 1,
+    "original_sha256": "fe83223320b20db243ba144a2aa8b92c2f5dcfec76a2c3137750182d15b3b1b9",
+    "mutated_sha256": "12f0db61e65487f1239603d32a818f59bb5f0575eff8eeb7c8f021165d6d92dc"
+  },
+  {
+    "name": "fence-as-installed",
+    "file": "v5/internal/graphapply/cross_partition_materializer.go",
+    "test": "TestCertifiedGraphPreFenceCommitResolvesBelowReadFence",
+    "exit": 1,
+    "original_sha256": "1263d27965dfe259354628471b81ee1da993931a3d126d2306800a2c70c409a5",
+    "mutated_sha256": "ada27e2c130f6cb9a222410f840227b8ed01c837c9aaab5b027ef3955d7c912e"
+  }
+]

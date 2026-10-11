@@ -1,0 +1,19 @@
+{
+  "command": [
+    "go",
+    "-C",
+    "v5",
+    "test",
+    "./internal/graphapply",
+    "-run",
+    "^TestCertifiedGraphRegistrationOnlyOwnerPreventsClosureWithoutStoppingDriver$",
+    "-count=1"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 550.047,
+  "elapsed_s": 4.945,
+  "exit_code": 1,
+  "reason": "command-failed"
+}

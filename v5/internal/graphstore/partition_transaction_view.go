@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"slices"
 	"sync"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
@@ -38,8 +39,36 @@ type transactionRangeWitness struct {
 
 // OpenPartitionTransactionView checks every declared source against the exact
 // common genesis binding. Source and output consumption span all sources.
-func OpenPartitionTransactionView(ctx context.Context, sources []*raftlog.ApplicationView, d OwnershipDeclaration, binding types.DefaultAxisBinding, configuration [32]byte, l Limits, g GraphLimits, budget OwnershipBudget, output *graphstate.OutputBudget) (out *PartitionTransactionView, work PageWork, err error) {
-	if ctx == nil || !d.valid() || len(sources) != d.Len() || output == nil {
+func OpenPartitionTransactionView(ctx context.Context, sources []*raftlog.ApplicationView, d OwnershipDeclaration, binding types.DefaultAxisBinding, configuration [32]byte, l Limits, g GraphLimits, budget OwnershipBudget, output *graphstate.OutputBudget) (*PartitionTransactionView, PageWork, error) {
+	if len(sources) != d.Len() {
+		return nil, PageWork{}, ErrInvalid
+	}
+	return openPartitionCompositeView(ctx, sources, d, binding, configuration, l, g, budget, output)
+}
+
+// OpenPartitionScopedReadView borrows exactly the selected sources. Missing
+// authority refuses explicitly rather than expanding scope or proving absence.
+// It supplies no certification or installation authority.
+func OpenPartitionScopedReadView(ctx context.Context, sources []*raftlog.ApplicationView, scope []uint64, d OwnershipDeclaration, binding types.DefaultAxisBinding, configuration [32]byte, l Limits, g GraphLimits, budget OwnershipBudget, output *graphstate.OutputBudget) (*PartitionTransactionView, PageWork, error) {
+	if ctx == nil || len(scope) == 0 || len(scope) != len(sources) || len(scope) > d.Len() {
+		return nil, PageWork{}, ErrInvalid
+	}
+	for i, id := range scope {
+		if i > 0 && scope[i-1] >= id || sources[i] == nil {
+			return nil, PageWork{}, ErrInvalid
+		}
+		b, e := sources[i].ApplicationBinding(ctx)
+		if e != nil {
+			return nil, PageWork{}, e
+		}
+		if b.Identity.Partition != id {
+			return nil, PageWork{}, ErrNamespace
+		}
+	}
+	return openPartitionCompositeView(ctx, sources, d, binding, configuration, l, g, budget, output)
+}
+func openPartitionCompositeView(ctx context.Context, sources []*raftlog.ApplicationView, d OwnershipDeclaration, binding types.DefaultAxisBinding, configuration [32]byte, l Limits, g GraphLimits, budget OwnershipBudget, output *graphstate.OutputBudget) (out *PartitionTransactionView, work PageWork, err error) {
+	if ctx == nil || !d.valid() || len(sources) == 0 || len(sources) > d.Len() || output == nil {
 		return nil, work, ErrInvalid
 	}
 	if err := budget.validate(); err != nil {
@@ -108,6 +137,7 @@ func OpenPartitionTransactionView(ctx context.Context, sources []*raftlog.Applic
 			return out, work, ErrRebinding
 		}
 	}
+	out.views = slices.DeleteFunc(out.views, func(v *ReadView) bool { return v == nil })
 	for _, v := range out.views {
 		if v.route.routing.Digest() != out.views[0].route.routing.Digest() {
 			return out, work, ErrRebinding
@@ -138,7 +168,7 @@ func (v *PartitionTransactionView) source(partition uint64) (*ReadView, error) {
 			return s, nil
 		}
 	}
-	return nil, ErrRemoteParticipant
+	return nil, ErrScopeUnavailable
 }
 func (v *PartitionTransactionView) check(ctx context.Context) error {
 	if v == nil || ctx == nil {

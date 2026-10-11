@@ -15,7 +15,7 @@ func isPartitionGraphWire(data []byte) bool {
 	return len(data) >= 5 && string(data[:3]) == "PGQ" && (data[3] == 1 || data[3] == 2)
 }
 func (m *declaredMaterializer) stagePartitionGraph(q *reader, info graphstore.OwnershipRead, entry replica.Entry, budget raftlog.ApplicationBudget) (raftlog.ApplicationBatch, error) {
-	if !partitionGraphAgreement(m.SemanticContractID()) || (m.SemanticContractID() == crossPartitionSemanticContractID()) != (entry.Data[3] == 2) {
+	if !partitionGraphAgreement(m.SemanticContractID()) || (crossGraphAgreement(m.SemanticContractID())) != (entry.Data[3] == 2) {
 		return raftlog.ApplicationBatch{}, errCorrupt
 	}
 	if info.Root().SemanticEpoch() == 0 {
@@ -38,7 +38,7 @@ func (m *declaredMaterializer) stagePartitionGraph(q *reader, info graphstore.Ow
 		return raftlog.ApplicationBatch{}, errInvalid
 	}
 	hash := sha256.Sum256(entry.Data)
-	if m.SemanticContractID() == crossPartitionSemanticContractID() {
+	if crossGraphAgreement(m.SemanticContractID()) {
 		if _, present, e := crossCurrent(q, crossTransactionID(r.request.ns, r.request.id)); e != nil {
 			return raftlog.ApplicationBatch{}, e
 		} else if present {
@@ -56,7 +56,7 @@ func (m *declaredMaterializer) stagePartitionGraph(q *reader, info graphstore.Ow
 		return legacy.finishWithCodec(q, old, hash, false, budget, nil, graphChanges{}, true)
 	}
 	result := outcome{ns: m.ns, kind: r.request.kind, identity: r.request.identity(), index: entry.Index, disposition: applied}
-	if m.SemanticContractID() == crossPartitionSemanticContractID() {
+	if crossGraphAgreement(m.SemanticContractID()) {
 		lock, e := crossLock(q)
 		if e != nil {
 			return raftlog.ApplicationBatch{}, e
@@ -75,6 +75,10 @@ func (m *declaredMaterializer) stagePartitionGraph(q *reader, info graphstore.Ow
 		}
 	}
 	floor, err := readPartitionRoundFloor(q, configuration)
+	if err != nil {
+		return raftlog.ApplicationBatch{}, err
+	}
+	floor, err = m.allocationFloor(q, configuration, floor)
 	if err != nil {
 		return raftlog.ApplicationBatch{}, err
 	}
@@ -131,7 +135,13 @@ func (m *declaredMaterializer) stagePartitionGraph(q *reader, info graphstore.Ow
 	}
 	changes := graphChanges{ns: m.ns, entities: effects.Delta.Entities, lives: effects.Delta.Lives, values: effects.Delta.Values, groups: effects.Groups}
 	if !changes.nonempty() {
+		if err := m.writeGraphLocalReceipt(q, r.request, result, floor, hash); err != nil {
+			return raftlog.ApplicationBatch{}, err
+		}
 		return legacy.finishWithCodec(q, result, hash, true, budget, nil, changes, true)
+	}
+	if err := m.writeGraphLocalReceipt(q, r.request, result, floor+1, hash); err != nil {
+		return raftlog.ApplicationBatch{}, err
 	}
 	if err := writePartitionRoundFloor(q, configuration, floor+1); err != nil {
 		return raftlog.ApplicationBatch{}, err
@@ -256,7 +266,7 @@ func (h *allocationHost) PreparePartitionGraphOperations(id requestID, ops []gra
 		return allocationProposal{}, err
 	}
 	r := partitionGraphCommand{configuration: digest, declaration: h.machine.declaration.Digest(), routing: cfg.routingDigest, request: graphRequest{ns: h.machine.ns, kind: graphOperations, id: id, revision: revision, operations: ops, claims: claims}}
-	if h.machine.SemanticContractID() == crossPartitionSemanticContractID() {
+	if crossGraphAgreement(h.machine.SemanticContractID()) {
 		r.version = 2
 	}
 	wire, err := encodePartitionGraphCommand(r, h.machine.limits)

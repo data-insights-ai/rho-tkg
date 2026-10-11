@@ -423,8 +423,10 @@ engine; sigma owns reasoning and its adapter, and consumers supply transport/pro
   methods are not callable from consumer modules.
 - **Current gates:** V0/V1 accepted; V2 active. Partition-local writes and package 2 same-graph cross-partition
   prepare/decision/resolve are accepted at `c6dee9cd` (one GraphID, two partitions, three disk-backed voters each).
-  Certified current/historical reads are package 3; broader oracle/fencing/transfer, physical-host durability,
-  transactional-KV comparison and engine decision remain open. V3–V7 are held. Percentages and the old 3,299-test
+  Package 3 certified current/historical reads are accepted internally; their exact source and qualified
+  normal/race/coverage/scanner/review evidence are in `tasks/evidence/v2-certified-reads/acceptance.json`.
+  Package 4 remains: broader oracle/fencing/transfer, GC, physical-host durability, transactional-KV comparison
+  and engine decision. V3–V7 are held. Percentages and the old 3,299-test
   count describe the older `fd37fa0` snapshot, not current phase acceptance.
 - **Pins:** main `efbedc28` is v4.50.1 and was integrated into v5 at `14614553`. The previously blocked/uncommitted
   mapping is now on main. Earlier fast-forward/merge-test claims belong to main `95a1de39` and v5 `fd37fa0`.

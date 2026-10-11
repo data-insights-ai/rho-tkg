@@ -16,8 +16,37 @@ import (
 // Guards the actual incoming-bank path: replaying the old log, keeping only
 // current graph state, or dropping the private prepare/lock cannot satisfy it.
 func TestCrossPartitionPreparedFollowerSnapshotKeepsKernelLockAndCompletionAcrossReopen(t *testing.T) {
-	n := newCrossPartitionNetwork(t)
+	testCrossPartitionPreparedSnapshot(t, false)
+}
+func TestCertifiedGraphActualAS5ActivationKeepsHeldCertifiedSourceAndReopensCut(t *testing.T) {
+	testCrossPartitionPreparedSnapshot(t, true)
+}
+func testCrossPartitionPreparedSnapshot(t *testing.T, certified bool) {
+	var n *allocationTestNetwork
+	if certified {
+		n = newCertifiedGraphNetwork(t)
+	} else {
+		n = newCrossPartitionNetwork(t)
+	}
 	ops, claims := crossEdgeFixture(t, n)
+	var held *certifiedGraphRead
+	var heldCut graphCut
+	var coordinator *certifiedReadCoordinator
+	var certTransport *certifiedTestTransport
+	if certified {
+		coordinator, certTransport = certifiedCoordinator(n)
+		fresh := certifiedOpen(t, coordinator, graphReadRequest{mode: graphReadFresh}, nil)
+		var e error
+		heldCut, e = fresh.Cut()
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e := fresh.Close(); e != nil {
+			t.Fatal(e)
+		}
+		certTransport.member = 2
+		held = certifiedOpen(t, coordinator, graphReadRequest{mode: graphReadAt, cut: heldCut}, nil)
+	}
 	tx, register := n.crossPlan(ops, claims, 24)
 	registered := n.crossSubmit(0, register)
 	registration := n.crossReadPhase(0, registered.tx, crossRegister)
@@ -156,6 +185,15 @@ func TestCrossPartitionPreparedFollowerSnapshotKeepsKernelLockAndCompletionAcros
 	if err := old.Close(); err != nil {
 		t.Fatal(err)
 	}
+	if certified {
+		edge, e := certifiedView(t, held).Entity(t.Context(), 3)
+		if e != nil || edge.Found {
+			t.Fatal("held certified source switched banks/graph roots", edge, e)
+		}
+		if e := held.Close(); e != nil {
+			t.Fatal(e)
+		}
+	}
 	crossReopenAll(t, n)
 	crossAcceptanceState(t, n.hosts[0][2], registered.tx, true)
 	registration = n.crossReadPhase(0, registered.tx, crossRegister)
@@ -199,6 +237,13 @@ func TestCrossPartitionPreparedFollowerSnapshotKeepsKernelLockAndCompletionAcros
 		close()
 		if err != nil || !edge.Found || edge.Record.Source != 1 || edge.Record.Target != 17 {
 			t.Fatal("snapshot lost original resolved cross edge", edge, err)
+		}
+	}
+	if certified {
+		reopened := certifiedOpen(t, coordinator, graphReadRequest{mode: graphReadAt, cut: heldCut}, nil)
+		edge, e := certifiedView(t, reopened).Entity(t.Context(), 3)
+		if e != nil || edge.Found {
+			t.Fatal("AS5/reopen certified old cut lost", edge, e)
 		}
 	}
 	previous, _ := partitionProjection(t, n.hosts[0][2], oldIndex, 3, graphGenesisBinding(t).Axis())

@@ -1,0 +1,57 @@
+{
+  "archive": "independent-review.tar.gz",
+  "sha256": "fbf51500b60c7c4d8af28a2002c30f55d9c8c482520ea1df9c209cf9bae99862",
+  "files": [
+    {
+      "path": "CORRECTION-RECHECK.md",
+      "sha256": "89602ab348750d8c79fd057e2c205f5d0ebeba1c3040d51ab09b163aff5c58d8"
+    },
+    {
+      "path": "FINAL_ACCEPTANCE.md",
+      "sha256": "a7a8edbdbe4d72695e79433dc53a6c868d0e88d75654307d468151041cb9023b"
+    },
+    {
+      "path": "SOURCE-FINDINGS.md",
+      "sha256": "a1a18eef0f2b21336c4f4afb176c82991fd6c108250eb0975a17afe86d8efd6a"
+    },
+    {
+      "path": "direct-public-receiver-witnesses.json",
+      "sha256": "5d43df72e53e15f9fb486eda4282ac8d83b29dad820f24efb3f9778af8215ac8"
+    },
+    {
+      "path": "final-acceptance.json",
+      "sha256": "4b660f875c4bc533718b4bc8b9470458b9cfe762995f5e2188bb762cf13463e3"
+    }
+  ],
+  "verdict": {
+    "recommendation": "accept_package3",
+    "mergeable": true,
+    "blocking_findings": [],
+    "nonblocking_defects": [],
+    "source_manifest_sha256": "7c7c358dab99ddada4f20c98bcf30615396b4ea0615776a500749f10b4b11c16",
+    "source_files": 418,
+    "hash_mismatches": [],
+    "coverage": {
+      "covered": 28317,
+      "statements": 32130,
+      "percent": 88.13258636788048,
+      "new_exported_methods": 12,
+      "minimum_method_percent": 81.6
+    },
+    "graphapply_inventory": 268,
+    "qualified_carry": [
+      "registry55 normal/race",
+      "cross31 normal/race",
+      "unchanged-source previous module coverage"
+    ],
+    "reviewer_runtime": false,
+    "report_sha256": "a7a8edbdbe4d72695e79433dc53a6c868d0e88d75654307d468151041cb9023b",
+    "author_receipt_sha256": "0d4cc5924d1d28d2dd87c130a801115c53d1169df54632c22298a2fe04901c41",
+    "outside_scope": [
+      "full V2",
+      "package4",
+      "public V4 adapters",
+      "external 0ebb025f"
+    ]
+  }
+}

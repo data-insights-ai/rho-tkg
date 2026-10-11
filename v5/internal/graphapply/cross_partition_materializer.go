@@ -166,7 +166,7 @@ func (m *declaredMaterializer) crossFresh(q *reader, manifest crossManifest, par
 }
 
 func (m *declaredMaterializer) stageCrossPartition(q *reader, info graphstore.OwnershipRead, entry replica.Entry, budget raftlog.ApplicationBudget) (raftlog.ApplicationBatch, error) {
-	if m.SemanticContractID() != crossPartitionSemanticContractID() || info.Root().SemanticEpoch() == 0 {
+	if !crossGraphAgreement(m.SemanticContractID()) || info.Root().SemanticEpoch() == 0 {
 		return raftlog.ApplicationBatch{}, errInvalid
 	}
 	r, decoded, err := decodeCrossCommand(entry.Data, m.limits)
@@ -225,6 +225,12 @@ func (m *declaredMaterializer) stageCrossPartition(q *reader, info graphstore.Ow
 		return raftlog.ApplicationBatch{}, err
 	}
 	status := crossStatus{ns: m.ns, tx: manifest.tx, digest: digest, phase: r.phase, index: entry.Index, floor: floor}
+	if r.phase == crossPrepare {
+		status.floor, err = m.allocationFloor(q, manifest.configuration, floor)
+		if err != nil {
+			return raftlog.ApplicationBatch{}, err
+		}
+	}
 	puts := []raftlog.ApplicationControlPut{}
 	registration := func() error {
 		if present {

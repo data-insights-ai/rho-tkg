@@ -1,0 +1,9 @@
+file=v5/internal/graphapply/cross_partition_materializer.go
+original_sha256=1263d27965dfe259354628471b81ee1da993931a3d126d2306800a2c70c409a5
+replace:
+case crossResolve:
+
+with:
+case crossResolve:
+ floor, _ = m.allocationFloor(q, manifest.configuration, floor)
+

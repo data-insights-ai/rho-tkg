@@ -30,10 +30,10 @@ func crossTransactionID(n namespace, id requestID) [16]byte {
 	return [16]byte(digest[:16])
 }
 func partitionGraphAgreement(id raftlog.ApplicationSemanticContractID) bool {
-	return id == partitionWriteSemanticContractID() || id == crossPartitionSemanticContractID()
+	return id == partitionWriteSemanticContractID() || crossGraphAgreement(id)
 }
 func configurationSemanticMatches(c genesisAllocationConfig, id raftlog.ApplicationSemanticContractID) bool {
-	return c.semanticContractID() == id || c.version() == 3 && id == crossPartitionSemanticContractID()
+	return c.semanticContractID() == id || c.version() == 3 && crossGraphAgreement(id)
 }
 
 type crossPhase byte

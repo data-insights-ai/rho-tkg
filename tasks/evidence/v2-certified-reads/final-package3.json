@@ -1,0 +1,209 @@
+{
+  "archive": "final-package3.tar.gz",
+  "sha256": "22fc8049f57e80a42fee1f02654c6793f701f9c5b02761bd4fe517ed6e12831c",
+  "bytes": 8241978,
+  "receipt": {
+    "baseline": "40104a61853d2de9628f39e0042be94ade494ba1",
+    "source_manifest": "source.json",
+    "source_manifest_sha256": "7c7c358dab99ddada4f20c98bcf30615396b4ea0615776a500749f10b4b11c16",
+    "production_unchanged_after_full_gates": true,
+    "test_only_deltas": {
+      "factory-delta-normal": {
+        "command": [
+          "go",
+          "-C",
+          "v5",
+          "test",
+          "./internal/graphapply",
+          "-run",
+          "^TestCertifiedGraphFactoryRefusesWriteOnlyBinding$",
+          "-count=1",
+          "-covermode=atomic",
+          "-coverpkg=./internal/graphapply,./internal/graphstore,./internal/raftlog",
+          "-coverprofile=/var/tmp/rho-v5-v2-certified-final-20261011/factory-delta.out"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 650.328,
+        "elapsed_s": 5.484,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "factory-delta-race": {
+        "command": [
+          "go",
+          "-C",
+          "v5",
+          "test",
+          "./internal/graphapply",
+          "-run",
+          "^TestCertifiedGraphFactoryRefusesWriteOnlyBinding$",
+          "-race",
+          "-count=1"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 551.828,
+        "elapsed_s": 7.644,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "at-authority-delta-normal": {
+        "command": [
+          "go",
+          "-C",
+          "v5",
+          "test",
+          "./internal/graphapply",
+          "-run",
+          "^TestCertifiedGraphAtAppliedAuthorityWithoutPersistedCertificateIsUnavailable$",
+          "-count=1",
+          "-covermode=atomic",
+          "-coverpkg=./internal/graphapply,./internal/graphstore,./internal/raftlog",
+          "-coverprofile=/var/tmp/rho-v5-v2-certified-final-20261011/at-authority-delta.out"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 651.109,
+        "elapsed_s": 7.101,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "at-authority-delta-race": {
+        "command": [
+          "go",
+          "-C",
+          "v5",
+          "test",
+          "./internal/graphapply",
+          "-run",
+          "^TestCertifiedGraphAtAppliedAuthorityWithoutPersistedCertificateIsUnavailable$",
+          "-race",
+          "-count=1"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 563.141,
+        "elapsed_s": 8.775,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "at-authority-final-lint": {
+        "command": [
+          "make",
+          "lint-docker",
+          "DOCKER_GO=docker run --rm --memory=4g --memory-swap=4g --cpus=2 -e GOTOOLCHAIN=local -e GOMAXPROCS=2 -e GOFLAGS=-p=1 -e GOMEMLIMIT=2GiB -e GOWORK=off -v /var/tmp/rho-v5-v2-certified-reads-20261011:/src -w /src/v5 -v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build golang:1.26.9"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 28.062,
+        "elapsed_s": 13.583,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "broad_gates": [
+      {
+        "name": "normal-registry",
+        "exit_code": 0,
+        "carried_from": "/var/tmp/rho-v5-v2-certified-final-20261011/reviewed-freeze-before-corrections",
+        "qualification": "same exhaustive test inventory; both corrected private paths only enter certified modes/participant queries; existing package2 and registry flows unchanged; changed-file coverage entries excluded from carry"
+      },
+      {
+        "name": "race-registry",
+        "exit_code": 0,
+        "carried_from": "/var/tmp/rho-v5-v2-certified-final-20261011/reviewed-freeze-before-corrections",
+        "qualification": "same exhaustive test inventory; both corrected private paths only enter certified modes/participant queries; existing package2 and registry flows unchanged; changed-file coverage entries excluded from carry"
+      },
+      {
+        "name": "normal-cross",
+        "exit_code": 0,
+        "carried_from": "/var/tmp/rho-v5-v2-certified-final-20261011/reviewed-freeze-before-corrections",
+        "qualification": "same exhaustive test inventory; both corrected private paths only enter certified modes/participant queries; existing package2 and registry flows unchanged; changed-file coverage entries excluded from carry"
+      },
+      {
+        "name": "race-cross",
+        "exit_code": 0,
+        "carried_from": "/var/tmp/rho-v5-v2-certified-final-20261011/reviewed-freeze-before-corrections",
+        "qualification": "same exhaustive test inventory; both corrected private paths only enter certified modes/participant queries; existing package2 and registry flows unchanged; changed-file coverage entries excluded from carry"
+      },
+      {
+        "name": "fmt",
+        "exit_code": 0
+      },
+      {
+        "name": "vet",
+        "exit_code": 0
+      },
+      {
+        "name": "build",
+        "exit_code": 0
+      },
+      {
+        "name": "lint",
+        "exit_code": 0
+      },
+      {
+        "name": "security",
+        "exit_code": 0
+      },
+      {
+        "name": "vulncheck",
+        "exit_code": 0
+      },
+      {
+        "name": "normal-certified",
+        "exit_code": 0
+      },
+      {
+        "name": "race-certified",
+        "exit_code": 0
+      },
+      {
+        "name": "normal-remaining-a",
+        "exit_code": 0
+      },
+      {
+        "name": "race-remaining-a",
+        "exit_code": 0
+      },
+      {
+        "name": "normal-remaining-b",
+        "exit_code": 0
+      },
+      {
+        "name": "race-remaining-b",
+        "exit_code": 0
+      },
+      {
+        "name": "normal-graphstore",
+        "exit_code": 0
+      },
+      {
+        "name": "race-graphstore",
+        "exit_code": 0
+      }
+    ],
+    "test_inventory": "combined-inventory.json",
+    "combined_graphapply_test_count": 268,
+    "coverage": {
+      "covered": 28317,
+      "statements": 32130,
+      "percent": 88.13258636788049,
+      "new_below80": [],
+      "changed_below80": [],
+      "new_exported_declarations": 12,
+      "minimum_new_method_percent": 81.6
+    },
+    "direct_exports": "direct-exports.json",
+    "coverage_carry": "coverage-summary.json",
+    "review_corrections": "/var/tmp/rho-v5-v2-certified-reads-20261011/tasks/evidence/v2-certified-reads/review-corrections.json",
+    "same_reviewer": "/var/tmp/rho-v5-v2-certified-review-20261011/CORRECTION-RECHECK.md",
+    "qualification": "All production byte hashes match full gate freeze. Only two test-only changes afterward: actual legacy factory invocation and one required missing-certificate authority guard. Each has focused normal/race/coverage delta; final lint rerun. Runtime registry/cross legacy carry is explicit in results; coverage accepts exact source-file hashes only. V2 overall/package4/public adapters remain open. No commit/push by author."
+  }
+}

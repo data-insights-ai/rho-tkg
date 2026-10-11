@@ -78,7 +78,7 @@ and reference JSON specify contracts/evidence, not completed engine gates.
 |---|---|
 | V0 | Specification accepted: independent criterion review and refreshed reference/design checks pass. Contracts, profile/unit/import policy, current-v4 delta and reproducible resource/dataset test profiles are reviewed below. Implementation, consumer execution and measured capacity retain their separate phase gates |
 | V1 | Values/state accepted: unchanged 16/52 and revised rho-owned cases pass through typed primitives and `Plan`/`Project`, including immutable interpretation/native-axis roles, attached descriptor/source-revision history, graph-qualified refusals, independent state/complete-CDC capacity assertions and the pure Q/ms default-axis binding. Node/relationship retained-view exact sets, boundary/differential/fuzz/codec refusals and direct new-method coverage pass. Durable default registration is covered by the V2 checkpoint below; request/dependency installation and graph/cut integration remain V2, consumer adapters V4 and provenance-aware import V6 |
-| V2 | Active, not accepted. Checked partition-local graph writes are accepted on both declared partitions of one GraphID, with three disk-backed voters each, retained history, nonempty snapshot activation, failover and reopen. Default-axis designation, shared allocation and explicit local authority are preserved. Same-graph cross-partition prepare/decision/resolve is also accepted below. Remaining work certifies current/historical graph reads, then proves ownership transfer, recovery and the independent serial-history/cut oracle. Production identity reuse/fencing, application GC, physical-host durability and comparable transactional-KV fault/cost evidence with an explicit engine decision remain open |
+| V2 | Active, not accepted. Checked partition-local writes, same-graph cross-partition prepare/decision/resolve and certified current/historical graph reads are accepted on both declared partitions of one GraphID, with three disk-backed voters each, retained history, nonempty snapshot activation, failover and reopen. Default-axis designation, shared allocation and explicit local authority are preserved. Package 4 remains: ownership transfer, recovery and the independent serial-history/cut oracle; production identity reuse/fencing, application GC, physical-host durability and comparable transactional-KV fault/cost evidence with an explicit engine decision |
 | V3 | Coordinate timeblock candidate independently validated (local commit `fa0c982`; scoped temporal+block coverage 95.7%, no exported method at 0%). Full engine seal/merge/recovery, paged structures and all-in budget/byte-ledger measurements remain open; resident-buffer prototype timings do not close V3 |
 | V4 | Production read/change APIs, historical cross-door parity, gap-free leased feed handoff and pinned sigma access-contract build and nonempty mutation-then-historical tests (the current signature/empty smoke is insufficient) |
 | V5 | Distributed access across 1/2/4/8 partitions, cross-edge/stall/rebalance/feed cases and sigma workload parity |
@@ -192,10 +192,27 @@ reviewed and validated before the next package starts.
    retain actual REDs and qualified fixture failures. Earlier checkpoint archives
    remain available in the same evidence directory. This closes this write
    package only; certified distributed reads, multi-host durability, capacity
-   acceptance and full V2 remain open. Hosted checks follow the integrated push.
-3. Certify current and retained historical graph reads. A delayed participant
-   installation must not expose a mixed transaction; old cuts must preserve the
-   old exact state, including endpoint lives and postings.
+   acceptance and full V2 remain open. [Hosted CI at `c61d1124`](evidence/v2-cross-partition/hosted-ci-c61d1124.json)
+   passes for the integrated package-2/main/mapping source; the conditional
+   pull-request lint job was skipped, with author lint recorded separately.
+3. **Accepted locally 2026-10-11 — certified current and retained graph reads.**
+   Fresh/Stable/At/After bind graph, exact scope, topology, configuration and
+   durable transaction evidence on the actual two-partition/six-voter path.
+   Read fences remain separate from installed rounds, and unresolved prepares
+   cannot be hidden by larger observed rounds. Routing and graph changes retain
+   verified round-prefix mappings with bounded predecessor seeking.
+   Mutation-then-old-cut tests preserve nodes, relationships, endpoint lives,
+   properties and both adjacency directions; retained uniqueness candidates are
+   checked with exact residual projection. Followers wait for certificate
+   application; reopen and genuine snapshot activation preserve held old views.
+   Scope, lifetime, cancellation and cumulative source/output limits refuse
+   without partial views or poisoning a healthy replica. Same-reviewer corrections
+   cover an early ABORT's never-prepared participant, scope admission before
+   allocation, and After receipts from a different immutable authority.
+   [Acceptance](evidence/v2-certified-reads/acceptance.json) pins source, exhaustive
+   normal/race lanes, qualified unchanged-source carry, coverage, pinned scanners,
+   direct-method tests and independent review. This accepts internal read
+   machinery, not a public graph API, physical multi-host durability or full V2.
 4. Pass the same-graph E15–E18 serial-history/cut oracle under process and message
    faults, recovery and ownership transfer; complete the equivalent transactional-KV
    comparison and record the engine decision. Only then can V2 close under

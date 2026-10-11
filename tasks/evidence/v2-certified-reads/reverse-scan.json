@@ -1,0 +1,136 @@
+{
+  "worktree": "/private/var/tmp/rho-v5-v2-reverse-scan-20261011",
+  "base": "40104a61853d2de9628f39e0042be94ade494ba1",
+  "owned_files": {
+    "v5/internal/raftlog/application_reverse.go": "408b9b44c08a11d6a1eedc3cdd4ef2b63fc954b49a8c90ab01612b3f113bc18c",
+    "v5/internal/raftlog/application_reverse_test.go": "dd4a95cc3fcb494ff832a82fd847a3ae79eeac4f9e10f7c61c515bcf2acd1509"
+  },
+  "coverage": {
+    "covered": 74,
+    "total": 80,
+    "percent": 92.5
+  },
+  "reports": {
+    "normal": {
+      "command": [
+        "env",
+        "GOTOOLCHAIN=go1.26.9",
+        "GOMAXPROCS=2",
+        "GOMEMLIMIT=2GiB",
+        "GOFLAGS=-p=1",
+        "GOWORK=off",
+        "GOCACHE=/var/tmp/rho-v5-go-build-cache-go1.26.9",
+        "go",
+        "test",
+        "-count=1",
+        "-run",
+        "^TestApplicationScanReverse",
+        "./internal/raftlog"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 432.75,
+      "elapsed_s": 3.877,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "race-cover": {
+      "command": [
+        "env",
+        "GOTOOLCHAIN=go1.26.9",
+        "GOMAXPROCS=2",
+        "GOMEMLIMIT=2GiB",
+        "GOFLAGS=-p=1",
+        "GOWORK=off",
+        "GOCACHE=/var/tmp/rho-v5-go-build-cache-go1.26.9",
+        "go",
+        "test",
+        "-race",
+        "-count=1",
+        "-coverprofile=/var/tmp/rho-v5-v2-reverse-cover.out",
+        "-run",
+        "^TestApplicationScanReverse",
+        "./internal/raftlog"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 442.344,
+      "elapsed_s": 7.45,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "lint": {
+      "command": [
+        "make",
+        "DOCKER_GO=/usr/local/bin/docker run --rm --memory=4g --memory-swap=4g --cpus=2 -e GOTOOLCHAIN=local -e GOWORK=off -e GOMAXPROCS=2 -e GOFLAGS=-p=1 -e GOMEMLIMIT=2GiB -e GOPROXY=https://proxy.golang.org -e GOSUMDB=sum.golang.org -v /var/tmp/rho-v5-v2-reverse-scan-20261011:/src -w /src/v5 -v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build golang:1.26.9",
+        "lint-docker"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 29.016,
+      "elapsed_s": 22.955,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "security": {
+      "command": [
+        "make",
+        "DOCKER_GO=/usr/local/bin/docker run --rm --memory=4g --memory-swap=4g --cpus=2 -e GOTOOLCHAIN=local -e GOWORK=off -e GOMAXPROCS=2 -e GOFLAGS=-p=1 -e GOMEMLIMIT=2GiB -e GOPROXY=https://proxy.golang.org -e GOSUMDB=sum.golang.org -v /var/tmp/rho-v5-v2-reverse-scan-20261011:/src -w /src/v5 -v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build golang:1.26.9",
+        "security-docker"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 28.922,
+      "elapsed_s": 5.244,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "vuln": {
+      "command": [
+        "make",
+        "DOCKER_GO=/usr/local/bin/docker run --rm --memory=4g --memory-swap=4g --cpus=2 -e GOTOOLCHAIN=local -e GOWORK=off -e GOMAXPROCS=2 -e GOFLAGS=-p=1 -e GOMEMLIMIT=2GiB -e GOPROXY=https://proxy.golang.org -e GOSUMDB=sum.golang.org -v /var/tmp/rho-v5-v2-reverse-scan-20261011:/src -w /src/v5 -v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build golang:1.26.9",
+        "vulncheck-docker"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 28.922,
+      "elapsed_s": 4.685,
+      "exit_code": 0,
+      "reason": "completed"
+    }
+  },
+  "mutants": {
+    "results": [
+      {
+        "mutant": "oldest-version",
+        "exit": 1,
+        "test_failure": true
+      },
+      {
+        "mutant": "inclusive-key",
+        "exit": 1,
+        "test_failure": true
+      }
+    ],
+    "restored_sha256": "5087877badec9ed2bd54308b05d7ab4f7da8ddf6ecca99e0095101038e09f356"
+  },
+  "scope": "Focused ScanReverse normal/race/coverage; full v5 pinned lint/gosec/vulncheck; no broad runtime suite. No commits.",
+  "validated_owned_files": {
+    "v5/internal/raftlog/application_reverse.go": "5087877badec9ed2bd54308b05d7ab4f7da8ddf6ecca99e0095101038e09f356",
+    "v5/internal/raftlog/application_reverse_test.go": "dd4a95cc3fcb494ff832a82fd847a3ae79eeac4f9e10f7c61c515bcf2acd1509"
+  },
+  "post_validation_comment_correction": {
+    "path": "v5/internal/raftlog/application_reverse.go",
+    "change": "before this view -> after this view",
+    "validated_sha256": "5087877badec9ed2bd54308b05d7ab4f7da8ddf6ecca99e0095101038e09f356",
+    "final_sha256": "408b9b44c08a11d6a1eedc3cdd4ef2b63fc954b49a8c90ab01612b3f113bc18c",
+    "executable_code_and_tests_unchanged": true,
+    "runtime_rerun": false,
+    "reason": "Root-approved one-word comment correction only."
+  }
+}

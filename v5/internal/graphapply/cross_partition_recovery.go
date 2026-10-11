@@ -85,7 +85,7 @@ func (m *declaredMaterializer) crossRecovery(q *reader, r crossCommand, manifest
 // It parses the complete typed protocol and actual local registration; an
 // arbitrary prefix, TxID or caller-supplied credit cannot claim capacity.
 func (m *declaredMaterializer) VerifyApplicationRecovery(ctx context.Context, data []byte, view *raftlog.ApplicationView) (purpose raftlog.ApplicationRecoveryPurpose, err error) {
-	if m == nil || m.store == nil || ctx == nil || view == nil || m.SemanticContractID() != crossPartitionSemanticContractID() {
+	if m == nil || m.store == nil || ctx == nil || view == nil || !crossGraphAgreement(m.SemanticContractID()) {
 		return purpose, errInvalid
 	}
 	// Store owns this genuine active or prepared incoming-bank view. Borrow it
@@ -99,6 +99,13 @@ func (m *declaredMaterializer) VerifyApplicationRecovery(ctx context.Context, da
 		return purpose, err
 	}
 	if len(data) == 0 {
+		return purpose, nil
+	}
+	if isGraphCutWire(data) {
+		c, e := decodeGraphCutCommand(data)
+		if e != nil || !m.certifiedReads() || c.scope != m.scope() {
+			return purpose, errors.Join(errInvalid, e)
+		}
 		return purpose, nil
 	}
 	if !isCrossPartitionWire(data) {

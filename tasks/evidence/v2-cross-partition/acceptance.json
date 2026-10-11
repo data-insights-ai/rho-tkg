@@ -53,5 +53,13 @@
     "initial_combined": "combined-gates1.json",
     "original_independent_findings": "independent-review1.json"
   },
-  "subsequent_main_integration": "main-4501-integration.json"
+  "subsequent_main_integration": "main-4501-integration.json",
+  "hosted_ci": {
+    "run": 38117590444,
+    "head": "c61d112450bccfa0f1311d29b40244e58e9d02c7",
+    "conclusion": "success",
+    "evidence": "hosted-ci-c61d1124.json",
+    "sha256": "a677a500325f657d2e78eb6f89ca351da8b1b3eb135eca22f2465a2331af67b7",
+    "scope": "CI at pushed package2 + main4.50.1 + consumer mapping. Later registry/read-package changes are outside this run. Conditional pull-request lint job skipped; author pinned lint evidence remains separately recorded."
+  }
 }

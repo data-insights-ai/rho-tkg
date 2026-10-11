@@ -58,10 +58,10 @@ func (h *allocationHost) ReadCrossPhase(tx [16]byte, phase crossPhase, nonce [16
 	if h.closed {
 		return allocationEvent{}, replica.ErrStopped
 	}
-	if h.machine == nil || h.driver == nil || h.machine.SemanticContractID() != crossPartitionSemanticContractID() {
+	if h.machine == nil || h.driver == nil || !crossGraphAgreement(h.machine.SemanticContractID()) {
 		return allocationEvent{}, errInvalid
 	}
-	if h.sequence == math.MaxUint64 || len(h.pending)+len(h.crossPending)+len(h.capacityPending) >= 16 {
+	if h.sequence == math.MaxUint64 || len(h.pending)+len(h.crossPending)+len(h.capacityPending)+len(h.cutPending) >= 16 {
 		return allocationEvent{}, errLimit
 	}
 	if h.crossPending == nil {
@@ -163,7 +163,7 @@ func (m *declaredMaterializer) observeCrossTransaction(query crossQuery, index u
 }
 
 func checkCrossProof(p crossProof, tx [16]byte, digest [32]byte) error {
-	if p.owner == nil || p.owner.machine == nil || p.id.session != p.owner.session || p.id.sequence == 0 || p.id.sequence > p.owner.issuedReads.Load() || p.question.tx != tx || p.question.nonce == ([16]byte{}) || p.status.tx != tx || p.status.digest != digest || p.status.ns != p.owner.machine.ns || p.owner.machine.SemanticContractID() != crossPartitionSemanticContractID() || sha256.Sum256(p.manifest) != digest {
+	if p.owner == nil || p.owner.machine == nil || p.id.session != p.owner.session || p.id.sequence == 0 || p.id.sequence > p.owner.issuedReads.Load() || p.question.tx != tx || p.question.nonce == ([16]byte{}) || p.status.tx != tx || p.status.digest != digest || p.status.ns != p.owner.machine.ns || !crossGraphAgreement(p.owner.machine.SemanticContractID()) || sha256.Sum256(p.manifest) != digest {
 		return errInvalid
 	}
 	return nil
@@ -180,7 +180,7 @@ func (h *allocationHost) PrepareCrossPartitionGraphOperations(ctx context.Contex
 	if h.closed {
 		return tx, proposal, replica.ErrStopped
 	}
-	if h.machine.SemanticContractID() != crossPartitionSemanticContractID() || len(sources) != h.machine.declaration.Len() {
+	if !crossGraphAgreement(h.machine.SemanticContractID()) || len(sources) != h.machine.declaration.Len() {
 		return tx, proposal, errInvalid
 	}
 	l := h.machine.limits
@@ -210,7 +210,7 @@ func (h *allocationHost) PrepareCrossPartitionGraphOperations(ctx context.Contex
 	seen := make(map[uint64]bool)
 	work := graphstore.PageWork{}
 	for i, p := range sources {
-		if p.owner == nil || p.owner.machine == nil || p.owner.ended.Load() || p.id.session != p.owner.session || p.id.sequence == 0 || p.id.sequence > p.owner.issuedReads.Load() || p.question.kind != observeConfiguration || p.question.nonce == ([16]byte{}) || p.observation.source.scope != p.owner.machine.scope() || p.observation.source.scope.semantic != crossPartitionSemanticContractID() || seen[p.observation.source.scope.partition] || p.observation.source.scope.declaration != h.machine.declaration.Digest() {
+		if p.owner == nil || p.owner.machine == nil || p.owner.ended.Load() || p.id.session != p.owner.session || p.id.sequence == 0 || p.id.sequence > p.owner.issuedReads.Load() || p.question.kind != observeConfiguration || p.question.nonce == ([16]byte{}) || p.observation.source.scope != p.owner.machine.scope() || p.observation.source.scope.semantic != h.machine.SemanticContractID() || seen[p.observation.source.scope.partition] || p.observation.source.scope.declaration != h.machine.declaration.Digest() {
 			return tx, proposal, errInvalid
 		}
 		seen[p.observation.source.scope.partition] = true

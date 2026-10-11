@@ -53,7 +53,7 @@ func (o crossCapacityObservation) loser() ([16]byte, [32]byte, uint64) {
 	return o.holder, o.holderDigest, o.holderCoordinator
 }
 func (o crossCapacityObservation) valid() bool {
-	return o.source.valid() && o.source.semantic == crossPartitionSemanticContractID() && o.configuration != ([32]byte{}) && o.routing != ([32]byte{}) && o.generation != 0 && o.index != 0 && o.imageHash != ([32]byte{}) && o.desired != ([16]byte{}) && o.holder != ([16]byte{}) && o.desired != o.holder && o.desiredDigest != ([32]byte{}) && o.holderDigest != ([32]byte{}) && o.desiredCoordinator != 0 && o.holderCoordinator != 0 && o.prepareHash != ([32]byte{}) && o.nonce != ([16]byte{}) && o.readID.session != ([16]byte{}) && o.readID.sequence != 0
+	return o.source.valid() && crossGraphAgreement(o.source.semantic) && o.configuration != ([32]byte{}) && o.routing != ([32]byte{}) && o.generation != 0 && o.index != 0 && o.imageHash != ([32]byte{}) && o.desired != ([16]byte{}) && o.holder != ([16]byte{}) && o.desired != o.holder && o.desiredDigest != ([32]byte{}) && o.holderDigest != ([32]byte{}) && o.desiredCoordinator != 0 && o.holderCoordinator != 0 && o.prepareHash != ([32]byte{}) && o.nonce != ([16]byte{}) && o.readID.session != ([16]byte{}) && o.readID.sequence != 0
 }
 func (o crossCapacityObservation) checkManifest(m crossManifest) error {
 	tx, digest, coordinator := o.loser()
@@ -205,14 +205,14 @@ func (h *allocationHost) ReadCrossCapacityConflict(prepare allocationProposal, n
 	if h.closed {
 		return allocationEvent{}, replica.ErrStopped
 	}
-	if h.machine == nil || h.driver == nil || prepare.target != h.machine.scope() || h.machine.SemanticContractID() != crossPartitionSemanticContractID() {
+	if h.machine == nil || h.driver == nil || prepare.target != h.machine.scope() || !crossGraphAgreement(h.machine.SemanticContractID()) {
 		return allocationEvent{}, errInvalid
 	}
 	r, _, err := decodeCrossCommand(prepare.wire, h.machine.limits)
 	if err != nil || r.ns != h.machine.ns || r.phase != crossPrepare || r.conflict != nil {
 		return allocationEvent{}, errors.Join(errInvalid, err)
 	}
-	if h.sequence == math.MaxUint64 || len(h.pending)+len(h.crossPending)+len(h.capacityPending) >= 16 {
+	if h.sequence == math.MaxUint64 || len(h.pending)+len(h.crossPending)+len(h.capacityPending)+len(h.cutPending) >= 16 {
 		return allocationEvent{}, errLimit
 	}
 	if h.capacityPending == nil {
@@ -324,7 +324,7 @@ func (h *allocationHost) AbortCrossTransactionForCapacity(tx crossTransaction, p
 	if h.closed {
 		return allocationProposal{}, crossStatus{}, replica.ErrStopped
 	}
-	if h.machine == nil || h.driver == nil || h.machine.SemanticContractID() != crossPartitionSemanticContractID() {
+	if h.machine == nil || h.driver == nil || !crossGraphAgreement(h.machine.SemanticContractID()) {
 		return allocationProposal{}, crossStatus{}, errInvalid
 	}
 	o := proof.observation

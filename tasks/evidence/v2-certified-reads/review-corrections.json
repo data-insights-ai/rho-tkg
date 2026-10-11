@@ -1,0 +1,40 @@
+{
+  "review": "/var/tmp/rho-v5-v2-certified-review-20261011/CORRECTION-RECHECK.md",
+  "baseline_manifest": "/var/tmp/rho-v5-v2-certified-final-20261011/reviewed-freeze-before-corrections/source.json",
+  "baseline_manifest_sha256": "fa7a39b5d16b4c4b8d0f604d21905164851eed524f5a1df55d0682b01bbe53dc",
+  "findings": [
+    {
+      "severity": "P2",
+      "case": "early ABORT absent participant",
+      "red": "review-corrections-red.log",
+      "fix": "completed source-owned participant phase/verified absence bound to TxID and manifest digest; ABORT only; failed authority refuses; COMMIT unchanged"
+    },
+    {
+      "severity": "P2",
+      "case": "scope allocation before known bound refusal",
+      "red": "review-corrections-red.log",
+      "fix": "len admission before Clone/Sort; independent AllocsPerRun0"
+    },
+    {
+      "case": "After receipt from unrelated authority",
+      "red": "receipt-authority-red.log",
+      "fix": "local scope and captured config, cross issuer and canonical manifest config/declaration match current exact authority; no old issuer Store/Driver calls"
+    }
+  ],
+  "green": "receipt-authority-green.log",
+  "guards": [
+    "real early NO/ABORT",
+    "other native completion owner remains",
+    "delayed valid Prepare before certificate is pending",
+    "delayed valid Prepare after certificate preserves old cut and next Fresh resolves immutable ABORT",
+    "unavailable and missing participant proof refuse",
+    "eight genuine local/cross authority mismatch cases",
+    "same declaration issuer-close/reopen/follower positive"
+  ],
+  "source_red": [
+    "review-corrections-red-source.go.txt",
+    "receipt-authority-red-source.go.txt",
+    "receipt-authority-red-reader.go.txt"
+  ],
+  "reviewer_semantically_cleared": true
+}

@@ -1,0 +1,54 @@
+{
+  "phase": "V2",
+  "package": 3,
+  "name": "Certified current and retained graph reads",
+  "accepted": true,
+  "accepted_date": "2026-10-11",
+  "scope_status": "Locally accepted; hosted CI for the integrated push is a separate gate",
+  "source_manifest_sha256": "7c7c358dab99ddada4f20c98bcf30615396b4ea0615776a500749f10b4b11c16",
+  "source_files": 418,
+  "base": "40104a61853d2de9628f39e0042be94ade494ba1",
+  "upstream_v4": "efbedc28170c6b04aa28a0e957fc16c4424100c6",
+  "included_external_v5": "da78da2a4110ebc05ebdea1575641275a0ef5be8",
+  "acceptance_scope": [
+    "One GraphID, two declared partitions, three disk-backed voters each, actual source-owned Host/Driver quorum paths",
+    "Fresh/Stable/At/After bind exact graph/scope/topology/configuration and durable receipt/certificate authority",
+    "Separate read fences and installed floors; pending work cannot be hidden by a higher round; bounded retained round-prefix lookup",
+    "Exact historical projections, endpoint lives, adjacency and residual-filtered uniqueness candidates survive follower reads, AS5 snapshot activation and durable reopen",
+    "Cumulative source/output/lifetime/cancellation admission and cleanup; unavailable authority and exact absence remain distinct"
+  ],
+  "review_corrections": [
+    "P2: Early ABORT resolves only proved prepared participants and preserves authoritative absence",
+    "P2: Known oversized read scope refuses before clone/sort allocation",
+    "P1: After receipts require matching immutable current authority, not just GraphID and round"
+  ],
+  "validation": {
+    "covered": 28317,
+    "statements": 32130,
+    "percent": 88.13258636788048,
+    "new_exported_methods": 12,
+    "minimum_method_percent": 81.6,
+    "new_production_files_at_least_80": 8,
+    "changed_production_files_at_least_80": 19,
+    "all_added_exported_directly_tested": true,
+    "graphapply_test_inventory": 268,
+    "qualification": "267 exhaustive disjoint broad-lane names plus one focused authority-refusal test. Registry55/cross31 runtime carry and unchanged-source module coverage explicitly qualified; final test-only deltas separately pass normal/race/coverage/lint. All production hashes match the completed broad-gate freeze.",
+    "gates": "normal/race, fmt, vet, build, pinned lint/security and zero-reachable-vulnerability scan pass",
+    "resource_policy": "4 GiB process tree, 180 seconds per invocation, Go1.26.9; Docker scanners also cgroup bounded"
+  },
+  "remaining_V2": [
+    "Independent same-graph E15-E18 serial-history/cut oracle under process/message faults and ownership transfer",
+    "Production identity reuse/fencing, application garbage collection and physical-host durability",
+    "Comparable transactional-KV fault/cost evidence and explicit engine decision"
+  ],
+  "qualification": "Internal graph-read machinery only; no public graph API, consumer migration, physical multi-host durability, capacity acceptance or full V2 completion. Reasoning remains in sigma.",
+  "evidence": {
+    "author": "final-package3.json",
+    "archive_files": "final-package3-files.json",
+    "independent_review": "independent-review.json",
+    "corrections": "review-corrections.json",
+    "reverse_scan": "reverse-scan.json",
+    "registry_integration": "registry-integration.json"
+  },
+  "deferred_external_commit": "0ebb025f4c6aa659df24438e96a468e2c6208d02"
+}
