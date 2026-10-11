@@ -1,0 +1,5 @@
+--- FAIL: TestMemoryAdjacentEndpointOrdinalOrderNestingAllocs (0.00s)
+    memorystore_adjacent_ordinals_test.go:98: {rel:803586629606411264 relOrd:3 other:803586629603362816 otherOrd:3}: ordinals (3, 3), want the rows' (3, 4)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.440s
+FAIL

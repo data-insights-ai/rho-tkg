@@ -50,6 +50,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Performance
 
+- **Memory: the ordinal adjacency door and `ScanRelColumns` without a sort per call** (sigma-tkgd round 5 request 2,
+  task record C4r: `ForEachAdjacentEndpointOrdinal` sorted each node's edges and looked two maps up per edge, 0.36 s
+  of 1.4 M edges; `ScanRelColumns` collected the type through `RelationshipsByType`, which sorts, on every call). A
+  node's adjacency set of at most 64 relationships (a slice) is now kept in ascending ID order (binary search,
+  insert and delete in place), so the door sorts only a larger (hash) set; the other endpoint's ordinal comes from
+  the relationship's own row (the store records both endpoints' ordinals while the relationship is current) instead
+  of a node lookup per edge. `ScanRelColumns` without a filter or paging reads the type's kept ascending member list
+  (the one `ForEachRelByType` walks, rebuilt only when the type's membership changes) and its rows under one read
+  lock: same rows, same order, no sort; any filter keeps `RelationshipsByType`. `BenchmarkMemoryStarDoors` (262,144
+  `SPOKE` relationships from 64 skewed hubs; one CPU, load 41 to 47, three interleaved rounds): `ScanRelColumns`
+  30.3-30.6 -> 10.6-10.7 ms (4.5 -> 2.7 MB), the door out of every hub 96-98 -> 51-53 ms, into every spoke 74-81 ->
+  70-74 ms (per-call overhead). Write cost: an adjacency add plus remove on a 32-member set 17-20 -> 24-27 ns
+  (`BenchmarkAdjSetChurn`); `PutRelationship` end to end unchanged within noise (852-1,113 ns before, 855-1,126
+  after, 308 B and 3 allocations both, `BenchmarkPutRelationshipSmallSets`, five rounds). Tests:
+  `TestAdjSetSmallSetIsAscending` (red: the appended, swap-removed slice), the door's test now also checks both
+  ordinals against the entities' own, `TestMemRelColumnScan_KeptOrderMatchesTheTypeScan` (guard).
+
 - **Memory: per-type relationship epochs, so `RelTypeDegreeStats` of a type stays cached across writes to other
   types** (sigma-tkgd round 5 request 9, task record C4s: the cold harness's update of one `COLD_TICK`
   relationship moved the memory store's store-wide relationship epoch, so the next `RelTypeDegreeStats("SPOKE")`
