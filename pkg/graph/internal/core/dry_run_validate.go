@@ -204,7 +204,7 @@ func (c *Core) buildDryRunEndpointNode(id types.NodeID, props map[string]any) (*
 	if err != nil {
 		return nil, err
 	}
-	validFrom, validTo, createdAt, _, validEndpoints, props, err := extractTemporalWithBounds(props)
+	validFrom, validTo, createdAt, _, props, validEndpoints, err := extractTemporalWithBounds(props)
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +235,7 @@ func (c *Core) buildDryRunProbeNode(id types.NodeID, props map[string]any) (*typ
 	if err != nil {
 		return nil, err
 	}
-	_, _, _, _, _, props, err = extractTemporalWithBounds(props)
+	_, _, _, _, props, _, err = extractTemporalWithBounds(props)
 	if err != nil {
 		return nil, err
 	}

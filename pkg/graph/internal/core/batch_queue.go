@@ -65,7 +65,7 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 	}
 
 	// Extract reserved temporal fields before property validation (tkg_ prefix is rejected).
-	validFrom, validTo, createdAt, txFromOverride, validEndpoints, props, err := extractTemporalWithBounds(props)
+	validFrom, validTo, createdAt, txFromOverride, props, validEndpoints, err := extractTemporalWithBounds(props)
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +234,7 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	}
 
 	// Extract reserved temporal fields before property validation (tkg_ prefix is rejected).
-	validFrom, validTo, createdAt, txFromOverride, validEndpoints, props, err := extractTemporalWithBounds(props)
+	validFrom, validTo, createdAt, txFromOverride, props, validEndpoints, err := extractTemporalWithBounds(props)
 	if err != nil {
 		return nil, err
 	}

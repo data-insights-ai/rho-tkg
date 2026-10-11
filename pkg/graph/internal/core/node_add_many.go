@@ -196,7 +196,7 @@ func (c *Core) prepareNodeCreate(props map[string]any, pn *preparedNodeCreate) e
 	if err != nil {
 		return err
 	}
-	validFrom, validTo, createdAt, txFromOverride, validEndpoints, props, err := extractTemporalWithBounds(props)
+	validFrom, validTo, createdAt, txFromOverride, props, validEndpoints, err := extractTemporalWithBounds(props)
 	if err != nil {
 		return err
 	}

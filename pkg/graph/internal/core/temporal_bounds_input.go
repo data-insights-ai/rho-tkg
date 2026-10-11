@@ -14,9 +14,11 @@ func updateValidStart(t updateTemporal) (types.Instant, bool) {
 	return t.validFrom, t.hasValidFrom && t.validFrom != 0
 }
 
+// Keep the filtered map among the first five results so Go escape summaries
+// preserve the ordinary caller map on its stack.
 // The explicit range is a reserved typed input. Scalar keys keep their old
 // zero defaults, so mixing the two representations is refused before mutation.
-func extractTemporalWithBounds(props map[string]any) (vf, vt, ca, tf types.Instant, presence types.EndpointPresence, filtered map[string]any, err error) {
+func extractTemporalWithBounds(props map[string]any) (vf, vt, ca, tf types.Instant, filtered map[string]any, presence types.EndpointPresence, err error) {
 	value, has := props["tkg_valid_bounds"]
 	if !has {
 		vf, vt, ca, tf, filtered, err = extractTemporal(props)
@@ -39,7 +41,10 @@ func extractTemporalWithBounds(props map[string]any) (vf, vt, ca, tf types.Insta
 		err = fmt.Errorf("%w: mixed typed/scalar valid endpoints", ErrInvalidTimeRange)
 		return
 	}
-	clean := maps.Clone(props)
+	// The typed input guarantees a nonnil map. Copy into its private map
+	// without the runtime Clone alias, which makes the caller container escape.
+	clean := make(map[string]any, len(props))
+	maps.Copy(clean, props)
 	delete(clean, "tkg_valid_bounds")
 	_, _, ca, tf, filtered, err = extractTemporal(clean)
 	if err != nil {

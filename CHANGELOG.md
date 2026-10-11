@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Performance
+
+- Ordinary temporal input maps retain their nonescaping caller container. The
+  private bounds helper returns that map within Go's escape-summary result
+  window and uses an explicit shallow copy for the typed cold path, avoiding
+  two map allocations per ordinary ingested node while preserving exact bounds.
+
 ### Added
 
 - Opt-in direct-Badger `EntityIdentityOnDisk` profile: canonical current rows

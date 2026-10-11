@@ -68,7 +68,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 	if err != nil {
 		return nil, err
 	}
-	validFrom, validTo, createdAt, txFromOverride, validEndpoints, props, err := extractTemporalWithBounds(props)
+	validFrom, validTo, createdAt, txFromOverride, props, validEndpoints, err := extractTemporalWithBounds(props)
 	if err != nil {
 		return nil, err
 	}

@@ -51,7 +51,7 @@ func (c *Core) prepareRelCreate(typeName string, props map[string]any, startID, 
 	if err != nil {
 		return prep, err
 	}
-	validFrom, validTo, createdAt, txFrom, validEndpoints, props, err := extractTemporalWithBounds(props)
+	validFrom, validTo, createdAt, txFrom, props, validEndpoints, err := extractTemporalWithBounds(props)
 	if err != nil {
 		return prep, err
 	}

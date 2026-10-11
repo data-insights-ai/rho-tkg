@@ -110,7 +110,7 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 		return nil, err
 	}
 
-	validFrom, validTo, createdAt, txFromOverride, validEndpoints, props, err := extractTemporalWithBounds(props)
+	validFrom, validTo, createdAt, txFromOverride, props, validEndpoints, err := extractTemporalWithBounds(props)
 	if err != nil {
 		return nil, err
 	}
@@ -380,7 +380,7 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	if err != nil {
 		return nil, err
 	}
-	validFrom, validTo, createdAt, txFromOverride, validEndpoints, props, err := extractTemporalWithBounds(props)
+	validFrom, validTo, createdAt, txFromOverride, props, validEndpoints, err := extractTemporalWithBounds(props)
 	if err != nil {
 		return nil, err
 	}
