@@ -64,6 +64,10 @@ type txbOracle struct {
 	// row above its current version (a cascade that left the current row in
 	// place) — the shapes the removed W5 skips excluded.
 	aboveCurrent int
+	// ivRng draws the interval corrections at a caller instant
+	// (tx_backfill_oracle_interval_test.go) from a stream of its own, so the
+	// draws of every other op stay those of the sequence without them.
+	ivRng *rand.Rand
 }
 
 // txbIntent is one accepted caller-instant op: what pins t-1 and t answered
@@ -244,18 +248,10 @@ func (o *txbOracle) step() {
 		o.updateRel()
 	case 5:
 		o.addLabel()
-	case 6: // a correction: plain, or at a caller instant (tx_backfill_oracle_interval_test.go)
-		if o.rng.IntN(2) == 0 {
-			o.cascadeNode()
-		} else {
-			o.nodeCallerInterval(o.rng.IntN(5))
-		}
+	case 6:
+		o.cascadeNode()
 	case 7:
-		if o.rng.IntN(2) == 0 {
-			o.cascadeRel()
-		} else {
-			o.relCallerInterval(o.rng.IntN(5))
-		}
+		o.cascadeRel()
 	case 8:
 		o.deleteNode()
 	case 9:
@@ -265,6 +261,7 @@ func (o *txbOracle) step() {
 	default: // 11-15: a caller-instant op
 		o.callerOp()
 	}
+	o.intervalStep() // tx_backfill_oracle_interval_test.go
 }
 
 // txbBounds returns lo, the largest stamp of any kind on rows (and the
@@ -1045,7 +1042,8 @@ func txbOracleRun(t *testing.T, be txbBackend, seed uint64, nOps int, x0 types.I
 	clk := &switchableClock{}
 	g.SetClockForTest(t, clk.Now)
 	rng := rand.New(rand.NewPCG(seed, seed^0x9E3779B97F4A7C15))
-	o = &txbOracle{world: newWorld(t, g, rng), be: be.name, clk: clk, accepted: map[string]int{}}
+	o = &txbOracle{world: newWorld(t, g, rng), be: be.name, clk: clk, accepted: map[string]int{},
+		ivRng: rand.New(rand.NewPCG(seed^0x34, seed))}
 	// x0 lies above the wall clock (snowflake mint times, the derived
 	// valid-from fallback) and is the same for every backend of a seed.
 	o.x = x0

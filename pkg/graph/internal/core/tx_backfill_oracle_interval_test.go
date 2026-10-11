@@ -31,13 +31,43 @@ func txbCascadeBound(e *oracleEntity) types.Instant {
 	return b
 }
 
+// intervalStep runs, after a quarter of the steps, one interval correction at a
+// caller instant through a random door, with every draw from o.ivRng.
+func (o *txbOracle) intervalStep() {
+	if o.ivRng.IntN(4) != 0 {
+		return
+	}
+	o.tick()
+	fam := o.ivRng.IntN(5)
+	if o.ivRng.IntN(2) == 0 {
+		o.nodeCallerInterval(fam)
+	} else {
+		o.relCallerInterval(fam)
+	}
+}
+
 // txbIntervalTarget draws a correction interval (open-ended half the time).
 func (o *txbOracle) txbIntervalTarget() (vf, vt types.Instant) {
-	vf = o.cascadeVF()
-	if o.rng.IntN(2) == 0 {
-		vt = vf + o.width()
+	vf = types.Instant(500 + o.ivRng.IntN(int(o.vclock)))
+	if o.ivRng.IntN(2) == 0 {
+		vt = vf + types.Instant(100+o.ivRng.IntN(2000))
+		if o.ivRng.IntN(8) == 0 {
+			vt = vf + 1
+		}
 	}
 	return vf, vt
+}
+
+// ivPickT is pickT on the interval stream: a placeable t in (lo, clock], or
+// (one in five) a t at or below maxTx, which every door must refuse.
+func (o *txbOracle) ivPickT(lo, maxTx types.Instant) (types.Instant, bool) {
+	if o.ivRng.IntN(5) == 0 {
+		return max(1, maxTx-types.Instant(o.ivRng.IntN(3))), false
+	}
+	if lo >= o.x {
+		o.fail("fixture: entity bound %d not below the clock %d", lo, o.x)
+	}
+	return lo + 1 + types.Instant(o.ivRng.Int64N(int64(o.x-lo))), true
 }
 
 // txbCheckAppended asserts the correction's rows: at least one, every one
@@ -76,12 +106,12 @@ func (o *txbOracle) nodeCallerInterval(fam int) {
 	if len(alive) == 0 {
 		return
 	}
-	id := alive[o.rng.IntN(len(alive))]
+	id := alive[o.ivRng.IntN(len(alive))]
 	node := captureNode(o.t, o.g, id)
 	o.noteAbove(node)
 	name := txbNodeFamilies()[fam].name
 	bound := txbCascadeBound(node)
-	at, ok := o.pickT(bound, bound)
+	at, ok := o.ivPickT(bound, bound)
 	vf, vt := o.txbIntervalTarget()
 	desc := fmt.Sprintf("%s/SetNodeVersionIntervalWithTx(%v,[%d,%d),t=%d)", name, id, vf, vt, at)
 	before := snapNode(o.t, o.g, id)
@@ -109,12 +139,12 @@ func (o *txbOracle) relCallerInterval(fam int) {
 	if len(live) == 0 {
 		return
 	}
-	id := live[o.rng.IntN(len(live))]
+	id := live[o.ivRng.IntN(len(live))]
 	rel := captureRel(o.t, o.g, id, "")
 	o.noteAbove(rel)
 	name := txbNodeFamilies()[fam].name
 	bound := txbCascadeBound(rel)
-	at, ok := o.pickT(bound, bound)
+	at, ok := o.ivPickT(bound, bound)
 	vf, vt := o.txbIntervalTarget()
 	desc := fmt.Sprintf("%s/SetRelVersionIntervalWithTx(%v,[%d,%d),t=%d)", name, id, vf, vt, at)
 	before := snapRel(o.t, o.g, id)

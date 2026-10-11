@@ -1,0 +1,53 @@
+# Backlog 34 mutants: one real edit each in a scratch copy of the tree (2431d6c); each must turn a named test red.
+# go test ./pkg/graph/internal/core/ -run '<regex>' -count=1 -short. Result: 25 of 25 red (M8b after the reshape below).
+M1 ignores t, stamps the clock: RED  TestIntervalWithTx_BatchIngestWholeUnit, TestIntervalWithTx_BurstGrowthReplay, TestIntervalWithTx_CommitClockNotAdvanced, TestIntervalWithTx_IngestStrongGroupAlone, TestIntervalWithTx_Order, TestIntervalWithTx_PrimaryCacheStale, TestIntervalWithTx_RaceClock, TestIntervalWithTx_ReplicaReproducesStamps, TestIntervalWithTx_StampsEveryAppendedRow, TestIntervalWithTx_TwoPhase, TestIntervalWithTx_TxRollbackEquiv, TestIntervalWithTx_ValidFromAfterT
+    e.g. _test.go:357: k at pin after the correction at t = 1; want 7
+M2 moves t (t+1): RED  TestIntervalWithTx_BatchIngestWholeUnit, TestIntervalWithTx_BurstGrowthReplay, TestIntervalWithTx_IngestStrongGroupAlone, TestIntervalWithTx_Order, TestIntervalWithTx_RaceClock, TestIntervalWithTx_StampsEveryAppendedRow, TestIntervalWithTx_TwoPhase, TestIntervalWithTx_TxRollbackEquiv, TestIntervalWithTx_ValidFromAfterT
+    e.g. _test.go:295: [good2] appended v2 stamps TxFrom=N UpdatedAt=N TxTo=0 DeletedAt=0; want TxFrom = UpdatedAt = t = N, TxTo = DeletedAt = 0
+M3 advances the commit clock (kernel still reads the clock): RED  TestIntervalWithTx_CommitClockNotAdvanced
+    e.g. _test.go:529: the WithTx door moved the commit clock by 2, its plain twin by 1; want equal (the gate's read replaces the stamp's)
+M4a resumption stamped with the clock (node): RED  TestIntervalWithTx_BatchIngestWholeUnit, TestIntervalWithTx_IngestStrongGroupAlone, TestIntervalWithTx_Order, TestIntervalWithTx_PlainDoorsUnchanged, TestIntervalWithTx_RaceClock, TestIntervalWithTx_StampsEveryAppendedRow, TestIntervalWithTx_TwoPhase, TestIntervalWithTx_TxRollbackEquiv, TestIntervalWithTx_ValidFromAfterT
+    e.g. _test.go:295: [good2] appended v4 stamps TxFrom=N UpdatedAt=N TxTo=0 DeletedAt=0; want TxFrom = UpdatedAt = t = N, TxTo = DeletedAt = 0
+M4b second correction piece stamped with the clock (rel): RED  TestIntervalWithTx_BatchIngestWholeUnit, TestIntervalWithTx_BurstGrowthReplay, TestIntervalWithTx_IngestStrongGroupAlone, TestIntervalWithTx_Order, TestIntervalWithTx_PlainDoorsUnchanged, TestIntervalWithTx_RaceClock, TestIntervalWithTx_StampsEveryAppendedRow, TestIntervalWithTx_TwoPhase, TestIntervalWithTx_TxRollbackEquiv
+    e.g. _test.go:295: [good2] appended v3 stamps TxFrom=N UpdatedAt=N TxTo=0 DeletedAt=0; want TxFrom = UpdatedAt = t = N, TxTo = DeletedAt = 0
+M4c slot row stamped with the clock (node): RED  TestIntervalWithTx_BatchIngestWholeUnit, TestIntervalWithTx_IngestStrongGroupAlone, TestIntervalWithTx_Order, TestIntervalWithTx_PlainDoorsUnchanged, TestIntervalWithTx_PrimaryCacheStale, TestIntervalWithTx_StampsEveryAppendedRow, TestIntervalWithTx_TwoPhase, TestIntervalWithTx_TxRollbackEquiv, TestIntervalWithTx_ValidFromAfterT
+    e.g. _test.go:357: k at pin after the correction at t = 1; want 7
+M5a skips the order check: RED  TestCheckCascadeTxOrder, TestIntervalWithTx_BatchIngestWholeUnit, TestIntervalWithTx_IngestStrongGroupAlone, TestIntervalWithTx_Order, TestIntervalWithTx_RaceClock
+    e.g. _test.go:366: TxFrom: t=300 err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+M5b order check with >= (t equal to the newest stamp accepted): RED  TestCheckCascadeTxOrder, TestIntervalWithTx_BatchIngestWholeUnit, TestIntervalWithTx_IngestStrongGroupAlone, TestIntervalWithTx_Order
+    e.g. _test.go:366: TxFrom: t=300 err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+M5c order check on the current row only: RED  TestIntervalWithTx_Order, TestIntervalWithTx_RaceClock
+    e.g. _test.go:140: row v93 below the correction at t=N (v100..v102) carries a stamp at or after t: {ValidFrom:N ValidTo:N TxFrom:N TxTo:0 CreatedAt:0 UpdatedAt:N DeletedAt:0 CreatedBy: UpdatedBy: baseEntit
+M5d order rule ignores DeletedAt: RED  TestCheckCascadeTxOrder
+    e.g. _test.go:366: DeletedAt: t=600 err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+M5e order rule ignores UpdatedAt: RED  TestCheckCascadeTxOrder
+    e.g. _test.go:366: UpdatedAt: t=500 err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+M5f order rule ignores TxTo: RED  TestCheckCascadeTxOrder
+    e.g. _test.go:366: TxTo: t=400 err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+M6 no AllowTxBackfill gate: RED  TestIntervalWithTx_GateAndValue
+    e.g. _test.go:422: [valid but gate off t=N] err = <nil>; want graph: transaction-time backfill is disabled (set Config.AllowTxBackfill to permit tkg_tx_from / AddWithTx)
+M7a t = 0 read as 'use the clock': RED  TestIntervalWithTx_GateAndValue
+    e.g. _test.go:422: [zero t=0] err = <nil>; want graph: backfilled tkg_tx_from must be a positive instant not in the future
+M7b no upper bound (future t accepted): RED  TestIntervalWithTx_GateAndValue
+    e.g. _test.go:422: [future t=N] err = graph: transaction-time backfill is disabled (set Config.AllowTxBackfill to permit tkg_tx_from / AddWithTx); want graph: backfilled tkg_tx_from must be a positive inst
+M8a standalone and GraphTx doors skip notePastDatedWrite: RED  TestIntervalWithTx_PrimaryCacheStale, TestIntervalWithTx_RelDoorsReportPastDatedWrite
+    e.g. _test.go:357: k at pin after the correction at t = 1; want 7
+M8b first shape (door bumps right before its write, after the gate): SURVIVED — the test's interleaved build runs at the gate, before that bump, so this shape cannot be told apart here.
+M8b reshaped to the R14 defect (report moved from after the write into the gate, before a concurrent build; door's deferred report removed): RED  TestIntervalWithTx_PrimaryCacheStale
+    e.g. interval_withtx_units_test.go:357: k at pin after the correction at t = 1; want 7
+M8c Batch applier folds no correction instants: RED  TestIntervalWithTx_PrimaryCacheStale, TestIntervalWithTx_RelDoorsReportPastDatedWrite
+    e.g. _test.go:357: k at pin after the correction at t = 1; want 7
+M8d concurrent ingest folds no correction instants: RED  TestIntervalWithTx_PrimaryCacheStale, TestIntervalWithTx_RelDoorsReportPastDatedWrite
+    e.g. _test.go:357: k at pin after the correction at t = 1; want 7
+M9a hasCallerTx ignores corrections: RED  TestIntervalWithTx_BatchIngestWholeUnit, TestIntervalWithTx_IngestStrongGroupAlone, TestIntervalWithTx_RaceClock
+    e.g. _test.go:287: refused group err = <nil>; want ErrTxOrder
+M9b pre-flight without the node one-op-per-entity count: RED  TestIntervalWithTx_BatchIngestWholeUnit
+    e.g. _test.go:215: [correction + plain update of the same entity] refused unit but the entity went 2 rows -> 3
+M9c pre-flight without the rel one-op-per-entity count: RED  TestIntervalWithTx_BatchIngestWholeUnit
+    e.g. _test.go:215: [correction + plain update of the same entity] refused unit but the entity went 2 rows -> 3
+M9d pre-flight reports a deleted node as plainly not found: RED  TestIntervalWithTx_BatchIngestWholeUnit, TestIntervalWithTx_DeletedEntity
+    e.g. _test.go:211: [correction of a deleted entity + plain op elsewhere] err = graph: batch execution had failed operations: refused before any write: batch SetNodeVersionIntervalWithTx (ID N): graph: node
+M10 GraphTx twin skips the snapshot: RED  TestIntervalWithTx_TxRollbackEquiv
+    e.g. _test.go:70: rollback left the export changed (1595 -> 2371 body bytes)
+M11 plain doors stamp their instant argument (0): RED  TestIntervalWithTx_PlainDoorsUnchanged
+    e.g. _test.go:268: plain door stamped 0; want the frozen clock reading in [N, N]
