@@ -235,9 +235,9 @@ reviewed and validated before the next package starts.
    the private registry materializer preserves reciprocal originals and validates
    Created/Original/Conflict outcomes. All 50 selected tests pass normal/race;
    eight finite gates pass, with codec/materializer coverage 96.2%/88.7%.
-   Full integration acceptance still requires the exhaustive affected graphapply
-   normal/race/coverage and applicable combined checks on the final package-4
-   source. Driver/factory/preclaim/Host readiness remains unwired and unaccepted.
+   The [finite process-orchestration acceptance](evidence/v2-process/first-slice-acceptance.json)
+   now closes its combined affected graphapply normal/race/coverage and static
+   gates. Driver/factory/preclaim/Host readiness remains unwired and unaccepted.
 4. Pass the same-graph E15–E18 serial-history/cut oracle under process and message
    faults, recovery and ownership transfer; complete the equivalent transactional-KV
    comparison and record the engine decision. Only then can V2 close under
@@ -249,6 +249,18 @@ reviewed and validated before the next package starts.
    and all six children are reaped. The archived test patch establishes the next
    missing orchestration path; it is not installed as a failing branch test.
    Its quiescent local observations do not establish certified cuts or E15–E18.
+   **The finite six-process orchestration slice is accepted**, 2026-10-11,
+   at `883b6122`: bounded authenticated retained sources and a child-owned
+   coordinator complete the cross-edge through native prepare/decision/resolve.
+   Original intent and durable decisions survive uncertain replies; absent
+   authority remains pending. The [acceptance record](evidence/v2-process/first-slice-acceptance.json)
+   pins 640 passing test names in each normal/race mode, four qualified child or
+   measurement entries, 88.10% coverage, direct-method witnesses, two killed
+   implementation mutants and passing static/scanner gates. Six graph callers
+   use leader sources 1/4; all six native voters separately verify outcomes,
+   CDC, retained roots and cleanup. This closes the first orchestration slice,
+   not remote certified cuts, E15–E18, ownership/GC, physical-host durability or
+   the engine comparison. Those remain the next package-4 acceptance work.
 
 The phase table above records current acceptance. The following entries retain
 the scope of their historical component validations.

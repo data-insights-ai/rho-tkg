@@ -1,0 +1,88 @@
+{
+  "date": "2026-10-11",
+  "phase": "V2",
+  "package": 4,
+  "slice": "bounded six-process same-graph cross-edge orchestration",
+  "accepted": true,
+  "whole_package_accepted": false,
+  "source_commit": "883b61226e2ea0cb838cfa46de6198b080d6755a",
+  "base": "eeeb105880f689cf1a2147c5a286e99fef8adc3c",
+  "upstream_v4": "efbedc28170c6b04aa28a0e957fc16c4424100c6",
+  "source_manifest_sha256": "4067e2659ad6cf5435e8494ddc1a780e1563ac27ef110ceeef8796114e856def",
+  "source_files": 431,
+  "author_receipt_sha256": "82e3ad16669d3b478510c41c25a36d2c9f1622d66ab2e3f275e378b546e52be7",
+  "independent_review_sha256": "3894091e81124902fcd19f96843acdb31631bb60a2c8a4e96d99d49a1b7c1ab1",
+  "scope": [
+    "One GraphID, partitions 3/8, three separate disk-backed child voters per group",
+    "Authenticated bounded retained data sources and native Host prepare/decision/resolve",
+    "Frozen original intent and durable decision recovery after uncertain replies; missing authority remains pending",
+    "Exact graph/life/endpoint/outgoing/incoming answers, six-voter local resolve/root/outcome/CDC/pin parity, and successful child cleanup"
+  ],
+  "validation": {
+    "inventory": 644,
+    "normal_passed": 640,
+    "race_passed": 640,
+    "qualified_skips": [
+      "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply:TestMaterializerCrashChild",
+      "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply:TestReplicatedGraphChild",
+      "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore:TestCurrentIncidentMeasurements",
+      "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore:TestIncidentAtLargeOwnEndedDefaultPopulation"
+    ],
+    "missing": [],
+    "failed": [],
+    "covered": 29966,
+    "statements": 34013,
+    "percent": 88.10160820862612,
+    "changed_executable_files_at_least80": 24,
+    "new_direct_methods_at_least80": 14,
+    "implementation_mutants_killed": [
+      "reply nonce binding omitted",
+      "retained read index replaced with current applied index"
+    ],
+    "gates": "Exhaustive affected normal/race lanes and qualified amendment runs; fmt/vet/build/pinned lint/security/vulnerability checks pass",
+    "resource_policy": "4 GiB process tree, 180 seconds per invocation; Docker 4 GiB and 2 CPUs; Go 1.26.9"
+  },
+  "qualifications": [
+    "Production executable code matches broad-gate freeze; one same-line audited G115 comment and separately tested test-only amendments are explicitly qualified",
+    "Lower-package coverage uses exact-source/equal-block historical carry; graphapply and graphstore are freshly covered",
+    "Six graph callers use configured leader sources 1/4; all six native voters independently assert replicated state; this is not six independent follower-source projections",
+    "Quiescent per-source views are not a certified distributed graph cut",
+    "Incident fixture physical work uses existing 100-row/1MiB controls; returned tuple limit and global source/output/IPC/runtime caps are unchanged",
+    "Vulnerability scan reports zero reachable findings and unreachable package/module advisories; it is not an advisory-free dependency claim"
+  ],
+  "registry_materializer_combined_condition": {
+    "closed": true,
+    "prior_record": "../v2-certified-reads/registry-materializer-integration.json",
+    "readiness_expansion": false
+  },
+  "remaining_V2": [
+    "Remote certified cuts and the full E15-E18 serial-history/cut oracle under process/message faults",
+    "Production identity reuse/fencing, ownership transfer, recovery and application GC",
+    "Physical-host durability",
+    "Comparable transactional-KV fault/cost evidence and explicit engine decision"
+  ],
+  "original_red": "first-slice-red.json",
+  "evidence": {
+    "archive": "first-slice-evidence.tar.gz",
+    "sha256": "c45d25cb9168a57eaac8857f4c469233e0f06a506b8e807baee903b61160e03b",
+    "bytes": 9043759,
+    "files": "first-slice-evidence-files.json",
+    "files_sha256": "8ee38c6d4721d6945bf7552aeb6f5721b5b1f90c77e1d769ee79862f439809d0",
+    "author_receipt": "author/closure/receipt.json",
+    "independent_review": "review/FINAL_ACCEPTANCE.md",
+    "includes_failed_runs": true,
+    "failed_runs_are_not_acceptance_evidence": true
+  },
+  "hosted_ci": {
+    "status": "not yet run for this source revision",
+    "qualification": "Local acceptance only; earlier hosted CI does not cover this slice"
+  },
+  "qualification": "Private storage/orchestration only. No public graph API, consumer migration, remote certified cuts, full E15-E18 oracle, physical-host durability, ownership transfer/GC, engine selection or whole V2 acceptance.",
+  "outside_this_slice": [
+    "remote certified cuts/E15-E18 full oracle",
+    "ownership transfer/E17",
+    "GC retention/physical-host fault matrix",
+    "substrate comparison/FDB",
+    "public consumer API"
+  ]
+}
