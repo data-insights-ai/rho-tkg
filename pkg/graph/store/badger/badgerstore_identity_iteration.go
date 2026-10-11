@@ -238,7 +238,7 @@ func (bs *Store) forEachCurrentRelRowLocked(after types.RelID, locked bool, fn f
 }
 
 func (bs *Store) forEachDiskTypeRel(token uint16, opts QueryOpts, fn func(*types.Relationship) (bool, error)) error {
-	prefix := []byte{storeutil.KeyRelType, byte(token >> 8), byte(token)}
+	prefix := []byte{storeutil.KeyRelType, byte(token >> 8), byte(token)} // #nosec G115 -- intentional high/low bytes of a uint16 token
 	return bs.forEachIdentityKey(prefix, storeutil.SizeRelTypeIdx, 3, types.RelID(opts.After).SnowflakeID(), false, func(id snowflake.ID, _ []byte) (bool, error) {
 		r, err := bs.prefetchRelScan(types.RelID(id))
 		if errors.Is(err, ErrRelNotFound) {

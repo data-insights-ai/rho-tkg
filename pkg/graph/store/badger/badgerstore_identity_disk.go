@@ -53,7 +53,7 @@ func (e IdentityCallbackMaintenanceError) Unwrap() error {
 }
 
 func identityRevisionStripe(id types.EntityID) uint64 {
-	x := uint64(id)
+	x := uint64(id) // #nosec G115 -- bitwise stripe hash; public callers validate positive entity IDs
 	x ^= x >> 33
 	x *= 0xff51afd7ed558ccd
 	x ^= x >> 33
