@@ -27,6 +27,31 @@ import (
 // mismatch would silently under-count NDV, exactly the failure mode the
 // merge exists to prevent.
 func (ts *Store) NodePropertyStats(labelToken uint16, propertyKey string) (storecontract.PropertyStats, error) {
+	return ts.foldNodePropertySketches(labelToken, propertyKey, (*BadgerStore).NodePropertyStatsSketch)
+}
+
+// NodePropertyNDV implements store.NodePropertyNDVCapability: the same
+// cross-shard sketch merge as NodePropertyStats, over each shard's
+// NodePropertyNDVSketch, which never rescans a shard's Min/Max (round 5
+// request 1).
+func (ts *Store) NodePropertyNDV(labelToken uint16, propertyKey string) (storecontract.PropertyNDV, error) {
+	stats, err := ts.foldNodePropertySketches(labelToken, propertyKey, func(bs *BadgerStore, tok uint16, key string) (*indexpkg.HyperLogLog, any, any, int64, error) {
+		sketch, count, err := bs.NodePropertyNDVSketch(tok, key)
+		return sketch, nil, nil, count, err
+	})
+	if err != nil {
+		return storecontract.PropertyNDV{}, err
+	}
+	return storecontract.PropertyNDV{NDV: stats.NDV, Count: stats.Count}, nil
+}
+
+// shardPropertySketch reads one shard's sketch, extrema and count for the
+// fold (NodePropertyStatsSketch, or NodePropertyNDVSketch without extrema).
+type shardPropertySketch func(bs *BadgerStore, labelToken uint16, propertyKey string) (*indexpkg.HyperLogLog, any, any, int64, error)
+
+// foldNodePropertySketches is the cross-shard fold of NodePropertyStats (see
+// there) over fetch.
+func (ts *Store) foldNodePropertySketches(labelToken uint16, propertyKey string, fetch shardPropertySketch) (storecontract.PropertyStats, error) {
 	if err := ts.checkOpen(); err != nil {
 		return storecontract.PropertyStats{}, err
 	}
@@ -66,7 +91,7 @@ func (ts *Store) NodePropertyStats(labelToken uint16, propertyKey string) (store
 	if err != nil {
 		return storecontract.PropertyStats{}, err
 	}
-	refSketch, refMin, refMax, refCount, refErr := ref.NodePropertyStatsSketch(labelToken, propertyKey)
+	refSketch, refMin, refMax, refCount, refErr := fetch(ref, labelToken, propertyKey)
 	refCheckin()
 	if refErr != nil {
 		return storecontract.PropertyStats{}, refErr
@@ -80,7 +105,7 @@ func (ts *Store) NodePropertyStats(labelToken uint16, propertyKey string) (store
 		return storecontract.PropertyStats{}, archiveErr
 	}
 	if archive != nil {
-		aSketch, aMin, aMax, aCount, aErr := archive.NodePropertyStatsSketch(labelToken, propertyKey)
+		aSketch, aMin, aMax, aCount, aErr := fetch(archive, labelToken, propertyKey)
 		archiveCheckin()
 		if aErr != nil {
 			return storecontract.PropertyStats{}, aErr
@@ -109,7 +134,7 @@ func (ts *Store) NodePropertyStats(labelToken uint16, propertyKey string) (store
 		}
 		defer release()
 		results[i].sketch, results[i].min, results[i].max, results[i].count, results[i].err =
-			store.NodePropertyStatsSketch(labelToken, propertyKey)
+			fetch(store, labelToken, propertyKey)
 	})
 	for _, r := range results {
 		if r.err != nil {

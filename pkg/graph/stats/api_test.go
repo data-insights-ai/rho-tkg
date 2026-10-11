@@ -2,6 +2,7 @@ package stats
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
@@ -48,6 +49,12 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 	if got, err := nilAPI.RelPropertyStats("KNOWS", "weight"); got != (storepkg.PropertyStats{}) || !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("nil RelPropertyStats = (%+v, %v), want (zero, ErrNilGraph)", got, err)
 	}
+	if got, err := nilAPI.PropertyNDV("Person", "id"); got != (storepkg.PropertyNDV{}) || !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil PropertyNDV = (%+v, %v), want (zero, ErrNilGraph)", got, err)
+	}
+	if got, err := nilAPI.RelPropertyNDV("KNOWS", "weight"); got != (storepkg.PropertyNDV{}) || !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil RelPropertyNDV = (%+v, %v), want (zero, ErrNilGraph)", got, err)
+	}
 
 	api := New((*statsOpsSpy)(nil))
 	if got, err := api.NodeCount(); got != 0 || !errors.Is(err, grapherr.ErrNilGraph) {
@@ -93,6 +100,8 @@ func TestAPIForwardsMethodsAndMapsSnapshotCounters(t *testing.T) {
 		rangeCardExact:   true,
 		propertyStats:    storepkg.PropertyStats{NDV: 5, Min: int64(1), Max: int64(9), Count: 3},
 		relPropertyStats: storepkg.PropertyStats{NDV: 6, Min: int64(2), Max: int64(8), Count: 4},
+		propertyNDV:      storepkg.PropertyNDV{NDV: 11, Count: 12},
+		relPropertyNDV:   storepkg.PropertyNDV{NDV: 13, Count: 14},
 		labelCounts:      map[string]int{"Person": 3},
 		relTypeCounts:    map[string]int{"KNOWS": 4},
 		snapshot:         [12]int64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
@@ -132,6 +141,15 @@ func TestAPIForwardsMethodsAndMapsSnapshotCounters(t *testing.T) {
 	}
 	if ops.relPropertyStatsTypeArg != "KNOWS" || ops.relPropertyStatsKeyArg != "weight" || ops.relPropertyStatsCalls != 1 {
 		t.Fatalf("RelPropertyStats forwarded args mismatch: %+v", ops)
+	}
+	if got, err := api.PropertyNDV("Person", "age"); err != nil || got != (storepkg.PropertyNDV{NDV: 11, Count: 12}) {
+		t.Fatalf("PropertyNDV = (%+v, %v), want (NDV:11 Count:12, nil)", got, err)
+	}
+	if got, err := api.RelPropertyNDV("KNOWS", "weight"); err != nil || got != (storepkg.PropertyNDV{NDV: 13, Count: 14}) {
+		t.Fatalf("RelPropertyNDV = (%+v, %v), want (NDV:13 Count:14, nil)", got, err)
+	}
+	if fmt.Sprint(ops.propertyNDVArgs) != "[node:Person.age rel:KNOWS.weight]" {
+		t.Fatalf("PropertyNDV forwarded args mismatch: %v", ops.propertyNDVArgs)
 	}
 	labelCounts, err := api.AllLabelCounts()
 	if err != nil || labelCounts["Person"] != 3 {
@@ -218,6 +236,7 @@ func TestAPIPropagatesOpsErrors(t *testing.T) {
 		rangeCardErr:        opErr,
 		propertyStatsErr:    opErr,
 		relPropertyStatsErr: opErr,
+		propertyNDVErr:      opErr,
 		allLabelCountsErr:   opErr,
 		allRelTypeCountsErr: opErr,
 	})
@@ -245,6 +264,12 @@ func TestAPIPropagatesOpsErrors(t *testing.T) {
 	if _, err := api.RelPropertyStats("KNOWS", "weight"); !errors.Is(err, opErr) {
 		t.Fatalf("RelPropertyStats error = %v, want %v", err, opErr)
 	}
+	if _, err := api.PropertyNDV("Person", "age"); !errors.Is(err, opErr) {
+		t.Fatalf("PropertyNDV error = %v, want %v", err, opErr)
+	}
+	if _, err := api.RelPropertyNDV("KNOWS", "weight"); !errors.Is(err, opErr) {
+		t.Fatalf("RelPropertyNDV error = %v, want %v", err, opErr)
+	}
 	if _, err := api.AllLabelCounts(); !errors.Is(err, opErr) {
 		t.Fatalf("AllLabelCounts error = %v, want %v", err, opErr)
 	}
@@ -265,6 +290,9 @@ type statsOpsSpy struct {
 	rangeCardExact   bool
 	propertyStats    storepkg.PropertyStats
 	relPropertyStats storepkg.PropertyStats
+	propertyNDV      storepkg.PropertyNDV
+	relPropertyNDV   storepkg.PropertyNDV
+	propertyNDVArgs  []string
 	labelCounts      map[string]int
 	relTypeCounts    map[string]int
 	snapshot         [12]int64
@@ -277,6 +305,7 @@ type statsOpsSpy struct {
 	rangeCardErr        error
 	propertyStatsErr    error
 	relPropertyStatsErr error
+	propertyNDVErr      error
 	allLabelCountsErr   error
 	allRelTypeCountsErr error
 	snapshotErr         error
@@ -380,6 +409,16 @@ func (s *statsOpsSpy) RelPropertyStats(typeName, propertyKey string) (storepkg.P
 	s.relPropertyStatsTypeArg = typeName
 	s.relPropertyStatsKeyArg = propertyKey
 	return s.relPropertyStats, s.relPropertyStatsErr
+}
+
+func (s *statsOpsSpy) PropertyNDV(label, propertyKey string) (storepkg.PropertyNDV, error) {
+	s.propertyNDVArgs = append(s.propertyNDVArgs, "node:"+label+"."+propertyKey)
+	return s.propertyNDV, s.propertyNDVErr
+}
+
+func (s *statsOpsSpy) RelPropertyNDV(typeName, propertyKey string) (storepkg.PropertyNDV, error) {
+	s.propertyNDVArgs = append(s.propertyNDVArgs, "rel:"+typeName+"."+propertyKey)
+	return s.relPropertyNDV, s.propertyNDVErr
 }
 
 func (s *statsOpsSpy) AllLabelCounts() (map[string]int, error) {

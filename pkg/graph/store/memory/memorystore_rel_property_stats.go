@@ -152,3 +152,34 @@ func (ms *Store) collectCurrentRelPropertyValuesLocked(relTypeToken uint16, prop
 	})
 	return values, err
 }
+
+// RelPropertyNDV implements store.RelPropertyNDVCapability: the NDV and
+// Count RelPropertyStats would return, under the read lock and without the
+// dirty-triggered rescan of the exact Min/Max.
+func (ms *Store) RelPropertyNDV(relTypeToken uint16, propertyKey string) (storecontract.PropertyNDV, error) {
+	if ms == nil {
+		return storecontract.PropertyNDV{}, ErrNilStore
+	}
+	if ms.disablePlannerStats {
+		return storecontract.PropertyNDV{}, storecontract.ErrCapabilityNotSupported
+	}
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return storecontract.PropertyNDV{}, err
+	}
+	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
+		return storecontract.PropertyNDV{}, err
+	}
+	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
+		return storecontract.PropertyNDV{}, err
+	}
+	var out storecontract.PropertyNDV
+	if counts := ms.relPropertyKeyCounts[relTypeToken]; counts != nil {
+		out.Count = int64(counts[propertyKey])
+	}
+	if entries := ms.relPropertyStats[relTypeToken]; entries != nil {
+		out.NDV, _, _ = entries[propertyKey].Snapshot()
+	}
+	return out, nil
+}

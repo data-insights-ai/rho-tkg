@@ -8,6 +8,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`g.Stats().PropertyNDV(label, key)` / `RelPropertyNDV(typeName, key)`: a property's distinct-value estimate
+  without the exact Min/Max** (sigma-tkgd round 5 request 1, task record C4r: after a write that removed a label's
+  minimum or maximum value, the next `PropertyStats` rescans the label's current values, 470 ms per property on
+  100,000 badger nodes, although the planner reads only the NDV). Returns `store.PropertyNDV{NDV, Count}`, equal to
+  `PropertyStats`' NDV and Count at the same moment, read from the sketch and the presence counter only (memory:
+  under the read lock, where `PropertyStats` takes the write lock). Unknown label or type: zero value; same
+  validation and closed-graph errors as `PropertyStats`. Store capabilities `store.NodePropertyNDVCapability`
+  (memory, badger, tiered: the shards' sketches merged as `NodePropertyStats` merges them, through the new
+  store-internal `badger.Store.NodePropertyNDVSketch`, never a shard's rescan) and `RelPropertyNDVCapability`
+  (memory, badger); sharded, tiered relationships, external stores and a store with planner statistics disabled
+  return `store.ErrCapabilityNotSupported`. `stats.Ops` gains the two methods. No write path changes.
+  `BenchmarkPropertyNDVAfterExtremeWrite` (100,000 :P nodes, the maximum moved before each call; one CPU, load 13
+  to 27): badger `PropertyStats` 213-219 ms, `PropertyNDV` 11.6-12.8 us; memory 6.7-7.8 ms against 11.4-12.2 us.
+  Tests: `TestStatsPropertyNDV` (every backend, two-phase across the delete of the maximum, the unsupported
+  backends; red: the door did not exist), `TestBadgerPropertyNDVDoesNotRescan` / `TestMemoryPropertyNDVDoesNotRescan`
+  (the accumulator stays dirty, the rescan hook never fires), the disabled-statistics and closed-store cases.
+
 - **`store.LabelTxMemberLookupCapability` / `RelTypeTxMemberLookupCapability`: the point form of the K1 label and
   type membership sidecar** (sigma-tkgd round 5 request 8, task record C4s: a coordinate seek by property in a
   valid-time window read the history of every node with history, about 1 ms per seek on badger once a cold

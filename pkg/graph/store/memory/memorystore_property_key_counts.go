@@ -245,3 +245,34 @@ func (ms *Store) collectCurrentPropertyValuesLocked(labelToken uint16, propertyK
 	}
 	return values
 }
+
+// NodePropertyNDV implements store.NodePropertyNDVCapability: the NDV and
+// Count NodePropertyStats would return, under the read lock and without the
+// dirty-triggered rescan of the exact Min/Max.
+func (ms *Store) NodePropertyNDV(labelToken uint16, propertyKey string) (storecontract.PropertyNDV, error) {
+	if ms == nil {
+		return storecontract.PropertyNDV{}, ErrNilStore
+	}
+	if ms.disablePlannerStats {
+		return storecontract.PropertyNDV{}, storecontract.ErrCapabilityNotSupported
+	}
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return storecontract.PropertyNDV{}, err
+	}
+	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+		return storecontract.PropertyNDV{}, err
+	}
+	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
+		return storecontract.PropertyNDV{}, err
+	}
+	var out storecontract.PropertyNDV
+	if counts := ms.propertyKeyCounts[labelToken]; counts != nil {
+		out.Count = int64(counts[propertyKey])
+	}
+	if entries := ms.propertyStats[labelToken]; entries != nil {
+		out.NDV, _, _ = entries[propertyKey].Snapshot()
+	}
+	return out, nil
+}

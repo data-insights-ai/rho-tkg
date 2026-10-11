@@ -36,6 +36,7 @@ pinned property lookup) are in "Planner doors added since 4.41.0".
 | All rel-type counts | `g.Stats().AllRelTypeCounts()` | O(distinct registered types) | O(types × open shards) | zero-count types omitted from the map |
 | Node count by label + property-key presence | `g.Stats().NodeCountByLabelAndPropertyKey(label, key)` | O(1) | O(open shards) | `ErrCapabilityNotSupported` on a store without the optional capability |
 | NDV + exact min/max + count | `g.Stats().PropertyStats(label, key)` | O(1) amortized; O(nodes carrying label) on a rescan after the current min/max holder is deleted | O(open shards) — per-shard HyperLogLog register-max merge, plus each shard's own independent Min/Max rescan on extremum deletion (see "Tiered NDV fold") | `ErrCapabilityNotSupported` on a store without the optional capability (sharded has none; also a graph-opened store when `Config.DisablePlannerStats` is set) |
+| NDV + count, no min/max | `g.Stats().PropertyNDV(label, key)` / `RelPropertyNDV(typeName, key)` (unreleased) | O(1) plus the sketch's estimate (about 12 us on a dense sketch); never rescans | tiered merges the shards' sketches without their rescans; sharded and tiered relationships decline | `ErrCapabilityNotSupported` as for `PropertyStats` |
 | Numeric range cardinality | `g.Nodes().RangeCardinality(...)` / `g.Stats().RangeCardinality(...)` (alias) | O(distinct values in range), no node scan | tiered always declines (does not implement the capability); sharded sums its slots and is exact only when every slot is | `exact=false` (not an error) — see "RangeCardinality decline conditions" |
 | **Relationship-side mirrors** | `g.Stats().RelPropertyStats(typeName, key)`, `g.Stats().RelPropertyTypeClassCounts(typeName, key)`, `g.Stats().RelRangeCardinality(...)` / `g.Rels().RangeCardinality(...)` (same operation), `g.Rels().ForEachByTypePropertyRangeOrdered(...)` | same shapes as their node siblings, over the REL property index | tiered declines all of them (rel property indexes are RAM-only per shard); sharded declines them except `RelPropertyTypeClassCounts`, which it sums over its slots (each relationship lives on one slot) | `ErrCapabilityNotSupported` for the two stats doors (an unpopulated `(relType, key)` pair is a zero value, not an error); `exact=false` for `RelRangeCardinality`; `ErrIndexNotFound` for the non-temporal ordered scan |
 | Ordered / top-k range scan | `g.Nodes().ForEachByLabelPropertyRangeOrdered(...)` | O(k + log n) index work for a LIMIT-k top-k (RAM); disk mode is O(range) cheap-ID collection + O(k) node fetch. TEMPORAL opts: O(N log N) sound full fold (no index) | non-temporal: `ErrIndexNotFound` (tiered and sharded are not exact native stores — no ordered view); temporal opts: the same O(N log N) fold on every backend | non-temporal: `ErrIndexNotFound` when no property index / capability. Temporal opts are SERVED via the fold (no longer `ErrOrderedScanTemporal`) |
@@ -139,7 +140,8 @@ restart exactly like the presence counter does. The ONE non-O(1) case: after
 the node holding the current `Min` or `Max` is deleted (or replaced with a
 different value), the NEXT `PropertyStats` call for that pair pays an
 O(nodes currently carrying the label) rescan to recompute an exact
-replacement extremum — see "Deletion semantics" below.
+replacement extremum — see "Deletion semantics" below. A planner that needs
+the NDV only reads `PropertyNDV`, which never rescans.
 
 ### NDV — HyperLogLog sketch
 
