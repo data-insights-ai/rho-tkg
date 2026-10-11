@@ -50,6 +50,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Performance
 
+- **Memory: per-type relationship epochs, so `RelTypeDegreeStats` of a type stays cached across writes to other
+  types** (sigma-tkgd round 5 request 9, task record C4s: the cold harness's update of one `COLD_TICK`
+  relationship moved the memory store's store-wide relationship epoch, so the next `RelTypeDegreeStats("SPOKE")`
+  recounted the type, about 400 ms of 1,048,576 relationships, half of the cold row). The memory store's
+  `RelMutationEpochForType(token)` (the stamp the core's degree cache is keyed on) is now the type's stripe (256
+  stripes) plus a coarse term, as on badger: put, generated-ID put, replace, replace with history, history version
+  and batch put bump their relationships' types only; deletes, node cascades, retention, erasure, segment sealing
+  and Clear keep the coarse bump (every type). `relEpoch` (the Gate-2 epoch of the expand and column paths) still
+  moves on every relationship write and the memory store's rel-type column snapshots stay stamped with it. The write
+  cost is the same one atomic add per relationship. `BenchmarkRelTypeDegreeStatsAfterOtherTypeWrite` (262,144
+  `SPOKE` relationships from 64 skewed hubs, one `COLD_TICK` update before each call; one CPU, load 33 to 72, three
+  interleaved rounds): memory 67-80 ms -> 0.25-23 us, badger unchanged (0.4 us). Test:
+  `TestMemoryRelTypeEpochSurvivesOtherTypes` (red: every write of another type moved the stamp; every door of the
+  type's own writes moves it; the coarse doors move every type); the existing two-phase `TestRelTypeDegreeStats`.
+
 - **Badger: a label's column snapshot is patched after an in-place property write instead of rebuilt** (sigma-tkgd
   round 5 request 4, task records C4r/C4s: one write to a member of a 1,000,000-node label made the next column
   read decode the whole label again, 4.5 s per cold run; `buildLabelColumns` was 12.5 of 12.9 s of

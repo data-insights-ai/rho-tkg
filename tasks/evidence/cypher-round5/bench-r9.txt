@@ -1,0 +1,13 @@
+base BenchmarkRelTypeDegreeStatsAfterOtherTypeWrite/memory         	      20	  68049781 ns/op	18918224 B/op	    2079 allocs/op
+base BenchmarkRelTypeDegreeStatsAfterOtherTypeWrite/badger         	      20	       410.4 ns/op	       0 B/op	       0 allocs/op
+branch BenchmarkRelTypeDegreeStatsAfterOtherTypeWrite/memory         	      20	       247.9 ns/op	       0 B/op	       0 allocs/op
+branch BenchmarkRelTypeDegreeStatsAfterOtherTypeWrite/badger         	      20	       443.6 ns/op	       0 B/op	       0 allocs/op
+branch BenchmarkRelTypeDegreeStatsAfterOtherTypeWrite/memory         	      20	     22783 ns/op	       0 B/op	       0 allocs/op
+branch BenchmarkRelTypeDegreeStatsAfterOtherTypeWrite/badger         	      20	       387.5 ns/op	       0 B/op	       0 allocs/op
+base BenchmarkRelTypeDegreeStatsAfterOtherTypeWrite/memory         	      20	  80264073 ns/op	18918224 B/op	    2079 allocs/op
+base BenchmarkRelTypeDegreeStatsAfterOtherTypeWrite/badger         	      20	       881.3 ns/op	       0 B/op	       0 allocs/op
+base BenchmarkRelTypeDegreeStatsAfterOtherTypeWrite/memory         	      20	  67417869 ns/op	18918224 B/op	    2079 allocs/op
+base BenchmarkRelTypeDegreeStatsAfterOtherTypeWrite/badger         	      20	      1748 ns/op	       0 B/op	       0 allocs/op
+branch BenchmarkRelTypeDegreeStatsAfterOtherTypeWrite/memory         	      20	       541.9 ns/op	       0 B/op	       0 allocs/op
+branch BenchmarkRelTypeDegreeStatsAfterOtherTypeWrite/badger         	      20	       399.9 ns/op	       0 B/op	       0 allocs/op
+load: 72.24 40.57 33.26
