@@ -75,7 +75,7 @@ and reference JSON specify contracts/evidence, not completed engine gates.
 |---|---|
 | V0 | Specification accepted: independent criterion review and refreshed reference/design checks pass. Contracts, profile/unit/import policy, current-v4 delta and reproducible resource/dataset test profiles are reviewed below. Implementation, consumer execution and measured capacity retain their separate phase gates |
 | V1 | Values/state accepted: unchanged 16/52 and revised rho-owned cases pass through typed primitives and `Plan`/`Project`, including immutable interpretation/native-axis roles, attached descriptor/source-revision history, graph-qualified refusals, independent state/complete-CDC capacity assertions and the pure Q/ms default-axis binding. Node/relationship retained-view exact sets, boundary/differential/fuzz/codec refusals and direct new-method coverage pass. Durable default registration is covered by the V2 checkpoint below; request/dependency installation and graph/cut integration remain V2, consumer adapters V4 and provenance-aware import V6 |
-| V2 | Active, not accepted. Durable replicated graph history and actual three-voter snapshot activation exist for sole-partition graphs; the six-process graph fixture uses two distinct graphs. Same-graph declared-partition initialization, durable default-axis designation and shared allocation exist, but those partitions refuse graph mutations. The separately validated two-group transaction/cut prototype operates on scalar values. Remaining work connects actual graph dependencies/effects to durable prepare/decision/resolve and certified graph reads, then proves ownership transfer, recovery and the independent serial-history/cut oracle. Production identity reuse/fencing, application GC, physical-host durability and comparable transactional-KV fault/cost evidence with an explicit engine decision remain open |
+| V2 | Active, not accepted. Checked partition-local graph writes are accepted on both declared partitions of one GraphID, with three disk-backed voters each, retained history, nonempty snapshot activation, failover and reopen. Default-axis designation, shared allocation and explicit local authority are preserved. Remaining work connects actual cross-partition graph dependencies/effects to durable prepare/decision/resolve and certified graph reads, then proves ownership transfer, recovery and the independent serial-history/cut oracle. Production identity reuse/fencing, application GC, physical-host durability and comparable transactional-KV fault/cost evidence with an explicit engine decision remain open |
 | V3 | Coordinate timeblock candidate independently validated (local commit `fa0c982`; scoped temporal+block coverage 95.7%, no exported method at 0%). Full engine seal/merge/recovery, paged structures and all-in budget/byte-ledger measurements remain open; resident-buffer prototype timings do not close V3 |
 | V4 | Production read/change APIs, historical cross-door parity, gap-free leased feed handoff and pinned sigma access-contract build and nonempty mutation-then-historical tests (the current signature/empty smoke is insufficient) |
 | V5 | Distributed access across 1/2/4/8 partitions, cross-edge/stall/rebalance/feed cases and sigma workload parity |
@@ -140,23 +140,23 @@ push-only lint is skipped there and covered by the pinned local run above.
 V2 completion sequence: one implementation package at a time, independently
 reviewed and validated before the next package starts.
 
-1. Enable checked partition-local graph staging. Durable default-axis designation
-   and replicated recovery are accepted above; graph writes remain unavailable
-   on declared partitions until this next package passes its own tests. The
-   package includes HOME-published ID-range ownership, authoritative typed-value
-   and predicate routing, and all-local read/write coverage as specified in
-   PLAN §5.1. This package closes only when all of the following are verified:
-   actual typed writes on both partitions of one GraphID; exact canonical,
-   declared and current-presence indexes plus complete ordered CDC; all nine
-   dependency kinds with unknown/remote/stale/corrupt authority refusals and
-   no partial effects; shared consumptive representation admission through
-   request ownership, routing, planning, staging, composition and round mapping
-   without widening existing caps; retained mutation-then-historical reads,
-   six-voter disk reopen and nonempty snapshot/failover; author normal/race/
-   coverage and pinned static/security gates, followed by independent review
-   and validation of the frozen package. A local miss is insufficient evidence
-   of global absence. Passing a focused checkpoint alone does not close this
-   package; distributed transactions and certified cuts remain steps 2–4.
+1. **Accepted 2026-10-11 — checked partition-local graph writes.** Both declared
+   partitions of one GraphID admit typed writes, preserving canonical, declared
+   and current-presence indexes plus complete ordered CDC. All nine dependency
+   kinds have checked authority; unknown/remote/stale/corrupt authority refuses
+   without partial graph effects. Shared consumptive representation admission
+   covers request ownership through result composition without widening caps.
+   Retained histories, six-voter disk reopen, nonempty snapshot activation and
+   leader failover pass. Independent review found and verified corrections for
+   fresh scalar-copy admission and regressed ownership epochs. This closes the
+   local-write package only; a local miss does not establish global absence.
+   [Acceptance evidence](evidence/v2-partition-routing/acceptance.json) records
+   the full-module normal/race gates, final 23,237/26,280 statement coverage
+   (88.4%), direct public coverage, pinned static/security checks and eight
+   independently executed correction/recovery controls. The additive captured-
+   history API commit has its own normal/race and final full coverage checks;
+   the earlier whole-module race applies to unchanged existing code. No physical
+   multi-host, cross-partition transaction or capacity acceptance is implied.
 2. Integrate actual graph dependencies and complete effects with durable
    prepare/decision/resolve. The acceptance fixture is one GraphID, two declared
    partitions, three replicas each, remotely owned endpoints and one cross-edge

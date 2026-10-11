@@ -12,6 +12,18 @@
       "sha256": "198a7f29443c2a412013d99fd46f1f6b9f74e833a2d60459613564fe3da59e8c",
       "bytes": 268174,
       "files": 9
+    },
+    {
+      "archive": "tasks/evidence/v2-partition-routing/final-gates9.tar.gz",
+      "sha256": "bd07c392f262265ce8a5dcaa27155a0b6c8defcb1f333972349ac3bb0912c09b",
+      "bytes": 1893978,
+      "files": 40
+    },
+    {
+      "archive": "tasks/evidence/v2-partition-routing/final-gates10.tar.gz",
+      "sha256": "de99fdc18017eff120477d5a60cf77faa9fbb7e79cd384494deb0dfd124ef778",
+      "bytes": 2288902,
+      "files": 35
     }
   ]
 }

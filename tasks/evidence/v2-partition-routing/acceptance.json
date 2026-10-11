@@ -1,0 +1,84 @@
+{
+  "accepted": "2026-10-11",
+  "scope": "V2 package 1: checked partition-local graph writes",
+  "status": "accepted; overall V2 remains open",
+  "code_checkpoint": "e46dd3ed4ee461076464a07dac3a0c20128f1efc",
+  "source_manifest_sha256": "ca4c058950e298ddd42466cf5b87883c41148e372f869281f2f98ce945b3dcd1",
+  "input_count": 2273,
+  "source_qualification": "Final tested code is unchanged. This acceptance record, archive index and backlog closure are documentation/evidence-only changes after validation.",
+  "accepted_behaviour": [
+    "Typed graph writes on two declared partitions of one GraphID, three disk-backed voters per partition.",
+    "Canonical, declared and current-presence indexes and complete ordered CDC; retained mutation-then-historical reads.",
+    "All nine dependency kinds; unknown, remote, stale and corrupt authority refuse without partial graph effects.",
+    "Shared consumptive representation admission from request ownership through composition; existing caps unchanged.",
+    "Six-voter disk reopen, nonempty snapshot activation and leader failover."
+  ],
+  "independent_review": {
+    "status": "accepted after two blocking corrections",
+    "corrections": [
+      "Reserve fresh scalar backing before decoding, including scope and descriptor clones.",
+      "Reject persisted ownership epochs below the published initial epoch without graph effects."
+    ],
+    "evidence": "final-gates9.tar.gz",
+    "regression_evidence": "final-review-corrections/"
+  },
+  "validation": {
+    "whole_module_normal_and_race": {
+      "status": "pass",
+      "code_checkpoint": "4274af4579bc2e7e19049d661602ceb33dea96be",
+      "evidence": "final-gates9.tar.gz"
+    },
+    "additive_successor": {
+      "commit": "16c4ad0c8e3187d0e272e1ccf938f2b1b8a177d9",
+      "status": "history API normal/race, full-module coverage, fmt, vet, build and pinned lint/security/vulnerability gates pass",
+      "evidence": "final-gates10.tar.gz",
+      "qualification": "All existing Go files remain byte-identical to the whole-module race checkpoint. The two added history API files have focused successor race coverage; no successor whole-module race is claimed."
+    },
+    "parent_independent_race": {
+      "status": "pass",
+      "top_level_tests": 8,
+      "source_verified_before_after": true,
+      "log_sha256": "03461a14a833f6f3f13782cd8b13c11bcd3ca8655812731036921458f111111f",
+      "evidence": "final-gates9.tar.gz"
+    },
+    "coverage": {
+      "covered": 23237,
+      "statements": 26280,
+      "percent": 88.42085235920852
+    },
+    "coverage_method": "Coalesce duplicate coverpkg blocks by source location and OR execution counts before summing statements.",
+    "new_file_and_changed_block_proxy_minimum_percent": 80,
+    "exported_methods_with_zero_coverage": 0,
+    "tools": {
+      "go": "1.26.9",
+      "golangci-lint": "2.13.2",
+      "gosec": "2.29.0",
+      "govulncheck": "1.7.0"
+    },
+    "vulnerability_qualification": "Zero reachable vulnerabilities; noncalled imported/required advisories are preserved in the raw report."
+  },
+  "limits": [
+    "Local disk-backed replicas do not prove physical multi-host durability.",
+    "No overall V2, cross-partition transaction, certified-cut or capacity acceptance.",
+    "Runtime RSS observations are bounded test-process measurements, not deployment capacity commitments."
+  ],
+  "remaining_v2_packages": [
+    "2: actual cross-partition graph prepare/decision/resolve",
+    "3: certified current and historical graph reads",
+    "4: serial-history/cut oracle under faults, recovery and transfer; identity fencing/reuse, application GC, physical-host durability and transactional-KV engine decision"
+  ],
+  "archives": [
+    {
+      "archive": "tasks/evidence/v2-partition-routing/final-gates9.tar.gz",
+      "sha256": "bd07c392f262265ce8a5dcaa27155a0b6c8defcb1f333972349ac3bb0912c09b",
+      "bytes": 1893978,
+      "files": 40
+    },
+    {
+      "archive": "tasks/evidence/v2-partition-routing/final-gates10.tar.gz",
+      "sha256": "de99fdc18017eff120477d5a60cf77faa9fbb7e79cd384494deb0dfd124ef778",
+      "bytes": 2288902,
+      "files": 35
+    }
+  ]
+}
