@@ -551,7 +551,7 @@ func TestIntervalWithTx_DeletedEntity(t *testing.T) {
 					g := be.open(t, true)
 					f := ivFixture(t, g)
 					sh := ivShapes(f)[0]
-					notFound := error(storepkg.ErrNodeNotFound)
+					notFound := storepkg.ErrNodeNotFound
 					var err error
 					if kind == "node" {
 						err = g.Nodes.Delete(ctx, f.nid)
