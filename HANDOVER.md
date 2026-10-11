@@ -413,22 +413,28 @@ index as a plain one. My checks only: local main fast-forwarded to d6fff48, buil
 lines; NOT run: `make ci-docker` on it. Nothing was reverted or deleted. Open for René: accept v4.50.0 as released (default, nothing
 to do), or retag; and tell Markus/sigma-tkgd the patch-only rule if it still stands. My next release is therefore v4.50.1.
 
-## 15. v5: can consumers use it yet? (2026-10-11)
+## 15. v5: can consumers use it yet? (updated 2026-10-11)
 
-René asked: "can we use the v5 already?", then "ask the sigma and aisoc agents ... You do not understand it", then "Add the
-mapping and add a section in hand over.MD". rho-tkg is an embeddable open-source bitemporal knowledge graph library (memory-
-optimised), not a database; consumers build on its public API, rho never ships consumer adapters.
+René requested the v4→v5 mapping for consumer agents. rho-tkg remains an embeddable graph library/storage
+engine; sigma owns reasoning and its adapter, and consumers supply transport/process orchestration.
 
-- **Answer: not yet.** Branch `v5` (fd37fa0, Markus Nissl) exports only value types (`v5/pkg/temporal`, `v5/pkg/types`); the graph
-  code (graphstore, graphstate, graphapply, assertion, raftlog, txnproto) is `internal/`. No public graph API, no as-of/timeline
-  reads, no queries, no v4 importer. 3299 v5 tests pass; phase estimates V0 95 %, V1 90 %, V2 55 %, V3–V7 0–15 %.
-- **Consumers (asked 2026-10-11):** sigma-tkgd: nothing imports v5; needs a public graph API equal to the v4 doors it reads and a
-  v4→v5 door mapping to plan the switch. ai-soc: imports v4 only via `aisoc/internal/graphmgr` (pin v4.49.2); needs that API,
-  sigma-tkgd on v5 first (ai-soc reaches the graph through sigma's sessions), and René's go for a major-version pin.
-- **Merge:** v5 is a strict descendant of main 95a1de3 (fast-forward, no conflicts that day); it edits shared files (CHANGELOG
-  `[Unreleased]`, backlog, lessons, AGENTS, Makefile, ci.yml), so expect conflicts once main moves; root `make` then also runs v5
-  (`V5_DISPATCH=0` turns it off).
-- **Where:** `docs/v5-analysis.md` §1 merge, §2 v4-work coverage, §3 maturity, §4 consumer answers, §5 v4→v5 door mapping (drawn
-  from PLAN and code at fd37fa0; every "v5 plan" cell is Markus's intent, rows "not in plan" are input for him). The file was
-  uncommitted on 2026-10-11 because auto mode blocked its commit (a subagent had copied it in); René commits it or says so.
-- **Next:** send §5's "not in plan" rows to Markus (René decides); v4 stays the library consumers ship on.
+- **Not yet:** v5 exports only value packages (`v5/pkg/temporal`, `v5/pkg/types`). Graph operations remain
+  internal; there is no public constructor/transaction/read/change surface or v4 importer. Internal exported
+  methods are not callable from consumer modules.
+- **Current gates:** V0/V1 accepted; V2 active. Partition-local writes and package 2 same-graph cross-partition
+  prepare/decision/resolve are accepted at `c6dee9cd` (one GraphID, two partitions, three disk-backed voters each).
+  Certified current/historical reads are package 3; broader oracle/fencing/transfer, physical-host durability,
+  transactional-KV comparison and engine decision remain open. V3–V7 are held. Percentages and the old 3,299-test
+  count describe the older `fd37fa0` snapshot, not current phase acceptance.
+- **Pins:** main `efbedc28` is v4.50.1 and was integrated into v5 at `14614553`. The previously blocked/uncommitted
+  mapping is now on main. Earlier fast-forward/merge-test claims belong to main `95a1de39` and v5 `fd37fa0`.
+- **Mapping:** `docs/v5-analysis.md` §5 retains all 45 families with their v4 contracts, exact callable public
+  successors where any exist, internal/planned/decision status, migration actions and required consumer proofs.
+  It includes shipped `SetNode/RelVersionIntervalWithTx` plus GraphTx/Batch/Session twins (4.50.1), preserving
+  legacy caller stamps as source evidence without treating wall-clock instants as certified cuts. PLAN §8a and
+  the importer handover carry that source delta; old consumer/reference pins remain historical.
+- **Consumers:** the reported inventories remain pinned to sigma `60539e1` / ai-soc graphmgr `36752f7` (rho
+  v4.49.2), distinct from PLAN's earlier sigma/ai-assisted-soc-v2 fixtures. They establish required contracts,
+  not current adoption or successful migration. Consumer adapters/tests stay in those repositories.
+- **Next:** review unresolved public API/compatibility decisions in §5; then require pinned nonempty historical
+  adapter proofs at the phase gates. v4 remains the graph engine consumers can ship today.

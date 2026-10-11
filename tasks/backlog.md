@@ -62,6 +62,10 @@ Specification and evidence checklist: [PLAN.md §8](../docs/v5/PLAN.md#8-impleme
 Pinned fixtures: [consumer contracts](../docs/v5/reference/consumer-contracts.json)
 and [migration obligations](../docs/v5/reference/consumer-migration.json) are
 reviewed specification/inventory evidence; consumer integration acceptance stays open.
+The [45-family v4→v5 mapping](../docs/v5-analysis.md#5-v4--v5-door-mapping)
+adds the v4.50.1 source delta at `efbedc28` and separates public successors,
+internal machinery and unresolved API contracts. Its consumer proofs belong to
+V4/V6; historical acceptance pins below remain unchanged.
 [Substrate evaluation](../docs/v5/reference/substrate-evaluation.json) is
 research/execution-plan evidence only; no engine selection or V2/V3 acceptance.
 The original five recovered `docs/v5/reference/` files are byte-verified and
@@ -88,7 +92,7 @@ V0 specification acceptance, 2026-10-10:
 | Contracts/ownership and IDs/cuts/formats | [PLAN §§2–5/8](../docs/v5/PLAN.md) separates preservation, native access and sigma evaluation, with explicit failure outcomes | V1 implementation; V2–V5 database/storage/access |
 | Independent corpus/models | [Reference validation](../docs/v5/reference/independent/validation.json): 38 tests, unchanged 16/52, 42 revised records, 18,192 pairs, 600 mutations, 88 accepted/39 refused protocol histories; ordinary freshness check passes | V1 Go differential/attachments; V2 durable fault/cut evidence |
 | Units and compatibility | PLAN §2.3: Q/ms/POSIX1970 default policy, exact integral-ms Instant codec, explicit other axes and conversion/refusal boundaries | V1 default-axis factory/binding; V2 persistence; V6 importer |
-| Versioned consumer/data inventory | [Pinned doors](../docs/v5/reference/consumer-contracts.json), [migration obligations](../docs/v5/reference/consumer-migration.json), PLAN §8a current `95a1de39`/v4.50.0 delta and declared datasets | V4 actual adapters; V6 migration; V7 representative runs |
+| Versioned consumer/data inventory | [Pinned doors](../docs/v5/reference/consumer-contracts.json), [migration obligations](../docs/v5/reference/consumer-migration.json), PLAN §8a `95a1de39`/v4.50.0 delta at acceptance and declared datasets | V4 actual adapters; V6 migration; V7 representative runs |
 | Resource profiles and limits | [Comparison protocol](../docs/v5/reference/graph-db-comparison.json): future native test configurations, one-factor/pinned-mixed dataset controls, separate local functional lanes; initial numerical limits distinguished from proposed performance thresholds | V2–V3 fault/cost evidence; V7 measured comparative capacity |
 | Import provenance | PLAN §9 and reconciled [v4 handover](v4-changes-for-v5-importer-20261010.md): verified writer/format provenance; dates/one-tick width alone are insufficient | V6 implementation/ambiguity report |
 

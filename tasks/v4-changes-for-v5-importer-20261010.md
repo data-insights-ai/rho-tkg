@@ -1,7 +1,7 @@
 # v4 changes since 32568c4 that the v4 → v5 importer and the v5 migration contract must account for
 
-Date 2026-10-10. For Markus (branch `v5`, `docs/v5/PLAN.md` §9 "Migration"). Source of truth is `CHANGELOG.md` on main
-(v4.44.0 … v4.50.0 at cutoff `95a1de39e424d6b8dd25f372645280667135c8ae`); this note lists only what changes how a v4 store must be READ or MAPPED. Nothing here edits the v5 branch.
+Updated 2026-10-11 (original handover 2026-10-10). For Markus (branch `v5`, `docs/v5/PLAN.md` §9 "Migration"). Source of truth is `CHANGELOG.md` on main
+(v4.44.0 … v4.50.1 at cutoff `efbedc28170c6b04aa28a0e957fc16c4424100c6`); this note lists only what changes how a v4 store must be READ or MAPPED. This note changes no importer implementation.
 
 ## 1. The as-of rule changed (v4.46.0)
 
@@ -91,3 +91,20 @@ a plain index. Range counts remain non-temporal, answer NaN bounds as 0 where ex
 sum each owned row once. Endpoint-ordinal adjacency retains ID order and callback isolation; the memory allocation
 improvement changes cost, not semantics. Carry these doors/capabilities into the migration inventory; historical
 consumer pins and measured v4.43 runs are not relabeled as v4.50.0 acceptance. See CHANGELOG `[4.50.0]` and PLAN §8a.
+
+## 10. Interval corrections at a caller transaction instant (v4.50.1)
+
+`Temporal().SetNodeVersionIntervalWithTx` / `SetRelVersionIntervalWithTx`, GraphTx, BatchBuilder and ingest
+Session twins record the interval patch at `txFrom`: every appended correction, resumption and current-slot row
+has `TxFrom = UpdatedAt = txFrom`; stored rows are untouched and earlier pins retain the uncorrected belief.
+Valid time is independent (`validFrom > txFrom` is allowed). The caller instant must be positive/nonfuture,
+pass `AllowTxBackfill` and follow every TxFrom/TxTo in the chain across re-imported lives, including rows outside
+the corrected interval; hard-deleted entities refuse. A failed call writes nothing. Deferred units preflight
+all caller-instant operations and correction conflicts on the same entity, including cascaded relationship
+deletes, before writing. Plain interval doors still stamp the clock.
+
+Importer consequence: retain each raw caller stamp and source knowledge-time interpretation alongside the
+exact corrected valid-time state. New v5 database revisions commit at new certified cuts; a source wall-clock
+stamp does not construct a cut, and equal stamps do not establish global atomic transaction groups. Preserve
+historical consumer pins and older evidence. Source/oracle evidence: CHANGELOG `[4.50.1]`,
+`tasks/evidence/interval-withtx/` (red runs, mutants, W5 oracle at 100 seeds).

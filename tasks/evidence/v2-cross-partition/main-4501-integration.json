@@ -1,0 +1,95 @@
+{
+  "main_commit": "efbedc28170c6b04aa28a0e957fc16c4424100c6",
+  "release": "v4.50.1",
+  "integration_commit": "14614553",
+  "package2_implementation_commit": "c6dee9cd",
+  "v5_module_source_byte_identical_to_package2_acceptance": true,
+  "accepted_freeze_changes": [
+    "AGENTS.md",
+    "CHANGELOG.md"
+  ],
+  "conflict_resolution": "Only CHANGELOG conflicted; all v5 Unreleased entries and the exact main4.50.1 release section retained;4.50.0 and older tail verified identical.",
+  "checks": [
+    {
+      "name": "build",
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "build",
+        "./..."
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "vet",
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "vet",
+        "./..."
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "interval-doc-race",
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-short",
+        "-race",
+        "-count=1",
+        "-timeout=150s",
+        "-run",
+        "IntervalWithTx|Doc|Errors",
+        "./pkg/graph/internal/core",
+        "./pkg/graph",
+        "./pkg/graph/temporal"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "scope": "Root module build and vet; new intervalWithTx and documentation/error contract tests with race across core,graph,temporal. Full hosted CI is separate.",
+  "archive": "main-4501-integration.tar.gz",
+  "archive_sha256": "2e371fe67af477b19007adc36b5777a13bb0c2b235e553b8be9325f0c303af37",
+  "archive_bytes": 87946,
+  "files": [
+    {
+      "path": "build-budget.json",
+      "sha256": "d388fd8f146b11bac70fc154d5ffa890949687da5527d2ea05ef96e76de59896"
+    },
+    {
+      "path": "build.log",
+      "sha256": "59bee7db12659d7c5e9fff187c2e0d9468040fb6cea0ea047ae0eea83ac9052b"
+    },
+    {
+      "path": "interval-doc-race-budget.json",
+      "sha256": "ddb38d025d65b2a6b45a394c15cce30f7ba17206863b3194c5a1ea0214714e6b"
+    },
+    {
+      "path": "interval-doc-race.log",
+      "sha256": "73a601c05acf99ecb27a5ea8ffda6e9e064eb5fae1706accdc9250b808ffa46e"
+    },
+    {
+      "path": "results.json",
+      "sha256": "d9be0b1342a029b69cb6e23752658e52a8455607feb1c668277272d2a9c2309a"
+    },
+    {
+      "path": "run.py",
+      "sha256": "edc85b695c3eee300f7ec6b432650c70eb7cf0a2ea124364fa760488cfc95561"
+    },
+    {
+      "path": "source.json",
+      "sha256": "d4f0733600620b2717cab67be170044e8f54260b57c0f1b8b8c51dfa88b3a1c4"
+    },
+    {
+      "path": "status.json",
+      "sha256": "163c7f9203bcb43ab33ef73dd80847243392e99dc59ee1938c595d531a00d713"
+    },
+    {
+      "path": "vet-budget.json",
+      "sha256": "27360ef2e587d9536c9a2f45af7f5db7373bbb53a0e1984b90db3b70564a68c5"
+    },
+    {
+      "path": "vet.log",
+      "sha256": "65b1449b7296ad62f222837177783a5283e71f00692cb518f5d2168461fc994f"
+    }
+  ]
+}
