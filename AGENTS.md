@@ -538,6 +538,19 @@ The epoch and layout have ONE definition, `pkg/internal/idlayout` (re-exported b
 - **Shard rotation inherits indexes before topology changes**: `RotateHotShard` must install tracked temporal and high-frequency indexes on the newly opened shard before mutating the catalog or live topology. If inherited-index setup fails, close/remove the new shard and leave `hotShard`, `eventShards`, and the catalog unchanged.
 - **Tracked index application is all-or-error**: `applyTrackedTemporalIndexes` must remember which temporal/HFI indexes it created on the target shard and drop those if a later tracked definition fails. Persisted tracking load must also roll back earlier shard creations if a later shard fails. Pre-existing shard indexes must be left intact.
 
+### Persistent historical candidate discipline
+
+`badger.Config.HistoricalMembershipOnDisk` requires `SyncWrites` for writable
+stores and minimum directory writer marker 5 (entity rows remain format 4).
+Bootstrap is bounded and resumable: durable posting sets precede the small
+cursor/Complete commit. Normal mutation additions precede source writes;
+destructive membership cleanup follows source durability. Badger WriteBatch
+can split transactions; never describe it as an atomic mutation group. Clear
+preserves the writer fence and resets progress. Exact erasure/retention serialize
+with bootstrap and clean per-identity reverse keys. Completed ordered candidates
+remain supersets: canonical historical resolution checks predicates before Limit.
+Do not claim constant RAM while identity/hash/revision maps remain resident.
+
 ### Code Review Lessons
 
 - **Use library APIs, never reimplement internals**: If a dependency provides an API (e.g. `snowflake.Node.Decompose()`), use it. Never duplicate internal knowledge like bit layouts or hardcoded shifts in the consumer. When the library changes its layout, hardcoded shifts break silently across dozens of call sites. The library's API encapsulates the layout — use it.
@@ -603,6 +616,8 @@ Resolved shadow values must keep their public wrapper types. In particular, `tkg
 | `0x09/<8B LSN>` | Change-log (op-log) record — opt-in `ChangeLog`; value = `tag(1B) ‖ msgpack(body)` | 9B |
 | `0x0A/<2B propKeyToken>/<domain-tagged value bytes>/<8B nodeID>` | Property index entry — opt-in `PropertyIndexOnDisk`; numeric domain payload is fixed 18B (order-preserving sortKey + subtype + exact bits), raw domain (string/bool/temporal) payload is the canonical value-key bytes, variable length | 29B (numeric) / variable (raw) |
 | `0x0B/<2B labelToken>/<8B order-preserving from>/<8B nodeID>` | Temporal-index raw-entry log — opt-in `TemporalIndexOnDisk`; a REBUILD-AT-OPEN accelerator, not a RAM-vs-disk trade-off (the maxTo-augmented `TemporalIndex` always stays RAM-resident at runtime — see docs/persistence.md); value = 8B raw `to`. `from` is order-preserving-encoded (sign-bit-flipped int64) so a prefix iteration over one label already yields `(From ASC, ID ASC)` order | 19B key / 8B value |
+| `0x0C/<kind>/<token>/<optional digest>/<ID>/<TX>` | Opt-in persisted historical membership candidates; exact rows still decide matches | 20B / 52B |
+| `0x0D/<kind>/<ID>/<posting digest>` | Per-identity reverse membership cleanup entries | 42B |
 | `0x0F/*` | Metadata (registries, counters, index definitions — property, rel property, composite, temporal, rel-type temporal, high-frequency, vector —, `last_lsn` watermark, `wire_format_version` / `history_anchor_interval` / `property_index_on_disk_built` / `temporal_index_on_disk_built` markers, `ColumnsOnDisk` column blobs, and every MetaKV entry: compaction stubs and watermark, the `UniqueForever` registry, as-of tags, the ID-slot lease) | varies |
 
 ## Ecosystem

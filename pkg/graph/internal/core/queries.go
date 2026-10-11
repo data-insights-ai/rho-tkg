@@ -526,6 +526,9 @@ func (c *Core) nodesByLabelLocked(label string, opts storepkg.QueryOpts) ([]*typ
 		}
 		return nodes, err
 	}
+	if nodes, handled, err := c.orderedHistoricalNodes(tok, "", "", opts, func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }); handled {
+		return nodes, err
+	}
 	_, candIDs, err := c.nodeLabelCandidatesAt(tok, opts)
 	if err != nil {
 		return nil, err
@@ -638,6 +641,9 @@ func (c *Core) relsByTypeLocked(typeName string, opts storepkg.QueryOpts) ([]*ty
 				rels = copyRelationshipRows(rels)
 			}
 		}
+		return rels, err
+	}
+	if rels, handled, err := c.orderedHistoricalRels(tok, "", "", opts, func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }); handled {
 		return rels, err
 	}
 	_, candIDs, err := c.relTypeCandidatesAt(tok, opts)

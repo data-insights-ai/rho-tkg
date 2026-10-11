@@ -243,7 +243,7 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 	// for this one version while its other rows stay outside.
 	err = bs.enqueueVersionAgainstLazyBuilds(
 		func() bool {
-			return bs.relTypeMembersBuilt.Load() || bs.relBeliefWatermarkBuilt.Load() || len(bs.relTypeTemporalIndexes) > 0 || len(bs.relPropTx) > 0
+			return bs.historicalMembershipOnDisk || bs.relTypeMembersBuilt.Load() || bs.relBeliefWatermarkBuilt.Load() || len(bs.relTypeTemporalIndexes) > 0 || len(bs.relPropTx) > 0
 		},
 		func() {
 			bs.recordRelTypeMemberLocked(r)

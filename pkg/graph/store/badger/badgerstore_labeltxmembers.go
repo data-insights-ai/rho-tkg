@@ -372,6 +372,9 @@ func (bs *Store) ForEachLabelTxMember(token uint16, fn func(id types.NodeID, fir
 	if fn == nil {
 		return errNilIterationCallback()
 	}
+	if bs.historicalMembershipOnDisk {
+		return bs.forEachDiskMembership(diskMembershipScope(diskMemberNodeLabel, token, "", ""), 0, func(id types.EntityID, first types.Instant) bool { return fn(types.NodeID(id), first) })
+	}
 	if err := bs.ensureLabelTxMembersBuilt(); err != nil {
 		return err
 	}
@@ -403,6 +406,9 @@ func (bs *Store) ForEachRelTypeTxMember(token uint16, fn func(id types.RelID, fi
 	}
 	if fn == nil {
 		return errNilIterationCallback()
+	}
+	if bs.historicalMembershipOnDisk {
+		return bs.forEachDiskMembership(diskMembershipScope(diskMemberRelType, token, "", ""), 0, func(id types.EntityID, first types.Instant) bool { return fn(types.RelID(id), first) })
 	}
 	if err := bs.ensureRelTypeTxMembersBuilt(); err != nil {
 		return err

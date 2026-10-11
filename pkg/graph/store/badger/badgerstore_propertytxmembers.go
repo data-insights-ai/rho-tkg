@@ -64,6 +64,9 @@ const propTxBuildAttempts = 4
 // member's first-TxFrom bound (an unstamped row makes it 0), so a door that
 // rewrites or demotes a row must be seen too. Caller holds idxMu (write).
 func (bs *Store) recordRelRowLocked(r *types.Relationship) {
+	if bs.historicalMembershipOnDisk && r != nil {
+		bs.appendOps(relDiskMembershipOps(r)...)
+	}
 	bs.recordRelTypeMemberLocked(r)
 	bs.recordRelPropTxLocked(r)
 }
@@ -71,6 +74,9 @@ func (bs *Store) recordRelRowLocked(r *types.Relationship) {
 // recordNodeRowLocked is recordRelRowLocked for node rows (K1 label set and
 // node property sets). Caller holds idxMu (write).
 func (bs *Store) recordNodeRowLocked(n *types.Node) {
+	if bs.historicalMembershipOnDisk && n != nil {
+		bs.appendOps(nodeDiskMembershipOps(n)...)
+	}
 	bs.recordNodeLabelMembersLocked(n)
 	bs.recordNodePropTxLocked(n)
 }
@@ -147,6 +153,15 @@ func (bs *Store) ForEachRelPropertyTxMember(relTypeToken uint16, propertyKey, va
 		return err
 	}
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}
+	if bs.historicalMembershipOnDisk {
+		bs.idxMu.RLock()
+		usable := bs.relPropIndexUsableLocked(key)
+		bs.idxMu.RUnlock()
+		if !usable {
+			return ErrIndexNotFound
+		}
+		return bs.forEachDiskMembership(diskMembershipScope(diskMemberRelProperty, relTypeToken, propertyKey, valueKey), 0, func(id types.EntityID, first types.Instant) bool { return fn(types.RelID(id), first) })
+	}
 	for attempt := 0; attempt < propTxBuildAttempts; attempt++ {
 		bs.idxMu.RLock()
 		if !bs.relPropIndexUsableLocked(key) {
@@ -187,6 +202,15 @@ func (bs *Store) ForEachNodePropertyTxMember(labelToken uint16, propertyKey, val
 		return err
 	}
 	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
+	if bs.historicalMembershipOnDisk {
+		bs.idxMu.RLock()
+		usable := bs.nodePropIndexUsableLocked(key)
+		bs.idxMu.RUnlock()
+		if !usable {
+			return ErrIndexNotFound
+		}
+		return bs.forEachDiskMembership(diskMembershipScope(diskMemberNodeProperty, labelToken, propertyKey, valueKey), 0, func(id types.EntityID, first types.Instant) bool { return fn(types.NodeID(id), first) })
+	}
 	for attempt := 0; attempt < propTxBuildAttempts; attempt++ {
 		bs.idxMu.RLock()
 		if !bs.nodePropIndexUsableLocked(key) {

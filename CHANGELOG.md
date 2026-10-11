@@ -6,6 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Opt-in `badger.Config.HistoricalMembershipOnDisk`: persisted ordered node
+  label / relationship type / declared-property candidates for exact temporal
+  queries. `BuildHistoricalMembership(ctx, HistoricalMembershipLimits)` resumes
+  bounded current/history pages; `HistoricalMembershipStatus` reports durable
+  readiness on writable and readonly stores. Incomplete indexes decline with
+  `ErrIndexNotFound`; graph queries retain their exact history-scan fallback.
+- A complete index streams ascending IDs before canonical version resolution
+  and result pagination, avoiding whole label/property candidate maps in the
+  graph's generic pinned queries. Candidates remain a conservative superset:
+  exact canonical label/property/valid-time/retraction checks decide matches.
+- Opted writable directories require `SyncWrites` and minimum writer marker 5;
+  entity rows retain format 4. Older/default writers refuse these directories.
+  Bootstrap postings precede cursor publication; mutation posting additions
+  precede source-row durability and destructive posting cleanup follows it.
+  Full history anchors and then deltas finish before current replacements,
+  preserving already published old pins across split source writes. Large
+  Badger WriteBatches can split transactions and are not atomic groups.
+  Clear preserves the writer fence and resets progress; exact erasure and
+  retention remove per-identity reverse entries under bootstrap exclusion.
+
+### Fixed
+
+- Reopening a completed on-disk property index no longer fetches and decodes
+  every current node again for every definition. The canonical startup row
+  validation pass and the initial RAM-to-disk backfill remain intact.
+
+### Performance evidence and limits
+
+- A local 200,000-node / 1,000-history-row / 32-definition fixture took 18.524s
+  for baseline backend reopen and 1.067s after removing repeated property-row
+  decode. A reversed baseline run took 17.533s. These were fresh processes;
+  physical disk cache state was uncontrolled.
+- The same derivative fixture's membership bootstrap took 2.596s in 202 pages.
+  Fresh-process reopen took 0.973s; the first exact old-pin Limit=1 query took
+  216 microseconds versus approximately 600 milliseconds on the baseline,
+  with no RAM membership sidecars built. Heap after GC was approximately
+  150MB. ID/hash/revision maps, caches and other indexes remain size-dependent;
+  startup still validates all current rows. Full-corpus capacity is unproven.
+- Subprocess regressions cover real WriteBatch splitting, completed-store
+  mutation and erase barriers, and bootstrap postings committed before the
+  cursor. This is process-crash evidence, not a power-loss simulation.
+
 ## [4.50.2] - 2026-10-11
 
 Patch release: exact finite Unix epoch zero and explicit unbounded valid-time

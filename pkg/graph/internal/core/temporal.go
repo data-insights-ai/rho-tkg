@@ -1053,6 +1053,9 @@ func (c *Core) forEachLabelTxCandidate(tok uint16, currentIDs []types.NodeID, op
 		seen[id] = struct{}{}
 		return true
 	}); err != nil {
+		if errors.Is(err, storepkg.ErrIndexNotFound) {
+			return c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, fn)
+		}
 		return err
 	}
 	for _, id := range currentIDs {
@@ -1077,6 +1080,9 @@ func (c *Core) forEachRelTypeTxCandidate(tok uint16, currentIDs []types.RelID, o
 		seen[id] = struct{}{}
 		return true
 	}); err != nil {
+		if errors.Is(err, storepkg.ErrIndexNotFound) {
+			return c.forEachRelCandidateIDByDepth(currentIDs, opts.Depth, fn)
+		}
 		return err
 	}
 	for _, id := range currentIDs {

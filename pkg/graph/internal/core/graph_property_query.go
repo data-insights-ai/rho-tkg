@@ -3,6 +3,8 @@ package core
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
@@ -75,6 +77,12 @@ func (c *Core) nodesByLabelAndPropertyLocked(label, key string, value any, opts 
 	}
 	if targetKey == "" {
 		return nil, nil
+	}
+	if nodes, handled, err := c.orderedHistoricalNodes(tok, key, targetKey, opts, func(n *types.Node) bool {
+		got, found := n.IndexablePropertyValueKey(key)
+		return n.HasLabelTokenRaw(tok) && found && got == targetKey
+	}); handled {
+		return nodes, err
 	}
 	currentMatching, err := c.nodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{Depth: opts.Depth})
 	if err != nil {
@@ -183,6 +191,18 @@ func (c *Core) nodesByLabelAndPropertiesLocked(label string, values map[string]a
 	}
 	if !temporal {
 		return c.nodesByLabelAndProperties(tok, values, opts)
+	}
+	for _, key := range slices.Sorted(maps.Keys(values)) {
+		value := values[key]
+		vk := indexpkg.PropertyValueKey(value)
+		if vk == "" {
+			continue
+		}
+		if nodes, handled, err := c.orderedHistoricalNodes(tok, key, vk, opts, func(n *types.Node) bool {
+			return n.HasLabelTokenRaw(tok) && indexpkg.NodeMatchesAllProperties(n, values)
+		}); handled {
+			return nodes, err
+		}
 	}
 	currentMatching, err := c.nodesByLabelAndProperties(tok, values, storepkg.QueryOpts{Depth: opts.Depth})
 	if err != nil {
