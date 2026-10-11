@@ -405,8 +405,8 @@ var ErrRemoteParticipant = errors.New("graphstore: distributed participant requi
 func LookupPublishedRange(ctx context.Context, view *raftlog.ApplicationView, n Namespace, id uint64, configuration [32]byte, budget OwnershipBudget) (RangePublication, RangeOwnership, PageWork, error) {
 	return lookupPublishedRangeBudget(ctx, view, n, id, configuration, budget, nil)
 }
-func lookupPublishedRangeBudget(ctx context.Context, view *raftlog.ApplicationView, n Namespace, id uint64, configuration [32]byte, budget OwnershipBudget, arena *graphstate.OutputBudget) (publication RangePublication, owner RangeOwnership, work PageWork, err error) {
-	if ctx == nil || view == nil || id == 0 || n.validate() != nil || configuration == ([32]byte{}) {
+func lookupPublishedRangeBudget(ctx context.Context, view ApplicationReadSource, n Namespace, id uint64, configuration [32]byte, budget OwnershipBudget, arena *graphstate.OutputBudget) (publication RangePublication, owner RangeOwnership, work PageWork, err error) {
+	if ctx == nil || nilApplicationSource(view) || id == 0 || n.validate() != nil || configuration == ([32]byte{}) {
 		return publication, owner, work, ErrInvalid
 	}
 	if err := budget.validate(); err != nil {
@@ -532,7 +532,7 @@ func lookupPublishedRangeBudget(ctx context.Context, view *raftlog.ApplicationVi
 	}
 }
 
-func routingGetBounded(ctx context.Context, view *raftlog.ApplicationView, key []byte, maxBytes int, arena *graphstate.OutputBudget) (raftlog.KV, bool, error) {
+func routingGetBounded(ctx context.Context, view ApplicationReadSource, key []byte, maxBytes int, arena *graphstate.OutputBudget) (raftlog.KV, bool, error) {
 	if arena != nil {
 		if err := arena.Reserve(128 + 4*len(key)); err != nil {
 			return raftlog.KV{}, false, callerError(err)

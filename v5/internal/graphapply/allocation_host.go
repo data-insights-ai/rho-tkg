@@ -53,6 +53,7 @@ type allocationEvent struct {
 	crossReplies    []crossReply
 	capacityReplies []crossCapacityReply
 	cutReplies      []graphCutReply
+	requestReplies  []crossRequestReply
 }
 
 // allocationProposal is an owned source-created command. Its private constructor
@@ -78,11 +79,14 @@ type allocationHost struct {
 	ended           atomic.Bool
 	pending         map[allocationReadID]allocationQuery
 	crossPending    map[allocationReadID]crossQuery
+	requestPending  map[allocationReadID]crossRequestQuestion
 	capacityPending map[allocationReadID]crossCapacityQuestion
 	cutPending      map[allocationReadID]graphCutQuery
 	recipients      map[[16]byte]*allocationRecipientHandle
+	sourceServer    *graphSourceServer
 	closed          bool
 	closeErr        error
+	closeDone       chan struct{}
 }
 
 const allocationReadContextBytes = 101
@@ -139,6 +143,17 @@ func (h *allocationHost) event(out replica.Output, eventErr error) (allocationEv
 		return allocationEvent{}, errLimit
 	}
 	for _, ready := range out.Reads {
+		if bytes.HasPrefix(ready.Context, []byte{'G', 'Q', 'R', 1}) {
+			if ready.Index > out.Applied || h.driver.Applied() < ready.Index {
+				return allocationEvent{}, errInvalid
+			}
+			reply, err := h.completeCrossRequestRead(ready.Context, out.Applied)
+			if err != nil {
+				return allocationEvent{}, err
+			}
+			e.requestReplies = append(e.requestReplies, reply)
+			continue
+		}
 		if bytes.HasPrefix(ready.Context, []byte{'G', 'S', 'R', 1}) {
 			if ready.Index > out.Applied || h.driver.Applied() < ready.Index {
 				return allocationEvent{}, errInvalid
@@ -314,7 +329,7 @@ func (h *allocationHost) Read(q allocationQuery) (allocationEvent, error) {
 	if err := q.validate(h.machine.ns.graph); err != nil {
 		return allocationEvent{}, err
 	}
-	if h.sequence == math.MaxUint64 || len(h.pending)+len(h.crossPending)+len(h.capacityPending)+len(h.cutPending) >= 16 {
+	if h.sequence == math.MaxUint64 || len(h.pending)+len(h.crossPending)+len(h.capacityPending)+len(h.cutPending)+len(h.requestPending) >= 16 {
 		return allocationEvent{}, errLimit
 	}
 	h.sequence++
@@ -339,19 +354,40 @@ func (h *allocationHost) Close() error {
 		return errInvalid
 	}
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	if h.closed {
-		return h.closeErr
+		done := h.closeDone
+		h.mu.Unlock()
+		if done != nil {
+			<-done
+		}
+		h.mu.Lock()
+		err := h.closeErr
+		h.mu.Unlock()
+		return err
 	}
 	h.closed = true
 	h.ended.Store(true)
 	clear(h.pending)
 	clear(h.crossPending)
+	clear(h.requestPending)
 	clear(h.capacityPending)
 	clear(h.cutPending)
 	clear(h.recipients)
-	h.closeErr = h.driver.Close()
-	return h.closeErr
+	h.closeDone = make(chan struct{})
+	server, driver := h.sourceServer, h.driver
+	h.mu.Unlock()
+	// Mark stopped/detach under the event lock; cancellation and native owner
+	// cleanup may wait and therefore happen only after releasing that lock.
+	var err error
+	if server != nil {
+		err = server.close()
+	}
+	err = errors.Join(err, driver.Close())
+	h.mu.Lock()
+	h.closeErr = err
+	close(h.closeDone)
+	h.mu.Unlock()
+	return err
 }
 
 func (h *allocationHost) ownProof(p allocationProof, kind allocationObservationKind) error {

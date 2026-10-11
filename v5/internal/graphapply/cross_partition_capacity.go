@@ -212,7 +212,7 @@ func (h *allocationHost) ReadCrossCapacityConflict(prepare allocationProposal, n
 	if err != nil || r.ns != h.machine.ns || r.phase != crossPrepare || r.conflict != nil {
 		return allocationEvent{}, errors.Join(errInvalid, err)
 	}
-	if h.sequence == math.MaxUint64 || len(h.pending)+len(h.crossPending)+len(h.capacityPending)+len(h.cutPending) >= 16 {
+	if h.sequence == math.MaxUint64 || len(h.pending)+len(h.crossPending)+len(h.capacityPending)+len(h.cutPending)+len(h.requestPending) >= 16 {
 		return allocationEvent{}, errLimit
 	}
 	if h.capacityPending == nil {

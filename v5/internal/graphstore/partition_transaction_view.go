@@ -43,7 +43,17 @@ func OpenPartitionTransactionView(ctx context.Context, sources []*raftlog.Applic
 	if len(sources) != d.Len() {
 		return nil, PageWork{}, ErrInvalid
 	}
-	return openPartitionCompositeView(ctx, sources, d, binding, configuration, l, g, budget, output)
+	return openPartitionCompositeView(ctx, applicationSources{native: sources}, d, binding, configuration, l, g, budget, output)
+}
+
+// OpenPartitionTransactionSources borrows the complete declared immutable data
+// source set. Its checked bindings are data dependencies, never quorum, cut or
+// write authority. Native callers keep OpenPartitionTransactionView unchanged.
+func OpenPartitionTransactionSources(ctx context.Context, sources []ApplicationReadSource, d OwnershipDeclaration, binding types.DefaultAxisBinding, configuration [32]byte, l Limits, g GraphLimits, budget OwnershipBudget, output *graphstate.OutputBudget) (*PartitionTransactionView, PageWork, error) {
+	if len(sources) != d.Len() {
+		return nil, PageWork{}, ErrInvalid
+	}
+	return openPartitionCompositeView(ctx, applicationSources{data: sources}, d, binding, configuration, l, g, budget, output)
 }
 
 // OpenPartitionScopedReadView borrows exactly the selected sources. Missing
@@ -65,10 +75,10 @@ func OpenPartitionScopedReadView(ctx context.Context, sources []*raftlog.Applica
 			return nil, PageWork{}, ErrNamespace
 		}
 	}
-	return openPartitionCompositeView(ctx, sources, d, binding, configuration, l, g, budget, output)
+	return openPartitionCompositeView(ctx, applicationSources{native: sources}, d, binding, configuration, l, g, budget, output)
 }
-func openPartitionCompositeView(ctx context.Context, sources []*raftlog.ApplicationView, d OwnershipDeclaration, binding types.DefaultAxisBinding, configuration [32]byte, l Limits, g GraphLimits, budget OwnershipBudget, output *graphstate.OutputBudget) (out *PartitionTransactionView, work PageWork, err error) {
-	if ctx == nil || !d.valid() || len(sources) == 0 || len(sources) > d.Len() || output == nil {
+func openPartitionCompositeView(ctx context.Context, sources applicationSources, d OwnershipDeclaration, binding types.DefaultAxisBinding, configuration [32]byte, l Limits, g GraphLimits, budget OwnershipBudget, output *graphstate.OutputBudget) (out *PartitionTransactionView, work PageWork, err error) {
+	if ctx == nil || !d.valid() || sources.len() == 0 || sources.len() > d.Len() || output == nil {
 		return nil, work, ErrInvalid
 	}
 	if err := budget.validate(); err != nil {
@@ -99,8 +109,9 @@ func openPartitionCompositeView(ctx context.Context, sources []*raftlog.Applicat
 			out = nil
 		}
 	}()
-	for _, source := range sources {
-		if source == nil {
+	for sourceIndex := range sources.len() {
+		source := sources.at(sourceIndex)
+		if nilApplicationSource(source) {
 			return out, work, ErrInvalid
 		}
 		actual, e := source.ApplicationBinding(ctx)
@@ -256,7 +267,7 @@ func (v *PartitionTransactionView) owner(q *reader, id uint64) (uint64, error) {
 		if rows < 1 || bytes < 1 {
 			return 0, ErrResourceLimit
 		}
-		p, o, w, err := lookupPublishedRangeBudget(q.ctx, s.c.view, s.c.root.namespace, id, v.configuration, OwnershipBudget{rows, bytes, min(bytes, v.arena.Remaining())}, q.arena)
+		p, o, w, err := lookupPublishedRangeBudget(q.ctx, s.c.source(), s.c.root.namespace, id, v.configuration, OwnershipBudget{rows, bytes, min(bytes, v.arena.Remaining())}, q.arena)
 		q.rows += w.Records
 		q.bytes += w.Bytes
 		if errors.Is(err, ErrRoutingUnknown) {

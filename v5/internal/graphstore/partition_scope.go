@@ -21,7 +21,7 @@ type partitionReadScope struct {
 	routing       PartitionRouting
 	binding       types.DefaultAxisBinding
 	configuration [32]byte
-	view          *raftlog.ApplicationView
+	view          ApplicationReadSource
 	namespace     Namespace
 	ranges        [4]struct {
 		publication RangePublication
@@ -80,8 +80,8 @@ func (s *partitionReadScope) owner(q *reader, id uint64) error {
 func OpenPartitionGraphReadView(ctx context.Context, view *raftlog.ApplicationView, d OwnershipDeclaration, binding types.DefaultAxisBinding, configuration [32]byte, l Limits, g GraphLimits, budget OwnershipBudget) (*ReadView, PageWork, error) {
 	return openPartitionGraphReadViewBudget(ctx, view, d, binding, configuration, l, g, budget, nil)
 }
-func openPartitionGraphReadViewBudget(ctx context.Context, view *raftlog.ApplicationView, d OwnershipDeclaration, binding types.DefaultAxisBinding, configuration [32]byte, l Limits, g GraphLimits, budget OwnershipBudget, arena *graphstate.OutputBudget) (out *ReadView, work PageWork, err error) {
-	if ctx == nil || view == nil || !d.valid() || configuration == ([32]byte{}) {
+func openPartitionGraphReadViewBudget(ctx context.Context, view ApplicationReadSource, d OwnershipDeclaration, binding types.DefaultAxisBinding, configuration [32]byte, l Limits, g GraphLimits, budget OwnershipBudget, arena *graphstate.OutputBudget) (out *ReadView, work PageWork, err error) {
+	if ctx == nil || nilApplicationSource(view) || !d.valid() || configuration == ([32]byte{}) {
 		return nil, work, ErrInvalid
 	}
 	g, err = g.resolve()
@@ -106,7 +106,7 @@ func openPartitionGraphReadViewBudget(ctx context.Context, view *raftlog.Applica
 			return nil, work, callerError(err)
 		}
 	}
-	c, opened, err := OpenPartitionCatalogWithDefaultAxis(ctx, view, n, entry.OwnershipEpoch, binding, l, g, budget)
+	c, opened, err := openPartitionCatalogSourceWithDefaultAxis(ctx, view, n, entry.OwnershipEpoch, binding, l, g, budget)
 	work = opened
 	if err != nil {
 		return nil, work, err

@@ -67,7 +67,7 @@ func newComponentKeyReader(c *Catalog, l PageLimits) (*componentKeyReader, error
 	if err := q.materialize(512 + c.rootImageBytes); err != nil {
 		return nil, err
 	}
-	root, err := c.view.Root()
+	root, err := c.source().Root()
 	if err != nil {
 		return nil, err
 	}

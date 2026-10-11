@@ -28,6 +28,7 @@ type crossProof struct {
 	question crossQuery
 	status   crossStatus
 	manifest []byte
+	index    uint64 // actual applied source view used by this completed Host reply
 }
 type crossReply struct {
 	proof crossProof
@@ -61,7 +62,7 @@ func (h *allocationHost) ReadCrossPhase(tx [16]byte, phase crossPhase, nonce [16
 	if h.machine == nil || h.driver == nil || !crossGraphAgreement(h.machine.SemanticContractID()) {
 		return allocationEvent{}, errInvalid
 	}
-	if h.sequence == math.MaxUint64 || len(h.pending)+len(h.crossPending)+len(h.capacityPending)+len(h.cutPending) >= 16 {
+	if h.sequence == math.MaxUint64 || len(h.pending)+len(h.crossPending)+len(h.capacityPending)+len(h.cutPending)+len(h.requestPending) >= 16 {
 		return allocationEvent{}, errLimit
 	}
 	if h.crossPending == nil {
@@ -102,7 +103,7 @@ func (h *allocationHost) completeCrossRead(wire []byte, index uint64) (crossRepl
 	if err != nil {
 		return crossReply{err: err}, nil
 	}
-	return crossReply{proof: crossProof{h, id, q, status, manifest}}, nil
+	return crossReply{proof: crossProof{h, id, q, status, manifest, index}}, nil
 }
 
 func (m *declaredMaterializer) observeCrossTransaction(query crossQuery, index uint64) (status crossStatus, manifest []byte, err error) {
@@ -192,6 +193,7 @@ func (h *allocationHost) PrepareCrossPartitionGraphOperations(ctx context.Contex
 		return tx, proposal, outputBudgetFailure(err)
 	}
 	views := make([]*raftlog.ApplicationView, len(sources))
+	captured := make([]capturedGraphSource, len(sources))
 	defer func() {
 		for _, v := range views {
 			if v != nil {
@@ -204,9 +206,6 @@ func (h *allocationHost) PrepareCrossPartitionGraphOperations(ctx context.Contex
 		}
 	}()
 	var configuration [32]byte
-	var cfg genesisAllocationConfig
-	maxFloor := uint64(0)
-	floors := make([]uint64, len(sources))
 	seen := make(map[uint64]bool)
 	work := graphstore.PageWork{}
 	for i, p := range sources {
@@ -222,7 +221,6 @@ func (h *allocationHost) PrepareCrossPartitionGraphOperations(ctx context.Contex
 		}
 		if i == 0 {
 			configuration = p.observation.configuration
-			cfg = p.observation.config
 		} else if p.observation.configuration != configuration {
 			return tx, proposal, errInvalid
 		}
@@ -244,55 +242,92 @@ func (h *allocationHost) PrepareCrossPartitionGraphOperations(ctx context.Contex
 		if e != nil {
 			return tx, proposal, e
 		}
-		floors[i] = floor
-		maxFloor = max(maxFloor, floor)
+		captured[i] = capturedGraphSource{observation: p.observation, root: base, floor: floor, data: v}
 		work.Records += q.rows
 		work.Bytes += q.bytes
 	}
+	manifest, err := h.planCrossCaptured(ctx, id, ops, provenance, claims, captured, arena, work)
+	if err != nil {
+		return tx, proposal, err
+	}
+	proposal, err = h.crossProposalWithBudget(crossRegister, h.machine.ns.partition, manifest, nil, arena)
+	if err != nil {
+		return tx, proposal, err
+	}
+	return crossTransaction{h, manifest, sha256.Sum256(manifest)}, proposal, nil
+}
+
+// planCrossCaptured shares the typed planner and private kernel construction.
+// It runs without a Host event lock and performs no Submit or remote authority
+// construction; its source capabilities have already been checked by the owner.
+func (h *allocationHost) planCrossCaptured(ctx context.Context, id requestID, ops []graphstate.Operation, provenance uint64, claims []freshBinding, sources []capturedGraphSource, arena *graphstate.OutputBudget, work graphstore.PageWork) (manifest []byte, err error) {
+	l := h.machine.limits
+	if ctx == nil || len(sources) != h.machine.declaration.Len() || len(sources) == 0 || arena == nil {
+		return nil, errInvalid
+	}
+	if err := arena.Reserve(512 + 64*len(sources)); err != nil {
+		return nil, outputBudgetFailure(err)
+	}
+	views := make([]graphstore.ApplicationReadSource, len(sources))
+	configuration, cfg := sources[0].observation.configuration, sources[0].observation.config
+	maxFloor := uint64(0)
+	floors := make([]uint64, len(sources))
+	for i, source := range sources {
+		if source.data == nil || source.observation.kind != observeConfiguration || source.observation.configuration != configuration || source.observation.source.scope.declaration != h.machine.declaration.Digest() || source.observation.source.scope.graph != h.machine.ns.graph || source.observation.source.scope.semantic != h.machine.SemanticContractID() {
+			return nil, errInvalid
+		}
+		views[i], floors[i] = source.data, source.floor
+		maxFloor = max(maxFloor, source.floor)
+	}
 	if maxFloor == math.MaxUint64 {
-		return tx, proposal, errLimit
+		return nil, errLimit
 	}
 	revision, err := state.NewRevision(maxFloor+1, provenance)
 	if err != nil {
-		return tx, proposal, err
+		return nil, err
 	}
 	original := partitionGraphCommand{configuration: configuration, declaration: h.machine.declaration.Digest(), routing: cfg.routingDigest, request: graphRequest{ns: h.machine.ns, kind: graphOperations, id: id, revision: revision, operations: ops, claims: claims}}
 	wire, err := encodePartitionGraphCommand(original, l)
 	if err != nil {
-		return tx, proposal, err
+		return nil, err
 	}
 	if err := arena.Reserve(4096 + 8*len(wire)); err != nil {
-		return tx, proposal, outputBudgetFailure(err)
+		return nil, outputBudgetFailure(err)
 	}
 	b := graphstore.OwnershipBudget{SourceRows: l.sourceRows - work.Records, SourceBytes: l.sourceBytes - work.Bytes, OutputBytes: arena.Remaining()}
-	v, w, err := graphstore.OpenPartitionTransactionView(ctx, views, h.machine.declaration, cfg.defaultAxis, configuration, l.catalog, l.graph, b, arena)
+	v, w, err := graphstore.OpenPartitionTransactionSources(ctx, views, h.machine.declaration, cfg.defaultAxis, configuration, l.catalog, l.graph, b, arena)
 	work.Records += w.Records
 	work.Bytes += w.Bytes
 	if err != nil {
-		return tx, proposal, err
+		return nil, err
 	}
-	defer func() { err = errors.Join(err, v.Close()) }()
+	defer func() {
+		err = errors.Join(err, v.Close())
+		if err != nil {
+			manifest = nil
+		}
+	}()
 	template, _, err := graphstore.PlanPartitionTransaction(ctx, v, ops, revision)
 	if err != nil {
-		return tx, proposal, err
+		return nil, err
 	}
 	parts, err := template.Participants(arena)
 	if err != nil {
-		return tx, proposal, err
+		return nil, err
 	}
 	m := crossManifest{tx: crossTransactionID(h.machine.ns, id), coordinator: h.machine.ns.partition, original: wire, configuration: configuration, declaration: h.machine.declaration.Digest(), routing: cfg.routingDigest, template: template.Digest(), parts: make([]crossPart, len(parts))}
 	for i, partition := range parts {
 		k, e := template.ParticipantKernel(partition, m.tx, arena)
 		if e != nil {
-			return tx, proposal, e
+			return nil, e
 		}
 		binding, e := k.Binding(arena)
 		if e != nil {
-			return tx, proposal, e
+			return nil, e
 		}
 		kernel, e := k.Bytes(arena)
 		if e != nil {
-			return tx, proposal, e
+			return nil, e
 		}
 		floor := uint64(0)
 		for j, p := range sources {
@@ -302,18 +337,14 @@ func (h *allocationHost) PrepareCrossPartitionGraphOperations(ctx context.Contex
 		}
 		m.parts[i] = crossPart{binding: binding, kernel: kernel, floor: floor}
 	}
-	manifest, err := encodeCrossManifest(m, l)
+	manifest, err = encodeCrossManifest(m, l)
 	if err != nil {
-		return tx, proposal, err
+		return nil, err
 	}
 	if err := arena.Reserve(8 * len(manifest)); err != nil {
-		return tx, proposal, outputBudgetFailure(err)
+		return nil, outputBudgetFailure(err)
 	}
-	proposal, err = h.crossProposalWithBudget(crossRegister, h.machine.ns.partition, manifest, nil, arena)
-	if err != nil {
-		return tx, proposal, err
-	}
-	return crossTransaction{h, manifest, sha256.Sum256(manifest)}, proposal, nil
+	return manifest, nil
 }
 
 func (h *allocationHost) crossProposal(phase crossPhase, partition uint64, manifest []byte, proofs []crossStatus) (allocationProposal, error) {

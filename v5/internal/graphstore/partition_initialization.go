@@ -229,6 +229,9 @@ func initializeDeclaredPartition(ctx context.Context, view *raftlog.ApplicationV
 // descriptor and physical roots. Its point APIs confer no complete graph view,
 // ownership lease, allocator readiness, certified cut or mutation admission.
 func OpenPartitionCatalog(ctx context.Context, view *raftlog.ApplicationView, local Namespace, ownershipEpoch uint64, limits Limits, graphLimits GraphLimits, budget OwnershipBudget) (*Catalog, PageWork, error) {
+	return openPartitionCatalogSource(ctx, view, local, ownershipEpoch, limits, graphLimits, budget)
+}
+func openPartitionCatalogSource(ctx context.Context, view ApplicationReadSource, local Namespace, ownershipEpoch uint64, limits Limits, graphLimits GraphLimits, budget OwnershipBudget) (*Catalog, PageWork, error) {
 	if err := local.validate(); err != nil {
 		return nil, PageWork{}, err
 	}
@@ -271,7 +274,10 @@ func OpenPartitionCatalog(ctx context.Context, view *raftlog.ApplicationView, lo
 	if err := q.output(ownershipMetadataBytes + fullStageMetadataBytes); err != nil {
 		return nil, q.work, err
 	}
-	c := &Catalog{view: view, root: root, rootImageBytes: ownershipRootBytes, limits: q.limits, hash: equalityDigest}
+	c := &Catalog{data: view, root: root, rootImageBytes: ownershipRootBytes, limits: q.limits, hash: equalityDigest}
+	if native, ok := view.(*raftlog.ApplicationView); ok {
+		c.view = native
+	}
 	reader, err := c.reader(ctx)
 	if err != nil {
 		return nil, q.work, err
@@ -314,6 +320,9 @@ func OpenPartitionCatalog(ctx context.Context, view *raftlog.ApplicationView, lo
 // genesis configuration from that view; this is not a caller default-selection door.
 // All source work includes opening and axis validation; errors return no catalog.
 func OpenPartitionCatalogWithDefaultAxis(ctx context.Context, view *raftlog.ApplicationView, local Namespace, ownershipEpoch uint64, binding types.DefaultAxisBinding, limits Limits, graphLimits GraphLimits, budget OwnershipBudget) (*Catalog, PageWork, error) {
+	return openPartitionCatalogSourceWithDefaultAxis(ctx, view, local, ownershipEpoch, binding, limits, graphLimits, budget)
+}
+func openPartitionCatalogSourceWithDefaultAxis(ctx context.Context, view ApplicationReadSource, local Namespace, ownershipEpoch uint64, binding types.DefaultAxisBinding, limits Limits, graphLimits GraphLimits, budget OwnershipBudget) (*Catalog, PageWork, error) {
 	if err := binding.Check(types.GraphID(local.Graph), binding.Axis(), limits.Temporal); err != nil {
 		return nil, PageWork{}, callerError(err)
 	}
@@ -337,13 +346,13 @@ func OpenPartitionCatalogWithDefaultAxis(ctx context.Context, view *raftlog.Appl
 	}
 	opening := budget
 	opening.OutputBytes -= axisOutput
-	c, work, err := OpenPartitionCatalog(ctx, view, local, ownershipEpoch, resolved, gl, opening)
+	c, work, err := openPartitionCatalogSource(ctx, view, local, ownershipEpoch, resolved, gl, opening)
 	if err != nil {
 		return nil, work, err
 	}
 	// A default descriptor has a known exact maximum record. Narrow only this
 	// immutable checked read, not the catalog's policy or generic axis codec.
-	boundedCatalog := &Catalog{view: c.view, root: c.root, rootImageBytes: c.rootImageBytes, limits: c.limits, hash: c.hash, localFull: c.localFull}
+	boundedCatalog := &Catalog{view: c.view, data: c.data, root: c.root, rootImageBytes: c.rootImageBytes, limits: c.limits, hash: c.hash, localFull: c.localFull}
 	descriptorBytes := 27 + axisVariableBytes(binding.Axis())
 	boundedCatalog.limits.MaxRecordBytes = min(boundedCatalog.limits.MaxRecordBytes, 28+32+descriptorBytes)
 	q, err := boundedCatalog.reader(ctx)

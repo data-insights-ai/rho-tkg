@@ -251,7 +251,7 @@ type OwnershipEffects struct {
 
 type ownershipReader struct {
 	ctx    context.Context
-	view   *raftlog.ApplicationView
+	view   ApplicationReadSource
 	limits Limits
 	budget OwnershipBudget
 	work   PageWork
@@ -276,8 +276,8 @@ func ownershipOperational(err error) error {
 	}
 	return err
 }
-func startOwnershipReader(ctx context.Context, view *raftlog.ApplicationView, limits Limits, budget OwnershipBudget) (*ownershipReader, raftlog.ApplicationRoot, Root, raftlog.ApplicationBinding, error) {
-	if ctx == nil || view == nil {
+func startOwnershipReader(ctx context.Context, view ApplicationReadSource, limits Limits, budget OwnershipBudget) (*ownershipReader, raftlog.ApplicationRoot, Root, raftlog.ApplicationBinding, error) {
+	if ctx == nil || nilApplicationSource(view) {
 		return nil, raftlog.ApplicationRoot{}, Root{}, raftlog.ApplicationBinding{}, ErrInvalid
 	}
 	l, err := limits.resolve()
@@ -400,6 +400,9 @@ func checkOwnershipEntry(root Root, binding raftlog.ApplicationBinding, d Owners
 // and one point record. Errors return zero metadata and separate consumed work.
 // Pending/missing cannot validate a group against an absent declaration entry.
 func ReadOwnershipDeclaration(ctx context.Context, view *raftlog.ApplicationView, limits Limits, budget OwnershipBudget) (OwnershipRead, PageWork, error) {
+	return readOwnershipSource(ctx, view, limits, budget)
+}
+func readOwnershipSource(ctx context.Context, view ApplicationReadSource, limits Limits, budget OwnershipBudget) (OwnershipRead, PageWork, error) {
 	q, base, root, binding, err := startOwnershipReader(ctx, view, limits, budget)
 	if err != nil {
 		return OwnershipRead{}, ownershipWork(q), err

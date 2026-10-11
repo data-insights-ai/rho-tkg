@@ -171,7 +171,7 @@ func newCurrentPresenceIteratorWork(ctx context.Context, c *Catalog, tree curren
 		return nil, PageWork{}, callerError(err)
 	}
 	p := cpPredicate{query.endpoint, query.life, currentPresenceAxis{d.ID, axis.DefinitionHash(), d.Profile}, query.mode, query.direction, strings.Clone(query.typ), exactCopy(encoded[52:])}
-	app, err := c.view.Root()
+	app, err := c.source().Root()
 	if err != nil {
 		return nil, PageWork{}, err
 	}
@@ -386,7 +386,7 @@ func (it *currentPresenceIterator) next(ctx context.Context, token graphstate.Cu
 	if err := it.c.check(ctx); err != nil {
 		return currentPresenceCandidatePage{}, err
 	}
-	app, err := it.c.view.Root()
+	app, err := it.c.source().Root()
 	if err != nil {
 		return currentPresenceCandidatePage{}, err
 	}

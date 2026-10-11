@@ -74,3 +74,134 @@ func TestReplicatedSerialOracleRejectsCurrentAsHistory(t *testing.T) {
 		t.Fatal("extra label accepted")
 	}
 }
+
+// The process acceptance oracle is literal map semantics, independent of the
+// planner, reducer, projection, physical codecs and participant/fence guards.
+// It covers these fixed client inputs, not general graph serializability.
+type certifiedProcessFact struct {
+	Exists, Active       bool
+	Life, Source, Target uint64
+	Labels               []string
+	Incident             []uint64
+}
+type certifiedProcessOracle struct {
+	facts map[uint64]certifiedProcessFact
+}
+
+func newCertifiedProcessOracle() *certifiedProcessOracle {
+	return &certifiedProcessOracle{facts: map[uint64]certifiedProcessFact{
+		1:  {Exists: true, Active: true, Life: 2},
+		17: {Exists: true, Active: true, Life: 18},
+	}}
+}
+func (o *certifiedProcessOracle) healthy() {
+	for _, id := range []uint64{1, 17} {
+		f := o.facts[id]
+		f.Labels = []string{"healthy"}
+		o.facts[id] = f
+	}
+}
+func (o *certifiedProcessOracle) crossEdge() {
+	o.facts[3] = certifiedProcessFact{Exists: true, Active: true, Life: 4, Source: 1, Target: 17}
+	for _, id := range []uint64{1, 17} {
+		f := o.facts[id]
+		f.Incident = []uint64{3}
+		o.facts[id] = f
+	}
+}
+func (o *certifiedProcessOracle) compare(id uint64, got certifiedProcessFact) error {
+	want := o.facts[id]
+	if got.Exists != want.Exists || got.Active != want.Active || got.Life != want.Life || got.Source != want.Source || got.Target != want.Target || !slices.Equal(got.Labels, want.Labels) || !slices.Equal(got.Incident, want.Incident) {
+		return fmt.Errorf("exact certified process fact %d: got %+v want %+v", id, got, want)
+	}
+	return nil
+}
+func encodeCertifiedProcessFact(f certifiedProcessFact) ([]byte, error) {
+	if len(f.Labels) > 16 || len(f.Incident) > 16 {
+		return nil, errLimit
+	}
+	for _, s := range f.Labels {
+		if len(s) > 256 {
+			return nil, errLimit
+		}
+	}
+	return processEncoding(func(w *boundedWriter) {
+		var flags byte
+		if f.Exists {
+			flags |= 1
+		}
+		if f.Active {
+			flags |= 2
+		}
+		w.tag(flags)
+		w.u64(f.Life)
+		w.u64(f.Source)
+		w.u64(f.Target)
+		w.u32(len(f.Labels))
+		for _, s := range f.Labels {
+			w.text(s)
+		}
+		w.u32(len(f.Incident))
+		for _, id := range f.Incident {
+			w.u64(id)
+		}
+	})
+}
+func decodeCertifiedProcessFact(wire []byte) (certifiedProcessFact, error) {
+	c := graphCursor{b: wire}
+	flags := c.tag()
+	f := certifiedProcessFact{Exists: flags&1 != 0, Active: flags&2 != 0, Life: c.u64(), Source: c.u64(), Target: c.u64()}
+	if flags > 3 {
+		c.err = errCorrupt
+	}
+	n := c.count(16, 4)
+	if c.err != nil {
+		return certifiedProcessFact{}, c.err
+	}
+	f.Labels = make([]string, n)
+	for i := range f.Labels {
+		f.Labels[i] = string(c.field(256))
+	}
+	n = c.count(16, 8)
+	if c.err != nil {
+		return certifiedProcessFact{}, c.err
+	}
+	f.Incident = make([]uint64, n)
+	for i := range f.Incident {
+		f.Incident[i] = c.u64()
+	}
+	if len(c.b) != 0 {
+		c.err = errCorrupt
+	}
+	return f, c.err
+}
+func TestReplicatedCertifiedProcessOracleRejectsMissingCrossEffects(t *testing.T) {
+	o := newCertifiedProcessOracle()
+	before := o.facts[1]
+	o.crossEdge()
+	if err := o.compare(1, before); err == nil {
+		t.Fatal("missing outgoing posting accepted")
+	}
+	if err := o.compare(17, certifiedProcessFact{Exists: true, Active: true, Life: 18}); err == nil {
+		t.Fatal("missing incoming posting accepted")
+	}
+	if err := o.compare(3, certifiedProcessFact{}); err == nil {
+		t.Fatal("missing cross relationship accepted")
+	}
+	if err := o.compare(99, o.facts[3]); err == nil {
+		t.Fatal("phantom accepted")
+	}
+	for _, id := range []uint64{1, 3, 17, 99} {
+		wire, err := encodeCertifiedProcessFact(o.facts[id])
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := decodeCertifiedProcessFact(wire)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := o.compare(id, got); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

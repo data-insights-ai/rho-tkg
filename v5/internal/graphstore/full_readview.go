@@ -118,7 +118,7 @@ func openFullStorageReadViewBudget(ctx context.Context, c *Catalog, l GraphLimit
 	if err := q.materialize(c.rootImageBytes + 512); err != nil {
 		return nil, err
 	}
-	base, err := c.view.Root()
+	base, err := c.source().Root()
 	if err != nil {
 		return nil, err
 	}

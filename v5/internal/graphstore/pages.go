@@ -443,7 +443,7 @@ func NewPageReader(c *Catalog, l PageLimits) (*PageReader, error) {
 	if c.root.hasOwnershipDeclaration() {
 		return nil, ErrTopologyUnsupported
 	}
-	root, err := c.view.Root()
+	root, err := c.source().Root()
 	if err != nil {
 		return nil, err
 	}

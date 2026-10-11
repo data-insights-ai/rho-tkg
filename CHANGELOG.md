@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added internal v5 cross-process graph orchestration through authenticated,
+  bounded retained source sessions and native Host prepare/decision/resolve.
+  Original request bytes and durable decisions survive uncertain replies;
+  missing authority remains pending. Captured root metadata grants no live-peer,
+  quorum or certified-cut authority, and required graph data uses source RPCs.
+  Six-process same-graph cross-edge checks include exact graph answers and
+  replicated outcomes/CDC. Remote certified cuts, broader fault/ownership/GC
+  evidence, engine comparison and full V2 remain open.
+
 - Added bounded private v5 registry materialization. Created registrations stage
   reciprocal immutable controls; full original lookup precedes new-request caps,
   and Original/Conflict outcomes preserve original and evaluation coordinates.

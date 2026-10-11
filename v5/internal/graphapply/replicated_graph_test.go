@@ -18,6 +18,7 @@ import (
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
@@ -27,6 +28,310 @@ import (
 type processSnapshotPacket struct {
 	packet replica.Packet
 	owner  uint64
+}
+
+// This first package4 acceptance deliberately requires an end-to-end cross-edge.
+// The existing local door correctly refuses it; that observed business refusal
+// is missing orchestration evidence, never a safety bug in the local API.
+type certifiedProcessNetwork struct {
+	all    map[uint64]*graphProcess
+	groups [2]*tinyGraphTransport
+	dir    string
+}
+
+func newCertifiedProcessNetwork(t *testing.T) *certifiedProcessNetwork {
+	t.Helper()
+	dir, err := os.MkdirTemp(os.Getenv("RHO_GRAPH_PROCESS_ARTIFACT"), "rho-certified-process-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := &certifiedProcessNetwork{all: make(map[uint64]*graphProcess), dir: dir}
+	t.Log("certified process durable directories", dir)
+	for id := uint64(1); id <= 6; id++ {
+		n.all[id] = startGraphProcess(t, filepath.Join(dir, fmt.Sprint(id)), id, "RHO_GRAPH_CERTIFIED_PROCESS=1", "RHO_GRAPH_SOURCE_PROCESS=1")
+	}
+	attachGraphProcessMuxes(t, n.all)
+	n.groups[0] = &tinyGraphTransport{nodes: map[uint64]*graphProcess{1: n.all[1], 2: n.all[2], 3: n.all[3]}}
+	n.groups[1] = &tinyGraphTransport{nodes: map[uint64]*graphProcess{4: n.all[4], 5: n.all[5], 6: n.all[6]}}
+	// This cleanup also runs after the intentional acceptance RED, and reports
+	// failures independently instead of relying on failure-suppressed fallback.
+	t.Cleanup(func() {
+		var calls uint64
+		reaped, successful := 0, 0
+		for id := uint64(1); id <= 6; id++ {
+			p := n.all[id]
+			calls += p.sequence
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			err := p.shutdown(ctx, false)
+			cancel()
+			if err != nil {
+				t.Error("certified child cleanup", id, err)
+			}
+			if p.cmd.ProcessState != nil {
+				reaped++
+				if p.cmd.ProcessState.Success() {
+					successful++
+				}
+			}
+			if p.cmd.ProcessState == nil || !p.cmd.ProcessState.Success() {
+				t.Error("certified child not reaped successfully", id)
+			}
+			if err := p.cmd.Process.Signal(syscall.Signal(0)); !errors.Is(err, os.ErrProcessDone) {
+				t.Error("certified child still live", id, err)
+			}
+			if _, err := p.stdin.Write([]byte{1}); !errors.Is(err, os.ErrClosed) {
+				t.Error("certified stdin leak", id, err)
+			}
+			if _, err := p.stdout.Read(make([]byte, 1)); !errors.Is(err, os.ErrClosed) {
+				t.Error("certified stdout leak", id, err)
+			}
+		}
+		packets := n.groups[0].delivered + n.groups[1].delivered
+		if calls+uint64(packets) > processDeliveries {
+			t.Error("certified aggregate RPC/packet bound", calls, packets)
+		}
+		t.Logf("certified cleanup: reaped=%d successfully-reaped=%d of6; calls=%d packets=%d maxFrame=%d/%d maxQueueBytes=%d/%d", reaped, successful, calls, packets, n.all[1].maxFrame, n.all[4].maxFrame, n.groups[0].maxQueueBytes, n.groups[1].maxQueueBytes)
+	})
+	for group, leader := range []uint64{1, 4} {
+		n.groups[group].event(t, leader, processRequest{op: processCampaign})
+	}
+	n.action(t, 1, certifiedInitialize, 3, nil)
+	n.read(t, 1, observeConfiguration, 0)
+	n.action(t, 1, certifiedInitialize, 8, nil)
+	for _, recipient := range []struct{ actor, id, partition uint64 }{{1, 1, 3}, {4, 2, 8}} {
+		n.read(t, recipient.actor, observeConfiguration, 0)
+		n.action(t, recipient.actor, certifiedBeginRecipient, recipient.id, nil)
+		n.read(t, 1, observeRecipient, recipient.id)
+		n.action(t, 1, certifiedRecipientTransition, 3, []byte{byte(fenceDeclaredRecipient)})
+		if recipient.partition != 3 {
+			n.action(t, 1, certifiedRecipientTransition, recipient.partition, []byte{byte(fenceDeclaredRecipient)})
+		}
+		n.read(t, recipient.actor, observeRecipient, recipient.id)
+		n.action(t, recipient.actor, certifiedRecipientTransition, 3, []byte{byte(acknowledgeDeclaredHome)})
+		n.read(t, 1, observeRecipient, recipient.id)
+		n.action(t, 1, certifiedRecipientTransition, 3, []byte{byte(activateDeclaredRecipient)})
+		n.read(t, 1, observeRecipient, recipient.id)
+		n.action(t, 1, certifiedRecipientTransition, recipient.partition, []byte{byte(publishDeclaredRecipient)})
+		n.read(t, recipient.actor, observeRecipient, recipient.id)
+		n.action(t, recipient.actor, certifiedOpenRecipient, 0, nil)
+		n.read(t, 1, observeRecipient, recipient.id)
+		n.read(t, 1, observeAllocator, 0)
+		n.action(t, 1, certifiedReserve, 0, nil)
+		n.read(t, 1, observeGrant, 0)
+		n.action(t, 1, certifiedInstallGrant, recipient.partition, nil)
+	}
+	n.action(t, 1, certifiedCreateNode, 1, nil)
+	n.action(t, 4, certifiedCreateNode, 17, nil)
+	return n
+}
+func (n *certifiedProcessNetwork) group(actor uint64) *tinyGraphTransport {
+	if actor <= 3 {
+		return n.groups[0]
+	}
+	return n.groups[1]
+}
+func (n *certifiedProcessNetwork) read(t *testing.T, actor uint64, kind allocationObservationKind, recipient uint64) {
+	t.Helper()
+	n.group(actor).event(t, actor, processRequest{op: processCertifiedRead, entity: uint64(kind), index: recipient})
+	r := n.all[actor].call(t, processRequest{op: processStateOp})
+	if !r.ready {
+		t.Fatal("actual Host request-bound quorum read did not complete", actor, kind)
+	}
+}
+func (n *certifiedProcessNetwork) action(t *testing.T, actor, kind, index uint64, data []byte) (outcome, processResponse) {
+	t.Helper()
+	r := n.all[actor].call(t, processRequest{op: processCertifiedAction, entity: kind, index: index, data: data})
+	if kind == certifiedOpenRecipient {
+		if len(r.aux) != 0 {
+			t.Fatal("recipient open returned proposal")
+		}
+		return outcome{}, r
+	}
+	proposal, err := decodeCertifiedProcessProposal(r.aux)
+	if err != nil {
+		t.Fatal("not a bounded source-produced proposal", err)
+	}
+	group, leader := 0, uint64(1)
+	if proposal.target.partition == 8 {
+		group, leader = 1, 4
+	}
+	ns, _ := certifiedProcessNamespace(leader)
+	if proposal.target.graph != (idalloc.GraphID{1}) || proposal.target.partition != ns.partition || proposal.target.semantic != certifiedGraphSemanticContractID() {
+		t.Fatal("source proposal escaped declared process topology", proposal.target)
+	}
+	n.groups[group].event(t, leader, processRequest{op: processPropose, data: r.aux})
+	state := n.all[leader].call(t, processRequest{op: processStateOp})
+	result := n.all[leader].call(t, processRequest{op: processEntryRecord, index: state.applied})
+	var o outcome
+	if kind == certifiedCreateNode || kind == certifiedCreateCrossEdge || kind == certifiedHealthyLabel {
+		o, err = decodePartitionGraphOutcome(result.outcome, ns)
+	} else {
+		o, err = decodeDeclaredOutcome(result.outcome, ns)
+	}
+	validDisposition := o.disposition == applied || kind == certifiedInstallGrant && o.disposition == controlRecovery
+	if err != nil || o.hash != sha256.Sum256(proposal.wire) || o.index != state.applied || !validDisposition {
+		t.Fatal("actual committed operation outcome", o, err)
+	}
+	for id, p := range n.groups[group].nodes {
+		actual := p.call(t, processRequest{op: processStateOp})
+		if actual.applied != state.applied || !bytes.Equal(actual.image, state.image) {
+			t.Fatal("certified process voter checkpoint mismatch", id)
+		}
+		got := p.call(t, processRequest{op: processEntryRecord, index: state.applied})
+		if !bytes.Equal(got.outcome, result.outcome) || !bytes.Equal(got.changes, result.changes) {
+			t.Fatal("certified process voter outcome/CDC mismatch", id)
+		}
+		if actual.stats[statViews] != 0 || actual.stats[statPinnedBytes] != 0 {
+			t.Fatal("certified process operation leaked views/pins", id)
+		}
+	}
+	if kind != certifiedCreateCrossEdge && o.reason != reasonNone {
+		t.Fatal("certified process local positive control refused", kind, o)
+	}
+	t.Logf("actual certified child operation: actor=%d target=%d kind=%d index=%d reason=%d outcome=%x changes=%x", actor, proposal.target.partition, kind, o.index, o.reason, result.outcome, result.changes)
+	return o, result
+}
+func (n *certifiedProcessNetwork) compare(t *testing.T, oracle *certifiedProcessOracle) {
+	t.Helper()
+	for group, ids := range [][]uint64{{1, 3, 7}, {17, 23}} {
+		input, err := encodeGraphProcessObserveIDs(ids)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for id, p := range n.groups[group].nodes {
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			r, err := p.exchange(ctx, processRequest{op: processSourceObserve, data: input})
+			cancel()
+			if err != nil {
+				stderr, _ := p.stderr.state()
+				t.Fatalf("actual batched source oracle caller%d: %v limit=%v unavailable=%v stderr=%s", id, err, errors.Is(err, errLimit), errors.Is(err, graphstore.ErrSourceUnavailable), stderr)
+			}
+			tuples, err := decodeGraphProcessObservationBatch(r.aux)
+			if err != nil || len(tuples) != len(ids) {
+				t.Fatal("exact batch tuple count", id, err)
+			}
+			for i, tuple := range tuples {
+				if tuple.id != ids[i] {
+					t.Fatal("batch omitted/substituted entity", id, i, tuple.id)
+				}
+				if err := oracle.compare(tuple.id, tuple.fact); err != nil {
+					t.Fatal(id, err)
+				}
+			}
+			if r.stats[statViews] != 0 || r.stats[statPinnedBytes] != 0 {
+				t.Fatal("batched oracle retained actual owners", id, r.stats)
+			}
+		}
+	}
+}
+
+func TestReplicatedCertifiedGraphSixProcessesLocalControls(t *testing.T) {
+	n := newCertifiedProcessNetwork(t)
+	o := newCertifiedProcessOracle()
+	n.compare(t, o)
+	n.action(t, 1, certifiedHealthyLabel, 1, nil)
+	n.action(t, 4, certifiedHealthyLabel, 17, nil)
+	o.healthy()
+	n.compare(t, o)
+}
+func TestReplicatedCertifiedGraphSixProcessesCrossEdge(t *testing.T) {
+	n := newCertifiedProcessNetwork(t)
+	oracle := newCertifiedProcessOracle()
+	n.compare(t, oracle)
+	// The native local factory produces the original qualified business command,
+	// which enters the genuine remote coordinator before any local submission.
+	command := n.all[1].call(t, processRequest{op: processCertifiedAction, entity: certifiedCreateCrossEdge, index: 3})
+	proposal, err := decodeCertifiedProcessProposal(command.aux)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := n.all[1].call(t, processRequest{op: processSourceCoordinate, data: proposal.wire})
+	result, err := decodeGraphProcessCoordinatorResult(response)
+	if err != nil || !result.decision.commit || result.decision.phase != crossDecide || result.decision.tx != result.resume.tx {
+		t.Fatal("same-GraphID six-process source-owned cross-edge decision", result, err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	if err := drainGraphProcessMuxes(ctx, n.all); err != nil {
+		t.Fatal("real follower transport/apply drain", err)
+	}
+	for groupIndex, group := range n.groups {
+		var original, originalRecord processResponse
+		for id, p := range group.nodes {
+			current := p.call(t, processRequest{op: processStateOp})
+			record := p.call(t, processRequest{op: processEntryRecord, index: current.applied})
+			status, err := decodeCrossStatus(record.outcome)
+			if err != nil || status.phase != crossResolve || !status.commit || status.tx != result.resume.tx || status.digest != result.decision.digest || status.round != result.decision.round {
+				t.Fatal("actual six-voter native resolve", id, status, err)
+			}
+			if original.image == nil {
+				original = current
+				originalRecord = record
+			} else if original.applied != current.applied || !bytes.Equal(original.image, current.image) {
+				t.Fatal("cross-edge voter graph/index mismatch", id)
+			}
+			if !bytes.Equal(record.outcome, originalRecord.outcome) || !bytes.Equal(record.changes, originalRecord.changes) || len(record.changes) == 0 {
+				t.Fatal("exact six-voter outcome/CDC parity", id)
+			}
+			expected := outcome{ns: status.ns, kind: graphOperations, identity: status.tx, hash: status.digest, index: status.index, disposition: applied}
+			logical, err := decodeTypedChangeEnvelope(record.changes, expected, defaultMaterializerLimits(), true)
+			if err != nil || len(logical.values) != 0 {
+				t.Fatal("committed typed cross-edge CDC", id, err)
+			}
+			if groupIndex == 0 {
+				if len(logical.entities) != 1 || logical.entities[0].ID != 3 || len(logical.lives) != 1 || logical.lives[0].Owner != 3 || logical.lives[0].Life != 4 || len(logical.groups) != 1 {
+					t.Fatal("primary relationship CDC shape", id, logical)
+				}
+				for _, component := range logical.groups {
+					if component.Key != (graphstate.ComponentKey{Owner: 3, Kind: graphstate.Presence}) {
+						t.Fatal("foreign component in edge CDC", id, component.Key)
+					}
+				}
+			} else if len(logical.entities)+len(logical.lives)+len(logical.groups) != 0 {
+				t.Fatal("secondary-only participant invented primary CDC", id, logical)
+			}
+			if current.stats[statViews] != 0 || current.stats[statPinnedBytes] != 0 {
+				t.Fatal("cross-edge retained source owners", id, current.stats)
+			}
+		}
+	}
+	oracle.crossEdge()
+	n.compare(t, oracle)
+}
+
+func TestReplicatedCertifiedGraphSixProcessesLocalCrossEdgeRefusalRemainsHealthy(t *testing.T) {
+	n := newCertifiedProcessNetwork(t)
+	oracle := newCertifiedProcessOracle()
+	n.compare(t, oracle)
+	before := make(map[uint64]processResponse)
+	for id, p := range n.all {
+		before[id] = p.call(t, processRequest{op: processStateOp})
+	}
+	o, response := n.action(t, 1, certifiedCreateCrossEdge, 3, nil)
+	// Business refusal is valid local behavior. Check its complete negative
+	// state and post-refusal health before asserting this broader acceptance.
+	if o.reason == reasonRemoteParticipant {
+		if len(response.changes) != 0 {
+			t.Fatal("refused cross-edge emitted graph CDC")
+		}
+		for id, p := range n.all {
+			after := p.call(t, processRequest{op: processStateOp})
+			if !bytes.Equal(after.image, before[id].image) {
+				t.Fatal("refused cross-edge changed graph", id)
+			}
+			if id >= 4 && (after.stats != before[id].stats || after.applied != before[id].applied) {
+				t.Fatal("local refusal changed remote group", id)
+			}
+		}
+		n.compare(t, oracle)
+		n.action(t, 1, certifiedHealthyLabel, 1, nil)
+		n.action(t, 4, certifiedHealthyLabel, 17, nil)
+		oracle.healthy()
+		n.compare(t, oracle)
+	}
+	if o.reason != reasonRemoteParticipant {
+		t.Fatal("accepted local door changed its refusal contract", o.reason)
+	}
 }
 
 type tinyGraphTransport struct {

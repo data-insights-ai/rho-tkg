@@ -14,7 +14,7 @@ import (
 )
 
 func planFailure(err error) error {
-	if err == nil || errors.Is(err, ErrCorrupt) || errors.Is(err, ErrPoisoned) || errors.Is(err, raftlog.ErrCorrupt) || errors.Is(err, raftlog.ErrPoisoned) || errors.Is(err, raftlog.ErrClosed) || errors.Is(err, ErrClosed) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if err == nil || errors.Is(err, ErrCorrupt) || errors.Is(err, ErrPoisoned) || errors.Is(err, raftlog.ErrCorrupt) || errors.Is(err, raftlog.ErrPoisoned) || errors.Is(err, raftlog.ErrClosed) || errors.Is(err, ErrClosed) || errors.Is(err, ErrSourceUnavailable) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}
 	if errors.Is(err, temporal.ErrAxisMismatch) {
@@ -274,7 +274,11 @@ func InitializeGraphIndexes(ctx context.Context, c *Catalog, schemas []graphstat
 	if l.MaxSourceBytes < 2*c.rootImageBytes+fullStageMetadataBytes {
 		return GraphEffects{}, ErrResourceLimit
 	}
-	base, err := c.view.ProveNoApplicationData(ctx)
+	native, err := c.initializationView()
+	if err != nil {
+		return GraphEffects{}, err
+	}
+	base, err := native.ProveNoApplicationData(ctx)
 	if err != nil {
 		return GraphEffects{}, err
 	}

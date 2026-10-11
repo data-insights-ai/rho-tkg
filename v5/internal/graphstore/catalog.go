@@ -20,6 +20,7 @@ import (
 // graph/history/value map. Semantic corruption/I/O stops all catalog methods.
 type Catalog struct {
 	view                        *raftlog.ApplicationView
+	data                        ApplicationReadSource
 	root                        Root
 	rootImageBytes              int
 	limits                      Limits
@@ -83,7 +84,14 @@ func (c *Catalog) check(ctx context.Context) error {
 	if poison != nil {
 		return errors.Join(ErrPoisoned, poison)
 	}
-	_, err := c.view.Root()
+	// Preserve the concrete native guard's Context.Err call boundary. Remote
+	// providers receive the current query context and a known metadata ceiling.
+	var err error
+	if c.view != nil {
+		_, err = c.view.Root()
+	} else {
+		_, err = c.source().RootBounded(ctx, max(c.rootImageBytes, ownershipRootBytes))
+	}
 	return err
 }
 func (c *Catalog) failure(err error) error {
@@ -93,7 +101,7 @@ func (c *Catalog) failure(err error) error {
 	if errors.Is(err, raftlog.ErrLimit) || errors.Is(err, temporal.ErrResourceLimit) || errors.Is(err, graphstate.ErrResourceLimit) || errors.Is(err, state.ErrResourceLimit) {
 		return errors.Join(ErrResourceLimit, err)
 	}
-	if errors.Is(err, ErrInvalid) || errors.Is(err, ErrNamespace) || errors.Is(err, ErrRebinding) || errors.Is(err, ErrResourceLimit) || errors.Is(err, ErrTopologyUnsupported) || errors.Is(err, ErrRoutingUnknown) || errors.Is(err, ErrRemoteParticipant) || errors.Is(err, ErrStaleOwner) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, raftlog.ErrClosed) || errors.Is(err, ErrClosed) {
+	if errors.Is(err, ErrInvalid) || errors.Is(err, ErrNamespace) || errors.Is(err, ErrRebinding) || errors.Is(err, ErrResourceLimit) || errors.Is(err, ErrTopologyUnsupported) || errors.Is(err, ErrSourceUnavailable) || errors.Is(err, ErrRoutingUnknown) || errors.Is(err, ErrRemoteParticipant) || errors.Is(err, ErrStaleOwner) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, raftlog.ErrClosed) || errors.Is(err, ErrClosed) {
 		return err
 	}
 	c.mu.Lock()
@@ -170,7 +178,7 @@ func (q *reader) get(key []byte) ([]byte, bool, error) {
 		row, found = q.stage.writes[string(key)]
 	}
 	if !found {
-		maxBytes := min(l.MaxRecordBytes+len(key), l.MaxReadBytes-q.bytes-64, q.c.view.ReadLimits().Bytes)
+		maxBytes := min(l.MaxRecordBytes+len(key), l.MaxReadBytes-q.bytes-64, q.c.source().ReadLimits().Bytes)
 		if q.arena != nil {
 			maxBytes = min(maxBytes, q.arena.Remaining()-64)
 			if maxBytes < len(key) {
@@ -178,7 +186,7 @@ func (q *reader) get(key []byte) ([]byte, bool, error) {
 			}
 		}
 		var err error
-		row, found, err = q.c.view.Get(q.ctx, key, maxBytes)
+		row, found, err = q.c.source().Get(q.ctx, key, maxBytes)
 		if err != nil {
 			return nil, false, err
 		}

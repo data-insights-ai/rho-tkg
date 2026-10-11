@@ -76,7 +76,7 @@ func (h *allocationHost) ReadGraphCut(q graphCutQuery) (allocationEvent, error) 
 	if !h.machine.certifiedReads() {
 		return allocationEvent{}, errInvalid
 	}
-	if h.sequence == math.MaxUint64 || len(h.pending)+len(h.crossPending)+len(h.capacityPending)+len(h.cutPending) >= 16 {
+	if h.sequence == math.MaxUint64 || len(h.pending)+len(h.crossPending)+len(h.capacityPending)+len(h.cutPending)+len(h.requestPending) >= 16 {
 		return allocationEvent{}, errLimit
 	}
 	if h.cutPending == nil {

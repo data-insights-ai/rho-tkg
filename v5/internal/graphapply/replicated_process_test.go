@@ -61,6 +61,16 @@ const (
 	processGuardRequest
 	processArmLeaderKill
 	processEntryRecord
+	processCertifiedRead
+	processCertifiedAction
+	processCertifiedObserve
+	processSourceServe
+	processSourceReply
+	processSourceCancel
+	processSourceCoordinate
+	processSourceObserve
+	processSourcePause
+	processSourcePausedBarrier
 )
 
 // IPC IDs identify this process event only. No storage/send/prepared capability
@@ -169,7 +179,7 @@ func decodeProcessRequest(b []byte) (processRequest, error) {
 	r := processRequest{incarnation: c.array(), sequence: c.u64(), op: c.tag(), index: c.u64(), entity: c.u64()}
 	r.data = c.field(processFrameBytes)
 	r.packet = processDecodePacket(&c)
-	if r.sequence == 0 || r.op < processCampaign || r.op > processEntryRecord || len(c.b) != 0 {
+	if r.sequence == 0 || r.op < processCampaign || r.op > processSourcePausedBarrier || len(c.b) != 0 {
 		c.err = errCorrupt
 	}
 	return r, c.err
@@ -358,6 +368,7 @@ func (b *processStderr) state() (string, bool) {
 }
 
 type graphProcess struct {
+	mux                                       *graphProcessMux
 	cmd                                       *exec.Cmd
 	stdin                                     io.WriteCloser
 	stdout                                    io.ReadCloser
@@ -416,6 +427,9 @@ func (p *graphProcess) call(t *testing.T, r processRequest) processResponse {
 
 // No testing.T calls here: cleanup must never Goexit before closing/reaping.
 func (p *graphProcess) exchange(ctx context.Context, r processRequest) (processResponse, error) {
+	if p.mux != nil {
+		return p.mux.exchange(ctx, r)
+	}
 	p.sequence++
 	r.sequence = p.sequence
 	r.incarnation = p.incarnation
@@ -930,6 +944,10 @@ func TestReplicatedGraphChild(t *testing.T) {
 	if err != nil || id < 1 || id > 6 {
 		t.Fatal("child identity", err)
 	}
+	if os.Getenv("RHO_GRAPH_CERTIFIED_PROCESS") == "1" {
+		certifiedGraphProcessChild(t, id)
+		return
+	}
 	n, voters, group := processNamespace(id)
 	l := raftlog.DefaultLimits()
 	l.CacheBytes = 2 << 20
@@ -1396,5 +1414,337 @@ func TestReplicatedProcessShutdownReapsFailedCloseRPC(t *testing.T) {
 				t.Fatal("repeat shutdown changed cleanup", err)
 			}
 		})
+	}
+}
+
+// This test-only child mode keeps every completed proof inside its actual Host.
+// Only source-produced proposal target/wire and copied observations cross IPC.
+// It adds no remote graph read/planning or proof-import implementation.
+const (
+	certifiedInitialize uint64 = iota + 1
+	certifiedBeginRecipient
+	certifiedRecipientTransition
+	certifiedReserve
+	certifiedInstallGrant
+	certifiedOpenRecipient
+	certifiedCreateNode
+	certifiedCreateCrossEdge
+	certifiedHealthyLabel
+)
+
+type certifiedProcessOwners struct {
+	host        *allocationHost
+	proof       allocationProof
+	readID      allocationReadID
+	question    allocationQuery
+	ready       bool
+	reserve     idalloc.RecipientSession
+	recipient   *allocationRecipientHandle
+	incarnation [16]byte
+}
+
+func encodeCertifiedProcessProposal(p allocationProposal) ([]byte, error) {
+	scope, err := encodeAllocationScope(p.target)
+	if err != nil {
+		return nil, err
+	}
+	return processEncoding(func(w *boundedWriter) { w.field(scope); w.field(p.wire) })
+}
+func decodeCertifiedProcessProposal(wire []byte) (allocationProposal, error) {
+	c := graphCursor{b: wire}
+	scope := c.field(256)
+	command := c.field(defaultMaterializerLimits().commandBytes)
+	if c.err != nil || len(c.b) != 0 {
+		return allocationProposal{}, errors.Join(errCorrupt, c.err)
+	}
+	target, err := decodeAllocationScope(scope)
+	return allocationProposal{target: target, wire: command}, err
+}
+func certifiedProcessNamespace(id uint64) (namespace, [3]uint64) {
+	if id <= 3 {
+		return namespace{idalloc.GraphID{1}, 3}, [3]uint64{1, 2, 3}
+	}
+	return namespace{idalloc.GraphID{1}, 8}, [3]uint64{4, 5, 6}
+}
+
+func (o *certifiedProcessOwners) event(e allocationEvent) error {
+	for _, reply := range e.replies {
+		if o.ready || reply.id != o.readID || reply.question != o.question || reply.proof.owner != o.host {
+			return errInvalid
+		}
+		if reply.err != nil {
+			return reply.err
+		}
+		o.proof, o.ready = reply.proof, true
+		if reply.question.kind == observeRecipient {
+			o.reserve = reply.proof.observation.recipient.session
+		}
+	}
+	if len(e.crossReplies)+len(e.cutReplies)+len(e.capacityReplies)+len(e.snapshotSends) != 0 {
+		return errInvalid
+	}
+	return nil
+}
+func (o *certifiedProcessOwners) read(r processRequest) (allocationEvent, error) {
+	q := allocationQuery{kind: allocationObservationKind(r.entity)}
+	copy(q.nonce[:8], o.incarnation[:8])
+	binary.BigEndian.PutUint64(q.nonce[8:], r.sequence)
+	switch q.kind {
+	case observeConfiguration, observeAllocator:
+	case observeRecipient:
+		if r.index < 1 || r.index > 2 {
+			return allocationEvent{}, errInvalid
+		}
+		q.session.ID[0] = byte(r.index)
+	case observeGrant:
+		q.session, q.sequence, q.count = o.reserve, 1, 16
+	default:
+		return allocationEvent{}, errInvalid
+	}
+	o.ready, o.proof = false, allocationProof{}
+	e, err := o.host.Read(q)
+	if err == nil {
+		o.readID, o.question = e.readID, q
+	}
+	return e, err
+}
+
+func (o *certifiedProcessOwners) action(t *testing.T, r processRequest, init declaredInitCommand) (allocationProposal, error) {
+	id := requestID(o.incarnation)
+	binary.BigEndian.PutUint64(id[8:], r.sequence)
+	h := o.host
+	switch r.entity {
+	case certifiedInitialize:
+		return h.PreparePartitionInitialization(r.index, bootstrapAttemptID(id), partitionWriteSchemas(), init.maxBlock, graphGenesisBinding(t), *init.routing, o.proof)
+	case certifiedBeginRecipient:
+		if r.index < 1 || r.index > 2 {
+			return allocationProposal{}, errInvalid
+		}
+		return h.BeginRecipient(id, [16]byte{byte(r.index)}, o.proof)
+	case certifiedRecipientTransition:
+		if len(r.data) != 1 {
+			return allocationProposal{}, errInvalid
+		}
+		return h.RecipientTransition(id, commandKind(r.data[0]), r.index, o.proof)
+	case certifiedReserve:
+		return h.AuthorizeReserve(id, idalloc.GrantRequest{Graph: h.machine.ns.graph, Session: o.reserve, Sequence: 1, Count: 16}, o.proof)
+	case certifiedInstallGrant:
+		return h.InstallGrant(id, r.index, o.proof)
+	case certifiedOpenRecipient:
+		var err error
+		o.recipient, err = h.OpenRecipient(o.proof)
+		return allocationProposal{}, err
+	case certifiedCreateNode, certifiedCreateCrossEdge, certifiedHealthyLabel:
+		if o.recipient == nil {
+			return allocationProposal{}, errInvalid
+		}
+		scope, err := temporal.All(graphGenesisBinding(t).Axis())
+		if err != nil {
+			return allocationProposal{}, err
+		}
+		owner := graphstate.EntityID(r.index)
+		life := graphstate.LifeID(r.index + 1)
+		op := graphstate.Operation{Kind: graphstate.CreateNode, Owner: owner, Life: life, Scope: scope, Record: graphstate.EntityRecord{Interpretation: graphstate.InterpretationObservation, TemporalRole: graphstate.TemporalRoleValidity}}
+		grant := grantReference{session: o.recipient.session, sequence: 1}
+		claims := []freshBinding{{role: entityBinding, id: r.index, grant: grant}, {role: lifeBinding, owner: owner, id: r.index + 1, grant: grant}}
+		switch r.entity {
+		case certifiedCreateCrossEdge:
+			op = graphstate.Operation{Kind: graphstate.CreateRelationship, Owner: 3, Life: 4, Scope: scope, Record: graphstate.EntityRecord{Type: "cross-edge", Source: 1, Target: 17, Mode: graphstate.LifeBound, Interpretation: graphstate.InterpretationAssertedRelation, TemporalRole: graphstate.TemporalRoleOccurrenceTime}, Binding: graphstate.LifeRecord{SourceLife: 2, TargetLife: 18}}
+			claims[0].id, claims[1].owner, claims[1].id = 3, 3, 4
+		case certifiedHealthyLabel:
+			op = graphstate.Operation{Kind: graphstate.AddLabel, Owner: owner, Life: life, Scope: scope, Name: "healthy"}
+			claims = nil
+		}
+		return h.PreparePartitionGraphOperations(id, []graphstate.Operation{op}, 23, claims)
+	default:
+		return allocationProposal{}, errInvalid
+	}
+}
+
+func certifiedProcessObservation(ctx context.Context, h *allocationHost, id uint64) (observation certifiedProcessFact, err error) {
+	backend, err := h.machine.store.ApplicationView(h.driver.Applied())
+	if err != nil {
+		return observation, err
+	}
+	defer func() { err = errors.Join(err, backend.Close()) }()
+	cfg, err := h.currentConfiguration()
+	if err != nil {
+		return observation, err
+	}
+	configuration, err := cfg.digest()
+	if err != nil {
+		return observation, err
+	}
+	l := h.machine.limits
+	v, _, err := graphstore.OpenPartitionGraphReadView(ctx, backend, h.machine.declaration, cfg.defaultAxis, configuration, l.catalog, l.graph, graphstore.OwnershipBudget{SourceRows: l.sourceRows, SourceBytes: l.sourceBytes, OutputBytes: l.outputBytes})
+	if err != nil {
+		return observation, err
+	}
+	defer func() { err = errors.Join(err, v.Close()) }()
+	entity, err := v.Entity(ctx, graphstate.EntityID(id))
+	if err != nil {
+		return observation, err
+	}
+	observation.Exists = entity.Found
+	if entity.Found {
+		point, e := temporal.RationalPosition(cfg.defaultAxis.Axis(), temporal.RationalInt64(0))
+		if e != nil {
+			return observation, e
+		}
+		p, e := graphstate.Project(ctx, v, graphstate.EntityID(id), point, graphstate.Effective, l.graph.Planner)
+		if e != nil {
+			return observation, e
+		}
+		observation.Active, observation.Life, observation.Labels = p.Active, uint64(p.Life), p.Labels
+		observation.Source, observation.Target = uint64(p.Record.Source), uint64(p.Record.Target)
+		if entity.Record.Kind == graphstate.Node {
+			scope, e := temporal.All(cfg.defaultAxis.Axis())
+			if e != nil {
+				return observation, e
+			}
+			page, e := v.IncidentRelationships(ctx, graphstate.IncidentPredicate{Endpoint: graphstate.EntityID(id), Life: p.Life, Window: scope}, 0, graphstate.ReadBudget{Rows: 16, Bytes: 64 << 10})
+			if e != nil {
+				return observation, e
+			}
+			if !page.Complete || len(page.Entities) > 16 {
+				return observation, errLimit
+			}
+			for _, edge := range page.Entities {
+				observation.Incident = append(observation.Incident, uint64(edge))
+			}
+		}
+	}
+	return observation, nil
+}
+
+func certifiedGraphProcessChild(t *testing.T, id uint64) {
+	t.Helper()
+	n, voters := certifiedProcessNamespace(id)
+	init := partitionCodecRequest(t, 1, defaultMaterializerLimits())
+	if init.declaration.Graph() != graphstate.GraphID(n.graph) {
+		t.Fatal("certified fixture graph identity")
+	}
+	part, found := init.declaration.Partition(n.partition)
+	if !found {
+		t.Fatal("certified fixture partition")
+	}
+	l := raftlog.DefaultLimits()
+	l.CacheBytes, l.MemTableBytes, l.MaxRetainedBytes, l.MaxRetainedEntries = 2<<20, 1<<20, 16<<20, 8192
+	p := raftlog.DefaultApplicationPolicy(id)
+	p.MaxImageBytes, p.MaxInstallWrites, p.RetainedApplicationRecords, p.RetainedApplicationBytes = 172, 256, 8192, 16<<20
+	controls, recovery := raftlog.ApplicationControlConfig{Version: 1}, raftlog.ApplicationRecoveryConfig{Version: 1}
+	contract, err := raftlog.ApplicationContractForPolicyWithRecovery(p, controls, recovery)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := raftlog.Open(raftlog.Config{Dir: os.Getenv("RHO_GRAPH_PROCESS_DIR"), Create: true, Limits: l, Application: p, Controls: controls, Recovery: recovery, Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(n.graph), Partition: n.partition, Group: part.Group}, Contract: contract, Limits: raftlog.ApplicationTransferLimits{MaxExports: 2, MaxChunkRows: 64, MaxChunkBytes: 256 << 10, MaxStagedBytes: 16 << 20, MaxStagedRecords: 8192, MaxPinnedLogicalBytes: 64 << 20}}, Generations: raftlog.ApplicationGenerationLimits{MaxBytes: 32 << 20, MaxRecords: 16384}, PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 4096}, Replication: raftlog.ApplicationReplicationConfig{Voters: voters}, SemanticContractID: certifiedGraphSemanticContractID()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graphstore.BootstrapBoundOwnership(s, s.ApplicationBinding(), init.declaration, voters); err != nil {
+		_ = s.Close()
+		t.Fatal(err)
+	}
+	m, err := newCertifiedGraphMaterializer(s, n, init.declaration, defaultMaterializerLimits())
+	if err != nil {
+		_ = s.Close()
+		t.Fatal(err)
+	}
+	h, err := openAllocationHost(m, id, replica.Config{Store: s, ApplicationSnapshotSends: replica.ApplicationSnapshotSendLimits{MaxOffers: 2, MaxOwnedBytes: 4 << 20}})
+	if err != nil {
+		_ = s.Close()
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := h.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	o := certifiedProcessOwners{host: h}
+	if _, err := io.ReadFull(rand.Reader, o.incarnation[:]); err != nil {
+		t.Fatal(err)
+	}
+	if os.Getenv("RHO_GRAPH_SOURCE_PROCESS") == "1" {
+		graphSourceProcessChild(t, h, &o, init)
+		return
+	}
+
+	for {
+		wire, err := readProcessFrame(os.Stdin)
+		if errors.Is(err, io.EOF) {
+			return
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := decodeProcessRequest(wire)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.incarnation != o.incarnation && (r.sequence != 1 || r.incarnation != ([16]byte{})) {
+			t.Fatal("certified stale IPC incarnation")
+		}
+		response := processResponse{incarnation: o.incarnation, sequence: r.sequence}
+		var event allocationEvent
+		switch r.op {
+		case processCampaign:
+			event, err = h.Campaign()
+		case processTick:
+			event, err = h.Tick()
+		case processStep:
+			event, err = h.Step(r.packet)
+		case processCertifiedRead:
+			event, err = o.read(r)
+		case processCertifiedAction:
+			var proposal allocationProposal
+			proposal, err = o.action(t, r, init)
+			if err == nil && len(proposal.wire) != 0 {
+				response.aux, err = encodeCertifiedProcessProposal(proposal)
+			}
+		case processPropose:
+			var proposal allocationProposal
+			proposal, err = decodeCertifiedProcessProposal(r.data)
+			if err == nil {
+				event, err = h.Submit(proposal)
+			}
+		case processStateOp:
+			_, response.image, err = s.Checkpoint()
+		case processEntryRecord:
+			response.outcome, err = s.ApplicationRecord(t.Context(), r.index, true, 64<<10)
+			if err == nil {
+				response.changes, err = s.ApplicationRecord(t.Context(), r.index, false, 1<<20)
+			}
+		case processCertifiedObserve:
+			var observation certifiedProcessFact
+			observation, err = certifiedProcessObservation(t.Context(), h, r.entity)
+			if err == nil {
+				response.aux, err = encodeCertifiedProcessFact(observation)
+			}
+		case processClose:
+			err = h.Close()
+		default:
+			err = errInvalid
+		}
+		if err == nil {
+			err = o.event(event)
+		}
+		if r.op != processClose {
+			var e error
+			response.stats, response.cutID, response.manifestID, e = processStats(s)
+			err = errors.Join(err, e)
+		}
+		response.ready, response.applied, response.packets = o.ready, h.driver.Applied(), event.packets
+		response.code, response.detail = processError(err)
+		response.causeMask = processCauseMask(err)
+		wire, err = encodeProcessResponse(response)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := writeProcessFrame(os.Stdout, wire); err != nil {
+			t.Fatal(err)
+		}
+		if r.op == processClose {
+			return
+		}
 	}
 }

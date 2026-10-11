@@ -551,7 +551,7 @@ func (c *Catalog) Associations(ctx context.Context, query AssociationQuery, afte
 	if err := a.materialize(len(queryBytes) + len(after) + c.rootImageBytes); err != nil {
 		return AssociationPage{}, err
 	}
-	root, err := c.view.Root()
+	root, err := c.source().Root()
 	if err != nil {
 		return AssociationPage{}, err
 	}
@@ -568,8 +568,8 @@ func (c *Catalog) Associations(ctx context.Context, query AssociationQuery, afte
 	if a.q.rows >= a.limits.MaxReadRows || a.q.bytes >= a.limits.MaxReadBytes {
 		return AssociationPage{}, ErrResourceLimit
 	}
-	readLimits := c.view.ReadLimits()
-	page, err := c.view.Scan(ctx, lower, upper, start, raftlog.ReadBudget{Rows: min(1, readLimits.Rows), Bytes: min(a.limits.MaxReadBytes-a.q.bytes, readLimits.Bytes)})
+	readLimits := c.source().ReadLimits()
+	page, err := c.source().Scan(ctx, lower, upper, start, raftlog.ReadBudget{Rows: min(1, readLimits.Rows), Bytes: min(a.limits.MaxReadBytes-a.q.bytes, readLimits.Bytes)})
 	if err != nil {
 		return AssociationPage{}, c.failure(associationCallerError(err))
 	}

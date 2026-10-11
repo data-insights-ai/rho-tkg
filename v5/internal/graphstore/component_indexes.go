@@ -155,7 +155,11 @@ func initializeIndexes(ctx context.Context, c *Catalog, schemas []graphstate.Pro
 	if len(schemas) > c.limits.MaxStageRecords-2 {
 		return stagedIndexes{}, ErrResourceLimit
 	}
-	proof, err := c.view.ProveNoApplicationData(ctx)
+	native, err := c.initializationView()
+	if err != nil {
+		return stagedIndexes{}, err
+	}
+	proof, err := native.ProveNoApplicationData(ctx)
 	if err != nil {
 		return stagedIndexes{}, err
 	}
