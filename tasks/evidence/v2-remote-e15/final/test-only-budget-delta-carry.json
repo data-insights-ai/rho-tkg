@@ -1,0 +1,23 @@
+{
+  "source_manifest_sha256": "72a14ac351f4262c508609a194b95a6b6ba804292a71189eb65ca82e404f1404",
+  "changed_or_added_files": [
+    "v5/internal/graphapply/certified_graph_remote_test.go",
+    "v5/internal/graphapply/certified_graph_remote_budget_test.go"
+  ],
+  "production_unchanged": true,
+  "normal_exhaustive_base_names": 677,
+  "supplemental_new_names": [
+    "TestRemoteCertifiedBackendRejectsChangedReceiptAndInvalidWriteWithoutEffects",
+    "TestRemoteCertifiedReadFailureRetiresOriginalGrantWithoutBudgetReset",
+    "TestRemoteCertifiedReadAdmissionRefusesMissingScopeAndMalformedQueryWithoutWork"
+  ],
+  "final_expected_inventory": 680,
+  "fresh_normal_delta_receipts": [
+    "pinned-delta-normal"
+  ],
+  "base_normal_carry": "all11PASS production identical; existing test bodies unchanged, only appended direct guards",
+  "behavior_only_host_1_27_receipts": [
+    "author-boundary-delta-normal",
+    "remote-budget-delta-normal"
+  ]
+}

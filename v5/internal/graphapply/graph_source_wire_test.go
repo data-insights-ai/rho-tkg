@@ -184,7 +184,7 @@ func TestGraphSourceWireRequestMalformedAndCountBeforeAllocationGuard(t *testing
 		edit func([]byte)
 		want error
 	}{
-		{"unknown-kind", func(b []byte) { b[4] = 9 }, errInvalid},
+		{"unknown-kind", func(b []byte) { b[4] = sourceCertifiedOpen + 1 }, errInvalid},
 		{"zero-sequence", func(b []byte) { clear(b[5:13]) }, errInvalid},
 		{"zero-nonce", func(b []byte) { clear(b[13:29]) }, errInvalid},
 		{"maximum-frame-plus-one", func(b []byte) { binary.BigEndian.PutUint32(b[69:73], (2<<20)+1) }, errLimit},
@@ -200,6 +200,19 @@ func TestGraphSourceWireRequestMalformedAndCountBeforeAllocationGuard(t *testing
 			r, err := decodeGraphSourceRequest(malformed)
 			wireGuardRequestZero(t, r, err, tc.want)
 		})
+	}
+	for _, kind := range []byte{sourceCutRead, sourceCertifiedOpen} {
+		known := bytes.Clone(wire)
+		known[4] = kind
+		wireGuardReseal(known)
+		got, e := decodeGraphSourceRequest(known)
+		if e != nil || got.kind != kind {
+			t.Fatal("new inert request kind rejected", kind, e)
+		}
+		encoded, e := encodeGraphSourceRequest(got)
+		if e != nil || !bytes.Equal(encoded, known) {
+			t.Fatal("new kind canonical counterpart", kind, e)
+		}
 	}
 	extra := append(bytes.Clone(wire[:len(wire)-32]), 0)
 	h := sha256.Sum256(extra)

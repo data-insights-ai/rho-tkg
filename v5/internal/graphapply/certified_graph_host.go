@@ -13,22 +13,26 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 )
 
+// Zero allowances preserve the native compatibility path. Remote requests
+// require explicit positive limits carried by the actual ReadIndex context.
 type graphCutQuery struct {
-	kind    byte
-	round   uint64
-	nonce   [16]byte
-	request [16]byte
-	digest  [32]byte
+	sourceRows, sourceBytes, outputBytes int
+	kind                                 byte
+	round                                uint64
+	nonce                                [16]byte
+	request                              [16]byte
+	digest                               [32]byte
 }
 type graphCutObservation struct {
-	scope         allocationScope
-	configuration [32]byte
-	floor, index  uint64
-	pending       [16]byte
-	coordinator   uint64
-	certificate   graphCertificate
-	local         graphLocalReceipt
-	participant   graphParticipantObservation
+	sourceRows, sourceBytes, outputBytes int
+	scope                                allocationScope
+	configuration                        [32]byte
+	floor, index                         uint64
+	pending                              [16]byte
+	coordinator                          uint64
+	certificate                          graphCertificate
+	local                                graphLocalReceipt
+	participant                          graphParticipantObservation
 }
 type graphCutProof struct {
 	owner       *allocationHost
@@ -51,6 +55,9 @@ type graphParticipantObservation struct {
 }
 
 func (q graphCutQuery) valid() bool {
+	if (q.sourceRows != 0 || q.sourceBytes != 0 || q.outputBytes != 0) && (q.sourceRows < 1 || q.sourceRows > 1<<20 || q.sourceBytes < 1 || q.sourceBytes > 64<<20 || q.outputBytes < 1 || q.outputBytes > 64<<20) {
+		return false
+	}
 	return q.nonce != ([16]byte{}) && (q.kind == 1 && q.round == 0 && q.request == ([16]byte{}) && q.digest == ([32]byte{}) || q.kind == 2 && q.round > 0 && q.round < math.MaxUint64 && q.request == ([16]byte{}) && q.digest == ([32]byte{}) || q.kind == 3 && q.round == 0 && q.request != ([16]byte{}) && q.digest == ([32]byte{}) || q.kind == 4 && q.round == 0 && q.request != ([16]byte{}) && q.digest != ([32]byte{}))
 }
 func encodeGraphCutContext(id allocationReadID, q graphCutQuery) []byte {
@@ -60,7 +67,14 @@ func encodeGraphCutContext(id allocationReadID, q graphCutQuery) []byte {
 	b = binary.BigEndian.AppendUint64(b, q.round)
 	b = append(b, q.nonce[:]...)
 	b = append(b, q.request[:]...)
-	return append(b, q.digest[:]...)
+	b = append(b, q.digest[:]...)
+	if q.sourceRows > 0 {
+		b[3] = 2
+		b = binary.BigEndian.AppendUint32(b, uint32(q.sourceRows))  // #nosec G115 -- ReadGraphCut admits positive rows <= 1<<20; cancellation reuses that immutable query.
+		b = binary.BigEndian.AppendUint32(b, uint32(q.sourceBytes)) // #nosec G115 -- admitted immutable source bytes are positive and <= 64 MiB.
+		b = binary.BigEndian.AppendUint32(b, uint32(q.outputBytes)) // #nosec G115 -- admitted immutable output bytes are positive and <= 64 MiB.
+	}
+	return b
 }
 
 // ReadGraphCut issues a uniquely correlated, applied quorum barrier.
@@ -118,7 +132,7 @@ func (h *allocationHost) CancelGraphCutRead(id allocationReadID) error {
 	return e
 }
 func (h *allocationHost) completeGraphCutRead(w []byte, index uint64) (graphCutReply, error) {
-	if len(w) != 101 || !bytes.Equal(w[:4], []byte{'G', 'S', 'R', 1}) {
+	if (len(w) != 101 || !bytes.Equal(w[:4], []byte{'G', 'S', 'R', 1})) && (len(w) != 113 || !bytes.Equal(w[:4], []byte{'G', 'S', 'R', 2})) {
 		return graphCutReply{}, errCorrupt
 	}
 	var id allocationReadID
@@ -140,6 +154,9 @@ func (m *declaredMaterializer) observeGraphCut(ctx context.Context, query graphC
 	if ctx == nil || !query.valid() || !m.certifiedReads() {
 		return out, errInvalid
 	}
+	if query.sourceRows > 0 && (query.sourceBytes < 172 || query.outputBytes < 172) {
+		return out, errLimit
+	}
 	v, err := m.store.ApplicationView(index)
 	if err != nil {
 		return out, err
@@ -155,10 +172,25 @@ func (m *declaredMaterializer) observeGraphCut(ctx context.Context, query graphC
 		return out, err
 	}
 	l := m.limits.allocation
+	effective := m.limits
+	if query.sourceRows > 0 {
+		l.readRows = min(l.readRows, query.sourceRows)
+		l.readBytes = min(l.readBytes, query.sourceBytes)
+		effective.outputBytes = min(effective.outputBytes, query.outputBytes)
+	}
 	l.readRows = min(l.readRows, m.limits.sourceRows)
 	l.readBytes = min(l.readBytes, m.limits.sourceBytes)
 	q := reader{ctx: ctx, view: v, ns: m.ns, base: base, limits: l, bytes: cap(base.Image)}
-	if err = joinGraphOutputBudget(&q, graphRequest{}, 4096, m.limits); err != nil {
+	defer func() {
+		if err == nil {
+			out.sourceRows = q.rows
+			out.sourceBytes = q.bytes
+			if q.arena != nil {
+				out.outputBytes = effective.outputBytes - q.arena.Remaining()
+			}
+		}
+	}()
+	if err = joinGraphOutputBudget(&q, graphRequest{}, 4096, effective); err != nil {
 		return out, err
 	}
 	cfg, err := m.initialized(&q)

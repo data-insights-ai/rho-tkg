@@ -1,0 +1,63 @@
+{
+  "status": "AUTHOR_PASS_PENDING_SAME_REVIEWER_FINAL_ACCEPTANCE",
+  "base": "b9da041b70f8160b2a267d60feff33511891a47a",
+  "commit": null,
+  "source_manifest": "source-manifest.json",
+  "source_manifest_sha256": "c61537247db58156ef7ec5f5ebdefb9ba6ba7a56f9496796d08391c86e287dd8",
+  "go_files": 452,
+  "scope": "finite E15 remote certified read closure; caller2/leader sources1&4, all6native certificates/CDC/pins and6reaps; modes/After/foreigncaller directguards; wholeP4/E16-18/transfer/GC/multihost/engine/publicAPI open",
+  "runtime": "exhaustive-runtime-summary.json",
+  "compiled_parents": 680,
+  "normal": {
+    "pass": 676,
+    "skip": 4
+  },
+  "race": {
+    "pass": 676,
+    "skip": 4
+  },
+  "fresh_amendment": "lint-amendment-normal/race71parents plus91subtests PASS; executableequivalents/unusedwrapper only, unchanged lanes qualified by preceding hashes",
+  "coverage": "production-coverage.json",
+  "coverage_profile": "coverage.out",
+  "covered_statements": 18517,
+  "total_statements": 21273,
+  "new_changed_production_files": 14,
+  "public_direct": "direct-public-witnesses.json",
+  "private_callback_coverage": "nonzero +file/diff>=80; no blanket per-private-method80assertion",
+  "static": {
+    "fmt": "fmt.receipt.json",
+    "vet": "vet.receipt.json",
+    "build": "build.receipt.json",
+    "lint": "lint.receipt.json",
+    "security": "security.receipt.json",
+    "vuln": "vuln.receipt.json"
+  },
+  "static_carry": "vet/build preceding sameexecutablebytes; finalthree exactsite comments only afterward; fmt/lint/security/vuln finalseal freshlyrun",
+  "vuln": "0reachable;2importedpackage findings and2module findings withoutreachablecalls; no distinctCVEcountclaim",
+  "mutants": {
+    "reply-binding": "reply-binding-mutant.receipt.json",
+    "current-at": "current-at-mutant.receipt.json",
+    "skip-pending": "skip-pending-mutant.receipt.json"
+  },
+  "resource_env": {
+    "GOTOOLCHAIN": "go1.26.9",
+    "GOMAXPROCS": 2,
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off",
+    "watchdog_rss_mib": 4096,
+    "watchdog_seconds": 180,
+    "docker_memory": "4g",
+    "docker_cpus": 2
+  },
+  "qualifications": [
+    "earlier focused hostgo1.27.1 evidence is authentic behavior only and excluded from pinnedcoverage/finalgates",
+    "initial enumfixture fullrawlog overwritten; retainedwatchdog/receipt/test/rootextractedwitness, neverclaimedrecovered",
+    "initialAS4 misnamedzero-match commands explicitlynonacceptance; actualcompiledname cohorts replacegeneralskip",
+    "four intentional childentry/optinmeasurementskips per mode",
+    "scopedScopeUnavailablepoison trueRED preserved and corrected atsharedCatalog.failure; two separatefixture assumptions qualified",
+    "retained leader source projections not six independent follower native projections or physicalhostdurability"
+  ],
+  "lower_unchanged": "unchanged-dependency-carry.json",
+  "review_checkpoint": "/var/tmp/rho-v5-v2-remote-e15-review-20261011/FINAL_RUNTIME_CHECKPOINT.md"
+}

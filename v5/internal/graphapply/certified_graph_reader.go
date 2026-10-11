@@ -4,15 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"math"
 	"reflect"
 	"slices"
 	"sync"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
-	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
-	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 )
 
 type graphReadMode byte
@@ -28,8 +25,9 @@ const (
 // identities under the crash-only model. There is no scalar/log-offset fallback.
 type graphCut struct{ certificates []graphCertificate }
 type graphCommitReceipt struct {
-	proof crossProof
-	local graphCutProof
+	proof  crossProof
+	local  graphCutProof
+	remote *crossAuthority
 }
 type graphReadRequest struct {
 	mode    graphReadMode
@@ -67,7 +65,7 @@ type certifiedGraphRead struct {
 	mu       sync.Mutex
 	cut      graphCut
 	full     *graphstore.PartitionTransactionView
-	sources  []*raftlog.ApplicationView
+	sources  []certifiedGraphSource
 	initial  graphstore.PageWork
 	closed   bool
 	closeErr error
@@ -187,193 +185,11 @@ func (c *certifiedReadCoordinator) resolvePending(ctx context.Context, o graphCu
 
 // Open orchestrates the selected certified mode through actual source Hosts.
 // Cache locking never spans external transport or a cancellable read.
-func (c *certifiedReadCoordinator) Open(ctx context.Context, request graphReadRequest, scope []uint64) (read *certifiedGraphRead, err error) {
-	if c == nil || ctx == nil || nilCertifiedTransport(c.transport) {
+func (c *certifiedReadCoordinator) Open(ctx context.Context, request graphReadRequest, scope []uint64) (*certifiedGraphRead, error) {
+	if c == nil || nilCertifiedTransport(c.transport) {
 		return nil, errInvalid
 	}
-	if e := ctx.Err(); e != nil {
-		return nil, e
-	}
-	scope, err = certifiedScope(c.declaration, scope)
-	if err != nil {
-		return nil, err
-	}
-	cut := request.cut
-	switch request.mode {
-	case graphReadAt:
-	case graphReadStable:
-		if len(cut.certificates) == 0 {
-			c.mu.Lock()
-			cut = c.stable
-			c.mu.Unlock()
-			if len(cut.certificates) == 0 {
-				return nil, replica.ErrUnavailable
-			}
-		}
-	case graphReadFresh, graphReadAfter:
-		after := uint64(0)
-		if request.mode == graphReadAfter {
-			after, err = c.receiptRound(ctx, request.receipt)
-			if err != nil {
-				return nil, err
-			}
-		}
-		cut, err = c.fresh(ctx, scope, after)
-		if err != nil {
-			return nil, err
-		}
-	default:
-		return nil, errInvalid
-	}
-	if len(cut.certificates) != len(scope) {
-		return nil, errGraphCutScope
-	}
-	sources := make([]*raftlog.ApplicationView, len(scope))
-	var full *graphstore.PartitionTransactionView
-	defer func() {
-		if err != nil {
-			if full != nil {
-				err = errors.Join(err, full.Close())
-			}
-			for _, s := range sources {
-				if s != nil {
-					err = errors.Join(err, s.Close())
-				}
-			}
-			read = nil
-		}
-	}()
-	var first *allocationHost
-	var aggregate materializerLimits
-	for i, cert := range cut.certificates {
-		if cert.scope.partition != scope[i] || cert.scope.declaration != c.declaration.Digest() || graphstate.GraphID(cert.scope.graph) != c.declaration.Graph() || i > 0 && (cert.round != cut.certificates[0].round || cert.configuration != cut.certificates[0].configuration) {
-			return nil, errGraphCutScope
-		}
-		h, e := c.host(ctx, scope[i])
-		if e != nil {
-			return nil, e
-		}
-		if i == 0 {
-			first = h
-			aggregate = h.machine.limits
-		}
-		if i > 0 {
-			aggregate = intersectCertifiedReadLimits(aggregate, h.machine.limits)
-		}
-		sources[i], err = h.AtGraphCertificate(ctx, cert)
-		if err != nil {
-			return nil, err
-		}
-	}
-	// Constructor caps span all source handles and all later routed read work.
-	l := aggregate
-	arena, e := graphstate.NewOutputBudget(l.outputBytes)
-	if e != nil {
-		return nil, e
-	}
-	retained := graphReadSessionBytes + 4096*len(sources)
-	if e := arena.Reserve(retained); e != nil {
-		return nil, outputBudgetFailure(e)
-	}
-	cfg, e := first.currentConfiguration()
-	if e != nil {
-		return nil, e
-	}
-	configuration, e := cfg.digest()
-	if e != nil || configuration != cut.certificates[0].configuration {
-		return nil, errors.Join(errInvalid, e)
-	}
-	work := graphstore.PageWork{Records: 8 * len(sources), Bytes: retained}
-	budget := graphstore.OwnershipBudget{SourceRows: l.sourceRows - work.Records, SourceBytes: l.sourceBytes - work.Bytes, OutputBytes: min(l.outputBytes-retained, arena.Remaining())}
-	var opened graphstore.PageWork
-	full, opened, err = graphstore.OpenPartitionScopedReadView(ctx, sources, scope, c.declaration, cfg.defaultAxis, configuration, l.catalog, l.graph, budget, arena)
-	if err != nil {
-		return nil, err
-	}
-	work.Records += opened.Records
-	work.Bytes += opened.Bytes
-	read = &certifiedGraphRead{cut: graphCut{certificates: slices.Clone(cut.certificates)}, full: full, sources: sources, initial: graphstore.PageWork{Records: 8 * len(sources), Bytes: retained}}
-	if request.mode == graphReadFresh || request.mode == graphReadAfter {
-		c.mu.Lock()
-		c.stable = graphCut{certificates: slices.Clone(cut.certificates)}
-		c.mu.Unlock()
-	}
-	return read, nil
-}
-func (c *certifiedReadCoordinator) fresh(ctx context.Context, scope []uint64, after uint64) (graphCut, error) {
-	b := max(uint64(1), after)
-	hosts := make([]*allocationHost, len(scope))
-	for i, id := range scope {
-		h, e := c.host(ctx, id)
-		if e != nil {
-			return graphCut{}, e
-		}
-		hosts[i] = h
-		p, e := c.read(ctx, h, 1, 0)
-		if e != nil {
-			return graphCut{}, e
-		}
-		b = max(b, p.observation.floor)
-		if p.observation.pending != ([16]byte{}) {
-			if e := c.resolvePending(ctx, p.observation); e != nil {
-				return graphCut{}, e
-			}
-			p, e = c.read(ctx, h, 1, 0)
-			if e != nil {
-				return graphCut{}, e
-			}
-			b = max(b, p.observation.floor)
-		}
-	}
-	if b == math.MaxUint64 {
-		return graphCut{}, errLimit
-	}
-	for _, h := range hosts {
-		p, e := h.PrepareGraphFence(b)
-		if e != nil {
-			return graphCut{}, e
-		}
-		r, e := c.transport.Submit(ctx, h, p)
-		if e != nil {
-			return graphCut{}, e
-		}
-		if r.phase != graphCutFence || r.round != b || r.index == 0 {
-			return graphCut{}, errInvalid
-		}
-		if e := graphResultError(r.status); e != nil {
-			return graphCut{}, e
-		}
-	}
-	cut := graphCut{certificates: make([]graphCertificate, len(scope))}
-	for i, h := range hosts {
-		p, e := c.read(ctx, h, 1, 0)
-		if e != nil {
-			return graphCut{}, e
-		}
-		if e := c.resolvePending(ctx, p.observation); e != nil {
-			return graphCut{}, e
-		}
-		command, e := h.PrepareGraphCertificate(b)
-		if e != nil {
-			return graphCut{}, e
-		}
-		r, e := c.transport.Submit(ctx, h, command)
-		if e != nil {
-			return graphCut{}, e
-		}
-		if r.phase != graphCutCertify || r.round != b || r.index == 0 {
-			return graphCut{}, errInvalid
-		}
-		if e := graphResultError(r.status); e != nil {
-			return graphCut{}, e
-		}
-		p, e = c.read(ctx, h, 2, b)
-		if e != nil {
-			return graphCut{}, e
-		}
-		cut.certificates[i] = p.observation.certificate
-	}
-	return cut, nil
+	return c.openBackend(ctx, request, scope, nativeCertifiedGraphBackend{c})
 }
 
 // Cut returns owned exact coverage; it does not obtain a fresh barrier.
@@ -433,6 +249,11 @@ func (s *certifiedGraphRead) Close() error {
 		return s.closeErr
 	}
 	s.closed = true
+	for _, source := range s.sources {
+		if remote, ok := source.(interface{ cancelCertifiedReads() }); ok {
+			remote.cancelCertifiedReads()
+		}
+	}
 	if s.full != nil {
 		x := s.full.Work()
 		s.initial.Records += x.Records

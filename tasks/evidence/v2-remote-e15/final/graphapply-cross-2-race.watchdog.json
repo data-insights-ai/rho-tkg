@@ -1,0 +1,20 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-short",
+    "-count=1",
+    "-json",
+    "-race",
+    "-run",
+    "^(TestCrossPartitionQueuedCommitAndCapacityAbortKeepFirstDecisionImmutable|TestCrossPartitionReservedCompletionSurvivesOrdinaryCliffForwardingAndExactQueuedRetry|TestCrossPartitionCapacityAbortCauseAndPreparedOwnerSurviveFollowerSnapshotAndReopen|TestCrossPartitionPreparedFollowerSnapshotKeepsKernelLockAndCompletionAcrossReopen|TestCrossPartitionCapacityConflictNeedsAvailableCompletedAuthority|TestCrossPartitionManifestProofAndAggregateRefusalsLeaveNoOutput|TestCrossPartitionInsufficientCompletionCapacityRefusesRegistrationBeforeYES|TestCrossPartitionForeignIdentityPreservesCompletedLocalRequestReplay|TestCrossPartitionCompleteTypedCDCAndSequentialBeforeUseCommitRound|TestCrossPartitionControlReadersRefusePartialSourceOrOwnedResults|TestCrossPartitionPlanningCannotSpendSourceBudgetAgainForEachParticipant|TestCrossPartitionRegisteredIdentityCannotEnterLocalGraphDoor|TestCrossPartitionStatusAndManifestMustShareSourceRowBudget|TestCrossRecoveryTruncatedPGQ2MustNotPanic|TestCrossPartitionMixedPendingReadsMustShareSixteenRequestLimit|TestCrossPartitionNilAndPrivateProofRefusals|TestCrossPartitionTransactionIdentityQualifiesGraphCoordinatorAndRawRetryKey)$",
+    "./internal/graphapply"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 460.516,
+  "elapsed_s": 62.408,
+  "exit_code": 0,
+  "reason": "completed"
+}

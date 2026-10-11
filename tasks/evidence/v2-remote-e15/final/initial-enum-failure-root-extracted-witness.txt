@@ -1,0 +1,3 @@
+Root independently parsed the now-overwritten initial full gate before truncation. This is extracted tool-output evidence, NOT a recovered raw log.
+Failed parent: TestGraphSourceWireRequestMalformedAndCountBeforeAllocationGuard; subtest unknown-kind. Assertion graph_source_wire_test.go:201: request refusal returned partial fields/lost sentinel; decoded kind9 with nil error, expected graphapply: invalid input.
+Original retained watchdog:40.295s,435.234MiB,exit1. Original failed receipt and exact pre-amendment test bytes retained. Full raw initial JSONL lost by runner basename reuse.

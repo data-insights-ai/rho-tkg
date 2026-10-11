@@ -1,0 +1,36 @@
+{
+  "source_manifest_sha256": "a7efceb524628153f3ca0807cdd2e072b15007ae4feb58347d938a3e16789696",
+  "lane": "graphapply-replicated",
+  "mode": "normal",
+  "names": [
+    "TestReplicatedGraphChild",
+    "TestReplicatedGraphLeaderDiesAfterCommitBeforeReceipt",
+    "TestReplicatedGraphSixProcessesOrdinaryAndHistory",
+    "TestReplicatedGraphSnapshotHeldViewTailAndReopen",
+    "TestReplicatedProcessProtocolBoundaries",
+    "TestReplicatedProcessShutdownReapsFailedCloseRPC",
+    "TestReplicatedSerialOracleRejectsCurrentAsHistory"
+  ],
+  "exit_code": 0,
+  "command": [
+    "python3",
+    "/var/tmp/rho-v5-rebase-main-20261010-0mdr6yaw/limit-local.py",
+    "--rss-mib",
+    "4096",
+    "--seconds",
+    "180",
+    "--report",
+    "/private/var/tmp/rho-v5-v2-remote-e15-20261011/v5/../tasks/evidence/v2-remote-e15/final/graphapply-replicated-normal.watchdog.json",
+    "--",
+    "go",
+    "test",
+    "-short",
+    "-count=1",
+    "-json",
+    "-coverpkg=./internal/graphapply,./internal/graphstore",
+    "-coverprofile=/private/var/tmp/rho-v5-v2-remote-e15-20261011/v5/../tasks/evidence/v2-remote-e15/final/graphapply-replicated.cover",
+    "-run",
+    "^(TestReplicatedGraphChild|TestReplicatedGraphLeaderDiesAfterCommitBeforeReceipt|TestReplicatedGraphSixProcessesOrdinaryAndHistory|TestReplicatedGraphSnapshotHeldViewTailAndReopen|TestReplicatedProcessProtocolBoundaries|TestReplicatedProcessShutdownReapsFailedCloseRPC|TestReplicatedSerialOracleRejectsCurrentAsHistory)$",
+    "./internal/graphapply"
+  ]
+}

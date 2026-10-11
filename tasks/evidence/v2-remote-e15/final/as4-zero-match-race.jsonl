@@ -1,0 +1,6 @@
+{"Time":"2026-10-11T20:05:46.408634+02:00","Action":"start","Package":"github.com/data-insights-ai/rho-tkg/v5/internal/graphapply"}
+{"Time":"2026-10-11T20:05:46.832268+02:00","Action":"output","Package":"github.com/data-insights-ai/rho-tkg/v5/internal/graphapply","Output":"testing: warning: no tests to run\n"}
+{"Time":"2026-10-11T20:05:46.832349+02:00","Action":"output","Package":"github.com/data-insights-ai/rho-tkg/v5/internal/graphapply","Output":"PASS\n"}
+{"Time":"2026-10-11T20:05:47.838383+02:00","Action":"output","Package":"github.com/data-insights-ai/rho-tkg/v5/internal/graphapply","Output":"ok  \tgithub.com/data-insights-ai/rho-tkg/v5/internal/graphapply\t1.430s [no tests to run]\n"}
+{"Time":"2026-10-11T20:05:47.838437+02:00","Action":"pass","Package":"github.com/data-insights-ai/rho-tkg/v5/internal/graphapply","Elapsed":1.43}
+limit: {"command": ["go", "test", "-short", "-count=1", "-json", "-race", "-run", "^TestRegisteredGenesisAS4SnapshotFreshCohort$", "./internal/graphapply"], "rss_limit_mib": 4096.0, "wall_limit_s": 180.0, "sample_interval_s": 0.25, "peak_tree_rss_mib": 440.969, "elapsed_s": 2.493, "exit_code": 0, "reason": "completed"}

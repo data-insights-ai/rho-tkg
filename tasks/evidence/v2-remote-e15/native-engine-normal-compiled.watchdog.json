@@ -1,0 +1,19 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-short",
+    "-count=1",
+    "-json",
+    "-run",
+    "^TestCertifiedGraph",
+    "./internal/graphapply"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 625.656,
+  "elapsed_s": 56.851,
+  "exit_code": 0,
+  "reason": "completed"
+}

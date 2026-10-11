@@ -1,0 +1,35 @@
+{
+  "source_manifest_sha256": "72a14ac351f4262c508609a194b95a6b6ba804292a71189eb65ca82e404f1404",
+  "root": "/var/tmp/rho-v5-v2-remote-e15-mutant-reply-binding-20261011",
+  "file": "v5/internal/graphapply/graph_source_transport.go",
+  "old": " || r.nonce != request.nonce",
+  "new": "",
+  "test": "^TestGraphSourceAuthenticatedCompletionMismatchAndDirectNilRefusals$",
+  "mutation_count": 1,
+  "unmutated_target_sha256": "9be3114fc47c76d346eab27fdbee6392607e0dc6d8959717d63b363b0c25dabb",
+  "mutated_target_sha256": "9aaf14c97a82e1323524253e08ea2a61659721a23ba5f51a3d17ff30a4bfc50c",
+  "command": [
+    "python3",
+    "/var/tmp/rho-v5-rebase-main-20261010-0mdr6yaw/limit-local.py",
+    "--rss-mib",
+    "4096",
+    "--seconds",
+    "180",
+    "--report",
+    "/private/var/tmp/rho-v5-v2-remote-e15-20261011/tasks/evidence/v2-remote-e15/final/reply-binding-mutant.watchdog.json",
+    "--",
+    "go",
+    "test",
+    "-short",
+    "-count=1",
+    "-json",
+    "-run",
+    "^TestGraphSourceAuthenticatedCompletionMismatchAndDirectNilRefusals$",
+    "./internal/graphapply"
+  ],
+  "exit_code": 1,
+  "failed_parents": [
+    "TestGraphSourceAuthenticatedCompletionMismatchAndDirectNilRefusals"
+  ],
+  "killed": true
+}

@@ -1,0 +1,20 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-short",
+    "-count=1",
+    "-json",
+    "-race",
+    "-run",
+    "^(TestPartitionScopedReadSourcesRejectsInvalidScopeAndNilProviders|TestPartitionScopedReadSourcesChecksNativeBindingAndDeclaration|TestPartitionScopedReadSourcesRetainsHistoricalStateAndBorrowedOwnership)$",
+    "./internal/graphstore"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 608.375,
+  "elapsed_s": 7.123,
+  "exit_code": 0,
+  "reason": "completed"
+}

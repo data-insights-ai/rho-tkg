@@ -1,0 +1,26 @@
+{
+  "source_manifest_sha256": "27e43b82f2ae884e30194343a0e1a9f26261de4a2c46dfaccd13e8b5f14e5e4c",
+  "name": "build",
+  "command": [
+    "python3",
+    "/var/tmp/rho-v5-rebase-main-20261010-0mdr6yaw/limit-local.py",
+    "--rss-mib",
+    "4096",
+    "--seconds",
+    "180",
+    "--report",
+    "/private/var/tmp/rho-v5-v2-remote-e15-20261011/v5/../tasks/evidence/v2-remote-e15/final/build.watchdog.json",
+    "--",
+    "go",
+    "build",
+    "./..."
+  ],
+  "exit_code": 0,
+  "env": {
+    "GOTOOLCHAIN": "go1.26.9",
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off"
+  }
+}

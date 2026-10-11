@@ -1,0 +1,102 @@
+{
+  "source_manifest_sha256": "c61537247db58156ef7ec5f5ebdefb9ba6ba7a56f9496796d08391c86e287dd8",
+  "methods": [
+    {
+      "method": "OpenCertified",
+      "file": "v5/internal/graphapply/certified_graph_remote_test.go",
+      "direct_calls": [
+        {
+          "line": 42,
+          "expression": "if r, e := missing.OpenCertified(t.Context(), graphReadRequest{mode: graphReadFresh}, nil); r != nil || !errors.Is(e, errInvalid) {"
+        },
+        {
+          "line": 46,
+          "expression": "if r, e := c.OpenCertified(nil, graphReadRequest{mode: graphReadFresh}, nil); r != nil || !errors.Is(e, errInvalid) {"
+        },
+        {
+          "line": 49,
+          "expression": "if r, e := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadStable}, nil); r != nil || !errors.Is(e, replica.ErrUnavailable) {"
+        },
+        {
+          "line": 52,
+          "expression": "if r, e := c.OpenCertified(t.Context(), graphReadRequest{}, nil); r != nil || !errors.Is(e, errInvalid) {"
+        },
+        {
+          "line": 57,
+          "expression": "if r, e := c.OpenCertified(cancelled, graphReadRequest{mode: graphReadFresh}, nil); r != nil || !errors.Is(e, context.Canceled) {"
+        },
+        {
+          "line": 60,
+          "expression": "fresh, e := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadFresh}, nil)"
+        },
+        {
+          "line": 70,
+          "expression": "second, e := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadAt, cut: cut}, nil)"
+        },
+        {
+          "line": 85,
+          "expression": "if r, e := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadFresh}, nil); r != nil || !errors.Is(e, errLimit) {"
+        },
+        {
+          "line": 97,
+          "expression": "stable, e := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadStable}, nil)"
+        },
+        {
+          "line": 108,
+          "expression": "if r, e := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadAt, cut: cut}, []uint64{3}); r != nil || !errors.Is(e, errGraphCutScope) {"
+        },
+        {
+          "line": 112,
+          "expression": "read, e := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadAt, cut: scoped}, []uint64{3})"
+        },
+        {
+          "line": 154,
+          "expression": "read, e := reopened.OpenCertified(t.Context(), graphReadRequest{mode: graphReadAfter, receipt: receipt}, nil)"
+        },
+        {
+          "line": 175,
+          "expression": "read, e := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadFresh}, nil)"
+        },
+        {
+          "line": 260,
+          "expression": "old, e := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadFresh}, nil)"
+        },
+        {
+          "line": 276,
+          "expression": "fresh, e := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadFresh}, nil)"
+        },
+        {
+          "line": 287,
+          "expression": "at, e := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadAt, cut: cut}, nil)"
+        }
+      ]
+    },
+    {
+      "method": "OpenPartitionScopedReadSources",
+      "file": "v5/internal/graphstore/partition_scoped_read_sources_test.go",
+      "direct_calls": [
+        {
+          "line": 63,
+          "expression": "v, work, err := OpenPartitionScopedReadSources(tc.ctx, tc.sources, tc.scope, d, binding, cfg, Limits{}, GraphLimits{}, transactionTestBudget(), output)"
+        },
+        {
+          "line": 96,
+          "expression": "v, _, err := OpenPartitionScopedReadSources(t.Context(), []ApplicationReadSource{native[0]}, []uint64{3}, foreign, binding, cfg, Limits{}, GraphLimits{}, transactionTestBudget(), transactionTestOutput(t))"
+        },
+        {
+          "line": 113,
+          "expression": "view, work, err := OpenPartitionScopedReadSources(t.Context(), selected.sources, selected.scope, d, binding, cfg, Limits{}, GraphLimits{}, transactionTestBudget(), transactionTestOutput(t))"
+        },
+        {
+          "line": 188,
+          "expression": "old, _, err := OpenPartitionScopedReadSources(t.Context(), []ApplicationReadSource{oldSource}, []uint64{partition.Partition}, d, binding, cfg, Limits{}, GraphLimits{}, transactionTestBudget(), transactionTestOutput(t))"
+        },
+        {
+          "line": 197,
+          "expression": "now, _, err := OpenPartitionScopedReadSources(t.Context(), []ApplicationReadSource{current[i]}, []uint64{partition.Partition}, d, binding, cfg, Limits{}, GraphLimits{}, transactionTestBudget(), transactionTestOutput(t))"
+        }
+      ]
+    }
+  ],
+  "private_callback_scope": "Native/remote backend callback methods exercised through shared engine and genuine direct guard callbacks; no blanket private-per-method80claim"
+}

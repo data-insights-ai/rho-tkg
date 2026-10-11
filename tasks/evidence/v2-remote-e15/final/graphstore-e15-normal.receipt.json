@@ -1,0 +1,32 @@
+{
+  "source_manifest_sha256": "30e1a6b47c9bfee15340e7ef52f12bbb07c31a712825cf0b7a0c1977cff83f55",
+  "lane": "graphstore-e15",
+  "mode": "normal",
+  "names": [
+    "TestPartitionScopedReadSourcesRejectsInvalidScopeAndNilProviders",
+    "TestPartitionScopedReadSourcesChecksNativeBindingAndDeclaration",
+    "TestPartitionScopedReadSourcesRetainsHistoricalStateAndBorrowedOwnership"
+  ],
+  "exit_code": 0,
+  "command": [
+    "python3",
+    "/var/tmp/rho-v5-rebase-main-20261010-0mdr6yaw/limit-local.py",
+    "--rss-mib",
+    "4096",
+    "--seconds",
+    "180",
+    "--report",
+    "/private/var/tmp/rho-v5-v2-remote-e15-20261011/v5/../tasks/evidence/v2-remote-e15/final/graphstore-e15-normal.watchdog.json",
+    "--",
+    "go",
+    "test",
+    "-short",
+    "-count=1",
+    "-json",
+    "-coverpkg=./internal/graphapply,./internal/graphstore",
+    "-coverprofile=/private/var/tmp/rho-v5-v2-remote-e15-20261011/v5/../tasks/evidence/v2-remote-e15/final/graphstore-e15.cover",
+    "-run",
+    "^(TestPartitionScopedReadSourcesRejectsInvalidScopeAndNilProviders|TestPartitionScopedReadSourcesChecksNativeBindingAndDeclaration|TestPartitionScopedReadSourcesRetainsHistoricalStateAndBorrowedOwnership)$",
+    "./internal/graphstore"
+  ]
+}

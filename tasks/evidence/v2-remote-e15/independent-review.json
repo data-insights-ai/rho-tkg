@@ -1,0 +1,74 @@
+{
+  "verdict": "ACCEPT_FINITE_E15_REMOTE_CERTIFIED_READ_SLICE",
+  "reviewer": "same independent Sol6.1 reviewer /root/v2_cross_independent_review",
+  "commit": "07520fb7d209e55e2cf95d6c85040896acdc9229",
+  "base": "b9da041b70f8160b2a267d60feff33511891a47a",
+  "source_manifest_sha256": "c61537247db58156ef7ec5f5ebdefb9ba6ba7a56f9496796d08391c86e287dd8",
+  "go_inputs_verified": 452,
+  "committed_hash_mismatches": [],
+  "receipt_sha256": "0818736268bebe13481d0fbb9428466a612a4281f6d71f832dd8e08b424ffbd5",
+  "artifact_manifest_sha256": "fd08adbd6b517aaab92f95a7760f3179d447a377d9c28fd2439cf0898bfbdcbd",
+  "sealed_artifacts_verified": 249,
+  "blocking_findings": [],
+  "six_actual_correction_causes_closed": true,
+  "normal": {
+    "compiled": 680,
+    "pass": 676,
+    "qualified_skips": 4
+  },
+  "race": {
+    "compiled": 680,
+    "pass": 676,
+    "qualified_skips": 4
+  },
+  "fresh_amendment": {
+    "normal_parents": 71,
+    "race_parents": 71,
+    "subtests_each": 91
+  },
+  "coverage": {
+    "covered": 18517,
+    "statements": 21273,
+    "percent": 87.04461053918112,
+    "changed_production_files": 14,
+    "all_changed_files_at_least_80": true,
+    "no_block_coordinate_remapping": true,
+    "new_public_direct_methods": [
+      "OpenCertified",
+      "OpenPartitionScopedReadSources"
+    ],
+    "no_blanket_private_callback_80_gate": true
+  },
+  "mutants_killed": [
+    "reply-binding",
+    "current-at",
+    "skip-pending"
+  ],
+  "statics": [
+    "fmt",
+    "vet",
+    "build",
+    "lint",
+    "security",
+    "vuln"
+  ],
+  "source_scope": "caller2 uses authenticated leader sources1/4;6 actual native disk-backed child voters provide persisted certificate/outcome/CDC/pin parity and successful reaps",
+  "not_accepted": [
+    "E16-E18 remote fault/ownership/GC slices",
+    "whole P4 or V2",
+    "independent follower-source failover or physical-host durability",
+    "engine comparison",
+    "public consumer API readiness"
+  ],
+  "reviewer_runtime_performed": false,
+  "author_runtime_released": true,
+  "receipt_precommit_metadata": "commit:null remains immutable; reviewer independently binds actual committed Go blobs",
+  "artifact_packaging": {
+    "author_committed": 248,
+    "verified_author_filesystem": 249,
+    "missing_author_commit_artifact": "tasks/evidence/v2-remote-e15/final/coverage.out",
+    "coverage_sha256": "246a1c944d35b2562c40de34ec002fc5419e60a2daffb9b1c13c114fc06582b7",
+    "root_integration_action": "copy exact verified bytes and force-add this ignored profile only",
+    "source_or_runtime_change": false
+  }
+}

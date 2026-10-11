@@ -1,0 +1,55 @@
+{
+  "status": "accepted_locally_finite_E15",
+  "date": "2026-10-11",
+  "author_commit": "07520fb7d209e55e2cf95d6c85040896acdc9229",
+  "integration_parent": "b4ed193409b217aed5ca87dfd5beaf758fc0b660",
+  "main_included": "efbedc28170c6b04aa28a0e957fc16c4424100c6",
+  "scope": "Remote certified-read E15 closure through authenticated leader sources on two partitions, with three disk-backed native voters each. Complete current answers, exact retained answers, genuine certificate/outcome/CDC parity and cleanup.",
+  "author_receipt": "final/receipt.json",
+  "author_receipt_sha256": "0818736268bebe13481d0fbb9428466a612a4281f6d71f832dd8e08b424ffbd5",
+  "independent_review": "independent-review.json",
+  "independent_review_sha256": "252648394dae8e6d2afc5c3de93911373773c53f90e15ff5ddf63b24aa78de2c",
+  "source_manifest": "final/source-manifest.json",
+  "source_manifest_sha256": "c61537247db58156ef7ec5f5ebdefb9ba6ba7a56f9496796d08391c86e287dd8",
+  "root_validation": {
+    "source_files": 452,
+    "source_hash_mismatches": 0,
+    "sealed_artifacts": 249,
+    "artifact_hash_mismatches": 0,
+    "runtime_each_mode": {
+      "compiled": 680,
+      "passed": 676,
+      "qualified_skips": 4
+    },
+    "fresh_amendment_each_mode": {
+      "parents_passed": 71,
+      "subtests_passed": 91
+    },
+    "coverage": {
+      "covered": 18517,
+      "statements": 21273,
+      "blocks": 14646,
+      "independent_merge_differences": 0,
+      "changed_production_files": 14,
+      "all_changed_files_at_least_80_percent": true
+    },
+    "mutants_killed": [
+      "reply-binding",
+      "current-at",
+      "skip-pending"
+    ]
+  },
+  "packaging": {
+    "profile": "final/coverage.out",
+    "sha256": "246a1c944d35b2562c40de34ec002fc5419e60a2daffb9b1c13c114fc06582b7",
+    "action": "Exact verified profile copied from author tree and explicitly staged despite repository-wide ignore. All 249 sealed artifacts are included in integration."
+  },
+  "hosted_ci": "pending for integration commit; earlier b9da041b CI does not cover E15",
+  "remaining": [
+    "E16-E18 distributed oracle cases",
+    "ownership transfer, recovery, identity fencing and application GC",
+    "physical-host durability and follower-source failure schedules",
+    "comparable transactional-KV evidence and engine decision",
+    "full V2 and V3-V7 requirements"
+  ]
+}

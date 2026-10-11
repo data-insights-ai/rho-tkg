@@ -1,0 +1,36 @@
+{
+  "mode": "normal",
+  "exit_code": 0,
+  "executed_parents": [
+    "TestRegisteredGenesisAS4"
+  ],
+  "command": [
+    "python3",
+    "/var/tmp/rho-v5-rebase-main-20261010-0mdr6yaw/limit-local.py",
+    "--rss-mib",
+    "4096",
+    "--seconds",
+    "180",
+    "--report",
+    "/private/var/tmp/rho-v5-v2-remote-e15-20261011/tasks/evidence/v2-remote-e15/final/as4-normal.watchdog.json",
+    "--",
+    "go",
+    "test",
+    "-short",
+    "-count=1",
+    "-json",
+    "-coverpkg=./internal/graphapply,./internal/graphstore",
+    "-coverprofile=/private/var/tmp/rho-v5-v2-remote-e15-20261011/tasks/evidence/v2-remote-e15/final/as4.cover",
+    "-run",
+    "^TestRegisteredGenesisAS4$",
+    "./internal/graphapply"
+  ],
+  "env": {
+    "GOTOOLCHAIN": "go1.26.9",
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off",
+    "RHO_REGISTERED_GENESIS_SNAPSHOT_COHORT": "normal"
+  }
+}

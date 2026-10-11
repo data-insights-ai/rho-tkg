@@ -69,7 +69,7 @@ func encodeGraphWireResponse(r graphWireResponse) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if r.peer.voter == 0 || r.sequence == 0 || r.nonce == ([16]byte{}) || r.issuer == ([16]byte{}) || r.kind < sourceOpen || r.kind > sourceSubmit || len(r.body) > graphSourceFrameBytes-512 {
+	if r.peer.voter == 0 || r.sequence == 0 || r.nonce == ([16]byte{}) || r.issuer == ([16]byte{}) || r.kind < sourceOpen || r.kind > sourceCertifiedOpen || len(r.body) > graphSourceFrameBytes-512 {
 		return nil, errInvalid
 	}
 	if r.err != nil && len(r.body) != 0 {
@@ -107,7 +107,7 @@ func decodeGraphWireResponse(wire []byte) (graphWireResponse, error) {
 	if mask != 0 {
 		r.err = graphWireError{mask}
 	}
-	if r.peer.voter == 0 || r.sequence == 0 || r.nonce == ([16]byte{}) || r.issuer == ([16]byte{}) || r.kind < sourceOpen || r.kind > sourceSubmit || mask != 0 && len(r.body) != 0 {
+	if r.peer.voter == 0 || r.sequence == 0 || r.nonce == ([16]byte{}) || r.issuer == ([16]byte{}) || r.kind < sourceOpen || r.kind > sourceCertifiedOpen || mask != 0 && len(r.body) != 0 {
 		return graphWireResponse{}, errCorrupt
 	}
 	return r, nil
@@ -349,15 +349,16 @@ func (e *graphAuthenticatedEndpoint) callUsing(ctx context.Context, request grap
 }
 
 type remoteGraphSource struct {
-	mu       graphRequestGate
-	endpoint *graphAuthenticatedEndpoint
-	info     graphSourceInfo
-	ctx      context.Context
-	cancel   context.CancelFunc
-	deadline time.Time
-	closed   bool
-	closeErr error
-	cleanup  *graphRemoteBudget
+	mu        graphRequestGate
+	endpoint  *graphAuthenticatedEndpoint
+	info      graphSourceInfo
+	certified *graphCertifiedSourceInfo
+	ctx       context.Context
+	cancel    context.CancelFunc
+	deadline  time.Time
+	closed    bool
+	closeErr  error
+	cleanup   *graphRemoteBudget
 }
 
 func (e *graphAuthenticatedEndpoint) openSource(ctx context.Context) (*remoteGraphSource, error) {
@@ -451,6 +452,9 @@ func (s *remoteGraphSource) ApplicationBinding(ctx context.Context) (raftlog.App
 		return raftlog.ApplicationBinding{}, err
 	}
 	p := s.info.observation.source.scope
+	if s.certified != nil {
+		p = s.certified.certificate.scope
+	}
 	return raftlog.ApplicationBinding{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(p.graph), Partition: p.partition, Group: p.group}, SemanticContractID: p.semantic}, nil
 }
 func (s *remoteGraphSource) ReadLimits() raftlog.ReadBudget {

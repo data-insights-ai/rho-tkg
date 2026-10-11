@@ -1,0 +1,24 @@
+golangci-lint has version 2.13.2 built with go1.26.9 from (unknown, modified: ?, mod sum: "h1:bCyq3E4vo9qwzifjpzJqYndEt7Ncva80qkk8G2B4TXU=") on (unknown)
+v5/internal/graphapply/certified_graph_control_budget_test.go:6:1: File is not properly formatted (goimports)
+	"errors"
+^
+v5/internal/graphapply/certified_graph_control_budget_test.go:67:19: QF1001: could apply De Morgan's law (staticcheck)
+	if err != nil || !(errors.Is(refused.err, graphstore.ErrResourceLimit) && errors.Is(refused.err, raftlog.ErrLimit)) || refused.proof != (graphCutProof{}) || refused.question != query || refused.id.session == ([16]byte{}) || refused.id.sequence == 0 {
+	                 ^
+v5/internal/graphapply/certified_graph_host.go:58:5: QF1001: could apply De Morgan's law (staticcheck)
+	if !(q.sourceRows == 0 && q.sourceBytes == 0 && q.outputBytes == 0) && (q.sourceRows < 1 || q.sourceRows > 1<<20 || q.sourceBytes < 1 || q.sourceBytes > 64<<20 || q.outputBytes < 1 || q.outputBytes > 64<<20) {
+	   ^
+v5/internal/graphapply/certified_graph_host.go:135:5: QF1001: could apply De Morgan's law (staticcheck)
+	if !(len(w) == 101 && bytes.Equal(w[:4], []byte{'G', 'S', 'R', 1}) || len(w) == 113 && bytes.Equal(w[:4], []byte{'G', 'S', 'R', 2})) {
+	   ^
+v5/internal/graphapply/certified_graph_remote_test.go:45:29: SA1012: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (staticcheck)
+	if r, e := c.OpenCertified(nil, graphReadRequest{mode: graphReadFresh}, nil); r != nil || !errors.Is(e, errInvalid) {
+	                           ^
+v5/internal/graphapply/certified_graph_reader.go:195:36: func (*certifiedReadCoordinator).fresh is unused (unused)
+func (c *certifiedReadCoordinator) fresh(ctx context.Context, scope []uint64, after uint64) (graphCut, error) {
+                                   ^
+6 issues:
+* goimports: 1
+* staticcheck: 4
+* unused: 1
+limit: {"command": ["docker", "run", "--rm", "--memory=4g", "--cpus=2", "-e", "GOTOOLCHAIN=go1.26.9", "-e", "GOMAXPROCS=2", "-e", "GOMEMLIMIT=2GiB", "-e", "GOFLAGS=-p=1", "-e", "GOWORK=off", "-v", "/var/tmp/rho-v5-v2-remote-e15-20261011:/src", "-w", "/src/v5", "-v", "rho-tkg-gocache:/go", "-v", "rho-tkg-buildcache:/root/.cache/go-build", "golang:1.26.9", "sh", "-c", "go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 && golangci-lint version && golangci-lint run --config ../.golangci.yml --max-same-issues=0 --max-issues-per-linter=0 ./..."], "rss_limit_mib": 4096.0, "wall_limit_s": 180.0, "sample_interval_s": 0.25, "peak_tree_rss_mib": 25.891, "elapsed_s": 20.992, "exit_code": 1, "reason": "command-failed"}

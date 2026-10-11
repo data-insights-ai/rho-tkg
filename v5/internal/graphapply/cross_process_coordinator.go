@@ -38,6 +38,7 @@ type crossProcessCoordinator struct {
 	transports map[uint64]graphPeerWireTransport
 	streams    map[uint64]*graphAuthenticatedStream
 	runs       map[[16]byte]*crossProcessRun
+	certified  *certifiedReadCoordinator
 }
 
 func newCrossProcessCoordinator(h *allocationHost, transports map[uint64]graphPeerWireTransport) (*crossProcessCoordinator, error) {

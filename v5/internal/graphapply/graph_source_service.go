@@ -15,6 +15,7 @@ type graphHostReadPump interface {
 	Allocation(context.Context, allocationQuery) (allocationReply, error)
 	Cross(context.Context, crossQuery) (crossReply, error)
 	Request(context.Context, crossRequestQuestion) (crossRequestReply, error)
+	Cut(context.Context, graphCutQuery) (graphCutReply, error)
 	Submit(context.Context, allocationProposal) ([]byte, error)
 }
 type graphPeerService struct {
@@ -166,6 +167,52 @@ func (s *graphPeerService) serve(ctx context.Context, wire []byte) ([]byte, erro
 	}
 	var body []byte
 	switch r.kind {
+	case sourceCutRead:
+		var q graphCutQuery
+		q, err = decodeGraphCutQuery(r.command)
+		q.nonce = r.nonce
+		if err == nil && (q.sourceRows < 1 || q.sourceBytes < 1 || q.outputBytes < 1) {
+			err = errInvalid
+		}
+		if err == nil {
+			var reply graphCutReply
+			reply, err = s.pump.Cut(ctx, q)
+			if err == nil {
+				err = reply.err
+			}
+			var p graphCutAuthorityBody
+			if err == nil {
+				s.host.mu.Lock()
+				if reply.id != reply.proof.id || reply.question != q || reply.proof.owner != s.host || reply.proof.observation.index > s.host.driver.Applied() {
+					err = errInvalid
+				} else {
+					err = checkGraphCutProof(reply.proof, q)
+				}
+				if err == nil {
+					p = graphCutAuthorityBody{scope: s.host.machine.scope(), id: reply.id, question: q, observation: reply.proof.observation}
+				}
+				s.host.mu.Unlock()
+			}
+			if err == nil || errors.Is(err, errGraphCutPending) || errors.Is(err, errGraphCutScope) {
+				body, err = encodeGraphCutReplyBody(p, err)
+			}
+		}
+	case sourceCertifiedOpen:
+		var cert graphCertificate
+		cert, err = decodeGraphCertificate(r.command)
+		if err == nil && cert.scope != s.peer.scope {
+			err = errInvalid
+		}
+		if err == nil {
+			var info graphCertifiedSourceInfo
+			info, err = s.sources.openCertified(ctx, cert, r.nonce)
+			if err == nil {
+				body, err = encodeGraphCertifiedSourceInfo(info)
+				if err != nil {
+					err = errors.Join(err, s.sources.closeSource(info.cookie))
+				}
+			}
+		}
 	case sourceOpen:
 		var reply allocationReply
 		reply, err = s.pump.Allocation(ctx, allocationQuery{kind: observeConfiguration, nonce: r.nonce})
