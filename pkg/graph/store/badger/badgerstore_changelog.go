@@ -273,7 +273,7 @@ func (bs *Store) clearDataPreservingLastLSN() error {
 		defer it.Close()
 		for it.Rewind(); it.Valid(); it.Next() {
 			k := it.Item().KeyCopy(nil)
-			if string(k) == lastLSN || bs.historicalMembershipOnDisk && bytes.Equal(k, storepkg.WireFormatVersionKey) {
+			if string(k) == lastLSN || bs.historicalMembershipOnDisk && bytes.Equal(k, storepkg.WireFormatVersionKey) || bs.compactHistoricalReverseOnDisk && bytes.Equal(k, historicalReverseProgressKeyBytes()) {
 				continue
 			}
 			metaKeys = append(metaKeys, k)
@@ -303,6 +303,9 @@ func (bs *Store) clearDataPreservingLastLSN() error {
 		}
 	}
 
+	if bs.historicalReverseResetTestHook != nil {
+		bs.historicalReverseResetTestHook("reset-meta")
+	}
 	// 3. Bulk-drop every data / index / history / change-log-record keyspace.
 	//    KeyMeta (which holds LastLSNKey) is deliberately left intact.
 	if err := bs.db.DropPrefix(
@@ -312,9 +315,12 @@ func (bs *Store) clearDataPreservingLastLSN() error {
 		[]byte{storepkg.KeyHistNode}, []byte{storepkg.KeyHistRel},
 		[]byte{storepkg.KeyChangeLog},
 		[]byte{storepkg.KeyPropertyIndex}, []byte{storepkg.KeyTemporalIndex},
-		[]byte{diskMembershipPrefix}, []byte{diskMembershipReversePrefix},
+		[]byte{diskMembershipPrefix}, []byte{diskMembershipReversePrefix}, []byte{diskMembershipCompactReversePrefix},
 	); err != nil {
 		return fmt.Errorf("graph: clear drop data: %w", err)
+	}
+	if bs.historicalReverseResetTestHook != nil {
+		bs.historicalReverseResetTestHook("reset-data")
 	}
 	return nil
 }

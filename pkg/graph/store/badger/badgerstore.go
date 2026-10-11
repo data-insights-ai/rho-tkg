@@ -108,6 +108,12 @@ type Config struct {
 	// Enabling it raises the minimum writer marker to v5 (entity rows keep
 	// their existing v4 encoding); older writers must refuse the directory.
 	HistoricalMembershipOnDisk bool
+	// CompactHistoricalReverseOnDisk selects auxiliary reverse codec v2 and
+	// writer fence 6; forward candidates and row codec 4 are unchanged. Existing
+	// format 5 stores require explicit OpenHistoricalReverseMigration first.
+	// Requires persistent HistoricalMembershipOnDisk and SyncWrites; ordinary
+	// opens refuse incomplete migrations. Older engines refuse format 6.
+	CompactHistoricalReverseOnDisk bool
 	// Dir is the Badger data directory. Required unless InMemory is true.
 	Dir string
 	// InMemory enables memory-only mode (no disk I/O). Useful for testing.
@@ -463,10 +469,12 @@ type Store struct {
 	identityClosePreparing            bool
 	identityCloseReservation          *identityCloseLease
 	historicalMembershipOnDisk        bool
+	compactHistoricalReverseOnDisk    bool
 	historicalMembershipReady         atomic.Bool
 	historicalMembershipMu            sync.Mutex
 	historicalMembershipFlushTestHook func(string)
 	historicalMembershipDataTestHook  func(int)
+	historicalReverseResetTestHook    func(string)
 	db                                *badgerv4.DB
 
 	// In-memory indexes (source of truth while running).
@@ -1040,6 +1048,9 @@ func New(cfg Config) (*Store, error) {
 	if cfg.EntityIdentityOnDisk && (cfg.InMemory || cfg.ResidentCache || !cfg.SyncWrites || !cfg.HistoricalMembershipOnDisk || !cfg.LabelIndexOnDisk || !cfg.AdjacencyIndexOnDisk || !cfg.PropertyIndexOnDisk || !cfg.DisableOrdinals || !cfg.DisablePlannerStats || !cfg.HistoryPresenceProbeOnly) {
 		return nil, fmt.Errorf("%w: disk entity identity requires synced persistent historical membership, a nonresident disk store, disk label/adjacency/property indexes, disabled ordinals/statistics and probe-only history", ErrInvalidStoreMutation)
 	}
+	if cfg.CompactHistoricalReverseOnDisk && (cfg.InMemory || !cfg.HistoricalMembershipOnDisk || !cfg.SyncWrites) {
+		return nil, fmt.Errorf("%w: CompactHistoricalReverseOnDisk requires persistent synced historical membership", ErrInvalidStoreMutation)
+	}
 	if cfg.HistoricalMembershipOnDisk && !cfg.ReadOnly && !cfg.SyncWrites {
 		return nil, fmt.Errorf("%w: HistoricalMembershipOnDisk requires SyncWrites for writable stores", ErrInvalidStoreMutation)
 	}
@@ -1101,7 +1112,9 @@ func New(cfg Config) (*Store, error) {
 	// as per-row decode failures (which loadIndexes would conflate with
 	// corruption / counter mismatch).
 	var formatErr error
-	if cfg.HistoricalMembershipOnDisk {
+	if cfg.CompactHistoricalReverseOnDisk {
+		formatErr = verifyCompactHistoricalReverseOpen(db, cfg.ReadOnly)
+	} else if cfg.HistoricalMembershipOnDisk {
 		formatErr = verifyAndStampWireFormatVersionForReader(db, cfg.ReadOnly, historicalMembershipWriterVersion)
 	} else {
 		formatErr = verifyAndStampWireFormatVersion(db, cfg.ReadOnly)
@@ -1148,9 +1161,10 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	bs := &Store{
-		entityIdentityOnDisk:       cfg.EntityIdentityOnDisk,
-		historicalMembershipOnDisk: cfg.HistoricalMembershipOnDisk,
-		db:                         db,
+		entityIdentityOnDisk:           cfg.EntityIdentityOnDisk,
+		historicalMembershipOnDisk:     cfg.HistoricalMembershipOnDisk,
+		compactHistoricalReverseOnDisk: cfg.CompactHistoricalReverseOnDisk,
+		db:                             db,
 
 		historyPresenceProbeOnly: cfg.HistoryPresenceProbeOnly,
 		nodeIDs:                  make(map[types.NodeID]struct{}),

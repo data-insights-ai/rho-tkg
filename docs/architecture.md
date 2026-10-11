@@ -584,6 +584,7 @@ endpoint-resolving traversals without fetching the relationship row.
 | `0x0B` | `/<2B labelToken>/<8B from>/<8B nodeID>` | 19B | Persisted temporal-index raw-entry row — opt-in (`Config.TemporalIndexOnDisk`) |
 | `0x0C` | `/<kind>/<token>/<optional digest>/<ID>/<TX>` | 20B / 52B | Persisted historical membership candidates — opt-in (`badger.Config.HistoricalMembershipOnDisk`) |
 | `0x0D` | `/<kind>/<ID>/<posting digest>` | 42B | Per-identity reverse membership cleanup |
+| `0x0E` | `/<kind>/<ID>/<token>/<optional digest>/<TX>` | 20B / 52B | Opt-in compact reverse membership; value is 4B CRC32C |
 | `0x0F` | `/meta/*` | var | Counters, registry tokens, property index defs, `last_lsn` watermark |
 
 All IDs stored as big-endian uint64 for correct sort order and temporal clustering.
@@ -608,6 +609,27 @@ Full history anchors and deltas finish before changed current rows; destructive
 auxiliary cleanup follows source removal. See [persistence](persistence.md) for
 readiness, crash ordering and rollback requirements. Resident identity maps and
 other caches still depend on corpus size.
+
+`badger.Config.CompactHistoricalReverseOnDisk` selects reverse auxiliary codec 2
+with minimum writer 6. It preserves the entire `0x0C` candidate keyspace and
+all property scopes; only `0x0D` reverse selectors move to `0x0E`. Erasure
+checks the requested node/relationship kind and owner structurally before
+reconstructing a forward key. CRC32C detects auxiliary corruption; original
+row/proposition/source hashes retain their existing SHA256 contract.
+
+Existing writer 5 directories require explicit offline sole ownership through
+`badger.OpenHistoricalReverseMigration(ctx,cfg)`. Its directory lock excludes
+other owners. Call `Advance` with bounded `HistoricalMembershipLimits` until
+`Complete`, then `Close`, before opening with the compact option. The migration
+requires a completed forward bootstrap, persistent storage and SyncWrites.
+Copy additions precede durable cursor publication; legacy cleanup uses an
+atomic delete+cursor transaction capped at 1000 entries. A separate auxiliary
+descriptor identifies copy/cleanup/completion. Ordinary opens refuse incomplete
+migrations, and older engines decline writer 6 even in read-only mode. Fresh
+entirely empty directories can initialize directly. Default stores retain their
+existing writer 4/5 behavior. Clear preserves writer 6 and the codec descriptor,
+deletes forward readiness before dropping data, and includes both reverse
+prefixes. Downgrade requires a pre-migration copy, not deleting a format marker.
 
 ### Change-log / op-log (`ChangeFeedCapability`, opt-in)
 

@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Storage
+
+- Opt-in direct Badger `CompactHistoricalReverseOnDisk` preserves all forward
+  label/type/property candidates while encoding per-owner reverse entries as
+  a lossless selector with a CRC32C auxiliary checksum. Source/entity integrity
+  hashes and row codec 4 remain unchanged. These directories require writer 6;
+  default historical directories retain writer 5. Older engines refuse writer 6.
+- Existing writer 5 directories require explicit offline sole ownership through
+  `OpenHistoricalReverseMigration`, followed by bounded `Advance` pages until
+  complete and `Close`. Copy additions are synced before cursor publication;
+  cleanup deletes and cursors commit atomically. Ordinary opens refuse partial
+  migrations. Fresh empty opted directories initialize directly. Exact erasure
+  validates owner/kind across both reverse formats; Clear retains writer 6 and
+  the codec descriptor while invalidating forward readiness before data drops.
+- The bounded genuine Erv reverse-entry sample retains exact selectors and
+  reduces ZSTD3 reverse-only SST bytes by 55.17% with CRC32C, compared with 4.94%
+  for a SHA256 checksum variant. This is auxiliary-table evidence, not a full
+  graph capacity estimate. Prototype measurements are frozen separately at
+  `c539a939`; production integration gates are still in progress.
+
 ### Performance
 
 - Ordinary temporal input maps retain their nonescaping caller container. The

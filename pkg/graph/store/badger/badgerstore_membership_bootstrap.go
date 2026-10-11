@@ -251,7 +251,7 @@ func (bs *Store) historicalMembershipRowOps(txn *badgerv4.Txn, phase int, key, r
 		if err != nil {
 			return nil, err
 		}
-		return nodeDiskMembershipOps(n), nil
+		return nodeDiskMembershipOpsWithReverse(n, bs.compactHistoricalReverseOnDisk), nil
 	}
 	var wire storepkg.RelWire
 	var err error
@@ -267,5 +267,5 @@ func (bs *Store) historicalMembershipRowOps(txn *badgerv4.Txn, phase int, key, r
 	if err != nil {
 		return nil, err
 	}
-	return relDiskMembershipOps(r), nil
+	return relDiskMembershipOpsWithReverse(r, bs.compactHistoricalReverseOnDisk), nil
 }

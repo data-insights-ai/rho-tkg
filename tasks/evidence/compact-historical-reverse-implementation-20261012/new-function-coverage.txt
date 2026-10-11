@@ -1,0 +1,14 @@
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_membership_reverse.go:21:		compactReverseMembershipOp			100.0%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_membership_reverse.go:32:		validateForwardMembershipOwner			90.0%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_membership_reverse.go:53:		compactReverseMembershipForward			100.0%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_membership_reverse.go:74:		legacyReverseMembershipForward			100.0%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_membership_reverse_migration.go:30:	historicalReverseProgressKeyBytes		100.0%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_membership_reverse_migration.go:48:	historicalReverseCompleteProgress		100.0%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_membership_reverse_migration.go:52:	readHistoricalWriterVersion			82.4%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_membership_reverse_migration.go:78:	readHistoricalReverseProgress			87.9%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_membership_reverse_migration.go:131:	publishHistoricalReverseProgress		84.6%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_membership_reverse_migration.go:152:	verifyCompactHistoricalReverseOpen		85.7%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_membership_reverse_migration.go:210:	OpenHistoricalReverseMigration			88.6%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_membership_reverse_migration.go:265:	Status						100.0%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_membership_reverse_migration.go:281:	Advance						84.4%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_membership_reverse_migration.go:461:	Close						100.0%

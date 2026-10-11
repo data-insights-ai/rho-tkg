@@ -1,0 +1,44 @@
+{
+  "base": "11a1106426e779a9b6f926e3b4c687a63af5e934",
+  "prototype_commit": "c539a939",
+  "branch": "codex/compact-historical-reverse-prototype-20261012",
+  "stage": "implementation review checkpoint before final CI",
+  "source_sha256": {
+    "pkg/graph/store/badger/badgerstore.go": "88e33c7ebea26e552f96d216defd7004936102123f0ff3820053be07e6350a82",
+    "pkg/graph/store/badger/badgerstore_changelog.go": "466eae7c30bc537d85f44feb9aac6c830098df0eb48a23e6afac06dac954c378",
+    "pkg/graph/store/badger/badgerstore_membership_bootstrap.go": "5c3bee11ba176fa33e1903c3999a63f23ae3eabb14b576a826ffaff67e83182b",
+    "pkg/graph/store/badger/badgerstore_membership_disk.go": "81b1e623bd7484bd2a66cbe7269d2bf120465bdc43024ad68ed0a0c459accdfe",
+    "pkg/graph/store/badger/badgerstore_membership_erase.go": "6d90c96bc1760e0f4f0d41619071d7a486a55198748991554a917372bc0587ee",
+    "pkg/graph/store/badger/badgerstore_propertytxmembers.go": "018048a80b1a2fc98ca235e09c7a35e804b0a2a2584fdcbb3579aff4cd9ab52a",
+    "pkg/graph/store/badger/badgerstore_membership_reverse.go": "7d8ce39813078e9f9730f2fe46e30ee0f56eba27f2597e4a5b330008846323a3",
+    "pkg/graph/store/badger/badgerstore_membership_reverse_migration.go": "a951f6710df5d22fc5a943eed99e4d0064a71e6e7a90f063574052068affcc87",
+    "pkg/graph/store/badger/badgerstore_membership_reverse_test.go": "6546c7377222d2f69c80fb3467ed4ee4023730c80513fcf8912298536009b682",
+    "pkg/graph/store/badger/badgerstore_membership_reverse_graph_test.go": "41b6d9301392dd64d3519a50bda880b4ecfc07ff77774af631b743602ec032e1"
+  },
+  "passed": {
+    "focused_tests": "3.761s; coverage output was before final added LSN-preserving Clear test, which passed separately0.420s",
+    "focused_race": "16.626s including all current tests + genuine Justiz copied offline fixture",
+    "package_vet": "passed",
+    "diff_check": "passed",
+    "genuine_query_oracle": {
+      "old": {
+        "pin": 1791749436932,
+        "nodes": 1281,
+        "relationships": 1,
+        "sha256": "40198b9c32f8f872109e557f956cabbafafa91723f0ff06f5fa0cce13bfcbe50"
+      },
+      "current": {
+        "nodes": 9547,
+        "relationships": 48,
+        "sha256": "39f63e205617e99c9e72d2321ede72389054fff9055c06bfacefcf0b00d902d3"
+      },
+      "before_after": "exact digests unchanged"
+    }
+  },
+  "pending": [
+    "independent source review checkpoint",
+    "full exact-Go1.26.9 CI including full races, coverage, lint, security, vulnerabilities and metadata reset checks"
+  ],
+  "migration_space": "copy retains both reverse formats until cleanup; tombstoned legacy SST/vlog bytes are reclaimed by normal Badger compaction/GC, not immediately guaranteed by migration",
+  "scope": "isolated native branch only; no canonical/app/server/source-archive change; default native writer4/5 unchanged"
+}

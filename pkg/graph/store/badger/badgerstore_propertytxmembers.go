@@ -65,7 +65,7 @@ const propTxBuildAttempts = 4
 // rewrites or demotes a row must be seen too. Caller holds idxMu (write).
 func (bs *Store) recordRelRowLocked(r *types.Relationship) {
 	if bs.historicalMembershipOnDisk && r != nil {
-		bs.appendOps(relDiskMembershipOps(r)...)
+		bs.appendOps(relDiskMembershipOpsWithReverse(r, bs.compactHistoricalReverseOnDisk)...)
 	}
 	bs.recordRelTypeMemberLocked(r)
 	bs.recordRelPropTxLocked(r)
@@ -75,7 +75,7 @@ func (bs *Store) recordRelRowLocked(r *types.Relationship) {
 // node property sets). Caller holds idxMu (write).
 func (bs *Store) recordNodeRowLocked(n *types.Node) {
 	if bs.historicalMembershipOnDisk && n != nil {
-		bs.appendOps(nodeDiskMembershipOps(n)...)
+		bs.appendOps(nodeDiskMembershipOpsWithReverse(n, bs.compactHistoricalReverseOnDisk)...)
 	}
 	bs.recordNodeLabelMembersLocked(n)
 	bs.recordNodePropTxLocked(n)

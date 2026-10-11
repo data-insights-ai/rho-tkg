@@ -75,30 +75,38 @@ func diskMembershipPair(scope []byte, id types.EntityID, tx types.Instant) []wri
 	return []writeOp{op, {opType: writeOpSet, key: reverse, value: op.key}}
 }
 
-func nodeDiskMembershipOps(n *types.Node) []writeOp {
+func diskMembershipPairWithReverse(scope []byte, id types.EntityID, tx types.Instant, compact bool) []writeOp {
+	if !compact {
+		return diskMembershipPair(scope, id, tx)
+	}
+	op := diskMembershipOp(scope, id, tx)
+	return []writeOp{op, compactReverseMembershipOp(op.key)}
+}
+
+func nodeDiskMembershipOpsWithReverse(n *types.Node, compact bool) []writeOp {
 	var ops []writeOp
 	tx := nodeTxFrom(n)
 	for i := range n.LabelTokenCount() {
 		token := n.LabelTokenRawAt(i)
-		ops = append(ops, diskMembershipPair(diskMembershipScope(diskMemberNodeLabel, token, "", ""), types.EntityID(n.ID()), tx)...)
+		ops = append(ops, diskMembershipPairWithReverse(diskMembershipScope(diskMemberNodeLabel, token, "", ""), types.EntityID(n.ID()), tx, compact)...)
 		n.ForEachIndexablePropertyValueKey(func(property, value string) bool {
-			ops = append(ops, diskMembershipPair(diskMembershipScope(diskMemberNodeProperty, token, property, value), types.EntityID(n.ID()), tx)...)
+			ops = append(ops, diskMembershipPairWithReverse(diskMembershipScope(diskMemberNodeProperty, token, property, value), types.EntityID(n.ID()), tx, compact)...)
 			return true
 		})
 	}
 	return ops
 }
 
-func relDiskMembershipOps(r *types.Relationship) []writeOp {
+func relDiskMembershipOpsWithReverse(r *types.Relationship, compact bool) []writeOp {
 	token, tx := r.TypeToken().Value(), relTxFrom(r)
-	ops := diskMembershipPair(diskMembershipScope(diskMemberRelType, token, "", ""), types.EntityID(r.ID()), tx)
+	ops := diskMembershipPairWithReverse(diskMembershipScope(diskMemberRelType, token, "", ""), types.EntityID(r.ID()), tx, compact)
 	r.ForEachIndexablePropertyValueKey(func(property, value string) bool {
-		ops = append(ops, diskMembershipPair(diskMembershipScope(diskMemberRelProperty, token, property, value), types.EntityID(r.ID()), tx)...)
+		ops = append(ops, diskMembershipPairWithReverse(diskMembershipScope(diskMemberRelProperty, token, property, value), types.EntityID(r.ID()), tx, compact)...)
 		return true
 	})
 	return ops
 }
 
 func historicalMembershipWrite(op writeOp) bool {
-	return len(op.key) > 0 && (op.key[0] == diskMembershipPrefix || op.key[0] == diskMembershipReversePrefix)
+	return len(op.key) > 0 && (op.key[0] == diskMembershipPrefix || op.key[0] == diskMembershipReversePrefix || op.key[0] == diskMembershipCompactReversePrefix)
 }

@@ -1,0 +1,16 @@
+=== RUN   TestCompactReversePublicOldPinRollbackAndRetrospectionOracle
+=== RUN   TestCompactReversePublicOldPinRollbackAndRetrospectionOracle/fresh6
+=== RUN   TestCompactReversePublicOldPinRollbackAndRetrospectionOracle/migrated5to6
+--- PASS: TestCompactReversePublicOldPinRollbackAndRetrospectionOracle (0.17s)
+    --- PASS: TestCompactReversePublicOldPinRollbackAndRetrospectionOracle/fresh6 (0.07s)
+    --- PASS: TestCompactReversePublicOldPinRollbackAndRetrospectionOracle/migrated5to6 (0.09s)
+=== RUN   TestCompactReverseGenuineJustizNodeRelationshipOldPinOracle
+    badgerstore_membership_reverse_graph_test.go:299: before pin1791749436932 nodes1281 rels1 sha25640198b9c32f8f872109e557f956cabbafafa91723f0ff06f5fa0cce13bfcbe50
+    badgerstore_membership_reverse_graph_test.go:299: before pin1791759203206 nodes9547 rels48 sha25639f63e205617e99c9e72d2321ede72389054fff9055c06bfacefcf0b00d902d3
+    badgerstore_membership_reverse_graph_test.go:299: before pin0 nodes9547 rels48 sha25639f63e205617e99c9e72d2321ede72389054fff9055c06bfacefcf0b00d902d3
+    badgerstore_membership_reverse_graph_test.go:317: after pin1791749436932 nodes1281 rels1 sha25640198b9c32f8f872109e557f956cabbafafa91723f0ff06f5fa0cce13bfcbe50
+    badgerstore_membership_reverse_graph_test.go:317: after pin1791759203206 nodes9547 rels48 sha25639f63e205617e99c9e72d2321ede72389054fff9055c06bfacefcf0b00d902d3
+    badgerstore_membership_reverse_graph_test.go:317: after pin0 nodes9547 rels48 sha25639f63e205617e99c9e72d2321ede72389054fff9055c06bfacefcf0b00d902d3
+--- PASS: TestCompactReverseGenuineJustizNodeRelationshipOldPinOracle (0.70s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.170s
