@@ -185,8 +185,8 @@ func (bs *Store) buildMultiColumns(toks []uint16, key string, requested []string
 	// node joins A∩B only if it carries every member label.
 	if old != nil && old.HasAll(keys) {
 		if added, ok := bs.takeMultiAppendDelta(toks, gen, old.Epoch()); ok {
-			gp, gt := bs.bulkNodeGetters(added)
-			if ext := old.Extend(gen, added, gp, gt); ext != nil {
+			gp, gt, typed := bs.bulkNodeGettersWithBounds(added)
+			if ext := old.Extend(gen, added, gp, gt, typed); ext != nil {
 				bs.docMu.Lock()
 				if bs.multiLabelEpoch(toks) == gen {
 					if bs.docColumnsMulti == nil {
@@ -203,8 +203,8 @@ func (bs *Store) buildMultiColumns(toks []uint16, key string, requested []string
 		}
 	}
 
-	getProp, getTemporal := bs.bulkNodeGetters(ids)
-	col = indexpkg.BuildLabelDocValues(gen, ids, keys, getProp, getTemporal)
+	getProp, getTemporal, typed := bs.bulkNodeGettersWithBounds(ids)
+	col = indexpkg.BuildLabelDocValues(gen, ids, keys, getProp, getTemporal, typed)
 	bs.columnRebuilds.Add(1)
 	// Intersections are NOT persisted: the disk key is per single label, and an
 	// A-and-B snapshot is not reconstructible from either one's blob.
@@ -302,8 +302,8 @@ func (bs *Store) buildLabelColumns(labelToken uint16, requested []string) (col *
 	//   - Extend itself returns nil for anything that is not a clean append.
 	if old != nil && old.HasAll(keys) {
 		if added, ok := bs.takeAppendDelta(labelToken, gen, old.Epoch()); ok {
-			getProp, getTemporal := bs.bulkNodeGetters(added)
-			if ext := old.Extend(gen, added, getProp, getTemporal); ext != nil {
+			getProp, getTemporal, typed := bs.bulkNodeGettersWithBounds(added)
+			if ext := old.Extend(gen, added, getProp, getTemporal, typed); ext != nil {
 				bs.docMu.Lock()
 				if bs.labelEpoch(labelToken) == gen {
 					if bs.docColumns == nil {
@@ -337,8 +337,8 @@ func (bs *Store) buildLabelColumns(labelToken uint16, requested []string) (col *
 		return disk, false
 	}
 
-	getProp, getTemporal := bs.bulkNodeGetters(ids)
-	col = indexpkg.BuildLabelDocValues(gen, ids, keys, getProp, getTemporal)
+	getProp, getTemporal, typed := bs.bulkNodeGettersWithBounds(ids)
+	col = indexpkg.BuildLabelDocValues(gen, ids, keys, getProp, getTemporal, typed)
 	bs.columnRebuilds.Add(1)
 	persistColumns(bs, columnDiskKey(labelToken), col)
 
@@ -366,13 +366,19 @@ func (bs *Store) buildLabelColumns(labelToken uint16, requested []string) (col *
 // bulk scan is no-fill (scan discipline: cache hits served without promotion, so
 // it does not pollute the LRU). On a bulk-scan error it falls back to per-node
 // reads so the build still completes correctly.
-func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
+func (bs *Store) bulkNodeGetters(ids []types.NodeID) (func(types.NodeID, string) (any, bool), func(types.NodeID) (int64, int64, bool)) {
+	p, t, _ := bs.bulkNodeGettersWithBounds(ids)
+	return p, t
+}
+func (bs *Store) bulkNodeGettersWithBounds(ids []types.NodeID) (
 	func(types.NodeID, string) (any, bool),
 	func(types.NodeID) (int64, int64, bool),
+	bool,
 ) {
 	sorted := append([]types.NodeID(nil), ids...)
 	storepkg.SortNodeIDs(sorted)
 	mat := make(map[types.NodeID]*types.Node, len(sorted))
+	typed := false
 
 	// Large builds fan the decode across cores (same result set as the serial scan,
 	// proven equivalent by TestCollectNodesBulkParallel_EquivalentToSerial); small
@@ -385,11 +391,13 @@ func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
 		} else {
 			for _, nd := range nodes {
 				mat[nd.ID()] = nd
+				typed = typed || nd.ValidEndpointPresence() != 0
 			}
 		}
 	} else {
 		buildErr = bs.forEachNodeBulk(sorted, func(nd *types.Node) bool {
 			mat[nd.ID()] = nd
+			typed = typed || nd.ValidEndpointPresence() != 0
 			return true
 		})
 	}
@@ -414,7 +422,7 @@ func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
 				}
 				// RAW, not effective — see the note on getTemporal below.
 				return int64(f), int64(t), true
-			}
+			}, true
 	}
 	// Both closures read the SAME materialised map, so the value columns and the
 	// validity columns are guaranteed to come from one consistent decode.
@@ -449,5 +457,5 @@ func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
 			// validTimeMatches). Separating them keeps the row-path predicate
 			// identical while letting the reported column mean what it says.
 			return int64(f), int64(t), true
-		}
+		}, typed
 }

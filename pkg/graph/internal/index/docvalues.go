@@ -170,9 +170,10 @@ type DocValues[T EntityID] struct {
 	// a valid-time predicate without materialising the entity, they do not pre-apply
 	// one. Any reader that wants an as-of view must still test them per row (or skip
 	// blocks via zoneBlocks, below).
-	validFrom   []int64
-	validTo     []int64
-	hasTemporal bool
+	validFrom        []int64
+	validTo          []int64
+	hasTemporal      bool
+	hasTypedTemporal bool
 
 	// Zone map: per-block min/max of validFrom/validTo over zoneBlockSize ordinals,
 	// so a valid-time predicate can skip whole blocks on metadata alone instead of
@@ -204,6 +205,10 @@ const zoneBlockSize = 4096
 
 // HasTemporal reports whether this snapshot carries validity columns.
 func (l *DocValues[T]) HasTemporal() bool { return l.hasTemporal }
+
+// HasTypedTemporal reports whether any row requires endpoint presence that the
+// scalar temporal columns cannot express. Property-only snapshots remain usable.
+func (l *DocValues[T]) HasTypedTemporal() bool { return l.hasTypedTemporal }
 
 // ValidFrom is the ordinal-aligned lower validity bound per row, or nil when the
 // snapshot has no temporal columns. Immutable; callers must not write to it.
@@ -534,17 +539,19 @@ func (c *docColumn) boxedDict() []any {
 // can carry them as columns and build a zone map. Pass nil to build value columns
 // only; a reader then sees HasTemporal() == false and must fall back for any
 // valid-time predicate rather than assuming "no bounds" means "valid for all time".
+// typedTemporal records whether any accessor row has explicit endpoint
+// presence. Those scalar temporal columns must not serve temporal consumers.
 // BuildLabelDocValues is the node-keyed instantiation, kept under its original name
 // because every existing caller names it.
 func BuildLabelDocValues(epoch uint64, nodeIDs []types.NodeID, propKeys []string,
 	getProp func(types.NodeID, string) (any, bool),
-	getTemporal func(types.NodeID) (validFrom, validTo int64, ok bool)) *LabelDocValues {
-	return BuildDocValues(epoch, nodeIDs, propKeys, getProp, getTemporal)
+	getTemporal func(types.NodeID) (validFrom, validTo int64, ok bool), typedTemporal ...bool) *LabelDocValues {
+	return BuildDocValues(epoch, nodeIDs, propKeys, getProp, getTemporal, typedTemporal...)
 }
 
 func BuildDocValues[T EntityID](epoch uint64, entityIDs []T, propKeys []string,
 	getProp func(T, string) (any, bool),
-	getTemporal func(T) (validFrom, validTo int64, ok bool)) *DocValues[T] {
+	getTemporal func(T) (validFrom, validTo int64, ok bool), typedTemporal ...bool) *DocValues[T] {
 
 	ids := slices.Clone(entityIDs)
 	slices.SortFunc(ids, func(a, b T) int {
@@ -552,7 +559,7 @@ func BuildDocValues[T EntityID](epoch uint64, entityIDs []T, propKeys []string,
 	})
 	n := len(ids)
 
-	l := &DocValues[T]{epoch: epoch, ids: ids, cols: make(map[string]*docColumn, len(propKeys))}
+	l := &DocValues[T]{epoch: epoch, ids: ids, cols: make(map[string]*docColumn, len(propKeys)), hasTypedTemporal: slices.Contains(typedTemporal, true)}
 
 	if getTemporal != nil && n > 0 {
 		l.validFrom = make([]int64, n)

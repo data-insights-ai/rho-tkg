@@ -98,6 +98,7 @@ const (
 // probeAsOf). tx is the transaction-time input: a TxAt filter for point/interval
 // (0 = none) and the TxPin belief instant for probeAsOf.
 type chainProbe struct {
+	window     *types.TemporalRange
 	kind       probeKind
 	validAt    types.Instant
 	validStart types.Instant
@@ -265,24 +266,6 @@ func dropRetractedLives[T storeutil.TemporalRow](chain []T) []T {
 	return out
 }
 
-// end caps a row's valid end at its life end (0 = open).
-func (m lifeEnds[T]) end(row T, vEnd types.Instant) types.Instant {
-	if lifeEnd, ok := m[row]; ok && (vEnd == 0 || vEnd > lifeEnd) {
-		return lifeEnd
-	}
-	return vEnd
-}
-
-// cut is end for the interval doors, which test overlap rather than point
-// coverage: gone reports a row whose capped interval is empty.
-func (m lifeEnds[T]) cut(row T, vStart, vEnd types.Instant) (types.Instant, bool) {
-	lifeEnd, ok := m[row]
-	if !ok || (vEnd != 0 && vEnd <= lifeEnd) {
-		return vEnd, false
-	}
-	return lifeEnd, lifeEnd <= vStart
-}
-
 // resolveNodeChain is the single node-side selection seam. pred is consulted
 // ONLY for probeInterval (predicate-anywhere matching); point and as-of callers
 // apply their own post-filter, mirroring the pre-refactor division of
@@ -298,7 +281,7 @@ func (c *Core) resolveNodeChain(chain []*types.Node, probe chainProbe, pred func
 	}
 	caps := chainLifeEnds(chain)
 	if probe.kind == probeInterval {
-		return c.resolveNodeChainDuring(chain, probe.validStart, probe.validEnd, pred, caps)
+		return c.resolveNodeChainDuring(chain, probe.validStart, probe.validEnd, pred, caps, probe.window)
 	}
 	if probe.kind == probeRelate {
 		return c.resolveNodeChainRelating(chain, probe.validStart, probe.validEnd, probe.rels, pred, caps)
@@ -317,12 +300,9 @@ func (c *Core) resolveNodeChainRelating(chain []*types.Node, qStart, qEnd types.
 	}
 	c.sortNodeChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
-		vStart, vEnd := c.nodeVersionBounds(chain, i)
-		vEnd, gone := caps.cut(chain[i], vStart, vEnd)
-		if gone {
-			continue
-		}
-		rel, err := types.RelateOpen(vStart, vEnd, qStart, qEnd)
+		bounds := caps.bounds(chain[i], c.nodeVersionRange(chain, i))
+		query := types.TemporalRange{From: finite(qStart), To: legacyEnd(qEnd)}
+		rel, err := types.RelateRanges(bounds, query)
 		if err != nil {
 			continue
 		}
@@ -337,19 +317,18 @@ func (c *Core) resolveNodeChainRelating(chain []*types.Node, qStart, qEnd types.
 // validity overlaps [start, end) and (when pred != nil) satisfies pred,
 // most-recent-first so the newest overlapping match is preferred. See the
 // funnel comment for the predicate-anywhere rationale.
-func (c *Core) resolveNodeChainDuring(chain []*types.Node, start, end types.Instant, pred func(*types.Node) bool, caps lifeEnds[*types.Node]) (*types.Node, error) {
+func (c *Core) resolveNodeChainDuring(chain []*types.Node, start, end types.Instant, pred func(*types.Node) bool, caps lifeEnds[*types.Node], windows ...*types.TemporalRange) (*types.Node, error) {
 	// Order by effective valid-from so next-version tiling is correct after an
 	// append-only cascade (see sortNodeChainForResolve). Scan highest-valid-from
 	// first to preserve the "most-recent overlapping match" semantic.
 	c.sortNodeChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
-		vStart, vEnd := c.nodeVersionBounds(chain, i)
-		vEnd, gone := caps.cut(chain[i], vStart, vEnd)
-		if gone {
-			continue
+		bounds := caps.bounds(chain[i], c.nodeVersionRange(chain, i))
+		window := legacyWindow(start, end)
+		if len(windows) > 0 && windows[0] != nil {
+			window = *windows[0]
 		}
-		// Overlap: vStart < end AND (vEnd == 0 OR vEnd > start).
-		if vStart < end && (vEnd == 0 || vEnd > start) {
+		if bounds.Overlaps(window) {
 			if pred == nil || pred(chain[i]) {
 				return chain[i], nil
 			}
@@ -384,7 +363,7 @@ func (c *Core) resolveRelChain(chain []*types.Relationship, probe chainProbe, pr
 	}
 	caps := chainLifeEnds(chain)
 	if probe.kind == probeInterval {
-		return c.resolveRelChainDuring(chain, probe.validStart, probe.validEnd, pred, caps)
+		return c.resolveRelChainDuring(chain, probe.validStart, probe.validEnd, pred, caps, probe.window)
 	}
 	if probe.kind == probeRelate {
 		return c.resolveRelChainRelating(chain, probe.validStart, probe.validEnd, probe.rels, pred, caps)
@@ -399,12 +378,9 @@ func (c *Core) resolveRelChainRelating(chain []*types.Relationship, qStart, qEnd
 	}
 	c.sortRelChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
-		vStart, vEnd := c.relVersionBounds(chain, i)
-		vEnd, gone := caps.cut(chain[i], vStart, vEnd)
-		if gone {
-			continue
-		}
-		rel, err := types.RelateOpen(vStart, vEnd, qStart, qEnd)
+		bounds := caps.bounds(chain[i], c.relVersionRange(chain, i))
+		query := types.TemporalRange{From: finite(qStart), To: legacyEnd(qEnd)}
+		rel, err := types.RelateRanges(bounds, query)
 		if err != nil {
 			continue
 		}
@@ -416,15 +392,15 @@ func (c *Core) resolveRelChainRelating(chain []*types.Relationship, qStart, qEnd
 }
 
 // resolveRelChainDuring mirrors resolveNodeChainDuring for relationships.
-func (c *Core) resolveRelChainDuring(chain []*types.Relationship, start, end types.Instant, pred func(*types.Relationship) bool, caps lifeEnds[*types.Relationship]) (*types.Relationship, error) {
+func (c *Core) resolveRelChainDuring(chain []*types.Relationship, start, end types.Instant, pred func(*types.Relationship) bool, caps lifeEnds[*types.Relationship], windows ...*types.TemporalRange) (*types.Relationship, error) {
 	c.sortRelChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
-		vStart, vEnd := c.relVersionBounds(chain, i)
-		vEnd, gone := caps.cut(chain[i], vStart, vEnd)
-		if gone {
-			continue
+		bounds := caps.bounds(chain[i], c.relVersionRange(chain, i))
+		window := legacyWindow(start, end)
+		if len(windows) > 0 && windows[0] != nil {
+			window = *windows[0]
 		}
-		if vStart < end && (vEnd == 0 || vEnd > start) {
+		if bounds.Overlaps(window) {
 			if pred == nil || pred(chain[i]) {
 				return chain[i], nil
 			}

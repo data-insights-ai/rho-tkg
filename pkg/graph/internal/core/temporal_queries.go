@@ -148,7 +148,7 @@ func (c *Core) nodesByLabelAtLocked(label string, at types.Instant) ([]*types.No
 	// the generic ByLabel{ValidAt} door (queries.go) — both temporal-ByLabel doors
 	// MUST agree (rule 17), enforced by TestTemporalCandidatePruneEquivalence.
 	if c.temporalCandidates != nil {
-		if kept, ok := c.temporalCandidates.PruneTemporalCandidates(tok, candIDs, storepkg.QueryOpts{ValidAt: at}); ok {
+		if kept, ok := c.temporalCandidates.PruneTemporalCandidates(tok, candIDs, storepkg.QueryOpts{ValidAt: at, ValidAtSet: true}); ok {
 			candIDs = kept
 		}
 	}
@@ -275,11 +275,11 @@ func (c *Core) relsDuringLocked(start, end types.Instant) ([]*types.Relationship
 // normalizeRelatingRange validates a query interval for the Allen-relation
 // doors. UNLIKE normalizeDuringRange it does NOT substitute a concrete bound for
 // an open end (end == 0): types.RelateOpen needs the raw open representation to
-// classify Before/After/Meets against an open query exactly. Requires start > 0
+// classify Before/After/Meets against an open query exactly. Requires start != 0
 // (an open START is meaningless — only ENDS may be open), and start < end when
 // end is a closed bound.
 func normalizeRelatingRange(start, end types.Instant) error {
-	if start <= 0 {
+	if start == 0 {
 		return ErrInvalidTimeRange
 	}
 	if end != 0 && start >= end {
@@ -297,7 +297,7 @@ func normalizeRelatingRange(start, end types.Instant) error {
 // to == 0 denotes an OPEN query interval (+∞); it is NOT resolved to a concrete
 // "now+" bound (as NodesDuring does) because that would corrupt the Before/After
 // boundary — see types.RelateOpen. An empty rels set yields an empty result.
-// Returns ErrInvalidTimeRange if from <= 0, or from >= to when to is closed.
+// Returns ErrInvalidTimeRange if from == 0, or from >= to when to is closed.
 func (t *TempOps) NodesRelating(from, to types.Instant, rels types.AllenRelationSet) ([]*types.Node, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
@@ -453,7 +453,7 @@ func (c *Core) nodeCurrentAnswersAt(current *types.Node, validAt, txAt types.Ins
 		return false
 	}
 	tm := current.Temporal()
-	if tm == nil || tm.ValidTo != 0 {
+	if tm == nil || isClosedTemporal(tm) {
 		return false
 	}
 	if txAt != 0 && (tm.TxFrom == 0 || tm.TxFrom > txAt) {
@@ -478,7 +478,7 @@ func (c *Core) relCurrentAnswersAt(current *types.Relationship, validAt, txAt ty
 		return false
 	}
 	tm := current.Temporal()
-	if tm == nil || tm.ValidTo != 0 {
+	if tm == nil || isClosedTemporal(tm) {
 		return false
 	}
 	if txAt != 0 && (tm.TxFrom == 0 || tm.TxFrom > txAt) {
@@ -1051,7 +1051,7 @@ func (c *Core) nodesByLabelPropertyAtLocked(label, key string, value any, at typ
 		return nil, err
 	}
 	var result []*types.Node
-	if err := c.forEachNodePropertyCandidateID(tok, map[string]string{key: targetKey}, currentIDs, storepkg.QueryOpts{ValidAt: at}, func(id types.NodeID) error {
+	if err := c.forEachNodePropertyCandidateID(tok, map[string]string{key: targetKey}, currentIDs, storepkg.QueryOpts{ValidAt: at, ValidAtSet: true}, func(id types.NodeID) error {
 		n, err := c.nodeAtLocked(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
@@ -1141,7 +1141,7 @@ func (c *Core) nodesByLabelPropertyDuringLocked(label, key string, value any, st
 	// (This prune is NOT applied to the Relating doors — their Allen set may include
 	// non-overlapping relations like Before/After/Meets, which envelope-overlap
 	// pruning would wrongly drop.) end is already resolved to a concrete bound by
-	// normalizeDuringRange, so ValidEnd > 0 holds. Mirrors the point-in-time door
+	// normalizeDuringRange, so ValidEnd is a finite resolved bound. Mirrors the point-in-time door
 	// (rule 17); TestTemporalDuringCandidatePruneEquivalence enforces agreement.
 	if c.temporalCandidates != nil {
 		if kept, ok := c.temporalCandidates.PruneTemporalCandidates(tok, candIDs, storepkg.QueryOpts{ValidStart: start, ValidEnd: end}); ok {
@@ -1190,7 +1190,7 @@ func (t *TempOps) RelsByTypeAt(relType string, at types.Instant) ([]*types.Relat
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	return c.Rels.ByType(relType, storepkg.QueryOpts{ValidAt: at})
+	return c.Rels.ByType(relType, storepkg.QueryOpts{ValidAt: at, ValidAtSet: true})
 }
 
 // RelsByTypePropertyAt returns relationships matching the type
@@ -1246,7 +1246,7 @@ func (c *Core) relsByTypePropertyAtLocked(relType, key string, value any, at typ
 		return nil, err
 	}
 	var result []*types.Relationship
-	if err := c.forEachRelPropertyCandidateID(tok, key, targetKey, currentIDs, storepkg.QueryOpts{ValidAt: at}, func(id types.RelID) error {
+	if err := c.forEachRelPropertyCandidateID(tok, key, targetKey, currentIDs, storepkg.QueryOpts{ValidAt: at, ValidAtSet: true}, func(id types.RelID) error {
 		r, err := c.relAtLocked(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {

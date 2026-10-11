@@ -110,7 +110,7 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 		return nil, err
 	}
 
-	validFrom, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	validFrom, validTo, createdAt, txFromOverride, validEndpoints, props, err := extractTemporalWithBounds(props)
 	if err != nil {
 		return nil, err
 	}
@@ -211,10 +211,11 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 			n.SetTemporal(ntm)
 		}
 		ntm.TxFrom = txNow
-		if validFrom != 0 {
+		if validFrom != 0 || validEndpoints != 0 {
 			ntm.ValidFrom = validFrom
+			ntm.ValidEndpoints = validEndpoints
 		}
-		if validTo != 0 {
+		if validTo != 0 || validEndpoints != 0 {
 			ntm.ValidTo = validTo
 		}
 		if createdAt != 0 {
@@ -379,7 +380,7 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	if err != nil {
 		return nil, err
 	}
-	validFrom, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	validFrom, validTo, createdAt, txFromOverride, validEndpoints, props, err := extractTemporalWithBounds(props)
 	if err != nil {
 		return nil, err
 	}
@@ -505,10 +506,11 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 		n.SetTemporal(tm)
 	}
 	tm.TxFrom = txNow
-	if validFrom != 0 {
+	if validFrom != 0 || validEndpoints != 0 {
 		tm.ValidFrom = validFrom
+		tm.ValidEndpoints = validEndpoints
 	}
-	if validTo != 0 {
+	if validTo != 0 || validEndpoints != 0 {
 		tm.ValidTo = validTo
 	}
 	if createdAt != 0 {

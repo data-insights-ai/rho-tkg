@@ -451,7 +451,7 @@ func TestGraphQueryNamesValidateBeforeEmptyShortcuts(t *testing.T) {
 	}
 }
 
-func TestGraphQueryOptsNonPositiveIntervalBoundsDoNotActivateTemporalFilter(t *testing.T) {
+func TestGraphQueryOptsMissingIntervalBoundsDoNotActivateTemporalFilter(t *testing.T) {
 	t.Parallel()
 	g, err := New(Config{})
 	if err != nil {
@@ -475,8 +475,8 @@ func TestGraphQueryOptsNonPositiveIntervalBoundsDoNotActivateTemporalFilter(t *t
 		name string
 		opts storepkg.QueryOpts
 	}{
-		{name: "negative start", opts: storepkg.QueryOpts{ValidStart: types.Instant(-1), ValidEnd: types.Instant(1)}},
-		{name: "negative end", opts: storepkg.QueryOpts{ValidStart: types.Instant(1), ValidEnd: types.Instant(-1)}},
+		{name: "missing start", opts: storepkg.QueryOpts{ValidEnd: types.Instant(1)}},
+		{name: "missing end", opts: storepkg.QueryOpts{ValidStart: types.Instant(-1)}},
 	}
 
 	for _, tc := range optsCases {

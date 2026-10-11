@@ -76,7 +76,11 @@ func (ms *Store) PurgeNodesByLabelValidToBefore(labelToken uint16, before types.
 		// all leave it unset) — so this predicate must not dereference it
 		// unconditionally (BACKLOG 17c).
 		tm := n.Temporal()
-		return tm != nil && tm.ValidTo != 0 && tm.ValidTo < before
+		if tm == nil {
+			return false
+		}
+		bounds, _ := tm.ValidBounds()
+		return bounds.To.Finite && bounds.To.Value < before
 	})
 }
 

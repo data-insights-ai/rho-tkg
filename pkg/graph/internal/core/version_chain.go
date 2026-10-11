@@ -138,7 +138,7 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 		return err
 	}
 
-	if tm := current.Temporal(); tm != nil && tm.ValidTo != 0 {
+	if tm := current.Temporal(); isClosedTemporal(tm) {
 		return ErrAlreadyClosed
 	}
 	if start := c.nodeValidFrom(current); t <= start {
@@ -173,6 +173,9 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 		current.SetTemporal(tm)
 	}
 	tm.ValidTo = t
+	if tm.HasValidBounds() {
+		tm.ValidEndpoints |= types.EndpointToFinite
+	}
 	tm.UpdatedAt = now
 	stampAppendedRow(tm, now)
 
@@ -364,7 +367,7 @@ func (c *Core) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 	}
 	defer c.entityLocks.UnlockThree(id.SnowflakeID(), startID.SnowflakeID(), endID.SnowflakeID())
 
-	if tm := current.Temporal(); tm != nil && tm.ValidTo != 0 {
+	if tm := current.Temporal(); isClosedTemporal(tm) {
 		return ErrAlreadyClosed
 	}
 	if start := c.relValidFrom(current); t <= start {
@@ -405,6 +408,9 @@ func (c *Core) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 		current.SetTemporal(tm)
 	}
 	tm.ValidTo = t
+	if tm.HasValidBounds() {
+		tm.ValidEndpoints |= types.EndpointToFinite
+	}
 	tm.UpdatedAt = now
 	stampAppendedRow(tm, now)
 

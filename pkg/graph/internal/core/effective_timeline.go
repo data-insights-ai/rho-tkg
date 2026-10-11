@@ -58,6 +58,7 @@ func (c *Core) validateEffectivePin(pin types.Instant) error {
 // winner came from (the winner may be the resolver's normalized copy of it).
 type effPiece[T any] struct {
 	from, to types.Instant
+	bounds   types.TemporalRange
 	row      T
 	src      int
 }
@@ -71,8 +72,8 @@ type chainKernel[T interface {
 	rowAtTx   func(T, types.Instant) (T, bool)
 	sortVF    func(*Core, T) types.Instant
 	sortChain func(*Core, []T) bool
-	ownBounds func(*Core, T) (types.Instant, types.Instant)
-	posBounds func(*Core, []T, int) (types.Instant, types.Instant)
+	ownBounds func(*Core, T) types.TemporalRange
+	posBounds func(*Core, []T, int) types.TemporalRange
 }
 
 // The node and relationship kernels (method expressions: no allocation).
@@ -81,24 +82,25 @@ var (
 		rowAtTx:   nodeRowAtTx,
 		sortVF:    (*Core).nodeSortValidFrom,
 		sortChain: (*Core).sortNodeChainForResolve,
-		ownBounds: (*Core).nodeOwnBounds,
-		posBounds: (*Core).nodeVersionBounds,
+		ownBounds: (*Core).nodeOwnRange,
+		posBounds: (*Core).nodeVersionRange,
 	}
 	relKernel = &chainKernel[*types.Relationship]{
 		rowAtTx:   relRowAtTx,
 		sortVF:    (*Core).relSortValidFrom,
 		sortChain: (*Core).sortRelChainForResolve,
-		ownBounds: (*Core).relOwnBounds,
-		posBounds: (*Core).relVersionBounds,
+		ownBounds: (*Core).relOwnRange,
+		posBounds: (*Core).relVersionRange,
 	}
 )
 
 // effInterval is one row's covering interval [s, e) (e == 0: open) in the
 // arm the resolver takes, with its selection priority (higher wins).
 type effInterval struct {
-	s, e types.Instant
-	pos  int // position in the resolver-ordered chain
-	prio int
+	s, e                 types.Instant
+	fromFinite, toFinite bool
+	pos                  int // position in the resolver-ordered chain
+	prio                 int
 }
 
 // effectivePieces answers the point resolver for every valid instant at once:
@@ -134,12 +136,12 @@ func effectivePieces[T interface {
 		if r != chain[0] {
 			one = []T{r}
 		}
-		s, e := k.posBounds(c, one, 0)
-		e = chainLifeEnds(one).end(r, e)
-		if e != 0 && e <= s {
+		bounds := chainLifeEnds(one).bounds(r, k.posBounds(c, one, 0))
+		s, e := startKey(bounds.From), bounds.To.Value
+		if bounds.Validate() != nil {
 			return nil
 		}
-		return []effPiece[T]{{from: s, to: e, row: r}}
+		return []effPiece[T]{{from: s, to: e, bounds: bounds, row: r}}
 	}
 	order := make([]int, len(chain))
 	for i := range order {
@@ -165,27 +167,29 @@ func effectivePieces[T interface {
 	arr := slices.Clone(filtered)
 	cascade := k.sortChain(c, arr)
 	var superseded []types.Instant
+	var scPresence []bool
 	if cascade {
 		sc := getSupersessionScratch()
 		defer putSupersessionScratch(sc)
 		superseded = supersessionCaps(arr, func(r T) types.Instant { return k.sortVF(c, r) }, sc)
+		scPresence = sc.capPresent
 	}
 	ivs := make([]effInterval, 0, len(arr))
 	for i, r := range arr {
-		var s, e types.Instant
+		var bounds types.TemporalRange
 		if cascade {
-			s, e = k.ownBounds(c, r)
-			if superseded != nil {
-				e = capEnd(e, superseded[i])
+			bounds = k.ownBounds(c, r)
+			if superseded != nil && scPresence[i] {
+				bounds.To = capEndpoint(bounds.To, finite(superseded[i]))
 			}
 		} else {
-			s, e = k.posBounds(c, arr, i)
+			bounds = k.posBounds(c, arr, i)
 		}
-		e = caps.end(r, e)
-		if e != 0 && e <= s {
-			continue // covers nothing
+		bounds = caps.bounds(r, bounds)
+		if bounds.Validate() != nil {
+			continue
 		}
-		ivs = append(ivs, effInterval{s: s, e: e, pos: i, prio: i})
+		ivs = append(ivs, effInterval{s: startKey(bounds.From), e: bounds.To.Value, fromFinite: bounds.From.Finite, toFinite: bounds.To.Finite, pos: i, prio: i})
 	}
 	if cascade {
 		// Newest belief wins: (TxFrom, version); among equals the earlier
@@ -212,7 +216,7 @@ func effectivePieces[T interface {
 	cuts := make([]types.Instant, 0, 2*len(ivs))
 	for _, iv := range ivs {
 		cuts = append(cuts, iv.s)
-		if iv.e != 0 {
+		if iv.toFinite {
 			cuts = append(cuts, iv.e)
 		}
 	}
@@ -228,22 +232,29 @@ func effectivePieces[T interface {
 			h.push(ivs[next])
 			next++
 		}
-		for len(h) > 0 && h[0].e != 0 && h[0].e <= from {
+		for len(h) > 0 && h[0].toFinite && h[0].e <= from {
 			h.pop()
 		}
 		if len(h) == 0 {
 			continue // a gap
 		}
 		var to types.Instant
-		if j+1 < len(cuts) {
+		toFinite := j+1 < len(cuts)
+		if toFinite {
 			to = cuts[j+1]
 		}
+		fromBound := finite(from)
+		if from == h[0].s && !h[0].fromFinite {
+			fromBound = types.TemporalEndpoint{}
+		}
+		bounds := types.TemporalRange{From: fromBound, To: types.TemporalEndpoint{Value: to, Finite: toFinite}}
 		w := arr[h[0].pos]
 		if n := len(out); n > 0 && out[n-1].row == w && out[n-1].to == from {
 			out[n-1].to = to
+			out[n-1].bounds.To = bounds.To
 			continue
 		}
-		out = append(out, effPiece[T]{from: from, to: to, row: w, src: origin[w]})
+		out = append(out, effPiece[T]{from: from, to: to, bounds: bounds, row: w, src: origin[w]})
 	}
 	return out
 }
@@ -518,7 +529,7 @@ func (c *Core) nodeEffectiveViaTemporalMeta(id types.NodeID, current *types.Node
 		if !ok {
 			return nil, false, nil
 		}
-		segs = append(segs, nodeSegment(p.from, p.to, row))
+		segs = append(segs, nodeSegment(p.from, p.to, row, p.bounds))
 	}
 	return segs, true, nil
 }
@@ -573,37 +584,45 @@ func (c *Core) relEffectiveViaTemporalMeta(id types.RelID, current *types.Relati
 		if !ok {
 			return nil, false, nil
 		}
-		segs = append(segs, relSegment(p.from, p.to, row))
+		segs = append(segs, relSegment(p.from, p.to, row, p.bounds))
 	}
 	return segs, true, nil
 }
 
 // nodeSegment freezes row (a private copy unless already frozen: a shared
 // store row is frozen and only read here) and wraps it.
-func nodeSegment(from, to types.Instant, row *types.Node) temporal.NodeSegment {
+func nodeSegment(from, to types.Instant, row *types.Node, windows ...types.TemporalRange) temporal.NodeSegment {
 	if !row.IsFrozen() {
 		row.Freeze()
 	}
-	return temporal.NodeSegment{ValidFrom: from, ValidTo: to, Node: row}
+	seg := temporal.NodeSegment{ValidFrom: from, ValidTo: to, Node: row}
+	if len(windows) > 0 {
+		setSegmentBounds(&seg.ValidFrom, &seg.ValidTo, &seg.ValidEndpoints, windows[0], row.Temporal())
+	}
+	return seg
 }
 
-func relSegment(from, to types.Instant, row *types.Relationship) temporal.RelSegment {
+func relSegment(from, to types.Instant, row *types.Relationship, windows ...types.TemporalRange) temporal.RelSegment {
 	if !row.IsFrozen() {
 		row.Freeze()
 	}
-	return temporal.RelSegment{ValidFrom: from, ValidTo: to, Rel: row}
+	seg := temporal.RelSegment{ValidFrom: from, ValidTo: to, Rel: row}
+	if len(windows) > 0 {
+		setSegmentBounds(&seg.ValidFrom, &seg.ValidTo, &seg.ValidEndpoints, windows[0], row.Temporal())
+	}
+	return seg
 }
 
 func nodeSegments(pieces []effPiece[*types.Node], out []temporal.NodeSegment) []temporal.NodeSegment {
 	for _, p := range pieces {
-		out = append(out, nodeSegment(p.from, p.to, p.row))
+		out = append(out, nodeSegment(p.from, p.to, p.row, p.bounds))
 	}
 	return out
 }
 
 func relSegments(pieces []effPiece[*types.Relationship], out []temporal.RelSegment) []temporal.RelSegment {
 	for _, p := range pieces {
-		out = append(out, relSegment(p.from, p.to, p.row))
+		out = append(out, relSegment(p.from, p.to, p.row, p.bounds))
 	}
 	return out
 }
@@ -746,4 +765,13 @@ func (c *Core) validateEffectiveScanPin(pin types.Instant) error {
 		return err
 	}
 	return c.checkScanRetentionAt(pin)
+}
+
+func setSegmentBounds(from, to *types.Instant, presence *types.EndpointPresence, r types.TemporalRange, tm *types.TemporalMetadata) {
+	if tm.HasValidBounds() || !r.From.Finite || (r.From.Finite && r.From.Value == 0) || (r.To.Finite && r.To.Value == 0) {
+		var m types.TemporalMetadata
+		if m.SetValidBounds(r) == nil {
+			*from, *to, *presence = m.ValidFrom, m.ValidTo, m.ValidEndpoints
+		}
+	}
 }

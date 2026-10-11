@@ -41,7 +41,7 @@ import (
 // A nil return is always safe: the caller falls back to a full rebuild.
 func (l *DocValues[T]) Extend(epoch uint64, newIDs []T,
 	getProp func(T, string) (any, bool),
-	getTemporal func(T) (validFrom, validTo int64, ok bool)) *DocValues[T] {
+	getTemporal func(T) (validFrom, validTo int64, ok bool), typedTemporal ...bool) *DocValues[T] {
 
 	if l == nil || len(newIDs) == 0 {
 		return nil
@@ -75,9 +75,10 @@ func (l *DocValues[T]) Extend(epoch uint64, newIDs []T,
 	}
 
 	out := &DocValues[T]{
-		epoch: epoch,
-		ids:   append(slices.Clone(l.ids), added...),
-		cols:  make(map[string]*docColumn, len(l.cols)),
+		epoch:            epoch,
+		hasTypedTemporal: l.hasTypedTemporal || slices.Contains(typedTemporal, true),
+		ids:              append(slices.Clone(l.ids), added...),
+		cols:             make(map[string]*docColumn, len(l.cols)),
 	}
 
 	for key, c := range l.cols {

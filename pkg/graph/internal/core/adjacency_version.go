@@ -101,7 +101,7 @@ func (c *Core) forEachAdjacentRelVersionLocked(nodeID types.NodeID, typeName str
 	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
 	for _, id := range ids {
 		var r *types.Relationship
-		if cur := live[id]; cur != nil && opts.ValidAt != 0 && c.relCurrentAnswersAt(cur, opts.ValidAt, opts.TxAt) && pred(cur) {
+		if cur := live[id]; cur != nil && opts.HasValidAt() && c.relCurrentAnswersAt(cur, opts.ValidAt, opts.TxAt) && pred(cur) {
 			r = cur
 		} else {
 			var rerr error

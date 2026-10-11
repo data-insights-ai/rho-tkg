@@ -6,6 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.50.2] - 2026-10-11
+
+Patch release: exact finite Unix epoch zero and explicit unbounded valid-time
+endpoints across native storage and temporal queries. Scalar Instant APIs retain
+their legacy zero defaults. **Writable stores advance to wire format v4; older
+binaries refuse them, so downgrade requires a pre-upgrade backup.**
+
+### Added
+
+- Exact typed valid-time endpoints: `types.TemporalEndpoint{Value, Finite}` and
+  `types.TemporalRange{From, To}` distinguish finite Unix epoch zero from
+  negative/positive infinity. Creation and updates accept the reserved
+  `tkg_valid_bounds` range value; mixing it with scalar valid keys is refused.
+  `QueryOpts.ValidAtSet` activates a point query at zero; `ValidWindow` supplies
+  finite/unbounded interval bounds. Effective timeline segments expose `Bounds()`.
+  `SetNodeVersionBounds` / `SetRelVersionBounds` append retrospective corrections
+  through Temporal, GraphTx, BatchBuilder and ingest Session; old transaction pins
+  retain the previous belief. Scalar Instant APIs keep their existing zero defaults.
+
+### Changed
+
+- Persistence format v4 stores typed endpoint presence in `ep`. Full, partial,
+  nested and history-delta reads preserve it. Existing v0-v3 rows retain their
+  legacy zero interpretation. Writable open advances the store format marker;
+  older binaries fail closed, so downgrade requires a pre-upgrade backup.
+  Temporal metadata remains outside the existing content integrity hash contract;
+  that hash does not authenticate valid-time declarations.
+- The existing declared relationship segment format refuses typed endpoint
+  rows with `ErrCapabilityNotSupported` before changing rows or history.
+  Scalar segment data keeps its existing format and behavior.
+
+### Fixed
+
+- Signed, nonzero valid ranges activate indexed generic queries and counts on
+  every backend. Typed finite-zero endpoints remain exact across reopen,
+  retrospective correction, timeline construction, retraction and Allen queries.
+
 ## [4.50.1] - 2026-10-11
 
 Patch release: interval corrections at a caller transaction instant (backlog 34, requested by sigma-tkgd for the burst-growth replay). Additive; the plain doors are unchanged.

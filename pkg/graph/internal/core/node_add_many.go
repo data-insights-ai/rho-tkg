@@ -184,6 +184,7 @@ type preparedNodeCreate struct {
 	authLevel                     uint8
 	validFrom, validTo, createdAt types.Instant
 	txFromOverride                types.Instant
+	validEndpoints                types.EndpointPresence
 	props                         types.OwnedPropertySlice
 }
 
@@ -195,7 +196,7 @@ func (c *Core) prepareNodeCreate(props map[string]any, pn *preparedNodeCreate) e
 	if err != nil {
 		return err
 	}
-	validFrom, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	validFrom, validTo, createdAt, txFromOverride, validEndpoints, props, err := extractTemporalWithBounds(props)
 	if err != nil {
 		return err
 	}
@@ -212,7 +213,7 @@ func (c *Core) prepareNodeCreate(props map[string]any, pn *preparedNodeCreate) e
 	}
 	*pn = preparedNodeCreate{
 		authorID: authorID, signature: sig, authorizedBy: authorizedBy, authLevel: authLevel,
-		validFrom: validFrom, validTo: validTo, createdAt: createdAt,
+		validFrom: validFrom, validTo: validTo, createdAt: createdAt, validEndpoints: validEndpoints,
 		txFromOverride: txFromOverride, props: ps,
 	}
 	return nil
@@ -231,6 +232,7 @@ func (pn *preparedNodeCreate) stampTemporal(n *types.Node, now types.Instant) {
 		n.SetTemporal(tm)
 	}
 	tm.TxFrom = now
+	tm.ValidEndpoints = pn.validEndpoints
 	if pn.validFrom != 0 {
 		tm.ValidFrom = pn.validFrom
 	}

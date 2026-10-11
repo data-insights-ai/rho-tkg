@@ -28,6 +28,11 @@ const ColumnScanBatchRows = 4096
 func ScanColumnsFromNodes(nodes []*types.Node, props []string,
 	fn func(*ColumnBatch) bool) error {
 
+	for _, n := range nodes {
+		if n.ValidEndpointPresence() != 0 {
+			return ErrCapabilityNotSupported
+		}
+	}
 	if len(nodes) == 0 {
 		return nil
 	}
@@ -122,6 +127,11 @@ func ScanColumnsFromNodes(nodes []*types.Node, props []string,
 func ScanColumnsFromRels(rels []*types.Relationship, props []string,
 	fn func(*RelColumnBatch) bool) error {
 
+	for _, r := range rels {
+		if r.ValidEndpointPresence() != 0 {
+			return ErrCapabilityNotSupported
+		}
+	}
 	if len(rels) == 0 {
 		return nil
 	}

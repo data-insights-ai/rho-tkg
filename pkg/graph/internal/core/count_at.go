@@ -196,7 +196,7 @@ func (c *Core) nodeCurrentDecides(id types.NodeID, current *types.Node, opts sto
 			}
 			return true, pred(current), nil
 		}
-	case opts.ValidAt != 0:
+	case opts.HasValidAt():
 		if err := c.checkNodePointCompaction(id, opts.TxAt); err != nil {
 			return true, false, err
 		}
@@ -206,7 +206,10 @@ func (c *Core) nodeCurrentDecides(id types.NodeID, current *types.Node, opts sto
 		if c.nodeCurrentAnswersAt(current, opts.ValidAt, opts.TxAt) {
 			return true, pred(current), nil
 		}
-	case opts.ValidStart > 0 && opts.ValidEnd > 0:
+	case opts.HasValidRange():
+		if opts.ValidWindow != nil {
+			return false, false, nil
+		}
 		at := max(opts.ValidStart, c.nodeSortValidFrom(current))
 		if at < opts.ValidEnd && pred(current) && c.nodeCurrentAnswersAt(current, at, opts.TxAt) {
 			return true, true, nil
@@ -289,7 +292,7 @@ func (c *Core) relCurrentDecides(id types.RelID, current *types.Relationship, op
 			}
 			return true, pred(current), nil
 		}
-	case opts.ValidAt != 0:
+	case opts.HasValidAt():
 		if err := c.checkRelPointCompaction(id, opts.TxAt); err != nil {
 			return true, false, err
 		}
@@ -299,7 +302,10 @@ func (c *Core) relCurrentDecides(id types.RelID, current *types.Relationship, op
 		if c.relCurrentAnswersAt(current, opts.ValidAt, opts.TxAt) {
 			return true, pred(current), nil
 		}
-	case opts.ValidStart > 0 && opts.ValidEnd > 0:
+	case opts.HasValidRange():
+		if opts.ValidWindow != nil {
+			return false, false, nil
+		}
 		at := max(opts.ValidStart, c.relSortValidFrom(current))
 		if at < opts.ValidEnd && pred(current) && c.relCurrentAnswersAt(current, at, opts.TxAt) {
 			return true, true, nil

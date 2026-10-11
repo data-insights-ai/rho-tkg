@@ -92,14 +92,21 @@ import (
 // Node cascade
 // =============================================================================
 
-func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, newVF, newVT types.Instant, props map[string]any, at types.Instant) (*types.Node, error) {
+func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, newVF, newVT types.Instant, props map[string]any, at types.Instant, windows ...types.TemporalRange) (*types.Node, error) {
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
 	}
-	if newVF == 0 {
+	newToFinite := newVT != 0
+	if len(windows) > 0 {
+		if err := windows[0].Validate(); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidTimeRange, err)
+		}
+		newVF, newVT, newToFinite = startKey(windows[0].From), windows[0].To.Value, windows[0].To.Finite
+	}
+	if len(windows) == 0 && newVF == 0 {
 		return nil, fmt.Errorf("%w: cascade requires non-zero validFrom", ErrInvalidTimeRange)
 	}
-	if newVT != 0 && newVF >= newVT {
+	if newToFinite && newVF >= newVT {
 		return nil, fmt.Errorf("%w: validFrom %d >= validTo %d", ErrInvalidTimeRange, newVF, newVT)
 	}
 	if err := checkCtx(ctx); err != nil {
@@ -197,13 +204,19 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	// (the version is hashed), see the allocation step below.
 	appended := make([]*types.Node, 0, 4)
 	prevHashes := make([]string, 0, 4)
-	if newVT != 0 {
+	if newToFinite {
 		if src, err := c.resolveNodeVersionAt(append([]*types.Node(nil), preChain...), newVT); err == nil && src != nil {
-			resumptionEnd := nodeResumptionEnd(c, preChain, newVT)
+			resumptionEnd := nodeResumptionBound(c, preChain, newVT)
 			resumption := src.DeepCopy()
 			ensureNodeTemporal(resumption)
 			resumption.Temporal().ValidFrom = newVT
-			resumption.Temporal().ValidTo = resumptionEnd // explicit; 0 == open (src was the pre-correction open tail)
+			resumption.Temporal().ValidTo = resumptionEnd.Value
+			resumption.Temporal().ValidEndpoints = 0
+			if len(windows) > 0 || src.Temporal().HasValidBounds() || (resumptionEnd.Finite && resumptionEnd.Value == 0) {
+				if err := resumption.Temporal().SetValidBounds(types.TemporalRange{From: finite(newVT), To: resumptionEnd}); err != nil {
+					return nil, err
+				}
+			} // explicit; 0 == open (src was the pre-correction open tail)
 			stampAppendedRow(resumption.Temporal(), now)
 			appended = append(appended, resumption)
 			prevHashes = append(prevHashes, nodeHashOf(src))
@@ -219,7 +232,7 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	// each piece is the winner's content plus the patch (see
 	// nodeCorrectionSegments). Rows are fully built (patched, bounded, hashed)
 	// before any write — preflight, then apply.
-	segments, err := c.nodeCorrectionSegments(preChain, template, newVF, newVT)
+	segments, err := c.nodeCorrectionSegments(preChain, template, newVF, newVT, windows...)
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +273,7 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	var newCurrent *types.Node
 	for i := range postChain {
 		entry := postChain[i]
-		if _, vEnd := c.nodeOwnBounds(entry); vEnd != 0 {
+		if c.nodeOwnRange(entry).To.Finite {
 			continue // only own-open rows can own the current slot
 		}
 		if newCurrent == nil || nodeBeliefNewerThan(entry, newCurrent) {
@@ -298,7 +311,7 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	// every kernel check and before the first write; the value stripes stay
 	// held across every write below.
 	// A failed write withdraws the UniqueForever claims no written row carries.
-	uniqueHold, err := c.enforceUniqueForCascade(id, current, appended, newCurrent, curIsNew, newVT, props)
+	uniqueHold, err := c.enforceUniqueForCascade(id, current, appended, newCurrent, curIsNew, newVT, props, windows...)
 	if err != nil {
 		return nil, err
 	}
@@ -327,48 +340,32 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	return newVer, nil
 }
 
-// nodeResumptionEnd returns the smallest own-interval boundary (any row's own
-// vStart, or own vEnd when finite) in preChain that is STRICTLY AFTER newVT —
-// 0 (open) when no such boundary exists. BACKLOG 10b: own-interval bounds
-// make every row's [vStart, vEnd) a fixed, position-independent interval, so
-// the SET of rows covering any instant t is piecewise-constant between
-// consecutive own-boundary points across the WHOLE chain — therefore the
-// belief-winner at newVT (src) provably cannot change before the next such
-// boundary, from ANY row, not merely the row positionally adjacent to src.
-// Scanning every row (not just src's chain neighbor) is what makes this safe
-// on an already-cascaded preChain, where src can be selected by belief
-// rather than position.
-func nodeResumptionEnd(c *Core, preChain []*types.Node, newVT types.Instant) types.Instant {
-	var end types.Instant
-	consider := func(b types.Instant) {
-		if b > newVT && (end == 0 || b < end) {
+func nodeResumptionBound(c *Core, preChain []*types.Node, newVT types.Instant) types.TemporalEndpoint {
+	var end types.TemporalEndpoint
+	consider := func(b types.TemporalEndpoint) {
+		if b.Finite && b.Value > newVT && (!end.Finite || b.Value < end.Value) {
 			end = b
 		}
 	}
 	for _, row := range preChain {
-		vStart, vEnd := c.nodeOwnBounds(row)
-		consider(vStart)
-		if vEnd != 0 {
-			consider(vEnd)
-		}
+		r := c.nodeOwnRange(row)
+		consider(r.From)
+		consider(r.To)
 	}
 	return end
 }
 
-// relResumptionEnd mirrors nodeResumptionEnd for relationships.
-func relResumptionEnd(c *Core, preChain []*types.Relationship, newVT types.Instant) types.Instant {
-	var end types.Instant
-	consider := func(b types.Instant) {
-		if b > newVT && (end == 0 || b < end) {
+func relResumptionBound(c *Core, preChain []*types.Relationship, newVT types.Instant) types.TemporalEndpoint {
+	var end types.TemporalEndpoint
+	consider := func(b types.TemporalEndpoint) {
+		if b.Finite && b.Value > newVT && (!end.Finite || b.Value < end.Value) {
 			end = b
 		}
 	}
 	for _, row := range preChain {
-		vStart, vEnd := c.relOwnBounds(row)
-		consider(vStart)
-		if vEnd != 0 {
-			consider(vEnd)
-		}
+		r := c.relOwnRange(row)
+		consider(r.From)
+		consider(r.To)
 	}
 	return end
 }
@@ -394,21 +391,27 @@ func relResumptionEnd(c *Core, preChain []*types.Relationship, newVT types.Insta
 // interval (to == 0: open-ended) over which the patch base is one row.
 type nodeCorrectionSegment struct {
 	from, to types.Instant
+	bounds   *types.TemporalRange
 	base     *types.Node
 }
 
 // relCorrectionSegment mirrors nodeCorrectionSegment for relationships.
 type relCorrectionSegment struct {
 	from, to types.Instant
+	bounds   *types.TemporalRange
 	base     *types.Relationship
 }
 
 // correctionCuts returns the sorted, de-duplicated boundaries strictly inside
 // (newVF, newVT) — (newVF, +inf) when newVT == 0.
-func correctionCuts(bounds []types.Instant, newVF, newVT types.Instant) []types.Instant {
+func correctionCuts(bounds []types.Instant, newVF, newVT types.Instant, windows ...types.TemporalRange) []types.Instant {
+	toFinite := newVT != 0
+	if len(windows) > 0 {
+		toFinite = windows[0].To.Finite
+	}
 	cuts := make([]types.Instant, 0, len(bounds))
 	for _, b := range bounds {
-		if b > newVF && (newVT == 0 || b < newVT) {
+		if b > newVF && (!toFinite || b < newVT) {
 			cuts = append(cuts, b)
 		}
 	}
@@ -433,14 +436,29 @@ func correctionCuts(bounds []types.Instant, newVF, newVT types.Instant) []types.
 // recent version). That is a choice, not a derivation — a gap piece asserts a
 // state the entity was never believed to have, and the most recent state is
 // the least surprising content for it.
-func (c *Core) nodeCorrectionSegments(preChain []*types.Node, template *types.Node, newVF, newVT types.Instant) ([]nodeCorrectionSegment, error) {
+func (c *Core) nodeCorrectionSegments(preChain []*types.Node, template *types.Node, newVF, newVT types.Instant, windows ...types.TemporalRange) ([]nodeCorrectionSegment, error) {
+	typed := len(windows) > 0
+	for _, row := range preChain {
+		typed = typed || row.Temporal().HasValidBounds()
+	}
 	bounds := make([]types.Instant, 0, 4*len(preChain))
 	for i, row := range preChain {
-		vStart, vEnd := c.nodeOwnBounds(row)
-		pStart, pEnd := c.nodeVersionBounds(preChain, i)
-		bounds = append(bounds, vStart, vEnd, pStart, pEnd)
+		own := c.nodeOwnRange(row)
+		pos := c.nodeVersionRange(preChain, i)
+		if own.From.Finite {
+			bounds = append(bounds, own.From.Value)
+		}
+		if own.To.Finite {
+			bounds = append(bounds, own.To.Value)
+		}
+		if pos.From.Finite {
+			bounds = append(bounds, pos.From.Value)
+		}
+		if pos.To.Finite {
+			bounds = append(bounds, pos.To.Value)
+		}
 	}
-	cuts := correctionCuts(bounds, newVF, newVT)
+	cuts := correctionCuts(bounds, newVF, newVT, windows...)
 
 	segs := make([]nodeCorrectionSegment, 0, len(cuts)+1)
 	from := newVF
@@ -448,6 +466,17 @@ func (c *Core) nodeCorrectionSegments(preChain []*types.Node, template *types.No
 		to := newVT
 		if i < len(cuts) {
 			to = cuts[i]
+		}
+		piece := types.TemporalRange{From: finite(from), To: types.TemporalEndpoint{Value: to, Finite: i < len(cuts) || newVT != 0}}
+		if len(windows) > 0 {
+			piece.To.Finite = i < len(cuts) || windows[0].To.Finite
+			if i == 0 && !windows[0].From.Finite {
+				piece.From = types.TemporalEndpoint{}
+			}
+		}
+		var exact *types.TemporalRange
+		if typed || (piece.To.Finite && piece.To.Value == 0) {
+			exact = new(piece)
 		}
 		base, err := c.resolveNodeVersionAt(append([]*types.Node(nil), preChain...), from)
 		if errors.Is(err, storepkg.ErrNoVersionValidAt) {
@@ -458,8 +487,11 @@ func (c *Core) nodeCorrectionSegments(preChain []*types.Node, template *types.No
 		}
 		if n := len(segs); n > 0 && segs[n-1].base == base {
 			segs[n-1].to = to
+			if segs[n-1].bounds != nil {
+				segs[n-1].bounds.To = piece.To
+			}
 		} else {
-			segs = append(segs, nodeCorrectionSegment{from: from, to: to, base: base})
+			segs = append(segs, nodeCorrectionSegment{from: from, to: to, bounds: exact, base: base})
 		}
 		from = to
 	}
@@ -467,14 +499,29 @@ func (c *Core) nodeCorrectionSegments(preChain []*types.Node, template *types.No
 }
 
 // relCorrectionSegments mirrors nodeCorrectionSegments for relationships.
-func (c *Core) relCorrectionSegments(preChain []*types.Relationship, template *types.Relationship, newVF, newVT types.Instant) ([]relCorrectionSegment, error) {
+func (c *Core) relCorrectionSegments(preChain []*types.Relationship, template *types.Relationship, newVF, newVT types.Instant, windows ...types.TemporalRange) ([]relCorrectionSegment, error) {
+	typed := len(windows) > 0
+	for _, row := range preChain {
+		typed = typed || row.Temporal().HasValidBounds()
+	}
 	bounds := make([]types.Instant, 0, 4*len(preChain))
 	for i, row := range preChain {
-		vStart, vEnd := c.relOwnBounds(row)
-		pStart, pEnd := c.relVersionBounds(preChain, i)
-		bounds = append(bounds, vStart, vEnd, pStart, pEnd)
+		own := c.relOwnRange(row)
+		pos := c.relVersionRange(preChain, i)
+		if own.From.Finite {
+			bounds = append(bounds, own.From.Value)
+		}
+		if own.To.Finite {
+			bounds = append(bounds, own.To.Value)
+		}
+		if pos.From.Finite {
+			bounds = append(bounds, pos.From.Value)
+		}
+		if pos.To.Finite {
+			bounds = append(bounds, pos.To.Value)
+		}
 	}
-	cuts := correctionCuts(bounds, newVF, newVT)
+	cuts := correctionCuts(bounds, newVF, newVT, windows...)
 
 	segs := make([]relCorrectionSegment, 0, len(cuts)+1)
 	from := newVF
@@ -482,6 +529,17 @@ func (c *Core) relCorrectionSegments(preChain []*types.Relationship, template *t
 		to := newVT
 		if i < len(cuts) {
 			to = cuts[i]
+		}
+		piece := types.TemporalRange{From: finite(from), To: types.TemporalEndpoint{Value: to, Finite: i < len(cuts) || newVT != 0}}
+		if len(windows) > 0 {
+			piece.To.Finite = i < len(cuts) || windows[0].To.Finite
+			if i == 0 && !windows[0].From.Finite {
+				piece.From = types.TemporalEndpoint{}
+			}
+		}
+		var exact *types.TemporalRange
+		if typed || (piece.To.Finite && piece.To.Value == 0) {
+			exact = new(piece)
 		}
 		base, err := c.resolveRelVersionAt(append([]*types.Relationship(nil), preChain...), from)
 		if errors.Is(err, storepkg.ErrNoVersionValidAt) {
@@ -492,8 +550,11 @@ func (c *Core) relCorrectionSegments(preChain []*types.Relationship, template *t
 		}
 		if n := len(segs); n > 0 && segs[n-1].base == base {
 			segs[n-1].to = to
+			if segs[n-1].bounds != nil {
+				segs[n-1].bounds.To = piece.To
+			}
 		} else {
-			segs = append(segs, relCorrectionSegment{from: from, to: to, base: base})
+			segs = append(segs, relCorrectionSegment{from: from, to: to, bounds: exact, base: base})
 		}
 		from = to
 	}
@@ -514,6 +575,7 @@ func correctionTemporal(template *types.TemporalMetadata, from, to, now types.In
 	}
 	tm.ValidFrom = from
 	tm.ValidTo = to
+	tm.ValidEndpoints = 0
 	stampAppendedRow(&tm, now)
 	return &tm
 }
@@ -609,6 +671,11 @@ func (c *Core) buildNodeCorrectionRow(seg nodeCorrectionSegment, template *types
 		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyProperties, row.PropertyCount(), c.validation.MaxPropertiesPerEntity)
 	}
 	row.SetTemporal(correctionTemporal(template.Temporal(), seg.from, seg.to, now))
+	if seg.bounds != nil {
+		if err := row.Temporal().SetValidBounds(*seg.bounds); err != nil {
+			return nil, err
+		}
+	}
 	return row, nil
 }
 
@@ -628,6 +695,11 @@ func (c *Core) buildRelCorrectionRow(seg relCorrectionSegment, template *types.R
 		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyProperties, row.PropertyCount(), c.validation.MaxPropertiesPerEntity)
 	}
 	row.SetTemporal(correctionTemporal(template.Temporal(), seg.from, seg.to, now))
+	if seg.bounds != nil {
+		if err := row.Temporal().SetValidBounds(*seg.bounds); err != nil {
+			return nil, err
+		}
+	}
 	return row, nil
 }
 
@@ -647,14 +719,21 @@ func ensureRelTemporal(r *types.Relationship) {
 // Relationship cascade (mirror of node cascade, rule 2 parity)
 // =============================================================================
 
-func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, newVF, newVT types.Instant, props map[string]any, at types.Instant) (*types.Relationship, error) {
+func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, newVF, newVT types.Instant, props map[string]any, at types.Instant, windows ...types.TemporalRange) (*types.Relationship, error) {
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err
 	}
-	if newVF == 0 {
+	newToFinite := newVT != 0
+	if len(windows) > 0 {
+		if err := windows[0].Validate(); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidTimeRange, err)
+		}
+		newVF, newVT, newToFinite = startKey(windows[0].From), windows[0].To.Value, windows[0].To.Finite
+	}
+	if len(windows) == 0 && newVF == 0 {
 		return nil, fmt.Errorf("%w: cascade requires non-zero validFrom", ErrInvalidTimeRange)
 	}
-	if newVT != 0 && newVF >= newVT {
+	if newToFinite && newVF >= newVT {
 		return nil, fmt.Errorf("%w: validFrom %d >= validTo %d", ErrInvalidTimeRange, newVF, newVT)
 	}
 	if err := checkCtx(ctx); err != nil {
@@ -701,6 +780,15 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 		return nil, err
 	}
 
+	if len(windows) > 0 {
+		if segments, ok := c.store.(storepkg.RelSegmentCapability); ok {
+			if _, err := segments.RelSegmentStats(current.TypeToken().Value()); err == nil {
+				return nil, storepkg.ErrCapabilityNotSupported
+			} else if !errors.Is(err, storepkg.ErrRelSegmentNotDeclared) {
+				return nil, err
+			}
+		}
+	}
 	// Template: the current row — see the node cascade.
 	template := current
 
@@ -718,13 +806,19 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 	// not "positionally-next row after src").
 	appended := make([]*types.Relationship, 0, 4)
 	prevHashes := make([]string, 0, 4)
-	if newVT != 0 {
+	if newToFinite {
 		if src, err := c.resolveRelVersionAt(append([]*types.Relationship(nil), preChain...), newVT); err == nil && src != nil {
-			resumptionEnd := relResumptionEnd(c, preChain, newVT)
+			resumptionEnd := relResumptionBound(c, preChain, newVT)
 			resumption := src.DeepCopy()
 			ensureRelTemporal(resumption)
 			resumption.Temporal().ValidFrom = newVT
-			resumption.Temporal().ValidTo = resumptionEnd
+			resumption.Temporal().ValidTo = resumptionEnd.Value
+			resumption.Temporal().ValidEndpoints = 0
+			if len(windows) > 0 || src.Temporal().HasValidBounds() || (resumptionEnd.Finite && resumptionEnd.Value == 0) {
+				if err := resumption.Temporal().SetValidBounds(types.TemporalRange{From: finite(newVT), To: resumptionEnd}); err != nil {
+					return nil, err
+				}
+			}
 			stampAppendedRow(resumption.Temporal(), now)
 			appended = append(appended, resumption)
 			prevHashes = append(prevHashes, relHashOf(src))
@@ -736,7 +830,7 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 	// Patch over the then-valid state, piece by piece — mirror of the node
 	// cascade (see nodeCorrectionSegments). Endpoints and type are immutable,
 	// so every base row carries the same ones; only properties differ.
-	segments, err := c.relCorrectionSegments(preChain, template, newVF, newVT)
+	segments, err := c.relCorrectionSegments(preChain, template, newVF, newVT, windows...)
 	if err != nil {
 		return nil, err
 	}
@@ -770,7 +864,7 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 	var newCurrent *types.Relationship
 	for i := range postChain {
 		entry := postChain[i]
-		if _, vEnd := c.relOwnBounds(entry); vEnd != 0 {
+		if c.relOwnRange(entry).To.Finite {
 			continue
 		}
 		if newCurrent == nil || relBeliefNewerThan(entry, newCurrent) {

@@ -17,7 +17,7 @@ const (
 // existed decode with FormatVersion == 0 and are treated as version 1 — the
 // two layouts are identical, the explicit field simply makes future layouts
 // self-describing. Decoding a row with a version GREATER than
-// maxReadableWireFormatVersion (RetractedWireFormatVersion, below)
+// maxReadableWireFormatVersion (CurrentWireFormatVersion, below)
 // fails closed with store.ErrWireFormatVersionUnsupported instead of silently
 // zero-filling fields this binary does not know about.
 //
@@ -35,22 +35,23 @@ const (
 // and v2 (fixed tail) transparently — msgpack map keys are self-describing, so
 // no version branch is needed on read; the fv guard still fails a FUTURE
 // version closed with ErrWireFormatVersionUnsupported. See wire_temporal_tail.go.
-const CurrentWireFormatVersion = 2
+// v4 adds explicit endpoint presence (ep), including finite epoch zero. Fresh
+// writes and writable directory markers advance to v4 globally. Existing v0..3
+// rows remain readable; explicit old-format encodings retain their bytes.
+const CurrentWireFormatVersion = 4
 
-// RetractedWireFormatVersion is the per-row format version of a retraction
-// tombstone (Retracted, map key "rx", backlog 43). The layout is v2's; the
-// bump exists so a binary that predates the marker (it decodes fv <= 2 and
-// skips the unknown key "rx", which would answer a retraction as a plain
-// Delete) fails closed with store.ErrWireFormatVersionUnsupported. Only rows
-// with Retracted carry it: every other row, and the store-level format marker,
-// stay at CurrentWireFormatVersion, so an older binary still opens stores,
-// exports and change feeds that hold no retraction. Rows v4.49.1 wrote (fv=2
-// plus "rx") still decode as retractions.
+// EndpointWireFormatVersion introduces explicit finite/infinite endpoint
+// presence. Its minimum is stable even when the current format advances.
+const EndpointWireFormatVersion = 4
+
+// RetractedWireFormatVersion is the minimum row version for the retraction
+// marker introduced in4.49.2. Fresh rows now use v4, while explicit v2+rx
+// legacy rows remain readable and explicit retraction writes below v3 rise to3.
 const RetractedWireFormatVersion = 3
 
 // maxReadableWireFormatVersion is the highest per-row format version every
 // decoder accepts. A variable only so a test can play an older reader.
-var maxReadableWireFormatVersion uint8 = RetractedWireFormatVersion
+var maxReadableWireFormatVersion uint8 = CurrentWireFormatVersion
 
 // checkRowFormatVersion fails a row written by a newer release closed.
 func checkRowFormatVersion(what string, fv uint8) error {
@@ -85,20 +86,21 @@ type NodeWire struct {
 	// FormatVersion is the per-row wire format version. 0 means the row was
 	// written before versioning existed (decode as version 1). See
 	// CurrentWireFormatVersion for the bump protocol.
-	FormatVersion uint8          `msgpack:"fv,omitempty"`
-	ID            int64          `msgpack:"id"`
-	PrimaryLabel  int            `msgpack:"pl"`
-	ExtraLabels   []int          `msgpack:"el,omitempty"`
-	Properties    []PropertyWire `msgpack:"p,omitempty"`
-	Version       int            `msgpack:"v"`
-	HasTemporal   bool           `msgpack:"ht,omitempty"`
-	ValidFrom     int64          `msgpack:"vf,omitempty"`
-	ValidTo       int64          `msgpack:"vt,omitempty"`
-	TxFrom        int64          `msgpack:"tf,omitempty"`
-	TxTo          int64          `msgpack:"tt,omitempty"`
-	CreatedAt     int64          `msgpack:"ca,omitempty"`
-	UpdatedAt     int64          `msgpack:"ua,omitempty"`
-	DeletedAt     int64          `msgpack:"da,omitempty"`
+	FormatVersion  uint8          `msgpack:"fv,omitempty"`
+	ID             int64          `msgpack:"id"`
+	PrimaryLabel   int            `msgpack:"pl"`
+	ExtraLabels    []int          `msgpack:"el,omitempty"`
+	Properties     []PropertyWire `msgpack:"p,omitempty"`
+	Version        int            `msgpack:"v"`
+	HasTemporal    bool           `msgpack:"ht,omitempty"`
+	ValidFrom      int64          `msgpack:"vf,omitempty"`
+	ValidTo        int64          `msgpack:"vt,omitempty"`
+	ValidEndpoints uint8          `msgpack:"ep,omitempty"`
+	TxFrom         int64          `msgpack:"tf,omitempty"`
+	TxTo           int64          `msgpack:"tt,omitempty"`
+	CreatedAt      int64          `msgpack:"ca,omitempty"`
+	UpdatedAt      int64          `msgpack:"ua,omitempty"`
+	DeletedAt      int64          `msgpack:"da,omitempty"`
 	// Retracted is types.TemporalMetadata.Retracted (backlog 43): an
 	// optional key emitted only on a retraction tombstone, so every other
 	// row encodes exactly as before. A binary that predates it skips the key
@@ -120,21 +122,22 @@ type RelWire struct {
 	// FormatVersion is the per-row wire format version. 0 means the row was
 	// written before versioning existed (decode as version 1). See
 	// CurrentWireFormatVersion for the bump protocol.
-	FormatVersion uint8          `msgpack:"fv,omitempty"`
-	ID            int64          `msgpack:"id"`
-	RelType       int            `msgpack:"rt"`
-	StartID       int64          `msgpack:"s"`
-	EndID         int64          `msgpack:"e"`
-	Properties    []PropertyWire `msgpack:"p,omitempty"`
-	Version       int            `msgpack:"v"`
-	HasTemporal   bool           `msgpack:"ht,omitempty"`
-	ValidFrom     int64          `msgpack:"vf,omitempty"`
-	ValidTo       int64          `msgpack:"vt,omitempty"`
-	TxFrom        int64          `msgpack:"tf,omitempty"`
-	TxTo          int64          `msgpack:"tt,omitempty"`
-	CreatedAt     int64          `msgpack:"ca,omitempty"`
-	UpdatedAt     int64          `msgpack:"ua,omitempty"`
-	DeletedAt     int64          `msgpack:"da,omitempty"`
+	FormatVersion  uint8          `msgpack:"fv,omitempty"`
+	ID             int64          `msgpack:"id"`
+	RelType        int            `msgpack:"rt"`
+	StartID        int64          `msgpack:"s"`
+	EndID          int64          `msgpack:"e"`
+	Properties     []PropertyWire `msgpack:"p,omitempty"`
+	Version        int            `msgpack:"v"`
+	HasTemporal    bool           `msgpack:"ht,omitempty"`
+	ValidFrom      int64          `msgpack:"vf,omitempty"`
+	ValidTo        int64          `msgpack:"vt,omitempty"`
+	ValidEndpoints uint8          `msgpack:"ep,omitempty"`
+	TxFrom         int64          `msgpack:"tf,omitempty"`
+	TxTo           int64          `msgpack:"tt,omitempty"`
+	CreatedAt      int64          `msgpack:"ca,omitempty"`
+	UpdatedAt      int64          `msgpack:"ua,omitempty"`
+	DeletedAt      int64          `msgpack:"da,omitempty"`
 	// Retracted is types.TemporalMetadata.Retracted (backlog 43): an
 	// optional key emitted only on a retraction tombstone, so every other
 	// row encodes exactly as before. A binary that predates it skips the key
@@ -211,9 +214,13 @@ func NodeToWireChecked(n *types.Node) (NodeWire, error) {
 	w.Properties = props
 
 	if tm := n.Temporal(); tm != nil {
+		if err := tm.ValidateValidBounds(); err != nil {
+			return NodeWire{}, err
+		}
 		w.HasTemporal = true
 		w.ValidFrom = int64(tm.ValidFrom)
 		w.ValidTo = int64(tm.ValidTo)
+		w.ValidEndpoints = uint8(tm.ValidEndpoints)
 		w.TxFrom = int64(tm.TxFrom)
 		w.TxTo = int64(tm.TxTo)
 		w.CreatedAt = int64(tm.CreatedAt)
@@ -278,16 +285,17 @@ func applyNodeWireFields(n *types.Node, w NodeWire, props types.PropertySlice) e
 
 	if w.HasTemporal {
 		tm := &types.TemporalMetadata{
-			ValidFrom: types.Instant(w.ValidFrom),
-			ValidTo:   types.Instant(w.ValidTo),
-			TxFrom:    types.Instant(w.TxFrom),
-			TxTo:      types.Instant(w.TxTo),
-			CreatedAt: types.Instant(w.CreatedAt),
-			UpdatedAt: types.Instant(w.UpdatedAt),
-			DeletedAt: types.Instant(w.DeletedAt),
-			Retracted: w.Retracted,
-			CreatedBy: w.CreatedBy,
-			UpdatedBy: w.UpdatedBy,
+			ValidFrom:      types.Instant(w.ValidFrom),
+			ValidTo:        types.Instant(w.ValidTo),
+			ValidEndpoints: types.EndpointPresence(w.ValidEndpoints),
+			TxFrom:         types.Instant(w.TxFrom),
+			TxTo:           types.Instant(w.TxTo),
+			CreatedAt:      types.Instant(w.CreatedAt),
+			UpdatedAt:      types.Instant(w.UpdatedAt),
+			DeletedAt:      types.Instant(w.DeletedAt),
+			Retracted:      w.Retracted,
+			CreatedBy:      w.CreatedBy,
+			UpdatedBy:      w.UpdatedBy,
 		}
 		if w.BaseEntityID != 0 {
 			tm.SetBaseEntityID(types.EntityID(w.BaseEntityID))
@@ -360,9 +368,13 @@ func RelToWireChecked(r *types.Relationship) (RelWire, error) {
 	w.Properties = props
 
 	if tm := r.Temporal(); tm != nil {
+		if err := tm.ValidateValidBounds(); err != nil {
+			return RelWire{}, err
+		}
 		w.HasTemporal = true
 		w.ValidFrom = int64(tm.ValidFrom)
 		w.ValidTo = int64(tm.ValidTo)
+		w.ValidEndpoints = uint8(tm.ValidEndpoints)
 		w.TxFrom = int64(tm.TxFrom)
 		w.TxTo = int64(tm.TxTo)
 		w.CreatedAt = int64(tm.CreatedAt)
@@ -420,16 +432,17 @@ func applyRelWireFields(r *types.Relationship, w RelWire, props types.PropertySl
 
 	if w.HasTemporal {
 		tm := &types.TemporalMetadata{
-			ValidFrom: types.Instant(w.ValidFrom),
-			ValidTo:   types.Instant(w.ValidTo),
-			TxFrom:    types.Instant(w.TxFrom),
-			TxTo:      types.Instant(w.TxTo),
-			CreatedAt: types.Instant(w.CreatedAt),
-			UpdatedAt: types.Instant(w.UpdatedAt),
-			DeletedAt: types.Instant(w.DeletedAt),
-			Retracted: w.Retracted,
-			CreatedBy: w.CreatedBy,
-			UpdatedBy: w.UpdatedBy,
+			ValidFrom:      types.Instant(w.ValidFrom),
+			ValidTo:        types.Instant(w.ValidTo),
+			ValidEndpoints: types.EndpointPresence(w.ValidEndpoints),
+			TxFrom:         types.Instant(w.TxFrom),
+			TxTo:           types.Instant(w.TxTo),
+			CreatedAt:      types.Instant(w.CreatedAt),
+			UpdatedAt:      types.Instant(w.UpdatedAt),
+			DeletedAt:      types.Instant(w.DeletedAt),
+			Retracted:      w.Retracted,
+			CreatedBy:      w.CreatedBy,
+			UpdatedBy:      w.UpdatedBy,
 		}
 		if w.BaseEntityID != 0 {
 			tm.SetBaseEntityID(types.EntityID(w.BaseEntityID))
@@ -644,6 +657,12 @@ func validateNodeWireFields(w NodeWire) error {
 	if !w.HasTemporal && nodeWireHasTemporalPayload(w) {
 		return fmt.Errorf("node wire: temporal fields set while has_temporal is false")
 	}
+	if err := (&types.TemporalMetadata{ValidFrom: types.Instant(w.ValidFrom), ValidTo: types.Instant(w.ValidTo), ValidEndpoints: types.EndpointPresence(w.ValidEndpoints)}).ValidateValidBounds(); err != nil {
+		return err
+	}
+	if w.ValidEndpoints != 0 && w.FormatVersion < EndpointWireFormatVersion {
+		return fmt.Errorf("endpoint presence requires wire format v4")
+	}
 	if w.ValidFrom != 0 && w.ValidTo != 0 && w.ValidFrom >= w.ValidTo {
 		return fmt.Errorf("node wire: valid_from %d must be before valid_to %d", w.ValidFrom, w.ValidTo)
 	}
@@ -654,7 +673,7 @@ func validateNodeWireFields(w NodeWire) error {
 }
 
 func nodeWireHasTemporalPayload(w NodeWire) bool {
-	return w.ValidFrom != 0 ||
+	return w.ValidEndpoints != 0 || w.ValidFrom != 0 ||
 		w.ValidTo != 0 ||
 		w.TxFrom != 0 ||
 		w.TxTo != 0 ||
@@ -707,6 +726,12 @@ func validateRelWireFields(w RelWire) error {
 	if !w.HasTemporal && relWireHasTemporalPayload(w) {
 		return fmt.Errorf("relationship wire: temporal fields set while has_temporal is false")
 	}
+	if err := (&types.TemporalMetadata{ValidFrom: types.Instant(w.ValidFrom), ValidTo: types.Instant(w.ValidTo), ValidEndpoints: types.EndpointPresence(w.ValidEndpoints)}).ValidateValidBounds(); err != nil {
+		return err
+	}
+	if w.ValidEndpoints != 0 && w.FormatVersion < EndpointWireFormatVersion {
+		return fmt.Errorf("endpoint presence requires wire format v4")
+	}
 	if w.ValidFrom != 0 && w.ValidTo != 0 && w.ValidFrom >= w.ValidTo {
 		return fmt.Errorf("relationship wire: valid_from %d must be before valid_to %d", w.ValidFrom, w.ValidTo)
 	}
@@ -717,7 +742,7 @@ func validateRelWireFields(w RelWire) error {
 }
 
 func relWireHasTemporalPayload(w RelWire) bool {
-	return w.ValidFrom != 0 ||
+	return w.ValidEndpoints != 0 || w.ValidFrom != 0 ||
 		w.ValidTo != 0 ||
 		w.TxFrom != 0 ||
 		w.TxTo != 0 ||

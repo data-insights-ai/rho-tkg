@@ -18,11 +18,33 @@ import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 // merge on content in the consumer if one interval is wanted.
 type NodeSegment struct {
 	ValidFrom, ValidTo types.Instant
+	ValidEndpoints     types.EndpointPresence
 	Node               *types.Node
 }
 
 // RelSegment is NodeSegment for relationships (API.RelEffectiveTimeline).
 type RelSegment struct {
 	ValidFrom, ValidTo types.Instant
+	ValidEndpoints     types.EndpointPresence
 	Rel                *types.Relationship
+}
+
+// Bounds returns exact finite/unbounded endpoints, including a finite zero.
+func (s NodeSegment) Bounds() types.TemporalRange {
+	tm := types.TemporalMetadata{ValidFrom: s.ValidFrom, ValidTo: s.ValidTo, ValidEndpoints: s.ValidEndpoints}
+	r, explicit := tm.ValidBounds()
+	if !explicit {
+		r.From.Finite = true
+	}
+	return r
+}
+
+// Bounds is the relationship counterpart of NodeSegment.Bounds.
+func (s RelSegment) Bounds() types.TemporalRange {
+	tm := types.TemporalMetadata{ValidFrom: s.ValidFrom, ValidTo: s.ValidTo, ValidEndpoints: s.ValidEndpoints}
+	r, explicit := tm.ValidBounds()
+	if !explicit {
+		r.From.Finite = true
+	}
+	return r
 }
