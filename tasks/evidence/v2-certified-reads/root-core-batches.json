@@ -1,0 +1,253 @@
+{
+  "date": "2026-10-11",
+  "base": "f566c73294f4845e3c36b02f46f788c4531780dd",
+  "source_fix_accepted": true,
+  "hosted_full_gate": "pending",
+  "source_manifest_sha256": "f73e9311794e53e06407a2f1be68e71b47871bbcdbde05c01d604a90f4338a3c",
+  "source_files": {
+    "Makefile": "61479044e57cf096e51cda6145aa912c2a8b9a3f75c9c17c8d187102732eb4b6",
+    ".github/workflows/ci.yml": "5c3f7379d75f4d2899b070bfe9ab707ef4fc065e03aa536cb75c3dfbae7da2fb",
+    "scripts/test-race.sh": "4bcc75d81f652dfde2c4f2f6c52f86ddf0b42c5796ac9079265fa643c2bd3f92"
+  },
+  "archive": "root-core-batches.tar.gz",
+  "archive_sha256": "a53dc86675f10f59413c7d08b0cb081d6d70444ac3ead3910a4d83bbe70b7725",
+  "archive_bytes": 9647,
+  "files": [
+    {
+      "path": "author/actionlint-budget.json",
+      "sha256": "024d81f8ed9be939bd0a06391349a81a05ee0387c75a4722be3b9793f4b856ea",
+      "bytes": 274
+    },
+    {
+      "path": "author/actionlint.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "author/author-receipt.json",
+      "sha256": "dd95b1d3e491e7d729e5e702090ca99e5ea1281793556ff5210413a4e9de248d",
+      "bytes": 2497
+    },
+    {
+      "path": "author/baseline-budget.json",
+      "sha256": "9517bfb156f72ee0641feef0b4eb9fc0f8fa18daa43f1aace993a592bc011379",
+      "bytes": 296
+    },
+    {
+      "path": "author/baseline-no-core-split.log",
+      "sha256": "e1499a8ea685a3a076665d1d5a511fe4c75b1da5b08aec70d8b9e1597a27fadb",
+      "bytes": 234
+    },
+    {
+      "path": "author/baseline.json",
+      "sha256": "97f010441fb929351276564c0d05cc42ffc0832e0ef103c3dab9e8a93519070f",
+      "bytes": 132
+    },
+    {
+      "path": "author/bash-provenance.log",
+      "sha256": "de9dadf321eb1d8a2dfe2e67f7c00652983f1fcf5cde14a28596fc3f0cbb508f",
+      "bytes": 109
+    },
+    {
+      "path": "author/bash-syntax-budget.json",
+      "sha256": "09bc83b39e13bcbed054e74cb851f4e6fdbcc1381580288f768b2fb839a71e8e",
+      "bytes": 251
+    },
+    {
+      "path": "author/bash-syntax.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "author/blank-shards.log",
+      "sha256": "880a9b072bfe3f47e33a2c0287d26aea6597b7beee9fb59c6bccb0eaf0208a48",
+      "bytes": 122
+    },
+    {
+      "path": "author/checks-budget.json",
+      "sha256": "2904894289b20401123ff095edcda3ace423ef4efc9a385474c2e3fec1dabb75",
+      "bytes": 282
+    },
+    {
+      "path": "author/checks.json",
+      "sha256": "9cc69e0240e9a3edc14ea3d1ddf1a2a0b1ae25f6250c1c74dda4a2aff6dbc643",
+      "bytes": 1931
+    },
+    {
+      "path": "author/checks.log",
+      "sha256": "5963ece8d6630f56a7b0583a86e4510c704bb16b5fd78a0442718839ab7a79a4",
+      "bytes": 2304
+    },
+    {
+      "path": "author/checks.py",
+      "sha256": "9a6a1a7c8d8403c21210b9d2c176e1d58ee18080fcd6c7d8363074c867abc2f4",
+      "bytes": 6854
+    },
+    {
+      "path": "author/complete.log",
+      "sha256": "f01ad37457041552973c51f739fc4899401c717e99fdd76ec5bfb0366bf9d1dc",
+      "bytes": 2450
+    },
+    {
+      "path": "author/core-list-failure.log",
+      "sha256": "a5c226613c7c691ddf8ee144f515f05003063c68b73db229fa04f9ecbce177ff",
+      "bytes": 250
+    },
+    {
+      "path": "author/core-only.log",
+      "sha256": "ef2c0f81a032d2b3b2c7cf05c85b9a2f49630bd1f33e7bd07a24d079708e6d52",
+      "bytes": 2211
+    },
+    {
+      "path": "author/default-unsplit.log",
+      "sha256": "b948efe03276687a1889c01423488975530ca8408abac3efc12740dcb789c540",
+      "bytes": 233
+    },
+    {
+      "path": "author/dry-16.log",
+      "sha256": "6a2cce8bcb8a0b78d6d04f96e89d57feae7bdd4e022218cb8bfbfaea4a8f8c9b",
+      "bytes": 279
+    },
+    {
+      "path": "author/dry-17.log",
+      "sha256": "6a2cce8bcb8a0b78d6d04f96e89d57feae7bdd4e022218cb8bfbfaea4a8f8c9b",
+      "bytes": 279
+    },
+    {
+      "path": "author/dry-18.log",
+      "sha256": "6a2cce8bcb8a0b78d6d04f96e89d57feae7bdd4e022218cb8bfbfaea4a8f8c9b",
+      "bytes": 279
+    },
+    {
+      "path": "author/dry-19.log",
+      "sha256": "6a2cce8bcb8a0b78d6d04f96e89d57feae7bdd4e022218cb8bfbfaea4a8f8c9b",
+      "bytes": 279
+    },
+    {
+      "path": "author/dry-20.log",
+      "sha256": "6ea3e67a4b3509f6cb91fcb794a2cc9ebf7d0fa0bd5b50a5bdb609848be3ca96",
+      "bytes": 35
+    },
+    {
+      "path": "author/dry-21.log",
+      "sha256": "405c58b452714278351fe93acbbc1eaa82af217ce45ff5b80e92e0d5389a43b2",
+      "bytes": 35
+    },
+    {
+      "path": "author/duplicate-names.log",
+      "sha256": "29b00cffd68b3fe6616c45633f675b178c30e26a8fbe3f03f578f126a1f133d8",
+      "bytes": 718
+    },
+    {
+      "path": "author/duplicate-packages.log",
+      "sha256": "fd727d60f4e0d3944bbc4058bb071994bc315b77c0cccc4df79951c67fabf526",
+      "bytes": 443
+    },
+    {
+      "path": "author/empty-inventory.log",
+      "sha256": "0f4a3f67fe5868a999e48b50ce5de79d579d4ec1c976811289584fe74f43c483",
+      "bytes": 727
+    },
+    {
+      "path": "author/go-list-flag-source-proof.json",
+      "sha256": "aa0286e5b36b781d726cf0573c846a4b50813c8f6761b7e69cedfe7516a91b60",
+      "bytes": 1080
+    },
+    {
+      "path": "author/invalid-shards.log",
+      "sha256": "60d48ddfff234e1042b447a0fb881495b5aca48c60222dd1fc3c9c8170834b13",
+      "bytes": 123
+    },
+    {
+      "path": "author/inventory-failure.log",
+      "sha256": "116c9b2c417d929006e2b871f8e4b6202947831787b6e42064807a3759aca55d",
+      "bytes": 673
+    },
+    {
+      "path": "author/missing-footer.log",
+      "sha256": "0f4a3f67fe5868a999e48b50ce5de79d579d4ec1c976811289584fe74f43c483",
+      "bytes": 727
+    },
+    {
+      "path": "author/new-names.log",
+      "sha256": "f443d87cbf8d1cea242c4004e4262b65fed0ba9394bcdce61e88554f904ea8f5",
+      "bytes": 2543
+    },
+    {
+      "path": "author/other-failure.log",
+      "sha256": "afda3e192fe3239302b7db4871059279af45d3dd627194d83ad2415c5880cfa5",
+      "bytes": 980
+    },
+    {
+      "path": "author/package-list-failure.log",
+      "sha256": "7b8f28fecd69902eebed882c14f4026d95d25660f23a4534cb30ed9bbe02c644",
+      "bytes": 404
+    },
+    {
+      "path": "author/regex-literals.log",
+      "sha256": "19728d6fe10ab32d03e755d511d5d76d3ce5256cd3428b37c7cd5ad371db4542",
+      "bytes": 2559
+    },
+    {
+      "path": "author/shard-failure.log",
+      "sha256": "1e5a2c05aec0476bfcc4b4f77d04b9bdf06ff96fefb20204b59fad4d58c58a2a",
+      "bytes": 1694
+    },
+    {
+      "path": "author/shellcheck-budget.json",
+      "sha256": "97b6bca4eecd29edb9036b9db5628ea3009e10a54a3309567774e1777f8df990",
+      "bytes": 262
+    },
+    {
+      "path": "author/shellcheck.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "author/shuffled.log",
+      "sha256": "f01ad37457041552973c51f739fc4899401c717e99fdd76ec5bfb0366bf9d1dc",
+      "bytes": 2450
+    },
+    {
+      "path": "author/source.json",
+      "sha256": "f73e9311794e53e06407a2f1be68e71b47871bbcdbde05c01d604a90f4338a3c",
+      "bytes": 354
+    },
+    {
+      "path": "author/too-few.log",
+      "sha256": "0f4a3f67fe5868a999e48b50ce5de79d579d4ec1c976811289584fe74f43c483",
+      "bytes": 727
+    },
+    {
+      "path": "author/unexpected-inventory.log",
+      "sha256": "1cd2435a1fd384ada19db891767a34ca134da2caad1305c7d0f69b3cead2bc9b",
+      "bytes": 735
+    },
+    {
+      "path": "review/REVIEW.md",
+      "sha256": "a391f25778654b5722efa512f0a108804dcc3e151012d414aa1492b9491b2362",
+      "bytes": 4482
+    },
+    {
+      "path": "review/receipt.json",
+      "sha256": "36ca745275fed54d0d975e30edbee84c331af4e6f5d9bf51bb1a78e94c9f1957",
+      "bytes": 591
+    }
+  ],
+  "review": {
+    "source_fix_mergeable": true,
+    "source_recommendation": "accept",
+    "hosted_full_gate_passed": false,
+    "hosted_acceptance": "pending",
+    "blocking_findings": [],
+    "nonblocking_defects": [],
+    "source_manifest_sha256": "f73e9311794e53e06407a2f1be68e71b47871bbcdbde05c01d604a90f4338a3c",
+    "author_receipt_sha256": "dd95b1d3e491e7d729e5e702090ca99e5ea1281793556ff5210413a4e9de248d",
+    "fake_guards": 22,
+    "bash": "3.2.57",
+    "real_local_go_list_compile_tests": false,
+    "reviewer_runtime": false,
+    "report_sha256": "a391f25778654b5722efa512f0a108804dcc3e151012d414aa1492b9491b2362"
+  },
+  "qualification": "CI scheduling change only. Default root race command unchanged; CI opts into four exhaustive sequential core batches, with whole top-level Test/Fuzz/Example names and all other packages once. Resource limits, timeouts, race/short/count flags and module dispatch unchanged. Fake-Go/static checks and source review pass; no actual local Go compile/list/race execution claimed. Full hosted run at final integration hash is required."
+}

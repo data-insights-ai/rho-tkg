@@ -7,6 +7,8 @@ SHELL := /bin/bash
 BENCH_COUNT ?= 1
 BENCH_TIME ?= 1s
 PROD_BENCH_COUNT ?= 1
+# CI opts into four exhaustive core batches; local defaults remain unsplit.
+ROOT_RACE_CORE_SHARDS ?= 1
 GOLANGCI_LINT_VERSION ?= v2.13.2
 GOSEC_VERSION ?= v2.29.0
 GOVULNCHECK_VERSION ?= v1.7.0
@@ -48,7 +50,7 @@ test-v:
 
 # Run tests with race detector
 test-race:
-	go test -short -race -count=1 ./...
+	$(SHELL) scripts/test-race.sh "$(ROOT_RACE_CORE_SHARDS)"
 
 # Run integration tests (long-running, not short)
 test-integration:

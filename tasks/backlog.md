@@ -218,6 +218,12 @@ reviewed and validated before the next package starts.
    the unchanged v4 core race package reaches its ten-minute timeout. The earlier
    scheduling adjustment has not eliminated this recurrence. Its terminal failure
    log is retained with the acceptance record; the CI follow-up remains open.
+   The reviewed [shared race dispatcher](evidence/v2-certified-reads/root-core-batches.json)
+   now assigns the compiled core Test/Fuzz/Example inventory to four exhaustive,
+   sequential CI batches, keeping each parent and its subtests together. The local
+   default, all other packages, race flags and resource/time limits are unchanged.
+   Its 22 dispatch/error guards and static checks pass; actual hosted execution at
+   the integrated hash is still required to close this follow-up.
    Subsequent [prepared-snapshot preclaim integration](evidence/v2-certified-reads/preclaim-integration.json)
    accepts external `0ebb025f` with the existing AS5/recovery contracts preserved:
    13 gates pass, the new Check is directly covered at 100%, and a genuine AS5
