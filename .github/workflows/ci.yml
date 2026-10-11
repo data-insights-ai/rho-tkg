@@ -23,6 +23,9 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/private-badger
+        with:
+          deploy-key: ${{ secrets.BADGER_READ_DEPLOY_KEY }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -31,6 +34,15 @@ jobs:
       - run: make build
       - run: make test
       - run: make test-race
+
+      - name: Report check duration
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${GO_CHECK_STARTED_AT:-}" ]]; then
+            seconds=$(( $(date +%s) - GO_CHECK_STARTED_AT ))
+            echo "Go check duration: ${seconds}s (including dependency setup)" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   # Blocking: fails below the 80% floor (project rule, Testing Rules #7).
   # `make cover-gate` runs its own short-mode suite over ./pkg/... — separate
@@ -42,11 +54,23 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/private-badger
+        with:
+          deploy-key: ${{ secrets.BADGER_READ_DEPLOY_KEY }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
       - run: make cover-gate
+
+      - name: Report check duration
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${GO_CHECK_STARTED_AT:-}" ]]; then
+            seconds=$(( $(date +%s) - GO_CHECK_STARTED_AT ))
+            echo "Go check duration: ${seconds}s (including dependency setup)" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   # Lint runs on pull requests only and is BLOCKING for findings introduced by
   # the PR itself (only-new-issues). The repo carries a documented pre-existing
@@ -61,6 +85,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - uses: ./.github/actions/private-badger
+        with:
+          deploy-key: ${{ secrets.BADGER_READ_DEPLOY_KEY }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -71,11 +98,23 @@ jobs:
           only-new-issues: true
           args: --timeout=5m
 
+      - name: Report check duration
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${GO_CHECK_STARTED_AT:-}" ]]; then
+            seconds=$(( $(date +%s) - GO_CHECK_STARTED_AT ))
+            echo "Go check duration: ${seconds}s (including dependency setup)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   security:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/private-badger
+        with:
+          deploy-key: ${{ secrets.BADGER_READ_DEPLOY_KEY }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -83,3 +122,12 @@ jobs:
       - run: make tools
       - run: make security
       - run: make vulncheck
+
+      - name: Report check duration
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${GO_CHECK_STARTED_AT:-}" ]]; then
+            seconds=$(( $(date +%s) - GO_CHECK_STARTED_AT ))
+            echo "Go check duration: ${seconds}s (including dependency setup)" >> "$GITHUB_STEP_SUMMARY"
+          fi

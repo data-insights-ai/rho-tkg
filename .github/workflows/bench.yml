@@ -36,6 +36,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   bench-gate:
     if: github.event_name == 'pull_request'
@@ -64,6 +68,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: ./.github/actions/private-badger
+        with:
+          deploy-key: ${{ secrets.BADGER_READ_DEPLOY_KEY }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -108,6 +115,15 @@ jobs:
             exit "$status"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Report check duration
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${GO_CHECK_STARTED_AT:-}" ]]; then
+            seconds=$(( $(date +%s) - GO_CHECK_STARTED_AT ))
+            echo "Go check duration: ${seconds}s (including dependency setup)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   bench-compare:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -116,6 +132,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: ./.github/actions/private-badger
+        with:
+          deploy-key: ${{ secrets.BADGER_READ_DEPLOY_KEY }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -172,3 +191,12 @@ jobs:
             echo
             echo "_Informational only — full suite incl. the measurement studies at a single -count=1 sample. The BLOCKING per-PR gate is the bench-gate job (core scenarios, medians of 3; PinnedRelPropertyLookup 5, allocs-gated)._"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report check duration
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${GO_CHECK_STARTED_AT:-}" ]]; then
+            seconds=$(( $(date +%s) - GO_CHECK_STARTED_AT ))
+            echo "Go check duration: ${seconds}s (including dependency setup)" >> "$GITHUB_STEP_SUMMARY"
+          fi
