@@ -376,7 +376,7 @@ func decodeWireUint8(dec *msgpack.Decoder) (uint8, error) {
 	if err != nil {
 		return 0, err
 	}
-	if !(code <= 0x7f || code >= 0xe0 || (code >= 0xcc && code <= 0xd3)) {
+	if code > 0x7f && code < 0xe0 && (code < 0xcc || code > 0xd3) {
 		return 0, fmt.Errorf("%w: wire byte must be an integer", storepkg.ErrCorruptWire)
 	}
 	v, err := dec.DecodeInt64()

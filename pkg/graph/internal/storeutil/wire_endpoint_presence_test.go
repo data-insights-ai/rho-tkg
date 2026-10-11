@@ -305,7 +305,7 @@ func TestEndpointPresenceContentHashPolicyAndCompactFallback(t *testing.T) {
 
 func TestEndpointPresenceNarrowingCannotEraseGuard(t *testing.T) {
 	for _, field := range []string{"ep", "fv"} {
-		for _, value := range []any{int64(-1), uint64(256), uint64(1 << 63), uint64(^uint64(0)), nil, false, "7"} {
+		for _, value := range []any{int64(-1), uint64(256), uint64(1 << 63), ^uint64(0), nil, false, "7"} {
 			m := map[string]any{"id": int64(1001), "pl": 1, "s": int64(1001), "e": int64(1003), "rt": 1, "v": 1, "ht": true, "fv": uint8(4), "ep": uint8(7), "vf": int64(-1), "vt": int64(0)}
 			m[field] = value
 			raw, err := msgpack.Marshal(m)

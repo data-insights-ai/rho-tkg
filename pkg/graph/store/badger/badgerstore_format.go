@@ -66,7 +66,7 @@ func verifyAndStampWireFormatVersionForReader(db *badgerv4.DB, readOnly bool, re
 		return nil
 	}
 	val := make([]byte, 2)
-	binary.BigEndian.PutUint16(val, uint16(readable))
+	binary.BigEndian.PutUint16(val, readable)
 	if err := db.Update(func(txn *badgerv4.Txn) error {
 		return txn.Set(storepkg.WireFormatVersionKey, val)
 	}); err != nil {
