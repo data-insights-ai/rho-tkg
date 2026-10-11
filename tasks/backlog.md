@@ -306,7 +306,9 @@ reviewed and validated before the next package starts.
    detected. Pinned static/security gates pass. Six reproduced correctness
    defects are closed, including scope-refusal poisoning and control-work
    undercharging. E16–E18, ownership/GC, physical hosts, engine comparison and
-   full V2 remain open; hosted CI for this integration is pending.
+   full V2 remain open. [Hosted CI at `30dd0881`](evidence/v2-remote-e15/hosted-ci-30dd0881.json)
+   passed root/v5 normal, race, coverage and security gates plus comparison
+   correctness; PR-only lint is covered by the pinned local pass.
    **Remote E16 accepted locally**, 2026-10-11, at `01f38811`: actual
    prepared votes at floor 89 remain unresolved after a read observes fence
    100, so certification refuses until the original COMMIT at 90 is resolved.

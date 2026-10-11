@@ -44,7 +44,13 @@
     "sha256": "246a1c944d35b2562c40de34ec002fc5419e60a2daffb9b1c13c114fc06582b7",
     "action": "Exact verified profile copied from author tree and explicitly staged despite repository-wide ignore. All 249 sealed artifacts are included in integration."
   },
-  "hosted_ci": "pending for integration commit; earlier b9da041b CI does not cover E15",
+  "hosted_ci": {
+    "record": "hosted-ci-30dd0881.json",
+    "commit": "30dd0881745d95e190b77db26d5a390e89ddfaa6",
+    "run_id": 38164263921,
+    "conclusion": "success",
+    "lint": "PR-only job skipped; pinned local pass recorded"
+  },
   "remaining": [
     "E16-E18 distributed oracle cases",
     "ownership transfer, recovery, identity fencing and application GC",

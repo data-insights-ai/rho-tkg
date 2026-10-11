@@ -26,7 +26,7 @@
     "negative_control": "One isolated pending-to-Applied production mutation fails intended certificate-status assertion; six child processes successfully reaped.",
     "fixture_failure": "Initial four-ID request exceeded existing three-ID test bound; preserved as fixture error, not production RED."
   },
-  "hosted_ci": "E16 integration not yet pushed; E15 CI38164263921 still active when this record was prepared",
+  "hosted_ci": "Pending for the integration containing E16; E15 base30dd0881 passed CI38164263921 separately.",
   "remaining": [
     "E17 actual range transfer and E18 historical correction/index parity",
     "ownership recovery, identity fencing and application GC",
