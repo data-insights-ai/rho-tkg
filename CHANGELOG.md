@@ -48,6 +48,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestMemoryLabelTxMembersOf` / `TestBadgerLabelTxMembersOf` and the relationship mirrors; red runs and mutants
   under `tasks/evidence/cypher-round5/`.
 
+### Changed
+
+- **`Nodes().ForEachDocValuesMulti` serves an empty intersection** (sigma-tkgd round 5 request 3, task record C4r):
+  an intersection of known labels with no common member returns `ok=true` and no rows on memory, badger, sharded and
+  tiered, where it declined (`ok=false`) like an intersection the store cannot build; the caller cannot tell an
+  empty intersection from the labels' counts and had to look for a common member itself. Badger and memory build an
+  empty snapshot (epoch-stamped and cached like any other); sharded and tiered serve the fold empty when every
+  shard's smallest member count proves it holds none (a node lives on one shard). Unchanged: an unknown label, an
+  over-cap intersection and an unbuildable property decline; the single-label doors keep declining an empty label
+  (its count tells the caller). Test: `TestForEachDocValuesMultiServesAnEmptyIntersection` (every backend,
+  two-phase through a node joining and leaving the intersection; red: all four declined).
+
 ### Performance
 
 - **Memory: the ordinal adjacency door and `ScanRelColumns` without a sort per call** (sigma-tkgd round 5 request 2,

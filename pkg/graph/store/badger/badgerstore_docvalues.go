@@ -118,8 +118,8 @@ func (bs *Store) DocValuesSnapshot(labelToken uint16, propKeys []string) (snap t
 // columnar snapshot, building it if stale. Same lock-free, epoch-keyed build and
 // decline contract as ForEachDocValues; membership is the INTERSECTION of the
 // in-RAM label indexes (no valid-time filter). Declines in
-// LabelIndexOnDisk mode, on an empty intersection / over-cap, or for a
-// non-numeric/string column.
+// LabelIndexOnDisk mode, over-cap, or for a non-numeric/string column; an
+// empty intersection is served (ok=true, no rows; round 5 request 3).
 func (bs *Store) ForEachDocValuesMulti(toks []uint16, propKeys []string,
 	fn func(id types.NodeID, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
 	if bs == nil {
@@ -155,14 +155,18 @@ func (bs *Store) ForEachDocValuesMulti(toks []uint16, propKeys []string,
 
 // buildMultiColumns builds a fresh immutable snapshot over a label intersection,
 // mirroring buildLabelColumns (lock-free, epoch-stamped, cached only if the epoch
-// held). declined=true means an empty intersection or over-cap.
+// held). declined=true means over-cap; an empty intersection is an empty
+// snapshot.
 func (bs *Store) buildMultiColumns(toks []uint16, key string, requested []string) (col *indexpkg.LabelDocValues, declined bool) {
 	gen := bs.multiLabelEpoch(toks)
 
 	bs.idxMu.RLock()
 	set := bs.intersectLabelsLocked(toks)
 	n := len(set)
-	if n == 0 || n > indexpkg.MaxDocValuesNodes {
+	// An EMPTY intersection is served (an empty snapshot, round 5 request 3):
+	// the caller cannot tell it from the labels' counts, and a decline sent it
+	// to look for a common member itself. Only over-cap declines.
+	if n > indexpkg.MaxDocValuesNodes {
 		bs.idxMu.RUnlock()
 		return nil, true
 	}

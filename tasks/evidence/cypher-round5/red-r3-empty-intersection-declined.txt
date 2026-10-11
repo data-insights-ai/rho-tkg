@@ -1,0 +1,12 @@
+--- FAIL: TestForEachDocValuesMultiServesAnEmptyIntersection (0.01s)
+    --- FAIL: TestForEachDocValuesMultiServesAnEmptyIntersection/memory (0.00s)
+        docvalues_empty_intersection_test.go:46: disjoint labels: rows=0 ok=false, want an empty served intersection
+    --- FAIL: TestForEachDocValuesMultiServesAnEmptyIntersection/badger (0.00s)
+        docvalues_empty_intersection_test.go:46: disjoint labels: rows=0 ok=false, want an empty served intersection
+    --- FAIL: TestForEachDocValuesMultiServesAnEmptyIntersection/tiered (0.00s)
+        docvalues_empty_intersection_test.go:46: disjoint labels: rows=0 ok=false, want an empty served intersection
+    --- FAIL: TestForEachDocValuesMultiServesAnEmptyIntersection/sharded (0.00s)
+        docvalues_empty_intersection_test.go:46: disjoint labels: rows=0 ok=false, want an empty served intersection
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.325s
+FAIL

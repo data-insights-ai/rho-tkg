@@ -82,6 +82,14 @@ func shardMinLabelCount(shard *badger.Store, tokens []uint16) (int, error) {
 // with members (see the membership note above); its bool is the shard's
 // usable signal. gen is sampled before the first shard is read.
 func (s *Store) foldDocValues(tokens []uint16, call func(idx int, shard *badger.Store) (bool, error)) (gen uint64, ok bool, err error) {
+	return s.foldDocValuesServingEmpty(tokens, false, call)
+}
+
+// foldDocValuesServingEmpty is foldDocValues; with emptyServes a fold in which
+// no shard holds a member of every token (each one proved empty by its
+// counts) is served as an empty answer (ok=true) instead of declined: the
+// intersection door (round 5 request 3).
+func (s *Store) foldDocValuesServingEmpty(tokens []uint16, emptyServes bool, call func(idx int, shard *badger.Store) (bool, error)) (gen uint64, ok bool, err error) {
 	if err := s.checkOpen(); err != nil {
 		return 0, false, err
 	}
@@ -104,7 +112,7 @@ func (s *Store) foldDocValues(tokens []uint16, call func(idx int, shard *badger.
 		}
 		anyOK = true
 	}
-	if !anyOK {
+	if !anyOK && !emptyServes {
 		return 0, false, nil
 	}
 	return gen, true, nil
@@ -148,7 +156,7 @@ func (s *Store) ForEachDocValuesMulti(labelTokens []uint16, propKeys []string,
 		return 0, false, nil
 	}
 	stopped := false
-	return s.foldDocValues(labelTokens, func(_ int, shard *badger.Store) (bool, error) {
+	return s.foldDocValuesServingEmpty(labelTokens, true, func(_ int, shard *badger.Store) (bool, error) {
 		if stopped {
 			return true, nil
 		}
