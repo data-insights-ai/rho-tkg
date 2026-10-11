@@ -5,6 +5,7 @@ import (
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 // Selection-scope temporal decode (store.TemporalMetaHistoryCapability).
@@ -27,17 +28,18 @@ import (
 // returning it to any caller — a selection skeleton must never leave the
 // resolution seam.
 type wireTemporalMetaPartial struct {
-	FormatVersion uint8 `msgpack:"fv"`
-	Version       int   `msgpack:"v"`
-	HasTemporal   bool  `msgpack:"ht"`
-	ValidFrom     int64 `msgpack:"vf"`
-	ValidTo       int64 `msgpack:"vt"`
-	TxFrom        int64 `msgpack:"tf"`
-	TxTo          int64 `msgpack:"tt"`
-	CreatedAt     int64 `msgpack:"ca"`
-	UpdatedAt     int64 `msgpack:"ua"`
-	DeletedAt     int64 `msgpack:"da"`
-	Retracted     bool  `msgpack:"rx"`
+	FormatVersion  uint8 `msgpack:"fv"`
+	Version        int   `msgpack:"v"`
+	HasTemporal    bool  `msgpack:"ht"`
+	ValidFrom      int64 `msgpack:"vf"`
+	ValidTo        int64 `msgpack:"vt"`
+	ValidEndpoints uint8 `msgpack:"ep"`
+	TxFrom         int64 `msgpack:"tf"`
+	TxTo           int64 `msgpack:"tt"`
+	CreatedAt      int64 `msgpack:"ca"`
+	UpdatedAt      int64 `msgpack:"ua"`
+	DeletedAt      int64 `msgpack:"da"`
+	Retracted      bool  `msgpack:"rx"`
 }
 
 // DecodeWireTemporalMeta partially decodes a FULL (non-delta) node or rel wire
@@ -63,41 +65,45 @@ func DecodeWireTemporalMeta(raw []byte) (uint32, *types.TemporalMetadata, error)
 	if err := checkRowFormatVersion("wire temporal meta", w.FormatVersion); err != nil {
 		return 0, nil, err
 	}
-	if w.Version < 0 {
+	if w.Version < 0 || int64(w.Version) > maxWireUint32 {
 		return 0, nil, fmt.Errorf("wire temporal meta: negative version %d: %w", w.Version, storepkg.ErrCorruptWire)
 	}
-	return uint32(w.Version), selectionTemporalMeta(w.HasTemporal, w.ValidFrom, w.ValidTo, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted), nil // #nosec G115 — non-negative checked above
+	if err := validateSelectionTemporal(w); err != nil {
+		return 0, nil, err
+	}
+	return uint32(w.Version), selectionTemporalMeta(w.HasTemporal, w.ValidFrom, w.ValidTo, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted, w.ValidEndpoints), nil // #nosec G115 — non-negative checked above
 }
 
 // SelectionTemporalMetaOfNodeWire builds the selection-scope temporal metadata
 // from an already-decoded NodeWire (a delta row's Meta carries the target
 // version's temporal verbatim, so no partial decode is needed there).
 func SelectionTemporalMetaOfNodeWire(w NodeWire) *types.TemporalMetadata {
-	return selectionTemporalMeta(w.HasTemporal, w.ValidFrom, w.ValidTo, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted)
+	return selectionTemporalMeta(w.HasTemporal, w.ValidFrom, w.ValidTo, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted, w.ValidEndpoints)
 }
 
 // SelectionTemporalMetaOfRelWire mirrors SelectionTemporalMetaOfNodeWire.
 func SelectionTemporalMetaOfRelWire(w RelWire) *types.TemporalMetadata {
-	return selectionTemporalMeta(w.HasTemporal, w.ValidFrom, w.ValidTo, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted)
+	return selectionTemporalMeta(w.HasTemporal, w.ValidFrom, w.ValidTo, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted, w.ValidEndpoints)
 }
 
 // selectionTemporalMeta mirrors applyNodeWireFields' temporal construction for
 // the numeric instants and the retraction marker (a selection input: it caps
 // its life, chainLifeEnds): a temporal block exists iff HasTemporal (the
 // checked decoders reject payload-without-ht, so ht is authoritative).
-func selectionTemporalMeta(ht bool, vf, vt, tf, tt, ca, ua, da int64, rx bool) *types.TemporalMetadata {
+func selectionTemporalMeta(ht bool, vf, vt, tf, tt, ca, ua, da int64, rx bool, ep uint8) *types.TemporalMetadata {
 	if !ht {
 		return nil
 	}
 	return &types.TemporalMetadata{
-		ValidFrom: types.Instant(vf),
-		ValidTo:   types.Instant(vt),
-		TxFrom:    types.Instant(tf),
-		TxTo:      types.Instant(tt),
-		CreatedAt: types.Instant(ca),
-		UpdatedAt: types.Instant(ua),
-		DeletedAt: types.Instant(da),
-		Retracted: rx,
+		ValidFrom:      types.Instant(vf),
+		ValidTo:        types.Instant(vt),
+		ValidEndpoints: types.EndpointPresence(ep),
+		TxFrom:         types.Instant(tf),
+		TxTo:           types.Instant(tt),
+		CreatedAt:      types.Instant(ca),
+		UpdatedAt:      types.Instant(ua),
+		DeletedAt:      types.Instant(da),
+		Retracted:      rx,
 	}
 }
 
@@ -115,8 +121,11 @@ func DecodeWireTxStamps(raw []byte) (txFrom, txTo, deletedAt types.Instant, err 
 	if err := checkRowFormatVersion("wire tx stamps", w.FormatVersion); err != nil {
 		return 0, 0, 0, err
 	}
-	if w.Version < 0 {
+	if w.Version < 0 || int64(w.Version) > maxWireUint32 {
 		return 0, 0, 0, fmt.Errorf("wire tx stamps: negative version %d: %w", w.Version, storepkg.ErrCorruptWire)
+	}
+	if err := validateSelectionTemporal(w); err != nil {
+		return 0, 0, 0, err
 	}
 	if !w.HasTemporal {
 		return 0, 0, 0, nil
@@ -158,4 +167,88 @@ func decodeWireTemporalMetaSlow(raw []byte) (wireTemporalMetaPartial, error) {
 	var w wireTemporalMetaPartial
 	err := SafeUnmarshal(raw, &w)
 	return w, err
+}
+
+// The partial/scanner path is a trust boundary too: a malformed endpoint must
+// not influence version selection before the checked full row is hydrated.
+func validateSelectionTemporal(w wireTemporalMetaPartial) error {
+	if err := checkRowFormatVersion("wire temporal meta", w.FormatVersion); err != nil {
+		return err
+	}
+	if w.Version < 0 || int64(w.Version) > maxWireUint32 {
+		return fmt.Errorf("%w: invalid temporal version", storepkg.ErrCorruptWire)
+	}
+	if !w.HasTemporal && (w.ValidEndpoints != 0 || w.ValidFrom != 0 || w.ValidTo != 0 || w.TxFrom != 0 || w.TxTo != 0 || w.CreatedAt != 0 || w.UpdatedAt != 0 || w.DeletedAt != 0 || w.Retracted) {
+		return fmt.Errorf("%w: temporal payload without block", storepkg.ErrCorruptWire)
+	}
+	if w.ValidEndpoints != 0 && w.FormatVersion < EndpointWireFormatVersion {
+		return fmt.Errorf("%w: endpoint presence requires fv4", storepkg.ErrCorruptWire)
+	}
+	tm := selectionTemporalMeta(w.HasTemporal, w.ValidFrom, w.ValidTo, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted, w.ValidEndpoints)
+	if err := tm.ValidateValidBounds(); err != nil {
+		return fmt.Errorf("%w: %w", storepkg.ErrCorruptWire, err)
+	}
+	if w.ValidEndpoints == 0 && w.ValidFrom != 0 && w.ValidTo != 0 && w.ValidFrom >= w.ValidTo {
+		return fmt.Errorf("%w: reversed scalar interval", storepkg.ErrCorruptWire)
+	}
+	if w.Retracted && w.DeletedAt == 0 {
+		return fmt.Errorf("%w: retracted without delete stamp", storepkg.ErrCorruptWire)
+	}
+	return nil
+}
+func partialNodeTemporal(w NodeWire) wireTemporalMetaPartial {
+	return wireTemporalMetaPartial{w.FormatVersion, w.Version, w.HasTemporal, w.ValidFrom, w.ValidTo, w.ValidEndpoints, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted}
+}
+func partialRelTemporal(w RelWire) wireTemporalMetaPartial {
+	return wireTemporalMetaPartial{w.FormatVersion, w.Version, w.HasTemporal, w.ValidFrom, w.ValidTo, w.ValidEndpoints, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted}
+}
+
+// The fallback retains a partial decode, while sharing the full decoder's
+// strict unsigned-byte checks; reflection would silently truncate ep/fv.
+func (w *wireTemporalMetaPartial) DecodeMsgpack(dec *msgpack.Decoder) error {
+	nf, err := dec.DecodeMapLen()
+	if err != nil {
+		return err
+	}
+	kbp := wireKeyBufPool.Get().(*[]byte)
+	kb := *kbp
+	defer wireKeyBufPool.Put(kbp)
+	for range nf {
+		kn, err := decodeMapKeyLen(dec, kb)
+		if err != nil {
+			return err
+		}
+		switch string(kb[:kn]) {
+		case "fv":
+			w.FormatVersion, err = decodeWireUint8(dec)
+		case "ep":
+			w.ValidEndpoints, err = decodeWireUint8(dec)
+		case "v":
+			w.Version, err = dec.DecodeInt()
+		case "ht":
+			w.HasTemporal, err = dec.DecodeBool()
+		case "vf":
+			w.ValidFrom, err = dec.DecodeInt64()
+		case "vt":
+			w.ValidTo, err = dec.DecodeInt64()
+		case "tf":
+			w.TxFrom, err = dec.DecodeInt64()
+		case "tt":
+			w.TxTo, err = dec.DecodeInt64()
+		case "ca":
+			w.CreatedAt, err = dec.DecodeInt64()
+		case "ua":
+			w.UpdatedAt, err = dec.DecodeInt64()
+		case "da":
+			w.DeletedAt, err = dec.DecodeInt64()
+		case "rx":
+			w.Retracted, err = dec.DecodeBool()
+		default:
+			err = dec.Skip()
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

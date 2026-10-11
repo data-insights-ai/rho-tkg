@@ -189,38 +189,50 @@ func fvOf(t *testing.T, raw []byte) (int, byte) {
 // a door that does not fail closed for a reader capped at fv <= 2.
 // Not parallel: it moves the package's decode cap (restored before return).
 func TestRetractedRow_FormatVersion3(t *testing.T) {
+	original := maxReadableWireFormatVersion
+	defer func() { maxReadableWireFormatVersion = original }()
 	for _, e := range fv3Rows(t) {
 		for _, p := range fv3Paths() {
-			raw := p.enc(t, e)
-			off, fv := fvOf(t, raw)
-			want := byte(CurrentWireFormatVersion)
+			maxReadableWireFormatVersion = CurrentWireFormatVersion
+			fresh := p.enc(t, e)
+			off, fv := fvOf(t, fresh)
+			if fv != CurrentWireFormatVersion {
+				t.Fatalf("%s/%s fresh fv=%d", e.name, p.name, fv)
+			}
+			if rx, err := p.dec(e, fresh); err != nil || (p.seesRx && rx != e.retracted) {
+				t.Fatalf("fresh %s/%s: %v %v", e.name, p.name, rx, err)
+			}
+			// Explicit historic v2/v3 wire remains byte-compatible and readable. Fresh
+			// writers now stamp fv4 globally; a compatibility fixture must pin old fv.
+			historic := bytes.Clone(fresh)
+			historic[off] = 2
 			if e.retracted {
-				want = RetractedWireFormatVersion
+				historic[off] = RetractedWireFormatVersion
 			}
-			if fv != want {
-				t.Errorf("%s / %s: fv=%d, want %d", e.name, p.name, fv, want)
+			if p.name == "full checked" && !e.retracted && hex.EncodeToString(historic) != e.golden {
+				t.Fatalf("historic bytes %s drifted", e.name)
 			}
-			if p.name == "full checked" && !e.retracted && hex.EncodeToString(raw) != e.golden {
-				t.Errorf("%s: plain row bytes differ from v4.49.1:\n got %x\nwant %s", e.name, raw, e.golden)
+			if rx, err := p.dec(e, historic); err != nil || (p.seesRx && rx != e.retracted) {
+				t.Fatalf("historic %s/%s: %v %v", e.name, p.name, rx, err)
 			}
-			if rx, err := p.dec(e, raw); err != nil || (p.seesRx && rx != e.retracted) {
-				t.Errorf("%s / %s: decode rx=%v err=%v, want rx=%v", e.name, p.name, rx, err, e.retracted)
-			}
-			if e.retracted { // the same row as v4.49.1 wrote it: fv=2 + rx
-				old := bytes.Clone(raw)
-				old[off] = CurrentWireFormatVersion
+			if e.retracted {
+				old := bytes.Clone(historic)
+				old[off] = 2
 				if rx, err := p.dec(e, old); err != nil || (p.seesRx && !rx) {
-					t.Errorf("%s / %s: v4.49.1 row (fv=2 + rx) rx=%v err=%v, want rx=true", e.name, p.name, rx, err)
+					t.Fatalf("v4.49.1 fv2+rx %s/%s: %v %v", e.name, p.name, rx, err)
 				}
 			}
-			maxReadableWireFormatVersion = CurrentWireFormatVersion // a v4.49.0 reader
-			rx, err := p.dec(e, raw)
-			maxReadableWireFormatVersion = RetractedWireFormatVersion
+			maxReadableWireFormatVersion = 2
+			rx, err := p.dec(e, historic)
 			if e.retracted && !errors.Is(err, storecontract.ErrWireFormatVersionUnsupported) {
-				t.Errorf("%s / %s: fv<=2 reader got rx=%v err=%v, want ErrWireFormatVersionUnsupported", e.name, p.name, rx, err)
+				t.Fatalf("fv2 reader %s/%s: rx%v err%v", e.name, p.name, rx, err)
 			}
 			if !e.retracted && err != nil {
-				t.Errorf("%s / %s: fv<=2 reader rejected a plain row: %v", e.name, p.name, err)
+				t.Fatalf("fv2 reader ordinary %s/%s: %v", e.name, p.name, err)
+			}
+			maxReadableWireFormatVersion = 3
+			if _, err := p.dec(e, fresh); !errors.Is(err, storecontract.ErrWireFormatVersionUnsupported) {
+				t.Fatalf("fv3 reader must reject fresh fv4 %s/%s: %v", e.name, p.name, err)
 			}
 		}
 	}

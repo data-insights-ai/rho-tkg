@@ -250,7 +250,7 @@ func DecodeNodeHistoryDelta(raw []byte) (NodeHistoryDelta, error) {
 	if err := SafeUnmarshal(raw[1:], &d); err != nil {
 		return d, err
 	}
-	return d, checkRowFormatVersion("history delta", d.Meta.FormatVersion)
+	return d, validateSelectionTemporal(partialNodeTemporal(d.Meta))
 }
 
 // EncodeRelHistoryDelta / DecodeRelHistoryDelta mirror the node functions.
@@ -272,5 +272,5 @@ func DecodeRelHistoryDelta(raw []byte) (RelHistoryDelta, error) {
 	if err := SafeUnmarshal(raw[1:], &d); err != nil {
 		return d, err
 	}
-	return d, checkRowFormatVersion("history delta", d.Meta.FormatVersion)
+	return d, validateSelectionTemporal(partialRelTemporal(d.Meta))
 }
