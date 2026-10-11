@@ -802,3 +802,148 @@ func TestOutputBudgetDirectScopeStateSliceMapAndScalarOwnership(t *testing.T) {
 		}
 	})
 }
+
+// Guard existing admission: a refused metadata clone yields nil and retains
+// earlier consumption; returned Piece headers must not alias the immutable state.
+func TestGuardEnginePiecesAdmissionAndImmutableState(t *testing.T) {
+	v := newFixtureView(t)
+	scope := testSpan(t, v.axis, 0, 10)
+	base, err := state.New(v.axis, state.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	revision, err := state.NewRevision(1, 23)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := base.Set(scope, state.Null(), revision, state.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := result.State()
+	budget, _ := NewOutputBudget(7)
+	if err := budget.Reserve(7); err != nil {
+		t.Fatal(err)
+	}
+	e := engine{limits: DefaultLimits(), budget: budget}
+	if got, err := e.pieces(data); !errors.Is(err, ErrResourceLimit) || got != nil || budget.Used() != 7 {
+		t.Fatal(got, err, budget.Used())
+	}
+	// One portable Piece metadata slot is 256 bytes, separately from its scope.
+	e.budget, _ = NewOutputBudget(256)
+	got, err := e.pieces(data)
+	if err != nil || len(got) != 1 || !got[0].Cell().Present() || got[0].Cell().Revision() != revision || e.budget.Used() != 256 {
+		t.Fatal(got, err, e.budget.Used())
+	}
+	got[0] = state.Piece{}
+	cell, err := data.At(testPosition(t, v.axis, 0), state.Limits{})
+	if err != nil || !cell.Present() || cell.Revision() != revision || data.Usage().Pieces() != 1 {
+		t.Fatal("returned clone changed input state", cell, err)
+	}
+}
+
+// Guard existing invalid-scope and owner-cap refusals, with a fitting atom and
+// caller mutation of the returned header slice to check input independence.
+func TestGuardEnginePartsValidationAndOwnedHeaders(t *testing.T) {
+	v := newFixtureView(t)
+	scope := testSpan(t, v.axis, 0, 10)
+	e := engine{limits: DefaultLimits()}
+	e.budget, _ = NewOutputBudget(512)
+	if got, err := e.parts(temporal.Scope{}); !errors.Is(err, temporal.ErrInvalidScope) || got != nil || e.budget.Used() != 0 {
+		t.Fatal(got, err, e.budget.Used())
+	}
+	e.budget, _ = NewOutputBudget(511)
+	if got, err := e.parts(scope); !errors.Is(err, ErrResourceLimit) || got != nil || e.budget.Used() != 0 {
+		t.Fatal(got, err, e.budget.Used())
+	}
+	e.budget, _ = NewOutputBudget(512)
+	got, err := e.parts(scope)
+	if err != nil || len(got) != 1 || e.budget.Used() != 512 {
+		t.Fatal(got, err)
+	}
+	same, err := got[0].SameSupport(scope, temporal.Limits{})
+	if err != nil || !same {
+		t.Fatal(same, err)
+	}
+	got[0] = temporal.Scope{}
+	if scope.Kind() != temporal.ScopeSpan || len(scope.Parts()) != 1 {
+		t.Fatal("scope input changed")
+	}
+}
+
+// Guard invalid operands/foreign axes before charging, and consumptive admission
+// for the independently required two 512-byte atomic-scope representation slots.
+func TestGuardEnginePredicateValidationAndConsumptiveAdmission(t *testing.T) {
+	v := newFixtureView(t)
+	scope := testSpan(t, v.axis, 0, 10)
+	d := v.axis.Descriptor()
+	d.ID[0] = 2
+	other, err := temporal.NewAxis(d, temporal.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign, err := temporal.All(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		left, right temporal.Scope
+		want        error
+	}{
+		{temporal.Scope{}, scope, temporal.ErrInvalidScope},
+		{scope, temporal.Scope{}, temporal.ErrInvalidScope},
+		{scope, foreign, temporal.ErrAxisMismatch},
+	} {
+		b, _ := NewOutputBudget(2048)
+		e := engine{limits: DefaultLimits(), budget: b}
+		if err := e.reservePredicate(tc.left, tc.right); !errors.Is(err, tc.want) || b.Used() != 0 {
+			t.Fatal(err, b.Used())
+		}
+	}
+	b, _ := NewOutputBudget(1023)
+	e := engine{limits: DefaultLimits(), budget: b}
+	if err := e.reservePredicate(scope, scope); !errors.Is(err, ErrResourceLimit) || b.Used() != 0 {
+		t.Fatal(err, b.Used())
+	}
+	e.budget, _ = NewOutputBudget(2048)
+	for _, want := range []int{1024, 2048} {
+		if err := e.reservePredicate(scope, scope); err != nil || e.budget.Used() != want {
+			t.Fatal(err, e.budget.Used())
+		}
+	}
+	if err := e.reservePredicate(scope, scope); !errors.Is(err, ErrResourceLimit) || e.budget.Used() != 2048 {
+		t.Fatal(err)
+	}
+	if scope.Kind() != temporal.ScopeSpan || foreign.Axis().Descriptor().ID != d.ID {
+		t.Fatal("predicate mutated operands")
+	}
+}
+
+// Guard both scalar-key error sides: the accepted left I64 key owns 128 fixed
+// bytes plus eight copies of its independent one-tag/eight-byte canonical value.
+func TestGuardEngineScalarEqualityFailureSidesRetainConsumption(t *testing.T) {
+	for _, tc := range []struct {
+		left, right Scalar
+		cap, used   int
+		want        error
+		same        bool
+	}{
+		{Scalar{}, I64(7), 1000, 0, ErrInvalidInput, false},
+		{I64(7), Scalar{}, 1000, 200, ErrInvalidInput, false},
+		{I64(7), I64(7), 199, 0, ErrResourceLimit, false},
+		{I64(7), I64(7), 399, 200, ErrResourceLimit, false},
+		{I64(7), I64(7), 400, 400, nil, true},
+		{I64(7), I64(8), 400, 400, nil, false},
+	} {
+		b, _ := NewOutputBudget(tc.cap)
+		e := engine{limits: DefaultLimits(), budget: b}
+		left, right := tc.left.Render(), tc.right.Render()
+		same, err := e.scalarEqual(tc.left, tc.right)
+		if same != tc.same || b.Used() != tc.used || tc.want == nil && err != nil || tc.want != nil && !errors.Is(err, tc.want) {
+			t.Fatal(tc.cap, same, err, b.Used())
+		}
+		if tc.left.Render() != left || tc.right.Render() != right {
+			t.Fatal("scalar operands changed")
+		}
+	}
+}

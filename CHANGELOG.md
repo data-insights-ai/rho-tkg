@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added immutable shared-contract reads through genuine prepared v5 snapshot
+  handles, with lifetime checks and zero output on errors. These reads let
+  inventory reserve the owning store's configured bounds before opening a view
+  or reading retained history. They grant no activation, Register, factory or
+  Host readiness authority.
+
 - Added bounded, inert v5 codecs for registry commands, reciprocal lookup/stored
   records, outcomes and opaque exports. Canonical references preserve insertion,
   original and evaluation coordinates. Independent consumptive work and owned
