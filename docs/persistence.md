@@ -309,8 +309,11 @@ bootstrap calls with GraphTx/group-commit windows; an active window is rejected.
 Clear and erasure serialize with bootstrap and cannot resurrect removed evidence.
 
 **Application lifecycle.** Open the single writable owner with the option and
-`SyncWrites`, construct the graph and restore its clock, then resume bounded
-bootstrap pages under the application's existing writer gate. Progress is
+`SyncWrites`, construct the graph to attach registries and restore index
+definitions, then complete bounded bootstrap pages under the application's
+existing writer gate before restoring the application clock or making pinned
+state/key queries. Those queries can otherwise invoke broad history fallbacks
+before index readiness. Progress is
 observable and durable. Do not acknowledge new application publications until
 normal graph receipt rules succeed. Before Complete the optional accelerator
 declines; graph APIs retain an exact full-history fallback that can be expensive.
