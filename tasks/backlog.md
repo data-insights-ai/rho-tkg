@@ -251,7 +251,10 @@ reviewed and validated before the next package starts.
    is explicitly carried; rejected hypotheses are not regression proof.
    Logical work reservation does not increase the owned-memory bound. Host,
    factory and registry readiness remain unwired; remote certified cuts and
-   full package 4 remain open. Hosted CI for this integration is pending.
+   full package 4 remain open. [Hosted CI at `b9da041b`](evidence/v2-prepared-audit/hosted-ci-b9da041b.json)
+   passes all applicable root/v5 test/race, coverage, security/vulnerability and
+   comparison jobs; push-conditional lint is skipped, with pinned author lint
+   recorded separately. This closes the integration's hosted-CI follow-up only.
 4. Pass the same-graph E15–E18 serial-history/cut oracle under process and message
    faults, recovery and ownership transfer; complete the equivalent transactional-KV
    comparison and record the engine decision. Only then can V2 close under

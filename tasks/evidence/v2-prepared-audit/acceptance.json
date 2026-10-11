@@ -25,8 +25,13 @@
   },
   "qualification": "Fresh affected runtime and scanners plus explicitly qualified unchanged-source carry. Three genuine REDs are separate from rejected verifier hypotheses and fixture failures. Logical work reservation is not resident memory. No Host/factory/registry readiness expansion, remote certified cuts, physical-host durability, public graph API or full P4/V2 acceptance.",
   "hosted_ci": {
-    "status": "pending after promotion",
-    "prior_7e9caf6f_success_does_not_cover_this_integration": true
+    "status": "passed",
+    "commit": "b9da041b70f8160b2a267d60feff33511891a47a",
+    "run_id": 38151663180,
+    "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38151663180",
+    "evidence": "hosted-ci-b9da041b.json",
+    "sha256": "827f0efc5f8d119eebbcad2d74efcb82c66c5f8da9b42c07ce1cf75f38708773",
+    "qualification": "All applicable root/v5 test/race, coverage, security/vulnerability and comparison jobs pass. Lint is skipped by the push workflow; pinned author lint passes separately. Covers this integration, not later E15 work."
   },
   "next": "Package 4 remote certified cuts and E15 serial-history/cut oracle; remaining fault/ownership/GC and engine-comparison gates remain open."
 }
