@@ -114,25 +114,27 @@ type Config struct {
 // At term MaxUint64-1, driver events return ErrLimit without further mutation;
 // Close and Applied remain available. No term reset or wraparound is performed.
 type Driver struct {
-	mu                 sync.Mutex
-	snapshotSender     *applicationSnapshotSender
-	binding            raftlog.ApplicationBinding
-	event              *applicationEvent
-	closeOwner         *applicationClose
-	claimCleanupErr    error
-	raw                *raft.RawNode
-	store              *raftlog.Store
-	machine            Machine
-	applicationMachine ApplicationMachine
-	config             Config
-	applied            uint64
-	conf               *pb.ConfState
-	stopped            error
-	readNonce          [16]byte
-	readSeq            uint64
-	reads              map[string]*pendingRead
-	readBytes          int
-	lastLeader         uint64
+	mu                    sync.Mutex
+	snapshotSender        *applicationSnapshotSender
+	binding               raftlog.ApplicationBinding
+	event                 *applicationEvent
+	closeOwner            *applicationClose
+	claimCleanupErr       error
+	applicationCleanupErr error
+	callbackLimits        ApplicationCallbackLimits
+	raw                   *raft.RawNode
+	store                 *raftlog.Store
+	machine               Machine
+	applicationMachine    ApplicationMachine
+	config                Config
+	applied               uint64
+	conf                  *pb.ConfState
+	stopped               error
+	readNonce             [16]byte
+	readSeq               uint64
+	reads                 map[string]*pendingRead
+	readBytes             int
+	lastLeader            uint64
 }
 
 // Open restores the durable checkpoint and uses its index/membership together.
@@ -184,12 +186,15 @@ func Open(c Config) (*Driver, error) {
 	if err := c.ApplicationSnapshotSends.validate(c); err != nil {
 		return nil, err
 	}
+	callbackLimits, err := applicationCallbackProfile(c.ApplicationMachine)
+	if err != nil {
+		return nil, err
+	}
 	binding := c.Store.ApplicationBinding()
 	var hard *pb.HardState
 	var cs *pb.ConfState
 	var index uint64
 	var image []byte
-	var err error
 	if binding != (raftlog.ApplicationBinding{}) {
 		hard, cs, err = c.Store.InitialState()
 		if err != nil {
@@ -236,10 +241,11 @@ func Open(c Config) (*Driver, error) {
 	} else {
 		restoreErr = c.Machine.Restore(index, image)
 	}
+	restoreErr = errors.Join(restoreErr, closeApplicationCleanup(takeApplicationCleanup(c.ApplicationMachine)))
 	if restoreErr != nil {
 		return nil, restoreErr
 	}
-	d := &Driver{binding: binding, store: c.Store, machine: c.Machine, applicationMachine: c.ApplicationMachine, config: c, applied: index, conf: cs, reads: make(map[string]*pendingRead)}
+	d := &Driver{callbackLimits: callbackLimits, binding: binding, store: c.Store, machine: c.Machine, applicationMachine: c.ApplicationMachine, config: c, applied: index, conf: cs, reads: make(map[string]*pendingRead)}
 	if _, err := rand.Read(d.readNonce[:]); err != nil {
 		return nil, err
 	}
@@ -695,7 +701,8 @@ func (d *Driver) drain() (Output, error) {
 			if err != nil {
 				return d.stop(err)
 			}
-			if err := d.applicationMachine.Restore(root.Index, root.Image); err != nil {
+			restoreErr := d.applicationMachine.Restore(root.Index, root.Image)
+			if err := errors.Join(restoreErr, d.releaseApplicationCallback()); err != nil {
 				return d.stop(err)
 			}
 			d.applied = root.Index
@@ -727,14 +734,16 @@ func (d *Driver) drain() (Output, error) {
 					entry.Generation = d.store.ApplicationGeneration()
 				}
 				if d.applicationMachine != nil {
-					b, err := d.applicationMachine.Stage(entry, d.store.ApplicationBudget())
+					b, stageErr := d.applicationMachine.Stage(entry, d.store.ApplicationBudget())
+					err := errors.Join(stageErr, d.releaseApplicationCallback())
 					if err != nil {
 						return d.stop(err)
 					}
 					if err := d.store.InstallApplication(entry.Index, b); err != nil {
 						return d.stop(err)
 					}
-					if err := d.applicationMachine.Restore(entry.Index, bytes.Clone(b.Image)); err != nil {
+					restoreErr := d.applicationMachine.Restore(entry.Index, bytes.Clone(b.Image))
+					if err := errors.Join(restoreErr, d.releaseApplicationCallback()); err != nil {
 						return d.stop(err)
 					}
 				} else if err := d.machine.Apply(entry); err != nil {

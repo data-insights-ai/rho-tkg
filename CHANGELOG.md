@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added v5 replica storage primitives for owned, bounded snapshot audits through
+  Begin, Advance, a distinct Finish phase and Commit. Exact same-store claims
+  precede activation by the actual Raft Ready. Optional callback resource
+  profiles fund framework work and ownership before effects; detached callback
+  owners close outside the Driver lock with fenced fail-stop and lifetime checks.
+  Registered adapter, factory, Host and full phase acceptance remain open.
+
 - Added bounded private v5 registry materialization. Created registrations stage
   reciprocal immutable controls; full original lookup precedes new-request caps,
   and Original/Conflict outcomes preserve original and evaluation coordinates.

@@ -18,17 +18,29 @@ type applicationEvent struct {
 	done     chan struct{}
 	claim    *raftlog.ApplicationSnapshotClaim
 	rawPhase bool
+	pending  *PendingApplicationSnapshot
 }
 type applicationClose struct {
 	done   chan struct{}
 	result error
 }
 
-func (d *Driver) boundApplication() bool  { return d.binding != (raftlog.ApplicationBinding{}) }
-func (d *Driver) fencedApplication() bool { return d.boundApplication() || d.snapshotSender != nil }
+func (d *Driver) boundApplication() bool { return d.binding != (raftlog.ApplicationBinding{}) }
+func (d *Driver) fencedApplication() bool {
+	_, cleanup := d.applicationMachine.(ApplicationCleanupProvider)
+	_, audit := d.applicationMachine.(ApplicationSnapshotAuditor)
+	return d.boundApplication() || d.snapshotSender != nil || cleanup || audit
+}
 
 // Called with mu held. A competing event refuses before any RawNode accessor.
 func (d *Driver) admissionNoRaw() error {
+	if d.applicationCleanupErr != nil {
+		if !errors.Is(d.stopped, d.applicationCleanupErr) {
+			d.stopped = errors.Join(d.stopped, d.applicationCleanupErr)
+		}
+		d.revokeSnapshotSends()
+		return errors.Join(ErrStopped, d.stopped)
+	}
 	if d.event != nil || d.closeOwner != nil {
 		if d.stopped != nil {
 			return errors.Join(ErrStopped, d.stopped)
@@ -89,6 +101,11 @@ func (d *Driver) finishEvent(e *applicationEvent, out Output, opErr error) (Outp
 		d.mu.Unlock()
 		return Output{}, ErrInvalid
 	}
+	e.rawPhase = false // Terminal release has no next Install/callback to resume.
+	if err := d.releaseApplicationCallback(); err != nil {
+		opErr = errors.Join(opErr, err)
+		_, _ = d.stop(errors.Join(d.stopped, err))
+	}
 	e.rawPhase = false
 	claim := e.claim
 	e.claim = nil
@@ -125,7 +142,7 @@ func (d *Driver) finishEvent(e *applicationEvent, out Output, opErr error) (Outp
 			break
 		}
 	}
-	resultErr := errors.Join(opErr, claimErr)
+	resultErr := errors.Join(opErr, claimErr, d.applicationCleanupErr)
 	if d.stopped != nil {
 		resultErr = errors.Join(resultErr, ErrStopped, d.stopped)
 	}
@@ -179,7 +196,11 @@ func (d *Driver) closeApplication() error {
 		event = d.beginCleanup()
 		_, _ = d.finishEvent(event, Output{}, nil)
 	} else {
+		pending := event.pending
 		d.mu.Unlock()
+		if pending != nil {
+			_ = pending.Close()
+		}
 		<-event.done
 	}
 	// No event can start after closeOwner is installed. Claim cleanup is already
@@ -190,7 +211,7 @@ func (d *Driver) closeApplication() error {
 	if d.snapshotSender != nil {
 		senderErr = d.snapshotSender.cleanupErr
 	}
-	c.result = errors.Join(d.claimCleanupErr, senderErr, storeErr)
+	c.result = errors.Join(d.claimCleanupErr, d.applicationCleanupErr, senderErr, storeErr)
 	if c.result != nil {
 		d.stopped = errors.Join(d.stopped, c.result)
 	}
@@ -283,6 +304,9 @@ func (d *Driver) StepApplicationSnapshot(p Packet, prepared *raftlog.PreparedApp
 		return d.failEventAdmission(err)
 	}
 	defer func() { out, err = d.finishEvent(owner, out, err) }()
+	if _, required := d.applicationMachine.(ApplicationSnapshotAuditor); required {
+		return Output{}, ErrUnavailable
+	}
 	if !d.boundApplication() {
 		return Output{}, ErrInvalid
 	}
@@ -310,4 +334,42 @@ func (d *Driver) failEventAdmission(err error) (Output, error) {
 	}
 	d.mu.Unlock()
 	return Output{}, err
+}
+
+// Called with Driver.mu. No next Install/callback/RawNode action runs until the
+// genuine owner has closed and the exact event/Close state is rechecked.
+func (d *Driver) releaseApplicationCallback() error {
+	owner := takeApplicationCleanup(d.applicationMachine)
+	if isNilMachine(owner) {
+		return nil
+	}
+	e := d.event
+	if e == nil {
+		return ErrInvalid
+	}
+	resuming := e.rawPhase
+	e.rawPhase = false
+	d.mu.Unlock()
+	err := closeApplicationCleanup(owner)
+	d.mu.Lock()
+	if err != nil {
+		d.applicationCleanupErr = errors.Join(d.applicationCleanupErr, err)
+	}
+	if d.event != e {
+		return errors.Join(ErrInvalid, err)
+	}
+	if !resuming {
+		return err
+	}
+	if pending := e.pending; pending != nil && (pending.self != pending || pending.event != e || pending.canceled) {
+		return errors.Join(raftlog.ErrClosed, err)
+	}
+	if d.closeOwner != nil || d.stopped != nil {
+		return errors.Join(ErrStopped, d.stopped, err)
+	}
+	if err != nil {
+		return err
+	}
+	e.rawPhase = true
+	return nil
 }
