@@ -41,11 +41,11 @@ jobs:
       - run: make test
       # Root v4 has large oracle suites. Keep package/test scheduling finite
       # without dropping tests or changing Go's default package timeout.
+      # Let Go select CPU concurrency from the runner's affinity and CPU quota.
       - name: Root race tests with bounded concurrency
         if: matrix.module == '.'
         env:
           GOFLAGS: "-p=1 -parallel=2"
-          GOMAXPROCS: "2"
           GOMEMLIMIT: "2GiB"
         run: |
           uname -a
