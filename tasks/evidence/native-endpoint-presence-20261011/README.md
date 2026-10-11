@@ -41,6 +41,10 @@ boundary facts; they do not assert legal truth.
 - Pinned Docker lint: passed, zero issues, 34.97 seconds.
 - Pinned Docker security: passed, 20.95 seconds.
 - Pinned Docker vulnerability scan: passed, no vulnerabilities found, 5.60 seconds.
+- Complete candidate `make ci-docker`: passed, 378.11 seconds; package coverage
+  88.5% against the required 80% floor. This includes formatting, vet, pinned
+  Docker lint/security/vulnerability scans, build, full race, coverage and
+  MetaKV lifecycle policy.
 - Full, partial, delta, nested and fixed-tail codecs preserve endpoint presence.
 - Four backend probes cover exact closed-zero ends, zero starts, indexed
   point/window queries, counts, pinned retraction, retrospective correction,
