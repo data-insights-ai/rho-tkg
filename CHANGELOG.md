@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added v5 retained-view RootAt and ApplicationRecord reads within the
+  captured bank/generation, including verified prepared and retired banks.
+  Owned payload caps, frame validation and joined storage/closer errors
+  preserve zero outputs on errors without creating new read owners.
+  These local history reads grant no cut, activation or Host authority.
+
 - Added v5 bounded immutable control pages and view-bound active/prepared-cut
   census. Verified AS2/AS3/AS4 imports expose owned reads of their actual
   staging bank and retained roots. Shared view and transfer-pin quotas bound
