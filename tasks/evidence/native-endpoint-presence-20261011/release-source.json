@@ -1,0 +1,13 @@
+{
+  "candidate_version": "v4.50.2",
+  "released": false,
+  "tagged": false,
+  "remote_main": "efbedc28170c6b04aa28a0e957fc16c4424100c6",
+  "candidate_metadata_commit": "07f4e2c1",
+  "go_source_tree": "4f8071777806a99c16918273e0b8f4feeaca4e52",
+  "gate": "make ci-docker",
+  "gate_exit": 0,
+  "gate_seconds": 378.11,
+  "package_coverage_percent": 88.5,
+  "publication_scope": "isolated feature branch and draft PR only"
+}

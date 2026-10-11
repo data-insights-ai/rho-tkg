@@ -1,0 +1,27 @@
+name: Private Badger dependency
+description: Read-only SSH access to the maintained Badger dependency
+inputs:
+  deploy-key:
+    description: Repository-scoped read-only Badger deploy key
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Configure private module access
+      shell: bash
+      env:
+        BADGER_DEPLOY_KEY: ${{ inputs.deploy-key }}
+      run: |
+        set -euo pipefail
+        echo "GO_CHECK_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+        if [[ -z "$BADGER_DEPLOY_KEY" ]]; then
+          echo "Missing read-only Badger dependency deploy key" >&2
+          exit 1
+        fi
+        install -d -m 700 "$RUNNER_TEMP/badger-ssh"
+        printf '%s\n' "$BADGER_DEPLOY_KEY" > "$RUNNER_TEMP/badger-ssh/key"
+        chmod 600 "$RUNNER_TEMP/badger-ssh/key"
+        cp "$GITHUB_ACTION_PATH/github_known_hosts" "$RUNNER_TEMP/badger-ssh/known_hosts"
+        printf 'GIT_SSH_COMMAND=ssh -i %s/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=%s/known_hosts\n' "$RUNNER_TEMP/badger-ssh" "$RUNNER_TEMP/badger-ssh" >> "$GITHUB_ENV"
+        echo 'GOPRIVATE=github.com/data-insights-ai/badger/*' >> "$GITHUB_ENV"
+        git config --global url."ssh://git@github.com/data-insights-ai/badger".insteadOf https://github.com/data-insights-ai/badger

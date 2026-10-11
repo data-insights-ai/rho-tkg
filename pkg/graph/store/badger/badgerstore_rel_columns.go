@@ -74,8 +74,8 @@ func (bs *Store) buildRelColumns(typeToken uint16, requested []string) (col *ind
 	// the ratio grows with the type's size. Every guard fails toward the rebuild.
 	if old != nil && old.HasAll(keys) {
 		if added, okDelta := bs.takeRelAppendDelta(typeToken, gen, old.Epoch()); okDelta {
-			gp, gt := bs.bulkRelGetters(added)
-			if ext := old.Extend(gen, added, gp, gt); ext != nil {
+			gp, gt, typed := bs.bulkRelGettersWithBounds(added)
+			if ext := old.Extend(gen, added, gp, gt, typed); ext != nil {
 				bs.docMu.Lock()
 				if bs.relTypeEpoch(typeToken) == gen {
 					if bs.relColumns == nil {
@@ -108,8 +108,8 @@ func (bs *Store) buildRelColumns(typeToken uint16, requested []string) (col *ind
 		return disk, false
 	}
 
-	getProp, getTemporal := bs.bulkRelGetters(ids)
-	col = indexpkg.BuildDocValues(gen, ids, keys, getProp, getTemporal)
+	getProp, getTemporal, typed := bs.bulkRelGettersWithBounds(ids)
+	col = indexpkg.BuildDocValues(gen, ids, keys, getProp, getTemporal, typed)
 	bs.columnRebuilds.Add(1)
 	persistColumns(bs, relColumnDiskKey(typeToken), col)
 
@@ -134,16 +134,23 @@ func (bs *Store) buildRelColumns(typeToken uint16, requested []string) (col *ind
 // The endpoint keys are answered from the relationship itself rather than its
 // property slice, which is why this cannot just be the node getter with a different
 // type: a relationship's endpoints are structure, not properties.
-func (bs *Store) bulkRelGetters(ids []types.RelID) (
+func (bs *Store) bulkRelGetters(ids []types.RelID) (func(types.RelID, string) (any, bool), func(types.RelID) (int64, int64, bool)) {
+	p, t, _ := bs.bulkRelGettersWithBounds(ids)
+	return p, t
+}
+func (bs *Store) bulkRelGettersWithBounds(ids []types.RelID) (
 	func(types.RelID, string) (any, bool),
 	func(types.RelID) (int64, int64, bool),
+	bool,
 ) {
 	mat := make(map[types.RelID]*types.Relationship, len(ids))
+	typed := false
 	// ONE badger View with one shared iterator, not one transaction per edge. The
 	// per-ID path opens its own View per relationship, which is what made a rel
 	// column rebuild disproportionately expensive.
 	if err := bs.forEachRelBulk(ids, func(r *types.Relationship) bool {
 		mat[r.ID()] = r
+		typed = typed || r.ValidEndpointPresence() != 0
 		return true
 	}); err != nil {
 		// Fall back to per-ID reads: a bulk decode failure must not fail the build.
@@ -153,6 +160,7 @@ func (bs *Store) bulkRelGetters(ids []types.RelID) (
 				continue // deleted between the membership snapshot and the scan
 			}
 			mat[id] = r
+			typed = typed || r.ValidEndpointPresence() != 0
 		}
 	}
 
@@ -183,7 +191,7 @@ func (bs *Store) bulkRelGetters(ids []types.RelID) (
 		// badgerstore_docvalues.go.
 		return int64(f), int64(t), true
 	}
-	return getProp, getTemporal
+	return getProp, getTemporal, typed
 }
 
 // RelColumnSnapshot returns the columnar snapshot for a relationship type, building

@@ -309,3 +309,29 @@ Non-tiered backends return `ErrNotTieredStore` from the seven tiered-only method
 
 - `g.Close() error` — saves registries again (badger.Store / tiered.Store), then calls `store.Close()`. Successful token-creating operations already persist registries before returning; the close-time save is a final idempotent checkpoint. `tiered.Store.Close()` saves catalog and closes all event shards plus the reference shard and archive. Idempotent — safe to call multiple times. Nil concrete in-tree Store receivers return `ErrNilStore` from `Close` and `Clear`.
 - After `Close`, error-returning sub-APIs that touch store, registry, index, IO, admin, stats, hash, tx, or batch state return `ErrGraphClosed`. No-error state mutators are no-ops after close; `Nodes.NextID` and `Rels.NextID` return `0`.
+
+## Badger persisted historical candidates
+
+For an explicitly supplied Badger store, `badger.Config.HistoricalMembershipOnDisk`
+uses persisted current/history candidate membership. Writable stores require
+`SyncWrites`; the option upgrades the directory's minimum writer marker to 5
+while entity rows remain format 4. Older/default writers refuse the directory.
+
+- `HistoricalMembershipStatus() (HistoricalMembershipProgress, error)` reads
+  durable progress and is available on readonly stores.
+- `BuildHistoricalMembership(ctx, HistoricalMembershipLimits)
+  (HistoricalMembershipProgress, error)` advances one page, with MaxRows
+  1..10,000 and MaxBytes 1..64MiB. It rejects readonly stores, unavailable
+  configuration, active group commit, invalid limits, and cancellation. The
+  graph owner serializes it with GraphTx windows. Resume until Complete.
+- `store.OrderedHistoricalCandidatesCapability` exposes
+  `ForEachNodeHistoricalCandidate(token, property, valueKey, after, fn)` and the
+  relationship mirror. IDs ascend after an exclusive cursor; fn false stops.
+  Empty property selects label/type; properties require declared usable indexes.
+  The supplied first-TX stamp is conservative, and every candidate still needs
+  canonical version/predicate checks. Incomplete/unavailable indexes decline
+  with ErrIndexNotFound; generic graph pinned queries keep exact scan fallbacks.
+
+Completed lookups avoid process-wide membership maps. Full counts/results and
+other history APIs may still allocate broadly. See [persistence](persistence.md)
+for application readiness, write ordering and capacity limits.

@@ -162,7 +162,8 @@ func openInWrite[T TemporalRow](seq []T, i int, pin types.Instant) T {
 // believed at pin: ValidTo 0, or a ValidTo a delete recorded after pin wrote
 // (ValidTo == DeletedAt > pin, the normalization of lesson 60).
 func OwnOpenAtTxTime(tm *types.TemporalMetadata, pin types.Instant) bool {
-	return tm.ValidTo == 0 || (tm.DeletedAt != 0 && tm.DeletedAt > pin && tm.ValidTo == tm.DeletedAt)
+	r, _ := tm.ValidBounds()
+	return !r.To.Finite || (tm.DeletedAt != 0 && tm.DeletedAt > pin && tm.ValidTo == tm.DeletedAt)
 }
 
 // lifeEndedAtTxTime reports whether the row that held the current slot when

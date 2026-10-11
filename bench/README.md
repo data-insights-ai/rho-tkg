@@ -157,53 +157,38 @@ real regressions at this scale.
   spread between independent `-benchtime=1x` invocations), not systematic
   drift.
 
-## CI: `.github/workflows/bench.yml` (blocking PR gate + manual dispatch)
+## CI: quick PR checks and complete release comparisons
 
-The flip-to-blocking plan is WIRED (owner-approved 2026-07-29). Two jobs, one
-comparator (`bench/bench-compare.sh` — the same threshold logic
-`bench-check.sh` uses locally, factored so it exists exactly once):
+`bench-gate` is blocking in both modes:
 
-- **`bench-gate` (pull_request, BLOCKING)**: on a PR touching `pkg/**`,
-  `bench/**`, `go.mod`, or the workflow itself, benchmarks the merge-base
-  and HEAD on the SAME runner with `-count=3` (benchstat compares MEDIANS,
-  absorbing single-sample scheduler spikes) and FAILS the check when a core
-  scenario's median time regresses beyond `REGRESSION_THRESHOLD_PCT=30`
-  (deliberately looser than the 15% local gate — GitHub-hosted runners are
-  noisier than a dedicated machine). Two `go test` runs feed it: the
-  `BENCH_FILTER` set (`PointReadHit`, `LabelScan10k`, `TwoHop`,
-  `TemporalPoint`, `AsOfPin`, the `Ingest` prefix, `BulkAddNodes10k`,
-  `ANNSearch10k`, `OrderedTopK`, the `CompositeLookup` prefix,
-  `RelPropertyLookup10k`, `RelHistoryPlain`, `RelHasHistory`,
-  `RelEffectiveTimeline`, `RelEffectiveLoop`, `ForEachRelEffectiveByType`,
-  `NodeAtTxLongChain`, `NodeEffectiveTimelineLongChain`; `-count=3`) and the
-  `PINNED_REL_FILTER` set (`PinnedRelPropertyLookup`, `LatestStamps`;
-  `-count=5`), both at `-benchtime=0.3s`. The two multi-minute measurement
-  STUDIES (`PinnedScanScaling`, `ChangeLogTxSerialization`) are excluded
-  from the gate via the `-bench` filter — they are one-off measurement
-  campaigns, not regression canaries. The gate rules live in
-  `bench/bench-gate.awk` (tests: `bench_gate_test.go` over real benchstat CSV
-  fixtures in `testdata/gate/`): only the `sec/op` block is read as time
-  (a custom `b.ReportMetric` unit such as `build-ms` is ignored), and one
-  benchmark family — `PinnedRelPropertyLookup` and `LatestStamps`
-  (`ALLOCS_GATE_FAMILY`) — is **allocs-gated** (`ALLOCS_THRESHOLD_PCT=10`,
-  5 samples; a row with a 0 allocs/op baseline fails as soon as it allocates);
-  its time rows are reported, not gated, on shared hosts (the aggregate
-  `geomean` row is recomputed over the time-gated rows only). Reason: identical code swung
-  +42..+178 % in time on that family while allocs/op did not move at all, and
-  the regression it exists to catch — the lookup falling back to the history
-  fold — shows as 1,423 -> 106,555 allocs/op. Opt-in time canary for quiet
-  runners: `TIME_CANARY=canary` time-gates its 8 rows (memory | badger x
-  {1type/sigma, 5types/unrelated-x10} x matches200) again; any other value is
-  used as the regex. `ALLOCS_GATE_FAMILY=none` time-gates every row. A failure is a *signal to re-run
-  once, then look closer*: a repeated failure on the same PR is a real
-  regression signal.
-- **`bench-compare` (workflow_dispatch, informational)**: the original
-  manual full-suite comparison (single `-count=1` sample, studies included)
-  for sanity-checking a perf claim from a fork or ad-hoc branch.
+- Pull requests run point reads, label scans, two-hop adjacency, temporal point
+  reads, pinned reads and 1k ingest, plus the memory pipeline p1/p8 control
+  and parallel case (three samples), and the zero-allocation
+  `LatestStamps` plain canary (five samples). Both revisions use identical
+  current harness files, production-shaped fixtures and the same runner.
+- Weekly and manual checks run **every** benchmark family, including pinned
+  relationship histories, ANN, composite indexes and the expensive scaling
+  studies (three samples each). Manual `revision` and optional `baseline`
+  accept exact 40-character SHAs. The bounded manual `ingest-pipeline` scope
+  repeats only the p1/p8 cases at seven one-second samples; its status explicitly
+  does not attest the full release comparison. Without an explicit baseline, comparison uses
+  the branch merge-base, or HEAD's parent when already on main.
 
-Local `make bench-baseline` + `make bench-check` on stable hardware remains
-the authoritative high-resolution tooling; the CI gate is the coarse
-backstop that catches large regressions before merge.
+Both modes reject failed/incomplete inputs and use `bench-compare.sh` with a
+30% shared-runner time threshold. `PinnedRelPropertyLookup` and `LatestStamps`
+remain allocation-gated (+10%; a zero-allocation baseline permits no allocation),
+with time reported separately. `TIME_CANARY=canary` enables the documented pinned
+relationship time subset on quiet local runners. Custom study metrics remain
+reported; ordinary ns/op rows and exact output sample sets are checked.
+
+A green PR canary check does **not** attest that the full suite ran. Before a
+performance-sensitive merge or release, retain a complete comparison for the
+exact revision, together with the full correctness/race/coverage/security gates
+in [CONTRIBUTING.md](../CONTRIBUTING.md). Local `make bench-baseline` and
+`make bench-check` remain the higher-resolution comparison on stable hardware.
+Benchmark output and the comparator CSV are retained as workflow artifacts.
+An earlier complete comparison failure remains a release gate until a controlled
+repeat disproves it or a fix passes; narrowing PR canaries does not waive it.
 
 ## Updating baselines intentionally
 
@@ -211,3 +196,21 @@ After a deliberate performance change (optimization or an accepted
 trade-off), just re-run `make bench-baseline` locally before continuing work
 that depends on comparing against the new normal — there is nothing to
 commit; the baseline file is per-machine and gitignored by design.
+
+## Revision comparison integrity
+
+CI runs the current `bench/` harness against both immutable production revisions
+with `bench/bench-revision.sh`. Only the temporary worktree's benchmark directory
+is replaced; production code and module dependencies retain the selected ref.
+Each run records its revision and elapsed duration. Baseline and HEAD therefore
+use identical benchmark setup, names, filters and repetition counts.
+
+The shared composite fixture creates its single-property and composite indexes
+once in parent setup. Repeated leaf runs (`-count` and calibration) only read it;
+recreating DDL in a shared leaf previously failed with "index already exists".
+Both query arms still check the exact expected match count on 100,000 nodes.
+
+`bench-compare.sh` rejects failed, empty, malformed, missing or unequal sample
+sets before invoking benchstat. Pipeline failures propagate through bash
+pipefail. A partial baseline or unavailable private dependency cannot produce
+a green comparison from missing CSV values.

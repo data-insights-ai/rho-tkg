@@ -504,6 +504,9 @@ func normalizeTemporalVisibleAtTxTime(tm *types.TemporalMetadata, txTime types.I
 	if tm.DeletedAt > txTime {
 		if tm.ValidTo == tm.DeletedAt {
 			tm.ValidTo = 0
+			if tm.HasValidBounds() {
+				tm.ValidEndpoints &^= types.EndpointToFinite
+			}
 		}
 		tm.DeletedAt = 0
 		tm.Retracted = false

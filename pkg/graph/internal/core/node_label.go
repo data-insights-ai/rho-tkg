@@ -159,6 +159,7 @@ func (c *Core) addNodeLabelInternal(ctx context.Context, id types.NodeID, label 
 	// (hiding the at-t label state the history row exists to preserve).
 	tm.ValidFrom = 0
 	tm.ValidTo = 0
+	tm.ValidEndpoints = 0
 	tm.UpdatedAt = now
 	stampAppendedRow(tm, now)
 
@@ -292,6 +293,7 @@ func (c *Core) removeNodeLabelInternal(ctx context.Context, id types.NodeID, lab
 	// (hiding the at-t label state the history row exists to preserve).
 	tm.ValidFrom = 0
 	tm.ValidTo = 0
+	tm.ValidEndpoints = 0
 	tm.UpdatedAt = now
 	stampAppendedRow(tm, now)
 

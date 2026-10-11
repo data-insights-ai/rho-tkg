@@ -47,6 +47,11 @@ func (ms *Store) putRelationshipRouted(r *types.Relationship, token uint64) erro
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
 	}
+	if err := ms.validateSegmentBoundsLocked(r); err != nil {
+
+		return err
+
+	}
 	id := r.ID()
 	startID := r.StartNodeID()
 	endID := r.EndNodeID()
@@ -130,6 +135,11 @@ func (ms *Store) putRelationshipGeneratedIDWithEndpointHashesRouted(r *types.Rel
 	}
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return "", "", err
+	}
+	if err := ms.validateSegmentBoundsLocked(r); err != nil {
+
+		return "", "", err
+
 	}
 	id := r.ID()
 	startID := r.StartNodeID()
@@ -251,6 +261,11 @@ func (ms *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 	}
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
+	}
+	if err := ms.validateSegmentBoundsLocked(r); err != nil {
+
+		return err
+
 	}
 	id := r.ID()
 	if err := ms.faultInLocked(id); err != nil { // ADR-0011 overlay: the new row shadows a sealed one
@@ -753,6 +768,11 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	for _, r := range rels {
 		if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 			return err
+		}
+		if err := ms.validateSegmentBoundsLocked(r); err != nil {
+
+			return err
+
 		}
 		id := r.ID()
 		startID := r.StartNodeID()

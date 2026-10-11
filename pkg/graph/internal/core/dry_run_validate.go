@@ -204,7 +204,7 @@ func (c *Core) buildDryRunEndpointNode(id types.NodeID, props map[string]any) (*
 	if err != nil {
 		return nil, err
 	}
-	validFrom, validTo, createdAt, _, props, err := extractTemporal(props)
+	validFrom, validTo, createdAt, _, validEndpoints, props, err := extractTemporalWithBounds(props)
 	if err != nil {
 		return nil, err
 	}
@@ -219,8 +219,8 @@ func (c *Core) buildDryRunEndpointNode(id types.NodeID, props map[string]any) (*
 	if err := n.SetOwnedProperties(ps); err != nil {
 		return nil, fmt.Errorf("graph: dry-run endpoint properties: %w", err)
 	}
-	if validFrom != 0 || validTo != 0 || createdAt != 0 {
-		n.SetTemporal(&types.TemporalMetadata{ValidFrom: validFrom, ValidTo: validTo, CreatedAt: createdAt})
+	if validEndpoints != 0 || validFrom != 0 || validTo != 0 || createdAt != 0 {
+		n.SetTemporal(&types.TemporalMetadata{ValidFrom: validFrom, ValidTo: validTo, CreatedAt: createdAt, ValidEndpoints: validEndpoints})
 	}
 	return n, nil
 }
@@ -235,7 +235,7 @@ func (c *Core) buildDryRunProbeNode(id types.NodeID, props map[string]any) (*typ
 	if err != nil {
 		return nil, err
 	}
-	_, _, _, _, props, err = extractTemporal(props)
+	_, _, _, _, _, props, err = extractTemporalWithBounds(props)
 	if err != nil {
 		return nil, err
 	}

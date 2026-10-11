@@ -93,7 +93,7 @@ func (n *NodeOps) RangeCardinality(label, propKey string, min, max float64, incl
 	if err := c.checkOpen(); err != nil {
 		return 0, false, err
 	}
-	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
+	if opts.HasValidAt() || opts.ValidWindow != nil || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
 		return 0, false, nil // temporal — the BSI cannot answer; caller scans
 	}
 	scanner, native := c.store.(nodeRangeCardinalityScanner)
@@ -134,7 +134,7 @@ func (r *RelOps) RangeCardinality(typeName, propKey string, min, max float64, in
 	if err := c.checkOpen(); err != nil {
 		return 0, false, err
 	}
-	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
+	if opts.HasValidAt() || opts.ValidWindow != nil || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
 		return 0, false, nil // temporal — the index cannot answer; caller scans
 	}
 	scanner, native := c.store.(relRangeCardinalityScanner)
@@ -335,7 +335,7 @@ func (n *NodeOps) ForEachByLabelPropertyRangeOrdered(label, propKey string, min,
 	// those whose numeric value is in [min,max], sort by value. Needs no property
 	// index (it reads resolved node values directly). Non-temporal opts take the
 	// index-backed fast path below.
-	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
+	if opts.HasValidAt() || opts.ValidWindow != nil || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
 		if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 			return err
 		}
@@ -420,7 +420,7 @@ func (n *NodeOps) ForEachByLabelPropertyPrefix(label, propKey, prefix string, de
 	// SOUND FULL FOLD — resolve every label member to its version at the pin, keep
 	// those whose string value begins with prefix, sort lexicographically. Needs no
 	// property index. Non-temporal opts take the index-backed fast path below.
-	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
+	if opts.HasValidAt() || opts.ValidWindow != nil || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
 		if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 			return err
 		}
@@ -524,6 +524,9 @@ func (c *Core) nodesByLabelLocked(label string, opts storepkg.QueryOpts) ([]*typ
 				nodes = copyNodeRows(nodes)
 			}
 		}
+		return nodes, err
+	}
+	if nodes, handled, err := c.orderedHistoricalNodes(tok, "", "", opts, func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }); handled {
 		return nodes, err
 	}
 	_, candIDs, err := c.nodeLabelCandidatesAt(tok, opts)
@@ -638,6 +641,9 @@ func (c *Core) relsByTypeLocked(typeName string, opts storepkg.QueryOpts) ([]*ty
 				rels = copyRelationshipRows(rels)
 			}
 		}
+		return rels, err
+	}
+	if rels, handled, err := c.orderedHistoricalRels(tok, "", "", opts, func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }); handled {
 		return rels, err
 	}
 	_, candIDs, err := c.relTypeCandidatesAt(tok, opts)
@@ -2314,7 +2320,7 @@ func (r *RelOps) ForEachByTypePropertyRangeOrdered(typeName, propKey string, min
 	// SOUND FULL FOLD — resolve every rel of the type to its version at the pin,
 	// keep those whose numeric value is in [min,max], sort by value. Needs no rel
 	// property index. Non-temporal opts take the index-backed fast path below.
-	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
+	if opts.HasValidAt() || opts.ValidWindow != nil || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
 		if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 			return err
 		}
@@ -2392,7 +2398,7 @@ func (r *RelOps) ForEachByTypePropertyPrefix(typeName, propKey, prefix string, d
 	// keep those whose string value begins with prefix, sort lexicographically.
 	// Needs no rel property index. Non-temporal opts take the index-backed fast
 	// path below.
-	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
+	if opts.HasValidAt() || opts.ValidWindow != nil || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
 		if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 			return err
 		}

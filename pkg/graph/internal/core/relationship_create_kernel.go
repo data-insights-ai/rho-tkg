@@ -22,18 +22,19 @@ import (
 // relationship create. Produced by prepareRelCreate before any lock or ID
 // allocation so every door fails fast on bad input in the same order.
 type relCreatePrep struct {
-	typeName     string
-	startID      types.NodeID
-	endID        types.NodeID
-	ps           types.OwnedPropertySlice
-	authorID     string
-	sig          []byte
-	authorizedBy string
-	authLevel    uint8
-	validFrom    types.Instant
-	validTo      types.Instant
-	createdAt    types.Instant
-	txFrom       types.Instant // privileged transaction-time backfill (0 = system clock)
+	typeName       string
+	startID        types.NodeID
+	endID          types.NodeID
+	ps             types.OwnedPropertySlice
+	authorID       string
+	sig            []byte
+	authorizedBy   string
+	authLevel      uint8
+	validFrom      types.Instant
+	validTo        types.Instant
+	validEndpoints types.EndpointPresence
+	createdAt      types.Instant
+	txFrom         types.Instant // privileged transaction-time backfill (0 = system clock)
 }
 
 // prepareRelCreate validates the create inputs in the canonical order:
@@ -50,7 +51,7 @@ func (c *Core) prepareRelCreate(typeName string, props map[string]any, startID, 
 	if err != nil {
 		return prep, err
 	}
-	validFrom, validTo, createdAt, txFrom, props, err := extractTemporal(props)
+	validFrom, validTo, createdAt, txFrom, validEndpoints, props, err := extractTemporalWithBounds(props)
 	if err != nil {
 		return prep, err
 	}
@@ -73,18 +74,19 @@ func (c *Core) prepareRelCreate(typeName string, props map[string]any, startID, 
 		return prep, ErrSelfLoop
 	}
 	return relCreatePrep{
-		typeName:     typeName,
-		startID:      startID,
-		endID:        endID,
-		ps:           ps,
-		authorID:     authorID,
-		sig:          sig,
-		authorizedBy: authorizedBy,
-		authLevel:    authLevel,
-		validFrom:    validFrom,
-		validTo:      validTo,
-		createdAt:    createdAt,
-		txFrom:       txFrom,
+		typeName:       typeName,
+		startID:        startID,
+		endID:          endID,
+		ps:             ps,
+		authorID:       authorID,
+		sig:            sig,
+		authorizedBy:   authorizedBy,
+		authLevel:      authLevel,
+		validFrom:      validFrom,
+		validTo:        validTo,
+		validEndpoints: validEndpoints,
+		createdAt:      createdAt,
+		txFrom:         txFrom,
 	}, nil
 }
 
@@ -105,7 +107,7 @@ func (c *Core) prepareRelCreate(typeName string, props map[string]any, startID, 
 // delegated to the store write (endpointHashWrite capability available and
 // no constraints configured) — in that case the returned hashes are empty
 // and the kernel refreshes them from the store's reply.
-func (c *Core) relEndpointHashLadder(mintID func() types.RelID, startID, endID types.NodeID, validFrom, validTo, createdAt types.Instant) (id types.RelID, fromHash, toHash string, useEndpointHashWrite bool, err error) {
+func (c *Core) relEndpointHashLadder(mintID func() types.RelID, startID, endID types.NodeID, validFrom, validTo, createdAt types.Instant, presence ...types.EndpointPresence) (id types.RelID, fromHash, toHash string, useEndpointHashWrite bool, err error) {
 	if c.constraints.Len() > 0 {
 		// Fetch live endpoints from the store under the endpoint locks so
 		// hash refresh and temporal-constraint checks see the current state.
@@ -114,7 +116,7 @@ func (c *Core) relEndpointHashLadder(mintID func() types.RelID, startID, endID t
 			return 0, "", "", false, err
 		}
 		id = mintID()
-		probe := c.newRelConstraintProbe(id, startID, endID, validFrom, validTo, createdAt)
+		probe := c.newRelConstraintProbe(id, startID, endID, validFrom, validTo, createdAt, presence...)
 		if err := c.checkTemporalConstraints(probe, liveStart, liveEnd); err != nil {
 			return 0, "", "", false, err
 		}
@@ -169,6 +171,7 @@ func (c *Core) buildRelFromSpec(ctx context.Context, spec relCreateSpec) func(ty
 		ig.ToNodeHash = spec.toHash
 		r.SetIntegrity(ig)
 		c.applyRelCreateTemporal(r, spec.validFrom, spec.validTo, spec.createdAt, spec.txFrom)
+		r.Temporal().ValidEndpoints = spec.validEndpoints
 		if err := checkCtx(ctx); err != nil {
 			return nil, nil, err
 		}

@@ -73,11 +73,16 @@ func BenchmarkCompositeLookupVsSingleIndexPlusFilter(b *testing.B) {
 	for _, bc := range backendCases {
 		b.Run(bc.name, func(b *testing.B) {
 			g := buildCompositeLookupFixture(b, bc)
+			// The leaf benchmark runs repeatedly for -count and calibration.
+			// Its shared parent fixture owns DDL; leaf runs only perform reads.
+			if err := g.Index().CreateProperty(compositeLookupLabel, "status"); err != nil {
+				b.Fatalf("CreateProperty: %v", err)
+			}
+			if err := g.Index().CreateComposite(compositeLookupLabel, []string{"status", "region"}); err != nil {
+				b.Fatalf("CreateComposite: %v", err)
+			}
 
 			b.Run("single_index_plus_filter", func(b *testing.B) {
-				if err := g.Index().CreateProperty(compositeLookupLabel, "status"); err != nil {
-					b.Fatalf("CreateProperty: %v", err)
-				}
 				b.ReportAllocs()
 				for b.Loop() {
 					candidates, err := g.Nodes().ByLabelAndProperty(compositeLookupLabel, "status", wantStatus, storepkg.QueryOpts{})
@@ -97,9 +102,6 @@ func BenchmarkCompositeLookupVsSingleIndexPlusFilter(b *testing.B) {
 			})
 
 			b.Run("composite_lookup", func(b *testing.B) {
-				if err := g.Index().CreateComposite(compositeLookupLabel, []string{"status", "region"}); err != nil {
-					b.Fatalf("CreateComposite: %v", err)
-				}
 				b.ReportAllocs()
 				for b.Loop() {
 					nodes, err := g.Nodes().ByLabelAndProperties(compositeLookupLabel,

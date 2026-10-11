@@ -55,7 +55,7 @@ func (bs *Store) scanRelColumnsColumnar(token uint16, props []string, opts store
 	if err != nil || !ok || col == nil {
 		return false
 	}
-	if !col.HasTemporal() {
+	if !col.HasTemporal() || col.HasTypedTemporal() {
 		return false
 	}
 

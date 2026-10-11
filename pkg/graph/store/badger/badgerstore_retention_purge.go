@@ -37,7 +37,7 @@ func (bs *Store) LogRangePurge(labelToken uint16, before types.Instant, mode uin
 }
 
 // defaultRetentionPurgeChunk bounds how many nodes one PurgeNodesByLabelBefore
-// call removes in a single atomic batch, so the lock span and WriteBatch stay
+// call removes in one flush, so the lock span and WriteBatch stay
 // bounded regardless of how far behind the boundary the store is.
 const defaultRetentionPurgeChunk = 256
 
@@ -77,20 +77,22 @@ func (bs *Store) PurgeNodesByLabelValidToBefore(labelToken uint16, before types.
 		if err != nil {
 			return false, err
 		}
-		vt := n.Temporal().ValidTo
-		return vt != 0 && vt < before, nil
+		bounds, _ := n.Temporal().ValidBounds()
+		return bounds.To.Finite && bounds.To.Value < before, nil
 	})
 }
 
 // purgeNodesByLabel is the shared chunked-purge body for both selection modes. Each
 // call removes up to `chunk` nodes for which `qualifies` returns true, plus all their
-// rels/indexes/history in ONE atomic batch (mirroring DeleteNodeWithHistory's
+// rels/indexes/history in one buffered flush (mirroring DeleteNodeWithHistory's
 // single-lock-span assembly), and reports More so the caller loops. It emits NO
 // change-log record — the graph layer owns the single ChangeRangePurge + the
 // watermark advance. `qualifies` runs in Phase A (may call getNodeLocked, which reads
 // cache/db without taking idxMu); both purge predicates are immutable-once-true (see
 // the ByAge/ByValidTo doc-blocks), so no Phase-B re-confirm is required.
 func (bs *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(id types.NodeID) (bool, error)) (storecontract.RetentionPurgeResult, error) {
+	bs.historicalMembershipMu.Lock()
+	defer bs.historicalMembershipMu.Unlock()
 	var zero storecontract.RetentionPurgeResult
 	if err := bs.checkWritable(); err != nil {
 		return zero, err
@@ -154,7 +156,8 @@ func (bs *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 
 	// Phase B (idxMu.Lock): cascade-delete each victim (recordless — appends its
 	// own node/rel/index delete ops) and accumulate history-row deletes for the
-	// node and every removed rel. All ops land in ONE flush → one atomic batch.
+	// node and every removed rel. All ops land in one flush; a large Badger
+	// WriteBatch can split into transactions.
 	bs.idxMu.Lock()
 	nodesPurged := 0
 	relsPurged := 0
@@ -170,7 +173,21 @@ func (bs *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 		// cascade removes them — this is the only way to surface a CROSS-SHARD rel
 		// whose entity lives on another shard (an entity read here would miss it),
 		// which the tiered residue sweep needs.
-		purgedRels = append(purgedRels, bs.purgedRelsForNodeLocked(v)...)
+		nodeOps, e := bs.historicalMembershipEraseOps(true, types.EntityID(v))
+		if e != nil {
+			bs.idxMu.Unlock()
+			return zero, e
+		}
+		relInfo := bs.purgedRelsForNodeLocked(v)
+		for _, rd := range relInfo {
+			relOps, e := bs.historicalMembershipEraseOps(false, types.EntityID(rd.ID))
+			if e != nil {
+				bs.idxMu.Unlock()
+				return zero, e
+			}
+			nodeOps = append(nodeOps, relOps...)
+		}
+		purgedRels = append(purgedRels, relInfo...)
 		deleted, corruptErr, fatalErr := bs.cascadeDeleteInner(v, pf, nil)
 		if fatalErr != nil {
 			if errors.Is(fatalErr, ErrNodeNotFound) {
@@ -186,6 +203,7 @@ func (bs *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 		nodesPurged++
 		relsPurged += len(deleted)
 		purgedIDs = append(purgedIDs, v)
+		histOps = append(histOps, nodeOps...)
 
 		nodeHistKeys, _, herr := bs.historyTruncateDeleteKeys(storepkg.HistNodePrefix(v.SnowflakeID()), 0)
 		if herr != nil {
@@ -324,6 +342,8 @@ func (bs *Store) purgedRelsForNodeLocked(nid types.NodeID) []storecontract.Purge
 // Idempotent: a rel with no residue on this shard is a no-op. Recordless — the
 // graph layer owns the single ChangeRangePurge.
 func (bs *Store) PurgeRelationshipByInfo(rel storecontract.PurgedRel) error {
+	bs.historicalMembershipMu.Lock()
+	defer bs.historicalMembershipMu.Unlock()
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -332,6 +352,11 @@ func (bs *Store) PurgeRelationshipByInfo(rel storecontract.PurgedRel) error {
 
 	bs.idxMu.Lock()
 	if _, entityHere := bs.relIDs[rid]; entityHere {
+		memberOps, e := bs.historicalMembershipEraseOps(false, types.EntityID(rid))
+		if e != nil {
+			bs.idxMu.Unlock()
+			return e
+		}
 		// The rel entity lives on this shard — a full recordless delete (both legs'
 		// local keys via the info; the remote leg was already purged with the node)
 		// plus its version history (0x08, co-located with the entity).
@@ -341,6 +366,7 @@ func (bs *Store) PurgeRelationshipByInfo(rel storecontract.PurgedRel) error {
 			StartID: rel.StartID.SnowflakeID(),
 			EndID:   rel.EndID.SnowflakeID(),
 		})
+		bs.appendOps(memberOps...)
 		bs.maintainRelTypeTemporalIndexesPurge(rid.SnowflakeID()) // history goes too: nothing left to cover
 		bs.dropPropertyTxMembersLocked()                          // and its values from the property sidecars (backlog 8)
 		histKeys, _, herr := bs.historyTruncateDeleteKeys(storepkg.HistRelPrefix(rid.SnowflakeID()), 0)
@@ -376,6 +402,8 @@ func (bs *Store) PurgeRelationshipByInfo(rel storecontract.PurgedRel) error {
 // own shard). Returns the number of relationships removed. Recordless — the
 // caller owns the single ChangeRangePurge record.
 func (bs *Store) PurgeAdjacentRelsForNode(nodeID types.NodeID) (int, error) {
+	bs.historicalMembershipMu.Lock()
+	defer bs.historicalMembershipMu.Unlock()
 	if err := bs.checkWritable(); err != nil {
 		return 0, err
 	}
@@ -417,6 +445,12 @@ func (bs *Store) PurgeAdjacentRelsForNode(nodeID types.NodeID) (int, error) {
 			bs.idxMu.Unlock()
 			return removed, err
 		}
+		memberOps, e := bs.historicalMembershipEraseOps(false, types.EntityID(rid))
+		if e != nil {
+			bs.idxMu.Unlock()
+			return removed, e
+		}
+		histOps = append(histOps, memberOps...)
 		bs.deleteRelByInfo(relDeleteInfoFromRelationship(r))
 		bs.maintainRelTypeTemporalIndexesPurge(rid.SnowflakeID()) // history goes too: nothing left to cover
 		bs.dropPropertyTxMembersLocked()                          // and its values from the property sidecars (backlog 8)

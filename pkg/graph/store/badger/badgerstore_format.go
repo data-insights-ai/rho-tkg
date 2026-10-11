@@ -27,6 +27,12 @@ import (
 // A marker that exists but cannot be parsed is corruption and fails closed
 // (lesson 10: counters and registry metadata must fail closed when corrupt).
 func verifyAndStampWireFormatVersion(db *badgerv4.DB, readOnly bool) error {
+	return verifyAndStampWireFormatVersionForReader(db, readOnly, storepkg.CurrentWireFormatVersion)
+}
+
+// A reader ceiling is explicit here so compatibility tests can exercise the
+// actual open guard without weakening the current writer's directory marker.
+func verifyAndStampWireFormatVersionForReader(db *badgerv4.DB, readOnly bool, readable uint16) error {
 	var stored uint16
 	present := false
 	err := db.View(func(txn *badgerv4.Txn) error {
@@ -52,15 +58,15 @@ func verifyAndStampWireFormatVersion(db *badgerv4.DB, readOnly bool) error {
 	if err != nil {
 		return fmt.Errorf("graph: wire format marker: %w", err)
 	}
-	if present && stored > storepkg.CurrentWireFormatVersion {
+	if present && stored > readable {
 		return fmt.Errorf("graph: store written by a newer release (on-disk wire format v%d, this binary supports up to v%d): %w",
-			stored, storepkg.CurrentWireFormatVersion, storecontract.ErrWireFormatVersionUnsupported)
+			stored, readable, storecontract.ErrWireFormatVersionUnsupported)
 	}
-	if readOnly || (present && stored == storepkg.CurrentWireFormatVersion) {
+	if readOnly || (present && stored == readable) {
 		return nil
 	}
 	val := make([]byte, 2)
-	binary.BigEndian.PutUint16(val, uint16(storepkg.CurrentWireFormatVersion))
+	binary.BigEndian.PutUint16(val, readable)
 	if err := db.Update(func(txn *badgerv4.Txn) error {
 		return txn.Set(storepkg.WireFormatVersionKey, val)
 	}); err != nil {

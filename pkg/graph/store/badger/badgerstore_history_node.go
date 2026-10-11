@@ -636,7 +636,7 @@ func (bs *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types
 	// for snapshot atomicity.
 	err = bs.enqueueVersionAgainstLazyBuilds(
 		func() bool {
-			return bs.labelTxMembersBuilt.Load() || bs.nodeBeliefWatermarkBuilt.Load() || len(bs.nodePropTx) > 0
+			return bs.historicalMembershipOnDisk || bs.labelTxMembersBuilt.Load() || bs.nodeBeliefWatermarkBuilt.Load() || len(bs.nodePropTx) > 0
 		},
 		func() {
 			bs.recordNodeLabelMembersLocked(n)

@@ -79,6 +79,12 @@ func (c *Core) relsByTypeAndPropertyLocked(typeName, key string, value any, opts
 	if targetKey == "" {
 		return nil, nil
 	}
+	if rels, handled, err := c.orderedHistoricalRels(tok, key, targetKey, opts, func(r *types.Relationship) bool {
+		got, found := r.IndexablePropertyValueKey(key)
+		return r.HasTypeTokenRaw(tok) && found && got == targetKey
+	}); handled {
+		return rels, err
+	}
 	currentMatching, err := c.relsByTypeAndProperty(tok, key, value, storepkg.QueryOpts{Depth: opts.Depth})
 	if err != nil {
 		return nil, err

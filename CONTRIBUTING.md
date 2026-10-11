@@ -52,6 +52,31 @@ The security tools are version-pinned by the Makefile. Both `gosec` and
 at their exact call site. Golangci-lint uses its pull-request new-issues mode for
 the older lint backlog.
 
+## Hosted checks and release evidence
+
+Pull requests and pushes run formatting, vet, compilation, lint, security and
+normal tests for changed packages plus the transitive reverse **production and
+test** dependency closure. Package-local fixtures count as changes. Repository documents read by graph
+and core documentation tests explicitly select those packages too. Module
+changes, added/deleted packages or any changed package/test dependency graph
+fall back to the full normal suite. Selector errors fail the check.
+
+Full backend race tests and the 80% package coverage floor run together nightly
+and through manual CI dispatch at an exact commit SHA. Heavy race packages
+execute serially (`-p=1`); test cases and their existing timeout remain unchanged. This avoids executing
+separate full normal, race and coverage traversals on every PR update. Weekly
+and manual benchmark comparisons preserve every benchmark family; PRs run quick
+canaries. Weekly fuzzing and vulnerability sweeps remain enabled. Stale PR runs
+are canceled by workflow concurrency; explicit revision runs have their own key.
+
+**Fast green checks mean the selected checks passed.** They do not replace the
+mandatory full local `make ci`/`make ci-docker`, race/coverage review rules below,
+or exact-revision full release evidence. Before merge/release, retain successful
+full gates for that SHA (hosted dispatch or local strict logs), plus the complete
+same-harness benchmark comparison for performance changes. A nightly run on main
+does not attest an unmerged branch SHA. No timeout increase or ignored failure
+is used to make an expensive check appear successful.
+
 ## Testing Rules (hard requirements)
 
 `AGENTS.md`'s "Testing Rules" section lists 17 rules that exist because every

@@ -41,6 +41,9 @@ jobs:
       FUZZTIME: ${{ inputs.fuzztime || '60s' }}
     steps:
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/private-badger
+        with:
+          deploy-key: ${{ secrets.BADGER_READ_DEPLOY_KEY }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -70,3 +73,12 @@ jobs:
             pkg/graph/internal/core/testdata/fuzz/**
             pkg/graph/internal/storeutil/testdata/fuzz/**
           retention-days: 14
+
+      - name: Report check duration
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${GO_CHECK_STARTED_AT:-}" ]]; then
+            seconds=$(( $(date +%s) - GO_CHECK_STARTED_AT ))
+            echo "Go check duration: ${seconds}s (including dependency setup)" >> "$GITHUB_STEP_SUMMARY"
+          fi

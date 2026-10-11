@@ -161,10 +161,10 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 	// effective ValidFrom. New ValidFrom must be strictly greater — otherwise
 	// the prev tile's implicit ValidTo would land before its own ValidFrom,
 	// corrupting the timeline. Bitemporal backdating uses Phase 3's cascade.
-	if tmp.hasValidFrom && tmp.validFrom != 0 {
+	if validFrom, explicit := updateValidStart(tmp); explicit {
 		prevEff := c.nodeValidFrom(current)
-		if tmp.validFrom <= prevEff {
-			return nil, false, fmt.Errorf("%w: %d <= prev %d", ErrValidFromBeforePrevious, tmp.validFrom, prevEff)
+		if validFrom <= prevEff {
+			return nil, false, fmt.Errorf("%w: %d <= prev %d", ErrValidFromBeforePrevious, validFrom, prevEff)
 		}
 	}
 	if err := c.checkpointDirtyRegistriesBeforeMutation("update node"); err != nil {
@@ -224,6 +224,7 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 	// honour caller-supplied tkg_valid_from / tkg_valid_to from `tmp`.
 	tm.ValidFrom = 0
 	tm.ValidTo = 0
+	tm.ValidEndpoints = tmp.validEndpoints
 	if tmp.hasValidFrom {
 		tm.ValidFrom = tmp.validFrom
 	}
@@ -444,6 +445,11 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 	if tm == nil {
 		tm = &types.TemporalMetadata{}
 		current.SetTemporal(tm)
+	}
+	if tmp.validEndpoints != 0 {
+		tm.ValidEndpoints = tmp.validEndpoints
+	} else if tm.HasValidBounds() && (tmp.hasValidFrom || tmp.hasValidTo) {
+		return nil, false, fmt.Errorf("%w: typed valid bounds require a complete typed update", ErrInvalidTimeRange)
 	}
 	tm.UpdatedAt = now
 	if tmp.hasValidFrom {

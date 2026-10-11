@@ -32,10 +32,10 @@ func (bs *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 	if ti, ok := bs.temporalIndexes[token]; ok && !ti.Building {
 		var ids []snowflake.ID
 		temporalQuery := false
-		if opts.ValidAt != 0 {
+		if opts.HasValidAt() {
 			ids = ti.QueryAt(opts.ValidAt)
 			temporalQuery = true
-		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		} else if opts.ValidWindow == nil && opts.HasValidRange() {
 			ids = ti.QueryOverlap(opts.ValidStart, opts.ValidEnd)
 			temporalQuery = true
 		}
@@ -53,10 +53,10 @@ func (bs *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 	if hfi, ok := bs.hfIndexes[token]; ok && !hfi.IsBuilding() {
 		var nids []types.NodeID
 		temporalQuery := false
-		if opts.ValidAt != 0 {
+		if opts.HasValidAt() {
 			nids = hfi.CandidatesUpTo(opts.ValidAt)
 			temporalQuery = true
-		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		} else if opts.ValidWindow == nil && opts.HasValidRange() {
 			nids = hfi.CandidatesUpTo(opts.ValidEnd)
 			temporalQuery = true
 		}

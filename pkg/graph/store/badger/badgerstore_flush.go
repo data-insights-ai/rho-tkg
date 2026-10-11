@@ -48,7 +48,8 @@ func (bs *Store) appendOps(ops ...writeOp) {
 // first let a reader see the new current row and a history without the moved
 // row — the row a pinned read needs in neither, so NodeAtTx / NodeAsOf at a
 // pin before the move answered "absent". Both halves stay inside one idxMu
-// section, so a flush (idxMu.RLock) still commits them in one WriteBatch.
+// section, so a flush (idxMu.RLock) captures both in the same buffer snapshot.
+// A large Badger WriteBatch may still split into multiple durable transactions.
 func (bs *Store) publishMoveLocked(ops []writeOp, publishCurrent func()) {
 	bs.appendOps(ops...)
 	bs.moveHook()
@@ -89,7 +90,7 @@ func (bs *Store) putMovedRelLocked(id snowflake.ID, r *types.Relationship) {
 func (bs *Store) flushIfNeeded() error {
 	if bs.groupCommit.Load() {
 		// Inside a group-commit window: the caller holds the exclusive graph
-		// lock and EndGroupCommit will flush everything in one WriteBatch.
+		// lock and EndGroupCommit will flush the buffered operations together.
 		return nil
 	}
 	if bs.syncWrites {
@@ -190,8 +191,9 @@ func (bs *Store) Flush() error {
 // idxMu.Lock for their entire mutation). This guarantees that the dirty
 // version snapshot, pending ops, and counter values are consistent.
 //
-// Counters are included in the same WriteBatch as entity ops — no TOCTOU
-// window between data and counter persistence.
+// Counters are captured with entity ops. A large WriteBatch can split into
+// transactions; this serialization prevents competing flushes from rewinding
+// counters, rather than guaranteeing atomic row/counter crash publication.
 func (bs *Store) flush() error {
 	bs.flushMu.Lock()
 	defer bs.flushMu.Unlock()
@@ -203,7 +205,7 @@ func (bs *Store) flush() error {
 // already holds idxMu (read or write). Normal flush releases its read lock as
 // soon as the coherent snapshot is captured. Exact erasure passes keep=true
 // while holding the write lock so no direct Store mutation can enter between
-// the destructive RAM transition and its durable atomic WriteBatch.
+// the destructive RAM transition and completion of its durable write barriers.
 //
 // Caller holds flushMu and idxMu. With keepIndexLock=false the held lock MUST
 // be an RLock and this function releases it after the snapshot. With true the
@@ -261,15 +263,65 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 
 	// Step 2: Write all ops + counters + change-log records to Badger via one
 	// WriteBatch (blind writes, no OCC).
+	// Historical postings must be durable BEFORE source rows. WriteBatch can
+	// split/submit transactions independently, so sorting one batch is not a
+	// barrier. A separate completed SyncWrites batch permits false positives
+	// after a crash, never durable source rows without candidate postings.
+	if bs.historicalMembershipOnDisk {
+		members := bs.db.NewWriteBatch()
+		for _, op := range ops {
+			if !historicalMembershipWrite(op) || op.opType == writeOpDelete {
+				continue
+			}
+			err := members.Set(op.key, op.value)
+			if err != nil {
+				members.Cancel()
+				requeue()
+				return fmt.Errorf("graph: historical membership write: %w", err)
+			}
+		}
+		if bs.dbClosed.Load() {
+			members.Cancel()
+			requeue()
+			return badgerv4.ErrDBClosed
+		}
+		if err := members.Flush(); err != nil {
+			members.Cancel()
+			requeue()
+			return fmt.Errorf("graph: historical membership flush: %w", err)
+		}
+		members.Cancel()
+		if h := bs.historicalMembershipFlushTestHook; h != nil {
+			h("after-posting-sets")
+		}
+	}
+	// Moves must preserve already published old pins even if the source batch
+	// splits. Full history anchors precede deltas, and all history sets precede
+	// current-row replacements. Completed batches are ordering barriers, not
+	// an atomic group; SyncWrites determines fsync durability.
+	if err := bs.flushHistorySetsBeforeCurrent(ops); err != nil {
+		requeue()
+		return err
+	}
 	wb := bs.db.NewWriteBatch()
 	defer wb.Cancel() // no-op if Flush already called
 
+	dataWritten := 0
 	for _, op := range ops {
+		if historySetWrite(op) || (bs.historicalMembershipOnDisk && historicalMembershipWrite(op)) {
+			continue
+		}
 		switch op.opType {
 		case writeOpSet:
 			if err := wb.SetEntry(badgerv4.NewEntry(op.key, op.value)); err != nil {
 				requeue()
 				return fmt.Errorf("graph: write batch set: %w", err)
+			}
+			if len(op.key) > 0 && op.key[0] == storepkg.KeyNode {
+				dataWritten++
+				if h := bs.historicalMembershipDataTestHook; h != nil {
+					h(dataWritten)
+				}
 			}
 		case writeOpDelete:
 			if err := wb.Delete(op.key); err != nil {
@@ -279,7 +331,8 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 		}
 	}
 
-	// Include counters in the same atomic batch — no TOCTOU drift on crash.
+	// Include counters from this snapshot. A large WriteBatch can split, so
+	// this does not promise atomic row/counter publication on process crash.
 	ncBuf := make([]byte, 8)
 	binary.BigEndian.PutUint64(ncBuf, uint64(nc)) // #nosec G115 — intentional int64→uint64 for binary encoding
 	if err := wb.SetEntry(badgerv4.NewEntry(counterNodeCountKey, ncBuf)); err != nil {
@@ -293,8 +346,8 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 		return fmt.Errorf("graph: write batch set counter: %w", err)
 	}
 
-	// Change-log records ride the SAME batch as the data they describe and the
-	// counters, so a record commits atomically with its mutation. Sorted by LSN
+	// Change-log records ride the same WriteBatch as the data they describe and
+	// counters; a large batch can split and is not a transaction. Sorted by LSN
 	// so a requeue interleave can never persist them out of order; LastLSNKey
 	// captures the highest LSN in this batch (crash-consistent with the records).
 	if len(logs) > 0 {
@@ -332,6 +385,36 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 	if err := wb.Flush(); err != nil {
 		requeue()
 		return fmt.Errorf("graph: write batch flush: %w", err)
+	}
+	// Destructive auxiliary cleanup follows source durability. A crash between
+	// these barriers leaves a conservative superset, never missing candidates
+	// for a source row that still exists. Exact erasure queues these deletes
+	// only after identifying the complete source/history removal set.
+	if bs.historicalMembershipOnDisk {
+		if h := bs.historicalMembershipFlushTestHook; h != nil {
+			h("after-source-rows")
+		}
+		members := bs.db.NewWriteBatch()
+		for _, op := range ops {
+			if historicalMembershipWrite(op) && op.opType == writeOpDelete {
+				if err := members.Delete(op.key); err != nil {
+					members.Cancel()
+					requeue()
+					return err
+				}
+			}
+		}
+		if bs.dbClosed.Load() {
+			members.Cancel()
+			requeue()
+			return badgerv4.ErrDBClosed
+		}
+		if err := members.Flush(); err != nil {
+			members.Cancel()
+			requeue()
+			return err
+		}
+		members.Cancel()
 	}
 	if !bs.syncWrites {
 		// In the WAL but not fsynced: the next DurableFlush must sync.

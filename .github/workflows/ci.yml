@@ -1,6 +1,13 @@
 name: CI
 
 on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: Exact 40-character commit SHA for mandatory full release validation
+        required: false
   push:
     branches: [main]
   pull_request:
@@ -13,54 +20,109 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ inputs.revision || github.ref }}
   cancel-in-progress: true
 
 jobs:
   test:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.revision || github.sha }}
+      - uses: ./.github/actions/private-badger
+        with:
+          deploy-key: ${{ secrets.BADGER_READ_DEPLOY_KEY }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
+      - run: make fmt-check
       - run: make vet
       - run: make build
-      - run: make test
-      - run: make test-race
+      - name: Affected package and reverse dependency tests
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          base="$BASE_REF"
+          if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
+            base="$(git rev-parse HEAD^)"
+          fi
+          python3 .github/scripts/affected-tests.py "$base"
+          python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+          make check-metakv-reap
 
-  # Blocking: fails below the 80% floor (project rule, Testing Rules #7).
-  # `make cover-gate` runs its own short-mode suite over ./pkg/... — separate
-  # from the test job's race run above — so the floor is measured and
-  # enforced on every push and PR, not only when someone remembers to run
-  # `make cover` locally.
-  coverage:
+      - name: Report check duration
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${GO_CHECK_STARTED_AT:-}" ]]; then
+            seconds=$(( $(date +%s) - GO_CHECK_STARTED_AT ))
+            echo "Go check duration: ${seconds}s (including dependency setup)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # Full validation remains mandatory before merge/release, and runs nightly
+  # or on explicit immutable revision dispatch. One instrumented traversal
+  # checks all backends/races and the package coverage floor without rerunning
+  # a separate normal suite solely to collect coverage.
+  release:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.revision || github.sha }}
+      - uses: ./.github/actions/private-badger
+        with:
+          deploy-key: ${{ secrets.BADGER_READ_DEPLOY_KEY }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
-      - run: make cover-gate
+      - name: Verify exact release revision
+        env:
+          REVISION: ${{ inputs.revision || github.sha }}
+        run: |
+          [[ "$REVISION" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$REVISION" ]]
+          echo "Full release revision: $REVISION" >> "$GITHUB_STEP_SUMMARY"
+      - run: make fmt-check vet build check-metakv-reap
+      # Package-level isolation retains every test while avoiding four large
+      # race heaps/CPU workloads competing on the same hosted runner.
+      - name: Full backend race and coverage gate
+        run: |
+          go test -short -race -p=1 -count=1 -coverpkg=./pkg/... -coverprofile=coverage.pkg.out ./...
+          total=$(go tool cover -func=coverage.pkg.out | awk '/^total:/ {gsub("%","",$3); print $3}')
+          awk -v t="$total" 'BEGIN {if(t+0<80)exit 1;printf "coverage: %s%% >= 80%%\n",t}'
+      - name: Report check duration
+        if: always()
+        run: |
+          if [[ -n "${GO_CHECK_STARTED_AT:-}" ]]; then
+            seconds=$(( $(date +%s) - GO_CHECK_STARTED_AT ))
+            echo "Full release duration: ${seconds}s" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
-  # Lint runs on pull requests only and is BLOCKING for findings introduced by
-  # the PR itself (only-new-issues). The repo carries a documented pre-existing
-  # baseline (~40 findings); scanning the whole tree on every push would only
-  # re-report that baseline, so push events skip lint entirely until the
-  # baseline is burned down.
+  # PR lint checks new findings; scheduled/manual release lint checks all code.
   lint:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ inputs.revision || github.sha }}
+      - uses: ./.github/actions/private-badger
+        with:
+          deploy-key: ${{ secrets.BADGER_READ_DEPLOY_KEY }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -68,14 +130,29 @@ jobs:
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.13.2
-          only-new-issues: true
+          only-new-issues: ${{ github.event_name == 'pull_request' }}
           args: --timeout=5m
 
+      - name: Report check duration
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${GO_CHECK_STARTED_AT:-}" ]]; then
+            seconds=$(( $(date +%s) - GO_CHECK_STARTED_AT ))
+            echo "Go check duration: ${seconds}s (including dependency setup)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   security:
+    if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.revision || github.sha }}
+      - uses: ./.github/actions/private-badger
+        with:
+          deploy-key: ${{ secrets.BADGER_READ_DEPLOY_KEY }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -83,3 +160,12 @@ jobs:
       - run: make tools
       - run: make security
       - run: make vulncheck
+
+      - name: Report check duration
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${GO_CHECK_STARTED_AT:-}" ]]; then
+            seconds=$(( $(date +%s) - GO_CHECK_STARTED_AT ))
+            echo "Go check duration: ${seconds}s (including dependency setup)" >> "$GITHUB_STEP_SUMMARY"
+          fi

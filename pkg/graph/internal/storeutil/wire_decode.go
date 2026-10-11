@@ -124,7 +124,7 @@ func (w *NodeWire) DecodeMsgpack(dec *msgpack.Decoder) error {
 		}
 		switch string(kb[:kn]) {
 		case "fv":
-			w.FormatVersion, err = dec.DecodeUint8()
+			w.FormatVersion, err = decodeWireUint8(dec)
 		case "id":
 			w.ID, err = dec.DecodeInt64()
 		case "pl":
@@ -139,6 +139,8 @@ func (w *NodeWire) DecodeMsgpack(dec *msgpack.Decoder) error {
 			w.HasTemporal, err = dec.DecodeBool()
 		case "vf":
 			w.ValidFrom, err = dec.DecodeInt64()
+		case "ep":
+			w.ValidEndpoints, err = decodeWireUint8(dec)
 		case "vt":
 			w.ValidTo, err = dec.DecodeInt64()
 		case "tf":
@@ -197,7 +199,7 @@ func (w *RelWire) DecodeMsgpack(dec *msgpack.Decoder) error {
 		}
 		switch string(kb[:kn]) {
 		case "fv":
-			w.FormatVersion, err = dec.DecodeUint8()
+			w.FormatVersion, err = decodeWireUint8(dec)
 		case "id":
 			w.ID, err = dec.DecodeInt64()
 		case "rt":
@@ -214,6 +216,8 @@ func (w *RelWire) DecodeMsgpack(dec *msgpack.Decoder) error {
 			w.HasTemporal, err = dec.DecodeBool()
 		case "vf":
 			w.ValidFrom, err = dec.DecodeInt64()
+		case "ep":
+			w.ValidEndpoints, err = decodeWireUint8(dec)
 		case "vt":
 			w.ValidTo, err = dec.DecodeInt64()
 		case "tf":
@@ -363,4 +367,24 @@ func decodePropertyWireInto(dec *msgpack.Decoder, p *PropertyWire, kb []byte) er
 		}
 	}
 	return nil
+}
+
+// DecodeUint8 truncates oversized integer values in msgpack. Endpoint/format
+// bytes are interpretation guards, so validate their range before narrowing.
+func decodeWireUint8(dec *msgpack.Decoder) (uint8, error) {
+	code, err := dec.PeekCode()
+	if err != nil {
+		return 0, err
+	}
+	if code > 0x7f && code < 0xe0 && (code < 0xcc || code > 0xd3) {
+		return 0, fmt.Errorf("%w: wire byte must be an integer", storepkg.ErrCorruptWire)
+	}
+	v, err := dec.DecodeInt64()
+	if err != nil {
+		return 0, err
+	}
+	if v < 0 || v > 255 {
+		return 0, fmt.Errorf("%w: wire byte %d outside uint8", storepkg.ErrCorruptWire, v)
+	}
+	return uint8(v), nil
 }

@@ -62,7 +62,7 @@ func (c *Core) checkRelAgainstEndpoint(r *types.Relationship, relFrom types.Inst
 	}
 
 	// (3)/(4): rel must not start after the node has already expired.
-	if nodeTo != 0 && relFrom >= nodeTo {
+	if isClosedTemporal(node.Temporal()) && relFrom >= nodeTo {
 		if isStart {
 			return fmt.Errorf("%w: %w", temporalpkg.ErrTemporalConstraint, temporalpkg.ErrRelAfterStartNode)
 		}
@@ -71,12 +71,12 @@ func (c *Core) checkRelAgainstEndpoint(r *types.Relationship, relFrom types.Inst
 
 	// (5)/(6): if the node has a finite ValidTo, the relationship must also
 	// have a finite ValidTo that does not outlive the node.
-	if nodeTo != 0 {
+	if isClosedTemporal(node.Temporal()) {
 		var relTo types.Instant
 		if tm := r.Temporal(); tm != nil {
 			relTo = tm.ValidTo
 		}
-		if relTo == 0 || relTo > nodeTo {
+		if !isClosedTemporal(r.Temporal()) || relTo > nodeTo {
 			if isStart {
 				return fmt.Errorf("%w: %w", temporalpkg.ErrTemporalConstraint, temporalpkg.ErrRelExceedsStartNodeValidity)
 			}
@@ -140,6 +140,9 @@ func nodeWithValidTo(n *types.Node, validTo types.Instant) *types.Node {
 		copy.SetTemporal(tm)
 	}
 	tm.ValidTo = validTo
+	if tm.HasValidBounds() {
+		tm.ValidEndpoints |= types.EndpointToFinite
+	}
 	return copy
 }
 
@@ -151,5 +154,8 @@ func relWithValidTo(r *types.Relationship, validTo types.Instant) *types.Relatio
 		copy.SetTemporal(tm)
 	}
 	tm.ValidTo = validTo
+	if tm.HasValidBounds() {
+		tm.ValidEndpoints |= types.EndpointToFinite
+	}
 	return copy
 }

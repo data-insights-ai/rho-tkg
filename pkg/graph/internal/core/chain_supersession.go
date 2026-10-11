@@ -58,6 +58,11 @@ import (
 // start among them.
 func supersessionCaps[T storeutil.TemporalRow](chain []T, start func(T) types.Instant, sc *supersessionScratch) []types.Instant {
 	n := len(chain)
+	if cap(sc.capPresent) < n {
+		sc.capPresent = make([]bool, n)
+	}
+	sc.capPresent = sc.capPresent[:n]
+	clear(sc.capPresent)
 	if cap(sc.inst) < 3*n {
 		sc.inst = make([]types.Instant, 3*n)
 	}
@@ -181,6 +186,7 @@ func supersessionCaps[T storeutil.TemporalRow](chain []T, start func(T) types.In
 			m := lo
 			if m > 0 {
 				caps[p] = starts[stack[m-1]]
+				sc.capPresent[p] = true
 				capped = true
 			}
 		}
@@ -193,17 +199,14 @@ func supersessionCaps[T storeutil.TemporalRow](chain []T, start func(T) types.In
 	return caps
 }
 
-// startsOf returns the starts supersessionCaps computed for its last chain of
-// length n (the resolver's own-bounds arm reads them instead of recomputing).
-func (sc *supersessionScratch) startsOf(n int) []types.Instant { return sc.inst[:n] }
-
 // supersessionScratch is supersessionCaps' reusable working memory (a long
 // chain needs several arrays of its length per point resolve).
 type supersessionScratch struct {
-	replaced []replacedRow
-	ints     []int
-	versions []uint32
-	inst     []types.Instant
+	capPresent []bool
+	replaced   []replacedRow
+	ints       []int
+	versions   []uint32
+	inst       []types.Instant
 }
 
 var supersessionScratchPool = sync.Pool{New: func() any { return new(supersessionScratch) }}
@@ -228,12 +231,4 @@ func putSupersessionScratch(sc *supersessionScratch) {
 type replacedRow struct {
 	tx      types.Instant
 	version uint32
-}
-
-// capEnd caps a valid end (0 = open) at cap (0 = none).
-func capEnd(vEnd, cap types.Instant) types.Instant {
-	if cap != 0 && (vEnd == 0 || vEnd > cap) {
-		return cap
-	}
-	return vEnd
 }

@@ -50,10 +50,10 @@ func (ms *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 		// temporalIndex returns raw snowflake.IDs (Tier D handoff).
 		var rawIDs []snowflake.ID
 		temporalQuery := false
-		if opts.ValidAt != 0 {
+		if opts.HasValidAt() {
 			rawIDs = ti.QueryAt(opts.ValidAt)
 			temporalQuery = true
-		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		} else if opts.ValidWindow == nil && opts.HasValidRange() {
 			rawIDs = ti.QueryOverlap(opts.ValidStart, opts.ValidEnd)
 			temporalQuery = true
 		}
@@ -70,10 +70,10 @@ func (ms *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 	if hfi, ok := ms.hfIndexes[token]; ok {
 		var ids []types.NodeID
 		temporalQuery := false
-		if opts.ValidAt != 0 {
+		if opts.HasValidAt() {
 			ids = hfi.CandidatesUpTo(opts.ValidAt)
 			temporalQuery = true
-		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		} else if opts.ValidWindow == nil && opts.HasValidRange() {
 			ids = hfi.CandidatesUpTo(opts.ValidEnd)
 			temporalQuery = true
 		}
@@ -169,10 +169,10 @@ func (ms *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 	if ti, ok := ms.relTypeTemporalIndexes[token]; ok {
 		var rawIDs []snowflake.ID
 		temporalQuery := false
-		if opts.ValidAt != 0 {
+		if opts.HasValidAt() {
 			rawIDs = ti.QueryAt(opts.ValidAt)
 			temporalQuery = true
-		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		} else if opts.ValidWindow == nil && opts.HasValidRange() {
 			rawIDs = ti.QueryOverlap(opts.ValidStart, opts.ValidEnd)
 			temporalQuery = true
 		}

@@ -91,9 +91,12 @@ type ForeignIncomingEdge struct {
 	PrevHash   string
 	ValidFrom  types.Instant
 	ValidTo    types.Instant
-	CreatedAt  types.Instant
-	TxFrom     types.Instant
-	Version    uint32
+	// ValidEndpoints must be copied with the authoritative temporal scalars.
+	// Zero preserves legacy descriptors; typed ranges retain finite epoch zero.
+	ValidEndpoints types.EndpointPresence
+	CreatedAt      types.Instant
+	TxFrom         types.Instant
+	Version        uint32
 	// AttestTx is required non-zero provenance (§4.1) for the attest-time-vs-
 	// commit-time gap. Like ForeignEndpoint.AttestTx, rho-tkg enforces NO
 	// staleness bound on it — any positive value passes Validate; bounding
@@ -105,6 +108,10 @@ type ForeignIncomingEdge struct {
 // AttestTx is — any positive value passes; see ForeignEndpoint's type doc
 // comment for why that bound is intentionally left to the caller.
 func (e ForeignIncomingEdge) Validate() error {
+	if err := (&types.TemporalMetadata{ValidFrom: e.ValidFrom, ValidTo: e.ValidTo, ValidEndpoints: e.ValidEndpoints}).ValidateValidBounds(); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidForeignIncoming, err)
+	}
+
 	if e.RelID.SnowflakeID() == 0 {
 		return fmt.Errorf("%w: zero rel ID", ErrInvalidForeignIncoming)
 	}

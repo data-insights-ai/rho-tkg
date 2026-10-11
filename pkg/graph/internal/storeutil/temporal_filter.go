@@ -1,6 +1,8 @@
 package storeutil
 
 import (
+	"math"
+
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/internal/idlayout"
@@ -14,6 +16,13 @@ import (
 // applies "0 = unset, the start is the mint instant" agrees with the resolver
 // by construction.
 func EntityValidFrom(id snowflake.ID, tm *types.TemporalMetadata) types.Instant {
+	if tm != nil && tm.HasValidBounds() {
+		r, _ := tm.ValidBounds()
+		if r.From.Finite {
+			return r.From.Value
+		}
+		return types.Instant(math.MinInt64)
+	}
 	if tm != nil && tm.ValidFrom != 0 {
 		return tm.ValidFrom
 	}
@@ -38,10 +47,14 @@ func SnowflakeInstant(id snowflake.ID) types.Instant {
 // a point (ValidAt) or interval (ValidStart/ValidEnd) filter constrains — with
 // neither, returns true (nothing to prune on).
 func EnvelopeOverlaps(from, to types.Instant, opts storepkg.QueryOpts) bool {
-	if opts.ValidAt != 0 {
+	if opts.HasValidAt() {
 		return from <= opts.ValidAt && (to == 0 || to > opts.ValidAt)
 	}
-	if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+	if opts.ValidWindow != nil {
+		r := types.TemporalRange{From: types.TemporalEndpoint{Value: from, Finite: true}, To: types.TemporalEndpoint{Value: to, Finite: to != 0}}
+		return r.Overlaps(*opts.ValidWindow)
+	}
+	if opts.HasValidRange() {
 		return from < opts.ValidEnd && (to == 0 || to > opts.ValidStart)
 	}
 	return true
@@ -57,10 +70,17 @@ func EnvelopeOverlaps(from, to types.Instant, opts storepkg.QueryOpts) bool {
 // Point-in-time: from <= t AND (to == 0 OR to > t)
 // Interval:      from < end AND (to == 0 OR to > start)
 func MatchesTemporalFilter(id snowflake.ID, tm *types.TemporalMetadata, opts storepkg.QueryOpts) bool {
-	if opts.ValidAt != 0 {
+	if opts.HasValidAt() {
 		return MatchesPointInTime(id, tm, opts.ValidAt)
 	}
-	if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+	if opts.ValidWindow != nil {
+		r, explicit := tm.ValidBounds()
+		if !explicit {
+			r.From = types.TemporalEndpoint{Value: EntityValidFrom(id, tm), Finite: true}
+		}
+		return r.Overlaps(*opts.ValidWindow)
+	}
+	if opts.HasValidRange() {
 		if opts.ValidStart >= opts.ValidEnd {
 			return false
 		}
@@ -78,7 +98,7 @@ func MatchesTemporalFilter(id snowflake.ID, tm *types.TemporalMetadata, opts sto
 // TestScanDoorsNeverForwardTemporalOptsToStore. Do not use this predicate to
 // decide whether a graph-level read may take a current-row shortcut.
 func HasTemporalFilter(opts storepkg.QueryOpts) bool {
-	return opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
+	return opts.HasValidAt() || (opts.HasValidRange())
 }
 
 // MatchesPointInTime checks: from <= t AND (to == 0 OR to > t), with from
@@ -94,6 +114,10 @@ func MatchesPointInTime(id snowflake.ID, tm *types.TemporalMetadata, t types.Ins
 	if from > t {
 		return false
 	}
+	if tm != nil && tm.HasValidBounds() {
+		r, _ := tm.ValidBounds()
+		return !r.To.Finite || r.To.Value > t
+	}
 	if tm != nil && tm.ValidTo != 0 {
 		return tm.ValidTo > t
 	}
@@ -107,6 +131,10 @@ func MatchesInterval(id snowflake.ID, tm *types.TemporalMetadata, start, end typ
 	from := EntityValidFrom(id, tm)
 	if from >= end {
 		return false
+	}
+	if tm != nil && tm.HasValidBounds() {
+		r, _ := tm.ValidBounds()
+		return !r.To.Finite || r.To.Value > start
 	}
 	if tm != nil && tm.ValidTo != 0 {
 		return tm.ValidTo > start

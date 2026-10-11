@@ -1,6 +1,9 @@
 package core
 
 import (
+	"errors"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
@@ -21,6 +24,20 @@ func (c *Core) ScanNodeColumns(label string, props []string, opts storepkg.Query
 	if c == nil {
 		return false, nil
 	}
+	if fn == nil {
+		return true, grapherr.ErrNilCallback
+	}
+	// Decline only before output. A later unsupported type after an earlier
+	// batch remains an error; silently replaying would duplicate prior rows.
+	emitted := false
+	callback := fn
+	fn = func(b *storepkg.ColumnBatch) bool { emitted = true; return callback(b) }
+	defer func() {
+		if !emitted && errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+			ok = false
+			err = nil
+		}
+	}()
 	scanner, has := c.store.(storepkg.NodeColumnScanCapability)
 	temporal := hasTemporalFilter(opts)
 	if temporal && has {

@@ -94,6 +94,11 @@ const (
 
 // Config configures a Store instance.
 type Config struct {
+	// HistoricalMembershipOnDisk persists historical label/type/property
+	// candidates instead of building process-wide RAM membership tables.
+	// Enabling it raises the minimum writer marker to v5 (entity rows keep
+	// their existing v4 encoding); older writers must refuse the directory.
+	HistoricalMembershipOnDisk bool
 	// Dir is the Badger data directory. Required unless InMemory is true.
 	Dir string
 	// InMemory enables memory-only mode (no disk I/O). Useful for testing.
@@ -440,7 +445,12 @@ type pendingLogRecord struct {
 //
 // Counters are atomic int64 fields, persisted atomically in the flush WriteBatch. No OCC contention.
 type Store struct {
-	db *badgerv4.DB
+	historicalMembershipOnDisk        bool
+	historicalMembershipReady         atomic.Bool
+	historicalMembershipMu            sync.Mutex
+	historicalMembershipFlushTestHook func(string)
+	historicalMembershipDataTestHook  func(int)
+	db                                *badgerv4.DB
 
 	// In-memory indexes (source of truth while running).
 	// Protected by idxMu for concurrent read/write access.
@@ -852,6 +862,7 @@ type Store struct {
 	// IndexRebuildStats so operators can detect partially rebuilt indexes
 	// instead of the previous silent skip (F9 in the maintainability review).
 	indexRebuildPropertySkips  atomic.Int64
+	indexRebuildPropertyReads  atomic.Int64
 	indexRebuildCompositeSkips atomic.Int64
 	indexRebuildTemporalSkips  atomic.Int64
 	indexRebuildHFSkips        atomic.Int64
@@ -1009,6 +1020,9 @@ func newRelCache(capacity int, budget int64) indexpkg.EntityCache[*types.Relatio
 }
 
 func New(cfg Config) (*Store, error) {
+	if cfg.HistoricalMembershipOnDisk && !cfg.ReadOnly && !cfg.SyncWrites {
+		return nil, fmt.Errorf("%w: HistoricalMembershipOnDisk requires SyncWrites for writable stores", ErrInvalidStoreMutation)
+	}
 	if cfg.FlushInterval < 0 {
 		return nil, fmt.Errorf("graph: FlushInterval must not be negative")
 	}
@@ -1066,9 +1080,15 @@ func New(cfg Config) (*Store, error) {
 	// directory stamped by a newer release must fail closed here, not surface
 	// as per-row decode failures (which loadIndexes would conflate with
 	// corruption / counter mismatch).
-	if err := verifyAndStampWireFormatVersion(db, cfg.ReadOnly); err != nil {
+	var formatErr error
+	if cfg.HistoricalMembershipOnDisk {
+		formatErr = verifyAndStampWireFormatVersionForReader(db, cfg.ReadOnly, historicalMembershipWriterVersion)
+	} else {
+		formatErr = verifyAndStampWireFormatVersion(db, cfg.ReadOnly)
+	}
+	if formatErr != nil {
 		_ = db.Close() // best-effort cleanup
-		return nil, err
+		return nil, formatErr
 	}
 	if err := verifyAndStampHistoryAnchorInterval(db, resolveHistoryAnchorInterval(cfg.HistoryAnchorInterval), cfg.HistoryDeltaEncoding, cfg.ReadOnly); err != nil {
 		_ = db.Close() // best-effort cleanup
@@ -1108,7 +1128,8 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	bs := &Store{
-		db: db,
+		historicalMembershipOnDisk: cfg.HistoricalMembershipOnDisk,
+		db:                         db,
 
 		historyPresenceProbeOnly: cfg.HistoryPresenceProbeOnly,
 		nodeIDs:                  make(map[types.NodeID]struct{}),
@@ -1216,6 +1237,14 @@ func New(cfg Config) (*Store, error) {
 	if err := bs.loadIndexes(); err != nil {
 		_ = db.Close() // best-effort cleanup
 		return nil, fmt.Errorf("graph: load indexes: %w", err)
+	}
+	if bs.historicalMembershipOnDisk {
+		progress, err := bs.historicalMembershipProgress()
+		if err != nil {
+			_ = db.Close()
+			return nil, err
+		}
+		bs.historicalMembershipReady.Store(progress.Complete)
 	}
 
 	// loadIndexes rebuilds each temporal index from CURRENT node state only.
@@ -1657,9 +1686,18 @@ func (bs *Store) loadIndexesScan() error {
 				}
 				seenProperty[key] = struct{}{}
 				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts)
+				// A completed on-disk index already owns its entries. Definitions
+				// still pass every validation above; the canonical node scan already
+				// validated the entity rows. Re-decoding each label's rows for every
+				// property discards all results and turns reopen into O(N*indexes).
+				if bs.propIdxOnDisk && !propIdxNeedsBuild {
+					bs.propertyIndexes[key] = idx
+					continue
+				}
 				if nodeIDs, ok := bs.labelIdx[def.LabelToken]; ok {
 					for nodeID := range nodeIDs {
 						rawID := nodeID.SnowflakeID()
+						bs.indexRebuildPropertyReads.Add(1)
 						n, nerr := bs.loadNodeFromBadger(txn, rawID)
 						if nerr != nil {
 							// Tolerate missing/corrupt during rebuild,
@@ -2107,11 +2145,14 @@ func (bs *Store) Clear() error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	bs.historicalMembershipMu.Lock()
+	defer bs.historicalMembershipMu.Unlock()
 	bs.flushMu.Lock()
 	defer bs.flushMu.Unlock()
 
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
+	bs.historicalMembershipReady.Store(false)
 
 	// No history-presence build may scan across the wipe (lock order:
 	// flushMu -> idxMu -> presence buildMu -> wbMu; a build takes only
@@ -2273,6 +2314,9 @@ func (bs *Store) Clear() error {
 	if hasLSN {
 		return bs.clearDataPreservingLastLSN()
 	}
+	if bs.historicalMembershipOnDisk {
+		return bs.clearDataPreservingLastLSN()
+	}
 	return bs.db.DropAll()
 }
 
@@ -2352,6 +2396,10 @@ func (bs *Store) checkWritable() error {
 // Open means the persisted indexes are degraded — operators should run an
 // explicit repair pass before relying on index-backed queries.
 type IndexRebuildStats struct {
+	// PropertyRowsRead counts node decodes requested by property-index
+	// rebuilds, excluding the canonical entity-validation pass. A completed
+	// disk-resident index needs none, regardless of its definition count.
+	PropertyRowsRead int64
 	PropertySkipped  int64
 	CompositeSkipped int64
 	TemporalSkipped  int64
@@ -2360,12 +2408,13 @@ type IndexRebuildStats struct {
 }
 
 // IndexRebuildStats returns the diagnostic counters captured during the last
-// loadIndexes pass. Zero means a clean rebuild.
+// loadIndexes pass. Zero skipped rows means a clean rebuild.
 func (bs *Store) IndexRebuildStats() IndexRebuildStats {
 	if bs == nil || bs.isClosingOrClosed() {
 		return IndexRebuildStats{}
 	}
 	return IndexRebuildStats{
+		PropertyRowsRead: bs.indexRebuildPropertyReads.Load(),
 		PropertySkipped:  bs.indexRebuildPropertySkips.Load(),
 		CompositeSkipped: bs.indexRebuildCompositeSkips.Load(),
 		TemporalSkipped:  bs.indexRebuildTemporalSkips.Load(),

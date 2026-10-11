@@ -274,6 +274,86 @@ With `badger.Config.PropertyIndexOnDisk` (or the mirrored `graph.Config.Property
 
 **Range cardinality trade-off.** `NodeRangeCardinality` (the O(1) exact-count accelerator backing `count(p) WHERE p.k > x`) always declines (`exact=false`) in disk mode instead of reimplementing the RAM ordered view's per-value bucket-size sum — the persisted keyspace does not maintain those bucket sizes. This is a pure availability difference, never a wrong answer: callers already handle decline by falling back to `ForEachNodeByLabelPropertyRange` plus an exact count.
 
+**Configuration stability.** Keep `PropertyIndexOnDisk` enabled once a writable
+directory uses it. The existing completion marker does not track mutations made
+during a later RAM-only writable reopen, so toggling off, writing, then back on
+can trust stale entries. This pre-existing mode-toggle hazard is not repaired by
+the reopen optimization; an explicit rebuild/migration is required for that
+workflow. The current custom-store deployment keeps the option permanently on.
+
+## Persistent historical candidates (opt-in, `HistoricalMembershipOnDisk`)
+
+This Badger-only option stores complete node label/property and relationship
+type/property candidate membership on disk. It does not persist legal facts,
+change temporal semantics, or replace canonical version resolution. Callers
+using a custom Badger store set `HistoricalMembershipOnDisk: true` and
+`SyncWrites: true`; other backends and convenience profiles remain unchanged.
+
+**Upgrade and rollback.** Opt-in raises the directory's minimum writer marker to
+5 before accepting writes; row serialization stays at version 4. Default or
+older binaries reject the directory. Keep a pre-upgrade backup if rollback to
+an older writer is required. Writable opt-in with `SyncWrites: false` is rejected.
+Readonly opt-in can query a completed directory without writes or fsync settings.
+
+**Bounded bootstrap.** `HistoricalMembershipStatus()` reports version 1 progress
+without modifying files. `BuildHistoricalMembership(ctx, limits)` reads one
+bounded snapshot page across current nodes, node histories, current relationships
+and relationship histories (phases 0..3); phase 4 means Complete. Limits are
+1..10,000 source rows and 1..64MiB including source and posting bytes. An
+individual row exceeding the byte limit returns an error without advancing.
+Each page first durably flushes all posting sets, then atomically writes its
+small cursor. An interrupted page repeats idempotently. Every writer records
+new current/history acquisitions from option enable, so mutations between pages
+cannot leave rows behind the cursor unindexed. The graph owner must serialize
+bootstrap calls with GraphTx/group-commit windows; an active window is rejected.
+Clear and erasure serialize with bootstrap and cannot resurrect removed evidence.
+
+**Application lifecycle.** Open the single writable owner with the option and
+`SyncWrites`, construct the graph to attach registries and restore index
+definitions, then complete bounded bootstrap pages under the application's
+existing writer gate before restoring the application clock or making pinned
+state/key queries. Those queries can otherwise invoke broad history fallbacks
+before index readiness. Progress is
+observable and durable. Do not acknowledge new application publications until
+normal graph receipt rules succeed. Before Complete the optional accelerator
+declines; graph APIs retain an exact full-history fallback that can be expensive.
+An application requiring bounded interactive latency should expose its own
+readiness gate until Complete rather than assume fallback latency is bounded.
+Existing accepted transaction pins and the application read/write gate remain
+unchanged. Bootstrap may run between serialized writes; it needs no separate
+Badger owner and does not change an application publication pin.
+
+**Queries and memory.** A complete index streams candidate IDs in ascending
+order after an exclusive cursor. `OrderedHistoricalCandidatesCapability` returns
+an earliest acquisition stamp (zero means unknown); graph generic pinned
+label/type/property queries resolve and recheck every candidate before consuming
+Limit. Unknown or colliding property hashes can overinclude candidates but cannot
+manufacture a canonical match. Missing declared property indexes, partial builds
+and backends without this capability use existing exact fallbacks. Counts and
+other full-result APIs may still allocate full result/candidate collections.
+No process-wide historical membership map is built by completed disk lookups.
+Resident identity/hash/revision maps and caches remain size-dependent; startup
+still validates all current rows. This is not a constant-RAM/full-corpus claim.
+
+**Write ordering and deletion.** Membership additions are flushed in a completed
+SyncWrites batch before source rows. Full history anchors flush before dependent history deltas; both finish before
+current replacements so previously published pins survive split source writes.
+Source rows then flush; destructive posting
+cleanup follows only after source durability. Interrupted writes/erases may
+leave conservative candidate supersets, which canonical resolution filters.
+Badger WriteBatch may split transactions: one batch does not imply atomic
+row/counter/log mutation. Reverse entries bind auxiliary cleanup to exact entity
+identities. Clear removes membership/reverse keys and progress while preserving
+minimum writer marker 5. Ordinary retained history keeps its candidates.
+
+**Key layout.** `0x0c/<kind>/<token>/<optional property-value digest>/<ID>/<TX>`
+contains versioned membership stamps; `0x0d/<kind>/<ID>/<posting digest>` points
+back to the posting for exact cleanup. Kinds distinguish node labels,
+relationship types, node properties and relationship properties. Property
+membership is recorded for every indexable value so subsequently declared
+indexes can use prior history. These are internal formats; public IDs and exact
+historical rows remain authoritative.
+
 ## Persistent temporal-index rebuild accelerator (opt-in, `TemporalIndexOnDisk`)
 
 With `badger.Config.TemporalIndexOnDisk` (or the mirrored `graph.Config.TemporalIndexOnDisk` / `tiered.Config.TemporalIndexOnDisk`) enabled, the maxTo-augmented temporal interval index (`g.Index().CreateTemporal`) keeps a compact raw-entry log on disk so a store reopen no longer has to re-derive every entry from a full node fetch+decode. This is a DIFFERENT trade-off shape than `LabelIndexOnDisk`/`AdjacencyIndexOnDisk`/`PropertyIndexOnDisk` above: those move an index OFF the RAM heap and answer LIVE reads from the persisted keyspace instead. The temporal interval index's stabbing (`QueryAt`) and interval (`QueryOverlap`) queries walk an implicit balanced BST augmented with per-subtree max-upper-bound (`subMax`) — a structure that has no on-disk analogue — so it always stays fully resident in RAM at runtime; the flag has zero effect on live query results within a session. It exists solely to make the REBUILD-AT-OPEN step cheap.
@@ -308,7 +388,7 @@ With `badger.Config.HistoryDeltaEncoding` (or the mirrored `graph.Config.History
 
 ## History rows: versions, lives and RAM sidecars (no format change)
 
-Every row a write appends takes the version one above the highest stored for the entity (current row and history; v4.46, `internal/core/version_alloc.go`), so history keys `0x07`/`0x08` `/<id>/<version>` are unique and ascend in write order. A re-import of a deleted ID continues that numbering and links its `PrevHash` to the top row (v4.48); chains written by v4.43–v4.47 whose earlier life a re-import overwrote stay as stored (no migration). The read-side doors `HasHistory`, `LatestStamps` and the pinned property lookups answer from RAM sidecars (badger: history presence set, history-stamps fold, per-index property tx-membership; memory: its maps): built lazily on first use after open from the history keys and values, maintained wherever a history key enters the write buffer, dropped by `Clear`, never persisted — a reopen pays one build per sidecar instead of a migration.
+Every row a write appends takes the version one above the highest stored for the entity (current row and history; v4.46, `internal/core/version_alloc.go`), so history keys `0x07`/`0x08` `/<id>/<version>` are unique and ascend in write order. A re-import of a deleted ID continues that numbering and links its `PrevHash` to the top row (v4.48); chains written by v4.43–v4.47 whose earlier life a re-import overwrote stay as stored (no migration). The read-side doors `HasHistory`, `LatestStamps` and the pinned property lookups answer from RAM sidecars (badger: history presence set, history-stamps fold, per-index property tx-membership; memory: its maps): built lazily on first use after open from the history keys and values, maintained wherever a history key enters the write buffer, dropped by `Clear`, and normally never persisted — a reopen pays one build per sidecar instead of a migration. The opt-in persistent historical candidate mode above replaces label/type/property membership sidecars, not all history-presence or stamp state.
 
 ## Column segments (opt-in, `RelSegments` / `SegmentDir`, memory store)
 

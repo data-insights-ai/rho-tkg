@@ -25,6 +25,10 @@ new="${2:?usage: bench-compare.sh <old.txt> <new.txt> [csv-report]}"
 csv_report="${3:-$(mktemp)}"
 threshold="${REGRESSION_THRESHOLD_PCT:-15}"
 
+# A failed/partial run cannot become a green comparison through absent CSV
+# values. Require exactly the same nonempty benchmark rows and sample counts.
+LC_ALL=C awk -f "$(dirname "$0")/bench-input.awk" "$old" "$new"
+
 if ! command -v benchstat >/dev/null 2>&1; then
   echo "bench-compare: benchstat not found on PATH, installing golang.org/x/perf/cmd/benchstat@latest" >&2
   go install golang.org/x/perf/cmd/benchstat@latest

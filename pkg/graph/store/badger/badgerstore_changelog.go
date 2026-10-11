@@ -1,6 +1,7 @@
 package badger
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"sort"
@@ -272,7 +273,7 @@ func (bs *Store) clearDataPreservingLastLSN() error {
 		defer it.Close()
 		for it.Rewind(); it.Valid(); it.Next() {
 			k := it.Item().KeyCopy(nil)
-			if string(k) == lastLSN {
+			if string(k) == lastLSN || bs.historicalMembershipOnDisk && bytes.Equal(k, storepkg.WireFormatVersionKey) {
 				continue
 			}
 			metaKeys = append(metaKeys, k)
@@ -310,6 +311,8 @@ func (bs *Store) clearDataPreservingLastLSN() error {
 		[]byte{storepkg.KeyOut}, []byte{storepkg.KeyIn},
 		[]byte{storepkg.KeyHistNode}, []byte{storepkg.KeyHistRel},
 		[]byte{storepkg.KeyChangeLog},
+		[]byte{storepkg.KeyPropertyIndex}, []byte{storepkg.KeyTemporalIndex},
+		[]byte{diskMembershipPrefix}, []byte{diskMembershipReversePrefix},
 	); err != nil {
 		return fmt.Errorf("graph: clear drop data: %w", err)
 	}

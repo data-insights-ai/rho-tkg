@@ -1,4 +1,4 @@
-# Architecture — tkg/v4 (v4.50.1)
+# Architecture — tkg/v4 (v4.50.2)
 
 Temporal Knowledge Graph v4 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
@@ -582,6 +582,8 @@ endpoint-resolving traversals without fetching the relationship row.
 | `0x09` | `/<8B LSN>` | 9B | Change-log (op-log) record — opt-in (`ChangeLog`); value = `tag(1B) ‖ msgpack(body)` |
 | `0x0A` | `/<2B propKeyToken>/<payload>/<8B nodeID>` | var | Persisted property-index entry — opt-in (`Config.PropertyIndexOnDisk`) |
 | `0x0B` | `/<2B labelToken>/<8B from>/<8B nodeID>` | 19B | Persisted temporal-index raw-entry row — opt-in (`Config.TemporalIndexOnDisk`) |
+| `0x0C` | `/<kind>/<token>/<optional digest>/<ID>/<TX>` | 20B / 52B | Persisted historical membership candidates — opt-in (`badger.Config.HistoricalMembershipOnDisk`) |
+| `0x0D` | `/<kind>/<ID>/<posting digest>` | 42B | Per-identity reverse membership cleanup |
 | `0x0F` | `/meta/*` | var | Counters, registry tokens, property index defs, `last_lsn` watermark |
 
 All IDs stored as big-endian uint64 for correct sort order and temporal clustering.
@@ -596,13 +598,25 @@ a full node fetch+decode per entity (the index itself stays RAM-resident at
 runtime). The two new keyspaces are backfilled from current node state exactly
 once, the first time their flag is turned on.
 
+`badger.Config.HistoricalMembershipOnDisk` is a separate custom-store option:
+it persists ordered historical candidate postings rather than building label,
+type and property membership maps on first pinned lookup. It requires SyncWrites
+for writable stores and writer marker 5; entity rows remain format 4. Bootstrap
+uses bounded pages with postings durable before cursor/Complete publication.
+Canonical temporal resolution still verifies each candidate before Limit.
+Full history anchors and deltas finish before changed current rows; destructive
+auxiliary cleanup follows source removal. See [persistence](persistence.md) for
+readiness, crash ordering and rollback requirements. Resident identity maps and
+other caches still depend on corpus size.
+
 ### Change-log / op-log (`ChangeFeedCapability`, opt-in)
 
 With `ChangeLog` enabled, every committed mutation appends a framed record under
 `0x09/<LSN>` (big-endian LSN, so a prefix scan yields ascending commit order),
 in the SAME `WriteBatch` as the data and counters, plus a `last_lsn` watermark —
-so a record and its mutation commit atomically and the LSN allocator reseeds
-crash-consistently at open. The log is the topology-agnostic foundation for
+Large Badger WriteBatches may split into transactions, so this is not an
+atomic mutation group. The LSN allocator reseeds from persisted watermarks at
+open; callers retain their documented receipt/flush publication barriers. The log is the topology-agnostic foundation for
 horizontal scaling (CDC / audit / PITR today; read-replica streaming next) and
 is surfaced through `g.Replication()` (`ChangeFeed` / `ForEachChange` /
 `LastCommittedLSN`). It is emitted IN-BACKEND (badger, memory, tiered, sharded) rather than via a
@@ -1162,7 +1176,7 @@ Import treats record streams as untrusted input. `ImportOptions.MaxStagedBytes =
 | v3.0.66 | `GraphTx.GetNode`, `GraphTx.AddRelationshipByID`, `GraphTx.AddRelationshipByIDIfAbsent` for transactional graph writes |
 | v3.0.67 | Cross-shard incoming relationship type filter fix — `inIdx` changed from `map[ID]struct{}` to `map[ID]uint16` (relID → typeToken; today `inEdge{startNodeID, typeToken}`) |
 
-The table records the v3.0 build-out only. Every later release (v3.0.68 – v4.50.1) is in `CHANGELOG.md`; the sections above describe the current code.
+The table records the v3.0 build-out only. Every later release (v3.0.68 – v4.50.2) is in `CHANGELOG.md`; the sections above describe the current code.
 
 ---
 

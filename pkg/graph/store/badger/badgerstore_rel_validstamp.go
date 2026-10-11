@@ -30,7 +30,7 @@ import (
 //
 // relValidIdx keeps each relationship's EFFECTIVE valid interval alongside the
 // adjacency index so the traversal can reject (or admit) an edge from the inline
-// stamp WITHOUT decoding its row. It is a small parallel map (RelID -> 16 bytes),
+// stamp WITHOUT decoding its row. It is a small parallel map (RelID -> 24 bytes),
 // deliberately NOT a change to outIdx's value type (which would ripple through
 // every adjacency reader). Soundness is "a hit must be fresh; a miss falls back
 // to the decode path" — so it is correct even on a partial/cross-shard store
@@ -46,14 +46,16 @@ import (
 // the current rel set in one pass.
 
 // relValidStamp is one relationship's inline valid-time interval. vf is the
-// EFFECTIVE valid-from: EntityValidFrom has already resolved the snowflake-ID
-// fallback, so vf is always > 0 for a real relationship. vt is valid-to with 0
-// meaning open-ended. Storing the resolved vf lets the fast path reuse the
+// EFFECTIVE legacy valid-from, or the exact scalar for a typed range.
+// Presence bits preserve finite zero and explicit infinities; a typed lower
+// infinity keeps canonical vf=0 rather than an ordering key. Legacy starts
+// keep their resolved value. The fast path reuses the
 // canonical MatchesTemporalFilter via a synthetic TemporalMetadata, so the
 // inline decision can never drift from the decode path's semantics.
 type relValidStamp struct {
-	vf int64
-	vt int64
+	vf       int64
+	vt       int64
+	presence types.EndpointPresence
 }
 
 // setRelValidStampLocked records (or refreshes) the rel's inline valid interval.
@@ -76,10 +78,15 @@ func relValidStampFor(rid types.RelID, r *types.Relationship) relValidStamp {
 	tm := r.Temporal()
 	vf := storepkg.EntityValidFrom(rid.SnowflakeID(), tm)
 	var vt types.Instant
+	var presence types.EndpointPresence
 	if tm != nil {
 		vt = tm.ValidTo
+		if tm.HasValidBounds() {
+			vf = tm.ValidFrom
+			presence = tm.ValidEndpoints
+		}
 	}
-	return relValidStamp{vf: int64(vf), vt: int64(vt)}
+	return relValidStamp{vf: int64(vf), vt: int64(vt), presence: presence}
 }
 
 // ensureRelValidIdxBuilt builds the inline stamp index from the current rel set
@@ -166,10 +173,11 @@ func (bs *Store) ForEachAdjacentEndpointAt(nid types.NodeID, typeToken uint16, i
 				deferred = append(deferred, m)
 				continue
 			}
-			// Synthetic metadata with the resolved vf (>0) so
+			// Synthetic metadata preserves the exact typed endpoint presence, or
+			// the resolved legacy vf, so
 			// MatchesTemporalFilter uses it directly; the snowflake-ID arg is
 			// therefore irrelevant.
-			tm := types.TemporalMetadata{ValidFrom: types.Instant(s.vf), ValidTo: types.Instant(s.vt)}
+			tm := types.TemporalMetadata{ValidFrom: types.Instant(s.vf), ValidTo: types.Instant(s.vt), ValidEndpoints: s.presence}
 			if storepkg.MatchesTemporalFilter(m.rel.SnowflakeID(), &tm, opts) {
 				survivors = append(survivors, m)
 			}
@@ -242,7 +250,7 @@ func (bs *Store) ForEachAdjacentRelAt(nid types.NodeID, typeToken uint16, incomi
 	if snapErr == nil && hasTemporal {
 		for _, rid := range rids {
 			if s, ok := bs.relValidIdx[rid]; ok {
-				tm := types.TemporalMetadata{ValidFrom: types.Instant(s.vf), ValidTo: types.Instant(s.vt)}
+				tm := types.TemporalMetadata{ValidFrom: types.Instant(s.vf), ValidTo: types.Instant(s.vt), ValidEndpoints: s.presence}
 				if !storepkg.MatchesTemporalFilter(rid.SnowflakeID(), &tm, opts) {
 					if skipDecode == nil {
 						skipDecode = make(map[types.RelID]struct{})

@@ -27,7 +27,7 @@ import (
 
 // columnBlobVersion is the encoding version of ONE persisted column blob. It is
 // local to this cache and unrelated to the store's wire-format version.
-const columnBlobVersion uint8 = 1
+const columnBlobVersion uint8 = 2
 
 var (
 	// ErrColumnBlobUnreadable means a persisted column could not be decoded and the
@@ -188,6 +188,11 @@ func EncodeColumns[T EntityID](l *DocValues[T]) []byte {
 	w := &blobWriter{b: make([]byte, 0, 1024)}
 	w.u8(columnBlobVersion)
 	w.u64(l.epoch)
+	if l.hasTypedTemporal {
+		w.u8(1)
+	} else {
+		w.u8(0)
+	}
 
 	w.u32(uint32(len(l.ids))) // #nosec G115 -- IDs are bounded by MaxDocValuesNodes
 	for _, id := range l.ids {
@@ -243,6 +248,11 @@ func DecodeColumns[T EntityID](blob []byte, mk func(int64) T) (*DocValues[T], er
 		return nil, ErrColumnBlobUnreadable
 	}
 	out := &DocValues[T]{epoch: r.u64()}
+	typed := r.u8()
+	if typed > 1 {
+		return nil, ErrColumnBlobUnreadable
+	}
+	out.hasTypedTemporal = typed == 1
 
 	n := r.count(8)
 	if r.err != nil {

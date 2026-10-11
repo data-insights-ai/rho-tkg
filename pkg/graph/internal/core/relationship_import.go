@@ -68,7 +68,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 	if err != nil {
 		return nil, err
 	}
-	validFrom, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	validFrom, validTo, createdAt, txFromOverride, validEndpoints, props, err := extractTemporalWithBounds(props)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +148,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		if err != nil {
 			return nil, err
 		}
-		probe := c.newRelConstraintProbe(id, startID, endID, validFrom, validTo, createdAt)
+		probe := c.newRelConstraintProbe(id, startID, endID, validFrom, validTo, createdAt, validEndpoints)
 		if err := c.checkTemporalConstraints(probe, liveStart, liveEnd); err != nil {
 			return nil, err
 		}
@@ -197,6 +197,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		ig.ToNodeHash = toHash
 		r.SetIntegrity(ig)
 		c.applyRelCreateTemporal(r, validFrom, validTo, createdAt, txFromOverride)
+		r.Temporal().ValidEndpoints = validEndpoints
 		if txFromOverride == 0 {
 			// The plain door follows the earlier lives' stamps on this row
 			// only (lifeStart.txFrom); a caller instant was checked above.

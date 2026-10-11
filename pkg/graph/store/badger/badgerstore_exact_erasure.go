@@ -54,6 +54,8 @@ func (bs *Store) ExactErase(req storecontract.ExactErasureRequest) (storecontrac
 	if err := validateExactErasureRequest(req); err != nil {
 		return zero, err
 	}
+	bs.historicalMembershipMu.Lock()
+	defer bs.historicalMembershipMu.Unlock()
 	if err := bs.flush(); err != nil {
 		return zero, err
 	}
@@ -164,6 +166,7 @@ func (bs *Store) ExactErase(req storecontract.ExactErasureRequest) (storecontrac
 
 type exactErasurePlan struct {
 	historyOps    []writeOp
+	membershipOps []writeOp
 	relationships []exactErasureRelPlan
 	nodes         []exactErasureNodePlan
 }
@@ -207,6 +210,11 @@ func (bs *Store) buildExactErasurePlanLocked(
 	}
 
 	for _, nid := range req.NodeIDs {
+		ops, e := bs.historicalMembershipEraseOps(true, types.EntityID(nid))
+		if e != nil {
+			return exactErasurePlan{}, e
+		}
+		plan.membershipOps = append(plan.membershipOps, ops...)
 		if err := bs.exactErasureScanTest("node-history", uint64(nid.SnowflakeID())); err != nil { // #nosec G115 -- validated positive snowflake ID encoded bit-for-bit
 			return exactErasurePlan{}, err
 		}
@@ -222,6 +230,11 @@ func (bs *Store) buildExactErasurePlanLocked(
 		}
 	}
 	for _, rid := range req.RelIDs {
+		ops, e := bs.historicalMembershipEraseOps(false, types.EntityID(rid))
+		if e != nil {
+			return exactErasurePlan{}, e
+		}
+		plan.membershipOps = append(plan.membershipOps, ops...)
 		if err := bs.exactErasureScanTest("relationship-history", uint64(rid.SnowflakeID())); err != nil { // #nosec G115 -- validated positive snowflake ID encoded bit-for-bit
 			return exactErasurePlan{}, err
 		}
@@ -410,6 +423,7 @@ func (bs *Store) applyExactErasurePlanLocked(plan exactErasurePlan) storecontrac
 		bs.purgeExactNodeSidecarsLocked(nodePlan.id)
 	}
 	bs.appendOps(plan.historyOps...)
+	bs.appendOps(plan.membershipOps...)
 	return result
 }
 

@@ -75,6 +75,7 @@ type pendingNodeCascade struct {
 	id        types.NodeID
 	validFrom types.Instant
 	validTo   types.Instant
+	bounds    *types.TemporalRange
 	props     map[string]any
 	at        types.Instant
 }
@@ -83,6 +84,7 @@ type pendingRelCascade struct {
 	id        types.RelID
 	validFrom types.Instant
 	validTo   types.Instant
+	bounds    *types.TemporalRange
 	props     map[string]any
 	at        types.Instant
 }

@@ -190,7 +190,7 @@ func TestMixedV1V2Decode(t *testing.T) {
 	if w1.TxFrom != w2.TxFrom || w1.TxTo != w2.TxTo || w1.ValidFrom != w2.ValidFrom || w1.Hash != w2.Hash {
 		t.Fatalf("v1 vs v2 semantic mismatch: %+v vs %+v", w1, w2)
 	}
-	if w1.FormatVersion != 1 || w2.FormatVersion != 2 {
+	if w1.FormatVersion != 1 || w2.FormatVersion != CurrentWireFormatVersion {
 		t.Fatalf("format versions wrong: %d %d", w1.FormatVersion, w2.FormatVersion)
 	}
 }
@@ -201,7 +201,7 @@ func TestFutureVersionFailsClosedTail(t *testing.T) {
 	t.Parallel()
 
 	// Simulate an older reader: a v2 binary reading a v3 row must reject.
-	future := NodeWire{FormatVersion: RetractedWireFormatVersion + 1, ID: 1, PrimaryLabel: 1}
+	future := NodeWire{FormatVersion: CurrentWireFormatVersion + 1, ID: 1, PrimaryLabel: 1}
 	data, err := msgpack.Marshal(future)
 	if err != nil {
 		t.Fatalf("marshal future: %v", err)

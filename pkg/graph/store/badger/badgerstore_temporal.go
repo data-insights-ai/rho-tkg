@@ -16,7 +16,7 @@ import (
 // using Peek (zero allocation for cache hits). Cache misses are kept as candidates
 // to be post-filtered after GetNode.
 func (bs *Store) filterNodeIDsByTemporalPeek(ids []types.NodeID, opts QueryOpts) []types.NodeID {
-	if opts.ValidAt == 0 && (opts.ValidStart == 0 || opts.ValidEnd == 0) {
+	if !opts.HasValidAt() && (opts.ValidStart == 0 || opts.ValidEnd == 0) {
 		return ids // no filter
 	}
 	filtered := make([]types.NodeID, 0, len(ids))
@@ -41,7 +41,7 @@ func (bs *Store) filterNodeIDsByTemporalPeek(ids []types.NodeID, opts QueryOpts)
 // filterRelIDsByTemporalPeek removes IDs that don't match the temporal filter
 // using Peek. Cache misses are kept as candidates.
 func (bs *Store) filterRelIDsByTemporalPeek(ids []types.RelID, opts QueryOpts) []types.RelID {
-	if opts.ValidAt == 0 && (opts.ValidStart == 0 || opts.ValidEnd == 0) {
+	if !opts.HasValidAt() && (opts.ValidStart == 0 || opts.ValidEnd == 0) {
 		return ids // no filter
 	}
 	filtered := make([]types.RelID, 0, len(ids))
@@ -69,7 +69,7 @@ func (bs *Store) filterRelIDsByTemporalPeek(ids []types.RelID, opts QueryOpts) [
 // scan, badgerstore_node_bulk_parallel.go); the temporal filter is applied
 // post-decode, identical set/order to the serial callback.
 func (bs *Store) fetchNodesWithTemporalFilter(ids []types.NodeID, opts QueryOpts) ([]*types.Node, error) {
-	hasTemporal := opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
+	hasTemporal := opts.HasValidAt() || (opts.HasValidRange())
 
 	if len(ids) >= parallelDecodeMinIDs {
 		all, err := bs.collectNodesBulkParallel(ids)
@@ -109,7 +109,7 @@ func (bs *Store) fetchNodesWithTemporalFilterPage(ids []types.NodeID, opts Query
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	hasTemporal := opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
+	hasTemporal := opts.HasValidAt() || (opts.HasValidRange())
 	nodes := make([]*types.Node, 0, capForLimit(opts.Limit))
 	err := bs.forEachNodeBulk(ids, func(n *types.Node) bool {
 		if hasTemporal && !storepkg.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), opts) {
@@ -168,7 +168,7 @@ func (bs *Store) filterNodeIDsByTemporalFetch(ids []types.NodeID, opts QueryOpts
 // fetchRelsWithTemporalFilter fetches relationships by ID and post-filters for
 // temporal match.
 func (bs *Store) fetchRelsWithTemporalFilter(ids []types.RelID, opts QueryOpts) ([]*types.Relationship, error) {
-	hasTemporal := opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
+	hasTemporal := opts.HasValidAt() || (opts.HasValidRange())
 	rels := make([]*types.Relationship, 0, len(ids))
 	for _, rid := range ids {
 		id := rid.SnowflakeID()
@@ -231,7 +231,7 @@ func (bs *Store) fetchRelsWithTemporalFilterPage(ids []types.RelID, opts QueryOp
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	hasTemporal := opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
+	hasTemporal := opts.HasValidAt() || (opts.HasValidRange())
 	rels := make([]*types.Relationship, 0, capForLimit(opts.Limit))
 	for _, rid := range ids {
 		id := rid.SnowflakeID()
