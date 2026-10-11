@@ -180,13 +180,20 @@ func (bs *Store) buildMultiColumns(toks []uint16, key string, requested []string
 	}
 	bs.docMu.Unlock()
 
-	// APPEND FAST PATH for the intersection (R3). Same guards as the single-label
-	// path; the difference is that membership must be re-derived, since an appended
-	// node joins A∩B only if it carries every member label.
+	// DELTA FAST PATH for the intersection: as for a single label, with
+	// membership re-derived (a node is a member only if it carries every
+	// label) and the accounting identity summed over the member labels.
 	if old != nil && old.HasAll(keys) {
-		if added, ok := bs.takeMultiAppendDelta(toks, gen, old.Epoch()); ok {
-			gp, gt := bs.bulkNodeGetters(added)
-			if ext := old.Extend(gen, added, gp, gt); ext != nil {
+		if touched, ok := bs.takeMultiLabelDelta(toks, gen, old.Epoch()); ok {
+			member := func(id types.NodeID) bool {
+				for _, t := range toks {
+					if _, in := bs.labelIdx[t][id]; !in {
+						return false
+					}
+				}
+				return true
+			}
+			if ext, patched := bs.refreshColumns(old, gen, touched, member); ext != nil {
 				bs.docMu.Lock()
 				if bs.multiLabelEpoch(toks) == gen {
 					if bs.docColumnsMulti == nil {
@@ -195,7 +202,7 @@ func (bs *Store) buildMultiColumns(toks []uint16, key string, requested []string
 					bs.docColumnsMulti[key] = ext
 					bs.docMu.Unlock()
 					bs.clearMultiAppendDelta(toks)
-					bs.columnExtends.Add(1)
+					bs.countRefresh(patched)
 					return ext, false
 				}
 				bs.docMu.Unlock()
@@ -292,18 +299,25 @@ func (bs *Store) buildLabelColumns(labelToken uint16, requested []string) (col *
 	}
 	bs.docMu.Unlock()
 
-	// APPEND FAST PATH (R3). If the only writes since `old` was built were pure
-	// inserts, extend it instead of re-reading the whole label — measured 5.5x
-	// cheaper. Every guard below fails toward the rebuild:
-	//   - takeAppendDelta refuses unless the record's epoch stamp equals `gen`,
-	//     proving no unrecorded write intervened;
-	//   - the snapshot must already cover the requested keys, since Extend adds rows
-	//     and never new columns;
-	//   - Extend itself returns nil for anything that is not a clean append.
+	// DELTA FAST PATH (R3 appends, round 5 request 4 in-place updates). If every
+	// write since `old` was built is recorded (takeLabelDelta's stamp and
+	// accounting identity), refresh `old` from the recorded nodes only: rows of
+	// members `old` holds are patched, new members are appended, and anything
+	// else (a member left the label) rebuilds. Every guard fails toward the
+	// rebuild:
+	//   - takeLabelDelta refuses unless the record's stamp equals `gen` and its
+	//     events account for every bump since `old`;
+	//   - the snapshot must already cover the requested keys (a refresh adds
+	//     rows, never columns);
+	//   - Patch and Extend refuse anything that is not a clean in-place update
+	//     or append.
 	if old != nil && old.HasAll(keys) {
-		if added, ok := bs.takeAppendDelta(labelToken, gen, old.Epoch()); ok {
-			getProp, getTemporal := bs.bulkNodeGetters(added)
-			if ext := old.Extend(gen, added, getProp, getTemporal); ext != nil {
+		if touched, ok := bs.takeLabelDelta(labelToken, gen, old.Epoch()); ok {
+			member := func(id types.NodeID) bool {
+				_, in := bs.labelIdx[labelToken][id]
+				return in
+			}
+			if ext, patched := bs.refreshColumns(old, gen, touched, member); ext != nil {
 				bs.docMu.Lock()
 				if bs.labelEpoch(labelToken) == gen {
 					if bs.docColumns == nil {
@@ -312,11 +326,11 @@ func (bs *Store) buildLabelColumns(labelToken uint16, requested []string) (col *
 					bs.docColumns[labelToken] = ext
 					bs.docMu.Unlock()
 					bs.clearAppendDelta(labelToken)
-					bs.columnExtends.Add(1)
+					bs.countRefresh(patched)
 					return ext, false
 				}
 				bs.docMu.Unlock()
-				// Epoch moved during the extend — do not cache, and do not clear the
+				// Epoch moved during the refresh — do not cache, and do not clear the
 				// record; fall through to a full rebuild below.
 			}
 		}
@@ -450,4 +464,55 @@ func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
 			// identical while letting the reported column mean what it says.
 			return int64(f), int64(t), true
 		}
+}
+
+// refreshColumns refreshes old from the nodes recorded since it was built
+// (round 5 request 4): each touched node is classified by its CURRENT
+// membership (member, read under idxMu.RLock) and by whether old holds it. A
+// member old holds is an in-place update (Patch re-reads its row), a member
+// old lacks is an append (Extend); a node old holds that is no longer a member
+// left the snapshot, which neither can express, so nil (rebuild) — as is a
+// refresh with nothing to apply. patched reports whether Patch ran.
+func (bs *Store) refreshColumns(old *indexpkg.LabelDocValues, gen uint64, touched []types.NodeID,
+	member func(types.NodeID) bool) (ext *indexpkg.LabelDocValues, patched bool) {
+
+	var updated, added []types.NodeID
+	bs.idxMu.RLock()
+	for _, id := range touched {
+		in, held := member(id), old.Contains(id)
+		switch {
+		case in && held:
+			updated = append(updated, id)
+		case in:
+			added = append(added, id)
+		case held:
+			bs.idxMu.RUnlock()
+			return nil, false // left the label (deleted or relabelled)
+		}
+	}
+	bs.idxMu.RUnlock()
+	if len(updated) == 0 && len(added) == 0 {
+		return nil, false
+	}
+	getProp, getTemporal := bs.bulkNodeGetters(append(append([]types.NodeID(nil), updated...), added...))
+	ext = old
+	if len(updated) > 0 {
+		if ext = ext.Patch(gen, updated, getProp, getTemporal); ext == nil {
+			return nil, false
+		}
+		patched = true
+	}
+	if len(added) > 0 {
+		ext = ext.Extend(gen, added, getProp, getTemporal)
+	}
+	return ext, patched
+}
+
+// countRefresh counts a refresh as a patch or an extend.
+func (bs *Store) countRefresh(patched bool) {
+	if patched {
+		bs.columnPatches.Add(1)
+		return
+	}
+	bs.columnExtends.Add(1)
 }

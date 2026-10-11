@@ -50,6 +50,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Performance
 
+- **Badger: a label's column snapshot is patched after an in-place property write instead of rebuilt** (sigma-tkgd
+  round 5 request 4, task records C4r/C4s: one write to a member of a 1,000,000-node label made the next column
+  read decode the whole label again, 4.5 s per cold run; `buildLabelColumns` was 12.5 of 12.9 s of
+  DocValuesAggSkewed, `buildMultiColumns` 1.65 of 1.72 s of the intersection row). The removal seam an update
+  passes through used to poison the label's append record; on a label with a cached single-label or intersection
+  snapshot it now records the node, so the record holds every write since the snapshot (same stamp and accounting
+  identity as the append path: every recorded event is one epoch bump). The next `ForEachDocValues` /
+  `DocValuesSnapshot` / `ForEachDocValuesMulti` / `ScanNodeColumns` classifies the recorded nodes by their current
+  membership: a member the snapshot holds is re-read and patched in (`index.DocValues.Patch`: typed arrays copied,
+  the changed rows overwritten, the column brought back to exactly what a rebuild gives: int64 / float64 / mixed by
+  its present rows, dictionary in first-appearance order without unused terms, validity and the zone blocks
+  holding a changed row recomputed), a new member is appended (`Extend`), and a node that left the label or
+  intersection, a value that changes the column's class, an unbuildable column or an unbalanced record rebuild as
+  before. A patched snapshot shares the row IDs and reuses the scan's node ordinals. Labels without a cached
+  snapshot keep the poison (nothing recorded), so their writes cost what they cost: `BenchmarkReplaceNodeColumnRecord`
+  (badger, 10,000 nodes, five interleaved rounds, load 31 to 44) unread label 1,068-1,209 ns before, 1,075-1,184
+  after, same bytes and allocations; with a snapshot 1,199-1,368 ns (a recorded ID per write, the record capped at
+  50,000 events per label as for appends). The memory store keeps its rebuild (one global epoch, sixteen bump
+  sites, the reason its append path defaults to poison). A refresh consumes the member labels' records, so a
+  workload alternating single-label and intersection reads of the same labels still rebuilds the other kind (as for
+  appends). `BenchmarkColumnScanAfterPropertyWrite` (badger, one write to a mid node before each `ScanNodeColumns`
+  of (int, string); one CPU, load 31 to 58, three interleaved rounds): 100,000 nodes 218-255 -> 6.9-7.2 ms, 400,000
+  nodes 1.26-1.51 s -> 18-28 ms. New telemetry `badger.Store.ColumnPatchCount()`. Tests:
+  `TestColumnPatch_UpdateIsPatched` (red: the update rebuilt), `TestColumnPatch_RandomWorkloadMatchesTheStore`
+  (inserts, updates across int / float / string / absent values and validity, deletes and intersection-label
+  changes, reads after some writes only, single label and intersection, against the store's rows),
+  `TestColumnPatch_UnreadLabelStaysPoisoned`, `TestPatch_MatchesFullRebuild` (300 random columns across zone
+  blocks, representation included), `TestPatch_Refuses`, `TestPatch_StringDictionaryDropsUnusedTerms`, and the
+  existing append-delta battery; mutants under `tasks/evidence/cypher-round5/`.
+
 - **Valid-time adjacency: a relationship without history is answered from its live row** (sigma-tkgd round 5
   request 6, task record C4s: a window search over relationships without history was 11 times the static one).
   `Rels().ForEachAdjacentEndpointAt` / `ForEachAdjacentRelAt` under `ValidAt` or `ValidStart`+`ValidEnd` loaded
