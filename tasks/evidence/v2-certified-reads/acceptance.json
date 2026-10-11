@@ -71,6 +71,36 @@
     "record_sha256": "94689c0eaa2d50711368ebc68dd409d5643b5066643c0d8114f4d1e7bb25a19d",
     "failed_log": "hosted-ci-0f430e44-failed.log.gz",
     "failed_log_sha256": "df3badc006e75ea3634678d643bfa6a577405a6b9ba2a4d0691a0596aa013859",
-    "qualification": "All v5, comparison, root security and root coverage jobs pass; conditional push lint skipped. Root v4 core race package hit the unchanged ten-minute Go package timeout. CI scheduling follow-up remains open; no all-green hosted claim. This run precedes the separately accepted preclaim integration and does not cover c3299c38."
+    "qualification": "All v5, comparison, root security and root coverage jobs pass; conditional push lint skipped. Root v4 core race package hit the unchanged ten-minute Go package timeout. This historical run precedes the separately accepted preclaim integration and does not cover c3299c38. The subsequent scheduling correction and successful hosted run are recorded separately in subsequent_hosted_ci."
+  },
+  "subsequent_hosted_ci": {
+    "head": "5edb2792a29b40be0c889922bf07f003663d80bc",
+    "run": 38125606166,
+    "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38125606166",
+    "conclusion": "success",
+    "jobs": {
+      "test (v5, v5/go.mod)": "success",
+      "security (., go.mod)": "success",
+      "test (., go.mod)": "success",
+      "coverage (., go.mod)": "success",
+      "coverage (v5, v5/go.mod)": "success",
+      "security (v5, v5/go.mod)": "success",
+      "comparison-correctness": "success",
+      "lint": "skipped"
+    },
+    "record": "hosted-ci-5edb2792.json",
+    "record_sha256": "2fa3432137df37077a306179c15365ba7c8ec4aa9d025af276e978be356223e7",
+    "root_test_log": "hosted-ci-5edb2792-root-test.log.gz",
+    "root_test_log_sha256": "1dc529d5f373053e5772ef1572fb36b2dbd2b11b8b8fd991b3d963705221457b",
+    "core_top_level_names": 2174,
+    "core_batch_sizes": [
+      544,
+      544,
+      543,
+      543
+    ],
+    "core_names_unique": true,
+    "other_root_packages": 44,
+    "qualification": "All applicable hosted jobs pass at this exact integration revision; push-conditional lint is skipped. Four exhaustive sequential core batches and every other root package pass with unchanged resource and timeout limits. Includes package 3 and preclaim integration, but not the later external registry materializer or unfinished package-4 process transport."
   }
 }

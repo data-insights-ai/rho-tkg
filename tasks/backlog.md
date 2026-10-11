@@ -216,14 +216,16 @@ reviewed and validated before the next package starts.
    [Hosted CI at `0f430e44`](evidence/v2-certified-reads/hosted-ci-0f430e44.json)
    passes all v5 jobs and comparison correctness; the overall run fails because
    the unchanged v4 core race package reaches its ten-minute timeout. The earlier
-   scheduling adjustment has not eliminated this recurrence. Its terminal failure
-   log is retained with the acceptance record; the CI follow-up remains open.
-   The reviewed [shared race dispatcher](evidence/v2-certified-reads/root-core-batches.json)
-   now assigns the compiled core Test/Fuzz/Example inventory to four exhaustive,
+   scheduling adjustment did not eliminate that recurrence; its terminal failure
+   log remains retained. The reviewed [shared race dispatcher](evidence/v2-certified-reads/root-core-batches.json)
+   assigns the compiled core Test/Fuzz/Example inventory to four exhaustive,
    sequential CI batches, keeping each parent and its subtests together. The local
    default, all other packages, race flags and resource/time limits are unchanged.
-   Its 22 dispatch/error guards and static checks pass; actual hosted execution at
-   the integrated hash is still required to close this follow-up.
+   Its 22 dispatch/error guards and static checks pass. [Hosted CI at `5edb2792`](evidence/v2-certified-reads/hosted-ci-5edb2792.json)
+   now passes all applicable jobs, including all 2,174 core names in groups of
+   544/544/543/543 and the other 44 root packages; push-conditional lint is skipped.
+   This closes the CI timeout follow-up. It covers package 3 and preclaim
+   integration, not the later registry materializer or unfinished process transport.
    Subsequent [prepared-snapshot preclaim integration](evidence/v2-certified-reads/preclaim-integration.json)
    accepts external `0ebb025f` with the existing AS5/recovery contracts preserved:
    13 gates pass, the new Check is directly covered at 100%, and a genuine AS5

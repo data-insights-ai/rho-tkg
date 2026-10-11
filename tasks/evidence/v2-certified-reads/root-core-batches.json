@@ -2,7 +2,7 @@
   "date": "2026-10-11",
   "base": "f566c73294f4845e3c36b02f46f788c4531780dd",
   "source_fix_accepted": true,
-  "hosted_full_gate": "pending",
+  "hosted_full_gate": "passed",
   "source_manifest_sha256": "f73e9311794e53e06407a2f1be68e71b47871bbcdbde05c01d604a90f4338a3c",
   "source_files": {
     "Makefile": "61479044e57cf096e51cda6145aa912c2a8b9a3f75c9c17c8d187102732eb4b6",
@@ -249,5 +249,35 @@
     "reviewer_runtime": false,
     "report_sha256": "a391f25778654b5722efa512f0a108804dcc3e151012d414aa1492b9491b2362"
   },
-  "qualification": "CI scheduling change only. Default root race command unchanged; CI opts into four exhaustive sequential core batches, with whole top-level Test/Fuzz/Example names and all other packages once. Resource limits, timeouts, race/short/count flags and module dispatch unchanged. Fake-Go/static checks and source review pass; no actual local Go compile/list/race execution claimed. Full hosted run at final integration hash is required."
+  "qualification": "CI scheduling change only. Default root race command unchanged; CI opts into four exhaustive sequential core batches, with whole top-level Test/Fuzz/Example names and all other packages once. Resource limits, timeouts, race/short/count flags and module dispatch unchanged. Fake-Go/static checks and source review pass; no actual local Go compile/list/race execution claimed. Full hosted run 38125606166 passes at 5edb2792. The archived review records its earlier pending status; hosted_ci records subsequent execution.",
+  "hosted_ci": {
+    "head": "5edb2792a29b40be0c889922bf07f003663d80bc",
+    "run": 38125606166,
+    "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38125606166",
+    "conclusion": "success",
+    "jobs": {
+      "test (v5, v5/go.mod)": "success",
+      "security (., go.mod)": "success",
+      "test (., go.mod)": "success",
+      "coverage (., go.mod)": "success",
+      "coverage (v5, v5/go.mod)": "success",
+      "security (v5, v5/go.mod)": "success",
+      "comparison-correctness": "success",
+      "lint": "skipped"
+    },
+    "record": "hosted-ci-5edb2792.json",
+    "record_sha256": "2fa3432137df37077a306179c15365ba7c8ec4aa9d025af276e978be356223e7",
+    "root_test_log": "hosted-ci-5edb2792-root-test.log.gz",
+    "root_test_log_sha256": "1dc529d5f373053e5772ef1572fb36b2dbd2b11b8b8fd991b3d963705221457b",
+    "core_top_level_names": 2174,
+    "core_batch_sizes": [
+      544,
+      544,
+      543,
+      543
+    ],
+    "core_names_unique": true,
+    "other_root_packages": 44,
+    "qualification": "All applicable hosted jobs pass at this exact integration revision; push-conditional lint is skipped. Four exhaustive sequential core batches and every other root package pass with unchanged resource and timeout limits. Includes package 3 and preclaim integration, but not the later external registry materializer or unfinished package-4 process transport."
+  }
 }
