@@ -288,6 +288,9 @@ func validateNodeExplicitTemporalRange(id types.NodeID, tm *types.TemporalMetada
 	if tm == nil {
 		return nil
 	}
+	if err := tm.ValidateValidBounds(); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidStoreMutation, err)
+	}
 	if tm.ValidFrom != 0 && tm.ValidTo != 0 && tm.ValidFrom >= tm.ValidTo {
 		return fmt.Errorf("%w: node %d valid_from %d must be before valid_to %d", ErrInvalidStoreMutation, id, tm.ValidFrom, tm.ValidTo)
 	}
@@ -300,6 +303,9 @@ func validateNodeExplicitTemporalRange(id types.NodeID, tm *types.TemporalMetada
 func validateRelExplicitTemporalRange(id types.RelID, tm *types.TemporalMetadata) error {
 	if tm == nil {
 		return nil
+	}
+	if err := tm.ValidateValidBounds(); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidStoreMutation, err)
 	}
 	if tm.ValidFrom != 0 && tm.ValidTo != 0 && tm.ValidFrom >= tm.ValidTo {
 		return fmt.Errorf("%w: relationship %d valid_from %d must be before valid_to %d", ErrInvalidStoreMutation, id, tm.ValidFrom, tm.ValidTo)
@@ -368,7 +374,12 @@ func ValidateQueryOpts(opts QueryOpts) error {
 	if err := ValidatePagination(opts.After, opts.Limit); err != nil {
 		return err
 	}
-	if opts.ValidAt == 0 && opts.HasValidRange() && opts.ValidStart >= opts.ValidEnd {
+	if opts.ValidWindow != nil {
+		if err := opts.ValidWindow.Validate(); err != nil {
+			return fmt.Errorf("%w: %v", ErrInvalidTimeRange, err)
+		}
+	}
+	if !opts.HasValidAt() && opts.ValidWindow == nil && opts.HasValidRange() && opts.ValidStart >= opts.ValidEnd {
 		return fmt.Errorf("%w: start %d >= end %d", ErrInvalidTimeRange, opts.ValidStart, opts.ValidEnd)
 	}
 	return nil

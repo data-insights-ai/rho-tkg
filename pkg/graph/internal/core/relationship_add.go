@@ -169,7 +169,7 @@ func (c *Core) createRelationshipLocked(ctx context.Context, typeName string, st
 		return nil, err
 	}
 
-	id, fromHash, toHash, useEndpointHashWrite, err := c.relEndpointHashLadder(c.nextRelID, startID, endID, prep.validFrom, prep.validTo, prep.createdAt)
+	id, fromHash, toHash, useEndpointHashWrite, err := c.relEndpointHashLadder(c.nextRelID, startID, endID, prep.validFrom, prep.validTo, prep.createdAt, prep.validEndpoints)
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +283,7 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 		}
 	}
 
-	id, fromHash, toHash, useEndpointHashWrite, err := c.relEndpointHashLadder(c.nextRelID, startID, endID, prep.validFrom, prep.validTo, prep.createdAt)
+	id, fromHash, toHash, useEndpointHashWrite, err := c.relEndpointHashLadder(c.nextRelID, startID, endID, prep.validFrom, prep.validTo, prep.createdAt, prep.validEndpoints)
 	if err != nil {
 		return nil, false, err
 	}
@@ -302,11 +302,14 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 	return nil, false, err
 }
 
-func (c *Core) newRelConstraintProbe(id types.RelID, startID, endID types.NodeID, validFrom, validTo, createdAt types.Instant) *types.Relationship {
+func (c *Core) newRelConstraintProbe(id types.RelID, startID, endID types.NodeID, validFrom, validTo, createdAt types.Instant, presence ...types.EndpointPresence) *types.Relationship {
 	r := types.NewRelationship(id, nonZeroRelTypeProbeToken, startID, endID)
 	// The probe is a throwaway used only for temporal-constraint checking, so
 	// its transaction time is irrelevant — pass no backfill override.
 	c.applyRelCreateTemporal(r, validFrom, validTo, createdAt, 0)
+	if len(presence) > 0 {
+		r.Temporal().ValidEndpoints = presence[0]
+	}
 	return r
 }
 

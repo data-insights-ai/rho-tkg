@@ -35,6 +35,12 @@ type QueryOpts struct {
 	ValidAt    types.Instant // Point-in-time filter (valid time). 0 = disabled.
 	ValidStart types.Instant // Interval filter start. Both endpoints must be nonzero; signed instants are valid.
 	ValidEnd   types.Instant // Interval filter end. 0 = disabled.
+	// ValidAtSet activates ValidAt even at the Unix epoch. False preserves
+	// the legacy zero-value default; nonzero ValidAt is always active.
+	ValidAtSet bool
+	// ValidWindow supplies typed finite/unbounded interval endpoints. Nil
+	// preserves scalar defaults. An explicit point still takes precedence.
+	ValidWindow *types.TemporalRange
 
 	// TxAt restricts the chain to versions recorded by the given transaction
 	// time: TxFrom <= TxAt only. 0 = no TX filter (current behaviour: any
@@ -103,4 +109,9 @@ type QueryOpts struct {
 // HasValidRange reports whether both finite interval-query bounds are present.
 // Signed Unix instants before 1970 remain coordinates; zero retains its legacy
 // unset meaning. Endpoint presence must never be inferred from positivity.
-func (o QueryOpts) HasValidRange() bool { return o.ValidStart != 0 && o.ValidEnd != 0 }
+func (o QueryOpts) HasValidRange() bool {
+	return o.ValidWindow != nil || (o.ValidStart != 0 && o.ValidEnd != 0)
+}
+
+// HasValidAt reports whether an explicit point-in-time filter is active.
+func (o QueryOpts) HasValidAt() bool { return o.ValidAtSet || o.ValidAt != 0 }

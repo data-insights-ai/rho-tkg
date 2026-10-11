@@ -312,7 +312,7 @@ func (tx *GraphTx) SetNodeVersionInterval(id types.NodeID, validFrom, validTo ty
 // setNodeVersionIntervalLocked is the body of SetNodeVersionInterval and
 // SetNodeVersionIntervalWithTx (at = 0: the clock; else the gated caller
 // instant). The caller holds the active-core write lock.
-func (tx *GraphTx) setNodeVersionIntervalLocked(id types.NodeID, validFrom, validTo types.Instant, props map[string]any, at types.Instant) (*types.Node, error) {
+func (tx *GraphTx) setNodeVersionIntervalLocked(id types.NodeID, validFrom, validTo types.Instant, props map[string]any, at types.Instant, windows ...types.TemporalRange) (*types.Node, error) {
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
 	}
@@ -323,7 +323,7 @@ func (tx *GraphTx) setNodeVersionIntervalLocked(id types.NodeID, validFrom, vali
 		return nil, err
 	}
 
-	n, err := tx.g.cascadeNodeVersionInterval(tx.doorCtx(), id, validFrom, validTo, props, at)
+	n, err := tx.g.cascadeNodeVersionInterval(tx.doorCtx(), id, validFrom, validTo, props, at, windows...)
 	if err == nil && n != nil {
 		tx.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
 	}
@@ -340,7 +340,7 @@ func (tx *GraphTx) SetRelVersionInterval(id types.RelID, validFrom, validTo type
 }
 
 // setRelVersionIntervalLocked mirrors setNodeVersionIntervalLocked.
-func (tx *GraphTx) setRelVersionIntervalLocked(id types.RelID, validFrom, validTo types.Instant, props map[string]any, at types.Instant) (*types.Relationship, error) {
+func (tx *GraphTx) setRelVersionIntervalLocked(id types.RelID, validFrom, validTo types.Instant, props map[string]any, at types.Instant, windows ...types.TemporalRange) (*types.Relationship, error) {
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err
 	}
@@ -351,7 +351,7 @@ func (tx *GraphTx) setRelVersionIntervalLocked(id types.RelID, validFrom, validT
 		return nil, err
 	}
 
-	r, err := tx.g.cascadeRelVersionInterval(tx.doorCtx(), id, validFrom, validTo, props, at)
+	r, err := tx.g.cascadeRelVersionInterval(tx.doorCtx(), id, validFrom, validTo, props, at, windows...)
 	if err == nil && r != nil {
 		tx.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
 	}

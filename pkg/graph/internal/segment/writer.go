@@ -136,6 +136,9 @@ func encode(s Schema, rows []*types.Relationship, opts Options, pageRows int, di
 			return nil, rowErr(r, ErrHashMismatch, "row %d (id %d) carries no stored 64-hex hash", i, r.ID())
 		}
 		if tm := r.Temporal(); tm != nil {
+			if tm.ValidEndpoints != 0 {
+				return nil, rowErr(r, ErrInvalidRow, "typed valid endpoints require a newer segment format")
+			}
 			vfIn[i] = int64(tm.ValidFrom)
 		}
 	}

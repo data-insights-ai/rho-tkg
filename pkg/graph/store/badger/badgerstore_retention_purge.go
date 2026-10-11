@@ -77,8 +77,8 @@ func (bs *Store) PurgeNodesByLabelValidToBefore(labelToken uint16, before types.
 		if err != nil {
 			return false, err
 		}
-		vt := n.Temporal().ValidTo
-		return vt != 0 && vt < before, nil
+		bounds, _ := n.Temporal().ValidBounds()
+		return bounds.To.Finite && bounds.To.Value < before, nil
 	})
 }
 

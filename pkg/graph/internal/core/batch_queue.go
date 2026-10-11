@@ -65,7 +65,7 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 	}
 
 	// Extract reserved temporal fields before property validation (tkg_ prefix is rejected).
-	validFrom, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	validFrom, validTo, createdAt, txFromOverride, validEndpoints, props, err := extractTemporalWithBounds(props)
 	if err != nil {
 		return nil, err
 	}
@@ -128,9 +128,10 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 		// Execute so the recorded transaction time reflects when the batch
 		// actually commits, not when the node was queued).
 		temporal := &types.TemporalMetadata{
-			ValidFrom: validFrom,
-			ValidTo:   validTo,
-			CreatedAt: createdAt,
+			ValidFrom:      validFrom,
+			ValidEndpoints: validEndpoints,
+			ValidTo:        validTo,
+			CreatedAt:      createdAt,
 		}
 
 		var result *types.Node
@@ -233,7 +234,7 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	}
 
 	// Extract reserved temporal fields before property validation (tkg_ prefix is rejected).
-	validFrom, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	validFrom, validTo, createdAt, txFromOverride, validEndpoints, props, err := extractTemporalWithBounds(props)
 	if err != nil {
 		return nil, err
 	}
@@ -303,9 +304,10 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	// Build caller-provided temporal metadata (TxFrom is stamped in Execute
 	// — same reasoning as AddNode: TxFrom must reflect commit time).
 	rtm := &types.TemporalMetadata{
-		ValidFrom: validFrom,
-		ValidTo:   validTo,
-		CreatedAt: createdAt,
+		ValidFrom:      validFrom,
+		ValidEndpoints: validEndpoints,
+		ValidTo:        validTo,
+		CreatedAt:      createdAt,
 	}
 
 	b.rels = append(b.rels, pendingRel{
@@ -389,7 +391,7 @@ func (b *BatchBuilder) SetNodeVersionInterval(id types.NodeID, validFrom, validT
 // queueNodeCascade is the queue door of SetNodeVersionInterval and (withTx)
 // SetNodeVersionIntervalWithTx, whose txFrom is gated here (value, then
 // privilege) after the id. Nothing is queued on a refusal.
-func (b *BatchBuilder) queueNodeCascade(id types.NodeID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant, withTx bool) error {
+func (b *BatchBuilder) queueNodeCascade(id types.NodeID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant, withTx bool, windows ...types.TemporalRange) error {
 	if err := b.lockOpen(); err != nil {
 		return err
 	}
@@ -413,10 +415,16 @@ func (b *BatchBuilder) queueNodeCascade(id types.NodeID, validFrom, validTo type
 			return err
 		}
 	}
-	if err := validateCascadeInterval(validFrom, validTo); err != nil {
+	var bounds *types.TemporalRange
+	if len(windows) > 0 {
+		if err := windows[0].Validate(); err != nil {
+			return fmt.Errorf("%w: %v", ErrInvalidTimeRange, err)
+		}
+		bounds = new(windows[0])
+	} else if err := validateCascadeInterval(validFrom, validTo); err != nil {
 		return err
 	}
-	b.nodeCascades = append(b.nodeCascades, pendingNodeCascade{id: id, validFrom: validFrom, validTo: validTo, props: copyCascadeProps(props), at: at})
+	b.nodeCascades = append(b.nodeCascades, pendingNodeCascade{id: id, validFrom: validFrom, validTo: validTo, props: copyCascadeProps(props), at: at, bounds: bounds})
 	return nil
 }
 
@@ -451,7 +459,7 @@ func (b *BatchBuilder) SetRelVersionInterval(id types.RelID, validFrom, validTo 
 }
 
 // queueRelCascade mirrors queueNodeCascade for relationships.
-func (b *BatchBuilder) queueRelCascade(id types.RelID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant, withTx bool) error {
+func (b *BatchBuilder) queueRelCascade(id types.RelID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant, withTx bool, windows ...types.TemporalRange) error {
 	if err := b.lockOpen(); err != nil {
 		return err
 	}
@@ -475,10 +483,16 @@ func (b *BatchBuilder) queueRelCascade(id types.RelID, validFrom, validTo types.
 			return err
 		}
 	}
-	if err := validateCascadeInterval(validFrom, validTo); err != nil {
+	var bounds *types.TemporalRange
+	if len(windows) > 0 {
+		if err := windows[0].Validate(); err != nil {
+			return fmt.Errorf("%w: %v", ErrInvalidTimeRange, err)
+		}
+		bounds = new(windows[0])
+	} else if err := validateCascadeInterval(validFrom, validTo); err != nil {
 		return err
 	}
-	b.relCascades = append(b.relCascades, pendingRelCascade{id: id, validFrom: validFrom, validTo: validTo, props: copyCascadeProps(props), at: at})
+	b.relCascades = append(b.relCascades, pendingRelCascade{id: id, validFrom: validFrom, validTo: validTo, props: copyCascadeProps(props), at: at, bounds: bounds})
 	return nil
 }
 

@@ -148,7 +148,7 @@ func (c *Core) nodesByLabelAtLocked(label string, at types.Instant) ([]*types.No
 	// the generic ByLabel{ValidAt} door (queries.go) — both temporal-ByLabel doors
 	// MUST agree (rule 17), enforced by TestTemporalCandidatePruneEquivalence.
 	if c.temporalCandidates != nil {
-		if kept, ok := c.temporalCandidates.PruneTemporalCandidates(tok, candIDs, storepkg.QueryOpts{ValidAt: at}); ok {
+		if kept, ok := c.temporalCandidates.PruneTemporalCandidates(tok, candIDs, storepkg.QueryOpts{ValidAt: at, ValidAtSet: true}); ok {
 			candIDs = kept
 		}
 	}
@@ -453,7 +453,7 @@ func (c *Core) nodeCurrentAnswersAt(current *types.Node, validAt, txAt types.Ins
 		return false
 	}
 	tm := current.Temporal()
-	if tm == nil || tm.ValidTo != 0 {
+	if tm == nil || isClosedTemporal(tm) {
 		return false
 	}
 	if txAt != 0 && (tm.TxFrom == 0 || tm.TxFrom > txAt) {
@@ -478,7 +478,7 @@ func (c *Core) relCurrentAnswersAt(current *types.Relationship, validAt, txAt ty
 		return false
 	}
 	tm := current.Temporal()
-	if tm == nil || tm.ValidTo != 0 {
+	if tm == nil || isClosedTemporal(tm) {
 		return false
 	}
 	if txAt != 0 && (tm.TxFrom == 0 || tm.TxFrom > txAt) {
@@ -1051,7 +1051,7 @@ func (c *Core) nodesByLabelPropertyAtLocked(label, key string, value any, at typ
 		return nil, err
 	}
 	var result []*types.Node
-	if err := c.forEachNodePropertyCandidateID(tok, map[string]string{key: targetKey}, currentIDs, storepkg.QueryOpts{ValidAt: at}, func(id types.NodeID) error {
+	if err := c.forEachNodePropertyCandidateID(tok, map[string]string{key: targetKey}, currentIDs, storepkg.QueryOpts{ValidAt: at, ValidAtSet: true}, func(id types.NodeID) error {
 		n, err := c.nodeAtLocked(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
@@ -1190,7 +1190,7 @@ func (t *TempOps) RelsByTypeAt(relType string, at types.Instant) ([]*types.Relat
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	return c.Rels.ByType(relType, storepkg.QueryOpts{ValidAt: at})
+	return c.Rels.ByType(relType, storepkg.QueryOpts{ValidAt: at, ValidAtSet: true})
 }
 
 // RelsByTypePropertyAt returns relationships matching the type
@@ -1246,7 +1246,7 @@ func (c *Core) relsByTypePropertyAtLocked(relType, key string, value any, at typ
 		return nil, err
 	}
 	var result []*types.Relationship
-	if err := c.forEachRelPropertyCandidateID(tok, key, targetKey, currentIDs, storepkg.QueryOpts{ValidAt: at}, func(id types.RelID) error {
+	if err := c.forEachRelPropertyCandidateID(tok, key, targetKey, currentIDs, storepkg.QueryOpts{ValidAt: at, ValidAtSet: true}, func(id types.RelID) error {
 		r, err := c.relAtLocked(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {

@@ -16,7 +16,7 @@ func (ms *Store) PruneTemporalCandidates(labelToken uint16, ids []types.NodeID, 
 		return ids, false
 	}
 	// Only a point/interval valid-time filter narrows on the envelope.
-	if opts.ValidAt == 0 && !opts.HasValidRange() {
+	if !opts.HasValidAt() && !opts.HasValidRange() {
 		return ids, false
 	}
 	ms.mu.RLock()

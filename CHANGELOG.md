@@ -6,14 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Exact typed valid-time endpoints: `types.TemporalEndpoint{Value, Finite}` and
+  `types.TemporalRange{From, To}` distinguish finite Unix epoch zero from
+  negative/positive infinity. Creation and updates accept the reserved
+  `tkg_valid_bounds` range value; mixing it with scalar valid keys is refused.
+  `QueryOpts.ValidAtSet` activates a point query at zero; `ValidWindow` supplies
+  finite/unbounded interval bounds. Effective timeline segments expose `Bounds()`.
+  `SetNodeVersionBounds` / `SetRelVersionBounds` append retrospective corrections
+  through Temporal, GraphTx, BatchBuilder and ingest Session; old transaction pins
+  retain the previous belief. Scalar Instant APIs keep their existing zero defaults.
+
+### Changed
+
+- Persistence format v4 stores typed endpoint presence in `ep`. Full, partial,
+  nested and history-delta reads preserve it. Existing v0-v3 rows retain their
+  legacy zero interpretation. Writable open advances the store format marker;
+  older binaries fail closed, so downgrade requires a pre-upgrade backup.
+  Temporal metadata remains outside the existing content integrity hash contract;
+  that hash does not authenticate valid-time declarations.
+- The existing declared relationship segment format refuses typed endpoint
+  rows with `ErrCapabilityNotSupported` before changing rows or history.
+  Scalar segment data keeps its existing format and behavior.
+
 ### Fixed
 
-- Signed nonzero valid-time ranges now select historical facts consistently on
-  generic/indexed/count doors across every backend and on Allen relation doors.
-  Range presence depends on nonzero endpoints, not positivity. The existing
-  zero-as-unset/open contract is unchanged; this does not add finite epoch-zero
-  endpoint support. Tests compare node/relationship answers before and after
-  retraction at old/new knowledge pins on memory, Badger, tiered and sharded.
+- Signed, nonzero valid ranges activate indexed generic queries and counts on
+  every backend. Typed finite-zero endpoints remain exact across reopen,
+  retrospective correction, timeline construction, retraction and Allen queries.
 
 ## [4.50.1] - 2026-10-11
 

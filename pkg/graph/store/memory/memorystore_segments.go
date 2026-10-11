@@ -175,6 +175,11 @@ func (ms *Store) DeclareRelSegment(d storecontract.RelSegmentDeclaration) error 
 			return fmt.Errorf("%w: type %q is already declared under token %d", storecontract.ErrRelSegmentDeclaration, d.TypeName, tok)
 		}
 	}
+	for _, row := range ms.rels {
+		if row.TypeToken().Value() == d.TypeToken && row.Temporal() != nil && row.Temporal().ValidEndpoints != 0 {
+			return storecontract.ErrCapabilityNotSupported
+		}
+	}
 	if ms.segBudget == 0 {
 		ms.segBudget = budget
 	}
@@ -1096,10 +1101,10 @@ func (ms *Store) relationshipsByTypeSegmentsLocked(token uint16, opts QueryOpts)
 	if ti, ok := ms.relTypeTemporalIndexes[token]; ok {
 		var rawIDs []snowflake.ID
 		temporalQuery := false
-		if opts.ValidAt != 0 {
+		if opts.HasValidAt() {
 			rawIDs = ti.QueryAt(opts.ValidAt)
 			temporalQuery = true
-		} else if opts.HasValidRange() {
+		} else if opts.ValidWindow == nil && opts.HasValidRange() {
 			rawIDs = ti.QueryOverlap(opts.ValidStart, opts.ValidEnd)
 			temporalQuery = true
 		}
@@ -1893,4 +1898,17 @@ func (s *segColumnSource) Value(i, c int) (storecontract.ColumnKind, int64, floa
 		return k, 0, 0, s.str[c][p], false, true
 	}
 	return k, x, 0, "", false, true
+}
+
+// Typed endpoint presence is unsupported by the current segment format. All
+// write doors check this under the store lock before changing rows or history.
+func (ms *Store) validateSegmentBoundsLocked(r *types.Relationship) error {
+	if r == nil {
+		return nil
+	}
+	tm := r.Temporal()
+	if tm != nil && tm.ValidEndpoints != 0 && ms.segTypes[r.TypeToken().Value()] != nil {
+		return storecontract.ErrCapabilityNotSupported
+	}
+	return nil
 }

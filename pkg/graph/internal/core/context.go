@@ -342,6 +342,10 @@ func extractTemporal(props map[string]any) (validFrom, validTo, createdAt, txFro
 // (it's per-entity, not per-version); only tkg_valid_from and tkg_valid_to are
 // accepted.
 func extractTemporalTracked(props map[string]any) (updateTemporal, map[string]any, error) {
+	if _, has := props["tkg_valid_bounds"]; has {
+		vf, vt, _, _, ep, filtered, err := extractTemporalWithBounds(props)
+		return updateTemporal{validFrom: vf, validTo: vt, validEndpoints: ep, hasValidFrom: true, hasValidTo: true, present: true}, filtered, err
+	}
 	_, hasVF := props["tkg_valid_from"]
 	_, hasVT := props["tkg_valid_to"]
 	if !hasVF && !hasVT {

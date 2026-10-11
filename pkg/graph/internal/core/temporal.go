@@ -143,8 +143,11 @@ type tombstoneSpec struct {
 func stampDeleteTombstone(tm *types.TemporalMetadata, at types.Instant, retract bool) {
 	tm.DeletedAt = at
 	tm.Retracted = retract
-	if tm.ValidTo == 0 || tm.ValidTo > at {
+	if !isClosedTemporal(tm) || tm.ValidTo > at {
 		tm.ValidTo = at
+		if tm.HasValidBounds() {
+			tm.ValidEndpoints |= types.EndpointToFinite
+		}
 	}
 	if tm.TxFrom == 0 {
 		tm.TxFrom = at
@@ -179,7 +182,11 @@ func (c *Core) relVersionUpdateInstant(current *types.Relationship) types.Instan
 }
 
 func isClosedTemporal(tm *types.TemporalMetadata) bool {
-	return tm != nil && tm.ValidTo != 0
+	if tm == nil {
+		return false
+	}
+	r, _ := tm.ValidBounds()
+	return r.To.Finite
 }
 
 func rejectClosedNodeMutation(n *types.Node) error {
@@ -273,9 +280,8 @@ func (c *Core) resolveNodeVersionAtCapped(chain []*types.Node, t types.Instant, 
 		}
 		for i := start; i >= 0; i-- {
 			entry := chain[i]
-			vStart, vEnd := c.nodeVersionBounds(chain, i)
-			vEnd = caps.end(entry, vEnd)
-			if vStart <= t && (vEnd == 0 || vEnd > t) {
+			bounds := caps.bounds(entry, c.nodeVersionRange(chain, i))
+			if bounds.Contains(t) {
 				return entry, nil
 			}
 		}
@@ -295,19 +301,15 @@ func (c *Core) resolveNodeVersionAtCapped(chain []*types.Node, t types.Instant, 
 	sc := getSupersessionScratch()
 	defer putSupersessionScratch(sc)
 	superseded := supersessionCaps(chain, c.nodeSortValidFrom, sc)
-	starts := sc.startsOf(len(chain)) // nodeOwnBounds' start, computed once
 	var best *types.Node
 	for i := range chain {
 		entry := chain[i]
-		vStart, vEnd := starts[i], types.Instant(0) // nodeOwnBounds: own ValidTo, 0 = open
-		if tm := entry.Temporal(); tm != nil {
-			vEnd = tm.ValidTo
+		bounds := c.nodeOwnRange(entry)
+		if superseded != nil && sc.capPresent[i] {
+			bounds.To = capEndpoint(bounds.To, finite(superseded[i]))
 		}
-		if superseded != nil {
-			vEnd = capEnd(vEnd, superseded[i])
-		}
-		vEnd = caps.end(entry, vEnd)
-		if vStart <= t && (vEnd == 0 || vEnd > t) {
+		bounds = caps.bounds(entry, bounds)
+		if bounds.Contains(t) {
 			if best == nil || nodeBeliefNewerThan(entry, best) {
 				best = entry
 			}
@@ -346,6 +348,9 @@ func nodeBeliefNewerThan(a, b *types.Node) bool {
 // next.ValidFrom correctly.
 func (c *Core) nodeSortValidFrom(n *types.Node) types.Instant {
 	tm := n.Temporal()
+	if tm.HasValidBounds() {
+		return c.nodeValidFrom(n)
+	}
 	if tm != nil && tm.ValidFrom != 0 {
 		return tm.ValidFrom
 	}
@@ -478,35 +483,6 @@ func relRowAtTx(entry *types.Relationship, txAt types.Instant) (*types.Relations
 	return entry, true
 }
 
-// nodeOwnBounds returns [vStart, vEnd) using the row's OWN asserted end
-// (ValidTo, 0 => +inf) rather than the positional next-version bound
-// nodeVersionBounds derives. Used ONLY by resolveNodeVersionAt's cascade
-// (non-monotonic) slow path and by the cascade kernel's newCurrent
-// selection (temporal_cascade.go) — both contexts where overlaps between
-// rows are resolved by belief recency (nodeBeliefNewerThan), not by
-// position. A row's end must be its own claim there, never a neighbor's
-// ValidFrom, or an untouched older row can wrongly truncate a newer,
-// wider-reaching correction (BACKLOG 10b). vStart reuses nodeSortValidFrom
-// — the same effective-start key the chain is already sorted by — so this
-// helper never needs the chain, only the entry.
-//
-// Deliberately does NOT replace nodeVersionBounds: the monotonic fast path,
-// the interval door, the Relate (Allen) door, and SelectAsOf all keep using
-// positional bounds, which is correct for them (see the design rationale in
-// CHANGELOG.md's BACKLOG 10b entry) — do not widen this helper's use
-// without re-running the full bitemporal oracle fuzz harness at full
-// iteration count (10b's two prior fix attempts were reverted after
-// touching nodeVersionBounds itself broke it in non-obvious multi-cascade
-// ways; this helper's whole purpose is to avoid ever needing to).
-func (c *Core) nodeOwnBounds(n *types.Node) (types.Instant, types.Instant) {
-	vStart := c.nodeSortValidFrom(n)
-	var vEnd types.Instant // 0 == open (+inf)
-	if tm := n.Temporal(); tm != nil && tm.ValidTo != 0 {
-		vEnd = tm.ValidTo
-	}
-	return vStart, vEnd
-}
-
 // nodeVersionBounds computes the effective [vStart, vEnd) for chain[i].
 //
 // Phase 3: vEnd uses the NEXT version's effective ValidFrom when explicit,
@@ -533,7 +509,9 @@ func (c *Core) nodeVersionBounds(chain []*types.Node, i int) (types.Instant, typ
 	// (timeline tiles cleanly); otherwise fall back to next.UpdatedAt.
 	if i+1 < len(chain) {
 		next := chain[i+1]
-		if tm := next.Temporal(); tm != nil && tm.ValidFrom != 0 {
+		if tm := next.Temporal(); tm.HasValidBounds() {
+			vEnd = c.nodeValidFrom(next)
+		} else if tm := next.Temporal(); tm != nil && tm.ValidFrom != 0 {
 			vEnd = tm.ValidFrom
 		} else if tm := next.Temporal(); tm != nil && tm.UpdatedAt != 0 {
 			vEnd = tm.UpdatedAt
@@ -547,7 +525,9 @@ func (c *Core) nodeVersionBounds(chain []*types.Node, i int) (types.Instant, typ
 	// migration: keep the legacy inheritance heuristic for back-compat
 	// (stores without MetaKVCapability never migrate).
 	if tm := entry.Temporal(); tm != nil {
-		if tm.ValidFrom != 0 && (c.bitemporalMigrated || !nodeInheritedValidFrom(chain, i, tm)) {
+		if tm.HasValidBounds() {
+			vStart = c.nodeValidFrom(entry)
+		} else if tm.ValidFrom != 0 && (c.bitemporalMigrated || !nodeInheritedValidFrom(chain, i, tm)) {
 			vStart = tm.ValidFrom
 		}
 		if tm.ValidTo != 0 {
@@ -588,9 +568,8 @@ func (c *Core) resolveRelVersionAtCapped(chain []*types.Relationship, t types.In
 		}
 		for i := start; i >= 0; i-- {
 			entry := chain[i]
-			vStart, vEnd := c.relVersionBounds(chain, i)
-			vEnd = caps.end(entry, vEnd)
-			if vStart <= t && (vEnd == 0 || vEnd > t) {
+			bounds := caps.bounds(entry, c.relVersionRange(chain, i))
+			if bounds.Contains(t) {
 				return entry, nil
 			}
 		}
@@ -602,19 +581,15 @@ func (c *Core) resolveRelVersionAtCapped(chain []*types.Relationship, t types.In
 	sc := getSupersessionScratch()
 	defer putSupersessionScratch(sc)
 	superseded := supersessionCaps(chain, c.relSortValidFrom, sc)
-	starts := sc.startsOf(len(chain)) // relOwnBounds' start, computed once
 	var best *types.Relationship
 	for i := range chain {
 		entry := chain[i]
-		vStart, vEnd := starts[i], types.Instant(0) // relOwnBounds: own ValidTo, 0 = open
-		if tm := entry.Temporal(); tm != nil {
-			vEnd = tm.ValidTo
+		bounds := c.relOwnRange(entry)
+		if superseded != nil && sc.capPresent[i] {
+			bounds.To = capEndpoint(bounds.To, finite(superseded[i]))
 		}
-		if superseded != nil {
-			vEnd = capEnd(vEnd, superseded[i])
-		}
-		vEnd = caps.end(entry, vEnd)
-		if vStart <= t && (vEnd == 0 || vEnd > t) {
+		bounds = caps.bounds(entry, bounds)
+		if bounds.Contains(t) {
 			if best == nil || relBeliefNewerThan(entry, best) {
 				best = entry
 			}
@@ -638,6 +613,9 @@ func relBeliefNewerThan(a, b *types.Relationship) bool {
 // relSortValidFrom mirrors nodeSortValidFrom for relationships.
 func (c *Core) relSortValidFrom(r *types.Relationship) types.Instant {
 	tm := r.Temporal()
+	if tm.HasValidBounds() {
+		return c.relValidFrom(r)
+	}
 	if tm != nil && tm.ValidFrom != 0 {
 		return tm.ValidFrom
 	}
@@ -666,16 +644,6 @@ func (c *Core) sortRelChainForResolve(chain []*types.Relationship) bool {
 	return false
 }
 
-// relOwnBounds mirrors nodeOwnBounds for relationships. See there.
-func (c *Core) relOwnBounds(r *types.Relationship) (types.Instant, types.Instant) {
-	vStart := c.relSortValidFrom(r)
-	var vEnd types.Instant // 0 == open (+inf)
-	if tm := r.Temporal(); tm != nil && tm.ValidTo != 0 {
-		vEnd = tm.ValidTo
-	}
-	return vStart, vEnd
-}
-
 // relVersionBounds computes the effective [vStart, vEnd) for chain[i].
 // See nodeVersionBounds for the Phase 3 vEnd-from-next.ValidFrom rationale.
 func (c *Core) relVersionBounds(chain []*types.Relationship, i int) (types.Instant, types.Instant) {
@@ -694,7 +662,9 @@ func (c *Core) relVersionBounds(chain []*types.Relationship, i int) (types.Insta
 
 	if i+1 < len(chain) {
 		next := chain[i+1]
-		if tm := next.Temporal(); tm != nil && tm.ValidFrom != 0 {
+		if tm := next.Temporal(); tm.HasValidBounds() {
+			vEnd = c.relValidFrom(next)
+		} else if tm := next.Temporal(); tm != nil && tm.ValidFrom != 0 {
 			vEnd = tm.ValidFrom
 		} else if tm := next.Temporal(); tm != nil && tm.UpdatedAt != 0 {
 			vEnd = tm.UpdatedAt
@@ -704,7 +674,9 @@ func (c *Core) relVersionBounds(chain []*types.Relationship, i int) (types.Insta
 	}
 
 	if tm := entry.Temporal(); tm != nil {
-		if tm.ValidFrom != 0 && (c.bitemporalMigrated || !relInheritedValidFrom(chain, i, tm)) {
+		if tm.HasValidBounds() {
+			vStart = c.relValidFrom(entry)
+		} else if tm.ValidFrom != 0 && (c.bitemporalMigrated || !relInheritedValidFrom(chain, i, tm)) {
 			vStart = tm.ValidFrom
 		}
 		if tm.ValidTo != 0 {
@@ -1041,7 +1013,7 @@ func (c *Core) forEachRelHistoryIDByDepthTrusted(depth storepkg.ShardDepth, fn f
 // v3.1.17 restructure, and Go forbids defining methods on a non-local
 // aliased type.
 func hasTemporalFilter(opts storepkg.QueryOpts) bool {
-	if opts.ValidAt != 0 {
+	if opts.HasValidAt() {
 		return true
 	}
 	if opts.TxAt != 0 {
@@ -1260,7 +1232,7 @@ func validateTemporalQueryOpts(opts storepkg.QueryOpts) error {
 	if err := storepkg.ValidateQueryOpts(opts); err != nil {
 		return err
 	}
-	if opts.TxPin != 0 && (opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0) {
+	if opts.TxPin != 0 && (opts.HasValidAt() || opts.ValidWindow != nil || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0) {
 		return ErrConflictingTemporalOpts
 	}
 	return nil
@@ -1288,7 +1260,7 @@ func validateTemporalQueryOpts(opts storepkg.QueryOpts) error {
 // resolution or already resolve their bound once via resolveOpenEndInstant at
 // their own entry point (findNodeVersionMatchingDuringTx / the interval arm).
 func (c *Core) normalizeTxAtOnlyOpts(opts storepkg.QueryOpts) storepkg.QueryOpts {
-	if opts.TxAt != 0 && opts.TxPin == 0 && opts.ValidAt == 0 && opts.ValidStart == 0 && opts.ValidEnd == 0 {
+	if opts.TxAt != 0 && opts.TxPin == 0 && !opts.HasValidAt() && opts.ValidWindow == nil && opts.ValidStart == 0 && opts.ValidEnd == 0 {
 		opts.ValidAt = c.readNow()
 	}
 	return opts
@@ -1323,7 +1295,7 @@ func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, 
 		}
 		return n, nil
 	}
-	if opts.ValidAt != 0 {
+	if opts.HasValidAt() {
 		n, err := c.nodeAtLockedTx(id, opts.ValidAt, opts.TxAt)
 		if err != nil {
 			return nil, err
@@ -1332,6 +1304,9 @@ func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, 
 			return nil, storepkg.ErrNoVersionValidAt
 		}
 		return n, nil
+	}
+	if opts.ValidWindow != nil {
+		return c.findNodeVersionMatchingDuringTx(id, 0, 0, opts.TxAt, pred, *opts.ValidWindow)
 	}
 	if opts.HasValidRange() {
 		return c.findNodeVersionMatchingDuringTx(id, opts.ValidStart, opts.ValidEnd, opts.TxAt, pred)
@@ -1371,7 +1346,7 @@ func (c *Core) findRelVersionForOpts(id types.RelID, opts storepkg.QueryOpts, pr
 		}
 		return r, nil
 	}
-	if opts.ValidAt != 0 {
+	if opts.HasValidAt() {
 		r, err := c.relAtLockedTx(id, opts.ValidAt, opts.TxAt)
 		if err != nil {
 			return nil, err
@@ -1380,6 +1355,9 @@ func (c *Core) findRelVersionForOpts(id types.RelID, opts storepkg.QueryOpts, pr
 			return nil, storepkg.ErrNoVersionValidAt
 		}
 		return r, nil
+	}
+	if opts.ValidWindow != nil {
+		return c.findRelVersionMatchingDuringTx(id, 0, 0, opts.TxAt, pred, *opts.ValidWindow)
 	}
 	if opts.HasValidRange() {
 		return c.findRelVersionMatchingDuringTx(id, opts.ValidStart, opts.ValidEnd, opts.TxAt, pred)
@@ -1418,7 +1396,7 @@ func (c *Core) findNodeVersionMatchingDuring(id types.NodeID, start, end types.I
 // txAt == 0 → no TX filter (equivalent to findNodeVersionMatchingDuring).
 // Callers must resolve end == 0 to a concrete bound via resolveOpenEndInstant
 // before invoking.
-func (c *Core) findNodeVersionMatchingDuringTx(id types.NodeID, start, end, txAt types.Instant, pred func(*types.Node) bool) (*types.Node, error) {
+func (c *Core) findNodeVersionMatchingDuringTx(id types.NodeID, start, end, txAt types.Instant, pred func(*types.Node) bool, windows ...types.TemporalRange) (*types.Node, error) {
 	current, err := c.getCurrentNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
@@ -1440,7 +1418,11 @@ func (c *Core) findNodeVersionMatchingDuringTx(id types.NodeID, start, end, txAt
 		chain = append(chain, current)
 	}
 
-	return c.resolveNodeChain(chain, chainProbe{kind: probeInterval, validStart: start, validEnd: end, tx: txAt}, pred)
+	probe := chainProbe{kind: probeInterval, validStart: start, validEnd: end, tx: txAt}
+	if len(windows) > 0 {
+		probe.window = &windows[0]
+	}
+	return c.resolveNodeChain(chain, probe, pred)
 }
 
 // findRelVersionMatchingDuring is the relationship counterpart.
@@ -1449,7 +1431,7 @@ func (c *Core) findRelVersionMatchingDuring(id types.RelID, start, end types.Ins
 }
 
 // findRelVersionMatchingDuringTx is the bitemporal variant. See findNodeVersionMatchingDuringTx.
-func (c *Core) findRelVersionMatchingDuringTx(id types.RelID, start, end, txAt types.Instant, pred func(*types.Relationship) bool) (*types.Relationship, error) {
+func (c *Core) findRelVersionMatchingDuringTx(id types.RelID, start, end, txAt types.Instant, pred func(*types.Relationship) bool, windows ...types.TemporalRange) (*types.Relationship, error) {
 	current, err := c.getCurrentRelationship(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
@@ -1471,7 +1453,11 @@ func (c *Core) findRelVersionMatchingDuringTx(id types.RelID, start, end, txAt t
 		chain = append(chain, current)
 	}
 
-	return c.resolveRelChain(chain, chainProbe{kind: probeInterval, validStart: start, validEnd: end, tx: txAt}, pred)
+	probe := chainProbe{kind: probeInterval, validStart: start, validEnd: end, tx: txAt}
+	if len(windows) > 0 {
+		probe.window = &windows[0]
+	}
+	return c.resolveRelChain(chain, probe, pred)
 }
 
 // findNodeVersionRelating iterates versions of node id whose valid-interval has

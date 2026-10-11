@@ -15,7 +15,7 @@ func (bs *Store) PruneTemporalCandidates(labelToken uint16, ids []types.NodeID, 
 	if bs == nil {
 		return ids, false
 	}
-	if opts.ValidAt == 0 && !opts.HasValidRange() {
+	if !opts.HasValidAt() && !opts.HasValidRange() {
 		return ids, false
 	}
 	bs.idxMu.RLock()

@@ -22,7 +22,10 @@ func (t *TempOps) NodeInterval(n *types.Node) (start, end types.Instant, err err
 		}
 		start = c.nodeValidFrom(n)
 		tm := n.Temporal()
-		if tm == nil || tm.ValidTo == 0 {
+		if tm == nil || !isClosedTemporal(tm) {
+			return types.ErrOpenInterval
+		}
+		if bounds, explicit := tm.ValidBounds(); explicit && !bounds.From.Finite {
 			return types.ErrOpenInterval
 		}
 		end = tm.ValidTo
@@ -50,7 +53,10 @@ func (t *TempOps) RelInterval(r *types.Relationship) (start, end types.Instant, 
 		}
 		start = c.relValidFrom(r)
 		tm := r.Temporal()
-		if tm == nil || tm.ValidTo == 0 {
+		if tm == nil || !isClosedTemporal(tm) {
+			return types.ErrOpenInterval
+		}
+		if bounds, explicit := tm.ValidBounds(); explicit && !bounds.From.Finite {
 			return types.ErrOpenInterval
 		}
 		end = tm.ValidTo
@@ -74,7 +80,7 @@ func (t *TempOps) RelateNodes(a, b *types.Node) (types.AllenRelation, error) {
 	if err != nil {
 		return 0, err
 	}
-	return types.Relate(aStart, aEnd, bStart, bEnd)
+	return types.RelateRanges(types.TemporalRange{From: finite(aStart), To: finite(aEnd)}, types.TemporalRange{From: finite(bStart), To: finite(bEnd)})
 }
 
 // RelateRels classifies the Allen relation of relationship A's interval
@@ -88,5 +94,5 @@ func (t *TempOps) RelateRels(a, b *types.Relationship) (types.AllenRelation, err
 	if err != nil {
 		return 0, err
 	}
-	return types.Relate(aStart, aEnd, bStart, bEnd)
+	return types.RelateRanges(types.TemporalRange{From: finite(aStart), To: finite(aEnd)}, types.TemporalRange{From: finite(bStart), To: finite(bEnd)})
 }

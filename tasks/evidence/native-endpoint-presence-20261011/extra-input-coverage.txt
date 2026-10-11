@@ -1,0 +1,1 @@
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core/temporal_bounds_input.go:19:		extractTemporalWithBounds			96.3%

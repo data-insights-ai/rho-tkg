@@ -172,6 +172,7 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 	// the previous version's interval in historical queries.
 	tm.ValidFrom = 0
 	tm.ValidTo = 0
+	tm.ValidEndpoints = 0
 	tm.UpdatedAt = now
 
 	// TxTo on previous version.
@@ -357,6 +358,7 @@ func (c *Core) compareAndSetRelPropertyInternal(ctx context.Context, id types.Re
 	// the previous version's interval in historical queries.
 	tm.ValidFrom = 0
 	tm.ValidTo = 0
+	tm.ValidEndpoints = 0
 	tm.UpdatedAt = now
 	if ptm := prevState.Temporal(); ptm == nil {
 		ptm2 := &types.TemporalMetadata{}

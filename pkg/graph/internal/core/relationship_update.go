@@ -157,10 +157,10 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 	if err := rejectClosedRelMutation(current); err != nil {
 		return nil, false, err
 	}
-	if tmp.hasValidFrom && tmp.validFrom != 0 {
+	if validFrom, explicit := updateValidStart(tmp); explicit {
 		prevEff := c.relValidFrom(current)
-		if tmp.validFrom <= prevEff {
-			return nil, false, fmt.Errorf("%w: %d <= prev %d", ErrValidFromBeforePrevious, tmp.validFrom, prevEff)
+		if validFrom <= prevEff {
+			return nil, false, fmt.Errorf("%w: %d <= prev %d", ErrValidFromBeforePrevious, validFrom, prevEff)
 		}
 	}
 	if err := c.checkpointDirtyRegistriesBeforeMutation("update relationship"); err != nil {
@@ -218,6 +218,7 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 	// Phase 1/2: stop inheriting valid-time; honour caller tkg_valid_from/to.
 	tm.ValidFrom = 0
 	tm.ValidTo = 0
+	tm.ValidEndpoints = tmp.validEndpoints
 	if tmp.hasValidFrom {
 		tm.ValidFrom = tmp.validFrom
 	}
@@ -520,6 +521,11 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 	if tm == nil {
 		tm = &types.TemporalMetadata{}
 		current.SetTemporal(tm)
+	}
+	if tmp.validEndpoints != 0 {
+		tm.ValidEndpoints = tmp.validEndpoints
+	} else if tm.HasValidBounds() && (tmp.hasValidFrom || tmp.hasValidTo) {
+		return nil, false, fmt.Errorf("%w: typed valid bounds require a complete typed update", ErrInvalidTimeRange)
 	}
 	tm.UpdatedAt = now
 	if tmp.hasValidFrom {

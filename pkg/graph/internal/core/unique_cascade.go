@@ -55,7 +55,7 @@ import (
 // open), else it is the resumption. On success the caller defers the
 // hold's release and calls hold.writeFailed when a store write fails; on
 // error nothing is held and nothing is claimed.
-func (c *Core) enforceUniqueForCascade(id types.NodeID, current *types.Node, appended []*types.Node, newCurrent *types.Node, curIsNew bool, newVT types.Instant, props map[string]any) (*uniqueHold, error) {
+func (c *Core) enforceUniqueForCascade(id types.NodeID, current *types.Node, appended []*types.Node, newCurrent *types.Node, curIsNew bool, newVT types.Instant, props map[string]any, windows ...types.TemporalRange) (*uniqueHold, error) {
 	noop := &uniqueHold{}
 	if len(appended) == 0 || !c.hasUniqueConstraints.Load() {
 		return noop, nil
@@ -78,7 +78,11 @@ func (c *Core) enforceUniqueForCascade(id types.NodeID, current *types.Node, app
 	}
 	for _, row := range appended {
 		isCurrent := curIsNew && row == newCurrent
-		isCorrection := newVT == 0 || (row.Temporal() != nil && row.Temporal().ValidFrom < newVT)
+		endFinite := newVT != 0
+		if len(windows) > 0 {
+			endFinite = windows[0].To.Finite
+		}
+		isCorrection := !endFinite || (row.Temporal() != nil && row.Temporal().ValidFrom < newVT)
 		for li := 0; li < row.LabelTokenCount(); li++ {
 			labelTok := row.LabelTokenRawAt(li)
 			for key, scope := range constrained[labelTok] {

@@ -901,6 +901,9 @@ func (ms *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
 	}
+	if err := ms.validateSegmentBoundsLocked(current); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateRelationshipWrite(current); err != nil {
 		return err
 	}

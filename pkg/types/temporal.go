@@ -54,6 +54,9 @@ type TemporalMetadata struct {
 	// past stays readable) carries false. Only meaningful together with
 	// DeletedAt != 0; stores reject it otherwise.
 	Retracted bool
+	// ValidEndpoints distinguishes typed finite zero/unbounded endpoints from
+	// legacy scalar defaults. Zero retains the existing API's interpretation.
+	ValidEndpoints EndpointPresence
 }
 
 // BaseEntityID returns the opaque ID linking to the original entity in a

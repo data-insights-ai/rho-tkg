@@ -339,12 +339,13 @@ type updateProvenance struct {
 // order check and the stamps; txAt does not count toward `present` (it is not
 // a change by itself — an update at txAt that changes nothing is refused).
 type updateTemporal struct {
-	validFrom    types.Instant
-	validTo      types.Instant
-	txAt         types.Instant
-	hasValidFrom bool
-	hasValidTo   bool
-	present      bool
+	validEndpoints types.EndpointPresence
+	validFrom      types.Instant
+	validTo        types.Instant
+	txAt           types.Instant
+	hasValidFrom   bool
+	hasValidTo     bool
+	present        bool
 }
 
 type preparedUpdateProperties struct {
