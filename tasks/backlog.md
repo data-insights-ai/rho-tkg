@@ -15,7 +15,7 @@ TEST-GAP = real behavior unverified (may hide a bug). FEATURE = plausible
 capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 
 **Remaining open work (verified against the code at v4.49.0, 2026-10-10):** no reproduced CRITICAL or HIGH
-item; two traced, unreproduced HIGH? findings in item 4. Next step: item 34, then 33 + 42 (+ 41),
+item; two traced, unreproduced HIGH? findings in item 4. Next step: items 33 + 42 (+ 41),
 35, 28, 21. Open items, one line each (full text below):
 
 | # | Type / severity | Item | Status |
@@ -40,7 +40,6 @@ item; two traced, unreproduced HIGH? findings in item 4. Next step: item 34, the
 | 28 | FEATURE (perf) | State form of the as-of column doors and counts | open; design first (sigma) |
 | 31 | LOW | Bulk and point as-of disagree with the cascade oracle on version gaps | open; fix when a consumer holds such chains |
 | 33 | MEDIUM (perf) | Badger effective-timeline scan costs 13-17 µs per relationship | open; restart pending (baseline `tasks/evidence/badger-read-cost/`) |
-| 34 | FEATURE | `SetNodeVersionIntervalWithTx` / `SetRelVersionIntervalWithTx` | open; agent stopped before committing anything; restart (sigma replay need) |
 | 35 | FEATURE | Broader effective scans | open; signatures confirmed by sigma 2026-10-10 (HANDOVER.md §11) |
 | 37 | LOW | Tiered error-rollback restore leaves a window with empty history | open; `restoreRelHistorySnapshot` still truncates then puts (`tieredstore_write_history.go:899`) |
 | 39 | LOW (not tested) | Per-entity compaction stubs survive `Admin().Reset` | open; `reapCompactionForReset` still leaves the stubs (`core/compaction.go:285`) |
@@ -746,12 +745,6 @@ Everything the handover `tasks/handover-effective-read-cost-20261009.md` asked f
 
 **Badger effective-timeline scan costs 13-17 µs per relationship** (MEDIUM, perf, from the effective-timeline numbers of v4.47.0: ≈ 3 s for 200 K rels vs 1.3 µs/rel on memory): the pinned candidate gather decodes every current row and each rel's row is then read again. Reuse the rows the gather decoded, or gather candidate IDs only (key scan) and read once. Measure with `BenchmarkForEachRelEffectiveByType` before and after.
 
-### 34. `SetNodeVersionIntervalWithTx` / `SetRelVersionIntervalWithTx`
-
-*FEATURE* — open; agent stopped before committing anything; restart (sigma replay need).
-
-**`SetNodeVersionIntervalWithTx` / `SetRelVersionIntervalWithTx`: a caller instant for interval rewrites** (FEATURE, requested by sigma-tkgd 2026-10-09 from the burst-growth replay): a replayed burst growth `[vs,ve) → [vs,ve')` cannot be stamped at the record's own transaction instant because the append-only cascade (`Temporal().SetXVersionInterval`, `GraphTx`, `BatchBuilder`, ingest `Session`) stamps `TxFrom = now`. Mirror `DeleteWithTx`/`UpdateWithTx` (handover tx-backfill §6): gate `AllowTxBackfill`, `ErrInvalidTxFrom` for non-positive or future instants, `ErrTxOrder` against the entity's own chain (t must exceed the newest `TxFrom` and every appended piece takes the same caller instant), one instant for every appended row of the cascade, `notePastDatedWrite` for the as-of cache, whole-unit pre-flight in Batch/ingest, replica reproduces the stamps. Red tests first on all four backends, node and rel, every door (the W5 oracle gets the new door in its generator).
-
 ### 35. Broader effective scans
 
 *FEATURE* — open; signatures confirmed by sigma 2026-10-10 (HANDOVER.md §11).
@@ -887,6 +880,7 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Review 2026-09-24: delete after close, correction template, endpoint masking (HIGH) | `[4.38.0]` (merge `4473705`) |
 | Review 2026-09-24: TxAt-only doors "nondeterministic" (implicit valid-time now = wall clock; now `readNow()`) | `[4.38.1]` |
 | Item 6 (FEATURE) — `DeleteWithTx` / `UpdateWithTx` on every write door, `ErrTxOrder` | `[4.44.0]` Added; handover `tasks/handover-tx-backfill-delete-update-20261009.md` |
+| Item 34 (FEATURE) — `SetNodeVersionIntervalWithTx` / `SetRelVersionIntervalWithTx` on every door | `[Unreleased]` Added; evidence `tasks/evidence/interval-withtx/` |
 | Item 11 (FEATURE) — durable-on-return commit `Config.DurableCommit` | `[4.44.0]` Added (power-loss gap: item 15) |
 | HIGH — one-tick `[t, t+1)` rows skipped as the eclipse sentinel; skip removed | `[4.44.0]` Fixed "One-tick valid intervals are ordinary spans" |
 | Review-v5 §6.2 — column and range scans ignored `TxAt`/`TxPin` | `[4.44.0]` Fixed "Column and range scans answer temporal options" (interval semantics: item 16) |

@@ -395,6 +395,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   imported-package and two required-module advisories are unreachable. Final
   consolidated root+v5 CI remains pending; no other v4 API or behavior change.
 
+## [4.50.1] - 2026-10-11
+
+Patch release: interval corrections at a caller transaction instant (backlog 34, requested by sigma-tkgd for the burst-growth replay). Additive; the plain doors are unchanged.
+
+### Added
+
+- **`Temporal().SetNodeVersionIntervalWithTx(ctx, id, validFrom, validTo, props, txFrom)` /
+  `SetRelVersionIntervalWithTx(...)`: a valid-time correction recorded at a caller transaction instant** (backlog 34,
+  requested by sigma-tkgd: a replayed burst growth `[vs,ve) -> [vs,ve')` is stamped at the record's own instant, not
+  at the commit clock). Every row the correction appends — the correction pieces, the resumption and the row that
+  takes the current slot — carries `TxFrom = UpdatedAt = txFrom`; stored rows are untouched (append-only), so a read
+  pinned before `txFrom` keeps the uncorrected belief and a read pinned at or after it sees the correction. Same gates
+  as `UpdateWithTx`: `txFrom` must be a positive instant not in the future (`ErrInvalidTxFrom`), then
+  `Config.AllowTxBackfill` (`ErrTxBackfillDisabled`); under the entity lock a hard-deleted entity is refused
+  (`ErrEntityDeleted`) and `txFrom` must lie after every `TxFrom` and `TxTo` of the
+  entity's chain (the rule of `UpdateWithTx`, `checkTxOrder`) — every life of a re-imported ID, also rows outside `[validFrom, validTo)` — otherwise `ErrTxOrder`
+  (wraps `ErrInvalidTxFrom`, names the binding stamp) and nothing is written. A `validFrom` after `txFrom` is
+  allowed. The commit clock is not advanced by `txFrom`; the as-of column cache is invalidated after the write;
+  replicas reproduce the stamps from the change feed. Twins: `GraphTx.SetNodeVersionIntervalWithTx` /
+  `SetRelVersionIntervalWithTx` (rollback restores the chain exactly), `BatchBuilder` and ingest `Session` (strong and
+  concurrent) doors of the same names, with the whole-unit pre-flight of the other caller-instant doors (one refused
+  op refuses the unit, nothing written; the correction must be the only op of the unit on its entity, a node delete
+  that cascades into a corrected relationship included). The plain `SetXVersionInterval` doors keep stamping the
+  clock. `temporal.Ops` gains the two methods. Evidence: `tasks/evidence/interval-withtx/` (red runs, mutants, the
+  W5 oracle with the new door at 100 seeds).
+
 ## [4.50.0] - 2026-10-10
 
 Minor release, the sigma-tkgd store requests, round 4 (new public API): `g.Index().InventoryEpoch()`, a counter that

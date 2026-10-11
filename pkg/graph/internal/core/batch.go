@@ -69,11 +69,14 @@ type BatchBuilder struct {
 	relCascades  []pendingRelCascade
 }
 
+// pendingNodeCascade is a queued valid-time correction; at is the gated
+// caller instant of SetNodeVersionIntervalWithTx (0 = the clock).
 type pendingNodeCascade struct {
 	id        types.NodeID
 	validFrom types.Instant
 	validTo   types.Instant
 	props     map[string]any
+	at        types.Instant
 }
 
 type pendingRelCascade struct {
@@ -81,6 +84,7 @@ type pendingRelCascade struct {
 	validFrom types.Instant
 	validTo   types.Instant
 	props     map[string]any
+	at        types.Instant
 }
 
 // pendingNode and pendingRel keep private queued entities plus the

@@ -1,0 +1,50 @@
+# RED core — doors stubbed to their plain twins (ignore t, no gate/order/report), base 7b3e11b + stubs. go test ./pkg/graph/internal/core/ -run 'TestIntervalWithTx|TestCheckCascadeTxOrder' -count=1 -v. Passing on the stub by design (the stub IS the plain door): PlainDoorsUnchanged (guard), DeletedEntity (red vs mutant M7), CommitClockNotAdvanced (re-run after a fixture fix: green on the stub, red vs mutant M3).
+# Top-level results:
+--- FAIL: TestIntervalWithTx_PrimaryCacheStale (0.25s)
+--- FAIL: TestIntervalWithTx_ReplicaReproducesStamps (0.73s)
+--- FAIL: TestCheckCascadeTxOrder (0.00s)
+--- FAIL: TestIntervalWithTx_IngestStrongGroupAlone (0.47s)
+--- FAIL: TestIntervalWithTx_RelDoorsReportPastDatedWrite (1.17s)
+--- FAIL: TestIntervalWithTx_BatchIngestWholeUnit (1.55s)
+--- FAIL: TestIntervalWithTx_TxRollbackEquiv (1.77s)
+--- PASS: TestIntervalWithTx_PlainDoorsUnchanged (2.50s)
+--- FAIL: TestIntervalWithTx_BurstGrowthReplay (2.66s)
+--- FAIL: TestIntervalWithTx_CommitClockNotAdvanced (2.77s)
+--- FAIL: TestIntervalWithTx_ValidFromAfterT (2.78s)
+--- FAIL: TestIntervalWithTx_StampsEveryAppendedRow (2.79s)
+--- FAIL: TestIntervalWithTx_TwoPhase (2.80s)
+--- PASS: TestIntervalWithTx_DeletedEntity (2.83s)
+--- FAIL: TestIntervalWithTx_GateAndValue (3.29s)
+--- FAIL: TestIntervalWithTx_RaceClock (3.29s)
+--- FAIL: TestIntervalWithTx_Order (4.16s)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	5.193s
+# Subtests: 548 FAIL, 100 PASS
+# Failure messages (deduplicated, instants -> N, count):
+     80 interval_withtx_test.go:421: [zero t=0] err = <nil>; want graph: backfilled tkg_tx_from must be a positive instant not in the future
+     40 interval_withtx_test.go:916: growth 1 row v1 TxFrom=N UpdatedAt=N; want the record instant t1 = N
+     40 interval_withtx_test.go:786: pin t does not answer the correction recorded at t:
+     40 interval_withtx_test.go:325: [t=N binding=N] err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+     40 interval_withtx_test.go:285: [t=N binding=N] err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+     40 interval_withtx_test.go:242: [t=N newest=N] err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+     40 interval_withtx_race_test.go:107: accepted t=N is the TxFrom of no row
+     34 interval_withtx_test.go:969: [validFrom after t] appended v2 stamps TxFrom=N UpdatedAt=N TxTo=0 DeletedAt=0; want TxFrom = UpdatedAt = t = N, TxTo = DeletedAt = 0
+     25 interval_withtx_test.go:189: [bounded] appended v2 stamps TxFrom=N UpdatedAt=N TxTo=0 DeletedAt=0; want TxFrom = UpdatedAt = t = N, TxTo = DeletedAt = 0
+     24 interval_withtx_units_test.go:211: [order-refused correction + plain op elsewhere] err = <nil>; want graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future)
+     24 interval_withtx_test.go:523: the WithTx door moved the commit clock by 3, its plain twin by 2; want equal (the gate's read replaces the stamp's)
+     20 interval_withtx_units_test.go:456: replica k at pin after the correction at t <= pin = 2; want 7
+     20 interval_withtx_units_test.go:354: the door never reached the backfill gate (hook did not run)
+      9 interval_withtx_test.go:189: [bounded] appended v3 stamps TxFrom=N UpdatedAt=N TxTo=0 DeletedAt=0; want TxFrom = UpdatedAt = t = N, TxTo = DeletedAt = 0
+      8 interval_withtx_units_test.go:59: inside the tx appended v2 TxFrom = N; want t = N
+      8 interval_withtx_units_test.go:287: refused group err = <nil>; want ErrTxOrder
+      8 interval_withtx_test.go:523: the WithTx door moved the commit clock by 2, its plain twin by 1; want equal (the gate's read replaces the stamp's)
+      8 interval_withtx_test.go:523: the WithTx door moved the commit clock by 1, its plain twin by 0; want equal (the gate's read replaces the stamp's)
+      6 interval_withtx_test.go:969: [validFrom after t] appended v3 stamps TxFrom=N UpdatedAt=N TxTo=0 DeletedAt=0; want TxFrom = UpdatedAt = t = N, TxTo = DeletedAt = 0
+      6 interval_withtx_test.go:189: [bounded] appended v4 stamps TxFrom=N UpdatedAt=N TxTo=0 DeletedAt=0; want TxFrom = UpdatedAt = t = N, TxTo = DeletedAt = 0
+      4 interval_withtx_units_test.go:392: standalone at a past t left the as-of generation at 6 — the door does not report its past-dated write
+      4 interval_withtx_units_test.go:392: IngestStrong at a past t left the as-of generation at 6 — the door does not report its past-dated write
+      4 interval_withtx_units_test.go:392: IngestConcurrent at a past t left the as-of generation at 6 — the door does not report its past-dated write
+      4 interval_withtx_units_test.go:392: GraphTx at a past t left the as-of generation at 6 — the door does not report its past-dated write
+      4 interval_withtx_units_test.go:392: Batch at a past t left the as-of generation at 6 — the door does not report its past-dated write
+      4 interval_withtx_units_test.go:101: committed twin vs standalone door: graphs not equivalent (want 2714 body bytes, got 2714)
+      4 interval_withtx_units_test.go:101: committed twin vs standalone door: graphs not equivalent (want 2222 body bytes, got 2222)
+      1 interval_withtx_test.go:365: TxFrom: t=300 err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom

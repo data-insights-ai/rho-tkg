@@ -16,7 +16,9 @@ import (
 // Cascade timeline edit — append-only (since 994df82, 2026-06-12)
 //
 // SetNodeVersionInterval / SetRelVersionInterval record, at transaction time
-// `now`, the belief "[newVF, newVT) is `props` (a patch)". Existing rows are
+// `now`, the belief "[newVF, newVT) is `props` (a patch)" — `now` is the clock,
+// or the caller instant of the *WithTx doors (interval_withtx.go,
+// cascadeInstant: one instant for every appended row). Existing rows are
 // NEVER rewritten (lesson 46): no stored ValidFrom/ValidTo/TxFrom/TxTo of a
 // prior row changes. The cascade appends fresh rows stamped
 // TxFrom = UpdatedAt = now:
@@ -90,7 +92,7 @@ import (
 // Node cascade
 // =============================================================================
 
-func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, newVF, newVT types.Instant, props map[string]any) (*types.Node, error) {
+func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, newVF, newVT types.Instant, props map[string]any, at types.Instant) (*types.Node, error) {
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
 	}
@@ -139,7 +141,12 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	if err != nil {
 		return nil, err
 	}
-	now := c.now()
+	// The clock, or the caller instant at once the order rule holds for the
+	// whole chain (interval_withtx.go). Every appended row is stamped with it.
+	now, err := c.cascadeInstant(at, temporalsOf(history, current))
+	if err != nil {
+		return nil, err
+	}
 
 	// The template — the current row, the most recent version — is the
 	// content of a gap piece, where no version is valid to patch (see
@@ -640,7 +647,7 @@ func ensureRelTemporal(r *types.Relationship) {
 // Relationship cascade (mirror of node cascade, rule 2 parity)
 // =============================================================================
 
-func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, newVF, newVT types.Instant, props map[string]any) (*types.Relationship, error) {
+func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, newVF, newVT types.Instant, props map[string]any, at types.Instant) (*types.Relationship, error) {
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err
 	}
@@ -688,7 +695,11 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 	if err != nil {
 		return nil, err
 	}
-	now := c.now()
+	// The clock or the checked caller instant — see the node cascade.
+	now, err := c.cascadeInstant(at, temporalsOf(history, current))
+	if err != nil {
+		return nil, err
+	}
 
 	// Template: the current row — see the node cascade.
 	template := current

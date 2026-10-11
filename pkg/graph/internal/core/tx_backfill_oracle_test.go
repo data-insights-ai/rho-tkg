@@ -21,7 +21,8 @@ import (
 //
 // A seeded random sequence interleaves plain creates, AddWithTx backfills,
 // Update, Delete, CloseVersion, SetVersionInterval and label changes with the
-// caller-instant doors — node and relationship DeleteWithTx / UpdateWithTx,
+// caller-instant doors — node and relationship DeleteWithTx / UpdateWithTx and
+// SetVersionIntervalWithTx (tx_backfill_oracle_interval_test.go),
 // each through a randomly chosen door (standalone, GraphTx, Batch, ingest
 // strong, ingest concurrent) — on memory, badger (in-memory), sharded and
 // tiered (anchor "Ref" on the reference shard, so relationships to it cross
@@ -63,6 +64,10 @@ type txbOracle struct {
 	// row above its current version (a cascade that left the current row in
 	// place) — the shapes the removed W5 skips excluded.
 	aboveCurrent int
+	// ivRng draws the interval corrections at a caller instant
+	// (tx_backfill_oracle_interval_test.go) from a stream of its own, so the
+	// draws of every other op stay those of the sequence without them.
+	ivRng *rand.Rand
 }
 
 // txbIntent is one accepted caller-instant op: what pins t-1 and t answered
@@ -256,6 +261,7 @@ func (o *txbOracle) step() {
 	default: // 11-15: a caller-instant op
 		o.callerOp()
 	}
+	o.intervalStep() // tx_backfill_oracle_interval_test.go
 }
 
 // txbBounds returns lo, the largest stamp of any kind on rows (and the
@@ -1036,7 +1042,8 @@ func txbOracleRun(t *testing.T, be txbBackend, seed uint64, nOps int, x0 types.I
 	clk := &switchableClock{}
 	g.SetClockForTest(t, clk.Now)
 	rng := rand.New(rand.NewPCG(seed, seed^0x9E3779B97F4A7C15))
-	o = &txbOracle{world: newWorld(t, g, rng), be: be.name, clk: clk, accepted: map[string]int{}}
+	o = &txbOracle{world: newWorld(t, g, rng), be: be.name, clk: clk, accepted: map[string]int{},
+		ivRng: rand.New(rand.NewPCG(seed^0x34, seed))}
 	// x0 lies above the wall clock (snowflake mint times, the derived
 	// valid-from fallback) and is the same for every backend of a seed.
 	o.x = x0
@@ -1147,7 +1154,7 @@ func TestTxBackfillOracle_CrossBackend(t *testing.T) {
 	// Coverage of the generator itself: every door family accepted at least
 	// one op of each kind, and refusals happened.
 	for _, f := range txbNodeFamilies() {
-		for _, k := range []string{"/node-delete", "/node-update", "/rel-delete", "/rel-update"} {
+		for _, k := range []string{"/node-delete", "/node-update", "/rel-delete", "/rel-update", "/node-interval", "/rel-interval"} {
 			if accepted[f.name+k] == 0 {
 				t.Errorf("generator never accepted %s%s over %d seeds", f.name, k, seeds)
 			}

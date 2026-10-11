@@ -71,6 +71,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	// (UpdateNodeWithTx, DeleteNodeWithTx).
 	defer b.g.notePastDatedWrite(pendingNodeCallerTx(b.nodeUpdates, b.nodeDeletes))
 	defer b.g.notePastDatedWrite(relCallerPastDated(b.relUpdates, b.relDeletes))
+	defer b.g.notePastDatedWrite(cascadeCallerPastDated(b.nodeCascades, b.relCascades))
 
 	// Buffer events during batch execution; dispatch after c.mu.Unlock.
 	var batchEvents []eventspkg.Event
@@ -573,11 +574,11 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 
 	// 4b. Cascade timeline edits — node, then rel.
 	for _, pc := range b.nodeCascades {
-		_, err := b.g.cascadeNodeVersionInterval(context.Background(), pc.id, pc.validFrom, pc.validTo, pc.props)
+		_, err := b.g.cascadeNodeVersionInterval(context.Background(), pc.id, pc.validFrom, pc.validTo, pc.props, pc.at)
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
-				Op:  "SetNodeVersionInterval",
+				Op:  cascadeOpName("Node", pc.at),
 				ID:  types.EntityID(pc.id),
 				Err: err,
 			})
@@ -587,11 +588,11 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		}
 	}
 	for _, pc := range b.relCascades {
-		_, err := b.g.cascadeRelVersionInterval(context.Background(), pc.id, pc.validFrom, pc.validTo, pc.props)
+		_, err := b.g.cascadeRelVersionInterval(context.Background(), pc.id, pc.validFrom, pc.validTo, pc.props, pc.at)
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
-				Op:  "SetRelVersionInterval",
+				Op:  cascadeOpName("Rel", pc.at),
 				ID:  types.EntityID(pc.id),
 				Err: err,
 			})
