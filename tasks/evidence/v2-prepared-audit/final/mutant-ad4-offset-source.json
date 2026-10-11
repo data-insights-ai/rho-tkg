@@ -1,0 +1,9 @@
+{
+  "mutation": {
+    "old": "cut += 96",
+    "new": "cut += 95"
+  },
+  "unmutated_sha": "42a1d7994368861bf42d5d71cd8dde9c74fca99dba54ca5ab0a38d3da67c193b",
+  "mutated_sha": "55afbea5ae277c634122f21029a1ba9579701f34738b624ad815b7962c88248a",
+  "path": "/var/tmp/rho-v5-v2-prepared-audit-mutants-20261011/ad4-offset/internal/replica/application_snapshot_event.go"
+}

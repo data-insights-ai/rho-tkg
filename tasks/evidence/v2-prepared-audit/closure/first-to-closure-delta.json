@@ -1,0 +1,14 @@
+{
+  "v5/internal/replica/application_snapshot_as5_audit_test.go": {
+    "old": "69ac35d6b921db5abad8dc0c1e4c9d1aebe2de78783a3a6a1d10a888be550589",
+    "new": "d3993468c524cd907ebd41966910db46dc09bccfd01011ba004703718bcce61a"
+  },
+  "v5/internal/replica/application_snapshot_event.go": {
+    "old": "42a1d7994368861bf42d5d71cd8dde9c74fca99dba54ca5ab0a38d3da67c193b",
+    "new": "74f9ddc7c3501ed4e8945f3fa57b336916d3d48a77541ea17c3e031a2e302719"
+  },
+  "v5/internal/replica/application_snapshot_recovery_work_test.go": {
+    "old": null,
+    "new": "d05191c6c153779f79dbecf30c553e3ab1d65ddbf5670f5a5dbecbb04b5d3b18"
+  }
+}

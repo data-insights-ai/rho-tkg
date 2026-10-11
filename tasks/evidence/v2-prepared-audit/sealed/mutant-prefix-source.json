@@ -1,0 +1,6 @@
+{
+  "edit": "prefixWork to0*prefixWork in finalworkSum",
+  "unmutated_sha": "874edfe77ae73e6c89bac8a74e8c2acab84b93c1279aace8b90c6295d7ee556b",
+  "mutated_sha": "1222577ca73b5f8e237942cb9ea74acfdca840a2573adbace9ea6ecdc6db4f60",
+  "path": "/var/tmp/rho-v5-v2-prepared-audit-mutants-20261011/prefix-reversion/internal/replica/application_snapshot_event.go"
+}

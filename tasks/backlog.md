@@ -238,10 +238,20 @@ reviewed and validated before the next package starts.
    The [finite process-orchestration acceptance](evidence/v2-process/first-slice-acceptance.json)
    now closes its combined affected graphapply normal/race/coverage and static
    gates. Driver/factory/preclaim/Host readiness remains unwired and unaccepted.
-   External `2a7d5144` prepared-snapshot auditing is [source-reviewed](evidence/v2-certified-reads/prepared-audit-integration-review.txt),
-   not integrated or runtime-accepted. Its new audit parser rejects the accepted
-   AS5/AD4 descriptor. After the current CI correction, reproduce this with a
-   genuine prepared AS5 snapshot and integrate without losing recovery hooks.
+   **Prepared-snapshot audit integration accepted locally**, at `f8b24261`,
+   incorporating external `2a7d5144` with existing AS5/recovery hooks preserved.
+   Three reproduced defects are corrected: AD4 descriptor parsing, stable
+   recovery-entry work admission, and retained-prefix work after a real
+   post-install restore failure and reopen. Short budgets refuse before claim;
+   only actual consensus Ready activates an audited snapshot. The
+   [acceptance record](evidence/v2-prepared-audit/acceptance.json) pins 438 source
+   files, 108 replica and four graph regression parents passing normal/race,
+   exact six-child cleanup, direct-method/changed-code coverage above 80%,
+   pinned scanners and the same independent reviewer. Unchanged raftlog evidence
+   is explicitly carried; rejected hypotheses are not regression proof.
+   Logical work reservation does not increase the owned-memory bound. Host,
+   factory and registry readiness remain unwired; remote certified cuts and
+   full package 4 remain open. Hosted CI for this integration is pending.
 4. Pass the same-graph E15–E18 serial-history/cut oracle under process and message
    faults, recovery and ownership transfer; complete the equivalent transactional-KV
    comparison and record the engine decision. Only then can V2 close under

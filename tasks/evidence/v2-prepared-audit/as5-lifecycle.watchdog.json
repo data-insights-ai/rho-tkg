@@ -1,0 +1,18 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-count=1",
+    "-json",
+    "-run",
+    "^TestApplicationSnapshotAS5AuditCannotActivateBeforeFinishAndActualReady$",
+    "./internal/replica"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 452.422,
+  "elapsed_s": 1.939,
+  "exit_code": 0,
+  "reason": "completed"
+}

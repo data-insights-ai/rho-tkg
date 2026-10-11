@@ -1,0 +1,18 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-short",
+    "-count=1",
+    "-json",
+    "-coverprofile=../tasks/evidence/v2-prepared-audit/sealed/replica.cover",
+    "./internal/replica"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 570.938,
+  "elapsed_s": 22.417,
+  "exit_code": 0,
+  "reason": "completed"
+}

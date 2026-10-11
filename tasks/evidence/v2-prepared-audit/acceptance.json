@@ -1,0 +1,32 @@
+{
+  "accepted": true,
+  "date": "2026-10-11",
+  "scope": "Internal prepared-snapshot audit and lifecycle integration, AS5/AD4 compatibility, and complete configured Commit work admission",
+  "author_commit": "f8b2426108e92073a3784855ffe7670393fe8f79",
+  "external_commit": "2a7d51445ffa632038e56f3ee8862a74aa0d96ca",
+  "source_manifest": "sealed/source.json",
+  "source_manifest_sha256": "84e4192582a3c5fa98c7ce73e07736266115629e21f94fbfeb5e2747a7bdda5f",
+  "go_files": 438,
+  "author_receipt": "receipt.json",
+  "author_receipt_sha256": "883bbef0cd25d410295c840f1f76676e5183bac54c9f47445e15ebea99504221",
+  "review": "review/FINAL_ACCEPTANCE.json",
+  "review_sha256": "0f0cd2556c95b63a7c706a1db3df8e3eb65ab18fe65455f6b105078823916d56",
+  "root_validation": {
+    "integrated_source_hash_mismatches": [],
+    "artifact_hashes_verified": 170,
+    "replica_parents_normal_and_race": 108,
+    "graph_regression_parents_normal_and_race": 4,
+    "successful_child_reaps_each_mode": 6,
+    "raftlog_parents_qualified_unchanged_source_carry": 32,
+    "affected_replica_coverage_percent": 89.57617411225658,
+    "new_public_methods_and_changed_blocks_above_80_percent": true,
+    "fresh_static_scanner_gates_pass": true,
+    "root_duplicated_runtime": false
+  },
+  "qualification": "Fresh affected runtime and scanners plus explicitly qualified unchanged-source carry. Three genuine REDs are separate from rejected verifier hypotheses and fixture failures. Logical work reservation is not resident memory. No Host/factory/registry readiness expansion, remote certified cuts, physical-host durability, public graph API or full P4/V2 acceptance.",
+  "hosted_ci": {
+    "status": "pending after promotion",
+    "prior_7e9caf6f_success_does_not_cover_this_integration": true
+  },
+  "next": "Package 4 remote certified cuts and E15 serial-history/cut oracle; remaining fault/ownership/GC and engine-comparison gates remain open."
+}

@@ -1,0 +1,67 @@
+[
+  {
+    "file": "application_snapshot_event.go",
+    "receiver": "d *Driver",
+    "method": "BeginApplicationSnapshot",
+    "covered": 57,
+    "statements": 70,
+    "percent": 81.42857142857143,
+    "direct_witness": {
+      "file": "v5/internal/replica/application_snapshot_event_test.go",
+      "line": 200,
+      "expression": "pending, err := receiver.BeginApplicationSnapshot"
+    }
+  },
+  {
+    "file": "application_snapshot_event.go",
+    "receiver": "p *PendingApplicationSnapshot",
+    "method": "Advance",
+    "covered": 57,
+    "statements": 69,
+    "percent": 82.6086956521739,
+    "direct_witness": {
+      "file": "v5/internal/replica/application_snapshot_event_test.go",
+      "line": 425,
+      "expression": "done, err := p.Advance"
+    }
+  },
+  {
+    "file": "application_snapshot_event.go",
+    "receiver": "p *PendingApplicationSnapshot",
+    "method": "Commit",
+    "covered": 44,
+    "statements": 53,
+    "percent": 83.01886792452831,
+    "direct_witness": {
+      "file": "v5/internal/replica/application_snapshot_as5_audit_test.go",
+      "line": 393,
+      "expression": "out, err := pending.Commit"
+    }
+  },
+  {
+    "file": "application_snapshot_event.go",
+    "receiver": "p *PendingApplicationSnapshot",
+    "method": "Close",
+    "covered": 20,
+    "statements": 24,
+    "percent": 83.33333333333333,
+    "direct_witness": {
+      "file": "v5/internal/replica/application_snapshot_event_test.go",
+      "line": 208,
+      "expression": "if err := pending.Close"
+    }
+  },
+  {
+    "file": "application_semantic_machine.go",
+    "receiver": null,
+    "method": "ValidateApplicationMachineBinding",
+    "covered": 10,
+    "statements": 10,
+    "percent": 100.0,
+    "direct_witness": {
+      "file": "v5/internal/replica/application_semantic_machine_test.go",
+      "line": 83,
+      "expression": "ValidateApplicationMachineBinding("
+    }
+  }
+]

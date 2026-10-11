@@ -1,0 +1,29 @@
+{
+  "verdict": "ACCEPT finite internal prepared-snapshot audit integration",
+  "commit": "f8b2426108e92073a3784855ffe7670393fe8f79",
+  "source_sha256": "84e4192582a3c5fa98c7ce73e07736266115629e21f94fbfeb5e2747a7bdda5f",
+  "receipt_sha256": "883bbef0cd25d410295c840f1f76676e5183bac54c9f47445e15ebea99504221",
+  "report_sha256": "c3d46093e3f4d81545abedc29846391bebcab01426cba3b3abafc33893503fc0",
+  "blocking": [],
+  "nonblocking_concrete_defects": [],
+  "resolved": [
+    "AS5 AD4 parser context",
+    "stable recovery whole-work admission",
+    "retained prefix work after actual Restore-capacity failure/reopen"
+  ],
+  "rejected_hypothesis": "new verifier execution/funding from Pending.Commit",
+  "replica_parents_pass_normal_race": 108,
+  "graph_parents_pass_normal_race": 4,
+  "raftlog_parents_carry_normal_race": 32,
+  "carry_qualified": true,
+  "readiness_widening": false,
+  "reviewer_runtime": false,
+  "deferred": [
+    "registered adapter/factory/Host readiness",
+    "remote certified cuts",
+    "whole P4/V2",
+    "hosted promotion",
+    "fault/ownership/GC/engine comparison",
+    "public consumer API"
+  ]
+}
