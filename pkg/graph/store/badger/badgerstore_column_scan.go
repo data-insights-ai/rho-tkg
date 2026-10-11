@@ -11,7 +11,9 @@ import (
 // ScanNodeColumns implements store.NodeColumnScanCapability.
 //
 // TWO PATHS, and the fallback is not optional. The capability returns only `error`
-// — there is no ok=false — so this must always answer. The columnar path can
+// — there is no ok=false. Explicit endpoint presence cannot be carried by
+// scalar batches, so those rows fail with ErrCapabilityNotSupported before
+// callbacks; the graph facade turns this into its optional capability decline. The columnar path can
 // legitimately decline (membership not in RAM under LabelIndexOnDisk, an empty or
 // over-cap label, a property whose values are not uniformly typed), and every one of
 // those falls through to the row path rather than failing the call.
@@ -78,7 +80,7 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 		}
 		col = built
 	}
-	if !col.HasAll(props) || !col.HasTemporal() {
+	if !col.HasAll(props) || !col.HasTemporal() || col.HasTypedTemporal() {
 		return false
 	}
 
@@ -147,7 +149,13 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 // A point filter ValidAt=t is the interval [t, t+1): `from < t+1` is `from <= t`,
 // and `to > t` is unchanged — so one predicate serves both shapes.
 func columnarValidTimeWindow(opts storecontract.QueryOpts) (start, end int64, ok bool) {
-	if opts.ValidAt != 0 {
+	if opts.ValidWindow != nil || opts.TxAt != 0 || opts.TxPin != 0 || opts.Limit != 0 || opts.After != 0 {
+		return 0, 0, false
+	}
+	if opts.HasValidAt() && (opts.ValidAt == -1 || int64(opts.ValidAt) == 1<<63-1) {
+		return 0, 0, false
+	}
+	if opts.HasValidAt() {
 		return int64(opts.ValidAt), int64(opts.ValidAt) + 1, true
 	}
 	if opts.HasValidRange() {
