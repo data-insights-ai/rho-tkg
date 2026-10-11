@@ -6,7 +6,6 @@ import (
 	"errors"
 	"sort"
 	"strings"
-	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
@@ -164,7 +163,7 @@ func (bs *Store) endIdentityCallback() {
 
 func (bs *Store) beginIdentityReset() error {
 	bs.identityReadMu.Lock()
-	if bs.identityCallbacks > 0 || bs.identityResetting || bs.identityClosePreparing {
+	if bs.identityCallbacks > 0 || bs.identityResetting || bs.identityCloseReservation != nil {
 		bs.identityReadMu.Unlock()
 		return IdentityCallbackMaintenanceError{Operation: "Clear"}
 	}
@@ -306,35 +305,4 @@ func (bs *Store) diskNodesByProperty(token uint16, property, valueKey string, op
 		return opts.Limit == 0 || len(out) < opts.Limit, nil
 	})
 	return out, err
-}
-
-// AdmitClose reserves the opted reader lifecycle before a containing graph
-// changes its own closed state. Final registry/clock writes remain permitted.
-func (bs *Store) AdmitClose() (func(), error) {
-	if bs == nil {
-		return nil, ErrNilStore
-	}
-	if !bs.entityIdentityOnDisk {
-		return func() {}, nil
-	}
-	bs.identityReadMu.Lock()
-	if bs.identityCallbacks > 0 || bs.identityResetting || bs.identityClosePreparing {
-		bs.identityReadMu.Unlock()
-		return nil, IdentityCallbackMaintenanceError{Operation: "graph Close"}
-	}
-	if err := bs.checkOpen(); err != nil {
-		bs.identityReadMu.Unlock()
-		return nil, err
-	}
-	bs.identityClosePreparing = true
-	bs.identityReadMu.Unlock()
-	bs.identityReaders.Wait()
-	var once sync.Once
-	return func() {
-		once.Do(func() {
-			bs.identityReadMu.Lock()
-			bs.identityClosePreparing = false
-			bs.identityReadMu.Unlock()
-		})
-	}, nil
 }

@@ -165,9 +165,24 @@ func TestDiskIdentityCloseAdmissionReleaseRestoresReads(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = bs.Close() })
 	putTestNode(t, bs, 1, 1, nil)
-	release, err := bs.AdmitClose()
+	lease, err := bs.AdmitClose()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if err := lease.Close(); !errors.Is(err, storecontract.ErrCapabilityNotSupported) {
+		t.Fatal("unsealed lease closed backend", err)
+	}
+	if err := bs.Close(); !errors.Is(err, storecontract.ErrCapabilityNotSupported) {
+		t.Fatal("direct Close stole reservation", err)
+	}
+	if ids, err := bs.AllNodeIDs(QueryOpts{}); err != nil || len(ids) != 1 {
+		t.Fatal("reservation disabled accepted-work reads", ids, err)
+	}
+	if err := lease.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	if err := lease.Seal(); err != nil {
+		t.Fatal("seal replay", err)
 	}
 	if err := bs.ForEachNodeID(func(types.NodeID) bool { return true }); !errors.Is(err, ErrStoreClosed) {
 		t.Fatal("prepared close admitted iteration", err)
@@ -178,24 +193,51 @@ func TestDiskIdentityCloseAdmissionReleaseRestoresReads(t *testing.T) {
 	// Close admission fences readers, not the registry/clock writes Core must
 	// perform before its final backend close.
 	putTestNode(t, bs, 2, 1, nil)
-	release()
-	release()
+	lease.Release()
+	lease.Release()
+	if err := lease.Seal(); !errors.Is(err, storecontract.ErrCapabilityNotSupported) {
+		t.Fatal("released lease resealed", err)
+	}
+	if err := lease.Close(); !errors.Is(err, storecontract.ErrCapabilityNotSupported) {
+		t.Fatal("released lease closed backend", err)
+	}
 	if ids, err := bs.AllNodeIDs(QueryOpts{}); err != nil || len(ids) != 2 {
 		t.Fatal("abandoned admission lost usability", ids, err)
 	}
-	release, err = bs.AdmitClose()
+	lease, err = bs.AdmitClose()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = bs.Close(); err != nil {
+	if err = lease.Seal(); err != nil {
 		t.Fatal(err)
 	}
-	release()
+	if err = lease.Close(); err != nil {
+		t.Fatal(err)
+	}
+	lease.Release()
 	if _, err = bs.AdmitClose(); !errors.Is(err, ErrStoreClosed) {
 		t.Fatal("closed store readmitted close", err)
 	}
 	var nilStore *Store
 	if _, err = nilStore.AdmitClose(); !errors.Is(err, ErrNilStore) {
 		t.Fatal("nil admission", err)
+	}
+}
+
+func TestDiskIdentityDefaultCloseNeedsNoReservation(t *testing.T) {
+	bs, err := New(Config{InMemory: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bs.Close()
+	if bs.CloseAdmissionRequired() {
+		t.Fatal("default mode needs admission")
+	}
+	if lease, err := bs.AdmitClose(); err != nil || lease != nil {
+		t.Fatal("default close reserved opted gate", lease, err)
+	}
+	var missing *Store
+	if missing.CloseAdmissionRequired() {
+		t.Fatal("nil mode requires admission")
 	}
 }

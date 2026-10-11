@@ -10,10 +10,20 @@ type CurrentIdentityCapability interface {
 	RelationshipExists(types.RelID) (bool, error)
 }
 
-// CloseAdmissionCapability reserves backend lifecycle admission before a graph
-// closes itself or persists final metadata. A refusal changes no lifecycle state.
-// The caller must defer release, and close the backend before releasing on success.
-// Releasing without closing restores read/callback admission.
+// CloseAdmissionCapability reserves a backend close before a graph changes its
+// lifecycle. Reservation leaves reads available while accepted ingest drains.
+// A refusal changes no lifecycle state. Default profiles need no reservation.
 type CloseAdmissionCapability interface {
-	AdmitClose() (release func(), err error)
+	CloseAdmissionRequired() bool
+	AdmitClose() (CloseAdmissionLease, error)
+}
+
+// CloseAdmissionLease separates accepted-work drain from reader sealing. Seal
+// fences new iteration/callback admission and waits for admitted snapshots.
+// Close closes the sealed backend; direct backend Close refuses an active lease.
+// Release cancels an unused lease or releases a closed lease, and is idempotent.
+type CloseAdmissionLease interface {
+	Seal() error
+	Close() error
+	Release()
 }

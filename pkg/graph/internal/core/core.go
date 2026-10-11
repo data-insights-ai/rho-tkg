@@ -284,13 +284,15 @@ type Core struct {
 	// seam (like compactionChunkHook) letting a test run an as-of column build
 	// between the gate and the write. Set before the graph is shared; never set
 	// in production code.
-	backfillGateHook func()
-	registryDirty    atomic.Bool
-	relTypeCache     map[string]uint16
-	relTypeCacheMu   sync.RWMutex
-	closeMu          sync.Mutex
-	closeOnce        sync.Once
-	closed           atomic.Bool
+	backfillGateHook     func()
+	registryDirty        atomic.Bool
+	relTypeCache         map[string]uint16
+	relTypeCacheMu       sync.RWMutex
+	closeMu              sync.Mutex
+	closeCompleted       bool
+	closeAdmissionActive atomic.Bool
+	closeOnce            sync.Once
+	closed               atomic.Bool
 
 	// clock is the time source used by every mutation path that stamps
 	// TxFrom / UpdatedAt / DeletedAt / event.Timestamp. Defaults to
@@ -2092,18 +2094,36 @@ type badgerRegistryLoader interface {
 // race with concurrent RegisterProvider; provider Close is then run
 // outside the lock so a slow Close cannot block the lifecycle lock.
 func (c *Core) Close() error {
+	admission, hasAdmission := c.store.(storepkg.CloseAdmissionCapability)
+	if hasAdmission && admission.CloseAdmissionRequired() {
+		if !c.closeAdmissionActive.CompareAndSwap(false, true) {
+			return fmt.Errorf("graph: close admission already reserved: %w", storepkg.ErrCapabilityNotSupported)
+		}
+		defer c.closeAdmissionActive.Store(false)
+	}
 	c.closeMu.Lock()
 	defer c.closeMu.Unlock()
-	if c.closed.Load() {
+	if c.closeCompleted {
 		return nil
 	}
-	if admission, ok := c.store.(storepkg.CloseAdmissionCapability); ok {
-		release, err := admission.AdmitClose()
+	var lease storepkg.CloseAdmissionLease
+	if hasAdmission {
+		var err error
+		lease, err = admission.AdmitClose()
 		if err != nil {
 			return err
 		}
-		defer release()
+		if lease != nil {
+			defer lease.Release()
+			// Reservation leaves constraint reads available to every accepted intent.
+			// Seal only after the applier has drained and stopped, before graph closure.
+			c.stopIngestApplier()
+			if err := lease.Seal(); err != nil {
+				return err
+			}
+		}
 	}
+
 	var closeErr error
 	c.closeOnce.Do(func() {
 		// Drain and stop the ingest applier BEFORE marking the graph closed, so
@@ -2111,7 +2131,9 @@ func (c *Core) Close() error {
 		// still writable (§4.8: entity writes are never dropped). The applier
 		// takes c.txMu + c.mu.Lock per group, so it must finish before Close
 		// acquires c.mu.Lock below.
-		c.stopIngestApplier()
+		if lease == nil {
+			c.stopIngestApplier()
+		}
 
 		c.closed.Store(true)
 
@@ -2162,8 +2184,13 @@ func (c *Core) Close() error {
 		// Outside registryMu: that guard covers the registry pointers only, and this
 		// writes an independent MetaKV key.
 		closeErr = errors.Join(closeErr, c.persistInstantFloor())
-		closeErr = errors.Join(closeErr, c.store.Close())
+		if lease != nil {
+			closeErr = errors.Join(closeErr, lease.Close())
+		} else {
+			closeErr = errors.Join(closeErr, c.store.Close())
+		}
 	})
+	c.closeCompleted = true
 	return closeErr
 }
 

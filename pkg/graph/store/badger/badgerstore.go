@@ -461,6 +461,7 @@ type Store struct {
 	identityCallbacks                 int
 	identityResetting                 bool
 	identityClosePreparing            bool
+	identityCloseReservation          *identityCloseLease
 	historicalMembershipOnDisk        bool
 	historicalMembershipReady         atomic.Bool
 	historicalMembershipMu            sync.Mutex
@@ -2365,7 +2366,9 @@ func (bs *Store) Clear() error {
 // The explicit flush() handles the case where flushLoop was never started
 // (InMemory mode, FlushInterval==0). If flushLoop already drained pending,
 // this is a no-op. Counters are included in the WriteBatch atomically.
-func (bs *Store) Close() error {
+func (bs *Store) Close() error { return bs.closeWithAdmission(nil) }
+
+func (bs *Store) closeWithAdmission(lease *identityCloseLease) error {
 	if bs == nil {
 		return ErrNilStore
 	}
@@ -2373,7 +2376,7 @@ func (bs *Store) Close() error {
 		return ErrStoreClosed
 	}
 	bs.identityReadMu.Lock()
-	if bs.entityIdentityOnDisk && (bs.identityCallbacks > 0 || bs.identityResetting) {
+	if bs.entityIdentityOnDisk && (bs.identityCallbacks > 0 || bs.identityResetting || bs.identityCloseReservation != lease || lease != nil && !bs.identityClosePreparing) {
 		bs.identityReadMu.Unlock()
 		return IdentityCallbackMaintenanceError{Operation: "Close"}
 	}

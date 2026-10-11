@@ -386,7 +386,13 @@ and waits for admitted snapshots before closing files. Snapshot-construction
 close races return the storage error instead of panicking. The public graph
 reserves backend close admission before consuming its close-once guard or marking
 itself closed; a callback refusal therefore leaves Graph.Close retryable too.
-Final registry/clock persistence is permitted inside the reserved admission lease.
+Reservation keeps predicate reads available while every accepted ingest intent
+drains. Only afterward does the lease seal reader/callback admission and wait for
+snapshots. An overlapping or callback Graph.Close returns the capability refusal
+during this opted reservation rather than blocking behind the closer. The sealed
+lease permits final registry/clock persistence and exclusively closes the backend;
+a direct backend Close cannot steal an active lease. Cancelling the lease restores
+read admission. Default profiles retain their original close contract.
 Revision-stripe collisions force a locked reread; deletes, restores and Clear
 invalidate proofs, without per-ID revision memory. Signed/finite-zero time,
 history, hashes and native transaction clocks keep the existing contracts.
