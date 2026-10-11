@@ -28,8 +28,14 @@
   },
   "root_validation": "Independently compared manifest/live/committed source, production against base, sealed receipt/source/results/profile/scanner hashes, four exact test inventories and all16 six-child cleanup records. Mutant inventory differs at one intended fixture only.",
   "hosted_ci": {
-    "status": "replacement run pending after push",
-    "qualification": "Local Linux/arm64 evidence does not establish hosted Linux/amd64 completion."
+    "status": "passed",
+    "run_id": 38142132000,
+    "head_sha": "7e9caf6f990a98bd2d1b4ddca65d5850dbb29e3f",
+    "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38142132000",
+    "record": "hosted-ci-7e9caf6f.json",
+    "record_sha256": "9ebce5950980dfe75c06318502ef7aad6373201975bb2ac3b06c70d43ee77436",
+    "validation": "Root and v5 build/vet/normal/race, coverage, security/vulnerability checks and comparison-correctness passed.",
+    "qualification": "Push workflow lint is skipped by design; pinned author lint remains separately recorded. This run covers the committed fixture correction, not the later prepared-snapshot integration."
   },
   "qualification": "No production API, graph semantics or wire change. Whole P4/V2, remote certified cuts, E15-E18, ownership/GC/physical-host/substrate and public consumer readiness remain open."
 }

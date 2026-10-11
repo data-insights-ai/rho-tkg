@@ -74,10 +74,14 @@
     "failed_runs_are_not_acceptance_evidence": true
   },
   "hosted_ci": {
-    "status": "dbb27c69 failed; correction locally accepted; replacement run pending",
-    "record": "hosted-ci-dbb27c69.json",
+    "status": "passed after fixture correction",
+    "original_failure": "hosted-ci-dbb27c69.json",
     "correction": "../v2-process-ci/acceptance.json",
-    "qualification": "The original local evidence remains historical. The Linux cancellation/completion fixture failure is corrected without production changes. Hosted completion for the corrected source remains pending."
+    "record": "../v2-process-ci/hosted-ci-7e9caf6f.json",
+    "record_sha256": "9ebce5950980dfe75c06318502ef7aad6373201975bb2ac3b06c70d43ee77436",
+    "head_sha": "7e9caf6f990a98bd2d1b4ddca65d5850dbb29e3f",
+    "run_id": 38142132000,
+    "qualification": "Original local evidence remains historical. The full replacement workflow passed for the corrected source; PR-only lint was skipped and the pinned author lint pass is separately recorded. No whole-package or phase acceptance is inferred."
   },
   "qualification": "Private storage/orchestration only. No public graph API, consumer migration, remote certified cuts, full E15-E18 oracle, physical-host durability, ownership transfer/GC, engine selection or whole V2 acceptance.",
   "outside_this_slice": [
