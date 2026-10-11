@@ -22,6 +22,8 @@ type CloseAdmissionCapability interface {
 // fences new iteration/callback admission and waits for admitted snapshots.
 // Close closes the sealed backend; direct backend Close refuses an active lease.
 // Release cancels an unused lease or releases a closed lease, and is idempotent.
+// Advanced backend callers must invoke lease methods outside their iteration
+// callbacks: Seal waits for admitted snapshots, including the caller's own.
 type CloseAdmissionLease interface {
 	Seal() error
 	Close() error

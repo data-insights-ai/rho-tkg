@@ -392,7 +392,10 @@ snapshots. An overlapping or callback Graph.Close returns the capability refusal
 during this opted reservation rather than blocking behind the closer. The sealed
 lease permits final registry/clock persistence and exclusively closes the backend;
 a direct backend Close cannot steal an active lease. Cancelling the lease restores
-read admission. Default profiles retain their original close contract.
+read admission. Advanced backend callers must invoke lease methods outside their
+own iteration callbacks: Seal waits for admitted snapshots, including the caller's
+own. Public Graph.Close already refuses callback close before reservation. Default
+profiles retain their original close contract.
 Revision-stripe collisions force a locked reread; deletes, restores and Clear
 invalidate proofs, without per-ID revision memory. Signed/finite-zero time,
 history, hashes and native transaction clocks keep the existing contracts.
