@@ -18,6 +18,7 @@ type idOverlayKind struct {
 	// delete the ID's current row (round 5 request 6: the walk reads the
 	// presence set once it is built).
 	deletedIDs func(bs *Store) ([]int64, error)
+	historyIDs func(bs *Store) ([]int64, error) // ForEach*HistoryID
 	putCurrent func(bs *Store, id int64) error
 	delCurrent func(bs *Store, id int64) error
 }
@@ -46,6 +47,14 @@ func idOverlayKinds() []idOverlayKind {
 				return out, err
 			},
 			count: func(bs *Store) (int, error) { return bs.NodeHistoryCount() },
+			historyIDs: func(bs *Store) ([]int64, error) {
+				var out []int64
+				err := bs.ForEachNodeHistoryID(func(id types.NodeID) bool {
+					out = append(out, int64(id))
+					return true
+				})
+				return out, err
+			},
 			deletedIDs: func(bs *Store) ([]int64, error) {
 				var out []int64
 				err := bs.ForEachDeletedNodeID(func(id types.NodeID) bool {
@@ -73,6 +82,14 @@ func idOverlayKinds() []idOverlayKind {
 				return out, err
 			},
 			count: func(bs *Store) (int, error) { return bs.RelHistoryCount() },
+			historyIDs: func(bs *Store) ([]int64, error) {
+				var out []int64
+				err := bs.ForEachRelHistoryID(func(id types.RelID) bool {
+					out = append(out, int64(id))
+					return true
+				})
+				return out, err
+			},
 			deletedIDs: func(bs *Store) ([]int64, error) {
 				var out []int64
 				err := bs.ForEachDeletedRelID(func(id types.RelID) bool {

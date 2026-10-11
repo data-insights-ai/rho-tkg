@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`g.Stats().RelHistoryCountByType(typeName) (int, ok bool, error)`: how many relationships of one type have
+  history rows** (sigma-tkgd round 5 request 7, task record C4s: the store-wide `HistoryCounts.Rels` let one updated
+  `COLD_TICK` relationship switch the reach bound of every type from the current adjacency to the window door). The
+  relationships with history (deleted ones included) that ever carried the type, from the store's history IDs and
+  the rel-type membership sidecar's point form (`RelTypeTxMembersOf`); a type is immutable, so the count is exact
+  unless an ID was reused across types (then an upper bound: 0 always means none). O(relationships with history)
+  per call, no write-path cost. Memory and badger; sharded, tiered and external stores return `ok=false`. An
+  unknown type is 0. The badger store's `ForEachNodeHistoryID` / `ForEachRelHistoryID` read the RAM
+  history-presence set once it is built (as the deleted-ID walks, request 6). `stats.Ops` gains the method.
+  `BenchmarkRelHistoryCountByType` (8,251 relationships, one with 200 versions): 150-190 ns on memory and badger.
+  Tests: `TestRelHistoryCountByType` (every backend, two-phase through updates of another type, an update, a delete;
+  red: the door did not exist), the history walk in `TestHistoryPresence_RandomizedDifferential`,
+  `TestRelHistoryCountByTypeForwards`.
+
 - **`g.Stats().PropertyNDV(label, key)` / `RelPropertyNDV(typeName, key)`: a property's distinct-value estimate
   without the exact Min/Max** (sigma-tkgd round 5 request 1, task record C4r: after a write that removed a label's
   minimum or maximum value, the next `PropertyStats` rescans the label's current values, 470 ms per property on

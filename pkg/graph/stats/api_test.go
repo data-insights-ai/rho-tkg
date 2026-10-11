@@ -480,6 +480,11 @@ func TestReadCostsForwards(t *testing.T) {
 	}
 }
 
+func (s *statsOpsSpy) RelHistoryCountByType(typeName string) (int, bool, error) {
+	s.propertyNDVArgs = append(s.propertyNDVArgs, "history:"+typeName)
+	return 4, true, s.relCountByTypeErr
+}
+
 func (s *statsOpsSpy) HistoryCounts() (storepkg.HistoryCounts, bool, error) {
 	return storepkg.HistoryCounts{Nodes: 3, Rels: 2}, true, s.relCountByTypeErr
 }
@@ -492,5 +497,21 @@ func TestHistoryCountsForwards(t *testing.T) {
 	got, ok, err := New(&statsOpsSpy{}).HistoryCounts()
 	if err != nil || !ok || got.Nodes != 3 || got.Rels != 2 {
 		t.Fatalf("HistoryCounts = (%+v, %v, %v)", got, ok, err)
+	}
+}
+
+func TestRelHistoryCountByTypeForwards(t *testing.T) {
+	var nilAPI *API
+	if n, ok, err := nilAPI.RelHistoryCountByType("R"); n != 0 || ok || !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil RelHistoryCountByType = (%d, %v, %v)", n, ok, err)
+	}
+	spy := &statsOpsSpy{}
+	n, ok, err := New(spy).RelHistoryCountByType("R")
+	if err != nil || !ok || n != 4 || len(spy.propertyNDVArgs) != 1 || spy.propertyNDVArgs[0] != "history:R" {
+		t.Fatalf("RelHistoryCountByType = (%d, %v, %v), args %v", n, ok, err, spy.propertyNDVArgs)
+	}
+	opErr := errors.New("op failed")
+	if _, _, err := New(&statsOpsSpy{relCountByTypeErr: opErr}).RelHistoryCountByType("R"); !errors.Is(err, opErr) {
+		t.Fatalf("error = %v", err)
 	}
 }

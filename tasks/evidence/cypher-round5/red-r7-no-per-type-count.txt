@@ -1,0 +1,3 @@
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test
+# [github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test]
+vet: pkg/graph/rel_history_by_type_test.go:38:30: g.Stats().RelHistoryCountByType undefined (type *stats.API has no field or method RelHistoryCountByType)

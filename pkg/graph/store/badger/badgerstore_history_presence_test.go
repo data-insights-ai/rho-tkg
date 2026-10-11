@@ -510,6 +510,10 @@ func TestHistoryPresence_RandomizedDifferential(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
+					walked, err := k.historyIDs(bs)
+					if err != nil {
+						t.Fatal(err)
+					}
 					for id := int64(1); id <= ids; id++ {
 						got, err := k.has(bs, id)
 						if err != nil {
@@ -538,6 +542,9 @@ func TestHistoryPresence_RandomizedDifferential(t *testing.T) {
 					}
 					if n, err := k.count(bs); err != nil || n != len(want) {
 						t.Fatalf("%s: HistoryCount = %d, %v; want %d", step, n, err, len(want))
+					}
+					if fmt.Sprint(walked) != fmt.Sprint(want) {
+						t.Fatalf("%s: ForEachHistoryID = %v, ids with rows %v", step, walked, want)
 					}
 					if fmt.Sprint(deleted) != fmt.Sprint(wantDeleted) {
 						t.Fatalf("%s: ForEachDeletedID = %v, ids with rows and no current row %v", step, deleted, wantDeleted)

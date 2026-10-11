@@ -56,6 +56,7 @@ type Ops interface {
 	RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegreeStats, error)
 	ReadCosts() (storepkg.ReadCosts, bool, error)
 	HistoryCounts() (storepkg.HistoryCounts, bool, error)
+	RelHistoryCountByType(typeName string) (int, bool, error)
 	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	RelRangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	AllLabelCounts() (map[string]int, error)
@@ -234,6 +235,22 @@ func (a *API) HistoryCounts() (storepkg.HistoryCounts, bool, error) {
 		return storepkg.HistoryCounts{}, false, err
 	}
 	return ops.HistoryCounts()
+}
+
+// RelHistoryCountByType returns how many relationships of typeName have
+// history rows (updated, closed, deleted or otherwise versioned, deleted ones
+// included): HistoryCounts.Rels for one type, so a caller can tell that one
+// type's relationships have no history while another's do. Exact unless a
+// relationship ID was reused across types (then an upper bound), so 0 always
+// means none. Memory and badger answer it (O(relationships with history) per
+// call); ok=false on a store without a per-type answer (sharded, tiered,
+// external stores). An unknown type is 0.
+func (a *API) RelHistoryCountByType(typeName string) (int, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.RelHistoryCountByType(typeName)
 }
 
 // PropertyStats returns NDV (estimated distinct-value count via a

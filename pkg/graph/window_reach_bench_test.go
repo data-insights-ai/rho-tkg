@@ -189,3 +189,25 @@ func BenchmarkWindowPropertySeek(b *testing.B) {
 		})
 	}
 }
+
+// BenchmarkRelHistoryCountByType: the per-type history count on
+// OPT21bWindowReach's graph (one COLD_TICK relationship with history among
+// 8,251), for the type without history (R) and the one with (round 5
+// request 7).
+func BenchmarkRelHistoryCountByType(b *testing.B) {
+	for _, backend := range windowReachBackends() {
+		b.Run(backend.name, func(b *testing.B) {
+			g, _ := windowReachGraph(b, backend.cfg)
+			for _, typ := range []string{"R", "COLD_TICK"} {
+				b.Run(typ, func(b *testing.B) {
+					for b.Loop() {
+						n, ok, err := g.Stats().RelHistoryCountByType(typ)
+						if err != nil || !ok || (typ == "R") != (n == 0) {
+							b.Fatalf("%d %v %v", n, ok, err)
+						}
+					}
+				})
+			}
+		})
+	}
+}

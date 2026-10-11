@@ -624,6 +624,13 @@ func (bs *Store) ForEachRelHistoryID(fn func(types.RelID) bool) error {
 	if fn == nil {
 		return errNilIterationCallback()
 	}
+	// Once the RAM history-presence set is built, walk it instead of the
+	// keyspace (round 5 requests 7 and 8; forEachPresentHistoryID).
+	if ok, err := bs.forEachPresentHistoryID(&bs.histRelPresence, storepkg.KeyHistRel, nil, func(id snowflake.ID) bool {
+		return fn(types.RelID(id))
+	}); ok {
+		return err
+	}
 	maxID, err := bs.maxHistoryID(storepkg.KeyHistRel)
 	if err != nil {
 		return fmt.Errorf("graph: scan rel history max ID: %w", err)
