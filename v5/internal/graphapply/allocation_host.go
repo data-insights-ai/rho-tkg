@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
@@ -195,7 +196,18 @@ func (h *allocationHost) Submit(p allocationProposal) (allocationEvent, error) {
 	if p.target != local || len(p.wire) < requestHeaderBytes || len(p.wire) > h.machine.limits.commandBytes {
 		return allocationEvent{}, errInvalid
 	}
-	if commandKind(p.wire[4]) == initDeclaredPartition {
+	if isPartitionGraphWire(p.wire) {
+		if h.machine.SemanticContractID() != partitionWriteSemanticContractID() {
+			return allocationEvent{}, errInvalid
+		}
+		r, err := decodePartitionGraphCommand(p.wire, h.machine.limits)
+		if err != nil {
+			return allocationEvent{}, err
+		}
+		if r.request.ns != h.machine.ns {
+			return allocationEvent{}, errInvalid
+		}
+	} else if commandKind(p.wire[4]) == initDeclaredPartition {
 		r, err := decodeDeclaredInit(p.wire, h.machine.limits)
 		if err != nil {
 			return allocationEvent{}, err
@@ -365,6 +377,12 @@ func (m *declaredMaterializer) observeAllocation(query allocationQuery, index ui
 			return allocationObservation{}, idalloc.ErrPayloadMismatch
 		}
 		observation.grant = *g
+		if cfg.version() == 3 {
+			observation.rangeOwner, err = a.rangeOwnership(g.publication)
+			if err != nil {
+				return allocationObservation{}, err
+			}
+		}
 	}
 	if _, err := observation.payload(); err != nil {
 		return allocationObservation{}, err
@@ -406,10 +424,10 @@ func (h *allocationHost) protocolProposal(r allocationProtocolCommand, partition
 // allocation home's own completed genesis configuration read before any target
 // command is produced; supplied schemas/maxBlock must match that observation.
 func (h *allocationHost) PrepareInitialization(partition uint64, attempt bootstrapAttemptID, schemas []graphstate.PropertyDefinition, maxBlock uint64, genesis allocationProof) (allocationProposal, error) {
-	return h.prepareInitialization(partition, attempt, schemas, maxBlock, types.DefaultAxisBinding{}, genesis, declaredSemanticContractID())
+	return h.prepareInitialization(partition, attempt, schemas, maxBlock, types.DefaultAxisBinding{}, genesis, declaredSemanticContractID(), nil)
 }
 
-func (h *allocationHost) prepareInitialization(partition uint64, attempt bootstrapAttemptID, schemas []graphstate.PropertyDefinition, maxBlock uint64, binding types.DefaultAxisBinding, genesis allocationProof, agreement raftlog.ApplicationSemanticContractID) (allocationProposal, error) {
+func (h *allocationHost) prepareInitialization(partition uint64, attempt bootstrapAttemptID, schemas []graphstate.PropertyDefinition, maxBlock uint64, binding types.DefaultAxisBinding, genesis allocationProof, agreement raftlog.ApplicationSemanticContractID, routing *graphstore.PartitionRouting) (allocationProposal, error) {
 	if h == nil {
 		return allocationProposal{}, errInvalid
 	}
@@ -429,7 +447,7 @@ func (h *allocationHost) prepareInitialization(partition uint64, attempt bootstr
 	if h.machine.ns.partition != first.Partition {
 		return allocationProposal{}, errInvalid
 	}
-	r := declaredInitCommand{ns: namespace{graph: h.machine.ns.graph, partition: partition}, attempt: attempt, declaration: h.machine.declaration, maxBlock: maxBlock, schemas: schemas, defaultAxis: binding}
+	r := declaredInitCommand{ns: namespace{graph: h.machine.ns.graph, partition: partition}, attempt: attempt, declaration: h.machine.declaration, maxBlock: maxBlock, schemas: schemas, defaultAxis: binding, routing: routing}
 	if partition == first.Partition {
 		if genesis != (allocationProof{}) {
 			return allocationProposal{}, errInvalid

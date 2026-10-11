@@ -729,6 +729,31 @@ func TestGuardedGraphSharedControlDedupAndStageOutputHeadroom(t *testing.T) {
 	// even when the final rejection frame alone would fit a smaller bound.
 	outputBytes := max(materializerOutputCost(expected), graphResultMetadataBytes+cap(expected.Image)+512+len(expected.Image)+64)
 	originalLimits := f.m.limits
+	// The aggregate API cliff also owns decoded request/checked open scratch,
+	// independently of this lean rejection frame. Calibrate only within unchanged
+	// defaults; retain the separately derived fixed retained-owner floor.
+	lo, hi := 1, originalLimits.outputBytes
+	for lo < hi {
+		mid := lo + (hi-lo)/2
+		f.m.limits = originalLimits
+		f.m.limits.outputBytes = mid
+		candidate, err := f.stage(t, staleWire)
+		if errors.Is(err, errLimit) || errors.Is(err, graphstore.ErrResourceLimit) {
+			lo = mid + 1
+		} else if err != nil {
+			t.Fatal("unexpected aggregate cliff error", err)
+		} else {
+			if !reflect.DeepEqual(candidate, expected) {
+				t.Fatal("cliff calibration changed complete batch")
+			}
+			hi = mid
+		}
+	}
+	if lo < outputBytes {
+		t.Fatal("aggregate allowance omitted independent retained owners", lo, outputBytes)
+	}
+	outputBytes = lo
+	f.m.limits = originalLimits
 	beforeIndex, beforeImage, _ := f.s.Checkpoint()
 	for _, dimension := range []string{"stage", "output"} {
 		for _, delta := range []int{-1, 0, 1} {
@@ -741,10 +766,11 @@ func TestGuardedGraphSharedControlDedupAndStageOutputHeadroom(t *testing.T) {
 			b, err := f.stage(t, staleWire)
 			if delta < 0 {
 				expectedError := errLimit
+				resource := errors.Is(err, expectedError)
 				if dimension == "output" {
-					expectedError = graphstore.ErrResourceLimit
+					resource = resource || errors.Is(err, graphstore.ErrResourceLimit)
 				}
-				if !errors.Is(err, expectedError) || !reflect.DeepEqual(b, raftlog.ApplicationBatch{}) {
+				if !resource || !reflect.DeepEqual(b, raftlog.ApplicationBatch{}) {
 					t.Fatal(dimension, delta, b, err)
 				}
 			} else if err != nil || !reflect.DeepEqual(b, expected) {

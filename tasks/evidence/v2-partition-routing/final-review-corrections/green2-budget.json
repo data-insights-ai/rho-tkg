@@ -1,0 +1,20 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-count=1",
+    "-timeout=150s",
+    "-v",
+    "./internal/graphstore",
+    "./internal/graphapply",
+    "-run",
+    "^TestFinalReview"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 567.391,
+  "elapsed_s": 5.268,
+  "exit_code": 0,
+  "reason": "completed"
+}

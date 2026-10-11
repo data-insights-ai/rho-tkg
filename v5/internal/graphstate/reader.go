@@ -17,18 +17,20 @@ type lifeKey struct {
 	life  LifeID
 }
 type engine struct {
-	ctx                                context.Context
-	view                               ReadView
-	id                                 ViewID
-	graph                              GraphID
-	limits                             Limits
-	revision                           state.Revision
-	delta                              Delta
-	entities                           map[EntityID]EntityRecord
-	lives                              map[lifeKey]LifeRecord
-	values                             map[ValueID]Scalar
-	identity                           map[string]ValueID
-	pages, rows, readBytes, deltaBytes int
+	budget                                            *OutputBudget
+	entitySlots, lifeSlots, valueSlots, identitySlots int
+	ctx                                               context.Context
+	view                                              ReadView
+	id                                                ViewID
+	graph                                             GraphID
+	limits                                            Limits
+	revision                                          state.Revision
+	delta                                             Delta
+	entities                                          map[EntityID]EntityRecord
+	lives                                             map[lifeKey]LifeRecord
+	values                                            map[ValueID]Scalar
+	identity                                          map[string]ValueID
+	pages, rows, readBytes, deltaBytes                int
 }
 
 func start(ctx context.Context, v ReadView, l Limits, r state.Revision) (*engine, error) {
@@ -97,7 +99,7 @@ func (e *engine) dep(d Dependency) error {
 	bytes := 128 + len(d.Name) + len(d.Key.Name) + len(d.Prefix.Name) + len(d.Unique.Definition.Name)
 	for _, s := range []temporal.Scope{d.Window, d.Unique.Window, d.Incident.Window} {
 		if s.Kind() != temporal.ScopeInvalid {
-			wire, err := temporal.AppendScope(nil, s, e.limits.Component.Temporal)
+			wire, err := e.scopeWire(s)
 			if err != nil {
 				return err
 			}
@@ -106,7 +108,15 @@ func (e *engine) dep(d Dependency) error {
 	}
 	for _, v := range []Scalar{d.Value, d.Unique.Value} {
 		if v.Kind() != ScalarInvalid {
-			data, err := v.bytes(e.limits)
+			var data []byte
+			var err error
+			if e.budget != nil {
+				var key string
+				key, err = e.budget.ScalarKey(v, e.limits)
+				data = []byte(key)
+			} else {
+				data, err = v.bytes(e.limits)
+			}
 			if err != nil {
 				return err
 			}
@@ -118,6 +128,17 @@ func (e *engine) dep(d Dependency) error {
 		return err
 	}
 	d.View = e.id
+	if e.budget != nil {
+		capacity, err := e.budget.ReserveSlice(len(e.delta.Dependencies), cap(e.delta.Dependencies), outputDependencySlotBytes)
+		if err != nil {
+			return err
+		}
+		if capacity > cap(e.delta.Dependencies) {
+			out := make([]Dependency, len(e.delta.Dependencies), capacity)
+			copy(out, e.delta.Dependencies)
+			e.delta.Dependencies = out
+		}
+	}
 	e.delta.Dependencies = append(e.delta.Dependencies, d)
 	return nil
 }
@@ -293,7 +314,13 @@ func (e *engine) intern(v Scalar, fresh ValueID) (state.ValueRef, error) {
 	if v.Kind() == ScalarNull {
 		return state.Null(), nil
 	}
-	key, err := v.EqualityKey(e.limits)
+	var key string
+	var err error
+	if e.budget != nil {
+		key, err = e.budget.ScalarKey(v, e.limits)
+	} else {
+		key, err = v.EqualityKey(e.limits)
+	}
 	if err != nil {
 		return state.ValueRef{}, err
 	}
@@ -347,14 +374,37 @@ func (e *engine) intern(v Scalar, fresh ValueID) (state.ValueRef, error) {
 		if err := e.output(8 + n); err != nil {
 			return state.ValueRef{}, err
 		}
+		if e.budget != nil {
+			capacity, err := e.budget.ReserveSlice(len(e.delta.Values), cap(e.delta.Values), outputValueSlotBytes)
+			if err != nil {
+				return state.ValueRef{}, err
+			}
+			if capacity > cap(e.delta.Values) {
+				out := make([]ValueWrite, len(e.delta.Values), capacity)
+				copy(out, e.delta.Values)
+				e.delta.Values = out
+			}
+			e.valueSlots, err = e.budget.ReserveMap(len(e.values), e.valueSlots, outputValueMapSlotBytes)
+			if err != nil {
+				return state.ValueRef{}, err
+			}
+		}
 		e.delta.Values = append(e.delta.Values, ValueWrite{id, v})
 		e.values[id] = v
+	}
+	if e.budget != nil {
+		var err error
+		e.identitySlots, err = e.budget.ReserveMap(len(e.identity), e.identitySlots, outputIdentityMapSlotBytes)
+		if err != nil {
+			return state.ValueRef{}, err
+		}
 	}
 	e.identity[key] = id
 	return state.NewValueRef(uint64(id), uint64(n)) // #nosec G115 -- retained-value size is nonnegative and budget bounded.
 }
 
 type pageTracker struct {
+	slots  int
 	seen   map[Cursor]struct{}
 	cursor Cursor
 }
@@ -376,6 +426,9 @@ func (e *engine) next(t *pageTracker, next Cursor, complete bool) error {
 	if _, ok := t.seen[next]; ok {
 		return ErrIncompleteRead
 	}
+	if err := e.reserveMap(len(t.seen), &t.slots, outputCursorMapSlotBytes); err != nil {
+		return err
+	}
 	t.seen[next] = struct{}{}
 	t.cursor = next
 	return nil
@@ -386,6 +439,7 @@ func (e *engine) keys(p KeyPredicate) ([]ComponentKey, error) {
 	t := newTracker()
 	out := []ComponentKey{}
 	seen := make(map[ComponentKey]struct{})
+	seenSlots := 0
 	for {
 		if err := e.check(); err != nil {
 			return nil, err
@@ -420,8 +474,14 @@ func (e *engine) keys(p KeyPredicate) ([]ComponentKey, error) {
 			if _, ok := seen[key]; ok {
 				return nil, ErrContradictoryRead
 			}
+			if err := e.reserveMap(len(seen), &seenSlots, outputKeyMapSlotBytes); err != nil {
+				return nil, err
+			}
 			seen[key] = struct{}{}
-			out = append(out, key)
+			out, err = appendOwned(e, out, key, outputKeySlotBytes)
+			if err != nil {
+				return nil, err
+			}
 		}
 		if err := e.next(&t, page.Next, page.Complete); err != nil {
 			return nil, err
@@ -434,8 +494,15 @@ func (e *engine) keys(p KeyPredicate) ([]ComponentKey, error) {
 		k := patch.Key
 		if k.Owner == p.Owner && (p.Life == 0 || k.Life == p.Life) && (p.Kind == 0 || k.Kind == p.Kind) && (p.Name == "" || k.Name == p.Name) {
 			if _, ok := seen[k]; !ok {
+				if err := e.reserveMap(len(seen), &seenSlots, outputKeyMapSlotBytes); err != nil {
+					return nil, err
+				}
 				seen[k] = struct{}{}
-				out = append(out, k)
+				var err error
+				out, err = appendOwned(e, out, k, outputKeySlotBytes)
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 	}

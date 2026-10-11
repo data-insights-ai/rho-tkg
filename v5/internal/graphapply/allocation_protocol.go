@@ -123,30 +123,59 @@ type protocolGrant struct {
 	source        allocationCoordinate
 	grant         idalloc.Grant
 	installed     uint64
+	publication   graphstore.RangePublication
 }
 
 const protocolGrantBytes = 372
+const publishedGrantBytes = protocolGrantBytes + 140
 
 func (g protocolGrant) valid(n namespace) bool {
-	return n.valid() && g.configuration != ([32]byte{}) && g.source.valid() && g.source.scope.graph == n.graph && g.grant.Request.Graph == n.graph && idalloc.ValidateGrant(g.grant) == nil && g.installed != 0
+	if !n.valid() || g.configuration == ([32]byte{}) || !g.source.valid() || g.source.scope.graph != n.graph || g.grant.Request.Graph != n.graph || idalloc.ValidateGrant(g.grant) != nil || g.installed == 0 {
+		return false
+	}
+	p := g.publication
+	if p == (graphstore.RangePublication{}) {
+		return g.source.scope.semantic != partitionWriteSemanticContractID()
+	}
+	// Immutable allocation provenance remains exact even when current routing
+	// later moves or fences this range. The latter is not encoded in APG2.
+	return p.Validate() == nil && g.source.scope.semantic == partitionWriteSemanticContractID() &&
+		p.Graph == graphstate.GraphID(n.graph) && p.Configuration == g.configuration &&
+		p.First == g.grant.Reservation.First && p.Last == g.grant.Reservation.Last &&
+		p.SourcePartition == g.source.scope.partition && p.SourceIndex == g.source.index
 }
 
 func encodeProtocolGrant(n namespace, g protocolGrant) ([]byte, error) {
 	if !g.valid(n) {
 		return nil, errInvalid
 	}
-	b := make([]byte, 0, protocolGrantBytes)
-	b = appendNamespace(append(b, 'A', 'P', 'G', 1), n)
+	size, version := protocolGrantBytes, byte(1)
+	if g.publication != (graphstore.RangePublication{}) {
+		size, version = publishedGrantBytes, 2
+	}
+	b := make([]byte, 0, size)
+	b = appendNamespace(append(b, 'A', 'P', 'G', version), n)
 	b = append(b, g.configuration[:]...)
 	b = appendAllocationScope(b, g.source.scope)
 	b = binary.BigEndian.AppendUint64(b, g.source.index)
 	b = appendGrant(b, g.grant)
 	b = binary.BigEndian.AppendUint64(b, g.installed)
+	if version == 2 {
+		wire, err := graphstore.EncodeRangePublication(g.publication)
+		if err != nil {
+			return nil, err
+		}
+		b = append(b, wire...)
+	}
 	return seal(b), nil
 }
 
 func decodeProtocolGrant(b []byte, n namespace) (protocolGrant, error) {
-	body, err := wireBody(b, "APG\x01", protocolGrantBytes)
+	version, size := byte(1), protocolGrantBytes
+	if len(b) >= 4 && b[3] == 2 {
+		version, size = 2, publishedGrantBytes
+	}
+	body, err := wireBody(b, string([]byte{'A', 'P', 'G', version}), size)
 	if err != nil {
 		return protocolGrant{}, err
 	}
@@ -158,6 +187,10 @@ func decodeProtocolGrant(b []byte, n namespace) (protocolGrant, error) {
 	g.source = allocationCoordinate{scope: readAllocationScope(&d), index: d.number()}
 	g.grant, err = d.grant()
 	g.installed = d.number()
+	if version == 2 {
+		g.publication, err = graphstore.DecodeRangePublication(d.b)
+		d.b = nil
+	}
 	if err != nil {
 		return protocolGrant{}, errors.Join(errCorrupt, err)
 	}
@@ -450,6 +483,7 @@ type allocationObservation struct {
 	recipient     protocolRecipient
 	allocator     idalloc.State
 	grant         protocolGrant
+	rangeOwner    graphstore.RangeOwnership
 }
 
 const allocationObservationMaxBytes = 1024
@@ -658,7 +692,7 @@ func (a allocationRecordReader) putRecipient(r protocolRecipient) error {
 }
 
 func (a allocationRecordReader) grant(session idalloc.RecipientSession, sequence uint64) (*protocolGrant, error) {
-	wire, found, err := a.q.getBounded(grantKey(a.q.ns, session, sequence), protocolGrantBytes)
+	wire, found, err := a.q.getBounded(grantKey(a.q.ns, session, sequence), publishedGrantBytes)
 	if err != nil || !found {
 		return nil, err
 	}
@@ -667,7 +701,7 @@ func (a allocationRecordReader) grant(session idalloc.RecipientSession, sequence
 		return nil, err
 	}
 	digest, err := a.config.digest()
-	if err != nil || g.configuration != digest || g.installed > a.q.base.Index || g.grant.Request.Session != session || g.grant.Request.Sequence != sequence || g.source.scope.partition != a.config.home {
+	if err != nil || (g.publication != (graphstore.RangePublication{})) != (a.config.version() == 3) || g.configuration != digest || g.installed > a.q.base.Index || g.grant.Request.Session != session || g.grant.Request.Sequence != sequence || g.source.scope.partition != a.config.home {
 		return nil, errors.Join(errCorrupt, err)
 	}
 	if err := g.source.scope.check(a.declaration, a.config); err != nil {
@@ -700,7 +734,7 @@ func (a allocationRecordReader) checkObservation(o allocationObservation) error 
 	}
 	if o.kind == observeGrant {
 		g := o.grant
-		if g.source.scope.partition != a.config.home || g.source.scope == o.source.scope && g.source.index > o.source.index || g.installed > o.source.index {
+		if (g.publication != (graphstore.RangePublication{})) != (a.config.version() == 3) || g.source.scope.partition != a.config.home || g.source.scope == o.source.scope && g.source.index > o.source.index || g.installed > o.source.index {
 			return errInvalid
 		}
 		if err := g.source.scope.check(a.declaration, a.config); err != nil {
@@ -761,12 +795,21 @@ func (a allocationRecordReader) transition(r allocationProtocolCommand, index ui
 			return o, err
 		}
 		if existing != nil {
-			if existing.configuration != g.configuration || existing.source != g.source || existing.grant != g.grant {
+			if existing.configuration != g.configuration || existing.source != g.source || existing.grant != g.grant || existing.publication != g.publication {
 				o.reason = reasonMismatch
 			} else {
 				o.disposition = controlRecovery
 			}
 			return o, nil
+		}
+		if a.config.version() == 3 {
+			if g.publication == (graphstore.RangePublication{}) || r.remote.rangeOwner.Fenced || r.remote.rangeOwner.Partition != current.home {
+				o.reason = reasonStale
+				return o, nil
+			}
+			if err := a.putPublication(g.publication, r.remote.rangeOwner); err != nil {
+				return o, err
+			}
 		}
 		g.installed = index
 		if err := a.putGrant(g); err != nil {
@@ -907,6 +950,17 @@ func (a allocationRecordReader) allocatorTransition(r allocationProtocolCommand,
 				return o, errCorrupt
 			}
 			grant := protocolGrant{configuration: r.configuration, source: allocationCoordinate{scope: a.scope, index: index}, grant: idalloc.Grant{Request: idalloc.GrantRequest{Graph: a.q.ns.graph, Session: r.session, Sequence: r.sequence, Count: r.count}, Reservation: block}, installed: index}
+			if a.config.version() == 3 {
+				target, found := a.declaration.Partition(recipient.home)
+				if !found {
+					return o, errCorrupt
+				}
+				grant.publication = graphstore.RangePublication{Graph: graphstate.GraphID(a.q.ns.graph), RangeID: block.First, First: block.First, Last: block.Last, InitialPartition: recipient.home, InitialEpoch: target.OwnershipEpoch, Configuration: r.configuration, SourcePartition: a.config.home, SourceIndex: index}
+				ownership := graphstore.RangeOwnership{Graph: grant.publication.Graph, RangeID: block.First, Partition: recipient.home, Epoch: target.OwnershipEpoch, Configuration: r.configuration}
+				if err := a.putPublication(grant.publication, ownership); err != nil {
+					return o, err
+				}
+			}
 			if err := a.putGrant(grant); err != nil {
 				return o, err
 			}
@@ -961,10 +1015,22 @@ func (o allocationObservation) payload() ([]byte, error) {
 		wire, err = idalloc.MarshalCheckpoint(&o.allocator)
 	case observeGrant:
 		expected.grant = o.grant
-		if o.grant.configuration != o.configuration {
+		expected.rangeOwner = o.rangeOwner
+		if o.grant.configuration != o.configuration || o.grant.publication == (graphstore.RangePublication{}) && o.rangeOwner != (graphstore.RangeOwnership{}) {
 			return nil, errInvalid
 		}
 		wire, err = encodeProtocolGrant(n, o.grant)
+		if err == nil && o.grant.publication != (graphstore.RangePublication{}) {
+			p, current := o.grant.publication, o.rangeOwner
+			if current.Graph != p.Graph || current.RangeID != p.RangeID || current.Configuration != p.Configuration || current.Epoch < p.InitialEpoch {
+				return nil, errInvalid
+			}
+			owner, ownerErr := graphstore.EncodeRangeOwnership(current)
+			if ownerErr != nil {
+				return nil, ownerErr
+			}
+			wire = append(wire, owner...)
+		}
 	default:
 		return nil, errInvalid
 	}
@@ -1007,7 +1073,7 @@ func decodeAllocationObservation(b []byte) (allocationObservation, error) {
 	copy(o.configuration[:], c.take(32))
 	o.epoch = c.u64()
 	copy(o.effect[:], c.take(32))
-	payload := c.field(protocolRecipientMaxBytes)
+	payload := c.field(max(protocolRecipientMaxBytes, publishedGrantBytes+109))
 	if c.err != nil || len(c.b) != 0 {
 		return allocationObservation{}, errors.Join(errCorrupt, c.err)
 	}
@@ -1020,7 +1086,17 @@ func decodeAllocationObservation(b []byte) (allocationObservation, error) {
 	case observeAllocator:
 		o.allocator, err = idalloc.DecodeCheckpoint(payload)
 	case observeGrant:
-		o.grant, err = decodeProtocolGrant(payload, n)
+		if len(payload) >= 4 && payload[3] == 2 {
+			if len(payload) != publishedGrantBytes+109 {
+				return allocationObservation{}, errCorrupt
+			}
+			o.grant, err = decodeProtocolGrant(payload[:publishedGrantBytes], n)
+			if err == nil {
+				o.rangeOwner, err = graphstore.DecodeRangeOwnership(payload[publishedGrantBytes:])
+			}
+		} else {
+			o.grant, err = decodeProtocolGrant(payload, n)
+		}
 	default:
 		return allocationObservation{}, errCorrupt
 	}

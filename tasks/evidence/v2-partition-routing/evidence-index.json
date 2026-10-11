@@ -1,0 +1,17 @@
+{
+  "qualification": "Complete original evidence is archived byte-for-byte, including failed attempts explicitly excluded by their receipts. Selected final correction RED/GREEN and mutant logs remain directly readable. Archived Go mutants are evidence, not build inputs. Final combined-source gates are recorded separately.",
+  "archives": [
+    {
+      "archive": "tasks/evidence/v2-partition-routing.tar.gz",
+      "sha256": "74c18616b04c2f976fe6fa4e05381f268e229e3e84e77f9b4d08d4a53e01ceb7",
+      "bytes": 891080,
+      "files": 216
+    },
+    {
+      "archive": "tasks/evidence/v2-partition-writes-nine-ops.tar.gz",
+      "sha256": "198a7f29443c2a412013d99fd46f1f6b9f74e833a2d60459613564fe3da59e8c",
+      "bytes": 268174,
+      "files": 9
+    }
+  ]
+}

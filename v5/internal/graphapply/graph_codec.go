@@ -366,7 +366,10 @@ func readScope(c *graphCursor, t axisTable, l materializerLimits) temporal.Scope
 	return s
 }
 func writeScalar(w *boundedWriter, s graphstate.Scalar, t axisTable, l materializerLimits) {
-	if s.Kind() == graphstate.ScalarDescriptor {
+	writeTypedScalar(w, s, t, l, false)
+}
+func writeTypedScalar(w *boundedWriter, s graphstate.Scalar, t axisTable, l materializerLimits, declarations bool) {
+	if !declarations && s.Kind() == graphstate.ScalarDescriptor {
 		if w.err == nil {
 			w.err = errors.Join(errInvalid, graphstate.ErrUnsupported)
 		}
@@ -404,6 +407,9 @@ func writeScalar(w *boundedWriter, s graphstate.Scalar, t axisTable, l materiali
 	w.u32(n)
 }
 func readScalar(c *graphCursor, t axisTable, l materializerLimits) graphstate.Scalar {
+	return readTypedScalar(c, t, l, false)
+}
+func readTypedScalar(c *graphCursor, t axisTable, l materializerLimits, declarations bool) graphstate.Scalar {
 	b := c.field(l.catalog.MaxValueBytes)
 	a := t.read(c)
 	if c.err != nil {
@@ -441,6 +447,26 @@ func readScalar(c *graphCursor, t axisTable, l materializerLimits) graphstate.Sc
 				return v
 			}
 		}
+	case graphstate.ScalarDescriptor:
+		if !declarations {
+			break
+		}
+		// Every reference requires at least60 wire bytes (16 ID+4 schema+
+		// 32 integrity+two4-byte field lengths). Bound fixed slots and all
+		// strings/payload ownership before the preservation decoder allocates.
+		if !c.charge(768 + 128*(len(b)/60) + 8*len(b)) {
+			return graphstate.Scalar{}
+		}
+		d, err := temporal.DecodeOpaqueDescriptor(b[1:], l.catalog.Temporal)
+		if err != nil {
+			c.err = errors.Join(errCorrupt, err)
+			return graphstate.Scalar{}
+		}
+		value, err := graphstate.DescriptorValue(d)
+		if err != nil {
+			c.err = errors.Join(errCorrupt, err)
+		}
+		return value
 	case graphstate.ScalarScope:
 		if !preflightScopeBacking(c, b[1:], l) {
 			return graphstate.Scalar{}
@@ -456,7 +482,10 @@ func readScalar(c *graphCursor, t axisTable, l materializerLimits) graphstate.Sc
 	return graphstate.Scalar{}
 }
 func writeEntity(w *boundedWriter, e graphstate.EntityRecord, t axisTable) {
-	if e.Interpretation != 0 || e.TemporalRole != 0 {
+	writeTypedEntity(w, e, t, false)
+}
+func writeTypedEntity(w *boundedWriter, e graphstate.EntityRecord, t axisTable, declarations bool) {
+	if !declarations && (e.Interpretation != 0 || e.TemporalRole != 0) {
 		if w.err == nil {
 			w.err = errors.Join(errInvalid, graphstate.ErrUnsupported)
 		}
@@ -469,9 +498,25 @@ func writeEntity(w *boundedWriter, e graphstate.EntityRecord, t axisTable) {
 	w.u64(uint64(e.Source))
 	w.u64(uint64(e.Target))
 	w.tag(byte(e.Mode))
+	if declarations {
+		if !e.Interpretation.Valid() || !e.TemporalRole.Valid() {
+			w.err = errInvalid
+			return
+		}
+		w.tag(byte(e.Interpretation))
+		w.tag(byte(e.TemporalRole))
+	}
 }
-func readEntity(c *graphCursor, t axisTable, l materializerLimits) graphstate.EntityRecord {
-	return graphstate.EntityRecord{ID: graphstate.EntityID(c.u64()), Kind: graphstate.EntityKind(c.tag()), Axis: t.read(c), Type: string(c.field(l.catalog.MaxNameBytes)), Source: graphstate.EntityID(c.u64()), Target: graphstate.EntityID(c.u64()), Mode: graphstate.ReferenceMode(c.tag())}
+func readTypedEntity(c *graphCursor, t axisTable, l materializerLimits, declarations bool) graphstate.EntityRecord {
+	r := graphstate.EntityRecord{ID: graphstate.EntityID(c.u64()), Kind: graphstate.EntityKind(c.tag()), Axis: t.read(c), Type: string(c.field(l.catalog.MaxNameBytes)), Source: graphstate.EntityID(c.u64()), Target: graphstate.EntityID(c.u64()), Mode: graphstate.ReferenceMode(c.tag())}
+	if declarations {
+		r.Interpretation = graphstate.Interpretation(c.tag())
+		r.TemporalRole = graphstate.TemporalRole(c.tag())
+		if !r.Interpretation.Valid() || !r.TemporalRole.Valid() {
+			c.err = errCorrupt
+		}
+	}
+	return r
 }
 func writeLife(w *boundedWriter, e graphstate.LifeRecord) {
 	for _, n := range []uint64{uint64(e.Owner), uint64(e.Life), uint64(e.SourceLife), uint64(e.TargetLife)} {
@@ -559,12 +604,16 @@ func validateGraphRequest(r graphRequest, l materializerLimits) error {
 	}
 	return nil
 }
-func emitGraphRequest(w *boundedWriter, r graphRequest, t axisTable, l materializerLimits) {
+func emitTypedGraphRequest(w *boundedWriter, r graphRequest, t axisTable, l materializerLimits, declarations bool) {
 	version := byte(2)
 	if r.kind == guardedGraphOperations {
 		version = 3
 	}
-	w.add([]byte{'G', 'R', 'Q', version})
+	if declarations {
+		w.add([]byte{'P', 'G', 'O', 1})
+	} else {
+		w.add([]byte{'G', 'R', 'Q', version})
+	}
 	w.tag(byte(r.kind))
 	w.add(r.ns.graph[:])
 	w.u64(r.ns.partition)
@@ -600,10 +649,10 @@ func emitGraphRequest(w *boundedWriter, r graphRequest, t axisTable, l materiali
 		w.u64(uint64(op.Owner))
 		w.u64(uint64(op.Life))
 		writeScope(w, op.Scope, t, l)
-		writeEntity(w, op.Record, t)
+		writeTypedEntity(w, op.Record, t, declarations)
 		writeLife(w, op.Binding)
 		w.text(op.Name)
-		writeScalar(w, op.Value, t, l)
+		writeTypedScalar(w, op.Value, t, l, declarations)
 		w.u64(uint64(op.ValueID))
 		if op.Present {
 			w.tag(1)
@@ -621,6 +670,9 @@ func emitGraphRequest(w *boundedWriter, r graphRequest, t axisTable, l materiali
 	}
 }
 func encodeGraphRequest(r graphRequest, l materializerLimits) ([]byte, error) {
+	return encodeTypedGraphRequest(r, l, false)
+}
+func encodeTypedGraphRequest(r graphRequest, l materializerLimits, declarations bool) ([]byte, error) {
 	if err := l.validate(); err != nil {
 		return nil, err
 	}
@@ -631,7 +683,7 @@ func encodeGraphRequest(r graphRequest, l materializerLimits) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return boundedEncoding(l.commandBytes, func(w *boundedWriter) { emitGraphRequest(w, r, t, l) })
+	return boundedEncoding(l.commandBytes, func(w *boundedWriter) { emitTypedGraphRequest(w, r, t, l, declarations) })
 }
 func graphBody(b []byte, magic string, maxBytes int) ([]byte, error) {
 	if len(b) > maxBytes {
@@ -647,15 +699,27 @@ func graphBody(b []byte, magic string, maxBytes int) ([]byte, error) {
 	return b[4 : len(b)-32], nil
 }
 func decodeGraphRequest(b []byte, l materializerLimits) (graphRequest, error) {
+	return decodeTypedGraphRequest(b, l, false)
+}
+func decodeTypedGraphRequest(b []byte, l materializerLimits, declarations bool) (graphRequest, error) {
+	return decodeTypedGraphRequestOwned(b, l, declarations, nil)
+}
+func decodeTypedGraphRequestOwned(b []byte, l materializerLimits, declarations bool, admitted *int) (graphRequest, error) {
+	if admitted != nil {
+		*admitted = 0
+	}
 	if err := l.validate(); err != nil {
 		return graphRequest{}, err
 	}
-	if len(b) < 5 || !validGraphWire(b[3], commandKind(b[4])) {
+	if len(b) < 5 || (!declarations && !validGraphWire(b[3], commandKind(b[4]))) || declarations && (b[3] != 1 || !isGraphMutation(commandKind(b[4]))) {
 		return graphRequest{}, errCorrupt
 	}
 	magic := "GRQ\x02"
 	if b[3] == 3 {
 		magic = "GRQ\x03"
+	}
+	if declarations {
+		magic = "PGO\x01"
 	}
 	body, err := graphBody(b, magic, l.commandBytes)
 	if err != nil {
@@ -704,7 +768,7 @@ func decodeGraphRequest(b []byte, l materializerLimits) (graphRequest, error) {
 		if c.charge(operationMetadataBytes * n) {
 			r.operations = make([]graphstate.Operation, n)
 			for i := range r.operations {
-				op := graphstate.Operation{Kind: graphstate.OperationKind(c.tag()), Owner: graphstate.EntityID(c.u64()), Life: graphstate.LifeID(c.u64()), Scope: readScope(&c, t, l), Record: readEntity(&c, t, l), Binding: readLife(&c), Name: string(c.field(l.catalog.MaxNameBytes)), Value: readScalar(&c, t, l), ValueID: graphstate.ValueID(c.u64())}
+				op := graphstate.Operation{Kind: graphstate.OperationKind(c.tag()), Owner: graphstate.EntityID(c.u64()), Life: graphstate.LifeID(c.u64()), Scope: readScope(&c, t, l), Record: readTypedEntity(&c, t, l, declarations), Binding: readLife(&c), Name: string(c.field(l.catalog.MaxNameBytes)), Value: readTypedScalar(&c, t, l, declarations), ValueID: graphstate.ValueID(c.u64())}
 				present := c.tag()
 				if present > 1 {
 					c.err = errCorrupt
@@ -736,12 +800,15 @@ func decodeGraphRequest(b []byte, l materializerLimits) (graphRequest, error) {
 	if cost > l.commandOwnedBytes {
 		return graphRequest{}, errLimit
 	}
-	canonical, err := encodeGraphRequest(r, l)
+	canonical, err := encodeTypedGraphRequest(r, l, declarations)
 	if err != nil {
 		return graphRequest{}, err
 	}
 	if !bytes.Equal(canonical, b) {
 		return graphRequest{}, errCorrupt
+	}
+	if admitted != nil {
+		*admitted = c.ownedBytes
 	}
 	return r, nil
 }
@@ -759,11 +826,16 @@ func validGraphOutcomeReason(kind commandKind, why reason) bool {
 		return false
 	}
 }
-func encodeGraphOutcome(o outcome) ([]byte, error) {
-	if !o.ns.valid() || !isGraphCommand(o.kind) || o.identity == ([16]byte{}) || o.hash == ([32]byte{}) || o.index == 0 || o.disposition != applied && o.disposition != requestReplay || !validGraphOutcomeReason(o.kind, o.reason) || o.grant != (idalloc.Grant{}) || o.grantIndex != 0 {
+func encodeGraphOutcome(o outcome) ([]byte, error) { return encodeTypedGraphOutcome(o, false) }
+func encodeTypedGraphOutcome(o outcome, partition bool) ([]byte, error) {
+	if !o.ns.valid() || !isGraphCommand(o.kind) || o.identity == ([16]byte{}) || o.hash == ([32]byte{}) || o.index == 0 || o.disposition != applied && o.disposition != requestReplay || !validTypedGraphOutcomeReason(o.kind, o.reason, partition) || o.grant != (idalloc.Grant{}) || o.grantIndex != 0 {
 		return nil, errInvalid
 	}
-	b := appendNamespace([]byte{'G', 'R', 'O', 2, byte(o.kind)}, o.ns)
+	version := byte(2)
+	if partition {
+		version = 4
+	}
+	b := appendNamespace([]byte{'G', 'R', 'O', version, byte(o.kind)}, o.ns)
 	b = append(b, o.identity[:]...)
 	b = append(b, o.hash[:]...)
 	b = binary.BigEndian.AppendUint64(b, o.index)
@@ -772,7 +844,14 @@ func encodeGraphOutcome(o outcome) ([]byte, error) {
 	return seal(b), nil
 }
 func decodeGraphOutcome(b []byte, n namespace) (outcome, error) {
-	body, err := wireBody(b, "GRO\x02", graphOutcomeBytes)
+	return decodeTypedGraphOutcome(b, n, false)
+}
+func decodeTypedGraphOutcome(b []byte, n namespace, partition bool) (outcome, error) {
+	magic := "GRO\x02"
+	if partition {
+		magic = "GRO\x04"
+	}
+	body, err := wireBody(b, magic, graphOutcomeBytes)
 	if err != nil {
 		return outcome{}, err
 	}
@@ -785,7 +864,7 @@ func decodeGraphOutcome(b []byte, n namespace) (outcome, error) {
 	if c.err != nil || len(c.b) != 0 || o.ns != n {
 		return outcome{}, errCorrupt
 	}
-	if _, err := encodeGraphOutcome(o); err != nil {
+	if _, err := encodeTypedGraphOutcome(o, partition); err != nil {
 		return outcome{}, errCorrupt
 	}
 	return o, nil

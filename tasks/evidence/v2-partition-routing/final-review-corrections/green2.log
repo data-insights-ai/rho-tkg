@@ -1,0 +1,96 @@
+=== RUN   TestFinalReviewScopeScalarCloneRequiresFreshBackingAdmission
+2026/10/11 02:08:52 Found 0 WALs
+    full_stage_nine_operation_budget_test.go:207: parts=512 wire=3000 fresh-clone-backing=405216 tight=16384 used=11243 fitting-used=416765 clone-count=0 err=graphstore: resource limit
+        graphstate: resource limit exceeded
+--- PASS: TestFinalReviewScopeScalarCloneRequiresFreshBackingAdmission (0.00s)
+=== RUN   TestFinalReviewRegressedRangeEpochCannotAuthorizeLocalWrites
+2026/10/11 02:08:52 Found 0 WALs
+    full_stage_nine_operation_budget_test.go:268: initial-epoch=2 current-epoch=1 read-found=false read-view=00000000000000000000000000000000 read-err=graphstore: corrupt catalog effect-entities=0 effect-writes=0 stage-err=graphstore: corrupt catalog
+--- PASS: TestFinalReviewRegressedRangeEpochCannotAuthorizeLocalWrites (0.00s)
+=== RUN   TestFinalReviewDescriptorScalarCloneRequiresFreshBackingAdmission
+2026/10/11 02:08:52 Found 0 WALs
+--- PASS: TestFinalReviewDescriptorScalarCloneRequiresFreshBackingAdmission (0.00s)
+=== RUN   TestFinalReviewOwnedScalarBackingRefusalReachesPublicStage
+2026/10/11 02:08:52 Found 0 WALs
+--- PASS: TestFinalReviewOwnedScalarBackingRefusalReachesPublicStage (0.01s)
+=== RUN   TestFinalReviewRangeOwnershipInitialEpochFloorAndTransferControls
+--- PASS: TestFinalReviewRangeOwnershipInitialEpochFloorAndTransferControls (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v5/internal/graphstore	0.327s
+=== RUN   TestFinalReviewRegressedRangeEpochStaysCorruptThroughMaterializerAndGrantAdmission
+2026/10/11 02:08:53 Found 0 WALs
+raft2026/10/11 02:08:53 INFO: 1 switched to configuration voters=(1 2 3)
+raft2026/10/11 02:08:53 INFO: 1 became follower at term 1
+raft2026/10/11 02:08:53 INFO: newRaft 1 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/11 02:08:53 Found 0 WALs
+raft2026/10/11 02:08:53 INFO: 2 switched to configuration voters=(1 2 3)
+raft2026/10/11 02:08:53 INFO: 2 became follower at term 1
+raft2026/10/11 02:08:53 INFO: newRaft 2 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/11 02:08:53 Found 0 WALs
+raft2026/10/11 02:08:53 INFO: 3 switched to configuration voters=(1 2 3)
+raft2026/10/11 02:08:53 INFO: 3 became follower at term 1
+raft2026/10/11 02:08:53 INFO: newRaft 3 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+raft2026/10/11 02:08:53 INFO: 1 is starting a new election at term 1
+raft2026/10/11 02:08:53 INFO: 1 became pre-candidate at term 1
+raft2026/10/11 02:08:53 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 2 at term 1
+raft2026/10/11 02:08:53 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 3 at term 1
+raft2026/10/11 02:08:53 INFO: 1 received MsgPreVoteResp from 1 at term 1
+raft2026/10/11 02:08:53 INFO: 1 has received 1 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/11 02:08:53 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/11 02:08:53 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/11 02:08:53 INFO: 1 received MsgPreVoteResp from 2 at term 1
+raft2026/10/11 02:08:53 INFO: 1 has received 2 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/11 02:08:53 INFO: 1 became candidate at term 2
+raft2026/10/11 02:08:53 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 2 at term 2
+raft2026/10/11 02:08:53 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 3 at term 2
+raft2026/10/11 02:08:53 INFO: 1 received MsgVoteResp from 1 at term 2
+raft2026/10/11 02:08:53 INFO: 1 has received 1 MsgVoteResp votes and 0 vote rejections
+raft2026/10/11 02:08:53 INFO: 2 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/11 02:08:53 INFO: 2 became follower at term 2
+raft2026/10/11 02:08:53 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/11 02:08:53 INFO: 3 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/11 02:08:53 INFO: 3 became follower at term 2
+raft2026/10/11 02:08:53 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/11 02:08:53 INFO: 1 received MsgVoteResp from 2 at term 2
+raft2026/10/11 02:08:53 INFO: 1 has received 2 MsgVoteResp votes and 0 vote rejections
+raft2026/10/11 02:08:53 INFO: 1 became leader at term 2
+2026/10/11 02:08:53 Found 0 WALs
+raft2026/10/11 02:08:53 INFO: 1 switched to configuration voters=(1 2 3)
+raft2026/10/11 02:08:53 INFO: 1 became follower at term 1
+raft2026/10/11 02:08:53 INFO: newRaft 1 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/11 02:08:53 Found 0 WALs
+raft2026/10/11 02:08:53 INFO: 2 switched to configuration voters=(1 2 3)
+raft2026/10/11 02:08:53 INFO: 2 became follower at term 1
+raft2026/10/11 02:08:53 INFO: newRaft 2 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/11 02:08:53 Found 0 WALs
+raft2026/10/11 02:08:53 INFO: 3 switched to configuration voters=(1 2 3)
+raft2026/10/11 02:08:53 INFO: 3 became follower at term 1
+raft2026/10/11 02:08:53 INFO: newRaft 3 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+raft2026/10/11 02:08:53 INFO: 1 is starting a new election at term 1
+raft2026/10/11 02:08:53 INFO: 1 became pre-candidate at term 1
+raft2026/10/11 02:08:53 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 2 at term 1
+raft2026/10/11 02:08:53 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 3 at term 1
+raft2026/10/11 02:08:53 INFO: 1 received MsgPreVoteResp from 1 at term 1
+raft2026/10/11 02:08:53 INFO: 1 has received 1 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/11 02:08:53 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/11 02:08:53 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/11 02:08:53 INFO: 1 received MsgPreVoteResp from 2 at term 1
+raft2026/10/11 02:08:53 INFO: 1 has received 2 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/11 02:08:53 INFO: 1 became candidate at term 2
+raft2026/10/11 02:08:53 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 2 at term 2
+raft2026/10/11 02:08:53 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 3 at term 2
+raft2026/10/11 02:08:53 INFO: 1 received MsgVoteResp from 1 at term 2
+raft2026/10/11 02:08:53 INFO: 1 has received 1 MsgVoteResp votes and 0 vote rejections
+raft2026/10/11 02:08:53 INFO: 2 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/11 02:08:53 INFO: 2 became follower at term 2
+raft2026/10/11 02:08:53 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/11 02:08:53 INFO: 3 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/11 02:08:53 INFO: 3 became follower at term 2
+raft2026/10/11 02:08:53 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/11 02:08:53 INFO: 1 received MsgVoteResp from 2 at term 2
+raft2026/10/11 02:08:53 INFO: 1 has received 2 MsgVoteResp votes and 0 vote rejections
+raft2026/10/11 02:08:53 INFO: 1 became leader at term 2
+--- PASS: TestFinalReviewRegressedRangeEpochStaysCorruptThroughMaterializerAndGrantAdmission (0.71s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	0.920s
+limit: {"command": ["go", "test", "-count=1", "-timeout=150s", "-v", "./internal/graphstore", "./internal/graphapply", "-run", "^TestFinalReview"], "rss_limit_mib": 4096.0, "wall_limit_s": 180.0, "sample_interval_s": 0.25, "peak_tree_rss_mib": 567.391, "elapsed_s": 5.268, "exit_code": 0, "reason": "completed"}

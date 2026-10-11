@@ -17,6 +17,9 @@ func planFailure(err error) error {
 	if err == nil || errors.Is(err, ErrCorrupt) || errors.Is(err, ErrPoisoned) || errors.Is(err, raftlog.ErrCorrupt) || errors.Is(err, raftlog.ErrPoisoned) || errors.Is(err, raftlog.ErrClosed) || errors.Is(err, ErrClosed) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}
+	if errors.Is(err, temporal.ErrAxisMismatch) {
+		return callerError(errors.Join(graphstate.ErrInvalidInput, err))
+	}
 	return callerError(err)
 }
 func (v *ReadView) inputCost(n int) error {
@@ -26,9 +29,29 @@ func (v *ReadView) inputCost(n int) error {
 	v.work.Bytes += n
 	return nil
 }
-func cloneAxisForOperation(v *ReadView, a temporal.Axis) (temporal.Axis, error) {
+func cloneAxisForOperation(ctx context.Context, v *ReadView, a temporal.Axis) (temporal.Axis, error) {
+	if v.route != nil {
+		q, err := v.begin(ctx, graphstate.ReadBudget{})
+		if err != nil {
+			return temporal.Axis{}, err
+		}
+		if err := v.route.previewAxis(q.q, a); err != nil {
+			if errors.Is(err, ErrRebinding) {
+				err = errors.Join(graphstate.ErrInvalidInput, err)
+			}
+			return temporal.Axis{}, v.finish(q, err)
+		}
+		if err := v.finish(q, nil); err != nil {
+			return temporal.Axis{}, err
+		}
+	}
 	d := a.Descriptor()
 	cost := 2 * (128 + len(d.Reference) + len(d.CanonicalUnit))
+	if v.arena != nil {
+		if err := v.arena.Reserve(cost); err != nil {
+			return temporal.Axis{}, callerError(err)
+		}
+	}
 	if err := v.inputCost(cost); err != nil {
 		return temporal.Axis{}, err
 	}
@@ -42,6 +65,11 @@ func cloneOperations(ctx context.Context, v *ReadView, ops []graphstate.Operatio
 	maxOps := cmp.Or(v.limits.Planner.MaxOperations, graphstate.DefaultLimits().MaxOperations)
 	if len(ops) > maxOps {
 		return nil, ErrResourceLimit
+	}
+	if v.arena != nil {
+		if err := v.arena.Reserve(640 * len(ops)); err != nil {
+			return nil, callerError(err)
+		}
 	}
 	if err := v.inputCost(640 * len(ops)); err != nil {
 		return nil, err
@@ -65,9 +93,14 @@ func cloneOperations(ctx context.Context, v *ReadView, ops []graphstate.Operatio
 		if err := v.inputCost(len(op.Name) + len(op.Record.Type)); err != nil {
 			return nil, err
 		}
+		if v.arena != nil {
+			if err := v.arena.Reserve(len(op.Name) + len(op.Record.Type)); err != nil {
+				return nil, callerError(err)
+			}
+		}
 		op.Name = strings.Clone(op.Name)
 		op.Record.Type = strings.Clone(op.Record.Type)
-		axis, err := cloneAxisForOperation(v, op.Scope.Axis())
+		axis, err := cloneAxisForOperation(ctx, v, op.Scope.Axis())
 		if err != nil {
 			return nil, callerError(err)
 		}
@@ -77,7 +110,12 @@ func cloneOperations(ctx context.Context, v *ReadView, ops []graphstate.Operatio
 		}
 		tl := v.c.limits.Temporal
 		tl.MaxValueBytes = min(tl.MaxValueBytes, available/2)
-		wire, err := temporal.AppendScope(nil, op.Scope, tl)
+		var wire []byte
+		if v.arena != nil {
+			wire, err = v.arena.ScopeBytes(op.Scope, tl)
+		} else {
+			wire, err = temporal.AppendScope(nil, op.Scope, tl)
+		}
 		if err != nil {
 			return nil, callerError(err)
 		}
@@ -88,18 +126,23 @@ func cloneOperations(ctx context.Context, v *ReadView, ops []graphstate.Operatio
 		if err := v.inputCost(128 + backing + 2*cap(wire)); err != nil {
 			return nil, err
 		}
+		if v.arena != nil {
+			if err := v.arena.Reserve(128 + backing); err != nil {
+				return nil, callerError(err)
+			}
+		}
 		op.Scope, err = temporal.DecodeScope(wire, axis, tl)
 		if err != nil {
 			return nil, callerError(err)
 		}
 		if op.Kind == graphstate.CreateNode || op.Kind == graphstate.CreateRelationship {
 			if op.Record.Axis.Descriptor().ID != (temporal.AxisID{}) {
-				supplied, err := cloneAxisForOperation(v, op.Record.Axis)
+				supplied, err := cloneAxisForOperation(ctx, v, op.Record.Axis)
 				if err != nil {
 					return nil, callerError(err)
 				}
 				if supplied.Descriptor() != axis.Descriptor() || supplied.DefinitionHash() != axis.DefinitionHash() {
-					return nil, callerError(temporal.ErrAxisMismatch)
+					return nil, callerError(errors.Join(graphstate.ErrInvalidInput, temporal.ErrAxisMismatch))
 				}
 				op.Record.Axis = supplied
 			}
@@ -116,7 +159,12 @@ func cloneOperations(ctx context.Context, v *ReadView, ops []graphstate.Operatio
 			if op.Value.Kind() == graphstate.ScalarScope {
 				l.Component.Temporal.MaxValueBytes = min(l.Component.Temporal.MaxValueBytes, max(1, l.MaxReadBytes-1))
 			}
-			key, err := op.Value.EqualityKey(l)
+			var key string
+			if v.arena != nil {
+				key, err = v.arena.ScalarKey(op.Value, l)
+			} else {
+				key, err = op.Value.EqualityKey(l)
+			}
 			if err != nil {
 				return nil, callerError(err)
 			}
@@ -134,14 +182,28 @@ func cloneOperations(ctx context.Context, v *ReadView, ops []graphstate.Operatio
 				if err := v.inputCost(backing); err != nil {
 					return nil, err
 				}
-				valueAxis, err = cloneAxisForOperation(v, scope.Axis())
+				// The canonical key owns encoding scratch, not this fresh decoded
+				// scope. Its independent interval/coordinate backing coexists with
+				// the original caller value and must be admitted before decodeScalar.
+				if v.arena != nil {
+					if err := v.arena.Reserve(backing); err != nil {
+						return nil, callerError(err)
+					}
+				}
+				valueAxis, err = cloneAxisForOperation(ctx, v, scope.Axis())
 				if err != nil {
 					return nil, callerError(err)
 				}
 			}
 			if op.Value.Kind() == graphstate.ScalarDescriptor {
-				if err := v.inputCost(descriptorOwnedBacking(len(key) - 1)); err != nil {
+				backing := descriptorOwnedBacking(len(key) - 1)
+				if err := v.inputCost(backing); err != nil {
 					return nil, err
+				}
+				if v.arena != nil {
+					if err := v.arena.Reserve(backing); err != nil {
+						return nil, callerError(err)
+					}
 				}
 			}
 			op.Value, err = decodeScalar([]byte(key), valueAxis, hasAxis, v.c.limits)
@@ -172,6 +234,11 @@ func fullEffects(s *Stage, base raftlog.ApplicationRoot, delta graphstate.Delta,
 	writes, err := s.Writes()
 	if err != nil {
 		return GraphEffects{}, err
+	}
+	if s.arena != nil {
+		if err := s.arena.Reserve(512 + len(base.Image)); err != nil {
+			return GraphEffects{}, callerError(err)
+		}
 	}
 	base.Image = exactCopy(base.Image)
 	return GraphEffects{Base: base, Root: s.full.root, Writes: writes, Groups: groups, Dependencies: delta.Dependencies, Delta: delta, Work: work, OwnedBytes: fixed + variable}, nil
@@ -416,7 +483,19 @@ func StageOperations(ctx context.Context, c *Catalog, ops []graphstate.Operation
 	return effects, err
 }
 
-func stageOperations(ctx context.Context, c *Catalog, ops []graphstate.Operation, revision state.Revision, l GraphLimits, guard *SemanticGuard) (effects GraphEffects, work PageWork, err error) {
+// StageOperationsWithOutputBudget composes the typed GR2 stager into one caller
+// operation ledger. The supplied parent does not prove coverage or admit Delta.
+// A child enforces GraphLimits.MaxOutputBytes in addition to ancestor limits.
+func StageOperationsWithOutputBudget(ctx context.Context, c *Catalog, ops []graphstate.Operation, revision state.Revision, l GraphLimits, budget *graphstate.OutputBudget) (GraphEffects, PageWork, error) {
+	if budget == nil {
+		return GraphEffects{}, PageWork{}, ErrInvalid
+	}
+	return stageOperationsWithOutputBudget(ctx, c, ops, revision, l, nil, budget)
+}
+func stageOperations(ctx context.Context, c *Catalog, ops []graphstate.Operation, revision state.Revision, l GraphLimits, guard *SemanticGuard) (GraphEffects, PageWork, error) {
+	return stageOperationsWithOutputBudget(ctx, c, ops, revision, l, guard, nil)
+}
+func stageOperationsWithOutputBudget(ctx context.Context, c *Catalog, ops []graphstate.Operation, revision state.Revision, l GraphLimits, guard *SemanticGuard, supplied *graphstate.OutputBudget) (effects GraphEffects, work PageWork, err error) {
 	if c == nil || ctx == nil {
 		return GraphEffects{}, PageWork{}, ErrInvalid
 	}
@@ -436,10 +515,20 @@ func stageOperations(ctx context.Context, c *Catalog, ops []graphstate.Operation
 		}
 		l.MaxOutputBytes -= semanticGuardWorkBytes
 	}
-	v, err := OpenReadView(ctx, c, l)
+	arena, err := selectedGraphOutputBudget(l, supplied)
 	if err != nil {
 		return GraphEffects{}, PageWork{}, err
 	}
+	v, err := openReadViewWithOutputBudget(ctx, c, l, arena)
+	if err != nil {
+		return GraphEffects{}, PageWork{}, err
+	}
+	return stageOpenedOperations(ctx, c, v, ops, revision, l, guard)
+}
+
+// stageOpenedOperations shares the complete planner/index installation algorithm
+// after its caller has admitted the precise GR2 or checked partition read scope.
+func stageOpenedOperations(ctx context.Context, c *Catalog, v *ReadView, ops []graphstate.Operation, revision state.Revision, l GraphLimits, guard *SemanticGuard) (effects GraphEffects, work PageWork, err error) {
 	var stagedWork PageWork
 	defer func() {
 		work = addWork(v.Work(), stagedWork)
@@ -448,6 +537,24 @@ func stageOperations(ctx context.Context, c *Catalog, ops []graphstate.Operation
 			effects = GraphEffects{}
 		}
 	}()
+	arena := v.arena
+	if arena == nil {
+		arena, err = graphstate.NewOutputBudget(l.MaxOutputBytes)
+	}
+	if err != nil {
+		return GraphEffects{}, PageWork{}, callerError(err)
+	}
+	retained := 512
+	if v.arena == nil {
+		retained += fullViewMetadataBytes + 2*cap(v.base.Image)
+	}
+	if v.route != nil {
+		retained += 1536 + 64*len(v.route.routing.owners)
+	}
+	if err := arena.Reserve(retained); err != nil {
+		return GraphEffects{}, PageWork{}, callerError(err)
+	}
+	v.arena = arena
 	if guard != nil {
 		if err := v.inputCost(semanticGuardMetadataBytes); err != nil {
 			return GraphEffects{}, PageWork{}, err
@@ -475,6 +582,8 @@ func stageOperations(ctx context.Context, c *Catalog, ops []graphstate.Operation
 		return GraphEffects{}, PageWork{}, err
 	}
 	defer func() { _ = s.Close() }()
+	s.route = v.route
+	s.arena = arena
 	var delta graphstate.Delta
 	var groups []ComponentChangeGroup
 	err = s.operation(ctx, func(base *reader) error {
@@ -496,7 +605,7 @@ func stageOperations(ctx context.Context, c *Catalog, ops []graphstate.Operation
 		v.limits.MaxSourceBytes -= reserved
 		planner := l.Planner
 		planner.MaxDeltaBytes = min(cmp.Or(planner.MaxDeltaBytes, graphstate.DefaultLimits().MaxDeltaBytes), l.MaxOutputBytes)
-		planned, err := graphstate.Plan(ctx, v, owned, revision, planner)
+		planned, err := graphstate.PlanWithOutputBudget(ctx, v, owned, revision, planner, v.arena)
 		v.limits.MaxSourceBytes = original
 		if err != nil {
 			return planFailure(err)
@@ -581,6 +690,9 @@ func stageOperations(ctx context.Context, c *Catalog, ops []graphstate.Operation
 		if len(planned.Patches) > l.Pages.MaxPatches {
 			return ErrResourceLimit
 		}
+		if err := arena.Reserve(fullGroupOutputBytes * len(planned.Patches)); err != nil {
+			return callerError(err)
+		}
 		groups = make([]ComponentChangeGroup, 0, len(planned.Patches))
 		changeBytes := 0
 		presence := fullPresenceStage{p: &p}
@@ -589,11 +701,14 @@ func stageOperations(ctx context.Context, c *Catalog, ops []graphstate.Operation
 			if err != nil {
 				return err
 			}
+			if _, err := p.reserveChangeCodec(group.Changes, l.Pages.codecLimits(c)); err != nil {
+				return err
+			}
 			wire, err := state.AppendChanges(nil, group.Owned.Axis(), group.Changes, l.Pages.codecLimits(c))
 			if err != nil {
 				return pageFailure(c, err, false)
 			}
-			scope, err := temporal.AppendScope(nil, group.Owned, c.limits.Temporal)
+			scope, err := p.scopeWire(group.Owned)
 			if err != nil {
 				return callerError(err)
 			}
@@ -675,4 +790,19 @@ func stageOperations(ctx context.Context, c *Catalog, ops []graphstate.Operation
 		effects.OwnedBytes += semanticGuardWorkBytes
 	}
 	return effects, work, err
+}
+
+func selectedGraphOutputBudget(l GraphLimits, parent *graphstate.OutputBudget) (*graphstate.OutputBudget, error) {
+	if parent == nil {
+		budget, err := graphstate.NewOutputBudget(l.MaxOutputBytes)
+		return budget, callerError(err)
+	}
+	budget, err := parent.Child(l.MaxOutputBytes)
+	if err != nil {
+		return nil, callerError(err)
+	}
+	if budget.Remaining() < fullViewMetadataBytes+512 {
+		return nil, ErrResourceLimit
+	}
+	return budget, nil
 }

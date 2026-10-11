@@ -33,12 +33,18 @@ func newGraphGenesisMaterializer(s *raftlog.Store, n namespace, d graphstore.Own
 	return newDeclaredMaterializerWithAgreement(s, n, d, l, graphGenesisSemanticContractID())
 }
 func (c genesisAllocationConfig) version() byte {
+	if c.routingDigest != ([32]byte{}) {
+		return 3
+	}
 	if c.defaultAxis != (types.DefaultAxisBinding{}) {
 		return 2
 	}
 	return 1
 }
 func (c genesisAllocationConfig) semanticContractID() raftlog.ApplicationSemanticContractID {
+	if c.version() == 3 {
+		return partitionWriteSemanticContractID()
+	}
 	if c.version() == 2 {
 		return graphGenesisSemanticContractID()
 	}
@@ -48,18 +54,27 @@ func (c genesisAllocationConfig) validDefaultAxis() bool {
 	return c.version() == 1 || c.defaultAxis.Check(types.GraphID(c.graph), c.defaultAxis.Axis(), temporal.DefaultLimits()) == nil
 }
 func (r declaredInitCommand) version() byte {
+	if r.routing != nil {
+		return 6
+	}
 	if r.defaultAxis != (types.DefaultAxisBinding{}) {
 		return 5
 	}
 	return 4
 }
 func (r declaredInitCommand) semanticContractID() raftlog.ApplicationSemanticContractID {
+	if r.version() == 6 {
+		return partitionWriteSemanticContractID()
+	}
 	if r.version() == 5 {
 		return graphGenesisSemanticContractID()
 	}
 	return declaredSemanticContractID()
 }
 func (g genesisObservation) wireBytes() int {
+	if g.configuration.version() == 3 {
+		return partitionGenesisObservationBytes
+	}
 	if g.configuration.version() == 2 {
 		return graphGenesisObservationBytes
 	}
@@ -67,11 +82,15 @@ func (g genesisObservation) wireBytes() int {
 }
 
 func encodeGraphGenesisConfig(c genesisAllocationConfig) ([]byte, error) {
-	if !c.valid() || c.version() != 2 {
+	if !c.valid() || c.version() < 2 {
 		return nil, errInvalid
 	}
-	return boundedEncoding(graphGenesisConfigBytes, func(w *boundedWriter) {
-		w.add([]byte{'G', 'A', 'C', 2})
+	size := graphGenesisConfigBytes
+	if c.version() == 3 {
+		size = partitionGenesisConfigBytes
+	}
+	return boundedEncoding(size, func(w *boundedWriter) {
+		w.add([]byte{'G', 'A', 'C', c.version()})
 		w.add(c.graph[:])
 		w.u64(c.topology)
 		w.add(c.declaration[:])
@@ -79,15 +98,22 @@ func encodeGraphGenesisConfig(c genesisAllocationConfig) ([]byte, error) {
 		w.u64(c.maxBlock)
 		w.add(c.schemas[:])
 		writeAxis(w, c.defaultAxis.Axis(), defaultMaterializerLimits())
+		if c.version() == 3 {
+			w.add(c.routingDigest[:])
+		}
 	})
 }
 func decodeGraphGenesisConfig(b []byte, graph idalloc.GraphID) (genesisAllocationConfig, error) {
-	body, err := wireBody(b, "GAC\x02", graphGenesisConfigBytes)
+	version, size := byte(2), graphGenesisConfigBytes
+	if len(b) >= 4 && b[3] == 3 {
+		version, size = 3, partitionGenesisConfigBytes
+	}
+	body, err := wireBody(b, string([]byte{'G', 'A', 'C', version}), size)
 	if err != nil {
 		return genesisAllocationConfig{}, err
 	}
 	// Fixed bounded preflight covers the temporary axis strings/hash backing.
-	c := graphCursor{b: body, maxOwnedBytes: genesisCodecMetadataBytes + 8*graphGenesisConfigBytes}
+	c := graphCursor{b: body, maxOwnedBytes: genesisCodecMetadataBytes + 8*partitionGenesisConfigBytes}
 	if !c.charge(genesisCodecMetadataBytes + 8*len(b)) {
 		return genesisAllocationConfig{}, c.err
 	}
@@ -96,11 +122,14 @@ func decodeGraphGenesisConfig(b []byte, graph idalloc.GraphID) (genesisAllocatio
 	cfg.home, cfg.maxBlock = c.u64(), c.u64()
 	copy(cfg.schemas[:], c.take(32))
 	axis := readAxis(&c, defaultMaterializerLimits())
+	if version == 3 {
+		copy(cfg.routingDigest[:], c.take(32))
+	}
 	if c.err != nil || len(c.b) != 0 {
 		return genesisAllocationConfig{}, errors.Join(errCorrupt, c.err)
 	}
 	cfg.defaultAxis, err = types.BindDefaultAxis(types.GraphID(cfg.graph), axis, temporal.DefaultLimits())
-	if err != nil || cfg.graph != graph || !cfg.valid() {
+	if err != nil || cfg.graph != graph || !cfg.valid() || cfg.version() != version {
 		return genesisAllocationConfig{}, errors.Join(errCorrupt, err)
 	}
 	return cfg, nil
@@ -110,8 +139,8 @@ func (m *declaredMaterializer) readGenesisConfig(q *reader) (genesisAllocationCo
 	var wire []byte
 	var found bool
 	var err error
-	if m.SemanticContractID() == graphGenesisSemanticContractID() {
-		wire, found, err = q.getBounded(genesisConfigurationKey(m.ns), graphGenesisConfigBytes)
+	if m.requiresDefaultAxis() {
+		wire, found, err = q.getBounded(genesisConfigurationKey(m.ns), partitionGenesisConfigBytes)
 	} else {
 		wire, found, err = q.get(genesisConfigurationKey(m.ns))
 	}
@@ -123,7 +152,7 @@ func (m *declaredMaterializer) readGenesisConfig(q *reader) (genesisAllocationCo
 	}
 	// Admission precedes nested descriptor reconstruction. Work is cumulative,
 	// distinct from the returned binding's immutable representation.
-	if m.SemanticContractID() == graphGenesisSemanticContractID() {
+	if m.requiresDefaultAxis() {
 		if err := chargeGraphWork(q, graphstore.PageWork{Bytes: genesisCodecMetadataBytes + 8*len(wire)}); err != nil {
 			return genesisAllocationConfig{}, err
 		}
@@ -148,7 +177,7 @@ func (h *allocationHost) PrepareGraphInitialization(partition uint64, attempt bo
 	if binding == (types.DefaultAxisBinding{}) {
 		return allocationProposal{}, errors.Join(errInvalid, types.ErrInvalidGraphIdentity)
 	}
-	return h.prepareInitialization(partition, attempt, schemas, maxBlock, binding, genesis, graphGenesisSemanticContractID())
+	return h.prepareInitialization(partition, attempt, schemas, maxBlock, binding, genesis, graphGenesisSemanticContractID(), nil)
 }
 
 // The new genesis variant preserves V1 descriptor schemas but never admits
@@ -178,6 +207,10 @@ func graphGenesisOuterOutput(r declaredInitCommand, l materializerLimits, base r
 	if err != nil {
 		return 0, err
 	}
+	configBytes := graphGenesisConfigBytes
+	if r.version() == 6 {
+		configBytes = partitionGenesisConfigBytes
+	}
 	return declaredInitDecodeCost(wireBytes, r.declaration.Len(), len(r.schemas)) + cap(base.Image) +
-		4*(graphGenesisConfigBytes+idalloc.CheckpointSize+graphOutcomeBytes) + 4*43 + 64*4, nil
+		4*(configBytes+idalloc.CheckpointSize+graphOutcomeBytes) + 4*43 + 64*4, nil
 }

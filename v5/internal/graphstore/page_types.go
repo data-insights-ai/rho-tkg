@@ -118,6 +118,8 @@ type continuation struct {
 // resolves stable page handles at that immutable MVCC view, not by future-key
 // scans. Close serializes with reads and never closes Catalog or its view.
 type PageReader struct {
+	arena       *graphstate.OutputBudget
+	route       *partitionReadScope
 	mu          sync.Mutex
 	c           *Catalog
 	complete    *fullIndexDescriptor

@@ -38,6 +38,13 @@ func (q *pageReader) checkCanonical(r graphstate.EntityRecord) error {
 	return q.checkCanonicalWithLookup(r, q.hasPostingKey)
 }
 func (q *pageReader) checkCanonicalWithLookup(r graphstate.EntityRecord, lookup postingMembershipLookup) error {
+	if q.q.route != nil {
+		for _, id := range [...]graphstate.EntityID{r.ID, r.Source, r.Target} {
+			if err := q.q.route.owner(q.q, uint64(id)); err != nil {
+				return err
+			}
+		}
+	}
 	d, err := q.fullDescriptor()
 	if err != nil {
 		return err
@@ -129,10 +136,15 @@ func (q *pageReader) rawKey(k graphstate.ComponentKey, cell state.Cell) (posting
 	if definition.Unique == graphstate.UniqueNone {
 		return postingKey{}, false, nil
 	}
+	if q.q.route != nil {
+		if err := q.q.route.unique(q.q, definition, string(wire)); err != nil {
+			return postingKey{}, false, err
+		}
+	}
 	if err := q.q.materialize(len(wire)); err != nil {
 		return postingKey{}, false, err
 	}
-	canonical, found, err := q.q.local(string(wire))
+	canonical, found, err := q.q.canonicalIdentity(string(wire))
 	if err != nil {
 		return postingKey{}, false, err
 	}
@@ -208,7 +220,7 @@ func (q *pageReader) validateRawCandidate(k postingKey, definition graphstate.Pr
 		if err := q.q.materialize(len(wire)); err != nil {
 			return err
 		}
-		normalized, found, err := q.q.local(string(wire))
+		normalized, found, err := q.q.canonicalIdentity(string(wire))
 		if err != nil {
 			return err
 		}

@@ -9,12 +9,14 @@ import (
 	"math"
 	"slices"
 
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 )
 
 type applyPosition struct{ index, generation uint64 }
 type reader struct {
+	arena          *graphstate.OutputBudget
 	ctx            context.Context
 	view           *raftlog.ApplicationView
 	ns             namespace
@@ -56,6 +58,15 @@ func (q *reader) getBounded(key []byte, valueBytes int) ([]byte, bool, error) {
 	}
 	q.rows++
 	maxBytes := min(len(key)+valueBytes, q.limits.readBytes-q.bytes-64, q.view.ReadLimits().Bytes)
+	if q.arena != nil {
+		if err := reserveComposer(q, 128+4*len(key)); err != nil {
+			return nil, false, err
+		}
+		maxBytes = min(maxBytes, q.arena.Remaining()-64)
+		if maxBytes < len(key) {
+			return nil, false, errLimit
+		}
+	}
 	row, found, err := q.view.Get(q.ctx, key, maxBytes)
 	if err != nil {
 		if errors.Is(err, raftlog.ErrLimit) {
@@ -67,6 +78,9 @@ func (q *reader) getBounded(key []byte, valueBytes int) ([]byte, bool, error) {
 	if cost > q.limits.readBytes-q.bytes {
 		return nil, false, errLimit
 	}
+	if err := reserveComposer(q, 64+cap(row.Key)+cap(row.Value)); err != nil {
+		return nil, false, err
+	}
 	q.bytes += cost
 	if found && row.Deleted {
 		return nil, false, errCorrupt
@@ -77,6 +91,20 @@ func (q *reader) put(key, value []byte) error {
 	cost := 2*len(key) + len(value) + 64
 	if len(q.writes) == q.limits.stageRows || cost > q.limits.stageBytes-q.stageBytes {
 		return errLimit
+	}
+	if q.arena != nil {
+		capacity, err := q.arena.ReserveSlice(len(q.writes), cap(q.writes), 64)
+		if err != nil {
+			return outputBudgetFailure(err)
+		}
+		if err := reserveComposer(q, cost); err != nil {
+			return err
+		}
+		if capacity > cap(q.writes) {
+			next := make([]raftlog.KV, len(q.writes), capacity)
+			copy(next, q.writes)
+			q.writes = next
+		}
 	}
 	q.stageBytes += cost
 	q.writes = append(q.writes, raftlog.KV{Key: owned(key), Value: owned(value)})
@@ -350,8 +378,17 @@ func checkEffects(e allocationEffects, l limits, p raftlog.ApplicationPolicy, rl
 	return nil
 }
 func collectEffects(q *reader, o outcome, hash [32]byte, mapRecord bool) (allocationEffects, error) {
+	return collectTypedEffects(q, o, hash, mapRecord, false)
+}
+func collectTypedEffects(q *reader, o outcome, hash [32]byte, mapRecord bool, partition bool) (allocationEffects, error) {
 	o.hash = hash
-	envelope, err := encodeAnyOutcome(o)
+	var envelope []byte
+	var err error
+	if partition {
+		envelope, err = encodeTypedGraphOutcome(o, true)
+	} else {
+		envelope, err = encodeAnyOutcome(o)
+	}
 	if err != nil {
 		return allocationEffects{}, err
 	}

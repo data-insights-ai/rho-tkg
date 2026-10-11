@@ -302,7 +302,9 @@ func TestGuardedStageResourceAndOperationalRefusalsPublishNothing(t *testing.T) 
 			case "source-bytes":
 				l.MaxSourceBytes = opened.Bytes + semanticGuardMetadataBytes + delta
 			case "output":
-				l.MaxOutputBytes = 512 + c.rootImageBytes + semanticGuardWorkBytes + delta
+				// Opening Work includes the borrowed initial root, which owns no
+				// new arena backing. Add retained stager and separate returned Work.
+				l.MaxOutputBytes = opened.Bytes - c.rootImageBytes + 512 + semanticGuardWorkBytes + delta
 			}
 			e, w, err := StageGuardedOperations(t.Context(), c, stale, nil, revision, l)
 			expected := ErrReadConflict
@@ -324,7 +326,16 @@ func TestGuardedStageResourceAndOperationalRefusalsPublishNothing(t *testing.T) 
 	guardOnlyBytes := opened.Bytes + semanticGuardMetadataBytes
 	for _, l := range []GraphLimits{{MaxSourceBytes: guardOnlyBytes}, {Pages: PageLimits{MaxChangeBytes: 1}}, {MaxOutputBytes: 1024}} {
 		e, w, err := StageGuardedOperations(t.Context(), c, g, []graphstate.Operation{{Kind: graphstate.AddLabel, Owner: 1, Life: 11, Scope: scope, Name: "late"}}, revision, l)
-		if !errors.Is(err, ErrResourceLimit) || !reflect.DeepEqual(e, GraphEffects{}) || w.Records < opened.Records || w.Bytes < opened.Bytes {
+		if !errors.Is(err, ErrResourceLimit) || !reflect.DeepEqual(e, GraphEffects{}) {
+			t.Fatal(e, w, err)
+		}
+		if l.MaxOutputBytes == 1024 {
+			// This cap refuses the checked opener itself. Its documented error
+			// result has unavailable (zero) Work, rather than invented open work.
+			if w != (PageWork{}) {
+				t.Fatal("failed aggregate open invented work", w)
+			}
+		} else if w.Records < opened.Records || w.Bytes < opened.Bytes {
 			t.Fatal(e, w, err)
 		}
 		if l.MaxSourceBytes == guardOnlyBytes && (w.Records != opened.Records || w.Bytes != guardOnlyBytes) {

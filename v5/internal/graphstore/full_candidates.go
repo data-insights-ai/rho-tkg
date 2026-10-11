@@ -21,7 +21,13 @@ func (q *pageReader) queryScope(scope temporal.Scope) ([]byte, error) {
 	}
 	l := q.q.c.limits.Temporal
 	l.MaxValueBytes = min(l.MaxValueBytes, (available-128)/2)
-	wire, err := temporal.AppendScope(nil, scope, l)
+	var wire []byte
+	var err error
+	if q.q.arena != nil {
+		wire, err = q.q.arena.ScopeBytes(scope, l)
+	} else {
+		wire, err = temporal.AppendScope(nil, scope, l)
+	}
 	if err != nil {
 		return nil, callerError(err)
 	}
@@ -111,6 +117,11 @@ func (v *ReadView) UniqueCandidates(ctx context.Context, predicate graphstate.Un
 	if err != nil {
 		return graphstate.ClaimPage{}, v.finish(q, err)
 	}
+	if v.route != nil {
+		if err := v.route.unique(q.q, definition, equality); err != nil {
+			return graphstate.ClaimPage{}, v.finish(q, err)
+		}
+	}
 	window, err := q.queryScope(predicate.Window)
 	if err != nil {
 		return graphstate.ClaimPage{}, v.finish(q, err)
@@ -132,7 +143,7 @@ func (v *ReadView) UniqueCandidates(ctx context.Context, predicate graphstate.Un
 	if err != nil {
 		return graphstate.ClaimPage{}, v.finish(q, err)
 	}
-	canonical, found, err := q.q.local(equality)
+	canonical, found, err := q.q.canonicalIdentity(equality)
 	if err != nil {
 		return graphstate.ClaimPage{}, v.finish(q, err)
 	}
@@ -227,6 +238,11 @@ func (v *ReadView) IncidentRelationships(ctx context.Context, predicate graphsta
 	}
 	if err := q.q.materialize(256); err != nil {
 		return graphstate.EntityPage{}, v.finish(q, err)
+	}
+	if v.route != nil {
+		if err := v.route.owner(q.q, uint64(predicate.Endpoint)); err != nil {
+			return graphstate.EntityPage{}, v.finish(q, err)
+		}
 	}
 	window, err := q.queryScope(predicate.Window)
 	if err != nil {

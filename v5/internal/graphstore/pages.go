@@ -491,9 +491,24 @@ func (p *PageReader) Close() error {
 	return nil
 }
 func (p *PageReader) queryHash(query graphstate.ComponentQuery) ([32]byte, error) {
+	if p.arena != nil {
+		if err := p.arena.Reserve(256 + 2*len(query.Key.Name)); err != nil {
+			return [32]byte{}, callerError(err)
+		}
+	}
 	b := appendComponent(append([]byte("rho-component-query:v1\x00"), p.id[:]...), query.Key)
 	var err error
-	b, err = appendScopeField(b, query.Window, p.c.limits.Temporal)
+	if p.arena != nil {
+		var wire []byte
+		wire, err = p.arena.ScopeBytes(query.Window, p.c.limits.Temporal)
+		if err == nil {
+			if err = p.arena.Reserve(2 * len(wire)); err == nil {
+				b = appendField(b, wire)
+			}
+		}
+	} else {
+		b, err = appendScopeField(b, query.Window, p.c.limits.Temporal)
+	}
 	if err != nil {
 		return [32]byte{}, callerError(err)
 	}
@@ -510,7 +525,7 @@ func (q *pageReader) fitPage(s state.State, w temporal.Scope, budget graphstate.
 		if err != nil {
 			return state.State{}, false, err
 		}
-		wire, err := temporal.AppendScope(nil, w, q.q.c.limits.Temporal)
+		wire, err := q.scopeWire(w)
 		if err != nil {
 			return state.State{}, false, err
 		}
@@ -594,14 +609,20 @@ func (p *PageReader) ComponentPage(ctx context.Context, query graphstate.Compone
 		}
 		remaining = old.remaining
 	}
-	base, err := p.c.reader(ctx)
+	base, err := p.c.readerWithOutputBudget(ctx, p.arena)
 	if err != nil {
 		return graphstate.ComponentPage{}, err
 	}
 	base.maxRows, base.maxBytes = p.limits.MaxWorkRecords, p.limits.MaxWorkBytes
 	base.fullView = p.complete
+	base.route = p.route
 	q := pageReader{q: base, limits: p.limits}
 	defer func() { _ = q.budget(); p.last = q.work }()
+	if p.route != nil {
+		if err := p.route.owner(base, uint64(query.Key.Owner)); err != nil {
+			return graphstate.ComponentPage{}, err
+		}
+	}
 	m, found, err := q.readMeta(query.Key)
 	if err != nil {
 		return graphstate.ComponentPage{}, p.c.failure(err)
@@ -661,7 +682,7 @@ func (p *PageReader) ComponentPage(ctx context.Context, query graphstate.Compone
 	next := graphstate.Cursor(0)
 	cost := 0
 	if !complete {
-		wire, err := temporal.AppendScope(nil, rest, p.c.limits.Temporal)
+		wire, err := q.scopeWire(rest)
 		if err != nil {
 			return graphstate.ComponentPage{}, callerError(err)
 		}

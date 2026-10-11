@@ -24,6 +24,19 @@ func mutationScope(s temporal.Scope, l Limits) error {
 // immutable graph view. It retains only touched windows, never graph/history
 // snapshots. Storage must validate every dependency before atomic installation.
 func Plan(ctx context.Context, v ReadView, ops []Operation, revision state.Revision, l Limits) (Delta, error) {
+	return planWithOutputBudget(ctx, v, ops, revision, l, nil)
+}
+
+// PlanWithOutputBudget retains Plan semantics while sharing one explicit
+// consumptive representation allowance with its embedding reader/stager.
+// Nil is invalid; this entrypoint never silently selects legacy opt-out behavior.
+func PlanWithOutputBudget(ctx context.Context, v ReadView, ops []Operation, revision state.Revision, l Limits, budget *OutputBudget) (Delta, error) {
+	if budget == nil {
+		return Delta{}, ErrInvalidInput
+	}
+	return planWithOutputBudget(ctx, v, ops, revision, l, budget)
+}
+func planWithOutputBudget(ctx context.Context, v ReadView, ops []Operation, revision state.Revision, l Limits, budget *OutputBudget) (Delta, error) {
 	l, err := l.resolve()
 	if err != nil {
 		return Delta{}, err
@@ -31,8 +44,37 @@ func Plan(ctx context.Context, v ReadView, ops []Operation, revision state.Revis
 	if len(ops) > l.MaxOperations {
 		return Delta{}, ErrResourceLimit
 	}
+	if budget != nil {
+		if ctx == nil {
+			return Delta{}, ErrInvalidInput
+		}
+		if err := ctx.Err(); err != nil {
+			return Delta{}, err
+		}
+		if nilProvider(v) {
+			return Delta{}, ErrNilView
+		}
+		if err := budget.Reserve(1536); err != nil {
+			return Delta{}, err
+		}
+	}
 	for _, op := range ops {
-		if err := mutationScope(op.Scope, l); err != nil {
+		var scopeErr error
+		if budget == nil {
+			scopeErr = mutationScope(op.Scope, l)
+		} else {
+			switch op.Scope.Kind() {
+			case temporal.ScopeInvalid:
+				scopeErr = ErrValidityRequired
+			case temporal.ScopeEmpty:
+				scopeErr = ErrEmptyMutation
+			case temporal.ScopeUnplaced:
+				scopeErr = ErrUnsupported
+			default:
+				_, scopeErr = budget.ScopeBytes(op.Scope, l.Component.Temporal)
+			}
+		}
+		if err := scopeErr; err != nil {
 			return Delta{}, err
 		}
 		if op.Owner == 0 || op.Life == 0 || op.Kind < CreateNode || op.Kind > Remove {
@@ -61,6 +103,7 @@ func Plan(ctx context.Context, v ReadView, ops []Operation, revision state.Revis
 	if err != nil {
 		return Delta{}, err
 	}
+	e.budget = budget
 	for _, op := range ops {
 		if err := e.check(); err != nil {
 			return Delta{}, err
@@ -217,6 +260,21 @@ func (e *engine) create(op Operation) error {
 	if err := e.output(entityBytes(record)); err != nil {
 		return err
 	}
+	if e.budget != nil {
+		capacity, err := e.budget.ReserveSlice(len(e.delta.Entities), cap(e.delta.Entities), outputEntitySlotBytes)
+		if err != nil {
+			return err
+		}
+		if capacity > cap(e.delta.Entities) {
+			out := make([]EntityRecord, len(e.delta.Entities), capacity)
+			copy(out, e.delta.Entities)
+			e.delta.Entities = out
+		}
+		e.entitySlots, err = e.budget.ReserveMap(len(e.entities), e.entitySlots, outputEntityMapSlotBytes)
+		if err != nil {
+			return err
+		}
+	}
 	e.entities[op.Owner] = record
 	e.delta.Entities = append(e.delta.Entities, record)
 	return e.newLife(record, op)
@@ -241,6 +299,21 @@ func (e *engine) newLife(owner EntityRecord, op Operation) error {
 	}
 	if err := e.output(32); err != nil {
 		return err
+	}
+	if e.budget != nil {
+		capacity, err := e.budget.ReserveSlice(len(e.delta.Lives), cap(e.delta.Lives), outputLifeSlotBytes)
+		if err != nil {
+			return err
+		}
+		if capacity > cap(e.delta.Lives) {
+			out := make([]LifeRecord, len(e.delta.Lives), capacity)
+			copy(out, e.delta.Lives)
+			e.delta.Lives = out
+		}
+		e.lifeSlots, err = e.budget.ReserveMap(len(e.lives), e.lifeSlots, outputLifeMapSlotBytes)
+		if err != nil {
+			return err
+		}
 	}
 	e.lives[lifeKey{owner.ID, op.Life}] = binding
 	e.delta.Lives = append(e.delta.Lives, binding)

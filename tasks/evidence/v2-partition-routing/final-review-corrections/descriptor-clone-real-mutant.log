@@ -1,0 +1,8 @@
+=== RUN   TestFinalReviewDescriptorScalarCloneRequiresFreshBackingAdmission
+2026/10/11 02:09:54 Found 0 WALs
+    full_stage_nine_operation_budget_test.go:349: descriptor decode missing independent fresh owner: used=526539 keyFloor=526539 backing=5776 err=<nil>
+--- FAIL: TestFinalReviewDescriptorScalarCloneRequiresFreshBackingAdmission (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v5/internal/graphstore	0.338s
+FAIL
+limit: {"command": ["go", "test", "-count=1", "-timeout=150s", "-v", "./internal/graphstore", "-run", "^TestFinalReviewDescriptorScalarCloneRequiresFreshBackingAdmission$"], "rss_limit_mib": 4096.0, "wall_limit_s": 180.0, "sample_interval_s": 0.25, "peak_tree_rss_mib": 536.719, "elapsed_s": 3.596, "exit_code": 1, "reason": "command-failed"}

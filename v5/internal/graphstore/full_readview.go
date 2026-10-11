@@ -32,6 +32,8 @@ type ReadView struct {
 	work                     PageWork
 	currentWork              currentPresenceTreeWork
 	closed                   bool
+	route                    *partitionReadScope
+	arena                    *graphstate.OutputBudget
 }
 type fullContinuation struct {
 	kind         recordKind
@@ -48,7 +50,10 @@ var _ graphstate.ReadView = (*ReadView)(nil)
 // OpenReadView refuses primitive/KeysOnly roots. Full coverage binds actual
 // validated tree roots and immutable schema/canonical dictionary namespaces.
 // Initialization and every read consume the same aggregate source ledger.
-func OpenReadView(ctx context.Context, c *Catalog, l GraphLimits) (view *ReadView, err error) {
+func OpenReadView(ctx context.Context, c *Catalog, l GraphLimits) (*ReadView, error) {
+	return openReadViewWithOutputBudget(ctx, c, l, nil)
+}
+func openReadViewWithOutputBudget(ctx context.Context, c *Catalog, l GraphLimits, arena *graphstate.OutputBudget) (view *ReadView, err error) {
 	if c == nil || ctx == nil {
 		return nil, ErrInvalid
 	}
@@ -62,6 +67,12 @@ func OpenReadView(ctx context.Context, c *Catalog, l GraphLimits) (view *ReadVie
 	if c.root.hasOwnershipDeclaration() || !isFullTopology(c.root.topology) {
 		return nil, ErrTopologyUnsupported
 	}
+	return openFullStorageReadViewBudget(ctx, c, l, arena)
+}
+
+// openFullStorageReadView shares storage opening only. Its public callers prove
+// either GR2 completeness or a same-view checked routing scope before entry.
+func openFullStorageReadViewBudget(ctx context.Context, c *Catalog, l GraphLimits, arena *graphstate.OutputBudget) (view *ReadView, err error) {
 	// Charge the retained descriptor/limits/base image/page-reader/map headers.
 	c.mu.Lock()
 	if c.fullViews >= c.limits.MaxStages || fullViewMetadataBytes+c.rootImageBytes > c.limits.MaxReadBytes-c.fullViewBytes {
@@ -83,7 +94,7 @@ func OpenReadView(ctx context.Context, c *Catalog, l GraphLimits) (view *ReadVie
 	if l.MaxSourceBytes < c.rootImageBytes+fullViewMetadataBytes || l.MaxSourceRows < 5 {
 		return nil, ErrResourceLimit
 	}
-	q, err := c.reader(ctx)
+	q, err := c.readerWithOutputBudget(ctx, arena)
 	if err != nil {
 		return nil, err
 	}
@@ -116,9 +127,9 @@ func OpenReadView(ctx context.Context, c *Catalog, l GraphLimits) (view *ReadVie
 		return nil, err
 	}
 	id := fullViewIdentity(c.root.namespace, wire, base)
-	pages := &PageReader{c: c, limits: l.Pages, id: id, index: base.Index, cursors: make(map[graphstate.Cursor]continuation), complete: &d}
+	pages := &PageReader{arena: arena, c: c, limits: l.Pages, id: id, index: base.Index, cursors: make(map[graphstate.Cursor]continuation), complete: &d}
 	_ = p.budget()
-	view = &ReadView{c: c, limits: l, descriptor: d, base: base, id: id, pages: pages, cursors: make(map[graphstate.Cursor]fullContinuation), work: p.work, handleBytes: fullViewMetadataBytes + cap(base.Image)}
+	view = &ReadView{arena: arena, c: c, limits: l, descriptor: d, base: base, id: id, pages: pages, cursors: make(map[graphstate.Cursor]fullContinuation), work: p.work, handleBytes: fullViewMetadataBytes + cap(base.Image)}
 	success = true
 	return view, nil
 }
@@ -191,6 +202,8 @@ func (v *ReadView) Close() error {
 	v.cursors = nil
 	v.cursorBytes = 0
 	v.base.Image = nil
+	v.route = nil
+	v.pages.route = nil
 	v.c.mu.Lock()
 	v.c.fullViews--
 	v.c.fullViewBytes -= v.handleBytes
@@ -234,6 +247,8 @@ func (v *ReadView) begin(ctx context.Context, budget graphstate.ReadBudget) (*pa
 	}
 	q.maxRows, q.maxBytes = rows, bytes
 	q.fullView = &v.descriptor
+	q.route = v.route
+	q.arena = v.arena
 	if err := q.materialize(0); err != nil {
 		return nil, err
 	}
@@ -388,7 +403,7 @@ func (v *ReadView) ValueIdentity(ctx context.Context, value graphstate.Scalar) (
 	var entry ValueEntry
 	found := false
 	if err == nil {
-		entry, found, err = q.q.local(key)
+		entry, found, err = q.q.canonicalIdentity(key)
 	}
 	cost := fullValueOutputBytes
 	if err == nil && found {
@@ -428,7 +443,13 @@ func (q *pageReader) equalityKey(value graphstate.Scalar) (string, error) {
 			return "", ErrResourceLimit
 		}
 	}
-	key, err := value.EqualityKey(l)
+	var key string
+	var err error
+	if q.q.arena != nil {
+		key, err = q.q.arena.ScalarKey(value, l)
+	} else {
+		key, err = value.EqualityKey(l)
+	}
 	if err != nil {
 		return "", callerError(err)
 	}
@@ -458,7 +479,13 @@ func (v *ReadView) ComponentPage(ctx context.Context, query graphstate.Component
 	}
 	l := v.c.limits.Temporal
 	l.MaxValueBytes = min(l.MaxValueBytes, max(1, (available-v.c.rootImageBytes-128-2*len(query.Key.Name))/2))
-	fingerprint, err := temporal.AppendScope(nil, query.Window, l)
+	var fingerprint []byte
+	var err error
+	if v.arena != nil {
+		fingerprint, err = v.arena.ScopeBytes(query.Window, l)
+	} else {
+		fingerprint, err = temporal.AppendScope(nil, query.Window, l)
+	}
 	if err != nil {
 		return graphstate.ComponentPage{}, callerError(err)
 	}
@@ -484,6 +511,7 @@ func (v *ReadView) ComponentPage(ctx context.Context, query graphstate.Component
 	}
 	budget.Bytes = outputLimit
 	old, hadOld := v.pages.cursors[token]
+	v.pages.arena = v.arena
 	result, err := v.pages.ComponentPage(ctx, query, token, budget)
 	v.work = addWork(v.work, v.pages.LastWork())
 	if err != nil {
@@ -500,7 +528,13 @@ func (v *ReadView) ComponentPage(ctx context.Context, query graphstate.Component
 			v.pages.cursorBytes += old.bytes
 		}
 	}
-	wire, e := temporal.AppendScope(nil, result.Owned, v.c.limits.Temporal)
+	var wire []byte
+	var e error
+	if v.arena != nil {
+		wire, e = v.arena.ScopeBytes(result.Owned, v.c.limits.Temporal)
+	} else {
+		wire, e = temporal.AppendScope(nil, result.Owned, v.c.limits.Temporal)
+	}
 	if e != nil {
 		rollback()
 		return graphstate.ComponentPage{}, v.c.failure(e)
@@ -588,6 +622,11 @@ func (v *ReadView) ComponentKeys(ctx context.Context, predicate graphstate.KeyPr
 	}
 	if err := q.q.materialize(scratch + 256 + v.c.limits.MaxNameBytes); err != nil {
 		return graphstate.KeyPage{}, v.finish(q, err)
+	}
+	if v.route != nil {
+		if err := v.route.owner(q.q, uint64(predicate.Owner)); err != nil {
+			return graphstate.KeyPage{}, v.finish(q, err)
+		}
 	}
 	root, err := q.componentKeyTreeRoot(v.descriptor.keys, keyTreeLimits(q.limits))
 	if err != nil {

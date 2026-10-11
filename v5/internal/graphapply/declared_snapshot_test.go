@@ -29,7 +29,7 @@ func newDeclaredDiskGroup(t *testing.T, d graphstore.OwnershipDeclaration, parti
 	}
 	g := &declaredTestGroup{t: t, declaration: d, ns: namespace{graph: idalloc.GraphID(d.Graph()), partition: partition}}
 	directory := t.TempDir()
-	if agreement == graphGenesisSemanticContractID() {
+	if agreement == graphGenesisSemanticContractID() || agreement == partitionWriteSemanticContractID() {
 		var err error
 		directory, err = os.MkdirTemp("", "rho-v5-graph-genesis-disk-")
 		if err != nil {

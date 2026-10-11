@@ -1,6 +1,7 @@
 package graphstore
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"errors"
 	"reflect"
@@ -610,14 +611,51 @@ func TestFullEffectOwnedBytesExactBoundaryAndSharedBuffers(t *testing.T) {
 		t.Fatal("CDC sharing contract changed")
 	}
 	measured := out.OwnedBytes
-	refused, err := StageOperations(t.Context(), c, ops, revision, GraphLimits{MaxOutputBytes: measured - 1})
-	if !errors.Is(err, ErrResourceLimit) || !reflect.DeepEqual(refused, GraphEffects{}) || c.fullViews != 0 || c.stages != 0 {
-		t.Fatal("one-short owned output published graph effects", refused, err)
+	if measured != 17211 {
+		t.Fatal("retained effect representation changed", measured)
 	}
-	exact, err := StageOperations(t.Context(), c, ops, revision, GraphLimits{MaxOutputBytes: measured})
-	if err != nil || exact.OwnedBytes != measured {
-		t.Fatal("exact retained-output allowance refused", exact.OwnedBytes, measured, err)
+	// OwnedBytes describes the returned shared effects. The aggregate allowance
+	// additionally admits input originals, planner/normalization and read scratch.
+	// Calibrate the API cliff within unchanged defaults, independently requiring
+	// the retained effects plus known input/engine/opening owners to fit.
+	lowerBound := measured + 640*len(ops) + 1536 + fullViewMetadataBytes
+	lo, hi := 1, DefaultGraphLimits().MaxOutputBytes
+	for lo < hi {
+		mid := lo + (hi-lo)/2
+		candidate, err := StageOperations(t.Context(), c, ops, revision, GraphLimits{MaxOutputBytes: mid})
+		if errors.Is(err, ErrResourceLimit) {
+			lo = mid + 1
+		} else if err != nil {
+			t.Fatal("unexpected cliff error", err)
+		} else {
+			if !reflect.DeepEqual(candidate, out) {
+				t.Fatal("calibration changed exact effects")
+			}
+			hi = mid
+		}
 	}
+	if lo < lowerBound {
+		t.Fatal("aggregate admitted less than independent retained owners", lo, lowerBound)
+	}
+	beforeIndex, beforeImage, err := f.db.Checkpoint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, delta := range []int{-1, 0, 1} {
+		actual, err := StageOperations(t.Context(), c, ops, revision, GraphLimits{MaxOutputBytes: lo + delta})
+		if delta < 0 {
+			if !errors.Is(err, ErrResourceLimit) || !reflect.DeepEqual(actual, GraphEffects{}) {
+				t.Fatal("one-short aggregate published", actual, err)
+			}
+		} else if err != nil || !reflect.DeepEqual(actual, out) {
+			t.Fatal("fitting aggregate changed complete effects", err)
+		}
+		index, image, err := f.db.Checkpoint()
+		if err != nil || index != beforeIndex || !bytes.Equal(image, beforeImage) || c.fullViews != 0 || c.stages != 0 {
+			t.Fatal("cliff published or leaked", err)
+		}
+	}
+	t.Logf("retained effects=%d independent owner floor=%d calibrated aggregate cliff=%d", measured, lowerBound, lo)
 }
 
 func TestFullStageAndInitializerResourceFailuresLeaveNoPrivateState(t *testing.T) {

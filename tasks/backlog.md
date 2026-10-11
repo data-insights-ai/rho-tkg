@@ -133,13 +133,30 @@ pass; final combined coverage is 88.7%, every changed production file exceeds
 80%, and all three new public helpers have direct tests. The additive registered
 intent codecs remain inert. This checkpoint grants no graph-write or certified-cut
 authority and does not close V2.
+Hosted [CI run 38076813365](https://github.com/data-insights-ai/rho-tkg/actions/runs/38076813365)
+passes on `55dc0e30`, including both modules' race, security and coverage jobs;
+push-only lint is skipped there and covered by the pinned local run above.
 
 V2 completion sequence: one implementation package at a time, independently
 reviewed and validated before the next package starts.
 
 1. Enable checked partition-local graph staging. Durable default-axis designation
    and replicated recovery are accepted above; graph writes remain unavailable
-   on declared partitions until this next package passes its own tests.
+   on declared partitions until this next package passes its own tests. The
+   package includes HOME-published ID-range ownership, authoritative typed-value
+   and predicate routing, and all-local read/write coverage as specified in
+   PLAN §5.1. This package closes only when all of the following are verified:
+   actual typed writes on both partitions of one GraphID; exact canonical,
+   declared and current-presence indexes plus complete ordered CDC; all nine
+   dependency kinds with unknown/remote/stale/corrupt authority refusals and
+   no partial effects; shared consumptive representation admission through
+   request ownership, routing, planning, staging, composition and round mapping
+   without widening existing caps; retained mutation-then-historical reads,
+   six-voter disk reopen and nonempty snapshot/failover; author normal/race/
+   coverage and pinned static/security gates, followed by independent review
+   and validation of the frozen package. A local miss is insufficient evidence
+   of global absence. Passing a focused checkpoint alone does not close this
+   package; distributed transactions and certified cuts remain steps 2–4.
 2. Integrate actual graph dependencies and complete effects with durable
    prepare/decision/resolve. The acceptance fixture is one GraphID, two declared
    partitions, three replicas each, remotely owned endpoints and one cross-edge

@@ -538,6 +538,46 @@ global uniqueness and remote endpoint lives add participants when needed.
 Graph cuts and high-degree vertices have unavoidable communication/skew costs;
 the benchmark includes them rather than assuming perfect locality.
 
+Initial primary placement is published explicitly with ID-block allocation.
+The allocation HOME atomically records the actual reserved inclusive range,
+its stable range identity, initial partition and ownership epoch, together with
+the grant and allocator state. The recipient installs that exact publication
+from a completed HOME observation. A paged lookup may seek the first inclusive
+upper bound at or above an ID, but must also check the lower bound. A missing
+local range means routing is unknown or remote; it never proves global absence.
+This requires neither skipped ID blocks nor a request to HOME for each object.
+Grant provenance and current range ownership are separate records: writes
+validate current ownership and fencing, while later moves retain IDs and range
+lineage. Allocation alone cannot reactivate a fenced former owner.
+
+The logical routing keys are separate from physical catalog keys:
+
+| Logical data or predicate | Routing identity |
+|---|---|
+| Entity, its lives and components, including absent keys and prefixes | Entity ID's current published range; a life number does not select a partition |
+| Value ID definition | Value ID's current published range |
+| Non-default native axis definition | Explicit immutable-descriptor bucket keyed by AxisID; the complete definition must match |
+| Exact typed value identity | Explicit versioned identity bucket over the full typed equality key, mapping to a canonical global ValueID |
+| Global unique claim | Owner kind, property name, scalar type and exact typed equality key in an explicit versioned claim bucket |
+| Incoming/outgoing incidence | Endpoint ID's current range; the relationship primary retains its own owner |
+
+Hashing locates an identity/claim bucket; exact typed bytes decide equality.
+The default axis and property schema remain bound to common immutable genesis.
+Other native axes add a descriptor-registration/read dependency to the storage
+footprint; partition-local descriptor copies alone cannot authorize a binding.
+Routing by AxisID makes conflicting definitions meet at the same authority.
+Preservation-only descriptor payloads remain opaque data.
+Partition-local value aliases and collision chains are physical backing, not
+authority for global absence or uniqueness. Bucket definitions and initial
+owners are bound to graph genesis, with explicit epochs for later changes.
+Candidate postings may refer to remote primary records, whose validation must
+use the corresponding authoritative read. Before taking the local commit path,
+derive and validate the complete read/write footprint, including empty
+intersected ranges and all secondary effects. A required remote participant
+must enter the distributed protocol; an unavailable integration refuses rather
+than treating a local result as complete. These are V2 implementation contracts,
+not evidence that the distributed graph path has passed acceptance.
+
 Consensus, transactions and read-cut certification are separate mechanisms.
 Use an established Raft implementation behind explicit log/VFS/transport seams;
 do not implement a new consensus protocol. Raft by itself does not make a

@@ -67,7 +67,11 @@ func subset(a, b temporal.Scope, l temporal.Limits) (bool, error) {
 func (e *engine) component(key ComponentKey, window temporal.Scope) ([]ComponentPage, error) {
 	t := newTracker()
 	out := []ComponentPage{}
-	coverage := ownedCursor{parts: window.Parts()}
+	parts, err := e.parts(window)
+	if err != nil {
+		return nil, err
+	}
+	coverage := ownedCursor{parts: parts}
 	for {
 		if e.pages >= e.limits.MaxPages {
 			return nil, ErrResourceLimit
@@ -85,12 +89,17 @@ func (e *engine) component(key ComponentKey, window temporal.Scope) ([]Component
 		if page.Owned.Kind() == temporal.ScopeEmpty || page.Owned.Kind() == temporal.ScopeInvalid || page.Owned.Kind() == temporal.ScopeUnplaced {
 			return nil, ErrIncompleteRead
 		}
-		wire, err := temporal.AppendScope(nil, page.Owned, e.limits.Component.Temporal)
+		wire, err := e.scopeWire(page.Owned)
 		if err != nil {
 			return nil, err
 		}
 		if _, err := sameAxes(page.Owned.Axis(), window.Axis(), e.limits); err != nil {
 			return nil, err
+		}
+		if e.budget != nil {
+			if err := e.budget.ReserveScope(page.Owned, e.limits.Component.Temporal); err != nil {
+				return nil, err
+			}
 		}
 		if err := coverage.consume(page.Owned, e.limits.Component.Temporal); err != nil {
 			return nil, err
@@ -108,7 +117,15 @@ func (e *engine) component(key ComponentKey, window temporal.Scope) ([]Component
 		if _, err := dataAxis.Overlaps(page.Owned, e.limits.Component.Temporal); err != nil {
 			return nil, err
 		}
-		pieces := page.Data.Pieces()
+		if e.budget != nil {
+			if err := e.budget.ReserveState(page.Data); err != nil {
+				return nil, err
+			}
+		}
+		pieces, err := e.pieces(page.Data)
+		if err != nil {
+			return nil, err
+		}
 		bytes := page.Data.Usage().MetadataBytes() + len(wire)
 		for _, piece := range pieces {
 			if (key.Kind == Label || key.Kind == SetMember) && piece.Cell().Present() && !piece.Cell().Value().IsNull() {
@@ -116,6 +133,14 @@ func (e *engine) component(key ComponentKey, window temporal.Scope) ([]Component
 			}
 			if key.Kind == Presence && piece.Cell().Present() && (piece.Cell().Value().IsNull() || piece.Cell().Value().ID() == 0 || piece.Cell().Value().PayloadBytes() != 0) {
 				return nil, ErrContradictoryRead
+			}
+			if e.budget != nil {
+				if err := e.budget.ReserveScope(piece.Scope(), e.limits.Component.Temporal); err != nil {
+					return nil, err
+				}
+				if err := e.budget.ReserveScope(page.Owned, e.limits.Component.Temporal); err != nil {
+					return nil, err
+				}
 			}
 			ok, err := subset(piece.Scope(), page.Owned, e.limits.Component.Temporal)
 			if err != nil {
@@ -146,7 +171,7 @@ func (e *engine) component(key ComponentKey, window temporal.Scope) ([]Component
 				if common.Kind() == temporal.ScopeEmpty {
 					continue
 				}
-				result, err := applyCell(current, common, change.After(), e.limits.Component)
+				result, err := e.reduce(current, common, change.After())
 				if err != nil {
 					return nil, err
 				}
@@ -154,6 +179,17 @@ func (e *engine) component(key ComponentKey, window temporal.Scope) ([]Component
 			}
 		}
 		page.Data = current
+		if e.budget != nil {
+			capacity, err := e.budget.ReserveSlice(len(out), cap(out), 512)
+			if err != nil {
+				return nil, err
+			}
+			if capacity > cap(out) {
+				next := make([]ComponentPage, len(out), capacity)
+				copy(next, out)
+				out = next
+			}
+		}
 		out = append(out, page)
 		if err := e.next(&t, page.Next, page.Complete); err != nil {
 			return nil, err
@@ -247,6 +283,9 @@ func (e *engine) mutate(key ComponentKey, scope temporal.Scope, value state.Valu
 	}
 	for _, page := range pages {
 		var result state.Result
+		if err = e.reserveReduction(page.Data, page.Owned); err != nil {
+			return err
+		}
 		if present {
 			result, err = page.Data.Set(page.Owned, value, e.revision, e.limits.Component)
 		} else {
@@ -255,12 +294,28 @@ func (e *engine) mutate(key ComponentKey, scope temporal.Scope, value state.Valu
 		if err != nil {
 			return err
 		}
+		if e.budget != nil {
+			if err = e.budget.Reserve(384 * result.ChangeUsage().Pieces()); err != nil {
+				return err
+			}
+		}
 		changes := result.Changes()
 		if len(changes) == 0 {
 			continue
 		}
 		if err := e.output(result.State().Usage().MetadataBytes() + result.ChangeUsage().MetadataBytes()); err != nil {
 			return err
+		}
+		if e.budget != nil {
+			capacity, err := e.budget.ReserveSlice(len(e.delta.Patches), cap(e.delta.Patches), 512)
+			if err != nil {
+				return err
+			}
+			if capacity > cap(e.delta.Patches) {
+				next := make([]ComponentPatch, len(e.delta.Patches), capacity)
+				copy(next, e.delta.Patches)
+				e.delta.Patches = next
+			}
 		}
 		e.delta.Patches = append(e.delta.Patches, ComponentPatch{key, page.Owned, result.State(), changes})
 	}
@@ -273,7 +328,11 @@ func (e *engine) presence(owner EntityID, scope temporal.Scope, life LifeID, vac
 	}
 	for _, page := range pages {
 		matching := []temporal.Scope{}
-		for _, piece := range page.Data.Pieces() {
+		pieces, err := e.pieces(page.Data)
+		if err != nil {
+			return err
+		}
+		for _, piece := range pieces {
 			if !piece.Cell().Present() {
 				continue
 			}
@@ -285,6 +344,11 @@ func (e *engine) presence(owner EntityID, scope temporal.Scope, life LifeID, vac
 			}
 			if LifeID(piece.Cell().Value().ID()) != life {
 				continue
+			}
+			if e.budget != nil {
+				if err := e.budget.Reserve(512); err != nil {
+					return err
+				}
 			}
 			matching = append(matching, piece.Scope())
 		}

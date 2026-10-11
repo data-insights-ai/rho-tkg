@@ -2038,7 +2038,7 @@
   "schema_version": 1,
   "scope": "independent finite mathematical/declarative reference validation; no production, performance, process-kill or full V0/V1/V2 claims",
   "source_contract_sha256": {
-    "../../PLAN.md": "faeefeaf8c5a0cda7b6c26a30f693b75278661853c48ead0515de75544d799ec",
+    "../../PLAN.md": "1a0cece15f606d82c0528b4e8b7c62877aae6cded712c5c8633761573e24f53b",
     "../substrate-evaluation.json": "67e67b3e68741e725a180d2395d2f019341a37c04b41ae8cf57d8887dc4ea935",
     "../temporal-fixtures.json": "0598d593bd39ccf95ea2737bb55b0358631cfc6009a03f35b8f39101a7a4f6f2"
   }

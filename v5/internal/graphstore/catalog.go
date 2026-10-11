@@ -93,7 +93,7 @@ func (c *Catalog) failure(err error) error {
 	if errors.Is(err, raftlog.ErrLimit) || errors.Is(err, temporal.ErrResourceLimit) || errors.Is(err, graphstate.ErrResourceLimit) || errors.Is(err, state.ErrResourceLimit) {
 		return errors.Join(ErrResourceLimit, err)
 	}
-	if errors.Is(err, ErrInvalid) || errors.Is(err, ErrNamespace) || errors.Is(err, ErrRebinding) || errors.Is(err, ErrResourceLimit) || errors.Is(err, ErrTopologyUnsupported) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, raftlog.ErrClosed) || errors.Is(err, ErrClosed) {
+	if errors.Is(err, ErrInvalid) || errors.Is(err, ErrNamespace) || errors.Is(err, ErrRebinding) || errors.Is(err, ErrResourceLimit) || errors.Is(err, ErrTopologyUnsupported) || errors.Is(err, ErrRoutingUnknown) || errors.Is(err, ErrRemoteParticipant) || errors.Is(err, ErrStaleOwner) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, raftlog.ErrClosed) || errors.Is(err, ErrClosed) {
 		return err
 	}
 	c.mu.Lock()
@@ -113,6 +113,9 @@ func (c *Catalog) Root() (Root, error) {
 }
 
 type reader struct {
+	arena             *graphstate.OutputBudget
+	pendingSlots      int
+	route             *partitionReadScope
 	c                 *Catalog
 	ctx               context.Context
 	stage             *Stage
@@ -126,13 +129,16 @@ type reader struct {
 }
 
 func (c *Catalog) reader(ctx context.Context) (*reader, error) {
+	return c.readerWithOutputBudget(ctx, nil)
+}
+func (c *Catalog) readerWithOutputBudget(ctx context.Context, arena *graphstate.OutputBudget) (*reader, error) {
 	if err := c.check(ctx); err != nil {
 		return nil, err
 	}
 	if c.rootImageBytes > c.limits.MaxReadBytes {
 		return nil, ErrResourceLimit
 	}
-	q := &reader{c: c, ctx: ctx, bytes: c.rootImageBytes, fullView: c.localFull}
+	q := &reader{arena: arena, c: c, ctx: ctx, bytes: c.rootImageBytes, fullView: c.localFull}
 	if c.localFull != nil {
 		if err := q.materialize(fullStageMetadataBytes); err != nil {
 			return nil, err
@@ -165,10 +171,21 @@ func (q *reader) get(key []byte) ([]byte, bool, error) {
 	}
 	if !found {
 		maxBytes := min(l.MaxRecordBytes+len(key), l.MaxReadBytes-q.bytes-64, q.c.view.ReadLimits().Bytes)
+		if q.arena != nil {
+			maxBytes = min(maxBytes, q.arena.Remaining()-64)
+			if maxBytes < len(key) {
+				return nil, false, ErrResourceLimit
+			}
+		}
 		var err error
 		row, found, err = q.c.view.Get(q.ctx, key, maxBytes)
 		if err != nil {
 			return nil, false, err
+		}
+		if q.arena != nil {
+			if err := q.arena.Reserve(cap(row.Key) + cap(row.Value) + 64); err != nil {
+				return nil, false, callerError(err)
+			}
 		}
 	}
 	size := max(len(key), cap(row.Key)) + cap(row.Value) + 64
@@ -214,6 +231,11 @@ func (q *reader) axis(id temporal.AxisID) (temporal.Axis, bool, error) {
 	return a, err == nil, err
 }
 func (q *reader) checkAxis(a temporal.Axis) error {
+	if q.route != nil {
+		if err := q.route.axis(q, a, nil, false); err != nil {
+			return err
+		}
+	}
 	stored, found, err := q.axis(a.Descriptor().ID)
 	if err != nil {
 		return err
@@ -252,6 +274,11 @@ func (q *reader) entity(ref EntityRef) (graphstate.EntityRecord, bool, error) {
 	if ref.ID == 0 {
 		return graphstate.EntityRecord{}, false, ErrInvalid
 	}
+	if q.route != nil {
+		if err := q.route.owner(q, uint64(ref.ID)); err != nil {
+			return graphstate.EntityRecord{}, false, err
+		}
+	}
 	b, found, err := q.get(entityKey(q.c.root.namespace, ref.ID))
 	if err != nil || !found {
 		return graphstate.EntityRecord{}, found, err
@@ -286,6 +313,11 @@ func (q *reader) life(ref LifeRef) (graphstate.LifeRecord, bool, error) {
 	}
 	if ref.Owner == 0 || ref.ID == 0 {
 		return graphstate.LifeRecord{}, false, ErrInvalid
+	}
+	if q.route != nil {
+		if err := q.route.owner(q, uint64(ref.Owner)); err != nil {
+			return graphstate.LifeRecord{}, false, err
+		}
 	}
 	b, found, err := q.get(lifeKey(q.c.root.namespace, ref.Owner, ref.ID))
 	if err != nil || !found {
@@ -344,6 +376,11 @@ func (q *reader) value(ref ValueRef) (ValueEntry, []byte, bool, error) {
 	}
 	if ref.ID == 0 {
 		return ValueEntry{}, nil, false, ErrInvalid
+	}
+	if q.route != nil {
+		if err := q.route.owner(q, uint64(ref.ID)); err != nil {
+			return ValueEntry{}, nil, false, err
+		}
 	}
 	b, found, err := q.get(valueKey(q.c.root.namespace, ref.ID))
 	if err != nil || !found {
@@ -513,13 +550,16 @@ func (c *Catalog) LookupLocalValueIdentity(ctx context.Context, value graphstate
 // Its caller must use the validated host/materializer path for graph mutations.
 // It neither commits nor acknowledges and cannot install an arbitrary Delta.
 type Stage struct {
-	mu      sync.Mutex
-	c       *Catalog
-	writes  map[string]raftlog.KV
-	bytes   int
-	closed  bool
-	indexed *indexedStageState
-	full    *fullStageState
+	arena      *graphstate.OutputBudget
+	writeSlots int
+	route      *partitionReadScope
+	mu         sync.Mutex
+	c          *Catalog
+	writes     map[string]raftlog.KV
+	bytes      int
+	closed     bool
+	indexed    *indexedStageState
+	full       *fullStageState
 }
 
 // NewStage creates a bounded private staging handle. Close releases shared caps.
@@ -553,7 +593,7 @@ func (s *Stage) operation(ctx context.Context, fn func(*reader) error) error {
 	if s.closed {
 		return ErrClosed
 	}
-	q, err := s.c.reader(ctx)
+	q, err := s.c.readerWithOutputBudget(ctx, s.arena)
 	if err != nil {
 		return err
 	}
@@ -561,6 +601,8 @@ func (s *Stage) operation(ctx context.Context, fn func(*reader) error) error {
 		return ErrTopologyUnsupported
 	}
 	q.stage = s
+	q.arena = s.arena
+	q.route = s.route
 	if s.indexed != nil {
 		// The operation-local authority copy is charged before allocation, separate
 		// from the retained stage allowance and pending-record staging ledger.
@@ -578,6 +620,11 @@ func (s *Stage) operation(ctx context.Context, fn func(*reader) error) error {
 		}
 		state := *s.full
 		q.full = &state
+	}
+	if q.arena != nil {
+		if err := q.arena.Reserve(128); err != nil {
+			return callerError(err)
+		}
 	}
 	q.pending = make(map[string]raftlog.KV)
 	if err := fn(q); err != nil {
@@ -601,6 +648,16 @@ func (s *Stage) operation(ctx context.Context, fn func(*reader) error) error {
 	if extraRecords > s.c.limits.MaxStageRecords-s.c.records || extraBytes > s.c.limits.MaxStageBytes-s.c.stageBytes {
 		return ErrResourceLimit
 	}
+	if s.arena != nil {
+		required := len(s.writes) + extraRecords
+		for s.writeSlots == 0 || required >= s.writeSlots-s.writeSlots/8 {
+			var err error
+			s.writeSlots, err = s.arena.ReserveMap(required, s.writeSlots, 192)
+			if err != nil {
+				return callerError(err)
+			}
+		}
+	}
 	for k, row := range q.pending {
 		s.writes[k] = row
 	}
@@ -623,6 +680,18 @@ func (q *reader) put(key, value []byte) error {
 	if cost > q.c.limits.MaxStageBytes-total {
 		return ErrResourceLimit
 	}
+	if q.arena != nil {
+		if _, found := q.pending[string(key)]; !found {
+			var err error
+			q.pendingSlots, err = q.arena.ReserveMap(len(q.pending), q.pendingSlots, 192)
+			if err != nil {
+				return callerError(err)
+			}
+		}
+		if err := q.arena.Reserve(cost); err != nil {
+			return callerError(err)
+		}
+	}
 	q.pending[string(key)] = raftlog.KV{Key: exactCopy(key), Value: exactCopy(value)}
 	return nil
 }
@@ -631,13 +700,18 @@ func (q *reader) stageAxis(axis temporal.Axis) error {
 	if err != nil {
 		return err
 	}
+	if q.route != nil {
+		if err := q.route.axis(q, axis, encoded, true); err != nil {
+			return err
+		}
+	}
 	old, found, err := q.axis(axis.Descriptor().ID)
 	if err != nil {
 		return err
 	}
 	if found {
 		if old.Descriptor() != axis.Descriptor() || old.DefinitionHash() != axis.DefinitionHash() {
-			return ErrRebinding
+			return errors.Join(graphstate.ErrInvalidInput, ErrRebinding)
 		}
 		return nil
 	}
@@ -763,6 +837,11 @@ func (q *reader) stageValue(ref ValueRef, value graphstate.Scalar, key string) e
 		}
 		return nil
 	}
+	if q.route != nil {
+		if err := q.route.registerIdentity(q, key, ref.ID); err != nil {
+			return err
+		}
+	}
 	hash := q.c.hash(key)
 	count, _, err := q.bucket(hash)
 	if err != nil {
@@ -852,6 +931,15 @@ func (s *Stage) Writes() ([]raftlog.KV, error) {
 	if err := s.c.check(context.Background()); err != nil {
 		return nil, err
 	}
+	if s.arena != nil {
+		cost := 64 * len(s.writes)
+		for _, row := range s.writes {
+			cost += len(row.Key) + len(row.Value)
+		}
+		if err := s.arena.Reserve(cost); err != nil {
+			return nil, callerError(err)
+		}
+	}
 	out := make([]raftlog.KV, 0, len(s.writes))
 	for _, row := range s.writes {
 		out = append(out, raftlog.KV{Key: exactCopy(row.Key), Value: exactCopy(row.Value)})
@@ -901,13 +989,22 @@ func callerError(err error) error {
 	return errors.Join(ErrInvalid, err)
 }
 
-func (q *reader) materialize(bytes int) error {
+func (q *reader) materialize(bytes int) error { return q.materializeReserved(bytes, 0) }
+
+// materializeReserved keeps cumulative source work intact while avoiding a
+// second representation charge for backing explicitly admitted before a codec.
+func (q *reader) materializeReserved(bytes, admitted int) error {
 	limit := q.c.limits.MaxReadBytes
 	if q.maxBytes > 0 {
 		limit = min(limit, q.maxBytes)
 	}
-	if bytes < 0 || bytes > limit-q.bytes {
+	if bytes < 0 || admitted < 0 || bytes > limit-q.bytes {
 		return ErrResourceLimit
+	}
+	if q.arena != nil {
+		if err := q.arena.Reserve(max(0, bytes-admitted)); err != nil {
+			return callerError(err)
+		}
 	}
 	q.bytes += bytes
 	return nil

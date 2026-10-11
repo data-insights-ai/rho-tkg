@@ -1,0 +1,77 @@
+[
+  {
+    "mutant": "scope-clone",
+    "path": "v5/internal/graphstore/full_stage.go",
+    "command": [
+      "/usr/bin/python3",
+      "/var/tmp/rho-v5-rebase-main-20261010-0mdr6yaw/limit-local.py",
+      "--rss-mib",
+      "4096",
+      "--seconds",
+      "180",
+      "--report",
+      "/var/tmp/rho-v5-v2-partition-review-corrections7-20261011/scope-clone-real-mutant-budget.json",
+      "--",
+      "go",
+      "test",
+      "-count=1",
+      "-timeout=150s",
+      "-v",
+      "./internal/graphstore",
+      "-run",
+      "^TestFinalReviewScopeScalarCloneRequiresFreshBackingAdmission$"
+    ],
+    "exit": 1,
+    "working_source_unchanged": true
+  },
+  {
+    "mutant": "descriptor-clone",
+    "path": "v5/internal/graphstore/full_stage.go",
+    "command": [
+      "/usr/bin/python3",
+      "/var/tmp/rho-v5-rebase-main-20261010-0mdr6yaw/limit-local.py",
+      "--rss-mib",
+      "4096",
+      "--seconds",
+      "180",
+      "--report",
+      "/var/tmp/rho-v5-v2-partition-review-corrections7-20261011/descriptor-clone-real-mutant-budget.json",
+      "--",
+      "go",
+      "test",
+      "-count=1",
+      "-timeout=150s",
+      "-v",
+      "./internal/graphstore",
+      "-run",
+      "^TestFinalReviewDescriptorScalarCloneRequiresFreshBackingAdmission$"
+    ],
+    "exit": 1,
+    "working_source_unchanged": true
+  },
+  {
+    "mutant": "epoch-floor",
+    "path": "v5/internal/graphstore/partition_routing.go",
+    "command": [
+      "/usr/bin/python3",
+      "/var/tmp/rho-v5-rebase-main-20261010-0mdr6yaw/limit-local.py",
+      "--rss-mib",
+      "4096",
+      "--seconds",
+      "180",
+      "--report",
+      "/var/tmp/rho-v5-v2-partition-review-corrections7-20261011/epoch-floor-real-mutant-budget.json",
+      "--",
+      "go",
+      "test",
+      "-count=1",
+      "-timeout=150s",
+      "-v",
+      "./internal/graphstore",
+      "-run",
+      "^TestFinalReviewRegressedRangeEpochCannotAuthorizeLocalWrites$"
+    ],
+    "exit": 1,
+    "working_source_unchanged": true
+  }
+]

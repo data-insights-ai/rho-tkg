@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added checked partition-local v5 graph mutations on declared partitions,
+  preserving node/relationship interpretation, native axes and opaque descriptor
+  values. HOME-published ID ranges and same-view routing bind local dependency
+  and uniqueness checks; unknown or remote authority is explicitly refused.
+  A shared consumptive representation budget spans decoded requests, routing,
+  planning, staging and result composition without widening existing limits;
+  it is not a heap/RSS bound. Retained graph history and typed change records
+  survive nonempty snapshot activation, leader change and durable reopen.
+  Existing command formats remain unchanged. Cross-partition transactions,
+  certified distributed graph reads and full V2 acceptance remain open.
+
 - Added v5 retained-view RootAt and ApplicationRecord reads within the
   captured bank/generation, including verified prepared and retired banks.
   Owned payload caps, frame validation and joined storage/closer errors

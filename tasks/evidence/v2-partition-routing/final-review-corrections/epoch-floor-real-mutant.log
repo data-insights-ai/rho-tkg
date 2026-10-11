@@ -1,0 +1,9 @@
+=== RUN   TestFinalReviewRegressedRangeEpochCannotAuthorizeLocalWrites
+2026/10/11 02:09:57 Found 0 WALs
+    full_stage_nine_operation_budget_test.go:268: initial-epoch=2 current-epoch=1 read-found=false read-view=19fb2f8caa6632b55d1d82af16f606ca read-err=<nil> effect-entities=1 effect-writes=7 stage-err=<nil>
+    full_stage_nine_operation_budget_test.go:271: lookup leaked regressed authority {[1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 1 1 16 3 2 [1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 3 1} {[1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 1 3 1 [1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] false} {3 1070 0 0 0 0} <nil>
+--- FAIL: TestFinalReviewRegressedRangeEpochCannotAuthorizeLocalWrites (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v5/internal/graphstore	0.333s
+FAIL
+limit: {"command": ["go", "test", "-count=1", "-timeout=150s", "-v", "./internal/graphstore", "-run", "^TestFinalReviewRegressedRangeEpochCannotAuthorizeLocalWrites$"], "rss_limit_mib": 4096.0, "wall_limit_s": 180.0, "sample_interval_s": 0.25, "peak_tree_rss_mib": 542.0, "elapsed_s": 3.605, "exit_code": 1, "reason": "command-failed"}

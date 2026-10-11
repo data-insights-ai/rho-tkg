@@ -19,9 +19,16 @@ func (e *engine) lifeSupports(owner EntityID, life LifeID, window temporal.Scope
 	}
 	out := []temporal.Scope{}
 	for _, page := range pages {
-		for _, p := range page.Data.Pieces() {
+		pieces, err := e.pieces(page.Data)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range pieces {
 			if p.Cell().Present() && LifeID(p.Cell().Value().ID()) == life {
-				out = append(out, p.Scope())
+				out, err = appendOwned(e, out, p.Scope(), 128)
+				if err != nil {
+					return nil, err
+				}
 				if len(out) > e.limits.MaxRows {
 					return nil, ErrResourceLimit
 				}
@@ -37,7 +44,12 @@ func (e *engine) mask(parts []temporal.Scope, owner EntityID, life LifeID) ([]te
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, live...)
+		for _, scope := range live {
+			out, err = appendOwned(e, out, scope, 128)
+			if err != nil {
+				return nil, err
+			}
+		}
 		if len(out) > e.limits.MaxRows {
 			return nil, ErrResourceLimit
 		}
@@ -65,7 +77,11 @@ func (e *engine) claims(key ComponentKey, window temporal.Scope) ([]activeValue,
 	}
 	out := []activeValue{}
 	for _, page := range pages {
-		for _, piece := range page.Data.Pieces() {
+		pieces, err := e.pieces(page.Data)
+		if err != nil {
+			return nil, err
+		}
+		for _, piece := range pieces {
 			cell := piece.Cell()
 			if !cell.Present() {
 				continue
@@ -97,7 +113,10 @@ func (e *engine) claims(key ComponentKey, window temporal.Scope) ([]activeValue,
 				}
 			}
 			for _, scope := range parts {
-				out = append(out, activeValue{value, scope})
+				out, err = appendOwned(e, out, activeValue{value, scope}, 384)
+				if err != nil {
+					return nil, err
+				}
 				if len(out) > e.limits.MaxRows {
 					return nil, ErrResourceLimit
 				}
@@ -110,6 +129,7 @@ func (e *engine) incident(p IncidentPredicate) ([]EntityID, error) {
 	t := newTracker()
 	out := []EntityID{}
 	seen := make(map[EntityID]struct{})
+	seenSlots := 0
 	for {
 		if err := e.check(); err != nil {
 			return nil, err
@@ -134,8 +154,14 @@ func (e *engine) incident(p IncidentPredicate) ([]EntityID, error) {
 			if _, ok := seen[id]; ok {
 				return nil, ErrContradictoryRead
 			}
+			if err := e.reserveMap(len(seen), &seenSlots, 64); err != nil {
+				return nil, err
+			}
 			seen[id] = struct{}{}
-			out = append(out, id)
+			out, err = appendOwned(e, out, id, 16)
+			if err != nil {
+				return nil, err
+			}
 		}
 		if err := e.next(&t, page.Next, page.Complete); err != nil {
 			return nil, err
@@ -147,8 +173,15 @@ func (e *engine) incident(p IncidentPredicate) ([]EntityID, error) {
 	for _, record := range e.delta.Entities {
 		if record.Kind == Relationship && (record.Source == p.Endpoint || record.Target == p.Endpoint) {
 			if _, ok := seen[record.ID]; !ok {
+				if err := e.reserveMap(len(seen), &seenSlots, 64); err != nil {
+					return nil, err
+				}
 				seen[record.ID] = struct{}{}
-				out = append(out, record.ID)
+				var err error
+				out, err = appendOwned(e, out, record.ID, 16)
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
@@ -159,6 +192,7 @@ func (e *engine) candidates(p UniquePredicate) ([]UniqueClaim, error) {
 	t := newTracker()
 	out := []UniqueClaim{}
 	seen := make(map[UniqueClaim]struct{})
+	seenSlots := 0
 	for {
 		if err := e.check(); err != nil {
 			return nil, err
@@ -209,8 +243,14 @@ func (e *engine) candidates(p UniquePredicate) ([]UniqueClaim, error) {
 			if _, ok := seen[claim]; ok {
 				return nil, ErrContradictoryRead
 			}
+			if err := e.reserveMap(len(seen), &seenSlots, 192); err != nil {
+				return nil, err
+			}
 			seen[claim] = struct{}{}
-			out = append(out, claim)
+			out, err = appendOwned(e, out, claim, 192)
+			if err != nil {
+				return nil, err
+			}
 		}
 		if err := e.next(&t, page.Next, page.Complete); err != nil {
 			return nil, err
@@ -224,8 +264,15 @@ func (e *engine) candidates(p UniquePredicate) ([]UniqueClaim, error) {
 		if k.Name == p.Definition.Name && (k.Kind == ScalarProperty || k.Kind == SetMember) {
 			claim := UniqueClaim{k.Owner, k.Life, k}
 			if _, ok := seen[claim]; !ok {
+				if err := e.reserveMap(len(seen), &seenSlots, 192); err != nil {
+					return nil, err
+				}
 				seen[claim] = struct{}{}
-				out = append(out, claim)
+				var err error
+				out, err = appendOwned(e, out, claim, 192)
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
@@ -235,11 +282,32 @@ func (e *engine) candidates(p UniquePredicate) ([]UniqueClaim, error) {
 func (e *engine) validateUniqueness() error {
 	// Freeze mutations before adding read-only checks. All queries below replay
 	// the FINAL overlay, so same-transaction swaps never see intermediate claims.
+	if e.budget != nil {
+		if err := e.budget.Reserve(512 * len(e.delta.Patches)); err != nil {
+			return err
+		}
+	}
 	patches := append([]ComponentPatch(nil), e.delta.Patches...)
 	targets := make(map[lifeKey][]temporal.Scope)
+	targetSlots := 0
+	addTarget := func(key lifeKey, scope temporal.Scope) error {
+		if _, found := targets[key]; !found {
+			if err := e.reserveMap(len(targets), &targetSlots, 128); err != nil {
+				return err
+			}
+		}
+		value, err := appendOwned(e, targets[key], scope, 128)
+		if err != nil {
+			return err
+		}
+		targets[key] = value
+		return nil
+	}
 	for _, patch := range patches {
 		if patch.Key.Kind != Presence {
-			targets[lifeKey{patch.Key.Owner, patch.Key.Life}] = append(targets[lifeKey{patch.Key.Owner, patch.Key.Life}], patch.Owned)
+			if err := addTarget(lifeKey{patch.Key.Owner, patch.Key.Life}, patch.Owned); err != nil {
+				return err
+			}
 			continue
 		}
 		owner, found, err := e.entity(patch.Key.Owner)
@@ -266,7 +334,9 @@ func (e *engine) validateUniqueness() error {
 				ids = append(ids, LifeID(change.After().Value().ID()))
 			}
 			for _, life := range ids {
-				targets[lifeKey{owner.ID, life}] = append(targets[lifeKey{owner.ID, life}], change.Scope())
+				if err := addTarget(lifeKey{owner.ID, life}, change.Scope()); err != nil {
+					return err
+				}
 			}
 			if owner.Kind == Node {
 				for _, life := range ids {
@@ -293,7 +363,11 @@ func (e *engine) validateUniqueness() error {
 							return err
 						}
 						for _, page := range pages {
-							for _, p := range page.Data.Pieces() {
+							pieces, err := e.pieces(page.Data)
+							if err != nil {
+								return err
+							}
+							for _, p := range pieces {
 								if p.Cell().Present() {
 									lk := lifeKey{id, LifeID(p.Cell().Value().ID())}
 									binding, found, err := e.life(id, lk.life)
@@ -308,13 +382,20 @@ func (e *engine) validateUniqueness() error {
 									if !sourceAffected && !targetAffected {
 										continue
 									}
-									targets[lk] = append(targets[lk], p.Scope())
+									if err := addTarget(lk, p.Scope()); err != nil {
+										return err
+									}
 								}
 							}
 						}
 					}
 				}
 			}
+		}
+	}
+	if e.budget != nil {
+		if err := e.budget.Reserve(16 * len(targets)); err != nil {
+			return err
 		}
 	}
 	ordered := make([]lifeKey, 0, len(targets))
@@ -375,12 +456,15 @@ func (e *engine) validateUniqueness() error {
 							return err
 						}
 						for _, claim := range claims {
-							equal, err := own.value.Equal(claim.value, e.limits)
+							equal, err := e.scalarEqual(own.value, claim.value)
 							if err != nil {
 								return err
 							}
 							if !equal {
 								continue
+							}
+							if err := e.reservePredicate(own.scope, claim.scope); err != nil {
+								return err
 							}
 							overlap, err := own.scope.Overlaps(claim.scope, e.limits.Component.Temporal)
 							if err != nil {

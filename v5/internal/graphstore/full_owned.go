@@ -22,7 +22,13 @@ func (q *pageReader) ownScope(s temporal.Scope) (temporal.Scope, error) {
 	}
 	l := q.q.c.limits.Temporal
 	l.MaxValueBytes = min(l.MaxValueBytes, available/2)
-	wire, err := temporal.AppendScope(nil, s, l)
+	var wire []byte
+	var err error
+	if q.q.arena != nil {
+		wire, err = q.q.arena.ScopeBytes(s, l)
+	} else {
+		wire, err = temporal.AppendScope(nil, s, l)
+	}
 	if err != nil {
 		return temporal.Scope{}, callerError(err)
 	}
@@ -42,11 +48,15 @@ func (q *pageReader) ownState(s state.State) (state.State, error) {
 	}
 	l := q.limits.codecLimits(q.q.c)
 	l.MaxEncodedBytes = min(l.MaxEncodedBytes, available/2)
+	admitted, err := q.reserveStateCodec(s, l)
+	if err != nil {
+		return state.State{}, err
+	}
 	wire, err := state.AppendState(nil, s, l)
 	if err != nil {
 		return state.State{}, callerError(err)
 	}
-	if err := q.q.materialize(256 + stateOwnedBacking(s) + 2*cap(wire)); err != nil {
+	if err := q.q.materializeReserved(256+stateOwnedBacking(s)+2*cap(wire), min(admitted, 2*cap(wire))); err != nil {
 		return state.State{}, err
 	}
 	return state.DecodeState(wire, s.Axis(), l)
@@ -58,13 +68,17 @@ func (q *pageReader) ownChanges(scope temporal.Scope, changes []state.Change) ([
 	}
 	l := q.limits.codecLimits(q.q.c)
 	l.MaxEncodedBytes = min(l.MaxEncodedBytes, available/2)
+	admitted, err := q.reserveChangeCodec(changes, l)
+	if err != nil {
+		return nil, err
+	}
 	wire, err := state.AppendChanges(nil, scope.Axis(), changes, l)
 	if err != nil {
 		return nil, callerError(err)
 	}
 	cost := 2*cap(wire) + 256*len(changes)
 	for _, change := range changes {
-		scopeWire, err := temporal.AppendScope(nil, change.Scope(), q.q.c.limits.Temporal)
+		scopeWire, err := q.scopeWire(change.Scope())
 		if err != nil {
 			return nil, callerError(err)
 		}
@@ -74,7 +88,7 @@ func (q *pageReader) ownChanges(scope temporal.Scope, changes []state.Change) ([
 		}
 		cost += backing + axisVariableBytes(change.Scope().Axis())
 	}
-	if err := q.q.materialize(cost); err != nil {
+	if err := q.q.materializeReserved(cost, min(admitted, 2*cap(wire))); err != nil {
 		return nil, err
 	}
 	owned, _, err := state.DecodeChanges(wire, scope.Axis(), l)
@@ -125,6 +139,9 @@ func (q *pageReader) ownDelta(delta graphstate.Delta, groups []ComponentChangeGr
 		}
 		group.Changes, err = q.ownChanges(group.Owned, group.Changes)
 		if err != nil {
+			return graphstate.Delta{}, nil, err
+		}
+		if err := q.q.materialize(len(group.Key.Name)); err != nil {
 			return graphstate.Delta{}, nil, err
 		}
 		group.Key.Name = strings.Clone(group.Key.Name)

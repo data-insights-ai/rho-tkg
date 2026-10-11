@@ -67,7 +67,7 @@ func componentOwnedBytes(s state.State, w temporal.Scope, wire []byte) (int, err
 	return fullComponentOutputBytes + backing + axisVariableBytes(w.Axis()) + stateOwnedBacking(s), err
 }
 func (q *pageReader) exactComponentOutput(s state.State, w temporal.Scope, budget graphstate.ReadBudget) (state.State, temporal.Scope, error) {
-	scopeWire, err := temporal.AppendScope(nil, w, q.q.c.limits.Temporal)
+	scopeWire, err := q.scopeWire(w)
 	if err != nil {
 		return state.State{}, temporal.Scope{}, err
 	}
@@ -83,11 +83,15 @@ func (q *pageReader) exactComponentOutput(s state.State, w temporal.Scope, budge
 	}
 	// Encode before decode bounds actual output before allocating its exact arrays.
 	codec := q.limits.codecLimits(q.q.c)
+	admitted, err := q.reserveStateCodec(s, codec)
+	if err != nil {
+		return state.State{}, temporal.Scope{}, err
+	}
 	wire, err := state.AppendState(nil, s, codec)
 	if err != nil {
 		return state.State{}, temporal.Scope{}, err
 	}
-	if err := q.q.materialize(2 * cap(wire)); err != nil {
+	if err := q.q.materializeReserved(2*cap(wire), admitted); err != nil {
 		return state.State{}, temporal.Scope{}, err
 	}
 	s, err = state.DecodeState(wire, w.Axis(), codec)

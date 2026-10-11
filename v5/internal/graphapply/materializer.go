@@ -210,11 +210,14 @@ func batchAt(base raftlog.ApplicationRoot) raftlog.ApplicationBatch {
 	return raftlog.ApplicationBatch{BaseGeneration: base.Generation, BaseIndex: base.Index, BaseImageHash: base.ImageHash, Image: base.Image}
 }
 func sharedReplay(q *reader, r request, hash [32]byte, index uint64) (outcome, bool, error) {
+	return sharedReplayWithDecoder(q, r, hash, index, decodeAnyOutcome)
+}
+func sharedReplayWithDecoder(q *reader, r request, hash [32]byte, index uint64, decode func([]byte, namespace) (outcome, error)) (outcome, bool, error) {
 	b, found, err := q.get(outcomeKey(r))
 	if err != nil || !found {
 		return outcome{}, false, err
 	}
-	old, err := decodeAnyOutcome(b, q.ns)
+	old, err := decode(b, q.ns)
 	if err != nil {
 		return outcome{}, false, err
 	}
@@ -303,6 +306,9 @@ func reserveComposition(total *int, n, limit int) error {
 	return nil
 }
 func (m *materializer) finish(q *reader, o outcome, hash [32]byte, mapRecord bool, budget raftlog.ApplicationBudget, graph *graphstore.GraphEffects, changes graphChanges) (raftlog.ApplicationBatch, error) {
+	return m.finishWithCodec(q, o, hash, mapRecord, budget, graph, changes, false)
+}
+func (m *materializer) finishWithCodec(q *reader, o outcome, hash [32]byte, mapRecord bool, budget raftlog.ApplicationBudget, graph *graphstore.GraphEffects, changes graphChanges, declarations bool) (raftlog.ApplicationBatch, error) {
 	// Drop incidental physical effects before composing a logical no-op.
 	if !changes.nonempty() {
 		graph = nil
@@ -331,7 +337,16 @@ func (m *materializer) finish(q *reader, o outcome, hash [32]byte, mapRecord boo
 			return raftlog.ApplicationBatch{}, err
 		}
 	}
-	e, err := collectEffects(q, o, hash, mapRecord)
+	size := outcomeBytes
+	if isGraphCommand(o.kind) {
+		size = graphOutcomeBytes
+	}
+	// Encoder body/sealed result and possible temporary retained CDC copy.
+	// q.put separately admits mapped KV/header backing before its allocations.
+	if err := reserveComposer(q, 128+3*size); err != nil {
+		return raftlog.ApplicationBatch{}, err
+	}
+	e, err := collectTypedEffects(q, o, hash, mapRecord, declarations)
 	if err != nil {
 		return raftlog.ApplicationBatch{}, err
 	}
@@ -340,16 +355,22 @@ func (m *materializer) finish(q *reader, o outcome, hash [32]byte, mapRecord boo
 	if graph != nil {
 		// The axis-table backing is bounded before its count-sized allocation.
 		axisSlots := min(m.limits.maxAxes, len(changes.entities)+len(changes.values)+len(changes.groups))
-		if err := reserveComposition(&retained, 256*axisSlots, m.limits.outputBytes); err != nil {
+		if err := reserveCompositionWithBudget(q, &retained, 256*axisSlots, m.limits.outputBytes); err != nil {
 			return raftlog.ApplicationBatch{}, err
 		}
 		available := m.limits.outputBytes - retained
+		if q.arena != nil {
+			available = min(available, q.arena.Remaining())
+		}
 		if available < 4*36 {
 			return raftlog.ApplicationBatch{}, errLimit
 		}
 		encodingLimits := m.limits
 		encodingLimits.changeBytes = min(encodingLimits.changeBytes, available/4)
-		logical, err := encodeGraphChanges(changes, encodingLimits)
+		if err := reserveLogicalEncoding(q, changes, encodingLimits); err != nil {
+			return raftlog.ApplicationBatch{}, err
+		}
+		logical, err := encodeTypedGraphChanges(changes, encodingLimits, declarations)
 		if err != nil {
 			return raftlog.ApplicationBatch{}, err
 		}
@@ -359,7 +380,7 @@ func (m *materializer) finish(q *reader, o outcome, hash [32]byte, mapRecord boo
 		if err := reserveComposition(&retained, 4*cap(logical), m.limits.outputBytes); err != nil {
 			return raftlog.ApplicationBatch{}, err
 		}
-		if err := reserveComposition(&retained, 2*(len(logical)+97)+4*140, m.limits.outputBytes); err != nil {
+		if err := reserveCompositionWithBudget(q, &retained, 2*(len(logical)+97)+4*172, m.limits.outputBytes); err != nil {
 			return raftlog.ApplicationBatch{}, err
 		}
 		digest := graphEffectDigest(graph.Root.EffectDigest(), logical)
@@ -379,7 +400,7 @@ func (m *materializer) finish(q *reader, o outcome, hash [32]byte, mapRecord boo
 			return raftlog.ApplicationBatch{}, errLimit
 		}
 		count := len(b.Writes) + len(graph.Writes)
-		if err := reserveComposition(&retained, 64*count, m.limits.outputBytes); err != nil {
+		if err := reserveCompositionWithBudget(q, &retained, 64*count, m.limits.outputBytes); err != nil {
 			return raftlog.ApplicationBatch{}, err
 		}
 		writes := make([]raftlog.KV, count)
@@ -552,8 +573,9 @@ func (m *materializer) Stage(entry replica.Entry, budget raftlog.ApplicationBudg
 	}
 	var r graphRequest
 	var decodeErr error
+	decodedOwned := 0
 	if isGraph {
-		r, decodeErr = decodeGraphRequest(entry.Data, m.limits)
+		r, decodeErr = decodeTypedGraphRequestOwned(entry.Data, m.limits, false, &decodedOwned)
 	} else {
 		_, decodeErr = decodeRequest(entry.Data, l)
 	}
@@ -652,18 +674,21 @@ func (m *materializer) Stage(entry replica.Entry, budget raftlog.ApplicationBudg
 				return raftlog.ApplicationBatch{}, errInvalid
 			}
 		}
+		if err := joinGraphOutputBudget(&q, r, decodedOwned, m.limits); err != nil {
+			return raftlog.ApplicationBatch{}, err
+		}
 		gl, limitErr := m.graphBudget(&q)
 		if limitErr != nil {
 			err = limitErr
 		} else {
 			if r.kind == guardedGraphOperations {
-				effects, guardedWork, err = graphstore.StageGuardedOperations(q.ctx, c, r.readBase.guard, r.operations, r.revision, gl)
+				effects, guardedWork, err = graphstore.StageGuardedOperationsWithOutputBudget(q.ctx, c, r.readBase.guard, r.operations, r.revision, gl, q.arena)
 				// Charge the separately returned source work once, including conflict.
 				if chargeErr := chargeGraphWork(&q, guardedWork); chargeErr != nil {
 					return raftlog.ApplicationBatch{}, errors.Join(chargeErr, err)
 				}
 			} else {
-				effects, err = graphstore.StageOperations(q.ctx, c, r.operations, r.revision, gl)
+				effects, _, err = graphstore.StageOperationsWithOutputBudget(q.ctx, c, r.operations, r.revision, gl, q.arena)
 			}
 		}
 		o.reason = reasonNone

@@ -137,8 +137,12 @@ func gcd1LegacySlot(initialized bool) uint64 {
 	}
 	return 0
 }
-func emitGraphChanges(w *boundedWriter, g graphChanges, t axisTable, l materializerLimits) {
-	w.add([]byte{'G', 'C', 'D', 1})
+func emitTypedGraphChanges(w *boundedWriter, g graphChanges, t axisTable, l materializerLimits, declarations bool) {
+	version := byte(1)
+	if declarations {
+		version = 5
+	}
+	w.add([]byte{'G', 'C', 'D', version})
 	w.add(g.ns.graph[:])
 	w.u64(g.ns.partition)
 	if g.initialized {
@@ -159,7 +163,7 @@ func emitGraphChanges(w *boundedWriter, g graphChanges, t axisTable, l materiali
 	}
 	w.u32(len(g.entities))
 	for _, e := range g.entities {
-		writeEntity(w, e, t)
+		writeTypedEntity(w, e, t, declarations)
 	}
 	w.u32(len(g.lives))
 	for _, life := range g.lives {
@@ -168,7 +172,7 @@ func emitGraphChanges(w *boundedWriter, g graphChanges, t axisTable, l materiali
 	w.u32(len(g.values))
 	for _, v := range g.values {
 		w.u64(uint64(v.ID))
-		writeScalar(w, v.Value, t, l)
+		writeTypedScalar(w, v.Value, t, l, declarations)
 	}
 	w.u32(len(g.groups))
 	for _, group := range g.groups {
@@ -188,6 +192,9 @@ func emitGraphChanges(w *boundedWriter, g graphChanges, t axisTable, l materiali
 	}
 }
 func encodeGraphChanges(g graphChanges, l materializerLimits) ([]byte, error) {
+	return encodeTypedGraphChanges(g, l, false)
+}
+func encodeTypedGraphChanges(g graphChanges, l materializerLimits, declarations bool) ([]byte, error) {
 	if err := l.validate(); err != nil {
 		return nil, err
 	}
@@ -198,13 +205,20 @@ func encodeGraphChanges(g graphChanges, l materializerLimits) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return boundedEncoding(l.changeBytes, func(w *boundedWriter) { emitGraphChanges(w, g, t, l) })
+	return boundedEncoding(l.changeBytes, func(w *boundedWriter) { emitTypedGraphChanges(w, g, t, l, declarations) })
 }
 func decodeGraphChanges(b []byte, n namespace, l materializerLimits) (graphChanges, error) {
+	return decodeTypedGraphChanges(b, n, l, false)
+}
+func decodeTypedGraphChanges(b []byte, n namespace, l materializerLimits, declarations bool) (graphChanges, error) {
 	if err := l.validate(); err != nil {
 		return graphChanges{}, err
 	}
-	body, err := graphBody(b, "GCD\x01", l.changeBytes)
+	magic := "GCD\x01"
+	if declarations {
+		magic = "GCD\x05"
+	}
+	body, err := graphBody(b, magic, l.changeBytes)
 	if err != nil {
 		return graphChanges{}, err
 	}
@@ -247,7 +261,7 @@ func decodeGraphChanges(b []byte, n namespace, l materializerLimits) (graphChang
 	}
 	g.entities = make([]graphstate.EntityRecord, count)
 	for i := range g.entities {
-		g.entities[i] = readEntity(&c, t, l)
+		g.entities[i] = readTypedEntity(&c, t, l, declarations)
 	}
 	count = c.count(l.maxClaims, 32)
 	if !c.charge(64 * count) {
@@ -263,7 +277,7 @@ func decodeGraphChanges(b []byte, n namespace, l materializerLimits) (graphChang
 	}
 	g.values = make([]graphstate.ValueWrite, count)
 	for i := range g.values {
-		g.values[i] = graphstate.ValueWrite{ID: graphstate.ValueID(c.u64()), Value: readScalar(&c, t, l)}
+		g.values[i] = graphstate.ValueWrite{ID: graphstate.ValueID(c.u64()), Value: readTypedScalar(&c, t, l, declarations)}
 	}
 	count = c.count(l.graph.Pages.MaxPatches, 29)
 	if !c.charge(512 * count) {
@@ -295,7 +309,7 @@ func decodeGraphChanges(b []byte, n namespace, l materializerLimits) (graphChang
 	if err := validateGraphChanges(g, l); err != nil {
 		return graphChanges{}, errCorrupt
 	}
-	canonical, err := encodeGraphChanges(g, l)
+	canonical, err := encodeTypedGraphChanges(g, l, declarations)
 	if err != nil {
 		return graphChanges{}, err
 	}
@@ -335,6 +349,9 @@ func encodeChangeEnvelope(o outcome, logical []byte, l materializerLimits) ([]by
 	})
 }
 func decodeChangeEnvelope(b []byte, o outcome, l materializerLimits) (graphChanges, error) {
+	return decodeTypedChangeEnvelope(b, o, l, false)
+}
+func decodeTypedChangeEnvelope(b []byte, o outcome, l materializerLimits, declarations bool) (graphChanges, error) {
 	body, err := graphBody(b, "GCE\x01", l.changeBytes)
 	if err != nil {
 		return graphChanges{}, err
@@ -349,5 +366,5 @@ func decodeChangeEnvelope(b []byte, o outcome, l materializerLimits) (graphChang
 	if c.err != nil || len(c.b) != 0 || kind != o.kind || id != o.identity || hash != o.hash || index != o.index {
 		return graphChanges{}, errCorrupt
 	}
-	return decodeGraphChanges(logical, o.ns, l)
+	return decodeTypedGraphChanges(logical, o.ns, l, declarations)
 }

@@ -78,3 +78,13 @@ func (g SemanticGuard) compare(root Root) error {
 func StageGuardedOperations(ctx context.Context, c *Catalog, guard SemanticGuard, ops []graphstate.Operation, revision state.Revision, l GraphLimits) (GraphEffects, PageWork, error) {
 	return stageOperations(ctx, c, ops, revision, l, &guard)
 }
+
+// StageGuardedOperationsWithOutputBudget preserves the same logical predicate,
+// coverage and failure semantics while admitting retained backing on a shared
+// caller ledger. Nil/exhausted budget never opts out or resurrects defaults.
+func StageGuardedOperationsWithOutputBudget(ctx context.Context, c *Catalog, guard SemanticGuard, ops []graphstate.Operation, revision state.Revision, l GraphLimits, budget *graphstate.OutputBudget) (GraphEffects, PageWork, error) {
+	if budget == nil {
+		return GraphEffects{}, PageWork{}, ErrInvalid
+	}
+	return stageOperationsWithOutputBudget(ctx, c, ops, revision, l, &guard, budget)
+}

@@ -1,0 +1,19 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-count=1",
+    "-timeout=150s",
+    "-v",
+    "./internal/graphstore",
+    "-run",
+    "^TestFinalReview(ScopeScalarCloneRequiresFreshBackingAdmission|RegressedRangeEpochCannotAuthorizeLocalWrites)$"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 560.5,
+  "elapsed_s": 3.846,
+  "exit_code": 1,
+  "reason": "command-failed"
+}
