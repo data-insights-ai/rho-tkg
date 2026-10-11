@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"reflect"
 	"slices"
 	"testing"
 	"unsafe"
@@ -481,5 +482,115 @@ func TestInvalidMaterializerPoliciesRefuseBeforeMachineConstruction(t *testing.T
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+// Guards: byte budgets must refuse before returning a partial scalar, and the
+// accepted boundary must retain the complete typed field and zero axis reference.
+func TestTypedScalarByteBudgetRefusalsAndExactBoundary(t *testing.T) {
+	l := defaultMaterializerLimits()
+	scope := graphCodecRequest(t).operations[1].Value
+	for _, tc := range []struct {
+		value graphstate.Scalar
+		bytes int
+		want  error
+	}{
+		{graphstate.String("x"), 8, errLimit},
+		{graphstate.String("x"), 9, graphstate.ErrResourceLimit},
+		{scope, 9, errLimit},
+		{graphstate.ScopeValue(temporal.Scope{}), 1024, temporal.ErrInvalidScope},
+	} {
+		wire, err := boundedEncoding(tc.bytes+32, func(w *boundedWriter) { writeTypedScalar(w, tc.value, nil, l, true) })
+		if !errors.Is(err, tc.want) || wire != nil {
+			t.Fatal(tc.bytes, wire, err)
+		}
+	}
+	w := boundedWriter{max: 10}
+	writeTypedScalar(&w, graphstate.String("x"), nil, l, true)
+	want := []byte{0, 0, 0, 2, byte(graphstate.ScalarString), 'x', 0, 0, 0, 0}
+	if w.err != nil || w.n != len(want) || !bytes.Equal(w.b, want) {
+		t.Fatal(w, want)
+	}
+}
+
+// Guards: canonical typed payloads cannot be paired with a foreign axis, and
+// invalid child framing/nonfinite F64s must not produce a partially valid value.
+func TestTypedScalarInvalidPayloadsReturnZero(t *testing.T) {
+	l := defaultMaterializerLimits()
+	scope, _ := graphCodecRequest(t).operations[1].Value.Scope()
+	scopeWire, err := temporal.AppendScope(nil, scope, l.catalog.Temporal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	badScope := bytes.Clone(scopeWire)
+	badScope[3] = 255 // unknown native profile, with otherwise intact scope framing
+	for _, tc := range []struct {
+		payload      []byte
+		axis         uint32
+		declarations bool
+		want         error
+	}{
+		{nil, 1, true, errCorrupt},
+		{[]byte{byte(graphstate.ScalarNull)}, 1, true, errCorrupt},
+		{[]byte{byte(graphstate.ScalarScope)}, 0, true, errCorrupt},
+		{[]byte{byte(graphstate.ScalarScope)}, 1, true, errCorrupt},
+		{append([]byte{byte(graphstate.ScalarScope)}, badScope...), 1, true, errCorrupt},
+		{[]byte{byte(graphstate.ScalarF64), 0x7f, 0xf0, 0, 0, 0, 0, 0, 0}, 0, true, errCorrupt},
+		{[]byte{byte(graphstate.ScalarDescriptor)}, 0, false, errCorrupt},
+		{[]byte{byte(graphstate.ScalarDescriptor)}, 0, true, errCorrupt},
+	} {
+		// Frame independently of boundedWriter to avoid a matching encoder bug.
+		wire := binary.BigEndian.AppendUint32(nil, uint32(len(tc.payload)))
+		wire = append(wire, tc.payload...)
+		wire = binary.BigEndian.AppendUint32(wire, tc.axis)
+		c := graphCursor{b: wire, maxOwnedBytes: l.commandOwnedBytes}
+		got := readTypedScalar(&c, axisTable{scope.Axis()}, l, tc.declarations)
+		if !errors.Is(c.err, tc.want) || !reflect.DeepEqual(got, graphstate.Scalar{}) {
+			t.Fatal(tc.payload, tc.axis, got, c.err)
+		}
+	}
+}
+
+// Guard preservation ownership and consumptive admission at the actual decoder
+// charge boundary, without asserting an allocator or process-memory measurement.
+func TestTypedDescriptorScalarOwnsValueAndRefusesInsufficientBudget(t *testing.T) {
+	l := defaultMaterializerLimits()
+	spec := temporal.OpaqueDescriptorSpec{ID: temporal.DescriptorID{1}, Type: "source", SchemaVersion: 999, Payload: []byte("opaque"), References: []temporal.DescriptorReference{{Role: "origin", ID: temporal.DescriptorID{2}, Type: "unknown", SchemaVersion: 77}}}
+	d, err := temporal.PreserveOpaqueDescriptor(spec, l.catalog.Temporal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := graphstate.DescriptorValue(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := boundedWriter{max: l.commandBytes}
+	writeTypedScalar(&w, value, nil, l, true)
+	if w.err != nil {
+		t.Fatal(w.err)
+	}
+	c := graphCursor{b: w.b, maxOwnedBytes: l.commandOwnedBytes}
+	got := readTypedScalar(&c, nil, l, true)
+	decoded, ok := got.Descriptor()
+	if c.err != nil || len(c.b) != 0 || !ok || !reflect.DeepEqual(decoded.Spec(), spec) {
+		t.Fatal(got, c.err)
+	}
+	for _, delta := range []int{-1, 0, 1} {
+		probe := graphCursor{b: w.b, maxOwnedBytes: c.ownedBytes + delta}
+		result := readTypedScalar(&probe, nil, l, true)
+		if delta < 0 {
+			if !errors.Is(probe.err, errLimit) || !reflect.DeepEqual(result, graphstate.Scalar{}) || probe.ownedBytes != 0 {
+				t.Fatal(delta, result, probe)
+			}
+		} else if probe.err != nil || len(probe.b) != 0 || result.Kind() != graphstate.ScalarDescriptor {
+			t.Fatal(delta, result, probe.err)
+		}
+	}
+	clear(w.b)
+	copySpec := decoded.Spec()
+	clear(copySpec.Payload)
+	clear(copySpec.References)
+	if !reflect.DeepEqual(decoded.Spec(), spec) {
+		t.Fatal("descriptor retained mutable input/accessor backing", decoded.Spec())
 	}
 }

@@ -323,3 +323,36 @@ func TestScopeScratchBoundsMergeCrossedOldNumeratorAndDenominator(t *testing.T) 
 		t.Fatal(err)
 	}
 }
+
+// Guard exact equality across canonical inline/wide representations at the
+// signed int64 boundary; truncating wide coordinates would collapse distinct values.
+func TestEncodingIntegerEqualityDoesNotTruncateWideCoordinates(t *testing.T) {
+	wide, err := ParseInteger("9223372036854775808", Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	same, err := ParseInteger("+09223372036854775808", Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	negative, err := ParseInteger("-9223372036854775809", Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		a, b Integer
+		want bool
+	}{
+		{Int64(0), Int64(0), true},
+		{Int64(math.MinInt64), Int64(math.MaxInt64), false},
+		{wide, same, true},
+		{wide, negative, false},
+		{wide, Int64(math.MinInt64), false},
+		{Int64(math.MaxInt64), negative, false},
+	} {
+		order, err := tc.a.Compare(tc.b, Limits{})
+		if err != nil || (order == Equal) != tc.want || encodingIntegerEqual(tc.a, tc.b) != tc.want || encodingIntegerEqual(tc.b, tc.a) != tc.want {
+			t.Fatal(tc.a, tc.b, tc.want, order, err)
+		}
+	}
+}
