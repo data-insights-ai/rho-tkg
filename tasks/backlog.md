@@ -318,6 +318,9 @@ reviewed and validated before the next package starts.
    pending-outcome error caught by the new test. All six child processes are
    successfully reaped. This is test-only evidence: 196 production/module files
    match the accepted base, so unchanged E15 validation is carried explicitly.
+   [Hosted CI at `40e12ef6`](evidence/v2-remote-e16/hosted-ci-40e12ef6.json)
+   also passes root/v5 normal, race, coverage and security gates plus comparison
+   correctness; PR-only lint remains covered by the pinned local evidence.
    E17–E18 and the other V2 exit requirements remain open.
 
 The phase table above records current acceptance. The following entries retain
