@@ -45,7 +45,7 @@ jobs:
       - name: Root race tests with bounded concurrency
         if: matrix.module == '.'
         env:
-          GOFLAGS: "-p=1 -parallel=2"
+          GOFLAGS: "-p=1 -parallel=4"
           GOMEMLIMIT: "2GiB"
         run: |
           uname -a
