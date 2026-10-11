@@ -459,6 +459,16 @@ Recover closed investigation prose via `git log --all -- tasks/backlog.md` if ne
 
 ### DO NOT BUILD / reopen criteria (keep here so they are not re-filed)
 
+- **Distinct start and end counts per relationship type maintained with the writes (sigma-tkgd round 5 request 5):
+  NOT BUILT 2026-10-11.** `RelTypeDegreeStats` is derived and cached per type; since round 5 request 9 the memory
+  store keys it on a per-type stamp as badger does, so the cold harness's writes to another type no longer force
+  the recount that motivated the request. Maintaining exact distinct counts under writes to the type itself needs a
+  per-node degree counter per type (O(distinct endpoints) RAM, about 40-50 B per endpoint in a Go map) and two map
+  updates per relationship write of the type, a new write and memory cost the round's design rule only allows as
+  opt-in or lazy; sigma-tkgd reverted its use of the degree statistics for the one-hop estimate pending a cost-model
+  calibration (C4s). Reopen when sigma-tkgd re-adopts the degree statistics and measures the recount after writes
+  to the read type itself on its cold rows; then build it opt-in per type (built lazily on the first
+  `RelTypeDegreeStats` of a type that opted in, maintained at the relationship write seams).
 - **Item 9 — property-keyed unique constraint on relationships (ai-soc request 4): WITHDRAWN 2026-10-09** (René,
   relayed by ai-soc: "rho-tkg already has unique snowflake ids"). ai-soc uses the snowflake ID as the global ID.
   Possible cheap follow-up, not requested: a relationship door that accepts a caller-supplied snowflake ID "if
