@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added bounded private v5 registry materialization. Created registrations stage
+  reciprocal immutable controls; full original lookup precedes new-request caps,
+  and Original/Conflict outcomes preserve original and evaluation coordinates.
+  Adjacent restores verify synced deltas. Store unit checks cover full-format
+  originals, journals above 8 MiB, reopen and new-generation re-audit. Driver,
+  factory, preclaim and Host readiness integration remain open.
+
 - Added nonmutating checks of genuine prepared v5 snapshots for their owning
   store, permitting live audit readers. Bounded metadata inspection preserves
   exact descriptor, configuration and field-presence matching; snapshot claims

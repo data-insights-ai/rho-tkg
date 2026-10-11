@@ -272,51 +272,84 @@ func registryRecordPayload(wire []byte, family byte, o registeredOriginScope, in
 	}
 	return wire[94 : len(wire)-32], nil
 }
-func encodeRegistryRecords(pij []byte, r, term uint64, l registeredFormatBudget, b registeredRegistryCodecBudget) ([96]byte, []byte, [89]byte, []byte, error) {
-	zero := func(err error) ([96]byte, []byte, [89]byte, []byte, error) {
-		return [96]byte{}, nil, [89]byte{}, nil, err
-	}
+
+// registryRecordEmission can only be minted here from one inspection of the
+// exact borrowed input. Its caller must keep that backing immutable until emit.
+// It carries no live registration authority; self prevents copied-owner reuse.
+type registryRecordEmission struct {
+	self       *registryRecordEmission
+	prepared   []byte
+	inspection registeredPreparedInspection
+	position   uint64
+	term       uint64
+	work       uint64
+	emitted    bool
+}
+
+func prepareRegistryRecordEmission(pij []byte, r, term uint64, l registeredFormatBudget, b registeredRegistryCodecBudget) (*registryRecordEmission, error) {
 	if err := registeredBudget(l); err != nil {
-		return zero(err)
+		return nil, err
 	}
 	q, err := registryStart(b, len(pij), 136, l.preparedBytes)
 	if err != nil {
-		return zero(err)
+		return nil, err
 	}
 	if r == 0 || term == 0 {
-		return zero(errInvalid)
+		return nil, errInvalid
 	}
 	storedBytes := len(pij) + 220
-	// Two checksums exclude their32-byte tails; output emission and backing
-	// are separate work debits. Returned fixed key arrays live within4096.
+	// Preserve the original nine-API ordering and exact debits: emission,
+	// checksums and owned backing are reserved BEFORE the one child inspection.
 	if err := q.spend(3*(309+storedBytes)-64, 309+storedBytes); err != nil {
-		return zero(err)
+		return nil, err
 	}
-	got, err := q.inspect(pij, l)
+	plan := &registryRecordEmission{prepared: pij, position: r, term: term}
+	plan.self = plan
+	plan.inspection, err = q.inspect(pij, l)
+	if err != nil {
+		return nil, err
+	}
+	plan.work = uint64(b.workBytes - q.work) // #nosec G115 -- checked consumptive ledger bounds difference0..46144850 before widening.
+	return plan, nil
+}
+
+func emitRegistryRecords(plan *registryRecordEmission) ([96]byte, []byte, [89]byte, []byte, error) {
+	zero := func(err error) ([96]byte, []byte, [89]byte, []byte, error) {
+		return [96]byte{}, nil, [89]byte{}, nil, err
+	}
+	if plan == nil || plan.self != plan || plan.emitted {
+		return zero(errInvalid)
+	}
+	ref := registryRef(&plan.inspection, plan.position, plan.term)
+	preparedSize, err := registrySize(len(plan.prepared))
 	if err != nil {
 		return zero(err)
 	}
-	ref := registryRef(&got, r, term)
-	preparedSize, err := registrySize(len(pij))
+	payloadSize, err := registrySize(94 + len(plan.prepared))
 	if err != nil {
 		return zero(err)
 	}
-	payloadSize, err := registrySize(94 + len(pij))
-	if err != nil {
-		return zero(err)
-	}
-	lookup, stored := make([]byte, 309), make([]byte, storedBytes)
-	registryRecordHeader(lookup, 2, got.parsed.o, r, 183)
-	registryRecordHeader(stored, 3, got.parsed.o, r, payloadSize)
+	lookup, stored := make([]byte, 309), make([]byte, len(plan.prepared)+220)
+	registryRecordHeader(lookup, 2, plan.inspection.parsed.o, plan.position, 183)
+	registryRecordHeader(stored, 3, plan.inspection.parsed.o, plan.position, payloadSize)
 	registryRecordFields(lookup[94:277], ref)
 	registryRecordFields(stored[94:len(stored)-32], ref)
 	copy(lookup[184:273], ref.storedKey[:])
 	binary.BigEndian.PutUint32(lookup[273:277], preparedSize)
 	binary.BigEndian.PutUint32(stored[184:188], preparedSize)
-	copy(stored[188:len(stored)-32], pij)
+	copy(stored[188:len(stored)-32], plan.prepared)
 	registrySeal(lookup)
 	registrySeal(stored)
+	plan.emitted = true
 	return ref.submitted.lookupKey, lookup, ref.storedKey, stored, nil
+}
+
+func encodeRegistryRecords(pij []byte, r, term uint64, l registeredFormatBudget, b registeredRegistryCodecBudget) ([96]byte, []byte, [89]byte, []byte, error) {
+	plan, err := prepareRegistryRecordEmission(pij, r, term, l, b)
+	if err != nil {
+		return [96]byte{}, nil, [89]byte{}, nil, err
+	}
+	return emitRegistryRecords(plan)
 }
 func decodeRegistryLookup(key, value []byte, insertion uint64, origin registeredOriginScope, b registeredRegistryCodecBudget) (registeredRegistryRef, int, error) {
 	q, err := registryStart(b, len(value), 309, 309)
