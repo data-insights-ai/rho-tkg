@@ -102,8 +102,6 @@ Areas: temporal, persistence, concurrency, testing, process, docs, consumers.
 | 77 | Handover test lists are break-the-code only | testing | stub, owner 78 |
 | 78 | Clean root-cause fix and a red break-the-code test first | process | active |
 | 79 | Batch patch releases, author-run gates, one review round, short briefs | process | active |
-| 80 | rho never adapts to a consumer; consumers adapt to rho | design | active |
-| 81 | rho-tkg is an embedded open-source knowledge graph library, not a database | framing | active |
 
 ## 1. Validate At Every Boundary
 
@@ -1368,22 +1366,3 @@ Detector: more than one review round on a branch, a lint finding after a merge, 
 than ten file names, a backlog item with no named requester or test.
 
 
-
-## 80. Dependency Direction: Consumers Adapt to rho, rho Never Ships a Consumer Adapter
-
-René 2026-10-11 on the v5 analysis ("no sigma adapter" listed as missing): "Why should have v5
-Adapter for sigma tkgd? This is the wrong direction". rho-tkg owns the database and exposes a
-public API (typed reads, histories, transaction-grouped changes); sigma-tkgd and ai-soc build on
-it. No reverse dependency (v5 PLAN.md:8, :48).
-Rule: never list a consumer adapter as rho work or as a v5 gap; a consumer need becomes a public
-door or contract in rho, the consumer-side code stays in the consumer repo.
-Detector: "adapter for sigma/ai-soc" or a consumer's name as a rho deliverable in a plan or report.
-
-## 81. Framing: rho-tkg Is an Open-Source Knowledge Graph Library, Not a Database
-
-René 2026-10-11, after I answered "v5 can't be used as a database yet": "This is not a database but
-it is a open source knowledge Graph implementation. Highly optimized for memory and bitemporality".
-Rule: describe rho-tkg (v4 and v5) as an embeddable Go knowledge graph library, memory- and
-bitemporal-optimised; "usable" means an application can import the package and build, change and
-query a bitemporal graph through its public API. Storage backends are a part of it, not its identity.
-Detector: "database", "DB product" or "drop-in store" as the noun for rho-tkg in a report.
