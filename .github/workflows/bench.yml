@@ -82,23 +82,17 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           merge_base="$(git merge-base HEAD "origin/$BASE_REF")"
-          worktree="$(mktemp -d)/bench-base"
-          git worktree add --detach "$worktree" "$merge_base"
-          if [[ -d "$worktree/bench" ]]; then
-            (cd "$worktree" && go test -bench="$BENCH_FILTER" -benchmem -benchtime=0.3s -count=3 -run '^$' ./bench) | tee bench-base.txt
-            (cd "$worktree" && go test -bench="$PINNED_REL_FILTER" -benchmem -benchtime=0.3s -count=5 -run '^$' ./bench) | tee -a bench-base.txt
-            echo "has_base=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "bench/ suite not present at merge-base ($merge_base) — nothing to gate against." | tee bench-base.txt
-            echo "has_base=false" >> "$GITHUB_OUTPUT"
-          fi
-          git worktree remove --force "$worktree"
+          : > bench-base.txt
+          bash bench/bench-revision.sh "$merge_base" bench-base.txt "$BENCH_FILTER" 3
+          bash bench/bench-revision.sh "$merge_base" bench-base.txt "$PINNED_REL_FILTER" 5
+          echo "has_base=true" >> "$GITHUB_OUTPUT"
 
       - name: Benchmark HEAD
         if: steps.bench_base.outputs.has_base == 'true'
         run: |
-          go test -bench="$BENCH_FILTER" -benchmem -benchtime=0.3s -count=3 -run '^$' ./bench | tee bench-head.txt
-          go test -bench="$PINNED_REL_FILTER" -benchmem -benchtime=0.3s -count=5 -run '^$' ./bench | tee -a bench-head.txt
+          : > bench-head.txt
+          bash bench/bench-revision.sh HEAD bench-head.txt "$BENCH_FILTER" 3
+          bash bench/bench-revision.sh HEAD bench-head.txt "$PINNED_REL_FILTER" 5
 
       - name: Gate (bench-compare.sh) — BLOCKING
         if: steps.bench_base.outputs.has_base == 'true'
@@ -157,21 +151,14 @@ jobs:
         id: bench_base
         run: |
           merge_base="${{ steps.mergebase.outputs.merge_base }}"
-          worktree="$(mktemp -d)/bench-base"
-          git worktree add --detach "$worktree" "$merge_base"
-          if [[ -d "$worktree/bench" ]]; then
-            (cd "$worktree" && go test -bench=. -benchmem -benchtime=0.3s -count=1 -run '^$' ./bench) | tee bench-base.txt
-            echo "has_base=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "bench/ suite not present at merge-base ($merge_base) — nothing to compare against yet." | tee bench-base.txt
-            echo "has_base=false" >> "$GITHUB_OUTPUT"
-          fi
-          git worktree remove --force "$worktree"
+          : > bench-base.txt
+          bash bench/bench-revision.sh "$merge_base" bench-base.txt . 1
+          echo "has_base=true" >> "$GITHUB_OUTPUT"
 
       - name: Benchmark HEAD
         run: |
-          git checkout "${{ steps.mergebase.outputs.head_sha }}" --quiet
-          go test -bench=. -benchmem -benchtime=0.3s -count=1 -run '^$' ./bench | tee bench-head.txt
+          : > bench-head.txt
+          bash bench/bench-revision.sh "${{ steps.mergebase.outputs.head_sha }}" bench-head.txt . 1
 
       - name: Compare (benchstat) — informational only
         continue-on-error: true

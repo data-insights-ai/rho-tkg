@@ -211,3 +211,21 @@ After a deliberate performance change (optimization or an accepted
 trade-off), just re-run `make bench-baseline` locally before continuing work
 that depends on comparing against the new normal — there is nothing to
 commit; the baseline file is per-machine and gitignored by design.
+
+## Revision comparison integrity
+
+CI runs the current `bench/` harness against both immutable production revisions
+with `bench/bench-revision.sh`. Only the temporary worktree's benchmark directory
+is replaced; production code and module dependencies retain the selected ref.
+Each run records its revision and elapsed duration. Baseline and HEAD therefore
+use identical benchmark setup, names, filters and repetition counts.
+
+The shared composite fixture creates its single-property and composite indexes
+once in parent setup. Repeated leaf runs (`-count` and calibration) only read it;
+recreating DDL in a shared leaf previously failed with "index already exists".
+Both query arms still check the exact expected match count on100,000 nodes.
+
+`bench-compare.sh` rejects failed, empty, malformed, missing or unequal sample
+sets before invoking benchstat. Pipeline failures propagate through bash
+pipefail. A partial baseline or unavailable private dependency cannot produce
+a green comparison from missing CSV values.
