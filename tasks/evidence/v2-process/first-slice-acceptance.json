@@ -74,8 +74,10 @@
     "failed_runs_are_not_acceptance_evidence": true
   },
   "hosted_ci": {
-    "status": "not yet run for this source revision",
-    "qualification": "Local acceptance only; earlier hosted CI does not cover this slice"
+    "status": "dbb27c69 failed; correction locally accepted; replacement run pending",
+    "record": "hosted-ci-dbb27c69.json",
+    "correction": "../v2-process-ci/acceptance.json",
+    "qualification": "The original local evidence remains historical. The Linux cancellation/completion fixture failure is corrected without production changes. Hosted completion for the corrected source remains pending."
   },
   "qualification": "Private storage/orchestration only. No public graph API, consumer migration, remote certified cuts, full E15-E18 oracle, physical-host durability, ownership transfer/GC, engine selection or whole V2 acceptance.",
   "outside_this_slice": [

@@ -1,0 +1,35 @@
+{
+  "date": "2026-10-11",
+  "accepted": true,
+  "scope": "Fixture cancellation/completion synchronization for the existing six-process orchestration tests",
+  "source_commit": "2d51bfea04f294b8e24a5361f731679f816810d4",
+  "base": "dbb27c697b0dbc1bb9d6bf4b7db2391b8fb04f0d",
+  "source_manifest": "final-source.json",
+  "source_manifest_sha256": "f688af21e3c281d9e10033f3a4d7cb47303ee7af706292f7cefaa44859bfbfea",
+  "author_receipt": "receipt.json",
+  "author_receipt_sha256": "735643df0168201ea4d4acca3ede4bde31b647e5b3868bae44608b5ab1d06cfa",
+  "independent_review": "independent-review.txt",
+  "independent_review_sha256": "84e2ce4caeade500365adcf4074d4a4f8c0073170ce0145e4fe9f19fc34d824a",
+  "original_hosted_failure": "../v2-process/hosted-ci-dbb27c69.json",
+  "validation": {
+    "normal_and_race_each_platform": "11 tests pass without skips on macOS/arm64 and Linux/arm64",
+    "actual_six_process_scenarios_each": 4,
+    "successful_child_reaps_each": 6,
+    "original_unchanged_linux_red": true,
+    "deterministic_red_tests": 2,
+    "single_edit_mutant_killed": true,
+    "fmt_vet_build_lint_security_vuln": "pass; zero reachable vulnerability findings, package/module advisories qualified in receipt",
+    "source_files_verified": 432,
+    "production_files_unchanged": 189,
+    "public_methods_added": 0,
+    "production_statements_changed": 0,
+    "coverage": "Fresh focused parent profile plus exact unchanged production coverage from the accepted first slice; not a fresh full-module coverage claim",
+    "limits": "Unchanged4GiB/180s invocation limits and worker/frame/queue caps; finite3-second terminal cleanup wait"
+  },
+  "root_validation": "Independently compared manifest/live/committed source, production against base, sealed receipt/source/results/profile/scanner hashes, four exact test inventories and all16 six-child cleanup records. Mutant inventory differs at one intended fixture only.",
+  "hosted_ci": {
+    "status": "replacement run pending after push",
+    "qualification": "Local Linux/arm64 evidence does not establish hosted Linux/amd64 completion."
+  },
+  "qualification": "No production API, graph semantics or wire change. Whole P4/V2, remote certified cuts, E15-E18, ownership/GC/physical-host/substrate and public consumer readiness remain open."
+}

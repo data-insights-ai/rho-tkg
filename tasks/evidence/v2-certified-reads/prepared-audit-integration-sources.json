@@ -1,0 +1,20 @@
+{
+  "external": "2a7d51445ffa632038e56f3ee8862a74aa0d96ca",
+  "external_parent": "637e1816befa567f8903c1f6591b30403bcb7e77",
+  "accepted": "dbb27c697b0dbc1bb9d6bf4b7db2391b8fb04f0d",
+  "scope": "read-only source audit; no runtime acceptance",
+  "external_files_sha256": {
+    "CHANGELOG.md": "3cc6d5bff080c96f8816d32d1fe9c582f8fe3069f0dd246039f8d85262756b0b",
+    "v5/internal/replica/application_machine_cleanup_test.go": "c029030e94b488a486ea43d721b09b79cd849b294b866ce53f129ba78152dcd1",
+    "v5/internal/replica/application_replication.go": "aa0a5f69d124691e966641a9eb4019e9ad03bb9e242edd0b28ff4b76fba9a682",
+    "v5/internal/replica/application_semantic_machine.go": "c72b1f1c0245c62b2fce85bc142534b6490635e1ee252a3a978a11bef3b5d8d3",
+    "v5/internal/replica/application_snapshot_event.go": "bb20edda1e684d8285ec06652fe7645d28d72f20f64f23a329699fda2087736f",
+    "v5/internal/replica/application_snapshot_event_test.go": "7213041647867babc23a571b6e3cf5f98fd51887b68de8cebc208055b3909a7c",
+    "v5/internal/replica/driver.go": "f289e9824b764922a30cc3a1a603aa54845608786bfaf3abb61733820aae478b"
+  },
+  "blocking_findings": [
+    "AS5 AD4 rejected by new applicationSnapshotContext"
+  ],
+  "three_way_preview": "only CHANGELOG conflict; Go recovery hooks blended",
+  "original_red_evidence": "not supplied or executed"
+}

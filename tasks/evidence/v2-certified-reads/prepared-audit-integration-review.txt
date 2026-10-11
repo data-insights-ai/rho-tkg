@@ -1,0 +1,27 @@
+Read-only integration audit: external 2a7d5144 against accepted dbb27c69
+
+Verdict: do not promote the unchanged merge as compatible audited-snapshot support. One concrete AS5 integration blocker needs a failing native guard and correction. No other functional blocker found in the seven-file delta. No runtime, source/index/branch changes, commit or push occurred. The artifact is source review, not merge acceptance.
+
+New behavior
+
+Begin authenticates the configured peer packet and genuine same-Store prepared snapshot before calling a compiled auditor outside Driver.mu. One pending event fences RawNode until bounded Advance reaches EOF and a later Advance invokes Finish. Finish must release readers and retain at most4096 logical bytes of candidate state; it does not claim, accept or activate anything. Commit separately funds the configured drain/Store/callback owners, rechecks Prepared, obtains the exact claim, and calls the actual RawNode Step/drain. Ignored snapshots release unused claims. Auditor machines refuse the old StepApplicationSnapshot door with ErrUnavailable.
+
+Auditor/cleanup-provider modules now need an immutable, positive six-field resource profile before Open.Restore. Legacy modules without either capability retain their path. Detached Stage/Restore callback owners close outside Driver.mu before subsequent Install/callback/RawNode work; original cleanup failures are retained, suppress Output, revoke senders and fail-stop future events. Pending Close cancels an idle event, waits for in-flight bounded callback work outside the lock, and closes owners once; it does not promise to interrupt an auditor's live I/O. Driver Close also closes an idle pending event before Store.Close.
+
+Concrete compatibility findings
+
+1. BLOCKING: application_snapshot_event.go:115-124 accepts AD versions1/2/3 only. Accepted application_snapshot_prepared.go:46-47 emits AD4 for actual AS5 recovery snapshots. A genuine accepted AS5 can pass CheckPreparedApplicationSnapshot and then fail Begin's context extraction with ErrInvalid before the auditor. Current context-layout guards enumerate only1/2/3; imported actual fixtures are ordinary replicatedApplication snapshots, not the accepted recovery profile. For AD4, the unchanged producer places CutID at196+32 semantic+16 control+48 recovery=292; use the current producer/exact contract as the authority for the correction, not a fabricated descriptor. This is a new-path compatibility gap; existing non-auditor AS5 Step remains available.
+
+2. Preserve accepted Driver recovery seams. External parent637e predates dbb's verifier binding at Open, admitApplicationData on local/forwarded input, and bindApplicationRecoveryBatch before Install. Read-only three-way merge-tree with the actual common parent637e reports no Go conflict and blends these changes, but wholesale replacement by external files loses them. Stage cleanup must remain before the retained recovery-binding/install sequence. Preserve private claim-authorized prepared reads, ApplicationContractForPolicyWithRecovery and incoming-owner AS5 semantics; no raftlog change is implied by this delta.
+
+3. CHANGELOG needs both added entries retained (the only textual conflict in the three-way preview). Current graph Hosts/materializers implement none of the new interfaces, so existing certified/cross-process reads do not automatically acquire a new auditor or new pending-event behavior. A future audited Host must explicitly drive Begin/Advance/Commit; its old snapshot door will refuse. The registry unit still closes views outside its own mutex, not through Driver detachment; these interfaces do not turn it into a registered adapter, factory, preclaim or ready Host.
+
+Minimal integration proof
+
+- Write/run a genuine current-AS5 pending-audit guard RED before changing the parser: actual descriptor/WithRecovery contract, bound auditor+recovery verifier, real prepared reader and actual emitted MsgSnap. Verify Begin/EOF/Finish never activate, Finish frees readers, and Claim/actual Ready alone activate; compare the incoming recovery owner/credits and keep an old generation read valid. Exercise exact context IDs/hash and wrong/foreign/closed/reader-held refusals with zero output.
+- On sealed merged source run the new replica audit/cleanup inventory normal/race/coverage (direct methods, new code>=80), plus the affected existing replica inventory. Include existing local/forwarded recovery backpressure and creation guards and the actual-AS5 preclaim/contract/incoming-owner/same-Ready-suffix guards. Check the actual updated recovery-enabled Commit work/owned reservation at exact/one-short bounds rather than carrying the external no-recovery numbers blindly.
+- One targeted graph regression lane: six-process cross-edge/native quiescent oracle and certified follower/reopen/held-cut history. Preserve unchanged registry-unit evidence by production hashes; no new registry/factory readiness or broad fault/GC/transfer campaign is required. Author fmt/vet/build and pinned lint/security/vulnerability receipts apply to the final merged source.
+
+Evidence qualification
+
+The two imported test files contain substantive native activation, lifecycle, admission and cleanup guards. Their named deficiency markers are not saved original RED logs. No external original-RED, normal/race/coverage or pinned-scanner artifacts were supplied or executed in this audit, so none are claimed. Runtime acceptance remains open. REVIEW-SOURCES.json seals the seven external file hashes.

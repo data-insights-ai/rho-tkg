@@ -1,0 +1,14 @@
+{
+  "status": "source PASS; final gates pending",
+  "manifest_sha256": "f688af21e3c281d9e10033f3a4d7cb47303ee7af706292f7cefaa44859bfbfea",
+  "go_files": 432,
+  "live_hash_mismatches": [],
+  "production_go_files": 189,
+  "production_delta_from_dbb27c69": [],
+  "changed_files": [
+    "v5/internal/graphapply/graph_source_process_test.go",
+    "v5/internal/graphapply/graph_source_process_cancel_test.go"
+  ],
+  "concrete_blockers": [],
+  "reviewer_runtime_used": false
+}

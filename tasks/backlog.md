@@ -238,6 +238,10 @@ reviewed and validated before the next package starts.
    The [finite process-orchestration acceptance](evidence/v2-process/first-slice-acceptance.json)
    now closes its combined affected graphapply normal/race/coverage and static
    gates. Driver/factory/preclaim/Host readiness remains unwired and unaccepted.
+   External `2a7d5144` prepared-snapshot auditing is [source-reviewed](evidence/v2-certified-reads/prepared-audit-integration-review.txt),
+   not integrated or runtime-accepted. Its new audit parser rejects the accepted
+   AS5/AD4 descriptor. After the current CI correction, reproduce this with a
+   genuine prepared AS5 snapshot and integrate without losing recovery hooks.
 4. Pass the same-graph E15–E18 serial-history/cut oracle under process and message
    faults, recovery and ownership transfer; complete the equivalent transactional-KV
    comparison and record the engine decision. Only then can V2 close under
@@ -261,6 +265,15 @@ reviewed and validated before the next package starts.
    CDC, retained roots and cleanup. This closes the first orchestration slice,
    not remote certified cuts, E15–E18, ownership/GC, physical-host durability or
    the engine comparison. Those remain the next package-4 acceptance work.
+   **CI correction locally accepted; hosted confirmation pending:**
+   [hosted CI at `dbb27c69`](evidence/v2-process/hosted-ci-dbb27c69.json) exposed
+   a test-fixture cancellation/completion race; root tests were cancelled by
+   that matrix failure. The [reviewed correction at `2d51bfea`](evidence/v2-process-ci/acceptance.json)
+   waits for the original worker terminal within a finite bound. All 189
+   production files are unchanged. Eleven focused tests pass in normal/race
+   modes on macOS and Linux/arm64, including four six-child scenarios and
+   exact cleanup; the original RED, mutant and static gates are preserved.
+   A new full hosted run must pass before this CI follow-up closes.
 
 The phase table above records current acceptance. The following entries retain
 the scope of their historical component validations.
