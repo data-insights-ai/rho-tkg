@@ -768,3 +768,58 @@ func TestCatalogMultipleStageAggregateRelease(t *testing.T) {
 		t.Fatal("aggregate accounting not empty")
 	}
 }
+
+// These guards check existing caller validation and staging semantics.
+func TestGuardCatalogLifeInvalidReferencesKeepCatalogUsable(t *testing.T) {
+	f := fixturePages(t, temporal.ProfileIntegerZ, PageLimits{})
+	c := openCatalog(t, f.db, f.index, Limits{})
+	for _, ref := range []LifeRef{refLife(0, 11), refLife(1, 0)} {
+		got, found, err := c.Life(t.Context(), ref)
+		if !errors.Is(err, ErrInvalid) || errors.Is(err, ErrResourceLimit) || found || got != (graphstate.LifeRecord{}) {
+			t.Fatal("invalid life reference returned output", ref, got, found, err)
+		}
+	}
+	got, found, err := c.Life(t.Context(), refLife(1, 11))
+	if err != nil || !found || got != (graphstate.LifeRecord{Owner: 1, Life: 11}) {
+		t.Fatal("invalid reference poisoned valid binding", got, found, err)
+	}
+}
+
+func TestGuardCatalogValueIdempotenceAndReadQuotaPreserveWrites(t *testing.T) {
+	f := fixturePages(t, temporal.ProfileIntegerZ, PageLimits{})
+	c := openCatalog(t, f.db, f.index, Limits{})
+	s := stage(t, c)
+	before, err := s.Writes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Value(t.Context(), refValue(0), graphstate.I64(7)); !errors.Is(err, ErrInvalid) || errors.Is(err, ErrResourceLimit) {
+		t.Fatal("zero supplied value ID admitted", err)
+	}
+	if err := s.Value(t.Context(), refValue(99), graphstate.I64(7)); err != nil {
+		t.Fatal("same supplied identity was not idempotent", err)
+	}
+	if err := s.Value(t.Context(), refValue(99), graphstate.I64(8)); !errors.Is(err, ErrRebinding) {
+		t.Fatal("identity changed content", err)
+	}
+	after, err := s.Writes()
+	if err != nil || !sameWrites(before, after) {
+		t.Fatal("validation or restaging changed writes", err)
+	}
+	limited := openCatalog(t, f.db, f.index, Limits{MaxReadRows: 1})
+	short := stage(t, limited)
+	if err := short.Value(t.Context(), refValue(99), graphstate.I64(7)); !errors.Is(err, ErrResourceLimit) || errors.Is(err, ErrInvalid) {
+		t.Fatal("reference lookup exceeded ordinary read quota", err)
+	}
+	if writes, err := short.Writes(); err != nil || len(writes) != 0 {
+		t.Fatal("read refusal published partial writes", writes, err)
+	}
+	if _, err := limited.Root(); err != nil {
+		t.Fatal("read quota poisoned catalog", err)
+	}
+	got, found, err := c.Value(t.Context(), refValue(99))
+	equal, equalityErr := got.Value.Equal(graphstate.I64(7), c.limits.valueLimits())
+	if err != nil || !found || got.Ref != refValue(99) || equalityErr != nil || !equal {
+		t.Fatal("staging guard changed retained identity", got, found, err, equalityErr)
+	}
+}

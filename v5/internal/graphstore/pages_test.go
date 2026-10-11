@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
 	"sync"
 	"testing"
 
@@ -1048,4 +1049,37 @@ func TestPagesAddressabilityIncludesUnsetAndNoop(t *testing.T) {
 	if !sameWrites(baseline, after) {
 		t.Fatal("valid noop allocated")
 	}
+}
+
+// A row-limited page must never advertise empty progress before -infinity.
+func TestGuardPageUnboundedFirstPieceFitsAtomically(t *testing.T) {
+	f := fixturePages(t, temporal.ProfileIntegerZ, PageLimits{})
+	all, err := temporal.All(f.axis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patch := pagePatch(t, f.key, emptyPageState(t, f.axis), all, presentLife(t), 1, false)
+	f.commit(t, patch)
+	p := f.reader(t, f.index, f.limits)
+	query := graphstate.ComponentQuery{Key: f.key, Window: all}
+	cursorBytes := p.cursorBytes
+	got, err := p.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 1, Bytes: 1 << 20})
+	if !errors.Is(err, ErrResourceLimit) || !reflect.DeepEqual(got, graphstate.ComponentPage{}) || len(p.cursors) != 0 || p.cursorBytes != cursorBytes {
+		t.Fatal("unbounded prefix published partial coverage/cursor", got, err)
+	}
+	if _, err := p.c.Root(); err != nil {
+		t.Fatal("page quota poisoned catalog", err)
+	}
+	got, err = p.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 2, Bytes: 1 << 20})
+	if err != nil || !got.Complete || got.Next != 0 || got.View != p.Identity() || got.Version != graphstate.ReadVersion(f.index) || got.MergeContext != nil || len(p.cursors) != 0 || p.cursorBytes != cursorBytes {
+		t.Fatal("two rows did not own complete unbounded support", got, err)
+	}
+	same, err := sameScope(got.Owned, all, temporal.Limits{})
+	if err != nil || !same {
+		t.Fatal("unbounded owned coverage changed", err)
+	}
+	assertPageState(t, got.Data, patch.State)
+	point := pagePoint(t, f.axis, 5)
+	want := pagePatch(t, f.key, emptyPageState(t, f.axis), point, presentLife(t), 1, false).State
+	assertPageState(t, pointRead(t, p, f.key, point).Data, want)
 }

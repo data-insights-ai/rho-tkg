@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"reflect"
 	"testing"
 	"unsafe"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
 
@@ -140,5 +142,128 @@ func TestFullOwnedScopeLedgerRejectsUnknownFramingAndCountsSpecialShapes(t *test
 	bad[52] = 99
 	if _, err := scopeOwnedBacking(bad); !errors.Is(err, ErrCorrupt) {
 		t.Fatal(err)
+	}
+}
+
+// Existing ownership guards use ordinary source caps and OutputBudget policies.
+func TestGuardExactComponentOutputBudgetPreservesInputs(t *testing.T) {
+	f := fixturePages(t, temporal.ProfileIntegerZ, PageLimits{})
+	c := openCatalog(t, f.db, f.index, Limits{})
+	w := pagePoint(t, f.axis, 5)
+	patch := pagePatch(t, f.key, emptyPageState(t, f.axis), w, presentLife(t), 1, false)
+	input, err := state.AppendState(nil, patch.State, state.CodecLimits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	arena, err := graphstate.NewOutputBudget(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, err := c.readerWithOutputBudget(t.Context(), arena)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := base.bytes
+	q := pageReader{q: base, limits: f.limits}
+	got, owned, err := q.exactComponentOutput(patch.State, w, graphstate.ReadBudget{Rows: 2, Bytes: 1 << 20})
+	if !errors.Is(err, graphstate.ErrResourceLimit) || !reflect.DeepEqual(got, state.State{}) || !reflect.DeepEqual(owned, temporal.Scope{}) || base.bytes != before {
+		t.Fatal("shared budget refusal returned partial component", got, owned, err)
+	}
+	base, err = c.reader(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	q.q = base
+	got, owned, err = q.exactComponentOutput(patch.State, w, graphstate.ReadBudget{Rows: 2, Bytes: 1 << 20})
+	if err != nil {
+		t.Fatal("funded component refused", err)
+	}
+	assertPageState(t, got, patch.State)
+	same, err := sameScope(owned, w, c.limits.Temporal)
+	after, encodeErr := state.AppendState(nil, patch.State, state.CodecLimits{})
+	if err != nil || !same || encodeErr != nil || !bytes.Equal(input, after) {
+		t.Fatal("component ownership changed source", err, encodeErr)
+	}
+}
+
+func TestGuardOwnedScopeSourceAdmissionAndValidity(t *testing.T) {
+	f := fixturePages(t, temporal.ProfileIntegerZ, PageLimits{})
+	c := openCatalog(t, f.db, f.index, Limits{})
+	base, err := c.reader(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := pageReader{q: base, limits: f.limits}
+	w := pagePoint(t, f.axis, 5)
+	input, err := temporal.AppendScope(nil, w, c.limits.Temporal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := q.ownScope(temporal.Scope{}); !errors.Is(err, ErrInvalid) || !errors.Is(err, temporal.ErrInvalidScope) || !reflect.DeepEqual(got, temporal.Scope{}) {
+		t.Fatal("invalid owned scope returned output", got, err)
+	}
+	before := base.bytes
+	base.maxBytes = before + 1 // One source byte remains after the captured root debit.
+	if got, err := q.ownScope(w); !errors.Is(err, ErrResourceLimit) || !reflect.DeepEqual(got, temporal.Scope{}) || base.bytes != before {
+		t.Fatal("exhausted scope ownership published output/work", got, err)
+	}
+	base.maxBytes = 0
+	got, err := q.ownScope(w)
+	if err != nil {
+		t.Fatal("funded arena-free ownership refused", err)
+	}
+	wire, encodeErr := temporal.AppendScope(nil, got, c.limits.Temporal)
+	after, sourceErr := temporal.AppendScope(nil, w, c.limits.Temporal)
+	if encodeErr != nil || sourceErr != nil || !bytes.Equal(input, wire) || !bytes.Equal(input, after) || base.bytes <= before {
+		t.Fatal("scope ownership changed input or omitted source debit", encodeErr, sourceErr)
+	}
+}
+
+func TestGuardOwnedChangesAdmissionAndReturnedSliceIsolation(t *testing.T) {
+	f := fixturePages(t, temporal.ProfileIntegerZ, PageLimits{})
+	c := openCatalog(t, f.db, f.index, Limits{})
+	w := pagePoint(t, f.axis, 5)
+	changes := pagePatch(t, f.key, emptyPageState(t, f.axis), w, presentLife(t), 1, false).Changes
+	input, err := state.AppendChanges(nil, f.axis, changes, state.CodecLimits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, err := c.reader(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := pageReader{q: base, limits: f.limits}
+	before := base.bytes
+	for _, remaining := range []int{1, 2 * len(input)} {
+		// With 2W available, the canonical wire fits; owned slots/backing additionally
+		// require positive bytes beyond the two wire copies.
+		base.maxBytes = before + remaining
+		if got, err := q.ownChanges(w, changes); !errors.Is(err, ErrResourceLimit) || got != nil || base.bytes != before {
+			t.Fatal("scarce source returned changes or partial debit", remaining, got, err)
+		}
+	}
+	arena, err := graphstate.NewOutputBudget(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.arena, base.maxBytes = arena, 0
+	if got, err := q.ownChanges(w, changes); !errors.Is(err, ErrResourceLimit) || !errors.Is(err, graphstate.ErrResourceLimit) || got != nil || base.bytes != before {
+		t.Fatal("shared codec budget returned partial changes", got, err)
+	}
+	base.arena = nil
+	owned, err := q.ownChanges(w, changes)
+	if err != nil || len(owned) != len(changes) || cap(owned) != len(owned) {
+		t.Fatal("funded changes refused or retained extra capacity", owned, err)
+	}
+	for i, change := range owned {
+		same, scopeErr := sameScope(change.Scope(), changes[i].Scope(), c.limits.Temporal)
+		if scopeErr != nil || !same || change.Before() != changes[i].Before() || change.After() != changes[i].After() {
+			t.Fatal("owned change lost semantic cells or scope", i, scopeErr)
+		}
+	}
+	clear(owned)
+	after, err := state.AppendChanges(nil, f.axis, changes, state.CodecLimits{})
+	if err != nil || !bytes.Equal(input, after) {
+		t.Fatal("returned change slice aliases caller input", err)
 	}
 }
