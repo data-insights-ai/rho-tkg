@@ -34,11 +34,11 @@ ledgers of 2026-10-09/10 (per-step red tests, merges, reviews) are in git histor
 ## Open queue (mirrors `HANDOVER.md` §11; specs in `tasks/backlog.md`)
 
 - [ ] 43 retraction door (`Retract` / `RetractWithTx` + GraphTx, Batch, Session twins) — NEXT STEP.
-- [ ] 34 `Set{Node,Rel}VersionIntervalWithTx` on every door — restarted 2026-10-11 (René: "work on item 34 on the v4"), agent adcfa76ae8b4c0dfe resumed in its worktree, rebase onto v4.50.0; red tests first, all four backends.
+- [x] 34 `Set{Node,Rel}VersionIntervalWithTx` on every door — released v4.50.1 (09e58d3, gate scratchpad ci-docker-v4501.txt exit 0, coverage 87.4%), sigma-tkgd and ai-soc notified 2026-10-11.
 - [ ] 33 + 42, then 41 — badger read cost — restart.
 - [ ] 35 broader effective scans (signatures confirmed by sigma 2026-10-10).
 - [ ] 28 state column fast path (design first) (waits for sigma).
 - [ ] 21 retention `PurgeExpiredRels` + per-type gate (sigma, not blocking).
 - [ ] Residual backlog: 0–5, 7, 10 (remaining), 13, 15, 16, 20 (RelAtTx benchmarks), 22, 23, 25, 26, 31, 37, 39, 40, 44.
 - [ ] (René) delete the stale `wip/badger-scan-flush-evict` branch; named stability exceptions vs deprecation ritual.
-- [ ] Next release v4.50.1 (PATCH only; v4.50.0 was released by Markus 2026-10-10, René 2026-10-10: no minor versions until asked) when 43 / 34 / 33 are merged; gate, tag, notify sigma-tkgd and ai-soc.
+- [ ] Next release v4.50.2 (v4.50.1 released 2026-10-11; PATCH only; v4.50.0 was released by Markus 2026-10-10, René 2026-10-10: no minor versions until asked) when 43 / 34 / 33 are merged; gate, tag, notify sigma-tkgd and ai-soc.
