@@ -41,7 +41,7 @@ func EnvelopeOverlaps(from, to types.Instant, opts storepkg.QueryOpts) bool {
 	if opts.ValidAt != 0 {
 		return from <= opts.ValidAt && (to == 0 || to > opts.ValidAt)
 	}
-	if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+	if opts.HasValidRange() {
 		return from < opts.ValidEnd && (to == 0 || to > opts.ValidStart)
 	}
 	return true
@@ -60,7 +60,7 @@ func MatchesTemporalFilter(id snowflake.ID, tm *types.TemporalMetadata, opts sto
 	if opts.ValidAt != 0 {
 		return MatchesPointInTime(id, tm, opts.ValidAt)
 	}
-	if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+	if opts.HasValidRange() {
 		if opts.ValidStart >= opts.ValidEnd {
 			return false
 		}
@@ -78,7 +78,7 @@ func MatchesTemporalFilter(id snowflake.ID, tm *types.TemporalMetadata, opts sto
 // TestScanDoorsNeverForwardTemporalOptsToStore. Do not use this predicate to
 // decide whether a graph-level read may take a current-row shortcut.
 func HasTemporalFilter(opts storepkg.QueryOpts) bool {
-	return opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
+	return opts.ValidAt != 0 || (opts.HasValidRange())
 }
 
 // MatchesPointInTime checks: from <= t AND (to == 0 OR to > t), with from

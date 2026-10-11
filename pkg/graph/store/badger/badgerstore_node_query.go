@@ -35,7 +35,7 @@ func (bs *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 		if opts.ValidAt != 0 {
 			ids = ti.QueryAt(opts.ValidAt)
 			temporalQuery = true
-		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		} else if opts.HasValidRange() {
 			ids = ti.QueryOverlap(opts.ValidStart, opts.ValidEnd)
 			temporalQuery = true
 		}
@@ -56,7 +56,7 @@ func (bs *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 		if opts.ValidAt != 0 {
 			nids = hfi.CandidatesUpTo(opts.ValidAt)
 			temporalQuery = true
-		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		} else if opts.HasValidRange() {
 			nids = hfi.CandidatesUpTo(opts.ValidEnd)
 			temporalQuery = true
 		}

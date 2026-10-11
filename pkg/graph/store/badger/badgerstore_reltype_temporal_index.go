@@ -233,7 +233,7 @@ func (bs *Store) PruneRelTypeTemporalCandidates(relType uint16, ids []types.RelI
 	if bs == nil {
 		return ids, false
 	}
-	if opts.ValidAt == 0 && (opts.ValidStart <= 0 || opts.ValidEnd <= 0) {
+	if opts.ValidAt == 0 && !opts.HasValidRange() {
 		return ids, false
 	}
 	bs.idxMu.RLock()

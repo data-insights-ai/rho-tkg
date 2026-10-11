@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Signed nonzero valid-time ranges now select historical facts consistently on
+  generic/indexed/count doors across every backend and on Allen relation doors.
+  Range presence depends on nonzero endpoints, not positivity. The existing
+  zero-as-unset/open contract is unchanged; this does not add finite epoch-zero
+  endpoint support. Tests compare node/relationship answers before and after
+  retraction at old/new knowledge pins on memory, Badger, tiered and sharded.
+
 ## [4.50.1] - 2026-10-11
 
 Patch release: interval corrections at a caller transaction instant (backlog 34, requested by sigma-tkgd for the burst-growth replay). Additive; the plain doors are unchanged.

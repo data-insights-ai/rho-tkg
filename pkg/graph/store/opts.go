@@ -33,7 +33,7 @@ type QueryOpts struct {
 	// Temporal filters — zero values = no filter (backward-compatible).
 	// ValidAt takes precedence if both ValidAt and ValidStart/ValidEnd are set.
 	ValidAt    types.Instant // Point-in-time filter (valid time). 0 = disabled.
-	ValidStart types.Instant // Interval filter start. Both must be > 0 for interval filter.
+	ValidStart types.Instant // Interval filter start. Both endpoints must be nonzero; signed instants are valid.
 	ValidEnd   types.Instant // Interval filter end. 0 = disabled.
 
 	// TxAt restricts the chain to versions recorded by the given transaction
@@ -99,3 +99,8 @@ type QueryOpts struct {
 	// paginated query keeps the sort regardless of this flag.
 	NoSort bool
 }
+
+// HasValidRange reports whether both finite interval-query bounds are present.
+// Signed Unix instants before 1970 remain coordinates; zero retains its legacy
+// unset meaning. Endpoint presence must never be inferred from positivity.
+func (o QueryOpts) HasValidRange() bool { return o.ValidStart != 0 && o.ValidEnd != 0 }

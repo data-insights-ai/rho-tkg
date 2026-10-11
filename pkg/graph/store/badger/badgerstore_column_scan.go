@@ -150,7 +150,7 @@ func columnarValidTimeWindow(opts storecontract.QueryOpts) (start, end int64, ok
 	if opts.ValidAt != 0 {
 		return int64(opts.ValidAt), int64(opts.ValidAt) + 1, true
 	}
-	if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+	if opts.HasValidRange() {
 		if opts.ValidStart >= opts.ValidEnd {
 			return 0, 0, false // matches nothing — let the row path own the empty answer
 		}

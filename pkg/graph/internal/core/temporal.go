@@ -1050,7 +1050,7 @@ func hasTemporalFilter(opts storepkg.QueryOpts) bool {
 	if opts.TxPin != 0 {
 		return true
 	}
-	return opts.ValidStart > 0 && opts.ValidEnd > 0
+	return opts.HasValidRange()
 }
 
 // effectiveTxPin returns the transaction-time pin a candidate must have been
@@ -1333,7 +1333,7 @@ func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, 
 		}
 		return n, nil
 	}
-	if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+	if opts.HasValidRange() {
 		return c.findNodeVersionMatchingDuringTx(id, opts.ValidStart, opts.ValidEnd, opts.TxAt, pred)
 	}
 	if opts.TxAt != 0 {
@@ -1381,7 +1381,7 @@ func (c *Core) findRelVersionForOpts(id types.RelID, opts storepkg.QueryOpts, pr
 		}
 		return r, nil
 	}
-	if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+	if opts.HasValidRange() {
 		return c.findRelVersionMatchingDuringTx(id, opts.ValidStart, opts.ValidEnd, opts.TxAt, pred)
 	}
 	if opts.TxAt != 0 {

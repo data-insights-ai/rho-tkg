@@ -1099,7 +1099,7 @@ func (ms *Store) relationshipsByTypeSegmentsLocked(token uint16, opts QueryOpts)
 		if opts.ValidAt != 0 {
 			rawIDs = ti.QueryAt(opts.ValidAt)
 			temporalQuery = true
-		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		} else if opts.HasValidRange() {
 			rawIDs = ti.QueryOverlap(opts.ValidStart, opts.ValidEnd)
 			temporalQuery = true
 		}

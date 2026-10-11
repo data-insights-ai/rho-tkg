@@ -53,7 +53,7 @@ func (ms *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 		if opts.ValidAt != 0 {
 			rawIDs = ti.QueryAt(opts.ValidAt)
 			temporalQuery = true
-		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		} else if opts.HasValidRange() {
 			rawIDs = ti.QueryOverlap(opts.ValidStart, opts.ValidEnd)
 			temporalQuery = true
 		}
@@ -73,7 +73,7 @@ func (ms *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 		if opts.ValidAt != 0 {
 			ids = hfi.CandidatesUpTo(opts.ValidAt)
 			temporalQuery = true
-		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		} else if opts.HasValidRange() {
 			ids = hfi.CandidatesUpTo(opts.ValidEnd)
 			temporalQuery = true
 		}
@@ -172,7 +172,7 @@ func (ms *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 		if opts.ValidAt != 0 {
 			rawIDs = ti.QueryAt(opts.ValidAt)
 			temporalQuery = true
-		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		} else if opts.HasValidRange() {
 			rawIDs = ti.QueryOverlap(opts.ValidStart, opts.ValidEnd)
 			temporalQuery = true
 		}
