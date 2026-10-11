@@ -40,6 +40,11 @@ func TestIntervalWithTx_RaceClock(t *testing.T) {
 						accepted []types.Instant
 						errs     []error
 					)
+					none := func() bool {
+						mu.Lock()
+						defer mu.Unlock()
+						return len(accepted) == 0
+					}
 					report := func(err error) {
 						mu.Lock()
 						errs = append(errs, err)
@@ -69,7 +74,10 @@ func TestIntervalWithTx_RaceClock(t *testing.T) {
 						}(w)
 						go func(w int) {
 							defer wg.Done()
-							for i := 0; i < rounds; i++ {
+							// Keep trying past the rounds (bounded) until one call
+							// got through: a loaded host can let the plain writers
+							// win every round.
+							for i := 0; i < rounds || (i < 50*rounds && none()); i++ {
 								at, _ := g.Temporal.NowTx()
 								err := ivRun(d, g, kind, f, sh.vf, sh.vt, map[string]any{"p": int64(-(w*1000 + i))}, at)
 								switch {

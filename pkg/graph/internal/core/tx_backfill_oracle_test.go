@@ -244,10 +244,18 @@ func (o *txbOracle) step() {
 		o.updateRel()
 	case 5:
 		o.addLabel()
-	case 6:
-		o.cascadeNode()
+	case 6: // a correction: plain, or at a caller instant (tx_backfill_oracle_interval_test.go)
+		if o.rng.IntN(2) == 0 {
+			o.cascadeNode()
+		} else {
+			o.nodeCallerInterval(o.rng.IntN(5))
+		}
 	case 7:
-		o.cascadeRel()
+		if o.rng.IntN(2) == 0 {
+			o.cascadeRel()
+		} else {
+			o.relCallerInterval(o.rng.IntN(5))
+		}
 	case 8:
 		o.deleteNode()
 	case 9:
@@ -419,7 +427,7 @@ func txbTombstoneNode(o *txbOracle, id types.NodeID, v uint32) types.TemporalMet
 
 func (o *txbOracle) callerOp() {
 	fam := o.rng.IntN(5)
-	switch o.rng.IntN(8) {
+	switch o.rng.IntN(6) {
 	case 0:
 		o.nodeCallerDelete(fam)
 	case 1:
@@ -430,12 +438,8 @@ func (o *txbOracle) callerOp() {
 		o.relCallerUpdate(fam)
 	case 4:
 		o.nodeRetract(fam, o.rng.IntN(4) != 0)
-	case 5:
-		o.relRetract(fam, o.rng.IntN(4) != 0)
-	case 6:
-		o.nodeCallerInterval(fam) // tx_backfill_oracle_interval_test.go
 	default:
-		o.relCallerInterval(fam)
+		o.relRetract(fam, o.rng.IntN(4) != 0)
 	}
 }
 
