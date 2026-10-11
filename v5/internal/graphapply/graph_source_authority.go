@@ -63,6 +63,7 @@ func (h *allocationHost) readCrossRequest(q crossRequestQuestion) (allocationEve
 	out, err := h.driver.ReadIndex(encodeCrossRequestContext(id, q))
 	if err != nil {
 		delete(h.requestPending, id)
+		delete(h.cutPending, id)
 		return allocationEvent{}, err
 	}
 	e, err := h.event(out, nil)
@@ -81,6 +82,7 @@ func (h *allocationHost) completeCrossRequestRead(wire []byte, index uint64) (cr
 		return crossRequestReply{}, errInvalid
 	}
 	delete(h.requestPending, id)
+	delete(h.cutPending, id)
 	proof, err := h.machine.observeCrossRequest(context.Background(), q, index)
 	if err != nil {
 		return crossRequestReply{err: err}, nil
@@ -157,6 +159,8 @@ func (h *allocationHost) cancelSourceRead(id allocationReadID) error {
 		wire = encodeAllocationReadContext(id, q)
 	} else if q, ok := h.crossPending[id]; ok {
 		wire = encodeCrossReadContext(id, q)
+	} else if q, ok := h.cutPending[id]; ok {
+		wire = encodeGraphCutContext(id, q)
 	} else if q, ok := h.requestPending[id]; ok {
 		wire = encodeCrossRequestContext(id, q)
 	} else {
@@ -168,6 +172,7 @@ func (h *allocationHost) cancelSourceRead(id allocationReadID) error {
 	delete(h.pending, id)
 	delete(h.crossPending, id)
 	delete(h.requestPending, id)
+	delete(h.cutPending, id)
 	return nil
 }
 

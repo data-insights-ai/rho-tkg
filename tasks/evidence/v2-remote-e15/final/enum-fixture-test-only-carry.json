@@ -1,0 +1,12 @@
+{
+  "changed_files": [
+    "v5/internal/graphapply/graph_source_wire_test.go"
+  ],
+  "production_unchanged": true,
+  "retained_completed_lanes": [
+    "graphapply-e15-normal",
+    "graphstore-e15-normal"
+  ],
+  "inventory_parent_names_unchanged": true,
+  "reason": "new kinds9/10 are supported; unknown vector now11 with both positive counterparts"
+}

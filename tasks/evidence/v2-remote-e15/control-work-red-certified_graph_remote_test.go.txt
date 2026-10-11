@@ -1,0 +1,97 @@
+package graphapply
+
+import (
+	"errors"
+	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+)
+
+func remoteCertifiedFixture(t *testing.T, n *allocationTestNetwork) *crossProcessCoordinator {
+	t.Helper()
+	transports := make(map[uint64]graphPeerWireTransport, 2)
+	for g := range 2 {
+		h := n.hosts[g][0]
+		server, e := newGraphSourceServer(t.Context(), h, defaultGraphSourceLimits(h.machine.limits))
+		if e != nil {
+			t.Fatal(e)
+		}
+		pump := &nativeGraphTestPump{n: n, group: g, host: h}
+		service, e := newGraphPeerService(h, server, pump)
+		if e != nil {
+			t.Fatal(e)
+		}
+		transports[h.machine.ns.partition] = &nativeGraphTestTransport{service: service}
+	}
+	c, e := newCrossProcessCoordinator(n.hosts[1][1], transports)
+	if e != nil {
+		t.Fatal(e)
+	}
+	return c
+}
+
+func TestRemoteCertifiedCutCollectChargesPendingNativeManifestWork(t *testing.T) {
+	n := newCertifiedGraphNetwork(t)
+	ops, claims := crossEdgeFixture(t, n)
+	tx, p := n.crossPlan(ops, claims, 24)
+	n.crossCommit(tx, p)
+	c := remoteCertifiedFixture(t, n)
+	l := c.host.machine.limits
+	arena, e := graphstate.NewOutputBudget(l.outputBytes)
+	if e != nil {
+		t.Fatal(e)
+	}
+	budget := newGraphRemoteBudget(l, arena)
+	// The genuine stored registration must be read to identify its owner. Its
+	// payload alone exceeds this total allowance, independently of any reported
+	// work counter or network framing. A tiny scalar reply cannot make it free.
+	budget.maxBytes = len(tx.manifest) - 1
+	endpoints, e := c.endpoints(budget)
+	if e != nil {
+		t.Fatal(e)
+	}
+	b := &remoteCertifiedGraphBackend{c, endpoints, budget, arena}
+	o, e := b.Read(t.Context(), 8, graphCutQuery{kind: 1})
+	if !errors.Is(e, errLimit) || o != (graphCutObservation{}) {
+		t.Fatalf("native pending manifest escaped cumulative allowance: manifest=%d wire charged=%d observation=%+v err=%v", len(tx.manifest), budget.bytes, o, e)
+	}
+}
+
+func TestRemoteCertifiedNativeTransportFreshAndRetainedAt(t *testing.T) {
+	n := newCertifiedGraphNetwork(t)
+	ops, claims := crossEdgeFixture(t, n)
+	c := remoteCertifiedFixture(t, n)
+	old, e := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadFresh}, nil)
+	if e != nil {
+		t.Fatal("remote Fresh", e)
+	}
+	defer old.Close()
+	cut, e := old.Cut()
+	if e != nil {
+		t.Fatal(e)
+	}
+	tx, p := n.crossPlan(ops, claims, 24)
+	decision := n.crossCommit(tx, p)
+	resolve, e := n.hosts[0][0].ResolveCrossParticipant(3, decision)
+	if e != nil {
+		t.Fatal(e)
+	}
+	n.crossSubmit(0, resolve)
+	fresh, e := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadFresh}, nil)
+	if e != nil {
+		t.Fatal("remote closes B", e)
+	}
+	defer fresh.Close()
+	assertCertifiedIncident(t, certifiedView(t, fresh), ops[0].Scope, 1, 2, []graphstate.EntityID{3})
+	assertCertifiedIncident(t, certifiedView(t, fresh), ops[0].Scope, 17, 18, []graphstate.EntityID{3})
+	assertCertifiedIncident(t, certifiedView(t, old), ops[0].Scope, 1, 2, nil)
+	if e := fresh.Close(); e != nil {
+		t.Fatal(e)
+	}
+	at, e := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadAt, cut: cut}, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer at.Close()
+	assertCertifiedIncident(t, certifiedView(t, at), ops[0].Scope, 17, 18, nil)
+}

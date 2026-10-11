@@ -1,0 +1,32 @@
+diff --git a/v5/internal/graphapply/graph_source_process_test.go b/v5/internal/graphapply/graph_source_process_test.go
+index 772ef304..349f7a73 100644
+--- a/v5/internal/graphapply/graph_source_process_test.go
++++ b/v5/internal/graphapply/graph_source_process_test.go
+@@ -79,6 +79,8 @@ type graphProcessHub struct {
+ 	mu                               sync.Mutex
+ 	packetBytes, delivered, inFlight int
+ 	idle                             chan struct{}
++	// Optional test transport schedule; protected by mu and never graph authority.
++	beforeRelay func(context.Context, uint64, uint64, []byte) error
+ }
+ type graphProcessMux struct {
+ 	p             *graphProcess
+@@ -442,7 +444,17 @@ func (m *graphProcessMux) relayLoop() {
+ 				continue
+ 			}
+ 			ctx, cancel := context.WithTimeout(job.ctx, 10*time.Second)
+-			r, err := m.hub.peers[target].exchange(ctx, processRequest{op: processSourceServe, entity: m.id, data: e.body})
++			m.hub.mu.Lock()
++			before := m.hub.beforeRelay
++			m.hub.mu.Unlock()
++			var r processResponse
++			var err error
++			if before != nil {
++				err = before(ctx, m.id, e.target, e.body)
++			}
++			if err == nil {
++				r, err = m.hub.peers[target].exchange(ctx, processRequest{op: processSourceServe, entity: m.id, data: e.body})
++			}
+ 			cancel()
+ 			if err == nil {
+ 				err = processResponseError(r)

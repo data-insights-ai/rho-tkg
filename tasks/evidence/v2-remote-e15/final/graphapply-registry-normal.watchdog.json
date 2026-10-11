@@ -1,0 +1,21 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-short",
+    "-count=1",
+    "-json",
+    "-coverpkg=./internal/graphapply,./internal/graphstore",
+    "-coverprofile=/private/var/tmp/rho-v5-v2-remote-e15-20261011/v5/../tasks/evidence/v2-remote-e15/final/graphapply-registry.cover",
+    "-run",
+    "^(TestRegistryAllDoorShortFormatAndChildRefusals|TestRegistryExactWorkOwnedAndZeroTuples|TestRegistryFixedSimultaneousLayoutAndLedger|TestRegistryFourteenIndependentPipelines|TestRegistryFramingHashesAndSizePriority|TestRegistryLegalNearMaximumAndOversize|TestRegistryOutcomeUnionsAndOpaqueReferences|TestRegistryReciprocalRecordRefusals|TestRegistrySizeAndPrecedenceHelpers)$",
+    "./internal/graphapply"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 411.625,
+  "elapsed_s": 1.406,
+  "exit_code": 0,
+  "reason": "completed"
+}

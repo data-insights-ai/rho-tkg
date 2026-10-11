@@ -154,7 +154,7 @@ func (h *allocationHost) event(out replica.Output, eventErr error) (allocationEv
 			e.requestReplies = append(e.requestReplies, reply)
 			continue
 		}
-		if bytes.HasPrefix(ready.Context, []byte{'G', 'S', 'R', 1}) {
+		if bytes.HasPrefix(ready.Context, []byte{'G', 'S', 'R', 1}) || bytes.HasPrefix(ready.Context, []byte{'G', 'S', 'R', 2}) {
 			if ready.Index > out.Applied || h.driver.Applied() < ready.Index {
 				return allocationEvent{}, errInvalid
 			}

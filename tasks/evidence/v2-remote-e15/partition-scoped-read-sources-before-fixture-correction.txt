@@ -1,0 +1,249 @@
+package graphstore
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"slices"
+	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
+	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
+)
+
+// Direct data-source guards under E15's independently recorded capability RED.
+// The fixture supplies genuine borrowed native views, never cut authority.
+func TestPartitionScopedReadSourcesRejectsInvalidScopeAndNilProviders(t *testing.T) {
+	native, d, binding, cfg, stores := transactionViewFixture(t)
+	var nilNative *raftlog.ApplicationView
+	var nilProvider *testApplicationSource
+	cancelled, cancel := context.WithCancel(t.Context())
+	cancel()
+	base, err := native[0].Root()
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed, err := stores[0].ApplicationView(base.Index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := closed.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name    string
+		ctx     context.Context
+		sources []ApplicationReadSource
+		scope   []uint64
+		want    error
+	}{
+		{"nil-context", nil, []ApplicationReadSource{native[0]}, []uint64{3}, ErrInvalid},
+		{"empty-scope", t.Context(), nil, nil, ErrInvalid},
+		{"empty-scope-with-source", t.Context(), []ApplicationReadSource{native[0]}, nil, ErrInvalid},
+		{"scope-without-source", t.Context(), nil, []uint64{3}, ErrInvalid},
+		{"missing-source", t.Context(), []ApplicationReadSource{native[0]}, []uint64{3, 8}, ErrInvalid},
+		{"extra-source", t.Context(), []ApplicationReadSource{native[0], native[1]}, []uint64{3}, ErrInvalid},
+		{"oversized-scope", t.Context(), []ApplicationReadSource{native[0], native[1], native[1]}, []uint64{3, 8, 9}, ErrInvalid},
+		{"unsorted-scope", t.Context(), []ApplicationReadSource{native[1], native[0]}, []uint64{8, 3}, ErrInvalid},
+		{"duplicate-scope", t.Context(), []ApplicationReadSource{native[0], native[0]}, []uint64{3, 3}, ErrInvalid},
+		{"nil-provider", t.Context(), []ApplicationReadSource{nil}, []uint64{3}, ErrInvalid},
+		{"typed-nil-native", t.Context(), []ApplicationReadSource{nilNative}, []uint64{3}, ErrInvalid},
+		{"typed-nil-provider", t.Context(), []ApplicationReadSource{nilProvider}, []uint64{3}, ErrInvalid},
+		{"second-provider-nil", t.Context(), []ApplicationReadSource{native[0], nilProvider}, []uint64{3, 8}, ErrInvalid},
+		{"zero-partition", t.Context(), []ApplicationReadSource{native[0]}, []uint64{0}, ErrNamespace},
+		{"binding-partition-mismatch", t.Context(), []ApplicationReadSource{native[0]}, []uint64{8}, ErrNamespace},
+		{"second-binding-mismatch", t.Context(), []ApplicationReadSource{native[0], native[0]}, []uint64{3, 8}, ErrNamespace},
+		{"cancelled-binding-read", cancelled, []ApplicationReadSource{native[0]}, []uint64{3}, context.Canceled},
+		{"closed-native-binding", t.Context(), []ApplicationReadSource{closed}, []uint64{3}, raftlog.ErrClosed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			output := transactionTestOutput(t)
+			v, work, err := OpenPartitionScopedReadSources(tc.ctx, tc.sources, tc.scope, d, binding, cfg, Limits{}, GraphLimits{}, transactionTestBudget(), output)
+			if v != nil || work != (PageWork{}) || !errors.Is(err, tc.want) || output.Used() != 0 {
+				t.Fatal("invalid scope/provider acquired a view or consumed composite work", v, work, err, output.Used())
+			}
+			for _, borrowed := range native {
+				if _, err := borrowed.Root(); err != nil {
+					t.Fatal("admission refusal closed borrowed source", err)
+				}
+			}
+		})
+	}
+}
+
+func TestPartitionScopedReadSourcesChecksNativeBindingAndDeclaration(t *testing.T) {
+	native, d, binding, cfg, _ := transactionViewFixture(t)
+	entries := []PartitionOwnership{d.entries[0], d.entries[1]}
+	for _, tc := range []struct {
+		name string
+		edit func(*graphstate.GraphID, []PartitionOwnership)
+		want error
+	}{
+		{"foreign-graph", func(graph *graphstate.GraphID, _ []PartitionOwnership) { graph[0] ^= 1 }, ErrNamespace},
+		{"foreign-group", func(_ *graphstate.GraphID, parts []PartitionOwnership) { parts[0].Group[0] ^= 1 }, ErrNamespace},
+		{"foreign-owner-epoch", func(_ *graphstate.GraphID, parts []PartitionOwnership) { parts[0].OwnershipEpoch++ }, ErrStaleOwner},
+		{"undeclared-partition", func(_ *graphstate.GraphID, parts []PartitionOwnership) { parts[0].Partition = 4 }, ErrNamespace},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			graph, parts := d.Graph(), slices.Clone(entries)
+			tc.edit(&graph, parts)
+			foreign, err := NewOwnershipDeclaration(graph, d.TopologyEpoch(), parts, Limits{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			v, _, err := OpenPartitionScopedReadSources(t.Context(), []ApplicationReadSource{native[0]}, []uint64{3}, foreign, binding, cfg, Limits{}, GraphLimits{}, transactionTestBudget(), transactionTestOutput(t))
+			if v != nil || !errors.Is(err, tc.want) {
+				t.Fatal("scope alone bypassed complete namespace/ownership validation", v, err)
+			}
+			if _, err := native[0].Root(); err != nil {
+				t.Fatal("failed composite validation closed source", err)
+			}
+		})
+	}
+	for _, selected := range []struct {
+		sources []ApplicationReadSource
+		scope   []uint64
+	}{
+		{[]ApplicationReadSource{native[0]}, []uint64{3}},
+		{[]ApplicationReadSource{&testApplicationSource{ApplicationReadSource: native[0]}}, []uint64{3}},
+		{[]ApplicationReadSource{native[0], native[1]}, []uint64{3, 8}},
+	} {
+		view, work, err := OpenPartitionScopedReadSources(t.Context(), selected.sources, selected.scope, d, binding, cfg, Limits{}, GraphLimits{}, transactionTestBudget(), transactionTestOutput(t))
+		if err != nil || view == nil || view.Graph() != d.Graph() || view.Identity() == (graphstate.ViewID{}) || work != view.Work() || work.Records == 0 || work.Bytes == 0 {
+			t.Fatal("genuine native/provider scoped source failed", view, work, err)
+		}
+		if _, wrapped := selected.sources[0].(*testApplicationSource); wrapped {
+			if _, err := view.views[0].c.initializationView(); !errors.Is(err, ErrTopologyUnsupported) {
+				t.Fatal("data provider minted native initialization access", err)
+			}
+		}
+		if err := view.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := native[0].Root(); err != nil {
+			t.Fatal("successful view took borrowed source ownership", err)
+		}
+	}
+}
+
+func TestPartitionScopedReadSourcesRetainsHistoricalStateAndBorrowedOwnership(t *testing.T) {
+	native, d, binding, cfg, stores := transactionViewFixture(t)
+	full, _, err := OpenPartitionTransactionView(t.Context(), native, d, binding, cfg, Limits{}, GraphLimits{}, transactionTestBudget(), transactionTestOutput(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := full.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	all, err := temporal.All(binding.Axis())
+	if err != nil {
+		t.Fatal(err)
+	}
+	initialRevision, err := state.NewRevision(100, 23)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial, _, err := PlanPartitionTransaction(t.Context(), full, []graphstate.Operation{
+		{Kind: graphstate.CreateNode, Owner: 1, Life: 2, Scope: all},
+		{Kind: graphstate.CreateNode, Owner: 17, Life: 18, Scope: all},
+		{Kind: graphstate.AddLabel, Owner: 1, Life: 2, Name: "old-a", Scope: all},
+		{Kind: graphstate.AddLabel, Owner: 17, Life: 18, Name: "old-b", Scope: all},
+	}, initialRevision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	historical := transactionInstallTemplate(t, native, stores, initial, initialRevision)
+	before, _, err := OpenPartitionTransactionView(t.Context(), historical, d, binding, cfg, Limits{}, GraphLimits{}, transactionTestBudget(), transactionTestOutput(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := before.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	laterRevision, err := state.NewRevision(200, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	later, _, err := PlanPartitionTransaction(t.Context(), before, []graphstate.Operation{
+		{Kind: graphstate.AddLabel, Owner: 1, Life: 2, Name: "late-a", Scope: all},
+		{Kind: graphstate.Close, Owner: 17, Life: 18, Scope: all},
+	}, laterRevision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := transactionInstallTemplate(t, historical, stores, later, laterRevision)
+	point, err := temporal.RationalPosition(binding.Axis(), temporal.RationalInt64(5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, id := range []graphstate.EntityID{1, 17} {
+		partition, _ := d.PartitionAt(i)
+		oldSource := &testApplicationSource{ApplicationReadSource: historical[i]}
+		old, _, err := OpenPartitionScopedReadSources(t.Context(), []ApplicationReadSource{oldSource}, []uint64{partition.Partition}, d, binding, cfg, Limits{}, GraphLimits{}, transactionTestBudget(), transactionTestOutput(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := old.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+		now, _, err := OpenPartitionScopedReadSources(t.Context(), []ApplicationReadSource{current[i]}, []uint64{partition.Partition}, d, binding, cfg, Limits{}, GraphLimits{}, transactionTestBudget(), transactionTestOutput(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := now.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+		past, err := graphstate.Project(t.Context(), old, id, point, graphstate.Effective, DefaultGraphLimits().Planner)
+		wantLabels := []string{"old-a"}
+		if i == 1 {
+			wantLabels = []string{"old-b"}
+		}
+		if err != nil || !past.Exists || !past.Active || !slices.Equal(past.Labels, wantLabels) {
+			t.Fatal("historical scoped source substituted post-mutation state", id, past, err)
+		}
+		latest, err := graphstate.Project(t.Context(), now, id, point, graphstate.Effective, DefaultGraphLimits().Planner)
+		if err != nil || !latest.Exists || latest.Active != (i == 0) || i == 0 && !slices.Equal(latest.Labels, []string{"late-a", "old-a"}) {
+			t.Fatal("current counterpart lost diverging lifecycle", id, latest, err)
+		}
+		remote := graphstate.EntityID(17)
+		if i == 1 {
+			remote = 1
+		}
+		missing, err := old.Entity(t.Context(), remote)
+		if !errors.Is(err, ErrScopeUnavailable) || missing.Found || missing.View != (graphstate.ViewID{}) {
+			t.Fatal("selected scope expanded or converted missing authority to absence", remote, missing, err)
+		}
+		phantom := id + 6 // Published selected range, genuinely absent entity.
+		absent, err := old.Entity(t.Context(), phantom)
+		if err != nil || absent.Found || absent.View != old.Identity() {
+			t.Fatal("selected-source absence counterpart", absent, err)
+		}
+		root, err := historical[i].Root()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := old.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := old.Close(); err != nil {
+			t.Fatal("close lost idempotence", err)
+		}
+		borrowed, err := oldSource.RootBounded(t.Context(), 172)
+		if err != nil || borrowed.Index != root.Index || borrowed.ImageHash != root.ImageHash || !bytes.Equal(borrowed.Image, root.Image) {
+			t.Fatal("scoped reader closed or retargeted borrowed historical source", borrowed, err)
+		}
+		if _, err := old.Entity(t.Context(), id); !errors.Is(err, ErrClosed) {
+			t.Fatal("closed reader retained graph access", err)
+		}
+	}
+}

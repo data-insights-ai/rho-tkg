@@ -77,6 +77,28 @@ func OpenPartitionScopedReadView(ctx context.Context, sources []*raftlog.Applica
 	}
 	return openPartitionCompositeView(ctx, applicationSources{native: sources}, d, binding, configuration, l, g, budget, output)
 }
+
+// OpenPartitionScopedReadSources borrows exactly the selected immutable data
+// sources. It grants no certificate, quorum or installation authority.
+func OpenPartitionScopedReadSources(ctx context.Context, sources []ApplicationReadSource, scope []uint64, d OwnershipDeclaration, binding types.DefaultAxisBinding, configuration [32]byte, l Limits, g GraphLimits, budget OwnershipBudget, output *graphstate.OutputBudget) (*PartitionTransactionView, PageWork, error) {
+	if ctx == nil || len(scope) == 0 || len(scope) != len(sources) || len(scope) > d.Len() {
+		return nil, PageWork{}, ErrInvalid
+	}
+	for i, id := range scope {
+		if i > 0 && scope[i-1] >= id || nilApplicationSource(sources[i]) {
+			return nil, PageWork{}, ErrInvalid
+		}
+		actual, err := sources[i].ApplicationBinding(ctx)
+		if err != nil {
+			return nil, PageWork{}, err
+		}
+		if actual.Identity.Partition != id {
+			return nil, PageWork{}, ErrNamespace
+		}
+	}
+	return openPartitionCompositeView(ctx, applicationSources{data: sources}, d, binding, configuration, l, g, budget, output)
+}
+
 func openPartitionCompositeView(ctx context.Context, sources applicationSources, d OwnershipDeclaration, binding types.DefaultAxisBinding, configuration [32]byte, l Limits, g GraphLimits, budget OwnershipBudget, output *graphstate.OutputBudget) (out *PartitionTransactionView, work PageWork, err error) {
 	if ctx == nil || !d.valid() || sources.len() == 0 || sources.len() > d.Len() || output == nil {
 		return nil, work, ErrInvalid

@@ -1,0 +1,1 @@
+limit: {"command": ["python3", "-c", "import pathlib,subprocess;files=sorted(str(p) for p in pathlib.Path('.').rglob('*.go'));s=subprocess.check_output(['gofmt','-l',*files]).decode();print(s,end='');assert not s"], "rss_limit_mib": 4096.0, "wall_limit_s": 180.0, "sample_interval_s": 0.25, "peak_tree_rss_mib": 4.547, "elapsed_s": 0.307, "exit_code": 0, "reason": "completed"}

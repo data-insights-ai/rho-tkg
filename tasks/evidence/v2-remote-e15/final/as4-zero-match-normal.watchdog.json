@@ -1,0 +1,21 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-short",
+    "-count=1",
+    "-json",
+    "-coverpkg=./internal/graphapply,./internal/graphstore",
+    "-coverprofile=/private/var/tmp/rho-v5-v2-remote-e15-20261011/tasks/evidence/v2-remote-e15/final/as4.cover",
+    "-run",
+    "^TestRegisteredGenesisAS4SnapshotFreshCohort$",
+    "./internal/graphapply"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 524.078,
+  "elapsed_s": 1.674,
+  "exit_code": 0,
+  "reason": "completed"
+}

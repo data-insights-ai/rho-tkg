@@ -71,6 +71,10 @@ const (
 	processSourceObserve
 	processSourcePause
 	processSourcePausedBarrier
+	processSourceCutEvidence
+	processSourceCertifiedOpen
+	processSourceCertifiedObserve
+	processSourceCertifiedClose
 )
 
 // IPC IDs identify this process event only. No storage/send/prepared capability
@@ -179,7 +183,7 @@ func decodeProcessRequest(b []byte) (processRequest, error) {
 	r := processRequest{incarnation: c.array(), sequence: c.u64(), op: c.tag(), index: c.u64(), entity: c.u64()}
 	r.data = c.field(processFrameBytes)
 	r.packet = processDecodePacket(&c)
-	if r.sequence == 0 || r.op < processCampaign || r.op > processSourcePausedBarrier || len(c.b) != 0 {
+	if r.sequence == 0 || r.op < processCampaign || r.op > processSourceCertifiedClose || len(c.b) != 0 {
 		c.err = errCorrupt
 	}
 	return r, c.err

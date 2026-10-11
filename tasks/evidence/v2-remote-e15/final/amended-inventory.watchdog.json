@@ -1,0 +1,17 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-list",
+    "^(Test|Fuzz|Example)",
+    "./internal/graphapply",
+    "./internal/graphstore"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 645.719,
+  "elapsed_s": 5.727,
+  "exit_code": 0,
+  "reason": "completed"
+}

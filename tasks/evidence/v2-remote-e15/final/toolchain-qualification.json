@@ -1,0 +1,10 @@
+{
+  "host_default": "go1.27.1 darwin/arm64",
+  "host_GOTOOLCHAIN": "auto",
+  "accepted_final_normal_runner": "GOTOOLCHAIN=go1.26.9",
+  "focused_direct_before_correction": "go1.27.1; authentic behavior, not pinned final gate",
+  "invalid_union": "coverage-invalid-union-toolchain-mismatch.out; nonacceptance",
+  "required_correction": "COMPLETED: exact pinned3delta normal, all12exhaustive race lanes, actualAS4 normal/race and both mutants",
+  "accepted_profile_union": "11pinned normal base profiles +pinned-delta.cover +as4.cover; exactcoordinates/counts",
+  "earlier_1_27_profiles": "EXCLUDED from accepted coverage"
+}

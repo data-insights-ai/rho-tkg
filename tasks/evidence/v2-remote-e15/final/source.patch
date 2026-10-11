@@ -1,0 +1,918 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 0721ebec..968f0d05 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -13,9 +13,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+   Original request bytes and durable decisions survive uncertain replies;
+   missing authority remains pending. Captured root metadata grants no live-peer,
+   quorum or certified-cut authority, and required graph data uses source RPCs.
+-  Six-process same-graph cross-edge checks include exact graph answers and
+-  replicated outcomes/CDC. Remote certified cuts, broader fault/ownership/GC
+-  evidence, engine comparison and full V2 remain open.
++  Native and remote readers share Fresh, Stable, At and After closure through
++  persisted source certificates and exact retained roots. Remote control reads
++  carry explicit cumulative work/ownership allowances; receipt validation
++  survives issuer close when current immutable authority matches. Six-process
++  E15 checks delay one participant after COMMIT, require complete certified
++  graph answers and retained old cuts, and compare voter outcomes/CDC. Scoped
++  authority refusals preserve subsequent in-scope reads. Broader remote fault,
++  ownership/GC evidence, engine comparison and full V2 remain open.
+ 
+ - Added v5 replica storage primitives for owned, bounded snapshot audits through
+   Begin, Advance, a distinct Finish phase and Commit. Exact same-store claims
+diff --git a/v5/internal/graphapply/allocation_host.go b/v5/internal/graphapply/allocation_host.go
+index 68100117..b8a5f366 100644
+--- a/v5/internal/graphapply/allocation_host.go
++++ b/v5/internal/graphapply/allocation_host.go
+@@ -154,7 +154,7 @@ func (h *allocationHost) event(out replica.Output, eventErr error) (allocationEv
+ 			e.requestReplies = append(e.requestReplies, reply)
+ 			continue
+ 		}
+-		if bytes.HasPrefix(ready.Context, []byte{'G', 'S', 'R', 1}) {
++		if bytes.HasPrefix(ready.Context, []byte{'G', 'S', 'R', 1}) || bytes.HasPrefix(ready.Context, []byte{'G', 'S', 'R', 2}) {
+ 			if ready.Index > out.Applied || h.driver.Applied() < ready.Index {
+ 				return allocationEvent{}, errInvalid
+ 			}
+diff --git a/v5/internal/graphapply/certified_graph_host.go b/v5/internal/graphapply/certified_graph_host.go
+index eecc76da..9c187668 100644
+--- a/v5/internal/graphapply/certified_graph_host.go
++++ b/v5/internal/graphapply/certified_graph_host.go
+@@ -13,22 +13,26 @@ import (
+ 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
+ )
+ 
++// Zero allowances preserve the native compatibility path. Remote requests
++// require explicit positive limits carried by the actual ReadIndex context.
+ type graphCutQuery struct {
+-	kind    byte
+-	round   uint64
+-	nonce   [16]byte
+-	request [16]byte
+-	digest  [32]byte
++	sourceRows, sourceBytes, outputBytes int
++	kind                                 byte
++	round                                uint64
++	nonce                                [16]byte
++	request                              [16]byte
++	digest                               [32]byte
+ }
+ type graphCutObservation struct {
+-	scope         allocationScope
+-	configuration [32]byte
+-	floor, index  uint64
+-	pending       [16]byte
+-	coordinator   uint64
+-	certificate   graphCertificate
+-	local         graphLocalReceipt
+-	participant   graphParticipantObservation
++	sourceRows, sourceBytes, outputBytes int
++	scope                                allocationScope
++	configuration                        [32]byte
++	floor, index                         uint64
++	pending                              [16]byte
++	coordinator                          uint64
++	certificate                          graphCertificate
++	local                                graphLocalReceipt
++	participant                          graphParticipantObservation
+ }
+ type graphCutProof struct {
+ 	owner       *allocationHost
+@@ -51,6 +55,9 @@ type graphParticipantObservation struct {
+ }
+ 
+ func (q graphCutQuery) valid() bool {
++	if !(q.sourceRows == 0 && q.sourceBytes == 0 && q.outputBytes == 0) && (q.sourceRows < 1 || q.sourceRows > 1<<20 || q.sourceBytes < 1 || q.sourceBytes > 64<<20 || q.outputBytes < 1 || q.outputBytes > 64<<20) {
++		return false
++	}
+ 	return q.nonce != ([16]byte{}) && (q.kind == 1 && q.round == 0 && q.request == ([16]byte{}) && q.digest == ([32]byte{}) || q.kind == 2 && q.round > 0 && q.round < math.MaxUint64 && q.request == ([16]byte{}) && q.digest == ([32]byte{}) || q.kind == 3 && q.round == 0 && q.request != ([16]byte{}) && q.digest == ([32]byte{}) || q.kind == 4 && q.round == 0 && q.request != ([16]byte{}) && q.digest != ([32]byte{}))
+ }
+ func encodeGraphCutContext(id allocationReadID, q graphCutQuery) []byte {
+@@ -60,7 +67,14 @@ func encodeGraphCutContext(id allocationReadID, q graphCutQuery) []byte {
+ 	b = binary.BigEndian.AppendUint64(b, q.round)
+ 	b = append(b, q.nonce[:]...)
+ 	b = append(b, q.request[:]...)
+-	return append(b, q.digest[:]...)
++	b = append(b, q.digest[:]...)
++	if q.sourceRows > 0 {
++		b[3] = 2
++		b = binary.BigEndian.AppendUint32(b, uint32(q.sourceRows))
++		b = binary.BigEndian.AppendUint32(b, uint32(q.sourceBytes))
++		b = binary.BigEndian.AppendUint32(b, uint32(q.outputBytes))
++	}
++	return b
+ }
+ 
+ // ReadGraphCut issues a uniquely correlated, applied quorum barrier.
+@@ -118,7 +132,7 @@ func (h *allocationHost) CancelGraphCutRead(id allocationReadID) error {
+ 	return e
+ }
+ func (h *allocationHost) completeGraphCutRead(w []byte, index uint64) (graphCutReply, error) {
+-	if len(w) != 101 || !bytes.Equal(w[:4], []byte{'G', 'S', 'R', 1}) {
++	if !(len(w) == 101 && bytes.Equal(w[:4], []byte{'G', 'S', 'R', 1}) || len(w) == 113 && bytes.Equal(w[:4], []byte{'G', 'S', 'R', 2})) {
+ 		return graphCutReply{}, errCorrupt
+ 	}
+ 	var id allocationReadID
+@@ -140,6 +154,9 @@ func (m *declaredMaterializer) observeGraphCut(ctx context.Context, query graphC
+ 	if ctx == nil || !query.valid() || !m.certifiedReads() {
+ 		return out, errInvalid
+ 	}
++	if query.sourceRows > 0 && (query.sourceBytes < 172 || query.outputBytes < 172) {
++		return out, errLimit
++	}
+ 	v, err := m.store.ApplicationView(index)
+ 	if err != nil {
+ 		return out, err
+@@ -155,10 +172,25 @@ func (m *declaredMaterializer) observeGraphCut(ctx context.Context, query graphC
+ 		return out, err
+ 	}
+ 	l := m.limits.allocation
++	effective := m.limits
++	if query.sourceRows > 0 {
++		l.readRows = min(l.readRows, query.sourceRows)
++		l.readBytes = min(l.readBytes, query.sourceBytes)
++		effective.outputBytes = min(effective.outputBytes, query.outputBytes)
++	}
+ 	l.readRows = min(l.readRows, m.limits.sourceRows)
+ 	l.readBytes = min(l.readBytes, m.limits.sourceBytes)
+ 	q := reader{ctx: ctx, view: v, ns: m.ns, base: base, limits: l, bytes: cap(base.Image)}
+-	if err = joinGraphOutputBudget(&q, graphRequest{}, 4096, m.limits); err != nil {
++	defer func() {
++		if err == nil {
++			out.sourceRows = q.rows
++			out.sourceBytes = q.bytes
++			if q.arena != nil {
++				out.outputBytes = effective.outputBytes - q.arena.Remaining()
++			}
++		}
++	}()
++	if err = joinGraphOutputBudget(&q, graphRequest{}, 4096, effective); err != nil {
+ 		return out, err
+ 	}
+ 	cfg, err := m.initialized(&q)
+diff --git a/v5/internal/graphapply/certified_graph_reader.go b/v5/internal/graphapply/certified_graph_reader.go
+index c3672d8b..314001b2 100644
+--- a/v5/internal/graphapply/certified_graph_reader.go
++++ b/v5/internal/graphapply/certified_graph_reader.go
+@@ -4,15 +4,12 @@ import (
+ 	"context"
+ 	"crypto/rand"
+ 	"errors"
+-	"math"
+ 	"reflect"
+ 	"slices"
+ 	"sync"
+ 
+ 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+ 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
+-	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+-	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
+ )
+ 
+ type graphReadMode byte
+@@ -28,8 +25,9 @@ const (
+ // identities under the crash-only model. There is no scalar/log-offset fallback.
+ type graphCut struct{ certificates []graphCertificate }
+ type graphCommitReceipt struct {
+-	proof crossProof
+-	local graphCutProof
++	proof  crossProof
++	local  graphCutProof
++	remote *crossAuthority
+ }
+ type graphReadRequest struct {
+ 	mode    graphReadMode
+@@ -67,7 +65,7 @@ type certifiedGraphRead struct {
+ 	mu       sync.Mutex
+ 	cut      graphCut
+ 	full     *graphstore.PartitionTransactionView
+-	sources  []*raftlog.ApplicationView
++	sources  []certifiedGraphSource
+ 	initial  graphstore.PageWork
+ 	closed   bool
+ 	closeErr error
+@@ -187,193 +185,15 @@ func (c *certifiedReadCoordinator) resolvePending(ctx context.Context, o graphCu
+ 
+ // Open orchestrates the selected certified mode through actual source Hosts.
+ // Cache locking never spans external transport or a cancellable read.
+-func (c *certifiedReadCoordinator) Open(ctx context.Context, request graphReadRequest, scope []uint64) (read *certifiedGraphRead, err error) {
+-	if c == nil || ctx == nil || nilCertifiedTransport(c.transport) {
++func (c *certifiedReadCoordinator) Open(ctx context.Context, request graphReadRequest, scope []uint64) (*certifiedGraphRead, error) {
++	if c == nil || nilCertifiedTransport(c.transport) {
+ 		return nil, errInvalid
+ 	}
+-	if e := ctx.Err(); e != nil {
+-		return nil, e
+-	}
+-	scope, err = certifiedScope(c.declaration, scope)
+-	if err != nil {
+-		return nil, err
+-	}
+-	cut := request.cut
+-	switch request.mode {
+-	case graphReadAt:
+-	case graphReadStable:
+-		if len(cut.certificates) == 0 {
+-			c.mu.Lock()
+-			cut = c.stable
+-			c.mu.Unlock()
+-			if len(cut.certificates) == 0 {
+-				return nil, replica.ErrUnavailable
+-			}
+-		}
+-	case graphReadFresh, graphReadAfter:
+-		after := uint64(0)
+-		if request.mode == graphReadAfter {
+-			after, err = c.receiptRound(ctx, request.receipt)
+-			if err != nil {
+-				return nil, err
+-			}
+-		}
+-		cut, err = c.fresh(ctx, scope, after)
+-		if err != nil {
+-			return nil, err
+-		}
+-	default:
+-		return nil, errInvalid
+-	}
+-	if len(cut.certificates) != len(scope) {
+-		return nil, errGraphCutScope
+-	}
+-	sources := make([]*raftlog.ApplicationView, len(scope))
+-	var full *graphstore.PartitionTransactionView
+-	defer func() {
+-		if err != nil {
+-			if full != nil {
+-				err = errors.Join(err, full.Close())
+-			}
+-			for _, s := range sources {
+-				if s != nil {
+-					err = errors.Join(err, s.Close())
+-				}
+-			}
+-			read = nil
+-		}
+-	}()
+-	var first *allocationHost
+-	var aggregate materializerLimits
+-	for i, cert := range cut.certificates {
+-		if cert.scope.partition != scope[i] || cert.scope.declaration != c.declaration.Digest() || graphstate.GraphID(cert.scope.graph) != c.declaration.Graph() || i > 0 && (cert.round != cut.certificates[0].round || cert.configuration != cut.certificates[0].configuration) {
+-			return nil, errGraphCutScope
+-		}
+-		h, e := c.host(ctx, scope[i])
+-		if e != nil {
+-			return nil, e
+-		}
+-		if i == 0 {
+-			first = h
+-			aggregate = h.machine.limits
+-		}
+-		if i > 0 {
+-			aggregate = intersectCertifiedReadLimits(aggregate, h.machine.limits)
+-		}
+-		sources[i], err = h.AtGraphCertificate(ctx, cert)
+-		if err != nil {
+-			return nil, err
+-		}
+-	}
+-	// Constructor caps span all source handles and all later routed read work.
+-	l := aggregate
+-	arena, e := graphstate.NewOutputBudget(l.outputBytes)
+-	if e != nil {
+-		return nil, e
+-	}
+-	retained := graphReadSessionBytes + 4096*len(sources)
+-	if e := arena.Reserve(retained); e != nil {
+-		return nil, outputBudgetFailure(e)
+-	}
+-	cfg, e := first.currentConfiguration()
+-	if e != nil {
+-		return nil, e
+-	}
+-	configuration, e := cfg.digest()
+-	if e != nil || configuration != cut.certificates[0].configuration {
+-		return nil, errors.Join(errInvalid, e)
+-	}
+-	work := graphstore.PageWork{Records: 8 * len(sources), Bytes: retained}
+-	budget := graphstore.OwnershipBudget{SourceRows: l.sourceRows - work.Records, SourceBytes: l.sourceBytes - work.Bytes, OutputBytes: min(l.outputBytes-retained, arena.Remaining())}
+-	var opened graphstore.PageWork
+-	full, opened, err = graphstore.OpenPartitionScopedReadView(ctx, sources, scope, c.declaration, cfg.defaultAxis, configuration, l.catalog, l.graph, budget, arena)
+-	if err != nil {
+-		return nil, err
+-	}
+-	work.Records += opened.Records
+-	work.Bytes += opened.Bytes
+-	read = &certifiedGraphRead{cut: graphCut{certificates: slices.Clone(cut.certificates)}, full: full, sources: sources, initial: graphstore.PageWork{Records: 8 * len(sources), Bytes: retained}}
+-	if request.mode == graphReadFresh || request.mode == graphReadAfter {
+-		c.mu.Lock()
+-		c.stable = graphCut{certificates: slices.Clone(cut.certificates)}
+-		c.mu.Unlock()
+-	}
+-	return read, nil
++	return c.openBackend(ctx, request, scope, nativeCertifiedGraphBackend{c})
+ }
++
+ func (c *certifiedReadCoordinator) fresh(ctx context.Context, scope []uint64, after uint64) (graphCut, error) {
+-	b := max(uint64(1), after)
+-	hosts := make([]*allocationHost, len(scope))
+-	for i, id := range scope {
+-		h, e := c.host(ctx, id)
+-		if e != nil {
+-			return graphCut{}, e
+-		}
+-		hosts[i] = h
+-		p, e := c.read(ctx, h, 1, 0)
+-		if e != nil {
+-			return graphCut{}, e
+-		}
+-		b = max(b, p.observation.floor)
+-		if p.observation.pending != ([16]byte{}) {
+-			if e := c.resolvePending(ctx, p.observation); e != nil {
+-				return graphCut{}, e
+-			}
+-			p, e = c.read(ctx, h, 1, 0)
+-			if e != nil {
+-				return graphCut{}, e
+-			}
+-			b = max(b, p.observation.floor)
+-		}
+-	}
+-	if b == math.MaxUint64 {
+-		return graphCut{}, errLimit
+-	}
+-	for _, h := range hosts {
+-		p, e := h.PrepareGraphFence(b)
+-		if e != nil {
+-			return graphCut{}, e
+-		}
+-		r, e := c.transport.Submit(ctx, h, p)
+-		if e != nil {
+-			return graphCut{}, e
+-		}
+-		if r.phase != graphCutFence || r.round != b || r.index == 0 {
+-			return graphCut{}, errInvalid
+-		}
+-		if e := graphResultError(r.status); e != nil {
+-			return graphCut{}, e
+-		}
+-	}
+-	cut := graphCut{certificates: make([]graphCertificate, len(scope))}
+-	for i, h := range hosts {
+-		p, e := c.read(ctx, h, 1, 0)
+-		if e != nil {
+-			return graphCut{}, e
+-		}
+-		if e := c.resolvePending(ctx, p.observation); e != nil {
+-			return graphCut{}, e
+-		}
+-		command, e := h.PrepareGraphCertificate(b)
+-		if e != nil {
+-			return graphCut{}, e
+-		}
+-		r, e := c.transport.Submit(ctx, h, command)
+-		if e != nil {
+-			return graphCut{}, e
+-		}
+-		if r.phase != graphCutCertify || r.round != b || r.index == 0 {
+-			return graphCut{}, errInvalid
+-		}
+-		if e := graphResultError(r.status); e != nil {
+-			return graphCut{}, e
+-		}
+-		p, e = c.read(ctx, h, 2, b)
+-		if e != nil {
+-			return graphCut{}, e
+-		}
+-		cut.certificates[i] = p.observation.certificate
+-	}
+-	return cut, nil
++	return freshCertifiedGraphCut(ctx, nativeCertifiedGraphBackend{c}, scope, after)
+ }
+ 
+ // Cut returns owned exact coverage; it does not obtain a fresh barrier.
+@@ -433,6 +253,11 @@ func (s *certifiedGraphRead) Close() error {
+ 		return s.closeErr
+ 	}
+ 	s.closed = true
++	for _, source := range s.sources {
++		if remote, ok := source.(interface{ cancelCertifiedReads() }); ok {
++			remote.cancelCertifiedReads()
++		}
++	}
+ 	if s.full != nil {
+ 		x := s.full.Work()
+ 		s.initial.Records += x.Records
+diff --git a/v5/internal/graphapply/cross_process_coordinator.go b/v5/internal/graphapply/cross_process_coordinator.go
+index 06431e42..41ea3bb3 100644
+--- a/v5/internal/graphapply/cross_process_coordinator.go
++++ b/v5/internal/graphapply/cross_process_coordinator.go
+@@ -38,6 +38,7 @@ type crossProcessCoordinator struct {
+ 	transports map[uint64]graphPeerWireTransport
+ 	streams    map[uint64]*graphAuthenticatedStream
+ 	runs       map[[16]byte]*crossProcessRun
++	certified  *certifiedReadCoordinator
+ }
+ 
+ func newCrossProcessCoordinator(h *allocationHost, transports map[uint64]graphPeerWireTransport) (*crossProcessCoordinator, error) {
+diff --git a/v5/internal/graphapply/graph_source_authority.go b/v5/internal/graphapply/graph_source_authority.go
+index 52854f3f..9c7b4242 100644
+--- a/v5/internal/graphapply/graph_source_authority.go
++++ b/v5/internal/graphapply/graph_source_authority.go
+@@ -63,6 +63,7 @@ func (h *allocationHost) readCrossRequest(q crossRequestQuestion) (allocationEve
+ 	out, err := h.driver.ReadIndex(encodeCrossRequestContext(id, q))
+ 	if err != nil {
+ 		delete(h.requestPending, id)
++		delete(h.cutPending, id)
+ 		return allocationEvent{}, err
+ 	}
+ 	e, err := h.event(out, nil)
+@@ -81,6 +82,7 @@ func (h *allocationHost) completeCrossRequestRead(wire []byte, index uint64) (cr
+ 		return crossRequestReply{}, errInvalid
+ 	}
+ 	delete(h.requestPending, id)
++	delete(h.cutPending, id)
+ 	proof, err := h.machine.observeCrossRequest(context.Background(), q, index)
+ 	if err != nil {
+ 		return crossRequestReply{err: err}, nil
+@@ -157,6 +159,8 @@ func (h *allocationHost) cancelSourceRead(id allocationReadID) error {
+ 		wire = encodeAllocationReadContext(id, q)
+ 	} else if q, ok := h.crossPending[id]; ok {
+ 		wire = encodeCrossReadContext(id, q)
++	} else if q, ok := h.cutPending[id]; ok {
++		wire = encodeGraphCutContext(id, q)
+ 	} else if q, ok := h.requestPending[id]; ok {
+ 		wire = encodeCrossRequestContext(id, q)
+ 	} else {
+@@ -168,6 +172,7 @@ func (h *allocationHost) cancelSourceRead(id allocationReadID) error {
+ 	delete(h.pending, id)
+ 	delete(h.crossPending, id)
+ 	delete(h.requestPending, id)
++	delete(h.cutPending, id)
+ 	return nil
+ }
+ 
+diff --git a/v5/internal/graphapply/graph_source_process_test.go b/v5/internal/graphapply/graph_source_process_test.go
+index 772ef304..8e232a9d 100644
+--- a/v5/internal/graphapply/graph_source_process_test.go
++++ b/v5/internal/graphapply/graph_source_process_test.go
+@@ -79,6 +79,8 @@ type graphProcessHub struct {
+ 	mu                               sync.Mutex
+ 	packetBytes, delivered, inFlight int
+ 	idle                             chan struct{}
++	// Optional test transport schedule; protected by mu and never graph authority.
++	beforeRelay func(context.Context, uint64, uint64, []byte) error
+ }
+ type graphProcessMux struct {
+ 	p             *graphProcess
+@@ -442,7 +444,17 @@ func (m *graphProcessMux) relayLoop() {
+ 				continue
+ 			}
+ 			ctx, cancel := context.WithTimeout(job.ctx, 10*time.Second)
+-			r, err := m.hub.peers[target].exchange(ctx, processRequest{op: processSourceServe, entity: m.id, data: e.body})
++			m.hub.mu.Lock()
++			before := m.hub.beforeRelay
++			m.hub.mu.Unlock()
++			var r processResponse
++			var err error
++			if before != nil {
++				err = before(ctx, m.id, e.target, e.body)
++			}
++			if err == nil {
++				r, err = m.hub.peers[target].exchange(ctx, processRequest{op: processSourceServe, entity: m.id, data: e.body})
++			}
+ 			cancel()
+ 			if err == nil {
+ 				err = processResponseError(r)
+@@ -470,6 +482,9 @@ type graphProcessPumpCall struct {
+ 	allocation allocationQuery
+ 	cross      crossQuery
+ 	request    crossRequestQuestion
++	cut        graphCutQuery
++	baseline   uint64
++	scanned    int
+ 	proposal   allocationProposal
+ 	id         allocationReadID
+ 	reply      chan graphProcessPumpReply
+@@ -489,10 +504,54 @@ func advanceGraphProcessPumpQueue(queue *[]*graphProcessPumpCall, idle func() bo
+ 	return nil
+ }
+ 
++// pollGraphProcessCutSubmission correlates a real persisted Raft command and
++// its committed GSO. Operation refusal is separate from native event failure.
++func pollGraphProcessCutSubmission(ctx context.Context, h *allocationHost, proposal allocationProposal, baseline uint64, scanned int) (uint64, int, []byte, error, error) {
++	command, err := decodeGraphCutCommand(proposal.wire)
++	if err != nil {
++		return baseline, scanned, nil, err, nil
++	}
++	applied := h.driver.Applied()
++	for index := baseline + 1; index <= applied; index++ {
++		if scanned >= 1024 {
++			return baseline, scanned, nil, errLimit, nil
++		}
++		scanned++
++		baseline = index
++		entries, e := h.machine.store.Entries(index, index+1, 512)
++		if e != nil {
++			return baseline, scanned, nil, nil, e
++		}
++		if len(entries) != 1 || entries[0].GetIndex() != index {
++			return baseline, scanned, nil, nil, errCorrupt
++		}
++		if !bytes.Equal(entries[0].GetData(), proposal.wire) {
++			continue
++		}
++		body, e := h.machine.store.ApplicationRecord(ctx, index, true, 512)
++		if e != nil {
++			if errors.Is(e, context.Canceled) || errors.Is(e, context.DeadlineExceeded) {
++				return baseline, scanned, nil, e, nil
++			}
++			return baseline, scanned, nil, nil, e
++		}
++		if e := ctx.Err(); e != nil {
++			return baseline, scanned, nil, e, nil
++		}
++		result, e := decodeGraphCutResult(body)
++		if e != nil || result.index != index || result.phase != command.phase || result.round != command.round {
++			return baseline, scanned, nil, nil, errors.Join(errInvalid, e)
++		}
++		return baseline, scanned, body, nil, nil
++	}
++	return baseline, scanned, nil, nil, nil
++}
++
+ type graphProcessPumpReply struct {
+ 	allocation allocationReply
+ 	cross      crossReply
+ 	request    crossRequestReply
++	cut        graphCutReply
+ 	body       []byte
+ 	err        error
+ }
+@@ -528,6 +587,10 @@ func (p *graphProcessChildPump) Allocation(ctx context.Context, q allocationQuer
+ 	r, e := p.wait(&graphProcessPumpCall{ctx: ctx, kind: sourceOpen, allocation: q})
+ 	return r.allocation, e
+ }
++func (p *graphProcessChildPump) Cut(ctx context.Context, q graphCutQuery) (graphCutReply, error) {
++	r, e := p.wait(&graphProcessPumpCall{ctx: ctx, kind: sourceCutRead, cut: q})
++	return r.cut, e
++}
+ func (p *graphProcessChildPump) Cross(ctx context.Context, q crossQuery) (crossReply, error) {
+ 	r, e := p.wait(&graphProcessPumpCall{ctx: ctx, kind: sourceCrossRead, cross: q})
+ 	return r.cross, e
+@@ -888,6 +951,12 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
++	certifiedSessions := &graphProcessCertifiedSessions{ctx: ctx, coordinator: coordinator, owners: make(map[uint64]graphProcessCertifiedOwner)}
++	defer func() {
++		if e := certifiedSessions.close(); e != nil {
++			t.Error(e)
++		}
++	}()
+ 	requests := make(chan processRequest, processSourceWorkers)
+ 	inputErr := make(chan error, 1)
+ 	go func() {
+@@ -925,7 +994,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
+ 		active = nil
+ 	}
+ 	emit := func(e allocationEvent) error {
+-		if len(e.snapshotSends)+len(e.capacityReplies)+len(e.cutReplies) != 0 {
++		if len(e.snapshotSends)+len(e.capacityReplies) != 0 {
+ 			return errInvalid
+ 		}
+ 		if active != nil {
+@@ -946,6 +1015,14 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
+ 					finish(active, graphProcessPumpReply{cross: e.crossReplies[0]})
+ 					e.crossReplies = nil
+ 				}
++			case sourceCutRead:
++				if len(e.cutReplies) > 0 {
++					if len(e.cutReplies) != 1 || e.cutReplies[0].id != active.id || e.cutReplies[0].question != active.cut {
++						return errInvalid
++					}
++					finish(active, graphProcessPumpReply{cut: e.cutReplies[0]})
++					e.cutReplies = nil
++				}
+ 			case sourceRequestLookup:
+ 				if len(e.requestReplies) > 0 {
+ 					if len(e.requestReplies) != 1 || e.requestReplies[0].err == nil && e.requestReplies[0].proof.id != active.id {
+@@ -982,7 +1059,10 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
+ 			event, err = h.ReadCrossPhase(c.cross.tx, c.cross.phase, c.cross.nonce)
+ 		case sourceRequestLookup:
+ 			event, err = h.readCrossRequest(c.request)
++		case sourceCutRead:
++			event, err = h.ReadGraphCut(c.cut)
+ 		case sourceSubmit:
++			c.baseline = h.driver.Applied()
+ 			event, err = h.Submit(c.proposal)
+ 		}
+ 		if err != nil {
+@@ -996,6 +1076,18 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
+ 		if active == nil || active.kind != sourceSubmit {
+ 			return nil
+ 		}
++		if isGraphCutWire(active.proposal.wire) {
++			next, scanned, body, operationErr, eventErr := pollGraphProcessCutSubmission(active.ctx, h, active.proposal, active.baseline, active.scanned)
++			active.baseline, active.scanned = next, scanned
++			if eventErr != nil {
++				return eventErr
++			}
++			if body != nil || operationErr != nil {
++				finish(active, graphProcessPumpReply{body: body, err: operationErr})
++			}
++			return nil
++		}
++
+ 		c, _, err := decodeCrossCommand(active.proposal.wire, h.machine.limits)
+ 		if err != nil {
+ 			finish(active, graphProcessPumpReply{err: err})
+@@ -1080,6 +1172,8 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
+ 						e = errors.Join(e, encodeErr)
+ 					}
+ 				}
++			case processSourceCertifiedOpen, processSourceCertifiedObserve, processSourceCertifiedClose:
++				out.aux, e = certifiedSessions.serve(workerCtx, r)
+ 			case processSourceObserve:
+ 				ids := []uint64{r.entity}
+ 				if r.entity == 0 {
+@@ -1255,6 +1349,12 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
+ 				if e == nil {
+ 					response.changes, e = h.machine.store.ApplicationRecord(ctx, r.index, false, 1<<20)
+ 				}
++			case processSourceCutEvidence:
++				var evidence graphE15CutEvidence
++				evidence, e = captureGraphE15CutEvidence(ctx, h, r.entity)
++				if e == nil {
++					response.aux, e = encodeGraphE15CutEvidence(evidence)
++				}
+ 			case processCertifiedObserve:
+ 				var fact certifiedProcessFact
+ 				fact, e = certifiedProcessObservation(ctx, h, r.entity)
+@@ -1304,7 +1404,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
+ 					}
+ 					paused = nil
+ 				}
+-			case processSourceServe, processSourceCoordinate, processSourceObserve:
++			case processSourceServe, processSourceCoordinate, processSourceObserve, processSourceCertifiedOpen, processSourceCertifiedObserve, processSourceCertifiedClose:
+ 				if pause && r.op == processSourceServe && !isSourceClose(r) {
+ 					if len(paused) >= processSourceWorkers {
+ 						e = errLimit
+diff --git a/v5/internal/graphapply/graph_source_service.go b/v5/internal/graphapply/graph_source_service.go
+index 8b7f2972..cc716a4f 100644
+--- a/v5/internal/graphapply/graph_source_service.go
++++ b/v5/internal/graphapply/graph_source_service.go
+@@ -15,6 +15,7 @@ type graphHostReadPump interface {
+ 	Allocation(context.Context, allocationQuery) (allocationReply, error)
+ 	Cross(context.Context, crossQuery) (crossReply, error)
+ 	Request(context.Context, crossRequestQuestion) (crossRequestReply, error)
++	Cut(context.Context, graphCutQuery) (graphCutReply, error)
+ 	Submit(context.Context, allocationProposal) ([]byte, error)
+ }
+ type graphPeerService struct {
+@@ -166,6 +167,52 @@ func (s *graphPeerService) serve(ctx context.Context, wire []byte) ([]byte, erro
+ 	}
+ 	var body []byte
+ 	switch r.kind {
++	case sourceCutRead:
++		var q graphCutQuery
++		q, err = decodeGraphCutQuery(r.command)
++		q.nonce = r.nonce
++		if err == nil && (q.sourceRows < 1 || q.sourceBytes < 1 || q.outputBytes < 1) {
++			err = errInvalid
++		}
++		if err == nil {
++			var reply graphCutReply
++			reply, err = s.pump.Cut(ctx, q)
++			if err == nil {
++				err = reply.err
++			}
++			var p graphCutAuthorityBody
++			if err == nil {
++				s.host.mu.Lock()
++				if reply.id != reply.proof.id || reply.question != q || reply.proof.owner != s.host || reply.proof.observation.index > s.host.driver.Applied() {
++					err = errInvalid
++				} else {
++					err = checkGraphCutProof(reply.proof, q)
++				}
++				if err == nil {
++					p = graphCutAuthorityBody{scope: s.host.machine.scope(), id: reply.id, question: q, observation: reply.proof.observation}
++				}
++				s.host.mu.Unlock()
++			}
++			if err == nil || errors.Is(err, errGraphCutPending) || errors.Is(err, errGraphCutScope) {
++				body, err = encodeGraphCutReplyBody(p, err)
++			}
++		}
++	case sourceCertifiedOpen:
++		var cert graphCertificate
++		cert, err = decodeGraphCertificate(r.command)
++		if err == nil && cert.scope != s.peer.scope {
++			err = errInvalid
++		}
++		if err == nil {
++			var info graphCertifiedSourceInfo
++			info, err = s.sources.openCertified(ctx, cert, r.nonce)
++			if err == nil {
++				body, err = encodeGraphCertifiedSourceInfo(info)
++				if err != nil {
++					err = errors.Join(err, s.sources.closeSource(info.cookie))
++				}
++			}
++		}
+ 	case sourceOpen:
+ 		var reply allocationReply
+ 		reply, err = s.pump.Allocation(ctx, allocationQuery{kind: observeConfiguration, nonce: r.nonce})
+diff --git a/v5/internal/graphapply/graph_source_transport.go b/v5/internal/graphapply/graph_source_transport.go
+index 822fae84..1fabc9ba 100644
+--- a/v5/internal/graphapply/graph_source_transport.go
++++ b/v5/internal/graphapply/graph_source_transport.go
+@@ -69,7 +69,7 @@ func encodeGraphWireResponse(r graphWireResponse) ([]byte, error) {
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	if r.peer.voter == 0 || r.sequence == 0 || r.nonce == ([16]byte{}) || r.issuer == ([16]byte{}) || r.kind < sourceOpen || r.kind > sourceSubmit || len(r.body) > graphSourceFrameBytes-512 {
++	if r.peer.voter == 0 || r.sequence == 0 || r.nonce == ([16]byte{}) || r.issuer == ([16]byte{}) || r.kind < sourceOpen || r.kind > sourceCertifiedOpen || len(r.body) > graphSourceFrameBytes-512 {
+ 		return nil, errInvalid
+ 	}
+ 	if r.err != nil && len(r.body) != 0 {
+@@ -107,7 +107,7 @@ func decodeGraphWireResponse(wire []byte) (graphWireResponse, error) {
+ 	if mask != 0 {
+ 		r.err = graphWireError{mask}
+ 	}
+-	if r.peer.voter == 0 || r.sequence == 0 || r.nonce == ([16]byte{}) || r.issuer == ([16]byte{}) || r.kind < sourceOpen || r.kind > sourceSubmit || mask != 0 && len(r.body) != 0 {
++	if r.peer.voter == 0 || r.sequence == 0 || r.nonce == ([16]byte{}) || r.issuer == ([16]byte{}) || r.kind < sourceOpen || r.kind > sourceCertifiedOpen || mask != 0 && len(r.body) != 0 {
+ 		return graphWireResponse{}, errCorrupt
+ 	}
+ 	return r, nil
+@@ -349,15 +349,16 @@ func (e *graphAuthenticatedEndpoint) callUsing(ctx context.Context, request grap
+ }
+ 
+ type remoteGraphSource struct {
+-	mu       graphRequestGate
+-	endpoint *graphAuthenticatedEndpoint
+-	info     graphSourceInfo
+-	ctx      context.Context
+-	cancel   context.CancelFunc
+-	deadline time.Time
+-	closed   bool
+-	closeErr error
+-	cleanup  *graphRemoteBudget
++	mu        graphRequestGate
++	endpoint  *graphAuthenticatedEndpoint
++	info      graphSourceInfo
++	certified *graphCertifiedSourceInfo
++	ctx       context.Context
++	cancel    context.CancelFunc
++	deadline  time.Time
++	closed    bool
++	closeErr  error
++	cleanup   *graphRemoteBudget
+ }
+ 
+ func (e *graphAuthenticatedEndpoint) openSource(ctx context.Context) (*remoteGraphSource, error) {
+@@ -451,6 +452,9 @@ func (s *remoteGraphSource) ApplicationBinding(ctx context.Context) (raftlog.App
+ 		return raftlog.ApplicationBinding{}, err
+ 	}
+ 	p := s.info.observation.source.scope
++	if s.certified != nil {
++		p = s.certified.certificate.scope
++	}
+ 	return raftlog.ApplicationBinding{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(p.graph), Partition: p.partition, Group: p.group}, SemanticContractID: p.semantic}, nil
+ }
+ func (s *remoteGraphSource) ReadLimits() raftlog.ReadBudget {
+diff --git a/v5/internal/graphapply/graph_source_transport_test.go b/v5/internal/graphapply/graph_source_transport_test.go
+index fb990685..d89be96c 100644
+--- a/v5/internal/graphapply/graph_source_transport_test.go
++++ b/v5/internal/graphapply/graph_source_transport_test.go
+@@ -50,6 +50,7 @@ func (p *nativeGraphTestPump) drive(ctx context.Context, event allocationEvent)
+ 		result.replies = append(result.replies, e.replies...)
+ 		result.crossReplies = append(result.crossReplies, e.crossReplies...)
+ 		result.requestReplies = append(result.requestReplies, e.requestReplies...)
++		result.cutReplies = append(result.cutReplies, e.cutReplies...)
+ 	}
+ 	return result, nil
+ }
+@@ -70,6 +71,23 @@ func (p *nativeGraphTestPump) Allocation(ctx context.Context, q allocationQuery)
+ 	}
+ 	return allocationReply{}, graphstore.ErrSourceUnavailable
+ }
++func (p *nativeGraphTestPump) Cut(ctx context.Context, q graphCutQuery) (graphCutReply, error) {
++	e, err := p.host.ReadGraphCut(q)
++	if err != nil {
++		return graphCutReply{}, err
++	}
++	id := e.readID
++	e, err = p.drive(ctx, e)
++	if err != nil {
++		return graphCutReply{}, err
++	}
++	for _, r := range e.cutReplies {
++		if r.id == id && r.question == q {
++			return r, nil
++		}
++	}
++	return graphCutReply{}, graphstore.ErrSourceUnavailable
++}
+ func (p *nativeGraphTestPump) Cross(ctx context.Context, q crossQuery) (crossReply, error) {
+ 	e, err := p.host.ReadCrossPhase(q.tx, q.phase, q.nonce)
+ 	if err != nil {
+diff --git a/v5/internal/graphapply/graph_source_wire.go b/v5/internal/graphapply/graph_source_wire.go
+index 10878ebf..29025b66 100644
+--- a/v5/internal/graphapply/graph_source_wire.go
++++ b/v5/internal/graphapply/graph_source_wire.go
+@@ -19,6 +19,8 @@ const (
+ 	sourceCrossRead
+ 	sourceRequestLookup
+ 	sourceSubmit
++	sourceCutRead
++	sourceCertifiedOpen
+ )
+ 
+ type graphSourceRequest struct {
+@@ -42,7 +44,7 @@ func readSourceCookie(c *graphCursor) graphSourceCookie {
+ 	return graphSourceCookie{issuer: c.array(), sequence: c.u64(), secret: c.array()}
+ }
+ func encodeGraphSourceRequest(r graphSourceRequest) ([]byte, error) {
+-	if r.kind < sourceOpen || r.kind > sourceSubmit || r.sequence == 0 || r.nonce == ([16]byte{}) || r.maximum < 0 || r.maximum > graphSourceFrameBytes || r.rows < 0 || r.rows > 65536 || r.phase > crossResolve {
++	if r.kind < sourceOpen || r.kind > sourceCertifiedOpen || r.sequence == 0 || r.nonce == ([16]byte{}) || r.maximum < 0 || r.maximum > graphSourceFrameBytes || r.rows < 0 || r.rows > 65536 || r.phase > crossResolve {
+ 		return nil, errInvalid
+ 	}
+ 	if len(r.key) > 64<<10 || len(r.upper) > 64<<10 || len(r.after) > 64<<10 || len(r.command) > 1<<20 {
+@@ -77,7 +79,7 @@ func decodeGraphSourceRequest(wire []byte) (graphSourceRequest, error) {
+ 	r.command = c.field(1 << 20)
+ 	r.tx = c.array()
+ 	r.phase = crossPhase(c.tag())
+-	if c.err != nil || len(c.b) != 0 || r.kind < sourceOpen || r.kind > sourceSubmit || r.sequence == 0 || r.nonce == ([16]byte{}) || r.phase > crossResolve {
++	if c.err != nil || len(c.b) != 0 || r.kind < sourceOpen || r.kind > sourceCertifiedOpen || r.sequence == 0 || r.nonce == ([16]byte{}) || r.phase > crossResolve {
+ 		return graphSourceRequest{}, errors.Join(errInvalid, c.err)
+ 	}
+ 	return r, nil
+diff --git a/v5/internal/graphapply/replicated_process_test.go b/v5/internal/graphapply/replicated_process_test.go
+index bcde1745..4f993b5a 100644
+--- a/v5/internal/graphapply/replicated_process_test.go
++++ b/v5/internal/graphapply/replicated_process_test.go
+@@ -71,6 +71,10 @@ const (
+ 	processSourceObserve
+ 	processSourcePause
+ 	processSourcePausedBarrier
++	processSourceCutEvidence
++	processSourceCertifiedOpen
++	processSourceCertifiedObserve
++	processSourceCertifiedClose
+ )
+ 
+ // IPC IDs identify this process event only. No storage/send/prepared capability
+@@ -179,7 +183,7 @@ func decodeProcessRequest(b []byte) (processRequest, error) {
+ 	r := processRequest{incarnation: c.array(), sequence: c.u64(), op: c.tag(), index: c.u64(), entity: c.u64()}
+ 	r.data = c.field(processFrameBytes)
+ 	r.packet = processDecodePacket(&c)
+-	if r.sequence == 0 || r.op < processCampaign || r.op > processSourcePausedBarrier || len(c.b) != 0 {
++	if r.sequence == 0 || r.op < processCampaign || r.op > processSourceCertifiedClose || len(c.b) != 0 {
+ 		c.err = errCorrupt
+ 	}
+ 	return r, c.err
+diff --git a/v5/internal/graphstore/catalog.go b/v5/internal/graphstore/catalog.go
+index c4e6e78a..2301743b 100644
+--- a/v5/internal/graphstore/catalog.go
++++ b/v5/internal/graphstore/catalog.go
+@@ -101,7 +101,7 @@ func (c *Catalog) failure(err error) error {
+ 	if errors.Is(err, raftlog.ErrLimit) || errors.Is(err, temporal.ErrResourceLimit) || errors.Is(err, graphstate.ErrResourceLimit) || errors.Is(err, state.ErrResourceLimit) {
+ 		return errors.Join(ErrResourceLimit, err)
+ 	}
+-	if errors.Is(err, ErrInvalid) || errors.Is(err, ErrNamespace) || errors.Is(err, ErrRebinding) || errors.Is(err, ErrResourceLimit) || errors.Is(err, ErrTopologyUnsupported) || errors.Is(err, ErrSourceUnavailable) || errors.Is(err, ErrRoutingUnknown) || errors.Is(err, ErrRemoteParticipant) || errors.Is(err, ErrStaleOwner) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, raftlog.ErrClosed) || errors.Is(err, ErrClosed) {
++	if errors.Is(err, ErrInvalid) || errors.Is(err, ErrNamespace) || errors.Is(err, ErrRebinding) || errors.Is(err, ErrResourceLimit) || errors.Is(err, ErrTopologyUnsupported) || errors.Is(err, ErrSourceUnavailable) || errors.Is(err, ErrRoutingUnknown) || errors.Is(err, ErrRemoteParticipant) || errors.Is(err, ErrScopeUnavailable) || errors.Is(err, ErrStaleOwner) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, raftlog.ErrClosed) || errors.Is(err, ErrClosed) {
+ 		return err
+ 	}
+ 	c.mu.Lock()
+diff --git a/v5/internal/graphstore/partition_transaction_view.go b/v5/internal/graphstore/partition_transaction_view.go
+index d08ca0c0..9bdcc07e 100644
+--- a/v5/internal/graphstore/partition_transaction_view.go
++++ b/v5/internal/graphstore/partition_transaction_view.go
+@@ -77,6 +77,28 @@ func OpenPartitionScopedReadView(ctx context.Context, sources []*raftlog.Applica
+ 	}
+ 	return openPartitionCompositeView(ctx, applicationSources{native: sources}, d, binding, configuration, l, g, budget, output)
+ }
++
++// OpenPartitionScopedReadSources borrows exactly the selected immutable data
++// sources. It grants no certificate, quorum or installation authority.
++func OpenPartitionScopedReadSources(ctx context.Context, sources []ApplicationReadSource, scope []uint64, d OwnershipDeclaration, binding types.DefaultAxisBinding, configuration [32]byte, l Limits, g GraphLimits, budget OwnershipBudget, output *graphstate.OutputBudget) (*PartitionTransactionView, PageWork, error) {
++	if ctx == nil || len(scope) == 0 || len(scope) != len(sources) || len(scope) > d.Len() {
++		return nil, PageWork{}, ErrInvalid
++	}
++	for i, id := range scope {
++		if i > 0 && scope[i-1] >= id || nilApplicationSource(sources[i]) {
++			return nil, PageWork{}, ErrInvalid
++		}
++		actual, err := sources[i].ApplicationBinding(ctx)
++		if err != nil {
++			return nil, PageWork{}, err
++		}
++		if actual.Identity.Partition != id {
++			return nil, PageWork{}, ErrNamespace
++		}
++	}
++	return openPartitionCompositeView(ctx, applicationSources{data: sources}, d, binding, configuration, l, g, budget, output)
++}
++
+ func openPartitionCompositeView(ctx context.Context, sources applicationSources, d OwnershipDeclaration, binding types.DefaultAxisBinding, configuration [32]byte, l Limits, g GraphLimits, budget OwnershipBudget, output *graphstate.OutputBudget) (out *PartitionTransactionView, work PageWork, err error) {
+ 	if ctx == nil || !d.valid() || sources.len() == 0 || sources.len() > d.Len() || output == nil {
+ 		return nil, work, ErrInvalid

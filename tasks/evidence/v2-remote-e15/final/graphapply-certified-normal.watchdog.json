@@ -1,0 +1,21 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-short",
+    "-count=1",
+    "-json",
+    "-coverpkg=./internal/graphapply,./internal/graphstore",
+    "-coverprofile=/private/var/tmp/rho-v5-v2-remote-e15-20261011/v5/../tasks/evidence/v2-remote-e15/final/graphapply-certified.cover",
+    "-run",
+    "^(TestCertifiedGraphActualAS5ActivationKeepsHeldCertifiedSourceAndReopensCut|TestCertifiedGraphAfterLocalReceiptIncludesActualMappedMutation|TestCertifiedGraphAggregateBudgetsConstructorCleanupAndCumulativeReads|TestCertifiedGraphApplySourceLimitReturnsTypedOutcomeWithoutPartialFence|TestCertifiedGraphAtAppliedAuthorityWithoutPersistedCertificateIsUnavailable|TestCertifiedGraphCodecsAndPointerHelpersRefuseMissingAuthority|TestCertifiedGraphCollectionFenceRaceExcludesHigherInstalledState|TestCertifiedGraphE16UnresolvedLowPrepareBlocksHigherObservedRound|TestCertifiedGraphE18OldCorrectionIndexAndEndpointLivesRemainExact|TestCertifiedGraphFactoryRefusesWriteOnlyBinding|TestCertifiedGraphFollowerBarrierReopenAndHeldCutHistory|TestCertifiedGraphFreshE15WaitsForDelayedParticipantAndAfterIncludesCommit|TestCertifiedGraphInitialMapCannotBeInventedOrRebound|TestCertifiedGraphNilCancellationMalformedCutAndCloseRace|TestCertifiedGraphPreFenceCommitResolvesBelowReadFence|TestCertifiedGraphQuorumLossProducesNoCutAndBoundsCancelledRequests|TestCertifiedGraphRegistrationOnlyOwnerPreventsClosureWithoutStoppingDriver|TestCertifiedGraphReviewAbortNeedsCompletedManifestBoundParticipantAuthority|TestCertifiedGraphReviewAbortSkipPreservesOtherOwnerAndDelayedPrepareBeforeCertificate|TestCertifiedGraphReviewAfterReceiptSurvivesIssuerCloseAndGenuineFollowerReopen|TestCertifiedGraphReviewAfterRejectsGenuineUnrelatedAuthorityReceipts|TestCertifiedGraphReviewDelayedPrepareAfterCertificateKeepsOldCutAndNextFreshResolvesAbort|TestCertifiedGraphReviewEarlyAbortClosesWithoutResolvingAbsentParticipant|TestCertifiedGraphReviewOversizedScopeRefusesBeforeAllocation|TestCertifiedGraphScopedReadCannotExpandAndEmptyPublishedAuthorityIsRetained|TestCertifiedGraphScopedReaderConstructorDirectAndBorrowLifetime|TestCertifiedGraphStaleCertificateApplyAndPredecessorBudgetAreNonfatal|TestCertifiedGraphYESLockRefusesPublicationWithoutStrandingCommit|TestCertifiedReadPublicationNeedsMappedRound)$",
+    "./internal/graphapply"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 420.203,
+  "elapsed_s": 56.937,
+  "exit_code": 0,
+  "reason": "completed"
+}

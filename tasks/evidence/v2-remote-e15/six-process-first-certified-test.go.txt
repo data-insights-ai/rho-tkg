@@ -1,0 +1,478 @@
+package graphapply
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"slices"
+	"sync"
+	"testing"
+	"time"
+)
+
+// This first RED binds the only existing remote read path. Its quiescent-only
+// contract is correct; the failure witnesses missing certified remote access,
+// not a defect in a path explicitly documented as noncertified. After the
+// production seam exists the same acceptance binds the certified read API.
+func TestRemoteE15CertifiedReadClosesDelayedBAndRetainsOldCut(t *testing.T) {
+	n := newCertifiedProcessNetwork(t)
+	oracle := newCertifiedProcessOracle()
+	input, err := encodeGraphProcessObserveIDs([]uint64{1, 3, 17})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := n.all[2].call(t, processRequest{op: processSourceObserve, data: input})
+	old, err := decodeGraphProcessObservationBatch(before.aux)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertGraphE15IDs(t, old, []uint64{1, 3, 17})
+	for _, f := range old {
+		if err := oracle.compare(f.id, f.fact); err != nil {
+			t.Fatal("independent pretransaction graph", err)
+		}
+	}
+	oldRequest, err := encodeGraphE15ReadRequest(graphE15ReadRequest{mode: graphReadFresh})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldReply := n.all[2].call(t, processRequest{op: processSourceCertifiedOpen, data: oldRequest})
+	oldHandle, oldCut, err := decodeGraphE15ReadToken(oldReply.aux)
+	if err != nil {
+		t.Fatal("old certified cut", err)
+	}
+	oldClosed := false
+	defer func() {
+		if !oldClosed {
+			n.all[2].call(t, processRequest{op: processSourceCertifiedClose, index: oldHandle})
+		}
+	}()
+	start := make(map[uint64]processResponse)
+	for id, p := range n.all {
+		start[id] = p.call(t, processRequest{op: processStateOp})
+	}
+	arrived := make(chan struct{})
+	readHeld := make(chan struct{}, 1)
+	release := make(chan struct{})
+	var first, safeRelease sync.Once
+	unblock := func() { safeRelease.Do(func() { close(release) }) }
+	defer unblock()
+	hub := n.all[1].mux.hub
+	hub.mu.Lock()
+	hub.beforeRelay = func(ctx context.Context, origin uint64, partition uint64, wire []byte) error {
+		if partition != 8 {
+			return nil
+		}
+		request, err := decodeGraphSourceRequest(wire)
+		if err != nil {
+			return err
+		}
+		if request.kind != sourceSubmit {
+			return nil
+		}
+		proposal, err := decodeGraphSourceProposal(request.command)
+		if err != nil {
+			return err
+		}
+		if !isCrossPartitionWire(proposal.wire) {
+			return nil
+		}
+		command, _, err := decodeCrossCommand(proposal.wire, defaultMaterializerLimits())
+		if err != nil {
+			return err
+		}
+		if command.phase != crossResolve {
+			return nil
+		}
+		if origin == 2 {
+			select {
+			case readHeld <- struct{}{}:
+			default:
+			}
+		}
+		first.Do(func() { close(arrived) })
+		select {
+		case <-release:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	hub.mu.Unlock()
+	command := n.all[1].call(t, processRequest{op: processCertifiedAction, entity: certifiedCreateCrossEdge, index: 3})
+	proposal, err := decodeCertifiedProcessProposal(command.aux)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resultCh := make(chan graphProcessAnswer, 1)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go func() {
+		r, e := n.all[1].exchange(ctx, processRequest{op: processSourceCoordinate, data: proposal.wire})
+		resultCh <- graphProcessAnswer{r, e}
+	}()
+	select {
+	case <-arrived:
+	case <-time.After(10 * time.Second):
+		t.Fatal("genuine B resolution did not reach held transport")
+	}
+	// Every source association is a configured native child pipe. No caller bool,
+	// fabricated receipt or absence inferred from a paused worker enters evidence.
+	// Drain only actual Raft packet work; the held business RPC remains pending.
+	raftCtx, stopRaft := context.WithTimeout(t.Context(), 10*time.Second)
+	for {
+		hub.mu.Lock()
+		idle := hub.packetBytes == 0 && hub.inFlight == 0 && len(hub.packets) == 0
+		hub.mu.Unlock()
+		if idle {
+			break
+		}
+		select {
+		case <-raftCtx.Done():
+			t.Fatal("native apply packets did not settle", raftCtx.Err())
+		case <-hub.idle:
+		}
+	}
+	stopRaft()
+	var decision crossStatus
+	for group, ids := range [][]uint64{{1, 2, 3}, {4, 5, 6}} {
+		var outcomeWire, changeWire []byte
+		for _, id := range ids {
+			state := n.all[id].call(t, processRequest{op: processStateOp})
+			record := n.all[id].call(t, processRequest{op: processEntryRecord, index: state.applied})
+			status, err := decodeCrossStatus(record.outcome)
+			if err != nil {
+				t.Fatal("native phase outcome", id, err)
+			}
+			phase := crossResolve
+			if group == 1 {
+				phase = crossPrepare
+			}
+			if status.phase != phase || (group == 0 && !status.commit) || (group == 1 && !status.yes) {
+				t.Fatal("not A-installed/B-YES", id, status)
+			}
+			if outcomeWire == nil {
+				outcomeWire, changeWire = record.outcome, record.changes
+			} else if !bytes.Equal(outcomeWire, record.outcome) || !bytes.Equal(changeWire, record.changes) {
+				t.Fatal("native group outcome/CDC disagreement", id)
+			}
+			if group == 0 && len(record.changes) == 0 || group == 1 && len(record.changes) != 0 {
+				t.Fatal("partial-install CDC state", id, len(record.changes))
+			}
+			if group == 0 {
+				found := false
+				for index := start[id].applied + 1; index <= state.applied; index++ {
+					earlier := n.all[id].call(t, processRequest{op: processEntryRecord, index: index})
+					d, err := decodeCrossStatus(earlier.outcome)
+					if err == nil && d.phase == crossDecide {
+						if !d.commit || d.tx != status.tx || d.digest != status.digest || d.round != status.round {
+							t.Fatal("real decision binding", id, d, status)
+						}
+						if decision == (crossStatus{}) {
+							decision = d
+						} else if decision != d {
+							t.Fatal("durable decision differs among voters", id, d, decision)
+						}
+						found = true
+					}
+				}
+				if !found {
+					t.Fatal("quorum voter has no actual committed decision", id)
+				}
+			} else if status.tx != decision.tx || status.digest != decision.digest {
+				t.Fatal("B prepare not bound to A decision", id, status, decision)
+			}
+		}
+	}
+	// Native lanes/quorum progress continue while only the genuine resolve RPC is
+	// withheld. Caller2 has no transaction worker and a distinct authenticated stream.
+	n.all[4].call(t, processRequest{op: processTick})
+	n.read(t, 4, observeConfiguration, 0)
+	readCtx, stop := context.WithTimeout(t.Context(), 10*time.Second)
+	answer, readErr := n.all[2].exchange(readCtx, processRequest{op: processSourceObserve, data: input})
+	stop()
+	var observed []graphProcessFactTuple
+	if readErr == nil {
+		observed, err = decodeGraphProcessObservationBatch(answer.aux)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Logf("actual held-B remote answer: error=%v facts=%+v; durable decision=%+v", readErr, observed, decision)
+	for i, cause := range graphWireCauses {
+		if errors.Is(readErr, cause) {
+			t.Logf("held-B classified wirecause bit=%d cause=%s", i, cause.Error())
+		}
+	}
+	freshResult := make(chan graphProcessAnswer, 1)
+	go func() {
+		r, e := n.all[2].exchange(t.Context(), processRequest{op: processSourceCertifiedOpen, data: oldRequest})
+		freshResult <- graphProcessAnswer{r, e}
+	}()
+	select {
+	case <-readHeld:
+	case result := <-freshResult:
+		t.Fatal("Fresh completed while B held", result.err, len(result.response.aux))
+	case <-time.After(10 * time.Second):
+		t.Fatal("Fresh did not reach real B resolution")
+	}
+	oldFactsReply := n.all[2].call(t, processRequest{op: processSourceCertifiedObserve, index: oldHandle, data: input})
+	oldFacts, err := decodeGraphProcessObservationBatch(oldFactsReply.aux)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertGraphE15IDs(t, oldFacts, []uint64{1, 3, 17})
+	for _, fact := range oldFacts {
+		if e := oracle.compare(fact.id, fact.fact); e != nil {
+			t.Fatal("held old graph changed under partial apply", e)
+		}
+	}
+	// Release and prove complete exact effects/CDC and successful child cleanup
+	// even when the first E15 assertion is intentionally RED.
+	unblock()
+	var completed crossProcessResult
+	select {
+	case got := <-resultCh:
+		if got.err != nil {
+			t.Fatal("original coordinator completion", got.err)
+		}
+		completed, err = decodeGraphProcessCoordinatorResult(got.response)
+		if err != nil || completed.decision.tx != decision.tx || completed.decision.digest != decision.digest || completed.decision.round != decision.round {
+			t.Fatal("decision changed on resolution", completed, err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("original operation did not finish after release")
+	}
+	drainCtx, done := context.WithTimeout(t.Context(), 10*time.Second)
+	defer done()
+	if err := drainGraphProcessMuxes(drainCtx, n.all); err != nil {
+		t.Fatal(err)
+	}
+	oracle.crossEdge()
+	complete := n.all[2].call(t, processRequest{op: processSourceObserve, data: input})
+	facts, err := decodeGraphProcessObservationBatch(complete.aux)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertGraphE15IDs(t, facts, []uint64{1, 3, 17})
+	for _, f := range facts {
+		if err := oracle.compare(f.id, f.fact); err != nil {
+			t.Fatal("postresolution exact graph", err)
+		}
+	}
+	phantom := n.all[2].call(t, processRequest{op: processSourceObserve, entity: 7})
+	empty, err := decodeCertifiedProcessFact(phantom.aux)
+	if err != nil || oracle.compare(7, empty) != nil {
+		t.Fatal("phantom graph fact", empty, err)
+	}
+	for _, ids := range [][]uint64{{1, 2, 3}, {4, 5, 6}} {
+		var outcome, changes []byte
+		for _, id := range ids {
+			state := n.all[id].call(t, processRequest{op: processStateOp})
+			record := n.all[id].call(t, processRequest{op: processEntryRecord, index: state.applied})
+			status, err := decodeCrossStatus(record.outcome)
+			if err != nil || status.phase != crossResolve || !status.commit || status.tx != decision.tx || status.digest != decision.digest || status.round != decision.round {
+				t.Fatal("final six-voter resolve", id, status, err)
+			}
+			if outcome == nil {
+				outcome, changes = record.outcome, record.changes
+			} else if !bytes.Equal(outcome, record.outcome) || !bytes.Equal(changes, record.changes) {
+				t.Fatal("final exact native outcome/CDC parity", id)
+			}
+			if state.stats[statViews] != 1 && (id == 1 || id == 4) || state.stats[statViews] != 0 && id != 1 && id != 4 {
+				t.Fatal("read owner residue", id, state.stats)
+			}
+		}
+	}
+	if readErr != nil {
+		stderr, _ := n.all[2].stderr.state()
+		t.Logf("held read original child stderr: %s", stderr)
+		if len(answer.aux) != 0 {
+			t.Fatal("failed current read exposed partial graph", len(answer.aux))
+		}
+		// Unknown classified cause is retained literally, not re-labelled pending.
+		if !errors.Is(readErr, errRemoteOperationFailure) {
+			t.Fatal("original refusal classification changed", readErr)
+		}
+		t.Log("GUARD: full graph/incidence current read failed closed under A-only apply")
+	} else {
+		assertGraphE15IDs(t, observed, []uint64{1, 3, 17})
+		for _, f := range observed {
+			if err := oracle.compare(f.id, f.fact); err != nil {
+				t.Fatal("current successful graph was mixed", err)
+			}
+		}
+	}
+	var freshReply processResponse
+	select {
+	case result := <-freshResult:
+		if result.err != nil {
+			t.Fatal("certified completion", result.err)
+		}
+		freshReply = result.response
+	case <-time.After(10 * time.Second):
+		t.Fatal("Fresh failed to complete after B release")
+	}
+	freshHandle, cut, err := decodeGraphE15ReadToken(freshReply.aux)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer n.all[2].call(t, processRequest{op: processSourceCertifiedClose, index: freshHandle})
+	if len(cut.certificates) != 2 || cut.certificates[0].round < decision.round || cut.certificates[1].round != cut.certificates[0].round {
+		t.Fatal("returned exact certified inclusion", cut, decision)
+	}
+	freshFactsReply := n.all[2].call(t, processRequest{op: processSourceCertifiedObserve, index: freshHandle, data: input})
+	freshFacts, err := decodeGraphProcessObservationBatch(freshFactsReply.aux)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertGraphE15IDs(t, freshFacts, []uint64{1, 3, 17})
+	for _, f := range freshFacts {
+		if e := oracle.compare(f.id, f.fact); e != nil {
+			t.Fatal("certified exact new graph", e)
+		}
+	}
+	if err := drainGraphProcessMuxes(drainCtx, n.all); err != nil {
+		t.Fatal(err)
+	}
+	for id, p := range n.all {
+		reply := p.call(t, processRequest{op: processSourceCutEvidence, entity: cut.certificates[0].round})
+		evidence, e := decodeGraphE15CutEvidence(reply.aux)
+		if e != nil || evidence.fence < cut.certificates[0].round {
+			t.Fatal("durable returned fence", id, evidence, e)
+		}
+		actual, e := decodeGraphCertificate(evidence.certificate)
+		if e != nil {
+			t.Fatal("durable returned certificate", id, e)
+		}
+		selected := cut.certificates[0]
+		if id >= 4 {
+			selected = cut.certificates[1]
+		}
+		if actual != selected {
+			t.Fatal("returned certificate differs from actual voter", id, actual, selected)
+		}
+	}
+	n.all[2].call(t, processRequest{op: processSourceCertifiedClose, index: oldHandle})
+	oldClosed = true
+	atRequest, err := encodeGraphE15ReadRequest(graphE15ReadRequest{mode: graphReadAt, cut: oldCut})
+	if err != nil {
+		t.Fatal(err)
+	}
+	atReply := n.all[2].call(t, processRequest{op: processSourceCertifiedOpen, data: atRequest})
+	atHandle, atCut, err := decodeGraphE15ReadToken(atReply.aux)
+	if err != nil || !slices.Equal(atCut.certificates, oldCut.certificates) {
+		t.Fatal("retained At token", err)
+	}
+	atFactsReply := n.all[2].call(t, processRequest{op: processSourceCertifiedObserve, index: atHandle, data: input})
+	atFacts, err := decodeGraphProcessObservationBatch(atFactsReply.aux)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertGraphE15IDs(t, atFacts, []uint64{1, 3, 17})
+	oldOracle := newCertifiedProcessOracle()
+	for _, f := range atFacts {
+		if e := oldOracle.compare(f.id, f.fact); e != nil {
+			t.Fatal("At old cut answered current graph", e)
+		}
+	}
+	n.all[2].call(t, processRequest{op: processSourceCertifiedClose, index: atHandle})
+
+}
+
+func assertGraphE15IDs(t *testing.T, tuples []graphProcessFactTuple, wanted []uint64) {
+	t.Helper()
+	if len(tuples) != len(wanted) {
+		t.Fatal("exact requested tuple count", len(tuples), wanted)
+	}
+	for i, f := range tuples {
+		if f.id != wanted[i] {
+			t.Fatal("omitted/duplicate/substituted tuple", i, f.id, wanted)
+		}
+	}
+}
+
+// This point inspection is inert local storage data, NOT ReadIndex/quorum/cut
+// authority. It queries actual immutable records and never creates a certificate.
+type graphE15CutEvidence struct {
+	index, generation, fence uint64
+	certificate              []byte
+}
+
+func captureGraphE15CutEvidence(ctx context.Context, h *allocationHost, round uint64) (out graphE15CutEvidence, err error) {
+	if ctx == nil || h == nil || round == 0 {
+		return out, errInvalid
+	}
+	h.mu.Lock()
+	if h.closed {
+		h.mu.Unlock()
+		return out, errInvalid
+	}
+	index := h.driver.Applied()
+	view, err := h.machine.store.ApplicationView(index)
+	cfg, cfgErr := h.currentConfiguration()
+	h.mu.Unlock()
+	if err != nil {
+		return out, err
+	}
+	defer func() {
+		err = errors.Join(err, view.Close())
+		if err != nil {
+			out = graphE15CutEvidence{}
+		}
+	}()
+	if cfgErr != nil {
+		return out, cfgErr
+	}
+	config, err := cfg.digest()
+	if err != nil {
+		return out, err
+	}
+	root, err := view.RootBounded(ctx, 172)
+	if err != nil {
+		return out, err
+	}
+	l := h.machine.limits.allocation
+	q := reader{ctx: ctx, view: view, ns: h.machine.ns, base: root, limits: l, bytes: cap(root.Image)}
+	out.index, out.generation = root.Index, root.Generation
+	out.fence, err = readGraphFence(&q, config)
+	if err != nil {
+		return out, err
+	}
+	wire, found, err := q.getBounded(graphCertificateKey(h.machine.ns, round), 512)
+	if err != nil {
+		return out, err
+	}
+	if found {
+		cert, err := decodeGraphCertificate(wire)
+		if err != nil || cert.scope != h.machine.scope() || cert.round != round || cert.configuration != config || cert.index > index {
+			return out, errors.Join(errInvalid, err)
+		}
+		out.certificate = owned(wire)
+	}
+	return out, nil
+}
+func encodeGraphE15CutEvidence(e graphE15CutEvidence) ([]byte, error) {
+	if e.index == 0 || e.generation == 0 || len(e.certificate) > 512 {
+		return nil, errInvalid
+	}
+	return processEncoding(func(w *boundedWriter) {
+		w.add([]byte("GCE1"))
+		w.u64(e.index)
+		w.u64(e.generation)
+		w.u64(e.fence)
+		w.field(e.certificate)
+	})
+}
+func decodeGraphE15CutEvidence(wire []byte) (graphE15CutEvidence, error) {
+	c := graphCursor{b: wire}
+	if !bytes.Equal(c.take(4), []byte("GCE1")) {
+		return graphE15CutEvidence{}, errCorrupt
+	}
+	e := graphE15CutEvidence{index: c.u64(), generation: c.u64(), fence: c.u64(), certificate: owned(c.field(512))}
+	if c.err != nil || len(c.b) != 0 || e.index == 0 || e.generation == 0 {
+		return graphE15CutEvidence{}, fmt.Errorf("invalid inert cut evidence: %w", errors.Join(errCorrupt, c.err))
+	}
+	return e, nil
+}

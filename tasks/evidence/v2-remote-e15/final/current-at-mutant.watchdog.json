@@ -1,0 +1,19 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-short",
+    "-count=1",
+    "-json",
+    "-run",
+    "^TestRemoteCertifiedNativeTransportFreshAndRetainedAt$",
+    "./internal/graphapply"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 670.516,
+  "elapsed_s": 9.587,
+  "exit_code": 1,
+  "reason": "command-failed"
+}

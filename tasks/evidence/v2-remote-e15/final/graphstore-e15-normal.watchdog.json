@@ -1,0 +1,21 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-short",
+    "-count=1",
+    "-json",
+    "-coverpkg=./internal/graphapply,./internal/graphstore",
+    "-coverprofile=/private/var/tmp/rho-v5-v2-remote-e15-20261011/v5/../tasks/evidence/v2-remote-e15/final/graphstore-e15.cover",
+    "-run",
+    "^(TestPartitionScopedReadSourcesRejectsInvalidScopeAndNilProviders|TestPartitionScopedReadSourcesChecksNativeBindingAndDeclaration|TestPartitionScopedReadSourcesRetainsHistoricalStateAndBorrowedOwnership)$",
+    "./internal/graphstore"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 601.953,
+  "elapsed_s": 4.681,
+  "exit_code": 0,
+  "reason": "completed"
+}

@@ -1,0 +1,28 @@
+/go/bin/govulncheck: go1.26.9
+	path	golang.org/x/vuln/cmd/govulncheck
+	mod	golang.org/x/vuln	v1.7.0	h1:4MQBuhmXbz2uepNJrf3v+aaZLGDqw1JluwYboegA1qg=
+	dep	golang.org/x/mod	v0.39.0	h1:UF5zwQdCRRUpHfyPwr7d4UrGiVeldIsogtzWVnczL74=
+	dep	golang.org/x/sync	v0.22.0	h1:SZjpbeLmrCk4xhRSZFNZW5gFUeCeFgjekvI/+gfScek=
+	dep	golang.org/x/telemetry	v0.0.0-20260811182544-a038080d80e5	h1:ZUSxONxc981v7AW7QUg+I9WwZzSTTJ019ENBYr5pV/Q=
+	dep	golang.org/x/tools	v0.49.0	h1:3NI7VXzL9+1WZD52Dx2ttoPwD5DWrFGpl9mFZDlmisI=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	DefaultGODEBUG=cryptocustomrand=1,httpservecontentmaxranges=1,tlssecpmlkem=0,urlstrictcolons=0
+	build	CGO_ENABLED=1
+	build	CGO_CFLAGS=
+	build	CGO_CPPFLAGS=
+	build	CGO_CXXFLAGS=
+	build	CGO_LDFLAGS=
+	build	GOARCH=arm64
+	build	GOOS=linux
+	build	GOARM64=v8.0
+=== Symbol Results ===
+
+No vulnerabilities found.
+
+Your code is affected by 0 vulnerabilities.
+This scan also found 2 vulnerabilities in packages you import and 2
+vulnerabilities in modules you require, but your code doesn't appear to call
+these vulnerabilities.
+Use '-show verbose' for more details.
+limit: {"command": ["docker", "run", "--rm", "--memory=4g", "--cpus=2", "-e", "GOTOOLCHAIN=go1.26.9", "-e", "GOMAXPROCS=2", "-e", "GOMEMLIMIT=2GiB", "-e", "GOFLAGS=-p=1", "-e", "GOWORK=off", "-v", "/var/tmp/rho-v5-v2-remote-e15-20261011:/src", "-w", "/src/v5", "-v", "rho-tkg-gocache:/go", "-v", "rho-tkg-buildcache:/root/.cache/go-build", "golang:1.26.9", "sh", "-c", "go install golang.org/x/vuln/cmd/govulncheck@v1.7.0 && go version -m /go/bin/govulncheck && govulncheck ./..."], "rss_limit_mib": 4096.0, "wall_limit_s": 180.0, "sample_interval_s": 0.25, "peak_tree_rss_mib": 25.859, "elapsed_s": 5.734, "exit_code": 0, "reason": "completed"}

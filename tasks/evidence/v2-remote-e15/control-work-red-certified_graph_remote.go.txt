@@ -1,0 +1,235 @@
+package graphapply
+
+import (
+	"context"
+	"errors"
+
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
+)
+
+type remoteCertifiedGraphBackend struct {
+	coordinator *crossProcessCoordinator
+	endpoints   map[uint64]*graphAuthenticatedEndpoint
+	budget      *graphRemoteBudget
+	arena       *graphstate.OutputBudget
+}
+
+// OpenCertified uses the same closure engine as native reads. Its entire
+// protocol and retained data access share one operation allowance.
+func (c *crossProcessCoordinator) OpenCertified(ctx context.Context, request graphReadRequest, scope []uint64) (*certifiedGraphRead, error) {
+	if c == nil || ctx == nil || c.host == nil || !c.host.machine.certifiedReads() {
+		return nil, errInvalid
+	}
+	l := c.host.machine.limits
+	arena, e := graphstate.NewOutputBudget(min(l.outputBytes, l.sourceBytes))
+	if e != nil {
+		return nil, e
+	}
+	budget := newGraphRemoteBudget(l, arena)
+	endpoints, e := c.endpoints(budget)
+	if e != nil {
+		return nil, e
+	}
+	c.mu.Lock()
+	engine := c.certified
+	if engine == nil {
+		engine = &certifiedReadCoordinator{declaration: c.host.machine.declaration}
+		c.certified = engine
+	}
+	c.mu.Unlock()
+	return engine.openBackend(ctx, request, scope, &remoteCertifiedGraphBackend{c, endpoints, budget, arena})
+}
+func (b *remoteCertifiedGraphBackend) Read(ctx context.Context, partition uint64, q graphCutQuery) (graphCutObservation, error) {
+	e := b.endpoints[partition]
+	if e == nil {
+		return graphCutObservation{}, errGraphCutScope
+	}
+	nonce, err := graphReadNonce()
+	if err != nil {
+		return graphCutObservation{}, err
+	}
+	q.nonce = nonce
+	wire, err := encodeGraphCutQuery(q)
+	if err != nil {
+		return graphCutObservation{}, err
+	}
+	r, err := e.call(ctx, graphSourceRequest{kind: sourceCutRead, command: wire}, 8192)
+	if err != nil {
+		return graphCutObservation{}, err
+	}
+	p, err := decodeGraphCutReplyBody(r.body)
+	if err != nil {
+		return graphCutObservation{}, err
+	}
+	q.nonce = r.nonce
+	if p.scope != e.peer.scope || p.observation.scope != e.peer.scope || p.id.session != r.issuer || p.question != q {
+		return graphCutObservation{}, errInvalid
+	}
+	return p.observation, nil
+}
+func (b *remoteCertifiedGraphBackend) Write(ctx context.Context, partition uint64, phase byte, round uint64) (graphCutResult, error) {
+	e := b.endpoints[partition]
+	if e == nil {
+		return graphCutResult{}, errGraphCutScope
+	}
+	// Configuration is a completed quorum observation, never current metadata.
+	o, err := b.Read(ctx, partition, graphCutQuery{kind: 1})
+	if err != nil {
+		return graphCutResult{}, err
+	}
+	command := graphCutCommand{scope: e.peer.scope, configuration: o.configuration, round: round, phase: phase}
+	wire, err := encodeGraphCutCommand(command)
+	if err != nil {
+		return graphCutResult{}, err
+	}
+	proposal, err := encodeGraphSourceProposal(allocationProposal{target: e.peer.scope, wire: wire})
+	if err != nil {
+		return graphCutResult{}, err
+	}
+	r, err := e.call(ctx, graphSourceRequest{kind: sourceSubmit, command: proposal}, 1024)
+	if err != nil {
+		return graphCutResult{}, err
+	}
+	result, err := decodeGraphCutResult(r.body)
+	if err != nil || result.phase != phase || result.round != round {
+		return graphCutResult{}, errors.Join(errInvalid, err)
+	}
+	return result, nil
+}
+func (b *remoteCertifiedGraphBackend) Resolve(ctx context.Context, o graphCutObservation) error {
+	if o.pending == ([16]byte{}) {
+		return nil
+	}
+	issuer := b.endpoints[o.coordinator]
+	if issuer == nil {
+		return errGraphCutScope
+	}
+	decision, err := issuer.cross(ctx, o.pending, crossDecide, 1<<20)
+	if err != nil {
+		return errors.Join(errGraphCutPending, err)
+	}
+	if decision.status.phase != crossDecide {
+		return errGraphCutPending
+	}
+	m, err := decodeCrossManifest(decision.manifest, b.coordinator.host.machine.limits, b.arena)
+	if err != nil {
+		return err
+	}
+	if m.coordinator != o.coordinator || m.tx != o.pending || m.declaration != b.coordinator.host.machine.declaration.Digest() || m.configuration != o.configuration {
+		return errInvalid
+	}
+	tx := crossTransaction{owner: b.coordinator.host, manifest: decision.manifest, digest: decision.status.digest}
+	for _, part := range m.parts {
+		endpoint := b.endpoints[part.binding.Partition]
+		if endpoint == nil {
+			return errGraphCutScope
+		}
+		if !decision.status.commit {
+			observation, e := b.Read(ctx, part.binding.Partition, graphCutQuery{kind: 4, request: m.tx, digest: m.digest})
+			if e != nil {
+				return e
+			}
+			if observation.configuration != m.configuration {
+				return errInvalid
+			}
+			if observation.participant.phase == 0 || observation.participant.phase == crossResolve {
+				continue
+			}
+		}
+		p, e := b.coordinator.host.proposalFromAuthority(crossResolve, part.binding.Partition, tx, []crossAuthority{decision}, b.arena)
+		if e != nil {
+			return e
+		}
+		status, e := endpoint.submit(ctx, p)
+		if e != nil {
+			return errors.Join(errGraphCutPending, e)
+		}
+		if status.tx != m.tx || status.digest != m.digest || status.phase != crossResolve || status.commit != decision.status.commit || status.round != decision.status.round {
+			return errInvalid
+		}
+	}
+	return nil
+}
+func (b *remoteCertifiedGraphBackend) Capture(ctx context.Context, cert graphCertificate) (certifiedGraphSource, genesisAllocationConfig, materializerLimits, error) {
+	e := b.endpoints[cert.scope.partition]
+	if e == nil {
+		return nil, genesisAllocationConfig{}, materializerLimits{}, errGraphCutScope
+	}
+	source, cfg, err := e.openCertifiedSource(ctx, cert)
+	if err != nil {
+		return nil, cfg, materializerLimits{}, err
+	}
+	return source, cfg, b.coordinator.host.machine.limits, nil
+}
+func (b *remoteCertifiedGraphBackend) ReceiptRound(ctx context.Context, r graphCommitReceipt) (uint64, error) {
+	// Native receipts retain their original immutable provenance after issuer
+	// close. Authority comparison uses the actual current selected source scope.
+	if r.remote != nil {
+		p := *r.remote
+		if !p.validSeal() || p.status.phase != crossDecide || !p.status.commit || p.status.round == 0 {
+			return 0, errInvalid
+		}
+		e := b.endpoints[p.scope.partition]
+		if e == nil || e.peer.scope != p.scope {
+			return 0, errInvalid
+		}
+		o, err := b.Read(ctx, p.scope.partition, graphCutQuery{kind: 1})
+		if err != nil {
+			return 0, err
+		}
+		m, err := decodeCrossManifest(p.manifest, b.coordinator.host.machine.limits, b.arena)
+		if err != nil || m.configuration != o.configuration || m.declaration != b.coordinator.host.machine.declaration.Digest() {
+			return 0, errors.Join(errInvalid, err)
+		}
+		return p.status.round, nil
+	}
+	if r.local.owner != nil {
+		p := r.local
+		if _, err := graphReceiptFromLocal(p); err != nil {
+			return 0, err
+		}
+		e := b.endpoints[p.observation.scope.partition]
+		if e == nil || e.peer.scope != p.observation.scope {
+			return 0, errInvalid
+		}
+		o, err := b.Read(ctx, e.peer.scope.partition, graphCutQuery{kind: 1})
+		if err != nil || o.configuration != p.observation.configuration {
+			return 0, errors.Join(errInvalid, err)
+		}
+		return p.observation.local.round, nil
+	}
+	if r.proof.owner != nil {
+		p := r.proof
+		if _, err := graphReceiptFromDecision(p); err != nil {
+			return 0, err
+		}
+		scope := p.owner.machine.scope()
+		endpoint := b.endpoints[scope.partition]
+		if endpoint == nil || endpoint.peer.scope != scope || p.owner.machine.declaration.Digest() != b.coordinator.host.machine.declaration.Digest() {
+			return 0, errInvalid
+		}
+		o, err := b.Read(ctx, scope.partition, graphCutQuery{kind: 1})
+		if err != nil {
+			return 0, err
+		}
+		m, err := decodeCrossManifest(p.manifest, b.coordinator.host.machine.limits, b.arena)
+		if err != nil || m.configuration != o.configuration || m.declaration != b.coordinator.host.machine.declaration.Digest() || m.coordinator != scope.partition || m.request.ns != p.status.ns {
+			return 0, errors.Join(errInvalid, err)
+		}
+		return p.status.round, nil
+	}
+	return 0, errInvalid
+}
+func (b *remoteCertifiedGraphBackend) operationBudget() (*graphstate.OutputBudget, graphstore.PageWork) {
+	b.budget.mu.Lock()
+	defer b.budget.mu.Unlock()
+	return b.arena, graphstore.PageWork{Records: b.budget.rows, Bytes: b.budget.bytes}
+}
+
+func graphReceiptFromAuthority(p crossAuthority) (graphCommitReceipt, error) {
+	if !p.validSeal() || p.scope.semantic != certifiedGraphSemanticContractID() || p.status.phase != crossDecide || !p.status.commit || p.status.round == 0 {
+		return graphCommitReceipt{}, errInvalid
+	}
+	return graphCommitReceipt{remote: &p}, nil
+}

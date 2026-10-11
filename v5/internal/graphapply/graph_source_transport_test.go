@@ -50,6 +50,7 @@ func (p *nativeGraphTestPump) drive(ctx context.Context, event allocationEvent) 
 		result.replies = append(result.replies, e.replies...)
 		result.crossReplies = append(result.crossReplies, e.crossReplies...)
 		result.requestReplies = append(result.requestReplies, e.requestReplies...)
+		result.cutReplies = append(result.cutReplies, e.cutReplies...)
 	}
 	return result, nil
 }
@@ -69,6 +70,23 @@ func (p *nativeGraphTestPump) Allocation(ctx context.Context, q allocationQuery)
 		}
 	}
 	return allocationReply{}, graphstore.ErrSourceUnavailable
+}
+func (p *nativeGraphTestPump) Cut(ctx context.Context, q graphCutQuery) (graphCutReply, error) {
+	e, err := p.host.ReadGraphCut(q)
+	if err != nil {
+		return graphCutReply{}, err
+	}
+	id := e.readID
+	e, err = p.drive(ctx, e)
+	if err != nil {
+		return graphCutReply{}, err
+	}
+	for _, r := range e.cutReplies {
+		if r.id == id && r.question == q {
+			return r, nil
+		}
+	}
+	return graphCutReply{}, graphstore.ErrSourceUnavailable
 }
 func (p *nativeGraphTestPump) Cross(ctx context.Context, q crossQuery) (crossReply, error) {
 	e, err := p.host.ReadCrossPhase(q.tx, q.phase, q.nonce)

@@ -13,9 +13,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Original request bytes and durable decisions survive uncertain replies;
   missing authority remains pending. Captured root metadata grants no live-peer,
   quorum or certified-cut authority, and required graph data uses source RPCs.
-  Six-process same-graph cross-edge checks include exact graph answers and
-  replicated outcomes/CDC. Remote certified cuts, broader fault/ownership/GC
-  evidence, engine comparison and full V2 remain open.
+  Native and remote readers share Fresh, Stable, At and After closure through
+  persisted source certificates and exact retained roots. Remote control reads
+  carry explicit cumulative work/ownership allowances; receipt validation
+  survives issuer close when current immutable authority matches. Six-process
+  E15 checks delay one participant after COMMIT, require complete certified
+  graph answers and retained old cuts, and compare voter outcomes/CDC. Scoped
+  authority refusals preserve subsequent in-scope reads. Broader remote fault,
+  ownership/GC evidence, engine comparison and full V2 remain open.
 
 - Added v5 replica storage primitives for owned, bounded snapshot audits through
   Begin, Advance, a distinct Finish phase and Commit. Exact same-store claims

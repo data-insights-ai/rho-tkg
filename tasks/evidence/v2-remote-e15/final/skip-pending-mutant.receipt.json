@@ -1,0 +1,35 @@
+{
+  "source_manifest_sha256": "c61537247db58156ef7ec5f5ebdefb9ba6ba7a56f9496796d08391c86e287dd8",
+  "root": "/var/tmp/rho-v5-v2-remote-e15-mutant-skip-pending-20261011",
+  "file": "v5/internal/graphapply/certified_graph_remote.go",
+  "old": "func (b *remoteCertifiedGraphBackend) Resolve(ctx context.Context, o graphCutObservation) error {\n",
+  "new": "func (b *remoteCertifiedGraphBackend) Resolve(ctx context.Context, o graphCutObservation) error {\n\tif o.pending != ([16]byte{}) { return nil } // MUTANT: omit required participant closure.\n",
+  "mutation_count": 1,
+  "test": "^TestRemoteCertifiedNativeTransportFreshAndRetainedAt$",
+  "unmutated_target_sha256": "4dc232371c0545f0d4178ca190fdfb5d84d01762c29ba2b06c55abcf5ad52b38",
+  "mutated_target_sha256": "2835db9590c6c6f748fe6278a6c6012ea6b87f4fb30d13110e14ac50fa49307c",
+  "command": [
+    "python3",
+    "/var/tmp/rho-v5-rebase-main-20261010-0mdr6yaw/limit-local.py",
+    "--rss-mib",
+    "4096",
+    "--seconds",
+    "180",
+    "--report",
+    "/private/var/tmp/rho-v5-v2-remote-e15-20261011/tasks/evidence/v2-remote-e15/final/skip-pending-mutant.watchdog.json",
+    "--",
+    "go",
+    "test",
+    "-short",
+    "-count=1",
+    "-json",
+    "-run",
+    "^TestRemoteCertifiedNativeTransportFreshAndRetainedAt$",
+    "./internal/graphapply"
+  ],
+  "exit_code": 1,
+  "failed_parents": [
+    "TestRemoteCertifiedNativeTransportFreshAndRetainedAt"
+  ],
+  "killed": true
+}

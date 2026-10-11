@@ -1,0 +1,35 @@
+{
+  "source_manifest_sha256": "72a14ac351f4262c508609a194b95a6b6ba804292a71189eb65ca82e404f1404",
+  "root": "/var/tmp/rho-v5-v2-remote-e15-mutant-current-at-20261011",
+  "file": "v5/internal/graphapply/certified_graph_backend.go",
+  "old": "case graphReadAt:\n",
+  "new": "case graphReadAt:\n\t\tcut, err = freshCertifiedGraphCut(ctx, backend, scope, 0); if err != nil { return nil, err }\n",
+  "test": "^TestRemoteCertifiedNativeTransportFreshAndRetainedAt$",
+  "mutation_count": 1,
+  "unmutated_target_sha256": "0acaaffeb64817216521bde1ad61ef09ad22f95837e1c12b4398172285dc16be",
+  "mutated_target_sha256": "c4a9f16fd84938ff105b18f1fbf08b9107aeb96bb3287580ba7e5ad24b659150",
+  "command": [
+    "python3",
+    "/var/tmp/rho-v5-rebase-main-20261010-0mdr6yaw/limit-local.py",
+    "--rss-mib",
+    "4096",
+    "--seconds",
+    "180",
+    "--report",
+    "/private/var/tmp/rho-v5-v2-remote-e15-20261011/tasks/evidence/v2-remote-e15/final/current-at-mutant.watchdog.json",
+    "--",
+    "go",
+    "test",
+    "-short",
+    "-count=1",
+    "-json",
+    "-run",
+    "^TestRemoteCertifiedNativeTransportFreshAndRetainedAt$",
+    "./internal/graphapply"
+  ],
+  "exit_code": 1,
+  "failed_parents": [
+    "TestRemoteCertifiedNativeTransportFreshAndRetainedAt"
+  ],
+  "killed": true
+}

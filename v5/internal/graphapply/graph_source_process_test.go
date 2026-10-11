@@ -79,6 +79,8 @@ type graphProcessHub struct {
 	mu                               sync.Mutex
 	packetBytes, delivered, inFlight int
 	idle                             chan struct{}
+	// Optional test transport schedule; protected by mu and never graph authority.
+	beforeRelay func(context.Context, uint64, uint64, []byte) error
 }
 type graphProcessMux struct {
 	p             *graphProcess
@@ -442,7 +444,17 @@ func (m *graphProcessMux) relayLoop() {
 				continue
 			}
 			ctx, cancel := context.WithTimeout(job.ctx, 10*time.Second)
-			r, err := m.hub.peers[target].exchange(ctx, processRequest{op: processSourceServe, entity: m.id, data: e.body})
+			m.hub.mu.Lock()
+			before := m.hub.beforeRelay
+			m.hub.mu.Unlock()
+			var r processResponse
+			var err error
+			if before != nil {
+				err = before(ctx, m.id, e.target, e.body)
+			}
+			if err == nil {
+				r, err = m.hub.peers[target].exchange(ctx, processRequest{op: processSourceServe, entity: m.id, data: e.body})
+			}
 			cancel()
 			if err == nil {
 				err = processResponseError(r)
@@ -470,6 +482,9 @@ type graphProcessPumpCall struct {
 	allocation allocationQuery
 	cross      crossQuery
 	request    crossRequestQuestion
+	cut        graphCutQuery
+	baseline   uint64
+	scanned    int
 	proposal   allocationProposal
 	id         allocationReadID
 	reply      chan graphProcessPumpReply
@@ -489,10 +504,54 @@ func advanceGraphProcessPumpQueue(queue *[]*graphProcessPumpCall, idle func() bo
 	return nil
 }
 
+// pollGraphProcessCutSubmission correlates a real persisted Raft command and
+// its committed GSO. Operation refusal is separate from native event failure.
+func pollGraphProcessCutSubmission(ctx context.Context, h *allocationHost, proposal allocationProposal, baseline uint64, scanned int) (uint64, int, []byte, error, error) {
+	command, err := decodeGraphCutCommand(proposal.wire)
+	if err != nil {
+		return baseline, scanned, nil, err, nil
+	}
+	applied := h.driver.Applied()
+	for index := baseline + 1; index <= applied; index++ {
+		if scanned >= 1024 {
+			return baseline, scanned, nil, errLimit, nil
+		}
+		scanned++
+		baseline = index
+		entries, e := h.machine.store.Entries(index, index+1, 512)
+		if e != nil {
+			return baseline, scanned, nil, nil, e
+		}
+		if len(entries) != 1 || entries[0].GetIndex() != index {
+			return baseline, scanned, nil, nil, errCorrupt
+		}
+		if !bytes.Equal(entries[0].GetData(), proposal.wire) {
+			continue
+		}
+		body, e := h.machine.store.ApplicationRecord(ctx, index, true, 512)
+		if e != nil {
+			if errors.Is(e, context.Canceled) || errors.Is(e, context.DeadlineExceeded) {
+				return baseline, scanned, nil, e, nil
+			}
+			return baseline, scanned, nil, nil, e
+		}
+		if e := ctx.Err(); e != nil {
+			return baseline, scanned, nil, e, nil
+		}
+		result, e := decodeGraphCutResult(body)
+		if e != nil || result.index != index || result.phase != command.phase || result.round != command.round {
+			return baseline, scanned, nil, nil, errors.Join(errInvalid, e)
+		}
+		return baseline, scanned, body, nil, nil
+	}
+	return baseline, scanned, nil, nil, nil
+}
+
 type graphProcessPumpReply struct {
 	allocation allocationReply
 	cross      crossReply
 	request    crossRequestReply
+	cut        graphCutReply
 	body       []byte
 	err        error
 }
@@ -527,6 +586,10 @@ func (p *graphProcessChildPump) wait(c *graphProcessPumpCall) (graphProcessPumpR
 func (p *graphProcessChildPump) Allocation(ctx context.Context, q allocationQuery) (allocationReply, error) {
 	r, e := p.wait(&graphProcessPumpCall{ctx: ctx, kind: sourceOpen, allocation: q})
 	return r.allocation, e
+}
+func (p *graphProcessChildPump) Cut(ctx context.Context, q graphCutQuery) (graphCutReply, error) {
+	r, e := p.wait(&graphProcessPumpCall{ctx: ctx, kind: sourceCutRead, cut: q})
+	return r.cut, e
 }
 func (p *graphProcessChildPump) Cross(ctx context.Context, q crossQuery) (crossReply, error) {
 	r, e := p.wait(&graphProcessPumpCall{ctx: ctx, kind: sourceCrossRead, cross: q})
@@ -888,6 +951,12 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 	if err != nil {
 		t.Fatal(err)
 	}
+	certifiedSessions := &graphProcessCertifiedSessions{ctx: ctx, coordinator: coordinator, owners: make(map[uint64]graphProcessCertifiedOwner)}
+	defer func() {
+		if e := certifiedSessions.close(); e != nil {
+			t.Error(e)
+		}
+	}()
 	requests := make(chan processRequest, processSourceWorkers)
 	inputErr := make(chan error, 1)
 	go func() {
@@ -925,7 +994,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		active = nil
 	}
 	emit := func(e allocationEvent) error {
-		if len(e.snapshotSends)+len(e.capacityReplies)+len(e.cutReplies) != 0 {
+		if len(e.snapshotSends)+len(e.capacityReplies) != 0 {
 			return errInvalid
 		}
 		if active != nil {
@@ -945,6 +1014,14 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					}
 					finish(active, graphProcessPumpReply{cross: e.crossReplies[0]})
 					e.crossReplies = nil
+				}
+			case sourceCutRead:
+				if len(e.cutReplies) > 0 {
+					if len(e.cutReplies) != 1 || e.cutReplies[0].id != active.id || e.cutReplies[0].question != active.cut {
+						return errInvalid
+					}
+					finish(active, graphProcessPumpReply{cut: e.cutReplies[0]})
+					e.cutReplies = nil
 				}
 			case sourceRequestLookup:
 				if len(e.requestReplies) > 0 {
@@ -982,7 +1059,10 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			event, err = h.ReadCrossPhase(c.cross.tx, c.cross.phase, c.cross.nonce)
 		case sourceRequestLookup:
 			event, err = h.readCrossRequest(c.request)
+		case sourceCutRead:
+			event, err = h.ReadGraphCut(c.cut)
 		case sourceSubmit:
+			c.baseline = h.driver.Applied()
 			event, err = h.Submit(c.proposal)
 		}
 		if err != nil {
@@ -996,6 +1076,18 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		if active == nil || active.kind != sourceSubmit {
 			return nil
 		}
+		if isGraphCutWire(active.proposal.wire) {
+			next, scanned, body, operationErr, eventErr := pollGraphProcessCutSubmission(active.ctx, h, active.proposal, active.baseline, active.scanned)
+			active.baseline, active.scanned = next, scanned
+			if eventErr != nil {
+				return eventErr
+			}
+			if body != nil || operationErr != nil {
+				finish(active, graphProcessPumpReply{body: body, err: operationErr})
+			}
+			return nil
+		}
+
 		c, _, err := decodeCrossCommand(active.proposal.wire, h.machine.limits)
 		if err != nil {
 			finish(active, graphProcessPumpReply{err: err})
@@ -1080,6 +1172,8 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 						e = errors.Join(e, encodeErr)
 					}
 				}
+			case processSourceCertifiedOpen, processSourceCertifiedObserve, processSourceCertifiedClose:
+				out.aux, e = certifiedSessions.serve(workerCtx, r)
 			case processSourceObserve:
 				ids := []uint64{r.entity}
 				if r.entity == 0 {
@@ -1255,6 +1349,12 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				if e == nil {
 					response.changes, e = h.machine.store.ApplicationRecord(ctx, r.index, false, 1<<20)
 				}
+			case processSourceCutEvidence:
+				var evidence graphE15CutEvidence
+				evidence, e = captureGraphE15CutEvidence(ctx, h, r.entity)
+				if e == nil {
+					response.aux, e = encodeGraphE15CutEvidence(evidence)
+				}
 			case processCertifiedObserve:
 				var fact certifiedProcessFact
 				fact, e = certifiedProcessObservation(ctx, h, r.entity)
@@ -1304,7 +1404,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					}
 					paused = nil
 				}
-			case processSourceServe, processSourceCoordinate, processSourceObserve:
+			case processSourceServe, processSourceCoordinate, processSourceObserve, processSourceCertifiedOpen, processSourceCertifiedObserve, processSourceCertifiedClose:
 				if pause && r.op == processSourceServe && !isSourceClose(r) {
 					if len(paused) >= processSourceWorkers {
 						e = errLimit

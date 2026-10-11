@@ -1,0 +1,21 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-short",
+    "-count=1",
+    "-json",
+    "-coverprofile=../tasks/evidence/v2-remote-e15/remaining-direct-corrected.cover",
+    "-run",
+    "^(TestRemoteCertified|TestCertifiedGraphSource|TestCertifiedGraphControlBudget|TestPartitionScopedReadSources|TestCatalogCorruptMembershipAndRecordsPoison|TestCatalogInvalidInputDoesNotPoison)",
+    "./internal/graphapply",
+    "./internal/graphstore"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 727.469,
+  "elapsed_s": 28.317,
+  "exit_code": 0,
+  "reason": "completed"
+}

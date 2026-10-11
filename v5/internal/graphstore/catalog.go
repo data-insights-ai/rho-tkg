@@ -101,7 +101,7 @@ func (c *Catalog) failure(err error) error {
 	if errors.Is(err, raftlog.ErrLimit) || errors.Is(err, temporal.ErrResourceLimit) || errors.Is(err, graphstate.ErrResourceLimit) || errors.Is(err, state.ErrResourceLimit) {
 		return errors.Join(ErrResourceLimit, err)
 	}
-	if errors.Is(err, ErrInvalid) || errors.Is(err, ErrNamespace) || errors.Is(err, ErrRebinding) || errors.Is(err, ErrResourceLimit) || errors.Is(err, ErrTopologyUnsupported) || errors.Is(err, ErrSourceUnavailable) || errors.Is(err, ErrRoutingUnknown) || errors.Is(err, ErrRemoteParticipant) || errors.Is(err, ErrStaleOwner) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, raftlog.ErrClosed) || errors.Is(err, ErrClosed) {
+	if errors.Is(err, ErrInvalid) || errors.Is(err, ErrNamespace) || errors.Is(err, ErrRebinding) || errors.Is(err, ErrResourceLimit) || errors.Is(err, ErrTopologyUnsupported) || errors.Is(err, ErrSourceUnavailable) || errors.Is(err, ErrRoutingUnknown) || errors.Is(err, ErrRemoteParticipant) || errors.Is(err, ErrScopeUnavailable) || errors.Is(err, ErrStaleOwner) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, raftlog.ErrClosed) || errors.Is(err, ErrClosed) {
 		return err
 	}
 	c.mu.Lock()

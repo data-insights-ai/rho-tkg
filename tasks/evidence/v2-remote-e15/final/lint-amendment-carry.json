@@ -1,0 +1,14 @@
+{
+  "final_source_manifest_sha256": "c61537247db58156ef7ec5f5ebdefb9ba6ba7a56f9496796d08391c86e287dd8",
+  "source_changes": [
+    "certified_graph_host.go: equivalentDeMorgan +boundeduint32comments",
+    "certified_graph_reader.go: unusedprivatefreshwrapperremoved"
+  ],
+  "test_changes": [
+    "goimports/DeMorgan incontrolbudgettest",
+    "intentionalnilcontextsuppression inremoteTest"
+  ],
+  "unchanged_runtime": "11normal +12race inventories680/676PASS4SKIP; actualAS4cohorts; hashesheld exceptenumerated mechanicaldelta",
+  "fresh_required": "lint-amendment normal/race71parents refresh host/reader profiles; retainedotherfileprofiles; no shiftedblockremap",
+  "author_static": "fmt/lint/security/vuln refreshed finalcomments; vet/build exactexecutablecodeprecedingcommentonlycarry"
+}

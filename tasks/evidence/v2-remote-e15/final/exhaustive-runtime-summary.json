@@ -1,0 +1,178 @@
+{
+  "normal": {
+    "compiled": 680,
+    "counts": {
+      "pass": 676,
+      "skip": 4
+    },
+    "skips": [
+      "TestMaterializerCrashChild",
+      "TestReplicatedGraphChild",
+      "TestCurrentIncidentMeasurements",
+      "TestIncidentAtLargeOwnEndedDefaultPopulation"
+    ],
+    "lanes": [
+      {
+        "lane": "graphstore-e15",
+        "counts": {
+          "pass": 3
+        }
+      },
+      {
+        "lane": "graphapply-e15",
+        "counts": {
+          "pass": 39
+        }
+      },
+      {
+        "lane": "graphapply-rest",
+        "counts": {
+          "pass": 206,
+          "skip": 2
+        }
+      },
+      {
+        "lane": "graphapply-certified",
+        "counts": {
+          "pass": 29
+        }
+      },
+      {
+        "lane": "graphapply-cross",
+        "counts": {
+          "pass": 32
+        }
+      },
+      {
+        "lane": "graphapply-process-source",
+        "counts": {
+          "pass": 43
+        }
+      },
+      {
+        "lane": "graphapply-registry",
+        "counts": {
+          "pass": 9
+        }
+      },
+      {
+        "lane": "graphapply-replicated",
+        "counts": {
+          "pass": 6,
+          "skip": 1
+        }
+      },
+      {
+        "lane": "graphstore-partition",
+        "counts": {
+          "pass": 46
+        }
+      },
+      {
+        "lane": "graphstore-rest",
+        "counts": {
+          "pass": 195
+        }
+      },
+      {
+        "lane": "graphstore-current",
+        "counts": {
+          "pass": 64,
+          "skip": 2
+        }
+      }
+    ],
+    "AS4_fresh_cohort": "PASS replaces generalrun SKIP"
+  },
+  "race": {
+    "compiled": 680,
+    "counts": {
+      "pass": 676,
+      "skip": 4
+    },
+    "skips": [
+      "TestMaterializerCrashChild",
+      "TestReplicatedGraphChild",
+      "TestCurrentIncidentMeasurements",
+      "TestIncidentAtLargeOwnEndedDefaultPopulation"
+    ],
+    "lanes": [
+      {
+        "lane": "graphstore-e15",
+        "counts": {
+          "pass": 3
+        }
+      },
+      {
+        "lane": "graphapply-e15",
+        "counts": {
+          "pass": 42
+        }
+      },
+      {
+        "lane": "graphapply-rest",
+        "counts": {
+          "pass": 206,
+          "skip": 2
+        }
+      },
+      {
+        "lane": "graphapply-certified",
+        "counts": {
+          "pass": 29
+        }
+      },
+      {
+        "lane": "graphapply-cross-1",
+        "counts": {
+          "pass": 15
+        }
+      },
+      {
+        "lane": "graphapply-cross-2",
+        "counts": {
+          "pass": 17
+        }
+      },
+      {
+        "lane": "graphapply-process-source",
+        "counts": {
+          "pass": 43
+        }
+      },
+      {
+        "lane": "graphapply-registry",
+        "counts": {
+          "pass": 9
+        }
+      },
+      {
+        "lane": "graphapply-replicated",
+        "counts": {
+          "pass": 6,
+          "skip": 1
+        }
+      },
+      {
+        "lane": "graphstore-partition",
+        "counts": {
+          "pass": 46
+        }
+      },
+      {
+        "lane": "graphstore-rest",
+        "counts": {
+          "pass": 195
+        }
+      },
+      {
+        "lane": "graphstore-current",
+        "counts": {
+          "pass": 64,
+          "skip": 2
+        }
+      }
+    ],
+    "AS4_fresh_cohort": "PASS replaces generalrun SKIP"
+  }
+}

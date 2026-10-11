@@ -1,0 +1,245 @@
+package graphapply
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
+)
+
+// This first RED binds the only existing remote read path. Its quiescent-only
+// contract is correct; the failure witnesses missing certified remote access,
+// not a defect in a path explicitly documented as noncertified. After the
+// production seam exists the same acceptance binds the certified read API.
+func TestRemoteE15CurrentSourcesCannotStandInForCertifiedReadWithOnlyAApplied(t *testing.T) {
+	n := newCertifiedProcessNetwork(t)
+	oracle := newCertifiedProcessOracle()
+	input, err := encodeGraphProcessObserveIDs([]uint64{1, 3, 17})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := n.all[2].call(t, processRequest{op: processSourceObserve, data: input})
+	old, err := decodeGraphProcessObservationBatch(before.aux)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range old {
+		if err := oracle.compare(f.id, f.fact); err != nil {
+			t.Fatal("independent pretransaction graph", err)
+		}
+	}
+	start := make(map[uint64]processResponse)
+	for id, p := range n.all {
+		start[id] = p.call(t, processRequest{op: processStateOp})
+	}
+	arrived := make(chan struct{})
+	release := make(chan struct{})
+	var first, safeRelease sync.Once
+	unblock := func() { safeRelease.Do(func() { close(release) }) }
+	defer unblock()
+	hub := n.all[1].mux.hub
+	hub.mu.Lock()
+	hub.beforeRelay = func(ctx context.Context, _ uint64, partition uint64, wire []byte) error {
+		if partition != 8 {
+			return nil
+		}
+		request, err := decodeGraphSourceRequest(wire)
+		if err != nil {
+			return err
+		}
+		if request.kind != sourceSubmit {
+			return nil
+		}
+		proposal, err := decodeGraphSourceProposal(request.command)
+		if err != nil {
+			return err
+		}
+		command, _, err := decodeCrossCommand(proposal.wire, defaultMaterializerLimits())
+		if err != nil {
+			return err
+		}
+		if command.phase != crossResolve {
+			return nil
+		}
+		first.Do(func() { close(arrived) })
+		select {
+		case <-release:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	hub.mu.Unlock()
+	command := n.all[1].call(t, processRequest{op: processCertifiedAction, entity: certifiedCreateCrossEdge, index: 3})
+	proposal, err := decodeCertifiedProcessProposal(command.aux)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resultCh := make(chan graphProcessAnswer, 1)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go func() {
+		r, e := n.all[1].exchange(ctx, processRequest{op: processSourceCoordinate, data: proposal.wire})
+		resultCh <- graphProcessAnswer{r, e}
+	}()
+	select {
+	case <-arrived:
+	case <-time.After(10 * time.Second):
+		t.Fatal("genuine B resolution did not reach held transport")
+	}
+	// Every source association is a configured native child pipe. No caller bool,
+	// fabricated receipt or absence inferred from a paused worker enters evidence.
+	// Drain only actual Raft packet work; the held business RPC remains pending.
+	raftCtx, stopRaft := context.WithTimeout(t.Context(), 10*time.Second)
+	for {
+		hub.mu.Lock()
+		idle := hub.packetBytes == 0 && hub.inFlight == 0 && len(hub.packets) == 0
+		hub.mu.Unlock()
+		if idle {
+			break
+		}
+		select {
+		case <-raftCtx.Done():
+			t.Fatal("native apply packets did not settle", raftCtx.Err())
+		case <-hub.idle:
+		}
+	}
+	stopRaft()
+	var decision crossStatus
+	for group, ids := range [][]uint64{{1, 2, 3}, {4, 5, 6}} {
+		var outcomeWire, changeWire []byte
+		for _, id := range ids {
+			state := n.all[id].call(t, processRequest{op: processStateOp})
+			record := n.all[id].call(t, processRequest{op: processEntryRecord, index: state.applied})
+			status, err := decodeCrossStatus(record.outcome)
+			if err != nil {
+				t.Fatal("native phase outcome", id, err)
+			}
+			phase := crossResolve
+			if group == 1 {
+				phase = crossPrepare
+			}
+			if status.phase != phase || (group == 0 && !status.commit) || (group == 1 && !status.yes) {
+				t.Fatal("not A-installed/B-YES", id, status)
+			}
+			if outcomeWire == nil {
+				outcomeWire, changeWire = record.outcome, record.changes
+			} else if !bytes.Equal(outcomeWire, record.outcome) || !bytes.Equal(changeWire, record.changes) {
+				t.Fatal("native group outcome/CDC disagreement", id)
+			}
+			if group == 0 && len(record.changes) == 0 || group == 1 && len(record.changes) != 0 {
+				t.Fatal("partial-install CDC state", id, len(record.changes))
+			}
+			if group == 0 {
+				found := false
+				for index := start[id].applied + 1; index <= state.applied; index++ {
+					earlier := n.all[id].call(t, processRequest{op: processEntryRecord, index: index})
+					d, err := decodeCrossStatus(earlier.outcome)
+					if err == nil && d.phase == crossDecide {
+						if !d.commit || d.tx != status.tx || d.digest != status.digest || d.round != status.round {
+							t.Fatal("real decision binding", id, d, status)
+						}
+						if decision == (crossStatus{}) {
+							decision = d
+						} else if decision != d {
+							t.Fatal("durable decision differs among voters", id, d, decision)
+						}
+						found = true
+					}
+				}
+				if !found {
+					t.Fatal("quorum voter has no actual committed decision", id)
+				}
+			} else if status.tx != decision.tx || status.digest != decision.digest {
+				t.Fatal("B prepare not bound to A decision", id, status, decision)
+			}
+		}
+	}
+	// Native lanes/quorum progress continue while only the genuine resolve RPC is
+	// withheld. Caller2 has no transaction worker and a distinct authenticated stream.
+	n.all[4].call(t, processRequest{op: processTick})
+	n.read(t, 4, observeConfiguration, 0)
+	readCtx, stop := context.WithTimeout(t.Context(), 10*time.Second)
+	answer, readErr := n.all[2].exchange(readCtx, processRequest{op: processSourceObserve, data: input})
+	stop()
+	var observed []graphProcessFactTuple
+	if readErr == nil {
+		observed, err = decodeGraphProcessObservationBatch(answer.aux)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Logf("actual held-B remote answer: error=%v facts=%+v; durable decision=%+v", readErr, observed, decision)
+	// Release and prove complete exact effects/CDC and successful child cleanup
+	// even when the first E15 assertion is intentionally RED.
+	unblock()
+	var completed crossProcessResult
+	select {
+	case got := <-resultCh:
+		if got.err != nil {
+			t.Fatal("original coordinator completion", got.err)
+		}
+		completed, err = decodeGraphProcessCoordinatorResult(got.response)
+		if err != nil || completed.decision.tx != decision.tx || completed.decision.digest != decision.digest || completed.decision.round != decision.round {
+			t.Fatal("decision changed on resolution", completed, err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("original operation did not finish after release")
+	}
+	drainCtx, done := context.WithTimeout(t.Context(), 10*time.Second)
+	defer done()
+	if err := drainGraphProcessMuxes(drainCtx, n.all); err != nil {
+		t.Fatal(err)
+	}
+	oracle.crossEdge()
+	complete := n.all[2].call(t, processRequest{op: processSourceObserve, data: input})
+	facts, err := decodeGraphProcessObservationBatch(complete.aux)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range facts {
+		if err := oracle.compare(f.id, f.fact); err != nil {
+			t.Fatal("postresolution exact graph", err)
+		}
+	}
+	phantom := n.all[2].call(t, processRequest{op: processSourceObserve, entity: 7})
+	empty, err := decodeCertifiedProcessFact(phantom.aux)
+	if err != nil || oracle.compare(7, empty) != nil {
+		t.Fatal("phantom graph fact", empty, err)
+	}
+	for _, ids := range [][]uint64{{1, 2, 3}, {4, 5, 6}} {
+		var outcome, changes []byte
+		for _, id := range ids {
+			state := n.all[id].call(t, processRequest{op: processStateOp})
+			record := n.all[id].call(t, processRequest{op: processEntryRecord, index: state.applied})
+			status, err := decodeCrossStatus(record.outcome)
+			if err != nil || status.phase != crossResolve || !status.commit || status.tx != decision.tx || status.digest != decision.digest || status.round != decision.round {
+				t.Fatal("final six-voter resolve", id, status, err)
+			}
+			if outcome == nil {
+				outcome, changes = record.outcome, record.changes
+			} else if !bytes.Equal(outcome, record.outcome) || !bytes.Equal(changes, record.changes) {
+				t.Fatal("final exact native outcome/CDC parity", id)
+			}
+			if state.stats[statViews] != 0 || state.stats[statPinnedBytes] != 0 {
+				t.Fatal("read owner residue", id, state.stats)
+			}
+		}
+	}
+	if readErr != nil {
+		if len(answer.aux) != 0 || !(errors.Is(readErr, errGraphCutPending) || errors.Is(readErr, graphstore.ErrSourceUnavailable)) {
+			t.Fatal("unexpected partial/error result", readErr, len(answer.aux))
+		}
+		t.Log("GUARD: existing remote path refused the held participant; no mixed success")
+		return
+	}
+	for _, f := range observed {
+		if err := oracle.compare(f.id, f.fact); err != nil {
+			t.Fatalf("MISSING_REMOTE_CERTIFIED_PATH: current sources returned A-new/B-old under durable COMMIT with B unresolved: entity=%d fact=%+v mismatch=%v", f.id, f.fact, err)
+		}
+	}
+}
