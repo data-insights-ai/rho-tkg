@@ -1,0 +1,36 @@
+{
+  "status": "accepted_locally_finite_E16",
+  "date": "2026-10-11",
+  "author_commit": "01f38811ebce2c56dccb2ca05aa80aacc54732d3",
+  "integration_parent": "30dd0881745d95e190b77db26d5a390e89ddfaa6",
+  "scope": "Six actual disk-backed processes: prepared YES89, observed fence100, pending certificate refusal, immutable COMMIT90, resolved Fresh100 and exact held/reopened old At. Test-only; production unchanged.",
+  "author_receipt": "receipt.json",
+  "author_receipt_sha256": "5a6d7213653607a76c593b666107ece0d8b8810b39d277c119b26e51bcf8e5aa",
+  "independent_review": "independent-review.json",
+  "independent_review_sha256": "0b3f40b2a7208740ba657c37a4b9a0e981ff35ca98b4e62256746dd9770c193b",
+  "root_validation": {
+    "source_hashes_verified": {
+      "v5/internal/graphapply/replicated_process_test.go": "11ecdac95691273254a7c9c01c98cbcdc8cf0a1ea016b6b4b816812abc4f1921",
+      "v5/internal/graphapply/remote_certified_e16_test.go": "55dcca4e7a6ebb2011d1d6a5ed0dbb42ca60206fb78d2cc444f54a09657e7598"
+    },
+    "unchanged_production_and_module_files": 196,
+    "hash_mismatches": 0,
+    "receipt_log_watchdog_hash_mismatches": 0,
+    "race_parents_passed": 7,
+    "new_production_statements": 0,
+    "coverage_carry": {
+      "covered": 18517,
+      "statements": 21273,
+      "source": "Exact unchanged E15 production; not a fresh whole-module profile"
+    },
+    "negative_control": "One isolated pending-to-Applied production mutation fails intended certificate-status assertion; six child processes successfully reaped.",
+    "fixture_failure": "Initial four-ID request exceeded existing three-ID test bound; preserved as fixture error, not production RED."
+  },
+  "hosted_ci": "E16 integration not yet pushed; E15 CI38164263921 still active when this record was prepared",
+  "remaining": [
+    "E17 actual range transfer and E18 historical correction/index parity",
+    "ownership recovery, identity fencing and application GC",
+    "physical-host durability and transactional-KV engine comparison",
+    "full V2 and V3-V7 acceptance"
+  ]
+}

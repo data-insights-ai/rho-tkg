@@ -78,7 +78,7 @@ and reference JSON specify contracts/evidence, not completed engine gates.
 |---|---|
 | V0 | Specification accepted: independent criterion review and refreshed reference/design checks pass. Contracts, profile/unit/import policy, current-v4 delta and reproducible resource/dataset test profiles are reviewed below. Implementation, consumer execution and measured capacity retain their separate phase gates |
 | V1 | Values/state accepted: unchanged 16/52 and revised rho-owned cases pass through typed primitives and `Plan`/`Project`, including immutable interpretation/native-axis roles, attached descriptor/source-revision history, graph-qualified refusals, independent state/complete-CDC capacity assertions and the pure Q/ms default-axis binding. Node/relationship retained-view exact sets, boundary/differential/fuzz/codec refusals and direct new-method coverage pass. Durable default registration is covered by the V2 checkpoint below; request/dependency installation and graph/cut integration remain V2, consumer adapters V4 and provenance-aware import V6 |
-| V2 | Active, not accepted. Checked partition-local writes, same-graph cross-partition prepare/decision/resolve and certified current/historical graph reads are accepted on both declared partitions of one GraphID, with three disk-backed voters each, retained history, nonempty snapshot activation, failover and reopen. The remote E15 slice now passes with authenticated leader sources and six native voters. Default-axis designation, shared allocation and explicit local authority are preserved. Package 4 still requires E16–E18, ownership transfer and recovery, production identity reuse/fencing, application GC, physical-host durability and comparable transactional-KV fault/cost evidence with an explicit engine decision |
+| V2 | Active, not accepted. Checked partition-local writes, same-graph cross-partition prepare/decision/resolve and certified current/historical graph reads are accepted on both declared partitions of one GraphID, with three disk-backed voters each, retained history, nonempty snapshot activation, failover and reopen. The remote E15 and E16 slices now pass with authenticated leader sources and six native voters. Default-axis designation, shared allocation and explicit local authority are preserved. Package 4 still requires E17–E18, ownership transfer and recovery, production identity reuse/fencing, application GC, physical-host durability and comparable transactional-KV fault/cost evidence with an explicit engine decision |
 | V3 | Coordinate timeblock candidate independently validated (local commit `fa0c982`; scoped temporal+block coverage 95.7%, no exported method at 0%). Full engine seal/merge/recovery, paged structures and all-in budget/byte-ledger measurements remain open; resident-buffer prototype timings do not close V3 |
 | V4 | Production read/change APIs, historical cross-door parity, gap-free leased feed handoff and pinned sigma access-contract build and nonempty mutation-then-historical tests (the current signature/empty smoke is insufficient) |
 | V5 | Distributed access across 1/2/4/8 partitions, cross-edge/stall/rebalance/feed cases and sigma workload parity |
@@ -307,6 +307,16 @@ reviewed and validated before the next package starts.
    defects are closed, including scope-refusal poisoning and control-work
    undercharging. E16–E18, ownership/GC, physical hosts, engine comparison and
    full V2 remain open; hosted CI for this integration is pending.
+   **Remote E16 accepted locally**, 2026-10-11, at `01f38811`: actual
+   prepared votes at floor 89 remain unresolved after a read observes fence
+   100, so certification refuses until the original COMMIT at 90 is resolved.
+   Fresh then includes that transaction; held and reopened old cuts retain the
+   exact prior graph. The [acceptance record](evidence/v2-remote-e16/acceptance.json)
+   binds the same independent review, seven passing race parents and a deliberate
+   pending-outcome error caught by the new test. All six child processes are
+   successfully reaped. This is test-only evidence: 196 production/module files
+   match the accepted base, so unchanged E15 validation is carried explicitly.
+   E17–E18 and the other V2 exit requirements remain open.
 
 The phase table above records current acceptance. The following entries retain
 the scope of their historical component validations.

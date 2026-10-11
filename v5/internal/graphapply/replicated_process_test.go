@@ -1434,6 +1434,8 @@ const (
 	certifiedCreateNode
 	certifiedCreateCrossEdge
 	certifiedHealthyLabel
+	certifiedPrepareFence
+	certifiedPrepareCertificate
 )
 
 type certifiedProcessOwners struct {
@@ -1518,6 +1520,10 @@ func (o *certifiedProcessOwners) action(t *testing.T, r processRequest, init dec
 	binary.BigEndian.PutUint64(id[8:], r.sequence)
 	h := o.host
 	switch r.entity {
+	case certifiedPrepareFence:
+		return h.PrepareGraphFence(r.index)
+	case certifiedPrepareCertificate:
+		return h.PrepareGraphCertificate(r.index)
 	case certifiedInitialize:
 		return h.PreparePartitionInitialization(r.index, bootstrapAttemptID(id), partitionWriteSchemas(), init.maxBlock, graphGenesisBinding(t), *init.routing, o.proof)
 	case certifiedBeginRecipient:
