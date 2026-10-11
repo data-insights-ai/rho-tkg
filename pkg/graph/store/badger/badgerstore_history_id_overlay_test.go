@@ -14,7 +14,20 @@ type idOverlayKind struct {
 	truncate func(bs *Store, id int64, keep int) error
 	allIDs   func(bs *Store) ([]int64, error)
 	count    func(bs *Store) (int, error)
+	// deletedIDs walks ForEachDeleted*ID; putCurrent / delCurrent write and
+	// delete the ID's current row (round 5 request 6: the walk reads the
+	// presence set once it is built).
+	deletedIDs func(bs *Store) ([]int64, error)
+	putCurrent func(bs *Store, id int64) error
+	delCurrent func(bs *Store, id int64) error
 }
+
+// deletedEndpointA / B are the current nodes the rel kind's current rows
+// connect (outside the 1..24 ID range the randomized test writes).
+const (
+	deletedEndpointA = 1001
+	deletedEndpointB = 1002
+)
 
 func idOverlayKinds() []idOverlayKind {
 	pk := presenceKinds()
@@ -33,6 +46,18 @@ func idOverlayKinds() []idOverlayKind {
 				return out, err
 			},
 			count: func(bs *Store) (int, error) { return bs.NodeHistoryCount() },
+			deletedIDs: func(bs *Store) ([]int64, error) {
+				var out []int64
+				err := bs.ForEachDeletedNodeID(func(id types.NodeID) bool {
+					out = append(out, int64(id))
+					return true
+				})
+				return out, err
+			},
+			putCurrent: func(bs *Store, id int64) error {
+				return bs.PutNode(types.NewNode(types.NodeID(snowflake.ID(id)), 1, nil))
+			},
+			delCurrent: func(bs *Store, id int64) error { return bs.DeleteNode(types.NodeID(snowflake.ID(id))) },
 		},
 		{
 			presenceKind: pk[1],
@@ -48,6 +73,26 @@ func idOverlayKinds() []idOverlayKind {
 				return out, err
 			},
 			count: func(bs *Store) (int, error) { return bs.RelHistoryCount() },
+			deletedIDs: func(bs *Store) ([]int64, error) {
+				var out []int64
+				err := bs.ForEachDeletedRelID(func(id types.RelID) bool {
+					out = append(out, int64(id))
+					return true
+				})
+				return out, err
+			},
+			putCurrent: func(bs *Store, id int64) error {
+				for _, nid := range []int64{deletedEndpointA, deletedEndpointB} {
+					if bs.HasNodeID(snowflake.ID(nid)) {
+						continue
+					}
+					if err := bs.PutNode(types.NewNode(types.NodeID(snowflake.ID(nid)), 1, nil)); err != nil {
+						return err
+					}
+				}
+				return bs.PutRelationship(types.NewRelationship(types.RelID(snowflake.ID(id)), 5, types.NodeID(deletedEndpointA), types.NodeID(deletedEndpointB)))
+			},
+			delCurrent: func(bs *Store, id int64) error { return bs.DeleteRelationship(types.RelID(snowflake.ID(id))) },
 		},
 	}
 }

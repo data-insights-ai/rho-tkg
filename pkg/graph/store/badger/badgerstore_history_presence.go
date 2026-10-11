@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -526,4 +527,62 @@ func (bs *Store) probeHistoryPresence(kind byte, id snowflake.ID, wantTop bool) 
 		return false, 0, fmt.Errorf("graph: probe history presence: %w", err)
 	}
 	return found, clampTop(top), nil
+}
+
+// presenceIDsSorted returns, in ascending order, every ID of p's built set
+// that may have a history row: the IDs in has and those in unknown (a probe
+// resolves each of the latter; see forEachPresentHistoryID). ok=false when
+// the set is not built or the store is probe-only: the caller scans the
+// keyspace. Round 5 request 6: the deleted-ID folds of the temporal
+// adjacency doors ran a badger iterator over the whole history keyspace per
+// call; once the set is built (HasNodeHistory / HasRelHistory built it)
+// they read it from RAM instead. They never build it themselves.
+func (bs *Store) presenceIDsSorted(p *historyPresence) (ids []snowflake.ID, unknown map[snowflake.ID]struct{}, ok bool) {
+	if bs.historyPresenceProbeOnly || !p.built.Load() {
+		return nil, nil, false
+	}
+	p.mu.RLock()
+	ids = make([]snowflake.ID, 0, len(p.has)+len(p.unknown))
+	for id := range p.has {
+		ids = append(ids, id)
+	}
+	if len(p.unknown) > 0 {
+		unknown = make(map[snowflake.ID]struct{}, len(p.unknown))
+		for id := range p.unknown {
+			ids = append(ids, id)
+			unknown[id] = struct{}{}
+		}
+	}
+	p.mu.RUnlock()
+	slices.Sort(ids)
+	return ids, unknown, true
+}
+
+// forEachPresentHistoryID calls fn, in ascending ID order, for every ID with
+// at least one history row according to the built presence set (an unknown
+// ID is resolved by hasHistory's probe), skipping the IDs skip reports.
+// ok=false: the set is not built; nothing was called.
+func (bs *Store) forEachPresentHistoryID(p *historyPresence, kind byte, skip func(snowflake.ID) bool, fn func(snowflake.ID) bool) (ok bool, err error) {
+	ids, unknown, ok := bs.presenceIDsSorted(p)
+	if !ok {
+		return false, nil
+	}
+	for _, id := range ids {
+		if skip != nil && skip(id) {
+			continue
+		}
+		if _, probe := unknown[id]; probe {
+			has, err := bs.hasHistory(p, kind, id)
+			if err != nil {
+				return true, err
+			}
+			if !has {
+				continue
+			}
+		}
+		if !fn(id) {
+			return true, nil
+		}
+	}
+	return true, nil
 }

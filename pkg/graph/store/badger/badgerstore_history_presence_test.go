@@ -500,8 +500,16 @@ func TestHistoryPresence_RandomizedDifferential(t *testing.T) {
 				t.Cleanup(func() { _ = bs.Close() })
 				const ids = 24
 				ver := map[int64]uint32{}
+				current := map[int64]bool{}
 				check := func(step string) {
-					var want []int64
+					var want, wantDeleted []int64
+					// Walk the deleted IDs FIRST: the has() calls below resolve
+					// the IDs a trim left unknown, which the walk must probe
+					// itself.
+					deleted, err := k.deletedIDs(bs)
+					if err != nil {
+						t.Fatal(err)
+					}
 					for id := int64(1); id <= ids; id++ {
 						got, err := k.has(bs, id)
 						if err != nil {
@@ -516,6 +524,9 @@ func TestHistoryPresence_RandomizedDifferential(t *testing.T) {
 						}
 						if rows > 0 {
 							want = append(want, id)
+							if !current[id] {
+								wantDeleted = append(wantDeleted, id)
+							}
 						}
 					}
 					listed, err := k.allIDs(bs)
@@ -528,12 +539,25 @@ func TestHistoryPresence_RandomizedDifferential(t *testing.T) {
 					if n, err := k.count(bs); err != nil || n != len(want) {
 						t.Fatalf("%s: HistoryCount = %d, %v; want %d", step, n, err, len(want))
 					}
+					if fmt.Sprint(deleted) != fmt.Sprint(wantDeleted) {
+						t.Fatalf("%s: ForEachDeletedID = %v, ids with rows and no current row %v", step, deleted, wantDeleted)
+					}
 				}
 				unchecked := 0
 				for step := 0; step < 250; step++ {
 					id := int64(1 + r.Intn(ids))
 					name := ""
-					switch op := r.Intn(100); {
+					switch op := r.Intn(110); {
+					case op >= 100:
+						name = "current"
+						if current[id] {
+							if err := k.delCurrent(bs, id); err != nil {
+								t.Fatal(err)
+							}
+						} else if err := k.putCurrent(bs, id); err != nil {
+							t.Fatal(err)
+						}
+						current[id] = !current[id]
 					case op < 36:
 						name = "put"
 						if err := k.put(bs, id, ver[id]); err != nil {
@@ -582,6 +606,7 @@ func TestHistoryPresence_RandomizedDifferential(t *testing.T) {
 							t.Fatal(err)
 						}
 						ver = map[int64]uint32{}
+						current = map[int64]bool{}
 						unchecked = 5
 					case op < 95:
 						name = "flush2"

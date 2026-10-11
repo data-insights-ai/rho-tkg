@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Performance
+
+- **Valid-time adjacency: a relationship without history is answered from its live row** (sigma-tkgd round 5
+  request 6, task record C4s: a window search over relationships without history was 11 times the static one).
+  `Rels().ForEachAdjacentEndpointAt` / `ForEachAdjacentRelAt` under `ValidAt` or `ValidStart`+`ValidEnd` loaded
+  every adjacent relationship's version chain (a point read and a history read each). A live relationship the
+  store states has no history rows (`HistoryPresenceCapability`: memory, badger, sharded, tiered) has one version,
+  the live row the door already read; it is now judged from that row (a first version without a delete stamp by
+  its bounds directly, any other through the chain resolver over the one-row chain). A relationship with history,
+  a deleted one and every transaction-time pin (`TxAt`, `TxPin`) keep the full resolution; an untrusted store's
+  rows are handed out as copies, as before. The badger store's `ForEachDeletedNodeID` / `ForEachDeletedRelID`
+  (the deleted fold of these doors, a badger iterator over the history keyspace per call) read the RAM
+  history-presence set once it is built, probing the IDs a history delete left unresolved; they never build it.
+  No write path changes. `BenchmarkWindowAdjacencyReach` (OPT21bWindowReach's 3,001-node DAG, a breadth-first
+  search from the 250 start nodes over 8,250 edges, one unrelated relationship and two nodes with history; one
+  CPU, load 22 to 43, three interleaved rounds): badger window 15.9-17.6 -> 1.68-1.75 ms (static 0.76-1.15),
+  instant 10.9-11.7 -> 1.99-2.06 ms; memory window 3.74-4.21 -> 1.04-1.51 ms (static 0.62-1.55), instant
+  1.79-1.82 -> 1.09-1.18 ms; badger allocations 41.9 MB -> 0.54 MB per search. Tests:
+  `TestForEachAdjacentAt_NoHistoryRelsLoadNoChain` (red: 7 chain loads where 3 relationships have history, every
+  backend), `TestForEachAdjacentAt_NoHistoryRelsAgreeWithChainResolution` (both doors, both directions, instants,
+  windows and pins at every bound, every backend, against per-relationship resolution),
+  `TestSingleVersionAdjacencyMatchesResolver`, and the deleted-ID walk in `TestHistoryPresence_RandomizedDifferential`
+  (current rows written and deleted between trims, flushes, clears and reopens); red run and mutants under
+  `tasks/evidence/cypher-round5/`.
+
 ## [4.50.1] - 2026-10-11
 
 Patch release: interval corrections at a caller transaction instant (backlog 34, requested by sigma-tkgd for the burst-growth replay). Additive; the plain doors are unchanged.
