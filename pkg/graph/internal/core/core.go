@@ -288,6 +288,7 @@ type Core struct {
 	registryDirty    atomic.Bool
 	relTypeCache     map[string]uint16
 	relTypeCacheMu   sync.RWMutex
+	closeMu          sync.Mutex
 	closeOnce        sync.Once
 	closed           atomic.Bool
 
@@ -2091,6 +2092,18 @@ type badgerRegistryLoader interface {
 // race with concurrent RegisterProvider; provider Close is then run
 // outside the lock so a slow Close cannot block the lifecycle lock.
 func (c *Core) Close() error {
+	c.closeMu.Lock()
+	defer c.closeMu.Unlock()
+	if c.closed.Load() {
+		return nil
+	}
+	if admission, ok := c.store.(storepkg.CloseAdmissionCapability); ok {
+		release, err := admission.AdmitClose()
+		if err != nil {
+			return err
+		}
+		defer release()
+	}
 	var closeErr error
 	c.closeOnce.Do(func() {
 		// Drain and stop the ingest applier BEFORE marking the graph closed, so

@@ -9,3 +9,11 @@ type CurrentIdentityCapability interface {
 	NodeExists(types.NodeID) (bool, error)
 	RelationshipExists(types.RelID) (bool, error)
 }
+
+// CloseAdmissionCapability reserves backend lifecycle admission before a graph
+// closes itself or persists final metadata. A refusal changes no lifecycle state.
+// The caller must defer release, and close the backend before releasing on success.
+// Releasing without closing restores read/callback admission.
+type CloseAdmissionCapability interface {
+	AdmitClose() (release func(), err error)
+}

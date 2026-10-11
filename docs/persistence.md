@@ -383,7 +383,10 @@ read/write reentry. While any callback is active, `Close` and `Clear` return
 state change; callers retry after iteration. This conservative rule applies to
 external callers too. Outside callback execution, Close stops reader admission
 and waits for admitted snapshots before closing files. Snapshot-construction
-close races return the storage error instead of panicking.
+close races return the storage error instead of panicking. The public graph
+reserves backend close admission before consuming its close-once guard or marking
+itself closed; a callback refusal therefore leaves Graph.Close retryable too.
+Final registry/clock persistence is permitted inside the reserved admission lease.
 Revision-stripe collisions force a locked reread; deletes, restores and Clear
 invalidate proofs, without per-ID revision memory. Signed/finite-zero time,
 history, hashes and native transaction clocks keep the existing contracts.

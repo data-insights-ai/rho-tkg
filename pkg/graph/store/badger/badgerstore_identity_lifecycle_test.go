@@ -157,3 +157,45 @@ func TestDiskIdentityCallbackMaintenanceRefusalAndExternalRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDiskIdentityCloseAdmissionReleaseRestoresReads(t *testing.T) {
+	bs, err := New(diskIdentityConfig(t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = bs.Close() })
+	putTestNode(t, bs, 1, 1, nil)
+	release, err := bs.AdmitClose()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.ForEachNodeID(func(types.NodeID) bool { return true }); !errors.Is(err, ErrStoreClosed) {
+		t.Fatal("prepared close admitted iteration", err)
+	}
+	if err := bs.Clear(); !errors.Is(err, storecontract.ErrCapabilityNotSupported) {
+		t.Fatal("Clear changed close reservation", err)
+	}
+	// Close admission fences readers, not the registry/clock writes Core must
+	// perform before its final backend close.
+	putTestNode(t, bs, 2, 1, nil)
+	release()
+	release()
+	if ids, err := bs.AllNodeIDs(QueryOpts{}); err != nil || len(ids) != 2 {
+		t.Fatal("abandoned admission lost usability", ids, err)
+	}
+	release, err = bs.AdmitClose()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = bs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	release()
+	if _, err = bs.AdmitClose(); !errors.Is(err, ErrStoreClosed) {
+		t.Fatal("closed store readmitted close", err)
+	}
+	var nilStore *Store
+	if _, err = nilStore.AdmitClose(); !errors.Is(err, ErrNilStore) {
+		t.Fatal("nil admission", err)
+	}
+}

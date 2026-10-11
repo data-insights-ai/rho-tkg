@@ -460,6 +460,7 @@ type Store struct {
 	identityReaders                   sync.WaitGroup
 	identityCallbacks                 int
 	identityResetting                 bool
+	identityClosePreparing            bool
 	historicalMembershipOnDisk        bool
 	historicalMembershipReady         atomic.Bool
 	historicalMembershipMu            sync.Mutex
