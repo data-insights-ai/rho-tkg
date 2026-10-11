@@ -1,0 +1,24 @@
+# GREEN core on main v4.50.0 + this branch: go test ./pkg/graph/internal/core/ -run 'TestIntervalWithTx|TestCheckCascadeTxOrder|TestTxBackfillOracle_CrossBackend' -count=1 -v
+# Top-level results:
+--- PASS: TestIntervalWithTx_PrimaryCacheStale (0.26s)
+--- PASS: TestIntervalWithTx_ReplicaReproducesStamps (0.65s)
+--- PASS: TestCheckCascadeTxOrder (0.00s)
+--- PASS: TestIntervalWithTx_IngestStrongGroupAlone (0.41s)
+--- PASS: TestIntervalWithTx_RelDoorsReportPastDatedWrite (1.34s)
+--- PASS: TestIntervalWithTx_BatchIngestWholeUnit (1.66s)
+--- PASS: TestIntervalWithTx_TxRollbackEquiv (1.73s)
+--- PASS: TestIntervalWithTx_ValidFromAfterT (2.29s)
+--- PASS: TestIntervalWithTx_StampsEveryAppendedRow (2.37s)
+--- PASS: TestIntervalWithTx_PlainDoorsUnchanged (2.48s)
+--- PASS: TestIntervalWithTx_BurstGrowthReplay (2.50s)
+--- PASS: TestIntervalWithTx_CommitClockNotAdvanced (2.50s)
+--- PASS: TestIntervalWithTx_DeletedEntity (2.51s)
+--- PASS: TestIntervalWithTx_TwoPhase (2.56s)
+--- PASS: TestIntervalWithTx_RaceClock (2.94s)
+--- PASS: TestIntervalWithTx_GateAndValue (3.00s)
+--- PASS: TestIntervalWithTx_Order (3.93s)
+--- PASS: TestTxBackfillOracle_CrossBackend (13.38s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	14.373s
+# Subtests: 0 FAIL, 696 PASS
+# Messages (deduplicated, count):
+     1 tx_backfill_oracle_test.go:1180: accepted map[batch/node-delete:10 batch/node-interval:6 batch/node-retract:6 batch/node-update:15 batch/rel-delete:7 batch/rel-interval:6 batch/rel-retract:4 batch/rel-update:5 batchWithTx/node-retract:19 batchWithTx/rel-retract:8 graphtx/node-delete:16 graphtx/node-

@@ -1,0 +1,7 @@
+# GREEN long sweep: TXB_ORACLE_SEEDS=100 go test ./pkg/graph/internal/core/ -run TestTxBackfillOracle_CrossBackend -count=1 -v (100 seeds x memory/badger/sharded/tiered, interval WithTx ops through all five doors)
+# Top-level results:
+--- PASS: TestTxBackfillOracle_CrossBackend (18.54s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	18.607s
+# Subtests: 0 FAIL, 100 PASS
+# Messages (deduplicated, count):
+     1 tx_backfill_oracle_test.go:1180: accepted map[batch/node-delete:27 batch/node-interval:20 batch/node-retract:12 batch/node-update:27 batch/rel-delete:11 batch/rel-interval:8 batch/rel-retract:6 batch/rel-update:13 batchWithTx/node-retract:28 batchWithTx/rel-retract:13 graphtx/node-delete:28 graphtx/
