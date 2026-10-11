@@ -1,0 +1,47 @@
+{
+  "scope": "External registry audit integration baseline only; certified graph reads and full V2 remain open.",
+  "baseline": "c61d1124",
+  "external_commit": "da78da2a4110ebc05ebdea1575641275a0ef5be8",
+  "semantic_review": "pass",
+  "remaining": "Exact-source affected-package and full integration gates batched with package3.",
+  "archive": "registry-integration.tar.gz",
+  "archive_sha256": "c18b80b60e42e7afb4b44cba100bdfe9b983da9f774d4e05080ef4399e496867",
+  "files": [
+    {
+      "path": "REVIEW.md",
+      "sha256": "94da6521bdff00a3c96a1c9dd0a4dc253a9dc91220f1c8b6cbd0c543e571ae06"
+    },
+    {
+      "path": "coverage.out",
+      "sha256": "e42e7097ed679d9fb8eaa36dc958e9fdec39b2635c49b0182b08b16596e5da68"
+    },
+    {
+      "path": "normal-budget.json",
+      "sha256": "88427d9e8c3f56eac5fd85fc6f684b4e85f62eb2a00682d23d408eb024f888db"
+    },
+    {
+      "path": "normal.log",
+      "sha256": "b0212f013491740c0d2d0c2312e72855dcd6a43b116da70a98911e67c6e0f011"
+    },
+    {
+      "path": "race-budget.json",
+      "sha256": "2c09f2dfddc4a454f7d0eafd251692af19a024d050fca5b1398a399957a0f0f7"
+    },
+    {
+      "path": "race.log",
+      "sha256": "f23ff8dc0c7092e62f3277752da4a5ba085472da389931f71ce2dab22e537bea"
+    },
+    {
+      "path": "receipt.json",
+      "sha256": "2ecb4a4bc2a21dd1e484ec670eb80bb2daa039ca5839117262cd5f9c7fe4400e"
+    },
+    {
+      "path": "review.patch",
+      "sha256": "3b8d6b11d0e2fcbe4be0e4ac96e04b361e7e1c1634d1db5b3ead967f75b5235a"
+    },
+    {
+      "path": "source.json",
+      "sha256": "8bee71600054940c593c45c5bc397aaf4fa4a6c8ed8ae4a5fa5d0b3f67fa9f2b"
+    }
+  ]
+}

@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added bounded read-only v5 registry inventory audits for current and genuine
+  prepared cuts. Reciprocal controls, complete canonical originals, retained
+  roots/outcomes and physical-record census are checked through finite phases
+  with owned-handle cleanup. The audit grants no Register, factory, snapshot
+  activation or Host readiness authority.
+
 - Added immutable shared-contract reads through genuine prepared v5 snapshot
   handles, with lifetime checks and zero output on errors. These reads let
   inventory reserve the owning store's configured bounds before opening a view
