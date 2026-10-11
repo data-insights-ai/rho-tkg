@@ -164,12 +164,8 @@ func (p *PreparedApplicationSnapshot) Claim(expected *pb.Snapshot) (*Application
 	if p.claim != nil || p.readers != 0 {
 		return nil, ErrLimit
 	}
-	if len(expected.Data) > applicationSnapshotDescriptorLimit || proto.Size(expected.GetMetadata()) > 128 {
-		return nil, ErrLimit
-	}
-	m := p.i.manifest
-	if len(expected.ProtoReflect().GetUnknown()) != 0 || expected.GetMetadata() == nil || len(expected.GetMetadata().ProtoReflect().GetUnknown()) != 0 || expected.GetMetadata().GetIndex() != m.Index || expected.GetMetadata().GetTerm() != m.Term || !s.meta.Rep.Config.matches(expected.GetMetadata().GetConfState()) || !proto.Equal(expected.GetMetadata().GetConfState(), m.ConfState) || !bytes.Equal(expected.Data, p.descriptor) {
-		return nil, ErrInvalid
+	if err := p.matchExpectedSnapshot(expected); err != nil {
+		return nil, err
 	}
 	if len(s.applicationSnapshotClaims) >= 2 {
 		return nil, ErrLimit
@@ -353,4 +349,68 @@ func (p *PreparedApplicationSnapshot) OpenReadView(ctx context.Context, index ui
 	p.readers++
 	s.registerApplicationView(v)
 	return v, nil
+}
+
+// preparedSnapshotMetadataBound admits a fixed-size protobuf walk. Each list
+// element contributes at least one wire byte; unknown fields contribute their
+// complete length. Tags, scalar fields and nested framing only add bytes.
+// A nil metadata/ConfState stays for the original semantic mismatch checks.
+func preparedSnapshotMetadataBound(m *pb.SnapshotMetadata) bool {
+	if m == nil {
+		return true
+	}
+	unknown := len(m.ProtoReflect().GetUnknown())
+	if unknown > 128 {
+		return false
+	}
+	remaining := 128 - unknown
+	cs := m.GetConfState()
+	if cs == nil {
+		return true
+	}
+	unknown = len(cs.ProtoReflect().GetUnknown())
+	if unknown > remaining {
+		return false
+	}
+	remaining -= unknown
+	for _, ids := range [4][]uint64{cs.Voters, cs.Learners, cs.VotersOutgoing, cs.LearnersNext} {
+		if len(ids) > remaining {
+			return false
+		}
+		remaining -= len(ids)
+	}
+	return true
+}
+
+// matchExpectedSnapshot runs only after the genuine lifetime and owner gates,
+// under Store.mu. It neither clones metadata nor changes any owner or pin.
+func (p *PreparedApplicationSnapshot) matchExpectedSnapshot(expected *pb.Snapshot) error {
+	if len(expected.Data) > applicationSnapshotDescriptorLimit || !preparedSnapshotMetadataBound(expected.GetMetadata()) || proto.Size(expected.GetMetadata()) > 128 {
+		return ErrLimit
+	}
+	m := p.i.manifest
+	if len(expected.ProtoReflect().GetUnknown()) != 0 || expected.GetMetadata() == nil || len(expected.GetMetadata().ProtoReflect().GetUnknown()) != 0 || expected.GetMetadata().GetIndex() != m.Index || expected.GetMetadata().GetTerm() != m.Term || !p.s.meta.Rep.Config.matches(expected.GetMetadata().GetConfState()) || !proto.Equal(expected.GetMetadata().GetConfState(), m.ConfState) || !bytes.Equal(expected.Data, p.descriptor) {
+		return ErrInvalid
+	}
+	return nil
+}
+
+// CheckPreparedApplicationSnapshot matches a live verified capability and exact
+// expected Raft descriptor for this Store without claiming it. Genuine audit
+// readers may remain live. Active claims refuse; no reader, pin, clone or durable
+// metadata is created or changed. The caller keeps expected unchanged during
+// this call. Success grants no Raft acceptance, readiness or activation authority.
+func (s *Store) CheckPreparedApplicationSnapshot(p *PreparedApplicationSnapshot, expected *pb.Snapshot) error {
+	if s == nil || p == nil || p.s != s || p.i == nil || p.self != p || expected == nil {
+		return ErrInvalid
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := p.live(); err != nil {
+		return err
+	}
+	if p.claim != nil {
+		return ErrLimit
+	}
+	return p.matchExpectedSnapshot(expected)
 }

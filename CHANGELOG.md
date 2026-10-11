@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added nonmutating checks of genuine prepared v5 snapshots for their owning
+  store, permitting live audit readers. Bounded metadata inspection preserves
+  exact descriptor, configuration and field-presence matching; snapshot claims
+  retain their reader exclusions and ownership. Checks grant no readiness or
+  activation authority.
+
 - Added bounded read-only v5 registry inventory audits for current and genuine
   prepared cuts. Reciprocal controls, complete canonical originals, retained
   roots/outcomes and physical-record census are checked through finite phases
