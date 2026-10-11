@@ -2,9 +2,10 @@ package badger
 
 import (
 	"errors"
+	"testing"
+
 	store "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
-	"testing"
 )
 
 func TestColumnTypedBoundsDeclineAfterAppendAndReopen(t *testing.T) {
