@@ -237,11 +237,12 @@ func OpenHistoricalReverseMigration(ctx context.Context, cfg Config) (*Historica
 	if err != nil {
 		return fail(err)
 	}
-	if version == compactHistoricalReverseWriterVersion {
+	switch version {
+	case compactHistoricalReverseWriterVersion:
 		if _, err := readHistoricalReverseProgress(db); err != nil {
 			return fail(err)
 		}
-	} else if version == historicalMembershipWriterVersion {
+	case historicalMembershipWriterVersion:
 		probe := &Store{db: db}
 		p, err := probe.historicalMembershipProgress()
 		if err != nil {
@@ -255,7 +256,7 @@ func OpenHistoricalReverseMigration(ctx context.Context, cfg Config) (*Historica
 		if err := publishHistoricalReverseProgress(db, p2, true); err != nil {
 			return fail(err)
 		}
-	} else {
+	default:
 		return fail(storecontract.ErrWireFormatVersionUnsupported)
 	}
 	return &HistoricalReverseMigration{db: db}, nil
