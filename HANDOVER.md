@@ -412,3 +412,23 @@ sharded `RelRangeCardinality`, allocation-free `ForEachAdjacentEndpointOrdinal` 
 index as a plain one. My checks only: local main fast-forwarded to d6fff48, build, gofmt, docs-consistency tests green, no attribution
 lines; NOT run: `make ci-docker` on it. Nothing was reverted or deleted. Open for René: accept v4.50.0 as released (default, nothing
 to do), or retag; and tell Markus/sigma-tkgd the patch-only rule if it still stands. My next release is therefore v4.50.1.
+
+## 15. v5: can consumers use it yet? (2026-10-11)
+
+René asked: "can we use the v5 already?", then "ask the sigma and aisoc agents ... You do not understand it", then "Add the
+mapping and add a section in hand over.MD". rho-tkg is an embeddable open-source bitemporal knowledge graph library (memory-
+optimised), not a database; consumers build on its public API, rho never ships consumer adapters.
+
+- **Answer: not yet.** Branch `v5` (fd37fa0, Markus Nissl) exports only value types (`v5/pkg/temporal`, `v5/pkg/types`); the graph
+  code (graphstore, graphstate, graphapply, assertion, raftlog, txnproto) is `internal/`. No public graph API, no as-of/timeline
+  reads, no queries, no v4 importer. 3299 v5 tests pass; phase estimates V0 95 %, V1 90 %, V2 55 %, V3–V7 0–15 %.
+- **Consumers (asked 2026-10-11):** sigma-tkgd: nothing imports v5; needs a public graph API equal to the v4 doors it reads and a
+  v4→v5 door mapping to plan the switch. ai-soc: imports v4 only via `aisoc/internal/graphmgr` (pin v4.49.2); needs that API,
+  sigma-tkgd on v5 first (ai-soc reaches the graph through sigma's sessions), and René's go for a major-version pin.
+- **Merge:** v5 is a strict descendant of main 95a1de3 (fast-forward, no conflicts that day); it edits shared files (CHANGELOG
+  `[Unreleased]`, backlog, lessons, AGENTS, Makefile, ci.yml), so expect conflicts once main moves; root `make` then also runs v5
+  (`V5_DISPATCH=0` turns it off).
+- **Where:** `docs/v5-analysis.md` §1 merge, §2 v4-work coverage, §3 maturity, §4 consumer answers, §5 v4→v5 door mapping (drawn
+  from PLAN and code at fd37fa0; every "v5 plan" cell is Markus's intent, rows "not in plan" are input for him). The file was
+  uncommitted on 2026-10-11 because auto mode blocked its commit (a subagent had copied it in); René commits it or says so.
+- **Next:** send §5's "not in plan" rows to Markus (René decides); v4 stays the library consumers ship on.
