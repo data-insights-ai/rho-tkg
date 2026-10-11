@@ -136,7 +136,7 @@ func TestDiskIdentityGraphHistoryRollbackAndResidentOracle(t *testing.T) {
 		if err := g.Close(); err != nil {
 			t.Fatal(err)
 		}
-		bs, g = open()
+		_, g = open()
 		after := answers()
 		if !reflect.DeepEqual(after, before) {
 			t.Fatal("reopen changed retained history", after, before)
@@ -285,6 +285,6 @@ func TestDiskIdentitySignedZeroHistoryRetractionAndReopen(t *testing.T) {
 	if err := g.Close(); err != nil {
 		t.Fatal(err)
 	}
-	bs, g = open()
+	_, g = open()
 	assert()
 }

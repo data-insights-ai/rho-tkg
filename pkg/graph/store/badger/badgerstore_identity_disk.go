@@ -37,6 +37,21 @@ func (e UnsupportedIdentityProbeError) Unwrap() error {
 	return storecontract.ErrCapabilityNotSupported
 }
 
+// IdentityCallbackMaintenanceError refuses maintenance while an identity
+// callback is active. Retry after iteration; no store state was changed.
+type IdentityCallbackMaintenanceError struct {
+	Operation string
+}
+
+func (e IdentityCallbackMaintenanceError) Error() string {
+	return "graph: " + e.Operation + " requires identity iteration callbacks to finish"
+}
+
+// Unwrap exposes the unsupported capability sentinel.
+func (e IdentityCallbackMaintenanceError) Unwrap() error {
+	return storecontract.ErrCapabilityNotSupported
+}
+
 func identityRevisionStripe(id types.EntityID) uint64 {
 	x := uint64(id)
 	x ^= x >> 33

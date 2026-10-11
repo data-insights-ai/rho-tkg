@@ -458,6 +458,8 @@ type Store struct {
 	identityRevisions                 *identityRevisionState
 	identityReadMu                    sync.Mutex
 	identityReaders                   sync.WaitGroup
+	identityCallbacks                 int
+	identityResetting                 bool
 	historicalMembershipOnDisk        bool
 	historicalMembershipReady         atomic.Bool
 	historicalMembershipMu            sync.Mutex
@@ -2169,6 +2171,12 @@ func (bs *Store) Clear() error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	if bs.entityIdentityOnDisk {
+		if err := bs.beginIdentityReset(); err != nil {
+			return err
+		}
+		defer bs.endIdentityReset()
+	}
 	bs.historicalMembershipMu.Lock()
 	defer bs.historicalMembershipMu.Unlock()
 	bs.flushMu.Lock()
@@ -2363,11 +2371,15 @@ func (bs *Store) Close() error {
 	if bs.db == nil || bs.stopCh == nil || bs.flushDone == nil || bs.gcDone == nil {
 		return ErrStoreClosed
 	}
+	bs.identityReadMu.Lock()
+	if bs.entityIdentityOnDisk && (bs.identityCallbacks > 0 || bs.identityResetting) {
+		bs.identityReadMu.Unlock()
+		return IdentityCallbackMaintenanceError{Operation: "Close"}
+	}
+	bs.closing.Store(true)
+	bs.identityReadMu.Unlock()
 	var err error
 	bs.closeOnce.Do(func() {
-		bs.identityReadMu.Lock()
-		bs.closing.Store(true)
-		bs.identityReadMu.Unlock()
 		bs.identityReaders.Wait()
 		close(bs.stopCh)
 		<-bs.flushDone // wait for flushLoop exit (or immediate if never started)

@@ -377,6 +377,13 @@ Current identity/label/type/equality scans merge the pending overlay (newest),
 flushing overlay, and one ordered disk snapshot. Cursor and limit apply after
 canonical row/predicate validation. Public iteration callbacks run outside
 store locks. Snapshots can delay Badger value-log GC while a callback runs.
+Values are copied out of Badger's value-log lock before callbacks run, preserving
+read/write reentry. While any callback is active, `Close` and `Clear` return
+`IdentityCallbackMaintenanceError` wrapping `ErrCapabilityNotSupported`, with no
+state change; callers retry after iteration. This conservative rule applies to
+external callers too. Outside callback execution, Close stops reader admission
+and waits for admitted snapshots before closing files. Snapshot-construction
+close races return the storage error instead of panicking.
 Revision-stripe collisions force a locked reread; deletes, restores and Clear
 invalidate proofs, without per-ID revision memory. Signed/finite-zero time,
 history, hashes and native transaction clocks keep the existing contracts.
@@ -427,3 +434,21 @@ Every row a write appends takes the version one above the highest stored for the
 ## Column segments (opt-in, `RelSegments` / `SegmentDir`, memory store)
 
 `graph.Config.RelSegments` declares bulk relationship types (ADR-0011): the memory store seals their rows into immutable column segments once the unsealed rows exceed `SegmentMemoryBudget` (default 256 MiB), and every read door answers from the union of unsealed rows and segments with identical answers. Without `SegmentDir` the segments stay in RAM. With it, each sealed segment is a self-contained file in that directory (`internal/segdir`): `LOCK` (flock of the one open store), `MANIFEST` (magic, version, CRC32C-checked JSON body: the truth), `seg-t<token>-<seq>.tkgs` files read memory-mapped, and `*.tmp` writes in progress. A seal writes the segment `.tmp`, fsyncs, renames, fsyncs the directory, then commits the manifest the same way; a segment exists iff the durable manifest lists it, and the next open removes `.tmp` and unlisted files. A declaration on badger, tiered or sharded fails `New` with `ErrCapabilityNotSupported` (badger is ADR-0011 step S7).
+
+### Measured identity-profile comparison
+
+Fresh readonly processes on the same completed historical-index directory were
+compared using exact current IDs, versions, labels, properties, temporal metadata
+and integrity hashes. A synthetic 200,000-node fixture retained 39.5 MB of Go heap
+after open in the disk profile versus 69.5 MB in the resident identity profile.
+A separate derivative of the genuine fifteen-source Erv archive graph contained
+305,082 current nodes; both profiles returned identical complete answer digests,
+with 40.4 MB versus 94.8 MB of native Go heap after open. The original source graph
+and archive were not modified.
+
+These are fresh-process native-backend measurements, not full application/server
+capacity proofs. OS page-cache state and LSM compaction were uncontrolled; the
+figures exclude later application reads, result retention and future historical
+posting growth. The profile trades resident maps for canonical-row decoding and
+disk access. Full-corpus disk and sustained query/import costs require their own
+representative measurement.

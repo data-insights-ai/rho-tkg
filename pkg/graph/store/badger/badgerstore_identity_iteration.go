@@ -73,6 +73,10 @@ func (bs *Store) forEachIdentityKey(prefix []byte, size, idOffset int, after sno
 		if id <= after {
 			return true, nil
 		}
+		if err := bs.beginIdentityCallback(); err != nil {
+			return false, err
+		}
+		defer bs.endIdentityCallback()
 		return fn(id, raw)
 	}
 	for it.ValidForPrefix(prefix) || at < len(keys) {
@@ -125,8 +129,52 @@ func (bs *Store) beginIdentityRead() error {
 	if bs.db.IsClosed() {
 		return badgerv4.ErrDBClosed
 	}
+	if bs.identityResetting {
+		return IdentityCallbackMaintenanceError{Operation: "iteration during Clear"}
+	}
 	bs.identityReaders.Add(1)
 	return nil
+}
+
+func (bs *Store) beginIdentityCallback() error {
+	bs.identityReadMu.Lock()
+	defer bs.identityReadMu.Unlock()
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
+	if bs.identityResetting {
+		return IdentityCallbackMaintenanceError{Operation: "callback during Clear"}
+	}
+	bs.identityCallbacks++
+	return nil
+}
+
+func (bs *Store) endIdentityCallback() {
+	bs.identityReadMu.Lock()
+	bs.identityCallbacks--
+	bs.identityReadMu.Unlock()
+}
+
+func (bs *Store) beginIdentityReset() error {
+	bs.identityReadMu.Lock()
+	if bs.identityCallbacks > 0 || bs.identityResetting {
+		bs.identityReadMu.Unlock()
+		return IdentityCallbackMaintenanceError{Operation: "Clear"}
+	}
+	if err := bs.checkOpen(); err != nil {
+		bs.identityReadMu.Unlock()
+		return err
+	}
+	bs.identityResetting = true
+	bs.identityReadMu.Unlock()
+	bs.identityReaders.Wait()
+	return nil
+}
+
+func (bs *Store) endIdentityReset() {
+	bs.identityReadMu.Lock()
+	bs.identityResetting = false
+	bs.identityReadMu.Unlock()
 }
 
 // Badger's NewIterator panics if an externally closed DB crosses construction.

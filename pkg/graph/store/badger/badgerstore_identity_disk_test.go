@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -185,10 +186,80 @@ func TestDiskIdentityLegacyProbeFailsExplicitly(t *testing.T) {
 				if !ok || !errors.Is(cause, storecontract.ErrCapabilityNotSupported) {
 					t.Fatal("legacy probe returned an uncertain boolean", cause)
 				}
+				if !strings.Contains(cause.Error(), cause.Operation) || cause.Unwrap() != storecontract.ErrCapabilityNotSupported {
+					t.Fatal("typed legacy error lost its operation or cause")
+				}
 			}()
 			probe()
 		}()
 	}
+}
+
+func TestDiskIdentityPublicExistenceValidationAndMaintenanceError(t *testing.T) {
+	var missing *Store
+	if _, err := missing.NodeExists(1); !errors.Is(err, ErrNilStore) {
+		t.Fatal(err)
+	}
+	if _, err := missing.RelationshipExists(1); !errors.Is(err, ErrNilStore) {
+		t.Fatal(err)
+	}
+	bs, err := New(diskIdentityConfig(t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = bs.Close() })
+	if _, err := bs.NodeExists(0); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatal(err)
+	}
+	if _, err := bs.RelationshipExists(-1); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatal(err)
+	}
+	cause := IdentityCallbackMaintenanceError{Operation: "Clear"}
+	if !strings.Contains(cause.Error(), "Clear") || cause.Unwrap() != storecontract.ErrCapabilityNotSupported {
+		t.Fatal("maintenance rejection lost its reason")
+	}
+}
+
+func TestDiskIdentityUncachedFlushingValuesAndPendingTombstones(t *testing.T) {
+	bs, err := New(diskIdentityConfig(t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = bs.Close() })
+	n := types.NewNode(1, 1, nil)
+	nodeBytes, err := bs.marshalNodeBytes(n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := types.NewRelationship(10, 2, 1, 2)
+	relBytes, err := bs.marshalRelBytes(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Models a flush's captured values after clean-cache eviction. Pending
+	// tombstones are newer than those captured sets and must mask them.
+	bs.wbMu.Lock()
+	bs.flushing = map[string]writeOp{
+		string(storeutil.NodeKey(1)): {opType: writeOpSet, value: nodeBytes},
+		string(storeutil.RelKey(10)): {opType: writeOpSet, value: relBytes},
+	}
+	bs.wbMu.Unlock()
+	if exists, err := bs.NodeExists(1); err != nil || !exists {
+		t.Fatal("uncached flushing node became absent", exists, err)
+	}
+	if exists, err := bs.RelationshipExists(10); err != nil || !exists {
+		t.Fatal("uncached flushing relationship became absent", exists, err)
+	}
+	bs.appendOps(writeOp{opType: writeOpDelete, key: storeutil.NodeKey(1)}, writeOp{opType: writeOpDelete, key: storeutil.RelKey(10)})
+	if exists, err := bs.NodeExists(1); err != nil || exists {
+		t.Fatal("old flushing set overrode node tombstone", exists, err)
+	}
+	if exists, err := bs.RelationshipExists(10); err != nil || exists {
+		t.Fatal("old flushing set overrode relationship tombstone", exists, err)
+	}
+	bs.wbMu.Lock()
+	bs.flushing = nil
+	bs.wbMu.Unlock()
 }
 
 func TestDiskIdentityRevisionCollisionAndExhaustionAreConservative(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
@@ -85,11 +86,55 @@ func TestDiskIdentityCloseWaitsForAdmittedIterator(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = bs.Close() })
 	putTestNode(t, bs, 1, 1, nil)
+	if err := bs.beginIdentityRead(); err != nil {
+		t.Fatal(err)
+	}
+	closeDone := make(chan error, 1)
+	go func() { closeDone <- bs.Close() }()
+	for !bs.closing.Load() {
+		runtime.Gosched()
+	}
+	select {
+	case err := <-closeDone:
+		t.Fatal("Close invalidated an admitted snapshot", err)
+	default:
+	}
+	if err := bs.ForEachRelID(func(types.RelID) bool { return true }); !errors.Is(err, ErrStoreClosed) {
+		t.Fatal("closing admitted a new iterator", err)
+	}
+	bs.identityReaders.Done()
+	if err := <-closeDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDiskIdentityCallbackMaintenanceRefusalAndExternalRetry(t *testing.T) {
+	config := diskIdentityConfig(t.TempDir())
+	config.CacheBudgetBytes = 64 << 10
+	bs, err := New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = bs.Close() })
+	n := types.NewNode(1, 1, nil)
+	if err := n.SetProperty("opaque", strings.Repeat("x", 2<<20)); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.PutNode(n); err != nil {
+		t.Fatal(err)
+	}
 	entered := make(chan struct{})
 	release := make(chan struct{})
 	readDone := make(chan error, 1)
+	var callbackErr error
 	go func() {
 		readDone <- bs.ForEachNodeID(func(types.NodeID) bool {
+			if err := bs.Close(); !errors.Is(err, storecontract.ErrCapabilityNotSupported) {
+				callbackErr = errors.New("own callback Close was not explicitly refused")
+			}
+			if err := bs.Clear(); !errors.Is(err, storecontract.ErrCapabilityNotSupported) {
+				callbackErr = errors.New("own callback Clear was not explicitly refused")
+			}
 			close(entered)
 			<-release
 			return true
@@ -98,22 +143,17 @@ func TestDiskIdentityCloseWaitsForAdmittedIterator(t *testing.T) {
 	<-entered
 	closeDone := make(chan error, 1)
 	go func() { closeDone <- bs.Close() }()
-	for !bs.closing.Load() {
-		runtime.Gosched()
-	}
-	select {
-	case err := <-closeDone:
-		t.Fatal("Close invalidated an admitted iterator", err)
-	default:
-	}
-	if err := bs.ForEachRelID(func(types.RelID) bool { return true }); !errors.Is(err, ErrStoreClosed) {
-		t.Fatal("closing admitted a new iterator", err)
+	if err := <-closeDone; !errors.Is(err, storecontract.ErrCapabilityNotSupported) || bs.closing.Load() {
+		t.Fatal("external maintenance refusal changed state", err)
 	}
 	close(release)
 	if err := <-readDone; err != nil {
 		t.Fatal(err)
 	}
-	if err := <-closeDone; err != nil {
+	if callbackErr != nil {
+		t.Fatal(callbackErr)
+	}
+	if err := bs.Close(); err != nil {
 		t.Fatal(err)
 	}
 }
