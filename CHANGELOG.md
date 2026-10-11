@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added a separate registered Bootstrap inventory/Register codec agreement,
+  preserving the original agreement, wrappers and complete byte literals.
+  Meaning-bound validation and both hashes share one borrowed inspection with
+  checked work accounting; fixed Genesis data adapters reserve comparison work.
+  These codecs grant no inventory, Register, factory, snapshot activation or
+  Host readiness authority.
+
 - Added checked partition-local v5 graph mutations on declared partitions,
   preserving node/relationship interpretation, native axes and opaque descriptor
   values. HOME-published ID ranges and same-view routing bind local dependency

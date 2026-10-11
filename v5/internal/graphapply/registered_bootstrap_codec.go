@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
 
@@ -160,10 +161,18 @@ func registeredMapping(m registeredMappingSpec, kind byte, id temporal.AxisID, p
 // Hash reservations precede output; complete mapping digest verification uses
 // emitted descriptor slices before any owned output can escape.
 func encodePreparedBootstrap(o registeredOriginScope, key [16]byte, s registeredBootstrapSpec, l registeredFormatBudget) ([]byte, error) {
+	return encodePreparedBootstrapExpected(o, key, s, l, registeredSemanticContractID())
+}
+
+func encodePreparedBootstrapExpected(o registeredOriginScope, key [16]byte, s registeredBootstrapSpec, l registeredFormatBudget, expected raftlog.ApplicationSemanticContractID) ([]byte, error) {
 	q, err := registeredStart(l)
 	if err != nil {
 		return nil, err
 	}
+	if !registeredCodecMeaningKnown(expected) {
+		return nil, errInvalid
+	}
+
 	n, domain, err := registeredSizes(s, l)
 	if err != nil {
 		return nil, err
@@ -271,7 +280,7 @@ func encodePreparedBootstrap(o registeredOriginScope, key [16]byte, s registered
 	b = append(b, 1)
 	b = append(b, key[:]...)
 	b = append(b, s.kind)
-	meaning := registeredSemanticContractID()
+	meaning := expected
 	b = append(b, meaning[:]...)
 	b = binary.BigEndian.AppendUint32(b, uint32(n-136)) // #nosec G115 -- size <=4MiB.
 	b = append(b, "BDS1\x00\x01\x00"...)
@@ -448,7 +457,14 @@ func registeredFindDefault(domain []byte, count int, target temporal.AxisID, l r
 }
 
 func registeredParse(b []byte, l registeredFormatBudget, q *registeredLedger) (registeredParsed, error) {
+	return registeredParseExpected(b, l, q, registeredSemanticContractID())
+}
+
+func registeredParseExpected(b []byte, l registeredFormatBudget, q *registeredLedger, expected raftlog.ApplicationSemanticContractID) (registeredParsed, error) {
 	fail := func(err error) (registeredParsed, error) { return registeredParsed{}, err }
+	if !registeredCodecMeaningKnown(expected) {
+		return fail(errInvalid)
+	}
 	if len(b) < 136 {
 		return fail(errInvalid)
 	}
@@ -465,7 +481,7 @@ func registeredParse(b []byte, l registeredFormatBudget, q *registeredLedger) (r
 	if c.err != nil {
 		return fail(c.err)
 	}
-	if class != 1 || kind < 1 || kind > 2 || meaning != [32]byte(registeredSemanticContractID()) {
+	if class != 1 || kind < 1 || kind > 2 || meaning != [32]byte(expected) {
 		return fail(errInvalid)
 	}
 	if err := registeredOriginCheck(o, key, q); err != nil {
@@ -640,20 +656,28 @@ func registeredReadStart(b []byte, l registeredFormatBudget) (*registeredLedger,
 }
 
 func validatePreparedV1(b []byte, l registeredFormatBudget) error {
+	return validatePreparedV1Expected(b, l, registeredSemanticContractID())
+}
+
+func validatePreparedV1Expected(b []byte, l registeredFormatBudget, expected raftlog.ApplicationSemanticContractID) error {
 	q, err := registeredReadStart(b, l)
 	if err != nil {
 		return err
 	}
-	_, err = registeredParse(b, l, q)
+	_, err = registeredParseExpected(b, l, q, expected)
 	return err
 }
 
 func decodePreparedBootstrap(b []byte, l registeredFormatBudget) (registeredOriginScope, [16]byte, registeredBootstrapSpec, error) {
+	return decodePreparedBootstrapExpected(b, l, registeredSemanticContractID())
+}
+
+func decodePreparedBootstrapExpected(b []byte, l registeredFormatBudget, expected raftlog.ApplicationSemanticContractID) (registeredOriginScope, [16]byte, registeredBootstrapSpec, error) {
 	q, err := registeredReadStart(b, l)
 	if err != nil {
 		return registeredOriginScope{}, [16]byte{}, registeredBootstrapSpec{}, err
 	}
-	p, err := registeredParse(b, l, q)
+	p, err := registeredParseExpected(b, l, q, expected)
 	if err != nil {
 		return registeredOriginScope{}, [16]byte{}, registeredBootstrapSpec{}, err
 	}
@@ -691,11 +715,15 @@ func decodePreparedBootstrap(b []byte, l registeredFormatBudget) (registeredOrig
 }
 
 func submissionProjectionV1(b []byte, l registeredFormatBudget) ([]byte, error) {
+	return submissionProjectionV1Expected(b, l, registeredSemanticContractID())
+}
+
+func submissionProjectionV1Expected(b []byte, l registeredFormatBudget, expected raftlog.ApplicationSemanticContractID) ([]byte, error) {
 	q, err := registeredReadStart(b, l)
 	if err != nil {
 		return nil, err
 	}
-	if _, err = registeredParse(b, l, q); err != nil {
+	if _, err = registeredParseExpected(b, l, q, expected); err != nil {
 		return nil, err
 	}
 	if err = q.charge(len(b), true); err == nil {
@@ -711,19 +739,68 @@ func submissionProjectionV1(b []byte, l registeredFormatBudget) ([]byte, error) 
 }
 
 func hashPreparedV1(b []byte, l registeredFormatBudget) ([32]byte, [32]byte, error) {
-	q, err := registeredReadStart(b, l)
+	return hashPreparedV1Expected(b, l, registeredSemanticContractID())
+}
+
+func hashPreparedV1Expected(b []byte, l registeredFormatBudget, expected raftlog.ApplicationSemanticContractID) ([32]byte, [32]byte, error) {
+	inspected, err := inspectPreparedV1Expected(b, l, expected)
 	if err != nil {
 		return [32]byte{}, [32]byte{}, err
 	}
-	if _, err = registeredParse(b, l, q); err != nil {
-		return [32]byte{}, [32]byte{}, err
+	return inspected.submissionHash, inspected.preparedHash, nil
+}
+
+// Spans borrow the immutable input; this private tuple creates no live proof.
+type registeredPreparedInspection struct {
+	parsed                       registeredParsed
+	submissionHash, preparedHash [32]byte
+	canonicalWork                uint64
+}
+
+func inspectPreparedV1Expected(b []byte, l registeredFormatBudget, expected raftlog.ApplicationSemanticContractID) (registeredPreparedInspection, error) {
+	q, err := registeredReadStart(b, l)
+	if err != nil {
+		return registeredPreparedInspection{}, err
+	}
+	parsed, err := registeredParseExpected(b, l, q, expected)
+	if err != nil {
+		return registeredPreparedInspection{}, err
 	}
 	if err = q.charge(31+4+len(b)+33+4+len(b), false); err != nil {
-		return [32]byte{}, [32]byte{}, err
+		return registeredPreparedInspection{}, err
 	}
 	var length [4]byte
 	binary.BigEndian.PutUint32(length[:], uint32(len(b))) // #nosec G115 -- validated <=4MiB.
 	ph := registeredDigest([]byte("rho-tkg:registered-prepared:v1\x00"), length[:], b)
 	sh := registeredDigest([]byte("rho-tkg:registered-submission:v1\x00"), length[:], []byte("SIJ1"), b[4:])
-	return sh, ph, nil
+	// q.charge maintains nonnegative walk/owned and their sum <=32MiB.
+	work := uint64(q.walk + q.owned) // #nosec G115 -- checked nonnegative sum <= validated32MiB format limit.
+	return registeredPreparedInspection{parsed, sh, ph, work}, nil
+}
+
+// The existing2048 fixed reservation covers the catalog's at most64 comparison
+// bytes plus the32 wire-meaning equality and bounded typed/hash metadata.
+// Direct sizeof guards independently bound the largest fixed phase at1928.
+func registeredCodecMeaningKnown(expected raftlog.ApplicationSemanticContractID) bool {
+	return expected == registeredSemanticContractID() || expected == registeredInventorySemanticContractID()
+}
+
+func encodeInventoryPreparedBootstrap(o registeredOriginScope, key [16]byte, s registeredBootstrapSpec, l registeredFormatBudget) ([]byte, error) {
+	return encodePreparedBootstrapExpected(o, key, s, l, registeredInventorySemanticContractID())
+}
+
+func validateInventoryPreparedV1(b []byte, l registeredFormatBudget) error {
+	return validatePreparedV1Expected(b, l, registeredInventorySemanticContractID())
+}
+
+func decodeInventoryPreparedBootstrap(b []byte, l registeredFormatBudget) (registeredOriginScope, [16]byte, registeredBootstrapSpec, error) {
+	return decodePreparedBootstrapExpected(b, l, registeredInventorySemanticContractID())
+}
+
+func inventorySubmissionProjectionV1(b []byte, l registeredFormatBudget) ([]byte, error) {
+	return submissionProjectionV1Expected(b, l, registeredInventorySemanticContractID())
+}
+
+func hashInventoryPreparedV1(b []byte, l registeredFormatBudget) ([32]byte, [32]byte, error) {
+	return hashPreparedV1Expected(b, l, registeredInventorySemanticContractID())
 }

@@ -75,3 +75,27 @@ type registeredBootstrapSpec struct {
 	allocator   registeredAllocatorIntent
 	revisionTag byte
 }
+
+// Separately compiled inert agreement; this declaration proves no readiness.
+const registeredInventorySemanticDescriptor = "rho-tkg:graphapply:registered-bootstrap-inventory:semantic-contract:v1" + "\x00" +
+	"scope=genesis-inventory-register-complete-v1" + "\x00" +
+	"genesis=actual-entry-before-register" + "\x00" +
+	"lookup=hki1-v1" + "\x00" +
+	"stored=hkv1-slot0-v1" + "\x00" +
+	"prepared=pij1-bootstrap-v1" + "\x00" +
+	"submission=sij1-bootstrap-v1" + "\x00" +
+	"bootstrap-domain=canonical-native-policy-v1" + "\x00" +
+	"original=immutable-source-position-term-two-hashes-v1" + "\x00" +
+	"inventory=complete-captured-bank-bidirectional-census-v1" + "\x00" +
+	"adjacent=verified-exclusive-install-delta-v1" + "\x00" +
+	"prepared-activation=complete-same-prepared-audit-before-claim-v1" + "\x00" +
+	"revision=none" + "\x00" +
+	"graph-effects=none" + "\x00" +
+	"recovery=current-term-applied-v1" + "\x00" +
+	"legacy-dispatch=separate" + "\x00"
+
+var registeredInventoryCompiledAgreement = raftlog.ApplicationSemanticContractID(sha256.Sum256([]byte(registeredInventorySemanticDescriptor)))
+
+func registeredInventorySemanticContractID() raftlog.ApplicationSemanticContractID {
+	return registeredInventoryCompiledAgreement
+}
