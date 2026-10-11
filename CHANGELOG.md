@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Performance
 
+- Current disk-identity scans convert a long property prefix once per buffered
+  snapshot and filter flushing/pending maps directly under the existing lock.
+  Pending still wins; encoded values remain owned by the snapshot before the
+  disk cursor opens. Row formats and query/lifecycle contracts are unchanged.
+  For 1,000 genuine buffered metadata rows and 1,000 property snapshots, a local
+  same-process comparison reduced allocations from 80.69 MB/1,002,016 objects to
+  0.77 MB/3,009 objects. Buffer traversal remains linear in buffered operations;
+  this measurement does not establish live import throughput.
+
 - Ordinary temporal input maps retain their nonescaping caller container. The
   private bounds helper returns that map within Go's escape-summary result
   window and uses an explicit shallow copy for the typed cold path, avoiding
