@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.50.1] - 2026-10-11
+
+Patch release: interval corrections at a caller transaction instant (backlog 34, requested by sigma-tkgd for the burst-growth replay). Additive; the plain doors are unchanged.
+
 ### Added
 
 - **`Temporal().SetNodeVersionIntervalWithTx(ctx, id, validFrom, validTo, props, txFrom)` /

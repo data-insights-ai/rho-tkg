@@ -34,7 +34,7 @@ ledgers of 2026-10-09/10 (per-step red tests, merges, reviews) are in git histor
 ## Open queue (mirrors `HANDOVER.md` §11; specs in `tasks/backlog.md`)
 
 - [ ] 43 retraction door (`Retract` / `RetractWithTx` + GraphTx, Batch, Session twins) — NEXT STEP.
-- [ ] 34 `Set{Node,Rel}VersionIntervalWithTx` on every door — restart.
+- [ ] 34 `Set{Node,Rel}VersionIntervalWithTx` on every door — restarted 2026-10-11 (René: "work on item 34 on the v4"), agent adcfa76ae8b4c0dfe resumed in its worktree, rebase onto v4.50.0; red tests first, all four backends.
 - [ ] 33 + 42, then 41 — badger read cost — restart.
 - [ ] 35 broader effective scans (signatures confirmed by sigma 2026-10-10).
 - [ ] 28 state column fast path (design first) (waits for sigma).
