@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added bounded, inert v5 codecs for registry commands, reciprocal lookup/stored
+  records, outcomes and opaque exports. Canonical references preserve insertion,
+  original and evaluation coordinates. Independent consumptive work and owned
+  representation budgets refuse malformed or oversized input without partial
+  output. These codecs grant no inventory, Register, factory, snapshot activation
+  or Host readiness authority.
+
 - Added a separate registered Bootstrap inventory/Register codec agreement,
   preserving the original agreement, wrappers and complete byte literals.
   Meaning-bound validation and both hashes share one borrowed inspection with
