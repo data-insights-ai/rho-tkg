@@ -1,0 +1,248 @@
+{
+  "date": "2026-10-11",
+  "base": "9e6abe64",
+  "external_commit": "637e1816befa567f8903c1f6591b30403bcb7e77",
+  "focused_unit_accepted": true,
+  "full_integration_accepted": false,
+  "remaining_condition": "Exhaustive affected graphapply normal/race/coverage on final combined P4 source plus applicable combined gates and same-reviewer check",
+  "source_manifest_sha256": "789d699eba2ff2405c0035942884aa779260cd6d6ac375aed2a98b33a4e74bff",
+  "source_files": 422,
+  "source_conservation": "All 422 Go source/test hashes match the reviewed helper; only its added ownership guard extends the exact external production delta. Accepted P3/preclaim/AS5 and CI remain present.",
+  "driver_factory_preclaim_host_readiness_accepted": false,
+  "original_red_qualification": "No saved external original RED/gate artifacts found. Original16tests and existing codec/inventory tests are imported guards; new test is integration guard. No manufactured original RED or mutants.",
+  "archive": "registry-materializer-integration.tar.gz",
+  "archive_sha256": "5095ba6aa238486deae71940377721f86c9b78fa5cb05060405e5d8ed908d6fd",
+  "archive_bytes": 792737,
+  "files": [
+    {
+      "path": "author/additional-ownership-guard.patch",
+      "sha256": "78de5bf3000b7aadffa3bc96f91387b2c857160c50c2a8e5816a1228539efb50",
+      "bytes": 7712
+    },
+    {
+      "path": "author/author-receipt.json",
+      "sha256": "b730bd5641a5c5700d4f9b39022d54d64106d435cde1cbe8105ad84766014556",
+      "bytes": 5624
+    },
+    {
+      "path": "author/build-budget.json",
+      "sha256": "86189b5ee9ae8225fde87b2bd72b9255496cff6a511a8f345a03170bb84aed95",
+      "bytes": 226
+    },
+    {
+      "path": "author/build.log",
+      "sha256": "20e4355efb7b5cdb94fe1a6a8386f226681365c0775a1dc08ccda95773f5ca4d",
+      "bytes": 218
+    },
+    {
+      "path": "author/coverage-methods-budget.json",
+      "sha256": "9fa91525fd62f0f5caae3eb3ed465667b1bed0d979be8aaaed8d3a7ace6ad3ec",
+      "bytes": 409
+    },
+    {
+      "path": "author/coverage-methods.log",
+      "sha256": "ee3b38571d04c87db44d6b488fbeaf3e6cbb2959f260548d7ce3775bcb671865",
+      "bytes": 64541
+    },
+    {
+      "path": "author/coverage-summary.json",
+      "sha256": "2e72b97db28e7c908bde56c1b8c4f5998d6b305362b3b1122954729dbb11f860",
+      "bytes": 994
+    },
+    {
+      "path": "author/coverage.out",
+      "sha256": "2a611cbcc9c8a2db0dcd91cd34bfc21d7866b68323a44a5e675246a0b8c1deb7",
+      "bytes": 2156053
+    },
+    {
+      "path": "author/direct-method-coverage.json",
+      "sha256": "72a4d1a1fbf413ccc1e072d0df593684aaee33d8dc0db8e4ca91d38a8654d0f4",
+      "bytes": 101
+    },
+    {
+      "path": "author/exact-external-merged-source.json",
+      "sha256": "44015e16dc573bb72acc1c686d2af1c3f7a0966d8a53408f98fe458edbb2366d",
+      "bytes": 620
+    },
+    {
+      "path": "author/fmt-check-budget.json",
+      "sha256": "e16cac1bf45e54b44e387987b098f43123a9172b3ca4d66995d5991e8a1276a8",
+      "bytes": 226
+    },
+    {
+      "path": "author/fmt-check.log",
+      "sha256": "99b4ab198cc4c9a892ef27e05afc1b001a9f67dca53844731bbfef24c90c7ab1",
+      "bytes": 203
+    },
+    {
+      "path": "author/lint-docker-budget.json",
+      "sha256": "6fe74a361e5757d7ca5783392cdb338b8a58362dd2699d9dee455f840204491c",
+      "bytes": 624
+    },
+    {
+      "path": "author/lint-docker.log",
+      "sha256": "db685ac352d0ea406ba1f6ce7c52fc9cc4c98c43e9e6288f7a1d4f7a07322012",
+      "bytes": 1118
+    },
+    {
+      "path": "author/merge-coverage.py",
+      "sha256": "bc39fc8e779b9bc7c6ab0d098700e40acdabe2442637e225ea014579bc068366",
+      "bytes": 2427
+    },
+    {
+      "path": "author/registry-coverage.out",
+      "sha256": "d01440d3c07f0183b7853c60136becb0f6ca28d11fe94beaa2409b27bf432f96",
+      "bytes": 574443
+    },
+    {
+      "path": "author/registry-normal-cover-budget.json",
+      "sha256": "6200fc4e4642c1d40d389c22ba0a4a25cae37d305acf1597ebab62b423c270aa",
+      "bytes": 587
+    },
+    {
+      "path": "author/registry-normal-cover.log",
+      "sha256": "bdd5db29fa4912cd6322e20a3cd0a9a44d2bf1c541a685812ab75ecd330f8249",
+      "bytes": 230232
+    },
+    {
+      "path": "author/registry-race-budget.json",
+      "sha256": "d4551dab9e85734c840e865c1b98dae86a817e73073250899297d0302a60514c",
+      "bytes": 503
+    },
+    {
+      "path": "author/registry-race.log",
+      "sha256": "4fe7c1b7f5f7f80b43c570cca1d723d767bed12262e5eabdf4538b01d701d223",
+      "bytes": 230020
+    },
+    {
+      "path": "author/run.py",
+      "sha256": "790a7fc1d5c8eea9ca7890ae4d73dec76e29e600738de51ccb7ab6012edd8bc3",
+      "bytes": 1512
+    },
+    {
+      "path": "author/runtime-inventory-union.json",
+      "sha256": "ae1e11014111a926eccaac36e957aa70d3ecdc7486457ee800863d38907c8a0a",
+      "bytes": 5793
+    },
+    {
+      "path": "author/security-docker-budget.json",
+      "sha256": "3367c2cbd55c92c32f6283d63bc762c849cc60f13c3f9b9c3e87ff2f66c18aed",
+      "bytes": 625
+    },
+    {
+      "path": "author/security-docker.log",
+      "sha256": "a22172d780ea6b13cc401836a99afb2d4c27c29d691fdc1c803d93feba1fad68",
+      "bytes": 1062
+    },
+    {
+      "path": "author/source.json",
+      "sha256": "789d699eba2ff2405c0035942884aa779260cd6d6ac375aed2a98b33a4e74bff",
+      "bytes": 49579
+    },
+    {
+      "path": "author/test-inventory.json",
+      "sha256": "7bda0872f11b0d48422934fed7ea00ef68b7739b84be022c48df5bbd88a23c25",
+      "bytes": 2914
+    },
+    {
+      "path": "author/vet-budget.json",
+      "sha256": "dd6569f27164c0339747509dd0d8e09224e57ecc4c72d13d4d447e7a0429dbe3",
+      "bytes": 224
+    },
+    {
+      "path": "author/vet.log",
+      "sha256": "8b54f2a3ffbd1e8b9f54b423746364bcdba20b5b6b1c6db5159d8ed5fb3a978d",
+      "bytes": 214
+    },
+    {
+      "path": "author/vulncheck-docker-budget.json",
+      "sha256": "80bd97b1b9a8cbe4007e7bbc15ad4401ed06c315540085624e521713f281fe4f",
+      "bytes": 628
+    },
+    {
+      "path": "author/vulncheck-docker.log",
+      "sha256": "86bb51706f221f67e715c7d830f955a2f94b0a66014f6df3d8ea8f8ccdb634b4",
+      "bytes": 1359
+    },
+    {
+      "path": "review/FOCUSED_ACCEPTANCE.md",
+      "sha256": "1c07099b055a4982b43e87b3459ffa44bab1bd83645fff3b6b732cf875f217a5",
+      "bytes": 4546
+    },
+    {
+      "path": "review/REVIEW.md",
+      "sha256": "1dfeacfa5db87ee1b2a1c85f79a85ff0a70a4b7616c79b66f8cc7792972c1d0d",
+      "bytes": 6471
+    },
+    {
+      "path": "review/focused-acceptance.json",
+      "sha256": "7407db0885a5719077b2b18d491750936c49856ab0bfcf5740f32e96f7274309",
+      "bytes": 1016
+    },
+    {
+      "path": "review/receipt.json",
+      "sha256": "e1f0c1c76136deb2c30013fba69b7888149aa2fb8b8e3cbbf1aca57ca7fa5ef5",
+      "bytes": 842
+    },
+    {
+      "path": "review/review.patch",
+      "sha256": "57a2787ec34a95eb709a0ae86392caac123ce7ce7347c42b2422f5869c1f9f49",
+      "bytes": 85478
+    },
+    {
+      "path": "review/source/CHANGELOG.md",
+      "sha256": "de532955bffc2e11fdb884e70b4437e5bcb16a9c6c8aeb6aade7e0b318a36a2f",
+      "bytes": 1374964
+    },
+    {
+      "path": "review/source/v5/internal/graphapply/registered_registry_codec.go",
+      "sha256": "5b65aca9badafe20bb860680301d1d7929fba80e62ba5bb411c4020894ad04c3",
+      "bytes": 22029
+    },
+    {
+      "path": "review/source/v5/internal/graphapply/registered_registry_materializer.go",
+      "sha256": "2c0275044ae4831566de5dd392767f49cf3f5ab64afd0c8fc5df5fdef859eb00",
+      "bytes": 27241
+    },
+    {
+      "path": "review/source/v5/internal/graphapply/registered_registry_materializer_test.go",
+      "sha256": "706619e22276c55364c75443be74954e4f97f1492fe310ffda0946f4db1bae66",
+      "bytes": 50275
+    },
+    {
+      "path": "review/source.json",
+      "sha256": "56c7ba8977884587072eaa93592a8d5be3551e98a5510b6456fad563aef63cc8",
+      "bytes": 483
+    }
+  ],
+  "review": {
+    "recommendation": "accept_source_and_focused_unit_evidence_for_local_integration",
+    "full_integration_accepted": false,
+    "remaining_condition": "Exhaustive affected graphapply normal/race/coverage on final combined P4 source plus applicable combined gates and same-reviewer check",
+    "driver_factory_preclaim_host_readiness_accepted": false,
+    "blocking_source_findings": [],
+    "nonblocking_defects": [],
+    "source_manifest_sha256": "789d699eba2ff2405c0035942884aa779260cd6d6ac375aed2a98b33a4e74bff",
+    "source_files": 422,
+    "author_receipt_sha256": "b730bd5641a5c5700d4f9b39022d54d64106d435cde1cbe8105ad84766014556",
+    "exact_normal_race_inventory": 50,
+    "finite_gates_passed": 8,
+    "coverage": {
+      "codec": [
+        384,
+        399
+      ],
+      "materializer": [
+        377,
+        425
+      ],
+      "qualified_module": [
+        28743,
+        32596
+      ]
+    },
+    "minimum_new_method_percent": 88.5,
+    "reviewer_runtime": false,
+    "report_sha256": "1c07099b055a4982b43e87b3459ffa44bab1bd83645fff3b6b732cf875f217a5"
+  }
+}

@@ -231,6 +231,13 @@ reviewed and validated before the next package starts.
    13 gates pass, the new Check is directly covered at 100%, and a genuine AS5
    reader/claim/activation guard passes. This nonmutating check creates no
    readiness or activation authority and does not advance package 4 acceptance.
+   External `637e1816` is now [integrated locally with focused unit acceptance](evidence/v2-certified-reads/registry-materializer-integration.json):
+   the private registry materializer preserves reciprocal originals and validates
+   Created/Original/Conflict outcomes. All 50 selected tests pass normal/race;
+   eight finite gates pass, with codec/materializer coverage 96.2%/88.7%.
+   Full integration acceptance still requires the exhaustive affected graphapply
+   normal/race/coverage and applicable combined checks on the final package-4
+   source. Driver/factory/preclaim/Host readiness remains unwired and unaccepted.
 4. Pass the same-graph E15–E18 serial-history/cut oracle under process and message
    faults, recovery and ownership transfer; complete the equivalent transactional-KV
    comparison and record the engine decision. Only then can V2 close under
