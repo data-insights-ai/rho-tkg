@@ -8,6 +8,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Opt-in direct-Badger `EntityIdentityOnDisk` profile: canonical current rows
+  replace resident identity/hash maps, fixed revision stripes replace per-ID
+  prefetch guards, and startup validates rows without building temporary ID
+  maps. Current label/type/equality scans merge pending, flushing and disk keys
+  in order before result limits. Existing row wire bytes, hashes and clocks are
+  unchanged. Error-returning `NodeExists` / `RelationshipExists` distinguish
+  absence from unavailable storage; unsupported legacy boolean probes raise a
+  typed capability error. Tiered/Sharded constructors explicitly refuse this
+  profile. Resident advanced indexes are refused rather than silently emptied.
+- The profile requires the existing synced disk-index/probe-only configuration.
+  Persistent historical membership must finish before application pinned reads;
+  it follows graph registry attachment and precedes application clock lookup.
+  Whole-corpus belief-watermark/inline-stamp accelerators decline to exact
+  history/row resolution. Entity caches remain byte-budgeted soft limits and
+  commit groups must still be bounded by callers; this is not a global constant
+  RAM guarantee for arbitrary queries or retained results.
+
 - Opt-in `badger.Config.HistoricalMembershipOnDisk`: persisted ordered node
   label / relationship type / declared-property candidates for exact temporal
   queries. `BuildHistoricalMembership(ctx, HistoricalMembershipLimits)` resumes

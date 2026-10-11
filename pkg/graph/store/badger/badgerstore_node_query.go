@@ -22,6 +22,14 @@ func (bs *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 	if err := storecontract.ValidateQueryOpts(opts); err != nil {
 		return nil, err
 	}
+	if bs.entityIdentityOnDisk {
+		var out []*types.Node
+		err := bs.forEachDiskLabelNode(token, opts, func(n *types.Node) (bool, error) {
+			out = append(out, n)
+			return opts.Limit == 0 || len(out) < opts.Limit, nil
+		})
+		return out, err
+	}
 	bs.idxMu.RLock()
 
 	// Temporal index fast path: avoids iterating the full label set when a
@@ -217,6 +225,17 @@ func (bs *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	if err := storecontract.ValidateQueryOpts(opts); err != nil {
 		return nil, err
 	}
+	if bs.entityIdentityOnDisk {
+		var out []*types.Node
+		err := bs.forEachCurrentNodeRow(types.NodeID(opts.After), func(n *types.Node) (bool, error) {
+			if storepkg.HasTemporalFilter(opts) && !storepkg.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), opts) {
+				return true, nil
+			}
+			out = append(out, n)
+			return opts.Limit == 0 || len(out) < opts.Limit, nil
+		})
+		return out, err
+	}
 	bs.idxMu.RLock()
 	nids := make([]types.NodeID, 0, len(bs.nodeIDs))
 	for id := range bs.nodeIDs {
@@ -364,6 +383,9 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 	if targetKey == "" {
 		return nil, nil
 	}
+	if bs.entityIdentityOnDisk {
+		return bs.diskNodesByProperty(labelToken, propKey, targetKey, opts)
+	}
 
 	// Snapshot matching IDs under RLock, then release before entity I/O.
 	bs.idxMu.RLock()
@@ -460,6 +482,17 @@ func (bs *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 	if err := storecontract.ValidateQueryOpts(opts); err != nil {
 		return nil, err
 	}
+	if bs.entityIdentityOnDisk {
+		var out []types.NodeID
+		err := bs.forEachCurrentNodeRow(types.NodeID(opts.After), func(n *types.Node) (bool, error) {
+			if storepkg.HasTemporalFilter(opts) && !storepkg.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), opts) {
+				return true, nil
+			}
+			out = append(out, n.ID())
+			return opts.Limit == 0 || len(out) < opts.Limit, nil
+		})
+		return out, err
+	}
 	bs.idxMu.RLock()
 	nids := make([]types.NodeID, 0, len(bs.nodeIDs))
 	for id := range bs.nodeIDs {
@@ -493,6 +526,9 @@ func (bs *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
 	}
 	if fn == nil {
 		return errNilIterationCallback()
+	}
+	if bs.entityIdentityOnDisk {
+		return bs.forEachCurrentNodeRow(0, func(n *types.Node) (bool, error) { return fn(n.ID()), nil })
 	}
 	bs.idxMu.RLock()
 	ids := make([]types.NodeID, 0, len(bs.nodeIDs))

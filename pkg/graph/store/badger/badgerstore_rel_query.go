@@ -23,6 +23,14 @@ func (bs *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 	if err := storecontract.ValidateQueryOpts(opts); err != nil {
 		return nil, err
 	}
+	if bs.entityIdentityOnDisk {
+		var out []*types.Relationship
+		err := bs.forEachDiskTypeRel(token, opts, func(r *types.Relationship) (bool, error) {
+			out = append(out, r)
+			return opts.Limit == 0 || len(out) < opts.Limit, nil
+		})
+		return out, err
+	}
 	bs.idxMu.RLock()
 	set := bs.typeIdx[token]
 	rids := make([]types.RelID, 0, len(set))
@@ -89,7 +97,10 @@ func (bs *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 		return nil, err
 	}
 	bs.idxMu.RLock()
-	if _, ok := bs.nodeIDs[nid]; !ok {
+	if ok, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+		bs.idxMu.RUnlock()
+		return nil, identityErr
+	} else if !ok {
 		bs.idxMu.RUnlock()
 		return nil, ErrNodeNotFound
 	}
@@ -150,7 +161,10 @@ func (bs *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 			continue
 		}
 		seen[nid] = struct{}{}
-		if _, ok := bs.nodeIDs[nid]; !ok {
+		if ok, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+			bs.idxMu.RUnlock()
+			return nil, identityErr
+		} else if !ok {
 			bs.idxMu.RUnlock()
 			return nil, ErrNodeNotFound
 		}
@@ -212,7 +226,9 @@ func (bs *Store) OutgoingDegree(nid types.NodeID, typeToken uint16) (int, error)
 	}
 	bs.idxMu.RLock()
 	defer bs.idxMu.RUnlock()
-	if _, ok := bs.nodeIDs[nid]; !ok {
+	if ok, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+		return 0, identityErr
+	} else if !ok {
 		return 0, ErrNodeNotFound
 	}
 	if bs.adjOnDisk {
@@ -254,7 +270,9 @@ func (bs *Store) IncomingDegree(nid types.NodeID, typeToken uint16) (int, error)
 	}
 	bs.idxMu.RLock()
 	defer bs.idxMu.RUnlock()
-	if _, ok := bs.nodeIDs[nid]; !ok {
+	if ok, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+		return 0, identityErr
+	} else if !ok {
 		return 0, ErrNodeNotFound
 	}
 	if bs.adjOnDisk {
@@ -291,7 +309,10 @@ func (bs *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 		return nil, err
 	}
 	bs.idxMu.RLock()
-	if _, ok := bs.nodeIDs[nid]; !ok {
+	if ok, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+		bs.idxMu.RUnlock()
+		return nil, identityErr
+	} else if !ok {
 		bs.idxMu.RUnlock()
 		return nil, ErrNodeNotFound
 	}
@@ -354,7 +375,10 @@ func (bs *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 			continue
 		}
 		seen[nid] = struct{}{}
-		if _, ok := bs.nodeIDs[nid]; !ok {
+		if ok, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+			bs.idxMu.RUnlock()
+			return nil, identityErr
+		} else if !ok {
 			bs.idxMu.RUnlock()
 			return nil, ErrNodeNotFound
 		}
@@ -453,6 +477,17 @@ func (bs *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 	}
 	if err := storecontract.ValidateQueryOpts(opts); err != nil {
 		return nil, err
+	}
+	if bs.entityIdentityOnDisk {
+		var out []*types.Relationship
+		err := bs.forEachCurrentRelRow(types.RelID(opts.After), func(r *types.Relationship) (bool, error) {
+			if storepkg.HasTemporalFilter(opts) && !storepkg.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts) {
+				return true, nil
+			}
+			out = append(out, r)
+			return opts.Limit == 0 || len(out) < opts.Limit, nil
+		})
+		return out, err
 	}
 	bs.idxMu.RLock()
 	rids := make([]types.RelID, 0, len(bs.relIDs))
@@ -588,6 +623,17 @@ func (bs *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 	if err := storecontract.ValidateQueryOpts(opts); err != nil {
 		return nil, err
 	}
+	if bs.entityIdentityOnDisk {
+		var out []types.RelID
+		err := bs.forEachCurrentRelRow(types.RelID(opts.After), func(r *types.Relationship) (bool, error) {
+			if storepkg.HasTemporalFilter(opts) && !storepkg.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts) {
+				return true, nil
+			}
+			out = append(out, r.ID())
+			return opts.Limit == 0 || len(out) < opts.Limit, nil
+		})
+		return out, err
+	}
 	bs.idxMu.RLock()
 	rids := make([]types.RelID, 0, len(bs.relIDs))
 	for id := range bs.relIDs {
@@ -621,6 +667,9 @@ func (bs *Store) ForEachRelID(fn func(types.RelID) bool) error {
 	}
 	if fn == nil {
 		return errNilIterationCallback()
+	}
+	if bs.entityIdentityOnDisk {
+		return bs.forEachCurrentRelRow(0, func(r *types.Relationship) (bool, error) { return fn(r.ID()), nil })
 	}
 	bs.idxMu.RLock()
 	ids := make([]types.RelID, 0, len(bs.relIDs))

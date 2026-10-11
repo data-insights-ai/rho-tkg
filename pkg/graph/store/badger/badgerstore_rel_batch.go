@@ -88,15 +88,24 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	// Phase 1: validate — endpoints exist, no duplicates.
 	seen := make(map[types.RelID]struct{}, len(rels))
 	for _, rd := range serialized {
-		if _, exists := bs.nodeIDs[rd.startNID]; !exists {
+		if exists, identityErr := bs.nodeExistsLocked(rd.startNID); identityErr != nil {
+			bs.idxMu.Unlock()
+			return identityErr
+		} else if !exists {
 			bs.idxMu.Unlock()
 			return ErrNodeNotFound
 		}
-		if _, exists := bs.nodeIDs[rd.endNID]; !exists {
+		if exists, identityErr := bs.nodeExistsLocked(rd.endNID); identityErr != nil {
+			bs.idxMu.Unlock()
+			return identityErr
+		} else if !exists {
 			bs.idxMu.Unlock()
 			return ErrNodeNotFound
 		}
-		if _, exists := bs.relIDs[rd.rid]; exists {
+		if exists, identityErr := bs.relExistsLocked(rd.rid); identityErr != nil {
+			bs.idxMu.Unlock()
+			return identityErr
+		} else if exists {
 			bs.idxMu.Unlock()
 			return ErrRelExists
 		}
@@ -113,7 +122,7 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		rd := serialized[i]
 
 		bs.relCache.Put(rd.id, rd.frozen)
-		bs.relIDs[rd.rid] = struct{}{}
+		bs.addRelIdentityLocked(rd.rid)
 		bs.bumpRelRevLocked(rd.rid)
 
 		bs.addTypeIdxLocked(rd.relType, rd.rid)
@@ -195,7 +204,10 @@ func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 	// may hit Badger, so keep that I/O outside idxMu.Lock().
 	bs.idxMu.RLock()
 	for _, rid := range typedIDs {
-		if _, exists := bs.relIDs[rid]; !exists {
+		if exists, identityErr := bs.relExistsLocked(rid); identityErr != nil {
+			bs.idxMu.RUnlock()
+			return identityErr
+		} else if !exists {
 			bs.idxMu.RUnlock()
 			return ErrRelNotFound
 		}
@@ -218,7 +230,10 @@ func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 	// Phase 1c: revalidate after the prefetch window and capture current metadata.
 	infos := make([]RelDeleteInfo, len(typedIDs))
 	for i, rid := range typedIDs {
-		if _, exists := bs.relIDs[rid]; !exists {
+		if exists, identityErr := bs.relExistsLocked(rid); identityErr != nil {
+			bs.idxMu.Unlock()
+			return identityErr
+		} else if !exists {
 			bs.idxMu.Unlock()
 			return ErrRelNotFound
 		}

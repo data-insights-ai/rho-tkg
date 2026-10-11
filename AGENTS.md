@@ -551,6 +551,16 @@ with bootstrap and clean per-identity reverse keys. Completed ordered candidates
 remain supersets: canonical historical resolution checks predicates before Limit.
 Do not claim constant RAM while identity/hash/revision maps remain resident.
 
+`EntityIdentityOnDisk` is an explicit direct-Badger profile, not a default
+behavior change. Canonical rows plus pending/flushing overlays decide identity;
+existence errors propagate before mutation. Fixed revision-stripe collisions,
+deletes and Clear force rereads, never stale acceptance. Unsupported legacy
+boolean probes fail explicitly; unadapted Tiered/Sharded constructors refuse
+the profile before writes. Startup may validate every row but must not retain
+corpus-sized temporary maps. Bootstrap persistent membership after graph
+registry attachment and before application pinned reads. Dirty commit groups,
+unbounded requested outputs and query-shaped caches remain capacity concerns.
+
 ### Code Review Lessons
 
 - **Use library APIs, never reimplement internals**: If a dependency provides an API (e.g. `snowflake.Node.Decompose()`), use it. Never duplicate internal knowledge like bit layouts or hardcoded shifts in the consumer. When the library changes its layout, hardcoded shifts break silently across dozens of call sites. The library's API encapsulates the layout — use it.

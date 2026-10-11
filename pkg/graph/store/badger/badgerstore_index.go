@@ -119,7 +119,11 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 			if _, mutated := liveIdx.Mutated[id]; mutated {
 				continue // concurrent write handled this ID during Phase 2
 			}
-			if _, alive := bs.nodeIDs[types.NodeID(id)]; !alive {
+			if alive, identityErr := bs.nodeExistsLocked(types.NodeID(id)); identityErr != nil {
+				deletePropertyIndexIfCurrent(bs.propertyIndexes, key, liveIdx)
+				bs.idxMu.Unlock()
+				return identityErr
+			} else if !alive {
 				continue // node deleted during Phase 2
 			}
 			ops = append(ops, op)
@@ -135,7 +139,11 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 			if _, mutated := liveIdx.Mutated[id]; mutated {
 				continue // concurrent write handled this ID during Phase 2
 			}
-			if _, alive := bs.nodeIDs[types.NodeID(id)]; !alive {
+			if alive, identityErr := bs.nodeExistsLocked(types.NodeID(id)); identityErr != nil {
+				deletePropertyIndexIfCurrent(bs.propertyIndexes, key, liveIdx)
+				bs.idxMu.Unlock()
+				return identityErr
+			} else if !alive {
 				continue // node deleted during Phase 2
 			}
 			// AddKey, not a direct Entries write — the index's ordered
@@ -265,6 +273,9 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	if bs.entityIdentityOnDisk {
+		return fmt.Errorf("%w: resident advanced indexes are unavailable in disk entity identity mode", storecontract.ErrCapabilityNotSupported)
+	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return err
 	}
@@ -325,7 +336,10 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 	}
 	var diskOps []writeOp
 	for _, entry := range backfill {
-		if _, alive := bs.nodeIDs[types.NodeID(entry.id)]; !alive {
+		if alive, identityErr := bs.nodeExistsLocked(types.NodeID(entry.id)); identityErr != nil {
+			bs.idxMu.Unlock()
+			return identityErr
+		} else if !alive {
 			continue // node deleted during Phase 2
 		}
 		if liveTI.WasMutated(entry.id) {
@@ -492,6 +506,9 @@ func (bs *Store) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Dur
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	if bs.entityIdentityOnDisk {
+		return fmt.Errorf("%w: resident advanced indexes are unavailable in disk entity identity mode", storecontract.ErrCapabilityNotSupported)
+	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return err
 	}
@@ -552,7 +569,10 @@ func (bs *Store) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Dur
 		return err
 	}
 	for _, entry := range backfill {
-		if _, alive := bs.nodeIDs[types.NodeID(entry.id)]; !alive {
+		if alive, identityErr := bs.nodeExistsLocked(types.NodeID(entry.id)); identityErr != nil {
+			bs.idxMu.Unlock()
+			return identityErr
+		} else if !alive {
 			continue
 		}
 		if liveHFI.WasMutated(entry.id) {
@@ -691,6 +711,9 @@ func (bs *Store) CreateVectorIndexWithOptions(labelToken uint16, propertyKey str
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	if bs.entityIdentityOnDisk {
+		return fmt.Errorf("%w: resident advanced indexes are unavailable in disk entity identity mode", storecontract.ErrCapabilityNotSupported)
+	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return err
 	}
@@ -760,7 +783,10 @@ func (bs *Store) CreateVectorIndexWithOptions(labelToken uint16, propertyKey str
 		return err
 	}
 	for _, entry := range backfill {
-		if _, alive := bs.nodeIDs[types.NodeID(entry.id)]; !alive {
+		if alive, identityErr := bs.nodeExistsLocked(types.NodeID(entry.id)); identityErr != nil {
+			bs.idxMu.Unlock()
+			return identityErr
+		} else if !alive {
 			continue
 		}
 		if vi.WasMutated(entry.id) {

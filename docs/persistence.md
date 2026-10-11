@@ -354,6 +354,40 @@ membership is recorded for every indexable value so subsequently declared
 indexes can use prior history. These are internal formats; public IDs and exact
 historical rows remain authoritative.
 
+## Current identity on disk (opt-in, `EntityIdentityOnDisk`)
+
+Direct Badger stores can use canonical current entity rows for identity and
+integrity instead of retaining ID/hash maps for the whole corpus. The required
+profile enables `SyncWrites`, `HistoricalMembershipOnDisk`, `LabelIndexOnDisk`,
+`AdjacencyIndexOnDisk`, `PropertyIndexOnDisk`, `HistoryPresenceProbeOnly`,
+`DisableOrdinals` and `DisablePlannerStats`, with `ResidentCache` off. Startup
+validates current rows and counters in a streaming pass. Corruption or I/O
+errors fail closed; row presence is never inferred from a secondary index.
+
+`NodeExists` and `RelationshipExists` return `(bool, error)`. The old boolean
+`HasNodeID` / `HasRelID` methods are unsupported in this profile and panic with
+`UnsupportedIdentityProbeError`, wrapping `ErrCapabilityNotSupported`. Supported
+mutation/history paths use the error-returning methods. Tiered and Sharded
+constructors reject their `EntityIdentityOnDisk` flag before filesystem writes.
+Temporal/HF/vector/composite/relationship-property resident index definitions
+and their creation are explicitly refused in this profile; default stores are
+unchanged.
+
+Current identity/label/type/equality scans merge the pending overlay (newest),
+flushing overlay, and one ordered disk snapshot. Cursor and limit apply after
+canonical row/predicate validation. Public iteration callbacks run outside
+store locks. Snapshots can delay Badger value-log GC while a callback runs.
+Revision-stripe collisions force a locked reread; deletes, restores and Clear
+invalidate proofs, without per-ID revision memory. Signed/finite-zero time,
+history, hashes and native transaction clocks keep the existing contracts.
+
+Attach registries via `rho.New`, finish bounded persistent membership bootstrap,
+then run application pinned reads such as clock restore. An incomplete index's
+exact history fallback can still materialize large candidate sets. Byte budgets
+bound clean entity caches, while dirty commit groups, requested result slices,
+Core as-of columns and optional UniqueForever ownership can still consume memory.
+Use measured workload capacity; this profile makes no global constant-RAM claim.
+
 ## Persistent temporal-index rebuild accelerator (opt-in, `TemporalIndexOnDisk`)
 
 With `badger.Config.TemporalIndexOnDisk` (or the mirrored `graph.Config.TemporalIndexOnDisk` / `tiered.Config.TemporalIndexOnDisk`) enabled, the maxTo-augmented temporal interval index (`g.Index().CreateTemporal`) keeps a compact raw-entry log on disk so a store reopen no longer has to re-derive every entry from a full node fetch+decode. This is a DIFFERENT trade-off shape than `LabelIndexOnDisk`/`AdjacencyIndexOnDisk`/`PropertyIndexOnDisk` above: those move an index OFF the RAM heap and answer LIVE reads from the persisted keyspace instead. The temporal interval index's stabbing (`QueryAt`) and interval (`QueryOverlap`) queries walk an implicit balanced BST augmented with per-subtree max-upper-bound (`subMax`) — a structure that has no on-disk analogue — so it always stays fully resident in RAM at runtime; the flag has zero effect on live query results within a session. It exists solely to make the REBUILD-AT-OPEN step cheap.

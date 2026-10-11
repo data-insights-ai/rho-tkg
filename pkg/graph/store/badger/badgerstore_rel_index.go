@@ -51,6 +51,9 @@ func (bs *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	if bs.entityIdentityOnDisk {
+		return fmt.Errorf("%w: resident advanced indexes are unavailable in disk entity identity mode", storecontract.ErrCapabilityNotSupported)
+	}
 	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
 		return err
 	}
@@ -102,7 +105,10 @@ func (bs *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 			if _, mutated := liveIdx.Mutated[id]; mutated {
 				continue // concurrent write handled this ID during Phase 2
 			}
-			if _, alive := bs.relIDs[types.RelID(id)]; !alive {
+			if alive, identityErr := bs.relExistsLocked(types.RelID(id)); identityErr != nil {
+				bs.idxMu.Unlock()
+				return identityErr
+			} else if !alive {
 				continue // rel deleted during Phase 2
 			}
 			liveIdx.AddKey(id, vk)

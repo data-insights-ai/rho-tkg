@@ -110,21 +110,39 @@ func (bs *Store) ExactErase(req storecontract.ExactErasureRequest) (storecontrac
 	// Defend against a missing/corrupt adjacency leg: the live relationship row
 	// remains the endpoint authority. A corrupt undeclared row makes the proof
 	// impossible, so fail closed rather than assume it is unrelated.
-	for rid := range bs.relIDs {
-		if _, declared := relSet[rid]; declared {
-			continue
+	if bs.entityIdentityOnDisk {
+		identityErr := bs.forEachCurrentRelRowLocked(0, true, func(rel *types.Relationship) (bool, error) {
+			if _, declared := relSet[rel.ID()]; declared {
+				return true, nil
+			}
+			_, start := nodeSet[rel.StartNodeID()]
+			_, end := nodeSet[rel.EndNodeID()]
+			if start || end {
+				return false, fmt.Errorf("%w: node endpoint relationship %d", storecontract.ErrExactErasureRelationshipEscape, rel.ID())
+			}
+			return true, nil
+		})
+		if identityErr != nil {
+			return zero, identityErr
 		}
-		rel, err := bs.getRelLocked(rid)
-		if err != nil {
-			return zero, fmt.Errorf("%w: cannot prove undeclared relationship %d endpoints: %v",
-				storecontract.ErrExactErasureRelationshipEscape, rid, err)
+	} else {
+		for rid := range bs.relIDs {
+			if _, declared := relSet[rid]; declared {
+				continue
+			}
+			rel, err := bs.getRelLocked(rid)
+			if err != nil {
+				return zero, fmt.Errorf("%w: cannot prove undeclared relationship %d endpoints: %v",
+					storecontract.ErrExactErasureRelationshipEscape, rid, err)
+			}
+			_, touchesStart := nodeSet[rel.StartNodeID()]
+			_, touchesEnd := nodeSet[rel.EndNodeID()]
+			if touchesStart || touchesEnd {
+				return zero, fmt.Errorf("%w: node endpoint relationship %d",
+					storecontract.ErrExactErasureRelationshipEscape, rid)
+			}
 		}
-		_, touchesStart := nodeSet[rel.StartNodeID()]
-		_, touchesEnd := nodeSet[rel.EndNodeID()]
-		if touchesStart || touchesEnd {
-			return zero, fmt.Errorf("%w: node endpoint relationship %d",
-				storecontract.ErrExactErasureRelationshipEscape, rid)
-		}
+
 	}
 
 	// Build the entire immutable destructive plan before the first mutation.
@@ -252,7 +270,11 @@ func (bs *Store) buildExactErasurePlanLocked(
 
 	for _, rid := range req.RelIDs {
 		relPlan := exactErasureRelPlan{id: rid}
-		_, relPlan.live = bs.relIDs[rid]
+		var identityErr error
+		relPlan.live, identityErr = bs.relExistsLocked(rid)
+		if identityErr != nil {
+			return exactErasurePlan{}, identityErr
+		}
 		if relPlan.live {
 			if err := bs.exactErasureScanTest("relationship-current", uint64(rid.SnowflakeID())); err != nil { // #nosec G115 -- validated positive snowflake ID encoded bit-for-bit
 				return exactErasurePlan{}, err
@@ -275,7 +297,11 @@ func (bs *Store) buildExactErasurePlanLocked(
 
 	for _, nid := range req.NodeIDs {
 		nodePlan := exactErasureNodePlan{id: nid}
-		_, nodePlan.live = bs.nodeIDs[nid]
+		var identityErr error
+		nodePlan.live, identityErr = bs.nodeExistsLocked(nid)
+		if identityErr != nil {
+			return exactErasurePlan{}, identityErr
+		}
 		if nodePlan.live {
 			if err := bs.exactErasureScanTest("node-current", uint64(nid.SnowflakeID())); err != nil { // #nosec G115 -- validated positive snowflake ID encoded bit-for-bit
 				return exactErasurePlan{}, err
@@ -452,7 +478,7 @@ func (bs *Store) applyExactCurrentNodeLocked(nid types.NodeID, node *types.Node)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, node, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, node, rawID)
 	bs.nodeCache.MarkDeleted(rawID)
-	delete(bs.nodeIDs, nid)
+	bs.removeNodeIdentityLocked(nid)
 	bs.ords.dropNode(nid)
 	delete(bs.nodeHashes, nid)
 	bs.deleteNodeRevLocked(nid)
@@ -498,7 +524,7 @@ func (bs *Store) applyExactNodeResidueLocked(plan exactErasureNodePlan) {
 	indexpkg.PurgeNodeFromAllHighFrequencyIndexes(bs.hfIndexes, rawID)
 	indexpkg.PurgeNodeFromAllVectorIndexesExact(bs.vectorIndexes, rawID)
 	bs.nodeCache.MarkDeleted(rawID)
-	delete(bs.nodeIDs, plan.id)
+	bs.removeNodeIdentityLocked(plan.id)
 	bs.ords.dropNode(plan.id)
 	delete(bs.nodeHashes, plan.id)
 	bs.deleteNodeRevLocked(plan.id)
@@ -617,14 +643,22 @@ func (bs *Store) exactErasureRelationshipClosureLocked(
 		return nil
 	}
 
-	for rid := range bs.relIDs {
-		rel, err := bs.getRelLocked(rid)
-		if err != nil {
-			return zero, fmt.Errorf("graph: exact erasure closure current relationship %d: %w", rid, err)
+	if bs.entityIdentityOnDisk {
+		identityErr := bs.forEachCurrentRelRowLocked(0, true, func(rel *types.Relationship) (bool, error) { return true, inspect(rel.ID(), rel) })
+		if identityErr != nil {
+			return zero, identityErr
 		}
-		if err = inspect(rid, rel); err != nil {
-			return zero, err
+	} else {
+		for rid := range bs.relIDs {
+			rel, err := bs.getRelLocked(rid)
+			if err != nil {
+				return zero, fmt.Errorf("graph: exact erasure closure current relationship %d: %w", rid, err)
+			}
+			if err = inspect(rid, rel); err != nil {
+				return zero, err
+			}
 		}
+
 	}
 
 	overlayEntries, overlayDeletes := bs.pendingHistoryVersionOverlay(

@@ -72,14 +72,17 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 
 	bs.idxMu.Lock()
 
-	if _, exists := bs.relIDs[rid]; exists {
+	if exists, identityErr := bs.relExistsLocked(rid); identityErr != nil {
+		bs.idxMu.Unlock()
+		return identityErr
+	} else if exists {
 		bs.idxMu.Unlock()
 		return ErrRelExists
 	}
 
 	// Update in-memory state.
 	bs.relCache.Put(id, bs.frozenRelRow(r))
-	bs.relIDs[rid] = struct{}{}
+	bs.addRelIdentityLocked(rid)
 	bs.bumpRelRevLocked(rid)
 
 	// Type index.
@@ -197,7 +200,10 @@ func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 
 	bs.idxMu.Lock()
 
-	if _, exists := bs.relIDs[rid]; !exists {
+	if exists, identityErr := bs.relExistsLocked(rid); identityErr != nil {
+		bs.idxMu.Unlock()
+		return RelDeleteInfo{}, identityErr
+	} else if !exists {
 		bs.idxMu.Unlock()
 		return RelDeleteInfo{}, ErrRelNotFound
 	}
@@ -218,7 +224,7 @@ func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 
 	// Update in-memory state.
 	bs.relCache.MarkDeleted(id)
-	delete(bs.relIDs, rid)
+	bs.removeRelIdentityLocked(rid)
 	bs.ords.dropRel(rid)
 	bs.deleteRelRevLocked(rid)
 	delete(bs.relValidIdx, rid) // drop the inline valid-time stamp
@@ -458,8 +464,13 @@ func validateIncomingDeleteTarget(endNodeID, relID snowflake.ID) error {
 
 // --- Read helpers for TieredStore shard resolution ---
 
-// HasNodeID checks whether the given node ID exists in this shard. O(1).
+// HasNodeID checks resident identity. In disk identity mode this legacy
+// boolean API panics with UnsupportedIdentityProbeError: it cannot express
+// storage uncertainty. Use NodeExists for an error-returning answer.
 func (bs *Store) HasNodeID(id snowflake.ID) bool {
+	if bs != nil && bs.entityIdentityOnDisk {
+		panic(UnsupportedIdentityProbeError{Operation: "HasNodeID"})
+	}
 	if bs == nil || bs.dbClosed.Load() {
 		return false
 	}
@@ -469,8 +480,12 @@ func (bs *Store) HasNodeID(id snowflake.ID) bool {
 	return exists
 }
 
-// HasRelID checks whether the given relationship ID exists in this shard. O(1).
+// HasRelID is HasNodeID for resident relationship identity. Disk identity
+// callers must use RelationshipExists; the unsupported boolean call panics.
 func (bs *Store) HasRelID(id snowflake.ID) bool {
+	if bs != nil && bs.entityIdentityOnDisk {
+		panic(UnsupportedIdentityProbeError{Operation: "HasRelID"})
+	}
 	if bs == nil || bs.dbClosed.Load() {
 		return false
 	}

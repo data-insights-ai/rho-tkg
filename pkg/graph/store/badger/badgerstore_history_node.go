@@ -68,7 +68,10 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 
 	bs.idxMu.Lock()
 
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if exists, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+		bs.idxMu.Unlock()
+		return identityErr
+	} else if !exists {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
@@ -130,7 +133,7 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 
 	// Property/temporal/vector indexes for the new node state; the cache
 	// (the new current row) is published last, by publishMoveLocked.
-	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
+	bs.setNodeHashLocked(nid, badgerNodeIntegrityHash(updatedNode))
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState))   // BACKLOG 10c — the demoted history row
@@ -209,7 +212,10 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 
 	bs.idxMu.Lock()
 
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if exists, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+		bs.idxMu.Unlock()
+		return identityErr
+	} else if !exists {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
@@ -267,7 +273,7 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 
 	// Property/temporal/vector indexes for the new node state; the cache
 	// (the new current row) is published last, by publishMoveLocked.
-	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
+	bs.setNodeHashLocked(nid, badgerNodeIntegrityHash(updatedNode))
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState))   // BACKLOG 10c — the demoted history row
@@ -347,7 +353,10 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 
 	bs.idxMu.Lock()
 
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if exists, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+		bs.idxMu.Unlock()
+		return identityErr
+	} else if !exists {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
@@ -394,7 +403,7 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 		bs.idxMu.Unlock()
 		return err
 	}
-	bs.nodeHashes[nid] = badgerNodeIntegrityHash(current)
+	bs.setNodeHashLocked(nid, badgerNodeIntegrityHash(current))
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(current))   // BACKLOG 10c
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c — the demoted history row
@@ -535,7 +544,9 @@ func (bs *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 }
 
 func (bs *Store) validateDeleteNodeRelTombstonesLocked(nid types.NodeID, relTombstones []RelTombstone, prefetched map[types.RelID]RelDeleteInfo) error {
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if exists, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+		return identityErr
+	} else if !exists {
 		return ErrNodeNotFound
 	}
 
@@ -638,10 +649,11 @@ func (bs *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types
 		func() bool {
 			return bs.historicalMembershipOnDisk || bs.labelTxMembersBuilt.Load() || bs.nodeBeliefWatermarkBuilt.Load() || len(bs.nodePropTx) > 0
 		},
-		func() {
+		func() error {
 			bs.recordNodeLabelMembersLocked(n)
 			bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n))
 			bs.recordNodeRowLocked(n) // backlog 8: tracking or built property sidecars
+			return nil
 		},
 		func() error {
 			return bs.appendOpsLoggedRouted(storecontract.ChangeNodeHistoryVersion, logPayload, token, writeOp{opType: writeOpSet, key: key, value: data})
@@ -1095,7 +1107,11 @@ func (bs *Store) ForEachDeletedNodeID(fn func(types.NodeID) bool) error {
 			if id.SnowflakeID() > maxID {
 				return nil
 			}
-			if bs.HasNodeID(id.SnowflakeID()) {
+			exists, identityErr := bs.NodeExists(id)
+			if identityErr != nil {
+				return identityErr
+			}
+			if exists {
 				continue
 			}
 			if !fn(id) {

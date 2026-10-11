@@ -45,6 +45,9 @@ func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	if bs.entityIdentityOnDisk {
+		return fmt.Errorf("%w: resident advanced indexes are unavailable in disk entity identity mode", storecontract.ErrCapabilityNotSupported)
+	}
 	if err := storecontract.ValidateRelTypeToken(relType); err != nil {
 		return err
 	}

@@ -765,12 +765,21 @@ func (bs *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	// "collect IDs, then process" convention already accepts this; the
 	// consistency guarantee below is about VALUES read during Phase 2, not
 	// about the candidate SET being perfectly synced to one instant.
-	bs.idxMu.RLock()
-	liveIDs := make([]types.NodeID, 0, len(bs.nodeIDs))
-	for nid := range bs.nodeIDs {
-		liveIDs = append(liveIDs, nid)
+	var liveIDs []types.NodeID
+	if bs.entityIdentityOnDisk {
+		var identityErr error
+		liveIDs, identityErr = bs.AllNodeIDs(QueryOpts{})
+		if identityErr != nil {
+			return nil, identityErr
+		}
+	} else {
+		bs.idxMu.RLock()
+		liveIDs = make([]types.NodeID, 0, len(bs.nodeIDs))
+		for nid := range bs.nodeIDs {
+			liveIDs = append(liveIDs, nid)
+		}
+		bs.idxMu.RUnlock()
 	}
-	bs.idxMu.RUnlock()
 
 	var deletedIDs []types.NodeID
 	if err := bs.ForEachDeletedNodeID(func(nid types.NodeID) bool {
@@ -857,12 +866,21 @@ func (bs *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 		return nil, err
 	}
 
-	bs.idxMu.RLock()
-	liveIDs := make([]types.RelID, 0, len(bs.relIDs))
-	for rid := range bs.relIDs {
-		liveIDs = append(liveIDs, rid)
+	var liveIDs []types.RelID
+	if bs.entityIdentityOnDisk {
+		var identityErr error
+		liveIDs, identityErr = bs.AllRelIDs(QueryOpts{})
+		if identityErr != nil {
+			return nil, identityErr
+		}
+	} else {
+		bs.idxMu.RLock()
+		liveIDs = make([]types.RelID, 0, len(bs.relIDs))
+		for rid := range bs.relIDs {
+			liveIDs = append(liveIDs, rid)
+		}
+		bs.idxMu.RUnlock()
 	}
-	bs.idxMu.RUnlock()
 
 	var deletedIDs []types.RelID
 	if err := bs.ForEachDeletedRelID(func(rid types.RelID) bool {

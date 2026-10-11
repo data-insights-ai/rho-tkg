@@ -94,6 +94,15 @@ const (
 
 // Config configures a Store instance.
 type Config struct {
+	// EntityIdentityOnDisk resolves live identity and integrity from canonical
+	// rows instead of retaining one ID, hash and revision entry per entity.
+	// Pending and in-flight writes remain visible. Prefetch guards use fixed
+	// revision stripes; collisions force an exact reread, never stale acceptance.
+	// Requires SyncWrites, HistoricalMembershipOnDisk, disk label/adjacency/
+	// property indexes, DisableOrdinals, DisablePlannerStats and probe-only
+	// history. Resident advanced indexes are refused. Build persistent historical
+	// membership to completion before serving pinned queries on an existing store.
+	EntityIdentityOnDisk bool
 	// HistoricalMembershipOnDisk persists historical label/type/property
 	// candidates instead of building process-wide RAM membership tables.
 	// Enabling it raises the minimum writer marker to v5 (entity rows keep
@@ -445,6 +454,10 @@ type pendingLogRecord struct {
 //
 // Counters are atomic int64 fields, persisted atomically in the flush WriteBatch. No OCC contention.
 type Store struct {
+	entityIdentityOnDisk              bool
+	identityRevisions                 *identityRevisionState
+	identityReadMu                    sync.Mutex
+	identityReaders                   sync.WaitGroup
 	historicalMembershipOnDisk        bool
 	historicalMembershipReady         atomic.Bool
 	historicalMembershipMu            sync.Mutex
@@ -1020,6 +1033,9 @@ func newRelCache(capacity int, budget int64) indexpkg.EntityCache[*types.Relatio
 }
 
 func New(cfg Config) (*Store, error) {
+	if cfg.EntityIdentityOnDisk && (cfg.InMemory || cfg.ResidentCache || !cfg.SyncWrites || !cfg.HistoricalMembershipOnDisk || !cfg.LabelIndexOnDisk || !cfg.AdjacencyIndexOnDisk || !cfg.PropertyIndexOnDisk || !cfg.DisableOrdinals || !cfg.DisablePlannerStats || !cfg.HistoryPresenceProbeOnly) {
+		return nil, fmt.Errorf("%w: disk entity identity requires synced persistent historical membership, a nonresident disk store, disk label/adjacency/property indexes, disabled ordinals/statistics and probe-only history", ErrInvalidStoreMutation)
+	}
 	if cfg.HistoricalMembershipOnDisk && !cfg.ReadOnly && !cfg.SyncWrites {
 		return nil, fmt.Errorf("%w: HistoricalMembershipOnDisk requires SyncWrites for writable stores", ErrInvalidStoreMutation)
 	}
@@ -1128,6 +1144,7 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	bs := &Store{
+		entityIdentityOnDisk:       cfg.EntityIdentityOnDisk,
 		historicalMembershipOnDisk: cfg.HistoricalMembershipOnDisk,
 		db:                         db,
 
@@ -1188,6 +1205,10 @@ func New(cfg Config) (*Store, error) {
 	// field) — set it here, before any concurrent access is possible (bs is
 	// still local to this constructor).
 	bs.logEnabled.Store(cfg.ChangeLog && !cfg.ReadOnly)
+
+	if cfg.EntityIdentityOnDisk {
+		bs.identityRevisions = new(identityRevisionState)
+	}
 
 	// Resident mode: keep every decoded node/rel resident so a cache miss never
 	// re-decodes (msgpack unmarshal + wire-decode) the same entity twice — the
@@ -1291,6 +1312,9 @@ func New(cfg Config) (*Store, error) {
 // loadIndexes rebuilds in-memory indexes and counters from Badger.
 // Single db.View() scan of all index key prefixes (keys-only, no values).
 func (bs *Store) loadIndexes() error {
+	if bs.entityIdentityOnDisk {
+		return bs.loadDiskIdentityIndexes()
+	}
 	err := bs.loadIndexesScan()
 	if err != nil {
 		return err
@@ -1418,9 +1442,9 @@ func (bs *Store) loadIndexesScan() error {
 				}
 				continue
 			}
-			bs.nodeIDs[nid] = struct{}{}
+			bs.addNodeIdentityLocked(nid)
 			bs.ords.node(nid, true) // ID order: the open numbers the stored nodes 1..N
-			bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
+			bs.setNodeHashLocked(nid, badgerNodeIntegrityHash(n))
 			bs.bumpNodeRevLocked(nid)
 			labels := bs.addNodeIndexesFromRow(nid, collectNodeLabelTokens(n))
 			bs.addNodePropertyKeyCounts(n)
@@ -1505,7 +1529,7 @@ func (bs *Store) loadIndexesScan() error {
 				}
 				continue
 			}
-			bs.relIDs[rid] = struct{}{}
+			bs.addRelIdentityLocked(rid)
 			bs.ords.rel(rid, true)              // ID order: the open numbers the stored relationships 1..N
 			bs.bumpRelRevLocked(rid)            // seed a non-zero rev so a pre-first-write prefetch doesn't fall back needlessly (mirrors nodeRevs seeding above)
 			bs.addRelPropertyTypeClassCounts(r) // rebuild rel type-class counters + contrib (BACKLOG 5B)
@@ -2167,6 +2191,12 @@ func (bs *Store) Clear() error {
 	defer bs.histRelStamps.buildMu.Unlock()
 
 	// Clear in-memory indexes.
+	if bs.entityIdentityOnDisk {
+		for i := range bs.identityRevisions.nodes {
+			advanceIdentityRevision(&bs.identityRevisions.nodes[i])
+			advanceIdentityRevision(&bs.identityRevisions.rels[i])
+		}
+	}
 	bs.nodeIDs = make(map[types.NodeID]struct{})
 	bs.nodeHashes = make(map[types.NodeID]string)
 	bs.nodeRevs = make(map[types.NodeID]uint64)
@@ -2335,7 +2365,10 @@ func (bs *Store) Close() error {
 	}
 	var err error
 	bs.closeOnce.Do(func() {
+		bs.identityReadMu.Lock()
 		bs.closing.Store(true)
+		bs.identityReadMu.Unlock()
+		bs.identityReaders.Wait()
 		close(bs.stopCh)
 		<-bs.flushDone // wait for flushLoop exit (or immediate if never started)
 		<-bs.gcDone    // wait for GC exit

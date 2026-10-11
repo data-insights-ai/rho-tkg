@@ -51,6 +51,9 @@ type appendDelta struct {
 // recordNodeAppend notes a pure insert against every label the node carries. Called
 // AFTER bumpNodeLabelEpochs so the stamped epoch includes this write's own bump.
 func (bs *Store) recordNodeAppend(n *types.Node) {
+	if bs.entityIdentityOnDisk {
+		return
+	}
 	if n == nil {
 		return
 	}

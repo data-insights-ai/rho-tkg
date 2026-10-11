@@ -50,7 +50,7 @@ import (
 // is either enqueued before the build starts (its overlay capture or Badger scan
 // sees it) or after it finished (record runs). The not-built path — import and
 // replica bootstrap before any pinned scan — stays on the shared lock.
-func (bs *Store) enqueueVersionAgainstLazyBuilds(built func() bool, record func(), enqueue func() error) error {
+func (bs *Store) enqueueVersionAgainstLazyBuilds(built func() bool, record func() error, enqueue func() error) error {
 	bs.idxMu.RLock()
 	if !built() {
 		err := enqueue()
@@ -60,7 +60,9 @@ func (bs *Store) enqueueVersionAgainstLazyBuilds(built func() bool, record func(
 	bs.idxMu.RUnlock()
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
-	record()
+	if err := record(); err != nil {
+		return err
+	}
 	return enqueue()
 }
 

@@ -132,6 +132,9 @@ func (bs *Store) bumpRelEpochForTypeNoPoison(token uint16) {
 }
 
 func (bs *Store) recordRelAppend(token uint16, id types.RelID) {
+	if bs.entityIdentityOnDisk {
+		return
+	}
 	bs.relAppendMu.Lock()
 	defer bs.relAppendMu.Unlock()
 	if bs.relAppendDeltas == nil {

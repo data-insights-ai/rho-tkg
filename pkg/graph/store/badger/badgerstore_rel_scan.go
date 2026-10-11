@@ -45,6 +45,16 @@ func (bs *Store) ForEachRelByType(token uint16, opts QueryOpts, fn func(*types.R
 	if err := storecontract.ValidateQueryOpts(opts); err != nil {
 		return err
 	}
+	if bs.entityIdentityOnDisk {
+		if fn == nil {
+			return errNilIterationCallback()
+		}
+		emitted := 0
+		return bs.forEachDiskTypeRel(token, opts, func(r *types.Relationship) (bool, error) {
+			emitted++
+			return fn(r) && (opts.Limit == 0 || emitted < opts.Limit), nil
+		})
+	}
 
 	rids := bs.typeScanIDs(token)
 	if len(rids) == 0 {
@@ -107,7 +117,10 @@ func (bs *Store) forEachAdjacentRel(nid types.NodeID, typeToken uint16, incoming
 	}
 
 	bs.idxMu.RLock()
-	if _, ok := bs.nodeIDs[nid]; !ok {
+	if ok, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+		bs.idxMu.RUnlock()
+		return identityErr
+	} else if !ok {
 		bs.idxMu.RUnlock()
 		return ErrNodeNotFound
 	}
@@ -166,7 +179,10 @@ func (bs *Store) ForEachAdjacentEndpoint(nid types.NodeID, typeToken uint16, inc
 	}
 
 	bs.idxMu.RLock()
-	if _, ok := bs.nodeIDs[nid]; !ok {
+	if ok, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+		bs.idxMu.RUnlock()
+		return identityErr
+	} else if !ok {
 		bs.idxMu.RUnlock()
 		return ErrNodeNotFound
 	}
@@ -203,7 +219,10 @@ func (bs *Store) ForEachAdjacentEndpointOrdinal(nid types.NodeID, typeToken uint
 		return err
 	}
 	bs.idxMu.RLock()
-	if _, ok := bs.nodeIDs[nid]; !ok {
+	if ok, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+		bs.idxMu.RUnlock()
+		return identityErr
+	} else if !ok {
 		bs.idxMu.RUnlock()
 		return ErrNodeNotFound
 	}

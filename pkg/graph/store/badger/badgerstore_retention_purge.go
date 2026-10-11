@@ -351,7 +351,10 @@ func (bs *Store) PurgeRelationshipByInfo(rel storecontract.PurgedRel) error {
 	rid := rel.ID
 
 	bs.idxMu.Lock()
-	if _, entityHere := bs.relIDs[rid]; entityHere {
+	if entityHere, identityErr := bs.relExistsLocked(rid); identityErr != nil {
+		bs.idxMu.Unlock()
+		return identityErr
+	} else if entityHere {
 		memberOps, e := bs.historicalMembershipEraseOps(false, types.EntityID(rid))
 		if e != nil {
 			bs.idxMu.Unlock()

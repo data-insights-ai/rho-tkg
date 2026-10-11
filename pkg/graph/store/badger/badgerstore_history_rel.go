@@ -66,7 +66,10 @@ func (bs *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 
 	bs.idxMu.Lock()
 
-	if _, exists := bs.relIDs[rid]; !exists {
+	if exists, identityErr := bs.relExistsLocked(rid); identityErr != nil {
+		bs.idxMu.Unlock()
+		return identityErr
+	} else if !exists {
 		bs.idxMu.Unlock()
 		return ErrRelNotFound
 	}
@@ -245,13 +248,16 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 		func() bool {
 			return bs.historicalMembershipOnDisk || bs.relTypeMembersBuilt.Load() || bs.relBeliefWatermarkBuilt.Load() || len(bs.relTypeTemporalIndexes) > 0 || len(bs.relPropTx) > 0
 		},
-		func() {
+		func() error {
 			bs.recordRelTypeMemberLocked(r)
 			bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r))
 			bs.recordRelRowLocked(r) // backlog 8: tracking or built property sidecars
-			if _, live := bs.relIDs[rid]; live || indexpkg.RelCoveredInTemporalIndexes(bs.relTypeTemporalIndexes, r, id) {
+			if live, identityErr := bs.relExistsLocked(rid); identityErr != nil {
+				return identityErr
+			} else if live || indexpkg.RelCoveredInTemporalIndexes(bs.relTypeTemporalIndexes, r, id) {
 				bs.maintainRelTypeTemporalIndexesAdd(r, id)
 			}
+			return nil
 		},
 		func() error {
 			return bs.appendOpsLoggedRouted(storecontract.ChangeRelHistoryVersion, logPayload, token, writeOp{opType: writeOpSet, key: key, value: data})
@@ -684,7 +690,11 @@ func (bs *Store) ForEachDeletedRelID(fn func(types.RelID) bool) error {
 			if id.SnowflakeID() > maxID {
 				return nil
 			}
-			if bs.HasRelID(id.SnowflakeID()) {
+			exists, identityErr := bs.RelationshipExists(id)
+			if identityErr != nil {
+				return identityErr
+			}
+			if exists {
 				continue
 			}
 			if !fn(id) {

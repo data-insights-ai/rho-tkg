@@ -30,7 +30,9 @@ func (bs *Store) RelTypeDegreeStats(typeToken uint16) (storecontract.RelTypeDegr
 			if typeToken != 0 && e.typ != typeToken {
 				continue
 			}
-			if _, live := bs.relIDs[rid]; !live {
+			if live, identityErr := bs.relExistsLocked(rid); identityErr != nil {
+				return storecontract.RelTypeDegreeStats{}, false, identityErr
+			} else if !live {
 				continue // an orphaned incoming entry, not a relationship
 			}
 			rels++

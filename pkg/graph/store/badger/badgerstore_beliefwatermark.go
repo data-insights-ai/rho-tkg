@@ -214,6 +214,9 @@ func (bs *Store) ensureRelBeliefWatermarkBuilt() error {
 
 // NodeBeliefWatermark implements store.NodeBeliefWatermarkCapability.
 func (bs *Store) NodeBeliefWatermark(id types.NodeID) (types.Instant, bool) {
+	if bs.entityIdentityOnDisk {
+		return 0, false // canonical chain resolution remains authoritative
+	}
 	if err := bs.checkOpen(); err != nil {
 		return 0, false
 	}
@@ -228,6 +231,9 @@ func (bs *Store) NodeBeliefWatermark(id types.NodeID) (types.Instant, bool) {
 
 // RelBeliefWatermark implements store.RelBeliefWatermarkCapability.
 func (bs *Store) RelBeliefWatermark(id types.RelID) (types.Instant, bool) {
+	if bs.entityIdentityOnDisk {
+		return 0, false
+	}
 	if err := bs.checkOpen(); err != nil {
 		return 0, false
 	}

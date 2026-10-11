@@ -92,25 +92,34 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 	// Verify endpoints exist (skipped for a co-located sharded write — the sharded
 	// owner validated the endpoints on their own shards before calling).
 	if validateEndpoints {
-		if _, exists := bs.nodeIDs[startNID]; !exists {
+		if exists, identityErr := bs.nodeExistsLocked(startNID); identityErr != nil {
+			bs.idxMu.Unlock()
+			return identityErr
+		} else if !exists {
 			bs.idxMu.Unlock()
 			return ErrNodeNotFound
 		}
-		if _, exists := bs.nodeIDs[endNID]; !exists {
+		if exists, identityErr := bs.nodeExistsLocked(endNID); identityErr != nil {
+			bs.idxMu.Unlock()
+			return identityErr
+		} else if !exists {
 			bs.idxMu.Unlock()
 			return ErrNodeNotFound
 		}
 	}
 
 	// Check for duplicate via O(1) relIDs.
-	if _, exists := bs.relIDs[rid]; exists {
+	if exists, identityErr := bs.relExistsLocked(rid); identityErr != nil {
+		bs.idxMu.Unlock()
+		return identityErr
+	} else if exists {
 		bs.idxMu.Unlock()
 		return ErrRelExists
 	}
 
 	// Update in-memory state.
 	bs.relCache.Put(id, bs.frozenRelRow(r))
-	bs.relIDs[rid] = struct{}{}
+	bs.addRelIdentityLocked(rid)
 	bs.bumpRelRevLocked(rid)
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r)) // BACKLOG 10c
 
@@ -165,6 +174,10 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 // because endpoints/type are immutable, so a property-only update leaves
 // relIDs/typeIdx/adjacency membership completely unchanged.
 func (bs *Store) bumpRelRevLocked(rid types.RelID) {
+	if bs.entityIdentityOnDisk {
+		advanceIdentityRevision(&bs.identityRevisions.rels[identityRevisionStripe(types.EntityID(rid))])
+		return
+	}
 	if bs.relRevs == nil {
 		bs.relRevs = make(map[types.RelID]uint64)
 	}
@@ -179,6 +192,10 @@ func (bs *Store) bumpRelRevLocked(rid types.RelID) {
 // shared delete mutator (deleteRelByInfo) so every rel delete path clears the
 // rev entry in one place.
 func (bs *Store) deleteRelRevLocked(rid types.RelID) {
+	if bs.entityIdentityOnDisk {
+		advanceIdentityRevision(&bs.identityRevisions.rels[identityRevisionStripe(types.EntityID(rid))])
+		return
+	}
 	delete(bs.relRevs, rid)
 }
 
@@ -191,6 +208,15 @@ func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 	}
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return nil, err
+	}
+	if bs.entityIdentityOnDisk {
+		bs.idxMu.RLock()
+		r, err := bs.getRelLocked(rid)
+		bs.idxMu.RUnlock()
+		if err != nil {
+			return nil, err
+		}
+		return r.DeepCopy(), nil
 	}
 	id := rid.SnowflakeID()
 	// Check cache first.
@@ -260,7 +286,9 @@ func (bs *Store) getRelInTxn(snap *scanSnapshot, rid types.RelID) (*types.Relati
 		return nil, ErrRelNotFound
 	}
 
-	if _, exists := bs.relIDs[rid]; !exists {
+	if exists, identityErr := bs.relExistsLocked(rid); identityErr != nil {
+		return nil, identityErr
+	} else if !exists {
 		return nil, ErrRelNotFound
 	}
 
@@ -346,7 +374,10 @@ func (bs *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 
 	bs.idxMu.Lock()
 
-	if _, exists := bs.relIDs[rid]; !exists {
+	if exists, identityErr := bs.relExistsLocked(rid); identityErr != nil {
+		bs.idxMu.Unlock()
+		return identityErr
+	} else if !exists {
 		bs.idxMu.Unlock()
 		return ErrRelNotFound
 	}
@@ -439,7 +470,10 @@ func (bs *Store) deleteRelationshipRouted(rid types.RelID, token uint64) error {
 	}
 
 	bs.idxMu.Lock()
-	if _, exists := bs.relIDs[rid]; !exists {
+	if exists, identityErr := bs.relExistsLocked(rid); identityErr != nil {
+		bs.idxMu.Unlock()
+		return identityErr
+	} else if !exists {
 		bs.idxMu.Unlock()
 		return ErrRelNotFound
 	}
@@ -481,7 +515,10 @@ func (bs *Store) DeleteRelationshipForeignIncoming(rid types.RelID) error {
 	}
 
 	bs.idxMu.Lock()
-	if _, exists := bs.relIDs[rid]; !exists {
+	if exists, identityErr := bs.relExistsLocked(rid); identityErr != nil {
+		bs.idxMu.Unlock()
+		return identityErr
+	} else if !exists {
 		bs.idxMu.Unlock()
 		return ErrRelNotFound
 	}
@@ -544,7 +581,7 @@ type relPrefetchSnapshot struct {
 // brief RLock the rev is later compared against — see relPrefetchSnapshot.
 func (bs *Store) prefetchRelWithRev(rid types.RelID) (relPrefetchSnapshot, error) {
 	bs.idxMu.RLock()
-	rev := bs.relRevs[rid]
+	rev := bs.relRevisionLocked(rid)
 	bs.idxMu.RUnlock()
 	r, err := bs.prefetchRel(rid)
 	if err != nil {
@@ -554,7 +591,7 @@ func (bs *Store) prefetchRelWithRev(rid types.RelID) (relPrefetchSnapshot, error
 }
 
 func (bs *Store) currentRelForPrefetchLocked(rid types.RelID, prefetched relPrefetchSnapshot) (*types.Relationship, error) {
-	if prefetched.rel != nil && prefetched.rev != 0 && bs.relRevs[rid] == prefetched.rev {
+	if prefetched.rel != nil && prefetched.rev != 0 && bs.relRevisionLocked(rid) == prefetched.rev {
 		info := relDeleteInfoFromRelationship(prefetched.rel)
 		if types.RelID(info.ID) == rid && bs.relDeleteInfoStillIndexedLocked(info) {
 			return prefetched.rel, nil
@@ -573,7 +610,7 @@ func (bs *Store) currentRelForPrefetchLocked(rid types.RelID, prefetched relPref
 // adjacency mirror to verify endpoints against).
 func (bs *Store) prefetchRelDeleteInfo(rid types.RelID) (RelDeleteInfo, error) {
 	bs.idxMu.RLock()
-	rev := bs.relRevs[rid]
+	rev := bs.relRevisionLocked(rid)
 	bs.idxMu.RUnlock()
 	r, err := bs.prefetchRel(rid)
 	if err != nil {
@@ -591,13 +628,19 @@ func (bs *Store) prefetchRelDeleteInfo(rid types.RelID) (RelDeleteInfo, error) {
 // relDeleteInfoFromRelationship) always reports stale, forcing callers that
 // didn't capture a rev to fall back to a locked re-read.
 func (bs *Store) relDeleteInfoRevCurrentLocked(info RelDeleteInfo) bool {
-	return info.Rev != 0 && bs.relRevs[types.RelID(info.ID)] == info.Rev
+	return info.Rev != 0 && bs.relRevisionLocked(types.RelID(info.ID)) == info.Rev
 }
 
 func (bs *Store) relDeleteInfoStillIndexedLocked(info RelDeleteInfo) bool {
 	rid := types.RelID(info.ID)
 	startNID := types.NodeID(info.StartID)
 	endNID := types.NodeID(info.EndID)
+	if bs.entityIdentityOnDisk {
+		// A failed proof only forces the caller's error-returning reread. It
+		// never authorizes a write or reports identity absence to the caller.
+		r, err := bs.getRelLocked(rid)
+		return err == nil && r.StartNodeID() == startNID && r.EndNodeID() == endNID && uint16(r.TypeToken()) == info.RelType
+	}
 	if _, exists := bs.relIDs[rid]; !exists {
 		return false
 	}
@@ -635,7 +678,7 @@ func (bs *Store) deleteRelByInfo(info RelDeleteInfo) {
 
 	// Update in-memory state.
 	bs.relCache.MarkDeleted(info.ID)
-	delete(bs.relIDs, rid)
+	bs.removeRelIdentityLocked(rid)
 	bs.ords.dropRel(rid)
 	bs.deleteRelRevLocked(rid)
 	delete(bs.relValidIdx, rid)                 // drop the inline valid-time stamp
@@ -688,13 +731,28 @@ func (bs *Store) deleteRelByInfo(info RelDeleteInfo) {
 
 // RelationshipsByType returns relationships with the given type token, with optional pagination
 func (bs *Store) getRelLocked(rid types.RelID) (*types.Relationship, error) {
+	return bs.getRelLockedWithCache(rid, true)
+}
+
+func (bs *Store) getRelLockedWithCache(rid types.RelID, fill bool) (*types.Relationship, error) {
 	id := rid.SnowflakeID()
-	v, status := bs.relCache.Get(id)
+	var v *types.Relationship
+	var status indexpkg.CacheStatus
+	if fill {
+		v, status = bs.relCache.Get(id)
+	} else {
+		v, status = bs.relCache.GetNoPromote(id)
+	}
 	if status == indexpkg.CacheHit {
 		return v, nil
 	}
 	if status == indexpkg.CacheDeleted {
 		return nil, ErrRelNotFound
+	}
+	if bs.entityIdentityOnDisk {
+		if r, buffered, err := bs.bufferedRelLocked(rid); buffered {
+			return r, err
+		}
 	}
 
 	// Cache miss — read from Badger.
@@ -726,7 +784,9 @@ func (bs *Store) getRelLocked(rid types.RelID) (*types.Relationship, error) {
 		return nil, err
 	}
 	r.Freeze() // shared between cache and caller
-	bs.relCache.LoadCleanAt(id, r, epoch)
+	if fill {
+		bs.relCache.LoadCleanAt(id, r, epoch)
+	}
 	return r, nil
 }
 
@@ -757,6 +817,12 @@ func (bs *Store) prefetchRelScan(rid types.RelID) (*types.Relationship, error) {
 // decoded relationship is frozen before return because callers may publish
 // it into the cache, and cache entries must never be mutable.
 func (bs *Store) prefetchRelNoFill(rid types.RelID, promote bool) (r *types.Relationship, miss bool, err error) {
+	if bs.entityIdentityOnDisk {
+		bs.idxMu.RLock()
+		defer bs.idxMu.RUnlock()
+		r, err = bs.getRelLockedWithCache(rid, promote)
+		return r, false, err
+	}
 	id := rid.SnowflakeID()
 	// Point reads promote (Get); scan reads do not (GetNoPromote) — see
 	// prefetchNodeNoFill for the concurrent-scan serialization this avoids.

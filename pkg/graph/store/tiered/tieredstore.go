@@ -14,6 +14,7 @@ import (
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	lockspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/locks"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	badger "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
@@ -26,6 +27,9 @@ const (
 
 // Config configures a Store instance.
 type Config struct {
+	// EntityIdentityOnDisk is reserved for a future wrapper implementation.
+	// New rejects it before opening any shard; use a direct Badger store today.
+	EntityIdentityOnDisk bool
 	// DataDir is the root data directory. Required unless InMemory is true.
 	DataDir string
 	// InMemory creates in-memory shards (testing only).
@@ -426,6 +430,9 @@ func (ts *Store) openWarmShards(cfg Config, entries []ShardEntry, warmIdx []int,
 
 // New creates a Store with a reference shard and one hot event shard.
 func New(cfg Config) (*Store, error) {
+	if cfg.EntityIdentityOnDisk {
+		return nil, fmt.Errorf("%w: tiered disk entity identity is not supported", storecontract.ErrCapabilityNotSupported)
+	}
 	if !cfg.InMemory && cfg.DataDir == "" {
 		return nil, fmt.Errorf("graph: Config.DataDir required unless InMemory")
 	}

@@ -51,7 +51,10 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 	bs.idxMu.Lock()
 
 	// Check for duplicate.
-	if _, exists := bs.nodeIDs[nid]; exists {
+	if exists, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+		bs.idxMu.Unlock()
+		return identityErr
+	} else if exists {
 		bs.idxMu.Unlock()
 		return ErrNodeExists
 	}
@@ -72,8 +75,8 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 
 	// Update in-memory state.
 	bs.nodeCache.Put(id, bs.frozenNodeRow(n))
-	bs.nodeIDs[nid] = struct{}{}
-	bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
+	bs.addNodeIdentityLocked(nid)
+	bs.setNodeHashLocked(nid, badgerNodeIntegrityHash(n))
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
 
@@ -117,6 +120,15 @@ func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 	}
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return nil, err
+	}
+	if bs.entityIdentityOnDisk {
+		bs.idxMu.RLock()
+		n, err := bs.getNodeLocked(nid)
+		bs.idxMu.RUnlock()
+		if err != nil {
+			return nil, err
+		}
+		return n.DeepCopy(), nil
 	}
 	id := nid.SnowflakeID()
 	// Check cache first.
@@ -203,7 +215,9 @@ func (bs *Store) getNodeInTxn(snap *scanSnapshot, nid types.NodeID) (*types.Node
 		return nil, ErrNodeNotFound
 	}
 
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if exists, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+		return nil, identityErr
+	} else if !exists {
 		return nil, ErrNodeNotFound
 	}
 
@@ -244,6 +258,15 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return "", err
 	}
+	if bs.entityIdentityOnDisk {
+		bs.idxMu.RLock()
+		defer bs.idxMu.RUnlock()
+		n, err := bs.getNodeLocked(nid)
+		if err != nil {
+			return "", err
+		}
+		return badgerNodeIntegrityHash(n), nil
+	}
 	id := nid.SnowflakeID()
 	bs.idxMu.RLock()
 	_, exists := bs.nodeIDs[nid]
@@ -262,7 +285,7 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 		hash := badgerNodeIntegrityHash(v)
 		bs.idxMu.Lock()
 		if _, exists := bs.nodeIDs[nid]; exists {
-			bs.nodeHashes[nid] = hash
+			bs.setNodeHashLocked(nid, hash)
 			bs.idxMu.Unlock()
 			return hash, nil
 		}
@@ -304,7 +327,7 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 	bs.nodeCache.LoadCleanAt(id, n, epoch)
 	bs.idxMu.Lock()
 	if _, exists := bs.nodeIDs[nid]; exists {
-		bs.nodeHashes[nid] = hash
+		bs.setNodeHashLocked(nid, hash)
 		bs.idxMu.Unlock()
 		return hash, nil
 	}
@@ -345,6 +368,11 @@ type nodeDeleteInfo struct {
 }
 
 func (bs *Store) bumpNodeRevLocked(nid types.NodeID) {
+	if bs.entityIdentityOnDisk {
+		advanceIdentityRevision(&bs.identityRevisions.nodes[identityRevisionStripe(types.EntityID(nid))])
+		bs.bumpNodeEpoch()
+		return
+	}
 	if bs.nodeRevs == nil {
 		bs.nodeRevs = make(map[types.NodeID]uint64)
 	}
@@ -381,16 +409,23 @@ func (bs *Store) bumpRelEpoch() {
 }
 
 func (bs *Store) deleteNodeRevLocked(nid types.NodeID) {
+	if bs.entityIdentityOnDisk {
+		advanceIdentityRevision(&bs.identityRevisions.nodes[identityRevisionStripe(types.EntityID(nid))])
+		return
+	}
 	delete(bs.nodeRevs, nid)
 }
 
 func (bs *Store) prefetchNodeDeleteInfo(nid types.NodeID) (nodeDeleteInfo, error) {
 	bs.idxMu.RLock()
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if exists, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+		bs.idxMu.RUnlock()
+		return nodeDeleteInfo{}, identityErr
+	} else if !exists {
 		bs.idxMu.RUnlock()
 		return nodeDeleteInfo{}, ErrNodeNotFound
 	}
-	rev := bs.nodeRevs[nid]
+	rev := bs.nodeRevisionLocked(nid)
 	bs.idxMu.RUnlock()
 
 	n, err := bs.prefetchNode(nid)
@@ -404,10 +439,13 @@ func (bs *Store) nodeDeleteInfoStillCurrentLocked(nid types.NodeID, info nodeDel
 	if info.node == nil || info.rev == 0 {
 		return false
 	}
+	if bs.entityIdentityOnDisk {
+		return bs.nodeRevisionLocked(nid) == info.rev
+	}
 	if _, exists := bs.nodeIDs[nid]; !exists {
 		return false
 	}
-	return bs.nodeRevs[nid] == info.rev
+	return bs.nodeRevisionLocked(nid) == info.rev
 }
 
 func (bs *Store) currentNodeForPrefetchLocked(nid types.NodeID, info nodeDeleteInfo) (*types.Node, error) {
@@ -449,7 +487,10 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 
 	// TOCTOU guard: re-verify existence after acquiring write lock.
 	// A concurrent delete may have removed the node between prefetchNode and here.
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if exists, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+		bs.idxMu.Unlock()
+		return identityErr
+	} else if !exists {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
@@ -499,7 +540,7 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 
 	// Update in-memory state.
 	bs.nodeCache.MarkDeleted(id)
-	delete(bs.nodeIDs, nid)
+	bs.removeNodeIdentityLocked(nid)
 	bs.ords.dropNode(nid)
 	delete(bs.nodeHashes, nid)
 	bs.deleteNodeRevLocked(nid)
@@ -556,7 +597,10 @@ func (bs *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 
 	bs.idxMu.Lock()
 
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if exists, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+		bs.idxMu.Unlock()
+		return identityErr
+	} else if !exists {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
@@ -600,7 +644,7 @@ func (bs *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 		return err
 	}
 	bs.nodeCache.Put(id, bs.frozenNodeRow(n))
-	bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
+	bs.setNodeHashLocked(nid, badgerNodeIntegrityHash(n))
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
 	bs.addNodePropertyKeyCounts(n)
@@ -663,7 +707,10 @@ func (bs *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 
 	bs.idxMu.Lock()
 
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if exists, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+		bs.idxMu.Unlock()
+		return identityErr
+	} else if !exists {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
@@ -717,7 +764,7 @@ func (bs *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 
 	// Update cache and property/temporal/vector indexes for the new node state.
 	bs.nodeCache.Put(id, bs.frozenNodeRow(updatedNode))
-	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
+	bs.setNodeHashLocked(nid, badgerNodeIntegrityHash(updatedNode))
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	bs.addNodePropertyKeyCounts(updatedNode)
@@ -784,7 +831,10 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 
 	bs.idxMu.Lock()
 
-	if _, exists := bs.nodeIDs[nid]; !exists {
+	if exists, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+		bs.idxMu.Unlock()
+		return identityErr
+	} else if !exists {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
@@ -831,7 +881,7 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	bs.recordNodeLabelMembersLocked(updatedNode) // transaction-time label membership (new token)
 
 	bs.nodeCache.Put(id, bs.frozenNodeRow(updatedNode))
-	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
+	bs.setNodeHashLocked(nid, badgerNodeIntegrityHash(updatedNode))
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	bs.addNodePropertyKeyCounts(updatedNode)
@@ -942,6 +992,12 @@ func (bs *Store) prefetchNodeScan(nid types.NodeID) (*types.Node, error) {
 // before return because callers may publish it into the cache, and cache
 // entries must never be mutable.
 func (bs *Store) prefetchNodeNoFill(nid types.NodeID, promote bool) (n *types.Node, miss bool, err error) {
+	if bs.entityIdentityOnDisk {
+		bs.idxMu.RLock()
+		defer bs.idxMu.RUnlock()
+		n, err = bs.getNodeLockedWithCache(nid, promote)
+		return n, false, err
+	}
 	id := nid.SnowflakeID()
 	// Point reads promote the hit to MRU (Get, exclusive lock + MoveToFront);
 	// scan reads do not (GetNoPromote, read lock, no recency write) — a
@@ -1003,13 +1059,28 @@ func (bs *Store) prefetchNodeNoFill(nid types.NodeID, promote bool) (n *types.No
 // getNodeLocked retrieves a node from cache or Badger.
 // Caller must hold bs.idxMu (read or write).
 func (bs *Store) getNodeLocked(nid types.NodeID) (*types.Node, error) {
+	return bs.getNodeLockedWithCache(nid, true)
+}
+
+func (bs *Store) getNodeLockedWithCache(nid types.NodeID, fill bool) (*types.Node, error) {
 	id := nid.SnowflakeID()
-	v, status := bs.nodeCache.Get(id)
+	var v *types.Node
+	var status indexpkg.CacheStatus
+	if fill {
+		v, status = bs.nodeCache.Get(id)
+	} else {
+		v, status = bs.nodeCache.GetNoPromote(id)
+	}
 	if status == indexpkg.CacheHit {
 		return v, nil
 	}
 	if status == indexpkg.CacheDeleted {
 		return nil, ErrNodeNotFound
+	}
+	if bs.entityIdentityOnDisk {
+		if n, buffered, err := bs.bufferedNodeLocked(nid); buffered {
+			return n, err
+		}
 	}
 
 	// Cache miss — read from Badger.
@@ -1041,6 +1112,8 @@ func (bs *Store) getNodeLocked(nid types.NodeID) (*types.Node, error) {
 		return nil, err
 	}
 	n.Freeze() // shared between cache and caller
-	bs.nodeCache.LoadCleanAt(id, n, epoch)
+	if fill {
+		bs.nodeCache.LoadCleanAt(id, n, epoch)
+	}
 	return n, nil
 }

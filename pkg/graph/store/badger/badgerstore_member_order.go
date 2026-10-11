@@ -21,6 +21,9 @@ func (bs *Store) addLabelIdxLocked(tok uint16, nid types.NodeID) {
 }
 
 func (bs *Store) addTypeIdxLocked(tok uint16, rid types.RelID) {
+	if bs.entityIdentityOnDisk {
+		return
+	}
 	set := bs.typeIdx[tok]
 	if set == nil {
 		set = make(map[types.RelID]struct{})

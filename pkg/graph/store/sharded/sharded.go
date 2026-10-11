@@ -144,6 +144,9 @@ func isRelNotFound(err error) bool { return errors.Is(err, ErrRelNotFound) }
 // topology; the remaining fields are per-shard badger passthroughs applied
 // uniformly to every shard.
 type Config struct {
+	// EntityIdentityOnDisk is reserved for a future wrapper implementation.
+	// New rejects it before opening any shard; use a direct Badger store today.
+	EntityIdentityOnDisk bool
 	// Dir is the root data directory. Each shard lives under Dir/slot-NN/.
 	// Required unless InMemory is true.
 	Dir string
@@ -246,6 +249,9 @@ func (s *Store) anchor() *badger.Store { return s.shards[0] }
 // or creates the slot catalog on the anchor shard, and fails closed if a
 // persisted catalog disagrees with the config.
 func New(cfg Config) (*Store, error) {
+	if cfg.EntityIdentityOnDisk {
+		return nil, fmt.Errorf("%w: sharded disk entity identity is not supported", storecontract.ErrCapabilityNotSupported)
+	}
 	if err := validateConfigRange(cfg.BaseSlot, cfg.SlotCount); err != nil {
 		return nil, err
 	}

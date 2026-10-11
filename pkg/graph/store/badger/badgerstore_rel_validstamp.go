@@ -96,6 +96,9 @@ func relValidStampFor(rid types.RelID, r *types.Relationship) relValidStamp {
 // with concurrent mutations (a writer either contributes a stamp post-build or
 // is captured by the build, never lost).
 func (bs *Store) ensureRelValidIdxBuilt() {
+	if bs.entityIdentityOnDisk {
+		return // absent stamps use the exact per-row temporal predicate
+	}
 	if bs.relValidIdxBuilt.Load() {
 		return
 	}
@@ -148,7 +151,10 @@ func (bs *Store) ForEachAdjacentEndpointAt(nid types.NodeID, typeToken uint16, i
 	}
 
 	bs.idxMu.RLock()
-	if _, ok := bs.nodeIDs[nid]; !ok {
+	if ok, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+		bs.idxMu.RUnlock()
+		return identityErr
+	} else if !ok {
 		bs.idxMu.RUnlock()
 		return ErrNodeNotFound
 	}
@@ -239,7 +245,10 @@ func (bs *Store) ForEachAdjacentRelAt(nid types.NodeID, typeToken uint16, incomi
 	}
 
 	bs.idxMu.RLock()
-	if _, ok := bs.nodeIDs[nid]; !ok {
+	if ok, identityErr := bs.nodeExistsLocked(nid); identityErr != nil {
+		bs.idxMu.RUnlock()
+		return identityErr
+	} else if !ok {
 		bs.idxMu.RUnlock()
 		return ErrNodeNotFound
 	}

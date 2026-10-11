@@ -52,6 +52,16 @@ func (bs *Store) ForEachNodeByLabel(token uint16, opts QueryOpts, fn func(*types
 	if err := storecontract.ValidateQueryOpts(opts); err != nil {
 		return err
 	}
+	if bs.entityIdentityOnDisk {
+		if fn == nil {
+			return errNilIterationCallback()
+		}
+		emitted := 0
+		return bs.forEachDiskLabelNode(token, opts, func(n *types.Node) (bool, error) {
+			emitted++
+			return fn(n) && (opts.Limit == 0 || emitted < opts.Limit), nil
+		})
+	}
 
 	nids, sorted, idErr := bs.labelScanIDs(token)
 	if idErr != nil {
