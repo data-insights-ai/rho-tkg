@@ -4,7 +4,7 @@
   "name": "Certified current and retained graph reads",
   "accepted": true,
   "accepted_date": "2026-10-11",
-  "scope_status": "Locally accepted; hosted CI for the integrated push is a separate gate",
+  "scope_status": "Locally accepted; hosted v5 gates pass at 0f430e44; overall hosted CI failed on the root v4 core race package timeout",
   "source_manifest_sha256": "7c7c358dab99ddada4f20c98bcf30615396b4ea0615776a500749f10b4b11c16",
   "source_files": 418,
   "base": "40104a61853d2de9628f39e0042be94ade494ba1",
@@ -51,5 +51,26 @@
     "registry_integration": "registry-integration.json"
   },
   "external_commit_excluded_from_package3": "0ebb025f4c6aa659df24438e96a468e2c6208d02",
-  "subsequent_preclaim_integration": "preclaim-integration.json"
+  "subsequent_preclaim_integration": "preclaim-integration.json",
+  "hosted_ci": {
+    "head": "0f430e44fba4ec1550272b14adaebb696a6d5090",
+    "run": 38122549495,
+    "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38122549495",
+    "conclusion": "failure",
+    "jobs": {
+      "comparison-correctness": "success",
+      "security (v5, v5/go.mod)": "success",
+      "test (., go.mod)": "failure",
+      "test (v5, v5/go.mod)": "success",
+      "security (., go.mod)": "success",
+      "coverage (., go.mod)": "success",
+      "coverage (v5, v5/go.mod)": "success",
+      "lint": "skipped"
+    },
+    "record": "hosted-ci-0f430e44.json",
+    "record_sha256": "94689c0eaa2d50711368ebc68dd409d5643b5066643c0d8114f4d1e7bb25a19d",
+    "failed_log": "hosted-ci-0f430e44-failed.log.gz",
+    "failed_log_sha256": "df3badc006e75ea3634678d643bfa6a577405a6b9ba2a4d0691a0596aa013859",
+    "qualification": "All v5, comparison, root security and root coverage jobs pass; conditional push lint skipped. Root v4 core race package hit the unchanged ten-minute Go package timeout. CI scheduling follow-up remains open; no all-green hosted claim. This run precedes the separately accepted preclaim integration and does not cover c3299c38."
+  }
 }

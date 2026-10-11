@@ -213,6 +213,11 @@ reviewed and validated before the next package starts.
    normal/race lanes, qualified unchanged-source carry, coverage, pinned scanners,
    direct-method tests and independent review. This accepts internal read
    machinery, not a public graph API, physical multi-host durability or full V2.
+   [Hosted CI at `0f430e44`](evidence/v2-certified-reads/hosted-ci-0f430e44.json)
+   passes all v5 jobs and comparison correctness; the overall run fails because
+   the unchanged v4 core race package reaches its ten-minute timeout. The earlier
+   scheduling adjustment has not eliminated this recurrence. Its terminal failure
+   log is retained with the acceptance record; the CI follow-up remains open.
    Subsequent [prepared-snapshot preclaim integration](evidence/v2-certified-reads/preclaim-integration.json)
    accepts external `0ebb025f` with the existing AS5/recovery contracts preserved:
    13 gates pass, the new Check is directly covered at 100%, and a genuine AS5
