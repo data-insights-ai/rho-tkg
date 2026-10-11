@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Hosted validation
+
+- Benchmark comparisons use one identical harness on both immutable revisions;
+  repeated composite fixture setup and incomplete benchmark inputs fail closed.
+- PR checks select changed packages and reverse production/test dependents,
+  falling back to full normal tests on dependency graph or module changes.
+  Full race/coverage and every benchmark family remain scheduled/manual exact
+  revision gates and mandatory release evidence; fast status has narrower scope.
+
 ### Added
 
 - Opt-in `badger.Config.HistoricalMembershipOnDisk`: persisted ordered node

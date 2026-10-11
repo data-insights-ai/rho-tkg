@@ -1,38 +1,31 @@
 name: Bench
 
-# Two jobs, one comparator (bench/bench-compare.sh):
-#
-#  - bench-gate (pull_request, BLOCKING): the wired-up flip-to-blocking plan
-#    from bench/README.md. Benchmarks the PR's merge-base and HEAD on the
-#    SAME runner (same noise environment) with -count=3 (5 for
-#    PinnedRelPropertyLookup, which is allocs-gated, not time-gated) — benchstat then
-#    compares MEDIANS, absorbing single-sample scheduler spikes — and fails
-#    the check if any core scenario's median time regressed by more than
-#    REGRESSION_THRESHOLD_PCT (30% here; deliberately looser than the 15%
-#    local gate because GitHub-hosted runners are noisier than a dedicated
-#    machine). The two long-running measurement STUDIES
-#    (PinnedScanScaling, ChangeLogTxSerialization — multi-minute 100k-entity
-#    fixtures built for one-off measurement campaigns, not regression
-#    canaries) are excluded from the PR gate via the -bench filter; the
-#    manual dispatch job still runs them.
-#
-#  - bench-compare (workflow_dispatch, informational): the original manual
-#    full-suite comparison, unchanged in spirit — useful for sanity-checking
-#    a perf claim from a fork or an ad-hoc branch without a PR.
-#
-# The authoritative high-resolution tooling remains LOCAL:
-# make bench-baseline + make bench-check on stable hardware (bench/README.md).
+# PRs run measured quick canaries. Scheduled/manual checks retain every family,
+# including expensive history/ANN/scaling studies, against the SAME harness.
 on:
+  schedule:
+    - cron: '0 2 * * 0'
   workflow_dispatch:
+    inputs:
+      revision:
+        description: Exact 40-character HEAD SHA for full comparison
+        required: false
+      comparison_scope:
+        description: Full release comparison or bounded investigation (not full release evidence)
+        type: choice
+        options: [full, ingest-pipeline]
+        default: full
+      baseline:
+        description: Exact 40-character baseline SHA (default merge-base, or parent on main)
+        required: false
   pull_request:
     paths:
-      - "pkg/**"
-      - "bench/**"
-      - "go.mod"
-      - ".github/workflows/bench.yml"
+      - 'pkg/**'
+      - 'bench/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/bench.yml'
 
-# Least-privilege default: both jobs only checkout, build worktrees locally,
-# and write to $GITHUB_STEP_SUMMARY — neither needs write access to the repo.
 permissions:
   contents: read
 
@@ -40,34 +33,27 @@ defaults:
   run:
     shell: bash
 
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.revision || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   bench-gate:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     env:
-      REGRESSION_THRESHOLD_PCT: "30"
-      # Core regression canaries only — everything EXCEPT the two multi-minute
-      # measurement studies (PinnedScanScaling, ChangeLogTxSerialization).
-      # "Ingest" is a deliberate prefix match covering every ingest variant.
-      # PinnedRelPropertyLookup (backlog 8) runs as its own step with 5 samples
-      # (PINNED_REL_FILTER below), its default 20k run of 24 rows: allocs-gated
-      # (+10 %, ALLOCS_THRESHOLD_PCT); its time rows are reported, not gated, on
-      # shared hosts — identical code swung +42..+178 % in time while allocs/op
-      # did not move, and the regression the family exists to catch (the lookup
-      # falling back to the history fold) multiplies allocs. Opt-in time canary
-      # for quiet runners: TIME_CANARY=canary (8 rows, see bench-gate.awk).
-      # Sharded and the broad lookup run only with RHO_TKG_PINNED_REL_SIZES
-      # (measurement sizes 100k / 1M). Rules in bench/bench-gate.awk.
-      BENCH_FILTER: "Benchmark(PointReadHit|LabelScan10k|TwoHop|TemporalPoint|AsOfPin|Ingest|BulkAddNodes10k|ANNSearch10k|OrderedTopK|CompositeLookup|RelPropertyLookup10k|RelHistoryPlain|RelHasHistory|RelEffectiveTimeline|RelEffectiveLoop|ForEachRelEffectiveByType|NodeAtTxLongChain|NodeEffectiveTimelineLongChain)"
-      # LatestStamps (backlog 30) joins the allocs-gated step: its door is
-      # 0 allocs/op and a fallback to the History fold allocates per row (a
-      # zero-alloc family row fails as soon as it allocates; 6 rows, ~3 s).
-      PINNED_REL_FILTER: "Benchmark(PinnedRelPropertyLookup|LatestStamps)"
+      REGRESSION_THRESHOLD_PCT: '30'
+      BENCH_COUNT: '3'
+      BENCHTIME: '0.3s'
+      # These canaries preserve point/label/adjacency/temporal/ingest coverage.
+      # The full comparison retains the remaining production-shaped families.
+      BENCH_FILTER: '^Benchmark(PointReadHit|LabelScan10k|TwoHop|TemporalPoint|AsOfPin|Ingest1kSingle)$'
+      PIPELINE_FILTER: '^BenchmarkIngestPipeline$/memory/(p1|p8)$'
+      ALLOC_FILTER: '^BenchmarkLatestStamps$/(memory|badger)/plain$'
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-
+          ref: ${{ inputs.revision || github.sha }}
       - uses: ./.github/actions/private-badger
         with:
           deploy-key: ${{ secrets.BADGER_READ_DEPLOY_KEY }}
@@ -75,115 +61,94 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-
-      - name: Benchmark merge-base
-        id: bench_base
+      - name: Resolve immutable revisions and scope
+        id: revisions
         env:
-          BASE_REF: ${{ github.base_ref }}
+          REVISION: ${{ inputs.revision || github.sha }}
+          BASELINE: ${{ inputs.baseline }}
+          BASE_REF: ${{ github.base_ref || 'main' }}
+          EVENT: ${{ github.event_name }}
+          SCOPE: ${{ inputs.comparison_scope || 'full' }}
         run: |
-          merge_base="$(git merge-base HEAD "origin/$BASE_REF")"
-          : > bench-base.txt
-          bash bench/bench-revision.sh "$merge_base" bench-base.txt "$BENCH_FILTER" 3
-          bash bench/bench-revision.sh "$merge_base" bench-base.txt "$PINNED_REL_FILTER" 5
-          echo "has_base=true" >> "$GITHUB_OUTPUT"
-
-      - name: Benchmark HEAD
-        if: steps.bench_base.outputs.has_base == 'true'
-        run: |
-          : > bench-head.txt
-          bash bench/bench-revision.sh HEAD bench-head.txt "$BENCH_FILTER" 3
-          bash bench/bench-revision.sh HEAD bench-head.txt "$PINNED_REL_FILTER" 5
-
-      - name: Gate (bench-compare.sh) — BLOCKING
-        if: steps.bench_base.outputs.has_base == 'true'
-        run: |
-          {
-            echo "### bench gate — merge-base vs HEAD (medians of 3, 5 for PinnedRelPropertyLookup and LatestStamps; time threshold ${REGRESSION_THRESHOLD_PCT}%; PinnedRelPropertyLookup and LatestStamps allocs-gated +${ALLOCS_THRESHOLD_PCT:-10}% allocs/op (a 0 allocs/op row: any alloc), time reported not gated)"
-            echo '```'
-            bash bench/bench-compare.sh bench-base.txt bench-head.txt bench-gate.csv 2>&1 | tee gate-output.txt
-            status=${PIPESTATUS[0]}
-            echo '```'
-            if [[ "$status" != "0" ]]; then
-              echo "**FAILED — a core scenario regressed beyond the threshold.** Re-run the job once before concluding (shared runners are noisy); a repeated failure is a real signal. See bench/README.md."
+          [[ "$REVISION" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$REVISION" ]]
+          if [[ -n "$BASELINE" ]]; then
+            [[ "$BASELINE" =~ ^[0-9a-f]{40}$ ]]
+            baseline="$(git rev-parse "$BASELINE^{commit}")"
+            [[ "$baseline" == "$BASELINE" ]]
+          else
+            baseline="$(git merge-base HEAD "origin/$BASE_REF")"
+            if [[ "$baseline" == "$REVISION" ]]; then
+              baseline="$(git rev-parse HEAD^)"
             fi
-            exit "$status"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Report check duration
-        if: always()
-        shell: bash
-        run: |
-          if [[ -n "${GO_CHECK_STARTED_AT:-}" ]]; then
-            seconds=$(( $(date +%s) - GO_CHECK_STARTED_AT ))
-            echo "Go check duration: ${seconds}s (including dependency setup)" >> "$GITHUB_STEP_SUMMARY"
           fi
-
-  bench-compare:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - uses: ./.github/actions/private-badger
-        with:
-          deploy-key: ${{ secrets.BADGER_READ_DEPLOY_KEY }}
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Resolve merge-base
-        id: mergebase
+          echo "baseline=$baseline" >> "$GITHUB_OUTPUT"
+          if [[ "$EVENT" == 'workflow_dispatch' && "$SCOPE" == 'ingest-pipeline' ]]; then
+            {
+              echo 'BENCH_FILTER=^BenchmarkIngestPipeline$/memory/(p1|p8)$'
+              echo 'BENCH_COUNT=7'
+              echo 'BENCHTIME=1s'
+              echo 'PIPELINE_FILTER='
+              echo 'ALLOC_FILTER='
+            } >> "$GITHUB_ENV"
+            echo 'Scope: bounded pipeline p1/p8 investigation, seven 1s samples; NOT full release evidence' >> "$GITHUB_STEP_SUMMARY"
+          elif [[ "$EVENT" != 'pull_request' ]]; then
+            {
+              echo 'BENCH_FILTER=.'
+              echo 'PIPELINE_FILTER='
+              echo 'ALLOC_FILTER='
+            } >> "$GITHUB_ENV"
+            echo 'Scope: full suite, three samples per row' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Scope: quick PR canaries, three time samples / five allocation samples' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "Baseline: $baseline; HEAD: $REVISION; identical current harness" >> "$GITHUB_STEP_SUMMARY"
+      - name: Benchmark baseline
+        env:
+          BASELINE: ${{ steps.revisions.outputs.baseline }}
         run: |
-          # workflow_dispatch checks out the dispatched ref directly; compare
-          # it against its merge-base with origin/main (fetch-depth: 0 above
-          # guarantees both histories are present). Dispatching ON main
-          # compares main against itself's parent-of-merge-base, which
-          # degenerates to a no-op comparison — dispatch from a branch.
-          head_sha="$(git rev-parse HEAD)"
-          merge_base="$(git merge-base "$head_sha" origin/main)"
-          echo "merge_base=$merge_base" >> "$GITHUB_OUTPUT"
-          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
-
-      - name: Benchmark merge-base
-        id: bench_base
-        run: |
-          merge_base="${{ steps.mergebase.outputs.merge_base }}"
           : > bench-base.txt
-          bash bench/bench-revision.sh "$merge_base" bench-base.txt . 1
-          echo "has_base=true" >> "$GITHUB_OUTPUT"
-
+          bash bench/bench-revision.sh "$BASELINE" bench-base.txt "$BENCH_FILTER" "$BENCH_COUNT" "$BENCHTIME"
+          if [[ -n "$PIPELINE_FILTER" ]]; then
+            bash bench/bench-revision.sh "$BASELINE" bench-base.txt "$PIPELINE_FILTER" 3
+          fi
+          if [[ -n "$ALLOC_FILTER" ]]; then
+            bash bench/bench-revision.sh "$BASELINE" bench-base.txt "$ALLOC_FILTER" 5
+          fi
       - name: Benchmark HEAD
         run: |
           : > bench-head.txt
-          bash bench/bench-revision.sh "${{ steps.mergebase.outputs.head_sha }}" bench-head.txt . 1
-
-      - name: Compare (benchstat) — informational only
-        continue-on-error: true
+          bash bench/bench-revision.sh HEAD bench-head.txt "$BENCH_FILTER" "$BENCH_COUNT" "$BENCHTIME"
+          if [[ -n "$PIPELINE_FILTER" ]]; then
+            bash bench/bench-revision.sh HEAD bench-head.txt "$PIPELINE_FILTER" 3
+          fi
+          if [[ -n "$ALLOC_FILTER" ]]; then
+            bash bench/bench-revision.sh HEAD bench-head.txt "$ALLOC_FILTER" 5
+          fi
+      - name: Complete input and regression gate
         run: |
+          echo '### Same-harness benchmark comparison' >> "$GITHUB_STEP_SUMMARY"
+          bash bench/bench-compare.sh bench-base.txt bench-head.txt bench-gate.csv 2>&1 | tee gate-output.txt
           {
-            echo "### bench/ comparison — merge-base vs HEAD"
-            echo
-            if [[ "${{ steps.bench_base.outputs.has_base }}" == "true" ]]; then
-              command -v benchstat >/dev/null 2>&1 || go install golang.org/x/perf/cmd/benchstat@latest
-              benchstat_bin="$(command -v benchstat || echo "$(go env GOPATH)/bin/benchstat")"
-              echo '```'
-              "$benchstat_bin" bench-base.txt bench-head.txt
-              echo '```'
-            else
-              echo "_No merge-base benchmark available — see bench-base.txt output above (likely this is the PR introducing bench/). Nothing to compare yet._"
-            fi
-            echo
-            echo "_Informational only — full suite incl. the measurement studies at a single -count=1 sample. The BLOCKING per-PR gate is the bench-gate job (core scenarios, medians of 3; PinnedRelPropertyLookup 5, allocs-gated)._"
+            echo '```'
+            cat gate-output.txt
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-
+      - name: Retain benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-evidence-${{ github.sha }}
+          path: |
+            bench-base.txt
+            bench-head.txt
+            bench-gate.csv
+            gate-output.txt
+          retention-days: 14
       - name: Report check duration
         if: always()
-        shell: bash
         run: |
           if [[ -n "${GO_CHECK_STARTED_AT:-}" ]]; then
             seconds=$(( $(date +%s) - GO_CHECK_STARTED_AT ))
-            echo "Go check duration: ${seconds}s (including dependency setup)" >> "$GITHUB_STEP_SUMMARY"
+            echo "Benchmark duration: ${seconds}s (including dependency setup)" >> "$GITHUB_STEP_SUMMARY"
           fi
