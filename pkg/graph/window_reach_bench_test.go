@@ -15,7 +15,10 @@ import (
 // :Mid, each with an "id"), three :R edges per node to the next layer, all
 // valid from early, one isolated :Iso target; then the cold harness's writes:
 // one :Mid node and one :ColdTick node updated, one :COLD_TICK relationship
-// updated, so a few nodes and one relationship have history.
+// updated, coldVersions times each, so a few nodes and one relationship have
+// history.
+const coldVersions = 200
+
 func windowReachGraph(b *testing.B, cfg graphpkg.Config) (*graphpkg.Graph, [][]types.NodeID) {
 	b.Helper()
 	g, err := graphpkg.New(cfg)
@@ -71,14 +74,18 @@ func windowReachGraph(b *testing.B, cfg graphpkg.Config) (*graphpkg.Graph, [][]t
 	if err != nil {
 		b.Fatal(err)
 	}
-	if _, err := g.Nodes().Update(ctx, tickA.ID(), map[string]any{"t": int64(1)}); err != nil {
-		b.Fatal(err)
-	}
-	if _, err := g.Rels().Update(ctx, tickRel.ID(), map[string]any{"t": int64(1)}); err != nil {
-		b.Fatal(err)
-	}
-	if _, err := g.Nodes().Update(ctx, nodes[5][17].ID(), map[string]any{"t": int64(1)}); err != nil {
-		b.Fatal(err)
+	// The cold harness writes before every timed run, so after n runs each
+	// touched entity holds n versions.
+	for v := range int64(coldVersions) {
+		if _, err := g.Nodes().Update(ctx, tickA.ID(), map[string]any{"t": v}); err != nil {
+			b.Fatal(err)
+		}
+		if _, err := g.Rels().Update(ctx, tickRel.ID(), map[string]any{"t": v}); err != nil {
+			b.Fatal(err)
+		}
+		if _, err := g.Nodes().Update(ctx, nodes[5][17].ID(), map[string]any{"t": v}); err != nil {
+			b.Fatal(err)
+		}
 	}
 	time.Sleep(300 * time.Millisecond) // drain the badger write buffer
 	ids := make([][]types.NodeID, layers)

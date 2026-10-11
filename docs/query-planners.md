@@ -776,7 +776,7 @@ clock). For "the state at valid time t as recorded at the pin" use `ValidAt` +
 | `ScanNodeColumns`, `ScanRelColumns` (a type or `""`), `ForEachByLabelPropertyRange`, `ForEachByTypePropertyRange` | since 4.44.0 the same fold and resolver as `ByLabel` / `ByType`: each version's values, `ValidFrom` / `ValidTo`, history included (deleted entities, a label held only on an earlier version); before 4.44.0 they filtered the current rows by valid time and ignored `TxAt` / `TxPin`. The range doors serve a temporal opt without a property index, in ID order, with the bounds applied inclusively for `fn` to re-check; under `ValidStart`+`ValidEnd` they test the value of the version `ByLabel` resolves (the most recent overlapping one), whereas `ByLabelAndProperty` matches a value held anywhere in the interval | yes; cost = `ByLabel` with the same opts |
 | `ForEachByLabelPropertyRangeOrdered`, `ForEachByLabelPropertyPrefix` (and rel mirrors) | sound full fold, O(N log N), no index needed, any backend; `fn` re-checks inclusivity | yes |
 | `RangeCardinality`, `RelRangeCardinality` | any coordinate declines: `(0, false, nil)` | n/a |
-| `ByTypeAndProperty`, `ByLabelAndProperty(ies)`, named `*PropertyAt` / `*PropertyDuring` | property membership sidecar (see "Temporal property lookups") | yes |
+| `ByTypeAndProperty`, `ByLabelAndProperty(ies)`, named `*PropertyAt` / `*PropertyDuring` | property membership sidecar (see "Temporal property lookups"); without one (no declared index) the current matches united with the history IDs that ever carried the label (type), from the K1 point lookup where the backend has it (memory, badger), else every ID with history | yes |
 | `OutgoingForNodesAtTx` / `AtPin` and incoming mirrors | adjacency index plus deleted-relationship fold (see "Pinned adjacency") | yes |
 | `NodeEffectiveTimeline(id, pin)` / `RelEffectiveTimeline(id, pin)`, `ForEachNodeEffectiveByLabel(label, pin, fn)` / `ForEachRelEffectiveByType(type, pin, fn)` | see "Planner doors added since 4.41.0" | yes |
 
@@ -785,7 +785,11 @@ append-only sound superset kept in RAM, built lazily on the first temporal read
 after open (O(history) once) and maintained at every row write; removing a label,
 deleting the entity or compacting never drops a member. A member with an unset
 (0) first `TxFrom` is never pruned (4.48.0). Tiered, sharded and wrapper stores
-take the full fold, O(everything that ever had history).
+take the full fold, O(everything that ever had history). Its point form
+(`store.LabelTxMemberLookupCapability` / `RelTypeTxMemberLookupCapability`, unreleased)
+scopes a temporal property lookup without a declared index to the history IDs
+that ever carried the label (type): O(history IDs) map lookups instead of a
+version chain per history ID.
 
 Tiered and temporal indexes: since 4.45.0 tiered builds composite and relationship
 temporal indexes per shard (each shard keeps its own badger index over its own

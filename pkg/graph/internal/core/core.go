@@ -83,6 +83,10 @@ type Core struct {
 	// (tiered), so the query falls back to the full-history candidate fold.
 	labelTxMembers   storepkg.LabelTxMembershipCapability
 	relTypeTxMembers storepkg.RelTypeTxMembershipCapability
+	// labelTxLookup / relTypeTxLookup are the point forms of the K1
+	// sidecars (round 5 request 8), resolved with the same discipline.
+	labelTxLookup   storepkg.LabelTxMemberLookupCapability
+	relTypeTxLookup storepkg.RelTypeTxMemberLookupCapability
 	// property membership sidecars (backlog 8): scope a temporal property
 	// lookup (ByTypeAndProperty / ByLabelAndProperty(ies) and the named
 	// *PropertyAt / *PropertyDuring doors) to the value's ever-members for a
@@ -1492,6 +1496,43 @@ func relTypeTxMembershipCapability(store storepkg.MandatoryStore) storepkg.RelTy
 	return cap
 }
 
+// labelTxMemberLookupCapability resolves the point form of the K1 label
+// sidecar with labelTxMembershipCapability's discipline: an exact native
+// store, or a store that declares the method itself; a wrapper that merely
+// embeds a native store is forced to nil (its writes may bypass the
+// embedded store's sidecar maintenance).
+func labelTxMemberLookupCapability(store storepkg.MandatoryStore) storepkg.LabelTxMemberLookupCapability {
+	cap, ok := store.(storepkg.LabelTxMemberLookupCapability)
+	if !ok {
+		return nil
+	}
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.LabelTxMemberLookupCapability)(nil)).Elem(),
+		"LabelTxMembersOf") {
+		return nil
+	}
+	return cap
+}
+
+// relTypeTxMemberLookupCapability is the rel-type mirror of
+// labelTxMemberLookupCapability.
+func relTypeTxMemberLookupCapability(store storepkg.MandatoryStore) storepkg.RelTypeTxMemberLookupCapability {
+	cap, ok := store.(storepkg.RelTypeTxMemberLookupCapability)
+	if !ok {
+		return nil
+	}
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.RelTypeTxMemberLookupCapability)(nil)).Elem(),
+		"RelTypeTxMembersOf") {
+		return nil
+	}
+	return cap
+}
+
 // relPropertyTxMembershipCapability resolves the backlog-8 rel property
 // membership sidecar with the K1 discipline: exact native stores and direct
 // implementations (sharded) are trusted; a wrapper that merely embeds a native
@@ -1931,6 +1972,8 @@ func New(config Config) (*Core, error) {
 	c.deletedDepthIter = depthDeletedIterationCapability(store)
 	c.labelTxMembers = labelTxMembershipCapability(store)
 	c.relTypeTxMembers = relTypeTxMembershipCapability(store)
+	c.labelTxLookup = labelTxMemberLookupCapability(store)
+	c.relTypeTxLookup = relTypeTxMemberLookupCapability(store)
 	c.relPropTxMembers = relPropertyTxMembershipCapability(store)
 	c.nodePropTxMembers = nodePropertyTxMembershipCapability(store)
 	c.nodeBeliefWatermark = nodeBeliefWatermarkCapability(store)

@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`store.LabelTxMemberLookupCapability` / `RelTypeTxMemberLookupCapability`: the point form of the K1 label and
+  type membership sidecar** (sigma-tkgd round 5 request 8, task record C4s: a coordinate seek by property in a
+  valid-time window read the history of every node with history, about 1 ms per seek on badger once a cold
+  harness's touched nodes held a few hundred versions). `LabelTxMembersOf(token, ids, fn)` /
+  `RelTypeTxMembersOf(token, ids, fn)` call `fn(id, firstTxFrom)` for each of `ids` that ever carried the label
+  (type), over the same lazily built, append-only sidecar as `ForEachLabelTxMember` / `ForEachRelTypeTxMember`
+  (memory and badger; the core uses them for the exact native stores only, like the streaming form). A temporal
+  `Nodes().ByLabelAndProperty` / `ByLabelAndProperties` / `Rels().ByTypeAndProperty` (and the named
+  `*PropertyAt` / `*PropertyDuring` doors) on a key without a declared index now resolves the current matches and
+  the history IDs that ever carried the label (type), pruned by the transaction-time pin as `ByLabel` prunes,
+  instead of the version chain of every node (relationship) with history: a node without history matches only
+  through its current row, and one with history only through a version carrying the label. Answers are
+  unchanged; sharded, tiered and wrapper stores keep the full-history fold; no write path changes (the sidecar is
+  the existing one, built on first use). `BenchmarkWindowPropertySeek` (the seeks `(:Start {id: 0})` and
+  `(:Iso {id: 999999})` on the 3,001-node DAG with one :Mid and one :ColdTick node of 200 versions each; one CPU,
+  load 21 to 35, three interleaved rounds): badger window 1.17-1.20 ms -> 40-49 us (static 20-35 us), instant
+  315-325 -> 32-35 us; memory window 197-242 -> 18-31 us, instant 179-189 -> 16-24 us. Tests:
+  `TestTemporalPropertySeekLoadsNoOtherLabelChains` (red: 24 chain loads for 5 ever-members of the label),
+  `TestTemporalRelPropertySeekScopedToType` (red: 18 for 3), `TestTemporalPropertySeekAnswersEverLabelMembers`
+  (a node that lost the label, one that gained it, windows, instants and pins, every backend),
+  `TestMemoryLabelTxMembersOf` / `TestBadgerLabelTxMembersOf` and the relationship mirrors; red runs and mutants
+  under `tasks/evidence/cypher-round5/`.
+
 ### Performance
 
 - **Valid-time adjacency: a relationship without history is answered from its live row** (sigma-tkgd round 5

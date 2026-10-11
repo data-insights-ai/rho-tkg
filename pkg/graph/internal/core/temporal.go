@@ -1140,7 +1140,7 @@ func (c *Core) propertyCandidateSidecarUsable(depth storepkg.ShardDepth) bool {
 // can carry the value.
 func (c *Core) forEachRelPropertyCandidateID(tok uint16, key, valueKey string, currentIDs []types.RelID, opts storepkg.QueryOpts, fn func(types.RelID) error) error {
 	if c.relPropTxMembers == nil || !c.propertyCandidateSidecarUsable(opts.Depth) {
-		return c.forEachRelCandidateIDByDepth(currentIDs, opts.Depth, fn)
+		return c.forEachRelHistoryCandidateOfType(tok, currentIDs, opts, fn)
 	}
 	pinTx := effectiveTxPin(opts)
 	seen := make(map[types.RelID]struct{}, len(currentIDs))
@@ -1162,7 +1162,7 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key, valueKey string, c
 		return invalid
 	}
 	if errors.Is(err, storepkg.ErrIndexNotFound) {
-		return c.forEachRelCandidateIDByDepth(currentIDs, opts.Depth, fn)
+		return c.forEachRelHistoryCandidateOfType(tok, currentIDs, opts, fn)
 	}
 	if err != nil {
 		return err
@@ -1186,10 +1186,11 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key, valueKey string, c
 // the INTERSECTION of the sidecar sets of the pairs whose key has a declared
 // index (a pair without one, or with a non-indexable value, constrains
 // nothing), pruned by the pin per pair, united with currentIDs. No usable
-// pair at all: the full-history fold.
+// pair at all: the history fold scoped to the label's ever-members
+// (forEachNodeHistoryCandidateOfLabel).
 func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]string, currentIDs []types.NodeID, opts storepkg.QueryOpts, fn func(types.NodeID) error) error {
 	if c.nodePropTxMembers == nil || !c.propertyCandidateSidecarUsable(opts.Depth) {
-		return c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, fn)
+		return c.forEachNodeHistoryCandidateOfLabel(tok, currentIDs, opts, fn)
 	}
 	pinTx := effectiveTxPin(opts)
 	keys := make([]string, 0, len(valueKeys))
@@ -1235,7 +1236,7 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]s
 		cands = set
 	}
 	if cands == nil {
-		return c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, fn)
+		return c.forEachNodeHistoryCandidateOfLabel(tok, currentIDs, opts, fn)
 	}
 	for _, id := range currentIDs {
 		cands[id] = struct{}{}
@@ -1543,4 +1544,89 @@ func (c *Core) getNodeVersionDuring(id types.NodeID, start, end types.Instant) (
 // semantic for relationships.
 func (c *Core) getRelVersionDuring(id types.RelID, start, end types.Instant) (*types.Relationship, error) {
 	return c.findRelVersionMatchingDuring(id, start, end, nil)
+}
+
+// forEachNodeHistoryCandidateOfLabel is the candidate set of a temporal read
+// by property value under label tok when no property membership sidecar
+// constrains it: currentIDs (the current matches) united with the node
+// history IDs that ever carried tok (the K1 label sidecar's point form),
+// pruned by the effective transaction-time pin like forEachLabelTxCandidate.
+// A node without history has only its current row, so it matches only if it
+// is a current match; a node with history can match only through a version
+// carrying tok, which makes it an ever-member. Before round 5 (request 8)
+// every node with history was resolved, whatever its labels: a cold harness's
+// churned nodes of another label cost a version chain each per seek. Without
+// the lookup, or for a depth-scoped read on a store with depth-aware history,
+// the full-history fold.
+func (c *Core) forEachNodeHistoryCandidateOfLabel(tok uint16, currentIDs []types.NodeID, opts storepkg.QueryOpts, fn func(types.NodeID) error) error {
+	if c.labelTxLookup == nil || !c.propertyCandidateSidecarUsable(opts.Depth) {
+		return c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, fn)
+	}
+	var history []types.NodeID
+	if err := c.forEachNodeHistoryIDByDepth(opts.Depth, func(id types.NodeID) bool {
+		history = append(history, id)
+		return true
+	}); err != nil {
+		return err
+	}
+	seen := make(map[types.NodeID]struct{}, len(currentIDs))
+	for _, id := range currentIDs {
+		seen[id] = struct{}{}
+	}
+	if len(history) > 0 {
+		pinTx := effectiveTxPin(opts)
+		if err := c.labelTxLookup.LabelTxMembersOf(tok, history, func(id types.NodeID, firstTx types.Instant) bool {
+			if pinTx != 0 && firstTx != 0 && firstTx > pinTx {
+				return true // acquired the label strictly after the pin
+			}
+			seen[id] = struct{}{}
+			return true
+		}); err != nil {
+			return err
+		}
+	}
+	for id := range seen {
+		if err := fn(id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// forEachRelHistoryCandidateOfType is forEachNodeHistoryCandidateOfLabel for
+// a temporal read by relationship property value under type tok (a type is
+// immutable, so an ever-member of tok is a relationship of type tok).
+func (c *Core) forEachRelHistoryCandidateOfType(tok uint16, currentIDs []types.RelID, opts storepkg.QueryOpts, fn func(types.RelID) error) error {
+	if c.relTypeTxLookup == nil || !c.propertyCandidateSidecarUsable(opts.Depth) {
+		return c.forEachRelCandidateIDByDepth(currentIDs, opts.Depth, fn)
+	}
+	var history []types.RelID
+	if err := c.forEachRelHistoryIDByDepth(opts.Depth, func(id types.RelID) bool {
+		history = append(history, id)
+		return true
+	}); err != nil {
+		return err
+	}
+	seen := make(map[types.RelID]struct{}, len(currentIDs))
+	for _, id := range currentIDs {
+		seen[id] = struct{}{}
+	}
+	if len(history) > 0 {
+		pinTx := effectiveTxPin(opts)
+		if err := c.relTypeTxLookup.RelTypeTxMembersOf(tok, history, func(id types.RelID, firstTx types.Instant) bool {
+			if pinTx != 0 && firstTx != 0 && firstTx > pinTx {
+				return true
+			}
+			seen[id] = struct{}{}
+			return true
+		}); err != nil {
+			return err
+		}
+	}
+	for id := range seen {
+		if err := fn(id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
