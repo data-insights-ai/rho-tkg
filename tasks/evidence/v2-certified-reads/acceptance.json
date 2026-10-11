@@ -50,5 +50,6 @@
     "reverse_scan": "reverse-scan.json",
     "registry_integration": "registry-integration.json"
   },
-  "deferred_external_commit": "0ebb025f4c6aa659df24438e96a468e2c6208d02"
+  "external_commit_excluded_from_package3": "0ebb025f4c6aa659df24438e96a468e2c6208d02",
+  "subsequent_preclaim_integration": "preclaim-integration.json"
 }

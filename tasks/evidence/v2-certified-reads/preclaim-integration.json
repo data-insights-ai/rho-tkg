@@ -1,0 +1,274 @@
+{
+  "accepted": true,
+  "date": "2026-10-11",
+  "base": "0f430e44fba4ec1550272b14adaebb696a6d5090",
+  "external_commit": "0ebb025f4c6aa659df24438e96a468e2c6208d02",
+  "source_manifest_sha256": "d5a59dddb8cc0dde13324a06b943bf6d29911fb456d62181f6ec662ec45445bc",
+  "source_files": 420,
+  "archive": "preclaim-integration.tar.gz",
+  "archive_sha256": "94323c505555e24c360d39905043da6957f9ee73f2439e16128cda18f2479f48",
+  "archive_bytes": 269213,
+  "files": [
+    {
+      "path": "author/additional-AS5-guard.patch",
+      "sha256": "51564fb8820c09df79a949f729172b6d58773c4cdaffb9d94e88fc9eb69ab88e",
+      "bytes": 2638
+    },
+    {
+      "path": "author/author-receipt.json",
+      "sha256": "7915dc56e51675b2dade54159c702d9ffd8992f94175dc8428c2759a2e2235bd",
+      "bytes": 5075
+    },
+    {
+      "path": "author/authority-bypass-mutant-budget.json",
+      "sha256": "2460ee82c8dbdcd835408d7c1657518beff9bb58278bd830d682c93980762ea1",
+      "bytes": 453
+    },
+    {
+      "path": "author/authority-bypass-mutant.log",
+      "sha256": "619b81a9dd0aaecb807edd97cd54968e16d42d70def89f92f1e5f021a30f8510",
+      "bytes": 762
+    },
+    {
+      "path": "author/build-budget.json",
+      "sha256": "2c928ba5debac3aa26c5c4e4879eec43be1d6887c39cb0b9dac6b00fa4a3bfe2",
+      "bytes": 225
+    },
+    {
+      "path": "author/build.log",
+      "sha256": "48c0fe712821f4da67f82a7a21f10280176f1a72e80b4d87b9b4de8f64bfca67",
+      "bytes": 217
+    },
+    {
+      "path": "author/check-normal-budget.json",
+      "sha256": "43beda8c48f1900fd354e7c46f3dc9ac53a5483819fc185f8eb174e90e2273ce",
+      "bytes": 414
+    },
+    {
+      "path": "author/check-normal.log",
+      "sha256": "8c581887ca66e1016ba875f13520ee02bf7be702b3809f95777ecdd5e3889613",
+      "bytes": 439
+    },
+    {
+      "path": "author/coverage-functions-budget.json",
+      "sha256": "d1a93004ff972e7885d482fe63d206eaada1893089ee2105f7bbe0d5a54d9e1b",
+      "bytes": 388
+    },
+    {
+      "path": "author/coverage-functions.log",
+      "sha256": "ec89a8e93b44a99caa94b219943f7140bf6204f217b64fc307fee5944654a4d0",
+      "bytes": 223822
+    },
+    {
+      "path": "author/coverage-summary.json",
+      "sha256": "a65b562ab103cf60cb0a25adbfd8c3bc06d44c220d87871a898d223543865cf1",
+      "bytes": 769
+    },
+    {
+      "path": "author/coverage.out",
+      "sha256": "88fd527c3371a114dfc7d84df82fddb7e61bd0a078e77b163a0291abdeee6e1c",
+      "bytes": 2123449
+    },
+    {
+      "path": "author/fmt-check-budget.json",
+      "sha256": "f9a0ed3730f49ded22a3092f570e4875ec288f4f763c0987d903fae0100d5624",
+      "bytes": 227
+    },
+    {
+      "path": "author/fmt-check.log",
+      "sha256": "91497a890fda9a32edc45be3282224a056c577a496047c18bdc524ec6e1b8065",
+      "bytes": 204
+    },
+    {
+      "path": "author/graphapply-integration-normal-budget.json",
+      "sha256": "e2c529263635d8de28fd152c05c2c2422f5b064bc1943ce19ed0b40c7695e5b3",
+      "bytes": 506
+    },
+    {
+      "path": "author/graphapply-integration-normal.log",
+      "sha256": "ea65f4ba7bf801e023ab476f8661f1e66cc476f1ee7da1b14070cd1226ca0c19",
+      "bytes": 534
+    },
+    {
+      "path": "author/graphapply-integration-race-budget.json",
+      "sha256": "870d6c18f950ea7ec2dc438dbffd73b5f4192956808044efda269cc4ee90b5ce",
+      "bytes": 520
+    },
+    {
+      "path": "author/graphapply-integration-race.log",
+      "sha256": "a5be445ecae4b04945a0fc780aa21c08d099692fa8032b6e34acb230e0b40883",
+      "bytes": 544
+    },
+    {
+      "path": "author/lint-docker-budget.json",
+      "sha256": "37d1c27a750bc3a15dce79fd835ae1e2e237861fa69544c7564942725c72a950",
+      "bytes": 602
+    },
+    {
+      "path": "author/lint-docker.log",
+      "sha256": "67645ae1ea8c7433b471c682c3ca2339f0f05ac732281527b75025f2de0764b2",
+      "bytes": 1074
+    },
+    {
+      "path": "author/merge-coverage.py",
+      "sha256": "9b076d4cbe79c5aaf4dcfc294de00c3bada0820afa42df866ae490ad57e5675d",
+      "bytes": 2486
+    },
+    {
+      "path": "author/mutant.json",
+      "sha256": "c15110dc37a84419cb4c73f0d9338dbae4e6c5e63269f778ac808e019f465d8b",
+      "bytes": 235
+    },
+    {
+      "path": "author/raftlog-coverage.out",
+      "sha256": "c15f0affeb6f7eecb2c51ed3a836d89cafbb76e51b29ce0739c2bf5b2e18bd13",
+      "bytes": 353614
+    },
+    {
+      "path": "author/raftlog-normal-cover-budget.json",
+      "sha256": "83a9672355738b24990bbc4118f3dc4ccc6391ba656afa89dfd90dc8237631c1",
+      "bytes": 456
+    },
+    {
+      "path": "author/raftlog-normal-cover.log",
+      "sha256": "709712a0e57fb0c2b18ec0275c3e67c107728942bf9545f76d299b3cd29f5cc1",
+      "bytes": 515
+    },
+    {
+      "path": "author/raftlog-race-budget.json",
+      "sha256": "d940ae013e96b6173f8c5c56c9e6ca5ac7ffde3c81238317a34609057a9d6313",
+      "bytes": 383
+    },
+    {
+      "path": "author/raftlog-race.log",
+      "sha256": "e2d9fc6892a0e4cca08aadf9c4d6d95a526ae0f3217f736f6f05566532f48963",
+      "bytes": 413
+    },
+    {
+      "path": "author/replica-normal-budget.json",
+      "sha256": "3ef73b8da6b672cb417907dc44226923640dc7b89b0eed2cba8b86d7cdc06f69",
+      "bytes": 370
+    },
+    {
+      "path": "author/replica-normal.log",
+      "sha256": "a9cb5f3bf754414055238dfae2970244a6229f199b9f08d8e656ce667980ab4b",
+      "bytes": 404
+    },
+    {
+      "path": "author/replica-race-budget.json",
+      "sha256": "385e1dbfc9e33082a2a8f6ace12f0e671c3264920bdcc0d8b4820341bf6c5bb2",
+      "bytes": 383
+    },
+    {
+      "path": "author/replica-race.log",
+      "sha256": "c5834a1ec44089088bb1f13bbfb731158f7bf7a007f609e2496662f5bedfd3b2",
+      "bytes": 413
+    },
+    {
+      "path": "author/run.py",
+      "sha256": "6ca07b437e1ee6ec86ca57f1c603e54373f8be848b8c178541ebb6301e467356",
+      "bytes": 1490
+    },
+    {
+      "path": "author/scanner-provenance-budget.json",
+      "sha256": "51eb3dd32b994ebb8320e491ea9e221f7b0655ecd8ed7c20be675cd1032bed90",
+      "bytes": 632
+    },
+    {
+      "path": "author/scanner-provenance.log",
+      "sha256": "ce98a49da670d10fee5a256b63eb0e9b5070fe15dedf76c4c58783d9c15f6c5c",
+      "bytes": 25374
+    },
+    {
+      "path": "author/security-docker-budget.json",
+      "sha256": "2ac7e0078ae879e248063ac4a729c83ea8a6c182fdbbfcc6da18349429d2aecc",
+      "bytes": 605
+    },
+    {
+      "path": "author/security-docker.log",
+      "sha256": "51cb887e4deb40ad6076570b4b01002a72ec7a817cc5749fab673b3dce087fd8",
+      "bytes": 1020
+    },
+    {
+      "path": "author/source.json",
+      "sha256": "d5a59dddb8cc0dde13324a06b943bf6d29911fb456d62181f6ec662ec45445bc",
+      "bytes": 49310
+    },
+    {
+      "path": "author/vet-budget.json",
+      "sha256": "7df4b1304ead888e7925aa4878d788248de3fa97f8949e96a67e85681846d582",
+      "bytes": 222
+    },
+    {
+      "path": "author/vet.log",
+      "sha256": "1a739fce13aac671d065d27bed8fa30bd26b3418e0943abebdaf27f79c24868f",
+      "bytes": 212
+    },
+    {
+      "path": "author/vulncheck-docker-budget.json",
+      "sha256": "4964207d924b0e86af10a656acf7b26e2957dc9190745bdac2c94f66db938bb1",
+      "bytes": 606
+    },
+    {
+      "path": "author/vulncheck-docker.log",
+      "sha256": "43e7a9f766e8e135e148974fecb3e3751fead6c610ceac732f2c0d1d11446b5e",
+      "bytes": 1315
+    },
+    {
+      "path": "review/FINAL_ACCEPTANCE.md",
+      "sha256": "5d1323bf6768e1b83626d96298533f9e97b2a55ade87ecd3b23fdd854b3eec8f",
+      "bytes": 3922
+    },
+    {
+      "path": "review/REVIEW.md",
+      "sha256": "c2020cce3d8210391959d9bbcdb9e8e352f969c5e51f2d79ec9264576c70df1f",
+      "bytes": 5515
+    },
+    {
+      "path": "review/SOURCE-RECHECK.md",
+      "sha256": "51beb41c757e5a6ebca7cc14f9d78e1aa812a5764e428e8567deb14bb3a3b6d5",
+      "bytes": 1558
+    },
+    {
+      "path": "review/final-acceptance.json",
+      "sha256": "24482c0c79ee19bccfeaadbc9b51ac6a90f93b12cb35a78181e1b9f605da1967",
+      "bytes": 763
+    },
+    {
+      "path": "review/receipt.json",
+      "sha256": "0e8fa1daba7e383c40e8e78ea3fb0dda06dd95b04496ad67c648444c5610f3fa",
+      "bytes": 1080
+    },
+    {
+      "path": "review/review.patch",
+      "sha256": "0250cc661d2582e634d899a7eae53cd815ffea3ffcdedfbf72eb62fbbecb27cd",
+      "bytes": 17732
+    }
+  ],
+  "validation": {
+    "recommendation": "accept",
+    "mergeable": true,
+    "blocking_findings": [],
+    "nonblocking_defects": [],
+    "source_manifest_sha256": "d5a59dddb8cc0dde13324a06b943bf6d29911fb456d62181f6ec662ec45445bc",
+    "source_files": 420,
+    "hash_mismatches": [],
+    "author_receipt_sha256": "7915dc56e51675b2dade54159c702d9ffd8992f94175dc8428c2759a2e2235bd",
+    "gates_passed": 13,
+    "check_and_helpers_percent": 100,
+    "changed_file_coverage": {
+      "covered": 217,
+      "statements": 233
+    },
+    "qualified_module_coverage": {
+      "covered": 28355,
+      "statements": 32160
+    },
+    "original_external_red_claimed": false,
+    "mutant_killed_and_restored": true,
+    "reviewer_runtime": false,
+    "report_sha256": "5d1323bf6768e1b83626d96298533f9e97b2a55ade87ecd3b23fdd854b3eec8f"
+  },
+  "scope": "Nonmutating prepared-snapshot exact Store/descriptor preclaim checks with bounded metadata inspection; genuine audit readers may remain live; Claim still separately revalidates and grants only its existing authority. Accepted AS5/private claimed reader/recovery contracts preserved. Exact external three-file delta plus one AS5 guard.",
+  "qualification": "Fresh affected raftlog/replica and graph integration checks, qualified exact-source P3 module coverage reuse. No original external RED claimed; negative authority mutant killed and restored. This adds no readiness/activation authority and does not complete V2/package4."
+}

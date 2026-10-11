@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added nonmutating checks of genuine prepared v5 snapshots for their owning
+  store, permitting live audit readers. Bounded metadata inspection preserves
+  exact descriptor, configuration and field-presence matching; snapshot claims
+  retain their reader exclusions and ownership. Checks grant no readiness or
+  activation authority.
+
 - Added internal v5 certified graph reads with Fresh, Stable, At and After
   modes over declared partitions. Separate durable read fences, resolved
   certificates and retained graph/routing round prefixes prevent mixed
