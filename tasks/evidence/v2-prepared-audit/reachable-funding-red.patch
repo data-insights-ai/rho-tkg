@@ -1,0 +1,2172 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 8bc338d2..230d0b98 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -17,6 +17,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+   replicated outcomes/CDC. Remote certified cuts, broader fault/ownership/GC
+   evidence, engine comparison and full V2 remain open.
+ 
++- Added v5 replica storage primitives for owned, bounded snapshot audits through
++  Begin, Advance, a distinct Finish phase and Commit. Exact same-store claims
++  precede activation by the actual Raft Ready. Optional callback resource
++  profiles fund framework work and ownership before effects; detached callback
++  owners close outside the Driver lock with fenced fail-stop and lifetime checks.
++  Genuine recovery-enabled AS5/AD4 descriptors preserve exact audit identities;
++  snapshot-only Commit preserves previously classified recovery recipes without
++  invoking the verifier again.
++  Registered adapter, factory, Host and full phase acceptance remain open.
++
+ - Added bounded private v5 registry materialization. Created registrations stage
+   reciprocal immutable controls; full original lookup precedes new-request caps,
+   and Original/Conflict outcomes preserve original and evaluation coordinates.
+diff --git a/v5/internal/replica/application_machine_cleanup_test.go b/v5/internal/replica/application_machine_cleanup_test.go
+new file mode 100644
+index 00000000..2ea68880
+--- /dev/null
++++ b/v5/internal/replica/application_machine_cleanup_test.go
+@@ -0,0 +1,318 @@
++package replica
++
++import (
++	"errors"
++	"testing"
++
++	"github.com/cockroachdb/pebble/v2/vfs"
++	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
++)
++
++// Every successful cleanup below releases a genuine registered public view.
++// Lock observation uses TryLock only; it introduces no IO/error/blocking hook.
++type applicationViewCleanup struct {
++	view    *raftlog.ApplicationView
++	driver  *Driver
++	closed  bool
++	outside bool
++}
++
++func (c *applicationViewCleanup) Close() error {
++	if c.closed {
++		return nil
++	}
++	c.closed = true
++	c.outside = c.driver == nil || c.driver.mu.TryLock()
++	if c.driver != nil && c.outside {
++		c.driver.mu.Unlock()
++	}
++	err := c.view.Close()
++	if !c.outside {
++		return errors.Join(ErrInvalid, err)
++	}
++	return err
++}
++
++type cleanupApplication struct {
++	applicationFixture
++	store      *raftlog.Store
++	driver     *Driver
++	pending    *applicationViewCleanup
++	owners     [16]*applicationViewCleanup
++	ownerCount int
++}
++
++func (m *cleanupApplication) own(index uint64) error {
++	if m.pending != nil || m.ownerCount >= len(m.owners) {
++		return ErrInvalid
++	}
++	v, err := m.store.ApplicationView(index)
++	if err != nil {
++		return err
++	}
++	owner := &applicationViewCleanup{view: v, driver: m.driver}
++	m.pending = owner
++	m.owners[m.ownerCount] = owner
++	m.ownerCount++
++	return nil
++}
++func (m *cleanupApplication) Restore(index uint64, image []byte) error {
++	if err := m.own(index); err != nil {
++		return err
++	}
++	return m.applicationFixture.Restore(index, image)
++}
++func (m *cleanupApplication) Stage(e Entry, b raftlog.ApplicationBudget) (raftlog.ApplicationBatch, error) {
++	if err := m.own(m.index); err != nil {
++		return raftlog.ApplicationBatch{}, err
++	}
++	return m.applicationFixture.Stage(e, b)
++}
++func (m *cleanupApplication) TakeApplicationCleanup() ApplicationCleanup {
++	owner := m.pending
++	m.pending = nil
++	return owner
++}
++func cleanupDriver(t *testing.T, wantClose error) (*Driver, *cleanupApplication) {
++	t.Helper()
++	p := raftlog.DefaultApplicationPolicy(1)
++	s, err := raftlog.Open(raftlog.Config{Dir: "callback-cleanup", FS: vfs.NewMem(), Create: true, Application: p})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := s.Initialize([]uint64{1}, nil); err != nil {
++		t.Fatal(errors.Join(err, s.Close()))
++	}
++	m := &cleanupApplication{store: s}
++	d, err := Open(Config{ID: 1, Store: s, ApplicationMachine: m})
++	if err != nil {
++		t.Fatal(errors.Join(err, s.Close()))
++	}
++	m.driver = d
++	t.Cleanup(func() {
++		err := d.Close()
++		if wantClose == nil && err != nil || wantClose != nil && !errors.Is(err, wantClose) {
++			t.Error(err)
++		}
++	})
++	return d, m
++}
++func assertCallbackOwners(t *testing.T, d *Driver, m *cleanupApplication) {
++	t.Helper()
++	if m.pending != nil {
++		t.Fatal("undetached callback owner")
++	}
++	for _, owner := range m.owners {
++		if owner == nil {
++			continue
++		}
++		if !owner.closed || !owner.outside {
++			t.Fatal("cleanup lock/ownership", owner)
++		}
++	}
++	usage, err := d.store.ApplicationUsage()
++	if err != nil || usage.Views != 0 || usage.ViewBytes != 0 {
++		t.Fatal("callback views", usage, err)
++	}
++}
++func TestApplicationMachineCleanupOpenStageRestoreAndError(t *testing.T) {
++	d, m := cleanupDriver(t, nil)
++	assertCallbackOwners(t, d, m)
++	if _, err := d.Campaign(); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := d.Propose(command(7)); err != nil {
++		t.Fatal(err)
++	}
++	assertCallbackOwners(t, d, m)
++	if m.value != 7 || m.index != 3 {
++		t.Fatal("real adjacent install", m.value, m.index)
++	}
++	before := d.Applied()
++	out, err := d.Propose([]byte{1}) // Ordinary malformed command, not an injected failure.
++	if !errors.Is(err, ErrInvalid) || !zeroPendingOutput(out) || d.Applied() != before {
++		t.Fatal("failed Stage", out, err)
++	}
++	assertCallbackOwners(t, d, m)
++	if out, err := d.Tick(); !errors.Is(err, ErrStopped) || !errors.Is(err, ErrInvalid) || !zeroPendingOutput(out) {
++		t.Fatal("cached real input cause", out, err)
++	}
++}
++func TestApplicationMachineCleanupInvalidOwnerStopsBeforeInstall(t *testing.T) {
++	// An unregistered handle's real Close contract returns ErrInvalid. The
++	// driver must not treat that capability error as successful cleanup.
++	d, m := cleanupDriver(t, raftlog.ErrInvalid)
++	if _, err := d.Campaign(); err != nil {
++		t.Fatal(err)
++	}
++	before := d.Applied()
++	bad := &unregisteredCleanupApplication{cleanupApplication: m}
++	d.applicationMachine = bad // Refusal-only unit input; no successful authority.
++	out, err := d.Propose(command(7))
++	if !errors.Is(err, raftlog.ErrInvalid) || !zeroPendingOutput(out) || d.Applied() != before {
++		t.Fatal("bad cleanup installed", out, err)
++	}
++	assertCallbackOwners(t, d, m)
++	if out, err := d.Tick(); !errors.Is(err, ErrStopped) || !errors.Is(err, raftlog.ErrInvalid) || !zeroPendingOutput(out) {
++		t.Fatal("lost cleanup cause", out, err)
++	}
++	firstClose, repeatedClose := d.Close(), d.Close()
++	if !errors.Is(firstClose, raftlog.ErrInvalid) || !errors.Is(repeatedClose, raftlog.ErrInvalid) {
++		t.Fatal("first cleanup cause on Close")
++	}
++}
++
++type unregisteredCleanupApplication struct{ *cleanupApplication }
++
++func (m *unregisteredCleanupApplication) TakeApplicationCleanup() ApplicationCleanup {
++	real := m.cleanupApplication.TakeApplicationCleanup()
++	if isNilMachine(real) {
++		return nil
++	}
++	return &invalidApplicationCleanup{real: real}
++}
++
++type invalidApplicationCleanup struct{ real ApplicationCleanup }
++
++func (c *invalidApplicationCleanup) Close() error {
++	invalid := new(raftlog.ApplicationView)
++	return errors.Join(invalid.Close(), c.real.Close())
++}
++
++func (m *cleanupApplication) ApplicationCallbackLimits() ApplicationCallbackLimits {
++	return ApplicationCallbackLimits{StageWork: 1 << 20, StageOwned: 1 << 20, RestoreWork: 1 << 20, RestoreOwned: 1 << 20, CleanupWork: 1 << 20, CleanupOwned: 1 << 20}
++}
++
++type callbackProfileFixture struct {
++	*cleanupApplication
++	limits ApplicationCallbackLimits
++}
++
++func (m *callbackProfileFixture) ApplicationCallbackLimits() ApplicationCallbackLimits {
++	return m.limits
++}
++
++type missingCallbackProfile struct{ ApplicationMachine }
++
++func (m *missingCallbackProfile) TakeApplicationCleanup() ApplicationCleanup {
++	return takeApplicationCleanup(m.ApplicationMachine)
++}
++func TestApplicationCallbackProfileValidationBeforeRestore(t *testing.T) {
++	good := (&cleanupApplication{}).ApplicationCallbackLimits()
++	for _, bad := range []ApplicationCallbackLimits{{}, {StageWork: ^uint64(0), StageOwned: 1, RestoreWork: 1, RestoreOwned: 1, CleanupWork: 1, CleanupOwned: 1}} {
++		if _, err := applicationCallbackProfile(&callbackProfileFixture{cleanupApplication: &cleanupApplication{}, limits: bad}); bad == (ApplicationCallbackLimits{}) && !errors.Is(err, ErrInvalid) || bad != (ApplicationCallbackLimits{}) && !errors.Is(err, ErrLimit) {
++			t.Fatal(bad, err)
++		}
++	}
++	for field := range 6 {
++		bad := good
++		switch field {
++		case 0:
++			bad.StageWork = 0
++		case 1:
++			bad.StageOwned = 0
++		case 2:
++			bad.RestoreWork = 0
++		case 3:
++			bad.RestoreOwned = 0
++		case 4:
++			bad.CleanupWork = 0
++		case 5:
++			bad.CleanupOwned = 0
++		}
++		if got, err := applicationCallbackProfile(&callbackProfileFixture{cleanupApplication: &cleanupApplication{}, limits: bad}); got != (ApplicationCallbackLimits{}) || !errors.Is(err, ErrInvalid) {
++			t.Fatal(field, got, err)
++		}
++	}
++	if got, err := applicationCallbackProfile(&cleanupApplication{}); err != nil || got != good {
++		t.Fatal(got, err)
++	}
++	if _, err := applicationCallbackProfile(&missingCallbackProfile{ApplicationMachine: &applicationFixture{}}); !errors.Is(err, ErrInvalid) {
++		t.Fatal("missing source-work profile", err)
++	}
++	if got, err := applicationCallbackProfile(&applicationFixture{}); err != nil || got != (ApplicationCallbackLimits{}) {
++		t.Fatal("legacy profile changed", got, err)
++	}
++}
++
++func TestApplicationCommitCallbackMultiplicationOverflow(t *testing.T) {
++	d, _ := cleanupDriver(t, nil)
++	c := d.callbackLimits
++	c.CleanupWork = ^uint64(0)/2 + 1
++	inert := &Driver{config: d.config, store: d.store, callbackLimits: c}
++	w, o, err := inert.applicationCommitRequirements(4096, 4096, raftlog.ApplicationContractForPolicy(d.store.ApplicationLimits()))
++	if w != 0 || o != 0 || !errors.Is(err, ErrLimit) {
++		t.Fatal("overflow must refuse zero before any actual event", w, o, err)
++	}
++}
++
++// Invalid source/owned profiles must refuse the genuine Open door before Restore.
++func TestApplicationOpenInvalidProfileBeforeRestore(t *testing.T) {
++	for _, tc := range []struct {
++		name    string
++		limits  ApplicationCallbackLimits
++		missing bool
++		want    error
++	}{{name: "zero", want: ErrInvalid}, {name: "missing", missing: true, want: ErrInvalid}, {name: "overflow", limits: ApplicationCallbackLimits{StageWork: ^uint64(0), StageOwned: 1, RestoreWork: 1, RestoreOwned: 1, CleanupWork: 1, CleanupOwned: 1}, want: ErrLimit}} {
++		t.Run(tc.name, func(t *testing.T) {
++			s, err := raftlog.Open(raftlog.Config{Dir: "profile-before-restore", FS: vfs.NewMem(), Create: true, Application: raftlog.DefaultApplicationPolicy(1)})
++			if err != nil {
++				t.Fatal(err)
++			}
++			t.Cleanup(func() {
++				if err := s.Close(); err != nil {
++					t.Error(err)
++				}
++			})
++			if err := s.Initialize([]uint64{1}, nil); err != nil {
++				t.Fatal(err)
++			}
++			before, err := s.ApplicationUsage()
++			if err != nil {
++				t.Fatal(err)
++			}
++			m := &cleanupApplication{store: s}
++			var machine ApplicationMachine = &callbackProfileFixture{cleanupApplication: m, limits: tc.limits}
++			if tc.missing {
++				machine = &missingCallbackProfile{ApplicationMachine: m}
++			}
++			d, err := Open(Config{ID: 1, Store: s, ApplicationMachine: machine})
++			if d != nil || !errors.Is(err, tc.want) {
++				t.Fatal("Open profile admission", d, err)
++			}
++			after, err := s.ApplicationUsage()
++			if err != nil || after != before || m.ownerCount != 0 || m.pending != nil || m.index != 0 {
++				t.Fatal("refused Open invoked Restore/created owner", after, before, m.ownerCount, m.index, err)
++			}
++		})
++	}
++}
++
++// Refusal-only DTOs retain real immutable Store/Config limits and never enter RawNode.
++func TestApplicationCommitActualLimitArithmeticOverflow(t *testing.T) {
++	d, _ := cleanupDriver(t, nil)
++	good := d.callbackLimits
++	for _, tc := range []struct {
++		name   string
++		limits ApplicationCallbackLimits
++	}{
++		{name: "tail sum", limits: ApplicationCallbackLimits{StageWork: ^uint64(0)/2 - 100, StageOwned: 1, RestoreWork: 10, RestoreOwned: 1, CleanupWork: ^uint64(0) / 2, CleanupOwned: 1}},
++		{name: "tail product", limits: ApplicationCallbackLimits{StageWork: ^uint64(0)/d.store.ApplicationLimits().MaxTailEntries + 1, StageOwned: 1, RestoreWork: 1, RestoreOwned: 1, CleanupWork: 1, CleanupOwned: 1}},
++		{name: "owner sum", limits: ApplicationCallbackLimits{StageWork: 1, StageOwned: 1, RestoreWork: 1, RestoreOwned: ^uint64(0) - 5, CleanupWork: 1, CleanupOwned: 1}},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			fields := tc.limits
++			if _, err := applicationCallbackProfile(&callbackProfileFixture{cleanupApplication: &cleanupApplication{}, limits: fields}); err != nil {
++				t.Fatal("valid immutable profile prerequisite", err)
++			}
++			inert := &Driver{config: d.config, store: d.store, callbackLimits: fields}
++			w, o, err := inert.applicationCommitRequirements(4096, 4096, raftlog.ApplicationContractForPolicy(d.store.ApplicationLimits()))
++			if w != 0 || o != 0 || !errors.Is(err, ErrLimit) {
++				t.Fatal("zero refusal before any event", w, o, err)
++			}
++		})
++	}
++	if d.callbackLimits != good {
++		t.Fatal("real Driver profile changed")
++	}
++}
+diff --git a/v5/internal/replica/application_replication.go b/v5/internal/replica/application_replication.go
+index f41e507d..ad34a72d 100644
+--- a/v5/internal/replica/application_replication.go
++++ b/v5/internal/replica/application_replication.go
+@@ -18,17 +18,29 @@ type applicationEvent struct {
+ 	done     chan struct{}
+ 	claim    *raftlog.ApplicationSnapshotClaim
+ 	rawPhase bool
++	pending  *PendingApplicationSnapshot
+ }
+ type applicationClose struct {
+ 	done   chan struct{}
+ 	result error
+ }
+ 
+-func (d *Driver) boundApplication() bool  { return d.binding != (raftlog.ApplicationBinding{}) }
+-func (d *Driver) fencedApplication() bool { return d.boundApplication() || d.snapshotSender != nil }
++func (d *Driver) boundApplication() bool { return d.binding != (raftlog.ApplicationBinding{}) }
++func (d *Driver) fencedApplication() bool {
++	_, cleanup := d.applicationMachine.(ApplicationCleanupProvider)
++	_, audit := d.applicationMachine.(ApplicationSnapshotAuditor)
++	return d.boundApplication() || d.snapshotSender != nil || cleanup || audit
++}
+ 
+ // Called with mu held. A competing event refuses before any RawNode accessor.
+ func (d *Driver) admissionNoRaw() error {
++	if d.applicationCleanupErr != nil {
++		if !errors.Is(d.stopped, d.applicationCleanupErr) {
++			d.stopped = errors.Join(d.stopped, d.applicationCleanupErr)
++		}
++		d.revokeSnapshotSends()
++		return errors.Join(ErrStopped, d.stopped)
++	}
+ 	if d.event != nil || d.closeOwner != nil {
+ 		if d.stopped != nil {
+ 			return errors.Join(ErrStopped, d.stopped)
+@@ -89,6 +101,11 @@ func (d *Driver) finishEvent(e *applicationEvent, out Output, opErr error) (Outp
+ 		d.mu.Unlock()
+ 		return Output{}, ErrInvalid
+ 	}
++	e.rawPhase = false // Terminal release has no next Install/callback to resume.
++	if err := d.releaseApplicationCallback(); err != nil {
++		opErr = errors.Join(opErr, err)
++		_, _ = d.stop(errors.Join(d.stopped, err))
++	}
+ 	e.rawPhase = false
+ 	claim := e.claim
+ 	e.claim = nil
+@@ -125,7 +142,7 @@ func (d *Driver) finishEvent(e *applicationEvent, out Output, opErr error) (Outp
+ 			break
+ 		}
+ 	}
+-	resultErr := errors.Join(opErr, claimErr)
++	resultErr := errors.Join(opErr, claimErr, d.applicationCleanupErr)
+ 	if d.stopped != nil {
+ 		resultErr = errors.Join(resultErr, ErrStopped, d.stopped)
+ 	}
+@@ -179,7 +196,11 @@ func (d *Driver) closeApplication() error {
+ 		event = d.beginCleanup()
+ 		_, _ = d.finishEvent(event, Output{}, nil)
+ 	} else {
++		pending := event.pending
+ 		d.mu.Unlock()
++		if pending != nil {
++			_ = pending.Close()
++		}
+ 		<-event.done
+ 	}
+ 	// No event can start after closeOwner is installed. Claim cleanup is already
+@@ -190,7 +211,7 @@ func (d *Driver) closeApplication() error {
+ 	if d.snapshotSender != nil {
+ 		senderErr = d.snapshotSender.cleanupErr
+ 	}
+-	c.result = errors.Join(d.claimCleanupErr, senderErr, storeErr)
++	c.result = errors.Join(d.claimCleanupErr, d.applicationCleanupErr, senderErr, storeErr)
+ 	if c.result != nil {
+ 		d.stopped = errors.Join(d.stopped, c.result)
+ 	}
+@@ -283,6 +304,9 @@ func (d *Driver) StepApplicationSnapshot(p Packet, prepared *raftlog.PreparedApp
+ 		return d.failEventAdmission(err)
+ 	}
+ 	defer func() { out, err = d.finishEvent(owner, out, err) }()
++	if _, required := d.applicationMachine.(ApplicationSnapshotAuditor); required {
++		return Output{}, ErrUnavailable
++	}
+ 	if !d.boundApplication() {
+ 		return Output{}, ErrInvalid
+ 	}
+@@ -311,3 +335,41 @@ func (d *Driver) failEventAdmission(err error) (Output, error) {
+ 	d.mu.Unlock()
+ 	return Output{}, err
+ }
++
++// Called with Driver.mu. No next Install/callback/RawNode action runs until the
++// genuine owner has closed and the exact event/Close state is rechecked.
++func (d *Driver) releaseApplicationCallback() error {
++	owner := takeApplicationCleanup(d.applicationMachine)
++	if isNilMachine(owner) {
++		return nil
++	}
++	e := d.event
++	if e == nil {
++		return ErrInvalid
++	}
++	resuming := e.rawPhase
++	e.rawPhase = false
++	d.mu.Unlock()
++	err := closeApplicationCleanup(owner)
++	d.mu.Lock()
++	if err != nil {
++		d.applicationCleanupErr = errors.Join(d.applicationCleanupErr, err)
++	}
++	if d.event != e {
++		return errors.Join(ErrInvalid, err)
++	}
++	if !resuming {
++		return err
++	}
++	if pending := e.pending; pending != nil && (pending.self != pending || pending.event != e || pending.canceled) {
++		return errors.Join(raftlog.ErrClosed, err)
++	}
++	if d.closeOwner != nil || d.stopped != nil {
++		return errors.Join(ErrStopped, d.stopped, err)
++	}
++	if err != nil {
++		return err
++	}
++	e.rawPhase = true
++	return nil
++}
+diff --git a/v5/internal/replica/application_semantic_machine.go b/v5/internal/replica/application_semantic_machine.go
+index e1f80266..db9e53da 100644
+--- a/v5/internal/replica/application_semantic_machine.go
++++ b/v5/internal/replica/application_semantic_machine.go
+@@ -1,7 +1,9 @@
+ package replica
+ 
+ import (
++	"context"
+ 	"errors"
++	"math"
+ 
+ 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+ )
+@@ -32,3 +34,105 @@ func ValidateApplicationMachineBinding(binding raftlog.ApplicationBinding, machi
+ 	}
+ 	return nil
+ }
++
++// ApplicationAuditBudget bounds ONE logical operation, not the entire journal.
++// The auditor owns accounting within its loan; Driver retains its own owners.
++type ApplicationAuditBudget struct{ WorkBytes, OwnedBytes uint64 }
++
++// ApplicationSnapshotContext is derived from the actual checked Driver input.
++// It carries no protobuf, caller-selected bank, readiness or activation flag.
++type ApplicationSnapshotContext struct {
++	Index, Term                       uint64
++	Voters                            [3]uint64
++	DescriptorHash, CutID, ManifestID [32]byte
++}
++
++// ApplicationSnapshotAuditor starts a bounded audit of a genuine prepared snapshot.
++type ApplicationSnapshotAuditor interface {
++	BeginApplicationSnapshotAudit(*raftlog.PreparedApplicationSnapshot, ApplicationSnapshotContext, ApplicationAuditBudget) (ApplicationSnapshotAudit, error)
++}
++
++// ApplicationSnapshotAudit verifies a prepared snapshot through bounded phases.
++// Finish releases readers/pages/large ownership and retains ONLY fixed sealed
++// candidate/auditor state<=4096 logical bytes. Claim and actual Ready still
++// authenticate activation; a successful Finish is not readiness. Close discards
++// unused evidence and closes each owner once, preserving original errors.
++type ApplicationSnapshotAudit interface {
++	Advance(context.Context, ApplicationAuditBudget) (bool, error)
++	Finish(context.Context, ApplicationAuditBudget) error
++	Close() error
++}
++
++// ApplicationCleanup owns callback resources released outside Driver.mu.
++type ApplicationCleanup interface{ Close() error }
++
++// ApplicationCleanupProvider detaches ONE bounded aggregate owner without I/O
++// or allocation. Stage and Restore must not close owners under Driver.mu.
++// Each callback's
++// existing operation ledger includes this owner and its release reservation.
++type ApplicationCleanupProvider interface{ TakeApplicationCleanup() ApplicationCleanup }
++
++func takeApplicationCleanup(m ApplicationMachine) ApplicationCleanup {
++	if provider, ok := m.(ApplicationCleanupProvider); ok && !isNilMachine(provider) {
++		return provider.TakeApplicationCleanup()
++	}
++	return nil
++}
++func closeApplicationCleanup(owner ApplicationCleanup) error {
++	if isNilMachine(owner) {
++		return nil
++	}
++	return owner.Close()
++}
++
++// ApplicationCallbackLimits is a compiled module's immutable logical envelope,
++// not caller-requested admission or heap/RSS. Reporting performs no I/O/mutation.
++// Work covers its complete reads/hashes/emission; owned covers retained and
++// simultaneous callback/cleanup owners. Driver funds its own buffers separately.
++type ApplicationCallbackLimits struct {
++	StageWork, StageOwned, RestoreWork, RestoreOwned, CleanupWork, CleanupOwned uint64
++}
++
++// ApplicationResourceProvider reports immutable, compiled callback limits.
++type ApplicationResourceProvider interface {
++	ApplicationCallbackLimits() ApplicationCallbackLimits
++}
++
++func applicationSum(values ...uint64) (uint64, error) {
++	var sum uint64
++	for _, n := range values {
++		if n > math.MaxUint64-sum {
++			return 0, ErrLimit
++		}
++		sum += n
++	}
++	return sum, nil
++}
++func applicationProduct(a, b uint64) (uint64, error) {
++	if a != 0 && b > math.MaxUint64/a {
++		return 0, ErrLimit
++	}
++	return a * b, nil
++}
++func applicationCallbackProfile(machine ApplicationMachine) (ApplicationCallbackLimits, error) {
++	_, audit := machine.(ApplicationSnapshotAuditor)
++	_, cleanup := machine.(ApplicationCleanupProvider)
++	if !audit && !cleanup {
++		return ApplicationCallbackLimits{}, nil
++	}
++	provider, ok := machine.(ApplicationResourceProvider)
++	if !ok || isNilMachine(provider) {
++		return ApplicationCallbackLimits{}, ErrInvalid
++	}
++	c := provider.ApplicationCallbackLimits()
++	fields := [6]uint64{c.StageWork, c.StageOwned, c.RestoreWork, c.RestoreOwned, c.CleanupWork, c.CleanupOwned}
++	for _, n := range fields {
++		if n == 0 {
++			return ApplicationCallbackLimits{}, ErrInvalid
++		}
++	}
++	if _, err := applicationSum(fields[:]...); err != nil {
++		return ApplicationCallbackLimits{}, err
++	}
++	return c, nil
++}
+diff --git a/v5/internal/replica/application_snapshot_event.go b/v5/internal/replica/application_snapshot_event.go
+new file mode 100644
+index 00000000..612f55d4
+--- /dev/null
++++ b/v5/internal/replica/application_snapshot_event.go
+@@ -0,0 +1,556 @@
++package replica
++
++import (
++	"bytes"
++	"context"
++	"crypto/sha256"
++	"encoding/binary"
++	"errors"
++
++	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
++	pb "go.etcd.io/raft/v3/raftpb"
++)
++
++const applicationPendingFixed uint64 = 4096
++const applicationAuditCandidateBytes uint64 = 4096
++const applicationCleanupWork uint64 = 1024
++const applicationProtoObjectBytes uint64 = 1024
++const applicationProtoEntryBytes uint64 = 256
++
++const (
++	applicationAuditScanning byte = iota
++	applicationAuditFinishing
++	applicationAuditFinished
++)
++
++// PendingApplicationSnapshot owns one exact Driver event. Driver.mu protects
++// mutable fields; self/driver remain immutable. No consensus object escapes.
++type PendingApplicationSnapshot struct {
++	self                   *PendingApplicationSnapshot
++	driver                 *Driver
++	event                  *applicationEvent
++	prepared               *raftlog.PreparedApplicationSnapshot
++	message                *pb.Message
++	context                ApplicationSnapshotContext
++	audit                  ApplicationSnapshotAudit
++	owned, auditOwned      uint64
++	phase                  byte
++	busy, canceled, closed bool
++	rawStarted             bool
++	opDone, done           chan struct{}
++	closeErr               error
++}
++
++func applicationAuditAdmit(b ApplicationAuditBudget, work, owned uint64) error {
++	if b.WorkBytes == 0 || b.OwnedBytes == 0 {
++		return ErrInvalid
++	}
++	if work > b.WorkBytes || owned > b.OwnedBytes {
++		return ErrLimit
++	}
++	return nil
++}
++
++// Before decode, bound every expansion accepted by the current wire preflight.
++// Fixed object widths include protobuf scalar targets; sizeof tests pin them.
++func applicationMessageMaximum(l raftlog.Limits) uint64 {
++	entries := uint64(l.MaxReadEntries) // #nosec G115 -- Config validates positive entry count<=4096.
++	data := uint64(l.MaxReadBytes)      // #nosec G115 -- Config validates positive read bytes<=32MiB.
++	// Fresh consumeBytes uses append(emptyBuf[0:],v...). Visible capacity may
++	// round up by one Go page8192 per Entry.Data/Context/Snapshot.Data.
++	// Single-entry pointer append has nominal cap<=2q, then roundup<=8192;
++	// its old+new backing peak<=24q+8192. ConfState includes mixed packed
++	// make/copy and unpacked append, funded independently for all four lists.
++	return 4*applicationProtoObjectBytes + 24*entries + 8192 + entries*applicationProtoEntryBytes + data + 8192*entries + 1024 + 8192 + 512 + 8192 + 4*(24*256+8192)
++}
++
++// Capacity initialization/copy credit, not heap/profiling. Pointer append's
++// geometric sum<=9 finalbackings; mixed packed/unpacked uint64 can allocate
++// each of256 steps, so sum(24q+8192), not a guessed final-cap multiplier.
++func applicationDecodeCapacityWork(l raftlog.Limits) uint64 {
++	entries := uint64(l.MaxReadEntries) // #nosec G115 -- immutable Config bound1..4096.
++	return 8192*entries + 2*8192 + 9*(16*entries+8192) + 4*(24*(256*257/2)+8192*256)
++}
++
++func applicationMessageOwned(m *pb.Message) uint64 {
++	n := 4*applicationProtoObjectBytes + uint64(cap(m.Entries))*8 + uint64(len(m.Entries))*applicationProtoEntryBytes // #nosec G115 -- nonnegative caps/counts bounded by checked wire preflight.
++	n += uint64(cap(m.Context) + cap(m.GetSnapshot().GetData()))                                                      // #nosec G115 -- nonnegative owned caps from bounded protobuf decoding.
++	for _, e := range m.Entries {
++		n += uint64(cap(e.GetData()))
++	} // #nosec G115 -- nonnegative caps bounded by MaxReadBytes before decode.
++	cs := m.GetSnapshot().GetMetadata().GetConfState()
++	n += uint64(cap(cs.GetVoters())+cap(cs.GetLearners())+cap(cs.GetVotersOutgoing())+cap(cs.GetLearnersNext())) * 8 // #nosec G115 -- each preflight-bounded list contains<=256 elements; growth bound checked against prior maximum.
++	return n
++}
++func (d *Driver) applicationInputAdmission(packet Packet, b ApplicationAuditBudget) error {
++	if len(packet.Payload) > d.config.MaxPacketBytes {
++		return ErrLimit
++	}
++	if len(packet.Payload) < applicationPacketHeaderBytes {
++		return ErrInvalid
++	}
++	n := uint64(len(packet.Payload) - applicationPacketHeaderBytes) // #nosec G115 -- preceding header bound makes subtraction nonnegative.
++	borrowed := uint64(cap(packet.Payload))                         // #nosec G115 -- slice capacity is nonnegative.
++	// RP copy/backing2N; recursive preflight at most4 ancestry walks;
++	// application outer/entry2N; protobuf parse plus owned backing/copy2N.
++	cleanup, err := applicationProduct(2, d.callbackLimits.CleanupWork)
++	if err != nil {
++		return err
++	}
++	work, err := applicationSum(applicationPendingFixed, 80, 10*n, 4*applicationProtoObjectBytes, uint64(d.config.Limits.MaxReadEntries)*applicationProtoEntryBytes, 4*256*8, 512, applicationDecodeCapacityWork(d.config.Limits), 2*applicationCleanupWork, cleanup) // #nosec G115 -- Config validates positive finite read-entry count.
++	if err != nil {
++		return err
++	}
++	owned := applicationPendingFixed + borrowed + n + applicationMessageMaximum(d.config.Limits)
++	return applicationAuditAdmit(b, work, owned)
++}
++
++// Called only after CheckPreparedApplicationSnapshot authenticated the full
++// actual descriptor/membership. It extracts fixed data, not a manifest decoder.
++func applicationSnapshotContext(wire []byte, md *pb.SnapshotMetadata) (ApplicationSnapshotContext, error) {
++	if len(wire) < 4 || len(wire) > 512 || !bytes.Equal(wire[:2], []byte("AD")) || wire[3] != 0 || md == nil || md.GetIndex() == 0 || md.GetTerm() == 0 {
++		return ApplicationSnapshotContext{}, ErrInvalid
++	}
++	cut := 196
++	switch wire[2] {
++	case 1:
++	case 2:
++		cut += 32
++	case 3:
++		cut += 48
++	case 4:
++		// AS5 adds semantic32, control16 and recovery counters/root48.
++		cut += 96
++	default:
++		return ApplicationSnapshotContext{}, ErrInvalid
++	}
++	if len(wire) < cut+68 || binary.BigEndian.Uint32(wire[cut+64:cut+68]) > 64 || uint64(binary.BigEndian.Uint32(wire[cut+64:cut+68])) != uint64(len(wire)-cut-68) {
++		return ApplicationSnapshotContext{}, ErrInvalid
++	} // #nosec G115 -- prior complete fixed-prefix bound guarantees nonnegative tail.
++	cs := md.GetConfState()
++	if cs == nil || len(md.ProtoReflect().GetUnknown()) != 0 || len(cs.ProtoReflect().GetUnknown()) != 0 || len(cs.Voters) != 3 || len(cs.Learners) != 0 || len(cs.LearnersNext) != 0 || len(cs.VotersOutgoing) != 0 || cs.GetAutoLeave() || cs.Voters[0] == 0 || cs.Voters[0] >= cs.Voters[1] || cs.Voters[1] >= cs.Voters[2] {
++		return ApplicationSnapshotContext{}, ErrInvalid
++	}
++	out := ApplicationSnapshotContext{Index: md.GetIndex(), Term: md.GetTerm(), DescriptorHash: sha256.Sum256(wire)}
++	copy(out.Voters[:], cs.Voters)
++	copy(out.CutID[:], wire[cut:cut+32])
++	copy(out.ManifestID[:], wire[cut+32:cut+64])
++	return out, nil
++}
++
++// BeginApplicationSnapshot retains the actual decoded message and fences RawNode while bounded
++// semantic work is performed outside Driver.mu. It creates no claim or Ready.
++func (d *Driver) BeginApplicationSnapshot(ctx context.Context, packet Packet, prepared *raftlog.PreparedApplicationSnapshot, b ApplicationAuditBudget) (*PendingApplicationSnapshot, error) {
++	if d == nil || ctx == nil {
++		return nil, ErrInvalid
++	}
++	if err := ctx.Err(); err != nil {
++		return nil, err
++	}
++	d.mu.Lock()
++	owner, err := d.beginPacketEvent()
++	if err != nil {
++		_, err = d.failEventAdmission(err)
++		return nil, err
++	}
++	fail := func(err error) (*PendingApplicationSnapshot, error) {
++		_, err = d.finishEvent(owner, Output{}, err)
++		return nil, err
++	}
++	provider, ok := d.applicationMachine.(ApplicationSnapshotAuditor)
++	if !ok || isNilMachine(provider) || !d.boundApplication() {
++		return fail(ErrInvalid)
++	}
++	if err := d.applicationInputAdmission(packet, b); err != nil {
++		return fail(err)
++	}
++	message, err := d.decodeBoundPacket(packet, true)
++	if err != nil {
++		return fail(err)
++	}
++	if err := d.store.CheckPreparedApplicationSnapshot(prepared, message.GetSnapshot()); err != nil {
++		return fail(err)
++	}
++	c, err := applicationSnapshotContext(message.GetSnapshot().Data, message.GetSnapshot().GetMetadata())
++	if err != nil {
++		return fail(err)
++	}
++	borrowed := uint64(cap(packet.Payload)) // #nosec G115 -- nonnegative cap already admitted before decoding.
++	held := applicationPendingFixed + applicationMessageOwned(message) + borrowed
++	if held > applicationPendingFixed+applicationMessageMaximum(d.config.Limits)+borrowed {
++		return fail(ErrLimit)
++	}
++	cleanup, err := applicationProduct(2, d.callbackLimits.CleanupWork)
++	if err != nil {
++		return fail(err)
++	}
++	work, err := applicationSum(applicationPendingFixed, 80, 10*uint64(len(packet.Payload)-80), 4*applicationProtoObjectBytes, uint64(d.config.Limits.MaxReadEntries)*applicationProtoEntryBytes, 4*256*8, 512, applicationDecodeCapacityWork(d.config.Limits), 2*applicationCleanupWork, cleanup) // #nosec G115 -- header and immutable Config count bounds checked before this private operation.
++	if err != nil {
++		return fail(err)
++	}
++	owned, err := applicationSum(held, applicationAuditCandidateBytes, d.callbackLimits.CleanupOwned)
++	if err != nil {
++		return fail(err)
++	}
++	if err := applicationAuditAdmit(b, work, owned); err != nil {
++		return fail(err)
++	}
++	if b.WorkBytes == work {
++		return fail(ErrLimit)
++	}
++	child := ApplicationAuditBudget{WorkBytes: b.WorkBytes - work, OwnedBytes: b.OwnedBytes - held - d.callbackLimits.CleanupOwned}
++	if child.WorkBytes == 0 {
++		return fail(ErrLimit)
++	}
++	p := &PendingApplicationSnapshot{driver: d, event: owner, prepared: prepared, message: message, context: c, owned: held, auditOwned: child.OwnedBytes, busy: true, opDone: make(chan struct{}), done: make(chan struct{})}
++	p.self = p
++	owner.pending = p
++	owner.rawPhase = false
++	d.mu.Unlock()
++	audit, err := provider.BeginApplicationSnapshotAudit(prepared, c, child)
++	d.mu.Lock()
++	p.audit = audit
++	p.busy = false
++	close(p.opDone)
++	if err == nil {
++		err = ctx.Err()
++	}
++	if err == nil && isNilMachine(audit) {
++		err = ErrInvalid
++	}
++	if err != nil || p.canceled || d.closeOwner != nil {
++		if err == nil {
++			err = ErrStopped
++		}
++		_, err = p.finishLocked(err)
++		return nil, err
++	}
++	if d.event != owner {
++		return fail(ErrInvalid)
++	}
++	packet = Packet{} // The constructor caller span is no longer used.
++	p.owned -= borrowed
++	d.mu.Unlock()
++	return p, nil
++}
++
++func (p *PendingApplicationSnapshot) valid() bool {
++	return p != nil && p.self == p && p.driver != nil && p.event != nil
++}
++
++// Advance performs one bounded audit phase; Finish follows EOF on a later call.
++// It returns true only after Finish succeeds; Commit performs no audit work.
++func (p *PendingApplicationSnapshot) Advance(ctx context.Context, b ApplicationAuditBudget) (bool, error) {
++	if !p.valid() || ctx == nil {
++		return false, ErrInvalid
++	}
++	if err := ctx.Err(); err != nil {
++		return false, err
++	}
++	d := p.driver
++	d.mu.Lock()
++	if p.event.pending != p {
++		d.mu.Unlock()
++		return false, ErrInvalid
++	}
++	if p.closed {
++		d.mu.Unlock()
++		return false, raftlog.ErrClosed
++	}
++	if d.event != p.event {
++		d.mu.Unlock()
++		return false, ErrInvalid
++	}
++	if p.busy || d.closeOwner != nil {
++		d.mu.Unlock()
++		return false, ErrUnavailable
++	}
++	cleanup, err := applicationProduct(2, d.callbackLimits.CleanupWork)
++	if err != nil {
++		d.mu.Unlock()
++		return false, err
++	}
++	work, err := applicationSum(applicationPendingFixed, 2*applicationCleanupWork, cleanup)
++	if err != nil {
++		d.mu.Unlock()
++		return false, err
++	}
++	owned, err := applicationSum(p.owned, p.auditOwned, d.callbackLimits.CleanupOwned)
++	if err != nil {
++		d.mu.Unlock()
++		return false, err
++	}
++	if err := applicationAuditAdmit(b, work, owned); err != nil {
++		d.mu.Unlock()
++		return false, err
++	}
++	if p.phase == applicationAuditFinished {
++		d.mu.Unlock()
++		return true, nil
++	}
++	if b.WorkBytes == work {
++		d.mu.Unlock()
++		return false, ErrLimit
++	}
++	child := ApplicationAuditBudget{WorkBytes: b.WorkBytes - work, OwnedBytes: min(p.auditOwned, b.OwnedBytes-p.owned-d.callbackLimits.CleanupOwned)}
++	p.busy = true
++	p.opDone = make(chan struct{})
++	audit, phase := p.audit, p.phase
++	d.mu.Unlock()
++	var done bool
++	if phase == applicationAuditScanning {
++		done, err = audit.Advance(ctx, child)
++	} else {
++		err = audit.Finish(ctx, child)
++	}
++	d.mu.Lock()
++	p.busy = false
++	close(p.opDone)
++	if p.canceled || d.closeOwner != nil {
++		_, err = p.finishLocked(errors.Join(ErrStopped, err))
++		return false, err
++	}
++	if err != nil {
++		if errors.Is(err, ErrLimit) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
++			d.mu.Unlock()
++			return false, err
++		}
++		_, err = p.finishLocked(err)
++		return false, err
++	}
++	if phase == applicationAuditScanning {
++		if done {
++			p.phase = applicationAuditFinishing
++		}
++		d.mu.Unlock()
++		return false, nil
++	}
++	p.phase = applicationAuditFinished
++	p.auditOwned = applicationAuditCandidateBytes
++	d.mu.Unlock()
++	return true, nil
++}
++
++// Commit walks no audit. The actual Snapshot remains private and Claim repeats
++// exact matching after Finish released all readers. RawNode alone decides Ready.
++func (p *PendingApplicationSnapshot) Commit(ctx context.Context, b ApplicationAuditBudget) (Output, error) {
++	if !p.valid() || ctx == nil {
++		return Output{}, ErrInvalid
++	}
++	if err := ctx.Err(); err != nil {
++		return Output{}, err
++	}
++	d := p.driver
++	d.mu.Lock()
++	if p.event.pending != p {
++		d.mu.Unlock()
++		return Output{}, ErrInvalid
++	}
++	if p.closed {
++		d.mu.Unlock()
++		return Output{}, raftlog.ErrClosed
++	}
++	if d.event != p.event {
++		d.mu.Unlock()
++		return Output{}, ErrInvalid
++	}
++	if p.busy || p.phase != applicationAuditFinished || d.closeOwner != nil {
++		d.mu.Unlock()
++		return Output{}, ErrUnavailable
++	}
++	if err := applicationAuditAdmit(b, applicationPendingFixed+2*applicationCleanupWork+1024, p.owned+p.auditOwned); err != nil {
++		d.mu.Unlock()
++		return Output{}, err
++	}
++	contract, err := p.prepared.ApplicationContract(ctx)
++	if err != nil {
++		return p.finishLocked(err)
++	}
++	work, peak, err := d.applicationCommitRequirements(p.owned, p.auditOwned, contract)
++	if err != nil {
++		d.mu.Unlock()
++		return Output{}, err
++	}
++	if err := applicationAuditAdmit(b, work, peak); err != nil {
++		d.mu.Unlock()
++		return Output{}, err
++	}
++	if err := d.store.CheckPreparedApplicationSnapshot(p.prepared, p.message.GetSnapshot()); err != nil {
++		return p.finishLocked(err)
++	}
++	claim, err := d.store.ClaimPreparedApplicationSnapshot(p.prepared, p.message.GetSnapshot())
++	if err != nil {
++		return p.finishLocked(err)
++	}
++	p.event.claim = claim
++	p.event.rawPhase = true
++	p.busy = true
++	p.opDone = make(chan struct{})
++	if err := d.validateBoundMessage(p.message, true); err != nil {
++		p.busy = false
++		close(p.opDone)
++		return p.finishLocked(err)
++	}
++	p.rawStarted = true
++	if err := d.raw.Step(p.message); err != nil {
++		p.busy = false
++		close(p.opDone)
++		return p.finishLocked(err)
++	}
++	out, err := d.drain()
++	p.busy = false
++	close(p.opDone)
++	return p.finishOutputLocked(out, err)
++}
++
++func (p *PendingApplicationSnapshot) finishLocked(err error) (Output, error) {
++	return p.finishOutputLocked(Output{}, err)
++}
++
++// Called with Driver.mu and no pending operation in flight. The event remains
++// installed through auditor/claim/sender cleanup; another Close waits on done.
++func (p *PendingApplicationSnapshot) finishOutputLocked(out Output, opErr error) (Output, error) {
++	d := p.driver
++	if p.canceled && opErr == nil {
++		opErr = raftlog.ErrClosed
++		out = Output{}
++		if p.rawStarted {
++			_, _ = d.stop(errors.Join(d.stopped, raftlog.ErrClosed))
++		}
++	}
++	p.closed = true
++	p.event.rawPhase = false
++	audit := p.audit
++	p.audit = nil
++	// Retain exact event→owner identity for repeated closed-handle operations.
++	// Driver drops its active event after cleanup; there is no resident registry.
++	d.mu.Unlock()
++	var cleanupErr error
++	if !isNilMachine(audit) {
++		cleanupErr = audit.Close()
++	}
++	d.mu.Lock()
++	if cleanupErr != nil {
++		d.applicationCleanupErr = errors.Join(d.applicationCleanupErr, cleanupErr)
++		_, _ = d.stop(errors.Join(d.stopped, cleanupErr))
++	}
++	p.message = nil
++	p.prepared = nil
++	p.owned, p.auditOwned = 0, 0
++	out, err := d.finishEvent(p.event, out, errors.Join(opErr, cleanupErr))
++	d.mu.Lock()
++	p.closeErr = errors.Join(cleanupErr, d.applicationCleanupErr, d.claimCleanupErr)
++	close(p.done)
++	d.mu.Unlock()
++	return out, err
++}
++
++// Close actively cancels idle events; it requires no future Advance. A live
++// bounded operation is waited for outside Driver.mu, then one owner closes it.
++func (p *PendingApplicationSnapshot) Close() error {
++	if !p.valid() {
++		return ErrInvalid
++	}
++	d := p.driver
++	for {
++		d.mu.Lock()
++		if p.event.pending != p {
++			d.mu.Unlock()
++			return ErrInvalid
++		}
++		if p.closed {
++			done := p.done
++			d.mu.Unlock()
++			<-done
++			return p.closeErr
++		}
++		if d.event != p.event {
++			d.mu.Unlock()
++			return ErrInvalid
++		}
++		p.canceled = true
++		if p.busy {
++			done := p.opDone
++			d.mu.Unlock()
++			<-done
++			continue
++		}
++		_, _ = p.finishLocked(nil)
++		return p.closeErr
++	}
++}
++
++// Commit funds configured framework quotas PLUS the compiled callback profile
++// before Claim/RawStep. All bounds are per event, never a total audit/journal cap.
++func (d *Driver) applicationCommitRequirements(held, candidate uint64, c raftlog.ApplicationContract) (uint64, uint64, error) {
++	l, policy, cb := d.config.Limits, d.store.ApplicationLimits(), d.callbackLimits
++	readyCount, err := applicationSum(policy.MaxTailEntries, 2)
++	if err != nil {
++		return 0, 0, err
++	}
++	readyWork, err := applicationSum(4*uint64(l.MaxReadyBytes), 8*uint64(c.MaxImageBytes), 9*65536, applicationProtoEntryBytes*uint64(l.MaxReadEntries), 2*uint64(l.MaxEntryBytes), 1024) // #nosec G115 -- concrete Config/contract positive finite fields validated before capture.
++	if err != nil {
++		return 0, 0, err
++	}
++	readyWork, err = applicationProduct(readyCount, readyWork)
++	if err != nil {
++		return 0, 0, err
++	}
++	// Store shape/key/frame emission, absence and direct Set plus geometric
++	// batch-grow copies are jointly bounded by6*Install (component table).
++	// Metadata is separate;4*Entry funds install reads and reclaim lookups.
++	cleanupWork, err := applicationProduct(2, cb.CleanupWork)
++	if err != nil {
++		return 0, 0, err
++	}
++	tailWork, err := applicationSum(cb.StageWork, cb.RestoreWork, cleanupWork, 6*uint64(policy.MaxInstallBytes), 4*uint64(l.MaxEntryBytes), 2*uint64(c.MaxImageBytes), 3*9*65536) // #nosec G115 -- actual immutable policy/Config fields validated finite positive.
++	if err != nil {
++		return 0, 0, err
++	}
++	tailWork, err = applicationProduct(policy.MaxTailEntries, tailWork)
++	if err != nil {
++		return 0, 0, err
++	}
++	outputSlots := uint64(d.config.MaxOutputBytes)/applicationPacketHeaderBytes + 1                                                                                                                                                                                // #nosec G115 -- Open validates positive MaxOutputBytes<=256MiB.
++	outputWork := 256*outputSlots + 32*128 + uint64(d.config.ApplicationSnapshotSends.MaxOffers)*16                                                                                                                                                                // #nosec G115 -- validated finite offers0..16; fixed public output slots.
++	work, err := applicationSum(applicationPendingFixed, 2*applicationCleanupWork, 1024+512+128, readyWork, tailWork, outputWork, cb.RestoreWork, cb.CleanupWork, 4*uint64(d.config.MaxOutputBytes), 2*uint64(d.config.MaxPacketBytes), 2*uint64(l.MaxEntryBytes)) // #nosec G115 -- Open bounds positive packet/output/entry fields before immutable capture.
++	if err != nil {
++		return 0, 0, err
++	}
++	// These coexist: actual retained message/candidate, claim+returned image,
++	// Ready/read buffers and typed entries, Entry clone, Stage batch, Restore
++	// image clone/module state, detached cleanup, outgoing output and sender.
++	outputBacking := 192*outputSlots + 32*96 + uint64(d.config.ApplicationSnapshotSends.MaxOffers)*16                                                                                                                                                                                                                                                                                                                     // #nosec G115 -- same finite output/offer bounds; old+new backing admitted.
++	owned, err := applicationSum(held, candidate, outputBacking, d.applicationStoreStagingMaximum(c), 2048, 3*uint64(c.MaxImageBytes), 2*uint64(l.MaxReadyBytes), 2*uint64(l.MaxReadBytes), 2*applicationProtoEntryBytes*uint64(l.MaxReadEntries), uint64(l.MaxEntryBytes), cb.StageOwned, cb.RestoreOwned, cb.CleanupOwned, uint64(d.config.MaxOutputBytes), d.config.ApplicationSnapshotSends.MaxOwnedBytes, 3*9*65536) // #nosec G115 -- Config/actual contract validated finite positive; callback fields checked by checked sum.
++	if err != nil {
++		return 0, 0, err
++	}
++	return work, owned, nil
++}
++
++// All fields here come from the actual immutable validated Store/contract and
++// Config. Each is<=64MiB; writes/entries<=4096, key<=64KiB. Every intermediate
++// below is<1GiB (proved in the component table), so uint64 arithmetic cannot
++// overflow. The final combined callback/global allowance uses applicationSum.
++// B is a batch representation bound incl11-byte record overhead/header/metadata.
++// Pebble rawalloc has exact visible cap; pooled baseline is1MiB, and geometric
++// growth can simultaneously retain old+new<3B+64. Sequential doors use MAX.
++func (d *Driver) applicationStoreStagingMaximum(c raftlog.ApplicationContract) uint64 {
++	p, l := d.store.ApplicationLimits(), d.config.Limits
++	image := uint64(c.MaxImageBytes)                                                           // #nosec G115 -- actual owner contract validates1..64MiB.
++	entry := uint64(l.MaxEntryBytes)                                                           // #nosec G115 -- immutable Config validates74..16MiB.
++	install := uint64(p.MaxInstallBytes) + image + 11*uint64(p.MaxInstallWrites+5) + 2048 + 32 // #nosec G115 -- validated policy<=64MiB and writes<=4096.
++	activation := 2*image + uint64(l.MaxReadyBytes) + 11*(4096+6) + 2048 + 128                 // #nosec G115 -- validated Ready bound<=64MiB.
++	persist := uint64(l.MaxReadyBytes) + 11*(4096+4) + 2048 + 128                              // #nosec G115 -- same immutable Ready ceiling.
++	reclaim := image + 11*6 + 2048 + 128
++	// The module Stage DTO is retained separately. Store-owned AV1/key scratch,
++	// log frame/decoded-entry copies and reclaimed image are additional owners.
++	frame := uint64(max(p.MaxValueBytes, p.MaxImageBytes, p.MaxChangeBytes, p.MaxOutcomeBytes)) + 36                                    // #nosec G115 -- all positive validated fields<=64MiB.
++	key := 6*uint64(p.MaxKeyBytes) + 8192 + 64                                                                                          // #nosec G115 -- logical key<=64KiB; pinned Go append rounding law.
++	temp := [4]uint64{frame + key, 3 * entry, 3 * entry, 2*image + uint64(max(p.MaxChangeBytes, p.MaxOutcomeBytes)) + 2*8192 + 5*entry} // #nosec G115 -- actual policy validates both record caps1..64MiB.
++	var peak uint64
++	for i, batch := range [4]uint64{install, activation, persist, reclaim} {
++		peak = max(peak, max(1<<20, 3*batch+64)+temp[i])
++	}
++	return peak
++}
+diff --git a/v5/internal/replica/application_snapshot_event_test.go b/v5/internal/replica/application_snapshot_event_test.go
+new file mode 100644
+index 00000000..35f3b7fb
+--- /dev/null
++++ b/v5/internal/replica/application_snapshot_event_test.go
+@@ -0,0 +1,898 @@
++package replica
++
++import (
++	"bytes"
++	"context"
++	"crypto/sha256"
++	"encoding/binary"
++	"errors"
++	"sync"
++	"testing"
++	"unsafe"
++
++	"github.com/cockroachdb/pebble/v2/vfs"
++	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
++	"go.etcd.io/raft/v3"
++	pb "go.etcd.io/raft/v3/raftpb"
++)
++
++// This replica/storage fixture has no Registered or graph semantic authority.
++type firstPendingSnapshotApplication struct{ *replicatedApplication }
++
++func (m *firstPendingSnapshotApplication) BeginApplicationSnapshotAudit(p *raftlog.PreparedApplicationSnapshot, c ApplicationSnapshotContext, b ApplicationAuditBudget) (ApplicationSnapshotAudit, error) {
++	if p == nil || c.Index < 3 || c.Term == 0 || c.Voters != [3]uint64{1, 2, 3} {
++		return nil, ErrInvalid
++	}
++	contract, err := p.ApplicationContract(context.Background())
++	if err != nil {
++		return nil, err
++	}
++	work := uint64(1024 + 1082 + 4*contract.MaxImageBytes + contract.MaxPageBytes)
++	owned := uint64(1024 + contract.MaxImageBytes + contract.MaxPageBytes)
++	if b.WorkBytes < work || b.OwnedBytes < owned {
++		return nil, ErrLimit
++	}
++	v, err := p.OpenReadView(context.Background(), c.Index, 8)
++	if err != nil {
++		return nil, err
++	}
++	root, err := v.RootBounded(context.Background(), 8)
++	if err != nil || !bytes.Equal(root.Image, []byte{0, 0, 0, 0, 0, 0, 0, 18}) {
++		return nil, errors.Join(ErrInvalid, err, v.Close())
++	}
++	return &firstRealSnapshotAudit{view: v, work: work, owned: owned}, nil
++}
++
++var _ ApplicationSnapshotAuditor = (*firstPendingSnapshotApplication)(nil)
++
++func TestBeginApplicationSnapshotValidPreparedPendingFirstContract(t *testing.T) {
++	identity := raftlog.ApplicationIdentity{Graph: [16]byte{223}, Partition: 1, Group: [16]byte{224}}
++	nodes := make(map[uint64]*Driver)
++	for id := uint64(1); id <= 3; id++ {
++		d, m, cfg := replicatedDriver(t, id, identity, vfs.NewMem())
++		if id == 3 {
++			if err := d.Close(); err != nil {
++				t.Fatal(err)
++			}
++			cfg.Create = false
++			s, err := raftlog.Open(cfg)
++			if err != nil {
++				t.Fatal(err)
++			}
++			wrapper := &firstPendingSnapshotApplication{replicatedApplication: m}
++			d, err = Open(Config{ID: id, Store: s, ApplicationMachine: wrapper, ApplicationSnapshotSends: ApplicationSnapshotSendLimits{MaxOffers: 2, MaxOwnedBytes: 4 << 20}})
++			if err != nil {
++				t.Fatal(errors.Join(err, s.Close()))
++			}
++			t.Cleanup(func() {
++				if err := d.Close(); err != nil {
++					t.Error(err)
++				}
++			})
++		}
++		nodes[id] = d
++	}
++	var packet Packet
++	var send *SnapshotSend
++	delivered := 0
++	// Inspect EVERY public output before ordinary FIFO delivery. Never call the
++	// recursive stock helper that imports/activates a discovered snapshot.
++	pump := func(out Output, eventErr error) {
++		if eventErr != nil {
++			t.Fatal(eventErr)
++		}
++		var queue []Packet
++		enqueue := func(next Output) {
++			snapshot := 0
++			for _, p := range next.Packets {
++				if p.Snapshot {
++					if p.From != 1 || p.To != 3 || snapshot >= len(next.SnapshotSends) || send != nil {
++						t.Fatal("actual send association", p, next)
++					}
++					packet, send = p, next.SnapshotSends[snapshot]
++					snapshot++
++				} else {
++					queue = append(queue, p)
++				}
++			}
++			if snapshot != len(next.SnapshotSends) || len(queue) > 10000 {
++				t.Fatal("output association or bounded FIFO", next)
++			}
++		}
++		enqueue(out)
++		for send == nil && len(queue) != 0 {
++			if delivered >= 10000 {
++				t.Fatal("bounded public transport exhausted")
++			}
++			delivered++
++			p := queue[0]
++			queue = queue[1:]
++			if target := nodes[p.To]; target != nil {
++				next, err := target.Step(p)
++				if err != nil {
++					t.Fatal("ordinary public Step", p, err)
++				}
++				enqueue(next)
++			}
++		}
++	}
++	pump(nodes[1].Campaign())
++	receiver := nodes[3]
++	if receiver.Applied() != 2 || receiver.store.ApplicationGeneration() != 1 {
++		t.Fatal("actual election/noop baseline", receiver.Applied())
++	}
++	delete(nodes, 3)
++	for _, value := range []uint64{7, 11} {
++		pump(nodes[1].Propose(command(value)))
++	}
++	if err := nodes[1].store.PublishSnapshot(); err != nil {
++		t.Fatal(err)
++	}
++	nodes[3] = receiver
++	for range 24 {
++		pump(nodes[1].Tick())
++		if send != nil {
++			break
++		}
++		offers, err := nodes[1].SnapshotSends()
++		if err != nil {
++			t.Fatal(err)
++		}
++		for _, offer := range offers {
++			buildSender(t, offer)
++			if err := nodes[1].SealSnapshotSend(offer); err != nil {
++				t.Fatal(err)
++			}
++		}
++	}
++	if send == nil {
++		t.Fatal("bounded actual owned MsgSnap unavailable")
++	}
++	manifest, err := send.Manifest()
++	if err != nil {
++		t.Fatal(err)
++	}
++	imported, err := receiver.store.BeginApplicationImport(t.Context(), manifest)
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() {
++		if err := imported.Abort(); err != nil {
++			t.Error(err)
++		}
++	})
++	final := false
++	for range 100 {
++		chunk, err := send.Next(t.Context(), raftlog.ReadBudget{Rows: 1, Bytes: 4096})
++		if err != nil {
++			t.Fatal(err)
++		}
++		if err := imported.Append(t.Context(), chunk); err != nil {
++			t.Fatal(err)
++		}
++		if chunk.Final {
++			final = true
++			break
++		}
++	}
++	if !final {
++		t.Fatal("bounded stream incomplete")
++	}
++	if err := imported.Verify(t.Context()); err != nil {
++		t.Fatal(err)
++	}
++	prepared, err := imported.Prepare()
++	if err != nil {
++		t.Fatal(err)
++	}
++	descriptor, err := raftlog.EncodeApplicationSnapshotDescriptor(manifest)
++	if err != nil {
++		t.Fatal(err)
++	}
++	actual, err := receiver.decodeBoundPacket(packet, true)
++	if err != nil || !bytes.Equal(actual.GetSnapshot().Data, descriptor) {
++		t.Fatal("actual decoded packet", err)
++	}
++	if err := receiver.store.CheckPreparedApplicationSnapshot(prepared, actual.GetSnapshot()); err != nil {
++		t.Fatal("actual same-Store prepared match", err)
++	}
++	t.Log("PENDING_VALID_OWNED_PACKET_PREPARED_MATCH_BASELINE_PASS")
++	pending, err := receiver.BeginApplicationSnapshot(t.Context(), packet, prepared, ApplicationAuditBudget{WorkBytes: 32 << 20, OwnedBytes: 32 << 20})
++	if err != nil || pending == nil {
++		t.Fatalf("PENDING_VALID_BEGIN_UNAVAILABLE: %v", err)
++	}
++	out, eventErr := receiver.Tick()
++	if !errors.Is(eventErr, ErrUnavailable) || out.Applied != 0 || out.Packets != nil || out.Reads != nil || out.SnapshotSends != nil || receiver.Applied() != 2 || receiver.store.ApplicationGeneration() != 1 {
++		t.Fatal("pending fence or premature activation", out, eventErr)
++	}
++	if err := pending.Close(); err != nil {
++		t.Fatal(err)
++	}
++}
++
++// This verifier reads real prepared data; its result is storage-fixture evidence,
++// not Registered inventory, a certificate, or permission to fabricate a Ready.
++type firstRealSnapshotAudit struct {
++	view               *raftlog.ApplicationView
++	work, owned        uint64
++	after              []byte
++	complete, finished bool
++}
++
++func (a *firstRealSnapshotAudit) Advance(ctx context.Context, b ApplicationAuditBudget) (bool, error) {
++	if a == nil || a.view == nil {
++		return false, ErrInvalid
++	}
++	if b.WorkBytes < a.work || b.OwnedBytes < a.owned {
++		return false, ErrLimit
++	}
++	page, err := a.view.Scan(ctx, nil, nil, a.after, raftlog.ReadBudget{Rows: 1, Bytes: 4096})
++	if err != nil {
++		return false, err
++	}
++	for _, row := range page.Rows {
++		if !bytes.Equal(row.Key, []byte("a")) || !bytes.Equal(row.Value, []byte{0, 0, 0, 0, 0, 0, 0, 18}) || row.Deleted {
++			return false, ErrInvalid
++		}
++	}
++	a.after, a.complete = page.Next, page.Complete
++	return a.complete, nil
++}
++func (a *firstRealSnapshotAudit) Finish(ctx context.Context, b ApplicationAuditBudget) error {
++	if a == nil || a.view == nil || !a.complete {
++		return ErrInvalid
++	}
++	if err := ctx.Err(); err != nil {
++		return err
++	}
++	if b.WorkBytes < a.work || b.OwnedBytes < a.owned {
++		return ErrLimit
++	}
++	err := a.view.Close()
++	a.view, a.after = nil, nil
++	a.finished = err == nil
++	return err
++}
++func (a *firstRealSnapshotAudit) Close() error {
++	if a == nil {
++		return ErrInvalid
++	}
++	v := a.view
++	a.view, a.after = nil, nil
++	if v != nil {
++		return v.Close()
++	}
++	return nil
++}
++
++type pendingFixture struct {
++	target, source *Driver
++	prepared       *raftlog.PreparedApplicationSnapshot
++	packet         Packet
++}
++
++func newPendingFixture(t *testing.T) pendingFixture {
++	t.Helper()
++	nodes := make(map[uint64]*Driver)
++	for id := uint64(1); id <= 3; id++ {
++		d, m, cfg := replicatedDriver(t, id, raftlog.ApplicationIdentity{Graph: [16]byte{223}, Partition: 1, Group: [16]byte{224}}, vfs.NewMem())
++		if id == 3 {
++			if err := d.Close(); err != nil {
++				t.Fatal(err)
++			}
++			cfg.Create = false
++			store, err := raftlog.Open(cfg)
++			if err != nil {
++				t.Fatal(err)
++			}
++			wrapper := &firstPendingSnapshotApplication{replicatedApplication: m}
++			d, err = Open(Config{ID: 3, Store: store, ApplicationMachine: wrapper, ApplicationSnapshotSends: ApplicationSnapshotSendLimits{MaxOffers: 2, MaxOwnedBytes: 4 << 20}})
++			if err != nil {
++				t.Fatal(errors.Join(err, store.Close()))
++			}
++			t.Cleanup(func() {
++				if err := d.Close(); err != nil {
++					t.Error(err)
++				}
++			})
++		}
++		nodes[id] = d
++	}
++	target := nodes[3]
++	var packet Packet
++	var send *SnapshotSend
++	delivered := 0
++	pump := func(out Output, eventErr error) {
++		if eventErr != nil {
++			t.Fatal(eventErr)
++		}
++		var queue []Packet
++		enqueue := func(next Output) {
++			snapshot := 0
++			for _, p := range next.Packets {
++				if p.Snapshot {
++					if p.From != 1 || p.To != 3 || snapshot >= len(next.SnapshotSends) || send != nil {
++						t.Fatal("send pairing", p)
++					}
++					packet, send = p, next.SnapshotSends[snapshot]
++					snapshot++
++				} else {
++					queue = append(queue, p)
++				}
++			}
++			if snapshot != len(next.SnapshotSends) || len(queue) > 10000 {
++				t.Fatal("bounded FIFO pairing")
++			}
++		}
++		enqueue(out)
++		for send == nil && len(queue) > 0 {
++			if delivered >= 10000 {
++				t.Fatal("bounded transport")
++			}
++			delivered++
++			p := queue[0]
++			queue = queue[1:]
++			if d := nodes[p.To]; d != nil {
++				next, err := d.Step(p)
++				if err != nil {
++					t.Fatal(err)
++				}
++				enqueue(next)
++			}
++		}
++	}
++	pump(nodes[1].Campaign())
++	delete(nodes, 3)
++	pump(nodes[1].Propose(command(7)))
++	pump(nodes[1].Propose(command(11)))
++	if err := nodes[1].store.PublishSnapshot(); err != nil {
++		t.Fatal(err)
++	}
++	nodes[3] = target
++	for range 24 {
++		pump(nodes[1].Tick())
++		if send != nil {
++			break
++		}
++		offers, err := nodes[1].SnapshotSends()
++		if err != nil {
++			t.Fatal(err)
++		}
++		for _, offer := range offers {
++			buildSender(t, offer)
++			if err := nodes[1].SealSnapshotSend(offer); err != nil {
++				t.Fatal(err)
++			}
++		}
++	}
++	if send == nil {
++		t.Fatal("actual snapshot missing")
++	}
++	manifest, err := send.Manifest()
++	if err != nil {
++		t.Fatal(err)
++	}
++	imported, err := target.store.BeginApplicationImport(t.Context(), manifest)
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() {
++		if err := imported.Abort(); err != nil {
++			t.Error(err)
++		}
++	})
++	final := false
++	for range 100 {
++		chunk, err := send.Next(t.Context(), raftlog.ReadBudget{Rows: 1, Bytes: 4096})
++		if err != nil {
++			t.Fatal(err)
++		}
++		if err := imported.Append(t.Context(), chunk); err != nil {
++			t.Fatal(err)
++		}
++		if chunk.Final {
++			final = true
++			break
++		}
++	}
++	if !final {
++		t.Fatal("incomplete real stream")
++	}
++	if err := imported.Verify(t.Context()); err != nil {
++		t.Fatal(err)
++	}
++	prepared, err := imported.Prepare()
++	if err != nil {
++		t.Fatal(err)
++	}
++	return pendingFixture{target, nodes[1], prepared, packet}
++}
++func TestApplicationSnapshotPendingPhasesAndActualActivation(t *testing.T) {
++	f := newPendingFixture(t)
++	b := ApplicationAuditBudget{WorkBytes: 32 << 20, OwnedBytes: 32 << 20}
++	p, err := f.target.BeginApplicationSnapshot(t.Context(), f.packet, f.prepared, b)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() {
++		if err := p.Close(); err != nil {
++			t.Error(err)
++		}
++	}()
++	if out, err := p.Commit(t.Context(), b); !errors.Is(err, ErrUnavailable) || !zeroPendingOutput(out) {
++		t.Fatal("premature Commit", out, err)
++	}
++	done, err := p.Advance(t.Context(), b)
++	if err != nil || done {
++		t.Fatal("EOF is not Finish", done, err)
++	}
++	if usage, err := f.target.store.ApplicationUsage(); err != nil || usage.Views != 1 {
++		t.Fatal("reader before Finish", usage, err)
++	}
++	done, err = p.Advance(t.Context(), b)
++	if err != nil || !done {
++		t.Fatal("distinct Finish", done, err)
++	}
++	if usage, err := f.target.store.ApplicationUsage(); err != nil || usage.Views != 0 {
++		t.Fatal("Finish reader release", usage, err)
++	}
++	out, err := p.Commit(t.Context(), fundedPendingCommitBudget())
++	if err != nil || out.Applied != 4 || f.target.store.ApplicationGeneration() != 2 {
++		t.Fatal("actual Ready activation", out, err)
++	}
++	audit, err := f.target.store.ApplicationActivationAudit()
++	if err != nil || audit.Index != 4 || audit.Term != 2 || audit.CutID != p.context.CutID || audit.ManifestID != p.context.ManifestID {
++		t.Fatal("actual activation identity", audit, err)
++	}
++	fixtureRead(t, f.target.store, 4, 18, false)
++	if out, err := p.Commit(t.Context(), b); !errors.Is(err, raftlog.ErrClosed) || !zeroPendingOutput(out) {
++		t.Fatal("repeat Commit", out, err)
++	}
++}
++func zeroPendingOutput(out Output) bool {
++	return out.Applied == 0 && out.Packets == nil && out.Reads == nil && out.SnapshotSends == nil
++}
++func TestApplicationSnapshotPendingLifecycleAndBudgets(t *testing.T) {
++	f := newPendingFixture(t)
++	b := ApplicationAuditBudget{WorkBytes: 32 << 20, OwnedBytes: 32 << 20}
++	for _, bad := range []ApplicationAuditBudget{{}, {WorkBytes: 1, OwnedBytes: 1}} {
++		p, err := f.target.BeginApplicationSnapshot(t.Context(), f.packet, f.prepared, bad)
++		want := ErrLimit
++		if bad == (ApplicationAuditBudget{}) {
++			want = ErrInvalid
++		}
++		if p != nil || !errors.Is(err, want) {
++			t.Fatal("before owner admission", p, err)
++		}
++	}
++	p, err := f.target.BeginApplicationSnapshot(t.Context(), f.packet, f.prepared, b)
++	if err != nil {
++		t.Fatal(err)
++	}
++	copied := *p
++	if done, err := copied.Advance(t.Context(), b); done || !errors.Is(err, ErrInvalid) {
++		t.Fatal("copied event", done, err)
++	}
++	ctx, cancel := context.WithCancel(t.Context())
++	cancel()
++	if done, err := p.Advance(ctx, b); done || !errors.Is(err, context.Canceled) {
++		t.Fatal("canceled input", done, err)
++	}
++	if done, err := p.Advance(t.Context(), ApplicationAuditBudget{WorkBytes: 1, OwnedBytes: 1}); done || !errors.Is(err, ErrLimit) {
++		t.Fatal("short phase", done, err)
++	}
++	if err := p.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if err := p.Close(); err != nil {
++		t.Fatal("repeat close", err)
++	}
++	if usage, err := f.target.store.ApplicationUsage(); err != nil || usage.Views != 0 {
++		t.Fatal("closed reader", usage, err)
++	}
++	if f.target.Applied() != 2 || f.target.store.ApplicationGeneration() != 1 {
++		t.Fatal("Close activated")
++	}
++	if _, err := f.target.Tick(); err != nil {
++		t.Fatal("fence released", err)
++	}
++}
++func TestApplicationSnapshotPendingIdleDriverClose(t *testing.T) {
++	f := newPendingFixture(t)
++	b := ApplicationAuditBudget{WorkBytes: 32 << 20, OwnedBytes: 32 << 20}
++	p, err := f.target.BeginApplicationSnapshot(t.Context(), f.packet, f.prepared, b)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := f.target.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if err := p.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if err := f.target.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := p.Advance(t.Context(), b); !errors.Is(err, raftlog.ErrClosed) {
++		t.Fatal("post close", err)
++	}
++}
++func TestApplicationSnapshotContextGoldenAndLayouts(t *testing.T) {
++	for _, version := range []byte{1, 2, 3} {
++		cut := 196
++		if version >= 2 {
++			cut += 32
++		}
++		if version == 3 {
++			cut += 16
++		}
++		wire := make([]byte, cut+68)
++		copy(wire[:4], []byte{'A', 'D', version, 0})
++		copy(wire[cut:cut+32], bytes.Repeat([]byte{7}, 32))
++		copy(wire[cut+32:cut+64], bytes.Repeat([]byte{9}, 32))
++		md := newSnapshotMetadataForContext(4, 2)
++		c, err := applicationSnapshotContext(wire, md)
++		if err != nil || c.Index != 4 || c.Term != 2 || c.Voters != [3]uint64{1, 2, 3} || c.DescriptorHash != sha256.Sum256(wire) || c.CutID != ([32]byte(bytes.Repeat([]byte{7}, 32))) || c.ManifestID != ([32]byte(bytes.Repeat([]byte{9}, 32))) {
++			t.Fatal(version, c, err)
++		}
++		wire[3] = 1
++		if c, err := applicationSnapshotContext(wire, md); c != (ApplicationSnapshotContext{}) || !errors.Is(err, ErrInvalid) {
++			t.Fatal("bad descriptor", c, err)
++		}
++	}
++	if unsafe.Sizeof(PendingApplicationSnapshot{})+unsafe.Sizeof(applicationEvent{})+unsafe.Sizeof(applicationClose{})+3*128+2*unsafe.Sizeof(ApplicationSnapshotContext{})+256 > uintptr(applicationPendingFixed) {
++		t.Fatal("fixed owner too small")
++	}
++	if binary.Size(ApplicationSnapshotContext{}) != 136 {
++		t.Fatal("value context width")
++	}
++}
++
++func newSnapshotMetadataForContext(index, term uint64) *pb.SnapshotMetadata {
++	return &pb.SnapshotMetadata{Index: new(index), Term: new(term), ConfState: &pb.ConfState{Voters: []uint64{1, 2, 3}}}
++}
++func TestApplicationSnapshotPendingDirectNilAndOldDoor(t *testing.T) {
++	var d *Driver
++	if p, err := d.BeginApplicationSnapshot(t.Context(), Packet{}, nil, ApplicationAuditBudget{}); p != nil || !errors.Is(err, ErrInvalid) {
++		t.Fatal(p, err)
++	}
++	var p *PendingApplicationSnapshot
++	if done, err := p.Advance(t.Context(), ApplicationAuditBudget{}); done || !errors.Is(err, ErrInvalid) {
++		t.Fatal(done, err)
++	}
++	if out, err := p.Commit(t.Context(), ApplicationAuditBudget{}); !zeroPendingOutput(out) || !errors.Is(err, ErrInvalid) {
++		t.Fatal(out, err)
++	}
++	if err := p.Close(); !errors.Is(err, ErrInvalid) {
++		t.Fatal(err)
++	}
++	f := newPendingFixture(t)
++	if out, err := f.target.StepApplicationSnapshot(f.packet, f.prepared); !zeroPendingOutput(out) || !errors.Is(err, ErrUnavailable) {
++		t.Fatal("mandatory audit bypass", out, err)
++	}
++	if f.target.Applied() != 2 || f.target.store.ApplicationGeneration() != 1 {
++		t.Fatal("old door mutated")
++	}
++	if err := f.prepared.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if p, err := f.target.BeginApplicationSnapshot(t.Context(), f.packet, f.prepared, ApplicationAuditBudget{WorkBytes: 32 << 20, OwnedBytes: 32 << 20}); p != nil || !errors.Is(err, raftlog.ErrClosed) {
++		t.Fatal(p, err)
++	}
++}
++
++// Supplemental protocol guard: freeze before the exact membership check. This
++// is not a new runtime RED or a fabricated successful owner.
++func TestApplicationSnapshotUnregisteredPendingCannotStealEvent(t *testing.T) {
++	f := newPendingFixture(t)
++	b := ApplicationAuditBudget{WorkBytes: 32 << 20, OwnedBytes: 32 << 20}
++	p, err := f.target.BeginApplicationSnapshot(t.Context(), f.packet, f.prepared, b)
++	if err != nil {
++		t.Fatal(err)
++	}
++	forged := &PendingApplicationSnapshot{driver: f.target, event: p.event, done: make(chan struct{})}
++	forged.self = forged
++	if done, err := forged.Advance(t.Context(), b); done || !errors.Is(err, ErrInvalid) {
++		t.Fatal("unregistered Advance", done, err)
++	}
++	if out, err := forged.Commit(t.Context(), b); !zeroPendingOutput(out) || !errors.Is(err, ErrInvalid) {
++		t.Fatal("unregistered Commit", out, err)
++	}
++	if err := forged.Close(); !errors.Is(err, ErrInvalid) {
++		t.Fatal("unregistered Close", err)
++	}
++	if done, err := p.Advance(t.Context(), b); done || err != nil {
++		t.Fatal("real owner changed", done, err)
++	}
++	if err := p.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if usage, err := f.target.store.ApplicationUsage(); err != nil || usage.Views != 0 {
++		t.Fatal("real owner accounting", usage, err)
++	}
++}
++
++// These compiled fixture limits cover actual fixed primitive callbacks, not
++// Registered parsing or a live factory. No persistent diagnostic slice grows.
++func (m *firstPendingSnapshotApplication) ApplicationCallbackLimits() ApplicationCallbackLimits {
++	return ApplicationCallbackLimits{StageWork: 1 << 20, StageOwned: 1 << 20, RestoreWork: 1 << 20, RestoreOwned: 1 << 20, CleanupWork: 1 << 20, CleanupOwned: 1 << 20}
++}
++func (m *firstPendingSnapshotApplication) Restore(index uint64, image []byte) error {
++	return m.applicationFixture.Restore(index, image)
++}
++func (m *firstPendingSnapshotApplication) Stage(e Entry, b raftlog.ApplicationBudget) (raftlog.ApplicationBatch, error) {
++	return m.applicationFixture.Stage(e, b)
++}
++func fundedPendingCommitBudget() ApplicationAuditBudget {
++	return ApplicationAuditBudget{WorkBytes: 1 << 34, OwnedBytes: 1 << 30}
++}
++func TestApplicationSnapshotCommitFundsConfiguredDrainBeforeClaim(t *testing.T) {
++	f := newPendingFixture(t)
++	b := ApplicationAuditBudget{WorkBytes: 32 << 20, OwnedBytes: 32 << 20}
++	p, err := f.target.BeginApplicationSnapshot(t.Context(), f.packet, f.prepared, b)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if done, err := p.Advance(t.Context(), b); done || err != nil {
++		t.Fatal(done, err)
++	}
++	if done, err := p.Advance(t.Context(), b); !done || err != nil {
++		t.Fatal(done, err)
++	}
++	// This budgets message/candidate/claim but cannot fund configured Ready,
++	// callbacks, clones and output. Refuse before any Claim or RawNode action.
++	if out, err := p.Commit(t.Context(), b); !errors.Is(err, ErrLimit) || !zeroPendingOutput(out) {
++		t.Fatal("unfunded drain", out, err)
++	}
++	if f.target.Applied() != 2 || f.target.store.ApplicationGeneration() != 1 {
++		t.Fatal("short budget mutated")
++	}
++	if out, err := p.Commit(t.Context(), fundedPendingCommitBudget()); err != nil || out.Applied != 4 {
++		t.Fatal("funded actual drain", out, err)
++	}
++	if err := p.Close(); err != nil {
++		t.Fatal(err)
++	}
++}
++func TestApplicationSnapshotCommitClosePublicRace(t *testing.T) {
++	f := newPendingFixture(t)
++	b := ApplicationAuditBudget{WorkBytes: 32 << 20, OwnedBytes: 32 << 20}
++	p, err := f.target.BeginApplicationSnapshot(t.Context(), f.packet, f.prepared, b)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for range 2 {
++		if _, err := p.Advance(t.Context(), b); err != nil {
++			t.Fatal(err)
++		}
++	}
++	var out Output
++	var commitErr, closeErr error
++	var wg sync.WaitGroup
++	start := make(chan struct{})
++	wg.Go(func() { <-start; out, commitErr = p.Commit(t.Context(), fundedPendingCommitBudget()) })
++	wg.Go(func() { <-start; closeErr = p.Close() })
++	close(start)
++	wg.Wait()
++	if closeErr != nil {
++		t.Fatal(closeErr)
++	}
++	if commitErr != nil && !errors.Is(commitErr, raftlog.ErrClosed) && !errors.Is(commitErr, ErrStopped) && !errors.Is(commitErr, ErrUnavailable) {
++		t.Fatal(commitErr)
++	}
++	if commitErr != nil && !zeroPendingOutput(out) {
++		t.Fatal("canceled success escaped", out, commitErr)
++	}
++	generation := f.target.store.ApplicationGeneration()
++	if generation != 1 && generation != 2 {
++		t.Fatal("invalid activation", generation)
++	}
++	if usage, err := f.target.store.ApplicationUsage(); err != nil || usage.Views != 0 {
++		t.Fatal("race cleanup", usage, err)
++	}
++}
++
++// These are typed logical representation bounds, not heap/RSS measurements.
++func TestApplicationSnapshotConcreteTypedResourceModels(t *testing.T) {
++	for _, n := range []uintptr{unsafe.Sizeof(pb.Message{}), unsafe.Sizeof(pb.Snapshot{}), unsafe.Sizeof(pb.SnapshotMetadata{}), unsafe.Sizeof(pb.ConfState{})} {
++		if n+32*unsafe.Sizeof(uint64(0)) > uintptr(applicationProtoObjectBytes) {
++			t.Fatal("protobuf object/scalar-pointer allowance", n)
++		}
++	}
++	entry := unsafe.Sizeof(pb.Entry{}) + 3*unsafe.Sizeof(uint64(0))
++	if entry > uintptr(applicationProtoEntryBytes) {
++		t.Fatal("entry/scalar allocation allowance", entry)
++	}
++	fixed := unsafe.Sizeof(PendingApplicationSnapshot{}) + unsafe.Sizeof(applicationEvent{}) + unsafe.Sizeof(applicationClose{}) +
++		3*128 + 2*unsafe.Sizeof(ApplicationSnapshotContext{}) + 6*unsafe.Sizeof(ApplicationAuditBudget{}) +
++		2*unsafe.Sizeof(ApplicationCallbackLimits{}) + unsafe.Sizeof(raft.Ready{}) + unsafe.Sizeof(Entry{}) +
++		unsafe.Sizeof(Output{}) + unsafe.Sizeof(raftlog.ApplicationBatch{}) + 16*unsafe.Sizeof(uint64(0)) +
++		8*unsafe.Sizeof(error(nil)) + 8*unsafe.Sizeof(ApplicationCleanup(nil)) + 256 + 32 + 512
++	if fixed > uintptr(applicationPendingFixed) {
++		t.Fatal("fixed caller/return/context/hash schedule", fixed)
++	}
++	if unsafe.Sizeof(Packet{}) > 64 || unsafe.Sizeof(ReadResult{}) > 64 || unsafe.Sizeof(raft.Ready{}) > 512 {
++		t.Fatal("public output/Ready fixed representation")
++	}
++	fixture := unsafe.Sizeof(firstPendingSnapshotApplication{}) + unsafe.Sizeof(firstRealSnapshotAudit{}) +
++		unsafe.Sizeof(cleanupApplication{}) + 16*unsafe.Sizeof(applicationViewCleanup{}) + unsafe.Sizeof(raftlog.ApplicationView{})
++	if fixture > 16*1024 {
++		t.Fatal("fixture owned diagnostic/view structures", fixture)
++	}
++	t.Logf("typed model fixed=%d entry=%d fixture=%d Ready=%d", fixed, entry, fixture, unsafe.Sizeof(raft.Ready{}))
++}
++
++func TestApplicationPendingBeforeActionInputAndPhaseGuards(t *testing.T) {
++	f := newPendingFixture(t)
++	b := ApplicationAuditBudget{WorkBytes: 32 << 20, OwnedBytes: 32 << 20}
++	ctx, cancel := context.WithCancel(t.Context())
++	cancel()
++	if p, err := f.target.BeginApplicationSnapshot(ctx, f.packet, f.prepared, b); p != nil || !errors.Is(err, context.Canceled) {
++		t.Fatal(p, err)
++	}
++	for _, tc := range []struct {
++		packet Packet
++		want   error
++	}{
++		{packet: Packet{}, want: ErrInvalid},
++		{packet: Packet{Payload: make([]byte, f.target.config.MaxPacketBytes+1)}, want: ErrLimit},
++		{packet: Packet{From: f.packet.From, To: f.packet.To, Payload: make([]byte, 80), Snapshot: true}, want: ErrInvalid},
++	} {
++		if p, err := f.target.BeginApplicationSnapshot(t.Context(), tc.packet, f.prepared, b); p != nil || !errors.Is(err, tc.want) {
++			t.Fatal(p, err)
++		}
++	}
++	if f.target.config.Limits.MaxReadEntries != 128 {
++		t.Fatal("independent default wire ledger assumes128")
++	}
++	// Independent source-law arithmetic: q128 byte-capacity and Conf growth credit.
++	const capacityWork = 8192*128 + 2*8192 + 9*(16*128+8192) + 4*(24*(256*257/2)+8192*256)
++	work := uint64(4096 + 80 + 10*(len(f.packet.Payload)-80) + 4096 + 128*256 + 4*256*8 + 512 + capacityWork + 2048 + 2*(1<<20))
++	for _, limit := range []uint64{work, work + 1} {
++		bad := b
++		bad.WorkBytes = limit
++		if p, err := f.target.BeginApplicationSnapshot(t.Context(), f.packet, f.prepared, bad); p != nil || !errors.Is(err, ErrLimit) {
++			t.Fatal("no constructor/audit work loan", limit, p, err)
++		}
++	}
++	p, err := f.target.BeginApplicationSnapshot(t.Context(), f.packet, f.prepared, b)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, bad := range []ApplicationAuditBudget{{}, {WorkBytes: 4096 + 2048 + 2*(1<<20), OwnedBytes: 32 << 20}, {WorkBytes: 4096 + 2048 + 2*(1<<20) + 1, OwnedBytes: 32 << 20}} {
++		want := ErrLimit
++		if bad == (ApplicationAuditBudget{}) {
++			want = ErrInvalid
++		}
++		if done, err := p.Advance(t.Context(), bad); done || !errors.Is(err, want) {
++			t.Fatal("phase loan refusal", done, err)
++		}
++	}
++	if done, err := p.Advance(t.Context(), b); done || err != nil {
++		t.Fatal(done, err)
++	}
++	if done, err := p.Advance(t.Context(), b); !done || err != nil {
++		t.Fatal(done, err)
++	}
++	if done, err := p.Advance(t.Context(), b); !done || err != nil {
++		t.Fatal("finished audit is fixed", done, err)
++	}
++	if out, err := p.Commit(ctx, fundedPendingCommitBudget()); !zeroPendingOutput(out) || !errors.Is(err, context.Canceled) {
++		t.Fatal(out, err)
++	}
++	if out, err := p.Commit(t.Context(), ApplicationAuditBudget{}); !zeroPendingOutput(out) || !errors.Is(err, ErrInvalid) {
++		t.Fatal(out, err)
++	}
++	v, err := f.prepared.OpenReadView(t.Context(), 4, 8)
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() {
++		if err := v.Close(); err != nil {
++			t.Error(err)
++		}
++	})
++	if out, err := p.Commit(t.Context(), fundedPendingCommitBudget()); !zeroPendingOutput(out) || !errors.Is(err, raftlog.ErrLimit) {
++		t.Fatal("reader must prevent Claim", out, err)
++	}
++	if err := v.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if err := p.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if f.target.Applied() != 2 || f.target.store.ApplicationGeneration() != 1 {
++		t.Fatal("refusal activated")
++	}
++}
++
++func TestApplicationPendingPreparedLifetimeRefusesBeforeRaw(t *testing.T) {
++	f := newPendingFixture(t)
++	b := ApplicationAuditBudget{WorkBytes: 32 << 20, OwnedBytes: 32 << 20}
++	p, err := f.target.BeginApplicationSnapshot(t.Context(), f.packet, f.prepared, b)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if done, err := p.Advance(t.Context(), b); done || err != nil {
++		t.Fatal(done, err)
++	}
++	if done, err := p.Advance(t.Context(), b); !done || err != nil {
++		t.Fatal(done, err)
++	}
++	if err := f.prepared.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if out, err := p.Commit(t.Context(), fundedPendingCommitBudget()); !zeroPendingOutput(out) || !errors.Is(err, raftlog.ErrClosed) {
++		t.Fatal("actual prepared lifetime", out, err)
++	}
++	if err := p.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if f.target.Applied() != 2 || f.target.store.ApplicationGeneration() != 1 {
++		t.Fatal("closed import activated")
++	}
++}
++
++func TestApplicationCommitMissingStoreStagingReservation(t *testing.T) {
++	f := newPendingFixture(t)
++	if f.target.store.ApplicationLimits() != raftlog.DefaultApplicationPolicy(3) || f.target.config.Limits != raftlog.DefaultLimits() {
++		t.Fatal("independent default Store staging ledger prerequisite")
++	}
++	b := ApplicationAuditBudget{WorkBytes: 32 << 20, OwnedBytes: 32 << 20}
++	p, err := f.target.BeginApplicationSnapshot(t.Context(), f.packet, f.prepared, b)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if done, err := p.Advance(t.Context(), b); done || err != nil {
++		t.Fatal(done, err)
++	}
++	if done, err := p.Advance(t.Context(), b); !done || err != nil {
++		t.Fatal(done, err)
++	}
++	if usage, err := f.target.store.ApplicationUsage(); err != nil || usage.Views != 0 || f.target.Applied() != 2 || f.target.store.ApplicationGeneration() != 1 {
++		t.Fatal("completed audit/readers baseline", usage, err)
++	}
++	t.Log("STORE_STAGING_FINISHED_READERS_BASELINE_PASS")
++	//132MiB exceeds the old137551680-byte framework estimate, but omits
++	//distinct configured Store batch/appFrame owners (install4MiB/image64KiB).
++	short := ApplicationAuditBudget{WorkBytes: 1 << 34, OwnedBytes: 132 << 20}
++	out, err := p.Commit(t.Context(), short)
++	if !errors.Is(err, ErrLimit) || !zeroPendingOutput(out) || f.target.Applied() != 2 || f.target.store.ApplicationGeneration() != 1 {
++		t.Fatal("STORE_STAGING_ADMISSION_DEFICIENCY", out.Applied, err, f.target.Applied(), f.target.store.ApplicationGeneration())
++	}
++	//A genuine pre-Claim refusal leaves this exact healthy event retryable.
++	out, err = p.Commit(t.Context(), fundedPendingCommitBudget())
++	if err != nil || out.Applied != 4 || f.target.store.ApplicationGeneration() != 2 {
++		t.Fatal("funded retry", out.Applied, err)
++	}
++	if err := p.Close(); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func TestApplicationPendingDistinctEventRefusesWithoutLiveMutation(t *testing.T) {
++	f := newPendingFixture(t)
++	b := ApplicationAuditBudget{WorkBytes: 32 << 20, OwnedBytes: 32 << 20}
++	p, err := f.target.BeginApplicationSnapshot(t.Context(), f.packet, f.prepared, b)
++	if err != nil {
++		t.Fatal(err)
++	}
++	e := &applicationEvent{done: make(chan struct{})}
++	forged := &PendingApplicationSnapshot{driver: f.target, event: e, done: make(chan struct{})}
++	forged.self, e.pending = forged, forged
++	if done, err := forged.Advance(t.Context(), b); done || !errors.Is(err, ErrInvalid) {
++		t.Fatal(done, err)
++	}
++	if out, err := forged.Commit(t.Context(), b); !zeroPendingOutput(out) || !errors.Is(err, ErrInvalid) {
++		t.Fatal(out, err)
++	}
++	if err := forged.Close(); !errors.Is(err, ErrInvalid) {
++		t.Fatal(err)
++	}
++	if done, err := p.Advance(t.Context(), b); done || err != nil {
++		t.Fatal("genuine event remains usable", done, err)
++	}
++	if err := p.Close(); err != nil {
++		t.Fatal(err)
++	}
++}
+diff --git a/v5/internal/replica/driver.go b/v5/internal/replica/driver.go
+index 759678f4..feaf37cb 100644
+--- a/v5/internal/replica/driver.go
++++ b/v5/internal/replica/driver.go
+@@ -114,25 +114,27 @@ type Config struct {
+ // At term MaxUint64-1, driver events return ErrLimit without further mutation;
+ // Close and Applied remain available. No term reset or wraparound is performed.
+ type Driver struct {
+-	mu                 sync.Mutex
+-	snapshotSender     *applicationSnapshotSender
+-	binding            raftlog.ApplicationBinding
+-	event              *applicationEvent
+-	closeOwner         *applicationClose
+-	claimCleanupErr    error
+-	raw                *raft.RawNode
+-	store              *raftlog.Store
+-	machine            Machine
+-	applicationMachine ApplicationMachine
+-	config             Config
+-	applied            uint64
+-	conf               *pb.ConfState
+-	stopped            error
+-	readNonce          [16]byte
+-	readSeq            uint64
+-	reads              map[string]*pendingRead
+-	readBytes          int
+-	lastLeader         uint64
++	mu                    sync.Mutex
++	snapshotSender        *applicationSnapshotSender
++	binding               raftlog.ApplicationBinding
++	event                 *applicationEvent
++	closeOwner            *applicationClose
++	claimCleanupErr       error
++	applicationCleanupErr error
++	callbackLimits        ApplicationCallbackLimits
++	raw                   *raft.RawNode
++	store                 *raftlog.Store
++	machine               Machine
++	applicationMachine    ApplicationMachine
++	config                Config
++	applied               uint64
++	conf                  *pb.ConfState
++	stopped               error
++	readNonce             [16]byte
++	readSeq               uint64
++	reads                 map[string]*pendingRead
++	readBytes             int
++	lastLeader            uint64
+ }
+ 
+ // Open restores the durable checkpoint and uses its index/membership together.
+@@ -184,12 +186,15 @@ func Open(c Config) (*Driver, error) {
+ 	if err := c.ApplicationSnapshotSends.validate(c); err != nil {
+ 		return nil, err
+ 	}
++	callbackLimits, err := applicationCallbackProfile(c.ApplicationMachine)
++	if err != nil {
++		return nil, err
++	}
+ 	binding := c.Store.ApplicationBinding()
+ 	var hard *pb.HardState
+ 	var cs *pb.ConfState
+ 	var index uint64
+ 	var image []byte
+-	var err error
+ 	if binding != (raftlog.ApplicationBinding{}) {
+ 		hard, cs, err = c.Store.InitialState()
+ 		if err != nil {
+@@ -245,10 +250,11 @@ func Open(c Config) (*Driver, error) {
+ 	} else {
+ 		restoreErr = c.Machine.Restore(index, image)
+ 	}
++	restoreErr = errors.Join(restoreErr, closeApplicationCleanup(takeApplicationCleanup(c.ApplicationMachine)))
+ 	if restoreErr != nil {
+ 		return nil, restoreErr
+ 	}
+-	d := &Driver{binding: binding, store: c.Store, machine: c.Machine, applicationMachine: c.ApplicationMachine, config: c, applied: index, conf: cs, reads: make(map[string]*pendingRead)}
++	d := &Driver{callbackLimits: callbackLimits, binding: binding, store: c.Store, machine: c.Machine, applicationMachine: c.ApplicationMachine, config: c, applied: index, conf: cs, reads: make(map[string]*pendingRead)}
+ 	if _, err := rand.Read(d.readNonce[:]); err != nil {
+ 		return nil, err
+ 	}
+@@ -704,7 +710,8 @@ func (d *Driver) drain() (Output, error) {
+ 			if err != nil {
+ 				return d.stop(err)
+ 			}
+-			if err := d.applicationMachine.Restore(root.Index, root.Image); err != nil {
++			restoreErr := d.applicationMachine.Restore(root.Index, root.Image)
++			if err := errors.Join(restoreErr, d.releaseApplicationCallback()); err != nil {
+ 				return d.stop(err)
+ 			}
+ 			d.applied = root.Index
+@@ -736,7 +743,8 @@ func (d *Driver) drain() (Output, error) {
+ 					entry.Generation = d.store.ApplicationGeneration()
+ 				}
+ 				if d.applicationMachine != nil {
+-					b, err := d.applicationMachine.Stage(entry, d.store.ApplicationBudget())
++					b, stageErr := d.applicationMachine.Stage(entry, d.store.ApplicationBudget())
++					err := errors.Join(stageErr, d.releaseApplicationCallback())
+ 					if err != nil {
+ 						return d.stop(err)
+ 					}
+@@ -746,7 +754,8 @@ func (d *Driver) drain() (Output, error) {
+ 					if err := d.store.InstallApplication(entry.Index, b); err != nil {
+ 						return d.stop(err)
+ 					}
+-					if err := d.applicationMachine.Restore(entry.Index, bytes.Clone(b.Image)); err != nil {
++					restoreErr := d.applicationMachine.Restore(entry.Index, bytes.Clone(b.Image))
++					if err := errors.Join(restoreErr, d.releaseApplicationCallback()); err != nil {
+ 						return d.stop(err)
+ 					}
+ 				} else if err := d.machine.Apply(entry); err != nil {

@@ -17,6 +17,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   replicated outcomes/CDC. Remote certified cuts, broader fault/ownership/GC
   evidence, engine comparison and full V2 remain open.
 
+- Added v5 replica storage primitives for owned, bounded snapshot audits through
+  Begin, Advance, a distinct Finish phase and Commit. Exact same-store claims
+  precede activation by the actual Raft Ready. Optional callback resource
+  profiles fund framework work and ownership before effects; detached callback
+  owners close outside the Driver lock with fenced fail-stop and lifetime checks.
+  Genuine recovery-enabled AS5/AD4 descriptors preserve exact audit identities;
+  snapshot-only Commit preserves previously classified recovery recipes without
+  invoking the verifier again. Commit funds stable-page predecessor and recovery
+  admission/match entry hash/copy passes, plus a retained-log prefix across
+  reopen, before claiming a prepared snapshot.
+  Registered adapter, factory, Host and full phase acceptance remain open.
+
 - Added bounded private v5 registry materialization. Created registrations stage
   reciprocal immutable controls; full original lookup precedes new-request caps,
   and Original/Conflict outcomes preserve original and evaluation coordinates.

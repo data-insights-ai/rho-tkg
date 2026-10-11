@@ -1,0 +1,308 @@
+package replica
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"errors"
+	"fmt"
+	"testing"
+
+	"github.com/cockroachdb/pebble/v2/vfs"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+)
+
+const recoveryWorkEntryBytes = 4 << 20
+const recoveryWorkTail = 16
+
+// Fixed-header commands model capacity only; every recipe is classified by the
+// genuinely bound native verifier and exact command digest. No graph authority.
+type recoveryWorkApplication struct{ *recoveryAuditApplication }
+
+func (m *recoveryWorkApplication) ApplicationCallbackLimits() ApplicationCallbackLimits {
+	return ApplicationCallbackLimits{StageWork: recoveryWorkEntryBytes + 64<<10, StageOwned: 64 << 10, RestoreWork: 64 << 10, RestoreOwned: 64 << 10, CleanupWork: 64 << 10, CleanupOwned: 64 << 10}
+}
+func recoveryWorkPhase(data []byte) (uint32, error) {
+	if len(data) != recoveryWorkEntryBytes-74 || data[0] != 'F' || data[1] < 1 || data[1] > recoveryWorkTail {
+		return 0, ErrInvalid
+	}
+	return uint32(data[1]), nil
+}
+func (m *recoveryWorkApplication) VerifyApplicationRecovery(ctx context.Context, data []byte, v *raftlog.ApplicationView) (raftlog.ApplicationRecoveryPurpose, error) {
+	m.verifies++
+	if bytes.Equal(data, []byte("register")) || len(data) == 0 {
+		return m.recoveryDriverFixture.VerifyApplicationRecovery(ctx, data, v)
+	}
+	phase, err := recoveryWorkPhase(data)
+	if err != nil {
+		return raftlog.ApplicationRecoveryPurpose{}, err
+	}
+	root, err := v.RootBounded(ctx, 0)
+	if err != nil || root.Index != 3 {
+		return raftlog.ApplicationRecoveryPurpose{}, errors.Join(ErrInvalid, err)
+	}
+	return raftlog.ApplicationRecoveryPurpose{Use: &raftlog.ApplicationRecoveryUse{ID: m.reservation.ID, Digest: m.reservation.Digest, Phase: phase, CommandDigest: sha256.Sum256(data)}}, nil
+}
+func (m *recoveryWorkApplication) Stage(e Entry, budget raftlog.ApplicationBudget) (raftlog.ApplicationBatch, error) {
+	if bytes.Equal(e.Data, []byte("register")) || len(e.Data) == 0 {
+		return m.recoveryDriverFixture.Stage(e, budget)
+	}
+	phase, err := recoveryWorkPhase(e.Data)
+	if err != nil {
+		return raftlog.ApplicationBatch{}, err
+	}
+	v, err := m.store.ApplicationView(m.index)
+	if err != nil {
+		return raftlog.ApplicationBatch{}, err
+	}
+	root, err := v.RootBounded(context.Background(), 0)
+	err = errors.Join(err, v.Close())
+	if err != nil {
+		return raftlog.ApplicationBatch{}, err
+	}
+	use := &raftlog.ApplicationRecoveryUse{ID: m.reservation.ID, Digest: m.reservation.Digest, Phase: phase, CommandDigest: sha256.Sum256(e.Data)}
+	return raftlog.ApplicationBatch{BaseGeneration: e.Generation, BaseIndex: root.Index, BaseImageHash: root.ImageHash, Image: root.Image, RecoveryUse: use, ControlPuts: []raftlog.ApplicationControlPut{{Key: []byte{'f', byte(phase)}, Value: []byte("done")}}}, nil
+}
+
+func TestApplicationSnapshotRecoveryStableUseTailMustFundActualEntryPassesBeforeClaim(t *testing.T) {
+	nodes := make(map[uint64]*Driver)
+	var targetMachine *recoveryWorkApplication
+	for id := uint64(1); id <= 3; id++ {
+		l := raftlog.DefaultLimits()
+		l.MaxEntryBytes = recoveryWorkEntryBytes
+		l.MaxReadBytes = recoveryWorkEntryBytes + 32
+		l.MaxReadEntries = 1
+		l.MaxReadyBytes = recoveryWorkEntryBytes + 64<<10
+		p := raftlog.DefaultApplicationPolicy(id)
+		p.MaxInstallBytes = 4096
+		p.MaxTailEntries = recoveryWorkTail + 2
+		p.MaxTailBytes = 128 << 20
+		p.ReclaimEntries = 1
+		ctrl := raftlog.ApplicationControlConfig{Version: 1}
+		recovery := raftlog.ApplicationRecoveryConfig{Version: 1}
+		c, err := raftlog.ApplicationContractForPolicyWithRecovery(p, ctrl, recovery)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s, err := raftlog.Open(raftlog.Config{Dir: fmt.Sprintf("stable-use-work-%d", id), FS: vfs.NewMem(), Create: true, Limits: l, Application: p, Controls: ctrl, Recovery: recovery, Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: [16]byte{1}, Partition: 1, Group: [16]byte{2}}, Contract: c, Limits: raftlog.DefaultApplicationTransferLimits()}, Generations: raftlog.ApplicationGenerationLimits{MaxBytes: 2 << 30, MaxRecords: 2_000_000}, PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 10_000}, Replication: raftlog.ApplicationReplicationConfig{Voters: [3]uint64{1, 2, 3}}, SemanticContractID: raftlog.ApplicationSemanticContractID{42}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Initialize([]uint64{1, 2, 3}, nil); err != nil {
+			t.Fatal(errors.Join(err, s.Close()))
+		}
+		reservation := raftlog.ApplicationRecoveryReservation{ID: [32]byte{1}, Digest: [32]byte{2}}
+		for phase := uint32(1); phase <= recoveryWorkTail+1; phase++ {
+			reservation.Credits = append(reservation.Credits, raftlog.ApplicationRecoveryCredit{Phase: phase, CommandBytes: recoveryWorkEntryBytes - 74, RetainedBytes: 4096, RetainedRecords: 5})
+		}
+		machine := &recoveryWorkApplication{&recoveryAuditApplication{recoveryDriverFixture: &recoveryDriverFixture{store: s, reservation: reservation}}}
+		if id == 3 {
+			targetMachine = machine
+		}
+		packetBytes := l.MaxReadBytes + 64<<10
+		d, err := Open(Config{ID: id, Store: s, Limits: l, ApplicationMachine: machine, MaxPacketBytes: packetBytes, MaxOutputBytes: 2 * packetBytes, MaxUncommittedBytes: 64 << 20, MaxInflightBytes: 64 << 20, ApplicationSnapshotSends: ApplicationSnapshotSendLimits{MaxOffers: 2, MaxOwnedBytes: 4 << 20}})
+		if err != nil {
+			t.Fatal(errors.Join(err, s.Close()))
+		}
+		nodes[id] = d
+		t.Cleanup(func() {
+			if err := d.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	// Bring both real follower streams into Replicate before withholding traffic.
+	out, err := nodes[1].Campaign()
+	if err != nil {
+		t.Fatal(err)
+	}
+	deliverApplication(t, nodes, out.Packets)
+	out, err = nodes[1].Propose([]byte("register"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	deliverApplication(t, nodes, out.Packets)
+	if nodes[3].Applied() != 3 {
+		t.Fatal("actual registered baseline")
+	}
+	var tail, quorum []Packet
+	for phase := byte(1); phase <= recoveryWorkTail; phase++ {
+		data := bytes.Repeat([]byte{0xa5}, recoveryWorkEntryBytes-74)
+		data[0], data[1] = 'F', phase
+		out, err := nodes[1].Propose(data)
+		if err != nil {
+			t.Fatal("native uncommitted proposal", phase, err)
+		}
+		for _, p := range out.Packets {
+			if p.To == 3 {
+				tail = append(tail, p)
+			} else {
+				quorum = append(quorum, p)
+			}
+		}
+	}
+	if len(tail) != recoveryWorkTail {
+		t.Fatal("actual Replicate pipeline", len(tail))
+	}
+	target := nodes[3]
+	delete(nodes, 3)
+	deliverApplication(t, nodes, quorum)
+	if nodes[1].Applied() != 3+recoveryWorkTail {
+		t.Fatal("native quorum did not commit tail", nodes[1].Applied())
+	}
+	nodes[3] = target
+	var snapshot Packet
+	var send *SnapshotSend
+	pumpSnapshot := func(out Output) {
+		var queue []Packet
+		enqueue := func(out Output) {
+			si := 0
+			for _, p := range out.Packets {
+				if p.Snapshot {
+					if p.From != 1 || p.To != 3 || si >= len(out.SnapshotSends) || send != nil {
+						t.Fatal("actual snapshot association", p)
+					}
+					snapshot, send = p, out.SnapshotSends[si]
+					si++
+				} else {
+					queue = append(queue, p)
+				}
+			}
+		}
+		enqueue(out)
+		for delivered := 0; send == nil && len(queue) != 0; delivered++ {
+			if delivered >= 10000 {
+				t.Fatal("bounded snapshot fallback transport")
+			}
+			p := queue[0]
+			queue = queue[1:]
+			next, err := nodes[p.To].Step(p)
+			if err != nil {
+				t.Fatal("native snapshot fallback", p.From, p.To, err)
+			}
+			enqueue(next)
+		}
+	}
+	for range 24 {
+		out, err := nodes[1].Tick()
+		if err != nil {
+			t.Fatal(err)
+		}
+		pumpSnapshot(out)
+		if send != nil {
+			break
+		}
+		offers, err := nodes[1].SnapshotSends()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, offer := range offers {
+			buildSender(t, offer)
+			if err := nodes[1].SealSnapshotSend(offer); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if send == nil {
+		t.Fatal("genuine AS5 snapshot unavailable")
+	}
+	// These inputs were emitted before quorum delivery: all commit only register3.
+	for i, p := range tail {
+		m, err := target.decodeBoundPacket(p, false)
+		if err != nil || len(m.Entries) != 1 || m.GetCommit() != 3 || m.Entries[0].GetIndex() != uint64(4+i) || len(m.Entries[0].Data) != recoveryWorkEntryBytes-74 {
+			t.Fatal("captured native uncommitted tail", i, err)
+		}
+		out, err := target.Step(p)
+		if err != nil || out.Applied != 3 {
+			t.Fatal("persisted tail applied before snapshot", i, out.Applied, err)
+		}
+	}
+	last, err := target.store.LastIndex()
+	if err != nil || last != 3+recoveryWorkTail || target.Applied() != 3 {
+		t.Fatal("stable native tail", last, err)
+	}
+	manifest, err := send.Manifest()
+	if err != nil || manifest.Version != 5 || manifest.Index != last || len(manifest.RecoveryReservation.Credits) != 1 {
+		t.Fatal("actual incoming recovery cut", manifest, err)
+	}
+	imported, err := target.store.BeginApplicationImport(t.Context(), manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer imported.Abort()
+	for range 100 {
+		chunk, err := send.Next(t.Context(), raftlog.ReadBudget{Rows: 1, Bytes: 4096})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := imported.Append(t.Context(), chunk); err != nil {
+			t.Fatal(err)
+		}
+		if chunk.Final {
+			break
+		}
+	}
+	if err := imported.Verify(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := imported.Prepare()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := ApplicationAuditBudget{WorkBytes: 32 << 20, OwnedBytes: 32 << 20}
+	pending, err := target.BeginApplicationSnapshot(t.Context(), snapshot, prepared, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pending.Close()
+	for range 2 {
+		if _, err := pending.Advance(t.Context(), b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c, err := prepared.ApplicationContract(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldWork, owned, err := target.applicationCommitRequirements(pending.owned, pending.auditOwned, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Independent reached-data lower law, excluding callback/image/metadata work:
+	// stable Entries hash+clone2,Driver clone1,admission get+hash3,USE Install5,
+	// published reclaim capture/recheck/range5 =16 borrowed payload passes.
+	const reachedWork uint64 = 16 * recoveryWorkTail * (recoveryWorkEntryBytes - 74)
+	t.Logf("actual stable USE tail=%d bytes=%d; framework configured=%d; independent reached lower=%d", recoveryWorkTail, recoveryWorkTail*(recoveryWorkEntryBytes-74), oldWork, reachedWork)
+	before := targetMachine.verifies
+	out, err = pending.Commit(t.Context(), ApplicationAuditBudget{WorkBytes: reachedWork - 1, OwnedBytes: owned})
+	if !errors.Is(err, ErrLimit) || !zeroPendingOutput(out) || target.Applied() != 3 || target.store.ApplicationGeneration() != 1 {
+		t.Fatalf("shared Commit underfunded actual persisted USE entry passes before claim: applied=%d output=%d work=%d lower=%d err=%v", target.Applied(), out.Applied, oldWork, reachedWork, err)
+	}
+	if targetMachine.verifies != before {
+		t.Fatal("snapshot-only Commit invoked verifier")
+	}
+	usage, err := target.store.ApplicationTransferUsage()
+	if err != nil || usage.Claims != 0 {
+		t.Fatal("funding refusal claimed prepared owner", usage, err)
+	}
+	out, err = pending.Commit(t.Context(), fundedPendingCommitBudget())
+	if err != nil || out.Applied != last || target.store.ApplicationGeneration() != 1 || targetMachine.verifies != before {
+		t.Fatal("funded native matchTerm completion", out.Applied, err)
+	}
+	checkpoint, _, err := target.store.Checkpoint()
+	cut, cutErr := target.store.PublishedApplicationCut()
+	if err != nil || cutErr != nil || checkpoint != last || cut.Index != last {
+		t.Fatal("one-entry Ready/reclaim completion", checkpoint, cut, err, cutErr)
+	}
+	v, err := target.store.ApplicationView(last)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.Close()
+	for phase := byte(1); phase <= recoveryWorkTail; phase++ {
+		r, found, _, err := v.GetControl(t.Context(), []byte{'f', phase}, raftlog.ReadBudget{Rows: 1, Bytes: 4096})
+		if err != nil || !found || !bytes.Equal(r.Value, []byte("done")) {
+			t.Fatal("actual completion control", phase, r, found, err)
+		}
+	}
+}

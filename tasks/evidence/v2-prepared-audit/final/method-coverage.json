@@ -1,0 +1,42 @@
+[
+  {
+    "file": "application_snapshot_event.go",
+    "receiver": "d *Driver",
+    "method": "BeginApplicationSnapshot",
+    "covered": 57,
+    "statements": 70,
+    "percent": 81.42857142857143
+  },
+  {
+    "file": "application_snapshot_event.go",
+    "receiver": "p *PendingApplicationSnapshot",
+    "method": "Advance",
+    "covered": 57,
+    "statements": 69,
+    "percent": 82.6086956521739
+  },
+  {
+    "file": "application_snapshot_event.go",
+    "receiver": "p *PendingApplicationSnapshot",
+    "method": "Commit",
+    "covered": 44,
+    "statements": 53,
+    "percent": 83.01886792452831
+  },
+  {
+    "file": "application_snapshot_event.go",
+    "receiver": "p *PendingApplicationSnapshot",
+    "method": "Close",
+    "covered": 20,
+    "statements": 24,
+    "percent": 83.33333333333333
+  },
+  {
+    "file": "application_semantic_machine.go",
+    "receiver": null,
+    "method": "ValidateApplicationMachineBinding",
+    "covered": 10,
+    "statements": 10,
+    "percent": 100.0
+  }
+]

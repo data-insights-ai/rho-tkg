@@ -1,0 +1,266 @@
+{
+  "status": "author gates PASS; same reviewer final acceptance pending",
+  "commit": null,
+  "base": "7e9caf6f990a98bd2d1b4ddca65d5850dbb29e3f",
+  "external": "2a7d51445ffa632038e56f3ee8862a74aa0d96ca",
+  "external_parent": "637e1816befa567f8903c1f6591b30403bcb7e77",
+  "scope": "internal bounded prepared-snapshot audit/lifecycle integration; actual AS5 AD4 compatibility; configured stable/recovery/prefix logical-work admission; no Host/registry/factory readiness, remote certified cuts or whole P4",
+  "source": {
+    "path": "sealed/source.json",
+    "sha256": "84e4192582a3c5fa98c7ce73e07736266115629e21f94fbfeb5e2747a7bdda5f",
+    "go_files": 438
+  },
+  "tests": {
+    "fresh_replica": {
+      "parents": 108,
+      "subtests": 132,
+      "normal": "sealed/replica-normal.jsonl",
+      "race": "sealed/replica-race.jsonl"
+    },
+    "fresh_graph_regression": {
+      "parents": 4,
+      "subtests": 2,
+      "normal": "sealed/graph-normal.jsonl",
+      "race": "sealed/graph-race.jsonl",
+      "qualification": "six real OS children for cross-edge; certified follower/reopen/held-cut/actual AS5 regression. Prior limited leader1/4 source qualification unchanged."
+    },
+    "raftlog_carry": {
+      "parents": 32,
+      "subtests": 57,
+      "binding": "sealed/raftlog-carry.json",
+      "qualification": "exact unchanged raftlog sources/tests and module bindings; standalone dependency does not include replica; no final whole-module runtime claimed"
+    }
+  },
+  "coverage": {
+    "map": "sealed/coverage-map.json",
+    "affected_replica": {
+      "covered": 1564,
+      "statements": 1746,
+      "percent": 89.57617411225658
+    },
+    "new_public_methods_direct": true,
+    "all_new_changed_production_files_and_added_blocks_ge80": true
+  },
+  "real_reds": {
+    "AS5_AD4": "as5-ad4-red.jsonl",
+    "stable_USE_work": "reachable-funding-native-capture.jsonl",
+    "retained_applied_prefix": "retained-prefix-after-stage-capacity.jsonl"
+  },
+  "real_red_source_bindings": [
+    "red-source.json",
+    "red-application_snapshot_as5_audit_test.go.txt",
+    "reachable-funding-red-source.json",
+    "reachable-funding-red-test.go.txt",
+    "retained-prefix-red-source.json",
+    "retained-prefix-red-test.go.txt"
+  ],
+  "rejected_hypotheses": {
+    "verifier-profile-red.jsonl": "policy-only admission hypothesis; snapshot-only Commit cannot invoke verifier; proposed fields/assertions removed",
+    "verifier-funding-red.jsonl": "no verifier execution or reachable suffix; not regression/acceptance proof",
+    "as5-profile-lifecycle-green.jsonl": "transient verifier-profile-policy GREEN is archived hypothesis evidence only; live policy fields/tests removed"
+  },
+  "qualified_fixture_failures": [
+    "lifecycle-before-test-path-error.jsonl",
+    "lifecycle-stale-republication-fixture.jsonl",
+    "lifecycle-old-publication-fixture.jsonl",
+    "as5-reachable-commit.jsonl",
+    "reachable-funding-first.jsonl",
+    "reachable-funding-pipeline.jsonl",
+    "retained-prefix-first.jsonl",
+    "retained-prefix-output-admission.jsonl",
+    "retained-prefix-native-quorum.jsonl",
+    "retained-prefix-native-manifest.jsonl"
+  ],
+  "mutation_evidence": {
+    "first_AD4_offset": "final/mutant-ad4-offset.jsonl",
+    "first_phase_barrier": "final/mutant-commit-before-finish.jsonl",
+    "stable_work_reversion_at_437_freeze": "closure/mutant-funding.jsonl",
+    "final_prefix_reversion": "sealed/mutant-prefix.jsonl",
+    "qualification": "single edits in isolated copies; earlier mutations retain their original source seals, not relabelled final-source runs"
+  },
+  "accounting": "reachable-accounting.txt",
+  "work_default": 5700322208,
+  "owned_default_without_actual_message_caps": 153806950,
+  "ownership_and_six_callback_API_unchanged": true,
+  "qualified_unchanged_lower_registry_production": "sealed/unchanged-production-carry.json",
+  "historical_freezes": [
+    "final/source.json",
+    "closure/source.json"
+  ],
+  "static_scanner_gates": {
+    "fmt": {
+      "command": [
+        "make",
+        "fmt-check"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 4.438,
+      "elapsed_s": 0.317,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "vet": {
+      "command": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 150.359,
+      "elapsed_s": 1.691,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "build": {
+      "command": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 290.688,
+      "elapsed_s": 1.947,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "lint": {
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--memory=4g",
+        "--cpus=2",
+        "-e",
+        "GOTOOLCHAIN",
+        "-e",
+        "GOMAXPROCS",
+        "-e",
+        "GOMEMLIMIT",
+        "-e",
+        "GOFLAGS",
+        "-e",
+        "GOWORK",
+        "-v",
+        "/var/tmp/rho-v5-v2-prepared-audit-20261011:/src",
+        "-w",
+        "/src/v5",
+        "-v",
+        "rho-tkg-gocache:/go",
+        "-v",
+        "rho-tkg-buildcache:/root/.cache/go-build",
+        "golang:1.26.9",
+        "sh",
+        "-c",
+        "go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 && golangci-lint run --config ../.golangci.yml --issues-exit-code=1 --max-same-issues=0 --max-issues-per-linter=0 ./..."
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 26.031,
+      "elapsed_s": 21.688,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "security": {
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--memory=4g",
+        "--cpus=2",
+        "-e",
+        "GOTOOLCHAIN",
+        "-e",
+        "GOMAXPROCS",
+        "-e",
+        "GOMEMLIMIT",
+        "-e",
+        "GOFLAGS",
+        "-e",
+        "GOWORK",
+        "-v",
+        "/var/tmp/rho-v5-v2-prepared-audit-20261011:/src",
+        "-w",
+        "/src/v5",
+        "-v",
+        "rho-tkg-gocache:/go",
+        "-v",
+        "rho-tkg-buildcache:/root/.cache/go-build",
+        "golang:1.26.9",
+        "sh",
+        "-c",
+        "go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0 && gosec -quiet ./..."
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 26.047,
+      "elapsed_s": 4.143,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "vuln": {
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--memory=4g",
+        "--cpus=2",
+        "-e",
+        "GOTOOLCHAIN",
+        "-e",
+        "GOMAXPROCS",
+        "-e",
+        "GOMEMLIMIT",
+        "-e",
+        "GOFLAGS",
+        "-e",
+        "GOWORK",
+        "-v",
+        "/var/tmp/rho-v5-v2-prepared-audit-20261011:/src",
+        "-w",
+        "/src/v5",
+        "-v",
+        "rho-tkg-gocache:/go",
+        "-v",
+        "rho-tkg-buildcache:/root/.cache/go-build",
+        "golang:1.26.9",
+        "sh",
+        "-c",
+        "go install golang.org/x/vuln/cmd/govulncheck@v1.7.0 && govulncheck ./..."
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 26.047,
+      "elapsed_s": 4.965,
+      "exit_code": 0,
+      "reason": "completed"
+    }
+  },
+  "toolchain": "Go1.26.9;GOMAXPROCS2;GOMEMLIMIT2GiB;GOFLAGS-p1;GOWORKoff",
+  "limits": {
+    "host_watchdog_rss_mib": 4096,
+    "seconds_each": 180,
+    "docker_memory": "4g",
+    "docker_cpu": 2,
+    "docker_rss_qualification": "host watchdog RSS excludes container process RSS; Docker enforces separate4g/2CPU limit"
+  },
+  "pinned_tools": {
+    "lint": "v2.13.2",
+    "gosec": "v2.29.0",
+    "govulncheck": "v1.7.0"
+  },
+  "vuln": "0 reachable; advisory findings2packages+2modules, not four distinctCVEs",
+  "new_driver_fixture_qualification": "three bound Drivers use temporary vfs stores; no OS crash/disk durability claim from these fixtures",
+  "artifacts": {
+    "path": "sealed/artifacts.json",
+    "sha256": "39b5d594b17387fcbbe16a468e9844f48e105896465a93095f754f4522f6ac37"
+  }
+}

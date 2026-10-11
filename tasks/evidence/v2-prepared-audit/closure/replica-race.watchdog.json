@@ -1,0 +1,18 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-short",
+    "-race",
+    "-count=1",
+    "-json",
+    "./internal/replica"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 1686.516,
+  "elapsed_s": 37.457,
+  "exit_code": 0,
+  "reason": "completed"
+}

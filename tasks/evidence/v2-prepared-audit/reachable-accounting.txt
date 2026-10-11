@@ -1,0 +1,101 @@
+Reachable Commit accounting / rejected verifier-profile hypothesis
+
+Pending fences all Driver events. Begin follows a drained native event; Commit
+steps exactly the retained MsgSnap and drains it. Fresh Open may instead have
+already-committed/unapplied STABLE Ready; it has no new unstable entries. In pinned raft v3.7.0,
+restore accepted snapshot clears unstable.entries; ignored snapshots append
+nothing; matchTerm fast-forward commits pre-existing persisted entries only.
+Thus this API invokes no recovery verifier. The separate Store same-Ready
+snapshot+MsgApp guard remains required; Pending.Commit cannot make that shape.
+
+verifier-profile-red and verifier-funding-red preserve rejected hypotheses,
+NOT regression/acceptance proof. No unfunded callback execution was observed.
+Proposed positive verifier fields/admission assertions were removed. Six-field
+compiled Stage/Restore/Cleanup API stays unchanged.
+
+REAL reachable-funding-native-capture RED:16 actual pipelined USE MsgApps with
+commit3 are captured before quorum delivery. Bound verifier persists them at
+receiver3,Applied3/Last19. Actual source AS5 MsgSnap19 then matchTerm fast-forwards
+that stable tail. Concrete E4MiB,Read E+32,Ready E+64KiB,one entry/page,Tail18,
+Install4096,Image64KiB,Reclaim1,fanout output2*(Read+64KiB);16payloads(E-74).
+OLD ENTIRE work1026118880 < reached lower1073722880=16*16*(E-74).
+Commit(lower-1) wrongly applied19/gen1/nilerror: genuine behavioral RED.
+Prior first/pipeline attempts are fixture failures, not budget REDs: default
+inflight stopped pipeline at3; legacy helper invoked unaudited snapshot door.
+
+Corrected upper law, with NO callback/image/meta budget counted twice:
+Every stable entry has native frame-hash+clone2,Driver clone1,Install normal
+get2,reclaim capture/get2+recheck/get2+range-hash1=10 entry-sized passes.
+Each non-base-start stable page additionally has predecessor get(hash+clone)2.
+Entries may also decode/hash+clone one lookahead entry before a byte-page break
+when MaxReadEntries>1. It is not present in the one-entry RED, but is funded by
+amortized unused passes: pages without publication leave their reclaim capture/
+recheck credits unused; after publication the next page starts at Base+1 so its
+predecessor credit is unused. A publication after a non-publishing page can use
+that earlier unused reclaim credit for overlap. Initial/final overlap is covered
+by the two extra configured Ready envelopes. More precisely, k delivered stable
+entries,p nonempty pages<=k,a publications,g predecessor gets,L lookaheads<=p-1:
+g<=p-1+I-a+C_last with initial/final indicators I,C_last<=1. Thus
+4a+2g+2L<=2a+4p-4+2I+2C_last<=6k. Basic returned-entry/Driver/Install/range work
+is6kE, yielding12kE ordinary and18kE recovery with admission/match6kE.
+Already-applied retained prefixes are funded separately below.
+Recovery adds committed-admission get(hash+clone)+command hash3 and USE
+purpose-match get(hash+clone)+command hash3. Thus12 ordinary/18 recovery.
+
+Joint reservation allocates these passes exactly:
+* configured ReadyCount=Tail+2 and MaxReady>=Entry+512 reserve per tail:
+  4*Ready>=4*Entry: native hash/clone2 +Driver clone1 +reclaim range hash1;
+  2*Entry: reclaim recheck get2.
+* original4*Entry/tail: Install normal get2 +reclaim capture get2.
+* new2*Entry/tail: stable-page predecessor get2 in every audited mode.
+* new6*Entry/tail only native recovery-enabled mode: admission3 +USE match3.
+Entry data<=MaxEntry-74 leaves header/key hash slack within each pass; fixed
+DTO/header owners remain separately reserved. Page count<=Tail+2. Reclaim range
+hashes all entries between Base and Applied; each retained entry is hashed once
+when reclaimed, not once for every tail. No verifier loan or default-size slack.
+
+Owned bound unchanged: returned admission borrows immutable queued purpose and
+fixed identity/hash; its decoded entry has no surviving owner after return.
+Ready/read buffers, Driver Entry clone and existing Store staging scratch fund
+simultaneous entry copies. Recovery metadata families use3*9*65536: Ready queued
+headers; prospective reservation/afterApplied queue; encoded metadata/root and
+commit backings. Existing queued credit arrays/active Store metadata are borrowed;
+new prospective credits and encoded root are frame-bounded. Callback Stage DTO
+and detached Cleanup/Restore owners remain separately funded. Activation uses
+actual Version3 WithRecovery image/claim and Store staging MAX, unchanged.
+
+Recovery defaults corrected work5700322208; owned153806950+retained messagecaps
+unchanged. Exact/each one-short tested on actual WithRecovery contract. Actual
+activation, stable register fast-forward, ignored and16-USE committed tail all
+add zero verifier calls. Captured append first increases verifier count, proving
+instrumentation live; Finish frees readers and only actual Ready can activate.
+
+Earlier lifecycle failures are fixture-only: path-error had no tests; stale
+republish attempted same index; old-publication read prior cut after later commit.
+Original AS5/AD4 RED remains the parser regression. Both single-edit initial
+mutants remain qualified; final funding-reversion mutant adds shared-law witness.
+
+SECOND real retained-prefix RED: retained-prefix-after-stage-capacity log proves
+actual publicview-limit error AFTER synced Install (Store67,Driver/cache66,Base1),
+Close/reopen67/Base1, genuine captured AS5MsgSnap67/chunks, now ignored Commit.
+Entire configured258963296 <64payload rangehash lower268430720; lower-1 commit
+wrongly reclaimed FirstIndex68/nilerror. Earlier prefix attempts are fixture
+failures only: missing sender-output2048/offer reservation; absent quorum pump;
+100-row builder for67roots; view saturation before native verifier/Persist.
+Controlled views are now opened after cachedStage and closed outsideDriver.mu;
+Restore's actual ApplicationView refusal supplies the error, not a fake callback.
+SourceReclaim512,target66 are compatible local policy; target66 includes initial
+no-op/register plus64large entries. Receiver output is minimumPacket+2*2048.
+
+Final shared prefixWork is once/event MaxRetainedBytes+1024*MaxRetainedEntries,
+with checked Product/Sum and actual validated immutable log quotas. Entry-hash
+INPUT Data+42+9 is <=stored framed row Data+74+9. Fixed1KiB/record separately
+funds key construction/encoding/comparison,prev/hash64copy,digest/sum/copy,
+chain/digest comparison,scalar/counter validation and hash-object initialization;
+internal cryptographic CPU rounds are not logical byte units. Do not claim the
+83-byte frame alone covers fixed metadata. A successful publication advances
+Base, so the pre-existing prefix is scanned once; errors stop this event. New
+tail range work remains jointly funded, without borrowing callbacks/metadata.
+Iterator payload is borrowed and no aggregate page/record array is introduced,
+so owned bound remains unchanged. Logical reservation is not actual RAM demand.
+Exact default newWork5700322208 =4407886752 +268435456 +1024*1000000.

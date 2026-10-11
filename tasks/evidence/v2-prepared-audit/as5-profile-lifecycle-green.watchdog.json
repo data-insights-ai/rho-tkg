@@ -1,0 +1,18 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-count=1",
+    "-json",
+    "-run",
+    "^(TestApplicationSnapshotAS5AuditCannotActivateBeforeFinishAndActualReady|TestApplicationSnapshotAD123ContextRejectsActualAS5AD4BeforeBoundAudit|TestApplicationRecoveryAuditSixFieldProfileMustRefuseBeforeVerifierAndRestore)$",
+    "./internal/replica"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 431.391,
+  "elapsed_s": 1.129,
+  "exit_code": 0,
+  "reason": "completed"
+}

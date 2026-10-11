@@ -1,0 +1,20 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-short",
+    "-count=1",
+    "-json",
+    "-run",
+    "^(TestReplicatedCertifiedGraphSixProcessesCrossEdge|TestCertifiedGraphFollowerBarrierReopenAndHeldCutHistory|TestCertifiedGraphReviewAfterReceiptSurvivesIssuerCloseAndGenuineFollowerReopen|TestCertifiedGraphActualAS5ActivationKeepsHeldCertifiedSourceAndReopensCut)$",
+    "-race",
+    "./internal/graphapply"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 616.688,
+  "elapsed_s": 29.5,
+  "exit_code": 0,
+  "reason": "completed"
+}

@@ -1,0 +1,6 @@
+{"Time":"2026-10-11T15:28:01.928405+02:00","Action":"start","Package":"github.com/data-insights-ai/rho-tkg/v5/internal/replica"}
+{"Time":"2026-10-11T15:28:02.114078+02:00","Action":"output","Package":"github.com/data-insights-ai/rho-tkg/v5/internal/replica","Output":"testing: warning: no tests to run\n"}
+{"Time":"2026-10-11T15:28:02.114135+02:00","Action":"output","Package":"github.com/data-insights-ai/rho-tkg/v5/internal/replica","Output":"PASS\n"}
+{"Time":"2026-10-11T15:28:02.114578+02:00","Action":"output","Package":"github.com/data-insights-ai/rho-tkg/v5/internal/replica","Output":"ok  \tgithub.com/data-insights-ai/rho-tkg/v5/internal/replica\t0.186s [no tests to run]\n"}
+{"Time":"2026-10-11T15:28:02.114604+02:00","Action":"pass","Package":"github.com/data-insights-ai/rho-tkg/v5/internal/replica","Elapsed":0.186}
+limit: {"command": ["go", "test", "-count=1", "-json", "-run", "^TestApplicationSnapshotAS5AuditCannotActivateBeforeFinishAndActualReady$", "./internal/replica"], "rss_limit_mib": 4096.0, "wall_limit_s": 180.0, "sample_interval_s": 0.25, "peak_tree_rss_mib": 432.0, "elapsed_s": 1.128, "exit_code": 0, "reason": "completed"}

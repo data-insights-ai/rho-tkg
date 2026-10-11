@@ -1,0 +1,1 @@
+limit: {"command": ["go", "vet", "./..."], "rss_limit_mib": 4096.0, "wall_limit_s": 180.0, "sample_interval_s": 0.25, "peak_tree_rss_mib": 157.094, "elapsed_s": 1.651, "exit_code": 0, "reason": "completed"}

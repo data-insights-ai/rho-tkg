@@ -1,0 +1,6 @@
+{
+  "single_edit": "entryPasses*Entry to4*Entry",
+  "unmutated_sha": "74f9ddc7c3501ed4e8945f3fa57b336916d3d48a77541ea17c3e031a2e302719",
+  "mutated_sha": "4d943f0e36cca4f1c2a42506fcda9e200a378682ae83af3311d4e3b2e4f90469",
+  "path": "/var/tmp/rho-v5-v2-prepared-audit-mutants-20261011/funding-reversion/internal/replica/application_snapshot_event.go"
+}

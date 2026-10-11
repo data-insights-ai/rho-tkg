@@ -1,0 +1,22 @@
+{
+  "application_replication.go": {
+    "covered": 41,
+    "statements": 48,
+    "percent": 85.41666666666667
+  },
+  "application_semantic_machine.go": {
+    "covered": 30,
+    "statements": 30,
+    "percent": 100.0
+  },
+  "application_snapshot_event.go": {
+    "covered": 289,
+    "statements": 340,
+    "percent": 85.0
+  },
+  "driver.go": {
+    "covered": 16,
+    "statements": 16,
+    "percent": 100.0
+  }
+}

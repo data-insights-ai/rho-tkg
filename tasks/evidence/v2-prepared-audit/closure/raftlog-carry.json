@@ -1,0 +1,9 @@
+{
+  "reason": "all raftlog Go bytes unchanged between first and corrected freeze; exact required32-parent normal/race native preclaim/recovery/sameReady proof unaffected by replica Commit accounting delta",
+  "reports": {
+    "raftlog-normal.jsonl": "3dde30662cc8c66b1a3a831a9c41518b42214b1899a9b4828ac8351fe5157d95",
+    "raftlog-normal.watchdog.json": "6393b825c61e3a301e8fc486259fa4e260427c93ea4372d71e3e567f5d6edcf3",
+    "raftlog-race.watchdog.json": "21fa5de1a2b1525c746fa8c340d930093dc9c5cf1ceb0a73ee1937be0538e6ae",
+    "raftlog-race.jsonl": "783c7ce7f2c83a1f47f8f5b6040441887fc2d8667c0580fd2ed9e450b4711865"
+  }
+}

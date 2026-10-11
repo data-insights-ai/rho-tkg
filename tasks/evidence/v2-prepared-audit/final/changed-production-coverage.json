@@ -1,0 +1,50 @@
+{
+  "application_replication.go": {
+    "whole_file": {
+      "covered": 211,
+      "statements": 232,
+      "percent": 90.94827586206897
+    },
+    "added_line_overlapping_blocks": {
+      "covered": 41,
+      "statements": 48,
+      "percent": 85.41666666666667
+    }
+  },
+  "application_semantic_machine.go": {
+    "whole_file": {
+      "covered": 40,
+      "statements": 40,
+      "percent": 100.0
+    },
+    "added_line_overlapping_blocks": {
+      "covered": 30,
+      "statements": 30,
+      "percent": 100.0
+    }
+  },
+  "application_snapshot_event.go": {
+    "whole_file": {
+      "covered": 286,
+      "statements": 337,
+      "percent": 84.86646884272997
+    },
+    "added_line_overlapping_blocks": {
+      "covered": 286,
+      "statements": 337,
+      "percent": 84.86646884272997
+    }
+  },
+  "driver.go": {
+    "whole_file": {
+      "covered": 481,
+      "statements": 552,
+      "percent": 87.1376811594203
+    },
+    "added_line_overlapping_blocks": {
+      "covered": 16,
+      "statements": 16,
+      "percent": 100.0
+    }
+  }
+}
