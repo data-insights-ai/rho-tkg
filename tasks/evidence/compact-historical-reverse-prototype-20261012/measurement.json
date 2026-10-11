@@ -1,0 +1,58 @@
+{
+  "1_sst_bytes": {
+    "crc32c": 1670093,
+    "legacy": 3309640,
+    "sha256": 3120289
+  },
+  "2_sst_bytes": {
+    "crc32c": 1341335,
+    "legacy": 2991826,
+    "sha256": 2844052
+  },
+  "kinds": {
+    "1": 25000,
+    "3": 25000
+  },
+  "legacy_entry_sha256": "1b6a2cd4c84ce99ebc83a39dffc6ace47ed1b185d2046b977cbcb2025f22a6f5",
+  "raw_bytes": {
+    "crc32c": 2000000,
+    "legacy": 3900000,
+    "sha256": 3400000
+  },
+  "sample_entries": 50000,
+  "selection": "first25000 node-label and first25000 node-property legacy reverse entries in exact native key order per kind; not population representative",
+  "source": "/private/var/tmp/rho-disk-identity-profiles-20261011/genuine/erv-graph",
+  "base_commit": "11a1106426e779a9b6f926e3b4c687a63af5e934",
+  "toolchain": "go1.27.1 darwin/arm64; go.mod1.26.9; exact1.26.9 gate pending",
+  "table_measurement": {
+    "builder": "private fixed Badger6c213145e089 actual table.Builder",
+    "block_size": 4096,
+    "bloom_false_positive": 0.01,
+    "table_size": 8388608,
+    "zstd_level": 3,
+    "native_mvcc_version": "preserved from each original Item.Version",
+    "encryption": false,
+    "scope": "reverse entries only; forward records unchanged and excluded",
+    "record_columns": "exact key/value; auxiliary ValueStruct metadata defaults for both variants"
+  },
+  "prefix_audit": {
+    "forward": "0x0c unchanged",
+    "legacy_reverse": "0x0d unchanged",
+    "new_reverse": "0x0e free at exact11a;0x0f metadata; must re-audit at integration"
+  },
+  "production_integration": "none; encoder/decoder and measurement are test-only; no production migration or new configuration enabled",
+  "savings": {
+    "1_sst_bytes": {
+      "crc32c_vs_legacy": 0.49538529870318226,
+      "sha256_vs_legacy": 0.057211962630376756
+    },
+    "2_sst_bytes": {
+      "crc32c_vs_legacy": 0.5516667747389052,
+      "sha256_vs_legacy": 0.049392578311706625
+    },
+    "raw_bytes": {
+      "crc32c_vs_legacy": 0.4871794871794872,
+      "sha256_vs_legacy": 0.1282051282051282
+    }
+  }
+}
