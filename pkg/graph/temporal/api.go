@@ -581,7 +581,7 @@ func (a *API) SetRelVersionInterval(ctx context.Context, id types.RelID, validFr
 // txFrom, so reads pinned before txFrom keep the uncorrected belief and reads
 // pinned at or after it see the correction. Requires Config.AllowTxBackfill
 // (ErrTxBackfillDisabled); txFrom must be a positive instant not in the future
-// (ErrInvalidTxFrom) and after every TxFrom, TxTo, UpdatedAt and DeletedAt
+// (ErrInvalidTxFrom) and after every TxFrom and TxTo
 // recorded on the node's chain, also on rows outside [validFrom, validTo)
 // (ErrTxOrder, wrapping ErrInvalidTxFrom). validFrom may lie after txFrom. A
 // hard-deleted node returns ErrEntityDeleted. The commit clock is not advanced

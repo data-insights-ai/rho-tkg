@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -19,7 +18,7 @@ import (
 // row that takes the current slot — is stamped TxFrom = UpdatedAt = t instead
 // of the clock (cascadeInstant). The gates mirror DeleteWithTx / UpdateWithTx:
 // value, then privilege (resolveCallerTxInstant), then, under the entity lock,
-// the order rule (checkCascadeTxOrder) against the entity's whole chain. The
+// the order rule (checkTxOrder, tx_order.go, with no version start) against the entity's whole chain. The
 // commit clock is not read for the stamp and not advanced to t. The past-dated
 // write is reported to the as-of column cache after the store write. The
 // unique-constraint check, the version allocator and the deleted-entity
@@ -27,42 +26,16 @@ import (
 //
 // Decisions:
 //   - The order rule is about the entity's chain, not the target interval: t
-//     must exceed every TxFrom, TxTo, UpdatedAt and DeletedAt of every row
-//     (history and current, every life of a re-imported ID), also of rows
+//     must exceed every TxFrom and TxTo of every row (history and current,
+//     every life of a re-imported ID; UpdatedAt and DeletedAt never exceed
+//     them: stampAppendedRow sets UpdatedAt = TxFrom, a tombstone carries
+//     DeletedAt = TxTo), also of rows
 //     whose valid interval does not overlap [validFrom, validTo). The appended
 //     rows take versions above every stored row; a t at or below a stored stamp
 //     would record a newer belief (by version) as learned earlier.
 //   - validFrom after t is allowed: valid and transaction time are independent
 //     axes, and the appended rows carry an explicit ValidFrom, so UpdatedAt = t
 //     never derives a valid start (no version-start rule, unlike UpdateWithTx).
-
-// checkCascadeTxOrder reports whether a correction can be recorded at caller
-// instant t on a chain: t must be after every TxFrom, TxTo, UpdatedAt and
-// DeletedAt of every row. The error wraps ErrTxOrder (and so ErrInvalidTxFrom)
-// and names the binding (largest) stamp. Run it under the entity lock, on the
-// chain the write appends to.
-func checkCascadeTxOrder(t types.Instant, chain ...*types.TemporalMetadata) error {
-	var bound types.Instant
-	name := ""
-	note := func(v types.Instant, field string) {
-		if v > bound {
-			bound, name = v, field
-		}
-	}
-	for _, tm := range chain {
-		if tm == nil {
-			continue
-		}
-		note(tm.TxFrom, "TxFrom")
-		note(tm.TxTo, "TxTo")
-		note(tm.UpdatedAt, "UpdatedAt")
-		note(tm.DeletedAt, "DeletedAt")
-	}
-	if name != "" && t <= bound {
-		return fmt.Errorf("%w: t %d is not after the recorded %s %d of the entity's chain", ErrTxOrder, t, name, bound)
-	}
-	return nil
-}
 
 // cascadeInstant is the transaction instant a correction stamps on every row it
 // appends: the clock when at == 0 (the plain doors), else the caller instant at
@@ -73,7 +46,7 @@ func (c *Core) cascadeInstant(at types.Instant, chain []*types.TemporalMetadata)
 	if at == 0 {
 		return c.now(), nil
 	}
-	if err := checkCascadeTxOrder(at, chain...); err != nil {
+	if err := checkTxOrder(at, 0, chain...); err != nil {
 		return 0, err
 	}
 	return at, nil
@@ -109,7 +82,7 @@ func (c *Core) checkNodeCallerCascade(id types.NodeID, at types.Instant) error {
 	if err != nil {
 		return err
 	}
-	return checkCascadeTxOrder(at, chain...)
+	return checkTxOrder(at, 0, chain...)
 }
 
 // checkRelCallerCascade mirrors checkNodeCallerCascade for relationships.
@@ -127,7 +100,7 @@ func (c *Core) checkRelCallerCascade(id types.RelID, at types.Instant) error {
 	if err != nil {
 		return err
 	}
-	return checkCascadeTxOrder(at, chain...)
+	return checkTxOrder(at, 0, chain...)
 }
 
 // SetNodeVersionIntervalWithTx records the valid-time correction of
@@ -137,7 +110,7 @@ func (c *Core) checkRelCallerCascade(id types.RelID, at types.Instant) error {
 // positive instant not in the future (ErrInvalidTxFrom), then
 // Config.AllowTxBackfill (ErrTxBackfillDisabled); under the entity lock a
 // hard-deleted node is refused (ErrEntityDeleted) and txFrom must follow every
-// TxFrom, TxTo, UpdatedAt and DeletedAt recorded on the node's chain
+// TxFrom and TxTo recorded on the node's chain
 // (ErrTxOrder, wrapping ErrInvalidTxFrom; also for rows outside
 // [validFrom, validTo)). validFrom may lie after txFrom. The commit clock is
 // not advanced by txFrom. A refusal writes nothing.
@@ -227,9 +200,12 @@ func (tx *GraphTx) SetRelVersionIntervalWithTx(id types.RelID, validFrom, validT
 // Temporal().SetNodeVersionIntervalWithTx). txFrom is gated at queue time
 // (ErrInvalidTxFrom, then ErrTxBackfillDisabled) with the interval
 // (ErrInvalidTimeRange); the deleted-entity refusal and the order rule run in
-// Execute's whole-unit pre-flight (precheckCallerTxOps): one refused
-// caller-instant op refuses the whole batch with nothing written, and the
-// correction must be the only op of the batch on the node.
+// Execute's whole-unit pre-flight (precheckCallerTxOps): a caller-instant
+// refusal (deleted entity, order rule, a second op on the node) refuses the
+// whole batch with nothing written. Refusals only the kernel can make (a
+// unique constraint, the property limit) still fail this op alone, mid-unit,
+// as for UpdateNodeWithTx. The correction must be the only op of the batch on
+// the node.
 func (b *BatchBuilder) SetNodeVersionIntervalWithTx(id types.NodeID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant) error {
 	return b.queueNodeCascade(id, validFrom, validTo, props, txFrom, true)
 }

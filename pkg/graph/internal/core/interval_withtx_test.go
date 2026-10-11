@@ -169,8 +169,9 @@ func ivMaxStamp(rows map[uint32]types.TemporalMetadata) types.Instant {
 // row that takes the current slot, or the second correction piece with the
 // clock. The bounded shape appends two correction pieces and a resumption
 // that takes the current slot; the open shape two pieces, the last taking the
-// slot. Counterpart inside: the cascade shape (pieces and their valid
-// intervals) is the plain cascade's.
+// slot; the future shape (validFrom after t and after now — decision: allowed)
+// also catches a door that applies the update doors' version-start rule to
+// the cascade (it would refuse or move t).
 func TestIntervalWithTx_StampsEveryAppendedRow(t *testing.T) {
 	t.Parallel()
 	for _, be := range txbBackends() {
@@ -205,6 +206,14 @@ func TestIntervalWithTx_StampsEveryAppendedRow(t *testing.T) {
 						}
 						if _, old := before[curV]; old || cur.TxFrom != at {
 							t.Fatalf("[%s] current row v%d TxFrom=%d; want an appended row stamped t = %d in the current slot", sh.name, curV, cur.TxFrom, at)
+						}
+						if sh.name == "future" { // decision: validFrom after t is allowed
+							if p := ivPropAt(t, g, kind, f, sh.vf+1, at, "p"); p != sh.name {
+								t.Fatalf("pin t at vf+1: p = %v; want %s", p, sh.name)
+							}
+							if p := ivPropAt(t, g, kind, f, sh.vf+1, at-1, "p"); p != nil {
+								t.Fatalf("pin t-1 at vf+1: p = %v; want none", p)
+							}
 						}
 					}
 				})
@@ -333,48 +342,6 @@ func TestIntervalWithTx_Order(t *testing.T) {
 				})
 			}
 		}
-	}
-}
-
-// The rule itself, field by field (the doors' tests cannot make a DeletedAt
-// or an UpdatedAt the binding stamp through public writes: today's doors stamp
-// TxTo = DeletedAt and UpdatedAt = TxFrom).
-//
-// Catches: a rule that ignores DeletedAt (a tombstone of an earlier life
-// recorded after every other stamp), ignores UpdatedAt, ignores TxTo, uses >=
-// for any of them, or trips over a nil temporal block.
-func TestCheckCascadeTxOrder(t *testing.T) {
-	t.Parallel()
-	row := func(txFrom, txTo, upd, del types.Instant) *types.TemporalMetadata {
-		return &types.TemporalMetadata{TxFrom: txFrom, TxTo: txTo, UpdatedAt: upd, DeletedAt: del, ValidFrom: 5, ValidTo: 9_999}
-	}
-	cases := []struct {
-		name  string
-		chain []*types.TemporalMetadata
-		field string
-		bound types.Instant
-	}{
-		{"TxFrom", []*types.TemporalMetadata{row(100, 0, 100, 0), row(300, 0, 0, 0)}, "TxFrom", 300},
-		{"TxTo", []*types.TemporalMetadata{row(100, 400, 100, 0), row(300, 0, 300, 0)}, "TxTo", 400},
-		{"UpdatedAt", []*types.TemporalMetadata{row(100, 0, 500, 0)}, "UpdatedAt", 500},
-		{"DeletedAt", []*types.TemporalMetadata{row(100, 200, 100, 600), nil, row(300, 0, 300, 0)}, "DeletedAt", 600},
-	}
-	for _, tc := range cases {
-		for _, at := range []types.Instant{tc.bound, tc.bound - 1} {
-			err := checkCascadeTxOrder(at, tc.chain...)
-			if !errors.Is(err, ErrTxOrder) || !errors.Is(err, ErrInvalidTxFrom) {
-				t.Fatalf("%s: t=%d err = %v; want ErrTxOrder wrapping ErrInvalidTxFrom", tc.name, at, err)
-			}
-			if msg := err.Error(); !strings.Contains(msg, tc.field) || !strings.Contains(msg, fmt.Sprint(tc.bound)) {
-				t.Fatalf("%s: t=%d err = %q; want it to name %s %d", tc.name, at, msg, tc.field, tc.bound)
-			}
-		}
-		if err := checkCascadeTxOrder(tc.bound+1, tc.chain...); err != nil {
-			t.Fatalf("%s: t = bound+1 refused: %v", tc.name, err)
-		}
-	}
-	if err := checkCascadeTxOrder(1); err != nil {
-		t.Fatalf("empty chain refused t=1: %v", err)
 	}
 }
 
@@ -751,93 +718,22 @@ func ivPropAt(t *testing.T, g *Core, kind string, f ivFix, v, pin types.Instant,
 	return props[key]
 }
 
-// 6 — two-phase (rule 15) over the state and record doors (rule 17).
-//
-// Phase 1 records the views at pin t-1; phase 2 runs the door at t and a later
-// plain write. Asserted: pin t-1 answers exactly what it answered before (the
-// past is remembered on every door, the effective timeline included); pin t
-// already answers what the newest pin answers (the correction belongs to t);
-// at pin t the patch holds inside [a,b) and nothing else changed (k from the
-// then-valid version, the resumption after b); and both pins keep their
-// answers after the later plain write.
-//
-// Catches: a door that ignores t (pin t still answers the old belief, the
-// correction appears only at the clock); an off-by-one at the pin (pin t-1
-// sees the correction); a door that rewrites stored rows (pin t-1 changes);
-// a correction whose rows disagree between the point, generic and timeline
-// doors.
-func TestIntervalWithTx_TwoPhase(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	for _, be := range txbBackends() {
-		for _, d := range ivDoors() {
-			for _, kind := range ivKinds {
-				t.Run(be.name+"/"+d.name+"/"+kind, func(t *testing.T) {
-					g := be.open(t, true)
-					f := ivFixture(t, g)
-					sh := ivShapes(f)[0]
-					a, b := sh.vf, sh.vt
-					grid := []types.Instant{f.vf0, a - 1, a, f.vf1 - 1, f.vf1, b - 1, b, b + 1, f.vf1 + 10*txbHour}
-					at := f.base + 2000
-					prev := ivView(t, g, kind, f, at-1, grid)
-					if err := ivRun(d, g, kind, f, a, b, map[string]any{"p": "x"}, at); err != nil {
-						t.Fatalf("door: %v", err)
-					}
-					if got := ivView(t, g, kind, f, at-1, grid); got != prev {
-						t.Fatalf("pin t-1 changed by the correction at t:\n before %s\n after  %s", prev, got)
-					}
-					atView := ivView(t, g, kind, f, at, grid)
-					nowPin, _ := g.Temporal.NowTx()
-					if now := ivView(t, g, kind, f, nowPin, grid); atView != now {
-						t.Fatalf("pin t does not answer the correction recorded at t:\n pin t   %s\n pin now %s", atView, now)
-					}
-					for _, c := range []struct {
-						v       types.Instant
-						p, k    any
-						comment string
-					}{
-						{a - 1, nil, int64(1), "before the target"},
-						{a, "x", int64(1), "piece on v0"},
-						{f.vf1, "x", int64(2), "piece on v1"},
-						{b - 1, "x", int64(2), "end of the target"},
-						{b, nil, int64(2), "resumption"},
-					} {
-						if p := ivPropAt(t, g, kind, f, c.v, at, "p"); p != c.p {
-							t.Fatalf("pin t, %s: p = %v; want %v", c.comment, p, c.p)
-						}
-						if k := ivPropAt(t, g, kind, f, c.v, at, "k"); k != c.k {
-							t.Fatalf("pin t, %s: k = %v; want %v", c.comment, k, c.k)
-						}
-					}
-					var err error
-					if kind == "node" {
-						_, err = g.Nodes.Update(ctx, f.nid, map[string]any{"k": int64(9)})
-					} else {
-						_, err = g.Rels.Update(ctx, f.rid, map[string]any{"k": int64(9)})
-					}
-					if err != nil {
-						t.Fatalf("later plain update: %v", err)
-					}
-					if got := ivView(t, g, kind, f, at-1, grid); got != prev {
-						t.Fatalf("pin t-1 forgotten after a later write:\n then %s\n now  %s", prev, got)
-					}
-					if got := ivView(t, g, kind, f, at, grid); got != atView {
-						t.Fatalf("pin t forgotten after a later write:\n then %s\n now  %s", atView, got)
-					}
-				})
-			}
-		}
-	}
-}
-
 // 7 — the sigma-tkgd shape: a burst fact grows [vs,ve) -> [vs,ve') -> [vs,ve”)
 // at the record instants t1 < t2 of a replayed stream.
 //
+// Two-phase (rules 15, 17): before each growth the views at pin t_i - 1 are
+// recorded (ivView: AtTx and the generic ByLabel/ByType{ValidAt,TxAt} on a grid,
+// the as-of and {TxPin} doors, the effective timeline, which must agree with
+// AtTx); after it they are unchanged, pin t2 answers what the newest pin
+// answers, and every pin keeps its answer after a later plain correction.
+//
 // Catches: a door that stamps the growth at the clock (at pin t1 the fact
 // still ends at ve; the replayed past differs from the live past), a door that
-// stamps t2's growth at t1 or the reverse, and a correction that breaks the
-// hash chain (Verify*Chain). The queue doors run each growth in a unit of its
-// own (one op per entity per unit).
+// stamps t2's growth at t1 or the reverse, an off-by-one at the pin (t_i - 1
+// sees the growth), a door that rewrites stored rows, doors that disagree on
+// the corrected rows, and a correction that breaks the hash chain
+// (Verify*Chain). The queue doors run each growth in a unit of its own (one op
+// per entity per unit).
 func TestIntervalWithTx_BurstGrowthReplay(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -850,7 +746,8 @@ func TestIntervalWithTx_BurstGrowthReplay(t *testing.T) {
 					vs := t0 - 30*60_000
 					ends := []types.Instant{vs + 60_000, vs + 120_000, vs + 180_000}
 					props := map[string]any{"tkg_valid_from": vs, "tkg_valid_to": ends[0], "burst": "b1"}
-					var f ivFix
+					f := ivFix{vf0: vs}
+					grid := []types.Instant{vs + 10, ends[0] - 1, ends[0], ends[1] - 1, ends[1], ends[2] - 1, ends[2]}
 					if kind == "node" {
 						n, err := g.Nodes.AddWithTx(ctx, []string{"Ref"}, props, t0)
 						if err != nil {
@@ -908,10 +805,15 @@ func TestIntervalWithTx_BurstGrowthReplay(t *testing.T) {
 						return first, last
 					}
 					ts := []types.Instant{t0, t0 + 1000, t0 + 2000}
+					views := make([]string, len(ts))
 					for i := 1; i < len(ts); i++ {
 						before := ivRowTemporals(t, g, kind, f)
+						prev := ivView(t, g, kind, f, ts[i]-1, grid)
 						if err := ivRun(d, g, kind, f, vs, ends[i], nil, ts[i]); err != nil {
 							t.Fatalf("growth %d at t%d: %v", i, i, err)
+						}
+						if got := ivView(t, g, kind, f, ts[i]-1, grid); got != prev {
+							t.Fatalf("pin t%d-1 changed by the growth at t%d:\n before %s\n after  %s", i, i, prev, got)
 						}
 						app := ivAppended(before, ivRowTemporals(t, g, kind, f))
 						if len(app) == 0 {
@@ -924,6 +826,25 @@ func TestIntervalWithTx_BurstGrowthReplay(t *testing.T) {
 						}
 					}
 					for i, pin := range ts {
+						views[i] = ivView(t, g, kind, f, pin, grid)
+					}
+					nowPin, _ := g.Temporal.NowTx()
+					if now := ivView(t, g, kind, f, nowPin, grid); views[2] != now {
+						t.Fatalf("pin t2 does not answer the growth recorded at t2:\n pin t2  %s\n pin now %s", views[2], now)
+					}
+					var err error
+					if kind == "node" { // a later plain correction, at the clock
+						_, err = g.Temporal.SetNodeVersionInterval(ctx, f.nid, vs, ends[2]+60_000, nil)
+					} else {
+						_, err = g.Temporal.SetRelVersionInterval(ctx, f.rid, vs, ends[2]+60_000, nil)
+					}
+					if err != nil {
+						t.Fatalf("later plain correction: %v", err)
+					}
+					for i, pin := range ts {
+						if got := ivView(t, g, kind, f, pin, grid); got != views[i] {
+							t.Fatalf("pin t%d forgotten after a later write:\n then %s\n now  %s", i, views[i], got)
+						}
 						for _, p := range []types.Instant{pin, pin + 999} {
 							if !present(vs+10, p) || !present(ends[i]-1, p) {
 								t.Fatalf("pin %d (t%d): the fact is not valid inside [vs, ve%d)", p, i, i)
@@ -937,7 +858,6 @@ func TestIntervalWithTx_BurstGrowthReplay(t *testing.T) {
 						}
 					}
 					var ok bool
-					var err error
 					if kind == "node" {
 						ok, err = g.Hash.VerifyNodeChain(f.nid)
 					} else {
@@ -945,39 +865,6 @@ func TestIntervalWithTx_BurstGrowthReplay(t *testing.T) {
 					}
 					if err != nil || !ok {
 						t.Fatalf("Verify%sChain = %v, %v; want a valid chain", kind, ok, err)
-					}
-				})
-			}
-		}
-	}
-}
-
-// ivDecisionValidFromAfterT — decision: a correction recorded at t may concern
-// valid time after t (valid and transaction time are independent axes).
-//
-// Catches: a door that applies the update doors' "t after the version start"
-// rule or validInstantAfter to the cascade (it would refuse, or move t to the
-// valid start).
-func TestIntervalWithTx_ValidFromAfterT(t *testing.T) {
-	t.Parallel()
-	for _, be := range txbBackends() {
-		for _, d := range ivDoors() {
-			for _, kind := range ivKinds {
-				t.Run(be.name+"/"+d.name+"/"+kind, func(t *testing.T) {
-					g := be.open(t, true)
-					f := ivFixture(t, g)
-					at := f.base + 2000
-					vf := txbWall() + 24*txbHour // after t and after now
-					before := ivRowTemporals(t, g, kind, f)
-					if err := ivRun(d, g, kind, f, vf, vf+txbHour, map[string]any{"p": "future"}, at); err != nil {
-						t.Fatalf("validFrom after t: %v", err)
-					}
-					ivAssertStampedAt(t, "validFrom after t", before, ivRowTemporals(t, g, kind, f), 2, at)
-					if p := ivPropAt(t, g, kind, f, vf+1, at, "p"); p != "future" {
-						t.Fatalf("pin t at vf+1: p = %v; want future", p)
-					}
-					if p := ivPropAt(t, g, kind, f, vf+1, at-1, "p"); p != nil {
-						t.Fatalf("pin t-1 at vf+1: p = %v; want none", p)
 					}
 				})
 			}

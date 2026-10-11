@@ -15,8 +15,8 @@ import (
 // the correction appends carries TxFrom = UpdatedAt = t and no retraction,
 // every stored row is unchanged, pin t already answers the newest row (by
 // version: the appended ones) through the as-of, as-of set and TxPin doors,
-// and pin t-1 the belief before. A t at or below any TxFrom / TxTo /
-// UpdatedAt / DeletedAt of the chain is refused on every door with ErrTxOrder
+// and pin t-1 the belief before. A t at or below any TxFrom / TxTo of the
+// chain is refused on every door with ErrTxOrder
 // and changes nothing. The sequence-level checks (rule 15 over every intent,
 // the bitemporal oracle on the captured chains, cross-backend equality) run on
 // these chains like on every other op.
@@ -26,7 +26,7 @@ import (
 func txbCascadeBound(e *oracleEntity) types.Instant {
 	var b types.Instant
 	for _, r := range e.rows {
-		b = max(b, r.txFrom, r.txTo, r.updatedAt, r.deletedAt)
+		b = max(b, r.txFrom, r.txTo)
 	}
 	return b
 }

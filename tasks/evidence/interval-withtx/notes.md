@@ -25,9 +25,20 @@ transaction instant, not at the commit clock. Mirrors `DeleteWithTx` / `UpdateWi
 | Race: order check under the entity lock | n/a | `TestIntervalWithTx_RaceClock` (-race) | plain updates and plain cascades race the caller-instant cascades; every accepted t above every lower-version stamp | green (-race) |
 
 Decisions (defaults, documented in docs/api.md):
-- The order rule is about the entity's chain, not the target interval: t must exceed every TxFrom, TxTo, UpdatedAt and
-  DeletedAt of every row of the chain (all lives of a re-imported ID), also of rows whose valid interval does not
-  overlap `[validFrom, validTo)`.
+- The order rule is about the entity's chain, not the target interval: t must exceed every TxFrom and TxTo of every
+  row of the chain (all lives of a re-imported ID), also of rows whose valid interval does not overlap
+  `[validFrom, validTo)`. It is `checkTxOrder(t, 0, chain...)` from `tx_order.go`, the rule of the other caller-instant
+  doors (review 2026-10-11: a cascade-only rule that also counted UpdatedAt/DeletedAt cannot change a result through the
+  doors, since stampAppendedRow sets UpdatedAt = TxFrom and a tombstone carries DeletedAt = TxTo; it and
+  `TestCheckCascadeTxOrder`, with mutants M5d-M5f, were removed).
 - A `validFrom` after t is allowed (a correction recorded at t may concern the future: valid time and transaction
   time are independent axes; the appended rows carry an explicit `ValidFrom`, so `UpdatedAt = t` never derives a
   valid start).
+
+## Review round 2026-10-11
+
+Applied: shared `checkTxOrder` (above); the batch door doc says the whole-unit pre-flight covers the caller-instant
+refusals only (unique constraint / property limit can still fail the op mid-unit, as for UpdateWithTx); tests trimmed
+(TwoPhase folded into BurstGrowthReplay, ValidFromAfterT is the "future" shape of StampsEveryAppendedRow, RaceClock one
+small case, PublicDoors one errors.Is row per sentinel per door, RelDoorsReportPastDatedWrite dropped as a subset of
+PrimaryCacheStale); mutants re-run (mutants.txt). Red files above are from the first, larger suite (kept as recorded).

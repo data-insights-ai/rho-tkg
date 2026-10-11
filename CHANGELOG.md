@@ -16,8 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pinned before `txFrom` keeps the uncorrected belief and a read pinned at or after it sees the correction. Same gates
   as `UpdateWithTx`: `txFrom` must be a positive instant not in the future (`ErrInvalidTxFrom`), then
   `Config.AllowTxBackfill` (`ErrTxBackfillDisabled`); under the entity lock a hard-deleted entity is refused
-  (`ErrEntityDeleted`) and `txFrom` must lie after every `TxFrom`, `TxTo`, `UpdatedAt` and `DeletedAt` of the
-  entity's chain — every life of a re-imported ID, also rows outside `[validFrom, validTo)` — otherwise `ErrTxOrder`
+  (`ErrEntityDeleted`) and `txFrom` must lie after every `TxFrom` and `TxTo` of the
+  entity's chain (the rule of `UpdateWithTx`, `checkTxOrder`) — every life of a re-imported ID, also rows outside `[validFrom, validTo)` — otherwise `ErrTxOrder`
   (wraps `ErrInvalidTxFrom`, names the binding stamp) and nothing is written. A `validFrom` after `txFrom` is
   allowed. The commit clock is not advanced by `txFrom`; the as-of column cache is invalidated after the write;
   replicas reproduce the stamps from the change feed. Twins: `GraphTx.SetNodeVersionIntervalWithTx` /

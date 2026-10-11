@@ -15,7 +15,7 @@ TEST-GAP = real behavior unverified (may hide a bug). FEATURE = plausible
 capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 
 **Remaining open work (verified against the code at v4.49.0, 2026-10-10):** no reproduced CRITICAL or HIGH
-item; two traced, unreproduced HIGH? findings in item 4. Next step: item 34, then 33 + 42 (+ 41),
+item; two traced, unreproduced HIGH? findings in item 4. Next step: items 33 + 42 (+ 41),
 35, 28, 21. Open items, one line each (full text below):
 
 | # | Type / severity | Item | Status |

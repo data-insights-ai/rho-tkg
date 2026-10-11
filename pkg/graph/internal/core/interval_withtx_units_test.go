@@ -309,7 +309,8 @@ func TestIntervalWithTx_IngestStrongGroupAlone(t *testing.T) {
 // keeps the old k at P); a report placed BEFORE the store write (the build the
 // hook interleaves after the gate is cached under the bumped epoch with the
 // pre-write belief); a Batch/ingest applier whose report folds the create and
-// update instants but not the corrections'.
+// update instants but not the corrections'. (The relationship doors share the
+// node doors' report code: a rel-only report test would be a subset.)
 func TestIntervalWithTx_PrimaryCacheStale(t *testing.T) {
 	ctx := context.Background()
 	for _, be := range pastDatedBackends() {
@@ -358,38 +359,6 @@ func TestIntervalWithTx_PrimaryCacheStale(t *testing.T) {
 				}
 				if v := txbAsOfValues(t, g, at-1)[a.ID()]; v != int64(1) {
 					t.Fatalf("k at t-1 = %v; want the uncorrected 1", v)
-				}
-			})
-		}
-	}
-}
-
-// The relationship doors report their past-dated write too (the as-of
-// generation moves).
-//
-// Catches: a relationship correction door that never calls the report.
-func TestIntervalWithTx_RelDoorsReportPastDatedWrite(t *testing.T) {
-	t.Parallel()
-	for _, be := range txbBackends() {
-		for _, d := range ivDoors() {
-			t.Run(be.name+"/"+d.name, func(t *testing.T) {
-				g := be.open(t, true)
-				f := ivFixture(t, g)
-				sh := ivShapes(f)[0]
-				pin := f.base + 500
-				_, gen0, ok, err := g.Nodes.DocValuesSnapshotAsOf("Ref", []string{"k"}, pin)
-				if err != nil || !ok {
-					t.Fatalf("DocValuesSnapshotAsOf: ok=%v err=%v", ok, err)
-				}
-				if err := d.rel(g, f.rid, sh.vf, sh.vt, map[string]any{"p": "x"}, f.base+2000); err != nil {
-					t.Fatalf("%s: %v", d.name, err)
-				}
-				_, gen1, _, err := g.Nodes.DocValuesSnapshotAsOf("Ref", []string{"k"}, pin)
-				if err != nil {
-					t.Fatalf("DocValuesSnapshotAsOf after: %v", err)
-				}
-				if gen1 == gen0 {
-					t.Fatalf("%s at a past t left the as-of generation at %d — the door does not report its past-dated write", d.name, gen0)
 				}
 			})
 		}

@@ -70,9 +70,11 @@ type ivShape struct {
 func ivShapes(f ivFix) []ivShape {
 	a := f.vf0 + 300_000
 	b := f.vf1 + 300_000
+	future := txbWall() + 24*txbHour
 	return []ivShape{
 		{"bounded", a, b, 3},
 		{"open", a, 0, 2},
+		{"future", future, future + txbHour, 2},
 	}
 }
 
