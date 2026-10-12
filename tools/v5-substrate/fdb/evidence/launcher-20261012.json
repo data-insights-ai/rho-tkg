@@ -1,0 +1,198 @@
+{
+  "date": "2026-10-12",
+  "scope": "current-source local FoundationDB graph fault launcher; no native-v5 comparison, physical fault-domain proof, performance acceptance or engine selection",
+  "source_base": "a09641b0e221e20e90a54498305a4f53004ce5f5",
+  "qualification_form": "isolated worktree source hashes; compile-first harness extension, no retrospective RED claim",
+  "pins": {
+    "go": "1.26.9 linux/arm64",
+    "foundationdb": "7.3.77",
+    "api": 730,
+    "commit": "3ea44ce1d9003ad095e408039e1f755c319c4dfb",
+    "native_image": "foundationdb/foundationdb@sha256:c61744624e479d370a0120176e518bb569a2a18ee9abceaf7022c4367b54f1db"
+  },
+  "profile": {
+    "name": "small",
+    "admission_mib": 4096,
+    "admission_cpus": 2.0,
+    "server_mib": 512,
+    "resident_mib": 384,
+    "cache_mib": 64,
+    "client_mib": 1024,
+    "server_cpus": 0.375,
+    "client_cpus": 0.5,
+    "build_mib": 1024,
+    "build_cpus": 2,
+    "cluster_phase_mib": 3072,
+    "cluster_phase_cpus": 2,
+    "physical_hosts": 1,
+    "independent_fault_domains": false,
+    "scope": "local graph/scalar functional faults; no engine selection or V2 closure"
+  },
+  "commands": [
+    "./run-local.sh static small",
+    "./run-local.sh graph-fault small",
+    "python3 -B -m unittest -v launcher_test.py",
+    "bash -n run-local.sh check-static.sh prepare-client.sh",
+    "shellcheck run-local.sh check-static.sh prepare-client.sh"
+  ],
+  "static": {
+    "run": "rho-v5-fdb-1791775905-4286",
+    "receipt_sha256": "363796356df31f69155af9bafb62e0bc02ab1835737e120ac5b0327f8920a6b8",
+    "source_manifest_sha256": "db7daa8e12aee9c7928b3c8db8927f37f613ea555453d7cf4c7feb8ac0874f58",
+    "checks": [
+      "compile",
+      "lint v2.13.2",
+      "gosec v2.29.0",
+      "govulncheck v1.7.0"
+    ],
+    "cleanup_exit": 0
+  },
+  "live": {
+    "run": "rho-v5-fdb-1791776158-5674",
+    "receipt_sha256": "65591df904fb7513877e89d470c57f082fe8a7a0f1fa7002fc4867c6a2d46970",
+    "source_manifest_sha256": "8d59bf1d99df6938a2bc0ff7ae18f10c27f620593d8546fdfb44b45a2dfd14c2",
+    "artifact_hashes": 492,
+    "checks": [
+      "healthy fully replicated triple startup",
+      "vet",
+      "race/coverage",
+      "exact before-commit client marker and SIGKILL exit137 non-OOM",
+      "exact after-commit/before-reply marker and SIGKILL exit137 non-OOM",
+      "frozen graph request commits under one-zone loss",
+      "all four exact servers stopped before any same-volume restart",
+      "healthy triple reopen and final status",
+      "all three retained seed cuts exact",
+      "six complete CDC groups",
+      "identical progress request/result replay after reopen"
+    ],
+    "passed_test_parents": [
+      "TestNativeFaultMarkerWriteFailureSeparatesCommitBoundaries",
+      "TestNativeFaultModesRefuseMalformedOrWrongOutcomeRecords",
+      "TestFaultRecordMissingOversizeAndConfigErrorsPreserveCallerData",
+      "TestNativeFaultVerifierRejectsObservedReadAndCompleteGroupMutants",
+      "TestNativeGraphScenarioRefusalsAndDirectCLIEntry",
+      "TestNativeGraphProgressRecoversFrozenRequestWithoutDuplicateCDC",
+      "TestNativeGraphTerminalRefusesIncompleteProgress",
+      "TestGraphShapeAndProjectionContracts",
+      "TestLiteralObservedHistoryRejectsAdversarialMutants",
+      "TestNativeGraphLifecycleAndCompleteCDC",
+      "TestNativeScopedFeedReadsRemoteCoordinatorAndRejectsMissingGroups",
+      "TestNativeActualAbsenceRangeConflictsWithoutMetadataWrites",
+      "TestNativeEndpointABAMasksRetainedIdentityBeforeCleanup",
+      "TestChangeGroupValidationContracts",
+      "TestNativeGraphRefusesIncompleteDescriptorsAndOrphanPosting",
+      "TestNativeGraphCLIAndFaultRecoveryHelpers",
+      "TestLiteralFeedReconstructsExactStateFromSnapshot",
+      "TestWholeTransactionHistoryAndPagedFence",
+      "TestConflictGenerationAbsenceAndABA",
+      "TestRequestScopeDedupAndAmbiguousNativeCancel",
+      "TestScopesQuotasAndStrictInputs",
+      "TestNativeConflictRangeBeforeWrites",
+      "TestNativeFenceRejectsInFlightHistoryBelowClosedCut",
+      "TestMaximumEscapedGraphMinimumBudgetCutRefusalIsAtomic",
+      "TestMetadataReservationMaximumWidthsAndCorruptQuotaCounters",
+      "TestInvalidTransactionShapesAndFiniteByteQuota",
+      "TestSmokeMainAndFaultRecoveryHelpers",
+      "TestCorruptStoredRowsFailClosed",
+      "TestFaultRecordMissingAndCertificateMismatch"
+    ],
+    "explicit_skips": [],
+    "package_seconds": 17.042,
+    "package_statement_coverage_percent": 84.2,
+    "changed_go_coverage": {
+      "method": "coverprofile statement blocks intersecting added graph_fault.go lines in git diff --unified=0; whole intersecting blocks counted",
+      "blocks": 42,
+      "statements": 64,
+      "covered": 57,
+      "percent": 89.0625
+    },
+    "exit": 0,
+    "cleanup_exit": 0
+  },
+  "post_run_guard_carry": {
+    "changes": [
+      "resource inspector requires exactly one container record",
+      "inspect_resources returns immediately when docker inspect fails",
+      "cleanup reports its path through original stdout FD3, preventing failure redirects from modifying a sealed log"
+    ],
+    "go_body_unchanged_from_live": true,
+    "python_guard_families_passed": 5,
+    "empty_and_multiple_inspect_records_rejected": true,
+    "recorded_static_inspections_rechecked": 8,
+    "recorded_live_inspections_rechecked": 57,
+    "bash_syntax_and_shellcheck": "pass",
+    "go_or_cluster_rerun": "none; Go bodies unchanged and stricter guards recheck recorded inspections",
+    "output_fd_correction_validation": "native Bash redirected failing-function/EXIT reproduction passes: original stdout receives final path, sealed command-log hash remains unchanged; no cluster or Go rerun"
+  },
+  "earlier_failures": [
+    {
+      "run": "rho-v5-fdb-1791775577-2321",
+      "reason": "BuildKit native stage did not create a Docker-engine runtime image; Bash3.2 empty-array cleanup failed; exact owned image tags subsequently removed",
+      "classification": "launcher setup/cleanup defects, fixed before qualification"
+    },
+    {
+      "run": "rho-v5-fdb-1791775651-2835",
+      "reason": "QF1003 tagged-switch lint suggestion; corrected",
+      "classification": "static failure, not a native semantic failure",
+      "historical_receipt_qualification": {
+        "file": "lint.txt",
+        "receipt_sha256": "7cbe4d275b867efcc5370d29f202a11d0927717c2af0fd993f27c90593785321",
+        "final_artifact_sha256": "ca2bb9f4902326c08dc71f4e2089c45fa84f4e4801797111e97fb968e416fd12",
+        "appended_output_bytes": 109,
+        "cause": "EXIT cleanup printed the output-directory line through the failed command redirect after receipt sealing; removing only that final109-byte line reproduces the original hash",
+        "original_receipt_and_final_raw_bytes_preserved": true
+      }
+    },
+    {
+      "run": "rho-v5-fdb-1791776012-4797",
+      "receipt_sha256": "b7021052fd91792099dae3aa3948f5d5e7182ea1d5391ab3cd1cafc261a657a0",
+      "reason": "new 30-poll startup bound ended while data distribution was initializing despite available/healthy/full-replicated database; original90-poll bound restored",
+      "classification": "tighter launcher readiness limit, not profile acceptance or semantic RED",
+      "cleanup_exit": 0
+    }
+  ],
+  "resources": {
+    "server_observed_peak_maxima_bytes": [
+      70930432,
+      82771968,
+      68091904,
+      64507904
+    ],
+    "server_peak_sum_upper_bound_bytes": 286302208,
+    "test_client_peak_bytes": 318373888,
+    "server_plus_test_peak_sum_upper_bound_bytes": 604676096,
+    "build_peak_bytes": 356605952,
+    "qualifiers": [
+      "Peaks may occur at different times; their sum is an upper bound, not synchronized deployment peak.",
+      "Build is separate from live cluster; race-test client includes compilation and instrumentation.",
+      "Source/build/module caches and raw disk/cgroup/native-client status are preserved in artifacts.",
+      "Docker VM/daemon shared memory is not bounded by the container admission arithmetic.",
+      "One physical host; four logical zones do not establish independent-machine or power-loss durability."
+    ]
+  },
+  "final_source_sha256": {
+    "Dockerfile": "7c045c41ba067848825a61261c758f98bfa32e3758f61beb5791aff9cf033619",
+    "check-static.sh": "cdf42b91673149f3e8caf95d03db68b504ef35a392471ef97cf16bdcce70d738",
+    "graph_fault.go": "307a21e60919d7a144ffd061bca4def76d3b50cd5321fdcf23fe12f48c787649",
+    "graph_progress_test.go": "de1f8ee51abc1a9a883369cdd2117fe897ac0fb907a61dd8d4a2b34e13aa97d4",
+    "launcher.py": "5e73e4e1621542e7e20d36691b3008e4a75d6f1f33421726ab210e5a31c3ff99",
+    "launcher_test.py": "76eda938f68efceb8409772f1ef6a4213c0ace1529d44f98b855f4bc86ca37b9",
+    "prepare-client.sh": "1656f1438237118559c18ea9183910aa098c8313a3dfc2d4a9d5160620f75a98",
+    "run-local.sh": "cfcef160c18074642161a26f3d435b35b31302ed056795d6b1941999c4e8ca83",
+    "README.md": "a64e5abf91a596134599136967b7da91dece7f1efa4b8a8ab411e2f5f3829986",
+    "go.mod": "15d92f0904b97b3fec0e0b23427994a095963da9b4afde3c20a32573e4e4672f",
+    "go.sum": "26bcf694e1b27910d09b654fcb3a852970358127d82581474e47c9afaba96618"
+  },
+  "raw_archive": {
+    "file": "launcher-20261012.tar.gz",
+    "sha256": "4f649d902b4e32f477f87c5208135685567375626b75adbfce8230e30a04c6c6",
+    "includes": "all five setup/static/readiness/live runs with unmodified terminal receipts and raw artifacts",
+    "verification": {
+      "referenced_artifacts": 703,
+      "matching": 702,
+      "historical_mismatch": "failed lint.txt qualified above; all successful static/live artifacts match"
+    }
+  },
+  "v2_complete": false,
+  "engine_selected": false
+}

@@ -20,6 +20,8 @@ type graphFaultRecord struct {
 	BeforeTx      transaction
 	AfterTx       *transaction
 	Before, After *outcome
+	ProgressTx    *transaction `json:",omitempty"`
+	Progress      *outcome     `json:",omitempty"`
 }
 
 func graphFaultConfig() config {
@@ -51,18 +53,20 @@ func graphFaultCheck(h *harness, r graphFaultRecord) error {
 	if err := checkLiteralPrefix(h.config.Graph, r.Seed); err != nil {
 		return errors.Join(errInvalid, err)
 	}
-	oldCut := cut{r.Seed[2].Cut}
-	old, err := h.at(oldCut, 1, nil)
-	if err != nil {
-		return err
-	}
-	oldView, err := h.graphAt(oldCut)
-	if err != nil {
-		return err
-	}
 	os := observationOutcomes(r.Seed)
-	if !reflect.DeepEqual(old.Values, literalRows(os)) || !reflect.DeepEqual(oldView, literalView(h.config.Graph, 3)) {
-		return fmt.Errorf("graph fault: retained endpoint/edge/posting mismatch")
+	for i, seed := range r.Seed {
+		oldCut := cut{seed.Cut}
+		old, err := h.at(oldCut, 1, nil)
+		if err != nil {
+			return err
+		}
+		oldView, err := h.graphAt(oldCut)
+		if err != nil {
+			return err
+		}
+		if !reflect.DeepEqual(old.Values, literalRows(os[:i+1])) || !reflect.DeepEqual(oldView, literalView(h.config.Graph, i+1)) {
+			return fmt.Errorf("graph fault: retained endpoint/edge/posting mismatch")
+		}
 	}
 	expected := literalRows(os)
 	view := literalView(h.config.Graph, 3)
@@ -70,18 +74,36 @@ func graphFaultCheck(h *harness, r graphFaultRecord) error {
 	for i := range 3 {
 		writes = append(writes, literalWrites(i+1, os))
 	}
-	for i, o := range []*outcome{r.Before, r.After} {
+	transactions := []transaction{r.Seed[0].Tx, r.Seed[1].Tx, r.Seed[2].Tx}
+	for i, o := range []*outcome{r.Before, r.After, r.Progress} {
 		if o == nil {
-			if i == 0 && r.After != nil {
+			if i == 0 && (r.After != nil || r.Progress != nil) || i == 1 && r.Progress != nil {
 				return errInvalid
 			}
 			continue
 		}
 		n := int64(6 + i)
-		id := []string{"graph-before", "graph-after"}[i]
+		id := []string{"graph-before", "graph-after", "graph-zone-loss"}[i]
 		if !o.Commit || o.ID != id || o.Coordinator != 1 {
 			return errInvalid
 		}
+		x := new(r.BeforeTx)
+		switch i {
+		case 1:
+			x = r.AfterTx
+		case 2:
+			x = r.ProgressTx
+		}
+		command := scenarioCommand(4)
+		command.Edge.Value = n
+		if x == nil || x.ID != id || x.Request != "request/"+id || x.Coordinator != 1 || x.Dependency != os[len(os)-1].Round || x.GraphChange == nil || *x.GraphChange != command {
+			return errInvalid
+		}
+		b, err := wire(*x)
+		if err != nil || h.validate(*x) != nil || o.Digest != sha256.Sum256(b) || o.Request != x.Request || o.Round <= x.Dependency {
+			return errInvalid
+		}
+		transactions = append(transactions, *x)
 		prior := expected[0][oracleEdge]
 		v := value{n, prior.Version + 1, o.Round, false, id}
 		writes = append(writes, []changedValue{{0, oracleEdge, new(prior), v}, {0, oracleOut, new(prior), v}, {1, oracleIn, new(prior), v}})
@@ -114,7 +136,7 @@ func graphFaultCheck(h *harness, r graphFaultRecord) error {
 		return fmt.Errorf("graph fault: missing/duplicate CDC")
 	}
 	for i, group := range groups {
-		if group.Outcome != os[i] || !reflect.DeepEqual(group.Writes, writes[i]) {
+		if group.Outcome != os[i] || !reflect.DeepEqual(group.Tx, transactions[i]) || !reflect.DeepEqual(group.Writes, writes[i]) {
 			return fmt.Errorf("graph fault: incomplete CDC revisions")
 		}
 	}
@@ -268,6 +290,50 @@ func runGraphFault(db fdb.Database, mode string) error {
 			return errInvalid
 		}
 		r.After = new(o)
+	case "graph-fault-prepare-progress":
+		if r.Before == nil || r.After == nil {
+			return errInvalid
+		}
+		if err = graphFaultCheck(h, r); err != nil {
+			return err
+		}
+		if r.ProgressTx == nil {
+			s, err := h.current()
+			if err != nil {
+				return err
+			}
+			command := scenarioCommand(4)
+			command.Edge.Value = 8
+			x := h.graphTransaction("graph-zone-loss", 1, command, s)
+			x.Dependency = r.After.Round
+			r.ProgressTx = new(x)
+		}
+	case "graph-fault-progress":
+		if r.Before == nil || r.After == nil || r.ProgressTx == nil {
+			return errInvalid
+		}
+		// Captured while all zones were healthy. Every retry uses these exact
+		// bytes; no new current generation replaces an uncertain request.
+		o, err := h.submit(*r.ProgressTx)
+		if err != nil {
+			return err
+		}
+		if !o.Commit {
+			return errInvalid
+		}
+		r.Progress = new(o)
+	case "graph-fault-terminal":
+		if r.Before == nil || r.After == nil || r.Progress == nil || r.ProgressTx == nil {
+			return errInvalid
+		}
+		if err = graphFaultCheck(h, r); err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(struct {
+			Verified bool
+			Groups   int
+			Record   graphFaultRecord
+		}{true, 6, r})
 	case "graph-fault-verify":
 		if err = graphFaultCheck(h, r); err != nil {
 			return err

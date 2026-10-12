@@ -8,12 +8,13 @@ change groups. The fixed graph/CDC slice has native unit, race and static valida
 The evidence manifest keeps the earlier scalar and graph process-fault snapshots
 separate from the current source validation; no general fault acceptance follows.
 
-The existing scalar launcher runs on an arm64 Docker host with bash and Python 3:
+The launcher runs on an arm64 Docker host with bash and Python 3:
 
 ```sh
 cd tools/v5-substrate/fdb
 ./run-local.sh smoke       # native boot + ordinary two-prefix read/write
-make cover                # build, vet, race/coverage, oracle and process faults
+./run-local.sh graph-fault # vet/race/coverage, graph client kills, zone loss/reopen
+make cover                # vet/race/coverage, oracle and scalar process faults
 make static               # pinned lint, gosec and govulncheck
 make ci
 ```
@@ -25,6 +26,21 @@ under ignored `artifacts/`. Owned client image tags are removed; downloaded base
 and named Go tool caches remain.
 The image supports native **linux/arm64**, without emulation. Other architectures
 need separately verified pins and are outside this launcher.
+
+The default named `small` profile admits four 512 MiB/0.375 CPU servers and one
+sequential client capped at 1 GiB/0.5 CPU: **3 GiB/2 CPU** together. Native server
+settings are 384 MiB resident and 64 MiB storage/cache each. Prebuild/header setup
+runs separately in one 1 GiB/2 CPU container before servers start. Each Go
+invocation is capped at 180 seconds; prebuild orchestration is bounded to 600
+seconds, the cluster lifecycle to 900 seconds, ordinary fault clients to 45
+seconds, and cleanup to 180 seconds. Healthy, fully replicated triple SSD with
+four logical machines and three coordinators remains mandatory. No fallback
+changes replication. `large` preserves the earlier 2 GiB server, 1,536 MiB native
+resident and 128 MiB storage/cache settings, with a 2 GiB client. Its 10 GiB
+aggregate admission is refused by default; an explicitly sufficient
+`FDB_ADMISSION_MIB` and `FDB_ADMISSION_CPUS` allowance is required. These are test
+profiles, not production capacity recommendations or guarantees about Docker's
+shared VM/daemon memory.
 
 Pins: FoundationDB **7.3.77**, commit
 `3ea44ce1d9003ad095e408039e1f755c319c4dfb`, Go binding API **730**,
@@ -75,12 +91,28 @@ records describe a small sequential fixture, not general concurrent serializabil
 With a fresh namespace and an already bounded native deployment, the executable
 supports `graph-smoke` (`FDB_GRAPH_FIXTURE`) and `graph-fault-seed`,
 `graph-fault-before-child`, `graph-fault-recover-before`, `graph-fault-after-child`,
-`graph-fault-recover-after`, `graph-fault-verify` (`FDB_GRAPH_FAULT_GRAPH`). Child
+`graph-fault-recover-after`, `graph-fault-verify`, `graph-fault-prepare-progress`,
+`graph-fault-progress` and `graph-fault-terminal` (`FDB_GRAPH_FAULT_GRAPH`). Child
 fault modes deliberately wait for an external controller to kill their exact
 process after the printed native commit seam. Fault records use the external
-`/evidence` mount. The existing launcher has not been extended to run these graph
-fault modes. Graph process-fault evidence is bound to its own source snapshot,
-separate from current-source native unit validation.
+`/evidence` mount. The `graph-fault` launcher checks the exact phase marker and
+non-OOM exit 137, recovers both killed clients, captures a fixed graph update
+before losing one zone, and replays that identical request after uncertainty.
+It verifies all three retained seed cuts and complete CDC, kills all four exact
+servers before starting any of them on their original volumes, then verifies
+again. A timed-out ordinary client must be observed stopped before another
+client is admitted; uncertain cleanup fails the run. Terminal receipts hash
+the complete artifact set and include cleanup status and source/resource pins.
+
+The 2026-10-12 local `small` run passed 29 native race test parents without skips
+(84.2% package coverage), both actual client kills, one-zone-loss graph progress
+and same-volume all-server reopen with six complete transaction groups. The
+earlier 30-poll readiness attempt refused while data distribution was still
+initializing; the successful run restores the original 90-poll window. The
+[launcher receipt](evidence/launcher-20261012.json) separates that failed attempt,
+static validation and successful source snapshot. Subsequent exact-one-inspect
+and immediate inspect-failure guards passed their existing contract tests and
+rechecked the recorded inspections; the Go body is unchanged from the live run.
 
 Defaults retain all metadata: 4 MiB encoded admission bytes, 256 coordinator
 transactions, 4,096 history revisions and 256 certificates **per logical prefix**;
@@ -106,8 +138,8 @@ a new whole transaction with three remaining logical zones.
 Triple SSD replication uses three coordinators and four observed machine/zone
 localities. Startup and final reopen must reach healthy/full replication and
 healthy storage teams before fault/cost reporting. Server roles/localities,
-effective commands and status are captured. Each server has a 2 GiB Docker cap,
-1,536 MiB resident setting and 128 MiB storage/cache settings. All zones share
+effective commands and status are captured. Resource settings follow the selected
+named profile above. All zones share
 one Docker Desktop VM on one M4 Max host: this is functional crash evidence.
 
 Resource records include every server and client: allocated data/trace bytes,
