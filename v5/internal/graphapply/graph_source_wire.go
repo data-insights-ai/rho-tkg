@@ -23,6 +23,7 @@ const (
 	sourceCertifiedOpen
 	sourceMoveRead
 	sourceMoveOpen
+	sourceReplacementRead
 )
 
 type graphSourceRequest struct {
@@ -46,7 +47,7 @@ func readSourceCookie(c *graphCursor) graphSourceCookie {
 	return graphSourceCookie{issuer: c.array(), sequence: c.u64(), secret: c.array()}
 }
 func encodeGraphSourceRequest(r graphSourceRequest) ([]byte, error) {
-	if r.kind < sourceOpen || r.kind > sourceMoveOpen || r.sequence == 0 || r.nonce == ([16]byte{}) || r.maximum < 0 || r.maximum > graphSourceFrameBytes || r.rows < 0 || r.rows > 65536 || r.phase > crossResolve {
+	if r.kind < sourceOpen || r.kind > sourceReplacementRead || r.sequence == 0 || r.nonce == ([16]byte{}) || r.maximum < 0 || r.maximum > graphSourceFrameBytes || r.rows < 0 || r.rows > 65536 || r.phase > crossResolve {
 		return nil, errInvalid
 	}
 	if len(r.key) > 64<<10 || len(r.upper) > 64<<10 || len(r.after) > 64<<10 || len(r.command) > 1<<20 {
@@ -81,7 +82,7 @@ func decodeGraphSourceRequest(wire []byte) (graphSourceRequest, error) {
 	r.command = c.field(1 << 20)
 	r.tx = c.array()
 	r.phase = crossPhase(c.tag())
-	if c.err != nil || len(c.b) != 0 || r.kind < sourceOpen || r.kind > sourceMoveOpen || r.sequence == 0 || r.nonce == ([16]byte{}) || r.phase > crossResolve {
+	if c.err != nil || len(c.b) != 0 || r.kind < sourceOpen || r.kind > sourceReplacementRead || r.sequence == 0 || r.nonce == ([16]byte{}) || r.phase > crossResolve {
 		return graphSourceRequest{}, errors.Join(errInvalid, c.err)
 	}
 	return r, nil

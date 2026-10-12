@@ -19,14 +19,15 @@ type graphHostReadPump interface {
 	Submit(context.Context, allocationProposal) ([]byte, error)
 }
 type graphPeerService struct {
-	mu      graphRequestGate
-	host    *allocationHost
-	sources *graphSourceServer
-	pump    graphHostReadPump
-	peer    graphPeerIdentity
-	last    uint64
-	digest  [32]byte
-	reply   []byte
+	mu              graphRequestGate
+	host            *allocationHost
+	sources         *graphSourceServer
+	pump            graphHostReadPump
+	peer            graphPeerIdentity
+	last            uint64
+	digest          [32]byte
+	reply           []byte
+	replacementOnly bool
 }
 
 func newGraphPeerService(h *allocationHost, sources *graphSourceServer, pump graphHostReadPump) (*graphPeerService, error) {
@@ -165,8 +166,13 @@ func (s *graphPeerService) serve(ctx context.Context, wire []byte) ([]byte, erro
 		}
 		return nil, errInvalid
 	}
+	if s.replacementOnly && r.kind != sourceReplacementRead {
+		return nil, errInvalid
+	}
 	var body []byte
 	switch r.kind {
+	case sourceReplacementRead:
+		body, err = s.readReplacement(ctx, r)
 	case sourceMoveOpen:
 		pump, ok := s.pump.(graphHostRangeMovePump)
 		if !ok || !s.host.machine.rangeMoves() {

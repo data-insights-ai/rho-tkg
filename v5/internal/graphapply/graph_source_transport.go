@@ -69,7 +69,7 @@ func encodeGraphWireResponse(r graphWireResponse) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if r.peer.voter == 0 || r.sequence == 0 || r.nonce == ([16]byte{}) || r.issuer == ([16]byte{}) || r.kind < sourceOpen || r.kind > sourceMoveOpen || len(r.body) > graphSourceFrameBytes-512 {
+	if r.peer.voter == 0 || r.sequence == 0 || r.nonce == ([16]byte{}) || r.issuer == ([16]byte{}) || r.kind < sourceOpen || r.kind > sourceReplacementRead || len(r.body) > graphSourceFrameBytes-512 {
 		return nil, errInvalid
 	}
 	if r.err != nil && len(r.body) != 0 {
@@ -107,7 +107,7 @@ func decodeGraphWireResponse(wire []byte) (graphWireResponse, error) {
 	if mask != 0 {
 		r.err = graphWireError{mask}
 	}
-	if r.peer.voter == 0 || r.sequence == 0 || r.nonce == ([16]byte{}) || r.issuer == ([16]byte{}) || r.kind < sourceOpen || r.kind > sourceMoveOpen || mask != 0 && len(r.body) != 0 {
+	if r.peer.voter == 0 || r.sequence == 0 || r.nonce == ([16]byte{}) || r.issuer == ([16]byte{}) || r.kind < sourceOpen || r.kind > sourceReplacementRead || mask != 0 && len(r.body) != 0 {
 		return graphWireResponse{}, errCorrupt
 	}
 	return r, nil
@@ -262,6 +262,7 @@ type graphAuthenticatedStream struct {
 	mu       graphRequestGate
 	sequence uint64
 	issuer   [16]byte
+	invalid  bool
 }
 
 type graphAuthenticatedEndpoint struct {
@@ -302,6 +303,9 @@ func (e *graphAuthenticatedEndpoint) callUsing(ctx context.Context, request grap
 		return graphWireResponse{}, err
 	}
 	defer e.stream.mu.unlock()
+	if e.stream.invalid {
+		return graphWireResponse{}, graphstore.ErrSourceUnavailable
+	}
 	if e.stream.sequence == math.MaxUint64 {
 		return graphWireResponse{}, errLimit
 	}
@@ -340,6 +344,7 @@ func (e *graphAuthenticatedEndpoint) callUsing(ctx context.Context, request grap
 	if e.stream.issuer == ([16]byte{}) {
 		e.stream.issuer = r.issuer
 	} else if r.issuer != e.stream.issuer {
+		e.stream.invalid = true
 		return graphWireResponse{}, graphstore.ErrSourceUnavailable
 	}
 	if r.err != nil {
