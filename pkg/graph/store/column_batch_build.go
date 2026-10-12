@@ -1,6 +1,8 @@
 package store
 
 import (
+	"math"
+
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -62,10 +64,14 @@ func ScanColumnsFromNodes(nodes []*types.Node, props []string,
 			kind, i64, f64, str, b, ok := classifyScalar(raw)
 			if !found || !ok {
 				cd.appendAbsent(c, kindKnown[c])
+				if found {
+					cd.markOther(c, len(batch.IDs)-1)
+				}
 				continue
 			}
 			if !kindKnown[c] {
 				cd.Kinds[c], kindKnown[c] = kind, true
+				cd.alignTyped(c, len(cd.Null[c])) // the batch's earlier rows
 			}
 			if cd.Kinds[c] != kind {
 				// Reporting a mismatch absent is right for string-versus-number —
@@ -82,6 +88,7 @@ func ScanColumnsFromNodes(nodes []*types.Node, props []string,
 					return ErrMixedNumericColumn
 				}
 				cd.appendAbsent(c, true)
+				cd.markOther(c, len(batch.IDs)-1)
 				continue
 			}
 			cd.Null[c] = append(cd.Null[c], false)
@@ -97,6 +104,7 @@ func ScanColumnsFromNodes(nodes []*types.Node, props []string,
 			}
 		}
 		if len(batch.IDs) >= ColumnScanBatchRows {
+			cd.seal(len(batch.IDs))
 			if !fn(batch) {
 				return nil
 			}
@@ -104,6 +112,7 @@ func ScanColumnsFromNodes(nodes []*types.Node, props []string,
 		}
 	}
 	if len(batch.IDs) > 0 {
+		cd.seal(len(batch.IDs))
 		fn(batch)
 	}
 	return nil
@@ -166,10 +175,14 @@ func ScanColumnsFromRels(rels []*types.Relationship, props []string,
 			kind, i64, f64, str, b, ok := classifyScalar(raw)
 			if !found || !ok {
 				cd.appendAbsent(c, kindKnown[c])
+				if found {
+					cd.markOther(c, len(batch.IDs)-1)
+				}
 				continue
 			}
 			if !kindKnown[c] {
 				cd.Kinds[c], kindKnown[c] = kind, true
+				cd.alignTyped(c, len(cd.Null[c])) // the batch's earlier rows
 			}
 			if cd.Kinds[c] != kind {
 				// Reporting a mismatch absent is right for string-versus-number —
@@ -186,6 +199,7 @@ func ScanColumnsFromRels(rels []*types.Relationship, props []string,
 					return ErrMixedNumericColumn
 				}
 				cd.appendAbsent(c, true)
+				cd.markOther(c, len(batch.IDs)-1)
 				continue
 			}
 			cd.Null[c] = append(cd.Null[c], false)
@@ -201,6 +215,7 @@ func ScanColumnsFromRels(rels []*types.Relationship, props []string,
 			}
 		}
 		if len(batch.IDs) >= ColumnScanBatchRows {
+			cd.seal(len(batch.IDs))
 			if !fn(batch) {
 				return nil
 			}
@@ -208,6 +223,7 @@ func ScanColumnsFromRels(rels []*types.Relationship, props []string,
 		}
 	}
 	if len(batch.IDs) > 0 {
+		cd.seal(len(batch.IDs))
 		fn(batch)
 	}
 	return nil
@@ -238,6 +254,7 @@ func (cd *ColumnData) reset(nCols int) {
 		cd.Bools[c] = cd.Bools[c][:0]
 		cd.Null[c] = cd.Null[c][:0]
 	}
+	cd.Other = nil // the next batch allocates it again only if it has an Other cell
 }
 
 // WHY THE PER-VALUE LOOP IS WRITTEN OUT IN BOTH DRIVERS ABOVE, AND NOT SHARED.
@@ -283,9 +300,67 @@ func (cd *ColumnData) appendAbsent(c int, known bool) {
 	}
 }
 
+// alignTyped pads column c's typed slice — the one Kinds[c] selects — with zero
+// values up to rows. appendAbsent cannot pad before a column's kind is known, so
+// the driver calls this when the kind resolves (backfilling the batch's earlier
+// rows) and seal calls it before the batch is handed out (a column no row has
+// typed keeps Kinds' zero value, ColInt64). Without it a column whose first rows
+// are absent had a typed slice SHORTER than Null, and Ints[c][k] read another row.
+func (cd *ColumnData) alignTyped(c, rows int) {
+	switch cd.Kinds[c] {
+	case ColInt64:
+		for len(cd.Ints[c]) < rows {
+			cd.Ints[c] = append(cd.Ints[c], 0)
+		}
+	case ColFloat64:
+		for len(cd.Flts[c]) < rows {
+			cd.Flts[c] = append(cd.Flts[c], 0)
+		}
+	case ColString:
+		for len(cd.Strs[c]) < rows {
+			cd.Strs[c] = append(cd.Strs[c], "")
+		}
+	case ColBool:
+		for len(cd.Bools[c]) < rows {
+			cd.Bools[c] = append(cd.Bools[c], false)
+		}
+	}
+}
+
+// seal makes every column of a batch parallel to its rows before the callback.
+func (cd *ColumnData) seal(rows int) {
+	for c := range cd.Kinds {
+		cd.alignTyped(c, rows)
+	}
+	for c := range cd.Other {
+		for len(cd.Other[c]) < rows {
+			cd.Other[c] = append(cd.Other[c], false)
+		}
+	}
+}
+
+// markOther flags row `row` of column c as held outside the column (ColumnData.
+// Other). Other is allocated on a batch's first such cell, so a batch without one
+// costs nothing; seal pads every Other column to the batch's rows.
+func (cd *ColumnData) markOther(c, row int) {
+	if cd.Other == nil {
+		cd.Other = make([][]bool, len(cd.Kinds))
+	}
+	for len(cd.Other[c]) <= row {
+		cd.Other[c] = append(cd.Other[c], false)
+	}
+	cd.Other[c][row] = true
+}
+
 // classifyScalar converts a stored property value to its column kind and typed
 // value. The integral widenings here are exactly the ones a consumer would
 // otherwise perform after the type was erased, each costing a heap box.
+//
+// The integer widths follow index.normalizeNumeric, which badger's columnar
+// snapshot reads them with, so the row path and the snapshot type a column
+// alike: every width up to 32 bits is int64; a uint/uint64 is int64 when it fits
+// and float64 past MaxInt64 (next to a fitting one the column is mixed and
+// refused, on both paths), never a wrapped negative int64.
 func classifyScalar(v any) (k ColumnKind, i64 int64, f64 float64, s string, b bool, ok bool) {
 	switch t := v.(type) {
 	case int64:
@@ -294,6 +369,20 @@ func classifyScalar(v any) (k ColumnKind, i64 int64, f64 float64, s string, b bo
 		return ColInt64, int64(t), 0, "", false, true
 	case int32:
 		return ColInt64, int64(t), 0, "", false, true
+	case int16:
+		return ColInt64, int64(t), 0, "", false, true
+	case int8:
+		return ColInt64, int64(t), 0, "", false, true
+	case uint32:
+		return ColInt64, int64(t), 0, "", false, true
+	case uint16:
+		return ColInt64, int64(t), 0, "", false, true
+	case uint8:
+		return ColInt64, int64(t), 0, "", false, true
+	case uint:
+		return classifyUint64(uint64(t))
+	case uint64:
+		return classifyUint64(t)
 	case types.Instant:
 		return ColInt64, int64(t), 0, "", false, true
 	case float64:
@@ -308,6 +397,14 @@ func classifyScalar(v any) (k ColumnKind, i64 int64, f64 float64, s string, b bo
 	return 0, 0, 0, "", false, false
 }
 
+// classifyUint64 is int64 when v fits exactly, float64 past MaxInt64.
+func classifyUint64(v uint64) (ColumnKind, int64, float64, string, bool, bool) {
+	if v <= math.MaxInt64 {
+		return ColInt64, int64(v), 0, "", false, true
+	}
+	return ColFloat64, 0, float64(v), "", false, true
+}
+
 // RelColumnSource is a relationship row set a backend reads from its own
 // columns (not from *types.Relationship values) for ScanColumnsFromRelSource:
 // Row(i) gives row i's identity, endpoints and ValidRange (from/to, 0 when
@@ -318,6 +415,15 @@ type RelColumnSource interface {
 	Len() int
 	Row(i int) (id types.RelID, start, end types.NodeID, validFrom, validTo int64)
 	Value(i, c int) (kind ColumnKind, i64 int64, f64 float64, s string, b bool, ok bool)
+}
+
+// RelColumnOtherSource is the OPTIONAL half of a RelColumnSource that fills
+// ColumnData.Other: Other(i, c) reports whether row i holds property c all the
+// same (a list, a map, a struct) — asked only where Value reported ok=false.
+// A source without it scans unchanged and reports no Other (Other stays nil,
+// also for a kind mismatch, so a batch never carries a partial Other).
+type RelColumnOtherSource interface {
+	Other(i, c int) bool
 }
 
 // ClassifyScalar exposes the column-kind rule for RelColumnSource
@@ -350,6 +456,7 @@ func ScanColumnsFromRelSource(src RelColumnSource, nProps int, fn func(*RelColum
 	}
 	kindKnown := make([]bool, nProps)
 	cd := &batch.ColumnData
+	otherSrc, hasOther := src.(RelColumnOtherSource)
 	reset := func() {
 		batch.IDs = batch.IDs[:0]
 		batch.Ordinals = batch.Ordinals[:0]
@@ -375,16 +482,23 @@ func ScanColumnsFromRelSource(src RelColumnSource, nProps int, fn func(*RelColum
 			kind, i64, f64, str, b, ok := src.Value(i, c)
 			if !ok {
 				cd.appendAbsent(c, kindKnown[c])
+				if hasOther && otherSrc.Other(i, c) {
+					cd.markOther(c, len(batch.IDs)-1)
+				}
 				continue
 			}
 			if !kindKnown[c] {
 				cd.Kinds[c], kindKnown[c] = kind, true
+				cd.alignTyped(c, len(cd.Null[c])) // the batch's earlier rows
 			}
 			if cd.Kinds[c] != kind {
 				if numericKind(cd.Kinds[c]) && numericKind(kind) {
 					return ErrMixedNumericColumn
 				}
 				cd.appendAbsent(c, true)
+				if hasOther {
+					cd.markOther(c, len(batch.IDs)-1)
+				}
 				continue
 			}
 			cd.Null[c] = append(cd.Null[c], false)
@@ -400,6 +514,7 @@ func ScanColumnsFromRelSource(src RelColumnSource, nProps int, fn func(*RelColum
 			}
 		}
 		if len(batch.IDs) >= ColumnScanBatchRows {
+			cd.seal(len(batch.IDs))
 			if !fn(batch) {
 				return nil
 			}
@@ -407,6 +522,7 @@ func ScanColumnsFromRelSource(src RelColumnSource, nProps int, fn func(*RelColum
 		}
 	}
 	if len(batch.IDs) > 0 {
+		cd.seal(len(batch.IDs))
 		fn(batch)
 	}
 	return nil

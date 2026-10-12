@@ -1,0 +1,10 @@
+--- FAIL: TestColumnScanOther_MatchesRowRead (0.06s)
+    --- FAIL: TestColumnScanOther_MatchesRowRead/memory (0.00s)
+        column_other_test.go:97: column 2: kind=0 len(Null)=5 len(Ints)=0, want int64 columns of 5 rows (Other [])
+    --- FAIL: TestColumnScanOther_MatchesRowRead/badger (0.00s)
+        column_other_test.go:97: column 2: kind=0 len(Null)=5 len(Ints)=0, want int64 columns of 5 rows (Other [])
+    --- FAIL: TestColumnScanOther_MatchesRowRead/memory-segments (0.00s)
+        column_other_test.go:97: column 2: kind=0 len(Null)=5 len(Ints)=0, want int64 columns of 5 rows (Other [])
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.074s
+FAIL
