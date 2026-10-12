@@ -401,6 +401,24 @@ close the memtable-switch gap in DurableFlush so ai-soc can drop SyncWrites. Red
 sync-counting test (syncs per durable group bounded by a constant, not by op count) + the crash/power-loss
 contract tests of v4.44.0 still green; bench `tasks/evidence/aisoc-commit-cost/bench_test.go.txt`.
 
+
+### 53. Relationship planner-stat memos hold one RAM entry per relationship, never evicted
+
+*HIGH (consumer: ai-soc, 2026-10-12, BA 18 Aug run on Flux)* — open; not started.
+
+ai-soc (DurableCommit, rho v4.51.1, badger) stopped after 11.5 min at 7.67 M of 39.93 M rows with RSS 71 GiB,
+growing 8.9 GiB per M rows. Heap at minute 10 (29.8 GB in use): ≈57 % in rho's per-relationship stat memos —
+`addRelPropertyStatsCounts` 10.9 GB (value keys 4.2 GB), `addRelPropertyTypeClassCounts` 4.9 GB, sync.Map nodes
+1.26 GB. Memo sites: `relStatsContrib.Store` (`store/badger/badgerstore_rel_property_stats.go:179`) and
+`relTypeClassContrib.Store` (`badgerstore_rel_type_class_counts.go:50`), kept so a delete can decrement exactly.
+Workaround today: `Config.DisablePlannerStats` (both memos gated, no correctness path depends on them).
+Sound fix candidate: derive the decrement from the deleted row itself (the delete seam has the old row / RelDeleteInfo)
+instead of a per-relationship memo, so RAM follows the number of (type, key, value) stats, not relationships; check
+the node-side stats for the same pattern. Red test first: heap or memo-count growth per relationship written is
+O(1)-bounded (count entries after N writes, N = 10 K vs 100 K), plus exact counters after delete / replace /
+cascade / replica apply equal a full recount (oracle). Profiles are customer-derived: read on Flux only
+(`/srv/fast/rene/project-2026-09-010-BA/aisoc-s3-20261012/smoke/prof`).
+
 ---
 
 ### 45. Internal sentinels reach callers but have no exported alias

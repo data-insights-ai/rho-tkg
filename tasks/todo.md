@@ -25,6 +25,7 @@ ledgers of 2026-10-09/10 (per-step red tests, merges, reviews) are in git histor
 | 15 | "Why were the other items not started? Parallel Opus subagents?" + "Monitoring sonnet agent" + "Review with opus high" + "Use a fable Agent at the end" | done | v4.51.1 (dbd74cf), items 35, 48, 33, 42 |
 | 16 | sigma-tkgd 2026-10-12 (consumer, relayed): valid-end bounded effective scans (backlog 51) + cheap AtNodes gather (backlog 50) for its step 6, flat restore | in progress — René 2026-10-12 "Go" (49 + 50 + 51 for v4.51.2) | `tasks/backlog.md` 50, 51 |
 | 17 | ai-soc 2026-10-12 (consumer, relayed; René to ai-soc: "We have to hurry"): durable 530-op commit ≤ 0.1 s with DurableCommit+SyncWrites kept (backlog 52); ai-soc adopts v4.51.2 when tagged | measured, filed; build waits for René's "fix 52" | `tasks/evidence/aisoc-commit-cost/01-measure.txt`, `tasks/backlog.md` 52 |
+| 18 | ai-soc 2026-10-12 (consumer): RSS 71 GiB at 7.67 M of 39.93 M rows, ≈57 % rel planner-stat memos (backlog 53); asks if DisablePlannerStats is safe | answered (safe; cost: stat APIs fail closed, sigma columnsExact → row feed); 53 build waits for René | `tasks/backlog.md` 53 |
 
 ## Releases (one line each; all gates `make ci-docker` exit 0, consumers build + vet)
 
