@@ -56,7 +56,7 @@ func (h *allocationHost) ReadCrossPhase(tx [16]byte, phase crossPhase, nonce [16
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return allocationEvent{}, replica.ErrStopped
 	}
 	if h.machine == nil || h.driver == nil || !crossGraphAgreement(h.machine.SemanticContractID()) {
@@ -178,7 +178,7 @@ func (h *allocationHost) PrepareCrossPartitionGraphOperations(ctx context.Contex
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return tx, proposal, replica.ErrStopped
 	}
 	if !crossGraphAgreement(h.machine.SemanticContractID()) || len(sources) != h.machine.declaration.Len() {
@@ -209,7 +209,7 @@ func (h *allocationHost) PrepareCrossPartitionGraphOperations(ctx context.Contex
 	seen := make(map[uint64]bool)
 	work := graphstore.PageWork{}
 	for i, p := range sources {
-		if p.owner == nil || p.owner.machine == nil || p.owner.ended.Load() || p.id.session != p.owner.session || p.id.sequence == 0 || p.id.sequence > p.owner.issuedReads.Load() || p.question.kind != observeConfiguration || p.question.nonce == ([16]byte{}) || p.observation.source.scope != p.owner.machine.scope() || p.observation.source.scope.semantic != h.machine.SemanticContractID() || seen[p.observation.source.scope.partition] || p.observation.source.scope.declaration != h.machine.declaration.Digest() {
+		if p.owner == nil || p.owner.machine == nil || p.owner.issuerUnavailable() || p.id.session != p.owner.session || p.id.sequence == 0 || p.id.sequence > p.owner.issuedReads.Load() || p.question.kind != observeConfiguration || p.question.nonce == ([16]byte{}) || p.observation.source.scope != p.owner.machine.scope() || p.observation.source.scope.semantic != h.machine.SemanticContractID() || seen[p.observation.source.scope.partition] || p.observation.source.scope.declaration != h.machine.declaration.Digest() {
 			return tx, proposal, errInvalid
 		}
 		seen[p.observation.source.scope.partition] = true
@@ -359,7 +359,7 @@ func (h *allocationHost) crossProposalWithBudget(phase crossPhase, partition uin
 }
 
 func (h *allocationHost) crossCommandProposalWithBudget(r crossCommand, arena *graphstate.OutputBudget) (allocationProposal, error) {
-	if h.closed {
+	if h.unavailableLocked() {
 		return allocationProposal{}, replica.ErrStopped
 	}
 	if h.machine == nil || h.driver == nil {
@@ -441,7 +441,7 @@ func (h *allocationHost) RecoverCrossTransaction(original crossProof) (crossTran
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return crossTransaction{}, replica.ErrStopped
 	}
 	if err := checkCrossProof(original, original.status.tx, original.status.digest); err != nil || original.status.ns != h.machine.ns {

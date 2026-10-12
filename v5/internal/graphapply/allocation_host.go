@@ -76,19 +76,35 @@ type allocationHost struct {
 	sequence uint64
 	// Foreign proof consumers cannot acquire this Host's event mutex while
 	// holding another Host's mutex. Publish only these monotone issuer facts.
-	issuedReads     atomic.Uint64
-	ended           atomic.Bool
-	pending         map[allocationReadID]allocationQuery
-	crossPending    map[allocationReadID]crossQuery
-	requestPending  map[allocationReadID]crossRequestQuestion
-	capacityPending map[allocationReadID]crossCapacityQuestion
-	cutPending      map[allocationReadID]graphCutQuery
-	movePending     map[allocationReadID]pendingRangeMoveRead
-	recipients      map[[16]byte]*allocationRecipientHandle
-	sourceServer    *graphSourceServer
-	closed          bool
-	closeErr        error
-	closeDone       chan struct{}
+	issuedReads      atomic.Uint64
+	ended            atomic.Bool
+	pending          map[allocationReadID]allocationQuery
+	crossPending     map[allocationReadID]crossQuery
+	requestPending   map[allocationReadID]crossRequestQuestion
+	capacityPending  map[allocationReadID]crossCapacityQuestion
+	cutPending       map[allocationReadID]graphCutQuery
+	movePending      map[allocationReadID]pendingRangeMoveRead
+	recipients       map[[16]byte]*allocationRecipientHandle
+	sourceServer     *graphSourceServer
+	closed           bool
+	closeErr         error
+	closeDone        chan struct{}
+	replacementCtx   context.Context
+	replacementClose func() error
+	replacementStop  func() bool
+}
+
+// Called under the Host mutex; Context.Err is local and invokes no embedding
+// callback. Cancellation fences every event before asynchronous Close runs.
+func (h *allocationHost) unavailableLocked() bool {
+	return h.closed || h.replacementCtx != nil && h.replacementCtx.Err() != nil
+}
+
+// Replacement context is assigned before the Host is published and immutable
+// afterward. Cross-Host issuer checks must not take a foreign Host mutex; the
+// context's synchronous Err fences revocation before its asynchronous cleanup.
+func (h *allocationHost) issuerUnavailable() bool {
+	return h.ended.Load() || h.replacementCtx != nil && h.replacementCtx.Err() != nil
 }
 
 const allocationReadContextBytes = 101
@@ -225,7 +241,7 @@ func (h *allocationHost) Campaign() (allocationEvent, error) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return allocationEvent{}, replica.ErrStopped
 	}
 	return h.event(h.driver.Campaign())
@@ -237,7 +253,7 @@ func (h *allocationHost) Tick() (allocationEvent, error) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return allocationEvent{}, replica.ErrStopped
 	}
 	return h.event(h.driver.Tick())
@@ -249,7 +265,7 @@ func (h *allocationHost) Step(p replica.Packet) (allocationEvent, error) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return allocationEvent{}, replica.ErrStopped
 	}
 	return h.event(h.driver.Step(p))
@@ -261,7 +277,7 @@ func (h *allocationHost) Submit(p allocationProposal) (allocationEvent, error) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return allocationEvent{}, replica.ErrStopped
 	}
 	local := h.machine.scope()
@@ -341,7 +357,7 @@ func (h *allocationHost) Read(q allocationQuery) (allocationEvent, error) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return allocationEvent{}, replica.ErrStopped
 	}
 	if err := q.validate(h.machine.ns.graph); err != nil {
@@ -367,6 +383,11 @@ func (h *allocationHost) Read(q allocationQuery) (allocationEvent, error) {
 	return e, nil
 }
 
+// Close waits for native Store/Driver/session cleanup and caches its errors for
+// every caller. Opaque replacement-association release follows that completed
+// native fence, permitting synchronous Close reentry. While that callback is
+// running, reentrant/concurrent Close returns the completed native result;
+// the releasing caller and subsequent calls include its cached callback error.
 func (h *allocationHost) Close() error {
 	if h == nil {
 		return errInvalid
@@ -402,15 +423,24 @@ func (h *allocationHost) Close() error {
 		err = server.close()
 	}
 	err = errors.Join(err, driver.Close())
+	if h.replacementStop != nil {
+		h.replacementStop()
+	}
 	h.mu.Lock()
 	h.closeErr = err
 	close(h.closeDone)
 	h.mu.Unlock()
+	if h.replacementClose != nil {
+		err = errors.Join(err, h.replacementClose())
+		h.mu.Lock()
+		h.closeErr = err
+		h.mu.Unlock()
+	}
 	return err
 }
 
 func (h *allocationHost) ownProof(p allocationProof, kind allocationObservationKind) error {
-	if h.closed || p.owner != h || p.id.session != h.session || p.id.sequence == 0 || p.id.sequence > h.sequence || p.question.kind != kind || p.observation.kind != kind {
+	if h.unavailableLocked() || p.owner != h || p.id.session != h.session || p.id.sequence == 0 || p.id.sequence > h.sequence || p.question.kind != kind || p.observation.kind != kind {
 		return errInvalid
 	}
 	if err := p.question.validate(h.machine.ns.graph); err != nil {
@@ -583,7 +613,7 @@ func (h *allocationHost) prepareInitialization(partition uint64, attempt bootstr
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return allocationProposal{}, replica.ErrStopped
 	}
 	if h.machine.SemanticContractID() != agreement {
@@ -789,7 +819,7 @@ func (i *allocationRecipientHandle) Acquire(ctx context.Context, sequence, count
 	request := idalloc.GrantRequest{Graph: h.machine.ns.graph, Session: i.session, Sequence: sequence, Count: count}
 	return i.recipient.Acquire(ctx, request, func(request idalloc.GrantRequest) (idalloc.Grant, error) {
 		h.mu.Lock()
-		if h.closed || h.recipients[i.session.ID] != i {
+		if h.unavailableLocked() || h.recipients[i.session.ID] != i {
 			h.mu.Unlock()
 			return idalloc.Grant{}, idalloc.ErrStaleAuthority
 		}
@@ -809,7 +839,7 @@ func (i *allocationRecipientHandle) Acquire(ctx context.Context, sequence, count
 		}
 		h.mu.Lock()
 		defer h.mu.Unlock()
-		if h.closed || h.recipients[i.session.ID] != i {
+		if h.unavailableLocked() || h.recipients[i.session.ID] != i {
 			return idalloc.Grant{}, idalloc.ErrStaleAuthority
 		}
 		if reply.question != query || reply.proof.question != query || reply.id != reply.proof.id {

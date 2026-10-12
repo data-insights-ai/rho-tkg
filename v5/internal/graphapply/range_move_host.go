@@ -88,7 +88,7 @@ func (h *allocationHost) ReadRangeMove(ctx context.Context, q rangeMoveQuery) (a
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return allocationEvent{}, replica.ErrStopped
 	}
 	if h.machine == nil || !h.machine.rangeMoves() || h.driver == nil {

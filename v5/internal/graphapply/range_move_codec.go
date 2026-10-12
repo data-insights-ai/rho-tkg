@@ -175,7 +175,7 @@ func (h *allocationHost) prepareRangeMoveCommand(intentWire []byte, phase rangeM
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed || h.machine == nil || !h.machine.rangeMoves() {
+	if h.unavailableLocked() || h.machine == nil || !h.machine.rangeMoves() {
 		return allocationProposal{}, errInvalid
 	}
 	intent, err := decodeRangeMoveIntent(intentWire)

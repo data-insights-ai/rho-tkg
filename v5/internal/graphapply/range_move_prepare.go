@@ -22,7 +22,7 @@ func (h *allocationHost) PrepareRangeMove(ctx context.Context, id requestID, ran
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return intent, replica.ErrStopped
 	}
 	if h.machine == nil || !h.machine.rangeMoves() {

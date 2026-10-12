@@ -122,7 +122,7 @@ func (s *graphSourceServer) openCertified(ctx context.Context, cert graphCertifi
 		info.root, e = view.RootBounded(capture, 172)
 		if e == nil {
 			s.host.mu.Lock()
-			if s.host.closed {
+			if s.host.unavailableLocked() {
 				e = replica.ErrStopped
 			} else {
 				info.configuration, e = s.host.currentConfiguration()

@@ -211,7 +211,7 @@ func (h *allocationHost) ReadCrossCapacityConflict(prepare allocationProposal, n
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return allocationEvent{}, replica.ErrStopped
 	}
 	if h.machine == nil || h.driver == nil || prepare.target != h.machine.scope() || !crossGraphAgreement(h.machine.SemanticContractID()) {
@@ -330,7 +330,7 @@ func (h *allocationHost) AbortCrossTransactionForCapacity(tx crossTransaction, p
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return allocationProposal{}, crossStatus{}, replica.ErrStopped
 	}
 	if h.machine == nil || h.driver == nil || !crossGraphAgreement(h.machine.SemanticContractID()) {

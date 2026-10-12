@@ -73,7 +73,7 @@ func (c *crossProcessCoordinator) business(id requestID, ops []graphstate.Operat
 	h := c.host
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return nil, errInvalid
 	}
 	cfg, err := h.currentConfiguration()

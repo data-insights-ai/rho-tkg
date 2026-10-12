@@ -84,7 +84,7 @@ func (h *allocationHost) ReadGraphCut(q graphCutQuery) (allocationEvent, error) 
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return allocationEvent{}, replica.ErrStopped
 	}
 	if !h.machine.certifiedReads() {
@@ -118,7 +118,7 @@ func (h *allocationHost) CancelGraphCutRead(id allocationReadID) error {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return replica.ErrStopped
 	}
 	q, ok := h.cutPending[id]
@@ -296,7 +296,7 @@ func (h *allocationHost) AtGraphCertificate(ctx context.Context, cert graphCerti
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return nil, replica.ErrStopped
 	}
 	if !h.machine.certifiedReads() || cert.scope != h.machine.scope() {

@@ -89,7 +89,7 @@ func newGraphSourceServer(ctx context.Context, h *allocationHost, l graphSourceL
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return nil, replica.ErrStopped
 	}
 	if h.sourceServer != nil {

@@ -42,6 +42,23 @@ func newDeclaredMaterializer(s *raftlog.Store, n namespace, d graphstore.Ownersh
 }
 
 func newDeclaredMaterializerWithAgreement(s *raftlog.Store, n namespace, d graphstore.OwnershipDeclaration, l materializerLimits, agreement raftlog.ApplicationSemanticContractID) (*declaredMaterializer, error) {
+	m, err := newDeclaredMaterializerBinding(s, n, d, l, agreement)
+	if err != nil {
+		return nil, err
+	}
+	index, image, err := s.Checkpoint()
+	if err != nil {
+		return nil, err
+	}
+	if err := m.Restore(index, image); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// Pure immutable binding/limit initialization. This grants no semantic
+// readiness; replacement activation must perform its one post-sync Restore.
+func newDeclaredMaterializerBinding(s *raftlog.Store, n namespace, d graphstore.OwnershipDeclaration, l materializerLimits, agreement raftlog.ApplicationSemanticContractID) (*declaredMaterializer, error) {
 	if agreement != declaredSemanticContractID() && agreement != graphGenesisSemanticContractID() && !partitionGraphAgreement(agreement) {
 		return nil, errInvalid
 	}
@@ -65,13 +82,6 @@ func newDeclaredMaterializerWithAgreement(s *raftlog.Store, n namespace, d graph
 	}
 	if s.ApplicationLimits().MaxImageBytes > l.sourceBytes {
 		return nil, errLimit
-	}
-	index, image, err := s.Checkpoint()
-	if err != nil {
-		return nil, err
-	}
-	if err := m.Restore(index, image); err != nil {
-		return nil, err
 	}
 	return m, nil
 }

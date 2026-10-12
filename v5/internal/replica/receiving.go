@@ -25,16 +25,33 @@ type ApplicationReceivingConfig struct {
 }
 
 // ApplicationReceiver owns a serialized empty-membership RawNode. It exposes
-// no campaign, tick, proposal, read, bootstrap, activation or RawNode accessor.
-// It never creates a normal Driver, Host or application materializer. Scalar
-// configuration/returned reject packets grant no replacement or graph authority.
+// no campaign, tick, proposal, read, bootstrap or RawNode accessor. Ordinary
+// StepReceiving only persists receiving term and returns genuine rejection.
+// Privileged ActivateApplicationSnapshot uniquely transfers this same RawNode
+// to a Driver after durable audited activation; graphapply owns semantic machine
+// construction and Host lifetime. Scalar coordinates/packets grant no authority.
 type ApplicationReceiver struct {
 	self    *ApplicationReceiver
 	mu      sync.Mutex
 	config  ApplicationReceivingConfig
 	raw     *raft.RawNode
+	storage *applicationReceivingStorage
 	closed  bool
 	stopped error
+}
+
+// RawNode retains Storage for life. After unique activation handoff, use the
+// normal Driver's existing sender callback without replacing that RawNode.
+type applicationReceivingStorage struct {
+	*raftlog.Store
+	driver *Driver
+}
+
+func (s *applicationReceivingStorage) Snapshot() (*pb.Snapshot, error) {
+	if s.driver == nil {
+		return s.Store.Snapshot()
+	}
+	return (&applicationSnapshotStorage{Store: s.Store, d: s.driver}).Snapshot()
 }
 
 // OpenApplicationReceiver borrows a same-binding, fixed-three configured Store
@@ -73,9 +90,11 @@ func OpenApplicationReceiver(c ApplicationReceivingConfig) (*ApplicationReceiver
 	if state.Binding != c.Binding || state.LocalVoter != c.ID || !slices.Contains(state.Voters[:], c.Source) || state.Term > c.Term {
 		return nil, ErrInvalid
 	}
-	raw, err := raft.NewRawNode(&raft.Config{ID: c.ID, Storage: c.Store, Applied: 0,
+	storage := &applicationReceivingStorage{Store: c.Store}
+	raw, err := raft.NewRawNode(&raft.Config{ID: c.ID, Storage: storage, Applied: 0,
 		ElectionTick: 10, HeartbeatTick: 1, AsyncStorageWrites: false, CheckQuorum: true, PreVote: true,
-		MaxSizePerMsg: cReadBytes(c.Limits.MaxReadBytes), MaxCommittedSizePerReady: cReadBytes(c.Limits.MaxReadBytes), MaxInflightMsgs: 2})
+		MaxSizePerMsg: cReadBytes(c.Limits.MaxReadBytes), MaxCommittedSizePerReady: cReadBytes(c.Limits.MaxReadBytes), MaxInflightMsgs: 2,
+		MaxInflightBytes: max(uint64(8<<20), cReadBytes(c.Limits.MaxReadBytes)), MaxUncommittedEntriesSize: 16 << 20, StepDownOnRemoval: true})
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +107,7 @@ func OpenApplicationReceiver(c ApplicationReceivingConfig) (*ApplicationReceiver
 	if current != state || raw.BasicStatus().GetTerm() != state.Term || raw.HasReady() {
 		return nil, ErrInvalid
 	}
-	r := &ApplicationReceiver{config: c, raw: raw}
+	r := &ApplicationReceiver{config: c, raw: raw, storage: storage}
 	r.self = r
 	return r, nil
 }
@@ -216,6 +235,7 @@ func (r *ApplicationReceiver) Close() error {
 	}
 	r.closed = true
 	r.raw = nil
+	r.storage = nil
 	r.config = ApplicationReceivingConfig{}
 	return nil
 }

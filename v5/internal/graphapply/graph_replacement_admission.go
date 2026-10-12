@@ -132,7 +132,7 @@ func (h *allocationHost) exportReplacementRead(p allocationProof, target graphRe
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return graphReplacementReadBody{}, replica.ErrStopped
 	}
 	if err := h.ownProof(p, observeConfiguration); err != nil {
@@ -221,6 +221,7 @@ type graphReplacementAdmission struct {
 	endpoint    *graphAuthenticatedEndpoint
 	ctx         context.Context
 	finish      func() error
+	lifetime    *graphReplacementLifetime
 }
 
 func nilGraphReplacementInterface(v any) bool {
@@ -264,7 +265,8 @@ func beginGraphReplacement(ctx context.Context, e *graphAuthenticatedEndpoint, t
 	}
 	ownerCtx, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(associationCtx, cancel)
-	finish := sync.OnceValue(func() error { cancel(); stop(); return association.Close() })
+	lifetime := &graphReplacementLifetime{association: association, ctx: associationCtx, cancelPending: cancel, stopPending: stop, closeAssociation: sync.OnceValue(association.Close)}
+	finish := lifetime.closePending
 	command, err := encodeGraphReplacementTarget(target)
 	if err != nil {
 		return nil, errors.Join(err, finish())
@@ -280,7 +282,7 @@ func beginGraphReplacement(ctx context.Context, e *graphAuthenticatedEndpoint, t
 	if err != nil {
 		return nil, errors.Join(err, finish())
 	}
-	a := &graphReplacementAdmission{body: body, issued: body, association: association, endpoint: e, ctx: ownerCtx, finish: finish}
+	a := &graphReplacementAdmission{body: body, issued: body, association: association, endpoint: e, ctx: ownerCtx, finish: finish, lifetime: lifetime}
 	a.owner = a
 	if err := a.check(); err != nil {
 		return nil, errors.Join(err, finish())
@@ -288,16 +290,26 @@ func beginGraphReplacement(ctx context.Context, e *graphAuthenticatedEndpoint, t
 	return a, nil
 }
 func (a *graphReplacementAdmission) check() error {
-	if a == nil || a.owner != a || a.ctx == nil || a.finish == nil || nilGraphReplacementInterface(a.association) || a.endpoint == nil || a.endpoint.stream == nil {
+	if a == nil {
+		return errInvalid
+	}
+	return a.checkContext(a.ctx)
+}
+
+func (a *graphReplacementAdmission) checkContext(ctx context.Context) error {
+	if a == nil || ctx == nil || a.owner != a || a.ctx == nil || a.finish == nil || nilGraphReplacementInterface(a.association) || a.endpoint == nil || a.endpoint.stream == nil {
 		return errInvalid
 	}
 	if a.body != a.issued {
 		return errInvalid
 	}
+	if a.lifetime != nil && !a.lifetime.pending() {
+		return graphstore.ErrSourceUnavailable
+	}
 	if err := a.body.validate(); err != nil {
 		return err
 	}
-	if err := a.ctx.Err(); err != nil {
+	if err := errors.Join(a.ctx.Err(), ctx.Err()); err != nil {
 		return errors.Join(graphstore.ErrSourceUnavailable, err)
 	}
 	associationCtx := a.association.Context()
@@ -310,7 +322,7 @@ func (a *graphReplacementAdmission) check() error {
 	if a.association.Peer() != (graphPeerIdentity{scope: a.body.scope, voter: a.body.target.voter}) || a.association.Incarnation() != a.body.target.incarnation || a.endpoint.peer != (graphPeerIdentity{scope: a.body.scope, voter: a.body.source}) {
 		return graphstore.ErrSourceUnavailable
 	}
-	if err := a.endpoint.stream.mu.lock(a.ctx); err != nil {
+	if err := a.endpoint.stream.mu.lock(ctx); err != nil {
 		return errors.Join(graphstore.ErrSourceUnavailable, err)
 	}
 	defer a.endpoint.stream.mu.unlock()

@@ -141,6 +141,12 @@ type Driver struct {
 // It never bootstraps; first-open Initialize is an explicit separate store action.
 // A durable term at or above the finite ceiling returns ErrLimit before Restore.
 func Open(c Config) (*Driver, error) {
+	return openDriver(c, nil)
+}
+
+// A receiving activation may transfer its SAME already-advanced RawNode after
+// durable snapshot installation. Ordinary Open always constructs a new one.
+func openDriver(c Config, receiving *ApplicationReceiver) (*Driver, error) {
 	// Normalize unused typed-nil providers before storing interface fields.
 	if isNilMachine(c.Machine) {
 		c.Machine = nil
@@ -245,12 +251,14 @@ func Open(c Config) (*Driver, error) {
 		}
 	}
 	var restoreErr error
-	if app.Enabled() {
-		restoreErr = c.ApplicationMachine.Restore(index, image)
-	} else {
-		restoreErr = c.Machine.Restore(index, image)
+	if receiving == nil {
+		if app.Enabled() {
+			restoreErr = c.ApplicationMachine.Restore(index, image)
+		} else {
+			restoreErr = c.Machine.Restore(index, image)
+		}
+		restoreErr = errors.Join(restoreErr, closeApplicationCleanup(takeApplicationCleanup(c.ApplicationMachine)))
 	}
-	restoreErr = errors.Join(restoreErr, closeApplicationCleanup(takeApplicationCleanup(c.ApplicationMachine)))
 	if restoreErr != nil {
 		return nil, restoreErr
 	}
@@ -263,11 +271,32 @@ func Open(c Config) (*Driver, error) {
 		d.snapshotSender = newApplicationSnapshotSender(d)
 		storage = &applicationSnapshotStorage{Store: c.Store, d: d}
 	}
-	raw, err := raft.NewRawNode(&raft.Config{ID: c.ID, Storage: storage, Applied: index, ElectionTick: c.ElectionTick, HeartbeatTick: c.HeartbeatTick, AsyncStorageWrites: false, ReadOnlyOption: raft.ReadOnlySafe, CheckQuorum: true, PreVote: true, MaxSizePerMsg: cReadBytes(c.Limits.MaxReadBytes), MaxCommittedSizePerReady: cReadBytes(c.Limits.MaxReadBytes), MaxUncommittedEntriesSize: c.MaxUncommittedBytes, MaxInflightMsgs: c.MaxInflightMessages, MaxInflightBytes: c.MaxInflightBytes, StepDownOnRemoval: true})
-	if err != nil {
-		return nil, err
+	var raw *raft.RawNode
+	if receiving != nil {
+		raw = receiving.raw
+	}
+	if raw == nil {
+		if receiving != nil {
+			return nil, ErrInvalid
+		}
+		raw, err = raft.NewRawNode(&raft.Config{ID: c.ID, Storage: storage, Applied: index, ElectionTick: c.ElectionTick, HeartbeatTick: c.HeartbeatTick, AsyncStorageWrites: false, ReadOnlyOption: raft.ReadOnlySafe, CheckQuorum: true, PreVote: true, MaxSizePerMsg: cReadBytes(c.Limits.MaxReadBytes), MaxCommittedSizePerReady: cReadBytes(c.Limits.MaxReadBytes), MaxUncommittedEntriesSize: c.MaxUncommittedBytes, MaxInflightMsgs: c.MaxInflightMessages, MaxInflightBytes: c.MaxInflightBytes, StepDownOnRemoval: true})
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		status := raw.BasicStatus()
+		if !app.Enabled() || binding.Validate() != nil || raw.HasReady() || status.ID != c.ID || status.Applied != index || status.GetTerm() != hard.GetTerm() || status.GetVote() != hard.GetVote() || status.GetCommit() != hard.GetCommit() ||
+			c.ElectionTick != 10 || c.HeartbeatTick != 1 || c.MaxInflightMessages != 2 || c.MaxInflightBytes != max(uint64(8<<20), cReadBytes(c.Limits.MaxReadBytes)) || c.MaxUncommittedBytes != 16<<20 {
+			return nil, ErrInvalid
+		}
 	}
 	d.raw = raw
+	if receiving != nil {
+		if receiving.storage == nil || receiving.storage.Store != c.Store || receiving.storage.driver != nil {
+			return nil, ErrInvalid
+		}
+		receiving.storage.driver = d
+	}
 	return d, nil
 }
 

@@ -127,7 +127,7 @@ func (s *graphSourceServer) openMove(ctx context.Context, proof rangeMoveProof) 
 	var lease *graphSourceLease
 	h := s.host
 	h.mu.Lock()
-	if h.closed {
+	if h.unavailableLocked() {
 		err = replica.ErrStopped
 	} else {
 		err = checkRangeMoveProof(proof)

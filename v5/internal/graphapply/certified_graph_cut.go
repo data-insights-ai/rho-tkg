@@ -338,7 +338,7 @@ func (h *allocationHost) prepareGraphCut(b uint64, phase byte) (allocationPropos
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return allocationProposal{}, replica.ErrStopped
 	}
 	if !h.machine.certifiedReads() {

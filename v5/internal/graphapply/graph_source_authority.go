@@ -44,7 +44,7 @@ func (h *allocationHost) readCrossRequest(q crossRequestQuestion) (allocationEve
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return allocationEvent{}, replica.ErrStopped
 	}
 	if !crossGraphAgreement(h.machine.SemanticContractID()) {
@@ -151,7 +151,7 @@ func (h *allocationHost) cancelSourceRead(id allocationReadID) error {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return replica.ErrStopped
 	}
 	var wire []byte
@@ -218,7 +218,7 @@ func (h *allocationHost) exportCrossAuthority(p crossProof) (crossAuthority, err
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return crossAuthority{}, replica.ErrStopped
 	}
 	if p.owner != h || p.index == 0 || p.status.index > p.index || p.index > h.driver.Applied() {
@@ -239,7 +239,7 @@ func (h *allocationHost) proposalFromAuthority(phase crossPhase, partition uint6
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return allocationProposal{}, replica.ErrStopped
 	}
 	if tx.owner != h || sha256.Sum256(tx.manifest) != tx.digest {

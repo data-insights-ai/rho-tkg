@@ -257,7 +257,7 @@ func (h *allocationHost) PreparePartitionGraphOperations(id requestID, ops []gra
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.unavailableLocked() {
 		return allocationProposal{}, replica.ErrStopped
 	}
 	if h.machine == nil || h.driver == nil || !partitionGraphAgreement(h.machine.SemanticContractID()) {
