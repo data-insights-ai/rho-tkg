@@ -1,0 +1,44 @@
+{
+  "status": "accepted fixed local lifecycle comparison; V2 remains open",
+  "author_commit": "c49eb2628a6934c3be513601cca6a940a5a41f92",
+  "integrated_commit": "8ea91e33",
+  "source_receipt": "lifecycle-20261012.json",
+  "review": "Root review plus independent GPT-6.1 Sol source review; implementation and Go runtime delegated to GPT-6.1 Sol/high.",
+  "independent_validation": {
+    "final_source_hashes_verified": 14,
+    "raw_receipt_artifacts_verified": 460,
+    "archive_members": 470,
+    "archive_sha256": "9a7a29956e8891ec44aa89f54b6dbfdec0a1cedd4bc5023b8b093a98a146bde6",
+    "archive_bytes": 758108,
+    "archive_raw_bytes": 8126134,
+    "final_race_test_parents": 31,
+    "failed_or_skipped_parents": 0,
+    "module_statement_coverage_percent": 83.8,
+    "new_profile_file_coverage_percent": 88.89,
+    "new_trace_file_coverage_percent": 81.77,
+    "changed_main_file_coverage_percent": 81.25,
+    "changed_state_file_coverage_percent": 87.73,
+    "comparator_regression_families": 4,
+    "static": "Compilation, pinned lint/security/vulnerability checks pass on the recorded source. Unchanged Go production bodies carry that qualification; the later test-only CLI amendment passes the final race/coverage run. Python decoding/receipt-label amendments have separate checks; no repeated cluster run is claimed for those metadata changes.",
+    "cleanup": "Both successful lifecycle lanes report exit 0 and cleanup 0. Four server containers plus the client were bounded to 3 GiB and 2 CPUs aggregate on one physical host."
+  },
+  "actual_trace_comparison": {
+    "native_normal_sha256": "674e934606225efe6c49ba0c7b45d6eb13b842731db87d383dfc2fc715798acd",
+    "native_race_sha256": "43678a6dc2b28e8a38ccc9e123f8146321473ebd3e94113bd8975d522ad95fc6",
+    "fdb_sha256": "b0172ef4391a0a8586d76ed847ebc3187aa21888b37592cfe150fe5db3f66689",
+    "both_comparisons_equal": true,
+    "transactions": 7,
+    "logical_component_changes": 8,
+    "historical_reads": 4,
+    "verification": "Root reran the integrated comparator directly against exact archived inputs. Equality includes declarations, typed values, own presence, effective visibility, retained property revisions/provenance, complete logical CDC and old views. The comparator validates FDB physical key ownership, stored group/outcome bytes, graph bindings and original cut identity before normalization.",
+    "representation_limits": "Native opaque codecs are trusted to the previously source-qualified native exporter. The native issued-ID census and FDB declared-fixture census retain their different authority in raw evidence. Numeric rounds and physical installation-write counts are not equated. The held old read is edge-only; three reopened reads cover the declared fixture."
+  },
+  "scope": "Only the separate FDB comparison tool changes; no v5 library production change. Optional stored profile/transaction metadata preserves legacy zero-profile encoding. Fixed All-scope lifecycle semantics only; no generic registry or allocator is added.",
+  "remaining": [
+    "Paired local functional fault traces and independent adjudication.",
+    "Comparable workload/cost and KV versus immutable-column publication measurements.",
+    "Physical-host durability/failure evidence and explicit engine decision.",
+    "Other V2 identity, ownership and reclamation requirements; V3-V7 retain their own exits."
+  ],
+  "qualification": "Earlier style/security and Python byte-decoding failures remain preserved and classified in the author receipt. Old generic raw receipt labels are qualified by actual command modes, not rewritten into fault claims. This root review is additional to the author archive."
+}

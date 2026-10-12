@@ -379,10 +379,15 @@ reviewed and validated before the next package starts.
    reopen, retained identity/property, exact CDC and held/reopened old cuts.
    All eight selected parents pass normal/race; production is unchanged. The
    entity census covers issued IDs 1–32 and the declared fixture components;
-   the held read is explicitly edge-only. FDB history-backed projection and
-   actual-trace equality remain pending, followed by the comparable fault/cost
-   matrix and engine decision, plus the remaining V2 exit gates above. Production creation/replacement
-   admission must distinguish new logical graphs
+   the held read is explicitly edge-only. The [matching FDB lifecycle comparison](../tools/v5-substrate/fdb/evidence/lifecycle-20261012-review.json)
+   is now accepted locally: actual stored history, physical edge/out/in records,
+   original outcomes and historical cuts produce equal answers for all seven
+   operations, eight logical changes and four old reads against both native
+   traces. All 31 FDB race-test parents pass, with 83.8% module coverage and
+   changed statement-block coverage above 80%; the v5 library is unchanged.
+   Next is paired local fault-trace adjudication, followed by the comparable
+   cost/layout matrix and engine decision; physical-host and other V2 exit
+   gates remain open. Production creation/replacement admission must distinguish new logical graphs
    from recovery; existing-directory binding checks alone do not establish that
    a logical identity may safely be bootstrapped on fresh or lost storage.
 

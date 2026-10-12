@@ -46,10 +46,14 @@
   },
   "qualifications": "QUALIFICATIONS.json preserves compiler/setup/schema attempts and the original lint failure; none establishes a production defect. TRACE_SUMMARY.json pins both final raw traces. This acceptance file is additional root review, outside the author's FILE_MANIFEST.json.",
   "remaining": [
-    "Matching FoundationDB stored-history projection and actual cross-engine trace comparison.",
     "Comparable fault/cost matrix and explicit engine decision.",
     "Other V2 ownership/identity/GC and physical-host requirements; V3-V7 retain their independent exits."
   ],
+  "cross_engine_comparison": {
+    "status": "accepted fixed local lifecycle comparison",
+    "evidence": "../../../tools/v5-substrate/fdb/evidence/lifecycle-20261012-review.json",
+    "scope": "Both exact native inputs compare equal with the actual FDB trace; this adds no fault/cost or whole V2 acceptance."
+  },
   "hosted_ci": {
     "head": "fee9b82d739e6c7d1b525b02b9cdc10845b9c2f3",
     "run": 38202988606,
