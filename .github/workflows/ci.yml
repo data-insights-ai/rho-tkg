@@ -13,6 +13,7 @@ concurrency:
 env:
   V5_DISPATCH: "0"
   COMPARE_DISPATCH: "0"
+  MIGRATION_DISPATCH: "0"
   GOTOOLCHAIN: local
   GOWORK: "off"
 jobs:
@@ -160,3 +161,26 @@ jobs:
           name: native-v4-current-correctness
           path: ${{ runner.temp }}/rho-compare-evidence
           retention-days: 14
+  migration-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: tools/v5-migrate
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: tools/v5-migrate/go.mod
+          cache: true
+          cache-dependency-path: "**/go.sum"
+      - run: make fmt-check
+      - run: make vet
+      - run: make build
+      - run: make test
+      - run: make test-race
+      - run: make cover-gate
+      - run: make tools
+      - run: make lint
+      - run: make security
+      - run: make vulncheck

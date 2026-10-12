@@ -36,6 +36,18 @@ endif
 $(addprefix compare-,$(COMPARE_TARGETS)):
 	$(MAKE) -C tools/graph-compare GO_BIN="$(COMPARE_GO)" $(patsubst compare-%,%,$@)
 
+# Retained-state migration preflight has its own compiler-matched tool module.
+# CI checks it once in a separate job; local aggregate gates dispatch here.
+MIGRATION_DISPATCH ?= 1
+MIGRATION_GO ?= go
+MIGRATION_TARGETS := build test test-v test-race test-integration cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker clean ci ci-docker
+.PHONY: $(addprefix migration-,$(MIGRATION_TARGETS))
+ifeq ($(MIGRATION_DISPATCH),1)
+$(foreach target,$(filter-out ci ci-docker,$(MIGRATION_TARGETS)),$(eval $(target): migration-$(target)))
+endif
+$(addprefix migration-,$(MIGRATION_TARGETS)):
+	$(MAKE) -C tools/v5-migrate GO="$(MIGRATION_GO)" $(patsubst migration-%,%,$@)
+
 # Build (verify compilation)
 build:
 	go build ./...
@@ -163,11 +175,11 @@ check-metakv-reap:
 
 # Format code
 fmt:
-	git ls-files --cached --others --exclude-standard -z '*.go' ':!:v5/**' ':!:tools/graph-compare/**' | xargs -0 gofmt -w
+	git ls-files --cached --others --exclude-standard -z '*.go' ':!:v5/**' ':!:tools/graph-compare/**' ':!:tools/v5-migrate/**' | xargs -0 gofmt -w
 
 # Verify formatting, including new Go source files not yet tracked.
 fmt-check:
-	@unformatted=$$(git ls-files --cached --others --exclude-standard -z '*.go' ':!:v5/**' ':!:tools/graph-compare/**' | xargs -0 gofmt -l); \
+	@unformatted=$$(git ls-files --cached --others --exclude-standard -z '*.go' ':!:v5/**' ':!:tools/graph-compare/**' ':!:tools/v5-migrate/**' | xargs -0 gofmt -l); \
 		test -z "$$unformatted" || (echo "Files need formatting:"; echo "$$unformatted"; exit 1)
 
 # Run golangci-lint

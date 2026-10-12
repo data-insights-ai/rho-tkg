@@ -1,0 +1,14 @@
+/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go test -short -count=1 -coverprofile=coverage.out ./...
+ok  	github.com/data-insights-ai/rho-tkg/tools/v5-migrate	0.423s	coverage: 96.2% of statements
+/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go tool cover -func=coverage.out
+github.com/data-insights-ai/rho-tkg/tools/v5-migrate/preflight.go:160:	PreflightNode	100.0%
+github.com/data-insights-ai/rho-tkg/tools/v5-migrate/preflight.go:199:	PreflightRel	100.0%
+github.com/data-insights-ai/rho-tkg/tools/v5-migrate/preflight.go:235:	validateOptions	100.0%
+github.com/data-insights-ai/rho-tkg/tools/v5-migrate/preflight.go:242:	newReport	100.0%
+github.com/data-insights-ai/rho-tkg/tools/v5-migrate/preflight.go:246:	nodeEvidence	100.0%
+github.com/data-insights-ai/rho-tkg/tools/v5-migrate/preflight.go:261:	relEvidence	100.0%
+github.com/data-insights-ai/rho-tkg/tools/v5-migrate/preflight.go:276:	rowIdentity	100.0%
+github.com/data-insights-ai/rho-tkg/tools/v5-migrate/preflight.go:284:	finish		95.0%
+github.com/data-insights-ai/rho-tkg/tools/v5-migrate/preflight.go:350:	mapSpan		80.0%
+total:									(statements)	96.2%
+limit: {"command": ["make", "cover-gate", "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"], "rss_limit_mib": 4096.0, "wall_limit_s": 180.0, "sample_interval_s": 0.25, "peak_tree_rss_mib": 179.625, "elapsed_s": 1.669, "exit_code": 0, "reason": "completed"}
