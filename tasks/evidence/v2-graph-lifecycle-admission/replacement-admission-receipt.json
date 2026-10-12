@@ -181,5 +181,10 @@
   },
   "no_full_V2_acceptance": true,
   "no_new_public_facade": true,
-  "no_push_release_tag": true
+  "no_push_release_tag": true,
+  "integration": {
+    "commit": "e879fb317a86d7eb00084589e69f7fd4b9012f88",
+    "source_manifest_verified_files": 534,
+    "qualification_scope_unchanged": true
+  }
 }

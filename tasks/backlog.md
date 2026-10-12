@@ -451,13 +451,24 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    provisioning, retained node/relationship history and allocator high-water after
    reopen. Integrated factory gates pass in the hosted CI recorded above;
    surviving-quorum-authorized replacement remains open. Its
+   [pending admission component](evidence/v2-graph-lifecycle-admission/replacement-admission-receipt.json)
+   now binds an actual native quorum-read completion to the authenticated source
+   session and replacement voter/incarnation after embedding-managed retirement.
+   It creates a cancellable pending owner; it does not create a receiving Store,
+   activate a snapshot or expose a ready Host. The 101 selected tests and a
+   separate native compaction/refusal/retry test pass normal and race runs;
+   new-file coverage is 88.8%, with scoped vet passing. This includes the existing
+   E18 six-process compatibility test, not whole-package or physical-host acceptance.
+   Receiving-only term persistence, native snapshot reception, semantic audit,
+   durable activation and association transfer into the restored Host remain open.
+   The
    [bounded voting/control model](evidence/v2-graph-lifecycle-admission/replacement-model.py)
    passes 5,040 event schedules and 11 finite checks, independently rerun against
    the [recorded result](evidence/v2-graph-lifecycle-admission/replacement-model-result.json).
    It binds the exact replacement voter and local request lifetime, rejects
    snapshots below the receiver's known term, and permits delayed valid snapshots
    without assuming instant knowledge of a remote leadership change. Native
-   quorum authorization, activation durability and graph-state recovery tests
+   receiving/activation durability and graph-state recovery tests
    remain implementation obligations; this model does not close them.
    No separate lifecycle journal is required.
    Construction grants no graph-operation authority; existing committed-Init and
