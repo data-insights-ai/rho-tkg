@@ -97,6 +97,8 @@ const (
 	processPairedConnections
 	processPairedReconnect
 	processPairedPendingOpen
+	processCostObserve
+	processCostRecord
 )
 
 // IPC IDs identify this process event only. No storage/send/prepared capability
@@ -205,7 +207,7 @@ func decodeProcessRequest(b []byte) (processRequest, error) {
 	r := processRequest{incarnation: c.array(), sequence: c.u64(), op: c.tag(), index: c.u64(), entity: c.u64()}
 	r.data = c.field(processFrameBytes)
 	r.packet = processDecodePacket(&c)
-	if r.sequence == 0 || r.op < processCampaign || r.op > processPairedPendingOpen || len(c.b) != 0 {
+	if r.sequence == 0 || r.op < processCampaign || r.op > processCostRecord || len(c.b) != 0 {
 		c.err = errCorrupt
 	}
 	return r, c.err
@@ -1483,9 +1485,11 @@ const (
 	certifiedP08Close
 	certifiedLifecycle
 	certifiedPairedFaultProperty
+	certifiedGraphCost
 )
 
 type certifiedProcessOwners struct {
+	cost        *nativeGraphCostSpec
 	host        *allocationHost
 	proof       allocationProof
 	readID      allocationReadID
@@ -1552,7 +1556,7 @@ func (o *certifiedProcessOwners) read(r processRequest) (allocationEvent, error)
 	case observeGrant:
 		q.session = o.reserve
 		var err error
-		q.sequence, q.count, err = graphE17GrantParameters(o.host, r.data)
+		q.sequence, q.count, err = o.grantParameters(r.data)
 		if err != nil {
 			return allocationEvent{}, err
 		}
@@ -1574,6 +1578,8 @@ func (o *certifiedProcessOwners) action(t *testing.T, r processRequest, init dec
 	switch r.entity {
 	case certifiedPairedFaultProperty:
 		return pairedGraphFaultProperty(o, r, id)
+	case certifiedGraphCost:
+		return nativeGraphCostProposal(o, r, id)
 	case certifiedLifecycle:
 		return nativeLifecycleProposal(o, r, id)
 	case certifiedP08Reserve:
@@ -1604,7 +1610,7 @@ func (o *certifiedProcessOwners) action(t *testing.T, r processRequest, init dec
 		return h.PrepareGraphCertificate(r.index)
 	case certifiedInitialize:
 		schemas := partitionWriteSchemas()
-		if os.Getenv("RHO_GRAPH_LIFECYCLE_PROCESS") == "1" {
+		if os.Getenv("RHO_GRAPH_LIFECYCLE_PROCESS") == "1" || o.cost != nil {
 			schemas = nativeLifecycleSchemas()
 		}
 		return h.PreparePartitionInitialization(r.index, bootstrapAttemptID(id), schemas, init.maxBlock, graphGenesisBinding(t), *init.routing, o.proof)
@@ -1619,7 +1625,7 @@ func (o *certifiedProcessOwners) action(t *testing.T, r processRequest, init dec
 		}
 		return h.RecipientTransition(id, commandKind(r.data[0]), r.index, o.proof)
 	case certifiedReserve:
-		sequence, count, err := graphE17GrantParameters(h, r.data)
+		sequence, count, err := o.grantParameters(r.data)
 		if err != nil {
 			return allocationProposal{}, err
 		}
@@ -1749,6 +1755,13 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 		p.RetainedApplicationBytes, p.RetainedApplicationRecords = 256<<20, 65536
 		generations = raftlog.ApplicationGenerationLimits{MaxBytes: 512 << 20, MaxRecords: 131072}
 	}
+	cost, err := nativeGraphCostSpecFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := nativeGraphCostProfile(cost, &init, &l, &p, &generations); err != nil {
+		t.Fatal(err)
+	}
 	controls, recovery := raftlog.ApplicationControlConfig{Version: 1}, raftlog.ApplicationRecoveryConfig{Version: 1}
 	contract, err := raftlog.ApplicationContractForPolicyWithRecovery(p, controls, recovery)
 	if err != nil {
@@ -1780,7 +1793,7 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 			t.Error(err)
 		}
 	}()
-	o := certifiedProcessOwners{host: h}
+	o := certifiedProcessOwners{host: h, cost: cost}
 	if _, err := io.ReadFull(rand.Reader, o.incarnation[:]); err != nil {
 		t.Fatal(err)
 	}

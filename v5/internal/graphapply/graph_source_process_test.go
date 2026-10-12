@@ -79,6 +79,8 @@ type graphProcessHub struct {
 	wg                               sync.WaitGroup
 	mu                               sync.Mutex
 	packetBytes, delivered, inFlight int
+	deliveryLimit                    int
+	packetCompleted                  chan struct{}
 	idle                             chan struct{}
 	// Optional test transport schedule; protected by mu and never graph authority.
 	beforeRelay  func(context.Context, uint64, uint64, []byte) error
@@ -106,11 +108,20 @@ type graphProcessMux struct {
 // attachGraphProcessMuxes runs only after all configured pipes exist, before the
 // first campaign. Legacy child modes keep their original synchronous exchange.
 func attachGraphProcessMuxes(t *testing.T, all map[uint64]*graphProcess) {
+	attachGraphProcessMuxesWithLimit(t, all, processDeliveries)
+}
+func attachGraphProcessMuxesWithLimit(t *testing.T, all map[uint64]*graphProcess, limit int) {
 	t.Helper()
+	if limit < processDeliveries || limit > 9<<30 {
+		t.Fatal("invalid finite fixture delivery allowance", limit)
+	}
 	// The owner outlives t.Context cancellation so graceful child cleanup can
 	// finish. Its explicit cleanup runs after the network has reaped its children.
 	ctx, cancel := context.WithCancel(context.Background())
-	hub := &graphProcessHub{ctx: ctx, cancel: cancel, peers: make(map[uint64]*graphProcessMux), packets: make(chan graphProcessPacketJob, processPacketCount), idle: make(chan struct{}, 1)}
+	hub := &graphProcessHub{ctx: ctx, cancel: cancel, peers: make(map[uint64]*graphProcessMux), packets: make(chan graphProcessPacketJob, processPacketCount), idle: make(chan struct{}, 1), deliveryLimit: limit}
+	if limit != processDeliveries {
+		hub.packetCompleted = make(chan struct{}, 1)
+	}
 	for id, p := range all {
 		m := &graphProcessMux{p: p, id: id, hub: hub, pending: make(map[uint64]chan graphProcessAnswer), relays: make(map[uint64]context.CancelFunc), relayQueue: make(chan graphProcessRelayJob, processSourceWorkers)}
 		hub.peers[id] = m
@@ -181,6 +192,12 @@ func (m *graphProcessMux) fail(err error) {
 	}
 	m.err = err
 	m.hub.changed()
+	if m.hub.packetCompleted != nil {
+		select {
+		case m.hub.packetCompleted <- struct{}{}:
+		default:
+		}
+	}
 	_ = m.p.stdin.Close()
 	_ = m.p.stdout.Close()
 	for _, ch := range m.pending {
@@ -428,7 +445,7 @@ func (h *graphProcessHub) packetLoop() {
 			h.packetBytes -= cap(job.packet.Payload) + 64
 			h.delivered++
 			h.inFlight++
-			full := h.delivered > processDeliveries
+			full := h.delivered > h.deliveryLimit
 			filter := h.packetFilter
 			h.mu.Unlock()
 
@@ -469,6 +486,12 @@ func (h *graphProcessHub) packetLoop() {
 			h.inFlight--
 			h.mu.Unlock()
 			h.changed()
+			if h.packetCompleted != nil {
+				select {
+				case h.packetCompleted <- struct{}{}:
+				default:
+				}
+			}
 		}
 	}
 }
@@ -1278,6 +1301,12 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				out.aux, e = graphE17RunMove(workerCtx, h, o.incarnation, moveCoordinator, r)
 			case processPairedPendingOpen:
 				out.aux, e = pairedGraphFaultPendingOpen(workerCtx, certifiedSessions, r)
+			case processCostObserve:
+				if o.cost == nil {
+					e = errInvalid
+				} else {
+					out.aux, e = nativeGraphCostObserve(workerCtx, certifiedSessions, r)
+				}
 			case processLifecycleObserve:
 				out.aux, e = nativeLifecycleObserve(workerCtx, certifiedSessions, r)
 			case processCertifiedIndexObserve:
@@ -1457,6 +1486,12 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				if e == nil {
 					certifiedSessions.coordinator = coordinator
 				}
+			case processCostRecord:
+				if o.cost == nil {
+					e = errInvalid
+				} else {
+					response.aux, e = nativeGraphCostRecordWire(ctx, h, r.index)
+				}
 			case processLifecycleRecord:
 				if os.Getenv("RHO_GRAPH_PAIRED_PROCESS") == "1" {
 					response.aux, e = pairedGraphFaultRecordWire(ctx, h, r.index)
@@ -1590,7 +1625,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					}
 					paused = nil
 				}
-			case processSourceServe, processSourceCoordinate, processSourceObserve, processSourceCertifiedOpen, processSourceCertifiedObserve, processSourceCertifiedClose, processRangeRun, processRangeResume, processRangeCertifiedDetail, processCertifiedIndexObserve, processLifecycleObserve, processPairedPendingOpen:
+			case processSourceServe, processSourceCoordinate, processSourceObserve, processSourceCertifiedOpen, processSourceCertifiedObserve, processSourceCertifiedClose, processRangeRun, processRangeResume, processRangeCertifiedDetail, processCertifiedIndexObserve, processLifecycleObserve, processPairedPendingOpen, processCostObserve:
 				if pause && r.op == processSourceServe && !isSourceClose(r) {
 					if len(paused) >= processSourceWorkers {
 						e = errLimit

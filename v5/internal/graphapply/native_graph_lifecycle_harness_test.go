@@ -633,7 +633,10 @@ type nativeLifecycleRecord struct {
 
 // This is independent retained-record inspection on an actual voter. It does
 // not certify a cut, submit a batch, or use expected operations to invent CDC.
-func nativeLifecycleRecordRead(ctx context.Context, h *allocationHost, index uint64) (out nativeLifecycleRecord, err error) {
+func nativeLifecycleRecordRead(ctx context.Context, h *allocationHost, index uint64) (nativeLifecycleRecord, error) {
+	return nativeGraphRecordRead(ctx, h, index, false)
+}
+func nativeGraphRecordRead(ctx context.Context, h *allocationHost, index uint64, allowLocal bool) (out nativeLifecycleRecord, err error) {
 	if ctx == nil || h == nil || index == 0 {
 		return out, errInvalid
 	}
@@ -654,11 +657,21 @@ func nativeLifecycleRecordRead(ctx context.Context, h *allocationHost, index uin
 	if len(out.CDC) == 0 {
 		return out, nil
 	}
-	status, err := decodeCrossStatus(out.Outcome)
-	if err != nil || status.phase != crossResolve || !status.commit {
-		return out, errors.Join(errCorrupt, err)
+	status, statusErr := decodeCrossStatus(out.Outcome)
+	var original outcome
+	if statusErr == nil {
+		if status.phase != crossResolve || !status.commit {
+			return out, errCorrupt
+		}
+		original = outcome{ns: status.ns, kind: graphOperations, identity: status.tx, hash: status.digest, index: status.index, disposition: applied}
+	} else if allowLocal {
+		original, err = decodePartitionGraphOutcome(out.Outcome, h.machine.ns)
+		if err != nil || original.reason != reasonNone || original.disposition != applied {
+			return out, errors.Join(errCorrupt, err)
+		}
+	} else {
+		return out, errors.Join(errCorrupt, statusErr)
 	}
-	original := outcome{ns: status.ns, kind: graphOperations, identity: status.tx, hash: status.digest, index: status.index, disposition: applied}
 	logical, err := decodeTypedChangeEnvelope(out.CDC, original, h.machine.limits, true)
 	if err != nil {
 		return out, err
