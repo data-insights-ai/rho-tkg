@@ -1,0 +1,22 @@
+{
+  "scope": "focused existing index/hydration receiver coverage; no production code changed and no new production public method",
+  "profile": "final-normal.cover",
+  "instrumented_packages": [
+    "graphapply",
+    "graphstore",
+    "graphstate"
+  ],
+  "methods": [
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstate/project.go:16:\t\t\t\tProject\t\t\t\t\t\t61.4%",
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/full_candidates.go:87:\t\t\tUniqueCandidates\t\t\t\t62.9%",
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/full_candidates.go:226:\t\t\tIncidentRelationships\t\t\t\t65.9%",
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/full_readview.go:361:\t\t\tValue\t\t\t\t\t\t81.8%",
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/full_readview.go:463:\t\t\tComponentPage\t\t\t\t\t66.2%",
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/partition_transaction_view.go:499:\t\tValue\t\t\t\t\t\t80.0%",
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/partition_transaction_view.go:556:\t\tComponentPage\t\t\t\t\t76.2%",
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/partition_transaction_view.go:617:\t\tUniqueCandidates\t\t\t\t75.0%",
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/partition_transaction_view.go:647:\t\tIncidentRelationships\t\t\t\t80.0%"
+  ],
+  "below_80_unchanged_methods": "not a new-code threshold claim; defensive/unrelated branches omitted from focused selection",
+  "source_manifest_sha256": "f2d93e80de5714013567ed954c932928655cc746c5cde3b5d5e4815898909433"
+}

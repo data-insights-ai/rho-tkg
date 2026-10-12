@@ -1,0 +1,18 @@
+{
+  "GOTOOLCHAIN": "go1.26.9",
+  "actual_go_version": "go version go1.26.9 darwin/arm64",
+  "GOMAXPROCS": "2",
+  "GOMEMLIMIT": "2GiB",
+  "GOFLAGS": "-p=1",
+  "GOWORK": "off",
+  "go_watchdog_seconds": 180,
+  "go_aggregate_rss_mib": 4096,
+  "docker_image": "golang:1.26.9",
+  "docker_memory": "4g",
+  "docker_cpus": 2,
+  "scanners": {
+    "golangci_lint": "v2.13.2",
+    "gosec": "v2.29.0"
+  },
+  "no_dependency_or_production_change": true
+}

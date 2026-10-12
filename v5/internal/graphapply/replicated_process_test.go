@@ -83,6 +83,7 @@ const (
 	processRangeCertifiedDetail
 	processRangeProgressProbe
 	processRangeNativeVoterProbe
+	processCertifiedIndexObserve
 )
 
 // IPC IDs identify this process event only. No storage/send/prepared capability
@@ -191,7 +192,7 @@ func decodeProcessRequest(b []byte) (processRequest, error) {
 	r := processRequest{incarnation: c.array(), sequence: c.u64(), op: c.tag(), index: c.u64(), entity: c.u64()}
 	r.data = c.field(processFrameBytes)
 	r.packet = processDecodePacket(&c)
-	if r.sequence == 0 || r.op < processCampaign || r.op > processRangeNativeVoterProbe || len(c.b) != 0 {
+	if r.sequence == 0 || r.op < processCampaign || r.op > processCertifiedIndexObserve || len(c.b) != 0 {
 		c.err = errCorrupt
 	}
 	return r, c.err
@@ -1445,6 +1446,8 @@ const (
 	certifiedPrepareFence
 	certifiedPrepareCertificate
 	certifiedRangeSet
+	certifiedE18Property
+	certifiedE18Correction
 )
 
 type certifiedProcessOwners struct {
@@ -1562,6 +1565,8 @@ func (o *certifiedProcessOwners) action(t *testing.T, r processRequest, init dec
 		var err error
 		o.recipient, err = h.OpenRecipient(o.proof)
 		return allocationProposal{}, err
+	case certifiedE18Property, certifiedE18Correction:
+		return graphE18Proposal(o, r, id)
 	case certifiedRangeSet:
 		return graphE17PropertyProposal(t, o, r, id)
 	case certifiedCreateNode, certifiedCreateCrossEdge, certifiedHealthyLabel:

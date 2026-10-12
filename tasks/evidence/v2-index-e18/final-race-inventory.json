@@ -1,0 +1,32 @@
+{
+  "parents": {
+    "pass": [
+      "TestCertifiedGraphE18OldCorrectionIndexAndEndpointLivesRemainExact",
+      "TestGraphSourceWireRequestAdmissionSymmetry",
+      "TestGraphSourceWireInfoReadLimitAdmissionSymmetry",
+      "TestGraphSourceWirePageMustChargeFutureAndTombstoneVisits",
+      "TestGraphSourceWireRequestLiteralKindsAndBorrowedLifetimeGuard",
+      "TestGraphSourceWireRequestMalformedAndCountBeforeAllocationGuard",
+      "TestGraphSourceWirePageLiteralOwnershipAndPreciseBoundsGuard",
+      "TestGraphSourceWirePageRejectsPhantomCursorAndMissingRows",
+      "TestGraphSourceWireInfoNativeFieldsOwnershipAndMismatchGuard",
+      "TestGraphSourceWireInfoZeroIssuerCannotBecomeSession",
+      "TestGraphSourceWireAuthorityBodyOwnedButNeverSealedGuard",
+      "TestGraphSourceWireResponseCorrelationAndErrorMaskGuard",
+      "TestGraphSourceWireResourceAndUnknownErrorsRemainDistinct",
+      "TestGraphSourceWireUnknownOperationIsNotAvailability",
+      "TestRemoteE15CertifiedReadClosesDelayedBAndRetainsOldCut",
+      "TestRemoteE16PreparedCommit90AfterObserved100RequiresResolvedCertificate",
+      "TestRemoteCertifiedGraphE18NativeIndexStartingHydrationAtSameCut",
+      "TestRemoteCertifiedGraphE18SixProcessesHistoricalIndexStartingHydration",
+      "TestRemoteCertifiedE18PrivateIndexCodecAndRefusals"
+    ],
+    "fail": [],
+    "skip": []
+  },
+  "subtests": {
+    "pass": 43,
+    "fail": 0,
+    "skip": 0
+  }
+}

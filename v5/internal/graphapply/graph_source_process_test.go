@@ -1210,6 +1210,8 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				}
 			case processRangeRun, processRangeResume:
 				out.aux, e = graphE17RunMove(workerCtx, h, o.incarnation, moveCoordinator, r)
+			case processCertifiedIndexObserve:
+				out.aux, e = graphE18IndexObserve(workerCtx, certifiedSessions, r)
 			case processRangeCertifiedDetail:
 				out.aux, e = graphE17SessionObserve(workerCtx, certifiedSessions, r)
 			case processSourceCertifiedOpen, processSourceCertifiedObserve, processSourceCertifiedClose:
@@ -1448,7 +1450,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					}
 					paused = nil
 				}
-			case processSourceServe, processSourceCoordinate, processSourceObserve, processSourceCertifiedOpen, processSourceCertifiedObserve, processSourceCertifiedClose, processRangeRun, processRangeResume, processRangeCertifiedDetail:
+			case processSourceServe, processSourceCoordinate, processSourceObserve, processSourceCertifiedOpen, processSourceCertifiedObserve, processSourceCertifiedClose, processRangeRun, processRangeResume, processRangeCertifiedDetail, processCertifiedIndexObserve:
 				if pause && r.op == processSourceServe && !isSourceClose(r) {
 					if len(paused) >= processSourceWorkers {
 						e = errLimit

@@ -33,7 +33,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   survives issuer close when current immutable authority matches. Six-process
   E15 checks delay one participant after COMMIT, require complete certified
   graph answers and retained old cuts, and compare voter outcomes/CDC. Scoped
-  authority refusals preserve subsequent in-scope reads. Broader remote fault,
+  authority refusals preserve subsequent in-scope reads. Six-process E18 starts
+  from declared unique and endpoint indexes, then hydrates typed values, component
+  revisions and effective lifetimes at the same certified cut. Held and reopened
+  old cuts retain pre-correction answers; current reads apply residual checks to
+  historical candidate supersets, including a separate unchanged remote owner.
+  These are finite internal acceptance cases, not broader selector/scan parity.
+  Broader remote fault,
   ownership/GC evidence, engine comparison and full V2 remain open.
 
 - Added v5 replica storage primitives for owned, bounded snapshot audits through

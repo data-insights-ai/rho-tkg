@@ -1,0 +1,249 @@
+{
+  "status": "author finite E18 validation complete; independent integration acceptance remains root-owned",
+  "base_commit": "13612eb315c0b15c29200d67a2cbeebfdd882fbd",
+  "change_scope": "three new test files; private test IPC/action/counting hooks; existing CHANGELOG tightened; zero production/dependency/schema/session-cap changes",
+  "source_manifest": {
+    "file": "go-source.json",
+    "sha256": "f2d93e80de5714013567ed954c932928655cc746c5cde3b5d5e4815898909433",
+    "go_files": 520
+  },
+  "normal": {
+    "main_parents_pass": 19,
+    "main_subtests_pass": 43,
+    "supplemental_ipc_parents_pass": 3,
+    "failed": 0,
+    "skipped": 0
+  },
+  "race": {
+    "main_parents_pass": 19,
+    "main_subtests_pass": 43,
+    "supplemental_ipc_parents_pass": 3,
+    "failed": 0,
+    "skipped": 0
+  },
+  "lanes": {
+    "final-normal": {
+      "command": [
+        "go",
+        "test",
+        "-count=1",
+        "-json",
+        "-coverpkg=./internal/graphapply,./internal/graphstore,./internal/graphstate",
+        "-coverprofile=../tasks/evidence/v2-index-e18/final-normal.cover",
+        "-run",
+        "^(TestRemoteCertifiedGraphE18|TestRemoteCertifiedE18Private|TestCertifiedGraphE18Old|TestRemoteE15Certified|TestRemoteE16|TestGraphProcessWire|TestGraphSourceWire)",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 883.938,
+      "elapsed_s": 28.654,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "final-race": {
+      "command": [
+        "go",
+        "test",
+        "-race",
+        "-count=1",
+        "-json",
+        "-run",
+        "^(TestRemoteCertifiedGraphE18|TestRemoteCertifiedE18Private|TestCertifiedGraphE18Old|TestRemoteE15Certified|TestRemoteE16|TestGraphProcessWire|TestGraphSourceWire)",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 810.891,
+      "elapsed_s": 60.703,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "ipc-normal": {
+      "command": [
+        "go",
+        "test",
+        "-count=1",
+        "-json",
+        "-run",
+        "^(TestReplicatedProcessProtocolBoundaries|TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput|TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts)$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 843.812,
+      "elapsed_s": 5.809,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "ipc-race": {
+      "command": [
+        "go",
+        "test",
+        "-race",
+        "-count=1",
+        "-json",
+        "-run",
+        "^(TestReplicatedProcessProtocolBoundaries|TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput|TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts)$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 447.578,
+      "elapsed_s": 2.498,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "final-static": {
+      "command": [
+        "make",
+        "fmt-check",
+        "vet",
+        "build"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 445.156,
+      "elapsed_s": 6.615,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "final-lint": {
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--memory=4g",
+        "--cpus=2",
+        "-e",
+        "GOTOOLCHAIN=go1.26.9",
+        "-e",
+        "GOMAXPROCS=2",
+        "-e",
+        "GOMEMLIMIT=2GiB",
+        "-e",
+        "GOFLAGS=-p=1",
+        "-e",
+        "GOWORK=off",
+        "-v",
+        "/var/tmp/rho-v5-v2-index-e18-20261012:/src",
+        "-w",
+        "/src/v5",
+        "-v",
+        "rho-tkg-gocache:/go",
+        "-v",
+        "rho-tkg-buildcache:/root/.cache/go-build",
+        "golang:1.26.9",
+        "sh",
+        "-c",
+        "go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 && golangci-lint run --config ../.golangci.yml --max-same-issues=0 --max-issues-per-linter=0 ./..."
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 26.359,
+      "elapsed_s": 17.477,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "final-security": {
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--memory=4g",
+        "--cpus=2",
+        "-e",
+        "GOTOOLCHAIN=go1.26.9",
+        "-e",
+        "GOMAXPROCS=2",
+        "-e",
+        "GOMEMLIMIT=2GiB",
+        "-e",
+        "GOFLAGS=-p=1",
+        "-e",
+        "GOWORK=off",
+        "-v",
+        "/var/tmp/rho-v5-v2-index-e18-20261012:/src",
+        "-w",
+        "/src/v5",
+        "-v",
+        "rho-tkg-gocache:/go",
+        "-v",
+        "rho-tkg-buildcache:/root/.cache/go-build",
+        "golang:1.26.9",
+        "sh",
+        "-c",
+        "go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0 && gosec -quiet ./..."
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 26.062,
+      "elapsed_s": 2.209,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "mutant-index-omission": {
+      "command": [
+        "go",
+        "test",
+        "-count=1",
+        "-json",
+        "-run",
+        "^TestRemoteCertifiedGraphE18Native",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 839.781,
+      "elapsed_s": 10.721,
+      "exit_code": 1,
+      "reason": "command-failed"
+    }
+  },
+  "mutant": {
+    "one_edit": "UniqueCandidates posting enumeration for -> for false",
+    "first_actual_failure": "native test53 pre-correction exact raw index candidates p12 [] [17]",
+    "classification": "deliberate omission killed; not current-state substitution and not a production regression",
+    "source_comparison": "all520 base hashes match isolated copy except full_candidates.go",
+    "patch": "mutant-index-omission.patch"
+  },
+  "fixture_qualifications": {
+    "compiler_only": [
+      "first.jsonl",
+      "native-first.jsonl"
+    ],
+    "admission_only": [
+      "compiled-first.jsonl",
+      "selector-diagnostic.jsonl",
+      "ledger-diagnostic.jsonl"
+    ],
+    "original_quota": "operation calls1024/1024; rows1190/16384; bytes1033623/16777216; outputRemaining12019287",
+    "corrected_lifetimes": "held primary before/after uses one owner; explicit new At remainder operations closed individually; seven total new reads; caps2 unchanged",
+    "original_logs_source_qualification": "initial evolving test-source snapshots were not retrospectively sealed; compiled logs are original retained bytes, not claimed whole-source pre-fix provenance"
+  },
+  "scanners": {
+    "fmt_vet_build": "PASS",
+    "pinned_docker_lint": "PASS zero issues",
+    "pinned_docker_security": "PASS",
+    "dependency_vulncheck": "not rerun; dependencies and production unchanged from accepted base"
+  },
+  "coverage": "focused actual remote index/hydration receiver coverage; no changed/new production threshold or new public methods",
+  "raw_archive": {
+    "file": "E18_RAW_EVIDENCE.tar.gz",
+    "sha256": "b99dcd804dd3f695eb0acdab35400ca703f16e5369c97ea91de281a86eed3b52",
+    "raw_files": 57,
+    "raw_bytes": 3595963,
+    "compressed_bytes": 290342,
+    "determinism": "two independent builds byte-identical; sorted USTAR + gzip mtime0"
+  },
+  "remaining_scope": "one host, six OS processes; existing node unique schema/endpoint mirrors; broader V2/V0-V7 remains open",
+  "no_push": true
+}

@@ -1,0 +1,16 @@
+{
+  "parents": {
+    "pass": [
+      "TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput",
+      "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts",
+      "TestReplicatedProcessProtocolBoundaries"
+    ],
+    "fail": [],
+    "skip": []
+  },
+  "subtests": {
+    "pass": 0,
+    "fail": 0,
+    "skip": 0
+  }
+}

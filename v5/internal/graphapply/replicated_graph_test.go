@@ -37,6 +37,7 @@ type certifiedProcessNetwork struct {
 	all                                           map[uint64]*graphProcess
 	groups                                        [2]*tinyGraphTransport
 	dir                                           string
+	indexReads, indexReadPhases                   int
 	rangeMoves                                    bool
 	retired                                       []*graphProcess
 	e17MovePages, e17PublicPhases, e17VoterPhases int
@@ -117,6 +118,13 @@ func newCertifiedProcessNetworkProfile(t *testing.T, rangeMoves bool) *certified
 		if n.rangeMoves {
 			allowance = graphE17FixtureDeliveries(n.e17MovePages, n.e17PublicPhases, n.e17VoterPhases)
 			t.Logf("E17 counted phase ledger: maximum=%d pages=%d public=%d/%d nativeVoter=%d/%d", allowance, n.e17MovePages, n.e17PublicUsed, n.e17PublicPhases, n.e17VoterUsed, n.e17VoterPhases)
+		}
+		if n.indexReadPhases > 0 {
+			// Fixed E18 fixture allowance: seven admitted certified operations, each
+			// allowing four IPC events per existing 1024-call remote operation ceiling.
+			// This is a test allowance, not an algorithmic worst-case or production SLO.
+			allowance = uint64(processDeliveries + n.indexReadPhases*4*1024)
+			t.Logf("E18 counted query ledger: maximum=%d operations=%d/%d", allowance, n.indexReads, n.indexReadPhases)
 		}
 		if calls+uint64(packets) > allowance {
 			t.Error("certified aggregate RPC/packet bound", calls, packets)
