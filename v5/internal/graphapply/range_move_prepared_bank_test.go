@@ -174,7 +174,7 @@ func TestPreparedRangeMoveCrossRecoveryUsesIncomingBankNotActiveBaseline(t *test
 			}{{"fresh-register", fresh.wire, errRangeMovePending}, {"completed-exact-register-replay", replay.wire, nil}} {
 				t.Run(tc.name, func(t *testing.T) {
 					purpose, err := machine.VerifyApplicationRecovery(t.Context(), tc.wire, view)
-					if tc.want == nil && err != nil || tc.want != nil && !errors.Is(err, tc.want) || purpose.Reserve != nil || purpose.Use != nil {
+					if err != nil || purpose.Reserve != nil || purpose.Use != nil || tc.want == nil && purpose.ApplyBefore != nil || tc.want != nil && (purpose.ApplyBefore == nil || purpose.ApplyBefore.Owner != owner || !errors.Is(purpose.ApplyBefore.Refusal, tc.want)) {
 						t.Fatal("prepared move cross classification reopened recipient active bank or granted recovery", phase, err, tc.want, purpose)
 					}
 				})

@@ -16,11 +16,18 @@ import (
 // exact typed intent issued by the selected verifier to its immutable log entry.
 // The existing metadata frame bounds their total backing; no resident map grows
 // with graph records. Applied ownership stays separate until Install commits.
+// Persisted recipes contain only capacity-bearing Reserve/Use. Ephemeral
+// ApplyBefore observations and their refusal causes cannot enter metadata.
+type applicationRecoveryQueuedPurpose struct {
+	Reserve *ApplicationRecoveryReservation
+	Use     *ApplicationRecoveryUse
+}
+
 type applicationRecoveryQueued struct {
 	Index                  uint64
 	ReservationOriginIndex uint64
 	CommandDigest          [32]byte
-	Purpose                ApplicationRecoveryPurpose
+	Purpose                applicationRecoveryQueuedPurpose
 	Credit                 ApplicationRecoveryCredit
 }
 
@@ -71,13 +78,14 @@ func recoveryProjected(m metadata, l Limits, pending uint64) (applicationRecover
 }
 
 type applicationRecoveryReady struct {
-	Applied, Last, Generation uint64
-	ImageHash, LastHash       [32]byte
-	Queued                    []applicationRecoveryQueued
+	Applied, Last, Generation      uint64
+	HardTerm, HardVote, HardCommit uint64
+	ImageHash, LastHash            [32]byte
+	Queued                         []applicationRecoveryQueued
 }
 
 func (r *applicationRecoveryReady) matches(s *Store) bool {
-	return r != nil && r.Applied == s.meta.Applied && r.Last == s.meta.Last && r.Generation == s.activeGeneration() && r.ImageHash == s.meta.ImageHash && r.LastHash == s.meta.LastHash
+	return r != nil && r.Applied == s.meta.Applied && r.Last == s.meta.Last && r.Generation == s.activeGeneration() && r.ImageHash == s.meta.ImageHash && r.LastHash == s.meta.LastHash && r.HardTerm == s.meta.Hard.GetTerm() && r.HardVote == s.meta.Hard.GetVote() && r.HardCommit == s.meta.Hard.GetCommit()
 }
 
 // Classify outside Store's mutex: a verifier may read the actual registered
@@ -96,10 +104,17 @@ type applicationRecoveryReadyRefusal struct {
 	s               *Store
 	before          applicationRecoveryReady
 	entries, queued int
+	dependency      *applicationRecoveryDependency
 }
 
-func (r *applicationRecoveryReadyRefusal) matches(s *Store, entries int) bool {
-	return r != nil && r.s == s && r.entries == entries && r.queued == len(s.meta.Recovery.Queued) && r.before.matches(s) && r.queued+r.entries > (maxMetadataBytes-recoveryMetadataFixedBytes)/256
+func (r *applicationRecoveryReadyRefusal) matches(s *Store, entries int, committed uint64) bool {
+	if r == nil || r.s != s || r.entries != entries || r.queued != len(s.meta.Recovery.Queued) || !r.before.matches(s) {
+		return false
+	}
+	if r.dependency != nil {
+		return r.dependency.matches(s, committed)
+	}
+	return r.queued+r.entries > (maxMetadataBytes-recoveryMetadataFixedBytes)/256
 }
 
 func (s *Store) classifyRecoveryReadyOutcome(entries []*pb.Entry) (*applicationRecoveryReady, *applicationRecoveryReadyRefusal, error) {
@@ -112,7 +127,7 @@ func (s *Store) classifyRecoveryReadyOutcome(entries []*pb.Entry) (*applicationR
 		s.mu.Unlock()
 		return nil, nil, nil
 	}
-	r := &applicationRecoveryReady{Applied: s.meta.Applied, Last: s.meta.Last, Generation: s.activeGeneration(), ImageHash: s.meta.ImageHash, LastHash: s.meta.LastHash}
+	r := &applicationRecoveryReady{Applied: s.meta.Applied, Last: s.meta.Last, Generation: s.activeGeneration(), ImageHash: s.meta.ImageHash, LastHash: s.meta.LastHash, HardTerm: s.meta.Hard.GetTerm(), HardVote: s.meta.Hard.GetVote(), HardCommit: s.meta.Hard.GetCommit()}
 	verifier := s.recoveryVerifier
 	captured := s.meta.Recovery
 	old := captured.Queued
@@ -144,8 +159,13 @@ func (s *Store) classifyRecoveryReadyOutcome(entries []*pb.Entry) (*applicationR
 	if err != nil {
 		return nil, nil, errors.Join(err, view.Close())
 	}
-	err = s.classifyRecoveryEntries(entries, view, verifier, captured, r)
-	err = errors.Join(err, view.Close())
+	dependency, err := s.classifyRecoveryEntriesOutcome(entries, view, verifier, captured, r)
+	closeErr := view.Close()
+	if dependency != nil && closeErr == nil {
+		refusal := &applicationRecoveryReadyRefusal{s: s, before: *r, entries: len(entries), queued: len(old), dependency: dependency}
+		return nil, refusal, err
+	}
+	err = errors.Join(err, closeErr)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -374,26 +394,63 @@ func advanceRecoveryQueued(state applicationRecoveryMetadata, q applicationRecov
 }
 
 func (s *Store) classifyRecoveryEntries(entries []*pb.Entry, view *ApplicationView, verifier ApplicationRecoveryVerifier, captured applicationRecoveryMetadata, r *applicationRecoveryReady) error {
+	_, err := s.classifyRecoveryEntriesOutcome(entries, view, verifier, captured, r)
+	return err
+}
+
+// Dependency output is minted only on the Store capture path. Callback errors
+// remain separate even if a trusted provider returns a prior opaque receipt.
+func (s *Store) classifyRecoveryEntriesOutcome(entries []*pb.Entry, view *ApplicationView, verifier ApplicationRecoveryVerifier, captured applicationRecoveryMetadata, r *applicationRecoveryReady) (*applicationRecoveryDependency, error) {
 	if verifier == nil {
-		return nil
+		return nil, nil
 	}
-	for _, e := range entries {
+	for i, e := range entries {
 		if e == nil {
-			return ErrInvalid
+			return nil, ErrInvalid
 		}
 		purpose, eErr := verifier.VerifyApplicationRecovery(context.Background(), e.GetData(), view)
 		if eErr != nil {
-			return eErr
+			return nil, eErr
 		}
-		if purpose.Reserve != nil && purpose.Use != nil {
-			return ErrInvalid
+		if purpose.Reserve != nil && purpose.Use != nil || purpose.ApplyBefore != nil && (purpose.Reserve != nil || purpose.Use != nil) {
+			return nil, ErrInvalid
+		}
+		if purpose.ApplyBefore != nil {
+			dependency, err := s.captureRecoveryDependency(e, entries, captured, r, *purpose.ApplyBefore)
+			if dependency == nil {
+				return nil, err
+			}
+			// Parse every remaining command/proof against the same genuine view
+			// before permitting any prefix write. No future recipe supplies credit
+			// here; each is reclassified after actual predecessor installation.
+			for _, future := range entries[i+1:] {
+				if future == nil {
+					return nil, ErrInvalid
+				}
+				prospective, eErr := verifier.VerifyApplicationRecovery(context.Background(), future.GetData(), view)
+				if eErr != nil {
+					return nil, eErr
+				}
+				if prospective.Reserve != nil && prospective.Use != nil || prospective.ApplyBefore != nil && (prospective.Reserve != nil || prospective.Use != nil) {
+					return nil, ErrInvalid
+				}
+				if prospective.ApplyBefore != nil && prospective.ApplyBefore.Owner != purpose.ApplyBefore.Owner || prospective.Use != nil && prospective.Use.CommandDigest != sha256.Sum256(future.GetData()) {
+					return nil, ErrInvalid
+				}
+				if prospective.Reserve != nil {
+					if _, eErr := recoveryGrowth(*prospective.Reserve, s.applicationPolicy, s.limits); eErr != nil {
+						return nil, eErr
+					}
+				}
+			}
+			return dependency, err
 		}
 		if purpose.Reserve == nil && purpose.Use == nil {
 			continue
 		}
 		if purpose.Reserve != nil {
 			if _, eErr = recoveryGrowth(*purpose.Reserve, s.applicationPolicy, s.limits); eErr != nil {
-				return eErr
+				return nil, eErr
 			}
 			// Bound variable ownership and the final metadata frame before the clone.
 			used := recoveryMetadataFixedBytes + 256*cap(r.Queued)
@@ -403,7 +460,7 @@ func (s *Store) classifyRecoveryEntries(entries []*pb.Entry, view *ApplicationVi
 				}
 			}
 			if recoveryCreditBytes*len(purpose.Reserve.Credits) > maxMetadataBytes-used {
-				return ErrLimit
+				return nil, ErrLimit
 			}
 			owned := *purpose.Reserve
 			owned.Credits = make([]ApplicationRecoveryCredit, len(purpose.Reserve.Credits))
@@ -412,20 +469,20 @@ func (s *Store) classifyRecoveryEntries(entries []*pb.Entry, view *ApplicationVi
 		} else {
 			use := *purpose.Use
 			if use.CommandDigest != sha256.Sum256(e.GetData()) {
-				return ErrInvalid
+				return nil, ErrInvalid
 			}
 			purpose.Use = &use
 		}
-		q := applicationRecoveryQueued{Index: e.GetIndex(), CommandDigest: sha256.Sum256(e.GetData()), Purpose: purpose}
+		q := applicationRecoveryQueued{Index: e.GetIndex(), CommandDigest: sha256.Sum256(e.GetData()), Purpose: applicationRecoveryQueuedPurpose{Reserve: purpose.Reserve, Use: purpose.Use}}
 		if purpose.Reserve != nil {
 			q.ReservationOriginIndex = q.Index
 			if purpose.Reserve.ID == captured.Reservation.ID && purpose.Reserve.Digest == captured.Reservation.Digest {
 				owner, _, e := view.RecoveryOwner(context.Background(), ReadBudget{Rows: 1, Bytes: s.applicationPolicy.MaxPageBytes})
 				if e != nil {
-					return e
+					return nil, e
 				}
 				if owner != (ApplicationRecoveryOwner{ID: purpose.Reserve.ID, Digest: purpose.Reserve.Digest}) {
-					return ErrCorrupt
+					return nil, ErrCorrupt
 				}
 				q.ReservationOriginIndex = view.index
 			} else {
@@ -457,12 +514,12 @@ func (s *Store) classifyRecoveryEntries(entries []*pb.Entry, view *ApplicationVi
 				}
 			}
 			if eErr != nil {
-				return eErr
+				return nil, eErr
 			}
 		}
 		r.Queued = append(r.Queued, q)
 	}
-	return nil
+	return nil, nil
 }
 
 // A Ready may install an incoming image and its following recovery entries in

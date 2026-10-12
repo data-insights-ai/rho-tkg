@@ -981,9 +981,9 @@ func TestRecoveryDurableQueueMalformedFramesAndChangedCommandCannotReopen(t *tes
 	p, l := DefaultApplicationPolicy(1), DefaultLimits()
 	r := ApplicationRecoveryReservation{ID: [32]byte{51}, Digest: [32]byte{52}, Credits: []ApplicationRecoveryCredit{{Phase: 1, CommandBytes: 6, RetainedBytes: 1000, RetainedRecords: 4}}}
 	hash := sha256.Sum256([]byte("finish"))
-	reserve := appendRecoveryQueue(nil, []applicationRecoveryQueued{{Index: 2, ReservationOriginIndex: 2, CommandDigest: hash, Purpose: ApplicationRecoveryPurpose{Reserve: &r}}})
+	reserve := appendRecoveryQueue(nil, []applicationRecoveryQueued{{Index: 2, ReservationOriginIndex: 2, CommandDigest: hash, Purpose: applicationRecoveryQueuedPurpose{Reserve: &r}}})
 	u := ApplicationRecoveryUse{ID: r.ID, Digest: r.Digest, CommandDigest: hash, Phase: 1}
-	use := appendRecoveryQueue(nil, []applicationRecoveryQueued{{Index: 3, CommandDigest: hash, Purpose: ApplicationRecoveryPurpose{Use: &u}, Credit: r.Credits[0]}})
+	use := appendRecoveryQueue(nil, []applicationRecoveryQueued{{Index: 3, CommandDigest: hash, Purpose: applicationRecoveryQueuedPurpose{Use: &u}, Credit: r.Credits[0]}})
 	for _, row := range []struct {
 		name   string
 		wire   []byte

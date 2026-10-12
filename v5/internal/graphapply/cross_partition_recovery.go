@@ -64,9 +64,9 @@ func (m *declaredMaterializer) crossRecovery(q *reader, r crossCommand, manifest
 		reservation, err := m.crossReservation(manifest, r.phase)
 		return raftlog.ApplicationRecoveryPurpose{Reserve: &reservation}, err
 	}
-	if !present {
-		return raftlog.ApplicationRecoveryPurpose{}, errInvalid
-	}
+	// This is a capacity recipe, not applied registration authority. A follower
+	// may receive its original Reserve earlier in this same Ready. Store binds
+	// Use to that exact applied/queued owner; Stage checks applied dependencies.
 	wire, err := encodeCrossCommand(r, m.limits)
 	if err != nil {
 		return raftlog.ApplicationRecoveryPurpose{}, err
@@ -82,8 +82,9 @@ func (m *declaredMaterializer) crossRecovery(q *reader, r crossCommand, manifest
 }
 
 // VerifyApplicationRecovery is selected once by the immutable bound Driver.
-// It parses the complete typed protocol and actual local registration; an
-// arbitrary prefix, TxID or caller-supplied credit cannot claim capacity.
+// It parses the complete typed protocol and checks local registration when
+// applied. Store requires genuine applied/queued ownership for every Use; a
+// caller prefix, TxID or supplied credit cannot claim capacity.
 func (m *declaredMaterializer) VerifyApplicationRecovery(ctx context.Context, data []byte, view *raftlog.ApplicationView) (purpose raftlog.ApplicationRecoveryPurpose, err error) {
 	if m == nil || m.store == nil || ctx == nil || view == nil || !crossGraphAgreement(m.SemanticContractID()) {
 		return purpose, errInvalid
@@ -192,7 +193,7 @@ func (m *declaredMaterializer) VerifyApplicationRecovery(ctx context.Context, da
 				}
 				return purpose, nil
 			}
-			return purpose, errRangeMovePending
+			return m.recoveryAfterRangeMove(&q)
 		}
 	}
 	manifest, err := m.crossManifest(&q, r.manifest)

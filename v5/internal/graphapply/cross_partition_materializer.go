@@ -210,6 +210,9 @@ func (m *declaredMaterializer) stageCrossPartition(q *reader, info graphstore.Ow
 	if present && current.digest != digest {
 		return raftlog.ApplicationBatch{}, errInvalid
 	}
+	if !present && r.phase == crossPrepare && m.ns.partition == manifest.coordinator {
+		return raftlog.ApplicationBatch{}, errInvalid
+	}
 	// Exact completed phases remain immutable, including a retry delivered after
 	// later phases. No repeated control install, graph effect or round advance.
 	if present && current.phase >= r.phase {

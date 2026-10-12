@@ -11,8 +11,18 @@ import (
 // It is never parsed from a generic command prefix by Store. The verifier must
 // check complete canonical command/binding/phase semantics, not just a header.
 type ApplicationRecoveryPurpose struct {
-	Reserve *ApplicationRecoveryReservation
-	Use     *ApplicationRecoveryUse
+	Reserve     *ApplicationRecoveryReservation
+	Use         *ApplicationRecoveryUse
+	ApplyBefore *ApplicationRecoveryApplyBefore
+}
+
+// ApplicationRecoveryApplyBefore requests reclassification after retirement of
+// an observed applied owner. It grants no capacity. Only Store can match an
+// earlier canonical terminal Use, and only actual committed-prefix progress may
+// install it. Refusal preserves the trusted protocol's ordinary unready cause.
+type ApplicationRecoveryApplyBefore struct {
+	Owner   ApplicationRecoveryOwner
+	Refusal error
 }
 
 // ApplicationRecoveryVerifier is selected once by the already-bound Driver's
@@ -101,8 +111,14 @@ func (s *Store) AdmitApplicationRecovery(ctx context.Context, data []byte) (*App
 	if s.meta.Applied != index || s.activeGeneration() != generation || s.meta.ImageHash != imageHash {
 		return nil, ErrInvalid
 	}
-	if purpose.Reserve != nil && purpose.Use != nil {
+	if purpose.Reserve != nil && purpose.Use != nil || purpose.ApplyBefore != nil && (purpose.Reserve != nil || purpose.Use != nil) {
 		return nil, ErrInvalid
+	}
+	if purpose.ApplyBefore != nil {
+		if purpose.ApplyBefore.Owner != (ApplicationRecoveryOwner{ID: s.meta.Recovery.Reservation.ID, Digest: s.meta.Recovery.Reservation.Digest}) || purpose.ApplyBefore.Owner.ID == ([32]byte{}) {
+			return nil, ErrInvalid
+		}
+		return nil, errors.Join(ErrApplicationPrerequisite, purpose.ApplyBefore.Refusal)
 	}
 	if purpose.Reserve == nil && purpose.Use == nil {
 		if err := s.admitApplicationLocked(len(data)); err != nil {
@@ -189,7 +205,7 @@ func (s *Store) admitRecoveryUseLocked(commandBytes int, use ApplicationRecovery
 	n := len(m.Recovery.Queued)
 	queued := make([]applicationRecoveryQueued, n+1)
 	copy(queued, m.Recovery.Queued)
-	queued[n] = applicationRecoveryQueued{Index: m.Last + 1, CommandDigest: use.CommandDigest, Purpose: ApplicationRecoveryPurpose{Use: &use}, Credit: credit}
+	queued[n] = applicationRecoveryQueued{Index: m.Last + 1, CommandDigest: use.CommandDigest, Purpose: applicationRecoveryQueuedPurpose{Use: &use}, Credit: credit}
 	m.Recovery.Queued = queued
 	m.Last++
 	extra := uint64(commandBytes + frameOverhead + 9) // #nosec G115 -- sole caller passes len(data)<=validated credit.CommandBytes<=16 MiB-74; nonnegative +83 fits int/uint64.
@@ -261,7 +277,7 @@ func (s *Store) RecoveryAdmissionForCommittedEntry(ctx context.Context, index ui
 		if q.CommandDigest != sha256.Sum256(e.GetData()) {
 			return nil, ErrCorrupt
 		}
-		a := &ApplicationRecoveryAdmission{s: s, base: ApplicationRoot{Generation: s.activeGeneration(), Index: s.meta.Applied, ImageHash: s.meta.ImageHash}, hash: q.CommandDigest, purpose: q.Purpose}
+		a := &ApplicationRecoveryAdmission{s: s, base: ApplicationRoot{Generation: s.activeGeneration(), Index: s.meta.Applied, ImageHash: s.meta.ImageHash}, hash: q.CommandDigest, purpose: ApplicationRecoveryPurpose{Reserve: q.Purpose.Reserve, Use: q.Purpose.Use}}
 		a.self = a
 		return a, nil
 	}

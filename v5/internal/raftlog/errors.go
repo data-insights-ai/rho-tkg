@@ -15,4 +15,7 @@ var (
 	ErrClosed = errors.New("raftlog: closed")
 	// ErrPoisoned requires recovery after an uncertain recoverable storage error.
 	ErrPoisoned = errors.New("raftlog: uncertain storage failure; reopen required")
+	// ErrApplicationPrerequisite refuses classification before an earlier owner
+	// retirement is actually applied. It is not a quota or IO retry permission.
+	ErrApplicationPrerequisite = errors.New("raftlog: earlier committed application required")
 )

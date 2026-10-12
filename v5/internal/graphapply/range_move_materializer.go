@@ -244,6 +244,16 @@ func (m *declaredMaterializer) rangeMoveRecovery(q *reader, c rangeMoveCommand, 
 		if present {
 			return raftlog.ApplicationRecoveryPurpose{}, nil
 		}
+		if err := m.checkRangeMoveRecoveryBinding(q, c, r); err != nil {
+			return raftlog.ApplicationRecoveryPurpose{}, err
+		}
+		active, err := readRangeMoveActive(q)
+		if err != nil {
+			return raftlog.ApplicationRecoveryPurpose{}, err
+		}
+		if active != ([16]byte{}) {
+			return m.recoveryAfterRangeMove(q)
+		}
 		eligibility, err := m.rangeMoveFenceEligibility(q, r)
 		if err != nil || eligibility != rangeMoveApplied {
 			return raftlog.ApplicationRecoveryPurpose{}, err
@@ -258,10 +268,12 @@ func (m *declaredMaterializer) rangeMoveRecovery(q *reader, c rangeMoveCommand, 
 		if m.unadmittedMoveAbort(c, r) {
 			return raftlog.ApplicationRecoveryPurpose{}, nil
 		}
-		return raftlog.ApplicationRecoveryPurpose{}, errInvalid
 	}
-	if rangeMoveTerminal(current) || rangeMoveCommandReplayed(c, current) {
+	if present && (rangeMoveTerminal(current) || rangeMoveCommandReplayed(c, current)) {
 		return raftlog.ApplicationRecoveryPurpose{}, nil
+	}
+	if err := m.checkRangeMoveRecoveryBinding(q, c, r); err != nil {
+		return raftlog.ApplicationRecoveryPurpose{}, err
 	}
 	phase := rangeMoveCredit(c)
 	if phase == 0 {
@@ -289,6 +301,14 @@ func (m *declaredMaterializer) stageRangeMove(q *reader, entry replica.Entry, bu
 	}
 	if err := joinGraphOutputBudget(q, graphRequest{}, 8*len(entry.Data)+4096, m.limits); err != nil {
 		return raftlog.ApplicationBatch{}, err
+	}
+	// Classification may recognize prospective Use capacity against an earlier
+	// queued Fence. Effects still require its actually applied registration.
+	if c.phase != rangeMoveFence {
+		_, present, err := readRangeMoveStatus(q, rangeMoveID(namespace{intent.source.graph, intent.source.partition}, intent.id))
+		if err != nil || !present && !m.unadmittedMoveAbort(c, intent) {
+			return raftlog.ApplicationBatch{}, errors.Join(errInvalid, err)
+		}
 	}
 	purpose, err := m.rangeMoveRecovery(q, c, intent)
 	if err != nil {

@@ -91,7 +91,8 @@ func (p *ApplicationReadyProgress) validLocked() error {
 
 // PersistFull preserves the one-sync complete-Ready fast path. false/nil means
 // our own no-effect queue-allocation or prepared-metadata quota refusal
-// permits bounded progress;
+// permits bounded progress. A separately captured exact owner-retirement
+// dependency also permits progress through its actual committed predecessor;
 // a write/sync/close failure is returned and must NEVER be retried as a prefix.
 func (p *ApplicationReadyProgress) PersistFull() (bool, error) {
 	if p == nil || p.s == nil {
@@ -119,12 +120,12 @@ func (p *ApplicationReadyProgress) PersistFull() (bool, error) {
 		return false, errors.Join(err, e)
 	}
 	if err != nil {
-		if ownRefusal.matches(s, len(p.rd.Entries)) {
+		if ownRefusal.matches(s, len(p.rd.Entries), p.committed) {
 			return false, nil
 		}
 		// A verifier/read/view-close error is terminal and retains every cause.
-		// Only a captured pre-verifier allocation receipt or our later pure
-		// prepared-metadata quota decision enables prefix work.
+		// Only a Store-owned allocation/committed-retirement receipt or our
+		// later pure prepared-metadata quota decision enables prefix work.
 		return false, err
 	}
 	plan, err := s.prepareOrdinaryReadyLocked(p.rd, r, true)
@@ -204,7 +205,7 @@ func (p *ApplicationReadyProgress) PersistPrefix() (last uint64, err error) {
 	rd := raft.Ready{HardState: hard, Entries: remaining}
 	captured := s.meta.Recovery
 	verifier := s.recoveryVerifier
-	r := &applicationRecoveryReady{Applied: s.meta.Applied, Last: s.meta.Last, Generation: s.activeGeneration(), ImageHash: s.meta.ImageHash, LastHash: s.meta.LastHash}
+	r := &applicationRecoveryReady{Applied: s.meta.Applied, Last: s.meta.Last, Generation: s.activeGeneration(), ImageHash: s.meta.ImageHash, LastHash: s.meta.LastHash, HardTerm: s.meta.Hard.GetTerm(), HardVote: s.meta.Hard.GetVote(), HardCommit: s.meta.Hard.GetCommit()}
 	maximum := (maxMetadataBytes - recoveryMetadataFixedBytes) / 256
 	old := captured.Queued
 	r.Queued = make([]applicationRecoveryQueued, 0, min(maximum, len(old)+len(remaining)))
