@@ -1,0 +1,52 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/bench
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkLatestStamps/memory/plain-32         	14061878	        24.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/memory/plain-32         	13929580	        24.72 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/memory/plain-32         	13600323	        25.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/memory/plain-32         	13361506	        26.51 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/memory/plain-32         	13723587	        24.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/memory/versions=100-32  	12096925	        29.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/memory/versions=100-32  	10790160	        30.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/memory/versions=100-32  	11573138	        31.11 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/memory/versions=100-32  	12208113	        30.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/memory/versions=100-32  	11858604	        29.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/memory/versions=1000-32 	11545164	        29.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/memory/versions=1000-32 	12170023	        30.21 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/memory/versions=1000-32 	10684561	        31.61 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/memory/versions=1000-32 	12053241	        30.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/memory/versions=1000-32 	12042517	        29.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/plain-32         	 9942910	        38.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/plain-32         	 9583678	        38.90 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/plain-32         	 8911021	        40.12 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/plain-32         	 9442243	        39.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/plain-32         	 7692694	        44.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/versions=100-32  	 9453895	        39.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/versions=100-32  	 8875315	        41.80 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/versions=100-32  	 8383798	        39.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/versions=100-32  	 8819928	        39.65 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/versions=100-32  	 9400569	        38.29 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/versions=1000-32 	 9096632	        40.35 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/versions=1000-32 	 9118513	        38.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/versions=1000-32 	 9493777	        39.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/versions=1000-32 	 8386058	        39.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/versions=1000-32 	 9042391	        39.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/rotating-cache-miss-32         	  133066	      2990 ns/op	    2200 B/op	      24 allocs/op
+BenchmarkLatestStamps/badger/rotating-cache-miss-32         	  135048	      2816 ns/op	    2200 B/op	      24 allocs/op
+BenchmarkLatestStamps/badger/rotating-cache-miss-32         	  130294	      2820 ns/op	    2200 B/op	      24 allocs/op
+BenchmarkLatestStamps/badger/rotating-cache-miss-32         	  144956	      2930 ns/op	    2200 B/op	      24 allocs/op
+BenchmarkLatestStamps/badger/rotating-cache-miss-32         	  131154	      2875 ns/op	    2200 B/op	      24 allocs/op
+BenchmarkLatestStamps/tiered/rotating-cache-miss-32         	   91957	      3884 ns/op	    2968 B/op	      36 allocs/op
+BenchmarkLatestStamps/tiered/rotating-cache-miss-32         	  104128	      3865 ns/op	    2968 B/op	      36 allocs/op
+BenchmarkLatestStamps/tiered/rotating-cache-miss-32         	  103456	      3688 ns/op	    2968 B/op	      36 allocs/op
+BenchmarkLatestStamps/tiered/rotating-cache-miss-32         	   87762	      3922 ns/op	    2968 B/op	      36 allocs/op
+BenchmarkLatestStamps/tiered/rotating-cache-miss-32         	  104086	      3707 ns/op	    2968 B/op	      36 allocs/op
+BenchmarkLatestStamps/sharded/rotating-cache-miss-32        	  113220	      3465 ns/op	    2904 B/op	      32 allocs/op
+BenchmarkLatestStamps/sharded/rotating-cache-miss-32        	  112021	      3477 ns/op	    2904 B/op	      32 allocs/op
+BenchmarkLatestStamps/sharded/rotating-cache-miss-32        	   94750	      3482 ns/op	    2904 B/op	      32 allocs/op
+BenchmarkLatestStamps/sharded/rotating-cache-miss-32        	  121484	      3307 ns/op	    2904 B/op	      32 allocs/op
+BenchmarkLatestStamps/sharded/rotating-cache-miss-32        	  125338	      3362 ns/op	    2904 B/op	      32 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/bench	21.064s
+ 12:11:42 up 10 days,  3:27, 16 users,  load average: 9,35, 9,68, 12,14

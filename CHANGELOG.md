@@ -16,6 +16,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   benchmarks' allocs/op unchanged); otherwise every `Other[c]` is parallel to `Null[c]`. Filled identically by the
   memory and badger scans, pinned scans (`ValidAt`, `TxAt`) and declared segment relationships;
   a `store.RelColumnSource` fills it by also implementing the optional `store.RelColumnOtherSource` (`Other(i, c)`; a source without it scans unchanged and reports no `Other`). Evidence: `tasks/evidence/column-other/`.
+- **`store.CurrentStampsCapability`: a current row's stamps without reading the row** (backlog 42, the current-row
+  half of `Nodes()/Rels().LatestStamps`). `NodeCurrentStamps(id)` / `RelCurrentStamps(id)` return `store.RowStamps`
+  (`TxFrom`, `TxTo`, `DeletedAt`, `Version`), equal at every moment to the row `GetNode` / `GetRelationship` returns
+  (helpers `store.NodeRowStamps` / `RelRowStamps`), with its not-found and error sentinels. Memory reads its held row
+  (a sealed-segment relationship from the segment); badger answers from the entity cache and, on a miss, reads the
+  row's key and decodes only its temporal block (`storeutil.DecodeWireRowStamps`, the zero-alloc scanner of
+  `DecodeWireTxStamps`, which now delegates to it), filling no cache entry; sharded asks the owner slot; tiered asks
+  the one shard the lend door reads (a stale copy on another shard is not folded in). The core admits it for native
+  stores and stores that declare it; a wrapper that only inherits it keeps its `GetNode` / `GetRelationship` override
+  as the read. `LatestStamps` answers byte-identically (differential against the v4.50.1 implementation: 48 seeds x
+  300 steps on memory, badger, badger with delta history, tiered, sharded and one-entry-cache badger/tiered/sharded,
+  incl. update, UpdateInPlace, delete, re-import, cascade, backfilled `*WithTx`, rollback, compaction, reopen).
+  Like `HistoryStampsCapability`, the partial decode answers a row whose temporal block decodes but whose body is
+  corrupt where `GetNode` fails. Measured (paired A/B against main on the same host; evidence
+  `tasks/evidence/badger-read-cost/42-*`), `LatestStamps` with nearly every current row outside a 64-entry cache:
+
+  | backend | before (v4.50.1) | after |
+  |---|---|---|
+  | badger | 2.3-2.7 us, 24 allocs | 0.9-1.3 us, 7 allocs |
+  | sharded | 3.0-3.3 us, 32 allocs | 1.0-1.2 us, 7 allocs |
+  | tiered | 3.2-3.8 us, 36 allocs | 2.3-2.7 us, 19 allocs |
+
+  `BenchmarkLatestStampsRotating` at 20,000 rels (default 10 K cache): allocs badger 25 -> 4, sharded 34 -> 4, tiered
+  38 -> 13; at 5,000 rels sharded 8 -> 0, tiered 12 -> 4 (part of the 20,000-rel gain is the hit rate: a miss no
+  longer fills the cache, so a rotation larger than the cache stops evicting the rows it is about to read). Hot-loop
+  rows unchanged (0 allocs). The bench rows `LatestStamps/{badger,tiered,sharded}/rotating-cache-miss` join the
+  allocs-gated `LatestStamps` family.
 
 ### Changed
 
@@ -25,6 +52,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   relationships too (`index.normalizeNumeric`'s rule). Before, badger's snapshot served them as values while memory,
   badger's row path and `ValidAt` / `TxAt` scans reported the same cells missing (`Null`), so one column read
   differently by backend and by opts.
+- **Badger effective scans read each candidate's row once** (backlog 33). `ForEachRelEffectiveByType` /
+  `ForEachNodeEffectiveByLabel` gathered their candidates by decoding every current row of the type or label and
+  then read each row again for its timeline; they now take the current members from a new optional
+  `store.MemberIDsCapability` (`NodeIDsByLabel` / `RelIDsByType`: the label/type index, no row read; badger and
+  sharded, memory and tiered decline) and widen them to the candidate set as before. 200,000 rels on in-memory
+  badger (`BenchmarkForEachRelEffectiveByType`, paired A/B): 10.8-11.8 -> 6.5-6.7 us/rel, 71 -> 43 allocs/rel.
+- **Tiered history walks read a relationship row once** (backlog 42): `RelHistoryStamps` / `HasRelHistory` reuse the
+  route's row probe instead of reading the row again, and relationship routing probes the row through the shard's
+  current-row stamps instead of decoding and copying it (same answer: a row whose body fails to decode still
+  occupies the ID).
 
 ### Fixed
 

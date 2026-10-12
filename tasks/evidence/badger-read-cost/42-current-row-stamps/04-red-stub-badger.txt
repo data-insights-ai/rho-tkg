@@ -1,0 +1,28 @@
+--- FAIL: TestCurrentStamps_CacheBeforeCommittedRow (0.01s)
+    --- FAIL: TestCurrentStamps_CacheBeforeCommittedRow/node (0.00s)
+        badgerstore_current_stamps_test.go:153: node committed, evicted: stamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), want {TxFrom:100 TxTo:200 DeletedAt:300 Version:0}
+    --- FAIL: TestCurrentStamps_CacheBeforeCommittedRow/rel (0.00s)
+        badgerstore_current_stamps_test.go:153: rel committed, evicted: stamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), want {TxFrom:100 TxTo:200 DeletedAt:300 Version:0}
+--- FAIL: TestCurrentStamps_StoredRowForms (0.07s)
+    --- FAIL: TestCurrentStamps_StoredRowForms/node (0.00s)
+        badgerstore_current_stamps_test.go:211: node no temporal block: stamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), want {TxFrom:0 TxTo:0 DeletedAt:0 Version:6}
+    --- FAIL: TestCurrentStamps_StoredRowForms/rel (0.03s)
+        badgerstore_current_stamps_test.go:211: rel no temporal block: stamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), want {TxFrom:0 TxTo:0 DeletedAt:0 Version:6}
+    --- FAIL: TestCurrentStamps_StoredRowForms/node/pre-encoded_patched_tail (0.04s)
+        badgerstore_current_stamps_test.go:256: node pre-encoded, cached: stamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), want {TxFrom:900 TxTo:950 DeletedAt:0 Version:0}
+--- FAIL: TestCurrentStamps_MissReadsTheTemporalBlockOnly (0.01s)
+    --- FAIL: TestCurrentStamps_MissReadsTheTemporalBlockOnly/node (0.01s)
+        badgerstore_current_stamps_test.go:302: miss = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>)
+    --- FAIL: TestCurrentStamps_MissReadsTheTemporalBlockOnly/rel (0.01s)
+        badgerstore_current_stamps_test.go:302: miss = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>)
+--- FAIL: TestCurrentStamps_ConcurrentWriters (0.01s)
+    --- FAIL: TestCurrentStamps_ConcurrentWriters/node (0.01s)
+        badgerstore_current_stamps_test.go:367: node: torn or stale answer
+    --- FAIL: TestCurrentStamps_ConcurrentWriters/rel (0.01s)
+        badgerstore_current_stamps_test.go:367: rel: torn or stale answer
+--- FAIL: TestCurrentStamps_BadgerErrors (0.01s)
+    badgerstore_current_stamps_test.go:381: node zero id = <nil>, want ErrInvalidStoreMutation
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.138s
+FAIL
+exit 1

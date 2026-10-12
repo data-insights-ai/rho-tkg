@@ -139,7 +139,7 @@ func (ts *Store) LendRelationship(rid types.RelID) (*types.Relationship, error) 
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return nil, err
 	}
-	return ts.routeRelationshipRow(rid, lendRelationshipRow)
+	return routeRelRow(ts, rid, lendRelationshipRow)
 }
 
 // getRelationshipChecked returns a defensive relationship copy from whichever
@@ -147,20 +147,23 @@ func (ts *Store) LendRelationship(rid types.RelID) (*types.Relationship, error) 
 // but returns the verified row directly so callers do not read the same row
 // twice after routing.
 func (ts *Store) getRelationshipChecked(rid types.RelID) (*types.Relationship, error) {
-	return ts.routeRelationshipRow(rid, relationshipRow)
+	return routeRelRow(ts, rid, relationshipRow)
 }
 
-// routeRelationshipRow finds the shard holding rid's row and reads it with
-// row (a defensive copy or a lent frozen row).
-func (ts *Store) routeRelationshipRow(rid types.RelID, row func(*BadgerStore, types.RelID) (*types.Relationship, bool, error)) (*types.Relationship, error) {
+// routeRelRow finds the shard holding rid's row and reads it with row (a
+// defensive copy, a lent frozen row, or the row's stamps): the reference
+// shard, the archive, the ID's event shard, then every other event shard; the
+// first shard that has the row answers.
+func routeRelRow[T any](ts *Store, rid types.RelID, row func(*BadgerStore, types.RelID) (T, bool, error)) (T, error) {
+	var zero T
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
-		return nil, err
+		return zero, err
 	}
 	rel, found, err := row(ref, rid)
 	refCheckin()
 	if err != nil {
-		return nil, err
+		return zero, err
 	}
 	if found {
 		return rel, nil
@@ -168,13 +171,13 @@ func (ts *Store) routeRelationshipRow(rid types.RelID, row func(*BadgerStore, ty
 
 	archive, archiveCheckin, err := ts.checkoutArchive()
 	if err != nil {
-		return nil, err
+		return zero, err
 	}
 	if archive != nil {
 		rel, found, err = row(archive, rid)
 		archiveCheckin()
 		if err != nil {
-			return nil, err
+			return zero, err
 		}
 		if found {
 			return rel, nil
@@ -184,12 +187,12 @@ func (ts *Store) routeRelationshipRow(rid types.RelID, row func(*BadgerStore, ty
 	candidateEntry := ts.timestampToEventShardEntry(rid.SnowflakeID())
 	candidate, candidateRelease, err := candidateEntry.checkoutStoreForRead(ts)
 	if err != nil {
-		return nil, err
+		return zero, err
 	}
 	rel, found, err = row(candidate, rid)
 	candidateRelease()
 	if err != nil {
-		return nil, err
+		return zero, err
 	}
 	if found {
 		return rel, nil
@@ -208,18 +211,18 @@ func (ts *Store) routeRelationshipRow(rid types.RelID, row func(*BadgerStore, ty
 	for _, es := range probe {
 		store, release, err := es.checkoutStoreForRead(ts)
 		if err != nil {
-			return nil, err
+			return zero, err
 		}
 		rel, found, err = row(store, rid)
 		release()
 		if err != nil {
-			return nil, err
+			return zero, err
 		}
 		if found {
 			return rel, nil
 		}
 	}
-	return nil, ErrRelNotFound
+	return zero, ErrRelNotFound
 }
 
 func (ts *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {

@@ -653,7 +653,7 @@ func (t *TempOps) ForEachNodeEffectiveByLabel(label string, pin types.Instant, f
 			return nil
 		}
 		var err error
-		_, ids, err = c.nodeLabelCandidatesAt(tok, storepkg.QueryOpts{TxPin: pin})
+		ids, err = c.nodeLabelCandidateIDsAt(tok, storepkg.QueryOpts{TxPin: pin})
 		return err
 	}); err != nil {
 		return err
@@ -709,7 +709,7 @@ func (t *TempOps) ForEachRelEffectiveByType(typeName string, pin types.Instant, 
 			return nil
 		}
 		var err error
-		_, ids, err = c.relTypeCandidatesAt(tok, storepkg.QueryOpts{TxPin: pin})
+		ids, err = c.relTypeCandidateIDsAt(tok, storepkg.QueryOpts{TxPin: pin})
 		return err
 	}); err != nil {
 		return err

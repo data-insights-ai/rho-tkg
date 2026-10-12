@@ -1,0 +1,32 @@
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded.test]
+pkg/graph/store/sharded/current_stamps_test.go:41:25: undefined: storecontract.RowStamps
+pkg/graph/store/sharded/current_stamps_test.go:42:21: st.NodeCurrentStamps undefined (type *Store has no field or method NodeCurrentStamps)
+pkg/graph/store/sharded/current_stamps_test.go:45:28: undefined: storecontract.RowStamps
+pkg/graph/store/sharded/current_stamps_test.go:46:21: st.RelCurrentStamps undefined (type *Store has no field or method RelCurrentStamps)
+pkg/graph/store/sharded/current_stamps_test.go:49:19: st.NodeCurrentStamps undefined (type *Store has no field or method NodeCurrentStamps)
+pkg/graph/store/sharded/current_stamps_test.go:52:19: st.RelCurrentStamps undefined (type *Store has no field or method RelCurrentStamps)
+pkg/graph/store/sharded/current_stamps_test.go:57:18: st.NodeCurrentStamps undefined (type *Store has no field or method NodeCurrentStamps)
+pkg/graph/store/sharded/current_stamps_test.go:60:18: st.RelCurrentStamps undefined (type *Store has no field or method RelCurrentStamps)
+pkg/graph/store/sharded/current_stamps_test.go:64:19: st.NodeCurrentStamps undefined (type *Store has no field or method NodeCurrentStamps)
+pkg/graph/store/sharded/current_stamps_test.go:67:19: st.RelCurrentStamps undefined (type *Store has no field or method RelCurrentStamps)
+pkg/graph/store/sharded/current_stamps_test.go:67:19: too many errors
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil
+# [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil]
+vet: pkg/graph/internal/storeutil/wire_row_stamps_test.go:24:41: undefined: storepkg.RowStamps
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered
+# [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered]
+vet: pkg/graph/store/tiered/tieredstore_current_stamps_test.go:21:98: undefined: storecontract.RowStamps
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory.test]
+pkg/graph/store/memory/memorystore_current_stamps_test.go:33:25: undefined: storecontract.RelRowStamps
+pkg/graph/store/memory/memorystore_current_stamps_test.go:37:27: tw.declared.RelCurrentStamps undefined (type *Store has no field or method RelCurrentStamps)
+pkg/graph/store/memory/memorystore_current_stamps_test.go:43:27: tw.declared.RelCurrentStamps undefined (type *Store has no field or method RelCurrentStamps)
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+# [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger]
+vet: pkg/graph/store/badger/badgerstore_current_stamps_test.go:44:51: undefined: storecontract.RowStamps
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test
+# [github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test]
+vet: pkg/graph/current_stamps_test.go:265:78: undefined: storepkg.RowStamps
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store_test
+# [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store_test]
+vet: pkg/graph/store/current_stamps_test.go:37:64: undefined: storecontract.RowStamps
+exit 1

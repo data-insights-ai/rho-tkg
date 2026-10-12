@@ -471,6 +471,36 @@ func (c *Core) nodeLabelCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*ty
 	if err != nil {
 		return nil, nil, err
 	}
+	candIDs, err := c.nodeLabelCandidatesFrom(tok, currentIDs, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	return current, candIDs, nil
+}
+
+// nodeLabelCandidateIDsAt is nodeLabelCandidatesAt for a caller that resolves
+// every candidate itself and needs no current row (the effective scans): the
+// label's current members come from store.MemberIDsCapability without reading
+// a row (backlog 33: each candidate's row is then read once, by its own
+// resolution), else from the rows. The capability's stores keep no tiers, so
+// opts.Depth selects nothing there (their NodesByLabel ignores it too).
+// Callers hold c.mu (R or W).
+func (c *Core) nodeLabelCandidateIDsAt(tok uint16, opts storepkg.QueryOpts) ([]types.NodeID, error) {
+	if c.memberIDs == nil {
+		_, ids, err := c.nodeLabelCandidatesAt(tok, opts)
+		return ids, err
+	}
+	currentIDs, err := c.memberIDs.NodeIDsByLabel(tok)
+	if err != nil {
+		return nil, err
+	}
+	return c.nodeLabelCandidatesFrom(tok, currentIDs, opts)
+}
+
+// nodeLabelCandidatesFrom widens the label's current members to the candidate
+// set of a read at opts (the ever-members or the history fold, then the
+// valid-time envelope prune). Callers hold c.mu (R or W).
+func (c *Core) nodeLabelCandidatesFrom(tok uint16, currentIDs []types.NodeID, opts storepkg.QueryOpts) ([]types.NodeID, error) {
 
 	// Gather the candidate id set. K1: when the store owns a transaction-time
 	// label-membership sidecar, scope candidates to the label's ever-members
@@ -487,10 +517,10 @@ func (c *Core) nodeLabelCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*ty
 	}
 	if c.labelTxMembers != nil {
 		if err := c.forEachLabelTxCandidate(tok, currentIDs, opts, gather); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	} else if err := c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, gather); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// when the store owns a per-label valid-time ENVELOPE index, drop every
@@ -505,8 +535,7 @@ func (c *Core) nodeLabelCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*ty
 			candIDs = kept
 		}
 	}
-
-	return current, candIDs, nil
+	return candIDs, nil
 }
 
 // nodesByLabelLocked is the lock-free body of NodeOps.ByLabel. Callers must
@@ -595,6 +624,28 @@ func (c *Core) relTypeCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*type
 	if err != nil {
 		return nil, nil, err
 	}
+	candIDs, err := c.relTypeCandidatesFrom(tok, currentIDs, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	return current, candIDs, nil
+}
+
+// relTypeCandidateIDsAt is nodeLabelCandidateIDsAt for a relationship type.
+func (c *Core) relTypeCandidateIDsAt(tok uint16, opts storepkg.QueryOpts) ([]types.RelID, error) {
+	if c.memberIDs == nil {
+		_, ids, err := c.relTypeCandidatesAt(tok, opts)
+		return ids, err
+	}
+	currentIDs, err := c.memberIDs.RelIDsByType(tok)
+	if err != nil {
+		return nil, err
+	}
+	return c.relTypeCandidatesFrom(tok, currentIDs, opts)
+}
+
+// relTypeCandidatesFrom is nodeLabelCandidatesFrom for a relationship type.
+func (c *Core) relTypeCandidatesFrom(tok uint16, currentIDs []types.RelID, opts storepkg.QueryOpts) ([]types.RelID, error) {
 
 	// scope the candidate set to the type's ever-members when the store owns
 	// the transaction-time rel-type-membership sidecar (see nodesByLabelLocked).
@@ -605,10 +656,10 @@ func (c *Core) relTypeCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*type
 	}
 	if c.relTypeTxMembers != nil {
 		if err := c.forEachRelTypeTxCandidate(tok, currentIDs, opts, gather); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	} else if err := c.forEachRelCandidateIDByDepth(currentIDs, opts.Depth, gather); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// BACKLOG 21c: when the store owns a per-rel-type valid-time ENVELOPE
@@ -621,8 +672,7 @@ func (c *Core) relTypeCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*type
 			candIDs = kept
 		}
 	}
-
-	return current, candIDs, nil
+	return candIDs, nil
 }
 
 // relsByTypeLocked is the lock-free body of RelOps.ByType.

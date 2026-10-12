@@ -101,27 +101,12 @@ func selectionTemporalMeta(ht bool, vf, vt, tf, tt, ca, ua, da int64, rx bool) *
 	}
 }
 
-// DecodeWireTxStamps is DecodeWireTemporalMeta reduced to the transaction
-// stamps of a FULL (non-delta) row: TxFrom, TxTo and DeletedAt, zeros when the
-// row carries no temporal block. It returns values, so the scanner path
-// allocates nothing; the same errors as DecodeWireTemporalMeta.
+// DecodeWireTxStamps is DecodeWireRowStamps without the version: the
+// transaction stamps of a FULL (non-delta) row, zeros when the row carries no
+// temporal block, the same errors, no allocation on the scanner path.
 func DecodeWireTxStamps(raw []byte) (txFrom, txTo, deletedAt types.Instant, err error) {
-	w, ok := scanWireTemporalMeta(raw)
-	if !ok {
-		if w, err = decodeWireTemporalMetaSlow(raw); err != nil {
-			return 0, 0, 0, err
-		}
-	}
-	if err := checkRowFormatVersion("wire tx stamps", w.FormatVersion); err != nil {
-		return 0, 0, 0, err
-	}
-	if w.Version < 0 {
-		return 0, 0, 0, fmt.Errorf("wire tx stamps: negative version %d: %w", w.Version, storepkg.ErrCorruptWire)
-	}
-	if !w.HasTemporal {
-		return 0, 0, 0, nil
-	}
-	return types.Instant(w.TxFrom), types.Instant(w.TxTo), types.Instant(w.DeletedAt), nil
+	s, err := DecodeWireRowStamps(raw)
+	return s.TxFrom, s.TxTo, s.DeletedAt, err
 }
 
 // HistoryValueTxStamps returns the transaction stamps of one stored history
