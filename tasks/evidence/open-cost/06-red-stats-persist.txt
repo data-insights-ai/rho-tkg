@@ -1,0 +1,34 @@
+--- FAIL: TestCleanReopenRestoresPlannerStats (0.16s)
+    badgerstore_open_image_test.go:214: clean reopen deferred planner statistics its image holds
+    badgerstore_open_image_test.go:217: restored statistics differ from the closing process's:
+         got: 
+        want: acc node {11 qty} ndv=13 min=0 max=12 dirty=true
+        acc node {11 tag} ndv=1 min="s" max="s" dirty=false
+        acc rel {3 w} ndv=36 min=0.25 max=10 dirty=false
+        classes index.PropertyIndexKey {11 qty} [59 0 0 0 0]
+        classes index.PropertyIndexKey {11 tag} [0 0 12 0 0]
+        classes index.RelPropertyIndexKey {3 w} [32 0 5 0 0]
+        count index.PropertyIndexKey {11 qty} 59
+        count index.PropertyIndexKey {11 tag} 12
+        count index.RelPropertyIndexKey {3 w} 37
+    --- FAIL: TestCleanReopenRestoresPlannerStats/NodeCountByLabelAndPropertyKey (0.01s)
+        badgerstore_open_image_test.go:233: first NodeCountByLabelAndPropertyKey after a clean reopen decoded 96 rows
+    --- FAIL: TestCleanReopenRestoresPlannerStats/NodePropertyTypeClassCounts (0.00s)
+        badgerstore_open_image_test.go:233: first NodePropertyTypeClassCounts after a clean reopen decoded 96 rows
+    --- FAIL: TestCleanReopenRestoresPlannerStats/NodePropertyStats (0.00s)
+        badgerstore_open_image_test.go:233: first NodePropertyStats after a clean reopen decoded 96 rows
+    --- FAIL: TestCleanReopenRestoresPlannerStats/NodePropertyNDV (0.00s)
+        badgerstore_open_image_test.go:233: first NodePropertyNDV after a clean reopen decoded 96 rows
+    --- FAIL: TestCleanReopenRestoresPlannerStats/NodePropertyNDVSketch (0.00s)
+        badgerstore_open_image_test.go:233: first NodePropertyNDVSketch after a clean reopen decoded 96 rows
+    --- FAIL: TestCleanReopenRestoresPlannerStats/RelPropertyStats (0.00s)
+        badgerstore_open_image_test.go:233: first RelPropertyStats after a clean reopen decoded 96 rows
+    --- FAIL: TestCleanReopenRestoresPlannerStats/RelPropertyNDV (0.00s)
+        badgerstore_open_image_test.go:233: first RelPropertyNDV after a clean reopen decoded 96 rows
+    --- FAIL: TestCleanReopenRestoresPlannerStats/NodePropertyStatsSketch (0.00s)
+        badgerstore_open_image_test.go:233: first NodePropertyStatsSketch after a clean reopen decoded 96 rows
+    --- FAIL: TestCleanReopenRestoresPlannerStats/RelPropertyTypeClassCounts (0.00s)
+        badgerstore_open_image_test.go:233: first RelPropertyTypeClassCounts after a clean reopen decoded 96 rows
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.163s
+FAIL

@@ -32,7 +32,7 @@ func (bs *Store) removeRelPropertyTypeClassCounts(r *types.Relationship) {
 }
 
 func (bs *Store) adjustRelPropertyTypeClassCounts(r *types.Relationship, delta int64) {
-	if bs.disablePlannerStats || r == nil {
+	if bs.plannerStatsOff() || r == nil {
 		return
 	}
 	relType := r.TypeToken().Value()
@@ -62,6 +62,9 @@ func (bs *Store) RelPropertyTypeClassCounts(relTypeToken uint16, propertyKey str
 	}
 	if bs.disablePlannerStats {
 		return storecontract.PropertyTypeClassCounts{}, storecontract.ErrCapabilityNotSupported
+	}
+	if err := bs.ensurePlannerStats(); err != nil {
+		return storecontract.PropertyTypeClassCounts{}, err
 	}
 	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
 		return storecontract.PropertyTypeClassCounts{}, err

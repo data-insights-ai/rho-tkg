@@ -773,7 +773,7 @@ func (bs *Store) purgeExactNodeSidecarsLocked(nid types.NodeID) {
 }
 
 func (bs *Store) rebuildExactErasurePlannerSketchesLocked() {
-	if bs.disablePlannerStats {
+	if bs.plannerStatsOff() {
 		return
 	}
 	bs.propertyStats = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyStatsAccumulator)

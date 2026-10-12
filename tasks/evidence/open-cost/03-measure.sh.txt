@@ -1,0 +1,11 @@
+#!/bin/bash
+# Open time on the ai-soc-shaped store: full row rebuild (image invalidated by a foreign write) vs clean reopen.
+S=/tmp/claude-1000/-home-renework2023-Work-2026-datainsights-rho-tkg/d8867122-d92d-44f6-8bc1-21ec6c585e85/scratchpad
+export OPENCOST_DIR=$S/s436k
+echo "# $(date -Is) host: $(nproc) cores; store: $(du -sh $OPENCOST_DIR | cut -f1), 519,000 nodes / 436,000 rels"
+for round in 1 2 3; do
+  echo "load: $(cut -d' ' -f1-3 /proc/loadavg)"
+  $S/probe.test -test.run '^TestInvalidate$' -test.count=1 >/dev/null
+  echo "full rebuild (image invalidated): $($S/probe.test -test.run '^TestOpen$' -test.count=1 | grep open=)"
+  echo "clean reopen:                     $($S/probe.test -test.run '^TestOpen$' -test.count=1 | grep open=)"
+done

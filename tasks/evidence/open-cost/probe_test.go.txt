@@ -1,0 +1,136 @@
+package opencostprobe
+
+// Backlog 54 probe: build an ai-soc-shaped badger store once (OPENCOST_DIR),
+// then time and CPU-profile graph.New on the cleanly closed store.
+//
+//	OPENCOST_DIR=/path OPENCOST_RECS=436000 go test -run TestBuild ./bench/opencostprobe -timeout 2h
+//	OPENCOST_DIR=/path OPENCOST_PROF=cpu.out go test -run TestOpen ./bench/opencostprobe
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"runtime/pprof"
+	"strconv"
+	"testing"
+	"time"
+
+	graph "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	badgerv4 "github.com/dgraph-io/badger/v4"
+)
+
+func dir(t *testing.T) string {
+	d := os.Getenv("OPENCOST_DIR")
+	if d == "" {
+		t.Skip("OPENCOST_DIR unset")
+	}
+	return d
+}
+
+// TestBuild writes the ai-soc shape: per record two keyed endpoint upserts and
+// one LOGON relationship with ~15 properties incl. a valid interval; commits of
+// 177 records (≈530 ops). 436 K records give ≈519 K nodes / 436 K rels.
+func TestBuild(t *testing.T) {
+	d := dir(t)
+	recs, _ := strconv.Atoi(os.Getenv("OPENCOST_RECS"))
+	if recs == 0 {
+		recs = 436_000
+	}
+	devs, accts := recs*200/436, recs*319/436
+	g, err := graph.New(graph.Config{BadgerDir: d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	for _, l := range []string{"Device", "Account"} {
+		if err := g.Constraints().CreateUnique(ctx, l, "key"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const per = 177
+	t0 := time.Now()
+	for c := 0; c*per < recs; c++ {
+		err := g.Tx().RunContext(ctx, func(tx *graph.GraphTx) error {
+			for r := 0; r < per && c*per+r < recs; r++ {
+				i := c*per + r
+				dev, _, err := tx.GetOrCreateByKey("Device", "key", fmt.Sprintf("dev-%d", i%devs), map[string]any{"estate": "BA"})
+				if err != nil {
+					return err
+				}
+				acct, _, err := tx.GetOrCreateByKey("Account", "key", fmt.Sprintf("acct-%d", i%accts), map[string]any{"estate": "BA"})
+				if err != nil {
+					return err
+				}
+				vf := int64(1_790_700_000_000 + i*1000)
+				if _, err = tx.AddRelationshipByID("LOGON", acct.ID(), dev.ID(), map[string]any{"device": "d", "action": "LogonSuccess", "logon_type": "Network",
+					"logon_id": "0x2", "account_sid": "S-X", "account": "x", "remote_ip": "10.2.0.2", "tkg_valid_from": vf, "tkg_valid_to": vf + 1,
+					"estate": "BA", "group": fmt.Sprintf("g%d", c), "source": "DeviceLogonEvents", "record": fmt.Sprintf("r%d", i)}); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := g.Close(); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("built %d records in %v", recs, time.Since(t0))
+}
+
+// TestInvalidate commits one foreign key, so the next open cannot trust the
+// clean-close open image and rebuilds from the rows (the pre-54 open path).
+func TestInvalidate(t *testing.T) {
+	db, err := badgerv4.Open(badgerv4.DefaultOptions(dir(t)).WithLogger(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Update(func(txn *badgerv4.Txn) error { return txn.Set([]byte("\xfeprobe"), nil) }); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOpen(t *testing.T) {
+	d := dir(t)
+	if p := os.Getenv("OPENCOST_PROF"); p != "" {
+		f, err := os.Create(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		if err := pprof.StartCPUProfile(f); err != nil {
+			t.Fatal(err)
+		}
+		defer pprof.StopCPUProfile()
+	}
+	t0 := time.Now()
+	cfg := graph.Config{BadgerDir: d, SyncWrites: true, DurableCommit: true}
+	if os.Getenv("OPENCOST_ONDISK") != "" {
+		cfg.LabelIndexOnDisk, cfg.AdjacencyIndexOnDisk, cfg.PropertyIndexOnDisk = true, true, true
+	}
+	if os.Getenv("OPENCOST_NOSTATS") != "" {
+		cfg.DisablePlannerStats = true
+	}
+	g, err := graph.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	open := time.Since(t0)
+	n, _ := g.Stats().NodeCount()
+	r, _ := g.Stats().RelCount()
+	t1 := time.Now()
+	if _, err := g.Stats().RelPropertyTypeClassCounts("LOGON", "action"); err != nil {
+		t.Fatal(err)
+	}
+	firstStats := time.Since(t1)
+	t2 := time.Now()
+	if err := g.Close(); err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("open=%v nodes=%d rels=%d firstStatsRead=%v close=%v\n", open, n, r, firstStats, time.Since(t2))
+}

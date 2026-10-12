@@ -188,8 +188,9 @@ func TestDropRelTemporalIndexesAtOpen_DiscardsWithoutBuilding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := plain.RelTemporalIndexTypes(); !slices.Equal(got, []uint16{6, 7}) || plain.RelTemporalIndexBuildsForTest() != 2 {
-		t.Errorf("plain open after a read-only discard lists %v after %d builds, want [6 7] and 2 (read-only keeps the definitions)", got, plain.RelTemporalIndexBuildsForTest())
+	// 0 builds: the clean close's open image restores both (backlog 54).
+	if got, _ := plain.RelTemporalIndexTypes(); !slices.Equal(got, []uint16{6, 7}) || plain.RelTemporalIndexBuildsForTest() != 0 {
+		t.Errorf("plain open after a read-only discard lists %v after %d builds, want [6 7] and 0 (read-only keeps the definitions)", got, plain.RelTemporalIndexBuildsForTest())
 	}
 	if err := plain.Close(); err != nil {
 		t.Fatal(err)

@@ -441,6 +441,11 @@ Two layers, both backward compatible with pre-versioning directories:
 - `loadIndexes` still tolerates corrupt rows (skip + warn + counter
   reconcile), but a FUTURE per-row version is not damage — it fails the open
   instead of silently dropping the row.
+- A clean `Close` writes the open image (`badgerstore_open_image.go`, backlog 54);
+  an open that trusts it (its header is the newest badger commit) reads keys and
+  the image instead of decoding rows; planner statistics travel in the image
+  too, and only an image without them defers them to their first read
+  (`badgerstore_planner_stats_deferred.go`).
 
 Bump protocol (documented on `CurrentWireFormatVersion`): a version bump must
 update the custom msgpack encoders (lesson 39), the decode path, and the

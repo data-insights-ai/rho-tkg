@@ -461,6 +461,7 @@ type Store struct {
 	propIdxOnDisk         bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
 	temporalIdxOnDisk     bool                                          // maintain the persisted 0x0B raw-entry log so loadIndexesScan can rebuild without a full node fetch per entity
 	disablePlannerStats   bool                                          // skip planner-stat maintenance (presence/NDV/min-max/type-class) on writes + open; the stat capabilities fail closed with ErrCapabilityNotSupported
+	statsDeferred         atomic.Bool                                   // a clean open left planner stats unbuilt: writes skip them, the first stat read builds them from the rows (ensurePlannerStats)
 	historyDelta          bool                                          // store version-history rows as anchor+delta (ADR-0009); reads accept both forms regardless
 	historyAnchorInterval uint64                                        // anchor spacing for historyDelta (>=1, default 16); baked into the on-disk layout — verified against a persisted marker at open
 	typeIdx               map[uint16]map[types.RelID]struct{}           // relTypeToken → set(relID)
@@ -1251,7 +1252,10 @@ func New(cfg Config) (*Store, error) {
 		}
 	}
 
-	if err := bs.loadIndexes(); err != nil {
+	// A cleanly closed store opens from its keys and the persisted open image
+	// (badgerstore_open_image.go) instead of decoding every row.
+	img := bs.readOpenImage()
+	if err := bs.loadIndexes(img); err != nil {
 		_ = db.Close() // best-effort cleanup
 		return nil, fmt.Errorf("graph: load indexes: %w", err)
 	}
@@ -1263,7 +1267,9 @@ func New(cfg Config) (*Store, error) {
 	bs.idxMu.RLock()
 	temporalToks := make([]uint16, 0, len(bs.temporalIndexes))
 	for tok := range bs.temporalIndexes {
-		temporalToks = append(temporalToks, tok)
+		if img == nil || !img.restoredTemporal[tok] { // a restored envelope already folds its history
+			temporalToks = append(temporalToks, tok)
+		}
 	}
 	bs.idxMu.RUnlock()
 	if len(temporalToks) > 0 {
@@ -1273,7 +1279,7 @@ func New(cfg Config) (*Store, error) {
 		}
 	}
 
-	relTemporalLoad := bs.loadRelTypeTemporalIndexes
+	relTemporalLoad := func() error { return bs.loadRelTypeTemporalIndexes(img) }
 	if cfg.DropRelTemporalIndexesAtOpen {
 		relTemporalLoad = bs.discardRelTypeTemporalIndexDefs
 	}
@@ -1299,10 +1305,22 @@ func New(cfg Config) (*Store, error) {
 
 // loadIndexes rebuilds in-memory indexes and counters from Badger.
 // Single db.View() scan of all index key prefixes (keys-only, no values).
-func (bs *Store) loadIndexes() error {
-	err := bs.loadIndexesScan()
+//
+// With a trusted open image (img != nil) the entity, label, type and adjacency
+// state comes from keys alone, index contents from the image, and planner
+// statistics are deferred to their first read; no row is decoded unless an
+// index is missing from the image.
+func (bs *Store) loadIndexes(img *openImage) error {
+	err := bs.loadIndexesScan(img)
 	if err != nil {
 		return err
+	}
+	if img != nil && !bs.disablePlannerStats {
+		if img.stats != nil {
+			bs.installPlannerStatsLocked(img.stats) // the closing process's statistics
+		} else {
+			bs.statsDeferred.Store(true) // built at the first statistics read
+		}
 	}
 	if bs.labelOnDisk {
 		// Disk-resident label index: the map was built transiently above
@@ -1325,7 +1343,7 @@ func (bs *Store) loadIndexes() error {
 	return nil
 }
 
-func (bs *Store) loadIndexesScan() error {
+func (bs *Store) loadIndexesScan(img *openImage) error {
 	// propIdxNeedsBuild / propIdxBackfillOps support item (d) — rebuild-on-
 	// enable: the 0x0A property-index keyspace is NEW (unlike label/adjacency,
 	// which have always been written transactionally), so an existing
@@ -1337,6 +1355,7 @@ func (bs *Store) loadIndexesScan() error {
 	// storeutil.PropertyIndexOnDiskBuiltKey so it runs exactly once.
 	var propIdxNeedsBuild bool
 	var propIdxBackfillOps []writeOp
+	propIdxDefined := false // any property index definition persisted
 	// temporalIdxNeedsBuild / temporalIdxBackfillOps mirror propIdxNeedsBuild /
 	// propIdxBackfillOps above for the 0x0B temporal-index raw-entry log (also
 	// a new keyspace): an existing directory with temporal-index definitions
@@ -1381,6 +1400,9 @@ func (bs *Store) loadIndexesScan() error {
 		// restart, while missing label keys can be rebuilt from the row.
 		valueOpts := opts
 		valueOpts.PrefetchValues = true
+		if img != nil {
+			valueOpts.PrefetchValues = false // keys only
+		}
 		it := txn.NewIterator(valueOpts)
 		prefix := []byte{storepkg.KeyNode}
 		var loadErr error
@@ -1392,6 +1414,15 @@ func (bs *Store) loadIndexesScan() error {
 			}
 			nid := types.NodeID(storepkg.ParseIDFromKey(key, 1))
 			nodeEntityIDs[nid] = struct{}{}
+			if img != nil {
+				// Clean close: the row is live; its labels come from the label
+				// keys below, its hash on first use (NodeIntegrityHash), its
+				// statistics on first read (ensurePlannerStats).
+				bs.nodeIDs[nid] = struct{}{}
+				bs.ords.node(nid, true)
+				bs.bumpNodeRevLocked(nid)
+				continue
+			}
 
 			var n *types.Node
 			if err := item.Value(func(val []byte) error {
@@ -1462,6 +1493,11 @@ func (bs *Store) loadIndexesScan() error {
 				}
 			}
 			bs.addLabelIdxLocked(token, nid)
+			if img != nil {
+				// The epoch bump the full path makes per (node, label) through
+				// addNodePropertyKeyCounts.
+				bs.nodeLabelEpochs[token%nodeLabelEpochStripes].Add(1)
+			}
 		}
 		it.Close()
 
@@ -1472,7 +1508,7 @@ func (bs *Store) loadIndexesScan() error {
 		// relationship liveness: reltype/outgoing index keys can be stale after
 		// interrupted repair/delete paths and must not manufacture live relIDs.
 		relValueOpts := opts
-		relValueOpts.PrefetchValues = true
+		relValueOpts.PrefetchValues = img == nil
 		it = txn.NewIterator(relValueOpts)
 		prefix = []byte{storepkg.KeyRel}
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
@@ -1483,6 +1519,13 @@ func (bs *Store) loadIndexesScan() error {
 			}
 			rid := types.RelID(storepkg.ParseIDFromKey(key, 1))
 			relEntityIDs[rid] = struct{}{}
+			if img != nil {
+				// Clean close: type and adjacency come from their keys below.
+				bs.relIDs[rid] = struct{}{}
+				bs.ords.rel(rid, true)
+				bs.bumpRelRevLocked(rid)
+				continue
+			}
 
 			var r *types.Relationship
 			if err := item.Value(func(val []byte) error {
@@ -1543,6 +1586,12 @@ func (bs *Store) loadIndexesScan() error {
 			}
 			token := binary.BigEndian.Uint16(key[1:3])
 			rid := types.RelID(storepkg.ParseIDFromKey(key, 3))
+			if img != nil {
+				if _, local := relEntityIDs[rid]; local {
+					bs.addTypeIdxLocked(token, rid)
+				}
+				continue
+			}
 			info, decoded := decodedRelInfo[rid]
 			if !decoded {
 				continue
@@ -1568,11 +1617,12 @@ func (bs *Store) loadIndexesScan() error {
 			relType := binary.BigEndian.Uint16(key[9:11])
 			endID := storepkg.ParseIDFromKey(key, 11)
 			relID := types.RelID(storepkg.ParseRelIDFromAdjKey(key))
-			info, decoded := decodedRelInfo[relID]
-			if !decoded {
-				continue
-			}
-			if info.StartID != startID || info.EndID != endID || info.RelType != relType {
+			if img != nil {
+				if _, local := relEntityIDs[relID]; !local {
+					continue
+				}
+			} else if info, decoded := decodedRelInfo[relID]; !decoded ||
+				info.StartID != startID || info.EndID != endID || info.RelType != relType {
 				continue
 			}
 			if _, startLocal := bs.nodeIDs[types.NodeID(startID)]; !startLocal {
@@ -1601,14 +1651,20 @@ func (bs *Store) loadIndexesScan() error {
 			relType := binary.BigEndian.Uint16(key[9:])
 			startID := storepkg.ParseIDFromKey(key, 11)
 			relID := types.RelID(storepkg.ParseRelIDFromAdjKey(key))
-			if info, decoded := decodedRelInfo[relID]; decoded {
+			_, hasLocalEntity := relEntityIDs[relID]
+			info, decoded := decodedRelInfo[relID]
+			if img != nil && hasLocalEntity {
+				decoded = true // clean close: the key agrees with the row
+				info = RelDeleteInfo{ID: relID.SnowflakeID(), StartID: startID, EndID: endID, RelType: relType}
+			}
+			if decoded {
 				if info.StartID != startID || info.EndID != endID || info.RelType != relType {
 					continue
 				}
 				if _, endLocal := bs.nodeIDs[types.NodeID(endID)]; !endLocal {
 					continue
 				}
-			} else if _, hasLocalEntity := relEntityIDs[relID]; hasLocalEntity {
+			} else if hasLocalEntity {
 				continue
 			}
 			endNID := types.NodeID(endID)
@@ -1679,6 +1735,7 @@ func (bs *Store) loadIndexesScan() error {
 			}); e != nil {
 				return fmt.Errorf("graph: load property index definitions: %w", e)
 			}
+			propIdxDefined = len(defs) > 0
 			seenProperty := make(map[indexpkg.PropertyIndexKey]struct{}, len(defs))
 			for _, def := range defs {
 				if err := storecontract.ValidateLabelToken(def.LabelToken); err != nil {
@@ -1695,7 +1752,12 @@ func (bs *Store) loadIndexesScan() error {
 				}
 				seenProperty[key] = struct{}{}
 				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts)
-				if nodeIDs, ok := bs.labelIdx[def.LabelToken]; ok {
+				if entries, ok := img.takeNodeProp(key); ok && !bs.propIdxOnDisk {
+					installValueIDs(entries, idx.AddKey)
+				} else if bs.propIdxOnDisk && !propIdxNeedsBuild {
+					// Disk mode keeps the entries in the 0x0A keyspace, already
+					// built: nothing to read from the rows.
+				} else if nodeIDs, ok := bs.labelIdx[def.LabelToken]; ok {
 					for nodeID := range nodeIDs {
 						rawID := nodeID.SnowflakeID()
 						n, nerr := bs.loadNodeFromBadger(txn, rawID)
@@ -1764,7 +1826,9 @@ func (bs *Store) loadIndexesScan() error {
 				}
 				seenRelProperty[key] = struct{}{}
 				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts)
-				if relIDs, ok := bs.typeIdx[def.RelTypeToken]; ok {
+				if entries, ok := img.takeRelProp(key); ok {
+					installValueIDs(entries, idx.AddKey)
+				} else if relIDs, ok := bs.typeIdx[def.RelTypeToken]; ok {
 					for relID := range relIDs {
 						rawID := relID.SnowflakeID()
 						r, rerr := bs.loadRelFromBadger(txn, rawID)
@@ -1811,7 +1875,9 @@ func (bs *Store) loadIndexesScan() error {
 				}
 				seenComposite[key] = struct{}{}
 				idx := indexpkg.NewCompositePropertyIndex(def.Keys)
-				if nodeIDs, ok := bs.labelIdx[def.LabelToken]; ok {
+				if entries, ok := img.takeComposite(key); ok {
+					installValueIDs(entries, idx.AddKey)
+				} else if nodeIDs, ok := bs.labelIdx[def.LabelToken]; ok {
 					for nodeID := range nodeIDs {
 						rawID := nodeID.SnowflakeID()
 						n, nerr := bs.loadNodeFromBadger(txn, rawID)
@@ -1853,7 +1919,22 @@ func (bs *Store) loadIndexesScan() error {
 				}
 				seenTemporal[tok] = struct{}{}
 				ti := indexpkg.NewTemporalIndex()
-				if bs.temporalIdxOnDisk && !temporalIdxNeedsBuild {
+				var restored []indexpkg.IntervalEntry
+				haveImage := false
+				if !temporalIdxNeedsBuild { // a pending 0x0B backfill needs the row walk below
+					restored, haveImage = img.takeTemporal(tok)
+				}
+				if haveImage {
+					// The runtime envelope also keeps nodes that left the label
+					// (append-only); the open keeps the label's current members,
+					// as the row walk below would.
+					members := bs.labelIdx[tok]
+					for _, e := range restored {
+						if _, ok := members[types.NodeID(e.ID)]; ok {
+							ti.AddKnownAbsent(e.ID, e.From, e.To)
+						}
+					}
+				} else if bs.temporalIdxOnDisk && !temporalIdxNeedsBuild {
 					// Fast path: stream (from, to, id) triples directly from the
 					// compact 0x0B keyspace — no per-node full-row fetch/decode.
 					// Iteration order over one label's sub-keyspace is already
@@ -1948,7 +2029,11 @@ func (bs *Store) loadIndexesScan() error {
 				}
 				seenHF[def.LabelToken] = bucketSize
 				hfi := indexpkg.NewHighFrequencyIndex(bucketSize, 0)
-				if nodeIDs, ok := bs.labelIdx[def.LabelToken]; ok {
+				if entries, ok := img.takeHF(def.LabelToken); ok {
+					for _, e := range entries {
+						hfi.Add(e.id, e.start)
+					}
+				} else if nodeIDs, ok := bs.labelIdx[def.LabelToken]; ok {
 					for nodeID := range nodeIDs {
 						rawID := nodeID.SnowflakeID()
 						n, nerr := bs.loadNodeFromBadger(txn, rawID)
@@ -2002,7 +2087,14 @@ func (bs *Store) loadIndexesScan() error {
 				seenVector[key] = def
 				vi := &indexpkg.VectorIndex{Dims: def.Dims, Metric: def.Metric}
 				indexpkg.ApplyVectorIndexOptions(vi, def.vectorIndexOptions())
-				if nodeIDs, ok := bs.labelIdx[def.LabelToken]; ok {
+				if entries, ok := img.takeVector(key, def.Dims); ok {
+					for _, e := range entries {
+						if addErr := vi.AddOwned(e.id, e.vec); addErr != nil {
+							return fmt.Errorf("graph: load vector index definition label %d property %q restore node %d: %w",
+								def.LabelToken, def.PropertyKey, e.id, addErr)
+						}
+					}
+				} else if nodeIDs, ok := bs.labelIdx[def.LabelToken]; ok {
 					for nodeID := range nodeIDs {
 						rawID := nodeID.SnowflakeID()
 						n, nerr := bs.loadNodeFromBadger(txn, rawID)
@@ -2035,12 +2127,14 @@ func (bs *Store) loadIndexesScan() error {
 	}
 
 	if bs.propIdxOnDisk && propIdxNeedsBuild {
-		if bs.propKeyReg.Load() == nil {
+		if bs.propKeyReg.Load() == nil && propIdxDefined {
 			// No property-key registry wired yet (a direct badger.Store user
 			// without Config.PropertyKeyRegistry and no meta-persisted
 			// registry) — skip the backfill AND leave the marker unset so a
 			// later open (once the registry is available) retries. A graph
 			// opened via pkg/graph always wires a registry before this runs.
+			// With no definition there is nothing to backfill: mark it built,
+			// or every later open walks the rows again (backlog 54).
 		} else if err := bs.commitPropertyIndexOnDiskBackfill(propIdxBackfillOps); err != nil {
 			return err
 		}
@@ -2237,6 +2331,7 @@ func (bs *Store) Clear() error {
 		return true
 	})
 	bs.relPropertyStats = make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyStatsAccumulator)
+	bs.statsDeferred.Store(false) // the empty statistics are exact for the empty store
 
 	// Re-create LRU caches with same capacity and byte budget.
 	cap := bs.nodeCache.Cap()
@@ -2329,13 +2424,21 @@ func (bs *Store) Close() error {
 		<-bs.gcDone    // wait for GC exit
 		// Explicit final flush — ensures pending ops are persisted even when
 		// flushLoop was never spawned. No-op if already drained.
-		if e := bs.flush(); e != nil {
-			err = e
+		e := bs.flush()
+		err = e
+		// flushMu from the open image's drained check until dbClosed is set: a
+		// write that passed checkWritable before closing and flushes now waits
+		// here, then finds the DB closed — it can never commit between the
+		// image's encode and its header (badgerstore_open_image.go).
+		bs.flushMu.Lock()
+		if e == nil {
+			bs.persistOpenImageLocked() // the next open reads keys + this image, not every row
 		}
 		// Mark DB as closed BEFORE db.Close() so any concurrent flush()
 		// calls (e.g., from tests that close the DB directly) return an error
 		// instead of blocking in Badger's WaitForMark.
 		bs.dbClosed.Store(true)
+		bs.flushMu.Unlock()
 		err = errors.Join(err, bs.db.Close())
 	})
 	return err

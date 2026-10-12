@@ -1,0 +1,20 @@
+=== RUN   TestCleanReopenCostNotLinear
+    clean_reopen_test.go:112: rows decoded at a clean reopen: 3000 entities -> 4, 30000 entities -> 4
+--- PASS: TestCleanReopenCostNotLinear (1.03s)
+=== RUN   TestCleanReopenMatchesFullRebuild
+=== RUN   TestCleanReopenMatchesFullRebuild/onDisk=false
+=== RUN   TestCleanReopenMatchesFullRebuild/onDisk=true
+--- PASS: TestCleanReopenMatchesFullRebuild (7.94s)
+=== RUN   TestTemporalIndexLabelOnDiskKeepsHistoryAfterReopen
+--- PASS: TestTemporalIndexLabelOnDiskKeepsHistoryAfterReopen (0.14s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	9.138s
+=== RUN   TestCleanReopenDeferredStateUnderConcurrentWrites
+--- PASS: TestCleanReopenDeferredStateUnderConcurrentWrites (0.30s)
+=== RUN   TestOpenImageHeaderGuards
+=== RUN   TestOpenImageHeaderGuards/checksum
+=== RUN   TestOpenImageHeaderGuards/length
+=== RUN   TestOpenImageHeaderGuards/magic
+--- PASS: TestOpenImageHeaderGuards (0.76s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.091s

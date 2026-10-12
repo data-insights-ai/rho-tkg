@@ -6,6 +6,53 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **A clean badger reopen no longer decodes every row** (backlog 54, requested by ai-soc: `graph.New` took 24.8 s
+  on its 519 K-node / 436 K-relationship store, linear in the store). Profile of the open on that shape
+  (`tasks/evidence/open-cost/01-profile.txt`): property-index rebuild 4.7 s, relationship row decode 3.1 s, node
+  row decode 2.8 s, relationship planner statistics 1.8 s, key scans 1.2 s; the `*OnDisk` modes still decoded
+  every row (13.6 s), so no default changes. A writable `Close` that flushed cleanly now writes the **open image**
+  under the flush lock, after its final flush (the property, relationship-property, composite, temporal,
+  relationship-type temporal, high-frequency and vector index contents and the planner statistics, `0x0F
+  tkg_open_image*`, CRC-32C, header last in its own commit). `New` trusts it only while that header is the
+  store's newest badger commit, and then builds liveness, label / type / adjacency maps and counters from the keys
+  alone, installs the indexes and the planner statistics from the image and fills node integrity hashes on first
+  use. Any later commit (a crashed session's writes, a write by an older release, a raw badger write), a missing
+  chunk, a length or checksum mismatch or a decode error falls back to the full rebuild; read-only opens use the
+  image and never write one. Tiered and sharded shards are badger stores and get it per shard
+  (`TestTieredCleanReopenMatchesFullRebuild`, `TestShardedCleanReopenMatchesFullRebuild`, cross-shard
+  relationships). Measured on the ai-soc shape (`tasks/evidence/open-cost/03-open-time.txt`, same binary and
+  host): `graph.New` 10.3-10.5 s with the full rebuild -> 2.3-2.4 s (quiet host); the rest follows the keys
+  (about 2.8 M entity and index keys into the RAM maps); the first planner-statistics read 6-7 µs; `Close` 0.3 s. Rows decoded by a clean reopen plus one ai-soc
+  record: 4 at 3 K and at 30 K entities (was 4,629 and 46,312; `TestCleanReopenCostNotLinear`, 100 K vs 1 M
+  outside `-short`). `TestCleanReopenMatchesFullRebuild` compares every RAM structure after a reopen with a full
+  rebuild (default and all-`OnDisk` configs; break cases: crash without `Close`, read-only open, an older store
+  without the image, a foreign write after `Close`, a damaged chunk, writes after the reopen, switching the
+  `OnDisk` modes on); `TestCloseImageExcludesWriteRacingClose` a write racing `Close`.
+  What a reopen restores differs from a full rebuild in three places, all within the documented contracts:
+  (1) planner statistics are the closing process's — the NDV sketch keeps values deleted in earlier sessions
+  (NDV never decreases, `docs/query-planners.md`), and min/max keep their dirty flag, so the next `PropertyStats`
+  read rescans them to the exact values a rebuild finds; a full rebuild starts the sketch from the current rows.
+  An image without statistics (closed with `DisablePlannerStats`, or while they were still deferred) defers them:
+  the first statistics read builds them from the current rows, as a full open would, holding the flush and index
+  write locks, so readers and writers wait for that one scan; a failed scan returns its error and stays deferred.
+  (2) A row damaged on disk after a clean close (no commit) is reported when read instead of being skipped at open
+  (`IndexRebuildStats`). (3) A raw badger write that only deletes keys can disappear in a bottom-level
+  compaction, after which the header is again the newest commit and the image is trusted; rho-tkg's own deletes
+  commit with their counters, so this concerns raw writers only.
+
+- **Effective scans read through one store snapshot per chunk** (backlog 55; ai-soc restart, sigma restore). Every
+  door that streams per-entity timelines reads 256 candidates per hold of the read lock, each under its entity lock,
+  through one `store.ReadSnapshot` (new optional capability): badger one read transaction plus forward-walking
+  iterators (unordered doors visit IDs ascending), sharded one per slot; it is discarded before `fn` runs. Reads see
+  the cache and write buffer live and re-pin after every flush or `Clear` (`commitGen`), so answers are unchanged.
+  Transactions per scan: 0-2 for 10 and 60 entities (before 16-36 and 96-217). 100 K relationships with history,
+  reopened store, 1,024-row cache: 3.2-3.7 s → 1.6-1.9 s, 1.16 → 0.69 GB per scan (`BenchmarkEffectiveScanCold`,
+  `tasks/evidence/effective-scans/55-*.txt`). Memory and tiered read per entity as before. Visible only in timing:
+  `fn` may get an entity's segments up to 255 entities after it was read, and a scan stopped by `fn` may have read
+  up to 255 entities it never streams. The gather of `ForEachRelEffectiveAtNodes` still reads each adjacent row.
+
 ### Fixed
 
 - **Relationship planner statistics no longer keep one RAM entry per relationship** (backlog 53, ai-soc). The badger
@@ -55,18 +102,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Keys already written by v4.51.2 are not removed: a key carries no provenance, and the same key may be a
   still-needed leg of an earlier deleted life of that relationship.
 
-### Changed
-
-- **Effective scans read through one store snapshot per chunk** (backlog 55; ai-soc restart, sigma restore). Every
-  door that streams per-entity timelines reads 256 candidates per hold of the read lock, each under its entity lock,
-  through one `store.ReadSnapshot` (new optional capability): badger one read transaction plus forward-walking
-  iterators (unordered doors visit IDs ascending), sharded one per slot; it is discarded before `fn` runs. Reads see
-  the cache and write buffer live and re-pin after every flush or `Clear` (`commitGen`), so answers are unchanged.
-  Transactions per scan: 0-2 for 10 and 60 entities (before 16-36 and 96-217). 100 K relationships with history,
-  reopened store, 1,024-row cache: 3.2-3.7 s → 1.6-1.9 s, 1.16 → 0.69 GB per scan (`BenchmarkEffectiveScanCold`,
-  `tasks/evidence/effective-scans/55-*.txt`). Memory and tiered read per entity as before. Visible only in timing:
-  `fn` may get an entity's segments up to 255 entities after it was read, and a scan stopped by `fn` may have read
-  up to 255 entities it never streams. The gather of `ForEachRelEffectiveAtNodes` still reads each adjacent row.
+- **`LabelIndexOnDisk` + a temporal index lost history envelopes at open and at `CreateTemporal`** (found by backlog
+  54's oracle test): `foldTemporalHistoryEnvelopes` listed the label's members from the RAM label map, which is empty
+  in that mode, so each node's envelope held its current version only and the temporal candidate prune dropped a
+  node whose earlier version matched: `NodesByLabelAt(label, t1)` after a reopen returned 0 nodes for a node valid
+  at t1 and updated since (`TestTemporalIndexLabelOnDiskKeepsHistoryAfterReopen`, red output
+  `tasks/evidence/open-cost/02b-red-ondisk-fold.txt`). The fold now reads the members through the disk-aware label
+  snapshot.
+- **`PropertyIndexOnDisk` re-read every labelled row at every open** when the index was already on disk (the rows
+  were loaded and dropped), and a store created with the option and no registry never got its "built" marker, so
+  each open walked the rows again. Both skip now; with the rows no longer read, a full rebuild in that mode no
+  longer counts unreadable rows in `IndexRebuildStats().PropertySkipped` (the node scan still skips and logs them).
 
 ## [4.51.2] - 2026-10-12
 
