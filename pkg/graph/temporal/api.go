@@ -60,6 +60,12 @@ type Ops interface {
 	RelEffectiveTimeline(id types.RelID, pin types.Instant) ([]RelSegment, error)
 	ForEachNodeEffectiveByLabel(label string, pin types.Instant, fn func(NodeSegment) bool) error
 	ForEachRelEffectiveByType(typeName string, pin types.Instant, fn func(RelSegment) bool) error
+	ForEachNodeEffective(pin types.Instant, fn func(NodeSegment) bool) error
+	ForEachRelEffective(pin types.Instant, fn func(RelSegment) bool) error
+	NodesEffectiveByIDs(ids []types.NodeID, pin types.Instant, fn func(NodeSegment) bool) error
+	RelsEffectiveByIDs(ids []types.RelID, pin types.Instant, fn func(RelSegment) bool) error
+	ForEachRelEffectiveAtNodes(nodeIDs []types.NodeID, dir Direction, relTypes []string, pin types.Instant, fn func(RelSegment) bool) error
+	ForEachNodeEffectiveByLabels(labels []string, pin types.Instant, fn func(NodeSegment) bool) error
 
 	// Cascade / timeline edit: an append-only valid-time correction. props is
 	// a patch (nil deletes a key) applied to the state valid in each piece of
@@ -494,6 +500,80 @@ func (a *API) ForEachRelEffectiveByType(typeName string, pin types.Instant, fn f
 		return err
 	}
 	return ops.ForEachRelEffectiveByType(typeName, pin, fn)
+}
+
+// ForEachNodeEffective streams the effective timeline at pin of every node
+// recorded by the pin — live, closed, deleted before or after the pin; none
+// created after it: each node's segments are its NodeEffectiveTimeline(id,
+// pin), contiguous and ascending; node order is unspecified; fn returning false stops; fn runs
+// without graph locks. Errors and gates: ForEachNodeEffectiveByLabel's.
+func (a *API) ForEachNodeEffective(pin types.Instant, fn func(NodeSegment) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachNodeEffective(pin, fn)
+}
+
+// ForEachRelEffective is ForEachNodeEffective for relationships (segments
+// equal each relationship's RelEffectiveTimeline). DECLARED view: not masked
+// by endpoint validity.
+func (a *API) ForEachRelEffective(pin types.Instant, fn func(RelSegment) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachRelEffective(pin, fn)
+}
+
+// NodesEffectiveByIDs streams NodeEffectiveTimeline(id, pin) for each id in
+// the order of ids, a repeated id once, an unknown id (or one created after
+// the pin) skipped; fn returning false stops. The per-entity door batched:
+// its per-entity compaction / retention gates fail the call; an invalid id
+// (ErrInvalidStoreMutation) is refused before any segment.
+func (a *API) NodesEffectiveByIDs(ids []types.NodeID, pin types.Instant, fn func(NodeSegment) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.NodesEffectiveByIDs(ids, pin, fn)
+}
+
+// RelsEffectiveByIDs is NodesEffectiveByIDs for relationships.
+func (a *API) RelsEffectiveByIDs(ids []types.RelID, pin types.Instant, fn func(RelSegment) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.RelsEffectiveByIDs(ids, pin, fn)
+}
+
+// ForEachRelEffectiveAtNodes streams the effective timelines at pin of the
+// relationships with a seed at the dir endpoint (Outgoing: start node,
+// Incoming: end node), limited to the segments whose row has a seed there and,
+// when relTypes is not empty, one of those types. Relationships deleted before
+// the pin are included; each relationship streams once even when several
+// seeds or both endpoints match; repeated seeds count once; unknown seeds and
+// types contribute nothing; fn returning false stops. DECLARED view. Errors:
+// ForEachRelEffectiveByType's, ErrInvalidDirection, ErrInvalidStoreMutation
+// for an invalid seed.
+func (a *API) ForEachRelEffectiveAtNodes(nodeIDs []types.NodeID, dir Direction, relTypes []string, pin types.Instant, fn func(RelSegment) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachRelEffectiveAtNodes(nodeIDs, dir, relTypes, pin, fn)
+}
+
+// ForEachNodeEffectiveByLabels is ForEachNodeEffectiveByLabel for several
+// labels: each node that carried one of them streams once, limited to the
+// segments whose row carries at least one.
+func (a *API) ForEachNodeEffectiveByLabels(labels []string, pin types.Instant, fn func(NodeSegment) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachNodeEffectiveByLabels(labels, pin, fn)
 }
 
 // NodesAtTx returns nodes valid at validAt as known at txAt.

@@ -1,0 +1,5 @@
+--- FAIL: TestEffectiveScanWrappers (0.00s)
+    effective_test.go:214: nil API ForEachNodeEffective = <nil>, want ErrNilGraph
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal	0.003s
+FAIL
