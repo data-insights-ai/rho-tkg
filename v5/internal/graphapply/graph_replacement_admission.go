@@ -304,7 +304,7 @@ func (a *graphReplacementAdmission) checkContext(ctx context.Context) error {
 		return errInvalid
 	}
 	if a.lifetime != nil && !a.lifetime.pending() {
-		return graphstore.ErrSourceUnavailable
+		return errors.Join(graphstore.ErrSourceUnavailable, a.ctx.Err(), ctx.Err())
 	}
 	if err := a.body.validate(); err != nil {
 		return err

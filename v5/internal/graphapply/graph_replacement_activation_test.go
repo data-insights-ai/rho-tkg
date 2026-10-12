@@ -245,6 +245,11 @@ func TestGraphReplacementActivationRefusalsAndReceivingReopen(t *testing.T) {
 	if association.closes.Load() != 1 {
 		t.Fatal("receiving owner did not close association once", association.closes.Load())
 	}
+	requestCtx, cancelRequest := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+	defer cancelRequest()
+	if err := a.checkContext(requestCtx); !errors.Is(err, graphstore.ErrSourceUnavailable) || !errors.Is(err, context.Canceled) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("retired pending admission dropped owner or request cancellation cause", err)
+	}
 	if next, err := beginGraphReplacementReceiving(a, duplicate, g, o.limits); next != nil || !errors.Is(err, graphstore.ErrSourceUnavailable) {
 		t.Fatal("restart accepted retired pending admission", next, err)
 	}
