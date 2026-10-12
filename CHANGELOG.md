@@ -47,8 +47,8 @@ Patch release, sigma-tkgd requests and read costs: broader effective scans (back
   longer fills the cache, so a rotation larger than the cache stops evicting the rows it is about to read). Hot-loop
   rows unchanged (0 allocs). The bench rows `LatestStamps/{badger,tiered,sharded}/rotating-cache-miss` join the
   allocs-gated `LatestStamps` family. `*sharded.Store` joins the native store types, so a wrapper that embeds it no
-  longer inherits any native capability (current stamps, label membership, deleted iteration, change feed, …): those
-  doors fall back to the wrapper's own row methods (slower, never wrong).
+  longer inherits the capabilities the core admits through its wrapper check (current stamps, label membership, deleted
+  iteration, change feed, …): those doors fall back to the wrapper's own row methods (slower, never wrong).
 
 - **Broader effective scans: `Temporal().ForEachNodeEffective(pin, fn)` / `ForEachRelEffective(pin, fn)`,
   `ForEachRelEffectiveAtNodes(nodeIDs, dir, relTypes, pin, fn)`, `NodesEffectiveByIDs(ids, pin, fn)` /

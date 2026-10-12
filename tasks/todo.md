@@ -44,5 +44,6 @@ ledgers of 2026-10-09/10 (per-step red tests, merges, reviews) are in git histor
 - [ ] (René) stale `wip/badger-scan-flush-evict` branch deleted 2026-10-11; named stability exceptions vs deprecation ritual.
 - [x] Reviews of 33/42/41, 35, 48: one round each, Opus effort high (René 2026-10-12: "Review with opus high"); Sonnet watchdog runs over the three build agents.
 - [x] Final Fable review of the v4.51.1 batch (first prepared as v4.50.2; Markus released v4.51.0 meanwhile): tag, 3 LOW (2 doc fixes applied, nil-cell Other carried) (René 2026-10-12: "Use a fable Agent at the end").
+- [ ] 4.51.2 candidate: a committed test for a patched badger column snapshot vs Other (merge review, LOW).
 - [ ] 4.51.2 candidate (Fable final review 2026-10-12, LOW, not reproduced): nil-valued properties are Other on the row drivers but absent on badger's columnar snapshot (index/docvalues.go:588 vs column_batch_build.go); red test first before filing.
 - [ ] Next release v4.51.2 (v4.51.1 released 2026-10-12 on top of Markus's v4.51.0; v4.50.1 released 2026-10-11; PATCH only; v4.50.0 was released by Markus 2026-10-10, René 2026-10-10: no minor versions until asked) when 43 / 34 / 33 are merged; gate, tag, notify sigma-tkgd and ai-soc.
