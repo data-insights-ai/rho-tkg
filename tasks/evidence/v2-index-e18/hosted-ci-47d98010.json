@@ -1,0 +1,191 @@
+{
+  "run": 38193456921,
+  "run_attempt": 1,
+  "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38193456921",
+  "head": "47d9801078a4bd029a40fe4a89afb9e1d40d5791",
+  "status": "completed",
+  "conclusion": "success",
+  "captured_at": "2026-10-12T02:26:16.502822+00:00",
+  "jobs": [
+    {
+      "id": 114630953105,
+      "name": "comparison-correctness",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-12T01:50:40Z",
+      "completed_at": "2026-10-12T01:52:46Z"
+    },
+    {
+      "id": 114630953184,
+      "name": "test (v5, v5/go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-12T01:50:39Z",
+      "completed_at": "2026-10-12T02:08:34Z"
+    },
+    {
+      "id": 114630953236,
+      "name": "test (., go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-12T01:50:40Z",
+      "completed_at": "2026-10-12T02:24:33Z"
+    },
+    {
+      "id": 114630953243,
+      "name": "coverage (v5, v5/go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-12T01:50:39Z",
+      "completed_at": "2026-10-12T01:53:09Z"
+    },
+    {
+      "id": 114630953245,
+      "name": "security (., go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-12T01:50:39Z",
+      "completed_at": "2026-10-12T01:52:15Z"
+    },
+    {
+      "id": 114630953265,
+      "name": "security (v5, v5/go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-12T01:50:39Z",
+      "completed_at": "2026-10-12T01:51:47Z"
+    },
+    {
+      "id": 114630953279,
+      "name": "coverage (., go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-12T01:50:39Z",
+      "completed_at": "2026-10-12T01:55:06Z"
+    },
+    {
+      "id": 114630953796,
+      "name": "lint",
+      "status": "completed",
+      "conclusion": "skipped",
+      "started_at": "2026-10-12T01:50:38Z",
+      "completed_at": "2026-10-12T01:50:37Z"
+    }
+  ],
+  "executed_batches": {
+    "root": {
+      "other_packages": 44,
+      "other_packages_executed_once": true,
+      "other_package_execution_names": [
+        "github.com/data-insights-ai/rho-tkg/v4/bench",
+        "github.com/data-insights-ai/rho-tkg/v4/bench/temporalreplay",
+        "github.com/data-insights-ai/rho-tkg/v4/internal/synthhop",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/constraints",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/hash",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/index",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/apiutil",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/locks",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segdir",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segment",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/snowflake",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ontology",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/rels",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/replication",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/resolve",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/stats",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/tier",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/internal/idlayout",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/types",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/types/internal/collisionone",
+        "github.com/data-insights-ai/rho-tkg/v4/pkg/types/internal/collisiontwo",
+        "github.com/data-insights-ai/rho-tkg/v4/tutorials/001_basic_graph",
+        "github.com/data-insights-ai/rho-tkg/v4/tutorials/002_temporal",
+        "github.com/data-insights-ai/rho-tkg/v4/tutorials/003_badger_persistence",
+        "github.com/data-insights-ai/rho-tkg/v4/tutorials/004_full_features",
+        "github.com/data-insights-ai/rho-tkg/v4/tutorials/005_performance"
+      ],
+      "selected_top_level_compiled_names": 2174,
+      "batch_sizes": [
+        544,
+        544,
+        543,
+        543
+      ],
+      "names_unique": true,
+      "completion_marker": true,
+      "actual_race_package_pass_lines": [
+        "2026-10-12T02:17:54.4223872Z ok  \tgithub.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core\t272.202s",
+        "2026-10-12T02:21:21.9364214Z ok  \tgithub.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core\t205.962s",
+        "2026-10-12T02:23:35.6282081Z ok  \tgithub.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core\t132.061s",
+        "2026-10-12T02:24:30.6851598Z ok  \tgithub.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core\t53.528s"
+      ],
+      "individual_body_or_skip_count_inferred": false,
+      "qualification": "Selected compiled names counted from this head's own dispatcher execution patterns. Four actual package ok results and final exhaustive completion establish short race gate execution. Compact logs do not enumerate each individual test body or qualified skip."
+    },
+    "v5": {
+      "other_packages": 11,
+      "other_packages_executed_once": true,
+      "other_package_execution_names": [
+        "github.com/data-insights-ai/rho-tkg/v5/internal/assertion",
+        "github.com/data-insights-ai/rho-tkg/v5/internal/graphstate",
+        "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore",
+        "github.com/data-insights-ai/rho-tkg/v5/internal/idalloc",
+        "github.com/data-insights-ai/rho-tkg/v5/internal/raftlog",
+        "github.com/data-insights-ai/rho-tkg/v5/internal/replica",
+        "github.com/data-insights-ai/rho-tkg/v5/internal/state",
+        "github.com/data-insights-ai/rho-tkg/v5/internal/timeblock",
+        "github.com/data-insights-ai/rho-tkg/v5/internal/txnproto",
+        "github.com/data-insights-ai/rho-tkg/v5/pkg/temporal",
+        "github.com/data-insights-ai/rho-tkg/v5/pkg/types"
+      ],
+      "selected_top_level_compiled_names": 438,
+      "batch_sizes": [
+        110,
+        110,
+        109,
+        109
+      ],
+      "names_unique": true,
+      "completion_marker": true,
+      "actual_race_package_pass_lines": [
+        "2026-10-12T02:03:33.3860369Z ok  \tgithub.com/data-insights-ai/rho-tkg/v5/internal/graphapply\t141.923s",
+        "2026-10-12T02:05:14.0903911Z ok  \tgithub.com/data-insights-ai/rho-tkg/v5/internal/graphapply\t99.623s",
+        "2026-10-12T02:06:48.0484103Z ok  \tgithub.com/data-insights-ai/rho-tkg/v5/internal/graphapply\t92.899s",
+        "2026-10-12T02:08:31.9444479Z ok  \tgithub.com/data-insights-ai/rho-tkg/v5/internal/graphapply\t102.864s"
+      ],
+      "individual_body_or_skip_count_inferred": false,
+      "qualification": "Selected compiled names counted from this head's own dispatcher execution patterns. Four actual package ok results and final exhaustive completion establish short race gate execution. Compact logs do not enumerate each individual test body or qualified skip."
+    }
+  },
+  "validation_scope": "Hosted push CI completed root/v5 vet, build, short normal and race tests, coverage gates, security/vulnerability gates and comparison correctness at the exact head. PR-only lint skipped and is covered separately by the pinned E18 local run. The root independently checked terminal GitHub state, all artifact hashes/sizes, both compressed log copies, exact batch names, package results and completion markers. This closes finite E18 hosted validation only; native P08, production identity admission, physical-host durability and full V2 acceptance remain open.",
+  "distinct_previous_runs": [
+    38189378747,
+    38191377916
+  ],
+  "poll_artifact_scope": "polls.jsonl retains observations from 02:10:05 UTC onward; earlier observations are in the conversation tool record.",
+  "archive": {
+    "file": "hosted-ci-47d98010.tar.gz",
+    "sha256": "5f2227706c4d003def3250dd67795eeb7e06c9d02789c4a01d9cf2b0c0460cbf",
+    "bytes": 166664,
+    "manifest": "manifest.json",
+    "qualification": "Complete observer receipt with selected names, run/jobs metadata and raw execution logs are preserved unchanged; every manifest member was independently verified before and after archiving."
+  }
+}

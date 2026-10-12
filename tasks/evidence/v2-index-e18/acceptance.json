@@ -1,5 +1,5 @@
 {
-  "status": "accepted_locally_finite_E18",
+  "status": "accepted_finite_E18",
   "date": "2026-10-12",
   "author_commit": "075b1eaeeff782b0664b27a5af5feeaf5f470335",
   "integration_commit": "a059b00f",
@@ -61,7 +61,14 @@
     "traffic_qualification": "E18-only fixture allowance, not an algorithmic worst-case or production SLO; default fixture allowance and production source/session/frame/queue limits are unchanged."
   },
   "hosted_ci": {
-    "status": "pending_push"
+    "status": "completed",
+    "conclusion": "success",
+    "run": 38193456921,
+    "attempt": 1,
+    "head": "47d9801078a4bd029a40fe4a89afb9e1d40d5791",
+    "receipt": "hosted-ci-47d98010.json",
+    "sha256": "a556fd0449549394258b8095d29bf8884f996826a13d49c2093f4237fdc67c5d",
+    "qualification": "All seven applicable jobs pass. PR-only lint skipped; pinned local lint evidence retained. Counts are compiled selections, not individual body/skip counts."
   },
   "limitations": [
     "One physical host with six native OS processes; no multi-host durability claim.",

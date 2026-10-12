@@ -78,7 +78,7 @@ and reference JSON specify contracts/evidence, not completed engine gates.
 |---|---|
 | V0 | Specification accepted: independent criterion review and refreshed reference/design checks pass. Contracts, profile/unit/import policy, current-v4 delta and reproducible resource/dataset test profiles are reviewed below. Implementation, consumer execution and measured capacity retain their separate phase gates |
 | V1 | Values/state accepted: unchanged 16/52 and revised rho-owned cases pass through typed primitives and `Plan`/`Project`, including immutable interpretation/native-axis roles, attached descriptor/source-revision history, graph-qualified refusals, independent state/complete-CDC capacity assertions and the pure Q/ms default-axis binding. Node/relationship retained-view exact sets, boundary/differential/fuzz/codec refusals and direct new-method coverage pass. Durable default registration is covered by the V2 checkpoint below; request/dependency installation and graph/cut integration remain V2, consumer adapters V4 and provenance-aware import V6 |
-| V2 | Active, not accepted. Checked partition-local writes, same-graph cross-partition prepare/decision/resolve and certified current/historical graph reads are accepted on both declared partitions of one GraphID, with three disk-backed voters each, retained history, nonempty snapshot activation, failover and reopen. Remote E15/E16 and finite E17 range handoff pass with authenticated leader sources and six native voters. Default-axis designation, shared allocation and explicit local authority are preserved. E17 hosted CI passes after its scheduling correction. Remote E18 index-starting hydration is accepted locally; its hosted validation is pending. Package 4 still requires broader ownership recovery, production identity reuse/fencing, application GC, physical-host durability and comparable transactional-KV fault/cost evidence with an explicit engine decision |
+| V2 | Active, not accepted. Checked partition-local writes, same-graph cross-partition prepare/decision/resolve and certified current/historical graph reads are accepted on both declared partitions of one GraphID, with three disk-backed voters each, retained history, nonempty snapshot activation, failover and reopen. Remote E15/E16 and finite E17 range handoff pass with authenticated leader sources and six native voters. Default-axis designation, shared allocation and explicit local authority are preserved. E17 hosted CI passes after its scheduling correction. Remote E18 index-starting hydration and its hosted validation are accepted. Package 4 still requires broader ownership recovery, production identity reuse/fencing, application GC, physical-host durability and comparable transactional-KV fault/cost evidence with an explicit engine decision |
 | V3 | Coordinate timeblock candidate independently validated (local commit `fa0c982`; scoped temporal+block coverage 95.7%, no exported method at 0%). Full engine seal/merge/recovery, paged structures and all-in budget/byte-ledger measurements remain open; resident-buffer prototype timings do not close V3 |
 | V4 | Production read/change APIs, historical cross-door parity, gap-free leased feed handoff and pinned sigma access-contract build and nonempty mutation-then-historical tests (the current signature/empty smoke is insufficient) |
 | V5 | Distributed access across 1/2/4/8 partitions, cross-edge/stall/rebalance/feed cases and sigma workload parity |
@@ -341,7 +341,7 @@ reviewed and validated before the next package starts.
    [Hosted CI at `13612eb3`](evidence/v2-range-e17/hosted-ci-13612eb3.json)
    passes all seven applicable root/v5/comparison jobs, including both exhaustive
    race gates; PR-only lint is covered separately by pinned local evidence.
-   **Finite remote E18 accepted locally**, 2026-10-12: unique-property and
+   **Finite remote E18 accepted**, 2026-10-12: unique-property and
    endpoint indexes supply candidates for same-cut typed value/component/life
    hydration on six native OS processes. Held and reopened historical cuts retain
    exact pre-correction answers; current reads reject stale effective matches.
@@ -350,9 +350,18 @@ reviewed and validated before the next package starts.
    check, pinned static/security gates and complete child cleanup. All production
    code and source/session limits are unchanged. The fixture uses seven explicitly
    admitted read operations and a stated aggregate IPC allowance, not a production
-   cost guarantee. Hosted validation is pending; broader selector/scan parity,
+   cost guarantee. [Hosted CI at `47d98010`](evidence/v2-index-e18/hosted-ci-47d98010.json)
+   passes all seven applicable jobs, including 438 selected graphapply names in
+   four race batches and the 11 other v5 packages. Broader selector/scan parity,
    ownership/GC, physical-host durability, engine comparison and other V2 exit
    requirements remain open.
+   Next is substrate case P08 on the native graph path: partial cached issuance,
+   uncertain grant delivery, recipient/allocator process restart, stale new-write
+   refusal and exact committed-request recovery. Existing reducer and scalar
+   six-process tests do not close that composition requirement. Separately,
+   production creation/replacement admission must distinguish new logical graphs
+   from recovery; existing-directory binding checks alone do not establish that
+   a logical identity may safely be bootstrapped on fresh or lost storage.
 
 The phase table above records current acceptance. The following entries retain
 the scope of their historical component validations.
