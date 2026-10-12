@@ -1,0 +1,1058 @@
+[
+  {
+    "method": "LookupOriginal",
+    "source": "v5/internal/graphapply/range_move_original.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMoveCompletedHandoffCopiesNativeCrossDecisionsAndDedupWithKeeperOffline",
+        "file": "v5/internal/graphapply/range_move_transfer_guards_test.go"
+      },
+      {
+        "test": "TestRangeMoveLookupOriginalKeepsLateRefusalAndCapturedSourceCoordinates",
+        "file": "v5/internal/graphapply/range_move_original_keeper_test.go"
+      },
+      {
+        "test": "TestRangeMoveLookupOriginalCompletedKeeperAbsenceIgnoresTargetCollision",
+        "file": "v5/internal/graphapply/range_move_original_keeper_test.go"
+      },
+      {
+        "test": "TestRangeMoveLookupOriginalBoundaryRefusalsDoNotDispatchOrReturnPartialData",
+        "file": "v5/internal/graphapply/range_move_original_boundary_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 52,
+      "statements": 64,
+      "percentage": 81.25
+    },
+    "source_line": 59
+  },
+  {
+    "method": "Run",
+    "source": "v5/internal/graphapply/range_move_coordinator.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestGraphSourceWireRequestAdmissionSymmetry",
+        "file": "v5/internal/graphapply/graph_source_wire_test.go"
+      },
+      {
+        "test": "TestGraphSourceWireInfoReadLimitAdmissionSymmetry",
+        "file": "v5/internal/graphapply/graph_source_wire_test.go"
+      },
+      {
+        "test": "TestGraphSourceWireRequestMalformedAndCountBeforeAllocationGuard",
+        "file": "v5/internal/graphapply/graph_source_wire_test.go"
+      },
+      {
+        "test": "TestGraphSourceWirePageRejectsPhantomCursorAndMissingRows",
+        "file": "v5/internal/graphapply/graph_source_wire_test.go"
+      },
+      {
+        "test": "TestGraphSourceWireInfoNativeFieldsOwnershipAndMismatchGuard",
+        "file": "v5/internal/graphapply/graph_source_wire_test.go"
+      },
+      {
+        "test": "TestGraphSourceWireResponseCorrelationAndErrorMaskGuard",
+        "file": "v5/internal/graphapply/graph_source_wire_test.go"
+      },
+      {
+        "test": "TestRangeMoveFrozenPageRejectsChangedCaptureManifestAndExpectedPageBindings",
+        "file": "v5/internal/graphapply/range_move_frozen_guards_test.go"
+      },
+      {
+        "test": "TestOwnedRegionPreflightExactBoundaryAndMetadata",
+        "file": "v5/internal/graphapply/graph_codec_test.go"
+      },
+      {
+        "test": "TestInvalidMaterializerPoliciesRefuseBeforeMachineConstruction",
+        "file": "v5/internal/graphapply/graph_codec_test.go"
+      },
+      {
+        "test": "TestGraphCutWirePreservesEveryObservationAndRejectsCrossKindResidue",
+        "file": "v5/internal/graphapply/certified_graph_wire_test.go"
+      },
+      {
+        "test": "TestGraphCutWireRejectsKindSpecificMismatches",
+        "file": "v5/internal/graphapply/certified_graph_wire_test.go"
+      },
+      {
+        "test": "TestGraphCutWireDecoderRejectsResealedContradictoryObservations",
+        "file": "v5/internal/graphapply/certified_graph_wire_test.go"
+      },
+      {
+        "test": "TestCertifiedGraphReviewAbortNeedsCompletedManifestBoundParticipantAuthority",
+        "file": "v5/internal/graphapply/certified_graph_review_corrections_test.go"
+      },
+      {
+        "test": "TestCertifiedGraphReviewAfterRejectsGenuineUnrelatedAuthorityReceipts",
+        "file": "v5/internal/graphapply/certified_graph_review_corrections_test.go"
+      },
+      {
+        "test": "TestCertifiedGraphReviewAfterReceiptSurvivesIssuerCloseAndGenuineFollowerReopen",
+        "file": "v5/internal/graphapply/certified_graph_review_corrections_test.go"
+      },
+      {
+        "test": "TestRangeMoveIntentRejectsChangedScopeAndUnboundedAdmission",
+        "file": "v5/internal/graphapply/range_move_codec_test.go"
+      },
+      {
+        "test": "TestRangeMoveCodecRefusesMalformedFramesWithoutPartialValues",
+        "file": "v5/internal/graphapply/range_move_codec_test.go"
+      },
+      {
+        "test": "TestRangeMoveCommandRejectsForeignScopeAndCaps",
+        "file": "v5/internal/graphapply/range_move_codec_test.go"
+      },
+      {
+        "test": "TestCrossProcessCoordinatorSuccessiveRunReadAndExactResume",
+        "file": "v5/internal/graphapply/cross_process_coordinator_test.go"
+      },
+      {
+        "test": "TestCrossProcessCoordinatorDroppedRegistrationResendsOriginalBytes",
+        "file": "v5/internal/graphapply/cross_process_coordinator_test.go"
+      },
+      {
+        "test": "TestCrossProcessCoordinatorEarlyNORequiresAbsentProofAndResolvesPresent",
+        "file": "v5/internal/graphapply/cross_process_coordinator_test.go"
+      },
+      {
+        "test": "TestCrossProcessCoordinatorLostDecisionReplyRecoversDurableDecision",
+        "file": "v5/internal/graphapply/cross_process_coordinator_test.go"
+      },
+      {
+        "test": "TestCrossProcessCoordinatorNilAndCancelledAdmission",
+        "file": "v5/internal/graphapply/cross_process_coordinator_test.go"
+      },
+      {
+        "test": "TestCrossProcessCapturedMetadataDoesNotReplaceUnavailableGraphData",
+        "file": "v5/internal/graphapply/cross_process_coordinator_test.go"
+      },
+      {
+        "test": "TestCrossProcessIncidentPhysicalWorkLimitRefusesWithoutPartialSet",
+        "file": "v5/internal/graphapply/cross_process_coordinator_test.go"
+      },
+      {
+        "test": "TestCrossProcessCoordinatorGenuineFactoryAndPendingIntentRefusals",
+        "file": "v5/internal/graphapply/cross_process_coordinator_test.go"
+      },
+      {
+        "test": "TestCrossProcessCoordinatorBusyAndFrozenPendingCapacity",
+        "file": "v5/internal/graphapply/cross_process_coordinator_test.go"
+      },
+      {
+        "test": "TestInitStageAndOutputLimitsAreRecoverableOrOperational",
+        "file": "v5/internal/graphapply/reducer_test.go"
+      },
+      {
+        "test": "TestStoredBindingsAndReadBudgetsFailClosed",
+        "file": "v5/internal/graphapply/reducer_test.go"
+      },
+      {
+        "test": "TestRangeMoveWaitsForOriginalRegisteredAndPreparedCrossSettlement",
+        "file": "v5/internal/graphapply/range_move_cross_fence_test.go"
+      },
+      {
+        "test": "TestRegisteredJournalIndependentVariants",
+        "file": "v5/internal/graphapply/registered_journal_test.go"
+      },
+      {
+        "test": "TestRegisteredJournalInvalidSourceFields",
+        "file": "v5/internal/graphapply/registered_journal_test.go"
+      },
+      {
+        "test": "TestRangeMoveCoordinatorCompletedAbortRejectsDelayedGenuineTargetFence",
+        "file": "v5/internal/graphapply/range_move_late_fence_after_abort_test.go"
+      },
+      {
+        "test": "TestCertifiedGraphSourceInfoCodecOwnsNativeHistoricalMetadataAndRejectsInvalidFields",
+        "file": "v5/internal/graphapply/certified_graph_source_test.go"
+      },
+      {
+        "test": "TestCertifiedGraphSourceInfoDecoderRejectsTruncatedResealedAndOversizedMetadata",
+        "file": "v5/internal/graphapply/certified_graph_source_test.go"
+      },
+      {
+        "test": "TestCertifiedGraphSourceNativeCaptureRefusesWrongMissingCancelledAndClosedAuthority",
+        "file": "v5/internal/graphapply/certified_graph_source_test.go"
+      },
+      {
+        "test": "TestRangeMovePrepareNativeBoundaryRefusalsDoNotAcquireOwners",
+        "file": "v5/internal/graphapply/range_move_prepare_test.go"
+      },
+      {
+        "test": "TestSharedStageThenComposerRefusesConsumedAllowanceWithoutReset",
+        "file": "v5/internal/graphapply/partition_composition_budget_test.go"
+      },
+      {
+        "test": "TestGraphOutputJoinAdmitsDecoderOwnedCompactRegionBacking",
+        "file": "v5/internal/graphapply/partition_composition_budget_test.go"
+      },
+      {
+        "test": "TestRangeMoveNativeDescribeAndImportRefusalsPreserveOriginalContinuationAndCredits",
+        "file": "v5/internal/graphapply/range_move_import_guards_test.go"
+      },
+      {
+        "test": "TestCrossPartitionSameRequestIDTwoCoordinatorsHaveRecoverableProgress",
+        "file": "v5/internal/graphapply/cross_partition_identity_test.go"
+      },
+      {
+        "test": "TestRangeMoveFrozenPageOwnershipInterruptsBackgroundCallerAndClosesBothViews",
+        "file": "v5/internal/graphapply/range_move_frozen_page_lifetime_test.go"
+      },
+      {
+        "test": "TestRangeMoveQueryLiteralAndAllowanceBounds",
+        "file": "v5/internal/graphapply/range_move_transport_test.go"
+      },
+      {
+        "test": "TestRangeMoveAuthoritySealBindsWholeNativeObservation",
+        "file": "v5/internal/graphapply/range_move_transport_test.go"
+      },
+      {
+        "test": "TestRangeMoveAuthorityWireRefusesUncorrelatedBodies",
+        "file": "v5/internal/graphapply/range_move_transport_test.go"
+      },
+      {
+        "test": "TestMaterializerPhysicalFormats2And3PreserveLogicalInitializationAndWrites",
+        "file": "v5/internal/graphapply/physical_format_compat_test.go"
+      },
+      {
+        "test": "TestRemoteCertifiedReadFailureRetiresOriginalGrantWithoutBudgetReset",
+        "file": "v5/internal/graphapply/certified_graph_remote_budget_test.go"
+      },
+      {
+        "test": "TestRegisteredGenesisOriginChecksumValidSemanticRefusals",
+        "file": "v5/internal/graphapply/registered_origin_test.go"
+      },
+      {
+        "test": "TestCrossPartitionCapacityAbortMirrorsPriorityAndConflictSourceAtOrdinaryCliffs",
+        "file": "v5/internal/graphapply/cross_partition_capacity_test.go"
+      },
+      {
+        "test": "TestCrossPartitionQueuedCommitAndCapacityAbortKeepFirstDecisionImmutable",
+        "file": "v5/internal/graphapply/cross_partition_capacity_test.go"
+      },
+      {
+        "test": "TestRangeMoveIntrinsicSourceAdmissionIsTerminalWithoutFenceAndKeepsOriginalRetry",
+        "file": "v5/internal/graphapply/range_move_intrinsic_admission_test.go"
+      },
+      {
+        "test": "TestRegisteredInventorySelectorExhaustion",
+        "file": "v5/internal/graphapply/registered_inventory_selector_budget_regression_test.go"
+      },
+      {
+        "test": "TestCrossPartitionManifestProofAndAggregateRefusalsLeaveNoOutput",
+        "file": "v5/internal/graphapply/cross_partition_acceptance_test.go"
+      },
+      {
+        "test": "TestCrossPartitionCorruptPreparedStatusAndLocksCannotRestoreOrStage",
+        "file": "v5/internal/graphapply/cross_partition_acceptance_test.go"
+      },
+      {
+        "test": "TestDeclaredMaterializerOperationalBudgetsNeverPublishPartialInitialization",
+        "file": "v5/internal/graphapply/declared_materializer_test.go"
+      },
+      {
+        "test": "TestDeclaredMaterializerNilClosedMalformedAndFreshnessBoundaries",
+        "file": "v5/internal/graphapply/declared_materializer_test.go"
+      },
+      {
+        "test": "TestDeclaredMaterializerEncounteredGenesisCorruptionNeverReplaysNewCommands",
+        "file": "v5/internal/graphapply/declared_materializer_test.go"
+      },
+      {
+        "test": "TestRangeMovePartialActivationRestoresOriginalCommitAndOldCertifiedCut",
+        "file": "v5/internal/graphapply/range_move_partial_activation_test.go"
+      },
+      {
+        "test": "TestRangeMoveAdmissionWrongSourcePlacementRefusesWithoutRecoveryOwner",
+        "file": "v5/internal/graphapply/range_move_admission_test.go"
+      },
+      {
+        "test": "TestRangeMoveUndoCodecAndNativeInverseRefusalsPreserveStoredOriginals",
+        "file": "v5/internal/graphapply/range_move_undo_guards_test.go"
+      },
+      {
+        "test": "TestDeclaredRecipientPhaseOrderRefusalsPreserveInput",
+        "file": "v5/internal/graphapply/allocation_protocol_test.go"
+      },
+      {
+        "test": "TestDeclaredAllocationLargerRecordsUseExplicitReadAdmission",
+        "file": "v5/internal/graphapply/allocation_host_test.go"
+      },
+      {
+        "test": "TestDeclaredAllocationProducerRefusalsBeforeProposalAndPostInitAttempt",
+        "file": "v5/internal/graphapply/allocation_host_test.go"
+      },
+      {
+        "test": "TestDeclaredAllocationFailedAndWrongHostDeliveryCannotCreateCursor",
+        "file": "v5/internal/graphapply/allocation_host_test.go"
+      },
+      {
+        "test": "TestDeclaredMaterializerMalformedProtocolAndLocalDecodeLimitHaveNoEffects",
+        "file": "v5/internal/graphapply/allocation_host_test.go"
+      },
+      {
+        "test": "TestRangeMoveSuccessfulHandoffCarriesBothCapturedClockFloorsBeforeFresh",
+        "file": "v5/internal/graphapply/range_move_transfer_guards_test.go"
+      },
+      {
+        "test": "TestGraphSourceAuthenticatedNativeRootAndGetRoundTrip",
+        "file": "v5/internal/graphapply/graph_source_transport_test.go"
+      },
+      {
+        "test": "TestGraphSourceAuthorityExportAndProposalRejectAlteredNativeEvidence",
+        "file": "v5/internal/graphapply/graph_source_authority_guards_test.go"
+      },
+      {
+        "test": "TestRegisteredRuntimeGuardPublicInitializeRootAndReadCaps",
+        "file": "v5/internal/graphapply/registered_runtime_guards_test.go"
+      },
+      {
+        "test": "TestRegisteredRuntimeGuardActualCommittedCommandsAndFences",
+        "file": "v5/internal/graphapply/registered_runtime_guards_test.go"
+      },
+      {
+        "test": "TestRangeMoveCatalogBaselineOwnsExactRetainedCaptureAndRefusesMalformedImportData",
+        "file": "v5/internal/graphapply/range_move_baseline_guards_test.go"
+      },
+      {
+        "test": "TestRegisteredTypedAxisRefusalsAndWorkExhaustion",
+        "file": "v5/internal/graphapply/registered_codec_test.go"
+      },
+      {
+        "test": "TestRegisteredWireOrderingAndDuplicatesRefuseWithoutDecodedData",
+        "file": "v5/internal/graphapply/registered_codec_test.go"
+      },
+      {
+        "test": "TestRegisteredDirectOperationLedgerBoundaries",
+        "file": "v5/internal/graphapply/registered_codec_test.go"
+      },
+      {
+        "test": "TestRegisteredIndependentVariantsBindEveryBootstrapField",
+        "file": "v5/internal/graphapply/registered_codec_test.go"
+      },
+      {
+        "test": "TestRegisteredRefusesMalformedWireWithoutPartialData",
+        "file": "v5/internal/graphapply/registered_codec_test.go"
+      },
+      {
+        "test": "TestRegisteredMappingSchemaAndOriginRefusals",
+        "file": "v5/internal/graphapply/registered_codec_test.go"
+      },
+      {
+        "test": "TestRegisteredBootstrapRejectsStrictUnionDomainDefaultAllocator",
+        "file": "v5/internal/graphapply/registered_codec_test.go"
+      },
+      {
+        "test": "TestRangeMoveReplayFirstOriginKeyBijectionAndInheritedInertStage",
+        "file": "v5/internal/graphapply/range_move_replay_test.go"
+      },
+      {
+        "test": "TestMaterializerResourceRefusalsAreOperationalAndRetryAfterRelief",
+        "file": "v5/internal/graphapply/materializer_test.go"
+      },
+      {
+        "test": "TestMaterializerCommittedCrashNeverBecomesAbort",
+        "file": "v5/internal/graphapply/materializer_test.go"
+      },
+      {
+        "test": "TestGraphMutationCrashRecoversFactsOutcomeCDCAndHistory",
+        "file": "v5/internal/graphapply/materializer_test.go"
+      },
+      {
+        "test": "TestMaterializerMissingAllocatorAndHiddenBootstrapDataFailClosed",
+        "file": "v5/internal/graphapply/materializer_test.go"
+      },
+      {
+        "test": "TestMaterializerSemanticBindingBeforeRestoreAndPreservesStore",
+        "file": "v5/internal/graphapply/semantic_binding_test.go"
+      },
+      {
+        "test": "TestRegisteredRegistrySuppliedJointBudgetBeforeOutput",
+        "file": "v5/internal/graphapply/registered_registry_materializer_test.go"
+      },
+      {
+        "test": "TestRegisteredRegistryMalformedAndCoordinateRefusals",
+        "file": "v5/internal/graphapply/registered_registry_materializer_test.go"
+      },
+      {
+        "test": "TestRegisteredRegistryQuotaAndPureJointGuards",
+        "file": "v5/internal/graphapply/registered_registry_materializer_test.go"
+      },
+      {
+        "test": "TestRegisteredRegistryRestoreRejectsDifferentInstalledBytes",
+        "file": "v5/internal/graphapply/registered_registry_materializer_test.go"
+      },
+      {
+        "test": "TestRegisteredRegistryOriginStaticRows",
+        "file": "v5/internal/graphapply/registered_registry_materializer_test.go"
+      },
+      {
+        "test": "TestRegisteredRegistryConcurrentOwnershipGuard",
+        "file": "v5/internal/graphapply/registered_registry_materializer_test.go"
+      },
+      {
+        "test": "TestRangeMoveNativeStageDoesNotTreatGraphIDAsInitializationOpcode",
+        "file": "v5/internal/graphapply/range_move_dispatch_test.go"
+      },
+      {
+        "test": "TestGraphGenesisNilProofGraphAndBudgetRefusals",
+        "file": "v5/internal/graphapply/graph_genesis_test.go"
+      },
+      {
+        "test": "TestGraphGenesisMissingCrossedMetadataRefusesCurrentButRetainsOldView",
+        "file": "v5/internal/graphapply/graph_genesis_test.go"
+      },
+      {
+        "test": "TestGraphGenesisCompletedProofCannotCrossAgreementOrOriginatingHost",
+        "file": "v5/internal/graphapply/graph_genesis_test.go"
+      },
+      {
+        "test": "TestGraphSourceProcessQueuedCancellationRepliesOnceToOriginalPausedRequest",
+        "file": "v5/internal/graphapply/graph_source_process_cancel_test.go"
+      },
+      {
+        "test": "TestReplicatedProcessShutdownReapsFailedCloseRPC",
+        "file": "v5/internal/graphapply/replicated_process_test.go"
+      },
+      {
+        "test": "TestRegisteredInventoryAllPreparedVariants",
+        "file": "v5/internal/graphapply/registered_inventory_codec_test.go"
+      },
+      {
+        "test": "TestRegisteredInventoryExactPreparedWork",
+        "file": "v5/internal/graphapply/registered_inventory_codec_test.go"
+      },
+      {
+        "test": "TestRegisteredInventoryJournalAdaptersAndWork",
+        "file": "v5/internal/graphapply/registered_inventory_codec_test.go"
+      },
+      {
+        "test": "TestPublishedProtocolGrantRejectsReservationAndSourceMismatches",
+        "file": "v5/internal/graphapply/partition_publication_test.go"
+      },
+      {
+        "test": "TestRegistryFourteenIndependentPipelines",
+        "file": "v5/internal/graphapply/registered_registry_codec_contract_test.go"
+      },
+      {
+        "test": "TestRegistryExactWorkOwnedAndZeroTuples",
+        "file": "v5/internal/graphapply/registered_registry_codec_contract_test.go"
+      },
+      {
+        "test": "TestGCD1InitializationPreservesLegacyBytesAndEffectDigests",
+        "file": "v5/internal/graphapply/initialization_contract_test.go"
+      },
+      {
+        "test": "TestInitializedGuardChargesActualWorkAndPreflightsOwnedMetadata",
+        "file": "v5/internal/graphapply/initialization_contract_test.go"
+      },
+      {
+        "test": "TestPhysicalFullFormatDoesNotAuthorizeControlsOrInitializationOutcomes",
+        "file": "v5/internal/graphapply/initialization_contract_test.go"
+      },
+      {
+        "test": "TestInitializedGuardSharesOuterBudgetsAndRetriesAfterRelief",
+        "file": "v5/internal/graphapply/initialization_contract_test.go"
+      },
+      {
+        "test": "TestRestoreAndConstructorHonorSharedSourceBoundaries",
+        "file": "v5/internal/graphapply/initialization_contract_test.go"
+      },
+      {
+        "test": "TestDeclaredGenesisConfigurationRejectsRechecksummedHostileShapes",
+        "file": "v5/internal/graphapply/declared_command_test.go"
+      },
+      {
+        "test": "TestDeclaredGenesisConfigurationInputAndRepresentationBoundaries",
+        "file": "v5/internal/graphapply/declared_command_test.go"
+      },
+      {
+        "test": "TestDeclaredInitHostAdmissionUsesReplicaDecoderHeadroom",
+        "file": "v5/internal/graphapply/declared_command_test.go"
+      },
+      {
+        "test": "TestPreparedRangeMoveCrossRecoveryUsesIncomingBankNotActiveBaseline",
+        "file": "v5/internal/graphapply/range_move_prepared_bank_test.go"
+      },
+      {
+        "test": "TestRegisteredInventoryFirstCompleteCapturedBank",
+        "file": "v5/internal/graphapply/registered_inventory_test.go"
+      },
+      {
+        "test": "TestRegisteredInventoryCommittedSemanticRefusals",
+        "file": "v5/internal/graphapply/registered_inventory_test.go"
+      },
+      {
+        "test": "TestRangeMoveLookupOriginalBoundaryRefusalsDoNotDispatchOrReturnPartialData",
+        "file": "v5/internal/graphapply/range_move_original_boundary_test.go"
+      },
+      {
+        "test": "TestRangeMoveCoordinatorRunResumePreservesNonemptyOldView",
+        "file": "v5/internal/graphapply/range_move_coordinator_test.go"
+      },
+      {
+        "test": "TestRangeMoveCoordinatorUnknownFenceRetainsExactOriginal",
+        "file": "v5/internal/graphapply/range_move_coordinator_test.go"
+      },
+      {
+        "test": "TestRangeMoveCoordinatorImmutablePageCapDurablyAborts",
+        "file": "v5/internal/graphapply/range_move_coordinator_test.go"
+      },
+      {
+        "test": "TestRangeMoveCoordinatorNilCancelledAndForeignResumeRefuse",
+        "file": "v5/internal/graphapply/range_move_coordinator_test.go"
+      },
+      {
+        "test": "TestRangeMoveCoordinatorOperationLedgerExhaustionResumesWithoutAbort",
+        "file": "v5/internal/graphapply/range_move_coordinator_test.go"
+      },
+      {
+        "test": "TestRangeMoveCoordinatorProtectedAbortUsesParentBudget",
+        "file": "v5/internal/graphapply/range_move_coordinator_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 8,
+      "statements": 9,
+      "percentage": 88.88888888888889
+    },
+    "source_line": 69
+  },
+  {
+    "method": "Resume",
+    "source": "v5/internal/graphapply/range_move_coordinator.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMoveCoordinatorCompletedAbortRejectsDelayedGenuineTargetFence",
+        "file": "v5/internal/graphapply/range_move_late_fence_after_abort_test.go"
+      },
+      {
+        "test": "TestRangeMoveNativeDescribeAndImportRefusalsPreserveOriginalContinuationAndCredits",
+        "file": "v5/internal/graphapply/range_move_import_guards_test.go"
+      },
+      {
+        "test": "TestRangeMoveIntrinsicSourceAdmissionIsTerminalWithoutFenceAndKeepsOriginalRetry",
+        "file": "v5/internal/graphapply/range_move_intrinsic_admission_test.go"
+      },
+      {
+        "test": "TestRangeMoveCoordinatorRunResumePreservesNonemptyOldView",
+        "file": "v5/internal/graphapply/range_move_coordinator_test.go"
+      },
+      {
+        "test": "TestRangeMoveCoordinatorImmutablePageCapDurablyAborts",
+        "file": "v5/internal/graphapply/range_move_coordinator_test.go"
+      },
+      {
+        "test": "TestRangeMoveCoordinatorNilCancelledAndForeignResumeRefuse",
+        "file": "v5/internal/graphapply/range_move_coordinator_test.go"
+      },
+      {
+        "test": "TestRangeMoveCoordinatorOperationLedgerExhaustionResumesWithoutAbort",
+        "file": "v5/internal/graphapply/range_move_coordinator_test.go"
+      },
+      {
+        "test": "TestRangeMoveCoordinatorProtectedAbortUsesParentBudget",
+        "file": "v5/internal/graphapply/range_move_coordinator_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 4,
+      "statements": 5,
+      "percentage": 80.0
+    },
+    "source_line": 86
+  },
+  {
+    "method": "PrepareRangeMove",
+    "source": "v5/internal/graphapply/range_move_prepare.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMoveOmittedActualFrozenReplyCannotAdvanceOrActivateAndResumeKeepsCapture",
+        "file": "v5/internal/graphapply/range_move_frozen_guards_test.go"
+      },
+      {
+        "test": "TestRangeMovePrepareNativeOriginalSurvivesPlacementAndRejectsChangedInputs",
+        "file": "v5/internal/graphapply/range_move_prepare_test.go"
+      },
+      {
+        "test": "TestRangeMovePrepareNativeBoundaryRefusalsDoNotAcquireOwners",
+        "file": "v5/internal/graphapply/range_move_prepare_test.go"
+      },
+      {
+        "test": "TestRangeMoveIntrinsicSourceAdmissionIsTerminalWithoutFenceAndKeepsOriginalRetry",
+        "file": "v5/internal/graphapply/range_move_intrinsic_admission_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 50,
+      "statements": 61,
+      "percentage": 81.9672131147541
+    },
+    "source_line": 16
+  },
+  {
+    "method": "ReadRangeMove",
+    "source": "v5/internal/graphapply/range_move_host.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMoveAuthorityDecodeIsInert",
+        "file": "v5/internal/graphapply/range_move_transport_test.go"
+      },
+      {
+        "test": "TestRangeMovePointerDoorsRejectNil",
+        "file": "v5/internal/graphapply/range_move_transport_test.go"
+      },
+      {
+        "test": "TestRangeMoveNativeReadDirectMatchesCompletedQueryAndCancellation",
+        "file": "v5/internal/graphapply/range_move_host_direct_test.go"
+      },
+      {
+        "test": "TestRangeMoveNativeReadDirectNilInvalidCancelledAndClosed",
+        "file": "v5/internal/graphapply/range_move_host_direct_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 21,
+      "statements": 25,
+      "percentage": 84.0
+    },
+    "source_line": 82
+  },
+  {
+    "method": "Get",
+    "source": "v5/internal/graphstore/range_move_maintenance_source.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMoveNativeScanHolesAdvanceToExactRetainedValues",
+        "file": "v5/internal/graphstore/range_move_scan_progress_test.go"
+      },
+      {
+        "test": "TestRangeMoveMaintenanceNativeTombstoneRetainsChargedBacking",
+        "file": "v5/internal/graphstore/range_move_maintenance_source_test.go"
+      },
+      {
+        "test": "TestRangeMoveMaintenanceRequiredNativeTombstonesRemainCorrupt",
+        "file": "v5/internal/graphstore/range_move_maintenance_source_test.go"
+      },
+      {
+        "test": "TestPartitionTransactionRemoteAxisAuthorityRegistrationAndRetainedConflict",
+        "file": "v5/internal/graphstore/partition_transaction_contract_guard_test.go"
+      },
+      {
+        "test": "TestPartitionTransactionClosedUpperEndpointPresenceHistory",
+        "file": "v5/internal/graphstore/partition_transaction_contract_guard_test.go"
+      },
+      {
+        "test": "TestReaderNestedAxisCapsBeforeLookup",
+        "file": "v5/internal/graphstore/reader_limits_test.go"
+      },
+      {
+        "test": "TestPartitionIdentityCorruptCurrentAuthorityNeverMasksRetainedCanonicalValue",
+        "file": "v5/internal/graphstore/partition_routing_budget_test.go"
+      },
+      {
+        "test": "TestGuardRoutingBoundedGetZeroFailuresAndBorrowedView",
+        "file": "v5/internal/graphstore/partition_routing_budget_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 4,
+      "statements": 4,
+      "percentage": 100.0
+    },
+    "source_line": 23
+  },
+  {
+    "method": "EncodeRangeMoveDescriptor",
+    "source": "v5/internal/graphstore/range_move_codec.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMoveCodecsOwnBuffersAndRefuseMalformedBudget",
+        "file": "v5/internal/graphstore/range_move_codec_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 24,
+      "statements": 30,
+      "percentage": 80.0
+    },
+    "source_line": 163
+  },
+  {
+    "method": "DecodeRangeMoveDescriptor",
+    "source": "v5/internal/graphstore/range_move_codec.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMoveCodecsOwnBuffersAndRefuseMalformedBudget",
+        "file": "v5/internal/graphstore/range_move_codec_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 46,
+      "statements": 53,
+      "percentage": 86.79245283018868
+    },
+    "source_line": 204
+  },
+  {
+    "method": "EncodeRangeMoveCursor",
+    "source": "v5/internal/graphstore/range_move_codec.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMoveCodecsOwnBuffersAndRefuseMalformedBudget",
+        "file": "v5/internal/graphstore/range_move_codec_test.go"
+      },
+      {
+        "test": "TestRangeMoveNativeScanHolesAdvanceToExactRetainedValues",
+        "file": "v5/internal/graphstore/range_move_scan_progress_test.go"
+      },
+      {
+        "test": "TestRangeMovePortableSplitTreesAndFragmentedPresenceResume",
+        "file": "v5/internal/graphstore/range_move_continuation_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 4,
+      "statements": 5,
+      "percentage": 80.0
+    },
+    "source_line": 361
+  },
+  {
+    "method": "DecodeRangeMoveCursor",
+    "source": "v5/internal/graphstore/range_move_codec.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMoveCodecsOwnBuffersAndRefuseMalformedBudget",
+        "file": "v5/internal/graphstore/range_move_codec_test.go"
+      },
+      {
+        "test": "TestRangeMoveNativeScanHolesAdvanceToExactRetainedValues",
+        "file": "v5/internal/graphstore/range_move_scan_progress_test.go"
+      },
+      {
+        "test": "TestRangeMovePortableSplitTreesAndFragmentedPresenceResume",
+        "file": "v5/internal/graphstore/range_move_continuation_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 13,
+      "statements": 14,
+      "percentage": 92.85714285714286
+    },
+    "source_line": 369
+  },
+  {
+    "method": "EncodeRangeMovePage",
+    "source": "v5/internal/graphstore/range_move_codec.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMoveCodecsOwnBuffersAndRefuseMalformedBudget",
+        "file": "v5/internal/graphstore/range_move_codec_test.go"
+      },
+      {
+        "test": "TestRangeMovePageExhaustedBudgetPrecedesBackingAllocation",
+        "file": "v5/internal/graphstore/range_move_codec_test.go"
+      },
+      {
+        "test": "TestRangeMoveNativeScanHolesAdvanceToExactRetainedValues",
+        "file": "v5/internal/graphstore/range_move_scan_progress_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 13,
+      "statements": 13,
+      "percentage": 100.0
+    },
+    "source_line": 411
+  },
+  {
+    "method": "DecodeRangeMovePage",
+    "source": "v5/internal/graphstore/range_move_codec.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMoveCodecsOwnBuffersAndRefuseMalformedBudget",
+        "file": "v5/internal/graphstore/range_move_codec_test.go"
+      },
+      {
+        "test": "TestRangeMoveNativeScanHolesAdvanceToExactRetainedValues",
+        "file": "v5/internal/graphstore/range_move_scan_progress_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 38,
+      "statements": 40,
+      "percentage": 95.0
+    },
+    "source_line": 430
+  },
+  {
+    "method": "EncodeRangeMoveImportState",
+    "source": "v5/internal/graphstore/range_move_codec.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMoveNativeProgressCodecAndPublicRefusals",
+        "file": "v5/internal/graphstore/range_move_codec_test.go"
+      },
+      {
+        "test": "TestRangeMovePortableSplitTreesAndFragmentedPresenceResume",
+        "file": "v5/internal/graphstore/range_move_continuation_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 25,
+      "statements": 29,
+      "percentage": 86.20689655172414
+    },
+    "source_line": 487
+  },
+  {
+    "method": "DecodeRangeMoveImportState",
+    "source": "v5/internal/graphstore/range_move_codec.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMoveNativeProgressCodecAndPublicRefusals",
+        "file": "v5/internal/graphstore/range_move_codec_test.go"
+      },
+      {
+        "test": "TestRangeMoveNativeScanHolesAdvanceToExactRetainedValues",
+        "file": "v5/internal/graphstore/range_move_scan_progress_test.go"
+      },
+      {
+        "test": "TestRangeMovePortableSplitTreesAndFragmentedPresenceResume",
+        "file": "v5/internal/graphstore/range_move_continuation_test.go"
+      },
+      {
+        "test": "TestRangeMoveStreamingDurableResumePreservesValuesAbsenceAndTarget",
+        "file": "v5/internal/graphstore/range_move_stage_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 63,
+      "statements": 68,
+      "percentage": 92.6470588235294
+    },
+    "source_line": 526
+  },
+  {
+    "method": "BeginRangeMoveImport",
+    "source": "v5/internal/graphstore/range_move_stage.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMovePlanBindsNativeRootsWithoutRetainingRange",
+        "file": "v5/internal/graphstore/range_move_types_test.go"
+      },
+      {
+        "test": "TestRangeMoveNativeProgressCodecAndPublicRefusals",
+        "file": "v5/internal/graphstore/range_move_codec_test.go"
+      },
+      {
+        "test": "TestRangeMoveNativeScanHolesAdvanceToExactRetainedValues",
+        "file": "v5/internal/graphstore/range_move_scan_progress_test.go"
+      },
+      {
+        "test": "TestRangeMovePortableSplitTreesAndFragmentedPresenceResume",
+        "file": "v5/internal/graphstore/range_move_continuation_test.go"
+      },
+      {
+        "test": "TestRangeMoveStreamingDurableResumePreservesValuesAbsenceAndTarget",
+        "file": "v5/internal/graphstore/range_move_stage_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 6,
+      "statements": 6,
+      "percentage": 100.0
+    },
+    "source_line": 83
+  },
+  {
+    "method": "AdvanceRangeMoveImportPreparation",
+    "source": "v5/internal/graphstore/range_move_stage.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMoveNativeProgressCodecAndPublicRefusals",
+        "file": "v5/internal/graphstore/range_move_codec_test.go"
+      },
+      {
+        "test": "TestRangeMoveNativeScanHolesAdvanceToExactRetainedValues",
+        "file": "v5/internal/graphstore/range_move_scan_progress_test.go"
+      },
+      {
+        "test": "TestRangeMovePortableSplitTreesAndFragmentedPresenceResume",
+        "file": "v5/internal/graphstore/range_move_continuation_test.go"
+      },
+      {
+        "test": "TestRangeMoveStreamingDurableResumePreservesValuesAbsenceAndTarget",
+        "file": "v5/internal/graphstore/range_move_stage_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 11,
+      "statements": 18,
+      "percentage": 61.111111111111114
+    },
+    "source_line": 123
+  },
+  {
+    "method": "StageRangeMovePage",
+    "source": "v5/internal/graphstore/range_move_stage.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMoveNativeProgressCodecAndPublicRefusals",
+        "file": "v5/internal/graphstore/range_move_codec_test.go"
+      },
+      {
+        "test": "TestRangeMoveNativeScanHolesAdvanceToExactRetainedValues",
+        "file": "v5/internal/graphstore/range_move_scan_progress_test.go"
+      },
+      {
+        "test": "TestRangeMovePortableSplitTreesAndFragmentedPresenceResume",
+        "file": "v5/internal/graphstore/range_move_continuation_test.go"
+      },
+      {
+        "test": "TestRangeMoveStreamingDurableResumePreservesValuesAbsenceAndTarget",
+        "file": "v5/internal/graphstore/range_move_stage_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 58,
+      "statements": 70,
+      "percentage": 82.85714285714286
+    },
+    "source_line": 152
+  },
+  {
+    "method": "FinishRangeMoveImport",
+    "source": "v5/internal/graphstore/range_move_stage.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMoveNativeProgressCodecAndPublicRefusals",
+        "file": "v5/internal/graphstore/range_move_codec_test.go"
+      },
+      {
+        "test": "TestRangeMoveNativeScanHolesAdvanceToExactRetainedValues",
+        "file": "v5/internal/graphstore/range_move_scan_progress_test.go"
+      },
+      {
+        "test": "TestRangeMovePortableSplitTreesAndFragmentedPresenceResume",
+        "file": "v5/internal/graphstore/range_move_continuation_test.go"
+      },
+      {
+        "test": "TestRangeMoveStreamingDurableResumePreservesValuesAbsenceAndTarget",
+        "file": "v5/internal/graphstore/range_move_stage_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 8,
+      "statements": 10,
+      "percentage": 80.0
+    },
+    "source_line": 340
+  },
+  {
+    "method": "ActivateRangeMoveImport",
+    "source": "v5/internal/graphstore/range_move_stage.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMoveNativeProgressCodecAndPublicRefusals",
+        "file": "v5/internal/graphstore/range_move_codec_test.go"
+      },
+      {
+        "test": "TestRangeMovePortableSplitTreesAndFragmentedPresenceResume",
+        "file": "v5/internal/graphstore/range_move_continuation_test.go"
+      },
+      {
+        "test": "TestRangeMoveStreamingDurableResumePreservesValuesAbsenceAndTarget",
+        "file": "v5/internal/graphstore/range_move_stage_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 14,
+      "statements": 21,
+      "percentage": 66.66666666666667
+    },
+    "source_line": 358
+  },
+  {
+    "method": "PlanRangeMove",
+    "source": "v5/internal/graphstore/range_move_export.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMovePlanBindsNativeRootsWithoutRetainingRange",
+        "file": "v5/internal/graphstore/range_move_types_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 38,
+      "statements": 51,
+      "percentage": 74.50980392156863
+    },
+    "source_line": 51
+  },
+  {
+    "method": "SealRangeMoveDescriptor",
+    "source": "v5/internal/graphstore/range_move_export.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMoveNativeScanHolesAdvanceToExactRetainedValues",
+        "file": "v5/internal/graphstore/range_move_scan_progress_test.go"
+      },
+      {
+        "test": "TestRangeMovePortableSplitTreesAndFragmentedPresenceResume",
+        "file": "v5/internal/graphstore/range_move_continuation_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 4,
+      "statements": 6,
+      "percentage": 66.66666666666667
+    },
+    "source_line": 124
+  },
+  {
+    "method": "ExportRangeMovePage",
+    "source": "v5/internal/graphstore/range_move_export.go",
+    "direct_call_test_candidates": [
+      {
+        "test": "TestRangeMoveLargeNativeCatalogContinuationAdmitsOutputBeforeSource",
+        "file": "v5/internal/graphstore/range_move_source_budget_test.go"
+      },
+      {
+        "test": "TestRangeMovePlanBindsNativeRootsWithoutRetainingRange",
+        "file": "v5/internal/graphstore/range_move_types_test.go"
+      },
+      {
+        "test": "TestRangeMoveCodecsOwnBuffersAndRefuseMalformedBudget",
+        "file": "v5/internal/graphstore/range_move_codec_test.go"
+      },
+      {
+        "test": "TestRangeMoveFrozenCaptureSurvivesNativeGenerationChange",
+        "file": "v5/internal/graphstore/range_move_codec_test.go"
+      },
+      {
+        "test": "TestRangeMoveNativeProgressCodecAndPublicRefusals",
+        "file": "v5/internal/graphstore/range_move_codec_test.go"
+      },
+      {
+        "test": "TestRangeMoveNativeScanHolesAdvanceToExactRetainedValues",
+        "file": "v5/internal/graphstore/range_move_scan_progress_test.go"
+      },
+      {
+        "test": "TestRangeMovePortableSplitTreesAndFragmentedPresenceResume",
+        "file": "v5/internal/graphstore/range_move_continuation_test.go"
+      },
+      {
+        "test": "TestRangeMoveStreamingDurableResumePreservesValuesAbsenceAndTarget",
+        "file": "v5/internal/graphstore/range_move_stage_test.go"
+      }
+    ],
+    "coverage": {
+      "covered": 68,
+      "statements": 76,
+      "percentage": 89.47368421052632
+    },
+    "source_line": 860
+  }
+]

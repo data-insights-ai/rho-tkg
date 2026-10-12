@@ -121,7 +121,7 @@ func TestRangeMoveIntrinsicSourceAdmissionIsTerminalWithoutFenceAndKeepsOriginal
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			batch, err := target.machine.Stage(replica.Entry{Index: root.Index + 1, Generation: root.Generation, Term: term, Data: tc.wire}, target.machine.store.ApplicationBudget())
-			if !errors.Is(err, tc.cause) || !reflect.DeepEqual(batch, raftlog.ApplicationBatch{}) {
+			if !errors.Is(err, tc.cause) || !reflect.ValueOf(batch).IsZero() {
 				t.Fatal("known framed refusal returned effects or lost sentinel", err)
 			}
 		})

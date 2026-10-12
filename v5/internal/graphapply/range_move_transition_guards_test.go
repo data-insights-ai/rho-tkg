@@ -149,7 +149,7 @@ func rangeMoveTransitionAssertPrivateRefusal(t *testing.T, n *allocationTestNetw
 	// Entry metadata comes from the actual current native root/HardState; it
 	// supplies no synthetic completed read, owner, decision or phase authority.
 	batch, err := h.machine.Stage(replica.Entry{Index: root.Index + 1, Generation: root.Generation, Term: hard.GetTerm(), Data: p.wire}, h.machine.store.ApplicationBudget())
-	if !errors.Is(err, errInvalid) || !reflect.DeepEqual(batch, raftlog.ApplicationBatch{}) {
+	if !errors.Is(err, errInvalid) || !reflect.ValueOf(batch).IsZero() {
 		t.Fatal("invalid transition returned installable effects instead of zero refusal", err)
 	}
 	if !reflect.DeepEqual(rangeMoveTransitionStates(t, n, move), before) {
@@ -209,7 +209,7 @@ func rangeMoveTransitionDecisionGuards(t *testing.T, n *allocationTestNetwork, i
 	assertRefusal := func(name string, q *reader, c rangeMoveCommand, want error, wantRows int) {
 		t.Helper()
 		batch, err := h.machine.stageRangeMoveDecision(q, c, intent, current, original, h.machine.store.ApplicationBudget())
-		if !errors.Is(err, want) || !reflect.DeepEqual(batch, raftlog.ApplicationBatch{}) || len(q.writes) != 0 || wantRows >= 0 && q.rows != wantRows {
+		if !errors.Is(err, want) || !reflect.ValueOf(batch).IsZero() || len(q.writes) != 0 || wantRows >= 0 && q.rows != wantRows {
 			t.Fatal("invalid/unfunded Decide lost cause, returned partial decision or exceeded source grant", name, q.rows, err)
 		}
 		if !reflect.DeepEqual(rangeMoveTransitionStates(t, n, original.move), before) {
@@ -308,7 +308,7 @@ func TestRangeMoveTransitionsRefuseStaleClosureAndAbortAfterCommitThenOriginalRe
 		t.Fatal(err)
 	}
 	batch, err := n.hosts[1][0].machine.stageRangeMoveActivation(q, command, intent, target.observation.status, target.observation.status, n.hosts[1][0].machine.store.ApplicationBudget())
-	if !errors.Is(err, graphstate.ErrResourceLimit) || !reflect.DeepEqual(batch, raftlog.ApplicationBatch{}) || len(q.writes) != 0 {
+	if !errors.Is(err, graphstate.ErrResourceLimit) || !reflect.ValueOf(batch).IsZero() || len(q.writes) != 0 {
 		t.Fatal("unfunded valid activation lost resource cause or emitted effects", err)
 	}
 	if err := q.view.Close(); err != nil {

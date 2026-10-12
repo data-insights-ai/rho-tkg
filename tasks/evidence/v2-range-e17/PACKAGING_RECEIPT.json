@@ -1,0 +1,28 @@
+{
+  "revision": "packaging only; no new acceptance claim",
+  "uncompressed_commit_retained_locally": "f470dbf69a7aee7f22e3b371871ec40c1ef75d06",
+  "local_ref": "refs/archive/e17-evidence-uncompressed",
+  "archive": "E17_RAW_EVIDENCE.tar.gz",
+  "archive_sha256": "e30e8d43016dd0a2d22060749a98b7b6c8712822206bae5d2c95e8ef9f6b90dd",
+  "determinism": "gzip mtime0/empty filename; USTAR sorted paths, uid/gid0, mode0644, mtime0; independent second build byte-identical",
+  "archive_files": 338,
+  "raw_artifact_bytes": 44447588,
+  "archive_bytes": 2770968,
+  "direct_readable_artifacts": [
+    "CHANGED_PRODUCTION_FILE_COVERAGE.json",
+    "FINAL_EVIDENCE_FILES.json",
+    "FINAL_EVIDENCE_SEAL.json",
+    "FINAL_INDEX.md",
+    "FINAL_NORMAL_COVERAGE.json",
+    "FINAL_RECEIPT.json",
+    "PUBLIC_DIRECT_WITNESSES.json",
+    "SOURCE_CHECKPOINT.json",
+    "existing-lanes.json",
+    "final-go-source-amended.json",
+    "final-go-source.json",
+    "range-final-lanes.json"
+  ],
+  "original_selected_artifact_hashes_preserved": true,
+  "go_source_and_six_test_assertions_unchanged": true,
+  "member_hash_manifest": "ARCHIVE_PATH_HASHES.json"
+}

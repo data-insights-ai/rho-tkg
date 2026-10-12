@@ -172,7 +172,7 @@ func rangeMoveImportGuardRefusal(t *testing.T, n *allocationTestNetwork, group i
 	t.Helper()
 	before := rangeMoveImportGuardStates(t, n, move)
 	batch, err := rangeMoveImportGuardStage(t, n.hosts[group][0], command)
-	if !errors.Is(err, want) || !reflect.DeepEqual(batch, raftlog.ApplicationBatch{}) {
+	if !errors.Is(err, want) || !reflect.ValueOf(batch).IsZero() {
 		t.Fatal("invalid continuation/import returned a partial batch or lost sentinel", command.phase, command.sequence, err, want)
 	}
 	if after := rangeMoveImportGuardStates(t, n, move); !reflect.DeepEqual(after, before) {
@@ -297,7 +297,7 @@ func TestRangeMoveNativeDescribeAndImportRefusalsPreserveOriginalContinuationAnd
 		q.ctx = ctx
 		next := rangeMoveStatus{ns: h.machine.ns, move: move, intent: current.intent, phase: rangeMoveImport, index: q.base.Index + 1, result: rangeMoveApplied}
 		batch, err := h.machine.stageRangeMoveTarget(q, importZero, intent, current, next, h.machine.store.ApplicationBudget())
-		if !errors.Is(err, context.Canceled) || !reflect.DeepEqual(batch, raftlog.ApplicationBatch{}) || len(q.writes) != 0 {
+		if !errors.Is(err, context.Canceled) || !reflect.ValueOf(batch).IsZero() || len(q.writes) != 0 {
 			t.Fatal("cancelled native target C access returned effects or lost cancellation", err)
 		}
 		if err := q.view.Close(); err != nil {

@@ -1,0 +1,126 @@
+[
+  {
+    "lane": "range-control",
+    "package": "./internal/graphapply",
+    "names": [
+      "TestRangeMoveAdmissionWrongSourcePlacementRefusesWithoutRecoveryOwner",
+      "TestRangeMoveAdmissionNumberedUndoRetainsCreditsUntilFinalAbort",
+      "TestRangeMoveIntentRejectsChangedScopeAndUnboundedAdmission",
+      "TestRangeMoveCoordinatorRunResumePreservesNonemptyOldView",
+      "TestRangeMoveCoordinatorUnknownFenceRetainsExactOriginal",
+      "TestRangeMoveCoordinatorDurableDecisionSurvivesCoordinatorReplacement",
+      "TestRangeMoveCoordinatorImmutablePageCapDurablyAborts",
+      "TestRangeMoveCoordinatorNilCancelledAndForeignResumeRefuse",
+      "TestRangeMoveCoordinatorOperationLedgerExhaustionResumesWithoutAbort",
+      "TestRangeMoveCoordinatorProtectedAbortUsesParentBudget",
+      "TestRangeMoveActiveCrossReplayRetainsCapacitySourceBindingValidation",
+      "TestRangeMoveNativeStageDoesNotTreatGraphIDAsInitializationOpcode",
+      "TestRangeMoveCoordinatorCompletedAbortRejectsDelayedGenuineTargetFence",
+      "TestPreparedRangeMoveCrossRecoveryUsesIncomingBankNotActiveBaseline"
+    ],
+    "regex": "^(TestRangeMoveAdmissionWrongSourcePlacementRefusesWithoutRecoveryOwner|TestRangeMoveAdmissionNumberedUndoRetainsCreditsUntilFinalAbort|TestRangeMoveIntentRejectsChangedScopeAndUnboundedAdmission|TestRangeMoveCoordinatorRunResumePreservesNonemptyOldView|TestRangeMoveCoordinatorUnknownFenceRetainsExactOriginal|TestRangeMoveCoordinatorDurableDecisionSurvivesCoordinatorReplacement|TestRangeMoveCoordinatorImmutablePageCapDurablyAborts|TestRangeMoveCoordinatorNilCancelledAndForeignResumeRefuse|TestRangeMoveCoordinatorOperationLedgerExhaustionResumesWithoutAbort|TestRangeMoveCoordinatorProtectedAbortUsesParentBudget|TestRangeMoveActiveCrossReplayRetainsCapacitySourceBindingValidation|TestRangeMoveNativeStageDoesNotTreatGraphIDAsInitializationOpcode|TestRangeMoveCoordinatorCompletedAbortRejectsDelayedGenuineTargetFence|TestPreparedRangeMoveCrossRecoveryUsesIncomingBankNotActiveBaseline)$"
+  },
+  {
+    "lane": "range-transfer-1",
+    "package": "./internal/graphapply",
+    "names": [
+      "TestRangeMoveWaitsForOriginalRegisteredAndPreparedCrossSettlement",
+      "TestRangeMoveRejectsFirstDelayedCrossPrepareAndSettlesInertLateRegistration",
+      "TestRangeMoveFrozenPageRejectsChangedCaptureManifestAndExpectedPageBindings",
+      "TestRangeMoveOmittedActualFrozenReplyCannotAdvanceOrActivateAndResumeKeepsCapture",
+      "TestRangeMoveFrozenNativeTTLClosesCaptureAndManifestWithoutRecapture",
+      "TestRangeMoveFrozenPageRefusesExhaustedRowsBeforeCapturedSource",
+      "TestRangeMoveFrozenPageOwnershipInterruptsBackgroundCallerAndClosesBothViews",
+      "TestRangeMoveStagedTargetRejectsQueuedAllocationAndGraphMutators"
+    ],
+    "regex": "^(TestRangeMoveWaitsForOriginalRegisteredAndPreparedCrossSettlement|TestRangeMoveRejectsFirstDelayedCrossPrepareAndSettlesInertLateRegistration|TestRangeMoveFrozenPageRejectsChangedCaptureManifestAndExpectedPageBindings|TestRangeMoveOmittedActualFrozenReplyCannotAdvanceOrActivateAndResumeKeepsCapture|TestRangeMoveFrozenNativeTTLClosesCaptureAndManifestWithoutRecapture|TestRangeMoveFrozenPageRefusesExhaustedRowsBeforeCapturedSource|TestRangeMoveFrozenPageOwnershipInterruptsBackgroundCallerAndClosesBothViews|TestRangeMoveStagedTargetRejectsQueuedAllocationAndGraphMutators)$"
+  },
+  {
+    "lane": "range-transfer-2",
+    "package": "./internal/graphapply",
+    "names": [
+      "TestRangeMoveLookupOriginalKeepsLateRefusalAndCapturedSourceCoordinates",
+      "TestRangeMoveLookupOriginalCompletedKeeperAbsenceIgnoresTargetCollision",
+      "TestRangeMovePartialActivationRestoresOriginalCommitAndOldCertifiedCut",
+      "TestRangeMovePrepareNativeOriginalSurvivesPlacementAndRejectsChangedInputs",
+      "TestRangeMoveReplayHandoffPreservesSourceOriginalWithCollidingTargetRequest",
+      "TestRangeMoveReplaySecondHandoffKeepsFirstOriginWithCollidingRequest",
+      "TestRangeMoveSuccessfulHandoffCarriesBothCapturedClockFloorsBeforeFresh",
+      "TestRangeMoveCompletedHandoffCopiesNativeCrossDecisionsAndDedupWithKeeperOffline"
+    ],
+    "regex": "^(TestRangeMoveLookupOriginalKeepsLateRefusalAndCapturedSourceCoordinates|TestRangeMoveLookupOriginalCompletedKeeperAbsenceIgnoresTargetCollision|TestRangeMovePartialActivationRestoresOriginalCommitAndOldCertifiedCut|TestRangeMovePrepareNativeOriginalSurvivesPlacementAndRejectsChangedInputs|TestRangeMoveReplayHandoffPreservesSourceOriginalWithCollidingTargetRequest|TestRangeMoveReplaySecondHandoffKeepsFirstOriginWithCollidingRequest|TestRangeMoveSuccessfulHandoffCarriesBothCapturedClockFloorsBeforeFresh|TestRangeMoveCompletedHandoffCopiesNativeCrossDecisionsAndDedupWithKeeperOffline)$"
+  },
+  {
+    "lane": "range-direct",
+    "package": "./internal/graphapply",
+    "names": [
+      "TestRangeMoveCatalogBaselineChargesParentBeforeOpeningRetainedOwner",
+      "TestRangeMoveCatalogBaselineOwnsExactRetainedCaptureAndRefusesMalformedImportData",
+      "TestRangeMoveIdentityQualifiesOriginalSource",
+      "TestRangeMoveCodecCanonicalRoundTrips",
+      "TestRangeMoveCodecRefusesMalformedFramesWithoutPartialValues",
+      "TestRangeMoveCommandRejectsForeignScopeAndCaps",
+      "TestRangeMoveDurableGraphExportRefusesZeroRemainderBeforeOpeningCapture",
+      "TestRangeMoveNativeReadDirectMatchesCompletedQueryAndCancellation",
+      "TestRangeMoveNativeReadDirectNilInvalidCancelledAndClosed",
+      "TestRangeMoveNativeDescribeAndImportRefusalsPreserveOriginalContinuationAndCredits",
+      "TestRangeMoveLookupOriginalBoundaryRefusalsDoNotDispatchOrReturnPartialData",
+      "TestRangeMovePrepareNativeBoundaryRefusalsDoNotAcquireOwners",
+      "TestRangeMoveReplayFragmentsPreserveNativeManifestAndCanonicalRowDigest",
+      "TestRangeMoveReplayNativeFutureKeyHolesAdvanceWithoutPhantomOriginal",
+      "TestRangeMoveReplayScopesInertStagesAndPhantomLookup",
+      "TestRangeMoveReplayCodecsRejectCorruptionTruncationAndNilBudgets",
+      "TestRangeMoveReplayFirstOriginKeyBijectionAndInheritedInertStage",
+      "TestRangeMoveReplayMissingNativePhaseAndFamilyEOFKeepExactTotals",
+      "TestRangeMoveReplayDirectRefusalsPreserveZeroOutputs",
+      "TestRangeMoveTransitionsRefuseStaleClosureAndAbortAfterCommitThenOriginalResume",
+      "TestRangeMoveQueryLiteralAndAllowanceBounds",
+      "TestRangeMoveOuterResponseAcceptsMoveReadKind",
+      "TestRangeMoveAuthorityDecodeIsInert",
+      "TestRangeMoveAuthoritySealBindsWholeNativeObservation",
+      "TestRangeMoveObservationHashSeparatesIntentAndProgress",
+      "TestRangeMoveDecodedAbsenceCannotPrepareNativeCommand",
+      "TestRangeMoveAuthorityWireRefusesUncorrelatedBodies",
+      "TestRangeMovePointerDoorsRejectNil",
+      "TestRangeMoveUndoExhaustedOwnershipRefusesBeforePreviousBufferAllocation"
+    ],
+    "regex": "^(TestRangeMoveCatalogBaselineChargesParentBeforeOpeningRetainedOwner|TestRangeMoveCatalogBaselineOwnsExactRetainedCaptureAndRefusesMalformedImportData|TestRangeMoveIdentityQualifiesOriginalSource|TestRangeMoveCodecCanonicalRoundTrips|TestRangeMoveCodecRefusesMalformedFramesWithoutPartialValues|TestRangeMoveCommandRejectsForeignScopeAndCaps|TestRangeMoveDurableGraphExportRefusesZeroRemainderBeforeOpeningCapture|TestRangeMoveNativeReadDirectMatchesCompletedQueryAndCancellation|TestRangeMoveNativeReadDirectNilInvalidCancelledAndClosed|TestRangeMoveNativeDescribeAndImportRefusalsPreserveOriginalContinuationAndCredits|TestRangeMoveLookupOriginalBoundaryRefusalsDoNotDispatchOrReturnPartialData|TestRangeMovePrepareNativeBoundaryRefusalsDoNotAcquireOwners|TestRangeMoveReplayFragmentsPreserveNativeManifestAndCanonicalRowDigest|TestRangeMoveReplayNativeFutureKeyHolesAdvanceWithoutPhantomOriginal|TestRangeMoveReplayScopesInertStagesAndPhantomLookup|TestRangeMoveReplayCodecsRejectCorruptionTruncationAndNilBudgets|TestRangeMoveReplayFirstOriginKeyBijectionAndInheritedInertStage|TestRangeMoveReplayMissingNativePhaseAndFamilyEOFKeepExactTotals|TestRangeMoveReplayDirectRefusalsPreserveZeroOutputs|TestRangeMoveTransitionsRefuseStaleClosureAndAbortAfterCommitThenOriginalResume|TestRangeMoveQueryLiteralAndAllowanceBounds|TestRangeMoveOuterResponseAcceptsMoveReadKind|TestRangeMoveAuthorityDecodeIsInert|TestRangeMoveAuthoritySealBindsWholeNativeObservation|TestRangeMoveObservationHashSeparatesIntentAndProgress|TestRangeMoveDecodedAbsenceCannotPrepareNativeCommand|TestRangeMoveAuthorityWireRefusesUncorrelatedBodies|TestRangeMovePointerDoorsRejectNil|TestRangeMoveUndoExhaustedOwnershipRefusesBeforePreviousBufferAllocation)$"
+  },
+  {
+    "lane": "range-process",
+    "package": "./internal/graphapply",
+    "names": [
+      "TestGraphRangeMoveSixProcessesTargetVoterRestoresMidImportThenOriginalResume",
+      "TestGraphRangeMoveSixProcessesForeignSnapshotRefusesCrossIdentity",
+      "TestGraphRangeMoveSixProcessesActivatesAllocatedRangeWithoutChangingIDs"
+    ],
+    "regex": "^(TestGraphRangeMoveSixProcessesTargetVoterRestoresMidImportThenOriginalResume|TestGraphRangeMoveSixProcessesForeignSnapshotRefusesCrossIdentity|TestGraphRangeMoveSixProcessesActivatesAllocatedRangeWithoutChangingIDs)$"
+  },
+  {
+    "lane": "range-delta",
+    "package": "./internal/graphapply",
+    "names": [
+      "TestRangeMoveIntrinsicSourceAdmissionIsTerminalWithoutFenceAndKeepsOriginalRetry",
+      "TestRangeMoveUndoCodecAndNativeInverseRefusalsPreserveStoredOriginals"
+    ],
+    "regex": "^(TestRangeMoveIntrinsicSourceAdmissionIsTerminalWithoutFenceAndKeepsOriginalRetry|TestRangeMoveUndoCodecAndNativeInverseRefusalsPreserveStoredOriginals)$"
+  },
+  {
+    "lane": "range-graphstore",
+    "package": "./internal/graphstore",
+    "names": [
+      "TestRangeMoveCodecsOwnBuffersAndRefuseMalformedBudget",
+      "TestRangeMoveFrozenCaptureSurvivesNativeGenerationChange",
+      "TestRangeMoveLargeNativeCatalogContinuationAdmitsOutputBeforeSource",
+      "TestRangeMoveMaintenanceNativeTombstoneRetainsChargedBacking",
+      "TestRangeMoveMaintenanceRequiredNativeTombstonesRemainCorrupt",
+      "TestRangeMoveNativeProgressCodecAndPublicRefusals",
+      "TestRangeMoveNativeScanHolesAdvanceToExactRetainedValues",
+      "TestRangeMovePageExhaustedBudgetPrecedesBackingAllocation",
+      "TestRangeMovePlanBindsNativeRootsWithoutRetainingRange",
+      "TestRangeMovePortableSplitTreesAndFragmentedPresenceResume",
+      "TestRangeMoveStreamingDurableResumePreservesValuesAbsenceAndTarget"
+    ],
+    "regex": "^(TestRangeMoveCodecsOwnBuffersAndRefuseMalformedBudget|TestRangeMoveFrozenCaptureSurvivesNativeGenerationChange|TestRangeMoveLargeNativeCatalogContinuationAdmitsOutputBeforeSource|TestRangeMoveMaintenanceNativeTombstoneRetainsChargedBacking|TestRangeMoveMaintenanceRequiredNativeTombstonesRemainCorrupt|TestRangeMoveNativeProgressCodecAndPublicRefusals|TestRangeMoveNativeScanHolesAdvanceToExactRetainedValues|TestRangeMovePageExhaustedBudgetPrecedesBackingAllocation|TestRangeMovePlanBindsNativeRootsWithoutRetainingRange|TestRangeMovePortableSplitTreesAndFragmentedPresenceResume|TestRangeMoveStreamingDurableResumePreservesValuesAbsenceAndTarget)$"
+  }
+]

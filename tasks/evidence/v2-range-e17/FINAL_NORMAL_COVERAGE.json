@@ -1,0 +1,627 @@
+{
+  "go_source_manifest_sha256": "283a96d6e7574a45ef757df3d31f77d9e7334c30966c16ecbffb9c00a4b8aa47",
+  "profiles": [
+    "pre-freeze-direct",
+    "pre-freeze-control",
+    "pre-freeze-transfer",
+    "pre-freeze-process",
+    "pre-freeze-graphstore",
+    "native-undo-and-intrinsic-guards",
+    "native-transition-decision-guards",
+    "native-intrinsic-final-guard",
+    "registered-genesis-as4-normal",
+    "existing-graphapply-certified-normal",
+    "existing-graphapply-cross-normal",
+    "existing-graphapply-delta-normal",
+    "existing-graphapply-e15-normal",
+    "existing-graphapply-process-source-normal",
+    "existing-graphapply-registry-normal",
+    "existing-graphapply-replicated-normal",
+    "existing-graphapply-rest-normal",
+    "existing-graphstore-current-normal",
+    "existing-graphstore-e15-normal",
+    "existing-graphstore-partition-normal",
+    "existing-graphstore-rest-normal"
+  ],
+  "coverage_sha256": "82e795f6ae8f26b78cdb93693f58b126c8f6421e716620e46aa42001cca8b07a",
+  "files": {
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/allocation_host.go": {
+      "covered": 405,
+      "statements": 484,
+      "percentage": 83.67768595041322
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/allocation_protocol.go": {
+      "covered": 502,
+      "statements": 620,
+      "percentage": 80.96774193548387
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/certified_graph_backend.go": {
+      "covered": 134,
+      "statements": 155,
+      "percentage": 86.45161290322581
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/certified_graph_contract.go": {
+      "covered": 8,
+      "statements": 8,
+      "percentage": 100.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/certified_graph_cut.go": {
+      "covered": 189,
+      "statements": 229,
+      "percentage": 82.53275109170306
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/certified_graph_host.go": {
+      "covered": 172,
+      "statements": 201,
+      "percentage": 85.57213930348259
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/certified_graph_limits.go": {
+      "covered": 54,
+      "statements": 54,
+      "percentage": 100.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/certified_graph_reader.go": {
+      "covered": 167,
+      "statements": 194,
+      "percentage": 86.08247422680412
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/certified_graph_receipt.go": {
+      "covered": 27,
+      "statements": 31,
+      "percentage": 87.09677419354838
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/certified_graph_remote.go": {
+      "covered": 142,
+      "statements": 174,
+      "percentage": 81.60919540229885
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/certified_graph_source.go": {
+      "covered": 130,
+      "statements": 135,
+      "percentage": 96.29629629629629
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/certified_graph_wire.go": {
+      "covered": 142,
+      "statements": 148,
+      "percentage": 95.94594594594595
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/codec.go": {
+      "covered": 207,
+      "statements": 211,
+      "percentage": 98.10426540284361
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/cross_partition_capacity.go": {
+      "covered": 192,
+      "statements": 238,
+      "percentage": 80.67226890756302
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/cross_partition_codec.go": {
+      "covered": 175,
+      "statements": 196,
+      "percentage": 89.28571428571429
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/cross_partition_host.go": {
+      "covered": 238,
+      "statements": 292,
+      "percentage": 81.5068493150685
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/cross_partition_materializer.go": {
+      "covered": 245,
+      "statements": 305,
+      "percentage": 80.32786885245902
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/cross_partition_recovery.go": {
+      "covered": 108,
+      "statements": 131,
+      "percentage": 82.44274809160305
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/cross_process_coordinator.go": {
+      "covered": 201,
+      "statements": 241,
+      "percentage": 83.40248962655602
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/declared_command.go": {
+      "covered": 337,
+      "statements": 402,
+      "percentage": 83.83084577114428
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/declared_materializer.go": {
+      "covered": 330,
+      "statements": 392,
+      "percentage": 84.18367346938776
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_changes.go": {
+      "covered": 183,
+      "statements": 223,
+      "percentage": 82.0627802690583
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_codec.go": {
+      "covered": 499,
+      "statements": 546,
+      "percentage": 91.39194139194139
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_genesis.go": {
+      "covered": 101,
+      "statements": 105,
+      "percentage": 96.19047619047619
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_read_guard.go": {
+      "covered": 121,
+      "statements": 138,
+      "percentage": 87.68115942028986
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_request.go": {
+      "covered": 19,
+      "statements": 19,
+      "percentage": 100.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_source_authority.go": {
+      "covered": 129,
+      "statements": 141,
+      "percentage": 91.48936170212765
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_source_service.go": {
+      "covered": 198,
+      "statements": 240,
+      "percentage": 82.5
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_source_session.go": {
+      "covered": 240,
+      "statements": 283,
+      "percentage": 84.80565371024736
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_source_transport.go": {
+      "covered": 268,
+      "statements": 319,
+      "percentage": 84.01253918495298
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_source_wire.go": {
+      "covered": 173,
+      "statements": 182,
+      "percentage": 95.05494505494505
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/materializer.go": {
+      "covered": 392,
+      "statements": 454,
+      "percentage": 86.34361233480176
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/partition_graph_codec.go": {
+      "covered": 87,
+      "statements": 90,
+      "percentage": 96.66666666666667
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/partition_output_budget.go": {
+      "covered": 76,
+      "statements": 95,
+      "percentage": 80.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/partition_publication.go": {
+      "covered": 99,
+      "statements": 122,
+      "percentage": 81.14754098360656
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/partition_round.go": {
+      "covered": 43,
+      "statements": 47,
+      "percentage": 91.48936170212765
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/partition_writes.go": {
+      "covered": 155,
+      "statements": 192,
+      "percentage": 80.72916666666667
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_abort.go": {
+      "covered": 100,
+      "statements": 120,
+      "percentage": 83.33333333333333
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_activation.go": {
+      "covered": 89,
+      "statements": 111,
+      "percentage": 80.18018018018019
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go": {
+      "covered": 56,
+      "statements": 68,
+      "percentage": 82.3529411764706
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_codec.go": {
+      "covered": 107,
+      "statements": 119,
+      "percentage": 89.91596638655462
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_continuation.go": {
+      "covered": 107,
+      "statements": 131,
+      "percentage": 81.6793893129771
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_contract.go": {
+      "covered": 6,
+      "statements": 6,
+      "percentage": 100.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_coordinator.go": {
+      "covered": 227,
+      "statements": 278,
+      "percentage": 81.65467625899281
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_frozen_page.go": {
+      "covered": 139,
+      "statements": 169,
+      "percentage": 82.24852071005917
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_host.go": {
+      "covered": 107,
+      "statements": 131,
+      "percentage": 81.6793893129771
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_materializer.go": {
+      "covered": 260,
+      "statements": 324,
+      "percentage": 80.24691358024691
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_original.go": {
+      "covered": 71,
+      "statements": 87,
+      "percentage": 81.60919540229885
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_prepare.go": {
+      "covered": 50,
+      "statements": 61,
+      "percentage": 81.9672131147541
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_progress.go": {
+      "covered": 74,
+      "statements": 89,
+      "percentage": 83.14606741573034
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go": {
+      "covered": 363,
+      "statements": 440,
+      "percentage": 82.5
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_source.go": {
+      "covered": 146,
+      "statements": 181,
+      "percentage": 80.66298342541437
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go": {
+      "covered": 95,
+      "statements": 114,
+      "percentage": 83.33333333333333
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_transport.go": {
+      "covered": 158,
+      "statements": 185,
+      "percentage": 85.4054054054054
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_types.go": {
+      "covered": 73,
+      "statements": 75,
+      "percentage": 97.33333333333333
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/reducer.go": {
+      "covered": 304,
+      "statements": 345,
+      "percentage": 88.1159420289855
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/registered_bootstrap_codec.go": {
+      "covered": 448,
+      "statements": 489,
+      "percentage": 91.61554192229039
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/registered_inventory.go": {
+      "covered": 337,
+      "statements": 382,
+      "percentage": 88.21989528795811
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/registered_inventory_journal_codec.go": {
+      "covered": 47,
+      "statements": 47,
+      "percentage": 100.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/registered_journal_codec.go": {
+      "covered": 169,
+      "statements": 169,
+      "percentage": 100.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/registered_materializer.go": {
+      "covered": 77,
+      "statements": 83,
+      "percentage": 92.7710843373494
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/registered_reader.go": {
+      "covered": 141,
+      "statements": 173,
+      "percentage": 81.5028901734104
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/registered_registry_codec.go": {
+      "covered": 384,
+      "statements": 399,
+      "percentage": 96.2406015037594
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/registered_registry_materializer.go": {
+      "covered": 377,
+      "statements": 425,
+      "percentage": 88.70588235294117
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/registered_types.go": {
+      "covered": 2,
+      "statements": 2,
+      "percentage": 100.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/semantic_contract.go": {
+      "covered": 2,
+      "statements": 2,
+      "percentage": 100.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/types.go": {
+      "covered": 32,
+      "statements": 38,
+      "percentage": 84.21052631578948
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/application_source.go": {
+      "covered": 18,
+      "statements": 20,
+      "percentage": 90.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/association_catalog.go": {
+      "covered": 334,
+      "statements": 381,
+      "percentage": 87.66404199475066
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/association_codec.go": {
+      "covered": 97,
+      "statements": 105,
+      "percentage": 92.38095238095238
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/association_types.go": {
+      "covered": 27,
+      "statements": 27,
+      "percentage": 100.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/catalog.go": {
+      "covered": 572,
+      "statements": 648,
+      "percentage": 88.27160493827161
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/codec.go": {
+      "covered": 309,
+      "statements": 323,
+      "percentage": 95.6656346749226
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/component_indexes.go": {
+      "covered": 109,
+      "statements": 121,
+      "percentage": 90.08264462809917
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/component_key_reader.go": {
+      "covered": 173,
+      "statements": 190,
+      "percentage": 91.05263157894737
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/component_key_tree.go": {
+      "covered": 204,
+      "statements": 229,
+      "percentage": 89.08296943231441
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/current_presence_codec.go": {
+      "covered": 483,
+      "statements": 545,
+      "percentage": 88.62385321100918
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/current_presence_iterator.go": {
+      "covered": 308,
+      "statements": 347,
+      "percentage": 88.76080691642652
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/current_presence_tree.go": {
+      "covered": 673,
+      "statements": 821,
+      "percentage": 81.97320341047504
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/current_presence_types.go": {
+      "covered": 171,
+      "statements": 180,
+      "percentage": 95.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/full_accounting.go": {
+      "covered": 66,
+      "statements": 75,
+      "percentage": 88.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/full_bindings.go": {
+      "covered": 150,
+      "statements": 179,
+      "percentage": 83.79888268156425
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/full_candidates.go": {
+      "covered": 200,
+      "statements": 234,
+      "percentage": 85.47008547008546
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/full_current_incident.go": {
+      "covered": 246,
+      "statements": 283,
+      "percentage": 86.92579505300354
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/full_indexes.go": {
+      "covered": 121,
+      "statements": 126,
+      "percentage": 96.03174603174604
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/full_owned.go": {
+      "covered": 158,
+      "statements": 186,
+      "percentage": 84.94623655913979
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/full_owned_budget.go": {
+      "covered": 11,
+      "statements": 11,
+      "percentage": 100.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/full_presence_runs.go": {
+      "covered": 191,
+      "statements": 234,
+      "percentage": 81.62393162393163
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/full_presence_stage.go": {
+      "covered": 126,
+      "statements": 153,
+      "percentage": 82.3529411764706
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/full_readview.go": {
+      "covered": 414,
+      "statements": 459,
+      "percentage": 90.19607843137256
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/full_stage.go": {
+      "covered": 468,
+      "statements": 567,
+      "percentage": 82.53968253968254
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/full_types.go": {
+      "covered": 20,
+      "statements": 20,
+      "percentage": 100.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/keys.go": {
+      "covered": 12,
+      "statements": 12,
+      "percentage": 100.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/ownership_declaration.go": {
+      "covered": 235,
+      "statements": 259,
+      "percentage": 90.73359073359073
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/page_codec.go": {
+      "covered": 243,
+      "statements": 288,
+      "percentage": 84.375
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/page_types.go": {
+      "covered": 25,
+      "statements": 25,
+      "percentage": 100.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/pages.go": {
+      "covered": 399,
+      "statements": 464,
+      "percentage": 85.99137931034483
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/pages_stage.go": {
+      "covered": 300,
+      "statements": 369,
+      "percentage": 81.30081300813008
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/partition_identity.go": {
+      "covered": 94,
+      "statements": 113,
+      "percentage": 83.1858407079646
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/partition_initialization.go": {
+      "covered": 212,
+      "statements": 239,
+      "percentage": 88.7029288702929
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/partition_routing.go": {
+      "covered": 259,
+      "statements": 293,
+      "percentage": 88.39590443686006
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/partition_routing_binding.go": {
+      "covered": 36,
+      "statements": 40,
+      "percentage": 90.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/partition_scope.go": {
+      "covered": 153,
+      "statements": 198,
+      "percentage": 77.27272727272727
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/partition_transaction_stage.go": {
+      "covered": 956,
+      "statements": 1134,
+      "percentage": 84.30335097001763
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/partition_transaction_view.go": {
+      "covered": 375,
+      "statements": 404,
+      "percentage": 92.82178217821782
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/posting_iterator.go": {
+      "covered": 52,
+      "statements": 59,
+      "percentage": 88.13559322033899
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/posting_key.go": {
+      "covered": 69,
+      "statements": 82,
+      "percentage": 84.14634146341463
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/posting_tree.go": {
+      "covered": 201,
+      "statements": 234,
+      "percentage": 85.8974358974359
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/range_move_codec.go": {
+      "covered": 365,
+      "statements": 405,
+      "percentage": 90.12345679012346
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/range_move_component.go": {
+      "covered": 128,
+      "statements": 160,
+      "percentage": 80.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/range_move_export.go": {
+      "covered": 544,
+      "statements": 671,
+      "percentage": 81.07302533532042
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/range_move_maintenance_source.go": {
+      "covered": 4,
+      "statements": 4,
+      "percentage": 100.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/range_move_stage.go": {
+      "covered": 203,
+      "statements": 251,
+      "percentage": 80.87649402390439
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/range_move_types.go": {
+      "covered": 52,
+      "statements": 52,
+      "percentage": 100.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/semantic_guard.go": {
+      "covered": 21,
+      "statements": 24,
+      "percentage": 87.5
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/topology.go": {
+      "covered": 57,
+      "statements": 59,
+      "percentage": 96.61016949152543
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore/types.go": {
+      "covered": 77,
+      "statements": 78,
+      "percentage": 98.71794871794872
+    }
+  },
+  "normal_runtime_qualification": "exact pinned toolchain profiles; old pre-pruning/host profiles excluded; overlapping fresh focused guards are additive, not disjoint inventory claims",
+  "checkpoint_go_manifest": "final-go-source.json",
+  "accepted_go_manifest": "final-go-source-amended.json",
+  "test_only_amendments": [
+    "range_move_import_guards_test.go",
+    "range_move_intrinsic_admission_test.go",
+    "range_move_transition_guards_test.go"
+  ],
+  "fresh_amended_test_profiles": [
+    "final-test-only-normal.cover",
+    "final-transition-test-only-normal.cover"
+  ],
+  "carry": "All production bytes/coverage block coordinates unchanged; all nonamended test bytes and named full gates preserved. Three amended parents rerun normal/race; equal coordinates in new focused profiles verified."
+}

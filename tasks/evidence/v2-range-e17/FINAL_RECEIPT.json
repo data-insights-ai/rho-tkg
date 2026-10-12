@@ -1,0 +1,119 @@
+{
+  "status": "author local finite E17 gates complete; independent final acceptance pending",
+  "source_checkpoint": "9950c12397169728255e61531c3f6234ce689e7e",
+  "root_progress_integration": "9c3891da1afb34d882fde8616670f1524c7e766b",
+  "accepted_go_manifest": "final-go-source-amended.json",
+  "accepted_go_manifest_sha256": "283a96d6e7574a45ef757df3d31f77d9e7334c30966c16ecbffb9c00a4b8aa47",
+  "go_files": 517,
+  "production_unchanged": true,
+  "test_only_changes": [
+    "v5/internal/graphapply/range_move_import_guards_test.go",
+    "v5/internal/graphapply/range_move_intrinsic_admission_test.go",
+    "v5/internal/graphapply/range_move_transition_guards_test.go"
+  ],
+  "normal": {
+    "parents": 753,
+    "PASS": 749,
+    "qualified_SKIP": 4,
+    "receipts": [
+      "existing-graphapply-certified-normal.watchdog.json",
+      "existing-graphapply-cross-normal.watchdog.json",
+      "existing-graphapply-delta-normal.watchdog.json",
+      "existing-graphapply-e15-normal.watchdog.json",
+      "existing-graphapply-process-source-normal.watchdog.json",
+      "existing-graphapply-registry-normal.watchdog.json",
+      "existing-graphapply-replicated-normal.watchdog.json",
+      "existing-graphapply-rest-normal.watchdog.json",
+      "existing-graphstore-current-normal.watchdog.json",
+      "existing-graphstore-e15-normal.watchdog.json",
+      "existing-graphstore-partition-normal.watchdog.json",
+      "existing-graphstore-rest-normal.watchdog.json",
+      "pre-freeze-direct.watchdog.json",
+      "pre-freeze-control.watchdog.json",
+      "pre-freeze-transfer.watchdog.json",
+      "pre-freeze-process.watchdog.json",
+      "pre-freeze-graphstore.watchdog.json",
+      "native-undo-and-intrinsic-guards.watchdog.json",
+      "native-transition-decision-guards.watchdog.json",
+      "native-intrinsic-final-guard.watchdog.json",
+      "registered-genesis-as4-normal.watchdog.json",
+      "final-test-only-normal.watchdog.json",
+      "final-transition-test-only-normal.watchdog.json"
+    ]
+  },
+  "race": {
+    "parents": 753,
+    "PASS": 749,
+    "qualified_SKIP": 4,
+    "receipts": [
+      "existing-graphapply-certified-race.watchdog.json",
+      "existing-graphapply-cross-race.watchdog.json",
+      "existing-graphapply-delta-race.watchdog.json",
+      "existing-graphapply-e15-race.watchdog.json",
+      "existing-graphapply-process-source-race.watchdog.json",
+      "existing-graphapply-registry-race.watchdog.json",
+      "existing-graphapply-replicated-race.watchdog.json",
+      "existing-graphapply-rest-race.watchdog.json",
+      "existing-graphstore-current-race.watchdog.json",
+      "existing-graphstore-e15-race.watchdog.json",
+      "existing-graphstore-partition-race.watchdog.json",
+      "existing-graphstore-rest-race.watchdog.json",
+      "range-control-race.watchdog.json",
+      "range-delta-race.watchdog.json",
+      "range-direct-race.watchdog.json",
+      "range-graphstore-race.watchdog.json",
+      "range-process-race.watchdog.json",
+      "range-transfer-1-race.watchdog.json",
+      "range-transfer-2-race.watchdog.json",
+      "registered-genesis-as4-race.watchdog.json",
+      "final-test-only-race.watchdog.json",
+      "final-transition-test-only-race.watchdog.json"
+    ]
+  },
+  "skip_qualification": {
+    "subprocess_helpers": [
+      "TestReplicatedGraphChild",
+      "TestMaterializerCrashChild"
+    ],
+    "unrun_large_measurements": [
+      "TestCurrentIncidentMeasurements",
+      "TestIncidentAtLargeOwnEndedDefaultPopulation"
+    ],
+    "AS4": "Actual fresh cohort normal/race PASS supersedes skipped default inventory parent"
+  },
+  "coverage": "FINAL_NORMAL_COVERAGE.json",
+  "changed_production_coverage": "CHANGED_PRODUCTION_FILE_COVERAGE.json",
+  "public_direct_witnesses": "PUBLIC_DIRECT_WITNESSES.json",
+  "static_receipts": [
+    "final-fmt-vet-build",
+    "final-lint-all-findings",
+    "security-bounds-amended",
+    "final-vulncheck-docker"
+  ],
+  "vulnerability_qualification": "No called vulnerable symbols; uncalled dependency advisories remain",
+  "mutants": {
+    "current_root": {
+      "edit": "mutant-current-certified-root.patch",
+      "kill": "mutant-current-certified-root-at.jsonl",
+      "nonkill": "mutant-current-certified-root.jsonl",
+      "qualification": "Actual certified-opening exact-coordinate refusal, not postmutation wrong result"
+    },
+    "missing_target_root": {
+      "edit": "mutant-skip-target-content.patch",
+      "kill": "mutant-skip-target-content.jsonl",
+      "qualification": "Actual target mutation fails after move completion; no build/resource failure"
+    }
+  },
+  "limits": {
+    "GOTOOLCHAIN": "go1.26.9",
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off",
+    "rss_mib": 4096,
+    "seconds_per_invocation": 180,
+    "docker": "4GiB/2CPU"
+  },
+  "open": "Hosted CI scheduling, larger content/retirement/GC/physical-host/comparison/E18/fullV2/V0\u2013V7 remain separate",
+  "qualification_index": "FINAL_INDEX.md"
+}
