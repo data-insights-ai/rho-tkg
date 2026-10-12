@@ -202,6 +202,7 @@ func TestDurableCommitSyncWritesSyncsPerGroup(t *testing.T) {
 				if err != nil {
 					t.Fatalf("%d ops: %v", ops, err)
 				}
+				t.Logf("%d ops: %d syncs", ops, n)
 				if n < c.lo(ops) || n > c.hi(ops) {
 					t.Errorf("%d ops: %d syncs, want [%d, %d]", ops, n, c.lo(ops), c.hi(ops))
 				}

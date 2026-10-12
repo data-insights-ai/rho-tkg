@@ -691,10 +691,15 @@ type Config struct {
 	// ErrCapabilityNotSupported when missing. Every in-tree backend
 	// (memory.Store, badger.Store, tiered.Store) satisfies the full
 	// composition.
-	Store                storepkg.MandatoryStore
-	BadgerDir            string
-	BadgerInMemory       bool
-	Validation           ValidationLimits
+	Store          storepkg.MandatoryStore
+	BadgerDir      string
+	BadgerInMemory bool
+	Validation     ValidationLimits
+	// SyncWrites makes the badger-backed store flush every mutation before it
+	// returns and Badger fsync each write (strict power-loss durability). Under
+	// DurableCommit the mutations of a commit group are synced together at the
+	// group's durable commit instead (see DurableCommit). Ignored when Store is
+	// provided explicitly (set it on the store's own config).
 	SyncWrites           bool
 	Compression          options.CompressionType
 	ZSTDCompressionLevel int
@@ -894,7 +899,13 @@ type Config struct {
 	// only the active memtable WAL and the current value-log file, so rows of
 	// a group whose flush filled the memtable (or a value-log file) can stay
 	// unsynced after the return — safe against a process crash, not a power
-	// loss; use SyncWrites for strict power-loss durability. New fails with
+	// loss; use SyncWrites for strict power-loss durability. With SyncWrites
+	// on a badger store a group costs one synced WriteBatch, not one sync per
+	// mutation: its mutations (each GraphTx mutation, the Batch.Execute window,
+	// a Rollback) run under the exclusive graph lock with the per-mutation
+	// flush held (store.MutationFlushHoldCapability), the held buffer flushes
+	// in steps at MaxPendingWrites, and a Rollback ends with one durable flush
+	// (part of the group can already be on disk). New fails with
 	// ErrCapabilityNotSupported when the store has no stable storage (memory
 	// store, BadgerInMemory, an in-memory tiered or sharded store). Default
 	// false: no flush on commit, today's behavior.

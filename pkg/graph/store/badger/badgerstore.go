@@ -253,6 +253,8 @@ type Config struct {
 	// SyncWrites enables synchronous disk writes for every mutation.
 	// When true, each write is flushed to Badger immediately (no async buffer).
 	// Eliminates the async flush window at the cost of higher write latency.
+	// Inside a store.MutationFlushHoldCapability hold (graph DurableCommit
+	// group) the flush waits for the group's DurableFlush instead.
 	// Ignored in ReadOnly mode.
 	SyncWrites bool
 	// MaxPendingWrites bounds the async write buffer. When the pending-op
@@ -261,7 +263,8 @@ type Config struct {
 	// never-evictable cache entries behind it — grow without limit under a
 	// write burst faster than FlushInterval. Default:
 	// DefaultMaxPendingWrites. Negative disables the bound (pre-4.5
-	// unbounded behavior). Ignored when SyncWrites is true (every write
+	// unbounded behavior). Under SyncWrites it bounds only the writes held
+	// by a durable group (HoldMutationFlushes); otherwise ignored there (every write
 	// already flushes).
 	MaxPendingWrites int
 	// Compression sets the SSTable compression algorithm.

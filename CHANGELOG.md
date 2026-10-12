@@ -20,6 +20,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   counters equal a recount after a split-write put, replace and delete (they drifted before). No graph-door
   answer changes; tiered still declines the capability. Evidence `tasks/evidence/planner-stats-memo/`.
 
+- **`Config.DurableCommit` with `SyncWrites` syncs once per commit group, not once per mutation** (backlog 52,
+  ai-soc): the ai-soc 530-op `GraphTx` group took 990 ms (one Badger sync per mutation, ~822 msync per group) and
+  takes 13.5 ms (`tasks/evidence/aisoc-commit-cost/52-bench.txt`; `DurableCommit` alone 12.5 ms, plain badger 5.1 ms,
+  `SyncWrites` alone unchanged at ~1 s). Each `GraphTx` mutation, the `Batch.Execute` window and a `Rollback` run under
+  the exclusive graph lock with the store's per-mutation flush held (new optional `store.MutationFlushHoldCapability`,
+  implemented by the badger store), and the group's one `DurableFlush` commits the held writes as one WriteBatch that
+  Badger syncs; the held buffer flushes in steps at `MaxPendingWrites`, and a `Rollback` ends with one durable flush.
+  Design choice: Badger `SyncWrites` fsyncs the WAL after every write and syncs each value-log file it retires, so
+  one synced batch keeps strict power-loss durability across a memtable or value-log switch; closing that switch gap
+  inside `DurableFlush` instead would need fsyncs of Badger's retired memtable WALs, which Badger does not expose.
+  Contract: unchanged within what `DurableCommit` documents — a crash before the commit returned keeps any subset of
+  the group, and a failed group flush returns `ErrCommitNotDurable` at the commit (a write error inside such a group
+  now surfaces there instead of at the mutation call); standalone mutations still return synced (the exclusive lock
+  keeps them out of the hold); `SyncWrites` without `DurableCommit`, and tiered or sharded stores, keep per-mutation
+  syncs. Red test `TestDurableCommitSyncWritesSyncsPerGroup` (syncs per group counted by
+  `badger.Store.SyncCountForTest`, 10 vs 500 ops, plus crash children for split, rollback, retry and concurrent
+  standalone writes).
+
 ## [4.51.2] - 2026-10-12
 
 ### Added

@@ -1,0 +1,40 @@
+# backlog 52 GREEN: after the fix (rebased on main 2fb85e70)
+# 2026-10-12T19:03:58
+# go test -run TestDurableCommitSyncWritesSyncsPerGroup -count=1 -v ./pkg/graph/
+# sync lines, in pairs (10 ops, 500 ops): tx, batch, rollback, held-buffer-bound (MaxPendingWrites 16), sync-writes-only (no DurableCommit, unchanged)
+    durable_commit_syncwrites_test.go:205: 10 ops: 1 syncs
+    durable_commit_syncwrites_test.go:205: 500 ops: 1 syncs
+    durable_commit_syncwrites_test.go:205: 10 ops: 1 syncs
+    durable_commit_syncwrites_test.go:205: 500 ops: 1 syncs
+    durable_commit_syncwrites_test.go:205: 10 ops: 1 syncs
+    durable_commit_syncwrites_test.go:205: 500 ops: 1 syncs
+    durable_commit_syncwrites_test.go:205: 10 ops: 2 syncs
+    durable_commit_syncwrites_test.go:205: 500 ops: 84 syncs
+    durable_commit_syncwrites_test.go:205: 10 ops: 12 syncs
+    durable_commit_syncwrites_test.go:205: 500 ops: 501 syncs
+--- PASS: TestDurableCommitSyncWritesSyncsPerGroup (11.20s)
+    --- PASS: TestDurableCommitSyncWritesSyncsPerGroup/tx (0.39s)
+    --- PASS: TestDurableCommitSyncWritesSyncsPerGroup/batch (0.39s)
+    --- PASS: TestDurableCommitSyncWritesSyncsPerGroup/rollback (0.43s)
+    --- PASS: TestDurableCommitSyncWritesSyncsPerGroup/held-buffer-bound (1.24s)
+    --- PASS: TestDurableCommitSyncWritesSyncsPerGroup/sync-writes-only (4.31s)
+    --- PASS: TestDurableCommitSyncWritesSyncsPerGroup/above-txn-size-limit (0.31s)
+    --- PASS: TestDurableCommitSyncWritesSyncsPerGroup/not-durable-retry (0.35s)
+    --- PASS: TestDurableCommitSyncWritesSyncsPerGroup/crash/tx (0.46s)
+    --- PASS: TestDurableCommitSyncWritesSyncsPerGroup/crash/batch (0.30s)
+    --- PASS: TestDurableCommitSyncWritesSyncsPerGroup/crash/above-txn-size-limit (0.40s)
+    --- PASS: TestDurableCommitSyncWritesSyncsPerGroup/crash/rollback (0.99s)
+    --- PASS: TestDurableCommitSyncWritesSyncsPerGroup/crash/not-durable-no-retry (0.33s)
+    --- PASS: TestDurableCommitSyncWritesSyncsPerGroup/crash/not-durable-retry (0.48s)
+    --- PASS: TestDurableCommitSyncWritesSyncsPerGroup/crash/concurrent-standalone (0.81s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	11.286s
+
+# go test -run TestMutationFlushHold -count=1 -v ./pkg/graph/store/badger/
+--- PASS: TestMutationFlushHold (0.49s)
+    --- PASS: TestMutationFlushHold/sync-writes (0.19s)
+    --- PASS: TestMutationFlushHold/sync-writes-bound (0.17s)
+    --- PASS: TestMutationFlushHold/async-unchanged (0.12s)
+    --- PASS: TestMutationFlushHold/nil-store (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.509s
