@@ -495,8 +495,12 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    baselines from the same prepared inactive import. It releases all readers
    before Claim and constructs no live materializer or Host. Seven focused
    parents pass normal/race; new-file coverage is 93.4%, the shared validator
-   84.2%, and scoped vet/lint pass. Durable snapshot activation and association
-   transfer into the restored Host remain open.
+   84.2%, and scoped vet/lint pass. [Hosted integration at
+   `ee8d88ae`](evidence/e17-ci-deadline-20261012/hosted-ci-ee8d88ae.json)
+   passes all eight applicable jobs, including both modules' normal/race,
+   coverage and security gates. This qualifies the integrated auditor;
+   durable snapshot activation and association transfer into the restored Host
+   remain open. The later v4.51.2 integration requires its own CI result.
    The [bounded recovery fix](evidence/native-ready-progress-20261012/qualification.json)
    now makes progress when an ordinary native Ready exceeds available application
    capacity but its ordered prefixes fit. It retains the original Ready until
