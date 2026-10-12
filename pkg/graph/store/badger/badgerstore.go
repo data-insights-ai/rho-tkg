@@ -461,6 +461,7 @@ type Store struct {
 	propIdxOnDisk         bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
 	temporalIdxOnDisk     bool                                          // maintain the persisted 0x0B raw-entry log so loadIndexesScan can rebuild without a full node fetch per entity
 	disablePlannerStats   bool                                          // skip planner-stat maintenance (presence/NDV/min-max/type-class) on writes + open; the stat capabilities fail closed with ErrCapabilityNotSupported
+	openImageSuppressed   atomic.Bool                                   // the open's index-key repair failed: Close writes no image (badgerstore_index_repair.go)
 	statsDeferred         atomic.Bool                                   // a clean open left planner stats unbuilt: writes skip them, the first stat read builds them from the rows (ensurePlannerStats)
 	historyDelta          bool                                          // store version-history rows as anchor+delta (ADR-0009); reads accept both forms regardless
 	historyAnchorInterval uint64                                        // anchor spacing for historyDelta (>=1, default 16); baked into the on-disk layout — verified against a persisted marker at open
@@ -1364,6 +1365,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 	// storeutil.TemporalIndexOnDiskBuiltKey so it runs exactly once.
 	var temporalIdxNeedsBuild bool
 	var temporalIdxBackfillOps []writeOp
+	// kr collects the keys a full rebuild finds disagreeing with the rows
+	// (badgerstore_index_repair.go); a trusted image needs none.
+	kr := &keyRepair{}
 
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
@@ -1465,6 +1469,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			labels := bs.addNodeIndexesFromRow(nid, collectNodeLabelTokens(n))
 			bs.addNodePropertyKeyCounts(n)
 			decodedNodeLabels[nid] = labels
+			kr.expectedLabels += len(labels)
 		}
 		it.Close()
 		if loadErr != nil {
@@ -1485,12 +1490,17 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			token := binary.BigEndian.Uint16(key[1:3])
 			nid := types.NodeID(storepkg.ParseIDFromKey(key, 3))
 			if _, exists := nodeEntityIDs[nid]; !exists {
+				if img == nil {
+					kr.drop(key) // no row
+				}
 				continue
 			}
 			if labels, decoded := decodedNodeLabels[nid]; decoded {
 				if _, ok := labels[token]; !ok {
+					kr.drop(key) // the row does not carry the label
 					continue
 				}
+				kr.acceptedLabels++
 			}
 			bs.addLabelIdxLocked(token, nid)
 			if img != nil {
@@ -1594,11 +1604,16 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			}
 			info, decoded := decodedRelInfo[rid]
 			if !decoded {
+				if _, local := relEntityIDs[rid]; !local {
+					kr.drop(key) // no row (an undecodable row keeps its keys)
+				}
 				continue
 			}
 			if info.RelType != token {
+				kr.drop(key)
 				continue
 			}
+			kr.acceptedTypes++
 			bs.addTypeIdxLocked(token, rid)
 		}
 		it.Close()
@@ -1623,7 +1638,12 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				}
 			} else if info, decoded := decodedRelInfo[relID]; !decoded ||
 				info.StartID != startID || info.EndID != endID || info.RelType != relType {
+				if _, local := relEntityIDs[relID]; decoded || !local {
+					kr.drop(key) // the row disagrees, or there is none
+				}
 				continue
+			} else {
+				kr.acceptedOut++
 			}
 			if _, startLocal := bs.nodeIDs[types.NodeID(startID)]; !startLocal {
 				continue
@@ -1636,6 +1656,13 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		}
 		it.Close()
 
+		if img == nil {
+			for _, info := range decodedRelInfo {
+				if _, endLocal := bs.nodeIDs[types.NodeID(info.EndID)]; endLocal {
+					kr.expectedIn++
+				}
+			}
+		}
 		// Scan incoming adjacency: keyIn(1B) + endID(8B) + relType(2B) + startID(8B) + relID(8B).
 		// Incoming-only rows are valid in TieredStore cross-shard layouts, so
 		// preserve keys with no local relationship entity. If there is a local
@@ -1659,10 +1686,14 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			}
 			if decoded {
 				if info.StartID != startID || info.EndID != endID || info.RelType != relType {
+					kr.drop(key) // only reached on a rebuild: an image's keys agree
 					continue
 				}
 				if _, endLocal := bs.nodeIDs[types.NodeID(endID)]; !endLocal {
 					continue
+				}
+				if img == nil {
+					kr.acceptedIn++
 				}
 			} else if hasLocalEntity {
 				continue
@@ -1674,6 +1705,13 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			bs.inIdx[endNID][relID] = inEdge{start: types.NodeID(startID), typ: relType}
 		}
 		it.Close()
+
+		if img == nil {
+			kr.addMissingKeys(txn, decodedNodeLabels, decodedRelInfo, func(id types.NodeID) bool {
+				_, ok := bs.nodeIDs[id]
+				return ok
+			})
+		}
 
 		// Load counters from meta keys, or count from live row maps if missing.
 		nodeCount, err := getCounter(txn, counterNodeCountKey)
@@ -2125,6 +2163,8 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 	if err != nil {
 		return err
 	}
+
+	bs.commitKeyRepair(kr)
 
 	if bs.propIdxOnDisk && propIdxNeedsBuild {
 		if bs.propKeyReg.Load() == nil && propIdxDefined {

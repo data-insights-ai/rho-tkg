@@ -1,0 +1,66 @@
+--- FAIL: TestCleanReopenAfterStaleIndexKeys (7.14s)
+    --- FAIL: TestCleanReopenAfterStaleIndexKeys/label_key_the_row_lacks (0.38s)
+        clean_reopen_stale_keys_test.go:138: CountByLabel(B) = 2, <nil>; want 1
+        clean_reopen_stale_keys_test.go:145: clean reopen after the repairing open differs from the full rebuild:
+             got: label 2 [806293726324391936 806293726658985984]
+            want: label 2 [806293726658985984]
+    --- FAIL: TestCleanReopenAfterStaleIndexKeys/label_key_the_row_lacks,_read-only_rebuild_first (0.37s)
+        clean_reopen_stale_keys_test.go:138: CountByLabel(B) = 2, <nil>; want 1
+        clean_reopen_stale_keys_test.go:145: clean reopen after the repairing open differs from the full rebuild:
+             got: label 2 [806293739634229248 806293740132433920]
+            want: label 2 [806293740132433920]
+    --- FAIL: TestCleanReopenAfterStaleIndexKeys/label_key_missing (0.31s)
+        clean_reopen_stale_keys_test.go:138: CountByLabel(B) = 0, <nil>; want 1
+        clean_reopen_stale_keys_test.go:145: clean reopen after the repairing open differs from the full rebuild:
+             got: labelcount 1 1
+            want: label 2 [806293772634390528]
+    --- FAIL: TestCleanReopenAfterStaleIndexKeys/label_key_missing,_read-only_rebuild_first (0.33s)
+        clean_reopen_stale_keys_test.go:138: CountByLabel(B) = 0, <nil>; want 1
+        clean_reopen_stale_keys_test.go:145: clean reopen after the repairing open differs from the full rebuild:
+             got: labelcount 1 1
+            want: label 2 [806293782684106752]
+    --- FAIL: TestCleanReopenAfterStaleIndexKeys/type_key_of_another_type (0.30s)
+        clean_reopen_stale_keys_test.go:145: clean reopen after the repairing open differs from the full rebuild:
+             got: type 2 [806293793471529984 806293793538933760]
+            want: type 2 [806293793538933760]
+    --- FAIL: TestCleanReopenAfterStaleIndexKeys/type_key_of_another_type,_read-only_rebuild_first (0.33s)
+        clean_reopen_stale_keys_test.go:145: clean reopen after the repairing open differs from the full rebuild:
+             got: type 2 [806293803403510784 806293803473175552]
+            want: type 2 [806293803473175552]
+    --- FAIL: TestCleanReopenAfterStaleIndexKeys/type_key_missing (0.31s)
+        clean_reopen_stale_keys_test.go:141: ByType(T) = 0, <nil>; want 1
+        clean_reopen_stale_keys_test.go:145: clean reopen after the repairing open differs from the full rebuild:
+             got: type 2 [806293835343070208]
+            want: type 1 [806293835277534208]
+    --- FAIL: TestCleanReopenAfterStaleIndexKeys/type_key_missing,_read-only_rebuild_first (0.32s)
+        clean_reopen_stale_keys_test.go:141: ByType(T) = 0, <nil>; want 1
+        clean_reopen_stale_keys_test.go:145: clean reopen after the repairing open differs from the full rebuild:
+             got: type 2 [806293845480506368]
+            want: type 1 [806293845413626880]
+    --- FAIL: TestCleanReopenAfterStaleIndexKeys/out_key_missing (0.32s)
+        clean_reopen_stale_keys_test.go:145: clean reopen after the repairing open differs from the full rebuild:
+             got: out 806293897858842624 806293897978250240 806293897523593216
+            want: out 806293897523593216 806293897910518784 806293897858842624
+    --- FAIL: TestCleanReopenAfterStaleIndexKeys/out_key_missing,_read-only_rebuild_first (0.32s)
+        clean_reopen_stale_keys_test.go:145: clean reopen after the repairing open differs from the full rebuild:
+             got: out 806293908479311872 806293908601734144 806293908137967616
+            want: out 806293908137967616 806293908534264832 806293908479311872
+    --- FAIL: TestCleanReopenAfterStaleIndexKeys/in_key_with_other_endpoints (0.31s)
+        clean_reopen_stale_keys_test.go:145: clean reopen after the repairing open differs from the full rebuild:
+             got: in 806293918826594304 806293918878630912 806293918826594304 1
+            want: in 806293918826594304 806293918878630912 806293918495014912 1
+    --- FAIL: TestCleanReopenAfterStaleIndexKeys/in_key_with_other_endpoints,_read-only_rebuild_first (0.33s)
+        clean_reopen_stale_keys_test.go:145: clean reopen after the repairing open differs from the full rebuild:
+             got: in 806293929244524544 806293929298461696 806293929244524544 1
+            want: in 806293929244524544 806293929298461696 806293928911536128 1
+    --- FAIL: TestCleanReopenAfterStaleIndexKeys/in_key_missing (0.31s)
+        clean_reopen_stale_keys_test.go:145: clean reopen after the repairing open differs from the full rebuild:
+             got: label 1 [806293939498483712]
+            want: in 806293939831734272 806293939886621696 806293939498483712 1
+    --- FAIL: TestCleanReopenAfterStaleIndexKeys/in_key_missing,_read-only_rebuild_first (0.32s)
+        clean_reopen_stale_keys_test.go:145: clean reopen after the repairing open differs from the full rebuild:
+             got: label 1 [806293949737336832]
+            want: in 806293950107746304 806293950160536576 806293949737336832 1
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	7.157s
+FAIL

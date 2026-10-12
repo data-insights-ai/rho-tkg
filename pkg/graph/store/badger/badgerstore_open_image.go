@@ -23,9 +23,13 @@ import (
 // label, type, outgoing and incoming keys), and the open could read those keys
 // alone if it knew they agree with the rows. The rest — the contents of the
 // property, relationship-property, composite, temporal, relationship-type
-// temporal, high-frequency and vector indexes — Close persists here, after its
-// final flush, as one chunked blob (the "open image"). Planner statistics are
-// not in it: a clean open defers them to their first read (ensurePlannerStats).
+// temporal, high-frequency and vector indexes, and the planner statistics
+// (badgerstore_planner_stats_deferred.go) — Close persists here, after its
+// final flush, as one chunked blob (the "open image"). An image without the
+// statistics section makes the open defer them to their first read
+// (ensurePlannerStats). The rebuilding open repairs index keys that disagree
+// with the rows first (badgerstore_index_repair.go), so the keys an image
+// later vouches for agree with them.
 //
 // TRUST RULE. The image header is written last, in its own commit, so its
 // badger version is the newest in the store. An open trusts the image (and the
@@ -121,7 +125,7 @@ var openImageAfterEncodeHook func()
 // header. Best effort: the image only accelerates the next open, so a failure
 // is logged and leaves no trusted header (the next open rebuilds).
 func (bs *Store) persistOpenImageLocked() {
-	if bs.inMemory || bs.readOnly {
+	if bs.inMemory || bs.readOnly || bs.openImageSuppressed.Load() {
 		return
 	}
 	if err := bs.writeOpenImage(); err != nil && bs.logger != nil {

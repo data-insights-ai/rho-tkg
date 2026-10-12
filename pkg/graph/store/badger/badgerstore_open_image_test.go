@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
@@ -299,6 +300,62 @@ func TestPlannerStatsBuildFailureRetries(t *testing.T) {
 	}
 	if n, err := bs.NodeCountByLabelAndPropertyKey(adLabel, "qty"); err != nil || n != 59 {
 		t.Fatalf("retry: %d, %v; want 59 nodes with qty", n, err)
+	}
+}
+
+// A rebuild whose index-key repair fails must not let the session's Close
+// write an image: the unrepaired stale key would be trusted at the next open.
+func TestFailedKeyRepairWritesNoImage(t *testing.T) {
+	dir := t.TempDir()
+	bs, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id := int64(1); id <= 3; id++ {
+		if err := bs.PutNode(adNode(id, id)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := bs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	stale := storepkg.LabelIndexKey(adLabel+1, 2) // node 2 does not carry adLabel+1
+	db, err := badgerv4.Open(badgerv4.DefaultOptions(dir).WithLogger(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Update(func(txn *badgerv4.Txn) error { return txn.Set(stale, nil) }); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopen := func(fault error) (members int, decoded int64) {
+		keyRepairFaultForTest = func() error { return fault }
+		if fault == nil {
+			keyRepairFaultForTest = nil
+		}
+		defer func() { keyRepairFaultForTest = nil }()
+		var s *Store
+		decoded = CountRowDecodesForTest(func() {
+			if s, err = New(Config{Dir: dir}); err != nil {
+				t.Fatal(err)
+			}
+		})
+		ids, _ := s.LabelIndexForTest(adLabel + 1)
+		if err := s.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return len(ids), decoded
+	}
+	if n, d := reopen(errors.New("injected repair failure")); n != 0 || d == 0 {
+		t.Fatalf("rebuilding open with a failed repair: %d members of the stale label, %d rows decoded", n, d)
+	}
+	if n, d := reopen(nil); n != 0 || d == 0 {
+		t.Fatalf("open after a session without image: %d members, %d rows decoded (want a rebuild)", n, d)
+	}
+	if n, d := reopen(nil); n != 0 || d != 0 {
+		t.Fatalf("clean reopen after the repair: %d members, %d rows decoded (want the image, no stale member)", n, d)
 	}
 }
 
