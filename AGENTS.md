@@ -97,6 +97,13 @@ make security       # gosec static analysis
 make vulncheck      # govulncheck for known CVEs
 ```
 
+Routine pushes/PRs to `v5` use affected-module build/static checks and selected
+changed/companion/compatibility tests in normal, race and scoped coverage modes.
+Docs/evidence-only changes use lightweight reference/JSON checks. Main pushes,
+PRs to main and `CI` workflow dispatch with `full_validation=true` retain the
+full gates. Use full validation for phase/release acceptance; focused CI proves
+only its recorded selection. Local Makefile target semantics remain unchanged.
+
 `golangci-lint`, `gosec`, and `govulncheck` are usually absent from the host, so
 `make lint` / `make security` / `make vulncheck` fail with "command not found".
 **Do NOT report the gate as un-runnable — Docker is always available.** Run the

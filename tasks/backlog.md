@@ -532,8 +532,19 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    durable completion, preserves the commit boundary and withholds output on errors.
    Both complete storage/replica package normal, race and coverage runs pass, as
    do scoped static gates; the receipt distinguishes final equivalent selector
-   and comment edits. The actual paired fault trace and engine decision remain
-   pending; the fallback may require additional syncs and has no performance claim.
+   and comment edits. The [ordered recovery and actual paired-fault qualification](evidence/native-paired-fault-20261012/qualified-final.json)
+   is now integrated. Prospective completion capacity is bound to the exact
+   applied or earlier queued reservation. New work behind a retiring owner is
+   reclassified only after the genuine committed predecessor is installed;
+   callback/read/close/I/O errors never grant retry authority. Persisted recipes
+   contain only Reserve/Use, separately from transient dependency observations.
+   Focused normal/race and affected compatibility tests pass; new-file coverage
+   is 87.5%, each new file at least 80%, with scoped vet and configured lint clean.
+   Actual native normal/race traces match the retained FDB six-operation lane;
+   all 19 adversarial comparison checks pass. Every successful native lane reaps
+   all 15 incarnations. This closes the selected recovery/paired-fault component,
+   not remaining fault/cost matrices or the engine decision. Prefix fallback may
+   require additional syncs and still has no performance claim.
    The
    [bounded voting/control model](evidence/v2-graph-lifecycle-admission/replacement-model.py)
    passes 5,040 event schedules and 11 finite checks, independently rerun against
