@@ -360,12 +360,16 @@ reviewed and validated before the next package starts.
    recipient still current, delayed grant recovery, exact retries and old cuts.
    Final focused normal/race checks pass; removing the Life allocation fence
    makes its assertion fail. Production is unchanged. This uses six in-process
-   voters and does not close process-crash P08 or full V2 acceptance.
-   Next is substrate case P08 on the native graph path: partial cached issuance,
-   uncertain grant delivery, recipient/allocator process restart, stale new-write
-   refusal and exact committed-request recovery. Existing reducer and scalar
-   six-process tests do not close that composition requirement. Separately,
-   production creation/replacement admission must distinguish new logical graphs
+   voters; the separate **native P08 process scope is now accepted locally**.
+   Its [acceptance record](evidence/v2-allocation-p08/acceptance.json) verifies
+   child-owned cached issuance, pre/post-quorum reservation crashes, delayed grant
+   delivery, recipient/allocator restarts, stale Entity/Life/Value refusal and
+   exact committed graph retries. All 52 selected tests plus one fuzz seed pass
+   in each normal/race mode; the recipient-session omission is detected. Production
+   is unchanged. Combined hosted CI remains pending; full V2 stays open.
+   Next are the equivalent transactional-KV graph fault/comparison evidence and
+   the remaining V2 exit gates above. Separately, production creation/replacement
+   admission must distinguish new logical graphs
    from recovery; existing-directory binding checks alone do not establish that
    a logical identity may safely be bootstrapped on fresh or lost storage.
 

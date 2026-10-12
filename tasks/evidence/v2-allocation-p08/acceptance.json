@@ -1,0 +1,63 @@
+{
+  "status": "accepted_finite_native_P08_process_scope",
+  "date": "2026-10-12",
+  "author_commit": "031a99e2790267d02aff158b59352c7c55159213",
+  "integration_commit": "45716bf32e2120e189d02cb29bab3f1220040d8b",
+  "scope": "Test-only native allocation and graph admission on six local OS processes, two partitions with three voters each.",
+  "independent_review": {
+    "source_manifest": {
+      "file": "final-go-source.json",
+      "sha256": "6e81f40d6f4989305394a6693e53c4547c1e3c229c8e3c14c9f9ddca6038c123",
+      "go_files": 522,
+      "mismatches": 0
+    },
+    "unchanged_production": {
+      "base": "47d9801078a4bd029a40fe4a89afb9e1d40d5791",
+      "go_files": 218,
+      "changed": 0
+    },
+    "packaged_artifacts_verified": 15,
+    "raw_archive_members_verified": 81,
+    "archive": {
+      "file": "raw-evidence.tar.gz",
+      "sha256": "c252ea5bff92cedca22b68a4a2a65db8045fb49b3d65c940b2231ce7eae29575",
+      "bytes": 404001,
+      "uncompressed_bytes": 5965201
+    },
+    "normal_and_race_each": {
+      "test_parents_pass": 52,
+      "fuzz_seed_parents_pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "process_cleanup_each_mode": {
+      "six_child_schedules": 6,
+      "successful_live_child_reaps_per_schedule": 6,
+      "additional_intentionally_killed_incarnations_reaped": 4
+    },
+    "source_review": "Separate reviewer read all five changed test/harness APIs. Parent reviewed final exact Life/Value assertions and native inspection delta after review; no production code changed.",
+    "semantic_checks": [
+      "Child-owned Acquire and Next issue finite disjoint cached ranges and reject exhaustion.",
+      "Actual pre-quorum and post-quorum source SIGKILL, same-directory restart and native replacement election distinguish uncertain reservations using completed own ReadIndex and committed overwrite.",
+      "Delayed completed HOME acknowledgement after recipient replacement refuses; unknown committed blocks remain burned and new issuance starts above their high-water mark.",
+      "Stale unused Entity, Life and Value claims refuse without graph or CDC changes; current authority controls apply and exact Life/Value identities are inspected on all target voters.",
+      "Exact committed graph retries retain original identity, index and outcome without duplicate CDC; changed payload under the same request key refuses.",
+      "Old certified At reads preserve original typed values and component bytes after allocator and recipient restart; service-only rotation leaves surviving cached authority valid."
+    ],
+    "negative_control": "Isolated omission of recipient-session validation compiles and fails by accepting stale Node23/Life24. This is sensitivity evidence, not an original production bug.",
+    "static_checks": "Formatting, build, vet, pinned lint and gosec pass. govulncheck reports zero called vulnerable symbols; two imported-package and two required-module advisories remain.",
+    "coverage": "Fresh scoped profiles only; no new public API or changed production. Prior accepted production coverage carries by exact source identity. Full combined hosted coverage remains pending.",
+    "resources": "Every local Go invocation bounded by 180 seconds and 4 GiB aggregate process-tree RSS; Go 1.26.9, GOMAXPROCS=2, GOMEMLIMIT=2GiB, GOFLAGS=-p=1, GOWORK=off. Docker scanners capped at 4 GiB and 2 CPUs; host wrapper RSS is not container memory measurement."
+  },
+  "companion": "Completed native range-move guard was separately integrated as f1952b08 and scoped in 7eeebafd; its in-process tests are not included in this process inventory.",
+  "qualifications": [
+    "Earlier failed compiler and fixture-setup probes are retained in the raw archive and classified in QUALIFICATIONS.json; they are not production semantic failures.",
+    "Local OS-process crashes and same-directory restarts do not establish physical host or power-loss durability.",
+    "MaxUint64 boundary remains the existing reducer/codec check, not a native graph high-water setup.",
+    "Logical graph creation, lost-storage recreation and member replacement admission remain open.",
+    "No full V2, engine-selection, comparative capacity or release acceptance."
+  ],
+  "hosted_ci": {
+    "status": "pending_on_combined_integration_head"
+  }
+}
