@@ -1,0 +1,228 @@
+{
+  "schemaVersion": 1,
+  "fixtureID": "graph-fault-local-v1",
+  "traceBase": "Existing lifecycle trace DTOs: schemaVersion, fixtureID, engine, normalizationRules, identityMapping, operationMapping, initialCut, steps, oldReads, rawCounts, scope; FDB also finalRawCurrent. Step/observation/raw record encodings remain those of the accepted lifecycle exporter. Every step also includes OriginalRequest with the same exact source-produced request shape used by faults; this is needed for all six post-reopen retries.",
+  "identityRoles": [
+    [
+      "node-a",
+      "entity",
+      ""
+    ],
+    [
+      "life-a1",
+      "life",
+      "node-a"
+    ],
+    [
+      "node-b",
+      "entity",
+      ""
+    ],
+    [
+      "life-b1",
+      "life",
+      "node-b"
+    ],
+    [
+      "edge",
+      "entity",
+      ""
+    ],
+    [
+      "life-edge",
+      "life",
+      "edge"
+    ],
+    [
+      "value5",
+      "value",
+      ""
+    ],
+    [
+      "value6",
+      "value",
+      ""
+    ],
+    [
+      "life-a2",
+      "life",
+      "node-a"
+    ]
+  ],
+  "unusedIdentity": "life-a2 is a declared mapping only: it never appears in observed Lives or NewLives.",
+  "operations": [
+    {
+      "Logical": "node-a",
+      "Coordinator": "A",
+      "Provenance": 1,
+      "Kind": "node-create"
+    },
+    {
+      "Logical": "node-b",
+      "Coordinator": "B",
+      "Provenance": 2,
+      "Kind": "node-create"
+    },
+    {
+      "Logical": "edge-create",
+      "Coordinator": "B",
+      "Provenance": 3,
+      "Kind": "edge-create",
+      "I64": 5,
+      "Reference": "value5"
+    },
+    {
+      "Logical": "precommit-update",
+      "Coordinator": "B",
+      "Provenance": 4,
+      "Kind": "edge-update",
+      "I64": 6,
+      "Reference": "value6"
+    },
+    {
+      "Logical": "postcommit-update",
+      "Coordinator": "B",
+      "Provenance": 5,
+      "Kind": "edge-update",
+      "I64": 5,
+      "Reference": "value5"
+    },
+    {
+      "Logical": "zone-loss-update",
+      "Coordinator": "B",
+      "Provenance": 6,
+      "Kind": "edge-update",
+      "I64": 6,
+      "Reference": "value6"
+    }
+  ],
+  "counts": {
+    "logicalOperations": 6,
+    "completeLogicalCDCGroups": 6,
+    "componentChanges": 7,
+    "FDBPhysicalEffectWrites": 14
+  },
+  "coordinators": {
+    "native-raft": {
+      "A": 3,
+      "B": 8
+    },
+    "foundationdb": {
+      "A": 0,
+      "B": 1
+    }
+  },
+  "scope": {
+    "kind": "all",
+    "axisProfile": "Q",
+    "axisVersion": 1,
+    "canonicalUnit": "millisecond",
+    "reference": "posix-unix-epoch:1970-01-01T00:00:00Z:v1"
+  },
+  "oldReads": [
+    [
+      "node-a",
+      "reopened-at"
+    ],
+    [
+      "node-b",
+      "reopened-at"
+    ],
+    [
+      "edge-create",
+      "held-old"
+    ],
+    [
+      "edge-create",
+      "reopened-at"
+    ],
+    [
+      "precommit-update",
+      "reopened-at"
+    ],
+    [
+      "postcommit-update",
+      "reopened-at"
+    ]
+  ],
+  "oldReadRule": "Every Cut equals its original step Cut within the same engine. Reopened-at View equals original After. Held-old is the exact edge-only view including actual LifeRecord, observed before whole-cohort teardown and then closed; all reopened-at reads occur after whole-cohort reopen. Every old read adds Checkpoint (before-cohort-stop|after-cohort-reopen) and actual controller EventID. ABA value equality never replaces RevisionOperation/provenance equality.",
+  "faults": [
+    {
+      "Case": "precommit-uncertainty",
+      "Operation": "precommit-update",
+      "CallerClassification": "unknown",
+      "Intermediate": true,
+      "Retry": true,
+      "ChangedPayload": false,
+      "ProcessRole": "client"
+    },
+    {
+      "Case": "lost-committed-reply",
+      "Operation": "postcommit-update",
+      "CallerClassification": "unknown",
+      "Intermediate": false,
+      "Retry": true,
+      "ChangedPayload": true,
+      "ProcessRole": "client"
+    },
+    {
+      "Case": "quorum-preserving-failure",
+      "Operation": "zone-loss-update",
+      "CallerClassification": "committed",
+      "Intermediate": false,
+      "Retry": false,
+      "ChangedPayload": false,
+      "ProcessRole": "replica-or-storage"
+    },
+    {
+      "Case": "same-volume-reopen",
+      "Operation": "zone-loss-update",
+      "CallerClassification": "observer-only",
+      "Intermediate": false,
+      "Retry": false,
+      "ChangedPayload": false,
+      "ProcessRole": "replica-or-storage"
+    }
+  ],
+  "faultRecord": {
+    "Case": "Exact case name above",
+    "Operation": "Exact associated logical operation",
+    "Marker": "Nonempty actual pause/failure boundary description; retained engine-specific evidence, not cross-engine numeric equality",
+    "MarkerRaw": "Base64 actual boundary marker/response bytes",
+    "CallerClassification": "Exact case classification above; never inferred from later observer success",
+    "OriginalRequest": {
+      "Coordinator": "Actual engine coordinator",
+      "Request": "Original request key from operationMapping",
+      "Transaction": "Original transaction ID from operationMapping",
+      "Payload": "Base64 exact original source-produced input bytes",
+      "Graph": "Own engine graph identity from identityMapping; all other request/result coordinates bind the associated operationMapping entry."
+    },
+    "Observer": {
+      "Cut": "Actual completed engine cut",
+      "View": "Complete lifecycle View at recovered operation",
+      "RawObservation": "Actual raw-backed observation",
+      "RawRecords": "Actual durable original records for this operation"
+    },
+    "Intermediate": "Only precommit case: {Classification: pending|old-complete, Raw: base64 actual read response, Cut/View/RawObservation only when old-complete}. Native pending is allowed; FDB old-complete is allowed and must equal seed After. No partial complete view is allowed.",
+    "Retry": "First two cases only, AFTER recovery has resolved/observed the original commit: {RawResult: base64 actual recovered/retry response, Payload: base64 bytes exactly equal OriginalRequest.Payload, Result: {Coordinator,Request,Transaction,Round} exactly equal operationMapping, Before: observation, After: observation, NewRawRecords: actual new replay application records}. Observation is {Cut,View,RawObservation}; Before/After equal recovered step After semantically, and raw complete-group inventory does not grow. New native CDC must be empty. Original payload SHA256 is computed and reported by checker; emit InputSHA256 consistently if supplied.",
+    "ChangedPayload": "Lost-reply case only: {Payload: base64 otherwise-valid changed source-produced input under original key, Classification: mismatch, Raw: base64 actual refusal, Before: observation, After: observation, NewRawRecords: actual new refusal application records}. Payload differs; Views AND actual raw complete-group inventories are unchanged and new native CDC is empty. FDB decoded input must pass fixed graph shape and retain ID/Request/Coordinator.",
+    "ProcessEvidence": "Ordered actual controller events using global positive EventID, Action kill|stop|commit|reopen, Role client|replica|storage, Member (native voter1..6 or FDB server0..3; client label otherwise), Instance (actual process-instance identity), Volume (actual durable-volume identity or empty for client), Raw (base64 actual evidence). kill/stop events add Reaped=true, actual Signal (SIGKILL|SIGTERM|clean-exit), and OOMKilled (actual bool, or null where native OS does not expose it). reopen events add PreviousInstance, Ready=true and RecoveryRaw (actual startup/recovery observation); they DO NOT claim Reaped. Instance must change and Volume must match the stopped predecessor. commit events add Result {Coordinator,Request,Transaction,Round} and actual durable-record Raw; no caller success flag. Native opaque evidence stays exporter-qualified. Repeated references to one global event are permitted only when byte/field-identical.",
+    "CallerRaw": "Base64 actual caller response/error or killed-call record supporting CallerClassification; a later observer receipt is not caller delivery.",
+    "ReopenRetries": "Same-volume case only: exactly six entries ordered like operations, each {Operation, EventID, Payload, Result: {Coordinator,Request,Transaction,Round}, RawResult: base64 actual recovered/retry response, Before: observation, After: observation, NewRawRecords: actual new replay records}. EventIDs follow the final ready/recovery event. Payload equals its step OriginalRequest.Payload byte-for-byte. Result equals its own operationMapping entry; Before/After equal final step6 semantically and actual complete six-group/raw ledger inventory does not grow. No new native CDC. These execute recover/retry, not disk scan substitutes."
+  },
+  "comparisonBoundary": "Native opaque certificates/outcome codecs remain qualified by the actual exporter; Python does not decode them into authority. Raw source-qualified records are retained and simple graph/scope/index bindings checked. Compare semantic effects, original key/result identities, complete logical groups and historical revisions; never equate numeric engine rounds/cuts, physical transaction counts or Pending with an empty answer.",
+  "acceptanceLimit": "Local functional paired comparison only: not multi-host, power loss, arbitrary failure schedules, cost/performance or engine selection. Existing scalar, graph-fault and lifecycle encodings remain unchanged; this is a fresh fixture namespace.",
+  "processRules": {
+    "precommit-uncertainty": "Actual client SIGKILL/reap after Marker boundary; caller remains unknown; observer later proves original committed result. Intermediate native pending or FDB old-complete is explicit.",
+    "lost-committed-reply": "Actual pre-kill durable commit event precedes client SIGKILL/reap and caller receipt remains unknown. MarkerRaw and commit Raw contain actual outcome/decision bytes or the persisted original records captured BEFORE kill, linked to the same operation and later observer records; a ready-only marker plus later observation is insufficient.",
+    "quorum-preserving-failure": "Exact replica/storage kill+reap event precedes commit event while that SAME instance remains down (no intervening reopen). Commit Result equals operationMapping and actual durable record is retained.",
+    "same-volume-reopen": "Entire cohort: native members1..6, FDB members0..3, each with actual stop/kill+reap and a distinct ready replacement linked to SAME nonempty volume. Every cohort stop EventID precedes every cohort reopen EventID. Already-killed members may reference earlier byte-identical stop events. No client-only reopen substitutes storage recovery. Held-old EventID precedes first cohort stop; reopened-at EventIDs follow last cohort ready event. Actual stop signal/OOM status is preserved, never filled from expectations."
+  },
+  "bounds": {
+    "pairedTraceBytes": 8388608,
+    "legacyLifecycleTraceBytesUnchanged": 2097152,
+    "controllerArtifactFiles": 128,
+    "retainedArtifactBytes": 67108864
+  },
+  "artifactRootValidation": "FDB qualification requires explicit artifact root: all controllerArtifacts hashes, backendTraceArtifact hash and exact backend content after only specified controller additions, sealed controllerCommandLedger exact byte prefix of final commands.jsonl, and raw marker/process/recovery/retry fields independently linked to those files and ledger entries. Native transparent OS fields bind actual PID/member/incarnation/directory/wait status/startup bytes; opaque native authority remains exporter-qualified."
+}

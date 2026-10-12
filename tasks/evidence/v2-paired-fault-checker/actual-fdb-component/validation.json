@@ -1,0 +1,19 @@
+{
+  "validatedEngine": "foundationdb",
+  "fullPairAccepted": false,
+  "fdbSHA256": "cde5dfee209c99c78de3cc43b31c78b7471dedc61f38b2ddeb98e7033cf8c14c",
+  "originalInputSHA256": {
+    "node-a": "932bc6c089ee80d2bbc7ace86fc202502e1d059b497f7ed80d165d9b9bd214e5",
+    "node-b": "9be6fe5ea5a27eaab2c85b69d995ebee293d5a50c5da41268d7dbe4146ff31b9",
+    "edge-create": "d56063b4cb01bc4ad8c8bf2d28996db27865a81581725616599e380fb8e6331c",
+    "precommit-update": "788973f3d4385987ec2ff7da50daca71f265a4c52ea1f5f09fbb68a049680eb8",
+    "postcommit-update": "919e3e4658036ad843379c8b3b9a1b66f80b51f607102df27b2adbe8e32ccde6",
+    "zone-loss-update": "b38e94f29881835aa034707a8b400fea04a8a64011188e13d7c7444cb723dd71"
+  },
+  "artifactEvidence": {
+    "artifacts": 26,
+    "sealedCommandEvents": 221,
+    "backendSHA256": "b7f3df478fbb3c15c4ba8475107e360165fc8a008502977f36526eb7b1bb76bc"
+  },
+  "scope": "Local functional paired comparison only: not multi-host, power loss, arbitrary failure schedules, cost/performance or engine selection. Existing scalar, graph-fault and lifecycle encodings remain unchanged; this is a fresh fixture namespace."
+}
