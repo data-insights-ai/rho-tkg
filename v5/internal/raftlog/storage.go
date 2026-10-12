@@ -67,6 +67,7 @@ type Config struct {
 // Fatal Pebble WAL/storage errors terminate the embedding process; this candidate
 // fail-stop tradeoff requires evaluation before engine selection.
 type Store struct {
+	readyProgress                 *ApplicationReadyProgress
 	mu                            sync.Mutex
 	publicationMu                 sync.Mutex
 	activationCommitHook          func()
@@ -622,6 +623,20 @@ func (s *Store) Persist(rd raft.Ready) (err error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.persistReadyLocked(rd, recoveryReady)
+}
+
+// Caller owns Store.mu. The same validator and synchronous mutation path serve
+// complete Readies and later bound application progress; classification remains
+// outside the mutex because its genuine verifier may borrow application views.
+func (s *Store) persistReadyLocked(rd raft.Ready, recoveryReady *applicationRecoveryReady) (err error) {
+	if raft.IsEmptySnap(rd.Snapshot) {
+		plan, err := s.prepareOrdinaryReadyLocked(rd, recoveryReady, true)
+		if err != nil {
+			return err
+		}
+		return s.writeOrdinaryReadyLocked(rd, plan)
+	}
 	if err := s.check(); err != nil {
 		return err
 	}
@@ -972,6 +987,9 @@ func (s *Store) publishSnapshot() error {
 	if err := s.check(); err != nil {
 		return err
 	}
+	if err := s.applicationProgressPublicationLocked(); err != nil {
+		return err
+	}
 	m := s.meta
 	if m.App.Policy.Enabled() {
 		if m.App.Through != m.Applied {
@@ -1134,6 +1152,10 @@ func (s *Store) Close() error {
 		return nil
 	}
 	s.closed = true
+	if s.readyProgress != nil {
+		s.readyProgress.closed = true
+		s.readyProgress = nil
+	}
 	// Exact view owners remain registered for caller Close. No v.mu is taken
 	// under s.mu; closed-store reads fail before accessing invalidated imports.
 	var err error

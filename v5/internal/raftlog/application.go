@@ -628,6 +628,10 @@ func (s *Store) ReclaimApplication() error {
 		s.mu.Unlock()
 		return err
 	}
+	if err := s.applicationProgressPublicationLocked(); err != nil {
+		s.mu.Unlock()
+		return err
+	}
 	p := s.meta.App.Policy
 	if !p.Enabled() {
 		s.mu.Unlock()

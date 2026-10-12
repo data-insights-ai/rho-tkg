@@ -33,6 +33,9 @@ func (s *Store) PersistApplicationReady(rd raft.Ready, c *ApplicationSnapshotCla
 	if err := s.check(); err != nil {
 		return root, err
 	}
+	if err := s.applicationProgressPublicationLocked(); err != nil {
+		return root, err
+	}
 	if !s.meta.Rep.Config.enabled() {
 		return root, ErrInvalid
 	}

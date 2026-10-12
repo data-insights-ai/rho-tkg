@@ -1,0 +1,11 @@
+{
+  "base": "5d54a2f2b38ae868e11c709eb213bf475c903ab8",
+  "scope": "shared ordinary Ready factoring checkpoint",
+  "toolchain": "go1.26.9",
+  "sha256": {
+    "v5/internal/raftlog/storage.go": "f61fcd8feb0f49d3751c3c62675f9d9ce68a05cf6dd98fc0ac1cc9c9e5648e61",
+    "v5/internal/raftlog/ordinary_ready.go": "5c05c2f1563815ada381686d445a78499a517896ff2c6684d76d6753177bb155"
+  },
+  "driver_change": false,
+  "public_progress_api": false
+}

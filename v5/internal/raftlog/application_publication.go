@@ -315,6 +315,10 @@ func (s *Store) publishApplicationCut() (err error) {
 		s.mu.Unlock()
 		return err
 	}
+	if err := s.applicationProgressPublicationLocked(); err != nil {
+		s.mu.Unlock()
+		return err
+	}
 	m := s.meta
 	if m.Applied <= m.Base {
 		s.mu.Unlock()
@@ -365,6 +369,9 @@ func (s *Store) publishApplicationCut() (err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.check(); err != nil {
+		return err
+	}
+	if err := s.applicationProgressPublicationLocked(); err != nil {
 		return err
 	}
 	current := s.meta

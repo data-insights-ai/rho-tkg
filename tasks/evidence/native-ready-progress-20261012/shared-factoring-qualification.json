@@ -1,0 +1,32 @@
+{
+  "scope": "ordinary Ready persistence factoring checkpoint, not full catch-up qualification",
+  "base": "5d54a2f2b38ae868e11c709eb213bf475c903ab8",
+  "result": "PASS",
+  "test_subtest_passes": 1167,
+  "expected_short_skips": 1,
+  "failures": 0,
+  "toolchain": "go1.26.9",
+  "runtime_envelope": {
+    "seconds": 180,
+    "rss_mib": 4096,
+    "GOMAXPROCS": 2,
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off"
+  },
+  "elapsed_s": 9.992,
+  "peak_tree_rss_mib": 417.594,
+  "original_stdout_sha256": "392e8eafecc355be295f94bf7feca819c21155a6bcf9638d3cdd2da1e9ad7f1b",
+  "compressed_stdout_sha256": "5e85be76fa4eec1440cfc40c0536126c8fe8a979bee51f87d4c5000ec4e5d44d",
+  "raw_copy": "/var/tmp/rho-native-ready-progress-evidence-20261012/shared-factoring/shared-factoring-raftlog-short.jsonl",
+  "command": [
+    "go",
+    "test",
+    "-short",
+    "-count=1",
+    "-json",
+    "./internal/raftlog"
+  ],
+  "public_progress_api_in_build": false,
+  "driver_changed": false
+}

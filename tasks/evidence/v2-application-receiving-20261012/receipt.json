@@ -1,0 +1,320 @@
+{
+  "scope": "Receiving-only internal Store primitive C: focused normal/race/coverage and scoped raftlog vet. Not full package CI, physical-host durability, B/D replacement or V2 acceptance.",
+  "baseCommit": "6e12884343d27d86baa098234688c1987dbb9cf8",
+  "touchedFiles": {
+    "v5/internal/raftlog/receiving.go": "40ae5516111591a3de00c12fcf73a2d830a19c72ae8870659931de44e05b7080",
+    "v5/internal/raftlog/receiving_test.go": "f7d102abf11d27790c8d9a3b48510aaf5a35423e3e2bed7fa98d512440ee3a78",
+    "v5/internal/raftlog/receiving_driver_test.go": "fda767051c7cbf30403337483fdd5a6c0e8601d1b20d2dbc533ae731248e40e0",
+    "v5/internal/raftlog/receiving_process_test.go": "91fd9622fd5c6abd37f5b9828614ed3578b695b9049c124fbd4da57c46e4ad9c"
+  },
+  "originalPreFormatSHA256": {
+    "v5/internal/raftlog/receiving.go": "94d560ef8d6c8f7d09dced679caa5daec07486355cebe6ddadd30bc0966c495e",
+    "v5/internal/raftlog/receiving_test.go": "46e0fe83123ae787d1f9c7a6abf2d5b00b3672642fe93866d92bd27898f10730",
+    "v5/internal/raftlog/receiving_driver_test.go": "4628fb24d04c21b664fb1c0317573794b47901e87ba93b9747d6f44863b78980",
+    "v5/internal/raftlog/receiving_process_test.go": "e056140e9dc4bed557a5b4babafdd62ad827fb95b62650d1fda856c714830518"
+  },
+  "unchangedBaseProductionFiles": {
+    "v5/internal/raftlog/application.go": "617bf996f7976cced90783ceaf6a02b98e4b7f02e75b3bee6837799a874a580d",
+    "v5/internal/raftlog/application_control.go": "8193af90c1fa00d3b315e26c0303df07c0a73a6394c378e79e1a6ba67f67e87e",
+    "v5/internal/raftlog/application_control_codec.go": "7df587ec08aacf369951863e9ed2e49daee056a9c347d31ea0c755c02e3b063f",
+    "v5/internal/raftlog/application_control_inventory.go": "34b5d62dea98a434fa53ecb319b387a92b43fb557ff2216c980e7ac444450bd1",
+    "v5/internal/raftlog/application_control_snapshot.go": "8234abe8fa1ac7287d36b38ccf4bac8813088a06d9ef0312a7b886693d67373e",
+    "v5/internal/raftlog/application_empty_proof.go": "047373b6f08140b8a1f4d50467211270a9cd40e42adb148198a87c1dda781295",
+    "v5/internal/raftlog/application_generation.go": "48a755f1eafd42346215c8bf1f64a47c52c9497966d6d64286b771b98e0a53dd",
+    "v5/internal/raftlog/application_identity.go": "607b67440f24cab1bb040a878595d305f1aecae3f948db8171d9c15027043850",
+    "v5/internal/raftlog/application_initialization_proof.go": "f646d90315b94b51dcac52ced8d3b51aad242e123356a60b51eae8acda37f825",
+    "v5/internal/raftlog/application_preflight.go": "ba30b3261e8d5896e7c645f1ec30cbef48ef9471eadbeb9899ba237ad7c40ec9",
+    "v5/internal/raftlog/application_prepared_contract.go": "50cef619e957e08ee999e6971a866c5264b4440681a9e8ec2dff6df3e354c6b1",
+    "v5/internal/raftlog/application_publication.go": "06c48649ebee2d9291f3439d75d94a840deb8f22f56deb737885569f5c22164d",
+    "v5/internal/raftlog/application_published_export.go": "8e0f9f99b767a65d4318415a0fbc8816b9a8028f31acb580b1bc7662e448061b",
+    "v5/internal/raftlog/application_ready_progress.go": "d625d4879c86241d66b1f853429f32fba31b90b4620638e91748dee06f7849ed",
+    "v5/internal/raftlog/application_recovery.go": "164c37477da2234b689ad41879a02fd1d986db82a91bc77ab7030da8426aeddf",
+    "v5/internal/raftlog/application_recovery_admission.go": "a2e8e73da4ee5b94304d1792de36578dbdf87e39070872e3f9273c614fa61013",
+    "v5/internal/raftlog/application_recovery_history.go": "75e12c0113a5f7adb399748564e10d899f86e0b824f59aa72da2a37c97a52e50",
+    "v5/internal/raftlog/application_recovery_queue.go": "470398f9f49af6f53ef3488c081a26851fde68aac0b2181f851a87a974e717e8",
+    "v5/internal/raftlog/application_replication.go": "913cdea8a274529d64658ac87e02e965b30c8740b824d736a5c65fe532a7584b",
+    "v5/internal/raftlog/application_reverse.go": "408b9b44c08a11d6a1eedc3cdd4ef2b63fc954b49a8c90ab01612b3f113bc18c",
+    "v5/internal/raftlog/application_semantic_contract.go": "af51e4c952ba6921c0bee3e922f4f768d397bee17eec25566504f72fa37fde9a",
+    "v5/internal/raftlog/application_snapshot_activation.go": "4b215d2125828595591473afdb47d5618e5dfa4d3a2cf542e383fb33ff4b7cd4",
+    "v5/internal/raftlog/application_snapshot_codec.go": "22a8c7516b2cd2c0097ca7fd65dfdec878223cc3b361750272681661d8468ecb",
+    "v5/internal/raftlog/application_snapshot_export.go": "8574ecb0d9f29c2459ca7774062df50d8d53fecbfa61c5fc305224d7eaa4edbc",
+    "v5/internal/raftlog/application_snapshot_prepared.go": "ef65e08301b4559ea71cf79681929d27ae658ea8d8bc3352b92b07b3bcdc6a21",
+    "v5/internal/raftlog/application_snapshot_stage.go": "90933923019b44c9b1f3974839e8f377a73161fc3ff658ffe32948ae1ed5c854",
+    "v5/internal/raftlog/application_snapshot_types.go": "3ad4385ee29c92f20bf6a12c89510752d6003094c7a1c9c7e072eb08334c1252",
+    "v5/internal/raftlog/application_view_binding.go": "0d89483e9281b442205c9360285c0d1c6766beae9fbff2d1144860b70847e57c",
+    "v5/internal/raftlog/application_view_history.go": "697891f4015420cbb50f09e56867cd5a76781910d1f435a939026fc116e1494b",
+    "v5/internal/raftlog/application_view_root_bounded.go": "d74aac1d523c25bcd72a3fcd234f68085359060dc60b1bb39864d48927c223db",
+    "v5/internal/raftlog/codec.go": "129f4097f052dff3ac38596052134a7cf36a8a40a8f68d0c4db161934676db86",
+    "v5/internal/raftlog/errors.go": "fa16afd2e3605992551f41a70d41a0f8773617f6b1a91a8210fa8a7d4944db22",
+    "v5/internal/raftlog/image_read.go": "c321de54792136a92a05cbfb3d41b58d0b09c1c1b1ac7d4c468a12ae7697a7af",
+    "v5/internal/raftlog/ordinary_ready.go": "5c05c2f1563815ada381686d445a78499a517896ff2c6684d76d6753177bb155",
+    "v5/internal/raftlog/storage.go": "7212a2007868914241796833a0004c44261037bf729ce336aa506101a8d38c55",
+    "v5/internal/replica/application_packet.go": "7bc7485c5a4d443fd1a7cdf0d85685fd96efee2a3acec87daa1dc6c5307ccebb",
+    "v5/internal/replica/application_ready_progress.go": "4c22af1aac2cd3852c8ef3a957b54945d71f9df2523878a7202e507ed588b532",
+    "v5/internal/replica/application_recovery.go": "358bdcc13838dd0693fc3cb159d7fb1c1c2ab44cc86effb321bd0cf86f5793bc",
+    "v5/internal/replica/application_replication.go": "b0bdbcb7b934ec6deebdca232dac0ad6d7571b9a23d7aa6badb1fdc411108b27",
+    "v5/internal/replica/application_semantic_machine.go": "c72b1f1c0245c62b2fce85bc142534b6490635e1ee252a3a978a11bef3b5d8d3",
+    "v5/internal/replica/application_snapshot_event.go": "874edfe77ae73e6c89bac8a74e8c2acab84b93c1279aace8b90c6295d7ee556b",
+    "v5/internal/replica/application_snapshot_send.go": "2924d8e7ff9de8ebca547a699fc332ee68a055aa4f7beb3ff4e8eb22b8f78eaa",
+    "v5/internal/replica/driver.go": "595323ecfb91140a4f9630eaec5b08b63f754eebd1f1717743c7a07bfb28735f",
+    "v5/internal/replica/wire.go": "0dcd64a090a96683aa41fb7ad3ed06650435eb1d733af532dfb1bc2d5e3f5637",
+    "v5/internal/graphstore/application_source.go": "79e5c98c32660442633322a7e61b62433607746cae6db779a72e56e748889132",
+    "v5/internal/graphstore/association_catalog.go": "4f4ca7433f5967586bcc9836a79817cfa624e0c2951638515d355794f658f8f6",
+    "v5/internal/graphstore/association_codec.go": "5676a5504468d88e6e72fcf9e1e659011c9fa5bf2fdcd18b8fcf5aa11d66c7d6",
+    "v5/internal/graphstore/association_types.go": "b32f57c749058619c1f5689d61a1c05f58f6345b0ab718a2dc4c74858b58923f",
+    "v5/internal/graphstore/catalog.go": "5d37248a16965b04603ef9feaef99051cdd4b815b9f707d62bd76251a69bfd73",
+    "v5/internal/graphstore/codec.go": "e7cb02dae1bc3bf1d94ee4ffe37656ca4568d30ccb2b94ca192536db5d6eb002",
+    "v5/internal/graphstore/component_indexes.go": "a258b394a7203ae0b83c1d90a98a2e3aa58134a1693d19cd26bf43cfce043207",
+    "v5/internal/graphstore/component_key_reader.go": "6119d8d1d1dcf70948dab1a87081a6a8a0663e0b9421570a92bd697595e75c62",
+    "v5/internal/graphstore/component_key_tree.go": "f48d1440d04a6d274be0ed3a47486922f726a5f5a1520da1a67def17ac74760e",
+    "v5/internal/graphstore/current_presence_codec.go": "e6b9159625328487cc2b2be79e3ad6a2599dafb1055f4b1c81a29ebcd605b545",
+    "v5/internal/graphstore/current_presence_iterator.go": "7b05303512c9260bdb9d3e3d3635be417112b0d061b0442cf7346aa09c18d533",
+    "v5/internal/graphstore/current_presence_tree.go": "2363850a6c3b6bae0b09234da40595f16675e729319d035dd723324262f0310c",
+    "v5/internal/graphstore/current_presence_types.go": "73d9068b53bb1883e492c0053d7c8182f9574b68ed7e02286ce5657627ab4a31",
+    "v5/internal/graphstore/full_accounting.go": "ae90b08451dbf12fe9966c4378acc7da89186f7d72076b399268e370c50590be",
+    "v5/internal/graphstore/full_bindings.go": "b012164e06934d694f38e91a7c2d40cd0abae77e2358316e3927597f58ec613b",
+    "v5/internal/graphstore/full_candidates.go": "20c803a7b3a2818ab7beedd574cb4f5873736ce278f5c880aa5ef6c81ca548d8",
+    "v5/internal/graphstore/full_current_incident.go": "6da7264d3ed2824112db1f88366e0eba2571b27feaa2a59833720391f2b5b4f2",
+    "v5/internal/graphstore/full_indexes.go": "6c86557f709b6d6744888723fbd81bb580a0064e6472e8a91024677571a07f46",
+    "v5/internal/graphstore/full_owned.go": "603b02f24dae348f462c18fa9e002f69fb16534df472babdd3610928077e6b13",
+    "v5/internal/graphstore/full_owned_budget.go": "1a0a3a8375e59de6f8896e966dfc6580f63d41c846027400aebf5b1bff5e82f9",
+    "v5/internal/graphstore/full_presence_runs.go": "9aa01f6eb4f0272547abbc806837edcb519a31a1ba6a2bd07a7eef0875583e71",
+    "v5/internal/graphstore/full_presence_stage.go": "d42ff251321a5a4ae8c5934d035dfc73c11e1edbaebfd5a9d69db16d8d346e24",
+    "v5/internal/graphstore/full_readview.go": "3d49bb742eb2437af0b4d6f648cc5b0b9357c57556b623979c058e45aae707f8",
+    "v5/internal/graphstore/full_stage.go": "441de74513e9d87ec06b51f9d073a6b2f88d4d89202cc6ed91dd5b7edbfb36ac",
+    "v5/internal/graphstore/full_types.go": "694c6dbeca6860a5ca737db7fc0653b5e76df8de33a390d8e3ab901223627fe1",
+    "v5/internal/graphstore/keys.go": "b775baad44169ad1d112ab6f161b46990cde6073b247845146a67d644f0f8ab1",
+    "v5/internal/graphstore/ownership_declaration.go": "40b3f2e5857a96d3697b98b2cbd6a8bf2a154cef7252c4f6d5a9be588289b2f0",
+    "v5/internal/graphstore/page_codec.go": "5b3a6346fb75b014727b2670fb4e2ed1cd532986e37ef0c70a46a54e72bad8b6",
+    "v5/internal/graphstore/page_types.go": "05f13d3ec46e034ec52ec991da88230491e070b8c962006e979d5de51a6a7fb5",
+    "v5/internal/graphstore/pages.go": "86b2dee165a673a05bfbd41b25de31d4195caacb9f2fd952c44aaf12a2e40637",
+    "v5/internal/graphstore/pages_stage.go": "1a78e0d2850e2331c7d05429d3fb19a1c897a4f033eb93bdea0869fdc4e04e16",
+    "v5/internal/graphstore/partition_identity.go": "a775ab875b8392a22d15b3036460bb403bee39a9f5b8ead3033982b157f1c430",
+    "v5/internal/graphstore/partition_initialization.go": "65a500f88f1b6d500dbcf162ffb66b61b348391b28f2e5ce488a53157ce2fbbc",
+    "v5/internal/graphstore/partition_routing.go": "0d24e22f579052106b6b24f453d5e09acd2a4f860ed66acedd29e3109401ebd0",
+    "v5/internal/graphstore/partition_routing_binding.go": "8e9282fa3f8a80bf8c1016b38dd13d04cf89d73f35cc0cb4e61b2b5274f5e72b",
+    "v5/internal/graphstore/partition_scope.go": "9bd2be1ce4491f6b79eb7839ef9f412f1f4df57749a51bfebf1eed3944a3192e",
+    "v5/internal/graphstore/partition_transaction_stage.go": "1df0a3d0966df9c2d75eac120ac45dde8f6559c101c6486f0e699f9189117d5e",
+    "v5/internal/graphstore/partition_transaction_view.go": "f7f3eb6134822038db839b69fffca4e701bb8ed4925614615c69a369d39ea077",
+    "v5/internal/graphstore/posting_iterator.go": "5f8800f86ca5730144bbfc3be95b2e830ac1c45b88a23d36d1c3c3c2a675c880",
+    "v5/internal/graphstore/posting_key.go": "a6d7c21411725d9edc2cc299e877a2588a6a070080dae99c8862682664499020",
+    "v5/internal/graphstore/posting_tree.go": "40bbe45040c5dcb151ab9834f7b8dd81773604f02c04dff28269b7e906bdaf42",
+    "v5/internal/graphstore/range_move_codec.go": "3938c805cdc60781cf0f1fb087a112b431b025e653e6cf4a7ddc743927318b7e",
+    "v5/internal/graphstore/range_move_component.go": "aead350f0db42e3621b79a3b60c56e525dcc24106b9b21716b7721f0a7bde839",
+    "v5/internal/graphstore/range_move_export.go": "5efb8f1dafa64b8be7225bcc554f19ed55707475614580cdf87d2b62cc4b31cb",
+    "v5/internal/graphstore/range_move_maintenance_source.go": "c8b9f0ce3b3fe0e142c9ff110d2e3d282541ea0d8651af01373956f9036f9a84",
+    "v5/internal/graphstore/range_move_stage.go": "7cb79279d821dcc1faab827694feaae57544fd63d9180b837baa9a8ed4484bbb",
+    "v5/internal/graphstore/range_move_types.go": "97515b3f15e259ed3eeb1a94443348d3bd19b64734e7f5f9a2be2514e7ba95c8",
+    "v5/internal/graphstore/semantic_guard.go": "8163226a453f410abb30ae9b844d59f748aa146f075674521e233da18c564406",
+    "v5/internal/graphstore/topology.go": "fbb5b962cb7d9e3d4122aa06d43db251bf139f6143f9efdbb8ff2b39d6e9e966",
+    "v5/internal/graphstore/types.go": "883a6698a8c511cf6362d82a6f9e2ced71053e66106ffb119e5815a7cfcf7988"
+  },
+  "runtimeEnvironment": {
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off",
+    "GOTOOLCHAIN": "local"
+  },
+  "normal": {
+    "sessionID": 13898,
+    "terminalExit": 0,
+    "passedParents": 10,
+    "passedSubtests": 44,
+    "failedParents": 0,
+    "skippedParents": 0,
+    "profile": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^TestApplicationReceiving",
+        "./internal/raftlog"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 471.938,
+      "elapsed_s": 6.63,
+      "exit_code": 0,
+      "reason": "completed"
+    }
+  },
+  "focused": {
+    "race": {
+      "session_id": 37410,
+      "terminal_exit": 0,
+      "parents": {
+        "pass": 10,
+        "fail": 0,
+        "skip": 0
+      },
+      "subtests": {
+        "pass": 44,
+        "fail": 0,
+        "skip": 0
+      },
+      "profile": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-race",
+          "-count=1",
+          "-json",
+          "-timeout=150s",
+          "-run",
+          "^TestApplicationReceiving",
+          "./internal/raftlog"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 573.094,
+        "elapsed_s": 9.979,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "coverage": {
+      "session_id": 4435,
+      "terminal_exit": 0,
+      "parents": {
+        "pass": 10,
+        "fail": 0,
+        "skip": 0
+      },
+      "subtests": {
+        "pass": 44,
+        "fail": 0,
+        "skip": 0
+      },
+      "profile": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-json",
+          "-timeout=150s",
+          "-coverprofile=/var/tmp/rho-v5-receiving-focused-20261012/coverage.out",
+          "-run",
+          "^TestApplicationReceiving",
+          "./internal/raftlog"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 447.094,
+        "elapsed_s": 5.571,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "coverfunc": {
+      "terminal_exit": 0,
+      "profile": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "tool",
+          "cover",
+          "-func=/var/tmp/rho-v5-receiving-focused-20261012/coverage.out"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 6.281,
+        "elapsed_s": 0.318,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "vet": {
+      "terminal_exit": 0,
+      "profile": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "vet",
+          "./internal/raftlog"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 97.609,
+        "elapsed_s": 0.868,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    }
+  },
+  "coverage": {
+    "totalStatements": 69,
+    "coveredStatements": 66,
+    "percent": 95.65217391304348,
+    "methods": [
+      "github.com/data-insights-ai/rho-tkg/v5/internal/raftlog/receiving.go:23:\t\t\tApplicationReceivingState\t\t\t100.0%",
+      "github.com/data-insights-ai/rho-tkg/v5/internal/raftlog/receiving.go:40:\t\t\tPersistApplicationReceiving\t\t\t90.5%",
+      "github.com/data-insights-ai/rho-tkg/v5/internal/raftlog/receiving.go:74:\t\t\treceivingConfEmpty\t\t\t\t100.0%",
+      "github.com/data-insights-ai/rho-tkg/v5/internal/raftlog/receiving.go:79:\t\t\treceivingSnapshotEmpty\t\t\t\t100.0%",
+      "github.com/data-insights-ai/rho-tkg/v5/internal/raftlog/receiving.go:92:\t\t\tapplicationReceivingLocked\t\t\t97.2%"
+    ]
+  },
+  "processFaultWitnesses": {
+    "assertedAgainstActualProcessState": {
+      "before-write": "PASS actual ProcessState.SIGKILL; reopened term3",
+      "after-return": "PASS actual ProcessState.SIGKILL after local sync success marker; reopened term7",
+      "write": "PASS actual exit1/fatal commit error without success marker; recovered wholeterm in{3,7}",
+      "sync": "PASS actual exit1/fatal commit error without success marker; recovered wholeterm in{3,7}"
+    },
+    "logged": "All four named process-seam subtests passed with zero skips. No numeric child PID/WaitStatus or exact write/sync recovery term was printed. Those values must not be presented as independently logged observations.",
+    "authority": "Success marker proves completed local term sync only. No emitted network ACK, quorum certificate, replacement authorization or graph admission is claimed.",
+    "uncertainty": "Before write requires oldterm3; after returned sync requires newterm7; write/sync failure permits oldORnew wholeterm in{3,7}, with Vote/Commit/membership/application zero."
+  },
+  "sourceEquality": "Four new source hashes and94 base production hashes rechecked after all runs; no existing production changes.",
+  "lease": "Released immediately after the authorized finite gates; all recorded sessions terminal, no additional runtime.",
+  "archive": {
+    "file": "raw-evidence.tar.gz",
+    "bytes": 79804,
+    "sha256": "745fe77511e4c127431fc0f570783a3e49192f58e39a0fcd2888d1b26cf5346e",
+    "memberSHA256": {
+      "normal/format-watchdog.json": "4ee35484ec31801560b63ef4b07029030ec00097bc66bb24afeb6e71c1ad1ef6",
+      "normal/limit-local.py": "6dc4e0362827ecd0854436b9fa1a812342b693d65ba093291d358b359e733283",
+      "normal/raw.jsonl": "fcad46c4ebb72fb1841904f05f5a58ebd31c7f6d3935a5e56c47b1e1c7e863e3",
+      "normal/receipt.json": "19d1b81cc734e6af125dc709c55b0b60108ae07dd36701fd2415d36a7a712664",
+      "normal/source-final.json": "209f05615d9b0f194924ae4703dd1e73cc1f5cb91dddb40a4d9144fe888a072f",
+      "normal/source-original.json": "b5c29cda821170a16ca529fad571149cf72148f60371a5bcd7fbd110d41cd241",
+      "normal/stderr.log": "a318a570e17d0acc9be3b2c6e4a7f495dec7d68cd7716804d3eb436095640571",
+      "normal/toolchain-VERSION": "4b7369cf043da7b3b8d638a16011a35d6de2efe861e0bd344fb0011f91515b9e",
+      "normal/watchdog.json": "0faff8b5a741e108e466dbdd2ad785f4dd0685f9e0db42ab5e0fea1544b88b90",
+      "focused/coverage-accounting.json": "fbe58f1629d916f6c6bb6b0667ab7ae945a789d42e409345cdf2435c3c9f5734",
+      "focused/coverage-watchdog.json": "986da8f856e193f08040d1faddfaf747ca9d5303f0ca8ea403c5253bb776369a",
+      "focused/coverage.jsonl": "16e17738f0e9729f77346bd1d61a3ccd5c6ebcdaae85d717ae8beb2cc371d647",
+      "focused/coverage.out": "d1b30edb116514c3475344c159c9dad8afaf130354b3f2d4799183e2f3daf3d4",
+      "focused/coverage.stderr": "5ccf71c5c49f32f241b3e55efd6102bc17c951c40ee7c90d7a8b662d6cecd615",
+      "focused/coverfunc-watchdog.json": "631ffd286e9a37a5a7bef5df1398ebb4a4bdbfe1919691e05dbc874adb40f3ec",
+      "focused/coverfunc.log": "e7330fee6a2b9526eb872b60a2f7335402bf1ef8fce85cc16fc32c9963b9112e",
+      "focused/coverfunc.stderr": "98a5e6ff7b98fcd9ba31d09be57edeabc3a9e96e13b1386ef06f8445ec4cc3f2",
+      "focused/limit-local.py": "6dc4e0362827ecd0854436b9fa1a812342b693d65ba093291d358b359e733283",
+      "focused/race-watchdog.json": "99fbfca1354333894590b0045931bec7644d604741496a41a8152f96b39746bc",
+      "focused/race.jsonl": "86ead4abb4fef0554854bfb953a51bfb532edbe6d82a635aea67e276701c6a7d",
+      "focused/race.stderr": "86f43f7ff9fe1d3b1a07a145cc5dd1a9467aa30963534dc12f80d19753970d5e",
+      "focused/receipt.json": "eedde7cdd28e596d399eb858801aee2c7b29932a40be72dbd11e2bc5c8fdfef7",
+      "focused/source-freeze.json": "209f05615d9b0f194924ae4703dd1e73cc1f5cb91dddb40a4d9144fe888a072f",
+      "focused/toolchain-VERSION": "4b7369cf043da7b3b8d638a16011a35d6de2efe861e0bd344fb0011f91515b9e",
+      "focused/vet-watchdog.json": "79d90ca25d34cf6301ca1064b92ab3f82d16a614c9341a158c1097ba5082b3bc",
+      "focused/vet.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "focused/vet.stderr": "31e8e45129d767651bb72666c6e925834be7ef6a32bdf3fbb418af96a13df2df",
+      "source/v5/internal/raftlog/receiving.go": "40ae5516111591a3de00c12fcf73a2d830a19c72ae8870659931de44e05b7080",
+      "source/v5/internal/raftlog/receiving_test.go": "f7d102abf11d27790c8d9a3b48510aaf5a35423e3e2bed7fa98d512440ee3a78",
+      "source/v5/internal/raftlog/receiving_driver_test.go": "fda767051c7cbf30403337483fdd5a6c0e8601d1b20d2dbc533ae731248e40e0",
+      "source/v5/internal/raftlog/receiving_process_test.go": "91fd9622fd5c6abd37f5b9828614ed3578b695b9049c124fbd4da57c46e4ad9c"
+    }
+  },
+  "limitations": [
+    "Only ten receiving parent tests selected; no complete package or repository test qualification.",
+    "Pinned scanners and hosted CI not run for C.",
+    "Receiving normal Driver and Bootstrap remain closed until actual same-store snapshot Ready activation; C grants no retirement/quorum authority.",
+    "Process faults are local SIGKILL/default fatal-I/O controls, not power-loss or independent-host durability."
+  ]
+}

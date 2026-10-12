@@ -685,6 +685,7 @@ func (d *Driver) drain() (Output, error) {
 	}
 	out := Output{Applied: d.applied}
 	used := 0
+	var progress *raftlog.ApplicationReadyProgress
 	for {
 		if d.snapshotSender != nil && d.snapshotSender.fatal != nil {
 			return d.stop(d.snapshotSender.fatal)
@@ -717,7 +718,11 @@ func (d *Driver) drain() (Output, error) {
 			d.applied = root.Index
 			d.conf = proto.Clone(rd.Snapshot.GetMetadata().GetConfState()).(*pb.ConfState)
 		} else {
-			if err := d.store.Persist(rd); err != nil {
+			if d.boundApplication() {
+				if err := d.progressApplicationReady(rd, &progress); err != nil {
+					return d.stop(err)
+				}
+			} else if err := d.store.Persist(rd); err != nil {
 				return d.stop(err)
 			}
 			if !raft.IsEmptySnap(rd.Snapshot) {
@@ -743,19 +748,7 @@ func (d *Driver) drain() (Output, error) {
 					entry.Generation = d.store.ApplicationGeneration()
 				}
 				if d.applicationMachine != nil {
-					b, stageErr := d.applicationMachine.Stage(entry, d.store.ApplicationBudget())
-					err := errors.Join(stageErr, d.releaseApplicationCallback())
-					if err != nil {
-						return d.stop(err)
-					}
-					if err := d.bindApplicationRecoveryBatch(entry.Index, &b); err != nil {
-						return d.stop(err)
-					}
-					if err := d.store.InstallApplication(entry.Index, b); err != nil {
-						return d.stop(err)
-					}
-					restoreErr := d.applicationMachine.Restore(entry.Index, bytes.Clone(b.Image))
-					if err := errors.Join(restoreErr, d.releaseApplicationCallback()); err != nil {
+					if err := d.applyApplicationEntry(entry); err != nil {
 						return d.stop(err)
 					}
 				} else if err := d.machine.Apply(entry); err != nil {
@@ -793,7 +786,7 @@ func (d *Driver) drain() (Output, error) {
 			}
 			d.applied = e.GetIndex()
 		}
-		if d.applicationMachine != nil {
+		if d.applicationMachine != nil && progress == nil {
 			if err := d.store.ReclaimApplication(); err != nil {
 				return d.stop(err)
 			}
@@ -858,9 +851,27 @@ func (d *Driver) drain() (Output, error) {
 			}
 		}
 		d.raw.Advance(rd)
+		if progress != nil {
+			actual := d.raw.BasicStatus().Applied
+			if err := progress.AdvanceRaw(actual); err != nil {
+				return d.stop(err)
+			}
+			if actual == d.applied {
+				if err := progress.Close(); err != nil {
+					return d.stop(err)
+				}
+				progress = nil
+				if err := d.store.ReclaimApplication(); err != nil {
+					return d.stop(err)
+				}
+			}
+		}
 		if d.snapshotSender != nil && d.snapshotSender.fatal != nil {
 			return d.stop(d.snapshotSender.fatal)
 		}
+	}
+	if progress != nil {
+		return d.stop(raftlog.ErrCorrupt)
 	}
 	for token, r := range d.reads {
 		if r.resolved && r.index <= d.applied {

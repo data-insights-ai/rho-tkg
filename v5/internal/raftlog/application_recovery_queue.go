@@ -83,15 +83,34 @@ func (r *applicationRecoveryReady) matches(s *Store) bool {
 // Classify outside Store's mutex: a verifier may read the actual registered
 // immutable application view without inverting lock order. Recheck the captured
 // log/application fence before any metadata or batch mutation.
+// Existing Persist callers retain the exact ordinary refusal/error contract.
 func (s *Store) classifyRecoveryReady(entries []*pb.Entry) (*applicationRecoveryReady, error) {
+	ready, _, err := s.classifyRecoveryReadyOutcome(entries)
+	return ready, err
+}
+
+// A private captured receipt exists only for the pre-verifier queue-allocation
+// guard. No callback, application view or IO has run on this path. Ordinary
+// Persist still refuses; bounded progress may classify actual fitting prefixes.
+type applicationRecoveryReadyRefusal struct {
+	s               *Store
+	before          applicationRecoveryReady
+	entries, queued int
+}
+
+func (r *applicationRecoveryReadyRefusal) matches(s *Store, entries int) bool {
+	return r != nil && r.s == s && r.entries == entries && r.queued == len(s.meta.Recovery.Queued) && r.before.matches(s) && r.queued+r.entries > (maxMetadataBytes-recoveryMetadataFixedBytes)/256
+}
+
+func (s *Store) classifyRecoveryReadyOutcome(entries []*pb.Entry) (*applicationRecoveryReady, *applicationRecoveryReadyRefusal, error) {
 	s.mu.Lock()
 	if err := s.check(); err != nil {
 		s.mu.Unlock()
-		return nil, err
+		return nil, nil, err
 	}
 	if !s.meta.Recovery.Config.enabled() {
 		s.mu.Unlock()
-		return nil, nil
+		return nil, nil, nil
 	}
 	r := &applicationRecoveryReady{Applied: s.meta.Applied, Last: s.meta.Last, Generation: s.activeGeneration(), ImageHash: s.meta.ImageHash, LastHash: s.meta.LastHash}
 	verifier := s.recoveryVerifier
@@ -104,7 +123,8 @@ func (s *Store) classifyRecoveryReady(entries []*pb.Entry) (*applicationRecovery
 	// Exact-cap owner bounds use the fixed metadata allowance BEFORE copying.
 	if len(old)+len(entries) > (maxMetadataBytes-recoveryMetadataFixedBytes)/256 {
 		s.mu.Unlock()
-		return nil, ErrLimit
+		refusal := &applicationRecoveryReadyRefusal{s: s, before: *r, entries: len(entries), queued: len(old)}
+		return nil, refusal, ErrLimit
 	}
 	r.Queued = make([]applicationRecoveryQueued, 0, len(old)+len(entries))
 	for _, q := range old {
@@ -114,22 +134,22 @@ func (s *Store) classifyRecoveryReady(entries []*pb.Entry) (*applicationRecovery
 	}
 	s.mu.Unlock()
 	if len(entries) == 0 || verifier == nil {
-		return r, nil
+		return r, nil, nil
 	}
 	view, err := s.ApplicationView(r.Applied)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	_, err = view.RootBounded(context.Background(), s.applicationPolicy.MaxImageBytes)
 	if err != nil {
-		return nil, errors.Join(err, view.Close())
+		return nil, nil, errors.Join(err, view.Close())
 	}
 	err = s.classifyRecoveryEntries(entries, view, verifier, captured, r)
 	err = errors.Join(err, view.Close())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return r, nil
+	return r, nil, nil
 }
 
 func (m applicationRecoveryMetadata) afterApplied(index uint64) applicationRecoveryMetadata {

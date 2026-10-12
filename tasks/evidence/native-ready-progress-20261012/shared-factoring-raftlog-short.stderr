@@ -1,0 +1,1 @@
+limit: {"command": ["/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go", "test", "-short", "-count=1", "-json", "./internal/raftlog"], "rss_limit_mib": 4096.0, "wall_limit_s": 180.0, "sample_interval_s": 0.25, "peak_tree_rss_mib": 417.594, "elapsed_s": 9.992, "exit_code": 0, "reason": "completed"}
