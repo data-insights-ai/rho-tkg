@@ -703,12 +703,10 @@ type Store struct {
 
 	// relPropertyTypeClassCounts is the RELATIONSHIP mirror of propertyTypeClassCounts
 	// (BACKLOG 5B): exact per-(relTypeToken, propertyKey) rel counts by
-	// types.PropertyTypeClass. relTypeClassContrib memoizes each rel's per-property
-	// classification by rel ID so the read-free deleteRelByInfo (which carries no
-	// property values) can decrement precisely by ID — the single delete seam. Both
-	// maintained at the full-rel-write ADD sites + rebuilt by loadIndexes.
+	// types.PropertyTypeClass. Incremented from the row a door makes current,
+	// decremented from the row a delete or replace removes (no per-relationship
+	// memo, backlog 53); rebuilt by loadIndexes.
 	relPropertyTypeClassCounts sync.Map // map[indexpkg.RelPropertyIndexKey]*typeClassCounters
-	relTypeClassContrib        sync.Map // map[snowflake.ID][]relClassEntry
 
 	// Per-label property-key NDV + exact min/max accumulators, protected by
 	// idxMu (unlike propertyKeyCounts's lock-free sync.Map — the accumulator's
@@ -720,23 +718,18 @@ type Store struct {
 	// store.NodePropertyStatsCapability.
 	propertyStats map[indexpkg.PropertyIndexKey]*indexpkg.PropertyStatsAccumulator
 
-	// relPropertyKeyCounts / relPropertyStats / relStatsContrib are the
-	// RELATIONSHIP mirror of propertyKeyCounts / propertyStats (BACKLOG 21a),
-	// following the exact same shape as relPropertyTypeClassCounts /
-	// relTypeClassContrib above: relPropertyKeyCounts is the per-(relType,
+	// relPropertyKeyCounts / relPropertyStats are the RELATIONSHIP mirror of
+	// propertyKeyCounts / propertyStats (BACKLOG 21a), maintained like
+	// relPropertyTypeClassCounts above: relPropertyKeyCounts is the per-(relType,
 	// property key) presence counter (indexable scalar values only, same
 	// convention as propertyKeyCounts); relPropertyStats is the per-(relType,
 	// property key) NDV+min/max accumulator, protected by idxMu for the same
-	// reason propertyStats is; relStatsContrib memoizes each rel's per-property
-	// (key, valueKey, value) triples by rel ID so the read-free deleteRelByInfo
-	// (which carries no property values) can Forget() precisely by ID — the
-	// same memoized-delete-seam shape relTypeClassContrib already uses. Both
-	// maintained at the full-rel-write ADD sites alongside
-	// addRelPropertyTypeClassCounts + rebuilt by loadIndexes. Backs the
-	// optional store.RelPropertyStatsCapability.
+	// reason propertyStats is. Both follow the rows themselves: added from the
+	// row a door makes current, taken out with the row a delete or replace
+	// removes (backlog 53: RAM per distinct statistic, not per relationship);
+	// rebuilt by loadIndexes. Backs the optional store.RelPropertyStatsCapability.
 	relPropertyKeyCounts sync.Map // map[indexpkg.RelPropertyIndexKey]*atomic.Int64
 	relPropertyStats     map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyStatsAccumulator
-	relStatsContrib      sync.Map // map[snowflake.ID][]relStatsEntry
 
 	// rescanTestHook, when non-nil, is invoked by NodePropertyStats right after
 	// the unlocked value collection and BEFORE the write-generation re-check /
@@ -1494,8 +1487,8 @@ func (bs *Store) loadIndexesScan() error {
 			bs.relIDs[rid] = struct{}{}
 			bs.ords.rel(rid, true)              // ID order: the open numbers the stored relationships 1..N
 			bs.bumpRelRevLocked(rid)            // seed a non-zero rev so a pre-first-write prefetch doesn't fall back needlessly (mirrors nodeRevs seeding above)
-			bs.addRelPropertyTypeClassCounts(r) // rebuild rel type-class counters + contrib (BACKLOG 5B)
-			bs.addRelPropertyStatsCounts(r)     // rebuild rel NDV+min/max counters + contrib (BACKLOG 21a)
+			bs.addRelPropertyTypeClassCounts(r) // rebuild rel type-class counters (BACKLOG 5B)
+			bs.addRelPropertyStatsCounts(r)     // rebuild rel NDV+min/max counters (BACKLOG 21a)
 			info := relDeleteInfoFromRelationship(r)
 			decodedRelInfo[rid] = info
 			bs.addRelationshipIndexesFromRow(info)
@@ -2208,17 +2201,9 @@ func (bs *Store) Clear() error {
 		bs.relPropertyTypeClassCounts.Delete(k)
 		return true
 	})
-	bs.relTypeClassContrib.Range(func(k, _ any) bool {
-		bs.relTypeClassContrib.Delete(k)
-		return true
-	})
 	bs.propertyStats = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyStatsAccumulator)
 	bs.relPropertyKeyCounts.Range(func(k, _ any) bool {
 		bs.relPropertyKeyCounts.Delete(k)
-		return true
-	})
-	bs.relStatsContrib.Range(func(k, _ any) bool {
-		bs.relStatsContrib.Delete(k)
 		return true
 	})
 	bs.relPropertyStats = make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyStatsAccumulator)

@@ -1,0 +1,35 @@
+# backlog 53 GREEN: fix applied. 2026-10-12T18:57:55+02:00
+$ go test ./pkg/graph/store/badger/ ./pkg/graph/ -run TestRelPlannerStatsMemoBounded -count=1 -v
+    badgerstore_rel_planner_stats_memo_test.go:28: planner-stat heap: 73784 B at 10K rels, 117168 B at 100K rels, growth 0.5 B per rel
+--- PASS: TestRelPlannerStatsMemoBounded (3.96s)
+    --- PASS: TestRelPlannerStatsMemoBounded/heap (3.86s)
+    --- PASS: TestRelPlannerStatsMemoBounded/batch_delete (0.04s)
+    --- PASS: TestRelPlannerStatsMemoBounded/split-write_legs:_put,_replace_with_another_class,_delete (0.00s)
+    --- PASS: TestRelPlannerStatsMemoBounded/split-write_leg_purged_by_descriptor (0.01s)
+    --- PASS: TestRelPlannerStatsMemoBounded/foreign_incoming_stub (0.03s)
+    --- PASS: TestRelPlannerStatsMemoBounded/purge_adjacent_rels (0.01s)
+    --- PASS: TestRelPlannerStatsMemoBounded/node_cascade (0.01s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	3.986s
+--- PASS: TestRelPlannerStatsMemoBounded (0.33s)
+    --- PASS: TestRelPlannerStatsMemoBounded/memory/delete (0.00s)
+    --- PASS: TestRelPlannerStatsMemoBounded/memory/replace_in_place_with_another_class (0.00s)
+    --- PASS: TestRelPlannerStatsMemoBounded/memory/update_with_history_to_another_class (0.00s)
+    --- PASS: TestRelPlannerStatsMemoBounded/memory/delete_property_in_a_tx (0.00s)
+    --- PASS: TestRelPlannerStatsMemoBounded/memory/tx_rollback_restores_a_deleted_rel (0.00s)
+    --- PASS: TestRelPlannerStatsMemoBounded/memory/cascade_delete (0.00s)
+    --- PASS: TestRelPlannerStatsMemoBounded/memory/retention_purge (0.00s)
+    --- PASS: TestRelPlannerStatsMemoBounded/memory/replica_apply (0.00s)
+    --- PASS: TestRelPlannerStatsMemoBounded/memory/IO.Import (0.01s)
+    --- PASS: TestRelPlannerStatsMemoBounded/badger/delete (0.00s)
+    --- PASS: TestRelPlannerStatsMemoBounded/badger/replace_in_place_with_another_class (0.04s)
+    --- PASS: TestRelPlannerStatsMemoBounded/badger/update_with_history_to_another_class (0.04s)
+    --- PASS: TestRelPlannerStatsMemoBounded/badger/delete_property_in_a_tx (0.01s)
+    --- PASS: TestRelPlannerStatsMemoBounded/badger/tx_rollback_restores_a_deleted_rel (0.01s)
+    --- PASS: TestRelPlannerStatsMemoBounded/badger/cascade_delete (0.01s)
+    --- PASS: TestRelPlannerStatsMemoBounded/badger/retention_purge (0.01s)
+    --- PASS: TestRelPlannerStatsMemoBounded/badger/replica_apply (0.02s)
+    --- PASS: TestRelPlannerStatsMemoBounded/badger/IO.Import (0.05s)
+    --- PASS: TestRelPlannerStatsMemoBounded/badger/reopen (0.15s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.368s

@@ -1,0 +1,21 @@
+# backlog 53 gates, 2026-10-12 (fix applied, worktree branch)
+
+$ go test -short -race -count=1 ./pkg/graph/store/... ./pkg/graph/
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	6.685s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	230.337s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	418.375s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	16.290s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	195.180s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	395.281s
+exit=0
+
+$ make lint-docker   (golangci-lint v2.13.2)
+0 issues.
+exit=0
+
+$ make security-docker   (gosec v2.29.0)
+exit=0
+
+$ go test -count=1 -run 'Doc|Changelog|CHANGELOG' ./pkg/graph/internal/core/ ./pkg/graph/internal/index/
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index

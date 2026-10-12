@@ -344,12 +344,15 @@ func (bs *Store) PurgeRelationshipByInfo(rel storecontract.PurgedRel) error {
 		// The rel entity lives on this shard — a full recordless delete (both legs'
 		// local keys via the info; the remote leg was already purged with the node)
 		// plus its version history (0x08, co-located with the entity).
+		// The row is read only for the planner statistics' decrement; an
+		// unreadable row still has its residue cleaned (deleteRelByInfo).
+		old, _ := bs.getRelLocked(rid)
 		bs.deleteRelByInfo(RelDeleteInfo{
 			ID:      rid.SnowflakeID(),
 			RelType: rel.TypeToken,
 			StartID: rel.StartID.SnowflakeID(),
 			EndID:   rel.EndID.SnowflakeID(),
-		})
+		}, old)
 		// Purged, not deleted: no ex-adjacency survives it (backlog 50).
 		bs.appendOps(exAdjLegOps(writeOpDelete, rid.SnowflakeID(), rel.StartID.SnowflakeID(), rel.EndID.SnowflakeID())...)
 		bs.maintainRelTypeTemporalIndexesPurge(rid.SnowflakeID()) // history goes too: nothing left to cover
@@ -428,7 +431,7 @@ func (bs *Store) PurgeAdjacentRelsForNode(nodeID types.NodeID) (int, error) {
 			bs.idxMu.Unlock()
 			return removed, err
 		}
-		bs.deleteRelByInfo(relDeleteInfoFromRelationship(r))
+		bs.deleteRelByInfo(relDeleteInfoFromRelationship(r), r)
 		histOps = append(histOps, exAdjLegOps(writeOpDelete, rid.SnowflakeID(), r.StartNodeID().SnowflakeID(), r.EndNodeID().SnowflakeID())...) // purged: no ex-adjacency (backlog 50)
 		bs.maintainRelTypeTemporalIndexesPurge(rid.SnowflakeID())                                                                               // history goes too: nothing left to cover
 		bs.dropPropertyTxMembersLocked()                                                                                                        // and its values from the property sidecars (backlog 8)

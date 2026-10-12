@@ -153,6 +153,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 			RelType: r.TypeToken().Value(),
 			StartID: r.StartNodeID().SnowflakeID(),
 			EndID:   r.EndNodeID().SnowflakeID(),
+			row:     r,
 		})
 	}
 
@@ -189,7 +190,7 @@ func (bs *Store) cascadeDeleteApply(nid types.NodeID, prefetched cascadeDeletePr
 		bs.purgeOrphanRelIDLockedWithIndexKeys(relID, orphanKeys[i])
 	}
 	for _, info := range toDelete {
-		bs.deleteRelByInfo(info)
+		bs.deleteRelByInfo(info, info.row)
 	}
 
 	// Get node data for label cleanup.

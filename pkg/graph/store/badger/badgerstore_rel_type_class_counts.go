@@ -1,19 +1,10 @@
 package badger
 
 import (
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
-
-// relClassEntry is one property's classification for a relationship, memoized by rel
-// ID (relTypeClassContrib) so the read-free deleteRelByInfo — which carries no
-// property values — can decrement the type-class counters precisely by ID.
-type relClassEntry struct {
-	key   string
-	class types.PropertyTypeClass
-}
 
 func (bs *Store) getOrCreateRelTypeClassCounters(relTypeToken uint16, propertyKey string) *typeClassCounters {
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}
@@ -24,12 +15,23 @@ func (bs *Store) getOrCreateRelTypeClassCounters(relTypeToken uint16, propertyKe
 	return v.(*typeClassCounters)
 }
 
-// addRelPropertyTypeClassCounts classifies a relationship's properties, increments the
-// per-(relType, propKey) type-class counters, and MEMOIZES the classification by rel
-// ID so a later delete-by-ID (deleteRelByInfo) can decrement precisely. The
-// relationship mirror of adjustNodePropertyTypeClassCounts(+1); called at every
-// full-rel-write ADD site AND the loadIndexes rebuild.
+// addRelPropertyTypeClassCounts counts a relationship row entering the current
+// set into the per-(relType, propKey) type-class counters — the relationship
+// mirror of adjustNodePropertyTypeClassCounts(+1); called at every door that
+// makes a row current AND by the loadIndexes rebuild.
 func (bs *Store) addRelPropertyTypeClassCounts(r *types.Relationship) {
+	bs.adjustRelPropertyTypeClassCounts(r, 1)
+}
+
+// removeRelPropertyTypeClassCounts takes a row leaving the current set back
+// out of the counters. The caller passes the row it removes (the delete seam's
+// old row, the replace path's previous row), so the decrement is exactly the
+// increment that row made and no per-relationship memo is kept (backlog 53).
+func (bs *Store) removeRelPropertyTypeClassCounts(r *types.Relationship) {
+	bs.adjustRelPropertyTypeClassCounts(r, -1)
+}
+
+func (bs *Store) adjustRelPropertyTypeClassCounts(r *types.Relationship, delta int64) {
 	if bs.disablePlannerStats || r == nil {
 		return
 	}
@@ -37,37 +39,13 @@ func (bs *Store) addRelPropertyTypeClassCounts(r *types.Relationship) {
 	if relType == 0 {
 		return
 	}
-	var contrib []relClassEntry
 	r.ForEachPropertyTypeClass(func(propertyKey string, class types.PropertyTypeClass) bool {
 		if class >= types.NumPropertyTypeClasses {
 			return true
 		}
-		bs.getOrCreateRelTypeClassCounters(relType, propertyKey).classes[class].Add(1)
-		contrib = append(contrib, relClassEntry{key: propertyKey, class: class})
+		bs.getOrCreateRelTypeClassCounters(relType, propertyKey).classes[class].Add(delta)
 		return true
 	})
-	if contrib != nil {
-		bs.relTypeClassContrib.Store(r.ID().SnowflakeID(), contrib)
-	}
-}
-
-// removeRelPropertyTypeClassCountsByID decrements the counters for the relationship
-// identified by relID (relType from the caller's RelDeleteInfo / old row), using the
-// memoized contribution — the SINGLE decrement seam every delete path funnels through
-// (deleteRelByInfo) plus the replace-old path. A rel with no memoized contribution
-// (no classifiable properties, or a sharded/tiered partial write that never populated
-// it — those backends decline this capability) is a no-op.
-func (bs *Store) removeRelPropertyTypeClassCountsByID(relID snowflake.ID, relType uint16) {
-	if bs.disablePlannerStats {
-		return
-	}
-	v, ok := bs.relTypeClassContrib.LoadAndDelete(relID)
-	if !ok {
-		return
-	}
-	for _, e := range v.([]relClassEntry) {
-		bs.getOrCreateRelTypeClassCounters(relType, e.key).classes[e.class].Add(-1)
-	}
 }
 
 // RelPropertyTypeClassCounts satisfies the optional

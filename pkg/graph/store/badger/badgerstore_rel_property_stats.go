@@ -4,25 +4,10 @@ import (
 	"errors"
 	"sync/atomic"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
-
-// relStatsEntry is one property's (valueKey, value) pair for a relationship,
-// memoized by rel ID (relStatsContrib) so the read-free deleteRelByInfo —
-// which carries no property values — can Forget() the NDV+min/max
-// accumulator precisely by ID. The stats-maintenance analogue of
-// relClassEntry (badgerstore_rel_type_class_counts.go); a SEPARATE structure
-// because ForEachPropertyTypeClass deliberately never exposes the raw value
-// (see types.Relationship.ForEachPropertyTypeClass doc), so the type-class
-// memoization cannot be reused here.
-type relStatsEntry struct {
-	key      string
-	valueKey string
-	value    any
-}
 
 // RelPropertyStats returns NDV/min/max/count planner statistics for
 // (relTypeToken, propertyKey) — the relationship mirror of NodePropertyStats
@@ -147,16 +132,25 @@ func (bs *Store) getOrCreateRelPropertyKeyCounter(relTypeToken uint16, propertyK
 	return v.(*atomic.Int64)
 }
 
-// addRelPropertyStatsCounts increments the per-(relType, propKey) presence
-// counter and folds each observation into the NDV+min/max accumulator,
-// MEMOIZING the (key, valueKey, value) triples by rel ID so a later
-// delete-by-ID (deleteRelByInfo) can Forget() precisely. The relationship
-// mirror of adjustNodePropertyKeyCounts(+1); called at every full-rel-write
-// ADD site AND the loadIndexes rebuild, alongside addRelPropertyTypeClassCounts.
-// Caller MUST already hold bs.idxMu.Lock() (every call site here does — see
-// the grep audit in badgerstore_rel_type_class_counts.go for the identical
-// requirement on its sibling).
+// addRelPropertyStatsCounts counts a relationship row entering the current
+// set: the per-(relType, propKey) presence counter and the NDV+min/max
+// accumulator. The relationship mirror of adjustNodePropertyKeyCounts(+1);
+// called at every door that makes a row current AND by the loadIndexes
+// rebuild, alongside addRelPropertyTypeClassCounts. Caller MUST already hold
+// bs.idxMu.Lock().
 func (bs *Store) addRelPropertyStatsCounts(r *types.Relationship) {
+	bs.adjustRelPropertyStatsCounts(r, 1)
+}
+
+// removeRelPropertyStatsCounts takes a row leaving the current set back out:
+// presence counters decrement and each value is Forgotten by the
+// accumulator. The caller passes the row it removes, so no per-relationship
+// memo is kept (backlog 53). Caller MUST already hold bs.idxMu.Lock().
+func (bs *Store) removeRelPropertyStatsCounts(r *types.Relationship) {
+	bs.adjustRelPropertyStatsCounts(r, -1)
+}
+
+func (bs *Store) adjustRelPropertyStatsCounts(r *types.Relationship, delta int64) {
 	if bs.disablePlannerStats || r == nil {
 		return
 	}
@@ -164,40 +158,15 @@ func (bs *Store) addRelPropertyStatsCounts(r *types.Relationship) {
 	if relType == 0 {
 		return
 	}
-	var contrib []relStatsEntry
 	r.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
 		value, ok := r.GetProperty(propertyKey)
 		if !ok {
 			return true
 		}
-		bs.getOrCreateRelPropertyKeyCounter(relType, propertyKey).Add(1)
-		bs.adjustRelPropertyStatsOne(relType, propertyKey, valueKey, value, 1)
-		contrib = append(contrib, relStatsEntry{key: propertyKey, valueKey: valueKey, value: value})
+		bs.getOrCreateRelPropertyKeyCounter(relType, propertyKey).Add(delta)
+		bs.adjustRelPropertyStatsOne(relType, propertyKey, valueKey, value, delta)
 		return true
 	})
-	if contrib != nil {
-		bs.relStatsContrib.Store(r.ID().SnowflakeID(), contrib)
-	}
-}
-
-// removeRelPropertyStatsCountsByID decrements the presence counters and
-// Forgets each memoized value from the NDV+min/max accumulator for the
-// relationship identified by relID (relType from the caller's
-// RelDeleteInfo / old row) — the relationship mirror of
-// removeRelPropertyTypeClassCountsByID. A rel with no memoized contribution
-// is a no-op. Caller MUST already hold bs.idxMu.Lock().
-func (bs *Store) removeRelPropertyStatsCountsByID(relID snowflake.ID, relType uint16) {
-	if bs.disablePlannerStats {
-		return
-	}
-	v, ok := bs.relStatsContrib.LoadAndDelete(relID)
-	if !ok {
-		return
-	}
-	for _, e := range v.([]relStatsEntry) {
-		bs.getOrCreateRelPropertyKeyCounter(relType, e.key).Add(-1)
-		bs.adjustRelPropertyStatsOne(relType, e.key, e.valueKey, e.value, -1)
-	}
 }
 
 // adjustRelPropertyStatsOne folds one (relType, property key) observation
