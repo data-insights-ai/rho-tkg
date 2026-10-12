@@ -1,0 +1,2 @@
+go version go1.26.9 darwin/arm64
+limit: {"command": ["env", "GOTOOLCHAIN=go1.26.9", "GOMAXPROCS=2", "GOMEMLIMIT=2GiB", "GOFLAGS=-p=1", "GOWORK=off", "go", "version"], "rss_limit_mib": 4096.0, "wall_limit_s": 180.0, "sample_interval_s": 0.25, "peak_tree_rss_mib": 1.203, "elapsed_s": 0.035, "exit_code": 0, "reason": "completed"}

@@ -1,0 +1,12 @@
+github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/allocation_host.go:698:			AuthorizeReserve			65.0%
+github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/allocation_host.go:728:			InstallGrant				71.4%
+github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/allocation_host.go:784:			Acquire					64.9%
+github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/allocation_protocol.go:770:			transition				63.8%
+github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/allocation_protocol.go:887:			allocatorTransition			58.6%
+github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/partition_writes.go:17:			stagePartitionGraph			62.0%
+github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/partition_writes.go:170:			admitGraphDelta				78.6%
+github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/partition_writes.go:254:			PreparePartitionGraphOperations		70.4%
+github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_activation.go:49:			stageRangeMoveActivation		74.0%
+github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_activation.go:151:		stageRangeMoveFinish			72.7%
+github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_original.go:59:			LookupOriginal				59.4%
+total:													(statements)				37.1%

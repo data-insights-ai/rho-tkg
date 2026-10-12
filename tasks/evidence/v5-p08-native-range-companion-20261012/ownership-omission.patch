@@ -1,0 +1,5 @@
+--- a/v5/internal/graphapply/partition_writes.go
++++ b/v5/internal/graphapply/partition_writes.go
+@@ -222 +222 @@
+-		if err := current.Check(p, a.q.ns.partition, current.Epoch); err != nil {
++		if err := current.Check(p, a.q.ns.partition, current.Epoch); err != nil && role != lifeBinding {

@@ -1,0 +1,14 @@
+{
+  "baseline_production": {
+    "path": "v5/internal/graphapply/partition_writes.go",
+    "sha256": "9fd38fadce5d11ae2129ebcc5130974782cda9af1c31e2258a6a16248f64023f"
+  },
+  "overlay_mutant": {
+    "path": "tasks/evidence/v5-p08-native-range-companion-20261012/ownership-omission-mutant.go.txt",
+    "sha256": "7b14a8dc1ccd5475cc24aecca4563eeeba510bf735f798923f7a5e8f3849028b"
+  },
+  "qualified_test": {
+    "path": "v5/internal/graphapply/allocation_p08_native_test.go",
+    "sha256": "7a6a89e2dc155f73e25867b16794a1dfb5f5f95cd879431bccef7987c9bb743f"
+  }
+}

@@ -1,0 +1,80 @@
+=== RUN   TestAllocationP08CompletedRangeMoveFencesUnusedIDsWithCurrentRecipient
+2026/10/12 04:51:18 Found 0 WALs
+raft2026/10/12 04:51:18 INFO: 1 switched to configuration voters=(1 2 3)
+raft2026/10/12 04:51:18 INFO: 1 became follower at term 1
+raft2026/10/12 04:51:18 INFO: newRaft 1 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/12 04:51:18 Found 0 WALs
+raft2026/10/12 04:51:19 INFO: 2 switched to configuration voters=(1 2 3)
+raft2026/10/12 04:51:19 INFO: 2 became follower at term 1
+raft2026/10/12 04:51:19 INFO: newRaft 2 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/12 04:51:19 Found 0 WALs
+raft2026/10/12 04:51:19 INFO: 3 switched to configuration voters=(1 2 3)
+raft2026/10/12 04:51:19 INFO: 3 became follower at term 1
+raft2026/10/12 04:51:19 INFO: newRaft 3 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+raft2026/10/12 04:51:19 INFO: 1 is starting a new election at term 1
+raft2026/10/12 04:51:19 INFO: 1 became pre-candidate at term 1
+raft2026/10/12 04:51:19 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 2 at term 1
+raft2026/10/12 04:51:19 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 3 at term 1
+raft2026/10/12 04:51:19 INFO: 1 received MsgPreVoteResp from 1 at term 1
+raft2026/10/12 04:51:19 INFO: 1 has received 1 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/12 04:51:19 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/12 04:51:19 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/12 04:51:19 INFO: 1 received MsgPreVoteResp from 2 at term 1
+raft2026/10/12 04:51:19 INFO: 1 has received 2 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/12 04:51:19 INFO: 1 became candidate at term 2
+raft2026/10/12 04:51:19 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 2 at term 2
+raft2026/10/12 04:51:19 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 3 at term 2
+raft2026/10/12 04:51:19 INFO: 1 received MsgVoteResp from 1 at term 2
+raft2026/10/12 04:51:19 INFO: 1 has received 1 MsgVoteResp votes and 0 vote rejections
+raft2026/10/12 04:51:19 INFO: 2 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/12 04:51:19 INFO: 2 became follower at term 2
+raft2026/10/12 04:51:19 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/12 04:51:19 INFO: 3 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/12 04:51:19 INFO: 3 became follower at term 2
+raft2026/10/12 04:51:19 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/12 04:51:19 INFO: 1 received MsgVoteResp from 2 at term 2
+raft2026/10/12 04:51:19 INFO: 1 has received 2 MsgVoteResp votes and 0 vote rejections
+raft2026/10/12 04:51:19 INFO: 1 became leader at term 2
+2026/10/12 04:51:19 Found 0 WALs
+raft2026/10/12 04:51:19 INFO: 1 switched to configuration voters=(1 2 3)
+raft2026/10/12 04:51:19 INFO: 1 became follower at term 1
+raft2026/10/12 04:51:19 INFO: newRaft 1 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/12 04:51:19 Found 0 WALs
+raft2026/10/12 04:51:19 INFO: 2 switched to configuration voters=(1 2 3)
+raft2026/10/12 04:51:19 INFO: 2 became follower at term 1
+raft2026/10/12 04:51:19 INFO: newRaft 2 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/12 04:51:19 Found 0 WALs
+raft2026/10/12 04:51:19 INFO: 3 switched to configuration voters=(1 2 3)
+raft2026/10/12 04:51:19 INFO: 3 became follower at term 1
+raft2026/10/12 04:51:19 INFO: newRaft 3 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+raft2026/10/12 04:51:19 INFO: 1 is starting a new election at term 1
+raft2026/10/12 04:51:19 INFO: 1 became pre-candidate at term 1
+raft2026/10/12 04:51:19 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 2 at term 1
+raft2026/10/12 04:51:19 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 3 at term 1
+raft2026/10/12 04:51:19 INFO: 1 received MsgPreVoteResp from 1 at term 1
+raft2026/10/12 04:51:19 INFO: 1 has received 1 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/12 04:51:19 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/12 04:51:19 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/12 04:51:19 INFO: 1 received MsgPreVoteResp from 2 at term 1
+raft2026/10/12 04:51:19 INFO: 1 has received 2 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/12 04:51:19 INFO: 1 became candidate at term 2
+raft2026/10/12 04:51:19 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 2 at term 2
+raft2026/10/12 04:51:19 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 3 at term 2
+raft2026/10/12 04:51:19 INFO: 1 received MsgVoteResp from 1 at term 2
+raft2026/10/12 04:51:19 INFO: 1 has received 1 MsgVoteResp votes and 0 vote rejections
+raft2026/10/12 04:51:19 INFO: 2 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/12 04:51:19 INFO: 2 became follower at term 2
+raft2026/10/12 04:51:19 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/12 04:51:19 INFO: 3 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/12 04:51:19 INFO: 3 became follower at term 2
+raft2026/10/12 04:51:19 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/12 04:51:19 INFO: 1 received MsgVoteResp from 2 at term 2
+raft2026/10/12 04:51:19 INFO: 1 has received 2 MsgVoteResp votes and 0 vote rejections
+raft2026/10/12 04:51:19 INFO: 1 became leader at term 2
+    allocation_p08_native_test.go:117: explicit bounded Resume source=3/35 target=4/13
+    allocation_p08_native_test.go:117: explicit bounded Resume source=3/35 target=4/23
+    allocation_p08_native_test.go:117: explicit bounded Resume source=3/35 target=4/33
+--- PASS: TestAllocationP08CompletedRangeMoveFencesUnusedIDsWithCurrentRecipient (7.43s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	8.841s
+limit: {"command": ["env", "GOTOOLCHAIN=go1.26.9", "GOMAXPROCS=2", "GOMEMLIMIT=2GiB", "GOFLAGS=-p=1", "GOWORK=off", "go", "test", "-race", "-count=1", "-run", "^TestAllocationP08CompletedRangeMoveFencesUnusedIDsWithCurrentRecipient$", "-v", "./internal/graphapply"], "rss_limit_mib": 4096.0, "wall_limit_s": 180.0, "sample_interval_s": 0.25, "peak_tree_rss_mib": 830.953, "elapsed_s": 17.539, "exit_code": 0, "reason": "completed"}

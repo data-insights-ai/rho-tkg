@@ -1,0 +1,25 @@
+{
+  "command": [
+    "env",
+    "GOTOOLCHAIN=go1.26.9",
+    "GOMAXPROCS=2",
+    "GOMEMLIMIT=2GiB",
+    "GOFLAGS=-p=1",
+    "GOWORK=off",
+    "go",
+    "test",
+    "-overlay=../tasks/evidence/v5-p08-native-range-companion-20261012/ownership-omission-overlay.json",
+    "-count=1",
+    "-run",
+    "^TestAllocationP08CompletedRangeMoveFencesUnusedIDsWithCurrentRecipient$",
+    "-v",
+    "./internal/graphapply"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 825.609,
+  "elapsed_s": 11.81,
+  "exit_code": 1,
+  "reason": "command-failed"
+}

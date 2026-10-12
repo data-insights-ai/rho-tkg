@@ -1,0 +1,25 @@
+{
+  "command": [
+    "env",
+    "GOTOOLCHAIN=go1.26.9",
+    "GOMAXPROCS=2",
+    "GOMEMLIMIT=2GiB",
+    "GOFLAGS=-p=1",
+    "GOWORK=off",
+    "go",
+    "test",
+    "-count=1",
+    "-coverprofile=../tasks/evidence/v5-p08-native-range-companion-20261012/coverage.out",
+    "-run",
+    "^(TestAllocationP08CompletedRangeMoveFencesUnusedIDsWithCurrentRecipient|TestRangeMoveStagedTargetRejectsQueuedAllocationAndGraphMutators|TestRangeMoveCoordinatorRunResumePreservesNonemptyOldView)$",
+    "-v",
+    "./internal/graphapply"
+  ],
+  "rss_limit_mib": 4096.0,
+  "wall_limit_s": 180.0,
+  "sample_interval_s": 0.25,
+  "peak_tree_rss_mib": 898.516,
+  "elapsed_s": 20.243,
+  "exit_code": 0,
+  "reason": "completed"
+}
