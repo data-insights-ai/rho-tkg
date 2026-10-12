@@ -202,7 +202,7 @@ func (bs *Store) LoadLabelRegistry(reg *registrypkg.LabelRegistry) (bool, error)
 		return false, errNilLabelRegistry()
 	}
 	var names []string
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.MetaKey("label_tokens"))
 		if err == badgerv4.ErrKeyNotFound {
 			return nil
@@ -251,7 +251,7 @@ func (bs *Store) LoadRelTypeRegistry(reg *registrypkg.RelTypeRegistry) (bool, er
 		return false, errNilRelTypeRegistry()
 	}
 	var names []string
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.MetaKey("reltype_tokens"))
 		if err == badgerv4.ErrKeyNotFound {
 			return nil
@@ -278,7 +278,7 @@ func (bs *Store) MetaGet(key string) ([]byte, error) {
 		return nil, err
 	}
 	var out []byte
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.MetaKey(key))
 		if err == badgerv4.ErrKeyNotFound {
 			return nil
@@ -345,7 +345,7 @@ func (bs *Store) ForEachMetaName(prefix string, fn func(name string) error) erro
 	if fn == nil {
 		return errNilIterationCallback()
 	}
-	return bs.db.View(func(txn *badgerv4.Txn) error {
+	return bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		opts.Prefix = storepkg.MetaKey(prefix)
@@ -408,7 +408,7 @@ func (bs *Store) LoadPropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) (
 		return false, fmt.Errorf("graph: nil property-key registry")
 	}
 	var names []string
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.MetaKey("property_keys"))
 		if err == badgerv4.ErrKeyNotFound {
 			return nil

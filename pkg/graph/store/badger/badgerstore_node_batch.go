@@ -479,7 +479,7 @@ func (bs *Store) relationshipIndexKeysForRel(relID snowflake.ID) ([][]byte, erro
 		keys = append(keys, []byte(k))
 	})
 
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 

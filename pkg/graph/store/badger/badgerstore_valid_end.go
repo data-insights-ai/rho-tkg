@@ -163,7 +163,7 @@ func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node 
 		out[id] = append(out[id], indexpkg.ValidEndRowOf(hist, version, tm))
 		return nil
 	}
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		hit := txn.NewIterator(opts)
@@ -313,7 +313,7 @@ func (bs *Store) committedTemporal(prefix byte, id snowflake.ID) (*types.Tempora
 	storepkg.PutUint64(key, 1, int64(id))
 	var tm *types.TemporalMetadata
 	found := true
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(key)
 		if errors.Is(err, badgerv4.ErrKeyNotFound) {
 			found = false

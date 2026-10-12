@@ -131,7 +131,7 @@ func (bs *Store) persistRelTypeTemporalIndexDefs() {
 // current rows and their history, as CreateRelTemporalIndex builds it.
 func (bs *Store) loadRelTypeTemporalIndexes() error {
 	var tokens []uint16
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.RelTypeTemporalIndexDefsKey)
 		if errors.Is(err, badgerv4.ErrKeyNotFound) {
 			return nil

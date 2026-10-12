@@ -55,6 +55,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Keys already written by v4.51.2 are not removed: a key carries no provenance, and the same key may be a
   still-needed leg of an earlier deleted life of that relationship.
 
+### Changed
+
+- **Effective scans read through one store snapshot** (backlog 55; ai-soc restart replay, sigma restore: 33.4 s of
+  61.9 s CPU was one badger `View` per read in `streamRelTimelines`). Every door that streams per-entity timelines
+  (`ForEachRelEffectiveByType`, `ForEachNodeEffectiveByLabel(s)`, `ForEachNodeEffective` / `ForEachRelEffective`,
+  `Nodes/RelsEffectiveByIDs`, `ForEachRelEffectiveAtNodes`, `ForEachRelEffectiveByTypeFrom` /
+  `ForEachNodeEffectiveByLabelsFrom`) reads its candidates 256 per hold of the graph read lock, each entity under its
+  own entity lock as before, through one read snapshot: on badger one read transaction and forward-walking iterators
+  over the current-row and history keyspaces (unordered doors visit candidates in ascending ID order; a history chain
+  is read once for the skeletons, the winner and a fallback), on sharded one per slot. A scan opens one transaction
+  per store plus one per flush that commits during it, not up to three per entity: 0-2 per scan at 10 and at 60
+  entities, against 16-36 and 96-217 before (`TestEffectiveScanTransactionsPerType`,
+  `tasks/evidence/effective-scans/55-red.txt`). Answers are unchanged: the snapshot reads the cache and the write
+  buffer live, as the store's own reads do, and re-pins whenever a flush or `Clear` committed rows (new
+  `commitGen`) or a cache turned rows clean, so each read equals the store's read at that moment; under concurrent
+  writes and flushes every door answers what the per-ID path answers (break cases: updates and deletes flushed
+  mid-scan with their rows still cached, a history-only truncation flushed mid-scan, a flush between two reads of
+  one entity; mutants without the re-pin or without `commitGen` fail them). 100 K relationships, each with one
+  history row, on an on-disk store reopened with a 1,024-row cache: 4.9-6.8 s → 2.1-3.8 s per scan in paired runs on
+  a loaded host (1.8-2.7x; quieter host 3.2-3.7 s → 1.6-1.9 s), 1.16 GB → 0.69 GB and 13.6 M → 8.2 M allocations per
+  scan (`BenchmarkEffectiveScanCold`, `55-bench.txt`). Memory and tiered (a shard is checked out per read, so no snapshot
+  outlives a read) read entity by entity as before. No caller-visible change: entity order stays unspecified, `fn`
+  still runs without graph locks, and a pinned answer is the same whether an entity was read just before its
+  segments are handed to `fn` or up to 255 entities earlier. New optional store contract
+  `store.ReadSnapshotCapability` / `store.ReadSnapshot` (badger, sharded); `badger.ReadTxnsTotalForTest` is the
+  transaction-count seam. Not changed: the gather of `ForEachRelEffectiveAtNodes` still reads each adjacent
+  relationship row of the seeds (one transaction per row on a cache miss).
+
 ## [4.51.2] - 2026-10-12
 
 ### Added

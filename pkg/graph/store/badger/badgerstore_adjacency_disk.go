@@ -80,7 +80,7 @@ func (bs *Store) adjacentRelIDsSnapshotLocked(nid types.NodeID, typeToken uint16
 	})
 
 	var rids []types.RelID
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
@@ -159,7 +159,7 @@ func (bs *Store) adjacentRelMetasSnapshotLocked(nid types.NodeID, typeToken uint
 	})
 
 	var metas []adjMeta
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
@@ -344,7 +344,7 @@ func (bs *Store) incomingIndexEntriesFromKeyspaceLocked() []IncomingIndexEntry {
 		}
 	})
 
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)

@@ -399,7 +399,7 @@ func (bs *Store) scanAndDeleteIncomingPersisted(endNodeID, relID snowflake.ID) e
 	storepkg.PutUint64(prefix, 1, int64(endNodeID))
 
 	var ops []writeOp
-	if err := bs.db.View(func(txn *badgerv4.Txn) error {
+	if err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		opts.Prefix = prefix

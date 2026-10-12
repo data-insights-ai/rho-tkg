@@ -366,6 +366,11 @@ func (t *TempOps) RelEffectiveTimeline(id types.RelID, pin types.Instant) ([]tem
 
 // nodeEffectiveTimelineLocked is the per-entity body (c.mu held).
 func (c *Core) nodeEffectiveTimelineLocked(id types.NodeID, pin types.Instant) ([]temporal.NodeSegment, error) {
+	return c.nodeEffectiveTimelineFrom(entityReads{c: c}, id, pin)
+}
+
+// nodeEffectiveTimelineFrom is the per-entity body reading through rd (c.mu held).
+func (c *Core) nodeEffectiveTimelineFrom(rd entityReads, id types.NodeID, pin types.Instant) ([]temporal.NodeSegment, error) {
 	// The entity lock makes the current row, the presence bit and the
 	// history one snapshot: a concurrent write (Update, Delete, CloseVersion)
 	// moves the current row into history in more than one store step, and a
@@ -378,27 +383,23 @@ func (c *Core) nodeEffectiveTimelineLocked(id types.NodeID, pin types.Instant) (
 	if err := c.checkNodePointRetention(id, pin); err != nil {
 		return nil, err
 	}
-	current, err := c.getCurrentNode(id)
+	current, err := rd.currentNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
 	if current != nil {
-		if p, ok := c.store.(storepkg.HistoryPresenceCapability); ok {
-			has, err := p.HasNodeHistory(id)
-			if err != nil {
-				return nil, err
-			}
-			if !has {
-				return nodeSegments(c.nodeEffectivePieces([]*types.Node{current}, pin), nil), nil
-			}
+		if has, known, err := rd.hasNodeHistory(id); err != nil {
+			return nil, err
+		} else if known && !has {
+			return nodeSegments(c.nodeEffectivePieces([]*types.Node{current}, pin), nil), nil
 		}
 	}
 	if c.temporalMetaHistory != nil {
-		if segs, handled, err := c.nodeEffectiveViaTemporalMeta(id, current, pin); handled {
+		if segs, handled, err := c.nodeEffectiveViaTemporalMeta(rd, id, current, pin); handled {
 			return segs, err
 		}
 	}
-	history, err := c.getNodeHistory(id)
+	history, err := rd.nodeHistory(id)
 	if err != nil {
 		return nil, err
 	}
@@ -415,6 +416,11 @@ func (c *Core) nodeEffectiveTimelineLocked(id types.NodeID, pin types.Instant) (
 
 // relEffectiveTimelineLocked mirrors nodeEffectiveTimelineLocked.
 func (c *Core) relEffectiveTimelineLocked(id types.RelID, pin types.Instant) ([]temporal.RelSegment, error) {
+	return c.relEffectiveTimelineFrom(entityReads{c: c}, id, pin)
+}
+
+// relEffectiveTimelineFrom is the per-entity body reading through rd (c.mu held).
+func (c *Core) relEffectiveTimelineFrom(rd entityReads, id types.RelID, pin types.Instant) ([]temporal.RelSegment, error) {
 	// The entity lock makes the current row, the presence bit and the
 	// history one snapshot: a concurrent write (Update, Delete, CloseVersion)
 	// moves the current row into history in more than one store step, and a
@@ -427,27 +433,23 @@ func (c *Core) relEffectiveTimelineLocked(id types.RelID, pin types.Instant) ([]
 	if err := c.checkRelPointRetention(pin); err != nil {
 		return nil, err
 	}
-	current, err := c.getCurrentRelationship(id)
+	current, err := rd.currentRel(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
 	}
 	if current != nil {
-		if p, ok := c.store.(storepkg.HistoryPresenceCapability); ok {
-			has, err := p.HasRelHistory(id)
-			if err != nil {
-				return nil, err
-			}
-			if !has {
-				return relSegments(c.relEffectivePieces([]*types.Relationship{current}, pin), nil), nil
-			}
+		if has, known, err := rd.hasRelHistory(id); err != nil {
+			return nil, err
+		} else if known && !has {
+			return relSegments(c.relEffectivePieces([]*types.Relationship{current}, pin), nil), nil
 		}
 	}
 	if c.temporalMetaHistory != nil {
-		if segs, handled, err := c.relEffectiveViaTemporalMeta(id, current, pin); handled {
+		if segs, handled, err := c.relEffectiveViaTemporalMeta(rd, id, current, pin); handled {
 			return segs, err
 		}
 	}
-	history, err := c.getRelHistory(id)
+	history, err := rd.relHistory(id)
 	if err != nil {
 		return nil, err
 	}
@@ -469,8 +471,8 @@ func (c *Core) relEffectiveTimelineLocked(id types.RelID, pin types.Instant) ([]
 // and given the same TxAt normalization the resolver applies (lesson 60).
 // handled=false (a winner vanished between the reads, e.g. a concurrent trim)
 // falls back to the full-chain fold.
-func (c *Core) nodeEffectiveViaTemporalMeta(id types.NodeID, current *types.Node, pin types.Instant) ([]temporal.NodeSegment, bool, error) {
-	metas, err := c.temporalMetaHistory.NodeHistoryTemporalMeta(id)
+func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, current *types.Node, pin types.Instant) ([]temporal.NodeSegment, bool, error) {
+	metas, err := rd.nodeMeta(id)
 	if err != nil {
 		return nil, true, err
 	}
@@ -501,7 +503,7 @@ func (c *Core) nodeEffectiveViaTemporalMeta(id types.NodeID, current *types.Node
 		if full, ok := hydrated[p.src]; ok {
 			return full, true
 		}
-		full, err := c.getNodeVersion(id, metas[p.src].Version)
+		full, err := rd.nodeVersion(id, metas[p.src].Version)
 		if err != nil {
 			return nil, false
 		}
@@ -524,8 +526,8 @@ func (c *Core) nodeEffectiveViaTemporalMeta(id types.NodeID, current *types.Node
 }
 
 // relEffectiveViaTemporalMeta mirrors nodeEffectiveViaTemporalMeta.
-func (c *Core) relEffectiveViaTemporalMeta(id types.RelID, current *types.Relationship, pin types.Instant) ([]temporal.RelSegment, bool, error) {
-	metas, err := c.temporalMetaHistory.RelHistoryTemporalMeta(id)
+func (c *Core) relEffectiveViaTemporalMeta(rd entityReads, id types.RelID, current *types.Relationship, pin types.Instant) ([]temporal.RelSegment, bool, error) {
+	metas, err := rd.relMeta(id)
 	if err != nil {
 		return nil, true, err
 	}
@@ -556,7 +558,7 @@ func (c *Core) relEffectiveViaTemporalMeta(id types.RelID, current *types.Relati
 		if full, ok := hydrated[p.src]; ok {
 			return full, true
 		}
-		full, err := c.getRelVersion(id, metas[p.src].Version)
+		full, err := rd.relVersion(id, metas[p.src].Version)
 		if err != nil {
 			return nil, false
 		}
@@ -666,7 +668,7 @@ func (t *TempOps) ForEachRelEffectiveByType(typeName string, pin types.Instant, 
 	}); err != nil {
 		return err
 	}
-	return c.streamRelTimelines(ids, pin, func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }, fn)
+	return c.streamRelTimelines(ascending(ids), pin, func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }, fn)
 }
 
 // validateEffectiveScanPin is validateEffectivePin plus the scan doors'

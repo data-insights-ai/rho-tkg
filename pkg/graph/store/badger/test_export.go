@@ -252,3 +252,8 @@ func (bs *Store) SetMoveTestHookForTest(fn func()) { bs.moveTestHook = fn }
 // SetAsOfAfterCurrentTestHookForTest installs asOfAfterCurrentTestHook (see
 // the Store field). Exported solely for tests; not for production use.
 func (bs *Store) SetAsOfAfterCurrentTestHookForTest(fn func()) { bs.asOfAfterCurrentTestHook = fn }
+
+// ReadTxnsTotalForTest reports the badger read transactions the read paths of
+// every store in this process have opened (backlog 55's seam). Not for
+// production use.
+func ReadTxnsTotalForTest() int64 { return readTxnsTotal.Load() }

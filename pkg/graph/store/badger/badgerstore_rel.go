@@ -215,7 +215,7 @@ func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 	var r *types.Relationship
 	// Read before the snapshot opens — see LoadCleanAt.
 	epoch := bs.relCache.FlushEpoch()
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.RelKey(id))
 		if err == badgerv4.ErrKeyNotFound {
 			return ErrRelNotFound
@@ -742,7 +742,7 @@ func (bs *Store) getRelLocked(rid types.RelID) (*types.Relationship, error) {
 	var r *types.Relationship
 	// Read before the snapshot opens — see LoadCleanAt.
 	epoch := bs.relCache.FlushEpoch()
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.RelKey(id))
 		if err == badgerv4.ErrKeyNotFound {
 			return ErrRelNotFound
@@ -822,7 +822,7 @@ func (bs *Store) prefetchRelNoFill(rid types.RelID, promote bool) (r *types.Rela
 		return nil, false, ErrRelNotFound
 	}
 
-	err = bs.db.View(func(txn *badgerv4.Txn) error {
+	err = bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.RelKey(id))
 		if err == badgerv4.ErrKeyNotFound {
 			return ErrRelNotFound

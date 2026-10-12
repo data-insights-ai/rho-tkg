@@ -1,0 +1,9 @@
+--- FAIL: TestReadSnapshotAnswersAsTheStore (0.00s)
+    badgerstore_read_snapshot_test.go:205: history truncated, buffered: snapshot answers differ from the store's:
+         got  node v2 tx300 x=12 has=true meta=[] v0=err(graph: version not found) v1=err(graph: version not found) v2=err(graph: version not found)
+        rel v2 tx300 x=12 has=true meta=[] v0=err(graph: version not found) v1=err(graph: version not found) v2=err(graph: version not found)
+         want node v2 tx300 x=12 has=true meta=[v1 tx200 x=<nil>] v0=err(graph: version not found) v1=v1 tx200 x=11 v2=err(graph: version not found) hist:v1 tx200 x=11
+        rel v2 tx300 x=12 has=true meta=[v1 tx200 x=<nil>] v0=err(graph: version not found) v1=v1 tx200 x=11 v2=err(graph: version not found) hist:v1 tx200 x=11
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.012s
+FAIL

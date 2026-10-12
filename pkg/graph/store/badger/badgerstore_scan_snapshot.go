@@ -48,7 +48,7 @@ func (s *scanSnapshot) txnAfterMiss() *badgerv4.Txn {
 	if s.txn == nil || e != s.pinned {
 		s.close()
 		s.pinned = e
-		s.txn = s.db.NewTransaction(false)
+		s.txn = newReadTxn(s.db)
 	}
 	return s.txn
 }
@@ -60,7 +60,7 @@ func (s *scanSnapshot) txnAfterMiss() *badgerv4.Txn {
 func (s *scanSnapshot) anyTxn() *badgerv4.Txn {
 	if s.txn == nil {
 		s.pinned = s.epoch()
-		s.txn = s.db.NewTransaction(false)
+		s.txn = newReadTxn(s.db)
 	}
 	return s.txn
 }

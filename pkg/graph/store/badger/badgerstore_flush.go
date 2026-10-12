@@ -351,7 +351,9 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 	// stop consulting the parked snapshot. Leaving it set lets a stale overlay
 	// linger — most visibly, a Clear() that wipes the history keyspace would let
 	// these entries resurface as phantom history IDs. flushMu serializes flush(),
-	// so bs.flushing is still exactly this `ops`; clear it under wbMu.
+	// so bs.flushing is still exactly this `ops`; clear it under wbMu. Read
+	// snapshots that predate the commit re-pin (commitGen) before they miss it.
+	bs.commitGen.Add(1)
 	bs.wbMu.Lock()
 	bs.flushing = nil
 	bs.wbMu.Unlock()

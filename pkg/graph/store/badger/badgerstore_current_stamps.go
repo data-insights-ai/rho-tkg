@@ -92,7 +92,7 @@ func (bs *Store) committedRowStamps(prefix byte, id snowflake.ID, missing error)
 	key[0] = prefix
 	storepkg.PutUint64(key, 1, int64(id))
 	var s storecontract.RowStamps
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(key)
 		if err == badgerv4.ErrKeyNotFound {
 			return missing
