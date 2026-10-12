@@ -33,12 +33,13 @@ ledgers of 2026-10-09/10 (per-step red tests, merges, reviews) are in git histor
 
 ## Open queue (mirrors `HANDOVER.md` §11; specs in `tasks/backlog.md`)
 
-- [ ] 43 retraction door (`Retract` / `RetractWithTx` + GraphTx, Batch, Session twins) — NEXT STEP.
+- [x] 43 retraction door — released v4.49.1/v4.49.2.
 - [x] 34 `Set{Node,Rel}VersionIntervalWithTx` on every door — released v4.50.1 (09e58d3, gate scratchpad ci-docker-v4501.txt exit 0, coverage 87.4%), sigma-tkgd and ai-soc notified 2026-10-11.
-- [ ] 33 + 42, then 41 — badger read cost — restart.
-- [ ] 35 broader effective scans (signatures confirmed by sigma 2026-10-10).
-- [ ] 28 state column fast path (design first) (waits for sigma).
+- [ ] 33 + 42, then 41 — badger read cost — restarted 2026-10-12 (René: "Parallel Opus subagents?"), Opus agent aa4b0ebc0683fcb3f resumed in its worktree. Red: BenchmarkForEachRelEffective badger µs/rel and BenchmarkLatestStampsRotating allocs vs baseline `tasks/evidence/badger-read-cost/01-*`; differentials HasHistory/LatestStamps/effective-timeline stay green; break-the-code: stale row after update, deleted entity, cache miss vs hit. Proof: `tasks/evidence/badger-read-cost/`.
+- [ ] 48 `Other` marker on `ColumnData` — started 2026-10-12, Opus worktree agent. In code? `store/capabilities.go:1268` has Null only; rel `SegmentColumnValues.Other` at `store/rel_segments.go:259`. Red: per backend a list/map/kind-mismatch/missing cell vs Row(k) class; break-the-code: Other never set, set for missing cell, wrong column index, stale after update. Proof: `tasks/evidence/column-other/`.
+- [ ] 35 broader effective scans — started 2026-10-12, Opus worktree agent. In code? only ByType/ByLabel scan forms (`core/effective_timeline*.go`). Red: exact-set per pin vs oracle for the 5 signatures; break-the-code: deleted-before/after-pin, created-after-pin, both endpoints seeded (rel once), duplicate/unknown IDs, fn false stops. Proof: `tasks/evidence/effective-scans/`.
+- [ ] 28 state column fast path (design first) — waits for sigma's design input; not started.
 - [ ] 21 retention `PurgeExpiredRels` + per-type gate (sigma, not blocking).
 - [ ] Residual backlog: 0–5, 7, 10 (remaining), 13, 15, 16, 20 (RelAtTx benchmarks), 22, 23, 25, 26, 31, 37, 39, 40, 44.
-- [ ] (René) delete the stale `wip/badger-scan-flush-evict` branch; named stability exceptions vs deprecation ritual.
+- [ ] (René) stale `wip/badger-scan-flush-evict` branch deleted 2026-10-11; named stability exceptions vs deprecation ritual.
 - [ ] Next release v4.50.2 (v4.50.1 released 2026-10-11; PATCH only; v4.50.0 was released by Markus 2026-10-10, René 2026-10-10: no minor versions until asked) when 43 / 34 / 33 are merged; gate, tag, notify sigma-tkgd and ai-soc.
