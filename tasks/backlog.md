@@ -468,8 +468,12 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    [Receiving-only term persistence](evidence/v2-application-receiving-20261012/receipt.json)
    is integrated: an empty bound store durably records a genuine receiving term
    while retaining inactive imports and refusing active membership/application.
-   It grants no replacement authority. Native snapshot reception, semantic audit,
-   durable activation and association transfer into the restored Host remain open.
+   It grants no replacement authority. The [receiving protocol](evidence/v2-replacement-receiver-20261012/receipt.json)
+   is integrated with exact source/term/binding checks, durable-term-before-reply
+   ordering and genuine source-driven snapshot offers. Eight focused parents
+   pass normal/race, new-file coverage is 85.3%, and format/vet/lint pass. This
+   receiver still refuses activation traffic; semantic audit, durable snapshot
+   activation and association transfer into the restored Host remain open.
    The [bounded recovery fix](evidence/native-ready-progress-20261012/qualification.json)
    now makes progress when an ordinary native Ready exceeds available application
    capacity but its ordered prefixes fit. It retains the original Ready until
