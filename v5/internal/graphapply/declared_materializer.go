@@ -233,22 +233,39 @@ func (m *declaredMaterializer) Restore(index uint64, image []byte) (err error) {
 	l := m.limits.allocation
 	l.readRows, l.readBytes = min(l.readRows, m.limits.sourceRows), min(l.readBytes, m.limits.sourceBytes)
 	q := reader{ctx: context.Background(), view: view, ns: m.ns, base: base, limits: l, bytes: cap(base.Image)}
-	info, err := m.readOwnership(q.ctx, view, &q)
+	return m.validateRestoredState(&q, false)
+}
+
+// The caller owns q.view and closes it. Both Restore and a read-only incoming
+// snapshot audit use precisely these catalog/genesis/allocation/routing and
+// recovery invariants. Audits additionally forbid pending declared seeds and
+// require a genuine prepared-history source, including historical baselines.
+func (m *declaredMaterializer) validateRestoredState(q *reader, initializedOnly bool) error {
+	if m == nil || q == nil || q.view == nil || q.ctx == nil || initializedOnly && q.preparedHistory == nil {
+		return errInvalid
+	}
+	if err := q.ctx.Err(); err != nil {
+		return err
+	}
+	info, err := m.readOwnership(q.ctx, q.view, q)
 	if err != nil {
 		return err
 	}
 	if info.Root().SemanticEpoch() == 0 {
-		return m.seed(&q)
+		if initializedOnly {
+			return errNotInitialized
+		}
+		return m.seed(q)
 	}
-	_, err = m.initialized(&q)
+	_, err = m.initialized(q)
 	if err == nil && crossGraphAgreement(m.SemanticContractID()) {
-		_, _, err = m.readCrossResourceOwner(&q)
+		_, _, err = m.readCrossResourceOwner(q)
 	}
 	if err == nil && crossGraphAgreement(m.SemanticContractID()) {
-		err = m.checkCrossLock(&q)
+		err = m.checkCrossLock(q)
 	}
 	if err == nil {
-		err = m.checkRangeMoveState(&q)
+		err = m.checkRangeMoveState(q)
 	}
 	return err
 }

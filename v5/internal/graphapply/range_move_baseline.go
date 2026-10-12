@@ -92,7 +92,15 @@ func (m *declaredMaterializer) rangeMoveCatalogBaseline(q *reader, cfg genesisAl
 	if err := reserveComposer(q, 2048); err != nil {
 		return nil, err
 	}
-	view, err = m.store.ApplicationView(root.Index)
+	if q.preparedHistory != nil {
+		// An audit's complete baseline belongs to this same inactive import,
+		// never to the receiver's active application bank.
+		view, err = q.preparedHistory.OpenReadView(q.ctx, root.Index, 172)
+	} else if m.store != nil {
+		view, err = m.store.ApplicationView(root.Index)
+	} else {
+		return nil, errInvalid
+	}
 	if err != nil {
 		return nil, err
 	}

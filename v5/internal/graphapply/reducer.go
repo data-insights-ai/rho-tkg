@@ -16,17 +16,18 @@ import (
 
 type applyPosition struct{ index, generation uint64 }
 type reader struct {
-	arena          *graphstate.OutputBudget
-	ctx            context.Context
-	view           *raftlog.ApplicationView
-	ns             namespace
-	limits         limits
-	base           raftlog.ApplicationRoot
-	rows, bytes    int
-	writes         []raftlog.KV
-	stageBytes     int
-	allocatorFound bool
-	allocatorInfo  idalloc.View
+	arena           *graphstate.OutputBudget
+	ctx             context.Context
+	view            *raftlog.ApplicationView
+	preparedHistory *raftlog.PreparedApplicationSnapshot
+	ns              namespace
+	limits          limits
+	base            raftlog.ApplicationRoot
+	rows, bytes     int
+	writes          []raftlog.KV
+	stageBytes      int
+	allocatorFound  bool
+	allocatorInfo   idalloc.View
 }
 
 func recordKey(n namespace, tag byte) []byte       { return appendNamespace([]byte{'g', 'a', tag}, n) }
