@@ -1,0 +1,27 @@
+{
+  "status": "accepted_local_FDB_graph_fault_launcher_scope",
+  "date": "2026-10-12",
+  "author_commit": "cd85e51fac4de305be7f2a1265444360c1e59e78",
+  "integration_commit": "e5f98f1b34f4ca62aca4b5d289a4ee82d57e4e92",
+  "author_manifest": {
+    "file": "launcher-20261012.json",
+    "sha256": "fdda8d7ef9fb8d8ce1938bc48e1275103f5e7c2503160a1bb3d9586253080e6d"
+  },
+  "archive_sha256": "4f649d902b4e32f477f87c5208135685567375626b75adbfce8230e30a04c6c6",
+  "independent_review": {
+    "source": "Full changed graph fault/test and launcher APIs reviewed; final source hashes match. No rho production source or dependency changed.",
+    "raw_artifacts": "All 492 successful live artifacts and 41 successful static artifacts match their original receipts. Across five archived runs, 702 of 703 referenced artifacts match; the one historical failed-lint log has a proven 109-byte post-seal output suffix. Original receipt and final bytes remain preserved and separately pinned.",
+    "semantic_evidence": "Exact pre-commit and post-commit/before-reply client markers, SIGKILL exit 137 without OOM, actual one-zone-loss graph progress, retained three seed cuts and six complete change groups. All four servers are observed stopped before any full-cohort restart; final same-volume reopen reaches healthy triple replication.",
+    "tests": {
+      "race_test_parents_pass": 29,
+      "skips": 0,
+      "package_seconds": 17.042,
+      "package_coverage_percent": 84.2,
+      "changed_statement_coverage_percent": 89.0625
+    },
+    "resources": "Four 512 MiB/0.375 CPU servers plus one sequential 1 GiB/0.5 CPU client; prebuild separate at 1 GiB/2 CPU. This bounds containers, not the shared Docker VM/daemon. Per-container peak sums are upper bounds, not synchronized deployment peaks.",
+    "cleanup": "Successful terminal receipt has exit 0 and cleanup 0; command ledger records all owned containers, volumes, network and client image tags removed.",
+    "post_run_guards": "Only launcher checks/output routing and their Python/shell tests changed after the successful live run. Go bodies remain byte-identical. Exact-one-container guards recheck recorded inspections; stdout-FD reproduction prevents post-seal log appends."
+  },
+  "remaining": "Common native/FDB canonical lifecycle output and full correctness/cost matrix, independent physical hosts, engine decision and broader V2 acceptance remain open."
+}

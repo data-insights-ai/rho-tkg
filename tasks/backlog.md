@@ -367,8 +367,12 @@ reviewed and validated before the next package starts.
    exact committed graph retries. All 52 selected tests plus one fuzz seed pass
    in each normal/race mode; the recipient-session omission is detected. Production
    is unchanged. Combined hosted CI remains pending; full V2 stays open.
-   Next are the equivalent transactional-KV graph fault/comparison evidence and
-   the remaining V2 exit gates above. Separately, production creation/replacement
+   The [local FoundationDB graph fault launcher](../tools/v5-substrate/fdb/evidence/launcher-20261012-review.json)
+   now passes real client kills, one-zone-loss progress and all-server same-volume
+   restart, with exact retained history/CDC and bounded containers. Its 29 native
+   race tests pass; this is local functional evidence, not cross-engine parity.
+   Next are common native/FDB lifecycle traces, the comparable fault/cost matrix
+   and engine decision, plus the remaining V2 exit gates above. Production creation/replacement
    admission must distinguish new logical graphs
    from recovery; existing-directory binding checks alone do not establish that
    a logical identity may safely be bootstrapped on fresh or lost storage.
