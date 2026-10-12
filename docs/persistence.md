@@ -268,7 +268,11 @@ the store is marked closed, so a write racing `Close` cannot commit between the 
 open trusts the image only if that header is still the store's newest badger version (`db.MaxVersion()`): any
 later commit — writes of a session that crashed, a write by an older release that knows nothing of the image, a
 raw badger write — and any missing chunk, length or checksum mismatch or decode error sends the open to the full
-rebuild. A trusted open then:
+rebuild. That rebuild also repairs the keys: a crash inside a flush badger split into several transactions can
+leave label, type or adjacency keys that disagree with the rows, which a rebuild skips but a trusted image would
+believe, so a writable rebuild deletes the keys it skips and writes the ones a row needs and the keyspace lacks
+(a failed repair suppresses the session's image; a read-only rebuild repairs nothing and writes none). A trusted
+open then:
 
 - builds liveness, ordinals, label / type / adjacency maps and counters from the entity and index **keys** alone
   (no value read);

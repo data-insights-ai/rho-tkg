@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`store.ReadSnapshotCapability` / `store.ReadSnapshot`** (optional, backlog 55): one read snapshot an effective
+  scan reads a chunk of candidates through — badger one read transaction plus forward-walking iterators (unordered
+  doors visit IDs ascending), sharded one per slot.
+- **`store.MutationFlushHoldCapability`** (optional, backlog 52), implemented by the badger store: holds the
+  per-mutation flush while a `DurableCommit` group runs, so the group commits as one synced WriteBatch.
+- **`store.RelCreateUndoCapability`** (`UndoRelationshipCreate`; memory, badger, tiered, sharded) and
+  **`store.ScopedRelCreateUndoCapability`** (`UndoRelationshipCreateScoped`; memory, badger), optional (backlog 50
+  review F1): `DeleteRelationship` without the ex-adjacency legs, for undoing a create.
+- **badger `RemoveRelEntityAndOutPlacement` / `RemoveRelIncomingPlacement`** (backlog 50 review F1): the leg-less
+  doors a tiered move uses to drop a relationship's placement on the shard it leaves.
+
 ### Changed
 
 - **A clean badger reopen no longer decodes every row** (backlog 54, requested by ai-soc: `graph.New` took 24.8 s
@@ -41,11 +54,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`IndexRebuildStats`). (3) A raw badger write that only deletes keys can disappear in a bottom-level
   compaction, after which the header is again the newest commit and the image is trusted; rho-tkg's own deletes
   commit with their counters, so this concerns raw writers only.
+  Index keys: a crash inside a flush badger split into several transactions can leave label, type, outgoing or
+  incoming keys that disagree with the rows. The full rebuild always took the rows as the truth and skipped such
+  keys, but left them on disk, and a clean reopen trusts every key of a live entity, so the next clean `Close` would
+  have frozen a stale key into answers (`CountByLabel` counting a node without the label). A writable rebuilding
+  open now repairs them: it deletes each key it skips because its row disagrees or does not exist, and writes each
+  key a decoded row needs and the keyspace lacks; if that write fails, the session writes no image. A read-only
+  rebuild repairs nothing and writes no image. Keys of undecodable rows, incoming legs without a local row (tiered
+  cross-shard) and outgoing keys whose start lives on another shard stay as they are
+  (`TestCleanReopenAfterStaleIndexKeys`, red `tasks/evidence/open-cost/08-red-stale-keys.txt`;
+  `TestFailedKeyRepairWritesNoImage`).
 
 - **Effective scans read through one store snapshot per chunk** (backlog 55; ai-soc restart, sigma restore). Every
   door that streams per-entity timelines reads 256 candidates per hold of the read lock, each under its entity lock,
-  through one `store.ReadSnapshot` (new optional capability): badger one read transaction plus forward-walking
-  iterators (unordered doors visit IDs ascending), sharded one per slot; it is discarded before `fn` runs. Reads see
+  through one `store.ReadSnapshot` (see Added); it is discarded before `fn` runs. Reads see
   the cache and write buffer live and re-pin after every flush or `Clear` (`commitGen`), so answers are unchanged.
   Transactions per scan: 0-2 for 10 and 60 entities (before 16-36 and 96-217). 100 K relationships with history,
   reopened store, 1,024-row cache: 3.2-3.7 s → 1.6-1.9 s, 1.16 → 0.69 GB per scan (`BenchmarkEffectiveScanCold`,
@@ -71,8 +93,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ai-soc): the ai-soc 530-op `GraphTx` group took 990 ms (one Badger sync per mutation, ~822 msync per group) and
   takes 13.5 ms (`tasks/evidence/aisoc-commit-cost/52-bench.txt`; `DurableCommit` alone 12.5 ms, plain badger 5.1 ms,
   `SyncWrites` alone unchanged at ~1 s). Each `GraphTx` mutation, the `Batch.Execute` window and a `Rollback` run under
-  the exclusive graph lock with the store's per-mutation flush held (new optional `store.MutationFlushHoldCapability`,
-  implemented by the badger store), and the group's one `DurableFlush` commits the held writes as one WriteBatch that
+  the exclusive graph lock with the store's per-mutation flush held (`store.MutationFlushHoldCapability`, see
+  Added), and the group's one `DurableFlush` commits the held writes as one WriteBatch that
   Badger syncs; the held buffer flushes in steps at `MaxPendingWrites`, and a `Rollback` ends with one durable flush.
   Design choice: Badger `SyncWrites` fsyncs the WAL after every write and syncs each value-log file it retires, so
   one synced batch keeps strict power-loss durability across a memtable or value-log switch; closing that switch gap
@@ -95,10 +117,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   relationship, through the delete doors, which record an ex-adjacency leg per dropped key: stale keys naming a
   relationship that was still live or never committed. Answers were correct (each candidate is resolved and
   dropped); the keys cost disk or RAM and a candidate read per temporal adjacency query of the endpoint. Moves now use
-  the leg-less badger doors `RemoveRelEntityAndOutPlacement` / `RemoveRelIncomingPlacement`; undone creates use the
-  new optional `store.RelCreateUndoCapability` (`UndoRelationshipCreate`, memory, badger, tiered, sharded) and
-  `store.ScopedRelCreateUndoCapability` (`UndoRelationshipCreateScoped`, memory, badger): `DeleteRelationship`
-  without the legs (a store without them is undone by `DeleteRelationship`, as before). Real deletes keep both legs.
+  the leg-less badger move doors and undone creates the new undo capabilities (both under Added); a store without
+  them is undone by `DeleteRelationship`, as before. Real deletes keep both legs.
   Keys already written by v4.51.2 are not removed: a key carries no provenance, and the same key may be a
   still-needed leg of an earlier deleted life of that relationship.
 
