@@ -20,8 +20,8 @@ completes V6; the earlier source pins and local resource measurements remain
 historical. The integrated v4.51.1 reader at `dbd74cf45c65c1086798012e92453315cab75143`
 requires fresh qualification; its complete narrow gates and source/input/scanner
 record remain pending. The local replacement selects that current root reader
-even while the require label still names v4.50.1. Archived qualification pins
-are unchanged.
+and the module now requires v4.51.1. This dependency pin prepares requalification;
+it does not establish a passing gate. Archived qualification pins are unchanged.
 
 The caller quiesces source writes, imports, retention and DDL across a call,
 supplies capture/reader identity and evidence, and designates an explicit v5
