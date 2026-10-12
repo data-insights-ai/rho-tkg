@@ -354,6 +354,29 @@ O(1)-bounded (count entries after N writes, N = 10 K vs 100 K), plus exact count
 cascade / replica apply equal a full recount (oracle). Profiles are customer-derived: read on Flux only
 (`/srv/fast/rene/project-2026-09-010-BA/aisoc-s3-20261012/smoke/prof`).
 
+
+### 54. Badger open walks every current row to rebuild RAM indexes (open linear in history)
+
+*HIGH (consumer: ai-soc restart, 2026-10-12)* — open; not started.
+
+ai-soc BA-window store (519,350 nodes, 435,526 rels, 432 MB badger, v4.51.2): `graph.New` 24.8 s on a cleanly closed
+store; S3's store is ~16x (6–7 min if linear, not measured). Request text: ai-soc `wave2/RST/request-rho-restart.md` §1.
+First step: profile which RAM index rebuilds dominate the open (label/type membership, adjacency, property and
+temporal indexes, presence sets, planner stats; several already have `*OnDisk` modes), then persist or lazily build
+the dominant ones so a clean reopen costs O(indexes read) not O(rows decoded). Red test first: open time (or rows
+decoded at open) at 100 K vs 1 M entities on a cleanly closed store stays within a constant factor, plus answers
+after reopen equal a full-rebuild oracle, and a crash (no Close) still rebuilds correctly.
+
+### 55. Effective scans read one relationship per Badger transaction
+
+*MEDIUM (consumers: ai-soc restart replay, sigma restore; 2026-10-12)* — open; not started.
+
+`ForEachRelEffectiveByType` → `streamRelTimelines` (`internal/core/effective_scans.go:58`) does one badger
+View/Get per relationship; ai-soc profile: 33.4 s of 61.9 s CPU in it (request §3). Request: a range iterator over a
+type's relationships (current rows + history) for a full scan, one iterator per type instead of one transaction per
+ID. Red test first: reads per scan (transactions opened) bounded by a constant per type, results equal to the
+per-ID path (oracle) on memory/badger/sharded/tiered, under concurrent writes.
+
 ---
 
 ### 45. Internal sentinels reach callers but have no exported alias

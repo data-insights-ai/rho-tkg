@@ -26,6 +26,7 @@ ledgers of 2026-10-09/10 (per-step red tests, merges, reviews) are in git histor
 | 16 | sigma-tkgd 2026-10-12 (consumer, relayed): valid-end bounded effective scans (backlog 51) + cheap AtNodes gather (backlog 50) for its step 6, flat restore | done — v4.51.2 (49, 50, 51) | `tasks/backlog.md` 50, 51 |
 | 17 | ai-soc 2026-10-12 (consumer, relayed; René to ai-soc: "We have to hurry"): durable 530-op commit ≤ 0.1 s with DurableCommit+SyncWrites kept (backlog 52); ai-soc adopts v4.51.2 when tagged | measured, filed; build waits for René's "fix 52" | `tasks/evidence/aisoc-commit-cost/01-measure.txt`, `tasks/backlog.md` 52 |
 | 18 | ai-soc 2026-10-12 (consumer): RSS 71 GiB at 7.67 M of 39.93 M rows, ≈57 % rel planner-stat memos (backlog 53); asks if DisablePlannerStats is safe | answered (safe; cost: stat APIs fail closed, sigma columnsExact → row feed); 53 build waits for René | `tasks/backlog.md` 53 |
+| 19 | ai-soc 2026-10-12 (consumer, restart): (1) open not linear in history, (2) door "rows written after T", (3) range reads for effective scans | (2) answered: existing `Config.ChangeLog` + `Tx().RunWithLSN` + `Replication().ForEachChange(afterLSN)` (+4–27 % per commit measured); (1) backlog 54, (3) backlog 55, builds wait for René | `tasks/backlog.md` 54, 55; `tasks/evidence/aisoc-commit-cost/01-measure.txt` |
 
 ## Releases (one line each; all gates `make ci-docker` exit 0, consumers build + vet)
 
