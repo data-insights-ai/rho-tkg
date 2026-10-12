@@ -527,6 +527,13 @@ Fault model: crash/recovery, delayed/duplicated/reordered messages and partition
 not Byzantine agreement. A quorum loss can make affected work unavailable;
 it cannot authorize stale data labelled fresh.
 
+The supported lifecycle mints a fresh GraphID for a new logical graph; an old
+identity requires retained-state recovery or replacement authorized by its
+surviving quorum, never fresh initialization on lost storage. Embedding transport
+must authenticate unique live replica incarnations. Retained bytes alone cannot
+distinguish simultaneous copies of the entire voter identity/credential set.
+Construction before quorum readiness grants no graph-operation authority.
+
 Routing uses versioned range/bucket ownership. IDs do not encode the current
 server or timestamp. Allocate nonoverlapping ID blocks durably, then mint locally;
 external references include GraphID. Leases/epochs fence stale allocators and
