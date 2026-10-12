@@ -229,6 +229,44 @@ func TestCurrentStamps_StoredRowForms(t *testing.T) {
 			if got, err := k.stamps(bs, a); !errors.Is(err, storecontract.ErrWireFormatVersionUnsupported) || !errors.Is(gerr, storecontract.ErrWireFormatVersionUnsupported) {
 				t.Fatalf("newer format: stamps = (%+v, %v), Get %v; want ErrWireFormatVersionUnsupported from both", got, err, gerr)
 			}
+			// A row whose temporal block decodes but which the full decode
+			// rejects (keyed to the wrong ID; a zero label / type token): the
+			// stamps answer from the temporal block while Get fails. Documented
+			// asymmetry (store.CurrentStampsCapability); a faulty "fail closed"
+			// change or a full decode on the miss path flips it.
+			for _, bad := range []struct {
+				name string
+				wire func() ([]byte, error)
+			}{
+				{"keyed to the wrong ID", func() ([]byte, error) {
+					if k.name == "node" {
+						return storeutil.MarshalNodeWireStruct(storeutil.NodeToWire(curNode(a+1, 7, 70, 71, 72)))
+					}
+					return storeutil.MarshalRelWireStruct(storeutil.RelToWire(curRel(a+1, 7, 70, 71, 72)))
+				}},
+				{"zero label or type token", func() ([]byte, error) {
+					if k.name == "node" {
+						w := storeutil.NodeToWire(curNode(a, 7, 70, 71, 72))
+						w.PrimaryLabel = 0
+						return storeutil.MarshalNodeWireStruct(w)
+					}
+					w := storeutil.RelToWire(curRel(a, 7, 70, 71, 72))
+					w.RelType = 0
+					return storeutil.MarshalRelWireStruct(w)
+				}},
+			} {
+				raw, err := bad.wire()
+				if err != nil {
+					t.Fatal(err)
+				}
+				writeRawRow(t, k, bs, a, raw)
+				_, gerr := k.get(bs, a)
+				k.evict(bs, a)
+				got, err := k.stamps(bs, a)
+				if gerr == nil || err != nil || got != (storecontract.RowStamps{TxFrom: 70, TxTo: 71, DeletedAt: 72, Version: 7}) {
+					t.Fatalf("%s: stamps = (%+v, %v), Get %v; want the temporal block's stamps while Get fails", bad.name, got, err, gerr)
+				}
+			}
 			writeRawRow(t, k, bs, a, []byte{0x85, 0xc1})
 			_, gerr = k.get(bs, a)
 			k.evict(bs, a)

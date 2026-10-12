@@ -172,6 +172,23 @@ func TestDecodeWireRowStamps(t *testing.T) {
 	if got, err := DecodeWireRowStamps(negRaw); !errors.Is(err, storepkg.ErrCorruptWire) {
 		t.Fatalf("negative version = (%+v, %v), want ErrCorruptWire", got, err)
 	}
+	// A version above uint32 is corrupt for the full decode too; the stamps
+	// read (and DecodeWireTxStamps, which delegates) must not truncate it.
+	wide := NodeToWire(n)
+	wide.Version = 1 << 32
+	wideRaw, err := MarshalNodeWireStruct(wide)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := DecodeWireRowStamps(wideRaw); !errors.Is(err, storepkg.ErrCorruptWire) {
+		t.Fatalf("version 1<<32 = (%+v, %v), want ErrCorruptWire", got, err)
+	}
+	if _, _, _, err := DecodeWireTxStamps(wideRaw); !errors.Is(err, storepkg.ErrCorruptWire) {
+		t.Fatalf("DecodeWireTxStamps version 1<<32 = %v, want ErrCorruptWire", err)
+	}
+	if _, err := fullNode(wideRaw); err == nil {
+		t.Fatal("scenario wrong: the full decode accepts version 1<<32")
+	}
 	for _, bad := range [][]byte{nil, {0xc1}, raw[:len(raw)/2]} {
 		if got, err := DecodeWireRowStamps(bad); err == nil {
 			t.Fatalf("corrupt row %x decoded to %+v", bad, got)

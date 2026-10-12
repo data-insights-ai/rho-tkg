@@ -941,6 +941,10 @@ var nativeStoreTypes = [...]reflect.Type{
 	reflect.TypeOf((*memory.Store)(nil)),
 	reflect.TypeOf((*badger.Store)(nil)),
 	reflect.TypeOf((*tiered.Store)(nil)),
+	// sharded is not an exact native store (its rows are validated and
+	// copied), but a wrapper embedding it must not have its overrides routed
+	// around through a capability it only inherits.
+	reflect.TypeOf((*sharded.Store)(nil)),
 }
 
 func embedsNativeCapability(store storepkg.MandatoryStore, capability reflect.Type, directMethods ...string) bool {

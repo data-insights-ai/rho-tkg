@@ -205,14 +205,14 @@ func expectCurrent(t *testing.T, k currentKind, st storecontract.Store, step str
 	check("evicted")
 }
 
-// TestCurrentStampsMatchCurrentRow drives one ID per kind through create,
-// a raising Replace, a LOWERING Replace (UpdateInPlace, rollback restore and
-// replica apply write one), the compact cached form, a delete and a re-create,
-// beside a neighbour that keeps its row, on every backend. Faults it names: a
-// running max over the writes (stale after the lowering Replace), the deleted
-// row's last stamps, zero stamps from the compact form, an evicted row
-// answered from anything but its stored bytes, a router that asks the wrong
-// shard.
+// TestCurrentStampsMatchCurrentRow covers the current-row forms the graph
+// differential never writes (it stamps no TxTo or DeletedAt on a current row
+// and never lowers one): store-level Replaces that lower every stamp
+// (rollback restore and replica apply write them), the compact cached form
+// and a version gap, on every backend, checked from the cache and again after
+// an eviction, beside a neighbour that keeps its row. Faults it names: a
+// running max over the writes, zero stamps from the compact form or the
+// stored row, an evicted row answered from anything but its stored bytes.
 func TestCurrentStampsMatchCurrentRow(t *testing.T) {
 	for _, b := range currentBackends() {
 		for _, k := range currentKinds() {
@@ -225,45 +225,30 @@ func TestCurrentStampsMatchCurrentRow(t *testing.T) {
 					}
 				}
 				const a, nb = 10, 11
-				must := func(err error) {
-					t.Helper()
-					if err != nil {
+				neighbour := rowSpec{ver: 4, tf: 70, tt: 71, da: 72}
+				first := rowSpec{ver: 0, tf: 400, tt: 450, da: 500}
+				for _, put := range []struct {
+					id  int64
+					row rowSpec
+				}{{nb, neighbour}, {a, first}} {
+					if err := k.put(st, put.id, put.row); err != nil {
 						t.Fatal(err)
 					}
 				}
-				expectCurrent(t, k, st, "unknown id", a, storecontract.RowStamps{}, false)
-				neighbour := rowSpec{ver: 4, tf: 70, tt: 71, da: 72}
-				must(k.put(st, nb, neighbour))
-				steps := []struct {
+				for _, s := range []struct {
 					name string
-					do   func() error
 					row  rowSpec
 				}{
-					{"create", func() error { return k.put(st, a, rowSpec{ver: 0, tf: 100, tt: 200, da: 300}) }, rowSpec{ver: 0, tf: 100, tt: 200, da: 300}},
-					{"replace raises", nil, rowSpec{ver: 1, tf: 400, tt: 0, da: 500}},
-					{"replace lowers", nil, rowSpec{ver: 2, tf: 50, tt: 60, da: 0}},
-					{"compact cached form", nil, rowSpec{ver: 3, tf: 600, hashed: true}},
-					{"replace with a version gap", nil, rowSpec{ver: 9, tf: 30, tt: 0, da: 0}},
-				}
-				for _, s := range steps {
-					if s.do != nil {
-						must(s.do())
-					} else {
-						must(k.replace(st, a, s.row))
+					{"replace lowers every stamp", rowSpec{ver: 2, tf: 50, tt: 60, da: 0}},
+					{"compact cached form", rowSpec{ver: 3, tf: 600, hashed: true}},
+					{"replace with a version gap", rowSpec{ver: 9, tf: 30}},
+				} {
+					if err := k.replace(st, a, s.row); err != nil {
+						t.Fatal(err)
 					}
 					expectCurrent(t, k, st, s.name, a, s.row.want(), true)
 					expectCurrent(t, k, st, s.name+" neighbour", nb, neighbour.want(), true)
 				}
-				must(k.del(st, a))
-				expectCurrent(t, k, st, "deleted", a, storecontract.RowStamps{}, false)
-				expectCurrent(t, k, st, "deleted neighbour", nb, neighbour.want(), true)
-				again := rowSpec{ver: 12, tf: 900, tt: 0, da: 0}
-				must(k.put(st, a, again))
-				expectCurrent(t, k, st, "re-created", a, again.want(), true)
-				// Clear removes every row; no answer may survive it.
-				must(st.Clear())
-				expectCurrent(t, k, st, "cleared", a, storecontract.RowStamps{}, false)
-				expectCurrent(t, k, st, "cleared neighbour", nb, storecontract.RowStamps{}, false)
 			})
 		}
 	}
@@ -340,44 +325,5 @@ func TestCurrentStampsErrors(t *testing.T) {
 	}
 	if _, err := nt.RelCurrentStamps(1); !errors.Is(err, storecontract.ErrNilStore) {
 		t.Fatalf("nil tiered store rel: %v", err)
-	}
-}
-
-// NodeRowStamps / RelRowStamps read a row's stamps and version: distinct
-// values per field catch a helper that reads the wrong one; the compact form
-// (no TxTo, no DeletedAt) and a row without temporal metadata read zeros where
-// the row has none; a nil row reads zero.
-func TestRowStampsOf(t *testing.T) {
-	full := rowSpec{ver: 7, tf: 30, tt: 40, da: 50}
-	if got := storecontract.NodeRowStamps(currentNodeRow(1, full)); got != full.want() {
-		t.Fatalf("NodeRowStamps = %+v, want %+v", got, full.want())
-	}
-	if got := storecontract.RelRowStamps(currentRelRow(1, full)); got != full.want() {
-		t.Fatalf("RelRowStamps = %+v, want %+v", got, full.want())
-	}
-	compact := rowSpec{ver: 3, tf: 60, hashed: true}
-	n := currentNodeRow(2, compact).CompactFrozenCopy()
-	if got := storecontract.NodeRowStamps(n); got != compact.want() {
-		t.Fatalf("NodeRowStamps(compact) = %+v, want %+v", got, compact.want())
-	}
-	r := currentRelRow(2, compact).CompactFrozenCopy()
-	if got := storecontract.RelRowStamps(r); got != compact.want() {
-		t.Fatalf("RelRowStamps(compact) = %+v, want %+v", got, compact.want())
-	}
-	bare := types.NewNode(currentNodeID(3), 1, nil)
-	bare.SetVersion(2)
-	if got := storecontract.NodeRowStamps(bare); got != (storecontract.RowStamps{Version: 2}) {
-		t.Fatalf("NodeRowStamps(no temporal) = %+v", got)
-	}
-	bareRel := types.NewRelationship(currentRelID(3), 5, currentNodeID(1), currentNodeID(2))
-	bareRel.SetVersion(2)
-	if got := storecontract.RelRowStamps(bareRel); got != (storecontract.RowStamps{Version: 2}) {
-		t.Fatalf("RelRowStamps(no temporal) = %+v", got)
-	}
-	if got := storecontract.NodeRowStamps(nil); got != (storecontract.RowStamps{}) {
-		t.Fatalf("NodeRowStamps(nil) = %+v", got)
-	}
-	if got := storecontract.RelRowStamps(nil); got != (storecontract.RowStamps{}) {
-		t.Fatalf("RelRowStamps(nil) = %+v", got)
 	}
 }

@@ -14,7 +14,8 @@ import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 // with ErrStoreClosed. Badger reads its RAM label/type index (the on-disk
 // label index in label-on-disk mode), sharded merges its slots. Memory holds
 // decoded rows and tiered routes per tier: both decline, and a consumer reads
-// the rows.
+// the rows. Only a store whose label and type reads ignore QueryOpts.Depth
+// may offer it: the core asks it whatever depth the read carries.
 type MemberIDsCapability interface {
 	NodeIDsByLabel(labelToken uint16) ([]types.NodeID, error)
 	RelIDsByType(typeToken uint16) ([]types.RelID, error)

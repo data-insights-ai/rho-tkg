@@ -6,8 +6,10 @@ import (
 	"time"
 
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
 // Backlog 42: tiered NodeCurrentStamps / RelCurrentStamps route exactly as
@@ -247,6 +249,55 @@ func TestTieredHistoryWalkReadsTheRelRowOnce(t *testing.T) {
 		}
 		if got := shard.RelCacheMisses() - before; got != 1 {
 			t.Fatalf("%s read the evicted relationship row %d times, want 1", name, got)
+		}
+	}
+}
+
+// The node history walk asks whether the node is live on its shard through
+// the shard's current-row stamps: a current row whose temporal block decodes
+// but whose body the full decode rejects (keyed to the wrong ID) is live there,
+// so NodeHistoryStamps answers while GetNodeHistory (which decodes the row)
+// fails — the documented asymmetry; a row whose temporal block does not decode
+// fails both.
+func TestTieredNodeWalkOnAStoredRowTheFullDecodeRejects(t *testing.T) {
+	e := newBranchTestEnv(t)
+	n := e.newEventNode(t)
+	if err := e.ts.PutNodeVersion(n.ID(), 0, stampedNodeRow(n, 0, 100, 200, 0)); err != nil {
+		t.Fatal(err)
+	}
+	shard, err := e.ts.ShardForNodeIDForTest(n.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := types.NewNode(types.NodeID(e.nodeGen.Generate()), e.signTok, nil)
+	wrongID, err := storeutil.MarshalNodeWireStruct(storeutil.NodeToWire(other))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name      string
+		raw       []byte
+		stampsErr bool
+	}{
+		{"keyed to the wrong ID", wrongID, false},
+		{"undecodable temporal block", []byte{0x85, 0xc1}, true},
+	} {
+		if err := shard.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		if err := shard.DBForTest().Update(func(txn *badgerv4.Txn) error {
+			return txn.Set(storeutil.NodeKey(n.ID().SnowflakeID()), tc.raw)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		shard.NodeCacheForTest().EvictForTest(n.ID().SnowflakeID())
+		_, herr := e.ts.GetNodeHistory(n.ID())
+		f, to, has, err := e.ts.NodeHistoryStamps(n.ID())
+		if herr == nil {
+			t.Fatalf("%s: scenario wrong: GetNodeHistory succeeded", tc.name)
+		}
+		if tc.stampsErr != (err != nil) || (!tc.stampsErr && (f != 100 || to != 200 || !has)) {
+			t.Fatalf("%s: NodeHistoryStamps = (%d, %d, %v, %v), want error %v", tc.name, f, to, has, err, tc.stampsErr)
 		}
 	}
 }

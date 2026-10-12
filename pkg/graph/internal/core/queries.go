@@ -482,9 +482,11 @@ func (c *Core) nodeLabelCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*ty
 // every candidate itself and needs no current row (the effective scans): the
 // label's current members come from store.MemberIDsCapability without reading
 // a row (backlog 33: each candidate's row is then read once, by its own
-// resolution), else from the rows. Callers hold c.mu (R or W).
+// resolution), else from the rows. The capability's stores keep no tiers, so
+// opts.Depth selects nothing there (their NodesByLabel ignores it too).
+// Callers hold c.mu (R or W).
 func (c *Core) nodeLabelCandidateIDsAt(tok uint16, opts storepkg.QueryOpts) ([]types.NodeID, error) {
-	if c.memberIDs == nil || opts.Depth != storepkg.DepthAll {
+	if c.memberIDs == nil {
 		_, ids, err := c.nodeLabelCandidatesAt(tok, opts)
 		return ids, err
 	}
@@ -631,7 +633,7 @@ func (c *Core) relTypeCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*type
 
 // relTypeCandidateIDsAt is nodeLabelCandidateIDsAt for a relationship type.
 func (c *Core) relTypeCandidateIDsAt(tok uint16, opts storepkg.QueryOpts) ([]types.RelID, error) {
-	if c.memberIDs == nil || opts.Depth != storepkg.DepthAll {
+	if c.memberIDs == nil {
 		_, ids, err := c.relTypeCandidatesAt(tok, opts)
 		return ids, err
 	}

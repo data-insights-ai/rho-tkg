@@ -17,6 +17,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -297,6 +298,28 @@ func (s *currentStampsGetOverride) GetRelationship(id types.RelID) (*types.Relat
 	return s.Store.GetRelationship(id)
 }
 
+// shardedGetOverride is currentStampsGetOverride over a sharded store, also
+// overriding the label scan the effective scans' gather reads.
+type shardedGetOverride struct {
+	*sharded.Store
+	failNode atomic.Int64
+	failScan atomic.Bool
+}
+
+func (s *shardedGetOverride) GetNode(id types.NodeID) (*types.Node, error) {
+	if int64(id) == s.failNode.Load() {
+		return nil, errInjectedGet
+	}
+	return s.Store.GetNode(id)
+}
+
+func (s *shardedGetOverride) NodesByLabel(tok uint16, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	if s.failScan.Load() {
+		return nil, errInjectedGet
+	}
+	return s.Store.NodesByLabel(tok, opts)
+}
+
 // TestCurrentStampsCapabilityAdmission: a store without the capability (the
 // wrapper hides every optional capability) answers through the current-row
 // read with the same values; a wrapper that only inherits the capability from
@@ -377,6 +400,37 @@ func TestCurrentStampsCapabilityAdmission(t *testing.T) {
 		st.failRel.Store(int64(rid))
 		if _, _, _, err := g.Rels().LatestStamps(rid); !errors.Is(err, errInjectedGet) {
 			t.Fatalf("rel with a failing GetRelationship override = %v, want the injected error", err)
+		}
+	})
+	t.Run("inherited from sharded keeps the overrides visible", func(t *testing.T) {
+		inner, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
+		if err != nil {
+			t.Fatal(err)
+		}
+		st := &shardedGetOverride{Store: inner}
+		if _, ok := any(st).(storepkg.CurrentStampsCapability); !ok {
+			t.Fatal("setup: the embedded sharded store must promote CurrentStampsCapability")
+		}
+		if _, ok := any(st).(storepkg.MemberIDsCapability); !ok {
+			t.Fatal("setup: the embedded sharded store must promote MemberIDsCapability")
+		}
+		g, err := graphpkg.New(graphpkg.Config{Store: st})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer g.Close()
+		nid, _ := scenario(t, g)
+		pin, err := g.Temporal().NowTx()
+		if err != nil {
+			t.Fatal(err)
+		}
+		st.failNode.Store(int64(nid))
+		if _, _, _, err := g.Nodes().LatestStamps(nid); !errors.Is(err, errInjectedGet) {
+			t.Fatalf("LatestStamps with a failing GetNode override = %v, want the injected error", err)
+		}
+		st.failScan.Store(true)
+		if err := g.Temporal().ForEachNodeEffectiveByLabel("Event", pin, func(temporal.NodeSegment) bool { return true }); !errors.Is(err, errInjectedGet) {
+			t.Fatalf("effective scan with a failing NodesByLabel override = %v, want the injected error", err)
 		}
 	})
 	t.Run("declared capability is used", func(t *testing.T) {
