@@ -1473,7 +1473,7 @@ func (c *Core) directionalRelsForNodesAtTxLocked(nodeIDs []types.NodeID, typeNam
 	}
 
 	result := make(map[types.NodeID][]*types.Relationship)
-	if err := c.forEachRelAdjacencyCandidateID(nodeIDs, adjDirsOf(outgoing), seedIDs, storepkg.DepthAll, func(id types.RelID) error {
+	if err := c.forEachRelAdjacencyCandidateID(nodeIDs, adjDirsOf(outgoing), seedIDs, func(id types.RelID) error {
 		r, err := c.findRelVersionForOpts(id, opts, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
@@ -1691,7 +1691,7 @@ func (c *Core) directionalRelsForNodesAtPinLocked(nodeIDs []types.NodeID, typeNa
 	}
 
 	result := make(map[types.NodeID][]*types.Relationship)
-	if err := c.forEachRelAdjacencyCandidateID(nodeIDs, adjDirsOf(outgoing), seedIDs, storepkg.DepthAll, func(id types.RelID) error {
+	if err := c.forEachRelAdjacencyCandidateID(nodeIDs, adjDirsOf(outgoing), seedIDs, func(id types.RelID) error {
 		r, err := c.findRelVersionForOpts(id, opts, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {

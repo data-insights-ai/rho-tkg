@@ -826,7 +826,7 @@ func (c *Core) neighborsAtLocked(nodeID types.NodeID, at types.Instant) ([]*type
 	currentRelIDs = append(currentRelIDs, inIDs...)
 
 	neighborIDs := make(map[types.NodeID]struct{})
-	if err := c.forEachRelAdjacencyCandidateID([]types.NodeID{nodeID}, adjBoth, currentRelIDs, storepkg.DepthAll, func(id types.RelID) error {
+	if err := c.forEachRelAdjacencyCandidateID([]types.NodeID{nodeID}, adjBoth, currentRelIDs, func(id types.RelID) error {
 		r, err := c.relAtLocked(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
@@ -958,7 +958,7 @@ func (c *Core) directionalRelsAtLocked(nodeID types.NodeID, at types.Instant, ou
 		// neighbour's version chain once.
 		otherValid map[types.NodeID]bool
 	)
-	if err := c.forEachRelAdjacencyCandidateID([]types.NodeID{nodeID}, adjDirsOf(outgoing), currentIDs, storepkg.DepthAll, func(id types.RelID) error {
+	if err := c.forEachRelAdjacencyCandidateID([]types.NodeID{nodeID}, adjDirsOf(outgoing), currentIDs, func(id types.RelID) error {
 		r, err := c.relAtLocked(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {

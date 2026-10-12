@@ -398,7 +398,7 @@ func (c *Core) relEffectiveAdjacencyCandidates(seeds []types.NodeID, toks []uint
 		}
 	}
 	var ids []types.RelID
-	err := c.forEachRelAdjacencyCandidateID(seeds, adjDirsOf(outgoing), current, storepkg.DepthAll, func(id types.RelID) error {
+	err := c.forEachRelAdjacencyCandidateID(seeds, adjDirsOf(outgoing), current, func(id types.RelID) error {
 		ids = append(ids, id)
 		return nil
 	})

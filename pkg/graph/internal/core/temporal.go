@@ -805,12 +805,12 @@ func adjDirsOf(outgoing bool) adjDirs {
 // with other endpoints). That is O(the seeds' ever-degree), not O(history) or
 // O(deleted). Each door then resolves a candidate on its own and keeps it only
 // when the resolved row names the seed. A seed need not exist any more.
-func (c *Core) forEachRelAdjacencyCandidateID(seeds []types.NodeID, dirs adjDirs, currentIDs []types.RelID, depth storepkg.ShardDepth, fn func(types.RelID) error) error {
+func (c *Core) forEachRelAdjacencyCandidateID(seeds []types.NodeID, dirs adjDirs, currentIDs []types.RelID, fn func(types.RelID) error) error {
 	seen := make(map[types.RelID]struct{}, len(currentIDs))
 	for _, id := range currentIDs {
 		seen[id] = struct{}{}
 	}
-	if err := c.forEachRelExAdjacentID(seeds, dirs, depth, func(id types.RelID) bool {
+	if err := c.forEachRelExAdjacentID(seeds, dirs, storepkg.DepthAll, func(id types.RelID) bool {
 		seen[id] = struct{}{}
 		return true
 	}); err != nil {
