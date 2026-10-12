@@ -18,6 +18,7 @@ ledgers of 2026-10-09/10 (per-step red tests, merges, reviews) are in git histor
 | 8 | "analyse if all these changes are good and how to do it properly" / "tests always first … break the code tests" / "analyse if these changes break any existing code" (`DeleteWithTx` / `UpdateWithTx`) | done | handover `tasks/handover-tx-backfill-delete-update-20261009.md` §6, `tasks/evidence/tx-backfill-delete-update/`, v4.44.0 |
 | 9 | "Monitor github, Markus is working on the v5" | stopped at the handover; re-arm if still wanted | `HANDOVER.md` Appendix C |
 | 10 | Standing: "Always clean solutions to new items.. no hacks or shortcuts .. always write a no-happy-path test before the code"; no attribution lines in commits | standing | `tasks/lessons.md` 77, 78 |
+| 11 | "Start a new fable review for the V5 branch and Analyse what has been done (quality) and what is open to do to merge the V5 branch with Main .. write the result into a handover.MD into the V5 branch" (2026-10-12) | done — Fable review of origin/v5 (3ede096d) in worktree branch `v5-handover`; output `docs/v5/HANDOVER.md` (root HANDOVER.md stays the v4 handover, avoids a merge conflict); commit without attribution, pushed fast-forward to origin/v5 | `git show origin/v5:docs/v5/HANDOVER.md` (eaa339c3) |
 
 ## Releases (one line each; all gates `make ci-docker` exit 0, consumers build + vet)
 
