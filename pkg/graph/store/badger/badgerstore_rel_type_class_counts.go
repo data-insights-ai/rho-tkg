@@ -63,7 +63,9 @@ func (bs *Store) RelPropertyTypeClassCounts(relTypeToken uint16, propertyKey str
 	if bs.disablePlannerStats {
 		return storecontract.PropertyTypeClassCounts{}, storecontract.ErrCapabilityNotSupported
 	}
-	bs.ensurePlannerStats()
+	if err := bs.ensurePlannerStats(); err != nil {
+		return storecontract.PropertyTypeClassCounts{}, err
+	}
 	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
 		return storecontract.PropertyTypeClassCounts{}, err
 	}

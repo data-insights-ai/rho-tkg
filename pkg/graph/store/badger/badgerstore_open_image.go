@@ -60,6 +60,7 @@ const (
 	imgSecRelTemporal
 	imgSecHF
 	imgSecVector
+	imgSecPlannerStats // badgerstore_planner_stats_deferred.go
 )
 
 type imgValueIDs struct {
@@ -91,6 +92,9 @@ type openImage struct {
 	// image: their persisted envelopes already fold the history, so New skips
 	// foldTemporalHistoryEnvelopes for them.
 	restoredTemporal map[uint16]bool
+	// stats holds the closing process's planner statistics; nil when the
+	// image has none (the open then defers them).
+	stats *imgPlannerStats
 }
 
 func newOpenImage() *openImage {
@@ -108,10 +112,15 @@ func newOpenImage() *openImage {
 
 // ---- Close side ----
 
-// persistOpenImage writes the open image after Close's final flush. Best
-// effort: the image only accelerates the next open, so a failure is logged and
-// leaves no trusted header (the next open rebuilds).
-func (bs *Store) persistOpenImage() {
+// openImageAfterEncodeHook, when set, runs between the image's encode and its
+// writes (tests only: a write racing Close lands there).
+var openImageAfterEncodeHook func()
+
+// persistOpenImageLocked writes the open image after Close's final flush;
+// Close holds flushMu, so no flush commits between the drained check and the
+// header. Best effort: the image only accelerates the next open, so a failure
+// is logged and leaves no trusted header (the next open rebuilds).
+func (bs *Store) persistOpenImageLocked() {
 	if bs.inMemory || bs.readOnly {
 		return
 	}
@@ -133,6 +142,9 @@ func (bs *Store) writeOpenImage() error {
 	}
 	blob := bs.encodeOpenImageLocked()
 	bs.idxMu.RUnlock()
+	if openImageAfterEncodeHook != nil {
+		openImageAfterEncodeHook()
+	}
 
 	var oldChunks int
 	if err := bs.db.View(func(txn *badgerv4.Txn) error {
@@ -279,6 +291,9 @@ func (bs *Store) encodeOpenImageLocked() []byte {
 		})
 		b = binary.AppendUvarint(b, n)
 		section(imgSecVector, append(b, body...))
+	}
+	if st := bs.encodePlannerStatsLocked(); st != nil {
+		section(imgSecPlannerStats, st)
 	}
 	return out
 }
@@ -535,6 +550,8 @@ func decodeOpenImage(blob []byte) (*openImage, error) {
 				entries[i].vec = vec
 			}
 			img.vectors[key] = entries
+		case imgSecPlannerStats:
+			img.stats = decodePlannerStats(&r)
 		default:
 			r.fail("section kind")
 		}

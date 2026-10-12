@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 	"time"
 
@@ -305,7 +306,7 @@ func TestCleanReopenMatchesFullRebuild(t *testing.T) {
 				orc.readOnly = readOnly
 				want := fullRebuildDigest(t, dir, reopenCfg{onDisk: rc.onDisk})
 				got, decoded := reopenDigest(t, dir, orc, mutate)
-				if got != want {
+				if got, want = withoutNDV(got), withoutNDV(want); got != want {
 					t.Fatalf("%s: reopened state differs from the full rebuild:\n%s", step, firstDiff(got, want))
 				}
 				if wantFast && decoded > 0 {
@@ -333,7 +334,7 @@ func TestCleanReopenMatchesFullRebuild(t *testing.T) {
 			cp := copyStoreDir(t, dir)
 			rawWrite(t, cp, func(txn *badgerv4.Txn) error { return txn.Set([]byte("\xfeforeign"), []byte("x")) })
 			og, obs := openReopenGraph(t, cp, rc)
-			if want := obs.PlannerStatsDigestForTest(); live != want {
+			if want := withoutNDV(obs.PlannerStatsDigestForTest()); withoutNDV(live) != want {
 				t.Fatalf("statistics built after writes differ from a full rebuild:\n%s", firstDiff(live, want))
 			}
 			if err := og.Close(); err != nil {
@@ -379,6 +380,14 @@ func TestCleanReopenMatchesFullRebuild(t *testing.T) {
 		})
 	}
 }
+
+// withoutNDV drops the NDV estimates from a digest. NDV never decreases
+// (docs/query-planners.md "Deletion semantics"): a clean reopen keeps the
+// sketch with values deleted in earlier sessions, a full rebuild starts it
+// from the current rows. Every exact statistic must still agree.
+func withoutNDV(digest string) string { return ndvField.ReplaceAllString(digest, "NDV:-") }
+
+var ndvField = regexp.MustCompile(`NDV:\d+`)
 
 func firstDiff(got, want string) string {
 	gl, wl := splitLines(got), splitLines(want)

@@ -1,14 +1,24 @@
-M1 trust image without the version check: KILLED clean_reopen_test.go:353: read-only open after crash: reopen decoded no rows, but its persisted state is stale
-M2 restore rel temporal envelopes of deleted rels: KILLED clean_reopen_test.go:320: clean reopen: reopened state differs from the full rebuild:
-M3 no label epoch bump on the fast path: KILLED clean_reopen_test.go:320: clean reopen: reopened state differs from the full rebuild:
-M4 stats never deferred (left empty): KILLED clean_reopen_test.go:320: clean reopen: reopened state differs from the full rebuild:
-M5 writes maintain stats while deferred: KILLED clean_reopen_test.go:337: statistics built after writes differ from a full rebuild:
-M6 out key accepted without local rel: SURVIVED ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.897s
-M7 skip temporal fold for every token: KILLED clean_reopen_test.go:376: first open with the *OnDisk modes: reopened state differs from the full rebuild:
-M8 image written with pending writes: SURVIVED ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.381s
-M9 CRC not checked: KILLED FAIL
-M11 stats build ignores the cache: KILLED FAIL
-M12 stats build skips write-buffer rows: KILLED clean_reopen_test.go:337: statistics built after writes differ from a full rebuild:
-M13 hash fill overwrites a newer hash: SURVIVED ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.204s
+# backlog 54 mutants (fix round, 2026-10-12): each applied alone, then
+# go test -short -run 'TestCleanReopen|TestOpenImage|TestCloseImage|TestFirstStatsRead|TestTieredCleanReopen|TestShardedCleanReopen|TestPlannerStatsBuildFailure'
+#   ./pkg/graph/ ./pkg/graph/store/badger/ ./pkg/graph/store/tiered/ ./pkg/graph/store/sharded/
+# source restored after each. 16 mutants; the round-1 record listed 12 because its "M10 hash fill ignores
+# revision" mutated a revision check the round-1 code itself removed before the run (no mutant left).
 
-Survivors: M6 needs an out key without a local rel row on a cleanly closed standalone store (only tiered cross-shard legs write one; equivalent here). M8 (image written while a write raced Close) and M13 (hash fill overwrites a hash a racing write set) are race-only: no deterministic test, unfalsified.
+M1 trust image without the version check: KILLED clean_reopen_test.go: read-only open after crash: reopen decoded no rows, but its persisted state is stale
+M2 restore rel temporal envelopes of deleted rels: KILLED clean_reopen_test.go: clean reopen: reopened state differs from the full rebuild
+M3 no label epoch bump on the fast path: KILLED clean_reopen_test.go: clean reopen: reopened state differs from the full rebuild
+M4 image without statistics: never deferred: KILLED badgerstore_open_image_test.go: clean reopen did not defer planner statistics
+M5 writes maintain stats while deferred: KILLED badgerstore_open_image_test.go: statistics after concurrent writes
+M6 out key accepted without local rel: SURVIVED (equivalent: an out key is only ever written and deleted together with its relationship row, also on tiered and sharded cross-shard writes; TestTieredCleanReopenMatchesFullRebuild / TestShardedCleanReopenMatchesFullRebuild found none)
+M7 skip temporal fold for every token: KILLED clean_reopen_test.go: first open with the *OnDisk modes: reopened state differs from the full rebuild
+M8 image written with pending writes: SURVIVED (race-only: needs a write between Close's final flush and the drained check; unfalsified. One run of the table showed it KILLED by the sharded test, which then still compared slot ordinals; those come from one allocator the slots share while opening in parallel, so the test now masks them, and on rerun M8 survives)
+M9 CRC not checked: KILLED badgerstore_open_image_test.go: damaged header (checksum) trusted: reopen decoded 0 rows, want a full rebuild
+M10 deferred build ignores the cache: KILLED badgerstore_open_image_test.go: statistics after concurrent writes
+M11 deferred build skips write-buffer rows: KILLED badgerstore_open_image_test.go: statistics after concurrent writes
+M12 hash fill overwrites a newer hash: SURVIVED (race-only: a write setting the hash between a reader's row read and its fill; unfalsified)
+M13 Close writes the image without flushMu: KILLED badgerstore_open_image_test.go: reopen trusted an image that misses the write racing Close
+M14 statistics not persisted in the image: KILLED badgerstore_open_image_test.go: clean reopen deferred planner statistics its image holds
+M15 no lazy build in NodePropertyTypeClassCounts: KILLED badgerstore_open_image_test.go: first NodePropertyTypeClassCounts: {0 0 0 0 0 0} <nil>, full rebuild says {0 0 12 0 0 0} <nil>
+M16 failed deferred build keeps the flag cleared: KILLED badgerstore_open_image_test.go: failed build left deferred=false and state
+
+13 of 16 killed; M6 equivalent, M8 and M12 race-only.

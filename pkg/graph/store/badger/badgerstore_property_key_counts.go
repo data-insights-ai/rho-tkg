@@ -17,7 +17,9 @@ func (bs *Store) NodeCountByLabelAndPropertyKey(labelToken uint16, propertyKey s
 	if bs.disablePlannerStats {
 		return 0, storecontract.ErrCapabilityNotSupported
 	}
-	bs.ensurePlannerStats()
+	if err := bs.ensurePlannerStats(); err != nil {
+		return 0, err
+	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return 0, err
 	}

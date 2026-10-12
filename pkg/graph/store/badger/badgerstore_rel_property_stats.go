@@ -24,7 +24,9 @@ func (bs *Store) RelPropertyStats(relTypeToken uint16, propertyKey string) (stor
 	if bs.disablePlannerStats {
 		return storecontract.PropertyStats{}, storecontract.ErrCapabilityNotSupported
 	}
-	bs.ensurePlannerStats()
+	if err := bs.ensurePlannerStats(); err != nil {
+		return storecontract.PropertyStats{}, err
+	}
 	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
 		return storecontract.PropertyStats{}, err
 	}
@@ -202,7 +204,9 @@ func (bs *Store) RelPropertyNDV(relTypeToken uint16, propertyKey string) (storec
 	if bs.disablePlannerStats {
 		return storecontract.PropertyNDV{}, storecontract.ErrCapabilityNotSupported
 	}
-	bs.ensurePlannerStats()
+	if err := bs.ensurePlannerStats(); err != nil {
+		return storecontract.PropertyNDV{}, err
+	}
 	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
 		return storecontract.PropertyNDV{}, err
 	}

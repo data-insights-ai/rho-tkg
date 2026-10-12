@@ -13,25 +13,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`tasks/evidence/open-cost/01-profile.txt`): property-index rebuild 4.7 s, relationship row decode 3.1 s, node
   row decode 2.8 s, relationship planner statistics 1.8 s, key scans 1.2 s; the `*OnDisk` modes still decoded
   every row (13.6 s), so no default changes. A writable `Close` that flushed cleanly now writes the **open image**
-  (the property, relationship-property, composite, temporal, relationship-type temporal, high-frequency and
-  vector index contents, `0x0F tkg_open_image*`, CRC-32C, header last in its own commit). `New` trusts it only
-  while that header is the store's newest badger commit, and then builds liveness, label / type / adjacency maps
-  and counters from the keys alone, installs the indexes from the image, fills node integrity hashes on first use,
-  and builds planner statistics at their first read, from the then-current rows (writes skip them until then).
-  Any later commit (a crashed session's writes, a write by an older release, a raw badger write), a missing
+  under the flush lock, after its final flush (the property, relationship-property, composite, temporal,
+  relationship-type temporal, high-frequency and vector index contents and the planner statistics, `0x0F
+  tkg_open_image*`, CRC-32C, header last in its own commit). `New` trusts it only while that header is the
+  store's newest badger commit, and then builds liveness, label / type / adjacency maps and counters from the keys
+  alone, installs the indexes and the planner statistics from the image and fills node integrity hashes on first
+  use. Any later commit (a crashed session's writes, a write by an older release, a raw badger write), a missing
   chunk, a length or checksum mismatch or a decode error falls back to the full rebuild; read-only opens use the
-  image and never write one. Tiered and sharded shards are badger stores and get it per shard. Measured on the
-  ai-soc shape (`tasks/evidence/open-cost/03-open-time.txt`, same binary and host): `graph.New` 16.7 s with the
-  full rebuild -> 3.2-3.3 s; the rest follows the keys (about 2.8 M entity and index keys into the RAM maps). Rows
-  decoded by a clean reopen plus one ai-soc record: 4 at 3 K and at 30 K entities (was 4,629 and 46,312;
-  `TestCleanReopenCostNotLinear`, 100 K vs 1 M outside `-short`). `TestCleanReopenMatchesFullRebuild` compares
-  every RAM structure after a reopen with a full rebuild (default and all-`OnDisk` configs; break cases: crash
-  without `Close`, read-only open, an older store without the image, a foreign write after `Close`, a damaged
-  chunk, writes before the first statistics read, switching the `OnDisk` modes on). Cost moved: the first
-  planner-statistics read after a clean reopen reads every current row once (7.1-7.9 s on that shape; one
-  sequential scan per entity kind) holding the flush and index write locks, so writes wait for it; `Close` encodes
-  the index contents once (0.4 s). A row damaged on disk after a clean close (no commit) is reported when read
-  instead of being skipped at open (`IndexRebuildStats`).
+  image and never write one. Tiered and sharded shards are badger stores and get it per shard
+  (`TestTieredCleanReopenMatchesFullRebuild`, `TestShardedCleanReopenMatchesFullRebuild`, cross-shard
+  relationships). Measured on the ai-soc shape (`tasks/evidence/open-cost/03-open-time.txt`, same binary and
+  host): `graph.New` 10.3-10.5 s with the full rebuild -> 2.3-2.4 s (quiet host); the rest follows the keys
+  (about 2.8 M entity and index keys into the RAM maps); the first planner-statistics read 6-7 µs; `Close` 0.3 s. Rows decoded by a clean reopen plus one ai-soc
+  record: 4 at 3 K and at 30 K entities (was 4,629 and 46,312; `TestCleanReopenCostNotLinear`, 100 K vs 1 M
+  outside `-short`). `TestCleanReopenMatchesFullRebuild` compares every RAM structure after a reopen with a full
+  rebuild (default and all-`OnDisk` configs; break cases: crash without `Close`, read-only open, an older store
+  without the image, a foreign write after `Close`, a damaged chunk, writes after the reopen, switching the
+  `OnDisk` modes on); `TestCloseImageExcludesWriteRacingClose` a write racing `Close`.
+  What a reopen restores differs from a full rebuild in three places, all within the documented contracts:
+  (1) planner statistics are the closing process's — the NDV sketch keeps values deleted in earlier sessions
+  (NDV never decreases, `docs/query-planners.md`), and min/max keep their dirty flag, so the next `PropertyStats`
+  read rescans them to the exact values a rebuild finds; a full rebuild starts the sketch from the current rows.
+  An image without statistics (closed with `DisablePlannerStats`, or while they were still deferred) defers them:
+  the first statistics read builds them from the current rows, as a full open would, holding the flush and index
+  write locks, so readers and writers wait for that one scan; a failed scan returns its error and stays deferred.
+  (2) A row damaged on disk after a clean close (no commit) is reported when read instead of being skipped at open
+  (`IndexRebuildStats`). (3) A raw badger write that only deletes keys can disappear in a bottom-level
+  compaction, after which the header is again the newest commit and the image is trusted; rho-tkg's own deletes
+  commit with their counters, so this concerns raw writers only.
 
 ### Fixed
 
@@ -91,7 +100,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   snapshot.
 - **`PropertyIndexOnDisk` re-read every labelled row at every open** when the index was already on disk (the rows
   were loaded and dropped), and a store created with the option and no registry never got its "built" marker, so
-  each open walked the rows again. Both skip now.
+  each open walked the rows again. Both skip now; with the rows no longer read, a full rebuild in that mode no
+  longer counts unreadable rows in `IndexRebuildStats().PropertySkipped` (the node scan still skips and logs them).
 
 ## [4.51.2] - 2026-10-12
 

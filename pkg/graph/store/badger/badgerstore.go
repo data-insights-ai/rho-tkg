@@ -1308,7 +1308,11 @@ func (bs *Store) loadIndexes(img *openImage) error {
 		return err
 	}
 	if img != nil && !bs.disablePlannerStats {
-		bs.statsDeferred.Store(true)
+		if img.stats != nil {
+			bs.installPlannerStatsLocked(img.stats) // the closing process's statistics
+		} else {
+			bs.statsDeferred.Store(true) // built at the first statistics read
+		}
 	}
 	if bs.labelOnDisk {
 		// Disk-resident label index: the map was built transiently above
@@ -2411,15 +2415,21 @@ func (bs *Store) Close() error {
 		<-bs.gcDone    // wait for GC exit
 		// Explicit final flush — ensures pending ops are persisted even when
 		// flushLoop was never spawned. No-op if already drained.
-		if e := bs.flush(); e != nil {
-			err = e
-		} else {
-			bs.persistOpenImage() // the next open reads keys + this image, not every row
+		e := bs.flush()
+		err = e
+		// flushMu from the open image's drained check until dbClosed is set: a
+		// write that passed checkWritable before closing and flushes now waits
+		// here, then finds the DB closed — it can never commit between the
+		// image's encode and its header (badgerstore_open_image.go).
+		bs.flushMu.Lock()
+		if e == nil {
+			bs.persistOpenImageLocked() // the next open reads keys + this image, not every row
 		}
 		// Mark DB as closed BEFORE db.Close() so any concurrent flush()
 		// calls (e.g., from tests that close the DB directly) return an error
 		// instead of blocking in Badger's WaitForMark.
 		bs.dbClosed.Store(true)
+		bs.flushMu.Unlock()
 		err = errors.Join(err, bs.db.Close())
 	})
 	return err

@@ -5,6 +5,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
@@ -145,9 +146,11 @@ func (bs *Store) IndexStateDigestForTest() string {
 }
 
 func (bs *Store) plannerStatsDigestLines() []string {
-	bs.ensurePlannerStats()
 	var lines []string
 	add := func(format string, args ...any) { lines = append(lines, fmt.Sprintf(format, args...)) }
+	if err := bs.ensurePlannerStats(); err != nil {
+		add("statistics build failed: %v", err)
+	}
 	bs.propertyKeyCounts.Range(func(k, v any) bool {
 		key := k.(indexpkg.PropertyIndexKey)
 		if c := v.(*atomic.Int64).Load(); c != 0 {
@@ -252,6 +255,45 @@ func SetOpenImageChunkBytesForTest(n int) (restore func()) {
 	openImageChunkBytes = n
 	return func() { openImageChunkBytes = prev }
 }
+
+// PlannerStatsStateForTest renders the raw planner-statistics state — every
+// counter, and per accumulator its NDV estimate, typed min/max and dirty flag —
+// without building deferred statistics and without the dirty rescan a
+// statistics read runs, so it shows exactly what the store holds. Not for
+// production use.
+func (bs *Store) PlannerStatsStateForTest() string {
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	var lines []string
+	add := func(format string, args ...any) { lines = append(lines, fmt.Sprintf(format, args...)) }
+	for _, m := range []*sync.Map{&bs.propertyKeyCounts, &bs.relPropertyKeyCounts} {
+		m.Range(func(k, v any) bool { add("count %T %v %d", k, k, v.(*atomic.Int64).Load()); return true })
+	}
+	for _, m := range []*sync.Map{&bs.propertyTypeClassCounts, &bs.relPropertyTypeClassCounts} {
+		m.Range(func(k, v any) bool {
+			var c []int64
+			for i := range v.(*typeClassCounters).classes {
+				c = append(c, v.(*typeClassCounters).classes[i].Load())
+			}
+			add("classes %T %v %v", k, k, c)
+			return true
+		})
+	}
+	for k, a := range bs.propertyStats {
+		ndv, mn, mx := a.Snapshot()
+		add("acc node %v ndv=%d min=%#v max=%#v dirty=%v", k, ndv, mn, mx, a.Dirty())
+	}
+	for k, a := range bs.relPropertyStats {
+		ndv, mn, mx := a.Snapshot()
+		add("acc rel %v ndv=%d min=%#v max=%#v dirty=%v", k, ndv, mn, mx, a.Dirty())
+	}
+	sort.Strings(lines)
+	return strings.Join(lines, "\n")
+}
+
+// StatsDeferredForTest reports whether planner statistics wait for their
+// first read. Not for production use.
+func (bs *Store) StatsDeferredForTest() bool { return bs.statsDeferred.Load() }
 
 // PlannerStatsDigestForTest renders the planner statistics alone (building
 // deferred ones first), canonical and sorted. Not for production use.
