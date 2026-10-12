@@ -84,6 +84,14 @@ const (
 	processRangeProgressProbe
 	processRangeNativeVoterProbe
 	processCertifiedIndexObserve
+	processP08BeginAcquire
+	processP08ReadAcquire
+	processP08FinishAcquire
+	processP08Mint
+	processP08PrepareGraph
+	processP08ReadGrant
+	processP08Metadata
+	processP08ChangedGraph
 )
 
 // IPC IDs identify this process event only. No storage/send/prepared capability
@@ -192,7 +200,7 @@ func decodeProcessRequest(b []byte) (processRequest, error) {
 	r := processRequest{incarnation: c.array(), sequence: c.u64(), op: c.tag(), index: c.u64(), entity: c.u64()}
 	r.data = c.field(processFrameBytes)
 	r.packet = processDecodePacket(&c)
-	if r.sequence == 0 || r.op < processCampaign || r.op > processCertifiedIndexObserve || len(c.b) != 0 {
+	if r.sequence == 0 || r.op < processCampaign || r.op > processP08ChangedGraph || len(c.b) != 0 {
 		c.err = errCorrupt
 	}
 	return r, c.err
@@ -433,7 +441,7 @@ func (p *graphProcess) call(t *testing.T, r processRequest) processResponse {
 		err = fmt.Errorf("child tag=%d: %s", response.code, response.detail)
 	}
 	if err != nil {
-		t.Fatalf("child %d RPC: %v", p.cmd.Process.Pid, err)
+		t.Fatalf("child %d RPC: %v code=%d causes=%x detail=%s", p.cmd.Process.Pid, err, response.code, response.causeMask, response.detail)
 	}
 	return response
 }
@@ -562,7 +570,7 @@ type processRemoteError struct {
 
 func (e processRemoteError) Error() string { return fmt.Sprintf("remote tag=%d: %s", e.code, e.detail) }
 func (e processRemoteError) Is(target error) bool {
-	for i, sentinel := range []error{raftlog.ErrInvalid, replica.ErrInvalid, raftlog.ErrLimit, replica.ErrLimit, errInvalid, errLimit, graphstore.ErrResourceLimit, replica.ErrUnavailable} {
+	for i, sentinel := range []error{raftlog.ErrInvalid, replica.ErrInvalid, raftlog.ErrLimit, replica.ErrLimit, errInvalid, errLimit, graphstore.ErrResourceLimit, replica.ErrUnavailable, idalloc.ErrInvalid, idalloc.ErrStaleAuthority, idalloc.ErrAlreadyReserved, idalloc.ErrUnknown, idalloc.ErrExhausted, idalloc.ErrPayloadMismatch, idalloc.ErrExpired, idalloc.ErrUnreserved} {
 		if target == sentinel && e.mask&(1<<i) != 0 {
 			return true
 		}
@@ -571,7 +579,7 @@ func (e processRemoteError) Is(target error) bool {
 }
 func processCauseMask(err error) uint16 {
 	var mask uint16
-	for i, sentinel := range []error{raftlog.ErrInvalid, replica.ErrInvalid, raftlog.ErrLimit, replica.ErrLimit, errInvalid, errLimit, graphstore.ErrResourceLimit, replica.ErrUnavailable} {
+	for i, sentinel := range []error{raftlog.ErrInvalid, replica.ErrInvalid, raftlog.ErrLimit, replica.ErrLimit, errInvalid, errLimit, graphstore.ErrResourceLimit, replica.ErrUnavailable, idalloc.ErrInvalid, idalloc.ErrStaleAuthority, idalloc.ErrAlreadyReserved, idalloc.ErrUnknown, idalloc.ErrExhausted, idalloc.ErrPayloadMismatch, idalloc.ErrExpired, idalloc.ErrUnreserved} {
 		if errors.Is(err, sentinel) {
 			mask |= 1 << i
 		}
@@ -1448,6 +1456,9 @@ const (
 	certifiedRangeSet
 	certifiedE18Property
 	certifiedE18Correction
+	certifiedP08Reserve
+	certifiedP08Transfer
+	certifiedP08Close
 )
 
 type certifiedProcessOwners struct {
@@ -1537,6 +1548,28 @@ func (o *certifiedProcessOwners) action(t *testing.T, r processRequest, init dec
 	binary.BigEndian.PutUint64(id[8:], r.sequence)
 	h := o.host
 	switch r.entity {
+	case certifiedP08Reserve:
+		request, err := decodeAllocationP08Request(r.data)
+		if err != nil {
+			return allocationProposal{}, err
+		}
+		return h.AuthorizeReserve(id, request, o.proof)
+	case certifiedP08Close:
+		cfg, err := h.currentConfiguration()
+		if err != nil {
+			return allocationProposal{}, err
+		}
+		scope, err := temporal.All(cfg.defaultAxis.Axis())
+		if err != nil {
+			return allocationProposal{}, err
+		}
+		if len(r.data) != 8 {
+			return allocationProposal{}, errInvalid
+		}
+		life := binary.BigEndian.Uint64(r.data)
+		return h.PreparePartitionGraphOperations(id, []graphstate.Operation{{Kind: graphstate.Close, Owner: graphstate.EntityID(r.index), Life: graphstate.LifeID(life), Scope: scope}}, 41, nil)
+	case certifiedP08Transfer:
+		return h.TransferAllocator(id, o.proof)
 	case certifiedPrepareFence:
 		return h.PrepareGraphFence(r.index)
 	case certifiedPrepareCertificate:

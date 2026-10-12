@@ -1,0 +1,76 @@
+{
+  "scope": "Author test-only native graph P08 OS-process acceptance; root integration/acceptance remains separate.",
+  "base_commit": "47d9801078a4bd029a40fe4a89afb9e1d40d5791",
+  "production_go_changed": 0,
+  "go_source_files": 522,
+  "source_manifest": "final-go-source.json",
+  "source_manifest_sha256": "6e81f40d6f4989305394a6693e53c4547c1e3c229c8e3c14c9f9ddca6038c123",
+  "inventory": "final-inventory.json",
+  "results": "FINAL_GATE_RESULTS.json",
+  "test_parents_per_mode": 52,
+  "additional_fuzz_seed_parent_per_mode": 1,
+  "skips_per_mode": 0,
+  "toolchain": {
+    "GOTOOLCHAIN": "go1.26.9",
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off",
+    "child_GOMAXPROCS": "1 (unchanged native process fixture)",
+    "invocation_wall_s": 180,
+    "process_tree_rss_mib": 4096,
+    "docker_memory": "4g",
+    "docker_cpus": 2
+  },
+  "static_gates": {
+    "final-build-vet": {
+      "exit_code": 0,
+      "elapsed_s": 6.039,
+      "docker_memory_bytes": null
+    },
+    "final-lint": {
+      "exit_code": 0,
+      "elapsed_s": 19.001,
+      "docker_memory_bytes": 4294967296
+    },
+    "final-security": {
+      "exit_code": 0,
+      "elapsed_s": 2.302,
+      "docker_memory_bytes": 4294967296
+    },
+    "final-vuln": {
+      "exit_code": 0,
+      "elapsed_s": 4.67,
+      "docker_memory_bytes": 4294967296
+    },
+    "final-cover-functions": {
+      "exit_code": 0,
+      "elapsed_s": 0.303,
+      "docker_memory_bytes": null
+    }
+  },
+  "mutant": {
+    "edit": "One recipient.session != claim.grant.session omission in isolated partition_writes.go copy",
+    "result": "Intended compiled failure: stale Node23/Life24 accepted with reasonNone instead of reasonStale",
+    "kind": "Sensitivity evidence, not reproduced original production bug",
+    "source": "recipient-session-mutant-source.json",
+    "diff": "recipient-session-mutant.diff"
+  },
+  "coverage": "SCOPED_COVERAGE.json; no changed production/new public API. All218 production Go files equal accepted base; partial unchanged graph profiles do not claim whole-module or per-file80%. idalloc99.1\u2013100%.",
+  "vulnerability_qualification": "govulncheck0 called vulnerable symbols;2 imported-package and2 required-module advisories remain reported.",
+  "limitations": [
+    "No global lost/empty-directory same-logical-identity recreation admission proof.",
+    "No physical power-loss or multi-host proof; actual local OS-process SIGKILL and durable same-directory restart.",
+    "No end-to-end MaxUint64 native graph high-water setup; existing pinned reducer/codec boundary plus actual finite cursor exhaustion.",
+    "Separate native range-move companion7e10c016/7eeebafd is root-owned and not included in this53-parent-per-mode receipt."
+  ],
+  "archive": {
+    "path": "raw-evidence.tar.gz",
+    "sha256": "c252ea5bff92cedca22b68a4a2a65db8045fb49b3d65c940b2231ce7eae29575",
+    "bytes": 404001,
+    "artifacts": 81,
+    "uncompressed_bytes": 5965201,
+    "manifest": "RAW_MANIFEST.json"
+  },
+  "failed_setup_qualification": "QUALIFICATIONS.json; no original production semantic RED/fix claimed."
+}

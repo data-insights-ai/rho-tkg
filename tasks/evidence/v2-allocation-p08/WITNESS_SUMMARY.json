@@ -1,0 +1,13 @@
+{
+  "prequorum_and_postquorum": "Actual native proposal packets withheld before quorum versus quorum-applied source reservation followed by SIGKILL; completed own ReadIndex after elected replacement observes committed high-water/grant. A kill alone is never evidence of absence.",
+  "partial_issuance_and_restart": "Actual child Acquire/Next issues disjoint A[1,16],B[17,32]. Source reserves uncertain B[33,48]; same-directory recipient and source SIGKILL/reopen preserve durable data. New authority/recipient obtains first49; old volatile cursors are not restored.",
+  "service_only_rotation": "Cached A remains on surviving PID3 while allocator consensus/service rotates to PID1; minted node8/life9 remains valid.",
+  "delayed_acknowledgement": "Actual completed HOME reply remains child-owned, delivered only after recipient replacement; ErrStaleAuthority and zero cursor. Source original reservation/install may recover exact original index, never fresh issuance.",
+  "graph_admission": "Genuine old unused IDs Node23/Life24,Relationship25/Life26,Value27 and Reopen Life28 refuse; otherwise-matching current controls Node33/Life34,Relationship35/Life36,Value37,Life38 apply. Exact native target voter inspection proves absent Life28/Value27 and present Life38/Value37; effective owner17 selects Life38.",
+  "graph_retry": "Exact committed original graph request recovers original index/hash/identity before current recipient fences, no duplicate CDC/root effect; same request key with changed provenance refuses.",
+  "history": "Fresh typed p9/ref7/revision/provenance and exact old certified At after source+recipient restart preserve bytes/cut; voter outcomes/CDC bytes and certificate agreement are checked.",
+  "exhaustion": "Actual finite child cursors stop after16 IDs with ErrExhausted; existing TestFinalUint64AndSequenceNoWrap covers uint64 namespace boundary. No end-to-end native high-water-at-MaxUint64 claim.",
+  "range_movement": "Separate native six-voter companion 7e10c016, integrated by root as7eeebafd, proves moved-range authority composition; not counted as this OS-process inventory.",
+  "mutant": "Exactly one isolated edit removes recipient.session != claim.grant.session in partition_writes.go. Original source passes; mutant accepts stale node23/life24 with reasonNone instead of expected reasonStale, and compiled test fails. Sensitivity evidence, not production regression.",
+  "separate_gap": "Lost/new empty directory recreation of the same logical GraphID/partition/group has no global production creation/replacement admission contract. Trusted raw Open/Bootstrap and local ErrorIfExists/random incarnation do not prove global nonreuse. This slice does not implement registry or discharge that gap."
+}

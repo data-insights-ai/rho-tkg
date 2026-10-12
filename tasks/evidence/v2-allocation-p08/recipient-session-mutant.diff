@@ -1,0 +1,11 @@
+--- a/v5/internal/graphapply/partition_writes.go
++++ b/v5/internal/graphapply/partition_writes.go
+@@ -208,7 +208,7 @@
+ 		if a.q.ns.partition == a.config.home && recipient.home == a.config.home && recipient.sourcePhase == recipientActive && grant.source.scope == a.scope {
+ 			publishedSequence = max(publishedSequence, recipient.sourceSequence)
+ 		}
+-		if recipient.home != a.q.ns.partition || recipient.homePhase != recipientActive || recipient.session != claim.grant.session || grant.grant.Request.Sequence > publishedSequence {
++		if recipient.home != a.q.ns.partition || recipient.homePhase != recipientActive || grant.grant.Request.Sequence > publishedSequence {
+ 			return reasonStale, nil
+ 		}
+ 		p := grant.publication

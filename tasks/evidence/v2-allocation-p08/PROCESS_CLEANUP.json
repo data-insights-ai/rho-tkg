@@ -1,0 +1,94 @@
+{
+  "normal": {
+    "live_cohort_cleanup": [
+      {
+        "test": "TestAllocationP08NativeSixProcessesActualCachedCursorIssuance",
+        "output": "replicated_graph_test.go:140: certified cleanup: reaped=6 successfully-reaped=6 of6; calls=601 packets=302 maxFrame=1801/2661 maxQueueBytes=3452/3557"
+      },
+      {
+        "test": "TestAllocationP08NativeSixProcessesGraphClaimsSurviveServiceOnlyRotation",
+        "output": "replicated_graph_test.go:140: certified cleanup: reaped=6 successfully-reaped=6 of6; calls=2112 packets=416 maxFrame=1955/2661 maxQueueBytes=3452/3557"
+      },
+      {
+        "test": "TestAllocationP08NativeSixProcessesBeforeQuorumReservationRemainsUnknownUntilOverwrite",
+        "output": "replicated_graph_test.go:140: certified cleanup: reaped=6 successfully-reaped=6 of6; calls=937 packets=482 maxFrame=1138/2661 maxQueueBytes=3452/3557"
+      },
+      {
+        "test": "TestAllocationP08NativeSixProcessesCommittedUnknownGrantRestartAndDelayedAcknowledgement",
+        "output": "replicated_graph_test.go:140: certified cleanup: reaped=6 successfully-reaped=6 of6; calls=2188 packets=738 maxFrame=2083/2591 maxQueueBytes=3452/3557"
+      },
+      {
+        "test": "TestAllocationP08NativeSixProcessesImmediateAfterQuorumReservationBurnsUnknownBlock",
+        "output": "replicated_graph_test.go:140: certified cleanup: reaped=6 successfully-reaped=6 of6; calls=1141 packets=586 maxFrame=2083/2661 maxQueueBytes=3452/3557"
+      },
+      {
+        "test": "TestAllocationP08NativeSixProcessesRetiredRecipientNewClaimsRefuseAndCurrentClaimsApply",
+        "output": "replicated_graph_test.go:140: certified cleanup: reaped=6 successfully-reaped=6 of6; calls=2246 packets=580 maxFrame=6843/6843 maxQueueBytes=3452/3557"
+      }
+    ],
+    "intentionally_killed_old_incarnations": [
+      {
+        "test": "TestAllocationP08NativeSixProcessesBeforeQuorumReservationRemainsUnknownUntilOverwrite",
+        "output": "allocation_p08_process_test.go:461: mid-import target voter SIGKILL: pid=27029 reaped=true signal=killed"
+      },
+      {
+        "test": "TestAllocationP08NativeSixProcessesCommittedUnknownGrantRestartAndDelayedAcknowledgement",
+        "output": "allocation_p08_process_test.go:564: mid-import target voter SIGKILL: pid=28228 reaped=true signal=killed"
+      },
+      {
+        "test": "TestAllocationP08NativeSixProcessesCommittedUnknownGrantRestartAndDelayedAcknowledgement",
+        "output": "allocation_p08_process_test.go:584: mid-import target voter SIGKILL: pid=28221 reaped=true signal=killed"
+      },
+      {
+        "test": "TestAllocationP08NativeSixProcessesImmediateAfterQuorumReservationBurnsUnknownBlock",
+        "output": "allocation_p08_process_test.go:633: mid-import target voter SIGKILL: pid=30356 reaped=true signal=killed"
+      }
+    ]
+  },
+  "race": {
+    "live_cohort_cleanup": [
+      {
+        "test": "TestAllocationP08NativeSixProcessesActualCachedCursorIssuance",
+        "output": "replicated_graph_test.go:140: certified cleanup: reaped=6 successfully-reaped=6 of6; calls=601 packets=302 maxFrame=1801/2661 maxQueueBytes=3452/3557"
+      },
+      {
+        "test": "TestAllocationP08NativeSixProcessesGraphClaimsSurviveServiceOnlyRotation",
+        "output": "replicated_graph_test.go:140: certified cleanup: reaped=6 successfully-reaped=6 of6; calls=2112 packets=416 maxFrame=1955/2661 maxQueueBytes=3452/3557"
+      },
+      {
+        "test": "TestAllocationP08NativeSixProcessesBeforeQuorumReservationRemainsUnknownUntilOverwrite",
+        "output": "replicated_graph_test.go:140: certified cleanup: reaped=6 successfully-reaped=6 of6; calls=937 packets=482 maxFrame=1138/2661 maxQueueBytes=3452/3557"
+      },
+      {
+        "test": "TestAllocationP08NativeSixProcessesCommittedUnknownGrantRestartAndDelayedAcknowledgement",
+        "output": "replicated_graph_test.go:140: certified cleanup: reaped=6 successfully-reaped=6 of6; calls=2188 packets=736 maxFrame=2083/2591 maxQueueBytes=3452/3557"
+      },
+      {
+        "test": "TestAllocationP08NativeSixProcessesImmediateAfterQuorumReservationBurnsUnknownBlock",
+        "output": "replicated_graph_test.go:140: certified cleanup: reaped=6 successfully-reaped=6 of6; calls=1141 packets=586 maxFrame=2083/2661 maxQueueBytes=3452/3557"
+      },
+      {
+        "test": "TestAllocationP08NativeSixProcessesRetiredRecipientNewClaimsRefuseAndCurrentClaimsApply",
+        "output": "replicated_graph_test.go:140: certified cleanup: reaped=6 successfully-reaped=6 of6; calls=2246 packets=580 maxFrame=6843/6843 maxQueueBytes=3452/3557"
+      }
+    ],
+    "intentionally_killed_old_incarnations": [
+      {
+        "test": "TestAllocationP08NativeSixProcessesBeforeQuorumReservationRemainsUnknownUntilOverwrite",
+        "output": "allocation_p08_process_test.go:461: mid-import target voter SIGKILL: pid=50668 reaped=true signal=killed"
+      },
+      {
+        "test": "TestAllocationP08NativeSixProcessesCommittedUnknownGrantRestartAndDelayedAcknowledgement",
+        "output": "allocation_p08_process_test.go:564: mid-import target voter SIGKILL: pid=51594 reaped=true signal=killed"
+      },
+      {
+        "test": "TestAllocationP08NativeSixProcessesCommittedUnknownGrantRestartAndDelayedAcknowledgement",
+        "output": "allocation_p08_process_test.go:584: mid-import target voter SIGKILL: pid=51590 reaped=true signal=killed"
+      },
+      {
+        "test": "TestAllocationP08NativeSixProcessesImmediateAfterQuorumReservationBurnsUnknownBlock",
+        "output": "allocation_p08_process_test.go:633: mid-import target voter SIGKILL: pid=53400 reaped=true signal=killed"
+      }
+    ]
+  }
+}

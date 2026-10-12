@@ -1,0 +1,9 @@
+[
+  "TestAllocationP08NativeSixProcessesActualCachedCursorIssuance",
+  "TestAllocationP08NativeSixProcessesBeforeQuorumReservationRemainsUnknownUntilOverwrite",
+  "TestAllocationP08NativeSixProcessesCommittedUnknownGrantRestartAndDelayedAcknowledgement",
+  "TestAllocationP08NativeSixProcessesGraphClaimsSurviveServiceOnlyRotation",
+  "TestAllocationP08NativeSixProcessesImmediateAfterQuorumReservationBurnsUnknownBlock",
+  "TestAllocationP08NativeSixProcessesRetiredRecipientNewClaimsRefuseAndCurrentClaimsApply",
+  "TestAllocationP08PrivateWireSentinelsAndOwnedRequests"
+]

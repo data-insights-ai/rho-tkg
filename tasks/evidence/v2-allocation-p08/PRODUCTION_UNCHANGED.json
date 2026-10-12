@@ -1,0 +1,6 @@
+{
+  "base": "47d9801078a4bd029a40fe4a89afb9e1d40d5791",
+  "production_go_files": 218,
+  "changed": [],
+  "qualification": "Prior accepted production evidence carries by exact byte identity. New test/harness proof is scoped to FINAL_GATE_RESULTS; no production fix or new public API."
+}

@@ -36,6 +36,8 @@ type processSnapshotPacket struct {
 type certifiedProcessNetwork struct {
 	all                                           map[uint64]*graphProcess
 	groups                                        [2]*tinyGraphTransport
+	p08Original                                   allocationProposal
+	leaders                                       [2]uint64
 	dir                                           string
 	indexReads, indexReadPhases                   int
 	rangeMoves                                    bool
@@ -50,18 +52,24 @@ func newCertifiedProcessNetwork(t *testing.T) *certifiedProcessNetwork {
 }
 
 func newCertifiedProcessNetworkProfile(t *testing.T, rangeMoves bool) *certifiedProcessNetwork {
+	return newCertifiedProcessNetworkSetup(t, rangeMoves, false)
+}
+func newCertifiedProcessNetworkSetup(t *testing.T, rangeMoves, p08 bool) *certifiedProcessNetwork {
 	t.Helper()
 	dir, err := os.MkdirTemp(os.Getenv("RHO_GRAPH_PROCESS_ARTIFACT"), "rho-certified-process-")
 	if err != nil {
 		t.Fatal(err)
 	}
-	n := &certifiedProcessNetwork{all: make(map[uint64]*graphProcess), dir: dir, rangeMoves: rangeMoves}
+	n := &certifiedProcessNetwork{all: make(map[uint64]*graphProcess), dir: dir, rangeMoves: rangeMoves, leaders: [2]uint64{1, 4}}
 	if rangeMoves {
 		n.e17MovePages, n.e17PublicPhases, n.e17VoterPhases = graphE17AdmittedMovePages, 5, 2
 	}
 	t.Log("certified process durable directories", dir)
 	for id := uint64(1); id <= 6; id++ {
 		env := []string{"RHO_GRAPH_CERTIFIED_PROCESS=1", "RHO_GRAPH_SOURCE_PROCESS=1"}
+		if p08 {
+			env = append(env, "RHO_GRAPH_ALLOCATION_PROCESS=1")
+		}
 		if rangeMoves {
 			env = append(env, "RHO_GRAPH_RANGE_PROCESS=1")
 		}
@@ -137,43 +145,57 @@ func newCertifiedProcessNetworkProfile(t *testing.T, rangeMoves bool) *certified
 	n.action(t, 1, certifiedInitialize, 3, nil)
 	n.read(t, 1, observeConfiguration, 0)
 	n.action(t, 1, certifiedInitialize, 8, nil)
-	for _, recipient := range []struct{ actor, id, partition uint64 }{{1, 1, 3}, {4, 2, 8}} {
+	source := uint64(1)
+	if p08 {
+		allocationP08Elect(t, n, 1, 3)
+		n.leaders[0], source = 3, 3
+		n.read(t, source, observeAllocator, 0)
+		n.action(t, source, certifiedP08Transfer, 0, nil)
+	}
+
+	recipients := []struct{ actor, id, partition uint64 }{{1, 1, 3}, {4, 2, 8}}
+	if p08 {
+		recipients[0].actor = 3
+	}
+	for _, recipient := range recipients {
 		n.read(t, recipient.actor, observeConfiguration, 0)
 		n.action(t, recipient.actor, certifiedBeginRecipient, recipient.id, nil)
-		n.read(t, 1, observeRecipient, recipient.id)
-		n.action(t, 1, certifiedRecipientTransition, 3, []byte{byte(fenceDeclaredRecipient)})
+		n.read(t, source, observeRecipient, recipient.id)
+		n.action(t, source, certifiedRecipientTransition, 3, []byte{byte(fenceDeclaredRecipient)})
 		if recipient.partition != 3 {
-			n.action(t, 1, certifiedRecipientTransition, recipient.partition, []byte{byte(fenceDeclaredRecipient)})
+			n.action(t, source, certifiedRecipientTransition, recipient.partition, []byte{byte(fenceDeclaredRecipient)})
 		}
 		n.read(t, recipient.actor, observeRecipient, recipient.id)
 		n.action(t, recipient.actor, certifiedRecipientTransition, 3, []byte{byte(acknowledgeDeclaredHome)})
-		n.read(t, 1, observeRecipient, recipient.id)
-		n.action(t, 1, certifiedRecipientTransition, 3, []byte{byte(activateDeclaredRecipient)})
-		n.read(t, 1, observeRecipient, recipient.id)
-		n.action(t, 1, certifiedRecipientTransition, recipient.partition, []byte{byte(publishDeclaredRecipient)})
+		n.read(t, source, observeRecipient, recipient.id)
+		n.action(t, source, certifiedRecipientTransition, 3, []byte{byte(activateDeclaredRecipient)})
+		n.read(t, source, observeRecipient, recipient.id)
+		n.action(t, source, certifiedRecipientTransition, recipient.partition, []byte{byte(publishDeclaredRecipient)})
 		n.read(t, recipient.actor, observeRecipient, recipient.id)
 		n.action(t, recipient.actor, certifiedOpenRecipient, 0, nil)
 		grants := [][2]uint64{{1, 16}}
-		if rangeMoves && recipient.partition == 3 {
+		if rangeMoves && !p08 && recipient.partition == 3 {
 			grants = [][2]uint64{{1, 1}, {2, 15}}
 		}
 		for _, grant := range grants {
-			n.read(t, 1, observeRecipient, recipient.id)
-			n.read(t, 1, observeAllocator, 0)
+			n.read(t, source, observeRecipient, recipient.id)
+			n.read(t, source, observeAllocator, 0)
 			var input []byte
 			if rangeMoves {
 				input = graphE17GrantInput(grant[0], grant[1])
 			}
-			n.action(t, 1, certifiedReserve, 0, input)
-			n.group(1).event(t, 1, processRequest{op: processCertifiedRead, entity: uint64(observeGrant), data: input})
-			if !n.all[1].call(t, processRequest{op: processStateOp}).ready {
+			n.action(t, source, certifiedReserve, 0, input)
+			n.group(source).event(t, source, processRequest{op: processCertifiedRead, entity: uint64(observeGrant), data: input})
+			if !n.all[source].call(t, processRequest{op: processStateOp}).ready {
 				t.Fatal("actual grant read did not complete", grant)
 			}
-			n.action(t, 1, certifiedInstallGrant, recipient.partition, nil)
+			n.action(t, source, certifiedInstallGrant, recipient.partition, nil)
 		}
 	}
-	n.action(t, 1, certifiedCreateNode, 1, nil)
-	n.action(t, 4, certifiedCreateNode, 17, nil)
+	if !p08 {
+		n.action(t, 1, certifiedCreateNode, 1, nil)
+		n.action(t, 4, certifiedCreateNode, 17, nil)
+	}
 	return n
 }
 func (n *certifiedProcessNetwork) group(actor uint64) *tinyGraphTransport {
@@ -203,9 +225,9 @@ func (n *certifiedProcessNetwork) action(t *testing.T, actor, kind, index uint64
 	if err != nil {
 		t.Fatal("not a bounded source-produced proposal", err)
 	}
-	group, leader := 0, uint64(1)
+	group, leader := 0, n.leaders[0]
 	if proposal.target.partition == 8 {
-		group, leader = 1, 4
+		group, leader = 1, n.leaders[1]
 	}
 	ns, _ := certifiedProcessNamespace(leader)
 	agreement := certifiedGraphSemanticContractID()
@@ -244,7 +266,7 @@ func (n *certifiedProcessNetwork) action(t *testing.T, actor, kind, index uint64
 	if kind != certifiedCreateCrossEdge && o.reason != reasonNone {
 		t.Fatal("certified process local positive control refused", kind, o)
 	}
-	t.Logf("actual certified child operation: actor=%d target=%d kind=%d index=%d reason=%d outcome=%x changes=%x", actor, proposal.target.partition, kind, o.index, o.reason, result.outcome, result.changes)
+	t.Logf("actual certified child operation: actor=%d target=%d kind=%d identity=%x index=%d reason=%d", actor, proposal.target.partition, kind, o.identity, o.index, o.reason)
 	return o, result
 }
 func (n *certifiedProcessNetwork) compare(t *testing.T, oracle *certifiedProcessOracle) {
@@ -391,6 +413,7 @@ func TestReplicatedCertifiedGraphSixProcessesLocalCrossEdgeRefusalRemainsHealthy
 }
 
 type tinyGraphTransport struct {
+	dropPacket                                           func(replica.Packet) bool
 	blocked                                              map[uint64]bool
 	snapshots                                            []processSnapshotPacket
 	nodes                                                map[uint64]*graphProcess
@@ -442,7 +465,7 @@ func (n *tinyGraphTransport) drain(t *testing.T) {
 		n.queue = n.queue[1:]
 		n.queuedBytes -= cap(p.Payload) + 64
 		n.delivered++
-		if n.blocked[p.From] || n.blocked[p.To] {
+		if n.blocked[p.From] || n.blocked[p.To] || n.dropPacket != nil && n.dropPacket(p) {
 			continue
 		}
 		n.enqueue(t, n.nodes[p.To].call(t, processRequest{op: processStep, packet: p}))

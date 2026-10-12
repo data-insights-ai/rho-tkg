@@ -1,0 +1,8 @@
+{
+  "base_manifest_sha256": "6e81f40d6f4989305394a6693e53c4547c1e3c229c8e3c14c9f9ddca6038c123",
+  "changed_paths": [
+    "v5/internal/graphapply/partition_writes.go"
+  ],
+  "base_sha256": "9fd38fadce5d11ae2129ebcc5130974782cda9af1c31e2258a6a16248f64023f",
+  "mutant_sha256": "6a7fe266142c960c5031ee71f501decddc307fa28ec65511ceac651c8a51d370"
+}

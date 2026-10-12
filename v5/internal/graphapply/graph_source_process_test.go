@@ -932,6 +932,8 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
+	p08 := newAllocationP08Owners(ctx, h, o)
+	defer p08.close()
 	writer := &graphProcessChildWriter{incarnation: o.incarnation}
 	pump := &graphProcessChildPump{ctx: ctx, calls: make(chan *graphProcessPumpCall, processSourcePending), canceled: make(chan *graphProcessPumpCall, processSourcePending)}
 	server, err := newGraphSourceServer(ctx, h, defaultGraphSourceLimits(h.machine.limits))
@@ -1009,6 +1011,9 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		active = nil
 	}
 	emit := func(e allocationEvent) error {
+		if err := p08.event(&e); err != nil {
+			return err
+		}
 		if len(e.snapshotSends)+len(e.capacityReplies) != 0 {
 			return errInvalid
 		}
@@ -1367,6 +1372,38 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				event, e = h.Tick()
 			case processStep:
 				event, e = h.Step(r.packet)
+			case processP08ChangedGraph:
+				var original allocationProposal
+				original, e = decodeCertifiedProcessProposal(r.data)
+				if e == nil {
+					var command partitionGraphCommand
+					command, e = decodePartitionGraphCommand(original.wire, h.machine.limits)
+					if e == nil {
+						var changed allocationProposal
+						changed, e = h.PreparePartitionGraphOperations(command.request.id, command.request.operations, 42, command.request.claims)
+						if e == nil {
+							response.aux, e = encodeCertifiedProcessProposal(changed)
+						}
+					}
+				}
+			case processP08Metadata:
+				response.aux, e = allocationP08Metadata(ctx, h, r.data)
+			case processP08BeginAcquire:
+				response.aux, e = p08.begin(r.index, r.entity)
+			case processP08ReadAcquire:
+				event, e = p08.read()
+			case processP08FinishAcquire:
+				response.aux, e = p08.finish(r.entity != 0)
+			case processP08Mint:
+				response.aux, e = p08.mint(r.index)
+			case processP08PrepareGraph:
+				var p allocationProposal
+				p, e = p08.proposal(r)
+				if e == nil {
+					response.aux, e = encodeCertifiedProcessProposal(p)
+				}
+			case processP08ReadGrant:
+				event, e = allocationP08ReadRequest(o, r)
 			case processCertifiedRead:
 				event, e = o.read(r)
 			case processCertifiedAction:

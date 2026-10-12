@@ -1,0 +1,491 @@
+{
+  "artifacts": [
+    {
+      "path": "raw/actual-leader-setup.jsonl",
+      "original_path": "tasks/evidence/v2-allocation-p08/actual-leader-setup.jsonl",
+      "size": 8425,
+      "sha256": "56a0a639287547f3a26f9387dae1ec5c04e78d5678435f22b702f14f6e6792e9"
+    },
+    {
+      "path": "raw/actual-leader-setup.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/actual-leader-setup.stderr",
+      "size": 280,
+      "sha256": "a07b29fe8d6d972f1b182302dd9d5fddd577f6bb04e0c98ec02341559d605856"
+    },
+    {
+      "path": "raw/actual-leader-setup.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/actual-leader-setup.watchdog.json",
+      "size": 323,
+      "sha256": "fb291cd1d10aee9f86ef03d400d155666c139cc55c7edb78e62b459dec1ae1dd"
+    },
+    {
+      "path": "raw/final-build-vet.log",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-build-vet.log",
+      "size": 53,
+      "sha256": "172b855b35887352b35726eead57bf04f773a8e5da12bd0612a45a224554064f"
+    },
+    {
+      "path": "raw/final-build-vet.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-build-vet.stderr",
+      "size": 322,
+      "sha256": "a49ccc4a71e43648212fd2c502958f55035e1e16497f03d6884fced343b3cb6b"
+    },
+    {
+      "path": "raw/final-build-vet.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-build-vet.watchdog.json",
+      "size": 349,
+      "sha256": "4241a5be0ee0f811c94edb0b666550b83c46e8fb1edf7158c065e3c603d99c10"
+    },
+    {
+      "path": "raw/final-cover-functions.log",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-cover-functions.log",
+      "size": 93776,
+      "sha256": "eaf1ab36ba5a2e25a8f19015e687d18b7d2052c484cd857a9f532ff997daf409"
+    },
+    {
+      "path": "raw/final-cover-functions.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-cover-functions.stderr",
+      "size": 273,
+      "sha256": "2a3023fe83eca6902590938fd90962368aedb8dd060ca74e66f566ece63b1a15"
+    },
+    {
+      "path": "raw/final-cover-functions.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-cover-functions.watchdog.json",
+      "size": 304,
+      "sha256": "3ad8ed8c6706dc1463db8c03f82aae55bfb12ca14557cbddf1849957ceab5853"
+    },
+    {
+      "path": "raw/final-defaults-normal.cover",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-defaults-normal.cover",
+      "size": 879819,
+      "sha256": "0820cc01fca92bed5e8ee735ff759a73eda6eefbfd19e4a40ade0ea80f4b830d"
+    },
+    {
+      "path": "raw/final-defaults-normal.jsonl",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-defaults-normal.jsonl",
+      "size": 28553,
+      "sha256": "4bb6c03b647c99d2a915a204045383c7c107e88f65e8c8a2b443f656362f97f7"
+    },
+    {
+      "path": "raw/final-defaults-normal.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-defaults-normal.stderr",
+      "size": 556,
+      "sha256": "98cd99a4b6370ccf2b8d566667c26a16ca381a47a3f982940d8cbb188ae20985"
+    },
+    {
+      "path": "raw/final-defaults-normal.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-defaults-normal.watchdog.json",
+      "size": 603,
+      "sha256": "6d60e85bcae63df9ee06a4c565cecd18656a6cf06c89dd44c1229f206d20fd98"
+    },
+    {
+      "path": "raw/final-defaults-race.jsonl",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-defaults-race.jsonl",
+      "size": 28354,
+      "sha256": "26e2a1b0f314f963de1ee6269337f4bf0aa67a966cf40fe89d0c98f9c0e7253f"
+    },
+    {
+      "path": "raw/final-defaults-race.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-defaults-race.stderr",
+      "size": 446,
+      "sha256": "26183914fa2d0ccb98a626831c75158e6f968a1766177329cbf8caf57e0c1e20"
+    },
+    {
+      "path": "raw/final-defaults-race.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-defaults-race.watchdog.json",
+      "size": 493,
+      "sha256": "a2cecf36554495dc2483e89dca46bbce567ede0881127a69b0a26f337e81f789"
+    },
+    {
+      "path": "raw/final-existing-normal.cover",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-existing-normal.cover",
+      "size": 879819,
+      "sha256": "8432405d91e004fd0073cf0e4a1704cb5d253bc97331631ea0cb59793f672a90"
+    },
+    {
+      "path": "raw/final-existing-normal.jsonl",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-existing-normal.jsonl",
+      "size": 420105,
+      "sha256": "ce458af04d69d276938957c02b70650c8a53bb96ee600edb03976087b766006f"
+    },
+    {
+      "path": "raw/final-existing-normal.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-existing-normal.stderr",
+      "size": 834,
+      "sha256": "ba8b58a70a832e282458d9e69fe385dc121d6be5723e78a537443e00acab0fa5"
+    },
+    {
+      "path": "raw/final-existing-normal.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-existing-normal.watchdog.json",
+      "size": 881,
+      "sha256": "d7cd99055c8d134e9e70f2ce92f66d6bff3473a479e86e30b69f68e25858a6e7"
+    },
+    {
+      "path": "raw/final-existing-race.jsonl",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-existing-race.jsonl",
+      "size": 419899,
+      "sha256": "d400515edae935aca433523db31ad8cce24ad0fb8bd73deeebb0e1005eb4e34a"
+    },
+    {
+      "path": "raw/final-existing-race.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-existing-race.stderr",
+      "size": 722,
+      "sha256": "cd49bcb0cbec55040bacf2c05fef0898940c188a18936d3d9c009662320bad6f"
+    },
+    {
+      "path": "raw/final-existing-race.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-existing-race.watchdog.json",
+      "size": 769,
+      "sha256": "595d8adc8c993a41b0dcbb0de30ad979c128cad509e3ad5dc117f919bae6fa36"
+    },
+    {
+      "path": "raw/final-idalloc-normal.cover",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-idalloc-normal.cover",
+      "size": 10631,
+      "sha256": "781033567a44d227908aaa8abf0591c0923fc6d885fd848a3ee5f84d13456864"
+    },
+    {
+      "path": "raw/final-idalloc-normal.jsonl",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-idalloc-normal.jsonl",
+      "size": 30183,
+      "sha256": "a951cf2d2cd9a3daba57ea13721b776467225cca9a8425c074000b8aa8d1047a"
+    },
+    {
+      "path": "raw/final-idalloc-normal.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-idalloc-normal.stderr",
+      "size": 361,
+      "sha256": "621dcf653e490478e4b8f1843c129d0da96ba0822983a61805100ec5ecd84550"
+    },
+    {
+      "path": "raw/final-idalloc-normal.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-idalloc-normal.watchdog.json",
+      "size": 400,
+      "sha256": "bc45b8547aca40b656453acf7c432f3e9ba41145b506637db47da6db716db5a2"
+    },
+    {
+      "path": "raw/final-idalloc-race.jsonl",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-idalloc-race.jsonl",
+      "size": 29983,
+      "sha256": "faf4e07a420c39d7824f0267a7629e0e461792f1462974281b506e4288c6e308"
+    },
+    {
+      "path": "raw/final-idalloc-race.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-idalloc-race.stderr",
+      "size": 250,
+      "sha256": "764cf3ba05212a1258ac02dcf1d0072ede75e252c08601c6a738910e003eb465"
+    },
+    {
+      "path": "raw/final-idalloc-race.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-idalloc-race.watchdog.json",
+      "size": 289,
+      "sha256": "f325a8eed332ca7243e2985f1e840a834606d792e06c79cbb3b9cb0a04682299"
+    },
+    {
+      "path": "raw/final-lint.log",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-lint.log",
+      "size": 389,
+      "sha256": "1aa80ded30b7f5512c9f1808c22e3b4c152cf6328331daeb9be1d8cfd75af438"
+    },
+    {
+      "path": "raw/final-lint.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-lint.stderr",
+      "size": 463,
+      "sha256": "3c0308336e80ef94f582dd4d2bdf595647f1bb6095b791114e07014216446f48"
+    },
+    {
+      "path": "raw/final-lint.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-lint.watchdog.json",
+      "size": 490,
+      "sha256": "036471835b866d2a25a8fa69b0d15efd70c2337eabf0859edfc9ba51b998d2df"
+    },
+    {
+      "path": "raw/final-process-normal.cover",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-process-normal.cover",
+      "size": 879819,
+      "sha256": "27c4754cd13ad2d15f38b635d55d3adf676b704e0da469155bcad09c62a30e8c"
+    },
+    {
+      "path": "raw/final-process-normal.jsonl",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-process-normal.jsonl",
+      "size": 78959,
+      "sha256": "59a805004ffdcba26736743db4e1b28511668aa9c11319304bff53162261841f"
+    },
+    {
+      "path": "raw/final-process-normal.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-process-normal.stderr",
+      "size": 356,
+      "sha256": "196a042b0f93675271b4829e5f0bb6d4875437f48c60b6fe767a3421b3b0178c"
+    },
+    {
+      "path": "raw/final-process-normal.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-process-normal.watchdog.json",
+      "size": 403,
+      "sha256": "d3d900e4bf6935bf018de611a63c1be9c0c1348e0ab313673a84a9add2dd6085"
+    },
+    {
+      "path": "raw/final-process-race.jsonl",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-process-race.jsonl",
+      "size": 78765,
+      "sha256": "033c7afced31bc8924bad0ace69212da95b3a202f340a7d87ed62bdfc3b2ad0e"
+    },
+    {
+      "path": "raw/final-process-race.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-process-race.stderr",
+      "size": 286,
+      "sha256": "59a4fcc41f6e8dbe1c80a2a7fe9cb470586bf2918f88b23914aa5a018d3bc2a7"
+    },
+    {
+      "path": "raw/final-process-race.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-process-race.watchdog.json",
+      "size": 333,
+      "sha256": "c0b754289c149c9815dfa88104861808c1f7f072c29353778c7809bac1a8f1fa"
+    },
+    {
+      "path": "raw/final-security.log",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-security.log",
+      "size": 332,
+      "sha256": "30c7efa42eb56f95cc96e63e0d5f11b0547c8927cb2d70c4cc8f88403cc4c264"
+    },
+    {
+      "path": "raw/final-security.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-security.stderr",
+      "size": 468,
+      "sha256": "ea528962c00a0a5bc6b50975101ed9f2a41b555ee892ab8c496644000930f4e1"
+    },
+    {
+      "path": "raw/final-security.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-security.watchdog.json",
+      "size": 495,
+      "sha256": "8f00aff9125afd4fc7d533156a35ee6c95a910bd14f8ff41fae1f2d83dcbc6ad"
+    },
+    {
+      "path": "raw/final-vuln.log",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-vuln.log",
+      "size": 626,
+      "sha256": "bec52ca9b93dbaf7595515ce5c1f35e197d92ef5e6c148437f4f59fcf588aafa"
+    },
+    {
+      "path": "raw/final-vuln.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-vuln.stderr",
+      "size": 468,
+      "sha256": "e158124296c1f311d5b8354ee8e0a1343a59f06790f3ae8c8b695228ab553479"
+    },
+    {
+      "path": "raw/final-vuln.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/final-vuln.watchdog.json",
+      "size": 495,
+      "sha256": "828ab180ea13cdf768c6ba7800d6a66ada2b20e55e476818f42bd05135a73530"
+    },
+    {
+      "path": "raw/first.jsonl",
+      "original_path": "tasks/evidence/v2-allocation-p08/first.jsonl",
+      "size": 8348,
+      "sha256": "4bc2d11faa737c90c43f26066ade9c72703cbe921ec43f1fd4a647cbca305472"
+    },
+    {
+      "path": "raw/first.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/first.stderr",
+      "size": 281,
+      "sha256": "a5db13ad38ddce7ac81ba204f3e64bc76e01b411dbf791dc3bedaa6ac46f0634"
+    },
+    {
+      "path": "raw/first.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/first.watchdog.json",
+      "size": 324,
+      "sha256": "d72cf5f1f10638680167a1537ae97fd676495ffa1b8dabbfbbe1669edd643542"
+    },
+    {
+      "path": "raw/follower-diagnostic.jsonl",
+      "original_path": "tasks/evidence/v2-allocation-p08/follower-diagnostic.jsonl",
+      "size": 7465,
+      "sha256": "9a3c36fc33730f58ebb53cc30f1384e23c73a6bd0651fcce10ef8f85599c57f9"
+    },
+    {
+      "path": "raw/follower-diagnostic.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/follower-diagnostic.stderr",
+      "size": 289,
+      "sha256": "0b90e54cc638cecadf7c0f80578be737a5cf7e3a812700d1654a52a0213cc726"
+    },
+    {
+      "path": "raw/follower-diagnostic.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/follower-diagnostic.watchdog.json",
+      "size": 332,
+      "sha256": "76220336c49adfc5d77dffd87a6451df70072b6cbfaa3727680a324f054e7477"
+    },
+    {
+      "path": "raw/full-process-normal.cover",
+      "original_path": "tasks/evidence/v2-allocation-p08/full-process-normal.cover",
+      "size": 879819,
+      "sha256": "27c4754cd13ad2d15f38b635d55d3adf676b704e0da469155bcad09c62a30e8c"
+    },
+    {
+      "path": "raw/full-process-normal.jsonl",
+      "original_path": "tasks/evidence/v2-allocation-p08/full-process-normal.jsonl",
+      "size": 78964,
+      "sha256": "1b67942de2123b8ad9f174a38125369595148450fcd0e0e75b5b69c4785454a9"
+    },
+    {
+      "path": "raw/full-process-normal.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/full-process-normal.stderr",
+      "size": 354,
+      "sha256": "bda4e8c7042904ab84bc3a172955f75f7b0c36096386c4249dc6a2ccf1fd8919"
+    },
+    {
+      "path": "raw/full-process-normal.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/full-process-normal.watchdog.json",
+      "size": 401,
+      "sha256": "b652be39068b54e88bbaa695eb0a0c56e6a6139929a99d40da193a6317550b53"
+    },
+    {
+      "path": "raw/graph-claims-first.jsonl",
+      "original_path": "tasks/evidence/v2-allocation-p08/graph-claims-first.jsonl",
+      "size": 25398,
+      "sha256": "5ff78dcea6ed47c9d093a42fdcbe45ca2472ebc69a47aa142eab5319b54f9ea2"
+    },
+    {
+      "path": "raw/graph-claims-first.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/graph-claims-first.stderr",
+      "size": 304,
+      "sha256": "2a73a1132d1fc3bef927851ca65f1cd71f0de9f7226b27bed6731f012c30a8aa"
+    },
+    {
+      "path": "raw/graph-claims-first.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/graph-claims-first.watchdog.json",
+      "size": 347,
+      "sha256": "eec71fafd0f8da57494f1414b208c741051de11fddd93a47ddb2cd95d93d9d90"
+    },
+    {
+      "path": "raw/native-election-setup.jsonl",
+      "original_path": "tasks/evidence/v2-allocation-p08/native-election-setup.jsonl",
+      "size": 24765,
+      "sha256": "73717f689ace6fac557b9e1472b04886812dc7dfc038a95a20d431f3819a3e4d"
+    },
+    {
+      "path": "raw/native-election-setup.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/native-election-setup.stderr",
+      "size": 275,
+      "sha256": "1b13c5c4354a0edbbba3c2acac6cfca572d96fabb4a860ee68947fbb60a7561f"
+    },
+    {
+      "path": "raw/native-election-setup.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/native-election-setup.watchdog.json",
+      "size": 318,
+      "sha256": "ba53846c1b6e1d359e417eec0c160038f0e75ed2d3d224785e6b4508080d0b1a"
+    },
+    {
+      "path": "raw/native-transfer-setup.jsonl",
+      "original_path": "tasks/evidence/v2-allocation-p08/native-transfer-setup.jsonl",
+      "size": 8395,
+      "sha256": "4f4ce721a6a101d7da0b73dfb11bab5a31763ef12f7a46089424e59b607e322a"
+    },
+    {
+      "path": "raw/native-transfer-setup.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/native-transfer-setup.stderr",
+      "size": 279,
+      "sha256": "4789c7d8d59048ba062c23801c39b931c6cc0ff8847a655f06d19d11e1b83547"
+    },
+    {
+      "path": "raw/native-transfer-setup.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/native-transfer-setup.watchdog.json",
+      "size": 322,
+      "sha256": "d59b5563ef5b8db38be423f90320f2d526d9f65c47a204c2fbaf27238b92e6e9"
+    },
+    {
+      "path": "raw/process-schedules-first.jsonl",
+      "original_path": "tasks/evidence/v2-allocation-p08/process-schedules-first.jsonl",
+      "size": 73400,
+      "sha256": "060ef302e0a451e727eb470d0b556a8d48365f5d3d4987433972ffc06a599061"
+    },
+    {
+      "path": "raw/process-schedules-first.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/process-schedules-first.stderr",
+      "size": 281,
+      "sha256": "0f70ecc4aa82c1d81858b3f0d0053730572d21c74097d86f5c0e1758c873a61e"
+    },
+    {
+      "path": "raw/process-schedules-first.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/process-schedules-first.watchdog.json",
+      "size": 324,
+      "sha256": "b7d1c17f1390fe2ca3386810db748be7f51a695ffed33bd22a4bd05f7ad46ee3"
+    },
+    {
+      "path": "raw/recipient-session-mutant.jsonl",
+      "original_path": "tasks/evidence/v2-allocation-p08/recipient-session-mutant.jsonl",
+      "size": 14473,
+      "sha256": "3fb6dc70d598fba064fbf6a4c4079fa09666d49a8ebaa625f818f84f52e2acf6"
+    },
+    {
+      "path": "raw/recipient-session-mutant.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/recipient-session-mutant.stderr",
+      "size": 352,
+      "sha256": "92ec77c40475d9abf05fc9617b870d49ace01c1ed9c584384de357de1e4c83bd"
+    },
+    {
+      "path": "raw/recipient-session-mutant.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/recipient-session-mutant.watchdog.json",
+      "size": 395,
+      "sha256": "4332a8227efb66daadacdfe860908f17ab66908f9577e14c8a393869a0733ad2"
+    },
+    {
+      "path": "raw/restart-own-election.jsonl",
+      "original_path": "tasks/evidence/v2-allocation-p08/restart-own-election.jsonl",
+      "size": 30604,
+      "sha256": "4ad97cac4d7628a93fa6e7377a6b2c9d0e0b3f59692f27d8c81a0da9ad3fda51"
+    },
+    {
+      "path": "raw/restart-own-election.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/restart-own-election.stderr",
+      "size": 332,
+      "sha256": "8da0780ae663c94b1fd0330dd285442dcc485f374f261bf3c570eb5059cc03d3"
+    },
+    {
+      "path": "raw/restart-own-election.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/restart-own-election.watchdog.json",
+      "size": 375,
+      "sha256": "29e6151721aaffcbf96f3337cd2a060fff73aab4a560d0a2f649e0f19a4b5373"
+    },
+    {
+      "path": "raw/restart-source-lifetimes-compiled.jsonl",
+      "original_path": "tasks/evidence/v2-allocation-p08/restart-source-lifetimes-compiled.jsonl",
+      "size": 33218,
+      "sha256": "b46b550d67ad9b51bbc19b8ae2bcb46f2bedb15cd2d8a3f7a492503e9c86b1e7"
+    },
+    {
+      "path": "raw/restart-source-lifetimes-compiled.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/restart-source-lifetimes-compiled.stderr",
+      "size": 327,
+      "sha256": "a9141271328fef62dc8c00f27c3b2219dd0e9bfcbf88227565a09db75e40e574"
+    },
+    {
+      "path": "raw/restart-source-lifetimes-compiled.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/restart-source-lifetimes-compiled.watchdog.json",
+      "size": 370,
+      "sha256": "35271d525bd59810cc5274c130158635954610c07d15c267b482eede07cc9003"
+    },
+    {
+      "path": "raw/restart-source-lifetimes.jsonl",
+      "original_path": "tasks/evidence/v2-allocation-p08/restart-source-lifetimes.jsonl",
+      "size": 1429,
+      "sha256": "1ecafdd5fd11cd0ecd59939fffb5120a8aa8e3fc2425c6631f92a4b53ceb62a9"
+    },
+    {
+      "path": "raw/restart-source-lifetimes.stderr",
+      "original_path": "tasks/evidence/v2-allocation-p08/restart-source-lifetimes.stderr",
+      "size": 328,
+      "sha256": "80f506ed6587f84aa13ef4a32d36a0e143f559e5897e86291fbd601d7fd10567"
+    },
+    {
+      "path": "raw/restart-source-lifetimes.watchdog.json",
+      "original_path": "tasks/evidence/v2-allocation-p08/restart-source-lifetimes.watchdog.json",
+      "size": 371,
+      "sha256": "b4eb20c93c1e2d5b3f6011475d74a66c3fabb0faf0aac72ab155cd78dd4c4133"
+    },
+    {
+      "path": "raw/scoped-combined.cover",
+      "original_path": "tasks/evidence/v2-allocation-p08/scoped-combined.cover",
+      "size": 890440,
+      "sha256": "fd61887279afa98f9030f83b5557b0c37c30c35594e1931b1c2cc3dd129ccaca"
+    }
+  ],
+  "total_bytes": 5965201
+}

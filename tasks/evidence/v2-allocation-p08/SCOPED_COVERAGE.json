@@ -1,0 +1,51 @@
+{
+  "qualification": "Scoped existing production coverage; no production code changed. Child-only test helpers are excluded by Go parent coverage. This is not whole-module coverage.",
+  "profiles": [
+    "final-process-normal.cover",
+    "final-existing-normal.cover",
+    "final-defaults-normal.cover",
+    "final-idalloc-normal.cover"
+  ],
+  "files": {
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/allocation_host.go": {
+      "covered": 349,
+      "statements": 484,
+      "percent": 72.107
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/allocation_protocol.go": {
+      "covered": 473,
+      "statements": 620,
+      "percent": 76.29
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/declared_materializer.go": {
+      "covered": 247,
+      "statements": 392,
+      "percent": 63.01
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/partition_writes.go": {
+      "covered": 114,
+      "statements": 192,
+      "percent": 59.375
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/idalloc/allocator.go": {
+      "covered": 111,
+      "statements": 112,
+      "percent": 99.107
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/idalloc/checkpoint.go": {
+      "covered": 27,
+      "statements": 27,
+      "percent": 100.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/idalloc/recipient.go": {
+      "covered": 24,
+      "statements": 24,
+      "percent": 100.0
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/idalloc/validation.go": {
+      "covered": 12,
+      "statements": 12,
+      "percent": 100.0
+    }
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "process": {
+    "regex": "^TestAllocationP08",
+    "names": [
+      "TestAllocationP08NativeSixProcessesActualCachedCursorIssuance",
+      "TestAllocationP08NativeSixProcessesBeforeQuorumReservationRemainsUnknownUntilOverwrite",
+      "TestAllocationP08NativeSixProcessesCommittedUnknownGrantRestartAndDelayedAcknowledgement",
+      "TestAllocationP08NativeSixProcessesGraphClaimsSurviveServiceOnlyRotation",
+      "TestAllocationP08NativeSixProcessesImmediateAfterQuorumReservationBurnsUnknownBlock",
+      "TestAllocationP08NativeSixProcessesRetiredRecipientNewClaimsRefuseAndCurrentClaimsApply",
+      "TestAllocationP08PrivateWireSentinelsAndOwnedRequests"
+    ]
+  },
+  "existing": {
+    "regex": "^(TestDeclaredAllocation.*|TestDeclaredMaterializerMalformedProtocolAndLocalDecodeLimitHaveNoEffects|TestActualQualifiedBindingsOnlyAndCachedGrantFences|TestPartitionWritesNineNativeOperationsAreAdmittedWithActualReservedRanges|TestPartitionCommittedRemoteDependencyRejectsThenAllowsLocalWrite|TestReplicatedProcessProtocolBoundaries|TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput|TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts)$",
+    "names": [
+      "TestActualQualifiedBindingsOnlyAndCachedGrantFences",
+      "TestDeclaredAllocationAgreementIndependentGoldenAndLegacySeparation",
+      "TestDeclaredAllocationEpochSwitchDuringDeliveryCannotCreateOldCursor",
+      "TestDeclaredAllocationFailedAndWrongHostDeliveryCannotCreateCursor",
+      "TestDeclaredAllocationFreshRangeAfterServiceRotationAndCanceledRefill",
+      "TestDeclaredAllocationHostNilClosedAndWrongProofContracts",
+      "TestDeclaredAllocationLargerRecordsUseExplicitReadAdmission",
+      "TestDeclaredAllocationLegacyFactoryAndStageRefuseWithoutMutation",
+      "TestDeclaredAllocationNestedObservationScopesBeforeRecovery",
+      "TestDeclaredAllocationProducerRefusalsBeforeProposalAndPostInitAttempt",
+      "TestDeclaredAllocationReadQuotaAndReversedDistinctCompletions",
+      "TestDeclaredAllocationRecipientQueryIsIDOnlyAndReadContextExact",
+      "TestDeclaredAllocationRecipientReplacementRefusesDelayedOldDeliveries",
+      "TestDeclaredAllocationRetryFencesTransferAndRetainedReopen",
+      "TestDeclaredAllocationScopeRechecksummedInvalidMetadata",
+      "TestDeclaredAllocationScopesRemainPartitionQualified",
+      "TestDeclaredAllocationSourceInspectionCannotOpenHomeCursor",
+      "TestDeclaredAllocationTwoGroupsGloballyDisjointCachedBlocks",
+      "TestDeclaredAllocationWrongDeliveryNonceBurnsAttemptWithoutCursor",
+      "TestDeclaredMaterializerMalformedProtocolAndLocalDecodeLimitHaveNoEffects",
+      "TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput",
+      "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts",
+      "TestPartitionCommittedRemoteDependencyRejectsThenAllowsLocalWrite",
+      "TestPartitionWritesNineNativeOperationsAreAdmittedWithActualReservedRanges",
+      "TestReplicatedProcessProtocolBoundaries"
+    ]
+  },
+  "defaults": {
+    "regex": "^(TestReplicatedCertifiedGraphSixProcessesLocalControls|TestReplicatedCertifiedGraphSixProcessesCrossEdge|TestRemoteCertifiedGraphE18SixProcessesHistoricalIndexStartingHydration)$",
+    "names": [
+      "TestRemoteCertifiedGraphE18SixProcessesHistoricalIndexStartingHydration",
+      "TestReplicatedCertifiedGraphSixProcessesCrossEdge",
+      "TestReplicatedCertifiedGraphSixProcessesLocalControls"
+    ]
+  },
+  "idalloc": {
+    "package": "./internal/idalloc",
+    "names": [
+      "TestAuthorityStateAndDigest",
+      "TestCheckpointRoundTripAndStrictCorruption",
+      "TestConcurrentMintExactUniqueSet",
+      "TestCrashReservationAndAbandonedPartialBlock",
+      "TestDefinitiveRejectionProgressAndAmbiguousOutcomeBurn",
+      "TestDelayedFreshReplyAfterRestartEpochCannotOpenCursor",
+      "TestFinalUint64AndSequenceNoWrap",
+      "TestMintAllocationsAndDurableBoundaryBytes",
+      "TestNilAndMalformedPublicInputs",
+      "TestOneTimeGrantConcurrentRetriesAndReplay",
+      "TestReceiptReachabilityAtCheckpointAndGrantBoundaries",
+      "TestRecipientDeliveryPreservesSharedInvalidCause",
+      "TestRecipientRejectsMalformedAndCancelledDelivery",
+      "TestRecipientUnknownReplayAndIndependentRanges",
+      "TestReserveExactRangesRetryAndOrder",
+      "TestSharedGrantShapeValidation",
+      "TestTransferPreservesHighWaterAndFencesLateGrant"
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "first": "Compiled setup refused PID3 follower own authoritative Read before Acquire; fixture leadership, no semantic production RED.",
+  "follower-diagnostic": "Same leader-only Read refusal, not a defective follower contract.",
+  "actual-leader-setup": "Bare Campaign did not defeat existing leader lease; fixture scheduling.",
+  "native-transfer-setup": "Existing Driver.TransferLeader explicitly disallows application machine; exploratory API refusal, no production fix.",
+  "native-election-setup": "Initial setup/wire guards PASS, not full P08 acceptance.",
+  "graph-claims-first": "Service-only graph control PASS, not full crash acceptance.",
+  "process-schedules-first": "Five parents PASS; two restart controls fail bare Campaign leadership fixture. Earlier formatting path command failed separately; no claim this is final source.",
+  "restart-own-election": "Existing authenticated stream retains old source issuer after restart; chosen competing candidate schedule also failed. Correct fixture uses fresh caller opening exact old cut and actual controlled election. Failure cleanup killed replacement processes, so no six-successful-reap claim for this log.",
+  "restart-source-lifetimes": "Compiler-only Packet.GetType API mismatch. No semantic RED.",
+  "restart-source-lifetimes-compiled": "Two corrected crash parents PASS; scoped prior source, not final full suite.",
+  "full-process-normal": "Seven parents PASS before final exact Life/Value strengthening; final normal/race supersede it."
+}
