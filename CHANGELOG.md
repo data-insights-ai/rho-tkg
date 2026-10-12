@@ -65,7 +65,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   store, permitting live audit readers. Bounded metadata inspection preserves
   exact descriptor, configuration and field-presence matching; snapshot claims
   retain their reader exclusions and ownership. Checks grant no readiness or
-  activation authority.
+  activation authority. Declared graph snapshots additionally share Restore's
+  semantic checks for initialized catalog, genesis, allocation, routing and
+  recovery state, including retained baselines from the same inactive import.
+  The read-only auditor releases its readers before Claim; replacement activation
+  and restored Host integration remain open.
 
 - Added internal v5 certified graph reads with Fresh, Stable, At and After
   modes over declared partitions. Separate durable read fences, resolved

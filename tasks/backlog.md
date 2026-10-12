@@ -472,8 +472,14 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    is integrated with exact source/term/binding checks, durable-term-before-reply
    ordering and genuine source-driven snapshot offers. Eight focused parents
    pass normal/race, new-file coverage is 85.3%, and format/vet/lint pass. This
-   receiver still refuses activation traffic; semantic audit, durable snapshot
-   activation and association transfer into the restored Host remain open.
+   receiver still refuses activation traffic. The [declared-snapshot semantic
+   auditor](evidence/declared-snapshot-auditor-20261012/receipt.json) now shares
+   Restore's initialized-state checks and reads retained
+   baselines from the same prepared inactive import. It releases all readers
+   before Claim and constructs no live materializer or Host. Seven focused
+   parents pass normal/race; new-file coverage is 93.4%, the shared validator
+   84.2%, and scoped vet/lint pass. Durable snapshot activation and association
+   transfer into the restored Host remain open.
    The [bounded recovery fix](evidence/native-ready-progress-20261012/qualification.json)
    now makes progress when an ordinary native Ready exceeds available application
    capacity but its ordered prefixes fit. It retains the original Ready until
