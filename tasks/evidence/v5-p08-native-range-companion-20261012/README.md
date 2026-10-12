@@ -100,3 +100,13 @@ are local scratch and are not committed.
 Baseline production passed before any omission. This is mutant sensitivity RED,
 not a real production semantic RED, bug fix, OS-process/physical-host durability
 claim, fixed allocator HOME relocation, or complete P08 acceptance.
+
+## Integration review
+
+Root reviewed the complete final test and verified both source hashes, the
+reconstructed omission hash, all three final watchdog receipts and raw test
+results. The normal run has exactly three passing parents; the race run has
+one; neither has failures or skips. The compiled omission fails at the Life37
+refusal. The integrated diff contains no production changes. This closes this
+focused range-ownership regression guard only; process-crash P08 and full V2
+acceptance remain open.

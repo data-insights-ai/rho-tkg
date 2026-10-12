@@ -355,6 +355,12 @@ reviewed and validated before the next package starts.
    four race batches and the 11 other v5 packages. Broader selector/scan parity,
    ownership/GC, physical-host durability, engine comparison and other V2 exit
    requirements remain open.
+   A focused [native P08 range guard](evidence/v5-p08-native-range-companion-20261012/README.md)
+   now verifies unused-ID refusal after completed ownership transfer with the
+   recipient still current, delayed grant recovery, exact retries and old cuts.
+   Final focused normal/race checks pass; removing the Life allocation fence
+   makes its assertion fail. Production is unchanged. This uses six in-process
+   voters and does not close process-crash P08 or full V2 acceptance.
    Next is substrate case P08 on the native graph path: partial cached issuance,
    uncertain grant delivery, recipient/allocator process restart, stale new-write
    refusal and exact committed-request recovery. Existing reducer and scalar
