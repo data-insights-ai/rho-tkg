@@ -205,6 +205,11 @@ type Core struct {
 	// (GraphTx.Commit, Batch.Execute) calls it once before returning success
 	// (flushDurableCommit). Nil = off, no flush on commit.
 	durableFlush storepkg.DurableFlushCapability
+	// flushHold is set when DurableCommit is on and the store flushes every
+	// mutation (Badger SyncWrites): a group's mutations run under c.mu.Lock
+	// with the store's per-mutation flush held, and the group's one
+	// DurableFlush makes them durable (backlog 52). Nil = no hold.
+	flushHold storepkg.MutationFlushHoldCapability
 	// allowTxBackfill enables the privileged transaction-time backfill doors:
 	// when true, create doors honor a caller-supplied tkg_tx_from (or
 	// AddWithTx) instead of stamping c.now(), and DeleteWithTx / UpdateWithTx
@@ -1960,6 +1965,9 @@ func New(config Config) (*Core, error) {
 			return nil, fmt.Errorf("graph: Config.DurableCommit needs a store with stable storage (a disk badger, tiered or sharded store): %w", storepkg.ErrCapabilityNotSupported)
 		}
 		c.durableFlush = df
+		if h, ok := store.(storepkg.MutationFlushHoldCapability); ok && h.FlushesEveryMutation() {
+			c.flushHold = h
+		}
 	}
 	c.preEncodedPut = nativePreEncodedPut(store)
 	// Ownership-transfer put (lever #2) is independent of the §4.5 pre-encode

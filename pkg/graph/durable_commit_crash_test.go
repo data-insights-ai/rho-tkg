@@ -30,6 +30,10 @@ import (
 // durableCommitHook turns Config.DurableCommit on; nil before the feature.
 var durableCommitHook func(*graphpkg.Config)
 
+// dcExtraDoors are child doors other test files add (name -> body); the body
+// returns when the child should crash.
+var dcExtraDoors = map[string]func(*graphpkg.Graph, string) error{}
+
 const (
 	dcEnvMode    = "TKG_DC_CHILD"
 	dcEnvDir     = "TKG_DC_DIR"
@@ -50,6 +54,22 @@ func dcOpenStore(backend, dir string, flushInterval time.Duration) (graphpkg.Con
 	switch backend {
 	case "badger":
 		bs, err := badger.New(badger.Config{Dir: dir, FlushInterval: flushInterval})
+		if err != nil {
+			return graphpkg.Config{}, err
+		}
+		return graphpkg.Config{Store: bs}, nil
+	case "badger-sync", "badger-sync-bound", "badger-sync-small":
+		// SyncWrites (backlog 52): "-bound" caps the held buffer of a durable
+		// group at 16 pending writes, "-small" shrinks the memtable so a group
+		// above Badger's transaction size limit (15 % of it) is split.
+		bc := badger.Config{Dir: dir, SyncWrites: true}
+		switch backend {
+		case "badger-sync-bound":
+			bc.MaxPendingWrites = 16
+		case "badger-sync-small":
+			bc.MemTableSize = 8 << 20
+		}
+		bs, err := badger.New(bc)
 		if err != nil {
 			return graphpkg.Config{}, err
 		}
@@ -233,7 +253,11 @@ func TestDurableCommitCrashChild(t *testing.T) {
 		}
 		os.Exit(0)
 	}
-	if err := dcWriteGroup(g, door); err != nil {
+	write := dcWriteGroup
+	if extra, ok := dcExtraDoors[door]; ok {
+		write = extra
+	}
+	if err := write(g, door); err != nil {
 		fmt.Fprintln(os.Stderr, "door:", err)
 		os.Exit(4)
 	}
@@ -251,6 +275,22 @@ func dcCrashCounts(t *testing.T, backend, door string, durable bool) (nodes, rel
 // interval (a time.Duration string; empty = an hour).
 func dcCrashCountsFlush(t *testing.T, backend, door string, durable bool, flushInterval string) (nodes, rels int) {
 	t.Helper()
+	g := dcCrashReopen(t, backend, door, durable, flushInterval)
+	nodes, err := g.Nodes().Count()
+	if err != nil {
+		t.Fatalf("Nodes().Count after crash: %v", err)
+	}
+	rels, err = g.Rels().Count()
+	if err != nil {
+		t.Fatalf("Rels().Count after crash: %v", err)
+	}
+	return nodes, rels
+}
+
+// dcCrashReopen runs the child and returns the graph reopened over its
+// directory (closed at test cleanup).
+func dcCrashReopen(t *testing.T, backend, door string, durable bool, flushInterval string) *graphpkg.Graph {
+	t.Helper()
 	dir := t.TempDir()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestDurableCommitCrashChild$", "-test.count=1")
 	cmd.Env = append(os.Environ(), dcEnvMode+"=1", dcEnvDir+"="+dir, dcEnvBackend+"="+backend,
@@ -266,16 +306,8 @@ func dcCrashCountsFlush(t *testing.T, backend, door string, durable bool, flushI
 	if err != nil {
 		t.Fatalf("graph.New after crash: %v", err)
 	}
-	defer func() { _ = g.Close() }()
-	nodes, err = g.Nodes().Count()
-	if err != nil {
-		t.Fatalf("Nodes().Count after crash: %v", err)
-	}
-	rels, err = g.Rels().Count()
-	if err != nil {
-		t.Fatalf("Rels().Count after crash: %v", err)
-	}
-	return nodes, rels
+	t.Cleanup(func() { _ = g.Close() })
+	return g
 }
 
 func boolDigit(b bool) string {

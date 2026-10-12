@@ -134,6 +134,15 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			gc.BeginGroupCommit()
 		}
 	}
+	// Durable group under SyncWrites (backlog 52): hold the per-mutation
+	// flushes for the exclusive window; flushDurableCommit below makes the
+	// group durable in one flush. Released before c.mu.Unlock on every path
+	// (this defer runs before the unlock defer above).
+	held := groupStore == nil && b.g.flushHold != nil
+	if held {
+		b.g.holdGroupFlushes()
+		defer b.g.releaseGroupFlushes()
+	}
 
 	start := time.Now()
 	result := &BatchResult{}
@@ -676,6 +685,9 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	// Capture event publisher and clear buffer before releasing lock.
 	ep := b.g.events
 	b.g.txEventBuffer = nil
+	if held {
+		b.g.releaseGroupFlushes()
+	}
 	b.g.mu.Unlock()
 	b.g.txMu.Unlock()
 	unlocked = true

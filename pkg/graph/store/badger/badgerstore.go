@@ -913,9 +913,20 @@ type Store struct {
 	// flushIndexLocked that Badger did not fsync (SyncWrites off) and cleared
 	// by DurableFlush's db.Sync, so a durable flush fsyncs exactly when
 	// something reached the WAL without an fsync. durableSyncs counts those
-	// syncs (DurableSyncCountForTest).
-	unsynced     atomic.Bool
-	durableSyncs atomic.Int64
+	// syncs (DurableSyncCountForTest). syncedFlushes counts the WriteBatch
+	// commits Badger synced itself (SyncWrites); with durableSyncs it is the
+	// sync count per commit group (SyncCountForTest, backlog 52).
+	unsynced      atomic.Bool
+	durableSyncs  atomic.Int64
+	syncedFlushes atomic.Int64
+
+	// flushHold is set between HoldMutationFlushes and ReleaseMutationFlushes
+	// (store.MutationFlushHoldCapability, a durable group under SyncWrites):
+	// flushIfNeeded leaves the writes pending until holdMaxPending (the
+	// resolved MaxPendingWrites; 0 = unbounded).
+	flushHold      atomic.Bool
+	holdMaxPending int
+
 	// Test seams (nil in production): failNextFlush makes the next WriteBatch
 	// commit fail through the real requeue path (FailNextFlushForTest);
 	// testHookDurableAfterCheckOpen runs inside DurableFlush right after its
@@ -1109,6 +1120,7 @@ func New(cfg Config) (*Store, error) {
 	if maxPending == 0 {
 		maxPending = DefaultMaxPendingWrites
 	}
+	holdMaxPending := max(maxPending, 0) // bounds a held durable group under SyncWrites
 	if maxPending < 0 || (cfg.SyncWrites && !cfg.ReadOnly) {
 		maxPending = 0 // explicitly unbounded, or moot under SyncWrites
 	}
@@ -1169,6 +1181,7 @@ func New(cfg Config) (*Store, error) {
 		ords:                    newOrdinals(cfg),
 		onChangeLogFlush:        cfg.OnChangeLogFlush,
 		maxPending:              maxPending,
+		holdMaxPending:          holdMaxPending,
 		flushInt:                flushInt,
 		gcInt:                   gcInt,
 		gcRatio:                 gcRatio,

@@ -1,0 +1,22 @@
+# backlog 52 bench: tasks/evidence/aisoc-commit-cost/bench_test.go.txt (ai-soc shape, 30 commits x 177 records ~ 530 ops),
+# copied into a throwaway package and run with: go test -run TestAisocShape -count=1 -v (NVMe, shared host, 32 cores)
+
+## BEFORE: cddc0997 (v4.51.2), 2026-10-12
+memory                 commits=30 recs/commit=177 mean=2.837808ms worst=7.671463ms rows/s=62372
+badger plain           commits=30 recs/commit=177 mean=4.922816ms worst=8.054149ms rows/s=35955
+badger Durable         commits=30 recs/commit=177 mean=14.101929ms worst=28.582122ms rows/s=12551
+badger Sync            commits=30 recs/commit=177 mean=1.335896655s worst=3.161302616s rows/s=132
+badger Durable+Sync    commits=30 recs/commit=177 mean=990.429596ms worst=1.396849495s rows/s=179
+
+## AFTER: backlog 52 fix (a durable group holds the SyncWrites per-mutation flush; one Badger-synced WriteBatch per group), 2026-10-12
+memory                 commits=30 recs/commit=177 mean=3.251899ms worst=4.805626ms rows/s=54430
+badger plain           commits=30 recs/commit=177 mean=5.084091ms worst=11.951872ms rows/s=34814
+badger Durable         commits=30 recs/commit=177 mean=12.532082ms worst=18.393268ms rows/s=14124
+badger Sync            commits=30 recs/commit=177 mean=982.321377ms worst=1.314530628s rows/s=180
+badger Durable+Sync    commits=30 recs/commit=177 mean=13.47342ms worst=23.067108ms rows/s=13137
+
+## Summary, mean per ~530-op group (before -> after)
+badger plain           4.9 ms -> 5.1 ms   (path unchanged)
+badger Durable         14.1 ms -> 12.5 ms (path unchanged)
+badger Sync            1.34 s -> 0.98 s   (path unchanged: SyncWrites without DurableCommit still syncs every mutation; host noise)
+badger Durable+Sync    990 ms -> 13.5 ms  (ai-soc config; target <= 100 ms)

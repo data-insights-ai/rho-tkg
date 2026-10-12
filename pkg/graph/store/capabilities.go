@@ -1457,6 +1457,26 @@ type GroupCommitCapability interface {
 	EndGroupCommit() error
 }
 
+// MutationFlushHoldCapability lets Config.DurableCommit commit a group on a
+// store that flushes and syncs every mutation (Badger SyncWrites) with one
+// synced write instead of one per mutation (backlog 52). Between
+// HoldMutationFlushes and ReleaseMutationFlushes the store skips the
+// per-mutation flush; the held writes stay pending until the group's
+// DurableFlush (or any earlier flush) commits them, and the store still
+// flushes when the held buffer reaches its pending-write bound, so a large
+// group flushes in steps instead of growing without limit.
+//
+// The caller holds the graph's exclusive write lock for the whole hold, so no
+// other mutation (a standalone write, whose SyncWrites flush is owed to its
+// own caller) can run inside it, and calls DurableFlush before reporting the
+// group durable. FlushesEveryMutation reports whether the store flushes every
+// mutation at all; only then is a hold worth the exclusive lock.
+type MutationFlushHoldCapability interface {
+	FlushesEveryMutation() bool
+	HoldMutationFlushes()
+	ReleaseMutationFlushes()
+}
+
 // DurableFlushCapability makes every write the backend has accepted durable on
 // demand: Config.DurableCommit calls DurableFlush once at the end of each commit
 // group (GraphTx.Commit, Batch.Execute, the strong ingest applier) before the

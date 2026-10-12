@@ -535,16 +535,36 @@ func (tx *GraphTx) unlockActiveCore() {
 // != nil: routing is decided per-call by an explicit token argument, so
 // there is no shared divert flag a concurrent standalone write could ever
 // race) OR there is no legacy scope at all (tx.g.txLogScope == nil: nothing
-// to divert, change-log off or unsupported). Only false when the store is on
+// to divert, change-log off or unsupported). False when the store is on
 // the legacy single-implicit-buffer SetLogDivert mechanism, which genuinely
-// needs the exclusive lock to stay correct — see lockActiveCoreWrite.
+// needs the exclusive lock to stay correct — see lockActiveCoreWrite — and
+// when the graph holds a durable group's per-mutation flushes (c.flushHold,
+// backlog 52): the store-wide hold must not cover a concurrent standalone
+// mutation, whose SyncWrites flush is owed to its own caller.
 func (tx *GraphTx) usesSharedLock() bool {
-	return tx.g.scopedChangeLog != nil || tx.g.txLogScope == nil
+	return tx.g.flushHold == nil && (tx.g.scopedChangeLog != nil || tx.g.txLogScope == nil)
+}
+
+// beginExclusiveWrite runs right after an exclusive mutation lock: legacy
+// change-log diversion on, the durable group's flush hold on.
+func (tx *GraphTx) beginExclusiveWrite() {
+	if tx.g.scopedChangeLog == nil && tx.g.txLogScope != nil {
+		tx.g.txLogScope.SetLogDivert(true)
+	}
+	tx.g.holdGroupFlushes()
+}
+
+// endExclusiveWrite reverses beginExclusiveWrite before the lock is released.
+func (tx *GraphTx) endExclusiveWrite() {
+	tx.g.releaseGroupFlushes()
+	if tx.g.scopedChangeLog == nil && tx.g.txLogScope != nil {
+		tx.g.txLogScope.SetLogDivert(false)
+	}
 }
 
 // lockActiveCoreWrite is the MUTATION variant of lockActiveCore.
 //
-// Two mechanisms decide the lock (see usesSharedLock):
+// Three mechanisms decide the lock (see usesSharedLock):
 //   - BACKLOG 11f token-routed (tx.g.scopedChangeLog != nil): this tx opened
 //     its OWN scope at BeginTx (tx.scopeToken) and every mutation method
 //     threads that token through doorCtx() to the *ScopedAware store
@@ -561,6 +581,12 @@ func (tx *GraphTx) usesSharedLock() bool {
 //     this single mutation no concurrent standalone mutation (which holds
 //     only c.mu.RLock) can run and have its own change-log record misrouted
 //     into this tx's single shared buffer.
+//   - Durable group flush hold (c.flushHold, Config.DurableCommit on a
+//     SyncWrites store, backlog 52): takes c.mu.Lock and holds the store's
+//     per-mutation flush for this mutation, so its writes wait for the
+//     commit's one DurableFlush instead of one synced flush each. The lock
+//     keeps every other mutation (whose SyncWrites flush is owed to its own
+//     caller) out of the hold.
 //
 // The lock is per-mutation (acquired+released around one mutation method),
 // NOT held for the tx lifetime, so in-tx reads (which take their own brief
@@ -586,7 +612,7 @@ func (tx *GraphTx) lockActiveCoreWrite() error {
 		tx.mu.Unlock()
 		return ErrGraphClosed
 	}
-	tx.g.txLogScope.SetLogDivert(true)
+	tx.beginExclusiveWrite()
 	tx.writePathUsed = true
 	return nil
 }
@@ -612,21 +638,21 @@ func (tx *GraphTx) lockActiveCoreWriteContext(ctx context.Context) error {
 		tx.mu.Unlock()
 		return ErrGraphClosed
 	}
-	tx.g.txLogScope.SetLogDivert(true)
+	tx.beginExclusiveWrite()
 	tx.writePathUsed = true
 	return nil
 }
 
 // unlockActiveCoreWrite reverses lockActiveCoreWrite (turns off diversion and
-// releases the exclusive lock on the legacy path; otherwise just releases
-// the shared RLock — see usesSharedLock).
+// the flush hold and releases the exclusive lock on the exclusive path;
+// otherwise just releases the shared RLock — see usesSharedLock).
 func (tx *GraphTx) unlockActiveCoreWrite() {
 	if tx.usesSharedLock() {
 		tx.g.mu.RUnlock()
 		tx.mu.Unlock()
 		return
 	}
-	tx.g.txLogScope.SetLogDivert(false)
+	tx.endExclusiveWrite()
 	tx.g.mu.Unlock()
 	tx.mu.Unlock()
 }
@@ -858,6 +884,11 @@ func (tx *GraphTx) Rollback() error {
 	if tx.g.scopedChangeLog == nil && tx.g.txLogScope != nil {
 		tx.g.txLogScope.SetLogDivert(true)
 	}
+	// Durable group under SyncWrites (backlog 52): the restores below are held
+	// like the forward mutations and made durable together at the end; c.mu.Lock
+	// keeps every other mutation out of the hold. Deferred release for a panic.
+	tx.g.holdGroupFlushes()
+	defer tx.g.releaseGroupFlushes()
 
 	var firstErr error
 	capture := func(err error) {
@@ -931,6 +962,10 @@ func (tx *GraphTx) Rollback() error {
 	} else if tx.g.txLogScope != nil {
 		capture(tx.g.txLogScope.DiscardLogScope())
 	}
+	// Part of a held group can already be on disk (a standalone write's flush,
+	// the hold bound), so the restores must be too, as SyncWrites made them
+	// before the hold: one durable flush instead of one per restore.
+	capture(tx.g.flushHeldGroup())
 
 	return firstErr
 }

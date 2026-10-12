@@ -1,0 +1,35 @@
+# backlog 52 RED: base cddc0997 (v4.51.2) + sync-count seam (SyncCountForTest) + the test, before the fix
+# 2026-10-12T18:52:58
+# go test -run TestDurableCommitSyncWritesSyncsPerGroup -count=1 -v ./pkg/graph/
+    durable_commit_syncwrites_test.go:206: 10 ops: 12 syncs, want [1, 2]
+    durable_commit_syncwrites_test.go:206: 500 ops: 501 syncs, want [1, 2]
+    durable_commit_syncwrites_test.go:206: 10 ops: 6 syncs, want [1, 2]
+    durable_commit_syncwrites_test.go:206: 500 ops: 251 syncs, want [1, 2]
+    durable_commit_syncwrites_test.go:206: 10 ops: 24 syncs, want [1, 2]
+    durable_commit_syncwrites_test.go:206: 500 ops: 1002 syncs, want [1, 2]
+    durable_commit_syncwrites_test.go:206: 10 ops: 12 syncs, want [1, 9]
+    durable_commit_syncwrites_test.go:206: 500 ops: 501 syncs, want [5, 499]
+    durable_commit_syncwrites_test.go:221: group above the txn size limit: 400 syncs, err <nil>; want [1, 2], nil
+    durable_commit_syncwrites_test.go:232: failing flush: err graph: write batch flush: injected durable-flush failure, 1 syncs; want ErrCommitNotDurable, 0
+    durable_commit_syncwrites_test.go:268: crash child badger-sync/tx-fail durable=true failed: exit status 9
+        tx with a failing flush: want ErrCommitNotDurable, got graph: write batch flush: injected flush failure
+    durable_commit_syncwrites_test.go:268: crash child badger-sync/tx-fail-retry durable=true failed: exit status 9
+        tx with a failing flush: want ErrCommitNotDurable, got graph: write batch flush: injected flush failure
+--- FAIL: TestDurableCommitSyncWritesSyncsPerGroup (28.08s)
+    --- FAIL: TestDurableCommitSyncWritesSyncsPerGroup/tx (2.69s)
+    --- FAIL: TestDurableCommitSyncWritesSyncsPerGroup/batch (1.63s)
+    --- FAIL: TestDurableCommitSyncWritesSyncsPerGroup/rollback (5.52s)
+    --- FAIL: TestDurableCommitSyncWritesSyncsPerGroup/held-buffer-bound (3.07s)
+    --- PASS: TestDurableCommitSyncWritesSyncsPerGroup/sync-writes-only (2.58s)
+    --- FAIL: TestDurableCommitSyncWritesSyncsPerGroup/above-txn-size-limit (3.95s)
+    --- FAIL: TestDurableCommitSyncWritesSyncsPerGroup/not-durable-retry (0.26s)
+    --- PASS: TestDurableCommitSyncWritesSyncsPerGroup/crash/tx (0.39s)
+    --- PASS: TestDurableCommitSyncWritesSyncsPerGroup/crash/batch (0.22s)
+    --- PASS: TestDurableCommitSyncWritesSyncsPerGroup/crash/above-txn-size-limit (4.11s)
+    --- PASS: TestDurableCommitSyncWritesSyncsPerGroup/crash/rollback (2.91s)
+    --- FAIL: TestDurableCommitSyncWritesSyncsPerGroup/crash/not-durable-no-retry (0.14s)
+    --- FAIL: TestDurableCommitSyncWritesSyncsPerGroup/crash/not-durable-retry (0.09s)
+    --- PASS: TestDurableCommitSyncWritesSyncsPerGroup/crash/concurrent-standalone (0.52s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	28.141s
+FAIL
