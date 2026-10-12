@@ -1,0 +1,51 @@
+{
+  "kind": "migration-preflight-current-v4-reader-hosted-qualification",
+  "head": "3ede096d804a92118d44415bb5702c9de4c2c4bb",
+  "upstream_main": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+  "upstream_release": "v4.51.0",
+  "run": 38217943038,
+  "job": 114706990020,
+  "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38217943038/job/114706990020",
+  "job_status": "completed",
+  "job_conclusion": "success",
+  "completed_at": "2026-10-12T07:33:48Z",
+  "compiler": "go1.26.9 linux/amd64",
+  "checks": [
+    "fmt-check",
+    "vet",
+    "build",
+    "test",
+    "test-race",
+    "cover-gate",
+    "tools",
+    "lint",
+    "security",
+    "vulncheck"
+  ],
+  "coverage_percent": {
+    "total": 96.2,
+    "PreflightNode": 100,
+    "PreflightRel": 100
+  },
+  "source_sha256": {
+    "tools/v5-migrate/preflight.go": "811233b5eb93eea7b8075d3e1ac193ccc5f2de6303101ac4532f55233c2b506a",
+    "tools/v5-migrate/preflight_test.go": "7485b02ee04c71e20ca9eb36763ba8615e8f6bbe759d105d6fa1af51364ceb36",
+    "tools/v5-migrate/faults_test.go": "c37f202143a0e42889741afab3181068f8269da0189087e7e1bd7810f78a43a2",
+    "tools/v5-migrate/Makefile": "0c2cdff5a87140703f96491331e72658cea9ae0ce9be734f27f46d507ae52b40",
+    "tools/v5-migrate/go.mod": "c225965459991db92dbe315edd0828ee2b1d03f54879698850b4d86940ca0c8f",
+    "tools/v5-migrate/go.sum": "3ce9a23bdfe08f06dafe9749bede3b9358c8edac54f15cc54fab9ef0792c31cb",
+    "go.mod": "412e37f9e5829b7fa6e70edc7c38cf89a8754055bc3113b4c986721a3aba095d",
+    "go.sum": "2cef9af000163049b76b78f405b0e49ea0aa06feffc38f40a7cf4fafb11fd310",
+    "v5/go.mod": "3bf8baf02d354420ddf87b8865f20b854bb606f04e0f0988f0f9eed2d89e8a24",
+    "v5/go.sum": "5679a7aa94d5ee71f5737dea65a4fa71ed69109c45b877b1dd1639ae5e6e60f0",
+    ".github/workflows/ci.yml": "5722551b5be3e87589444d444926b493ab900d44b5eb05fe96a59be14dbaadbf"
+  },
+  "log": {
+    "file": "hosted-main451-3ede096d.log.gz",
+    "bytes": 12190,
+    "sha256": "4c6649a0d0342f71a67fb5ce301d836d5f10deba3cc7bb8ec7b0cbba6ae9a078",
+    "uncompressed_bytes": 48705,
+    "uncompressed_sha256": "cdd71f7f90d94e0b2813fb0600c2231fe38a696cbee935a88c6de271581bf56c"
+  },
+  "scope": "All narrow migration preflight gates against the integrated current v4.51 reader. Earlier local v4.50.1 qualification remains historical and unchanged. Hosted job success is not full V6, destination import/restore, resource-performance, or full integrated CI acceptance; other run jobs were still live when this receipt was captured."
+}

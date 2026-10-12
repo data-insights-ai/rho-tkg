@@ -6,15 +6,18 @@ explicit source knowledge-time pin to existing v5 Q/ms scopes. The local module
 replacements select this repository's current v4 reader and v5 public values;
 they do not select an old consumer fixture or an unavailable destination engine.
 
-Current qualification is pinned to repository base
+The original local qualification is pinned to repository base
 `f414733828f1e62fe211f0ff2900aa680c0a62b7` and the v4.50.1 reader baseline
 `91684e54d25fd8c1b136f5f80bd8f33f5d0ab3bd` (release code `efbedc28`). This is
 a local-source qualification, rather than a shipped-binary reproduction; the
 selected module dependency graph includes protobuf v1.36.11 from v5. Source/input
 fingerprints, actual tool builds, coverage and narrow gate logs are recorded in
-[qualification.json](evidence/qualification.json). Later source replacements,
-including main's v4.51.0 reader, require focused requalification before integrated
-acceptance. These runs do not qualify that newer reader or complete V6.
+[qualification.json](evidence/qualification.json). The subsequent
+[hosted qualification at `3ede096d`](evidence/hosted-main451-3ede096d.json)
+passes all narrow gates against the integrated v4.51.0 reader, including race,
+96.2% coverage and pinned scanners on Go 1.26.9 Linux/amd64. Neither record
+completes V6; the earlier source pins and local resource measurements remain
+historical. Later reader changes require fresh qualification.
 
 The caller quiesces source writes, imports, retention and DDL across a call,
 supplies capture/reader identity and evidence, and designates an explicit v5

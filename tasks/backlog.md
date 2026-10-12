@@ -82,7 +82,7 @@ and reference JSON specify contracts/evidence, not completed engine gates.
 | V3 | Coordinate timeblock candidate independently validated (local commit `fa0c982`; scoped temporal+block coverage 95.7%, no exported method at 0%). Full engine seal/merge/recovery, paged structures and all-in budget/byte-ledger measurements remain open; resident-buffer prototype timings do not close V3 |
 | V4 | Production read/change APIs, historical cross-door parity, gap-free leased feed handoff and pinned sigma access-contract build and nonempty mutation-then-historical tests (the current signature/empty smoke is insufficient) |
 | V5 | Distributed access across 1/2/4/8 partitions, cross-edge/stall/rebalance/feed cases and sigma workload parity |
-| V6 | Retained-state migration preflight integrated, with v4.50.1 qualification below; latest-reader requalification, destination importer, consumer-repository migrations, retained-cut/CDC agreement and restore on a different topology remain open |
+| V6 | Retained-state migration preflight integrated and qualified against the current v4.51.0 reader below; destination importer, consumer-repository migrations, retained-cut/CDC agreement and restore on a different topology remain open |
 | V7 | Versioned contracts/limits, full CI/race/coverage/security, distributed matrix and consumer suites; measured comparative space/time acceptance against Neo4j/TigerGraph/Memgraph plus v4, with reviewed excess-cost exceptions |
 
 V0 specification acceptance, 2026-10-10:
@@ -132,8 +132,10 @@ is integrated for both nodes and relationships. Its [qualification](../tools/v5-
 records passing normal/race/build/vet/format and compiler-matched pinned scanners,
 96.2% coverage and 100% coverage of both public functions against the v4.50.1
 reader. Independent review matched all six input hashes, 462 source files and
-14 raw command receipts. Current main v4.51.0 has since been integrated;
-its reader and the combined tree require fresh gates. This preflight owns raw
+14 raw command receipts. Main v4.51.0 has since been integrated; its
+[hosted preflight job at `3ede096d`](../tools/v5-migrate/evidence/hosted-main451-3ede096d.json)
+passes all ten narrow gates, retaining 96.2% coverage and both public functions
+at 100%. The combined root/v5 CI is still running at this checkpoint. This preflight owns raw
 evidence and refuses ambiguous histories; destination import and consumer gates
 remain open.
 
