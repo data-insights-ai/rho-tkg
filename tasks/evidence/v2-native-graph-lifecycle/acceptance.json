@@ -1,0 +1,54 @@
+{
+  "status": "accepted fixed native functional trace; full V2 remains open",
+  "author_commit": "6fb6090bace64c0534a3ce1beb6f2891ef890a33",
+  "integrated_commit": "e0bdba97",
+  "review": "Root source review and independent artifact/source verification; Go implementation and runtime delegated to GPT-6.1 Sol/high.",
+  "source": {
+    "manifest": "amended-go-source.json",
+    "sha256": "32b7b9ef3e1ec5e27c774005b8829d17f72b6f9dcd91c29aaf03259597cd1d05",
+    "verified_go_files": 526,
+    "unchanged_production_go_files": 218,
+    "changed_test_files": 5,
+    "new_public_methods": 0
+  },
+  "validation": {
+    "selected_normal_parents": 8,
+    "selected_race_parents": 8,
+    "failed_or_skipped_parents": 0,
+    "amended_parent_normal_and_race": "Fresh passing runs after the equivalent test-only De Morgan lint correction; unchanged shared/other parent evidence carried by source identity.",
+    "static": "Go 1.26.9 formatting/build/vet, pinned golangci-lint 2.13.2 and gosec 2.29.0 pass. Dependency/vulnerability and production coverage evidence are unchanged-source carry, not new whole-module runs.",
+    "independent_checks": [
+      "All 526 integrated Go files match the final source seal; all 218 production files equal base 2fcaa0d1.",
+      "All 13 packaged artifact hashes and all 58 raw archive members match their size/SHA256 manifests.",
+      "Raw JSONL records contain exactly three lifecycle and five shared test parents passing in both modes; amended affected parent passes in both modes.",
+      "Every successful lifecycle run reports six of six child processes reaped; final voter stats contain no held views/pins.",
+      "Final normal/race normalized operations, views, logical changes, entity/life/value declarations and old-read results agree.",
+      "Reopened old views and raw certificates match their originally observed step cuts after all later mutations."
+    ]
+  },
+  "observed": {
+    "transactions": 7,
+    "retained_application_records": 42,
+    "logical_component_changes": 8,
+    "old_reads": 4,
+    "certified_read_operations": 37,
+    "same_cut_entity_census_operations": 18,
+    "final_closed_edge_property": "I64(6), with the original edge-update revision/provenance retained independently of presence",
+    "scope": "Issued entity IDs 1 through 32, fixed lifecycle components, edge property p, empty labels and five endpoint queries. Held-old observation is edge-only; reopened At observations cover the declared fixture.",
+    "metric_qualification": "Query Get/Scan totals include census as a subset. Exact installation KV write count is unavailable/null; records and logical changes are not physical writes."
+  },
+  "archive": {
+    "path": "raw-evidence.tar.gz",
+    "sha256": "98ac07542f0c20806736739e1d0433a09cce13ec4ef740725fb38325de0e1093",
+    "compressed_bytes": 494765,
+    "raw_bytes": 6513999,
+    "raw_files": 58
+  },
+  "qualifications": "QUALIFICATIONS.json preserves compiler/setup/schema attempts and the original lint failure; none establishes a production defect. TRACE_SUMMARY.json pins both final raw traces. This acceptance file is additional root review, outside the author's FILE_MANIFEST.json.",
+  "remaining": [
+    "Matching FoundationDB stored-history projection and actual cross-engine trace comparison.",
+    "Comparable fault/cost matrix and explicit engine decision.",
+    "Other V2 ownership/identity/GC and physical-host requirements; V3-V7 retain their independent exits.",
+    "Combined hosted CI on the integrated head."
+  ]
+}

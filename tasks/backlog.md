@@ -371,8 +371,15 @@ reviewed and validated before the next package starts.
    now passes real client kills, one-zone-loss progress and all-server same-volume
    restart, with exact retained history/CDC and bounded containers. Its 29 native
    race tests pass; this is local functional evidence, not cross-engine parity.
-   Next are common native/FDB lifecycle traces, the comparable fault/cost matrix
-   and engine decision, plus the remaining V2 exit gates above. Production creation/replacement
+   The [native seven-step lifecycle trace](evidence/v2-native-graph-lifecycle/acceptance.json)
+   is now accepted as fixed functional comparison input: six OS processes,
+   atomic edge/property creation, correction, endpoint/edge closure, fresh-life
+   reopen, retained identity/property, exact CDC and held/reopened old cuts.
+   All eight selected parents pass normal/race; production is unchanged. The
+   entity census covers issued IDs 1–32 and the declared fixture components;
+   the held read is explicitly edge-only. FDB history-backed projection and
+   actual-trace equality remain pending, followed by the comparable fault/cost
+   matrix and engine decision, plus the remaining V2 exit gates above. Production creation/replacement
    admission must distinguish new logical graphs
    from recovery; existing-directory binding checks alone do not establish that
    a logical identity may safely be bootstrapped on fresh or lost storage.
