@@ -488,8 +488,8 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    It grants no replacement authority. The [receiving protocol](evidence/v2-replacement-receiver-20261012/receipt.json)
    is integrated with exact source/term/binding checks, durable-term-before-reply
    ordering and genuine source-driven snapshot offers. Eight focused parents
-   pass normal/race, new-file coverage is 85.3%, and format/vet/lint pass. This
-   receiver still refuses activation traffic. The [declared-snapshot semantic
+   pass normal/race, new-file coverage is 85.3%, and format/vet/lint pass. Ordinary
+   receiving traffic grants no activation authority. The [declared-snapshot semantic
    auditor](evidence/declared-snapshot-auditor-20261012/receipt.json) now shares
    Restore's initialized-state checks and reads retained
    baselines from the same prepared inactive import. It releases all readers
@@ -498,9 +498,20 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    84.2%, and scoped vet/lint pass. [Hosted integration at
    `ee8d88ae`](evidence/e17-ci-deadline-20261012/hosted-ci-ee8d88ae.json)
    passes all eight applicable jobs, including both modules' normal/race,
-   coverage and security gates. This qualifies the integrated auditor;
-   durable snapshot activation and association transfer into the restored Host
-   remain open. The later v4.51.2 integration requires its own CI result.
+   coverage and security gates. This qualifies the integrated auditor.
+   [Replacement activation](evidence/v2-replacement-activation-20261012/receipt.json)
+   is now integrated and locally qualified: the original receiving RawNode's
+   actual snapshot Ready is durably installed, then Restore, same-Ready Advance
+   and unique Driver/Host adoption preserve retained graph state. A live
+   association owns the restored Host independently of the request context;
+   synchronous cancellation gates and reentrant cleanup preserve ownership.
+   Thirteen focused parents and 51 subtests pass normal/race/coverage with no
+   failures/skips; new receiving and graph-owner files cover 84.0% and 86.8%.
+   Actual process-kill and injected write/sync failures withhold acknowledgements
+   and recover whole old/new durable states. Scoped vet/lint pass. This closes
+   the local activation component; hosted integration, broader ownership/GC,
+   remaining fault/cost evidence and V2 acceptance retain their own gates.
+   The later v4.51.2 integration requires its own CI result.
    The [bounded recovery fix](evidence/native-ready-progress-20261012/qualification.json)
    now makes progress when an ordinary native Ready exceeds available application
    capacity but its ordered prefixes fit. It retains the original Ready until

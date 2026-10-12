@@ -68,8 +68,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   activation authority. Declared graph snapshots additionally share Restore's
   semantic checks for initialized catalog, genesis, allocation, routing and
   recovery state, including retained baselines from the same inactive import.
-  The read-only auditor releases its readers before Claim; replacement activation
-  and restored Host integration remain open.
+  The read-only auditor releases its readers before Claim. A live authenticated
+  replacement admission can now install that snapshot through the original
+  receiving RawNode's actual Ready, restore graph state after durable sync,
+  advance that same Ready and transfer the RawNode to a normal Driver. Host and
+  acknowledgement publication follow unique association-lifetime transfer;
+  cancellation fences operations synchronously. HOME allocator state and
+  retained node/relationship history survive activation and reopen. Uncertain
+  persistence withholds output and requires recovery of the retained identity.
 
 - Added internal v5 certified graph reads with Fresh, Stable, At and After
   modes over declared partitions. Separate durable read fences, resolved
