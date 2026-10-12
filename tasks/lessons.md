@@ -1380,12 +1380,11 @@ HANDOVER §11; every new user or consumer request gets its row before the first 
 Detector: a tag newer than the last row of the releases table; a user-request row "open" whose backlog item sits
 under Closed.
 
-## 81. A Filed Consumer Blocker Is Built, Not Offered
+## 81. Open Work With A Clear Next Step Is Started, Not Offered
 
-Trigger: René 2026-10-12, on "build 52–55?": "yes, why is this a question?" Four ai-soc blockers (backlog 52–55)
-had sat as "waits for René's go" for hours while ai-soc said they were in a hurry; I had over-applied "never start
-agents he did not ask for" to filed consumer requests.
-Rule: a backlog item filed from a consumer request that blocks that consumer goes straight into the next patch
-batch (ledger lines first, red tests, one review, final Fable, tag). "Never start agents he did not ask for" covers
-side work (monitors, extra reviews, refactors, v5), not consumer blockers.
-Detector: a "Gewählt: not started … Anders: sag fix N" line for an item whose requester is a consumer.
+Trigger: René 2026-10-12, on "build 52–55?": "yes, why is this a question?", then "Remove or rewrite this stupid
+rule" (my rule "never start agents he did not ask for"). Four ai-soc blockers sat for hours as "waits for René's go".
+Rule: consumer requests, review findings and the next patch batch are started right away (ledger lines first, red
+tests, one review, final Fable, tag). Ask only for what CLAUDE.md §1 allows (irreversible or destructive, options
+that differ materially, not decided by chat or memory). The old "never start agents he did not ask for" rule is gone.
+Detector: a "Gewählt: not started … Anders: sag fix N" line.
