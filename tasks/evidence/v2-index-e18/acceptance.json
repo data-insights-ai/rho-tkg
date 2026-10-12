@@ -1,0 +1,73 @@
+{
+  "status": "accepted_locally_finite_E18",
+  "date": "2026-10-12",
+  "author_commit": "075b1eaeeff782b0664b27a5af5feeaf5f470335",
+  "integration_commit": "a059b00f",
+  "source_manifest": {
+    "file": "go-source.json",
+    "sha256": "f2d93e80de5714013567ed954c932928655cc746c5cde3b5d5e4815898909433",
+    "go_files": 520
+  },
+  "author_receipt": {
+    "file": "FINAL_RECEIPT.json",
+    "sha256": "f9dc08c992223f7ce9ef91935fca95d6efbce7216807865ad6aa34181e915672"
+  },
+  "scope": "Internal authenticated remote index-starting reads and same-cut hydration before and after correction on two partitions with three native OS processes each.",
+  "independent_review": {
+    "source_hash_mismatches": 0,
+    "changed_production_files": 0,
+    "changed_dependencies_schemas_or_session_caps": false,
+    "verified_archive_artifacts": 57,
+    "archive_sha256": "b99dcd804dd3f695eb0acdab35400ca703f16e5369c97ea91de281a86eed3b52",
+    "normal": {
+      "principal_parents_pass": 19,
+      "supplemental_ipc_parents_pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "race": {
+      "principal_parents_pass": 19,
+      "supplemental_ipc_parents_pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "semantic_checks": [
+      "Queries start from unique-property or incidence selectors, without caller-supplied candidate IDs.",
+      "Both partitions service genuine authenticated Get/Scan requests; returned candidates are hydrated through the same certified read operation.",
+      "Held old and newly reopened At(old) answers retain exact typed values, references, component bytes, revisions and provenance after correction; current answers reject stale effective matches.",
+      "Remote unchanged owner and phantom selector checked; both endpoint directions and canonical/declared incidence retain immutable life-bound edge identity.",
+      "Actual per-voter Resolve outcomes, CDC and roots agree. This is replica parity, not a new independent full CDC semantic oracle.",
+      "Six child processes are reaped, with zero owned views/pins/sessions."
+    ],
+    "negative_control": {
+      "isolated_source_files_compared": 520,
+      "changed_file": "v5/internal/graphstore/full_candidates.go",
+      "edit": "UniqueCandidates enumeration for -> for false",
+      "actual_failure": "pre-correction exact raw index candidates p12 [] [17]",
+      "qualification": "Meaningful raw-index omission detected; no current-state-substitution or reproduced production-bug claim."
+    },
+    "scanners": "Formatting, vet, build, pinned lint (zero issues) and pinned security pass. Production and dependencies match the accepted base; vulnerability scanning is not claimed anew.",
+    "coverage": "Fresh selected graphapply/graphstore/graphstate profile exercises index and hydration receiver methods. No new production method or changed production threshold; unchanged base retains its separately accepted broader coverage.",
+    "resources": "Each local Go invocation is bounded by 4GiB aggregate process-tree RSS and 180s, Go1.26.9, GOMAXPROCS2, GOMEMLIMIT2GiB, GOFLAGS-p1, GOWORKoff; Docker tools use 4GiB/2CPU."
+  },
+  "fixture_qualifications": {
+    "initial_failures": "Compiler-only failures and original cumulative calls1024/1024 admission refusal are retained and are not semantic REDs. Initial evolving source snapshots were not retrospectively sealed.",
+    "operation_lifetimes": "Seven admitted certified operations; held primary owner is reused before/after, and separate exact-cut At operations service remaining selectors. No live ledger reset; two-session cap unchanged.",
+    "traffic": {
+      "ipc": 12316,
+      "bootstrap_packets": 268,
+      "allowance": 32768
+    },
+    "traffic_qualification": "E18-only fixture allowance, not an algorithmic worst-case or production SLO; default fixture allowance and production source/session/frame/queue limits are unchanged."
+  },
+  "hosted_ci": {
+    "status": "pending_push"
+  },
+  "limitations": [
+    "One physical host with six native OS processes; no multi-host durability claim.",
+    "Existing node-unique schema and relationship endpoint/incidence mirrors; no relationship-unique schema expansion.",
+    "Broader selector/scan parity and V4 public API acceptance remain separate.",
+    "Broader ownership recovery, production identity reuse/fencing, application GC, physical-host durability and comparable transactional-KV engine decision remain V2 requirements.",
+    "No full V2 or V3-V7 acceptance, performance or release claim."
+  ]
+}
