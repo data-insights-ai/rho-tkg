@@ -61,6 +61,11 @@ Review [HANDOVER.md](../docs/v5/HANDOVER.md) at each integration checkpoint and
 after branch fetches. Reconcile new entries with the reviewed PLAN before acting;
 the handover does not replace phase acceptance gates or authorize release/main
 publication. Last checked revision: `eaa339c3` (2026-10-12).
+Handover release-tag correction: its proposed `v5/v5.0.0` prefix conflicts with
+[Go's major-version-directory rules](https://go.dev/ref/mod#vcs-version).
+For the declared module path, use `v5.0.0` when V7 is accepted and publication is
+authorized; see [the release policy](../docs/stability.md#unreleased-v5-module).
+The handover remains a historical review, not release authority.
 Pinned fixtures: [consumer contracts](../docs/v5/reference/consumer-contracts.json)
 and [migration obligations](../docs/v5/reference/consumer-migration.json) are
 reviewed specification/inventory evidence; consumer integration acceptance stays open.

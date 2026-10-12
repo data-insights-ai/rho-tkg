@@ -15,6 +15,21 @@ Within the v4 major version (v4.0.0 through v4.x.x), the following surfaces are 
 
 Breaking changes are reserved for v5.0.0 or later.
 
+## Unreleased v5 Module
+
+`github.com/data-insights-ai/rho-tkg/v5` is developed in the repository's `v5/`
+major-version directory. Its development commits have no released compatibility
+promise. The [module README](../v5/README.md) identifies the importable packages;
+the [v5 plan](v5/PLAN.md) defines the public, format and operational contracts
+that must be qualified before release. Phase acceptance remains in
+[the backlog](../tasks/backlog.md#open--v5-v0v7-acceptance).
+
+For this layout, release tags are `v5.X.Y` (first release `v5.0.0`), without an
+additional `v5/` tag prefix. Go distinguishes a major-version directory from a
+module subdirectory when [mapping versions to commits](https://go.dev/ref/mod#vcs-version).
+The v4 module retains its existing `v4.X.Y` tags. A branch merge or a passing
+component check does not constitute a v5 release.
+
 ## Deprecation Ritual
 
 Any method or field whose behavior or meaning will change receives a `// Deprecated:` godoc marker **at least one minor release before** the change lands. For example, deprecation in v4.12.0 permits incompatible change in v4.13.0 or later; it does not permit it in the same release.
