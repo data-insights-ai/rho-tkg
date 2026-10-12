@@ -1,0 +1,259 @@
+{
+  "version": 1,
+  "scope": "Focused internal replica receiving activation and graphapply replacement ownership; not full package, full V2, multi-host, power-loss or engine acceptance.",
+  "source_commit": "8f7f716ec6fe2e12935ecb469b5519d70fbb3ecc",
+  "source_inputs": {
+    "root_base": "211cae0c3253d6b26628bf373ef88fdb3e8aaba5",
+    "auditor_source": "5dbfa50d79c8bd6af373cf62b70c9ecfb11731f5",
+    "auditor_worktree_commit": "ed278b3a99ae87247dfcda6b0b939d8e8286791a",
+    "sources": {
+      "v5/internal/graphapply/allocation_host.go": "db4663574fcb201cee93eac5311bc59e75e2e6dbb85f493a6251b61b64cd6dd2",
+      "v5/internal/graphapply/certified_graph_cut.go": "799d5abedd45947b41c5d7fe723748f494fcd789e61de026e347078c4c537f8b",
+      "v5/internal/graphapply/certified_graph_host.go": "0154d43edf38353c31ef6919fdfdfe324610e51d62434ea1d2fd3d303d04b86f",
+      "v5/internal/graphapply/certified_graph_source.go": "a219633486c77a2a92e4b5f776a08d17f4e790719c38836370d2512fd9ef1d96",
+      "v5/internal/graphapply/cross_partition_capacity.go": "8b7ac2e6b2dcba9e0dec869cc999868985e7f3f5f312dddd84723f31aa77f20a",
+      "v5/internal/graphapply/cross_partition_host.go": "030ac44d38124fb913e942e68824d61f68d72264655693c5a7b8ac3bb224d37d",
+      "v5/internal/graphapply/cross_process_coordinator.go": "679d8368d9f3a2bc57447f5fce4c5e8f4fe622bd072f966917824ec8b378ccb4",
+      "v5/internal/graphapply/declared_materializer.go": "6412224884616e172f2996de0c1a75d3e49a9584c20fac4e9ec8e68872d91b6e",
+      "v5/internal/graphapply/graph_replacement_activation.go": "cf791e84441ffd94437e3c0f84ebec8b13bd6d8adca013e2c01750858379c19d",
+      "v5/internal/graphapply/graph_replacement_activation_test.go": "51444edcbdb818e188e9f0131b16ac975093270d79bb71d39981eb8393ce2503",
+      "v5/internal/graphapply/graph_replacement_admission.go": "6c2fda2f0cae75c97c4de57a27c395dd236aed4ee9922141b184fcd3bc9713d2",
+      "v5/internal/graphapply/graph_source_authority.go": "3b9e99f1a603ecc334e8acba54a5978540805cedd2ea393f4c230e2d9512f6c6",
+      "v5/internal/graphapply/graph_source_session.go": "eb841f57458b0ae390fd631121096a2cf9ba24f8c58fbbc426450bfb388c3e45",
+      "v5/internal/graphapply/partition_writes.go": "7d12ac6de8651dca95f79e48f3bb57a8eb619309630a8492201a43d2d10874b8",
+      "v5/internal/graphapply/range_move_codec.go": "2f08cae6d52955c88a3e8cdc2bf705760d4e61d6e9c1db442580914a0e45fcd1",
+      "v5/internal/graphapply/range_move_host.go": "f8b3bc9c08e2d77873d7312cfdc344c740208cb388219fade3a74c66a5d139d4",
+      "v5/internal/graphapply/range_move_prepare.go": "561f5eed58e8361bb8e05310fc8783892c150a552fe10c2f8b1d09a882cd4949",
+      "v5/internal/graphapply/range_move_source.go": "d275906f8eee11008160ba29f0c60a01d369c293f4ecbcd7d77516b2173dcd9f",
+      "v5/internal/replica/driver.go": "2ad92221848aa1ea27ab4dc9e8e006ac6b5b228c6de70f666655a86a711c743f",
+      "v5/internal/replica/receiving.go": "ec3e36d9f8e74ef02b36087ae3bf1409b00f763196027e6028bdeca80e19e40d",
+      "v5/internal/replica/receiving_activation.go": "a8222936f37954bbfe131acb25ff91b28c4e634d9759c9783d76e33556e55f2a",
+      "v5/internal/replica/receiving_activation_process_test.go": "3f2fb1c63d1e9423c779cf6d2e5efa8de1a2bda02b88da9d683321adf0a584de",
+      "v5/internal/replica/receiving_activation_test.go": "8ac7a48285dbeccaec1fae76245e2226b344fec41f55bda3dcf5bcf8c534f6a0"
+    }
+  },
+  "source_status": "23 reviewed D source files; qualified auditor is separate preexisting source. No push.",
+  "go_version": "go1.26.9\ntime 2026-10-02T20:28:03Z",
+  "tools": {
+    "go": {
+      "path": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+      "sha256": "318dee99db233501f6c419fbb4616e5a345ed0b831dbd6c7669b24e1ff8e9e2e"
+    },
+    "golangci-lint": {
+      "path": "/var/tmp/rho-v6-preflight-evidence-20261012/bin/golangci-lint",
+      "sha256": "5a88e04e56c1ccd7617c01666df23e5767d7a12cf21bac2c02e3170d67a27eef"
+    },
+    "limiter": {
+      "path": "/var/tmp/rho-v5-rebase-main-20261010-0mdr6yaw/limit-local.py",
+      "sha256": "6dc4e0362827ecd0854436b9fa1a812342b693d65ba093291d358b359e733283"
+    }
+  },
+  "gates": {
+    "vet": {
+      "command": [
+        "env",
+        "GOMAXPROCS=2",
+        "GOMEMLIMIT=2GiB",
+        "GOFLAGS=-p=1",
+        "GOWORK=off",
+        "GOTOOLCHAIN=local",
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "vet",
+        "./internal/replica",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 46.531,
+      "elapsed_s": 0.862,
+      "exit_code": 0,
+      "reason": "completed",
+      "handle": null
+    },
+    "lint": {
+      "command": [
+        "env",
+        "PATH=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin:/usr/bin:/bin",
+        "GOMAXPROCS=2",
+        "GOMEMLIMIT=2GiB",
+        "GOFLAGS=-p=1",
+        "GOWORK=off",
+        "GOTOOLCHAIN=local",
+        "/var/tmp/rho-v6-preflight-evidence-20261012/bin/golangci-lint",
+        "run",
+        "--config",
+        "../.golangci.yml",
+        "./internal/replica",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 700.125,
+      "elapsed_s": 7.689,
+      "exit_code": 0,
+      "reason": "completed",
+      "handle": 16703
+    },
+    "normal": {
+      "command": [
+        "env",
+        "GOMAXPROCS=2",
+        "GOMEMLIMIT=2GiB",
+        "GOFLAGS=-p=1",
+        "GOWORK=off",
+        "GOTOOLCHAIN=local",
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^Test(ApplicationReceiverActivation|GraphReplacementActivation|GraphReplacementRevocationFencesHostAndSourceBeforeAsyncClose)",
+        "./internal/replica",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 447.0,
+      "elapsed_s": 9.89,
+      "exit_code": 0,
+      "reason": "completed",
+      "handle": 45455,
+      "parents": 13,
+      "subtests": 51,
+      "failures": 0,
+      "skips": 0
+    },
+    "race": {
+      "command": [
+        "env",
+        "GOMAXPROCS=2",
+        "GOMEMLIMIT=2GiB",
+        "GOFLAGS=-p=1",
+        "GOWORK=off",
+        "GOTOOLCHAIN=local",
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-race",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^Test(ApplicationReceiverActivation|GraphReplacementActivation|GraphReplacementRevocationFencesHostAndSourceBeforeAsyncClose)",
+        "./internal/replica",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 646.516,
+      "elapsed_s": 15.117,
+      "exit_code": 0,
+      "reason": "completed",
+      "handle": 16008,
+      "parents": 13,
+      "subtests": 51,
+      "failures": 0,
+      "skips": 0
+    },
+    "coverage": {
+      "command": [
+        "env",
+        "GOMAXPROCS=2",
+        "GOMEMLIMIT=2GiB",
+        "GOFLAGS=-p=1",
+        "GOWORK=off",
+        "GOTOOLCHAIN=local",
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-covermode=atomic",
+        "-coverprofile=/var/tmp/rho-v5-D-focused-20261012/coverage-r5.out",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^Test(ApplicationReceiverActivation|GraphReplacementActivation|GraphReplacementRevocationFencesHostAndSourceBeforeAsyncClose)",
+        "./internal/replica",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 442.844,
+      "elapsed_s": 9.524,
+      "exit_code": 0,
+      "reason": "completed",
+      "handle": 41766,
+      "parents": 13,
+      "subtests": 51,
+      "failures": 0,
+      "skips": 0
+    },
+    "coverfunc": {
+      "command": [
+        "env",
+        "GOMAXPROCS=2",
+        "GOMEMLIMIT=2GiB",
+        "GOFLAGS=-p=1",
+        "GOWORK=off",
+        "GOTOOLCHAIN=local",
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "tool",
+        "cover",
+        "-func=/var/tmp/rho-v5-D-focused-20261012/coverage-r5.out"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 0.656,
+      "elapsed_s": 0.309,
+      "exit_code": 0,
+      "reason": "completed",
+      "handle": null
+    }
+  },
+  "coverage": {
+    "github.com/data-insights-ai/rho-tkg/v5/internal/replica/receiving_activation.go": {
+      "covered_statements": 137,
+      "total_statements": 163,
+      "percent": 84.04907975460122
+    },
+    "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_replacement_activation.go": {
+      "covered_statements": 138,
+      "total_statements": 159,
+      "percent": 86.79245283018868
+    }
+  },
+  "process_fault_witnesses": {
+    "actual_sigkill_before_sync": "old index0, durable term2; actual child PID/wait status logged",
+    "actual_sigkill_after_sync": "new index6/value10/term2; actual child PID/wait status logged",
+    "injected_write": "actual injector operation/error line + fatal exit1 asserted and logged; whole old root0 observed; no factory/ACK",
+    "injected_sync": "actual injector operation/error line + fatal exit1 asserted and logged; whole new root6/value10 observed; no factory/ACK",
+    "claim_cleanup": "synthetic unit error at deferred claim-close seam against genuinely adopted Driver; native Store closed, output withheld; not a Raft fault witness"
+  },
+  "accepted_behavior": [
+    "genuine source quorum read and original nonzero-prefix Append/reject/snapshot",
+    "same receiving RawNode snapshot Step/Ready/persist/Restore/Advance/adoption",
+    "HOME and non-HOME exact retained node/relationship mutation-then-history reads and retained reopen",
+    "nonzero HOME allocator preserved; non-HOME never gains allocator; original default axis preserved",
+    "association transferred once independently of request context; synchronous revocation fence and opaque Close reentry/error caching",
+    "actual adopted replacement election and original future RawNode MsgSnap/SnapshotSend target association",
+    "all authority/frontier failures withhold output and never Advance uncertain persistence"
+  ],
+  "historical_runs": "All early fixture failures, initial low coverage and their raw logs retained in archive. Foreign-prepared assertion fixed to preserved raftlog.ErrInvalid; no production error wrapping.",
+  "static_test_delta": "Final sentinel assertion changed after successful R4 vet/lint; only expected sentinel constant changed, production and test logic otherwise identical.",
+  "raw_archive": {
+    "file": "raw-evidence.tar.gz",
+    "bytes": 442374,
+    "sha256": "c7704be2e02a943c3a01435d3c38ce230742c93b20d7d5f7af7078e1fa982193",
+    "members": 97,
+    "member_hash_manifest_sha256": "8aa7cd9d5bbe579fba3799023ce38c51294d99741986fee3d5418c4fb343274b"
+  },
+  "profile_sha256": "2bf6bd6ae24bab6403ec5049d00262a43dc6b1782946c1f04dc9a635d85be513",
+  "ordinary_constructor": "Existing ordinary constructor Restore unchanged; D uses private pure binding initialization then one post-sync Restore.",
+  "handover_blob": "52cf1ddade36a98aa73c4e0e2fd6f702e2a5a4e8",
+  "authority": "Original PLAN remains authority; no phase closure claim."
+}
