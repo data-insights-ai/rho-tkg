@@ -4,6 +4,12 @@ on:
     branches: [main, v5]
   pull_request:
     branches: [main, v5]
+  workflow_dispatch:
+    inputs:
+      full_validation:
+        description: Full phase/release validation (both modules and tool gates)
+        type: boolean
+        default: true
 permissions:
   contents: read
 concurrency:
@@ -17,7 +23,67 @@ env:
   GOTOOLCHAIN: local
   GOWORK: "off"
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      full: ${{ steps.plan.outputs.full }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      comparison: ${{ steps.plan.outputs.comparison }}
+      migration: ${{ steps.plan.outputs.migration }}
+      external: ${{ steps.plan.outputs.external }}
+      base: ${{ steps.plan.outputs.base }}
+      head: ${{ steps.plan.outputs.head }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Check change-planning policy
+        run: python3 -B scripts/ci-changes-test.py
+      - id: plan
+        run: python3 -B scripts/ci-changes.py plan --head "$GITHUB_SHA"
+      - name: Changed JSON and reference checks
+        if: steps.plan.outputs.full != 'true'
+        env:
+          CI_BASE: ${{ steps.plan.outputs.base }}
+          CI_HEAD: ${{ steps.plan.outputs.head }}
+        run: python3 -B scripts/ci-changes.py docs --base "$CI_BASE" --head "$CI_HEAD"
+  # Main and explicit manual full validation retain the exhaustive gates below.
+  # Routine v5 checks are deliberately not phase/release acceptance evidence.
+  focused:
+    needs: changes
+    if: needs.changes.outputs.full != 'true' && needs.changes.outputs.matrix != '{"include":[]}'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
+    env:
+      GOFLAGS: "-p=1"
+      GOMEMLIMIT: "2GiB"
+      CI_BASE: ${{ needs.changes.outputs.base }}
+      CI_HEAD: ${{ needs.changes.outputs.head }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: ${{ matrix.go_mod }}
+          cache: true
+          cache-dependency-path: "**/go.sum"
+      - run: make -C "${{ matrix.module }}" fmt-check
+      - run: make -C "${{ matrix.module }}" vet
+      - run: make -C "${{ matrix.module }}" build
+      - name: Affected behavior normal, race and scoped coverage
+        run: python3 -B scripts/ci-changes.py run --module "${{ matrix.module }}" --base "$CI_BASE" --head "$CI_HEAD" --output "$RUNNER_TEMP/focused-${{ matrix.module == '.' && 'root' || 'v5' }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: focused-behavior-${{ matrix.module == '.' && 'root' || 'v5' }}
+          path: ${{ runner.temp }}/focused-${{ matrix.module == '.' && 'root' || 'v5' }}
+          retention-days: 14
   test:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -67,6 +133,8 @@ jobs:
           V5_RACE_GRAPHAPPLY_SHARDS: "4"
         run: make test-race
   coverage:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -88,20 +156,12 @@ jobs:
           cache-dependency-path: "**/go.sum"
       - run: make cover-gate
   lint:
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: needs.changes.outputs.matrix != '{"include":[]}' && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.full != 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
-      matrix:
-        include:
-          - module: .
-            go_mod: go.mod
-            config: .golangci.yml
-            only_new: true
-          - module: v5
-            go_mod: v5/go.mod
-            config: ../.golangci.yml
-            only_new: false
+      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -118,15 +178,12 @@ jobs:
           working-directory: ${{ matrix.module }}
           args: --config ${{ matrix.config }} --timeout=5m
   security:
+    needs: changes
+    if: needs.changes.outputs.matrix != '{"include":[]}'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
-      matrix:
-        include:
-          - module: .
-            go_mod: go.mod
-          - module: v5
-            go_mod: v5/go.mod
+      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
     defaults:
       run:
         working-directory: ${{ matrix.module }}
@@ -142,6 +199,8 @@ jobs:
       - run: make security
       - run: make vulncheck
   comparison-correctness:
+    needs: changes
+    if: needs.changes.outputs.comparison == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -162,6 +221,8 @@ jobs:
           path: ${{ runner.temp }}/rho-compare-evidence
           retention-days: 14
   migration-preflight:
+    needs: changes
+    if: needs.changes.outputs.migration == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -184,3 +245,16 @@ jobs:
       - run: make lint
       - run: make security
       - run: make vulncheck
+  external-fdb-record:
+    needs: changes
+    if: needs.changes.outputs.external == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Check changed native-module source against recorded qualification
+        env:
+          CI_BASE: ${{ needs.changes.outputs.base }}
+          CI_HEAD: ${{ needs.changes.outputs.head }}
+        run: python3 -B scripts/ci-changes.py external --base "$CI_BASE" --head "$CI_HEAD"
