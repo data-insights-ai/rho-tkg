@@ -1,0 +1,37 @@
+Backlog 42 / 33 mutants, one real edit each, restored after the run (2026-10-12).
+M1 door answers the history half only (ignores the current row): KILLED (rerun with a unique pattern)
+    --- FAIL: TestCurrentStampsDifferential
+    --- FAIL: TestLatestStampsDifferential
+M2 badger skips the cache hit (stale after a plain ReplaceNode in the buffer): KILLED
+    --- FAIL: TestCurrentStamps_CacheBeforeCommittedRow (0.02s)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.030s
+M3 badger answers a deleted current row (cache tombstone ignored): SURVIVED - EQUIVALENT: a delete drops the ID from nodeIDs/relIDs under the same idxMu hold that writes the tombstone, so the index check that follows answers not found; the tombstone branch only saves the idxMu read. Faulty variant "reads the committed row first" is M2 (killed).
+M4 tiered asks the timestamp event shard only (not the shard the lend door reads): KILLED
+    --- FAIL: TestTieredCurrentStamps_RoutingShapes (0.02s)
+    --- FAIL: TestTieredCurrentStamps_RowOnTwoShards (0.20s)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	1.181s
+M5 sharded asks a non-owner slot: KILLED
+    --- FAIL: TestCurrentStampsSharded (0.01s)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	0.013s
+M6 partial decode returns zero stamps: KILLED
+    --- FAIL: TestDecodeWireRowStamps (0.00s)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	0.008s
+    --- FAIL: TestCurrentStamps_CacheBeforeCommittedRow (0.11s)
+    --- FAIL: TestCurrentStamps_StoredRowForms (0.37s)
+M7 core admits a capability a wrapper only inherits: KILLED
+    --- FAIL: TestCurrentStampsCapabilityAdmission (0.00s)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.004s
+M8 tiered walk trusts liveness without the route's probe: KILLED
+    --- FAIL: TestTieredHistoryPresence_RoutingShapes (0.15s)
+    --- FAIL: TestTieredHistoryPresence_ShardErrorsSurfaceLikeHistory (0.02s)
+    --- FAIL: TestTieredHistoryStamps_RoutingShapes (0.08s)
+    --- FAIL: TestTieredHistoryStamps_Errors (0.06s)
+M9 (33) the ID gather drops the history candidates: KILLED
+    --- FAIL: TestEffectiveTimeline_PublicFacade (0.16s)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.314s
+M10 (33) badger lists another type's members: KILLED
+    --- FAIL: TestMemberIDsMatchTheScanDoors (0.18s)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.194s
+M11 (33) the effective scan gathers from the rows (no ID capability): KILLED
+    --- FAIL: TestEffectiveScanReadsEachRowOnce (0.14s)
+    FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.146s

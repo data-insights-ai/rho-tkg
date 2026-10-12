@@ -39,13 +39,11 @@ item; two traced, unreproduced HIGH? findings in item 4. Next step: items 33 + 4
 | 26 | LOW (known limit) | Old chains with collided versions keep answering in the old version order | open; schedule only if a consumer holds such chains |
 | 28 | FEATURE (perf) | State form of the as-of column doors and counts | open; design first (sigma) |
 | 31 | LOW | Bulk and point as-of disagree with the cascade oracle on version gaps | open; fix when a consumer holds such chains |
-| 33 | MEDIUM (perf) | Badger effective-timeline scan costs 13-17 µs per relationship | open; restart pending (baseline `tasks/evidence/badger-read-cost/`) |
 | 35 | FEATURE | Broader effective scans | open; signatures confirmed by sigma 2026-10-10 (HANDOVER.md §11) |
 | 37 | LOW | Tiered error-rollback restore leaves a window with empty history | open; `restoreRelHistorySnapshot` still truncates then puts (`tieredstore_write_history.go:899`) |
 | 39 | LOW (not tested) | Per-entity compaction stubs survive `Admin().Reset` | open; `reapCompactionForReset` still leaves the stubs (`core/compaction.go:285`) |
 | 40 | LOW (cosmetic) | A cascade resumption may end at an earlier life's own bound | open |
-| 41 | MEDIUM (RAM) | Merge the history stamps sidecar into the presence set | open; after 42 |
-| 42 | FEATURE (perf) | A current-row stamps capability | open; restart with 33 |
+| 41 | MEDIUM (RAM) | Merge the history stamps sidecar into the presence set | open; measured 2026-10-12, not merged (saves 31 % only where both doors run, +122 % for HasHistory alone) |
 | 44 | MEDIUM (traced, not reproduced) | Commit-clock floor persisted only at Close | open; filed 2026-10-10 from `tasks/review-v5-plan-vs-code-20261009.md` §6.5 |
 | 45 | MEDIUM (API) | Internal sentinels reach callers but have no exported alias; `ErrMixedNumericColumn` is outside the errors inventory test | open; found by the doc review of `docs/errors.md` 2026-10-10 |
 | 46 | LOW (stale comments) | Code comments that contradict the code or cite ADRs no longer in `docs/adr/` | open; found by the doc reviews 2026-10-10 |
@@ -290,12 +288,6 @@ Everything the handover `tasks/handover-effective-read-cost-20261009.md` asked f
 
 **Bulk and point as-of disagree with the cascade oracle on version gaps** (LOW, pre-existing, found by the review of the bulk as-of change 2026-10-09): on a chain with a version gap above the current row (direct `Store.TruncateNodeHistory`, or a re-import over a compacted old life stored by v4.43–v4.47 (since item 38 a re-import starts above the chain's top)) both `NodeAsOf` doors miss a row above a gap past current+1 (56 cases against `cascadeAsofWant` in the reviewer's scratch test, identical on main and the branch). The allocator (item G) never creates such a gap; the density assumption is documented in `core/version_alloc.go` and AGENTS.md. Fix when a consumer holds such chains: either close the gap at truncate/re-import time (renumber under the entity lock) or make the doors scan for the max version above current. Red test first (the reviewer's five gap chains, node and rel, with/without reopen, 17 pins).
 
-### 33. Badger effective-timeline scan costs 13-17 µs per relationship
-
-*MEDIUM (perf)* — open; restart pending (baseline `tasks/evidence/badger-read-cost/`).
-
-**Badger effective-timeline scan costs 13-17 µs per relationship** (MEDIUM, perf, from the effective-timeline numbers of v4.47.0: ≈ 3 s for 200 K rels vs 1.3 µs/rel on memory): the pinned candidate gather decodes every current row and each rel's row is then read again. Reuse the rows the gather decoded, or gather candidate IDs only (key scan) and read once. Measure with `BenchmarkForEachRelEffectiveByType` before and after.
-
 ### 35. Broader effective scans
 
 *FEATURE* — open; signatures confirmed by sigma 2026-10-10 (HANDOVER.md §11).
@@ -322,15 +314,11 @@ Everything the handover `tasks/handover-effective-read-cost-20261009.md` asked f
 
 ### 41. Merge the history stamps sidecar into the presence set
 
-*MEDIUM (RAM)* — open; after 42.
+*MEDIUM (RAM)* — open; measured, not merged (reason below).
 
 **Merge the history stamps sidecar into the presence set** (MEDIUM, RAM, from the review of `LatestStamps` 2026-10-10): one map with `{from, to, top}` under one protocol saves about 30 B/ID and one of the two lazy builds (66 B/ID today vs the 16 B target; 66 MB at 1 M IDs with history). Red first: the existing differentials (HasHistory, LatestStamps) stay green on the merged structure; a memory-per-ID benchmark gate.
 
-### 42. A current-row stamps capability
-
-*FEATURE (perf)* — open; restart with 33.
-
-**A current-row stamps capability** (FEATURE, perf, from the review of `LatestStamps` 2026-10-10): `LatestStamps` on a badger entity-cache miss costs 6.5–7.1 µs and 25 allocs (reads and decodes the whole current row), sharded/tiered allocate 8–12 per call (core treats sharded as an untrusted store: no Lend, a validated copy). Add an optional capability that reads only the current row's temporal block (badger: temporal-block read on a cache miss; sharded/tiered: slot routing without copying). Measure `BenchmarkLatestStampsRotating` before and after.
+Measured 2026-10-12 (`tasks/evidence/badger-read-cost/41-01-sidecar-ram-per-id.txt`, the two map shapes at 10 K / 100 K / 1 M IDs): presence 30.6 / 23.6 / 37.7 B/ID, stamps 65.6 / 52.5 / 83.8 B/ID, both 96 / 76 / 121 B/ID; one stamps-shaped map saves the presence map, 31 % (37.7 B/ID at 1 M) — but only for a store whose callers use both `HasHistory` and `LatestStamps`. Not merged: a caller of `HasHistory` (or the bulk as-of doors, which build the presence set) alone would pay the stamps entry, 84 instead of 38 B/ID at 1 M (+122 %), and its key-only build would become a value build; the presence `top` (an upper bound a SET raises) and the stamps `top` (exact, a lowering overwrite marks the ID unknown) would share one protocol whose unknown set the bulk as-of `bound` must then also treat as unresolved. Reopen when a consumer runs both doors on one store and reports the RAM; then the merged map plus a red memory-per-ID gate.
 
 ### 44. Commit-clock floor persisted only at Close
 
@@ -454,6 +442,8 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Item 29 (MEDIUM) — a failed node write left its `UniqueForever` value owned (crash consistency between claim and row: v5 PLAN §5.2) | `[4.49.0]` Fixed; evidence `tasks/evidence/unique-claims/` |
 | Item 30 (FEATURE, perf) — `Nodes()/Rels().LatestStamps(id)` | `[4.49.0]` Added; evidence `tasks/evidence/latest-stamps/` |
 | Item 43 (FEATURE, ai-soc) — retraction: `Retract` / `RetractWithTx` on every write door, "this was never true" | `[4.49.1]` Added "Retraction: a way to say this was never true"; evidence `tasks/evidence/retraction/` |
+| Item 33 (MEDIUM, perf) — badger effective scans read each candidate row once (`store.MemberIDsCapability`) | `[Unreleased]` Changed; evidence `tasks/evidence/badger-read-cost/` |
+| Item 42 (FEATURE, perf) — `store.CurrentStampsCapability`, the current-row half of `LatestStamps` | `[Unreleased]` Added; evidence `tasks/evidence/badger-read-cost/` |
 
 Recover closed investigation prose via `git log --all -- tasks/backlog.md` if needed.
 
