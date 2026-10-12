@@ -227,7 +227,7 @@ Legend: [ ] open, (S) = waits for sigma, (R) = waits for René's decision.
 7. [ ] Residual backlog: the open table in `tasks/backlog.md` (13, 15, 16, 22, 23, 25, 26, 31, 37, 39, 40, 44, 45, 46, 47, older 0–5, 7, 10).
 8. [x] Doc drift fixed by the full md review (see §7); keep the md files in step with every release (René: "keep the md files up2date").
 9. [ ] Delete the stale `wip/badger-scan-flush-evict` branch after René confirms (R).
-10. [ ] (R) Answer: keep behaviour changes as named stability exceptions (default) or ship through the deprecation ritual.
+10. [x] (René 2026-10-12) Behaviour changes ship through the deprecation ritual (`docs/stability.md`); no new named exceptions. v5 → main merge is Markus's (decision 5). Patch-only rule + 12 "not in plan" rows sent to Markus: GitHub issue #11.
 11. [ ] Optional: write the v4→v5 importer reference tests Markus might want (note on main: `tasks/v4-changes-for-v5-importer-20261010.md`);
     re-arm the origin watch (§8) if René still wants to follow `v5`.
 12. [ ] **PATCH VERSIONS ONLY** (René 2026-10-10: "just patch versions.. no minor versions until asked"). v4.50.1 is released (backlog 34, 2026-10-11); v4.51.1 and v4.51.2 are released (2026-10-12); the next tag is v4.51.3 because Markus released v4.50.0 (see below), also for additive features such as the retraction door; no v4.50.0 until he asks. Gate, tag, notify consumers as before.
