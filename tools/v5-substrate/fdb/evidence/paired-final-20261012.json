@@ -1,0 +1,218 @@
+{
+  "scope": "Final source qualification of FDB local paired fixture and refusal helpers; no new external fault schedule or native paired-equality claim",
+  "sourceCheckpoint": "704fc560805469cc4de0f9ac772e11eb9148d0af",
+  "runs": {
+    "failed_typed_outcome_expectation": {
+      "directory": "rho-v5-fdb-1791792308-97445",
+      "receiptSHA256": "93c43fb6f3d9358ffd5614eabb1560b0ded2e8cb3201a2f7dcf7d5ff3d172e0e",
+      "exit": 1,
+      "cleanupExit": 0,
+      "verifiedArtifactHashes": 149,
+      "scope": "one physical host, four logical FDB zones; normal/race/coverage tests, no external kill schedule"
+    },
+    "failed_graph_frame_expectation": {
+      "directory": "rho-v5-fdb-1791792485-1048",
+      "receiptSHA256": "18de7ca264ce2e179bc913995b274c0e89bcce4b44e1edb441ff948cea0e4c79",
+      "exit": 1,
+      "cleanupExit": 0,
+      "verifiedArtifactHashes": 146,
+      "scope": "one physical host, four logical FDB zones; normal/race/coverage tests, no external kill schedule"
+    },
+    "failed_environment_and_nonfresh_expectations": {
+      "directory": "rho-v5-fdb-1791792652-4630",
+      "receiptSHA256": "618ed8d19d870f0b7f267650065362511dcb7b7d0592e161e0ade2ab0a5b1823",
+      "exit": 1,
+      "cleanupExit": 0,
+      "verifiedArtifactHashes": 149,
+      "scope": "one physical host, four logical FDB zones; normal/race/coverage tests, no external kill schedule"
+    },
+    "passing_normal_race": {
+      "directory": "rho-v5-fdb-1791792806-8050",
+      "receiptSHA256": "f8e09d6db43e764ae9d88c969b50bf5663878c5de79dac92a20715656ecf3f16",
+      "exit": 0,
+      "cleanupExit": 0,
+      "verifiedArtifactHashes": 178,
+      "scope": "one physical host, four logical FDB zones; normal/race/coverage tests, no external kill schedule"
+    },
+    "final_pinned_statics": {
+      "directory": "rho-v5-fdb-1791793042-12497",
+      "receiptSHA256": "0a3ac418174bdc4b7113688b4102155d24858afcc15fadc707c06c8943ac78ab",
+      "exit": 0,
+      "cleanupExit": 0,
+      "verifiedArtifactHashes": 41,
+      "scope": "pinned compilation/static tools; no cluster or fault schedule"
+    }
+  },
+  "archive": {
+    "file": "paired-final-20261012.tar.gz",
+    "sha256": "c9a1c6a6575e536ad4aca0153594de249fd3406237d7fe9fdb58c9516f339b90",
+    "bytes": 878668
+  },
+  "finalSourceSHA256": {
+    "paired_graph_fault_trace.go": "44b3ba9e7dc6f4c321571bb840fa60db1a3e696612c03dd61923ff1766c0e316",
+    "paired_graph_fault_trace_test.go": "efb1489036247d8ce40df3538dbff3486152508f978efb6336e4e6e4d3ff8554",
+    "paired_controller.py": "3df35c196a4463c1dff41c22116c2808f9b789c699f46d3f9d64dae3c80cd891",
+    "paired_controller_test.py": "ac3103479faccae8c0cc31a46862cc534b199aacced022eeeb43ea5081d6a77e",
+    "main.go": "794c21b3fc46b3cd3ec0f8637268ceef18333fa41b299e1819ded7d007564515",
+    "run-local.sh": "7ce68e9be307976518bce458a1547efca6e41712042d8ef87e4a0c2f1b2603a9",
+    "launcher.py": "5e28ad7241b3792786be15acb24f605d9385799df27d713d6f48d9dfe96d73d6",
+    "README.md": "4bfc02f3540fbbf748321597be4d6376741288fac54267eb94b0bcc8d29a917b"
+  },
+  "runtimeSourceEquality": "All runtime source hashes in passing normal/race and final pinned-static receipts match each other and current source; README-only evidence links updated afterward",
+  "qualifiedFaultGoBodyCarry": {
+    "sha256": "44b3ba9e7dc6f4c321571bb840fa60db1a3e696612c03dd61923ff1766c0e316",
+    "unchangedSinceSuccessfulFaultLane": true,
+    "earlierReceipt": "paired-20261012.json",
+    "actualTraceSHA256": "cde5dfee209c99c78de3cc43b31c78b7471dedc61f38b2ddeb98e7033cf8c14c",
+    "earlierTestContainerConfiguredSeconds": 490,
+    "earlierObservedTestContainerSeconds": 84.58248508279212,
+    "currentTestContainerConfiguredSeconds": 310,
+    "currentObservedTestContainerSeconds": 107.14573916699737,
+    "qualification": "Preserve earlier actual490 configuration; current qualification actually configured310, no relabeling or repeated external kills"
+  },
+  "gates": {
+    "compile": "PASS Go1.26.9 linux/arm64",
+    "vet": "PASS",
+    "normal": {
+      "passedParents": 33,
+      "failedParents": 0,
+      "skippedParents": 0,
+      "seconds": 19.776
+    },
+    "race": {
+      "passedParents": 33,
+      "failedParents": 0,
+      "skippedParents": 0,
+      "seconds": 49.374
+    },
+    "packageCoveragePercent": 84.3,
+    "newFileCoverage": {
+      "totalStatements": 512,
+      "coveredStatements": 432,
+      "percent": 84.375
+    },
+    "mainCoverage": {
+      "totalStatements": 66,
+      "coveredStatements": 54,
+      "percent": 81.818182
+    },
+    "lifecycleCoverage": {
+      "totalStatements": 384,
+      "coveredStatements": 318,
+      "percent": 82.8125
+    },
+    "profileCoverage": {
+      "totalStatements": 36,
+      "coveredStatements": 32,
+      "percent": 88.888889
+    },
+    "pinnedLint": "PASS golangci-lint2.13.2,0issues",
+    "pinnedSecurity": "PASS gosec2.29.0",
+    "pinnedVulnerability": "PASS govulncheck1.7.0,no vulnerabilities",
+    "pythonGuards": {
+      "passed": 9,
+      "artifactSHA256": "f9f93cbfef5595b3a28183ba1c7f417615f837176ad48486ec4ac10ee3c2ca86"
+    },
+    "shell": "Bash syntax,shellcheck,diff whitespace PASS"
+  },
+  "coverageAccounting": {
+    "artifact": "accounting/coverage-accounting.json",
+    "sha256": "774304333830b87b7e42bfaa66db2332546abdcc8e3ce0127ecbd95671a8406a",
+    "perFile": {
+      "changes.go": {
+        "totalStatements": 92,
+        "coveredStatements": 78,
+        "percent": 84.782609
+      },
+      "fault.go": {
+        "totalStatements": 134,
+        "coveredStatements": 85,
+        "percent": 63.432836
+      },
+      "graph_fault.go": {
+        "totalStatements": 221,
+        "coveredStatements": 186,
+        "percent": 84.162896
+      },
+      "graph_oracle.go": {
+        "totalStatements": 94,
+        "coveredStatements": 91,
+        "percent": 96.808511
+      },
+      "graph_run.go": {
+        "totalStatements": 71,
+        "coveredStatements": 60,
+        "percent": 84.507042
+      },
+      "graph_slice.go": {
+        "totalStatements": 253,
+        "coveredStatements": 215,
+        "percent": 84.980237
+      },
+      "lifecycle_profile.go": {
+        "totalStatements": 36,
+        "coveredStatements": 32,
+        "percent": 88.888889
+      },
+      "lifecycle_trace.go": {
+        "totalStatements": 384,
+        "coveredStatements": 318,
+        "percent": 82.8125
+      },
+      "main.go": {
+        "totalStatements": 66,
+        "coveredStatements": 54,
+        "percent": 81.818182
+      },
+      "paired_graph_fault_trace.go": {
+        "totalStatements": 512,
+        "coveredStatements": 432,
+        "percent": 84.375
+      },
+      "state.go": {
+        "totalStatements": 432,
+        "coveredStatements": 384,
+        "percent": 88.888889
+      }
+    },
+    "newPublicRhoMethods": 0,
+    "newGoFileThresholdPercent": 80,
+    "thresholdMet": true
+  },
+  "inventory": {
+    "artifact": "accounting/parent-inventory.json",
+    "sha256": "717c8c31f58c4915cebad94d9dd5b2a142433a661a03a6ff99723699c82254e9",
+    "same33ParentNamesInNormalAndRace": true
+  },
+  "diagnosticQualification": {
+    "failed_typed_outcome_expectation": "Test expected errUnavailable for malformed original outcome, but Fresh(After) typed get decodes before raw-witness availability and returns errInvalid; exact sentinel expectation corrected",
+    "failed_graph_frame_expectation": "Test expected errStale for unequal from/to graph frames; changes preflight classifies invalid frame before authority lookup with errInvalid; exact sentinel expectation corrected",
+    "failed_environment_and_nonfresh_expectations": "OS cannot admit NUL environment value, changed malformed graph to representable129-byte string; nonfresh seed has retained history outside newly empty initial group interval, lifecycleFold returns errUnavailable; exact sentinel expectation corrected",
+    "statePreservation": "Temporary native original-record mutations have deferred restores, and actual current/full-group ledger equality is asserted after all refusals; no semantic RED manufactured or broader fixture added"
+  },
+  "resources": {
+    "profile": "small",
+    "liveAggregateMiB": 3072,
+    "liveAggregateCPUs": 2,
+    "servers": 4,
+    "serverMiB": 512,
+    "serverCPUs": 0.375,
+    "sequentialClientMiB": 1024,
+    "sequentialClientCPUs": 0.5,
+    "prebuildMiB": 1024,
+    "prebuildCPUs": 2,
+    "goSeconds": 180,
+    "testOrchestrationSeconds": 310,
+    "liveSeconds": 900,
+    "cleanupSeconds": 180,
+    "health": "healthy fully replicated triple with4 machines/3 coordinators before and after unit lane",
+    "externalKillScheduleExecuted": false
+  },
+  "cleanup": "All five runtime handles terminal and closed; receipts cleanup0; exact current owned containers,volumes,networks,images listed absent; cached tools/base images retained",
+  "runtimeLease": "Explicitly released after final static42772 terminal; no further Go/Docker runtime during packaging",
+  "limitations": [
+    "Local functional FDB side only; actual native paired trace/full equality remains separately owned",
+    "No independent-host durability,powerloss,full fault/cost matrix or engine selection",
+    "Earlier historical source/runtime receipts remain unchanged with their stated coverage and configured-bound limitations"
+  ]
+}

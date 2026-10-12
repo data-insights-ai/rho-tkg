@@ -1,0 +1,67 @@
+{
+  "scope": "Source-only paired-local-graph-fault implementation checkpoint; no runtime or fault acceptance",
+  "baseCommit": "ded845311ae9c1dfd3fd90d7e3ad7d8ec96cd62b",
+  "fixtureID": "graph-fault-local-v1",
+  "sourceSHA256": {
+    "paired_graph_fault_trace.go": "545249f8af7e6302ec9c9e5ca02b8b79bb93fb08cb5a421cf0c2c5c3f1c9bb71",
+    "paired_graph_fault_trace_test.go": "c07362334bbeb5dfd8d0814c349ef5ad0111f9a03da8af220c82658253e83411",
+    "paired_controller.py": "3df35c196a4463c1dff41c22116c2808f9b789c699f46d3f9d64dae3c80cd891",
+    "paired_controller_test.py": "ac3103479faccae8c0cc31a46862cc534b199aacced022eeeb43ea5081d6a77e",
+    "main.go": "794c21b3fc46b3cd3ec0f8637268ceef18333fa41b299e1819ded7d007564515",
+    "run-local.sh": "824e2d2e9b4e7bfd2602e41b3520efdb1edc91b27ce58ac9b4bfbd1ee542bf5e",
+    "launcher.py": "323ffba66e8107d08c99dd525fe376b84b748151ef0e7c2404c9039349cd4d83",
+    "README.md": "92847ddc614d070942862739dd00854363e45676b0c64de5c3e527cfd86631c3"
+  },
+  "archive": {
+    "file": "paired-20261012-source.tar.gz",
+    "sha256": "f81d69f35be046d0a6350f507747ce2959fea7ce2960dfcf6c366dac508f80a4"
+  },
+  "rawArtifactsSHA256": {
+    "python-guards.txt": "b7697948c06742e929e41dd3e8a27b5d77f0e502952398bfaf32c1cbe548cfae",
+    "source-sha256.json": "5dadaf04e7fcebee4b54e7314e19e567da790e5f55a8a5509c88d0c3be04d2f8"
+  },
+  "lightweightChecks": {
+    "python": {
+      "command": "python3 -B -m unittest -v launcher_test paired_controller_test",
+      "exit": 0,
+      "tests": 9,
+      "seconds": 0.03,
+      "scope": "Direct controller/launcher contract guards; synthetic records do not prove real process faults"
+    },
+    "bashSyntax": {
+      "command": "bash -n tools/v5-substrate/fdb/run-local.sh",
+      "exit": 0
+    },
+    "diffWhitespace": {
+      "command": "git diff --check",
+      "exit": 0
+    }
+  },
+  "unrunGates": [
+    "Go compilation",
+    "normal Go tests",
+    "race Go tests",
+    "coverage and changed-statement accounting",
+    "pinned lint/security/vulnerability tools",
+    "actual small-profile paired FDB fault lifecycle",
+    "shared checker against independently qualified actual native/FDB traces"
+  ],
+  "runtimeLease": "Native author owns sole heavy runtime lease; no Go/build/test/Docker started for this checkpoint",
+  "designBounds": {
+    "liveAggregateMiB": 3072,
+    "liveAggregateCPUs": 2,
+    "goInvocationSeconds": 180,
+    "prebuildOrchestrationSeconds": 600,
+    "liveLifecycleSeconds": 900,
+    "ordinaryClientSeconds": 45,
+    "cleanupSeconds": 180,
+    "qualifiedNow": false
+  },
+  "limitations": [
+    "Compile-first extension; no retrospective semantic RED manufactured",
+    "Preserves accepted scalar, legacy graph-fault and seven-operation lifecycle modes; their regression gates are pending for this source",
+    "No real client/server kills, same-volume replay or resource/health claims follow from this source checkpoint",
+    "No multi-host durability, power loss, full matrix/cost or engine-selection acceptance",
+    "Shared schema/checker remains separately owned; future integration must qualify both actual traces"
+  ]
+}

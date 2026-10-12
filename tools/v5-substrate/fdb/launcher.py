@@ -110,6 +110,8 @@ def main():
             "static": "pinned compilation/static tools; no cluster or fault schedule",
             "lifecycle-trace": "one physical host, four logical FDB zones; lifecycle trace, no external kill schedule",
             "graph-fault": "one physical host, four logical FDB zones; functional graph faults only",
+            "paired-graph-fault": "one physical host, four logical FDB zones; paired fixed graph process faults only",
+            "paired-tests": "one physical host, four logical FDB zones; normal/race/coverage tests, no external kill schedule",
             "test": "one physical host, four logical FDB zones; native tests and scalar faults",
             "smoke": "one physical host, four logical FDB zones; native scalar smoke only",
         }

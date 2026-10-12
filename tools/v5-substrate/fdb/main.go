@@ -39,14 +39,17 @@ func main() {
 }
 
 func run() error {
-	if len(os.Args) != 2 || (os.Args[1] != "smoke" && os.Args[1] != "graph-smoke" && os.Args[1] != "lifecycle-trace" && !strings.HasPrefix(os.Args[1], "fault-") && !strings.HasPrefix(os.Args[1], "graph-fault-")) {
-		return fmt.Errorf("usage: fdb-spike smoke|graph-smoke|lifecycle-trace|fault-*|graph-fault-*")
+	if len(os.Args) != 2 || (os.Args[1] != "smoke" && os.Args[1] != "graph-smoke" && os.Args[1] != "lifecycle-trace" && !strings.HasPrefix(os.Args[1], "fault-") && !strings.HasPrefix(os.Args[1], "graph-fault-") && !strings.HasPrefix(os.Args[1], "paired-fault-")) {
+		return fmt.Errorf("usage: fdb-spike smoke|graph-smoke|lifecycle-trace|fault-*|graph-fault-*|paired-fault-*")
 	}
 	db, err := openDB()
 	if err != nil {
 		return err
 	}
 	defer db.Close()
+	if strings.HasPrefix(os.Args[1], "paired-fault-") {
+		return runPairedGraphFault(db, os.Args[1])
+	}
 	if os.Args[1] == "lifecycle-trace" {
 		graph := os.Getenv("FDB_LIFECYCLE_GRAPH")
 		if graph == "" {

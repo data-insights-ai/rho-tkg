@@ -1,0 +1,118 @@
+{
+  "scope": "Current FDB-only local functional runtime checkpoint; coverage/final-source gates and actual paired native equality remain open",
+  "baseCommit": "ded845311ae9c1dfd3fd90d7e3ad7d8ec96cd62b",
+  "sourceCheckpointCommit": "e449391ae2e0a1012e2a23d9494d8d29de41bdf4",
+  "fixtureID": "graph-fault-local-v1",
+  "archive": {
+    "file": "paired-20261012.tar.gz",
+    "sha256": "95c08fe73a4303482876fd887b0fc6d25b581718e62e40134add270f9389343a",
+    "bytes": 1878464
+  },
+  "runs": {
+    "initial_static": {
+      "directory": "rho-v5-fdb-1791784117-90472",
+      "receiptSHA256": "83a2322375ff525afbcf99050bfd255ff505e4c8895063d3321a0e4247892bb4",
+      "exit": 0,
+      "cleanupExit": 0,
+      "verifiedArtifactHashes": 41
+    },
+    "failed_phase_isolation": {
+      "directory": "rho-v5-fdb-1791784204-92424",
+      "receiptSHA256": "779f69e2b4a8543f083001d810bd9a2452e9fabae66c9566646988a926938d7f",
+      "exit": 1,
+      "cleanupExit": 0,
+      "verifiedArtifactHashes": 150
+    },
+    "successful_local_lane": {
+      "directory": "rho-v5-fdb-1791784452-98317",
+      "receiptSHA256": "f490acf5c8ccceae645f64fbd267e6b632ff004a4a8439ed1b211cd71c5df677",
+      "exit": 0,
+      "cleanupExit": 0,
+      "verifiedArtifactHashes": 552
+    }
+  },
+  "finalSourceSHA256": {
+    "paired_graph_fault_trace.go": "44b3ba9e7dc6f4c321571bb840fa60db1a3e696612c03dd61923ff1766c0e316",
+    "paired_graph_fault_trace_test.go": "97b717d6131d657d500f23592acaaf2b45fbf8dc7142a60a0167e29d8473971e",
+    "paired_controller.py": "3df35c196a4463c1dff41c22116c2808f9b789c699f46d3f9d64dae3c80cd891",
+    "paired_controller_test.py": "ac3103479faccae8c0cc31a46862cc534b199aacced022eeeb43ea5081d6a77e",
+    "main.go": "794c21b3fc46b3cd3ec0f8637268ceef18333fa41b299e1819ded7d007564515",
+    "run-local.sh": "994987b22f335de24818f5a7d8aeba3df5df883a1ee9843f9559939123cb785b",
+    "launcher.py": "323ffba66e8107d08c99dd525fe376b84b748151ef0e7c2404c9039349cd4d83",
+    "README.md": "cf044d812331f85904714593d145b916ba6b5bcdcbe075c7d03ed67e72823135"
+  },
+  "successfulRuntimeSourceQualification": {
+    "GoBodySHA256": "44b3ba9e7dc6f4c321571bb840fa60db1a3e696612c03dd61923ff1766c0e316",
+    "GoBodyUnchangedSinceSuccessfulLane": true,
+    "testAmendment": "285-line finite refusal matrix written after live source seal; unrun",
+    "launcherAmendment": "Configured test-container490-second outer bound restored to310 after terminal; observed elapsed84.58248508279212 below310; this receipt is not a configured310 run",
+    "configuredPerGoSeconds": 180,
+    "configuredLiveSeconds": 900
+  },
+  "gates": {
+    "compile": "PASS Go1.26.9 linux/arm64",
+    "normal": "33 parents PASS; 0 failures,0 skips;17.110s",
+    "race": "33 parents PASS;0 failures,0 skips;30.915s",
+    "packageCoveragePercent": 81.1,
+    "newFileCoverage": {
+      "coveredStatements": 367,
+      "totalStatements": 512,
+      "percent": 71.68,
+      "status": "BLOCKING; amended direct refusal matrix not yet run"
+    },
+    "mainCoverage": {
+      "covered": 54,
+      "total": 66,
+      "percent": 81.82
+    },
+    "initialPinnedStatics": "PASS lint/gosec/govulncheck before narrow Intermediate.RawCurrent Go amendment; final static qualification pending",
+    "liveFaultSchedule": "PASS actual before-Commit and lost-committed-reply client kills, fixed-original zone-loss progress, all-four stopped before any same-volume restart, six recover/original retries after ready",
+    "independentFDBAnalysis": "PASS actual6steps/6oldreads via reviewed checker API; not paired equality or checker CLI pass"
+  },
+  "trace": {
+    "file": "successful_local_lane/paired-graph-fault-trace.json",
+    "sha256": "cde5dfee209c99c78de3cc43b31c78b7471dedc61f38b2ddeb98e7033cf8c14c",
+    "bytes": 2984168,
+    "steps": 6,
+    "oldReads": 6,
+    "completeLogicalGroups": 6,
+    "componentChanges": 7,
+    "physicalGraphEffectWrites": 14,
+    "controllerArtifactHashesVerified": 25,
+    "sealedCommandPrefixBytes": 62252,
+    "sealedPrefixVerifiedAgainstFullFinalLedger": true,
+    "backendRawArtifactHashVerified": true
+  },
+  "independentRootReconstruction": {
+    "status": "Root reported verified; reconstructed finalized JSON equals actual captured trace using backend raw artifact plus25 controller artifacts and exact sealed prefix",
+    "reconstructedTraceSHA256": "cde5dfee209c99c78de3cc43b31c78b7471dedc61f38b2ddeb98e7033cf8c14c",
+    "qualification": "Independent reconstruction, not checker CLI pass"
+  },
+  "failureQualification": {
+    "failed_phase_isolation": "Normal33PASS then race9PASS/24FAIL because deterministic test graph namespaces were reused in same owned ephemeral store; controller isolation defect, not a paired semantic RED",
+    "approvedFix": "After terminal normal, capped30-second explicit owned /evidence/fdb.cluster clear of [g0/,g2/) and empty getrange; no system/topology keys and no later fault-schedule reset",
+    "compileFirst": "No retrospective semantic RED manufactured"
+  },
+  "limits": {
+    "physicalHosts": 1,
+    "independentFaultDomains": false,
+    "profile": "small",
+    "aggregateAdmissionMiB": 3072,
+    "aggregateAdmissionCPUs": 2,
+    "servers": 4,
+    "serverMiB": 512,
+    "serverCPUs": 0.375,
+    "sequentialClientMiB": 1024,
+    "sequentialClientCPUs": 0.5,
+    "replication": "Healthy fully replicated triple,4 logical machines/3 coordinators before and after reopen",
+    "cleanup": "exit0; exact owned tag containers,volumes,network,images independently listed absent"
+  },
+  "remaining": [
+    "Run amended normal/race coverage and meet new-code>=80% gate",
+    "Run final-source pinned statics",
+    "Qualify shared paired checker CLI and actual-artifact adversarial tests using genuine native/FDB exports; existing lifecycle loader2MiB cap rejects this actual2984168-byte paired trace",
+    "Checker artifact-root hash/prefix and native event binding review remains separately owned",
+    "No multi-host/power loss/full matrix/cost or engine-selection acceptance"
+  ],
+  "runtimeLease": "Explicitly released after terminal handles77214/93548/49345 and owned cleanup; source-only until next root handoff"
+}

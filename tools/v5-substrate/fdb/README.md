@@ -14,6 +14,8 @@ The launcher runs on an arm64 Docker host with bash and Python 3:
 cd tools/v5-substrate/fdb
 ./run-local.sh smoke       # native boot + ordinary two-prefix read/write
 ./run-local.sh graph-fault # vet/race/coverage, graph client kills, zone loss/reopen
+./run-local.sh paired-graph-fault # same bounded controller, common six-operation trace
+./run-local.sh paired-tests # normal/race/coverage in fresh triple; no external kills
 ./run-local.sh lifecycle-trace # vet/race/coverage + actual common lifecycle export
 make cover                # vet/race/coverage, oracle and scalar process faults
 make static               # pinned lint, gosec and govulncheck
@@ -127,6 +129,55 @@ counts, numeric rounds or native codecs as though they were equivalent. The
 This lane executes no external kill schedule; earlier graph-fault evidence remains
 separate. Non-All temporal access, nonempty labels, allocation, retention/GC,
 multi-host durability, broad cost evaluation and engine selection are unsupported.
+
+`paired-graph-fault` uses a separate fresh lifecycle-profile namespace and the
+`graph-fault-local-v1` fixture. Its three seed transactions create both nodes and
+the life-bound edge/property 5; the faulted updates are 6, 5, 6 with original
+caller provenance 4, 5, 6. Both typed value definitions come from actual admitted
+commands; reusing them introduces no duplicate declaration. The legacy
+`graph-fault` sequence remains 6, 7, 8.
+
+The paired lane preserves original input bytes, observation-time cuts and the
+three seed cuts. A private transaction killed before native Commit leaves the
+caller unknown; a later validated cut can observe absent request/ID rows and the
+old complete graph. Identical retry resolves the original and a separate repeat
+retry checks unchanged complete CDC. After the committed-reply kill, recovery and
+retry recover the same result; a differently valued, otherwise valid payload
+under the original key must reach immutable-binding mismatch without changing
+graph or complete group inventory. One-zone progress uses the frozen original
+request while that server is down. The edge-only old observation is captured
+before zone loss and closed; full old-cut reads are repeated after every server
+is stopped and all original volumes reopen. All six original requests are
+recovered and replayed after that reopen, preserving original results and the
+unchanged six-group/current-row ledger. The postcommit child writes its actual
+outcome, digest and raw durable records before the controller observes its marker
+and kills it. The paired marker includes the SHA256 of those exact receipt bytes;
+later recovery supplies a separate observation.
+
+`paired-graph-fault-trace.json` contains the backend's actual history/config,
+complete groups, original receipts, typed logical changes and independently
+checked physical edge/out/in revisions. The controller attaches raw markers,
+actual kill/reap/ready inspections, per-instance volume identities and ordered
+command events. Referenced artifacts are hash-bound in the trace and terminal
+launcher receipt. Compare it only with the separately qualified native paired
+trace using the shared six-operation checker; the seven-operation
+`compare-lifecycle.py` deliberately does not accept this fixture. Unit seam tests
+do not claim real kills, and this local lane does not establish independent-host
+durability, power-loss recovery, the full fault/cost matrix or engine selection.
+The [source checkpoint](evidence/paired-20261012-source.json) records only
+lightweight controller guards; Go and live qualification remain unrun there.
+The subsequent [runtime checkpoint](evidence/paired-20261012.json) records 33
+passing normal and race parents and the actual local paired fault schedule.
+The first race attempt reused normal-test namespaces; the launcher now clears
+only the owned `[g0/, g2/)` fixture range between completed test processes.
+No reset occurs during the fault/reopen schedule. The
+[final source qualification](evidence/paired-final-20261012.json) passed 33
+normal and race parents without skips, pinned statics and 84.38% new-file
+statement coverage. `paired-tests` qualifies the same fixture and refusal
+matrix without repeating the external kill schedule. Its test container uses
+the final 310-second bound; the earlier fault receipt preserves its actual
+490-second configuration and observed duration. The actual native paired trace
+is still required for full comparison.
 
 With a fresh namespace and an already bounded native deployment, the executable
 supports `graph-smoke` (`FDB_GRAPH_FIXTURE`) and `graph-fault-seed`,

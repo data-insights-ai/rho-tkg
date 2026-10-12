@@ -6,7 +6,7 @@ exec 3>&1 # Preserve the original output channel through redirected failures.
 cd "$(dirname "$0")"
 mode=${1:-test}
 profile=${2:-small}
-case "$mode" in smoke|test|graph-fault|lifecycle-trace|static) ;; *) echo 'usage: run-local.sh [smoke|test|graph-fault|lifecycle-trace|static] [small|large]' >&2; exit 2;; esac
+case "$mode" in smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|static) ;; *) echo 'usage: run-local.sh [smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|static] [small|large]' >&2; exit 2;; esac
 runtime='foundationdb/foundationdb@sha256:c61744624e479d370a0120176e518bb569a2a18ee9abceaf7022c4367b54f1db'
 tag="rho-v5-fdb-$(date +%s)-$$"
 out="$PWD/artifacts/$tag"
@@ -175,19 +175,26 @@ client() {
   return "$result"
 }
 client smoke
-if [ "$mode" = test ] || [ "$mode" = graph-fault ] || [ "$mode" = lifecycle-trace ]; then
+if [ "$mode" = test ] || [ "$mode" = graph-fault ] || [ "$mode" = paired-tests ] || [ "$mode" = paired-graph-fault ] || [ "$mode" = lifecycle-trace ]; then
   name="$tag-tests"; containers+=("$name")
   bounded_docker 310 run --name "$name" --network "$tag" --memory "${client_mib}m" --cpus 0.5 \
     --env "FDB_CONNECTION_STRING=$connection" --env FDB_ZONE_IPS="${ips[*]}" \
     --mount "type=bind,source=$out,target=/evidence" "$client_image" /bin/bash -c '
-      timeout --signal=KILL 120s go vet ./... && timeout --signal=KILL 180s go test -timeout 170s -count=1 -race -coverprofile=/evidence/coverage.out -v ./...
+      timeout --signal=KILL 120s go vet ./... &&
+      { { [ "$1" != paired-graph-fault ] && [ "$1" != paired-tests ]; } || {
+        timeout --signal=KILL 180s go test -timeout 170s -count=1 -v ./... > /evidence/normal-tests.txt 2>&1 &&
+        printf "%s\n" "fdbcli -C /evidence/fdb.cluster --exec writemode on; clearrange g0/ g2/; getrange g0/ g2/" > /evidence/test-phase-reset-command.txt &&
+        timeout --signal=KILL 30s fdbcli -C /evidence/fdb.cluster --exec "writemode on; clearrange g0/ g2/; getrange g0/ g2/" > /evidence/test-phase-reset.txt 2>&1
+      }; } &&
+      timeout --signal=KILL 180s go test -timeout 170s -count=1 -race -coverprofile=/evidence/coverage.out -v ./...
       result=$?; cat /sys/fs/cgroup/memory.peak > /evidence/test-client-memory-peak.txt
-      cat /sys/fs/cgroup/memory.stat > /evidence/test-client-memory-stat.txt; exit "$result"' >"$out/tests.txt" 2>&1
+      cat /sys/fs/cgroup/memory.stat > /evidence/test-client-memory-stat.txt; exit "$result"' -- "$mode" >"$out/tests.txt" 2>&1
   capture_client "$name" tests
 fi
-if [ "$mode" != smoke ] && [ "$mode" != lifecycle-trace ]; then
+if [ "$mode" != smoke ] && [ "$mode" != lifecycle-trace ] && [ "$mode" != paired-tests ]; then
   prefix=fault
   if [ "$mode" = graph-fault ]; then prefix=graph-fault; fi
+  if [ "$mode" = paired-graph-fault ]; then prefix=paired-fault; fi
   client "$prefix-seed"
   for phase in before after; do
     name="$tag-unknown-$phase"; containers+=("$name")
@@ -197,12 +204,19 @@ if [ "$mode" != smoke ] && [ "$mode" != lifecycle-trace ]; then
     reached=0
     for attempt in {1..30}; do
       docker logs "$name" >"$out/$phase-child-marker.json" 2>&1
-      if python3 -B launcher.py marker "$out/$phase-child-marker.json" "$phase" 2>/dev/null; then reached=1; break; fi
+      if [ "$mode" = paired-graph-fault ] && [ "$phase" = after ]; then
+        if python3 -B paired_controller.py marker "$out/$phase-child-marker.json" "$out/paired-graph-fault-state.json.after-committed" 2>/dev/null; then reached=1; break; fi
+      elif python3 -B launcher.py marker "$out/$phase-child-marker.json" "$phase" 2>/dev/null; then reached=1; break; fi
       sleep 1
     done
     if [ "$reached" != 1 ]; then echo 'exact child native-commit seam not reached' >&2; exit 1; fi
+    if [ "$mode" = paired-graph-fault ] && [ "$phase" = after ]; then
+      cp "$out/paired-graph-fault-state.json.after-committed" "$out/after-child-pre-kill-committed.json"
+      shasum -a 256 "$out/after-child-pre-kill-committed.json" >"$out/after-child-pre-kill-committed.sha256"
+    fi
     docker exec "$name" cat /sys/fs/cgroup/memory.peak >"$out/$phase-child-memory-peak.txt"
     docker exec "$name" cat /sys/fs/cgroup/memory.stat >"$out/$phase-child-memory-stat.txt"
+    if [ "$mode" = paired-graph-fault ]; then docker inspect "$name" >"$out/$phase-child-live-inspect.json"; fi
     docker kill --signal KILL "$name" >"$out/$phase-child-kill.txt"
     docker inspect "$name" >"$out/$phase-child-killed.json"
     python3 -B launcher.py killed "$out/$phase-child-killed.json"
@@ -211,8 +225,10 @@ if [ "$mode" != smoke ] && [ "$mode" != lifecycle-trace ]; then
   done
   client "$prefix-verify"
   if [ "$mode" = graph-fault ]; then client graph-fault-prepare-progress; fi
+  if [ "$mode" = paired-graph-fault ]; then client paired-fault-prepare-progress; client paired-fault-hold-old; fi
   wait_healthy "${servers[0]}" "$out/status-before-zone-loss.json"
   for i in 0 1 2 3; do docker exec "${servers[$i]}" /bin/bash -c 'cat /sys/fs/cgroup/memory.peak; cat /sys/fs/cgroup/memory.stat' >"$out/zone$i-pre-fault-memory.txt"; done
+  if [ "$mode" = paired-graph-fault ]; then docker inspect "${servers[0]}" >"$out/zone-live-inspect.json"; fi
   docker kill --signal KILL "${servers[0]}" >"$out/zone-kill.txt"
   docker inspect "${servers[0]}" >"$out/zone-killed.json"
   python3 -B launcher.py killed "$out/zone-killed.json"
@@ -228,6 +244,7 @@ if [ "$mode" != smoke ] && [ "$mode" != lifecycle-trace ]; then
   wait_healthy "${servers[1]}" "$out/status-before-all-stop.json"
   for i in 0 1 2 3; do docker exec "${servers[$i]}" /bin/bash -c 'cat /sys/fs/cgroup/memory.peak; cat /sys/fs/cgroup/memory.stat' >"$out/zone$i-pre-reopen-memory.txt"; done
   for c in "${servers[@]}"; do
+    if [ "$mode" = paired-graph-fault ]; then docker inspect "$c" >"$out/$c-all-live.json"; fi
     docker kill --signal KILL "$c" >>"$out/all-server-kill.txt"
     docker inspect "$c" >"$out/$c-all-stopped.json"
     python3 -B launcher.py killed "$out/$c-all-stopped.json"
@@ -235,9 +252,17 @@ if [ "$mode" != smoke ] && [ "$mode" != lifecycle-trace ]; then
   # Every exact server is stopped before ANY same-volume server starts.
   for c in "${servers[@]}"; do docker start "$c" >>"$out/all-server-restart.txt"; done
   wait_healthy "${servers[1]}" "$out/status-reopened.json"
+  if [ "$mode" = paired-graph-fault ]; then
+    for c in "${servers[@]}"; do docker inspect "$c" >"$out/$c-reopened.json"; done
+    client paired-fault-reopened
+  fi
   client "$prefix-progress"
   client "$prefix-verify"
   if [ "$mode" = graph-fault ]; then client graph-fault-terminal; fi
+  if [ "$mode" = paired-graph-fault ]; then
+    client paired-fault-terminal
+    python3 -B paired_controller.py "$out/paired-fault-terminal-$client_index.json" "$out" "$out/paired-graph-fault-trace.json"
+  fi
 fi
 if [ "$mode" = lifecycle-trace ]; then client lifecycle-trace; fi
 wait_healthy "${servers[0]}" "$out/status-after.json"
@@ -250,7 +275,7 @@ docker stats --no-stream --format '{{json .}}' "${servers[@]}" >"$out/server-sta
 name="$tag-native"; containers+=("$name")
 docker run --name "$name" --network none --memory "${client_mib}m" --cpus 0.5 "$client_image" /bin/bash -c 'go version; fdbcli --version; sha256sum /usr/local/lib/libfdb_c.so /usr/local/include/foundationdb/*; ldd /usr/local/lib/libfdb_c.so' >"$out/native.txt"
 capture_client "$name" native
-if [ "$mode" = test ] || [ "$mode" = graph-fault ] || [ "$mode" = lifecycle-trace ]; then
+if [ "$mode" = test ] || [ "$mode" = graph-fault ] || [ "$mode" = paired-tests ] || [ "$mode" = paired-graph-fault ] || [ "$mode" = lifecycle-trace ]; then
   name="$tag-cover"; containers+=("$name")
   docker run --name "$name" --network none --memory "${client_mib}m" --cpus 0.5 --mount "type=bind,source=$out,target=/evidence" "$client_image" go tool cover -func=/evidence/coverage.out >"$out/coverage-functions.txt"
   capture_client "$name" cover

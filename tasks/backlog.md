@@ -416,7 +416,14 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    operations, eight logical changes and four old reads against both native
    traces. All 31 FDB race-test parents pass, with 83.8% module coverage and
    changed statement-block coverage above 80%; the v5 library is unchanged.
-   Next is paired local fault-trace adjudication, followed by the comparable
+   The [paired FDB fault fixture](../tools/v5-substrate/fdb/evidence/paired-final-20261012.json)
+   now passes 33 normal/race parents, pinned static checks and 84.38% new-file
+   statement coverage. Its actual six-operation fault trace independently passes
+   the FDB-side checker, including original outcomes, complete CDC and retained
+   reads after same-volume reopen. The native paired trace and cross-engine
+   equality remain pending. The final test configuration is bounded at 310 seconds;
+   the historical external-fault receipt retains its actual 490-second setting.
+   Next is native paired local fault-trace adjudication, followed by the comparable
    cost/layout matrix and engine decision; physical-host and other V2 exit
    gates remain open. **Next production admission work:** enforce one supported
    lifecycle seam that mints new logical GraphIDs internally, provisions the same
