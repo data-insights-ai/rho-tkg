@@ -1,0 +1,169 @@
+{
+  "run": 38225201166,
+  "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38225201166",
+  "head": "b2143582d1fb745ed5885443a9e18ac4bd1f6e60",
+  "integratedMain": "dbd74cf45c65c1086798012e92453315cab75143",
+  "status": "completed",
+  "conclusion": "success",
+  "capturedAt": "2026-10-12T09:11:12.854678+00:00",
+  "jobs": [
+    {
+      "name": "migration-preflight",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 114731359025,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38225201166/job/114731359025",
+      "startedAt": "2026-10-12T08:43:41Z",
+      "completedAt": "2026-10-12T08:47:15Z"
+    },
+    {
+      "name": "coverage (., go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 114731359173,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38225201166/job/114731359173",
+      "startedAt": "2026-10-12T08:43:41Z",
+      "completedAt": "2026-10-12T08:48:41Z"
+    },
+    {
+      "name": "security (v5, v5/go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 114731359256,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38225201166/job/114731359256",
+      "startedAt": "2026-10-12T08:43:41Z",
+      "completedAt": "2026-10-12T08:45:46Z"
+    },
+    {
+      "name": "security (., go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 114731359309,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38225201166/job/114731359309",
+      "startedAt": "2026-10-12T08:43:41Z",
+      "completedAt": "2026-10-12T08:44:38Z"
+    },
+    {
+      "name": "test (., go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 114731359356,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38225201166/job/114731359356",
+      "startedAt": "2026-10-12T08:43:41Z",
+      "completedAt": "2026-10-12T09:06:01Z"
+    },
+    {
+      "name": "test (v5, v5/go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 114731359360,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38225201166/job/114731359360",
+      "startedAt": "2026-10-12T08:43:41Z",
+      "completedAt": "2026-10-12T09:02:48Z"
+    },
+    {
+      "name": "comparison-correctness",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 114731359366,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38225201166/job/114731359366",
+      "startedAt": "2026-10-12T08:43:41Z",
+      "completedAt": "2026-10-12T08:45:44Z"
+    },
+    {
+      "name": "coverage (v5, v5/go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 114731359601,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38225201166/job/114731359601",
+      "startedAt": "2026-10-12T08:43:41Z",
+      "completedAt": "2026-10-12T08:47:00Z"
+    },
+    {
+      "name": "lint",
+      "status": "completed",
+      "conclusion": "skipped",
+      "databaseId": 114731360744,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38225201166/job/114731360744",
+      "startedAt": "2026-10-12T08:43:40Z",
+      "completedAt": "2026-10-12T08:43:39Z"
+    }
+  ],
+  "verifiedRaceLogs": [
+    {
+      "path": "tasks/evidence/e17-ci-deadline-20261012/root-test-b2143582.log.gz",
+      "bytes": 31588,
+      "sha256": "472007759e9a104a3fb0723ec27181f1dcad3e4fb22a327f3f8a70dc140e8e58",
+      "rawBytes": 125743,
+      "rawSha256": "c078e7b9ac9c8ab73a9ae761d8731c3d4dd670060282e1ddffef810795714ec0",
+      "inventory": "2026-10-12T08:48:17.7502400Z root race gate: 44 other packages, 2182 core names, 4 exhaustive shards",
+      "raceBatchSizes": [
+        546,
+        546,
+        545,
+        545
+      ],
+      "uniqueNames": 2182,
+      "completion": "2026-10-12T09:05:57.9968572Z root race gate: all root packages and core shards passed"
+    },
+    {
+      "path": "tasks/evidence/e17-ci-deadline-20261012/v5-test-b2143582.log.gz",
+      "bytes": 16204,
+      "sha256": "4f578d4628ccef0f244a4d12221462cadcb198b8602b0f6e41345dfb8d865e40",
+      "rawBytes": 55406,
+      "rawSha256": "2005221b4a685a3b269db4d44ff6bed4d7c9411f8ac7024034b79d3cfaba9b4a",
+      "inventory": "2026-10-12T08:48:03.5872477Z v5 race gate: 11 other packages, 456 graphapply names, 4 exhaustive shards",
+      "raceBatchSizes": [
+        114,
+        114,
+        114,
+        114
+      ],
+      "uniqueNames": 456,
+      "completion": "2026-10-12T09:02:44.5781552Z v5 race gate: all v5 packages and graphapply shards passed"
+    }
+  ],
+  "sourceInputs": [
+    {
+      "path": "scripts/test-race.sh",
+      "sha256": "05ca5b53967500c7fe49c0e1d43037cbe9fcddb24ee91f021da5a10e1a627ce6"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "5722551b5be3e87589444d444926b493ab900d44b5eb05fe96a59be14dbaadbf"
+    },
+    {
+      "path": "Makefile",
+      "sha256": "677f054f337d923cfd653f122b09348f8c25c901a9d3186f59169b6b352312e8"
+    },
+    {
+      "path": "go.mod",
+      "sha256": "412e37f9e5829b7fa6e70edc7c38cf89a8754055bc3113b4c986721a3aba095d"
+    },
+    {
+      "path": "v5/go.mod",
+      "sha256": "3bf8baf02d354420ddf87b8865f20b854bb606f04e0f0988f0f9eed2d89e8a24"
+    },
+    {
+      "path": "tools/v5-migrate/go.mod",
+      "sha256": "c58ca81fb45e87217ec131c666b0158cf415c136a8dc121cf8118c5b6c6ad59c"
+    },
+    {
+      "path": "v5/Makefile",
+      "sha256": "77c160be99b5de228100ee7a014482b6ee862df08a7264ebb71cd8ec08035141"
+    },
+    {
+      "path": "tools/v5-migrate/Makefile",
+      "sha256": "0c2cdff5a87140703f96491331e72658cea9ae0ce9be734f27f46d507ae52b40"
+    },
+    {
+      "path": "v5/internal/graphapply/graph_lifecycle.go",
+      "sha256": "1dceffacb6b979c5f6e5e0066a187607c4fed9ee7d31a6ae77e47cdbd8619a23"
+    },
+    {
+      "path": "v5/internal/graphapply/graph_lifecycle_test.go",
+      "sha256": "c717f7614775293c025869f74b0591667b88553e836ce6e2a6fad61fcfaf3dc9"
+    }
+  ],
+  "scope": "Hosted CI of the integrated v4.51.1 source, existing v5 engine including fresh graph creation and existing-only reopen, and migration preflight. Eight applicable jobs pass; push-only lint is skipped and requires separate local evidence. FDB runtime qualification remains its separate local receipt. This is not qualification of the pending native catch-up fix, paired native/FDB acceptance, physical-host durability, comparative performance, or completion of V2-V7."
+}

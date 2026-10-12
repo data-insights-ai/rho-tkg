@@ -78,8 +78,13 @@ The later main revision `dbd74cf4` (v4.51.1), identified by the external
 consumer mappings. The [v4.51.1 migration preflight qualification](../tools/v5-migrate/evidence/main4511-993e89a6.json)
 passes all ten narrow gates on Go 1.26.9, including race and pinned scanners;
 coverage is 96.2%, with both public preflight functions at 100%. The source
-manifest matches the integrated reader. Aggregate/hosted checks remain separate;
-the v4.51.0 receipts and source delta remain historical evidence.
+manifest matches the integrated reader. [Hosted CI at `b2143582`](evidence/e17-ci-deadline-20261012/hosted-ci-b2143582.json)
+also passes all eight applicable jobs for this integration, including the new
+graph lifecycle factory: 2,182 core and 456 graphapply names pass exhaustive race
+batches, together with the other packages. Push-only lint remains skipped and
+requires its separate local evidence. This does not qualify the pending native
+catch-up fix or close remaining phase gates. The v4.51.0 receipts and source
+delta remain historical evidence.
 [Substrate evaluation](../docs/v5/reference/substrate-evaluation.json) is
 research/execution-plan evidence only; no engine selection or V2/V3 acceptance.
 The original five recovered `docs/v5/reference/` files are byte-verified and
