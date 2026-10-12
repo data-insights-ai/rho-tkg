@@ -33,3 +33,13 @@
 FAIL
 FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	28.141s
 FAIL
+
+# fix round (review): RED before the guarded Batch.Execute release and the single Rollback release (rebased on main 14b7d97d)
+# go test -run TestDurableCommitSyncWritesSyncsPerGroup/hold-release-pairs -v ./pkg/graph/
+    durable_commit_syncwrites_test.go:256: 80 hold releases without a live hold (after the holder's unlock, or twice)
+    durable_commit_syncwrites_test.go:259: 120 durable groups racing: 459 syncs, want <= 120 (one per group)
+--- FAIL: TestDurableCommitSyncWritesSyncsPerGroup (1.60s)
+    --- FAIL: TestDurableCommitSyncWritesSyncsPerGroup/hold-release-pairs (1.60s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.606s
+FAIL

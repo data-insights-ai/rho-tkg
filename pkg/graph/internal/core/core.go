@@ -890,7 +890,8 @@ type Config struct {
 	// writes the pending write buffer and fsyncs the write-ahead log of every
 	// open shard that took writes. A crash after the door returned keeps the
 	// whole group; a crash before it returned can keep any subset (not
-	// promised either way). Rollback never flushes. A failed flush returns
+	// promised either way). Rollback never flushes (except under SyncWrites,
+	// below). A failed flush returns
 	// ErrCommitNotDurable: the group is committed in memory and stays pending
 	// for the next flush. Not covered: standalone mutations and
 	// concurrent-mode ingest Submit, which keep the async flush. A buffer
@@ -905,7 +906,11 @@ type Config struct {
 	// a Rollback) run under the exclusive graph lock with the per-mutation
 	// flush held (store.MutationFlushHoldCapability), the held buffer flushes
 	// in steps at MaxPendingWrites, and a Rollback ends with one durable flush
-	// (part of the group can already be on disk). New fails with
+	// (part of the group can already be on disk). Side effect: with both
+	// flags, each GraphTx mutation takes the exclusive graph lock instead of
+	// the shared one, so standalone writers, readers and concurrent ingest
+	// lanes wait for each tx mutation (microseconds of in-memory work; the
+	// sync is at the commit, outside the lock). New fails with
 	// ErrCapabilityNotSupported when the store has no stable storage (memory
 	// store, BadgerInMemory, an in-memory tiered or sharded store). Default
 	// false: no flush on commit, today's behavior.

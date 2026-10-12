@@ -886,9 +886,15 @@ func (tx *GraphTx) Rollback() error {
 	}
 	// Durable group under SyncWrites (backlog 52): the restores below are held
 	// like the forward mutations and made durable together at the end; c.mu.Lock
-	// keeps every other mutation out of the hold. Deferred release for a panic.
+	// keeps every other mutation out of the hold. The defer releases it only
+	// on a panic; flushHeldGroup below releases it on the normal path.
 	tx.g.holdGroupFlushes()
-	defer tx.g.releaseGroupFlushes()
+	heldReleased := false
+	defer func() {
+		if !heldReleased {
+			tx.g.releaseGroupFlushes()
+		}
+	}()
 
 	var firstErr error
 	capture := func(err error) {
@@ -965,6 +971,7 @@ func (tx *GraphTx) Rollback() error {
 	// Part of a held group can already be on disk (a standalone write's flush,
 	// the hold bound), so the restores must be too, as SyncWrites made them
 	// before the hold: one durable flush instead of one per restore.
+	heldReleased = true
 	capture(tx.g.flushHeldGroup())
 
 	return firstErr

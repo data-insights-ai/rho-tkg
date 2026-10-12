@@ -487,7 +487,7 @@ committed in memory, its operations stay pending (requeued), and the next
 successful flush persists them; until then a crash can lose them. `RunWithLSN`
 still returns the group's LSN and `Batch.Execute` its result (with a
 `durable-commit` `BatchError`), so a caller never has to re-apply a committed
-group. Rollback never flushes. Standalone mutations and concurrent-mode ingest
+group. Rollback never flushes (under `SyncWrites` it ends with one durable flush, below). Standalone mutations and concurrent-mode ingest
 `Submit` keep the async flush.
 
 Under `SyncWrites` (strict power-loss durability: Badger fsyncs the WAL after
@@ -503,7 +503,11 @@ every other mutation out of the hold, so a standalone write still returns
 synced. A held buffer that reaches `MaxPendingWrites` flushes (synced) in
 steps; a `Rollback` ends with one durable flush, because part of the group can
 already be on disk. Without `DurableCommit`, `SyncWrites` still syncs every
-mutation; tiered and sharded stores keep per-mutation syncs.
+mutation; tiered and sharded stores keep per-mutation syncs. Side effect: with
+both flags each `GraphTx` mutation takes the exclusive `c.mu.Lock` instead of
+the shared one, so standalone writers, readers and concurrent ingest lanes wait
+for each tx mutation (in-memory work only; the sync runs at the commit, outside
+the lock). The hold is released exactly once, under the holder's lock.
 
 "Crash" above means a process crash. Power loss is narrower: Badger v4's
 `db.Sync()` fsyncs only the active memtable's WAL and the current value-log

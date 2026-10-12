@@ -34,7 +34,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the group, and a failed group flush returns `ErrCommitNotDurable` at the commit (a write error inside such a group
   now surfaces there instead of at the mutation call); standalone mutations still return synced (the exclusive lock
   keeps them out of the hold); `SyncWrites` without `DurableCommit`, and tiered or sharded stores, keep per-mutation
-  syncs. Red test `TestDurableCommitSyncWritesSyncsPerGroup` (syncs per group counted by
+  syncs. Side effect: with both flags each `GraphTx` mutation takes the exclusive graph lock (`c.mu.Lock`) instead
+  of the shared one, so standalone writers, readers and concurrent ingest lanes wait for each tx mutation (in-memory
+  work; the sync runs at the commit, outside the lock). Not folded into `store.GroupCommitCapability`: its
+  `EndGroupCommit` flushes and its window holds without the `MaxPendingWrites` bound (the strong ingest applier's
+  contract), while a durable group needs a release per mutation that does not flush, and adding methods to that
+  exported interface would break its implementers. Red test `TestDurableCommitSyncWritesSyncsPerGroup` (syncs per group counted by
   `badger.Store.SyncCountForTest`, 10 vs 500 ops, plus crash children for split, rollback, retry and concurrent
   standalone writes).
 

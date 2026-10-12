@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
@@ -213,6 +215,51 @@ func TestDurableCommitSyncWritesSyncsPerGroup(t *testing.T) {
 		})
 	}
 
+	// Catches: a hold release that outlives its holder's lock — Batch.Execute's
+	// deferred release ran after its unlock and durable flush, so it could end
+	// the hold of the GraphTx group that took the lock next (whose mutations
+	// then each sync) — and a double release. Every release must end a live
+	// hold; a batch racing tx groups costs at most one sync per group.
+	t.Run("hold-release-pairs", func(t *testing.T) {
+		bs, err := badger.New(badger.Config{Dir: t.TempDir(), SyncWrites: true})
+		if err != nil {
+			t.Fatalf("badger.New: %v", err)
+		}
+		spy := &holdSpyStore{Store: bs}
+		g, err := graphpkg.New(graphpkg.Config{Store: spy, DurableCommit: true})
+		if err != nil {
+			t.Fatalf("graph.New: %v", err)
+		}
+		t.Cleanup(func() { _ = g.Close() })
+		const groups = 40
+		before := bs.SyncCountForTest()
+		var wg sync.WaitGroup
+		errs := make(chan error, 3)
+		for _, d := range []door{batch, commit, rollback} {
+			wg.Add(1)
+			go func(d door) {
+				defer wg.Done()
+				for i := 0; i < groups; i++ {
+					if err := d(g, i, 30); err != nil {
+						errs <- err
+						return
+					}
+				}
+			}(d)
+		}
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			t.Fatal(err)
+		}
+		if n := spy.stray.Load(); n != 0 {
+			t.Errorf("%d hold releases without a live hold (after the holder's unlock, or twice)", n)
+		}
+		if n := bs.SyncCountForTest() - before; n > 3*groups {
+			t.Errorf("%d durable groups racing: %d syncs, want <= %d (one per group)", 3*groups, n, 3*groups)
+		}
+	})
+
 	// Catches: a group above Badger's transaction size limit failing
 	// (ErrTxnTooBig) or costing a sync per mutation.
 	t.Run("above-txn-size-limit", func(t *testing.T) {
@@ -281,3 +328,29 @@ func TestDurableCommitSyncWritesSyncsPerGroup(t *testing.T) {
 
 // fixed returns a bound that ignores the operation count.
 func fixed(n int64) func(int) int64 { return func(int) int64 { return n } }
+
+// holdSpyStore counts flush-hold releases that end no live hold: the graph
+// holds under its exclusive lock, so every release must pair with one hold.
+type holdSpyStore struct {
+	*badger.Store
+	mu    sync.Mutex
+	held  bool
+	stray atomic.Int64
+}
+
+func (s *holdSpyStore) HoldMutationFlushes() {
+	s.mu.Lock()
+	s.held = true
+	s.mu.Unlock()
+	s.Store.HoldMutationFlushes()
+}
+
+func (s *holdSpyStore) ReleaseMutationFlushes() {
+	s.mu.Lock()
+	if !s.held {
+		s.stray.Add(1)
+	}
+	s.held = false
+	s.mu.Unlock()
+	s.Store.ReleaseMutationFlushes()
+}
