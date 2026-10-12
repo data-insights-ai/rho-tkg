@@ -47,7 +47,7 @@ item; two traced, unreproduced HIGH? findings in item 4. Next step: items 41,
 | 45 | MEDIUM (API) | Internal sentinels reach callers but have no exported alias; `ErrMixedNumericColumn` is outside the errors inventory test | open; found by the doc review of `docs/errors.md` 2026-10-10 |
 | 46 | LOW (stale comments) | Code comments that contradict the code or cite ADRs no longer in `docs/adr/` | open; found by the doc reviews 2026-10-10 |
 | 47 | LOW (unverified claims) | `NodesByLabelAt` vs K1; a RAM budget for the property sidecars | open; each needs a real check before it becomes work |
-| 49 | HIGH (data loss, tiered) | A re-import that moves a relationship to another tiered shard loses the earlier life's history | open; reproduced 2026-10-12 (item 35 work) |
+| 49 | HIGH (tiered) | A re-import that moves a relationship to another tiered shard makes the earlier life unreachable | open; reproduced 2026-10-12 (item 35 work) |
 | 50 | MEDIUM | Pinned adjacency doors miss a re-imported relationship's earlier life | open; reproduced 2026-10-12 (item 35 work) |
 
 ---
@@ -321,14 +321,16 @@ Measured 2026-10-12 (`tasks/evidence/badger-read-cost/41-01-sidecar-ram-per-id.t
 
 A crash after a burst whose monotonic floor outran the wall reopens with `NowTx` below committed stamps (lesson 71's reopen case on the crash path): `persistInstantFloor` is called only from `Close` (`core/core.go`, `core/instant_floor.go:129`), and `seedInstantFloor` reseeds only from that watermark. Red test first: a crash-shaped child (exit without `Close`) after writes stamped ahead of the wall, reopen, assert `NowTx()` and a fresh write's `TxFrom` exceed every stored `TxFrom`. Fix candidates: persist the floor with the durable commit / flush, or reseed from the newest stored stamp at open.
 
-### 49. A re-import that moves a relationship to another tiered shard loses the earlier life's history
+### 49. A re-import that moves a relationship to another tiered shard makes the earlier life unreachable
 
-*HIGH (data loss, tiered)* — open; reproduced 2026-10-12 while building item 35.
+*HIGH (tiered)* — open; reproduced 2026-10-12 while building item 35.
 
 On tiered, `Rels.Delete` then `Rels.Import(id, …)` with a start node in another shard (a "Ref" node, the reference
-shard) leaves `Rels.History(id)` empty: the earlier life's rows are no longer visible to any door (`History`,
-`RelEffectiveTimeline`, `RelAsOf` at a pin inside the earlier life). Same endpoints, or memory / badger / sharded: one
-history row, as expected. Probe and output: `tasks/evidence/effective-scans/finding-tiered-reimport-*`. Red test
+shard) leaves `Rels.History(id)` empty: the earlier life's rows stay on the old shard, but the history read goes only
+to the live row's shard (`tieredstore_read_history_rel.go:98-103`), so no door reaches them (`History`,
+`RelEffectiveTimeline`, `RelAsOf` at a pin inside the earlier life; the item-35 doors `ForEachRelEffective`,
+`ForEachRelEffectiveAtNodes`, `RelsEffectiveByIDs` omit the earlier life like the per-entity door). Same endpoints,
+or memory / badger / sharded: one history row, as expected. Probe and output: `tasks/evidence/effective-scans/finding-tiered-reimport-*`. Red test
 first: the probe as a cross-backend test (both directions of the move, node re-import too), then the history lookup
 of a re-imported ID must find every life (route by the ID's lives, or move the history with the row).
 
@@ -343,9 +345,17 @@ the candidates, on the rule "endpoints are immutable". A relationship ID deleted
 never a candidate: A->B deleted, re-imported as C->B, `OutgoingForNodesAtPin([A], "", pin inside the first life)`
 answers nothing while `RelAsOf(id, pin)` is the A->B row. `ForEachRelEffectiveAtNodes` (item 35) folds every
 relationship with history and answers it. Probe and output: `tasks/evidence/effective-scans/finding-pinned-adjacency-*`.
-Red test first: the probe on memory/badger/sharded/tiered for each door; fix at the shared seam
-(`forEachRelAdjacencyCandidateIDByDepth`: also fold IDs with more than one life, or every ID with history) and
-correct the AGENTS.md "deleted-only iteration" rule.
+Red test first: the probe on memory/badger/sharded/tiered for each door; fix at the shared seam and correct the
+AGENTS.md "deleted-only iteration" rule.
+
+Same seam, cost (review of item 35, 2026-10-12): `ForEachRelEffectiveAtNodes` stays sound today by folding EVERY
+relationship with history on every call, O(H) whatever the seed count (one seed, 50 relationships, 100 K
+relationships all with history: 0.48 s memory, 3.4 s badger vs 0.13 / 0.6 ms by IDs,
+`tasks/evidence/effective-scans/bench-one-seed-full-history.txt`). The sound cheap gather for both: current
+adjacency ∪ deleted relationship IDs (`forEachRelAdjacencyCandidateIDByDepth`) ∪ a persisted set of IDs re-imported
+over a deleted life (written at `Rels.Import`), shared by `ForEachRelEffectiveAtNodes` and the pinned adjacency
+doors; an ever-adjacency sidecar if the deleted volume is large. Red first: the one-seed benchmark as a gate plus
+the probe above.
 
 ---
 

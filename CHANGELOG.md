@@ -60,10 +60,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   re-imported with other endpoints is included (the pinned adjacency doors miss it: backlog 50). The by-IDs doors are
   the per-entity doors batched: input order, a repeated ID once, unknown IDs skipped, the per-entity compaction and
   retention gates; an invalid ID or seed is refused before any segment (`ErrInvalidStoreMutation`).
-  `ForEachNodeEffectiveByLabels` streams each node once even when several labels match. Cost per relationship
-  (200 K relationships, 1 % with history, `BenchmarkEffectiveScans`): memory 0.5 µs (by IDs) to 1.2 µs (at nodes),
-  badger 3.9 µs to 10.6 µs, against 0.5 µs / 6.0 µs for one `RelEffectiveTimeline` call — the per-entity body;
-  backlog 33 (badger re-read after the gather) applies to every scan through the shared seam. `temporal.Ops` gains
+  `ForEachNodeEffectiveByLabels` streams each node once even when several labels match. Cost model: every door
+  pays one per-entity timeline read per candidate (memory about 0.5 µs, badger about 4-6 µs per relationship on 200 K
+  relationships, `BenchmarkEffectiveScans`, about one `RelEffectiveTimeline` call each) plus its gather. The by-IDs
+  doors read only the given IDs; the all-entity scans every entity ever stored. `ForEachRelEffectiveAtNodes` folds
+  EVERY relationship with history on every call — O(H) timeline reads plus the answer, whatever the seed count:
+  one seed with 50 relationships on 100 K relationships that all have history costs 0.48 s on memory and 3.4 s on
+  badger, against 0.13 ms / 0.6 ms for `RelsEffectiveByIDs` over the same 50 (`BenchmarkEffectiveScansOneSeed`).
+  Follow-up (backlog 50): a cheap sound gather shared with the pinned adjacency doors. Backlog 33 (badger re-read
+  after the gather) applies to every scan through the shared seam. `temporal.Ops` gains
   the six methods. Evidence: `tasks/evidence/effective-scans/` (red runs, mutants, benchmark).
 
 ### Changed

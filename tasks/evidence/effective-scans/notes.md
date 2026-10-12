@@ -52,3 +52,14 @@ red-*.txt, green-*.txt, mutants.txt, bench.txt in this directory.
 - Findings filed: backlog 49 (tiered re-import moving shards loses the earlier life's history,
   finding-tiered-reimport-*), backlog 50 (pinned adjacency doors miss a re-imported rel's earlier life,
   finding-pinned-adjacency-*).
+
+## Review round (2026-10-12)
+1. Cost model: `BenchmarkEffectiveScansOneSeed` (bench-one-seed-full-history.txt): one seed, 50 rels, 100 K rels
+   all with history: at-nodes 0.48 s memory / 3.4 s badger vs by-ids 0.13 ms / 0.6 ms. CHANGELOG/api.md state the
+   O(H)-per-call model; the cheap sound gather is written into backlog 50 (follow-up, not built).
+2. Empty seeds return before the gather (no behaviour change: the answer was already empty).
+3. ByLabels folds node history once for several labels on stores without the K1 sidecar; one label skips the
+   dedupe map. No behaviour change; mutants-review.txt: M18 (no history fold) and M19 (no dedupe) killed.
+4. TestEffectiveTimeline_ConcurrentWriters runs every scan door (guard: passes before and after; -race green-6).
+5. stability.md: sub-API `Ops` interfaces are wiring seams. 6. Backlog 49 reworded (unreachable, not lost).
+Gates: green-5 (go test -short ./...), green-6 (-race core/temporal/graph), lint-docker 0 issues, security-docker clean.

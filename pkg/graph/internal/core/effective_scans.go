@@ -259,6 +259,9 @@ func (t *TempOps) ForEachRelEffectiveAtNodes(nodeIDs []types.NodeID, dir tempora
 	}
 	outgoing := dir == temporal.Outgoing
 	seeds := firstOccurrences(nodeIDs)
+	if len(seeds) == 0 {
+		return nil // no seed: no relationship, and no history fold
+	}
 	var (
 		toks []uint16
 		ids  []types.RelID
@@ -293,6 +296,58 @@ func (t *TempOps) ForEachRelEffectiveAtNodes(nodeIDs []types.NodeID, dir tempora
 		return len(toks) == 0 || slices.ContainsFunc(toks, r.HasTypeTokenRaw)
 	}
 	return c.streamRelTimelines(ids, pin, keep, fn)
+}
+
+// nodeLabelsCandidatesAt is nodeLabelCandidatesAt (TxPin: pin) for several
+// distinct label tokens, each candidate once (c.mu held). One label: its
+// candidates as they are. Several on a store without the label-membership
+// sidecar: the labels' current members united with ONE fold of the node
+// history (not one fold per label). With the sidecar: the labels' candidate
+// sets united.
+func (c *Core) nodeLabelsCandidatesAt(toks []uint16, pin types.Instant) ([]types.NodeID, error) {
+	opts := storepkg.QueryOpts{TxPin: pin}
+	switch {
+	case len(toks) == 0:
+		return nil, nil
+	case len(toks) == 1:
+		_, ids, err := c.nodeLabelCandidatesAt(toks[0], opts)
+		return ids, err
+	}
+	var ids []types.NodeID
+	gather := func(id types.NodeID) error {
+		ids = append(ids, id)
+		return nil
+	}
+	if c.labelTxMembers == nil {
+		var current []types.NodeID
+		for _, tok := range toks {
+			rows, err := c.store.NodesByLabel(tok, storepkg.QueryOpts{})
+			if err != nil {
+				return nil, err
+			}
+			cur, err := c.nodeIDsFromLabelRows(tok, rows)
+			if err != nil {
+				return nil, err
+			}
+			current = append(current, cur...)
+		}
+		err := c.forEachNodeCandidateIDByDepth(current, storepkg.DepthAll, gather)
+		return ids, err
+	}
+	seen := map[types.NodeID]struct{}{}
+	for _, tok := range toks {
+		_, cand, err := c.nodeLabelCandidatesAt(tok, opts)
+		if err != nil {
+			return nil, err
+		}
+		for _, id := range cand {
+			if _, dup := seen[id]; !dup {
+				seen[id] = struct{}{}
+				ids = append(ids, id)
+			}
+		}
+	}
+	return ids, nil
 }
 
 // relEffectiveAdjacencyCandidates gathers the candidates of
@@ -372,25 +427,14 @@ func (c *Core) forEachNodeEffectiveByLabels(labels []string, pin types.Instant, 
 		ids  []types.NodeID
 	)
 	if err := c.readUnderRLock(func() error {
-		seen := map[types.NodeID]struct{}{}
 		for _, label := range labels {
-			tok, known := c.labels.Lookup(label)
-			if !known || slices.Contains(toks, tok) {
-				continue
-			}
-			toks = append(toks, tok)
-			_, cand, err := c.nodeLabelCandidatesAt(tok, storepkg.QueryOpts{TxPin: pin})
-			if err != nil {
-				return err
-			}
-			for _, id := range cand {
-				if _, dup := seen[id]; !dup {
-					seen[id] = struct{}{}
-					ids = append(ids, id)
-				}
+			if tok, known := c.labels.Lookup(label); known && !slices.Contains(toks, tok) {
+				toks = append(toks, tok)
 			}
 		}
-		return nil
+		var err error
+		ids, err = c.nodeLabelsCandidatesAt(toks, pin)
+		return err
 	}); err != nil {
 		return err
 	}
