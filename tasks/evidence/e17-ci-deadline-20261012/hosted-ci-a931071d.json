@@ -1,0 +1,750 @@
+{
+  "run": {
+    "conclusion": "failure",
+    "headSha": "a931071dc430043fdba6216b9dc54d30c8cc26bb",
+    "jobs": [
+      {
+        "completedAt": "2026-10-12T11:04:11Z",
+        "conclusion": "success",
+        "databaseId": 114779508261,
+        "name": "comparison-correctness",
+        "startedAt": "2026-10-12T11:02:02Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-12T11:02:05Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-12T11:02:03Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:02:10Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@v7",
+            "number": 2,
+            "startedAt": "2026-10-12T11:02:05Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:02:33Z",
+            "conclusion": "success",
+            "name": "Run actions/setup-go@v7",
+            "number": 3,
+            "startedAt": "2026-10-12T11:02:10Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:02:40Z",
+            "conclusion": "success",
+            "name": "Run make -C tools/graph-compare tools",
+            "number": 4,
+            "startedAt": "2026-10-12T11:02:33Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:04:06Z",
+            "conclusion": "success",
+            "name": "Native v4 correctness and tool gates",
+            "number": 5,
+            "startedAt": "2026-10-12T11:02:40Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:04:07Z",
+            "conclusion": "success",
+            "name": "Run actions/upload-artifact@v4",
+            "number": 6,
+            "startedAt": "2026-10-12T11:04:06Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:04:07Z",
+            "conclusion": "success",
+            "name": "Post Run actions/setup-go@v7",
+            "number": 11,
+            "startedAt": "2026-10-12T11:04:07Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:04:08Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@v7",
+            "number": 12,
+            "startedAt": "2026-10-12T11:04:07Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:04:08Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 13,
+            "startedAt": "2026-10-12T11:04:08Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38239860443/job/114779508261"
+      },
+      {
+        "completedAt": "2026-10-12T11:03:29Z",
+        "conclusion": "success",
+        "databaseId": 114779508390,
+        "name": "security (., go.mod)",
+        "startedAt": "2026-10-12T11:02:32Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-12T11:02:35Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-12T11:02:33Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:02:38Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@v7",
+            "number": 2,
+            "startedAt": "2026-10-12T11:02:35Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:02:54Z",
+            "conclusion": "success",
+            "name": "Run actions/setup-go@v7",
+            "number": 3,
+            "startedAt": "2026-10-12T11:02:38Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:02:58Z",
+            "conclusion": "success",
+            "name": "Run make tools",
+            "number": 4,
+            "startedAt": "2026-10-12T11:02:54Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:03:24Z",
+            "conclusion": "success",
+            "name": "Run make security",
+            "number": 5,
+            "startedAt": "2026-10-12T11:02:58Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:03:26Z",
+            "conclusion": "success",
+            "name": "Run make vulncheck",
+            "number": 6,
+            "startedAt": "2026-10-12T11:03:24Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:03:26Z",
+            "conclusion": "success",
+            "name": "Post Run actions/setup-go@v7",
+            "number": 11,
+            "startedAt": "2026-10-12T11:03:26Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:03:27Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@v7",
+            "number": 12,
+            "startedAt": "2026-10-12T11:03:26Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:03:27Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 13,
+            "startedAt": "2026-10-12T11:03:27Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38239860443/job/114779508390"
+      },
+      {
+        "completedAt": "2026-10-12T11:03:27Z",
+        "conclusion": "failure",
+        "databaseId": 114779508537,
+        "name": "test (v5, v5/go.mod)",
+        "startedAt": "2026-10-12T11:00:24Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-12T11:00:26Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-12T11:00:25Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:00:30Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@v7",
+            "number": 2,
+            "startedAt": "2026-10-12T11:00:26Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:00:47Z",
+            "conclusion": "success",
+            "name": "Run actions/setup-go@v7",
+            "number": 3,
+            "startedAt": "2026-10-12T11:00:30Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:01:27Z",
+            "conclusion": "success",
+            "name": "Run make vet",
+            "number": 4,
+            "startedAt": "2026-10-12T11:00:47Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:01:31Z",
+            "conclusion": "success",
+            "name": "Run make build",
+            "number": 5,
+            "startedAt": "2026-10-12T11:01:27Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:03:23Z",
+            "conclusion": "failure",
+            "name": "Run make test",
+            "number": 6,
+            "startedAt": "2026-10-12T11:01:31Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:03:23Z",
+            "conclusion": "skipped",
+            "name": "Root race tests with exhaustive core batches",
+            "number": 7,
+            "startedAt": "2026-10-12T11:03:23Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:03:23Z",
+            "conclusion": "skipped",
+            "name": "v5 race tests with exhaustive graphapply batches",
+            "number": 8,
+            "startedAt": "2026-10-12T11:03:23Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:03:23Z",
+            "conclusion": "skipped",
+            "name": "Post Run actions/setup-go@v7",
+            "number": 15,
+            "startedAt": "2026-10-12T11:03:23Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:03:23Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@v7",
+            "number": 16,
+            "startedAt": "2026-10-12T11:03:23Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:03:23Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 17,
+            "startedAt": "2026-10-12T11:03:23Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38239860443/job/114779508537"
+      },
+      {
+        "completedAt": "2026-10-12T11:04:24Z",
+        "conclusion": "cancelled",
+        "databaseId": 114779508544,
+        "name": "test (., go.mod)",
+        "startedAt": "2026-10-12T11:00:23Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-12T11:00:25Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-12T11:00:24Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:00:28Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@v7",
+            "number": 2,
+            "startedAt": "2026-10-12T11:00:25Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:00:42Z",
+            "conclusion": "success",
+            "name": "Run actions/setup-go@v7",
+            "number": 3,
+            "startedAt": "2026-10-12T11:00:28Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:01:29Z",
+            "conclusion": "success",
+            "name": "Run make vet",
+            "number": 4,
+            "startedAt": "2026-10-12T11:00:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:01:33Z",
+            "conclusion": "success",
+            "name": "Run make build",
+            "number": 5,
+            "startedAt": "2026-10-12T11:01:29Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:04:21Z",
+            "conclusion": "cancelled",
+            "name": "Run make test",
+            "number": 6,
+            "startedAt": "2026-10-12T11:01:33Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:04:21Z",
+            "conclusion": "skipped",
+            "name": "Root race tests with exhaustive core batches",
+            "number": 7,
+            "startedAt": "2026-10-12T11:04:21Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:04:21Z",
+            "conclusion": "skipped",
+            "name": "v5 race tests with exhaustive graphapply batches",
+            "number": 8,
+            "startedAt": "2026-10-12T11:04:21Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:04:21Z",
+            "conclusion": "skipped",
+            "name": "Post Run actions/setup-go@v7",
+            "number": 15,
+            "startedAt": "2026-10-12T11:04:21Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:04:23Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@v7",
+            "number": 16,
+            "startedAt": "2026-10-12T11:04:21Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:04:23Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 17,
+            "startedAt": "2026-10-12T11:04:23Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38239860443/job/114779508544"
+      },
+      {
+        "completedAt": "2026-10-12T11:06:35Z",
+        "conclusion": "success",
+        "databaseId": 114779508618,
+        "name": "coverage (., go.mod)",
+        "startedAt": "2026-10-12T11:02:32Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-12T11:02:35Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-12T11:02:33Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:02:40Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@v7",
+            "number": 2,
+            "startedAt": "2026-10-12T11:02:35Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:02:56Z",
+            "conclusion": "success",
+            "name": "Run actions/setup-go@v7",
+            "number": 3,
+            "startedAt": "2026-10-12T11:02:40Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:06:31Z",
+            "conclusion": "success",
+            "name": "Run make cover-gate",
+            "number": 4,
+            "startedAt": "2026-10-12T11:02:56Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:06:31Z",
+            "conclusion": "success",
+            "name": "Post Run actions/setup-go@v7",
+            "number": 7,
+            "startedAt": "2026-10-12T11:06:31Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:06:31Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@v7",
+            "number": 8,
+            "startedAt": "2026-10-12T11:06:31Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:06:32Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 9,
+            "startedAt": "2026-10-12T11:06:31Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38239860443/job/114779508618"
+      },
+      {
+        "completedAt": "2026-10-12T11:03:51Z",
+        "conclusion": "success",
+        "databaseId": 114779508676,
+        "name": "migration-preflight",
+        "startedAt": "2026-10-12T11:00:23Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-12T11:00:24Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-12T11:00:24Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:00:28Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@v7",
+            "number": 2,
+            "startedAt": "2026-10-12T11:00:24Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:00:42Z",
+            "conclusion": "success",
+            "name": "Run actions/setup-go@v7",
+            "number": 3,
+            "startedAt": "2026-10-12T11:00:28Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:00:42Z",
+            "conclusion": "success",
+            "name": "Run make fmt-check",
+            "number": 4,
+            "startedAt": "2026-10-12T11:00:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:01:05Z",
+            "conclusion": "success",
+            "name": "Run make vet",
+            "number": 5,
+            "startedAt": "2026-10-12T11:00:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:01:05Z",
+            "conclusion": "success",
+            "name": "Run make build",
+            "number": 6,
+            "startedAt": "2026-10-12T11:01:05Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:01:13Z",
+            "conclusion": "success",
+            "name": "Run make test",
+            "number": 7,
+            "startedAt": "2026-10-12T11:01:05Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:02:19Z",
+            "conclusion": "success",
+            "name": "Run make test-race",
+            "number": 8,
+            "startedAt": "2026-10-12T11:01:13Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:02:22Z",
+            "conclusion": "success",
+            "name": "Run make cover-gate",
+            "number": 9,
+            "startedAt": "2026-10-12T11:02:19Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:03:39Z",
+            "conclusion": "success",
+            "name": "Run make tools",
+            "number": 10,
+            "startedAt": "2026-10-12T11:02:22Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:03:45Z",
+            "conclusion": "success",
+            "name": "Run make lint",
+            "number": 11,
+            "startedAt": "2026-10-12T11:03:39Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:03:46Z",
+            "conclusion": "success",
+            "name": "Run make security",
+            "number": 12,
+            "startedAt": "2026-10-12T11:03:45Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:03:49Z",
+            "conclusion": "success",
+            "name": "Run make vulncheck",
+            "number": 13,
+            "startedAt": "2026-10-12T11:03:46Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:03:49Z",
+            "conclusion": "success",
+            "name": "Post Run actions/setup-go@v7",
+            "number": 25,
+            "startedAt": "2026-10-12T11:03:49Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:03:49Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@v7",
+            "number": 26,
+            "startedAt": "2026-10-12T11:03:49Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:03:49Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 27,
+            "startedAt": "2026-10-12T11:03:49Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38239860443/job/114779508676"
+      },
+      {
+        "completedAt": "2026-10-12T11:02:53Z",
+        "conclusion": "success",
+        "databaseId": 114779508714,
+        "name": "security (v5, v5/go.mod)",
+        "startedAt": "2026-10-12T11:00:27Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-12T11:00:29Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-12T11:00:28Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:00:32Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@v7",
+            "number": 2,
+            "startedAt": "2026-10-12T11:00:29Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:00:48Z",
+            "conclusion": "success",
+            "name": "Run actions/setup-go@v7",
+            "number": 3,
+            "startedAt": "2026-10-12T11:00:32Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:00:52Z",
+            "conclusion": "success",
+            "name": "Run make tools",
+            "number": 4,
+            "startedAt": "2026-10-12T11:00:48Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:02:44Z",
+            "conclusion": "success",
+            "name": "Run make security",
+            "number": 5,
+            "startedAt": "2026-10-12T11:00:52Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:02:51Z",
+            "conclusion": "success",
+            "name": "Run make vulncheck",
+            "number": 6,
+            "startedAt": "2026-10-12T11:02:44Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:02:51Z",
+            "conclusion": "success",
+            "name": "Post Run actions/setup-go@v7",
+            "number": 11,
+            "startedAt": "2026-10-12T11:02:51Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:02:51Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@v7",
+            "number": 12,
+            "startedAt": "2026-10-12T11:02:51Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:02:51Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 13,
+            "startedAt": "2026-10-12T11:02:51Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38239860443/job/114779508714"
+      },
+      {
+        "completedAt": "2026-10-12T11:05:58Z",
+        "conclusion": "success",
+        "databaseId": 114779508859,
+        "name": "coverage (v5, v5/go.mod)",
+        "startedAt": "2026-10-12T11:02:32Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-12T11:02:35Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-12T11:02:33Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:02:40Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@v7",
+            "number": 2,
+            "startedAt": "2026-10-12T11:02:35Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:02:57Z",
+            "conclusion": "success",
+            "name": "Run actions/setup-go@v7",
+            "number": 3,
+            "startedAt": "2026-10-12T11:02:40Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:05:54Z",
+            "conclusion": "success",
+            "name": "Run make cover-gate",
+            "number": 4,
+            "startedAt": "2026-10-12T11:02:57Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:05:54Z",
+            "conclusion": "success",
+            "name": "Post Run actions/setup-go@v7",
+            "number": 7,
+            "startedAt": "2026-10-12T11:05:54Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:05:55Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@v7",
+            "number": 8,
+            "startedAt": "2026-10-12T11:05:54Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T11:05:55Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 9,
+            "startedAt": "2026-10-12T11:05:55Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38239860443/job/114779508859"
+      },
+      {
+        "completedAt": "2026-10-12T11:00:21Z",
+        "conclusion": "skipped",
+        "databaseId": 114779510259,
+        "name": "lint",
+        "startedAt": "2026-10-12T11:00:22Z",
+        "status": "completed",
+        "steps": [],
+        "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38239860443/job/114779510259"
+      }
+    ],
+    "status": "completed",
+    "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38239860443"
+  },
+  "raw_v5_test_log": {
+    "archive": "../v2-process-shutdown-order/raw-evidence.tar.gz",
+    "archive_sha256": "5321f22a1087a290e921f12cd72ef07bb4954a966f7221ea45f9f84fae2ec80c",
+    "member": "original-hosted-ci-failure.log",
+    "uncompressed_sha256": "f933fdb71e9db40f353cfa82a54f04c2901f4003e73f68958eb32fa82cd00f67"
+  },
+  "scope": "Hosted full integration run at exact a931071d failed. Selected prior local passing runs do not supersede this failure. Root test job was cancelled by fail-fast; no race qualification from this run.",
+  "failure": "TestAllocationP08NativeSixProcessesImmediateAfterQuorumReservationBurnsUnknownBlock: missing actual killed-child reap <nil>",
+  "diagnosis_status": "The crash-test helper closed stdin before killing the child, allowing a clean EOF exit. Source repair 9a5565be kills before closing stdin on forced shutdown. The direct ordering regression and 15 unchanged process-test parents pass normal/race; hosted confirmation of the repair remains pending. Original hosted result remains failure.",
+  "repair_evidence": "../v2-process-shutdown-order/receipt.json"
+}

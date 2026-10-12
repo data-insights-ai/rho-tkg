@@ -459,6 +459,12 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    separate native compaction/refusal/retry test pass normal and race runs;
    new-file coverage is 88.8%, with scoped vet passing. This includes the existing
    E18 six-process compatibility test, not whole-package or physical-host acceptance.
+   Hosted integration at `a931071d` [failed](evidence/e17-ci-deadline-20261012/hosted-ci-a931071d.json)
+   in the crash-test helper: closing stdin before SIGKILL allowed a clean child
+   exit. The [ordering repair](evidence/v2-process-shutdown-order/receipt.json)
+   preserves the strict killed-child assertion; its direct regression and 15
+   unchanged process-test parents pass normal/race. Hosted confirmation remains
+   pending.
    Receiving-only term persistence, native snapshot reception, semantic audit,
    durable activation and association transfer into the restored Host remain open.
    The
