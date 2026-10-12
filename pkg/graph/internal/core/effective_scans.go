@@ -310,8 +310,7 @@ func (c *Core) nodeLabelsCandidatesAt(toks []uint16, pin types.Instant) ([]types
 	case len(toks) == 0:
 		return nil, nil
 	case len(toks) == 1:
-		_, ids, err := c.nodeLabelCandidatesAt(toks[0], opts)
-		return ids, err
+		return c.nodeLabelCandidateIDsAt(toks[0], opts)
 	}
 	var ids []types.NodeID
 	gather := func(id types.NodeID) error {
@@ -321,11 +320,7 @@ func (c *Core) nodeLabelsCandidatesAt(toks []uint16, pin types.Instant) ([]types
 	if c.labelTxMembers == nil {
 		var current []types.NodeID
 		for _, tok := range toks {
-			rows, err := c.store.NodesByLabel(tok, storepkg.QueryOpts{})
-			if err != nil {
-				return nil, err
-			}
-			cur, err := c.nodeIDsFromLabelRows(tok, rows)
+			cur, err := c.nodeLabelCurrentIDs(tok)
 			if err != nil {
 				return nil, err
 			}
@@ -336,7 +331,7 @@ func (c *Core) nodeLabelsCandidatesAt(toks []uint16, pin types.Instant) ([]types
 	}
 	seen := map[types.NodeID]struct{}{}
 	for _, tok := range toks {
-		_, cand, err := c.nodeLabelCandidatesAt(tok, opts)
+		cand, err := c.nodeLabelCandidateIDsAt(tok, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -348,6 +343,20 @@ func (c *Core) nodeLabelsCandidatesAt(toks []uint16, pin types.Instant) ([]types
 		}
 	}
 	return ids, nil
+}
+
+// nodeLabelCurrentIDs returns the label's current members: from the store's
+// index without reading rows where it offers store.MemberIDsCapability, else
+// from the label's rows (c.mu held).
+func (c *Core) nodeLabelCurrentIDs(tok uint16) ([]types.NodeID, error) {
+	if c.memberIDs != nil {
+		return c.memberIDs.NodeIDsByLabel(tok)
+	}
+	rows, err := c.store.NodesByLabel(tok, storepkg.QueryOpts{})
+	if err != nil {
+		return nil, err
+	}
+	return c.nodeIDsFromLabelRows(tok, rows)
 }
 
 // relEffectiveAdjacencyCandidates gathers the candidates of

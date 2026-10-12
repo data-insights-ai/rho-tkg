@@ -47,8 +47,7 @@ red-*.txt, green-*.txt, mutants.txt, bench.txt in this directory.
   (Errors: M12-M14, wrappers: M15, oracle: the rest).
 - Bench: bench.txt (host shared with other agents; -count=3). Per relationship: memory 0.5-1.4 µs, badger
   3.9-10.7 µs; one RelEffectiveTimeline call 0.5-1.5 µs / 5.2-5.6 µs (plain). The scans stream through the
-  per-entity body: no per-call validation, one gather per call; the badger double read (gather + re-read under
-  the entity lock) is backlog 33 and lands for every scan through streamRelTimelines.
+  per-entity body: no per-call validation, one gather per call.
 - Findings filed: backlog 49 (tiered re-import moving shards loses the earlier life's history,
   finding-tiered-reimport-*), backlog 50 (pinned adjacency doors miss a re-imported rel's earlier life,
   finding-pinned-adjacency-*).
@@ -63,3 +62,12 @@ red-*.txt, green-*.txt, mutants.txt, bench.txt in this directory.
 4. TestEffectiveTimeline_ConcurrentWriters runs every scan door (guard: passes before and after; -race green-6).
 5. stability.md: sub-API `Ops` interfaces are wiring seams. 6. Backlog 49 reworded (unreachable, not lost).
 Gates: green-5 (go test -short ./...), green-6 (-race core/temporal/graph), lint-docker 0 issues, security-docker clean.
+
+## After the rebase onto main (33/42, 48 merged)
+- ForEachNodeEffectiveByLabel now delegates to the several-labels body, which still read rows in its gather:
+  TestEffectiveScanReadsEachRowOnce went red for `nodes` (red-3-reads-each-row-once-after-rebase.txt), as did the new
+  `nodes by labels` case. Fix: the label gathers use 33's ID-only `nodeLabelCandidateIDsAt` / the MemberIDs index
+  (`nodeLabelCurrentIDs`); `all rels`, `nodes by ids`, `rels by ids` were green before (guards). green-7.
+- ForEachRelEffectiveByType keeps 33's `relTypeCandidateIDsAt` with the streamRelTimelines tail.
+- ForEachRelEffectiveAtNodes reads the seeds' adjacency rows (no ID-only adjacency read exists); tied to backlog 50.
+- bench-after-rebase.txt (shared host, noisy).

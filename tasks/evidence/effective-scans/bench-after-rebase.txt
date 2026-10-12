@@ -1,0 +1,13 @@
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelEffectiveTimeline/memory/plain-32   	 2492308	       487.5 ns/op	     496 B/op	       8 allocs/op
+BenchmarkRelEffectiveTimeline/badger/plain-32   	  195157	      5635 ns/op	    4682 B/op	      39 allocs/op
+BenchmarkEffectiveScans/memory/all-32           	       6	 170916260 ns/op	       854.6 ns/rel	125204185 B/op	 1640625 allocs/op
+BenchmarkEffectiveScans/memory/at-nodes-32      	      66	  24560113 ns/op	      2456 ns/rel	 9975229 B/op	  135787 allocs/op
+BenchmarkEffectiveScans/memory/by-ids-32        	      62	  19523409 ns/op	      1952 ns/rel	 5483357 B/op	   82040 allocs/op
+BenchmarkEffectiveScans/badger/all-32           	       1	1827392662 ns/op	      9137 ns/rel	659847264 B/op	 7921742 allocs/op
+BenchmarkEffectiveScans/badger/at-nodes-32      	       8	 127047657 ns/op	     12705 ns/rel	56134663 B/op	  640050 allocs/op
+BenchmarkEffectiveScans/badger/by-ids-32        	      25	  52913352 ns/op	      5291 ns/rel	18470892 B/op	  232657 allocs/op
+BenchmarkEffectiveScansOneSeed/memory/at-nodes-32         	       4	 308173972 ns/op	        50.00 rels	118838052 B/op	 1900637 allocs/op
+BenchmarkEffectiveScansOneSeed/memory/by-ids-32           	   19084	     53905 ns/op	        50.00 rels	   55612 B/op	     943 allocs/op
+BenchmarkEffectiveScansOneSeed/badger/at-nodes-32         	       1	2129180587 ns/op	        50.00 rels	1059175440 B/op	12514853 allocs/op
+BenchmarkEffectiveScansOneSeed/badger/by-ids-32           	    2298	    497431 ns/op	        50.00 rels	  337243 B/op	    4114 allocs/op

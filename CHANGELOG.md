@@ -65,10 +65,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   relationships, `BenchmarkEffectiveScans`, about one `RelEffectiveTimeline` call each) plus its gather. The by-IDs
   doors read only the given IDs; the all-entity scans every entity ever stored. `ForEachRelEffectiveAtNodes` folds
   EVERY relationship with history on every call — O(H) timeline reads plus the answer, whatever the seed count:
-  one seed with 50 relationships on 100 K relationships that all have history costs 0.48 s on memory and 3.4 s on
-  badger, against 0.13 ms / 0.6 ms for `RelsEffectiveByIDs` over the same 50 (`BenchmarkEffectiveScansOneSeed`).
-  Follow-up (backlog 50): a cheap sound gather shared with the pinned adjacency doors. Backlog 33 (badger re-read
-  after the gather) applies to every scan through the shared seam. `temporal.Ops` gains
+  one seed with 50 relationships on 100 K relationships that all have history costs 0.3-0.5 s on memory and 2.1-3.4 s
+  on badger, against 0.05-0.13 ms / 0.5-0.6 ms for `RelsEffectiveByIDs` over the same 50
+  (`BenchmarkEffectiveScansOneSeed`). Follow-up (backlog 50): a cheap sound gather shared with the pinned adjacency
+  doors. The label and type gathers are ID-only where the store offers `store.MemberIDsCapability` (backlog 33). `temporal.Ops` gains
   the six methods. Evidence: `tasks/evidence/effective-scans/` (red runs, mutants, benchmark).
 
 ### Changed

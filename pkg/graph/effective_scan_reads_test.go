@@ -12,7 +12,9 @@ import (
 )
 
 // Backlog 33: an effective scan (ForEachRelEffectiveByType /
-// ForEachNodeEffectiveByLabel) on badger reads each entity's current row once.
+// ForEachNodeEffectiveByLabel, and the backlog-35 doors ForEachRelEffective,
+// ForEachNodeEffectiveByLabels with several labels, Nodes/RelsEffectiveByIDs)
+// on badger reads each entity's current row once.
 // The faulty gather it names decodes every current row of the type or label
 // to collect the candidate IDs and then reads each row again for its timeline:
 // with the rows evicted from a one-entry cache that is two cache misses per
@@ -29,19 +31,32 @@ func TestEffectiveScanReadsEachRowOnce(t *testing.T) {
 	}
 	defer g.Close()
 	const n = 200
-	var prev types.NodeID
+	var (
+		prev    types.NodeID
+		nodeIDs []types.NodeID
+		relIDs  []types.RelID
+	)
 	for i := 0; i < n; i++ {
 		node, err := g.Nodes().Add(ctx, []string{"Host"}, map[string]any{"i": int64(i)})
 		if err != nil {
 			t.Fatal(err)
 		}
+		nodeIDs = append(nodeIDs, node.ID())
 		if i > 0 {
-			if _, err := g.Rels().AddByID(ctx, "FLOW", prev, node.ID(), nil); err != nil {
+			r, err := g.Rels().AddByID(ctx, "FLOW", prev, node.ID(), nil)
+			if err != nil {
 				t.Fatal(err)
 			}
+			relIDs = append(relIDs, r.ID())
 		}
 		prev = node.ID()
 	}
+	// A second label for the several-labels scan.
+	other, err := g.Nodes().Add(ctx, []string{"Other"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodeIDs = append(nodeIDs, other.ID())
 	pin, err := g.Temporal().NowTx()
 	if err != nil {
 		t.Fatal(err)
@@ -65,6 +80,26 @@ func TestEffectiveScanReadsEachRowOnce(t *testing.T) {
 			err := g.Temporal().ForEachNodeEffectiveByLabel("Host", pin, func(temporal.NodeSegment) bool { k++; return true })
 			return k, err
 		}, n},
+		{"nodes by labels", st.NodeCacheMisses, func() (int, error) {
+			k := 0
+			err := g.Temporal().ForEachNodeEffectiveByLabels([]string{"Host", "Other"}, pin, func(temporal.NodeSegment) bool { k++; return true })
+			return k, err
+		}, n + 1},
+		{"all rels", st.RelCacheMisses, func() (int, error) {
+			k := 0
+			err := g.Temporal().ForEachRelEffective(pin, func(temporal.RelSegment) bool { k++; return true })
+			return k, err
+		}, n - 1},
+		{"nodes by ids", st.NodeCacheMisses, func() (int, error) {
+			k := 0
+			err := g.Temporal().NodesEffectiveByIDs(nodeIDs, pin, func(temporal.NodeSegment) bool { k++; return true })
+			return k, err
+		}, n + 1},
+		{"rels by ids", st.RelCacheMisses, func() (int, error) {
+			k := 0
+			err := g.Temporal().RelsEffectiveByIDs(relIDs, pin, func(temporal.RelSegment) bool { k++; return true })
+			return k, err
+		}, n - 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			before := tc.misses()
