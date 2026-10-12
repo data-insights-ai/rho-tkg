@@ -418,6 +418,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   now persists and applies bounded prefixes while preserving the original commit
   boundary and delaying Raft advance/output until durable completion. The normal
   single-sync path remains; capacity fallback can require additional syncs.
+  Completion commands in the same Ready bind to their earlier queued reservation;
+  commands behind an owner retirement are reclassified after its exact committed
+  predecessor is applied. Transient dependency refusals remain separate from
+  persisted capacity recipes; callback and storage errors never permit prefix retry.
 
 - **v5 deferred value-read error classification**: application/log iterator
   reads and snapshot transfer pages fetch each value once and check read errors
