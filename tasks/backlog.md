@@ -71,6 +71,10 @@ all eight applicable jobs, including 2,180 core and 451 graphapply names in
 exhaustive race batches plus the other packages. Push-only lint is skipped;
 local pinned lint evidence is separate. This checkpoint does not qualify
 subsequent paired-fault or creation-factory changes.
+The later main revision `dbd74cf4` (v4.51.1), identified by the external
+[handover review](../docs/v5/HANDOVER.md), still needs integration, updated
+consumer mappings and qualification of the changed v4 reader. The v4.51.0
+receipts above remain historical evidence, not qualification of v4.51.1.
 [Substrate evaluation](../docs/v5/reference/substrate-evaluation.json) is
 research/execution-plan evidence only; no engine selection or V2/V3 acceptance.
 The original five recovered `docs/v5/reference/` files are byte-verified and
