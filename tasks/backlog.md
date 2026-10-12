@@ -357,6 +357,26 @@ over a deleted life (written at `Rels.Import`), shared by `ForEachRelEffectiveAt
 doors; an ever-adjacency sidecar if the deleted volume is large. Red first: the one-seed benchmark as a gate plus
 the probe above.
 
+Consumer: sigma-tkgd 2026-10-12 — its pinned src_label/dst_label pushdown (`OutgoingForNodesAtPin` /
+`IncomingForNodesAtPin`) misses the earlier life, and `ForEachRelEffectiveAtNodes` at O(H) per call is too slow for
+every pinned label source; sigma waits for this item.
+
+### 51. Effective scans bounded by valid end (cost follows the result, not the history)
+
+*HIGH (consumer: sigma-tkgd step 6, 2026-10-12)* — open; not started.
+
+Every effective door (`ForEach*EffectiveByType` / `ByLabels`, `ForEachRelEffectiveAtNodes`, `ForEach*Effective`)
+enumerates by type, label, endpoint or every entity ever stored. In sigma's sessions each event is its own entity
+whose past stays effective, so the effective state at a pin is the whole history: restore 64.5 ms at 7 days,
+323.6 ms at 28 days (5.0x for 4x the history). Requested: `ForEachRelEffectiveByType(type, pin, validFrom, fn)` and
+the node/label door, visiting only entities whose effective valid interval at the pin ends at or after `validFrom`
+(an untimed entity is eternal, always included), backed by a valid-end index so the cost follows the result. sigma
+then restores = persisted overview + a raw scan from (frontier − horizon − lookback). Design note: sigma-tkgd
+`tasks/realtime-session-impl.md` "v0.10.9, step 6" (origin/main adfa8727a). Red test first (sigma's acceptance):
+1k vs 10k retired entities, a constant number with valid end ≥ `validFrom`, entities read constant on memory and
+badger; break cases: validFrom exactly at a valid end, untimed entity, a correction that moves the valid end before
+validFrom at a later tx (pin before vs after it), retracted entity, tiered/sharded parity.
+
 ---
 
 ### 45. Internal sentinels reach callers but have no exported alias
