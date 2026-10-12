@@ -1,19 +1,13 @@
-# HANDOVER — rho-tkg v4 line (rewritten 2026-10-12, main at v4.51.2, v4.51.3 batch in progress)
+# HANDOVER — rho-tkg v4 line (rewritten 2026-10-12, main at v4.51.3)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go 1.26.9; a Go
-library, not a database). Latest tag `v4.51.2`. Read, in this order: this file, `tasks/lessons.md` (digest at the top),
+library, not a database). Latest tag `v4.51.3`. Read, in this order: this file, `tasks/lessons.md` (digest at the top),
 `tasks/todo.md` (user requests, open queue with the per-step red tests), `tasks/backlog.md` (specs), `CHANGELOG.md` top.
 History (what shipped, why) is in `CHANGELOG.md` and git, not here.
 
 ## 1. Open requests and next steps (newest user message first; do these, do not ask)
 
-1. **v4.51.3 batch, in progress** (René 2026-10-12: "yes, why is this a question? ... now"): five Opus build agents in
-   worktrees, one item each: backlog **52** (durable commit under SyncWrites, ai-soc, <= 0.1 s per 530-op group), **53**
-   (rel planner-stat memos, ai-soc RSS), **54** (badger open linear in history, ai-soc), **55** (effective scans, one
-   transaction per rel, ai-soc + sigma), and the review findings **F1-F6** of v4.51.2 (`tasks/todo.md` open queue: ex-adjacency
-   legs on archive move, two test gaps, dead code, one helper). Per item: ledger line first, red break-the-code test, fix, one
-   Opus-high review, merge; then the final Fable review of the batch, one `make ci-docker`, PATCH tag `v4.51.3`, notify
-   sigma-tkgd and ai-soc (section 3).
+1. **v4.51.3 released 2026-10-12** (52, 53, 54, 55, F1–F6; gate exit 0, coverage 87.7 %; consumers notified). Next tag: v4.51.4 (PATCH only). Next work: new consumer requests, then the on-hold items below.
 2. **On hold, not blocking:** 41 (merge the history-stamps sidecar into the presence set; measured, saves only where both
    doors run), 28 (state column fast path; design first, waits for sigma's input), 21 (retention `PurgeExpiredRels` + per-type
    gate; full spec in backlog 21; waits for sigma's `@overview`).

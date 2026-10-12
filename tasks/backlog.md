@@ -333,62 +333,6 @@ Measured 2026-10-12 (`tasks/evidence/badger-read-cost/41-01-sidecar-ram-per-id.t
 
 A crash after a burst whose monotonic floor outran the wall reopens with `NowTx` below committed stamps (lesson 71's reopen case on the crash path): `persistInstantFloor` is called only from `Close` (`core/core.go`, `core/instant_floor.go:129`), and `seedInstantFloor` reseeds only from that watermark. Red test first: a crash-shaped child (exit without `Close`) after writes stamped ahead of the wall, reopen, assert `NowTx()` and a fresh write's `TxFrom` exceed every stored `TxFrom`. Fix candidates: persist the floor with the durable commit / flush, or reseed from the newest stored stamp at open.
 
-### 52. Durable commit under SyncWrites costs one fsync per mutation (~1 s per 530-op group)
-
-*HIGH (consumer: ai-soc, 2026-10-12; "We have to hurry", BA+BO project data)* — open; measured, not started.
-
-ai-soc runs `DurableCommit` + `SyncWrites` (strict power-loss durability, because DurableCommit alone leaves the
-memtable-switch gap documented at `store/badger/badgerstore_durable.go:28-34`, backlog 15). SyncWrites mode flushes
-every mutation synchronously (`badgerstore_flush.go:82,105`): ~822 msync per 530-op group, 0.99 s mean vs 14 ms for
-DurableCommit alone (`tasks/evidence/aisoc-commit-cost/01-measure.txt`; ai-soc measures 2.86 s on its store, BA
-window 46 min on badger vs 54 s on memory). Need: ≤ 0.1 s per durable 530-op group, hard floor 0.5 s. Sound fix
-candidate: inside a DurableCommit group, buffer the group's mutations and commit them as one WriteBatch that Badger
-syncs (SyncWrites keeps the switch covered), so the cost is one or a few syncs per group, not one per mutation; or
-close the memtable-switch gap in DurableFlush so ai-soc can drop SyncWrites. Red test first: a syscall- or
-sync-counting test (syncs per durable group bounded by a constant, not by op count) + the crash/power-loss
-contract tests of v4.44.0 still green; bench `tasks/evidence/aisoc-commit-cost/bench_test.go.txt`.
-
-
-### 53. Relationship planner-stat memos hold one RAM entry per relationship, never evicted
-
-*HIGH (consumer: ai-soc, 2026-10-12, BA 18 Aug run on Flux)* — open; not started.
-
-ai-soc (DurableCommit, rho v4.51.1, badger) stopped after 11.5 min at 7.67 M of 39.93 M rows with RSS 71 GiB,
-growing 8.9 GiB per M rows. Heap at minute 10 (29.8 GB in use): ≈57 % in rho's per-relationship stat memos —
-`addRelPropertyStatsCounts` 10.9 GB (value keys 4.2 GB), `addRelPropertyTypeClassCounts` 4.9 GB, sync.Map nodes
-1.26 GB. Memo sites: `relStatsContrib.Store` (`store/badger/badgerstore_rel_property_stats.go:179`) and
-`relTypeClassContrib.Store` (`badgerstore_rel_type_class_counts.go:50`), kept so a delete can decrement exactly.
-Workaround today: `Config.DisablePlannerStats` (both memos gated, no correctness path depends on them).
-Sound fix candidate: derive the decrement from the deleted row itself (the delete seam has the old row / RelDeleteInfo)
-instead of a per-relationship memo, so RAM follows the number of (type, key, value) stats, not relationships; check
-the node-side stats for the same pattern. Red test first: heap or memo-count growth per relationship written is
-O(1)-bounded (count entries after N writes, N = 10 K vs 100 K), plus exact counters after delete / replace /
-cascade / replica apply equal a full recount (oracle). Profiles are customer-derived: read on Flux only
-(`/srv/fast/rene/project-2026-09-010-BA/aisoc-s3-20261012/smoke/prof`).
-
-
-### 54. Badger open walks every current row to rebuild RAM indexes (open linear in history)
-
-*HIGH (consumer: ai-soc restart, 2026-10-12)* — open; not started.
-
-ai-soc BA-window store (519,350 nodes, 435,526 rels, 432 MB badger, v4.51.2): `graph.New` 24.8 s on a cleanly closed
-store; S3's store is ~16x (6–7 min if linear, not measured). Request text: ai-soc `wave2/RST/request-rho-restart.md` §1.
-First step: profile which RAM index rebuilds dominate the open (label/type membership, adjacency, property and
-temporal indexes, presence sets, planner stats; several already have `*OnDisk` modes), then persist or lazily build
-the dominant ones so a clean reopen costs O(indexes read) not O(rows decoded). Red test first: open time (or rows
-decoded at open) at 100 K vs 1 M entities on a cleanly closed store stays within a constant factor, plus answers
-after reopen equal a full-rebuild oracle, and a crash (no Close) still rebuilds correctly.
-
-### 55. Effective scans read one relationship per Badger transaction
-
-*MEDIUM (consumers: ai-soc restart replay, sigma restore; 2026-10-12)* — open; not started.
-
-`ForEachRelEffectiveByType` → `streamRelTimelines` (`internal/core/effective_scans.go:58`) does one badger
-View/Get per relationship; ai-soc profile: 33.4 s of 61.9 s CPU in it (request §3). Request: a range iterator over a
-type's relationships (current rows + history) for a full scan, one iterator per type instead of one transaction per
-ID. Red test first: reads per scan (transactions opened) bounded by a constant per type, results equal to the
-per-ID path (oracle) on memory/badger/sharded/tiered, under concurrent writes.
-
 ---
 
 ### 45. Internal sentinels reach callers but have no exported alias
@@ -462,6 +406,10 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Item 49 (HIGH, tiered) — re-import onto another shard made earlier lives unreachable | `[4.51.2]` Fixed; evidence `tasks/evidence/reimport-shards/` |
 | Item 50 (MEDIUM, sigma) — pinned adjacency doors missed a re-imported rel's earlier life; AtNodes O(H) | `[4.51.2]` Added/Changed/Fixed (ex-adjacency index, store marker 3); evidence `tasks/evidence/effective-scans/50-*` |
 | Item 51 (HIGH, sigma step 6) — effective scans bounded by valid end | `[4.51.2]` Added; evidence `tasks/evidence/effective-validfrom/` |
+| Item 52 (HIGH, ai-soc) — durable commit under SyncWrites synced per mutation | `[4.51.3]` Changed; evidence `tasks/evidence/aisoc-commit-cost/52-*` |
+| Item 53 (HIGH, ai-soc) — rel planner-stat memos one RAM entry per rel | `[4.51.3]` Fixed; evidence `tasks/evidence/planner-stats-memo/` |
+| Item 54 (HIGH, ai-soc) — badger open linear in history | `[4.51.3]` Changed (open image incl. planner stats, stale-key repair); evidence `tasks/evidence/open-cost/` |
+| Item 55 (MEDIUM, ai-soc + sigma) — effective scans one badger txn per rel | `[4.51.3]` Changed; evidence `tasks/evidence/effective-scans/55-*` |
 | Item 48 (FEATURE, sigma-tkgd) — `ColumnData.Other`: column-scan cells held outside the column (node and rel batches); typed slots aligned with `Null` | `[4.51.1]` Added; evidence `tasks/evidence/column-other/` |
 | Item 35 (FEATURE, sigma-tkgd) — broader effective scans: `ForEachNodeEffective` / `ForEachRelEffective`, `ForEachRelEffectiveAtNodes`, `NodesEffectiveByIDs` / `RelsEffectiveByIDs`, `ForEachNodeEffectiveByLabels` | `[4.51.1]` Added; evidence `tasks/evidence/effective-scans/` |
 | Item 11 (FEATURE) — durable-on-return commit `Config.DurableCommit` | `[4.44.0]` Added (power-loss gap: item 15) |
