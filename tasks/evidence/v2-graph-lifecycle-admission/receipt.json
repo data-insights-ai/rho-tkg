@@ -1,0 +1,317 @@
+{
+  "schema_version": 1,
+  "status": "qualified_local_selected_scope",
+  "date": "2026-10-12",
+  "author_commit": "32240d353b91532d091ce36ba0cf263ae82bc7af",
+  "scope": "Internal lifecycle factory qualification: five test parents and six subtests, six local disk stores with in-process trusted initial-provisioning adapters and existing consensus Packet delivery. Not a cross-process or physical-host acceptance run.",
+  "new_public_methods": 0,
+  "toolchain": {
+    "VERSION": "go1.26.9\ntime 2026-10-02T20:28:03Z\n",
+    "binary": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+  },
+  "environment": {
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off",
+    "GOTOOLCHAIN": "local"
+  },
+  "resource_policy": {
+    "seconds_per_command": 180,
+    "aggregate_tree_rss_mib": 4096,
+    "sample_interval_s": 0.25,
+    "qualification": "Sampled process-tree RSS watchdog, not a kernel memory ceiling."
+  },
+  "source_manifest": {
+    "archive_member": "final-source-manifest.json",
+    "sha256": "486721b4ff0132deb75722baeaea188dc89636030734a86d59d8e4c6ff952c4f",
+    "files": 536
+  },
+  "changed_source": {
+    "v5/internal/graphapply/graph_lifecycle.go": "1dceffacb6b979c5f6e5e0066a187607c4fed9ee7d31a6ae77e47cdbd8619a23",
+    "v5/internal/graphapply/graph_lifecycle_test.go": "c717f7614775293c025869f74b0591667b88553e836ce6e2a6fad61fcfaf3dc9"
+  },
+  "checks": {
+    "format": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/gofmt",
+        "-w",
+        "internal/graphapply/graph_lifecycle.go",
+        "internal/graphapply/graph_lifecycle_test.go"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 2.047,
+      "elapsed_s": 0.041,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "normal": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-v",
+        "-run",
+        "^TestLogicalGraphLifecycle",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 879.203,
+      "elapsed_s": 10.95,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "race": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-race",
+        "-v",
+        "-run",
+        "^TestLogicalGraphLifecycle",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 895.25,
+      "elapsed_s": 20.704,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "coverage": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-coverprofile=/var/tmp/rho-v5-graph-creation-evidence-20261012/coverage.out",
+        "-run",
+        "^TestLogicalGraphLifecycle",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 902.5,
+      "elapsed_s": 10.623,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "coverfunc": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "tool",
+        "cover",
+        "-func=/var/tmp/rho-v5-graph-creation-evidence-20261012/coverage.out"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 6.125,
+      "elapsed_s": 0.309,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "vet": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "vet",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 199.875,
+      "elapsed_s": 1.673,
+      "exit_code": 0,
+      "reason": "completed"
+    }
+  },
+  "tests_each_normal_race": {
+    "parents_pass": 5,
+    "subtests_pass": 6,
+    "fail": 0,
+    "skip": 0
+  },
+  "new_code_coverage": {
+    "file": "v5/internal/graphapply/graph_lifecycle.go",
+    "source_sha256": "1dceffacb6b979c5f6e5e0066a187607c4fed9ee7d31a6ae77e47cdbd8619a23",
+    "covered_statements": 104,
+    "total_statements": 123,
+    "percent": 84.55284552845528,
+    "functions": [
+      {
+        "name": "createLogicalGraph",
+        "percent": 100.0
+      },
+      {
+        "name": "createLogicalGraphWithEntropy",
+        "percent": 86.2
+      },
+      {
+        "name": "isNilInitialProvisioner",
+        "percent": 83.3
+      },
+      {
+        "name": "provisionInitialGraphReplica",
+        "percent": 100.0
+      },
+      {
+        "name": "openLogicalGraphReplica",
+        "percent": 100.0
+      },
+      {
+        "name": "openLifecycleGraphReplica",
+        "percent": 82.1
+      }
+    ],
+    "profile_member": "coverage.out",
+    "function_report_member": "coverfunc.log"
+  },
+  "selected_package_coverage": {
+    "percent": 18.0,
+    "qualification": "Whole graphapply denominator with only selected lifecycle tests. Not whole-package coverage acceptance or a substitute for integrated make cover/CI."
+  },
+  "preserved_failed_normal": {
+    "classification": "test assertion overclaimed absence of housekeeping; no production semantic regression",
+    "cause": "Pinned Pebble creates LOCK before returning ErrDBDoesNotExist. The failed test incorrectly required no files.",
+    "correction": "Allow only optional regular LOCK and repeat existing-only Open, still requiring ErrDBDoesNotExist and no Host. No filesystem preflight or deletion was added.",
+    "limiter_member": "normal.json",
+    "log_member": "normal.log",
+    "source_manifest_member": "normal-source.json",
+    "exact_source_members": [
+      "normal-source/graph_lifecycle.go",
+      "normal-source/graph_lifecycle_test.go"
+    ],
+    "limiter": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-v",
+        "-run",
+        "^TestLogicalGraphLifecycle",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 831.766,
+      "elapsed_s": 14.978,
+      "exit_code": 1,
+      "reason": "command-failed"
+    }
+  },
+  "qualifications": [
+    "Pending seeds durably bind identity/membership/declaration only; candidate schema/default-axis/routing/maxBlock bind at actual committed Init.",
+    "Trusted embedding owns one-time authenticated initial provisioning and unique live voter associations; no global clone detection claim.",
+    "Same-identity replacement authorization remains open; no replacement success stub.",
+    "Full integrated repository gates, whole-package acceptance, hosted integration qualification and full V2 acceptance are not established by this receipt."
+  ],
+  "archive": {
+    "file": "raw-evidence.tar.gz",
+    "sha256": "61d58bf24a1cd1dc3f9b968a832850b97b63accf8e03d74f7e2582f71c38741d",
+    "bytes": 128912,
+    "members": 23,
+    "uncompressed_payload_bytes": 1259990
+  },
+  "archive_members": {
+    "coverage.json": {
+      "sha256": "a7ffe70a72b800e429a1dbcc44522de283c2a980b6322ccfad675ee58d030ad7",
+      "bytes": 479
+    },
+    "coverage.log": {
+      "sha256": "cfe87d1a3e7f306e4562c5cdd91c6ea149c495c817dbe9a9301ce626e34e4546",
+      "bytes": 537
+    },
+    "coverage.out": {
+      "sha256": "e6ff501d00187f1527ca0c01c7ad5465c5a4da0a01345b285ae505c1a8aab90b",
+      "bytes": 888362
+    },
+    "coverfunc.json": {
+      "sha256": "41d3a6efa7b58f2414ab98fb698b8fe1539df11984d33f7064cca39c7dbf3db0",
+      "bytes": 392
+    },
+    "coverfunc.log": {
+      "sha256": "a39014eaca031f3e2c10e80fd54d4774bff66cc14bcc7f6d1add6932a1e469bf",
+      "bytes": 92522
+    },
+    "final-source-manifest.json": {
+      "sha256": "486721b4ff0132deb75722baeaea188dc89636030734a86d59d8e4c6ff952c4f",
+      "bytes": 70481
+    },
+    "final-source/graph_lifecycle.go": {
+      "sha256": "1dceffacb6b979c5f6e5e0066a187607c4fed9ee7d31a6ae77e47cdbd8619a23",
+      "bytes": 11012
+    },
+    "final-source/graph_lifecycle_test.go": {
+      "sha256": "c717f7614775293c025869f74b0591667b88553e836ce6e2a6fad61fcfaf3dc9",
+      "bytes": 20926
+    },
+    "format-final.json": {
+      "sha256": "722934a1828bbe5d8de4408cc5d7bf585bb5d79ff088c09739b198b44a8711b2",
+      "bytes": 402
+    },
+    "format.json": {
+      "sha256": "953454ac31bdf818b0e210df17c6c0c2c2da2341397e76b2762ba0454d93acf8",
+      "bytes": 402
+    },
+    "new-code-coverage.json": {
+      "sha256": "024e26c3ec14545362e78d4e8ac0be2f1d0c5682073d5c95d74e65f12d7e4ba2",
+      "bytes": 2023
+    },
+    "normal-final.json": {
+      "sha256": "7fb249b3760d956911393c7f2a8a167a76a8fe7837dcfe19b541c619a26f3ffd",
+      "bytes": 407
+    },
+    "normal-final.log": {
+      "sha256": "48d66aeffaefb8fe170555c0be3e8564f4f165be024e2dd0b725f3689c64ab4e",
+      "bytes": 43485
+    },
+    "normal-source.json": {
+      "sha256": "2c0832d82b369b95626b162f5735793b0228a572a9c5b8ca25e010ec3bd468c7",
+      "bytes": 1234
+    },
+    "normal-source/graph_lifecycle.go": {
+      "sha256": "1dceffacb6b979c5f6e5e0066a187607c4fed9ee7d31a6ae77e47cdbd8619a23",
+      "bytes": 11012
+    },
+    "normal-source/graph_lifecycle_test.go": {
+      "sha256": "522f0426e59afbb63dbf9955e10f6d1201b468558ba44c8754535ca00f82d5d9",
+      "bytes": 20458
+    },
+    "normal.json": {
+      "sha256": "11d247c9db45dd15f6e1c30d1a786dece759b6a281c160a43131a6c94b9134a5",
+      "bytes": 413
+    },
+    "normal.log": {
+      "sha256": "944c64596bf4e27236062680f14fbbaea5ad91bd382266e071e323e61246e40a",
+      "bytes": 43624
+    },
+    "race.json": {
+      "sha256": "519c99604b1abf3d8bd1fd60fa957b1d5456457b938aece0fd6a8c27738485d0",
+      "bytes": 420
+    },
+    "race.log": {
+      "sha256": "57c236566bed31581ac1e2fcbc13822e8ecfd7e268e3c869a0f1f67f724a9a4d",
+      "bytes": 43488
+    },
+    "vet.json": {
+      "sha256": "e66f395f05f1f25acebaf0caaafbdb3f6536703fe13e2e34e6d5bbee6bf82ec7",
+      "bytes": 334
+    },
+    "vet.log": {
+      "sha256": "00be9c29131ee8c7c704f8d1d6d65ed7fab4629d21dea6da69c6903de5f60490",
+      "bytes": 307
+    },
+    "watchdog/limit-local.py": {
+      "sha256": "6dc4e0362827ecd0854436b9fa1a812342b693d65ba093291d358b359e733283",
+      "bytes": 7270
+    }
+  }
+}

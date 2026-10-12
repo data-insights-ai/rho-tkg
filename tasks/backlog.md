@@ -59,6 +59,10 @@ item; two traced, unreproduced HIGH? findings in item 4. Next step: items 33 + 4
 ## Open — v5 V0–V7 acceptance
 
 Specification and evidence checklist: [PLAN.md §8](../docs/v5/PLAN.md#8-implementation-sequence).
+Review [HANDOVER.md](../docs/v5/HANDOVER.md) at each integration checkpoint and
+after branch fetches. Reconcile new entries with the reviewed PLAN before acting;
+the handover does not replace phase acceptance gates or authorize release/main
+publication. Last checked revision: `eaa339c3` (2026-10-12).
 Pinned fixtures: [consumer contracts](../docs/v5/reference/consumer-contracts.json)
 and [migration obligations](../docs/v5/reference/consumer-migration.json) are
 reviewed specification/inventory evidence; consumer integration acceptance stays open.
@@ -425,11 +429,17 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    the historical external-fault receipt retains its actual 490-second setting.
    Next is native paired local fault-trace adjudication, followed by the comparable
    cost/layout matrix and engine decision; physical-host and other V2 exit
-   gates remain open. **Next production admission work:** enforce one supported
-   lifecycle seam that mints new logical GraphIDs internally, provisions the same
-   genesis through trusted one-time embedding-authenticated per-voter provisioning,
+   gates remain open. The [internal creation/reopen factory](evidence/v2-graph-lifecycle-admission/receipt.json)
+   now mints new logical GraphIDs internally, provisions identical candidate genesis
+   through trusted one-time embedding-authenticated per-voter provisioning,
    and reuses rho's durable pending ownership seed and actual committed Init as
-   its provisioned/initialized states. No separate lifecycle journal is required.
+   its provisioned/initialized states. Pending seeds bind identity, membership and
+   declaration; schema/default-axis/routing/maxBlock choices become immutable only
+   through committed Init. Five selected parents pass normal/race, with 84.55%
+   new-file coverage and scoped vet. Tests exercise both graph partitions, partial
+   provisioning, retained node/relationship history and allocator high-water after
+   reopen. Integrated gates and surviving-quorum-authorized replacement remain
+   open. No separate lifecycle journal is required.
    Construction grants no graph-operation authority; existing committed-Init and
    consensus gates must remain enforced. Partial provisioning may burn the new
    namespace, but cleanup must never delete storage that may have served data. Old identities
