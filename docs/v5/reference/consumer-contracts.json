@@ -1040,7 +1040,7 @@
     "previous_integrated_main": "44303a17a391d663cd48567c55bbb9ee85cdf892",
     "extends_historical_source_delta": "source_delta_history[0] (v4.51.0); its obligations and evidence remain unchanged",
     "evidence_level": "Source-only integration, not behavioral/consumer/phase acceptance. Historical consumer signatures and v4.51.0 qualification remain unchanged.",
-    "qualification": "v4.51.1 reader qualification pending: tools/v5-migrate full narrow gates and independent record, then aggregate/hosted gates after runtime lease; historical 4.51.0 hosted receipt is not current-reader qualification.",
+    "qualification": "The v4.51.1 reader passes all ten narrow migration-preflight gates; see tools/v5-migrate/evidence/main4511-993e89a6.json. Aggregate/hosted gates and consumer integration remain separate. Historical v4.51.0 evidence is unchanged.",
     "dependencies": "No upstream go.mod/go.sum, nested v5/tool module or workflow/gate changes. The migration module now requires v4.51.1 and its local replacement selects the integrated root reader. This prepares requalification; archived receipts retain their original reader pins.",
     "contract_extensions": [
       {

@@ -926,9 +926,10 @@ have upgraded or that a v5 adapter/importer has passed.
 
 The current-source obligations and hashes extend the historical fixtures in
 `reference/consumer-contracts.json` and `reference/consumer-migration.json`.
-They do not implement new v5 public doors or qualify the merged reader. The v4.51.0 hosted preflight qualification remains historical; v4.51.1 reader
-qualification is pending and must rerun the complete narrow gates before relying
-on this source. The previous source-delta records remain immutable history. Upstream backlog
+They do not implement new v5 public doors or qualify a reader by themselves.
+Each changed reader must pass the complete narrow preflight gates against its
+recorded source; current implementation status belongs in the backlog. Previous
+source-delta records and reader qualifications remain immutable history. Upstream backlog
 49/50 still delimit tiered reimport-history and legacy pinned-adjacency completeness;
 this merge neither repairs lost source history nor assigns those omissions to v5.
 

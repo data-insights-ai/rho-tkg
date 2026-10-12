@@ -75,10 +75,11 @@ local pinned lint evidence is separate. This checkpoint does not qualify
 subsequent paired-fault or creation-factory changes.
 The later main revision `dbd74cf4` (v4.51.1), identified by the external
 [handover review](../docs/v5/HANDOVER.md), is integrated with updated source-only
-consumer mappings. Qualification of the changed v4 reader remains pending:
-complete migration-preflight narrow gates and aggregate/hosted checks after the
-runtime lease. The v4.51.0 receipts and source delta remain historical evidence,
-not qualification of v4.51.1.
+consumer mappings. The [v4.51.1 migration preflight qualification](../tools/v5-migrate/evidence/main4511-993e89a6.json)
+passes all ten narrow gates on Go 1.26.9, including race and pinned scanners;
+coverage is 96.2%, with both public preflight functions at 100%. The source
+manifest matches the integrated reader. Aggregate/hosted checks remain separate;
+the v4.51.0 receipts and source delta remain historical evidence.
 [Substrate evaluation](../docs/v5/reference/substrate-evaluation.json) is
 research/execution-plan evidence only; no engine selection or V2/V3 acceptance.
 The original five recovered `docs/v5/reference/` files are byte-verified and
@@ -95,7 +96,7 @@ and reference JSON specify contracts/evidence, not completed engine gates.
 | V3 | Coordinate timeblock candidate independently validated (local commit `fa0c982`; scoped temporal+block coverage 95.7%, no exported method at 0%). Full engine seal/merge/recovery, paged structures and all-in budget/byte-ledger measurements remain open; resident-buffer prototype timings do not close V3 |
 | V4 | Production read/change APIs, historical cross-door parity, gap-free leased feed handoff and pinned sigma access-contract build and nonempty mutation-then-historical tests (the current signature/empty smoke is insufficient) |
 | V5 | Distributed access across 1/2/4/8 partitions, cross-edge/stall/rebalance/feed cases and sigma workload parity |
-| V6 | Retained-state migration preflight integrated and qualified against the current v4.51.0 reader below; destination importer, consumer-repository migrations, retained-cut/CDC agreement and restore on a different topology remain open |
+| V6 | Retained-state migration preflight integrated and narrowly qualified against the v4.51.1 reader above; destination importer, consumer-repository migrations, retained-cut/CDC agreement and restore on a different topology remain open |
 | V7 | Versioned contracts/limits, full CI/race/coverage/security, distributed matrix and consumer suites; measured comparative space/time acceptance against Neo4j/TigerGraph/Memgraph plus v4, with reviewed excess-cost exceptions |
 
 V0 specification acceptance, 2026-10-10:

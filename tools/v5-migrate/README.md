@@ -18,10 +18,16 @@ passes all narrow gates against the integrated v4.51.0 reader, including race,
 96.2% coverage and pinned scanners on Go 1.26.9 Linux/amd64. Neither record
 completes V6; the earlier source pins and local resource measurements remain
 historical. The integrated v4.51.1 reader at `dbd74cf45c65c1086798012e92453315cab75143`
-requires fresh qualification; its complete narrow gates and source/input/scanner
-record remain pending. The local replacement selects that current root reader
-and the module now requires v4.51.1. This dependency pin prepares requalification;
-it does not establish a passing gate. Archived qualification pins are unchanged.
+is locally requalified by the new
+[ten-gate receipt at `993e89a6`](evidence/main4511-993e89a6.json) and its compact
+[raw evidence archive](evidence/main4511-993e89a6.tar.gz). All ten gates passed
+serially with Go 1.26.9 darwin/arm64 and independently checked pinned scanner
+builds, each bounded to 180 seconds and sampled process-tree RSS of 4096 MiB.
+Observed coverage is 96.2% overall and 100% for both preflight functions. The
+module requires v4.51.1; its local replacements select the source-equivalent
+integrated root recorded in that receipt. Archived qualification pins remain
+unchanged. This narrow local result does not qualify whole-root/hosted gates,
+original history completeness, destination import or full V6.
 
 The caller quiesces source writes, imports, retention and DDL across a call,
 supplies capture/reader identity and evidence, and designates an explicit v5
