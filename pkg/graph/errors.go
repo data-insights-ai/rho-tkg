@@ -149,7 +149,9 @@ var (
 	// History retention & compaction (ADR-0001).
 	ErrHistoryCompacted = core.ErrHistoryCompacted
 	// Effective timeline pin ahead of the commit clock.
-	ErrTxPinTooNew                = core.ErrTxPinTooNew
+	ErrTxPinTooNew = core.ErrTxPinTooNew
+	// Effective adjacency scan with a direction other than Outgoing / Incoming.
+	ErrInvalidDirection           = core.ErrInvalidDirection
 	ErrCompactionProtectedTag     = core.ErrCompactionProtectedTag
 	ErrInvalidRetentionPolicy     = core.ErrInvalidRetentionPolicy
 	ErrCompactionChangeLogEnabled = core.ErrCompactionChangeLogEnabled

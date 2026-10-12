@@ -1,0 +1,12 @@
+M12 (review F2) a wrapper embedding sharded may promote the capabilities: KILLED
+    --- FAIL: TestCurrentStampsCapabilityAdmission (0.01s)
+    --- FAIL: TestCurrentStampsCapabilityAdmission/inherited_from_sharded_keeps_the_overrides_visible (0.01s)
+M13 (review) the stamps read truncates a version above uint32: KILLED
+    --- FAIL: TestDecodeWireRowStamps (0.00s)
+M14 (review F1) badger decodes the whole row on a miss (the old read): KILLED
+    --- FAIL: TestCurrentStamps_StoredRowForms (0.01s)
+    --- FAIL: TestCurrentStamps_StoredRowForms/node (0.01s)
+M15 (review F1) the tiered node walk swallows a row read error: KILLED
+    --- FAIL: TestTieredNodeWalkOnAStoredRowTheFullDecodeRejects (0.01s)
+
+Review round 2026-10-12. F2 red before the fix: 70-red-f2-sharded-wrapper.txt. The F1 tests (badger wrong-ID / zero-token rows, tiered node walk) and the version>uint32 test are GUARDS of behaviour the branch already had (green before the edit); M13-M15 show each kills the fault it names.

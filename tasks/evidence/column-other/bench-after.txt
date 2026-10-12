@@ -1,0 +1,54 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkScanColumnsFromNodes_RowPath/n=1000-32         	   24032	     51454 ns/op	  182256 B/op	      52 allocs/op
+BenchmarkScanColumnsFromNodes_RowPath/n=10000-32        	    3255	    346714 ns/op	  508528 B/op	      66 allocs/op
+BenchmarkScanColumnsFromRels_RowPath/n=1000-32          	   18381	     58689 ns/op	  280657 B/op	      56 allocs/op
+BenchmarkScanColumnsFromRels_RowPath/n=10000-32         	    2761	    430225 ns/op	  606928 B/op	      70 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkScanColumnsFromNodes_RowPath/n=1000-32         	   26253	     46158 ns/op	  182257 B/op	      52 allocs/op
+BenchmarkScanColumnsFromNodes_RowPath/n=10000-32        	    3607	    345304 ns/op	  508528 B/op	      66 allocs/op
+BenchmarkScanColumnsFromRels_RowPath/n=1000-32          	   21879	     58711 ns/op	  280657 B/op	      56 allocs/op
+BenchmarkScanColumnsFromRels_RowPath/n=10000-32         	    2619	    422535 ns/op	  606929 B/op	      70 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkScanColumnsFromNodes_RowPath/n=1000-32         	   23292	     57455 ns/op	  182256 B/op	      52 allocs/op
+BenchmarkScanColumnsFromNodes_RowPath/n=10000-32        	    3397	    352991 ns/op	  508528 B/op	      66 allocs/op
+BenchmarkScanColumnsFromRels_RowPath/n=1000-32          	   22586	     66541 ns/op	  280656 B/op	      56 allocs/op
+BenchmarkScanColumnsFromRels_RowPath/n=10000-32         	    2905	    427999 ns/op	  606928 B/op	      70 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkScanColumnsFromNodes_RowPath/n=1000-32         	   20986	     57274 ns/op	  182256 B/op	      52 allocs/op
+BenchmarkScanColumnsFromNodes_RowPath/n=10000-32        	    2954	    401847 ns/op	  508528 B/op	      66 allocs/op
+BenchmarkScanColumnsFromRels_RowPath/n=1000-32          	   14917	     80870 ns/op	  280657 B/op	      56 allocs/op
+BenchmarkScanColumnsFromRels_RowPath/n=10000-32         	    2482	    430195 ns/op	  606928 B/op	      70 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkScanColumnsFromNodes_RowPath/n=1000-32         	   19543	     72772 ns/op	  182258 B/op	      52 allocs/op
+BenchmarkScanColumnsFromNodes_RowPath/n=10000-32        	    2887	    391785 ns/op	  508528 B/op	      66 allocs/op
+BenchmarkScanColumnsFromRels_RowPath/n=1000-32          	   10000	    100230 ns/op	  280659 B/op	      56 allocs/op
+BenchmarkScanColumnsFromRels_RowPath/n=10000-32         	    2775	    427960 ns/op	  606930 B/op	      70 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkScanColumnsFromNodes_RowPath/n=1000-32         	   16182	    103126 ns/op	  182264 B/op	      52 allocs/op
+BenchmarkScanColumnsFromNodes_RowPath/n=10000-32        	    2674	    389526 ns/op	  508528 B/op	      66 allocs/op
+BenchmarkScanColumnsFromRels_RowPath/n=1000-32          	   15960	     83297 ns/op	  280657 B/op	      56 allocs/op
+BenchmarkScanColumnsFromRels_RowPath/n=10000-32         	    2620	    433539 ns/op	  606928 B/op	      70 allocs/op
+PASS

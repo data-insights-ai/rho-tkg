@@ -1,0 +1,8 @@
+--- PASS: TestEffectiveScanReadsEachRowOnce (0.09s)
+    --- PASS: TestEffectiveScanReadsEachRowOnce/rels (0.00s)
+    --- PASS: TestEffectiveScanReadsEachRowOnce/nodes (0.00s)
+    --- PASS: TestEffectiveScanReadsEachRowOnce/nodes_by_labels (0.00s)
+    --- PASS: TestEffectiveScanReadsEachRowOnce/all_rels (0.00s)
+    --- PASS: TestEffectiveScanReadsEachRowOnce/nodes_by_ids (0.00s)
+    --- PASS: TestEffectiveScanReadsEachRowOnce/rels_by_ids (0.00s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.092s

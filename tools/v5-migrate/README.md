@@ -17,7 +17,11 @@ fingerprints, actual tool builds, coverage and narrow gate logs are recorded in
 passes all narrow gates against the integrated v4.51.0 reader, including race,
 96.2% coverage and pinned scanners on Go 1.26.9 Linux/amd64. Neither record
 completes V6; the earlier source pins and local resource measurements remain
-historical. Later reader changes require fresh qualification.
+historical. The integrated v4.51.1 reader at `dbd74cf45c65c1086798012e92453315cab75143`
+requires fresh qualification; its complete narrow gates and source/input/scanner
+record remain pending. The local replacement selects that current root reader
+even while the require label still names v4.50.1. Archived qualification pins
+are unchanged.
 
 The caller quiesces source writes, imports, retention and DDL across a call,
 supplies capture/reader identity and evidence, and designates an explicit v5

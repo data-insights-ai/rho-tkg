@@ -118,6 +118,16 @@ type Core struct {
 	// resolver stays the single selection authority: the SAME resolveNodeChain
 	// runs on skeletons and again after winner hydration.
 	temporalMetaHistory storepkg.TemporalMetaHistoryCapability
+	// currentStamps — the current-row half of LatestStamps (backlog 42): a
+	// row's stamps without the row (badger: the temporal block of a cache
+	// miss). nil = store declines or a wrapper only inherits it, so
+	// LatestStamps reads the current row (currentStampsCapability).
+	currentStamps storepkg.CurrentStampsCapability
+	// memberIDs — a label's / type's current members from the store's index
+	// without their rows (backlog 33): the candidate gather of the effective
+	// scans. nil = store declines or a wrapper only inherits it, so the gather
+	// reads the rows (memberIDsCapability).
+	memberIDs storepkg.MemberIDsCapability
 	// temporalCandidates — valid-time candidate prune: narrow a temporal
 	// ByLabel/ByType query's candidate set by the per-label valid-time envelope
 	// index before resolving each chain. nil = store declines (no temporal-index
@@ -935,6 +945,10 @@ var nativeStoreTypes = [...]reflect.Type{
 	reflect.TypeOf((*memory.Store)(nil)),
 	reflect.TypeOf((*badger.Store)(nil)),
 	reflect.TypeOf((*tiered.Store)(nil)),
+	// sharded is not an exact native store (its rows are validated and
+	// copied), but a wrapper embedding it must not have its overrides routed
+	// around through a capability it only inherits.
+	reflect.TypeOf((*sharded.Store)(nil)),
 }
 
 func embedsNativeCapability(store storepkg.MandatoryStore, capability reflect.Type, directMethods ...string) bool {
@@ -1979,6 +1993,8 @@ func New(config Config) (*Core, error) {
 	c.nodeBeliefWatermark = nodeBeliefWatermarkCapability(store)
 	c.relBeliefWatermark = relBeliefWatermarkCapability(store)
 	c.temporalMetaHistory = temporalMetaHistoryCapability(store)
+	c.currentStamps = currentStampsCapability(store)
+	c.memberIDs = memberIDsCapability(store)
 	// valid-time candidate prune is sound for ANY store that offers it (an
 	// unknown id is never pruned), so unlike the membership sidecar it needs no
 	// exact-native-store guard — a plain probe admits memory/badger now and

@@ -1769,15 +1769,24 @@ type segColumnSource struct {
 	start, end []types.NodeID
 	vf, vt     []int64
 	kind       [][]storecontract.ColumnKind
-	ok         [][]bool   // false: the row does not hold the value as a column scalar
+	cls        [][]uint8  // cellAbsent, cellScalar or cellOther
 	num        [][]int64  // ColInt64 value, ColFloat64 bits, ColBool 0/1
 	str        [][]string // ColString value
 	perm       []int
 }
 
+// The class of one segColumnSource cell: the row does not hold the property,
+// holds it as a column scalar, or holds it outside the column scalars
+// (store.ColumnData.Other).
+const (
+	cellAbsent uint8 = iota
+	cellScalar
+	cellOther
+)
+
 func newSegColumnSource(n int) *segColumnSource {
 	return &segColumnSource{
-		kind: make([][]storecontract.ColumnKind, n), ok: make([][]bool, n),
+		kind: make([][]storecontract.ColumnKind, n), cls: make([][]uint8, n),
 		num: make([][]int64, n), str: make([][]string, n),
 	}
 }
@@ -1790,14 +1799,14 @@ func (s *segColumnSource) addRow(id types.RelID, start, end types.NodeID, vf, vt
 	s.vt = append(s.vt, vt)
 }
 
-func (s *segColumnSource) put(c int, k storecontract.ColumnKind, x int64, str string, ok bool) {
+func (s *segColumnSource) put(c int, k storecontract.ColumnKind, x int64, str string, cls uint8) {
 	s.kind[c] = append(s.kind[c], k)
-	s.ok[c] = append(s.ok[c], ok)
+	s.cls[c] = append(s.cls[c], cls)
 	s.num[c] = append(s.num[c], x)
 	s.str[c] = append(s.str[c], str)
 }
 
-func (s *segColumnSource) addAbsent(c int) { s.put(c, 0, 0, "", false) }
+func (s *segColumnSource) addAbsent(c int) { s.put(c, 0, 0, "", cellAbsent) }
 
 // addAny classifies row r's property like the row path does.
 func (s *segColumnSource) addAny(c int, r *types.Relationship, key string) {
@@ -1806,6 +1815,11 @@ func (s *segColumnSource) addAny(c int, r *types.Relationship, key string) {
 		s.addAbsent(c)
 		return
 	}
+	s.addValue(c, v)
+}
+
+// addValue classifies a held value with the shared column rule.
+func (s *segColumnSource) addValue(c int, v any) {
 	k, i64, f64, str, b, ok := storecontract.ClassifyScalar(v)
 	switch k {
 	case storecontract.ColFloat64:
@@ -1816,7 +1830,11 @@ func (s *segColumnSource) addAny(c int, r *types.Relationship, key string) {
 			i64 = 1
 		}
 	}
-	s.put(c, k, i64, str, ok)
+	cls := cellOther
+	if ok {
+		cls = cellScalar
+	}
+	s.put(c, k, i64, str, cls)
 }
 
 // addColumnValue classifies declared column j's stored value of batch row k
@@ -1827,23 +1845,23 @@ func (s *segColumnSource) addColumnValue(c int, pb *segment.Batch, kind segment.
 		if err != nil {
 			return err
 		}
-		s.put(c, storecontract.ColString, 0, str, true)
+		s.put(c, storecontract.ColString, 0, str, cellScalar)
 		return nil
 	}
 	vals, _, _ := pb.IntColumn(j)
 	x := vals[k]
 	switch kind {
 	case segment.KindInt64, segment.KindInt, segment.KindInt32:
-		s.put(c, storecontract.ColInt64, x, "", true)
+		s.put(c, storecontract.ColInt64, x, "", cellScalar)
 	case segment.KindFloat64:
-		s.put(c, storecontract.ColFloat64, x, "", true)
+		s.put(c, storecontract.ColFloat64, x, "", cellScalar)
 	case segment.KindFloat32:
-		f := float64(math.Float32frombits(uint32(x)))                            // #nosec G115 -- IEEE bits
-		s.put(c, storecontract.ColFloat64, int64(math.Float64bits(f)), "", true) // #nosec G115 -- bit pattern
+		f := float64(math.Float32frombits(uint32(x)))                                  // #nosec G115 -- IEEE bits
+		s.put(c, storecontract.ColFloat64, int64(math.Float64bits(f)), "", cellScalar) // #nosec G115 -- bit pattern
 	case segment.KindBool:
-		s.put(c, storecontract.ColBool, x, "", true)
-	default: // int8/int16/uints: not a column scalar (classifyScalar !ok)
-		s.addAbsent(c)
+		s.put(c, storecontract.ColBool, x, "", cellScalar)
+	default: // int8/int16/uints: the Go value through the shared rule (a uint64 past MaxInt64 is float64)
+		s.addValue(c, storecontract.SegmentKindValue(storecontract.SegmentColumnKind(kind), x))
 	}
 	return nil
 }
@@ -1880,7 +1898,7 @@ func (s *segColumnSource) Row(i int) (types.RelID, types.NodeID, types.NodeID, i
 
 func (s *segColumnSource) Value(i, c int) (storecontract.ColumnKind, int64, float64, string, bool, bool) {
 	p := s.perm[i]
-	if !s.ok[c][p] {
+	if s.cls[c][p] != cellScalar {
 		return 0, 0, 0, "", false, false
 	}
 	k, x := s.kind[c][p], s.num[c][p]
@@ -1894,3 +1912,5 @@ func (s *segColumnSource) Value(i, c int) (storecontract.ColumnKind, int64, floa
 	}
 	return k, x, 0, "", false, true
 }
+
+func (s *segColumnSource) Other(i, c int) bool { return s.cls[c][s.perm[i]] == cellOther }

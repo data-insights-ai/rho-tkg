@@ -1,0 +1,10 @@
+# round 1  07:12:55 up 11 days, 22:28, 22 users,  load average: 11,80, 21,62, 14,16
+OLD BenchmarkForEachRelEffectiveByType/badger-32         	       3	2283345534 ns/op	     11417 ns/rel	1325288656 B/op	14311898 allocs/op
+NEW BenchmarkForEachRelEffectiveByType/badger-32         	       3	1346733417 ns/op	      6734 ns/rel	721741280 B/op	 8604875 allocs/op
+# round 2  07:13:12 up 11 days, 22:28, 22 users,  load average: 11,14, 20,84, 14,06
+OLD BenchmarkForEachRelEffectiveByType/badger-32         	       3	2356368368 ns/op	     11782 ns/rel	1325578621 B/op	14295712 allocs/op
+NEW BenchmarkForEachRelEffectiveByType/badger-32         	       3	1329868027 ns/op	      6649 ns/rel	725631000 B/op	 8662354 allocs/op
+# round 3  07:13:28 up 11 days, 22:29, 22 users,  load average: 9,41, 19,99, 13,89
+OLD BenchmarkForEachRelEffectiveByType/badger-32         	       3	2168892961 ns/op	     10844 ns/rel	1331529381 B/op	14312270 allocs/op
+NEW BenchmarkForEachRelEffectiveByType/badger-32         	       3	1304164784 ns/op	      6521 ns/rel	720175861 B/op	 8591146 allocs/op
+done

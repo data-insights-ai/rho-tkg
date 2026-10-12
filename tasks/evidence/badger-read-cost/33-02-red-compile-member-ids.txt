@@ -1,0 +1,3 @@
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store_test
+# [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store_test]
+vet: pkg/graph/store/member_ids_test.go:25:31: undefined: storecontract.MemberIDsCapability

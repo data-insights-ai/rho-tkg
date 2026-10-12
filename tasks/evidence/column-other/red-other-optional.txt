@@ -1,0 +1,4 @@
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store.test]
+pkg/graph/store/column_other_test.go:100:21: cannot use noOtherSource{…} (value of struct type noOtherSource) as RelColumnSource value in struct literal: noOtherSource does not implement RelColumnSource (missing method Other)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store [build failed]
+FAIL

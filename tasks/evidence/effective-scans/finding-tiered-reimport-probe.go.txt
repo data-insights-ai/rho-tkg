@@ -1,0 +1,46 @@
+package core
+
+import (
+	"context"
+	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
+
+// Probe (backlog 35 finding): does a re-import of a deleted relationship ID
+// keep the earlier life's history? Same endpoints vs other endpoints.
+func TestZZDebugReimport(t *testing.T) {
+	ctx := context.Background()
+	for _, be := range txbBackends() {
+		for _, moveEnds := range []bool{false, true} {
+			t.Run(be.name, func(t *testing.T) {
+				g := be.open(t, false)
+				useTestClock(t, g)
+				var ns []*types.Node
+				for _, l := range []string{"Ref", "A", "A"} {
+					n, err := g.Nodes.Add(ctx, []string{l}, map[string]any{"tkg_valid_from": types.Instant(1000)})
+					if err != nil {
+						t.Fatal(err)
+					}
+					ns = append(ns, n)
+				}
+				r, err := g.Rels.AddByID(ctx, "R", ns[1].ID(), ns[2].ID(), map[string]any{"tkg_valid_from": types.Instant(1000)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := g.Rels.Delete(ctx, r.ID()); err != nil {
+					t.Fatal(err)
+				}
+				s, e := ns[1], ns[2]
+				if moveEnds {
+					s, e = ns[0], ns[1]
+				}
+				if _, err := g.Rels.Import(ctx, r.ID(), "R", s, e, map[string]any{"tkg_valid_from": types.Instant(5000)}); err != nil {
+					t.Fatal(err)
+				}
+				h, err := g.Rels.History(r.ID())
+				t.Logf("%s moveEnds=%v: history rows %d (err %v)", be.name, moveEnds, len(h), err)
+			})
+		}
+	}
+}

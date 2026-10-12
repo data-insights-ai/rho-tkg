@@ -1,0 +1,63 @@
+--- FAIL: TestEffectiveScans_Errors (0.00s)
+    effective_scans_test.go:522: ForEachNodeEffective nil fn: err <nil>, 0 fn calls; want graph: iteration callback must not be nil and none
+--- FAIL: TestEffectiveScans_MatchPerEntityTimeline (0.28s)
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/memory (0.01s)
+        effective_scans_test.go:266: [after the oracle sequence] ForEachNodeEffective pin 1791786003383:
+             got  
+             want 
+              804662514969444352:
+                [1392,0) v0 {ValidFrom:1392 ValidTo:0 TxFrom:1791786001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[1] props=anchor=0
+              804662514970722304:
+                [1764,0) v0 {ValidFrom:1764 ValidTo:0 TxFrom:1791786001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[2] props=anchor=1
+              804662514971049984:
+                [1917,3215) v0 {ValidFrom:1917 ValidTo:3215 TxFrom:1791786001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[2] props=k=0,seat=1
+                [3699,0) v1 {ValidFrom:3699 ValidTo:0 TxFrom:1791786002251 TxTo:0 CreatedAt:0 UpdatedAt:1791786002251 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[2] props=k=6,seat=1
+              804662514971213824:
+                [2350,0) v0 {ValidFrom:2350 ValidTo:0 TxFrom:1791786001003 TxTo:1791786009000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[3 4] props=k=1,seat=2
+              804662515011518464:
+                [6247,6736) v0 {ValidFrom:6247 ValidTo:6736 TxFrom:1791785992306 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[3 4] props=k=30
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/badger (0.05s)
+        effective_scans_test.go:266: [after the oracle sequence] ForEachNodeEffective pin 1791786002250:
+             got  
+             want 
+              804662515369443328:
+                [1392,0) v0 {ValidFrom:1392 ValidTo:0 TxFrom:1791786001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[1] props=anchor=0
+              804662515371900928:
+                [1764,0) v0 {ValidFrom:1764 ValidTo:0 TxFrom:1791786001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[2] props=anchor=1
+              804662515372621824:
+                [1917,3215) v0 {ValidFrom:1917 ValidTo:3215 TxFrom:1791786001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[2] props=k=0,seat=1
+              804662515372818432:
+                [2350,0) v0 {ValidFrom:2350 ValidTo:0 TxFrom:1791786001003 TxTo:1791786009000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[3 4] props=k=1,seat=2
+              804662515578699776:
+                [6247,6736) v0 {ValidFrom:6247 ValidTo:6736 TxFrom:1791785992306 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[3 4] props=k=30
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/sharded (0.10s)
+        effective_scans_test.go:266: [after the oracle sequence] ForEachNodeEffective pin 1791786001004:
+             got  
+             want 
+              804662517231943680:
+                [1392,0) v0 {ValidFrom:1392 ValidTo:0 TxFrom:1791786001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[1] props=anchor=0
+              804662517233549312:
+                [1764,0) v0 {ValidFrom:1764 ValidTo:0 TxFrom:1791786001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[2] props=anchor=1
+              804662517234171904:
+                [1917,3215) v0 {ValidFrom:1917 ValidTo:3215 TxFrom:1791786001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[2] props=k=0,seat=1
+              804662517234434048:
+                [2350,0) v0 {ValidFrom:2350 ValidTo:0 TxFrom:1791786001003 TxTo:1791786009000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[3 4] props=k=1,seat=2
+              804662517456371712:
+                [6247,6736) v0 {ValidFrom:6247 ValidTo:6736 TxFrom:1791785992306 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[3 4] props=k=30
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/tiered (0.11s)
+        effective_scans_test.go:266: [after the oracle sequence] ForEachNodeEffective pin 1791786001004:
+             got  
+             want 
+              804662521524748288:
+                [1392,0) v0 {ValidFrom:1392 ValidTo:0 TxFrom:1791786001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[1] props=anchor=0
+              804662521527205888:
+                [1764,0) v0 {ValidFrom:1764 ValidTo:0 TxFrom:1791786001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[2] props=anchor=1
+              804662521528352768:
+                [1917,3215) v0 {ValidFrom:1917 ValidTo:3215 TxFrom:1791786001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[2] props=k=0,seat=1
+              804662521528680448:
+                [2350,0) v0 {ValidFrom:2350 ValidTo:0 TxFrom:1791786001003 TxTo:1791786009000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[3 4] props=k=1,seat=2
+              804662521775882240:
+                [6247,6736) v0 {ValidFrom:6247 ValidTo:6736 TxFrom:1791785992306 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[3 4] props=k=30
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.298s
+FAIL

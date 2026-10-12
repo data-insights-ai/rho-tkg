@@ -46,7 +46,12 @@ func orPresence(a, b bool) bool { return a || b }
 // with the archive for a node live on the reference shard; with the reference
 // shard for an archived node; with every history shard for a node live
 // nowhere. HasNodeHistory and NodeHistoryStamps share it, so the presence and
-// the stamps of one ID always come from the same rows.
+// the stamps of one ID always come from the same rows. Whether the node is live
+// on its shard is read through the shard's current-row stamps (the row's key
+// and temporal block, no decode, no copy, backlog 42): the same answer as
+// GetNodeHistory's check, except that a current row whose temporal block
+// decodes but whose body does not is live here where GetNodeHistory fails
+// (the asymmetry HasNodeHistory already documents for history rows).
 func walkNodeHistoryShards[T any](ts *Store, nid types.NodeID, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
 	var zero T
 	store, checkin, isArchive, err := ts.shardForNodeIDCheckedWithArchive(nid)
@@ -58,7 +63,7 @@ func walkNodeHistoryShards[T any](ts *Store, nid types.NodeID, ask func(*BadgerS
 	if err != nil {
 		return zero, err
 	}
-	liveHere, err := nodeRowLive(store, nid)
+	_, liveHere, err := nodeCurrentStampsRow(store, nid)
 	if err != nil {
 		return zero, err
 	}
@@ -78,7 +83,7 @@ func walkNodeHistoryShards[T any](ts *Store, nid types.NodeID, ask func(*BadgerS
 // the shards GetRelHistory reads.
 func walkRelHistoryShards[T any](ts *Store, rid types.RelID, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
 	var zero T
-	shard, checkin, isArchive, err := ts.shardForRelIDCheckedWithArchive(rid)
+	shard, checkin, isArchive, probe, err := ts.routeRelShard(rid)
 	if err != nil {
 		return zero, err
 	}
@@ -87,10 +92,10 @@ func walkRelHistoryShards[T any](ts *Store, rid types.RelID, ask func(*BadgerSto
 	if err != nil {
 		return zero, err
 	}
-	liveHere, err := relationshipRowLive(shard, rid)
-	if err != nil {
-		return zero, err
+	if probe.err != nil {
+		return zero, probe.err
 	}
+	liveHere := probe.live // the route read the row: no second read
 	if liveHere && !isArchive {
 		if shard == ts.refShard {
 			return historyWalkWithArchive(ts, shard, acc, ask, merge)

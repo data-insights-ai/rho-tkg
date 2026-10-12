@@ -136,14 +136,17 @@ func TestColumnDrivers_NodeAndRelAgree(t *testing.T) {
 }
 
 // renderColumns flattens a batch's typed columns into a comparable string, including
-// each column's resolved KIND and the null flags — the two things a drifting copy
+// each column's resolved KIND and the null and Other flags — the two things a drifting copy
 // would get wrong without changing row counts.
 func renderColumns(cd *ColumnData, nCols, nRows int) string {
-	out := ""
+	out := fmt.Sprintf("other=%v", cd.Other != nil)
 	for c := range nCols {
 		out += fmt.Sprintf("[col%d kind=%d", c, cd.Kinds[c])
 		ii := 0
 		for r := range nRows {
+			if cd.Other != nil && cd.Other[c][r] {
+				out += " other"
+			}
 			if cd.Null[c][r] {
 				out += " null"
 				ii++
@@ -187,4 +190,9 @@ func (s relSliceSource) Value(i, c int) (ColumnKind, int64, float64, string, boo
 		return 0, 0, 0, "", false, false
 	}
 	return ClassifyScalar(v)
+}
+
+func (s relSliceSource) Other(i, c int) bool {
+	_, found := s.rels[i].GetProperty(s.props[c])
+	return found
 }

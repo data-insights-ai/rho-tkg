@@ -1,0 +1,13 @@
+--- PASS: TestEffectiveTimeline_MergeAdjacentSameRow (0.00s)
+--- PASS: TestEffectiveScans_Errors (0.00s)
+--- PASS: TestEffectiveTimeline_CompactionAndRetention (0.03s)
+--- PASS: TestEffectiveTimeline_Errors (0.42s)
+--- PASS: TestEffectiveTimeline_ScanDeletedEntities (0.62s)
+--- PASS: TestEffectiveTimeline_Shapes (0.66s)
+--- PASS: TestEffectiveTimeline_ConcurrentWriters (0.70s)
+--- PASS: TestEffectiveTimeline_DerivedStart (0.95s)
+--- PASS: TestEffectiveScans_MatchPerEntityTimeline (3.46s)
+--- PASS: TestEffectiveTimeline_ScanMatchesGenericDoor (11.42s)
+--- PASS: TestEffectiveTimeline_PointwiseOracle (21.80s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	21.873s
