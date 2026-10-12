@@ -319,6 +319,47 @@ func (bs *Store) MetaSet(key string, value []byte) error {
 	})
 }
 
+// MetaSetDurable is MetaSet made durable before it returns: the write-ahead
+// log is fsynced, as SavePropertyKeyRegistry does, unless SyncWrites already
+// did or the store is InMemory. For a meta entry that must not be lost while a
+// row written after it (to another store) survives a power loss.
+func (bs *Store) MetaSetDurable(key string, value []byte) error {
+	if err := bs.MetaSet(key, value); err != nil {
+		return err
+	}
+	if !bs.syncWrites && !bs.inMemory {
+		if err := bs.db.Sync(); err != nil {
+			return fmt.Errorf("graph: sync meta %q: %w", key, err)
+		}
+	}
+	return nil
+}
+
+// ForEachMetaName calls fn with the name (MetaKey's argument) of every meta
+// entry whose name starts with prefix, in key order. An error from fn stops
+// the walk and is returned.
+func (bs *Store) ForEachMetaName(prefix string, fn func(name string) error) error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return errNilIterationCallback()
+	}
+	return bs.db.View(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		opts.Prefix = storepkg.MetaKey(prefix)
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Rewind(); it.Valid(); it.Next() {
+			if err := fn(string(it.Item().Key()[1:])); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 // SavePropertyKeyRegistry persists the property-key registry to the Badger store.
 func (bs *Store) SavePropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) error {
 	if err := bs.checkWritable(); err != nil {

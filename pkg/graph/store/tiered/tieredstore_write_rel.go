@@ -40,8 +40,57 @@ func (ts *Store) PutRelationship(r *types.Relationship) error {
 	ts.relCreateLocks.LockEntity(id)
 	defer ts.relCreateLocks.UnlockEntity(id)
 
-	return ts.putRelationshipLocked(r, true)
+	return ts.putRelationshipLocked(r, relCreateCallerID)
 }
+
+// restoreDeletedRelationship re-creates a row that a failed delete removed
+// (rollback). The row goes back where it came from — its endpoints did not
+// move — so no earlier life lies elsewhere: it keeps the duplicate probe and
+// skips the earlier-lives walk, whose read of every shard would let an
+// unrelated shard's failure block the rollback.
+func (ts *Store) restoreDeletedRelationship(r *types.Relationship) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+		return err
+	}
+	id := r.ID().SnowflakeID()
+	ts.relCreateLocks.LockEntity(id)
+	defer ts.relCreateLocks.UnlockEntity(id)
+	return ts.putRelationshipLocked(r, relCreateRestore)
+}
+
+// relCreateCheck runs the per-ID checks of a create in mode before its row is
+// written to owner (pinned): none for a fresh generated ID, the duplicate probe
+// for a generated ID through a checking door or a rollback restore, the
+// duplicate probe plus the earlier-lives note in one walk for a caller ID.
+func (ts *Store) relCreateCheck(rid types.RelID, owner *BadgerStore, mode relCreateMode) error {
+	switch mode {
+	case relCreateGenerated:
+		return nil
+	case relCreateCallerID:
+		return ts.relCreateProbe(rid, owner)
+	}
+	exists, err := ts.relIDExists(rid)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return ErrRelExists
+	}
+	return nil
+}
+
+// relCreateMode is how putRelationshipLocked treats the ID.
+type relCreateMode uint8
+
+const (
+	relCreateGenerated        relCreateMode = iota // fresh generated ID: no duplicate probe, no earlier lives
+	relCreateCallerID                              // caller-supplied ID: duplicate probe, earlier-lives note (backlog 49)
+	relCreateRestore                               // rollback of a failed delete: duplicate probe only
+	relCreateGeneratedChecked                      // generated ID through a door that keeps the duplicate probe: no earlier lives
+)
 
 func (ts *Store) PutRelationshipGeneratedID(r *types.Relationship, proof generatedcreate.Proof) error {
 	if !proof.Valid() {
@@ -60,7 +109,7 @@ func (ts *Store) PutRelationshipGeneratedID(r *types.Relationship, proof generat
 	ts.relCreateLocks.LockEntity(id)
 	defer ts.relCreateLocks.UnlockEntity(id)
 
-	return ts.putRelationshipLocked(r, false)
+	return ts.putRelationshipLocked(r, relCreateGenerated)
 }
 
 func (ts *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relationship, proof generatedcreate.Proof) (string, string, error) {
@@ -87,10 +136,10 @@ func (ts *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relations
 	ts.relCreateLocks.LockEntity(id)
 	defer ts.relCreateLocks.UnlockEntity(id)
 
-	return ts.putRelationshipWithEndpointHashesLocked(r, false)
+	return ts.putRelationshipWithEndpointHashesLocked(r)
 }
 
-func (ts *Store) putRelationshipLocked(r *types.Relationship, checkDuplicate bool) error {
+func (ts *Store) putRelationshipLocked(r *types.Relationship, mode relCreateMode) error {
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
 	}
@@ -132,14 +181,8 @@ func (ts *Store) putRelationshipLocked(r *types.Relationship, checkDuplicate boo
 	if !endLive {
 		return ErrNodeNotFound
 	}
-	if checkDuplicate {
-		exists, err := ts.relIDExists(r.ID())
-		if err != nil {
-			return err
-		}
-		if exists {
-			return ErrRelExists
-		}
+	if err := ts.relCreateCheck(r.ID(), entityShard, mode); err != nil {
+		return err
 	}
 
 	if startShard == endShard {
@@ -196,7 +239,10 @@ func (ts *Store) putRelationshipLocked(r *types.Relationship, checkDuplicate boo
 	return nil
 }
 
-func (ts *Store) putRelationshipWithEndpointHashesLocked(r *types.Relationship, checkDuplicate bool) (string, string, error) {
+// putRelationshipWithEndpointHashesLocked is the generated-ID create with
+// endpoint-hash capture: a fresh ID needs no duplicate probe and has no earlier
+// life.
+func (ts *Store) putRelationshipWithEndpointHashesLocked(r *types.Relationship) (string, string, error) {
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return "", "", err
 	}
@@ -230,16 +276,6 @@ func (ts *Store) putRelationshipWithEndpointHashesLocked(r *types.Relationship, 
 			return "", "", err
 		}
 	}
-	if checkDuplicate {
-		exists, err := ts.relIDExists(r.ID())
-		if err != nil {
-			return "", "", err
-		}
-		if exists {
-			return "", "", ErrRelExists
-		}
-	}
-
 	ig := r.Integrity()
 	if ig == nil {
 		ig = &types.RelIntegrity{}
@@ -360,6 +396,22 @@ func (ts *Store) DeleteRelationship(rid types.RelID) error {
 }
 
 func (ts *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
+	return ts.putRelationshipsBatch(rels, relCreateCallerID)
+}
+
+// PutRelationshipsBatchGeneratedID is PutRelationshipsBatch for
+// graph-generated IDs (generatedcreate.RelationshipsBatchCapability): the
+// duplicate probe stays, the earlier-lives walk is skipped — a fresh ID has no
+// earlier life, and the walk would build every shard's relationship
+// history-presence set.
+func (ts *Store) PutRelationshipsBatchGeneratedID(rels []*types.Relationship, proof generatedcreate.Proof) error {
+	if !proof.Valid() {
+		return ts.PutRelationshipsBatch(rels)
+	}
+	return ts.putRelationshipsBatch(rels, relCreateGeneratedChecked)
+}
+
+func (ts *Store) putRelationshipsBatch(rels []*types.Relationship, mode relCreateMode) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
@@ -391,34 +443,34 @@ func (ts *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		if err != nil {
 			return err
 		}
-		startExists, startErr := nodeRowLive(startShard, r.StartNodeID())
-		startCheckin()
-		if startErr != nil {
-			return startErr
-		}
-		if !startExists {
-			return ErrNodeNotFound
-		}
+		// The start shard (the row's owner) stays pinned through the
+		// earlier-lives note below.
+		if err := func() error {
+			defer startCheckin()
+			startExists, startErr := nodeRowLive(startShard, r.StartNodeID())
+			if startErr != nil {
+				return startErr
+			}
+			if !startExists {
+				return ErrNodeNotFound
+			}
 
-		endShard, endCheckin, err := ts.shardForNodeIDChecked(r.EndNodeID())
-		if err != nil {
-			return err
-		}
-		endExists, endErr := nodeRowLive(endShard, r.EndNodeID())
-		endCheckin()
-		if endErr != nil {
-			return endErr
-		}
-		if !endExists {
-			return ErrNodeNotFound
-		}
+			endShard, endCheckin, err := ts.shardForNodeIDChecked(r.EndNodeID())
+			if err != nil {
+				return err
+			}
+			endExists, endErr := nodeRowLive(endShard, r.EndNodeID())
+			endCheckin()
+			if endErr != nil {
+				return endErr
+			}
+			if !endExists {
+				return ErrNodeNotFound
+			}
 
-		exists, err := ts.relIDExists(rid)
-		if err != nil {
+			return ts.relCreateCheck(rid, startShard, mode)
+		}(); err != nil {
 			return err
-		}
-		if exists {
-			return ErrRelExists
 		}
 	}
 
@@ -519,7 +571,7 @@ func (ts *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		if startShard == endShard {
 			continue
 		}
-		if err := ts.putRelationshipLocked(r, false); err != nil {
+		if err := ts.putRelationshipLocked(r, relCreateGenerated); err != nil {
 			if rbErr := rollbackCross(); rbErr != nil {
 				return fmt.Errorf("%w (cross-shard relationship rollback failed: %v)", err, rbErr)
 			}
@@ -699,7 +751,7 @@ func appendMissingRelationships(dst []*types.Relationship, ids []types.RelID, re
 func (ts *Store) rollbackDeletedRelationshipsBatchLocked(rels []*types.Relationship) error {
 	var rollbackErrs []error
 	for i := len(rels) - 1; i >= 0; i-- {
-		if err := ts.putRelationshipLocked(rels[i], false); err != nil {
+		if err := ts.putRelationshipLocked(rels[i], relCreateGenerated); err != nil {
 			rollbackErrs = append(rollbackErrs, fmt.Errorf("restore relationship %d: %w", rels[i].ID(), err))
 		}
 	}

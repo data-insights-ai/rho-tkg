@@ -7,9 +7,10 @@ import (
 
 // CompactNodeHistory implements store.HistoryCompactionCapability on tiered.
 //
-// A node's whole version chain lives on ONE shard (history snapshots route to the
-// same shard as the live entity; the primary-label class is immutable, so a chain
-// never splits across shards — CLAUDE.md B33). The two writes go to two different
+// A node's version chain lives on one shard (history snapshots route to the same
+// shard as the live entity; the primary-label class is immutable — CLAUDE.md B33)
+// unless a re-import of the deleted ID changed the class, which splits the lives
+// across shards (tieredstore_history_lives.go). The two writes go to two different
 // places:
 //
 //   - The per-entity STUB (metaWrites) is written to the GLOBAL reference shard

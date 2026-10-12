@@ -37,6 +37,7 @@ func (ts *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 	if err != nil {
 		return nil, err
 	}
+	liveHere, isArchive = ts.nodeLivesRoute(nid, liveHere, isArchive)
 	if liveHere && !isArchive {
 		if shard == ts.refShard {
 			archive, archiveCheckin, archiveErr := ts.checkoutArchive()
@@ -96,6 +97,7 @@ func (ts *Store) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
 	if err != nil {
 		return nil, err
 	}
+	liveHere, isArchive = ts.nodeLivesRoute(nid, liveHere, isArchive)
 	if liveHere && !isArchive {
 		if store == ts.refShard {
 			return ts.nodeHistoryWithArchive(nid, store, history)
@@ -145,6 +147,7 @@ func (ts *Store) NodeHistoryVersionsFrom(nid types.NodeID, startVersion uint32, 
 	if err != nil {
 		return nil, err
 	}
+	liveHere, isArchive = ts.nodeLivesRoute(nid, liveHere, isArchive)
 	if liveHere && !isArchive {
 		if store == ts.refShard {
 			sources := nodeHistorySourcesFrom(store, history)

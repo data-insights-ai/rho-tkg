@@ -1,0 +1,7 @@
+=== RUN   TestAddRelationshipsGeneratedBatchSkipsEarlierLivesWalk
+    rel_add_many_lives_test.go:52: reference shard: relationship history-presence set built by a generated-ID batch
+    rel_add_many_lives_test.go:52: hot shard: relationship history-presence set built by a generated-ID batch
+--- FAIL: TestAddRelationshipsGeneratedBatchSkipsEarlierLivesWalk (0.01s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.014s
+FAIL

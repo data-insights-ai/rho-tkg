@@ -36,6 +36,14 @@ type Capability interface {
 	PutNodesBatchGeneratedID(nodes []*types.Node, proof Proof) error
 }
 
+// RelationshipsBatchCapability is the optional generated-ID form of
+// PutRelationshipsBatch: every relationship carries a graph-generated ID, so a
+// store may skip the work a caller-supplied ID needs (tiered: the walk for
+// earlier lives on other shards, backlog 49).
+type RelationshipsBatchCapability interface {
+	PutRelationshipsBatchGeneratedID(rels []*types.Relationship, proof Proof) error
+}
+
 // RelationshipEndpointHashCapability is an optional generated-ID fast path for
 // stores that can verify relationship endpoints, capture their integrity
 // hashes, and persist the relationship in one routed write path. The returned

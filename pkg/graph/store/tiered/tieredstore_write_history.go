@@ -142,6 +142,7 @@ func (ts *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
 	if err != nil {
 		return err
 	}
+	liveHere, isArchive = ts.nodeLivesRoute(nid, liveHere, isArchive)
 
 	if liveHere && !isArchive {
 		if shard == ts.refShard {
@@ -243,6 +244,7 @@ func (ts *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {
 	if err != nil {
 		return err
 	}
+	liveHere, isArchive = ts.relLivesRoute(rid, liveHere, isArchive)
 
 	if liveHere && !isArchive {
 		if shard == ts.refShard {
@@ -591,7 +593,7 @@ func (ts *Store) wrapPlainRelationshipRollbackError(err error, committed []*type
 func (ts *Store) rollbackPlainDeletedRelationships(committed []*types.Relationship) error {
 	var rollbackErrs []error
 	for i := len(committed) - 1; i >= 0; i-- {
-		if rbErr := ts.PutRelationship(committed[i]); rbErr != nil {
+		if rbErr := ts.restoreDeletedRelationship(committed[i]); rbErr != nil {
 			rollbackErrs = append(rollbackErrs, fmt.Errorf("restore relationship %d: %w", committed[i].ID(), rbErr))
 		}
 	}
@@ -890,7 +892,7 @@ func (ts *Store) rollbackDeletedRelationships(committed []tieredDeletedRelSnapsh
 
 	for i := len(committed) - 1; i >= 0; i-- {
 		snap := committed[i]
-		capture(ts.PutRelationship(snap.rel))
+		capture(ts.restoreDeletedRelationship(snap.rel))
 		capture(ts.restoreRelHistorySnapshot(snap.rel.ID(), snap.history))
 	}
 	return firstErr

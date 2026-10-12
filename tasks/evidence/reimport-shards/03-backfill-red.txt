@@ -1,0 +1,8 @@
+=== RUN   TestHistoryLives_BackfillAtOpen
+    tieredstore_history_lives_test.go:266: after the backfill: 0 rel and 0 node history rows, want 1 and 1
+--- FAIL: TestHistoryLives_BackfillAtOpen (0.28s)
+=== RUN   TestHistoryLives_GeneratedBatchWithoutProofRecords
+--- PASS: TestHistoryLives_GeneratedBatchWithoutProofRecords (0.07s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.380s
+FAIL

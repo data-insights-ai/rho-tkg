@@ -17,6 +17,7 @@ var (
 	_ storecontract.RelationshipCRUDCapability           = (*Store)(nil)
 	_ generatedcreate.Capability                         = (*Store)(nil)
 	_ generatedcreate.RelationshipEndpointHashCapability = (*Store)(nil)
+	_ generatedcreate.RelationshipsBatchCapability       = (*Store)(nil)
 	_ storecontract.AdjacencyCapability                  = (*Store)(nil)
 	_ storecontract.BulkReadCapability                   = (*Store)(nil)
 	_ storecontract.BatchCapability                      = (*Store)(nil)
