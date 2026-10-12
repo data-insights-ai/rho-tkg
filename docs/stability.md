@@ -11,7 +11,7 @@ Within the v4 major version (v4.0.0 through v4.x.x), the following surfaces are 
 - **Type aliases** re-exported from `pkg/graph` (e.g. `Config`, `ValidationLimits`, `GraphStats`)
 - **Column segments** (ADR-0011, accepted): `Config.RelSegments` / `SegmentDir` / `SegmentMemoryBudget`, `g.ScanRelSegments`, `g.Admin().SealRelSegments` / `RelSegmentStats`
 - **Sub-API `Ops` interfaces** (`temporal.Ops` and the other sub-packages' `Ops`) are wiring seams between the façade and the engine, not for external implementation: they gain methods in patch releases (backlog 34, 35).
-- **Doors added in v4.44–v4.51.1** are stable additive surface: `Nodes()` / `Rels()` `DeleteWithTx`, `UpdateWithTx`, `HasHistory`, `LatestStamps`, `Retract`, `RetractWithTx` (v4.49.1; the `Retract*` twins on `GraphTx`, `BatchBuilder` and the ingest `Session`; `types.TemporalMetadata.Retracted`); the `*WithTx` twins on `GraphTx`, `BatchBuilder` and the ingest `Session`; ingest `Session.SetNodeVersionInterval` / `SetRelVersionInterval`; `Temporal()` `NodeEffectiveTimeline` / `RelEffectiveTimeline` / `ForEachNodeEffectiveByLabel` / `ForEachRelEffectiveByType` and (v4.51.1) `ForEachNodeEffective` / `ForEachRelEffective` / `ForEachRelEffectiveAtNodes` / `NodesEffectiveByIDs` / `RelsEffectiveByIDs` / `ForEachNodeEffectiveByLabels` with `temporal.Direction` and `ErrInvalidDirection`; `types.NodeID` / `RelID` `.MintInstant()`, `types.Node` / `Relationship` `.TxStamps()`; `Config.DurableCommit`; the sentinels `ErrTxOrder`, `ErrEntityDeleted`, `ErrTxPinTooNew`, `ErrCommitNotDurable`; the optional store capabilities `HistoryPresenceCapability`, `HistoryStampsCapability`, `RelPropertyTxMembershipCapability` / `NodePropertyTxMembershipCapability`, `DurableFlushCapability`. Their statistics doors are diagnostics (see Experimental Surfaces)
+- **Doors added in v4.44–v4.51.2** are stable additive surface: `Nodes()` / `Rels()` `DeleteWithTx`, `UpdateWithTx`, `HasHistory`, `LatestStamps`, `Retract`, `RetractWithTx` (v4.49.1; the `Retract*` twins on `GraphTx`, `BatchBuilder` and the ingest `Session`; `types.TemporalMetadata.Retracted`); the `*WithTx` twins on `GraphTx`, `BatchBuilder` and the ingest `Session`; ingest `Session.SetNodeVersionInterval` / `SetRelVersionInterval`; `Temporal()` `NodeEffectiveTimeline` / `RelEffectiveTimeline` / `ForEachNodeEffectiveByLabel` / `ForEachRelEffectiveByType` and (v4.51.1) `ForEachNodeEffective` / `ForEachRelEffective` / `ForEachRelEffectiveAtNodes` / `NodesEffectiveByIDs` / `RelsEffectiveByIDs` / `ForEachNodeEffectiveByLabels` with `temporal.Direction` and `ErrInvalidDirection`; `types.NodeID` / `RelID` `.MintInstant()`, `types.Node` / `Relationship` `.TxStamps()`; `Config.DurableCommit`; the sentinels `ErrTxOrder`, `ErrEntityDeleted`, `ErrTxPinTooNew`, `ErrCommitNotDurable`; the optional store capabilities `HistoryPresenceCapability`, `HistoryStampsCapability`, `RelPropertyTxMembershipCapability` / `NodePropertyTxMembershipCapability`, `DurableFlushCapability`; and (v4.51.2) `Temporal()` `ForEachRelEffectiveByTypeFrom` / `ForEachNodeEffectiveByLabelsFrom` (scans bounded by valid end) with the optional store capabilities `store.RelValidEndCapability` / `NodeValidEndCapability` (`store.ValidEndCandidate`, `store.ValidEndOpen` / `ValidEndNone`) and `store.ExAdjacencyCapability` (`ForEachExAdjacentRelID`, `NoteExAdjacentRel`), the generated-ID batch capability `generatedcreate.RelationshipsBatchCapability` (`PutRelationshipsBatchGeneratedID`), and the badger `Store.MetaSetDurable` / `ForEachMetaName`. Their statistics doors are diagnostics (see Experimental Surfaces)
 
 Breaking changes are reserved for v5.0.0 or later.
 
@@ -63,6 +63,24 @@ Removals and breaking changes land only at major-version boundaries or after a d
   Chains stored before keep reading as before; rows that v4.43–v4.47 already overwrote stay lost (no migration).
   Migration for a refused caller: pass an instant after the delete (`DeletedAt` of the newest history row + 1),
   or import without `tkg_tx_from`.
+- **v4.51.2 (backlog 50), the badger store marker is raised to 3.** Shipped as an exception to the ritual above
+  because an older binary cannot be made to write the new index:
+  - *Why.* From v4.51.2 the store keeps the ex-adjacency index (`0x0D`) in the same write as every relationship
+    delete. A release before it would delete relationships without writing it, and the pinned adjacency doors
+    (`Outgoing/IncomingForNodesAtPin`, `OutgoingRelsAt`, `ForEachRelEffectiveAtNodes`, ...) of v4.51.2 would then
+    miss those relationships. Row encodings are unchanged (`storeutil.CurrentWireFormatVersion` stays 2); only the
+    store-level marker (`storeutil.StoreFormatVersion`) moves to 3.
+  - *Who can see it.* Anyone opening a badger store (also each shard of a tiered or sharded store) that a v4.51.2
+    binary wrote with v4.51.1 or older: `New` returns `ErrWireFormatVersionUnsupported`. A store that only v4.51.1
+    or older ever wrote is unaffected, and a store that v4.51.2 only opened read-only keeps marker 2.
+  - *Refusal path.* v4.51.1 verifies the marker right after `badgerv4.Open`, before any row is decoded and before
+    any write, and closes the DB on a mismatch, so the refused open writes no row.
+  - *Migration.* Open the store once, writable, with v4.51.2: the marker is raised to 3 and the one-time scan of
+    relationship history fills the ex-adjacency (meta marker `rel_exadj_built`). There is no way back to v4.51.1
+    afterwards short of restoring a copy made before the upgrade.
+  - *Read-only opens.* A v4.51.2 read-only open of a store still at marker 2 works: it neither stamps the marker nor
+    scans, and the adjacency doors fold every relationship with history (sound, slower) until a writable open
+    has built the index.
 
 ## Experimental Surfaces
 
