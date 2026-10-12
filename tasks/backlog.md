@@ -66,6 +66,11 @@ The [45-family v4→v5 mapping](../docs/v5-analysis.md#5-v4--v5-door-mapping)
 and the manifests' separate v4.51.0 source delta at `44303a17` distinguish public
 successors, internal machinery and unresolved API contracts. Their consumer proofs belong to
 V4/V6; historical acceptance pins below remain unchanged.
+The integrated v4.51.0 source and V6 preflight pass [hosted CI at `3ede096d`](evidence/e17-ci-deadline-20261012/hosted-ci-3ede096d.json):
+all eight applicable jobs, including 2,180 core and 451 graphapply names in
+exhaustive race batches plus the other packages. Push-only lint is skipped;
+local pinned lint evidence is separate. This checkpoint does not qualify
+subsequent paired-fault or creation-factory changes.
 [Substrate evaluation](../docs/v5/reference/substrate-evaluation.json) is
 research/execution-plan evidence only; no engine selection or V2/V3 acceptance.
 The original five recovered `docs/v5/reference/` files are byte-verified and
