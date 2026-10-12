@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "0afd495b8b590fd46113442a915f98a01b85e31b",
+  "scope": "Change planning and compiled selector qualification only; no changed-behavior normal/race/coverage suites executed. Hosted workflow execution remains pending. Focused CI is not full phase/release validation.",
+  "sourceSHA256": {
+    ".github/workflows/ci.yml": "685a7c4552aa97ae938ab250ca8a3af45e2bb66d50285ed566d126ada13dda0e",
+    "scripts/ci-changes.py": "817b8e8ab7a08fb228573312422f726ff9de211cf5a41309f6cb500e42a5c6e8",
+    "scripts/ci-changes-test.py": "9670e5cda47cbf8ab7dc51cb26212818d991d517461afdea89490ebd8ac52ac3"
+  },
+  "selftests": {
+    "passed": 13,
+    "failed": 0,
+    "runtime": "Python stdlib; synthetic Git histories/current API names, mocked runner scopes"
+  },
+  "compiledInventory": {
+    "requiredParents": 74,
+    "metadataPackages": 12,
+    "qualificationOnlyHistoricalDiff": {
+      "base": "1d29a14c^",
+      "head": "1d29a14c"
+    },
+    "actualSession": 31222,
+    "exitCode": 0,
+    "elapsedSeconds": 2.232,
+    "peakTreeRSSMiB": 438.375,
+    "behaviorTestsExecuted": false
+  },
+  "initialQualifierFailure": {
+    "exitCode": 1,
+    "reason": "Helper used nonresolved /var/tmp root against resolved /private/var/tmp script ROOT; corrected helper only before compiled inventory. First raw stderr/watchdog preserved."
+  },
+  "env": {
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off",
+    "GOTOOLCHAIN": "local"
+  },
+  "archive": {
+    "path": "tasks/evidence/change-aware-ci-20261012/qualification.tar.gz",
+    "sha256": "93dfeae5ae3a247e674232ee4fb896c7914de8c4c8de3aba0b4f2674cad394c5",
+    "rawFileSHA256": {
+      "check.py": "032253a7d587f9cbe90a35c3f35f0b03f5ef9f9e75a7d8b071b05bcc841c9ab7",
+      "first-stderr.log": "414f6103d4400ed20bd8dcf0f86fb59a932557d7f7af2566d71adc72201bd282",
+      "first-watchdog.json": "f9297a921fd773786c2780daba0298b939034225b965fb201815e6d6bb427f1d",
+      "inventory.txt": "000b27a2c953cb0f83963cb77e818ffb68966de5a146ba025ec02fa5f4db31ed",
+      "limit-local.py": "6dc4e0362827ecd0854436b9fa1a812342b693d65ba093291d358b359e733283",
+      "metadata.jsonl": "67895129eab25e0c3d56c6752052f65592253ced2a7f5f633fae77347de1729b",
+      "probe.json": "5e4083508cd3de413f2a0031cd36315c2ae193bdb24f1cacfad51e25b81ecaa1",
+      "selftests.log": "9b3552d46540eb88683fa4650373b282bb22c31635abfd8e4bceea2790d28936",
+      "source-hashes.json": "41c6ead12f84a42e949cdcc552a844884859fb726f708b84ab7936b4418b030e",
+      "stderr.log": "a065b1718d2a3f47f5a76c742a035d3c91611fc134c81478643a1eccacae10ca",
+      "stdout.log": "1c028b9fdf2becddb04d34eb5d0df1a026418646dd7843f10fc4caa5fe9fb560",
+      "toolchain-version.txt": "4b7369cf043da7b3b8d638a16011a35d6de2efe861e0bd344fb0011f91515b9e",
+      "watchdog.json": "265000be1769a6f1abe36f9ebc5a26193799d27cd7fa22d42f1a508cd50d4168"
+    }
+  },
+  "limitations": [
+    "Scoped coverage is diagnostic; explicit full_validation preserves full coverage/security gates.",
+    "External FDB scope checks recorded normal/race exact source hashes; it does not execute the native-header module.",
+    "Main/full workflow bodies retained; hosted focused execution not yet observed."
+  ]
+}
