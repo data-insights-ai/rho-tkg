@@ -303,8 +303,8 @@ func TestGraphRangeMoveSixProcessesTargetVoterRestoresMidImportThenOriginalResum
 	mu.Lock()
 	resuming = true
 	mu.Unlock()
-	response = graphE17MoveExchange(t, n.all[1], processRequest{op: processRangeResume, data: response.aux})
-	response, completed, err := graphE17CompleteMoveResponse(t, n, response)
+	attempt := graphE17MoveExchange(t, n.all[1], processRequest{op: processRangeResume, data: response.aux})
+	_, completed, err := graphE17CompleteMoveResponse(t, n, attempt)
 	if err != nil || !completed.committed || completed.resume != pending.resume || completed.source.phase != rangeMoveFinish || completed.target.phase != rangeMoveFinish || completed.decision.phase != rangeMoveDecide || completed.decision.round == 0 {
 		t.Fatal("original authenticated Resume did not complete after voter crash", completed, err)
 	}

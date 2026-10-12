@@ -118,7 +118,7 @@ func encodeGraphE17MoveResult(r rangeMoveResult, runErr error) ([]byte, error) {
 		}
 	}
 	return processEncoding(func(w *boundedWriter) {
-		w.add([]byte("GMR1"))
+		w.add([]byte("GMR2"))
 		w.field(scope)
 		w.add(r.resume.request[:])
 		w.add(r.resume.move[:])
@@ -136,12 +136,13 @@ func encodeGraphE17MoveResult(r rangeMoveResult, runErr error) ([]byte, error) {
 		for _, status := range statuses {
 			w.field(status)
 		}
+		w.u16(graphErrorMask(runErr))
 	})
 }
 
 func decodeGraphE17MoveResult(response processResponse) (rangeMoveResult, error) {
 	c := graphCursor{b: response.aux}
-	if !bytes.Equal(c.take(4), []byte("GMR1")) {
+	if !bytes.Equal(c.take(4), []byte("GMR2")) {
 		return rangeMoveResult{}, errors.Join(errCorrupt, processResponseError(response))
 	}
 	scope := c.field(256)
@@ -165,10 +166,14 @@ func decodeGraphE17MoveResult(response processResponse) (rangeMoveResult, error)
 			}
 		}
 	}
+	mask := c.u16()
 	if c.err != nil || len(c.b) != 0 || pending > 1 || committed > 1 || r.resume.request == (requestID{}) || r.resume.move != rangeMoveID(namespace{r.resume.scope.graph, r.resume.scope.partition}, r.resume.request) || r.resume.intent == ([32]byte{}) {
 		return rangeMoveResult{}, errors.Join(errCorrupt, c.err)
 	}
 	err = processResponseError(response)
+	if mask != 0 {
+		err = errors.Join(err, graphWireError{mask})
+	}
 	if pending == 1 {
 		err = errors.Join(err, errRangeMovePending)
 	}
@@ -330,33 +335,80 @@ func decodeGraphE17Facts(wire []byte) ([]graphE17Fact, error) {
 	return facts, nil
 }
 
-func graphE17CompleteMoveResponse(t *testing.T, n *certifiedProcessNetwork, response processResponse) (processResponse, rangeMoveResult, error) {
-	t.Helper()
-	result, err := decodeGraphE17MoveResult(response)
-	for range 128 {
-		if !errors.Is(err, errRangeMovePending) {
-			return response, result, err
-		}
-		t.Logf("explicit process Resume source=%d/%d target=%d/%d", result.source.phase, result.source.sequence, result.target.phase, result.target.sequence)
-		if !errors.Is(err, errLimit) && !errors.Is(err, graphstate.ErrResourceLimit) {
-			return response, result, err
-		}
-		response = graphE17MoveExchange(t, n.all[1], processRequest{op: processRangeResume, data: response.aux})
-		result, err = decodeGraphE17MoveResult(response)
-	}
-	return response, result, err
+// This wrapper carries only a parent-owned invocation interruption after the
+// correlated terminal worker result. It grants no durable move authority.
+type graphE17MoveAttempt struct {
+	response     processResponse
+	interruption error
 }
 
-func graphE17MoveExchange(t *testing.T, child *graphProcess, request processRequest) processResponse {
+func graphE17CompleteMoveResponse(t *testing.T, n *certifiedProcessNetwork, attempt graphE17MoveAttempt) (graphE17MoveAttempt, rangeMoveResult, error) {
+	t.Helper()
+	result, err := decodeGraphE17MoveResult(attempt.response)
+	original := result.resume
+	for range 128 {
+		if !errors.Is(err, errRangeMovePending) {
+			return attempt, result, err
+		}
+		t.Logf("explicit process Resume source=%d/%d target=%d/%d", result.source.phase, result.source.sequence, result.target.phase, result.target.sequence)
+		if !graphE17PermittedResume(err, attempt.interruption) {
+			return attempt, result, err
+		}
+		attempt = graphE17MoveExchange(t, n.all[1], processRequest{op: processRangeResume, data: attempt.response.aux})
+		result, err = decodeGraphE17MoveResult(attempt.response)
+		if graphE17OriginalResume(result.resume, original) != nil {
+			return attempt, result, errors.Join(errInvalid, err)
+		}
+	}
+	return attempt, result, err
+}
+func graphE17MoveExchange(t *testing.T, child *graphProcess, request processRequest) graphE17MoveAttempt {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
+	return graphE17MoveExchangeContext(t, ctx, child, request)
+}
+func graphE17MoveExchangeContext(t *testing.T, ctx context.Context, child *graphProcess, request processRequest) graphE17MoveAttempt {
+	t.Helper()
 	response, exchangeErr := child.exchange(ctx, request)
+	attempt := graphE17MoveAttempt{response: response}
 	if exchangeErr != nil {
+		if ctx.Err() != nil && errors.Is(exchangeErr, ctx.Err()) {
+			attempt.interruption = ctx.Err()
+		}
 		_, decodeErr := decodeGraphE17MoveResult(response)
-		if !errors.Is(decodeErr, errRangeMovePending) || !errors.Is(decodeErr, errLimit) && !errors.Is(decodeErr, graphstate.ErrResourceLimit) {
+		if !graphE17PermittedResume(decodeErr, attempt.interruption) {
 			t.Fatal("actual move exchange", exchangeErr, decodeErr)
 		}
 	}
-	return response
+	if request.op == processRangeResume {
+		prior, e := decodeGraphE17MoveResult(processResponse{aux: request.data})
+		current, actualErr := decodeGraphE17MoveResult(response)
+		if e != nil && !errors.Is(e, errRangeMovePending) || graphE17OriginalResume(current.resume, prior.resume) != nil {
+			t.Fatal("foreign/malformed original Resume reply", e, actualErr)
+		}
+	}
+	return attempt
+}
+
+func graphE17PermittedResume(err, own error) bool {
+	if !errors.Is(err, errRangeMovePending) {
+		return false
+	}
+	// Only the original invocation's own canceled context admits transport
+	// unavailability joined with a classified cancellation. No arbitrary remote
+	// cancellation, unavailable replica, corruption or unknown error is retried.
+	allowed := uint16(1<<1 | 1<<6 | 1<<14 | 1<<15)
+	if (errors.Is(own, context.Canceled) || errors.Is(own, context.DeadlineExceeded)) && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
+		allowed |= 1<<10 | 1<<11 | 1<<12
+	}
+	mask := graphErrorMask(err)
+	return mask != 0 && mask & ^allowed == 0
+}
+
+func graphE17OriginalResume(actual, original rangeMoveResume) error {
+	if actual.request == (requestID{}) || actual != original {
+		return errInvalid
+	}
+	return nil
 }

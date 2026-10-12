@@ -1,0 +1,188 @@
+{
+  "archive": "raw-evidence.tar.gz",
+  "sha256": "4e35846cee73397cc65687a3a15caf81ab26b4ab59c753810980efcabaea7891",
+  "compressedBytes": 30601,
+  "rawBytes": 244248,
+  "files": [
+    {
+      "path": "cancellation-first-compile.jsonl",
+      "bytes": 2268,
+      "sha256": "4b4f43132bc726684c8198791a6dce166dcc97125396de462e0c0c3e0920b087"
+    },
+    {
+      "path": "cancellation-first-compile.stderr",
+      "bytes": 334,
+      "sha256": "26046e8226e4ffb1098550fce8ac2609316e3ea99350469005cc3a2a04d685fb"
+    },
+    {
+      "path": "cancellation-first-compile.watchdog.json",
+      "bytes": 377,
+      "sha256": "69c27ef0ef515b870df88c0c8ca3e5be37cd2c858539be9b57ce5c3ae94443f0"
+    },
+    {
+      "path": "cancellation-green.jsonl",
+      "bytes": 12629,
+      "sha256": "e400a38a804aec8820c843a9baa047547dee22f2c7fddac297c008c932e32393"
+    },
+    {
+      "path": "cancellation-green.stderr",
+      "bytes": 369,
+      "sha256": "1082944acad82b73440820c3510b3bd0b60ec2f1da737ba1b02f822ca6a9112c"
+    },
+    {
+      "path": "cancellation-green.watchdog.json",
+      "bytes": 412,
+      "sha256": "2df89e7e85c744c3a6debb45f1502927f6cf146ec1b5dd1e9218ca68f6d31f7d"
+    },
+    {
+      "path": "cancellation-red-source.json",
+      "bytes": 1031,
+      "sha256": "64320ca390e0ac3c9eaa632c760b5d9d7f97d7d3354a8a2d3dbd90d49f299155"
+    },
+    {
+      "path": "cancellation-red.jsonl",
+      "bytes": 12462,
+      "sha256": "aaa27ff0418ebb903ad188e3b9be422e1cded05e5a7af422e769a80ce902aa52"
+    },
+    {
+      "path": "cancellation-red.stderr",
+      "bytes": 335,
+      "sha256": "bd1e947105b7e110adba4f782e0b9e6497172b8241c383966f859bec2579887b"
+    },
+    {
+      "path": "cancellation-red.watchdog.json",
+      "bytes": 378,
+      "sha256": "2621c72eec565d8639675b98962ddfb8e3e9f9fa72ac9b9bbbe1e9731cc38a24"
+    },
+    {
+      "path": "cancellation-second-compile.jsonl",
+      "bytes": 1427,
+      "sha256": "ee6f278a7510a86f61d64a9c4d6f9a383e46bee2bec21568964a35e2825c1df0"
+    },
+    {
+      "path": "cancellation-second-compile.stderr",
+      "bytes": 333,
+      "sha256": "d27d64781fdee80b1fb092715ea7939e7b87942a880efb4c9b60ba5575563e5e"
+    },
+    {
+      "path": "cancellation-second-compile.watchdog.json",
+      "bytes": 376,
+      "sha256": "b4aba14c373a1fe280ef51f4080674a5d84512c19a7e2169676871640df694ec"
+    },
+    {
+      "path": "final-diff.patch",
+      "bytes": 16928,
+      "sha256": "b92789ee6cbff3536285def1390188ad1b0f45f7dd5d8cdf17b582f7da1e6e06"
+    },
+    {
+      "path": "final-normal.jsonl",
+      "bytes": 41780,
+      "sha256": "93bcc89ab1283c80d5289f72c345020edaea14a66c54b66d242092ab7d5d7376"
+    },
+    {
+      "path": "final-normal.stderr",
+      "bytes": 633,
+      "sha256": "df6c4e0c46412cb095c68c7c06ca9b366667fee2647ca2a302cb84500b5e8e8b"
+    },
+    {
+      "path": "final-normal.watchdog.json",
+      "bytes": 676,
+      "sha256": "fc4da1b9438abf4a0745d52da9a2eebb46e770384b54ffe61ddb0d446801c672"
+    },
+    {
+      "path": "final-race.jsonl",
+      "bytes": 41777,
+      "sha256": "444398f89549d943902e0e0d9b566ede75f7efd2a89b384a8ab6d1777da66f52"
+    },
+    {
+      "path": "final-race.stderr",
+      "bytes": 642,
+      "sha256": "e0b588a0ff16131cad633e5af53edcad2b98e5332990d492e65385d593dac255"
+    },
+    {
+      "path": "final-race.watchdog.json",
+      "bytes": 689,
+      "sha256": "fe06b0c5a17a59db3851086eda7e4928631cc63c6dba1ab617914f7891fb11f6"
+    },
+    {
+      "path": "first-final-normal-oracle.jsonl",
+      "bytes": 39246,
+      "sha256": "b5c0f4b59c462ecf447691260445c9c207375c347ca5c56a6afa4debf9c402a7"
+    },
+    {
+      "path": "first-final-normal-oracle.stderr",
+      "bytes": 487,
+      "sha256": "d86b7da4ff924fb566a521e39704136b79de671056d86e14e4c8cd9c49e1ef8d"
+    },
+    {
+      "path": "first-final-normal-oracle.watchdog.json",
+      "bytes": 530,
+      "sha256": "9ed2750eb63f9e3fec91ee0cb7a11b5cc3e60fc080a1279e7458b1f9c20ac449"
+    },
+    {
+      "path": "fmt-vet.log",
+      "bytes": 33,
+      "sha256": "50dfaf2b461be90c530e329b6ae9c3159961579c2fb4848bbf472fe7af282db3"
+    },
+    {
+      "path": "fmt-vet.stderr",
+      "bytes": 261,
+      "sha256": "0fcbc7190728e96cdacf494fe6f084b7985a92cc6ee975304e56662046d1565c"
+    },
+    {
+      "path": "fmt-vet.watchdog.json",
+      "bytes": 288,
+      "sha256": "ab95943b1ad67ea263f879d87e84344d008c745585c3fd6c4d7ca2a298663f77"
+    },
+    {
+      "path": "lint.log",
+      "bytes": 387,
+      "sha256": "9dfc9b1c6ef050cf5da07afa6013a2d4b14bd826c6f22fd2ea26a6e8c3606135"
+    },
+    {
+      "path": "lint.stderr",
+      "bytes": 463,
+      "sha256": "c93d9aac9062966beba7ea210973f5259e7e00545b13761fb22218ceee71b568"
+    },
+    {
+      "path": "lint.watchdog.json",
+      "bytes": 490,
+      "sha256": "19d6cf1231c33b520d9c562731c9db09fc526049f3af3dbdf46d7047e6a3a3ff"
+    },
+    {
+      "path": "prior-race.jsonl",
+      "bytes": 14321,
+      "sha256": "428c5c0b46edb51478c5841ab416112e61ef1963a8516e66e12342f9f4540c3d"
+    },
+    {
+      "path": "prior-race.stderr",
+      "bytes": 340,
+      "sha256": "589fc4851f5baf9fe2839758e49b7a5f515d3b57a4d53d74c3abe252336b5b87"
+    },
+    {
+      "path": "prior-race.watchdog.json",
+      "bytes": 387,
+      "sha256": "98289975ea98c6731e07e19bedfe0219e82d24dbad52b173e90681d23e3614a0"
+    },
+    {
+      "path": "red-range_move_mid_import_process_test.go.txt",
+      "bytes": 16402,
+      "sha256": "1a1e45e17516b3fd9e685d33356a5a5021cda8dd07acb489201719be959e810c"
+    },
+    {
+      "path": "red-range_move_process_cancellation_test.go.txt",
+      "bytes": 4418,
+      "sha256": "8f0549fc56eab46709abcc6c7e278453e1a190e349802670a596c45f99700116"
+    },
+    {
+      "path": "red-range_move_six_process_harness_test.go.txt",
+      "bytes": 13353,
+      "sha256": "46fbed3592b99f118a27197c3b8d57d899cc92f16b1e590e537f265a7297c676"
+    },
+    {
+      "path": "red-range_move_six_process_test.go.txt",
+      "bytes": 16986,
+      "sha256": "5ca137160e03d4114d12eb08b87aef071d5f12387c12748d68f69ed750202548"
+    }
+  ]
+}

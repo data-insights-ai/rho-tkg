@@ -276,7 +276,7 @@ func TestGraphRangeMoveSixProcessesActivatesAllocatedRangeWithoutChangingIDs(t *
 	}
 	graphE17LogTraffic(t, n, "move completed")
 	graphE17AssertNativeMoveReceipts(t, n, completed)
-	again := n.all[1].call(t, processRequest{op: processRangeResume, data: response.aux})
+	again := n.all[1].call(t, processRequest{op: processRangeResume, data: response.response.aux})
 	resumed, err := decodeGraphE17MoveResult(again)
 	if err != nil || resumed != completed {
 		t.Fatal("actual native Resume changed original outcome", resumed, completed, err)

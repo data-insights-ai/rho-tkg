@@ -1,0 +1,135 @@
+{
+  "path": "/var/tmp/rho-ci-fae9d0d9-failed.log",
+  "sha256": "3bd31da33f8e709f99caeafc7eaa18d103c4c17a2298e1f6a1afa00546cb949e",
+  "qualification": "Hosted race failed at the fixed parent10s invocation deadline, not a demonstrated native state corruption/deadlock. Focused prior-source race passed. Deterministic caller cancellation reproduced the fixture rejection.",
+  "selectedRawLines": [
+    {
+      "line": 277,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:21:44.3960978Z v5 race gate: graphapply shard 1/4, 113 names, -run ^(TestActualQualifiedBindingsOnlyAndCachedGrantFences|TestAllocationP08NativeSixProcessesBeforeQuorumReservationRemainsUnknownUntilOverwrite|TestAllocationP08NativeSixProcessesRetiredRecipientNewClaimsRefuseAndCurrentClaimsApply|TestBootstrapRejectionsCannotPoisonEmptyProof|TestCertifiedGraphAggregateBudgetsConstructorCleanupAndCumulativeReads|TestCertifiedGraphCollectionFenceRaceExcludesHigherInstalledState|TestCertifiedGraphE16UnresolvedLowPrepareBlocksHigherObservedRound|TestCertifiedGraphFreshE15WaitsForDelayedParticipantAndAfterIncludesCommit|TestCertifiedGraphQuorumLossProducesNoCutAndBoundsCancelledRequests|TestCertifiedGraphReviewAfterReceiptSurvivesIssuerCloseAndGenuineFollowerReopen|TestCertifiedGraphReviewOversizedScopeRefusesBeforeAllocation|TestCertifiedGraphSourceInfoCodecOwnsNativeHistoricalMetadataAndRejectsInvalidFields|TestCertifiedGraphStaleCertificateApplyAndPredecessorBudgetAreNonfatal|TestCombinedOwnedOutputPreflightsEachNewBuffer|TestCrossPartitionAbortBeforeCoordinatorPrepareMustRetireOnlyItsUnusedCredits|TestCrossPartitionCapacityAbortMirrorsPriorityAndConflictSourceAtOrdinaryCliffs|TestCrossPartitionCorruptPreparedStatusAndLocksCannotRestoreOrStage|TestCrossPartitionManifestProofAndAggregateRefusalsLeaveNoOutput|TestCrossPartitionPlanningCannotSpendSourceBudgetAgainForEachParticipant|TestCrossPartitionRecoveryVerifierNilAndForeignViewRefuse|TestCrossPartitionSameRequestIDTwoCoordinatorsHaveRecoverableProgress|TestCrossPartitionTransactionIdentityQualifiesGraphCoordinatorAndRawRetryKey|TestCrossProcessCoordinatorBusyAndFrozenPendingCapacity|TestCrossProcessCoordinatorLostDecisionReplyRecoversDurableDecision|TestCrossRecoveryTruncatedPGQ2MustNotPanic|TestDeclaredAllocationFreshRangeAfterServiceRotationAndCanceledRefill|TestDeclaredAllocationNestedObservationScopesBeforeRecovery|TestDeclaredAllocationRecipientReplacementRefusesDelayedOldDeliveries|TestDeclaredAllocationSourceInspectionCannotOpenHomeCursor|TestDeclaredGenesisConfigurationIndependentGoldenAndFixedBacking|TestDeclaredInitHostAdmissionUsesReplicaDecoderHeadroom|TestDeclaredMaterializerHiddenMappingCannotBypassSeedProof|TestDeclaredProtocolGrantPreservesSourceVersusHomeCoordinates|TestDriverStagesAndInstallsOneAtomicGraphBatch|TestGCD1InitializationPreservesLegacyBytesAndEffectDigests|TestGraphCutWireNativeCompletedReadStillDecodesWithoutProof|TestGraphCutWireRejectsTruncationsTrailingBytesAndOversizedCounts|TestGraphGenesisCompletedProofCannotCrossAgreementOrOriginatingHost|TestGraphGenesisSnapshotRetainedBindingTailAndReopen|TestGraphMutationCrashRecoversFactsOutcomeCDCAndHistory|TestGraphRangeMoveSixProcessesActivatesAllocatedRangeWithoutChangingIDs|TestGraphReadBoundGroupAndUnboundNonSingletonRefusal|TestGraphRequestRejectsUnionAndSchemaCorruption|TestGraphSourceAuthorityCompletionRejectsMalformedChangedAndReplayedContext|TestGraphSourceClientCloseCancelsPausedLiveQuery|TestGraphSourceExpiryCancelsPausedNativeData|TestGraphSourceProcessCanceledExchangeRetainsOriginalUntilTerminal|TestGraphSourceProcessQueuedCancellationRepliesOnceToOriginalPausedRequest|TestGraphSourceRemoteBudgetIndependentBoundsGuard|TestGraphSourceSixProcessesPausedPeerKeepsNativeLaneAndCancels|TestGraphSourceWireInfoZeroIssuerCannotBecomeSession|TestGraphSourceWireRequestAdmissionSymmetry|TestGraphSourceWireResponseCorrelationAndErrorMaskGuard|TestGuardedGraphSharedControlDedupAndStageOutputHeadroom|TestInitStageAndOutputLimitsAreRecoverableOrOperational|TestInitializedGuardVariableRootBackingUsesOuterOutputHeadroom|TestMaterializerCrashChild|TestMaterializerNilAndClosedInputs|TestMaterializerSemanticBindingBeforeRestoreAndPreservesStore|TestNativeGraphLifecycleSevenStepsCertifiedTrace|TestOwnedRegionPreflightExactBoundaryAndMetadata|TestPartitionCheckedReaderNeverClaimsUnknownOrRemoteEntityAbsence|TestPartitionGraphTypedCodecPreservesNodeRelationshipDeclarationsAndDescriptor|TestPartitionNonemptyGraphSnapshotRetainedHistoryFailoverAndReopen|TestPartitionSameRequestAbsentAxisConflictsRefuseBeforeEffects|TestPartitionWritesNineNativeOperationsAreAdmittedWithActualReservedRanges|TestProductionControlResourceLimitsNeverBecomeOutcomes|TestRangeMoveAdmissionNumberedUndoRetainsCreditsUntilFinalAbort|TestRangeMoveAuthorityWireRefusesUncorrelatedBodies|TestRangeMoveCodecRefusesMalformedFramesWithoutPartialValues|TestRangeMoveCoordinatorDurableDecisionSurvivesCoordinatorReplacement|TestRangeMoveCoordinatorProtectedAbortUsesParentBudget|TestRangeMoveDurableGraphExportRefusesZeroRemainderBeforeOpeningCapture|TestRangeMoveFrozenPageRejectsChangedCaptureManifestAndExpectedPageBindings|TestRangeMoveLookupOriginalBoundaryRefusalsDoNotDispatchOrReturnPartialData|TestRangeMoveNativeReadDirectMatchesCompletedQueryAndCancellation|TestRangeMoveOmittedActualFrozenReplyCannotAdvanceOrActivateAndResumeKeepsCapture|TestRangeMovePrepareNativeBoundaryRefusalsDoNotAcquireOwners|TestRangeMoveReplayCodecsRejectCorruptionTruncationAndNilBudgets|TestRangeMoveReplayHandoffPreservesSourceOriginalWithCollidingTargetRequest|TestRangeMoveReplaySecondHandoffKeepsFirstOriginWithCollidingRequest|TestRangeMoveUndoCodecAndNativeInverseRefusalsPreserveStoredOriginals|TestRegisteredBootstrapCompletePIJHasNoOmittedFields|TestRegisteredExactFormatBudgetsAndOwnedOutput|TestRegisteredGenesisNilCallbackContracts|TestRegisteredInventoryAllPreparedVariants|TestRegisteredInventoryCodecFirstContract|TestRegisteredInventoryExpectedAndFormatRefusals|TestRegisteredInventoryJournalMixedAndMalformed|TestRegisteredInventoryQuotaCancellationAndOwners|TestRegisteredJournalInvalidSourceFields|TestRegisteredMaterializerRealDriverGenesis|TestRegisteredRegistryCodecFirstContract|TestRegisteredRegistryLargeOriginalJournalAndReopen|TestRegisteredRegistryOriginalConflictAndNoop|TestRegisteredRegistrySharedEmissionSameInput|TestRegisteredRegistrySuppliedJointBudgetBeforeOutput|TestRegisteredRuntimeGuardPublicInitializeRootAndReadCaps|TestRegistryExactWorkOwnedAndZeroTuples|TestRegistryLegalNearMaximumAndOversize|TestRelationshipMaterializationRetainsDeclaredAndEffectiveHistory|TestRemoteCertifiedE18PrivateIndexCodecAndRefusals|TestRemoteCertifiedModesPreserveStableScopeAndRefuseFailedPublication|TestRemoteCertifiedReceiptRoundPreservesNativeCommitAfterIssuerCloseReopen|TestRemoteGraphSourceDirectDataAdmissionAndOwnerExpiry|TestReplicatedCertifiedGraphSixProcessesLocalCrossEdgeRefusalRemainsHealthy|TestReplicatedGraphSixProcessesOrdinaryAndHistory|TestReplicatedSerialOracleRejectsCurrentAsHistory|TestSemanticContractNativeValueConformance|TestSharedControlGraphDedupNeverOverwritesOriginal|TestSuppliedGraphBudgetHelpersDirectNilAndLocalCeiling|TestTypedLabelSetCDCAndRechecksummedSemanticCorruption|TestV1OlderWireDoorsRefuseNewMetadataWithoutErasure)$"
+    },
+    {
+      "line": 5319,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6537025Z --- FAIL: TestGraphRangeMoveSixProcessesActivatesAllocatedRangeWithoutChangingIDs (19.90s)"
+    },
+    {
+      "line": 5320,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6537576Z     replicated_graph_test.go:55: certified process durable directories /tmp/rho-certified-process-3472619652"
+    },
+    {
+      "line": 5321,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6538074Z     replicated_graph_test.go:55: actual certified child operation: actor=1 target=3 kind=1 identity=fa57073627aa6a79000000000000000a index=3 reason=0"
+    },
+    {
+      "line": 5322,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6538521Z     replicated_graph_test.go:55: actual certified child operation: actor=1 target=8 kind=1 identity=fa57073627aa6a790000000000000018 index=3 reason=0"
+    },
+    {
+      "line": 5323,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6538952Z     replicated_graph_test.go:55: actual certified child operation: actor=1 target=3 kind=2 identity=fa57073627aa6a79000000000000001d index=4 reason=0"
+    },
+    {
+      "line": 5324,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6539379Z     replicated_graph_test.go:55: actual certified child operation: actor=1 target=3 kind=3 identity=fa57073627aa6a79000000000000002b index=5 reason=0"
+    },
+    {
+      "line": 5325,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6539819Z     replicated_graph_test.go:55: actual certified child operation: actor=1 target=3 kind=3 identity=fa57073627aa6a790000000000000039 index=6 reason=0"
+    },
+    {
+      "line": 5326,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6540357Z     replicated_graph_test.go:55: actual certified child operation: actor=1 target=3 kind=3 identity=fa57073627aa6a790000000000000047 index=7 reason=0"
+    },
+    {
+      "line": 5327,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6540793Z     replicated_graph_test.go:55: actual certified child operation: actor=1 target=3 kind=3 identity=fa57073627aa6a790000000000000055 index=8 reason=0"
+    },
+    {
+      "line": 5328,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6541217Z     replicated_graph_test.go:55: actual certified child operation: actor=1 target=3 kind=4 identity=fa57073627aa6a79000000000000006c index=9 reason=0"
+    },
+    {
+      "line": 5329,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6541650Z     replicated_graph_test.go:55: actual certified child operation: actor=1 target=3 kind=5 identity=fa57073627aa6a79000000000000007a index=10 reason=0"
+    },
+    {
+      "line": 5330,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6542080Z     replicated_graph_test.go:55: actual certified child operation: actor=1 target=3 kind=4 identity=fa57073627aa6a79000000000000008c index=11 reason=0"
+    },
+    {
+      "line": 5331,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6542506Z     replicated_graph_test.go:55: actual certified child operation: actor=1 target=3 kind=5 identity=fa57073627aa6a79000000000000009a index=12 reason=0"
+    },
+    {
+      "line": 5332,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6542942Z     replicated_graph_test.go:55: actual certified child operation: actor=4 target=3 kind=2 identity=1d031199d76f8a290000000000000017 index=13 reason=0"
+    },
+    {
+      "line": 5333,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6543495Z     replicated_graph_test.go:55: actual certified child operation: actor=1 target=3 kind=3 identity=fa57073627aa6a7900000000000000b1 index=14 reason=0"
+    },
+    {
+      "line": 5334,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6543927Z     replicated_graph_test.go:55: actual certified child operation: actor=1 target=8 kind=3 identity=fa57073627aa6a7900000000000000bb index=4 reason=0"
+    },
+    {
+      "line": 5335,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6544350Z     replicated_graph_test.go:55: actual certified child operation: actor=4 target=3 kind=3 identity=1d031199d76f8a290000000000000025 index=15 reason=0"
+    },
+    {
+      "line": 5336,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6544777Z     replicated_graph_test.go:55: actual certified child operation: actor=1 target=3 kind=3 identity=fa57073627aa6a7900000000000000c9 index=16 reason=0"
+    },
+    {
+      "line": 5337,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6545211Z     replicated_graph_test.go:55: actual certified child operation: actor=1 target=8 kind=3 identity=fa57073627aa6a7900000000000000d7 index=5 reason=0"
+    },
+    {
+      "line": 5338,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6545731Z     replicated_graph_test.go:55: actual certified child operation: actor=1 target=3 kind=4 identity=fa57073627aa6a7900000000000000e0 index=17 reason=0"
+    },
+    {
+      "line": 5339,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6546165Z     replicated_graph_test.go:55: actual certified child operation: actor=1 target=8 kind=5 identity=fa57073627aa6a7900000000000000ee index=6 reason=0"
+    },
+    {
+      "line": 5340,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6546597Z     replicated_graph_test.go:55: actual certified child operation: actor=1 target=3 kind=7 identity=fa57073627aa6a7900000000000000ef index=18 reason=0"
+    },
+    {
+      "line": 5341,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6547018Z     replicated_graph_test.go:55: actual certified child operation: actor=4 target=8 kind=7 identity=1d031199d76f8a29000000000000003d index=7 reason=0"
+    },
+    {
+      "line": 5342,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6547329Z     range_move_six_process_test.go:269: E17 traffic old-cut setup: calls=2308 bootstrapPackets=296"
+    },
+    {
+      "line": 5343,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6547582Z     range_move_six_process_test.go:272: actual move exchange context deadline exceeded"
+    },
+    {
+      "line": 5344,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6548025Z         graphapply: remote source operation refused remote tag=6: graphapply: range move pending; resume original identity"
+    },
+    {
+      "line": 5345,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6548199Z         graphstore: immutable source unavailable"
+    },
+    {
+      "line": 5346,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6548315Z         context canceled"
+    },
+    {
+      "line": 5347,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6548529Z         graphapply: range move pending; resume original identity"
+    },
+    {
+      "line": 5348,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6548868Z     replicated_graph_test.go:128: E17 counted phase ledger: maximum=24064 pages=128 public=1/5 nativeVoter=0/2"
+    },
+    {
+      "line": 5349,
+      "text": "test (v5, v5/go.mod)\tUNKNOWN STEP\t2026-10-12T05:25:31.6549352Z     replicated_graph_test.go:140: certified cleanup: reaped=6 successfully-reaped=6 of6; calls=3344 packets=296 maxFrame=7108/7108 maxQueueBytes=3452/3557"
+    }
+  ]
+}

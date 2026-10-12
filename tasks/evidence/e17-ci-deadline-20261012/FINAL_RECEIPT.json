@@ -1,0 +1,149 @@
+{
+  "scope": "Private E17 process acceptance helper recovers exact original Pending after its own caller invocation cancellation. No production API/wire/quota/timeout changes;10s invocation,3s correlated terminal cleanup and finite128 explicit Resume remain.",
+  "base": "fae9d0d9b2a2664288ea11fb2a19ff7db6aaf5f6",
+  "toolchainEnvironment": {
+    "GOTOOLCHAIN": "go1.26.9",
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off",
+    "Docker": "golang:1.26.9,4GiB,2CPU",
+    "lint": "v2.13.2"
+  },
+  "sourceManifest": {
+    "path": "final-go-source.json",
+    "sha256": "e7bb250087a6223c6a00b01129091b167d7ce1a38d301a85644fde0c1d7d1863",
+    "GoFiles": 527
+  },
+  "production": {
+    "path": "production-unchanged.json",
+    "all218GoFilesEqualBase": true
+  },
+  "normal": {
+    "parents": {
+      "TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput": "pass",
+      "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts": "pass",
+      "TestGraphRangeMoveSixProcessesTargetVoterRestoresMidImportThenOriginalResume": "pass",
+      "TestGraphRangeMoveSixProcessesOwnInvocationCancellationResumesOriginal": "pass",
+      "TestGraphRangeMoveAttemptRejectsUnrelatedPendingCauses": "pass",
+      "TestGraphRangeMoveSixProcessesActivatesAllocatedRangeWithoutChangingIDs": "pass",
+      "TestReplicatedProcessProtocolBoundaries": "pass"
+    },
+    "parentPass": 7,
+    "parentFail": 0,
+    "parentSkip": 0,
+    "packageTerminal": [
+      {
+        "Time": "2026-10-12T07:41:13.297076+02:00",
+        "Action": "pass",
+        "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+        "Elapsed": 28.624
+      }
+    ],
+    "watchdog": {
+      "command": [
+        "go",
+        "test",
+        "-count=1",
+        "-json",
+        "-run",
+        "^Test(GraphRangeMove(SixProcessesOwnInvocationCancellationResumesOriginal|AttemptRejectsUnrelatedPendingCauses|SixProcessesActivatesAllocatedRangeWithoutChangingIDs|SixProcessesTargetVoterRestoresMidImportThenOriginalResume)|ReplicatedProcessProtocolBoundaries|GraphSourceProcessEnvelopeRejectsUnboundAndExtraInput|GraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts)$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 846.516,
+      "elapsed_s": 34.933,
+      "exit_code": 0,
+      "reason": "completed"
+    }
+  },
+  "race": {
+    "parents": {
+      "TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput": "pass",
+      "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts": "pass",
+      "TestGraphRangeMoveSixProcessesTargetVoterRestoresMidImportThenOriginalResume": "pass",
+      "TestGraphRangeMoveSixProcessesOwnInvocationCancellationResumesOriginal": "pass",
+      "TestGraphRangeMoveAttemptRejectsUnrelatedPendingCauses": "pass",
+      "TestGraphRangeMoveSixProcessesActivatesAllocatedRangeWithoutChangingIDs": "pass",
+      "TestReplicatedProcessProtocolBoundaries": "pass"
+    },
+    "parentPass": 7,
+    "parentFail": 0,
+    "parentSkip": 0,
+    "packageTerminal": [
+      {
+        "Time": "2026-10-12T07:43:01.954278+02:00",
+        "Action": "pass",
+        "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+        "Elapsed": 76.861
+      }
+    ],
+    "watchdog": {
+      "command": [
+        "go",
+        "test",
+        "-race",
+        "-count=1",
+        "-json",
+        "-run",
+        "^Test(GraphRangeMove(SixProcessesOwnInvocationCancellationResumesOriginal|AttemptRejectsUnrelatedPendingCauses|SixProcessesActivatesAllocatedRangeWithoutChangingIDs|SixProcessesTargetVoterRestoresMidImportThenOriginalResume)|ReplicatedProcessProtocolBoundaries|GraphSourceProcessEnvelopeRejectsUnboundAndExtraInput|GraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts)$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 863.891,
+      "elapsed_s": 85.572,
+      "exit_code": 0,
+      "reason": "completed"
+    }
+  },
+  "statics": {
+    "fmt-vet": {
+      "command": [
+        "sh",
+        "-c",
+        "go version && make fmt-check && go vet ./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 270.891,
+      "elapsed_s": 1.928,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "lint": {
+      "command": [
+        "make",
+        "lint-docker",
+        "DOCKER_GO=docker run --rm --memory=4g --cpus=2 -e GOTOOLCHAIN -e GOMAXPROCS -e GOMEMLIMIT -e GOFLAGS -e GOWORK -v /var/tmp/rho-v5-e17-ci-deadline-20261012:/src -w /src/v5 -v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build golang:1.26.9"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 27.969,
+      "elapsed_s": 17.907,
+      "exit_code": 0,
+      "reason": "completed"
+    }
+  },
+  "qualifications": [
+    "Hosted failure source-qualified inHOSTED_FAILURE.json; focused prior-source racePASS, so no native corruption/deadlock reproduced.",
+    "Deterministic compiled cancellation-red fails the old helper at actual Import3 before delivery, with actual durable Import2 and6 successful child reaps.",
+    "Two first compile failures remain qualification only: missing guard symbol after wrong append cwd, then a wrapper callsite aux adjustment.",
+    "Initial all-entry zeroCDC oracle incorrectly rejected legitimate GML1 activation. Correct final guard requires exact one placement CDC/group and zero other CDC; initial failed log retained.",
+    "Private result frame is versionedGMR2 and retains graphWire cause masks; unknown/invalid/corrupt/closed/poisoned/foreign/malformed results refuse before Resume.",
+    "No new production code; prior production coverage/security/vulnerability gates are carried by exact unchanged hashes, not rerun or expanded claims.",
+    "All selected normal/race parents pass; unrelated complete repository and fresh hosted CI remain root-owned."
+  ],
+  "archive": {
+    "path": "raw-evidence.tar.gz",
+    "sha256": "4e35846cee73397cc65687a3a15caf81ab26b4ab59c753810980efcabaea7891",
+    "rawBytes": 244248,
+    "compressedBytes": 30601,
+    "manifest": "RAW_MANIFEST.json"
+  }
+}
