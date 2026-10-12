@@ -847,7 +847,7 @@ Reference checks establish their stated subset, never production completion.
 
 | Phase | Concrete acceptance record |
 |---|---|
-| V0 | Reviewed tracked reference corpus; profile/axis unit and exact ms import mappings above; current-v4 delta at `44303a17`/v4.51.0 alongside historical consumer pins; declared test resource/dataset profiles and versioned consumer door/capacity inventory; independent model inputs/expected failures; agreed limits distinguished from proposed thresholds |
+| V0 | Reviewed tracked reference corpus; profile/axis unit and exact ms import mappings above; current-v4 delta at `dbd74cf4`/v4.51.1 alongside historical consumer pins; declared test resource/dataset profiles and versioned consumer door/capacity inventory; independent model inputs/expected failures; agreed limits distinguished from proposed thresholds |
 | V1 | Go differential runs against the unchanged 16/52 corpus and revised E-case models; node/relationship two-phase exact-set tests, boundary/fuzz/codec failures and direct public API coverage |
 | V2 | Two-partition/three-replica fault schedules plus real durable process-kill/restart runs; serial-history/cut oracle results for E15–E18; stale-owner/allocator rejection, decision recovery and predicate-conflict tests; comparable transactional-KV evaluation and engine decision |
 | V3 | Byte ledger at 790 K/3.15 M/12.6 M source signal rows (107,113/408,282/1,584,150 HOP relationships); seal/merge/crash/reopen oracle results; heap/RSS/page-cache and replay measurements proving budgets and no per-fact resident growth; equivalent v4 fast-path comparison |
@@ -902,13 +902,16 @@ A build or that smoke suite alone cannot establish semantic compatibility.
 #### Current v4 compatibility delta (cutoff 2026-10-12)
 
 The current rho source baseline for this acceptance record is main
-`44303a17a391d663cd48567c55bbb9ee85cdf892`, **v4.51.0**. This extends the
+`dbd74cf45c65c1086798012e92453315cab75143`, **v4.51.1**. This extends the
 historical consumer inventories above; their commits/hashes and old reproduction
 runs remain historical and unchanged. It does not assert that those consumers
 have upgraded or that a v5 adapter/importer has passed.
 
 | Current v4 contract | Required v5 mapping / consumer obligation |
 |---|---|
+| Current/history stamps and ID membership (v4.51.1) | `CurrentStampsCapability` / `HistoryStampsCapability` are row/history stamp accelerators, not full integrity/completeness proofs or cuts; partial decode can answer a corrupt body. `MemberIDsCapability` lists ascending current index IDs, then history widening and exact hydration resolve state. Retain pending-write, sentinel, tiered-owner/history-fold and native/sharded-wrapper override semantics. |
+| `ColumnData.Other` / `RelColumnOtherSource`, alignment and integer widths (v4.51.1) | Held values outside a typed column are marked `Other` with `Null=true` and zero slots; same-selection row fallback preserves them. Optional sources without Other do not prove absence. Typed arrays/Null/Other stay aligned, including leading/all absences and batches. Preserve v4 scalar normalization/refusal while retaining raw exact integer kinds separately. |
+| Broader temporal state scans (v4.51.1) | Carry all six `ForEachNodeEffective` / `ForEachRelEffective` / `NodesEffectiveByIDs` / `RelsEffectiveByIDs` / `ForEachRelEffectiveAtNodes` / `ForEachNodeEffectiveByLabels` contracts and `Direction` / `ErrInvalidDirection`. Relationship state is declared; label union, first-occurrence ID order, per-entity timeline/pin gates and callbacks outside locks remain explicit. Seeded current-adjacency plus all-history gather preserves earlier reimported endpoints but costs O(H); it is not output-sensitive or a certified graph cut. |
 | NDV-only statistics and per-type history counts (v4.51.0) | Carry `PropertyNDV` / `RelPropertyNDV` estimated NDV/current Count without forcing exact Min/Max work; retain unsupported/disabled refusals. `RelHistoryCountByType` counts history-bearing identities including deleted ones; supported zero is safe, ID/type reuse can overcount, and decline is not zero. |
 | Empty intersections and historical seek candidates (v4.51.0) | Known-label empty DocValues intersections are served (`ok=true`, no rows). Label/type ever-member lookup is a sound historical candidate superset, never current-membership filtering; exact chain resolution and unsupported/depth fallbacks remain authoritative. |
 | Adjacency, relationship columns and cache freshness (v4.51.0) | History-free pure valid-time shortcuts preserve full-resolver answers; pins/deletes/history keep full resolution. Preserve ascending IDs, endpoint ordinals, immutable held columns and exact patch/rebuild parity. Per-type degree epochs and global column epochs have separate scopes; neither certifies a cut. Historical v4 performance observations are not v5 measurements. |
@@ -923,8 +926,11 @@ have upgraded or that a v5 adapter/importer has passed.
 
 The current-source obligations and hashes extend the historical fixtures in
 `reference/consumer-contracts.json` and `reference/consumer-migration.json`.
-They do not implement new v5 public doors or qualify the merged reader. Earlier
-V6 v4.50.1 reader preflight must rerun against this source before relying on it.
+They do not implement new v5 public doors or qualify the merged reader. The v4.51.0 hosted preflight qualification remains historical; v4.51.1 reader
+qualification is pending and must rerun the complete narrow gates before relying
+on this source. The previous source-delta records remain immutable history. Upstream backlog
+49/50 still delimit tiered reimport-history and legacy pinned-adjacency completeness;
+this merge neither repairs lost source history nor assigns those omissions to v5.
 
 The pinned source and release contracts are recorded in
 [the importer handover](../../tasks/v4-changes-for-v5-importer-20261010.md).

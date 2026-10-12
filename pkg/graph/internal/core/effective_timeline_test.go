@@ -422,6 +422,18 @@ func TestEffectiveTimeline_CompactionAndRetention(t *testing.T) {
 // failing on non-contiguous or descending segments of one entity.
 func (e *ccEnt) scanSegs(name string, pin types.Instant) map[string]string {
 	e.t.Helper()
+	return e.scanSegsWith(fmt.Sprintf("scan(%q, %d)", name, pin), func(nfn func(temporal.NodeSegment) bool, rfn func(temporal.RelSegment) bool) error {
+		if e.rel {
+			return e.g.Temporal.ForEachRelEffectiveByType(name, pin, rfn)
+		}
+		return e.g.Temporal.ForEachNodeEffectiveByLabel(name, pin, nfn)
+	})
+}
+
+// scanSegsWith is scanSegs for any scan door: run streams into the node or
+// relationship callback.
+func (e *ccEnt) scanSegsWith(door string, run func(func(temporal.NodeSegment) bool, func(temporal.RelSegment) bool) error) map[string]string {
+	e.t.Helper()
 	out := map[string][]etSeg{}
 	var order []int64
 	last := int64(0)
@@ -441,20 +453,15 @@ func (e *ccEnt) scanSegs(name string, pin types.Instant) map[string]string {
 		}
 		out[n] = append(out[n], s)
 	}
-	var err error
-	if e.rel {
-		err = e.g.Temporal.ForEachRelEffectiveByType(name, pin, func(s temporal.RelSegment) bool {
-			visit(int64(s.Rel.ID()), etRelSegs([]temporal.RelSegment{s})[0])
-			return true
-		})
-	} else {
-		err = e.g.Temporal.ForEachNodeEffectiveByLabel(name, pin, func(s temporal.NodeSegment) bool {
-			visit(int64(s.Node.ID()), etNodeSegs([]temporal.NodeSegment{s})[0])
-			return true
-		})
-	}
+	err := run(func(s temporal.NodeSegment) bool {
+		visit(int64(s.Node.ID()), etNodeSegs([]temporal.NodeSegment{s})[0])
+		return true
+	}, func(s temporal.RelSegment) bool {
+		visit(int64(s.Rel.ID()), etRelSegs([]temporal.RelSegment{s})[0])
+		return true
+	})
 	if err != nil {
-		e.t.Fatalf("scan(%q, %d): %v", name, pin, err)
+		e.t.Fatalf("%s: %v", door, err)
 	}
 	res := map[string]string{}
 	for n, ss := range out {
@@ -794,11 +801,11 @@ func TestEffectiveTimeline_MergeAdjacentSameRow(t *testing.T) {
 	}
 }
 
-// TestEffectiveTimeline_ConcurrentWriters — (g). Scans and per-entity reads at
-// a pin while writers update, cascade, close and delete rows of the same
-// type / label and add new ones: every scan answers exactly what it answered
-// before the writers started (a pinned read is stable), and -race finds no
-// data race. Every backend, node and rel.
+// TestEffectiveTimeline_ConcurrentWriters — (g). Scans at a pin while
+// writers update, cascade, close and delete rows of the same type / label:
+// every scan door (by type, by label(s), all entities, by IDs, at nodes)
+// answers exactly what it answered before the writers started (a pinned read
+// is stable), and -race finds no data race. Every backend, node and rel.
 func TestEffectiveTimeline_ConcurrentWriters(t *testing.T) {
 	t.Parallel()
 	ccRun(t, false, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
@@ -813,11 +820,53 @@ func TestEffectiveTimeline_ConcurrentWriters(t *testing.T) {
 			ids = append(ids, id)
 		}
 		pin := e.pin()
-		beforeMap := e.scanSegs(name, pin)
-		if len(beforeMap) != len(ids) {
-			t.Fatalf("scan before the writers lists %d entities, want %d:%s", len(beforeMap), len(ids), renderScan(beforeMap))
+		te := e.g.Temporal
+		nodeIDs, relIDs := make([]types.NodeID, len(ids)), make([]types.RelID, len(ids))
+		for i, id := range ids {
+			nodeIDs[i], relIDs[i] = types.NodeID(id), types.RelID(id)
 		}
-		before := renderScan(beforeMap)
+		type scanDoor = func(func(temporal.NodeSegment) bool, func(temporal.RelSegment) bool) error
+		doors := []struct {
+			name string
+			run  scanDoor
+		}{
+			{"by name", func(nfn func(temporal.NodeSegment) bool, rfn func(temporal.RelSegment) bool) error {
+				if e.rel {
+					return te.ForEachRelEffectiveByType(name, pin, rfn)
+				}
+				return te.ForEachNodeEffectiveByLabel(name, pin, nfn)
+			}},
+			{"all", func(nfn func(temporal.NodeSegment) bool, rfn func(temporal.RelSegment) bool) error {
+				if e.rel {
+					return te.ForEachRelEffective(pin, rfn)
+				}
+				return te.ForEachNodeEffective(pin, nfn)
+			}},
+			{"by ids", func(nfn func(temporal.NodeSegment) bool, rfn func(temporal.RelSegment) bool) error {
+				if e.rel {
+					return te.RelsEffectiveByIDs(relIDs, pin, rfn)
+				}
+				return te.NodesEffectiveByIDs(nodeIDs, pin, nfn)
+			}},
+			{"by labels / at nodes", func(nfn func(temporal.NodeSegment) bool, rfn func(temporal.RelSegment) bool) error {
+				if e.rel {
+					return te.ForEachRelEffectiveAtNodes([]types.NodeID{e.start}, temporal.Outgoing, nil, pin, rfn)
+				}
+				return te.ForEachNodeEffectiveByLabels([]string{name, "NoSuchLabel"}, pin, nfn)
+			}},
+		}
+		render := func() string {
+			var b strings.Builder
+			for _, d := range doors {
+				m := e.scanSegsWith(d.name, d.run)
+				if len(m) != len(ids) {
+					t.Fatalf("%s lists %d entities, want %d:%s", d.name, len(m), len(ids), renderScan(m))
+				}
+				fmt.Fprintf(&b, "\n%s:%s", d.name, renderScan(m))
+			}
+			return b.String()
+		}
+		before := render()
 		var wg sync.WaitGroup
 		errc := make(chan error, 16)
 		for w := 0; w < 4; w++ {
@@ -845,7 +894,7 @@ func TestEffectiveTimeline_ConcurrentWriters(t *testing.T) {
 			}(w)
 		}
 		for r := 0; r < 6; r++ {
-			if got := renderScan(e.scanSegs(name, pin)); got != before {
+			if got := render(); got != before {
 				t.Fatalf("pinned scan changed under concurrent writers:\n before %s\n now    %s", before, got)
 			}
 		}
@@ -854,7 +903,7 @@ func TestEffectiveTimeline_ConcurrentWriters(t *testing.T) {
 		for err := range errc {
 			t.Fatal(err)
 		}
-		if got := renderScan(e.scanSegs(name, pin)); got != before {
+		if got := render(); got != before {
 			t.Fatalf("pinned scan changed after the writers:\n before %s\n now    %s", before, got)
 		}
 	})

@@ -1,0 +1,42 @@
+package main
+
+import (
+	"fmt"
+	"runtime"
+)
+
+// Mirrors badger's sidecar maps: historyPresence.has map[snowflake.ID]uint32
+// and historyStamps.has map[snowflake.ID]stampEntry.
+type stampEntry struct {
+	from, to int64
+	top      uint32
+}
+
+func heap() uint64 {
+	runtime.GC()
+	runtime.GC()
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return m.HeapAlloc
+}
+
+func main() {
+	for _, n := range []int{10_000, 100_000, 1_000_000} {
+		base := heap()
+		pres := make(map[int64]uint32)
+		for i := 0; i < n; i++ {
+			pres[int64(i)*4194304+7] = uint32(i)
+		}
+		p := heap() - base
+		base = heap()
+		st := make(map[int64]stampEntry)
+		for i := 0; i < n; i++ {
+			st[int64(i)*4194304+7] = stampEntry{from: int64(i), to: int64(i), top: uint32(i)}
+		}
+		s := heap() - base
+		fmt.Printf("ids=%d presence %.1f B/id, stamps %.1f B/id, both %.1f B/id; merged into one stamps-shaped map: %.1f B/id, saving %.1f B/id (%.0f%%)\n",
+			n, float64(p)/float64(n), float64(s)/float64(n), float64(p+s)/float64(n), float64(s)/float64(n), float64(p)/float64(n), 100*float64(p)/float64(p+s))
+		runtime.KeepAlive(pres)
+		runtime.KeepAlive(st)
+	}
+}

@@ -1,0 +1,31 @@
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelEffectiveTimeline/memory/plain-32   	 1484679	      1469 ns/op	     496 B/op	       8 allocs/op
+BenchmarkRelEffectiveTimeline/memory/plain-32   	  207945	      5288 ns/op	     496 B/op	       8 allocs/op
+BenchmarkRelEffectiveTimeline/memory/plain-32   	  335588	      4066 ns/op	     496 B/op	       8 allocs/op
+BenchmarkRelEffectiveTimeline/memory/cascaded-32         	  156368	      7710 ns/op	    1952 B/op	      28 allocs/op
+BenchmarkRelEffectiveTimeline/memory/cascaded-32         	  426572	      2564 ns/op	    1952 B/op	      28 allocs/op
+BenchmarkRelEffectiveTimeline/memory/cascaded-32         	  630858	      1949 ns/op	    1952 B/op	      28 allocs/op
+BenchmarkRelEffectiveTimeline/badger/plain-32            	  207583	      5607 ns/op	    4627 B/op	      40 allocs/op
+BenchmarkRelEffectiveTimeline/badger/plain-32            	  590934	      5519 ns/op	    3030 B/op	      37 allocs/op
+BenchmarkRelEffectiveTimeline/badger/plain-32            	  216843	      5225 ns/op	    3086 B/op	      38 allocs/op
+BenchmarkRelEffectiveTimeline/badger/cascaded-32         	   69232	    107006 ns/op	   11784 B/op	     127 allocs/op
+BenchmarkRelEffectiveTimeline/badger/cascaded-32         	    5443	    203130 ns/op	   11775 B/op	     127 allocs/op
+BenchmarkRelEffectiveTimeline/badger/cascaded-32         	    7587	    133781 ns/op	   11736 B/op	     126 allocs/op
+BenchmarkEffectiveScans/memory/all-32                    	       5	 238710680 ns/op	      1194 ns/rel	125205088 B/op	 1640643 allocs/op
+BenchmarkEffectiveScans/memory/all-32                    	       7	 153910114 ns/op	       769.6 ns/rel	125203971 B/op	 1640620 allocs/op
+BenchmarkEffectiveScans/memory/all-32                    	       7	 158000688 ns/op	       790.0 ns/rel	125204038 B/op	 1640622 allocs/op
+BenchmarkEffectiveScans/memory/at-nodes-32               	      76	  14171344 ns/op	      1417 ns/rel	 9975097 B/op	  135784 allocs/op
+BenchmarkEffectiveScans/memory/at-nodes-32               	      90	  13219434 ns/op	      1322 ns/rel	 9975085 B/op	  135784 allocs/op
+BenchmarkEffectiveScans/memory/at-nodes-32               	     105	  11354922 ns/op	      1135 ns/rel	 9975065 B/op	  135783 allocs/op
+BenchmarkEffectiveScans/memory/by-ids-32                 	     189	   7147854 ns/op	       714.8 ns/rel	 5483202 B/op	   82037 allocs/op
+BenchmarkEffectiveScans/memory/by-ids-32                 	     194	   5368768 ns/op	       536.9 ns/rel	 5483209 B/op	   82037 allocs/op
+BenchmarkEffectiveScans/memory/by-ids-32                 	     219	   4939106 ns/op	       493.9 ns/rel	 5483174 B/op	   82037 allocs/op
+BenchmarkEffectiveScans/badger/all-32                    	       1	1388731321 ns/op	      6944 ns/rel	659905144 B/op	 7919881 allocs/op
+BenchmarkEffectiveScans/badger/all-32                    	       1	1568153859 ns/op	      7841 ns/rel	659948568 B/op	 7920385 allocs/op
+BenchmarkEffectiveScans/badger/all-32                    	       1	1690306002 ns/op	      8452 ns/rel	659921888 B/op	 7920047 allocs/op
+BenchmarkEffectiveScans/badger/at-nodes-32               	      10	 107426278 ns/op	     10743 ns/rel	55828358 B/op	  636098 allocs/op
+BenchmarkEffectiveScans/badger/at-nodes-32               	      12	  93203964 ns/op	      9320 ns/rel	54121583 B/op	  615847 allocs/op
+BenchmarkEffectiveScans/badger/at-nodes-32               	      12	  90821494 ns/op	      9082 ns/rel	54105950 B/op	  615628 allocs/op
+BenchmarkEffectiveScans/badger/by-ids-32                 	      30	  39408330 ns/op	      3941 ns/rel	21600970 B/op	  269837 allocs/op
+BenchmarkEffectiveScans/badger/by-ids-32                 	      28	  48843490 ns/op	      4884 ns/rel	21258795 B/op	  265768 allocs/op
+BenchmarkEffectiveScans/badger/by-ids-32                 	      27	  52655144 ns/op	      5266 ns/rel	21258885 B/op	  265769 allocs/op

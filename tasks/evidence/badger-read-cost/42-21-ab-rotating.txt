@@ -1,0 +1,52 @@
+# round 1  07:18:12 up 11 days, 22:33, 22 users,  load average: 53,30, 24,27, 16,44
+OLD BenchmarkLatestStampsRotating/rels=5000/memory-32         	 1256893	      1070 ns/op	       0 B/op	       0 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=5000/badger-32         	  786354	      4065 ns/op	      15 B/op	       0 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=5000/tiered-32         	  274378	     10463 ns/op	     809 B/op	      12 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=5000/sharded-32        	  286948	      7287 ns/op	     757 B/op	       8 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=20000/memory-32        	 1000000	      1334 ns/op	       0 B/op	       0 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=20000/badger-32        	   71070	     30177 ns/op	    2251 B/op	      28 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=20000/tiered-32        	   59830	     20244 ns/op	    3039 B/op	      40 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=20000/sharded-32       	  120152	     18754 ns/op	    2960 B/op	      34 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=5000/memory-32         	10871278	       116.9 ns/op	       0 B/op	       0 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=5000/badger-32         	11659299	        96.63 ns/op	       1 B/op	       0 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=5000/tiered-32         	 2497326	       475.5 ns/op	      67 B/op	       4 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=5000/sharded-32        	 6331022	       165.9 ns/op	       1 B/op	       0 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=20000/memory-32        	11330353	       110.1 ns/op	       0 B/op	       0 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=20000/badger-32        	  378438	      2690 ns/op	     539 B/op	       4 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=20000/tiered-32        	  309151	      3831 ns/op	    1132 B/op	      13 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=20000/sharded-32       	  667243	      1601 ns/op	     539 B/op	       5 allocs/op
+# round 2  07:19:29 up 11 days, 22:35, 22 users,  load average: 94,05, 48,61, 25,87
+OLD BenchmarkLatestStampsRotating/rels=5000/memory-32         	20865990	        49.44 ns/op	       0 B/op	       0 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=5000/badger-32         	12000178	        99.66 ns/op	       0 B/op	       0 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=5000/tiered-32         	  674600	      1585 ns/op	     809 B/op	      12 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=5000/sharded-32        	 1463535	       723.0 ns/op	     743 B/op	       8 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=20000/memory-32        	13675808	        82.81 ns/op	       0 B/op	       0 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=20000/badger-32        	  322500	     31471 ns/op	    2263 B/op	      26 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=20000/tiered-32        	   65805	     21956 ns/op	    2975 B/op	      37 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=20000/sharded-32       	   78439	     13660 ns/op	    2915 B/op	      33 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=5000/memory-32         	15025872	        83.05 ns/op	       0 B/op	       0 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=5000/badger-32         	10545766	       111.9 ns/op	       0 B/op	       0 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=5000/tiered-32         	 1882218	      2281 ns/op	      67 B/op	       4 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=5000/sharded-32        	 6098949	       270.8 ns/op	       1 B/op	       0 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=20000/memory-32        	 9822284	       103.2 ns/op	       0 B/op	       0 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=20000/badger-32        	  864650	      1937 ns/op	     539 B/op	       4 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=20000/tiered-32        	  365892	      3349 ns/op	    1129 B/op	      13 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=20000/sharded-32       	  720681	      1653 ns/op	     531 B/op	       4 allocs/op
+# round 3  07:21:01 up 11 days, 22:36, 22 users,  load average: 45,54, 44,96, 26,80
+OLD BenchmarkLatestStampsRotating/rels=5000/memory-32         	23831899	        52.98 ns/op	       0 B/op	       0 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=5000/badger-32         	11600406	        91.29 ns/op	       1 B/op	       0 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=5000/tiered-32         	  895968	      1179 ns/op	     803 B/op	      12 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=5000/sharded-32        	 2171026	       498.1 ns/op	     741 B/op	       8 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=20000/memory-32        	20655034	        63.67 ns/op	       0 B/op	       0 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=20000/badger-32        	  417648	      4191 ns/op	    2235 B/op	      25 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=20000/tiered-32        	  205610	      5725 ns/op	    3052 B/op	      38 allocs/op
+OLD BenchmarkLatestStampsRotating/rels=20000/sharded-32       	  185323	      5776 ns/op	    2996 B/op	      34 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=5000/memory-32         	17981053	        61.13 ns/op	       0 B/op	       0 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=5000/badger-32         	11449590	        95.68 ns/op	       1 B/op	       0 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=5000/tiered-32         	 2527957	       587.0 ns/op	      68 B/op	       4 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=5000/sharded-32        	 6346555	       180.5 ns/op	       1 B/op	       0 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=20000/memory-32        	14847394	        74.69 ns/op	       0 B/op	       0 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=20000/badger-32        	 1030010	      1223 ns/op	     533 B/op	       4 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=20000/tiered-32        	  431988	      2470 ns/op	    1141 B/op	      13 allocs/op
+NEW BenchmarkLatestStampsRotating/rels=20000/sharded-32       	  949761	      1267 ns/op	     535 B/op	       4 allocs/op
+done

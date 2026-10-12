@@ -1,0 +1,4 @@
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	300.271s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal	1.016s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	226.803s
+exit 0

@@ -1,0 +1,48 @@
+package core
+
+import (
+	"context"
+	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
+
+// Probe (backlog 35 finding): the pinned adjacency door OutgoingForNodesAtPin
+// at a pin where a relationship's FIRST life A->B was believed, after the ID
+// was deleted and re-imported as C->B. ForEachRelEffectiveAtNodes for contrast.
+func TestZZProbeAdjacencyEarlierLife(t *testing.T) {
+	ctx := context.Background()
+	for _, be := range txbBackends()[:3] {
+		t.Run(be.name, func(t *testing.T) {
+			g := be.open(t, false)
+			useTestClock(t, g)
+			var ns []*types.Node
+			for i := 0; i < 3; i++ {
+				n, err := g.Nodes.Add(ctx, []string{"A"}, map[string]any{"tkg_valid_from": types.Instant(1000)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				ns = append(ns, n)
+			}
+			r, err := g.Rels.AddByID(ctx, "R", ns[0].ID(), ns[1].ID(), map[string]any{"tkg_valid_from": types.Instant(1000)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			pin, _ := g.Temporal.NowTx()
+			if err := g.Rels.Delete(ctx, r.ID()); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := g.Rels.Import(ctx, r.ID(), "R", ns[2], ns[1], map[string]any{"tkg_valid_from": types.Instant(5000)}); err != nil {
+				t.Fatal(err)
+			}
+			before, err := g.Rels.OutgoingForNodesAtPin([]types.NodeID{ns[0].ID()}, "", pin)
+			t.Logf("%s OutgoingForNodesAtPin(A, pin before the delete) = %d rels (err %v); want 1", be.name, len(before[ns[0].ID()]), err)
+			asOf, _ := g.Temporal.RelAsOf(r.ID(), pin)
+			t.Logf("%s RelAsOf(r, pin) = %v->%v", be.name, asOf.StartNodeID(), asOf.EndNodeID())
+			n := 0
+			_ = g.Temporal.ForEachRelEffectiveAtNodes([]types.NodeID{ns[0].ID()}, temporal.Outgoing, nil, pin, func(temporal.RelSegment) bool { n++; return true })
+			t.Logf("%s ForEachRelEffectiveAtNodes(A, Outgoing, pin) = %d segments; want 1", be.name, n)
+		})
+	}
+}

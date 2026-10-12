@@ -99,16 +99,40 @@ func (ts *Store) shardForRelIDChecked(id types.RelID) (store *BadgerStore, check
 }
 
 func (ts *Store) shardForRelIDCheckedWithArchive(id types.RelID) (store *BadgerStore, checkin func(), isArchive bool, err error) {
+	store, checkin, isArchive, _, err = ts.routeRelShard(id)
+	return store, checkin, isArchive, err
+}
+
+// relRowProbe is what routeRelShard's probe of the returned shard found: the
+// shard holds the relationship's entity row (live), or reading it failed
+// (err: a corrupt but indexed row, which still occupies the ID). Neither set:
+// no shard holds the row.
+type relRowProbe struct {
+	live bool
+	err  error
+}
+
+// probeRelRow probes store for id's entity row through the shard's
+// current-row stamps (no decode, no copy); exists is relationshipRowExists.
+func probeRelRow(store *BadgerStore, id types.RelID) (p relRowProbe, exists bool) {
+	_, found, err := relCurrentStampsRow(store, id)
+	return relRowProbe{live: found, err: err}, found || err != nil
+}
+
+// routeRelShard is shardForRelIDCheckedWithArchive plus the probe result of
+// the shard it returns, so a caller that next asks whether the row is live
+// there (the history walks) does not read the row a second time.
+func (ts *Store) routeRelShard(id types.RelID) (store *BadgerStore, checkin func(), isArchive bool, found relRowProbe, err error) {
 	if err := ts.checkOpen(); err != nil {
-		return nil, nil, false, err
+		return nil, nil, false, relRowProbe{}, err
 	}
 	raw := id.SnowflakeID()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
-		return nil, nil, false, err
+		return nil, nil, false, relRowProbe{}, err
 	}
-	if relationshipRowExists(ref, id) {
-		return ref, refCheckin, false, nil
+	if p, ok := probeRelRow(ref, id); ok {
+		return ref, refCheckin, false, p, nil
 	}
 	refCheckin()
 
@@ -118,11 +142,11 @@ func (ts *Store) shardForRelIDCheckedWithArchive(id types.RelID) (store *BadgerS
 	// concurrent Close cannot tear it down mid-use.
 	archive, archiveCheckin, err := ts.checkoutArchive()
 	if err != nil {
-		return nil, nil, false, err
+		return nil, nil, false, relRowProbe{}, err
 	}
 	if archive != nil {
-		if relationshipRowExists(archive, id) {
-			return archive, archiveCheckin, true, nil
+		if p, ok := probeRelRow(archive, id); ok {
+			return archive, archiveCheckin, true, p, nil
 		}
 		archiveCheckin()
 	}
@@ -130,10 +154,10 @@ func (ts *Store) shardForRelIDCheckedWithArchive(id types.RelID) (store *BadgerS
 	candidateEntry := ts.timestampToEventShardEntry(raw)
 	candidate, candidateRelease, err := candidateEntry.checkoutStoreForRead(ts)
 	if err != nil {
-		return nil, nil, false, err
+		return nil, nil, false, relRowProbe{}, err
 	}
-	if relationshipRowExists(candidate, id) {
-		return candidate, candidateRelease, false, nil
+	if p, ok := probeRelRow(candidate, id); ok {
+		return candidate, candidateRelease, false, p, nil
 	}
 
 	// Probe every other event shard (excluding the candidate we already
@@ -153,25 +177,29 @@ func (ts *Store) shardForRelIDCheckedWithArchive(id types.RelID) (store *BadgerS
 		s, release, err := es.checkoutStoreForRead(ts)
 		if err != nil {
 			candidateRelease()
-			return nil, nil, false, err
+			return nil, nil, false, relRowProbe{}, err
 		}
-		if relationshipRowExists(s, id) {
+		if p, ok := probeRelRow(s, id); ok {
 			candidateRelease()
-			return s, release, false, nil
+			return s, release, false, p, nil
 		}
 		release()
 	}
 
 	// Not found anywhere — return the timestamp candidate so downstream reads
 	// surface a typed ErrRelNotFound. The caller still owns its checkin.
-	return candidate, candidateRelease, false, nil
+	return candidate, candidateRelease, false, relRowProbe{}, nil
 }
 
 // relationshipRowExists is conservative for placement/collision checks: a
 // corrupt but indexed row still occupies the relationship ID until the caller
-// reads the row and surfaces the decode error.
+// reads the row and surfaces the decode error. It reads the entity row through
+// the shard's current-row stamps (the row's key and temporal block, backlog
+// 42) instead of decoding and copying it: not found exactly where
+// GetRelationship misses the row, so the answer is the one GetRelationship
+// gave (a row whose body fails to decode exists either way).
 func relationshipRowExists(store *BadgerStore, id types.RelID) bool {
-	_, found, err := relationshipRow(store, id)
+	_, found, err := relCurrentStampsRow(store, id)
 	return found || err != nil
 }
 

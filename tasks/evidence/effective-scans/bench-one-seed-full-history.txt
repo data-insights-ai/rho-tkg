@@ -1,0 +1,5 @@
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkEffectiveScansOneSeed/memory/at-nodes-32         	       3	 481846396 ns/op	        50.00 rels	118841682 B/op	 1900571 allocs/op
+BenchmarkEffectiveScansOneSeed/memory/by-ids-32           	   10000	    132741 ns/op	        50.00 rels	   55612 B/op	     943 allocs/op
+BenchmarkEffectiveScansOneSeed/badger/at-nodes-32         	       1	3402221478 ns/op	        50.00 rels	1055065024 B/op	12464655 allocs/op
+BenchmarkEffectiveScansOneSeed/badger/by-ids-32           	    1890	    611541 ns/op	        50.00 rels	  335988 B/op	    4094 allocs/op

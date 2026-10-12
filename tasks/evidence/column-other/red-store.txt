@@ -1,0 +1,6 @@
+--- FAIL: TestColumnData_OtherPerBatch (0.00s)
+    --- FAIL: TestColumnData_OtherPerBatch/other_in_first_batch_only (0.00s)
+        column_other_test.go:51: Other cells per batch = [-1 -1], want [1 -1]
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.008s
+FAIL

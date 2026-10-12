@@ -468,6 +468,102 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   imported-package and two required-module advisories are unreachable. Final
   consolidated root+v5 CI remains pending; no other v4 API or behavior change.
 
+## [4.51.1] - 2026-10-12
+
+Patch release, sigma-tkgd requests and read costs: broader effective scans (backlog 35; `ForEachRelEffectiveAtNodes` costs one fold over every relationship with history per call, see backlog 50), `ColumnData.Other` (48), current-row stamps and ID-only effective gathers on badger (42, 33). Additive, except that column scans now type every integer width the same way on every path (Changed).
+
+### Added
+
+- **`ColumnData.Other`: column-scan cells held outside the column** (backlog 48, requested by sigma-tkgd).
+  `Other[c][k]` (on `ColumnBatch` and `RelColumnBatch`, the meaning of `SegmentColumnValues.Other`) marks a row that
+  holds property `c` but not as a `Kinds[c]` value — a list, a map, a struct, a scalar of another kind — so a reader re-reads exactly those rows instead of routing a whole
+  label to the row feed. The cell stays `Null == true` with a zero typed slot, so a reader that ignores `Other` sees
+  it missing, as before. `Other` is nil on a batch without such a cell (no allocation on the common path; row-path
+  benchmarks' allocs/op unchanged); otherwise every `Other[c]` is parallel to `Null[c]`. Filled identically by the
+  memory and badger scans, pinned scans (`ValidAt`, `TxAt`) and declared segment relationships;
+  a `store.RelColumnSource` fills it by also implementing the optional `store.RelColumnOtherSource` (`Other(i, c)`; a source without it scans unchanged and reports no `Other`). Evidence: `tasks/evidence/column-other/`.
+- **`store.CurrentStampsCapability`: a current row's stamps without reading the row** (backlog 42, the current-row
+  half of `Nodes()/Rels().LatestStamps`). `NodeCurrentStamps(id)` / `RelCurrentStamps(id)` return `store.RowStamps`
+  (`TxFrom`, `TxTo`, `DeletedAt`, `Version`), equal at every moment to the row `GetNode` / `GetRelationship` returns
+  (helpers `store.NodeRowStamps` / `RelRowStamps`), with its not-found and error sentinels. Memory reads its held row
+  (a sealed-segment relationship from the segment); badger answers from the entity cache and, on a miss, reads the
+  row's key and decodes only its temporal block (`storeutil.DecodeWireRowStamps`, the zero-alloc scanner of
+  `DecodeWireTxStamps`, which now delegates to it), filling no cache entry; sharded asks the owner slot; tiered asks
+  the one shard the lend door reads (a stale copy on another shard is not folded in). The core admits it for native
+  stores and stores that declare it; a wrapper that only inherits it keeps its `GetNode` / `GetRelationship` override
+  as the read. `LatestStamps` answers byte-identically (differential against the v4.50.1 implementation: 48 seeds x
+  300 steps on memory, badger, badger with delta history, tiered, sharded and one-entry-cache badger/tiered/sharded,
+  incl. update, UpdateInPlace, delete, re-import, cascade, backfilled `*WithTx`, rollback, compaction, reopen).
+  Like `HistoryStampsCapability`, the partial decode answers a row whose temporal block decodes but whose body is
+  corrupt where `GetNode` fails. Measured (paired A/B against main on the same host; evidence
+  `tasks/evidence/badger-read-cost/42-*`), `LatestStamps` with nearly every current row outside a 64-entry cache:
+
+  | backend | before (v4.50.1) | after |
+  |---|---|---|
+  | badger | 2.3-2.7 us, 24 allocs | 0.9-1.3 us, 7 allocs |
+  | sharded | 3.0-3.3 us, 32 allocs | 1.0-1.2 us, 7 allocs |
+  | tiered | 3.2-3.8 us, 36 allocs | 2.3-2.7 us, 19 allocs |
+
+  `BenchmarkLatestStampsRotating` at 20,000 rels (default 10 K cache): allocs badger 25 -> 4, sharded 34 -> 4, tiered
+  38 -> 13; at 5,000 rels sharded 8 -> 0, tiered 12 -> 4 (part of the 20,000-rel gain is the hit rate: a miss no
+  longer fills the cache, so a rotation larger than the cache stops evicting the rows it is about to read). Hot-loop
+  rows unchanged (0 allocs). The bench rows `LatestStamps/{badger,tiered,sharded}/rotating-cache-miss` join the
+  allocs-gated `LatestStamps` family. `*sharded.Store` joins the native store types, so a wrapper that embeds it no
+  longer inherits the capabilities the core admits through its wrapper check (current stamps, label membership, deleted
+  iteration, change feed, …): those doors fall back to the wrapper's own row methods (slower, never wrong).
+
+- **Broader effective scans: `Temporal().ForEachNodeEffective(pin, fn)` / `ForEachRelEffective(pin, fn)`,
+  `ForEachRelEffectiveAtNodes(nodeIDs, dir, relTypes, pin, fn)`, `NodesEffectiveByIDs(ids, pin, fn)` /
+  `RelsEffectiveByIDs(ids, pin, fn)` and `ForEachNodeEffectiveByLabels(labels, pin, fn)`** (backlog 35, requested by
+  sigma-tkgd; signatures confirmed 2026-10-10). One call per evaluation or batch instead of a pinned scan plus one
+  timeline call per row. Same contract as `ForEachRelEffectiveByType`: one entity's segments contiguous and ascending,
+  entities deleted before the pin included, none created after it, `fn` false stops, `fn` runs without graph locks,
+  segments equal to the entity's own `Node/RelEffectiveTimeline` (the scans stream through the per-entity body, shared
+  with the two existing scan forms). The all-entity scans read every current entity and every entity with history.
+  `ForEachRelEffectiveAtNodes` streams the relationships with a seed at the `dir` endpoint (new `temporal.Direction`:
+  `Outgoing` start node, `Incoming` end node; anything else `ErrInvalidDirection`, exported as
+  `graph.ErrInvalidDirection`), limited to the segments whose row has a seed there and, when `relTypes` is not empty,
+  one of those types; each relationship once (both endpoints seeded, repeated seeds); its candidates are the seeds'
+  current adjacency and every relationship with history, so the earlier life of a relationship ID deleted and
+  re-imported with other endpoints is included (the pinned adjacency doors miss it: backlog 50). The by-IDs doors are
+  the per-entity doors batched: input order, a repeated ID once, unknown IDs skipped, the per-entity compaction and
+  retention gates; an invalid ID or seed is refused before any segment (`ErrInvalidStoreMutation`).
+  `ForEachNodeEffectiveByLabels` streams each node once even when several labels match. Cost model: every door
+  pays one per-entity timeline read per candidate (memory about 0.5 µs, badger about 4-6 µs per relationship on 200 K
+  relationships, `BenchmarkEffectiveScans`, about one `RelEffectiveTimeline` call each) plus its gather. The by-IDs
+  doors read only the given IDs; the all-entity scans every entity ever stored. `ForEachRelEffectiveAtNodes` folds
+  EVERY relationship with history on every call — O(H) timeline reads plus the answer, whatever the seed count:
+  one seed with 50 relationships on 100 K relationships that all have history costs 0.3-0.5 s on memory and 2.1-3.4 s
+  on badger, against 0.05-0.13 ms / 0.5-0.6 ms for `RelsEffectiveByIDs` over the same 50
+  (`BenchmarkEffectiveScansOneSeed`). Follow-up (backlog 50): a cheap sound gather shared with the pinned adjacency
+  doors. The label and type gathers are ID-only where the store offers `store.MemberIDsCapability` (backlog 33). `temporal.Ops` gains
+  the six methods. Evidence: `tasks/evidence/effective-scans/` (red runs, mutants, benchmark).
+
+### Changed
+
+- **Column scans type every integer width like badger's columnar snapshot.** int8, int16, uint8, uint16 and uint32
+  are `ColInt64` columns, a `uint` / `uint64` is `ColInt64` when it fits and `ColFloat64` past `MaxInt64` (a column
+  holding both refuses with `ErrMixedNumericColumn`), on the row path, pinned scans and declared segment
+  relationships too (`index.normalizeNumeric`'s rule). Before, badger's snapshot served them as values while memory,
+  badger's row path and `ValidAt` / `TxAt` scans reported the same cells missing (`Null`), so one column read
+  differently by backend and by opts.
+- **Badger effective scans read each candidate's row once** (backlog 33). `ForEachRelEffectiveByType` /
+  `ForEachNodeEffectiveByLabel` gathered their candidates by decoding every current row of the type or label and
+  then read each row again for its timeline; they now take the current members from a new optional
+  `store.MemberIDsCapability` (`NodeIDsByLabel` / `RelIDsByType`: the label/type index, no row read; badger and
+  sharded, memory and tiered decline) and widen them to the candidate set as before. 200,000 rels on in-memory
+  badger (`BenchmarkForEachRelEffectiveByType`, paired A/B): 10.8-11.8 -> 6.5-6.7 us/rel, 71 -> 43 allocs/rel.
+- **Tiered history walks read a relationship row once** (backlog 42): `RelHistoryStamps` / `HasRelHistory` reuse the
+  route's row probe instead of reading the row again, and relationship routing probes the row through the shard's
+  current-row stamps instead of decoding and copying it (same answer: a row whose body fails to decode still
+  occupies the ID).
+
+### Fixed
+
+- **Column scans: typed slots are aligned with `Null`.** A column whose first rows in a batch were absent had a typed
+  slice shorter than `Null` (`{}, {x: 5}` gave `Null=[true false] Ints=[5]`), so `Ints[c][k]` read another row or
+  panicked; a column no row typed had no typed slice at all. Every column's typed slice now has one slot per row.
+
 ## [4.51.0] - 2026-10-12
 
 Minor release, the sigma-tkgd store requests, round 5 (new public API): the valid-time adjacency door answers a

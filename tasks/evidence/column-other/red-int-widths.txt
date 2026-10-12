@@ -1,0 +1,43 @@
+--- FAIL: TestColumnScanOther_MatchesRowRead (0.05s)
+    --- FAIL: TestColumnScanOther_MatchesRowRead/memory (0.00s)
+        column_other_test.go:112: nodes {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: row 804705735425458176 column s = {null:true other:true i:0}, row read says {null:false other:false i:3}
+        column_other_test.go:132: rels {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: row 804705735425524736 column s = {null:true other:true i:0}, row read says {null:false other:false i:3}
+        column_other_test.go:112: nodes {Limit:0 After:0 ValidAt:1500 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: row 804705735425458176 column s = {null:true other:true i:0}, row read says {null:false other:false i:3}
+        column_other_test.go:132: rels {Limit:0 After:0 ValidAt:1500 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: row 804705735425524736 column s = {null:true other:true i:0}, row read says {null:false other:false i:3}
+        column_other_test.go:112: nodes {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:1791783270158 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: row 804705735425458176 column s = {null:true other:true i:0}, row read says {null:false other:false i:3}
+        column_other_test.go:132: rels {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:1791783270158 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: row 804705735425524736 column s = {null:true other:true i:0}, row read says {null:false other:false i:3}
+    --- FAIL: TestColumnScanOther_MatchesRowRead/badger (0.00s)
+        column_other_test.go:112: nodes {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: row 804705735500529664 column s = {null:true other:true i:0}, row read says {null:false other:false i:3}
+        column_other_test.go:132: rels {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: row 804705735500825600 column s = {null:true other:true i:0}, row read says {null:false other:false i:3}
+        column_other_test.go:112: nodes {Limit:0 After:0 ValidAt:1500 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: row 804705735500529664 column s = {null:true other:true i:0}, row read says {null:false other:false i:3}
+        column_other_test.go:132: rels {Limit:0 After:0 ValidAt:1500 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: row 804705735500825600 column s = {null:true other:true i:0}, row read says {null:false other:false i:3}
+        column_other_test.go:112: nodes {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:1791783270160 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: row 804705735500529664 column s = {null:true other:true i:0}, row read says {null:false other:false i:3}
+        column_other_test.go:132: rels {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:1791783270160 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: row 804705735500825600 column s = {null:true other:true i:0}, row read says {null:false other:false i:3}
+    --- FAIL: TestColumnScanOther_MatchesRowRead/memory-segments (0.00s)
+        column_other_test.go:112: nodes {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: row 804705736919326720 column s = {null:true other:true i:0}, row read says {null:false other:false i:3}
+        column_other_test.go:132: rels {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: row 804705736919426048 column s = {null:true other:true i:0}, row read says {null:false other:false i:3}
+        column_other_test.go:112: nodes {Limit:0 After:0 ValidAt:1500 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: row 804705736919326720 column s = {null:true other:true i:0}, row read says {null:false other:false i:3}
+        column_other_test.go:132: rels {Limit:0 After:0 ValidAt:1500 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: row 804705736919426048 column s = {null:true other:true i:0}, row read says {null:false other:false i:3}
+        column_other_test.go:112: nodes {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:1791783270204 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: row 804705736919326720 column s = {null:true other:true i:0}, row read says {null:false other:false i:3}
+        column_other_test.go:132: rels {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:1791783270204 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: row 804705736919426048 column s = {null:true other:true i:0}, row read says {null:false other:false i:3}
+--- FAIL: TestColumnScanIntegerWidths_PathsAgree (0.04s)
+    --- FAIL: TestColumnScanIntegerWidths_PathsAgree/narrow_widths (0.03s)
+        column_other_test.go:269: memory ValidAt=0: kind=0 null=[true true true true true] ints=[0 0 0 0 0] flts=[] other=[[true true true true true]], want kind=0 null=[false false false false false] ints=[-1 2 3 4 5] flts=[] other=[]
+        column_other_test.go:269: memory ValidAt=1500: kind=0 null=[true true true true true] ints=[0 0 0 0 0] flts=[] other=[[true true true true true]], want kind=0 null=[false false false false false] ints=[-1 2 3 4 5] flts=[] other=[]
+        column_other_test.go:269: badger ValidAt=1500: kind=0 null=[true true true true true] ints=[0 0 0 0 0] flts=[] other=[[true true true true true]], want kind=0 null=[false false false false false] ints=[-1 2 3 4 5] flts=[] other=[]
+    --- FAIL: TestColumnScanIntegerWidths_PathsAgree/uint64_fits (0.00s)
+        column_other_test.go:269: memory ValidAt=0: kind=0 null=[true true true] ints=[0 0 0] flts=[] other=[[true true true]], want kind=0 null=[false false false] ints=[6 7 9223372036854775807] flts=[] other=[]
+        column_other_test.go:269: memory ValidAt=1500: kind=0 null=[true true true] ints=[0 0 0] flts=[] other=[[true true true]], want kind=0 null=[false false false] ints=[6 7 9223372036854775807] flts=[] other=[]
+        column_other_test.go:269: badger ValidAt=1500: kind=0 null=[true true true] ints=[0 0 0] flts=[] other=[[true true true]], want kind=0 null=[false false false] ints=[6 7 9223372036854775807] flts=[] other=[]
+    --- FAIL: TestColumnScanIntegerWidths_PathsAgree/uint64_past_maxint64 (0.00s)
+        column_other_test.go:269: memory ValidAt=0: kind=0 null=[true true] ints=[0 0] flts=[] other=[[true true]], want kind=1 null=[false false] ints=[] flts=[9.223372036854776e+18 1.8446744073709552e+19] other=[]
+        column_other_test.go:269: memory ValidAt=1500: kind=0 null=[true true] ints=[0 0] flts=[] other=[[true true]], want kind=1 null=[false false] ints=[] flts=[9.223372036854776e+18 1.8446744073709552e+19] other=[]
+        column_other_test.go:269: badger ValidAt=1500: kind=0 null=[true true] ints=[0 0] flts=[] other=[[true true]], want kind=1 null=[false false] ints=[] flts=[9.223372036854776e+18 1.8446744073709552e+19] other=[]
+    --- FAIL: TestColumnScanIntegerWidths_PathsAgree/uint64_mixed (0.00s)
+        column_other_test.go:269: memory ValidAt=0: kind=0 null=[true true] ints=[0 0] flts=[] other=[[true true]], want mixed numeric column
+        column_other_test.go:269: memory ValidAt=1500: kind=0 null=[true true] ints=[0 0] flts=[] other=[[true true]], want mixed numeric column
+        column_other_test.go:269: badger ValidAt=0: kind=0 null=[true true] ints=[0 0] flts=[] other=[[true true]], want mixed numeric column
+        column_other_test.go:269: badger ValidAt=1500: kind=0 null=[true true] ints=[0 0] flts=[] other=[[true true]], want mixed numeric column
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.105s
+FAIL

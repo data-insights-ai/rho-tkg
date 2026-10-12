@@ -1,0 +1,81 @@
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.test]
+pkg/graph/store/badger/badgerstore_current_stamps_test.go:157:29: not enough arguments in call to wantCurMissing
+	have (*testing.T, curKind, *Store, string)
+	want (*testing.T, curKind, *Store, string, int64)
+pkg/graph/store/badger/badgerstore_current_stamps_test.go:160:29: not enough arguments in call to wantCurMissing
+	have (*testing.T, curKind, *Store, string)
+	want (*testing.T, curKind, *Store, string, int64)
+--- FAIL: TestCurrentStampsMatchCurrentRow (0.42s)
+    --- FAIL: TestCurrentStampsMatchCurrentRow/memory/node (0.00s)
+        current_stamps_test.go:230: node unknown id (as written): stamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), Get graph: node not found; want graph: node not found from both
+    --- FAIL: TestCurrentStampsMatchCurrentRow/memory/rel (0.00s)
+        current_stamps_test.go:230: rel unknown id (as written): stamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), Get graph: relationship not found; want graph: relationship not found from both
+    --- FAIL: TestCurrentStampsMatchCurrentRow/badger/node (0.04s)
+        current_stamps_test.go:230: node unknown id (as written): stamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), Get graph: node not found; want graph: node not found from both
+    --- FAIL: TestCurrentStampsMatchCurrentRow/badger/rel (0.00s)
+        current_stamps_test.go:230: rel unknown id (as written): stamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), Get graph: relationship not found; want graph: relationship not found from both
+    --- FAIL: TestCurrentStampsMatchCurrentRow/badger-delta/node (0.00s)
+        current_stamps_test.go:230: node unknown id (as written): stamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), Get graph: node not found; want graph: node not found from both
+    --- FAIL: TestCurrentStampsMatchCurrentRow/badger-delta/rel (0.04s)
+        current_stamps_test.go:230: rel unknown id (as written): stamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), Get graph: relationship not found; want graph: relationship not found from both
+    --- FAIL: TestCurrentStampsMatchCurrentRow/sharded/node (0.04s)
+        current_stamps_test.go:230: node unknown id (as written): stamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), Get graph: node not found; want graph: node not found from both
+    --- FAIL: TestCurrentStampsMatchCurrentRow/sharded/rel (0.00s)
+        current_stamps_test.go:230: rel unknown id (as written): stamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), Get graph: relationship not found; want graph: relationship not found from both
+    --- FAIL: TestCurrentStampsMatchCurrentRow/tiered/node (0.02s)
+        current_stamps_test.go:230: node unknown id (as written): stamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), Get graph: node not found; want graph: node not found from both
+    --- FAIL: TestCurrentStampsMatchCurrentRow/tiered/rel (0.07s)
+        current_stamps_test.go:230: rel unknown id (as written): stamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), Get graph: relationship not found; want graph: relationship not found from both
+    --- FAIL: TestCurrentStampsMatchCurrentRow/badger-disk/node (0.11s)
+        current_stamps_test.go:230: node unknown id (as written): stamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), Get graph: node not found; want graph: node not found from both
+    --- FAIL: TestCurrentStampsMatchCurrentRow/badger-disk/rel (0.10s)
+        current_stamps_test.go:230: rel unknown id (as written): stamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), Get graph: relationship not found; want graph: relationship not found from both
+--- FAIL: TestCurrentStampsErrors (0.08s)
+    --- FAIL: TestCurrentStampsErrors/memory (0.00s)
+        current_stamps_test.go:294: NodeCurrentStamps(0) = <nil>, GetNode graph: invalid store mutation: zero node ID; want ErrInvalidStoreMutation from both
+    --- FAIL: TestCurrentStampsErrors/badger (0.01s)
+        current_stamps_test.go:294: NodeCurrentStamps(0) = <nil>, GetNode graph: invalid store mutation: zero node ID; want ErrInvalidStoreMutation from both
+    --- FAIL: TestCurrentStampsErrors/badger-delta (0.01s)
+        current_stamps_test.go:294: NodeCurrentStamps(0) = <nil>, GetNode graph: invalid store mutation: zero node ID; want ErrInvalidStoreMutation from both
+    --- FAIL: TestCurrentStampsErrors/sharded (0.02s)
+        current_stamps_test.go:294: NodeCurrentStamps(0) = <nil>, GetNode graph: invalid store mutation: zero node ID; want ErrInvalidStoreMutation from both
+    --- FAIL: TestCurrentStampsErrors/tiered (0.00s)
+        current_stamps_test.go:294: NodeCurrentStamps(0) = <nil>, GetNode graph: invalid store mutation: zero node ID; want ErrInvalidStoreMutation from both
+    --- FAIL: TestCurrentStampsErrors/badger-disk (0.05s)
+        current_stamps_test.go:294: NodeCurrentStamps(0) = <nil>, GetNode graph: invalid store mutation: zero node ID; want ErrInvalidStoreMutation from both
+    current_stamps_test.go:314: nil memory store: <nil>
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.541s
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger [build failed]
+--- FAIL: TestTieredCurrentStamps_RoutingShapes (0.02s)
+    --- FAIL: TestTieredCurrentStamps_RoutingShapes/event_node_and_rel_(B) (0.01s)
+        tieredstore_current_stamps_test.go:68: event node: NodeCurrentStamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), the lent row is {TxFrom:300 TxTo:310 DeletedAt:0 Version:3}
+    --- FAIL: TestTieredCurrentStamps_RoutingShapes/reference_node_and_rel_(A),_archived_node_(C) (0.01s)
+        tieredstore_current_stamps_test.go:89: reference node: NodeCurrentStamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), the lent row is {TxFrom:100 TxTo:0 DeletedAt:0 Version:1}
+--- FAIL: TestTieredCurrentStamps_RowOnTwoShards (0.19s)
+    --- FAIL: TestTieredCurrentStamps_RowOnTwoShards/node,_reference_row_lower_than_the_archive_copy (0.08s)
+        tieredstore_current_stamps_test.go:118: reference row wins: NodeCurrentStamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), the lent row is {TxFrom:100 TxTo:0 DeletedAt:0 Version:1}
+    --- FAIL: TestTieredCurrentStamps_RowOnTwoShards/node,_reference_row_higher_than_the_archive_copy (0.06s)
+        tieredstore_current_stamps_test.go:129: archive TxTo not folded in: NodeCurrentStamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), the lent row is {TxFrom:500 TxTo:0 DeletedAt:0 Version:5}
+    --- FAIL: TestTieredCurrentStamps_RowOnTwoShards/rel,_reference_row_lower_than_the_archive_copy (0.05s)
+        tieredstore_current_stamps_test.go:147: reference row wins: RelCurrentStamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), the lent row is {TxFrom:100 TxTo:0 DeletedAt:0 Version:1}
+--- FAIL: TestTieredCurrentStamps_ColdClosedShard (0.34s)
+    tieredstore_current_stamps_test.go:187: live on a closed cold shard = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>)
+--- FAIL: TestTieredCurrentStamps_Errors (0.01s)
+    tieredstore_current_stamps_test.go:200: NodeCurrentStamps(0) = <nil>, want ErrInvalidStoreMutation
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.597s
+--- FAIL: TestCurrentStampsSharded (0.01s)
+    current_stamps_test.go:43: slot 0 node = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), want {TxFrom:1000 TxTo:1001 DeletedAt:0 Version:3}
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	0.014s
+--- FAIL: TestCurrentStamps_SealedRelationships (0.00s)
+    memorystore_current_stamps_test.go:39: rel 1099511627783: RelCurrentStamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), the sealed row is {TxFrom:1700000000003 TxTo:0 DeletedAt:0 Version:0}
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.009s
+--- FAIL: TestDecodeWireRowStamps (0.00s)
+    wire_row_stamps_test.go:68: goldenV1NodeLegacy: DecodeWireRowStamps = ({TxFrom:0 TxTo:0 DeletedAt:0 Version:0}, <nil>), the full decode reads {TxFrom:0 TxTo:0 DeletedAt:0 Version:7}
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	0.004s
+FAIL
+exit 1

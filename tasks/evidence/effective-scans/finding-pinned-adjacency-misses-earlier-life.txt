@@ -1,0 +1,15 @@
+    zz_probe_test.go:40: memory OutgoingForNodesAtPin(A, pin before the delete) = 0 rels (err <nil>); want 1
+    zz_probe_test.go:42: memory RelAsOf(r, pin) = 804688073000419328->804688073001271296
+    zz_probe_test.go:45: memory ForEachRelEffectiveAtNodes(A, Outgoing, pin) = 1 segments; want 1
+    zz_probe_test.go:40: badger OutgoingForNodesAtPin(A, pin before the delete) = 0 rels (err <nil>); want 1
+    zz_probe_test.go:42: badger RelAsOf(r, pin) = 804688073071230976->804688073073524736
+    zz_probe_test.go:45: badger ForEachRelEffectiveAtNodes(A, Outgoing, pin) = 1 segments; want 1
+    zz_probe_test.go:40: sharded OutgoingForNodesAtPin(A, pin before the delete) = 0 rels (err <nil>); want 1
+    zz_probe_test.go:42: sharded RelAsOf(r, pin) = 804688074268213248->804688074269687808
+    zz_probe_test.go:45: sharded ForEachRelEffectiveAtNodes(A, Outgoing, pin) = 1 segments; want 1
+--- PASS: TestZZProbeAdjacencyEarlierLife (0.04s)
+    --- PASS: TestZZProbeAdjacencyEarlierLife/memory (0.00s)
+    --- PASS: TestZZProbeAdjacencyEarlierLife/badger (0.00s)
+    --- PASS: TestZZProbeAdjacencyEarlierLife/sharded (0.04s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.056s

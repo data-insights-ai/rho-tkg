@@ -241,6 +241,13 @@ type temporalOpsSpy struct {
 
 	nodeSegs []NodeSegment
 	relSegs  []RelSegment
+
+	// The broader effective scans (backlog 35): the batch arguments.
+	lastNodeIDs  []types.NodeID
+	lastRelIDs   []types.RelID
+	lastDir      Direction
+	lastRelTypes []string
+	lastLabels   []string
 }
 
 func (s *temporalOpsSpy) record(name string) { s.calls = append(s.calls, name) }

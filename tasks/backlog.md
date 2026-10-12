@@ -15,8 +15,8 @@ TEST-GAP = real behavior unverified (may hide a bug). FEATURE = plausible
 capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 
 **Remaining open work (verified against the code at v4.49.0, 2026-10-10):** no reproduced CRITICAL or HIGH
-item; two traced, unreproduced HIGH? findings in item 4. Next step: items 33 + 42 (+ 41),
-35, 28, 21. Open items, one line each (full text below):
+item; two traced, unreproduced HIGH? findings in item 4. Next step: items 41,
+49, 50, 28, 21. Open items, one line each (full text below):
 
 | # | Type / severity | Item | Status |
 |---|---|---|---|
@@ -39,18 +39,16 @@ item; two traced, unreproduced HIGH? findings in item 4. Next step: items 33 + 4
 | 26 | LOW (known limit) | Old chains with collided versions keep answering in the old version order | open; schedule only if a consumer holds such chains |
 | 28 | FEATURE (perf) | State form of the as-of column doors and counts | open; design first (sigma) |
 | 31 | LOW | Bulk and point as-of disagree with the cascade oracle on version gaps | open; fix when a consumer holds such chains |
-| 33 | MEDIUM (perf) | Badger effective-timeline scan costs 13-17 µs per relationship | open; restart pending (baseline `tasks/evidence/badger-read-cost/`) |
-| 35 | FEATURE | Broader effective scans | open; signatures confirmed by sigma 2026-10-10 (HANDOVER.md §11) |
 | 37 | LOW | Tiered error-rollback restore leaves a window with empty history | open; `restoreRelHistorySnapshot` still truncates then puts (`tieredstore_write_history.go:899`) |
 | 39 | LOW (not tested) | Per-entity compaction stubs survive `Admin().Reset` | open; `reapCompactionForReset` still leaves the stubs (`core/compaction.go:285`) |
 | 40 | LOW (cosmetic) | A cascade resumption may end at an earlier life's own bound | open |
-| 41 | MEDIUM (RAM) | Merge the history stamps sidecar into the presence set | open; after 42 |
-| 42 | FEATURE (perf) | A current-row stamps capability | open; restart with 33 |
+| 41 | MEDIUM (RAM) | Merge the history stamps sidecar into the presence set | open; measured 2026-10-12, not merged (saves 31 % only where both doors run, +122 % for HasHistory alone) |
 | 44 | MEDIUM (traced, not reproduced) | Commit-clock floor persisted only at Close | open; filed 2026-10-10 from `tasks/review-v5-plan-vs-code-20261009.md` §6.5 |
 | 45 | MEDIUM (API) | Internal sentinels reach callers but have no exported alias; `ErrMixedNumericColumn` is outside the errors inventory test | open; found by the doc review of `docs/errors.md` 2026-10-10 |
 | 46 | LOW (stale comments) | Code comments that contradict the code or cite ADRs no longer in `docs/adr/` | open; found by the doc reviews 2026-10-10 |
 | 47 | LOW (unverified claims) | `NodesByLabelAt` vs K1; a RAM budget for the property sidecars | open; each needs a real check before it becomes work |
-| 48 | FEATURE (small) | `Other` marker on node `ColumnData` (`ScanNodeColumns`) | open; requested by sigma-tkgd 2026-10-10; patch release |
+| 49 | HIGH (tiered) | A re-import that moves a relationship to another tiered shard makes the earlier life unreachable | open; reproduced 2026-10-12 (item 35 work) |
+| 50 | MEDIUM | Pinned adjacency doors miss a re-imported relationship's earlier life | open; reproduced 2026-10-12 (item 35 work) |
 
 **v5:** the next engine generation is planned on branch `v5` (`docs/v5/PLAN.md`, `RESEARCH-REVIEW.md`, `DISCUSSION.md`, revised 2026-10-09 after `tasks/review-v5-plan-vs-code-20261009.md`; branch created 2026-10-09 from main `32568c4`). v4 keeps taking consumer features (decision René 2026-10-09, the earlier fixes-only rule is deleted). ADR-0011 S2+ waited for owner decision D6 in that plan. **DECIDED 2026-09-25 (René): S2 and S5 ship on v4 as v4.39.0**, because the AI-SOC cross-check needs them now (ADR-0011 §6 gate met: 24.0 / 24.8 / 25.7 B/HOP at 790 K / 3.15 M / 12.6 M); v5 carries the segments forward from this code.
 
@@ -63,7 +61,7 @@ Pinned fixtures: [consumer contracts](../docs/v5/reference/consumer-contracts.js
 and [migration obligations](../docs/v5/reference/consumer-migration.json) are
 reviewed specification/inventory evidence; consumer integration acceptance stays open.
 The [45-family v4→v5 mapping](../docs/v5-analysis.md#5-v4--v5-door-mapping)
-and the manifests' separate v4.51.0 source delta at `44303a17` distinguish public
+and the manifests' separate v4.51.1 source delta at `dbd74cf4` distinguish public
 successors, internal machinery and unresolved API contracts. Their consumer proofs belong to
 V4/V6; historical acceptance pins below remain unchanged.
 The integrated v4.51.0 source and V6 preflight pass [hosted CI at `3ede096d`](evidence/e17-ci-deadline-20261012/hosted-ci-3ede096d.json):
@@ -72,9 +70,11 @@ exhaustive race batches plus the other packages. Push-only lint is skipped;
 local pinned lint evidence is separate. This checkpoint does not qualify
 subsequent paired-fault or creation-factory changes.
 The later main revision `dbd74cf4` (v4.51.1), identified by the external
-[handover review](../docs/v5/HANDOVER.md), still needs integration, updated
-consumer mappings and qualification of the changed v4 reader. The v4.51.0
-receipts above remain historical evidence, not qualification of v4.51.1.
+[handover review](../docs/v5/HANDOVER.md), is integrated with updated source-only
+consumer mappings. Qualification of the changed v4 reader remains pending:
+complete migration-preflight narrow gates and aggregate/hosted checks after the
+runtime lease. The v4.51.0 receipts and source delta remain historical evidence,
+not qualification of v4.51.1.
 [Substrate evaluation](../docs/v5/reference/substrate-evaluation.json) is
 research/execution-plan evidence only; no engine selection or V2/V3 acceptance.
 The original five recovered `docs/v5/reference/` files are byte-verified and
@@ -988,17 +988,6 @@ Everything the handover `tasks/handover-effective-read-cost-20261009.md` asked f
 
 **Bulk and point as-of disagree with the cascade oracle on version gaps** (LOW, pre-existing, found by the review of the bulk as-of change 2026-10-09): on a chain with a version gap above the current row (direct `Store.TruncateNodeHistory`, or a re-import over a compacted old life stored by v4.43–v4.47 (since item 38 a re-import starts above the chain's top)) both `NodeAsOf` doors miss a row above a gap past current+1 (56 cases against `cascadeAsofWant` in the reviewer's scratch test, identical on main and the branch). The allocator (item G) never creates such a gap; the density assumption is documented in `core/version_alloc.go` and AGENTS.md. Fix when a consumer holds such chains: either close the gap at truncate/re-import time (renumber under the entity lock) or make the doors scan for the max version above current. Red test first (the reviewer's five gap chains, node and rel, with/without reopen, 17 pins).
 
-### 33. Badger effective-timeline scan costs 13-17 µs per relationship
-
-*MEDIUM (perf)* — open; restart pending (baseline `tasks/evidence/badger-read-cost/`).
-
-**Badger effective-timeline scan costs 13-17 µs per relationship** (MEDIUM, perf, from the effective-timeline numbers of v4.47.0: ≈ 3 s for 200 K rels vs 1.3 µs/rel on memory): the pinned candidate gather decodes every current row and each rel's row is then read again. Reuse the rows the gather decoded, or gather candidate IDs only (key scan) and read once. Measure with `BenchmarkForEachRelEffectiveByType` before and after.
-
-### 35. Broader effective scans
-
-*FEATURE* — open; signatures confirmed by sigma 2026-10-10 (HANDOVER.md §11).
-
-**Broader effective scans** (FEATURE, requested by sigma-tkgd 2026-10-09, exact call patterns from its builtins and push-down; N/M = nodes/rels at the pin, K up to 500 k rels from a push-down, S up to 100 k seed nodes, E entities per session cut): after `ForEachRelEffectiveByType` / `ForEachNodeEffectiveByLabel` (item J), all with the same contract as the per-entity door (one entity's segments contiguous and ascending, entities deleted before the pin included, fn false stops): (1) `ForEachNodeEffective(pin, fn func(NodeSegment) bool)` and `ForEachRelEffective(pin, fn func(RelSegment) bool)`, label- and type-free, one call each per evaluation (builtins node/2, edge/3, prop/3 today: a TxPin scan that misses entities deleted before the pin plus one timeline call per row, twice when prop is used); (2) `ForEachRelEffectiveAtNodes(nodeIDs []types.NodeID, dir Direction, relTypes []string, pin, fn func(RelSegment) bool)` batched for the src_/dst_ push-down (today `Outgoing/IncomingForNodesAtPin`, which misses rels deleted before the pin, plus K timeline calls), direction fixed per call, deleted-before-pin rels included, each rel once even if both endpoints are seeds (a single-node form would mean up to 100 k calls); (3) `NodesEffectiveByIDs(ids []types.NodeID, pin, fn)` and `RelsEffectiveByIDs(ids []types.RelID, pin, fn)`, unknown IDs skipped, one call per @source or per cut and kind; (4) optional, low priority: `ForEachNodeEffectiveByLabels(labels []string, pin, fn)`, each node once even with several matching labels. Red tests first: exact-set per pin on the oracle generators (live, closed, deleted-before-pin, deleted-after-pin, created-after-pin; rels with both endpoints seeded; duplicate IDs in a by-IDs batch), memory/badger/tiered/sharded.
 
 ### 37. Tiered error-rollback restore leaves a window with empty history
 
@@ -1020,21 +1009,53 @@ Everything the handover `tasks/handover-effective-read-cost-20261009.md` asked f
 
 ### 41. Merge the history stamps sidecar into the presence set
 
-*MEDIUM (RAM)* — open; after 42.
+*MEDIUM (RAM)* — open; measured, not merged (reason below).
 
 **Merge the history stamps sidecar into the presence set** (MEDIUM, RAM, from the review of `LatestStamps` 2026-10-10): one map with `{from, to, top}` under one protocol saves about 30 B/ID and one of the two lazy builds (66 B/ID today vs the 16 B target; 66 MB at 1 M IDs with history). Red first: the existing differentials (HasHistory, LatestStamps) stay green on the merged structure; a memory-per-ID benchmark gate.
 
-### 42. A current-row stamps capability
-
-*FEATURE (perf)* — open; restart with 33.
-
-**A current-row stamps capability** (FEATURE, perf, from the review of `LatestStamps` 2026-10-10): `LatestStamps` on a badger entity-cache miss costs 6.5–7.1 µs and 25 allocs (reads and decodes the whole current row), sharded/tiered allocate 8–12 per call (core treats sharded as an untrusted store: no Lend, a validated copy). Add an optional capability that reads only the current row's temporal block (badger: temporal-block read on a cache miss; sharded/tiered: slot routing without copying). Measure `BenchmarkLatestStampsRotating` before and after.
+Measured 2026-10-12 (`tasks/evidence/badger-read-cost/41-01-sidecar-ram-per-id.txt`, the two map shapes at 10 K / 100 K / 1 M IDs): presence 30.6 / 23.6 / 37.7 B/ID, stamps 65.6 / 52.5 / 83.8 B/ID, both 96 / 76 / 121 B/ID; one stamps-shaped map saves the presence map, 31 % (37.7 B/ID at 1 M) — but only for a store whose callers use both `HasHistory` and `LatestStamps`. Not merged: a caller of `HasHistory` (or the bulk as-of doors, which build the presence set) alone would pay the stamps entry, 84 instead of 38 B/ID at 1 M (+122 %), and its key-only build would become a value build; the presence `top` (an upper bound a SET raises) and the stamps `top` (exact, a lowering overwrite marks the ID unknown) would share one protocol whose unknown set the bulk as-of `bound` must then also treat as unresolved. Reopen when a consumer runs both doors on one store and reports the RAM; then the merged map plus a red memory-per-ID gate.
 
 ### 44. Commit-clock floor persisted only at Close
 
 *MEDIUM (traced, not reproduced)* — open; filed 2026-10-10 from `tasks/review-v5-plan-vs-code-20261009.md` §6.5.
 
 A crash after a burst whose monotonic floor outran the wall reopens with `NowTx` below committed stamps (lesson 71's reopen case on the crash path): `persistInstantFloor` is called only from `Close` (`core/core.go`, `core/instant_floor.go:129`), and `seedInstantFloor` reseeds only from that watermark. Red test first: a crash-shaped child (exit without `Close`) after writes stamped ahead of the wall, reopen, assert `NowTx()` and a fresh write's `TxFrom` exceed every stored `TxFrom`. Fix candidates: persist the floor with the durable commit / flush, or reseed from the newest stored stamp at open.
+
+### 49. A re-import that moves a relationship to another tiered shard makes the earlier life unreachable
+
+*HIGH (tiered)* — open; reproduced 2026-10-12 while building item 35.
+
+On tiered, `Rels.Delete` then `Rels.Import(id, …)` with a start node in another shard (a "Ref" node, the reference
+shard) leaves `Rels.History(id)` empty: the earlier life's rows stay on the old shard, but the history read goes only
+to the live row's shard (`tieredstore_read_history_rel.go:98-103`), so no door reaches them (`History`,
+`RelEffectiveTimeline`, `RelAsOf` at a pin inside the earlier life; the item-35 doors `ForEachRelEffective`,
+`ForEachRelEffectiveAtNodes`, `RelsEffectiveByIDs` omit the earlier life like the per-entity door). Same endpoints,
+or memory / badger / sharded: one history row, as expected. Probe and output: `tasks/evidence/effective-scans/finding-tiered-reimport-*`. Red test
+first: the probe as a cross-backend test (both directions of the move, node re-import too), then the history lookup
+of a re-imported ID must find every life (route by the ID's lives, or move the history with the row).
+
+### 50. Pinned adjacency doors miss a re-imported relationship's earlier life
+
+*MEDIUM* — open; reproduced 2026-10-12 while building item 35.
+
+`OutgoingForNodesAtPin` / `IncomingForNodesAtPin` (and the other users of `forEachRelAdjacencyCandidateID`:
+`*ForNodesAtTx`, `OutgoingRelsAt` / `IncomingRelsAt`, `ForEachAdjacentRelAt`) fold only DELETED relationship IDs into
+the candidates, on the rule "endpoints are immutable". A relationship ID deleted and re-imported with other endpoints
+(allowed, `relationship_update.go:137`) is live again, so its earlier life — whose rows name the old endpoint — is
+never a candidate: A->B deleted, re-imported as C->B, `OutgoingForNodesAtPin([A], "", pin inside the first life)`
+answers nothing while `RelAsOf(id, pin)` is the A->B row. `ForEachRelEffectiveAtNodes` (item 35) folds every
+relationship with history and answers it. Probe and output: `tasks/evidence/effective-scans/finding-pinned-adjacency-*`.
+Red test first: the probe on memory/badger/sharded/tiered for each door; fix at the shared seam and correct the
+AGENTS.md "deleted-only iteration" rule.
+
+Same seam, cost (review of item 35, 2026-10-12): `ForEachRelEffectiveAtNodes` stays sound today by folding EVERY
+relationship with history on every call, O(H) whatever the seed count (one seed, 50 relationships, 100 K
+relationships all with history: 0.48 s memory, 3.4 s badger vs 0.13 / 0.6 ms by IDs,
+`tasks/evidence/effective-scans/bench-one-seed-full-history.txt`). The sound cheap gather for both: current
+adjacency ∪ deleted relationship IDs (`forEachRelAdjacencyCandidateIDByDepth`) ∪ a persisted set of IDs re-imported
+over a deleted life (written at `Rels.Import`), shared by `ForEachRelEffectiveAtNodes` and the pinned adjacency
+doors; an ever-adjacency sidecar if the deleted volume is large. Red first: the one-seed benchmark as a gate plus
+the probe above.
 
 ---
 
@@ -1068,24 +1089,6 @@ rule itself); the header of `pkg/graph/internal/core/effective_timeline.go` (~li
 transaction-time membership; verify whether the named door can use K1 at all (a two-phase test with a churned label, memory/badger)
 before filing a fix. (b) "A RAM budget for the property sidecars": v4.48.0 measured 25-30 B per posting (97-117 B near-unique) and defined
 no budget; reopen only if a consumer reports memory pressure; then design a per-store budget that drops a sidecar and falls back to the fold.
-
-### 48. An `Other` marker on `ColumnData` (node column scans)
-
-*FEATURE (small)* — requested by sigma-tkgd 2026-10-10.
-
-`store.ColumnData` (`pkg/graph/store/capabilities.go:1268`, shared by `ColumnBatch` and `RelColumnBatch`) carries only `Null [][]bool`, so a cell
-holding a value outside the column's scalar kind (a list, a map, a kind mismatch) cannot be told from a missing one. Rel segments already
-carry `SegmentColumnValues.Other` (`store/rel_segments.go:259`: "row k may hold the property in another Go kind or shape, read it from
-Row(k)"). Request: `Other [][]bool` (parallel to `Null`, per column) on `ColumnData` with the same meaning, so a reader falls back to the
-row read for exactly the flagged rows; today sigma routes a whole label to the row feed whenever `PropertyTypeClassCounts` shows
-`Other > 0` for one of its properties and re-checks after the scan. Open points to settle with evidence: it lives in the shared struct, so the
-rel batch gets the field too (define it for `ScanRelColumns` or leave it nil and document); every backend that fills `ColumnData`
-(memory, badger, tiered, sharded, segment-backed rels) must fill it identically (differential test against `Row(k)` classification); the
-`Null` meaning must not change (a flagged cell stays `Null == false`? decide and test: the safest is `Other[k] == true` implies the typed
-value slot is zero and `Null[k] == false`); additive field, nil when no column has an Other cell (zero extra allocation on the common
-path, benchmark rows allocs-gated). Red tests first: per backend a node with a list, a map, a kind-mismatched value and a missing value in
-one column, scan and compare each cell's class with the row read; stale `Other` after an update that fixes or breaks a cell; mutants:
-Other never set, Other set for a missing cell, Other set on the wrong column index.
 
 ## v5
 
@@ -1130,6 +1133,8 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Review 2026-09-24: TxAt-only doors "nondeterministic" (implicit valid-time now = wall clock; now `readNow()`) | `[4.38.1]` |
 | Item 6 (FEATURE) — `DeleteWithTx` / `UpdateWithTx` on every write door, `ErrTxOrder` | `[4.44.0]` Added; handover `tasks/handover-tx-backfill-delete-update-20261009.md` |
 | Item 34 (FEATURE) — `SetNodeVersionIntervalWithTx` / `SetRelVersionIntervalWithTx` on every door | `[4.50.1]` Added; evidence `tasks/evidence/interval-withtx/` |
+| Item 48 (FEATURE, sigma-tkgd) — `ColumnData.Other`: column-scan cells held outside the column (node and rel batches); typed slots aligned with `Null` | `[4.51.1]` Added; evidence `tasks/evidence/column-other/` |
+| Item 35 (FEATURE, sigma-tkgd) — broader effective scans: `ForEachNodeEffective` / `ForEachRelEffective`, `ForEachRelEffectiveAtNodes`, `NodesEffectiveByIDs` / `RelsEffectiveByIDs`, `ForEachNodeEffectiveByLabels` | `[4.51.1]` Added; evidence `tasks/evidence/effective-scans/` |
 | Item 11 (FEATURE) — durable-on-return commit `Config.DurableCommit` | `[4.44.0]` Added (power-loss gap: item 15) |
 | HIGH — one-tick `[t, t+1)` rows skipped as the eclipse sentinel; skip removed | `[4.44.0]` Fixed "One-tick valid intervals are ordinary spans" |
 | Review-v5 §6.2 — column and range scans ignored `TxAt`/`TxPin` | `[4.44.0]` Fixed "Column and range scans answer temporal options" (interval semantics: item 16) |
@@ -1152,6 +1157,8 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Item 29 (MEDIUM) — a failed node write left its `UniqueForever` value owned (crash consistency between claim and row: v5 PLAN §5.2) | `[4.49.0]` Fixed; evidence `tasks/evidence/unique-claims/` |
 | Item 30 (FEATURE, perf) — `Nodes()/Rels().LatestStamps(id)` | `[4.49.0]` Added; evidence `tasks/evidence/latest-stamps/` |
 | Item 43 (FEATURE, ai-soc) — retraction: `Retract` / `RetractWithTx` on every write door, "this was never true" | `[4.49.1]` Added "Retraction: a way to say this was never true"; evidence `tasks/evidence/retraction/` |
+| Item 33 (MEDIUM, perf) — badger effective scans read each candidate row once (`store.MemberIDsCapability`) | `[4.51.1]` Changed; evidence `tasks/evidence/badger-read-cost/` |
+| Item 42 (FEATURE, perf) — `store.CurrentStampsCapability`, the current-row half of `LatestStamps` | `[4.51.1]` Added; evidence `tasks/evidence/badger-read-cost/` |
 
 Recover closed investigation prose via `git log --all -- tasks/backlog.md` if needed.
 

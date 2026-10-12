@@ -31,6 +31,7 @@ func effectiveFixtureRels() int {
 type effectiveFixture struct {
 	g                *graph.Graph
 	plain, cascaded  []types.RelID
+	nodes            []types.NodeID
 	pin              types.Instant
 	cascadedSegments int
 }
@@ -57,7 +58,7 @@ func effectiveFixtureFor(b *testing.B, bc backendCase) *effectiveFixture {
 	}
 	ctx := benchCtx()
 	nodes := addLabeledNodes(b, g, "Host", 2000)
-	f := &effectiveFixture{g: g}
+	f := &effectiveFixture{g: g, nodes: nodes}
 	n := effectiveFixtureRels()
 	for i := 0; i < n; i++ {
 		r, err := g.Rels().AddByID(ctx, "FLOW", nodes[i%len(nodes)], nodes[(i*7+1)%len(nodes)],
@@ -196,6 +197,150 @@ func BenchmarkForEachRelEffectiveByType(b *testing.B) {
 				}
 			}
 			b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/float64(len(f.plain)+len(f.cascaded)), "ns/rel")
+		})
+	}
+}
+
+// BenchmarkEffectiveScans measures the broader effective scans (backlog 35) on
+// the same fixture; ns/rel is the per-relationship cost of one call, to set
+// against BenchmarkRelEffectiveTimeline (one public call per relationship):
+//   - all: one ForEachRelEffective scan (every relationship);
+//   - at-nodes: ForEachRelEffectiveAtNodes over 100 of the 2000 Host nodes,
+//     outgoing (5 % of the relationships, plus the 1 % with history folded in
+//     as candidates);
+//   - by-ids: RelsEffectiveByIDs over 10 000 relationships (every 20th).
+func BenchmarkEffectiveScans(b *testing.B) {
+	for _, bc := range backendCases {
+		b.Run(bc.name, func(b *testing.B) {
+			f := effectiveFixtureFor(b, bc)
+			all := append(append([]types.RelID(nil), f.plain...), f.cascaded...)
+			var batch []types.RelID
+			for i := 0; i < len(all); i += 20 {
+				batch = append(batch, all[i])
+			}
+			seeds := f.nodes[:100]
+			for _, tc := range []struct {
+				name string
+				run  func(fn func(temporal.RelSegment) bool) error
+			}{
+				{"all", func(fn func(temporal.RelSegment) bool) error { return f.g.Temporal().ForEachRelEffective(f.pin, fn) }},
+				{"at-nodes", func(fn func(temporal.RelSegment) bool) error {
+					return f.g.Temporal().ForEachRelEffectiveAtNodes(seeds, temporal.Outgoing, nil, f.pin, fn)
+				}},
+				{"by-ids", func(fn func(temporal.RelSegment) bool) error {
+					return f.g.Temporal().RelsEffectiveByIDs(batch, f.pin, fn)
+				}},
+			} {
+				b.Run(tc.name, func(b *testing.B) {
+					b.ReportAllocs()
+					rels := 0
+					for b.Loop() {
+						// One relationship's segments are contiguous: count
+						// the ID changes.
+						n, last := 0, types.RelID(0)
+						if err := tc.run(func(s temporal.RelSegment) bool {
+							if id := s.Rel.ID(); id != last {
+								n, last = n+1, id
+							}
+							return true
+						}); err != nil || n == 0 {
+							b.Fatalf("%s: %d relationships, %v", tc.name, n, err)
+						}
+						rels = n
+					}
+					b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/float64(rels), "ns/rel")
+				})
+			}
+		})
+	}
+}
+
+// effectiveHistoryFixture: effectiveFixtureRels()/2 relationships of type
+// "FLOW" over 2000 nodes, EVERY one updated once (each has a history row).
+type effectiveHistoryFixture struct {
+	g     *graph.Graph
+	nodes []types.NodeID
+	pin   types.Instant
+}
+
+var effectiveHistoryFixtures = map[string]*effectiveHistoryFixture{}
+
+func effectiveHistoryFixtureFor(b *testing.B, bc backendCase) *effectiveHistoryFixture {
+	b.Helper()
+	effectiveFixturesMu.Lock()
+	defer effectiveFixturesMu.Unlock()
+	if f, ok := effectiveHistoryFixtures[bc.name]; ok {
+		return f
+	}
+	cfg := graph.Config{SnowflakeNodeID: bc.snowflakeNode + 13}
+	if bc.badger {
+		cfg.BadgerInMemory = true
+	}
+	g, err := graph.New(cfg)
+	if err != nil {
+		b.Fatalf("%s: graph.New: %v", bc.name, err)
+	}
+	ctx := benchCtx()
+	nodes := addLabeledNodes(b, g, "Host", 2000)
+	for i := 0; i < effectiveFixtureRels()/2; i++ {
+		r, err := g.Rels().AddByID(ctx, "FLOW", nodes[i%len(nodes)], nodes[(i*7+1)%len(nodes)],
+			map[string]any{"tkg_valid_from": types.Instant(1000), "seq": i})
+		if err != nil {
+			b.Fatalf("add rel %d: %v", i, err)
+		}
+		if _, err := g.Rels().Update(ctx, r.ID(), map[string]any{"seq": -i}); err != nil {
+			b.Fatalf("update rel %d: %v", i, err)
+		}
+	}
+	pin, err := g.Temporal().NowTx()
+	if err != nil {
+		b.Fatalf("NowTx: %v", err)
+	}
+	f := &effectiveHistoryFixture{g: g, nodes: nodes, pin: pin}
+	effectiveHistoryFixtures[bc.name] = f
+	return f
+}
+
+// BenchmarkEffectiveScansOneSeed is ForEachRelEffectiveAtNodes with ONE seed
+// on a graph where every relationship has history — the cost model's worst
+// case: each call folds every relationship with history (O(H)) and then
+// streams the seed's ~50 relationships — against RelsEffectiveByIDs over the
+// same relationships (the per-answer cost alone). ns/op is per call.
+func BenchmarkEffectiveScansOneSeed(b *testing.B) {
+	for _, bc := range backendCases {
+		b.Run(bc.name, func(b *testing.B) {
+			f := effectiveHistoryFixtureFor(b, bc)
+			seed := []types.NodeID{f.nodes[0]}
+			var ids []types.RelID
+			if err := f.g.Temporal().ForEachRelEffectiveAtNodes(seed, temporal.Outgoing, nil, f.pin, func(s temporal.RelSegment) bool {
+				if n := len(ids); n == 0 || ids[n-1] != s.Rel.ID() {
+					ids = append(ids, s.Rel.ID())
+				}
+				return true
+			}); err != nil || len(ids) == 0 {
+				b.Fatalf("seed relationships: %d, %v", len(ids), err)
+			}
+			for _, tc := range []struct {
+				name string
+				run  func(fn func(temporal.RelSegment) bool) error
+			}{
+				{"at-nodes", func(fn func(temporal.RelSegment) bool) error {
+					return f.g.Temporal().ForEachRelEffectiveAtNodes(seed, temporal.Outgoing, nil, f.pin, fn)
+				}},
+				{"by-ids", func(fn func(temporal.RelSegment) bool) error {
+					return f.g.Temporal().RelsEffectiveByIDs(ids, f.pin, fn)
+				}},
+			} {
+				b.Run(tc.name, func(b *testing.B) {
+					b.ReportAllocs()
+					for b.Loop() {
+						if err := tc.run(func(temporal.RelSegment) bool { return true }); err != nil {
+							b.Fatalf("%s: %v", tc.name, err)
+						}
+					}
+					b.ReportMetric(float64(len(ids)), "rels")
+				})
+			}
 		})
 	}
 }

@@ -1,7 +1,7 @@
 # v4 changes since 32568c4 that the v4 → v5 importer and the v5 migration contract must account for
 
 Updated 2026-10-12 (original handover 2026-10-10). For Markus (branch `v5`, `docs/v5/PLAN.md` §9 "Migration"). Source of truth is `CHANGELOG.md` on main
-(v4.44.0 … v4.51.0 at cutoff `44303a17a391d663cd48567c55bbb9ee85cdf892`); this note lists only what changes how a v4 store must be READ or MAPPED. This note changes no importer implementation.
+(v4.44.0 … v4.51.1 at cutoff `dbd74cf45c65c1086798012e92453315cab75143`); this note lists only what changes how a v4 store must be READ or MAPPED. This note changes no importer implementation.
 
 ## 1. The as-of rule changed (v4.46.0)
 
@@ -129,5 +129,37 @@ relationship epochs still invalidate column/expand reads. These stamps are not c
 
 The data-only current-source delta in `docs/v5/reference/consumer-contracts.json` and `consumer-migration.json`
 records source hashes and required checks separately from unchanged historical consumer pins. No new v5 public
-API or completed importer is implied. Earlier V6 v4.50.1 reader qualification must be rerun against this reader;
+API or completed importer is implied. That initial integration required fresh reader qualification;
 new NDV/history/empty-intersection/historical-seek/adjacency/column-cache checks and aggregate gates remain pending.
+
+
+## 12. Current stamps, columns and broader state scans at v4.51.1
+
+Source cutoff `dbd74cf45c65c1086798012e92453315cab75143` carries `CurrentStampsCapability` / `RowStamps`, the existing
+`HistoryStampsCapability` with tiered routing-probe reuse, and `MemberIDsCapability`. Current stamps select the
+current owner row; history stamps retain the history fold/dedup rule. Partial temporal decoding is not full-body
+validation. ID-only membership is current, ascending and pending-write aware, then widened to historical
+candidates and hydrated; unreadable index members cannot become empty answers. Inherited native/sharded wrapper
+capabilities must preserve row overrides. These accelerators neither certify cuts nor establish complete history.
+
+`ColumnData.Other` marks held values outside the column, also Null with zero typed slots, for same-selection row
+fallback. `RelColumnOtherSource` is optional; absence of its marker is not proof of absence. Typed arrays remain
+parallel even for leading/all absences; Other resets per batch. Every integer width follows snapshot normalization:
+uint/uint64 above MaxInt64 become float64, fitting/nonfitting numeric mixtures refuse. Preserve raw concrete
+integer evidence separately from that projection.
+
+Six broader `Temporal()` doors stream the same per-entity state timeline: `ForEachNodeEffective`,
+`ForEachRelEffective`, `NodesEffectiveByIDs`, `RelsEffectiveByIDs`, `ForEachRelEffectiveAtNodes` and
+`ForEachNodeEffectiveByLabels`. Relationship view is declared; label selection is a union; explicit ID order is
+first occurrence, other entity order unspecified. `Direction` is Outgoing/Incoming; invalid direction is
+`ErrInvalidDirection`. Input, pin and retention/compaction refusals remain explicit, with callbacks outside locks.
+Seeded gather includes all history to retain earlier endpoints across reimported lives, at O(H) timeline cost;
+per-entity isolation and one call do not promise one certified graph cut. Upstream backlog 49 still records
+tiered cross-shard reimport making earlier history unreachable, and 50 records older pinned adjacency missing
+earlier endpoints. Broader scans cannot recover inaccessible per-entity history; preserve/report incomplete source
+evidence rather than infer a complete history from current state or clean hashes.
+
+The manifests retain the exact v4.51.0 source delta as history and separately pin this reader and pending
+obligations. Earlier v4.51.0 hosted migration qualification stays historical. V4.51.1 needs the full migration
+preflight narrow gates and independent source/input/scanner qualification, followed by aggregate/hosted checks;
+no new v5 public successor or V2–V7 acceptance follows from this source merge.
