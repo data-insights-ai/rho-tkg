@@ -1,6 +1,7 @@
 package memory
 
 import (
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -44,6 +45,11 @@ func (ms *Store) putNodeHistoryRowLocked(nid types.NodeID, v uint32, row *types.
 	before := len(inner)
 	_, overwrite := inner[v]
 	inner[v] = ms.historyNode(row)
+	if ms.nodeValidEnds.Active() {
+		vr := indexpkg.ValidEndRowOfNode(row, true)
+		vr.Version = v
+		ms.nodeValidEnds.NoteRow(int64(nid), vr)
+	}
 	f, t, d := row.TxStamps()
 	ms.histStampsMu.Lock()
 	ms.nodeHistStamps = noteHistStamps(ms.nodeHistStamps, nid, before, len(inner), overwrite, f, t, d)
@@ -59,7 +65,13 @@ func (ms *Store) putRelHistoryRowLocked(rid types.RelID, v uint32, row *types.Re
 	}
 	before := len(inner)
 	_, overwrite := inner[v]
+	ms.noteHistoryRowExAdjLocked(rid, row) // backlog 50
 	inner[v] = ms.historyRel(row)
+	if ms.relValidEnds.Active() {
+		vr := indexpkg.ValidEndRowOfRel(row, true)
+		vr.Version = v
+		ms.relValidEnds.NoteRow(int64(rid), vr)
+	}
 	f, t, d := row.TxStamps()
 	ms.histStampsMu.Lock()
 	ms.relHistStamps = noteHistStamps(ms.relHistStamps, rid, before, len(inner), overwrite, f, t, d)

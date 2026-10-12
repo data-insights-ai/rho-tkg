@@ -1,0 +1,11 @@
+ai-soc commit shape (2026-10-12, rho main 3f27f957 = v4.51.1 + docs, NVMe, shared host, fresh store, 30 commits)
+per commit: 177 records x (GetOrCreateByKey Device + GetOrCreateByKey Account + AddRelationshipByID LOGON, 13 props incl tkg_valid_from/to) ~ 530 ops
+memory                 mean=3.2 ms   worst=5.7 ms   55,210 rows/s
+badger plain           mean=6.2 ms   worst=10.1 ms  28,394 rows/s
+badger Durable         mean=14.4 ms  worst=21.8 ms  12,312 rows/s
+badger Sync            mean=1.07 s   worst=1.49 s      166 rows/s
+badger Durable+Sync    mean=0.99 s   worst=1.38 s      178 rows/s   <- ai-soc config
+strace -f -c (30 commits): Durable 76 msync + 7 fsync (~2.5/commit); Sync 24,662 msync + 7 fsync (~822/commit)
+Cause: SyncWrites mode flushes every mutation synchronously (store/badger/badgerstore_flush.go:82,105),
+one Badger sync per mutation; DurableCommit alone flushes the group as one WriteBatch + one sync
+(badgerstore_durable.go:14-34) but leaves a power-loss gap when the flush crosses a memtable switch.

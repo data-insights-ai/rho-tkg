@@ -1,0 +1,39 @@
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered/rel_event->ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered/rel_ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered/rel_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered/node_event->ref->event
+    reimport_across_shards_test.go:189: GetNodeVersion(1): graph: version not found, want the row of life 2
+    reimport_across_shards_test.go:189: NodeHistoryVersionsFrom: lives [1] (<nil>), want [1 2]
+    reimport_across_shards_test.go:189: after TruncateNodeHistory(1): 2 rows of lives [1 2] (<nil>), want 1 row of life 2
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered/node_ref->event
+    reimport_across_shards_test.go:189: GetNodeVersion(0): graph: version not found, want the row of life 1
+    reimport_across_shards_test.go:189: NodeHistoryVersionsFrom: lives [] (<nil>), want [1]
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered/node_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/rel_event->ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/rel_ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/rel_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/node_event->ref->event
+    reimport_across_shards_test.go:189: GetNodeVersion(1): graph: version not found, want the row of life 2
+    reimport_across_shards_test.go:189: NodeHistoryVersionsFrom: lives [1] (<nil>), want [1 2]
+    reimport_across_shards_test.go:189: after TruncateNodeHistory(1): 2 rows of lives [1 2] (<nil>), want 1 row of life 2
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/node_ref->event
+    reimport_across_shards_test.go:189: GetNodeVersion(0): graph: version not found, want the row of life 1
+    reimport_across_shards_test.go:189: NodeHistoryVersionsFrom: lives [] (<nil>), want [1]
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/node_same_shard
+--- FAIL: TestReimportAcrossShardsKeepsEarlierLife (2.19s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered/rel_event->ref->event (0.01s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered/rel_ref->event (0.01s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered/rel_same_shard (0.05s)
+    --- FAIL: TestReimportAcrossShardsKeepsEarlierLife/tiered/node_event->ref->event (0.10s)
+    --- FAIL: TestReimportAcrossShardsKeepsEarlierLife/tiered/node_ref->event (0.08s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered/node_same_shard (0.02s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/rel_event->ref->event (0.32s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/rel_ref->event (0.31s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/rel_same_shard (0.34s)
+    --- FAIL: TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/node_event->ref->event (0.32s)
+    --- FAIL: TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/node_ref->event (0.31s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/node_same_shard (0.31s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	2.237s
+FAIL

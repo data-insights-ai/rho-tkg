@@ -22,10 +22,11 @@ import (
 // findNodeVersionForOpts); this is the relationship mirror, built from the
 // same parts Temporal().OutgoingRelsAt uses (directionalRelsAtLocked):
 //
-//   - candidates = current adjacency ids ∪ deleted rel ids (endpoints are
-//     immutable, so a rel that ever touched nodeID still does — the deleted
-//     fold is what keeps a since-deleted edge visible inside its window, in
-//     parity with the node path's forEachNodeCandidateIDByDepth);
+//   - candidates = current adjacency ids ∪ nodeID's ex-adjacency — the
+//     relationships that named nodeID in a row its live adjacency no longer
+//     holds: deleted ones and earlier lives of ones re-imported with other
+//     endpoints (forEachRelExAdjacentID); it is what keeps a since-deleted
+//     edge visible inside its window;
 //   - each candidate resolves through findRelVersionForOpts with a predicate
 //     on direction and type, so the yielded row is the version valid under
 //     opts, not the live row;
@@ -85,7 +86,7 @@ func (c *Core) forEachAdjacentRelVersionLocked(nodeID types.NodeID, typeName str
 		currentIDs = slices.Clone(currentIDs)
 		slices.Sort(currentIDs)
 	}
-	ids, err := c.relAdjacencyCandidateIDsSorted(currentIDs, opts.Depth)
+	ids, err := c.relAdjacencyCandidateIDsSorted(nodeID, adjDirsOf(!incoming), currentIDs, opts.Depth)
 	if err != nil {
 		return err
 	}
@@ -216,23 +217,23 @@ func (s singleVersionAdjacencyResolver) resolve(cur *types.Relationship, pred fu
 	return r, true, nil
 }
 
-// relAdjacencyCandidateIDsSorted is forEachRelAdjacencyCandidateIDByDepth
-// collected in ascending order: currentIDs (ascending) united with the
-// deleted relationship IDs. Without a deleted relationship it returns
+// relAdjacencyCandidateIDsSorted is forEachRelAdjacencyCandidateID for one
+// node collected in ascending order: currentIDs (ascending) united with the
+// node's ex-adjacency in dirs. With an empty ex-adjacency it returns
 // currentIDs itself, building no set.
-func (c *Core) relAdjacencyCandidateIDsSorted(currentIDs []types.RelID, depth storepkg.ShardDepth) ([]types.RelID, error) {
-	var deleted []types.RelID
-	if err := c.forEachDeletedRelIDByDepth(depth, func(id types.RelID) bool {
-		deleted = append(deleted, id)
+func (c *Core) relAdjacencyCandidateIDsSorted(nodeID types.NodeID, dirs adjDirs, currentIDs []types.RelID, depth storepkg.ShardDepth) ([]types.RelID, error) {
+	var off []types.RelID
+	if err := c.forEachRelExAdjacentID([]types.NodeID{nodeID}, dirs, depth, func(id types.RelID) bool {
+		off = append(off, id)
 		return true
 	}); err != nil {
 		return nil, err
 	}
-	if len(deleted) == 0 {
+	if len(off) == 0 {
 		return currentIDs, nil
 	}
-	ids := make([]types.RelID, 0, len(currentIDs)+len(deleted))
-	ids = append(append(ids, currentIDs...), deleted...)
+	ids := make([]types.RelID, 0, len(currentIDs)+len(off))
+	ids = append(append(ids, currentIDs...), off...)
 	slices.Sort(ids)
 	return slices.Compact(ids), nil
 }

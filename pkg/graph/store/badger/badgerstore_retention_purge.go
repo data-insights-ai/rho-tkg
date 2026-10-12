@@ -195,7 +195,16 @@ func (bs *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 		for _, k := range nodeHistKeys {
 			histOps = append(histOps, writeOp{opType: writeOpDelete, key: []byte(k)})
 		}
+		// Backlog 50: the purged node's ex-adjacency and the purged
+		// relationships' legs (the cascade just added them) go too.
+		exOps, xerr := bs.exAdjNodeDeleteOps(v)
+		if xerr != nil {
+			bs.idxMu.Unlock()
+			return zero, xerr
+		}
+		histOps = append(histOps, exOps...)
 		for _, rd := range deleted {
+			histOps = append(histOps, exAdjLegOps(writeOpDelete, rd.ID, rd.StartID, rd.EndID)...)
 			relHistKeys, _, herr := bs.historyTruncateDeleteKeys(storepkg.HistRelPrefix(rd.ID), 0)
 			if herr != nil {
 				bs.idxMu.Unlock()
@@ -341,6 +350,8 @@ func (bs *Store) PurgeRelationshipByInfo(rel storecontract.PurgedRel) error {
 			StartID: rel.StartID.SnowflakeID(),
 			EndID:   rel.EndID.SnowflakeID(),
 		})
+		// Purged, not deleted: no ex-adjacency survives it (backlog 50).
+		bs.appendOps(exAdjLegOps(writeOpDelete, rid.SnowflakeID(), rel.StartID.SnowflakeID(), rel.EndID.SnowflakeID())...)
 		bs.maintainRelTypeTemporalIndexesPurge(rid.SnowflakeID()) // history goes too: nothing left to cover
 		bs.dropPropertyTxMembersLocked()                          // and its values from the property sidecars (backlog 8)
 		histKeys, _, herr := bs.historyTruncateDeleteKeys(storepkg.HistRelPrefix(rid.SnowflakeID()), 0)
@@ -418,8 +429,9 @@ func (bs *Store) PurgeAdjacentRelsForNode(nodeID types.NodeID) (int, error) {
 			return removed, err
 		}
 		bs.deleteRelByInfo(relDeleteInfoFromRelationship(r))
-		bs.maintainRelTypeTemporalIndexesPurge(rid.SnowflakeID()) // history goes too: nothing left to cover
-		bs.dropPropertyTxMembersLocked()                          // and its values from the property sidecars (backlog 8)
+		histOps = append(histOps, exAdjLegOps(writeOpDelete, rid.SnowflakeID(), r.StartNodeID().SnowflakeID(), r.EndNodeID().SnowflakeID())...) // purged: no ex-adjacency (backlog 50)
+		bs.maintainRelTypeTemporalIndexesPurge(rid.SnowflakeID())                                                                               // history goes too: nothing left to cover
+		bs.dropPropertyTxMembersLocked()                                                                                                        // and its values from the property sidecars (backlog 8)
 		removed++
 		relHistKeys, _, herr := bs.historyTruncateDeleteKeys(storepkg.HistRelPrefix(rid.SnowflakeID()), 0)
 		if herr != nil {
@@ -430,6 +442,12 @@ func (bs *Store) PurgeAdjacentRelsForNode(nodeID types.NodeID) (int, error) {
 			histOps = append(histOps, writeOp{opType: writeOpDelete, key: []byte(k)})
 		}
 	}
+	nodeExOps, xerr := bs.exAdjNodeDeleteOps(nodeID) // the purged node's ex-adjacency here (backlog 50)
+	if xerr != nil {
+		bs.idxMu.Unlock()
+		return removed, xerr
+	}
+	histOps = append(histOps, nodeExOps...)
 	if len(histOps) > 0 {
 		bs.appendOps(histOps...)
 	}

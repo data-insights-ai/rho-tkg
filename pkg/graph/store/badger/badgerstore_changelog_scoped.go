@@ -141,6 +141,7 @@ func (bs *Store) appendOpsLoggedRouted(tag storecontract.ChangeTag, payload []by
 	for _, op := range ops {
 		bs.pending[string(op.key)] = op
 		bs.noteHistoryKey(op)
+		bs.noteValidEndOp(op)
 	}
 	if !bs.logEnabled.Load() {
 		bs.wbMu.Unlock()

@@ -672,13 +672,15 @@ func (bs *Store) deleteRelByInfo(info RelDeleteInfo) {
 		}
 	}
 
-	// Build delete ops.
+	// Build delete ops. Both legs leave the live adjacency for the
+	// ex-adjacency in the same batch (backlog 50).
 	ops := []writeOp{
 		{opType: writeOpDelete, key: storepkg.RelKey(info.ID)},
 		{opType: writeOpDelete, key: storepkg.RelTypeIndexKey(info.RelType, info.ID)},
 		{opType: writeOpDelete, key: storepkg.OutKey(info.StartID, info.RelType, info.EndID, info.ID)},
 		{opType: writeOpDelete, key: storepkg.InKey(info.EndID, info.RelType, info.StartID, info.ID)},
 	}
+	ops = append(ops, exAdjLegOps(writeOpSet, info.ID, info.StartID, info.EndID)...)
 
 	bs.appendOps(ops...)
 	bs.relCount.Add(-1)

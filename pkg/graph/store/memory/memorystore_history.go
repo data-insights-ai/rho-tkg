@@ -87,6 +87,7 @@ func (ms *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = ms.storedNode(updatedNode)
+	ms.noteNodeCurrentLocked(updatedNode)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
@@ -173,6 +174,7 @@ func (ms *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = ms.storedNode(updatedNode)
+	ms.noteNodeCurrentLocked(updatedNode)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
@@ -365,6 +367,7 @@ func (ms *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
 	delete(ms.nodes, nid)
+	ms.nodeValidEnds.NoteCurrentDelete(int64(nid))
 	return ms.logNodeDeleteWithHistoryRoutedLocked(nid.SnowflakeID(), nodeTombstone, relTombstones, token)
 }
 
@@ -553,6 +556,7 @@ func (ms *Store) truncateNodeHistoryRouted(nid types.NodeID, keepVersions int, t
 	if len(inner) == 0 {
 		return nil
 	}
+	ms.nodeHistoryRemovedLocked(nid)
 
 	if keepVersions == 0 {
 		delete(ms.nodeHistory, nid)
@@ -768,6 +772,7 @@ func (ms *Store) truncateRelHistoryRouted(rid types.RelID, keepVersions int, tok
 	if len(inner) == 0 {
 		return nil
 	}
+	ms.relHistoryRemovedLocked(rid)
 
 	if keepVersions == 0 {
 		delete(ms.relHistory, rid)
@@ -857,6 +862,7 @@ func (ms *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = ms.storedNode(current)
+	ms.noteNodeCurrentLocked(current)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(current)) // BACKLOG 10c
 	ms.addNodePropertyKeyCounts(current)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, current, rawID)
@@ -939,6 +945,7 @@ func (ms *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	// Replace current entity.
 	ms.segAccountLocked(old, -1)
 	ms.rels[id] = ms.storedRel(current)
+	ms.noteRelCurrentLocked(current)
 	ms.segAccountLocked(ms.rels[id], 1)
 	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(current)) // BACKLOG 10c
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, current, id.SnowflakeID())
@@ -1238,6 +1245,7 @@ func (ms *Store) trimNodeHistoryFromRouted(nid types.NodeID, minVersion uint32, 
 		return err
 	}
 	inner := ms.nodeHistory[nid]
+	ms.nodeHistoryRemovedLocked(nid)
 	deleted := false
 	for version := range inner {
 		if version >= minVersion {
@@ -1286,6 +1294,7 @@ func (ms *Store) trimRelHistoryFromRouted(rid types.RelID, minVersion uint32, to
 		return err
 	}
 	inner := ms.relHistory[rid]
+	ms.relHistoryRemovedLocked(rid)
 	deleted := false
 	for version := range inner {
 		if version >= minVersion {

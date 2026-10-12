@@ -1,0 +1,9 @@
+ 14:11:32 up 12 days,  5:27, 22 users,  load average: 66,74, 68,58, 63,89
+    effective_validfrom_reopen_test.go:123: rels SEEN, 100000 retired + 5 live, after reopen: first bounded call 1.18s (5 segments, 5 timelines read), second 33µs (5 read); first unbounded call 2.835s
+    effective_validfrom_reopen_test.go:123: nodes Event, 100000 retired + 5 live, after reopen: first bounded call 1.247s (5 segments, 5 timelines read), second 56µs (5 read); first unbounded call 2.266s
+--- PASS: TestEffectiveValidFrom_BadgerReopenFirstCall (12.98s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	13.061s
+# CPU profile of the same run (go test -cpuprofile, host load ~70 on 32 cores): first bounded call about 0.8 s CPU per kind,
+# of which the K1 membership sidecar build (shared with the unbounded door) is 0.5-0.65 s and the members' bulk
+# temporal read 0.15-0.45 s (about 2-4 us per entity); first unbounded call 2.0-2.5 s CPU.

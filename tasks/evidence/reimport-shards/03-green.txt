@@ -1,0 +1,80 @@
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/memory/rel_event->ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/memory/rel_ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/memory/rel_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/memory/node_event->ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/memory/node_ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/memory/node_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/badger/rel_event->ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/badger/rel_ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/badger/rel_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/badger/node_event->ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/badger/node_ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/badger/node_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/sharded/rel_event->ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/sharded/rel_ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/sharded/rel_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/sharded/node_event->ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/sharded/node_ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/sharded/node_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered/rel_event->ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered/rel_ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered/rel_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered/node_event->ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered/node_ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered/node_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/rel_event->ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/rel_ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/rel_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/node_event->ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/node_ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/node_same_shard
+--- PASS: TestReimportAcrossShardsKeepsEarlierLife (2.74s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/memory/rel_event->ref->event (0.00s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/memory/rel_ref->event (0.00s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/memory/rel_same_shard (0.00s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/memory/node_event->ref->event (0.00s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/memory/node_ref->event (0.00s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/memory/node_same_shard (0.00s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/badger/rel_event->ref->event (0.00s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/badger/rel_ref->event (0.01s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/badger/rel_same_shard (0.00s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/badger/node_event->ref->event (0.04s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/badger/node_ref->event (0.04s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/badger/node_same_shard (0.01s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/sharded/rel_event->ref->event (0.02s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/sharded/rel_ref->event (0.05s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/sharded/rel_same_shard (0.03s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/sharded/node_event->ref->event (0.05s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/sharded/node_ref->event (0.01s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/sharded/node_same_shard (0.01s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered/rel_event->ref->event (0.01s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered/rel_ref->event (0.01s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered/rel_same_shard (0.01s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered/node_event->ref->event (0.01s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered/node_ref->event (0.01s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered/node_same_shard (0.01s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/rel_event->ref->event (0.43s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/rel_ref->event (0.40s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/rel_same_shard (0.39s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/node_event->ref->event (0.40s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/node_ref->event (0.38s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/node_same_shard (0.37s)
+=== RUN   TestAddRelationshipsGeneratedBatchSkipsEarlierLivesWalk
+--- PASS: TestAddRelationshipsGeneratedBatchSkipsEarlierLivesWalk (0.01s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	2.811s
+=== RUN   TestHistoryLives_RelReimportOntoNewEventShard
+--- PASS: TestHistoryLives_RelReimportOntoNewEventShard (0.05s)
+=== RUN   TestHistoryLives_RecordsOnlyUnreachedHistory
+--- PASS: TestHistoryLives_RecordsOnlyUnreachedHistory (0.08s)
+=== RUN   TestHistoryLives_BackfillAtOpen
+--- PASS: TestHistoryLives_BackfillAtOpen (0.33s)
+=== RUN   TestHistoryLives_GeneratedBatchWithoutProofRecords
+--- PASS: TestHistoryLives_GeneratedBatchWithoutProofRecords (0.02s)
+=== RUN   TestHistoryLives_PersistedAndValidatedAtOpen
+--- PASS: TestHistoryLives_PersistedAndValidatedAtOpen (1.49s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	2.035s
+
+# gates (fix round) 2026-10-12: go test -short -race -count=1 -timeout 60m ./...: 43 packages ok, none failed; make lint-docker: 0 issues; make security-docker: exit 0

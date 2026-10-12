@@ -1,0 +1,32 @@
+File: bench-after.test
+Build ID: e99e6c4369b4ddf5448f8d931e7c33ec33b5d6b0
+Type: cpu
+Time: 2026-10-12 12:24:25 CEST
+Duration: 9.20s, Total samples = 7.53s (81.88%)
+Active filters:
+   focus=ForEachRelEffectiveAtNodes
+Showing nodes accounting for 0.35s, 4.65% of 7.53s total
+Showing top 22 nodes out of 99
+      flat  flat%   sum%        cum   cum%
+         0     0%     0%      0.49s  6.51%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).readUnderRLock
+         0     0%     0%      0.49s  6.51%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*TempOps).ForEachRelEffectiveAtNodes
+         0     0%     0%      0.49s  6.51%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal.(*API).ForEachRelEffectiveAtNodes
+         0     0%     0%      0.49s  6.51%  testing.(*B).run1.func1
+         0     0%     0%      0.49s  6.51%  testing.(*B).runN
+         0     0%     0%      0.48s  6.37%  github.com/data-insights-ai/rho-tkg/v4/bench.BenchmarkEffectiveAtNodesOneSeed.func1.2
+         0     0%     0%      0.48s  6.37%  github.com/data-insights-ai/rho-tkg/v4/bench.BenchmarkEffectiveAtNodesOneSeed.func1.4
+         0     0%     0%      0.42s  5.58%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).relEffectiveAdjacencyCandidates
+         0     0%     0%      0.42s  5.58%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*TempOps).ForEachRelEffectiveAtNodes.func1
+         0     0%     0%      0.41s  5.44%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).forEachDeletedRelIDByDepth
+         0     0%     0%      0.41s  5.44%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).forEachDeletedRelIDByDepthTrusted
+         0     0%     0%      0.41s  5.44%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).forEachRelAdjacencyCandidateIDByDepth
+         0     0%     0%      0.41s  5.44%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).forEachRelOffAdjacencyIDByDepth
+         0     0%     0%      0.41s  5.44%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).ForEachDeletedRelID
+     0.01s  0.13%  0.13%      0.41s  5.44%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).forEachPresentHistoryID
+     0.01s  0.13%  0.27%      0.28s  3.72%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).HasRelID
+     0.08s  1.06%  1.33%      0.27s  3.59%  runtime.mapaccess2_fast64
+     0.17s  2.26%  3.59%      0.17s  2.26%  internal/runtime/maps.ctrlGroup.matchH2 (inline)
+         0     0%  3.59%      0.12s  1.59%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).presenceIDsSorted
+         0     0%  3.59%      0.11s  1.46%  slices.Sort[go.shape.[]github.com/bds421/rho-snowflake-2026.ID,go.shape.int64] (inline)
+         0     0%  3.59%      0.11s  1.46%  slices.pdqsortOrdered[go.shape.int64]
+     0.08s  1.06%  4.65%      0.08s  1.06%  slices.partitionOrdered[go.shape.int64]

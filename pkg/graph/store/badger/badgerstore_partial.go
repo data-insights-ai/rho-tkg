@@ -257,6 +257,7 @@ func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 		{opType: writeOpDelete, key: storepkg.RelKey(id)},
 		{opType: writeOpDelete, key: storepkg.RelTypeIndexKey(info.RelType, id)},
 		{opType: writeOpDelete, key: storepkg.OutKey(info.StartID, info.RelType, info.EndID, id)},
+		exAdjLegOp(writeOpSet, info.StartID, false, id), // backlog 50: the out-leg's ex-adjacency lives here
 	}
 
 	bs.appendOps(ops...)
@@ -307,7 +308,7 @@ func (bs *Store) DeleteRelIncoming(info RelDeleteInfo) error {
 		opType: writeOpDelete,
 		key:    storepkg.InKey(info.EndID, info.RelType, info.StartID, info.ID),
 	}
-	bs.appendOps(op)
+	bs.appendOps(op, exAdjLegOp(writeOpSet, info.EndID, true, info.ID)) // backlog 50: the in-leg's ex-adjacency
 	bs.idxMu.Unlock()
 	return bs.flushIfNeeded()
 }

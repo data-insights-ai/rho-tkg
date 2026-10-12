@@ -38,6 +38,7 @@ func (ts *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 	if err != nil {
 		return nil, err
 	}
+	liveHere, isArchive = ts.relLivesRoute(rid, liveHere, isArchive)
 	if liveHere && !isArchive {
 		if shard == ts.refShard {
 			archive, archiveCheckin, archiveErr := ts.checkoutArchive()
@@ -97,6 +98,7 @@ func (ts *Store) GetRelHistory(rid types.RelID) ([]*types.Relationship, error) {
 	if err != nil {
 		return nil, err
 	}
+	liveHere, isArchive = ts.relLivesRoute(rid, liveHere, isArchive)
 	if liveHere && !isArchive {
 		if shard == ts.refShard {
 			return ts.relHistoryWithArchive(rid, shard, history)
@@ -146,6 +148,7 @@ func (ts *Store) RelHistoryVersionsFrom(rid types.RelID, startVersion uint32, li
 	if err != nil {
 		return nil, err
 	}
+	liveHere, isArchive = ts.relLivesRoute(rid, liveHere, isArchive)
 	if liveHere && !isArchive {
 		if shard == ts.refShard {
 			sources := relHistorySourcesFrom(shard, history)

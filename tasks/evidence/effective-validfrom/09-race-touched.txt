@@ -1,0 +1,9 @@
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	530.632s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	73.369s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	5.379s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	7.204s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	398.656s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	158.599s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal	1.045s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	368.358s
+exit 0

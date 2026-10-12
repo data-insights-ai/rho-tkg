@@ -1,0 +1,6 @@
+    valid_end_test.go:345: entities=10000 heap 112.5 B/entity (Stats estimate 72.7 B/entity, 20000 ordered entries)
+    valid_end_test.go:345: entities=100000 heap 95.6 B/entity (Stats estimate 72.4 B/entity, 200000 ordered entries)
+    valid_end_test.go:345: entities=1000000 heap 132.8 B/entity (Stats estimate 72.4 B/entity, 2000000 ordered entries)
+--- PASS: TestValidEndIndex_RAMPerEntity (1.72s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	1.754s

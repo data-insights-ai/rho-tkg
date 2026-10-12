@@ -66,6 +66,8 @@ type Ops interface {
 	RelsEffectiveByIDs(ids []types.RelID, pin types.Instant, fn func(RelSegment) bool) error
 	ForEachRelEffectiveAtNodes(nodeIDs []types.NodeID, dir Direction, relTypes []string, pin types.Instant, fn func(RelSegment) bool) error
 	ForEachNodeEffectiveByLabels(labels []string, pin types.Instant, fn func(NodeSegment) bool) error
+	ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom types.Instant, fn func(RelSegment) bool) error
+	ForEachNodeEffectiveByLabelsFrom(labels []string, pin, validFrom types.Instant, fn func(NodeSegment) bool) error
 
 	// Cascade / timeline edit: an append-only valid-time correction. props is
 	// a patch (nil deletes a key) applied to the state valid in each piece of
@@ -183,9 +185,9 @@ func (a *API) RelsByTypeAt(relType string, t types.Instant) ([]*types.Relationsh
 // neighbour is reached only via a relationship valid at t whose both endpoints
 // are valid at t (same rule as Snapshot, Diff, OutgoingRelsAt). History-aware:
 // returns neighbours connected via rels (current or deleted) that were valid
-// at t. The deleted-rel fold scales with the number of deleted relationships,
-// not the total history size, when the underlying store implements
-// DeletedIterationCapability — every in-tree backend (memory, badger, tiered)
+// at t, and earlier lives of rels re-imported with other endpoints. The fold
+// reads the node's ex-adjacency (O(its ever-degree), not the total history)
+// when the store implements ExAdjacencyCapability — every in-tree backend
 // does. Same characteristic applies to OutgoingRelsAt and IncomingRelsAt.
 func (a *API) NeighborsAt(nodeID types.NodeID, t types.Instant) ([]*types.Node, error) {
 	ops, err := a.ready()
@@ -574,6 +576,45 @@ func (a *API) ForEachNodeEffectiveByLabels(labels []string, pin types.Instant, f
 		return err
 	}
 	return ops.ForEachNodeEffectiveByLabels(labels, pin, fn)
+}
+
+// ForEachRelEffectiveByTypeFrom is ForEachRelEffectiveByType restricted to the
+// relationships still effective at or after validFrom: a relationship streams
+// (its whole timeline, as ForEachRelEffectiveByType streams it) iff one of its
+// segments ends at or after validFrom (ValidTo >= validFrom: the half-open
+// segment ending exactly at validFrom counts) or is open — an untimed
+// relationship never deleted always streams, a deleted one ends at its delete
+// instant, a retracted life never streams. validFrom at or below every end
+// streams what ForEachRelEffectiveByType streams. Errors:
+// ForEachRelEffectiveByType's.
+//
+// Cost on memory and badger: the relationships of the type whose valid end is
+// at or after validFrom plus those written after pin, from a valid-end index
+// the store keeps per queried type: the first call for a type reads its
+// ever-members' temporal fields once (and builds the K1 membership sidecar if
+// no pinned scan did), every write of the type after that is folded, writes
+// of other types change nothing (RAM; tracked again on the first call after a
+// reopen). Tiered and sharded answer the same through the unbounded door's
+// candidates (not accelerated).
+func (a *API) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom types.Instant, fn func(RelSegment) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachRelEffectiveByTypeFrom(typeName, pin, validFrom, fn)
+}
+
+// ForEachNodeEffectiveByLabelsFrom is ForEachNodeEffectiveByLabels restricted
+// to the nodes whose segments carrying one of the labels include one ending at
+// or after validFrom, or an open one (ForEachRelEffectiveByTypeFrom's rule and
+// cost; a node is bounded by its whole timeline, so one that dropped the
+// labels but lives on is read and skipped).
+func (a *API) ForEachNodeEffectiveByLabelsFrom(labels []string, pin, validFrom types.Instant, fn func(NodeSegment) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachNodeEffectiveByLabelsFrom(labels, pin, validFrom, fn)
 }
 
 // NodesAtTx returns nodes valid at validAt as known at txAt.

@@ -32,6 +32,7 @@ const (
 	KeyHistNode  byte = 0x07 // + 8B nodeID + 8B version              = 17B
 	KeyHistRel   byte = 0x08 // + 8B relID + 8B version               = 17B
 	KeyChangeLog byte = 0x09 // + 8B LSN                               =  9B
+	KeyExAdj     byte = 0x0D // + 8B node + 1B dir + 8B rel            = 18B
 	KeyMeta      byte = 0x0F // + variable (rare, only registry keys)
 )
 
@@ -44,6 +45,7 @@ const (
 	SizeAdjacency  = 1 + 8 + 2 + 8 + 8 // 27B
 	SizeHistKey    = 1 + 8 + 8         // 17B
 	SizeChangeLog  = 1 + 8             // 9B
+	SizeExAdj      = 1 + 8 + 1 + 8     // 18B
 )
 
 // PutUint64 writes v as big-endian at buf[off..off+8].
@@ -276,6 +278,29 @@ var LastLSNKey = MetaKey("last_lsn")
 // The uint64→int64 cast reverses the encoding in PutUint64.
 func ParseIDFromKey(key []byte, offset int) snowflake.ID {
 	return snowflake.ID(binary.BigEndian.Uint64(key[offset:])) // #nosec G115 — inverse of PutUint64
+}
+
+// ExAdjKey returns the 18-byte ex-adjacency key (backlog 50): relID named
+// nodeID as its start (incoming=false) or end (incoming=true) in a row the
+// live adjacency (KeyOut / KeyIn) no longer holds — a deleted relationship,
+// or an earlier life of one re-imported with other endpoints.
+func ExAdjKey(nodeID snowflake.ID, incoming bool, relID snowflake.ID) []byte {
+	b := ExAdjPrefix(nodeID, incoming)
+	b = b[:SizeExAdj]
+	PutUint64(b, 10, int64(relID))
+	return b
+}
+
+// ExAdjPrefix returns the 10-byte prefix of nodeID's ex-adjacency in one
+// direction (capacity for the full key).
+func ExAdjPrefix(nodeID snowflake.ID, incoming bool) []byte {
+	b := make([]byte, 10, SizeExAdj)
+	b[0] = KeyExAdj
+	PutUint64(b, 1, int64(nodeID))
+	if incoming {
+		b[9] = 1
+	}
+	return b
 }
 
 // ParseRelIDFromAdjKey extracts the relationship ID from the last 8 bytes of

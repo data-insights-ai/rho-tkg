@@ -50,7 +50,7 @@ Areas: temporal, persistence, concurrency, testing, process, docs, consumers.
 | 25 | CAS equality and integrity hash are different contracts (NaN, -0) | persistence | active |
 | 26 | Each sub-API declares its own minimal `Ops` | consumers | active |
 | 27 | Fix now, do not ship "known limitation" notes | process | active |
-| 28 | Split a shared helper before optimizing one caller (deleted-only adjacency fold) | temporal | active |
+| 28 | Split a shared helper before optimizing one caller (ex-adjacency fold) | temporal | active |
 | 29 | PublishBatch priority order needs a per-batch ceiling | concurrency | active |
 | 30 | Split files by responsibility, not by line count | process | active |
 | 31 | Tx mirrors of read accessors (tx held `c.mu.Lock`) | concurrency | superseded (Path B, v4.1.0) |
@@ -298,14 +298,16 @@ real fix was small: optional `DeletedIterationCapability` (`ForEachDeletedNodeID
 `ForEachDeletedRelID`, plus depth variants) in every in-tree backend +
 `forEachRelAdjacencyCandidateID` in the graph layer, O(total history) -> O(deleted count).
 
-## 28. Adjacency Endpoint Immutability Permits Deleted-Only Folds
+## 28. Adjacency Folds Need Only The Seed's Ex-Adjacency
 
 Trigger: optimizing a generic helper used in several semantic contexts.
 Rule: split the helper before optimizing one caller. `forEach*CandidateID` stays all-history
 (label/property temporal queries: an entity whose CURRENT label is Y but was X at t is not deleted
-yet must be visited); `forEachRelAdjacencyCandidateID` is deleted-only, valid because rel endpoints
-are immutable, so the only rels missing from node N's live adjacency index are DELETED rels. The
-first B2 attempt collapsed all folds to deleted-only and broke label/property queries.
+yet must be visited); `forEachRelAdjacencyCandidateID` folds only each seed's ex-adjacency — the rels that named the seed
+in a row its live adjacency no longer holds (DELETED rels, earlier lives of rels re-imported with
+other endpoints; backlog 50 — "endpoints are immutable" holds within one life only), kept by the
+store at every delete and history-row write. The first B2 attempt collapsed all folds to
+deleted-only and broke label/property queries.
 
 ## 29. PublishBatch "Atomic" Ordering Survives Saturation Only With A Floor
 
@@ -1372,3 +1374,14 @@ Detector: more than one review round on a branch, a lint finding after a merge, 
 than ten file names, a backlog item with no named requester or test.
 
 
+
+## 80. Tick The User-Request Ledger At Every Release, Not Only The Work Queue
+
+Trigger: René 2026-10-12: "Are you really working towards our originally defined goal?" The work queue in
+`tasks/todo.md` was current, but the "User requests" table still showed request 1 (retraction) as "NEXT STEP, not
+built" two releases after v4.49.1 shipped it, the releases table stopped at v4.49.0, and `HANDOVER.md` §11 listed
+34/33/42/35 as open after they shipped. The goal looked lost because the place that states it was never updated.
+Rule: a release commit updates, in the same commit, the user-request rows it closes, the releases table, and
+HANDOVER §11; every new user or consumer request gets its row before the first action on it.
+Detector: a tag newer than the last row of the releases table; a user-request row "open" whose backlog item sits
+under Closed.

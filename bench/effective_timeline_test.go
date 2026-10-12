@@ -255,8 +255,14 @@ func BenchmarkEffectiveScans(b *testing.B) {
 	}
 }
 
+// effectiveDeleteStride: one in so many fixture relationships is deleted
+// (backlog 50: a gather that folds every deleted relationship pays for them on
+// every call).
+const effectiveDeleteStride = 4
+
 // effectiveHistoryFixture: effectiveFixtureRels()/2 relationships of type
-// "FLOW" over 2000 nodes, EVERY one updated once (each has a history row).
+// "FLOW" over 2000 nodes, EVERY one updated once (each has a history row), one
+// in effectiveDeleteStride deleted.
 type effectiveHistoryFixture struct {
 	g     *graph.Graph
 	nodes []types.NodeID
@@ -291,6 +297,11 @@ func effectiveHistoryFixtureFor(b *testing.B, bc backendCase) *effectiveHistoryF
 		if _, err := g.Rels().Update(ctx, r.ID(), map[string]any{"seq": -i}); err != nil {
 			b.Fatalf("update rel %d: %v", i, err)
 		}
+		if i%effectiveDeleteStride == 0 {
+			if err := g.Rels().Delete(ctx, r.ID()); err != nil {
+				b.Fatalf("delete rel %d: %v", i, err)
+			}
+		}
 	}
 	pin, err := g.Temporal().NowTx()
 	if err != nil {
@@ -301,12 +312,13 @@ func effectiveHistoryFixtureFor(b *testing.B, bc backendCase) *effectiveHistoryF
 	return f
 }
 
-// BenchmarkEffectiveScansOneSeed is ForEachRelEffectiveAtNodes with ONE seed
-// on a graph where every relationship has history — the cost model's worst
-// case: each call folds every relationship with history (O(H)) and then
-// streams the seed's ~50 relationships — against RelsEffectiveByIDs over the
-// same relationships (the per-answer cost alone). ns/op is per call.
-func BenchmarkEffectiveScansOneSeed(b *testing.B) {
+// BenchmarkEffectiveAtNodesOneSeed is ForEachRelEffectiveAtNodes with ONE seed
+// on a graph where every relationship has history and a quarter are deleted
+// — an all-history fold costs O(H) per call, a deleted-ID fold O(deleted);
+// the seed-following gather reads the ~50 relationships that ever named the
+// seed — against RelsEffectiveByIDs over the same relationships (the
+// per-answer cost alone). ns/op is per call.
+func BenchmarkEffectiveAtNodesOneSeed(b *testing.B) {
 	for _, bc := range backendCases {
 		b.Run(bc.name, func(b *testing.B) {
 			f := effectiveHistoryFixtureFor(b, bc)

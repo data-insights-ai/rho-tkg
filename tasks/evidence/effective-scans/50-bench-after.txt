@@ -1,0 +1,31 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/bench
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkEffectiveAtNodesOneSeed/memory/at-nodes-32         	       1	  32602878 ns/op	        50.00 rels	   58432 B/op	     968 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/at-nodes-32         	       1	  74863856 ns/op	        50.00 rels	   58448 B/op	     969 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/at-nodes-32         	       1	  80661920 ns/op	        50.00 rels	   58432 B/op	     968 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/by-ids-32           	       1	    606456 ns/op	        50.00 rels	   55624 B/op	     943 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/by-ids-32           	       1	    489711 ns/op	        50.00 rels	   55624 B/op	     943 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/by-ids-32           	       1	    586755 ns/op	        50.00 rels	   55624 B/op	     943 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/at-nodes-32         	       1	  27001702 ns/op	        50.00 rels	 1158928 B/op	    4158 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/at-nodes-32         	       1	  80402340 ns/op	        50.00 rels	 1157824 B/op	    4156 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/at-nodes-32         	       1	  91932087 ns/op	        50.00 rels	 1158984 B/op	    4169 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/by-ids-32           	       1	   2946365 ns/op	        50.00 rels	  351832 B/op	    4120 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/by-ids-32           	       1	  11107530 ns/op	        50.00 rels	  351832 B/op	    4120 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/by-ids-32           	       1	   2401922 ns/op	        50.00 rels	  352744 B/op	    4128 allocs/op
+PASS
+--- default benchtime, same binary (host shared with other agents: by-ids badger 0.6 ms before vs 6 ms here shows the noise)
+BenchmarkEffectiveAtNodesOneSeed/memory/at-nodes-32         	     108	   9990421 ns/op	        50.00 rels	   58424 B/op	     968 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/at-nodes-32         	      28	  87691791 ns/op	        50.00 rels	   58424 B/op	     968 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/at-nodes-32         	      81	  16908059 ns/op	        50.00 rels	   58424 B/op	     968 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/by-ids-32           	    2281	    536619 ns/op	        50.00 rels	   55612 B/op	     943 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/by-ids-32           	    1684	    759243 ns/op	        50.00 rels	   55612 B/op	     943 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/by-ids-32           	    1668	    943428 ns/op	        50.00 rels	   55612 B/op	     943 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/at-nodes-32         	      26	  79395429 ns/op	        50.00 rels	 1143668 B/op	    4144 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/at-nodes-32         	      20	  53991027 ns/op	        50.00 rels	 1143516 B/op	    4137 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/at-nodes-32         	      16	  98820227 ns/op	        50.00 rels	 1144159 B/op	    4148 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/by-ids-32           	     226	   5844495 ns/op	        50.00 rels	  336078 B/op	    4097 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/by-ids-32           	     172	   5950925 ns/op	        50.00 rels	  336097 B/op	    4097 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/by-ids-32           	     174	   6063979 ns/op	        50.00 rels	  336106 B/op	    4097 allocs/op
+PASS

@@ -1,0 +1,173 @@
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/memory/rel_event->ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/memory/rel_ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/memory/rel_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/memory/node_event->ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/memory/node_ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/memory/node_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/badger/rel_event->ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/badger/rel_ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/badger/rel_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/badger/node_event->ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/badger/node_ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/badger/node_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/sharded/rel_event->ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/sharded/rel_ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/sharded/rel_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/sharded/node_event->ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/sharded/node_ref->event
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/sharded/node_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered/rel_event->ref->event
+    reimport_across_shards_test.go:182: History: lives [1], want [1 2]
+    reimport_across_shards_test.go:182: RelAsOf(pin of life 2): graph: no entity version recorded at the given transaction time
+    reimport_across_shards_test.go:232: RelEffectiveTimeline at pin of life 2: lives [1], want [1 2]
+    reimport_across_shards_test.go:232: ForEachRelEffective at pin of life 2: lives [1], want [1 2]
+    reimport_across_shards_test.go:232: RelsEffectiveByIDs at pin of life 2: lives [1], want [1 2]
+    reimport_across_shards_test.go:182: ForEachRelEffectiveAtNodes(Ref) at pin of life 2: lives [], want [2]
+    reimport_across_shards_test.go:232: RelEffectiveTimeline at pin of life 3: lives [1 3], want [1 2 3]
+    reimport_across_shards_test.go:232: ForEachRelEffective at pin of life 3: lives [1 3], want [1 2 3]
+    reimport_across_shards_test.go:232: RelsEffectiveByIDs at pin of life 3: lives [1 3], want [1 2 3]
+    reimport_across_shards_test.go:182: ForEachRelEffectiveAtNodes(Ref) at pin of life 3: lives [], want [2]
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered/rel_ref->event
+    reimport_across_shards_test.go:182: History: lives [], want [1]
+    reimport_across_shards_test.go:182: RelAsOf(pin of life 1): graph: no entity version recorded at the given transaction time
+    reimport_across_shards_test.go:232: RelEffectiveTimeline at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:232: ForEachRelEffective at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:232: RelsEffectiveByIDs at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:182: ForEachRelEffectiveAtNodes(Ref) at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:232: RelEffectiveTimeline at pin of life 2: lives [2], want [1 2]
+    reimport_across_shards_test.go:232: ForEachRelEffective at pin of life 2: lives [2], want [1 2]
+    reimport_across_shards_test.go:232: RelsEffectiveByIDs at pin of life 2: lives [2], want [1 2]
+    reimport_across_shards_test.go:182: ForEachRelEffectiveAtNodes(Ref) at pin of life 2: lives [], want [1]
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered/rel_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered/node_event->ref->event
+    reimport_across_shards_test.go:182: History: lives [1], want [1 2]
+    reimport_across_shards_test.go:182: NodeAsOf(pin of life 2): graph: no entity version recorded at the given transaction time
+    reimport_across_shards_test.go:304: NodeEffectiveTimeline at pin of life 2: lives [1], want [1 2]
+    reimport_across_shards_test.go:304: ForEachNodeEffective at pin of life 2: lives [1], want [1 2]
+    reimport_across_shards_test.go:304: NodesEffectiveByIDs at pin of life 2: lives [1], want [1 2]
+    reimport_across_shards_test.go:304: NodeEffectiveTimeline at pin of life 3: lives [1 3], want [1 2 3]
+    reimport_across_shards_test.go:304: ForEachNodeEffective at pin of life 3: lives [1 3], want [1 2 3]
+    reimport_across_shards_test.go:304: NodesEffectiveByIDs at pin of life 3: lives [1 3], want [1 2 3]
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered/node_ref->event
+    reimport_across_shards_test.go:182: History: lives [], want [1]
+    reimport_across_shards_test.go:182: NodeAsOf(pin of life 1): graph: no entity version recorded at the given transaction time
+    reimport_across_shards_test.go:304: NodeEffectiveTimeline at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:304: ForEachNodeEffective at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:304: NodesEffectiveByIDs at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:304: NodeEffectiveTimeline at pin of life 2: lives [2], want [1 2]
+    reimport_across_shards_test.go:304: ForEachNodeEffective at pin of life 2: lives [2], want [1 2]
+    reimport_across_shards_test.go:304: NodesEffectiveByIDs at pin of life 2: lives [2], want [1 2]
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered/node_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/rel_event->ref->event
+    reimport_across_shards_test.go:182: History: lives [1], want [1 2]
+    reimport_across_shards_test.go:182: RelAsOf(pin of life 2): graph: no entity version recorded at the given transaction time
+    reimport_across_shards_test.go:232: RelEffectiveTimeline at pin of life 2: lives [1], want [1 2]
+    reimport_across_shards_test.go:232: ForEachRelEffective at pin of life 2: lives [1], want [1 2]
+    reimport_across_shards_test.go:232: RelsEffectiveByIDs at pin of life 2: lives [1], want [1 2]
+    reimport_across_shards_test.go:182: ForEachRelEffectiveAtNodes(Ref) at pin of life 2: lives [], want [2]
+    reimport_across_shards_test.go:232: RelEffectiveTimeline at pin of life 3: lives [1 3], want [1 2 3]
+    reimport_across_shards_test.go:232: ForEachRelEffective at pin of life 3: lives [1 3], want [1 2 3]
+    reimport_across_shards_test.go:232: RelsEffectiveByIDs at pin of life 3: lives [1 3], want [1 2 3]
+    reimport_across_shards_test.go:182: ForEachRelEffectiveAtNodes(Ref) at pin of life 3: lives [], want [2]
+    reimport_across_shards_test.go:186: after reopen: History: lives [1], want [1 2]
+    reimport_across_shards_test.go:186: after reopen: RelAsOf(pin of life 2): graph: no entity version recorded at the given transaction time
+    reimport_across_shards_test.go:232: after reopen: RelEffectiveTimeline at pin of life 2: lives [1], want [1 2]
+    reimport_across_shards_test.go:232: after reopen: ForEachRelEffective at pin of life 2: lives [1], want [1 2]
+    reimport_across_shards_test.go:232: after reopen: RelsEffectiveByIDs at pin of life 2: lives [1], want [1 2]
+    reimport_across_shards_test.go:186: after reopen: ForEachRelEffectiveAtNodes(Ref) at pin of life 2: lives [], want [2]
+    reimport_across_shards_test.go:232: after reopen: RelEffectiveTimeline at pin of life 3: lives [1 3], want [1 2 3]
+    reimport_across_shards_test.go:232: after reopen: ForEachRelEffective at pin of life 3: lives [1 3], want [1 2 3]
+    reimport_across_shards_test.go:232: after reopen: RelsEffectiveByIDs at pin of life 3: lives [1 3], want [1 2 3]
+    reimport_across_shards_test.go:186: after reopen: ForEachRelEffectiveAtNodes(Ref) at pin of life 3: lives [], want [2]
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/rel_ref->event
+    reimport_across_shards_test.go:182: History: lives [], want [1]
+    reimport_across_shards_test.go:182: RelAsOf(pin of life 1): graph: no entity version recorded at the given transaction time
+    reimport_across_shards_test.go:232: RelEffectiveTimeline at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:232: ForEachRelEffective at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:232: RelsEffectiveByIDs at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:182: ForEachRelEffectiveAtNodes(Ref) at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:232: RelEffectiveTimeline at pin of life 2: lives [2], want [1 2]
+    reimport_across_shards_test.go:232: ForEachRelEffective at pin of life 2: lives [2], want [1 2]
+    reimport_across_shards_test.go:232: RelsEffectiveByIDs at pin of life 2: lives [2], want [1 2]
+    reimport_across_shards_test.go:182: ForEachRelEffectiveAtNodes(Ref) at pin of life 2: lives [], want [1]
+    reimport_across_shards_test.go:186: after reopen: History: lives [], want [1]
+    reimport_across_shards_test.go:186: after reopen: RelAsOf(pin of life 1): graph: no entity version recorded at the given transaction time
+    reimport_across_shards_test.go:232: after reopen: RelEffectiveTimeline at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:232: after reopen: ForEachRelEffective at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:232: after reopen: RelsEffectiveByIDs at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:186: after reopen: ForEachRelEffectiveAtNodes(Ref) at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:232: after reopen: RelEffectiveTimeline at pin of life 2: lives [2], want [1 2]
+    reimport_across_shards_test.go:232: after reopen: ForEachRelEffective at pin of life 2: lives [2], want [1 2]
+    reimport_across_shards_test.go:232: after reopen: RelsEffectiveByIDs at pin of life 2: lives [2], want [1 2]
+    reimport_across_shards_test.go:186: after reopen: ForEachRelEffectiveAtNodes(Ref) at pin of life 2: lives [], want [1]
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/rel_same_shard
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/node_event->ref->event
+    reimport_across_shards_test.go:182: History: lives [1], want [1 2]
+    reimport_across_shards_test.go:182: NodeAsOf(pin of life 2): graph: no entity version recorded at the given transaction time
+    reimport_across_shards_test.go:304: NodeEffectiveTimeline at pin of life 2: lives [1], want [1 2]
+    reimport_across_shards_test.go:304: ForEachNodeEffective at pin of life 2: lives [1], want [1 2]
+    reimport_across_shards_test.go:304: NodesEffectiveByIDs at pin of life 2: lives [1], want [1 2]
+    reimport_across_shards_test.go:304: NodeEffectiveTimeline at pin of life 3: lives [1 3], want [1 2 3]
+    reimport_across_shards_test.go:304: ForEachNodeEffective at pin of life 3: lives [1 3], want [1 2 3]
+    reimport_across_shards_test.go:304: NodesEffectiveByIDs at pin of life 3: lives [1 3], want [1 2 3]
+    reimport_across_shards_test.go:186: after reopen: History: lives [1], want [1 2]
+    reimport_across_shards_test.go:186: after reopen: NodeAsOf(pin of life 2): graph: no entity version recorded at the given transaction time
+    reimport_across_shards_test.go:304: after reopen: NodeEffectiveTimeline at pin of life 2: lives [1], want [1 2]
+    reimport_across_shards_test.go:304: after reopen: ForEachNodeEffective at pin of life 2: lives [1], want [1 2]
+    reimport_across_shards_test.go:304: after reopen: NodesEffectiveByIDs at pin of life 2: lives [1], want [1 2]
+    reimport_across_shards_test.go:304: after reopen: NodeEffectiveTimeline at pin of life 3: lives [1 3], want [1 2 3]
+    reimport_across_shards_test.go:304: after reopen: ForEachNodeEffective at pin of life 3: lives [1 3], want [1 2 3]
+    reimport_across_shards_test.go:304: after reopen: NodesEffectiveByIDs at pin of life 3: lives [1 3], want [1 2 3]
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/node_ref->event
+    reimport_across_shards_test.go:182: History: lives [], want [1]
+    reimport_across_shards_test.go:182: NodeAsOf(pin of life 1): graph: no entity version recorded at the given transaction time
+    reimport_across_shards_test.go:304: NodeEffectiveTimeline at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:304: ForEachNodeEffective at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:304: NodesEffectiveByIDs at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:304: NodeEffectiveTimeline at pin of life 2: lives [2], want [1 2]
+    reimport_across_shards_test.go:304: ForEachNodeEffective at pin of life 2: lives [2], want [1 2]
+    reimport_across_shards_test.go:304: NodesEffectiveByIDs at pin of life 2: lives [2], want [1 2]
+    reimport_across_shards_test.go:186: after reopen: History: lives [], want [1]
+    reimport_across_shards_test.go:186: after reopen: NodeAsOf(pin of life 1): graph: no entity version recorded at the given transaction time
+    reimport_across_shards_test.go:304: after reopen: NodeEffectiveTimeline at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:304: after reopen: ForEachNodeEffective at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:304: after reopen: NodesEffectiveByIDs at pin of life 1: lives [], want [1]
+    reimport_across_shards_test.go:304: after reopen: NodeEffectiveTimeline at pin of life 2: lives [2], want [1 2]
+    reimport_across_shards_test.go:304: after reopen: ForEachNodeEffective at pin of life 2: lives [2], want [1 2]
+    reimport_across_shards_test.go:304: after reopen: NodesEffectiveByIDs at pin of life 2: lives [2], want [1 2]
+=== RUN   TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/node_same_shard
+--- FAIL: TestReimportAcrossShardsKeepsEarlierLife (2.14s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/memory/rel_event->ref->event (0.00s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/memory/rel_ref->event (0.00s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/memory/rel_same_shard (0.00s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/memory/node_event->ref->event (0.00s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/memory/node_ref->event (0.00s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/memory/node_same_shard (0.00s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/badger/rel_event->ref->event (0.00s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/badger/rel_ref->event (0.01s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/badger/rel_same_shard (0.00s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/badger/node_event->ref->event (0.04s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/badger/node_ref->event (0.04s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/badger/node_same_shard (0.01s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/sharded/rel_event->ref->event (0.02s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/sharded/rel_ref->event (0.01s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/sharded/rel_same_shard (0.02s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/sharded/node_event->ref->event (0.08s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/sharded/node_ref->event (0.02s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/sharded/node_same_shard (0.02s)
+    --- FAIL: TestReimportAcrossShardsKeepsEarlierLife/tiered/rel_event->ref->event (0.02s)
+    --- FAIL: TestReimportAcrossShardsKeepsEarlierLife/tiered/rel_ref->event (0.02s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered/rel_same_shard (0.02s)
+    --- FAIL: TestReimportAcrossShardsKeepsEarlierLife/tiered/node_event->ref->event (0.02s)
+    --- FAIL: TestReimportAcrossShardsKeepsEarlierLife/tiered/node_ref->event (0.02s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered/node_same_shard (0.01s)
+    --- FAIL: TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/rel_event->ref->event (0.30s)
+    --- FAIL: TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/rel_ref->event (0.30s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/rel_same_shard (0.29s)
+    --- FAIL: TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/node_event->ref->event (0.29s)
+    --- FAIL: TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/node_ref->event (0.30s)
+    --- PASS: TestReimportAcrossShardsKeepsEarlierLife/tiered-reopen/node_same_shard (0.29s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	2.197s
+FAIL

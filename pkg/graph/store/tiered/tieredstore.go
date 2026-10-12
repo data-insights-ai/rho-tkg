@@ -334,6 +334,11 @@ type Store struct {
 	nodeCreateLocks *lockspkg.Manager
 	relCreateLocks  *lockspkg.Manager
 
+	// relLives / nodeLives: IDs re-imported onto another shard than their
+	// earlier lives' history (backlog 49, tieredstore_history_lives.go).
+	relLives  historyLives
+	nodeLives historyLives
+
 	// Temporal indexes — tracked so new hot/archive shards inherit them.
 	tempIdxMu     sync.Mutex
 	tempIdxLabels []uint16
@@ -556,6 +561,10 @@ func New(cfg Config) (*Store, error) {
 	// SAME instance, instead of its own (empty) per-shard meta copy.
 	if reg := refStore.PropertyKeyRegistry(); reg != nil {
 		ts.propKeyReg.Store(reg)
+	}
+	if err := ts.loadHistoryLives(); err != nil {
+		_ = refStore.Close() // best-effort cleanup; returning primary error
+		return nil, err
 	}
 	// Reseed the store-global change-log allocator from the reference shard's
 	// catalog watermark now that refShard is open. This covers cold shards that
@@ -810,6 +819,21 @@ func New(cfg Config) (*Store, error) {
 				return nil, fmt.Errorf("graph: sync shard indexes: %w", err)
 			}
 		}
+	}
+
+	// One-time record of re-imports made before the earlier-lives record
+	// existed (backlog 49); every shard is registered by now.
+	if err := ts.backfillHistoryLives(); err != nil {
+		for _, es := range ts.eventShards {
+			if es.store != nil {
+				_ = es.store.Close()
+			}
+		}
+		if archive := ts.refArchive.Load(); archive != nil {
+			_ = archive.Close()
+		}
+		_ = refStore.Close()
+		return nil, fmt.Errorf("graph: backfill history lives: %w", err)
 	}
 
 	// Start idle-close goroutine for cold shards.
@@ -1133,6 +1157,13 @@ func (ts *Store) Clear() error {
 	if err := ref.Clear(); err != nil {
 		refCheckin()
 		return rollbackIndexMetadata(fmt.Errorf("graph: clear ref shard: %w", err))
+	}
+	ts.relLives.reset() // their meta entries went with the reference shard
+	ts.nodeLives.reset()
+	// An empty store has nothing to backfill: keep the next open from walking.
+	if err := ref.MetaSet(historyLivesBackfilledKey, []byte{1}); err != nil {
+		refCheckin()
+		return rollbackIndexMetadata(err)
 	}
 	refCheckin()
 	for _, es := range shards {

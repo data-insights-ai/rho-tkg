@@ -479,7 +479,7 @@ func (bs *Store) relationshipIndexKeysForRel(relID snowflake.ID) ([][]byte, erro
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 
-		for _, prefix := range []byte{storepkg.KeyRelType, storepkg.KeyOut, storepkg.KeyIn} {
+		for _, prefix := range []byte{storepkg.KeyRelType, storepkg.KeyOut, storepkg.KeyIn, storepkg.KeyExAdj} {
 			prefixBytes := []byte{prefix}
 			it := txn.NewIterator(opts)
 			for it.Seek(prefixBytes); it.ValidForPrefix(prefixBytes); it.Next() {
@@ -511,6 +511,8 @@ func relationshipIndexKeyMatchesRelID(key []byte, relID snowflake.ID) bool {
 		return storepkg.ParseIDFromKey(key, 3) == relID
 	case len(key) == storepkg.SizeAdjacency && (key[0] == storepkg.KeyOut || key[0] == storepkg.KeyIn):
 		return storepkg.ParseRelIDFromAdjKey(key) == relID
+	case len(key) == storepkg.SizeExAdj && key[0] == storepkg.KeyExAdj:
+		return storepkg.ParseIDFromKey(key, 10) == relID
 	default:
 		return false
 	}

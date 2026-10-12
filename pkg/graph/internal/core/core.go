@@ -77,6 +77,10 @@ type Core struct {
 	depthHistory          storepkg.DepthHistoryIterationCapability
 	deletedIter           storepkg.DeletedIterationCapability
 	deletedDepthIter      storepkg.DepthDeletedIterationCapability
+	// exAdj is the store's ex-adjacency (backlog 50) once it covers every
+	// relationship (backfillExAdjacencyBestEffort); nil = the adjacency doors
+	// fold every relationship with history instead (forEachRelExAdjacentID).
+	exAdj storepkg.ExAdjacencyCapability
 	// transaction-time membership sidecars: scope a pinned label/type scan's
 	// candidate set to the label/type's ever-members (O(matches)) instead of the
 	// whole node/rel-history fold (O(everything ever)). nil = store declines
@@ -96,7 +100,8 @@ type Core struct {
 	nodePropTxMembers storepkg.NodePropertyTxMembershipCapability
 	// chainLoadTestHook, when set (tests only), is called once per candidate a
 	// generic temporal door hands to the per-entity resolver
-	// (findNodeVersionForOpts / findRelVersionForOpts): one call = one version
+	// (findNodeVersionForOpts / findRelVersionForOpts), and once per entity a
+	// valid-end bounded scan reads (streamValidFrom): one call = one version
 	// chain loaded. It lets a test assert the STRUCTURAL cost of a pinned lookup
 	// (chain loads), which wall time cannot pin. nil in production.
 	chainLoadTestHook func()
@@ -128,6 +133,11 @@ type Core struct {
 	// scans. nil = store declines or a wrapper only inherits it, so the gather
 	// reads the rows (memberIDsCapability).
 	memberIDs storepkg.MemberIDsCapability
+	// valid-end indexes (backlog 51, effective_validfrom.go): the candidates
+	// of the valid-end bounded scans. nil = store declines (tiered, sharded,
+	// wrappers): the unbounded door's candidates, same answers.
+	relValidEnds  storepkg.RelValidEndCapability
+	nodeValidEnds storepkg.NodeValidEndCapability
 	// temporalCandidates — valid-time candidate prune: narrow a temporal
 	// ByLabel/ByType query's candidate set by the per-label valid-time envelope
 	// index before resolving each chain. nil = store declines (no temporal-index
@@ -1995,6 +2005,7 @@ func New(config Config) (*Core, error) {
 	c.temporalMetaHistory = temporalMetaHistoryCapability(store)
 	c.currentStamps = currentStampsCapability(store)
 	c.memberIDs = memberIDsCapability(store)
+	c.relValidEnds, c.nodeValidEnds = validEndCapabilities(store)
 	// valid-time candidate prune is sound for ANY store that offers it (an
 	// unknown id is never pruned), so unlike the membership sidecar it needs no
 	// exact-native-store guard — a plain probe admits memory/badger now and
@@ -2087,6 +2098,7 @@ func New(config Config) (*Core, error) {
 	}
 
 	c.runBitemporalMigrationBestEffort()
+	c.backfillExAdjacencyBestEffort(store)
 
 	// Rehydrate the durable unique-constraint registry (fail closed on a corrupt
 	// MetaKV blob — a constraint silently dropped at open would let a duplicate

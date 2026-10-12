@@ -33,6 +33,7 @@ func (ms *Store) CompactNodeHistory(nid types.NodeID, keepVersions int, metaWrit
 	}
 
 	truncateNodeHistoryLocked(ms.nodeHistory, nid, keepVersions)
+	ms.nodeHistoryRemovedLocked(nid)
 	ms.applyMetaWritesLocked(metaWrites)
 	return nil
 }
@@ -56,6 +57,7 @@ func (ms *Store) CompactRelHistory(rid types.RelID, keepVersions int, metaWrites
 	}
 
 	truncateRelHistoryLocked(ms.relHistory, rid, keepVersions)
+	ms.relHistoryRemovedLocked(rid)
 	ms.applyMetaWritesLocked(metaWrites)
 	return nil
 }

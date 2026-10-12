@@ -1,0 +1,17 @@
+# Break-the-code mutants (each applied alone, targeted tests run, source restored)
+M1 fold: no delete cap: KILLED by ./pkg/graph/internal/core/ -run TestEffectiveByTypeValidFromCostFollowsResult|TestEffectiveValidFrom_: --- FAIL: TestEffectiveByTypeValidFromCostFollowsResult (2.10s)
+M2 fold: delete cap without the stamp order check: KILLED by ./pkg/graph/internal/index/ -run ValidEnd: --- FAIL: TestValidEndIndex_Fold (0.00s)
+M3 note: history overwrite at/below the tombstone version folded: KILLED by ./pkg/graph/store/badger/ -run TestValidEnd: --- FAIL: TestValidEndBuild_OverlayAndConcurrentWrites (0.09s)
+M4 badger: history DELETE treated as a current delete: KILLED by ./pkg/graph/store/badger/ -run TestValidEnd: --- FAIL: TestValidEndBuild_OverlayAndConcurrentWrites (0.07s)
+M5 badger build: overlay not marked unknown: KILLED by ./pkg/graph/store/badger/ -run TestValidEnd: --- FAIL: TestValidEndBuild_OverlayAndConcurrentWrites (0.10s)
+M6 candidates: entities written after the pin not listed: KILLED by ./pkg/graph/internal/core/ -run TestEffectiveByTypeValidFromCostFollowsResult|TestEffectiveValidFrom_: --- FAIL: TestEffectiveValidFrom_SemanticsTable (0.32s)
+M7 refine: generation ignored: KILLED by ./pkg/graph/internal/index/ -run ValidEnd: --- FAIL: TestValidEndIndex_Candidates (0.00s)
+M8 core: refine at a pin below the stamp: KILLED by ./pkg/graph/internal/core/ -run TestEffectiveByTypeValidFromCostFollowsResult|TestEffectiveValidFrom_: --- FAIL: TestEffectiveValidFrom_ConcurrentWrites (0.10s)
+M9 core: open timeline refined to its last finite end: KILLED by ./pkg/graph/internal/core/ -run TestEffectiveByTypeValidFromCostFollowsResult|TestEffectiveValidFrom_: --- FAIL: TestEffectiveByTypeValidFromCostFollowsResult (0.81s)
+M10 core: segment ending exactly at validFrom excluded: KILLED by ./pkg/graph/internal/core/ -run TestEffectiveByTypeValidFromCostFollowsResult|TestEffectiveValidFrom_: --- FAIL: TestEffectiveValidFrom_SemanticsTable (0.28s)
+M15 memory: label added with history, current row not noted: KILLED by ./pkg/graph/internal/core/ -run TestEffectiveByTypeValidFromCostFollowsResult|TestEffectiveValidFrom_: --- FAIL: TestEffectiveValidFrom_SemanticsTable (0.36s)
+M11 memory: current replace with history not noted (rels): SURVIVED
+M12 memory: history removal not noted: KILLED by ./pkg/graph/store/memory/ -run TestValidEnd: --- FAIL: TestValidEndMaintenance_MemoryRelHistoryRemoved (0.00s)
+M13 memory: node history trim not noted: KILLED by ./pkg/graph/store/memory/ -run TestValidEnd: --- FAIL: TestValidEndMaintenance_Memory (0.00s)
+M14 index: unknown entities not listed: KILLED by ./pkg/graph/internal/index/ -run ValidEnd: --- FAIL: TestValidEndIndex_UnknownRules (0.00s)
+Note M11: equivalent for relationships — ReplaceRelWithHistory writes the replaced row to history in the same door (folded with the same stamps; the type never changes), so the current-row note adds nothing the history note did not; the node twin (M15, a label added) is killed.

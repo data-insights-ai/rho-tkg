@@ -478,6 +478,138 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   imported-package and two required-module advisories are unreachable. Final
   consolidated root+v5 CI remains pending; no other v4 API or behavior change.
 
+## [4.51.2] - 2026-10-12
+
+### Added
+
+- **`store.ExAdjacencyCapability`** (`ForEachExAdjacentRelID(node, incoming, fn)` / `NoteExAdjacentRel(id, start,
+  end)`, backlog 50): per node and direction, every relationship that named the node in a row its live adjacency no
+  longer ties to it — a deleted relationship, or an earlier life of one deleted and re-imported with other endpoints.
+  The store keeps it in the same write as every relationship delete (plain, cascade, batch, replica-applied, purge
+  excluded) and every history row whose endpoints are not the live row's (`PutRelVersion`: replica history-version
+  apply, `IO.Import`, `ImportMerge`, cascades, rollback). Memory: two maps beside the adjacency sets; badger: one
+  18-byte key `0x0D|node|dir|rel` in the same pending batch as the delete or the row (on disk, no RAM copy, read by a
+  prefix scan with the pending overlay); sharded: on the shard owning the relationship, read by fan-out; tiered: on
+  the shard holding each endpoint's adjacency, read from the reference shard, the archive and the node's event
+  shard. A node's retention purge and an exact erasure remove its entries and the removed relationships'.
+  Cost (derived from the struct layouts, not measured): memory, two `adjSet` legs per deleted relationship (about
+  60-100 B where a node has several deleted relationships: 8-16 B per leg in a small set, about 34 B in a large one,
+  plus about 60 B per node and direction for the `adjSet` and its map entry, shared by that node's deleted
+  relationships), kept until a purge or an erasure; tiered, one `GetRelationship` per `PutRelVersion` (the history
+  row's endpoints are compared with the live row's, `noteHistoryRowLegs`); badger, one 18-byte key per leg on disk and
+  no RAM.
+
+- **Effective scans bounded by valid end** (backlog 51, requested by sigma-tkgd for its step 6 restore):
+  `Temporal().ForEachRelEffectiveByTypeFrom(type, pin, validFrom, fn)` and
+  `ForEachNodeEffectiveByLabelsFrom(labels, pin, validFrom, fn)` (`temporal.Ops` gains both) stream what `ForEachRelEffectiveByType` /
+  `ForEachNodeEffectiveByLabels` stream, restricted to the entities with a (type- or label-limited) segment ending at
+  or after `validFrom` (`ValidTo >= validFrom`: the half-open segment ending exactly at `validFrom` counts) or open;
+  an untimed entity never deleted always streams, a deleted one ends at its delete instant, a retracted life never
+  streams. On memory and badger the candidates come from a RAM valid-end index per queried type / label
+  (new optional store capabilities `store.RelValidEndCapability` / `store.NodeValidEndCapability` with `store.ValidEndCandidate`, `store.ValidEndOpen` / `ValidEndNone` and the diagnostic `store.ValidEndStats`, `index.ValidEndIndex`): per entity of that type or label
+  an upper bound on its valid end folded from its rows (each row's `ValidTo`; a delete recorded after all the
+  entity's earlier stamps ends every earlier row) and its newest stamp, so the entities read follow the answer: 5
+  read with 1,000 or 10,000 retired entities on memory and badger (sigma's acceptance,
+  `TestEffectiveByTypeValidFromCostFollowsResult`; before: 1,005 / 10,005), and 5 on the first call after a badger
+  reopen with 100,000 retired by `tkg_valid_to` at create or by delete
+  (`TestEffectiveValidFrom_BadgerReopenFirstCall`).
+  - Scope and write cost: the first call for a type or label tracks it (its ever-members from the K1 membership
+    sidecar, each read once: temporal fields only); only tracked types and labels are held and maintained. A write
+    of a kind with no tracked token costs one atomic load; a write of an untracked type or label of a tracked kind
+    one map lookup (badger decodes no row for it); a write of a tracked one folds its row (badger: the temporal block
+    only). Paired A/B per add-node + add-relationship + update (host under load, medians): badger 29.0 → 27.5 µs
+    after a scan of another type (no scan: 27.6 µs), memory 9.7 → 8.9 µs (no scan: 8.1 µs)
+    (`tasks/evidence/effective-validfrom/09-bench-writes-ab.txt`).
+  - First call after an open: builds the K1 sidecar if no pinned scan did (one pass over the kind's rows) and reads
+    the type's members' temporal fields (about 2-4 µs per row); at 100,000 retired relationships on badger
+    1.0-1.2 s against 2.3-2.9 s for the first unbounded call on the same reopened directory (loaded host; CPU
+    0.8 s vs 2.0-2.5 s), then microseconds. Not persisted: opening a badger store already walks every current row to
+    rebuild its RAM indexes, linear in the history, so persisting this index would not make a restart flat.
+  - An entity ended only by a valid-time close (`CloseVersion`) keeps its open predecessor in the fold: it is read
+    once, then its exact end is kept until its next write or a reopen.
+  - Tiered and sharded give the same answers through the unbounded candidates (not accelerated).
+  - The bound is folded from rows only, never from the chain resolver, which stays the authority: the scan reads each
+    candidate's timeline and decides. A removal or a write to a refined entity makes it re-read.
+  Evidence: `tasks/evidence/effective-validfrom/`.
+
+- **Generated-ID relationship batch door** (backlog 49): `PutRelationshipsBatchGeneratedID(rels, proof)` on the
+  new optional `generatedcreate.RelationshipsBatchCapability` (`pkg/graph/internal/generatedcreate`) is
+  `PutRelationshipsBatch` for relationships that all carry graph-generated IDs, so a store may skip the work a
+  caller-supplied ID needs (tiered: the walk for earlier lives on other shards). `GraphTx.AddRelationships` writes
+  through it.
+- **Badger meta helpers** (backlog 49): `Store.MetaSetDurable(key, value)` is `MetaSet` made durable before it
+  returns (the write-ahead log is fsynced unless `SyncWrites` already did or the store is `InMemory`);
+  `Store.ForEachMetaName(prefix, fn)` calls `fn` with the name of every meta entry starting with `prefix`, in key
+  order (an error from `fn` stops the walk).
+
+### Changed
+
+- **Adjacency doors gather per seed** (backlog 50): `Outgoing/IncomingForNodesAtPin`, `*ForNodesAtTx`,
+  `OutgoingRelsAt` / `IncomingRelsAt`, `NeighborsAt`, `ForEachAdjacentRelAt` / `ForEachAdjacentEndpointAt` under a
+  temporal filter and `ForEachRelEffectiveAtNodes` read a seed's live adjacency ∪ its ex-adjacency — O(the seed's
+  ever-degree) — instead of folding every deleted relationship (the pinned doors) or every relationship with history
+  (`ForEachRelEffectiveAtNodes`) on every call. One seed with 50 relationships on 100 K relationships that all have
+  history, a quarter deleted (`BenchmarkEffectiveAtNodesOneSeed`, renamed from `BenchmarkEffectiveScansOneSeed`, now
+  with deletes): `ForEachRelEffectiveAtNodes` badger 0.94-1.06 s → 0.79-0.84 ms, memory 113-187 ms → 80-83 µs per
+  call, against 0.77-0.81 ms / 79-80 µs for `RelsEffectiveByIDs` over the same relationships; rows read stay within
+  the seed's ever-degree (`TestEffectiveAtNodesVisitsSeedAdjacencyOnly`: 112 → 12 relationship rows read on badger
+  for 5 seed relationships among 400 elsewhere, 100 of them deleted). A store without the capability folds every
+  relationship with history (correctness identical).
+  - **Badger store marker raised to 3; releases up to v4.51.1 refuse the store** (`ErrWireFormatVersionUnsupported`
+    at open). They would delete relationships without writing the ex-adjacency, and the adjacency doors would then
+    miss those relationships. v4.51.1 checks the marker right after the open, before any write, and closes the DB.
+    Row encodings are unchanged; a store stamped 2 opens and is re-stamped by a writable open
+    (`storeutil.StoreFormatVersion`); a read-only open leaves the marker. Documented exception, see
+    `docs/stability.md`.
+  - **First writable open after the upgrade scans relationship history once** (meta marker `rel_exadj_built`): the
+    history IDs are streamed and every row naming other endpoints than its relationship's live row (every row of a
+    deleted one) is noted, then flushed durably before the marker. A read-only open of a store without the marker does
+    not scan (the marker write is tried first) and folds every relationship with history; so does a store without
+    MetaKV.
+
+### Fixed
+
+- **Tiered: a re-import onto another shard no longer hides the earlier lives** (backlog 49, HIGH). A relationship
+  deleted and re-imported (`Rels().Import` or any door that writes a caller-supplied ID) with a start node on another shard, or a node re-imported with a primary label of the other class
+  (reference ↔ event), had its new row on another shard than its earlier lives' history, and every history read of
+  a live row went to that row's shard only: `History` returned the new life alone, `RelAsOf` / `NodeAsOf` at a pin
+  inside an earlier life found nothing, and `RelEffectiveTimeline`, `ForEachRelEffective`,
+  `ForEachRelEffectiveAtNodes`, `RelsEffectiveByIDs` (and the node twins) dropped the earlier lives. Now a caller-ID
+  create records such an ID (reference-shard meta `tiered_history_lives/rel|node/<id>`, fsynced before the row; an
+  in-memory set loaded at open; a malformed entry fails the open) and every history door reads a recorded ID from
+  every history shard, as for a deleted ID. Routing by the ID's lives rather than moving the history with the row:
+  a move would put a history truncate in the change log that a replica replays as the loss of the whole chain.
+  Cost: one set entry per re-imported-across-shards ID; every other history read pays one atomic load. A
+  caller-ID relationship create asks, inside its duplicate probe's walk over every shard, each shard outside the new
+  row's read set whether it holds history of the ID (a RAM presence lookup, whose first ask builds that shard's
+  presence set, or a key probe on a cold shard; the first caller-ID relationship create after open therefore builds
+  `histRelPresence`, a `map[snowflake.ID]uint32`, on every warm shard outside the owner's read set, about 20-40 B
+  per relationship with history, derived from the struct layouts and not measured); a caller-ID node create asks the other side (reference + archive,
+  or the ID's event shard). Generated-ID creates skip it: `GraphTx.AddRelationships` now writes through the new
+  generated-ID batch door (`PutRelationshipsBatchGeneratedID`, see Added), so its batch builds no presence set. A record is
+  dropped only by `Clear`, not when a purge or a truncation to 0 removes the earlier rows, so the set is bounded by
+  the number of cross-shard re-imports ever made. **Upgrade, one-time open cost:** a store written by v4.51.1 or
+  earlier may already hold such re-imports; its first open finds them (`tiered_history_lives_backfilled` marks it
+  done): every shard, cold ones included, is opened up to twice — once to read its history IDs, once to look the
+  IDs without a live row on their own shard up in its RAM live-ID index — holding 8 B per such ID during the walk.
+  Memory, badger and sharded were not affected. Test `TestReimportAcrossShardsKeepsEarlierLife` (memory / badger / sharded / tiered /
+  tiered reopened; moves reference ↔ event and back, two re-imports, node re-imports, a pin inside each life, the
+  same-shard re-import, the store doors `Get*Version`, `*HistoryVersionsFrom`, `Truncate*History`),
+  `TestHistoryLives_*` (cold earlier shard after rotation, truncation across lives, `Clear`, restart, malformed
+  entries, the open-time backfill of a pre-fix store), `TestAddRelationshipsGeneratedBatchSkipsEarlierLivesWalk`;
+  evidence `tasks/evidence/reimport-shards/`.
+- **Adjacency doors missed the earlier life of a relationship re-imported with other endpoints** (backlog 50).
+  `Outgoing/IncomingForNodesAtPin`, `*ForNodesAtTx`, `OutgoingRelsAt` / `IncomingRelsAt`, `NeighborsAt`,
+  `ForEachAdjacentRelAt` / `ForEachAdjacentEndpointAt` under a temporal filter folded only DELETED relationship IDs
+  into a node's live adjacency, on the rule "endpoints are immutable"; an ID deleted and re-imported as C->B is live
+  again, so at a pin inside its A->B life `OutgoingForNodesAtPin([A])` answered nothing while `RelAsOf(id, pin)` was
+  the A->B row. The ex-adjacency of A holds it since the delete; a history row written without that delete (an
+  `IO.Import` or a replica of an imported primary, whose history rows arrive after the current row) adds it itself.
+  Proven on memory, badger, sharded and tiered (the re-imported lives move to the reference shard), on a replica, after
+  export → import, on a replica of an imported primary, after a badger reopen, and on a badger store written before
+  the index (read-only: no scan, all-history fold; writable: backfilled) — `TestPinnedAdjacencyFindsReimportedEarlierLife`,
+  every door against a per-ID oracle; `TestExAdjacency*`; evidence `tasks/evidence/effective-scans/50-*`.
+
 ## [4.51.1] - 2026-10-12
 
 Patch release, sigma-tkgd requests and read costs: broader effective scans (backlog 35; `ForEachRelEffectiveAtNodes` costs one fold over every relationship with history per call, see backlog 50), `ColumnData.Other` (48), current-row stamps and ID-only effective gathers on badger (42, 33). Additive, except that column scans now type every integer width the same way on every path (Changed).

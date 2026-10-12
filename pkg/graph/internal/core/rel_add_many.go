@@ -153,7 +153,7 @@ func (c *Core) addRelationshipsInternal(ctx context.Context, typeName string, re
 		built = nil
 		return nil, finish(err)
 	}
-	if err := c.store.PutRelationshipsBatch(built); err != nil {
+	if err := c.putGeneratedRelationshipsBatch(built); err != nil {
 		return nil, finish(err)
 	}
 	if err := finish(nil); err != nil {

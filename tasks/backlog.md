@@ -97,6 +97,11 @@ batches, together with the other packages. Push-only lint remains skipped and
 requires its separate local evidence. This does not qualify the pending native
 catch-up fix or close remaining phase gates. The v4.51.0 receipts and source
 delta remain historical evidence.
+Main `cddc0997` (v4.51.2) is integrated as a later source baseline: tiered
+history across re-imported lives, ex-adjacency and valid-end bounded effective
+scans. Its store marker is 3; row encoding is unchanged. The v4.51.1 preflight
+qualification above remains historical: update the consumer mapping and qualify
+the migration reader against this revision before claiming v4.51.2 acceptance.
 [Substrate evaluation](../docs/v5/reference/substrate-evaluation.json) is
 research/execution-plan evidence only; no engine selection or V2/V3 acceptance.
 The original five recovered `docs/v5/reference/` files are byte-verified and
@@ -1108,41 +1113,38 @@ Measured 2026-10-12 (`tasks/evidence/badger-read-cost/41-01-sidecar-ram-per-id.t
 
 A crash after a burst whose monotonic floor outran the wall reopens with `NowTx` below committed stamps (lesson 71's reopen case on the crash path): `persistInstantFloor` is called only from `Close` (`core/core.go`, `core/instant_floor.go:129`), and `seedInstantFloor` reseeds only from that watermark. Red test first: a crash-shaped child (exit without `Close`) after writes stamped ahead of the wall, reopen, assert `NowTx()` and a fresh write's `TxFrom` exceed every stored `TxFrom`. Fix candidates: persist the floor with the durable commit / flush, or reseed from the newest stored stamp at open.
 
-### 49. A re-import that moves a relationship to another tiered shard makes the earlier life unreachable
+### 52. Durable commit under SyncWrites costs one fsync per mutation (~1 s per 530-op group)
 
-*HIGH (tiered)* — open; reproduced 2026-10-12 while building item 35.
+*HIGH (consumer: ai-soc, 2026-10-12; "We have to hurry", BA+BO project data)* — open; measured, not started.
 
-On tiered, `Rels.Delete` then `Rels.Import(id, …)` with a start node in another shard (a "Ref" node, the reference
-shard) leaves `Rels.History(id)` empty: the earlier life's rows stay on the old shard, but the history read goes only
-to the live row's shard (`tieredstore_read_history_rel.go:98-103`), so no door reaches them (`History`,
-`RelEffectiveTimeline`, `RelAsOf` at a pin inside the earlier life; the item-35 doors `ForEachRelEffective`,
-`ForEachRelEffectiveAtNodes`, `RelsEffectiveByIDs` omit the earlier life like the per-entity door). Same endpoints,
-or memory / badger / sharded: one history row, as expected. Probe and output: `tasks/evidence/effective-scans/finding-tiered-reimport-*`. Red test
-first: the probe as a cross-backend test (both directions of the move, node re-import too), then the history lookup
-of a re-imported ID must find every life (route by the ID's lives, or move the history with the row).
+ai-soc runs `DurableCommit` + `SyncWrites` (strict power-loss durability, because DurableCommit alone leaves the
+memtable-switch gap documented at `store/badger/badgerstore_durable.go:28-34`, backlog 15). SyncWrites mode flushes
+every mutation synchronously (`badgerstore_flush.go:82,105`): ~822 msync per 530-op group, 0.99 s mean vs 14 ms for
+DurableCommit alone (`tasks/evidence/aisoc-commit-cost/01-measure.txt`; ai-soc measures 2.86 s on its store, BA
+window 46 min on badger vs 54 s on memory). Need: ≤ 0.1 s per durable 530-op group, hard floor 0.5 s. Sound fix
+candidate: inside a DurableCommit group, buffer the group's mutations and commit them as one WriteBatch that Badger
+syncs (SyncWrites keeps the switch covered), so the cost is one or a few syncs per group, not one per mutation; or
+close the memtable-switch gap in DurableFlush so ai-soc can drop SyncWrites. Red test first: a syscall- or
+sync-counting test (syncs per durable group bounded by a constant, not by op count) + the crash/power-loss
+contract tests of v4.44.0 still green; bench `tasks/evidence/aisoc-commit-cost/bench_test.go.txt`.
 
-### 50. Pinned adjacency doors miss a re-imported relationship's earlier life
 
-*MEDIUM* — open; reproduced 2026-10-12 while building item 35.
+### 53. Relationship planner-stat memos hold one RAM entry per relationship, never evicted
 
-`OutgoingForNodesAtPin` / `IncomingForNodesAtPin` (and the other users of `forEachRelAdjacencyCandidateID`:
-`*ForNodesAtTx`, `OutgoingRelsAt` / `IncomingRelsAt`, `ForEachAdjacentRelAt`) fold only DELETED relationship IDs into
-the candidates, on the rule "endpoints are immutable". A relationship ID deleted and re-imported with other endpoints
-(allowed, `relationship_update.go:137`) is live again, so its earlier life — whose rows name the old endpoint — is
-never a candidate: A->B deleted, re-imported as C->B, `OutgoingForNodesAtPin([A], "", pin inside the first life)`
-answers nothing while `RelAsOf(id, pin)` is the A->B row. `ForEachRelEffectiveAtNodes` (item 35) folds every
-relationship with history and answers it. Probe and output: `tasks/evidence/effective-scans/finding-pinned-adjacency-*`.
-Red test first: the probe on memory/badger/sharded/tiered for each door; fix at the shared seam and correct the
-AGENTS.md "deleted-only iteration" rule.
+*HIGH (consumer: ai-soc, 2026-10-12, BA 18 Aug run on Flux)* — open; not started.
 
-Same seam, cost (review of item 35, 2026-10-12): `ForEachRelEffectiveAtNodes` stays sound today by folding EVERY
-relationship with history on every call, O(H) whatever the seed count (one seed, 50 relationships, 100 K
-relationships all with history: 0.48 s memory, 3.4 s badger vs 0.13 / 0.6 ms by IDs,
-`tasks/evidence/effective-scans/bench-one-seed-full-history.txt`). The sound cheap gather for both: current
-adjacency ∪ deleted relationship IDs (`forEachRelAdjacencyCandidateIDByDepth`) ∪ a persisted set of IDs re-imported
-over a deleted life (written at `Rels.Import`), shared by `ForEachRelEffectiveAtNodes` and the pinned adjacency
-doors; an ever-adjacency sidecar if the deleted volume is large. Red first: the one-seed benchmark as a gate plus
-the probe above.
+ai-soc (DurableCommit, rho v4.51.1, badger) stopped after 11.5 min at 7.67 M of 39.93 M rows with RSS 71 GiB,
+growing 8.9 GiB per M rows. Heap at minute 10 (29.8 GB in use): ≈57 % in rho's per-relationship stat memos —
+`addRelPropertyStatsCounts` 10.9 GB (value keys 4.2 GB), `addRelPropertyTypeClassCounts` 4.9 GB, sync.Map nodes
+1.26 GB. Memo sites: `relStatsContrib.Store` (`store/badger/badgerstore_rel_property_stats.go:179`) and
+`relTypeClassContrib.Store` (`badgerstore_rel_type_class_counts.go:50`), kept so a delete can decrement exactly.
+Workaround today: `Config.DisablePlannerStats` (both memos gated, no correctness path depends on them).
+Sound fix candidate: derive the decrement from the deleted row itself (the delete seam has the old row / RelDeleteInfo)
+instead of a per-relationship memo, so RAM follows the number of (type, key, value) stats, not relationships; check
+the node-side stats for the same pattern. Red test first: heap or memo-count growth per relationship written is
+O(1)-bounded (count entries after N writes, N = 10 K vs 100 K), plus exact counters after delete / replace /
+cascade / replica apply equal a full recount (oracle). Profiles are customer-derived: read on Flux only
+(`/srv/fast/rene/project-2026-09-010-BA/aisoc-s3-20261012/smoke/prof`).
 
 ---
 
@@ -1220,6 +1222,9 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Review 2026-09-24: TxAt-only doors "nondeterministic" (implicit valid-time now = wall clock; now `readNow()`) | `[4.38.1]` |
 | Item 6 (FEATURE) — `DeleteWithTx` / `UpdateWithTx` on every write door, `ErrTxOrder` | `[4.44.0]` Added; handover `tasks/handover-tx-backfill-delete-update-20261009.md` |
 | Item 34 (FEATURE) — `SetNodeVersionIntervalWithTx` / `SetRelVersionIntervalWithTx` on every door | `[4.50.1]` Added; evidence `tasks/evidence/interval-withtx/` |
+| Item 49 (HIGH, tiered) — re-import onto another shard made earlier lives unreachable | `[4.51.2]` Fixed; evidence `tasks/evidence/reimport-shards/` |
+| Item 50 (MEDIUM, sigma) — pinned adjacency doors missed a re-imported rel's earlier life; AtNodes O(H) | `[4.51.2]` Added/Changed/Fixed (ex-adjacency index, store marker 3); evidence `tasks/evidence/effective-scans/50-*` |
+| Item 51 (HIGH, sigma step 6) — effective scans bounded by valid end | `[4.51.2]` Added; evidence `tasks/evidence/effective-validfrom/` |
 | Item 48 (FEATURE, sigma-tkgd) — `ColumnData.Other`: column-scan cells held outside the column (node and rel batches); typed slots aligned with `Null` | `[4.51.1]` Added; evidence `tasks/evidence/column-other/` |
 | Item 35 (FEATURE, sigma-tkgd) — broader effective scans: `ForEachNodeEffective` / `ForEachRelEffective`, `ForEachRelEffectiveAtNodes`, `NodesEffectiveByIDs` / `RelsEffectiveByIDs`, `ForEachNodeEffectiveByLabels` | `[4.51.1]` Added; evidence `tasks/evidence/effective-scans/` |
 | Item 11 (FEATURE) — durable-on-return commit `Config.DurableCommit` | `[4.44.0]` Added (power-loss gap: item 15) |

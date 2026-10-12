@@ -841,6 +841,29 @@ type DeletedIterationCapability interface {
 	ForEachDeletedRelID(fn func(types.RelID) bool) error
 }
 
+// ExAdjacencyCapability is OPTIONAL (backlog 50). A node's ex-adjacency in a
+// direction holds every relationship ID that named the node as its start
+// (incoming=false) or end (incoming=true) in a row the live adjacency
+// (OutgoingRelationships / IncomingRelationships) does not tie to the node:
+// a deleted relationship, or an earlier life of one deleted and re-imported
+// with other endpoints. The store maintains it itself, in the same write as
+// every relationship delete (plain, cascade, batch, replica-applied) and every
+// history row (PutRelVersion) whose endpoints are not the live row's, so the
+// graph layer's adjacency doors gather a seed's candidates as its adjacency ∪
+// its ex-adjacency — O(the seed's ever-degree), not O(history).
+//
+// It is a sound superset: an entry may outlive the rows that justified it
+// (a compaction or a history trim keeps it; the doors resolve each candidate
+// on its own); a node's retention purge and exact erasure remove its entries
+// and the purged relationships'. NoteExAdjacentRel adds both legs of one row
+// (the graph layer's one-time backfill of a store written before the index
+// existed). Nil callbacks return ErrInvalidStoreMutation; callbacks run outside
+// backend locks; no ordering guarantee; an ID may repeat.
+type ExAdjacencyCapability interface {
+	ForEachExAdjacentRelID(nodeID types.NodeID, incoming bool, fn func(types.RelID) bool) error
+	NoteExAdjacentRel(id types.RelID, startID, endID types.NodeID) error
+}
+
 // DepthDeletedIterationCapability is the depth-aware counterpart of
 // DeletedIterationCapability. Tiered backends implement it so history-aware
 // queries can combine deleted-only iteration with shard-depth filtering.

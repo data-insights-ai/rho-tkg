@@ -79,6 +79,11 @@ type Store struct {
 	outIdx map[types.NodeID]*adjSet // startNodeID → set(relID) (memorystore_adjset.go)
 	inIdx  map[types.NodeID]*adjSet // endNodeID → set(relID)
 
+	// Ex-adjacency (backlog 50, memorystore_exadj.go): per node, the
+	// relationships that named it in a row the live adjacency no longer holds.
+	exOutIdx map[types.NodeID]*adjSet
+	exInIdx  map[types.NodeID]*adjSet
+
 	// Version history — pre-mutation snapshots keyed by entity ID and version.
 	nodeHistory map[types.NodeID]map[uint32]*types.Node
 	relHistory  map[types.RelID]map[uint32]*types.Relationship
@@ -267,6 +272,11 @@ type Store struct {
 	// safe instead of assumed). All under ms.mu.
 	nodeBeliefWatermark map[types.NodeID]types.Instant
 	relBeliefWatermark  map[types.RelID]types.Instant
+
+	// Valid-end indexes (backlog 51, memorystore_valid_end.go): lazy, RAM,
+	// maintained under mu after their first build.
+	relValidEnds  indexpkg.ValidEndIndex
+	nodeValidEnds indexpkg.ValidEndIndex
 
 	// History stamps (store.HistoryStampsCapability, backlog 30,
 	// memorystore_history_stamps.go): per ID, the cached fold of its history
@@ -459,6 +469,7 @@ func (ms *Store) Clear() error {
 	ms.typeOrder.Reset()
 	ms.outIdx = make(map[types.NodeID]*adjSet)
 	ms.inIdx = make(map[types.NodeID]*adjSet)
+	ms.exOutIdx, ms.exInIdx = nil, nil
 	ms.nodeHistory = make(map[types.NodeID]map[uint32]*types.Node)
 	ms.relHistory = make(map[types.RelID]map[uint32]*types.Relationship)
 	ms.histStampsMu.Lock()
@@ -488,6 +499,8 @@ func (ms *Store) Clear() error {
 	segErr := ms.clearSegmentsLocked() // ADR-0011: segments go (files too, S3), declarations stay
 	ms.bumpNodeEpoch()                 // any cached column from before Clear is now invalid
 	ms.bumpRelEpoch()                  // and the adjacency view (X5 expand path)
+	ms.relValidEnds.Reset()            // backlog 51: rebuilt on the next bounded scan
+	ms.nodeValidEnds.Reset()
 	// Drop the change-log records (the store is now empty) and re-anchor with a
 	// ChangeClear marker at a fresh, still-monotonic LSN — mirrors badger.Clear.
 	ms.changeLog = nil
