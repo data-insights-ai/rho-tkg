@@ -119,6 +119,11 @@ type Core struct {
 	// miss). nil = store declines or a wrapper only inherits it, so
 	// LatestStamps reads the current row (currentStampsCapability).
 	currentStamps storepkg.CurrentStampsCapability
+	// memberIDs — a label's / type's current members from the store's index
+	// without their rows (backlog 33): the candidate gather of the effective
+	// scans. nil = store declines or a wrapper only inherits it, so the gather
+	// reads the rows (memberIDsCapability).
+	memberIDs storepkg.MemberIDsCapability
 	// temporalCandidates — valid-time candidate prune: narrow a temporal
 	// ByLabel/ByType query's candidate set by the per-label valid-time envelope
 	// index before resolving each chain. nil = store declines (no temporal-index
@@ -1942,6 +1947,7 @@ func New(config Config) (*Core, error) {
 	c.relBeliefWatermark = relBeliefWatermarkCapability(store)
 	c.temporalMetaHistory = temporalMetaHistoryCapability(store)
 	c.currentStamps = currentStampsCapability(store)
+	c.memberIDs = memberIDsCapability(store)
 	// valid-time candidate prune is sound for ANY store that offers it (an
 	// unknown id is never pruned), so unlike the membership sidecar it needs no
 	// exact-native-store guard — a plain probe admits memory/badger now and

@@ -200,3 +200,22 @@ func (c *Core) relCurrentStamps(id types.RelID) (storepkg.RowStamps, bool, error
 	}
 	return s, true, nil
 }
+
+// memberIDsCapability admits store.MemberIDsCapability for the effective
+// scans' candidate gather on the same terms as currentStampsCapability: a
+// wrapper that only inherits it keeps its NodesByLabel / RelationshipsByType
+// override as the read.
+func memberIDsCapability(store storepkg.MandatoryStore) storepkg.MemberIDsCapability {
+	cap, ok := store.(storepkg.MemberIDsCapability)
+	if !ok {
+		return nil
+	}
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.MemberIDsCapability)(nil)).Elem(),
+		"NodeIDsByLabel", "RelIDsByType") {
+		return nil
+	}
+	return cap
+}
