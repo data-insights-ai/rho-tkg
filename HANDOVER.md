@@ -29,7 +29,7 @@ History (what shipped, why) is in `CHANGELOG.md` and git, not here.
 | 1, 2 | Build 52-55 now | the v4.51.3 batch above; open work with a clear next step is started, not offered (lesson 81) |
 | 3, 4 | Send Markus the patch-only rule and the 12 "not in plan" rows of `docs/v5-analysis.md` §5 | done: GitHub issue #11 |
 | 5 | Markus merges v5 into main, we do not | never push to `origin/v5`; read only |
-| 6 | Behaviour changes go through the deprecation ritual (`docs/stability.md`) from now on | no new named exceptions (the v4.46.0 and v4.48.0 ones stay documented); open point: the ritual asks for a `// Deprecated:` marker one minor before the change while only patch versions ship, so a behaviour change waits for René's go on a minor or v5 (default) |
+| 6 | Behaviour changes go through the deprecation ritual (`docs/stability.md`) from now on | no new named exceptions (the v4.46.0 and v4.48.0 ones stay documented); while only patch versions ship, "one minor release before" reads "one release before": the `// Deprecated:` marker plus a CHANGELOG Deprecated entry ship in patch N with sigma-tkgd and ai-soc notified, the change lands in N+1 or later; additive (opt-in) designs preferred (decided 2026-10-12, docs/stability.md) |
 | 7 | Origin watch re-armed | appendix A (script) |
 
 Standing rules from René (all in `tasks/lessons.md`): PATCH versions only, no minor until asked (79); clean root-cause fix and a

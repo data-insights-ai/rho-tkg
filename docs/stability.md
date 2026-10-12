@@ -19,6 +19,8 @@ Breaking changes are reserved for v5.0.0 or later.
 
 Any method or field whose behavior or meaning will change receives a `// Deprecated:` godoc marker **at least one minor release before** the change lands. For example, deprecation in v4.12.0 permits incompatible change in v4.13.0 or later; it does not permit it in the same release.
 
+While René's patch-only rule holds (no minor versions until he asks, 2026-10-10), "minor release" here reads "release": the marker and a CHANGELOG `Deprecated` entry ship in one patch, with sigma-tkgd and ai-soc notified, and the change lands in a later patch. Additive, opt-in designs that change nothing for existing callers need no ritual and are preferred.
+
 The deprecation message must state:
 - What is deprecated and why
 - What the replacement or new behavior is
