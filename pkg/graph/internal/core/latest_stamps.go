@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"reflect"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -41,19 +42,12 @@ func (n *NodeOps) LatestStamps(id types.NodeID) (txFrom, txTo types.Instant, del
 	// moved row to history before it replaces or removes the current row
 	// (badger publishMoveLocked; memory writes both under one lock), so a row
 	// is never in neither read.
-	var cur *types.Node
-	if lender, ok := c.store.(storepkg.EntityLendCapability); ok && c.storeRowsTrust {
-		cur, err = lender.LendNode(id)
-	} else {
-		cur, err = c.getCurrentNode(id)
-	}
-	live := err == nil
-	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
+	cur, live, err := c.nodeCurrentStamps(id)
+	if err != nil {
 		return 0, 0, false, err
 	}
 	if live {
-		f, t, d := cur.TxStamps()
-		txFrom, txTo = storepkg.FoldTxStamps(0, 0, f, t, d)
+		txFrom, txTo = storepkg.FoldTxStamps(0, 0, cur.TxFrom, cur.TxTo, cur.DeletedAt)
 	}
 	hf, ht, has, err := c.nodeHistoryStamps(id)
 	if err != nil {
@@ -99,19 +93,12 @@ func (r *RelOps) LatestStamps(id types.RelID) (txFrom, txTo types.Instant, delet
 	if c.closed.Load() {
 		return 0, 0, false, ErrGraphClosed
 	}
-	var cur *types.Relationship
-	if lender, ok := c.store.(storepkg.EntityLendCapability); ok && c.storeRowsTrust {
-		cur, err = lender.LendRelationship(id)
-	} else {
-		cur, err = c.getCurrentRelationship(id)
-	}
-	live := err == nil
-	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
+	cur, live, err := c.relCurrentStamps(id)
+	if err != nil {
 		return 0, 0, false, err
 	}
 	if live {
-		f, t, d := cur.TxStamps()
-		txFrom, txTo = storepkg.FoldTxStamps(0, 0, f, t, d)
+		txFrom, txTo = storepkg.FoldTxStamps(0, 0, cur.TxFrom, cur.TxTo, cur.DeletedAt)
 	}
 	hf, ht, has, err := c.relHistoryStamps(id)
 	if err != nil {
@@ -138,4 +125,78 @@ func (c *Core) relHistoryStamps(id types.RelID) (txFrom, txTo types.Instant, has
 		txFrom, txTo = storepkg.FoldTxStamps(txFrom, txTo, f, t, d)
 	}
 	return txFrom, txTo, len(history) > 0, nil
+}
+
+// currentStampsCapability admits store.CurrentStampsCapability for the
+// current-row half of LatestStamps: exact native stores and stores that
+// declare the methods themselves (sharded, a third-party backend). A wrapper
+// that only inherits them from an embedded native store is declined, so its
+// GetNode / GetRelationship override (fault injection, a policy check) stays
+// the read LatestStamps makes — the same visibility guard as every cached
+// capability handle.
+func currentStampsCapability(store storepkg.MandatoryStore) storepkg.CurrentStampsCapability {
+	cap, ok := store.(storepkg.CurrentStampsCapability)
+	if !ok {
+		return nil
+	}
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.CurrentStampsCapability)(nil)).Elem(),
+		"NodeCurrentStamps", "RelCurrentStamps") {
+		return nil
+	}
+	return cap
+}
+
+// nodeCurrentStamps is the current-row half of NodeOps.LatestStamps: the
+// current row's stamps and whether there is one (live false, err nil for an
+// ID without a current row). It reads store.CurrentStampsCapability where
+// the store offers it, else the current row (lent on a trusted store, the
+// validated row otherwise). Caller holds c.mu (read).
+func (c *Core) nodeCurrentStamps(id types.NodeID) (storepkg.RowStamps, bool, error) {
+	var s storepkg.RowStamps
+	var err error
+	if c.currentStamps != nil {
+		s, err = c.currentStamps.NodeCurrentStamps(id)
+	} else {
+		var cur *types.Node
+		if lender, ok := c.store.(storepkg.EntityLendCapability); ok && c.storeRowsTrust {
+			cur, err = lender.LendNode(id)
+		} else {
+			cur, err = c.getCurrentNode(id)
+		}
+		s = storepkg.NodeRowStamps(cur)
+	}
+	if errors.Is(err, storepkg.ErrNodeNotFound) {
+		return storepkg.RowStamps{}, false, nil
+	}
+	if err != nil {
+		return storepkg.RowStamps{}, false, err
+	}
+	return s, true, nil
+}
+
+// relCurrentStamps is nodeCurrentStamps for relationships.
+func (c *Core) relCurrentStamps(id types.RelID) (storepkg.RowStamps, bool, error) {
+	var s storepkg.RowStamps
+	var err error
+	if c.currentStamps != nil {
+		s, err = c.currentStamps.RelCurrentStamps(id)
+	} else {
+		var cur *types.Relationship
+		if lender, ok := c.store.(storepkg.EntityLendCapability); ok && c.storeRowsTrust {
+			cur, err = lender.LendRelationship(id)
+		} else {
+			cur, err = c.getCurrentRelationship(id)
+		}
+		s = storepkg.RelRowStamps(cur)
+	}
+	if errors.Is(err, storepkg.ErrRelNotFound) {
+		return storepkg.RowStamps{}, false, nil
+	}
+	if err != nil {
+		return storepkg.RowStamps{}, false, err
+	}
+	return s, true, nil
 }

@@ -443,6 +443,7 @@ func runLatestStampsDifferential(t *testing.T, b hasHistoryBackend, seed int64, 
 	}
 	ns, rs := all()
 	assertLatestStampsAgree(t, "seeded", g, st, ns, rs, cov)
+	assertCurrentStampsAgree(t, "seeded", g, st, ns, rs)
 
 	for step := 0; step < steps; step++ {
 		op := r.Intn(124)
@@ -704,6 +705,7 @@ func runLatestStampsDifferential(t *testing.T, b hasHistoryBackend, seed int64, 
 		}
 		ns, rs := all()
 		assertLatestStampsAgree(t, fmt.Sprintf("step %d %s", step, name), g, st, ns, rs, cov)
+		assertCurrentStampsAgree(t, fmt.Sprintf("step %d %s", step, name), g, st, ns, rs)
 	}
 	t.Logf("%s seed %d: successful ops %v, coverage %+v", b.name, seed, ok, *cov)
 	return ok

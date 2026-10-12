@@ -114,6 +114,11 @@ type Core struct {
 	// resolver stays the single selection authority: the SAME resolveNodeChain
 	// runs on skeletons and again after winner hydration.
 	temporalMetaHistory storepkg.TemporalMetaHistoryCapability
+	// currentStamps — the current-row half of LatestStamps (backlog 42): a
+	// row's stamps without the row (badger: the temporal block of a cache
+	// miss). nil = store declines or a wrapper only inherits it, so
+	// LatestStamps reads the current row (currentStampsCapability).
+	currentStamps storepkg.CurrentStampsCapability
 	// temporalCandidates — valid-time candidate prune: narrow a temporal
 	// ByLabel/ByType query's candidate set by the per-label valid-time envelope
 	// index before resolving each chain. nil = store declines (no temporal-index
@@ -1936,6 +1941,7 @@ func New(config Config) (*Core, error) {
 	c.nodeBeliefWatermark = nodeBeliefWatermarkCapability(store)
 	c.relBeliefWatermark = relBeliefWatermarkCapability(store)
 	c.temporalMetaHistory = temporalMetaHistoryCapability(store)
+	c.currentStamps = currentStampsCapability(store)
 	// valid-time candidate prune is sound for ANY store that offers it (an
 	// unknown id is never pruned), so unlike the membership sidecar it needs no
 	// exact-native-store guard — a plain probe admits memory/badger now and

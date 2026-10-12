@@ -169,9 +169,13 @@ func (ts *Store) shardForRelIDCheckedWithArchive(id types.RelID) (store *BadgerS
 
 // relationshipRowExists is conservative for placement/collision checks: a
 // corrupt but indexed row still occupies the relationship ID until the caller
-// reads the row and surfaces the decode error.
+// reads the row and surfaces the decode error. It reads the entity row through
+// the shard's current-row stamps (the row's key and temporal block, backlog
+// 42) instead of decoding and copying it: not found exactly where
+// GetRelationship misses the row, so the answer is the one GetRelationship
+// gave (a row whose body fails to decode exists either way).
 func relationshipRowExists(store *BadgerStore, id types.RelID) bool {
-	_, found, err := relationshipRow(store, id)
+	_, found, err := relCurrentStampsRow(store, id)
 	return found || err != nil
 }
 
