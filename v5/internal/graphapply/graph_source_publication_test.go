@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 )
 
 // All capture authority comes from native committed state and actual completed
@@ -78,7 +79,11 @@ func p09PublicationFixture(t *testing.T, kind string) (*graphSourceServer, func(
 
 func TestGraphSourcePublicationCancelledAfterNativeCaptureReturnsNoCookie(t *testing.T) {
 	for _, kind := range []string{"configuration", "certified", "move"} {
-		for _, cancellation := range []string{"operation", "owner"} {
+		cancellations := []string{"operation", "owner"}
+		if kind == "configuration" {
+			cancellations = append(cancellations, "closed-owner")
+		}
+		for _, cancellation := range cancellations {
 			t.Run(kind+"/"+cancellation, func(t *testing.T) {
 				server, open := p09PublicationFixture(t, kind)
 				store := server.host.machine.store
@@ -97,8 +102,9 @@ func TestGraphSourcePublicationCancelledAfterNativeCaptureReturnsNoCookie(t *tes
 					case <-t.Context().Done():
 					}
 				}
-				ctx, cancel := context.WithCancel(t.Context())
-				defer cancel()
+				ctx, cancel := context.WithCancelCause(t.Context())
+				defer cancel(nil)
+				operationCause := errors.New("captured P09 operation cancelled")
 				type result struct {
 					zero bool
 					err  error
@@ -122,10 +128,20 @@ func TestGraphSourcePublicationCancelledAfterNativeCaptureReturnsNoCookie(t *tes
 				if err != nil || root.Generation == 0 || root.Index == 0 || len(root.Image) != 172 {
 					t.Fatal("latch did not retain actual native captured root", root, err)
 				}
-				if cancellation == "operation" {
-					cancel()
-				} else {
+				var closed chan error
+				switch cancellation {
+				case "operation":
+					cancel(operationCause)
+				case "owner":
 					server.cancel()
+				default:
+					closed = make(chan error, 1)
+					go func() { closed <- server.close() }()
+					select {
+					case <-server.ctx.Done():
+					case <-deadline.Done():
+						t.Fatal("native source close did not fence captured creation")
+					}
 				}
 				unblock()
 				var outcome result
@@ -136,6 +152,22 @@ func TestGraphSourcePublicationCancelledAfterNativeCaptureReturnsNoCookie(t *tes
 				}
 				if !outcome.zero || !errors.Is(outcome.err, context.Canceled) {
 					t.Fatalf("cancelled final publication returned metadata/cookie or lost cause: zero=%v err=%v", outcome.zero, outcome.err)
+				}
+				if cancellation == "operation" && !errors.Is(outcome.err, operationCause) {
+					t.Fatal("final publication lost original operation cancellation cause", outcome.err)
+				}
+				if closed != nil {
+					if !errors.Is(outcome.err, replica.ErrStopped) {
+						t.Fatal("final publication lost closed-owner refusal", outcome.err)
+					}
+					select {
+					case err := <-closed:
+						if err != nil {
+							t.Fatal("native close failed after capture cleanup", err)
+						}
+					case <-deadline.Done():
+						t.Fatal("native close waited indefinitely for failed captured creation")
+					}
 				}
 				if root, err := captured.view.RootBounded(t.Context(), 172); root.Image != nil || !errors.Is(err, raftlog.ErrClosed) {
 					t.Fatal("cancelled creation retained its native root owner", err)

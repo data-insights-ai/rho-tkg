@@ -8,8 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
+	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
 
 // This helper transfers only the original native MsgSnap and its source-owned
@@ -272,7 +274,16 @@ func TestGraphSourcePublicationPinsActualRetiredBankAndRetainedCDCStart(t *testi
 		}
 	}
 	oldEdge, _ := partitionProjectionFromView(t, h, captured.view, 3, graphGenesisBinding(t).Axis())
-	newEdge, _ := partitionProjection(t, h, h.driver.Applied(), 3, graphGenesisBinding(t).Axis())
+	current, closeCurrent := crossView(t, n, 2, [2]uint64{completeCut.certificates[0].sourceIndex, completeCut.certificates[1].sourceIndex})
+	defer closeCurrent()
+	point, err := temporal.RationalPosition(graphGenesisBinding(t).Axis(), temporal.RationalInt64(5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	newEdge, err := graphstate.Project(t.Context(), current, 3, point, graphstate.Effective, h.machine.limits.graph.Planner)
+	if err != nil {
+		t.Fatal("completed native cut must cover both relationship endpoints", err)
+	}
 	if oldEdge.Exists || !newEdge.Exists {
 		t.Fatal("mutation-then-old-cut changed graph knowledge during publication/GC", oldEdge, newEdge)
 	}

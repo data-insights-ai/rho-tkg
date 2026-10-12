@@ -222,8 +222,8 @@ func (s *graphSourceServer) openMove(ctx context.Context, proof rangeMoveProof) 
 	}
 	s.mu.Lock()
 	s.pending--
-	if err == nil && s.closed {
-		err = replica.ErrStopped
+	if err == nil {
+		err = s.publicationContextLocked(ctx, lease)
 	}
 	if err == nil {
 		for i, l := range s.slots {

@@ -68,18 +68,18 @@ type graphSourceLease struct {
 type graphSourceServer struct {
 	// Test latch after genuine capture and before final publication; no locks held.
 	beforePublication func(*graphSourceLease)
-	pending   int
-	captureWG sync.WaitGroup
-	closeDone chan struct{}
-	cancel    context.CancelFunc
-	mu        sync.Mutex
-	host      *allocationHost
-	limits    graphSourceLimits
-	ctx       context.Context
-	next      uint64
-	slots     []*graphSourceLease
-	closed    bool
-	closeErr  error
+	pending           int
+	captureWG         sync.WaitGroup
+	closeDone         chan struct{}
+	cancel            context.CancelFunc
+	mu                sync.Mutex
+	host              *allocationHost
+	limits            graphSourceLimits
+	ctx               context.Context
+	next              uint64
+	slots             []*graphSourceLease
+	closed            bool
+	closeErr          error
 }
 
 func newGraphSourceServer(ctx context.Context, h *allocationHost, l graphSourceLimits) (*graphSourceServer, error) {
@@ -184,8 +184,8 @@ func (s *graphSourceServer) open(ctx context.Context, proof allocationProof) (in
 	}
 	s.mu.Lock()
 	s.pending--
-	if err == nil && s.closed {
-		err = replica.ErrStopped
+	if err == nil {
+		err = s.publicationContextLocked(ctx, lease)
 	}
 	if err == nil {
 		for i, current := range s.slots {
@@ -207,6 +207,20 @@ func (s *graphSourceServer) open(ctx context.Context, proof allocationProof) (in
 		return graphSourceInfo{}, err
 	}
 	return ownGraphSourceInfo(info), nil
+}
+
+// publicationContextLocked checks the creation boundary, not the retained
+// certificate's validity. The caller owns server.mu; native view cleanup remains
+// outside that lock on each capture path.
+func (s *graphSourceServer) publicationContextLocked(ctx context.Context, lease *graphSourceLease) error {
+	err := errors.Join(ctx.Err(), context.Cause(ctx), s.ctx.Err(), context.Cause(s.ctx), lease.ctx.Err(), context.Cause(lease.ctx))
+	if s.closed {
+		return errors.Join(replica.ErrStopped, err)
+	}
+	if err != nil {
+		return errors.Join(graphstore.ErrSourceUnavailable, err)
+	}
+	return nil
 }
 
 // capture serializes only bounded native authority/data reads with Host events.
