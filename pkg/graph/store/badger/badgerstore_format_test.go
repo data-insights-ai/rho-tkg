@@ -78,8 +78,8 @@ func TestWireFormatMarkerStampAndLegacyDirReopen(t *testing.T) {
 	newDiskStoreWithNode(t, dir, 100)
 
 	v, found := readRawMarker(t, dir)
-	if !found || v != storepkg.CurrentWireFormatVersion {
-		t.Fatalf("marker after first open = (%d, %v), want (%d, true)", v, found, storepkg.CurrentWireFormatVersion)
+	if !found || v != storepkg.StoreFormatVersion {
+		t.Fatalf("marker after first open = (%d, %v), want (%d, true)", v, found, storepkg.StoreFormatVersion)
 	}
 
 	// Simulate a pre-versioning directory: strip the marker.
@@ -103,8 +103,8 @@ func TestWireFormatMarkerStampAndLegacyDirReopen(t *testing.T) {
 	}
 
 	v, found = readRawMarker(t, dir)
-	if !found || v != storepkg.CurrentWireFormatVersion {
-		t.Fatalf("marker after legacy reopen = (%d, %v), want re-stamped (%d, true)", v, found, storepkg.CurrentWireFormatVersion)
+	if !found || v != storepkg.StoreFormatVersion {
+		t.Fatalf("marker after legacy reopen = (%d, %v), want re-stamped (%d, true)", v, found, storepkg.StoreFormatVersion)
 	}
 }
 
@@ -118,7 +118,7 @@ func TestWireFormatMarkerFromNewerReleaseFailsOpen(t *testing.T) {
 	newDiskStoreWithNode(t, dir, 200)
 
 	futureVal := make([]byte, 2)
-	binary.BigEndian.PutUint16(futureVal, storepkg.CurrentWireFormatVersion+8)
+	binary.BigEndian.PutUint16(futureVal, storepkg.StoreFormatVersion+8)
 	updateRawBadgerDir(t, dir, func(txn *badgerv4.Txn) error {
 		return txn.Set(storepkg.WireFormatVersionKey, futureVal)
 	})
@@ -133,7 +133,7 @@ func TestWireFormatMarkerFromNewerReleaseFailsOpen(t *testing.T) {
 	}
 
 	currentVal := make([]byte, 2)
-	binary.BigEndian.PutUint16(currentVal, storepkg.CurrentWireFormatVersion)
+	binary.BigEndian.PutUint16(currentVal, storepkg.StoreFormatVersion)
 	updateRawBadgerDir(t, dir, func(txn *badgerv4.Txn) error {
 		return txn.Set(storepkg.WireFormatVersionKey, currentVal)
 	})

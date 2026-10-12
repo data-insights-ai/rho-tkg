@@ -79,6 +79,11 @@ type Store struct {
 	outIdx map[types.NodeID]*adjSet // startNodeID → set(relID) (memorystore_adjset.go)
 	inIdx  map[types.NodeID]*adjSet // endNodeID → set(relID)
 
+	// Ex-adjacency (backlog 50, memorystore_exadj.go): per node, the
+	// relationships that named it in a row the live adjacency no longer holds.
+	exOutIdx map[types.NodeID]*adjSet
+	exInIdx  map[types.NodeID]*adjSet
+
 	// Version history — pre-mutation snapshots keyed by entity ID and version.
 	nodeHistory map[types.NodeID]map[uint32]*types.Node
 	relHistory  map[types.RelID]map[uint32]*types.Relationship
@@ -459,6 +464,7 @@ func (ms *Store) Clear() error {
 	ms.typeOrder.Reset()
 	ms.outIdx = make(map[types.NodeID]*adjSet)
 	ms.inIdx = make(map[types.NodeID]*adjSet)
+	ms.exOutIdx, ms.exInIdx = nil, nil
 	ms.nodeHistory = make(map[types.NodeID]map[uint32]*types.Node)
 	ms.relHistory = make(map[types.RelID]map[uint32]*types.Relationship)
 	ms.histStampsMu.Lock()

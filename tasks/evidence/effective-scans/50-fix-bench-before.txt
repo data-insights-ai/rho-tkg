@@ -1,0 +1,17 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/bench
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkEffectiveAtNodesOneSeed/memory/at-nodes-32         	       5	 186966488 ns/op	        50.00 rels	38146550 B/op	  625185 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/at-nodes-32         	       5	 118385555 ns/op	        50.00 rels	38146550 B/op	  625185 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/at-nodes-32         	       5	 112995532 ns/op	        50.00 rels	38146595 B/op	  625185 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/by-ids-32           	       5	    353179 ns/op	        50.00 rels	   71281 B/op	    1242 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/by-ids-32           	       5	    853210 ns/op	        50.00 rels	   71284 B/op	    1242 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/by-ids-32           	       5	    182271 ns/op	        50.00 rels	   71281 B/op	    1242 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/at-nodes-32         	       5	 939814136 ns/op	        50.00 rels	285978236 B/op	 3153282 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/at-nodes-32         	       5	1056698569 ns/op	        50.00 rels	285982977 B/op	 3153321 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/at-nodes-32         	       5	 962502986 ns/op	        50.00 rels	285978052 B/op	 3153280 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/by-ids-32           	       5	   3915997 ns/op	        50.00 rels	  566996 B/op	    6222 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/by-ids-32           	       5	   2504443 ns/op	        50.00 rels	  567110 B/op	    6224 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/by-ids-32           	       5	   1775862 ns/op	        50.00 rels	  567028 B/op	    6222 allocs/op
+PASS

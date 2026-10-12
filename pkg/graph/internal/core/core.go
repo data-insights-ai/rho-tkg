@@ -77,6 +77,10 @@ type Core struct {
 	depthHistory          storepkg.DepthHistoryIterationCapability
 	deletedIter           storepkg.DeletedIterationCapability
 	deletedDepthIter      storepkg.DepthDeletedIterationCapability
+	// exAdj is the store's ex-adjacency (backlog 50) once it covers every
+	// relationship (backfillExAdjacencyBestEffort); nil = the adjacency doors
+	// fold every relationship with history instead (forEachRelExAdjacentID).
+	exAdj storepkg.ExAdjacencyCapability
 	// transaction-time membership sidecars: scope a pinned label/type scan's
 	// candidate set to the label/type's ever-members (O(matches)) instead of the
 	// whole node/rel-history fold (O(everything ever)). nil = store declines
@@ -2087,6 +2091,7 @@ func New(config Config) (*Core, error) {
 	}
 
 	c.runBitemporalMigrationBestEffort()
+	c.backfillExAdjacencyBestEffort(store)
 
 	// Rehydrate the durable unique-constraint registry (fail closed on a corrupt
 	// MetaKV blob — a constraint silently dropped at open would let a duplicate

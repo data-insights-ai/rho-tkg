@@ -183,9 +183,9 @@ func (a *API) RelsByTypeAt(relType string, t types.Instant) ([]*types.Relationsh
 // neighbour is reached only via a relationship valid at t whose both endpoints
 // are valid at t (same rule as Snapshot, Diff, OutgoingRelsAt). History-aware:
 // returns neighbours connected via rels (current or deleted) that were valid
-// at t. The deleted-rel fold scales with the number of deleted relationships,
-// not the total history size, when the underlying store implements
-// DeletedIterationCapability — every in-tree backend (memory, badger, tiered)
+// at t, and earlier lives of rels re-imported with other endpoints. The fold
+// reads the node's ex-adjacency (O(its ever-degree), not the total history)
+// when the store implements ExAdjacencyCapability — every in-tree backend
 // does. Same characteristic applies to OutgoingRelsAt and IncomingRelsAt.
 func (a *API) NeighborsAt(nodeID types.NodeID, t types.Instant) ([]*types.Node, error) {
 	ops, err := a.ready()

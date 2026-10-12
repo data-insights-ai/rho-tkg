@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`store.ExAdjacencyCapability`** (`ForEachExAdjacentRelID(node, incoming, fn)` / `NoteExAdjacentRel(id, start,
+  end)`, backlog 50): per node and direction, every relationship that named the node in a row its live adjacency no
+  longer ties to it — a deleted relationship, or an earlier life of one deleted and re-imported with other endpoints.
+  The store keeps it in the same write as every relationship delete (plain, cascade, batch, replica-applied, purge
+  excluded) and every history row whose endpoints are not the live row's (`PutRelVersion`: replica history-version
+  apply, `IO.Import`, `ImportMerge`, cascades, rollback). Memory: two maps beside the adjacency sets; badger: one
+  18-byte key `0x0D|node|dir|rel` in the same pending batch as the delete or the row (on disk, no RAM copy, read by a
+  prefix scan with the pending overlay); sharded: on the shard owning the relationship, read by fan-out; tiered: on
+  the shard holding each endpoint's adjacency, read from the reference shard, the archive and the node's event
+  shard. A node's retention purge and an exact erasure remove its entries and the removed relationships'.
+
+### Changed
+
+- **Adjacency doors gather per seed** (backlog 50): `Outgoing/IncomingForNodesAtPin`, `*ForNodesAtTx`,
+  `OutgoingRelsAt` / `IncomingRelsAt`, `NeighborsAt`, `ForEachAdjacentRelAt` / `ForEachAdjacentEndpointAt` under a
+  temporal filter and `ForEachRelEffectiveAtNodes` read a seed's live adjacency ∪ its ex-adjacency — O(the seed's
+  ever-degree) — instead of folding every deleted relationship (the pinned doors) or every relationship with history
+  (`ForEachRelEffectiveAtNodes`) on every call. One seed with 50 relationships on 100 K relationships that all have
+  history, a quarter deleted (`BenchmarkEffectiveAtNodesOneSeed`, renamed from `BenchmarkEffectiveScansOneSeed`, now
+  with deletes): `ForEachRelEffectiveAtNodes` badger 0.94-1.06 s → 0.79-0.84 ms, memory 113-187 ms → 80-83 µs per
+  call, against 0.77-0.81 ms / 79-80 µs for `RelsEffectiveByIDs` over the same relationships; rows read stay within
+  the seed's ever-degree (`TestEffectiveAtNodesVisitsSeedAdjacencyOnly`: 112 → 12 relationship rows read on badger
+  for 5 seed relationships among 400 elsewhere, 100 of them deleted). A store without the capability folds every
+  relationship with history (correctness identical).
+- **Badger store marker raised to 3; releases up to v4.51.1 refuse the store** (`ErrWireFormatVersionUnsupported`
+  at open). They would delete relationships without writing the ex-adjacency, and the adjacency doors would then
+  miss those relationships. Row encodings are unchanged; a store stamped 2 opens and is re-stamped
+  (`storeutil.StoreFormatVersion`).
+- **First writable open after the upgrade scans relationship history once** (meta marker `rel_exadj_built`): the
+  history IDs are streamed and every row naming other endpoints than its relationship's live row (every row of a
+  deleted one) is noted, then flushed durably before the marker. A read-only open of a store without the marker does
+  not scan (the marker write is tried first) and folds every relationship with history; so does a store without
+  MetaKV.
+
 ### Fixed
 
 - **Tiered: a re-import onto another shard no longer hides the earlier lives** (backlog 49, HIGH). A relationship
@@ -36,6 +72,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestHistoryLives_*` (cold earlier shard after rotation, truncation across lives, `Clear`, restart, malformed
   entries, the open-time backfill of a pre-fix store), `TestAddRelationshipsGeneratedBatchSkipsEarlierLivesWalk`;
   evidence `tasks/evidence/reimport-shards/`.
+- **Adjacency doors missed the earlier life of a relationship re-imported with other endpoints** (backlog 50).
+  `Outgoing/IncomingForNodesAtPin`, `*ForNodesAtTx`, `OutgoingRelsAt` / `IncomingRelsAt`, `NeighborsAt`,
+  `ForEachAdjacentRelAt` / `ForEachAdjacentEndpointAt` under a temporal filter folded only DELETED relationship IDs
+  into a node's live adjacency, on the rule "endpoints are immutable"; an ID deleted and re-imported as C->B is live
+  again, so at a pin inside its A->B life `OutgoingForNodesAtPin([A])` answered nothing while `RelAsOf(id, pin)` was
+  the A->B row. The ex-adjacency of A holds it since the delete; a history row written without that delete (an
+  `IO.Import` or a replica of an imported primary, whose history rows arrive after the current row) adds it itself.
+  Proven on memory, badger, sharded and tiered (the re-imported lives move to the reference shard), on a replica, after
+  export → import, on a replica of an imported primary, after a badger reopen, and on a badger store written before
+  the index (read-only: no scan, all-history fold; writable: backfilled) — `TestPinnedAdjacencyFindsReimportedEarlierLife`,
+  every door against a per-ID oracle; `TestExAdjacency*`; evidence `tasks/evidence/effective-scans/50-*`.
 
 ## [4.51.1] - 2026-10-12
 

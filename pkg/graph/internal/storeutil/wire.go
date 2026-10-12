@@ -37,6 +37,14 @@ const (
 // version closed with ErrWireFormatVersionUnsupported. See wire_temporal_tail.go.
 const CurrentWireFormatVersion = 2
 
+// StoreFormatVersion is the store-level marker a Badger directory is stamped
+// with (WireFormatVersionKey). It is above CurrentWireFormatVersion since
+// backlog 50: this release keeps the ex-adjacency index (0x0D) at every
+// relationship delete, and a release before it — which refuses a marker above
+// its own CurrentWireFormatVersion 2 — must not open the store and delete
+// relationships without it. Row encodings are unchanged.
+const StoreFormatVersion = 3
+
 // RetractedWireFormatVersion is the per-row format version of a retraction
 // tombstone (Retracted, map key "rx", backlog 43). The layout is v2's; the
 // bump exists so a binary that predates the marker (it decodes fv <= 2 and

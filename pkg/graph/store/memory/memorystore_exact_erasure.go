@@ -121,6 +121,7 @@ func (ms *Store) ExactErase(req storecontract.ExactErasureRequest) (storecontrac
 		if err := ms.deleteRelOrPurgeOrphanLocked(rid); err != nil {
 			return zero, err // no ordinary error remains after preflight
 		}
+		ms.dropExAdjRelEverywhereLocked(rid) // backlog 50: no trace of an erased relationship
 		delete(ms.relHistory, rid)
 		delete(ms.relBeliefWatermark, rid)
 		indexpkg.PurgeRelFromAllTemporalIndexes(ms.relTypeTemporalIndexes, rid.SnowflakeID())
@@ -138,6 +139,7 @@ func (ms *Store) ExactErase(req storecontract.ExactErasureRequest) (storecontrac
 			ms.removeNodeLabelIndexes(nid, n)
 			delete(ms.nodes, nid)
 		}
+		ms.dropExAdjNodeLocked(nid)
 		// Purge by ID from every index rather than relying only on the current
 		// row, so an idempotent retry also reaps corruption/orphan residue.
 		for tok, ids := range ms.labelIdx {

@@ -618,8 +618,10 @@ index.
 
 Both families expand a batch of seed nodes to their relationships *as the graph
 was recorded at a transaction-time pin*, resolving each candidate through the
-adjacency index (live per-node adjacency UNIONED with the deleted-relationship
-fold, since rel endpoints are immutable) rather than a full history-aware
+adjacency index (live per-node adjacency UNIONED with the seed's
+ex-adjacency — its deleted relationships and earlier lives of re-imported ones,
+the only rows that can name a node its live adjacency does not) rather than a
+full history-aware
 `ByType` scan. They differ ONLY in how they treat VALID time — and picking the
 wrong one is the exact footgun that motivated the belief-state door:
 
@@ -667,8 +669,9 @@ has no entry for such a node. Seed IDs are still format-validated, so a
 zero/invalid ID is rejected with `ErrInvalidStoreMutation`.
 
 Both families push the live-adjacency probe down per shard on `tiered.Store`
-(cross-shard endpoints supported) and fold in deleted relationships via the same
-`DeletedIterationCapability` the single-node `OutgoingRelsAt`/`IncomingRelsAt`
+(cross-shard endpoints supported) and fold in each seed's ex-adjacency (its
+deleted relationships and the earlier lives of re-imported ones) via the same
+`ExAdjacencyCapability` the single-node `OutgoingRelsAt`/`IncomingRelsAt`
 doors use.
 
 ## Temporal property lookups — the property membership sidecar

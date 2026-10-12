@@ -361,6 +361,14 @@ Consumer: sigma-tkgd 2026-10-12 — its pinned src_label/dst_label pushdown (`Ou
 `IncomingForNodesAtPin`) misses the earlier life, and `ForEachRelEffectiveAtNodes` at O(H) per call is too slow for
 every pinned label source; sigma waits for this item.
 
+Built 2026-10-12 (branch worktree-agent-ab0ee0097a18b0a1f, unreleased; CHANGELOG `[Unreleased]`, evidence
+`tasks/evidence/effective-scans/50-*`), fix round after the Opus-high review: the store keeps an ex-adjacency index
+(`store.ExAdjacencyCapability`, badger keyspace 0x0D) at every delete and every history row with other endpoints;
+the adjacency doors gather per seed (live adjacency ∪ ex-adjacency). AtNodes one seed on 100 K with history, a
+quarter deleted: badger 0.94-1.06 s → 0.79-0.84 ms, memory 113-187 ms → 80-83 µs, at par with the by-IDs door.
+Badger store marker 3 (≤ v4.51.1 refuses). Leftover, not built: an earlier life's legs of a relationship removed by
+retention purge stay as stale (sound) entries.
+
 ### 51. Effective scans bounded by valid end (cost follows the result, not the history)
 
 *HIGH (consumer: sigma-tkgd step 6, 2026-10-12)* — open; not started.

@@ -1,0 +1,5 @@
+--- PASS: TestMetaKVReapPolicyCoversEveryKey (0.08s)
+--- PASS: TestOutgoingRelsAt_DispatchesToExAdjacency (0.00s)
+--- PASS: TestExAdjacencyFallbacks (0.00s)
+--- PASS: TestPinnedAdjacencyFindsReimportedEarlierLife (0.00s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	2.295s

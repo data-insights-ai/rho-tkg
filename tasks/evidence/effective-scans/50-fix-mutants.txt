@@ -1,0 +1,16 @@
+M1 gather ignores the ex-adjacency: killed
+M2 badger delete keeps no ex legs: killed
+M3 memory delete keeps no ex legs: killed
+M4 badger history row adds no ex legs: killed
+M5 memory history row adds no ex legs: killed
+M6 tiered history legs not routed to endpoint shards: killed
+M7 tiered reads only the routed shard: killed
+M8 no backfill at open: killed
+M9 backfill trusts a missing marker: killed
+M10 read-only open scans anyway: killed
+M11 store marker stays at 2: killed
+M12 AtNodes folds all history: killed
+M13 badger node purge keeps ex legs: killed
+M14 memory Clear keeps the ex-adjacency: killed
+M15 badger erasure leaves ex keys: killed
+M16 memory purge keeps ex legs: killed

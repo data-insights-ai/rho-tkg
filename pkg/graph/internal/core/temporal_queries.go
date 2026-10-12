@@ -770,10 +770,10 @@ func (c *Core) relAtViaTemporalMeta(id types.RelID, current *types.Relationship,
 // relationships that are valid at the given instant, where the neighbor nodes
 // themselves are also valid at that instant — the EFFECTIVE view shared with
 // Snapshot, Diff and OutgoingRelsAt/IncomingRelsAt (edge row valid at t AND
-// both endpoints valid at t). History-aware via the
-// deleted-rel candidate fold (see forEachRelCandidateIDByDepth) which scales with
-// the number of deleted relationships when the underlying store implements
-// DeletedIterationCapability.
+// both endpoints valid at t). History-aware via the adjacency candidate fold
+// (forEachRelAdjacencyCandidateID: the node's live adjacency ∪ its
+// ex-adjacency), O(its ever-degree) when the store implements
+// ExAdjacencyCapability.
 func (t *TempOps) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.Node, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
@@ -826,7 +826,7 @@ func (c *Core) neighborsAtLocked(nodeID types.NodeID, at types.Instant) ([]*type
 	currentRelIDs = append(currentRelIDs, inIDs...)
 
 	neighborIDs := make(map[types.NodeID]struct{})
-	if err := c.forEachRelAdjacencyCandidateID(currentRelIDs, func(id types.RelID) error {
+	if err := c.forEachRelAdjacencyCandidateID([]types.NodeID{nodeID}, adjBoth, currentRelIDs, func(id types.RelID) error {
 		r, err := c.relAtLocked(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
@@ -878,17 +878,17 @@ func (c *Core) neighborsAtLocked(nodeID types.NodeID, at types.Instant) ([]*type
 // History-aware: includes
 // relationships that have since been deleted but were valid at time t, and
 // returns the version of each relationship that was current at t (not the
-// most recent version). Relationship endpoints are immutable so a rel's
-// start/end never change between versions.
+// most recent version). Within one life a relationship's start/end never
+// change; an earlier life of an ID re-imported with other endpoints is found
+// through the endpoints it named then.
 //
 // Results are sorted by relationship ID. Returns ErrNodeNotFound if nodeID
 // was not valid at the given instant.
 //
-// Scalability: the deleted-rel coverage fold uses the store's
-// DeletedIterationCapability when available (every in-tree backend
-// implements it), so cost is O(degree + deletedRelCount) rather than
-// O(degree + totalRelHistory). External backends that don't implement the
-// capability fall back to a full history scan. The endpoint mask adds at most
+// Scalability: the coverage fold reads the node's ex-adjacency through the
+// store's ExAdjacencyCapability (every in-tree backend implements it), so cost
+// is O(the node's ever-degree) rather than O(degree + totalRelHistory).
+// External backends without it fall back to a full history scan. The endpoint mask adds at most
 // one NodeAt resolution per DISTINCT far endpoint among the rels valid at t.
 func (t *TempOps) OutgoingRelsAt(nodeID types.NodeID, at types.Instant) ([]*types.Relationship, error) {
 	return t.directionalRelsAt(nodeID, at, true)
@@ -958,7 +958,7 @@ func (c *Core) directionalRelsAtLocked(nodeID types.NodeID, at types.Instant, ou
 		// neighbour's version chain once.
 		otherValid map[types.NodeID]bool
 	)
-	if err := c.forEachRelAdjacencyCandidateID(currentIDs, func(id types.RelID) error {
+	if err := c.forEachRelAdjacencyCandidateID([]types.NodeID{nodeID}, adjDirsOf(outgoing), currentIDs, func(id types.RelID) error {
 		r, err := c.relAtLocked(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
