@@ -465,8 +465,19 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    preserves the strict killed-child assertion; its direct regression and 15
    unchanged process-test parents pass normal/race. Hosted confirmation remains
    pending.
-   Receiving-only term persistence, native snapshot reception, semantic audit,
+   [Receiving-only term persistence](evidence/v2-application-receiving-20261012/receipt.json)
+   is integrated: an empty bound store durably records a genuine receiving term
+   while retaining inactive imports and refusing active membership/application.
+   It grants no replacement authority. Native snapshot reception, semantic audit,
    durable activation and association transfer into the restored Host remain open.
+   The [bounded recovery fix](evidence/native-ready-progress-20261012/qualification.json)
+   now makes progress when an ordinary native Ready exceeds available application
+   capacity but its ordered prefixes fit. It retains the original Ready until
+   durable completion, preserves the commit boundary and withholds output on errors.
+   Both complete storage/replica package normal, race and coverage runs pass, as
+   do scoped static gates; the receipt distinguishes final equivalent selector
+   and comment edits. The actual paired fault trace and engine decision remain
+   pending; the fallback may require additional syncs and has no performance claim.
    The
    [bounded voting/control model](evidence/v2-graph-lifecycle-admission/replacement-model.py)
    passes 5,040 event schedules and 11 finite checks, independently rerun against
