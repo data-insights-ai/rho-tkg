@@ -1,0 +1,2 @@
+lint-docker: 0 issues (exit 0)
+security-docker exit 0 (gosec -quiet, no findings)

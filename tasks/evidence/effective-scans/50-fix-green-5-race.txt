@@ -1,0 +1,547 @@
+2026/10/12 13:47:02 WARN tiered store repair fixed cross-shard inconsistencies orphaned_in_entries=1 stale_in_entries=0 missing_in_entries=0 shards_scanned=2 cross_shard_rels_checked=0
+2026/10/12 13:47:02 ERROR graph: event handler panicked panic="intentional panic in handler" eventType=1 entityID=0
+2026/10/12 13:47:06 ERROR graph: index provider event handler failed provider=spatial eventType=1 entityID=805438315631083520 error=provider-failed
+2026/10/12 13:49:09 INFO graph: applied shard tier changes at open demoted=1 promoted=0 unsealed=0
+2026/10/12 13:49:10 INFO graph: applied shard tier changes at open demoted=0 promoted=1 unsealed=0
+2026/10/12 13:49:54 WARN label registry approaching capacity count=65534 max=65535
+2026/10/12 13:50:04 WARN label registry approaching capacity count=65534 max=65535
+panic: test timed out after 10m0s
+	running tests:
+		TestRetractionOracle_NeverRecordedWorld (6m48s)
+		TestRetractionOracle_NeverRecordedWorld/tiered/seed=1127119561 (27s)
+
+goroutine 7456366 [running]:
+testing.(*M).startAlarm.func1()
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2802 +0x605
+created by time.goFunc
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/time/sleep.go:215 +0x45
+
+goroutine 1 [chan receive, 1 minutes]:
+testing.tRunner.func1()
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:1993 +0x9ad
+testing.tRunner(0xc00021e6c8, 0xc0001cfad0)
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2042 +0x256
+testing.runTests({0x23ec7ee, 0x26}, {0x242ea9a, 0x3e}, 0xc0001b4240, {0x37aa440, 0x888, 0x888}, {0xc2ab509fd3cce475, 0x8bb3177450, ...})
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2583 +0x9ea
+testing.(*M).Run(0xc0001a92c0)
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2443 +0xf4c
+main.main()
+	_testmain.go:4502 +0x165
+
+goroutine 1008669 [select, 6 minutes]:
+github.com/dgraph-io/badger/v4/y.(*WaterMark).process(0xc00ef525d0, 0xc00ef525a0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/y/watermark.go:203 +0x405
+created by github.com/dgraph-io/badger/v4/y.(*WaterMark).Init in goroutine 348
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/y/watermark.go:61 +0x125
+
+goroutine 916619 [select, 6 minutes]:
+github.com/dgraph-io/badger/v4/y.(*WaterMark).process(0xc06f34dd10, 0xc06f34dce0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/y/watermark.go:203 +0x405
+created by github.com/dgraph-io/badger/v4/y.(*WaterMark).Init in goroutine 354
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/y/watermark.go:61 +0x125
+
+goroutine 922848 [select, 6 minutes]:
+github.com/dgraph-io/badger/v4/y.(*WaterMark).process(0xc05dfdd170, 0xc05dfdd140)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/y/watermark.go:203 +0x405
+created by github.com/dgraph-io/badger/v4/y.(*WaterMark).Init in goroutine 347
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/y/watermark.go:61 +0x125
+
+goroutine 7354242 [select]:
+github.com/dgraph-io/badger/v4/y.(*WaterMark).process(0xc042f66690, 0xc042f66630)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/y/watermark.go:203 +0x405
+created by github.com/dgraph-io/badger/v4/y.(*WaterMark).Init in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/y/watermark.go:61 +0x125
+
+goroutine 7354244 [select]:
+github.com/dgraph-io/ristretto/v2.(*defaultPolicy[...]).processItems(0x0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/policy.go:61 +0x105
+created by github.com/dgraph-io/ristretto/v2.newDefaultPolicy[...] in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/policy.go:45 +0x35d
+
+goroutine 1009403 [select]:
+github.com/dgraph-io/badger/v4.(*DB).monitorCache(0xc00e0f0488, 0xc032b71920)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:461 +0x2a5
+created by github.com/dgraph-io/badger/v4.Open in goroutine 348
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:303 +0x157d
+
+goroutine 916620 [select, 6 minutes]:
+github.com/dgraph-io/badger/v4/y.(*WaterMark).process(0xc06f34dd40, 0xc06f34dce0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/y/watermark.go:203 +0x405
+created by github.com/dgraph-io/badger/v4/y.(*WaterMark).Init in goroutine 354
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/y/watermark.go:61 +0x125
+
+goroutine 922438 [select]:
+github.com/dgraph-io/ristretto/v2/z.(*AllocatorPool).freeupAllocators(0xc08baabe60)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/z/allocator.go:372 +0x23e
+created by github.com/dgraph-io/ristretto/v2/z.NewAllocatorPool in goroutine 347
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/z/allocator.go:311 +0x17a
+
+goroutine 7354253 [select]:
+github.com/dgraph-io/badger/v4.(*vlogThreshold).listenForValueThresholdUpdate(0xc042ef7180)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/value.go:1174 +0x23d
+created by github.com/dgraph-io/badger/v4.Open in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:372 +0x2b0b
+
+goroutine 926618 [select]:
+github.com/dgraph-io/badger/v4.(*levelsController).runCompactor(0xc00ec63c70, 0x1, 0xc0018e4d20)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:519 +0x4ac
+created by github.com/dgraph-io/badger/v4.(*levelsController).startCompact in goroutine 347
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:348 +0x7e
+
+goroutine 922835 [chan receive, 6 minutes]:
+github.com/dgraph-io/badger/v4.(*DB).flushMemtable(0xc05ee40d88, 0xc054681cb0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:1105 +0xf2
+github.com/dgraph-io/badger/v4.(*DB).startMemoryFlush.func1()
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:1561 +0x45
+created by github.com/dgraph-io/badger/v4.(*DB).startMemoryFlush in goroutine 354
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:1560 +0x17f
+
+goroutine 1013618 [select, 6 minutes]:
+github.com/dgraph-io/badger/v4.(*DB).doWrites(0xc00e0f0488, 0xc02117ddd0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:933 +0x396
+created by github.com/dgraph-io/badger/v4.(*DB).unblockWrite in goroutine 348
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:1656 +0x13d
+
+goroutine 7354233 [chan receive]:
+github.com/dgraph-io/badger/v4.(*DB).flushMemtable(0xc052edc488, 0xc042f4f9b0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:1105 +0xf2
+github.com/dgraph-io/badger/v4.Open.func5()
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:349 +0x70
+created by github.com/dgraph-io/badger/v4.Open in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:348 +0x1f2b
+
+goroutine 1011650 [select]:
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).flushLoop(0xc022c60008)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/store/badger/badgerstore_flush.go:157 +0x21f
+created by github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.New in goroutine 348
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/store/badger/badgerstore.go:1257 +0x2451
+
+goroutine 7354248 [select]:
+github.com/dgraph-io/badger/v4.(*levelsController).runCompactor(0xc042f5e9a0, 0x0, 0xc043628d20)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:519 +0x4ac
+created by github.com/dgraph-io/badger/v4.(*levelsController).startCompact in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:348 +0x7e
+
+goroutine 7354226 [select]:
+github.com/dgraph-io/ristretto/v2.(*Cache[...]).processItems(0x24945e0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/cache.go:522 +0x285
+created by github.com/dgraph-io/ristretto/v2.NewCache[...] in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/cache.go:263 +0x120b
+
+goroutine 7354229 [select]:
+github.com/dgraph-io/badger/v4.(*levelsController).runCompactor(0xc042f1fe30, 0x0, 0xc042f4f980)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:519 +0x4ac
+created by github.com/dgraph-io/badger/v4.(*levelsController).startCompact in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:348 +0x7e
+
+goroutine 1009726 [select, 6 minutes]:
+github.com/dgraph-io/badger/v4.(*publisher).listenForUpdates(0xc00ef526c0, 0xc0170d0cc0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/publisher.go:62 +0x205
+created by github.com/dgraph-io/badger/v4.Open in goroutine 348
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:387 +0x325d
+
+goroutine 922437 [select, 6 minutes]:
+github.com/dgraph-io/badger/v4/y.(*WaterMark).process(0xc05dfdd1a0, 0xc05dfdd140)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/y/watermark.go:203 +0x405
+created by github.com/dgraph-io/badger/v4/y.(*WaterMark).Init in goroutine 347
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/y/watermark.go:61 +0x125
+
+goroutine 1008670 [select, 6 minutes]:
+github.com/dgraph-io/badger/v4/y.(*WaterMark).process(0xc00ef52600, 0xc00ef525a0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/y/watermark.go:203 +0x405
+created by github.com/dgraph-io/badger/v4/y.(*WaterMark).Init in goroutine 348
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/y/watermark.go:61 +0x125
+
+goroutine 1009724 [select, 6 minutes]:
+github.com/dgraph-io/badger/v4.(*vlogThreshold).listenForValueThresholdUpdate(0xc05403c3c0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/value.go:1174 +0x23d
+created by github.com/dgraph-io/badger/v4.Open in goroutine 348
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:372 +0x2b0b
+
+goroutine 7354259 [select]:
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).flushLoop(0xc024994808)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/store/badger/badgerstore_flush.go:157 +0x21f
+created by github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.New in goroutine 7354221
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/store/badger/badgerstore.go:1257 +0x2451
+
+goroutine 7354243 [select]:
+github.com/dgraph-io/ristretto/v2/z.(*AllocatorPool).freeupAllocators(0xc042efce40)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/z/allocator.go:372 +0x23e
+created by github.com/dgraph-io/ristretto/v2/z.NewAllocatorPool in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/z/allocator.go:311 +0x17a
+
+goroutine 7354231 [select]:
+github.com/dgraph-io/badger/v4.(*levelsController).runCompactor(0xc042f1fe30, 0x2, 0xc042f4f980)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:519 +0x4ac
+created by github.com/dgraph-io/badger/v4.(*levelsController).startCompact in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:348 +0x7e
+
+goroutine 7354249 [select]:
+github.com/dgraph-io/badger/v4.(*levelsController).runCompactor(0xc042f5e9a0, 0x1, 0xc043628d20)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:519 +0x4ac
+created by github.com/dgraph-io/badger/v4.(*levelsController).startCompact in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:348 +0x7e
+
+goroutine 7354221 [runnable]:
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.lifeEnds[...].end(...)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/internal/core/chain_resolver.go:270
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).resolveNodeVersionAtCapped(0xc043844008, {0xc030e83a80, 0x1, 0x2}, 0x1a1303374a9, 0x0)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/internal/core/temporal.go:277 +0x336
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).resolveNodeChain(0xc043844008, {0xc030e98db0, 0x2, 0x3}, {0x0, 0x1a1303374a9, 0x0, 0x0, 0x1a130333df7, 0x0, ...}, ...)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/internal/core/chain_resolver.go:306 +0x175
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).nodeAtFullChain(0xc043844008, 0xb2d8e5ea3420000, 0x0, 0x1a1303374a9, 0x1a130333df7)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/internal/core/temporal_queries.go:557 +0x21f
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).nodeAtLockedTx(0xc043844008, 0xb2d8e5ea3420000, 0x1a1303374a9, 0x1a130333df7)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/internal/core/temporal_queries.go:533 +0x1f6
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).findNodeVersionForOpts(0xc043844008, 0xb2d8e5ea3420000, {0x0, 0x0, 0x1a1303374a9, 0x0, 0x0, 0x1a130333df7, 0x0, 0x0, ...}, ...)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/internal/core/temporal.go:1334 +0x269
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).nodesByLabelLocked(0xc043844008, {0x2461f70, 0x1}, {0x0, 0x0, 0x1a1303374a9, 0x0, 0x0, 0x1a130333df7, 0x0, ...})
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/internal/core/queries.go:567 +0x56c
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*NodeOps).ByLabel.func1()
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/internal/core/queries.go:64 +0xdb
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).readUnderRLock(0xc043844008, 0xc042f75070)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/internal/core/locks.go:86 +0x10f
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*NodeOps).ByLabel(0xc03275ced0, {0x2461f70, 0x1}, {0x0, 0x0, 0x1a1303374a9, 0x0, 0x0, 0x1a130333df7, 0x0, ...})
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/internal/core/queries.go:62 +0x245
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.rtoRender(0xc010770008, 0xc043844008, 0x1a130333df7, {0xc042f756b8, 0x28, 0xc0008a34e0?}, {0xc0b981cc80, 0x9, 0x48bb53?}, {0xc04318cd80, ...})
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/internal/core/retraction_oracle_test.go:595 +0x57b
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.runNeverRecorded(0xc010770008, {{0x23aa54c?, 0x6?}, 0xc06e0f01b0?}, 0x432e7ac9, 0x24, 0x1a13032d480)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/internal/core/retraction_oracle_test.go:225 +0x28af
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.TestRetractionOracle_NeverRecordedWorld.func1(0xc010770008)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/internal/core/retraction_oracle_test.go:69 +0xec
+testing.tRunner(0xc010770008, 0xc042ef6f00)
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21d
+created by testing.(*T).Run in goroutine 460168
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0xb13
+
+goroutine 1012625 [chan receive, 6 minutes]:
+github.com/dgraph-io/badger/v4.(*DB).flushMemtable(0xc00e0f0488, 0xc02117dda0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:1105 +0xf2
+github.com/dgraph-io/badger/v4.(*DB).startMemoryFlush.func1()
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:1561 +0x45
+created by github.com/dgraph-io/badger/v4.(*DB).startMemoryFlush in goroutine 348
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:1560 +0x17f
+
+goroutine 7354235 [select]:
+github.com/dgraph-io/badger/v4.(*DB).doWrites(0xc052edc488, 0xc042f4f9e0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:933 +0x396
+created by github.com/dgraph-io/badger/v4.Open in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:379 +0x2e53
+
+goroutine 1012620 [select]:
+github.com/dgraph-io/ristretto/v2.(*Cache[...]).processItems(0x24945e0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/cache.go:522 +0x285
+created by github.com/dgraph-io/ristretto/v2.(*Cache[...]).Clear in goroutine 348
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/cache.go:473 +0x29d
+
+goroutine 922836 [select, 6 minutes]:
+github.com/dgraph-io/badger/v4.(*DB).doWrites(0xc05ee40d88, 0xc054681ce0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:933 +0x396
+created by github.com/dgraph-io/badger/v4.(*DB).unblockWrite in goroutine 354
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:1656 +0x13d
+
+goroutine 916622 [select, 6 minutes]:
+github.com/dgraph-io/ristretto/v2.(*defaultPolicy[...]).processItems(0xc00878e488)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/policy.go:61 +0x105
+created by github.com/dgraph-io/ristretto/v2.newDefaultPolicy[...] in goroutine 354
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/policy.go:45 +0x35d
+
+goroutine 924147 [select]:
+github.com/dgraph-io/badger/v4.(*DB).monitorCache(0xc0de566008, 0xc008c62840)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:461 +0x2a5
+created by github.com/dgraph-io/badger/v4.Open in goroutine 347
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:303 +0x157d
+
+goroutine 922047 [select]:
+github.com/dgraph-io/badger/v4.(*levelsController).runCompactor(0xc00a530a10, 0x0, 0xc054681c50)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:519 +0x4ac
+created by github.com/dgraph-io/badger/v4.(*levelsController).startCompact in goroutine 354
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:348 +0x7e
+
+goroutine 1008672 [select, 6 minutes]:
+github.com/dgraph-io/ristretto/v2.(*defaultPolicy[...]).processItems(0x0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/policy.go:61 +0x105
+created by github.com/dgraph-io/ristretto/v2.newDefaultPolicy[...] in goroutine 348
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/policy.go:45 +0x35d
+
+goroutine 7354222 [runnable]:
+github.com/dgraph-io/badger/v4/y.(*WaterMark).process(0xc042f0d2c0, 0xc042f0d290)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/y/watermark.go:203 +0x405
+created by github.com/dgraph-io/badger/v4/y.(*WaterMark).Init in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/y/watermark.go:61 +0x125
+
+goroutine 7354240 [select]:
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).flushLoop(0xc024990008)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/store/badger/badgerstore_flush.go:157 +0x21f
+created by github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.New in goroutine 7354221
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/store/badger/badgerstore.go:1257 +0x2451
+
+goroutine 925155 [select, 6 minutes]:
+github.com/dgraph-io/badger/v4.(*vlogThreshold).listenForValueThresholdUpdate(0xc025be18c0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/value.go:1174 +0x23d
+created by github.com/dgraph-io/badger/v4.Open in goroutine 347
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:372 +0x2b0b
+
+goroutine 926619 [select]:
+github.com/dgraph-io/badger/v4.(*levelsController).runCompactor(0xc00ec63c70, 0x2, 0xc0018e4d20)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:519 +0x4ac
+created by github.com/dgraph-io/badger/v4.(*levelsController).startCompact in goroutine 347
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:348 +0x7e
+
+goroutine 7354252 [chan receive]:
+github.com/dgraph-io/badger/v4.(*DB).flushMemtable(0xc052edc908, 0xc043628d50)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:1105 +0xf2
+github.com/dgraph-io/badger/v4.Open.func5()
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:349 +0x70
+created by github.com/dgraph-io/badger/v4.Open in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:348 +0x1f2b
+
+goroutine 926617 [select]:
+github.com/dgraph-io/badger/v4.(*levelsController).runCompactor(0xc00ec63c70, 0x0, 0xc0018e4d20)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:519 +0x4ac
+created by github.com/dgraph-io/badger/v4.(*levelsController).startCompact in goroutine 347
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:348 +0x7e
+
+goroutine 925157 [select, 6 minutes]:
+github.com/dgraph-io/badger/v4.(*publisher).listenForUpdates(0xc028c85cb0, 0xc01fb1d6b0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/publisher.go:62 +0x205
+created by github.com/dgraph-io/badger/v4.Open in goroutine 347
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:387 +0x325d
+
+goroutine 7354094 [select]:
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*ingestApplier).run(0xc0431df800)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/internal/core/ingest.go:184 +0x1b9
+created by github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).ensureIngestApplier in goroutine 7354221
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/internal/core/ingest.go:506 +0x265
+
+goroutine 922046 [select]:
+github.com/dgraph-io/ristretto/v2.(*Cache[...]).processItems(0x24945e0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/cache.go:522 +0x285
+created by github.com/dgraph-io/ristretto/v2.(*Cache[...]).Clear in goroutine 354
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/cache.go:473 +0x29d
+
+goroutine 7354251 [select]:
+github.com/dgraph-io/badger/v4.(*levelsController).runCompactor(0xc042f5e9a0, 0x3, 0xc043628d20)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:519 +0x4ac
+created by github.com/dgraph-io/badger/v4.(*levelsController).startCompact in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:348 +0x7e
+
+goroutine 7354227 [select]:
+github.com/dgraph-io/badger/v4.(*DB).monitorCache(0xc052edc488, 0xc042f4f860)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:461 +0x2a5
+created by github.com/dgraph-io/badger/v4.Open in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:303 +0x157d
+
+goroutine 1012624 [select]:
+github.com/dgraph-io/badger/v4.(*levelsController).runCompactor(0xc05f1a8770, 0x3, 0xc02117dd40)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:519 +0x4ac
+created by github.com/dgraph-io/badger/v4.(*levelsController).startCompact in goroutine 348
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:348 +0x7e
+
+goroutine 7354224 [select]:
+github.com/dgraph-io/ristretto/v2/z.(*AllocatorPool).freeupAllocators(0xc042efcbe8)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/z/allocator.go:372 +0x23e
+created by github.com/dgraph-io/ristretto/v2/z.NewAllocatorPool in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/z/allocator.go:311 +0x17a
+
+goroutine 1012621 [select]:
+github.com/dgraph-io/badger/v4.(*levelsController).runCompactor(0xc05f1a8770, 0x0, 0xc02117dd40)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:519 +0x4ac
+created by github.com/dgraph-io/badger/v4.(*levelsController).startCompact in goroutine 348
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:348 +0x7e
+
+goroutine 919669 [select, 6 minutes]:
+github.com/dgraph-io/badger/v4.(*vlogThreshold).listenForValueThresholdUpdate(0xc08bcdfb00)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/value.go:1174 +0x23d
+created by github.com/dgraph-io/badger/v4.Open in goroutine 354
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:372 +0x2b0b
+
+goroutine 916621 [select]:
+github.com/dgraph-io/ristretto/v2/z.(*AllocatorPool).freeupAllocators(0xc01ea0d4d0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/z/allocator.go:372 +0x23e
+created by github.com/dgraph-io/ristretto/v2/z.NewAllocatorPool in goroutine 354
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/z/allocator.go:311 +0x17a
+
+goroutine 922048 [select]:
+github.com/dgraph-io/badger/v4.(*levelsController).runCompactor(0xc00a530a10, 0x1, 0xc054681c50)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:519 +0x4ac
+created by github.com/dgraph-io/badger/v4.(*levelsController).startCompact in goroutine 354
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:348 +0x7e
+
+goroutine 7354230 [select]:
+github.com/dgraph-io/badger/v4.(*levelsController).runCompactor(0xc042f1fe30, 0x1, 0xc042f4f980)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:519 +0x4ac
+created by github.com/dgraph-io/badger/v4.(*levelsController).startCompact in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:348 +0x7e
+
+goroutine 922049 [select]:
+github.com/dgraph-io/badger/v4.(*levelsController).runCompactor(0xc00a530a10, 0x2, 0xc054681c50)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:519 +0x4ac
+created by github.com/dgraph-io/badger/v4.(*levelsController).startCompact in goroutine 354
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:348 +0x7e
+
+goroutine 922439 [select, 6 minutes]:
+github.com/dgraph-io/ristretto/v2.(*defaultPolicy[...]).processItems(0x0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/policy.go:61 +0x105
+created by github.com/dgraph-io/ristretto/v2.newDefaultPolicy[...] in goroutine 347
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/policy.go:45 +0x35d
+
+goroutine 1012622 [select]:
+github.com/dgraph-io/badger/v4.(*levelsController).runCompactor(0xc05f1a8770, 0x1, 0xc02117dd40)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:519 +0x4ac
+created by github.com/dgraph-io/badger/v4.(*levelsController).startCompact in goroutine 348
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:348 +0x7e
+
+goroutine 1008671 [select]:
+github.com/dgraph-io/ristretto/v2/z.(*AllocatorPool).freeupAllocators(0xc055187c68)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/z/allocator.go:372 +0x23e
+created by github.com/dgraph-io/ristretto/v2/z.NewAllocatorPool in goroutine 348
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/z/allocator.go:311 +0x17a
+
+goroutine 7354255 [select]:
+github.com/dgraph-io/badger/v4.(*publisher).listenForUpdates(0xc042f66750, 0xc043628db0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/publisher.go:62 +0x205
+created by github.com/dgraph-io/badger/v4.Open in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:387 +0x325d
+
+goroutine 460168 [chan receive]:
+testing.(*T).Run(0xc0004a1208, {0xc042f1c678, 0x16}, 0xc042ef6f00)
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2109 +0xb3e
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.TestRetractionOracle_NeverRecordedWorld(0xc0004a1208)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/internal/core/retraction_oracle_test.go:68 +0x3e5
+testing.tRunner(0xc0004a1208, 0x245d6d8)
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0x21d
+created by testing.(*T).Run in goroutine 1
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0xb13
+
+goroutine 926621 [chan receive, 6 minutes]:
+github.com/dgraph-io/badger/v4.(*DB).flushMemtable(0xc0de566008, 0xc0018e4d80)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:1105 +0xf2
+github.com/dgraph-io/badger/v4.(*DB).startMemoryFlush.func1()
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:1561 +0x45
+created by github.com/dgraph-io/badger/v4.(*DB).startMemoryFlush in goroutine 347
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:1560 +0x17f
+
+goroutine 1012623 [select]:
+github.com/dgraph-io/badger/v4.(*levelsController).runCompactor(0xc05f1a8770, 0x2, 0xc02117dd40)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:519 +0x4ac
+created by github.com/dgraph-io/badger/v4.(*levelsController).startCompact in goroutine 348
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:348 +0x7e
+
+goroutine 7354236 [select]:
+github.com/dgraph-io/badger/v4.(*publisher).listenForUpdates(0xc042f0d3b0, 0xc042f4fa10)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/publisher.go:62 +0x205
+created by github.com/dgraph-io/badger/v4.Open in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:387 +0x325d
+
+goroutine 7354225 [select]:
+github.com/dgraph-io/ristretto/v2.(*defaultPolicy[...]).processItems(0x0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/policy.go:61 +0x105
+created by github.com/dgraph-io/ristretto/v2.newDefaultPolicy[...] in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/policy.go:45 +0x35d
+
+goroutine 916624 [select]:
+github.com/dgraph-io/badger/v4.(*DB).monitorCache(0xc05ee40d88, 0xc05fe259b0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:461 +0x2a5
+created by github.com/dgraph-io/badger/v4.Open in goroutine 354
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:303 +0x157d
+
+goroutine 919675 [select]:
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).flushLoop(0xc025e13008)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/store/badger/badgerstore_flush.go:157 +0x21f
+created by github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.New in goroutine 354
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/store/badger/badgerstore.go:1257 +0x2451
+
+goroutine 922834 [select]:
+github.com/dgraph-io/badger/v4.(*levelsController).runCompactor(0xc00a530a10, 0x3, 0xc054681c50)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:519 +0x4ac
+created by github.com/dgraph-io/badger/v4.(*levelsController).startCompact in goroutine 354
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:348 +0x7e
+
+goroutine 7354246 [select]:
+github.com/dgraph-io/badger/v4.(*DB).monitorCache(0xc052edc908, 0xc043628c00)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:461 +0x2a5
+created by github.com/dgraph-io/badger/v4.Open in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:303 +0x157d
+
+goroutine 7354232 [select]:
+github.com/dgraph-io/badger/v4.(*levelsController).runCompactor(0xc042f1fe30, 0x3, 0xc042f4f980)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:519 +0x4ac
+created by github.com/dgraph-io/badger/v4.(*levelsController).startCompact in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:348 +0x7e
+
+goroutine 7354241 [runnable]:
+github.com/dgraph-io/badger/v4/y.(*WaterMark).process(0xc042f66660, 0xc042f66630)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/y/watermark.go:203 +0x405
+created by github.com/dgraph-io/badger/v4/y.(*WaterMark).Init in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/y/watermark.go:61 +0x125
+
+goroutine 926622 [select, 6 minutes]:
+github.com/dgraph-io/badger/v4.(*DB).doWrites(0xc0de566008, 0xc0018e4db0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:933 +0x396
+created by github.com/dgraph-io/badger/v4.(*DB).unblockWrite in goroutine 347
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:1656 +0x13d
+
+goroutine 926620 [select]:
+github.com/dgraph-io/badger/v4.(*levelsController).runCompactor(0xc00ec63c70, 0x3, 0xc0018e4d20)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:519 +0x4ac
+created by github.com/dgraph-io/badger/v4.(*levelsController).startCompact in goroutine 347
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:348 +0x7e
+
+goroutine 7354245 [select]:
+github.com/dgraph-io/ristretto/v2.(*Cache[...]).processItems(0x24945e0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/cache.go:522 +0x285
+created by github.com/dgraph-io/ristretto/v2.NewCache[...] in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/cache.go:263 +0x120b
+
+goroutine 7354250 [select]:
+github.com/dgraph-io/badger/v4.(*levelsController).runCompactor(0xc042f5e9a0, 0x2, 0xc043628d20)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:519 +0x4ac
+created by github.com/dgraph-io/badger/v4.(*levelsController).startCompact in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/levels.go:348 +0x7e
+
+goroutine 7354234 [select]:
+github.com/dgraph-io/badger/v4.(*vlogThreshold).listenForValueThresholdUpdate(0xc042ef6fc0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/value.go:1174 +0x23d
+created by github.com/dgraph-io/badger/v4.Open in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:372 +0x2b0b
+
+goroutine 925161 [select]:
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).flushLoop(0xc000c4f808)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/store/badger/badgerstore_flush.go:157 +0x21f
+created by github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.New in goroutine 347
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab0ee0097a18b0a1f/pkg/graph/store/badger/badgerstore.go:1257 +0x2451
+
+goroutine 7354254 [select]:
+github.com/dgraph-io/badger/v4.(*DB).doWrites(0xc052edc908, 0xc043628d80)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:933 +0x396
+created by github.com/dgraph-io/badger/v4.Open in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:379 +0x2e53
+
+goroutine 7354223 [select]:
+github.com/dgraph-io/badger/v4/y.(*WaterMark).process(0xc042f0d2f0, 0xc042f0d290)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/y/watermark.go:203 +0x405
+created by github.com/dgraph-io/badger/v4/y.(*WaterMark).Init in goroutine 7354221
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/y/watermark.go:61 +0x125
+
+goroutine 919671 [select, 6 minutes]:
+github.com/dgraph-io/badger/v4.(*publisher).listenForUpdates(0xc06f34de00, 0xc05f1ff020)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/publisher.go:62 +0x205
+created by github.com/dgraph-io/badger/v4.Open in goroutine 354
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:387 +0x325d
+
+goroutine 926890 [select]:
+github.com/dgraph-io/ristretto/v2.(*Cache[...]).processItems(0x24945e0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/cache.go:522 +0x285
+created by github.com/dgraph-io/ristretto/v2.(*Cache[...]).Clear in goroutine 347
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/ristretto/v2@v2.2.0/cache.go:473 +0x29d
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	601.213s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	9.078s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	201.626s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	454.775s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	19.624s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	204.255s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	425.757s
+FAIL
+exit=1
+# core hit the default 10m timeout under parallel host load (TestRetractionOracle_NeverRecordedWorld; same duration as on main when timed alone: 92 s vs 94 s); rerun alone with -timeout 40m: 50-fix-green-6-core-race.txt exit 0
