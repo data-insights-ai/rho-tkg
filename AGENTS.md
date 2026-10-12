@@ -6,12 +6,16 @@ pointer here; nothing in this repository's guidance is Claude-only.
 
 ## Session Protocol
 
-- **Session start**: Read `tasks/lessons.md` and `CHANGELOG.md` (source of truth for version history) before doing any work
-- **Before planning**: Read the full API of ALL files involved in the change — not snippets around suspected bug locations. Understanding the complete API prevents plans based on wrong assumptions
-- **Challenge the plan**: Before implementing any method, ask: "Does this algorithm deliver what the method name promises?" and "Does this interact with an existing feature that could break it?"
-- **After implementation**: Update only documentation that materially changes user-facing behavior, API contracts, or architecture. Prefer tightening existing docs over adding new long-form notes.
-- **After corrections**: Add to `tasks/lessons.md` only for a new recurring pattern that is not already covered. Prefer editing an existing rule. Do not add one lesson per small bug.
-- **Session end**: Do not add automatic lessons. Leave `tasks/lessons.md` concise and actionable.
+The standing process rules are the **Rules digest at the top of `tasks/lessons.md`** (numbers cited below); this section only says
+when to read what. Do not restate those rules here.
+
+- **Session start**: read `HANDOVER.md` (open requests, next steps), the lessons digest, `tasks/todo.md` (user requests, open queue) and the top of `CHANGELOG.md` (source of truth for version history) before doing any work. Newest user message wins over any of them.
+- **Open work with a clear next step is started, not offered** (lesson 81); every user or consumer request gets a `tasks/todo.md` row before the first action, and every release ticks the rows, the releases table and the version lines (lessons 80, 41).
+- **Before planning**: read the full API of ALL files involved in the change, not snippets around suspected bug locations. Challenge the plan: "Does this algorithm deliver what the method name promises?" and "Does this interact with an existing feature that could break it?"
+- **Implementing**: a failing break-the-code test first (run red, evidence under `tasks/evidence/<item>/`), then the clean root-cause fix at the shared seam (lesson 78); the Testing Rules below are hard requirements.
+- **Releasing and reviewing**: PATCH versions only, batched; behaviour changes via the deprecation ritual (`docs/stability.md`); authors run `make lint-docker` and `make security-docker`; one review round per branch; models: builds Opus, code reviews Opus effort high, final Fable review before tagging, doc work Sonnet (lesson 79). Commits carry no attribution lines.
+- **After implementation**: update only documentation that materially changes user-facing behavior, API contracts, or architecture; tighten existing docs rather than adding long-form notes.
+- **After corrections**: add to `tasks/lessons.md` only for a new recurring pattern not already covered; prefer editing the owning lesson (and its digest line) over a new one. No automatic end-of-session lessons.
 
 ## MR Review Protocol
 
@@ -543,10 +547,10 @@ The epoch and layout have ONE definition, `pkg/internal/idlayout` (re-exported b
 ### Code Review Lessons
 
 - **Use library APIs, never reimplement internals**: If a dependency provides an API (e.g. `snowflake.Node.Decompose()`), use it. Never duplicate internal knowledge like bit layouts or hardcoded shifts in the consumer. When the library changes its layout, hardcoded shifts break silently across dozens of call sites. The library's API encapsulates the layout — use it.
-- **Every fix needs a grep audit**: When fixing a pattern in one call site, grep for the same pattern across all files. The canonical hash bug (A1) was fixed in `context.go` but missed in `batch.go`, requiring a second review round.
+- **Every fix needs a grep audit** and a contract over a family of doors lands in every door: lesson 58 (A1 was fixed in `context.go` and missed in `batch.go`).
 - **Fix descriptions must include exact signatures**: Telling a developer to "use lazy iterators" without specifying the callback shape led to 5 rounds of partial fixes for the OOM issue (C4). Specify the exact interface.
 - **Review by feature, not by file**: Single-file reviews missed cross-file interactions. The `batch.go` hash bug was only caught when reviewing `batch.go`, not when reviewing `integrity.go` where the hash function lives.
-- **Repair tools complement but don't replace correctness**: The cross-shard rollback issue (B7) was accepted as "mitigated" by `RunRepair` when it should have been fixed inline.
+- **Repair tools complement but don't replace correctness**: lesson 5 (B7).
 - **Most-recent-overlap is wrong for predicate-during-interval**: A "during [start,end)" query that checks the predicate only on the most-recent overlapping version misses entities whose label/property held earlier in the interval. Use `findNodeVersionMatchingDuring(id, start, end, pred)` which scans all overlapping versions.
 
 ## Audit Checklists

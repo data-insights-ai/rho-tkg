@@ -14,9 +14,7 @@ concurrency edge / perf cliff / contract inconsistency. LOW = smell / doc drift.
 TEST-GAP = real behavior unverified (may hide a bug). FEATURE = plausible
 capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 
-**Remaining open work (verified against the code at v4.49.0, 2026-10-10):** no reproduced CRITICAL or HIGH
-item; two traced, unreproduced HIGH? findings in item 4. Next step: items 41,
-49, 50, 28, 21. Open items, one line each (full text below):
+**Remaining open work (verified against the code at v4.51.2, 2026-10-12):** no reproduced CRITICAL item. In progress in the v4.51.3 batch: 52-55 (ai-soc, sigma) and the post-release review findings F1-F6 (`tasks/todo.md`). On hold: 41, 28, 21. Open items, one line each (full text below):
 
 | # | Type / severity | Item | Status |
 |---|---|---|---|
@@ -43,12 +41,14 @@ item; two traced, unreproduced HIGH? findings in item 4. Next step: items 41,
 | 39 | LOW (not tested) | Per-entity compaction stubs survive `Admin().Reset` | open; `reapCompactionForReset` still leaves the stubs (`core/compaction.go:285`) |
 | 40 | LOW (cosmetic) | A cascade resumption may end at an earlier life's own bound | open |
 | 41 | MEDIUM (RAM) | Merge the history stamps sidecar into the presence set | open; measured 2026-10-12, not merged (saves 31 % only where both doors run, +122 % for HasHistory alone) |
-| 44 | MEDIUM (traced, not reproduced) | Commit-clock floor persisted only at Close | open; filed 2026-10-10 from `tasks/review-v5-plan-vs-code-20261009.md` §6.5 |
+| 44 | MEDIUM (traced, not reproduced) | Commit-clock floor persisted only at Close | open; filed 2026-10-10 from the v5 plan review §6.5 (file removed, in git history) |
 | 45 | MEDIUM (API) | Internal sentinels reach callers but have no exported alias; `ErrMixedNumericColumn` is outside the errors inventory test | open; found by the doc review of `docs/errors.md` 2026-10-10 |
 | 46 | LOW (stale comments) | Code comments that contradict the code or cite ADRs no longer in `docs/adr/` | open; found by the doc reviews 2026-10-10 |
 | 47 | LOW (unverified claims) | `NodesByLabelAt` vs K1; a RAM budget for the property sidecars | open; each needs a real check before it becomes work |
-| 49 | HIGH (tiered) | A re-import that moves a relationship to another tiered shard makes the earlier life unreachable | open; reproduced 2026-10-12 (item 35 work) |
-| 50 | MEDIUM | Pinned adjacency doors miss a re-imported relationship's earlier life | open; reproduced 2026-10-12 (item 35 work) |
+| 52 | HIGH (ai-soc) | Durable commit under SyncWrites costs one fsync per mutation | in progress, v4.51.3 |
+| 53 | HIGH (ai-soc) | Relationship planner-stat memos hold one RAM entry per relationship | in progress, v4.51.3 |
+| 54 | HIGH (ai-soc) | Badger open walks every current row (open linear in history) | in progress, v4.51.3 |
+| 55 | MEDIUM (ai-soc, sigma) | Effective scans read one relationship per Badger transaction | in progress, v4.51.3 |
 
 ---
 
@@ -214,7 +214,7 @@ test passes.
 
 *FEATURE (limitation)* — open; `DeleteWithTx` refuses `ValidTo >= t` with `ErrTxOrder` (R8, v4.44.0).
 
-**Caller-instant delete of a row with a scheduled close** (FEATURE, follows item 6): `DeleteWithTx(id, t)` refuses when the recorded `ValidTo >= t`, because one tombstone row cannot end belief at `t` and keep the close that pins before `t` believed (decision 2026-10-09, handover §6.11; the refusal shipped in v4.44.0, `core/tx_order.go`). Lifting it needs a tombstone that keeps the believed `ValidTo` beside the deletion instant (no clamp for a caller instant), with the normalizer (`normalizeTemporalVisibleAtTxTime`, `core/txtime.go:495`) and the valid-time history reads agreeing. Write the two-phase red test first.
+**Caller-instant delete of a row with a scheduled close** (FEATURE, follows item 6): `DeleteWithTx(id, t)` refuses when the recorded `ValidTo >= t`, because one tombstone row cannot end belief at `t` and keep the close that pins before `t` believed (decision 2026-10-09, tx-backfill handover §6.11 (removed, in git history); the refusal shipped in v4.44.0, `core/tx_order.go`). Lifting it needs a tombstone that keeps the believed `ValidTo` beside the deletion instant (no clamp for a caller instant), with the normalizer (`normalizeTemporalVisibleAtTxTime`, `core/txtime.go:495`) and the valid-time history reads agreeing. Write the two-phase red test first.
 
 ### 10. Tiered store: remaining work after composite + rel temporal indexes
 
@@ -242,15 +242,27 @@ Composite and relationship temporal indexes on tiered shipped in v4.45.0 (ai-soc
 
 ### 20. Effective-read cost: RelAtTx benchmark targets unmeasured
 
-*LOW (TEST-GAP, perf)* — fixes 1a (v4.44.1), 1b (v4.46.0), 1c (v4.47.0), 2a (v4.46.0) shipped; only the RelAtTx benchmarks remain.
+*LOW (TEST-GAP, perf)* — open; only the RelAtTx benchmarks remain (everything else in the sigma request shipped, see Closed).
 
-Everything the handover `tasks/handover-effective-read-cost-20261009.md` asked for shipped (Closed table) except its `BenchmarkRelAtTx/{plain,cascaded}/{hot,cold}` rows and their targets (< 1 µs plain hot row, cold row + 1 µs, ≤ 6 µs cascaded via the skeleton path; 2.0 / 9.5 / 18.5 µs at v4.43.0): no such benchmark exists in the tree. Add it (ReportAllocs, bench-gate) and measure on v4.49.0 before deciding whether any work remains.
+Missing: `BenchmarkRelAtTx/{plain,cascaded}/{hot,cold}` with targets < 1 µs plain hot row, cold row + 1 µs, ≤ 6 µs cascaded via the skeleton path (2.0 / 9.5 / 18.5 µs at v4.43.0, sigma-tkgd stream "effective"). No such benchmark exists in the tree. Add it (ReportAllocs, bench-gate; profile first: 0.15 µs of the 2.0 µs is the row read) and measure on the current release before deciding whether any work remains. Original spec: `git log -- tasks/handover-effective-read-cost-20261009.md`.
 
 ### 21. Purge relationships by age, gate retention reads per type
 
 *FEATURE* — open; no `PurgeExpiredRels` in the tree; sigma: not blocking until `@overview` starts.
 
-**Purge relationships by age, and gate retention reads per type** (FEATURE, requested by sigma-tkgd's temporal overview design 2026-10-09; first filed as item 10 in c8de314 and dropped by my backlog edit in f952015, restored here under a new number because 10 is now the tiered indexes): `Admin().PurgeExpiredRels` with a watermark per relationship type, a retention scan gate that a purge of the raw event type does not trip for the long-lived `Overview` nodes, and the tiered landing place of a long-lived node's new versions (answered from the code). Handover with verified citations, API, backend and change-feed semantics, and the red tests to write first: `tasks/handover-overview-retention-20261009.md`.
+**Purge relationships by age, and gate retention reads per type** (FEATURE, requested by sigma-tkgd's temporal overview design 2026-10-09; decided 2026-10-09). sigma keeps a long-lived overview (nodes `Overview` + `ov_*`, rels `OV_PAIR`), written back once per cut, and lets raw event RELATIONSHIPS age out. The full spec below was folded in from the removed handover `tasks/handover-overview-retention-20261009.md` (code citations were at main `0622da6` and have moved).
+
+*Claims checked at main:* only nodes purge (`core/retention_purge.go`; no rel purge; the `admin/api.go` doc is stale, tiered and sharded implement it); edges go with an endpoint (cascade in the badger/memory/tiered/sharded purges); the scan gate is graph-wide (`retention.go` scan gate reached from `compaction.go` `validateTemporalQueryOptsScan`, ~30 scan doors; the rel point gate is graph-wide too). Probe: after `PurgeExpiredNodes("Event")`, `Nodes().ByLabel("Overview", TxPin<wm)` = `ErrRetentionExpired`. Found on the way: (a) `PurgeExpiredNodes` does not reach ENDED entities (a deleted node keeps a history row; an ended rel is history-only); (b) `Export`->`Import` carries no retention watermark; (c) `Temporal().OutgoingRelsAt/IncomingRelsAt/NeighborsAt` have no retention gate.
+
+*Item 1, `Admin().PurgeExpiredRels(ctx, RelPurgePolicy{Type, Mode, Before})`* (mirror of `PurgeExpiredNodes`, report `RelsPurged`, watermark of this type): `PurgeByAge` = rel snowflake mint time < `Before`, live AND ended (like nodes, ByAge ignores liveness); `PurgeByValidTo` returns `ErrInvalidPurgePolicy` in this cut. Removes row, type/adjacency (both legs)/property/temporal index entries, counters and the whole history incl. the tombstone; nodes untouched. Same gates and order as the node purge (open, ctx, writable, `AllowRetentionPurge`, policy, capability; unknown type = no-op, no token created; watermark FIRST, then the log record, then 256-chunks; idempotent, resumable). Store: new optional interfaces beside `store/capabilities.go` (`RelRetentionPurgeCapability.PurgeRelsByTypeBefore`, `RelRangePurgeLogCapability.LogRelRangePurge`), never new methods on old ones; candidates = type index UNION deleted IDs. Backends: memory (one lock, reap `relTypeTxMembers`, `RelSegments` dead sealed copy via the overlay), badger (Phase A/B of `purgeNodesByLabel` with `deleteRelByInfo` + `historyTruncateDeleteKeys`, coarse `bumpRelEpoch`), sharded (per-shard fan-out), tiered (per-shard scan, then `sweepRelResidue`; entity + out-leg on the start node's shard, in-leg on the end's).
+
+*Item 2, per-type gate:* new MetaKV `retention_rel_watermark/<relTypeToken>` (max-monotonic) and `retention_rel_max_watermark`; `retention_max_watermark` keeps meaning "max over node-label purges". A scan of rel type T fails iff pin < nodeMax or < wm(T); all-rels and untyped adjacency scans: pin < max(nodeMax, relMax); node scans and node point reads: pin < nodeMax, so a rel purge never fails an `Overview` read. `validateTemporalQueryOptsScan` gains a scope argument (node label / rel type / all). Register the keys in `metakv_reap_policy.go` (`check-metakv-reap`) and `reapRetentionForReset`. Phase 2 (per-label node gating) only if raw events ever become NODES: not now.
+
+*Interactions:* the as-of cache holds NODE columns only, so a rel purge needs no bump (pin it by test); the node purge bumps BEFORE removing (against the R14 rule, not reproduced: a hook between watermark and chunks proves it; fix with a `defer` bump). Change feed: new tag `ChangeRelRangePurge = 14`, body `{TypeToken, Before, Mode}` (not a kind field on tag 13: an old replica would purge nodes); old replicas stop at the unknown tag, so upgrade replicas first; touch `changefeed.go`, `storeutil/changelog.go`, `changelog_wire.go`, `replication/change_identity.go`, `apply_record.go`, `import_merge.go` (capture nothing), `instant_floor.go`, `docs/persistence.md` ("13 in total"). Replicas re-run the predicate on their own state, advance their own rel watermark, emit nothing. Export header carries both watermark families (decision: yes). `DeleteWithTx`/`UpdateWithTx` have no write guard below a watermark: keep it. An older binary ignores the rel watermarks: no downgrade after the first rel purge. New public surface (`Admin().PurgeExpiredRels`, `RelPurgePolicy`, tag 14, two capabilities, new MetaKV keys); released as a PATCH version (lesson 79).
+
+*Where a new version of a long-lived node lands on tiered (answered from the code):* on its OWNER shard, never hot: the ref shard if it holds the ID, else the archive, else the event shard whose window contains the snowflake MINT instant (`tieredstore_routing.go`); a cold owner is lazy-opened for the write and closed on checkin unless `MaxOpenColdShards` retains it; a `RefLabels` label lives on the always-open ref shard and cannot change class on update. Add this paragraph to `docs/persistence.md`. For sigma: nodes rewritten every cut should be reference-class. sigma also passes `Before <= RetirableBefore` and clamps to now (ByAge is ingest time).
+
+*Red tests first (memory, badger, tiered with `newTestTieredStore` + `demoteToCold`, sharded; two-phase, exact sets, `errors.Is`):* (1) EVENT rels at t0, an `OV_PAIR` rel, an `Overview` node, mutate, purge EVENT: pin >= Before survivor set exact; pin < Before ByType / property lookup / `CountByTypeAt` / point `RelAsOf` = `ErrRetentionExpired` while `Overview` ByLabel and `OV_PAIR` ByType succeed (red today); the node purge still fails every scan below its watermark. (2) Ended rels (by `DeleteWithTx` and by a node-cascade `DeleteWithTx`): after the purge `History` is empty, no ghost in `RelCountByType`, `Stats().HistoryCounts`, indexes, `VerifyConsistency` clean. (3) Break the code: `Before <= 0`, empty/unknown `Type` (no token created), mint == `Before` kept, rerun no-op, > 256 rels, ctx cancelled mid-range then rerun, reopen with the watermark written and rows not yet removed, gates (`AllowRetentionPurge` off, `ReadOnlyReplica`, capability absent -> `ErrCapabilityNotSupported`), `ByValidTo` rejected. (4) Gate matrix incl. Reset clearing rel watermarks (reused type token starts clean) and reload at open. (5) Cross-shard tiered (start cold, end ref) and sharded; `RelSegments` type on memory. (6) Feed: three-way parity byte-identical, replica converges and refuses the low pin, a replica bootstrapped AFTER a purge refuses it too, tag 14 in `ChangeOpOf` / `DecodeChangeIdentity` / `ImportMerge`. (7) As-of cache survives a rel purge. (8) `-race`: purge against AddRel/DeleteWithTx/ByType; a `GraphTx` that touched a purged rel then rolls back does not resurrect it. (9) `BenchmarkPurgeRels` per backend, `BenchmarkScanGate` (no-retention path stays one atomic load). Docs: `docs/api.md`, `docs/errors.md`, `docs/persistence.md`, stale `admin/api.go` comment, CHANGELOG. Open decisions (defaults taken): `PurgeByValidTo` declined for now; per-label node gate not built; export carries both watermarks.
 
 ### 22. Badger rel temporal index create races concurrent writes
 
@@ -317,7 +329,7 @@ Measured 2026-10-12 (`tasks/evidence/badger-read-cost/41-01-sidecar-ram-per-id.t
 
 ### 44. Commit-clock floor persisted only at Close
 
-*MEDIUM (traced, not reproduced)* — open; filed 2026-10-10 from `tasks/review-v5-plan-vs-code-20261009.md` §6.5.
+*MEDIUM (traced, not reproduced)* — open; filed 2026-10-10 from the v5 plan review §6.5 (`git log -- tasks/review-v5-plan-vs-code-20261009.md`).
 
 A crash after a burst whose monotonic floor outran the wall reopens with `NowTx` below committed stamps (lesson 71's reopen case on the crash path): `persistInstantFloor` is called only from `Close` (`core/core.go`, `core/instant_floor.go:129`), and `seedInstantFloor` reseeds only from that watermark. Red test first: a crash-shaped child (exit without `Close`) after writes stamped ahead of the wall, reopen, assert `NowTx()` and a fresh write's `TxFrom` exceed every stored `TxFrom`. Fix candidates: persist the floor with the durable commit / flush, or reseed from the newest stored stamp at open.
 
@@ -403,7 +415,7 @@ rule itself); the header of `pkg/graph/internal/core/effective_timeline.go` (~li
 
 ### 47. Claims that need a real check before they become work
 
-*LOW (unverified)* — carried from HANDOVER.md §7 and left unfiled by the doc review of the tasks files (group E).
+*LOW (unverified)* — carried from the 2026-10-10 handover and left unfiled by the doc review of the tasks files (group E).
 
 (a) "`NodesByLabelAt` still folds all history instead of using the K1 sidecar": `NodesByLabelAt` is a valid-time door and K1 is
 transaction-time membership; verify whether the named door can use K1 at all (a two-phase test with a churned label, memory/badger)
@@ -412,13 +424,7 @@ no budget; reopen only if a consumer reports memory pressure; then design a per-
 
 ## v5
 
-v5 is Markus Nissl's work on branch `origin/v5`, a separate Go module (`github.com/data-insights-ai/rho-tkg/v5` in
-`v5/`); the plan (`docs/v5/PLAN.md`, `RESEARCH-REVIEW.md`, `DISCUSSION.md`, revised 2026-10-09 after
-`tasks/review-v5-plan-vs-code-20261009.md`) lives on branch `v5`, not on main (our plan commit `b1193dc`, tag
-`v5-plan-20261009`). Do not push to `v5` (HANDOVER.md §4). What the v4 changes mean for the importer:
-`tasks/v4-changes-for-v5-importer-20261010.md`. v4 keeps taking consumer features (decision René 2026-10-09, the
-earlier fixes-only rule is deleted). **DECIDED 2026-09-25 (René): ADR-0011 S2 and S5 shipped on v4 as v4.39.0**
-(ADR-0011 §6 gate met: 24.0 / 24.8 / 25.7 B/HOP at 790 K / 3.15 M / 12.6 M); v5 carries the segments forward.
+v5 is Markus Nissl's work on branch `origin/v5`, a separate Go module (`v5/`); the plan (`docs/v5/PLAN.md`, `RESEARCH-REVIEW.md`, `DISCUSSION.md`) lives on branch `v5`, not on main (our plan commit `b1193dc`, tag `v5-plan-20261009`). Do not push to `v5`; Markus merges v5 into main (René 2026-10-12), we do not; open questions for him are the rho-tkg GitHub issue #11. Maturity, merge analysis and the v4 to v5 door mapping: `docs/v5-analysis.md`; the Fable review of the branch: `docs/v5/HANDOVER.md` on branch `v5`. The older notes `tasks/review-v5-plan-vs-code-20261009.md` and `tasks/v4-changes-for-v5-importer-20261010.md` were removed from main (recover with `git log -- <path>`). v4 keeps taking consumer features (René 2026-10-09). **DECIDED 2026-09-25 (René): ADR-0011 S2 and S5 shipped on v4 as v4.39.0** (ADR-0011 §6 gate met: 24.0 / 24.8 / 25.7 B/HOP at 790 K / 3.15 M / 12.6 M); v5 carries the segments forward.
 
 ---
 
@@ -451,7 +457,7 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | HIGH — badger reads dropped or replaced rows when a flush + eviction landed mid-read (flush epoch, `scanSnapshot`, `LoadCleanAt`) | `[4.37.1]` Fixed |
 | Review 2026-09-24: delete after close, correction template, endpoint masking (HIGH) | `[4.38.0]` (merge `4473705`) |
 | Review 2026-09-24: TxAt-only doors "nondeterministic" (implicit valid-time now = wall clock; now `readNow()`) | `[4.38.1]` |
-| Item 6 (FEATURE) — `DeleteWithTx` / `UpdateWithTx` on every write door, `ErrTxOrder` | `[4.44.0]` Added; handover `tasks/handover-tx-backfill-delete-update-20261009.md` |
+| Item 6 (FEATURE) — `DeleteWithTx` / `UpdateWithTx` on every write door, `ErrTxOrder` | `[4.44.0]` Added; evidence `tasks/evidence/tx-backfill-delete-update/` |
 | Item 34 (FEATURE) — `SetNodeVersionIntervalWithTx` / `SetRelVersionIntervalWithTx` on every door | `[4.50.1]` Added; evidence `tasks/evidence/interval-withtx/` |
 | Item 49 (HIGH, tiered) — re-import onto another shard made earlier lives unreachable | `[4.51.2]` Fixed; evidence `tasks/evidence/reimport-shards/` |
 | Item 50 (MEDIUM, sigma) — pinned adjacency doors missed a re-imported rel's earlier life; AtNodes O(H) | `[4.51.2]` Added/Changed/Fixed (ex-adjacency index, store marker 3); evidence `tasks/evidence/effective-scans/50-*` |
@@ -504,6 +510,11 @@ Recover closed investigation prose via `git log --all -- tasks/backlog.md` if ne
 - **DECIDED NO 2026-10-09 (René, relayed by ai-soc):** an index-provider "failure aborts the mutation" option
   (ai-soc request 5; ai-soc rebuilds from the change feed) and one instant per commit group (ai-soc request 7; the
   cut-record pin is enough). Reopen only with a consumer case the change feed or the cut-record pin cannot cover.
+- **Async ingest outcome ambiguity (R4 of the temporal-replay plan, ai-soc):** NOT BUILT, conditional. R0-R3 and R5 shipped
+  (R3/R5 in v4.35.1, `store.GroupCommitCapability`; `Config.DurableCommit` in v4.44.0); the ingest `AppliedSeq` counts failed
+  attempts and async failures are consumed on first wait (evicted after 8,192), so a process-local token is no durable checkpoint.
+  Reopen only if ai-soc moves off synchronous sessions. Benchmark and evidence: `bench/temporalreplay/`,
+  `tasks/evidence/temporal-index/` (the plan file `tasks/plan-temporal-index-ingestion.md` was removed, in git history).
 - **Per-version temporal-envelope prune (ex-BACKLOG 4a):** owner-decided net-negative
   for the confirmed workload. Detail in CHANGELOG.
 - **Wire `fv` bump** (widen temporal tail to full envelope + eclipsed-row flag) **and

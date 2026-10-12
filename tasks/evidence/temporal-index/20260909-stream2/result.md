@@ -1,6 +1,6 @@
 # R0–R2 evidence: indexed temporal replay on the current rho-tkg ingest API
 
-Date: 2026-09-09. Plan: tasks/plan-temporal-index-ingestion.md (amended today:
+Date: 2026-09-09. Plan: tasks/plan-temporal-index-ingestion.md (removed from main 2026-10-12, in git history) (amended today:
 producers 1 and 4 only, batch-size sweep, exact durability-syscall counting).
 
 ## Revision and environment

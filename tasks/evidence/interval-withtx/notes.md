@@ -2,7 +2,7 @@
 
 Requested by sigma-tkgd: a replayed burst growth `[vs,ve) -> [vs,ve')` must be stamped at the record's own
 transaction instant, not at the commit clock. Mirrors `DeleteWithTx` / `UpdateWithTx`
-(`tasks/handover-tx-backfill-delete-update-20261009.md` §6).
+(handover tasks/handover-tx-backfill-delete-update-20261009.md §6, removed from main 2026-10-12, in git history).
 
 ## Ledger (written before the first test or code edit, base 7b3e11b = v4.49.0 + docs)
 
