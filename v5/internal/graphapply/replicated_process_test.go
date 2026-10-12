@@ -402,6 +402,9 @@ type graphProcess struct {
 	maxPinned, maxOffers, maxImports, maxHeld uint64
 	closeErr                                  error
 	maxFrame                                  int
+	// Test-only ordering observations; callbacks must only record, never block
+	// or call testing.T, so cleanup retains its unconditional kill/reap path.
+	shutdownObserve func(phase string, err error)
 }
 
 func startGraphProcess(t *testing.T, dir string, id uint64, extraEnv ...string) *graphProcess {
@@ -520,13 +523,27 @@ func (p *graphProcess) shutdown(ctx context.Context, force bool) (err error) {
 				err = errors.Join(err, e)
 			}
 		}
-		closePipe(p.stdin)
 		kill := func() {
-			if e := p.cmd.Process.Kill(); e != nil && !errors.Is(e, os.ErrProcessDone) {
+			e := p.cmd.Process.Kill()
+			if p.shutdownObserve != nil {
+				p.shutdownObserve("kill", e)
+			}
+			if e != nil && !errors.Is(e, os.ErrProcessDone) {
 				err = errors.Join(err, e)
 			}
 		}
-		if force || err != nil {
+		mustKill := force || err != nil
+		if mustKill {
+			// EOF is a graceful-exit instruction to the actual child loop. Send
+			// SIGKILL before closing stdin when crash/error cleanup requires it.
+			kill()
+		}
+		if p.shutdownObserve != nil {
+			p.shutdownObserve("stdin-close", nil)
+		}
+		closePipe(p.stdin)
+		if !mustKill && err != nil {
+			// A new pipe-close error still receives the existing kill fallback.
 			kill()
 		}
 		ch := make(chan error, 1)
