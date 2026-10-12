@@ -1,0 +1,75 @@
+{
+  "status": "accepted_locally_finite_E17",
+  "date": "2026-10-12",
+  "source_checkpoint": "9c3891da1afb34d882fde8616670f1524c7e766b",
+  "accepted_go_manifest": "final-go-source-amended.json",
+  "accepted_go_manifest_sha256": "283a96d6e7574a45ef757df3d31f77d9e7334c30966c16ecbffb9c00a4b8aa47",
+  "author_receipt": "FINAL_RECEIPT.json",
+  "author_receipt_sha256": "b8dd945884a4338bd88a5f26d7aaeb41be6bd92538ed815f0174092fb18154ae",
+  "scope": "Internal bounded source/target range handoff, durable original decision, resumable import/activation and undo. Actual six-voter and six-process schedules preserve IDs, typed values, component revisions, endpoint bindings, retained certified cuts and source-qualified originals.",
+  "root_validation": {
+    "go_files_verified": 517,
+    "source_hash_mismatches": 0,
+    "selected_author_artifacts_verified_before_packaging": 349,
+    "author_artifact_hash_mismatches": 0,
+    "production_changes_after_checkpoint": 0,
+    "test_amendment": "Six strict zero-batch assertions in three test files use reflect.ValueOf(batch).IsZero. All three parents rerun normal/race. Unchanged production and remaining test evidence carried explicitly.",
+    "normal": {
+      "parents": 753,
+      "pass": 749,
+      "qualified_skip": 4
+    },
+    "race": {
+      "parents": 753,
+      "pass": 749,
+      "qualified_skip": 4
+    },
+    "inventory": "435 graphapply and 318 graphstore parents; exact disjoint lane union; actual AS4 normal/race runs replace its default skip.",
+    "skip_qualification": "Two subprocess helpers exercised by parent tests; two opt-in large incident measurements unrun. No measured capacity acceptance.",
+    "coverage": {
+      "covered": 22157,
+      "statements": 25661,
+      "changed_production_files_at_least_80_percent": 43,
+      "new_range_production_files_at_least_80_percent": 24,
+      "exported_declarations_with_direct_nonzero_witnesses": 22,
+      "qualification": "Exact-coordinate merge of 21 affected-package profiles independently reconstructed. Not whole-module or per-function 80 percent coverage. Test-only amended profiles retain identical production coordinates."
+    },
+    "mutants": [
+      "Current-root substitution fails actual certified opening with remote-source refusal. The first raw crossView witness passes and is explicitly a non-kill.",
+      "Omitted target future-root publication fails the actual new-owner mutation after move completion with corrupt catalog. Neither RED is a compile or resource-limit failure."
+    ],
+    "protocol_review": "Stage/root/progress/recovery-credit atomicity, exact original decision before placement, COMMIT exclusion of abort, target full-root publication and resumed partial activation reviewed. A delayed authentic cross-phase Capture is refused by consumed recovery credit before RawNode.Propose, preserving the driver's health and durable progress.",
+    "static_gates": "Pinned fmt/vet/build, lint and security pass. Final lint compiles test-only amendments. Security evidence carries unchanged production. Vulnerability scan reports no called vulnerable symbols; uncalled imported/module advisories remain.",
+    "execution_limits": "Go 1.26.9, GOMAXPROCS=2, GOMEMLIMIT=2GiB, GOFLAGS=-p=1, GOWORK=off; each local Go invocation <=4GiB aggregate process-tree RSS and <=180s. Docker tools use 4GiB/2CPU; wrapper client RSS is not container capacity proof."
+  },
+  "hosted_ci": {
+    "status": "pending_corrected_dispatcher_run",
+    "failed_checkpoint_run": 38189378747,
+    "failed_checkpoint_url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38189378747",
+    "failure": "Aggregate graphapply package race invocation reached its ten-minute timeout; active test had run one second. Coverage/security/comparison jobs passed; root matrix test was canceled.",
+    "correction": "../v2-certified-reads/v5-graphapply-batches.json",
+    "correction_validation": "80 dispatcher guards and static checks; compiled inventory of 435 names assigned exactly once to 109/109/109/108. All other packages run once. Flags, timeouts and resource limits unchanged."
+  },
+  "remaining": [
+    "E18 authenticated remote historical index-starting parity",
+    "Broader ownership recovery, production identity reuse/fencing, application GC and logical-group retirement",
+    "Physical-host durability and comparable transactional-KV evaluation with an explicit engine decision",
+    "V2 exit criteria and separate V3-V7 acceptance"
+  ],
+  "limitations": [
+    "Finite admitted content-page ceiling of 1024; no arbitrary-size rebalance claim",
+    "Original keeper groups remain necessary for uncopied original outcomes",
+    "Six-process kill case restarts target follower 6 during import; source/target leaders 1/4 remain live. This does not establish leader/quorum failover or physical-host durability.",
+    "No public graph API, release, measured performance or full V2 acceptance"
+  ],
+  "author_commit": "a6f1b180d92ba4726bae9413c2c6dbe765e7e39f",
+  "evidence_integration_commit": "53b66aef97a70da62abf33d6f392c88a60cde304",
+  "packaging": {
+    "archive": "E17_RAW_EVIDENCE.tar.gz",
+    "sha256": "e30e8d43016dd0a2d22060749a98b7b6c8712822206bae5d2c95e8ef9f6b90dd",
+    "verified_members": 338,
+    "verified_original_artifacts": 349,
+    "qualified_author_index": "FINAL_INDEX.md",
+    "extraction": "ARCHIVE_README.md"
+  }
+}
