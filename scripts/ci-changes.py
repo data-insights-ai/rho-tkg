@@ -215,24 +215,30 @@ def external_qualification(paths):
     """FDB needs its pinned native headers/runtime; this job does NOT run Go."""
     folder = ROOT / "tools/v5-substrate/fdb"
     changed = [ROOT / p for p in paths if p.startswith("tools/v5-substrate/fdb/") and "/evidence/" not in p and not p.endswith(".md")]
-    receipts = []
-    for receipt in sorted((folder / "evidence").glob("*.json")):
-        data = json.loads(receipt.read_text())
-        gates = data.get("gates", {})
-        if not all(isinstance(gates.get(mode), dict) and gates[mode].get("passedParents", 0) > 0 and gates[mode].get("failedParents") == 0 for mode in ("normal", "race")):
-            continue
-        hashes = data.get("finalSourceSHA256", data.get("source_sha256", {}))
-        receipts.append((receipt, hashes))
+    required = {}
     for source in changed:
         relative = source.relative_to(folder).as_posix()
         if not source.is_file():
             raise ValueError("FDB source deletion needs its specific external requalification: " + relative)
-        digest = hashlib.sha256(source.read_bytes()).hexdigest()
-        matches = [receipt for receipt, hashes in receipts if hashes.get(relative) == digest]
-        if not matches:
-            raise ValueError("FDB native-header module requires recorded normal/race source qualification for " + relative +
-                             "; run its Docker/native gate and record exact hashes. full_validation does not build this external module")
-        print("FDB recorded-source check:", relative, digest, matches[0].relative_to(ROOT))
+        required[relative] = hashlib.sha256(source.read_bytes()).hexdigest()
+    match = None
+    for receipt in sorted((folder / "evidence").glob("*.json")):
+        data = json.loads(receipt.read_text())
+        gates = data.get("gates", {})
+        terminal = data.get("runs", {}).get("passing_normal_race", {})
+        if terminal.get("exit") != 0 or terminal.get("cleanupExit") != 0:
+            continue
+        if not all(isinstance(gates.get(mode), dict) and gates[mode].get("passedParents", 0) > 0 and gates[mode].get("failedParents") == 0 for mode in ("normal", "race")):
+            continue
+        hashes = data.get("finalSourceSHA256", data.get("source_sha256", {}))
+        if all(hashes.get(relative) == digest for relative, digest in required.items()):
+            match = receipt
+            break
+    if required and match is None:
+        raise ValueError("FDB native-header module requires one coherent recorded normal/race qualification with terminal exit/cleanup 0 for all changed files: " +
+                         ", ".join(required) + "; run its Docker/native gate and record exact hashes. full_validation does not build this external module")
+    for relative, digest in required.items():
+        print("FDB recorded-source check:", relative, digest, match.relative_to(ROOT))
     print("Recorded external source check only; no FDB execution, new fault/cost or engine acceptance claimed.")
 
 

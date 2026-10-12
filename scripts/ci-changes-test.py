@@ -45,9 +45,36 @@ class Planning(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "full_validation does not build"):
                 CI.external_qualification(["tools/v5-substrate/fdb/main.go"])
             digest = CI.hashlib.sha256((folder / "main.go").read_bytes()).hexdigest()
-            receipt = {"finalSourceSHA256": {"main.go": digest}, "gates": {mode: {"passedParents": 1, "failedParents": 0} for mode in ("normal", "race")}}
+            receipt = {"runs": {"passing_normal_race": {"exit": 0, "cleanupExit": 0}}, "finalSourceSHA256": {"main.go": digest}, "gates": {mode: {"passedParents": 1, "failedParents": 0} for mode in ("normal", "race")}}
             (folder / "evidence/qualified.json").write_text(json.dumps(receipt))
             CI.external_qualification(["tools/v5-substrate/fdb/main.go"])
+
+    def test_external_fdb_refuses_mixed_receipt_hashes(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(CI, "ROOT", Path(tmp)):
+            folder = Path(tmp) / "tools/v5-substrate/fdb"
+            (folder / "evidence").mkdir(parents=True)
+            for name in ("first.go", "second.go"):
+                (folder / name).write_text(name)
+                data = {"finalSourceSHA256": {name: CI.hashlib.sha256((folder / name).read_bytes()).hexdigest()},
+                        "gates": {mode: {"passedParents": 1, "failedParents": 0} for mode in ("normal", "race")},
+                        "runs": {"passing_normal_race": {"exit": 0, "cleanupExit": 0}}}
+                (folder / ("evidence/" + name + ".json")).write_text(json.dumps(data))
+            with self.assertRaisesRegex(ValueError, "one coherent"):
+                CI.external_qualification(["tools/v5-substrate/fdb/first.go", "tools/v5-substrate/fdb/second.go"])
+
+    def test_external_fdb_refuses_incomplete_or_failed_terminal(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(CI, "ROOT", Path(tmp)):
+            folder = Path(tmp) / "tools/v5-substrate/fdb"
+            (folder / "evidence").mkdir(parents=True)
+            (folder / "main.go").write_text("source")
+            data = {"finalSourceSHA256": {"main.go": CI.hashlib.sha256((folder / "main.go").read_bytes()).hexdigest()},
+                    "gates": {mode: {"passedParents": 1, "failedParents": 0} for mode in ("normal", "race")}}
+            for terminal in ({}, {"exit": 0}, {"exit": 1, "cleanupExit": 0}, {"exit": 0, "cleanupExit": 1}):
+                with self.subTest(terminal=terminal):
+                    data["runs"] = {"passing_normal_race": terminal}
+                    (folder / "evidence/receipt.json").write_text(json.dumps(data))
+                    with self.assertRaisesRegex(ValueError, "terminal exit/cleanup 0"):
+                        CI.external_qualification(["tools/v5-substrate/fdb/main.go"])
 
     def test_runner_modes_share_short_scope_without_running_go(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(CI, "ROOT", Path(tmp)):
