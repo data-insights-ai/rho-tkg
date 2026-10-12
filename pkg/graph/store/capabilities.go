@@ -841,25 +841,27 @@ type DeletedIterationCapability interface {
 	ForEachDeletedRelID(fn func(types.RelID) bool) error
 }
 
-// ReimportedRelCapability is OPTIONAL. Backends implement it so the graph
-// layer's adjacency doors stay sound without folding every relationship with
-// history: a relationship ID deleted and re-imported with other endpoints is
-// live again, while the rows of its earlier life name the old endpoints, so
-// neither the live adjacency nor the deleted IDs reach that life. The graph
-// layer notes such an ID (NoteReimportedRel) before it writes the row that
-// makes its lives name different endpoints; the adjacency doors add
-// ForEachReimportedRelID to their candidates (backlog 50). Without the
-// capability they fold every relationship with history instead.
+// ExAdjacencyCapability is OPTIONAL (backlog 50). A node's ex-adjacency in a
+// direction holds every relationship ID that named the node as its start
+// (incoming=false) or end (incoming=true) in a row the live adjacency
+// (OutgoingRelationships / IncomingRelationships) does not tie to the node:
+// a deleted relationship, or an earlier life of one deleted and re-imported
+// with other endpoints. The store maintains it itself, in the same write as
+// every relationship delete (plain, cascade, batch, replica-applied) and every
+// history row (PutRelVersion) whose endpoints are not the live row's, so the
+// graph layer's adjacency doors gather a seed's candidates as its adjacency ∪
+// its ex-adjacency — O(the seed's ever-degree), not O(history).
 //
-// The set is a sound superset: an entry is never removed except by Clear (a
-// later delete, compaction or purge leaves it; the doors resolve every
-// candidate on its own). Noting an ID twice is a no-op. A persistent backend
-// keeps the set across reopen and makes a note durable no later than the row
-// written after it. Nil callbacks return ErrInvalidStoreMutation; callbacks run
-// outside backend locks; no ordering guarantee.
-type ReimportedRelCapability interface {
-	NoteReimportedRel(id types.RelID) error
-	ForEachReimportedRelID(fn func(types.RelID) bool) error
+// It is a sound superset: an entry may outlive the rows that justified it
+// (a compaction or a history trim keeps it; the doors resolve each candidate
+// on its own); a node's retention purge and exact erasure remove its entries
+// and the purged relationships'. NoteExAdjacentRel adds both legs of one row
+// (the graph layer's one-time backfill of a store written before the index
+// existed). Nil callbacks return ErrInvalidStoreMutation; callbacks run outside
+// backend locks; no ordering guarantee; an ID may repeat.
+type ExAdjacencyCapability interface {
+	ForEachExAdjacentRelID(nodeID types.NodeID, incoming bool, fn func(types.RelID) bool) error
+	NoteExAdjacentRel(id types.RelID, startID, endID types.NodeID) error
 }
 
 // DepthDeletedIterationCapability is the depth-aware counterpart of

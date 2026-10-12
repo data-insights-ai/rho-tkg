@@ -227,12 +227,11 @@ func (t *TempOps) RelsEffectiveByIDs(ids []types.RelID, pin types.Instant, fn fu
 // types unknown: nothing). fn returning false stops. DECLARED view: not masked
 // by endpoint validity.
 //
-// Candidates are the seeds' current adjacency (one batched store read), the
-// deleted relationships and the relationships re-imported with other
-// endpoints (whose earlier life names the old ones) — the adjacency doors'
-// gather (forEachRelAdjacencyCandidateIDByDepth), so one call reads the
-// seeds' relationships plus those two sets, not every relationship with
-// history. Gates,
+// Candidates are the seeds' current adjacency (one batched store read) and
+// their ex-adjacency (deleted relationships, earlier lives of re-imported
+// ones) — the adjacency doors' gather (forEachRelAdjacencyCandidateID), so
+// one call reads the seeds' ever-degree, not every deleted relationship nor
+// every relationship with history. Gates,
 // isolation and errors are ForEachRelEffectiveByType's plus an invalid seed
 // (ErrInvalidStoreMutation) and an invalid direction (ErrInvalidDirection).
 func (t *TempOps) ForEachRelEffectiveAtNodes(nodeIDs []types.NodeID, dir temporal.Direction, relTypes []string, pin types.Instant, fn func(temporal.RelSegment) bool) error {
@@ -399,7 +398,7 @@ func (c *Core) relEffectiveAdjacencyCandidates(seeds []types.NodeID, toks []uint
 		}
 	}
 	var ids []types.RelID
-	err := c.forEachRelAdjacencyCandidateIDByDepth(current, storepkg.DepthAll, func(id types.RelID) error {
+	err := c.forEachRelAdjacencyCandidateID(seeds, adjDirsOf(outgoing), current, storepkg.DepthAll, func(id types.RelID) error {
 		ids = append(ids, id)
 		return nil
 	})

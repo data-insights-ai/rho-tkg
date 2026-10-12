@@ -334,9 +334,11 @@ func (ms *Store) deleteRelLocked(id types.RelID) error {
 	// Type index cleanup.
 	ms.removeRelTypeIndex(id, r.TypeToken().Value())
 
-	// Adjacency cleanup — O(1) delete from hash sets.
+	// Adjacency cleanup — O(1) delete from hash sets; both legs move to the
+	// ex-adjacency (backlog 50).
 	removeAdjLocked(ms.outIdx, r.StartNodeID(), id)
 	removeAdjLocked(ms.inIdx, r.EndNodeID(), id)
+	ms.addExAdjLocked(id, r)
 
 	indexpkg.RemoveRelFromPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
 	ms.adjustRelPropertyTypeClassCounts(r, -1)

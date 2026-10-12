@@ -22,11 +22,11 @@ import (
 // findNodeVersionForOpts); this is the relationship mirror, built from the
 // same parts Temporal().OutgoingRelsAt uses (directionalRelsAtLocked):
 //
-//   - candidates = current adjacency ids ∪ the relationships whose rows may
-//     name nodeID although their live row does not — deleted ones and ones
-//     re-imported with other endpoints (forEachRelOffAdjacencyIDByDepth); the
-//     deleted fold is what keeps a since-deleted edge visible inside its
-//     window, in parity with the node path's forEachNodeCandidateIDByDepth;
+//   - candidates = current adjacency ids ∪ nodeID's ex-adjacency — the
+//     relationships that named nodeID in a row its live adjacency no longer
+//     holds: deleted ones and earlier lives of ones re-imported with other
+//     endpoints (forEachRelExAdjacentID); it is what keeps a since-deleted
+//     edge visible inside its window;
 //   - each candidate resolves through findRelVersionForOpts with a predicate
 //     on direction and type, so the yielded row is the version valid under
 //     opts, not the live row;
@@ -86,7 +86,7 @@ func (c *Core) forEachAdjacentRelVersionLocked(nodeID types.NodeID, typeName str
 		currentIDs = slices.Clone(currentIDs)
 		slices.Sort(currentIDs)
 	}
-	ids, err := c.relAdjacencyCandidateIDsSorted(currentIDs, opts.Depth)
+	ids, err := c.relAdjacencyCandidateIDsSorted(nodeID, adjDirsOf(!incoming), currentIDs, opts.Depth)
 	if err != nil {
 		return err
 	}
@@ -217,14 +217,13 @@ func (s singleVersionAdjacencyResolver) resolve(cur *types.Relationship, pred fu
 	return r, true, nil
 }
 
-// relAdjacencyCandidateIDsSorted is forEachRelAdjacencyCandidateIDByDepth
-// collected in ascending order: currentIDs (ascending) united with the
-// relationships whose rows may name other nodes than their live row (deleted
-// or re-imported with other endpoints). Without such a relationship it returns
+// relAdjacencyCandidateIDsSorted is forEachRelAdjacencyCandidateID for one
+// node collected in ascending order: currentIDs (ascending) united with the
+// node's ex-adjacency in dirs. With an empty ex-adjacency it returns
 // currentIDs itself, building no set.
-func (c *Core) relAdjacencyCandidateIDsSorted(currentIDs []types.RelID, depth storepkg.ShardDepth) ([]types.RelID, error) {
+func (c *Core) relAdjacencyCandidateIDsSorted(nodeID types.NodeID, dirs adjDirs, currentIDs []types.RelID, depth storepkg.ShardDepth) ([]types.RelID, error) {
 	var off []types.RelID
-	if err := c.forEachRelOffAdjacencyIDByDepth(depth, func(id types.RelID) bool {
+	if err := c.forEachRelExAdjacentID([]types.NodeID{nodeID}, dirs, depth, func(id types.RelID) bool {
 		off = append(off, id)
 		return true
 	}); err != nil {

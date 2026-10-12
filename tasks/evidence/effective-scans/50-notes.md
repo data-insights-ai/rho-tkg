@@ -49,3 +49,15 @@ Started 2026-10-12 on branch worktree-agent-ab0ee0097a18b0a1f (base 3f27f957).
   100 K with history badger 5.5-6.9 s → 13-19 ms, memory 1.0-1.1 s → 8-28 ms; by-IDs 1.0-2.7 / 0.2-1.1 ms.
   Remaining O(H): the stores' ForEachDeletedRelID in-RAM ID scan (CPU profile 50-bench-after-badger-cpu.txt:
   ~14 of ~16 ms per call). The "constant factor of by-IDs" gate is not met; follow-up noted in backlog 50.
+
+## Fix round (2026-10-12, Opus-high review)
+- 1 HIGH replica of an IO.Import-filled primary: red 50-fix-red-1 (4 backends). 2 MEDIUM open-time backfill: read-only
+  open scanned and threw away (red 50-fix-red-1 "2 history reads at open"); now marker probe first, IDs streamed.
+  3 LOW older writers: badger store marker 3 (red 50-fix-red-3). 4 gate: seed-following gather over a store-kept
+  ex-adjacency (red 50-fix-red-2: 112 rows read, bound 16; bench 50-fix-bench-before/after).
+- Design: the re-imported set and the core-side noting were replaced by the store's ex-adjacency (written in the
+  same batch as each delete and each history row whose endpoints are not the live row's), so every write door —
+  Rels.Import, GraphTx, batches, replica put / delete / history-version apply, IO.Import, ImportMerge, rollback,
+  49's PutRelationshipsBatchGeneratedID (a create: nothing to note) — is covered without per-door code.
+- Mutants 50-fix-mutants.txt: 16 of 16 killed. A conservative early return on a failed final marker write was
+  left: its mutant survives because the index is complete in that session either way.

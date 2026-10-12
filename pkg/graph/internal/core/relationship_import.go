@@ -130,7 +130,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 	}
 	// A deleted ID's chain continues (backlog 38, version_alloc.go): decided
 	// before the type token is allocated.
-	life, history, err := c.relLifeStart(id)
+	life, err := c.relLifeStart(id)
 	if err != nil {
 		return nil, err
 	}
@@ -208,14 +208,6 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		return r, ig, nil
 	}
 
-	// An earlier life with other endpoints stays reachable by the adjacency
-	// doors only through the store's re-imported set (backlog 50): noted
-	// before the row lands.
-	if relRowsNameOther(history, startID, endID) {
-		if err := c.noteRelLivesDiffer(id); err != nil {
-			return nil, fmt.Errorf("graph: note re-imported relationship: %w", err)
-		}
-	}
 	rel, err := c.createRelWithTypeRollback(ctx, typeName, relPersistImport, build)
 	if rel != nil {
 		c.opRelAdds.Add(1)

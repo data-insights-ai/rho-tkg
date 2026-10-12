@@ -63,9 +63,9 @@ package core
 //     reapUniqueConstraintsForReset) — a fresh graph starts with none.
 //   - compactStubNodeKey / compactStubRelKey (Reap): per-entity compaction
 //     stubs are meaningless once Clear erases the entities they describe.
-//   - reimportedRelsBuiltMeta (Reap): marks the re-imported relationship set
-//     (backlog 50) complete; wiped with the set, the next open re-runs the
-//     one-time scan over the (now empty or newer, already noted) graph.
+//   - exAdjBuiltMeta (Reap): marks the store's ex-adjacency complete (backlog
+//     50); wiped by Clear with the data, the next open re-runs the one-time
+//     scan over an empty (or newer, already indexed) graph.
 type reapPolicy int
 
 const (
@@ -93,7 +93,7 @@ var metaKVFixedKeys = map[string]reapPolicy{
 	schemaVersionKey:          reapPolicyReap,
 	retentionMaxWatermarkMeta: reapPolicyReap,
 	uniqueConstraintsMeta:     reapPolicyReap,
-	reimportedRelsBuiltMeta:   reapPolicyReap,
+	exAdjBuiltMeta:            reapPolicyReap,
 }
 
 // metaKVKeyFuncs classifies every FUNCTION that builds a dynamic, per-entity

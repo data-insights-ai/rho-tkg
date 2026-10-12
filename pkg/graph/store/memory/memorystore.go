@@ -79,6 +79,11 @@ type Store struct {
 	outIdx map[types.NodeID]*adjSet // startNodeID → set(relID) (memorystore_adjset.go)
 	inIdx  map[types.NodeID]*adjSet // endNodeID → set(relID)
 
+	// Ex-adjacency (backlog 50, memorystore_exadj.go): per node, the
+	// relationships that named it in a row the live adjacency no longer holds.
+	exOutIdx map[types.NodeID]*adjSet
+	exInIdx  map[types.NodeID]*adjSet
+
 	// Version history — pre-mutation snapshots keyed by entity ID and version.
 	nodeHistory map[types.NodeID]map[uint32]*types.Node
 	relHistory  map[types.RelID]map[uint32]*types.Relationship
@@ -244,11 +249,6 @@ type Store struct {
 	// graph that never runs a pinned label/type scan pays nothing. All under ms.mu.
 	labelTxMembers   map[uint16]map[types.NodeID]types.Instant
 	relTypeTxMembers map[uint16]map[types.RelID]types.Instant
-
-	// reimportedRels is the store.ReimportedRelCapability set (backlog 50):
-	// relationship IDs whose lives name different endpoints. Under ms.mu; nil
-	// until the first note (memorystore_reimported.go).
-	reimportedRels map[types.RelID]struct{}
 
 	// property membership sidecars (backlog 8,
 	// store.RelPropertyTxMembershipCapability / NodePropertyTxMembershipCapability):
@@ -464,6 +464,7 @@ func (ms *Store) Clear() error {
 	ms.typeOrder.Reset()
 	ms.outIdx = make(map[types.NodeID]*adjSet)
 	ms.inIdx = make(map[types.NodeID]*adjSet)
+	ms.exOutIdx, ms.exInIdx = nil, nil
 	ms.nodeHistory = make(map[types.NodeID]map[uint32]*types.Node)
 	ms.relHistory = make(map[types.RelID]map[uint32]*types.Relationship)
 	ms.histStampsMu.Lock()
@@ -487,7 +488,6 @@ func (ms *Store) Clear() error {
 	ms.docColumnsMulti = make(map[string]*indexpkg.LabelDocValues)
 	ms.labelTxMembers = nil            // drop the lazy membership sidecar; rebuilt on next pinned scan
 	ms.relTypeTxMembers = nil          // rel-type mirror
-	ms.reimportedRels = nil            // the rows it named are gone
 	ms.dropPropertyTxMembersLocked()   // property sidecars; rebuilt on next temporal lookup
 	ms.nodeBeliefWatermark = nil       // drop the lazy belief-watermark sidecar; rebuilt on next use
 	ms.relBeliefWatermark = nil        // rel mirror

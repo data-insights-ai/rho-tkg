@@ -731,8 +731,9 @@ func relInheritedValidFrom(chain []*types.Relationship, i int, tm *types.Tempora
 // currently labelled Y but historically labelled X at t must still be
 // visited so the per-entity predicate can match its at-t version.
 // (Adjacency queries do NOT need the full history fold: a relationship's rows
-// name other endpoints than its live row only when it is deleted or was
-// re-imported with other endpoints. See forEachRelAdjacencyCandidateIDByDepth.)
+// name a node its live adjacency does not only when it is deleted or was
+// re-imported with other endpoints — the ex-adjacency. See
+// forEachRelAdjacencyCandidateID.)
 func (c *Core) forEachNodeCandidateID(currentIDs []types.NodeID, fn func(types.NodeID) error) error {
 	return c.forEachNodeCandidateIDByDepth(currentIDs, storepkg.DepthAll, fn)
 }
@@ -759,7 +760,7 @@ func (c *Core) forEachNodeCandidateIDByDepth(currentIDs []types.NodeID, depth st
 // forEachRelCandidateIDByDepth is the relationship counterpart of
 // forEachNodeCandidateIDByDepth — the all-history fold (the fallback of
 // forEachRelPropertyCandidateID and of the rel-type scans without the K1
-// sidecar). For adjacency queries, prefer forEachRelAdjacencyCandidateIDByDepth.
+// sidecar). For adjacency queries, prefer forEachRelAdjacencyCandidateID.
 func (c *Core) forEachRelCandidateIDByDepth(currentIDs []types.RelID, depth storepkg.ShardDepth, fn func(types.RelID) error) error {
 	seen := make(map[types.RelID]struct{}, len(currentIDs))
 	for _, id := range currentIDs {
@@ -779,22 +780,37 @@ func (c *Core) forEachRelCandidateIDByDepth(currentIDs []types.RelID, depth stor
 	return nil
 }
 
-// forEachRelAdjacencyCandidateID is the adjacency-query specialization of
-// forEachRelCandidateIDByDepth: the candidates are currentIDs (the queried
-// node's live adjacency) united with every relationship whose rows may name a
-// node that its live row does not (forEachRelOffAdjacencyIDByDepth) — not the
-// whole relationship history. Each door then resolves a candidate on its own
-// and keeps it only when the resolved row names the node.
-func (c *Core) forEachRelAdjacencyCandidateID(currentIDs []types.RelID, fn func(types.RelID) error) error {
-	return c.forEachRelAdjacencyCandidateIDByDepth(currentIDs, storepkg.DepthAll, fn)
+// adjDirs names the directions an adjacency gather reads a seed in.
+type adjDirs uint8
+
+const (
+	adjOut  adjDirs = 1 << iota // the seed is the start node
+	adjIn                       // the seed is the end node
+	adjBoth = adjOut | adjIn
+)
+
+// adjDirsOf is adjOut for outgoing, adjIn otherwise.
+func adjDirsOf(outgoing bool) adjDirs {
+	if outgoing {
+		return adjOut
+	}
+	return adjIn
 }
 
-func (c *Core) forEachRelAdjacencyCandidateIDByDepth(currentIDs []types.RelID, depth storepkg.ShardDepth, fn func(types.RelID) error) error {
+// forEachRelAdjacencyCandidateID is the adjacency-query specialization of
+// forEachRelCandidateIDByDepth (backlog 50): the candidates are currentIDs
+// (the seeds' live adjacency) united with the seeds' ex-adjacency in dirs —
+// every relationship that named a seed in a row the live adjacency no longer
+// ties to it (a deleted relationship, or an earlier life of one re-imported
+// with other endpoints). That is O(the seeds' ever-degree), not O(history) or
+// O(deleted). Each door then resolves a candidate on its own and keeps it only
+// when the resolved row names the seed. A seed need not exist any more.
+func (c *Core) forEachRelAdjacencyCandidateID(seeds []types.NodeID, dirs adjDirs, currentIDs []types.RelID, depth storepkg.ShardDepth, fn func(types.RelID) error) error {
 	seen := make(map[types.RelID]struct{}, len(currentIDs))
 	for _, id := range currentIDs {
 		seen[id] = struct{}{}
 	}
-	if err := c.forEachRelOffAdjacencyIDByDepth(depth, func(id types.RelID) bool {
+	if err := c.forEachRelExAdjacentID(seeds, dirs, depth, func(id types.RelID) bool {
 		seen[id] = struct{}{}
 		return true
 	}); err != nil {
@@ -808,77 +824,33 @@ func (c *Core) forEachRelAdjacencyCandidateIDByDepth(currentIDs []types.RelID, d
 	return nil
 }
 
-// forEachRelOffAdjacencyIDByDepth visits every relationship ID whose rows may
-// name a node that the live adjacency does not tie it to (backlog 50):
-//
-//   - a DELETED relationship (rows, no live row: no adjacency entry at all);
-//   - a relationship deleted and RE-IMPORTED with another start or end
-//     (relationship_import.go): live again, but the rows of its earlier life
-//     name the old endpoints. The store's ReimportedRelCapability set holds
-//     these IDs, noted by every write door that makes a relationship's lives
-//     name different endpoints (noteRelLivesDiffer).
-//
-// Every other relationship's rows all name its live endpoints, so the live
-// adjacency reaches them. The re-imported set is not depth-scoped (a superset
-// under a depth filter). A store without the set gets every relationship with
-// history instead — sound, O(total relationship history). An ID may be
-// visited twice; fn returning false stops.
-func (c *Core) forEachRelOffAdjacencyIDByDepth(depth storepkg.ShardDepth, fn func(types.RelID) bool) error {
-	if c.reimportedRels == nil {
+// forEachRelExAdjacentID visits the seeds' ex-adjacency in dirs from the
+// store's ExAdjacencyCapability (not depth-scoped: a superset under a depth
+// filter). Without it — or before the one-time backfill of a store written
+// without it completed (exAdjacencyReady) — it visits every relationship with
+// history instead: sound, O(total relationship history). An ID may repeat.
+func (c *Core) forEachRelExAdjacentID(seeds []types.NodeID, dirs adjDirs, depth storepkg.ShardDepth, fn func(types.RelID) bool) error {
+	if c.exAdj == nil {
 		return c.forEachRelHistoryIDByDepth(depth, fn)
 	}
 	stopped := false
 	visit := func(id types.RelID) bool {
 		if !fn(id) {
 			stopped = true
-			return false
 		}
-		return true
+		return !stopped
 	}
-	if err := c.forEachDeletedRelIDByDepth(depth, visit); err != nil || stopped {
-		return err
-	}
-	// An invalid ID from an untrusted store fails the door when its
-	// candidate is resolved (ErrInvalidStoreMutation).
-	return c.reimportedRels.ForEachReimportedRelID(visit)
-}
-
-// forEachDeletedRelIDByDepth prefers the store's DeletedIterationCapability
-// (depth-aware variant first, then plain) so the fold visits only rel IDs
-// whose history exists but whose current row is absent. Without either
-// capability the graph layer falls back to the wider history scan —
-// correct but O(total rel history). Only used by
-// forEachRelOffAdjacencyIDByDepth today; the matching node helper is
-// intentionally absent because no node temporal API can drop the full-history
-// fold (a node's label or property at t may differ from its current row).
-func (c *Core) forEachDeletedRelIDByDepth(depth storepkg.ShardDepth, fn func(types.RelID) bool) error {
-	wrapped := fn
-	if !c.storeRowsTrust {
-		var invalid error
-		wrapped = func(id types.RelID) bool {
-			if err := storepkg.ValidateRelID(id); err != nil {
-				invalid = err
-				return false
+	for _, seed := range seeds {
+		for _, d := range []adjDirs{adjOut, adjIn} {
+			if dirs&d == 0 {
+				continue
 			}
-			return fn(id)
+			if err := c.exAdj.ForEachExAdjacentRelID(seed, d == adjIn, visit); err != nil || stopped {
+				return err
+			}
 		}
-		err := c.forEachDeletedRelIDByDepthTrusted(depth, wrapped)
-		if invalid != nil {
-			return invalid
-		}
-		return err
 	}
-	return c.forEachDeletedRelIDByDepthTrusted(depth, wrapped)
-}
-
-func (c *Core) forEachDeletedRelIDByDepthTrusted(depth storepkg.ShardDepth, fn func(types.RelID) bool) error {
-	if depth != storepkg.DepthAll && c.deletedDepthIter != nil {
-		return c.deletedDepthIter.ForEachDeletedRelIDByDepth(depth, fn)
-	}
-	if c.deletedIter != nil && depth == storepkg.DepthAll {
-		return c.deletedIter.ForEachDeletedRelID(fn)
-	}
-	return c.forEachRelHistoryIDByDepthTrusted(depth, fn)
+	return nil
 }
 
 // forEachKnownNodeID collects the union of current + history node IDs

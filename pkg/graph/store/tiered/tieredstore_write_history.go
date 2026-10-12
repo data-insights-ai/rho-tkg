@@ -217,8 +217,12 @@ func (ts *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relatio
 	if err != nil {
 		return err
 	}
-	defer checkin()
-	return shard.PutRelVersion(rid, version, r)
+	err = shard.PutRelVersion(rid, version, r)
+	checkin()
+	if err != nil {
+		return err
+	}
+	return ts.noteHistoryRowLegs(rid, r) // backlog 50: legs on the endpoints' shards
 }
 
 func (ts *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {

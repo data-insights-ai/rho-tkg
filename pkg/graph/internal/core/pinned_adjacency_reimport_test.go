@@ -6,47 +6,43 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync/atomic"
 	"testing"
 
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
 // Backlog 50: a relationship ID deleted and re-imported with other endpoints
-// keeps its earlier life's rows (backlog 38), so the endpoints a relationship
-// names are NOT fixed for its ID. Every adjacency door gathers candidates from
-// the node's current adjacency plus the relationships that may have named the
-// node before; it must still reach an earlier life through the endpoints that
-// life named. The oracle resolves EVERY relationship ID of the world on its
-// own, the way the door resolves one candidate, and keeps it when the node is
-// its endpoint in the door's direction — so a door equals its oracle exactly
-// when its candidate gather misses nothing (and adds nothing it keeps).
+// keeps its earlier life's rows (backlog 38), so the endpoints an ID names are
+// not fixed. Every adjacency door must still reach an earlier life through the
+// endpoints it named. The oracle resolves EVERY relationship of the world on
+// its own, the way the door resolves one candidate, and keeps it when the node
+// is its endpoint in the door's direction: a door equals its oracle exactly
+// when its candidate gather misses nothing.
 
-// paCase is one relationship's lives: per life the indexes of its start and
-// end among the case's four nodes.
-type paCase struct {
+// paCases: per case one relationship's lives, as start/end indexes among the
+// case's four nodes; del = deleted after its last life.
+var paCases = []struct {
 	name  string
 	lives [][2]int
-	del   bool // deleted after its last life
-	moved bool // a life names another endpoint than an earlier one
+	del   bool
+}{
+	{"other src", [][2]int{{0, 1}, {2, 1}}, false},
+	{"other dst", [][2]int{{0, 1}, {0, 2}}, false},
+	{"same endpoints", [][2]int{{0, 1}, {0, 1}}, false},
+	{"re-imported twice", [][2]int{{0, 1}, {2, 1}, {2, 3}}, false},
+	{"deleted, never re-imported", [][2]int{{0, 1}}, true},
+	{"re-imported, deleted again", [][2]int{{0, 1}, {2, 3}}, true},
 }
 
-var paCases = []paCase{
-	{name: "other src", lives: [][2]int{{0, 1}, {2, 1}}, moved: true},
-	{name: "other dst", lives: [][2]int{{0, 1}, {0, 2}}, moved: true},
-	{name: "same endpoints", lives: [][2]int{{0, 1}, {0, 1}}},
-	{name: "re-imported twice", lives: [][2]int{{0, 1}, {2, 1}, {2, 3}}, moved: true},
-	{name: "deleted, never re-imported", lives: [][2]int{{0, 1}}, del: true},
-	{name: "re-imported, deleted again", lives: [][2]int{{0, 1}, {2, 3}}, del: true, moved: true},
-}
-
-// paValidFrom is the valid start of life i; paValids probe inside each life.
-func paValidFrom(life int) types.Instant { return types.Instant(1000 + 4000*life) }
-
+// Life i is valid from 1000+4000i; paValids probe inside each life.
 var paValids = []types.Instant{3000, 7000, 11000}
 
 type paWorld struct {
@@ -56,20 +52,28 @@ type paWorld struct {
 	pins  []types.Instant // after each life phase; the last after the final deletes
 }
 
-// paBuild writes every case: phase 0 adds each relationship, phase i deletes
-// and re-imports it with its life i (valid from paValidFrom(i)), a pin after
-// each phase; then the del cases are deleted and a last pin taken.
+// paBuild writes the cases: phase 0 adds each relationship, phase i deletes
+// and re-imports it with life i, a pin after each phase; then the del cases
+// are deleted and a last pin taken.
 func paBuild(t *testing.T, g *Core) *paWorld {
 	t.Helper()
 	ctx := context.Background()
 	w := &paWorld{rels: make([]types.RelID, len(paCases))}
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	for range paCases {
 		var ns []types.NodeID
 		for i := 0; i < 4; i++ {
-			n, err := g.Nodes.Add(ctx, []string{"A"}, map[string]any{"tkg_valid_from": types.Instant(1000)})
-			if err != nil {
-				t.Fatalf("add node: %v", err)
-			}
+			// Nodes 2 and 3 are "Case" nodes: on tiered (RefLabels "Case")
+			// they live on the reference shard, so a re-import onto them moves
+			// the relationship to another shard as well as to other endpoints.
+			label := map[bool]string{false: "A", true: "Case"}[i >= 2]
+			n, err := g.Nodes.Add(ctx, []string{label}, map[string]any{"tkg_valid_from": types.Instant(1000)})
+			must(err)
 			ns = append(ns, n.ID())
 		}
 		w.cases = append(w.cases, ns)
@@ -77,9 +81,7 @@ func paBuild(t *testing.T, g *Core) *paWorld {
 	}
 	pin := func() {
 		p, err := g.Temporal.NowTx()
-		if err != nil {
-			t.Fatalf("NowTx: %v", err)
-		}
+		must(err)
 		w.pins = append(w.pins, p)
 	}
 	for life := 0; life < 3; life++ {
@@ -88,37 +90,26 @@ func paBuild(t *testing.T, g *Core) *paWorld {
 				continue
 			}
 			s, e := w.cases[ci][pc.lives[life][0]], w.cases[ci][pc.lives[life][1]]
-			props := map[string]any{"tkg_valid_from": paValidFrom(life)}
+			props := map[string]any{"tkg_valid_from": types.Instant(1000 + 4000*life)}
 			if life == 0 {
 				r, err := g.Rels.AddByID(ctx, "R", s, e, props)
-				if err != nil {
-					t.Fatalf("%s: add: %v", pc.name, err)
-				}
+				must(err)
 				w.rels[ci] = r.ID()
 				continue
 			}
-			if err := g.Rels.Delete(ctx, w.rels[ci]); err != nil {
-				t.Fatalf("%s: delete before life %d: %v", pc.name, life, err)
-			}
+			must(g.Rels.Delete(ctx, w.rels[ci]))
 			sn, err := g.Nodes.Get(ctx, s)
-			if err != nil {
-				t.Fatal(err)
-			}
+			must(err)
 			en, err := g.Nodes.Get(ctx, e)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := g.Rels.Import(ctx, w.rels[ci], "R", sn, en, props); err != nil {
-				t.Fatalf("%s: re-import life %d: %v", pc.name, life, err)
-			}
+			must(err)
+			_, err = g.Rels.Import(ctx, w.rels[ci], "R", sn, en, props)
+			must(err)
 		}
 		pin()
 	}
 	for ci, pc := range paCases {
 		if pc.del {
-			if err := g.Rels.Delete(ctx, w.rels[ci]); err != nil {
-				t.Fatalf("%s: final delete: %v", pc.name, err)
-			}
+			must(g.Rels.Delete(ctx, w.rels[ci]))
 		}
 	}
 	pin()
@@ -129,6 +120,7 @@ func paRow(r *types.Relationship) string {
 	return fmt.Sprintf("%d:%d>%d@%d", r.ID(), r.StartNodeID(), r.EndNodeID(), r.Version())
 }
 
+// paEnd is r's endpoint in the direction (out: start, in: end).
 func paEnd(r *types.Relationship, out bool) types.NodeID {
 	if out {
 		return r.StartNodeID()
@@ -136,123 +128,93 @@ func paEnd(r *types.Relationship, out bool) types.NodeID {
 	return r.EndNodeID()
 }
 
-func paSorted(xs []string) string {
-	slices.Sort(xs)
-	return fmt.Sprint(xs)
-}
-
-// paResolved maps "no row" outcomes of a per-ID resolution to nil.
-func paResolved(r *types.Relationship, err error) (*types.Relationship, error) {
-	if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
-		return nil, nil
-	}
-	return r, err
-}
-
-// paDoor is one adjacency door at one instant: got asks the door for node n,
-// want builds the oracle for n from every relationship of the world.
+// paDoor is one adjacency door in one direction at one instant: got asks the
+// door for node n; one is the oracle's contribution of relationship id.
 type paDoor struct {
 	name string
 	got  func(n types.NodeID) ([]string, error)
-	want func(n types.NodeID) ([]string, error)
+	one  func(id types.RelID, n types.NodeID) ([]string, error)
 }
 
-// paDoors lists every adjacency door of g, in both directions, at every pin
-// and valid instant of w.
+// paRowDoor: a door answering rows, each candidate resolved by resolve; the
+// oracle keeps the resolved row when n is its endpoint in the direction.
+func paRowDoor(g *Core, name string, out bool, rows func(n types.NodeID) ([]*types.Relationship, error), resolve func(id types.RelID, n types.NodeID) (*types.Relationship, error), show func(*types.Relationship) string) paDoor {
+	return paDoor{
+		name: name,
+		got: func(n types.NodeID) ([]string, error) {
+			rs, err := rows(n)
+			var s []string
+			for _, r := range rs {
+				s = append(s, show(r))
+			}
+			return s, err
+		},
+		one: func(id types.RelID, n types.NodeID) ([]string, error) {
+			var r *types.Relationship
+			err := g.readUnderRLock(func() error {
+				var err error
+				r, err = resolve(id, n)
+				if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
+					r, err = nil, nil
+				}
+				return err
+			})
+			if err != nil || r == nil || paEnd(r, out) != n {
+				return nil, err
+			}
+			return []string{show(r)}, nil
+		},
+	}
+}
+
+// paDoors lists every adjacency door of g in both directions at every pin and
+// valid instant of w.
 func paDoors(g *Core, w *paWorld) []paDoor {
 	var doors []paDoor
-	// rowDoor: a door answering rows, resolved per candidate by resolve; the
-	// oracle keeps a row whose endpoint in the direction is n.
-	rowDoor := func(name string, out bool, door func(n types.NodeID) ([]*types.Relationship, error), resolve func(id types.RelID, n types.NodeID) (*types.Relationship, error)) paDoor {
-		return paDoor{
-			name: name,
-			got: func(n types.NodeID) ([]string, error) {
-				rows, err := door(n)
-				var s []string
-				for _, r := range rows {
-					s = append(s, paRow(r))
-				}
-				return s, err
-			},
-			want: func(n types.NodeID) ([]string, error) {
-				var s []string
-				for _, id := range w.rels {
-					var r *types.Relationship
-					err := g.readUnderRLock(func() error {
-						var err error
-						r, err = paResolved(resolve(id, n))
-						return err
-					})
-					if err != nil {
-						return nil, err
-					}
-					if r != nil && paEnd(r, out) == n {
-						s = append(s, paRow(r))
-					}
-				}
-				return s, nil
-			},
-		}
-	}
 	for _, out := range []bool{true, false} {
-		dir := map[bool]string{true: "out", false: "in"}[out]
-		edgePred := func(n types.NodeID) func(*types.Relationship) bool {
+		dir, tdir := "out", temporal.Outgoing
+		if !out {
+			dir, tdir = "in", temporal.Incoming
+		}
+		other := func(r *types.Relationship) string { return fmt.Sprintf("%d>%d", r.ID(), paEnd(r, !out)) }
+		edge := func(n types.NodeID) func(*types.Relationship) bool {
 			return func(r *types.Relationship) bool { return paEnd(r, out) == n }
 		}
 		for pi, pin := range w.pins {
 			doors = append(doors,
-				rowDoor(fmt.Sprintf("ForNodesAtPin/%s/pin%d", dir, pi), out, func(n types.NodeID) ([]*types.Relationship, error) {
-					var m map[types.NodeID][]*types.Relationship
-					var err error
-					if out {
-						m, err = g.Rels.OutgoingForNodesAtPin([]types.NodeID{n}, "", pin)
-					} else {
-						m, err = g.Rels.IncomingForNodesAtPin([]types.NodeID{n}, "", pin)
-					}
+				paRowDoor(g, fmt.Sprintf("ForNodesAtPin/%s/pin%d", dir, pi), out, func(n types.NodeID) ([]*types.Relationship, error) {
+					f := map[bool]func([]types.NodeID, string, types.Instant) (map[types.NodeID][]*types.Relationship, error){true: g.Rels.OutgoingForNodesAtPin, false: g.Rels.IncomingForNodesAtPin}[out]
+					m, err := f([]types.NodeID{n}, "", pin)
 					return m[n], err
 				}, func(id types.RelID, _ types.NodeID) (*types.Relationship, error) {
 					return g.findRelVersionForOpts(id, storepkg.QueryOpts{TxPin: pin}, nil)
-				}),
-				rowDoor(fmt.Sprintf("ForNodesAtTx/%s/pin%d", dir, pi), out, func(n types.NodeID) ([]*types.Relationship, error) {
-					var m map[types.NodeID][]*types.Relationship
-					var err error
-					if out {
-						m, err = g.Rels.OutgoingForNodesAtTx([]types.NodeID{n}, "", pin)
-					} else {
-						m, err = g.Rels.IncomingForNodesAtTx([]types.NodeID{n}, "", pin)
-					}
+				}, paRow),
+				paRowDoor(g, fmt.Sprintf("ForNodesAtTx/%s/pin%d", dir, pi), out, func(n types.NodeID) ([]*types.Relationship, error) {
+					f := map[bool]func([]types.NodeID, string, types.Instant) (map[types.NodeID][]*types.Relationship, error){true: g.Rels.OutgoingForNodesAtTx, false: g.Rels.IncomingForNodesAtTx}[out]
+					m, err := f([]types.NodeID{n}, "", pin)
 					return m[n], err
 				}, func(id types.RelID, _ types.NodeID) (*types.Relationship, error) {
 					return g.findRelVersionForOpts(id, g.normalizeTxAtOnlyOpts(storepkg.QueryOpts{TxAt: pin}), nil)
-				}),
+				}, paRow),
 				paDoor{
 					name: fmt.Sprintf("ForEachRelEffectiveAtNodes/%s/pin%d", dir, pi),
 					got: func(n types.NodeID) ([]string, error) {
-						d := temporal.Incoming
-						if out {
-							d = temporal.Outgoing
-						}
 						var s []string
-						err := g.Temporal.ForEachRelEffectiveAtNodes([]types.NodeID{n}, d, nil, pin, func(seg temporal.RelSegment) bool {
+						err := g.Temporal.ForEachRelEffectiveAtNodes([]types.NodeID{n}, tdir, nil, pin, func(seg temporal.RelSegment) bool {
 							s = append(s, fmt.Sprintf("%s[%d,%d)", paRow(seg.Rel), seg.ValidFrom, seg.ValidTo))
 							return true
 						})
 						return s, err
 					},
-					want: func(n types.NodeID) ([]string, error) {
+					one: func(id types.RelID, n types.NodeID) ([]string, error) {
+						segs, err := g.Temporal.RelEffectiveTimeline(id, pin)
 						var s []string
-						for _, id := range w.rels {
-							segs, err := g.Temporal.RelEffectiveTimeline(id, pin)
-							if err != nil {
-								return nil, err
-							}
-							for _, seg := range segs {
-								if paEnd(seg.Rel, out) == n {
-									s = append(s, fmt.Sprintf("%s[%d,%d)", paRow(seg.Rel), seg.ValidFrom, seg.ValidTo))
-								}
+						for _, seg := range segs {
+							if paEnd(seg.Rel, out) == n {
+								s = append(s, fmt.Sprintf("%s[%d,%d)", paRow(seg.Rel), seg.ValidFrom, seg.ValidTo))
 							}
 						}
-						return s, nil
+						return s, err
 					},
 				})
 		}
@@ -267,60 +229,39 @@ func paDoors(g *Core, w *paWorld) []paDoor {
 			}
 		}
 		for _, opts := range optsList {
+			resolve := func(id types.RelID, n types.NodeID) (*types.Relationship, error) {
+				return g.findRelVersionForOpts(id, g.normalizeTxAtOnlyOpts(opts), edge(n))
+			}
 			doors = append(doors,
-				rowDoor(fmt.Sprintf("ForEachAdjacentRelAt/%s/%+v", dir, opts), out, func(n types.NodeID) ([]*types.Relationship, error) {
-					var rows []*types.Relationship
-					err := g.Rels.ForEachAdjacentRelAt(n, "", !out, opts, func(r *types.Relationship) bool {
-						rows = append(rows, r)
+				paRowDoor(g, fmt.Sprintf("ForEachAdjacentRelAt/%s/%+v", dir, opts), out, func(n types.NodeID) ([]*types.Relationship, error) {
+					var rs []*types.Relationship
+					err := g.Rels.ForEachAdjacentRelAt(n, "", !out, opts, func(r *types.Relationship) bool { rs = append(rs, r); return true })
+					return rs, err
+				}, resolve, paRow),
+				paRowDoor(g, fmt.Sprintf("ForEachAdjacentEndpointAt/%s/%+v", dir, opts), out, func(n types.NodeID) ([]*types.Relationship, error) {
+					// Rows rebuilt from the yielded (id, far endpoint) pair.
+					var rs []*types.Relationship
+					err := g.Rels.ForEachAdjacentEndpointAt(n, "", !out, opts, func(id types.RelID, o types.NodeID) bool {
+						s, e := n, o
+						if !out {
+							s, e = o, n
+						}
+						rs = append(rs, types.NewRelationship(id, 0, s, e))
 						return true
 					})
-					return rows, err
-				}, func(id types.RelID, n types.NodeID) (*types.Relationship, error) {
-					return g.findRelVersionForOpts(id, g.normalizeTxAtOnlyOpts(opts), edgePred(n))
-				}),
-				paDoor{
-					// The endpoint door yields (id, far endpoint); the oracle row
-					// is cut to the same pair.
-					name: fmt.Sprintf("ForEachAdjacentEndpointAt/%s/%+v", dir, opts),
-					got: func(n types.NodeID) ([]string, error) {
-						var s []string
-						err := g.Rels.ForEachAdjacentEndpointAt(n, "", !out, opts, func(id types.RelID, other types.NodeID) bool {
-							s = append(s, fmt.Sprintf("%d>%d", id, other))
-							return true
-						})
-						return s, err
-					},
-					want: func(n types.NodeID) ([]string, error) {
-						var s []string
-						for _, id := range w.rels {
-							var r *types.Relationship
-							if err := g.readUnderRLock(func() error {
-								var err error
-								r, err = paResolved(g.findRelVersionForOpts(id, g.normalizeTxAtOnlyOpts(opts), edgePred(n)))
-								return err
-							}); err != nil {
-								return nil, err
-							}
-							if r != nil && paEnd(r, out) == n {
-								s = append(s, fmt.Sprintf("%d>%d", id, paEnd(r, !out)))
-							}
-						}
-						return s, nil
-					},
-				})
+					return rs, err
+				}, resolve, other))
 		}
 		for vi, v := range paValids {
-			doors = append(doors, rowDoor(fmt.Sprintf("RelsAt/%s/valid%d", dir, vi), out, func(n types.NodeID) ([]*types.Relationship, error) {
-				if out {
-					return g.Temporal.OutgoingRelsAt(n, v)
-				}
-				return g.Temporal.IncomingRelsAt(n, v)
+			doors = append(doors, paRowDoor(g, fmt.Sprintf("RelsAt/%s/valid%d", dir, vi), out, func(n types.NodeID) ([]*types.Relationship, error) {
+				return map[bool]func(types.NodeID, types.Instant) ([]*types.Relationship, error){true: g.Temporal.OutgoingRelsAt, false: g.Temporal.IncomingRelsAt}[out](n, v)
 			}, func(id types.RelID, _ types.NodeID) (*types.Relationship, error) {
 				return g.relAtLocked(id, v) // every node of the world is valid at v
-			}))
+			}, paRow))
 		}
 	}
 	for vi, v := range paValids {
+		// NeighborsAt: both directions; the oracle names the far endpoint.
 		doors = append(doors, paDoor{
 			name: fmt.Sprintf("NeighborsAt/valid%d", vi),
 			got: func(n types.NodeID) ([]string, error) {
@@ -331,61 +272,49 @@ func paDoors(g *Core, w *paWorld) []paDoor {
 				}
 				return s, err
 			},
-			want: func(n types.NodeID) ([]string, error) {
-				set := map[string]struct{}{}
-				for _, id := range w.rels {
-					var r *types.Relationship
-					if err := g.readUnderRLock(func() error {
-						var err error
-						r, err = paResolved(g.relAtLocked(id, v))
-						return err
-					}); err != nil {
-						return nil, err
+			one: func(id types.RelID, n types.NodeID) ([]string, error) {
+				var r *types.Relationship
+				err := g.readUnderRLock(func() error {
+					var err error
+					if r, err = g.relAtLocked(id, v); errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
+						r, err = nil, nil
 					}
-					switch {
-					case r == nil:
-					case r.StartNodeID() == n:
-						set[fmt.Sprint(r.EndNodeID())] = struct{}{}
-					case r.EndNodeID() == n:
-						set[fmt.Sprint(r.StartNodeID())] = struct{}{}
-					}
+					return err
+				})
+				switch {
+				case err != nil || r == nil:
+					return nil, err
+				case r.StartNodeID() == n:
+					return []string{fmt.Sprint(r.EndNodeID())}, nil
+				case r.EndNodeID() == n:
+					return []string{fmt.Sprint(r.StartNodeID())}, nil
 				}
-				var s []string
-				for k := range set {
-					s = append(s, k)
-				}
-				return s, nil
+				return nil, nil
 			},
 		})
 	}
 	return doors
 }
 
-// paCheck fails unless every door equals its oracle on every node of w, and the
-// pinned door answers each case's life at each pin by construction (the oracle
-// itself is not vacuous).
+// paCheck fails unless every door equals its oracle on every node of w, and
+// the pinned door answers each case's life at each pin by construction (the
+// oracle is not vacuous).
 func paCheck(t *testing.T, g *Core, w *paWorld) {
 	t.Helper()
 	for ci, pc := range paCases {
 		for pi, pin := range w.pins {
-			life := min(pi, len(pc.lives)-1)
+			life := pc.lives[min(pi, len(pc.lives)-1)]
 			gone := pi == len(w.pins)-1 && pc.del
 			for k, n := range w.cases[ci] {
-				out, err := g.Rels.OutgoingForNodesAtPin([]types.NodeID{n}, "", pin)
-				if err != nil {
-					t.Fatal(err)
-				}
-				in, err := g.Rels.IncomingForNodesAtPin([]types.NodeID{n}, "", pin)
-				if err != nil {
-					t.Fatal(err)
-				}
-				has := func(rows []*types.Relationship) bool {
-					return slices.ContainsFunc(rows, func(r *types.Relationship) bool { return r.ID() == w.rels[ci] })
-				}
-				wantOut := !gone && k == pc.lives[life][0]
-				wantIn := !gone && k == pc.lives[life][1]
-				if has(out[n]) != wantOut || has(in[n]) != wantIn {
-					t.Errorf("%s: pin%d node %d: outgoing has rel %v (want %v), incoming %v (want %v)", pc.name, pi, k, has(out[n]), wantOut, has(in[n]), wantIn)
+				for side, f := range []func([]types.NodeID, string, types.Instant) (map[types.NodeID][]*types.Relationship, error){g.Rels.OutgoingForNodesAtPin, g.Rels.IncomingForNodesAtPin} {
+					m, err := f([]types.NodeID{n}, "", pin)
+					if err != nil {
+						t.Fatal(err)
+					}
+					has := slices.ContainsFunc(m[n], func(r *types.Relationship) bool { return r.ID() == w.rels[ci] })
+					if want := !gone && k == life[side]; has != want {
+						t.Errorf("%s: pin%d node %d side %d: has rel %v, want %v", pc.name, pi, k, side, has, want)
+					}
 				}
 			}
 		}
@@ -396,93 +325,119 @@ func paCheck(t *testing.T, g *Core, w *paWorld) {
 			if err != nil {
 				t.Fatalf("%s(%d): %v", d.name, n, err)
 			}
-			want, err := d.want(n)
-			if err != nil {
-				t.Fatalf("%s(%d) oracle: %v", d.name, n, err)
+			var want []string
+			for _, id := range w.rels {
+				s, err := d.one(id, n)
+				if err != nil {
+					t.Fatalf("%s(%d) oracle: %v", d.name, n, err)
+				}
+				want = append(want, s...)
 			}
-			if g, w := paSorted(got), paSorted(want); g != w {
-				t.Errorf("%s(%d) = %s\n want %s", d.name, n, g, w)
+			slices.Sort(got)
+			slices.Sort(want)
+			if !slices.Equal(slices.Compact(got), slices.Compact(want)) {
+				t.Errorf("%s(%d) = %v\n want %v", d.name, n, got, want)
 			}
 		}
 	}
 }
 
-// paNoted fails unless the store's re-imported set holds every live case
-// whose lives name other endpoints and no case whose lives all name the same
-// ones (a same-endpoint re-import is never noted: the live adjacency reaches
-// every life). A moved case deleted again may be in it or not (the deleted
-// IDs reach it): the primary noted it while live, an import of its deleted
-// rows need not.
-func paNoted(t *testing.T, g *Core, w *paWorld) {
+// paStripExAdjacency makes the badger store at dir look written before backlog
+// 50: no ex-adjacency keys (0x0D) and no completeness marker.
+func paStripExAdjacency(t *testing.T, dir string) {
 	t.Helper()
-	type reimported interface {
-		ForEachReimportedRelID(fn func(types.RelID) bool) error
-	}
-	st, ok := g.store.(reimported)
-	if !ok {
-		t.Errorf("%T keeps no set of relationships re-imported with other endpoints", g.store)
-		return
-	}
-	got := map[types.RelID]bool{}
-	if err := st.ForEachReimportedRelID(func(id types.RelID) bool { got[id] = true; return true }); err != nil {
+	bs, err := badger.New(badger.Config{Dir: dir})
+	if err != nil {
 		t.Fatal(err)
 	}
-	for ci, pc := range paCases {
-		in := got[w.rels[ci]]
-		if pc.moved && !pc.del && !in {
-			t.Errorf("%s: not in the re-imported set", pc.name)
-		}
-		if !pc.moved && in {
-			t.Errorf("%s: in the re-imported set, but its lives name the same endpoints", pc.name)
-		}
+	db := bs.DBForTest()
+	if err := db.DropPrefix([]byte{0x0D}); err != nil {
+		t.Fatal(err)
 	}
+	if err := db.Update(func(txn *badgerv4.Txn) error {
+		for _, k := range []string{"rel_exadj_built", "rel_reimported_built"} {
+			if err := txn.Delete(storeutil.MetaKey(k)); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// paCountStore counts the history reads made through it.
+type paCountStore struct {
+	*badger.Store
+	reads atomic.Int64
+}
+
+func (s *paCountStore) GetRelHistory(id types.RelID) ([]*types.Relationship, error) {
+	s.reads.Add(1)
+	return s.Store.GetRelHistory(id)
+}
+
+func (s *paCountStore) ForEachRelHistoryID(fn func(types.RelID) bool) error {
+	s.reads.Add(1)
+	return s.Store.ForEachRelHistoryID(fn)
 }
 
 // TestPinnedAdjacencyFindsReimportedEarlierLife: every adjacency door finds
-// every life of a relationship re-imported with other endpoints, on every
-// backend, on a replica fed by the change feed, after export → import and
-// after a badger reopen; the store records only the moved relationships.
+// every life of a relationship re-imported with other endpoints and of a
+// deleted one, on every backend, on a replica fed by the change feed, after
+// export → import, on a replica of a primary filled by IO.Import (history rows
+// arrive after the current row), after a badger reopen, and on a badger store
+// written before the ex-adjacency existed (read-only: no history scan at open,
+// all-history fold; writable: the one-time backfill).
 //
-// Catches: the deleted-only candidate fold ("endpoints are immutable"), a
-// re-import set kept in RAM only (reopen), a write door that does not note
-// (replica apply, IO import), a set that notes same-endpoint re-imports.
+// Catches: the deleted-only fold ("endpoints are immutable"), ex-adjacency kept
+// in RAM only (reopen), a write door that skips it (replica delete or history
+// apply, IO.Import history rows), a missing or wasted backfill.
 func TestPinnedAdjacencyFindsReimportedEarlierLife(t *testing.T) {
 	t.Parallel()
 	for _, be := range pastDatedBackends() {
 		t.Run(be.name, func(t *testing.T) {
 			t.Parallel()
-			g := be.open(t, Config{SnowflakeNodeID: 0}, true)
+			g := be.open(t, Config{}, true)
 			useTestClock(t, g)
 			w := paBuild(t, g)
-			t.Run("graph", func(t *testing.T) {
-				paCheck(t, g, w)
-				paNoted(t, g, w)
-			})
-			t.Run("replica", func(t *testing.T) {
-				replica := be.open(t, Config{SnowflakeNodeID: 1, ReadOnlyReplica: true, ReplicationSource: g.Repl}, false)
-				useTestClock(t, replica) // the pins of g lie ahead of a fresh wall clock
-				if _, err := replica.Repl.ApplyChanges(changeFeed(t, g)); err != nil {
+			replicaOf := func(t *testing.T, src *Core) *Core {
+				r := be.open(t, Config{SnowflakeNodeID: 1, ReadOnlyReplica: true, ReplicationSource: src.Repl}, false)
+				useTestClock(t, r) // the pins lie ahead of a fresh wall clock
+				if _, err := r.Repl.ApplyChanges(changeFeed(t, src)); err != nil {
 					t.Fatalf("ApplyChanges: %v", err)
 				}
-				paCheck(t, replica, w)
-				paNoted(t, replica, w)
-			})
-			t.Run("export-import", func(t *testing.T) {
+				return r
+			}
+			importOf := func(t *testing.T, src *Core, changeLog bool) *Core {
 				var buf bytes.Buffer
-				if err := g.IO.Export(&buf); err != nil {
-					t.Fatalf("Export: %v", err)
+				if err := src.IO.Export(&buf); err != nil {
+					t.Fatal(err)
 				}
-				dst := be.open(t, Config{AllowTxBackfill: true}, false)
+				dst := be.open(t, Config{AllowTxBackfill: true}, changeLog)
 				useTestClock(t, dst)
 				if err := dst.IO.Import(&buf, tkgio.ImportOptions{}); err != nil {
-					t.Fatalf("Import: %v", err)
+					t.Fatal(err)
 				}
-				paCheck(t, dst, w)
-				paNoted(t, dst, w)
-			})
+				return dst
+			}
+			for _, v := range []struct {
+				name string
+				g    func(t *testing.T) *Core
+			}{
+				{"graph", func(*testing.T) *Core { return g }},
+				{"replica", func(t *testing.T) *Core { return replicaOf(t, g) }},
+				{"export-import", func(t *testing.T) *Core { return importOf(t, g, false) }},
+				{"replica of an imported primary", func(t *testing.T) *Core { return replicaOf(t, importOf(t, g, true)) }},
+			} {
+				t.Run(v.name, func(t *testing.T) { paCheck(t, v.g(t), w) })
+			}
 		})
 	}
-	t.Run("badger reopen", func(t *testing.T) {
+	t.Run("badger on disk", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
 		g1, err := New(Config{BadgerDir: dir})
@@ -494,139 +449,119 @@ func TestPinnedAdjacencyFindsReimportedEarlierLife(t *testing.T) {
 		if err := g1.Close(); err != nil {
 			t.Fatal(err)
 		}
-		g2, err := New(Config{BadgerDir: dir})
-		if err != nil {
-			t.Fatal(err)
+		open := func(t *testing.T, cfg badger.Config) (*Core, *paCountStore) {
+			cfg.Dir = dir
+			bs, err := badger.New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			st := &paCountStore{Store: bs}
+			g, err := New(Config{Store: st})
+			if err != nil {
+				t.Fatal(err)
+			}
+			useTestClock(t, g)
+			return g, st
 		}
-		defer g2.Close()
-		useTestClock(t, g2)
-		paCheck(t, g2, w)
-		paNoted(t, g2, w)
-	})
-	t.Run("badger written before the set", func(t *testing.T) {
-		t.Parallel()
-		dir := t.TempDir()
-		bs, err := badger.New(badger.Config{Dir: dir})
-		if err != nil {
-			t.Fatal(err)
+		for _, v := range []struct {
+			name           string
+			strip          bool
+			cfg            badger.Config
+			maxOpenReads   int64
+			openReadsFloor int64
+		}{
+			{name: "reopen"},
+			{name: "written before, read-only", strip: true, cfg: badger.Config{ReadOnly: true}},
+			{name: "written before, backfilled", strip: true, openReadsFloor: 1, maxOpenReads: 1 << 20},
+			{name: "backfilled, reopened", maxOpenReads: 0},
+		} {
+			if v.strip {
+				paStripExAdjacency(t, dir)
+			}
+			g, st := open(t, v.cfg)
+			if n := st.reads.Load(); n > v.maxOpenReads || n < v.openReadsFloor {
+				t.Errorf("%s: %d history reads at open, want [%d, %d]", v.name, n, v.openReadsFloor, v.maxOpenReads)
+			}
+			t.Run(v.name, func(t *testing.T) { paCheck(t, g, w) })
+			if err := g.Close(); err != nil && !v.cfg.ReadOnly { // a read-only Close cannot persist the registries
+				t.Fatal(err)
+			}
 		}
-		g1, err := New(Config{Store: &paLegacyStore{bs}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		useTestClock(t, g1)
-		w := paBuild(t, g1)
-		if err := g1.Close(); err != nil {
-			t.Fatal(err)
-		}
-		g2, err := New(Config{BadgerDir: dir}) // the open-time scan fills the set
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer g2.Close()
-		useTestClock(t, g2)
-		paCheck(t, g2, w)
-		paNoted(t, g2, w)
 	})
 }
 
-// paLegacyStore is a badger store as a version before backlog 50 leaves it:
-// no re-import is noted and the set is never marked complete.
-type paLegacyStore struct{ *badger.Store }
-
-func (*paLegacyStore) NoteReimportedRel(types.RelID) error { return nil }
-
-func (s *paLegacyStore) MetaSet(key string, value []byte) error {
-	if key == "rel_reimported_built" { // reimportedRelsBuiltMeta
-		return nil
+// Stores the graph must not trust: no ex-adjacency, no MetaKV for its marker,
+// a marker it cannot write; and one whose ex-adjacency lists an invalid ID.
+type (
+	paNoExStore     struct{ storepkg.MandatoryStore }
+	paExNoMetaStore struct {
+		storepkg.MandatoryStore
+		storepkg.ExAdjacencyCapability
 	}
-	return s.Store.MetaSet(key, value)
-}
+	paExStore struct {
+		storepkg.MandatoryStore
+		storepkg.ExAdjacencyCapability
+		storepkg.MetaKVCapability
+		failMarker, badID bool
+	}
+)
 
-// paNoSetStore is a store without the re-imported set; paSetNoMetaStore has
-// the set but no MetaKV for the completeness marker; paMarkerFailStore cannot
-// write the marker; paBadSetStore lists an invalid ID.
-type paNoSetStore struct{ storepkg.MandatoryStore }
-
-type paSetNoMetaStore struct {
-	storepkg.MandatoryStore
-	storepkg.ReimportedRelCapability
-}
-
-type paMarkerFailStore struct {
-	storepkg.MandatoryStore
-	storepkg.ReimportedRelCapability
-	storepkg.MetaKVCapability
-}
-
-var errPaMarker = errors.New("marker write refused")
-
-func (s *paMarkerFailStore) MetaSet(key string, value []byte) error {
-	if key == "rel_reimported_built" {
-		return errPaMarker
+func (s *paExStore) MetaSet(key string, value []byte) error {
+	if s.failMarker && key == "rel_exadj_built" {
+		return errors.New("marker write refused")
 	}
 	return s.MetaKVCapability.MetaSet(key, value)
 }
 
-type paBadSetStore struct{ paMarkerFailStore }
-
-func (*paBadSetStore) MetaSet(string, []byte) error { return nil }
-
-func (*paBadSetStore) ForEachReimportedRelID(fn func(types.RelID) bool) error {
-	fn(0)
-	return nil
+func (s *paExStore) ForEachExAdjacentRelID(nid types.NodeID, incoming bool, fn func(types.RelID) bool) error {
+	if s.badID {
+		fn(0)
+		return nil
+	}
+	return s.ExAdjacencyCapability.ForEachExAdjacentRelID(nid, incoming, fn)
 }
 
-// TestReimportedSetFallbacks: a graph whose store keeps no set, has no MetaKV
-// for its marker, or cannot write the marker folds every relationship with
-// history and still answers every adjacency door like the oracle; a store
-// whose set lists an invalid ID fails the doors with ErrInvalidStoreMutation.
+// TestExAdjacencyFallbacks: a graph that cannot trust its store's
+// ex-adjacency folds every relationship with history and still answers every
+// door like the oracle; an invalid ID from the store fails the doors with
+// ErrInvalidStoreMutation.
 //
-// Catches: a gather that trusts a missing or unmarked set (misses earlier
-// lives), an untrusted store's IDs passed through unvalidated.
-func TestReimportedSetFallbacks(t *testing.T) {
+// Catches: a gather that trusts a missing or unmarked index (misses earlier
+// lives), an untrusted store's ID passed through unvalidated.
+func TestExAdjacencyFallbacks(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name string
-		st   func() storepkg.MandatoryStore
+		st   func(ms *memory.Store) storepkg.MandatoryStore
 	}{
-		{"no set", func() storepkg.MandatoryStore { return &paNoSetStore{memory.New()} }},
-		{"set without MetaKV", func() storepkg.MandatoryStore { ms := memory.New(); return &paSetNoMetaStore{ms, ms} }},
-		{"marker write fails", func() storepkg.MandatoryStore { ms := memory.New(); return &paMarkerFailStore{ms, ms, ms} }},
+		{"no ex-adjacency", func(ms *memory.Store) storepkg.MandatoryStore { return &paNoExStore{ms} }},
+		{"no MetaKV", func(ms *memory.Store) storepkg.MandatoryStore { return &paExNoMetaStore{ms, ms} }},
+		{"marker write fails", func(ms *memory.Store) storepkg.MandatoryStore { return &paExStore{ms, ms, ms, true, false} }},
+		{"invalid ID", func(ms *memory.Store) storepkg.MandatoryStore { return &paExStore{ms, ms, ms, false, true} }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			g, err := New(Config{Store: tc.st()})
+			g, err := New(Config{Store: tc.st(memory.New())})
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer g.Close()
-			if g.reimportedRels != nil {
-				t.Fatalf("the graph trusts a set it cannot mark complete")
-			}
 			useTestClock(t, g)
-			paCheck(t, g, paBuild(t, g))
+			w := paBuild(t, g)
+			if tc.name != "invalid ID" {
+				if g.exAdj != nil {
+					t.Fatalf("the graph trusts an ex-adjacency it cannot mark complete")
+				}
+				paCheck(t, g, w)
+				return
+			}
+			n := w.cases[0][0]
+			if _, err := g.Rels.OutgoingForNodesAtPin([]types.NodeID{n}, "", w.pins[0]); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+				t.Fatalf("OutgoingForNodesAtPin = %v, want ErrInvalidStoreMutation", err)
+			}
+			if err := g.Temporal.ForEachRelEffectiveAtNodes([]types.NodeID{n}, temporal.Outgoing, nil, w.pins[0], func(temporal.RelSegment) bool { return true }); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+				t.Fatalf("ForEachRelEffectiveAtNodes = %v, want ErrInvalidStoreMutation", err)
+			}
 		})
 	}
-	t.Run("invalid ID in the set", func(t *testing.T) {
-		t.Parallel()
-		ms := memory.New()
-		g, err := New(Config{Store: &paBadSetStore{paMarkerFailStore{ms, ms, ms}}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer g.Close()
-		useTestClock(t, g)
-		w := paBuild(t, g)
-		n := w.cases[0][0]
-		if _, err := g.Rels.OutgoingForNodesAtPin([]types.NodeID{n}, "", w.pins[0]); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
-			t.Fatalf("OutgoingForNodesAtPin = %v, want ErrInvalidStoreMutation", err)
-		}
-		if err := g.Rels.ForEachAdjacentRelAt(n, "", false, storepkg.QueryOpts{TxPin: w.pins[0]}, func(*types.Relationship) bool { return true }); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
-			t.Fatalf("ForEachAdjacentRelAt = %v, want ErrInvalidStoreMutation", err)
-		}
-		if err := g.Temporal.ForEachRelEffectiveAtNodes([]types.NodeID{n}, temporal.Outgoing, nil, w.pins[0], func(temporal.RelSegment) bool { return true }); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
-			t.Fatalf("ForEachRelEffectiveAtNodes = %v, want ErrInvalidStoreMutation", err)
-		}
-	})
 }

@@ -288,6 +288,12 @@ type relCandidateSpyStore struct {
 	deletedRelCalls  atomicCount
 	nodeHistCalls    atomicCount
 	relHistCalls     atomicCount
+	exAdjCalls       atomicCount
+}
+
+func (s *relCandidateSpyStore) ForEachExAdjacentRelID(nid types.NodeID, incoming bool, fn func(types.RelID) bool) error {
+	s.exAdjCalls.Inc()
+	return s.Store.ForEachExAdjacentRelID(nid, incoming, fn)
 }
 
 type atomicCount struct{ n int64 }
@@ -315,13 +321,13 @@ func (s *relCandidateSpyStore) ForEachRelHistoryID(fn func(types.RelID) bool) er
 	return s.Store.ForEachRelHistoryID(fn)
 }
 
-// TestOutgoingRelsAt_DispatchesToDeletedIteration pins the B2 wiring: when
-// the store implements DeletedIterationCapability, the adjacency-at-t fold
-// uses ForEachDeletedRelID (cost O(deleted_count)), NOT the wider
-// ForEachRelHistoryID. Without this test a future wiring regression that
-// silently falls back to the all-history path would be invisible — the
-// query results would still be correct.
-func TestOutgoingRelsAt_DispatchesToDeletedIteration(t *testing.T) {
+// TestOutgoingRelsAt_DispatchesToExAdjacency pins the backlog-50 wiring: when
+// the store implements ExAdjacencyCapability, the adjacency-at-t fold reads
+// the node's ex-adjacency (cost O(its ever-degree)), NOT the store-wide
+// ForEachDeletedRelID (O(deleted)) nor ForEachRelHistoryID (O(history)).
+// Without this test a wiring regression that silently falls back to a wider
+// path would be invisible — the query results would still be correct.
+func TestOutgoingRelsAt_DispatchesToExAdjacency(t *testing.T) {
 	t.Parallel()
 	spy := &relCandidateSpyStore{Store: memory.New()}
 	g, err := New(Config{Store: spy})
@@ -343,16 +349,17 @@ func TestOutgoingRelsAt_DispatchesToDeletedIteration(t *testing.T) {
 	// Reset counters AFTER setup mutations (which may also touch iteration paths).
 	spy.deletedRelCalls = atomicCount{}
 	spy.relHistCalls = atomicCount{}
+	spy.exAdjCalls = atomicCount{}
 
 	if _, err := g.Temporal.OutgoingRelsAt(a.ID(), t0); err != nil {
 		t.Fatalf("OutgoingRelsAt: %v", err)
 	}
 
-	if spy.deletedRelCalls.Get() == 0 {
-		t.Errorf("ForEachDeletedRelID was not called — adjacency fold fell back to history scan")
+	if spy.exAdjCalls.Get() == 0 {
+		t.Errorf("ForEachExAdjacentRelID was not called — adjacency fold fell back to a store-wide scan")
 	}
-	if spy.relHistCalls.Get() != 0 {
-		t.Errorf("ForEachRelHistoryID was called %d times — adjacency fold should use deleted-only path", spy.relHistCalls.Get())
+	if spy.deletedRelCalls.Get() != 0 || spy.relHistCalls.Get() != 0 {
+		t.Errorf("store-wide scans: ForEachDeletedRelID %d, ForEachRelHistoryID %d calls — the fold should read the node's ex-adjacency only", spy.deletedRelCalls.Get(), spy.relHistCalls.Get())
 	}
 }
 

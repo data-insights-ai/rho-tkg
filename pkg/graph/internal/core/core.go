@@ -77,11 +77,10 @@ type Core struct {
 	depthHistory          storepkg.DepthHistoryIterationCapability
 	deletedIter           storepkg.DeletedIterationCapability
 	deletedDepthIter      storepkg.DepthDeletedIterationCapability
-	// reimportedRels is the store's set of relationships whose lives name
-	// different endpoints (backlog 50): the adjacency doors' candidates
-	// beyond the live adjacency and the deleted IDs. nil = every relationship
-	// with history instead (forEachRelOffAdjacencyIDByDepth).
-	reimportedRels storepkg.ReimportedRelCapability
+	// exAdj is the store's ex-adjacency (backlog 50) once it covers every
+	// relationship (backfillExAdjacencyBestEffort); nil = the adjacency doors
+	// fold every relationship with history instead (forEachRelExAdjacentID).
+	exAdj storepkg.ExAdjacencyCapability
 	// transaction-time membership sidecars: scope a pinned label/type scan's
 	// candidate set to the label/type's ever-members (O(matches)) instead of the
 	// whole node/rel-history fold (O(everything ever)). nil = store declines
@@ -1989,7 +1988,6 @@ func New(config Config) (*Core, error) {
 	c.txLogScope = txChangeLogScope(store, c.changeLogEnabled)
 	c.scopedChangeLog = scopedTxCapability(store)
 	c.deletedDepthIter = depthDeletedIterationCapability(store)
-	c.reimportedRels, _ = store.(storepkg.ReimportedRelCapability)
 	c.labelTxMembers = labelTxMembershipCapability(store)
 	c.relTypeTxMembers = relTypeTxMembershipCapability(store)
 	c.labelTxLookup = labelTxMemberLookupCapability(store)
@@ -2093,7 +2091,7 @@ func New(config Config) (*Core, error) {
 	}
 
 	c.runBitemporalMigrationBestEffort()
-	c.backfillReimportedRelsBestEffort()
+	c.backfillExAdjacencyBestEffort(store)
 
 	// Rehydrate the durable unique-constraint registry (fail closed on a corrupt
 	// MetaKV blob — a constraint silently dropped at open would let a duplicate

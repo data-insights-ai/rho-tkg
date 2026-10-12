@@ -13,11 +13,11 @@ import (
 // verifyAndStampWireFormatVersion enforces the store-level on-disk format
 // contract at open, before any row is decoded:
 //
-//   - marker > CurrentWireFormatVersion: the directory was written by a newer
+//   - marker > StoreFormatVersion: the directory was written by a newer
 //     release — fail closed with ErrWireFormatVersionUnsupported rather than
 //     misdecoding rows whose layout this binary does not know.
-//   - marker == CurrentWireFormatVersion: open normally.
-//   - marker < CurrentWireFormatVersion: open normally and (read-write only)
+//   - marker == StoreFormatVersion: open normally.
+//   - marker < StoreFormatVersion: open normally and (read-write only)
 //     raise the marker to the current version, since rows written from now on
 //     may carry it — an older binary must then refuse at open instead of
 //     failing row-by-row mid-operation.
@@ -52,15 +52,15 @@ func verifyAndStampWireFormatVersion(db *badgerv4.DB, readOnly bool) error {
 	if err != nil {
 		return fmt.Errorf("graph: wire format marker: %w", err)
 	}
-	if present && stored > storepkg.CurrentWireFormatVersion {
+	if present && stored > storepkg.StoreFormatVersion {
 		return fmt.Errorf("graph: store written by a newer release (on-disk wire format v%d, this binary supports up to v%d): %w",
-			stored, storepkg.CurrentWireFormatVersion, storecontract.ErrWireFormatVersionUnsupported)
+			stored, storepkg.StoreFormatVersion, storecontract.ErrWireFormatVersionUnsupported)
 	}
-	if readOnly || (present && stored == storepkg.CurrentWireFormatVersion) {
+	if readOnly || (present && stored == storepkg.StoreFormatVersion) {
 		return nil
 	}
 	val := make([]byte, 2)
-	binary.BigEndian.PutUint16(val, uint16(storepkg.CurrentWireFormatVersion))
+	binary.BigEndian.PutUint16(val, uint16(storepkg.StoreFormatVersion))
 	if err := db.Update(func(txn *badgerv4.Txn) error {
 		return txn.Set(storepkg.WireFormatVersionKey, val)
 	}); err != nil {

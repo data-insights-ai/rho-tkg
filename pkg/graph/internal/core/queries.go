@@ -1334,11 +1334,11 @@ func (c *Core) incomingRelsForNodesLocked(nodeIDs []types.NodeID, typeName strin
 // a belief-state pin.
 //
 // The candidate relationship-ID set is the live per-node adjacency (seeds the
-// common case) UNIONED with every DELETED relationship ID and every one
-// re-imported with other endpoints (its earlier life names the old ones) via
-// forEachRelAdjacencyCandidateID — mirroring the single-node
-// OutgoingRelsAt/IncomingRelsAt fold (see AGENTS.md "Adjacency-at-t fold uses
-// the off-adjacency set"). A relationship deleted after txAt is
+// common case) UNIONED with each seed's ex-adjacency — the relationships that
+// named it in a row its live adjacency no longer holds (deleted ones, earlier
+// lives of re-imported ones) — via forEachRelAdjacencyCandidateID, mirroring
+// the single-node OutgoingRelsAt/IncomingRelsAt fold (see AGENTS.md
+// "Adjacency-at-t fold uses the seed's ex-adjacency"). A relationship deleted after txAt is
 // therefore still visible (delete is a transaction-time tombstone, lesson 60);
 // one created after txAt is invisible; one deleted before txAt is invisible;
 // a backfilled relationship (AddWithTx) is visible from its backfilled TxFrom
@@ -1473,7 +1473,7 @@ func (c *Core) directionalRelsForNodesAtTxLocked(nodeIDs []types.NodeID, typeNam
 	}
 
 	result := make(map[types.NodeID][]*types.Relationship)
-	if err := c.forEachRelAdjacencyCandidateID(seedIDs, func(id types.RelID) error {
+	if err := c.forEachRelAdjacencyCandidateID(nodeIDs, adjDirsOf(outgoing), seedIDs, storepkg.DepthAll, func(id types.RelID) error {
 		r, err := c.findRelVersionForOpts(id, opts, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
@@ -1526,10 +1526,10 @@ func (c *Core) directionalRelsForNodesAtTxLocked(nodeIDs []types.NodeID, typeNam
 // TxFrom onward.
 //
 // Candidate set — the live per-node adjacency of the CURRENTLY-EXISTING seeds
-// UNIONED with every DELETED relationship ID and every one re-imported with
-// other endpoints via forEachRelAdjacencyCandidateID (see AGENTS.md
-// "Adjacency-at-t fold uses the off-adjacency set"): a relationship's rows name
-// another node than its live row only when it is deleted or was re-imported.
+// UNIONED with the ex-adjacency of EVERY seed (a deleted seed included) via
+// forEachRelAdjacencyCandidateID (see AGENTS.md "Adjacency-at-t fold uses the
+// seed's ex-adjacency"): a relationship's rows name a node its live adjacency
+// does not only when it is deleted or was re-imported with other endpoints.
 //
 // SEED TOLERANCE — unlike OutgoingForNodes/AtTx, this door does NOT hard-error
 // ErrNodeNotFound on a seed that is absent from CURRENT state. A seed that was
@@ -1645,7 +1645,7 @@ func (c *Core) directionalRelsForNodesAtPinLocked(nodeIDs []types.NodeID, typeNa
 	// adjacency was purged by the cascade) — passing it to
 	// OutgoingRelationshipsForNodes would hard-error ErrNodeNotFound. We tolerate
 	// such seeds: their pre-delete edges are recovered purely through the
-	// deleted-rel fold below (a cascade-deleted edge's rows still name the
+	// seed's ex-adjacency below (a cascade-deleted edge's rows still name the
 	// deleted seed as its endpoint). `requested` keeps ALL
 	// deduped seeds so the endpoint filter still admits a deleted seed's edges.
 	requested := make(map[types.NodeID]struct{}, len(nodeIDs))
@@ -1691,7 +1691,7 @@ func (c *Core) directionalRelsForNodesAtPinLocked(nodeIDs []types.NodeID, typeNa
 	}
 
 	result := make(map[types.NodeID][]*types.Relationship)
-	if err := c.forEachRelAdjacencyCandidateID(seedIDs, func(id types.RelID) error {
+	if err := c.forEachRelAdjacencyCandidateID(nodeIDs, adjDirsOf(outgoing), seedIDs, storepkg.DepthAll, func(id types.RelID) error {
 		r, err := c.findRelVersionForOpts(id, opts, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {

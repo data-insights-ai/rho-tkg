@@ -12,13 +12,14 @@ import (
 )
 
 // Backlog 50 (cost): ForEachRelEffectiveAtNodes with one seed reads the rows
-// of the seed's adjacency, the deleted relationships and the relationships
-// re-imported with other endpoints — never every relationship with history.
+// of the relationships that ever named the seed (its adjacency and
+// ex-adjacency) — not every relationship with history, nor every deleted one.
 // On badger with a one-entry cache every row read is a cache miss, so the
 // misses of one call count the relationships it visits.
 //
-// Catches: the all-history candidate fold (O(H) per call), and a gather that
-// drops the deleted or the re-imported earlier lives (the exact answer).
+// Catches: the all-history candidate fold (O(H) per call), the global
+// deleted-ID fold (O(deleted) per call), and a gather that drops the seed's
+// deleted or re-imported earlier lives (the exact answer).
 func TestEffectiveAtNodesVisitsSeedAdjacencyOnly(t *testing.T) {
 	ctx := context.Background()
 	st, err := badger.New(badger.Config{Dir: t.TempDir(), FlushInterval: time.Hour, CacheCapacity: 1})
@@ -49,12 +50,18 @@ func TestEffectiveAtNodesVisitsSeedAdjacencyOnly(t *testing.T) {
 	for i := 0; i < seedRels; i++ {
 		rel(seed, node())
 	}
-	// H: relationships away from the seed, every one with a history row.
+	// H: relationships away from the seed, every one with a history row, a
+	// quarter of them deleted.
 	pool := []types.NodeID{node(), node(), node(), node()}
 	for i := 0; i < others; i++ {
 		id := rel(pool[i%4], pool[(i+1)%4])
 		if _, err := g.Rels().Update(ctx, id, map[string]any{"i": int64(i)}); err != nil {
 			t.Fatal(err)
+		}
+		if i%4 == 0 {
+			if err := g.Rels().Delete(ctx, id); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	// One relationship of the seed deleted, one moved off the seed by a
@@ -98,9 +105,9 @@ func TestEffectiveAtNodesVisitsSeedAdjacencyOnly(t *testing.T) {
 	if want := seedRels + 2; len(got) != want || !got[deleted] || !got[moved] {
 		t.Fatalf("AtNodes(seed, pin) streamed %d relationships (deleted %v, moved %v); want %d with both", len(got), got[deleted], got[moved], want)
 	}
-	// The seed's adjacency rows are read twice (gather, then timeline), the
-	// deleted and the moved one once each; a little slack for the store.
+	// The seed's adjacency rows are read twice (gather, then timeline), its
+	// deleted and moved one once each; a little slack for the store.
 	if bound := int64(2*seedRels + 2 + 4); misses > bound {
-		t.Fatalf("one AtNodes call over a seed of %d relationships read %d relationship rows (bound %d): it visits the %d relationships with history", seedRels, misses, bound, others)
+		t.Fatalf("one AtNodes call over a seed of %d relationships read %d relationship rows (bound %d): it visits relationships that never named the seed (%d with history elsewhere, %d of them deleted)", seedRels, misses, bound, others, others/4)
 	}
 }

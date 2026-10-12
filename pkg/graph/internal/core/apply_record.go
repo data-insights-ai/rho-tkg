@@ -509,11 +509,6 @@ func (c *Core) applyRelPutLocked(body storeutil.RelPutBody, rec storepkg.ChangeR
 	id := r.InternalID()
 	local, gerr := c.store.GetRelationship(id)
 	if errors.Is(gerr, storepkg.ErrRelNotFound) {
-		// A put over a deleted life (the primary's re-import): noted first
-		// when that life named other endpoints (backlog 50).
-		if err := c.noteRelPutOverHistory(r); err != nil {
-			return err
-		}
 		return c.store.PutRelationship(r)
 	}
 	if gerr != nil {

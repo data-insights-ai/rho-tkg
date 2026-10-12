@@ -59,6 +59,7 @@ func (ms *Store) putRelHistoryRowLocked(rid types.RelID, v uint32, row *types.Re
 	}
 	before := len(inner)
 	_, overwrite := inner[v]
+	ms.noteHistoryRowExAdjLocked(rid, row) // backlog 50
 	inner[v] = ms.historyRel(row)
 	f, t, d := row.TxStamps()
 	ms.histStampsMu.Lock()

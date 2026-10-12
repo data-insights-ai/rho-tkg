@@ -270,29 +270,3 @@ func (s *Store) forEachRelID(fn func(types.RelID) bool, iter func(*badgerShard, 
 	}
 	return nil
 }
-
-// NoteReimportedRel / ForEachReimportedRelID implement
-// storecontract.ReimportedRelCapability (backlog 50): the note goes to the
-// shard that owns the relationship's ID (where its rows live, so the note and
-// the row share one database), the iteration fans out over every shard.
-var _ storecontract.ReimportedRelCapability = (*Store)(nil)
-
-func (s *Store) NoteReimportedRel(id types.RelID) error {
-	if err := s.checkOpen(); err != nil {
-		return err
-	}
-	if err := storecontract.ValidateRelID(id); err != nil {
-		return err
-	}
-	shard, err := s.shardForRelID(id)
-	if err != nil {
-		return err
-	}
-	return shard.NoteReimportedRel(id)
-}
-
-func (s *Store) ForEachReimportedRelID(fn func(types.RelID) bool) error {
-	return s.forEachRelID(fn, func(shard *badgerShard, cb func(types.RelID) bool) error {
-		return shard.ForEachReimportedRelID(cb)
-	})
-}

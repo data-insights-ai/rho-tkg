@@ -241,6 +241,12 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 	// past version stays findable). An uncovered relationship without a current
 	// row stays uncovered and is never pruned — extending it here would vouch
 	// for this one version while its other rows stay outside.
+	// A row whose endpoints are not the live row's joins the ex-adjacency in
+	// the same batch (backlog 50). Decided before the enqueue (which may run
+	// under idxMu.Lock): a delete landing in between adds the legs itself.
+	bs.idxMu.RLock()
+	ops := append([]writeOp{{opType: writeOpSet, key: key, value: data}}, bs.exAdjOpsForHistoryRowLocked(rid, r)...)
+	bs.idxMu.RUnlock()
 	err = bs.enqueueVersionAgainstLazyBuilds(
 		func() bool {
 			return bs.relTypeMembersBuilt.Load() || bs.relBeliefWatermarkBuilt.Load() || len(bs.relTypeTemporalIndexes) > 0 || len(bs.relPropTx) > 0
@@ -254,7 +260,7 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 			}
 		},
 		func() error {
-			return bs.appendOpsLoggedRouted(storecontract.ChangeRelHistoryVersion, logPayload, token, writeOp{opType: writeOpSet, key: key, value: data})
+			return bs.appendOpsLoggedRouted(storecontract.ChangeRelHistoryVersion, logPayload, token, ops...)
 		},
 	)
 	if err != nil {

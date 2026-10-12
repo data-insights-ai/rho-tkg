@@ -150,16 +150,19 @@ func (ms *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 					}
 				}
 			}
+			rows := ms.relRowsLocked(relID)
 			if err := ms.deleteRelOrPurgeOrphanLocked(relID); err != nil {
 				return zero, err
 			}
-			delete(ms.relHistory, relID) // purge the rel's whole history too
+			ms.dropExAdjRowsLocked(relID, rows) // nothing of it is left to find (backlog 50)
+			delete(ms.relHistory, relID)        // purge the rel's whole history too
 			// Nothing of the relationship is left for its rel-type temporal
 			// envelope to cover (a plain delete keeps it; a purge does not).
 			indexpkg.PurgeRelFromAllTemporalIndexes(ms.relTypeTemporalIndexes, relID.SnowflakeID())
 		}
 
 		ms.removeNodeLabelIndexes(nid, n)
+		ms.dropExAdjNodeLocked(nid) // backlog 50
 		ms.removeNodePropertyKeyCounts(n)
 		rawID := nid.SnowflakeID()
 		indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)

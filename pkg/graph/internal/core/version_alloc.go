@@ -252,38 +252,33 @@ func (c *Core) nodeLifeStart(id types.NodeID) (lifeStart, error) {
 	return lifeStartOf(history, nodeIntegrityHash)
 }
 
-// relLifeStart mirrors nodeLifeStart for relationships and also returns the
-// history rows it read (nil when the ID has none), which the import compares
-// with its endpoints (backlog 50). A slot that is not local holds no history
-// here.
-func (c *Core) relLifeStart(id types.RelID) (lifeStart, []*types.Relationship, error) {
+// relLifeStart mirrors nodeLifeStart for relationships. A slot that is not
+// local holds no history here.
+func (c *Core) relLifeStart(id types.RelID) (lifeStart, error) {
 	stub := func() (compactionStub, bool, error) { return c.loadRelCompactionStub(id) }
 	if p, ok := c.store.(storepkg.HistoryPresenceCapability); ok {
 		if has, err := p.HasRelHistory(id); errors.Is(err, storepkg.ErrSlotNotLocal) {
-			return lifeStart{}, nil, nil
+			return lifeStart{}, nil
 		} else if err != nil {
-			return lifeStart{}, nil, err
+			return lifeStart{}, err
 		} else if !has {
-			life, err := c.stubLifeStart(stub)
-			return life, nil, err
+			return c.stubLifeStart(stub)
 		}
 	}
 	history, err := c.getRelHistory(id)
 	if errors.Is(err, storepkg.ErrSlotNotLocal) {
-		return lifeStart{}, nil, nil
+		return lifeStart{}, nil
 	}
 	if err != nil {
-		return lifeStart{}, nil, err
+		return lifeStart{}, err
 	}
 	if len(history) == 0 {
-		life, err := c.stubLifeStart(stub)
-		return life, nil, err
+		return c.stubLifeStart(stub)
 	}
-	life, err := lifeStartOf(history, func(r *types.Relationship) string {
+	return lifeStartOf(history, func(r *types.Relationship) string {
 		if ig := r.Integrity(); ig != nil {
 			return ig.Hash
 		}
 		return ""
 	})
-	return life, history, err
 }
