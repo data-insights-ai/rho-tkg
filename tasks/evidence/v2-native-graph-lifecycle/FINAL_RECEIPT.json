@@ -1,0 +1,64 @@
+{
+  "scope": "Reviewed test-only fixed native graph lifecycle functional bridge; no cross-engine parity, cost, multi-host, engine selection or fullV2 acceptance.",
+  "base_commit": "2fcaa0d14abaa501767db6be7b67146194ba1b30",
+  "source_manifest": "amended-go-source.json",
+  "source_sha256": "32b7b9ef3e1ec5e27c774005b8829d17f72b6f9dcd91c29aaf03259597cd1d05",
+  "superseded_manifest": "final-go-source.json",
+  "superseded_sha256": "52e655454b5f752c455f7b3d3d943e2075d97b697883beb2cbf5e302ff744c71",
+  "amendment": [
+    "v5/internal/graphapply/native_graph_lifecycle_oracle_test.go"
+  ],
+  "production_go_changed": 0,
+  "production_go_files": 218,
+  "module_files_unchanged": true,
+  "inventory": "final-inventory.json",
+  "selected_parent_pass_per_mode": 8,
+  "selected_parent_skip_per_mode": 0,
+  "amended_fresh_parent_pass_per_mode": 1,
+  "static_gates": {
+    "build-vet": {
+      "exit_code": 0,
+      "elapsed_s": 6.311
+    },
+    "lint-amended": {
+      "exit_code": 0,
+      "elapsed_s": 17.255
+    },
+    "security": {
+      "exit_code": 0,
+      "elapsed_s": 3.164
+    }
+  },
+  "toolchain": {
+    "GOTOOLCHAIN": "go1.26.9",
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off",
+    "child_GOMAXPROCS": "1 (existing fixture)",
+    "wall_seconds": 180,
+    "tree_rss_mib": 4096,
+    "Docker_memory": "4g",
+    "Docker_CPUs": 2
+  },
+  "observations": "CANONICAL_OBSERVATIONS.json (derived only from actual final normal trace; raw cuts/receipts/records/census retained separately)",
+  "trace_summary": "TRACE_SUMMARY.json",
+  "failed_qualifications": "QUALIFICATIONS.json",
+  "coverage": "SCOPED_COVERAGE.json; partial unchanged production profile. No new public/production code; prior accepted production evidence carries by exact identity.",
+  "cleanup": "Final normal/race and amended normal/race each report6/6 successful live child reaps; no leaked views/pins.",
+  "limits": [
+    "Complete entity census only for issued1..32, fixed lifecycle components/I64 edge p/empty labels/five endpoint queries.",
+    "Held-old observation scope is edge-only; reopened At3/4/5 is full within issued range.",
+    "Exact installation KV write count unavailable/null; query totals include census subset, never add twice.",
+    "FDB needs actual history-backed immutable declaration/property projection before parity can be claimed.",
+    "No new production defect/fix or omission mutant claimed; oracle unit already checks missing incoming/current substitution."
+  ],
+  "archive": {
+    "path": "raw-evidence.tar.gz",
+    "sha256": "98ac07542f0c20806736739e1d0433a09cce13ec4ef740725fb38325de0e1093",
+    "bytes": 494765,
+    "raw_files": 58,
+    "raw_bytes": 6513999,
+    "manifest": "RAW_MANIFEST.json"
+  }
+}

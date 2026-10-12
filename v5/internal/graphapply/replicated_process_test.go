@@ -92,6 +92,8 @@ const (
 	processP08ReadGrant
 	processP08Metadata
 	processP08ChangedGraph
+	processLifecycleObserve
+	processLifecycleRecord
 )
 
 // IPC IDs identify this process event only. No storage/send/prepared capability
@@ -200,7 +202,7 @@ func decodeProcessRequest(b []byte) (processRequest, error) {
 	r := processRequest{incarnation: c.array(), sequence: c.u64(), op: c.tag(), index: c.u64(), entity: c.u64()}
 	r.data = c.field(processFrameBytes)
 	r.packet = processDecodePacket(&c)
-	if r.sequence == 0 || r.op < processCampaign || r.op > processP08ChangedGraph || len(c.b) != 0 {
+	if r.sequence == 0 || r.op < processCampaign || r.op > processLifecycleRecord || len(c.b) != 0 {
 		c.err = errCorrupt
 	}
 	return r, c.err
@@ -1459,6 +1461,7 @@ const (
 	certifiedP08Reserve
 	certifiedP08Transfer
 	certifiedP08Close
+	certifiedLifecycle
 )
 
 type certifiedProcessOwners struct {
@@ -1548,6 +1551,8 @@ func (o *certifiedProcessOwners) action(t *testing.T, r processRequest, init dec
 	binary.BigEndian.PutUint64(id[8:], r.sequence)
 	h := o.host
 	switch r.entity {
+	case certifiedLifecycle:
+		return nativeLifecycleProposal(o, r, id)
 	case certifiedP08Reserve:
 		request, err := decodeAllocationP08Request(r.data)
 		if err != nil {
@@ -1575,7 +1580,11 @@ func (o *certifiedProcessOwners) action(t *testing.T, r processRequest, init dec
 	case certifiedPrepareCertificate:
 		return h.PrepareGraphCertificate(r.index)
 	case certifiedInitialize:
-		return h.PreparePartitionInitialization(r.index, bootstrapAttemptID(id), partitionWriteSchemas(), init.maxBlock, graphGenesisBinding(t), *init.routing, o.proof)
+		schemas := partitionWriteSchemas()
+		if os.Getenv("RHO_GRAPH_LIFECYCLE_PROCESS") == "1" {
+			schemas = nativeLifecycleSchemas()
+		}
+		return h.PreparePartitionInitialization(r.index, bootstrapAttemptID(id), schemas, init.maxBlock, graphGenesisBinding(t), *init.routing, o.proof)
 	case certifiedBeginRecipient:
 		if r.index < 1 || r.index > 2 {
 			return allocationProposal{}, errInvalid

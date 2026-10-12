@@ -1,0 +1,10 @@
+{
+  "base": "2fcaa0d14abaa501767db6be7b67146194ba1b30",
+  "production_go_files": 218,
+  "changed_production": 0,
+  "module_files": {
+    "v5/go.mod": "3bf8baf02d354420ddf87b8865f20b854bb606f04e0f0988f0f9eed2d89e8a24",
+    "v5/go.sum": "5679a7aa94d5ee71f5737dea65a4fa71ed69109c45b877b1dd1639ae5e6e60f0"
+  },
+  "qualification": "Previously accepted production/coverage/vulnerability evidence carries by exact identity; fresh scoped normal/race and lint/security are recorded for new test-only bridge. No new public/production method."
+}

@@ -1,0 +1,48 @@
+{
+  "canonical-census-normal": {
+    "group": "lifecycle",
+    "mode": "normal",
+    "parent_pass": 3,
+    "parent_skip": 0,
+    "elapsed_s": 23.834,
+    "peak_tree_rss_mib": 950.25
+  },
+  "final-race": {
+    "group": "lifecycle",
+    "mode": "race",
+    "parent_pass": 3,
+    "parent_skip": 0,
+    "elapsed_s": 46.464,
+    "peak_tree_rss_mib": 860.328
+  },
+  "shared-normal": {
+    "group": "shared",
+    "mode": "normal",
+    "parent_pass": 5,
+    "parent_skip": 0,
+    "elapsed_s": 5.209,
+    "peak_tree_rss_mib": 430.891
+  },
+  "shared-race": {
+    "group": "shared",
+    "mode": "race",
+    "parent_pass": 5,
+    "parent_skip": 0,
+    "elapsed_s": 21.86,
+    "peak_tree_rss_mib": 534.219
+  },
+  "amended-normal": {
+    "mode": "normal",
+    "parent_pass": 1,
+    "qualification": "Fresh affected parent for equivalent test-only lint amendment; other two lifecycle +five shared parents carry unchanged witnesses.",
+    "elapsed_s": 14.183,
+    "peak_tree_rss_mib": 868.062
+  },
+  "amended-race": {
+    "mode": "race",
+    "parent_pass": 1,
+    "qualification": "Fresh affected parent for equivalent test-only lint amendment; other two lifecycle +five shared parents carry unchanged witnesses.",
+    "elapsed_s": 30.316,
+    "peak_tree_rss_mib": 859.984
+  }
+}

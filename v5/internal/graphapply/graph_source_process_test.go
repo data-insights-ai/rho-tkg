@@ -1215,6 +1215,8 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				}
 			case processRangeRun, processRangeResume:
 				out.aux, e = graphE17RunMove(workerCtx, h, o.incarnation, moveCoordinator, r)
+			case processLifecycleObserve:
+				out.aux, e = nativeLifecycleObserve(workerCtx, certifiedSessions, r)
 			case processCertifiedIndexObserve:
 				out.aux, e = graphE18IndexObserve(workerCtx, certifiedSessions, r)
 			case processRangeCertifiedDetail:
@@ -1372,6 +1374,8 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				event, e = h.Tick()
 			case processStep:
 				event, e = h.Step(r.packet)
+			case processLifecycleRecord:
+				response.aux, e = nativeLifecycleRecordWire(ctx, h, r.index)
 			case processP08ChangedGraph:
 				var original allocationProposal
 				original, e = decodeCertifiedProcessProposal(r.data)
@@ -1487,7 +1491,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					}
 					paused = nil
 				}
-			case processSourceServe, processSourceCoordinate, processSourceObserve, processSourceCertifiedOpen, processSourceCertifiedObserve, processSourceCertifiedClose, processRangeRun, processRangeResume, processRangeCertifiedDetail, processCertifiedIndexObserve:
+			case processSourceServe, processSourceCoordinate, processSourceObserve, processSourceCertifiedOpen, processSourceCertifiedObserve, processSourceCertifiedClose, processRangeRun, processRangeResume, processRangeCertifiedDetail, processCertifiedIndexObserve, processLifecycleObserve:
 				if pause && r.op == processSourceServe && !isSourceClose(r) {
 					if len(paused) >= processSourceWorkers {
 						e = errLimit

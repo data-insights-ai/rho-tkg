@@ -1,0 +1,20 @@
+{
+  "lifecycle": {
+    "regex": "^TestNativeGraphLifecycle",
+    "names": [
+      "TestNativeGraphLifecycleLiteralOracleRejectsCurrentAndMissingEffects",
+      "TestNativeGraphLifecyclePrivateObservationAndMappingsRefuseMalformed",
+      "TestNativeGraphLifecycleSevenStepsCertifiedTrace"
+    ]
+  },
+  "shared": {
+    "regex": "^(TestReplicatedProcessProtocolBoundaries|TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput|TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts|TestReplicatedCertifiedGraphSixProcessesLocalControls|TestReplicatedCertifiedGraphSixProcessesCrossEdge)$",
+    "names": [
+      "TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput",
+      "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts",
+      "TestReplicatedCertifiedGraphSixProcessesCrossEdge",
+      "TestReplicatedCertifiedGraphSixProcessesLocalControls",
+      "TestReplicatedProcessProtocolBoundaries"
+    ]
+  }
+}

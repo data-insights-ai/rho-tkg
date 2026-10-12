@@ -1,0 +1,9 @@
+{
+  "first": "Compiler-only unused imports before any scenario ran; first-source.json is pre-format source manifest, not claimed compiled-source bytes.",
+  "compiled-first": "Fixture used E17 opening helper which requires range-move agreement; lifecycle profile uses certified-read agreement. No semantic production RED. Cleanup5of6 here is preserved honestly, superseded by successful final cleanup.",
+  "certified-profile-first": "Actual edge-create+property correctly refused missing relationship schema: private Initialize action still selected default schema. Test-only dedicated-schema hook corrected actual command factory; no production gap/fix.",
+  "schema-profile-first": "Seven complete steps and old reads PASS before extra contract metadata/census.",
+  "final-normal": "Pre-census metadata/decoder normalPASS; superseded by canonical-census-normal.",
+  "lint": "One test-only QF1001; exact original oracle bytes preserved in lint-original-oracle.go.txt. De Morgan amendment changes no semantics.",
+  "canonical-census-normal_and_final-race": "526-file superseded seal final-go-source.json preserves original hashes; fresh affected-parent amended-normal/race qualify one oracle-only equivalent amendment. Shared/default tests and other two new parents carry by exact source/dependency/equivalence review."
+}

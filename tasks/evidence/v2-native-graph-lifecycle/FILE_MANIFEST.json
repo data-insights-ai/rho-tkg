@@ -1,0 +1,54 @@
+{
+  "CANONICAL_OBSERVATIONS.json": {
+    "bytes": 39569,
+    "sha256": "274991f409e9f08fcaed0bdec4b5c22a19b972eed73c70be7480e61c1056f083"
+  },
+  "FINAL_INDEX.md": {
+    "bytes": 2270,
+    "sha256": "21d80ee70f2192748e0539e0852065969d312083382391d3c832082e47ecf451"
+  },
+  "FINAL_RECEIPT.json": {
+    "bytes": 2746,
+    "sha256": "420519e594ee2aec7806bed351ad8dc6e30ac521b7d21caa78b39386290fdae5"
+  },
+  "GATE_RESULTS.json": {
+    "bytes": 1263,
+    "sha256": "874c38a9db97e37ba9a1dd324f7a459af4bd6274db21c87b94518bf50b03102f"
+  },
+  "QUALIFICATIONS.json": {
+    "bytes": 1320,
+    "sha256": "f6c09574d387a390d10d4f9395dcbfebf35aadce3529ab23e9da317c70653258"
+  },
+  "RAW_MANIFEST.json": {
+    "bytes": 14583,
+    "sha256": "f5c8b4fffd5038ccaf29f3d819512c36931d7365f1f31b135a7f61a138eb4e25"
+  },
+  "SCOPED_COVERAGE.json": {
+    "bytes": 9820,
+    "sha256": "3ee0bb82b47781a55a6efc6a0ea0966c8feb04bb3545ad5d6854c8aaeff9f4c9"
+  },
+  "TRACE_SUMMARY.json": {
+    "bytes": 1897,
+    "sha256": "2694958daa0970024e49694327995e8b67c63bf2f7b5e7b493ff499e7686ab2e"
+  },
+  "UNCHANGED_PRODUCTION.json": {
+    "bytes": 535,
+    "sha256": "203a3099cfe2509059694e0933363d7ed5226a12973c6398d7ec5d7fb356cab5"
+  },
+  "amended-go-source.json": {
+    "bytes": 62948,
+    "sha256": "32b7b9ef3e1ec5e27c774005b8829d17f72b6f9dcd91c29aaf03259597cd1d05"
+  },
+  "final-go-source.json": {
+    "bytes": 62948,
+    "sha256": "52e655454b5f752c455f7b3d3d943e2075d97b697883beb2cbf5e302ff744c71"
+  },
+  "final-inventory.json": {
+    "bytes": 935,
+    "sha256": "a3861111991f5acfb1f26c78c6fa23e18f4e06574e97d3618c6cfac6e5bebf26"
+  },
+  "raw-evidence.tar.gz": {
+    "bytes": 494765,
+    "sha256": "98ac07542f0c20806736739e1d0433a09cce13ec4ef740725fb38325de0e1093"
+  }
+}

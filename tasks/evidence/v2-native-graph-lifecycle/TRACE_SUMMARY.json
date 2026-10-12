@@ -1,0 +1,35 @@
+{
+  "canonical_normal_race_equal": true,
+  "step_count": 7,
+  "old_reads": 4,
+  "application_records": 42,
+  "logical_component_changes": 8,
+  "census_bound": [
+    1,
+    32
+  ],
+  "census_operations": 18,
+  "certified_read_operations": 37,
+  "query_traffic_qualification": "queryGetScanTraffic INCLUDES censusGetScanTraffic; the latter is a subset, not additional work. Both exclude session-open metadata by per-Observe deltas.",
+  "physical_write_qualification": "exactInstallWriteCount is null: Host exposes retained records/stats, not exact installation write count. CDC pieces are not physical writes.",
+  "full_raw_traces": {
+    "normal": {
+      "path": "raw/native-trace-amended-normal.json",
+      "sha256": "674e934606225efe6c49ba0c7b45d6eb13b842731db87d383dfc2fc715798acd"
+    },
+    "race": {
+      "path": "raw/native-trace-amended-race.json",
+      "sha256": "43678a6dc2b28e8a38ccc9e123f8146321473ebd3e94113bd8975d522ad95fc6"
+    }
+  },
+  "scopes": {
+    "graph-complete-in-issued-range": "Exact entities only over issued IDs1..32; fixed known lifecycle components, I64 edge p, empty label components and five endpoint query doors. Not arbitrary namespace/property enumeration.",
+    "edge-only": "Held-old compact observation is explicitly only the edge and its immutable bound Life, property and presence/effectiveness; never a complete graph."
+  },
+  "FDB_projection_prerequisites": [
+    "Recover immutable Entity/Life declarations from actual stored history after close.",
+    "Recover retained typed property6 after physical edge/out/in tombstones; do not erase native retained property.",
+    "Separate representation duplication in FDB edge/out/in value updates from one logical property mutation while still verifying both endpoint postings.",
+    "Preserve original rounds/cuts/receipts; compare canonical operation correspondence, not equal numeric round values."
+  ]
+}
