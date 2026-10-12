@@ -55,9 +55,15 @@ func (m *capacityRecoveryRegressionMachine) VerifyApplicationRecovery(ctx contex
 	if err != nil {
 		return purpose, err
 	}
+	// This fixture promises only Reserve/Use. An ephemeral application
+	// dependency is not an equivalent capacity recipe on this immutable view.
+	if purpose.ApplyBefore != nil {
+		m.t.Error("protected capacity fixture returned an application dependency")
+		return raftlog.ApplicationRecoveryPurpose{}, ErrInvalid
+	}
 	m.verifyCalls++
 	key := fmt.Sprintf("%d/%d/%x", root.Generation, root.Index, data)
-	if previous, seen := m.purposes[key]; seen && !reflect.DeepEqual(previous, purpose) {
+	if previous, seen := m.purposes[key]; seen && (previous.ApplyBefore != nil || !reflect.DeepEqual(previous.Reserve, purpose.Reserve) || !reflect.DeepEqual(previous.Use, purpose.Use)) {
 		m.t.Errorf("repeated classification changed exact purpose on immutable view %s", key)
 		return raftlog.ApplicationRecoveryPurpose{}, ErrInvalid
 	}

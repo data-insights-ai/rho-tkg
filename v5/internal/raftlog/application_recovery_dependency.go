@@ -125,7 +125,7 @@ func recoveryDependencyInputHash(entries []*pb.Entry) [32]byte {
 		_, _ = h.Write([]byte{1})
 		binary.BigEndian.PutUint64(header[:8], entry.GetIndex())
 		binary.BigEndian.PutUint64(header[8:16], entry.GetTerm())
-		binary.BigEndian.PutUint64(header[16:24], uint64(entry.GetType()))
+		binary.BigEndian.PutUint64(header[16:24], uint64(entry.GetType())) // #nosec G115 -- enum hashed only as its deterministic modulo-2^64 bit pattern, never a size/index; ordinary Ready validation separately rejects unsupported types.
 		binary.BigEndian.PutUint64(header[24:32], uint64(len(entry.GetData())))
 		_, _ = h.Write(header[:])
 		_, _ = h.Write(entry.GetData())
