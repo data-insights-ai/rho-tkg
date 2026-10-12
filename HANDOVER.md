@@ -1,315 +1,111 @@
-# HANDOVER — rho-tkg v4 line, written 2026-10-10 (session end, all tasks stopped)
+# HANDOVER — rho-tkg v4 line (rewritten 2026-10-12, main at v4.51.2, v4.51.3 batch in progress)
 
-Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go 1.26.9),
-branch `main` = `origin/main` = `f5d112f` + this file. Latest tag `v4.49.0` (`aedc56d`). Working tree clean, **no agents
-running, no monitors running, no open worktrees of ours**. Read this file, then `tasks/lessons.md` (esp. 77, 78),
-`tasks/todo.md`, `tasks/backlog.md`, and `CHANGELOG.md` top before the first action.
+Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go 1.26.9; a Go
+library, not a database). Latest tag `v4.51.2`. Read, in this order: this file, `tasks/lessons.md` (digest at the top),
+`tasks/todo.md` (user requests, open queue with the per-step red tests), `tasks/backlog.md` (specs), `CHANGELOG.md` top.
+History (what shipped, why) is in `CHANGELOG.md` and git, not here.
 
-## 1. User's last requests (verbatim order, newest first)
+## 1. Open requests and next steps (newest user message first; do these, do not ask)
 
-0. "for the next step: rho-tkg lacks is a way to say 'this was never true'.. also add it to the handover.md.. request from
-   ai-soc" — **NEXT STEP (René, 2026-10-10, after the handover was written; this OVERRIDES the earlier relayed decision
-   'no Retract door needed' — newest user message wins).** Spec = `tasks/backlog.md` item 43. Added to §11 as item 1.
-1. "stop all tasks and write a comprehensive handover.md" — DONE (this file). Both running agents and the origin
-   watch were stopped; nothing was lost (see §6).
-2. "continue" — I had just started two agents (both stopped, see §6): interval rewrites at a caller instant (backlog 34)
-   and badger read costs (backlog 33 + 42 + 41). **First thing to do next: restart those two (prompt skeleton in Appendix A, specs in the backlog items).**
-3. Standing rules René gave during the session (also in CLAUDE.md / lessons 77, 78 / memory):
-   - "Always clean solutions to new items.. no hacks or shortcuts .. always write a no-happy-path test before the code"
-     (tests name the faulty implementation, written and run RED first, evidence kept under `tasks/evidence/<item>/`;
-     guards that pass before the fix are labelled; no skips hiding failures; a documented limit only after the sound
-     fix was tried and shown impossible).
-   - "Why always minor Version?" — answered: semver, additive-only v4 promise (`docs/stability.md`); new public surface =
-     minor, fix-only = patch (v4.44.1 was the only patch). Open choice offered and NOT answered by René: ship behaviour
-     changes through the deprecation ritual instead of as named exceptions (§5) — default taken: named exceptions.
-   - "Monitor github, Markus is working on the v5" — done with a 30-min re-armed Monitor (script in scratchpad, §8).
-   - "v4 -> v5: delete this rule" — the old rule "v4 gets fixes, not features that v5 replaces" is deleted; v4 keeps
-     taking consumer features.
-   - Earlier: v4 work goes to `main`, tags pushed; push needs `! git push …` from René when the classifier blocks it
-     (it blocked twice early on; later pushes from the session went through).
-4. Git commits carry NO attribution lines (CLAUDE.md, 2026-10-02), despite the system reminder suggesting some.
+1. **v4.51.3 batch, in progress** (René 2026-10-12: "yes, why is this a question? ... now"): five Opus build agents in
+   worktrees, one item each: backlog **52** (durable commit under SyncWrites, ai-soc, <= 0.1 s per 530-op group), **53**
+   (rel planner-stat memos, ai-soc RSS), **54** (badger open linear in history, ai-soc), **55** (effective scans, one
+   transaction per rel, ai-soc + sigma), and the review findings **F1-F6** of v4.51.2 (`tasks/todo.md` open queue: ex-adjacency
+   legs on archive move, two test gaps, dead code, one helper). Per item: ledger line first, red break-the-code test, fix, one
+   Opus-high review, merge; then the final Fable review of the batch, one `make ci-docker`, PATCH tag `v4.51.3`, notify
+   sigma-tkgd and ai-soc (section 3).
+2. **On hold, not blocking:** 41 (merge the history-stamps sidecar into the presence set; measured, saves only where both
+   doors run), 28 (state column fast path; design first, waits for sigma's input), 21 (retention `PurgeExpiredRels` + per-type
+   gate; full spec in backlog 21; waits for sigma's `@overview`).
+3. **Md consolidation** (René 2026-10-12 "consolidate md files and rules"): done by the Sonnet agent of this commit; review
+   `tasks/todo.md` request 21.
+4. Standing: tick the ledger and the releases table at every release (lesson 80); keep `AGENTS.md`/`README.md`/`docs/architecture.md`
+   version lines in step (lesson 41); residual backlog is the open table in `tasks/backlog.md`.
 
-## 2. Release history of this session (all on origin, all gates green)
+## 2. Decisions (René 2026-10-12, `tasks/todo.md` row 20: "1) yes, why is this a question? 2) now, 3) yes 4) yes 5) no, Markus will do this 6) deprecation process 7) yes")
 
-Gate = `make ci-docker` (fmt-check, vet, lint-docker, build, test-race, security-docker, vulncheck-docker, cover-gate
-≥ 80 %, check-metakv-reap) exit 0, plus sigma-tkgd / ai-soc engine / agent-bookkeeping `go build && go vet` with a
-scratch `replace`.
-
-| Tag | Commit | Cover | Content |
-|---|---|---|---|
-| v4.44.0 | f7cd0ba | 86.6 | `DeleteWithTx`/`UpdateWithTx`/`ErrTxOrder` on every door, one-tick spans visible, column+range scans answer temporal opts, ingest `Set*VersionInterval`, `Config.DurableCommit`, go 1.26.9 |
-| v4.44.1 | 91d7c8c | – | badger History iterators bounded to the entity prefix (sigma) |
-| v4.45.0 | b30f66f | 86.7 | tiered composite + rel temporal indexes (hot+warm bound), rel temporal index soundness fixes |
-| v4.46.0 | fac763a | 86.9 | cascade correctness, pin-stable as-of rule, `HasHistory`, `CreateUnique` on cascade patches, bulk as-of presence, history-ID overlay fix |
-| v4.47.0 | b3eb884 | 87.0 | `Node/RelEffectiveTimeline` + scan forms, `NodeID/RelID.MintInstant`, point-door race fix (badger publish-history-first), read-time supersession rule, life ordering |
-| v4.48.0 | bd787bd | 87.1 | pinned property lookups via the tx-membership sidecar, re-import continues version numbering across lives |
-| v4.49.0 | aedc56d | 87.2 | `Nodes/Rels().LatestStamps`, every `UniqueForever`-claiming door withdraws claims on failed writes |
-
-Release recipe (all releases): merge reviewed branches → put the CHANGELOG `[Unreleased]` body under a new
-`## [x.y.z] - date` section with a headline paragraph (behaviour changes bold) → bump the three version lines
-(`AGENTS.md` "Status: vX", `README.md` "Current release", `docs/architecture.md` title; the docs-consistency test pins
-them) → commit `release: vX.Y.Z — …` → `make ci-docker` → consumer builds → `git tag -a` → `git push origin main` and the tag →
-message the consumers. **Run lint-docker and security-docker on each agent branch BEFORE merging** (three gate
-re-runs this session were caused by findings that came in through merged branches).
-
-## 3. Process that worked (reuse it)
-
-- One Opus agent per item in `isolation: worktree`, prompt carries: spec files, lessons 77/78, TDD rules, mutants, docs,
-  "run lint-docker + security-docker on your branch before reporting", "no attribution lines", "no pkill -f", "do not
-  touch files owned by the parallel agent". Then ONE Opus reviewer per branch (read-only, scratch exports in a fresh
-  scratchpad directory, re-runs mutants, writes its own brute-force oracle where the semantics are subtle); the review
-  finds real defects almost every time (examples: clock-floor hazard in the re-import, unique claim leak, incomplete
-  close rule). Fix round via SendMessage to the SAME agent, then a second reviewer pass on the delta, then merge.
-- Merge conflicts are nearly always `CHANGELOG.md` and `tasks/backlog.md` (keep both sides; entries go under
-  `## [Unreleased]` with their own `### Added/Fixed/Changed`, never into a released section) and `bench.yml BENCH_FILTER`.
-- Worktrees: `git worktree unlock` then `git worktree remove --force` before `git branch -d`.
-- Evidence per item under `tasks/evidence/<item>/` (red runs, green runs, mutants, index file). Ledger in `tasks/todo.md`.
-
-## 4. Consumers and who to talk to
-
-- **sigma-tkgd** session `sigma-tkgd-c3` (socket `uds:/run/user/1000/cc-socks/3891112.sock`) — **that session is STOPPED; the next sigma session will announce a NEW name to us (the old name goes away); until then messages to the old address will not be answered**. Pins the latest tag. Uses:
-  timeline doors, scan forms, `HasHistory`, `LatestStamps`, `MintInstant`. Moved its pinned reads to the STATE doors.
-  Open from sigma: confirm the signatures of the broader effective scans (backlog 35), interval rewrites at a caller
-  instant (34), state column fast path (28, sigma measured 1M-node pinned count: badger 13–14 s vs 1.4 s unpinned),
-  retention for the overview (21, not blocking until `@overview` starts). Its `/admin/import` can see `ErrTxOrder` on a
-  backfilled re-import of a deleted ID (notified).
-- **ai-soc** session `ai-soc-main-e7` (socket `uds:/run/user/1000/cc-socks/3892289.sock`). Embeds rho + sigma in one process,
-  badger/tiered, estates in one graph, bursts grown by `SetRelVersionInterval`. Pins latest; engine at v4.41 → moving up.
-  Contract it pinned: timeline segments never merge distinct rows with equal content. Decisions from René via ai-soc:
-  rel unique key WITHDRAWN (snowflake IDs are the global IDs), tiered indexes YES (done), durable commit YES (done),
-  provider-abort NO, group instant NO.
-- **agent-bookkeeping** (v4.40): builds clean, no special needs.
-- **Markus Nissl** builds **v5** on branch `origin/v5` (own Go module `…/rho-tkg/v5` in `v5/`; Raft log, two-group
-  transactions, graph store, snapshots, FDB/TigerGraph comparator tools; ~86 commits since 2026-10-09; history was
-  force-rewritten once, our plan commit `b1193dc` is still an ancestor). `tasks/v4-changes-for-v5-importer-20261010.md`
-  (on main) tells him what the v4 changes mean for the importer. Do not push to `v5`.
-
-## 5. Behaviour changes shipped (and their justification)
-
-- v4.46.0: record doors (`NodeAsOf`/`RelAsOf`/`NodesAsOf`/`RelsAsOf`, `TxPin` scans) answer "the newest row recorded by
-  the pin" (pin-stable), no longer "the current row"; the state doors are `NodeAtTx`/`RelAtTx`,
-  `ByLabel`/`ByType` with `ValidAt+TxAt`, and the timeline. Documented exception in `docs/stability.md`, justified by
-  correctness bug (answers at earlier pins changed after later writes) and consumer notification.
-- v4.48.0: backfilled re-import at/below the chain's stamps → `ErrTxOrder` (second documented exception). Re-import
-  now continues versions across lives. Chains written by v4.43–v4.47 that overwrote history stay lossy (no migration).
-- v4.47.0: read-time supersession rule + life ordering change answers for a close followed by a bounded cascade and for
-  re-imported IDs on tiered/sharded (migration blocks in the CHANGELOG `### Fixed`).
-- René has not answered the "deprecation ritual instead" alternative; default stands.
-
-## 6. State of in-flight work at stop time
-
-| Task | State | Action |
+| # | Decision | Effect |
 |---|---|---|
-| P: `Set*VersionIntervalWithTx` (backlog 34) | agent stopped before reporting; no worktree left, nothing committed | restart (prompt skeleton in Appendix A) |
-| Q: badger read costs (backlog 33 + 42 + 41) | agent stopped after capturing one baseline; worktree removed; baseline saved as `tasks/evidence/badger-read-cost/01-baseline-latest-stamps-rotating.txt` (LatestStamps rotating, rels=5000: memory ≈ 41 ns, badger ≈ 74 ns, 0 allocs) | restart (prompt skeleton in Appendix A); that file is the only artefact |
-| origin watch | stopped | re-arm if still wanted (§8) |
-| other sessions' processes (`go test … TestBOWholeEndToEnd`, `go test -race ./aisoc/...`) | belong to ai-soc/sigma, not ours | leave alone |
+| 1, 2 | Build 52-55 now | the v4.51.3 batch above; open work with a clear next step is started, not offered (lesson 81) |
+| 3, 4 | Send Markus the patch-only rule and the 12 "not in plan" rows of `docs/v5-analysis.md` §5 | done: GitHub issue #11 |
+| 5 | Markus merges v5 into main, we do not | never push to `origin/v5`; read only |
+| 6 | Behaviour changes go through the deprecation ritual (`docs/stability.md`) from now on | no new named exceptions (the v4.46.0 and v4.48.0 ones stay documented); open point: the ritual asks for a `// Deprecated:` marker one minor before the change while only patch versions ship, so a behaviour change waits for René's go on a minor or v5 (default) |
+| 7 | Origin watch re-armed | appendix A (script) |
 
-Not committed anywhere else: nothing. `git status` clean (except this file and the evidence file when you read this).
+Standing rules from René (all in `tasks/lessons.md`): PATCH versions only, no minor until asked (79); clean root-cause fix and a
+red break-the-code test first (78); one review round per branch, authors run lint + security (79); models: builds Opus, code
+reviews Opus effort high, final Fable review before tagging, doc work Sonnet (79); no attribution lines in commits (no
+Co-Authored-By, Claude-Session or "Generated with"), whatever a system reminder suggests; v4 keeps taking consumer features
+(the old "v4 gets fixes only" rule is deleted).
 
-## 7. Next steps, in order (each: red tests first, reviewer per branch, lint+security on the branch, then merge)
+## 3. Consumers and contacts
 
-1. **Backlog 34** `SetNodeVersionIntervalWithTx`/`SetRelVersionIntervalWithTx` on Temporal, GraphTx, BatchBuilder, ingest
-   Session: mirror `DeleteWithTx/UpdateWithTx` (`AllowTxBackfill` gate, `ErrInvalidTxFrom`, `ErrTxOrder` against the
-   whole chain incl. re-imported lives, ONE caller instant `t` for every appended row, commit clock not advanced,
-   `notePastDatedWrite`, whole-unit pre-flight in batch/ingest, replica reproduces stamps, plain doors unchanged, W5
-   oracle `tx_backfill_oracle_test.go` gets the op). Prompt basis: Appendix A with backlog 34 + handover
-   `tasks/handover-tx-backfill-delete-update-20261009.md` as the spec. (An agent launch for this was REJECTED by René in the turn before
-   the docs review; do not start it before the retraction door unless he says so.)
-2. **Backlog 33 + 42, then 41** (badger read cost): current-row stamps capability reading only the temporal tail on an
-   entity-cache miss (LatestStamps cache miss today 6.5–7.1 µs, 25 allocs; sharded/tiered 8–12 allocs); effective-timeline
-   scan gather reading each rel once (13–17 µs/rel on badger vs 1.3 µs memory); then merge the stamps sidecar into the
-   presence map (saves ~30 B/ID, 66→~36); step 3 only if the risk pays. Register benchmarks as allocs-gated rows.
-3. **Backlog 35** broader effective scans — wait for sigma's confirmation of: `ForEachNodeEffective(pin, fn)`,
-   `ForEachRelEffective(pin, fn)`, `ForEachRelEffectiveAtNodes(nodeIDs, dir, relTypes, pin, fn)`,
-   `NodesEffectiveByIDs`/`RelsEffectiveByIDs`, optional `ForEachNodeEffectiveByLabels`.
-4. **Backlog 28** state column fast path (design first; numbers in the item), **21** retention (handover
-   `tasks/handover-overview-retention-20261009.md`), then the residual list below.
-5. Keep consumers informed after each tag (messages with the migration points); PATCH versions only (v4.49.1 …), no minor until René asks.
+- **sigma-tkgd** (`~/Work/2026/datainsights/sigma-tkgd`): pins the latest tag; uses the timeline doors, scan forms, `HasHistory`,
+  `LatestStamps`, `MintInstant`, the state doors. Open from sigma: 28 (state column fast path; measured pinned count over 1 M
+  nodes: badger 13-14 s vs 1.4 s unpinned), 21 (retention for `@overview`), `/admin/import` can see `ErrTxOrder` on a backfilled
+  re-import of a deleted ID (notified). Its old session `sigma-tkgd-c3` is stopped; a new session announces a new name.
+- **ai-soc** (`~/Work/2026/datainsights/ai-soc/ai-soc-main/engine`; session `ai-soc-main-e7`): embeds rho + sigma in one process,
+  badger/tiered, DurableCommit + SyncWrites; adopts v4.51.2, waits for v4.51.3 (52-55). Pinned contract: timeline segments never
+  merge distinct rows with equal content. Decisions via ai-soc: rel unique key withdrawn (snowflake IDs are the global IDs), tiered
+  indexes yes (done), durable commit yes (done), provider-abort no, group instant no. Its delta-feed door ("rows written after T")
+  exists: `Config.ChangeLog` + `Tx().RunWithLSN` + `Replication().ForEachChange(afterLSN)` (+4-27 % per commit).
+- **agent-bookkeeping** (`~/Work/2026/bds421/sigma/agent-bookkeeping`, v4.40): builds clean, no special needs.
+- **Markus Nissl** builds **v5** (section 7) and has also pushed v4 minors straight to main (v4.50.0, v4.51.0): watch origin
+  (appendix A), fetch before every release, keep our tag numbers above his.
+- Socket addresses of other sessions change per session; use `ListAgents` to find live ones. Message consumers after each tag with
+  the migration points (what changed in answers, new doors).
 
-### Open backlog items (verify each line's status before acting; headers drift)
+## 4. Release process (all releases; gates are `make ci-docker` exit 0)
 
-HIGH/MEDIUM: 13 (ingest applier attributes group errors by numeric id), 15 (durable commit power-loss gap on memtable
-switch → `SyncWrites` advice), 16 (range folds under an interval: predicate-anywhere vs resolved version), 22 (badger rel
-temporal index create races concurrent writes, not reproduced), 25 (future close then delete changes an earlier pin's
-answer), 33/41/42/34/35/28/21 above. LOW/cosmetic: 23 (`changeFeedPage` prefetch), 26 (old collided chains), 31 (as-of
-doors vs version gaps), 37 (tiered rollback restore window), 39 (stubs survive `Admin().Reset`), 40 (resumption bound of an
-earlier life). Older: 0 (column segments S4/S6/S7), 1–5, 7. Also: RAM budget for property sidecars; `NodesByLabelAt`
-still folds all history instead of using the K1 sidecar.
+1. Merge reviewed branches (authors already ran `make lint-docker` and `make security-docker`; run them on each branch before
+   merging, three gate re-runs came from skipping that). Merge conflicts are nearly always `CHANGELOG.md` and `tasks/backlog.md`:
+   keep both sides; entries go under `## [Unreleased]` with their own `### Added/Fixed/Changed`, never into a released section.
+2. Put the `[Unreleased]` body under `## [x.y.z] - date` with a headline paragraph (behaviour changes bold); bump the version lines
+   (`AGENTS.md` "Status: vX", `README.md` "Current release", `docs/architecture.md` title; the docs-consistency test pins them);
+   update `docs/api.md`, `docs/errors.md`, the backlog Closed table, the `tasks/todo.md` rows and releases table in the SAME commit.
+3. Commit `release: vX.Y.Z — ...`; `make ci-docker` (fmt-check, vet, lint, build, test-race, security, vulncheck, cover-gate >= 80 %,
+   check-metakv-reap; 12-15 min, longer under load: a run timed out in core at load 70, rerun on a quiet host); build + vet the three
+   consumers (appendix B); final Fable review of the batch; `git tag -a`; push main and the tag; message the consumers.
+4. Agent skeleton that worked: one Opus agent per item in a worktree, prompt = spec files (5-8), lessons 78/79, TDD rules, mutants,
+   "run lint-docker + security-docker before reporting", "no attribution lines", "no pkill -f", "do not touch files owned by a
+   parallel agent"; ONE Opus-high reviewer per branch (read-only, own brute-force oracle where semantics are subtle); fix round to
+   the SAME agent via SendMessage; evidence under `tasks/evidence/<item>/` (red, green, mutants). Worktrees: merge the branch back,
+   `git worktree unlock` + `git worktree remove --force`, `git branch -d` before calling a task done.
 
-**Doc drift: FIXED 2026-10-10** by a full review of every `*.md` against the code at v4.49.0 (six groups, merged `daee363`).
-`tasks/backlog.md` is now ONE open table (0–47, status checked in the code) followed by a section per item; the Closed table
-points every closed item at its release in `CHANGELOG.md`. Use that table, not the list above, for the open set. New items
-from the review: 44 commit-clock floor saved only at Close (MEDIUM), 45 internal sentinels without an exported alias, 46 stale
-code comments, 47 unverified claims (`NodesByLabelAt` vs K1, RAM budget for sidecars).
+## 5. Environment traps
 
-## 8. Environment facts and traps
-
-- Gates: `make ci-docker` ≈ 12–15 min on the shared 32-core host (load 10–25 from other agents); the bench gate
-  comparator is noisy on identical code on a loaded host — the PinnedRel family is **allocs-gated** (time canary is
-  opt-in via `TIME_CANARY`), LatestStamps benchmarks too.
-- Never `pkill -f` / `pgrep -f` (other sessions' tests share the machine; one agent did it once). Kill by PID you started.
-- `git archive` / `git worktree add` commands containing "github.com" were rejected by a sandbox hook for some agents;
-  the Write tool works. The permission classifier blocked `git push` from the session twice early on; René ran
-  `! git push …` himself.
-- Scratch/consumer replace modfiles: `/tmp/claude-1000/-home-renework2023-Work-2026-datainsights-rho-tkg/d8867122-d92d-44f6-8bc1-21ec6c585e85/scratchpad/consumers/{sigma-tkgd,engine,agent-bookkeeping}/go.mod`
-  (build with `cd <consumer> && GOFLAGS=-mod=mod go build -modfile=<that go.mod> ./...`). The origin watch script
-  `…/scratchpad/watch-origin.sh` (polls `git ls-remote` + `gh pr/issue list` every 60 s, reports pushes by anyone but
-  git user "dev team", new/deleted refs/tags, PR/issue changes). These live in /tmp and may be gone; both are trivial to
-  recreate. The ai-soc/sigma/agent-bookkeeping module paths for the replace are in §4's repos
-  (`~/Work/2026/datainsights/{sigma-tkgd,ai-soc/ai-soc-main/engine}`, `~/Work/2026/bds421/sigma/agent-bookkeeping`).
-- The session's memory notes (project memory dir `~/.claude/projects/-home-renework2023-Work-2026-datainsights-rho-tkg/memory/`):
-  `v5-work-markus-monitor-origin.md`, `feedback-clean-solutions-red-test-first.md`.
-- Tag `v5-plan-20261009` marks the plan commit on `v5` (docs only, not a Go version).
-- Test names to know: `TestTxBackfillOracle_CrossBackend` (`TXB_ORACLE_SEEDS`), `TestEffectiveTimeline_PointwiseOracle`
+- `make ci-docker` is 12-15 min on the shared 32-core host (load 10-25 from other agents); the bench-gate comparator is noisy on
+  identical code under load, so the PinnedRel family and LatestStamps benchmarks are allocs-gated (time canary opt-in via `TIME_CANARY`).
+- Never `pkill -f` / `pgrep -f` (other sessions' tests share the machine); kill by PID you started. Processes of ai-soc/sigma
+  (`go test ... TestBOWholeEndToEnd`, `go test -race ./aisoc/...`) are not ours.
+- The permission classifier blocked `git push` twice early on (René ran `! git push ...`); some sandbox hooks reject commands that
+  mention "github.com" (`git archive`, `git worktree add`); the Write tool works.
+- Scratch consumer builds live in `/tmp/claude-1000/.../scratchpad` and may be gone; recreate from appendix B.
+- Customer profiles (ai-soc BA run) are read on Flux only (`/srv/fast/rene/project-2026-09-010-BA/aisoc-s3-20261012/smoke/prof`).
+- Useful tests: `TestTxBackfillOracle_CrossBackend` (`TXB_ORACLE_SEEDS`), `TestEffectiveTimeline_PointwiseOracle`
   (`ET_ORACLE_SEEDS`), `TestReImportLifeOracle`, `TestHasHistoryDifferential`, `TestLatestStampsDifferential`,
-  `TestPointDoorRace_UnderMovingWriters`, `TestUniqueClaims_*`, `TestUniqueCascade_*`; bitemporal oracles in
-  `pkg/graph/internal/core/bitemporaloracle*_test.go`.
+  `TestPointDoorRace_UnderMovingWriters`, `TestUniqueClaims_*`; bitemporal oracles in
+  `pkg/graph/internal/core/bitemporaloracle*_test.go`. Docs check: `go test -count=1 -run 'Docs|Consistency' ./pkg/graph/internal/core/`.
 
-## 9. Lessons added this session
+## 6. Branches and worktrees
 
-`tasks/lessons.md` 78 (clean root-cause solution + red test first; detector greps). Amended: 59 (privileged override at
-the shared seam; whole-unit pre-flight), 64 (publish history before the current row), 55 (superseded by the scoped log
-for GraphTx), 35 (eclipse skip removed). Candidate lessons NOT yet written (add if they recur): "run lint+security on
-agent branches before merge", "a read-time rule that changes answers on stored data needs an old-data fixture test
-written with the old code", "an oracle that restates the rule is not independent evidence — write the brute-force
-belief definition separately".
+`main` = release line (tags v4.44.0 to v4.51.2 reachable). `v5` (local) is our docs-only plan commit `b1193dc`; `origin/v5` is
+Markus's work, read only. Tag `v5-plan-20261009` marks the plan. Agent worktrees of the v4.51.3 batch are `worktree-agent-*`
+branches under `.claude/worktrees/`: merge and remove them before closing the batch. Stopped branches with uncommitted work from
+the 2026-10-10 session (`worktree-agent-adcfa76ae8b4c0dfe`, `worktree-agent-aa4b0ebc0683fcb3f`) were superseded by v4.50.1 and
+v4.51.1; delete them if still present.
 
----
+## 7. v5 pointer
 
-## 10. All worktrees and branches (state at 2026-10-10 ~10:40, after "also all worktrees … into handover.md")
+v5 is Markus Nissl's separate Go module `.../rho-tkg/v5` in `v5/` on branch `origin/v5` (Raft log, two-group transactions, graph
+store, snapshots). **Answer to "can consumers use it yet": not yet** (graph code is `internal/`; no public graph API, no as-of or
+timeline reads, no v4 importer; neither sigma-tkgd nor ai-soc can switch). Where to read: `docs/v5-analysis.md` (merge analysis,
+v4-work coverage, maturity, consumer answers, §5 v4 to v5 door mapping); `docs/v5/HANDOVER.md` on branch `v5` (Fable review of
+the branch: quality and what is open before it can merge); GitHub issue #11 (patch-only rule and the 12 "not in plan" rows sent to
+Markus). **Markus merges v5; we do not** (decision 5). v5 edits shared files (CHANGELOG `[Unreleased]`, backlog, lessons, AGENTS,
+Makefile, ci.yml), so expect conflicts once main moves. Do not push to `v5`.
 
-`git worktree list`:
-
-| Path | HEAD | Ours? | State / action |
-|---|---|---|---|
-| `/home/renework2023/Work/2026/datainsights/rho-tkg` | `main` (this commit) | yes | the only worktree of ours; clean |
-| `/tmp/claude-1000/-home-renework2023-Work-2026-datainsights-sigma-tkgd/a2d498b9-aa4c-4865-a7c8-f9c94a767c33/scratchpad/v446/rho` | `6bef04a` detached | **no** (sigma-tkgd session's scratch checkout of the first timeline candidate) | leave alone; stale candidate, never merged |
-
-The six doc-review worktrees (2026-10-10, groups A–F) were merged (`daee363` and earlier) and removed. Agent worktrees created this session were all merged (and removed) or removed unchanged; the last two were
-`agent-a4dbe9cf09a163ad4` (backlog 34: removed by the harness when stopped, nothing committed) and `agent-a3f21bd141e76b243`
-(backlog 33/42/41: only one untracked baseline file, saved into `tasks/evidence/badger-read-cost/` on main, worktree and
-branch deleted).
-
-Local branches:
-
-| Branch | Commit | Status |
-|---|---|---|
-| `main` | = `origin/main` | release line; all tags v4.44.0–v4.49.0 reachable |
-| `v5` (local) | `b1193dc` (behind `origin/v5` by 87) | our docs-only v5 plan commit; `origin/v5` is Markus's work now — **do not push or reset it**; `git fetch` then read only |
-| `wip/badger-scan-flush-evict` | `42de1f3` | OLD (pre-session) stopped-mid-task branch from v4.36: "test + candidate fix, unverified"; topic was fixed on main since (CHANGELOG [Unreleased]/Fixed 2026-09-24 "badger reads dropped or replaced rows when a flush + eviction landed mid-read"); candidate for deletion after René confirms |
-
-Remote branches: `origin/main`, `origin/v5` (Markus). Tags on origin: `v4.44.0 … v4.49.0`, `v5-plan-20261009`.
-Merge-and-remove rule for future agent worktrees (CLAUDE.md): merge the branch back, `git worktree unlock` + `git worktree remove --force`,
-`git branch -d` BEFORE calling a task done (git refuses `-d` while a merge is uncommitted — commit the merge first).
-
-## 11. TODO (the live ledger; `tasks/todo.md` mirrors it)
-
-Legend: [ ] open, (S) = waits for sigma, (R) = waits for René's decision.
-
-0. [x] **Backlog 43 retraction: RELEASED as v4.49.1 (de06846), hardened in v4.49.2 (fv=3 on retraction rows so old binaries fail closed; batch relationship delete queue order); gates exit 0, cover 87.3 %**. Earlier note: MERGED to main (2026-10-10, merge `5e646e3` + two test-seed fixes). `Retract`/`RetractWithTx`
-   on Nodes/Rels and the GraphTx/Batch/Session twins; marker = optional wire key `rx` on the tombstone (`TemporalMetadata.Retracted`,
-   no fv bump); a retracted life is DROPPED from the pinned chain (`dropRetractedLives`), not capped at −∞ (a cap left a hole when a
-   re-import follows a delete; red run `tasks/evidence/retraction/09-*`). Decisions: unknown ID → not found; already deleted/retracted →
-   refused (`ErrEntityDeleted` + not-found); events as for delete; no `tkg_retracted` shadow key. Old binaries read a retraction as a plain
-   Delete (mixed-version replicas diverge; upgrade readers first; open question: per-row `fv=3` on retraction tombstones so old binaries
-   fail closed). NOT DONE: the Opus review round (stopped), `go test -race` on the full package set, `make cover`; the 3.7k-line test suite
-   was never shortened (René: too long; the stopped rewrite target was <= 900 lines with the 26-mutant driver as gate, see
-   `tasks/evidence/retraction/14-mutants.txt`). v4.50.1 released 2026-10-11 (backlog 34); v4.51.1 released 2026-10-12 (35, 48, 33, 42 on top of Markus's v4.51.0); next tag is a PATCH (v4.51.3); v4.51.2 released 2026-10-12 (49, 50, 51).
-   STOPPED branches with uncommitted work (not merged, worktrees kept): `worktree-agent-adcfa76ae8b4c0dfe` (backlog 34, 20 uncommitted
-   files, 0 commits) and `worktree-agent-aa4b0ebc0683fcb3f` (backlog 42, 23 uncommitted files, 0 commits).
-1. [x] (v4.50.1) **Restart backlog 34** `Set{Node,Rel}VersionIntervalWithTx` (all doors) — sigma replay need.
-2. [x] (33 + 42 in v4.51.1; 41 open) **Restart backlog 33 + 42 (+ 41 last)** badger read cost — baseline saved in `tasks/evidence/badger-read-cost/`.
-3. [x] (v4.51.1) Backlog 35 broader effective scans — signatures CONFIRMED by sigma 2026-10-10 (all five, as recorded in the backlog item).
-4. (moved up: see item 0 below — the retraction door is the NEXT STEP)
-5. [ ] Backlog 28 state column fast path (design first; sigma numbers inside the item) (S).
-6. [ ] Backlog 21 retention (PurgeExpiredRels, per-type gate) — handover `tasks/handover-overview-retention-20261009.md` (S, not blocking).
-7. [ ] Residual backlog: the open table in `tasks/backlog.md` (13, 15, 16, 22, 23, 25, 26, 31, 37, 39, 40, 44, 45, 46, 47, older 0–5, 7, 10).
-8. [x] Doc drift fixed by the full md review (see §7); keep the md files in step with every release (René: "keep the md files up2date").
-9. [ ] Delete the stale `wip/badger-scan-flush-evict` branch after René confirms (R).
-10. [x] (René 2026-10-12) Behaviour changes ship through the deprecation ritual (`docs/stability.md`); no new named exceptions. v5 → main merge is Markus's (decision 5). Patch-only rule + 12 "not in plan" rows sent to Markus: GitHub issue #11.
-11. [ ] Optional: write the v4→v5 importer reference tests Markus might want (note on main: `tasks/v4-changes-for-v5-importer-20261010.md`);
-    re-arm the origin watch (§8) if René still wants to follow `v5`.
-12. [ ] **PATCH VERSIONS ONLY** (René 2026-10-10: "just patch versions.. no minor versions until asked"). v4.50.1 is released (backlog 34, 2026-10-11); v4.51.1 and v4.51.2 are released (2026-10-12); the next tag is v4.51.3 because Markus released v4.50.0 (see below), also for additive features such as the retraction door; no v4.50.0 until he asks. Gate, tag, notify consumers as before.
-
-Done and verified this session (do not redo): see §2 table plus CHANGELOG; the ledger rows in `tasks/todo.md` carry the evidence paths.
-
-## 12. Decision log (the reasoning behind the non-obvious choices; "cot" read as: why, not a transcript)
-
-- **Order of work**: HIGH correctness bugs found by reviews first (cascade/version collisions/rollback, unique bypass,
-  re-import data loss), consumer-blocking features next (timeline doors, HasHistory, LatestStamps), perf items after.
-  Reason: silent wrong answers on a bitemporal store are worse than slow reads, and sigma/ai-soc pin the latest tag.
-- **As-of rule**: pin-stable "newest row recorded by the pin" over "current row while current": the old rule changed
-  answers at EARLIER pins after later writes (lesson 62), and restoring the old meaning needs a persisted slot marker
-  (wire change = v5). Cost: a documented exception and consumer migration (sigma moved to state doors).
-- **Re-import**: refuse the ambiguous backfilled input (ErrTxOrder) instead of ordering by version: the stored rows cannot
-  distinguish a demoted import from a first-life cascade row without a life marker; refusing keeps write order = TxFrom
-  order = version order for every chain written from now.
-- **Clock handling**: a re-import never advances the shared commit clock (found by review: a delete stamped via valid time
-  50 years ahead would have pushed every writer's clock; lesson 71 territory).
-- **Tiered**: rel temporal index only on hot+warm shards (156 B/rel measured; 40–64 GB/week if every shard were indexed at
-  ai-soc rates); cold rows are never pruned, answers unchanged.
-- **Pinned property sidecar**: K1-style superset (resolver stays the authority) instead of an exact version index (a
-  second as-of rule would drift); lazy build; the PinnedRel bench family gated on allocs/op only because timing on shared
-  hosts swung +42…+178 % on identical code while allocs were exactly stable.
-- **LatestStamps**: sidecar over history rows only, current row read directly (a running max cannot be lowered by a plain
-  ReplaceNode); tiered matches `History`'s dedup of a version present on two shards exactly (contract stays literal).
-- **Segments never merge distinct rows with equal content**: a segment names the stored record that answers it.
-- **Process**: one reviewer per branch always found something real; fix rounds go to the same agent; lint+security on the
-  branch before merging (lesson, not yet written); never accept an oracle that restates the rule as evidence for the rule.
-- **Retraction (reversal)**: first answered by analysis (no existing way; proposal Retract/RetractWithTx), then relayed as 'no door
-  needed' (René via sigma/ai-soc), then René asked for it as the next step. The model fits: a transaction-time tombstone
-  marked as a retraction, life capped at −∞; Delete stays validity-end. Not built; backlog 43 holds the spec.
-- **Things I got wrong (so you do not repeat them)**: dropped sigma's backlog item 10 by overwriting a block (restored
-  as 21); told ai-soc "adjacent identical rows merge" (wrong; corrected); said sigma could use a mint-instant helper
-  before checking package layout; merged branches without running lint/security first (3 gate re-runs); deleted an old
-  agent worktree that held three uncommitted files without checking first (the replacement agent re-created the oracle).
-
-
----
-
-**Efficiency rules (René 2026-10-10, lesson 79): batch PATCH releases (one gate), authors run lint+security before reporting, one review round per feature branch (none for doc/comment-only), briefs name only the 5-8 key files, backlog items only for a consumer request or a failing test, never stop a running agent unless asked.**
-
-**Model rule (René 2026-10-10): documentation-review agents (md files vs code) use `model: "sonnet"`; feature builds and code reviews stay Opus; escalate to Opus only if a Sonnet result needs a second fix round.**
-
-## Appendix A — agent prompt skeleton that produced the good results (fill the <>)
-
-```
-You work in your own git worktree of the Go repo rho-tkg (module github.com/data-insights-ai/rho-tkg/v4), branched from
-main (<version>). Item <X> = tasks/backlog.md item <N> (<who asked, why>). Read FIRST: AGENTS.md (Session Protocol, Testing
-Rules 1-17, <Concurrency/Persistence>), tasks/lessons.md <relevant numbers> and 78, the backlog item, the handover
-<tasks/handover-….md>, and the code you build on: <files with the mechanism, named precisely>.
-THE BUG/FEATURE: <measured symptom, file:line cause, repro>.
-TASK: <clean root-cause solution at the shared seam; decisions to take with the default stated; compatibility: no wire/
-format change unless allowed; old stored data keeps reading as before>.
-TDD, break-the-code only, red first, evidence under tasks/evidence/<item>/: <the faulty implementations to name and the
-inputs that break them>; two-phase tests (rule 15); both doors (rule 17); node/rel parity (rule 2); errors.Is (rule 4);
-every new public method a direct test (rule 1); mutants (each red); guards labelled; no skips.
-Docs: CHANGELOG `## [Unreleased]` -> `### Added/Fixed/Changed` with measured numbers (+ migration block for read-side
-changes), docs/api.md, AGENTS.md only if a stable line changes; close the backlog item (Closed table + line; edit ONLY it).
-Rules: go build/vet, gofmt -l pkg bench empty, go test ./pkg/... -count=1, go test -race on <packages>, then
-make lint-docker AND make security-docker on your branch BEFORE reporting; coverage of new code >= 80 %. Small conventional
-commits, NO attribution lines of any kind. Do not push, tag or merge; do not edit tasks/todo.md. Never use pkill/pgrep -f.
-Another agent works in parallel on <area>: do not touch <files>.
-Final report: branch, commits, red/green evidence with counts, decisions, files touched, measured numbers, open items.
-```
-
-Reviewer skeleton: "Read-only MR review … (do not edit/commit/merge/push; no pkill -f; scratch exports only under the
-scratchpad, a FRESH directory per export). Follow AGENTS.md MR Review Protocol exactly. Verify the author's claims with
-fresh experiments (old-data fixtures written with the OLD code, your own brute-force model, mutants re-run, perf paired
-A/B), `git merge-tree $(git merge-base main HEAD) main HEAD | grep -c '^<<<<<<<'`, attribution lines
-`git log main..HEAD --format=%B | grep -ci 'co-authored\|claude'`, lint/security evidence real. Report MERGE / FIX FIRST with
-file:line findings."  Resume the same agent with SendMessage for fix rounds.
-
-## Appendix B — consumer build check (recreate if /tmp is gone)
-
-For each consumer `C` in `~/Work/2026/datainsights/sigma-tkgd`, `~/Work/2026/datainsights/ai-soc/ai-soc-main/engine`,
-`~/Work/2026/bds421/sigma/agent-bookkeeping`: `mkdir -p $S/<name>; cp C/go.mod C/go.sum $S/<name>/;
-(cd $S/<name> && go mod edit -replace github.com/data-insights-ai/rho-tkg/v4=/home/renework2023/Work/2026/datainsights/rho-tkg go.mod)`
-then `cd C && GOFLAGS=-mod=mod go build -modfile=$S/<name>/go.mod ./... && GOFLAGS=-mod=mod go vet -modfile=$S/<name>/go.mod ./...`
-(all three built and vetted clean against v4.49.0).
-
-## Appendix C — the origin watch (Monitor tool, timeout 1800000 ms, re-arm on expiry; one at a time, two overlap and double-report)
+## Appendix A — origin watch (Monitor tool, timeout 1800000 ms, re-arm on expiry; one at a time, two overlap and double-report)
 
 ```bash
 #!/usr/bin/env bash
@@ -378,57 +174,16 @@ while true; do
 done
 ```
 
-## Appendix D — what a fresh session can and cannot rely on
+## Appendix B — consumer build check (recreate if /tmp is gone)
 
-- CAN: everything in the repo at `main` (`HANDOVER.md`, `CHANGELOG.md`, `tasks/lessons.md`, `tasks/backlog.md`,
-  `tasks/todo.md`, `tasks/evidence/**`, `docs/**`, git tags) and the memory notes in
-  `~/.claude/projects/-home-renework2023-Work-2026-datainsights-rho-tkg/memory/`.
-- CANNOT: the cross-session socket addresses in §4 (they belong to sessions that may have ended; use `ListAgents` to find
-  live ones), any agent context or ids from this session, the `/tmp/claude-1000/…/scratchpad` files (scratch exports,
-  reviewer probes, benchmark outputs) — the evidence worth keeping was copied into `tasks/evidence/`.
-- Global instructions (`~/CLAUDE.md`) and the repo's `CLAUDE.md`/`AGENTS.md` load automatically; the standing rules in §1
-  repeat the ones that mattered.
+For each consumer `C` in `~/Work/2026/datainsights/sigma-tkgd`, `~/Work/2026/datainsights/ai-soc/ai-soc-main/engine`,
+`~/Work/2026/bds421/sigma/agent-bookkeeping`: `mkdir -p $S/<name>; cp C/go.mod C/go.sum $S/<name>/;
+(cd $S/<name> && go mod edit -replace github.com/data-insights-ai/rho-tkg/v4=/home/renework2023/Work/2026/datainsights/rho-tkg go.mod)`,
+then `cd C && GOFLAGS=-mod=mod go build -modfile=$S/<name>/go.mod ./... && GOFLAGS=-mod=mod go vet -modfile=$S/<name>/go.mod ./...`.
 
-## 13. Documentation review 2026-10-10 (René: "review all md files with the current code base.. and keep the md files up2date")
+## Appendix C — what a fresh session can rely on
 
-Six review groups, each in a worktree, merged `daee363`: A AGENTS/README/CONTRIBUTING/SECURITY (names and Config
-fields corrected, vector search is HNSW by default, fuzz targets all listed), B architecture/design/persistence/dependencies
-(capability counts, lock order, GraphTx locking, sidecars, `DurableCommit`, segment directories), C SPEC/errors/api/stability
-(ID range is ~8.9 years to 2034-12, Relationship is 96 B, wire v2, `PurgeExpiredRels` does not exist, error rows both
-directions), D query-planners/ADR-0011/bench README/perf docs (backend matrix, re-measured allocs, March snapshots marked
-historical), E backlog/todo/handover files (restructured), F CHANGELOG 4.44–4.49 (two Fixed entries moved from 4.46.0 to 4.47.0,
-superseded-by notes). No code was changed. **Rule going forward**: every release updates README/AGENTS version line, CHANGELOG,
-`docs/api.md`, `docs/errors.md`, and the backlog Closed table in the same commit as the code; the docs-consistency tests
-(`go test ./pkg/graph/internal/core ./pkg/graph -run 'Doc|Errors'`) guard the version line and the error inventory only.
-Not verified by the review: benchmark numbers quoted from the CHANGELOG, cross-repo claims (ai-soc/sigma releases), licence texts.
-
-## 14. Outside release on main: v4.50.0 (Markus Nissl, 2026-10-10 16:02) — read this first
-
-Found by the origin watcher. Five commits pushed straight to `main` (linear on my 5b9c06f, 72 files, +2958/-94) plus the annotated
-tag **v4.50.0**, a MINOR release, after René had said "just patch versions.. no minor versions until asked". Content (CHANGELOG
-4.50.0, "sigma-tkgd store requests, round 4"): `g.Index().InventoryEpoch()`, opt-in range counts from prefix sums
-(`CreatePropertyWithOptions` / `CreateRelPropertyWithOptions` with `PropertyIndexOptions{RangeCounts: true}`), NaN range bound counts 0,
-sharded `RelRangeCardinality`, allocation-free `ForEachAdjacentEndpointOrdinal` on memory. Additive; an older binary loads a RangeCounts
-index as a plain one. My checks only: local main fast-forwarded to d6fff48, build, gofmt, docs-consistency tests green, no attribution
-lines; NOT run: `make ci-docker` on it. Nothing was reverted or deleted. Open for René: accept v4.50.0 as released (default, nothing
-to do), or retag; and tell Markus/sigma-tkgd the patch-only rule if it still stands. My next release is therefore v4.50.1.
-
-## 15. v5: can consumers use it yet? (2026-10-11)
-
-René asked: "can we use the v5 already?", then "ask the sigma and aisoc agents ... You do not understand it", then "Add the
-mapping and add a section in hand over.MD". rho-tkg is an embeddable open-source bitemporal knowledge graph library (memory-
-optimised), not a database; consumers build on its public API, rho never ships consumer adapters.
-
-- **Answer: not yet.** Branch `v5` (fd37fa0, Markus Nissl) exports only value types (`v5/pkg/temporal`, `v5/pkg/types`); the graph
-  code (graphstore, graphstate, graphapply, assertion, raftlog, txnproto) is `internal/`. No public graph API, no as-of/timeline
-  reads, no queries, no v4 importer. 3299 v5 tests pass; phase estimates V0 95 %, V1 90 %, V2 55 %, V3–V7 0–15 %.
-- **Consumers (asked 2026-10-11):** sigma-tkgd: nothing imports v5; needs a public graph API equal to the v4 doors it reads and a
-  v4→v5 door mapping to plan the switch. ai-soc: imports v4 only via `aisoc/internal/graphmgr` (pin v4.49.2); needs that API,
-  sigma-tkgd on v5 first (ai-soc reaches the graph through sigma's sessions), and René's go for a major-version pin.
-- **Merge:** v5 is a strict descendant of main 95a1de3 (fast-forward, no conflicts that day); it edits shared files (CHANGELOG
-  `[Unreleased]`, backlog, lessons, AGENTS, Makefile, ci.yml), so expect conflicts once main moves; root `make` then also runs v5
-  (`V5_DISPATCH=0` turns it off).
-- **Where:** `docs/v5-analysis.md` §1 merge, §2 v4-work coverage, §3 maturity, §4 consumer answers, §5 v4→v5 door mapping (drawn
-  from PLAN and code at fd37fa0; every "v5 plan" cell is Markus's intent, rows "not in plan" are input for him). The file was
-  uncommitted on 2026-10-11 because auto mode blocked its commit (a subagent had copied it in); René commits it or says so.
-- **Next:** send §5's "not in plan" rows to Markus (René decides); v4 stays the library consumers ship on.
+CAN: the repo at `main` (this file, `CHANGELOG.md`, `tasks/**`, `docs/**`, tags) and the memory notes in
+`~/.claude/projects/-home-renework2023-Work-2026-datainsights-rho-tkg/memory/`. CANNOT: other sessions' sockets, earlier agent
+contexts or ids, `/tmp/claude-1000/.../scratchpad` files (evidence worth keeping is in `tasks/evidence/`). The global
+`~/CLAUDE.md` and the repo `CLAUDE.md`/`AGENTS.md` load automatically.
