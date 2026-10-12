@@ -198,6 +198,24 @@ func (s *Store) DeleteRelationship(id types.RelID) error {
 	return shard.DeleteRelationship(id)
 }
 
+var _ storecontract.RelCreateUndoCapability = (*Store)(nil)
+
+// UndoRelationshipCreate implements store.RelCreateUndoCapability on the
+// owning shard.
+func (s *Store) UndoRelationshipCreate(id types.RelID) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateRelID(id); err != nil {
+		return err
+	}
+	shard, err := s.shardForRelID(id)
+	if err != nil {
+		return err
+	}
+	return shard.UndoRelationshipCreate(id)
+}
+
 // requireNodeLive returns ErrNodeNotFound if the node is absent from its shard.
 func (s *Store) requireNodeLive(id types.NodeID) error {
 	shard, err := s.shardForNodeID(id)

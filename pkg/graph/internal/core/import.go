@@ -1135,7 +1135,7 @@ func (rb *importRollback) rollback() error {
 		id := rb.relOrder[i]
 		snap := rb.rels[id]
 		if snap.current == nil {
-			if err := rb.c.store.DeleteRelationship(id); err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
+			if err := rb.c.undoRelationshipCreate(0, id); err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 				capture(err)
 			}
 		} else {

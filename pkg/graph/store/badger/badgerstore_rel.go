@@ -394,7 +394,23 @@ func (bs *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 // DeleteRelationship removes a relationship and cleans up type + adjacency indexes.
 // Returns ErrRelNotFound if the relationship does not exist.
 func (bs *Store) DeleteRelationship(rid types.RelID) error {
-	return bs.deleteRelationshipRouted(rid, 0)
+	return bs.deleteRelationshipRouted(rid, 0, true)
+}
+
+var (
+	_ storecontract.RelCreateUndoCapability       = (*Store)(nil)
+	_ storecontract.ScopedRelCreateUndoCapability = (*Store)(nil)
+)
+
+// UndoRelationshipCreate implements store.RelCreateUndoCapability:
+// DeleteRelationship without the ex-adjacency legs.
+func (bs *Store) UndoRelationshipCreate(rid types.RelID) error {
+	return bs.deleteRelationshipRouted(rid, 0, false)
+}
+
+// UndoRelationshipCreateScoped implements store.ScopedRelCreateUndoCapability.
+func (bs *Store) UndoRelationshipCreateScoped(rid types.RelID, token uint64) error {
+	return bs.deleteRelationshipRouted(rid, token, false)
 }
 
 // DeleteRelationshipScoped mirrors DeleteRelationship but routes the
@@ -406,10 +422,12 @@ func (bs *Store) DeleteRelationshipScoped(rid types.RelID, token uint64) error {
 	if token == 0 {
 		return bs.DeleteRelationship(rid)
 	}
-	return bs.deleteRelationshipRouted(rid, token)
+	return bs.deleteRelationshipRouted(rid, token, true)
 }
 
-func (bs *Store) deleteRelationshipRouted(rid types.RelID, token uint64) error {
+// deleteRelationshipRouted removes rid; exLeg records its legs in the
+// ex-adjacency (a delete; not an undone create).
+func (bs *Store) deleteRelationshipRouted(rid types.RelID, token uint64, exLeg bool) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -446,7 +464,7 @@ func (bs *Store) deleteRelationshipRouted(rid types.RelID, token uint64) error {
 	r, err := bs.getRelLocked(rid)
 	var logErr error
 	if err == nil {
-		bs.deleteRelByInfo(relDeleteInfoFromRelationship(r), r)
+		bs.removeRelByInfo(relDeleteInfoFromRelationship(r), r, exLeg)
 		logErr = bs.logChangeRoutedRaw(storecontract.ChangeRelDelete, relDelPayload, token)
 	}
 	bs.idxMu.Unlock()
@@ -639,6 +657,12 @@ func (bs *Store) relDeleteInfoStillIndexedLocked(info RelDeleteInfo) bool {
 // skips unreadable rows too.
 // Caller must hold bs.idxMu write lock. This method performs no reads — it cannot fail.
 func (bs *Store) deleteRelByInfo(info RelDeleteInfo, old *types.Relationship) {
+	bs.removeRelByInfo(info, old, true)
+}
+
+// removeRelByInfo is deleteRelByInfo; exLeg false records no ex-adjacency (an
+// undone create).
+func (bs *Store) removeRelByInfo(info RelDeleteInfo, old *types.Relationship, exLeg bool) {
 	// info.ID/startID/endID are raw snowflake.ID — RelDeleteInfo is shared with
 	// off-limits TieredStore code paths and must keep raw fields. Convert at
 	// each map access.
@@ -686,14 +710,16 @@ func (bs *Store) deleteRelByInfo(info RelDeleteInfo, old *types.Relationship) {
 	}
 
 	// Build delete ops. Both legs leave the live adjacency for the
-	// ex-adjacency in the same batch (backlog 50).
+	// ex-adjacency in the same batch (backlog 50), unless a create is undone.
 	ops := []writeOp{
 		{opType: writeOpDelete, key: storepkg.RelKey(info.ID)},
 		{opType: writeOpDelete, key: storepkg.RelTypeIndexKey(info.RelType, info.ID)},
 		{opType: writeOpDelete, key: storepkg.OutKey(info.StartID, info.RelType, info.EndID, info.ID)},
 		{opType: writeOpDelete, key: storepkg.InKey(info.EndID, info.RelType, info.StartID, info.ID)},
 	}
-	ops = append(ops, exAdjLegOps(writeOpSet, info.ID, info.StartID, info.EndID)...)
+	if exLeg {
+		ops = append(ops, exAdjLegOps(writeOpSet, info.ID, info.StartID, info.EndID)...)
+	}
 
 	bs.appendOps(ops...)
 	bs.relCount.Add(-1)

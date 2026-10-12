@@ -864,6 +864,25 @@ type ExAdjacencyCapability interface {
 	NoteExAdjacentRel(id types.RelID, startID, endID types.NodeID) error
 }
 
+// RelCreateUndoCapability is OPTIONAL, beside ExAdjacencyCapability: the
+// graph layer removes a relationship whose create it is undoing (a failed
+// create's partial write, a rolled-back transaction's or a failed import's
+// created relationship) through UndoRelationshipCreate. It is
+// DeleteRelationship (same errors, same change-log record) without the
+// ex-adjacency legs: the relationship never committed, so no reader may find
+// it through its endpoints. A store without it is undone by DeleteRelationship
+// (sound, an extra candidate per endpoint).
+type RelCreateUndoCapability interface {
+	UndoRelationshipCreate(id types.RelID) error
+}
+
+// ScopedRelCreateUndoCapability is UndoRelationshipCreate with the change-log
+// record routed into a ScopedTxChangeLog buffer, as DeleteRelationshipScoped
+// (token 0: UndoRelationshipCreate).
+type ScopedRelCreateUndoCapability interface {
+	UndoRelationshipCreateScoped(id types.RelID, token uint64) error
+}
+
 // DepthDeletedIterationCapability is the depth-aware counterpart of
 // DeletedIterationCapability. Tiered backends implement it so history-aware
 // queries can combine deleted-only iteration with shard-depth filtering.

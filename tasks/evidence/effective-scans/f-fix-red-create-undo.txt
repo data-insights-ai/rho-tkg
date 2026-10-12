@@ -1,0 +1,16 @@
+--- FAIL: TestRelCreateUndoLeavesNoExAdjacency (0.01s)
+    rel_create_undo_exadj_test.go:83: memory: rolled-back create left ex-adjacency out=[806091056810394624] in=[806091056810394624]
+    rel_create_undo_exadj_test.go:106: memory: failed import left ex-adjacency(100, incoming=false) 300
+    rel_create_undo_exadj_test.go:106: memory: failed import left ex-adjacency(101, incoming=true) 300
+    rel_create_undo_exadj_test.go:83: memory scoped tx: rolled-back create left ex-adjacency out=[806091056818947072] in=[806091056818947072]
+    rel_create_undo_exadj_test.go:106: memory scoped tx: failed import left ex-adjacency(100, incoming=false) 300
+    rel_create_undo_exadj_test.go:106: memory scoped tx: failed import left ex-adjacency(101, incoming=true) 300
+    rel_create_undo_exadj_test.go:83: badger: rolled-back create left ex-adjacency out=[806091056894247936] in=[806091056894247936]
+    rel_create_undo_exadj_test.go:106: badger: failed import left ex-adjacency(100, incoming=false) 300
+    rel_create_undo_exadj_test.go:106: badger: failed import left ex-adjacency(101, incoming=true) 300
+    rel_create_undo_exadj_test.go:83: badger scoped tx: rolled-back create left ex-adjacency out=[806091056941892608] in=[806091056941892608]
+    rel_create_undo_exadj_test.go:106: badger scoped tx: failed import left ex-adjacency(100, incoming=false) 300
+    rel_create_undo_exadj_test.go:106: badger scoped tx: failed import left ex-adjacency(101, incoming=true) 300
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.013s
+FAIL

@@ -75,6 +75,8 @@ type Core struct {
 	filteredVector        storepkg.FilteredVectorSearchCapability
 	vectorIndexOptions    storepkg.VectorIndexOptionsCapability
 	depthHistory          storepkg.DepthHistoryIterationCapability
+	relCreateUndo         storepkg.RelCreateUndoCapability       // undoRelationshipCreate
+	scopedRelCreateUndo   storepkg.ScopedRelCreateUndoCapability // undoRelationshipCreate
 	// exAdj is the store's ex-adjacency (backlog 50) once it covers every
 	// relationship (backfillExAdjacencyBestEffort); nil = the adjacency doors
 	// fold every relationship with history instead (forEachRelExAdjacentID).
@@ -1953,6 +1955,7 @@ func New(config Config) (*Core, error) {
 	c.filteredVector = filteredVectorSearchCapability(store)
 	c.vectorIndexOptions = vectorIndexOptionsCapability(store)
 	c.depthHistory = depthHistoryIterationCapability(store)
+	c.relCreateUndo, c.scopedRelCreateUndo = relCreateUndoCapabilities(store)
 	c.changeFeed = changeFeedCapability(store)
 	c.changeLogEnabled = changeLogStatusEnabled(store)
 	c.txLogScope = txChangeLogScope(store, c.changeLogEnabled)

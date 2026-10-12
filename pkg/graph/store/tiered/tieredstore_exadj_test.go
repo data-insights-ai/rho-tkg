@@ -104,3 +104,50 @@ func TestArchiveMoveLeavesNoExAdjacencyLegs(t *testing.T) {
 		}
 	}
 }
+
+// A real cross-shard delete (endpoints on two event shards) keeps both legs,
+// each on its endpoint's shard: the delete doors, not the Remove*Placement ones.
+// An undone create of the same relationship leaves none.
+func TestCrossShardDeleteKeepsExAdjacencyLegs(t *testing.T) {
+	for _, mode := range []string{"delete", "delete with history", "undo create"} {
+		ts := newTestTieredStore(t)
+		_, _, signal := installDefaultTestLabelRegistry(t, ts)
+		node := func() types.NodeID {
+			n := types.NodeID(tieredNodeGen(t).Generate())
+			if err := ts.PutNode(types.NewNode(n, signal, nil)); err != nil {
+				t.Fatal(err)
+			}
+			return n
+		}
+		s := node()
+		time.Sleep(2 * time.Millisecond)
+		if err := ts.ForceRotate(); err != nil {
+			t.Fatal(err)
+		}
+		x := node()
+		rel := types.NewRelationship(types.RelID(tieredRelGen(t).Generate()), 5, s, x)
+		if err := ts.PutRelationship(rel); err != nil {
+			t.Fatal(err)
+		}
+		var err error
+		switch mode {
+		case "delete":
+			err = ts.DeleteRelationship(rel.ID())
+		case "delete with history":
+			err = ts.DeleteRelWithHistory(rel.ID(), rel.Version(), rel.DeepCopy())
+		default:
+			err = ts.UndoRelationshipCreate(rel.ID())
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, in := exAdjSet(t, ts, s, false), exAdjSet(t, ts, x, true)
+		if mode == "undo create" {
+			if len(out)+len(in) != 0 {
+				t.Errorf("%s: legs out=%v in=%v, want none", mode, out, in)
+			}
+		} else if !slices.Contains(out, rel.ID()) || !slices.Contains(in, rel.ID()) {
+			t.Errorf("%s: legs out=%v in=%v, want both to hold %d", mode, out, in, rel.ID())
+		}
+	}
+}
