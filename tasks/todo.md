@@ -64,4 +64,10 @@ ledgers of 2026-10-09/10 (per-step red tests, merges, reviews) are in git histor
 - [x] Final Fable review of the v4.51.1 batch (first prepared as v4.50.2; Markus released v4.51.0 meanwhile): tag, 3 LOW (2 doc fixes applied, nil-cell Other carried) (René 2026-10-12: "Use a fable Agent at the end").
 - [ ] 4.51.2 candidate: a committed test for a patched badger column snapshot vs Other (merge review, LOW).
 - [ ] 4.51.2 candidate (Fable final review 2026-10-12, LOW, not reproduced): nil-valued properties are Other on the row drivers but absent on badger's columnar snapshot (index/docvalues.go:588 vs column_batch_build.go); red test first before filing.
+- [ ] v4.51.3 candidates from the post-release Fable review of v4.51.2 (2026-10-12; verdict: 49/50/51 sound, no revert):
+  F1 (50, MEDIUM) tiered archive move and cross-shard create rollback write ex-adjacency legs for live rels via DeleteRelIncoming / DeleteRelEntityAndOut (`badgerstore_partial.go:260,311`; `tieredstore_write_archive.go:409-444`, `tieredstore_write_rel.go:221-234,306-317`): stale keys, answers correct; fix = leg-less partial-delete variant, red test = archive move leaves no legs.
+  F2 (50, test gap) mutant "tiered ex-adjacency read skips the archive" (`tieredstore_exadj.go:42-44`) survives: add delete-of-archived-node-rel + pinned door test.
+  F3 (51, test gap) mutant "installLocked folds rows unsorted" (`index/valid_end.go:303-311`) survives: out-of-order tombstone (import/replica) on memory, test or fixed fold order.
+  F5 (50, dead code) `Core.deletedIter` / `deletedDepthIter` (`core.go:78-79`) and their capability helpers unused. F6 (51) one helper for `ValidEndRow` from `TemporalMetadata` (`badgerstore_valid_end.go:87,166,306`).
+  Measured: +56 B per deleted rel (memory, kept until purge); no create-path regression (badger ByID 9.76 → 8.86 ms per 1000).
 - [ ] Next release v4.51.3 (PATCH only; v4.51.2 released 2026-10-12 with 49/50/51; candidates 52, 53 wait for René's go); gate, tag, notify sigma-tkgd and ai-soc.
