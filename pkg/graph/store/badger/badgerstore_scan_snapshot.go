@@ -98,7 +98,7 @@ func (s *scanSnapshot) close() {
 		s.it = nil
 	}
 	if s.txn != nil {
-		s.txn.Discard()
+		endReadTxn(s.txn, true)
 		s.txn = nil
 	}
 }

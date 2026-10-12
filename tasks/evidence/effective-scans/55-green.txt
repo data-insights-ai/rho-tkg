@@ -1,72 +1,74 @@
+--- PASS: TestEffectiveScanHoldsNoReadTxnDuringFn (0.12s)
+--- PASS: TestEffectiveScanResetFromFn (0.16s)
     effective_scan_txns_test.go:255: by name, pin before: 2 read transactions for 10 entities, 2 for 60
     effective_scan_txns_test.go:255: all, pin before: 1 read transactions for 10 entities, 1 for 60
     effective_scan_txns_test.go:255: by ids, pin before: 1 read transactions for 10 entities, 1 for 60
-    effective_scan_txns_test.go:255: from, pin before: 2 read transactions for 10 entities, 2 for 60
-    effective_scan_txns_test.go:255: by name, pin after: 1 read transactions for 10 entities, 1 for 60
-    effective_scan_txns_test.go:255: all, pin after: 1 read transactions for 10 entities, 1 for 60
-    effective_scan_txns_test.go:255: by ids, pin after: 1 read transactions for 10 entities, 1 for 60
-    effective_scan_txns_test.go:255: from, pin after: 1 read transactions for 10 entities, 1 for 60
     effective_scan_txns_test.go:255: at nodes / by labels, pin before: 1 read transactions for 10 entities, 1 for 60
-    effective_scan_txns_test.go:255: at nodes / by labels, pin after: 1 read transactions for 10 entities, 1 for 60
-    effective_scan_txns_test.go:255: all, pin before: 1 read transactions for 10 entities, 1 for 60
-    effective_scan_txns_test.go:255: from, pin before: 2 read transactions for 10 entities, 2 for 60
     effective_scan_txns_test.go:255: by name, pin after: 1 read transactions for 10 entities, 1 for 60
-    effective_scan_txns_test.go:255: by name, pin before: 2 read transactions for 10 entities, 2 for 60
-    effective_scan_txns_test.go:255: by ids, pin before: 1 read transactions for 10 entities, 1 for 60
-    effective_scan_txns_test.go:255: at nodes / by labels, pin before: 0 read transactions for 10 entities, 0 for 60
+    effective_scan_txns_test.go:255: by ids, pin after: 1 read transactions for 10 entities, 1 for 60
+    effective_scan_txns_test.go:255: from, pin before: 2 read transactions for 10 entities, 2 for 60
     effective_scan_txns_test.go:255: all, pin after: 1 read transactions for 10 entities, 1 for 60
-    effective_scan_txns_test.go:255: by ids, pin after: 1 read transactions for 10 entities, 1 for 60
     effective_scan_txns_test.go:255: from, pin after: 1 read transactions for 10 entities, 1 for 60
-    effective_scan_txns_test.go:255: at nodes / by labels, pin after: 1 read transactions for 10 entities, 0 for 60
-    effective_scan_txns_test.go:255: by ids, pin after: 1 read transactions for 10 entities, 1 for 60
-    effective_scan_txns_test.go:255: from, pin after: 2 read transactions for 10 entities, 2 for 60
-    effective_scan_txns_test.go:255: by name, pin before: 2 read transactions for 10 entities, 2 for 60
-    effective_scan_txns_test.go:255: by ids, pin before: 1 read transactions for 10 entities, 1 for 60
-    effective_scan_txns_test.go:255: from, pin before: 2 read transactions for 10 entities, 2 for 60
-    effective_scan_txns_test.go:255: at nodes / by labels, pin before: 2 read transactions for 10 entities, 2 for 60
-    effective_scan_txns_test.go:255: by name, pin after: 2 read transactions for 10 entities, 2 for 60
-    effective_scan_txns_test.go:255: at nodes / by labels, pin after: 2 read transactions for 10 entities, 2 for 60
-    effective_scan_txns_test.go:255: all, pin before: 2 read transactions for 10 entities, 2 for 60
-    effective_scan_txns_test.go:255: all, pin after: 2 read transactions for 10 entities, 2 for 60
     effective_scan_txns_test.go:255: at nodes / by labels, pin after: 1 read transactions for 10 entities, 1 for 60
-    effective_scan_txns_test.go:255: at nodes / by labels, pin before: 0 read transactions for 10 entities, 0 for 60
+    effective_scan_txns_test.go:255: by ids, pin before: 1 read transactions for 10 entities, 1 for 60
+    effective_scan_txns_test.go:255: from, pin before: 2 read transactions for 10 entities, 2 for 60
+    effective_scan_txns_test.go:255: all, pin after: 1 read transactions for 10 entities, 1 for 60
+    effective_scan_txns_test.go:255: from, pin after: 1 read transactions for 10 entities, 1 for 60
+    effective_scan_txns_test.go:255: at nodes / by labels, pin after: 0 read transactions for 10 entities, 1 for 60
+    effective_scan_txns_test.go:255: by name, pin before: 2 read transactions for 10 entities, 2 for 60
+    effective_scan_txns_test.go:255: at nodes / by labels, pin before: -1 read transactions for 10 entities, 0 for 60
+    effective_scan_txns_test.go:255: by name, pin after: 1 read transactions for 10 entities, 1 for 60
+    effective_scan_txns_test.go:255: by ids, pin after: 1 read transactions for 10 entities, 1 for 60
+    effective_scan_txns_test.go:255: all, pin before: 1 read transactions for 10 entities, 1 for 60
+    effective_scan_txns_test.go:255: all, pin before: 2 read transactions for 10 entities, 2 for 60
+    effective_scan_txns_test.go:255: at nodes / by labels, pin before: 2 read transactions for 10 entities, 2 for 60
     effective_scan_txns_test.go:255: all, pin after: 2 read transactions for 10 entities, 2 for 60
     effective_scan_txns_test.go:255: from, pin after: 2 read transactions for 10 entities, 2 for 60
+    effective_scan_txns_test.go:255: at nodes / by labels, pin after: 2 read transactions for 10 entities, 2 for 60
     effective_scan_txns_test.go:255: by name, pin before: 2 read transactions for 10 entities, 2 for 60
-    effective_scan_txns_test.go:255: all, pin before: 2 read transactions for 10 entities, 2 for 60
     effective_scan_txns_test.go:255: by ids, pin before: 1 read transactions for 10 entities, 1 for 60
     effective_scan_txns_test.go:255: from, pin before: 2 read transactions for 10 entities, 2 for 60
     effective_scan_txns_test.go:255: by name, pin after: 2 read transactions for 10 entities, 2 for 60
     effective_scan_txns_test.go:255: by ids, pin after: 1 read transactions for 10 entities, 1 for 60
---- PASS: TestEffectiveScanTransactionsPerType (0.45s)
-    --- PASS: TestEffectiveScanTransactionsPerType/memory/rel=false (0.01s)
-    --- PASS: TestEffectiveScanTransactionsPerType/memory/rel=true (0.01s)
-    --- PASS: TestEffectiveScanTransactionsPerType/badger/rel=false (0.02s)
-    --- PASS: TestEffectiveScanTransactionsPerType/badger/rel=true (0.02s)
-    --- PASS: TestEffectiveScanTransactionsPerType/sharded/rel=false (0.13s)
+    effective_scan_txns_test.go:255: at nodes / by labels, pin after: 1 read transactions for 10 entities, 1 for 60
+    effective_scan_txns_test.go:255: by name, pin before: 2 read transactions for 10 entities, 2 for 60
+    effective_scan_txns_test.go:255: all, pin before: 2 read transactions for 10 entities, 2 for 60
+    effective_scan_txns_test.go:255: at nodes / by labels, pin before: 0 read transactions for 10 entities, 0 for 60
+    effective_scan_txns_test.go:255: by name, pin after: 2 read transactions for 10 entities, 2 for 60
+    effective_scan_txns_test.go:255: by ids, pin after: 1 read transactions for 10 entities, 1 for 60
+    effective_scan_txns_test.go:255: from, pin after: 2 read transactions for 10 entities, 2 for 60
+    effective_scan_txns_test.go:255: by ids, pin before: 1 read transactions for 10 entities, 1 for 60
+    effective_scan_txns_test.go:255: from, pin before: 2 read transactions for 10 entities, 2 for 60
+    effective_scan_txns_test.go:255: all, pin after: 2 read transactions for 10 entities, 2 for 60
+--- PASS: TestEffectiveScanTransactionsPerType (0.36s)
+    --- PASS: TestEffectiveScanTransactionsPerType/memory/rel=false (0.00s)
+    --- PASS: TestEffectiveScanTransactionsPerType/memory/rel=true (0.00s)
+    --- PASS: TestEffectiveScanTransactionsPerType/badger/rel=false (0.05s)
+    --- PASS: TestEffectiveScanTransactionsPerType/badger/rel=true (0.05s)
+    --- PASS: TestEffectiveScanTransactionsPerType/sharded/rel=false (0.06s)
     --- PASS: TestEffectiveScanTransactionsPerType/sharded/rel=true (0.02s)
-    --- PASS: TestEffectiveScanTransactionsPerType/tiered/rel=false (0.08s)
-    --- PASS: TestEffectiveScanTransactionsPerType/tiered/rel=true (0.17s)
---- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites (0.54s)
-    --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=false (0.01s)
+    --- PASS: TestEffectiveScanTransactionsPerType/tiered/rel=false (0.04s)
+    --- PASS: TestEffectiveScanTransactionsPerType/tiered/rel=true (0.14s)
+--- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites (0.44s)
+    --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=false (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=false/by_name (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=false/all (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=false/by_ids (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=false/from (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=false/at_nodes_/_by_labels (0.00s)
-    --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=true (0.01s)
+    --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=true (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=true/by_name (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=true/all (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=true/by_ids (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=true/from (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=true/at_nodes_/_by_labels (0.00s)
-    --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false (0.05s)
+    --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false (0.04s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false/by_name (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false/all (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false/by_ids (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false/from (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false/at_nodes_/_by_labels (0.00s)
-    --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true (0.05s)
+    --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true (0.04s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true/by_name (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true/all (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true/by_ids (0.00s)
@@ -78,24 +80,35 @@
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=false/by_ids (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=false/from (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=false/at_nodes_/_by_labels (0.00s)
-    --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=true (0.09s)
+    --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=true (0.07s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=true/by_name (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=true/all (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=true/by_ids (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=true/from (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=true/at_nodes_/_by_labels (0.00s)
-    --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=false (0.08s)
+    --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=false (0.09s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=false/by_name (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=false/all (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=false/by_ids (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=false/from (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=false/at_nodes_/_by_labels (0.00s)
-    --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=true (0.17s)
+    --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=true (0.10s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=true/by_name (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=true/all (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=true/by_ids (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=true/from (0.00s)
         --- PASS: TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=true/at_nodes_/_by_labels (0.00s)
-ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	1.127s
---- PASS: TestReadSnapshotAnswersAsTheStore (0.00s)
-ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.017s
+--- PASS: TestEffectiveScans_Errors (0.00s)
+--- PASS: TestEffectiveScans_MatchPerEntityTimeline (0.84s)
+    --- PASS: TestEffectiveScans_MatchPerEntityTimeline/memory (0.03s)
+    --- PASS: TestEffectiveScans_MatchPerEntityTimeline/badger (0.28s)
+    --- PASS: TestEffectiveScans_MatchPerEntityTimeline/sharded (0.23s)
+    --- PASS: TestEffectiveScans_MatchPerEntityTimeline/tiered (0.30s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	1.986s
+--- PASS: TestReadSnapshotAnswersAsTheStore (0.03s)
+--- PASS: TestReadSnapshotCommitWindows (0.04s)
+    --- PASS: TestReadSnapshotCommitWindows/overlay_then_read/rel=false (0.00s)
+    --- PASS: TestReadSnapshotCommitWindows/overlay_then_read/rel=true (0.00s)
+    --- PASS: TestReadSnapshotCommitWindows/after_the_overlay_cleared/rel=false (0.01s)
+    --- PASS: TestReadSnapshotCommitWindows/after_the_overlay_cleared/rel=true (0.03s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.098s

@@ -257,3 +257,7 @@ func (bs *Store) SetAsOfAfterCurrentTestHookForTest(fn func()) { bs.asOfAfterCur
 // every store in this process have opened (backlog 55's seam). Not for
 // production use.
 func ReadTxnsTotalForTest() int64 { return readTxnsTotal.Load() }
+
+// OpenReadTxnsForTest reports the snapshot read transactions open in this
+// process right now (backlog 55's seam). Not for production use.
+func OpenReadTxnsForTest() int64 { return openReadTxns.Load() }

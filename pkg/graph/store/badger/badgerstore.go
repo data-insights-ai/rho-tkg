@@ -759,6 +759,9 @@ type Store struct {
 	// themselves built, while holding idxMu.Lock; so does
 	// relationshipIndexKeysForRel after its scan. Set only from the owning test.
 	historyScanTestHook func()
+	// flushClearedTestHook (tests only) runs inside flush right after the
+	// committed rows left the overlay (flushing cleared).
+	flushClearedTestHook func()
 	// propTxScanTestHook runs inside a property membership build after the
 	// overlay capture and before the badger view; propTxBuildTestHook after the
 	// scan and before the install. Tests only.

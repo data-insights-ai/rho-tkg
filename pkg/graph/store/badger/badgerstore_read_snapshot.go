@@ -13,26 +13,29 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// store.ReadSnapshotCapability (backlog 55): an effective scan reads every
-// entity's current row and history through ONE read transaction and forward-
-// walking iterators, instead of a View per read (three per entity with
-// history: the row, the temporal skeletons, the winning version).
+// store.ReadSnapshotCapability (backlog 55): an effective scan reads a run of
+// entities (one chunk, one hold of the graph read lock) through ONE read
+// transaction and forward-walking iterators, instead of a View per read
+// (three per entity with history: the row, the temporal skeletons, the
+// winning version).
 //
 // THE RULE. Each read answers what the store's method of the same name answers
 // at that moment. The cache and the write buffer are consulted live, exactly
 // as the method does; only the Badger part comes from the shared transaction.
 // That part equals a fresh View's as long as nothing reached Badger since the
 // transaction opened, and every commit that moves rows out of the write
-// buffer bumps commitGen (flush, Clear) — as every flush that turns cache
-// entries clean bumps the caches' epochs — BEFORE the rows leave the overlay
-// or the cache entries turn clean. So the transaction is re-pinned whenever
-// commitGen or a cache epoch moved since it opened, checked after the cache
-// miss or the overlay capture the read depends on (scanSnapshot's rule,
-// extended to history rows): one transaction per scan plus one per flush that
-// lands during it, never one per entity.
+// buffer bumps commitGen (flush, Clear) BEFORE the rows leave the overlay and
+// before a flush turns cache entries clean (markCacheFlushed follows the
+// bump, so commitGen also covers the caches' flush epochs: a cache miss after
+// an unchanged commitGen proves the row's latest version is in the
+// transaction). So the transaction is re-pinned whenever commitGen moved since
+// it opened, checked after the cache miss or the overlay capture the read
+// depends on (scanSnapshot's rule, extended to history rows): one transaction
+// per run plus one per flush that lands during it, never one per entity.
 //
-// Iterators pin table files, so they live only while the caller holds off
-// Close (Release drops them); the transaction itself pins nothing and stays.
+// Release ends the run: it closes the iterators (they pin table files) and
+// discards the transaction (its read mark would keep every version it can see
+// from compaction and value-log GC while the caller runs fn).
 
 var _ storecontract.ReadSnapshotCapability = (*Store)(nil)
 
@@ -80,21 +83,24 @@ type histMemo struct {
 	rows   map[string][]byte
 }
 
-// pinned returns the transaction, re-opened when a commit or a cache flush
-// happened since it opened. Call it only after the cache miss or the overlay
-// capture the read depends on.
+// pinned returns the transaction, re-opened when a commit happened since it
+// opened. Call it only after the cache miss or the overlay capture the read
+// depends on. The cache epochs are read before it opens, for LoadCleanAt.
 func (s *readSnapshot) pinned() *badgerv4.Txn {
 	bs := s.bs
-	gen, ne, re := bs.commitGen.Load(), bs.nodeCache.FlushEpoch(), bs.relCache.FlushEpoch()
-	if s.txn == nil || gen != s.gen || ne != s.nodeEpoch || re != s.relEpoch {
-		s.Close()
-		s.gen, s.nodeEpoch, s.relEpoch = gen, ne, re
+	gen := bs.commitGen.Load()
+	if s.txn == nil || gen != s.gen {
+		s.Release()
+		s.gen, s.nodeEpoch, s.relEpoch = gen, bs.nodeCache.FlushEpoch(), bs.relCache.FlushEpoch()
 		s.txn = newReadTxn(bs.db)
 	}
 	return s.txn
 }
 
-// Release closes the iterators (they pin table files); the transaction stays.
+// Release closes the iterators and discards the transaction (with it the
+// history memo); the next read opens a new one. After the store closed the
+// transaction is dropped without Discard (its read mark died with the
+// database).
 func (s *readSnapshot) Release() {
 	for i := range s.its {
 		if s.its[i].it != nil {
@@ -102,19 +108,15 @@ func (s *readSnapshot) Release() {
 		}
 		s.its[i] = snapIter{}
 	}
-}
-
-// Close releases the iterators and the transaction. After the store closed
-// the transaction is dropped without Discard (its read mark died with the
-// database).
-func (s *readSnapshot) Close() {
-	s.Release()
-	if s.txn != nil && !s.bs.dbClosed.Load() && !s.bs.closing.Load() {
-		s.txn.Discard()
+	if s.txn != nil {
+		endReadTxn(s.txn, !s.bs.dbClosed.Load() && !s.bs.closing.Load())
 	}
 	s.txn = nil
 	s.memo = histMemo{}
 }
+
+// Close is Release: a snapshot holds nothing between runs.
+func (s *readSnapshot) Close() { s.Release() }
 
 // seek positions keyspace i's iterator at the first key at or after key.
 func (s *readSnapshot) seek(i int, key []byte) *badgerv4.Iterator {
@@ -189,6 +191,9 @@ func (s *readSnapshot) committedHistory(i int, prefix []byte) (map[string][]byte
 // a committed row, a buffered set replaces it): key → raw value.
 func (s *readSnapshot) history(i int, prefix []byte) (map[string][]byte, error) {
 	overlay, overlayDeletes := s.bs.pendingHistoryVersionOverlay(prefix, 0)
+	if h := s.bs.historyScanTestHook; h != nil {
+		h() // tests only: the commit window between the overlay capture and the read
+	}
 	committed, err := s.committedHistory(i, prefix)
 	if err != nil {
 		return nil, err

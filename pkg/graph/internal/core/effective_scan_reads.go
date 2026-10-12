@@ -21,10 +21,10 @@ import (
 // hands the chunk's segments to fn after the lock is released. Each entity is
 // still read at one moment, and a snapshot read equals the store's own read
 // at that moment (store.ReadSnapshot's contract), so every answer is the
-// per-ID path's; the store opens one transaction per scan plus one per flush
-// that lands during it. Memory and tiered read entity by entity through the
-// store as before (tiered checks a shard out per read, so no snapshot can
-// outlive one read).
+// per-ID path's; the store opens one transaction per chunk plus one per flush
+// that lands during it, none while fn runs. Memory and tiered read entity by
+// entity through the store as before (tiered checks a shard out per read, so
+// no snapshot can outlive one read).
 // =============================================================================
 
 // effScanChunk is how many entities a scan reads per hold of the graph read
@@ -169,7 +169,7 @@ func streamEntityTimelines[ID any, S any](c *Core, ids []ID, read func(entityRea
 		var readErr error
 		if err := c.readUnderRLock(func() error {
 			if rd.snap != nil {
-				defer rd.snap.Release() // iterators must not outlive the lock that holds Close off
+				defer rd.snap.Release() // no iterator (table pins) or read mark while fn runs
 			}
 			for _, id := range chunk {
 				if c.scanReadTestHook != nil {

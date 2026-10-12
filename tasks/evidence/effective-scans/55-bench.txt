@@ -23,3 +23,9 @@ BenchmarkEffectiveScanCold-32    	       3	4934119137 ns/op	     49341 ns/rel	11
 ## round 3 AFTER
 BenchmarkEffectiveScanCold-32    	       3	2145466344 ns/op	     21455 ns/rel	686595245 B/op	 8188041 allocs/op
 # load at end 67.36 78.08 59.81
+
+# Review fix round (transaction discarded at each chunk end), quiet host (load ~15), paired:
+## BEFORE (HEAD cddc0997)
+BenchmarkEffectiveScanCold-32  3  1731717045 ns/op  17317 ns/rel  1162818898 B/op  13645049 allocs/op
+## AFTER (txn per chunk)
+BenchmarkEffectiveScanCold-32  3   935351425 ns/op   9354 ns/rel   686680634 B/op   8188183 allocs/op

@@ -32,7 +32,7 @@ func rsRender(r snapReads) string {
 		if tm == nil {
 			return fmt.Sprintf("v%d x=%v", v, x)
 		}
-		return fmt.Sprintf("v%d tx%d x=%v", v, tm.TxFrom, x)
+		return fmt.Sprintf("v%d tx%d-%d del%d r%v x=%v", v, tm.TxFrom, tm.TxTo, tm.DeletedAt, tm.Retracted, x)
 	}
 	node := func(n *types.Node, err error) string {
 		if err != nil {
@@ -91,13 +91,16 @@ func rsRender(r snapReads) string {
 }
 
 // TestReadSnapshotAnswersAsTheStore (backlog 55): one read snapshot, kept
-// across every step as an effective scan keeps it, answers each read of node
-// 1 and relationship 7 exactly as the store's own method does at that moment —
-// with rows only in the write buffer, after a flush, after a flush between
-// two reads of one entity (the memo of its committed history must not outlive
-// the transaction), after a history truncation before and after its flush,
-// with the current rows evicted from a one-row cache, after Clear — and opens
-// one transaction per commit it has to see, not one per read.
+// across steps as an effective scan keeps it within a chunk (released where a
+// chunk ends), answers each read of node 1 and relationship 7 exactly as the
+// store's own method does at that moment — rows only in the write buffer,
+// after a flush, a flush between two reads of one entity (the history memo
+// must not outlive the transaction), current rows evicted from a one-row
+// cache, a history truncation buffered and flushed, deleted entities with
+// history rows only, a re-imported life, a retracted life, Clear with the
+// transaction open — and opens one transaction per commit it has to see, not
+// one per read. The oracle is the store itself, so the snapshot's copy of the
+// read paths cannot drift from them unseen.
 func TestReadSnapshotAnswersAsTheStore(t *testing.T) {
 	bs, err := New(Config{InMemory: true, CacheCapacity: 1, FlushInterval: 1<<63 - 1})
 	if err != nil {
@@ -155,6 +158,29 @@ func TestReadSnapshotAnswersAsTheStore(t *testing.T) {
 			}
 		}
 	}
+	putCurrent := func(t *testing.T, v uint32, x int64) { // a new life of both IDs
+		t.Helper()
+		tm := types.TemporalMetadata{TxFrom: types.Instant(100 * (v + 1)), ValidFrom: 1}
+		n := types.NewNode(types.NodeID(1), 10, nil)
+		r := types.NewRelationship(types.RelID(7), 5, types.NodeID(1), types.NodeID(2))
+		n.SetVersion(v)
+		r.SetVersion(v)
+		tmN, tmR := tm, tm
+		n.SetTemporal(&tmN)
+		r.SetTemporal(&tmR)
+		if err := n.SetProperty("x", x); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.SetProperty("x", x); err != nil {
+			t.Fatal(err)
+		}
+		if err := bs.PutNode(n); err != nil {
+			t.Fatal(err)
+		}
+		if err := bs.PutRelationship(r); err != nil {
+			t.Fatal(err)
+		}
+	}
 	flush := func(t *testing.T) {
 		t.Helper()
 		if err := bs.Flush(); err != nil {
@@ -183,7 +209,49 @@ func TestReadSnapshotAnswersAsTheStore(t *testing.T) {
 			}
 		}, 0},
 		{"history truncated, flushed", nil, flush, 1},
-		{"no change", func() { snap.Release() }, func(*testing.T) {}, 0},
+		{"released between runs", func() { snap.Release() }, func(*testing.T) {}, 1},
+		{"deleted, history rows only, buffered", nil, func(t *testing.T) {
+			prevN, err := bs.GetNode(types.NodeID(1))
+			if err != nil {
+				t.Fatal(err)
+			}
+			prevR, err := bs.GetRelationship(types.RelID(7))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := bs.PutRelVersion(types.RelID(7), prevR.Version(), prevR); err != nil {
+				t.Fatal(err)
+			}
+			if err := bs.PutNodeVersion(types.NodeID(1), prevN.Version(), prevN); err != nil {
+				t.Fatal(err)
+			}
+			if err := bs.DeleteRelationship(types.RelID(7)); err != nil {
+				t.Fatal(err)
+			}
+			if err := bs.DeleteNode(types.NodeID(1)); err != nil {
+				t.Fatal(err)
+			}
+		}, 1},
+		{"deleted, flushed", nil, flush, 1},
+		{"re-imported, buffered", nil, func(t *testing.T) { putCurrent(t, 3, 13) }, 0},
+		{"re-imported, flushed", nil, flush, 1},
+		{"retracted life, buffered", nil, func(t *testing.T) {
+			tm := &types.TemporalMetadata{TxFrom: 50, TxTo: 60, ValidFrom: 1, DeletedAt: 60, Retracted: true}
+			n := types.NewNode(types.NodeID(1), 10, nil)
+			r := types.NewRelationship(types.RelID(7), 5, types.NodeID(1), types.NodeID(2))
+			n.SetVersion(5)
+			r.SetVersion(5)
+			n.SetTemporal(tm)
+			tmR := *tm
+			r.SetTemporal(&tmR)
+			if err := bs.PutNodeVersion(types.NodeID(1), 5, n); err != nil {
+				t.Fatal(err)
+			}
+			if err := bs.PutRelVersion(types.RelID(7), 5, r); err != nil {
+				t.Fatal(err)
+			}
+		}, 0},
+		{"retracted life, flushed", nil, flush, 1},
 		{"after Clear", nil, func(t *testing.T) {
 			if err := bs.Clear(); err != nil {
 				t.Fatal(err)

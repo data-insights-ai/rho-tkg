@@ -357,6 +357,9 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 	bs.wbMu.Lock()
 	bs.flushing = nil
 	bs.wbMu.Unlock()
+	if h := bs.flushClearedTestHook; h != nil {
+		h() // tests only: a reader inside the window after the overlay dropped the rows
+	}
 
 	// Step 3: Mark cache entries clean — version-aware.
 	// Only clears dirty on entries whose dirtyVer matches the snapshot.

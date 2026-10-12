@@ -20,9 +20,10 @@ type ReadSnapshotCapability interface {
 //
 // Lifecycle: reads must run while the store can be neither closed nor cleared
 // (the graph's read lock). Release must be called before that exclusion ends:
-// it drops what pins the store's files (iterators) and keeps the transaction,
-// so the next run of reads continues on it. Close releases everything; it is
-// idempotent and safe after the store closed.
+// it closes what pins the store's files (iterators) and the transaction, whose
+// read mark would hold every version it can see from reclamation, and the next
+// run of reads opens a new one. Close is Release; it is idempotent and safe
+// after the store closed.
 type ReadSnapshot interface {
 	GetNode(id types.NodeID) (*types.Node, error)
 	GetRelationship(id types.RelID) (*types.Relationship, error)
