@@ -26,3 +26,15 @@ type RelSegment struct {
 	ValidFrom, ValidTo types.Instant
 	Rel                *types.Relationship
 }
+
+// Direction names the endpoint of a relationship a seed node of
+// API.ForEachRelEffectiveAtNodes matches: Outgoing the start node, Incoming
+// the end node. The zero value is invalid (ErrInvalidDirection).
+type Direction uint8
+
+const (
+	// Outgoing matches a relationship whose start node is a seed.
+	Outgoing Direction = iota + 1
+	// Incoming matches a relationship whose end node is a seed.
+	Incoming
+)

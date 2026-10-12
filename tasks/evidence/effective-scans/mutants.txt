@@ -1,0 +1,150 @@
+# Backlog 35 mutants: one real edit each, every new test run against it
+
+## M1 node all-scan drops entities without a current row (current IDs only)
+killed by: TestEffectiveScans_MatchPerEntityTimeline
+--- FAIL: TestEffectiveScans_MatchPerEntityTimeline (0.35s)
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/memory (0.02s)
+        effective_scans_test.go:267: [after the oracle sequence] ForEachNodeEffective pin 1791787003383:
+             got  
+              804704598627057664:
+                [1392,0) v0 {ValidFrom:1392 ValidTo:0 TxFrom:1791787001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[1] props=anchor=0
+
+## M2 rel all-scan unites current and history without dedupe
+killed by: TestEffectiveScans_MatchPerEntityTimeline
+--- FAIL: TestEffectiveScans_MatchPerEntityTimeline (0.28s)
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/memory (0.01s)
+        effective_scans_test.go:47: ForEachRelEffective pin 1791787057000: entity 804705072115876864 listed twice (segments not contiguous)
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/badger (0.06s)
+        effective_scans_test.go:47: ForEachRelEffective pin 1791787057000: entity 804705073779770368 listed twice (segments not contiguous)
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/sharded (0.11s)
+
+## M3 NodesEffectiveByIDs keeps duplicate IDs
+killed by: TestEffectiveScans_MatchPerEntityTimeline
+--- FAIL: TestEffectiveScans_MatchPerEntityTimeline (0.26s)
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/memory (0.01s)
+        effective_scans_test.go:47: NodesEffectiveByIDs pin 1791787003383: entity 804705489828478976 listed twice (segments not contiguous)
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/badger (0.08s)
+        effective_scans_test.go:47: NodesEffectiveByIDs pin 1791787003383: entity 804705491197657088 listed twice (segments not contiguous)
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/sharded (0.06s)
+
+## M4 an unknown ID fails the call instead of being skipped
+killed by: TestEffectiveScans_MatchPerEntityTimeline
+--- FAIL: TestEffectiveScans_MatchPerEntityTimeline (0.26s)
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/memory (0.01s)
+        effective_scans_test.go:267: [after the oracle sequence] NodesEffectiveByIDs pin 2951: graph: node not found
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/badger (0.08s)
+        effective_scans_test.go:267: [after the oracle sequence] NodesEffectiveByIDs pin 1393: graph: node not found
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/sharded (0.06s)
+
+## M5 AtNodes folds only deleted relationships (the pinned adjacency doors' fold)
+killed by: TestEffectiveScans_MatchPerEntityTimeline
+--- FAIL: TestEffectiveScans_MatchPerEntityTimeline (0.27s)
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/memory (0.01s)
+        effective_scans_test.go:267: [after the oracle sequence] ForEachRelEffectiveAtNodes(dir=1,types=[]) pin 1791787057000:
+             got  
+              804706328324670464:
+                [3417,1791787005000) v0 {ValidFrom:3417 ValidTo:1791787005000 TxFrom:1791787001006 TxTo:1791787005000 CreatedAt:0 UpdatedAt:0 DeletedAt:1791787005000 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} type=1 804706328322408448->804706328323817472 props=k=4
+
+## M6 AtNodes streams a candidate's whole timeline (no seed filter per segment)
+killed by: TestEffectiveScans_MatchPerEntityTimeline
+--- FAIL: TestEffectiveScans_MatchPerEntityTimeline (0.25s)
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/memory (0.01s)
+        effective_scans_test.go:267: [after the oracle sequence] ForEachRelEffectiveAtNodes(dir=1,types=[]) pin 1791787003383:
+             got  
+              804706740455080960:
+                [2943,2944) v0 {ValidFrom:2943 ValidTo:2944 TxFrom:1791787001005 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} type=1 804706740453965824->804706740452917248 props=k=3,seat=1
+
+## M7 AtNodes ignores the direction (start node always)
+killed by: TestEffectiveScans_MatchPerEntityTimeline
+--- FAIL: TestEffectiveScans_MatchPerEntityTimeline (0.27s)
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/memory (0.01s)
+        effective_scans_test.go:267: [after the oracle sequence] ForEachRelEffectiveAtNodes(dir=2,types=[]) pin 1791787003383:
+             got  
+              804707220122698752:
+                [3417,0) v0 {ValidFrom:3417 ValidTo:0 TxFrom:1791787001006 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} type=1 804707220120338432->804707220121812992 props=k=4
+
+## M8 AtNodes ignores the type filter per segment
+killed by: TestEffectiveScans_MatchPerEntityTimeline
+--- FAIL: TestEffectiveScans_MatchPerEntityTimeline (0.27s)
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/memory (0.01s)
+        effective_scans_test.go:267: [after the oracle sequence] ForEachRelEffectiveAtNodes(dir=1,types=[R R NoSuchType]) pin 1791787057000:
+             got  
+              804707637424948224:
+                [3417,1791787005000) v0 {ValidFrom:3417 ValidTo:1791787005000 TxFrom:1791787001006 TxTo:1791787005000 CreatedAt:0 UpdatedAt:0 DeletedAt:1791787005000 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} type=1 804707637421342720->804707637423538176 props=k=4
+
+## M9 AtNodes candidates are the current adjacency only
+killed by: TestEffectiveScans_MatchPerEntityTimeline
+--- FAIL: TestEffectiveScans_MatchPerEntityTimeline (0.25s)
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/memory (0.01s)
+        effective_scans_test.go:267: [after the oracle sequence] ForEachRelEffectiveAtNodes(dir=1,types=[]) pin 1791787003383:
+             got  
+             want 
+              804708076127880192:
+
+## M10 ByLabels lists a node once per matching label
+killed by: TestEffectiveScans_MatchPerEntityTimeline
+--- FAIL: TestEffectiveScans_MatchPerEntityTimeline (0.25s)
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/memory (0.01s)
+        effective_scans_test.go:267: [after the oracle sequence] ForEachNodeEffectiveByLabels pin 1791787023000:
+             got  
+              804708496630775808:
+                [1764,0) v0 {ValidFrom:1764 ValidTo:0 TxFrom:1791787001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} labels=[2] props=anchor=1
+
+## M11 fn returning false ends only the current entity
+killed by: TestEffectiveScans_MatchPerEntityTimeline
+--- FAIL: TestEffectiveScans_MatchPerEntityTimeline (0.26s)
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/memory (0.01s)
+        effective_scans_test.go:267: [after the oracle sequence] ForEachNodeEffective pin 1791787003383 stop: err <nil>, 5 calls, want 1
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/badger (0.05s)
+        effective_scans_test.go:267: [after the oracle sequence] ForEachNodeEffective pin 1791787002250 stop: err <nil>, 5 calls, want 1
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/sharded (0.09s)
+
+## M12 ForEachNodeEffective gated by the per-entity pin check only
+killed by: TestEffectiveScans_Errors
+--- FAIL: TestEffectiveScans_Errors (0.00s)
+    effective_scans_test.go:592: ForEachNodeEffective below compaction: err graph: history compacted below the requested transaction time, 1 fn calls; want graph: history compacted below the requested transaction time and none
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.004s
+FAIL
+
+## M13 NodesEffectiveByIDs skips the ID validation
+killed by: TestEffectiveScans_Errors
+--- FAIL: TestEffectiveScans_Errors (0.00s)
+    effective_scans_test.go:628: node batch with id 0: err graph: invalid store mutation: zero node ID, 2 fn calls; want graph: invalid store mutation and none
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.004s
+FAIL
+
+## M14 AtNodes skips the direction validation
+killed by: TestEffectiveScans_Errors
+--- FAIL: TestEffectiveScans_Errors (0.00s)
+    effective_scans_test.go:628: direction 0: err <nil>, 0 fn calls; want graph: invalid relationship direction and none
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.004s
+FAIL
+
+## M15 the AtNodes wrapper forwards a fixed direction
+killed by: TestEffectiveScanWrappers
+--- FAIL: TestEffectiveScanWrappers (0.00s)
+    effective_test.go:233: ForEachRelEffectiveAtNodes: err ops failed, calls [ForEachRelEffectiveAtNodes], pin 94, args forwarded false, segments [0x2ba71bea6720] (want 1: fn stopped)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal	0.003s
+FAIL
+
+## M16 the scans read at the commit clock instead of the pin
+killed by: TestEffectiveScans_MatchPerEntityTimeline, TestEffectiveScans_Errors
+--- FAIL: TestEffectiveScans_MatchPerEntityTimeline (0.24s)
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/memory (0.01s)
+        effective_scans_test.go:267: [after the oracle sequence] ForEachRelEffective pin 2951:
+             got  
+              804711303307330560:
+                [671,2943) v4 {ValidFrom:671 ValidTo:2943 TxFrom:1791788014104 TxTo:0 CreatedAt:0 UpdatedAt:1791788014104 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false} type=1 804711303306248192->804711303305199616 props=k=14,seat=1
+
+## M17 by-IDs batches stream in ID order, not input order
+killed by: TestEffectiveScans_MatchPerEntityTimeline
+--- FAIL: TestEffectiveScans_MatchPerEntityTimeline (0.30s)
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/memory (0.02s)
+        effective_scans_test.go:267: [after the oracle sequence] RelsEffectiveByIDs pin 1791788057000: order [804711929861276672 804711930296599552 804711930296861696], want [804711930296861696 804711929861276672 804711930296599552] (input order, duplicates once)
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/badger (0.06s)
+        effective_scans_test.go:267: [after the oracle sequence] RelsEffectiveByIDs pin 1791788057000: order [804711930465944576 804711932104246272 804711932105524224], want [804711932105524224 804711930465944576 804711932104246272] (input order, duplicates once)
+    --- FAIL: TestEffectiveScans_MatchPerEntityTimeline/sharded (0.10s)

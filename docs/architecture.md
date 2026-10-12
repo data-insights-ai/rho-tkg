@@ -219,7 +219,7 @@ Traversal: `NeighborsAt(nodeID, t)`, `OutgoingRelsAt(nodeID, t)`, `IncomingRelsA
 Snapshot: `Snapshot(t)` -- full graph state at time t (endpoint-filtered)
 Combined: `NodesByLabelPropertyAt(label, key, value, t)`, `NodesByLabelPropertyDuring(label, key, value, start, end)`
 Bitemporal (transaction time): `NodeAsOf(id, txTime)`, `RelAsOf(id, txTime)`, `NodesAsOf(txTime)`, `RelsAsOf(txTime)`, `NodeAtTx(id, validAt, txAt)`, `NodesAtTx(validAt, txAt)`, `NodesDuringTx(from, to, txAt)` (+ rel mirrors)
-Effective timeline: `NodeEffectiveTimeline(id, pin)`, `RelEffectiveTimeline(id, pin)`, scan forms `ForEachNodeEffectiveByLabel(label, pin, fn)`, `ForEachRelEffectiveByType(type, pin, fn)` (include entities deleted before the pin)
+Effective timeline: `NodeEffectiveTimeline(id, pin)`, `RelEffectiveTimeline(id, pin)`, scan forms `ForEachNodeEffectiveByLabel(label, pin, fn)`, `ForEachRelEffectiveByType(type, pin, fn)`, `ForEachNodeEffectiveByLabels(labels, pin, fn)`, `ForEachNodeEffective(pin, fn)` / `ForEachRelEffective(pin, fn)`, `ForEachRelEffectiveAtNodes(nodeIDs, dir, relTypes, pin, fn)`, `NodesEffectiveByIDs` / `RelsEffectiveByIDs(ids, pin, fn)` (include entities deleted before the pin)
 Corrections: `SetNodeVersionInterval`, `SetRelVersionInterval`
 
 **History-aware queries** include deleted entities. They use two-phase ForEach iteration:

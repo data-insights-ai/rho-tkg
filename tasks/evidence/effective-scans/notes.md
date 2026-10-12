@@ -1,0 +1,54 @@
+# Backlog 35 — broader effective scans (ledger)
+
+Started 2026-10-12 on branch worktree-agent-ae135f99f073391a4 (base 91684e54).
+
+## In code before the change?
+- Per-entity doors and the two scan forms only: `pkg/graph/internal/core/effective_timeline.go:317,344`
+  (`NodeEffectiveTimeline` / `RelEffectiveTimeline`), `:631` `ForEachNodeEffectiveByLabel`, `:687`
+  `ForEachRelEffectiveByType`. No label/type-free scan, no batched by-IDs, no seeded adjacency form.
+- Adjacency candidates of the pinned doors (`OutgoingForNodesAtPin`, `queries.go:1566`) use
+  `forEachRelAdjacencyCandidateID` (current adjacency + DELETED rel IDs, "endpoints are immutable").
+  A rel ID deleted and re-imported with other endpoints (`relationship_update.go:137`) keeps its
+  earlier life's endpoints in history: the deleted-only fold misses that life. The new door must not.
+
+## Plan (signatures confirmed by sigma 2026-10-10)
+1. `ForEachNodeEffective(pin, fn)` / `ForEachRelEffective(pin, fn)`
+2. `ForEachRelEffectiveAtNodes(nodeIDs, dir, relTypes, pin, fn)` (`temporal.Direction`: Outgoing / Incoming)
+3. `NodesEffectiveByIDs(ids, pin, fn)` / `RelsEffectiveByIDs(ids, pin, fn)`
+4. `ForEachNodeEffectiveByLabels(labels, pin, fn)`
+Shared seam: one streaming body (`streamNodeTimelines` / `streamRelTimelines`) used by the two
+existing scan forms and the new doors; candidate gathers reuse `forEachNodeCandidateIDByDepth` /
+`forEachRelCandidateIDByDepth` (current ∪ history) and `nodeLabelCandidatesAt`.
+
+## Red tests (written before the code; doors stubbed to return nothing)
+- `TestEffectiveScans_MatchPerEntityTimeline` (oracle chains, memory/badger/sharded/tiered, before
+  and after rollback + re-import + compaction): for every door and pin, the streamed set equals the
+  per-entity timeline filtered by the door's predicate (exact set, each entity once, contiguous,
+  by-IDs in input order); coverage counters: deleted-before-pin, deleted-after-pin,
+  created-after-pin, closed, live, rel with both endpoints seeded, rel listed only through an
+  earlier life's endpoint; fn false stops after one segment.
+  Break-the-code: drops deleted-before-pin, lists created-after-pin, no dedupe (history ∪ current,
+  duplicate IDs / seeds, several labels), unknown ID errors, deleted-only adjacency fold, whole
+  timeline instead of the seeded segments, direction ignored, type filter ignored, fn stop ignored.
+- `TestEffectiveScans_Errors` (memory): nil fn, pin 0, future pin, closed graph, invalid ID in a
+  batch (no fn call), invalid direction, invalid label / type, scan doors below the compaction
+  watermark, scan doors below a retention watermark of a label no node carries. Break-the-code: a
+  validation skipped, the scan pin gate replaced by the point gate.
+- `TestEffectiveScanWrappers` (temporal package): the six new wrappers forward verbatim, nil API refused.
+
+## Proof files
+red-*.txt, green-*.txt, mutants.txt, bench.txt in this directory.
+
+## Result (2026-10-12)
+- Red: red-1-core-doors-stubbed.txt (both core tests fail on stubs), red-2-wrappers-stubbed.txt.
+- Green: green-1-core.txt (new + existing effective-timeline tests), green-2-wrappers.txt,
+  green-3-full-short-suite.txt (`go test -short ./...`), green-4-race.txt (-race -short core, temporal, graph).
+- Mutants: mutants.txt, 17 of 17 killed; each test kills at least one mutant no other test kills
+  (Errors: M12-M14, wrappers: M15, oracle: the rest).
+- Bench: bench.txt (host shared with other agents; -count=3). Per relationship: memory 0.5-1.4 µs, badger
+  3.9-10.7 µs; one RelEffectiveTimeline call 0.5-1.5 µs / 5.2-5.6 µs (plain). The scans stream through the
+  per-entity body: no per-call validation, one gather per call; the badger double read (gather + re-read under
+  the entity lock) is backlog 33 and lands for every scan through streamRelTimelines.
+- Findings filed: backlog 49 (tiered re-import moving shards loses the earlier life's history,
+  finding-tiered-reimport-*), backlog 50 (pinned adjacency doors miss a re-imported rel's earlier life,
+  finding-pinned-adjacency-*).

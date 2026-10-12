@@ -1,0 +1,28 @@
+=== RUN   TestZZDebugReimport
+=== RUN   TestZZDebugReimport/memory
+    zz_debug_test.go:42: memory moveEnds=false: history rows 1 (err <nil>)
+=== RUN   TestZZDebugReimport/memory#01
+    zz_debug_test.go:42: memory moveEnds=true: history rows 1 (err <nil>)
+=== RUN   TestZZDebugReimport/badger
+    zz_debug_test.go:42: badger moveEnds=false: history rows 1 (err <nil>)
+=== RUN   TestZZDebugReimport/badger#01
+    zz_debug_test.go:42: badger moveEnds=true: history rows 1 (err <nil>)
+=== RUN   TestZZDebugReimport/sharded
+    zz_debug_test.go:42: sharded moveEnds=false: history rows 1 (err <nil>)
+=== RUN   TestZZDebugReimport/sharded#01
+    zz_debug_test.go:42: sharded moveEnds=true: history rows 1 (err <nil>)
+=== RUN   TestZZDebugReimport/tiered
+    zz_debug_test.go:42: tiered moveEnds=false: history rows 1 (err <nil>)
+=== RUN   TestZZDebugReimport/tiered#01
+    zz_debug_test.go:42: tiered moveEnds=true: history rows 0 (err <nil>)
+--- PASS: TestZZDebugReimport (0.26s)
+    --- PASS: TestZZDebugReimport/memory (0.00s)
+    --- PASS: TestZZDebugReimport/memory#01 (0.00s)
+    --- PASS: TestZZDebugReimport/badger (0.01s)
+    --- PASS: TestZZDebugReimport/badger#01 (0.01s)
+    --- PASS: TestZZDebugReimport/sharded (0.06s)
+    --- PASS: TestZZDebugReimport/sharded#01 (0.01s)
+    --- PASS: TestZZDebugReimport/tiered (0.07s)
+    --- PASS: TestZZDebugReimport/tiered#01 (0.09s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.309s

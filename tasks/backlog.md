@@ -15,8 +15,8 @@ TEST-GAP = real behavior unverified (may hide a bug). FEATURE = plausible
 capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 
 **Remaining open work (verified against the code at v4.49.0, 2026-10-10):** no reproduced CRITICAL or HIGH
-item; two traced, unreproduced HIGH? findings in item 4. Next step: items 33 + 42 (+ 41),
-35, 28, 21. Open items, one line each (full text below):
+item; two traced, unreproduced HIGH? findings in item 4. Next step: items 41,
+49, 50, 28, 21. Open items, one line each (full text below):
 
 | # | Type / severity | Item | Status |
 |---|---|---|---|
@@ -39,7 +39,6 @@ item; two traced, unreproduced HIGH? findings in item 4. Next step: items 33 + 4
 | 26 | LOW (known limit) | Old chains with collided versions keep answering in the old version order | open; schedule only if a consumer holds such chains |
 | 28 | FEATURE (perf) | State form of the as-of column doors and counts | open; design first (sigma) |
 | 31 | LOW | Bulk and point as-of disagree with the cascade oracle on version gaps | open; fix when a consumer holds such chains |
-| 35 | FEATURE | Broader effective scans | open; signatures confirmed by sigma 2026-10-10 (HANDOVER.md §11) |
 | 37 | LOW | Tiered error-rollback restore leaves a window with empty history | open; `restoreRelHistorySnapshot` still truncates then puts (`tieredstore_write_history.go:899`) |
 | 39 | LOW (not tested) | Per-entity compaction stubs survive `Admin().Reset` | open; `reapCompactionForReset` still leaves the stubs (`core/compaction.go:285`) |
 | 40 | LOW (cosmetic) | A cascade resumption may end at an earlier life's own bound | open |
@@ -48,6 +47,8 @@ item; two traced, unreproduced HIGH? findings in item 4. Next step: items 33 + 4
 | 45 | MEDIUM (API) | Internal sentinels reach callers but have no exported alias; `ErrMixedNumericColumn` is outside the errors inventory test | open; found by the doc review of `docs/errors.md` 2026-10-10 |
 | 46 | LOW (stale comments) | Code comments that contradict the code or cite ADRs no longer in `docs/adr/` | open; found by the doc reviews 2026-10-10 |
 | 47 | LOW (unverified claims) | `NodesByLabelAt` vs K1; a RAM budget for the property sidecars | open; each needs a real check before it becomes work |
+| 49 | HIGH (data loss, tiered) | A re-import that moves a relationship to another tiered shard loses the earlier life's history | open; reproduced 2026-10-12 (item 35 work) |
+| 50 | MEDIUM | Pinned adjacency doors miss a re-imported relationship's earlier life | open; reproduced 2026-10-12 (item 35 work) |
 
 ---
 
@@ -287,11 +288,6 @@ Everything the handover `tasks/handover-effective-read-cost-20261009.md` asked f
 
 **Bulk and point as-of disagree with the cascade oracle on version gaps** (LOW, pre-existing, found by the review of the bulk as-of change 2026-10-09): on a chain with a version gap above the current row (direct `Store.TruncateNodeHistory`, or a re-import over a compacted old life stored by v4.43–v4.47 (since item 38 a re-import starts above the chain's top)) both `NodeAsOf` doors miss a row above a gap past current+1 (56 cases against `cascadeAsofWant` in the reviewer's scratch test, identical on main and the branch). The allocator (item G) never creates such a gap; the density assumption is documented in `core/version_alloc.go` and AGENTS.md. Fix when a consumer holds such chains: either close the gap at truncate/re-import time (renumber under the entity lock) or make the doors scan for the max version above current. Red test first (the reviewer's five gap chains, node and rel, with/without reopen, 17 pins).
 
-### 35. Broader effective scans
-
-*FEATURE* — open; signatures confirmed by sigma 2026-10-10 (HANDOVER.md §11).
-
-**Broader effective scans** (FEATURE, requested by sigma-tkgd 2026-10-09, exact call patterns from its builtins and push-down; N/M = nodes/rels at the pin, K up to 500 k rels from a push-down, S up to 100 k seed nodes, E entities per session cut): after `ForEachRelEffectiveByType` / `ForEachNodeEffectiveByLabel` (item J), all with the same contract as the per-entity door (one entity's segments contiguous and ascending, entities deleted before the pin included, fn false stops): (1) `ForEachNodeEffective(pin, fn func(NodeSegment) bool)` and `ForEachRelEffective(pin, fn func(RelSegment) bool)`, label- and type-free, one call each per evaluation (builtins node/2, edge/3, prop/3 today: a TxPin scan that misses entities deleted before the pin plus one timeline call per row, twice when prop is used); (2) `ForEachRelEffectiveAtNodes(nodeIDs []types.NodeID, dir Direction, relTypes []string, pin, fn func(RelSegment) bool)` batched for the src_/dst_ push-down (today `Outgoing/IncomingForNodesAtPin`, which misses rels deleted before the pin, plus K timeline calls), direction fixed per call, deleted-before-pin rels included, each rel once even if both endpoints are seeds (a single-node form would mean up to 100 k calls); (3) `NodesEffectiveByIDs(ids []types.NodeID, pin, fn)` and `RelsEffectiveByIDs(ids []types.RelID, pin, fn)`, unknown IDs skipped, one call per @source or per cut and kind; (4) optional, low priority: `ForEachNodeEffectiveByLabels(labels []string, pin, fn)`, each node once even with several matching labels. Red tests first: exact-set per pin on the oracle generators (live, closed, deleted-before-pin, deleted-after-pin, created-after-pin; rels with both endpoints seeded; duplicate IDs in a by-IDs batch), memory/badger/tiered/sharded.
 
 ### 37. Tiered error-rollback restore leaves a window with empty history
 
@@ -324,6 +320,32 @@ Measured 2026-10-12 (`tasks/evidence/badger-read-cost/41-01-sidecar-ram-per-id.t
 *MEDIUM (traced, not reproduced)* — open; filed 2026-10-10 from `tasks/review-v5-plan-vs-code-20261009.md` §6.5.
 
 A crash after a burst whose monotonic floor outran the wall reopens with `NowTx` below committed stamps (lesson 71's reopen case on the crash path): `persistInstantFloor` is called only from `Close` (`core/core.go`, `core/instant_floor.go:129`), and `seedInstantFloor` reseeds only from that watermark. Red test first: a crash-shaped child (exit without `Close`) after writes stamped ahead of the wall, reopen, assert `NowTx()` and a fresh write's `TxFrom` exceed every stored `TxFrom`. Fix candidates: persist the floor with the durable commit / flush, or reseed from the newest stored stamp at open.
+
+### 49. A re-import that moves a relationship to another tiered shard loses the earlier life's history
+
+*HIGH (data loss, tiered)* — open; reproduced 2026-10-12 while building item 35.
+
+On tiered, `Rels.Delete` then `Rels.Import(id, …)` with a start node in another shard (a "Ref" node, the reference
+shard) leaves `Rels.History(id)` empty: the earlier life's rows are no longer visible to any door (`History`,
+`RelEffectiveTimeline`, `RelAsOf` at a pin inside the earlier life). Same endpoints, or memory / badger / sharded: one
+history row, as expected. Probe and output: `tasks/evidence/effective-scans/finding-tiered-reimport-*`. Red test
+first: the probe as a cross-backend test (both directions of the move, node re-import too), then the history lookup
+of a re-imported ID must find every life (route by the ID's lives, or move the history with the row).
+
+### 50. Pinned adjacency doors miss a re-imported relationship's earlier life
+
+*MEDIUM* — open; reproduced 2026-10-12 while building item 35.
+
+`OutgoingForNodesAtPin` / `IncomingForNodesAtPin` (and the other users of `forEachRelAdjacencyCandidateID`:
+`*ForNodesAtTx`, `OutgoingRelsAt` / `IncomingRelsAt`, `ForEachAdjacentRelAt`) fold only DELETED relationship IDs into
+the candidates, on the rule "endpoints are immutable". A relationship ID deleted and re-imported with other endpoints
+(allowed, `relationship_update.go:137`) is live again, so its earlier life — whose rows name the old endpoint — is
+never a candidate: A->B deleted, re-imported as C->B, `OutgoingForNodesAtPin([A], "", pin inside the first life)`
+answers nothing while `RelAsOf(id, pin)` is the A->B row. `ForEachRelEffectiveAtNodes` (item 35) folds every
+relationship with history and answers it. Probe and output: `tasks/evidence/effective-scans/finding-pinned-adjacency-*`.
+Red test first: the probe on memory/badger/sharded/tiered for each door; fix at the shared seam
+(`forEachRelAdjacencyCandidateIDByDepth`: also fold IDs with more than one life, or every ID with history) and
+correct the AGENTS.md "deleted-only iteration" rule.
 
 ---
 
@@ -402,6 +424,7 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Item 6 (FEATURE) — `DeleteWithTx` / `UpdateWithTx` on every write door, `ErrTxOrder` | `[4.44.0]` Added; handover `tasks/handover-tx-backfill-delete-update-20261009.md` |
 | Item 34 (FEATURE) — `SetNodeVersionIntervalWithTx` / `SetRelVersionIntervalWithTx` on every door | `[4.50.1]` Added; evidence `tasks/evidence/interval-withtx/` |
 | Item 48 (FEATURE, sigma-tkgd) — `ColumnData.Other`: column-scan cells held outside the column (node and rel batches); typed slots aligned with `Null` | `[Unreleased]` Added; evidence `tasks/evidence/column-other/` |
+| Item 35 (FEATURE, sigma-tkgd) — broader effective scans: `ForEachNodeEffective` / `ForEachRelEffective`, `ForEachRelEffectiveAtNodes`, `NodesEffectiveByIDs` / `RelsEffectiveByIDs`, `ForEachNodeEffectiveByLabels` | `[Unreleased]` Added; evidence `tasks/evidence/effective-scans/` |
 | Item 11 (FEATURE) — durable-on-return commit `Config.DurableCommit` | `[4.44.0]` Added (power-loss gap: item 15) |
 | HIGH — one-tick `[t, t+1)` rows skipped as the eclipse sentinel; skip removed | `[4.44.0]` Fixed "One-tick valid intervals are ordinary spans" |
 | Review-v5 §6.2 — column and range scans ignored `TxAt`/`TxPin` | `[4.44.0]` Fixed "Column and range scans answer temporal options" (interval semantics: item 16) |

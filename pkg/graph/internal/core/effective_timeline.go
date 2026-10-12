@@ -629,55 +629,7 @@ func relSegments(pieces []effPiece[*types.Relationship], out []temporal.RelSegme
 // graph). A pinned answer is stable while writers commit above the pin.
 // Errors: ErrGraphClosed, ErrNilCallback, an invalid label.
 func (t *TempOps) ForEachNodeEffectiveByLabel(label string, pin types.Instant, fn func(temporal.NodeSegment) bool) error {
-	c := t.c
-	if err := c.checkOpen(); err != nil {
-		return err
-	}
-	if fn == nil {
-		return grapherr.ErrNilCallback
-	}
-	if err := c.validateIndexLabel(label); err != nil {
-		return err
-	}
-	if err := c.validateEffectiveScanPin(pin); err != nil {
-		return err
-	}
-	var (
-		tok   uint16
-		known bool
-		ids   []types.NodeID
-	)
-	if err := c.readUnderRLock(func() error {
-		tok, known = c.labels.Lookup(label)
-		if !known {
-			return nil
-		}
-		var err error
-		ids, err = c.nodeLabelCandidateIDsAt(tok, storepkg.QueryOpts{TxPin: pin})
-		return err
-	}); err != nil {
-		return err
-	}
-	for _, id := range ids {
-		var segs []temporal.NodeSegment
-		err := c.readUnderRLock(func() error {
-			var err error
-			segs, err = c.nodeEffectiveTimelineLocked(id, pin)
-			return err
-		})
-		if errors.Is(err, storepkg.ErrNodeNotFound) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		for _, s := range segs {
-			if s.Node.HasLabelTokenRaw(tok) && !fn(s) {
-				return nil
-			}
-		}
-	}
-	return nil
+	return t.c.forEachNodeEffectiveByLabels([]string{label}, pin, fn)
 }
 
 // ForEachRelEffectiveByType is ForEachNodeEffectiveByLabel for relationships of
@@ -714,26 +666,7 @@ func (t *TempOps) ForEachRelEffectiveByType(typeName string, pin types.Instant, 
 	}); err != nil {
 		return err
 	}
-	for _, id := range ids {
-		var segs []temporal.RelSegment
-		err := c.readUnderRLock(func() error {
-			var err error
-			segs, err = c.relEffectiveTimelineLocked(id, pin)
-			return err
-		})
-		if errors.Is(err, storepkg.ErrRelNotFound) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		for _, s := range segs {
-			if s.Rel.HasTypeTokenRaw(tok) && !fn(s) {
-				return nil
-			}
-		}
-	}
-	return nil
+	return c.streamRelTimelines(ids, pin, func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }, fn)
 }
 
 // validateEffectiveScanPin is validateEffectivePin plus the scan doors'

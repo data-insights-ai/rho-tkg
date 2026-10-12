@@ -154,6 +154,7 @@ var uniqueConstraintSentinels = []string{
 var compactionSentinels = []string{
 	"ErrHistoryCompacted",
 	"ErrTxPinTooNew",
+	"ErrInvalidDirection",
 	"ErrCompactionProtectedTag",
 	"ErrInvalidRetentionPolicy",
 	"ErrCompactionChangeLogEnabled",

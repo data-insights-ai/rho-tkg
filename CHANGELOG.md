@@ -44,6 +44,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   rows unchanged (0 allocs). The bench rows `LatestStamps/{badger,tiered,sharded}/rotating-cache-miss` join the
   allocs-gated `LatestStamps` family.
 
+- **Broader effective scans: `Temporal().ForEachNodeEffective(pin, fn)` / `ForEachRelEffective(pin, fn)`,
+  `ForEachRelEffectiveAtNodes(nodeIDs, dir, relTypes, pin, fn)`, `NodesEffectiveByIDs(ids, pin, fn)` /
+  `RelsEffectiveByIDs(ids, pin, fn)` and `ForEachNodeEffectiveByLabels(labels, pin, fn)`** (backlog 35, requested by
+  sigma-tkgd; signatures confirmed 2026-10-10). One call per evaluation or batch instead of a pinned scan plus one
+  timeline call per row. Same contract as `ForEachRelEffectiveByType`: one entity's segments contiguous and ascending,
+  entities deleted before the pin included, none created after it, `fn` false stops, `fn` runs without graph locks,
+  segments equal to the entity's own `Node/RelEffectiveTimeline` (the scans stream through the per-entity body, shared
+  with the two existing scan forms). The all-entity scans read every current entity and every entity with history.
+  `ForEachRelEffectiveAtNodes` streams the relationships with a seed at the `dir` endpoint (new `temporal.Direction`:
+  `Outgoing` start node, `Incoming` end node; anything else `ErrInvalidDirection`, exported as
+  `graph.ErrInvalidDirection`), limited to the segments whose row has a seed there and, when `relTypes` is not empty,
+  one of those types; each relationship once (both endpoints seeded, repeated seeds); its candidates are the seeds'
+  current adjacency and every relationship with history, so the earlier life of a relationship ID deleted and
+  re-imported with other endpoints is included (the pinned adjacency doors miss it: backlog 50). The by-IDs doors are
+  the per-entity doors batched: input order, a repeated ID once, unknown IDs skipped, the per-entity compaction and
+  retention gates; an invalid ID or seed is refused before any segment (`ErrInvalidStoreMutation`).
+  `ForEachNodeEffectiveByLabels` streams each node once even when several labels match. Cost per relationship
+  (200 K relationships, 1 % with history, `BenchmarkEffectiveScans`): memory 0.5 µs (by IDs) to 1.2 µs (at nodes),
+  badger 3.9 µs to 10.6 µs, against 0.5 µs / 6.0 µs for one `RelEffectiveTimeline` call — the per-entity body;
+  backlog 33 (badger re-read after the gather) applies to every scan through the shared seam. `temporal.Ops` gains
+  the six methods. Evidence: `tasks/evidence/effective-scans/` (red runs, mutants, benchmark).
+
 ### Changed
 
 - **Column scans type every integer width like badger's columnar snapshot.** int8, int16, uint8, uint16 and uint32
