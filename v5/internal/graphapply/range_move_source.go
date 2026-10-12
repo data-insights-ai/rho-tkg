@@ -217,6 +217,9 @@ func (s *graphSourceServer) openMove(ctx context.Context, proof rangeMoveProof) 
 			err = errLimit
 		}
 	}
+	if err == nil && s.beforePublication != nil {
+		s.beforePublication(lease)
+	}
 	s.mu.Lock()
 	s.pending--
 	if err == nil && s.closed {

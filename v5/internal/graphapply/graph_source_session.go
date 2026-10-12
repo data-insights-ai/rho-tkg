@@ -66,6 +66,8 @@ type graphSourceLease struct {
 	calls, rows, bytes, output int
 }
 type graphSourceServer struct {
+	// Test latch after genuine capture and before final publication; no locks held.
+	beforePublication func(*graphSourceLease)
 	pending   int
 	captureWG sync.WaitGroup
 	closeDone chan struct{}
@@ -176,6 +178,9 @@ func (s *graphSourceServer) open(ctx context.Context, proof allocationProof) (in
 			cancel()
 			err = errLimit
 		}
+	}
+	if err == nil && s.beforePublication != nil {
+		s.beforePublication(lease)
 	}
 	s.mu.Lock()
 	s.pending--
