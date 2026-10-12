@@ -1,0 +1,6 @@
+# F2 mutant applied: tieredstore_exadj.go exAdjShards skips the archive
+--- FAIL: TestTieredArchivedNodeRelDeletePinnedDoor (0.01s)
+    tiered_exadj_archive_test.go:55: incoming=false pinned before the delete: map[], want exactly 806033374437180416
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.013s
+FAIL

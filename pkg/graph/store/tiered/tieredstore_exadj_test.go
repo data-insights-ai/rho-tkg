@@ -48,3 +48,59 @@ func TestExAdjacencyHistoryRowOnAnotherShard(t *testing.T) {
 		}
 	}
 }
+
+// exAdjSet is n's ex-adjacency in one direction, sorted.
+func exAdjSet(t *testing.T, ts *Store, n types.NodeID, incoming bool) []types.RelID {
+	t.Helper()
+	var got []types.RelID
+	if err := ts.ForEachExAdjacentRelID(n, incoming, func(id types.RelID) bool { got = append(got, id); return true }); err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(got)
+	return slices.Compact(got)
+}
+
+// F1 (v4.51.2 review): an archive or restore moves live relationships between
+// shards; nothing left any node's adjacency, so the move records no
+// ex-adjacency — only the deleted relationship's legs stay.
+func TestArchiveMoveLeavesNoExAdjacencyLegs(t *testing.T) {
+	ts := newTestTieredStore(t)
+	caseTok, _, signal := installDefaultTestLabelRegistry(t, ts)
+	gen, rgen := tieredNodeGen(t), tieredRelGen(t)
+	x, y, e := types.NodeID(gen.Generate()), types.NodeID(gen.Generate()), types.NodeID(gen.Generate())
+	for n, tok := range map[types.NodeID]uint16{x: caseTok, y: caseTok, e: signal} {
+		if err := ts.PutNode(types.NewNode(n, tok, nil)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rel := func(s, d types.NodeID) types.RelID {
+		id := types.RelID(rgen.Generate())
+		if err := ts.PutRelationship(types.NewRelationship(id, 5, s, d)); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	gone := rel(x, y) // deleted before the moves: its legs are real
+	for _, ends := range [][2]types.NodeID{{x, y}, {y, x}, {e, x}, {x, e}, {x, x}} {
+		rel(ends[0], ends[1])
+	}
+	if err := ts.DeleteRelationship(gone); err != nil {
+		t.Fatal(err)
+	}
+	want := map[types.NodeID][2][]types.RelID{x: {{gone}, nil}, y: {nil, {gone}}, e: {nil, nil}}
+	for _, step := range []struct {
+		name string
+		move func(types.NodeID) error
+	}{{"archive", ts.ArchiveNode}, {"restore", ts.RestoreNode}} {
+		if err := step.move(x); err != nil {
+			t.Fatalf("%s: %v", step.name, err)
+		}
+		for n, w := range want {
+			for dir, incoming := range []bool{false, true} {
+				if got := exAdjSet(t, ts, n, incoming); !slices.Equal(got, w[dir]) {
+					t.Errorf("after %s: ex-adjacency(%d, incoming=%v) = %v, want %v", step.name, n, incoming, got, w[dir])
+				}
+			}
+		}
+	}
+}
