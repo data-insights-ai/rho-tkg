@@ -449,8 +449,17 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    through committed Init. Five selected parents pass normal/race, with 84.55%
    new-file coverage and scoped vet. Tests exercise both graph partitions, partial
    provisioning, retained node/relationship history and allocator high-water after
-   reopen. Integrated gates and surviving-quorum-authorized replacement remain
-   open. No separate lifecycle journal is required.
+   reopen. Integrated factory gates pass in the hosted CI recorded above;
+   surviving-quorum-authorized replacement remains open. Its
+   [bounded voting/control model](evidence/v2-graph-lifecycle-admission/replacement-model.py)
+   passes 5,040 event schedules and 11 finite checks, independently rerun against
+   the [recorded result](evidence/v2-graph-lifecycle-admission/replacement-model-result.json).
+   It binds the exact replacement voter and local request lifetime, rejects
+   snapshots below the receiver's known term, and permits delayed valid snapshots
+   without assuming instant knowledge of a remote leadership change. Native
+   quorum authorization, activation durability and graph-state recovery tests
+   remain implementation obligations; this model does not close them.
+   No separate lifecycle journal is required.
    Construction grants no graph-operation authority; existing committed-Init and
    consensus gates must remain enforced. Partial provisioning may burn the new
    namespace, but cleanup must never delete storage that may have served data. Old identities

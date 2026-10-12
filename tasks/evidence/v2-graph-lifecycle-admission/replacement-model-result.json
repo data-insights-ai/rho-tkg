@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "status": "finite_model_checks_pass",
+  "scope": "Independent reduced voting and control-lifetime model; not production, storage, Raft conformance or full V2 acceptance.",
+  "assumptions": [
+    "Three fixed voters; A's term5 election/commit originally used A+C-old.",
+    "A completed a current-term heartbeat barrier with A+B AFTER old C retired.",
+    "Only complete receiver-local verified/claimed snapshot and actual Ready may activate (native storage obligation, not modeled).",
+    "Embedding supplies unique active physical incarnation associations and excludes retired connections.",
+    "Source and receiver request sessions are independently matched; manifest/peer fields alone never authorize.",
+    "Model restart preserves durable term/log/vote and loses volatile leader/receiving-control session.",
+    "Receiver activation consults only locally accepted grant/session and delivered snapshot, never instantaneous remote role/term.",
+    "Actual RawNode ignores a snapshot message below its durable local term; the model activation gate enforces this."
+  ],
+  "checks": [
+    {
+      "name": "strict-event-order-enumeration",
+      "schedules": 5040,
+      "events_per_schedule": 7,
+      "violations": 0
+    },
+    {
+      "name": "older-snapshot-after-current-quorum-read",
+      "omitted": [
+        "snapshot-covers-barrier",
+        "snapshot-entry-term-is-current-message-term"
+      ],
+      "counterexample": [
+        "snapshot(7,4,message-term5)",
+        "restart",
+        "delayed-vote(B,term5,log4:7)"
+      ],
+      "violations": [
+        "logical-voter-double-vote"
+      ],
+      "second_leader": false
+    },
+    {
+      "name": "manifest-only-replacement-forks-election",
+      "omitted": [
+        "actual-surviving-quorum-completion",
+        "current-term-complete-snapshot"
+      ],
+      "counterexample": [
+        "A elected by A+C-old",
+        "retire/loss C-old",
+        "B stays candidate5",
+        "accept old snapshot7:4",
+        "restart C-new",
+        "B gets votes B+C-new"
+      ],
+      "violations": [
+        "logical-voter-double-vote",
+        "two-leaders-in-one-term"
+      ]
+    },
+    {
+      "name": "empty-membership-is-not-a-vote-gate",
+      "omitted": [
+        "receiving-packet-whitelist"
+      ],
+      "violations": [
+        "receiving-owner-mutated-volatile-vote"
+      ],
+      "qualification": "Commit0/Vote0 Ready persistence separately prevents response release; no durable fork is claimed."
+    },
+    {
+      "name": "preactivation-restart-needs-new-control-authority-postactivation-keeps-snapshot",
+      "passed": true
+    },
+    {
+      "name": "emitted-valid-snapshot-activates-before-undelivered-leadership-change",
+      "passed": true,
+      "receiver_remote_role_oracle": false,
+      "sequence": [
+        "quorum grant A-session1 term5 barrier8",
+        "complete MsgSnap8:5 emitted",
+        "remote B elected/committed6:9",
+        "receiver activates old8:5 before hearing term6",
+        "receiver restarts",
+        "prior vote5 denied",
+        "stale C campaign denied by both surviving logs6:9"
+      ],
+      "qualification": "Historical local restoration is safe in this reduced voting model; it is not fresh graph-operation authority."
+    },
+    {
+      "name": "delivered-new-source-completion-invalidates-old-control-owner",
+      "passed": true
+    },
+    {
+      "name": "identical-decoded-fields-are-not-native-completion-provenance",
+      "passed": true
+    },
+    {
+      "name": "grant-binds-exact-target-not-another-existing-or-new-voter",
+      "refused_targets": [
+        "A",
+        "B",
+        "D"
+      ],
+      "passed": true
+    },
+    {
+      "name": "delivered-snapshot-below-durable-local-term-cannot-activate",
+      "sequence": [
+        "grant5 and MsgSnap8:5 emitted",
+        "receiver durably advances local term to6",
+        "old snapshot5 delivered"
+      ],
+      "passed": true,
+      "qualification": "Actual RawNode term admission is an explicit activation assumption, not max(localTerm,messageTerm)."
+    },
+    {
+      "name": "unretired-duplicate-physical-voter-breaks-quorum-intersection",
+      "omitted": [
+        "embedding-exclusive-live-incarnation-association"
+      ],
+      "counterexample": "Term6 votes {A,C-old} and {B,C-new} elect distinct leaders; local snapshots cannot detect the copied credential set.",
+      "qualification": "Intentional violation of embedding trust precondition, not a requested global clone detector."
+    }
+  ],
+  "remaining_native_tests": [
+    "Actual source ReadIndex/publish/SnapshotSend term/index relationships and message authority.",
+    "Durable nonvoting empty-store Ready admission and genuine native reject->snapshot flow.",
+    "Same-store claim, actual Ready, sync, Restore, ACK ordering; fail-stop after uncertain I/O.",
+    "Transport retirement/session changes, two-source import/claim races and source leadership changes.",
+    "Node/relationship history, ID high-water, dedup, prepared locks, decisions and old certified cuts after replacement."
+  ],
+  "model_sha256": "0c4413460123d7292f40466c53afda730cf6c8f264eae567b2e6b7ec8af8e95c"
+}
