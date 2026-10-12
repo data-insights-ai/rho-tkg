@@ -1379,3 +1379,13 @@ Rule: a release commit updates, in the same commit, the user-request rows it clo
 HANDOVER §11; every new user or consumer request gets its row before the first action on it.
 Detector: a tag newer than the last row of the releases table; a user-request row "open" whose backlog item sits
 under Closed.
+
+## 81. A Filed Consumer Blocker Is Built, Not Offered
+
+Trigger: René 2026-10-12, on "build 52–55?": "yes, why is this a question?" Four ai-soc blockers (backlog 52–55)
+had sat as "waits for René's go" for hours while ai-soc said they were in a hurry; I had over-applied "never start
+agents he did not ask for" to filed consumer requests.
+Rule: a backlog item filed from a consumer request that blocks that consumer goes straight into the next patch
+batch (ledger lines first, red tests, one review, final Fable, tag). "Never start agents he did not ask for" covers
+side work (monitors, extra reviews, refactors, v5), not consumer blockers.
+Detector: a "Gewählt: not started … Anders: sag fix N" line for an item whose requester is a consumer.
