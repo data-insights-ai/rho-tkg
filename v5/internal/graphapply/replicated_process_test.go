@@ -94,6 +94,9 @@ const (
 	processP08ChangedGraph
 	processLifecycleObserve
 	processLifecycleRecord
+	processPairedConnections
+	processPairedReconnect
+	processPairedPendingOpen
 )
 
 // IPC IDs identify this process event only. No storage/send/prepared capability
@@ -202,7 +205,7 @@ func decodeProcessRequest(b []byte) (processRequest, error) {
 	r := processRequest{incarnation: c.array(), sequence: c.u64(), op: c.tag(), index: c.u64(), entity: c.u64()}
 	r.data = c.field(processFrameBytes)
 	r.packet = processDecodePacket(&c)
-	if r.sequence == 0 || r.op < processCampaign || r.op > processLifecycleRecord || len(c.b) != 0 {
+	if r.sequence == 0 || r.op < processCampaign || r.op > processPairedPendingOpen || len(c.b) != 0 {
 		c.err = errCorrupt
 	}
 	return r, c.err
@@ -446,7 +449,7 @@ func (p *graphProcess) call(t *testing.T, r processRequest) processResponse {
 		err = fmt.Errorf("child tag=%d: %s", response.code, response.detail)
 	}
 	if err != nil {
-		t.Fatalf("child %d RPC: %v code=%d causes=%x detail=%s", p.cmd.Process.Pid, err, response.code, response.causeMask, response.detail)
+		t.Fatalf("child %d RPC op=%d index=%d entity=%d packet=%d->%d: %v code=%d causes=%x detail=%s", p.cmd.Process.Pid, r.op, r.index, r.entity, r.packet.From, r.packet.To, err, response.code, response.causeMask, response.detail)
 	}
 	return response
 }
@@ -1479,6 +1482,7 @@ const (
 	certifiedP08Transfer
 	certifiedP08Close
 	certifiedLifecycle
+	certifiedPairedFaultProperty
 )
 
 type certifiedProcessOwners struct {
@@ -1568,6 +1572,8 @@ func (o *certifiedProcessOwners) action(t *testing.T, r processRequest, init dec
 	binary.BigEndian.PutUint64(id[8:], r.sequence)
 	h := o.host
 	switch r.entity {
+	case certifiedPairedFaultProperty:
+		return pairedGraphFaultProperty(o, r, id)
 	case certifiedLifecycle:
 		return nativeLifecycleProposal(o, r, id)
 	case certifiedP08Reserve:

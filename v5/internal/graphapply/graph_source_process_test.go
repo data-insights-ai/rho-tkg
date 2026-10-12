@@ -3,6 +3,7 @@ package graphapply
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -80,7 +81,15 @@ type graphProcessHub struct {
 	packetBytes, delivered, inFlight int
 	idle                             chan struct{}
 	// Optional test transport schedule; protected by mu and never graph authority.
-	beforeRelay func(context.Context, uint64, uint64, []byte) error
+	beforeRelay  func(context.Context, uint64, uint64, []byte) error
+	afterRelay   func(context.Context, uint64, uint64, []byte, []byte) error
+	relayTargets map[uint64]map[uint64]uint64
+	packetFilter func(replica.Packet) (bool, error)
+	// Paired-only actual MsgSnap transport owners share the original queue byte
+	// allowance; neither these IDs nor the copied packets grant activation.
+	pairedSnapshots bool
+	snapshots       []processSnapshotPacket
+	snapshotBytes   int
 }
 type graphProcessMux struct {
 	p             *graphProcess
@@ -273,7 +282,7 @@ func (m *graphProcessMux) readLoop() {
 					m.fail(errors.Join(errCorrupt, err))
 					return
 				}
-				if err := m.hub.enqueue(m.id, out.packets); err != nil {
+				if err := m.hub.enqueue(m.id, out.packets, out.handles...); err != nil {
 					m.fail(err)
 					return
 				}
@@ -362,14 +371,31 @@ func (m *graphProcessMux) readLoop() {
 		}
 	}
 }
-func (h *graphProcessHub) enqueue(origin uint64, packets []replica.Packet) error {
+func (h *graphProcessHub) enqueue(origin uint64, packets []replica.Packet, handles ...uint64) error {
+	snapshotAt := 0
 	for _, packet := range packets {
-		if packet.Snapshot || packet.From != origin || h.peer(packet.To) == nil || (packet.To <= 3) != (origin <= 3) {
+		if packet.From != origin || h.peer(packet.To) == nil || (packet.To <= 3) != (origin <= 3) {
 			return errInvalid
 		}
 		cost := cap(packet.Payload) + 64
 		h.mu.Lock()
-		full := cost > processQueueBytes-h.packetBytes
+		full := cost > processQueueBytes-h.packetBytes-h.snapshotBytes
+		if packet.Snapshot {
+			if !h.pairedSnapshots || snapshotAt >= len(handles) || handles[snapshotAt] == 0 {
+				h.mu.Unlock()
+				return errInvalid
+			}
+			if full || len(h.snapshots) >= 2 {
+				h.mu.Unlock()
+				return errLimit
+			}
+			h.snapshots = append(h.snapshots, processSnapshotPacket{packet, handles[snapshotAt]})
+			h.snapshotBytes += cost
+			snapshotAt++
+			h.mu.Unlock()
+			h.changed()
+			continue
+		}
 		if !full {
 			h.packetBytes += cost
 		}
@@ -387,6 +413,9 @@ func (h *graphProcessHub) enqueue(origin uint64, packets []replica.Packet) error
 			return errLimit
 		}
 	}
+	if snapshotAt != len(handles) {
+		return errInvalid
+	}
 	return nil
 }
 func (h *graphProcessHub) packetLoop() {
@@ -400,7 +429,9 @@ func (h *graphProcessHub) packetLoop() {
 			h.delivered++
 			h.inFlight++
 			full := h.delivered > processDeliveries
+			filter := h.packetFilter
 			h.mu.Unlock()
+
 			if full {
 				h.mu.Lock()
 				h.inFlight--
@@ -409,6 +440,19 @@ func (h *graphProcessHub) packetLoop() {
 				h.peer(job.origin).fail(errLimit)
 				continue
 			}
+			if filter != nil {
+				drop, err := pairedGraphFaultPacketDisposition(h.delivered, filter, job.packet)
+				if err != nil {
+					h.peer(job.origin).fail(err)
+				}
+				if drop || err != nil {
+					h.mu.Lock()
+					h.inFlight--
+					h.mu.Unlock()
+					h.changed()
+					continue
+				}
+			}
 			ctx, cancel := context.WithTimeout(h.ctx, 10*time.Second)
 			r, err := h.peer(job.packet.To).exchange(ctx, processRequest{op: processStep, packet: job.packet})
 			cancel()
@@ -416,7 +460,7 @@ func (h *graphProcessHub) packetLoop() {
 				err = processResponseError(r)
 			}
 			if err == nil {
-				err = h.enqueue(job.packet.To, r.packets)
+				err = h.enqueue(job.packet.To, r.packets, r.handles...)
 			}
 			if err != nil {
 				h.peer(job.origin).fail(err)
@@ -446,6 +490,12 @@ func (m *graphProcessMux) relayLoop() {
 			ctx, cancel := context.WithTimeout(job.ctx, 10*time.Second)
 			m.hub.mu.Lock()
 			before := m.hub.beforeRelay
+			after := m.hub.afterRelay
+			if route := m.hub.relayTargets[m.id]; route != nil {
+				if actual := route[e.target]; actual != 0 {
+					target = actual
+				}
+			}
 			m.hub.mu.Unlock()
 			var r processResponse
 			var err error
@@ -455,10 +505,13 @@ func (m *graphProcessMux) relayLoop() {
 			if err == nil {
 				r, err = m.hub.peer(target).exchange(ctx, processRequest{op: processSourceServe, entity: m.id, data: e.body})
 			}
-			cancel()
 			if err == nil {
 				err = processResponseError(r)
 			}
+			if err == nil && after != nil {
+				err = after(ctx, m.id, e.target, e.body, r.aux)
+			}
+			cancel()
 			mask := graphErrorMask(err)
 			_, sendErr := m.send(processRequest{op: processSourceReply, index: e.sequence, entity: uint64(mask), data: r.aux}, nil)
 			m.mu.Lock()
@@ -999,6 +1052,10 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 	workers := make(map[uint64]context.CancelFunc)
 	controlWorkers := make(map[uint64]bool)
 	var wg sync.WaitGroup
+	var snapshots *processOwners
+	if os.Getenv("RHO_GRAPH_PAIRED_PROCESS") == "1" {
+		snapshots = &processOwners{incarnation: o.incarnation}
+	}
 	var active *graphProcessPumpCall
 	queue := make([]*graphProcessPumpCall, 0, processSourcePending)
 	var pause bool
@@ -1014,7 +1071,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		if err := p08.event(&e); err != nil {
 			return err
 		}
-		if len(e.snapshotSends)+len(e.capacityReplies) != 0 {
+		if len(e.capacityReplies) != 0 || len(e.snapshotSends) != 0 && snapshots == nil {
 			return errInvalid
 		}
 		if active != nil {
@@ -1065,7 +1122,11 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			return err
 		}
 		if len(e.packets) > 0 {
-			wire, err := encodeProcessResponse(processResponse{incarnation: o.incarnation, sequence: 1, packets: e.packets})
+			handles, err := pairedSnapshotHandles(snapshots, e)
+			if err != nil {
+				return err
+			}
+			wire, err := encodeProcessResponse(processResponse{incarnation: o.incarnation, sequence: 1, packets: e.packets, handles: handles})
 			if err != nil {
 				return err
 			}
@@ -1215,6 +1276,8 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				}
 			case processRangeRun, processRangeResume:
 				out.aux, e = graphE17RunMove(workerCtx, h, o.incarnation, moveCoordinator, r)
+			case processPairedPendingOpen:
+				out.aux, e = pairedGraphFaultPendingOpen(workerCtx, certifiedSessions, r)
 			case processLifecycleObserve:
 				out.aux, e = nativeLifecycleObserve(workerCtx, certifiedSessions, r)
 			case processCertifiedIndexObserve:
@@ -1292,7 +1355,10 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			response.stats, response.cutID, response.manifestID, e = processStats(h.machine.store)
 			err = errors.Join(err, e)
 		}
-		response.applied, response.ready = h.driver.Applied(), o.ready
+		response.applied = h.driver.Applied()
+		if snapshots == nil || r.op != processBuild && r.op != processNext {
+			response.ready = o.ready
+		}
 		response.code, response.detail = processError(err)
 		response.causeMask = processCauseMask(err)
 		wire, e := encodeProcessResponse(response)
@@ -1312,6 +1378,14 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			_ = h.cancelSourceRead(active.id)
 		}
 		wg.Wait()
+		if snapshots != nil {
+			h.mu.Lock()
+			err := snapshots.close(h.driver)
+			h.mu.Unlock()
+			if err != nil {
+				t.Error("paired snapshot owner cleanup", err)
+			}
+		}
 	}()
 	for {
 		if err := advanceGraphProcessPumpQueue(&queue, func() bool { return active == nil }, func(c *graphProcessPumpCall) error {
@@ -1374,8 +1448,21 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				event, e = h.Tick()
 			case processStep:
 				event, e = h.Step(r.packet)
+			case processOffers, processBuild, processSeal, processManifest, processNext, processFeedback, processBeginImport, processAppend, processVerify, processPrepare, processActivate, processImportClose:
+				response, event, e = pairedSnapshotProcessEvent(ctx, h, snapshots, r)
+			case processPairedConnections:
+				response.aux, e = pairedGraphFaultConnections(r.entity, services, server)
+			case processPairedReconnect:
+				coordinator, e = pairedGraphFaultReconnect(ctx, h, coordinator, certifiedSessions, moveCoordinator, server, r, len(workers)+len(paused)+len(controlWorkers), len(queue), active != nil)
+				if e == nil {
+					certifiedSessions.coordinator = coordinator
+				}
 			case processLifecycleRecord:
-				response.aux, e = nativeLifecycleRecordWire(ctx, h, r.index)
+				if os.Getenv("RHO_GRAPH_PAIRED_PROCESS") == "1" {
+					response.aux, e = pairedGraphFaultRecordWire(ctx, h, r.index)
+				} else {
+					response.aux, e = nativeLifecycleRecordWire(ctx, h, r.index)
+				}
 			case processP08ChangedGraph:
 				var original allocationProposal
 				original, e = decodeCertifiedProcessProposal(r.data)
@@ -1424,6 +1511,18 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				}
 			case processStateOp:
 				_, response.image, e = h.machine.store.Checkpoint()
+				if e == nil && r.entity == 1 {
+					first, firstErr := h.machine.store.FirstIndex()
+					last, lastErr := h.machine.store.LastIndex()
+					offers, offersErr := h.driver.SnapshotSends()
+					e = errors.Join(firstErr, lastErr, offersErr)
+					if e == nil {
+						response.aux, e = json.Marshal(struct {
+							FirstIndex, LastIndex uint64
+							SnapshotOffers        int
+						}{first, last, len(offers)})
+					}
+				}
 				relay.mu.Lock()
 				response.handles = []uint64{uint64(len(workers) + len(paused)), uint64(len(relay.pending))}
 				relay.mu.Unlock()
@@ -1491,7 +1590,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					}
 					paused = nil
 				}
-			case processSourceServe, processSourceCoordinate, processSourceObserve, processSourceCertifiedOpen, processSourceCertifiedObserve, processSourceCertifiedClose, processRangeRun, processRangeResume, processRangeCertifiedDetail, processCertifiedIndexObserve, processLifecycleObserve:
+			case processSourceServe, processSourceCoordinate, processSourceObserve, processSourceCertifiedOpen, processSourceCertifiedObserve, processSourceCertifiedClose, processRangeRun, processRangeResume, processRangeCertifiedDetail, processCertifiedIndexObserve, processLifecycleObserve, processPairedPendingOpen:
 				if pause && r.op == processSourceServe && !isSourceClose(r) {
 					if len(paused) >= processSourceWorkers {
 						e = errLimit
@@ -1515,7 +1614,12 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					stop()
 				}
 				wg.Wait()
-				e = h.Close()
+				if snapshots != nil {
+					h.mu.Lock()
+					e = snapshots.close(h.driver)
+					h.mu.Unlock()
+				}
+				e = errors.Join(e, h.Close())
 				if err := respond(r, response, e); err != nil {
 					t.Error(err)
 				}
@@ -1529,7 +1633,14 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			// Ordinary bootstrap traffic stays in its synchronous response, so existing
 			// tinyGraphTransport still owns that traffic. Worker-pump packets are events.
 			if e == nil {
-				e = emit(allocationEvent{readID: event.readID, replies: event.replies, crossReplies: event.crossReplies, requestReplies: event.requestReplies, snapshotSends: event.snapshotSends, capacityReplies: event.capacityReplies, cutReplies: event.cutReplies, moveReplies: event.moveReplies})
+				var handles []uint64
+				handles, e = pairedSnapshotHandles(snapshots, event)
+				if e == nil && len(handles) > 0 {
+					response.handles = handles
+				}
+				if e == nil {
+					e = emit(allocationEvent{readID: event.readID, replies: event.replies, crossReplies: event.crossReplies, requestReplies: event.requestReplies, capacityReplies: event.capacityReplies, cutReplies: event.cutReplies, moveReplies: event.moveReplies})
+				}
 			}
 			response.packets = event.packets
 			if e == nil {

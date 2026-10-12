@@ -175,6 +175,20 @@ class ActualArtifactChecks(unittest.TestCase):
         self.refuse(lambda t: next(r for r in t["oldReads"] if r["Mode"] == "held-old").update(EventID=next(e["EventID"] for e in t["faults"][2]["ProcessEvidence"] if e["Action"] == "kill") + 1))
         self.refuse(lambda t: t["oldReads"].__setitem__(1, copy.deepcopy(t["oldReads"][0])))
 
+    def test_native_noop_qualification_and_business_bytes_cannot_be_stripped(self):
+        self.refuse(lambda t: t["steps"][0]["RawRecords"][0].update(Outcome=None), "native-raft")
+        self.refuse(lambda t: next(r for r in t["steps"][0]["RawRecords"] if r["CDC"]).update(CDC=None), "native-raft")
+        original = next(r for r in NATIVE["steps"][5]["RawRecords"] if "NoOp" in r)
+        self.refuse(lambda t: next(r for r in t["steps"][5]["RawRecords"] if "NoOp" in r).pop("NoOp"), "native-raft")
+        self.refuse(lambda t: next(r for r in t["steps"][5]["RawRecords"] if "NoOp" in r)["NoOp"].update(Term=original["NoOp"]["Term"] + 1), "native-raft")
+        self.refuse(lambda t: next(r for r in t["steps"][5]["RawRecords"] if "NoOp" in r).update(CDC=encoded({"effect": True})), "native-raft")
+
+        def forge_business(trace):
+            record = trace["steps"][0]["RawRecords"][0]
+            record.update(Outcome=None, CDC=None, OutcomeBytes=0, CDCBytes=0, NoOp=copy.deepcopy(original["NoOp"]))
+        self.refuse(forge_business, "native-raft")
+        self.refuse(lambda t: t["steps"][0]["RawRecords"][0].update(NoOp=copy.deepcopy(original["NoOp"])), "native-raft")
+
     def test_actual_prekill_commit_receipt_not_later_observer(self):
         self.refuse(lambda t: t["faults"][1].update(MarkerRaw=encoded({"ready": "after-native-commit-before-reply"})))
         self.refuse(lambda t: next(e for e in t["faults"][1]["ProcessEvidence"] if e["Action"] == "commit")["Result"].update(Round=0))

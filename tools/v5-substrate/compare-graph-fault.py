@@ -334,12 +334,61 @@ def observation(trace, observed, count, context, compact=False, current=False):
     return normalized
 
 
+def native_record(record):
+    """Native codec/storage qualification stays in the actual Go exporter.
+
+    This validates transparent exact-byte counts and the bounded protobuf header
+    of an exporter-inspected empty normal entry; no arbitrary empty outcome is
+    accepted as a graph operation or a consensus proof.
+    """
+    require(all(k in record for k in ("Outcome", "CDC", "OutcomeBytes", "CDCBytes", "Partition", "Index")), "native original record fields")
+    outcome, cdc = blob(record["Outcome"]), blob(record["CDC"])
+    require(integer(record["OutcomeBytes"], 0) == len(outcome) and integer(record["CDCBytes"], 0) == len(cdc), "native original record byte counts")
+    if outcome:
+        require("NoOp" not in record, "business outcome labelled no-op")
+        return
+    proof = record.get("NoOp")
+    require(type(proof) is dict and set(proof) == {"Partition", "Index", "Term", "Entry"}, "native empty record lacks qualified no-op")
+    require(not cdc and proof["Partition"] == record["Partition"] and proof["Index"] == record["Index"], "native no-op source/index/CDC")
+    term = integer(proof["Term"], 1, (1 << 64) - 1)
+    data = blob(proof["Entry"])
+    require(0 < len(data) <= 64, "native no-op entry bound")
+    position, fields = 0, {}
+
+    def varint():
+        nonlocal position
+        value, shift = 0, 0
+        for _ in range(10):
+            require(position < len(data), "truncated native no-op entry")
+            byte = data[position]; position += 1
+            require(shift != 63 or byte <= 1, "native no-op varint overflow")
+            value |= (byte & 127) << shift
+            if byte < 128:
+                require(shift == 0 or byte != 0, "noncanonical native no-op varint")
+                return value
+            shift += 7
+        require(False, "native no-op varint bound")
+
+    while position < len(data):
+        tag = varint()
+        field, wire = tag >> 3, tag & 7
+        require(field in (1, 2, 3, 4) and field not in fields, "native no-op entry field")
+        if field == 4:
+            require(wire == 2 and varint() == 0, "native no-op carries command data")
+            fields[field] = b""
+        else:
+            require(wire == 0, "native no-op entry wire type")
+            fields[field] = varint()
+    require(fields.get(1, 0) == 0 and fields.get(2) == term and fields.get(3) == record["Index"], "native no-op actual normal entry/index/term")
+
+
 def raw_records(trace, records, count, context):
     require(records, "actual original records missing")
     if trace["engine"] == "native-raft":
         coordinates = [(r["Partition"], integer(r["Index"], 1)) for r in records]
         require(all(p in (3, 8) for p, _ in coordinates) and len(coordinates) == len(set(coordinates)), "native record source/index")
-        require(all(blob(r["Outcome"]) for r in records), "native actual outcome bytes")
+        for record in records:
+            native_record(record)
         return
     group = trace["steps"][count - 1]["RawObservation"]["Groups"][-1]
     outcome = group["Outcome"]
@@ -374,7 +423,9 @@ def new_records(trace, records):
     if trace["engine"] == "native-raft":
         keys = [(r["Partition"], integer(r["Index"], 1)) for r in records]
         require(all(p in (3, 8) for p, _ in keys) and len(keys) == len(set(keys)), "new native record source/index")
-        require(all(blob(r["Outcome"]) and r["CDC"] == "" for r in records), "retry/refusal emitted native graph CDC")
+        for record in records:
+            native_record(record)
+        require(all(not blob(r["CDC"]) for r in records), "retry/refusal emitted native graph CDC")
     else:
         require(not records, "FDB retry/refusal added complete group")
 

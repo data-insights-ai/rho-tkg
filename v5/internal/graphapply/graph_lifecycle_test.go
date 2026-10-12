@@ -446,7 +446,8 @@ func TestLogicalGraphLifecycleIdentityAndAdmissionBoundaries(t *testing.T) {
 	if _, err := createLogicalGraph(cancelled, spec, p); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	if _, err := createLogicalGraph(nil, spec, p); !errors.Is(err, errInvalid) { //nolint:staticcheck // Deliberate nil-context refusal contract.
+	var missingContext context.Context
+	if _, err := createLogicalGraph(missingContext, spec, p); !errors.Is(err, errInvalid) {
 		t.Fatal(err)
 	}
 	for _, edit := range []func(*logicalGraphCreationSpec){
@@ -485,7 +486,7 @@ func TestLogicalGraphLifecycleIdentityAndAdmissionBoundaries(t *testing.T) {
 			t.Fatal("caller overrode lifecycle binding", err)
 		}
 	}
-	if _, err := openLogicalGraphReplica(nil, cfg, g, initialGraphPeer{3, 1}, spec.limits); !errors.Is(err, errInvalid) { //nolint:staticcheck // Deliberate nil-context refusal contract.
+	if _, err := openLogicalGraphReplica(missingContext, cfg, g, initialGraphPeer{3, 1}, spec.limits); !errors.Is(err, errInvalid) {
 		t.Fatal(err)
 	}
 	if _, err := openLogicalGraphReplica(cancelled, cfg, g, initialGraphPeer{3, 1}, spec.limits); !errors.Is(err, context.Canceled) {
