@@ -1,6 +1,12 @@
 {
   "schema_version": 1,
   "review_date": "2026-10-09",
+  "test_deployment_decision": {
+    "date": "2026-10-12",
+    "environment": "Owner-selected single-machine distributed tests: separate native processes or Docker containers with isolated durable directories/volumes on the available development machine.",
+    "scope": "Keep logical topology, fault schedules, workloads, repetitions and complete cost/oracle accounting. Independent physical machines are not required for phase acceptance.",
+    "claim_boundary": "Record logical node/zone failures, VFS/durable-image fault semantics, actual placement and shared host contention. No physical-host-loss availability or measured LAN/WAN claim; separate-host deployment evidence is optional."
+  },
   "status": "research-and-execution-plan-only",
   "selection": {
     "provisional_consensus_library": "go.etcd.io/raft/v3@v3.7.0",
@@ -310,13 +316,13 @@
       "voters": ["A1", "A2", "A3", "B1", "B2", "B3"],
       "coordinator": "Coordinator record lives in one of these two existing groups; do not add an unreplicated coordinator or hidden third group. A scope-only read can have its coordinator in B.",
       "catalog_and_allocator": "For the slice, replicated in A and included in its snapshots; participant epochs validated from pinned catalog state. Measure this service and include A loss in the fault matrix.",
-      "durable_mode": "Six separate replica processes, six separate data directories; initially one host for functional crash tests, then three hosts with one A and one B replica on each host for fault-domain/durability and cost runs.",
+      "durable_mode": "Six separate replica processes or containers with six isolated durable directories/volumes on one physical machine. Group one A and one B replica into each of three logical failure domains; stop/isolate the corresponding processes to inject a domain failure. Record shared CPU/storage limits and all-process costs; do not call this physical-machine-loss evidence.",
       "transfer": "Move a bucket A->B while keeping exactly these two three-voter groups; test membership separately using ConfChangeV2 without pretending a seventh voter is part of the fixed baseline."
     },
     "foundationdb_topology": {
       "logical_partitions": "Two key prefixes A/B, one native FDB transaction across them",
-      "replication": "Configure triple redundancy with sufficient independent physical machines and verify config/status before load. The pinned configuration table requires three live machines for progress and at least four machines for fault tolerance (five-plus is recommended), with five ideal coordinators. Three machines holding three copies cannot establish the same one-machine-loss availability as Raft majority-of-three. Record every coordinator, transaction, log and storage role/process.",
-      "physical_caveat": "FDB dynamically shards storage and separates commit roles. Two prefixes on six workers are not two Raft groups with three replicas. Use at least four independent machines for a one-machine-loss progress comparison, disclose the greater minimum machine count, and report any five-machine recommended configuration separately. Do not hide extra roles; compare declared fault tolerance and total resources.",
+      "replication": "Configure triple redundancy across at least four explicitly distinct logical machine/zone localities using isolated processes or containers on the selected host; verify actual role placement and config/status before load and after faults. The pinned production table requires three live machines for progress and at least four for one-machine fault tolerance (five-plus recommended). The local test simulates those failure domains; it does not supply independent hardware. Record every coordinator, transaction, log and storage role/process.",
+      "physical_caveat": "FDB dynamically shards storage and separates commit roles. Two prefixes on six workers are not two Raft groups with three replicas. Disclose all logical domains, extra roles and shared physical resources, and compare declared injected failure tolerance and total resources. A local domain-loss result does not establish physical-machine-loss availability.",
       "comparison_modes": ["all effects/history/CDC as KV", "immutable chunked columns plus transactional manifest with retained versioning"],
       "idempotency": "Read request-key/digest record and write result plus all effects/CDC in the same ordinary FDB transaction. Keep callbacks free of external effects because Transact retries. Pre-reserved immutable TxID/IDs remain fixed through retry; accept no duplicate graph effect after unknown commit."
     },
@@ -352,7 +358,7 @@
       },
       {
         "command": "CGO_ENABLED=1 go run ./cmd/v2-substrate-spike fault --substrate=fdb --cluster-file=/tmp/rho-v2-fdb/fdb.cluster --schedule=tests/v5substrate/cuts.json --seed=20261009 --output=/tmp/rho-v2-fdb-fault",
-        "requires": "Provision pinned 7.3.77 native client/server, API 730, triple redundancy on at least four independent machines for one-machine-loss progress, status check and role-aware kill/network hooks. Record cluster status before/after."
+        "requires": "Provision pinned 7.3.77 client/server, API 730, triple redundancy across at least four distinct logical machine/zone localities in isolated local processes or containers, plus role-aware kill/network hooks. Verify placement and record cluster status before/after; claim injected logical-domain loss only."
       },
       {
         "command": "go run ./cmd/v2-substrate-spike bench --substrate=raft --partitions=2 --replicas=3 --durability=quorum-sync --cross-percent=0,10,50,100 --runs=5 --seed=20261009 --output=/tmp/rho-v2-raft-bench",
@@ -368,7 +374,7 @@
       "cross_partition_transaction_percent": [0, 10, 50, 100],
       "writers": [1, 8, 32],
       "workloads": ["partition-local create/update", "cross-edge with endpoint-life and uniqueness checks", "contended key and empty-range predicate", "Fresh/Stable/After/At reads", "late state correction and retained old-cut index scan", "snapshot-to-feed replay", "immutable column publication/scan", "transfer under write and retained pins"],
-      "network_profiles": "Measure loopback overhead separately; actual three-host LAN then declared injected RTT distributions (1, 20, 100 ms). These RTTs are test settings, not measured WAN links.",
+      "network_profiles": "Measure local process/container transport overhead separately from injected RTT distributions (1, 20, 100 ms); record configured and observed delay/jitter. These are single-machine test settings, not measured LAN/WAN links.",
       "minimum_comparable_repetitions": 5,
       "report": ["useful committed facts and transactions/s", "p50/p95/p99 including retry/wait and failure recovery", "heap/allocations/GC and native-client RSS", "all server-role RSS/mmap/page cache", "disk raw/compressed bytes with replicas, logs, history, columns, indexes and metadata", "bytes/fact with source rows and graph facts distinguished", "network bytes and coordination messages/rounds", "write/read amplification, fsync count/latency, replay tail and open time", "lock/intents/dedup/pins/certificates budget occupancy", "oracle result and output cardinality"],
       "gate": "Zero semantic/durable divergence is mandatory. No performance acceptance threshold is fabricated here; apply V0 consumer targets and the plan's proposed regression/scaling thresholds only after review. Separate exact 2x3 functional evidence from differently shaped FDB deployment cost."

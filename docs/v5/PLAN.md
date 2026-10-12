@@ -845,6 +845,21 @@ artifacts to its review. This checklist specifies acceptance; current completion
 and missing evidence are recorded only in [the backlog](../../tasks/backlog.md).
 Reference checks establish their stated subset, never production completion.
 
+Test deployment decision, 2026-10-12: execute the distributed fault and scaling
+matrix on the available development machine, using separate native processes or
+Docker containers with isolated durable directories/volumes. This supersedes
+the earlier requirement to obtain independent physical machines. Keep the
+partition/replica counts, fault schedules, correctness oracles, workloads and
+repetitions below. Record logical failure domains and actual process/container
+placement, resource limits and aggregate host contention. Node/zone loss is
+injected by stopping or isolating the corresponding processes; storage faults
+use the declared VFS/durable-image model. Label these results **single-machine
+distributed tests**. They do not establish physical-host-loss availability or
+measured LAN/WAN performance; those are optional additional deployment evidence,
+not prerequisites for these phase exits. Process SIGKILL alone is not a power-loss
+test. Cross-engine comparisons still require equivalent declared durability and
+fault semantics, with every server role included in the cost ledger.
+
 | Phase | Concrete acceptance record |
 |---|---|
 | V0 | Reviewed tracked reference corpus; profile/axis unit and exact ms import mappings above; current-v4 delta at `dbd74cf4`/v4.51.1 alongside historical consumer pins; declared test resource/dataset profiles and versioned consumer door/capacity inventory; independent model inputs/expected failures; agreed limits distinguished from proposed thresholds |
@@ -1002,8 +1017,13 @@ Test point/span mixes 100/0, 95/5, 50/50 and 0/100; uncertainty 0/1/10/100%;
 ordered and late ingest; hot owners; long spans; rational denominators. Sigma's
 join workloads include an output-size stress for the access interface.
 Distributed database runs use 1/2/4/8 data
-partitions, three replicas, 0/10/50/100% cross-partition transactions and measured
-LAN/WAN delays. Report useful throughput, latency, output and completeness together.
+partitions, three replicas and 0/10/50/100% cross-partition transactions on the
+single-machine deployment specified in §8. Measure local transport separately
+from injected RTT profiles (1/20/100 ms), including observed delay/jitter.
+Report useful throughput, latency, output and completeness together. Preserve
+equal configured per-replica limits within a scaling series, record total
+resources and shared CPU/storage contention, and distinguish fixed-host scaling
+from scaling with additional physical resources.
 
 Measure raw/compressed bytes, all indexes/logs/provenance/replicas, resident heap,
 mmap/RSS/page cache, allocations/GC, locks, write/read amplification, network

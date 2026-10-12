@@ -5,6 +5,7 @@
   "owner_acceptance": {
     "goal": "Efficient in both space and time for large data. Space at least as efficient as comparable supported Neo4j, TigerGraph and Memgraph configurations, preferably better; excess only with quantified, causally isolated justification and explicit review.",
     "fixed_deployment": null,
+    "distributed_test_environment": "2026-10-12 owner decision: execute distributed fault/scaling tests on the available development machine with separate processes or Docker containers and isolated durable storage. No external physical-host prerequisite; label single-machine results and shared-resource effects. This is a test environment, not a production deployment or SLO.",
     "absolute_slo": null,
     "provisional_not_accepted": {
       "throughput_or_p99_regression_percent": 10,
@@ -231,7 +232,7 @@
         ],
         "cpu_allocation": "Exclusive cores or declared isolated vCPU quota; record actual CPU model, SMT, pinning and cgroup settings."
       },
-      "replication_rule": "Use the same profile per replica; report one-copy and complete three-replica, partition and coordinator totals. Scaling 1/2/4/8 partitions adds equal per-replica resources, not a fixed-total-resource efficiency claim. Record shared-device/contention placement and actual network separately.",
+      "replication_rule": "Use equal declared limits per replica within a series; report one-copy and complete three-replica, partition and coordinator totals. Execute the 1/2/4/8-partition distributed matrix on the owner-selected single host using isolated processes/containers; declare a feasible local resource profile before execution rather than claiming the native profiles fit by overcommitting physical resources. Record shared CPU/device contention and actual versus injected network delay. Fixed-host scaling is distinct from adding equal physical resources per partition; do not pool local/emulated measurements with the native vendor resource profiles.",
       "functional_lane": {
         "id": "local-functional",
         "os": "macOS or explicitly recorded emulation",
