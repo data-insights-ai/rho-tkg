@@ -1,0 +1,161 @@
+{
+  "run": 38246019140,
+  "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38246019140",
+  "head": "995f95d7fa6fd37ef5a16b8b78f1bf3f1f9bdd6e",
+  "integratedMain": "dbd74cf45c65c1086798012e92453315cab75143",
+  "status": "completed",
+  "conclusion": "success",
+  "capturedAt": "2026-10-12T12:38:01.914579+00:00",
+  "jobs": [
+    {
+      "name": "test (v5, v5/go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 114799957017,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38246019140/job/114799957017",
+      "startedAt": "2026-10-12T11:57:53Z",
+      "completedAt": "2026-10-12T12:19:01Z"
+    },
+    {
+      "name": "security (v5, v5/go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 114799957135,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38246019140/job/114799957135",
+      "startedAt": "2026-10-12T11:57:53Z",
+      "completedAt": "2026-10-12T12:00:24Z"
+    },
+    {
+      "name": "security (., go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 114799957227,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38246019140/job/114799957227",
+      "startedAt": "2026-10-12T11:57:53Z",
+      "completedAt": "2026-10-12T11:58:58Z"
+    },
+    {
+      "name": "coverage (., go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 114799957241,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38246019140/job/114799957241",
+      "startedAt": "2026-10-12T11:57:54Z",
+      "completedAt": "2026-10-12T12:03:00Z"
+    },
+    {
+      "name": "migration-preflight",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 114799957378,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38246019140/job/114799957378",
+      "startedAt": "2026-10-12T11:57:53Z",
+      "completedAt": "2026-10-12T12:01:28Z"
+    },
+    {
+      "name": "test (., go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 114799957448,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38246019140/job/114799957448",
+      "startedAt": "2026-10-12T11:57:53Z",
+      "completedAt": "2026-10-12T12:32:57Z"
+    },
+    {
+      "name": "comparison-correctness",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 114799957510,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38246019140/job/114799957510",
+      "startedAt": "2026-10-12T11:57:54Z",
+      "completedAt": "2026-10-12T12:00:35Z"
+    },
+    {
+      "name": "coverage (v5, v5/go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 114799957542,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38246019140/job/114799957542",
+      "startedAt": "2026-10-12T11:57:53Z",
+      "completedAt": "2026-10-12T12:00:52Z"
+    },
+    {
+      "name": "lint",
+      "status": "completed",
+      "conclusion": "skipped",
+      "databaseId": 114799958275,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38246019140/job/114799958275",
+      "startedAt": "2026-10-12T11:57:52Z",
+      "completedAt": "2026-10-12T11:57:51Z"
+    }
+  ],
+  "verifiedRaceLogs": [
+    {
+      "path": "tasks/evidence/e17-ci-deadline-20261012/root-test-995f95d7.log.gz",
+      "bytes": 31637,
+      "sha256": "5c9d35d03a4e5dbb420a934f5625276d05234743a5d23c4d869230bb09d44918",
+      "rawBytes": 125667,
+      "rawSha256": "ebd7f4c6caef03bbb16426dcc1d1f505dbc07ace8d8c7efd9c96b5e9f4b8ddd1",
+      "inventory": "2026-10-12T12:04:30.4557869Z root race gate: 44 other packages, 2182 core names, 4 exhaustive shards",
+      "raceBatchSizes": [
+        546,
+        546,
+        545,
+        545
+      ],
+      "uniqueNames": 2182,
+      "completion": "2026-10-12T12:32:54.5463691Z root race gate: all root packages and core shards passed"
+    },
+    {
+      "path": "tasks/evidence/e17-ci-deadline-20261012/v5-test-995f95d7.log.gz",
+      "bytes": 16355,
+      "sha256": "913012fa19851e105c834664fbe429347788de2bc75d19276a3fee68715d9ac7",
+      "rawBytes": 56004,
+      "rawSha256": "829c324a2a2715e566930aaf4ffefb5851c48d8692532c899f6e9f4af1a1005e",
+      "inventory": "2026-10-12T12:02:24.0566955Z v5 race gate: 11 other packages, 465 graphapply names, 4 exhaustive shards",
+      "raceBatchSizes": [
+        117,
+        116,
+        116,
+        116
+      ],
+      "uniqueNames": 465,
+      "completion": "2026-10-12T12:18:58.8415332Z v5 race gate: all v5 packages and graphapply shards passed"
+    }
+  ],
+  "sourceInputs": [
+    {
+      "path": "scripts/test-race.sh",
+      "sha256": "05ca5b53967500c7fe49c0e1d43037cbe9fcddb24ee91f021da5a10e1a627ce6"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "5722551b5be3e87589444d444926b493ab900d44b5eb05fe96a59be14dbaadbf"
+    },
+    {
+      "path": "Makefile",
+      "sha256": "677f054f337d923cfd653f122b09348f8c25c901a9d3186f59169b6b352312e8"
+    },
+    {
+      "path": "go.mod",
+      "sha256": "412e37f9e5829b7fa6e70edc7c38cf89a8754055bc3113b4c986721a3aba095d"
+    },
+    {
+      "path": "v5/go.mod",
+      "sha256": "3bf8baf02d354420ddf87b8865f20b854bb606f04e0f0988f0f9eed2d89e8a24"
+    },
+    {
+      "path": "v5/Makefile",
+      "sha256": "77c160be99b5de228100ee7a014482b6ee862df08a7264ebb71cd8ec08035141"
+    },
+    {
+      "path": "tools/v5-migrate/go.mod",
+      "sha256": "c58ca81fb45e87217ec131c666b0158cf415c136a8dc121cf8118c5b6c6ad59c"
+    },
+    {
+      "path": "tools/v5-migrate/Makefile",
+      "sha256": "0c2cdff5a87140703f96491331e72658cea9ae0ce9be734f27f46d507ae52b40"
+    }
+  ],
+  "scope": "Hosted integration at exact995f95d7: all eight applicable jobs pass, including both modules normal/race/coverage/security, migration and comparison. Push-only lint is skipped and remains separately locally qualified. Confirms forced-kill helper repair, bounded native Ready progress and receiving protocol integration. Does not qualify later declared-snapshot auditor, replacement activation, paired native/FDB recovery, physical-host durability, comparative performance or V2-V7 completion."
+}

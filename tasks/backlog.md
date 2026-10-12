@@ -463,8 +463,13 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    in the crash-test helper: closing stdin before SIGKILL allowed a clean child
    exit. The [ordering repair](evidence/v2-process-shutdown-order/receipt.json)
    preserves the strict killed-child assertion; its direct regression and 15
-   unchanged process-test parents pass normal/race. Hosted confirmation remains
-   pending.
+   unchanged process-test parents pass normal/race. Hosted integration at
+   [`995f95d7`](evidence/e17-ci-deadline-20261012/hosted-ci-995f95d7.json)
+   passes all eight applicable jobs, including both modules' normal/race,
+   coverage and security gates, migration and comparison checks. The actual
+   race inventories include the previously failing parent and its new ordering
+   regression. This confirms the repair and receiving/progress integration;
+   the later snapshot auditor and replacement activation retain separate gates.
    [Receiving-only term persistence](evidence/v2-application-receiving-20261012/receipt.json)
    is integrated: an empty bound store durably records a genuine receiving term
    while retaining inactive imports and refusing active membership/application.

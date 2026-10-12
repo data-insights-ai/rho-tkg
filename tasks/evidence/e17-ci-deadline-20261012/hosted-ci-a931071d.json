@@ -745,6 +745,6 @@
   },
   "scope": "Hosted full integration run at exact a931071d failed. Selected prior local passing runs do not supersede this failure. Root test job was cancelled by fail-fast; no race qualification from this run.",
   "failure": "TestAllocationP08NativeSixProcessesImmediateAfterQuorumReservationBurnsUnknownBlock: missing actual killed-child reap <nil>",
-  "diagnosis_status": "The crash-test helper closed stdin before killing the child, allowing a clean EOF exit. Source repair 9a5565be kills before closing stdin on forced shutdown. The direct ordering regression and 15 unchanged process-test parents pass normal/race; hosted confirmation of the repair remains pending. Original hosted result remains failure.",
+  "diagnosis_status": "The crash-test helper closed stdin before killing the child, allowing a clean EOF exit. Source repair 9a5565be kills before closing stdin on forced shutdown. The direct ordering regression and 15 unchanged process-test parents pass normal/race; all eight applicable hosted jobs at 995f95d7 now pass, including the original killed-child parent and its ordering regression in the race inventory (hosted-ci-995f95d7.json). Original hosted result remains failure.",
   "repair_evidence": "../v2-process-shutdown-order/receipt.json"
 }
