@@ -516,6 +516,14 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    and recover whole old/new durable states. Scoped vet/lint pass. This closes
    the local activation component; hosted integration, broader ownership/GC,
    remaining fault/cost evidence and V2 acceptance retain their own gates.
+   Hosted activation run `38258858745` found an established admission-closure
+   assertion failure in all four agreements: the new lifetime refusal omitted
+   `context.Canceled`. The [cancellation-cause correction](evidence/v2-replacement-admission-cancellation-20261012/receipt.json)
+   preserves owner/request context causes without changing the old assertions.
+   The exact admission parent plus activation/revocation tests pass normal/race
+   (14 parents, 55 subtests); no full-module rerun was used for this correction.
+   Remaining broad CI work was cancelled following the owner instruction to use
+   focused iteration checks. Full phase/release gates remain required.
    The v4.51.2 source integration is qualified by the `92c6415b` CI record above;
    subsequent activation source retains its own hosted integration gate.
    The [bounded recovery fix](evidence/native-ready-progress-20261012/qualification.json)
