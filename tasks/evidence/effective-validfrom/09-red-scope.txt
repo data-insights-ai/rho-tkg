@@ -1,0 +1,8 @@
+--- FAIL: TestEffectiveValidFrom_ScopeFollowsQueriedTypes (0.01s)
+    --- FAIL: TestEffectiveValidFrom_ScopeFollowsQueriedTypes/memory (0.00s)
+        effective_validfrom_test.go:723: after querying A / LA: rels {Tokens:2 Entities:10 Unknown:0 Entries:20 Bytes:1008 Notes:10} nodes {Tokens:2 Entities:20 Unknown:0 Entries:40 Bytes:1920 Notes:20}, want 1 token with 5 relationships, 1 token with 10 nodes
+    --- FAIL: TestEffectiveValidFrom_ScopeFollowsQueriedTypes/badger (0.01s)
+        effective_validfrom_test.go:723: after querying A / LA: rels {Tokens:2 Entities:10 Unknown:0 Entries:20 Bytes:1008 Notes:20} nodes {Tokens:2 Entities:20 Unknown:0 Entries:40 Bytes:1920 Notes:40}, want 1 token with 5 relationships, 1 token with 10 nodes
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.029s
+FAIL

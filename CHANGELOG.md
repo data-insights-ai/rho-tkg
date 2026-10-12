@@ -41,6 +41,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   deleted one) is noted, then flushed durably before the marker. A read-only open of a store without the marker does
   not scan (the marker write is tried first) and folds every relationship with history; so does a store without
   MetaKV.
+- **Effective scans bounded by valid end** (backlog 51, requested by sigma-tkgd for its step 6 restore):
+  `Temporal().ForEachRelEffectiveByTypeFrom(type, pin, validFrom, fn)` and
+  `ForEachNodeEffectiveByLabelsFrom(labels, pin, validFrom, fn)` stream what `ForEachRelEffectiveByType` /
+  `ForEachNodeEffectiveByLabels` stream, restricted to the entities with a (type- or label-limited) segment ending at
+  or after `validFrom` (`ValidTo >= validFrom`: the half-open segment ending exactly at `validFrom` counts) or open;
+  an untimed entity never deleted always streams, a deleted one ends at its delete instant, a retracted life never
+  streams. On memory and badger the candidates come from a RAM valid-end index per queried type / label
+  (`store.RelValidEndCapability` / `NodeValidEndCapability`, `index.ValidEndIndex`): per entity of that type or label
+  an upper bound on its valid end folded from its rows (each row's `ValidTo`; a delete recorded after all the
+  entity's earlier stamps ends every earlier row) and its newest stamp, so the entities read follow the answer: 5
+  read with 1,000 or 10,000 retired entities on memory and badger (sigma's acceptance,
+  `TestEffectiveByTypeValidFromCostFollowsResult`; before: 1,005 / 10,005), and 5 on the first call after a badger
+  reopen with 100,000 retired by `tkg_valid_to` at create or by delete
+  (`TestEffectiveValidFrom_BadgerReopenFirstCall`).
+  - Scope and write cost: the first call for a type or label tracks it (its ever-members from the K1 membership
+    sidecar, each read once: temporal fields only); only tracked types and labels are held and maintained. A write
+    of a kind with no tracked token costs one atomic load; a write of an untracked type or label of a tracked kind
+    one map lookup (badger decodes no row for it); a write of a tracked one folds its row (badger: the temporal block
+    only). Paired A/B per add-node + add-relationship + update (host under load, medians): badger 29.0 → 27.5 µs
+    after a scan of another type (no scan: 27.6 µs), memory 9.7 → 8.9 µs (no scan: 8.1 µs)
+    (`tasks/evidence/effective-validfrom/09-bench-writes-ab.txt`).
+  - First call after an open: builds the K1 sidecar if no pinned scan did (one pass over the kind's rows) and reads
+    the type's members' temporal fields (about 2-4 µs per row); at 100,000 retired relationships on badger
+    1.0-1.2 s against 2.3-2.9 s for the first unbounded call on the same reopened directory (loaded host; CPU
+    0.8 s vs 2.0-2.5 s), then microseconds. Not persisted: opening a badger store already walks every current row to
+    rebuild its RAM indexes, linear in the history, so persisting this index would not make a restart flat.
+  - An entity ended only by a valid-time close (`CloseVersion`) keeps its open predecessor in the fold: it is read
+    once, then its exact end is kept until its next write or a reopen.
+  - Tiered and sharded give the same answers through the unbounded candidates (not accelerated).
+  Evidence: `tasks/evidence/effective-validfrom/`.
 
 ### Fixed
 

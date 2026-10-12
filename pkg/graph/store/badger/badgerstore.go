@@ -543,6 +543,13 @@ type Store struct {
 	histRelStamps          historyStamps
 	historyStampsBuildHook func()
 	historyStampsProbeHook func()
+	// Valid-end indexes (backlog 51, badgerstore_valid_end.go): RAM, per
+	// queried type / label, maintained by noteValidEndOp under wbMu and the K1
+	// membership doors. validEndTrackHook runs between a token's enlisting and
+	// its members' re-read (tests only).
+	relValidEnds      indexpkg.ValidEndIndex
+	nodeValidEnds     indexpkg.ValidEndIndex
+	validEndTrackHook func()
 	// clearDropTestHook, when non-nil, runs in Clear right before the keyspace
 	// drop; a non-nil error is returned as the drop's failure. Test only.
 	clearDropTestHook func() error
@@ -2132,6 +2139,7 @@ func (bs *Store) Clear() error {
 	defer bs.histNodeStamps.buildMu.Unlock()
 	bs.histRelStamps.buildMu.Lock()
 	defer bs.histRelStamps.buildMu.Unlock()
+	bs.resetValidEndsLocked() // the valid-end indexes (tracked under idxMu)
 
 	// Clear in-memory indexes.
 	bs.nodeIDs = make(map[types.NodeID]struct{})

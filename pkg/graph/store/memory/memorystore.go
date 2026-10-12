@@ -273,6 +273,11 @@ type Store struct {
 	nodeBeliefWatermark map[types.NodeID]types.Instant
 	relBeliefWatermark  map[types.RelID]types.Instant
 
+	// Valid-end indexes (backlog 51, memorystore_valid_end.go): lazy, RAM,
+	// maintained under mu after their first build.
+	relValidEnds  indexpkg.ValidEndIndex
+	nodeValidEnds indexpkg.ValidEndIndex
+
 	// History stamps (store.HistoryStampsCapability, backlog 30,
 	// memorystore_history_stamps.go): per ID, the cached fold of its history
 	// rows' newest TxFrom / TxTo-or-DeletedAt with the row count it was
@@ -494,6 +499,8 @@ func (ms *Store) Clear() error {
 	segErr := ms.clearSegmentsLocked() // ADR-0011: segments go (files too, S3), declarations stay
 	ms.bumpNodeEpoch()                 // any cached column from before Clear is now invalid
 	ms.bumpRelEpoch()                  // and the adjacency view (X5 expand path)
+	ms.relValidEnds.Reset()            // backlog 51: rebuilt on the next bounded scan
+	ms.nodeValidEnds.Reset()
 	// Drop the change-log records (the store is now empty) and re-anchor with a
 	// ChangeClear marker at a fresh, still-monotonic LSN — mirrors badger.Clear.
 	ms.changeLog = nil

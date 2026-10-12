@@ -67,6 +67,7 @@ func (ms *Store) putRelationshipRouted(r *types.Relationship, token uint64) erro
 	}
 
 	ms.rels[id] = ms.storedRel(r)
+	ms.noteRelCurrentLocked(r)
 	ms.segAccountLocked(ms.rels[id], 1)
 	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r)) // BACKLOG 10c
 
@@ -165,6 +166,7 @@ func (ms *Store) putRelationshipGeneratedIDWithEndpointHashesRouted(r *types.Rel
 	ig.ToNodeHash = toHash
 
 	ms.rels[id] = ms.storedRel(r)
+	ms.noteRelCurrentLocked(r)
 	ms.segAccountLocked(ms.rels[id], 1)
 	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r)) // BACKLOG 10c
 
@@ -272,6 +274,7 @@ func (ms *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 	indexpkg.RemoveRelFromTemporalIndexes(ms.relTypeTemporalIndexes, old, id.SnowflakeID()) // BACKLOG 21c
 	ms.segAccountLocked(old, -1)
 	ms.rels[id] = ms.storedRel(r)
+	ms.noteRelCurrentLocked(r)
 	ms.segAccountLocked(ms.rels[id], 1)
 	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r)) // BACKLOG 10c
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID())
@@ -346,6 +349,7 @@ func (ms *Store) deleteRelLocked(id types.RelID) error {
 	indexpkg.RemoveRelFromTemporalIndexes(ms.relTypeTemporalIndexes, r, id.SnowflakeID()) // BACKLOG 21c
 	ms.segAccountLocked(r, -1)
 	delete(ms.rels, id)
+	ms.relValidEnds.NoteCurrentDelete(int64(id))
 	return nil
 }
 
@@ -785,6 +789,7 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		endID := r.EndNodeID()
 
 		ms.rels[id] = ms.storedRel(r)
+		ms.noteRelCurrentLocked(r)
 		ms.segAccountLocked(ms.rels[id], 1)
 		ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r)) // BACKLOG 10c
 

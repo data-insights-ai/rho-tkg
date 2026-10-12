@@ -60,6 +60,7 @@ func (ms *Store) putNodeRouted(n *types.Node, token uint64) error {
 	}
 
 	ms.nodes[nid] = ms.storedNode(n)
+	ms.noteNodeCurrentLocked(n)
 
 	ms.addNodeLabelIndexes(nid, n)
 	ms.recordNodeLabelMembersLocked(n)                   // transaction-time label membership
@@ -210,6 +211,7 @@ func (ms *Store) DeleteNode(nid types.NodeID) error {
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
 	delete(ms.nodes, nid)
+	ms.nodeValidEnds.NoteCurrentDelete(int64(nid))
 	return ms.logNodeHardDeleteLocked(nid.SnowflakeID(), nil)
 }
 
@@ -272,6 +274,7 @@ func (ms *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = ms.storedNode(updatedNode)
+	ms.noteNodeCurrentLocked(updatedNode)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
@@ -342,6 +345,7 @@ func (ms *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = ms.storedNode(updatedNode)
+	ms.noteNodeCurrentLocked(updatedNode)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
@@ -408,6 +412,7 @@ func (ms *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = ms.storedNode(n)
+	ms.noteNodeCurrentLocked(n)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
 	ms.addNodePropertyKeyCounts(n)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
@@ -505,6 +510,7 @@ func (ms *Store) deleteNodeCascadeRouted(nid types.NodeID, token uint64) error {
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
 	delete(ms.nodes, nid)
+	ms.nodeValidEnds.NoteCurrentDelete(int64(nid))
 
 	return ms.logNodeHardDeleteRoutedLocked(nid.SnowflakeID(), cascaded, token)
 }
@@ -558,6 +564,7 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 	for i, n := range nodes {
 		id := n.ID()
 		ms.nodes[id] = ms.storedNode(n)
+		ms.noteNodeCurrentLocked(n)
 		ms.bumpNodeBeliefWatermarkLocked(id, nodeTxFrom(n)) // BACKLOG 10c
 
 		ms.addNodeLabelIndexes(id, n)
@@ -641,6 +648,7 @@ func (ms *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)
 		indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
 		delete(ms.nodes, id)
+		ms.nodeValidEnds.NoteCurrentDelete(int64(id))
 		if err := ms.logNodeHardDeleteLocked(id.SnowflakeID(), nil); err != nil {
 			return err
 		}

@@ -248,6 +248,8 @@ type temporalOpsSpy struct {
 	lastDir      Direction
 	lastRelTypes []string
 	lastLabels   []string
+	// The valid-end bounded scans (backlog 51).
+	lastValidFrom types.Instant
 }
 
 func (s *temporalOpsSpy) record(name string) { s.calls = append(s.calls, name) }

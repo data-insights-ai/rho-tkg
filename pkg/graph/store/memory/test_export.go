@@ -66,6 +66,7 @@ func (ms *Store) SetNodeForTest(id types.NodeID, n *types.Node) {
 		return
 	}
 	ms.nodes[id] = ms.storedNode(n)
+	ms.noteNodeCurrentLocked(n)
 }
 
 // HFIndexPointQueryForTest returns the high-frequency index candidates for t.
