@@ -366,7 +366,9 @@ reviewed and validated before the next package starts.
    delivery, recipient/allocator restarts, stale Entity/Life/Value refusal and
    exact committed graph retries. All 52 selected tests plus one fuzz seed pass
    in each normal/race mode; the recipient-session omission is detected. Production
-   is unchanged. Combined hosted CI remains pending; full V2 stays open.
+   is unchanged. Combined [hosted CI at `fee9b82d`](evidence/v2-native-graph-lifecycle/hosted-ci-fee9b82d.json)
+   passes root/v5 test/race, coverage, security/vulnerability and comparison
+   gates; push-only lint is covered by the pinned local runs. Full V2 stays open.
    The [local FoundationDB graph fault launcher](../tools/v5-substrate/fdb/evidence/launcher-20261012-review.json)
    now passes real client kills, one-zone-loss progress and all-server same-volume
    restart, with exact retained history/CDC and bounded containers. Its 29 native
