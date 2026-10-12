@@ -253,6 +253,8 @@ type Config struct {
 	// SyncWrites enables synchronous disk writes for every mutation.
 	// When true, each write is flushed to Badger immediately (no async buffer).
 	// Eliminates the async flush window at the cost of higher write latency.
+	// Inside a store.MutationFlushHoldCapability hold (graph DurableCommit
+	// group) the flush waits for the group's DurableFlush instead.
 	// Ignored in ReadOnly mode.
 	SyncWrites bool
 	// MaxPendingWrites bounds the async write buffer. When the pending-op
@@ -261,7 +263,8 @@ type Config struct {
 	// never-evictable cache entries behind it — grow without limit under a
 	// write burst faster than FlushInterval. Default:
 	// DefaultMaxPendingWrites. Negative disables the bound (pre-4.5
-	// unbounded behavior). Ignored when SyncWrites is true (every write
+	// unbounded behavior). Under SyncWrites it bounds only the writes held
+	// by a durable group (HoldMutationFlushes); otherwise ignored there (every write
 	// already flushes).
 	MaxPendingWrites int
 	// Compression sets the SSTable compression algorithm.
@@ -913,9 +916,20 @@ type Store struct {
 	// flushIndexLocked that Badger did not fsync (SyncWrites off) and cleared
 	// by DurableFlush's db.Sync, so a durable flush fsyncs exactly when
 	// something reached the WAL without an fsync. durableSyncs counts those
-	// syncs (DurableSyncCountForTest).
-	unsynced     atomic.Bool
-	durableSyncs atomic.Int64
+	// syncs (DurableSyncCountForTest). syncedFlushes counts the WriteBatch
+	// commits Badger synced itself (SyncWrites); with durableSyncs it is the
+	// sync count per commit group (SyncCountForTest, backlog 52).
+	unsynced      atomic.Bool
+	durableSyncs  atomic.Int64
+	syncedFlushes atomic.Int64
+
+	// flushHold is set between HoldMutationFlushes and ReleaseMutationFlushes
+	// (store.MutationFlushHoldCapability, a durable group under SyncWrites):
+	// flushIfNeeded leaves the writes pending until holdMaxPending (the
+	// resolved MaxPendingWrites; 0 = unbounded).
+	flushHold      atomic.Bool
+	holdMaxPending int
+
 	// Test seams (nil in production): failNextFlush makes the next WriteBatch
 	// commit fail through the real requeue path (FailNextFlushForTest);
 	// testHookDurableAfterCheckOpen runs inside DurableFlush right after its
@@ -1109,6 +1123,7 @@ func New(cfg Config) (*Store, error) {
 	if maxPending == 0 {
 		maxPending = DefaultMaxPendingWrites
 	}
+	holdMaxPending := max(maxPending, 0) // bounds a held durable group under SyncWrites
 	if maxPending < 0 || (cfg.SyncWrites && !cfg.ReadOnly) {
 		maxPending = 0 // explicitly unbounded, or moot under SyncWrites
 	}
@@ -1169,6 +1184,7 @@ func New(cfg Config) (*Store, error) {
 		ords:                    newOrdinals(cfg),
 		onChangeLogFlush:        cfg.OnChangeLogFlush,
 		maxPending:              maxPending,
+		holdMaxPending:          holdMaxPending,
 		flushInt:                flushInt,
 		gcInt:                   gcInt,
 		gcRatio:                 gcRatio,

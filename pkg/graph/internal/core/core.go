@@ -205,6 +205,11 @@ type Core struct {
 	// (GraphTx.Commit, Batch.Execute) calls it once before returning success
 	// (flushDurableCommit). Nil = off, no flush on commit.
 	durableFlush storepkg.DurableFlushCapability
+	// flushHold is set when DurableCommit is on and the store flushes every
+	// mutation (Badger SyncWrites): a group's mutations run under c.mu.Lock
+	// with the store's per-mutation flush held, and the group's one
+	// DurableFlush makes them durable (backlog 52). Nil = no hold.
+	flushHold storepkg.MutationFlushHoldCapability
 	// allowTxBackfill enables the privileged transaction-time backfill doors:
 	// when true, create doors honor a caller-supplied tkg_tx_from (or
 	// AddWithTx) instead of stamping c.now(), and DeleteWithTx / UpdateWithTx
@@ -686,10 +691,15 @@ type Config struct {
 	// ErrCapabilityNotSupported when missing. Every in-tree backend
 	// (memory.Store, badger.Store, tiered.Store) satisfies the full
 	// composition.
-	Store                storepkg.MandatoryStore
-	BadgerDir            string
-	BadgerInMemory       bool
-	Validation           ValidationLimits
+	Store          storepkg.MandatoryStore
+	BadgerDir      string
+	BadgerInMemory bool
+	Validation     ValidationLimits
+	// SyncWrites makes the badger-backed store flush every mutation before it
+	// returns and Badger fsync each write (strict power-loss durability). Under
+	// DurableCommit the mutations of a commit group are synced together at the
+	// group's durable commit instead (see DurableCommit). Ignored when Store is
+	// provided explicitly (set it on the store's own config).
 	SyncWrites           bool
 	Compression          options.CompressionType
 	ZSTDCompressionLevel int
@@ -880,7 +890,8 @@ type Config struct {
 	// writes the pending write buffer and fsyncs the write-ahead log of every
 	// open shard that took writes. A crash after the door returned keeps the
 	// whole group; a crash before it returned can keep any subset (not
-	// promised either way). Rollback never flushes. A failed flush returns
+	// promised either way). Rollback never flushes (except under SyncWrites,
+	// below). A failed flush returns
 	// ErrCommitNotDurable: the group is committed in memory and stays pending
 	// for the next flush. Not covered: standalone mutations and
 	// concurrent-mode ingest Submit, which keep the async flush. A buffer
@@ -889,7 +900,17 @@ type Config struct {
 	// only the active memtable WAL and the current value-log file, so rows of
 	// a group whose flush filled the memtable (or a value-log file) can stay
 	// unsynced after the return — safe against a process crash, not a power
-	// loss; use SyncWrites for strict power-loss durability. New fails with
+	// loss; use SyncWrites for strict power-loss durability. With SyncWrites
+	// on a badger store a group costs one synced WriteBatch, not one sync per
+	// mutation: its mutations (each GraphTx mutation, the Batch.Execute window,
+	// a Rollback) run under the exclusive graph lock with the per-mutation
+	// flush held (store.MutationFlushHoldCapability), the held buffer flushes
+	// in steps at MaxPendingWrites, and a Rollback ends with one durable flush
+	// (part of the group can already be on disk). Side effect: with both
+	// flags, each GraphTx mutation takes the exclusive graph lock instead of
+	// the shared one, so standalone writers, readers and concurrent ingest
+	// lanes wait for each tx mutation (microseconds of in-memory work; the
+	// sync is at the commit, outside the lock). New fails with
 	// ErrCapabilityNotSupported when the store has no stable storage (memory
 	// store, BadgerInMemory, an in-memory tiered or sharded store). Default
 	// false: no flush on commit, today's behavior.
@@ -1960,6 +1981,9 @@ func New(config Config) (*Core, error) {
 			return nil, fmt.Errorf("graph: Config.DurableCommit needs a store with stable storage (a disk badger, tiered or sharded store): %w", storepkg.ErrCapabilityNotSupported)
 		}
 		c.durableFlush = df
+		if h, ok := store.(storepkg.MutationFlushHoldCapability); ok && h.FlushesEveryMutation() {
+			c.flushHold = h
+		}
 	}
 	c.preEncodedPut = nativePreEncodedPut(store)
 	// Ownership-transfer put (lever #2) is independent of the §4.5 pre-encode

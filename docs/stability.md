@@ -86,6 +86,8 @@ Removals and breaking changes land only at major-version boundaries or after a d
 
 ## Experimental Surfaces
 
+The `*ForTest` exports on `badger.Store` (e.g. `SyncCountForTest`, `DurableSyncCountForTest`, `FailNextFlushForTest`) are test seams, outside the stability promise: they may change or disappear in any release.
+
 The following surfaces are **not** covered by the v4 stability promise. They are either in active development or pending a future decision and may be removed, changed incompatibly, or stabilized with different semantics at **any time** — including within a minor release.
 
 - **Replication Phase-1 API** (`g.Replication().ApplyChange`, `ApplyChanges`, `AppliedLSN`, `SetAppliedLSN`, `RegistrySnapshot`, `IDSlotLease`, `SetIDSlotLease`, `Watch`, and the replica wiring `g.SetReplicationSource`) — read-replica foundation, available but subject to refinement as horizontal-scaling matures
