@@ -31,6 +31,8 @@ GRAPH_COMPAT = [
 PARENTS = re.compile(r"^\s*func\s+((?:Test|Fuzz)\w+)\s*\(", re.MULTILINE)
 DEFINITIONS = re.compile(r"^(func(?:\s+\([^\n]*\))?|type|var|const)\s+(\w+)", re.MULTILINE)
 FIXTURE_COMPAT = {
+    "paired_graph_fault_harness_test.go": ["TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", "TestNativePairedGraphFaultNoOpUsesActualRetainedNormalEntry"],
+    "paired_graph_snapshot_harness_test.go": ["TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts"],
     "replicated_process_test.go": ["TestReplicatedProcessProtocolBoundaries", "TestReplicatedProcessShutdownReapsFailedCloseRPC"],
     "graph_source_process_test.go": ["TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput", "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts"],
 }

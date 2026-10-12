@@ -161,6 +161,15 @@ class RealGitSelection(unittest.TestCase):
         self.assertIn("TestUsed", names)
         self.assertNotIn("TestUnrelated", names)
 
+    def test_reviewed_paired_fixture_types_have_finite_real_parent_scope(self):
+        for name in ("paired_graph_fault_harness_test.go", "paired_graph_snapshot_harness_test.go"):
+            with self.subTest(fixture=name):
+                path = self.directory / name
+                path.write_text("package graphapply\ntype pairedFixture struct{}\n")
+                names = CI.graph_selection(self.directory, [path], {path: [("type", "pairedFixture")]})
+                self.assertIn("TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", names)
+        self.assertIn("TestNativePairedGraphFaultNoOpUsesActualRetainedNormalEntry", CI.FIXTURE_COMPAT["paired_graph_fault_harness_test.go"])
+
     def test_unknown_fixture_type_or_production_scope_requires_full(self):
         fixture = self.directory / "unknown_test.go"
         fixture.write_text("package graphapply\ntype unknown struct{}\n")
