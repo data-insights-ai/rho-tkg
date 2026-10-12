@@ -23,7 +23,7 @@ ledgers of 2026-10-09/10 (per-step red tests, merges, reviews) are in git histor
 | 13 | "analyse the v5 work if we can also merge with our v4 work and how fjnsihed it is" / "Report should go in main docs" / "Add the mapping and add a section in hand over.MD" / "push all to main" | done | `docs/v5-analysis.md` §5; `HANDOVER.md` §15 |
 | 14 | "can we use the v5 already?" / ask the sigma and aisoc agents | done — no (both consumers) | `docs/v5-analysis.md` §4 |
 | 15 | "Why were the other items not started? Parallel Opus subagents?" + "Monitoring sonnet agent" + "Review with opus high" + "Use a fable Agent at the end" | done | v4.51.1 (dbd74cf), items 35, 48, 33, 42 |
-| 16 | sigma-tkgd 2026-10-12 (consumer, relayed): valid-end bounded effective scans (backlog 51) + cheap AtNodes gather (backlog 50) for its step 6, flat restore | open — waits for René's "fix 50/51" | `tasks/backlog.md` 50, 51 |
+| 16 | sigma-tkgd 2026-10-12 (consumer, relayed): valid-end bounded effective scans (backlog 51) + cheap AtNodes gather (backlog 50) for its step 6, flat restore | in progress — René 2026-10-12 "Go" (49 + 50 + 51 for v4.51.2) | `tasks/backlog.md` 50, 51 |
 
 ## Releases (one line each; all gates `make ci-docker` exit 0, consumers build + vet)
 
@@ -43,6 +43,10 @@ ledgers of 2026-10-09/10 (per-step red tests, merges, reviews) are in git histor
 
 ## Open queue (mirrors `HANDOVER.md` §11; specs in `tasks/backlog.md`)
 
+- [ ] v4.51.2 batch (René 2026-10-12 "Go" on 49/50/51; three Opus build agents in worktrees, one item each; one Opus-high review each; final Fable review; one `make ci-docker`; PATCH tag v4.51.2):
+  - 49 in code? `pkg/graph/store/tiered/tieredstore_read_history_rel.go:98-103` (history read goes to the live row's shard only). Red test `TestReimportAcrossShardsKeepsEarlierLife` (memory/badger/sharded/tiered); break cases: move A-shard→B-shard and back, node re-import, two re-imports, pin inside each life for History/RelEffectiveTimeline/RelAsOf/ForEachRelEffective/RelsEffectiveByIDs. Proof: red output then green under `tasks/evidence/reimport-shards/`.
+  - 50 in code? `pkg/graph/internal/core/temporal.go:789-793` (candidates = current ∪ deleted only); `effective_scans.go:236` (AtNodes folds every rel with history). Red tests `TestPinnedAdjacencyFindsReimportedEarlierLife` (every adjacency door, 4 backends) + one-seed cost gate `BenchmarkEffectiveAtNodesOneSeed` (100 K rels with history: AtNodes within a constant factor of the by-IDs door); break cases: re-import with other src, other dst, same endpoints, re-import twice, deleted-never-reimported, reopen on badger (persisted re-import set). Proof: red output, bench before/after under `tasks/evidence/effective-scans/`.
+  - 51 in code? `pkg/graph/internal/core/effective_timeline.go:639`, `effective_scans.go:414` (enumerate by type/label over all history). Red test `TestEffectiveByTypeValidFromCostFollowsResult` (sigma's acceptance: 1k vs 10k retired, constant matches, entities read constant on memory and badger) + semantics table; break cases: validFrom exactly at a valid end (half-open), untimed entity included, later correction moving valid end below validFrom (pin before vs after), retracted, deleted, tiered/sharded parity, validFrom = 0 equals the unbounded door. Proof: red output, entities-read counts under `tasks/evidence/effective-validfrom/`.
 - [x] 43 retraction door — released v4.49.1/v4.49.2.
 - [x] 34 `Set{Node,Rel}VersionIntervalWithTx` on every door — released v4.50.1 (09e58d3, gate scratchpad ci-docker-v4501.txt exit 0, coverage 87.4%), sigma-tkgd and ai-soc notified 2026-10-11.
 - [x] 33 + 42 released v4.51.1 (c62d995; review Opus high: merge after F1 test + F2 sharded nativeStoreTypes, both done). 41 left open with measurements (merge saves only where both doors run).
