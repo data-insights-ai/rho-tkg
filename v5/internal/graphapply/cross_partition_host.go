@@ -62,7 +62,7 @@ func (h *allocationHost) ReadCrossPhase(tx [16]byte, phase crossPhase, nonce [16
 	if h.machine == nil || h.driver == nil || !crossGraphAgreement(h.machine.SemanticContractID()) {
 		return allocationEvent{}, errInvalid
 	}
-	if h.sequence == math.MaxUint64 || len(h.pending)+len(h.crossPending)+len(h.capacityPending)+len(h.cutPending)+len(h.requestPending) >= 16 {
+	if h.sequence == math.MaxUint64 || h.pendingReadCount() >= 16 {
 		return allocationEvent{}, errLimit
 	}
 	if h.crossPending == nil {

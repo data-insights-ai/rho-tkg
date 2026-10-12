@@ -29,23 +29,30 @@ func (m *declaredMaterializer) crossManifest(q *reader, wire []byte) (crossManif
 	if err != nil {
 		return manifest, err
 	}
+	return manifest, m.validateCrossManifestBinding(manifest, cfg)
+}
+
+// Immutable configuration/namespace validation is separate from current graph
+// catalog validation. Completed replay can inspect a supplied incoming-bank
+// view without borrowing the active store's historical catalog.
+func (m *declaredMaterializer) validateCrossManifestBinding(manifest crossManifest, cfg genesisAllocationConfig) error {
 	digest, err := cfg.digest()
 	if err != nil {
-		return manifest, err
+		return err
 	}
 	if manifest.configuration != digest || manifest.declaration != m.declaration.Digest() || manifest.routing != cfg.routingDigest || manifest.request.ns.graph != m.ns.graph || len(manifest.parts) != m.declaration.Len() {
-		return manifest, errInvalid
+		return errInvalid
 	}
 	for i, p := range manifest.parts {
 		d, _ := m.declaration.PartitionAt(i)
 		if p.binding.Partition != d.Partition || p.binding.OwnershipEpoch != d.OwnershipEpoch || p.binding.Graph != graphstate.GraphID(m.ns.graph) {
-			return manifest, errInvalid
+			return errInvalid
 		}
 	}
 	if _, ok := m.declaration.Partition(manifest.coordinator); !ok {
-		return manifest, errInvalid
+		return errInvalid
 	}
-	return manifest, nil
+	return nil
 }
 func crossControl(q *reader, key []byte, max int) (raftlog.ApplicationControlRecord, bool, error) {
 	remaining := min(q.limits.readBytes-q.bytes, q.view.ReadLimits().Bytes)

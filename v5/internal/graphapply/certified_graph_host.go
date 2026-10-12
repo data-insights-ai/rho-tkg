@@ -90,7 +90,7 @@ func (h *allocationHost) ReadGraphCut(q graphCutQuery) (allocationEvent, error) 
 	if !h.machine.certifiedReads() {
 		return allocationEvent{}, errInvalid
 	}
-	if h.sequence == math.MaxUint64 || len(h.pending)+len(h.crossPending)+len(h.capacityPending)+len(h.cutPending)+len(h.requestPending) >= 16 {
+	if h.sequence == math.MaxUint64 || h.pendingReadCount() >= 16 {
 		return allocationEvent{}, errLimit
 	}
 	if h.cutPending == nil {
@@ -192,6 +192,15 @@ func (m *declaredMaterializer) observeGraphCut(ctx context.Context, query graphC
 	}()
 	if err = joinGraphOutputBudget(&q, graphRequest{}, 4096, effective); err != nil {
 		return out, err
+	}
+	if m.rangeMoves() && query.kind == 1 {
+		move, e := readRangeMoveActive(&q)
+		if e != nil {
+			return out, e
+		}
+		if move != ([16]byte{}) {
+			return out, errGraphCutPending
+		}
 	}
 	cfg, err := m.initialized(&q)
 	if err != nil {

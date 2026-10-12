@@ -39,7 +39,8 @@ func (p *nativeGraphTestPump) drive(ctx context.Context, event allocationEvent) 
 		if packet.Snapshot || packet.To < 1 || packet.To > 3 {
 			return allocationEvent{}, errInvalid
 		}
-		e, err := p.n.hosts[p.group][packet.To-1].Step(packet)
+		h := p.n.hosts[p.group][packet.To-1]
+		e, err := h.Step(packet)
 		if err != nil {
 			return allocationEvent{}, err
 		}
@@ -51,6 +52,7 @@ func (p *nativeGraphTestPump) drive(ctx context.Context, event allocationEvent) 
 		result.crossReplies = append(result.crossReplies, e.crossReplies...)
 		result.requestReplies = append(result.requestReplies, e.requestReplies...)
 		result.cutReplies = append(result.cutReplies, e.cutReplies...)
+		result.moveReplies = append(result.moveReplies, e.moveReplies...)
 	}
 	return result, nil
 }
@@ -70,6 +72,23 @@ func (p *nativeGraphTestPump) Allocation(ctx context.Context, q allocationQuery)
 		}
 	}
 	return allocationReply{}, graphstore.ErrSourceUnavailable
+}
+func (p *nativeGraphTestPump) Move(ctx context.Context, q rangeMoveQuery) (rangeMoveReply, error) {
+	e, err := p.host.ReadRangeMove(ctx, q)
+	if err != nil {
+		return rangeMoveReply{}, err
+	}
+	id := e.readID
+	e, err = p.drive(ctx, e)
+	if err != nil {
+		return rangeMoveReply{}, err
+	}
+	for _, r := range e.moveReplies {
+		if r.id == id && r.question == q {
+			return r, nil
+		}
+	}
+	return rangeMoveReply{}, graphstore.ErrSourceUnavailable
 }
 func (p *nativeGraphTestPump) Cut(ctx context.Context, q graphCutQuery) (graphCutReply, error) {
 	e, err := p.host.ReadGraphCut(q)
@@ -130,9 +149,11 @@ func (p *nativeGraphTestPump) Request(ctx context.Context, q crossRequestQuestio
 func (p *nativeGraphTestPump) Submit(ctx context.Context, proposal allocationProposal) ([]byte, error) {
 	e, err := p.host.Submit(proposal)
 	if err != nil {
+		p.n.t.Logf("native submit original error partition=%d: %T %v", p.host.machine.ns.partition, err, err)
 		return nil, err
 	}
 	if _, err = p.drive(ctx, e); err != nil {
+		p.n.t.Logf("native drive original error partition=%d: %T %v", p.host.machine.ns.partition, err, err)
 		return nil, err
 	}
 	return p.host.machine.store.ApplicationRecord(ctx, p.host.driver.Applied(), true, 64<<10)

@@ -34,21 +34,37 @@ type processSnapshotPacket struct {
 // The existing local door correctly refuses it; that observed business refusal
 // is missing orchestration evidence, never a safety bug in the local API.
 type certifiedProcessNetwork struct {
-	all    map[uint64]*graphProcess
-	groups [2]*tinyGraphTransport
-	dir    string
+	all                                           map[uint64]*graphProcess
+	groups                                        [2]*tinyGraphTransport
+	dir                                           string
+	rangeMoves                                    bool
+	retired                                       []*graphProcess
+	e17MovePages, e17PublicPhases, e17VoterPhases int
+	e17PublicUsed, e17VoterUsed                   int
 }
 
 func newCertifiedProcessNetwork(t *testing.T) *certifiedProcessNetwork {
+	t.Helper()
+	return newCertifiedProcessNetworkProfile(t, false)
+}
+
+func newCertifiedProcessNetworkProfile(t *testing.T, rangeMoves bool) *certifiedProcessNetwork {
 	t.Helper()
 	dir, err := os.MkdirTemp(os.Getenv("RHO_GRAPH_PROCESS_ARTIFACT"), "rho-certified-process-")
 	if err != nil {
 		t.Fatal(err)
 	}
-	n := &certifiedProcessNetwork{all: make(map[uint64]*graphProcess), dir: dir}
+	n := &certifiedProcessNetwork{all: make(map[uint64]*graphProcess), dir: dir, rangeMoves: rangeMoves}
+	if rangeMoves {
+		n.e17MovePages, n.e17PublicPhases, n.e17VoterPhases = graphE17AdmittedMovePages, 5, 2
+	}
 	t.Log("certified process durable directories", dir)
 	for id := uint64(1); id <= 6; id++ {
-		n.all[id] = startGraphProcess(t, filepath.Join(dir, fmt.Sprint(id)), id, "RHO_GRAPH_CERTIFIED_PROCESS=1", "RHO_GRAPH_SOURCE_PROCESS=1")
+		env := []string{"RHO_GRAPH_CERTIFIED_PROCESS=1", "RHO_GRAPH_SOURCE_PROCESS=1"}
+		if rangeMoves {
+			env = append(env, "RHO_GRAPH_RANGE_PROCESS=1")
+		}
+		n.all[id] = startGraphProcess(t, filepath.Join(dir, fmt.Sprint(id)), id, env...)
 	}
 	attachGraphProcessMuxes(t, n.all)
 	n.groups[0] = &tinyGraphTransport{nodes: map[uint64]*graphProcess{1: n.all[1], 2: n.all[2], 3: n.all[3]}}
@@ -60,10 +76,12 @@ func newCertifiedProcessNetwork(t *testing.T) *certifiedProcessNetwork {
 		reaped, successful := 0, 0
 		for id := uint64(1); id <= 6; id++ {
 			p := n.all[id]
-			calls += p.sequence
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			err := p.shutdown(ctx, false)
 			cancel()
+			p.mux.mu.Lock()
+			calls += p.sequence
+			p.mux.mu.Unlock()
 			if err != nil {
 				t.Error("certified child cleanup", id, err)
 			}
@@ -86,8 +104,21 @@ func newCertifiedProcessNetwork(t *testing.T) *certifiedProcessNetwork {
 				t.Error("certified stdout leak", id, err)
 			}
 		}
+		for _, retired := range n.retired {
+			retired.mux.mu.Lock()
+			calls += retired.sequence
+			retired.mux.mu.Unlock()
+			if !retired.closed || retired.cmd.ProcessState == nil {
+				t.Error("retired certified child was not reaped")
+			}
+		}
 		packets := n.groups[0].delivered + n.groups[1].delivered
-		if calls+uint64(packets) > processDeliveries {
+		allowance := uint64(processDeliveries)
+		if n.rangeMoves {
+			allowance = graphE17FixtureDeliveries(n.e17MovePages, n.e17PublicPhases, n.e17VoterPhases)
+			t.Logf("E17 counted phase ledger: maximum=%d pages=%d public=%d/%d nativeVoter=%d/%d", allowance, n.e17MovePages, n.e17PublicUsed, n.e17PublicPhases, n.e17VoterUsed, n.e17VoterPhases)
+		}
+		if calls+uint64(packets) > allowance {
 			t.Error("certified aggregate RPC/packet bound", calls, packets)
 		}
 		t.Logf("certified cleanup: reaped=%d successfully-reaped=%d of6; calls=%d packets=%d maxFrame=%d/%d maxQueueBytes=%d/%d", reaped, successful, calls, packets, n.all[1].maxFrame, n.all[4].maxFrame, n.groups[0].maxQueueBytes, n.groups[1].maxQueueBytes)
@@ -114,11 +145,24 @@ func newCertifiedProcessNetwork(t *testing.T) *certifiedProcessNetwork {
 		n.action(t, 1, certifiedRecipientTransition, recipient.partition, []byte{byte(publishDeclaredRecipient)})
 		n.read(t, recipient.actor, observeRecipient, recipient.id)
 		n.action(t, recipient.actor, certifiedOpenRecipient, 0, nil)
-		n.read(t, 1, observeRecipient, recipient.id)
-		n.read(t, 1, observeAllocator, 0)
-		n.action(t, 1, certifiedReserve, 0, nil)
-		n.read(t, 1, observeGrant, 0)
-		n.action(t, 1, certifiedInstallGrant, recipient.partition, nil)
+		grants := [][2]uint64{{1, 16}}
+		if rangeMoves && recipient.partition == 3 {
+			grants = [][2]uint64{{1, 1}, {2, 15}}
+		}
+		for _, grant := range grants {
+			n.read(t, 1, observeRecipient, recipient.id)
+			n.read(t, 1, observeAllocator, 0)
+			var input []byte
+			if rangeMoves {
+				input = graphE17GrantInput(grant[0], grant[1])
+			}
+			n.action(t, 1, certifiedReserve, 0, input)
+			n.group(1).event(t, 1, processRequest{op: processCertifiedRead, entity: uint64(observeGrant), data: input})
+			if !n.all[1].call(t, processRequest{op: processStateOp}).ready {
+				t.Fatal("actual grant read did not complete", grant)
+			}
+			n.action(t, 1, certifiedInstallGrant, recipient.partition, nil)
+		}
 	}
 	n.action(t, 1, certifiedCreateNode, 1, nil)
 	n.action(t, 4, certifiedCreateNode, 17, nil)
@@ -156,7 +200,11 @@ func (n *certifiedProcessNetwork) action(t *testing.T, actor, kind, index uint64
 		group, leader = 1, 4
 	}
 	ns, _ := certifiedProcessNamespace(leader)
-	if proposal.target.graph != (idalloc.GraphID{1}) || proposal.target.partition != ns.partition || proposal.target.semantic != certifiedGraphSemanticContractID() {
+	agreement := certifiedGraphSemanticContractID()
+	if n.rangeMoves {
+		agreement = rangeMoveSemanticContractID()
+	}
+	if proposal.target.graph != (idalloc.GraphID{1}) || proposal.target.partition != ns.partition || proposal.target.semantic != agreement {
 		t.Fatal("source proposal escaped declared process topology", proposal.target)
 	}
 	n.groups[group].event(t, leader, processRequest{op: processPropose, data: r.aux})

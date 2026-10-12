@@ -50,7 +50,7 @@ func (h *allocationHost) readCrossRequest(q crossRequestQuestion) (allocationEve
 	if !crossGraphAgreement(h.machine.SemanticContractID()) {
 		return allocationEvent{}, errInvalid
 	}
-	if h.sequence == math.MaxUint64 || len(h.pending)+len(h.crossPending)+len(h.capacityPending)+len(h.cutPending)+len(h.requestPending) >= 16 {
+	if h.sequence == math.MaxUint64 || h.pendingReadCount() >= 16 {
 		return allocationEvent{}, errLimit
 	}
 	if h.requestPending == nil {
@@ -163,6 +163,8 @@ func (h *allocationHost) cancelSourceRead(id allocationReadID) error {
 		wire = encodeGraphCutContext(id, q)
 	} else if q, ok := h.requestPending[id]; ok {
 		wire = encodeCrossRequestContext(id, q)
+	} else if pending, ok := h.movePending[id]; ok {
+		wire = encodeRangeMoveReadContext(id, pending.question)
 	} else {
 		return errInvalid
 	}
@@ -173,6 +175,7 @@ func (h *allocationHost) cancelSourceRead(id allocationReadID) error {
 	delete(h.crossPending, id)
 	delete(h.requestPending, id)
 	delete(h.cutPending, id)
+	delete(h.movePending, id)
 	return nil
 }
 

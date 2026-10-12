@@ -50,6 +50,9 @@ type graphSourceInfo struct {
 type graphSourceLease struct {
 	mu                         sync.Mutex
 	view                       *raftlog.ApplicationView
+	moveMeta                   *raftlog.ApplicationView
+	moveID                     [16]byte
+	moveIntent                 [32]byte
 	read                       graphstore.ApplicationReadSource
 	info                       graphSourceInfo
 	limits                     graphSourceLimits
@@ -253,6 +256,10 @@ func (l *graphSourceLease) close() error {
 		l.stop()
 	}
 	l.closeErr = l.view.Close()
+	if l.moveMeta != nil {
+		l.closeErr = errors.Join(l.closeErr, l.moveMeta.Close())
+		l.moveMeta = nil
+	}
 	l.released.Store(true)
 	return l.closeErr
 }

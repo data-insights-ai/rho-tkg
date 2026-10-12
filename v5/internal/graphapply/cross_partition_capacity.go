@@ -158,6 +158,15 @@ func (m *declaredMaterializer) readCrossResourceOwner(q *reader) (crossManifest,
 	if err != nil {
 		return crossManifest{}, false, err
 	}
+	if owner.ID != ([32]byte{}) && m.rangeMoves() {
+		move, err := m.moveOwnsRecovery(q, owner)
+		if err != nil {
+			return crossManifest{}, false, err
+		}
+		if move {
+			return crossManifest{}, false, nil
+		}
+	}
 	pointer, found, err := q.getBounded(crossResourceOwnerKey(q.ns), 84)
 	if err != nil {
 		return crossManifest{}, false, err
@@ -212,7 +221,7 @@ func (h *allocationHost) ReadCrossCapacityConflict(prepare allocationProposal, n
 	if err != nil || r.ns != h.machine.ns || r.phase != crossPrepare || r.conflict != nil {
 		return allocationEvent{}, errors.Join(errInvalid, err)
 	}
-	if h.sequence == math.MaxUint64 || len(h.pending)+len(h.crossPending)+len(h.capacityPending)+len(h.cutPending)+len(h.requestPending) >= 16 {
+	if h.sequence == math.MaxUint64 || h.pendingReadCount() >= 16 {
 		return allocationEvent{}, errLimit
 	}
 	if h.capacityPending == nil {

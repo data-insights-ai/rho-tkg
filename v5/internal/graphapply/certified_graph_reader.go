@@ -39,7 +39,7 @@ func graphReceiptFromDecision(p crossProof) (graphCommitReceipt, error) {
 	if e := checkCrossProof(p, p.status.tx, p.status.digest); e != nil {
 		return graphCommitReceipt{}, e
 	}
-	if p.status.phase != crossDecide || !p.status.commit || p.status.round == 0 || p.owner.machine.SemanticContractID() != certifiedGraphSemanticContractID() {
+	if p.status.phase != crossDecide || !p.status.commit || p.status.round == 0 || !certifiedGraphAgreement(p.owner.machine.SemanticContractID()) {
 		return graphCommitReceipt{}, errInvalid
 	}
 	return graphCommitReceipt{proof: p}, nil

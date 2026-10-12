@@ -184,7 +184,7 @@ func TestGraphSourceWireRequestMalformedAndCountBeforeAllocationGuard(t *testing
 		edit func([]byte)
 		want error
 	}{
-		{"unknown-kind", func(b []byte) { b[4] = sourceCertifiedOpen + 1 }, errInvalid},
+		{"unknown-kind", func(b []byte) { b[4] = sourceMoveOpen + 1 }, errInvalid},
 		{"zero-sequence", func(b []byte) { clear(b[5:13]) }, errInvalid},
 		{"zero-nonce", func(b []byte) { clear(b[13:29]) }, errInvalid},
 		{"maximum-frame-plus-one", func(b []byte) { binary.BigEndian.PutUint32(b[69:73], (2<<20)+1) }, errLimit},

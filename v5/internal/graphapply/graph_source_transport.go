@@ -69,7 +69,7 @@ func encodeGraphWireResponse(r graphWireResponse) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if r.peer.voter == 0 || r.sequence == 0 || r.nonce == ([16]byte{}) || r.issuer == ([16]byte{}) || r.kind < sourceOpen || r.kind > sourceCertifiedOpen || len(r.body) > graphSourceFrameBytes-512 {
+	if r.peer.voter == 0 || r.sequence == 0 || r.nonce == ([16]byte{}) || r.issuer == ([16]byte{}) || r.kind < sourceOpen || r.kind > sourceMoveOpen || len(r.body) > graphSourceFrameBytes-512 {
 		return nil, errInvalid
 	}
 	if r.err != nil && len(r.body) != 0 {
@@ -107,7 +107,7 @@ func decodeGraphWireResponse(wire []byte) (graphWireResponse, error) {
 	if mask != 0 {
 		r.err = graphWireError{mask}
 	}
-	if r.peer.voter == 0 || r.sequence == 0 || r.nonce == ([16]byte{}) || r.issuer == ([16]byte{}) || r.kind < sourceOpen || r.kind > sourceCertifiedOpen || mask != 0 && len(r.body) != 0 {
+	if r.peer.voter == 0 || r.sequence == 0 || r.nonce == ([16]byte{}) || r.issuer == ([16]byte{}) || r.kind < sourceOpen || r.kind > sourceMoveOpen || mask != 0 && len(r.body) != 0 {
 		return graphWireResponse{}, errCorrupt
 	}
 	return r, nil
@@ -353,6 +353,7 @@ type remoteGraphSource struct {
 	endpoint  *graphAuthenticatedEndpoint
 	info      graphSourceInfo
 	certified *graphCertifiedSourceInfo
+	move      *graphMoveSourceInfo
 	ctx       context.Context
 	cancel    context.CancelFunc
 	deadline  time.Time
@@ -454,6 +455,9 @@ func (s *remoteGraphSource) ApplicationBinding(ctx context.Context) (raftlog.App
 	p := s.info.observation.source.scope
 	if s.certified != nil {
 		p = s.certified.certificate.scope
+	}
+	if s.move != nil {
+		p = s.move.scope
 	}
 	return raftlog.ApplicationBinding{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(p.graph), Partition: p.partition, Group: p.group}, SemanticContractID: p.semantic}, nil
 }

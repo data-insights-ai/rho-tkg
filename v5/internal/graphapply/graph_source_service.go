@@ -167,6 +167,37 @@ func (s *graphPeerService) serve(ctx context.Context, wire []byte) ([]byte, erro
 	}
 	var body []byte
 	switch r.kind {
+	case sourceMoveOpen:
+		pump, ok := s.pump.(graphHostRangeMovePump)
+		if !ok || !s.host.machine.rangeMoves() {
+			err = errInvalid
+			break
+		}
+		q := rangeMoveQuery{move: r.tx, nonce: r.nonce, sourceRows: 128, sourceBytes: 128 << 10, outputBytes: 512 << 10}
+		var reply rangeMoveReply
+		reply, err = pump.Move(ctx, q)
+		if err == nil {
+			err = reply.err
+		}
+		if err == nil && (reply.question != q || reply.id != reply.proof.id || reply.proof.owner != s.host) {
+			err = errInvalid
+		}
+		if err == nil {
+			var info graphMoveSourceInfo
+			info, err = s.sources.openMove(ctx, reply.proof)
+			if err == nil {
+				body, err = encodeGraphMoveSourceInfo(info)
+				if err != nil {
+					err = errors.Join(err, s.sources.closeSource(info.cookie))
+				}
+			}
+		}
+	case sourceMoveRead:
+		if r.cookie != (graphSourceCookie{}) {
+			body, err = s.sources.moveFrozenPage(ctx, r)
+		} else {
+			body, err = s.readRangeMove(ctx, r)
+		}
 	case sourceCutRead:
 		var q graphCutQuery
 		q, err = decodeGraphCutQuery(r.command)

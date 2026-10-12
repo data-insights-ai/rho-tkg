@@ -263,7 +263,7 @@ func (b *remoteCertifiedGraphBackend) operationBudget() (*graphstate.OutputBudge
 }
 
 func graphReceiptFromAuthority(p crossAuthority) (graphCommitReceipt, error) {
-	if !p.validSeal() || p.scope.semantic != certifiedGraphSemanticContractID() || p.status.phase != crossDecide || !p.status.commit || p.status.round == 0 {
+	if !p.validSeal() || !certifiedGraphAgreement(p.scope.semantic) || p.status.phase != crossDecide || !p.status.commit || p.status.round == 0 {
 		return graphCommitReceipt{}, errInvalid
 	}
 	return graphCommitReceipt{remote: &p}, nil

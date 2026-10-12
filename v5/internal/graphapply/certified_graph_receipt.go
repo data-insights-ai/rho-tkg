@@ -30,7 +30,7 @@ func decodeGraphLocalReceipt(w []byte) (graphLocalReceipt, error) {
 	copy(r.digest[:], d.b[:32])
 	d.b = d.b[32:]
 	r.round, r.index = d.number(), d.number()
-	if !r.scope.valid() || r.scope.semantic != certifiedGraphSemanticContractID() || r.identity == ([16]byte{}) || r.index == 0 {
+	if !r.scope.valid() || !certifiedGraphAgreement(r.scope.semantic) || r.identity == ([16]byte{}) || r.index == 0 {
 		return graphLocalReceipt{}, errCorrupt
 	}
 	return r, nil

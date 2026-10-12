@@ -75,6 +75,14 @@ const (
 	processSourceCertifiedOpen
 	processSourceCertifiedObserve
 	processSourceCertifiedClose
+	processRangeSnapshotProbe
+	processRangeImportProbe
+	processRangeEvidenceProbe
+	processRangeRun
+	processRangeResume
+	processRangeCertifiedDetail
+	processRangeProgressProbe
+	processRangeNativeVoterProbe
 )
 
 // IPC IDs identify this process event only. No storage/send/prepared capability
@@ -183,7 +191,7 @@ func decodeProcessRequest(b []byte) (processRequest, error) {
 	r := processRequest{incarnation: c.array(), sequence: c.u64(), op: c.tag(), index: c.u64(), entity: c.u64()}
 	r.data = c.field(processFrameBytes)
 	r.packet = processDecodePacket(&c)
-	if r.sequence == 0 || r.op < processCampaign || r.op > processSourceCertifiedClose || len(c.b) != 0 {
+	if r.sequence == 0 || r.op < processCampaign || r.op > processRangeNativeVoterProbe || len(c.b) != 0 {
 		c.err = errCorrupt
 	}
 	return r, c.err
@@ -1436,6 +1444,7 @@ const (
 	certifiedHealthyLabel
 	certifiedPrepareFence
 	certifiedPrepareCertificate
+	certifiedRangeSet
 )
 
 type certifiedProcessOwners struct {
@@ -1503,7 +1512,12 @@ func (o *certifiedProcessOwners) read(r processRequest) (allocationEvent, error)
 		}
 		q.session.ID[0] = byte(r.index)
 	case observeGrant:
-		q.session, q.sequence, q.count = o.reserve, 1, 16
+		q.session = o.reserve
+		var err error
+		q.sequence, q.count, err = graphE17GrantParameters(o.host, r.data)
+		if err != nil {
+			return allocationEvent{}, err
+		}
 	default:
 		return allocationEvent{}, errInvalid
 	}
@@ -1537,13 +1551,19 @@ func (o *certifiedProcessOwners) action(t *testing.T, r processRequest, init dec
 		}
 		return h.RecipientTransition(id, commandKind(r.data[0]), r.index, o.proof)
 	case certifiedReserve:
-		return h.AuthorizeReserve(id, idalloc.GrantRequest{Graph: h.machine.ns.graph, Session: o.reserve, Sequence: 1, Count: 16}, o.proof)
+		sequence, count, err := graphE17GrantParameters(h, r.data)
+		if err != nil {
+			return allocationProposal{}, err
+		}
+		return h.AuthorizeReserve(id, idalloc.GrantRequest{Graph: h.machine.ns.graph, Session: o.reserve, Sequence: sequence, Count: count}, o.proof)
 	case certifiedInstallGrant:
 		return h.InstallGrant(id, r.index, o.proof)
 	case certifiedOpenRecipient:
 		var err error
 		o.recipient, err = h.OpenRecipient(o.proof)
 		return allocationProposal{}, err
+	case certifiedRangeSet:
+		return graphE17PropertyProposal(t, o, r, id)
 	case certifiedCreateNode, certifiedCreateCrossEdge, certifiedHealthyLabel:
 		if o.recipient == nil {
 			return allocationProposal{}, errInvalid
@@ -1557,10 +1577,16 @@ func (o *certifiedProcessOwners) action(t *testing.T, r processRequest, init dec
 		op := graphstate.Operation{Kind: graphstate.CreateNode, Owner: owner, Life: life, Scope: scope, Record: graphstate.EntityRecord{Interpretation: graphstate.InterpretationObservation, TemporalRole: graphstate.TemporalRoleValidity}}
 		grant := grantReference{session: o.recipient.session, sequence: 1}
 		claims := []freshBinding{{role: entityBinding, id: r.index, grant: grant}, {role: lifeBinding, owner: owner, id: r.index + 1, grant: grant}}
+		if h.machine.rangeMoves() && r.index == 1 {
+			claims[1].grant.sequence = 2
+		}
 		switch r.entity {
 		case certifiedCreateCrossEdge:
 			op = graphstate.Operation{Kind: graphstate.CreateRelationship, Owner: 3, Life: 4, Scope: scope, Record: graphstate.EntityRecord{Type: "cross-edge", Source: 1, Target: 17, Mode: graphstate.LifeBound, Interpretation: graphstate.InterpretationAssertedRelation, TemporalRole: graphstate.TemporalRoleOccurrenceTime}, Binding: graphstate.LifeRecord{SourceLife: 2, TargetLife: 18}}
 			claims[0].id, claims[1].owner, claims[1].id = 3, 3, 4
+			if h.machine.rangeMoves() {
+				claims[0].grant.sequence, claims[1].grant.sequence = 2, 2
+			}
 		case certifiedHealthyLabel:
 			op = graphstate.Operation{Kind: graphstate.AddLabel, Owner: owner, Life: life, Scope: scope, Name: "healthy"}
 			claims = nil
@@ -1642,20 +1668,34 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 	l.CacheBytes, l.MemTableBytes, l.MaxRetainedBytes, l.MaxRetainedEntries = 2<<20, 1<<20, 16<<20, 8192
 	p := raftlog.DefaultApplicationPolicy(id)
 	p.MaxImageBytes, p.MaxInstallWrites, p.RetainedApplicationRecords, p.RetainedApplicationBytes = 172, 256, 8192, 16<<20
+	agreement := certifiedGraphSemanticContractID()
+	materializer := newCertifiedGraphMaterializer
+	generations := raftlog.ApplicationGenerationLimits{MaxBytes: 32 << 20, MaxRecords: 16384}
+	if os.Getenv("RHO_GRAPH_RANGE_PROCESS") == "1" {
+		agreement, materializer = rangeMoveSemanticContractID(), newRangeMoveMaterializer
+		// Logical protocol history is admitted separately from unchanged child
+		// cache/memtable and aggregate process RSS/time limits.
+		l.MaxRetainedBytes, l.MaxRetainedEntries = 256<<20, 65536
+		p.RetainedApplicationBytes, p.RetainedApplicationRecords = 256<<20, 65536
+		generations = raftlog.ApplicationGenerationLimits{MaxBytes: 512 << 20, MaxRecords: 131072}
+	}
 	controls, recovery := raftlog.ApplicationControlConfig{Version: 1}, raftlog.ApplicationRecoveryConfig{Version: 1}
 	contract, err := raftlog.ApplicationContractForPolicyWithRecovery(p, controls, recovery)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := raftlog.Open(raftlog.Config{Dir: os.Getenv("RHO_GRAPH_PROCESS_DIR"), Create: true, Limits: l, Application: p, Controls: controls, Recovery: recovery, Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(n.graph), Partition: n.partition, Group: part.Group}, Contract: contract, Limits: raftlog.ApplicationTransferLimits{MaxExports: 2, MaxChunkRows: 64, MaxChunkBytes: 256 << 10, MaxStagedBytes: 16 << 20, MaxStagedRecords: 8192, MaxPinnedLogicalBytes: 64 << 20}}, Generations: raftlog.ApplicationGenerationLimits{MaxBytes: 32 << 20, MaxRecords: 16384}, PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 4096}, Replication: raftlog.ApplicationReplicationConfig{Voters: voters}, SemanticContractID: certifiedGraphSemanticContractID()})
+	create := os.Getenv("RHO_GRAPH_PROCESS_REOPEN") != "1"
+	s, err := raftlog.Open(raftlog.Config{Dir: os.Getenv("RHO_GRAPH_PROCESS_DIR"), Create: create, Limits: l, Application: p, Controls: controls, Recovery: recovery, Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(n.graph), Partition: n.partition, Group: part.Group}, Contract: contract, Limits: raftlog.ApplicationTransferLimits{MaxExports: 2, MaxChunkRows: 64, MaxChunkBytes: 256 << 10, MaxStagedBytes: 16 << 20, MaxStagedRecords: 8192, MaxPinnedLogicalBytes: 64 << 20}}, Generations: generations, PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 4096}, Replication: raftlog.ApplicationReplicationConfig{Voters: voters}, SemanticContractID: agreement})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := graphstore.BootstrapBoundOwnership(s, s.ApplicationBinding(), init.declaration, voters); err != nil {
-		_ = s.Close()
-		t.Fatal(err)
+	if create {
+		if err := graphstore.BootstrapBoundOwnership(s, s.ApplicationBinding(), init.declaration, voters); err != nil {
+			_ = s.Close()
+			t.Fatal(err)
+		}
 	}
-	m, err := newCertifiedGraphMaterializer(s, n, init.declaration, defaultMaterializerLimits())
+	m, err := materializer(s, n, init.declaration, defaultMaterializerLimits())
 	if err != nil {
 		_ = s.Close()
 		t.Fatal(err)

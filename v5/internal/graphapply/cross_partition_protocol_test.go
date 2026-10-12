@@ -51,7 +51,7 @@ func newCrossPartitionNetworkSpecification(t *testing.T, adjust func(*raftlog.Ap
 				t.Fatal(err)
 			}
 			part, _ := n.d.Partition(partition)
-			cfg := raftlog.Config{Dir: filepath.Join(t.TempDir(), fmt.Sprintf("partition%d-member%d", partition, id)), Create: true, Application: p, Controls: controls, Recovery: recovery, Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(n.d.Graph()), Partition: partition, Group: part.Group}, Contract: contract, Limits: raftlog.DefaultApplicationTransferLimits()}, Generations: raftlog.ApplicationGenerationLimits{MaxBytes: 32 << 20, MaxRecords: 16384}, PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 4096}, Replication: raftlog.ApplicationReplicationConfig{Voters: [3]uint64{1, 2, 3}}, SemanticContractID: agreement}
+			cfg := raftlog.Config{Dir: filepath.Join(t.TempDir(), fmt.Sprintf("partition%d-member%d", partition, id)), Create: true, Application: p, Controls: controls, Recovery: recovery, Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(n.d.Graph()), Partition: partition, Group: part.Group}, Contract: contract, Limits: raftlog.DefaultApplicationTransferLimits()}, Generations: raftlog.ApplicationGenerationLimits{MaxBytes: max(32<<20, p.RetainedApplicationBytes), MaxRecords: max(16384, p.RetainedApplicationRecords)}, PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 4096}, Replication: raftlog.ApplicationReplicationConfig{Voters: [3]uint64{1, 2, 3}}, SemanticContractID: agreement}
 			n.configs[group][member] = cfg
 			s, err := raftlog.Open(cfg)
 			if err != nil {
@@ -66,7 +66,9 @@ func newCrossPartitionNetworkSpecification(t *testing.T, adjust func(*raftlog.Ap
 				t.Fatal(err)
 			}
 			var m *declaredMaterializer
-			if agreement == certifiedGraphSemanticContractID() {
+			if agreement == rangeMoveSemanticContractID() {
+				m, err = newRangeMoveMaterializer(s, namespace{idalloc.GraphID(n.d.Graph()), partition}, n.d, defaultMaterializerLimits())
+			} else if agreement == certifiedGraphSemanticContractID() {
 				m, err = newCertifiedGraphMaterializer(s, namespace{idalloc.GraphID(n.d.Graph()), partition}, n.d, defaultMaterializerLimits())
 			} else {
 				m, err = newCrossPartitionMaterializer(s, namespace{idalloc.GraphID(n.d.Graph()), partition}, n.d, defaultMaterializerLimits())

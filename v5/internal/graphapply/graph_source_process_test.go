@@ -364,7 +364,7 @@ func (m *graphProcessMux) readLoop() {
 }
 func (h *graphProcessHub) enqueue(origin uint64, packets []replica.Packet) error {
 	for _, packet := range packets {
-		if packet.Snapshot || packet.From != origin || h.peers[packet.To] == nil || (packet.To <= 3) != (origin <= 3) {
+		if packet.Snapshot || packet.From != origin || h.peer(packet.To) == nil || (packet.To <= 3) != (origin <= 3) {
 			return errInvalid
 		}
 		cost := cap(packet.Payload) + 64
@@ -406,11 +406,11 @@ func (h *graphProcessHub) packetLoop() {
 				h.inFlight--
 				h.mu.Unlock()
 				h.changed()
-				h.peers[job.origin].fail(errLimit)
+				h.peer(job.origin).fail(errLimit)
 				continue
 			}
 			ctx, cancel := context.WithTimeout(h.ctx, 10*time.Second)
-			r, err := h.peers[job.packet.To].exchange(ctx, processRequest{op: processStep, packet: job.packet})
+			r, err := h.peer(job.packet.To).exchange(ctx, processRequest{op: processStep, packet: job.packet})
 			cancel()
 			if err == nil {
 				err = processResponseError(r)
@@ -419,7 +419,7 @@ func (h *graphProcessHub) packetLoop() {
 				err = h.enqueue(job.packet.To, r.packets)
 			}
 			if err != nil {
-				h.peers[job.origin].fail(err)
+				h.peer(job.origin).fail(err)
 			}
 			h.mu.Lock()
 			h.inFlight--
@@ -453,7 +453,7 @@ func (m *graphProcessMux) relayLoop() {
 				err = before(ctx, m.id, e.target, e.body)
 			}
 			if err == nil {
-				r, err = m.hub.peers[target].exchange(ctx, processRequest{op: processSourceServe, entity: m.id, data: e.body})
+				r, err = m.hub.peer(target).exchange(ctx, processRequest{op: processSourceServe, entity: m.id, data: e.body})
 			}
 			cancel()
 			if err == nil {
@@ -483,6 +483,7 @@ type graphProcessPumpCall struct {
 	cross      crossQuery
 	request    crossRequestQuestion
 	cut        graphCutQuery
+	move       rangeMoveQuery
 	baseline   uint64
 	scanned    int
 	proposal   allocationProposal
@@ -552,6 +553,7 @@ type graphProcessPumpReply struct {
 	cross      crossReply
 	request    crossRequestReply
 	cut        graphCutReply
+	move       rangeMoveReply
 	body       []byte
 	err        error
 }
@@ -590,6 +592,10 @@ func (p *graphProcessChildPump) Allocation(ctx context.Context, q allocationQuer
 func (p *graphProcessChildPump) Cut(ctx context.Context, q graphCutQuery) (graphCutReply, error) {
 	r, e := p.wait(&graphProcessPumpCall{ctx: ctx, kind: sourceCutRead, cut: q})
 	return r.cut, e
+}
+func (p *graphProcessChildPump) Move(ctx context.Context, q rangeMoveQuery) (rangeMoveReply, error) {
+	r, e := p.wait(&graphProcessPumpCall{ctx: ctx, kind: sourceMoveRead, move: q})
+	return r.move, e
 }
 func (p *graphProcessChildPump) Cross(ctx context.Context, q crossQuery) (crossReply, error) {
 	r, e := p.wait(&graphProcessPumpCall{ctx: ctx, kind: sourceCrossRead, cross: q})
@@ -951,6 +957,15 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 	if err != nil {
 		t.Fatal(err)
 	}
+	var moveCoordinator *rangeMoveCoordinator
+	if h.machine.rangeMoves() {
+		moveCoordinator, err = newRangeMoveCoordinatorOn(coordinator)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Both coordinators use the same authenticated child pipe connections.
+		// A fresh operation ledger must not reset their correlation sequences.
+	}
 	certifiedSessions := &graphProcessCertifiedSessions{ctx: ctx, coordinator: coordinator, owners: make(map[uint64]graphProcessCertifiedOwner)}
 	defer func() {
 		if e := certifiedSessions.close(); e != nil {
@@ -999,6 +1014,14 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		}
 		if active != nil {
 			switch active.kind {
+			case sourceMoveRead:
+				if len(e.moveReplies) > 0 {
+					if len(e.moveReplies) != 1 || e.moveReplies[0].id != active.id || e.moveReplies[0].question != active.move {
+						return errInvalid
+					}
+					finish(active, graphProcessPumpReply{move: e.moveReplies[0]})
+					e.moveReplies = nil
+				}
 			case sourceOpen:
 				if len(e.replies) > 0 {
 					if len(e.replies) != 1 || e.replies[0].id != active.id {
@@ -1053,6 +1076,8 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		var event allocationEvent
 		var err error
 		switch c.kind {
+		case sourceMoveRead:
+			event, err = h.ReadRangeMove(c.ctx, c.move)
 		case sourceOpen:
 			event, err = h.Read(c.allocation)
 		case sourceCrossRead:
@@ -1078,6 +1103,17 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		}
 		if isGraphCutWire(active.proposal.wire) {
 			next, scanned, body, operationErr, eventErr := pollGraphProcessCutSubmission(active.ctx, h, active.proposal, active.baseline, active.scanned)
+			active.baseline, active.scanned = next, scanned
+			if eventErr != nil {
+				return eventErr
+			}
+			if body != nil || operationErr != nil {
+				finish(active, graphProcessPumpReply{body: body, err: operationErr})
+			}
+			return nil
+		}
+		if isRangeMoveWire(active.proposal.wire) {
+			next, scanned, body, operationErr, eventErr := pollGraphProcessMoveSubmission(active.ctx, h, active.proposal, active.baseline, active.scanned)
 			active.baseline, active.scanned = next, scanned
 			if eventErr != nil {
 				return eventErr
@@ -1172,6 +1208,10 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 						e = errors.Join(e, encodeErr)
 					}
 				}
+			case processRangeRun, processRangeResume:
+				out.aux, e = graphE17RunMove(workerCtx, h, o.incarnation, moveCoordinator, r)
+			case processRangeCertifiedDetail:
+				out.aux, e = graphE17SessionObserve(workerCtx, certifiedSessions, r)
 			case processSourceCertifiedOpen, processSourceCertifiedObserve, processSourceCertifiedClose:
 				out.aux, e = certifiedSessions.serve(workerCtx, r)
 			case processSourceObserve:
@@ -1355,6 +1395,10 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				if e == nil {
 					response.aux, e = encodeGraphE15CutEvidence(evidence)
 				}
+			case processRangeNativeVoterProbe:
+				response.aux, e = graphE17NativeVoterPage(ctx, h, r.data)
+			case processRangeSnapshotProbe, processRangeImportProbe, processRangeEvidenceProbe, processRangeProgressProbe:
+				response, e = graphRangeMoveNativeProbe(ctx, h, r)
 			case processCertifiedObserve:
 				var fact certifiedProcessFact
 				fact, e = certifiedProcessObservation(ctx, h, r.entity)
@@ -1404,7 +1448,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					}
 					paused = nil
 				}
-			case processSourceServe, processSourceCoordinate, processSourceObserve, processSourceCertifiedOpen, processSourceCertifiedObserve, processSourceCertifiedClose:
+			case processSourceServe, processSourceCoordinate, processSourceObserve, processSourceCertifiedOpen, processSourceCertifiedObserve, processSourceCertifiedClose, processRangeRun, processRangeResume, processRangeCertifiedDetail:
 				if pause && r.op == processSourceServe && !isSourceClose(r) {
 					if len(paused) >= processSourceWorkers {
 						e = errLimit
@@ -1442,7 +1486,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			// Ordinary bootstrap traffic stays in its synchronous response, so existing
 			// tinyGraphTransport still owns that traffic. Worker-pump packets are events.
 			if e == nil {
-				e = emit(allocationEvent{readID: event.readID, replies: event.replies, crossReplies: event.crossReplies, requestReplies: event.requestReplies, snapshotSends: event.snapshotSends, capacityReplies: event.capacityReplies, cutReplies: event.cutReplies})
+				e = emit(allocationEvent{readID: event.readID, replies: event.replies, crossReplies: event.crossReplies, requestReplies: event.requestReplies, snapshotSends: event.snapshotSends, capacityReplies: event.capacityReplies, cutReplies: event.cutReplies, moveReplies: event.moveReplies})
 			}
 			response.packets = event.packets
 			if e == nil {

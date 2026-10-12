@@ -101,6 +101,24 @@ func (m *declaredMaterializer) VerifyApplicationRecovery(ctx context.Context, da
 	if len(data) == 0 {
 		return purpose, nil
 	}
+	if isRangeMoveWire(data) {
+		command, err := decodeRangeMoveCommand(data)
+		if err != nil || !m.rangeMoves() || command.scope != m.scope() {
+			return purpose, errors.Join(errInvalid, err)
+		}
+		intent, err := decodeRangeMoveIntent(command.intent)
+		if err != nil {
+			return purpose, err
+		}
+		l := m.limits.allocation
+		l.readRows = min(l.readRows, m.limits.sourceRows)
+		l.readBytes = min(l.readBytes, m.limits.sourceBytes)
+		q := reader{ctx: ctx, view: view, ns: m.ns, base: base, limits: l, bytes: cap(base.Image)}
+		if err := joinGraphOutputBudget(&q, graphRequest{}, 8*len(data)+4096, m.limits); err != nil {
+			return purpose, err
+		}
+		return m.rangeMoveRecovery(&q, command, intent)
+	}
 	if isGraphCutWire(data) {
 		c, e := decodeGraphCutCommand(data)
 		if e != nil || !m.certifiedReads() || c.scope != m.scope() {
@@ -131,6 +149,51 @@ func (m *declaredMaterializer) VerifyApplicationRecovery(ctx context.Context, da
 	q := reader{ctx: ctx, view: view, ns: m.ns, base: base, limits: l, bytes: cap(base.Image)}
 	if err := joinGraphOutputBudget(&q, graphRequest{}, decoded, m.limits); err != nil {
 		return purpose, err
+	}
+	if m.rangeMoves() {
+		active, e := readRangeMoveActive(&q)
+		if e != nil {
+			return purpose, e
+		}
+		if active != ([16]byte{}) {
+			// The supplied view may be an incoming prepared bank. Completed
+			// replay needs only its exact immutable configuration and registration;
+			// fresh fenced work cannot inspect the active store's baseline catalog.
+			cfg, e := m.readGenesisConfig(&q)
+			if e != nil {
+				return purpose, e
+			}
+			manifest, e := decodeCrossManifest(r.manifest, m.limits, q.arena)
+			if e != nil {
+				return purpose, e
+			}
+			if e := m.validateCrossManifestBinding(manifest, cfg); e != nil {
+				return purpose, e
+			}
+			if e := validateCrossPhaseProofs(r, manifest); e != nil {
+				return purpose, e
+			}
+			if r.conflict != nil {
+				if e := m.checkCrossCapacityBindings(r.conflict, manifest); e != nil {
+					return purpose, e
+				}
+			}
+			current, present, e := crossCurrent(&q, manifest.tx)
+			if e != nil {
+				return purpose, e
+			}
+			if present && current.digest != manifest.digest {
+				return purpose, errInvalid
+			}
+			if present && current.phase >= r.phase {
+				original, found, e := crossControl(&q, crossControlKey(q.ns, manifest.tx, 'R'), m.limits.commandBytes)
+				if e != nil || !found || !bytes.Equal(original.Value, r.manifest) {
+					return purpose, errors.Join(errCorrupt, e)
+				}
+				return purpose, nil
+			}
+			return purpose, errRangeMovePending
+		}
 	}
 	manifest, err := m.crossManifest(&q, r.manifest)
 	if err != nil {

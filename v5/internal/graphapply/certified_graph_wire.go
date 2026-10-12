@@ -52,7 +52,7 @@ func decodeGraphCutQuery(wire []byte) (graphCutQuery, error) {
 
 func validGraphCutAuthorityBody(p graphCutAuthorityBody) bool {
 	o, q := p.observation, p.question
-	if !p.scope.valid() || p.scope.semantic != certifiedGraphSemanticContractID() || p.scope != o.scope || p.id.session == ([16]byte{}) || p.id.sequence == 0 || !q.valid() || o.configuration == ([32]byte{}) || o.index == 0 {
+	if !p.scope.valid() || !certifiedGraphAgreement(p.scope.semantic) || p.scope != o.scope || p.id.session == ([16]byte{}) || p.id.sequence == 0 || !q.valid() || o.configuration == ([32]byte{}) || o.index == 0 {
 		return false
 	}
 	if o.sourceRows < 0 || o.sourceRows > 1<<20 || o.sourceBytes < 0 || o.sourceBytes > 64<<20 || o.outputBytes < 0 || o.outputBytes > 64<<20 || q.sourceRows > 0 && (o.sourceRows > q.sourceRows || o.sourceBytes > q.sourceBytes || o.outputBytes > q.outputBytes) {

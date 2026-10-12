@@ -129,7 +129,7 @@ func (m *declaredMaterializer) seed(q *reader) error {
 	return nil
 }
 
-func (m *declaredMaterializer) initialized(q *reader) (genesisAllocationConfig, error) {
+func (m *declaredMaterializer) initialized(q *reader) (configurationResult genesisAllocationConfig, err error) {
 	b, err := m.ownershipBudget(q)
 	if err != nil {
 		return genesisAllocationConfig{}, err
@@ -147,10 +147,23 @@ func (m *declaredMaterializer) initialized(q *reader) (genesisAllocationConfig, 
 	}
 	var c *graphstore.Catalog
 	var work graphstore.PageWork
+	catalogView := q.view
+	baseline, e := m.rangeMoveCatalogBaseline(q, cfg)
+	if e != nil {
+		return genesisAllocationConfig{}, e
+	}
+	if baseline != nil {
+		defer func() { err = errors.Join(err, baseline.Close()) }()
+		catalogView = baseline
+		b, e = m.ownershipBudget(q)
+		if e != nil {
+			return genesisAllocationConfig{}, e
+		}
+	}
 	if m.requiresDefaultAxis() {
-		c, work, err = graphstore.OpenPartitionCatalogWithDefaultAxis(q.ctx, q.view, graphstore.Namespace{Graph: graphstate.GraphID(m.ns.graph), Partition: m.ns.partition}, m.owner, cfg.defaultAxis, m.limits.catalog, m.limits.graph, b)
+		c, work, err = graphstore.OpenPartitionCatalogWithDefaultAxis(q.ctx, catalogView, graphstore.Namespace{Graph: graphstate.GraphID(m.ns.graph), Partition: m.ns.partition}, m.owner, cfg.defaultAxis, m.limits.catalog, m.limits.graph, b)
 	} else {
-		c, work, err = graphstore.OpenPartitionCatalog(q.ctx, q.view, graphstore.Namespace{Graph: graphstate.GraphID(m.ns.graph), Partition: m.ns.partition}, m.owner, m.limits.catalog, m.limits.graph, b)
+		c, work, err = graphstore.OpenPartitionCatalog(q.ctx, catalogView, graphstore.Namespace{Graph: graphstate.GraphID(m.ns.graph), Partition: m.ns.partition}, m.owner, m.limits.catalog, m.limits.graph, b)
 	}
 	if chargeErr := chargeGraphWork(q, work); chargeErr != nil {
 		return genesisAllocationConfig{}, errors.Join(chargeErr, err)
@@ -233,6 +246,9 @@ func (m *declaredMaterializer) Restore(index uint64, image []byte) (err error) {
 	}
 	if err == nil && crossGraphAgreement(m.SemanticContractID()) {
 		err = m.checkCrossLock(&q)
+	}
+	if err == nil {
+		err = m.checkRangeMoveState(&q)
 	}
 	return err
 }
@@ -396,6 +412,19 @@ func (m *declaredMaterializer) Stage(entry replica.Entry, budget raftlog.Applica
 		}
 		return b, nil
 	}
+
+	if isRangeMoveWire(entry.Data) {
+		return m.stageRangeMove(&q, entry, budget)
+	}
+	if isGraphCutWire(entry.Data) {
+		return m.stageGraphCut(&q, entry, budget)
+	}
+	if isCrossPartitionWire(entry.Data) {
+		return m.stageCrossPartition(&q, info, entry, budget)
+	}
+	if isPartitionGraphWire(entry.Data) {
+		return m.stagePartitionGraph(&q, info, entry, budget)
+	}
 	if len(entry.Data) >= 5 && commandKind(entry.Data[4]) == initDeclaredPartition {
 		version := byte(4)
 		if m.requiresDefaultAxis() {
@@ -407,15 +436,6 @@ func (m *declaredMaterializer) Stage(entry replica.Entry, budget raftlog.Applica
 		if entry.Data[3] != version {
 			return raftlog.ApplicationBatch{}, errCorrupt
 		}
-	}
-	if isGraphCutWire(entry.Data) {
-		return m.stageGraphCut(&q, entry, budget)
-	}
-	if isCrossPartitionWire(entry.Data) {
-		return m.stageCrossPartition(&q, info, entry, budget)
-	}
-	if isPartitionGraphWire(entry.Data) {
-		return m.stagePartitionGraph(&q, info, entry, budget)
 	}
 	identity, err := declaredCommandIdentity(entry.Data, m.ns)
 	if err != nil {
@@ -453,6 +473,16 @@ func (m *declaredMaterializer) Stage(entry replica.Entry, budget raftlog.Applica
 		cfg, err := m.initialized(&q)
 		if err != nil {
 			return raftlog.ApplicationBatch{}, err
+		}
+		if m.rangeMoves() {
+			move, e := readRangeMoveActive(&q)
+			if e != nil {
+				return raftlog.ApplicationBatch{}, e
+			}
+			if move != ([16]byte{}) {
+				o := outcome{ns: m.ns, kind: kind, identity: identity, hash: hash, index: entry.Index, disposition: applied, reason: reasonStale}
+				return m.finish(&q, o, hash, true, budget, nil, nil, cfg)
+			}
 		}
 		if crossGraphAgreement(m.SemanticContractID()) {
 			lock, e := crossLock(&q)

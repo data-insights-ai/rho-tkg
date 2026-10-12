@@ -56,6 +56,16 @@ func (m *declaredMaterializer) stagePartitionGraph(q *reader, info graphstore.Ow
 		return legacy.finishWithCodec(q, old, hash, false, budget, nil, graphChanges{}, true)
 	}
 	result := outcome{ns: m.ns, kind: r.request.kind, identity: r.request.identity(), index: entry.Index, disposition: applied}
+	if m.rangeMoves() {
+		move, e := readRangeMoveActive(q)
+		if e != nil {
+			return raftlog.ApplicationBatch{}, e
+		}
+		if move != ([16]byte{}) {
+			result.reason = reasonPreparedConflict
+			return legacy.finishWithCodec(q, result, hash, true, budget, nil, graphChanges{}, true)
+		}
+	}
 	if crossGraphAgreement(m.SemanticContractID()) {
 		lock, e := crossLock(q)
 		if e != nil {

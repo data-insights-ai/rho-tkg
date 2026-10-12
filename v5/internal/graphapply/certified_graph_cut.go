@@ -74,7 +74,7 @@ func (m *declaredMaterializer) allocationFloor(q *reader, c [32]byte, installed 
 	return max(installed, f), e
 }
 func encodeGraphCutCommand(c graphCutCommand) ([]byte, error) {
-	if !c.scope.valid() || c.scope.semantic != certifiedGraphSemanticContractID() || c.configuration == ([32]byte{}) || c.round == 0 || c.round == math.MaxUint64 || c.phase < 1 || c.phase > 2 {
+	if !c.scope.valid() || !certifiedGraphAgreement(c.scope.semantic) || c.configuration == ([32]byte{}) || c.round == 0 || c.round == math.MaxUint64 || c.phase < 1 || c.phase > 2 {
 		return nil, errInvalid
 	}
 	b := appendAllocationScope([]byte{'G', 'S', 'Q', 1, c.phase}, c.scope)
@@ -101,7 +101,7 @@ func isGraphCutWire(w []byte) bool {
 	return len(w) >= 4 && bytes.Equal(w[:4], []byte{'G', 'S', 'Q', 1})
 }
 func encodeGraphCertificate(c graphCertificate) ([]byte, error) {
-	if !c.scope.valid() || c.scope.semantic != certifiedGraphSemanticContractID() || c.configuration == ([32]byte{}) || c.round == 0 || c.index == 0 || c.sourceRound > c.round || c.sourceIndex == 0 || c.sourceIndex >= c.index {
+	if !c.scope.valid() || !certifiedGraphAgreement(c.scope.semantic) || c.configuration == ([32]byte{}) || c.round == 0 || c.index == 0 || c.sourceRound > c.round || c.sourceIndex == 0 || c.sourceIndex >= c.index {
 		return nil, errInvalid
 	}
 	b := appendAllocationScope([]byte{'G', 'S', 'C', 1}, c.scope)
@@ -239,6 +239,15 @@ func (m *declaredMaterializer) stageGraphCut(q *reader, entry replica.Entry, bud
 			batch, err = refuse(graphCutLimit)
 		}
 	}()
+	if m.rangeMoves() {
+		move, e := readRangeMoveActive(q)
+		if e != nil {
+			return raftlog.ApplicationBatch{}, e
+		}
+		if move != ([16]byte{}) {
+			return refuse(graphCutPending)
+		}
+	}
 	cfg, e := m.initialized(q)
 	if e != nil {
 		return raftlog.ApplicationBatch{}, e

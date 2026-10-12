@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added internal v5 range handoff through native source/target admission fences,
+  bounded resumable graph and protocol-history pages, a durable handoff decision
+  and separate placement activation. Original IDs, typed cells and revisions,
+  endpoint-owned incidence, clock floors and source-qualified retry outcomes
+  survive movement; unrelated target data and earlier certified cuts remain
+  intact. A fresh semantic agreement preserves older contracts and immutable
+  graph genesis. Missing copied outcomes require a completed origin-group read;
+  unavailable origin authority remains pending. Recovery retains exact captures,
+  staged progress and reverse undo through reopen and partial activation.
+  The admitted 1,024-page content bound and explicit per-invocation allowances
+  are finite internal limits, not arbitrary-size rebalance or performance claims.
+  Logical-group retirement, retention/GC, broader fault evidence and full V2
+  remain open.
+
 - Added internal v5 cross-process graph orchestration through authenticated,
   bounded retained source sessions and native Host prepare/decision/resolve.
   Original request bytes and durable decisions survive uncertain replies;
@@ -54,7 +68,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Followers verify applied certificate positions; scoped reads refuse missing
   authority, and cumulative budgets and owned handles bound retained readers.
   A distinct semantic binding refuses older write-only stores. Public consumer
-  APIs, ownership transfer, engine comparison and full V2 remain open.
+  APIs, broader ownership/retention, engine comparison and full V2 remain open.
 
 - Added bounded read-only v5 registry inventory audits for current and genuine
   prepared cuts. Reciprocal controls, complete canonical originals, retained

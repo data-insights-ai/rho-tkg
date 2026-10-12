@@ -54,6 +54,7 @@ type allocationEvent struct {
 	capacityReplies []crossCapacityReply
 	cutReplies      []graphCutReply
 	requestReplies  []crossRequestReply
+	moveReplies     []rangeMoveReply
 }
 
 // allocationProposal is an owned source-created command. Its private constructor
@@ -82,6 +83,7 @@ type allocationHost struct {
 	requestPending  map[allocationReadID]crossRequestQuestion
 	capacityPending map[allocationReadID]crossCapacityQuestion
 	cutPending      map[allocationReadID]graphCutQuery
+	movePending     map[allocationReadID]pendingRangeMoveRead
 	recipients      map[[16]byte]*allocationRecipientHandle
 	sourceServer    *graphSourceServer
 	closed          bool
@@ -143,6 +145,17 @@ func (h *allocationHost) event(out replica.Output, eventErr error) (allocationEv
 		return allocationEvent{}, errLimit
 	}
 	for _, ready := range out.Reads {
+		if bytes.HasPrefix(ready.Context, []byte{'G', 'M', 'R', 1}) {
+			if ready.Index > out.Applied || h.driver.Applied() < ready.Index {
+				return allocationEvent{}, errInvalid
+			}
+			reply, err := h.completeRangeMoveRead(ready.Context, out.Applied)
+			if err != nil {
+				return allocationEvent{}, err
+			}
+			e.moveReplies = append(e.moveReplies, reply)
+			continue
+		}
 		if bytes.HasPrefix(ready.Context, []byte{'G', 'Q', 'R', 1}) {
 			if ready.Index > out.Applied || h.driver.Applied() < ready.Index {
 				return allocationEvent{}, errInvalid
@@ -255,7 +268,12 @@ func (h *allocationHost) Submit(p allocationProposal) (allocationEvent, error) {
 	if p.target != local || len(p.wire) < requestHeaderBytes || len(p.wire) > h.machine.limits.commandBytes {
 		return allocationEvent{}, errInvalid
 	}
-	if isGraphCutWire(p.wire) {
+	if isRangeMoveWire(p.wire) {
+		c, err := decodeRangeMoveCommand(p.wire)
+		if err != nil || !h.machine.rangeMoves() || c.scope != local {
+			return allocationEvent{}, errors.Join(errInvalid, err)
+		}
+	} else if isGraphCutWire(p.wire) {
 		c, e := decodeGraphCutCommand(p.wire)
 		if e != nil || !h.machine.certifiedReads() || c.scope != h.machine.scope() {
 			return allocationEvent{}, errors.Join(errInvalid, e)
@@ -329,7 +347,7 @@ func (h *allocationHost) Read(q allocationQuery) (allocationEvent, error) {
 	if err := q.validate(h.machine.ns.graph); err != nil {
 		return allocationEvent{}, err
 	}
-	if h.sequence == math.MaxUint64 || len(h.pending)+len(h.crossPending)+len(h.capacityPending)+len(h.cutPending)+len(h.requestPending) >= 16 {
+	if h.sequence == math.MaxUint64 || h.pendingReadCount() >= 16 {
 		return allocationEvent{}, errLimit
 	}
 	h.sequence++
@@ -372,6 +390,7 @@ func (h *allocationHost) Close() error {
 	clear(h.requestPending)
 	clear(h.capacityPending)
 	clear(h.cutPending)
+	clear(h.movePending)
 	clear(h.recipients)
 	h.closeDone = make(chan struct{})
 	server, driver := h.sourceServer, h.driver
@@ -428,6 +447,15 @@ func (m *declaredMaterializer) observeAllocation(query allocationQuery, index ui
 	l := m.limits.allocation
 	l.readRows, l.readBytes = min(l.readRows, m.limits.sourceRows), min(l.readBytes, m.limits.sourceBytes)
 	q := reader{ctx: context.Background(), view: view, ns: m.ns, limits: l, base: base, bytes: cap(base.Image)}
+	if m.rangeMoves() {
+		move, e := readRangeMoveActive(&q)
+		if e != nil {
+			return observation, e
+		}
+		if move != ([16]byte{}) {
+			return observation, errRangeMovePending
+		}
+	}
 	info, err := m.readOwnership(q.ctx, view, &q)
 	if err != nil {
 		return observation, err
@@ -497,6 +525,30 @@ func (h *allocationHost) target(partition uint64) (allocationScope, error) {
 }
 
 func (h *allocationHost) currentConfiguration() (genesisAllocationConfig, error) {
+	if h.machine.rangeMoves() {
+		view, e := h.machine.store.ApplicationView(h.driver.Applied())
+		if e != nil {
+			return genesisAllocationConfig{}, e
+		}
+		base, e := view.RootBounded(context.Background(), 172)
+		if e != nil {
+			return genesisAllocationConfig{}, errors.Join(e, view.Close())
+		}
+		q := reader{ctx: context.Background(), view: view, ns: h.machine.ns, base: base, limits: h.machine.limits.allocation}
+		move, e := readRangeMoveActive(&q)
+		if e != nil {
+			return genesisAllocationConfig{}, errors.Join(e, view.Close())
+		}
+		if move != ([16]byte{}) {
+			// Immutable native configuration metadata is available during a
+			// handoff. This point read grants no current graph/cut authority.
+			cfg, e := h.machine.readGenesisConfig(&q)
+			return cfg, errors.Join(e, view.Close())
+		}
+		if e := view.Close(); e != nil {
+			return genesisAllocationConfig{}, e
+		}
+	}
 	query := allocationQuery{kind: observeConfiguration, nonce: [16]byte{1}}
 	observed, err := h.machine.observeAllocation(query, h.driver.Applied())
 	if err != nil {
