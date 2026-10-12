@@ -221,3 +221,32 @@ func TestTieredCurrentStamps_Errors(t *testing.T) {
 		t.Fatalf("closed RelCurrentStamps = %v, want ErrStoreClosed", err)
 	}
 }
+
+// The history walk of RelHistoryStamps / HasRelHistory reads the
+// relationship's entity row once: the route that finds the owning shard
+// already probed the row, so a second liveness read of the same row (the
+// faulty walk) doubles the badger reads of every LatestStamps cache miss.
+func TestTieredHistoryWalkReadsTheRelRowOnce(t *testing.T) {
+	e := newBranchTestEnv(t)
+	r := e.putRelBetween(t, e.newEventNode(t), e.newEventNode(t))
+	shard, err := e.ts.ShardForRelIDForTest(r.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, walk := range map[string]func() error{
+		"RelHistoryStamps": func() error { _, _, _, err := e.ts.RelHistoryStamps(r.ID()); return err },
+		"HasRelHistory":    func() error { _, err := e.ts.HasRelHistory(r.ID()); return err },
+	} {
+		if err := shard.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		shard.RelCacheForTest().EvictForTest(r.ID().SnowflakeID())
+		before := shard.RelCacheMisses()
+		if err := walk(); err != nil {
+			t.Fatal(err)
+		}
+		if got := shard.RelCacheMisses() - before; got != 1 {
+			t.Fatalf("%s read the evicted relationship row %d times, want 1", name, got)
+		}
+	}
+}

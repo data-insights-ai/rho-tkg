@@ -83,7 +83,7 @@ func walkNodeHistoryShards[T any](ts *Store, nid types.NodeID, ask func(*BadgerS
 // the shards GetRelHistory reads.
 func walkRelHistoryShards[T any](ts *Store, rid types.RelID, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
 	var zero T
-	shard, checkin, isArchive, err := ts.shardForRelIDCheckedWithArchive(rid)
+	shard, checkin, isArchive, probe, err := ts.routeRelShard(rid)
 	if err != nil {
 		return zero, err
 	}
@@ -92,10 +92,10 @@ func walkRelHistoryShards[T any](ts *Store, rid types.RelID, ask func(*BadgerSto
 	if err != nil {
 		return zero, err
 	}
-	_, liveHere, err := relCurrentStampsRow(shard, rid)
-	if err != nil {
-		return zero, err
+	if probe.err != nil {
+		return zero, probe.err
 	}
+	liveHere := probe.live // the route read the row: no second read
 	if liveHere && !isArchive {
 		if shard == ts.refShard {
 			return historyWalkWithArchive(ts, shard, acc, ask, merge)
