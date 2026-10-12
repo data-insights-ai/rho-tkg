@@ -377,6 +377,22 @@ then restores = persisted overview + a raw scan from (frontier − horizon − l
 badger; break cases: validFrom exactly at a valid end, untimed entity, a correction that moves the valid end before
 validFrom at a later tx (pin before vs after it), retracted entity, tiered/sharded parity.
 
+
+### 52. Durable commit under SyncWrites costs one fsync per mutation (~1 s per 530-op group)
+
+*HIGH (consumer: ai-soc, 2026-10-12; "We have to hurry", BA+BO project data)* — open; measured, not started.
+
+ai-soc runs `DurableCommit` + `SyncWrites` (strict power-loss durability, because DurableCommit alone leaves the
+memtable-switch gap documented at `store/badger/badgerstore_durable.go:28-34`, backlog 15). SyncWrites mode flushes
+every mutation synchronously (`badgerstore_flush.go:82,105`): ~822 msync per 530-op group, 0.99 s mean vs 14 ms for
+DurableCommit alone (`tasks/evidence/aisoc-commit-cost/01-measure.txt`; ai-soc measures 2.86 s on its store, BA
+window 46 min on badger vs 54 s on memory). Need: ≤ 0.1 s per durable 530-op group, hard floor 0.5 s. Sound fix
+candidate: inside a DurableCommit group, buffer the group's mutations and commit them as one WriteBatch that Badger
+syncs (SyncWrites keeps the switch covered), so the cost is one or a few syncs per group, not one per mutation; or
+close the memtable-switch gap in DurableFlush so ai-soc can drop SyncWrites. Red test first: a syscall- or
+sync-counting test (syncs per durable group bounded by a constant, not by op count) + the crash/power-loss
+contract tests of v4.44.0 still green; bench `tasks/evidence/aisoc-commit-cost/bench_test.go.txt`.
+
 ---
 
 ### 45. Internal sentinels reach callers but have no exported alias

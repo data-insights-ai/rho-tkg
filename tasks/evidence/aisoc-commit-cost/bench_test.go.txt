@@ -1,0 +1,80 @@
+package aisocbench
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"testing"
+	"time"
+
+	graph "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+)
+
+// ai-soc shape: per record two keyed endpoint upserts + one LOGON rel with ~12 props incl. valid interval.
+func run(t *testing.T, name string, cfg graph.Config, commits, recs int) {
+	g, err := graph.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	ctx := context.Background()
+	for _, l := range []string{"Device", "Account"} {
+		if err := g.Constraints().CreateUnique(ctx, l, "key"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var total time.Duration
+	var worst time.Duration
+	for c := 0; c < commits; c++ {
+		t0 := time.Now()
+		err := g.Tx().RunContext(ctx, func(tx *graph.GraphTx) error {
+			for r := 0; r < recs; r++ {
+				i := c*recs + r
+				dev, _, err := tx.GetOrCreateByKey("Device", "key", fmt.Sprintf("dev-%d", i%2000), map[string]any{"estate": "BA"})
+				if err != nil {
+					return err
+				}
+				acct, _, err := tx.GetOrCreateByKey("Account", "key", fmt.Sprintf("acct-%d", i%5000), map[string]any{"estate": "BA"})
+				if err != nil {
+					return err
+				}
+				vf := int64(1_790_700_000_000 + i*1000)
+				_, err = tx.AddRelationshipByID("LOGON", acct.ID(), dev.ID(), map[string]any{"device": "d", "action": "LogonSuccess", "logon_type": "Network",
+					"logon_id": "0x2", "account_sid": "S-X", "account": "x", "remote_ip": "10.2.0.2", "tkg_valid_from": vf, "tkg_valid_to": vf + 1,
+					"estate": "BA", "group": fmt.Sprintf("g%d", c), "source": "DeviceLogonEvents", "record": fmt.Sprintf("r%d", i)})
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		d := time.Since(t0)
+		total += d
+		if d > worst {
+			worst = d
+		}
+	}
+	fmt.Printf("%-22s commits=%d recs/commit=%d mean=%v worst=%v rows/s=%.0f\n", name, commits, recs, total/time.Duration(commits), worst, float64(commits*recs)/total.Seconds())
+}
+
+func TestAisocShape(t *testing.T) {
+	commits, recs := 30, 177 // 177 records ≈ 530 ops (2 upserts + 1 rel each)
+	if os.Getenv("RECS") != "" {
+		fmt.Sscan(os.Getenv("RECS"), &recs)
+	}
+	if os.Getenv("ONLY") == "" {
+		run(t, "memory", graph.Config{}, commits, recs)
+	}
+	for _, c := range []struct {
+		n    string
+		d, s bool
+	}{{"badger plain", false, false}, {"badger Durable", true, false}, {"badger Sync", false, true}, {"badger Durable+Sync", true, true}} {
+		if o := os.Getenv("ONLY"); o != "" && o != c.n {
+			continue
+		}
+		run(t, c.n, graph.Config{BadgerDir: t.TempDir(), DurableCommit: c.d, SyncWrites: c.s}, commits, recs)
+	}
+}
