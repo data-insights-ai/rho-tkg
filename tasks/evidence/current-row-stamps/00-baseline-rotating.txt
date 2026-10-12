@@ -1,0 +1,47 @@
+ 12:02:16 up 10 days,  3:17, 16 users,  load average: 30,98, 14,97, 14,88
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkLatestStampsRotating/rels=5000/memory-32         	14230582	        77.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/memory-32         	18229160	        63.65 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/memory-32         	18730149	        63.25 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/memory-32         	18088294	        65.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/memory-32         	15841634	        70.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/badger-32         	12347721	        92.34 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/badger-32         	10937607	        95.21 ns/op	       1 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/badger-32         	13262949	        89.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/badger-32         	13458589	        95.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/badger-32         	14747228	        87.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/tiered-32         	 1338291	       893.3 ns/op	     776 B/op	      12 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/tiered-32         	 1368675	      1130 ns/op	     776 B/op	      12 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/tiered-32         	 1262205	      1063 ns/op	     775 B/op	      12 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/tiered-32         	  873601	      1152 ns/op	     781 B/op	      12 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/tiered-32         	 1170837	       994.7 ns/op	     778 B/op	      12 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/sharded-32        	 2123100	       537.2 ns/op	     709 B/op	       8 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/sharded-32        	 1991236	       596.4 ns/op	     709 B/op	       8 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/sharded-32        	 2364609	       477.7 ns/op	     708 B/op	       8 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/sharded-32        	 2308266	       515.8 ns/op	     709 B/op	       8 allocs/op
+BenchmarkLatestStampsRotating/rels=5000/sharded-32        	 2180847	       517.7 ns/op	     709 B/op	       8 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/memory-32        	19963071	        68.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/memory-32        	16493184	        79.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/memory-32        	17925723	        75.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/memory-32        	18155476	        76.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/memory-32        	12935630	        83.25 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/badger-32        	  408182	      4678 ns/op	    2223 B/op	      26 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/badger-32        	  318925	      4584 ns/op	    2226 B/op	      26 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/badger-32        	  190718	      5330 ns/op	    2206 B/op	      25 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/badger-32        	  264266	      4579 ns/op	    2225 B/op	      26 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/badger-32        	  359911	      4557 ns/op	    2229 B/op	      26 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/tiered-32        	  216510	      5097 ns/op	    3014 B/op	      38 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/tiered-32        	  234948	      5741 ns/op	    3007 B/op	      38 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/tiered-32        	  231868	      5010 ns/op	    3010 B/op	      38 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/tiered-32        	  226240	      8028 ns/op	    3001 B/op	      38 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/tiered-32        	  225051	      7687 ns/op	    3017 B/op	      38 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/sharded-32       	  315700	      5367 ns/op	    2932 B/op	      34 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/sharded-32       	  231777	      5046 ns/op	    2946 B/op	      34 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/sharded-32       	  274328	      5011 ns/op	    2941 B/op	      34 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/sharded-32       	  236342	      4917 ns/op	    2933 B/op	      34 allocs/op
+BenchmarkLatestStampsRotating/rels=20000/sharded-32       	  217998	      5113 ns/op	    2946 B/op	      34 allocs/op
+PASS
+exit 0
