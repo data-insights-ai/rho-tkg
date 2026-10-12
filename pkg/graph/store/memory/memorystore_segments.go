@@ -1815,6 +1815,11 @@ func (s *segColumnSource) addAny(c int, r *types.Relationship, key string) {
 		s.addAbsent(c)
 		return
 	}
+	s.addValue(c, v)
+}
+
+// addValue classifies a held value with the shared column rule.
+func (s *segColumnSource) addValue(c int, v any) {
 	k, i64, f64, str, b, ok := storecontract.ClassifyScalar(v)
 	switch k {
 	case storecontract.ColFloat64:
@@ -1855,8 +1860,8 @@ func (s *segColumnSource) addColumnValue(c int, pb *segment.Batch, kind segment.
 		s.put(c, storecontract.ColFloat64, int64(math.Float64bits(f)), "", cellScalar) // #nosec G115 -- bit pattern
 	case segment.KindBool:
 		s.put(c, storecontract.ColBool, x, "", cellScalar)
-	default: // int8/int16/uints: held, but not a column scalar (classifyScalar !ok)
-		s.put(c, 0, 0, "", cellOther)
+	default: // int8/int16/uints: the Go value through the shared rule (a uint64 past MaxInt64 is float64)
+		s.addValue(c, storecontract.SegmentKindValue(storecontract.SegmentColumnKind(kind), x))
 	}
 	return nil
 }

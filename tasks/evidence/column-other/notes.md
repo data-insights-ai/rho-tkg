@@ -72,7 +72,11 @@ Mutants: `mutants.txt`. Red output: `red-*.txt`. Green: `green-*.txt`.
 - Not gated in `bench/` (that suite holds no column-scan row); the nil-on-the-common-path guarantee is the
   `no_other_cell` assertion.
 
-## Found, not changed (pre-existing, out of scope)
+## Integer widths (review follow-up, separate commit)
+
+The divergence below is fixed: `classifyScalar` follows `index.normalizeNumeric` (int8..uint32 -> int64; uint/uint64 -> int64 when it fits, float64 past MaxInt64; both in one column -> `ErrMixedNumericColumn`), the segment int8/int16/uint arm classifies the stored Go value through the same rule. Red `red-int-widths.txt`, green `green-int-widths.txt` (`TestColumnScanIntegerWidths_PathsAgree`: memory and badger, no opts and ValidAt; the Other fixture's `s` int8 is now a value, a map-only column `t` keeps the never-resolved-kind pad covered). Mutants W1-W5 in `mutants.txt`.
+
+## Found before the follow-up (pre-existing)
 
 - Narrow integer widths diverge between badger's columnar path and the row path. Probe (three nodes, `s` int8
   only, `ScanNodeColumns(["s"])`): memory `Null=[true true true]` (now `Other` all true); badger columnar

@@ -10,13 +10,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **`ColumnData.Other`: column-scan cells held outside the column** (backlog 48, requested by sigma-tkgd).
   `Other[c][k]` (on `ColumnBatch` and `RelColumnBatch`, the meaning of `SegmentColumnValues.Other`) marks a row that
-  holds property `c` but not as a `Kinds[c]` value — a list, a map, a struct, a scalar of another kind, or a width the
-  row path does not type (int8, int16, uint*) — so a reader re-reads exactly those rows instead of routing a whole
+  holds property `c` but not as a `Kinds[c]` value — a list, a map, a struct, a scalar of another kind — so a reader re-reads exactly those rows instead of routing a whole
   label to the row feed. The cell stays `Null == true` with a zero typed slot, so a reader that ignores `Other` sees
   it missing, as before. `Other` is nil on a batch without such a cell (no allocation on the common path; row-path
   benchmarks' allocs/op unchanged); otherwise every `Other[c]` is parallel to `Null[c]`. Filled identically by the
   memory and badger scans, pinned scans (`ValidAt`, `TxAt`) and declared segment relationships;
   a `store.RelColumnSource` fills it by also implementing the optional `store.RelColumnOtherSource` (`Other(i, c)`; a source without it scans unchanged and reports no `Other`). Evidence: `tasks/evidence/column-other/`.
+
+### Changed
+
+- **Column scans type every integer width like badger's columnar snapshot.** int8, int16, uint8, uint16 and uint32
+  are `ColInt64` columns, a `uint` / `uint64` is `ColInt64` when it fits and `ColFloat64` past `MaxInt64` (a column
+  holding both refuses with `ErrMixedNumericColumn`), on the row path, pinned scans and declared segment
+  relationships too (`index.normalizeNumeric`'s rule). Before, badger's snapshot served them as values while memory,
+  badger's row path and `ValidAt` / `TxAt` scans reported the same cells missing (`Null`), so one column read
+  differently by backend and by opts.
 
 ### Fixed
 

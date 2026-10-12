@@ -1,6 +1,8 @@
 package store
 
 import (
+	"math"
+
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -353,6 +355,12 @@ func (cd *ColumnData) markOther(c, row int) {
 // classifyScalar converts a stored property value to its column kind and typed
 // value. The integral widenings here are exactly the ones a consumer would
 // otherwise perform after the type was erased, each costing a heap box.
+//
+// The integer widths follow index.normalizeNumeric, which badger's columnar
+// snapshot reads them with, so the row path and the snapshot type a column
+// alike: every width up to 32 bits is int64; a uint/uint64 is int64 when it fits
+// and float64 past MaxInt64 (next to a fitting one the column is mixed and
+// refused, on both paths), never a wrapped negative int64.
 func classifyScalar(v any) (k ColumnKind, i64 int64, f64 float64, s string, b bool, ok bool) {
 	switch t := v.(type) {
 	case int64:
@@ -361,6 +369,20 @@ func classifyScalar(v any) (k ColumnKind, i64 int64, f64 float64, s string, b bo
 		return ColInt64, int64(t), 0, "", false, true
 	case int32:
 		return ColInt64, int64(t), 0, "", false, true
+	case int16:
+		return ColInt64, int64(t), 0, "", false, true
+	case int8:
+		return ColInt64, int64(t), 0, "", false, true
+	case uint32:
+		return ColInt64, int64(t), 0, "", false, true
+	case uint16:
+		return ColInt64, int64(t), 0, "", false, true
+	case uint8:
+		return ColInt64, int64(t), 0, "", false, true
+	case uint:
+		return classifyUint64(uint64(t))
+	case uint64:
+		return classifyUint64(t)
 	case types.Instant:
 		return ColInt64, int64(t), 0, "", false, true
 	case float64:
@@ -373,6 +395,14 @@ func classifyScalar(v any) (k ColumnKind, i64 int64, f64 float64, s string, b bo
 		return ColBool, 0, 0, "", t, true
 	}
 	return 0, 0, 0, "", false, false
+}
+
+// classifyUint64 is int64 when v fits exactly, float64 past MaxInt64.
+func classifyUint64(v uint64) (ColumnKind, int64, float64, string, bool, bool) {
+	if v <= math.MaxInt64 {
+		return ColInt64, int64(v), 0, "", false, true
+	}
+	return ColFloat64, 0, float64(v), "", false, true
 }
 
 // RelColumnSource is a relationship row set a backend reads from its own

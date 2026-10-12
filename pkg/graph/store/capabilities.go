@@ -1312,9 +1312,8 @@ type ColumnData struct {
 	Null  [][]bool
 	// Other mirrors SegmentColumnValues.Other: Other[c][k] means row k HOLDS
 	// property c, but not as a Kinds[c] value — a list, a map, a struct, a scalar
-	// of another kind (a string in an int column) or a width the row path does
-	// not type (int8, int16, uint*; badger's columnar snapshot serves those as
-	// Ints instead); read it from the row (Nodes().Get /
+	// of another kind (a string in an int column); read it from the row
+	// (Nodes().Get /
 	// Rels().Get, or ByLabel / ByType under the same QueryOpts). Such a cell is
 	// also Null[c][k] == true with a zero typed slot, so a reader that ignores
 	// Other sees it missing, as before Other existed. Not the partition of

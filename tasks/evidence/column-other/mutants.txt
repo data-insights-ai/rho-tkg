@@ -69,3 +69,29 @@ O1 source without Other: driver still marks kind mismatches: KILLED
 O2 segment source loses its Other method (renamed): KILLED
     TestColumnScanOther_MatchesRowRead
     TestColumnScanOther_MatchesRowRead/memory-segments
+
+## Follow-up 2: integer widths follow index.normalizeNumeric
+W1 int8 not typed (row path reports it Other): KILLED
+    TestColumnScanIntegerWidths_PathsAgree
+    TestColumnScanIntegerWidths_PathsAgree/narrow_widths
+    TestColumnScanOther_MatchesRowRead
+    TestColumnScanOther_MatchesRowRead/badger
+    TestColumnScanOther_MatchesRowRead/memory
+    TestColumnScanOther_MatchesRowRead/memory-segments
+W2 uint32 not typed: KILLED
+    TestColumnScanIntegerWidths_PathsAgree
+    TestColumnScanIntegerWidths_PathsAgree/narrow_widths
+W3 uint not typed: KILLED
+    TestColumnScanIntegerWidths_PathsAgree
+    TestColumnScanIntegerWidths_PathsAgree/uint64_fits
+W4 uint64 past MaxInt64 wraps to a negative int64 (no range check): KILLED (build failed)
+    
+W5 segment int8/int16/uint arm still reports Other: KILLED
+    TestColumnScanOther_MatchesRowRead
+    TestColumnScanOther_MatchesRowRead/memory-segments
+
+W4 rerun (the first variant dropped the only use of math: build failure, not a kill)
+W4 uint64 past MaxInt64 wraps to a negative int64 (no range check): KILLED
+    TestColumnScanIntegerWidths_PathsAgree
+    TestColumnScanIntegerWidths_PathsAgree/uint64_mixed
+    TestColumnScanIntegerWidths_PathsAgree/uint64_past_maxint64
