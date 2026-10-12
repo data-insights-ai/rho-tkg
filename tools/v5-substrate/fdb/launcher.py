@@ -102,13 +102,20 @@ def main():
         config, records = (json.loads(Path(p).read_text()) for p in args[:2])
         resource(config, records, args[2])
     elif mode == "receipt":
-        directory, result, cleanup = args
+        directory, result, cleanup, mode = args
         out = Path(directory)
         hashes = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
                   for p in sorted(out.iterdir()) if p.is_file() and p.name != "receipt.json"}
+        scopes = {
+            "static": "pinned compilation/static tools; no cluster or fault schedule",
+            "lifecycle-trace": "one physical host, four logical FDB zones; lifecycle trace, no external kill schedule",
+            "graph-fault": "one physical host, four logical FDB zones; functional graph faults only",
+            "test": "one physical host, four logical FDB zones; native tests and scalar faults",
+            "smoke": "one physical host, four logical FDB zones; native scalar smoke only",
+        }
         receipt = {"exit": int(result), "cleanup_exit": int(cleanup),
                    "success": result == "0" and cleanup == "0", "sha256": hashes,
-                   "scope": "one physical host, four logical FDB zones; functional graph faults only"}
+                   "mode": mode, "scope": scopes[mode]}
         (out / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
     else:
         raise ValueError("unsupported launcher action")

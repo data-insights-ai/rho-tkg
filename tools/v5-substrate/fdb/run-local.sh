@@ -6,7 +6,7 @@ exec 3>&1 # Preserve the original output channel through redirected failures.
 cd "$(dirname "$0")"
 mode=${1:-test}
 profile=${2:-small}
-case "$mode" in smoke|test|graph-fault|static) ;; *) echo 'usage: run-local.sh [smoke|test|graph-fault|static] [small|large]' >&2; exit 2;; esac
+case "$mode" in smoke|test|graph-fault|lifecycle-trace|static) ;; *) echo 'usage: run-local.sh [smoke|test|graph-fault|lifecycle-trace|static] [small|large]' >&2; exit 2;; esac
 runtime='foundationdb/foundationdb@sha256:c61744624e479d370a0120176e518bb569a2a18ee9abceaf7022c4367b54f1db'
 tag="rho-v5-fdb-$(date +%s)-$$"
 out="$PWD/artifacts/$tag"
@@ -38,7 +38,7 @@ cleanup() {
   for v in ${volumes[@]+"${volumes[@]}"}; do docker volume rm "$v" >>"$out/cleanup.txt" 2>&1 || cleanup_result=1; done
   if [ "${network_created:-0}" = 1 ]; then docker network rm "$tag" >>"$out/cleanup.txt" 2>&1 || cleanup_result=1; fi
   for i in ${images[@]+"${images[@]}"}; do docker image rm "$i" >>"$out/cleanup.txt" 2>&1 || cleanup_result=1; done
-  python3 -B launcher.py receipt "$out" "$result" "$cleanup_result" || cleanup_result=1
+  python3 -B launcher.py receipt "$out" "$result" "$cleanup_result" "$mode" || cleanup_result=1
   if [ "$result" = 0 ] && [ "$cleanup_result" != 0 ]; then result=1; fi
   printf '%s\n' "$out" >&3
   exit "$result"
@@ -175,7 +175,7 @@ client() {
   return "$result"
 }
 client smoke
-if [ "$mode" = test ] || [ "$mode" = graph-fault ]; then
+if [ "$mode" = test ] || [ "$mode" = graph-fault ] || [ "$mode" = lifecycle-trace ]; then
   name="$tag-tests"; containers+=("$name")
   bounded_docker 310 run --name "$name" --network "$tag" --memory "${client_mib}m" --cpus 0.5 \
     --env "FDB_CONNECTION_STRING=$connection" --env FDB_ZONE_IPS="${ips[*]}" \
@@ -185,7 +185,7 @@ if [ "$mode" = test ] || [ "$mode" = graph-fault ]; then
       cat /sys/fs/cgroup/memory.stat > /evidence/test-client-memory-stat.txt; exit "$result"' >"$out/tests.txt" 2>&1
   capture_client "$name" tests
 fi
-if [ "$mode" != smoke ]; then
+if [ "$mode" != smoke ] && [ "$mode" != lifecycle-trace ]; then
   prefix=fault
   if [ "$mode" = graph-fault ]; then prefix=graph-fault; fi
   client "$prefix-seed"
@@ -239,6 +239,7 @@ if [ "$mode" != smoke ]; then
   client "$prefix-verify"
   if [ "$mode" = graph-fault ]; then client graph-fault-terminal; fi
 fi
+if [ "$mode" = lifecycle-trace ]; then client lifecycle-trace; fi
 wait_healthy "${servers[0]}" "$out/status-after.json"
 for i in 0 1 2 3; do
   docker exec "${servers[$i]}" /bin/bash -c 'date -u +%FT%T.%NZ; cat /sys/fs/cgroup/memory.current; cat /sys/fs/cgroup/memory.peak; cat /sys/fs/cgroup/memory.stat' >"$out/zone$i-cgroup-final.txt"
@@ -249,7 +250,7 @@ docker stats --no-stream --format '{{json .}}' "${servers[@]}" >"$out/server-sta
 name="$tag-native"; containers+=("$name")
 docker run --name "$name" --network none --memory "${client_mib}m" --cpus 0.5 "$client_image" /bin/bash -c 'go version; fdbcli --version; sha256sum /usr/local/lib/libfdb_c.so /usr/local/include/foundationdb/*; ldd /usr/local/lib/libfdb_c.so' >"$out/native.txt"
 capture_client "$name" native
-if [ "$mode" = test ] || [ "$mode" = graph-fault ]; then
+if [ "$mode" = test ] || [ "$mode" = graph-fault ] || [ "$mode" = lifecycle-trace ]; then
   name="$tag-cover"; containers+=("$name")
   docker run --name "$name" --network none --memory "${client_mib}m" --cpus 0.5 --mount "type=bind,source=$out,target=/evidence" "$client_image" go tool cover -func=/evidence/coverage.out >"$out/coverage-functions.txt"
   capture_client "$name" cover

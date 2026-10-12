@@ -1,0 +1,191 @@
+{
+  "date": "2026-10-12",
+  "scope": "fixed seven-step actual native/FDB lifecycle functional comparison, not faults/cost/multi-host or engine selection",
+  "source_base": "1dddaa5d19c91903f21b8e66b2b60095d0ebbfe0",
+  "qualification": "isolated source hashes, compile-first comparator extension; no retrospective semantic RED",
+  "pins": {
+    "go": "1.26.9 linux/arm64",
+    "foundationdb": "7.3.77",
+    "api": 730,
+    "native_root_accepted_commit": "fee9b82d739e6c7d1b525b02b9cdc10845b9c2f3"
+  },
+  "profile": {
+    "name": "small",
+    "admission_mib": 4096,
+    "admission_cpus": 2.0,
+    "server_mib": 512,
+    "resident_mib": 384,
+    "cache_mib": 64,
+    "client_mib": 1024,
+    "server_cpus": 0.375,
+    "client_cpus": 0.5,
+    "build_mib": 1024,
+    "build_cpus": 2,
+    "cluster_phase_mib": 3072,
+    "cluster_phase_cpus": 2,
+    "physical_hosts": 1,
+    "independent_fault_domains": false,
+    "scope": "local graph/scalar functional faults; no engine selection or V2 closure"
+  },
+  "static": {
+    "run": "rho-v5-fdb-1791779970-28933",
+    "receipt_sha256": "ecb1b23352018fa97d3949e01426d063215fd36487187c0debe4e09510e24b6c",
+    "source_manifest_sha256": "22d3d030335e96505f56af7e1b484a24aebda73aea7658549bcbb466ba6c6933",
+    "checks": [
+      "compile",
+      "lint v2.13.2",
+      "gosec v2.29.0",
+      "govulncheck v1.7.0"
+    ],
+    "cleanup_exit": 0,
+    "carry_qualification": "Static source seal predates the existing test amendment to call run() CLI. Production/profile/exporter Go bodies are identical; amended test passes final31-parent race/coverage. Final test amendment was source-reviewed; static tools were not rerun solely for it."
+  },
+  "first_lane": {
+    "run": "rho-v5-fdb-1791780056-29276",
+    "receipt_sha256": "ca12d1ee48b699055655bd332876e01708b928374787972ad0fa7d17236feea6",
+    "test_parents": 31,
+    "skips": [],
+    "coverage_percent": 83.5,
+    "package_seconds": 18.169,
+    "reason_for_followup": "existing actual scenario changed to exercise covered CLI run() dispatch; no new scenario"
+  },
+  "final_lane": {
+    "run": "rho-v5-fdb-1791780330-30716",
+    "receipt_sha256": "5de7d9cc2cbdda6b3e096ca8894d2de1c5119bf3c2aac6864892ff36d4f105cb",
+    "source_manifest_sha256": "527057543b2b6d730450c4b8a5af56f2f570f48245bd4d7e0fb9172a732d1828",
+    "test_parents": [
+      "TestNativeFaultMarkerWriteFailureSeparatesCommitBoundaries",
+      "TestNativeFaultModesRefuseMalformedOrWrongOutcomeRecords",
+      "TestFaultRecordMissingOversizeAndConfigErrorsPreserveCallerData",
+      "TestNativeFaultVerifierRejectsObservedReadAndCompleteGroupMutants",
+      "TestNativeGraphScenarioRefusalsAndDirectCLIEntry",
+      "TestNativeGraphProgressRecoversFrozenRequestWithoutDuplicateCDC",
+      "TestNativeGraphTerminalRefusesIncompleteProgress",
+      "TestGraphShapeAndProjectionContracts",
+      "TestLiteralObservedHistoryRejectsAdversarialMutants",
+      "TestNativeGraphLifecycleAndCompleteCDC",
+      "TestNativeScopedFeedReadsRemoteCoordinatorAndRejectsMissingGroups",
+      "TestNativeActualAbsenceRangeConflictsWithoutMetadataWrites",
+      "TestNativeEndpointABAMasksRetainedIdentityBeforeCleanup",
+      "TestChangeGroupValidationContracts",
+      "TestNativeGraphRefusesIncompleteDescriptorsAndOrphanPosting",
+      "TestNativeGraphCLIAndFaultRecoveryHelpers",
+      "TestLiteralFeedReconstructsExactStateFromSnapshot",
+      "TestLifecycleProfilePreservesLegacyEncodingAndStructuralEquality",
+      "TestNativeLifecycleTraceRetainsActualHistoryAndRejectsMissingPhysicalEffects",
+      "TestWholeTransactionHistoryAndPagedFence",
+      "TestConflictGenerationAbsenceAndABA",
+      "TestRequestScopeDedupAndAmbiguousNativeCancel",
+      "TestScopesQuotasAndStrictInputs",
+      "TestNativeConflictRangeBeforeWrites",
+      "TestNativeFenceRejectsInFlightHistoryBelowClosedCut",
+      "TestMaximumEscapedGraphMinimumBudgetCutRefusalIsAtomic",
+      "TestMetadataReservationMaximumWidthsAndCorruptQuotaCounters",
+      "TestInvalidTransactionShapesAndFiniteByteQuota",
+      "TestSmokeMainAndFaultRecoveryHelpers",
+      "TestCorruptStoredRowsFailClosed",
+      "TestFaultRecordMissingAndCertificateMismatch"
+    ],
+    "skips": [],
+    "coverage_percent": 83.8,
+    "package_seconds": 17.442,
+    "new_files_statements": 420,
+    "new_files_covered": 346,
+    "changed_blocks_statements": 436,
+    "changed_blocks_covered": 360,
+    "main_file_coverage_percent": 81.25,
+    "profile_file_coverage_percent": 88.89,
+    "trace_file_coverage_percent": 81.77,
+    "state_file_coverage_percent": 87.73,
+    "exit": 0,
+    "cleanup_exit": 0,
+    "fault_schedule": "none; healthy triple startup/final, no external kill schedule"
+  },
+  "actual_comparison": {
+    "native_normal_sha256": "674e934606225efe6c49ba0c7b45d6eb13b842731db87d383dfc2fc715798acd",
+    "native_race_sha256": "43678a6dc2b28e8a38ccc9e123f8146321473ebd3e94113bd8975d522ad95fc6",
+    "fdb_sha256": "b0172ef4391a0a8586d76ed847ebc3187aa21888b37592cfe150fe5db3f66689",
+    "first_final_fdb_bytes_identical": true,
+    "results": [
+      "equal with actual native normal",
+      "equal with actual native race"
+    ],
+    "steps": 7,
+    "component_changes": 8,
+    "old_reads": 4,
+    "raw_graph_effect_writes": 13,
+    "native_raw_records": 42,
+    "exact_physical_install_writes": "unavailable, not equated with component/effect counts",
+    "comparator_test_families_passed": 4,
+    "normal_report_sha256": "784396e19fd1fa5adef630bc6223b88c09a87dbf28e2fb4b6495132f10208e8f",
+    "race_report_sha256": "dcab229f2608fd0c4178bad5f4e0a80ccfd80ba700313939a2f33785e80fe041"
+  },
+  "post_run_carry": {
+    "changes": [
+      "Python comparator validates FDB Cut.Scope as exact decoded Go []uint8 base64 bytes AA E (0,1), preserving raw encoding",
+      "mode-aware future receipt labels: static=no cluster, lifecycle=no external kill schedule",
+      "README names operation positions, not cross-engine physical round numbers"
+    ],
+    "go_production_and_exporter_body_unchanged_from_static_and_final_live": true,
+    "validation": [
+      "four actual-artifact Python comparator families pass",
+      "five existing launcher guard families pass",
+      "native Bash syntax and shellcheck pass",
+      "mode-aware receipt metadata checks pass"
+    ],
+    "old_raw_receipt_scope_qualification": "Original static/lifecycle receipts retain the old generic functional graph-fault template. The execution mode and command ledger show static had no cluster; lifecycle had no external kill schedule. Raw receipts were not rewritten."
+  },
+  "earlier_failures": [
+    {
+      "run": "rho-v5-fdb-1791779289-25666",
+      "reason": "QF1003 tagged-switch style suggestion, fixed",
+      "classification": "static style finding, not a graph semantic failure"
+    },
+    {
+      "run": "rho-v5-fdb-1791779798-28178",
+      "reason": "gosec G115 uint64-to-int conversion on validated history bound; comparison moved to uint64 without suppression",
+      "classification": "static conversion finding, not a graph semantic failure"
+    },
+    {
+      "command": "first actual Python comparison",
+      "reason": "Go []uint8 Cut.Scope base64 representation was incorrectly compared to an integer list; exact byte decoding corrected",
+      "classification": "comparator representation defect; unchanged actual graph traces equal after correction"
+    }
+  ],
+  "final_source_sha256": {
+    "state.go": "a4cb4a8e8e868cca4f1d56b7b03872e73738e07637fb9974638f7e0fa3a99259",
+    "main.go": "e5d0deaa7d18f5d72b1a4a97b163a307311e7b62e2d72fd036e9cfa3e54e8e0d",
+    "run-local.sh": "1505b54cf30fad0a38b3b80b18e35ba5ea7ec496fa363dbfbe00718bf609d90a",
+    "launcher.py": "4ebf6f7039d93442d3faace4d595e5c6502d674547e4e47e0e966fe069525c95",
+    "README.md": "8200ad0754ce29c6473f2be0d0eedd410d045d3f1d0f5ffeabd3010b0218aec3",
+    "lifecycle_profile.go": "1714ca962e8472e03f0e4d45bc2bb3babf9c12dbce8e7a0edc155fff0a8510b3",
+    "lifecycle_trace.go": "b7bebbde1ede5c9f81eaf76cc6cc83870cff95894cb001654de459b86d409f6e",
+    "lifecycle_trace_test.go": "031a5014ecaa7a8b5a2926e095661e7412d957811eb9c4fcaffc3de89020bfc2",
+    "compare-lifecycle.py": "645fbab3be5d85e8eeb97d515aaa151ddf0bf07167b8b01fd76c80843ad0500a",
+    "compare_lifecycle_test.py": "13bfd7c387056208f1a91cda2a9d6afa0f560d82336b2748564dd1e684640319",
+    "go.mod": "15d92f0904b97b3fec0e0b23427994a095963da9b4afde3c20a32573e4e4672f",
+    "go.sum": "26bcf694e1b27910d09b654fcb3a852970358127d82581474e47c9afaba96618",
+    "Dockerfile": "7c045c41ba067848825a61261c758f98bfa32e3758f61beb5791aff9cf033619",
+    "prepare-client.sh": "1656f1438237118559c18ea9183910aa098c8313a3dfc2d4a9d5160620f75a98"
+  },
+  "raw_archive": {
+    "file": "lifecycle-20261012.tar.gz",
+    "sha256": "9a7a29956e8891ec44aa89f54b6dbfdec0a1cedd4bc5023b8b093a98a146bde6",
+    "verified_receipt_artifacts": 460,
+    "all_hashes_match": true,
+    "includes": "five original source runs, exact accepted native normal/race inputs and actual comparison reports/tests"
+  },
+  "independent_root_review": "Root independently verified static/live hashes,31 passing parents/no skips, coverage, both actual native comparisons and identity/life/property/physical-posting/cut bindings",
+  "unsupported": [
+    "non-All temporal access",
+    "nonempty labels",
+    "generic allocator/registry/dictionary backend",
+    "retention/GC",
+    "paired fault schedules",
+    "physical-host/power-loss proof",
+    "broad cost/performance",
+    "V2 completion and engine selection"
+  ],
+  "v2_complete": false,
+  "engine_selected": false
+}

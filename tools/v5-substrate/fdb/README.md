@@ -14,6 +14,7 @@ The launcher runs on an arm64 Docker host with bash and Python 3:
 cd tools/v5-substrate/fdb
 ./run-local.sh smoke       # native boot + ordinary two-prefix read/write
 ./run-local.sh graph-fault # vet/race/coverage, graph client kills, zone loss/reopen
+./run-local.sh lifecycle-trace # vet/race/coverage + actual common lifecycle export
 make cover                # vet/race/coverage, oracle and scalar process faults
 make static               # pinned lint, gosec and govulncheck
 make ci
@@ -87,6 +88,45 @@ endpoint closes. Identity and visible graph reads require both owners' cut scope
 The independent literal oracle checks actual retained endpoint/edge/posting values,
 correction, deletion and complete CDC; local observation sequence and dependency
 records describe a small sequential fixture, not general concurrent serializability.
+
+The fresh optional lifecycle comparison profile additionally persists the exact
+AllScope Q/ms/POSIX descriptor, own edge LifeID, caller provenance and typed value
+definitions/references in immutable config and admitted transaction groups.
+Config equality is structural after decoding. The declared input definitions
+do not create observed dictionary membership; only committed definitions and
+matching history introduce values in the export. Zero-profile scalar and graph
+fault encodings remain unchanged; a different profile on an existing namespace
+is refused. This is fixed comparison support, not a generic schema, allocator
+or dictionary backend.
+
+`lifecycle-trace` runs the same seven graph operations and exports all raw history,
+config, original groups/outcomes, cuts and validated final current rows. It checks
+every physical edge/out/in revision and tombstone before deriving logical changes.
+Immutable declarations and properties remain observable after presence closes.
+Empty labels follow the complete stored-row census; unexpected rows refuse.
+The held cut after operation 3 is edge-only and includes its immutable life;
+reopened cuts after operations 3/4/5 are
+complete within the declared fixture domain. This differs from native v5's
+allocator-issued range completeness; both proofs remain visible. Native binary
+scope and FDB JSON/Go byte-array encodings remain raw evidence; canonical AllScope,
+typed references and operation bindings provide the explicit correspondence.
+
+Compare supplied actual traces, preserving their raw bytes:
+
+```sh
+python3 -B compare-lifecycle.py native-trace.json artifacts/RUN/lifecycle-trace-2.json
+python3 -B compare_lifecycle_test.py native-trace.json artifacts/RUN/lifecycle-trace-2.json
+```
+
+The comparator validates identity/operation bijections, physical key ownership,
+stored metadata/digests/original records, exact old-cut identities and completeness
+before comparing full answers and logical CDC. It normalizes null/empty lists
+and documented representation differences. It does not compare physical-write
+counts, numeric rounds or native codecs as though they were equivalent. The
+[lifecycle receipt](evidence/lifecycle-20261012.json) records the local qualification.
+This lane executes no external kill schedule; earlier graph-fault evidence remains
+separate. Non-All temporal access, nonempty labels, allocation, retention/GC,
+multi-host durability, broad cost evaluation and engine selection are unsupported.
 
 With a fresh namespace and an already bounded native deployment, the executable
 supports `graph-smoke` (`FDB_GRAPH_FIXTURE`) and `graph-fault-seed`,

@@ -25,12 +25,13 @@ var (
 
 type limits struct{ Bytes, Transactions, Versions, Certificates uint64 }
 type config struct {
-	Format   uint8
-	Graph    string
-	Topology uint64
-	Epochs   [2]uint64
-	Limits   limits
-	Nodes    [2]uint64 `json:",omitzero"`
+	Format    uint8
+	Graph     string
+	Topology  uint64
+	Epochs    [2]uint64
+	Limits    limits
+	Nodes     [2]uint64        `json:",omitzero"`
+	Lifecycle lifecycleProfile `json:",omitzero"`
 }
 type read struct {
 	Key     string
@@ -54,7 +55,8 @@ type transaction struct {
 	Coordinator  uint8
 	Dependency   uint64
 	Participants []participant
-	GraphChange  *graphCommand `json:",omitempty"`
+	GraphChange  *graphCommand      `json:",omitempty"`
+	Lifecycle    *lifecycleMetadata `json:",omitempty"`
 }
 type value struct {
 	Value          int64
@@ -207,7 +209,7 @@ func put(tr fdb.Transaction, k fdb.Key, v any) error {
 }
 func newHarness(db fdb.Database, c config) (*harness, error) {
 	l := c.Limits
-	if c.Format != 2 || !validGraphConfig(c) || !validName(c.Graph) || c.Topology == 0 || c.Epochs[0] == 0 || c.Epochs[1] == 0 || l.Bytes < 8192 || l.Bytes > 16<<20 || l.Transactions < 1 || l.Transactions > 1024 || l.Versions < 1 || l.Versions > 65536 || l.Certificates < 1 || l.Certificates > 1024 {
+	if c.Format != 2 || !validGraphConfig(c) || !validLifecycleProfile(c) || !validName(c.Graph) || c.Topology == 0 || c.Epochs[0] == 0 || c.Epochs[1] == 0 || l.Bytes < 8192 || l.Bytes > 16<<20 || l.Transactions < 1 || l.Transactions > 1024 || l.Versions < 1 || l.Versions > 65536 || l.Certificates < 1 || l.Certificates > 1024 {
 		return nil, errInvalid
 	}
 	h := &harness{db, c}
@@ -271,6 +273,9 @@ func (h *harness) validate(x transaction) error {
 	}
 	if !found {
 		return errInvalid
+	}
+	if err := h.validateLifecycle(x); err != nil {
+		return err
 	}
 	return h.validateGraphShape(x)
 }
