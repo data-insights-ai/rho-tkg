@@ -1,0 +1,513 @@
+{
+  "kind": "native-ready-progress-and-receiving-component-qualification",
+  "source_commit": "37354b45181ae95b02883fd24f9c65311598eb97",
+  "base_commit": "5d54a2f2b38ae868e11c709eb213bf475c903ab8",
+  "scope": "Bound fixed-membership normal-Ready catch-up and empty bound receiving term primitive. Package qualification only; actual six-voter paired fault trace remains pending.",
+  "final_source_files": 544,
+  "final_source_manifest": "tasks/evidence/native-ready-progress-20261012/final-source-freeze.json inside archive",
+  "final_source_manifest_sha256": "8ecb6ca0176133c20391845dc07cbcc0e2b0ae3be730f8410f391ffab007b96f",
+  "full_package_source_commit": "b26caf57b78ad3d765cf4ccea6e07ec17423600d",
+  "full_package_source_manifest_sha256": "cabed6df0687cc4d508f185b4a48cdfeceff4fcd8b1fd341d89cae198afb0bfe",
+  "post_full_mechanical_delta": {
+    "v5/internal/raftlog/receiving.go": "Three equivalent promoted HardState selectors at line55, same nil guard; focused receiving normal and lint passed after rewrite",
+    "v5/internal/replica/application_ready_progress.go": "Comment-only audited G115 conversion annotation at line83; MaxReadBytes validated positive<=32MiB in Driver.Open"
+  },
+  "verification_reuse": "Six full package gates qualify identical logic before equivalent promoted selectors and comment-only annotation; focused receiving normal follows selectors. No extra full/race repeat for these mechanical deltas. Final full coverage profiles are unmerged; prior OR profiles remain historical only.",
+  "runtime": {
+    "environment": {
+      "GOMAXPROCS": "2",
+      "GOMEMLIMIT": "2GiB",
+      "GOFLAGS": "-p=1",
+      "GOWORK": "off",
+      "GOTOOLCHAIN": "local",
+      "GOCACHE": "/var/tmp/rho-v5-go-build-cache-go1.26.9"
+    },
+    "compiler": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+    "VERSION": "go1.26.9\ntime 2026-10-02T20:28:03Z\n",
+    "toolchain_VERSION_sha256": "4b7369cf043da7b3b8d638a16011a35d6de2efe861e0bd344fb0011f91515b9e",
+    "limiter": "/var/tmp/rho-v5-rebase-main-20261010-0mdr6yaw/limit-local.py",
+    "limiter_sha256": "6dc4e0362827ecd0854436b9fa1a812342b693d65ba093291d358b359e733283",
+    "rss_limit_mib": 4096,
+    "wall_limit_s_each": 180,
+    "shared_lint_config_sha256": "7084dd0d2272f3c27ac89fc503f6672f9960ae2da47c85cefcfb27951f8caf69",
+    "pinned_tools_inventory": {
+      "kind": "read-only owned pinned tool inventory; no scanner execution yet",
+      "tools": {
+        "golangci-lint": {
+          "path": "/var/tmp/rho-v6-preflight-evidence-20261012/bin/golangci-lint",
+          "bytes": 62397906,
+          "sha256": "5a88e04e56c1ccd7617c01666df23e5767d7a12cf21bac2c02e3170d67a27eef",
+          "root_and_v5_Makefile_pin": "v2.13.2",
+          "prior_install_report": "/var/tmp/rho-v6-preflight-evidence-20261012/install-lint-limit.json"
+        },
+        "gosec": {
+          "path": "/var/tmp/rho-v6-preflight-evidence-20261012/bin/gosec",
+          "bytes": 73378002,
+          "sha256": "37117fce9ed7012d9f754b01b49a76f059595fa8fc05c6bb9eff8c7b9bd8c2da",
+          "root_and_v5_Makefile_pin": "v2.29.0",
+          "prior_install_report": "/var/tmp/rho-v6-preflight-evidence-20261012/install-gosec-limit.json"
+        },
+        "govulncheck": {
+          "path": "/var/tmp/rho-v6-preflight-evidence-20261012/bin/govulncheck",
+          "bytes": 14408034,
+          "sha256": "7e84b57e53de1ac85b4ac78d003cb6c043e6defce77e38b71a6f5907680ea178",
+          "root_and_v5_Makefile_pin": "v1.7.0",
+          "prior_install_report": "/var/tmp/rho-v6-preflight-evidence-20261012/install-vulncheck-limit.json"
+        }
+      }
+    }
+  },
+  "gates": [
+    {
+      "name": "integrated-raftlog-short",
+      "session": 85259,
+      "report": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-short",
+          "-count=1",
+          "-json",
+          "./internal/raftlog"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 419.688,
+        "elapsed_s": 10.298,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "artifact_sha256": {
+        "integrated-raftlog-short.watchdog.json": "b084dcabc58cadbf4687ebc4825fb2b0bbdbeb4f2a01773de3e9de136cd845b5",
+        "integrated-raftlog-short.stderr": "573b64c1636ce5dd13e301c597a324f072ce0d5d217289fb5ac2b74b2111c2c5",
+        "integrated-raftlog-short.jsonl": "e5fcef30f3cc2c5ee6592a3a2ed0db41cc4505a496885fde2c8835a523a8596e"
+      },
+      "tests_passed_including_subtests": 1244,
+      "expected_skips": [
+        "TestIDConsumptionDiskMeasurement"
+      ]
+    },
+    {
+      "name": "integrated-replica-short",
+      "session": 41515,
+      "report": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-short",
+          "-count=1",
+          "-json",
+          "./internal/replica"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 571.609,
+        "elapsed_s": 21.933,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "artifact_sha256": {
+        "integrated-replica-short.jsonl": "cd8d114a5526a6cdb61d1c94a9a4ae1a5ed5868ee8fddf7245a782fcb77a5c1f",
+        "integrated-replica-short.watchdog.json": "838e634f111c1a267b047a1a43f666c3a9c28c1da649647e79295b1ca9e60b3b",
+        "integrated-replica-short.stderr": "ea6f9a22d82f92896d69d8498c8d16944dd91f37434ccac0c11ec3f9fdbe9bc3"
+      },
+      "tests_passed_including_subtests": 258,
+      "expected_skips": []
+    },
+    {
+      "name": "integrated-raftlog-race",
+      "session": 60625,
+      "report": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-race",
+          "-short",
+          "-count=1",
+          "-json",
+          "./internal/raftlog"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 410.422,
+        "elapsed_s": 67.606,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "artifact_sha256": {
+        "integrated-raftlog-race.jsonl": "768e0a5f55fbcfe162f916d345a7fd5aeb269f345f839a15b6f330e890161571",
+        "integrated-raftlog-race.stderr": "e7f169eb22273c9108666423add877ee82b3128a211a3ff2d9f197d2b2c688e3",
+        "integrated-raftlog-race.watchdog.json": "18475bd27934a4bec48859ab0c66f5e52ef9945c12a390540edbd47c1f142d2e"
+      },
+      "tests_passed_including_subtests": 1244,
+      "expected_skips": [
+        "TestIDConsumptionDiskMeasurement"
+      ]
+    },
+    {
+      "name": "integrated-replica-race",
+      "session": 49089,
+      "report": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-race",
+          "-short",
+          "-count=1",
+          "-json",
+          "./internal/replica"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1694.547,
+        "elapsed_s": 138.899,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "artifact_sha256": {
+        "integrated-replica-race.jsonl": "24776b53569ed2b09354902e2891677eb11eea75849754f4875784ecadc12bd6",
+        "integrated-replica-race.watchdog.json": "65a547283460e4f9a6dbf7c5c9769bd55a18996b5d4ed7054645137835527098",
+        "integrated-replica-race.stderr": "ecb85252c5ccfa6f2aad9238be2348857bd08944a5ccca40085455f16ccbb6cb"
+      },
+      "tests_passed_including_subtests": 258,
+      "expected_skips": []
+    },
+    {
+      "name": "integrated-raftlog-coverage",
+      "session": 34349,
+      "report": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-covermode=set",
+          "-coverprofile=../tasks/evidence/native-ready-progress-20261012/integrated-raftlog.coverage.out",
+          "-short",
+          "-count=1",
+          "-json",
+          "./internal/raftlog"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 435.516,
+        "elapsed_s": 12.099,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "artifact_sha256": {
+        "integrated-raftlog-coverage.watchdog.json": "26e139ab60d716652e36a7b0a329406115f9f30b0687be261fb9ebd9c514f8f3",
+        "integrated-raftlog-coverage.jsonl": "31dbf965dae2afddeb4fbd1167c4a958803f80684679bce48e00139f94358942",
+        "integrated-raftlog-coverage.stderr": "dd89b96560020c6e1792bee96e0d9b597087031753fa36087cc5b0249572d337"
+      },
+      "tests_passed_including_subtests": 1244,
+      "expected_skips": [
+        "TestIDConsumptionDiskMeasurement"
+      ]
+    },
+    {
+      "name": "integrated-replica-coverage",
+      "session": 68108,
+      "report": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-covermode=set",
+          "-coverprofile=../tasks/evidence/native-ready-progress-20261012/integrated-replica.coverage.out",
+          "-short",
+          "-count=1",
+          "-json",
+          "./internal/replica"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 582.781,
+        "elapsed_s": 21.817,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "artifact_sha256": {
+        "integrated-replica-coverage.jsonl": "d75d0dce405ec826c21f05b0a95b7954619064d08711ecc90e6e612ed940cb97",
+        "integrated-replica-coverage.stderr": "4eba4d8614a05fe222eb557fcd318a1d826ef4ec6b34f55bdef30e2f389680e2",
+        "integrated-replica-coverage.watchdog.json": "c63a094d15d8e1a83edfffc6d00b1b7dfb072d982b4d04741abe5a7b795bfadd"
+      },
+      "tests_passed_including_subtests": 258,
+      "expected_skips": []
+    },
+    {
+      "name": "integrated-raftlog-cover-func",
+      "session": null,
+      "report": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "tool",
+          "cover",
+          "-func=../tasks/evidence/native-ready-progress-20261012/integrated-raftlog.coverage.out"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 6.031,
+        "elapsed_s": 0.317,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "artifact_sha256": {
+        "integrated-raftlog-cover-func.watchdog.json": "4010a1511e9d6b9fa4fd3e4fa0395058951383c713a42cc765c623bc7d1661cb",
+        "integrated-raftlog-cover-func.stderr": "544ff3d487ac1a80781d3f8ab3879c90dfff70d36553cf4858db7125bf28da2d",
+        "integrated-raftlog-cover-func.stdout": "a6be794399b4722a99289cdbb780e511abf22eedee168b512e2149b44f1df36c"
+      }
+    },
+    {
+      "name": "integrated-replica-cover-func",
+      "session": null,
+      "report": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "tool",
+          "cover",
+          "-func=../tasks/evidence/native-ready-progress-20261012/integrated-replica.coverage.out"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 6.203,
+        "elapsed_s": 0.319,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "artifact_sha256": {
+        "integrated-replica-cover-func.stderr": "b6cb4a2ebea18a2f2291da080fe3be40530a03401920cd2ccaa52439fc30cbf2",
+        "integrated-replica-cover-func.stdout": "addea147c345a7fdba885f924efa07a2da75db39bfbc730ffe445b244d72ed9a",
+        "integrated-replica-cover-func.watchdog.json": "17fb926485cccf4f3a66bfc1cd8b10cb2b8c17114be9e5e0ec4d1647ba8c1166"
+      }
+    },
+    {
+      "name": "integrated-vet",
+      "session": 22729,
+      "report": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "vet",
+          "./internal/raftlog",
+          "./internal/replica"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 85.688,
+        "elapsed_s": 1.123,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "artifact_sha256": {
+        "integrated-vet.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "integrated-vet.stderr": "a9cc31960f1d6bd41720a811d651c9c43b85245148e7c439751ffe4c2fc1007f",
+        "integrated-vet.watchdog.json": "6c01d081d17eddc9bc7786308a18a68927afdccf3895376de298af033e53998f"
+      }
+    },
+    {
+      "name": "selectors-receiving-normal",
+      "session": 23656,
+      "report": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-short",
+          "-count=1",
+          "-json",
+          "-run",
+          "^TestApplicationReceiving",
+          "./internal/raftlog"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 433.234,
+        "elapsed_s": 4.156,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "artifact_sha256": {
+        "selectors-receiving-normal.stderr": "47fe04bccad83d2926196d444c1081750f7cd0b1f01a9c93840623996384c79a",
+        "selectors-receiving-normal.jsonl": "beeeafa2f567a55659abc8c59073278f3643a554e7371104bff467dc0179f115",
+        "selectors-receiving-normal.watchdog.json": "8078bc7ec22411c8a41732fcaf819451887b4637ead7dc87e04823a93955c683"
+      },
+      "tests_passed_including_subtests": 54,
+      "expected_skips": []
+    },
+    {
+      "name": "selectors-lint",
+      "session": 98559,
+      "report": {
+        "command": [
+          "/var/tmp/rho-v6-preflight-evidence-20261012/bin/golangci-lint",
+          "run",
+          "--config",
+          "../.golangci.yml",
+          "./internal/raftlog",
+          "./internal/replica"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1318.875,
+        "elapsed_s": 18.074,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "artifact_sha256": {
+        "selectors-lint.watchdog.json": "b25faa7f7b22f7db61068df286bc4a7d539ae5097fa374c1643d805013bb49ab",
+        "selectors-lint.stdout": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47",
+        "selectors-lint.stderr": "d0afa97fe3f09b4c0352581fdd687cf1a8c2517b9dcdfc2f96795dbe59a7ce33"
+      }
+    },
+    {
+      "name": "annotated-security",
+      "session": null,
+      "report": {
+        "command": [
+          "/var/tmp/rho-v6-preflight-evidence-20261012/bin/gosec",
+          "-quiet",
+          "./internal/raftlog",
+          "./internal/replica"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 248.531,
+        "elapsed_s": 0.856,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "artifact_sha256": {
+        "annotated-security.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "annotated-security.watchdog.json": "4647af57e2aa70b5bd16b3fc3ad4efe0b5b591e042423d03070d8b96fc8bcb22",
+        "annotated-security.stderr": "4a244cdd9cb45ead29797b380f928c7f0b288c222cc2e8d2eb01d74ef267a179"
+      }
+    },
+    {
+      "name": "annotated-vulncheck",
+      "session": 10048,
+      "report": {
+        "command": [
+          "/var/tmp/rho-v6-preflight-evidence-20261012/bin/govulncheck",
+          "./internal/raftlog",
+          "./internal/replica"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1579.453,
+        "elapsed_s": 3.304,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "artifact_sha256": {
+        "annotated-vulncheck.watchdog.json": "fdf776ccfb8101f8c4aa4d3fb3961b37d5eba391677a665d10386ee333f9d551",
+        "annotated-vulncheck.stdout": "959780af8681f015203f3a00511efdb171d987e6a9671e4990c41adc2a1890c4",
+        "annotated-vulncheck.stderr": "89afec012ceaaba9d9b4de091c24cfa4622da81a89afb33eb90d1cd49cf8f4be"
+      }
+    }
+  ],
+  "coverage": {
+    "raftlog/application_ready_progress.go": {
+      "covered_statements": 183,
+      "statements": 201,
+      "percent": 91.04477611940298,
+      "profile": "integrated-raftlog.coverage.out",
+      "profile_sha256": "4951250ecd732eb1fc6ab1b8d4483d0b5282ca14ef8f2ebd44abb92cfdf6330a"
+    },
+    "raftlog/ordinary_ready.go": {
+      "covered_statements": 114,
+      "statements": 135,
+      "percent": 84.44444444444444,
+      "profile": "integrated-raftlog.coverage.out",
+      "profile_sha256": "4951250ecd732eb1fc6ab1b8d4483d0b5282ca14ef8f2ebd44abb92cfdf6330a"
+    },
+    "raftlog/receiving.go": {
+      "covered_statements": 66,
+      "statements": 69,
+      "percent": 95.65217391304348,
+      "profile": "integrated-raftlog.coverage.out",
+      "profile_sha256": "4951250ecd732eb1fc6ab1b8d4483d0b5282ca14ef8f2ebd44abb92cfdf6330a"
+    },
+    "raftlog/application_recovery_queue.go": {
+      "covered_statements": 264,
+      "statements": 314,
+      "percent": 84.07643312101911,
+      "profile": "integrated-raftlog.coverage.out",
+      "profile_sha256": "4951250ecd732eb1fc6ab1b8d4483d0b5282ca14ef8f2ebd44abb92cfdf6330a"
+    },
+    "replica/application_ready_progress.go": {
+      "covered_statements": 52,
+      "statements": 64,
+      "percent": 81.25,
+      "profile": "integrated-replica.coverage.out",
+      "profile_sha256": "490b20a69b3446a36712c062867671638004108e379a2471f75f6b7c001acf2d"
+    },
+    "package_totals": {
+      "raftlog": "87.8%",
+      "replica": "89.3%"
+    }
+  },
+  "new_public_direct_methods": {
+    "BeginApplicationReadyProgress": "100.0%",
+    "PersistFull": "91.2%",
+    "CommitPredecessor": "90.5%",
+    "PersistPrefix": "81.9%",
+    "AppliedLimit": "100.0%",
+    "AdvanceRaw": "100.0%",
+    "Close": "100.0%",
+    "ApplicationReceivingState": "100.0%",
+    "PersistApplicationReceiving": "90.5%"
+  },
+  "algorithm": "Validate full actual ordinary Ready before first mutation. Original whole-Ready one-write path retained. On proven no-effect owned admission refusal, sync first actually fitting prefix, apply genuine durable normal log only through original RawNode committed authority; fence all publication/compaction until actual RawNode offered pages/Advance reconcile physical and Raw applied. Old overwritten suffix never committed by replacement commit; predecessor commit<=min(C,F-1,oldLast). Recovery Reserve/Use backing, all quotas and uncertain-I/O fail-stop semantics retained.",
+  "bounded_fallback_cost": "At most full classification plus incremental forward prefix classification (tests bound verifier work<=2N); actual ApplicationView/RootBounded per fitting prefix, prefix syncs and deferred compaction. Ordinary full-success path still applies offered entries without rereading durable log. Not a throughput or production-memory/SLO claim.",
+  "receiving_boundary": "Configured voters remain placement only. Term-only sync on empty bound fixed-three state preserves inactive imports/protection; rejects active state, vote/commit/entries/snapshot. Normal Driver and bootstrap remain closed until actual snapshot activation; no replacement/quorum/retirement authorization.",
+  "failure_cases": [
+    "full verifier",
+    "joined ErrLimit plus verifier sentinel",
+    "prefix verifier after real prior application",
+    "Stage failure",
+    "Restore failure after Install",
+    "detached cleanup failure",
+    "unchanged predecessor Stage failure",
+    "wrong BaseImageHash Install refusal",
+    "Store.Close between successful Stage and recovery bind"
+  ],
+  "failure_evidence": "Original actual packets, zero Output/ACK/read/snapshot capability on refusal, errors.Is causal+Stopped, exact stored/commit/last/Driver/Raw frontiers; same-FS reopen restores actual checkpoint and replays only committed pending entries once. Store-close is lifecycle evidence, not IO-fault evidence.",
+  "baseline_controls": {
+    "final_fixture_old_production": "baselines/rho-v5-independent-red-control-final-20261012/receipt.json",
+    "large256_pre_verifier_refusal": "baselines/rho-v5-large-recovery-red-candidate-20261012/receipt.json",
+    "earlier_baselines": "baselines/independent-capacity-manifest.json",
+    "classification": "Final old-production control: three entries PASS; protected six, committed four, mixed tail, short-page suffix and overwritten suffix genuine MsgApp ErrLimit/Stopped. Large256 actual input accepted by transport but owned pre-verifier slot guard refuses with zero verifier callbacks. Expected production RED controls, not acceptance."
+  },
+  "preserved_historical_failures": {
+    "first-positive-independent-replica": "fixture timeout: peer2 successful ACK allowed a new actual quorum commit before intermediate equality",
+    "combined-independent-direct": "fixture timeout: successful-ACK hold mistakenly swallowed a rejecting probe; direct Store tests passed",
+    "scoped-lint": "four new-test style findings and private result error order; mechanically corrected",
+    "integrated-lint": "one receiving promoted selector style finding; mechanically corrected",
+    "selectors-security": "validated positive bounded int conversion; audited comment added",
+    "failure_first_overlay": "79.6875% honest initial coverage; useful install-refusal adds no new block; Store-close covers actual bind error, final81.25%"
+  },
+  "archive": {
+    "path": "tasks/evidence/native-ready-progress-20261012/raw-qualification.tar.gz",
+    "bytes": 1220066,
+    "sha256": "1b5f8a1be1f2764f74d8725aff9a812dd973d4abb9ee83372ad5dc5c430e1345",
+    "members": 189,
+    "raw_bytes": 22650448,
+    "member_manifest": "archive-manifest.json",
+    "verified_all_members": true
+  },
+  "pending": [
+    "Root source/artifact integration review",
+    "Full-module/graphapply compatibility on integrated root",
+    "Actual native six-voter four-fault paired schedule and checker trace"
+  ],
+  "lease": "released; no runtime during packaging"
+}
