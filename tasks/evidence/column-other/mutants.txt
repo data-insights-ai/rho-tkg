@@ -1,0 +1,63 @@
+M1 Other never set (markOther a no-op): KILLED 
+    TestColumnData_OtherPerBatch
+    TestColumnData_OtherPerBatch/other_in_first_batch_only
+    TestColumnScanOther_MatchesRowRead
+    TestColumnScanOther_MatchesRowRead/badger
+    TestColumnScanOther_MatchesRowRead/memory
+    TestColumnScanOther_MatchesRowRead/memory-segments
+M2 Other set for a missing cell (node+rel drivers): KILLED 
+    TestColumnDrivers_NodeAndRelAgree
+    TestColumnDrivers_NodeAndRelAgree/all_absent
+    TestColumnDrivers_NodeAndRelAgree/typed_mix_and_absent
+    TestColumnScanOther_MatchesRowRead
+    TestColumnScanOther_MatchesRowRead/badger
+    TestColumnScanOther_MatchesRowRead/memory
+    TestColumnScanOther_MatchesRowRead/memory-segments
+M3 Other on the wrong column index: KILLED 
+    TestColumnScanOther_MatchesRowRead
+    TestColumnScanOther_MatchesRowRead/badger
+    TestColumnScanOther_MatchesRowRead/memory
+    TestColumnScanOther_MatchesRowRead/memory-segments
+M4 Other allocated without an Other cell (eager, at seal): KILLED 
+    TestColumnData_OtherPerBatch
+    TestColumnData_OtherPerBatch/no_other_cell
+    TestColumnData_OtherPerBatch/other_in_first_batch_only
+M5 Other carried into the next batch (reset keeps it): KILLED 
+    TestColumnData_OtherPerBatch
+    TestColumnData_OtherPerBatch/other_in_first_batch_only
+M6 Other cell reported Null == false: KILLED 
+    TestColumnScanOther_MatchesRowRead
+    TestColumnScanOther_MatchesRowRead/badger
+    TestColumnScanOther_MatchesRowRead/memory
+    TestColumnScanOther_MatchesRowRead/memory-segments
+M7 no backfill when the kind resolves (leading Other misaligns the slot): KILLED 
+    TestColumnScanOther_MatchesRowRead
+    TestColumnScanOther_MatchesRowRead/badger
+    TestColumnScanOther_MatchesRowRead/memory
+    TestColumnScanOther_MatchesRowRead/memory-segments
+M8 Other columns not padded to the batch's rows: KILLED 
+    TestColumnDrivers_NodeAndRelAgree
+    TestColumnDrivers_NodeAndRelAgree/string_vs_number_is_absent
+    TestColumnScanOther_MatchesRowRead
+    TestColumnScanOther_MatchesRowRead/badger
+    TestColumnScanOther_MatchesRowRead/memory
+    TestColumnScanOther_MatchesRowRead/memory-segments
+M9 source driver never asks src.Other: KILLED 
+    TestColumnScanOther_MatchesRowRead
+    TestColumnScanOther_MatchesRowRead/memory-segments
+M10 kind mismatch not marked (all drivers): KILLED 
+    TestColumnScanOther_MatchesRowRead
+    TestColumnScanOther_MatchesRowRead/badger
+    TestColumnScanOther_MatchesRowRead/memory
+    TestColumnScanOther_MatchesRowRead/memory-segments
+M11 rel driver: non-scalar not marked: KILLED 
+    TestColumnScanOther_MatchesRowRead
+    TestColumnScanOther_MatchesRowRead/badger
+    TestColumnScanOther_MatchesRowRead/memory
+    TestColumnScanOther_MatchesRowRead/memory-segments
+M12 segment int8/int16/uint arm reports absent: KILLED 
+    TestColumnScanOther_MatchesRowRead
+    TestColumnScanOther_MatchesRowRead/memory-segments
+M13 segment fallback non-scalar classed absent: KILLED 
+    TestColumnScanOther_MatchesRowRead
+    TestColumnScanOther_MatchesRowRead/memory-segments

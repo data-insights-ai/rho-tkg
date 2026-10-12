@@ -1266,9 +1266,11 @@ const (
 // carries the conversion into the store, where the stored type is already known,
 // and hands out slices the caller can read without boxing.
 //
-// Exactly one of Ints/Flts/Strs/Bools is populated per column, selected by Kinds.
-// Null marks a row where the property is absent; the corresponding typed slot holds
-// that type's zero value.
+// Exactly one of Ints/Flts/Strs/Bools is populated per column, selected by Kinds,
+// with one slot per row. Null marks a row where the column holds no value; the
+// corresponding typed slot holds that type's zero value. Other (on ColumnData) tells
+// a row that holds the property in a shape the column cannot carry from one that
+// does not hold it.
 type ColumnBatch struct {
 	IDs []types.NodeID
 	// Ordinals is parallel to IDs: each node's dense ordinal
@@ -1308,6 +1310,21 @@ type ColumnData struct {
 	Strs  [][]string
 	Bools [][]bool
 	Null  [][]bool
+	// Other mirrors SegmentColumnValues.Other: Other[c][k] means row k HOLDS
+	// property c, but not as a Kinds[c] value — a list, a map, a struct, a scalar
+	// of another kind (a string in an int column) or a width the row path does
+	// not type (int8, int16, uint*; badger's columnar snapshot serves those as
+	// Ints instead); read it from the row (Nodes().Get /
+	// Rels().Get, or ByLabel / ByType under the same QueryOpts). Such a cell is
+	// also Null[c][k] == true with a zero typed slot, so a reader that ignores
+	// Other sees it missing, as before Other existed. Not the partition of
+	// PropertyTypeClassCounts.Other (slices, maps, structs only).
+	//
+	// nil when no cell of the batch is Other (the common path allocates
+	// nothing); otherwise len(Other) == len(Kinds) and every Other[c] is
+	// parallel to Null[c]. Filled identically for node and relationship
+	// batches.
+	Other [][]bool
 }
 
 // RelColumnBatch is the relationship sibling of ColumnBatch.

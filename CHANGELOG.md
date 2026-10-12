@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`ColumnData.Other`: column-scan cells held outside the column** (backlog 48, requested by sigma-tkgd).
+  `Other[c][k]` (on `ColumnBatch` and `RelColumnBatch`, the meaning of `SegmentColumnValues.Other`) marks a row that
+  holds property `c` but not as a `Kinds[c]` value — a list, a map, a struct, a scalar of another kind, or a width the
+  row path does not type (int8, int16, uint*) — so a reader re-reads exactly those rows instead of routing a whole
+  label to the row feed. The cell stays `Null == true` with a zero typed slot, so a reader that ignores `Other` sees
+  it missing, as before. `Other` is nil on a batch without such a cell (no allocation on the common path; row-path
+  benchmarks' allocs/op unchanged); otherwise every `Other[c]` is parallel to `Null[c]`. Filled identically by the
+  memory and badger scans, pinned scans (`ValidAt`, `TxAt`) and declared segment relationships;
+  `store.RelColumnSource` gains `Other(i, c)`. Evidence: `tasks/evidence/column-other/`.
+
+### Fixed
+
+- **Column scans: typed slots are aligned with `Null`.** A column whose first rows in a batch were absent had a typed
+  slice shorter than `Null` (`{}, {x: 5}` gave `Null=[true false] Ints=[5]`), so `Ints[c][k]` read another row or
+  panicked; a column no row typed had no typed slice at all. Every column's typed slice now has one slot per row.
+
 ## [4.50.1] - 2026-10-11
 
 Patch release: interval corrections at a caller transaction instant (backlog 34, requested by sigma-tkgd for the burst-growth replay). Additive; the plain doors are unchanged.

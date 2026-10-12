@@ -50,7 +50,6 @@ item; two traced, unreproduced HIGH? findings in item 4. Next step: items 33 + 4
 | 45 | MEDIUM (API) | Internal sentinels reach callers but have no exported alias; `ErrMixedNumericColumn` is outside the errors inventory test | open; found by the doc review of `docs/errors.md` 2026-10-10 |
 | 46 | LOW (stale comments) | Code comments that contradict the code or cite ADRs no longer in `docs/adr/` | open; found by the doc reviews 2026-10-10 |
 | 47 | LOW (unverified claims) | `NodesByLabelAt` vs K1; a RAM budget for the property sidecars | open; each needs a real check before it becomes work |
-| 48 | FEATURE (small) | `Other` marker on node `ColumnData` (`ScanNodeColumns`) | open; requested by sigma-tkgd 2026-10-10; patch release |
 
 ---
 
@@ -371,24 +370,6 @@ transaction-time membership; verify whether the named door can use K1 at all (a 
 before filing a fix. (b) "A RAM budget for the property sidecars": v4.48.0 measured 25-30 B per posting (97-117 B near-unique) and defined
 no budget; reopen only if a consumer reports memory pressure; then design a per-store budget that drops a sidecar and falls back to the fold.
 
-### 48. An `Other` marker on `ColumnData` (node column scans)
-
-*FEATURE (small)* — requested by sigma-tkgd 2026-10-10.
-
-`store.ColumnData` (`pkg/graph/store/capabilities.go:1268`, shared by `ColumnBatch` and `RelColumnBatch`) carries only `Null [][]bool`, so a cell
-holding a value outside the column's scalar kind (a list, a map, a kind mismatch) cannot be told from a missing one. Rel segments already
-carry `SegmentColumnValues.Other` (`store/rel_segments.go:259`: "row k may hold the property in another Go kind or shape, read it from
-Row(k)"). Request: `Other [][]bool` (parallel to `Null`, per column) on `ColumnData` with the same meaning, so a reader falls back to the
-row read for exactly the flagged rows; today sigma routes a whole label to the row feed whenever `PropertyTypeClassCounts` shows
-`Other > 0` for one of its properties and re-checks after the scan. Open points to settle with evidence: it lives in the shared struct, so the
-rel batch gets the field too (define it for `ScanRelColumns` or leave it nil and document); every backend that fills `ColumnData`
-(memory, badger, tiered, sharded, segment-backed rels) must fill it identically (differential test against `Row(k)` classification); the
-`Null` meaning must not change (a flagged cell stays `Null == false`? decide and test: the safest is `Other[k] == true` implies the typed
-value slot is zero and `Null[k] == false`); additive field, nil when no column has an Other cell (zero extra allocation on the common
-path, benchmark rows allocs-gated). Red tests first: per backend a node with a list, a map, a kind-mismatched value and a missing value in
-one column, scan and compare each cell's class with the row read; stale `Other` after an update that fixes or breaks a cell; mutants:
-Other never set, Other set for a missing cell, Other set on the wrong column index.
-
 ## v5
 
 v5 is Markus Nissl's work on branch `origin/v5`, a separate Go module (`github.com/data-insights-ai/rho-tkg/v5` in
@@ -432,6 +413,7 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Review 2026-09-24: TxAt-only doors "nondeterministic" (implicit valid-time now = wall clock; now `readNow()`) | `[4.38.1]` |
 | Item 6 (FEATURE) — `DeleteWithTx` / `UpdateWithTx` on every write door, `ErrTxOrder` | `[4.44.0]` Added; handover `tasks/handover-tx-backfill-delete-update-20261009.md` |
 | Item 34 (FEATURE) — `SetNodeVersionIntervalWithTx` / `SetRelVersionIntervalWithTx` on every door | `[4.50.1]` Added; evidence `tasks/evidence/interval-withtx/` |
+| Item 48 (FEATURE, sigma-tkgd) — `ColumnData.Other`: column-scan cells held outside the column (node and rel batches); typed slots aligned with `Null` | `[Unreleased]` Added; evidence `tasks/evidence/column-other/` |
 | Item 11 (FEATURE) — durable-on-return commit `Config.DurableCommit` | `[4.44.0]` Added (power-loss gap: item 15) |
 | HIGH — one-tick `[t, t+1)` rows skipped as the eclipse sentinel; skip removed | `[4.44.0]` Fixed "One-tick valid intervals are ordinary spans" |
 | Review-v5 §6.2 — column and range scans ignored `TxAt`/`TxPin` | `[4.44.0]` Fixed "Column and range scans answer temporal options" (interval semantics: item 16) |
