@@ -63,8 +63,8 @@ Pinned fixtures: [consumer contracts](../docs/v5/reference/consumer-contracts.js
 and [migration obligations](../docs/v5/reference/consumer-migration.json) are
 reviewed specification/inventory evidence; consumer integration acceptance stays open.
 The [45-family v4→v5 mapping](../docs/v5-analysis.md#5-v4--v5-door-mapping)
-adds the v4.51.0 source delta at `44303a17` and separates public successors,
-internal machinery and unresolved API contracts. Its consumer proofs belong to
+and the manifests' separate v4.51.0 source delta at `44303a17` distinguish public
+successors, internal machinery and unresolved API contracts. Their consumer proofs belong to
 V4/V6; historical acceptance pins below remain unchanged.
 [Substrate evaluation](../docs/v5/reference/substrate-evaluation.json) is
 research/execution-plan evidence only; no engine selection or V2/V3 acceptance.
@@ -82,7 +82,7 @@ and reference JSON specify contracts/evidence, not completed engine gates.
 | V3 | Coordinate timeblock candidate independently validated (local commit `fa0c982`; scoped temporal+block coverage 95.7%, no exported method at 0%). Full engine seal/merge/recovery, paged structures and all-in budget/byte-ledger measurements remain open; resident-buffer prototype timings do not close V3 |
 | V4 | Production read/change APIs, historical cross-door parity, gap-free leased feed handoff and pinned sigma access-contract build and nonempty mutation-then-historical tests (the current signature/empty smoke is insufficient) |
 | V5 | Distributed access across 1/2/4/8 partitions, cross-edge/stall/rebalance/feed cases and sigma workload parity |
-| V6 | Provenance-aware importer and ambiguity report, consumer-repository migrations, retained-cut/CDC agreement and restore on a different topology |
+| V6 | Retained-state migration preflight integrated, with v4.50.1 qualification below; latest-reader requalification, destination importer, consumer-repository migrations, retained-cut/CDC agreement and restore on a different topology remain open |
 | V7 | Versioned contracts/limits, full CI/race/coverage/security, distributed matrix and consumer suites; measured comparative space/time acceptance against Neo4j/TigerGraph/Memgraph plus v4, with reviewed excess-cost exceptions |
 
 V0 specification acceptance, 2026-10-10:
@@ -127,8 +127,15 @@ Engine/distributed integration, consumer execution and measured capacity retain
 their later acceptance gates.
 V2 is active. Independent later-phase components may proceed in parallel;
 V3 format freeze/performance tuning and each phase's acceptance still require
-their documented predecessors. The V6 provenance-aware migration preflight is
-being implemented independently; it does not close migration or consumer gates.
+their documented predecessors. The V6 [retained-state preflight](../tools/v5-migrate/README.md)
+is integrated for both nodes and relationships. Its [qualification](../tools/v5-migrate/evidence/qualification.json)
+records passing normal/race/build/vet/format and compiler-matched pinned scanners,
+96.2% coverage and 100% coverage of both public functions against the v4.50.1
+reader. Independent review matched all six input hashes, 462 source files and
+14 raw command receipts. Current main v4.51.0 has since been integrated;
+its reader and the combined tree require fresh gates. This preflight owns raw
+evidence and refuses ambiguous histories; destination import and consumer gates
+remain open.
 
 V2 default-axis genesis prerequisite accepted, 2026-10-10: one graph's two
 declared partitions, with three disk-backed voters each, preserve the exact
