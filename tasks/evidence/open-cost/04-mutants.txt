@@ -1,0 +1,14 @@
+M1 trust image without the version check: KILLED clean_reopen_test.go:353: read-only open after crash: reopen decoded no rows, but its persisted state is stale
+M2 restore rel temporal envelopes of deleted rels: KILLED clean_reopen_test.go:320: clean reopen: reopened state differs from the full rebuild:
+M3 no label epoch bump on the fast path: KILLED clean_reopen_test.go:320: clean reopen: reopened state differs from the full rebuild:
+M4 stats never deferred (left empty): KILLED clean_reopen_test.go:320: clean reopen: reopened state differs from the full rebuild:
+M5 writes maintain stats while deferred: KILLED clean_reopen_test.go:337: statistics built after writes differ from a full rebuild:
+M6 out key accepted without local rel: SURVIVED ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.897s
+M7 skip temporal fold for every token: KILLED clean_reopen_test.go:376: first open with the *OnDisk modes: reopened state differs from the full rebuild:
+M8 image written with pending writes: SURVIVED ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.381s
+M9 CRC not checked: KILLED FAIL
+M11 stats build ignores the cache: KILLED FAIL
+M12 stats build skips write-buffer rows: KILLED clean_reopen_test.go:337: statistics built after writes differ from a full rebuild:
+M13 hash fill overwrites a newer hash: SURVIVED ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.204s
+
+Survivors: M6 needs an out key without a local rel row on a cleanly closed standalone store (only tiered cross-shard legs write one; equivalent here). M8 (image written while a write raced Close) and M13 (hash fill overwrites a hash a racing write set) are race-only: no deterministic test, unfalsified.

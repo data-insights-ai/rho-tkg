@@ -17,6 +17,7 @@ func (bs *Store) NodeCountByLabelAndPropertyKey(labelToken uint16, propertyKey s
 	if bs.disablePlannerStats {
 		return 0, storecontract.ErrCapabilityNotSupported
 	}
+	bs.ensurePlannerStats()
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return 0, err
 	}
@@ -51,8 +52,8 @@ func (bs *Store) removeNodePropertyKeyCounts(n *types.Node) {
 }
 
 func (bs *Store) adjustNodePropertyKeyCounts(n *types.Node, delta int64) {
-	if bs.disablePlannerStats {
-		return // planner stats disabled — skip the per-write sweep and the open rebuild
+	if bs.plannerStatsOff() {
+		return // planner stats disabled or deferred — skip the per-write sweep and the open rebuild
 	}
 	if n == nil || delta == 0 {
 		return

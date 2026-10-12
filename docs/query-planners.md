@@ -94,7 +94,9 @@ on that node. See the `Signal/tags` case in
 Backed by the OPTIONAL `store.NodePropertyKeyStatsCapability` — every in-tree
 backend implements it (memory / badger maintain a counter per
 `(label token, property key)` pair, updated on every node-mutation door and
-rebuilt at index load so the count survives a restart; tiered folds
+rebuilt at index load so the count survives a restart — after a clean badger
+close, at the first statistics read instead, from the then-current rows
+(`docs/persistence.md` "Clean reopen"); tiered folds
 reference + archive + open event shards, same O(open shards) shape as the
 other counters). A store that omits the capability declines with
 `store.ErrCapabilityNotSupported` (re-exported as `graph.ErrCapabilityNotSupported`)
@@ -135,7 +137,8 @@ O(1) amortized on memory/badger — the NDV sketch and min/max are maintained
 incrementally on the SAME node-mutation doors as the `NodeCountByLabelAndPropertyKey`
 presence counter (`PutNode`/`ReplaceNode`/`DeleteNode`/`DeleteNodeCascade`/
 `Add`+`RemoveNodeLabelToken`/batch variants), and rebuilt from the persisted
-node rows at badger index load — so the count/NDV/min/max all survive a
+node rows at badger index load (after a clean close: at the first statistics
+read) — so the count/NDV/min/max all survive a
 restart exactly like the presence counter does. The ONE non-O(1) case: after
 the node holding the current `Min` or `Max` is deleted (or replaced with a
 different value), the NEXT `PropertyStats` call for that pair pays an

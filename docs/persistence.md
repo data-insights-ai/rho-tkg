@@ -255,6 +255,37 @@ With `graph.Config.ChangeLog` (or `badger.Config.ChangeLog` / `memory.WithChange
 
 **Deferred.** `MetaSet` does not yet emit a record (the `ChangeMeta` tag is reserved); and LSN-watermark-driven log GC (pruning records below the minimum replica-acked LSN) lands with read replicas — on tiered, a whole retention-dropped event shard drops its log segment with it, so consumers must checkpoint before a shard is retention-dropped (the same discipline any log-truncation policy requires).
 
+## Clean reopen: keys plus the open image (backlog 54, no option)
+
+A badger open used to decode every current row to rebuild the RAM indexes (liveness sets, label / type /
+adjacency maps, planner statistics, and the property, relationship-property, composite, temporal,
+relationship-type temporal, high-frequency and vector index contents), so it grew with the store: 14.3 s for
+519 K nodes / 436 K relationships in the ai-soc shape, 24.8 s on ai-soc's own store. Since v4.51.3 a writable
+`Close` that flushed cleanly ends with the **open image**: the index contents above, chunked under
+`0x0F tkg_open_image_c<i>` (512 KiB each) and a header `0x0F tkg_open_image` (magic, chunk count, length,
+CRC-32C) written last in its own commit. The next open trusts it only if that header is still the store's newest
+badger version (`db.MaxVersion()`): any later commit — writes of a session that crashed, a write by an older
+release that knows nothing of the image, a raw badger write — and any missing chunk, length or checksum mismatch or
+decode error sends the open to the full rebuild. A trusted open then:
+
+- builds liveness, ordinals, label / type / adjacency maps and counters from the entity and index **keys** alone
+  (no value read);
+- installs each defined index from the image (temporal envelopes restricted to the label's or type's current
+  members, as a rebuild would keep them); an index the image lacks (still being created at `Close`, a
+  pending `TemporalIndexOnDisk` backfill) is rebuilt from its rows as before;
+- leaves planner statistics unbuilt: the first statistics read (`PropertyStats`, `PropertyNDV`,
+  `PropertyTypeClassCounts`, `NodeCountByLabelAndPropertyKey`, their relationship and sketch forms, a column read
+  that checks type classes) builds them from the then-current rows under the index write lock — the values a full
+  open followed by the same writes would hold; writes before it skip them;
+- fills node integrity hashes on first use.
+
+Measured on the ai-soc shape (`tasks/evidence/open-cost/03-open-time.txt`): `graph.New` 16.7 s with the full
+rebuild, 3.2-3.3 s clean, the rest proportional to the keys (about 2.8 M entity and index keys into the RAM maps);
+the first statistics read then pays 7.1-7.9 s (every current row once, holding the flush and index write locks, so
+writes wait for it); `Close` pays one encode of the index contents (0.4 s). Read-only opens read the image and never write one. A store whose rows were damaged on disk
+after a clean close (no commit) opens on the fast path and reports the damage when the row is read, where the full
+rebuild skipped and counted it (`IndexRebuildStats`).
+
 ## Persistent property index (opt-in, `PropertyIndexOnDisk`)
 
 With `badger.Config.PropertyIndexOnDisk` (or the mirrored `graph.Config.PropertyIndexOnDisk`) enabled, entries created by `CreatePropertyIndex` are kept out of RAM: instead of populating the in-memory `PropertyIndex.Entries`/`numBuckets` maps, each indexed `(node, value)` pair becomes one row under a new `0x0A` keyspace. Off by default — a `CreatePropertyIndex`'d property still lives entirely in RAM unless this flag is set. Follows the same shape as `LabelIndexOnDisk`/`AdjacencyIndexOnDisk`: persisted keyspace + prefix/range iteration + a pending-write overlay that resolves set-vs-delete PER KEY over the persisted keyspace (lesson 57), not a running aggregate.
