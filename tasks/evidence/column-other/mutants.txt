@@ -61,3 +61,11 @@ M12 segment int8/int16/uint arm reports absent: KILLED
 M13 segment fallback non-scalar classed absent: KILLED 
     TestColumnScanOther_MatchesRowRead
     TestColumnScanOther_MatchesRowRead/memory-segments
+
+## Follow-up 1: RelColumnOtherSource optional
+O1 source without Other: driver still marks kind mismatches: KILLED
+    TestScanColumnsFromRelSource_OtherOptional
+    TestScanColumnsFromRelSource_OtherOptional/without_other
+O2 segment source loses its Other method (renamed): KILLED
+    TestColumnScanOther_MatchesRowRead
+    TestColumnScanOther_MatchesRowRead/memory-segments

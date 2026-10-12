@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   it missing, as before. `Other` is nil on a batch without such a cell (no allocation on the common path; row-path
   benchmarks' allocs/op unchanged); otherwise every `Other[c]` is parallel to `Null[c]`. Filled identically by the
   memory and badger scans, pinned scans (`ValidAt`, `TxAt`) and declared segment relationships;
-  `store.RelColumnSource` gains `Other(i, c)`. Evidence: `tasks/evidence/column-other/`.
+  a `store.RelColumnSource` fills it by also implementing the optional `store.RelColumnOtherSource` (`Other(i, c)`; a source without it scans unchanged and reports no `Other`). Evidence: `tasks/evidence/column-other/`.
 
 ### Fixed
 

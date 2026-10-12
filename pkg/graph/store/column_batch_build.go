@@ -380,13 +380,19 @@ func classifyScalar(v any) (k ColumnKind, i64 int64, f64 float64, s string, b bo
 // Row(i) gives row i's identity, endpoints and ValidRange (from/to, 0 when
 // the row has no temporal metadata), Value(i, c) property c of row i already
 // classified with the classifyScalar rules (ClassifyScalar), ok=false when
-// the row does not hold it as a column scalar, and Other(i, c) whether row i
-// holds property c all the same (a list, a map, a width the columns do not
-// carry: ColumnData.Other) — asked only where Value reported ok=false.
+// the row does not hold it as a column scalar.
 type RelColumnSource interface {
 	Len() int
 	Row(i int) (id types.RelID, start, end types.NodeID, validFrom, validTo int64)
 	Value(i, c int) (kind ColumnKind, i64 int64, f64 float64, s string, b bool, ok bool)
+}
+
+// RelColumnOtherSource is the OPTIONAL half of a RelColumnSource that fills
+// ColumnData.Other: Other(i, c) reports whether row i holds property c all the
+// same (a list, a map, a struct) — asked only where Value reported ok=false.
+// A source without it scans unchanged and reports no Other (Other stays nil,
+// also for a kind mismatch, so a batch never carries a partial Other).
+type RelColumnOtherSource interface {
 	Other(i, c int) bool
 }
 
@@ -420,6 +426,7 @@ func ScanColumnsFromRelSource(src RelColumnSource, nProps int, fn func(*RelColum
 	}
 	kindKnown := make([]bool, nProps)
 	cd := &batch.ColumnData
+	otherSrc, hasOther := src.(RelColumnOtherSource)
 	reset := func() {
 		batch.IDs = batch.IDs[:0]
 		batch.Ordinals = batch.Ordinals[:0]
@@ -445,7 +452,7 @@ func ScanColumnsFromRelSource(src RelColumnSource, nProps int, fn func(*RelColum
 			kind, i64, f64, str, b, ok := src.Value(i, c)
 			if !ok {
 				cd.appendAbsent(c, kindKnown[c])
-				if src.Other(i, c) {
+				if hasOther && otherSrc.Other(i, c) {
 					cd.markOther(c, len(batch.IDs)-1)
 				}
 				continue
@@ -459,7 +466,9 @@ func ScanColumnsFromRelSource(src RelColumnSource, nProps int, fn func(*RelColum
 					return ErrMixedNumericColumn
 				}
 				cd.appendAbsent(c, true)
-				cd.markOther(c, len(batch.IDs)-1)
+				if hasOther {
+					cd.markOther(c, len(batch.IDs)-1)
+				}
 				continue
 			}
 			cd.Null[c] = append(cd.Null[c], false)

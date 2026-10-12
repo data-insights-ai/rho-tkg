@@ -41,7 +41,7 @@ Requested by sigma-tkgd 2026-10-10. Branch off main at 91684e5.
    and Other here; a string in an int column is String there. Documented on the field.
 3. **Rel batch filled identically.** `ColumnData` exists so nodes and relationships answer alike (its own
    comment); a rel `Other` that is always nil would mean "no Other cell" on nodes and "not reported" on rels for
-   the same struct. Row drivers: same code. `RelColumnSource` gains `Other(i, c) bool`, asked only where
+   the same struct. Row drivers: same code. `RelColumnSource` may implement the optional `RelColumnOtherSource.Other(i, c) bool` (review: a required method would break external implementers; a source without it reports no Other, not a partial one), asked only where
    `Value` reports `ok=false` (rare cells), so the per-value hot loop is unchanged; `segColumnSource` keeps a
    per-cell class instead of `ok` (absent / scalar / other) and its int8/int16/uint arm becomes Other.
 4. **Nil when the batch has no Other cell**: allocated on the first mark of a batch, padded to `len(IDs)` for
