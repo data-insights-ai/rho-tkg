@@ -105,6 +105,9 @@ type Core struct {
 	// chain loaded. It lets a test assert the STRUCTURAL cost of a pinned lookup
 	// (chain loads), which wall time cannot pin. nil in production.
 	chainLoadTestHook func()
+	// scanReadTestHook, when set (tests only), is called before each entity an
+	// effective scan reads, under the graph read lock (streamEntityTimelines).
+	scanReadTestHook func()
 	// belief watermarks (BACKLOG 10c): a store that maintains, per entity, the
 	// maximum TxFrom ever recorded across its whole version chain lets
 	// nodeAtLockedTx/relAtLockedTx take a SAFE current-row-only fast path for
@@ -123,6 +126,9 @@ type Core struct {
 	// resolver stays the single selection authority: the SAME resolveNodeChain
 	// runs on skeletons and again after winner hydration.
 	temporalMetaHistory storepkg.TemporalMetaHistoryCapability
+	// readSnapshots — effective scans read their timelines through one store
+	// read snapshot (backlog 55, effective_scan_reads.go). nil = per-entity reads.
+	readSnapshots storepkg.ReadSnapshotCapability
 	// currentStamps — the current-row half of LatestStamps (backlog 42): a
 	// row's stamps without the row (badger: the temporal block of a cache
 	// miss). nil = store declines or a wrapper only inherits it, so
@@ -1993,6 +1999,7 @@ func New(config Config) (*Core, error) {
 	c.nodeBeliefWatermark = nodeBeliefWatermarkCapability(store)
 	c.relBeliefWatermark = relBeliefWatermarkCapability(store)
 	c.temporalMetaHistory = temporalMetaHistoryCapability(store)
+	c.readSnapshots = readSnapshotCapability(store)
 	c.currentStamps = currentStampsCapability(store)
 	c.memberIDs = memberIDsCapability(store)
 	c.relValidEnds, c.nodeValidEnds = validEndCapabilities(store)

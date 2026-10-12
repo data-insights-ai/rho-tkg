@@ -676,6 +676,11 @@ type Store struct {
 	// read the buffer directly and would otherwise drop in-flight rows. Always go
 	// through rangePending / lookupPending so `flushing` is included.
 	flushing map[string]writeOp
+	// commitGen counts the commits that move buffered rows into Badger (flush,
+	// Clear): a read snapshot re-pins when it moved (badgerstore_read_snapshot.go).
+	// Every path that writes entity rows to Badger outside the write buffer must
+	// bump it before the rows leave the overlay.
+	commitGen atomic.Uint64
 
 	// flushMu serializes concurrent flush() executions end-to-end.
 	// Without this, two concurrent flush() calls can both snapshot atomic
@@ -754,6 +759,9 @@ type Store struct {
 	// themselves built, while holding idxMu.Lock; so does
 	// relationshipIndexKeysForRel after its scan. Set only from the owning test.
 	historyScanTestHook func()
+	// flushClearedTestHook (tests only) runs inside flush right after the
+	// committed rows left the overlay (flushing cleared).
+	flushClearedTestHook func()
 	// propTxScanTestHook runs inside a property membership build after the
 	// overlay capture and before the badger view; propTxBuildTestHook after the
 	// scan and before the install. Tests only.
@@ -2241,6 +2249,7 @@ func (bs *Store) Clear() error {
 	// keyspace, so a stale record left in pendingLog would be re-flushed as a
 	// phantom after the wipe. logSeq is intentionally left monotonic so
 	// post-Clear LSNs never collide with a consumer's pre-Clear watermark.
+	bs.commitGen.Add(1) // read snapshots re-pin after the wipe
 	bs.wbMu.Lock()
 	bs.pending = make(map[string]writeOp)
 	bs.pendingLog = nil

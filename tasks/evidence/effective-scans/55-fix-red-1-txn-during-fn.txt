@@ -1,0 +1,5 @@
+--- FAIL: TestEffectiveScanHoldsNoReadTxnDuringFn (0.08s)
+    effective_scan_chunks_test.go:90: sharded=false: 300 relationships streamed (want 300), up to 1 read transactions open while fn ran (want 0)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.264s
+FAIL

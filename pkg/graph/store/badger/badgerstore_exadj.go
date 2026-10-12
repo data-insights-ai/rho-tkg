@@ -76,7 +76,7 @@ func (bs *Store) exAdjRelIDs(nid types.NodeID, incoming bool) ([]types.RelID, er
 		delete(adds, rid)
 	})
 	var ids []types.RelID
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		opts.Prefix = prefix

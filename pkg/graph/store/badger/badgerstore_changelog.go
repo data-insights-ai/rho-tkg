@@ -264,7 +264,7 @@ func (bs *Store) clearDataPreservingLastLSN() error {
 	//    index defs, the replica watermark, the id-slot lease, …).
 	lastLSN := string(storepkg.LastLSNKey)
 	var metaKeys [][]byte
-	if err := bs.db.View(func(txn *badgerv4.Txn) error {
+	if err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		opts.Prefix = []byte{storepkg.KeyMeta}
@@ -321,7 +321,7 @@ func (bs *Store) clearDataPreservingLastLSN() error {
 // preserve even when the log is currently disabled.
 func (bs *Store) lastLSNKeyPresent() (bool, error) {
 	present := false
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		_, gerr := txn.Get(storepkg.LastLSNKey)
 		if gerr == badgerv4.ErrKeyNotFound {
 			return nil
@@ -500,7 +500,7 @@ func (bs *Store) LastCommittedLSN() (uint64, error) {
 		return 0, err
 	}
 	var lsn uint64
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.LastLSNKey)
 		if err == badgerv4.ErrKeyNotFound {
 			return nil
@@ -650,7 +650,7 @@ func (bs *Store) changeFeedPage(afterLSN uint64, limit int) ([]storecontract.Cha
 		return nil, nil // no LSN can exceed MaxUint64
 	}
 	recs := make([]storecontract.ChangeRecord, 0, limit)
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = true
 		it := txn.NewIterator(opts)

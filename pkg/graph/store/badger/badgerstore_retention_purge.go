@@ -292,7 +292,7 @@ func (bs *Store) purgedRelsForNodeLocked(nid types.NodeID) []storecontract.Purge
 				pendingSets = append(pendingSets, kb)
 			}
 		})
-		_ = bs.db.View(func(txn *badgerv4.Txn) error {
+		_ = bs.view(func(txn *badgerv4.Txn) error {
 			opts := badgerv4.DefaultIteratorOptions
 			opts.PrefetchValues = false
 			it := txn.NewIterator(opts)

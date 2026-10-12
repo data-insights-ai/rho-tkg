@@ -1,0 +1,31 @@
+# Backlog 55: scan time, 100 K relationships with history (bench/effective_scan_cold_test.go)
+# Host shared with other agents' builds and tests (load 35-126 on 32 cores): read the paired rounds, not absolute values.
+#
+# Earlier separate runs (-count 3, load ~35):
+#   BEFORE (HEAD cddc0997): 3.62 s, 3.22 s, 3.72 s per scan (32-37 µs/rel), 1.16 GB/op, 13.6-13.8 M allocs/op
+#   AFTER  (this branch):   1.90 s, 4.26 s (load spike), 1.56 s per scan (16-19 µs/rel), 0.69 GB/op, 8.19 M allocs/op
+#   CPU profile AFTER: no badger View inside the scan; the remaining Views are the store open (loadIndexesScan)
+#   and the one-time type-membership build. BEFORE: DB.View 25.6 s of 28.9 s scan CPU over 9 scans.
+#
+# Paired A/B (alternating binaries):
+# BenchmarkEffectiveScanCold, 100 K rels each with one history row, on-disk badger reopened, 1,024-entry cache
+# BEFORE = HEAD cddc0997 (per-ID path), AFTER = backlog 55 branch; alternating runs, -benchtime 3x; host: 32 cores, load 126.74 85.83 58.95
+## round 1 BEFORE
+BenchmarkEffectiveScanCold-32    	       3	6827501127 ns/op	     68275 ns/rel	1164226146 B/op	13649832 allocs/op
+## round 1 AFTER
+BenchmarkEffectiveScanCold-32    	       3	3839959289 ns/op	     38400 ns/rel	686594448 B/op	 8188437 allocs/op
+## round 2 BEFORE
+BenchmarkEffectiveScanCold-32    	       3	6782482825 ns/op	     67825 ns/rel	1162951480 B/op	13648077 allocs/op
+## round 2 AFTER
+BenchmarkEffectiveScanCold-32    	       3	2503420036 ns/op	     25034 ns/rel	686503093 B/op	 8187971 allocs/op
+## round 3 BEFORE
+BenchmarkEffectiveScanCold-32    	       3	4934119137 ns/op	     49341 ns/rel	1161809888 B/op	13646565 allocs/op
+## round 3 AFTER
+BenchmarkEffectiveScanCold-32    	       3	2145466344 ns/op	     21455 ns/rel	686595245 B/op	 8188041 allocs/op
+# load at end 67.36 78.08 59.81
+
+# Review fix round (transaction discarded at each chunk end), quiet host (load ~15), paired:
+## BEFORE (HEAD cddc0997)
+BenchmarkEffectiveScanCold-32  3  1731717045 ns/op  17317 ns/rel  1162818898 B/op  13645049 allocs/op
+## AFTER (txn per chunk)
+BenchmarkEffectiveScanCold-32  3   935351425 ns/op   9354 ns/rel   686680634 B/op   8188183 allocs/op

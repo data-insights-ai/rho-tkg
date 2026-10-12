@@ -54,33 +54,7 @@ func (bs *Store) historyTemporalMetaByPrefix(prefix []byte, node bool) ([]storec
 	// Overlay BEFORE the View — see getNodeHistoryByPrefix (lesson 64).
 	overlay, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
 
-	metaOf := func(raw []byte) (storecontract.VersionTemporalMeta, error) {
-		if storepkg.HistoryValueKindOf(raw) == storepkg.HistoryDelta {
-			if node {
-				d, err := storepkg.DecodeNodeHistoryDelta(raw)
-				if err != nil {
-					return storecontract.VersionTemporalMeta{}, err
-				}
-				return storecontract.VersionTemporalMeta{
-					Version:  uint32(d.Meta.Version), // #nosec G115 — version from our own serialization
-					Temporal: storepkg.SelectionTemporalMetaOfNodeWire(d.Meta),
-				}, nil
-			}
-			d, err := storepkg.DecodeRelHistoryDelta(raw)
-			if err != nil {
-				return storecontract.VersionTemporalMeta{}, err
-			}
-			return storecontract.VersionTemporalMeta{
-				Version:  uint32(d.Meta.Version), // #nosec G115 — version from our own serialization
-				Temporal: storepkg.SelectionTemporalMetaOfRelWire(d.Meta),
-			}, nil
-		}
-		version, tm, err := storepkg.DecodeWireTemporalMeta(raw)
-		if err != nil {
-			return storecontract.VersionTemporalMeta{}, err
-		}
-		return storecontract.VersionTemporalMeta{Version: version, Temporal: tm}, nil
-	}
+	metaOf := func(raw []byte) (storecontract.VersionTemporalMeta, error) { return historyTemporalMetaOf(raw, node) }
 
 	byVersion := make(map[uint64]storecontract.VersionTemporalMeta)
 	if bs.historyScanTestHook != nil {
@@ -90,7 +64,7 @@ func (bs *Store) historyTemporalMetaByPrefix(prefix []byte, node bool) ([]storec
 		// a concurrent flush completion inside the scan->merge window.
 		bs.historyScanTestHook()
 	}
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false // decode happens inside Value(), no staging copy
 		it := txn.NewIterator(opts)

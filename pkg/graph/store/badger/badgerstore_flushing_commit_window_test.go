@@ -50,6 +50,7 @@ func commitFlushingToBadger(t *testing.T, bs *Store) {
 	if err := wb.Flush(); err != nil {
 		t.Fatalf("commit flushing flush: %v", err)
 	}
+	bs.commitGen.Add(1) // as flush does before the rows leave the overlay
 	bs.wbMu.Lock()
 	bs.flushing = nil
 	bs.wbMu.Unlock()

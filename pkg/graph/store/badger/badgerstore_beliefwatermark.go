@@ -105,7 +105,7 @@ func (bs *Store) ensureNodeBeliefWatermarkBuilt() error {
 		bs.bumpNodeBeliefWatermarkLocked(nid, types.Instant(w.TxFrom))
 	})
 
-	scanErr := bs.db.View(func(txn *badgerv4.Txn) error {
+	scanErr := bs.view(func(txn *badgerv4.Txn) error {
 		for _, prefix := range [][]byte{{storepkg.KeyNode}, {storepkg.KeyHistNode}} {
 			opts := badgerv4.DefaultIteratorOptions
 			opts.PrefetchValues = true
@@ -176,7 +176,7 @@ func (bs *Store) ensureRelBeliefWatermarkBuilt() error {
 		bs.bumpRelBeliefWatermarkLocked(rid, types.Instant(w.TxFrom))
 	})
 
-	scanErr := bs.db.View(func(txn *badgerv4.Txn) error {
+	scanErr := bs.view(func(txn *badgerv4.Txn) error {
 		for _, prefix := range [][]byte{{storepkg.KeyRel}, {storepkg.KeyHistRel}} {
 			opts := badgerv4.DefaultIteratorOptions
 			opts.PrefetchValues = true

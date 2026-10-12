@@ -299,7 +299,7 @@ func (bs *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 	// Fall through to Badger. Copy the raw value out before reconstruction (a
 	// delta reconstruct point-reads the interval anchor via a separate txn).
 	var raw []byte
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(key)
 		if err == badgerv4.ErrKeyNotFound {
 			return ErrVersionNotFound
@@ -374,7 +374,7 @@ func (bs *Store) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationship, er
 	overlay, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
 
 	entries := make(map[string][]byte)
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = true
 		opts.Prefix = prefix // bound the scan and the value prefetch to this entity (backlog 20)
@@ -482,7 +482,7 @@ func (bs *Store) relHistoryVersionsFromPrefix(prefix []byte, startVersion uint32
 	}
 
 	seekKey := historyVersionSeekKey(prefix, startVersion)
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = true
 		opts.Prefix = prefix // bound the scan and the value prefetch to this entity (backlog 20)
@@ -765,7 +765,7 @@ func (bs *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 	pendingIdx := 0
 	emitted := make(map[snowflake.ID]struct{})
 
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)

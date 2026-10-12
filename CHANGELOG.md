@@ -55,6 +55,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Keys already written by v4.51.2 are not removed: a key carries no provenance, and the same key may be a
   still-needed leg of an earlier deleted life of that relationship.
 
+### Changed
+
+- **Effective scans read through one store snapshot per chunk** (backlog 55; ai-soc restart, sigma restore). Every
+  door that streams per-entity timelines reads 256 candidates per hold of the read lock, each under its entity lock,
+  through one `store.ReadSnapshot` (new optional capability): badger one read transaction plus forward-walking
+  iterators (unordered doors visit IDs ascending), sharded one per slot; it is discarded before `fn` runs. Reads see
+  the cache and write buffer live and re-pin after every flush or `Clear` (`commitGen`), so answers are unchanged.
+  Transactions per scan: 0-2 for 10 and 60 entities (before 16-36 and 96-217). 100 K relationships with history,
+  reopened store, 1,024-row cache: 3.2-3.7 s → 1.6-1.9 s, 1.16 → 0.69 GB per scan (`BenchmarkEffectiveScanCold`,
+  `tasks/evidence/effective-scans/55-*.txt`). Memory and tiered read per entity as before. Visible only in timing:
+  `fn` may get an entity's segments up to 255 entities after it was read, and a scan stopped by `fn` may have read
+  up to 255 entities it never streams. The gather of `ForEachRelEffectiveAtNodes` still reads each adjacent row.
+
 ## [4.51.2] - 2026-10-12
 
 ### Added

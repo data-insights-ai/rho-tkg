@@ -93,7 +93,7 @@ func (bs *Store) hasForeignLabelTokensLocked(keepToken uint16) (bool, error) {
 	}
 
 	found := false
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)

@@ -141,7 +141,7 @@ func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 	var n *types.Node
 	// Read before the snapshot opens — see LoadCleanAt.
 	epoch := bs.nodeCache.FlushEpoch()
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.NodeKey(id))
 		if err == badgerv4.ErrKeyNotFound {
 			return ErrNodeNotFound
@@ -275,7 +275,7 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 	var n *types.Node
 	// Read before the snapshot opens — see LoadCleanAt.
 	epoch := bs.nodeCache.FlushEpoch()
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.NodeKey(id))
 		if err == badgerv4.ErrKeyNotFound {
 			return ErrNodeNotFound
@@ -972,7 +972,7 @@ func (bs *Store) prefetchNodeNoFill(nid types.NodeID, promote bool) (n *types.No
 
 	// Node exists in-memory but not in cache (flushed + evicted from LRU).
 	// Read from Badger without holding any lock.
-	err = bs.db.View(func(txn *badgerv4.Txn) error {
+	err = bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.NodeKey(id))
 		if err == badgerv4.ErrKeyNotFound {
 			return ErrNodeNotFound
@@ -1016,7 +1016,7 @@ func (bs *Store) getNodeLocked(nid types.NodeID) (*types.Node, error) {
 	var n *types.Node
 	// Read before the snapshot opens — see LoadCleanAt.
 	epoch := bs.nodeCache.FlushEpoch()
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.NodeKey(id))
 		if err == badgerv4.ErrKeyNotFound {
 			return ErrNodeNotFound

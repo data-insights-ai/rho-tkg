@@ -326,7 +326,7 @@ func (bs *Store) exactErasurePropertyIndexOpsLocked(id snowflake.ID) ([]writeOp,
 			ops = append(ops, writeOp{opType: writeOpDelete, key: key})
 		}
 	})
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
@@ -359,7 +359,7 @@ func (bs *Store) exactErasureTemporalIndexOpsLocked(id snowflake.ID) ([]writeOp,
 			ops = append(ops, writeOp{opType: writeOpDelete, key: key})
 		}
 	})
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
@@ -630,7 +630,7 @@ func (bs *Store) exactErasureRelationshipClosureLocked(
 		}
 		return inspect(rid, rel)
 	}
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = true
 		it := txn.NewIterator(opts)
@@ -731,7 +731,7 @@ func (bs *Store) exactErasureChangeLogRetainedLocked() (bool, error) {
 		return true, nil
 	}
 	retained := false
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)

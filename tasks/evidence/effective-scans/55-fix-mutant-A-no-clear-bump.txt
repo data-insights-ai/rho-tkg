@@ -1,0 +1,10 @@
+--- FAIL: TestReadSnapshotAnswersAsTheStore (0.00s)
+    badgerstore_read_snapshot_test.go:270: after Clear: snapshot answers differ from the store's:
+         got  node err(graph: node not found) has=false meta=[v1 tx200-0 del0 rfalse x=<nil> v2 tx300-0 del0 rfalse x=<nil> v5 tx50-60 del60 rtrue x=<nil>] v0=err(graph: version not found) v1=v1 tx200-0 del0 rfalse x=11 v2=v2 tx300-0 del0 rfalse x=12 hist:v1 tx200-0 del0 rfalse x=11 hist:v2 tx300-0 del0 rfalse x=12 hist:v5 tx50-60 del60 rtrue x=<nil>
+        rel err(graph: relationship not found) has=false meta=[v1 tx200-0 del0 rfalse x=<nil> v2 tx300-0 del0 rfalse x=<nil> v5 tx50-60 del60 rtrue x=<nil>] v0=err(graph: version not found) v1=v1 tx200-0 del0 rfalse x=11 v2=v2 tx300-0 del0 rfalse x=12 hist:v1 tx200-0 del0 rfalse x=11 hist:v2 tx300-0 del0 rfalse x=12 hist:v5 tx50-60 del60 rtrue x=<nil>
+         want node err(graph: node not found) has=false meta=[] v0=err(graph: version not found) v1=err(graph: version not found) v2=err(graph: version not found)
+        rel err(graph: relationship not found) has=false meta=[] v0=err(graph: version not found) v1=err(graph: version not found) v2=err(graph: version not found)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.098s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.145s
+FAIL

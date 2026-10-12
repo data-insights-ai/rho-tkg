@@ -1,0 +1,8 @@
+--- FAIL: TestReadSnapshotCommitWindows (0.04s)
+    --- FAIL: TestReadSnapshotCommitWindows/after_the_overlay_cleared/rel=false (0.03s)
+        badgerstore_read_snapshot_window_test.go:79: history skeletons read in the window: [], <nil>; want v0 (TxFrom 22)
+    --- FAIL: TestReadSnapshotCommitWindows/after_the_overlay_cleared/rel=true (0.00s)
+        badgerstore_read_snapshot_window_test.go:79: history skeletons read in the window: [], <nil>; want v0 (TxFrom 22)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.058s
+FAIL
