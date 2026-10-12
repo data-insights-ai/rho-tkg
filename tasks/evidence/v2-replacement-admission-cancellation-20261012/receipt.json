@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "source_commit": "1820d10f8b8e0d25136cce1ec0c4a67b92510063",
+  "integration_base": "1d29a14c",
+  "source_sha256": {
+    "v5/internal/graphapply/graph_replacement_admission.go": "936bb422f8aec5c8dc08f5c63c4f813cdfc1ce12a09b8c7ea53ec4c071cefc16",
+    "v5/internal/graphapply/graph_replacement_activation_test.go": "29a02a3bf24da6406187bb3302e4ad63eda3553ac49c83e6e97ae8fa6851e484"
+  },
+  "problem": "D lifetime.pending refusal discarded established owner cancellation cause; existing A surviving-quorum parent failed in all four semantic agreements.",
+  "correction": "Join source-unavailable with original owner context and per-operation request-context errors. Existing A assertions unchanged; existing D refusal parent additionally checks distinct owner-Canceled/request-DeadlineExceeded causes.",
+  "red": {
+    "hosted_run": 38258858745,
+    "full_log_sha256": "aa05df28398b41058cbc54cfd426aafec27492b0d9ad554d66cb28aeed91c579",
+    "excerpt_sha256": "04725a1ee6bcd57017ff64e7df5158f5a0941e9898cbf699545bab5f0aa42288",
+    "classification": "Actual established assertion failure, not compile/runtime/quota failure."
+  },
+  "gates": {
+    "normal": {
+      "command": [
+        "env",
+        "GOMAXPROCS=2",
+        "GOMEMLIMIT=2GiB",
+        "GOFLAGS=-p=1",
+        "GOWORK=off",
+        "GOTOOLCHAIN=local",
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^Test(GraphReplacementAdmissionNativeSurvivingQuorumAllAgreements|ApplicationReceiverActivation|GraphReplacementActivation|GraphReplacementRevocationFencesHostAndSourceBeforeAsyncClose)",
+        "./internal/replica",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 834.062,
+      "elapsed_s": 18.927,
+      "exit_code": 0,
+      "reason": "completed",
+      "handle": 33818,
+      "parents": 14,
+      "subtests": 55,
+      "failures": 0,
+      "skips": 0
+    },
+    "race": {
+      "command": [
+        "env",
+        "GOMAXPROCS=2",
+        "GOMEMLIMIT=2GiB",
+        "GOFLAGS=-p=1",
+        "GOWORK=off",
+        "GOTOOLCHAIN=local",
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-race",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^Test(GraphReplacementAdmissionNativeSurvivingQuorumAllAgreements|ApplicationReceiverActivation|GraphReplacementActivation|GraphReplacementRevocationFencesHostAndSourceBeforeAsyncClose)",
+        "./internal/replica",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 892.078,
+      "elapsed_s": 28.163,
+      "exit_code": 0,
+      "reason": "completed",
+      "handle": 5998,
+      "parents": 14,
+      "subtests": 55,
+      "failures": 0,
+      "skips": 0
+    }
+  },
+  "coverage": "No additional coverage run: one existing return expression changed, statement coordinates unchanged; D focused coverage receipt remains historical for its exact source.",
+  "qualification": "Exact A parent plus 13 D parents/new revocation guards only; not full-module or phase/release validation. No push.",
+  "archive": {
+    "file": "raw-evidence.tar.gz",
+    "bytes": 55376,
+    "sha256": "5f57837376519ba8f6357e77dea4715d0384651b04d2f66af16285787c6b44b1",
+    "members": 13
+  }
+}
