@@ -1,0 +1,27 @@
+# back-to-back on the same shared, noisy host, -benchtime 5x -count 3; BEFORE = base 3f27f957 binary, AFTER = this branch
+## BEFORE
+BenchmarkEffectiveAtNodesOneSeed/memory/at-nodes-32         	       5	1141710121 ns/op	        50.00 rels	118834238 B/op	 1900561 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/at-nodes-32         	       5	1038180238 ns/op	        50.00 rels	118834251 B/op	 1900561 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/at-nodes-32         	       5	1076720374 ns/op	        50.00 rels	118834296 B/op	 1900561 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/by-ids-32           	       5	    189352 ns/op	        50.00 rels	   55614 B/op	     943 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/by-ids-32           	       5	   1098973 ns/op	        50.00 rels	   55614 B/op	     943 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/by-ids-32           	       5	    742998 ns/op	        50.00 rels	   55614 B/op	     943 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/at-nodes-32         	       5	6884447421 ns/op	        50.00 rels	989795339 B/op	11648347 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/at-nodes-32         	       5	5969476326 ns/op	        50.00 rels	989815179 B/op	11648462 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/at-nodes-32         	       5	5479771086 ns/op	        50.00 rels	989822283 B/op	11648467 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/by-ids-32           	       5	   1565822 ns/op	        50.00 rels	  365726 B/op	    4396 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/by-ids-32           	       5	   1043810 ns/op	        50.00 rels	  339502 B/op	    4105 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/by-ids-32           	       5	   2690132 ns/op	        50.00 rels	  339592 B/op	    4107 allocs/op
+## AFTER
+BenchmarkEffectiveAtNodesOneSeed/memory/at-nodes-32         	       5	  27683712 ns/op	        50.00 rels	   58425 B/op	     968 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/at-nodes-32         	       5	   8459076 ns/op	        50.00 rels	   58425 B/op	     968 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/at-nodes-32         	       5	   9244179 ns/op	        50.00 rels	   58425 B/op	     968 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/by-ids-32           	       5	    176742 ns/op	        50.00 rels	   55614 B/op	     943 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/by-ids-32           	       5	    248503 ns/op	        50.00 rels	   55614 B/op	     943 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/memory/by-ids-32           	       5	    173363 ns/op	        50.00 rels	   55614 B/op	     943 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/at-nodes-32         	       5	  13452084 ns/op	        50.00 rels	 1145905 B/op	    4136 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/at-nodes-32         	       5	  16597601 ns/op	        50.00 rels	 1145718 B/op	    4134 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/at-nodes-32         	       5	  18748774 ns/op	        50.00 rels	 1146080 B/op	    4139 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/by-ids-32           	       5	   1487921 ns/op	        50.00 rels	  339555 B/op	    4105 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/by-ids-32           	       5	   1222594 ns/op	        50.00 rels	  339776 B/op	    4107 allocs/op
+BenchmarkEffectiveAtNodesOneSeed/badger/by-ids-32           	       5	   1615800 ns/op	        50.00 rels	  339608 B/op	    4105 allocs/op

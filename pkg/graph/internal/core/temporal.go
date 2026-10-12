@@ -730,9 +730,9 @@ func relInheritedValidFrom(chain []*types.Relationship, i int, tm *types.Tempora
 // CURRENT state may diverge from its state at the queried instant: a node
 // currently labelled Y but historically labelled X at t must still be
 // visited so the per-entity predicate can match its at-t version.
-// (Adjacency queries do NOT need the full history fold — endpoints are
-// immutable, so a rel that ever pointed at node N still points at N if
-// alive. See forEachRelAdjacencyCandidateIDByDepth.)
+// (Adjacency queries do NOT need the full history fold: a relationship's rows
+// name other endpoints than its live row only when it is deleted or was
+// re-imported with other endpoints. See forEachRelAdjacencyCandidateIDByDepth.)
 func (c *Core) forEachNodeCandidateID(currentIDs []types.NodeID, fn func(types.NodeID) error) error {
 	return c.forEachNodeCandidateIDByDepth(currentIDs, storepkg.DepthAll, fn)
 }
@@ -780,12 +780,11 @@ func (c *Core) forEachRelCandidateIDByDepth(currentIDs []types.RelID, depth stor
 }
 
 // forEachRelAdjacencyCandidateID is the adjacency-query specialization of
-// forEachRelCandidateIDByDepth. Adjacency endpoints are immutable, so a rel that
-// ever pointed at the queried node still points at it if alive — therefore
-// the candidate set is (currentIDs ∪ DELETED rel IDs), not (currentIDs ∪ ALL
-// rel history). When the underlying store implements
-// DeletedIterationCapability the fold scales with deleted-rel count, not
-// total rel history; otherwise it falls back to the wider history scan.
+// forEachRelCandidateIDByDepth: the candidates are currentIDs (the queried
+// node's live adjacency) united with every relationship whose rows may name a
+// node that its live row does not (forEachRelOffAdjacencyIDByDepth) — not the
+// whole relationship history. Each door then resolves a candidate on its own
+// and keeps it only when the resolved row names the node.
 func (c *Core) forEachRelAdjacencyCandidateID(currentIDs []types.RelID, fn func(types.RelID) error) error {
 	return c.forEachRelAdjacencyCandidateIDByDepth(currentIDs, storepkg.DepthAll, fn)
 }
@@ -795,7 +794,7 @@ func (c *Core) forEachRelAdjacencyCandidateIDByDepth(currentIDs []types.RelID, d
 	for _, id := range currentIDs {
 		seen[id] = struct{}{}
 	}
-	if err := c.forEachDeletedRelIDByDepth(depth, func(id types.RelID) bool {
+	if err := c.forEachRelOffAdjacencyIDByDepth(depth, func(id types.RelID) bool {
 		seen[id] = struct{}{}
 		return true
 	}); err != nil {
@@ -809,14 +808,49 @@ func (c *Core) forEachRelAdjacencyCandidateIDByDepth(currentIDs []types.RelID, d
 	return nil
 }
 
+// forEachRelOffAdjacencyIDByDepth visits every relationship ID whose rows may
+// name a node that the live adjacency does not tie it to (backlog 50):
+//
+//   - a DELETED relationship (rows, no live row: no adjacency entry at all);
+//   - a relationship deleted and RE-IMPORTED with another start or end
+//     (relationship_import.go): live again, but the rows of its earlier life
+//     name the old endpoints. The store's ReimportedRelCapability set holds
+//     these IDs, noted by every write door that makes a relationship's lives
+//     name different endpoints (noteRelLivesDiffer).
+//
+// Every other relationship's rows all name its live endpoints, so the live
+// adjacency reaches them. The re-imported set is not depth-scoped (a superset
+// under a depth filter). A store without the set gets every relationship with
+// history instead — sound, O(total relationship history). An ID may be
+// visited twice; fn returning false stops.
+func (c *Core) forEachRelOffAdjacencyIDByDepth(depth storepkg.ShardDepth, fn func(types.RelID) bool) error {
+	if c.reimportedRels == nil {
+		return c.forEachRelHistoryIDByDepth(depth, fn)
+	}
+	stopped := false
+	visit := func(id types.RelID) bool {
+		if !fn(id) {
+			stopped = true
+			return false
+		}
+		return true
+	}
+	if err := c.forEachDeletedRelIDByDepth(depth, visit); err != nil || stopped {
+		return err
+	}
+	// An invalid ID from an untrusted store fails the door when its
+	// candidate is resolved (ErrInvalidStoreMutation).
+	return c.reimportedRels.ForEachReimportedRelID(visit)
+}
+
 // forEachDeletedRelIDByDepth prefers the store's DeletedIterationCapability
 // (depth-aware variant first, then plain) so the fold visits only rel IDs
 // whose history exists but whose current row is absent. Without either
 // capability the graph layer falls back to the wider history scan —
 // correct but O(total rel history). Only used by
-// forEachRelAdjacencyCandidateIDByDepth today; the matching node helper is
-// intentionally absent because no node temporal API has the "endpoints are
-// immutable" simplification that lets adjacency drop full-history fold.
+// forEachRelOffAdjacencyIDByDepth today; the matching node helper is
+// intentionally absent because no node temporal API can drop the full-history
+// fold (a node's label or property at t may differ from its current row).
 func (c *Core) forEachDeletedRelIDByDepth(depth storepkg.ShardDepth, fn func(types.RelID) bool) error {
 	wrapped := fn
 	if !c.storeRowsTrust {

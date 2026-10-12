@@ -301,12 +301,13 @@ func effectiveHistoryFixtureFor(b *testing.B, bc backendCase) *effectiveHistoryF
 	return f
 }
 
-// BenchmarkEffectiveScansOneSeed is ForEachRelEffectiveAtNodes with ONE seed
-// on a graph where every relationship has history — the cost model's worst
-// case: each call folds every relationship with history (O(H)) and then
-// streams the seed's ~50 relationships — against RelsEffectiveByIDs over the
-// same relationships (the per-answer cost alone). ns/op is per call.
-func BenchmarkEffectiveScansOneSeed(b *testing.B) {
+// BenchmarkEffectiveAtNodesOneSeed is ForEachRelEffectiveAtNodes with ONE seed
+// on a graph where every relationship has history — the case where an
+// all-history fold costs O(H) per call (before backlog 50); the gather reads
+// the seed's ~50 relationships plus the deleted and re-imported ones (none
+// here) — against RelsEffectiveByIDs over the same relationships (the
+// per-answer cost alone). ns/op is per call.
+func BenchmarkEffectiveAtNodesOneSeed(b *testing.B) {
 	for _, bc := range backendCases {
 		b.Run(bc.name, func(b *testing.B) {
 			f := effectiveHistoryFixtureFor(b, bc)

@@ -841,6 +841,27 @@ type DeletedIterationCapability interface {
 	ForEachDeletedRelID(fn func(types.RelID) bool) error
 }
 
+// ReimportedRelCapability is OPTIONAL. Backends implement it so the graph
+// layer's adjacency doors stay sound without folding every relationship with
+// history: a relationship ID deleted and re-imported with other endpoints is
+// live again, while the rows of its earlier life name the old endpoints, so
+// neither the live adjacency nor the deleted IDs reach that life. The graph
+// layer notes such an ID (NoteReimportedRel) before it writes the row that
+// makes its lives name different endpoints; the adjacency doors add
+// ForEachReimportedRelID to their candidates (backlog 50). Without the
+// capability they fold every relationship with history instead.
+//
+// The set is a sound superset: an entry is never removed except by Clear (a
+// later delete, compaction or purge leaves it; the doors resolve every
+// candidate on its own). Noting an ID twice is a no-op. A persistent backend
+// keeps the set across reopen and makes a note durable no later than the row
+// written after it. Nil callbacks return ErrInvalidStoreMutation; callbacks run
+// outside backend locks; no ordering guarantee.
+type ReimportedRelCapability interface {
+	NoteReimportedRel(id types.RelID) error
+	ForEachReimportedRelID(fn func(types.RelID) bool) error
+}
+
 // DepthDeletedIterationCapability is the depth-aware counterpart of
 // DeletedIterationCapability. Tiered backends implement it so history-aware
 // queries can combine deleted-only iteration with shard-depth filtering.

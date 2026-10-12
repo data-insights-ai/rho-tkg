@@ -525,6 +525,10 @@ type Store struct {
 	histNodePresence         historyPresence
 	histRelPresence          historyPresence
 	historyPresenceProbeOnly bool
+	// reimported is the store.ReimportedRelCapability set (backlog 50,
+	// badgerstore_reimported.go): one meta key per noted relationship, a RAM
+	// copy loaded on first use.
+	reimported reimportedRels
 	// historyPresenceBuildHook, when non-nil, runs after a presence build's key
 	// scan and before it installs the scanned IDs (the window lessons 63 / 74
 	// guard). Set only from the owning test.
@@ -2165,6 +2169,7 @@ func (bs *Store) Clear() error {
 	bs.labelTxMembersBuilt.Store(false)
 	bs.relTypeTxMembers = nil // rel-type mirror
 	bs.relTypeMembersBuilt.Store(false)
+	bs.reimported.reset()            // its meta keys go with the wipe below
 	bs.dropPropertyTxMembersLocked() // property sidecars; an in-flight build discards its scan
 	bs.nodeBeliefWatermark = nil     // drop the lazy belief-watermark sidecar; rebuilt on next use
 	bs.nodeBeliefWatermarkBuilt.Store(false)

@@ -1,0 +1,32 @@
+File: bench-after.test
+Build ID: e99e6c4369b4ddf5448f8d931e7c33ec33b5d6b0
+Type: cpu
+Time: 2026-10-12 12:22:55 CEST
+Duration: 11.23s, Total samples = 4.58s (40.79%)
+Active filters:
+   focus=ForEachRelEffectiveAtNodes
+Showing nodes accounting for 1.19s, 25.98% of 4.58s total
+Showing top 22 nodes out of 33
+      flat  flat%   sum%        cum   cum%
+         0     0%     0%      1.23s 26.86%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).readUnderRLock
+         0     0%     0%      1.23s 26.86%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*TempOps).ForEachRelEffectiveAtNodes
+         0     0%     0%      1.23s 26.86%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal.(*API).ForEachRelEffectiveAtNodes
+         0     0%     0%      1.23s 26.86%  testing.(*B).run1.func1
+         0     0%     0%      1.23s 26.86%  testing.(*B).runN
+         0     0%     0%      1.22s 26.64%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).relEffectiveAdjacencyCandidates
+         0     0%     0%      1.22s 26.64%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*TempOps).ForEachRelEffectiveAtNodes.func1
+         0     0%     0%      1.21s 26.42%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).forEachDeletedRelIDByDepth
+         0     0%     0%      1.21s 26.42%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).forEachDeletedRelIDByDepthTrusted
+         0     0%     0%      1.21s 26.42%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).forEachRelAdjacencyCandidateIDByDepth
+         0     0%     0%      1.21s 26.42%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).forEachRelOffAdjacencyIDByDepth
+         0     0%     0%      1.21s 26.42%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory.(*Store).ForEachDeletedRelID
+         0     0%     0%      1.18s 25.76%  github.com/data-insights-ai/rho-tkg/v4/bench.BenchmarkEffectiveAtNodesOneSeed.func1.2
+         0     0%     0%      1.18s 25.76%  github.com/data-insights-ai/rho-tkg/v4/bench.BenchmarkEffectiveAtNodesOneSeed.func1.4
+     0.46s 10.04% 10.04%      1.18s 25.76%  runtime.mapaccess2_fast64
+     0.68s 14.85% 24.89%      0.68s 14.85%  internal/runtime/maps.ctrlGroup.matchH2 (inline)
+         0     0% 24.89%      0.05s  1.09%  github.com/data-insights-ai/rho-tkg/v4/bench.BenchmarkEffectiveAtNodesOneSeed.func1
+     0.02s  0.44% 25.33%      0.03s  0.66%  internal/runtime/maps.(*Iter).Next
+     0.03s  0.66% 25.98%      0.03s  0.66%  internal/runtime/maps.h1 (inline)
+         0     0% 25.98%      0.03s  0.66%  runtime.mapIterNext
+         0     0% 25.98%      0.01s  0.22%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).getCurrentNode
+         0     0% 25.98%      0.01s  0.22%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).relEffectivePieces (inline)

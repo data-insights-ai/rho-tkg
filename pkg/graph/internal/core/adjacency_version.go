@@ -22,10 +22,11 @@ import (
 // findNodeVersionForOpts); this is the relationship mirror, built from the
 // same parts Temporal().OutgoingRelsAt uses (directionalRelsAtLocked):
 //
-//   - candidates = current adjacency ids ∪ deleted rel ids (endpoints are
-//     immutable, so a rel that ever touched nodeID still does — the deleted
-//     fold is what keeps a since-deleted edge visible inside its window, in
-//     parity with the node path's forEachNodeCandidateIDByDepth);
+//   - candidates = current adjacency ids ∪ the relationships whose rows may
+//     name nodeID although their live row does not — deleted ones and ones
+//     re-imported with other endpoints (forEachRelOffAdjacencyIDByDepth); the
+//     deleted fold is what keeps a since-deleted edge visible inside its
+//     window, in parity with the node path's forEachNodeCandidateIDByDepth;
 //   - each candidate resolves through findRelVersionForOpts with a predicate
 //     on direction and type, so the yielded row is the version valid under
 //     opts, not the live row;
@@ -218,21 +219,22 @@ func (s singleVersionAdjacencyResolver) resolve(cur *types.Relationship, pred fu
 
 // relAdjacencyCandidateIDsSorted is forEachRelAdjacencyCandidateIDByDepth
 // collected in ascending order: currentIDs (ascending) united with the
-// deleted relationship IDs. Without a deleted relationship it returns
+// relationships whose rows may name other nodes than their live row (deleted
+// or re-imported with other endpoints). Without such a relationship it returns
 // currentIDs itself, building no set.
 func (c *Core) relAdjacencyCandidateIDsSorted(currentIDs []types.RelID, depth storepkg.ShardDepth) ([]types.RelID, error) {
-	var deleted []types.RelID
-	if err := c.forEachDeletedRelIDByDepth(depth, func(id types.RelID) bool {
-		deleted = append(deleted, id)
+	var off []types.RelID
+	if err := c.forEachRelOffAdjacencyIDByDepth(depth, func(id types.RelID) bool {
+		off = append(off, id)
 		return true
 	}); err != nil {
 		return nil, err
 	}
-	if len(deleted) == 0 {
+	if len(off) == 0 {
 		return currentIDs, nil
 	}
-	ids := make([]types.RelID, 0, len(currentIDs)+len(deleted))
-	ids = append(append(ids, currentIDs...), deleted...)
+	ids := make([]types.RelID, 0, len(currentIDs)+len(off))
+	ids = append(append(ids, currentIDs...), off...)
 	slices.Sort(ids)
 	return slices.Compact(ids), nil
 }

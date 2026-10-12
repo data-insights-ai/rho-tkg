@@ -1,0 +1,13 @@
+M1 gather without the re-imported set: killed
+M2 no note at Rels.Import: killed
+M3 no note at replica apply: killed
+M4 no note at IO import history row: killed
+M5 badger set RAM only (no key): killed
+M6 note same-endpoint re-imports: killed
+M7 AtNodes keeps the all-history fold: killed
+M8 no backfill at open: killed
+M9 backfill trusts a missing marker: killed
+M10 sorted gather (ForEachAdjacent*At) deleted only: killed
+M12 memory Clear keeps the set: killed
+M13 badger Clear keeps the RAM copy: killed
+M14 sharded accepts an invalid ID: killed

@@ -862,6 +862,11 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err := rollback.captureRel(rel.ID()); err != nil {
 			return fmt.Errorf("import: snapshot rel %d: %w", wr.ID, err)
 		}
+		// Rows of another life with other endpoints (backlog 50): noted
+		// before the row lands, from whichever side arrives second.
+		if err := c.noteRelPutOverHistory(rel); err != nil {
+			return fmt.Errorf("import: rel %d: %w", wr.ID, err)
+		}
 		if err := c.store.PutRelationship(rel); err != nil {
 			if !errors.Is(err, storepkg.ErrRelExists) {
 				return fmt.Errorf("import: put rel %d: %w", wr.ID, err)
@@ -917,6 +922,9 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 			}
 			// Identical version already present — skip the write.
 		case errors.Is(gerr, storepkg.ErrVersionNotFound):
+			if err := c.noteRelHistoryUnderCurrent(rel); err != nil {
+				return fmt.Errorf("import: rel history %d v%d: %w", wr.ID, rel.Version(), err)
+			}
 			if err := c.store.PutRelVersion(id, rel.Version(), rel); err != nil {
 				return fmt.Errorf("import: put rel history %d v%d: %w", wr.ID, rel.Version(), err)
 			}

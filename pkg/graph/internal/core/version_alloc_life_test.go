@@ -147,7 +147,7 @@ func TestLifeStartStoreErrors(t *testing.T) {
 			if !tc.relOnly && !errors.Is(nerr, tc.err) {
 				t.Fatalf("presence=%v node: err = %v; want %v", presence, nerr, tc.err)
 			}
-			ls, rerr := c.relLifeStart(9)
+			ls, _, rerr := c.relLifeStart(9)
 			switch {
 			case tc.wantErr && !errors.Is(rerr, tc.err):
 				t.Fatalf("presence=%v rel: err = %v; want %v", presence, rerr, tc.err)

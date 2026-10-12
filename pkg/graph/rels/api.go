@@ -753,8 +753,9 @@ func (a *API) IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[typ
 // wholly in the past (a CloseVersion-ed edge, or a width-1 [t, t+1) point-event
 // edge) is SILENTLY DROPPED even though it was believed at txAt. For pure
 // knowledge-time (AS-OF-SYSTEM-TIME) semantics use OutgoingForNodesAtPin /
-// IncomingForNodesAtPin instead. Rel endpoints are immutable, so a relationship
+// IncomingForNodesAtPin instead. A relationship
 // deleted after txAt is still visible (delete is a transaction-time tombstone),
+// so is the earlier life of one deleted and re-imported with other endpoints,
 // one created after txAt is invisible, and a backfilled relationship (AddWithTx)
 // is visible from its backfilled TxFrom onward. txAt == 0 delegates to
 // OutgoingForNodes verbatim (no TX filter, no caller churn).
