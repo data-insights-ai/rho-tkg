@@ -821,6 +821,21 @@ func New(cfg Config) (*Store, error) {
 		}
 	}
 
+	// One-time record of re-imports made before the earlier-lives record
+	// existed (backlog 49); every shard is registered by now.
+	if err := ts.backfillHistoryLives(); err != nil {
+		for _, es := range ts.eventShards {
+			if es.store != nil {
+				_ = es.store.Close()
+			}
+		}
+		if archive := ts.refArchive.Load(); archive != nil {
+			_ = archive.Close()
+		}
+		_ = refStore.Close()
+		return nil, fmt.Errorf("graph: backfill history lives: %w", err)
+	}
+
 	// Start idle-close goroutine for cold shards.
 	if ts.idleTimeout > 0 {
 		go ts.idleCloseLoop()
@@ -1143,9 +1158,14 @@ func (ts *Store) Clear() error {
 		refCheckin()
 		return rollbackIndexMetadata(fmt.Errorf("graph: clear ref shard: %w", err))
 	}
-	refCheckin()
 	ts.relLives.reset() // their meta entries went with the reference shard
 	ts.nodeLives.reset()
+	// An empty store has nothing to backfill: keep the next open from walking.
+	if err := ref.MetaSet(historyLivesBackfilledKey, []byte{1}); err != nil {
+		refCheckin()
+		return rollbackIndexMetadata(err)
+	}
+	refCheckin()
 	for _, es := range shards {
 		if err := ts.clearEventShard(es); err != nil {
 			return rollbackIndexMetadata(fmt.Errorf("graph: clear event shard %s: %w", es.name, err))

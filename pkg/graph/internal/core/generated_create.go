@@ -76,6 +76,15 @@ func (c *Core) putImportedRelationship(ctx context.Context, r *types.Relationshi
 	return c.store.PutRelationship(r)
 }
 
+// putGeneratedRelationshipsBatch persists relationships whose IDs the graph
+// just generated, through the store's generated-ID batch door when it has one.
+func (c *Core) putGeneratedRelationshipsBatch(rels []*types.Relationship) error {
+	if b, ok := c.generatedCreate.(generatedcreate.RelationshipsBatchCapability); ok {
+		return b.PutRelationshipsBatchGeneratedID(rels, generatedcreate.FreshGraphID())
+	}
+	return c.store.PutRelationshipsBatch(rels)
+}
+
 func (c *Core) putGeneratedNodesBatch(nodes []*types.Node) error {
 	if c.generatedCreate != nil {
 		return c.generatedCreate.PutNodesBatchGeneratedID(nodes, generatedcreate.FreshGraphID())

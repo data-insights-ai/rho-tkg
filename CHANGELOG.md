@@ -17,13 +17,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   create records such an ID (reference-shard meta `tiered_history_lives/rel|node/<id>`, fsynced before the row; an
   in-memory set loaded at open; a malformed entry fails the open) and every history door reads a recorded ID from
   every history shard, as for a deleted ID. Routing by the ID's lives rather than moving the history with the row:
-  a move would put a history truncate in the change log that a replica replays as the loss of the whole chain, and
-  the record costs one set entry per re-imported-across-shards ID while every other read pays one atomic load.
+  a move would put a history truncate in the change log that a replica replays as the loss of the whole chain.
+  Cost: one set entry per re-imported-across-shards ID; every other history read pays one atomic load. A
+  caller-ID relationship create asks, inside its duplicate probe's walk over every shard, each shard outside the new
+  row's read set whether it holds history of the ID (a RAM presence lookup, whose first ask builds that shard's
+  presence set, or a key probe on a cold shard); a caller-ID node create asks the other side (reference + archive,
+  or the ID's event shard). Generated-ID creates skip it: `GraphTx.AddRelationships` now writes through the new
+  generated-ID batch door (`PutRelationshipsBatchGeneratedID`), so its batch builds no presence set. A record is
+  dropped only by `Clear`, not when a purge or a truncation to 0 removes the earlier rows, so the set is bounded by
+  the number of cross-shard re-imports ever made. **Upgrade, one-time open cost:** a store written by v4.51.1 or
+  earlier may already hold such re-imports; its first open finds them (`tiered_history_lives_backfilled` marks it
+  done): every shard, cold ones included, is opened up to twice — once to read its history IDs, once to look the
+  IDs without a live row on their own shard up in its RAM live-ID index — holding 8 B per such ID during the walk.
   Memory, badger and sharded were not affected. New badger helpers `Store.MetaSetDurable` and
   `Store.ForEachMetaName`. Test `TestReimportAcrossShardsKeepsEarlierLife` (memory / badger / sharded / tiered /
   tiered reopened; moves reference ↔ event and back, two re-imports, node re-imports, a pin inside each life, the
-  same-shard re-import), `TestHistoryLives_*` (cold earlier shard after rotation, truncation across lives, `Clear`,
-  restart, malformed entries); evidence `tasks/evidence/reimport-shards/`.
+  same-shard re-import, the store doors `Get*Version`, `*HistoryVersionsFrom`, `Truncate*History`),
+  `TestHistoryLives_*` (cold earlier shard after rotation, truncation across lives, `Clear`, restart, malformed
+  entries, the open-time backfill of a pre-fix store), `TestAddRelationshipsGeneratedBatchSkipsEarlierLivesWalk`;
+  evidence `tasks/evidence/reimport-shards/`.
 
 ## [4.51.1] - 2026-10-12
 

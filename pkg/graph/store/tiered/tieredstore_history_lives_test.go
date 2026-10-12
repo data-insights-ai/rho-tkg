@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -169,6 +170,138 @@ func TestHistoryLives_RecordsOnlyUnreachedHistory(t *testing.T) {
 	}
 	if h, err := ts.GetNodeHistory(n.ID()); err != nil || len(h) != 1 {
 		t.Fatalf("GetNodeHistory = %d rows, %v; want 1", len(h), err)
+	}
+}
+
+// A store written before the record existed (a cross-shard re-import with no
+// record and no backfill marker) loses the earlier lives until its next open,
+// whose one-time backfill records the re-imported IDs — and only those: an ID
+// deleted and never re-imported, and a same-shard re-import, stay unrecorded.
+// The marker is then set, so the walk runs once.
+func TestHistoryLives_BackfillAtOpen(t *testing.T) {
+	dir := t.TempDir()
+	open := func() *Store {
+		t.Helper()
+		ts, err := New(Config{DataDir: dir, RefLabels: []string{"Case", "User"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ts
+	}
+	ts := open()
+	caseTok, _, signalTok := installDefaultTestLabelRegistry(t, ts)
+	gen := tieredNodeGen(t)
+	fresh := generatedcreate.FreshGraphID() // writes without the record: the pre-fix layout
+
+	a := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	e := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	ref := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	for _, n := range []*types.Node{a, e, ref} {
+		if err := ts.PutNode(n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	lifeOver := func(r *types.Relationship) {
+		t.Helper()
+		if err := ts.PutRelVersion(r.ID(), 0, r); err != nil {
+			t.Fatal(err)
+		}
+		if err := ts.DeleteRelationship(r.ID()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	moved := types.NewRelationship(types.RelID(tieredRelGen(t).Generate()), 1, a.ID(), e.ID())
+	same := types.NewRelationship(types.RelID(tieredRelGen(t).Generate()), 1, a.ID(), e.ID())
+	gone := types.NewRelationship(types.RelID(tieredRelGen(t).Generate()), 1, a.ID(), e.ID())
+	for _, r := range []*types.Relationship{moved, same, gone} {
+		if err := ts.PutRelationship(r); err != nil {
+			t.Fatal(err)
+		}
+		lifeOver(r)
+	}
+	if err := ts.PutRelationshipGeneratedID(types.NewRelationship(moved.ID(), 1, ref.ID(), e.ID()), fresh); err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.PutRelationshipGeneratedID(same, fresh); err != nil {
+		t.Fatal(err)
+	}
+	node := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	if err := ts.PutNode(node); err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.PutNodeVersion(node.ID(), 0, node); err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.DeleteNode(node.ID()); err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.PutNodeGeneratedID(types.NewNode(node.ID(), caseTok, nil), fresh); err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.MetaSet(historyLivesBackfilledKey, nil); err != nil { // a store from before the marker
+		t.Fatal(err)
+	}
+	histories := func(ts *Store) (int, int) {
+		t.Helper()
+		rh, err := ts.GetRelHistory(moved.ID())
+		if err != nil {
+			t.Fatal(err)
+		}
+		nh, err := ts.GetNodeHistory(node.ID())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(rh), len(nh)
+	}
+	if r, n := histories(ts); r != 0 || n != 0 {
+		t.Fatalf("pre-fix layout: %d rel and %d node history rows reachable, want 0 and 0", r, n)
+	}
+	if err := ts.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	ts = open()
+	t.Cleanup(func() { _ = ts.Close() })
+	if r, n := histories(ts); r != 1 || n != 1 {
+		t.Fatalf("after the backfill: %d rel and %d node history rows, want 1 and 1", r, n)
+	}
+	if !ts.relLives.has(moved.ID().SnowflakeID()) || ts.relLives.n.Load() != 1 || ts.nodeLives.n.Load() != 1 {
+		t.Fatalf("backfill recorded %d rels / %d nodes, want exactly the moved ones", ts.relLives.n.Load(), ts.nodeLives.n.Load())
+	}
+	if v, err := ts.MetaGet(historyLivesBackfilledKey); err != nil || len(v) == 0 {
+		t.Fatalf("backfill marker = %v, %v; want set", v, err)
+	}
+}
+
+// The generated-ID batch door with an invalid proof is the caller-ID door:
+// it records a re-import onto another shard.
+func TestHistoryLives_GeneratedBatchWithoutProofRecords(t *testing.T) {
+	ts := newTestTieredStore(t)
+	caseTok, _, signalTok := installDefaultTestLabelRegistry(t, ts)
+	gen := tieredNodeGen(t)
+	a := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	ref := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	for _, n := range []*types.Node{a, ref} {
+		if err := ts.PutNode(n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := types.NewRelationship(types.RelID(tieredRelGen(t).Generate()), 1, a.ID(), a.ID())
+	if err := ts.PutRelationship(r); err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.PutRelVersion(r.ID(), 0, r); err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.DeleteRelationship(r.ID()); err != nil {
+		t.Fatal(err)
+	}
+	moved := types.NewRelationship(r.ID(), 1, ref.ID(), a.ID())
+	if err := ts.PutRelationshipsBatchGeneratedID([]*types.Relationship{moved}, generatedcreate.Proof{}); err != nil {
+		t.Fatal(err)
+	}
+	if !ts.relLives.has(r.ID().SnowflakeID()) {
+		t.Fatal("batch without proof: re-import onto another shard not recorded")
 	}
 }
 

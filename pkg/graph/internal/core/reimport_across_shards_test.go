@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -181,12 +182,73 @@ func TestReimportAcrossShardsKeepsEarlierLife(t *testing.T) {
 				}
 				check(g, "")
 				if reopen != nil {
-					g := reopen()
+					g = reopen()
 					g.SetClockForTest(t, clk.Now)
 					check(g, "after reopen: ")
 				}
+				rasCheckStoreDoors(t, g, sc.rel, id, len(sc.lives))
 			})
 		}
+	}
+}
+
+// rasCheckStoreDoors checks the store's per-version history doors over the
+// lives: every earlier version reads back with its life, the version page
+// holds every earlier life, and a truncation to one version keeps the newest
+// history row across the lives (that of life n-1). Destructive: runs last.
+func rasCheckStoreDoors(t *testing.T, g *Core, rel bool, id int64, n int) {
+	t.Helper()
+	page, _ := g.store.(storepkg.HistoryVersionPageCapability)
+	if rel {
+		rid := types.RelID(id)
+		h, err := g.Rels.History(rid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range h {
+			v, err := g.store.GetRelVersion(rid, r.Version())
+			if err != nil || rasLife(t, v) != rasLife(t, r) {
+				t.Errorf("GetRelVersion(%d): %v, want the row of life %d", r.Version(), err, rasLife(t, r))
+			}
+		}
+		if page != nil {
+			rows, err := page.RelHistoryVersionsFrom(rid, 0, 0)
+			if got := rasLives(t, rows); err != nil || !slices.Equal(got, rasUpTo(n-1)) {
+				t.Errorf("RelHistoryVersionsFrom: lives %v (%v), want %v", got, err, rasUpTo(n-1))
+			}
+		}
+		if err := g.store.TruncateRelHistory(rid, 1); err != nil {
+			t.Fatal(err)
+		}
+		h, err = g.Rels.History(rid)
+		if got := rasLives(t, h); err != nil || len(h) != 1 || !slices.Equal(got, []int64{int64(n - 1)}) {
+			t.Errorf("after TruncateRelHistory(1): %d rows of lives %v (%v), want 1 row of life %d", len(h), got, err, n-1)
+		}
+		return
+	}
+	nid := types.NodeID(id)
+	h, err := g.Nodes.History(nid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range h {
+		v, err := g.store.GetNodeVersion(nid, r.Version())
+		if err != nil || rasLife(t, v) != rasLife(t, r) {
+			t.Errorf("GetNodeVersion(%d): %v, want the row of life %d", r.Version(), err, rasLife(t, r))
+		}
+	}
+	if page != nil {
+		rows, err := page.NodeHistoryVersionsFrom(nid, 0, 0)
+		if got := rasLives(t, rows); err != nil || !slices.Equal(got, rasUpTo(n-1)) {
+			t.Errorf("NodeHistoryVersionsFrom: lives %v (%v), want %v", got, err, rasUpTo(n-1))
+		}
+	}
+	if err := g.store.TruncateNodeHistory(nid, 1); err != nil {
+		t.Fatal(err)
+	}
+	h, err = g.Nodes.History(nid)
+	if got := rasLives(t, h); err != nil || len(h) != 1 || !slices.Equal(got, []int64{int64(n - 1)}) {
+		t.Errorf("after TruncateNodeHistory(1): %d rows of lives %v (%v), want 1 row of life %d", len(h), got, err, n-1)
 	}
 }
 
