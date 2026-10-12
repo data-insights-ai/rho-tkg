@@ -39,8 +39,8 @@ func (d *relDegreeCache) put(tok uint16, epoch uint64, stats storepkg.RelTypeDeg
 	d.entries[tok] = relDegreeEntry{epoch: epoch, stats: stats}
 }
 
-// relTypeEpochScanner is the per-type freshness stamp (badger stripes it per
-// type; memory returns its store-wide relationship epoch).
+// relTypeEpochScanner is the per-type freshness stamp (badger and memory
+// stripe it per type; a door that does not name its type moves every type).
 type relTypeEpochScanner interface {
 	RelMutationEpochForType(token uint16) uint64
 }
@@ -66,8 +66,8 @@ func (c *Core) relDegreeEpoch(tok uint16) (uint64, bool) {
 // relationship. Derived, not maintained: the first call after any write to
 // the type scans its relationships once (O(relationships of the type), one
 // streaming pass, O(distinct endpoints) memory); the result is kept with the
-// relationship mutation epoch (badger: the type's own stripe) and served in
-// O(1) until that moves. An unregistered type returns zero stats with Exact
+// relationship mutation epoch (memory and badger: the type's own stamp, which
+// a write of another type leaves) and served in O(1) until that moves. An unregistered type returns zero stats with Exact
 // true. Errors: a malformed type name, ErrGraphClosed.
 func (s *StatOps) RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegreeStats, error) {
 	c := s.c

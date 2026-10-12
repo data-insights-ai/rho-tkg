@@ -1,7 +1,7 @@
 # v4 changes since 32568c4 that the v4 → v5 importer and the v5 migration contract must account for
 
-Updated 2026-10-11 (original handover 2026-10-10). For Markus (branch `v5`, `docs/v5/PLAN.md` §9 "Migration"). Source of truth is `CHANGELOG.md` on main
-(v4.44.0 … v4.50.1 at cutoff `efbedc28170c6b04aa28a0e957fc16c4424100c6`); this note lists only what changes how a v4 store must be READ or MAPPED. This note changes no importer implementation.
+Updated 2026-10-12 (original handover 2026-10-10). For Markus (branch `v5`, `docs/v5/PLAN.md` §9 "Migration"). Source of truth is `CHANGELOG.md` on main
+(v4.44.0 … v4.51.0 at cutoff `44303a17a391d663cd48567c55bbb9ee85cdf892`); this note lists only what changes how a v4 store must be READ or MAPPED. This note changes no importer implementation.
 
 ## 1. The as-of rule changed (v4.46.0)
 
@@ -108,3 +108,26 @@ exact corrected valid-time state. New v5 database revisions commit at new certif
 stamp does not construct a cut, and equal stamps do not establish global atomic transaction groups. Preserve
 historical consumer pins and older evidence. Source/oracle evidence: CHANGELOG `[4.50.1]`,
 `tasks/evidence/interval-withtx/` (red runs, mutants, W5 oracle at 100 seeds).
+
+
+## 11. Access and statistics contracts at v4.51.0
+
+Source cutoff `44303a17a391d663cd48567c55bbb9ee85cdf892` extends the earlier mapping contracts without changing
+v4 row formats or dependencies. `Stats().PropertyNDV` / `RelPropertyNDV` return estimated HLL NDV and current
+indexable-scalar Count without an exact Min/Max rescan; unsupported/disabled capabilities refuse.
+`RelHistoryCountByType` counts identities with history, including deleted ones: memory/badger answer,
+tiered/sharded decline; ID reuse across types makes it an upper bound, so only a supported zero proves none.
+
+Known-label empty DocValues intersections now return `ok=true` with no rows. Historical property seeks on
+unindexed keys use label/type ever-members as candidate supersets, preserving lost labels, deleted rows and
+transaction-pin acquisition pruning; unsupported/depth-scoped paths keep full history resolution.
+History-free valid-time adjacency may use the live row, while pins/history/deletes retain full resolution.
+Memory adjacency and unfiltered relationship columns preserve ascending IDs and endpoint ordinals.
+Badger's immutable column patch preserves held snapshots, exact types/dictionaries/validity and rebuild
+fallbacks. Per-type degree-cache epochs may over-invalidate via stripe collisions/coarse writes; global
+relationship epochs still invalidate column/expand reads. These stamps are not certified cuts.
+
+The data-only current-source delta in `docs/v5/reference/consumer-contracts.json` and `consumer-migration.json`
+records source hashes and required checks separately from unchanged historical consumer pins. No new v5 public
+API or completed importer is implied. Earlier V6 v4.50.1 reader qualification must be rerun against this reader;
+new NDV/history/empty-intersection/historical-seek/adjacency/column-cache checks and aggregate gates remain pending.

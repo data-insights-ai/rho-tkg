@@ -2,6 +2,7 @@ package memory
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -119,4 +120,64 @@ func TestMemRelColumnScan_EarlyStopHonoured(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("callback ran %d times after returning false; want 1", calls)
 	}
+}
+
+// TestMemRelColumnScan_KeptOrderMatchesTheTypeScan (round 5 request 2, a
+// guard): the scan read from the type's kept member list emits exactly the
+// rows RelationshipsByType returns, in the same order, across inserts,
+// updates and deletes of the type and of another type, with and without a
+// rebuild of the list in between.
+func TestMemRelColumnScan_KeptOrderMatchesTheTypeScan(t *testing.T) {
+	ms := newMemRelScanStore(t)
+	const other uint16 = 12
+	scan := func() []string {
+		var out []string
+		if err := ms.ScanRelColumns(memRelScanType, []string{"weight"}, storecontract.QueryOpts{}, func(b *storecontract.RelColumnBatch) bool {
+			for i := range b.IDs {
+				out = append(out, fmt.Sprintf("%d:%d->%d:%v:%d", b.IDs[i], b.StartIDs[i], b.EndIDs[i], b.Ints[0][i], b.Ordinals[i]))
+			}
+			return true
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	want := func() []string {
+		rels, err := ms.RelationshipsByType(memRelScanType, storecontract.QueryOpts{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, r := range rels {
+			w, _ := r.GetProperty("weight")
+			out = append(out, fmt.Sprintf("%d:%d->%d:%v:%d", r.ID(), r.StartNodeID(), r.EndNodeID(), w, r.Ordinal()))
+		}
+		return out
+	}
+	check := func(step string) {
+		t.Helper()
+		if got, exp := scan(), want(); fmt.Sprint(got) != fmt.Sprint(exp) {
+			t.Fatalf("%s:\n scan %v\n type %v", step, got, exp)
+		}
+	}
+	for id := int64(40); id >= 30; id -= 2 { // inserted out of ID order
+		putMemRel(t, ms, id, 1, 2, id)
+	}
+	check("inserts")
+	r := types.NewRelationship(types.RelID(34), memRelScanType, 1, 2)
+	_ = r.SetProperty("weight", int64(340))
+	r.SetTemporal(&types.TemporalMetadata{ValidFrom: 10})
+	if err := ms.ReplaceRelationship(r); err != nil {
+		t.Fatal(err)
+	}
+	check("update")
+	if err := ms.DeleteRelationship(36); err != nil {
+		t.Fatal(err)
+	}
+	putMemRel(t, ms, 33, 2, 3, int64(33))
+	o := types.NewRelationship(types.RelID(35), other, 1, 3)
+	if err := ms.PutRelationship(o); err != nil {
+		t.Fatal(err)
+	}
+	check("delete, insert, another type")
 }

@@ -1,0 +1,12 @@
+--- FAIL: TestAppendDelta_DeleteThenInsertWithoutAnInterveningRead (0.01s)
+    badgerstore_append_delta_test.go:212: read returned node 2 AFTER it was deleted — the snapshot was extended across a removal. Extend cannot see a deletion; only the removal-seam poison can force the rebuild that drops the row.
+--- FAIL: TestAppendDelta_IntersectionRebuildsAfterDelete (0.00s)
+    badgerstore_append_delta_test.go:426: intersection read returned node 2 after it was deleted
+--- FAIL: TestColumnPatch_RandomWorkloadMatchesTheStore (0.01s)
+    --- FAIL: TestColumnPatch_RandomWorkloadMatchesTheStore/seed=1 (0.00s)
+        badgerstore_column_patch_test.go:237: step 65 (multi=false):
+    --- FAIL: TestColumnPatch_RandomWorkloadMatchesTheStore/seed=2 (0.00s)
+        badgerstore_column_patch_test.go:237: step 111 (multi=false):
+    --- FAIL: TestColumnPatch_RandomWorkloadMatchesTheStore/seed=3 (0.00s)
+        badgerstore_column_patch_test.go:237: step 141 (multi=false):
+    --- FAIL: TestColumnPatch_RandomWorkloadMatchesTheStore/seed=4 (0.00s)

@@ -1,0 +1,9 @@
+--- FAIL: TestAdjSetMatchesAMapSet (0.00s)
+    memorystore_adjset_test.go:48: span 4 op 2: has(1) = false, want true
+--- FAIL: TestAdjSetNilAndEarlyStop (0.00s)
+    memorystore_adjset_test.go:84: newAdjSetOf dedupe: [3 5 5]
+--- FAIL: TestAdjSetSmallSetIsAscending (0.00s)
+    memorystore_adjset_test.go:107: op 5: small set [21 71 87 52] not ascending
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.402s
+FAIL

@@ -1,0 +1,13 @@
+base BenchmarkColumnScanAfterPropertyWrite/badger/n=100000         	      10	 255336933 ns/op
+base BenchmarkColumnScanAfterPropertyWrite/badger/n=400000         	      10	1506949762 ns/op
+branch BenchmarkColumnScanAfterPropertyWrite/badger/n=100000         	      10	   6884646 ns/op
+branch BenchmarkColumnScanAfterPropertyWrite/badger/n=400000         	      10	  28176604 ns/op
+branch BenchmarkColumnScanAfterPropertyWrite/badger/n=100000         	      10	   7177875 ns/op
+branch BenchmarkColumnScanAfterPropertyWrite/badger/n=400000         	      10	  24070267 ns/op
+base BenchmarkColumnScanAfterPropertyWrite/badger/n=100000         	      10	 245717687 ns/op
+base BenchmarkColumnScanAfterPropertyWrite/badger/n=400000         	      10	1264354283 ns/op
+base BenchmarkColumnScanAfterPropertyWrite/badger/n=100000         	      10	 217544350 ns/op
+base BenchmarkColumnScanAfterPropertyWrite/badger/n=400000         	      10	1430370683 ns/op
+branch BenchmarkColumnScanAfterPropertyWrite/badger/n=100000         	      10	   6974029 ns/op
+branch BenchmarkColumnScanAfterPropertyWrite/badger/n=400000         	      10	  18273904 ns/op
+load: 49.85 40.66 31.35

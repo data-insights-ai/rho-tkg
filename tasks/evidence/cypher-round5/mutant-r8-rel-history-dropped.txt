@@ -1,0 +1,12 @@
+--- FAIL: TestTemporalRelPropertySeekScopedToType (0.02s)
+    --- FAIL: TestTemporalRelPropertySeekScopedToType/memory (0.00s)
+        temporal_property_seek_label_test.go:235: {Limit:0 After:0 ValidAt:0 ValidStart:1000 ValidEnd:1500 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: [803514135548101632], want [803514135548101632 803514135549543424 803514135552230400]
+        temporal_property_seek_label_test.go:235: {Limit:0 After:0 ValidAt:0 ValidStart:2000 ValidEnd:2500 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: [803514135548101632], want [803514135548101632 803514135552230400]
+    --- FAIL: TestTemporalRelPropertySeekScopedToType/memory-segments (0.00s)
+        temporal_property_seek_label_test.go:235: {Limit:0 After:0 ValidAt:0 ValidStart:1000 ValidEnd:1500 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: [803514135572218880], want [803514135572218880 803514135572317184 803514135572513792]
+        temporal_property_seek_label_test.go:235: {Limit:0 After:0 ValidAt:0 ValidStart:2000 ValidEnd:2500 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: [803514135572218880], want [803514135572218880 803514135572513792]
+    --- FAIL: TestTemporalRelPropertySeekScopedToType/badger (0.00s)
+        temporal_property_seek_label_test.go:235: {Limit:0 After:0 ValidAt:0 ValidStart:1000 ValidEnd:1500 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: [803514135643194368], want [803514135643194368 803514135646405632 803514135647880192]
+        temporal_property_seek_label_test.go:235: {Limit:0 After:0 ValidAt:0 ValidStart:2000 ValidEnd:2500 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: [803514135643194368], want [803514135643194368 803514135647880192]
+    --- FAIL: TestTemporalRelPropertySeekScopedToType/badger-delta (0.00s)
+        temporal_property_seek_label_test.go:235: {Limit:0 After:0 ValidAt:0 ValidStart:1000 ValidEnd:1500 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: [803514135701947392], want [803514135701947392 803514135702963200 803514135703782400]

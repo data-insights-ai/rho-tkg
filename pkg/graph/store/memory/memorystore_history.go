@@ -210,7 +210,7 @@ func (ms *Store) deleteRelWithHistoryRouted(rid types.RelID, prevVersion uint32,
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
-	defer ms.bumpRelEpoch()
+	defer ms.bumpRelEpoch() // a delete stays coarse, as on badger
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -599,7 +599,7 @@ func (ms *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
-	defer ms.bumpRelEpoch() // a version-chain write, as PutNodeVersion bumps the node epoch
+	defer ms.bumpRelEpochForTypes(r) // a version-chain write, as PutNodeVersion bumps the node epoch
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -895,8 +895,9 @@ func (ms *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	// A property write, a close or an interval change of a relationship
-	// arrives here: it changes the row every relationship-derived cache reads.
-	defer ms.bumpRelEpoch()
+	// arrives here: it changes the row every relationship-derived cache reads
+	// (of its own type: the per-type stamp of current's type moves).
+	defer ms.bumpRelEpochForTypes(current)
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err

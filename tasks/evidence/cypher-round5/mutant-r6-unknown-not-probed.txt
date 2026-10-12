@@ -1,0 +1,12 @@
+--- FAIL: TestHistoryPresence_RandomizedDifferential (0.92s)
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=1 (0.09s)
+        badgerstore_history_presence_test.go:543: step 22 trimSome: ForEachDeletedID = [4 6 8 12 14 15], ids with rows and no current row [6 8 12 14 15]
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=2 (0.09s)
+        badgerstore_history_presence_test.go:543: step 25 trimSome: ForEachDeletedID = [4 5 6 8 10 11 12], ids with rows and no current row [4 6 8 10 11 12]
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=3 (0.11s)
+        badgerstore_history_presence_test.go:543: step 108 trimSome: ForEachDeletedID = [5 8 9 18 19 22 23], ids with rows and no current row [5 8 18 19 22 23]
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=4 (0.14s)
+        badgerstore_history_presence_test.go:543: step 51 trimAll: ForEachDeletedID = [2 4 5 10 13 17 24], ids with rows and no current row [2 4 5 10 13 24]
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=1 (0.08s)
+        badgerstore_history_presence_test.go:543: step 22 trimSome: ForEachDeletedID = [4 6 8 12 14 15], ids with rows and no current row [6 8 12 14 15]
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=2 (0.09s)

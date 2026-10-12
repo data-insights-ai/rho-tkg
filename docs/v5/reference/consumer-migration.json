@@ -484,5 +484,285 @@
       ],
       "acceptance_status": "pending-v5"
     }
-  ]
+  ],
+  "current_v4_source_delta": {
+    "captured_date": "2026-10-12",
+    "repository": "rho-tkg",
+    "commit": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+    "tree": "3e1ba5d51d7785a8fbd1481372c5993002fdc78c",
+    "release": "v4.51.0",
+    "previous_integrated_main": "91684e54d25fd8c1b136f5f80bd8f33f5d0ab3bd",
+    "evidence_level": "Upstream source contracts only; no merged-source compilation, behavior, migration or performance acceptance. Historical consumer/source pins are unchanged.",
+    "qualification": "V6 must rerun its previously v4.50.1-qualified reader preflight against this reader; root aggregate and hosted gates remain separate.",
+    "dependencies": "No go.mod/go.sum, nested v5 module, comparator module or workflow dependency changes in this upstream delta.",
+    "obligations": [
+      {
+        "id": "v451-ndv-only-statistics",
+        "contract": [
+          "Stats().PropertyNDV(label, propertyKey string) (store.PropertyNDV, error)",
+          "Stats().RelPropertyNDV(typeName, propertyKey string) (store.PropertyNDV, error)",
+          "store.PropertyNDV{NDV int64, Count int64}"
+        ],
+        "required_v5_mapping": "Preserve estimated NDV and current indexable-scalar presence Count separately from exact Min/Max. HLL NDV is non-decreasing across deletes until rebuild. The NDV-only door must not force an extreme-value rescan. v4 node capability: memory/badger/tiered; relationship: memory/badger; disabled or unsupported statistics return ErrCapabilityNotSupported, never substitute zero.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+            "path": "pkg/graph/stats/api.go",
+            "sha256": "f300fad72c569509cbe5923d9bdb818a58bc6405631a6aba8d54d455ea37103f",
+            "matching_lines": [
+              311
+            ],
+            "anchor": "func (a *API) PropertyNDV"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+            "path": "pkg/graph/stats/api.go",
+            "sha256": "f300fad72c569509cbe5923d9bdb818a58bc6405631a6aba8d54d455ea37103f",
+            "matching_lines": [
+              322
+            ],
+            "anchor": "func (a *API) RelPropertyNDV"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+            "path": "pkg/graph/store/property_stats.go",
+            "sha256": "877faf975fe358b0e65bf4c6798d54e2363165d1294656f69d0fdd85d8947750",
+            "matching_lines": [
+              83
+            ],
+            "anchor": "type PropertyNDV struct"
+          }
+        ],
+        "required_tests": [
+          "After deleting the maximum, NDV/Count agree with PropertyStats at a stable moment without invoking its Min/Max rescan.",
+          "Node/relationship mirrors, unknown pairs, disabled/unsupported capabilities, nil/closed wrappers and errors.Is propagation."
+        ],
+        "ownership": "rho access/statistics contract; sigma adapter and planner consumption",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v451-history-count-by-type",
+        "contract": [
+          "Stats().RelHistoryCountByType(typeName string) (int, bool, error)"
+        ],
+        "required_v5_mapping": "Count relationship identities with history, including deleted identities, not history rows/versions. v4 memory/badger answer in O(relationships with history); sharded/tiered/external decline. Type reuse by ID may overcount per type, so supported zero safely means none; decline must not justify a no-history optimization.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+            "path": "pkg/graph/internal/core/history_counts.go",
+            "sha256": "8fa6d87db519e59a4ec9bb4acb7ec833ebed7858fdb4d391d3bd4663aaf0e839",
+            "matching_lines": [
+              60
+            ],
+            "anchor": "func (s *StatOps) RelHistoryCountByType"
+          }
+        ],
+        "required_tests": [
+          "Update/close/delete one type while another remains without history; compare identity sets and distinguish supported zero from decline.",
+          "Reused ID across types remains a conservative upper bound; retention/clear/reopen refresh the answer."
+        ],
+        "ownership": "rho access/statistics contract; sigma adapter and planner consumption",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v451-served-empty-intersection",
+        "contract": [
+          "Nodes().ForEachDocValuesMulti(labels, keys, fn) -> (gen, ok, err)"
+        ],
+        "required_v5_mapping": "An empty intersection of known labels is served (ok=true, no callbacks) on all four stores, rather than declined. Unknown labels and unsupported/over-cap shapes retain decline. Snapshot generations require the usual post-read mutation-epoch check; emptiness does not establish cut or source completeness.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+            "path": "pkg/graph/nodes/api.go",
+            "sha256": "4c317d91f6e389506aea08a0641cd0875b11cf864c6cd6c1b3987dccacc5b0f6",
+            "matching_lines": [
+              536
+            ],
+            "anchor": "An empty intersection of known labels"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+            "path": "pkg/graph/store/sharded/docvalues.go",
+            "sha256": "38d4e91e10f8c3c59ce668b28990d9373e29c79dc17aa936440f9bdfe0a951d1",
+            "matching_lines": [
+              92
+            ],
+            "anchor": "func (s *Store) foldDocValuesServingEmpty"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+            "path": "pkg/graph/store/tiered/tieredstore_docvalues.go",
+            "sha256": "3c602423c5b0db984be90c6b98581cce22642c07ff47beedea40b21bd1243d7a",
+            "matching_lines": [
+              83
+            ],
+            "anchor": "func (ts *Store) foldDocValuesServingEmpty"
+          }
+        ],
+        "required_tests": [
+          "Disjoint known labels, then member joins/leaves, unknown label, callback count and epoch checks across memory/badger/sharded/tiered."
+        ],
+        "ownership": "rho access/statistics contract; sigma adapter and planner consumption",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v451-history-seek-superset",
+        "contract": [
+          "store.LabelTxMemberLookupCapability.LabelTxMembersOf",
+          "store.RelTypeTxMemberLookupCapability.RelTypeTxMembersOf"
+        ],
+        "required_v5_mapping": "Unindexed temporal property seeks may restrict history candidates to ever-members of the label/type and prune acquisition strictly after the effective pin. Current matches are united; exact version resolution remains authoritative. Never filter by current label alone. Missing/unsafe capability and depth-scoped stores keep the full-history fallback.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+            "path": "pkg/graph/store/capabilities.go",
+            "sha256": "18bae52bf0ad04c4717e6f0fc97888f3e5f8b0ababc214b04988bbc7a98a17ed",
+            "matching_lines": [
+              393
+            ],
+            "anchor": "type LabelTxMemberLookupCapability"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+            "path": "pkg/graph/store/capabilities.go",
+            "sha256": "18bae52bf0ad04c4717e6f0fc97888f3e5f8b0ababc214b04988bbc7a98a17ed",
+            "matching_lines": [
+              399
+            ],
+            "anchor": "type RelTypeTxMemberLookupCapability"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+            "path": "pkg/graph/internal/core/temporal.go",
+            "sha256": "13a0ed6867d434665c731d9d97f71c120ba6918f77523fb50183e7c1c06d14fc",
+            "matching_lines": [
+              1561
+            ],
+            "anchor": "func (c *Core) forEachNodeHistoryCandidateOfLabel"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+            "path": "pkg/graph/internal/core/temporal.go",
+            "sha256": "13a0ed6867d434665c731d9d97f71c120ba6918f77523fb50183e7c1c06d14fc",
+            "matching_lines": [
+              1599
+            ],
+            "anchor": "func (c *Core) forEachRelHistoryCandidateOfType"
+          }
+        ],
+        "required_tests": [
+          "Historical label loss/acquisition, property change and deleted relationships: exact sets at point/window/pin, including predicate held only earlier in interval.",
+          "Named/generic node/relationship doors equal independent history resolution; unrelated-label/type history does not cause chain loads on answering capabilities."
+        ],
+        "ownership": "rho access/statistics contract; sigma adapter and planner consumption",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v451-window-adjacency-and-columns",
+        "contract": [
+          "Rels().ForEachAdjacentEndpointAt",
+          "Rels().ForEachAdjacentRelAt",
+          "ForEachAdjacentEndpointOrdinal",
+          "ScanRelColumns"
+        ],
+        "required_v5_mapping": "Pure valid-time adjacency may answer a proven history-free live row directly; transaction pins, unknown history, deleted rows and history-bearing rows keep full resolution and watermark checks. Preserve half-open bounds, mint fallback only for v4 unset values, direction/type predicates, sorted relationship IDs, owned callback isolation and stored endpoint ordinals. Memory unfiltered/unpaged column scans may reuse sorted membership; filtered/paged and segment doors retain their proper paths.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+            "path": "pkg/graph/internal/core/adjacency_version.go",
+            "sha256": "ab55716c974ae7160d6e90c357e15971b7f33e05c472c0ffc844a9cec467ee31",
+            "matching_lines": [
+              161
+            ],
+            "anchor": "func (c *Core) singleVersionAdjacency"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+            "path": "pkg/graph/store/memory/memorystore_adjacent_ordinals.go",
+            "sha256": "1b2972a1df6d4ad515c45689bf1a3f4a8656b52c32683678f982e673693756cc",
+            "matching_lines": [
+              42
+            ],
+            "anchor": "func (ms *Store) ForEachAdjacentEndpointOrdinal"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+            "path": "pkg/graph/store/memory/memorystore_rel_column_scan.go",
+            "sha256": "cee1925852a5fdb71b2a7ebae56454abb4b6fcc7f501832d0ab83bd8bffdce6e",
+            "matching_lines": [
+              52
+            ],
+            "anchor": "func (ms *Store) relsByTypeForScan"
+          }
+        ],
+        "required_tests": [
+          "Compare both adjacency doors/directions at every point/window bound and transaction pin to full chain resolution after update/delete/retract.",
+          "Row/column IDs, property kinds, endpoint ordinals, cancellation/early stop and wrapper overrides agree across small/large sets, membership churn, segments and paging."
+        ],
+        "ownership": "rho access/statistics contract; sigma adapter and planner consumption",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v451-column-patch-and-type-epochs",
+        "contract": [
+          "badger.Store.ColumnPatchCount() uint64",
+          "DocValues.Patch",
+          "memory.Store.RelMutationEpochForType(token uint16) uint64"
+        ],
+        "required_v5_mapping": "A cached column snapshot is immutable: an in-place write patches typed values, dictionaries, validity and affected zone blocks; new members append; removal/class change/unbalanced records rebuild. Held old snapshots stay unchanged. RelTypeDegreeStats may cache by per-type stripe plus coarse invalidation; collisions may over-invalidate. Global relationship epoch still moves for every relationship mutation, and v4 memory relationship columns still use it. Neither epoch is a database cut.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+            "path": "pkg/graph/internal/index/docvalues_patch.go",
+            "sha256": "9abe99a8323cc9ef0d1426cbd8957563479c3247208bf13d58e4e24ae47de841",
+            "matching_lines": [
+              33
+            ],
+            "anchor": "func (l *DocValues[T]) Patch"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+            "path": "pkg/graph/store/badger/badgerstore_append_delta.go",
+            "sha256": "c130f8ad58b4b05bbe1c41c5d992a7d0f54e639b740ed430535bb87e31b518bb",
+            "matching_lines": [
+              19
+            ],
+            "anchor": "func (bs *Store) ColumnPatchCount"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+            "path": "pkg/graph/store/memory/memorystore_rel_columns.go",
+            "sha256": "b10a43438d0b3c8621eead2362fef04e9d20e6093e2bd273e9d5cac08834d5bd",
+            "matching_lines": [
+              34
+            ],
+            "anchor": "func (ms *Store) RelMutationEpochForType"
+          }
+        ],
+        "required_tests": [
+          "Random insert/update/remove/relabel sequences compare patched single/intersection columns and held old snapshots against independent full rebuild, including numeric type transitions/string dictionary/validity.",
+          "Own-type, other-type, stripe collision and coarse mutation doors invalidate the intended degree cache; global Gate-2 epochs remain safe under concurrent writes."
+        ],
+        "ownership": "rho access/statistics contract; sigma adapter and planner consumption",
+        "acceptance_status": "pending-v5"
+      }
+    ]
+  }
 }

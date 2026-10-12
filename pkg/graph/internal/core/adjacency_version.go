@@ -1,8 +1,9 @@
 package core
 
 import (
+	"cmp"
 	"errors"
-	"sort"
+	"slices"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -74,20 +75,20 @@ func (c *Core) forEachAdjacentRelVersionLocked(nodeID types.NodeID, typeName str
 	if err != nil {
 		return err
 	}
-	live := make(map[types.RelID]*types.Relationship, len(rows))
-	for _, r := range rows {
-		live[r.ID()] = r
+	// Rows and their IDs in ascending ID order (stores sort by ID; an
+	// untrusted store's order was validated above), so the live row of a
+	// candidate is found by one forward walk instead of a map.
+	byID := func(a, b *types.Relationship) int { return cmp.Compare(a.ID(), b.ID()) }
+	if !slices.IsSortedFunc(rows, byID) {
+		rows = slices.Clone(rows)
+		slices.SortFunc(rows, byID)
+		currentIDs = slices.Clone(currentIDs)
+		slices.Sort(currentIDs)
 	}
-
-	// Deterministic order: the candidate fold walks a set.
-	var ids []types.RelID
-	if err := c.forEachRelAdjacencyCandidateIDByDepth(currentIDs, opts.Depth, func(id types.RelID) error {
-		ids = append(ids, id)
-		return nil
-	}); err != nil {
+	ids, err := c.relAdjacencyCandidateIDsSorted(currentIDs, opts.Depth)
+	if err != nil {
 		return err
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 
 	pred := func(r *types.Relationship) bool {
 		if tok != 0 && !r.HasTypeTokenRaw(tok) {
@@ -99,10 +100,26 @@ func (c *Core) forEachAdjacentRelVersionLocked(nodeID types.NodeID, typeName str
 		return r.StartNodeID() == nodeID
 	}
 	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
+	single := c.singleVersionAdjacency(opts)
+	next := 0
 	for _, id := range ids {
 		var r *types.Relationship
-		if cur := live[id]; cur != nil && opts.ValidAt != 0 && c.relCurrentAnswersAt(cur, opts.ValidAt, opts.TxAt) && pred(cur) {
+		for next < len(rows) && rows[next].ID() < id {
+			next++
+		}
+		var cur *types.Relationship
+		if next < len(rows) && rows[next].ID() == id {
+			cur = rows[next]
+		}
+		if cur != nil && opts.ValidAt != 0 && c.relCurrentAnswersAt(cur, opts.ValidAt, opts.TxAt) && pred(cur) {
 			r = cur
+		} else if r1, decided, serr := single.resolve(cur, pred); serr != nil {
+			return serr
+		} else if decided {
+			if r1 == nil {
+				continue
+			}
+			r = r1
 		} else {
 			var rerr error
 			r, rerr = c.findRelVersionForOpts(id, resolveOpts, pred)
@@ -118,4 +135,135 @@ func (c *Core) forEachAdjacentRelVersionLocked(nodeID types.NodeID, typeName str
 		}
 	}
 	return nil
+}
+
+// singleVersionAdjacency answers, inside forEachAdjacentRelVersionLocked, a
+// live adjacent relationship that has no history rows from that live row
+// alone (round 5 request 6, sigma-tkgd C4s: a window search over
+// relationships without history was 11 times the static one, a point read
+// and a history read per edge). Such a relationship has exactly one version,
+// so the canonical chain resolver run over the one-row chain gives what
+// findRelVersionForOpts would give after loading it.
+//
+// It applies only under a pure valid-time filter (ValidAt, or ValidStart and
+// ValidEnd): a transaction-time pin (TxAt, TxPin) also consults compaction
+// and retention watermarks on the full path, so it keeps that path. It needs
+// the store's HistoryPresenceCapability; without it every relationship takes
+// the full path. The presence check runs after the live row was read: a write
+// that replaced the row in between left a history row, so the check sends it
+// to the full path.
+type singleVersionAdjacencyResolver struct {
+	c        *Core
+	presence storepkg.HistoryPresenceCapability
+	probe    chainProbe
+}
+
+func (c *Core) singleVersionAdjacency(opts storepkg.QueryOpts) singleVersionAdjacencyResolver {
+	if opts.TxAt != 0 || opts.TxPin != 0 {
+		return singleVersionAdjacencyResolver{}
+	}
+	var probe chainProbe
+	switch {
+	case opts.ValidAt != 0:
+		probe = chainProbe{kind: probePoint, validAt: opts.ValidAt}
+	case opts.ValidStart > 0 && opts.ValidEnd > 0:
+		probe = chainProbe{kind: probeInterval, validStart: opts.ValidStart, validEnd: opts.ValidEnd}
+	default:
+		return singleVersionAdjacencyResolver{}
+	}
+	presence, ok := c.store.(storepkg.HistoryPresenceCapability)
+	if !ok {
+		return singleVersionAdjacencyResolver{}
+	}
+	return singleVersionAdjacencyResolver{c: c, presence: presence, probe: probe}
+}
+
+// resolve reports decided=false when cur must take the full path (no live
+// row, no capability, or a relationship with history); decided=true with
+// r == nil when the one version does not answer opts or fails pred.
+func (s singleVersionAdjacencyResolver) resolve(cur *types.Relationship, pred func(*types.Relationship) bool) (r *types.Relationship, decided bool, err error) {
+	if s.presence == nil || cur == nil {
+		return nil, false, nil
+	}
+	has, err := s.presence.HasRelHistory(cur.ID())
+	if err != nil {
+		return nil, false, err
+	}
+	if has {
+		return nil, false, nil
+	}
+	if covered, ok := s.firstVersionCovers(cur); ok {
+		if !covered || !pred(cur) {
+			return nil, true, nil
+		}
+		if !s.c.storeRowsTrust {
+			// An untrusted store's rows leave the core as copies
+			// (store_fetch.go), as the full path's point read does.
+			return cur.DeepCopy(), true, nil
+		}
+		return cur, true, nil
+	}
+	r, err = s.c.resolveRelChain([]*types.Relationship{cur}, s.probe, pred)
+	if err != nil {
+		if errors.Is(err, storepkg.ErrNoVersionValidAt) {
+			return nil, true, nil
+		}
+		return nil, false, err
+	}
+	if !s.c.storeRowsTrust && r == cur {
+		r = cur.DeepCopy()
+	}
+	return r, true, nil
+}
+
+// relAdjacencyCandidateIDsSorted is forEachRelAdjacencyCandidateIDByDepth
+// collected in ascending order: currentIDs (ascending) united with the
+// deleted relationship IDs. Without a deleted relationship it returns
+// currentIDs itself, building no set.
+func (c *Core) relAdjacencyCandidateIDsSorted(currentIDs []types.RelID, depth storepkg.ShardDepth) ([]types.RelID, error) {
+	var deleted []types.RelID
+	if err := c.forEachDeletedRelIDByDepth(depth, func(id types.RelID) bool {
+		deleted = append(deleted, id)
+		return true
+	}); err != nil {
+		return nil, err
+	}
+	if len(deleted) == 0 {
+		return currentIDs, nil
+	}
+	ids := make([]types.RelID, 0, len(currentIDs)+len(deleted))
+	ids = append(append(ids, currentIDs...), deleted...)
+	slices.Sort(ids)
+	return slices.Compact(ids), nil
+}
+
+// firstVersionCovers decides, without the allocations of the chain resolver
+// (Temporal() copies a frozen row's metadata on every call), whether the
+// one-row chain of a first version (version 0) without a delete stamp answers
+// the probe. For such a row resolveRelChain reduces to: no row dropped by the
+// transaction-time filter (tx is 0) or as a retracted life, no life cap, the
+// bounds [valid-from or the ID's mint instant, valid-to or open)
+// (relVersionBounds of a chain's only row), then the point or overlap test of
+// resolveRelVersionAtCapped / resolveRelChainDuring. ok=false for any other
+// row: the caller runs the resolver. TestSingleVersionAdjacencyMatchesResolver
+// holds the two equal.
+func (s singleVersionAdjacencyResolver) firstVersionCovers(r *types.Relationship) (covered, ok bool) {
+	if r.Version() != 0 {
+		return false, false
+	}
+	if _, _, deletedAt := r.TxStamps(); deletedAt != 0 {
+		return false, false
+	}
+	vStart, vEnd, _ := r.ValidRange()
+	if vStart == 0 {
+		vStart = r.ID().MintInstant()
+	}
+	switch s.probe.kind {
+	case probePoint:
+		t := s.probe.validAt
+		return vStart <= t && (vEnd == 0 || vEnd > t), true
+	case probeInterval:
+		return vStart < s.probe.validEnd && (vEnd == 0 || vEnd > s.probe.validStart), true
+	}
+	return false, false
 }

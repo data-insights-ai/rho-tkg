@@ -77,3 +77,36 @@ type NodePropertyStatsCapability interface {
 type RelPropertyStatsCapability interface {
 	RelPropertyStats(relTypeToken uint16, propertyKey string) (PropertyStats, error)
 }
+
+// PropertyNDV is the part of PropertyStats a store keeps without a pass:
+// the NDV estimate and the presence count, never the exact Min/Max.
+type PropertyNDV struct {
+	// NDV is PropertyStats.NDV: the HyperLogLog estimate of the distinct
+	// values observed since the sketch was last rebuilt (non-decreasing
+	// across deletes, see PropertyStats.NDV).
+	NDV int64
+	// Count is PropertyStats.Count: the current entities carrying the key
+	// with an indexable scalar value.
+	Count int64
+}
+
+// NodePropertyNDVCapability is OPTIONAL: NodePropertyStats without the exact
+// Min/Max. A write that removes a value equal to the current minimum or
+// maximum leaves NodePropertyStats to rescan the label's current values on
+// its next call (PropertyStatsAccumulator.Forget); NodePropertyNDV never
+// does: it reads the sketch and the counter, O(1) apart from the sketch's
+// estimate (round 5 request 1: a planner that needs the NDV only paid the
+// rescan, 470 ms per property on 100,000 badger nodes). Same NDV and Count
+// as NodePropertyStats at the same moment. memory, badger and tiered
+// implement it; a store without it is ErrCapabilityNotSupported at the graph
+// layer, as is a store opened with planner statistics disabled.
+type NodePropertyNDVCapability interface {
+	NodePropertyNDV(labelToken uint16, propertyKey string) (PropertyNDV, error)
+}
+
+// RelPropertyNDVCapability is the relationship mirror of
+// NodePropertyNDVCapability (memory and badger, like
+// RelPropertyStatsCapability).
+type RelPropertyNDVCapability interface {
+	RelPropertyNDV(relTypeToken uint16, propertyKey string) (PropertyNDV, error)
+}

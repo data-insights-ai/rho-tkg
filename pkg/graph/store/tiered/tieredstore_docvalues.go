@@ -73,6 +73,14 @@ func shardMinLabelCount(store *BadgerStore, tokens []uint16) (int, error) {
 // build-start — the caller's post-scan NodeMutationEpoch()==gen re-check
 // (Gate 2) is what actually detects a concurrent writer.
 func (ts *Store) foldDocValues(tokens []uint16, call func(store *BadgerStore) (bool, error)) (gen uint64, ok bool, err error) {
+	return ts.foldDocValuesServingEmpty(tokens, false, call)
+}
+
+// foldDocValuesServingEmpty is foldDocValues; with emptyServes a fold in which
+// no shard holds a member of every token (each one proved empty by its
+// counts, and a node lives on one shard) is served as an empty answer
+// (ok=true) instead of declined: the intersection door (round 5 request 3).
+func (ts *Store) foldDocValuesServingEmpty(tokens []uint16, emptyServes bool, call func(store *BadgerStore) (bool, error)) (gen uint64, ok bool, err error) {
 	if ts == nil {
 		return 0, false, ErrNilStore
 	}
@@ -149,8 +157,8 @@ func (ts *Store) foldDocValues(tokens []uint16, call func(store *BadgerStore) (b
 		}
 	}
 
-	if !anyOK {
-		return 0, false, nil // empty label/intersection everywhere → caller falls back
+	if !anyOK && !emptyServes {
+		return 0, false, nil // empty label everywhere → caller falls back
 	}
 	return gen, true, nil
 }
@@ -177,7 +185,7 @@ func (ts *Store) ForEachDocValuesMulti(labelTokens []uint16, propKeys []string,
 	if len(labelTokens) == 0 {
 		return 0, false, nil
 	}
-	return ts.foldDocValues(labelTokens, func(store *BadgerStore) (bool, error) {
+	return ts.foldDocValuesServingEmpty(labelTokens, true, func(store *BadgerStore) (bool, error) {
 		_, shardOK, shardErr := store.ForEachDocValuesMulti(labelTokens, propKeys, fn)
 		return shardOK, shardErr
 	})

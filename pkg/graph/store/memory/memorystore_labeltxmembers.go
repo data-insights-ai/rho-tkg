@@ -221,3 +221,79 @@ func (ms *Store) ForEachRelTypeTxMember(token uint16, fn func(id types.RelID, fi
 	}
 	return nil
 }
+
+// txMembersOf returns the members of set among ids (point lookups).
+func txMembersOf[ID comparable](set map[ID]types.Instant, ids []ID) []indexpkg.TxMember[ID] {
+	var out []indexpkg.TxMember[ID]
+	for _, id := range ids {
+		if tx, ok := set[id]; ok {
+			out = append(out, indexpkg.TxMember[ID]{ID: id, FirstTx: tx})
+		}
+	}
+	return out
+}
+
+// LabelTxMembersOf implements store.LabelTxMemberLookupCapability over the
+// same sidecar as ForEachLabelTxMember.
+func (ms *Store) LabelTxMembersOf(token uint16, ids []types.NodeID, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
+	if ms == nil {
+		return ErrNilStore
+	}
+	if fn == nil {
+		return errNilIterationCallback()
+	}
+	var members []indexpkg.TxMember[types.NodeID]
+	err := ms.readOrBuild(func() (bool, error) {
+		if ms.labelTxMembers == nil {
+			return false, nil
+		}
+		members = txMembersOf(ms.labelTxMembers[token], ids)
+		return true, nil
+	}, func() error {
+		ms.ensureLabelTxMembersBuiltLocked()
+		members = txMembersOf(ms.labelTxMembers[token], ids)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	for _, m := range members {
+		if !fn(m.ID, m.FirstTx) {
+			return nil
+		}
+	}
+	return nil
+}
+
+// RelTypeTxMembersOf implements store.RelTypeTxMemberLookupCapability.
+func (ms *Store) RelTypeTxMembersOf(token uint16, ids []types.RelID, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
+	if ms == nil {
+		return ErrNilStore
+	}
+	if fn == nil {
+		return errNilIterationCallback()
+	}
+	var members []indexpkg.TxMember[types.RelID]
+	err := ms.readOrBuild(func() (bool, error) {
+		if ms.relTypeTxMembers == nil {
+			return false, nil
+		}
+		members = txMembersOf(ms.relTypeTxMembers[token], ids)
+		return true, nil
+	}, func() error {
+		if err := ms.ensureRelTypeTxMembersBuiltLocked(); err != nil {
+			return err
+		}
+		members = txMembersOf(ms.relTypeTxMembers[token], ids)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	for _, m := range members {
+		if !fn(m.ID, m.FirstTx) {
+			return nil
+		}
+	}
+	return nil
+}

@@ -32,10 +32,11 @@ var adjacentOrdinalBufs = sync.Pool{New: func() any { return new([]adjacentOrdin
 
 // ForEachAdjacentEndpointOrdinal streams nid's adjacency in the given
 // direction as (relationship, its ordinal, other endpoint, its ordinal), in
-// relationship-ID order, from the rows the store holds (no copy): the
-// relationship's ordinal from its row, the other endpoint's from the node's
-// current row, both read under one read lock for the node's whole adjacency,
-// which is released before fn runs. The row-store path allocates nothing per
+// relationship-ID order, from the rows the store holds (no copy): both
+// ordinals from the relationship's row (it records its endpoints'), read
+// under one read lock for the node's whole adjacency, which is released
+// before fn runs. A node's set of at most 64 relationships is kept in ID
+// order, so only a larger one is sorted. The row-store path allocates nothing per
 // call (a pooled buffer); a store with declared segment types takes the
 // segment-aware path.
 func (ms *Store) ForEachAdjacentEndpointOrdinal(nid types.NodeID, typeToken uint16, incoming bool,
@@ -79,10 +80,13 @@ func (ms *Store) ForEachAdjacentEndpointOrdinal(nid types.NodeID, typeToken uint
 		} else if !relationshipMatchesOutgoing(r, nid, typeToken) {
 			return
 		}
-		other := adjacentOther(r, incoming)
-		var otherOrd uint32
-		if n := ms.nodes[other]; n != nil {
-			otherOrd = n.Ordinal()
+		// The other endpoint's ordinal from the relationship's own row
+		// (storedRel records both while the relationship is current, and an
+		// ordinal does not change while its node is current): no node lookup
+		// per edge (round 5 request 2).
+		other, otherOrd := r.EndNodeID(), r.EndOrdinal()
+		if incoming {
+			other, otherOrd = r.StartNodeID(), r.StartOrdinal()
 		}
 		rows = append(rows, adjacentOrdinalRow{rel: id, relOrd: r.Ordinal(), otherOrd: otherOrd, other: other})
 	}
@@ -96,7 +100,9 @@ func (ms *Store) ForEachAdjacentEndpointOrdinal(nid types.NodeID, typeToken uint
 		}
 	}
 	ms.mu.RUnlock()
-	slices.SortFunc(rows, func(a, b adjacentOrdinalRow) int { return cmp.Compare(a.rel, b.rel) })
+	if set.m != nil { // a small set is a slice kept in ID order (adjSet)
+		slices.SortFunc(rows, func(a, b adjacentOrdinalRow) int { return cmp.Compare(a.rel, b.rel) })
+	}
 	defer func() {
 		if cap(rows) <= adjacentOrdinalBufMax {
 			*bufp = rows[:0]
