@@ -351,7 +351,9 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    and both Finish statuses. Seven focused parents pass normal/race, with exact
    placement CDC and complete child cleanup; fmt/vet and pinned lint pass.
    All 218 production Go files and the time/resource bounds are unchanged.
-   Fresh hosted validation of this correction remains pending.
+   [Hosted CI at `f9e0eb63`](evidence/e17-ci-deadline-20261012/hosted-ci-f9e0eb63.json)
+   now passes all seven applicable root/v5/comparison jobs, including both
+   exhaustive race gates. Push-only lint remains covered by the pinned local run.
    **Finite remote E18 accepted**, 2026-10-12: unique-property and
    endpoint indexes supply candidates for same-cut typed value/component/life
    hydration on six native OS processes. Held and reopened historical cuts retain
