@@ -222,6 +222,8 @@ Bitemporal (transaction time): `NodeAsOf(id, txTime)`, `RelAsOf(id, txTime)`, `N
 Effective timeline: `NodeEffectiveTimeline(id, pin)`, `RelEffectiveTimeline(id, pin)`, scan forms `ForEachNodeEffectiveByLabel(label, pin, fn)`, `ForEachRelEffectiveByType(type, pin, fn)`, `ForEachNodeEffectiveByLabels(labels, pin, fn)`, `ForEachNodeEffective(pin, fn)` / `ForEachRelEffective(pin, fn)`, `ForEachRelEffectiveAtNodes(nodeIDs, dir, relTypes, pin, fn)`, `NodesEffectiveByIDs` / `RelsEffectiveByIDs(ids, pin, fn)` (include entities deleted before the pin)
 Corrections: `SetNodeVersionInterval`, `SetRelVersionInterval`
 
+**Valid-end index (`internal/index/valid_end.go`, `store.RelValidEndCapability` / `NodeValidEndCapability`, backlog 51):** `ForEachRelEffectiveByTypeFrom` / `ForEachNodeEffectiveByLabelsFrom` stream the effective segments of the entities whose valid end is open or at or after `validFrom`. The memory and badger stores keep a RAM index per queried type or label that gives the scan a sound superset of candidates, so the entities read follow the answer and not the type's history (5 read with 10,000 retired entities). The bound per entity is folded from its rows only (each row's `ValidTo`, a delete tombstone recorded after the earlier stamps), never from the chain resolver: the scan reads each candidate's timeline and the resolver decides. A removed or overwritten row, or a write to an entity the scan refined (`RefineRelValidEnd` / `RefineNodeValidEnd`, keyed by the candidate's generation), makes the entity re-read on the next call. The index is per queried token: the first call tracks the type or label from the K1 membership sidecar, and writes of untracked tokens cost one map lookup. It is not persisted (opening a badger store already walks every current row) and tiered and sharded do not implement it, so they answer through the unbounded candidates.
+
 **History-aware queries** include deleted entities. They use two-phase ForEach iteration:
 1. **Collect** -- `ForEachNodeID` + `ForEachNodeHistoryID` insert unique IDs into a `seen` map. Store implementations invoke callbacks outside their internal locks and Tiered shard checkouts, so callbacks may re-enter Store methods.
 2. **Process** -- iterate `seen` map after ForEach returns.
@@ -430,6 +432,10 @@ Two layers, both backward compatible with pre-versioning directories:
   open BEFORE any row is decoded. Newer marker → `New()` fails closed with
   the same sentinel; absent → stamped (read-write opens only); lower →
   raised. A present-but-unparsable marker is corruption and fails the open.
+  The marker (`storeutil.StoreFormatVersion`, 3 since v4.51.2) can sit above
+  `CurrentWireFormatVersion` (2): v4.51.2 raised it, with unchanged row encodings,
+  so that releases before the ex-adjacency index (backlog 50) refuse the store
+  instead of deleting relationships without it (`docs/stability.md`).
   Tiered shards inherit the check per shard.
 - `loadIndexes` still tolerates corrupt rows (skip + warn + counter
   reconcile), but a FUTURE per-row version is not damage — it fails the open
