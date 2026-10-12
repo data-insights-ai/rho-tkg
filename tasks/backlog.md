@@ -102,6 +102,11 @@ history across re-imported lives, ex-adjacency and valid-end bounded effective
 scans. Its store marker is 3; row encoding is unchanged. The v4.51.1 preflight
 qualification above remains historical: update the consumer mapping and qualify
 the migration reader against this revision before claiming v4.51.2 acceptance.
+[Hosted integration at `92c6415b`](evidence/e17-ci-deadline-20261012/hosted-ci-92c6415b.json)
+passes all eight applicable jobs for this source baseline, including both
+modules' normal/race, coverage and security gates. Its migration/comparison
+jobs pass their existing scope; they do not establish the new consumer mapping,
+destination import or subsequently integrated replacement activation.
 [Substrate evaluation](../docs/v5/reference/substrate-evaluation.json) is
 research/execution-plan evidence only; no engine selection or V2/V3 acceptance.
 The original five recovered `docs/v5/reference/` files are byte-verified and
@@ -511,7 +516,8 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    and recover whole old/new durable states. Scoped vet/lint pass. This closes
    the local activation component; hosted integration, broader ownership/GC,
    remaining fault/cost evidence and V2 acceptance retain their own gates.
-   The later v4.51.2 integration requires its own CI result.
+   The v4.51.2 source integration is qualified by the `92c6415b` CI record above;
+   subsequent activation source retains its own hosted integration gate.
    The [bounded recovery fix](evidence/native-ready-progress-20261012/qualification.json)
    now makes progress when an ordinary native Ready exceeds available application
    capacity but its ordered prefixes fit. It retains the original Ready until

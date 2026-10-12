@@ -1,0 +1,92 @@
+{
+  "conclusion": "success",
+  "headSha": "92c6415b84f9aac65c6e8afe9724e34ce4afe4b2",
+  "jobs": [
+    {
+      "databaseId": 114831117618,
+      "name": "migration-preflight",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38255132254/job/114831117618",
+      "startedAt": "2026-10-12T13:21:36Z",
+      "completedAt": "2026-10-12T13:25:34Z"
+    },
+    {
+      "databaseId": 114831117789,
+      "name": "coverage (., go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38255132254/job/114831117789",
+      "startedAt": "2026-10-12T13:21:36Z",
+      "completedAt": "2026-10-12T13:26:49Z"
+    },
+    {
+      "databaseId": 114831117889,
+      "name": "test (v5, v5/go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38255132254/job/114831117889",
+      "startedAt": "2026-10-12T13:21:36Z",
+      "completedAt": "2026-10-12T13:42:37Z"
+    },
+    {
+      "databaseId": 114831117915,
+      "name": "coverage (v5, v5/go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38255132254/job/114831117915",
+      "startedAt": "2026-10-12T13:21:36Z",
+      "completedAt": "2026-10-12T13:24:49Z"
+    },
+    {
+      "databaseId": 114831117936,
+      "name": "test (., go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38255132254/job/114831117936",
+      "startedAt": "2026-10-12T13:21:36Z",
+      "completedAt": "2026-10-12T13:50:00Z"
+    },
+    {
+      "databaseId": 114831117947,
+      "name": "security (., go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38255132254/job/114831117947",
+      "startedAt": "2026-10-12T13:21:36Z",
+      "completedAt": "2026-10-12T13:22:40Z"
+    },
+    {
+      "databaseId": 114831118019,
+      "name": "security (v5, v5/go.mod)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38255132254/job/114831118019",
+      "startedAt": "2026-10-12T13:21:36Z",
+      "completedAt": "2026-10-12T13:24:01Z"
+    },
+    {
+      "databaseId": 114831118076,
+      "name": "comparison-correctness",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38255132254/job/114831118076",
+      "startedAt": "2026-10-12T13:21:36Z",
+      "completedAt": "2026-10-12T13:23:40Z"
+    },
+    {
+      "databaseId": 114831119531,
+      "name": "lint",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38255132254/job/114831119531",
+      "startedAt": "2026-10-12T13:21:35Z",
+      "completedAt": "2026-10-12T13:21:34Z"
+    }
+  ],
+  "status": "completed",
+  "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38255132254",
+  "capturedAt": "2026-10-12T13:51:24.328369+00:00",
+  "integratedMain": "cddc099789f04ab3889a13f5ad62e039da2767f3",
+  "scope": "Hosted integration at exact92c6415b: all eight applicable jobs pass for integrated v4.51.2 and the existing v5 module, including both modules normal/race/coverage/security, migration and comparison. Push-only lint skipped; local evidence is separate. Does not qualify subsequently integrated replacement activation, paired recovery, cost measurements or phase completion."
+}
