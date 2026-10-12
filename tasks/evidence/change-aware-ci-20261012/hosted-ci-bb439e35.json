@@ -1,0 +1,235 @@
+{
+  "run": {
+    "status": "completed",
+    "conclusion": "success",
+    "headSha": "bb439e3579691dba6d6e2b6924e9e4ec8e89f9ce",
+    "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38273897314"
+  },
+  "capturedAt": "2026-10-12T16:21:44.247316+00:00",
+  "jobs": [
+    {
+      "name": "changes",
+      "conclusion": "success",
+      "databaseId": 114894583777,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38273897314/job/114894583777"
+    },
+    {
+      "name": "focused (v5, v5/go.mod, ../.golangci.yml, false)",
+      "conclusion": "success",
+      "databaseId": 114894669259,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38273897314/job/114894669259"
+    },
+    {
+      "name": "security (v5, v5/go.mod, ../.golangci.yml, false)",
+      "conclusion": "success",
+      "databaseId": 114894669476,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38273897314/job/114894669476"
+    },
+    {
+      "name": "lint (v5, v5/go.mod, ../.golangci.yml, false)",
+      "conclusion": "success",
+      "databaseId": 114894669479,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38273897314/job/114894669479"
+    },
+    {
+      "name": "coverage",
+      "conclusion": "skipped",
+      "databaseId": 114894670696,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38273897314/job/114894670696"
+    },
+    {
+      "name": "comparison-correctness",
+      "conclusion": "skipped",
+      "databaseId": 114894670745,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38273897314/job/114894670745"
+    },
+    {
+      "name": "migration-preflight",
+      "conclusion": "skipped",
+      "databaseId": 114894671352,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38273897314/job/114894671352"
+    },
+    {
+      "name": "test",
+      "conclusion": "skipped",
+      "databaseId": 114894671372,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38273897314/job/114894671372"
+    },
+    {
+      "name": "external-fdb-record",
+      "conclusion": "skipped",
+      "databaseId": 114894671519,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38273897314/job/114894671519"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": 11759230895,
+      "name": "focused-behavior-v5",
+      "size_in_bytes": 1201480,
+      "digest": "sha256:2a3758aff14d6bc8770c129af1af3e196a63f7a23cac2b8a3b8036e7fa35baf4",
+      "expires_at": "2026-10-26T16:12:32Z"
+    }
+  ],
+  "selection": {
+    "module": "v5",
+    "paths": [
+      "tasks/evidence/change-aware-ci-20261012/hosted-ci-d14db567.json",
+      "v5/internal/raftlog/application_recovery_dependency.go",
+      "v5/internal/replica/ready_capacity_recovery_regression_test.go"
+    ],
+    "selections": [
+      {
+        "packages": [
+          "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore",
+          "github.com/data-insights-ai/rho-tkg/v5/internal/raftlog",
+          "github.com/data-insights-ai/rho-tkg/v5/internal/replica",
+          "github.com/data-insights-ai/rho-tkg/v5/internal/txnproto"
+        ],
+        "parents": null
+      },
+      {
+        "packages": [
+          "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply"
+        ],
+        "parents": [
+          "TestCertifiedGraphActualAS5ActivationKeepsHeldCertifiedSourceAndReopensCut",
+          "TestCertifiedGraphFollowerBarrierReopenAndHeldCutHistory",
+          "TestGraphReplacementActivationNativeHistoryAllocatorAndLifetime",
+          "TestGraphReplacementAdmissionNativeSurvivingQuorumAllAgreements",
+          "TestGraphReplacementRevocationFencesHostAndSourceBeforeAsyncClose",
+          "TestGraphSourceDirectCloseCancelsPausedNativeData",
+          "TestPartitionWritesBothGroupsPreserveTypedAuthorityHistoryAndReopen",
+          "TestRangeMoveCompletedHandoffCopiesNativeCrossDecisionsAndDedupWithKeeperOffline",
+          "TestRangeMovePartialActivationRestoresOriginalCommitAndOldCertifiedCut"
+        ]
+      }
+    ]
+  },
+  "observedBehavior": [
+    {
+      "file": "coverage-0.jsonl",
+      "sha256": "5bc3ee3e9275c8b2f3d513f08890078e2a9d9cd2abc498e8b79db581b44189b1",
+      "bytes": 5866649,
+      "passedParents": 791,
+      "passedCases": 2689,
+      "requiredRepairParentsPassed": [
+        "TestIndependentCapacityProtectedReserveUseCatchup",
+        "TestRecoveryDependencyHashBindsEntryOrderHeaderAndData"
+      ],
+      "packageSeconds": {
+        "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore": 14.02,
+        "github.com/data-insights-ai/rho-tkg/v5/internal/raftlog": 5.947,
+        "github.com/data-insights-ai/rho-tkg/v5/internal/replica": 30.032,
+        "github.com/data-insights-ai/rho-tkg/v5/internal/txnproto": 3.541
+      }
+    },
+    {
+      "file": "coverage-1.jsonl",
+      "sha256": "bab0e59ae8fb9838cfc60448efcbca457e5acb13f31e2694063d4a74e10fc25a",
+      "bytes": 463941,
+      "passedParents": 9,
+      "passedCases": 17,
+      "requiredRepairParentsPassed": [],
+      "packageSeconds": {
+        "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply": 3.8120000000000003
+      }
+    },
+    {
+      "file": "normal-0.jsonl",
+      "sha256": "633e1a1b4b52560182b3281d8c3766c051790e32905298dacb035467d5aaa561",
+      "bytes": 5846157,
+      "passedParents": 791,
+      "passedCases": 2689,
+      "requiredRepairParentsPassed": [
+        "TestIndependentCapacityProtectedReserveUseCatchup",
+        "TestRecoveryDependencyHashBindsEntryOrderHeaderAndData"
+      ],
+      "packageSeconds": {
+        "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore": 10.356,
+        "github.com/data-insights-ai/rho-tkg/v5/internal/raftlog": 5.003,
+        "github.com/data-insights-ai/rho-tkg/v5/internal/replica": 30.161,
+        "github.com/data-insights-ai/rho-tkg/v5/internal/txnproto": 3.577
+      }
+    },
+    {
+      "file": "normal-1.jsonl",
+      "sha256": "0a19a132287a4726edeee925d80a0132f77094e734565fd0166b3ab232347aaf",
+      "bytes": 463728,
+      "passedParents": 9,
+      "passedCases": 17,
+      "requiredRepairParentsPassed": [],
+      "packageSeconds": {
+        "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply": 3.733
+      }
+    },
+    {
+      "file": "race-0.jsonl",
+      "sha256": "e0bf9ec5011091c5855f11099a24a7e2423ad7916a2878985e4dca0e6fb28317",
+      "bytes": 5860207,
+      "passedParents": 791,
+      "passedCases": 2689,
+      "requiredRepairParentsPassed": [
+        "TestIndependentCapacityProtectedReserveUseCatchup",
+        "TestRecoveryDependencyHashBindsEntryOrderHeaderAndData"
+      ],
+      "packageSeconds": {
+        "github.com/data-insights-ai/rho-tkg/v5/internal/graphstore": 172.981,
+        "github.com/data-insights-ai/rho-tkg/v5/internal/raftlog": 102.965,
+        "github.com/data-insights-ai/rho-tkg/v5/internal/replica": 177.695,
+        "github.com/data-insights-ai/rho-tkg/v5/internal/txnproto": 17.386
+      }
+    },
+    {
+      "file": "race-1.jsonl",
+      "sha256": "865e14acfa67988ea7ebe0e28b84aff31503d788a4e10e9d7e94ec6902f890d2",
+      "bytes": 463786,
+      "passedParents": 9,
+      "passedCases": 17,
+      "requiredRepairParentsPassed": [],
+      "packageSeconds": {
+        "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply": 26.012
+      }
+    }
+  ],
+  "rawArtifactMembers": {
+    "coverage-0.jsonl": {
+      "sha256": "5bc3ee3e9275c8b2f3d513f08890078e2a9d9cd2abc498e8b79db581b44189b1",
+      "bytes": 5866649
+    },
+    "coverage-0.out": {
+      "sha256": "8175ae4f7f028457791587120f3cc3e9b9f9bedbf88cb15344fb35c5cea89172",
+      "bytes": 1457381
+    },
+    "coverage-1.jsonl": {
+      "sha256": "bab0e59ae8fb9838cfc60448efcbca457e5acb13f31e2694063d4a74e10fc25a",
+      "bytes": 463941
+    },
+    "coverage-1.out": {
+      "sha256": "c6a37259ade2e5db52aae4f23b501a9e33204d6bb4db888d2d9530b9546651b5",
+      "bytes": 934038
+    },
+    "normal-0.jsonl": {
+      "sha256": "633e1a1b4b52560182b3281d8c3766c051790e32905298dacb035467d5aaa561",
+      "bytes": 5846157
+    },
+    "normal-1.jsonl": {
+      "sha256": "0a19a132287a4726edeee925d80a0132f77094e734565fd0166b3ab232347aaf",
+      "bytes": 463728
+    },
+    "race-0.jsonl": {
+      "sha256": "e0bf9ec5011091c5855f11099a24a7e2423ad7916a2878985e4dca0e6fb28317",
+      "bytes": 5860207
+    },
+    "race-1.jsonl": {
+      "sha256": "865e14acfa67988ea7ebe0e28b84aff31503d788a4e10e9d7e94ec6902f890d2",
+      "bytes": 463786
+    },
+    "selection.json": {
+      "sha256": "fd02c856552b0b87ddae02714e9b3f6889b9c96c23f39f4a5b28f9b6a36d4ac7",
+      "bytes": 1430
+    }
+  },
+  "qualifiedRepair": "3c25e2c82185f7ee94abe2bdb076164046979ed4",
+  "scope": "The two reported static findings are resolved: configured v5 lint, gosec and vulncheck pass. Both exact repair-parent tests passed in normal/race/scoped coverage, with affected reverse-dependent packages and nine reviewed graph compatibility guards. Full repository, migration, comparison and external FDB jobs intentionally skipped. No local duplicate qualifier is needed for this unchanged source. This is routine component qualification, not V2 completion or release acceptance."
+}
