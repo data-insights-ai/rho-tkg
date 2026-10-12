@@ -1,0 +1,185 @@
+{
+  "schema_version": 1,
+  "component_commit": "0cdacc6c7e17ceb255b02168f0660039056f57cf",
+  "component": "V2 part A: pending replica replacement admission from native quorum reads",
+  "status": "selected-scope qualified pending/inert component; B/C/D not implemented",
+  "contract": {
+    "activity_authority": "none: no receiving Store/seed, snapshot activation, ready Host or replacement ACK",
+    "source": "matched authenticated peer/session/nonce plus actual native current-term ReadIndex completion and durable fixed-three membership/log term",
+    "target": "owned embedding-authenticated unique incarnation after retiring prior physical voter incarnation",
+    "pending_lifetime": "request context intentionally cancels pending work; association lifetime independent at embedding boundary",
+    "association_transfer": "D must transfer incarnation owner into successfully restored live Host and detach pending request cleanup without revoking Host credentials",
+    "restart_authority": "volatile admission is not durable proof; old identity fresh initialization forbidden; supported replacement receiving lifecycle remains open"
+  },
+  "qualification": {
+    "toolchain": {
+      "version": "go1.26.9",
+      "version_source": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/VERSION",
+      "binary": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+      "binary_sha256": "318dee99db233501f6c419fbb4616e5a345ed0b831dbd6c7669b24e1ff8e9e2e"
+    },
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOMEMLIMIT": "2GiB",
+      "GOFLAGS": "-p=1",
+      "GOWORK": "off",
+      "GOTOOLCHAIN": "local"
+    },
+    "watchdog": {
+      "wall_limit_s": 180,
+      "aggregate_tree_rss_limit_mib": 4096,
+      "limiter": "sampled process-tree watchdog; per invocation; no raised bounds"
+    },
+    "original101": {
+      "normal_parent_pass": 101,
+      "normal_subtest_pass": 137,
+      "race_parent_pass": 101,
+      "race_subtest_pass": 137,
+      "coverage_parent_pass": 101,
+      "coverage_subtest_pass": 137,
+      "race_disjoint_batches": [
+        23,
+        52,
+        26
+      ],
+      "coverage_disjoint_groups": [
+        71,
+        30
+      ],
+      "scope": "includes existing six-process E18 compatibility; excludes declared GraphSource six-process test; not whole package/multihost acceptance",
+      "sources": 533,
+      "original_source_manifest_sha256": "712c1b18e8f85a4fd868e2e2c9e7e6a8e324920c6c2d2cb8fcb3f8e566e7989d",
+      "source_freeze_sha256": "776570472d1b7bda32fd4541fb2335d45d6083c46a8f4689214dedb77bf98b0b"
+    },
+    "separate_publication_guard": {
+      "test": "TestGraphReplacementAdmissionPublicationPastNativeReadRefusesAndFreshReadRetries",
+      "test_sha256": "ba948fc120b287651b37dbdabb437105be7d33d66ffd0f0b31e3dc82add621da",
+      "normal_parent_pass": 1,
+      "race_parent_pass": 1,
+      "coverage_parent_pass": 1,
+      "history": "actual native read, actual committed apply/publication past read, local joined compacted/unavailable refusal, empty failed wire reply, owner cleanup, fresh retry at actual Base",
+      "production_sources_unchanged": true
+    },
+    "composite_current_component": {
+      "distinct_normal_parent_pass": 102,
+      "distinct_race_parent_pass": 102,
+      "not_a_single102_test_run": true,
+      "current_sources": 534,
+      "current_source_manifest_sha256": "15c10c8fc7b71e28df1a43e0783f537e08fac9bb9f5d58e01b178c0ce67c339c"
+    },
+    "coverage": {
+      "mode": "set",
+      "identical_block_keys": 9082,
+      "merge": "exact path/range/statement-count keys verified before OR; original two groups plus separate one-test overlay",
+      "new_file": {
+        "covered_statements": 158,
+        "total_statements": 178,
+        "percent": 88.76404494382022
+      },
+      "new_file_source_sha256": "1db0fff21889e6bf9722fcf218ca3fd0ab29f130807bc8d39e42d833f7681729",
+      "new_function_report": [
+        {
+          "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_replacement_admission.go:49:",
+          "function": "validate",
+          "percent": 85.7
+        },
+        {
+          "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_replacement_admission.go:61:",
+          "function": "encodeGraphReplacementTarget",
+          "percent": 100.0
+        },
+        {
+          "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_replacement_admission.go:67:",
+          "function": "decodeGraphReplacementTarget",
+          "percent": 87.5
+        },
+        {
+          "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_replacement_admission.go:79:",
+          "function": "encodeGraphReplacementRead",
+          "percent": 100.0
+        },
+        {
+          "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_replacement_admission.go:103:",
+          "function": "decodeGraphReplacementRead",
+          "percent": 84.2
+        },
+        {
+          "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_replacement_admission.go:129:",
+          "function": "exportReplacementRead",
+          "percent": 83.3
+        },
+        {
+          "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_replacement_admission.go:170:",
+          "function": "newGraphReplacementService",
+          "percent": 100.0
+        },
+        {
+          "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_replacement_admission.go:176:",
+          "function": "newGraphReplacementEndpoint",
+          "percent": 100.0
+        },
+        {
+          "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_replacement_admission.go:187:",
+          "function": "readReplacement",
+          "percent": 80.0
+        },
+        {
+          "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_replacement_admission.go:226:",
+          "function": "nilGraphReplacementInterface",
+          "percent": 83.3
+        },
+        {
+          "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_replacement_admission.go:238:",
+          "function": "beginGraphReplacement",
+          "percent": 92.9
+        },
+        {
+          "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_replacement_admission.go:290:",
+          "function": "check",
+          "percent": 81.0
+        },
+        {
+          "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/graph_replacement_admission.go:322:",
+          "function": "close",
+          "percent": 100.0
+        }
+      ],
+      "new_public_consumer_methods": [],
+      "selected_whole_package_percent": 55.25134319570177,
+      "whole_package_acceptance": false,
+      "original_profile_sha256": "0b78f0958331b58c96015ebb108bf173bae6e952f6303935c3a8f7976c36639a",
+      "final_profile_sha256": "ae882d5e57f0fb3cd0713dc1d4c7ad437f73b03ec02ea7c61ce5233cb51ad1f6"
+    },
+    "vet": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "vet",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 179.531,
+      "elapsed_s": 0.875,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "all_test_invocations_exit0": true,
+    "runtime_lease": "released"
+  },
+  "remaining_V2": {
+    "C": "receiving-only Store state validation/native monotone term persistence; ordinary app0 Persist refusal unchanged",
+    "B": "receiving-only actual RawNode whitelist/native append rejection and genuine snapshot acceptance, before normal Driver",
+    "D": "bounded prepared-bank semantic audit, real current-term snapshot import/claim/activation, actual materializer/Host restore, unique incarnation ownership transfer and ACK ordering"
+  },
+  "archive": {
+    "path": "replacement-admission-raw.tar.gz",
+    "bytes": 662221,
+    "sha256": "099aa60870cc487e5abad2bd6360ea2d34e6959341cf80fd9916564394d0a614",
+    "member_count": 75,
+    "contents": "raw JSON logs, stderr, exact command/env/limit receipts, baseline/overlay profiles+function reports, deterministic inventories/manifests, runner and watchdog; no source tree snapshots"
+  },
+  "no_full_V2_acceptance": true,
+  "no_new_public_facade": true,
+  "no_push_release_tag": true
+}
