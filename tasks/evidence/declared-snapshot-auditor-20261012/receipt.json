@@ -1,0 +1,224 @@
+{
+  "kind": "declared-prepared-snapshot-readonly-semantic-audit-qualification",
+  "source_commit": "5dbfa50d79c8bd6af373cf62b70c9ecfb11731f5",
+  "base_commit": "79ba2496",
+  "scope": "Separate private auditor only; no live ApplicationMachine/Driver/Host construction on empty receiving state, no activation or readiness authority. Replacement workflow D remains separate.",
+  "source_sha256": {
+    "v5/internal/graphapply/declared_materializer.go": "2477005769f042dce1bc3a26077ea25ea3aacae3124b4541e94281c6cb7b2f9e",
+    "v5/internal/graphapply/reducer.go": "fcd48d18c5899186b9097b533c083381837880cf3295b9c0f4b30a10744eca3f",
+    "v5/internal/graphapply/range_move_baseline.go": "13bdf24a393999d1e96b8c0c3d45e7f5241f70738166f0ad88bf029de08f09e2",
+    "v5/internal/graphapply/declared_snapshot_auditor.go": "e9ed7b372ab5e33572529376801a36f5231155659b1d095be9d77e2dea033f35",
+    "v5/internal/graphapply/declared_snapshot_auditor_test.go": "4fafd2e7d892e5a77748821931266d4b4f938faf4306a2a9713c39596726d86b",
+    "v5/internal/graphapply/graph_lifecycle_test.go": "d35b5209f8bedad96dcfb4d9af43719cdf543c30bf5cdd528c17377836934346"
+  },
+  "inputs_sha256": {
+    "v5/go.mod": "3bf8baf02d354420ddf87b8865f20b854bb606f04e0f0988f0f9eed2d89e8a24",
+    "v5/go.sum": "5679a7aa94d5ee71f5737dea65a4fa71ed69109c45b877b1dd1639ae5e6e60f0",
+    ".golangci.yml": "7084dd0d2272f3c27ac89fc503f6672f9960ae2da47c85cefcfb27951f8caf69"
+  },
+  "environment": {
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off",
+    "GOTOOLCHAIN": "local"
+  },
+  "limiter_sha256": "6dc4e0362827ecd0854436b9fa1a812342b693d65ba093291d358b359e733283",
+  "gates": [
+    {
+      "name": "normal",
+      "session": 96943,
+      "report": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-short",
+          "-count=1",
+          "-json",
+          "-run",
+          "^TestDeclaredSnapshotAuditor",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 871.156,
+        "elapsed_s": 20.721,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "passes_including_subtests": 20
+    },
+    {
+      "name": "vet",
+      "session": 84331,
+      "report": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "vet",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 177.391,
+        "elapsed_s": 1.421,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    {
+      "name": "lint-qualified",
+      "session": 46575,
+      "report": {
+        "command": [
+          "/var/tmp/rho-v6-preflight-evidence-20261012/bin/golangci-lint",
+          "run",
+          "--config",
+          "../.golangci.yml",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1601.219,
+        "elapsed_s": 35.902,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    {
+      "name": "lint-uncapped",
+      "session": 1103,
+      "report": {
+        "command": [
+          "/var/tmp/rho-v6-preflight-evidence-20261012/bin/golangci-lint",
+          "run",
+          "--max-issues-per-linter=0",
+          "--max-same-issues=0",
+          "--config",
+          "../.golangci.yml",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 106.344,
+        "elapsed_s": 1.406,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    {
+      "name": "race",
+      "session": 30691,
+      "report": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-race",
+          "-short",
+          "-count=1",
+          "-json",
+          "-run",
+          "^TestDeclaredSnapshotAuditor",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 883.922,
+        "elapsed_s": 27.921,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "passes_including_subtests": 20
+    },
+    {
+      "name": "coverage",
+      "session": 90177,
+      "report": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-covermode=set",
+          "-coverprofile=../tasks/evidence/declared-snapshot-auditor-20261012/coverage.out",
+          "-short",
+          "-count=1",
+          "-json",
+          "-run",
+          "^TestDeclaredSnapshotAuditor",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 931.625,
+        "elapsed_s": 17.495,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "passes_including_subtests": 20
+    },
+    {
+      "name": "cover-func",
+      "session": null,
+      "report": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "tool",
+          "cover",
+          "-func=../tasks/evidence/declared-snapshot-auditor-20261012/coverage.out"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 60.297,
+        "elapsed_s": 0.588,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    }
+  ],
+  "coverage": {
+    "new_auditor_covered_statements": 99,
+    "new_auditor_statements": 106,
+    "new_auditor_percent": 93.39622641509433,
+    "methods": {
+      "validateRestoredState": "84.2%",
+      "newDeclaredSnapshotAuditor": "82.6%",
+      "declaredAuditAdmit": "100.0%",
+      "BeginApplicationSnapshotAudit": "94.7%",
+      "Advance": "93.1%",
+      "Finish": "100.0%",
+      "releaseLocked": "100.0%",
+      "Close": "100.0%"
+    },
+    "profile_sha256": "e61f333176c8705492219ba0812dfaa6b5483ee3bf17fa78ce03d3aa49f77392",
+    "scope": "Focused actual-import tests; this is not package-wide coverage or a broader graphapply suite result."
+  },
+  "cases": [
+    "Genuine initialized AS5 node+relationship/default-axis/schema/HOME high-water32; mutation then retained incoming-root check; Claim refused until Finish frees all readers",
+    "Pending declared seed refused by audit while ordinary Restore preserves it",
+    "Seven honest-frame transport-valid missing/corrupt prerequisites refused by the same Restore validation",
+    "Genuine protected completion owner and durable YES lock with restored prepared kernel",
+    "Paused genuine range-move target Import validated through its same prepared inactive retained baseline; receiver active index0 is not a fallback",
+    "Constructor namespace/agreement/budget gates; actual prepared binding/contract mismatch; nil/cancellation/resource relief; sealed and closed ownership",
+    "Closed receiver preserves original ErrClosed read error and releases invalidated borrowed view"
+  ],
+  "lifetime": "Advance holds only its genuine prepared view; nested history views close inside shared validator. Finish closes the last reader, clears prepared/auditor/config/declaration refs and retains fixed sealed state<=4096 (sizeof test). Close closes owners once and returns its cached original cleanup result. Context comes from the embedding checked snapshot; audit does not authenticate a Raft message or grant activation.",
+  "verification_reuse": "After the first normal/vet run only precise comments on four intentional nil-context refusal tests changed. Normal/vet were not repeated; final race/coverage/lint include those comments. First capped lint reports and the second revealed remaining warning are preserved as style failures, not semantic failures.",
+  "runtime_lease": "Released directly to paired agent; all handles consumed terminal.",
+  "not_run_in_this_slot": [
+    "module-wide graphapply normal/race suites",
+    "gosec/govulncheck; root CI/static integration remains separate"
+  ],
+  "archive": {
+    "path": "tasks/evidence/declared-snapshot-auditor-20261012/raw-evidence.tar.gz",
+    "bytes": 110284,
+    "sha256": "f27c3c940d13f253f85d09aca44cc1da7019d2b60d48789dd923db25ef6756f5",
+    "members": 29,
+    "manifest": "manifest.json",
+    "all_member_hashes_verified": true
+  }
+}
