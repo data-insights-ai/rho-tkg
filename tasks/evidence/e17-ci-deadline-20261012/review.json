@@ -1,0 +1,26 @@
+{
+  "scope": "Independent review of the focused E17 test-helper correction; full V2 and fresh hosted CI remain open.",
+  "integratedCommit": "7565e66c103197d91768c1ade7a9fae0848e1250",
+  "archiveFreeBase": "f414733828f1e62fe211f0ff2900aa680c0a62b7",
+  "authorCommit": "c54b0fab2dee15f60b8299978bee5d7e6770857d",
+  "checks": {
+    "fullChangedSourceReviewed": true,
+    "archiveAndAllMemberHashesVerified": 36,
+    "exactGoSourceSealVerified": 527,
+    "productionGoFilesEqualArchiveFreeBase": 218,
+    "deterministicOldHelperFails": true,
+    "finalNormalParents": 7,
+    "finalRaceParents": 7,
+    "skippedParents": 0,
+    "sixChildSuccessfulReapsForAllThreeProcessParentsInEachMode": true,
+    "fmtVetPinnedLintTerminalPass": true
+  },
+  "reviewedInvariants": [
+    "Own caller cancellation admits only a structurally valid correlated terminal Pending with permitted error causes.",
+    "All attempts preserve the original resume identity and require actual COMMIT and both Finish statuses.",
+    "Malformed, foreign, invalid, corrupt, closed, poisoned and classified unknown errors refuse.",
+    "Exact one placement CDC effect per participant; no other CDC; voter outcome equality, retained graph facts, immutable controls and zero owners.",
+    "Original 10-second invocation, 3-second cleanup and finite 128-resume bounds are unchanged."
+  ],
+  "validationBoundary": "Reviewer inspected raw terminal logs, source and hashes; did not rerun Go. Production coverage/security evidence is carried for exact unchanged files; fresh integrated hosted CI remains pending."
+}

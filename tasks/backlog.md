@@ -125,7 +125,10 @@ also passes on `725a8b78`, including both modules' race, security and coverage
 jobs; push-only lint is skipped there and covered by the pinned local run above.
 Engine/distributed integration, consumer execution and measured capacity retain
 their later acceptance gates.
-V2 is active; V3–V7 stay held until their predecessors close.
+V2 is active. Independent later-phase components may proceed in parallel;
+V3 format freeze/performance tuning and each phase's acceptance still require
+their documented predecessors. The V6 provenance-aware migration preflight is
+being implemented independently; it does not close migration or consumer gates.
 
 V2 default-axis genesis prerequisite accepted, 2026-10-10: one graph's two
 declared partitions, with three disk-backed voters each, preserve the exact
@@ -140,8 +143,9 @@ Hosted [CI run 38076813365](https://github.com/data-insights-ai/rho-tkg/actions/
 passes on `55dc0e30`, including both modules' race, security and coverage jobs;
 push-only lint is skipped there and covered by the pinned local run above.
 
-V2 completion sequence: one implementation package at a time, independently
-reviewed and validated before the next package starts.
+V2 completion sequence: accept each package only after independent review and
+validation. Non-overlapping implementation and comparison work may run in
+parallel, with one owner of the bounded local heavy-test resources at a time.
 
 1. **Accepted 2026-10-11 — checked partition-local graph writes.** Both declared
    partitions of one GraphID admit typed writes, preserving canonical, declared
@@ -341,6 +345,13 @@ reviewed and validated before the next package starts.
    [Hosted CI at `13612eb3`](evidence/v2-range-e17/hosted-ci-13612eb3.json)
    passes all seven applicable root/v5/comparison jobs, including both exhaustive
    race gates; PR-only lint is covered separately by pinned local evidence.
+   A later hosted run at `fae9d0d9` exposed the process helper refusing its own
+   10-second invocation cancellation. The [reviewed correction](evidence/e17-ci-deadline-20261012/review.json)
+   resumes the same original terminal Pending and still requires actual COMMIT
+   and both Finish statuses. Seven focused parents pass normal/race, with exact
+   placement CDC and complete child cleanup; fmt/vet and pinned lint pass.
+   All 218 production Go files and the time/resource bounds are unchanged.
+   Fresh hosted validation of this correction remains pending.
    **Finite remote E18 accepted**, 2026-10-12: unique-property and
    endpoint indexes supply candidates for same-cut typed value/component/life
    hydration on six native OS processes. Held and reopened historical cuts retain
