@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.50.2] - 2026-10-12
+
+Patch release, sigma-tkgd requests and read costs: broader effective scans (backlog 35; `ForEachRelEffectiveAtNodes` costs one fold over every relationship with history per call, see backlog 50), `ColumnData.Other` (48), current-row stamps and ID-only effective gathers on badger (42, 33). Additive, except that column scans now type every integer width the same way on every path (Changed).
+
 ### Added
 
 - **`ColumnData.Other`: column-scan cells held outside the column** (backlog 48, requested by sigma-tkgd).
