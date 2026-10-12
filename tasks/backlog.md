@@ -411,11 +411,12 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    cost/layout matrix and engine decision; physical-host and other V2 exit
    gates remain open. **Next production admission work:** enforce one supported
    lifecycle seam that mints new logical GraphIDs internally, provisions the same
-   genesis through embedding-authenticated per-voter endpoints, durably records
-   PREPARING and quorum COMPLETE in rho, then admits graph operations from that
-   restored state and actual consensus authority. Define creation-journal loss,
-   rollback and retry semantics first; partial seeds may burn the new namespace,
-   but cleanup must never delete storage that may have served data. Old identities
+   genesis through trusted one-time embedding-authenticated per-voter provisioning,
+   and reuses rho's durable pending ownership seed and actual committed Init as
+   its provisioned/initialized states. No separate lifecycle journal is required.
+   Construction grants no graph-operation authority; existing committed-Init and
+   consensus gates must remain enforced. Partial provisioning may burn the new
+   namespace, but cleanup must never delete storage that may have served data. Old identities
    must use retained-state reopen or surviving-quorum-authorized replacement,
    never fresh initialization; one missing voter must not block healthy-quorum
    operation. Raw storage/bootstrap primitives remain privileged, distinct from
@@ -431,8 +432,8 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    initialization can then call `idalloc.NewState` and restart its high-water,
    losing old history. This is not a runtime RED or acceptance claim. Identical
    copies of an entire voter identity/credential set cannot be distinguished from
-   retained bytes alone: embedding authentication must enforce unique live replica
-   incarnations; local storage checks do not detect independent live clones.
+   retained bytes alone: the trusted embedding authenticates unique live replica
+   incarnations; global clone detection is outside this crash-fault model.
    A Host constructor may precede a quorum provided its graph operations remain
    fail-closed; constructor success is not operation authority.
 
