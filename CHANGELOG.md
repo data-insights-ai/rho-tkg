@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.51.0] - 2026-10-12
+
+Minor release, the sigma-tkgd store requests, round 5 (new public API): the valid-time adjacency door answers a
+relationship without history from its live row; a time-window property seek on an unindexed key reads only the
+history of nodes that ever carried the label (`LabelTxMemberLookupCapability`, `RelTypeTxMemberLookupCapability`);
+`Stats().PropertyNDV` / `RelPropertyNDV` without the min/max rescan; badger patches a label's column snapshot after
+an in-place write instead of rebuilding it (lazy: only labels with a snapshot record writes); the memory store tracks
+relationship changes per type so `RelTypeDegreeStats` survives writes to other types; faster memory relationship
+columns and ordinal adjacency; an empty label intersection is answered as empty; `Stats().RelHistoryCountByType`
+(memory, badger). Additive.
+
 ### Added
 
 - **`g.Stats().RelHistoryCountByType(typeName) (int, ok bool, error)`: how many relationships of one type have
