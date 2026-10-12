@@ -220,3 +220,60 @@ func (bs *Store) collectCurrentPropertyValues(labelToken uint16, propertyKey str
 	}
 	return values, nil
 }
+
+// NodePropertyNDV implements store.NodePropertyNDVCapability: the NDV and
+// Count NodePropertyStats would return, without the dirty-triggered rescan
+// of the exact Min/Max (no node is read).
+func (bs *Store) NodePropertyNDV(labelToken uint16, propertyKey string) (storecontract.PropertyNDV, error) {
+	acc, count, err := bs.nodePropertyStatsEntry(labelToken, propertyKey)
+	if err != nil || acc == nil {
+		return storecontract.PropertyNDV{Count: count}, err
+	}
+	bs.idxMu.RLock()
+	ndv, _, _ := acc.Snapshot()
+	bs.idxMu.RUnlock()
+	return storecontract.PropertyNDV{NDV: ndv, Count: count}, nil
+}
+
+// NodePropertyNDVSketch is NodePropertyStatsSketch without the Min/Max and
+// their rescan: a CLONE of the raw sketch (nil for a missing pair) and the
+// count, for tiered's NodePropertyNDV fold. Store-internal, like
+// NodePropertyStatsSketch.
+func (bs *Store) NodePropertyNDVSketch(labelToken uint16, propertyKey string) (*indexpkg.HyperLogLog, int64, error) {
+	acc, count, err := bs.nodePropertyStatsEntry(labelToken, propertyKey)
+	if err != nil || acc == nil {
+		return nil, count, err
+	}
+	bs.idxMu.RLock()
+	sketch := acc.Sketch()
+	bs.idxMu.RUnlock()
+	return sketch, count, nil
+}
+
+// nodePropertyStatsEntry validates the call and returns the pair's
+// accumulator (nil when unpopulated) and presence count.
+func (bs *Store) nodePropertyStatsEntry(labelToken uint16, propertyKey string) (*indexpkg.PropertyStatsAccumulator, int64, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, 0, err
+	}
+	if bs.disablePlannerStats {
+		return nil, 0, storecontract.ErrCapabilityNotSupported
+	}
+	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+		return nil, 0, err
+	}
+	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
+		return nil, 0, err
+	}
+	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
+	var count int64
+	if v, ok := bs.propertyKeyCounts.Load(key); ok {
+		if c := v.(*atomic.Int64).Load(); c > 0 {
+			count = c
+		}
+	}
+	bs.idxMu.RLock()
+	acc := bs.propertyStats[key]
+	bs.idxMu.RUnlock()
+	return acc, count, nil
+}

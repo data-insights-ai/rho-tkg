@@ -82,9 +82,11 @@ func (ms *Store) ForEachDocValues(labelToken uint16, propKeys []string,
 // refreshing the immutable column snapshot under the write lock if stale, then
 // iterating it lock-free. Same contract as ForEachDocValues:
 //
-//   - Returns ok=false (NOT an error) when unusable: an empty intersection, over
-//     the size cap, or any requested property not a uniformly numeric/string
-//     column. The caller falls back to the general (per-node) path.
+//   - Returns ok=false (NOT an error) when unusable: over the size cap, or any
+//     requested property not a uniformly numeric/string column. The caller
+//     falls back to the general (per-node) path. An EMPTY intersection is
+//     served (ok=true, no rows; round 5 request 3): the caller cannot tell it
+//     from the labels' counts.
 //   - Membership is the INTERSECTION of the full label indexes — the same set a
 //     multi-label scan returns (no valid-time filter). A node absent
 //     from any one label is excluded; count(*) counts the surviving rows.
@@ -111,10 +113,12 @@ func (ms *Store) ForEachDocValuesMulti(toks []uint16, propKeys []string,
 	// nothing (the 50k-probe steady-state regression this avoids).
 	if col == nil || col.Epoch() != cur || !col.HasAll(propKeys) {
 		set := ms.intersectLabelsLocked(toks)
-		if len(set) == 0 || len(set) > indexpkg.MaxDocValuesNodes {
+		if len(set) > indexpkg.MaxDocValuesNodes {
 			ms.mu.Unlock()
-			return 0, false, nil // empty intersection or over cap → fall back
+			return 0, false, nil // over cap → fall back
 		}
+		// An empty intersection is served: an empty snapshot (round 5
+		// request 3).
 		// Intersection membership, NOT single-label: a per-label append record cannot
 		// say whether an appended node joins A∩B, so this path always rebuilds.
 		col = ms.buildColumnsLocked(set, propKeys, col, cur)

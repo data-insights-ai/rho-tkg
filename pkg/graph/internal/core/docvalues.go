@@ -70,8 +70,10 @@ func (n *NodeOps) ForEachDocValues(label string, propKeys []string,
 // value from a cached columnar snapshot over the intersection membership instead of
 // a per-node fetch+decode. Same contract as ForEachDocValues: ok=false (not an
 // error) when unusable — the store lacks the capability, any label is unknown, the
-// intersection is empty/over-cap, or a requested property is not a uniformly
-// numeric/string column — and the caller falls back to the general path.
+// intersection is over-cap, or a requested property is not a uniformly
+// numeric/string column — and the caller falls back to the general path. An
+// empty intersection of known labels is served (ok=true, no rows; round 5
+// request 3) on every in-tree store.
 func (n *NodeOps) ForEachDocValuesMulti(labels []string, propKeys []string,
 	fn func(types.NodeID, []any, []bool) bool) (gen uint64, ok bool, err error) {
 	c := n.c

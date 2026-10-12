@@ -914,8 +914,12 @@ type relEndpointScannerAt interface {
 // as the node doors and Temporal().OutgoingRelsAt do, and a since-deleted
 // edge stays visible inside its window — see forEachAdjacentRelVersionLocked.
 // (Before v4.35.0 the door filtered the live row only, so an updated edge
-// vanished from earlier instants.) With no temporal filter set this is exactly
-// ForEachAdjacentEndpoint. fn returning false stops the scan.
+// vanished from earlier instants.) Under a pure valid-time filter a live
+// relationship without history rows (store.HistoryPresenceCapability) is
+// answered from the live row the door already read, without loading its
+// version chain (round 5 request 6; singleVersionAdjacency). With no temporal
+// filter set this is exactly ForEachAdjacentEndpoint. fn returning false
+// stops the scan.
 //
 // The stores' inline-stamp scanners (relEndpointScannerAt) are no longer
 // consulted under a temporal filter: a stamp can only prove the LIVE row

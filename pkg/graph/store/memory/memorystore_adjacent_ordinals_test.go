@@ -84,6 +84,19 @@ func TestMemoryAdjacentEndpointOrdinalOrderNestingAllocs(t *testing.T) {
 			if e.relOrd == 0 || e.otherOrd == 0 {
 				t.Fatalf("an edge without ordinals: %+v", e)
 			}
+			// The ordinals equal the entities' own (round 5 request 2 reads
+			// the other endpoint's from the relationship's row).
+			r, err := g.Rels().Lend(ctx, e.rel)
+			if err != nil {
+				t.Fatal(err)
+			}
+			n, err := g.Nodes().Lend(ctx, e.other)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if r.Ordinal() != e.relOrd || n.Ordinal() != e.otherOrd {
+				t.Fatalf("%+v: ordinals (%d, %d), want the rows' (%d, %d)", e, e.relOrd, e.otherOrd, r.Ordinal(), n.Ordinal())
+			}
 		}
 	}
 

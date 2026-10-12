@@ -50,10 +50,13 @@ type Ops interface {
 	RelPropertyTypeClassCounts(typeName, propertyKey string) (storepkg.PropertyTypeClassCounts, error)
 	PropertyStats(label, propertyKey string) (storepkg.PropertyStats, error)
 	RelPropertyStats(typeName, propertyKey string) (storepkg.PropertyStats, error)
+	PropertyNDV(label, propertyKey string) (storepkg.PropertyNDV, error)
+	RelPropertyNDV(typeName, propertyKey string) (storepkg.PropertyNDV, error)
 	RelCountByType(typeName string) (int, error)
 	RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegreeStats, error)
 	ReadCosts() (storepkg.ReadCosts, bool, error)
 	HistoryCounts() (storepkg.HistoryCounts, bool, error)
+	RelHistoryCountByType(typeName string) (int, bool, error)
 	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	RelRangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	AllLabelCounts() (map[string]int, error)
@@ -234,6 +237,22 @@ func (a *API) HistoryCounts() (storepkg.HistoryCounts, bool, error) {
 	return ops.HistoryCounts()
 }
 
+// RelHistoryCountByType returns how many relationships of typeName have
+// history rows (updated, closed, deleted or otherwise versioned, deleted ones
+// included): HistoryCounts.Rels for one type, so a caller can tell that one
+// type's relationships have no history while another's do. Exact unless a
+// relationship ID was reused across types (then an upper bound), so 0 always
+// means none. Memory and badger answer it (O(relationships with history) per
+// call); ok=false on a store without a per-type answer (sharded, tiered,
+// external stores). An unknown type is 0.
+func (a *API) RelHistoryCountByType(typeName string) (int, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.RelHistoryCountByType(typeName)
+}
+
 // PropertyStats returns NDV (estimated distinct-value count via a
 // HyperLogLog sketch), exact Min/Max (for scalar-ordered value families —
 // numeric and string, see store.NodePropertyStatsCapability), and Count (the
@@ -278,6 +297,34 @@ func (a *API) RelPropertyStats(typeName, propertyKey string) (storepkg.PropertyS
 		return storepkg.PropertyStats{}, err
 	}
 	return ops.RelPropertyStats(typeName, propertyKey)
+}
+
+// PropertyNDV returns PropertyStats' NDV and Count without its exact
+// Min/Max: the HyperLogLog estimate and the presence count, read without the
+// rescan of the label's current values that PropertyStats runs after a
+// write removed a value equal to the minimum or maximum. Use it where a
+// planner needs the distinct-value estimate only. Missing (label,
+// propertyKey) pairs and unknown labels return a zero value; memory, badger
+// and tiered implement store.NodePropertyNDVCapability, any other backend
+// (and a store with planner statistics disabled) returns
+// store.ErrCapabilityNotSupported.
+func (a *API) PropertyNDV(label, propertyKey string) (storepkg.PropertyNDV, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.PropertyNDV{}, err
+	}
+	return ops.PropertyNDV(label, propertyKey)
+}
+
+// RelPropertyNDV is the relationship mirror of PropertyNDV (memory and
+// badger; tiered returns store.ErrCapabilityNotSupported, as for
+// RelPropertyStats).
+func (a *API) RelPropertyNDV(typeName, propertyKey string) (storepkg.PropertyNDV, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.PropertyNDV{}, err
+	}
+	return ops.RelPropertyNDV(typeName, propertyKey)
 }
 
 // RelCountByType returns the count of relationships of the given type.

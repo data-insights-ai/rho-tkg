@@ -1,0 +1,21 @@
+base BenchmarkAdjSetChurn              	  300000	        19.72 ns/op	       0 B/op	       0 allocs/op
+base BenchmarkPutRelationshipSmallSets 	  300000	       944.5 ns/op	     308 B/op	       3 allocs/op
+branch BenchmarkAdjSetChurn              	  300000	        26.16 ns/op	       0 B/op	       0 allocs/op
+branch BenchmarkPutRelationshipSmallSets 	  300000	       878.2 ns/op	     308 B/op	       3 allocs/op
+branch BenchmarkAdjSetChurn              	  300000	        25.63 ns/op	       0 B/op	       0 allocs/op
+branch BenchmarkPutRelationshipSmallSets 	  300000	       855.1 ns/op	     308 B/op	       3 allocs/op
+base BenchmarkAdjSetChurn              	  300000	        17.42 ns/op	       0 B/op	       0 allocs/op
+base BenchmarkPutRelationshipSmallSets 	  300000	      1075 ns/op	     308 B/op	       3 allocs/op
+base BenchmarkAdjSetChurn              	  300000	        17.42 ns/op	       0 B/op	       0 allocs/op
+base BenchmarkPutRelationshipSmallSets 	  300000	      1113 ns/op	     308 B/op	       3 allocs/op
+branch BenchmarkAdjSetChurn              	  300000	        23.98 ns/op	       0 B/op	       0 allocs/op
+branch BenchmarkPutRelationshipSmallSets 	  300000	      1126 ns/op	     308 B/op	       3 allocs/op
+branch BenchmarkAdjSetChurn              	  300000	        26.34 ns/op	       0 B/op	       0 allocs/op
+branch BenchmarkPutRelationshipSmallSets 	  300000	       881.5 ns/op	     308 B/op	       3 allocs/op
+base BenchmarkAdjSetChurn              	  300000	        19.26 ns/op	       0 B/op	       0 allocs/op
+base BenchmarkPutRelationshipSmallSets 	  300000	       851.6 ns/op	     308 B/op	       3 allocs/op
+base BenchmarkAdjSetChurn              	  300000	        18.95 ns/op	       0 B/op	       0 allocs/op
+base BenchmarkPutRelationshipSmallSets 	  300000	       922.0 ns/op	     308 B/op	       3 allocs/op
+branch BenchmarkAdjSetChurn              	  300000	        27.35 ns/op	       0 B/op	       0 allocs/op
+branch BenchmarkPutRelationshipSmallSets 	  300000	       903.8 ns/op	     308 B/op	       3 allocs/op
+load: 40.89 47.79 40.68

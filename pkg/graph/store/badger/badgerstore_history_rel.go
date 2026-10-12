@@ -624,6 +624,13 @@ func (bs *Store) ForEachRelHistoryID(fn func(types.RelID) bool) error {
 	if fn == nil {
 		return errNilIterationCallback()
 	}
+	// Once the RAM history-presence set is built, walk it instead of the
+	// keyspace (round 5 requests 7 and 8; forEachPresentHistoryID).
+	if ok, err := bs.forEachPresentHistoryID(&bs.histRelPresence, storepkg.KeyHistRel, nil, func(id snowflake.ID) bool {
+		return fn(types.RelID(id))
+	}); ok {
+		return err
+	}
 	maxID, err := bs.maxHistoryID(storepkg.KeyHistRel)
 	if err != nil {
 		return fmt.Errorf("graph: scan rel history max ID: %w", err)
@@ -657,12 +664,19 @@ func (bs *Store) ForEachRelHistoryID(fn func(types.RelID) bool) error {
 
 // ForEachDeletedRelID is the relationship counterpart of ForEachDeletedNodeID
 // — visits only history-but-no-current IDs via an inline HasRelID check.
+// Once the RAM history-presence set is built (forEachPresentHistoryID) the IDs
+// come from it instead of a scan of the history keyspace.
 func (bs *Store) ForEachDeletedRelID(fn func(types.RelID) bool) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
 	if fn == nil {
 		return errNilIterationCallback()
+	}
+	if ok, err := bs.forEachPresentHistoryID(&bs.histRelPresence, storepkg.KeyHistRel, bs.HasRelID, func(id snowflake.ID) bool {
+		return fn(types.RelID(id))
+	}); ok {
+		return err
 	}
 	maxID, err := bs.maxHistoryID(storepkg.KeyHistRel)
 	if err != nil {

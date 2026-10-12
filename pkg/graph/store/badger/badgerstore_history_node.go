@@ -1032,6 +1032,13 @@ func (bs *Store) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
 	if fn == nil {
 		return errNilIterationCallback()
 	}
+	// Once the RAM history-presence set is built, walk it instead of the
+	// keyspace (round 5 requests 7 and 8; forEachPresentHistoryID).
+	if ok, err := bs.forEachPresentHistoryID(&bs.histNodePresence, storepkg.KeyHistNode, nil, func(id snowflake.ID) bool {
+		return fn(types.NodeID(id))
+	}); ok {
+		return err
+	}
 	maxID, err := bs.maxHistoryID(storepkg.KeyHistNode)
 	if err != nil {
 		return fmt.Errorf("graph: scan node history max ID: %w", err)
@@ -1068,12 +1075,19 @@ func (bs *Store) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
 // in-memory presence check via HasNodeID; the resulting cost is one extra
 // map lookup per history ID, no additional Badger reads. Callbacks are
 // invoked outside Badger transactions.
+// Once the RAM history-presence set is built (forEachPresentHistoryID) the IDs
+// come from it, in ascending order, instead of a scan of the history keyspace.
 func (bs *Store) ForEachDeletedNodeID(fn func(types.NodeID) bool) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
 	if fn == nil {
 		return errNilIterationCallback()
+	}
+	if ok, err := bs.forEachPresentHistoryID(&bs.histNodePresence, storepkg.KeyHistNode, bs.HasNodeID, func(id snowflake.ID) bool {
+		return fn(types.NodeID(id))
+	}); ok {
+		return err
 	}
 	maxID, err := bs.maxHistoryID(storepkg.KeyHistNode)
 	if err != nil {

@@ -1,0 +1,5 @@
+--- FAIL: TestColumnPatch_UnreadLabelStaysPoisoned (0.02s)
+    badgerstore_column_patch_test.go:79: delta on an unread label = &{ids:[1 2 3 2] changed:[2] epoch:5 poisoned:false}, want poisoned with nothing recorded
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.462s
+FAIL

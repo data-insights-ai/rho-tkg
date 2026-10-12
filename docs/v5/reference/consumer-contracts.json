@@ -1030,5 +1030,80 @@
   ],
   "public_functions_receiver_notes": {
     "Present": "PropertyTypeClassCounts value receiver; return sum of Numeric, NaN, String, Bool, Other (excluding Missing)"
+  },
+  "current_v4_source_delta": {
+    "captured_date": "2026-10-12",
+    "repository": "rho-tkg",
+    "commit": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+    "tree": "3e1ba5d51d7785a8fbd1481372c5993002fdc78c",
+    "release": "v4.51.0",
+    "previous_integrated_main": "91684e54d25fd8c1b136f5f80bd8f33f5d0ab3bd",
+    "evidence_level": "Upstream source contracts only; no merged-source compilation, behavior, migration or performance acceptance. Historical consumer/source pins are unchanged.",
+    "qualification": "V6 must rerun its previously v4.50.1-qualified reader preflight against this reader; root aggregate and hosted gates remain separate.",
+    "dependencies": "No go.mod/go.sum, nested v5 module, comparator module or workflow dependency changes in this upstream delta.",
+    "contract_extensions": [
+      {
+        "id": "v451-ndv-only-statistics",
+        "v4_doors": [
+          "Stats().PropertyNDV(label, propertyKey string) (store.PropertyNDV, error)",
+          "Stats().RelPropertyNDV(typeName, propertyKey string) (store.PropertyNDV, error)",
+          "store.PropertyNDV{NDV int64, Count int64}"
+        ],
+        "mapping_obligation": "consumer-migration.json: current_v4_source_delta.obligations/v451-ndv-only-statistics",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v451-history-count-by-type",
+        "v4_doors": [
+          "Stats().RelHistoryCountByType(typeName string) (int, bool, error)"
+        ],
+        "mapping_obligation": "consumer-migration.json: current_v4_source_delta.obligations/v451-history-count-by-type",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v451-served-empty-intersection",
+        "v4_doors": [
+          "Nodes().ForEachDocValuesMulti(labels, keys, fn) -> (gen, ok, err)"
+        ],
+        "mapping_obligation": "consumer-migration.json: current_v4_source_delta.obligations/v451-served-empty-intersection",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v451-history-seek-superset",
+        "v4_doors": [
+          "store.LabelTxMemberLookupCapability.LabelTxMembersOf",
+          "store.RelTypeTxMemberLookupCapability.RelTypeTxMembersOf"
+        ],
+        "mapping_obligation": "consumer-migration.json: current_v4_source_delta.obligations/v451-history-seek-superset",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v451-window-adjacency-and-columns",
+        "v4_doors": [
+          "Rels().ForEachAdjacentEndpointAt",
+          "Rels().ForEachAdjacentRelAt",
+          "ForEachAdjacentEndpointOrdinal",
+          "ScanRelColumns"
+        ],
+        "mapping_obligation": "consumer-migration.json: current_v4_source_delta.obligations/v451-window-adjacency-and-columns",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v451-column-patch-and-type-epochs",
+        "v4_doors": [
+          "badger.Store.ColumnPatchCount() uint64",
+          "DocValues.Patch",
+          "memory.Store.RelMutationEpochForType(token uint16) uint64"
+        ],
+        "mapping_obligation": "consumer-migration.json: current_v4_source_delta.obligations/v451-column-patch-and-type-epochs",
+        "acceptance_status": "pending-v5"
+      }
+    ],
+    "new_optional_store_signatures": {
+      "NodePropertyNDVCapability": "NodePropertyNDV(labelToken uint16, propertyKey string) (PropertyNDV, error)",
+      "RelPropertyNDVCapability": "RelPropertyNDV(relTypeToken uint16, propertyKey string) (PropertyNDV, error)",
+      "LabelTxMemberLookupCapability": "LabelTxMembersOf(token uint16, ids []types.NodeID, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error",
+      "RelTypeTxMemberLookupCapability": "RelTypeTxMembersOf(token uint16, ids []types.RelID, fn func(id types.RelID, firstTxFrom types.Instant) bool) error"
+    }
   }
 }

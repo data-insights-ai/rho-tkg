@@ -1,0 +1,18 @@
+--- FAIL: TestTemporalPropertySeekLoadsNoOtherLabelChains (0.00s)
+    --- FAIL: TestTemporalPropertySeekLoadsNoOtherLabelChains/memory (0.00s)
+        temporal_property_seek_label_test.go:164: ByLabelAndProperty {Limit:0 After:0 ValidAt:0 ValidStart:1000 ValidEnd:1500 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: 24 chain loads, want at most 5 (the ever-members of P)
+        temporal_property_seek_label_test.go:172: ByLabelAndProperties {Limit:0 After:0 ValidAt:0 ValidStart:1000 ValidEnd:1500 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: 23 chain loads, want at most 5
+        temporal_property_seek_label_test.go:164: ByLabelAndProperty {Limit:0 After:0 ValidAt:1500 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: 24 chain loads, want at most 5 (the ever-members of P)
+        temporal_property_seek_label_test.go:172: ByLabelAndProperties {Limit:0 After:0 ValidAt:1500 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: 23 chain loads, want at most 5
+        temporal_property_seek_label_test.go:164: ByLabelAndProperty {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:1791746743515 IncludeEclipsed:false Depth:0 NoSort:false}: 24 chain loads, want at most 5 (the ever-members of P)
+        temporal_property_seek_label_test.go:172: ByLabelAndProperties {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:1791746743515 IncludeEclipsed:false Depth:0 NoSort:false}: 23 chain loads, want at most 5
+    --- FAIL: TestTemporalPropertySeekLoadsNoOtherLabelChains/badger (0.00s)
+        temporal_property_seek_label_test.go:164: ByLabelAndProperty {Limit:0 After:0 ValidAt:0 ValidStart:1000 ValidEnd:1500 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: 24 chain loads, want at most 5 (the ever-members of P)
+        temporal_property_seek_label_test.go:172: ByLabelAndProperties {Limit:0 After:0 ValidAt:0 ValidStart:1000 ValidEnd:1500 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: 23 chain loads, want at most 5
+        temporal_property_seek_label_test.go:164: ByLabelAndProperty {Limit:0 After:0 ValidAt:1500 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: 24 chain loads, want at most 5 (the ever-members of P)
+        temporal_property_seek_label_test.go:172: ByLabelAndProperties {Limit:0 After:0 ValidAt:1500 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: 23 chain loads, want at most 5
+        temporal_property_seek_label_test.go:164: ByLabelAndProperty {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:1791746743516 IncludeEclipsed:false Depth:0 NoSort:false}: 24 chain loads, want at most 5 (the ever-members of P)
+        temporal_property_seek_label_test.go:172: ByLabelAndProperties {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:1791746743516 IncludeEclipsed:false Depth:0 NoSort:false}: 23 chain loads, want at most 5
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.465s
+FAIL

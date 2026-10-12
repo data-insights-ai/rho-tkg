@@ -221,3 +221,34 @@ func (bs *Store) adjustRelPropertyStatsOne(relTypeToken uint16, propertyKey, val
 		acc.Forget(value)
 	}
 }
+
+// RelPropertyNDV implements store.RelPropertyNDVCapability: the NDV and
+// Count RelPropertyStats would return, without the dirty-triggered rescan of
+// the exact Min/Max (no relationship is read).
+func (bs *Store) RelPropertyNDV(relTypeToken uint16, propertyKey string) (storecontract.PropertyNDV, error) {
+	if err := bs.checkOpen(); err != nil {
+		return storecontract.PropertyNDV{}, err
+	}
+	if bs.disablePlannerStats {
+		return storecontract.PropertyNDV{}, storecontract.ErrCapabilityNotSupported
+	}
+	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
+		return storecontract.PropertyNDV{}, err
+	}
+	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
+		return storecontract.PropertyNDV{}, err
+	}
+	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}
+	var out storecontract.PropertyNDV
+	if v, ok := bs.relPropertyKeyCounts.Load(key); ok {
+		if c := v.(*atomic.Int64).Load(); c > 0 {
+			out.Count = c
+		}
+	}
+	bs.idxMu.RLock()
+	if acc := bs.relPropertyStats[key]; acc != nil {
+		out.NDV, _, _ = acc.Snapshot()
+	}
+	bs.idxMu.RUnlock()
+	return out, nil
+}

@@ -13,6 +13,11 @@ import (
 func (bs *Store) ColumnExtendCount() uint64  { return bs.columnExtends.Load() }
 func (bs *Store) ColumnRebuildCount() uint64 { return bs.columnRebuilds.Load() }
 
+// ColumnPatchCount is ColumnExtendCount for the in-place-update path: how many
+// columnar snapshots were PATCHED (rows of updated members re-read, the rest
+// copied) instead of rebuilt (round 5 request 4).
+func (bs *Store) ColumnPatchCount() uint64 { return bs.columnPatches.Load() }
+
 // Append-delta bookkeeping (R3). A columnar snapshot is invalidated by epoch
 // advance, so any write to a label makes the next read rebuild the WHOLE label —
 // O(label size) even when the read wants a handful of rows. The dominant write
@@ -42,11 +47,23 @@ func (bs *Store) ColumnRebuildCount() uint64 { return bs.columnRebuilds.Load() }
 // Every failure mode is a rebuild, never a wrong answer.
 
 // appendDelta is the per-label record of what changed since its snapshot was built.
+//
+// Round 5 request 4: on a label with a cached snapshot (patchable) the removal
+// seam records the node in changed instead of poisoning, so an UPDATE (remove
+// half + add half) leaves both halves recorded. Every recorded event (an id in
+// ids or in changed) bumped the label's epoch exactly once, so the accounting
+// identity becomes gen - snapshotEpoch == len(ids) + len(changed). The read
+// side then classifies the recorded IDs by their CURRENT membership
+// (classifyLabelDelta) and patches or extends the snapshot, or rebuilds.
 type appendDelta struct {
-	ids      []types.NodeID // appended since the cached snapshot, ascending by arrival
-	epoch    uint64         // labelEpoch immediately after the last recorded append
-	poisoned bool           // a removal touched this label — the append assumption is void
+	ids      []types.NodeID // add-seam events since the cached snapshot, by arrival
+	changed  []types.NodeID // removal-seam events on a patchable label, by arrival
+	epoch    uint64         // labelEpoch immediately after the last recorded event
+	poisoned bool           // an unrecorded removal touched this label — rebuild
 }
+
+// events is the number of recorded epoch bumps.
+func (d *appendDelta) events() uint64 { return uint64(len(d.ids)) + uint64(len(d.changed)) }
 
 // recordNodeAppend notes a pure insert against every label the node carries. Called
 // AFTER bumpNodeLabelEpochs so the stamped epoch includes this write's own bump.
@@ -79,8 +96,8 @@ func (bs *Store) recordNodeAppend(n *types.Node) {
 		}
 		// Bound the buffer: past a point, extending is no cheaper than rebuilding and
 		// the buffer itself becomes the cost. Poison rather than grow without limit.
-		if len(d.ids) >= maxAppendDeltaIDs {
-			d.poisoned, d.ids = true, nil
+		if d.events() >= maxAppendDeltaIDs {
+			d.poisoned, d.ids, d.changed = true, nil, nil
 			continue
 		}
 		d.ids = append(d.ids, id)
@@ -88,10 +105,12 @@ func (bs *Store) recordNodeAppend(n *types.Node) {
 	}
 }
 
-// poisonNodeLabels voids the append assumption for every label the node carries.
-// Called from the removal seam, which an UPDATE also passes through (remove-old +
-// add-new), so an update correctly forces a rebuild.
-func (bs *Store) poisonNodeLabels(n *types.Node) {
+// recordNodeRemoval is the removal seam's record (round 5 request 4): on a label
+// with a cached snapshot (patchable) the node is recorded as changed — its row
+// may differ or be gone — and stamped like an append; on any other label the
+// append assumption is voided (poisoned), as before. Called AFTER
+// bumpNodeLabelEpochs, from the removal seam an UPDATE also passes through.
+func (bs *Store) recordNodeRemoval(n *types.Node) {
 	if n == nil {
 		return
 	}
@@ -99,6 +118,7 @@ func (bs *Store) poisonNodeLabels(n *types.Node) {
 	if count == 0 {
 		return
 	}
+	id := n.ID()
 	bs.appendMu.Lock()
 	defer bs.appendMu.Unlock()
 	if bs.appendDeltas == nil {
@@ -114,7 +134,15 @@ func (bs *Store) poisonNodeLabels(n *types.Node) {
 			d = &appendDelta{}
 			bs.appendDeltas[tok] = d
 		}
-		d.poisoned, d.ids = true, nil
+		if d.poisoned {
+			continue
+		}
+		if _, ok := bs.patchable[tok]; !ok || d.events() >= maxAppendDeltaIDs {
+			d.poisoned, d.ids, d.changed = true, nil, nil
+			continue
+		}
+		d.changed = append(d.changed, id)
+		d.epoch = bs.labelEpoch(tok)
 	}
 }
 
@@ -124,6 +152,7 @@ func (bs *Store) poisonNodeLabels(n *types.Node) {
 func (bs *Store) poisonAllLabels() {
 	bs.appendMu.Lock()
 	bs.appendDeltas = nil
+	bs.patchable = nil
 	bs.appendMu.Unlock()
 }
 
@@ -132,94 +161,89 @@ func (bs *Store) poisonAllLabels() {
 // leak on a write-only label nobody reads.
 const maxAppendDeltaIDs = 50_000
 
-// takeAppendDelta returns the IDs appended since the label's snapshot was built, or
-// ok=false if a rebuild is required. gen is the epoch the caller observed; the
-// buffer is only usable if its stamp matches exactly, proving no unrecorded write
-// intervened.
+// THE GUARD OF THE DELTA TAKES IS AN ACCOUNTING IDENTITY on top of the stamp:
 //
-// Does NOT clear the buffer — the caller clears it only if the extend succeeds, so a
-// refused extend still leaves the record intact for the rebuild path to discard.
+//	gen - snapshotEpoch == recorded events
 //
-// THE GUARD IS AN ACCOUNTING IDENTITY on top of the stamp:
-//
-//	gen - snapshotEpoch == len(recorded ids)
-//
-// Every recorded append bumped this label's epoch exactly once, so a balance proves
-// EVERY bump since the snapshot was built was a recorded append. The stamp alone is
-// weaker than it looks: poisonAllLabels DROPS the whole record map, so a subsequent
-// insert creates a FRESH, un-poisoned record stamped at the current epoch and the
-// stamp check passes over a snapshot that a label-less removal already invalidated.
-// That exact hole shipped on the relationship path and a probe caught it; the same
-// shape exists here, so it gets the same guard rather than an argument about which
-// call paths happen to be reachable.
-func (bs *Store) takeAppendDelta(token uint16, gen, snapshotEpoch uint64) ([]types.NodeID, bool) {
+// Every recorded event bumped the label's epoch exactly once, so a balance
+// proves EVERY bump since the snapshot was built was recorded. The stamp alone
+// is weaker than it looks: poisonAllLabels DROPS the whole record map, so a
+// subsequent write creates a FRESH, un-poisoned record stamped at the current
+// epoch and the stamp check passes over a snapshot that a label-less removal
+// already invalidated. That exact hole shipped on the relationship path and a
+// probe caught it. For an intersection the identity sums the member labels'
+// events: multiLabelEpoch is the SUM of their epochs, and a node carrying a
+// label outside the tuple bumps that label too, which the sum does not count.
+
+// takeLabelDelta returns every node recorded against a label since its
+// snapshot was built (add and removal events, deduplicated), or ok=false when a
+// rebuild is required: no record, a poisoned one, a stamp other than gen, or an
+// accounting identity that does not balance (gen - snapshotEpoch must equal the
+// recorded events, see above). Does not clear.
+func (bs *Store) takeLabelDelta(token uint16, gen, snapshotEpoch uint64) ([]types.NodeID, bool) {
 	bs.appendMu.Lock()
 	defer bs.appendMu.Unlock()
 	d := bs.appendDeltas[token]
-	if d == nil || d.poisoned || len(d.ids) == 0 || d.epoch != gen {
+	if d == nil || d.poisoned || d.events() == 0 || d.epoch != gen {
 		return nil, false
 	}
-	if gen < snapshotEpoch || gen-snapshotEpoch != uint64(len(d.ids)) {
-		return nil, false // some bump since the snapshot was not a recorded append
+	if gen < snapshotEpoch || gen-snapshotEpoch != d.events() {
+		return nil, false
 	}
-	out := make([]types.NodeID, len(d.ids))
-	copy(out, d.ids)
-	return out, true
+	return distinctDeltaIDs(d.ids, d.changed), true
 }
 
-// takeMultiAppendDelta is the label-INTERSECTION analogue of takeAppendDelta: the
-// IDs appended since a snapshot over toks was built, restricted to nodes that
-// actually join the intersection.
-//
-// THE EXACTNESS CHECK IS AN ACCOUNTING IDENTITY, not a per-label epoch match, and
-// that is what makes the intersection case answerable at all. multiLabelEpoch is the
-// SUM of the member labels' epochs, and every recorded append bumped exactly one
-// epoch per label the node carries. So if
-//
-//	multiLabelEpoch(toks) - snapshotEpoch == sum over toks of len(delta[tok].ids)
-//
-// then EVERY epoch bump across every member label was a recorded append. A write
-// that bumped without being recorded — an unrelated label sharing a 256-stripe, a
-// direct bump, the global salt — leaves the sum short and the whole thing declines.
-// A node carrying a label outside toks bumps that label too, but multiLabelEpoch
-// does not sum it, so the identity still balances.
-//
-// MEMBERSHIP: an appended node joins A∩B only if it carries every token, which is
-// exactly "appears in every member label's list".
-func (bs *Store) takeMultiAppendDelta(toks []uint16, gen, snapshotEpoch uint64) ([]types.NodeID, bool) {
+// takeMultiLabelDelta is takeLabelDelta for a label intersection: the
+// identity sums the member labels' events (multiLabelEpoch sums their epochs,
+// see above).
+func (bs *Store) takeMultiLabelDelta(toks []uint16, gen, snapshotEpoch uint64) ([]types.NodeID, bool) {
 	if len(toks) == 0 {
 		return nil, false
 	}
 	bs.appendMu.Lock()
 	defer bs.appendMu.Unlock()
-
 	var recorded uint64
-	counts := make(map[types.NodeID]int)
+	var lists [][]types.NodeID
 	for _, tok := range toks {
 		d := bs.appendDeltas[tok]
 		if d == nil || d.poisoned {
 			return nil, false
 		}
-		recorded += uint64(len(d.ids))
-		for _, id := range d.ids {
-			counts[id]++
-		}
+		recorded += d.events()
+		lists = append(lists, d.ids, d.changed)
 	}
-	if gen < snapshotEpoch || gen-snapshotEpoch != recorded {
-		return nil, false // some bump was not a recorded append
+	if recorded == 0 || gen < snapshotEpoch || gen-snapshotEpoch != recorded {
+		return nil, false
 	}
+	return distinctDeltaIDs(lists...), true
+}
 
-	need := len(toks)
-	out := make([]types.NodeID, 0, len(counts))
-	for id, c := range counts {
-		if c == need { // carries every member label
+// distinctDeltaIDs returns the distinct IDs of lists, in first-seen order.
+func distinctDeltaIDs(lists ...[]types.NodeID) []types.NodeID {
+	seen := make(map[types.NodeID]struct{})
+	var out []types.NodeID
+	for _, l := range lists {
+		for _, id := range l {
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
 			out = append(out, id)
 		}
 	}
-	if len(out) == 0 {
-		return nil, false // nothing joins the intersection — a rebuild is no worse
+	return out
+}
+
+// markPatchable notes that a snapshot over toks is cached, so the removal seam
+// records those labels' updates instead of poisoning them. Caller holds
+// appendMu.
+func (bs *Store) markPatchableLocked(toks ...uint16) {
+	if bs.patchable == nil {
+		bs.patchable = make(map[uint16]struct{})
 	}
-	return out, true
+	for _, tok := range toks {
+		bs.patchable[tok] = struct{}{}
+	}
 }
 
 // clearMultiAppendDelta drops the pending record for every member label of an
@@ -229,6 +253,7 @@ func (bs *Store) clearMultiAppendDelta(toks []uint16) {
 	for _, tok := range toks {
 		delete(bs.appendDeltas, tok)
 	}
+	bs.markPatchableLocked(toks...)
 	bs.appendMu.Unlock()
 }
 
@@ -237,5 +262,6 @@ func (bs *Store) clearMultiAppendDelta(toks []uint16) {
 func (bs *Store) clearAppendDelta(token uint16) {
 	bs.appendMu.Lock()
 	delete(bs.appendDeltas, token)
+	bs.markPatchableLocked(token)
 	bs.appendMu.Unlock()
 }

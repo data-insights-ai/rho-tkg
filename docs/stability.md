@@ -80,7 +80,7 @@ The following surfaces are **not** covered by the v4 stability promise. They are
   for the same reason as its node sibling: the batch shape is pending consumer
   feedback. The callback must not retain the batch — its slices are reused between
   calls.
-- **Columnar refresh counters** (`ColumnExtendCount` / `ColumnRebuildCount` on the memory and badger stores) — telemetry for how a label's columnar snapshot was refreshed (append-extended versus fully rebuilt). Diagnostic only; not a stable metric contract
+- **Columnar refresh counters** (`ColumnExtendCount` / `ColumnRebuildCount` on the memory and badger stores, `ColumnPatchCount` on badger, unreleased) — telemetry for how a label's columnar snapshot was refreshed (append-extended, patched after in-place updates, or fully rebuilt). Diagnostic only; not a stable metric contract
 - **RAM-sidecar statistics** (`badger.Store.HistoryPresenceStats()` / `HistoryStampsStats()`, `store.PropertyTxMembershipStatsCapability`) — sizes, build counts and build times of the in-memory sidecars behind `HasHistory`, `LatestStamps` and the pinned property lookups. Diagnostic only, like the counters above; the doors they describe are stable
 - **`QueryOpts.IncludeEclipsed`** — reserved no-op, kept for API compatibility; one-tick rows are ordinary spans (no row is skipped as "eclipsed"). Consumers must not set it; it may be removed at the next major version
 

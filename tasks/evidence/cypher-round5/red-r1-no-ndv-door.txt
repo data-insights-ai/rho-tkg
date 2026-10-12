@@ -1,0 +1,3 @@
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test
+# [github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test]
+vet: pkg/graph/property_ndv_test.go:41:26: g.Stats().PropertyNDV undefined (type *stats.API has no field or method PropertyNDV)

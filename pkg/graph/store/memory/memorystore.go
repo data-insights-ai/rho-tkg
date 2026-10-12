@@ -174,6 +174,14 @@ type Store struct {
 	// from a concurrent edge insert. Kept separate from nodeEpoch so node-only
 	// scan/projection column caches do not rebuild on edge-heavy writes.
 	relEpoch atomic.Uint64
+	// relTypeEpochs / relEpochCoarse (round 5 request 9) are the per-type
+	// freshness stamp RelMutationEpochForType returns: a type's stripe plus a
+	// coarse term. A write door that holds the relationship bumps only its
+	// type's stripe (bumpRelEpochForType); every other door bumps the coarse
+	// term and so every type (bumpRelEpoch), as badger stripes it. relEpoch
+	// itself still moves on every relationship write.
+	relTypeEpochs  [relTypeEpochStripes]atomic.Uint64
+	relEpochCoarse atomic.Uint64
 	// maxNodeOrdinal / maxRelOrdinal: the last dense ordinal handed out
 	// (memorystore_ordinal.go); advanced under mu, read lock-free by Max*.
 	maxNodeOrdinal atomic.Uint32
@@ -309,8 +317,35 @@ func (ms *Store) bumpNodeEpoch() {
 func (ms *Store) bumpNodeEpochRaw() { ms.nodeEpoch.Add(1) }
 
 // bumpRelEpoch marks the adjacency view stale for the X5 expand-aggregation column
-// path. Called by every relationship-mutation path. A spurious bump is safe.
-func (ms *Store) bumpRelEpoch() { ms.relEpoch.Add(1) }
+// path. Called by every relationship-mutation path. A spurious bump is safe. It
+// also moves every type's RelMutationEpochForType (the coarse term): the default
+// door for a write that does not name its type.
+func (ms *Store) bumpRelEpoch() {
+	ms.relEpoch.Add(1)
+	ms.relEpochCoarse.Add(1)
+}
+
+// relTypeEpochStripes is the size of the per-type stamp array (badger's
+// count): a power of two, so a collision between two types over-invalidates
+// and costs nothing else.
+const relTypeEpochStripes = 256
+
+// bumpRelEpochForTypes is bumpRelEpoch for a write whose relationships are
+// all in hand: relEpoch moves, and of the per-type stamps only those of the
+// relationships' types. A nil relationship or token 0 (an unregistered type)
+// falls back to the coarse bump.
+func (ms *Store) bumpRelEpochForTypes(rels ...*types.Relationship) {
+	for _, r := range rels {
+		if r == nil || r.TypeToken().Value() == 0 {
+			ms.bumpRelEpoch()
+			return
+		}
+	}
+	ms.relEpoch.Add(1)
+	for _, r := range rels {
+		ms.relTypeEpochs[r.TypeToken().Value()%relTypeEpochStripes].Add(1)
+	}
+}
 
 // New creates an empty Store with all indexes initialized. Options (e.g.
 // WithChangeLog) are applied before initialization. The variadic signature is

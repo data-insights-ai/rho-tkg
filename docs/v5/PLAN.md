@@ -840,7 +840,7 @@ Reference checks establish their stated subset, never production completion.
 
 | Phase | Concrete acceptance record |
 |---|---|
-| V0 | Reviewed tracked reference corpus; profile/axis unit and exact ms import mappings above; current-v4 delta at `efbedc28`/v4.50.1 alongside historical consumer pins; declared test resource/dataset profiles and versioned consumer door/capacity inventory; independent model inputs/expected failures; agreed limits distinguished from proposed thresholds |
+| V0 | Reviewed tracked reference corpus; profile/axis unit and exact ms import mappings above; current-v4 delta at `44303a17`/v4.51.0 alongside historical consumer pins; declared test resource/dataset profiles and versioned consumer door/capacity inventory; independent model inputs/expected failures; agreed limits distinguished from proposed thresholds |
 | V1 | Go differential runs against the unchanged 16/52 corpus and revised E-case models; node/relationship two-phase exact-set tests, boundary/fuzz/codec failures and direct public API coverage |
 | V2 | Two-partition/three-replica fault schedules plus real durable process-kill/restart runs; serial-history/cut oracle results for E15–E18; stale-owner/allocator rejection, decision recovery and predicate-conflict tests; comparable transactional-KV evaluation and engine decision |
 | V3 | Byte ledger at 790 K/3.15 M/12.6 M source signal rows (107,113/408,282/1,584,150 HOP relationships); seal/merge/crash/reopen oracle results; heap/RSS/page-cache and replay measurements proving budgets and no per-fact resident growth; equivalent v4 fast-path comparison |
@@ -892,16 +892,19 @@ A build or that smoke suite alone cannot establish semantic compatibility.
    `TxAt` no longer implies valid-at-now, other readers cannot observe a
    `GraphTx`'s private writes, and IDs no longer encode placement. Those changes are listed per consumer in V6.
 
-#### Current v4 compatibility delta (cutoff 2026-10-11)
+#### Current v4 compatibility delta (cutoff 2026-10-12)
 
 The current rho source baseline for this acceptance record is main
-`efbedc28170c6b04aa28a0e957fc16c4424100c6`, **v4.50.1**. This extends the
+`44303a17a391d663cd48567c55bbb9ee85cdf892`, **v4.51.0**. This extends the
 historical consumer inventories above; their commits/hashes and old reproduction
 runs remain historical and unchanged. It does not assert that those consumers
 have upgraded or that a v5 adapter/importer has passed.
 
 | Current v4 contract | Required v5 mapping / consumer obligation |
 |---|---|
+| NDV-only statistics and per-type history counts (v4.51.0) | Carry `PropertyNDV` / `RelPropertyNDV` estimated NDV/current Count without forcing exact Min/Max work; retain unsupported/disabled refusals. `RelHistoryCountByType` counts history-bearing identities including deleted ones; supported zero is safe, ID/type reuse can overcount, and decline is not zero. |
+| Empty intersections and historical seek candidates (v4.51.0) | Known-label empty DocValues intersections are served (`ok=true`, no rows). Label/type ever-member lookup is a sound historical candidate superset, never current-membership filtering; exact chain resolution and unsupported/depth fallbacks remain authoritative. |
+| Adjacency, relationship columns and cache freshness (v4.51.0) | History-free pure valid-time shortcuts preserve full-resolver answers; pins/deletes/history keep full resolution. Preserve ascending IDs, endpoint ordinals, immutable held columns and exact patch/rebuild parity. Per-type degree epochs and global column epochs have separate scopes; neither certifies a cut. Historical v4 performance observations are not v5 measurements. |
 | `SetNodeVersionIntervalWithTx` / `SetRelVersionIntervalWithTx` (v4.50.1), including GraphTx, BatchBuilder and ingest Session twins | Preserve the source correction contract: every appended correction/resumption/current-slot row has `TxFrom = UpdatedAt = txFrom`; stored rows and earlier pins remain unchanged. Valid time is independent (`validFrom > txFrom` is allowed). The caller instant must be positive/nonfuture, pass `AllowTxBackfill`, and follow every chain TxFrom/TxTo across re-imported lives; hard-deleted entities refuse. A failed standalone call or deferred-unit preflight writes nothing, including correction/cascade conflicts on the same entity. Import caller stamps as raw source knowledge-time evidence; new v5 revisions commit at new certified cuts, never by converting a caller wall-clock stamp into a cut or inferring global transaction groups. Evidence: CHANGELOG 4.50.1 and `tasks/evidence/interval-withtx/` (red runs, mutants, W5 100-seed oracle). |
 | `Delete` versus `Retract` / `RetractWithTx` (v4.49.1/4.49.2), including GraphTx, Batch and ingest twins | Preserve validity-end versus belief-retraction semantics. After retraction T the ended life answers at no valid time at pins >=T; earlier pins remain unchanged, re-import can start a new life, and raw tombstone/provenance survives. Do not map retraction as an ordinary validity close. |
 | Retraction row `fv=3`, optional `rx`; other rows/store marker remain 2 | Decode fv<=3 and preserve the marker explicitly; unsupported readers must fail closed. v4.49.1's earlier fv=2+rx rows still need marker-aware readers and remain unprotected against older binaries. Old hashes do not prove marker preservation. Upgrade all readers before retraction writers. |
@@ -910,6 +913,11 @@ have upgraded or that a v5 adapter/importer has passed.
 | `Index().InventoryEpoch()` (v4.50.0) | Preserve the per-Graph index-DDL invalidation door: read before inventory, recheck afterward; freshness covers completed DDL, not serialization of an in-progress DDL operation. Epoch 0 at New, nonpersistent, unrelated to data mutation epochs or certified cuts. Completed failed DDL can advance it; unchanged refusals do not. |
 | Property-index options and range counts (v4.50.0) | Preserve `CreatePropertyWithOptions` / `CreateRelPropertyWithOptions`, `PropertyOptions` / `RelPropertyOptions` and `RangeCounts` capability negotiation. Plain indexes remain plain; unsupported tiered/on-disk/wrapper paths must not silently ignore an option. Optional persisted rc may reopen as plain on an older binary, preserving answers without promising the acceleration. |
 | Range-cardinality and ordinal adjacency (v4.50.0) | Preserve exact/declined range-count distinction, NaN-bound zero on answering indexes, sharded relationship count-once, and relationship-ID ordered endpoint ordinals/callback isolation. Counts remain non-temporal unless the door declares otherwise; v4's allocation improvement is not a v5 performance result. |
+
+The current-source obligations and hashes extend the historical fixtures in
+`reference/consumer-contracts.json` and `reference/consumer-migration.json`.
+They do not implement new v5 public doors or qualify the merged reader. Earlier
+V6 v4.50.1 reader preflight must rerun against this source before relying on it.
 
 The pinned source and release contracts are recorded in
 [the importer handover](../../tasks/v4-changes-for-v5-importer-20261010.md).
