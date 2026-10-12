@@ -50,7 +50,7 @@ Areas: temporal, persistence, concurrency, testing, process, docs, consumers.
 | 25 | CAS equality and integrity hash are different contracts (NaN, -0) | persistence | active |
 | 26 | Each sub-API declares its own minimal `Ops` | consumers | active |
 | 27 | Fix now, do not ship "known limitation" notes | process | active |
-| 28 | Split a shared helper before optimizing one caller (deleted-only adjacency fold) | temporal | active |
+| 28 | Split a shared helper before optimizing one caller (off-adjacency adjacency fold) | temporal | active |
 | 29 | PublishBatch priority order needs a per-batch ceiling | concurrency | active |
 | 30 | Split files by responsibility, not by line count | process | active |
 | 31 | Tx mirrors of read accessors (tx held `c.mu.Lock`) | concurrency | superseded (Path B, v4.1.0) |
@@ -298,14 +298,15 @@ real fix was small: optional `DeletedIterationCapability` (`ForEachDeletedNodeID
 `ForEachDeletedRelID`, plus depth variants) in every in-tree backend +
 `forEachRelAdjacencyCandidateID` in the graph layer, O(total history) -> O(deleted count).
 
-## 28. Adjacency Endpoint Immutability Permits Deleted-Only Folds
+## 28. Adjacency Folds Need Only The Off-Adjacency Set
 
 Trigger: optimizing a generic helper used in several semantic contexts.
 Rule: split the helper before optimizing one caller. `forEach*CandidateID` stays all-history
 (label/property temporal queries: an entity whose CURRENT label is Y but was X at t is not deleted
-yet must be visited); `forEachRelAdjacencyCandidateID` is deleted-only, valid because rel endpoints
-are immutable, so the only rels missing from node N's live adjacency index are DELETED rels. The
-first B2 attempt collapsed all folds to deleted-only and broke label/property queries.
+yet must be visited); `forEachRelAdjacencyCandidateID` folds only the rels whose rows can name a node
+their live row does not: DELETED rels and rels re-imported with other endpoints (the store's
+re-imported set, backlog 50 — "endpoints are immutable" holds within one life only). The first B2
+attempt collapsed all folds to deleted-only and broke label/property queries.
 
 ## 29. PublishBatch "Atomic" Ordering Survives Saturation Only With A Floor
 

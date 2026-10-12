@@ -361,6 +361,13 @@ Consumer: sigma-tkgd 2026-10-12 — its pinned src_label/dst_label pushdown (`Ou
 `IncomingForNodesAtPin`) misses the earlier life, and `ForEachRelEffectiveAtNodes` at O(H) per call is too slow for
 every pinned label source; sigma waits for this item.
 
+Built 2026-10-12 (branch worktree-agent-ab0ee0097a18b0a1f, unreleased; CHANGELOG `[Unreleased]`, evidence
+`tasks/evidence/effective-scans/50-*`): `store.ReimportedRelCapability` + the shared gather; AtNodes one seed on 100 K
+with history 5.5-6.9 s → 13-19 ms badger, 1.0-1.1 s → 8-28 ms memory. Not yet within a constant factor of the by-IDs
+door (1.0-2.7 / 0.2-1.1 ms): the stores' `ForEachDeletedRelID` is an O(H) in-RAM ID scan (memory history map, badger
+presence set + sort; ~14 of 16 ms badger CPU). Follow-up if that gate stands: a store-maintained deleted-rel set
+(O(deleted) per call), or the ever-adjacency sidecar.
+
 ### 51. Effective scans bounded by valid end (cost follows the result, not the history)
 
 *HIGH (consumer: sigma-tkgd step 6, 2026-10-12)* — open; not started.

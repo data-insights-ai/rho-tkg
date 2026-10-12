@@ -785,7 +785,9 @@ one-shot markers (`property_index_on_disk_built`,
 (`node_count`, `rel_count`), and the graph layer's `MetaKVCapability` entries,
 stored under the same `0x0F/<name>` encoding (e.g. `schema_version`,
 `graph_epoch`, `tx_instant_floor`, `unique_constraints`,
-`compacted_through_tx`, `id_slot_lease`).
+`compacted_through_tx`, `id_slot_lease`, `rel_reimported_built`), and the
+store's re-imported relationship set (`rel_reimported/<8B relID>`, empty
+value, one key per relationship re-imported with other endpoints; backlog 50).
 
 **Note:** No `0x0F/next_node_id` or `0x0F/next_rel_id` — snowflake generation is stateless.
 
@@ -1251,6 +1253,6 @@ and compression. Treat this row as unverified.)
 | 68b | Entity nil receivers fail closed | Nil `*types.Node` and `*types.Relationship` accessors return zero values, no-error mutators no-op, and error-returning mutators return `ErrNilNode`/`ErrNilRelationship`; nil `*PropertySlice` pointer mutators return `ErrNilPropertySlice`; nil metadata/integrity helpers return zero/nil |
 | 69 | AsyncEventBus serializes priority dispatch | `AsyncEventBusConfig.Workers` values greater than one are accepted but capped at one dispatcher, so `PublishBatch` priority ordering is preserved during normal drain and `Close` |
 | 69a | AsyncEventBus enforces PublishBatch priority ceiling | `AsyncEventBus.PublishBatch` raises a per-batch priority ceiling for each priority pass and clears it at end-of-batch; the dispatcher honours the ceiling so an in-batch wake-up triggered by `BackpressureBlock` filling a queue does NOT dispatch a pre-existing lower-priority event before later same-batch higher-priority events have been made visible |
-| 69b | Optional deleted-iteration store capability accelerates temporal adjacency | `Store` implementations may expose `DeletedIterationCapability` (`ForEachDeletedNodeID` / `ForEachDeletedRelID`) and the depth variant; the graph layer uses these in the adjacency-at-t coverage fold for `g.Temporal().OutgoingRelsAt` / `IncomingRelsAt` / `NeighborsAt` so cost is O(deleted_count) instead of O(total history). Stores that omit the capability transparently fall back to the all-history scan with identical semantics |
+| 69b | Optional deleted-iteration store capability accelerates temporal adjacency | `Store` implementations may expose `DeletedIterationCapability` (`ForEachDeletedNodeID` / `ForEachDeletedRelID`) and the depth variant; the graph layer uses these, with `ReimportedRelCapability` (relationship IDs re-imported with other endpoints, backlog 50), in the adjacency coverage fold for `g.Temporal().OutgoingRelsAt` / `IncomingRelsAt` / `NeighborsAt` / `ForEachRelEffectiveAtNodes` and the pinned adjacency doors so cost is O(deleted + re-imported) instead of O(total history). Stores that omit either capability transparently fall back to the all-history scan with identical semantics |
 | 70 | Property deep-copy results are validated | Property ingress validates registered custom values after `DeepCopyValue`, rejects copy panics or unsupported copy results, and preserves value-vs-pointer shape before storing |
 | 71 | Temporal diff handlers run outside graph locks | `g.Temporal().DiffCallback` collects IDs and resolves entity pairs under graph read locks but invokes caller `DiffHandlers` after releasing the lock, so handlers can call graph read APIs even when a writer is waiting |

@@ -36,6 +36,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestHistoryLives_*` (cold earlier shard after rotation, truncation across lives, `Clear`, restart, malformed
   entries, the open-time backfill of a pre-fix store), `TestAddRelationshipsGeneratedBatchSkipsEarlierLivesWalk`;
   evidence `tasks/evidence/reimport-shards/`.
+### Added
+
+- **`store.ReimportedRelCapability`** (`NoteReimportedRel(id)` / `ForEachReimportedRelID(fn)`, backlog 50): the set of
+  relationship IDs re-imported with other endpoints than an earlier life. Memory keeps it in RAM; badger keeps one
+  meta key per ID (`rel_reimported/<id>`, synced before the row it precedes, survives reopen, wiped by `Clear`) with a
+  RAM copy; sharded notes on the shard owning the ID; tiered on the reference shard. The graph layer notes an ID only
+  when a row of another life names another start or end node, so a same-endpoint re-import costs nothing.
+
+### Changed
+
+- **`ForEachRelEffectiveAtNodes` no longer folds every relationship with history per call** (backlog 50). Its
+  candidates are the seeds' adjacency, the deleted relationships and the re-imported set — the gather every
+  adjacency door uses. One seed with 50 relationships on 100 K relationships that all have history, back to back on
+  a shared host: badger 5.5-6.9 s → 13-19 ms, memory 1.0-1.1 s → 8-28 ms per call, against 1.0-2.7 ms / 0.2-1.1 ms
+  for `RelsEffectiveByIDs` over the same 50 (`BenchmarkEffectiveAtNodesOneSeed`, renamed from
+  `BenchmarkEffectiveScansOneSeed`); rows read stay within the seed's adjacency plus deleted plus
+  re-imported (`TestEffectiveAtNodesVisitsSeedAdjacencyOnly`: 412 → 12 relationship rows read on badger for 5 seed
+  relationships among 400 with history). What remains O(H) is the in-RAM ID scan behind the stores'
+  `ForEachDeletedRelID` (memory walks its history map, badger its history-presence set; no row reads; about 14 ms of
+  the 16 ms badger CPU per call above), shared with every pinned adjacency door.
+- **First open after the upgrade scans relationship history once** (`rel_reimported_built` meta marker): every live
+  relationship whose history names other endpoints than its live row is noted, so graphs written before this release
+  are covered. A store that cannot run the scan (read-only, no MetaKV) keeps the all-history fold.
+
+### Fixed
+
+- **Pinned and temporal adjacency doors miss the earlier life of a relationship re-imported with other endpoints**
+  (backlog 50). `Outgoing/IncomingForNodesAtPin`, `*ForNodesAtTx`, `OutgoingRelsAt` / `IncomingRelsAt`,
+  `NeighborsAt`, `ForEachAdjacentRelAt` / `ForEachAdjacentEndpointAt` under a temporal filter folded only DELETED
+  relationship IDs into a node's live adjacency, on the rule "endpoints are immutable"; an ID deleted and
+  re-imported as C->B is live again, so at a pin inside its A->B life `OutgoingForNodesAtPin([A])` answered nothing
+  while `RelAsOf(id, pin)` was the A->B row. The candidates now include the re-imported set, noted by
+  `Rels.Import` / `GraphTx` import, a replica's apply of a put over a deleted life and `IO.Import`. Proven on
+  memory, badger, sharded and tiered, on a replica, after export → import, after a badger reopen and on a badger
+  graph written before the set existed (`TestPinnedAdjacencyFindsReimportedEarlierLife`, every door against a
+  per-ID oracle; evidence `tasks/evidence/effective-scans/50-*`).
 
 ## [4.51.1] - 2026-10-12
 
