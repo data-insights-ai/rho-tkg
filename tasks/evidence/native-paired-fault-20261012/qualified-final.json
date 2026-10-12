@@ -1,0 +1,509 @@
+{
+  "schema": 1,
+  "status": "PASS selected recovery and actual paired six-operation qualification",
+  "source": {
+    "production_commit": "f0b54b14070aa538d784d756ad63ad32c2273f66",
+    "fixture_checkpoint": "6fcc04e5c027c9546e00dc9b60a54f4a49e0baab",
+    "fixture_integration": "apply archive fixture-source.patch or squash exact eight listed paths against79ba; NEVER merge historical fixture ancestry",
+    "fixture_base": "79ba249613f75e35e9eb54109c98e4a2e7d821be",
+    "committed_manifest": "committed-source-sha256.json",
+    "manifest_sha256": "1599dadf5bcc3dea14b4084b40a26510e3a99159be9c06a768afce4d456c4f5b",
+    "Go_files": 553,
+    "fixture_patch_sha256": "7928647f35388bc69c8a6e049b710476af149f8bc310b4cda3e9256267dd6652",
+    "post_runtime_equivalent_changes": [
+      "test tagged switch/embedded Commit/Fatalf/typed-nil variables and constant conversion only; actual configured lint qualified final bytes",
+      "persisted Reserve/Use recipe type separation got final10-parent normal/coverage and Store7race; prior actual paired race carried across unchanged wire/Reserve/Use behavior"
+    ]
+  },
+  "environment": {
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off",
+    "GOTOOLCHAIN": "local"
+  },
+  "toolchain": {
+    "binary": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+    "VERSION": "go1.26.9\ntime 2026-10-02T20:28:03Z\n",
+    "VERSION_sha256": "4b7369cf043da7b3b8d638a16011a35d6de2efe861e0bd344fb0011f91515b9e",
+    "lint": "golangci-lint2.13.2",
+    "lint_sha256": "5a88e04e56c1ccd7617c01666df23e5767d7a12cf21bac2c02e3170d67a27eef"
+  },
+  "resource_limits": {
+    "watchdog_seconds": 180,
+    "aggregate_process_tree_RSS_MiB": 4096,
+    "Go_timeout_seconds": 150,
+    "limiter_sha256": "6dc4e0362827ecd0854436b9fa1a812342b693d65ba093291d358b359e733283"
+  },
+  "gates": {
+    "deferral-store-normal": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^TestRecoveryDependency(ExactReceiptRejectsCopiesMutationAndStaleFrontiers|CallbacksCannotReplayReceiptAndCloseFailureIsTerminal|OrphanUncommittedOwnerAndMalformedTailRefuseWithoutWrite|HashBindsEntryOrderHeaderAndData|WriteAndSyncFailureNeverReturnPrefix)$",
+        "./internal/raftlog"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 401.688,
+      "elapsed_s": 5.787,
+      "exit_code": 0,
+      "reason": "completed",
+      "raw": "deferral-store-normal.jsonl",
+      "events": {
+        "parent_passes": 5,
+        "subtest_passes": 16,
+        "fail_events": 0,
+        "skip_events": 0
+      }
+    },
+    "recovery-graph-normal": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^TestRecoveryCapacity(CrossQueuedOriginalReserveAndUse|RangeQueuedFenceAndCapture|OwnerRetirementBeforeNewCommand)$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 922.5,
+      "elapsed_s": 26.72,
+      "exit_code": 0,
+      "reason": "completed",
+      "raw": "recovery-graph-normal.jsonl",
+      "events": {
+        "parent_passes": 3,
+        "subtest_passes": 26,
+        "fail_events": 0,
+        "skip_events": 0
+      }
+    },
+    "recovery-compat-normal": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^Test(PreparedRangeMoveCrossRecoveryUsesIncomingBankNotActiveBaseline|RangeMoveAdmission(WrongSourcePlacementRefusesWithoutRecoveryOwner|NumberedUndoRetainsCreditsUntilFinalAbort)|ApplicationReadyProgress(FullPersistenceAndLifecycle|FirstFittingPrefixesPreserveInputAndFence|VerifierErrorsAreNotCapacityFallback))$",
+        "./internal/graphapply",
+        "./internal/raftlog"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 861.344,
+      "elapsed_s": 29.551,
+      "exit_code": 0,
+      "reason": "completed",
+      "raw": "recovery-compat-normal.jsonl",
+      "events": {
+        "parent_passes": 6,
+        "subtest_passes": 13,
+        "fail_events": 0,
+        "skip_events": 0
+      }
+    },
+    "recovery-race": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-race",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^Test(RecoveryCapacity(CrossQueuedOriginalReserveAndUse|RangeQueuedFenceAndCapture|OwnerRetirementBeforeNewCommand)|RecoveryDependency(ExactReceiptRejectsCopiesMutationAndStaleFrontiers|CallbacksCannotReplayReceiptAndCloseFailureIsTerminal|OrphanUncommittedOwnerAndMalformedTailRefuseWithoutWrite|HashBindsEntryOrderHeaderAndData|WriteAndSyncFailureNeverReturnPrefix)|PreparedRangeMoveCrossRecoveryUsesIncomingBankNotActiveBaseline|RangeMoveAdmission(WrongSourcePlacementRefusesWithoutRecoveryOwner|NumberedUndoRetainsCreditsUntilFinalAbort)|ApplicationReadyProgress(FullPersistenceAndLifecycle|FirstFittingPrefixesPreserveInputAndFence|VerifierErrorsAreNotCapacityFallback))$",
+        "./internal/graphapply",
+        "./internal/raftlog"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 918.078,
+      "elapsed_s": 86.914,
+      "exit_code": 0,
+      "reason": "completed",
+      "raw": "recovery-race.jsonl",
+      "events": {
+        "parent_passes": 14,
+        "subtest_passes": 55,
+        "fail_events": 0,
+        "skip_events": 0
+      }
+    },
+    "recovery-overlay": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-covermode=set",
+        "-coverpkg=./internal/raftlog,./internal/graphapply",
+        "-coverprofile=/var/tmp/rho-v5-native-paired-final-20261012/recovery-overlay.out",
+        "-run",
+        "^TestRecoveryCapacity(CrossQueuedOriginalReserveAndUse|RangeQueuedFenceAndCapture|OwnerRetirementBeforeNewCommand)$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 917.969,
+      "elapsed_s": 31.711,
+      "exit_code": 0,
+      "reason": "completed",
+      "raw": "recovery-overlay.jsonl",
+      "events": {
+        "parent_passes": 3,
+        "subtest_passes": 27,
+        "fail_events": 0,
+        "skip_events": 0
+      }
+    },
+    "recovery-reader-race": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-race",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^TestRecoveryCapacityOwnerRetirementBeforeNewCommand$/^fence$/^same-ready$/^actual-reader-refusals$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 896.656,
+      "elapsed_s": 16.698,
+      "exit_code": 0,
+      "reason": "completed",
+      "raw": "recovery-reader-race.jsonl",
+      "events": {
+        "parent_passes": 1,
+        "subtest_passes": 3,
+        "fail_events": 0,
+        "skip_events": 0
+      }
+    },
+    "recovery-final": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-covermode=set",
+        "-coverpkg=./internal/raftlog,./internal/graphapply",
+        "-coverprofile=/var/tmp/rho-v5-native-paired-final-20261012/recovery-final.out",
+        "-run",
+        "^Test(RecoveryCapacity(CrossQueuedOriginalReserveAndUse|RangeQueuedFenceAndCapture|OwnerRetirementBeforeNewCommand)|RecoveryDependency(ExactReceiptRejectsCopiesMutationAndStaleFrontiers|CallbacksCannotReplayReceiptAndCloseFailureIsTerminal|OrphanUncommittedOwnerAndMalformedTailRefuseWithoutWrite|HashBindsEntryOrderHeaderAndData|WriteAndSyncFailureNeverReturnPrefix)|Recovery(DurableQueueMalformedFramesAndChangedCommandCannotReopen|OneCreditQueuedReservationRoundTripAndReopen))$",
+        "./internal/graphapply",
+        "./internal/raftlog"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 967.062,
+      "elapsed_s": 38.309,
+      "exit_code": 0,
+      "reason": "completed",
+      "raw": "recovery-final.jsonl",
+      "events": {
+        "parent_passes": 10,
+        "subtest_passes": 54,
+        "fail_events": 0,
+        "skip_events": 0
+      }
+    },
+    "recovery-final-race": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-race",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^Test(RecoveryDependency(ExactReceiptRejectsCopiesMutationAndStaleFrontiers|CallbacksCannotReplayReceiptAndCloseFailureIsTerminal|OrphanUncommittedOwnerAndMalformedTailRefuseWithoutWrite|HashBindsEntryOrderHeaderAndData|WriteAndSyncFailureNeverReturnPrefix)|Recovery(DurableQueueMalformedFramesAndChangedCommandCannotReopen|OneCreditQueuedReservationRoundTripAndReopen))$",
+        "./internal/raftlog"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 525.938,
+      "elapsed_s": 10.142,
+      "exit_code": 0,
+      "reason": "completed",
+      "raw": "recovery-final-race.jsonl",
+      "events": {
+        "parent_passes": 7,
+        "subtest_passes": 27,
+        "fail_events": 0,
+        "skip_events": 0
+      }
+    },
+    "native-noop": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 431.906,
+      "elapsed_s": 15.903,
+      "exit_code": 0,
+      "reason": "completed",
+      "raw": "native-noop.jsonl",
+      "events": {
+        "parent_passes": 1,
+        "subtest_passes": 0,
+        "fail_events": 0,
+        "skip_events": 0
+      }
+    },
+    "native-race-fixed": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-race",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 650.922,
+      "elapsed_s": 49.739,
+      "exit_code": 0,
+      "reason": "completed",
+      "raw": "native-race-fixed.jsonl",
+      "events": {
+        "parent_passes": 1,
+        "subtest_passes": 0,
+        "fail_events": 0,
+        "skip_events": 0
+      }
+    }
+  },
+  "statics": {
+    "recovery-vet": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "vet",
+        "./internal/graphapply",
+        "./internal/raftlog"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 281.516,
+      "elapsed_s": 1.956,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "recovery-lint-final": {
+      "command": [
+        "/var/tmp/rho-v6-preflight-evidence-20261012/bin/golangci-lint",
+        "run",
+        "--config",
+        "../.golangci.yml",
+        "--concurrency=2",
+        "--timeout=150s",
+        "--max-same-issues=0",
+        "--max-issues-per-linter=0",
+        "./internal/graphapply",
+        "./internal/raftlog"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 2092.297,
+      "elapsed_s": 59.881,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "recovery-final-coverfunc": {
+      "command": [
+        "/usr/bin/env",
+        "GOMAXPROCS=2",
+        "GOMEMLIMIT=2GiB",
+        "GOFLAGS=-p=1",
+        "GOWORK=off",
+        "GOTOOLCHAIN=local",
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "tool",
+        "cover",
+        "-func=/var/tmp/rho-v5-native-paired-final-20261012/recovery-final-deduplicated.out"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 26.578,
+      "elapsed_s": 0.586,
+      "exit_code": 0,
+      "reason": "completed"
+    }
+  },
+  "coverage": {
+    "algorithm": "set OR/max for identical block keys duplicated by two coverpkg test binaries; raw retained",
+    "blocks": 13106,
+    "duplicates": 13106,
+    "newfile_covered_total": {
+      "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/recovery_apply_before.go": [
+        8,
+        10
+      ],
+      "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/recovery_capacity_binding.go": [
+        36,
+        40
+      ],
+      "github.com/data-insights-ai/rho-tkg/v5/internal/raftlog/application_recovery_dependency.go": [
+        61,
+        70
+      ]
+    }
+  },
+  "coverage_scope": {
+    "new_file_statements": [
+      105,
+      120
+    ],
+    "percent": 87.5,
+    "new_public_library_methods": [],
+    "whole_selected_package_percent_is_not_acceptance": true,
+    "raw_pre_type_profiles_and_initial97of120_aggregate_preserved": true,
+    "final_profile": "recovery-final-deduplicated.out",
+    "function_report": "recovery-final-coverfunc.txt"
+  },
+  "paired": {
+    "normal": {
+      "equal": true,
+      "fixtureID": "graph-fault-local-v1",
+      "logicalOperations": 6,
+      "completeLogicalCDCGroups": 6,
+      "componentChanges": 7,
+      "faultCases": 4,
+      "originalInputSHA256": {
+        "native-raft": {
+          "node-a": "283491f0702a7184588b7a48425c4b02e0a812a53c55d3f994a5ebd86d5005e4",
+          "node-b": "4db2ef4dd29e430b53780e1f66e81363ffbaf708d755575bd62c6690679146c3",
+          "edge-create": "2faaba59d1c65e0ee9328a852fa13b4a0c5a31be0a0a25d34b6439530a3f5565",
+          "precommit-update": "0418d32399f5474bcccb611edf1dc3800543d192318efddf4d39a9e28276d122",
+          "postcommit-update": "0b70bdaeafa3dff9ff044734285fcbe9c53569101f9b843fd15cc44fc1e3b1c3",
+          "zone-loss-update": "cf4de15e99eea494329c5300df3f9c35484ac55f899a39443e926d5293c8e38c"
+        },
+        "foundationdb": {
+          "node-a": "932bc6c089ee80d2bbc7ace86fc202502e1d059b497f7ed80d165d9b9bd214e5",
+          "node-b": "9be6fe5ea5a27eaab2c85b69d995ebee293d5a50c5da41268d7dbe4146ff31b9",
+          "edge-create": "d56063b4cb01bc4ad8c8bf2d28996db27865a81581725616599e380fb8e6331c",
+          "precommit-update": "788973f3d4385987ec2ff7da50daca71f265a4c52ea1f5f09fbb68a049680eb8",
+          "postcommit-update": "919e3e4658036ad843379c8b3b9a1b66f80b51f607102df27b2adbe8e32ccde6",
+          "zone-loss-update": "b38e94f29881835aa034707a8b400fea04a8a64011188e13d7c7444cb723dd71"
+        }
+      },
+      "FDBArtifactEvidence": {
+        "artifacts": 26,
+        "sealedCommandEvents": 221,
+        "backendSHA256": "b7f3df478fbb3c15c4ba8475107e360165fc8a008502977f36526eb7b1bb76bc"
+      },
+      "scope": "Local functional paired comparison only: not multi-host, power loss, arbitrary failure schedules, cost/performance or engine selection. Existing scalar, graph-fault and lifecycle encodings remain unchanged; this is a fresh fixture namespace.",
+      "nativeOpaqueCodecBoundary": "qualified actual exporter; not decoded into authority by Python",
+      "nativeSHA256": "10902f4bbac48470fd89f94461579281c086fe83f119770e9070a0cb55fd8c82",
+      "fdbSHA256": "cde5dfee209c99c78de3cc43b31c78b7471dedc61f38b2ddeb98e7033cf8c14c"
+    },
+    "race": {
+      "equal": true,
+      "fixtureID": "graph-fault-local-v1",
+      "logicalOperations": 6,
+      "completeLogicalCDCGroups": 6,
+      "componentChanges": 7,
+      "faultCases": 4,
+      "originalInputSHA256": {
+        "native-raft": {
+          "node-a": "636e53431032c150b7e0dc65ba00d24fbd5c8442b1b5e810a901c3ab6731a781",
+          "node-b": "b7654744508efe7d88a88d01dc8ab2e17e673e4fd3c5261ac95810bd84ab2276",
+          "edge-create": "8ca76729ea9c552e18e130a52d4b8b6842e54e077390edc8bad8356651b75729",
+          "precommit-update": "11642470cabaed00cc3252d1a064278269ae2a5df07e2333587f95c69aec66d5",
+          "postcommit-update": "ba185cc728b49e8723113906713d5f39737e3153646eede558fb09c221819138",
+          "zone-loss-update": "540eeea544ec598dba950b8a39428cea55815c124bb4c6bd6594b17d81669a1c"
+        },
+        "foundationdb": {
+          "node-a": "932bc6c089ee80d2bbc7ace86fc202502e1d059b497f7ed80d165d9b9bd214e5",
+          "node-b": "9be6fe5ea5a27eaab2c85b69d995ebee293d5a50c5da41268d7dbe4146ff31b9",
+          "edge-create": "d56063b4cb01bc4ad8c8bf2d28996db27865a81581725616599e380fb8e6331c",
+          "precommit-update": "788973f3d4385987ec2ff7da50daca71f265a4c52ea1f5f09fbb68a049680eb8",
+          "postcommit-update": "919e3e4658036ad843379c8b3b9a1b66f80b51f607102df27b2adbe8e32ccde6",
+          "zone-loss-update": "b38e94f29881835aa034707a8b400fea04a8a64011188e13d7c7444cb723dd71"
+        }
+      },
+      "FDBArtifactEvidence": {
+        "artifacts": 26,
+        "sealedCommandEvents": 221,
+        "backendSHA256": "b7f3df478fbb3c15c4ba8475107e360165fc8a008502977f36526eb7b1bb76bc"
+      },
+      "scope": "Local functional paired comparison only: not multi-host, power loss, arbitrary failure schedules, cost/performance or engine selection. Existing scalar, graph-fault and lifecycle encodings remain unchanged; this is a fresh fixture namespace.",
+      "nativeOpaqueCodecBoundary": "qualified actual exporter; not decoded into authority by Python",
+      "nativeSHA256": "1c5f3f0cfbd289dd77666ee70b69a6f002eea098c9944fbfb57a0b187ed6efcd",
+      "fdbSHA256": "cde5dfee209c99c78de3cc43b31c78b7471dedc61f38b2ddeb98e7033cf8c14c"
+    },
+    "normal_and_race_adversarial_checks": 19,
+    "cleanup_each": "15incarnations all reaped;12successful+3intentional SIGKILL;43708calls within397312 unchanged admission",
+    "FDB_source_archive": "tools/v5-substrate/fdb/evidence/paired-20261012.tar.gz",
+    "FDB_source_archive_sha256": "95c08fe73a4303482876fd887b0fc6d25b581718e62e40134add270f9389343a",
+    "FDB_reused": "successful_local_lane only,552artifact hashes verified; no new FDB execution"
+  },
+  "scope_and_limits": [
+    "native/FDB six operations, four faults, seven CDC components, six old reads in an actual same-machine distributed process schedule; no seven-operation expansion",
+    "Store synthetic Ready/receipt tests claim storage-contract behavior only; graph regression inputs are genuine canonical native commands, not manufactured quorum or decision proofs",
+    "owner retirement progress requires actual Driver committed predecessor and reclassification after installed state; arbitrary callback/read/close/IO errors remain terminal",
+    "not full V2, release, all-package coverage, power-loss, arbitrary fault schedule, cost, or engine-selection acceptance"
+  ],
+  "preserved_failures": [
+    "initial released-retained-lease reconnect refusal; live-owner refusal remains",
+    "actual reopened follower entry57 Resolve before earlier queued Prepare installed",
+    "paired normal pass prior to no-op exporter qualification, rejected comparison retained",
+    "first same-ready boundary test loop stopped before final install; assertion/fixture loop corrected without production weakening",
+    "paired-race missing declared artifact parent failed before any child spawned; owned directory correction only",
+    "uncapped scoped lint transitively exposed ephemeral error in persisted type; type separation fixed all8 reports, no suppressed comparisons; PR-mode receipt retained separately"
+  ],
+  "archive": {
+    "file": "qualified-final.tar.gz",
+    "bytes": 4852899,
+    "sha256": "f8827d61a732d26bebf3251e5d575eef7df6172d0224fff953351a40e5acda92",
+    "members": 580,
+    "uncompressed_bytes": 34606111,
+    "contents": "raw JSON/stderr/commands/watchdogs, profiles/function reports/manifests,actual native normal/race/failure artifacts and five diagnostic source snapshots; no whole source tree or duplicate FDB lane"
+  },
+  "historical_untracked_preserved": {
+    "files": 60,
+    "bytes": 367961,
+    "byte_hashes_verified": true
+  },
+  "runtime_lease": "released; all handles terminal; no child/compiler/scanner live",
+  "push": "none"
+}
