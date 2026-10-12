@@ -43,12 +43,17 @@
     "execution_limits": "Go 1.26.9, GOMAXPROCS=2, GOMEMLIMIT=2GiB, GOFLAGS=-p=1, GOWORK=off; each local Go invocation <=4GiB aggregate process-tree RSS and <=180s. Docker tools use 4GiB/2CPU; wrapper client RSS is not container capacity proof."
   },
   "hosted_ci": {
-    "status": "pending_corrected_dispatcher_run",
+    "status": "success",
     "failed_checkpoint_run": 38189378747,
     "failed_checkpoint_url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38189378747",
     "failure": "Aggregate graphapply package race invocation reached its ten-minute timeout; active test had run one second. Coverage/security/comparison jobs passed; root matrix test was canceled.",
     "correction": "../v2-certified-reads/v5-graphapply-batches.json",
-    "correction_validation": "80 dispatcher guards and static checks; compiled inventory of 435 names assigned exactly once to 109/109/109/108. All other packages run once. Flags, timeouts and resource limits unchanged."
+    "correction_validation": "80 dispatcher guards and static checks; compiled inventory of 435 names assigned exactly once to 109/109/109/108. All other packages run once. Flags, timeouts and resource limits unchanged.",
+    "commit": "13612eb315c0b15c29200d67a2cbeebfdd882fbd",
+    "run_id": 38191377916,
+    "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38191377916",
+    "receipt": "hosted-ci-13612eb3.json",
+    "qualification": "All seven applicable root/v5/comparison jobs passed; PR-only lint skipped, pinned local lint retained. This closes E17 hosted validation, not E18 or full V2."
   },
   "remaining": [
     "E18 authenticated remote historical index-starting parity",
