@@ -3,6 +3,9 @@ SHELL := /bin/bash
 
 .PHONY: build test test-v test-race test-integration cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker check ci ci-docker clean
 
+# CI opts into four exhaustive graphapply batches; local defaults remain unsplit.
+V5_RACE_GRAPHAPPLY_SHARDS ?= 1
+
 COVER_MIN ?= 80
 GOLANGCI_LINT_VERSION ?= v2.13.2
 GOSEC_VERSION ?= v2.29.0
@@ -18,7 +21,7 @@ test-v:
 	go test -short -count=1 -v ./...
 
 test-race:
-	go test -short -race -count=1 ./...
+	$(SHELL) ../scripts/test-race.sh "$(V5_RACE_GRAPHAPPLY_SHARDS)" v5
 
 test-integration:
 	go test -count=1 -run Integration ./...

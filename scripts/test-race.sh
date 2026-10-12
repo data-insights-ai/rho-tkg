@@ -1,49 +1,57 @@
 #!/usr/bin/env bash
-# Shared root race gate. CI splits only the large core package; each top-level
-# test retains all its subtests and Go's existing per-invocation timeout.
+# Shared root/v5 race gate. CI splits only the selected large package; each
+# top-level test retains all subtests and Go's existing per-invocation timeout.
 set -euo pipefail
 
+gate="root race gate"
 fail() {
-  printf 'root race gate: %s\n' "$*" >&2
+  printf '%s: %s\n' "$gate" "$*" >&2
   exit 1
 }
 
-if (( $# > 1 )); then
-  fail 'expected one core-shard count (1 or 4)'
+if (( $# > 2 )); then
+  fail 'expected a shard count (1 or 4) and optional root/v5 profile'
 fi
+case "${2-root}" in
+  root) split_path=./pkg/graph/internal/core; split_name=core ;;
+  v5) gate="v5 race gate"; split_path=./internal/graphapply; split_name=graphapply ;;
+  *) fail 'profile must be root or v5' ;;
+esac
 shards=${1-1}
 flags=(-short -race -count=1)
 case "$shards" in
   1) exec go test "${flags[@]}" ./... ;;
   4) ;;
-  *) fail 'core-shard count must be 1 or 4' ;;
+  *) fail "$split_name-shard count must be 1 or 4" ;;
 esac
 
 # Race-aware package discovery preserves the current platform/build constraints.
 # Inherited GOFLAGS, GOMEMLIMIT and CPU settings are never rewritten here.
-core=$(go list -race ./pkg/graph/internal/core)
-[[ -n "$core" && "$core" != *$'\n'* ]] || fail 'expected one core package'
+split_package=$(go list -race "$split_path")
+[[ -n "$split_package" && "$split_package" != *$'\n'* ]] || fail "expected one $split_name package"
 packages=$(go list -race ./...)
-[[ -n "$packages" ]] || fail 'empty root package inventory'
+[[ -n "$packages" ]] || fail "empty ${2-root} package inventory"
 other=()
-core_count=0
+split_count=0
 while IFS= read -r package; do
   [[ -n "$package" ]] || fail 'empty package name'
-  if [[ "$package" == "$core" ]]; then
-    core_count=$((core_count + 1))
+  if [[ "$package" == "$split_package" ]]; then
+    split_count=$((split_count + 1))
   else
     other+=("$package")
   fi
 done <<< "$packages"
-(( core_count == 1 )) || fail 'core package must appear exactly once'
+(( split_count == 1 )) || fail "$split_name package must appear exactly once"
 duplicates=$(printf '%s\n' "$packages" | LC_ALL=C sort | uniq -d)
-[[ -z "$duplicates" ]] || fail 'duplicate root packages'
+[[ -z "$duplicates" ]] || fail "duplicate ${2-root} packages"
 
 # Go supplies the compiled inventory, rather than source-name heuristics. Fuzz
 # targets run their seed corpora under -run; examples run through the same door.
 # Listing errors are fatal. A missing/foreign footer cannot look like a partial
-# successful inventory. The core package currently has no TestMain side effects.
-listed=$(go test "${flags[@]}" -list '^(Test|Fuzz|Example)' "$core")
+# successful inventory. Neither selected package has TestMain side effects.
+# Process-test parents re-exec the compiled binary with their own child selector;
+# the parent shard selector never restricts the compiled child entry points.
+listed=$(go test "${flags[@]}" -list '^(Test|Fuzz|Example)' "$split_package")
 names=()
 footers=0
 while IFS= read -r line; do
@@ -55,13 +63,13 @@ while IFS= read -r line; do
       ;;
     ok[[:space:]]*)
       read -r status package duration <<< "$line"
-      [[ "$status" == ok && "$package" == "$core" && -n "$duration" ]] || fail 'unexpected inventory footer'
+      [[ "$status" == ok && "$package" == "$split_package" && -n "$duration" ]] || fail 'unexpected inventory footer'
       footers=$((footers + 1))
       ;;
     *) fail "unexpected inventory output: $line" ;;
   esac
 done <<< "$listed"
-(( footers == 1 && ${#names[@]} >= shards )) || fail 'incomplete or too-small core inventory'
+(( footers == 1 && ${#names[@]} >= shards )) || fail "incomplete or too-small $split_name inventory"
 sorted=$(printf '%s\n' "${names[@]}" | LC_ALL=C sort)
 duplicates=$(printf '%s\n' "$sorted" | uniq -d)
 [[ -z "$duplicates" ]] || fail 'duplicate compiled test names'
@@ -91,12 +99,12 @@ while IFS= read -r name; do
   index=$((index + 1))
 done <<< "$sorted"
 assigned_sorted=$(printf '%s\n' "${assigned[@]}" | LC_ALL=C sort)
-[[ "$assigned_sorted" == "$sorted" && ${#assigned[@]} == "${#names[@]}" ]] || fail 'core assignment is not exhaustive and disjoint'
+[[ "$assigned_sorted" == "$sorted" && ${#assigned[@]} == "${#names[@]}" ]] || fail "$split_name assignment is not exhaustive and disjoint"
 for ((bucket=0; bucket<shards; bucket++)); do
-  (( counts[bucket] > 0 )) || fail 'empty core shard'
+  (( counts[bucket] > 0 )) || fail "empty $split_name shard"
 done
 
-printf 'root race gate: %s other packages, %s core names, %s exhaustive shards\n' "${#other[@]}" "${#names[@]}" "$shards"
+printf '%s: %s other packages, %s %s names, %s exhaustive shards\n' "$gate" "${#other[@]}" "${#names[@]}" "$split_name" "$shards"
 # Fail fast and return nonzero on any package/shard failure; a partially run gate
 # never prints its completion marker. No retry or altered timeout is involved.
 if (( ${#other[@]} > 0 )); then
@@ -104,7 +112,7 @@ if (( ${#other[@]} > 0 )); then
 fi
 for ((bucket=0; bucket<shards; bucket++)); do
   pattern="^(${patterns[$bucket]})$"
-  printf 'root race gate: core shard %s/%s, %s names, -run %s\n' "$((bucket + 1))" "$shards" "${counts[$bucket]}" "$pattern"
-  go test "${flags[@]}" -run "$pattern" "$core"
+  printf '%s: %s shard %s/%s, %s names, -run %s\n' "$gate" "$split_name" "$((bucket + 1))" "$shards" "${counts[$bucket]}" "$pattern"
+  go test "${flags[@]}" -run "$pattern" "$split_package"
 done
-printf 'root race gate: all root packages and core shards passed\n'
+printf '%s: all %s packages and %s shards passed\n' "$gate" "${2-root}" "$split_name"

@@ -59,8 +59,12 @@ jobs:
             fi
           done
           make test-race
-      - run: make test-race
-        if: matrix.module != '.'
+      # v5 graphapply has the same whole-parent batching contract as root core.
+      - name: v5 race tests with exhaustive graphapply batches
+        if: matrix.module == 'v5'
+        env:
+          V5_RACE_GRAPHAPPLY_SHARDS: "4"
+        run: make test-race
   coverage:
     runs-on: ubuntu-latest
     timeout-minutes: 20

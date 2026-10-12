@@ -1,0 +1,608 @@
+{
+  "base": "9c3891da1afb34d882fde8616670f1524c7e766b",
+  "scope": "CI scheduling only: fixed root/v5 dispatcher profiles, unsplit defaults, four whole-parent graphapply CI groups.",
+  "source_files": {
+    "scripts/test-race.sh": "05ca5b53967500c7fe49c0e1d43037cbe9fcddb24ee91f021da5a10e1a627ce6",
+    "v5/Makefile": "77c160be99b5de228100ee7a014482b6ee862df08a7264ebb71cd8ec08035141",
+    ".github/workflows/ci.yml": "60233191a6feb9ba4e5005bfe05c1a1f697661fc67dc04677aa444149358b083"
+  },
+  "hosted_red": {
+    "run": 38189378747,
+    "head": "9c3891da1afb34d882fde8616670f1524c7e766b",
+    "log_sha256": "72c7c7b9371d0dec98213d82471542886a5bb3bb65ed00e31b60ff72da45aab7",
+    "package": "v5/internal/graphapply",
+    "package_seconds": 600.065,
+    "active_test_seconds": 1
+  },
+  "guards_passed": 80,
+  "static_checks": {
+    "bash_syntax": "PASS",
+    "shellcheck": "PASS",
+    "actionlint": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "compiled_inventory": {
+    "go_version": "go version go1.26.9 darwin/arm64",
+    "module_packages": 12,
+    "other_packages": 11,
+    "compiled_names": 435,
+    "Test": 435,
+    "Fuzz": 0,
+    "Example": 0,
+    "group_sizes": [
+      109,
+      109,
+      109,
+      108
+    ],
+    "exhaustive_disjoint": true,
+    "qualification": "Real race-aware Go compiled inventory; captured names fed to fake Go to verify actual dispatcher assignment. No race test bodies or full hosted gate run locally."
+  },
+  "inventory_budget": {
+    "command": [
+      "go",
+      "test",
+      "-short",
+      "-race",
+      "-count=1",
+      "-list",
+      "^(Test|Fuzz|Example)",
+      "./internal/graphapply"
+    ],
+    "rss_limit_mib": 4096.0,
+    "wall_limit_s": 180.0,
+    "sample_interval_s": 0.25,
+    "peak_tree_rss_mib": 823.312,
+    "elapsed_s": 14.645,
+    "exit_code": 0,
+    "reason": "completed"
+  },
+  "root_compatibility": "Exact successful command/output compatibility with baseline in 1/4/default modes; exact root failed inventory outputs and fail-fast calls also checked.",
+  "subprocess_filters": "Graph/materializer parents re-exec current compiled binary with explicit child selectors, independent of parent shard regex.",
+  "qualification": "Real Go1.26.9 race-aware package discovery and graphapply compiled inventory only. Dispatch verified against captured names through fake Go. No Go production/tests, thresholds, timeouts or resource settings changed. No full local race/coverage/Docker gate or hosted post-change race run claimed. Hosted full gate is pending root integration/push.",
+  "archive": "v5-graphapply-batches.tar.gz",
+  "archive_sha256": "934ea1b67aac46319be583227b4032f5b20a72b01a09810ac8699d18a5f364d6",
+  "archive_bytes": 38604,
+  "files": [
+    {
+      "path": "author/actionlint.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "author/actual-census-fake-dispatch.log",
+      "sha256": "5b8a80f2be35663c430d3db509697458843fcc38af7d5ea7102440d13095b105",
+      "bytes": 55544
+    },
+    {
+      "path": "author/bad-args-15.log",
+      "sha256": "b3cce18f81efdae797e331a3a302902ceb031599a9d3a09f41305b096a694b51",
+      "bytes": 53
+    },
+    {
+      "path": "author/bad-args-16.log",
+      "sha256": "b3cce18f81efdae797e331a3a302902ceb031599a9d3a09f41305b096a694b51",
+      "bytes": 53
+    },
+    {
+      "path": "author/bad-args-17.log",
+      "sha256": "b3cce18f81efdae797e331a3a302902ceb031599a9d3a09f41305b096a694b51",
+      "bytes": 53
+    },
+    {
+      "path": "author/bad-args-18.log",
+      "sha256": "b3cce18f81efdae797e331a3a302902ceb031599a9d3a09f41305b096a694b51",
+      "bytes": 53
+    },
+    {
+      "path": "author/bad-args-19.log",
+      "sha256": "70cef8f110dc54357f1291cdfa718c49cbc648bdab1c412005d4b5977e2b32f9",
+      "bytes": 87
+    },
+    {
+      "path": "author/bad-args-20.log",
+      "sha256": "abccf92485ef68dfc0b1ea0a009709cceff82dd102f624a1c57ef9f2b0513d06",
+      "bytes": 62
+    },
+    {
+      "path": "author/bad-args-21.log",
+      "sha256": "abccf92485ef68dfc0b1ea0a009709cceff82dd102f624a1c57ef9f2b0513d06",
+      "bytes": 62
+    },
+    {
+      "path": "author/bad-args-22.log",
+      "sha256": "abccf92485ef68dfc0b1ea0a009709cceff82dd102f624a1c57ef9f2b0513d06",
+      "bytes": 62
+    },
+    {
+      "path": "author/bad-args-23.log",
+      "sha256": "abccf92485ef68dfc0b1ea0a009709cceff82dd102f624a1c57ef9f2b0513d06",
+      "bytes": 62
+    },
+    {
+      "path": "author/bad-args-24.log",
+      "sha256": "abccf92485ef68dfc0b1ea0a009709cceff82dd102f624a1c57ef9f2b0513d06",
+      "bytes": 62
+    },
+    {
+      "path": "author/baseline-red.json",
+      "sha256": "7726f39aa84c4236422ea433ce9cb48e5daaee89475795dc3b34dceb2a9e9fd1",
+      "bytes": 265
+    },
+    {
+      "path": "author/baseline-red.log",
+      "sha256": "bc943f1bb2c51de5b9c2e9ad26c538efc68459b99602065835a9787ac78ac96f",
+      "bytes": 55
+    },
+    {
+      "path": "author/baseline-test-race.sh",
+      "sha256": "4bcc75d81f652dfde2c4f2f6c52f86ddf0b42c5796ac9079265fa643c2bd3f92",
+      "bytes": 4161
+    },
+    {
+      "path": "author/bash-syntax.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "author/checks.json",
+      "sha256": "52890a5b97436537521b4fdae3138631caa231e014707345e7967f6dc90ecd6c",
+      "bytes": 7770
+    },
+    {
+      "path": "author/checks.log",
+      "sha256": "061db185e0f1f91d6cb9c37e114b00f7f37974b78cc0c6bca9f31f9efe896d4b",
+      "bytes": 124
+    },
+    {
+      "path": "author/checks.py",
+      "sha256": "cc1edfdea2041ba9265dcc101e859b40d83df9b31a4a99ac073afe38b7785177",
+      "bytes": 12948
+    },
+    {
+      "path": "author/compiled-census.json",
+      "sha256": "67f5950c76840749444513e61c0d7e54b4866f16bcd324f4be270d619cfeeb3a",
+      "bytes": 30436
+    },
+    {
+      "path": "author/compiled-inventory-budget.json",
+      "sha256": "944b4657ce06b2fcc6c2e87b00eef087b9c3d9727bc44e67aaee63389dee4d8f",
+      "bytes": 336
+    },
+    {
+      "path": "author/compiled-inventory.log",
+      "sha256": "dbf8331fe5f29b60aa6172e862616dc4830f04abeeb967dff6643cf48af974bf",
+      "bytes": 26079
+    },
+    {
+      "path": "author/compiled-inventory.stderr",
+      "sha256": "d512b7299993cd429d1a0a7aa419a0e8bd0a2d389d5485ab8a8421a106502853",
+      "bytes": 289
+    },
+    {
+      "path": "author/compiled-packages-budget.json",
+      "sha256": "c8f6b533e64915e9f3f975207f248a62679a9efa58ef7c4dbed248c10ffce629",
+      "bytes": 246
+    },
+    {
+      "path": "author/compiled-packages.log",
+      "sha256": "7844b0b210f798184131d276024cc18cee0d2a42080f41a7b07168c2919f1314",
+      "bytes": 673
+    },
+    {
+      "path": "author/compiled-packages.stderr",
+      "sha256": "c33bd375287f37858b8a6f73d097eb018c281c3c7cc469517fc3197e76318f2f",
+      "bytes": 215
+    },
+    {
+      "path": "author/diff-check.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "author/go-1.26.9-version-budget.json",
+      "sha256": "3cfc93a78cd8fdc3defcae61466dc2384de04a27a381b0bb9826c39eb2b650e7",
+      "bytes": 223
+    },
+    {
+      "path": "author/go-1.26.9-version.log",
+      "sha256": "50dfaf2b461be90c530e329b6ae9c3159961579c2fb4848bbf472fe7af282db3",
+      "bytes": 33
+    },
+    {
+      "path": "author/go-1.26.9-version.stderr",
+      "sha256": "4545bd5e356aeecfdc0cc109b1245d1522a89c9f4db4e4bacd1fedd6ab58e4d5",
+      "bytes": 200
+    },
+    {
+      "path": "author/go-version-budget.json",
+      "sha256": "534ca5cf37fad48ca134fc1a2cf7889309ce98c3333551a307b8d17084332563",
+      "bytes": 223
+    },
+    {
+      "path": "author/go-version.log",
+      "sha256": "c528ba02b39880f1357f51dee70e41c1ef03e3a70c7a03055c080532b9635f58",
+      "bytes": 33
+    },
+    {
+      "path": "author/go-version.stderr",
+      "sha256": "a8a3e800f0fcbb00c9c849cb312562d1fbbccf52232080be4acbbd551386d1c9",
+      "bytes": 200
+    },
+    {
+      "path": "author/hosted-red-excerpt.log",
+      "sha256": "8c9b57eeda378301e7edafbd67c389cadb3bdb6e27a9490377c04fd87ff7ed73",
+      "bytes": 436
+    },
+    {
+      "path": "author/make-root-aggregate.log",
+      "sha256": "5c2b19fabf6f82bf87902c0f079df2f63856f690b610430eaf7cb0ce988ba500",
+      "bytes": 294
+    },
+    {
+      "path": "author/make-root-default.log",
+      "sha256": "975e8b62d2ab715bb1a688279367abe48c21db6492c28a28b1228928956b84b2",
+      "bytes": 45
+    },
+    {
+      "path": "author/make-root-four.log",
+      "sha256": "63cd059ff673ad0374e15fe0e2178ea88e611f23ead596ef8dc197bc26b27b54",
+      "bytes": 45
+    },
+    {
+      "path": "author/make-v5-default.log",
+      "sha256": "fcd90cd3f9b452dae332686bc779238f77722dc1f5dc998f13775398ca437220",
+      "bytes": 51
+    },
+    {
+      "path": "author/make-v5-four.log",
+      "sha256": "c5b9c60e700a9bba57c806a3ca10c7ba0350cdfa9ed3e85bce0fe54cdb88453b",
+      "bytes": 51
+    },
+    {
+      "path": "author/receipt.json",
+      "sha256": "7e184f3751336401161e1620e856803f941ba79512d3972f657410f7191bd666",
+      "bytes": 2538
+    },
+    {
+      "path": "author/root-blank-package.log",
+      "sha256": "896d1f7659168858c193209b84ac909b4c5bdfa6c9840a9cb366fef839702f0a",
+      "bytes": 521
+    },
+    {
+      "path": "author/root-complete.log",
+      "sha256": "3f84371effccf6f48a8f31587b9ed65b597f409241ec9093115bb2f003dae79e",
+      "bytes": 3184
+    },
+    {
+      "path": "author/root-cr-name.log",
+      "sha256": "1545c8861e0a112112384ff97be5018bc7016fe41e83df997bbbf78133850a41",
+      "bytes": 872
+    },
+    {
+      "path": "author/root-double-footer.log",
+      "sha256": "0fd5d28d77f13150d4b776b354a0c7ec3ec33606fc5a364870825e1369000955",
+      "bytes": 884
+    },
+    {
+      "path": "author/root-duplicate-name.log",
+      "sha256": "8b845683ed2826142752c2edd488142ed8a482bf5870d3c5fd958ba2c9a00901",
+      "bytes": 875
+    },
+    {
+      "path": "author/root-duplicate-other.log",
+      "sha256": "393dc85d19376c4bf520a12c1c5e0d38ddeaade04d2294e0c0951c5b9c1822cf",
+      "bytes": 526
+    },
+    {
+      "path": "author/root-duplicate-selected.log",
+      "sha256": "4058f96716621ad253a76f58622f9c8c9f16a2c4ffbbb53426d86dad3cc6ab6c",
+      "bytes": 540
+    },
+    {
+      "path": "author/root-empty-inventory.log",
+      "sha256": "0fd5d28d77f13150d4b776b354a0c7ec3ec33606fc5a364870825e1369000955",
+      "bytes": 884
+    },
+    {
+      "path": "author/root-empty-packages.log",
+      "sha256": "ebc53be1c442ace1f081bb49aaafdb2f9c29684d54b0211f630cafe8d160263f",
+      "bytes": 531
+    },
+    {
+      "path": "author/root-empty-selected.log",
+      "sha256": "f53935310196d86575c618d22a96d4e73632fbad586017aa1e5614bee3897fb3",
+      "bytes": 300
+    },
+    {
+      "path": "author/root-exact-compatibility-['1'].log",
+      "sha256": "603dc7d02d66ac4b8c7246306416e53dda4324318dd0643b26c8e878084dd673",
+      "bytes": 272
+    },
+    {
+      "path": "author/root-exact-compatibility-['4'].log",
+      "sha256": "3f84371effccf6f48a8f31587b9ed65b597f409241ec9093115bb2f003dae79e",
+      "bytes": 3184
+    },
+    {
+      "path": "author/root-exact-compatibility-[].log",
+      "sha256": "603dc7d02d66ac4b8c7246306416e53dda4324318dd0643b26c8e878084dd673",
+      "bytes": 272
+    },
+    {
+      "path": "author/root-foreign-footer.log",
+      "sha256": "43a3abb9e7df6c1b9673c75626f01132fc8c4c6267479f1264028b43721deeee",
+      "bytes": 873
+    },
+    {
+      "path": "author/root-inventory-failure.log",
+      "sha256": "f02e58bdc6097445f75e0379d5e41d2ff9c2efb5e06dc197fd0f8aee10a673b5",
+      "bytes": 829
+    },
+    {
+      "path": "author/root-missing-footer.log",
+      "sha256": "0fd5d28d77f13150d4b776b354a0c7ec3ec33606fc5a364870825e1369000955",
+      "bytes": 884
+    },
+    {
+      "path": "author/root-missing-selected.log",
+      "sha256": "4058f96716621ad253a76f58622f9c8c9f16a2c4ffbbb53426d86dad3cc6ab6c",
+      "bytes": 540
+    },
+    {
+      "path": "author/root-multiple-selected.log",
+      "sha256": "f53935310196d86575c618d22a96d4e73632fbad586017aa1e5614bee3897fb3",
+      "bytes": 300
+    },
+    {
+      "path": "author/root-new-future-names.log",
+      "sha256": "e0185b39282934efb4a805d37fa480beb57436561ee249e472cf4bccc39e94c6",
+      "bytes": 3286
+    },
+    {
+      "path": "author/root-other-failure.log",
+      "sha256": "9939ded90fcb7a8ca13edff9cc1f5bf47ee1e33f99811a441384f9d745173e3d",
+      "bytes": 1201
+    },
+    {
+      "path": "author/root-package-list-failure.log",
+      "sha256": "a5c2c38b6617f4eb882ef91434d3c036ab0c0399b2a47b1dfffa383fe3fbe068",
+      "bytes": 486
+    },
+    {
+      "path": "author/root-selected-list-failure.log",
+      "sha256": "feddc6e0fecf717255f9395244b5c3282a67e8a75cd4d0d06122e3d44fb1c588",
+      "bytes": 258
+    },
+    {
+      "path": "author/root-selected-only.log",
+      "sha256": "24ee5f7dd78985f0a0d179aa1f9a3fefce7bfdc79b2172297e71dba7dd5e462d",
+      "bytes": 2881
+    },
+    {
+      "path": "author/root-shard-failure.log",
+      "sha256": "17b376c79a776f891aef711437200412c793ff7a769948b930648928a7f25b7f",
+      "bytes": 2163
+    },
+    {
+      "path": "author/root-short-footer.log",
+      "sha256": "43a3abb9e7df6c1b9673c75626f01132fc8c4c6267479f1264028b43721deeee",
+      "bytes": 873
+    },
+    {
+      "path": "author/root-shuffled.log",
+      "sha256": "3f84371effccf6f48a8f31587b9ed65b597f409241ec9093115bb2f003dae79e",
+      "bytes": 3184
+    },
+    {
+      "path": "author/root-space-name.log",
+      "sha256": "1545c8861e0a112112384ff97be5018bc7016fe41e83df997bbbf78133850a41",
+      "bytes": 872
+    },
+    {
+      "path": "author/root-tab-name.log",
+      "sha256": "1545c8861e0a112112384ff97be5018bc7016fe41e83df997bbbf78133850a41",
+      "bytes": 872
+    },
+    {
+      "path": "author/root-too-small.log",
+      "sha256": "0fd5d28d77f13150d4b776b354a0c7ec3ec33606fc5a364870825e1369000955",
+      "bytes": 884
+    },
+    {
+      "path": "author/root-unexpected-output.log",
+      "sha256": "51b9b11f7e4f3655c1358254f44b599358b0b5eeaeff8c9ace9790174623d751",
+      "bytes": 892
+    },
+    {
+      "path": "author/root-unsplit-0.log",
+      "sha256": "603dc7d02d66ac4b8c7246306416e53dda4324318dd0643b26c8e878084dd673",
+      "bytes": 272
+    },
+    {
+      "path": "author/root-unsplit-1.log",
+      "sha256": "603dc7d02d66ac4b8c7246306416e53dda4324318dd0643b26c8e878084dd673",
+      "bytes": 272
+    },
+    {
+      "path": "author/root-unsplit-2.log",
+      "sha256": "603dc7d02d66ac4b8c7246306416e53dda4324318dd0643b26c8e878084dd673",
+      "bytes": 272
+    },
+    {
+      "path": "author/root-unsplit-failure.log",
+      "sha256": "603dc7d02d66ac4b8c7246306416e53dda4324318dd0643b26c8e878084dd673",
+      "bytes": 272
+    },
+    {
+      "path": "author/shellcheck.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "author/source/.github/workflows/ci.yml",
+      "sha256": "60233191a6feb9ba4e5005bfe05c1a1f697661fc67dc04677aa444149358b083",
+      "bytes": 4858
+    },
+    {
+      "path": "author/source/scripts/test-race.sh",
+      "sha256": "05ca5b53967500c7fe49c0e1d43037cbe9fcddb24ee91f021da5a10e1a627ce6",
+      "bytes": 4717
+    },
+    {
+      "path": "author/source/v5/Makefile",
+      "sha256": "77c160be99b5de228100ee7a014482b6ee862df08a7264ebb71cd8ec08035141",
+      "bytes": 2907
+    },
+    {
+      "path": "author/source.json",
+      "sha256": "ebad2ac44ec49373e34f55d1f9bfc5cfe69f6d6f9dc689fb3d66c87f88ccaf60",
+      "bytes": 280
+    },
+    {
+      "path": "author/v5-blank-package.log",
+      "sha256": "3be3d450c93dbd1d5e0a23dd8f62975354ee0004cb05cc72a1b004f778814658",
+      "bytes": 515
+    },
+    {
+      "path": "author/v5-complete.log",
+      "sha256": "7bb3e373e011121b3aa153349a81fbd1e5372e742e370453b05427287ea1b247",
+      "bytes": 3172
+    },
+    {
+      "path": "author/v5-cr-name.log",
+      "sha256": "a0de802fe9ffbb1340ffbcec8799a91138eaabc36c0f4fbea455d6ae1bdca002",
+      "bytes": 860
+    },
+    {
+      "path": "author/v5-double-footer.log",
+      "sha256": "21a9456ca8d95e281d1d8505c75414d539dfda4fa2939ea01c92cfc638e76f6a",
+      "bytes": 878
+    },
+    {
+      "path": "author/v5-duplicate-name.log",
+      "sha256": "4b688aa974655626e8f92c660a88c51b207974c1ad419f970e759cf75941ef82",
+      "bytes": 863
+    },
+    {
+      "path": "author/v5-duplicate-other.log",
+      "sha256": "b60b71334948717f50d9692d3beefeabe57aead957659b79a3fc5f40ba5e95ed",
+      "bytes": 518
+    },
+    {
+      "path": "author/v5-duplicate-selected.log",
+      "sha256": "33f2678e908b165f654b6e35c5f228dd76d917e021cb8c3accefdad203b5e313",
+      "bytes": 540
+    },
+    {
+      "path": "author/v5-empty-inventory.log",
+      "sha256": "21a9456ca8d95e281d1d8505c75414d539dfda4fa2939ea01c92cfc638e76f6a",
+      "bytes": 878
+    },
+    {
+      "path": "author/v5-empty-packages.log",
+      "sha256": "58d05b8b98b8d4a0a6e666dd328b190a399d823edc4b43e44c94e34833e66840",
+      "bytes": 523
+    },
+    {
+      "path": "author/v5-empty-selected.log",
+      "sha256": "e56275a46004fc8564bc3fdca3b12022fb76c6a6077af30d8cbea44f135842f0",
+      "bytes": 300
+    },
+    {
+      "path": "author/v5-foreign-footer.log",
+      "sha256": "7cd033043686eac8096718f596491f3077ec5465c2041ce3fdd0ec85d2878d57",
+      "bytes": 861
+    },
+    {
+      "path": "author/v5-inventory-failure.log",
+      "sha256": "6f8ef990da15396de50dc60c2aad56f857820b3c71d76ba1e28d1f8aafe5931b",
+      "bytes": 819
+    },
+    {
+      "path": "author/v5-missing-footer.log",
+      "sha256": "21a9456ca8d95e281d1d8505c75414d539dfda4fa2939ea01c92cfc638e76f6a",
+      "bytes": 878
+    },
+    {
+      "path": "author/v5-missing-selected.log",
+      "sha256": "33f2678e908b165f654b6e35c5f228dd76d917e021cb8c3accefdad203b5e313",
+      "bytes": 540
+    },
+    {
+      "path": "author/v5-multiple-selected.log",
+      "sha256": "e56275a46004fc8564bc3fdca3b12022fb76c6a6077af30d8cbea44f135842f0",
+      "bytes": 300
+    },
+    {
+      "path": "author/v5-new-future-names.log",
+      "sha256": "d7d8e97c629f8a6bca9a9b12a2234a2c8eba776c359689191e7181f0d655832a",
+      "bytes": 3274
+    },
+    {
+      "path": "author/v5-other-failure.log",
+      "sha256": "6d3e763db3feaee86a881fa0cd60a801836c7dee08b20d559bfffa6aa3f8be2c",
+      "bytes": 1195
+    },
+    {
+      "path": "author/v5-package-list-failure.log",
+      "sha256": "9a55d946aeb375af9ae577df99be718595358a32ed34ac4780bdf1f34d455728",
+      "bytes": 482
+    },
+    {
+      "path": "author/v5-selected-list-failure.log",
+      "sha256": "afcb3aa6bb738423e15c9052a08315d95b7129b435d240e2d4aef858a3095949",
+      "bytes": 254
+    },
+    {
+      "path": "author/v5-selected-only.log",
+      "sha256": "8014aadb0a554818dd1ab5c3f57c6e70bfcfcc88b1fa90fe5b964459f03f4ef0",
+      "bytes": 2869
+    },
+    {
+      "path": "author/v5-shard-failure.log",
+      "sha256": "bff1a9f8b377a0ebfbd38cfb5c08fa22ec39db3a1190d50ceb5c296f4925a878",
+      "bytes": 2153
+    },
+    {
+      "path": "author/v5-short-footer.log",
+      "sha256": "7cd033043686eac8096718f596491f3077ec5465c2041ce3fdd0ec85d2878d57",
+      "bytes": 861
+    },
+    {
+      "path": "author/v5-shuffled.log",
+      "sha256": "7bb3e373e011121b3aa153349a81fbd1e5372e742e370453b05427287ea1b247",
+      "bytes": 3172
+    },
+    {
+      "path": "author/v5-space-name.log",
+      "sha256": "a0de802fe9ffbb1340ffbcec8799a91138eaabc36c0f4fbea455d6ae1bdca002",
+      "bytes": 860
+    },
+    {
+      "path": "author/v5-tab-name.log",
+      "sha256": "a0de802fe9ffbb1340ffbcec8799a91138eaabc36c0f4fbea455d6ae1bdca002",
+      "bytes": 860
+    },
+    {
+      "path": "author/v5-too-small.log",
+      "sha256": "21a9456ca8d95e281d1d8505c75414d539dfda4fa2939ea01c92cfc638e76f6a",
+      "bytes": 878
+    },
+    {
+      "path": "author/v5-unexpected-output.log",
+      "sha256": "113a3166dda1424fea8c5834c269357ae8c6def5fe1997f19c673eca7d99429b",
+      "bytes": 880
+    },
+    {
+      "path": "author/v5-unsplit-2.log",
+      "sha256": "603dc7d02d66ac4b8c7246306416e53dda4324318dd0643b26c8e878084dd673",
+      "bytes": 272
+    },
+    {
+      "path": "author/v5-unsplit-failure.log",
+      "sha256": "603dc7d02d66ac4b8c7246306416e53dda4324318dd0643b26c8e878084dd673",
+      "bytes": 272
+    }
+  ]
+}
