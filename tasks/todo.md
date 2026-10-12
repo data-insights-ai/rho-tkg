@@ -1,4 +1,4 @@
-# todo — v4 main ledger (state 2026-10-10, main at v4.49.0)
+# todo — v4 main ledger (state 2026-10-12, main at v4.51.1)
 
 The live TODO is `HANDOVER.md` §11; open work with full specs is `tasks/backlog.md`; what shipped is `CHANGELOG.md`.
 This file keeps the user requests with their state, one line per release, and the open queue. The detailed wave
@@ -8,8 +8,8 @@ ledgers of 2026-10-09/10 (per-step red tests, merges, reviews) are in git histor
 
 | # | Request (user's words) | State | Proof |
 |---|---|---|---|
-| 1 | "for the next step: rho-tkg lacks is a way to say 'this was never true'.. also add it to the handover.md.. request from ai-soc" (2026-10-10) | open — NEXT STEP, not built | spec `tasks/backlog.md` item 43; `HANDOVER.md` §11 item 0 |
-| 2 | "continue" — restart the two stopped agents (backlog 34; backlog 33 + 42 + 41) | open | baseline `tasks/evidence/badger-read-cost/01-baseline-latest-stamps-rotating.txt` |
+| 1 | "for the next step: rho-tkg lacks is a way to say 'this was never true'.. also add it to the handover.md.. request from ai-soc" (2026-10-10) | done — v4.49.1 (de06846), hardened v4.49.2 (3b78b92) | CHANGELOG `[4.49.1]`, `[4.49.2]`; `tasks/evidence/retraction/` |
+| 2 | "continue" — restart the two stopped agents (backlog 34; backlog 33 + 42 + 41) | done for 34 (v4.50.1), 33 + 42 (v4.51.1); 41 open with measurements | baseline `tasks/evidence/badger-read-cost/01-baseline-latest-stamps-rotating.txt` |
 | 3 | "stop all tasks and write a comprehensive handover.md" | done | `HANDOVER.md` |
 | 4 | "review all md files with the current code base and keep the md files up2date" | in progress (doc review groups) | this file, `tasks/backlog.md` |
 | 5 | "lets go in the v4 main" — review §6/§9 fixes, backlog 10, 11 | done | v4.44.0, v4.44.1, v4.45.0 below |
@@ -19,6 +19,11 @@ ledgers of 2026-10-09/10 (per-step red tests, merges, reviews) are in git histor
 | 9 | "Monitor github, Markus is working on the v5" | stopped at the handover; re-arm if still wanted | `HANDOVER.md` Appendix C |
 | 10 | Standing: "Always clean solutions to new items.. no hacks or shortcuts .. always write a no-happy-path test before the code"; no attribution lines in commits | standing | `tasks/lessons.md` 77, 78 |
 | 11 | "Start a new fable review for the V5 branch and Analyse what has been done (quality) and what is open to do to merge the V5 branch with Main .. write the result into a handover.MD into the V5 branch" (2026-10-12) | done — Fable review of origin/v5 (3ede096d) in worktree branch `v5-handover`; output `docs/v5/HANDOVER.md` (root HANDOVER.md stays the v4 handover, avoids a merge conflict); commit without attribution, pushed fast-forward to origin/v5 | `git show origin/v5:docs/v5/HANDOVER.md` (eaa339c3) |
+| 12 | "Delete the old and work ok item 34 on the v4" (2026-10-11) | done | v4.50.1 (09e58d3) |
+| 13 | "analyse the v5 work if we can also merge with our v4 work and how fjnsihed it is" / "Report should go in main docs" / "Add the mapping and add a section in hand over.MD" / "push all to main" | done | `docs/v5-analysis.md` §5; `HANDOVER.md` §15 |
+| 14 | "can we use the v5 already?" / ask the sigma and aisoc agents | done — no (both consumers) | `docs/v5-analysis.md` §4 |
+| 15 | "Why were the other items not started? Parallel Opus subagents?" + "Monitoring sonnet agent" + "Review with opus high" + "Use a fable Agent at the end" | done | v4.51.1 (dbd74cf), items 35, 48, 33, 42 |
+| 16 | sigma-tkgd 2026-10-12 (consumer, relayed): valid-end bounded effective scans (backlog 51) + cheap AtNodes gather (backlog 50) for its step 6, flat restore | open — waits for René's "fix 50/51" | `tasks/backlog.md` 50, 51 |
 
 ## Releases (one line each; all gates `make ci-docker` exit 0, consumers build + vet)
 
@@ -31,6 +36,10 @@ ledgers of 2026-10-09/10 (per-step red tests, merges, reviews) are in git histor
 | v4.47.0 | b3eb884 | `Node/RelEffectiveTimeline` + scan forms (20 fix 1c, 27), `MintInstant` (36), point-door race fix (32), read-time supersession rule, life ordering |
 | v4.48.0 | bd787bd | pinned property lookups via the tx-membership sidecar (8), re-import continues versions across lives (38) |
 | v4.49.0 | aedc56d | `Nodes/Rels().LatestStamps` (30), every `UniqueForever`-claiming door withdraws claims on failed writes (29) |
+| v4.49.1 | de06846 | retraction `Retract` / `RetractWithTx` on every write door (43) |
+| v4.49.2 | 3b78b92 | retraction rows at fv=3 (old binaries fail closed), batch rel delete queue order |
+| v4.50.1 | 09e58d3 | `Set{Node,Rel}VersionIntervalWithTx` on every door (34) |
+| v4.51.1 | dbd74cf | broader effective scans (35), `ColumnData.Other` (48), current-row stamps + ID-only effective gathers on badger (33, 42); on top of Markus's v4.51.0 |
 
 ## Open queue (mirrors `HANDOVER.md` §11; specs in `tasks/backlog.md`)
 

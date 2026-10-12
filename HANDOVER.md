@@ -218,9 +218,9 @@ Legend: [ ] open, (S) = waits for sigma, (R) = waits for René's decision.
    `tasks/evidence/retraction/14-mutants.txt`). v4.50.1 released 2026-10-11 (backlog 34); v4.51.1 released 2026-10-12 (35, 48, 33, 42 on top of Markus's v4.51.0); next tag is a PATCH (v4.51.2).
    STOPPED branches with uncommitted work (not merged, worktrees kept): `worktree-agent-adcfa76ae8b4c0dfe` (backlog 34, 20 uncommitted
    files, 0 commits) and `worktree-agent-aa4b0ebc0683fcb3f` (backlog 42, 23 uncommitted files, 0 commits).
-1. [ ] **Restart backlog 34** `Set{Node,Rel}VersionIntervalWithTx` (all doors) — sigma replay need.
-2. [ ] **Restart backlog 33 + 42 (+ 41 last)** badger read cost — baseline saved in `tasks/evidence/badger-read-cost/`.
-3. [ ] Backlog 35 broader effective scans — signatures CONFIRMED by sigma 2026-10-10 (all five, as recorded in the backlog item).
+1. [x] (v4.50.1) **Restart backlog 34** `Set{Node,Rel}VersionIntervalWithTx` (all doors) — sigma replay need.
+2. [x] (33 + 42 in v4.51.1; 41 open) **Restart backlog 33 + 42 (+ 41 last)** badger read cost — baseline saved in `tasks/evidence/badger-read-cost/`.
+3. [x] (v4.51.1) Backlog 35 broader effective scans — signatures CONFIRMED by sigma 2026-10-10 (all five, as recorded in the backlog item).
 4. (moved up: see item 0 below — the retraction door is the NEXT STEP)
 5. [ ] Backlog 28 state column fast path (design first; sigma numbers inside the item) (S).
 6. [ ] Backlog 21 retention (PurgeExpiredRels, per-type gate) — handover `tasks/handover-overview-retention-20261009.md` (S, not blocking).

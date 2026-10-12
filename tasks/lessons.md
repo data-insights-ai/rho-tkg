@@ -1366,3 +1366,14 @@ Detector: more than one review round on a branch, a lint finding after a merge, 
 than ten file names, a backlog item with no named requester or test.
 
 
+
+## 80. Tick The User-Request Ledger At Every Release, Not Only The Work Queue
+
+Trigger: René 2026-10-12: "Are you really working towards our originally defined goal?" The work queue in
+`tasks/todo.md` was current, but the "User requests" table still showed request 1 (retraction) as "NEXT STEP, not
+built" two releases after v4.49.1 shipped it, the releases table stopped at v4.49.0, and `HANDOVER.md` §11 listed
+34/33/42/35 as open after they shipped. The goal looked lost because the place that states it was never updated.
+Rule: a release commit updates, in the same commit, the user-request rows it closes, the releases table, and
+HANDOVER §11; every new user or consumer request gets its row before the first action on it.
+Detector: a tag newer than the last row of the releases table; a user-request row "open" whose backlog item sits
+under Closed.
