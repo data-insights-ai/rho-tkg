@@ -1,0 +1,356 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS bounded P07 production composition",
+  "sourceCommit": "17174d22bdcd1904b023bb06619acf930dfc9e8d",
+  "baseline": "cadb12eaabaf96d8602d553a10cce4c07b9af819",
+  "sourceOnlyCIRepairCarry": {
+    "ownedCommit": "8973676ae05abaf89ba25602ac0bf173e6599646",
+    "rootIntegration": "3c25e2c8",
+    "qualifiedHostedHead": "bb439e35",
+    "qualifiedHostedRun": 38273897314,
+    "scope": "root independently verified both exact parents normal/race/coverage and configured lint/security/vulnerability; no duplicate local qualification"
+  },
+  "changedFiles": [
+    "v5/internal/graphapply/range_move_p07_retained_cdc_test.go"
+  ],
+  "sourceSHA256": "aae878500670e3aa3314048354f2e03233fe4cbbfea8e78c61bda754a71b5b23",
+  "sourceManifest": {
+    "file": "final-source-sha256.json",
+    "GoFiles": 564,
+    "sha256": "352c6694b9820fe76db02be490f5cb2e8e4970a7fac100d0e7073b06dcc7300f"
+  },
+  "test": "TestRangeMoveP07LostCommittedRequestRetainedCutAndCDCThroughReclaim",
+  "environment": {
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off",
+    "GOTOOLCHAIN": "local"
+  },
+  "toolchain": "Go1.26.9 darwin/arm64, pinned toolchain binary; golangci-lint2.13.2",
+  "limits": {
+    "perCommandWatchdogSeconds": 180,
+    "aggregateProcessTreeRSSMiB": 4096,
+    "GoTimeoutSeconds": 150,
+    "limiterSHA256": "6dc4e0362827ecd0854436b9fa1a812342b693d65ba093291d358b359e733283"
+  },
+  "gates": {
+    "normal-reclamation-sequence": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^TestRangeMoveP07LostCommittedRequestRetainedCutAndCDCThroughReclaim$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 920.734,
+      "elapsed_s": 14.306,
+      "exit_code": 0,
+      "reason": "completed",
+      "raw_stdout": "normal-reclamation-sequence.jsonl",
+      "raw_stderr": "normal-reclamation-sequence.stderr.log",
+      "parent_passes": 1,
+      "fail_events": 0,
+      "skip_events": 0
+    },
+    "race": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-race",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^TestRangeMoveP07LostCommittedRequestRetainedCutAndCDCThroughReclaim$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 947.656,
+      "elapsed_s": 31.89,
+      "exit_code": 0,
+      "reason": "completed",
+      "raw_stdout": "race.jsonl",
+      "raw_stderr": "race.stderr.log",
+      "parent_passes": 1,
+      "fail_events": 0,
+      "skip_events": 0
+    },
+    "coverage": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-covermode=set",
+        "-coverprofile=/var/tmp/rho-v5-p07-combined-handoff-cdc-artifacts-20261012/coverage.out",
+        "-run",
+        "^TestRangeMoveP07LostCommittedRequestRetainedCutAndCDCThroughReclaim$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 1008.109,
+      "elapsed_s": 15.105,
+      "exit_code": 0,
+      "reason": "completed",
+      "raw_stdout": "coverage.jsonl",
+      "raw_stderr": "coverage.stderr.log",
+      "parent_passes": 1,
+      "fail_events": 0,
+      "skip_events": 0
+    },
+    "vet": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "vet",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 302.109,
+      "elapsed_s": 1.136,
+      "exit_code": 0,
+      "reason": "completed",
+      "raw_stdout": "vet.stdout.log",
+      "raw_stderr": "vet.stderr.log"
+    },
+    "lint": {
+      "command": [
+        "/var/tmp/rho-v6-preflight-evidence-20261012/bin/golangci-lint",
+        "run",
+        "--config",
+        "../.golangci.yml",
+        "--concurrency=2",
+        "--timeout=150s",
+        "--max-same-issues=0",
+        "--max-issues-per-linter=0",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 1651.047,
+      "elapsed_s": 29.161,
+      "exit_code": 0,
+      "reason": "completed",
+      "raw_stdout": "lint.stdout.log",
+      "raw_stderr": "lint.stderr.log"
+    },
+    "cover-func": {
+      "command": [
+        "/usr/bin/env",
+        "GOMAXPROCS=2",
+        "GOMEMLIMIT=2GiB",
+        "GOFLAGS=-p=1",
+        "GOWORK=off",
+        "GOTOOLCHAIN=local",
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "tool",
+        "cover",
+        "-func=/var/tmp/rho-v5-p07-combined-handoff-cdc-artifacts-20261012/coverage.out"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 0.156,
+      "elapsed_s": 0.324,
+      "exit_code": 0,
+      "reason": "completed",
+      "raw_stdout": "coverage-func.txt",
+      "raw_stderr": "coverage-func.stderr.log"
+    }
+  },
+  "gatesScope": "exact single new parent normal/race/coverage; graphapply-only vet/lint; no whole-module/repository tests/scanners",
+  "coverage": {
+    "profile": "coverage.out",
+    "functionReport": "coverage-func.txt",
+    "selectedExistingGraphapplyPercent": 46.7,
+    "newProductionStatements": 0,
+    "newPublicLibraryMethods": 0,
+    "interpretation": "new code is only the integration test; selected-package percent is not package or phase acceptance"
+  },
+  "witness": {
+    "voters": "six disk-backed native Hosts/Drivers in-process, two3voter groups; no OS-child claim",
+    "C": [
+      20,
+      9
+    ],
+    "retainedPostCNativePrefixEnd": [
+      98,
+      82
+    ],
+    "K": {
+      "transaction": "f5a641e1ca06592090c7a3d6f5a47e3a",
+      "round": 7,
+      "lostReply": "after actual quorum COMMIT before client delivery; no synthetic status/authority",
+      "partial": "source alone genuinely resolved, other participant still prepared; completion remains incomplete",
+      "recovery": "exact original request/digest/decision/relationship5/life6/value8 retained through move/restore/reclaim; changed provenance refused"
+    },
+    "handoff": {
+      "move": "5ac9fae3869fb7f9958a0fbc47682deb",
+      "round": 8,
+      "source": 3,
+      "target": 8,
+      "unsettledK": "blocks capture before resolution",
+      "targetReopen": "existing-only same-voter disk Open/newmaterializer/Host; checkpoint equality plus genuine old AtGraphCertificate through restored follower"
+    },
+    "graphSets": {
+      "nodesOldCurrent": [
+        1,
+        17
+      ],
+      "relationshipsDeclaredOld": [
+        3
+      ],
+      "relationshipsDeclaredCurrent": [
+        3,
+        5
+      ],
+      "relationshipsEffectiveOld": [
+        3
+      ],
+      "relationshipsEffectiveCurrent": [
+        5
+      ],
+      "node1Old": "before-p07/p9",
+      "node1Current": "after-k+after-move/p10",
+      "indexes": "exact declared incident/unique supersets; effective candidates hydrate only through same C/current view; phantom value999 and allocated namespace census negatives"
+    },
+    "CDC": "read every retained change/outcome coordinate, including present empty controls; require both bound original Resolve envelopes for K and post transaction; exact5K component changes and issued metadata; exact canonical empty validation-only post participant3 plus one label at8; identical complete GML source/target pair; prefix bytes unchanged after reclamation",
+    "reclamation": "C entry physically visible before transfer; actual Driver watermark32 advances recoveryBase during move; one genuine source fence above actual later closed round supplies a new committed predecessor; explicit PublishSnapshot+ReclaimApplication on all3source voters; FirstIndex/Base, EntriesErrCompacted and Scrub visible-entry-key/ledger witnesses; retained history/control/CDC accounting unchanged; no immediate SST-file shrink claim",
+    "fencing": "delayed old-source local write returns real remote-participant refusal without mutation; real TransferAllocator changes authorityepoch only and preserves high-water32; pre-captured Reserve/stale authority proof refuse; data range movement alone does not retire global allocator HOME",
+    "keeper": "uncopied late source refusal requires original surviving keeper quorum; source-only keeper-query loss returns pending+EOF/zero result, never target substitute or completed absence",
+    "cleanup": "all native Stores/Hosts and held views owned by test cleanup; no OS children spawned; all local runtime handles terminal/released"
+  },
+  "preservedREDs": {
+    "normal-first": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^TestRangeMoveP07LostCommittedRequestRetainedCutAndCDCThroughReclaim$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 902.516,
+      "elapsed_s": 11.201,
+      "exit_code": 1,
+      "reason": "command-failed",
+      "raw_stdout": "normal-first.jsonl",
+      "raw_stderr": "normal-first.stderr.log",
+      "parent_passes": 0,
+      "fail_events": 2,
+      "skip_events": 0
+    },
+    "normal-native-sessions": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^TestRangeMoveP07LostCommittedRequestRetainedCutAndCDCThroughReclaim$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 949.5,
+      "elapsed_s": 14.619,
+      "exit_code": 1,
+      "reason": "command-failed",
+      "raw_stdout": "normal-native-sessions.jsonl",
+      "raw_stderr": "normal-native-sessions.stderr.log",
+      "parent_passes": 0,
+      "fail_events": 2,
+      "skip_events": 0
+    },
+    "normal-complete-footprint": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^TestRangeMoveP07LostCommittedRequestRetainedCutAndCDCThroughReclaim$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 884.719,
+      "elapsed_s": 15.198,
+      "exit_code": 1,
+      "reason": "command-failed",
+      "raw_stdout": "normal-complete-footprint.jsonl",
+      "raw_stderr": "normal-complete-footprint.stderr.log",
+      "parent_passes": 0,
+      "fail_events": 2,
+      "skip_events": 0
+    },
+    "normal-participant-envelope": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^TestRangeMoveP07LostCommittedRequestRetainedCutAndCDCThroughReclaim$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 903.406,
+      "elapsed_s": 14.626,
+      "exit_code": 1,
+      "reason": "command-failed",
+      "raw_stdout": "normal-participant-envelope.jsonl",
+      "raw_stderr": "normal-participant-envelope.stderr.log",
+      "parent_passes": 0,
+      "fail_events": 2,
+      "skip_events": 0
+    }
+  },
+  "REDInterpretation": [
+    "initial remote C repeated read arena exhausted: corrected to approved native certified backend; same closure/Host/Store budget and exact assertions, business/move/keeper authentic transport retained",
+    "moved node has unique-home3, so target-local-only write properly refuses; corrected SAME mutation to actual complete cross-partition protocol",
+    "validation-only participant correctly emits canonical empty logical GCE; oracle now requires exact participant/digest/round and target effect rather than generic empty exception",
+    "Driver already reclaims at watermark32 during long move; record C physical entry before transfer and add actual later fence for explicit publication, without changing quotas/thresholds"
+  ],
+  "scopeLimits": [
+    "one finite P07 composition, not all ownership/fault schedules, P09, OS-process acceptance, engine selection, public portable feed API, or fullV2 closure",
+    "retained original certificates and native root handles use current retain-all+backpressure contract; no synthetic durable pin/journal/retirement authority",
+    "original six-operation paired native/FDB oracle and all production files untouched"
+  ],
+  "archive": {
+    "file": "raw.tar.gz",
+    "bytes": 197143,
+    "sha256": "2507fb0e6997119e1f157a2de45463c42e6d66113a3301447cdada28f887ad8b",
+    "members": 52,
+    "rawBytes": 1527538,
+    "contents": "raw JSON/logs/commands/env/watchdogs, profiles/functions/manifests, exact four failed and final formatted test sources; no whole source tree"
+  },
+  "push": "none",
+  "runtimeLease": "released"
+}
