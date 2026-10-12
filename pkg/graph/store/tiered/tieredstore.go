@@ -334,6 +334,11 @@ type Store struct {
 	nodeCreateLocks *lockspkg.Manager
 	relCreateLocks  *lockspkg.Manager
 
+	// relLives / nodeLives: IDs re-imported onto another shard than their
+	// earlier lives' history (backlog 49, tieredstore_history_lives.go).
+	relLives  historyLives
+	nodeLives historyLives
+
 	// Temporal indexes — tracked so new hot/archive shards inherit them.
 	tempIdxMu     sync.Mutex
 	tempIdxLabels []uint16
@@ -556,6 +561,10 @@ func New(cfg Config) (*Store, error) {
 	// SAME instance, instead of its own (empty) per-shard meta copy.
 	if reg := refStore.PropertyKeyRegistry(); reg != nil {
 		ts.propKeyReg.Store(reg)
+	}
+	if err := ts.loadHistoryLives(); err != nil {
+		_ = refStore.Close() // best-effort cleanup; returning primary error
+		return nil, err
 	}
 	// Reseed the store-global change-log allocator from the reference shard's
 	// catalog watermark now that refShard is open. This covers cold shards that
@@ -1135,6 +1144,8 @@ func (ts *Store) Clear() error {
 		return rollbackIndexMetadata(fmt.Errorf("graph: clear ref shard: %w", err))
 	}
 	refCheckin()
+	ts.relLives.reset() // their meta entries went with the reference shard
+	ts.nodeLives.reset()
 	for _, es := range shards {
 		if err := ts.clearEventShard(es); err != nil {
 			return rollbackIndexMetadata(fmt.Errorf("graph: clear event shard %s: %w", es.name, err))

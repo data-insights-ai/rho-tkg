@@ -122,6 +122,11 @@ func (ts *Store) putNode(n *types.Node, checkGlobalDuplicate bool) error {
 		return err
 	}
 	defer checkin()
+	if checkGlobalDuplicate {
+		if err := ts.noteNodeEarlierLives(n.ID(), shard); err != nil {
+			return err
+		}
+	}
 
 	vectorUpdates, err := ts.prepareNodeVectorUpdates(n, id)
 	if err != nil {
@@ -483,6 +488,12 @@ func (ts *Store) putNodesBatch(nodes []*types.Node, checkGlobalDuplicate bool) e
 			return err
 		}
 		checkins = append(checkins, checkin)
+		if checkGlobalDuplicate {
+			if err := ts.noteNodeEarlierLives(n.ID(), shard); err != nil {
+				releaseAll()
+				return err
+			}
+		}
 		idx, ok := bucketIndexes[shard]
 		if !ok {
 			idx = len(buckets)

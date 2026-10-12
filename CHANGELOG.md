@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Tiered: a re-import onto another shard no longer hides the earlier lives** (backlog 49, HIGH). A relationship
+  deleted and re-imported (`Rels().Import` or any door that writes a caller-supplied ID) with a start node on another shard, or a node re-imported with a primary label of the other class
+  (reference ↔ event), had its new row on another shard than its earlier lives' history, and every history read of
+  a live row went to that row's shard only: `History` returned the new life alone, `RelAsOf` / `NodeAsOf` at a pin
+  inside an earlier life found nothing, and `RelEffectiveTimeline`, `ForEachRelEffective`,
+  `ForEachRelEffectiveAtNodes`, `RelsEffectiveByIDs` (and the node twins) dropped the earlier lives. Now a caller-ID
+  create records such an ID (reference-shard meta `tiered_history_lives/rel|node/<id>`, fsynced before the row; an
+  in-memory set loaded at open; a malformed entry fails the open) and every history door reads a recorded ID from
+  every history shard, as for a deleted ID. Routing by the ID's lives rather than moving the history with the row:
+  a move would put a history truncate in the change log that a replica replays as the loss of the whole chain, and
+  the record costs one set entry per re-imported-across-shards ID while every other read pays one atomic load.
+  Memory, badger and sharded were not affected. New badger helpers `Store.MetaSetDurable` and
+  `Store.ForEachMetaName`. Test `TestReimportAcrossShardsKeepsEarlierLife` (memory / badger / sharded / tiered /
+  tiered reopened; moves reference ↔ event and back, two re-imports, node re-imports, a pin inside each life, the
+  same-shard re-import), `TestHistoryLives_*` (cold earlier shard after rotation, truncation across lives, `Clear`,
+  restart, malformed entries); evidence `tasks/evidence/reimport-shards/`.
+
 ## [4.51.1] - 2026-10-12
 
 Patch release, sigma-tkgd requests and read costs: broader effective scans (backlog 35; `ForEachRelEffectiveAtNodes` costs one fold over every relationship with history per call, see backlog 50), `ColumnData.Other` (48), current-row stamps and ID-only effective gathers on badger (42, 33). Additive, except that column scans now type every integer width the same way on every path (Changed).

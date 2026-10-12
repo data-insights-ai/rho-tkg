@@ -67,6 +67,7 @@ func walkNodeHistoryShards[T any](ts *Store, nid types.NodeID, ask func(*BadgerS
 	if err != nil {
 		return zero, err
 	}
+	liveHere, isArchive = ts.nodeLivesRoute(nid, liveHere, isArchive)
 	if liveHere && !isArchive {
 		if store == ts.refShard {
 			return historyWalkWithArchive(ts, store, acc, ask, merge)
@@ -96,6 +97,7 @@ func walkRelHistoryShards[T any](ts *Store, rid types.RelID, ask func(*BadgerSto
 		return zero, probe.err
 	}
 	liveHere := probe.live // the route read the row: no second read
+	liveHere, isArchive = ts.relLivesRoute(rid, liveHere, isArchive)
 	if liveHere && !isArchive {
 		if shard == ts.refShard {
 			return historyWalkWithArchive(ts, shard, acc, ask, merge)
