@@ -1,0 +1,10 @@
+=== RUN   TestEffectiveValidFrom_ScopeFollowsQueriedTypes
+=== PAUSE TestEffectiveValidFrom_ScopeFollowsQueriedTypes
+=== CONT  TestEffectiveValidFrom_ScopeFollowsQueriedTypes
+=== RUN   TestEffectiveValidFrom_ScopeFollowsQueriedTypes/memory
+=== RUN   TestEffectiveValidFrom_ScopeFollowsQueriedTypes/badger
+--- PASS: TestEffectiveValidFrom_ScopeFollowsQueriedTypes (0.04s)
+    --- PASS: TestEffectiveValidFrom_ScopeFollowsQueriedTypes/memory (0.01s)
+    --- PASS: TestEffectiveValidFrom_ScopeFollowsQueriedTypes/badger (0.04s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.072s

@@ -11,11 +11,13 @@ import (
 )
 
 // ValidEndIndex is one entity kind's valid-end index (backlog 51,
-// store.RelValidEndCapability / NodeValidEndCapability): per entity an upper
-// bound on its effective valid end and the newest transaction stamp of its
-// rows, ordered per type or label token by each, so a scan bounded by valid
-// end lists the entities that may still be effective at or after a valid
-// instant without touching the retired ones.
+// store.RelValidEndCapability / NodeValidEndCapability): for the type or
+// label tokens a bounded scan asked for (Track), per entity that ever carried
+// one of them an upper bound on its effective valid end and the newest
+// transaction stamp of its rows, ordered per token by each, so a scan bounded
+// by valid end lists the entities that may still be effective at or after a
+// valid instant without touching the retired ones. Entities of tokens nobody
+// asked for are not held, and their writes change nothing.
 //
 // The bound is folded from rows, never from the chain resolver (which stays
 // the authority — the caller reads each candidate's timeline): every row's
@@ -31,26 +33,25 @@ import (
 // Removing a row can raise the truth (a removed tombstone revives its life),
 // and an overwritten row may have held the tombstone the bound relies on, so
 // a removal, an overwrite of a history version at or below the highest
-// tombstone version, a current row replaced while it carried a delete, and
-// any write during a build move the entity to "unknown": listed by every
-// query until the owning store re-reads its rows (ResolveUnknown). Refine
-// lowers a bound to the exact end the caller read; the next write to the
-// entity re-reads its rows (the refined bound is no longer a fold).
+// tombstone version, and a current row replaced while it carried a delete
+// move the entity to "unknown": listed by every query until the owning store
+// re-reads its rows (ResolveUnknown). Tracking a token enlists its members as
+// unknown, so its first query re-reads them. Refine lowers a bound to the
+// exact end the caller read; the next write to the entity re-reads its rows
+// (the refined bound is no longer a fold).
 //
-// RAM per entity: a 32-byte entry in a map keyed by ID, two 16-byte ordered
-// entries per type or label it ever carried, a token list for a node with
-// more than one label. Safe for concurrent use; the owning store decides when
-// it is built and feeds it every row write after that.
+// RAM per tracked entity: a 32-byte entry in a map keyed by ID, two 16-byte
+// ordered entries per tracked token it carried, a token list for a node with
+// more than one tracked label. Safe for concurrent use.
 type ValidEndIndex struct {
-	active   atomic.Bool // built or building: notes are folded or recorded
-	mu       sync.Mutex
-	built    bool
-	building bool
-	ents     map[int64]veEnt
-	extra    map[int64][]uint16 // tokens beyond veEnt.tok (nodes with several labels)
-	toks     map[uint16]*veToken
-	unknown  map[int64]uint64 // entity -> the seq at which it last became or stayed unknown
-	seq      uint64
+	active  atomic.Bool // a token is tracked: row writes must be noted
+	mu      sync.Mutex
+	ents    map[int64]veEnt
+	extra   map[int64][]uint16 // tracked tokens beyond veEnt.tok (nodes with several labels)
+	toks    map[uint16]*veToken
+	unknown map[int64]uint64 // entity -> the seq at which it last became or stayed unknown
+	seq     uint64
+	notes   uint64 // row writes that changed the index (Stats)
 }
 
 // ValidEndRow is one stored row as a ValidEndIndex folds it: a history row
@@ -95,7 +96,7 @@ func ValidEndRowOfNode(n *types.Node, hist bool) ValidEndRow {
 // veEnt is one entity's state: bound (store.ValidEndOpen: unbounded,
 // store.ValidEndNone: no segment, after Refine) and stamp, the write
 // generation, the highest history version holding a tombstone, its first
-// token, and flags.
+// tracked token, and flags.
 type veEnt struct {
 	bound, stamp int64
 	gen          uint32
@@ -114,91 +115,138 @@ type veToken struct {
 	byBound, byStamp keyOrderedIDs
 }
 
-// Active reports whether the index is built or building, i.e. whether row
-// writes must be noted (a lock-free check for the write paths).
+// Active reports whether a token is tracked, i.e. whether row writes must be
+// noted (a lock-free check for the write paths).
 func (ix *ValidEndIndex) Active() bool { return ix.active.Load() }
 
-// Built reports whether the index answers (its build finished).
-func (ix *ValidEndIndex) Built() bool {
+// Tracked reports whether tok is tracked.
+func (ix *ValidEndIndex) Tracked(tok uint16) bool {
 	ix.mu.Lock()
 	defer ix.mu.Unlock()
-	return ix.built
+	return ix.toks[tok] != nil
 }
 
-// BeginBuild starts a build: the index is emptied and every row write noted
-// from now on moves its entity to unknown until EndBuild (the build's scan may
-// or may not see that row). The caller then feeds every stored row through
-// BuildRow (or every entity through Install) and calls EndBuild.
-func (ix *ValidEndIndex) BeginBuild() {
+// TrackedTokens returns the tracked tokens.
+func (ix *ValidEndIndex) TrackedTokens() []uint16 {
 	ix.mu.Lock()
 	defer ix.mu.Unlock()
-	ix.built, ix.building = false, true
-	ix.active.Store(true)
-	ix.ents = make(map[int64]veEnt)
-	ix.extra = make(map[int64][]uint16)
-	ix.toks = make(map[uint16]*veToken)
-	ix.unknown = make(map[int64]uint64)
-}
-
-// EndBuild makes a build's index answer; rows noted from now on are folded.
-func (ix *ValidEndIndex) EndBuild() {
-	ix.mu.Lock()
-	defer ix.mu.Unlock()
-	if ix.building {
-		ix.built, ix.building = true, false
+	out := make([]uint16, 0, len(ix.toks))
+	for tok := range ix.toks {
+		out = append(out, tok)
 	}
+	return out
 }
 
-// Reset drops the index (Clear, a failed build); the owning store rebuilds it
-// on its next use.
+// Track starts tracking tok and enlists members — every entity that ever
+// carried it, from the owning store's membership sidecar — as unknown, re-read
+// by the next ResolveUnknown; false when tok was tracked already (members not
+// called). The owning store calls it while no row write is in flight, so
+// every write after it is noted.
+func (ix *ValidEndIndex) Track(tok uint16, members func(enlist func(id int64))) bool {
+	ix.mu.Lock()
+	defer ix.mu.Unlock()
+	if ix.toks[tok] != nil {
+		return false
+	}
+	if ix.toks == nil {
+		ix.ents = make(map[int64]veEnt)
+		ix.extra = make(map[int64][]uint16)
+		ix.toks = make(map[uint16]*veToken)
+		ix.unknown = make(map[int64]uint64)
+	}
+	ix.toks[tok] = &veToken{}
+	ix.active.Store(true)
+	members(ix.markUnknownLocked)
+	return true
+}
+
+// Reset drops the index (Clear); tokens are tracked again on their next query.
 func (ix *ValidEndIndex) Reset() {
 	ix.mu.Lock()
 	defer ix.mu.Unlock()
-	ix.built, ix.building = false, false
 	ix.active.Store(false)
 	ix.ents, ix.extra, ix.toks, ix.unknown = nil, nil, nil, nil
 }
 
-// MarkUnknown moves id to unknown (a removed row, an undecodable one, an
-// overlay row a build cannot order). No-op while the index neither answers
-// nor builds.
-func (ix *ValidEndIndex) MarkUnknown(id int64) {
+// Has reports whether id is held or unknown: a row write of id must be noted.
+func (ix *ValidEndIndex) Has(id int64) bool {
+	if !ix.active.Load() {
+		return false
+	}
+	ix.mu.Lock()
+	defer ix.mu.Unlock()
+	if _, ok := ix.ents[id]; ok {
+		return true
+	}
+	_, ok := ix.unknown[id]
+	return ok
+}
+
+// NoteRemoved notes that rows of id were removed (or overwritten unseen): a
+// held or unknown entity moves to unknown under a fresh seq; an entity the
+// index does not hold is ignored.
+func (ix *ValidEndIndex) NoteRemoved(id int64) {
 	if !ix.active.Load() {
 		return
 	}
 	ix.mu.Lock()
 	defer ix.mu.Unlock()
-	if ix.built || ix.building {
+	if ix.heldLocked(id) {
 		ix.markUnknownLocked(id)
 	}
 }
 
 // NoteRow folds a row write of id (a SET of its current row or of a history
-// version). No-op while the index neither answers nor builds.
+// version). An entity the index does not hold is taken in when the row
+// carries a tracked token, ignored otherwise.
 func (ix *ValidEndIndex) NoteRow(id int64, r ValidEndRow) {
 	if !ix.active.Load() {
 		return
 	}
 	ix.mu.Lock()
 	defer ix.mu.Unlock()
-	if !ix.built {
-		if ix.building {
-			ix.markUnknownLocked(id)
-		}
-		return
-	}
 	if _, unknown := ix.unknown[id]; unknown {
 		ix.markUnknownLocked(id)
 		return
 	}
 	e, ok := ix.ents[id]
-	if ok && (e.flags&veRefined != 0 ||
+	if !ok {
+		if ix.carriesTrackedLocked(r.Tokens) {
+			ix.foldLocked(id, e, false, r, true)
+		}
+		return
+	}
+	if e.flags&veRefined != 0 ||
 		(r.Hist && e.flags&veHasDeath != 0 && r.Version <= e.deathVer) ||
-		(!r.Hist && e.flags&veCurDeath != 0)) {
+		(!r.Hist && e.flags&veCurDeath != 0) {
 		ix.markUnknownLocked(id)
 		return
 	}
-	ix.foldLocked(id, e, ok, r)
+	ix.foldLocked(id, e, true, r, true)
+}
+
+// NoteMember notes a row that may make id a member of a token, from a store
+// door that does not say whether it writes a current or a history row (the
+// row's own write is noted by NoteRow, with its kind, right after). It folds
+// the row's own end and stamps but no delete cap — it can only loosen the
+// bound — and takes the entity in when the row carries a tracked token.
+func (ix *ValidEndIndex) NoteMember(id int64, r ValidEndRow) {
+	if !ix.active.Load() {
+		return
+	}
+	ix.mu.Lock()
+	defer ix.mu.Unlock()
+	if _, unknown := ix.unknown[id]; unknown {
+		ix.markUnknownLocked(id)
+		return
+	}
+	e, ok := ix.ents[id]
+	switch {
+	case ok && e.flags&veRefined != 0:
+		ix.markUnknownLocked(id)
+	case ok || ix.carriesTrackedLocked(r.Tokens):
+		ix.foldLocked(id, e, ok, r, false)
+	}
 }
 
 // NoteCurrentDelete notes the removal of id's current row. Removing a row
@@ -211,12 +259,6 @@ func (ix *ValidEndIndex) NoteCurrentDelete(id int64) {
 	}
 	ix.mu.Lock()
 	defer ix.mu.Unlock()
-	if !ix.built {
-		if ix.building {
-			ix.markUnknownLocked(id)
-		}
-		return
-	}
 	if _, unknown := ix.unknown[id]; unknown {
 		ix.markUnknownLocked(id)
 		return
@@ -230,33 +272,16 @@ func (ix *ValidEndIndex) NoteCurrentDelete(id int64) {
 		return
 	}
 	e.gen++
+	ix.notes++
 	ix.ents[id] = e
 }
 
-// BuildRow folds one stored row into a running build (rows of one entity
-// ascending by history version, the current row last, give the tightest
-// bound; any order is sound). An entity a concurrent write moved to unknown
-// is skipped.
-func (ix *ValidEndIndex) BuildRow(id int64, r ValidEndRow) {
-	ix.mu.Lock()
-	defer ix.mu.Unlock()
-	if !ix.building {
-		return
-	}
-	if _, unknown := ix.unknown[id]; unknown {
-		return
-	}
-	e, ok := ix.ents[id]
-	ix.foldLocked(id, e, ok, r)
-}
-
-// Install replaces id's state with the fold of rows, all its stored rows
-// (none: id is gone). The owning store calls it under its own write lock (a
-// build that holds every writer out) or through ResolveUnknown.
+// Install replaces id's state with the fold of rows, all its stored rows,
+// keeping the tracked tokens they carry (none, or no rows: id is dropped).
 func (ix *ValidEndIndex) Install(id int64, rows []ValidEndRow) {
 	ix.mu.Lock()
 	defer ix.mu.Unlock()
-	if !ix.built && !ix.building {
+	if ix.toks == nil {
 		return
 	}
 	ix.installLocked(id, rows)
@@ -267,6 +292,13 @@ func (ix *ValidEndIndex) installLocked(id int64, rows []ValidEndRow) {
 		ix.dropLocked(id, e)
 	}
 	delete(ix.unknown, id)
+	tracked := false
+	for _, r := range rows {
+		tracked = tracked || ix.carriesTrackedLocked(r.Tokens)
+	}
+	if !tracked {
+		return
+	}
 	rows = slices.Clone(rows)
 	slices.SortStableFunc(rows, func(a, b ValidEndRow) int {
 		if a.Hist != b.Hist {
@@ -282,7 +314,7 @@ func (ix *ValidEndIndex) installLocked(id int64, rows []ValidEndRow) {
 		ok bool
 	)
 	for _, r := range rows {
-		ix.foldLocked(id, e, ok, r)
+		ix.foldLocked(id, e, ok, r, true)
 		e, ok = ix.ents[id]
 	}
 }
@@ -293,7 +325,7 @@ func (ix *ValidEndIndex) installLocked(id int64, rows []ValidEndRow) {
 // read runs without the index lock.
 func (ix *ValidEndIndex) ResolveUnknown(read func(id int64) ([]ValidEndRow, error)) error {
 	ix.mu.Lock()
-	if !ix.built || len(ix.unknown) == 0 {
+	if len(ix.unknown) == 0 {
 		ix.mu.Unlock()
 		return nil
 	}
@@ -308,7 +340,7 @@ func (ix *ValidEndIndex) ResolveUnknown(read func(id int64) ([]ValidEndRow, erro
 			return err
 		}
 		ix.mu.Lock()
-		if cur, still := ix.unknown[id]; still && cur == s && ix.built {
+		if cur, still := ix.unknown[id]; still && cur == s {
 			ix.installLocked(id, rows)
 		}
 		ix.mu.Unlock()
@@ -316,16 +348,42 @@ func (ix *ValidEndIndex) ResolveUnknown(read func(id int64) ([]ValidEndRow, erro
 	return nil
 }
 
-// Candidates lists, for the given tokens, the entities whose bound is at or
-// above validFrom or whose stamp is above pin, each once, plus every unknown
-// entity (Stamp and Bound store.ValidEndOpen: never refined). nil before the
-// build finished.
+// ResolveUnknownBulk is ResolveUnknown with one read for every unknown
+// entity: read returns the stored rows of each id it found (an id it omits is
+// gone).
+func (ix *ValidEndIndex) ResolveUnknownBulk(read func(ids []int64) (map[int64][]ValidEndRow, error)) error {
+	ix.mu.Lock()
+	if len(ix.unknown) == 0 {
+		ix.mu.Unlock()
+		return nil
+	}
+	pending := make(map[int64]uint64, len(ix.unknown))
+	ids := make([]int64, 0, len(ix.unknown))
+	for id, s := range ix.unknown {
+		pending[id] = s
+		ids = append(ids, id)
+	}
+	ix.mu.Unlock()
+	rows, err := read(ids)
+	if err != nil {
+		return err
+	}
+	ix.mu.Lock()
+	defer ix.mu.Unlock()
+	for id, s := range pending {
+		if cur, still := ix.unknown[id]; still && cur == s {
+			ix.installLocked(id, rows[id])
+		}
+	}
+	return nil
+}
+
+// Candidates lists, for the given tracked tokens, the entities whose bound is
+// at or above validFrom or whose stamp is above pin, each once, plus every
+// unknown entity (Stamp and Bound store.ValidEndOpen: never refined).
 func (ix *ValidEndIndex) Candidates(tokens []uint16, pin, validFrom types.Instant) []storepkg.ValidEndCandidate {
 	ix.mu.Lock()
 	defer ix.mu.Unlock()
-	if !ix.built {
-		return nil
-	}
 	var out []storepkg.ValidEndCandidate
 	seen := make(map[int64]struct{})
 	add := func(k veKey) bool {
@@ -362,14 +420,8 @@ func (ix *ValidEndIndex) Candidates(tokens []uint16, pin, validFrom types.Instan
 func (ix *ValidEndIndex) Refine(id int64, gen uint64, end types.Instant) {
 	ix.mu.Lock()
 	defer ix.mu.Unlock()
-	if !ix.built {
-		return
-	}
 	e, ok := ix.ents[id]
 	if !ok || uint64(e.gen) != gen || int64(end) >= e.bound {
-		return
-	}
-	if _, unknown := ix.unknown[id]; unknown {
 		return
 	}
 	old := e
@@ -382,22 +434,11 @@ func (ix *ValidEndIndex) Refine(id int64, gen uint64, end types.Instant) {
 	})
 }
 
-// ValidEndStats is the size of a ValidEndIndex: entities bounded, entities
-// unknown, ordered entries, and the RAM those structures hold (map entries
-// estimated at their key and value size, chunks at capacity).
-type ValidEndStats struct {
-	Built    bool
-	Entities int
-	Unknown  int
-	Entries  int
-	Bytes    int
-}
-
 // Stats reports the index's size.
-func (ix *ValidEndIndex) Stats() ValidEndStats {
+func (ix *ValidEndIndex) Stats() storepkg.ValidEndStats {
 	ix.mu.Lock()
 	defer ix.mu.Unlock()
-	st := ValidEndStats{Built: ix.built, Entities: len(ix.ents), Unknown: len(ix.unknown)}
+	st := storepkg.ValidEndStats{Tokens: len(ix.toks), Entities: len(ix.ents), Unknown: len(ix.unknown), Notes: ix.notes}
 	st.Bytes = len(ix.ents)*(8+32) + len(ix.unknown)*16
 	for _, toks := range ix.extra {
 		st.Bytes += 8 + 24 + 2*cap(toks)
@@ -409,9 +450,19 @@ func (ix *ValidEndIndex) Stats() ValidEndStats {
 	return st
 }
 
+// heldLocked reports whether id is held or unknown.
+func (ix *ValidEndIndex) heldLocked(id int64) bool {
+	if _, ok := ix.ents[id]; ok {
+		return true
+	}
+	_, ok := ix.unknown[id]
+	return ok
+}
+
 // markUnknownLocked drops id's state and lists it as unknown under a fresh
 // seq.
 func (ix *ValidEndIndex) markUnknownLocked(id int64) {
+	ix.notes++
 	if e, ok := ix.ents[id]; ok {
 		ix.dropLocked(id, e)
 	}
@@ -444,9 +495,16 @@ func (ix *ValidEndIndex) hasTokenLocked(id int64, e veEnt, tok uint16) bool {
 	return e.tok == tok || slices.Contains(ix.extra[id], tok)
 }
 
-// foldLocked folds row r into id's state e (exists: e is its current state)
-// and moves its ordered entries.
-func (ix *ValidEndIndex) foldLocked(id int64, e veEnt, exists bool, r ValidEndRow) {
+func (ix *ValidEndIndex) carriesTrackedLocked(toks []uint16) bool {
+	return slices.ContainsFunc(toks, func(tok uint16) bool { return ix.toks[tok] != nil })
+}
+
+// foldLocked folds row r into id's state e (exists: e is its current state),
+// moves its ordered entries and adds the tracked tokens r carries. capDeath
+// false folds a delete as a stamp only (NoteMember: the row's kind is
+// unknown). Callers fold an entity only when one of its rows carries a
+// tracked token (Install folds a member's earlier rows before that one).
+func (ix *ValidEndIndex) foldLocked(id int64, e veEnt, exists bool, r ValidEndRow, capDeath bool) {
 	old := e
 	if !exists {
 		e = veEnt{bound: int64(storepkg.ValidEndNone)}
@@ -456,7 +514,7 @@ func (ix *ValidEndIndex) foldLocked(id int64, e veEnt, exists bool, r ValidEndRo
 		own = int64(storepkg.ValidEndOpen)
 	}
 	e.bound = max(e.bound, own)
-	if d := int64(r.DeletedAt); d != 0 {
+	if d := int64(r.DeletedAt); d != 0 && capDeath {
 		if e.stamp <= d && int64(r.TxFrom) <= d {
 			e.bound = min(e.bound, d)
 		}
@@ -469,6 +527,7 @@ func (ix *ValidEndIndex) foldLocked(id int64, e veEnt, exists bool, r ValidEndRo
 	}
 	e.stamp = max(e.stamp, int64(r.TxFrom), int64(r.TxTo), int64(r.DeletedAt))
 	e.gen++
+	ix.notes++
 	if exists && (old.bound != e.bound || old.stamp != e.stamp) {
 		ix.forTokensLocked(id, old, func(t *veToken) {
 			if old.bound != e.bound {
@@ -482,18 +541,14 @@ func (ix *ValidEndIndex) foldLocked(id int64, e veEnt, exists bool, r ValidEndRo
 		})
 	}
 	for _, tok := range r.Tokens {
-		if tok == 0 || ix.hasTokenLocked(id, e, tok) {
+		t := ix.toks[tok]
+		if t == nil || ix.hasTokenLocked(id, e, tok) {
 			continue
 		}
 		if e.tok == 0 {
 			e.tok = tok
 		} else {
 			ix.extra[id] = append(ix.extra[id], tok)
-		}
-		t := ix.toks[tok]
-		if t == nil {
-			t = &veToken{}
-			ix.toks[tok] = t
 		}
 		t.byBound.insert(veKey{e.bound, id})
 		t.byStamp.insert(veKey{e.stamp, id})

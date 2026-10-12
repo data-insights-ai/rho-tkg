@@ -130,10 +130,11 @@ func segmentsEnd[S any](segs []S, to func(S) types.Instant) types.Instant {
 //
 // Cost: on memory and badger, reads the relationships of the type whose
 // valid end (as folded from their rows, or as last read) is at or after
-// validFrom, plus those written after pin; the store's valid-end index is
-// built on the first call (one pass over every row's temporal fields) and
-// maintained by every write after it. Tiered and sharded read every candidate
-// of the unbounded door.
+// validFrom, plus those written after pin; the store's valid-end index
+// tracks the type on its first call (its K1 ever-members, each read once,
+// temporal fields only) and folds every write of it after that; writes of
+// types nobody queried change nothing. Tiered and sharded read every
+// candidate of the unbounded door.
 func (t *TempOps) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom types.Instant, fn func(temporal.RelSegment) bool) error {
 	c := t.c
 	if err := c.checkOpen(); err != nil {

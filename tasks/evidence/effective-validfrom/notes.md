@@ -31,3 +31,15 @@
 - 02-green.txt: memory and badger read 5 with 1,000 or 10,000 deleted (closed-only: once, then 5).
 - 03-test-short-all.txt, 04-race-touched.txt, 05-ram-per-entity.txt, 06-mutants.txt, 07-lint-docker.txt,
   08-security-docker.txt.
+
+## Fix round (Opus-high review, 2026-10-12)
+1. Scope: the index is per queried type / label (Track from K1 ever-members, enlisted as unknown and read once in
+   bulk: one badger view, two iterators walking forward in ID order). Untracked writes: atomic load (kind) or map
+   lookup (type); badger decodes only a held entity's SET (temporal block), new members arrive from the K1 membership
+   doors (NoteMember, no delete cap) before their SET. Red `09-red-scope.txt` -> green `09-green-scope.txt`;
+   write A/B `09-bench-writes-ab.txt`.
+2. sigma's path: badger directory, 100,000 retired (tkg_valid_to at create, delete), close, reopen, first call reads
+   5 timelines (`09-reopen-first-call-100k.txt`).
+3. Docs: first-call cost, per-kind scope and write cost, refined ends lost on reopen, tiered/sharded not accelerated,
+   persistence reason reworded (open is already linear in history).
+Mutants after the round: `09-mutants.txt` (19 of 20 killed, M11 equivalent).

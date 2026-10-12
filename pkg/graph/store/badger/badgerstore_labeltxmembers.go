@@ -90,6 +90,7 @@ func (bs *Store) recordNodeLabelMembersLocked(n *types.Node) {
 	if bs.labelTxMembers == nil || n == nil {
 		return
 	}
+	bs.noteValidEndNodeMember(n) // backlog 51: a tracked label's new member
 	var tx types.Instant
 	if tm := n.Temporal(); tm != nil {
 		tx = tm.TxFrom
@@ -107,6 +108,7 @@ func (bs *Store) recordRelTypeMemberLocked(r *types.Relationship) {
 	if bs.relTypeTxMembers == nil || r == nil {
 		return
 	}
+	bs.noteValidEndRelMember(r) // backlog 51: a tracked type's new member
 	tok := r.TypeToken().Value()
 	if tok == 0 {
 		return

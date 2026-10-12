@@ -108,11 +108,11 @@ func TestValidEndMaintenance_Memory(t *testing.T) {
 	if got, want := veCands(t, ms, 100), []int64{1, 4, 6}; !slices.Equal(got, want) {
 		t.Fatalf("written after refine: %v, want %v", got, want)
 	}
-	if rels, nodes := ms.validEndStats(); rels.Built || !nodes.Built || nodes.Entities != 4 {
+	if rels, nodes := ms.ValidEndStats(); rels.Tokens != 0 || nodes.Tokens != 1 || nodes.Entities != 4 {
 		t.Fatalf("stats: rels %+v nodes %+v", rels, nodes)
 	}
 	must(ms.Clear())
-	if _, nodes := ms.validEndStats(); nodes.Built {
+	if _, nodes := ms.ValidEndStats(); nodes.Tokens != 0 {
 		t.Fatal("Clear kept the index")
 	}
 	if got := veCands(t, ms, 0); got != nil {

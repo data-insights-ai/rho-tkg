@@ -109,22 +109,38 @@ func vfCheck(t *testing.T, g *Core, rel bool, name string, pin, from types.Insta
 	return got
 }
 
-// primeValidEndIndex builds the store's valid-end indexes (where the store
-// keeps them) before any write, so the later writes are maintained
-// incrementally rather than read by the lazy build.
-func primeValidEndIndex(t *testing.T, g *Core) {
+// primeValidEndIndex makes the store's valid-end indexes track relTypes and
+// labels (where the store keeps them) before any entity of them exists, so the
+// later writes reach the index through maintenance rather than through the
+// first query's re-read. The names are registered first (a token must exist to
+// be tracked).
+func primeValidEndIndex(t *testing.T, g *Core, relTypes, labels []string) {
 	t.Helper()
 	pin, err := g.Temporal.NowTx()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if ve, ok := g.store.(storepkg.RelValidEndCapability); ok {
-		if _, err := ve.RelValidEndCandidates(1, pin, 0); err != nil {
-			t.Fatalf("prime rel valid-end index: %v", err)
+		for _, name := range relTypes {
+			tok, err := g.relTypes.GetOrCreate(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ve.RelValidEndCandidates(tok, pin, 0); err != nil {
+				t.Fatalf("prime rel valid-end index: %v", err)
+			}
 		}
 	}
 	if ve, ok := g.store.(storepkg.NodeValidEndCapability); ok {
-		if _, err := ve.NodeValidEndCandidates([]uint16{1}, pin, 0); err != nil {
+		var toks []uint16
+		for _, name := range labels {
+			tok, err := g.labels.GetOrCreate(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			toks = append(toks, tok)
+		}
+		if _, err := ve.NodeValidEndCandidates(toks, pin, 0); err != nil {
 			t.Fatalf("prime node valid-end index: %v", err)
 		}
 	}
@@ -276,7 +292,7 @@ func TestEffectiveValidFrom_SemanticsTable(t *testing.T) {
 					tick := func() types.Instant { x += 1000; clk.at.Store(int64(x)); return x }
 					tick()
 					if primeFirst {
-						primeValidEndIndex(t, g)
+						primeValidEndIndex(t, g, []string{"EV"}, []string{"Ev"})
 					}
 					s, e := txbEndpoints(t, g)
 					must := func(err error) {
@@ -458,7 +474,7 @@ func TestEffectiveValidFrom_MatchesUnboundedOracle(t *testing.T) {
 		inner := be.open
 		primed := txbBackend{name: be.name, open: func(t *testing.T, allow bool) *Core {
 			g := inner(t, allow)
-			primeValidEndIndex(t, g)
+			primeValidEndIndex(t, g, oracleRelTypes, append(slices.Clone(oracleNodeLabels), "Re"))
 			return g
 		}}
 		t.Run(be.name, func(t *testing.T) {
@@ -670,4 +686,136 @@ func vfWriteLoop(ctx context.Context, g *Core, anchor types.NodeID, w int) error
 		}
 	}
 	return nil
+}
+
+// validEndStatser is the diagnostic the memory and badger stores expose.
+type validEndStatser interface {
+	ValidEndStats() (rels, nodes storepkg.ValidEndStats)
+}
+
+// TestEffectiveValidFrom_ScopeFollowsQueriedTypes — the valid-end index covers
+// the types and labels a bounded scan asked for, nothing else: after a query
+// on type A and label LA (memory, badger) the index holds A's relationships
+// and LA's nodes only, writes of type B and label LB leave it untouched (no
+// entity, no note), and a write of type A is noted.
+func TestEffectiveValidFrom_ScopeFollowsQueriedTypes(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	for _, be := range []string{"memory", "badger"} {
+		t.Run(be, func(t *testing.T) {
+			g, err := New(Config{BadgerInMemory: be == "badger"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer g.Close()
+			must := func(err error) {
+				t.Helper()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			pair := func(typ, label string) (types.RelID, types.NodeID) {
+				s, err := g.Nodes.Add(ctx, []string{label}, nil)
+				must(err)
+				e, err := g.Nodes.Add(ctx, []string{label}, nil)
+				must(err)
+				r, err := g.Rels.AddByID(ctx, typ, s.ID(), e.ID(), nil)
+				must(err)
+				return r.ID(), s.ID()
+			}
+			for i := 0; i < 5; i++ {
+				pair("A", "LA")
+				pair("B", "LB")
+			}
+			pin, _ := g.Temporal.NowTx()
+			vfCheck(t, g, true, "A", pin, 0, "query A")
+			vfCheck(t, g, false, "LA", pin, 0, "query LA")
+			st, ok := g.store.(validEndStatser)
+			if !ok {
+				t.Fatal("store has no ValidEndStats")
+			}
+			rels0, nodes0 := st.ValidEndStats()
+			if rels0.Tokens != 1 || rels0.Entities != 5 || nodes0.Tokens != 1 || nodes0.Entities != 10 {
+				t.Fatalf("after querying A / LA: rels %+v nodes %+v, want 1 token with 5 relationships, 1 token with 10 nodes", rels0, nodes0)
+			}
+			for i := 0; i < 20; i++ {
+				r, n := pair("B", "LB")
+				_, err := g.Rels.Update(ctx, r, map[string]any{"i": int64(i)})
+				must(err)
+				_, err = g.Nodes.Update(ctx, n, map[string]any{"i": int64(i)})
+				must(err)
+				if i%2 == 0 {
+					must(g.Rels.Delete(ctx, r))
+				}
+			}
+			rels1, nodes1 := st.ValidEndStats()
+			if rels1 != rels0 || nodes1 != nodes0 {
+				t.Fatalf("writes of type B / label LB touched the index: rels %+v -> %+v, nodes %+v -> %+v", rels0, rels1, nodes0, nodes1)
+			}
+			pair("A", "LA")
+			if rels2, nodes2 := st.ValidEndStats(); rels2.Notes == rels1.Notes || nodes2.Notes == nodes1.Notes {
+				t.Fatalf("a write of type A / label LA was not noted: rels %+v nodes %+v", rels2, nodes2)
+			}
+			pin, _ = g.Temporal.NowTx()
+			vfCheck(t, g, true, "A", pin, 0, "query A again")
+			vfCheck(t, g, false, "LA", pin, 0, "query LA again")
+			vfCheck(t, g, true, "B", pin, pin, "query B")
+		})
+	}
+}
+
+// BenchmarkValidEndWrites — the write cost the valid-end index adds: per op a
+// node, a relationship and an update of it (type W, label W), with no bounded
+// scan run (off), after a bounded scan of another type and label (other), and
+// after a bounded scan of W (same).
+func BenchmarkValidEndWrites(b *testing.B) {
+	ctx := context.Background()
+	for _, be := range []string{"memory", "badger"} {
+		for _, mode := range []string{"off", "other", "same"} {
+			b.Run(be+"/"+mode, func(b *testing.B) {
+				g, err := New(Config{BadgerInMemory: be == "badger"})
+				if err != nil {
+					b.Fatal(err)
+				}
+				defer g.Close()
+				anchor, err := g.Nodes.Add(ctx, []string{"Q"}, nil)
+				if err != nil {
+					b.Fatal(err)
+				}
+				q, _ := g.Nodes.Add(ctx, []string{"Q"}, nil)
+				if _, err := g.Rels.AddByID(ctx, "Q", anchor.ID(), q.ID(), nil); err != nil {
+					b.Fatal(err)
+				}
+				w, _ := g.Nodes.Add(ctx, []string{"W"}, nil)
+				if _, err := g.Rels.AddByID(ctx, "W", anchor.ID(), w.ID(), nil); err != nil {
+					b.Fatal(err)
+				}
+				pin, _ := g.Temporal.NowTx()
+				scan := func(typ string) {
+					_ = g.Temporal.ForEachRelEffectiveByTypeFrom(typ, pin, pin, func(temporal.RelSegment) bool { return true })
+					_ = g.Temporal.ForEachNodeEffectiveByLabelsFrom([]string{typ}, pin, pin, func(temporal.NodeSegment) bool { return true })
+				}
+				switch mode {
+				case "other":
+					scan("Q")
+				case "same":
+					scan("W")
+				}
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					n, err := g.Nodes.Add(ctx, []string{"W"}, nil)
+					if err != nil {
+						b.Fatal(err)
+					}
+					r, err := g.Rels.AddByID(ctx, "W", anchor.ID(), n.ID(), nil)
+					if err != nil {
+						b.Fatal(err)
+					}
+					if _, err := g.Rels.Update(ctx, r.ID(), map[string]any{"i": int64(i)}); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	}
 }

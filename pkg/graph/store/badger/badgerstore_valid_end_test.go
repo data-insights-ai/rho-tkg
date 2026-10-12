@@ -69,8 +69,8 @@ func TestValidEndBuild_OverlayAndConcurrentWrites(t *testing.T) {
 	must(bs.PutNode(veNode(5, 0, 10, 0, 0)))
 	must(bs.Flush())
 	must(bs.PutNode(veNode(2, 0, 20, 0, 0))) // buffered only
-	bs.validEndBuildHook = func() {
-		bs.validEndBuildHook = nil
+	bs.validEndTrackHook = func() {
+		bs.validEndTrackHook = nil
 		must(bs.ReplaceNode(veNode(3, 1, 30, 5, 0)))
 		must(bs.PutNode(veNode(4, 0, 30, 0, 0)))
 		must(bs.DeleteNodeWithHistory(types.NodeID(5), 0, veNode(5, 0, 10, 50, 50), nil))
@@ -127,11 +127,11 @@ func TestValidEndBuild_OverlayAndConcurrentWrites(t *testing.T) {
 	if got, want := veCands(t, bs, 100), []int64{1, 2, 4, 5, 6}; !slices.Equal(got, want) {
 		t.Fatalf("written after refine: %v, want %v", got, want)
 	}
-	if rels, nodes := bs.validEndStats(); rels.Built || !nodes.Built || nodes.Entities != 6 {
+	if rels, nodes := bs.ValidEndStats(); rels.Tokens != 0 || nodes.Tokens != 1 || nodes.Entities != 6 {
 		t.Fatalf("stats: rels %+v nodes %+v", rels, nodes)
 	}
 	must(bs.Clear())
-	if _, nodes := bs.validEndStats(); nodes.Built {
+	if _, nodes := bs.ValidEndStats(); nodes.Tokens != 0 {
 		t.Fatal("Clear kept the index")
 	}
 	if got := veCands(t, bs, 0); got != nil {

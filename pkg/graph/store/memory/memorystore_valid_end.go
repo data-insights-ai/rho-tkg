@@ -10,17 +10,19 @@ import (
 // NodeValidEndCapability; the fold and its soundness rules are
 // index.ValidEndIndex's).
 //
-// LAZY, RAM-only: built on the first candidates call under ms.mu (write; later
-// calls read under ms.mu.RLock) from
-// every current row (sealed ones included) and every history row; afterwards
-// every door that writes a row notes it under ms.mu: a current row put or
-// replaced (noteRelCurrentLocked / noteNodeCurrentLocked), a history row
-// (putRelHistoryRowLocked / putNodeHistoryRowLocked, the one place history is
-// written), a current row removed (deleteRelLocked and the node delete doors),
-// and a history row removed (truncate, trim, compaction, retention purge,
-// exact erasure: the entity is re-read from its rows on the next call). A row
-// sealed into or faulted in from a segment is the same logical row: no note.
-// Clear drops both indexes.
+// Per queried token, RAM-only: the first candidates call for a type or label
+// tracks it under ms.mu (write) — its ever-members from the K1 membership
+// sidecar, each read once from its rows (sealed current rows included) — and
+// later calls answer under ms.mu.RLock. Every door that writes a row notes it
+// under ms.mu: a current row put or replaced (noteRelCurrentLocked /
+// noteNodeCurrentLocked), a history row (putRelHistoryRowLocked /
+// putNodeHistoryRowLocked, the one place history is written), a current row
+// removed (deleteRelLocked and the node delete doors), and a history row
+// removed (truncate, trim, compaction, retention purge, exact erasure: the
+// entity is re-read on the next call). A note costs an atomic load while no
+// token of the kind is tracked, and a map lookup under the index lock for an
+// entity of an untracked token. A row sealed into or faulted in from a
+// segment is the same logical row: no note. Clear drops both indexes.
 
 var (
 	_ storecontract.RelValidEndCapability  = (*Store)(nil)
@@ -45,11 +47,11 @@ func (ms *Store) noteNodeCurrentLocked(n *types.Node) {
 // relHistoryRemovedLocked / nodeHistoryRemovedLocked note history rows of id
 // removed (or the whole history).
 func (ms *Store) relHistoryRemovedLocked(id types.RelID) {
-	ms.relValidEnds.MarkUnknown(int64(id))
+	ms.relValidEnds.NoteRemoved(int64(id))
 }
 
 func (ms *Store) nodeHistoryRemovedLocked(id types.NodeID) {
-	ms.nodeValidEnds.MarkUnknown(int64(id))
+	ms.nodeValidEnds.NoteRemoved(int64(id))
 }
 
 // relValidEndRowsLocked returns every stored row of rel id (none: gone).
@@ -93,68 +95,39 @@ func (ms *Store) nodeValidEndRowsLocked(id types.NodeID) []indexpkg.ValidEndRow 
 	return rows
 }
 
-// buildRelValidEndsLocked builds the relationship index from every row.
-// Caller holds ms.mu (write).
-func (ms *Store) buildRelValidEndsLocked() error {
-	ix := &ms.relValidEnds
-	ix.BeginBuild()
-	for id := range ms.relHistory {
-		rows, err := ms.relValidEndRowsLocked(id)
-		if err != nil {
-			ix.Reset()
-			return err
-		}
-		ix.Install(int64(id), rows)
-	}
-	if err := ms.forEachCurrentRelLocked(func(r *types.Relationship) bool {
-		if _, hist := ms.relHistory[r.ID()]; !hist {
-			ix.Install(int64(r.ID()), []indexpkg.ValidEndRow{indexpkg.ValidEndRowOfRel(r, false)})
-		}
-		return true
-	}); err != nil {
-		ix.Reset()
-		return err
-	}
-	ix.EndBuild()
-	return nil
-}
-
-func (ms *Store) buildNodeValidEndsLocked() {
-	ix := &ms.nodeValidEnds
-	ix.BeginBuild()
-	for id := range ms.nodeHistory {
-		ix.Install(int64(id), ms.nodeValidEndRowsLocked(id))
-	}
-	for id, n := range ms.nodes {
-		if _, hist := ms.nodeHistory[id]; !hist {
-			ix.Install(int64(id), []indexpkg.ValidEndRow{indexpkg.ValidEndRowOfNode(n, false)})
-		}
-	}
-	ix.EndBuild()
-}
-
-// validEndCandidates answers ix under ms.mu.RLock once built (the re-read of
-// unknown entities only reads rows; the index has its own lock); the first
-// call builds under ms.mu (write), which holds every writer out.
-func (ms *Store) validEndCandidates(ix *indexpkg.ValidEndIndex, build func() error,
-	rows func(id int64) ([]indexpkg.ValidEndRow, error), answer func() []storecontract.ValidEndCandidate) ([]storecontract.ValidEndCandidate, error) {
+// validEndCandidates answers ix for toks under ms.mu.RLock when every token
+// is tracked (the re-read of unknown entities only reads rows; the index has
+// its own lock); a token queried for the first time is tracked under ms.mu
+// (write, every writer held out) from the membership sidecar (ensureK1 builds
+// it, members lists a token's ever-members) and its members re-read.
+func (ms *Store) validEndCandidates(ix *indexpkg.ValidEndIndex, toks []uint16, ensureK1 func() error,
+	members func(tok uint16, enlist func(id int64)), rows func(id int64) ([]indexpkg.ValidEndRow, error),
+	pin, validFrom types.Instant) ([]storecontract.ValidEndCandidate, error) {
 	if ms == nil {
 		return nil, ErrNilStore
 	}
-	read := func() ([]storecontract.ValidEndCandidate, error) {
+	answer := func() ([]storecontract.ValidEndCandidate, error) {
 		if err := ix.ResolveUnknown(rows); err != nil {
 			return nil, err
 		}
-		return answer(), nil
+		return ix.Candidates(toks, pin, validFrom), nil
+	}
+	tracked := func() bool {
+		for _, tok := range toks {
+			if !ix.Tracked(tok) {
+				return false
+			}
+		}
+		return true
 	}
 	ms.mu.RLock()
 	if err := ms.checkOpenLocked(); err != nil {
 		ms.mu.RUnlock()
 		return nil, err
 	}
-	if ix.Built() {
+	if tracked() {
 		defer ms.mu.RUnlock()
-		return read()
+		return answer()
 	}
 	ms.mu.RUnlock()
 	ms.mu.Lock()
@@ -162,12 +135,13 @@ func (ms *Store) validEndCandidates(ix *indexpkg.ValidEndIndex, build func() err
 	if err := ms.checkOpenLocked(); err != nil {
 		return nil, err
 	}
-	if !ix.Built() {
-		if err := build(); err != nil {
-			return nil, err
-		}
+	if err := ensureK1(); err != nil {
+		return nil, err
 	}
-	return read()
+	for _, tok := range toks {
+		ix.Track(tok, func(enlist func(id int64)) { members(tok, enlist) })
+	}
+	return answer()
 }
 
 // RelValidEndCandidates implements store.RelValidEndCapability.
@@ -175,11 +149,14 @@ func (ms *Store) RelValidEndCandidates(typeToken uint16, pin, validFrom types.In
 	if ms == nil {
 		return nil, ErrNilStore
 	}
-	return ms.validEndCandidates(&ms.relValidEnds, ms.buildRelValidEndsLocked,
+	return ms.validEndCandidates(&ms.relValidEnds, []uint16{typeToken}, ms.ensureRelTypeTxMembersBuiltLocked,
+		func(tok uint16, enlist func(int64)) {
+			for id := range ms.relTypeTxMembers[tok] {
+				enlist(int64(id))
+			}
+		},
 		func(id int64) ([]indexpkg.ValidEndRow, error) { return ms.relValidEndRowsLocked(types.RelID(id)) },
-		func() []storecontract.ValidEndCandidate {
-			return ms.relValidEnds.Candidates([]uint16{typeToken}, pin, validFrom)
-		})
+		pin, validFrom)
 }
 
 // RefineRelValidEnd implements store.RelValidEndCapability.
@@ -195,13 +172,17 @@ func (ms *Store) NodeValidEndCandidates(labelTokens []uint16, pin, validFrom typ
 	if ms == nil {
 		return nil, ErrNilStore
 	}
-	return ms.validEndCandidates(&ms.nodeValidEnds, func() error { ms.buildNodeValidEndsLocked(); return nil },
+	return ms.validEndCandidates(&ms.nodeValidEnds, labelTokens,
+		func() error { ms.ensureLabelTxMembersBuiltLocked(); return nil },
+		func(tok uint16, enlist func(int64)) {
+			for id := range ms.labelTxMembers[tok] {
+				enlist(int64(id))
+			}
+		},
 		func(id int64) ([]indexpkg.ValidEndRow, error) {
 			return ms.nodeValidEndRowsLocked(types.NodeID(id)), nil
 		},
-		func() []storecontract.ValidEndCandidate {
-			return ms.nodeValidEnds.Candidates(labelTokens, pin, validFrom)
-		})
+		pin, validFrom)
 }
 
 // RefineNodeValidEnd implements store.NodeValidEndCapability.
@@ -212,8 +193,11 @@ func (ms *Store) RefineNodeValidEnd(id types.NodeID, gen uint64, end types.Insta
 	ms.nodeValidEnds.Refine(int64(id), gen, end)
 }
 
-// validEndStats reports the sizes of the valid-end indexes (relationships,
-// nodes).
-func (ms *Store) validEndStats() (rels, nodes indexpkg.ValidEndStats) {
+// ValidEndStats reports the valid-end indexes (relationships, nodes) of
+// backlog 51: a diagnostic, sizes and write notes, not a contract.
+func (ms *Store) ValidEndStats() (rels, nodes storecontract.ValidEndStats) {
+	if ms == nil {
+		return rels, nodes
+	}
 	return ms.relValidEnds.Stats(), ms.nodeValidEnds.Stats()
 }

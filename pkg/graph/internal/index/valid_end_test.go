@@ -68,10 +68,12 @@ func hist(v uint32, txFrom, txTo, validTo, deletedAt types.Instant, toks ...uint
 	return ValidEndRow{Hist: true, Version: v, TxFrom: txFrom, TxTo: txTo, ValidTo: validTo, DeletedAt: deletedAt, Tokens: toks}
 }
 
+// builtIndex tracks tokens 1, 3, 5 and 6 (no members yet).
 func builtIndex() *ValidEndIndex {
 	ix := &ValidEndIndex{}
-	ix.BeginBuild()
-	ix.EndBuild()
+	for _, tok := range []uint16{1, 3, 5, 6} {
+		ix.Track(tok, func(func(int64)) {})
+	}
 	return ix
 }
 
@@ -159,7 +161,7 @@ func TestValidEndIndex_UnknownRules(t *testing.T) {
 		{"history overwrite at the tombstone version", deleted, func(ix *ValidEndIndex) { ix.NoteRow(7, hist(1, 20, 0, 0, 0, 1)) }, true},
 		{"history overwrite below the tombstone version", deleted, func(ix *ValidEndIndex) { ix.NoteRow(7, hist(0, 10, 20, 0, 0, 1)) }, true},
 		{"history write above the tombstone version", deleted, func(ix *ValidEndIndex) { ix.NoteRow(7, hist(2, 40, 0, 0, 0, 1)) }, false},
-		{"history removed", deleted, func(ix *ValidEndIndex) { ix.MarkUnknown(7) }, true},
+		{"history removed", deleted, func(ix *ValidEndIndex) { ix.NoteRemoved(7) }, true},
 		{"current removed without a delete", []ValidEndRow{cur(10, 0, 0, 1)}, func(ix *ValidEndIndex) { ix.NoteCurrentDelete(7) }, false},
 		{"current carrying a delete removed", []ValidEndRow{cur(10, 0, 20, 1)}, func(ix *ValidEndIndex) { ix.NoteCurrentDelete(7) }, true},
 		{"current carrying a delete replaced", []ValidEndRow{cur(10, 0, 20, 1)}, func(ix *ValidEndIndex) { ix.NoteRow(7, cur(30, 0, 0, 1)) }, true},
@@ -188,19 +190,57 @@ func TestValidEndIndex_UnknownRules(t *testing.T) {
 			}
 		}
 	}
-	// During a build every write moves its entity to unknown, and the scan
-	// then skips it.
+}
+
+// TestValidEndIndex_TrackScope — the index holds the tracked tokens' entities
+// only: an untracked index notes nothing; Track enlists the token's members
+// as unknown (a second Track of it does not); a row of an untracked token is
+// ignored (no entity, no note) and a removal of an entity it does not hold
+// too; a row carrying a tracked token takes its entity in; a node's untracked
+// labels are not kept; NoteMember folds a member's row without the delete
+// cap.
+func TestValidEndIndex_TrackScope(t *testing.T) {
+	t.Parallel()
 	ix := &ValidEndIndex{}
-	ix.BeginBuild()
-	ix.NoteRow(7, cur(10, 0, 0, 1))
-	ix.BuildRow(7, cur(5, 0, 0, 1))
-	ix.BuildRow(8, cur(5, 0, 0, 1))
-	ix.EndBuild()
-	if _, _, unknown := state(ix, 7); !unknown {
-		t.Error("write during the build: not unknown")
+	ix.NoteRow(1, cur(10, 0, 0, 5))
+	ix.NoteRemoved(1)
+	if ix.Active() || ix.Stats() != (storepkg.ValidEndStats{}) {
+		t.Fatalf("untracked index changed: %+v", ix.Stats())
 	}
-	if b, _, unknown := state(ix, 8); unknown || b != int64(open) {
-		t.Errorf("scanned entity: bound %d unknown %v", b, unknown)
+	if !ix.Track(5, func(enlist func(int64)) { enlist(1); enlist(2) }) {
+		t.Fatal("first Track refused")
+	}
+	if ix.Track(5, func(func(int64)) { t.Fatal("members listed twice") }) || !ix.Tracked(5) || ix.Tracked(6) {
+		t.Fatal("Track state wrong")
+	}
+	if st := ix.Stats(); st.Tokens != 1 || st.Unknown != 2 || st.Entities != 0 {
+		t.Fatalf("after Track: %+v, want 2 unknown members", st)
+	}
+	before := ix.Stats()
+	ix.NoteRow(3, cur(10, 0, 0, 6))     // untracked token
+	ix.NoteRemoved(4)                   // never held
+	ix.NoteCurrentDelete(4)             //
+	ix.NoteMember(4, cur(10, 0, 0, 6))  // untracked token
+	ix.NoteRow(5, cur(10, 0, 30, 6, 7)) // untracked labels only
+	if after := ix.Stats(); after != before {
+		t.Fatalf("writes of untracked tokens changed the index: %+v -> %+v", before, after)
+	}
+	ix.NoteRow(5, cur(10, 0, 0, 6, 5))
+	if b, _, u := state(ix, 5); u || b != int64(open) || ix.Has(5) == false {
+		t.Fatalf("tracked row not taken in: bound %d unknown %v", b, u)
+	}
+	if len(ix.extra[5]) != 0 || ix.ents[5].tok != 5 {
+		t.Fatalf("untracked label kept: tok %d extra %v", ix.ents[5].tok, ix.extra[5])
+	}
+	// NoteMember: a tombstone-shaped row of unknown kind folds its stamps but
+	// no cap.
+	ix.NoteMember(6, hist(0, 10, 30, 0, 30, 5))
+	if b, s, _ := state(ix, 6); b != int64(open) || s != 30 {
+		t.Fatalf("NoteMember: bound %d stamp %d, want open, 30", b, s)
+	}
+	ix.NoteRow(6, hist(0, 10, 30, 0, 30, 5)) // the same row with its kind
+	if b, _, _ := state(ix, 6); b != 30 {
+		t.Fatalf("NoteRow after NoteMember: bound %d, want 30", b)
 	}
 }
 
@@ -269,7 +309,7 @@ func TestValidEndIndex_Candidates(t *testing.T) {
 	// Reset: inactive, no answer, notes ignored.
 	ix.Reset()
 	ix.NoteRow(1, cur(200, 0, 0, 5))
-	if ix.Active() || ix.Built() || ix.Candidates([]uint16{5}, 1000, 0) != nil {
+	if ix.Active() || ix.Tracked(5) || ix.Candidates([]uint16{5}, 1000, 0) != nil {
 		t.Error("reset index still answers")
 	}
 }
@@ -279,10 +319,12 @@ func TestValidEndIndex_Candidates(t *testing.T) {
 // entity unknown (listed), and a read error is returned.
 func TestValidEndIndex_ResolveUnknown(t *testing.T) {
 	t.Parallel()
-	ix := builtIndex()
-	for _, id := range []int64{1, 2, 3} {
-		ix.MarkUnknown(id)
-	}
+	ix := &ValidEndIndex{}
+	ix.Track(5, func(enlist func(int64)) {
+		for _, id := range []int64{1, 2, 3} {
+			enlist(id)
+		}
+	})
 	rows := map[int64][]ValidEndRow{1: {cur(10, 40, 0, 5)}, 3: {cur(10, 0, 0, 5)}}
 	err := ix.ResolveUnknown(func(id int64) ([]ValidEndRow, error) {
 		if id == 3 {

@@ -590,9 +590,12 @@ func (a *API) ForEachNodeEffectiveByLabels(labels []string, pin types.Instant, f
 //
 // Cost on memory and badger: the relationships of the type whose valid end is
 // at or after validFrom plus those written after pin, from a valid-end index
-// the store builds on the first call and maintains on every write after it
-// (RAM; rebuilt on the first call after a reopen). Tiered and sharded answer
-// the same through the unbounded door's candidates (not accelerated).
+// the store keeps per queried type: the first call for a type reads its
+// ever-members' temporal fields once (and builds the K1 membership sidecar if
+// no pinned scan did), every write of the type after that is folded, writes
+// of other types change nothing (RAM; tracked again on the first call after a
+// reopen). Tiered and sharded answer the same through the unbounded door's
+// candidates (not accelerated).
 func (a *API) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom types.Instant, fn func(RelSegment) bool) error {
 	ops, err := a.ready()
 	if err != nil {

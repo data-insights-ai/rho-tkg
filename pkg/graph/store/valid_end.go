@@ -41,9 +41,11 @@ type ValidEndCandidate struct {
 // tombstone recorded after all the entity's earlier stamps (a delete ends
 // every row recorded before it); it never models the chain resolver, which
 // stays the authority: the caller reads each candidate's timeline and decides.
-// Built on the first call (one pass over the rows' temporal fields), then
-// maintained by every row write; a removed or overwritten row moves its entity
-// to a re-read on the next call. The order is unspecified.
+// The first call for a type tracks it (its ever-members from the K1
+// membership sidecar, each read once: temporal fields only); from then on
+// every row write of the type is folded, writes of untracked types change
+// nothing; a removed or overwritten row moves its entity to a re-read on the
+// next call. The order is unspecified.
 //
 // RefineRelValidEnd records end, the exact effective valid end of id read at a
 // pin at or above the candidate's Stamp (ValidEndOpen when open, ValidEndNone
@@ -63,4 +65,17 @@ type RelValidEndCapability interface {
 type NodeValidEndCapability interface {
 	NodeValidEndCandidates(labelTokens []uint16, pin, validFrom types.Instant) ([]ValidEndCandidate, error)
 	RefineNodeValidEnd(id types.NodeID, gen uint64, end types.Instant)
+}
+
+// ValidEndStats describes one kind's valid-end index (a diagnostic): the
+// type or label tokens it covers, the entities it bounds, those awaiting a
+// re-read, its ordered entries, an estimate of its RAM, and Notes, the row
+// writes that changed it since it was built.
+type ValidEndStats struct {
+	Tokens   int
+	Entities int
+	Unknown  int
+	Entries  int
+	Bytes    int
+	Notes    uint64
 }
