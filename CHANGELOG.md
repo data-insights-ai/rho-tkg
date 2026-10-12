@@ -41,6 +41,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   deleted one) is noted, then flushed durably before the marker. A read-only open of a store without the marker does
   not scan (the marker write is tried first) and folds every relationship with history; so does a store without
   MetaKV.
+- **Effective scans bounded by valid end** (backlog 51, requested by sigma-tkgd for its step 6 restore):
+  `Temporal().ForEachRelEffectiveByTypeFrom(type, pin, validFrom, fn)` and
+  `ForEachNodeEffectiveByLabelsFrom(labels, pin, validFrom, fn)` stream what `ForEachRelEffectiveByType` /
+  `ForEachNodeEffectiveByLabels` stream, restricted to the entities with a (type- or label-limited) segment ending at
+  or after `validFrom` (`ValidTo >= validFrom`: the half-open segment ending exactly at `validFrom` counts) or open;
+  an untimed entity never deleted always streams, a deleted one ends at its delete instant, a retracted life never
+  streams. On memory and badger the candidates come from a new RAM valid-end index (`store.RelValidEndCapability` /
+  `NodeValidEndCapability`, `index.ValidEndIndex`): per entity an upper bound on its valid end folded from its rows
+  (each row's `ValidTo`; a delete recorded after all the entity's earlier stamps ends every earlier row) and its
+  newest stamp, ordered per type / label, so the entities read follow the answer: 5 read with 1,000 or 10,000
+  deleted entities on memory and badger (sigma's acceptance, `TestEffectiveByTypeValidFromCostFollowsResult`;
+  before: 1,005 / 10,005). An entity ended only by a valid-time close is read once, then its exact end is kept until
+  its next write. Built on the first call (badger: rebuilt on the first call after a reopen, not persisted — it is
+  derived from durable rows, and a persisted copy would cost a read-modify-write per row write), maintained at every
+  row write (badger at the write-buffer funnel); a removed or overwritten row makes the store re-read that entity.
+  RAM about 96-133 B per entity. Tiered and sharded give the same answers through the unbounded candidates (not
+  accelerated). Evidence: `tasks/evidence/effective-validfrom/`.
 
 ### Fixed
 

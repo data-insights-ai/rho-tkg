@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
@@ -244,6 +245,9 @@ func TestEffectiveByTypeValidFromCostFollowsResult(t *testing.T) {
 //	moved     open, then at a later tx corrected to end at eM (below every
 //	          other end): a pin before the correction streams it at any
 //	          validFrom, a pin after only up to validFrom = eM
+//	extended  closed at vfX+2, then at a later tx extended far beyond every
+//	          pin: a pin before the extension does not stream it at a far
+//	          validFrom, a pin after does
 //	deleted   ends at its delete instant dB: validFrom = dB streams (the
 //	          half-open segment [.., dB) counts), dB+1 does not
 //	closed    CloseVersion at eC: eC streams, eC+1 does not
@@ -252,6 +256,7 @@ func TestEffectiveByTypeValidFromCostFollowsResult(t *testing.T) {
 //	          at dI; after the re-import it is open again
 //	dropped   (nodes) the label removed at dD while the node lives on: its
 //	          labelled segment ends there
+//	joined    (nodes) the label added to a live node: streams from then on
 //	from 0    equals the unbounded door
 //
 // prime=true builds the index before the writes (memory, badger), so every
@@ -315,6 +320,8 @@ func TestEffectiveValidFrom_SemanticsTable(t *testing.T) {
 					m := add("moved", map[string]any{"tkg_valid_from": vfM})
 					eM := vfM + 2
 					pinBeforeMove, _ := g.Temporal.NowTx()
+					vfX := x + 200
+					xt := add("extended", map[string]any{"tkg_valid_from": vfX, "tkg_valid_to": vfX + 2})
 					b := add("deleted", nil)
 					dB := tick()
 					del(b)
@@ -325,8 +332,18 @@ func TestEffectiveValidFrom_SemanticsTable(t *testing.T) {
 					} else {
 						must(g.Nodes.CloseVersion(ctx, types.NodeID(c), eC))
 					}
+					pinBeforeExtend, _ := g.Temporal.NowTx()
 					tick() // the correction, recorded now: "moved" ends at eM
 					update(m, map[string]any{"tkg_valid_from": vfM + 1, "tkg_valid_to": eM})
+					// The opposite correction: "extended" (closed at vfX+2) is
+					// extended far beyond every pin (an interval correction).
+					if rel {
+						_, err := g.Temporal.SetRelVersionInterval(ctx, types.RelID(xt), vfX+1, vfX+50_000_000, map[string]any{"ext": true})
+						must(err)
+					} else {
+						_, err := g.Temporal.SetNodeVersionInterval(ctx, types.NodeID(xt), vfX+1, vfX+50_000_000, map[string]any{"ext": true})
+						must(err)
+					}
 					r := add("retracted", nil)
 					pinBeforeRetract, _ := g.Temporal.NowTx()
 					tick()
@@ -358,6 +375,12 @@ func TestEffectiveValidFrom_SemanticsTable(t *testing.T) {
 						must(g.Nodes.AddLabel(ctx, types.NodeID(d), "Other"))
 						dD = tick()
 						must(g.Nodes.RemoveLabel(ctx, types.NodeID(d), "Ev"))
+						tick()
+						j, err := g.Nodes.Add(ctx, []string{"Other"}, nil)
+						must(err)
+						ent["joined"] = int64(j.ID())
+						tick()
+						must(g.Nodes.AddLabel(ctx, j.ID(), "Ev"))
 					}
 					tick()
 					pin, _ := g.Temporal.NowTx()
@@ -370,20 +393,21 @@ func TestEffectiveValidFrom_SemanticsTable(t *testing.T) {
 						pin, from types.Instant
 						want      []string // "dropped" only where it exists (nodes)
 					}{
-						{pin, 0, []string{"live", "moved", "deleted", "closed", "reimport", "dropped"}},
-						{pin, eM, []string{"live", "moved", "deleted", "closed", "reimport", "dropped"}},
-						{pin, eM + 1, []string{"live", "deleted", "closed", "reimport", "dropped"}},
-						{pin, dB, []string{"live", "deleted", "closed", "reimport", "dropped"}},
-						{pin, dB + 1, []string{"live", "closed", "reimport", "dropped"}},
-						{pin, eC, []string{"live", "closed", "reimport", "dropped"}},
-						{pin, eC + 1, []string{"live", "reimport", "dropped"}},
-						{pin, dD, []string{"live", "reimport", "dropped"}},
-						{pin, dD + 1, []string{"live", "reimport"}},
-						{pin, far, []string{"live", "reimport"}},
+						{pin, 0, []string{"live", "moved", "extended", "deleted", "closed", "reimport", "joined", "dropped"}},
+						{pin, eM, []string{"live", "moved", "extended", "deleted", "closed", "reimport", "joined", "dropped"}},
+						{pin, eM + 1, []string{"live", "extended", "deleted", "closed", "reimport", "joined", "dropped"}},
+						{pin, dB, []string{"live", "extended", "deleted", "closed", "reimport", "joined", "dropped"}},
+						{pin, dB + 1, []string{"live", "extended", "closed", "reimport", "joined", "dropped"}},
+						{pin, eC, []string{"live", "extended", "closed", "reimport", "joined", "dropped"}},
+						{pin, eC + 1, []string{"live", "extended", "reimport", "joined", "dropped"}},
+						{pin, dD, []string{"live", "extended", "reimport", "joined", "dropped"}},
+						{pin, dD + 1, []string{"live", "extended", "reimport", "joined"}},
+						{pin, far, []string{"live", "extended", "reimport", "joined"}},
 						{pinBeforeMove, far, []string{"live", "moved"}},
-						{pinBeforeRetract, far, []string{"live", "retracted"}},
-						{pinBetween, dI, []string{"live", "reimport"}},
-						{pinBetween, dI + 1, []string{"live"}},
+						{pinBeforeExtend, far, []string{"live", "moved"}},
+						{pinBeforeRetract, far, []string{"live", "extended", "retracted"}},
+						{pinBetween, dI, []string{"live", "extended", "reimport"}},
+						{pinBetween, dI + 1, []string{"live", "extended"}},
 					} {
 						phase := fmt.Sprintf("pin %d from %d", c.pin, c.from)
 						got := vfCheck(t, g, rel, name, c.pin, c.from, phase)
@@ -405,6 +429,9 @@ func TestEffectiveValidFrom_SemanticsTable(t *testing.T) {
 							t.Fatalf("%s %s: streamed %v, want %v", name, phase, names, want)
 						}
 					}
+					// The reads at earlier pins did not teach the index an end the
+					// newest belief does not have.
+					vfCheck(t, g, rel, name, pin, far, "newest pin again, after the earlier pins")
 				})
 			}
 		}
@@ -542,4 +569,105 @@ func TestEffectiveValidFrom_Errors(t *testing.T) {
 	if err := te.ForEachNodeEffectiveByLabelsFrom([]string{"L"}, pin, 0, nodeFn); !errors.Is(err, ErrGraphClosed) {
 		t.Fatalf("closed node door: %v", err)
 	}
+}
+
+// TestEffectiveValidFrom_ConcurrentWrites — bounded scans run while writers
+// create, update, close and delete relationships and nodes (memory, badger;
+// meaningful under -race): no scan fails, and once the writers stop the
+// bounded doors equal the oracle at a fresh pin for several validFrom.
+func TestEffectiveValidFrom_ConcurrentWrites(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	for _, be := range []string{"memory", "badger"} {
+		t.Run(be, func(t *testing.T) {
+			g, err := New(Config{BadgerInMemory: be == "badger"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer g.Close()
+			anchor, err := g.Nodes.Add(ctx, []string{"Host"}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var writers sync.WaitGroup
+			writeErrs := make([]error, 2)
+			for w := range writeErrs {
+				writers.Add(1)
+				go func() {
+					defer writers.Done()
+					writeErrs[w] = vfWriteLoop(ctx, g, anchor.ID(), w)
+				}()
+			}
+			stop := make(chan struct{})
+			scanErr := make(chan error, 1)
+			go func() {
+				for {
+					select {
+					case <-stop:
+						scanErr <- nil
+						return
+					default:
+					}
+					pin, _ := g.Temporal.NowTx()
+					if err := g.Temporal.ForEachRelEffectiveByTypeFrom("SEEN", pin, pin, func(temporal.RelSegment) bool { return true }); err != nil {
+						scanErr <- err
+						return
+					}
+					if err := g.Temporal.ForEachNodeEffectiveByLabelsFrom([]string{"Event"}, pin, pin, func(temporal.NodeSegment) bool { return true }); err != nil {
+						scanErr <- err
+						return
+					}
+				}
+			}()
+			writers.Wait()
+			close(stop)
+			if err := <-scanErr; err != nil {
+				t.Fatalf("concurrent scan: %v", err)
+			}
+			for _, err := range writeErrs {
+				if err != nil {
+					t.Fatalf("writer: %v", err)
+				}
+			}
+			pin, _ := g.Temporal.NowTx()
+			for _, from := range []types.Instant{0, pin / 2, pin} {
+				vfCheck(t, g, true, "SEEN", pin, from, "after concurrent writes")
+				vfCheck(t, g, false, "Event", pin, from, "after concurrent writes")
+			}
+		})
+	}
+}
+
+// vfWriteLoop adds node+relationship pairs and deletes, updates or closes
+// some of them.
+func vfWriteLoop(ctx context.Context, g *Core, anchor types.NodeID, w int) error {
+	for i := 0; i < 150; i++ {
+		nd, err := g.Nodes.Add(ctx, []string{"Event"}, nil)
+		if err != nil {
+			return err
+		}
+		r, err := g.Rels.AddByID(ctx, "SEEN", anchor, nd.ID(), nil)
+		if err != nil {
+			return err
+		}
+		switch (i + w) % 4 {
+		case 0:
+			if err := g.Rels.Delete(ctx, r.ID()); err != nil {
+				return err
+			}
+			err = g.Nodes.Delete(ctx, nd.ID())
+		case 1:
+			_, err = g.Rels.Update(ctx, r.ID(), map[string]any{"i": int64(i)})
+		case 2:
+			at, _ := g.Temporal.NowTx()
+			if err := g.Rels.CloseVersion(ctx, r.ID(), at); err != nil {
+				return err
+			}
+			err = g.Nodes.CloseVersion(ctx, nd.ID(), at)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

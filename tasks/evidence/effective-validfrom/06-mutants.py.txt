@@ -1,0 +1,72 @@
+import subprocess, sys
+
+CORE = './pkg/graph/internal/core/'
+IDX = './pkg/graph/internal/index/'
+BDG = './pkg/graph/store/badger/'
+MEM = './pkg/graph/store/memory/'
+CORE_RUN = 'TestEffectiveByTypeValidFromCostFollowsResult|TestEffectiveValidFrom_'
+
+mutants = [
+    ('M1 fold: no delete cap', 'pkg/graph/internal/index/valid_end.go',
+     '\t\t\te.bound = min(e.bound, d)\n', '\t\t\t_ = d\n', [(CORE, CORE_RUN), (IDX, 'ValidEnd')]),
+    ('M2 fold: delete cap without the stamp order check', 'pkg/graph/internal/index/valid_end.go',
+     'if e.stamp <= d && int64(r.TxFrom) <= d {', 'if true {', [(IDX, 'ValidEnd'), (CORE, CORE_RUN)]),
+    ('M3 note: history overwrite at/below the tombstone version folded', 'pkg/graph/internal/index/valid_end.go',
+     '(r.Hist && e.flags&veHasDeath != 0 && r.Version <= e.deathVer) ||', 'false ||', [(BDG, 'TestValidEnd'), (MEM, 'TestValidEnd'), (IDX, 'ValidEnd')]),
+    ('M4 badger: history DELETE treated as a current delete', 'pkg/graph/store/badger/badgerstore_valid_end.go',
+     '\t\tif hist {\n\t\t\tix.MarkUnknown(id)\n\t\t} else {', '\t\tif false {\n\t\t\tix.MarkUnknown(id)\n\t\t} else {', [(BDG, 'TestValidEnd'), (CORE, CORE_RUN)]),
+    ('M5 badger build: overlay not marked unknown', 'pkg/graph/store/badger/badgerstore_valid_end.go',
+     '\t\t\tix.MarkUnknown(int64(storepkg.ParseIDFromKey([]byte(k), 1)))\n', '', [(BDG, 'TestValidEnd')]),
+    ('M6 candidates: entities written after the pin not listed', 'pkg/graph/internal/index/valid_end.go',
+     '\t\tif pin < storepkg.ValidEndOpen {', '\t\tif false {', [(CORE, CORE_RUN), (IDX, 'ValidEnd')]),
+    ('M7 refine: generation ignored', 'pkg/graph/internal/index/valid_end.go',
+     'if !ok || uint64(e.gen) != gen || int64(end) >= e.bound {', 'if !ok || int64(end) >= e.bound {', [(IDX, 'ValidEnd')]),
+    ('M8 core: refine at a pin below the stamp', 'pkg/graph/internal/core/effective_validfrom.go',
+     'if refine != nil && pin >= cd.Stamp {', 'if refine != nil {', [(CORE, CORE_RUN)]),
+    ('M9 core: open timeline refined to its last finite end', 'pkg/graph/internal/core/effective_validfrom.go',
+     '\t\tif t == 0 {\n\t\t\treturn storepkg.ValidEndOpen\n\t\t}\n', '', [(CORE, CORE_RUN)]),
+    ('M10 core: segment ending exactly at validFrom excluded', 'pkg/graph/internal/core/effective_validfrom.go',
+     'to(s) >= validFrom', 'to(s) > validFrom', [(CORE, CORE_RUN)]),
+    ('M15 memory: label added with history, current row not noted', 'pkg/graph/store/memory/memorystore_history.go',
+     '\tms.nodes[nid] = ms.storedNode(updatedNode)\n\tms.noteNodeCurrentLocked(updatedNode)\n\tms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c\n\tms.addNodePropertyKeyCounts(updatedNode)\n\tindexpkg.AddNodeToPropertyIndexes',
+     '\tms.nodes[nid] = ms.storedNode(updatedNode)\n\tms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c\n\tms.addNodePropertyKeyCounts(updatedNode)\n\tindexpkg.AddNodeToPropertyIndexes', [(CORE, CORE_RUN)], 2),
+    ('M11 memory: current replace with history not noted (rels)', 'pkg/graph/store/memory/memorystore_history.go',
+     '\tms.rels[id] = ms.storedRel(current)\n\tms.noteRelCurrentLocked(current)\n', '\tms.rels[id] = ms.storedRel(current)\n', [(CORE, CORE_RUN)]),
+    ('M12 memory: history removal not noted', 'pkg/graph/store/memory/memorystore_history.go',
+     '\tms.relHistoryRemovedLocked(rid)\n\n\tif keepVersions == 0 {', '\n\tif keepVersions == 0 {', [(MEM, 'TestValidEnd'), (CORE, CORE_RUN)]),
+    ('M13 memory: node history trim not noted', 'pkg/graph/store/memory/memorystore_history.go',
+     '\tinner := ms.nodeHistory[nid]\n\tms.nodeHistoryRemovedLocked(nid)\n', '\tinner := ms.nodeHistory[nid]\n', [(MEM, 'TestValidEnd'), (CORE, CORE_RUN)]),
+    ('M14 index: unknown entities not listed', 'pkg/graph/internal/index/valid_end.go',
+     '\tfor id := range ix.unknown {\n\t\tif _, dup := seen[id]; !dup {', '\tfor id := range ix.unknown {\n\t\tif _, dup := seen[id]; false && !dup {', [(IDX, 'ValidEnd'), (BDG, 'TestValidEnd')]),
+]
+
+out = []
+for m in mutants:
+    name, path, old, new, runs = m[:5]
+    nth = m[5] if len(m) > 5 else None
+    src = open(path).read()
+    if nth is None and src.count(old) != 1:
+        out.append('%s: PATTERN NOT FOUND (%d)' % (name, src.count(old)))
+        continue
+    if nth is None:
+        mutated = src.replace(old, new)
+    else:
+        idx = -1
+        for _ in range(nth):
+            idx = src.index(old, idx + 1)
+        mutated = src[:idx] + new + src[idx + len(old):]
+    open(path, 'w').write(mutated)
+    try:
+        killed_by = None
+        for pkg, run in runs:
+            r = subprocess.run(['go', 'test', '-count=1', '-run', run, pkg], capture_output=True, text=True, timeout=600)
+            if r.returncode != 0:
+                first = next((l.strip() for l in r.stdout.splitlines() if l.strip().startswith(('valid_end', 'effective_validfrom', 'badgerstore_valid_end', 'memorystore_valid_end')) or 'FAIL:' in l), r.stdout.strip().splitlines()[-1] if r.stdout.strip() else r.stderr.strip()[:200])
+                killed_by = '%s -run %s: %s' % (pkg, run, first[:220])
+                break
+        out.append('%s: %s' % (name, ('KILLED by ' + killed_by) if killed_by else 'SURVIVED'))
+    finally:
+        open(path, 'w').write(src)
+    print(out[-1], flush=True)
+
+open('tasks/evidence/effective-validfrom/06-mutants.txt', 'w').write('# Break-the-code mutants (each applied alone, targeted tests run, source restored)\n' + '\n'.join(out) + '\n')

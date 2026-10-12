@@ -2,7 +2,7 @@ package core
 
 import (
 	"errors"
-	"math"
+	"reflect"
 	"slices"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
@@ -27,69 +27,113 @@ import (
 // else from the unbounded door's gather (tiered, sharded, wrappers: correct,
 // not accelerated). Either way each candidate's timeline is read by the
 // per-entity body and the rule above is applied to it, so the index only
-// decides which entities are read, never what streams.
+// decides which entities are read, never what streams. A candidate read at a
+// pin at or above its index stamp hands its exact end back (Refine), so an
+// entity whose folded bound was loose is read once, not on every call.
 // =============================================================================
 
-// Valid-end sentinels of the index contract: an open end, and no segment.
-const (
-	validEndOpen = types.Instant(math.MaxInt64)
-	validEndNone = types.Instant(math.MinInt64)
-)
-
-// validEndCand is one entity a bounded scan reads: id, and what the store's
-// index knew when it listed it (gen, the stamp at or above which its bound
-// holds, the bound). A fallback candidate carries no index state (stamp
-// validEndOpen: never refined).
-type validEndCand struct {
-	id           int64
-	gen          uint64
-	stamp, bound types.Instant
+// validEndCapabilities resolves the valid-end indexes with the K1 discipline:
+// an exact native store, or a store declaring the methods itself; a wrapper
+// that merely embeds a native store is refused (its writes may bypass the
+// embedded store's index maintenance).
+func validEndCapabilities(store storepkg.MandatoryStore) (storepkg.RelValidEndCapability, storepkg.NodeValidEndCapability) {
+	trusted := func(capability reflect.Type, methods ...string) bool {
+		return isExactNativeStore(store) || !embedsNativeCapability(store, capability, methods...)
+	}
+	rel, _ := store.(storepkg.RelValidEndCapability)
+	if rel != nil && !trusted(reflect.TypeOf((*storepkg.RelValidEndCapability)(nil)).Elem(), "RelValidEndCandidates", "RefineRelValidEnd") {
+		rel = nil
+	}
+	node, _ := store.(storepkg.NodeValidEndCapability)
+	if node != nil && !trusted(reflect.TypeOf((*storepkg.NodeValidEndCapability)(nil)).Elem(), "NodeValidEndCandidates", "RefineNodeValidEnd") {
+		node = nil
+	}
+	return rel, node
 }
+
+// validEndCand is one entity a bounded scan reads, with what the store's
+// index knew when it listed it (store.ValidEndCandidate); a fallback
+// candidate has stamp store.ValidEndOpen and is never refined.
+type validEndCand = storepkg.ValidEndCandidate
 
 func fallbackCands[T ~int64](ids []T) []validEndCand {
 	out := make([]validEndCand, len(ids))
 	for i, id := range ids {
-		out[i] = validEndCand{id: int64(id), stamp: validEndOpen, bound: validEndOpen}
+		out[i] = validEndCand{ID: int64(id), Stamp: storepkg.ValidEndOpen, Bound: storepkg.ValidEndOpen}
 	}
 	return out
 }
 
-// segmentsEnd is the effective valid end of a timeline: the last segment's
-// ValidTo, validEndOpen when it is open, validEndNone without segments.
-func segmentsEnd(n int, to func(int) types.Instant) types.Instant {
-	if n == 0 {
-		return validEndNone
+// streamValidFrom reads each candidate's timeline (read: nil when the entity
+// is unknown), streams the segments keep accepts when one of them ends at or
+// after validFrom or is open, and hands the timeline's exact end back to the
+// index (refine; nil on the fallback) when the candidate was read at a pin at
+// or above its stamp and its bound was looser.
+func streamValidFrom[S any](c *Core, cands []validEndCand, pin, validFrom types.Instant,
+	read func(id int64) ([]S, error), to func(S) types.Instant, keep func(S) bool,
+	refine func(id int64, gen uint64, end types.Instant), fn func(S) bool) error {
+	for _, cd := range cands {
+		if c.chainLoadTestHook != nil {
+			c.chainLoadTestHook()
+		}
+		segs, err := read(cd.ID)
+		if err != nil {
+			return err
+		}
+		if refine != nil && pin >= cd.Stamp {
+			if end := segmentsEnd(segs, to); end < cd.Bound {
+				refine(cd.ID, cd.Gen, end)
+			}
+		}
+		reaches := false
+		for _, s := range segs {
+			if keep(s) && (to(s) == 0 || to(s) >= validFrom) {
+				reaches = true
+				break
+			}
+		}
+		if !reaches {
+			continue
+		}
+		for _, s := range segs {
+			if keep(s) && !fn(s) {
+				return nil
+			}
+		}
 	}
-	end := validEndNone
-	for i := 0; i < n; i++ {
-		t := to(i)
+	return nil
+}
+
+// segmentsEnd is the effective valid end of a timeline (segment ValidTo, 0 =
+// open): store.ValidEndOpen when a segment is open, store.ValidEndNone without
+// segments.
+func segmentsEnd[S any](segs []S, to func(S) types.Instant) types.Instant {
+	end := storepkg.ValidEndNone
+	for _, s := range segs {
+		t := to(s)
 		if t == 0 {
-			return validEndOpen
+			return storepkg.ValidEndOpen
 		}
 		end = max(end, t)
 	}
 	return end
 }
 
-// reachesValidFrom reports whether a segment end (0 = open) is at or after
-// validFrom.
-func reachesValidFrom(to, validFrom types.Instant) bool {
-	return to == 0 || to >= validFrom
-}
-
 // ForEachRelEffectiveByTypeFrom is ForEachRelEffectiveByType restricted to the
 // relationships whose effective timeline at pin has a segment ending at or
 // after validFrom, or an open one (an untimed relationship never deleted is
-// always included; a deleted one ends at its delete instant). Each streamed
-// relationship streams its whole timeline, exactly as the unbounded door does;
-// validFrom at or below every end streams what the unbounded door streams.
-// Gates, isolation and errors are ForEachRelEffectiveByType's.
+// always included; a deleted one ends at its delete instant; a retracted life
+// has no segment). Each streamed relationship streams its whole timeline,
+// exactly as the unbounded door does; validFrom at or below every end streams
+// what the unbounded door streams. Gates, isolation and errors are
+// ForEachRelEffectiveByType's.
 //
-// Cost: on memory and badger, reads only the relationships of the type whose
-// valid end (as last recorded) is at or after validFrom, plus those written
-// after pin; the store's valid-end index is built on the first call (one pass
-// over the rows' temporal fields) and maintained by every write after it.
-// Tiered and sharded read every candidate of the unbounded door.
+// Cost: on memory and badger, reads the relationships of the type whose
+// valid end (as folded from their rows, or as last read) is at or after
+// validFrom, plus those written after pin; the store's valid-end index is
+// built on the first call (one pass over every row's temporal fields) and
+// maintained by every write after it. Tiered and sharded read every candidate
+// of the unbounded door.
 func (t *TempOps) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom types.Instant, fn func(temporal.RelSegment) bool) error {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
@@ -106,13 +150,17 @@ func (t *TempOps) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom 
 	}
 	var (
 		tok   uint16
-		known bool
 		cands []validEndCand
 	)
 	if err := c.readUnderRLock(func() error {
-		tok, known = c.lookupRelTypeQueryToken(typeName)
-		if !known {
+		var known bool
+		if tok, known = c.lookupRelTypeQueryToken(typeName); !known {
 			return nil
+		}
+		var err error
+		if c.relValidEnds != nil {
+			cands, err = c.relValidEnds.RelValidEndCandidates(tok, pin, validFrom)
+			return err
 		}
 		ids, err := c.relTypeCandidateIDsAt(tok, storepkg.QueryOpts{TxPin: pin})
 		cands = fallbackCands(ids)
@@ -120,38 +168,28 @@ func (t *TempOps) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom 
 	}); err != nil {
 		return err
 	}
-	keep := func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }
-	for _, cd := range cands {
-		if c.chainLoadTestHook != nil {
-			c.chainLoadTestHook()
-		}
-		var segs []temporal.RelSegment
-		err := c.readUnderRLock(func() error {
-			var err error
-			segs, err = c.relEffectiveTimelineLocked(types.RelID(cd.id), pin)
-			return err
-		})
-		if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
-			return err
-		}
-		kept := segs[:0:0]
-		reaches := false
-		for _, s := range segs {
-			if keep(s.Rel) {
-				kept = append(kept, s)
-				reaches = reaches || reachesValidFrom(s.ValidTo, validFrom)
-			}
-		}
-		if !reaches {
-			continue
-		}
-		for _, s := range kept {
-			if !fn(s) {
-				return nil
-			}
+	var refine func(int64, uint64, types.Instant)
+	if c.relValidEnds != nil {
+		refine = func(id int64, gen uint64, end types.Instant) {
+			c.relValidEnds.RefineRelValidEnd(types.RelID(id), gen, end)
 		}
 	}
-	return nil
+	return streamValidFrom(c, cands, pin, validFrom,
+		func(id int64) ([]temporal.RelSegment, error) {
+			var segs []temporal.RelSegment
+			err := c.readUnderRLock(func() error {
+				var err error
+				segs, err = c.relEffectiveTimelineLocked(types.RelID(id), pin)
+				return err
+			})
+			if errors.Is(err, storepkg.ErrRelNotFound) {
+				return nil, nil
+			}
+			return segs, err
+		},
+		func(s temporal.RelSegment) types.Instant { return s.ValidTo },
+		func(s temporal.RelSegment) bool { return s.Rel.HasTypeTokenRaw(tok) },
+		refine, fn)
 }
 
 // ForEachNodeEffectiveByLabelsFrom is ForEachNodeEffectiveByLabels restricted
@@ -190,42 +228,37 @@ func (t *TempOps) ForEachNodeEffectiveByLabelsFrom(labels []string, pin, validFr
 		if len(toks) == 0 {
 			return nil
 		}
+		var err error
+		if c.nodeValidEnds != nil {
+			cands, err = c.nodeValidEnds.NodeValidEndCandidates(toks, pin, validFrom)
+			return err
+		}
 		ids, err := c.nodeLabelsCandidatesAt(toks, pin)
 		cands = fallbackCands(ids)
 		return err
 	}); err != nil {
 		return err
 	}
-	keep := func(n *types.Node) bool { return slices.ContainsFunc(toks, n.HasLabelTokenRaw) }
-	for _, cd := range cands {
-		if c.chainLoadTestHook != nil {
-			c.chainLoadTestHook()
-		}
-		var segs []temporal.NodeSegment
-		err := c.readUnderRLock(func() error {
-			var err error
-			segs, err = c.nodeEffectiveTimelineLocked(types.NodeID(cd.id), pin)
-			return err
-		})
-		if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
-			return err
-		}
-		kept := segs[:0:0]
-		reaches := false
-		for _, s := range segs {
-			if keep(s.Node) {
-				kept = append(kept, s)
-				reaches = reaches || reachesValidFrom(s.ValidTo, validFrom)
-			}
-		}
-		if !reaches {
-			continue
-		}
-		for _, s := range kept {
-			if !fn(s) {
-				return nil
-			}
+	var refine func(int64, uint64, types.Instant)
+	if c.nodeValidEnds != nil {
+		refine = func(id int64, gen uint64, end types.Instant) {
+			c.nodeValidEnds.RefineNodeValidEnd(types.NodeID(id), gen, end)
 		}
 	}
-	return nil
+	return streamValidFrom(c, cands, pin, validFrom,
+		func(id int64) ([]temporal.NodeSegment, error) {
+			var segs []temporal.NodeSegment
+			err := c.readUnderRLock(func() error {
+				var err error
+				segs, err = c.nodeEffectiveTimelineLocked(types.NodeID(id), pin)
+				return err
+			})
+			if errors.Is(err, storepkg.ErrNodeNotFound) {
+				return nil, nil
+			}
+			return segs, err
+		},
+		func(s temporal.NodeSegment) types.Instant { return s.ValidTo },
+		func(s temporal.NodeSegment) bool { return slices.ContainsFunc(toks, s.Node.HasLabelTokenRaw) },
+		refine, fn)
 }
