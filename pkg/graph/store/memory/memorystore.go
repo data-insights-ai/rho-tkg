@@ -122,8 +122,8 @@ type Store struct {
 	// relPropertyTypeClassCounts is the RELATIONSHIP mirror (BACKLOG 5B): exact
 	// per-(relTypeToken, propertyKey) rel counts by class, maintained on the same rel
 	// mutation doors as the rel property index. The memory store holds live rels, so
-	// the delete path decrements with the old rel directly — no memoized-contribution
-	// sidecar (unlike badger's read-free deleteRelByInfo). Backs the optional
+	// the delete path decrements with the old rel directly, as badger's delete seam
+	// does (backlog 53). Backs the optional
 	// store.RelPropertyTypeClassCountsCapability.
 	relPropertyTypeClassCounts map[uint16]map[string]*[types.NumPropertyTypeClasses]int64
 
@@ -137,8 +137,8 @@ type Store struct {
 	// propertyKeyCounts / propertyStats (BACKLOG 21a), following the same
 	// live-object-at-delete shape as relPropertyTypeClassCounts above: the
 	// memory store holds live rels, so the delete path decrements with the
-	// old rel directly — no memoized-contribution sidecar (unlike badger's
-	// read-free deleteRelByInfo). Maintained on the same rel-mutation doors
+	// old rel directly, as badger's delete seam does (backlog 53). Maintained
+	// on the same rel-mutation doors
 	// as relPropertyTypeClassCounts (see adjustRelPropertyKeyCounts in
 	// memorystore_rel_property_stats.go); backs the optional
 	// store.RelPropertyStatsCapability.

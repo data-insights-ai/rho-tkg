@@ -11,9 +11,8 @@ import (
 // presence counter and folding the observation into the NDV+min/max
 // accumulator on the SAME call — the relationship mirror of
 // adjustNodePropertyKeyCounts. The memory store holds live rels, so a delete
-// path decrements with the OLD rel directly (no memoized-contribution
-// sidecar, unlike badger's read-free deleteRelByInfo — see
-// relPropertyTypeClassCounts's doc comment for the identical precedent).
+// path decrements with the OLD rel directly, as badger's delete seam does
+// (backlog 53).
 // Caller holds ms.mu (write mode).
 func (ms *Store) adjustRelPropertyKeyCounts(r *types.Relationship, delta int) {
 	if ms.disablePlannerStats || r == nil || delta == 0 {

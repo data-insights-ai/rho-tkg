@@ -212,6 +212,9 @@ func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 		}
 		prefetched[rid] = info
 	}
+	if bs.relDeletePrefetchTestHook != nil {
+		bs.relDeletePrefetchTestHook()
+	}
 
 	bs.idxMu.Lock()
 
@@ -236,6 +239,7 @@ func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 			RelType: r.TypeToken().Value(),
 			StartID: r.StartNodeID().SnowflakeID(),
 			EndID:   r.EndNodeID().SnowflakeID(),
+			row:     r,
 		}
 	}
 
@@ -243,7 +247,7 @@ func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 	// per relationship, under the same lock as the ops (deleteRelByInfo emits no
 	// record itself).
 	for i, info := range infos {
-		bs.deleteRelByInfo(info)
+		bs.deleteRelByInfo(info, info.row)
 		bs.logChangeRaw(storecontract.ChangeRelDelete, delPayloads[i])
 	}
 

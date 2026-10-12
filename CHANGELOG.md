@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Relationship planner statistics no longer keep one RAM entry per relationship** (backlog 53, ai-soc). The badger
+  store memoized each relationship's property classes and values (`relTypeClassContrib`, `relStatsContrib`) so a
+  delete could decrement the presence, min/max and type-class counters, and never evicted the memo: ≈ 600 B per
+  relationship in the test shape, ≈ 57 % of ai-soc's 30 GB heap at 7.7 M rows. Every delete and replace seam now
+  takes the old row's own contribution back out (the delete seam already had the row in hand), so the statistics'
+  RAM follows the number of distinct (type, key) statistics: 0.5 B per relationship measured between 10 K and
+  100 K relationships (`TestRelPlannerStatsMemoBounded`). Write path: put −13 allocs (4252 → 3478 B/op), replace
+  −9 allocs, delete +3 allocs (the deleted row's value keys). The tiered split-write leg `PutRelEntityAndOut` now
+  counts the presence and min/max statistics like every other door that makes a row current, so the store's
+  counters equal a recount after a split-write put, replace and delete (they drifted before). No graph-door
+  answer changes; tiered still declines the capability. Evidence `tasks/evidence/planner-stats-memo/`.
+
 ## [4.51.2] - 2026-10-12
 
 ### Added

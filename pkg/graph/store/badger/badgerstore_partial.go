@@ -115,6 +115,7 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 	bs.maintainRelPropertyIndexesAdd(r, id)
 	bs.maintainRelTypeTemporalIndexesAdd(r, id) // backlog 10: a tiered shard's cross-shard rows
 	bs.addRelPropertyTypeClassCounts(r)
+	bs.addRelPropertyStatsCounts(r) // backlog 53: every door that makes a row current counts it, so a delete can take the row back out
 
 	bs.appendOps(ops...)
 	bs.relCount.Add(1)
@@ -251,7 +252,8 @@ func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 	bs.maintainRelPropertyIndexesRemove(r, id)
 	// The rel-type temporal envelope stays (append-only): the row's history
 	// stays on this shard, and the tiered rollback re-puts the row without it.
-	bs.removeRelPropertyTypeClassCountsByID(id, info.RelType)
+	bs.removeRelPropertyTypeClassCounts(r)
+	bs.removeRelPropertyStatsCounts(r)
 
 	ops := []writeOp{
 		{opType: writeOpDelete, key: storepkg.RelKey(id)},
