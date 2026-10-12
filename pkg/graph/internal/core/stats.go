@@ -293,6 +293,84 @@ func (s *StatOps) RelPropertyStats(typeName, propertyKey string) (storepkg.Prope
 	return c.relPropertyStats(tok, propertyKey)
 }
 
+// PropertyNDV is PropertyStats without the exact Min/Max (round 5 request
+// 1): NDV and Count, read from the store's sketch and counter without the
+// rescan a write that removed an extreme value leaves to the next
+// PropertyStats call. Same validation, missing-label zero value and errors
+// as PropertyStats; a store without store.NodePropertyNDVCapability returns
+// storepkg.ErrCapabilityNotSupported (memory, badger and tiered implement
+// it).
+func (s *StatOps) PropertyNDV(label, propertyKey string) (storepkg.PropertyNDV, error) {
+	c := s.c
+	if err := c.validateIndexLabel(label); err != nil {
+		return storepkg.PropertyNDV{}, err
+	}
+	if err := storepkg.ValidateIndexPropertyKey(propertyKey); err != nil {
+		return storepkg.PropertyNDV{}, err
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.closed.Load() {
+		return storepkg.PropertyNDV{}, ErrGraphClosed
+	}
+	ndv, ok := c.store.(storepkg.NodePropertyNDVCapability)
+	if !ok {
+		return storepkg.PropertyNDV{}, fmt.Errorf("%w: NodePropertyNDVCapability", storepkg.ErrCapabilityNotSupported)
+	}
+	tok, ok := c.labels.Lookup(label)
+	if !ok {
+		return storepkg.PropertyNDV{}, nil
+	}
+	out, err := ndv.NodePropertyNDV(tok, propertyKey)
+	if err != nil {
+		return storepkg.PropertyNDV{}, err
+	}
+	if err := validatePropertyNDV("NodePropertyNDV", out); err != nil {
+		return storepkg.PropertyNDV{}, err
+	}
+	return out, nil
+}
+
+// RelPropertyNDV is the relationship mirror of PropertyNDV (memory and
+// badger implement store.RelPropertyNDVCapability; the capability is checked
+// before the type lookup, as RelPropertyStats does).
+func (s *StatOps) RelPropertyNDV(typeName, propertyKey string) (storepkg.PropertyNDV, error) {
+	c := s.c
+	if err := storepkg.ValidateIndexPropertyKey(propertyKey); err != nil {
+		return storepkg.PropertyNDV{}, err
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.closed.Load() {
+		return storepkg.PropertyNDV{}, ErrGraphClosed
+	}
+	ndv, ok := c.store.(storepkg.RelPropertyNDVCapability)
+	if !ok {
+		return storepkg.PropertyNDV{}, fmt.Errorf("%w: RelPropertyNDVCapability", storepkg.ErrCapabilityNotSupported)
+	}
+	tok, ok := c.lookupRelTypeQueryToken(typeName)
+	if !ok {
+		return storepkg.PropertyNDV{}, nil
+	}
+	out, err := ndv.RelPropertyNDV(tok, propertyKey)
+	if err != nil {
+		return storepkg.PropertyNDV{}, err
+	}
+	if err := validatePropertyNDV("RelPropertyNDV", out); err != nil {
+		return storepkg.PropertyNDV{}, err
+	}
+	return out, nil
+}
+
+// validatePropertyNDV rejects a negative count from the store, as
+// validateStoreCount does for the other counters.
+func validatePropertyNDV(door string, out storepkg.PropertyNDV) error {
+	if out.NDV < 0 || out.Count < 0 {
+		return fmt.Errorf("%w: %s returned NDV %d, Count %d", storepkg.ErrInvalidStoreMutation, door, out.NDV, out.Count)
+	}
+	return nil
+}
+
 // RelCountByType forwards to Core.Rels.CountByType.
 func (s *StatOps) RelCountByType(typeName string) (int, error) { return s.c.Rels.CountByType(typeName) }
 

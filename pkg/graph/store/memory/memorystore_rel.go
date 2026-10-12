@@ -39,7 +39,7 @@ func (ms *Store) putRelationshipRouted(r *types.Relationship, token uint64) erro
 	defer ms.sealIfDue() // ADR-0011: runs after the unlock below
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
-	defer ms.bumpRelEpoch()
+	defer ms.bumpRelEpochForTypes(r)
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -123,7 +123,7 @@ func (ms *Store) putRelationshipGeneratedIDWithEndpointHashesRouted(r *types.Rel
 	defer ms.sealIfDue() // ADR-0011: runs after the unlock below
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
-	defer ms.bumpRelEpoch()
+	defer ms.bumpRelEpochForTypes(r)
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return "", "", err
@@ -244,7 +244,7 @@ func (ms *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 	defer ms.sealIfDue() // ADR-0011: runs after the unlock below
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
-	defer ms.bumpRelEpoch()
+	defer ms.bumpRelEpochForTypes(r) // the type is immutable: ValidateRelationshipReplacement
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -739,7 +739,7 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	defer ms.sealIfDue() // ADR-0011: runs after the unlock below
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
-	defer ms.bumpRelEpoch()
+	defer ms.bumpRelEpochForTypes(rels...)
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err

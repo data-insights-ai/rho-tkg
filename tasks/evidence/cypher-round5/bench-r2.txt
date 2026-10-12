@@ -1,0 +1,19 @@
+base BenchmarkMemoryStarDoors/scan-rel-columns         	      10	  30282817 ns/op	 4548632 B/op	      49 allocs/op
+base BenchmarkMemoryStarDoors/ordinal-door-hubs-out    	      10	  97234112 ns/op	32802241 B/op	     173 allocs/op
+base BenchmarkMemoryStarDoors/ordinal-door-spokes-in   	      10	  74282479 ns/op	 4194325 B/op	  262145 allocs/op
+branch BenchmarkMemoryStarDoors/scan-rel-columns         	      10	  10604129 ns/op	 2661217 B/op	      48 allocs/op
+branch BenchmarkMemoryStarDoors/ordinal-door-hubs-out    	      10	  52820271 ns/op	32802241 B/op	     173 allocs/op
+branch BenchmarkMemoryStarDoors/ordinal-door-spokes-in   	      10	  70344038 ns/op	 4194325 B/op	  262145 allocs/op
+branch BenchmarkMemoryStarDoors/scan-rel-columns         	      10	  10623592 ns/op	 2661217 B/op	      48 allocs/op
+branch BenchmarkMemoryStarDoors/ordinal-door-hubs-out    	      10	  51284071 ns/op	32802241 B/op	     173 allocs/op
+branch BenchmarkMemoryStarDoors/ordinal-door-spokes-in   	      10	  71393042 ns/op	 4194325 B/op	  262145 allocs/op
+base BenchmarkMemoryStarDoors/scan-rel-columns         	      10	  30258829 ns/op	 4548632 B/op	      49 allocs/op
+base BenchmarkMemoryStarDoors/ordinal-door-hubs-out    	      10	  98119821 ns/op	32802241 B/op	     173 allocs/op
+base BenchmarkMemoryStarDoors/ordinal-door-spokes-in   	      10	  80502300 ns/op	 4194325 B/op	  262145 allocs/op
+base BenchmarkMemoryStarDoors/scan-rel-columns         	      10	  30610525 ns/op	 4548632 B/op	      49 allocs/op
+base BenchmarkMemoryStarDoors/ordinal-door-hubs-out    	      10	  96205017 ns/op	32802255 B/op	     173 allocs/op
+base BenchmarkMemoryStarDoors/ordinal-door-spokes-in   	      10	  78563846 ns/op	 4194325 B/op	  262145 allocs/op
+branch BenchmarkMemoryStarDoors/scan-rel-columns         	      10	  10747538 ns/op	 2661217 B/op	      48 allocs/op
+branch BenchmarkMemoryStarDoors/ordinal-door-hubs-out    	      10	  51959296 ns/op	32802236 B/op	     173 allocs/op
+branch BenchmarkMemoryStarDoors/ordinal-door-spokes-in   	      10	  73662488 ns/op	 4194330 B/op	  262145 allocs/op
+load: 47.15 50.35 40.97

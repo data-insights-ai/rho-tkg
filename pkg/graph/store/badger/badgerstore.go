@@ -572,8 +572,16 @@ type Store struct {
 	// instead of rebuilding it. See badgerstore_append_delta.go.
 	appendMu     sync.Mutex
 	appendDeltas map[uint16]*appendDelta
-	// Refresh counters: how many columnar snapshots were EXTENDED versus rebuilt.
+	// patchable (round 5 request 4) holds the labels a single-label or
+	// intersection column snapshot was cached for: only for those does the
+	// removal seam record the node (an update's remove half) instead of
+	// poisoning, so a label nobody reads columns of pays nothing more per
+	// write. Guarded by appendMu; dropped with appendDeltas.
+	patchable map[uint16]struct{}
+	// Refresh counters: how many columnar snapshots were EXTENDED, PATCHED
+	// (in-place updates, round 5 request 4) or rebuilt.
 	columnExtends  atomic.Uint64
+	columnPatches  atomic.Uint64
 	columnRebuilds atomic.Uint64
 	// relEpoch: DISTINCT generation counter bumped on every relationship write. The
 	// expand-aggregation column path reads ADJACENCY, so its Gate-2 re-check must

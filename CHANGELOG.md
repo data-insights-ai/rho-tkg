@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [4.50.2] - 2026-10-12
+## [4.51.1] - 2026-10-12
 
 Patch release, sigma-tkgd requests and read costs: broader effective scans (backlog 35; `ForEachRelEffectiveAtNodes` costs one fold over every relationship with history per call, see backlog 50), `ColumnData.Other` (48), current-row stamps and ID-only effective gathers on badger (42, 33). Additive, except that column scans now type every integer width the same way on every path (Changed).
 
@@ -101,6 +101,172 @@ Patch release, sigma-tkgd requests and read costs: broader effective scans (back
 - **Column scans: typed slots are aligned with `Null`.** A column whose first rows in a batch were absent had a typed
   slice shorter than `Null` (`{}, {x: 5}` gave `Null=[true false] Ints=[5]`), so `Ints[c][k]` read another row or
   panicked; a column no row typed had no typed slice at all. Every column's typed slice now has one slot per row.
+
+## [4.51.0] - 2026-10-12
+
+Minor release, the sigma-tkgd store requests, round 5 (new public API): the valid-time adjacency door answers a
+relationship without history from its live row; a time-window property seek on an unindexed key reads only the
+history of nodes that ever carried the label (`LabelTxMemberLookupCapability`, `RelTypeTxMemberLookupCapability`);
+`Stats().PropertyNDV` / `RelPropertyNDV` without the min/max rescan; badger patches a label's column snapshot after
+an in-place write instead of rebuilding it (lazy: only labels with a snapshot record writes); the memory store tracks
+relationship changes per type so `RelTypeDegreeStats` survives writes to other types; faster memory relationship
+columns and ordinal adjacency; an empty label intersection is answered as empty; `Stats().RelHistoryCountByType`
+(memory, badger). Additive.
+
+### Added
+
+- **`g.Stats().RelHistoryCountByType(typeName) (int, ok bool, error)`: how many relationships of one type have
+  history rows** (sigma-tkgd round 5 request 7, task record C4s: the store-wide `HistoryCounts.Rels` let one updated
+  `COLD_TICK` relationship switch the reach bound of every type from the current adjacency to the window door). The
+  relationships with history (deleted ones included) that ever carried the type, from the store's history IDs and
+  the rel-type membership sidecar's point form (`RelTypeTxMembersOf`); a type is immutable, so the count is exact
+  unless an ID was reused across types (then an upper bound: 0 always means none). O(relationships with history)
+  per call, no write-path cost. Memory and badger; sharded, tiered and external stores return `ok=false`. An
+  unknown type is 0. The badger store's `ForEachNodeHistoryID` / `ForEachRelHistoryID` read the RAM
+  history-presence set once it is built (as the deleted-ID walks, request 6). `stats.Ops` gains the method.
+  `BenchmarkRelHistoryCountByType` (8,251 relationships, one with 200 versions): 150-190 ns on memory and badger.
+  Tests: `TestRelHistoryCountByType` (every backend, two-phase through updates of another type, an update, a delete;
+  red: the door did not exist), the history walk in `TestHistoryPresence_RandomizedDifferential`,
+  `TestRelHistoryCountByTypeForwards`.
+
+- **`g.Stats().PropertyNDV(label, key)` / `RelPropertyNDV(typeName, key)`: a property's distinct-value estimate
+  without the exact Min/Max** (sigma-tkgd round 5 request 1, task record C4r: after a write that removed a label's
+  minimum or maximum value, the next `PropertyStats` rescans the label's current values, 470 ms per property on
+  100,000 badger nodes, although the planner reads only the NDV). Returns `store.PropertyNDV{NDV, Count}`, equal to
+  `PropertyStats`' NDV and Count at the same moment, read from the sketch and the presence counter only (memory:
+  under the read lock, where `PropertyStats` takes the write lock). Unknown label or type: zero value; same
+  validation and closed-graph errors as `PropertyStats`. Store capabilities `store.NodePropertyNDVCapability`
+  (memory, badger, tiered: the shards' sketches merged as `NodePropertyStats` merges them, through the new
+  store-internal `badger.Store.NodePropertyNDVSketch`, never a shard's rescan) and `RelPropertyNDVCapability`
+  (memory, badger); sharded, tiered relationships, external stores and a store with planner statistics disabled
+  return `store.ErrCapabilityNotSupported`. `stats.Ops` gains the two methods. No write path changes.
+  `BenchmarkPropertyNDVAfterExtremeWrite` (100,000 :P nodes, the maximum moved before each call; one CPU, load 13
+  to 27): badger `PropertyStats` 213-219 ms, `PropertyNDV` 11.6-12.8 us; memory 6.7-7.8 ms against 11.4-12.2 us.
+  Tests: `TestStatsPropertyNDV` (every backend, two-phase across the delete of the maximum, the unsupported
+  backends; red: the door did not exist), `TestBadgerPropertyNDVDoesNotRescan` / `TestMemoryPropertyNDVDoesNotRescan`
+  (the accumulator stays dirty, the rescan hook never fires), the disabled-statistics and closed-store cases.
+
+- **`store.LabelTxMemberLookupCapability` / `RelTypeTxMemberLookupCapability`: the point form of the K1 label and
+  type membership sidecar** (sigma-tkgd round 5 request 8, task record C4s: a coordinate seek by property in a
+  valid-time window read the history of every node with history, about 1 ms per seek on badger once a cold
+  harness's touched nodes held a few hundred versions). `LabelTxMembersOf(token, ids, fn)` /
+  `RelTypeTxMembersOf(token, ids, fn)` call `fn(id, firstTxFrom)` for each of `ids` that ever carried the label
+  (type), over the same lazily built, append-only sidecar as `ForEachLabelTxMember` / `ForEachRelTypeTxMember`
+  (memory and badger; the core uses them for the exact native stores only, like the streaming form). A temporal
+  `Nodes().ByLabelAndProperty` / `ByLabelAndProperties` / `Rels().ByTypeAndProperty` (and the named
+  `*PropertyAt` / `*PropertyDuring` doors) on a key without a declared index now resolves the current matches and
+  the history IDs that ever carried the label (type), pruned by the transaction-time pin as `ByLabel` prunes,
+  instead of the version chain of every node (relationship) with history: a node without history matches only
+  through its current row, and one with history only through a version carrying the label. Answers are
+  unchanged; sharded, tiered and wrapper stores keep the full-history fold; no write path changes (the sidecar is
+  the existing one, built on first use). `BenchmarkWindowPropertySeek` (the seeks `(:Start {id: 0})` and
+  `(:Iso {id: 999999})` on the 3,001-node DAG with one :Mid and one :ColdTick node of 200 versions each; one CPU,
+  load 21 to 35, three interleaved rounds): badger window 1.17-1.20 ms -> 40-49 us (static 20-35 us), instant
+  315-325 -> 32-35 us; memory window 197-242 -> 18-31 us, instant 179-189 -> 16-24 us. Tests:
+  `TestTemporalPropertySeekLoadsNoOtherLabelChains` (red: 24 chain loads for 5 ever-members of the label),
+  `TestTemporalRelPropertySeekScopedToType` (red: 18 for 3), `TestTemporalPropertySeekAnswersEverLabelMembers`
+  (a node that lost the label, one that gained it, windows, instants and pins, every backend),
+  `TestMemoryLabelTxMembersOf` / `TestBadgerLabelTxMembersOf` and the relationship mirrors; red runs and mutants
+  under `tasks/evidence/cypher-round5/`.
+
+### Changed
+
+- **`Nodes().ForEachDocValuesMulti` serves an empty intersection** (sigma-tkgd round 5 request 3, task record C4r):
+  an intersection of known labels with no common member returns `ok=true` and no rows on memory, badger, sharded and
+  tiered, where it declined (`ok=false`) like an intersection the store cannot build; the caller cannot tell an
+  empty intersection from the labels' counts and had to look for a common member itself. Badger and memory build an
+  empty snapshot (epoch-stamped and cached like any other); sharded and tiered serve the fold empty when every
+  shard's smallest member count proves it holds none (a node lives on one shard). Unchanged: an unknown label, an
+  over-cap intersection and an unbuildable property decline; the single-label doors keep declining an empty label
+  (its count tells the caller). Test: `TestForEachDocValuesMultiServesAnEmptyIntersection` (every backend,
+  two-phase through a node joining and leaving the intersection; red: all four declined).
+
+### Performance
+
+- **Memory: the ordinal adjacency door and `ScanRelColumns` without a sort per call** (sigma-tkgd round 5 request 2,
+  task record C4r: `ForEachAdjacentEndpointOrdinal` sorted each node's edges and looked two maps up per edge, 0.36 s
+  of 1.4 M edges; `ScanRelColumns` collected the type through `RelationshipsByType`, which sorts, on every call). A
+  node's adjacency set of at most 64 relationships (a slice) is now kept in ascending ID order (binary search,
+  insert and delete in place), so the door sorts only a larger (hash) set; the other endpoint's ordinal comes from
+  the relationship's own row (the store records both endpoints' ordinals while the relationship is current) instead
+  of a node lookup per edge. `ScanRelColumns` without a filter or paging reads the type's kept ascending member list
+  (the one `ForEachRelByType` walks, rebuilt only when the type's membership changes) and its rows under one read
+  lock: same rows, same order, no sort; any filter keeps `RelationshipsByType`. `BenchmarkMemoryStarDoors` (262,144
+  `SPOKE` relationships from 64 skewed hubs; one CPU, load 41 to 47, three interleaved rounds): `ScanRelColumns`
+  30.3-30.6 -> 10.6-10.7 ms (4.5 -> 2.7 MB), the door out of every hub 96-98 -> 51-53 ms, into every spoke 74-81 ->
+  70-74 ms (per-call overhead). Write cost: an adjacency add plus remove on a 32-member set 17-20 -> 24-27 ns
+  (`BenchmarkAdjSetChurn`); `PutRelationship` end to end unchanged within noise (852-1,113 ns before, 855-1,126
+  after, 308 B and 3 allocations both, `BenchmarkPutRelationshipSmallSets`, five rounds). Tests:
+  `TestAdjSetSmallSetIsAscending` (red: the appended, swap-removed slice), the door's test now also checks both
+  ordinals against the entities' own, `TestMemRelColumnScan_KeptOrderMatchesTheTypeScan` (guard).
+
+- **Memory: per-type relationship epochs, so `RelTypeDegreeStats` of a type stays cached across writes to other
+  types** (sigma-tkgd round 5 request 9, task record C4s: the cold harness's update of one `COLD_TICK`
+  relationship moved the memory store's store-wide relationship epoch, so the next `RelTypeDegreeStats("SPOKE")`
+  recounted the type, about 400 ms of 1,048,576 relationships, half of the cold row). The memory store's
+  `RelMutationEpochForType(token)` (the stamp the core's degree cache is keyed on) is now the type's stripe (256
+  stripes) plus a coarse term, as on badger: put, generated-ID put, replace, replace with history, history version
+  and batch put bump their relationships' types only; deletes, node cascades, retention, erasure, segment sealing
+  and Clear keep the coarse bump (every type). `relEpoch` (the Gate-2 epoch of the expand and column paths) still
+  moves on every relationship write and the memory store's rel-type column snapshots stay stamped with it. The write
+  cost is the same one atomic add per relationship. `BenchmarkRelTypeDegreeStatsAfterOtherTypeWrite` (262,144
+  `SPOKE` relationships from 64 skewed hubs, one `COLD_TICK` update before each call; one CPU, load 33 to 72, three
+  interleaved rounds): memory 67-80 ms -> 0.25-23 us, badger unchanged (0.4 us). Test:
+  `TestMemoryRelTypeEpochSurvivesOtherTypes` (red: every write of another type moved the stamp; every door of the
+  type's own writes moves it; the coarse doors move every type); the existing two-phase `TestRelTypeDegreeStats`.
+
+- **Badger: a label's column snapshot is patched after an in-place property write instead of rebuilt** (sigma-tkgd
+  round 5 request 4, task records C4r/C4s: one write to a member of a 1,000,000-node label made the next column
+  read decode the whole label again, 4.5 s per cold run; `buildLabelColumns` was 12.5 of 12.9 s of
+  DocValuesAggSkewed, `buildMultiColumns` 1.65 of 1.72 s of the intersection row). The removal seam an update
+  passes through used to poison the label's append record; on a label with a cached single-label or intersection
+  snapshot it now records the node, so the record holds every write since the snapshot (same stamp and accounting
+  identity as the append path: every recorded event is one epoch bump). The next `ForEachDocValues` /
+  `DocValuesSnapshot` / `ForEachDocValuesMulti` / `ScanNodeColumns` classifies the recorded nodes by their current
+  membership: a member the snapshot holds is re-read and patched in (`index.DocValues.Patch`: typed arrays copied,
+  the changed rows overwritten, the column brought back to exactly what a rebuild gives: int64 / float64 / mixed by
+  its present rows, dictionary in first-appearance order without unused terms, validity and the zone blocks
+  holding a changed row recomputed), a new member is appended (`Extend`), and a node that left the label or
+  intersection, a value that changes the column's class, an unbuildable column or an unbalanced record rebuild as
+  before. A patched snapshot shares the row IDs and reuses the scan's node ordinals. Labels without a cached
+  snapshot keep the poison (nothing recorded), so their writes cost what they cost: `BenchmarkReplaceNodeColumnRecord`
+  (badger, 10,000 nodes, five interleaved rounds, load 31 to 44) unread label 1,068-1,209 ns before, 1,075-1,184
+  after, same bytes and allocations; with a snapshot 1,199-1,368 ns (a recorded ID per write, the record capped at
+  50,000 events per label as for appends). The memory store keeps its rebuild (one global epoch, sixteen bump
+  sites, the reason its append path defaults to poison). A refresh consumes the member labels' records, so a
+  workload alternating single-label and intersection reads of the same labels still rebuilds the other kind (as for
+  appends). `BenchmarkColumnScanAfterPropertyWrite` (badger, one write to a mid node before each `ScanNodeColumns`
+  of (int, string); one CPU, load 31 to 58, three interleaved rounds): 100,000 nodes 218-255 -> 6.9-7.2 ms, 400,000
+  nodes 1.26-1.51 s -> 18-28 ms. New telemetry `badger.Store.ColumnPatchCount()`. Tests:
+  `TestColumnPatch_UpdateIsPatched` (red: the update rebuilt), `TestColumnPatch_RandomWorkloadMatchesTheStore`
+  (inserts, updates across int / float / string / absent values and validity, deletes and intersection-label
+  changes, reads after some writes only, single label and intersection, against the store's rows),
+  `TestColumnPatch_UnreadLabelStaysPoisoned`, `TestPatch_MatchesFullRebuild` (300 random columns across zone
+  blocks, representation included), `TestPatch_Refuses`, `TestPatch_StringDictionaryDropsUnusedTerms`, and the
+  existing append-delta battery; mutants under `tasks/evidence/cypher-round5/`.
+
+- **Valid-time adjacency: a relationship without history is answered from its live row** (sigma-tkgd round 5
+  request 6, task record C4s: a window search over relationships without history was 11 times the static one).
+  `Rels().ForEachAdjacentEndpointAt` / `ForEachAdjacentRelAt` under `ValidAt` or `ValidStart`+`ValidEnd` loaded
+  every adjacent relationship's version chain (a point read and a history read each). A live relationship the
+  store states has no history rows (`HistoryPresenceCapability`: memory, badger, sharded, tiered) has one version,
+  the live row the door already read; it is now judged from that row (a first version without a delete stamp by
+  its bounds directly, any other through the chain resolver over the one-row chain). A relationship with history,
+  a deleted one and every transaction-time pin (`TxAt`, `TxPin`) keep the full resolution; an untrusted store's
+  rows are handed out as copies, as before. The badger store's `ForEachDeletedNodeID` / `ForEachDeletedRelID`
+  (the deleted fold of these doors, a badger iterator over the history keyspace per call) read the RAM
+  history-presence set once it is built, probing the IDs a history delete left unresolved; they never build it.
+  No write path changes. `BenchmarkWindowAdjacencyReach` (OPT21bWindowReach's 3,001-node DAG, a breadth-first
+  search from the 250 start nodes over 8,250 edges, one unrelated relationship and two nodes with history; one
+  CPU, load 22 to 43, three interleaved rounds): badger window 15.9-17.6 -> 1.68-1.75 ms (static 0.76-1.15),
+  instant 10.9-11.7 -> 1.99-2.06 ms; memory window 3.74-4.21 -> 1.04-1.51 ms (static 0.62-1.55), instant
+  1.79-1.82 -> 1.09-1.18 ms; badger allocations 41.9 MB -> 0.54 MB per search. Tests:
+  `TestForEachAdjacentAt_NoHistoryRelsLoadNoChain` (red: 7 chain loads where 3 relationships have history, every
+  backend), `TestForEachAdjacentAt_NoHistoryRelsAgreeWithChainResolution` (both doors, both directions, instants,
+  windows and pins at every bound, every backend, against per-relationship resolution),
+  `TestSingleVersionAdjacencyMatchesResolver`, and the deleted-ID walk in `TestHistoryPresence_RandomizedDifferential`
+  (current rows written and deleted between trims, flushes, clears and reopens); red run and mutants under
+  `tasks/evidence/cypher-round5/`.
 
 ## [4.50.1] - 2026-10-11
 

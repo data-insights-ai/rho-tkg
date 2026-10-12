@@ -181,13 +181,14 @@ func TestAppendDelta_MixedWriteBatchIsCorrect(t *testing.T) {
 }
 
 // TestAppendDelta_DeleteThenInsertWithoutAnInterveningRead is the case NEITHER of
-// the other guards catches, and the only one that proves poisonNodeLabels earns its
-// place. Found by mutation-testing: deleting the poison broke no other probe.
+// the other guards catches, and the only one that proves the removal seam's record
+// (recordNodeRemoval: a poison, or on a patchable label the recorded ID that the
+// read classifies as removed) earns its place. Found by mutation-testing: deleting the poison broke no other probe.
 //
 //	delete X, insert Y, THEN read — with no read between the two writes.
 //
 // The epoch stamp matches (Y's own append recorded it), and Y is a perfectly clean
-// append, so takeAppendDelta says yes and Extend says yes. But the cached snapshot
+// append, so the delta take says yes and Extend says yes. But the cached snapshot
 // still holds X's row, and X's absence is INVISIBLE to Extend — it only ever looks
 // at what is being added. Only the removal-seam poison can catch this, and without
 // it the read returns a deleted node.

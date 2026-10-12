@@ -43,9 +43,10 @@ func (bs *Store) addNodePropertyKeyCounts(n *types.Node) {
 
 func (bs *Store) removeNodePropertyKeyCounts(n *types.Node) {
 	bs.bumpNodeLabelEpochs(n) // UNGATED: invalidate this node's labels' cached columns (BACKLOG 4b)
-	// A removal — and the remove-half of every UPDATE — voids the append
-	// assumption for these labels, forcing a rebuild (R3).
-	bs.poisonNodeLabels(n)
+	// A removal — and the remove-half of every UPDATE — is recorded on a label
+	// with a cached snapshot (the read patches it, round 5 request 4) and voids
+	// the append assumption everywhere else, forcing a rebuild (R3).
+	bs.recordNodeRemoval(n)
 	bs.adjustNodePropertyKeyCounts(n, -1)
 }
 

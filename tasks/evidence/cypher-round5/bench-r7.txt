@@ -1,0 +1,12 @@
+BenchmarkRelHistoryCountByType/memory/R       	    2000	       649.1 ns/op	     368 B/op	       5 allocs/op
+BenchmarkRelHistoryCountByType/memory/R       	    2000	       148.6 ns/op	      72 B/op	       5 allocs/op
+BenchmarkRelHistoryCountByType/memory/R       	    2000	       148.2 ns/op	      72 B/op	       5 allocs/op
+BenchmarkRelHistoryCountByType/memory/COLD_TICK         	    2000	       171.1 ns/op	      88 B/op	       6 allocs/op
+BenchmarkRelHistoryCountByType/memory/COLD_TICK         	    2000	       158.7 ns/op	      88 B/op	       6 allocs/op
+BenchmarkRelHistoryCountByType/memory/COLD_TICK         	    2000	       158.2 ns/op	      88 B/op	       6 allocs/op
+BenchmarkRelHistoryCountByType/badger/R                 	    2000	     11691 ns/op	    3028 B/op	      36 allocs/op
+BenchmarkRelHistoryCountByType/badger/R                 	    2000	       173.4 ns/op	      80 B/op	       6 allocs/op
+BenchmarkRelHistoryCountByType/badger/R                 	    2000	       188.2 ns/op	      80 B/op	       6 allocs/op
+BenchmarkRelHistoryCountByType/badger/COLD_TICK         	    2000	       177.4 ns/op	      96 B/op	       7 allocs/op
+BenchmarkRelHistoryCountByType/badger/COLD_TICK         	    2000	       172.3 ns/op	      96 B/op	       7 allocs/op
+BenchmarkRelHistoryCountByType/badger/COLD_TICK         	    2000	       156.6 ns/op	      96 B/op	       7 allocs/op

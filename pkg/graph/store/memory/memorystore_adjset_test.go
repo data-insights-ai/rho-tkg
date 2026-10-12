@@ -84,3 +84,30 @@ func TestAdjSetNilAndEarlyStop(t *testing.T) {
 		t.Fatalf("newAdjSetOf dedupe: %v", got)
 	}
 }
+
+// TestAdjSetSmallSetIsAscending (round 5 request 2): a set held as a slice
+// keeps its members in ascending ID order through adds (out of order,
+// duplicates) and removes, so the readers that emit in relationship-ID order
+// (ForEachAdjacentEndpointOrdinal) need no sort per call. Faulty
+// implementation caught: the append / swap-remove slice (unordered).
+func TestAdjSetSmallSetIsAscending(t *testing.T) {
+	rng := rand.New(rand.NewPCG(9, 11)) // #nosec G404 -- deterministic test input
+	s := &adjSet{}
+	for op := 0; op < 4000; op++ {
+		id := types.RelID(1 + rng.IntN(3*adjSetSmallMax/2))
+		if rng.IntN(3) == 0 || s.len() >= adjSetSmallMax {
+			s.remove(id)
+		} else {
+			s.add(id)
+		}
+		if s.m != nil {
+			t.Fatalf("op %d: switched to a hash set below the threshold", op)
+		}
+		if !slices.IsSorted(s.ids) {
+			t.Fatalf("op %d: small set %v not ascending", op, s.ids)
+		}
+	}
+	if !slices.IsSorted(newAdjSetOf(9, 3, 7, 3, 1).ids) {
+		t.Fatal("newAdjSetOf: not ascending")
+	}
+}

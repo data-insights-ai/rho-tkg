@@ -1,0 +1,21 @@
+base BenchmarkReplaceNodeColumnRecord/unread         	   50000	      1154 ns/op	    1106 B/op	      15 allocs/op
+base BenchmarkReplaceNodeColumnRecord/snapshot       	   50000	      1424 ns/op	    1234 B/op	      17 allocs/op
+branch BenchmarkReplaceNodeColumnRecord/unread         	   50000	      1132 ns/op	    1106 B/op	      15 allocs/op
+branch BenchmarkReplaceNodeColumnRecord/snapshot       	   50000	      1368 ns/op	    1157 B/op	      16 allocs/op
+branch BenchmarkReplaceNodeColumnRecord/unread         	   50000	      1184 ns/op	    1106 B/op	      15 allocs/op
+branch BenchmarkReplaceNodeColumnRecord/snapshot       	   50000	      1360 ns/op	    1157 B/op	      16 allocs/op
+base BenchmarkReplaceNodeColumnRecord/unread         	   50000	      1209 ns/op	    1106 B/op	      15 allocs/op
+base BenchmarkReplaceNodeColumnRecord/snapshot       	   50000	      1651 ns/op	    1494 B/op	      19 allocs/op
+base BenchmarkReplaceNodeColumnRecord/unread         	   50000	      1152 ns/op	    1106 B/op	      15 allocs/op
+base BenchmarkReplaceNodeColumnRecord/snapshot       	   50000	      1566 ns/op	    1307 B/op	      18 allocs/op
+branch BenchmarkReplaceNodeColumnRecord/unread         	   50000	      1075 ns/op	    1106 B/op	      15 allocs/op
+branch BenchmarkReplaceNodeColumnRecord/snapshot       	   50000	      1203 ns/op	    1157 B/op	      16 allocs/op
+branch BenchmarkReplaceNodeColumnRecord/unread         	   50000	      1141 ns/op	    1106 B/op	      15 allocs/op
+branch BenchmarkReplaceNodeColumnRecord/snapshot       	   50000	      1252 ns/op	    1157 B/op	      16 allocs/op
+base BenchmarkReplaceNodeColumnRecord/unread         	   50000	      1068 ns/op	    1106 B/op	      15 allocs/op
+base BenchmarkReplaceNodeColumnRecord/snapshot       	   50000	      1412 ns/op	    1307 B/op	      18 allocs/op
+base BenchmarkReplaceNodeColumnRecord/unread         	   50000	      1093 ns/op	    1106 B/op	      15 allocs/op
+base BenchmarkReplaceNodeColumnRecord/snapshot       	   50000	      1426 ns/op	    1307 B/op	      18 allocs/op
+branch BenchmarkReplaceNodeColumnRecord/unread         	   50000	      1108 ns/op	    1106 B/op	      15 allocs/op
+branch BenchmarkReplaceNodeColumnRecord/snapshot       	   50000	      1199 ns/op	    1157 B/op	      16 allocs/op
+load: 44.02 40.25 31.53

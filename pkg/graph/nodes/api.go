@@ -531,8 +531,9 @@ func (a *API) ForEachDocValues(label string, propKeys []string, fn func(types.No
 // ForEachDocValuesMulti (X5) streams the requested property columns for a LABEL
 // INTERSECTION (multi-label patterns like (p:A:B)) from a cached columnar snapshot
 // over the intersection membership, avoiding the per-node fetch+decode. ok=false
-// means the column path is unusable (no capability, an unknown label, an empty/
+// means the column path is unusable (no capability, an unknown label, an
 // over-cap intersection, or a non-buildable property) and the caller falls back.
+// An empty intersection of known labels is served: ok=true, no rows.
 // See core.NodeOps.ForEachDocValuesMulti.
 func (a *API) ForEachDocValuesMulti(labels []string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error) {
 	ops, err := a.ready()

@@ -240,7 +240,15 @@ func (bs *Store) labelColumnOrdinals(token uint16, col *indexpkg.LabelDocValues)
 	bs.docMu.Lock()
 	c, ok := bs.colOrds.nodes[token]
 	bs.docMu.Unlock()
-	if ok && c.col == col {
+	if ok && (c.col == col || indexpkg.SameIDs(c.col, col)) {
+		// A patched snapshot shares its predecessor's ID vector (round 5
+		// request 4): same rows, so the same ordinals (an ordinal is fixed
+		// while the node is current).
+		if c.col != col {
+			bs.docMu.Lock()
+			bs.colOrds.nodes[token] = snapshotOrdinals[types.NodeID]{col: col, ords: c.ords}
+			bs.docMu.Unlock()
+		}
 		return c.ords
 	}
 	ords := bs.ords.nodeOrdinals(col.IDs(), make([]uint32, 0, col.Len()))

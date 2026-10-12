@@ -1,0 +1,9 @@
+--- FAIL: TestMemoryRelTypeEpochSurvivesOtherTypes (0.00s)
+    memorystore_rel_type_epoch_test.go:60: put (type B) moved type A's epoch 2 -> 3
+    memorystore_rel_type_epoch_test.go:61: replace (type B) moved type A's epoch 3 -> 4
+    memorystore_rel_type_epoch_test.go:62: replace with history (type B) moved type A's epoch 4 -> 5
+    memorystore_rel_type_epoch_test.go:63: history version (type B) moved type A's epoch 5 -> 6
+    memorystore_rel_type_epoch_test.go:68: batch put (type B) moved type A's epoch 6 -> 7
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.336s
+FAIL

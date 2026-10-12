@@ -380,6 +380,26 @@ type RelTypeTxMembershipCapability interface {
 	ForEachRelTypeTxMember(token uint16, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
 }
 
+// LabelTxMemberLookupCapability is OPTIONAL: the point form of
+// LabelTxMembershipCapability, over the same sidecar and contract. For each ID
+// of ids that ever carried token (in its current row or any history row), fn
+// receives (id, firstTxFrom); an ID that never carried it is skipped. Order is
+// unspecified; fn returning false stops. It lets the graph layer scope a
+// temporal read by property value on a (label, key) without a declared index
+// to the history IDs that ever carried the label, instead of resolving the
+// version chain of every node with history (round 5 request 8). The first
+// call after open (or Clear) builds the sidecar, as ForEachLabelTxMember's
+// does.
+type LabelTxMemberLookupCapability interface {
+	LabelTxMembersOf(token uint16, ids []types.NodeID, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
+}
+
+// RelTypeTxMemberLookupCapability is the relationship mirror of
+// LabelTxMemberLookupCapability over RelTypeTxMembershipCapability's sidecar.
+type RelTypeTxMemberLookupCapability interface {
+	RelTypeTxMembersOf(token uint16, ids []types.RelID, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
+}
+
 // RelPropertyTxMembershipCapability is OPTIONAL (backlog 8). A backend that
 // keeps a transaction-time membership sidecar for a DECLARED relationship
 // property index (relType, key) can enumerate, for one canonical value key

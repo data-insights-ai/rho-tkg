@@ -425,3 +425,60 @@ func (bs *Store) ForEachRelTypeTxMember(token uint16, fn func(id types.RelID, fi
 	}
 	return nil
 }
+
+// LabelTxMembersOf implements store.LabelTxMemberLookupCapability over the
+// same sidecar as ForEachLabelTxMember (built on first use; fn runs outside
+// the store lock).
+func (bs *Store) LabelTxMembersOf(token uint16, ids []types.NodeID, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return errNilIterationCallback()
+	}
+	if err := bs.ensureLabelTxMembersBuilt(); err != nil {
+		return err
+	}
+	bs.idxMu.RLock()
+	members := txMembersOf(bs.labelTxMembers[token], ids)
+	bs.idxMu.RUnlock()
+	for _, m := range members {
+		if !fn(m.ID, m.FirstTx) {
+			return nil
+		}
+	}
+	return nil
+}
+
+// RelTypeTxMembersOf implements store.RelTypeTxMemberLookupCapability.
+func (bs *Store) RelTypeTxMembersOf(token uint16, ids []types.RelID, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return errNilIterationCallback()
+	}
+	if err := bs.ensureRelTypeTxMembersBuilt(); err != nil {
+		return err
+	}
+	bs.idxMu.RLock()
+	members := txMembersOf(bs.relTypeTxMembers[token], ids)
+	bs.idxMu.RUnlock()
+	for _, m := range members {
+		if !fn(m.ID, m.FirstTx) {
+			return nil
+		}
+	}
+	return nil
+}
+
+// txMembersOf returns the members of set among ids (point lookups).
+func txMembersOf[ID comparable](set map[ID]types.Instant, ids []ID) []indexpkg.TxMember[ID] {
+	var out []indexpkg.TxMember[ID]
+	for _, id := range ids {
+		if tx, ok := set[id]; ok {
+			out = append(out, indexpkg.TxMember[ID]{ID: id, FirstTx: tx})
+		}
+	}
+	return out
+}

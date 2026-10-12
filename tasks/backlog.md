@@ -433,8 +433,8 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Review 2026-09-24: TxAt-only doors "nondeterministic" (implicit valid-time now = wall clock; now `readNow()`) | `[4.38.1]` |
 | Item 6 (FEATURE) — `DeleteWithTx` / `UpdateWithTx` on every write door, `ErrTxOrder` | `[4.44.0]` Added; handover `tasks/handover-tx-backfill-delete-update-20261009.md` |
 | Item 34 (FEATURE) — `SetNodeVersionIntervalWithTx` / `SetRelVersionIntervalWithTx` on every door | `[4.50.1]` Added; evidence `tasks/evidence/interval-withtx/` |
-| Item 48 (FEATURE, sigma-tkgd) — `ColumnData.Other`: column-scan cells held outside the column (node and rel batches); typed slots aligned with `Null` | `[4.50.2]` Added; evidence `tasks/evidence/column-other/` |
-| Item 35 (FEATURE, sigma-tkgd) — broader effective scans: `ForEachNodeEffective` / `ForEachRelEffective`, `ForEachRelEffectiveAtNodes`, `NodesEffectiveByIDs` / `RelsEffectiveByIDs`, `ForEachNodeEffectiveByLabels` | `[4.50.2]` Added; evidence `tasks/evidence/effective-scans/` |
+| Item 48 (FEATURE, sigma-tkgd) — `ColumnData.Other`: column-scan cells held outside the column (node and rel batches); typed slots aligned with `Null` | `[4.51.1]` Added; evidence `tasks/evidence/column-other/` |
+| Item 35 (FEATURE, sigma-tkgd) — broader effective scans: `ForEachNodeEffective` / `ForEachRelEffective`, `ForEachRelEffectiveAtNodes`, `NodesEffectiveByIDs` / `RelsEffectiveByIDs`, `ForEachNodeEffectiveByLabels` | `[4.51.1]` Added; evidence `tasks/evidence/effective-scans/` |
 | Item 11 (FEATURE) — durable-on-return commit `Config.DurableCommit` | `[4.44.0]` Added (power-loss gap: item 15) |
 | HIGH — one-tick `[t, t+1)` rows skipped as the eclipse sentinel; skip removed | `[4.44.0]` Fixed "One-tick valid intervals are ordinary spans" |
 | Review-v5 §6.2 — column and range scans ignored `TxAt`/`TxPin` | `[4.44.0]` Fixed "Column and range scans answer temporal options" (interval semantics: item 16) |
@@ -457,13 +457,23 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Item 29 (MEDIUM) — a failed node write left its `UniqueForever` value owned (crash consistency between claim and row: v5 PLAN §5.2) | `[4.49.0]` Fixed; evidence `tasks/evidence/unique-claims/` |
 | Item 30 (FEATURE, perf) — `Nodes()/Rels().LatestStamps(id)` | `[4.49.0]` Added; evidence `tasks/evidence/latest-stamps/` |
 | Item 43 (FEATURE, ai-soc) — retraction: `Retract` / `RetractWithTx` on every write door, "this was never true" | `[4.49.1]` Added "Retraction: a way to say this was never true"; evidence `tasks/evidence/retraction/` |
-| Item 33 (MEDIUM, perf) — badger effective scans read each candidate row once (`store.MemberIDsCapability`) | `[4.50.2]` Changed; evidence `tasks/evidence/badger-read-cost/` |
-| Item 42 (FEATURE, perf) — `store.CurrentStampsCapability`, the current-row half of `LatestStamps` | `[4.50.2]` Added; evidence `tasks/evidence/badger-read-cost/` |
+| Item 33 (MEDIUM, perf) — badger effective scans read each candidate row once (`store.MemberIDsCapability`) | `[4.51.1]` Changed; evidence `tasks/evidence/badger-read-cost/` |
+| Item 42 (FEATURE, perf) — `store.CurrentStampsCapability`, the current-row half of `LatestStamps` | `[4.51.1]` Added; evidence `tasks/evidence/badger-read-cost/` |
 
 Recover closed investigation prose via `git log --all -- tasks/backlog.md` if needed.
 
 ### DO NOT BUILD / reopen criteria (keep here so they are not re-filed)
 
+- **Distinct start and end counts per relationship type maintained with the writes (sigma-tkgd round 5 request 5):
+  NOT BUILT 2026-10-11.** `RelTypeDegreeStats` is derived and cached per type; since round 5 request 9 the memory
+  store keys it on a per-type stamp as badger does, so the cold harness's writes to another type no longer force
+  the recount that motivated the request. Maintaining exact distinct counts under writes to the type itself needs a
+  per-node degree counter per type (O(distinct endpoints) RAM, about 40-50 B per endpoint in a Go map) and two map
+  updates per relationship write of the type, a new write and memory cost the round's design rule only allows as
+  opt-in or lazy; sigma-tkgd reverted its use of the degree statistics for the one-hop estimate pending a cost-model
+  calibration (C4s). Reopen when sigma-tkgd re-adopts the degree statistics and measures the recount after writes
+  to the read type itself on its cold rows; then build it opt-in per type (built lazily on the first
+  `RelTypeDegreeStats` of a type that opted in, maintained at the relationship write seams).
 - **Item 9 — property-keyed unique constraint on relationships (ai-soc request 4): WITHDRAWN 2026-10-09** (René,
   relayed by ai-soc: "rho-tkg already has unique snowflake ids"). ai-soc uses the snowflake ID as the global ID.
   Possible cheap follow-up, not requested: a relationship door that accepts a caller-supplied snowflake ID "if

@@ -25,9 +25,15 @@ const (
 	RelEndColumn   = "tkg_rel_end"
 )
 
-// RelMutationEpochForType is the freshness stamp for a rel-type column snapshot.
-// Store-wide, so any edge write invalidates every type's columns.
-func (ms *Store) RelMutationEpochForType(uint16) uint64 { return ms.relEpoch.Load() }
+// RelMutationEpochForType is a relationship type's freshness stamp (round 5
+// request 9): its stripe plus the coarse term every door that does not name
+// its type bumps, so it stays put across a put, replace or history write of
+// another type, as badger's. Monotonic. The core's RelTypeDegreeStats cache is
+// keyed on it; this store's own rel-type column snapshots stay stamped with the
+// store-wide relEpoch (their rebuild walks an in-memory map).
+func (ms *Store) RelMutationEpochForType(token uint16) uint64 {
+	return ms.relTypeEpochs[token%relTypeEpochStripes].Load() + ms.relEpochCoarse.Load()
+}
 
 // RelColumnSnapshot returns the columnar snapshot for a relationship type, building
 // it if stale. ok=false means the columnar path is unusable — an empty or over-cap
