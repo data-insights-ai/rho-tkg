@@ -16,9 +16,10 @@ var _ storecontract.ExAdjacencyCapability = (*Store)(nil)
 // 0x0D | node | dir | rel (storeutil.ExAdjKey) per relationship that named the
 // node in a row the live adjacency (0x05 / 0x06) no longer ties to it. Written
 // into the same pending batch as the adjacency-key delete of every relationship
-// delete (deleteRelByInfo, DeleteRelEntityAndOut, DeleteRelIncoming) and as
-// every history row whose endpoints are not the live row's (PutRelVersion), so
-// it is on disk exactly when the delete or the row is. Read by a prefix scan
+// delete (deleteRelByInfo, DeleteRelEntityAndOut, DeleteRelIncoming; not the
+// placement removals of a move or a create rollback) and as every history row
+// whose endpoints are not the live row's (PutRelVersion), so it is on disk
+// exactly when the delete or the row is. Read by a prefix scan
 // with the pending overlay, like the disk-resident adjacency. No RAM copy.
 
 // exAdjLegOp is one ex-adjacency key write: set (a leg left the live adjacency)

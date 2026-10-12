@@ -386,6 +386,9 @@ func (ts *Store) purgeOrRejectDestinationAdjacency(nodeID types.NodeID, destinat
 	return nil
 }
 
+// migrateRelationshipPlacement moves a live relationship's keys between
+// shards. The relationship stays live, so the removals record no ex-adjacency
+// (the Remove*Placement doors).
 func migrateRelationshipPlacement(move relationshipPlacementMove) error {
 	rel := move.rel
 	info := RelDeleteInfo{
@@ -406,12 +409,12 @@ func migrateRelationshipPlacement(move relationshipPlacementMove) error {
 	rollbackNew := func() error {
 		var rollbackErrs []error
 		if wroteIncoming {
-			if err := move.newIn.DeleteRelIncoming(info); err != nil {
+			if err := move.newIn.RemoveRelIncomingPlacement(info); err != nil {
 				rollbackErrs = append(rollbackErrs, err)
 			}
 		}
 		if wroteEntity {
-			if _, err := move.newEntity.DeleteRelEntityAndOut(info.ID); err != nil {
+			if _, err := move.newEntity.RemoveRelEntityAndOutPlacement(info.ID); err != nil {
 				rollbackErrs = append(rollbackErrs, err)
 			}
 		}
@@ -432,7 +435,7 @@ func migrateRelationshipPlacement(move relationshipPlacementMove) error {
 			return err
 		}
 		wroteIncoming = true
-		if err := move.oldIn.DeleteRelIncoming(info); err != nil {
+		if err := move.oldIn.RemoveRelIncomingPlacement(info); err != nil {
 			if rbErr := rollbackNew(); rbErr != nil {
 				return fmt.Errorf("%w (rollback new placement failed: %v)", err, rbErr)
 			}
@@ -441,7 +444,7 @@ func migrateRelationshipPlacement(move relationshipPlacementMove) error {
 		deletedOldIncoming = true
 	}
 	if entityMoved {
-		if _, err := move.oldEntity.DeleteRelEntityAndOut(info.ID); err != nil {
+		if _, err := move.oldEntity.RemoveRelEntityAndOutPlacement(info.ID); err != nil {
 			var rollbackErrs []error
 			if deletedOldIncoming {
 				if rbErr := move.oldIn.PutRelIncoming(info.EndID, info.StartID, info.RelType, info.ID); rbErr != nil {

@@ -945,7 +945,7 @@ func (tx *GraphTx) Rollback() error {
 	// 6. Delete created relationships in reverse creation order.
 	for i := len(tx.createdRels) - 1; i >= 0; i-- {
 		rid := types.RelID(tx.createdRels[i])
-		capture(tx.g.deleteRelationshipScopedAware(tx.scopeToken, rid))
+		capture(tx.g.undoRelationshipCreate(tx.scopeToken, rid))
 		capture(tx.removeCreatedRelHistory(rid))
 	}
 

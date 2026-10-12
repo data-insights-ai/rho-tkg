@@ -180,7 +180,23 @@ func (bs *Store) PutRelIncoming(endID, startID snowflake.ID, relType uint16, rel
 // carries only the ID (a hard delete, no tombstone), the same as a
 // single-shard delete. DeleteRelIncoming (the companion in/-only leg)
 // deliberately emits nothing — see PutRelIncoming's doc comment for why.
+//
+// It records the dropped out-leg's ex-adjacency (backlog 50); a removal that
+// is not a relationship delete uses RemoveRelEntityAndOutPlacement.
 func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
+	return bs.deleteRelEntityAndOut(id, true)
+}
+
+// RemoveRelEntityAndOutPlacement is DeleteRelEntityAndOut for a placement that
+// is not a relationship delete — a cross-shard move (archive, restore) or the
+// rollback of a create: the relationship stays live elsewhere or never was,
+// so no ex-adjacency leg is recorded (it would name a relationship the live
+// adjacency still ties to its node).
+func (bs *Store) RemoveRelEntityAndOutPlacement(id snowflake.ID) (RelDeleteInfo, error) {
+	return bs.deleteRelEntityAndOut(id, false)
+}
+
+func (bs *Store) deleteRelEntityAndOut(id snowflake.ID, exLeg bool) (RelDeleteInfo, error) {
 	if err := bs.checkWritable(); err != nil {
 		return RelDeleteInfo{}, err
 	}
@@ -259,7 +275,9 @@ func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 		{opType: writeOpDelete, key: storepkg.RelKey(id)},
 		{opType: writeOpDelete, key: storepkg.RelTypeIndexKey(info.RelType, id)},
 		{opType: writeOpDelete, key: storepkg.OutKey(info.StartID, info.RelType, info.EndID, id)},
-		exAdjLegOp(writeOpSet, info.StartID, false, id), // backlog 50: the out-leg's ex-adjacency lives here
+	}
+	if exLeg {
+		ops = append(ops, exAdjLegOp(writeOpSet, info.StartID, false, id)) // backlog 50: the out-leg's ex-adjacency lives here
 	}
 
 	bs.appendOps(ops...)
@@ -278,7 +296,21 @@ func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 // Deliberately emits NO change-log record — see PutRelIncoming's doc comment
 // (BACKLOG 18c): this leg carries no entity data, so DeleteRelEntityAndOut's
 // ChangeRelDelete record already fully describes the deletion.
+//
+// It records the dropped in-leg's ex-adjacency (backlog 50); a removal that is
+// not a relationship delete uses RemoveRelIncomingPlacement.
 func (bs *Store) DeleteRelIncoming(info RelDeleteInfo) error {
+	return bs.deleteRelIncoming(info, true)
+}
+
+// RemoveRelIncomingPlacement is DeleteRelIncoming for a placement that is not
+// a relationship delete (see RemoveRelEntityAndOutPlacement): no ex-adjacency
+// leg.
+func (bs *Store) RemoveRelIncomingPlacement(info RelDeleteInfo) error {
+	return bs.deleteRelIncoming(info, false)
+}
+
+func (bs *Store) deleteRelIncoming(info RelDeleteInfo, exLeg bool) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -306,11 +338,11 @@ func (bs *Store) DeleteRelIncoming(info RelDeleteInfo) error {
 		}
 	}
 
-	op := writeOp{
-		opType: writeOpDelete,
-		key:    storepkg.InKey(info.EndID, info.RelType, info.StartID, info.ID),
+	ops := []writeOp{{opType: writeOpDelete, key: storepkg.InKey(info.EndID, info.RelType, info.StartID, info.ID)}}
+	if exLeg {
+		ops = append(ops, exAdjLegOp(writeOpSet, info.EndID, true, info.ID)) // backlog 50: the in-leg's ex-adjacency
 	}
-	bs.appendOps(op, exAdjLegOp(writeOpSet, info.EndID, true, info.ID)) // backlog 50: the in-leg's ex-adjacency
+	bs.appendOps(ops...)
 	bs.idxMu.Unlock()
 	return bs.flushIfNeeded()
 }

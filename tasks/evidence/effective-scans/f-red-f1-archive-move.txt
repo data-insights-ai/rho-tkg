@@ -1,0 +1,8 @@
+--- FAIL: TestArchiveMoveLeavesNoExAdjacencyLegs (0.01s)
+    tieredstore_exadj_test.go:101: after archive: ex-adjacency(806028838824116224, incoming=false) = [806028838826869760 806028838827721728 806028838828278784 806028838828377088], want [806028838826869760]
+    tieredstore_exadj_test.go:101: after archive: ex-adjacency(806028838824116224, incoming=true) = [806028838827885568 806028838828082176 806028838828377088], want []
+    tieredstore_exadj_test.go:101: after restore: ex-adjacency(806028838824116224, incoming=false) = [806028838826869760 806028838827721728 806028838828278784 806028838828377088], want [806028838826869760]
+    tieredstore_exadj_test.go:101: after restore: ex-adjacency(806028838824116224, incoming=true) = [806028838827885568 806028838828082176 806028838828377088], want []
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.012s
+FAIL

@@ -75,8 +75,8 @@ type Core struct {
 	filteredVector        storepkg.FilteredVectorSearchCapability
 	vectorIndexOptions    storepkg.VectorIndexOptionsCapability
 	depthHistory          storepkg.DepthHistoryIterationCapability
-	deletedIter           storepkg.DeletedIterationCapability
-	deletedDepthIter      storepkg.DepthDeletedIterationCapability
+	relCreateUndo         storepkg.RelCreateUndoCapability       // undoRelationshipCreate
+	scopedRelCreateUndo   storepkg.ScopedRelCreateUndoCapability // undoRelationshipCreate
 	// exAdj is the store's ex-adjacency (backlog 50) once it covers every
 	// relationship (backfillExAdjacencyBestEffort); nil = the adjacency doors
 	// fold every relationship with history instead (forEachRelExAdjacentID).
@@ -1419,39 +1419,6 @@ func depthHistoryIterationCapability(store storepkg.MandatoryStore) storepkg.Dep
 	return cap
 }
 
-func deletedIterationCapability(store storepkg.MandatoryStore) storepkg.DeletedIterationCapability {
-	cap, ok := store.(storepkg.DeletedIterationCapability)
-	if !ok {
-		return nil
-	}
-	// Deleted iteration is an optional acceleration. Wrappers that only inherit
-	// the native methods must fall through so wrapper-injected ForEach*HistoryID
-	// behaviour remains observable on the candidate-fold path.
-	if isExactNativeStore(store) {
-		return cap
-	}
-	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.DeletedIterationCapability)(nil)).Elem(),
-		"ForEachDeletedNodeID", "ForEachDeletedRelID") {
-		return nil
-	}
-	return cap
-}
-
-func depthDeletedIterationCapability(store storepkg.MandatoryStore) storepkg.DepthDeletedIterationCapability {
-	cap, ok := store.(storepkg.DepthDeletedIterationCapability)
-	if !ok {
-		return nil
-	}
-	if isExactNativeStore(store) {
-		return cap
-	}
-	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.DepthDeletedIterationCapability)(nil)).Elem(),
-		"ForEachDeletedNodeIDByDepth", "ForEachDeletedRelIDByDepth") {
-		return nil
-	}
-	return cap
-}
-
 // labelTxMembershipCapability resolves the K1 transaction-time label-membership
 // sidecar. Only the exact native single-shard backends (memory, badger) own a
 // coherent whole-store membership index; a wrapper that merely EMBEDS a native
@@ -2012,12 +1979,11 @@ func New(config Config) (*Core, error) {
 	c.filteredVector = filteredVectorSearchCapability(store)
 	c.vectorIndexOptions = vectorIndexOptionsCapability(store)
 	c.depthHistory = depthHistoryIterationCapability(store)
-	c.deletedIter = deletedIterationCapability(store)
+	c.relCreateUndo, c.scopedRelCreateUndo = relCreateUndoCapabilities(store)
 	c.changeFeed = changeFeedCapability(store)
 	c.changeLogEnabled = changeLogStatusEnabled(store)
 	c.txLogScope = txChangeLogScope(store, c.changeLogEnabled)
 	c.scopedChangeLog = scopedTxCapability(store)
-	c.deletedDepthIter = depthDeletedIterationCapability(store)
 	c.labelTxMembers = labelTxMembershipCapability(store)
 	c.relTypeTxMembers = relTypeTxMembershipCapability(store)
 	c.labelTxLookup = labelTxMemberLookupCapability(store)

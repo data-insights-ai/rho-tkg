@@ -42,6 +42,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   exported interface would break its implementers. Red test `TestDurableCommitSyncWritesSyncsPerGroup` (syncs per group counted by
   `badger.Store.SyncCountForTest`, 10 vs 500 ops, plus crash children for split, rollback, retry and concurrent
   standalone writes).
+- **Moves and undone creates no longer write ex-adjacency keys** (backlog 50, v4.51.2 review F1): tiered
+  `ArchiveNode` / `RestoreNode` moved live relationships between shards, and a failed create (tiered cross-shard, a
+  graph create's partial write, a rolled-back transaction, a failed `IO.Import` or `ImportMerge`) removed its
+  relationship, through the delete doors, which record an ex-adjacency leg per dropped key: stale keys naming a
+  relationship that was still live or never committed. Answers were correct (each candidate is resolved and
+  dropped); the keys cost disk or RAM and a candidate read per temporal adjacency query of the endpoint. Moves now use
+  the leg-less badger doors `RemoveRelEntityAndOutPlacement` / `RemoveRelIncomingPlacement`; undone creates use the
+  new optional `store.RelCreateUndoCapability` (`UndoRelationshipCreate`, memory, badger, tiered, sharded) and
+  `store.ScopedRelCreateUndoCapability` (`UndoRelationshipCreateScoped`, memory, badger): `DeleteRelationship`
+  without the legs (a store without them is undone by `DeleteRelationship`, as before). Real deletes keep both legs.
+  Keys already written by v4.51.2 are not removed: a key carries no provenance, and the same key may be a
+  still-needed leg of an earlier deleted life of that relationship.
 
 ## [4.51.2] - 2026-10-12
 
