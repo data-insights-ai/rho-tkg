@@ -1,9 +1,11 @@
 package badger
 
 import (
+	"fmt"
 	"math"
 	"reflect"
 	"runtime"
+	"sync"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -14,12 +16,13 @@ import (
 // TestRelPlannerStatsMemoBounded is backlog 53 at the store seam (the graph
 // door cases live in pkg/graph under the same name). "heap" measures the heap
 // the relationship planner statistics retain — stats on minus stats off, same
-// writes, nothing flushed so the two stores differ only by the statistics — at
-// 10 K and 100 K relationships: the growth must be a constant, not an amount
-// per relationship. The door cases reach the store-only delete seams (batch
-// delete, the tiered split-write legs, purge by descriptor, foreign incoming
-// stubs, adjacent purge, cascade); after each step every counter equals a
-// full recount of the current relationships.
+// writes, flushed before measuring — at 10 K and 100 K relationships: the
+// growth must be a constant, not an amount per relationship. The door cases
+// reach the store-only delete seams (batch delete, the tiered split-write
+// legs, purge by descriptor, foreign incoming stubs, adjacent purge, cascade,
+// exact erasure, and the batch and cascade re-read fallback after a replace in
+// the prefetch window); after each step every counter equals a full recount
+// of the current relationships.
 func TestRelPlannerStatsMemoBounded(t *testing.T) {
 	t.Run("heap", func(t *testing.T) {
 		small := storeRelStatsRetainedHeap(t, 10_000)
@@ -82,6 +85,24 @@ func TestRelPlannerStatsMemoBounded(t *testing.T) {
 		{"node cascade", []func(*testing.T, *Store){
 			func(t *testing.T, bs *Store) { ok(t, bs.DeleteNodeCascade(b)) },
 		}},
+		{"batch delete after a replace in the prefetch window", []func(*testing.T, *Store){
+			func(t *testing.T, bs *Store) {
+				replaceInPrefetchWindow(t, bs, rel(100, a, b, map[string]any{"w": "now a string"}))
+				ok(t, bs.DeleteRelationshipsBatch([]types.RelID{100, 102}))
+			},
+		}},
+		{"cascade after a replace in the prefetch window", []func(*testing.T, *Store){
+			func(t *testing.T, bs *Store) {
+				replaceInPrefetchWindow(t, bs, rel(102, a, b, map[string]any{"w": int64(77)}))
+				ok(t, bs.DeleteNodeCascade(b))
+			},
+		}},
+		{"exact erasure", []func(*testing.T, *Store){
+			func(t *testing.T, bs *Store) {
+				_, err := bs.ExactErase(storecontract.ExactErasureRequest{RelIDs: []types.RelID{100, 103}, Bounds: badgerExactErasureBounds})
+				ok(t, err)
+			},
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -102,6 +123,74 @@ func TestRelPlannerStatsMemoBounded(t *testing.T) {
 				assertStoreRelStatsMatchRecount(t, tc.name+" step "+string(rune('1'+i)), bs, knows)
 			}
 		})
+	}
+}
+
+// replaceInPrefetchWindow arms the prefetch->lock hook so the next batch delete
+// or cascade sees r replace its prefetched row: the locked re-read fallback
+// must then decrement the replacement, not the prefetched row.
+func replaceInPrefetchWindow(t *testing.T, bs *Store, r *types.Relationship) {
+	t.Helper()
+	bs.relDeletePrefetchTestHook = func() {
+		bs.relDeletePrefetchTestHook = nil
+		if err := bs.ReplaceRelationship(r); err != nil {
+			t.Errorf("replace in the prefetch window: %v", err)
+		}
+	}
+}
+
+// TestRelPlannerStatsMemoBoundedConcurrentDoors races replace, delete, batch
+// delete and put on the same relationships; afterwards every counter equals a
+// recount (backlog 53). A delete whose prefetched row went stale takes the
+// locked re-read fallback, so a fallback that loses the row drifts here.
+func TestRelPlannerStatsMemoBoundedConcurrentDoors(t *testing.T) {
+	const knows, rels = 3, 40
+	nodes := []types.NodeID{11, 12, 13, 14}
+	mk := func(id int64, i int) *types.Relationship {
+		r := types.NewRelationship(types.RelID(snowflake.ID(id)), knows, nodes[id%2], nodes[2+id%2])
+		for k, v := range storeRelStatsProps(i) {
+			if err := r.SetProperty(k, v); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return r
+	}
+	for round := 0; round < 20; round++ {
+		bs := newTestBadgerStoreInMemory(t)
+		for _, id := range nodes {
+			if err := bs.PutNode(types.NewNode(id, 1, nil)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for i := int64(0); i < rels; i++ {
+			if err := bs.PutRelationship(mk(100+i, int(i))); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var wg sync.WaitGroup
+		for g := 0; g < 8; g++ {
+			wg.Add(1)
+			go func(g int) {
+				defer wg.Done()
+				for i := int64(0); i < rels; i++ {
+					id := 100 + (i*int64(g+1))%rels
+					// Errors are expected (a rel another goroutine deleted); the
+					// recount below is the assertion.
+					switch g % 4 {
+					case 0:
+						_ = bs.ReplaceRelationship(mk(id, int(i)+g))
+					case 1:
+						_ = bs.DeleteRelationship(types.RelID(id))
+					case 2:
+						_ = bs.DeleteRelationshipsBatch([]types.RelID{types.RelID(id), types.RelID(100 + (id+1)%rels)})
+					case 3:
+						_ = bs.PutRelationship(mk(id, int(i)))
+					}
+				}
+			}(g)
+		}
+		wg.Wait()
+		assertStoreRelStatsMatchRecount(t, fmt.Sprintf("round %d", round), bs, knows)
 	}
 }
 

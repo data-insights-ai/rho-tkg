@@ -97,6 +97,9 @@ func (bs *Store) prefetchCascadeDeleteRows(nid types.NodeID) (cascadeDeletePrefe
 		}
 		infos[relID] = info
 	}
+	if bs.relDeletePrefetchTestHook != nil {
+		bs.relDeletePrefetchTestHook()
+	}
 	return cascadeDeletePrefetch{node: nodeInfo, rels: infos}, nil
 }
 

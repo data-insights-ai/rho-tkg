@@ -19,3 +19,15 @@ exit=0
 $ go test -count=1 -run 'Doc|Changelog|CHANGELOG' ./pkg/graph/internal/core/ ./pkg/graph/internal/index/
 ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core
 ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index
+
+# After the review round (prefetch-window, erasure, concurrent-doors tests), rebased onto main 2fb85e70
+$ go test -short -race -count=1 ./pkg/graph/store/... ./pkg/graph/
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	10.472s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	407.705s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	556.684s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	26.336s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	330.604s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	510.540s
+exit=0
+$ make lint-docker: 0 issues, exit=0
+$ make security-docker: exit=0

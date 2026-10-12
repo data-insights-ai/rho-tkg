@@ -212,6 +212,9 @@ func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 		}
 		prefetched[rid] = info
 	}
+	if bs.relDeletePrefetchTestHook != nil {
+		bs.relDeletePrefetchTestHook()
+	}
 
 	bs.idxMu.Lock()
 

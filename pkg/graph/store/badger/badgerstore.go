@@ -813,6 +813,12 @@ type Store struct {
 	// rev check. Set only from the owning test.
 	replaceRelPrefetchTestHook func()
 
+	// relDeletePrefetchTestHook, when non-nil, runs after a deferred
+	// relationship delete's prefetch (DeleteRelationshipsBatch, every node
+	// cascade) and BEFORE idxMu.Lock(), so a test can change a prefetched row and
+	// force the locked re-read fallback (backlog 53). Set only from the owning test.
+	relDeletePrefetchTestHook func()
+
 	// exactErasureScanTestHook, when non-nil, runs immediately before each
 	// fallible exact-erasure preflight scan. Production leaves it nil. Tests
 	// inject a failure at a late scan and prove the destructive apply phase has
