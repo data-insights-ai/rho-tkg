@@ -321,71 +321,6 @@ Measured 2026-10-12 (`tasks/evidence/badger-read-cost/41-01-sidecar-ram-per-id.t
 
 A crash after a burst whose monotonic floor outran the wall reopens with `NowTx` below committed stamps (lesson 71's reopen case on the crash path): `persistInstantFloor` is called only from `Close` (`core/core.go`, `core/instant_floor.go:129`), and `seedInstantFloor` reseeds only from that watermark. Red test first: a crash-shaped child (exit without `Close`) after writes stamped ahead of the wall, reopen, assert `NowTx()` and a fresh write's `TxFrom` exceed every stored `TxFrom`. Fix candidates: persist the floor with the durable commit / flush, or reseed from the newest stored stamp at open.
 
-### 49. A re-import that moves a relationship to another tiered shard makes the earlier life unreachable
-
-*HIGH (tiered)* — open; reproduced 2026-10-12 while building item 35.
-
-On tiered, `Rels.Delete` then `Rels.Import(id, …)` with a start node in another shard (a "Ref" node, the reference
-shard) leaves `Rels.History(id)` empty: the earlier life's rows stay on the old shard, but the history read goes only
-to the live row's shard (`tieredstore_read_history_rel.go:98-103`), so no door reaches them (`History`,
-`RelEffectiveTimeline`, `RelAsOf` at a pin inside the earlier life; the item-35 doors `ForEachRelEffective`,
-`ForEachRelEffectiveAtNodes`, `RelsEffectiveByIDs` omit the earlier life like the per-entity door). Same endpoints,
-or memory / badger / sharded: one history row, as expected. Probe and output: `tasks/evidence/effective-scans/finding-tiered-reimport-*`. Red test
-first: the probe as a cross-backend test (both directions of the move, node re-import too), then the history lookup
-of a re-imported ID must find every life (route by the ID's lives, or move the history with the row).
-
-### 50. Pinned adjacency doors miss a re-imported relationship's earlier life
-
-*MEDIUM* — open; reproduced 2026-10-12 while building item 35.
-
-`OutgoingForNodesAtPin` / `IncomingForNodesAtPin` (and the other users of `forEachRelAdjacencyCandidateID`:
-`*ForNodesAtTx`, `OutgoingRelsAt` / `IncomingRelsAt`, `ForEachAdjacentRelAt`) fold only DELETED relationship IDs into
-the candidates, on the rule "endpoints are immutable". A relationship ID deleted and re-imported with other endpoints
-(allowed, `relationship_update.go:137`) is live again, so its earlier life — whose rows name the old endpoint — is
-never a candidate: A->B deleted, re-imported as C->B, `OutgoingForNodesAtPin([A], "", pin inside the first life)`
-answers nothing while `RelAsOf(id, pin)` is the A->B row. `ForEachRelEffectiveAtNodes` (item 35) folds every
-relationship with history and answers it. Probe and output: `tasks/evidence/effective-scans/finding-pinned-adjacency-*`.
-Red test first: the probe on memory/badger/sharded/tiered for each door; fix at the shared seam and correct the
-AGENTS.md "deleted-only iteration" rule.
-
-Same seam, cost (review of item 35, 2026-10-12): `ForEachRelEffectiveAtNodes` stays sound today by folding EVERY
-relationship with history on every call, O(H) whatever the seed count (one seed, 50 relationships, 100 K
-relationships all with history: 0.48 s memory, 3.4 s badger vs 0.13 / 0.6 ms by IDs,
-`tasks/evidence/effective-scans/bench-one-seed-full-history.txt`). The sound cheap gather for both: current
-adjacency ∪ deleted relationship IDs (`forEachRelAdjacencyCandidateIDByDepth`) ∪ a persisted set of IDs re-imported
-over a deleted life (written at `Rels.Import`), shared by `ForEachRelEffectiveAtNodes` and the pinned adjacency
-doors; an ever-adjacency sidecar if the deleted volume is large. Red first: the one-seed benchmark as a gate plus
-the probe above.
-
-Consumer: sigma-tkgd 2026-10-12 — its pinned src_label/dst_label pushdown (`OutgoingForNodesAtPin` /
-`IncomingForNodesAtPin`) misses the earlier life, and `ForEachRelEffectiveAtNodes` at O(H) per call is too slow for
-every pinned label source; sigma waits for this item.
-
-Built 2026-10-12 (branch worktree-agent-ab0ee0097a18b0a1f, unreleased; CHANGELOG `[Unreleased]`, evidence
-`tasks/evidence/effective-scans/50-*`), fix round after the Opus-high review: the store keeps an ex-adjacency index
-(`store.ExAdjacencyCapability`, badger keyspace 0x0D) at every delete and every history row with other endpoints;
-the adjacency doors gather per seed (live adjacency ∪ ex-adjacency). AtNodes one seed on 100 K with history, a
-quarter deleted: badger 0.94-1.06 s → 0.79-0.84 ms, memory 113-187 ms → 80-83 µs, at par with the by-IDs door.
-Badger store marker 3 (≤ v4.51.1 refuses). Leftover, not built: an earlier life's legs of a relationship removed by
-retention purge stay as stale (sound) entries.
-
-### 51. Effective scans bounded by valid end (cost follows the result, not the history)
-
-*HIGH (consumer: sigma-tkgd step 6, 2026-10-12)* — open; not started.
-
-Every effective door (`ForEach*EffectiveByType` / `ByLabels`, `ForEachRelEffectiveAtNodes`, `ForEach*Effective`)
-enumerates by type, label, endpoint or every entity ever stored. In sigma's sessions each event is its own entity
-whose past stays effective, so the effective state at a pin is the whole history: restore 64.5 ms at 7 days,
-323.6 ms at 28 days (5.0x for 4x the history). Requested: `ForEachRelEffectiveByType(type, pin, validFrom, fn)` and
-the node/label door, visiting only entities whose effective valid interval at the pin ends at or after `validFrom`
-(an untimed entity is eternal, always included), backed by a valid-end index so the cost follows the result. sigma
-then restores = persisted overview + a raw scan from (frontier − horizon − lookback). Design note: sigma-tkgd
-`tasks/realtime-session-impl.md` "v0.10.9, step 6" (origin/main adfa8727a). Red test first (sigma's acceptance):
-1k vs 10k retired entities, a constant number with valid end ≥ `validFrom`, entities read constant on memory and
-badger; break cases: validFrom exactly at a valid end, untimed entity, a correction that moves the valid end before
-validFrom at a later tx (pin before vs after it), retracted entity, tiered/sharded parity.
-
-
 ### 52. Durable commit under SyncWrites costs one fsync per mutation (~1 s per 530-op group)
 
 *HIGH (consumer: ai-soc, 2026-10-12; "We have to hurry", BA+BO project data)* — open; measured, not started.
@@ -495,6 +430,9 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Review 2026-09-24: TxAt-only doors "nondeterministic" (implicit valid-time now = wall clock; now `readNow()`) | `[4.38.1]` |
 | Item 6 (FEATURE) — `DeleteWithTx` / `UpdateWithTx` on every write door, `ErrTxOrder` | `[4.44.0]` Added; handover `tasks/handover-tx-backfill-delete-update-20261009.md` |
 | Item 34 (FEATURE) — `SetNodeVersionIntervalWithTx` / `SetRelVersionIntervalWithTx` on every door | `[4.50.1]` Added; evidence `tasks/evidence/interval-withtx/` |
+| Item 49 (HIGH, tiered) — re-import onto another shard made earlier lives unreachable | `[4.51.2]` Fixed; evidence `tasks/evidence/reimport-shards/` |
+| Item 50 (MEDIUM, sigma) — pinned adjacency doors missed a re-imported rel's earlier life; AtNodes O(H) | `[4.51.2]` Added/Changed/Fixed (ex-adjacency index, store marker 3); evidence `tasks/evidence/effective-scans/50-*` |
+| Item 51 (HIGH, sigma step 6) — effective scans bounded by valid end | `[4.51.2]` Added; evidence `tasks/evidence/effective-validfrom/` |
 | Item 48 (FEATURE, sigma-tkgd) — `ColumnData.Other`: column-scan cells held outside the column (node and rel batches); typed slots aligned with `Null` | `[4.51.1]` Added; evidence `tasks/evidence/column-other/` |
 | Item 35 (FEATURE, sigma-tkgd) — broader effective scans: `ForEachNodeEffective` / `ForEachRelEffective`, `ForEachRelEffectiveAtNodes`, `NodesEffectiveByIDs` / `RelsEffectiveByIDs`, `ForEachNodeEffectiveByLabels` | `[4.51.1]` Added; evidence `tasks/evidence/effective-scans/` |
 | Item 11 (FEATURE) — durable-on-return commit `Config.DurableCommit` | `[4.44.0]` Added (power-loss gap: item 15) |

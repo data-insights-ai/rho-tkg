@@ -215,7 +215,7 @@ Legend: [ ] open, (S) = waits for sigma, (R) = waits for René's decision.
    Delete (mixed-version replicas diverge; upgrade readers first; open question: per-row `fv=3` on retraction tombstones so old binaries
    fail closed). NOT DONE: the Opus review round (stopped), `go test -race` on the full package set, `make cover`; the 3.7k-line test suite
    was never shortened (René: too long; the stopped rewrite target was <= 900 lines with the 26-mutant driver as gate, see
-   `tasks/evidence/retraction/14-mutants.txt`). v4.50.1 released 2026-10-11 (backlog 34); v4.51.1 released 2026-10-12 (35, 48, 33, 42 on top of Markus's v4.51.0); next tag is a PATCH (v4.51.2).
+   `tasks/evidence/retraction/14-mutants.txt`). v4.50.1 released 2026-10-11 (backlog 34); v4.51.1 released 2026-10-12 (35, 48, 33, 42 on top of Markus's v4.51.0); next tag is a PATCH (v4.51.3); v4.51.2 released 2026-10-12 (49, 50, 51).
    STOPPED branches with uncommitted work (not merged, worktrees kept): `worktree-agent-adcfa76ae8b4c0dfe` (backlog 34, 20 uncommitted
    files, 0 commits) and `worktree-agent-aa4b0ebc0683fcb3f` (backlog 42, 23 uncommitted files, 0 commits).
 1. [x] (v4.50.1) **Restart backlog 34** `Set{Node,Rel}VersionIntervalWithTx` (all doors) — sigma replay need.
@@ -230,7 +230,7 @@ Legend: [ ] open, (S) = waits for sigma, (R) = waits for René's decision.
 10. [ ] (R) Answer: keep behaviour changes as named stability exceptions (default) or ship through the deprecation ritual.
 11. [ ] Optional: write the v4→v5 importer reference tests Markus might want (note on main: `tasks/v4-changes-for-v5-importer-20261010.md`);
     re-arm the origin watch (§8) if René still wants to follow `v5`.
-12. [ ] **PATCH VERSIONS ONLY** (René 2026-10-10: "just patch versions.. no minor versions until asked"). v4.50.1 is released (backlog 34, 2026-10-11); v4.51.1 is released (2026-10-12); the next tag is v4.51.2 because Markus released v4.50.0 (see below), also for additive features such as the retraction door; no v4.50.0 until he asks. Gate, tag, notify consumers as before.
+12. [ ] **PATCH VERSIONS ONLY** (René 2026-10-10: "just patch versions.. no minor versions until asked"). v4.50.1 is released (backlog 34, 2026-10-11); v4.51.1 and v4.51.2 are released (2026-10-12); the next tag is v4.51.3 because Markus released v4.50.0 (see below), also for additive features such as the retraction door; no v4.50.0 until he asks. Gate, tag, notify consumers as before.
 
 Done and verified this session (do not redo): see §2 table plus CHANGELOG; the ledger rows in `tasks/todo.md` carry the evidence paths.
 
