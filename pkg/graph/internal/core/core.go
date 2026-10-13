@@ -196,6 +196,8 @@ type Core struct {
 	retentionPurgeValidTo storepkg.RetentionPurgeByValidToCapability
 	exactErasure          storepkg.ExactErasureCapability
 	rangePurgeLog         storepkg.RangePurgeLogCapability
+	relRetentionPurge     storepkg.RelRetentionPurgeCapability
+	relRangePurgeLog      storepkg.RelRangePurgeLogCapability
 	readOnlyReplica       bool
 	// allowRetentionPurge gates the ADR-0008 R2 hard-purge admin door
 	// (g.Admin().PurgeExpiredNodes). Off by default — a destructive, no-tombstone
@@ -308,6 +310,16 @@ type Core struct {
 	// set, so point/scan doors skip the retention probe entirely, and a pin at or
 	// above it cannot precede any label's watermark. See retention.go.
 	retentionMaxWatermark atomic.Int64
+	// retentionRelMaxWatermark is the max over the per-type relationship
+	// retention watermarks (backlog 21), relRetentionWatermarks the per-type
+	// values (copy-on-write, nil until a relationship purge ran), and
+	// retentionAnyMax the max of both families: the one-load fast gate of every
+	// scan and point door. retentionMu serializes the watermark advances (the
+	// purge doors do not hold c.mu). See retention_rel.go.
+	retentionRelMaxWatermark atomic.Int64
+	relRetentionWatermarks   atomic.Pointer[map[uint16]int64]
+	retentionAnyMax          atomic.Int64
+	retentionMu              sync.Mutex
 	// asOfColumns caches the columnar as-of snapshot of a label's members at a fixed
 	// past txAt, invalidated only by history rewrites (compaction / retention purge /
 	// truncate / past-dated backfill or replica apply) — a past belief is immutable
@@ -325,6 +337,10 @@ type Core struct {
 	relTypeCacheMu   sync.RWMutex
 	closeOnce        sync.Once
 	closed           atomic.Bool
+	// purgeChunkHook, when non-nil, runs inside a retention purge after the
+	// watermark and the change-log record, before the first chunk (test seam,
+	// like backfillGateHook).
+	purgeChunkHook func()
 
 	// clock is the time source used by every mutation path that stamps
 	// TxFrom / UpdatedAt / DeletedAt / event.Timestamp. Defaults to
@@ -2027,6 +2043,8 @@ func New(config Config) (*Core, error) {
 	c.retentionPurgeValidTo, _ = store.(storepkg.RetentionPurgeByValidToCapability)
 	c.exactErasure, _ = store.(storepkg.ExactErasureCapability)
 	c.rangePurgeLog, _ = store.(storepkg.RangePurgeLogCapability)
+	c.relRetentionPurge, _ = store.(storepkg.RelRetentionPurgeCapability)
+	c.relRangePurgeLog, _ = store.(storepkg.RelRangePurgeLogCapability)
 	c.vectorRowsTrust = isExactNativeStore(store)
 	c.storeRowsTrust = isExactNativeStore(store)
 	c.nativeAdjacency = nativeAdjacencyReadsValidateNodeExistence(store)
@@ -2127,6 +2145,9 @@ func New(config Config) (*Core, error) {
 	// Rehydrate the graph retention watermark (ADR-0008) — same fail-closed
 	// contract as the compaction watermark above.
 	if err := c.loadRetentionWatermark(); err != nil {
+		return nil, err
+	}
+	if err := c.loadRelRetentionWatermarks(); err != nil {
 		return nil, err
 	}
 

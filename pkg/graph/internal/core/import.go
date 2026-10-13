@@ -635,6 +635,9 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 	// in the meantime. A snapshot's LSN advancing the watermark only when it's
 	// actually newer than what's already recorded closes that window: a
 	// same-or-older re-import leaves the existing (higher) watermark alone.
+	if err := c.importRelRetentionLocked(header.RelRetention); err != nil {
+		return err
+	}
 	if header.SnapshotLSN > 0 {
 		current, err := c.appliedLSNLocked()
 		if err != nil {

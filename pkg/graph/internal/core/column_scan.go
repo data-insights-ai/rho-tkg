@@ -24,7 +24,7 @@ func (c *Core) ScanNodeColumns(label string, props []string, opts storepkg.Query
 	scanner, has := c.store.(storepkg.NodeColumnScanCapability)
 	temporal := hasTemporalFilter(opts)
 	if temporal && has {
-		if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+		if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 			return true, err
 		}
 	}

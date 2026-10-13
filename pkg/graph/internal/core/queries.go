@@ -55,7 +55,7 @@ func (n *NodeOps) ByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node,
 	if err := c.validateIndexLabel(label); err != nil {
 		return nil, err
 	}
-	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 		return nil, err
 	}
 	var result []*types.Node
@@ -190,7 +190,7 @@ func (n *NodeOps) ForEachByLabel(label string, opts storepkg.QueryOpts, fn func(
 	if err := c.validateIndexLabel(label); err != nil {
 		return err
 	}
-	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 		return err
 	}
 
@@ -259,7 +259,7 @@ func (n *NodeOps) ForEachByLabelPropertyRange(label, propKey string, min, max fl
 	if err := c.validateIndexLabel(label); err != nil {
 		return err
 	}
-	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 		return err
 	}
 	if hasTemporalFilter(opts) {
@@ -336,7 +336,7 @@ func (n *NodeOps) ForEachByLabelPropertyRangeOrdered(label, propKey string, min,
 	// index (it reads resolved node values directly). Non-temporal opts take the
 	// index-backed fast path below.
 	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
-		if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+		if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 			return err
 		}
 		return forEachNodeValueOrderedTemporal(c, label, opts, desc,
@@ -421,7 +421,7 @@ func (n *NodeOps) ForEachByLabelPropertyPrefix(label, propKey, prefix string, de
 	// those whose string value begins with prefix, sort lexicographically. Needs no
 	// property index. Non-temporal opts take the index-backed fast path below.
 	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
-		if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+		if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 			return err
 		}
 		return forEachNodeValueOrderedTemporal(c, label, opts, desc,
@@ -598,7 +598,7 @@ func (r *RelOps) ByType(typeName string, opts storepkg.QueryOpts) ([]*types.Rela
 	if err := c.validateRelTypeQueryName(typeName); err != nil {
 		return nil, err
 	}
-	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts, c.relTypeRetentionScope(typeName)); err != nil {
 		return nil, err
 	}
 	var result []*types.Relationship
@@ -752,7 +752,7 @@ func (r *RelOps) ForEachByType(typeName string, opts storepkg.QueryOpts, fn func
 	if err := c.validateRelTypeQueryName(typeName); err != nil {
 		return err
 	}
-	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts, c.relTypeRetentionScope(typeName)); err != nil {
 		return err
 	}
 
@@ -994,7 +994,7 @@ func (r *RelOps) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string,
 	if err := storepkg.ValidateNodeID(nodeID); err != nil {
 		return err
 	}
-	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts, c.relTypeRetentionScope(typeName)); err != nil {
 		return err
 	}
 	if hasTemporalFilter(opts) {
@@ -1090,7 +1090,7 @@ func (r *RelOps) ForEachAdjacentRelAt(nodeID types.NodeID, typeName string, inco
 	if err := storepkg.ValidateNodeID(nodeID); err != nil {
 		return err
 	}
-	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts, c.relTypeRetentionScope(typeName)); err != nil {
 		return err
 	}
 	if hasTemporalFilter(opts) {
@@ -1421,6 +1421,12 @@ func (r *RelOps) IncomingForNodesAtTx(nodeIDs []types.NodeID, typeName string, t
 // start-endpoint (outgoing) direction. See OutgoingForNodesAtTx for the
 // resolution semantics.
 func (c *Core) directionalRelsForNodesAtTxLocked(nodeIDs []types.NodeID, typeName string, txAt types.Instant, outgoing bool) (map[types.NodeID][]*types.Relationship, error) {
+	// Relationship-purge watermarks (backlog 21): the doors on this helper
+	// had no retention gate, so only the relationship family applies (their
+	// node-purge behaviour is unchanged).
+	if err := c.checkRelsOnlyRetention(typeName, txAt); err != nil {
+		return nil, err
+	}
 	if txAt == 0 {
 		if outgoing {
 			return c.outgoingRelsForNodesLocked(nodeIDs, typeName)
@@ -1620,6 +1626,12 @@ func (r *RelOps) IncomingForNodesAtPin(nodeIDs []types.NodeID, typeName string, 
 // start-endpoint (outgoing) direction. See OutgoingForNodesAtPin for the
 // resolution semantics and the seed-tolerance contract.
 func (c *Core) directionalRelsForNodesAtPinLocked(nodeIDs []types.NodeID, typeName string, pin types.Instant, outgoing bool) (map[types.NodeID][]*types.Relationship, error) {
+	// Relationship-purge watermarks (backlog 21): the doors on this helper
+	// had no retention gate, so only the relationship family applies (their
+	// node-purge behaviour is unchanged).
+	if err := c.checkRelsOnlyRetention(typeName, pin); err != nil {
+		return nil, err
+	}
 	if pin == 0 {
 		if outgoing {
 			return c.outgoingRelsForNodesLocked(nodeIDs, typeName)
@@ -1883,7 +1895,7 @@ func (n *NodeOps) All(opts storepkg.QueryOpts) ([]*types.Node, error) {
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 		return nil, err
 	}
 	var result []*types.Node
@@ -1951,7 +1963,7 @@ func (n *NodeOps) ForEach(opts storepkg.QueryOpts, fn func(*types.Node) bool) er
 	if fn == nil {
 		return grapherr.ErrNilCallback
 	}
-	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 		return err
 	}
 
@@ -2003,7 +2015,7 @@ func (r *RelOps) All(opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts, scopeAllRels); err != nil {
 		return nil, err
 	}
 	var result []*types.Relationship
@@ -2077,7 +2089,7 @@ func (r *RelOps) ForEach(opts storepkg.QueryOpts, fn func(*types.Relationship) b
 	if fn == nil {
 		return grapherr.ErrNilCallback
 	}
-	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts, scopeAllRels); err != nil {
 		return err
 	}
 
@@ -2297,7 +2309,7 @@ func (r *RelOps) ForEachByTypePropertyRange(typeName, propKey string, min, max f
 	if err := c.validateRelTypeQueryName(typeName); err != nil {
 		return err
 	}
-	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts, c.relTypeRetentionScope(typeName)); err != nil {
 		return err
 	}
 	if hasTemporalFilter(opts) {
@@ -2371,7 +2383,7 @@ func (r *RelOps) ForEachByTypePropertyRangeOrdered(typeName, propKey string, min
 	// keep those whose numeric value is in [min,max], sort by value. Needs no rel
 	// property index. Non-temporal opts take the index-backed fast path below.
 	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
-		if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+		if err := c.validateTemporalQueryOptsScan(opts, c.relTypeRetentionScope(typeName)); err != nil {
 			return err
 		}
 		return forEachRelValueOrderedTemporal(c, typeName, opts, desc,
@@ -2449,7 +2461,7 @@ func (r *RelOps) ForEachByTypePropertyPrefix(typeName, propKey, prefix string, d
 	// Needs no rel property index. Non-temporal opts take the index-backed fast
 	// path below.
 	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
-		if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+		if err := c.validateTemporalQueryOptsScan(opts, c.relTypeRetentionScope(typeName)); err != nil {
 			return err
 		}
 		return forEachRelValueOrderedTemporal(c, typeName, opts, desc,

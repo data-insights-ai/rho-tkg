@@ -124,6 +124,12 @@ func (a *API) Export(w io.Writer) error {
 // API 4.0 change: the previous separate `Import(r)` and `ImportWithOptions(r, opts)`
 // are merged into this single method. To migrate `Import(r)` calls, pass
 // `ImportOptions{}` as the second argument.
+//
+// Retention watermarks (backlog 21): the export header carries both families;
+// Import raises this graph's relationship-type watermarks to the exported ones.
+// Planned change (docs/stability.md, announced in v4.51.5): a later patch also
+// applies the exported node-label watermarks, so an import of an export taken
+// after a node purge refuses the pins below the purge as its source does.
 func (a *API) Import(r io.Reader, opts ImportOptions) error {
 	ops, err := a.ready()
 	if err != nil {

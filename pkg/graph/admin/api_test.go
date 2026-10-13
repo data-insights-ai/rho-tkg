@@ -31,6 +31,9 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 	if err := nilAPI.SealRelSegments("HOP"); !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("nil SealRelSegments = %v, want ErrNilGraph", err)
 	}
+	if _, err := nilAPI.PurgeExpiredRels(context.Background(), RelPurgePolicy{}); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil PurgeExpiredRels = %v, want ErrNilGraph", err)
+	}
 	if _, err := nilAPI.RelSegmentStats("HOP"); !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("nil RelSegmentStats = %v, want ErrNilGraph", err)
 	}
@@ -63,6 +66,9 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	if _, err := api.PurgeExpiredNodes(context.Background(), PurgePolicy{Label: "Event", Before: 1}); err != nil {
 		t.Fatalf("PurgeExpiredNodes: %v", err)
 	}
+	if rep, err := api.PurgeExpiredRels(context.Background(), RelPurgePolicy{Type: "EVENT", Before: 1}); err != nil || rep.RelsPurged != 5 {
+		t.Fatalf("PurgeExpiredRels = %+v, %v; want the spy's 5", rep, err)
+	}
 	if _, err := api.ExactErase(context.Background(), ExactErasureRequest{NodeIDs: []types.NodeID{1}}); err != nil {
 		t.Fatalf("ExactErase: %v", err)
 	}
@@ -77,7 +83,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		t.Fatalf("RelSegmentStats = %+v, %v; want Segments 3", st, err)
 	}
 
-	if ops.resetCalls != 1 || ops.decomposeIDCalls != 2 || ops.purgeCalls != 1 ||
+	if ops.resetCalls != 1 || ops.decomposeIDCalls != 2 || ops.purgeCalls != 1 || ops.relPurgeCalls != 1 ||
 		ops.resolveExactEraseCalls != 1 || ops.exactEraseCalls != 1 || ops.segmentCalls != 2 {
 		t.Fatalf("unexpected call counts: %+v", ops)
 	}
@@ -88,6 +94,7 @@ type adminOpsSpy struct {
 	decomposeIDCalls       int
 	compactCalls           int
 	purgeCalls             int
+	relPurgeCalls          int
 	resolveExactEraseCalls int
 	exactEraseCalls        int
 	segmentCalls           int
@@ -131,6 +138,11 @@ func (s *adminOpsSpy) CompactHistoryRels(ctx context.Context, policy RetentionPo
 func (s *adminOpsSpy) PurgeExpiredNodes(ctx context.Context, policy PurgePolicy) (PurgeReport, error) {
 	s.purgeCalls++
 	return PurgeReport{}, nil
+}
+
+func (s *adminOpsSpy) PurgeExpiredRels(ctx context.Context, policy RelPurgePolicy) (RelPurgeReport, error) {
+	s.relPurgeCalls++
+	return RelPurgeReport{RelsPurged: 5}, nil
 }
 
 func (s *adminOpsSpy) ResolveExactErasure(ctx context.Context, request ExactErasureRequest) (ExactErasureResolution, error) {

@@ -32,7 +32,7 @@ func (c *Core) ScanRelColumns(relType string, props []string, opts storepkg.Quer
 	scanner, has := c.store.(storepkg.RelColumnScanCapability)
 	temporal := hasTemporalFilter(opts)
 	if temporal && has {
-		if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+		if err := c.validateTemporalQueryOptsScan(opts, c.relTypeRetentionScope(relType)); err != nil {
 			return true, err
 		}
 	}

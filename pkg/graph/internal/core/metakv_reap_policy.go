@@ -55,9 +55,10 @@ package core
 //     migration (see migration_bitemporal.go's own doc comment). Wiping it is
 //     harmless — the migration simply re-runs against the now-empty store and
 //     re-sets the flag; there is no correctness reason to preserve it.
-//   - retentionMaxWatermarkMeta / retentionWatermarkKey (Reap): retention
-//     watermarks describe purge progress over the graph's own (now-erased)
-//     entities.
+//   - retentionMaxWatermarkMeta / retentionWatermarkKey and the relationship
+//     family retentionRelMaxWatermarkMeta / retentionRelWatermarkKey (Reap):
+//     retention watermarks describe purge progress over the graph's own
+//     (now-erased) entities.
 //   - uniqueConstraintsMeta (Reap): constraint DEFINITIONS are graph-schema-
 //     adjacent but are explicitly documented as Reset-cleared today (see
 //     reapUniqueConstraintsForReset) — a fresh graph starts with none.
@@ -83,17 +84,18 @@ const (
 // i.e. every mk.MetaSet(keyConst, ...) call site where keyConst resolves to a
 // package-level string constant (or, in principle, a string literal).
 var metaKVFixedKeys = map[string]reapPolicy{
-	asofTagsMeta:              reapPolicyReap,
-	compactedThroughTxMeta:    reapPolicyReap,
-	graphEpochMeta:            reapPolicyReap,
-	replicaAppliedLSNMeta:     reapPolicyReap,
-	idSlotLeaseMeta:           reapPolicyPreserve,
-	instantFloorMeta:          reapPolicyPreserve,
-	uniqueForeverOwnersMeta:   reapPolicyReap,
-	schemaVersionKey:          reapPolicyReap,
-	retentionMaxWatermarkMeta: reapPolicyReap,
-	uniqueConstraintsMeta:     reapPolicyReap,
-	exAdjBuiltMeta:            reapPolicyReap,
+	asofTagsMeta:                 reapPolicyReap,
+	compactedThroughTxMeta:       reapPolicyReap,
+	graphEpochMeta:               reapPolicyReap,
+	replicaAppliedLSNMeta:        reapPolicyReap,
+	idSlotLeaseMeta:              reapPolicyPreserve,
+	instantFloorMeta:             reapPolicyPreserve,
+	uniqueForeverOwnersMeta:      reapPolicyReap,
+	schemaVersionKey:             reapPolicyReap,
+	retentionMaxWatermarkMeta:    reapPolicyReap,
+	retentionRelMaxWatermarkMeta: reapPolicyReap,
+	uniqueConstraintsMeta:        reapPolicyReap,
+	exAdjBuiltMeta:               reapPolicyReap,
 }
 
 // metaKVKeyFuncs classifies every FUNCTION that builds a dynamic, per-entity
@@ -102,7 +104,8 @@ var metaKVFixedKeys = map[string]reapPolicy{
 // dynamic key is classified by which BUILDER FUNCTION produced it, keyed by
 // the function's Go identifier name.
 var metaKVKeyFuncs = map[string]reapPolicy{
-	"retentionWatermarkKey": reapPolicyReap,
-	"compactStubNodeKey":    reapPolicyReap,
-	"compactStubRelKey":     reapPolicyReap,
+	"retentionWatermarkKey":    reapPolicyReap,
+	"retentionRelWatermarkKey": reapPolicyReap,
+	"compactStubNodeKey":       reapPolicyReap,
+	"compactStubRelKey":        reapPolicyReap,
 }

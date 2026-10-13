@@ -95,6 +95,17 @@ type exportHeader struct {
 	// a mutation commits between the export and that call. A delta carries the
 	// lineage in ToEpoch/FromEpoch instead, leaving this zero.
 	Epoch uint64 `msgpack:"ep,omitempty"`
+
+	// Retention watermarks (backlog 21), keyed by label / relationship-type
+	// NAME so a registry that numbers the names differently cannot shift them.
+	// NodeRetention is the per-label node-purge family, RelRetention the
+	// per-type relationship-purge family; omitted when no purge ever ran, so a
+	// graph without retention exports the same header as before. Import
+	// applies RelRetention (max-monotonic); NodeRetention is carried for a
+	// later release to apply (docs/stability.md: it changes what an imported
+	// graph answers below a node watermark).
+	NodeRetention map[string]int64 `msgpack:"nrw,omitempty"`
+	RelRetention  map[string]int64 `msgpack:"rrw,omitempty"`
 }
 
 // IO sentinels — canonical declarations live in pkg/graph/io so external
@@ -196,6 +207,9 @@ func (c *Core) exportLocked(w io.Writer) error {
 			return fmt.Errorf("export: graph epoch: %w", eerr)
 		}
 		hdr.Epoch = epoch
+	}
+	if hdr.NodeRetention, hdr.RelRetention, err = c.retentionWatermarksByName(); err != nil {
+		return fmt.Errorf("export: retention watermarks: %w", err)
 	}
 	if err := marshalAndWrite(w, exportTagHeader, &hdr); err != nil {
 		return fmt.Errorf("export: header: %w", err)

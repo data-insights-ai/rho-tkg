@@ -513,7 +513,7 @@ func vfOracleCheck(t *testing.T, o *txbOracle, pins []types.Instant, phase strin
 		if pin > o.x {
 			continue
 		}
-		if err := g.validateEffectiveScanPin(pin); err != nil {
+		if err := g.validateEffectiveScanPin(pin, scopeAllRels); err != nil {
 			continue // a compacted pin: the gates are the unbounded door's (TestEffectiveValidFrom_Errors)
 		}
 		for _, k := range kinds {

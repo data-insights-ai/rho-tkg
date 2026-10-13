@@ -1,0 +1,21 @@
+# mutant: RED node tx rollback: chunk without c.txMu (pkg/graph/internal/core/retention_purge.go)
+# go test -count=1 -run TestNodeRetentionPurgeTxRollback ./pkg/graph/
+--- FAIL: TestNodeRetentionPurgeTxRollback (0.05s)
+    --- FAIL: TestNodeRetentionPurgeTxRollback/memory (0.00s)
+        rel_retention_race_test.go:106: Rollback of a transaction that touched a purge victim: graph: node not found
+    --- FAIL: TestNodeRetentionPurgeTxRollback/badger (0.01s)
+        rel_retention_race_test.go:106: Rollback of a transaction that touched a purge victim: graph: node not found
+    --- FAIL: TestNodeRetentionPurgeTxRollback/sharded (0.03s)
+        rel_retention_race_test.go:106: Rollback of a transaction that touched a purge victim: graph: node not found
+    --- FAIL: TestNodeRetentionPurgeTxRollback/tiered (0.02s)
+        rel_retention_race_test.go:106: Rollback of a transaction that touched a purge victim: graph: node not found
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.067s
+FAIL
+=== RUN   TestZZNodePurgeTxProbe
+    zz_node_purge_tx_probe_test.go:29: purge under open tx: {NodesPurged:1 RelsPurged:0 Watermark:1125899906842624} err=<nil>
+    zz_node_purge_tx_probe_test.go:30: rollback: graph: node not found
+    zz_node_purge_tx_probe_test.go:32: after rollback Get: false err=graph: node not found
+--- PASS: TestZZNodePurgeTxProbe (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.005s
