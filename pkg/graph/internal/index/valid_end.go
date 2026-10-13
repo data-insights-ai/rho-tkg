@@ -64,12 +64,19 @@ type ValidEndRow struct {
 	Tokens                           []uint16
 }
 
-// ValidEndRowOfRel describes relationship row r (hist: a history row).
-func ValidEndRowOfRel(r *types.Relationship, hist bool) ValidEndRow {
-	row := ValidEndRow{Hist: hist, Version: r.Version()}
-	if tm := r.Temporal(); tm != nil {
+// ValidEndRowOf describes a row by its kind, version and temporal block (nil:
+// no stamps); the tokens are the caller's.
+func ValidEndRowOf(hist bool, version uint32, tm *types.TemporalMetadata) ValidEndRow {
+	row := ValidEndRow{Hist: hist, Version: version}
+	if tm != nil {
 		row.TxFrom, row.TxTo, row.ValidTo, row.DeletedAt = tm.TxFrom, tm.TxTo, tm.ValidTo, tm.DeletedAt
 	}
+	return row
+}
+
+// ValidEndRowOfRel describes relationship row r (hist: a history row).
+func ValidEndRowOfRel(r *types.Relationship, hist bool) ValidEndRow {
+	row := ValidEndRowOf(hist, r.Version(), r.Temporal())
 	if tok := r.TypeToken().Value(); tok != 0 {
 		row.Tokens = []uint16{tok}
 	}
@@ -78,10 +85,7 @@ func ValidEndRowOfRel(r *types.Relationship, hist bool) ValidEndRow {
 
 // ValidEndRowOfNode describes node row n (hist: a history row).
 func ValidEndRowOfNode(n *types.Node, hist bool) ValidEndRow {
-	row := ValidEndRow{Hist: hist, Version: n.Version()}
-	if tm := n.Temporal(); tm != nil {
-		row.TxFrom, row.TxTo, row.ValidTo, row.DeletedAt = tm.TxFrom, tm.TxTo, tm.ValidTo, tm.DeletedAt
-	}
+	row := ValidEndRowOf(hist, n.Version(), n.Temporal())
 	if k := n.LabelTokenCount(); k > 0 {
 		row.Tokens = make([]uint16, 0, k)
 		for i := 0; i < k; i++ {

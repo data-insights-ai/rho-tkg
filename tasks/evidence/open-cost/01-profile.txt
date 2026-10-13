@@ -1,0 +1,48 @@
+# backlog 54 — where graph.New spends a clean reopen (2026-10-12, main 3525bf13 = v4.51.2 + docs)
+
+Store: synthetic ai-soc shape, bench/opencostprobe (TestBuild): 436,000 records of
+2 keyed upserts (Device/Account, unique "key") + 1 LOGON rel with 15 properties, 177 records
+per commit -> 519,000 nodes, 436,000 rels, 202 MB badger. Closed cleanly.
+Open: graph.Config{BadgerDir, SyncWrites, DurableCommit} (ai-soc's graphmgr config). Host load 18-24 (32 cores).
+
+## Wall time per phase (temporary timers in loadIndexesScan; reverted)
+
+open = 14.64 s (ai-soc reports 24.8 s for 519 K/436 K on its store)
+
+| phase                                                    | s     | needs a row decode? |
+|----------------------------------------------------------|-------|---------------------|
+| node property index rebuild (unique key Device/Account): one point Get + decode per labelled node | 4.68  | yes (value)         |
+| rel row scan: msgpack + wire decode, 436 K rows          | 3.14  | yes                 |
+| node row scan: msgpack + wire decode, 519 K rows (labels, hashes, revs) | 2.76 | yes      |
+| rel planner stats: NDV/min-max + memo 1.18, type-class counters + memo 0.66 | 1.84 | yes  |
+| rel adjacency/type from decoded rows (RelDeleteInfo)     | 0.77  | yes (keys hold it)  |
+| key-only scans: label 0.29, reltype 0.25, out 0.28, in 0.38 | 1.20 | no               |
+| node planner stats (presence/type-class/NDV)             | 0.23  | yes                 |
+| counters, defs, core.New rest (registries, constraints)  | <0.05 | no                  |
+
+Top 5: property index rebuild 4.68 s, rel row decode 3.14 s, node row decode 2.76 s,
+rel planner stats 1.84 s, key scans 1.20 s. Temporal / composite / HF / vector / rel-property /
+rel-temporal indexes: none defined in this shape (0 s); each, when defined, adds one decode per
+member row (rel temporal also one history prefix scan per rel).
+
+## CPU profile (pprof -peek loadIndexesScan.func1, 14.3 s on the open goroutine; GC 6 s on other cores)
+
+Item.Value (row decode inside the entity scans) 3.57 s, loadNodeFromBadger (property-index
+rebuild Get+decode) 3.03 s, addRelPropertyStatsCounts 1.37 s, Iterator.Next 1.13 s,
+PropertyIndex.AddKey 1.12 s, addRelationshipIndexesFromRow 0.87 s, mapassign 0.76 s,
+addRelPropertyTypeClassCounts 0.68 s, addNodeIndexesFromRow 0.29 s, addNodePropertyKeyCounts 0.24 s.
+
+## Do the existing *OnDisk modes fix it? No.
+
+Same store, LabelIndexOnDisk + AdjacencyIndexOnDisk + PropertyIndexOnDisk (second open, backfill done):
+open 13.6 s (node decode 2.8, rel decode+stats 6.4, property index 3.1 s: disk mode still loads and
+decodes every labelled node and discards it). Plus DisablePlannerStats: 11.0 s.
+Every mode decodes every current row at open, so a default change cannot make the open
+O(index state); a default change would also be caller-visible (deprecation ritual).
+
+## Conclusion for the design
+
+Everything except planner stats and property-index values is already in persisted keys
+(entity keys, 0x03..0x06). The open can read keys only when it can trust that keys and rows
+agree, i.e. after a clean Close; property-index values need persisting; planner stats can be
+built from the rows on first use instead of at open.

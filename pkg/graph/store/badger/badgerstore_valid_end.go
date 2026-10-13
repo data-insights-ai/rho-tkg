@@ -84,14 +84,11 @@ func (bs *Store) noteValidEndOp(op writeOp) {
 			ix.NoteRemoved(id) // re-read: the store's doors report the decode error
 			return
 		}
-		row := indexpkg.ValidEndRow{Hist: hist}
-		if tm != nil {
-			row.TxFrom, row.TxTo, row.ValidTo, row.DeletedAt = tm.TxFrom, tm.TxTo, tm.ValidTo, tm.DeletedAt
-		}
+		var version uint32
 		if hist {
-			row.Version = uint32(min(historyVersionFromKey(key), uint64(^uint32(0)))) // #nosec G115 -- clamped to uint32
+			version = uint32(min(historyVersionFromKey(key), uint64(^uint32(0)))) // #nosec G115 -- clamped to uint32
 		}
-		ix.NoteRow(id, row)
+		ix.NoteRow(id, indexpkg.ValidEndRowOf(hist, version, tm))
 	}
 }
 
@@ -163,14 +160,10 @@ func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node 
 		if err != nil {
 			return fmt.Errorf("graph: decode row for the valid-end index: %w", err)
 		}
-		row := indexpkg.ValidEndRow{Hist: hist, Version: version}
-		if tm != nil {
-			row.TxFrom, row.TxTo, row.ValidTo, row.DeletedAt = tm.TxFrom, tm.TxTo, tm.ValidTo, tm.DeletedAt
-		}
-		out[id] = append(out[id], row)
+		out[id] = append(out[id], indexpkg.ValidEndRowOf(hist, version, tm))
 		return nil
 	}
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		hit := txn.NewIterator(opts)
@@ -302,18 +295,11 @@ func (bs *Store) validEndOverlayRows(id int64, node bool) ([]indexpkg.ValidEndRo
 		return nil, err
 	}
 	rows := make([]indexpkg.ValidEndRow, 0, len(metas)+1)
-	add := func(hist bool, version uint32, tm *types.TemporalMetadata) {
-		row := indexpkg.ValidEndRow{Hist: hist, Version: version}
-		if tm != nil {
-			row.TxFrom, row.TxTo, row.ValidTo, row.DeletedAt = tm.TxFrom, tm.TxTo, tm.ValidTo, tm.DeletedAt
-		}
-		rows = append(rows, row)
-	}
 	for _, m := range metas {
-		add(true, m.Version, m.Temporal)
+		rows = append(rows, indexpkg.ValidEndRowOf(true, m.Version, m.Temporal))
 	}
 	if found {
-		add(false, 0, cur)
+		rows = append(rows, indexpkg.ValidEndRowOf(false, 0, cur))
 	}
 	return rows, nil
 }
@@ -327,7 +313,7 @@ func (bs *Store) committedTemporal(prefix byte, id snowflake.ID) (*types.Tempora
 	storepkg.PutUint64(key, 1, int64(id))
 	var tm *types.TemporalMetadata
 	found := true
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(key)
 		if errors.Is(err, badgerv4.ErrKeyNotFound) {
 			found = false

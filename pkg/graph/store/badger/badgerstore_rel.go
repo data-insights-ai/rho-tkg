@@ -215,7 +215,7 @@ func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 	var r *types.Relationship
 	// Read before the snapshot opens — see LoadCleanAt.
 	epoch := bs.relCache.FlushEpoch()
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.RelKey(id))
 		if err == badgerv4.ErrKeyNotFound {
 			return ErrRelNotFound
@@ -367,9 +367,9 @@ func (bs *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 	// Type/endpoints are immutable, but property values can change — refresh
 	// the rel property index (remove old value, add new).
 	bs.maintainRelPropertyIndexesRemove(old, id)
-	bs.maintainRelTypeTemporalIndexesRemove(old, id)                     // BACKLOG 21c
-	bs.removeRelPropertyTypeClassCountsByID(id, old.TypeToken().Value()) // decrement old (type immutable)
-	bs.removeRelPropertyStatsCountsByID(id, old.TypeToken().Value())
+	bs.maintainRelTypeTemporalIndexesRemove(old, id) // BACKLOG 21c
+	bs.removeRelPropertyTypeClassCounts(old)         // decrement old
+	bs.removeRelPropertyStatsCounts(old)
 	bs.relCache.Put(id, bs.frozenRelRow(r))
 	bs.bumpRelRevLocked(rid)
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r)) // BACKLOG 10c
@@ -394,7 +394,23 @@ func (bs *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 // DeleteRelationship removes a relationship and cleans up type + adjacency indexes.
 // Returns ErrRelNotFound if the relationship does not exist.
 func (bs *Store) DeleteRelationship(rid types.RelID) error {
-	return bs.deleteRelationshipRouted(rid, 0)
+	return bs.deleteRelationshipRouted(rid, 0, true)
+}
+
+var (
+	_ storecontract.RelCreateUndoCapability       = (*Store)(nil)
+	_ storecontract.ScopedRelCreateUndoCapability = (*Store)(nil)
+)
+
+// UndoRelationshipCreate implements store.RelCreateUndoCapability:
+// DeleteRelationship without the ex-adjacency legs.
+func (bs *Store) UndoRelationshipCreate(rid types.RelID) error {
+	return bs.deleteRelationshipRouted(rid, 0, false)
+}
+
+// UndoRelationshipCreateScoped implements store.ScopedRelCreateUndoCapability.
+func (bs *Store) UndoRelationshipCreateScoped(rid types.RelID, token uint64) error {
+	return bs.deleteRelationshipRouted(rid, token, false)
 }
 
 // DeleteRelationshipScoped mirrors DeleteRelationship but routes the
@@ -406,10 +422,12 @@ func (bs *Store) DeleteRelationshipScoped(rid types.RelID, token uint64) error {
 	if token == 0 {
 		return bs.DeleteRelationship(rid)
 	}
-	return bs.deleteRelationshipRouted(rid, token)
+	return bs.deleteRelationshipRouted(rid, token, true)
 }
 
-func (bs *Store) deleteRelationshipRouted(rid types.RelID, token uint64) error {
+// deleteRelationshipRouted removes rid; exLeg records its legs in the
+// ex-adjacency (a delete; not an undone create).
+func (bs *Store) deleteRelationshipRouted(rid types.RelID, token uint64, exLeg bool) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -446,7 +464,7 @@ func (bs *Store) deleteRelationshipRouted(rid types.RelID, token uint64) error {
 	r, err := bs.getRelLocked(rid)
 	var logErr error
 	if err == nil {
-		bs.deleteRelByInfo(relDeleteInfoFromRelationship(r))
+		bs.removeRelByInfo(relDeleteInfoFromRelationship(r), r, exLeg)
 		logErr = bs.logChangeRoutedRaw(storecontract.ChangeRelDelete, relDelPayload, token)
 	}
 	bs.idxMu.Unlock()
@@ -502,7 +520,7 @@ func (bs *Store) DeleteRelationshipForeignIncoming(rid types.RelID) error {
 		bs.idxMu.Unlock()
 		return fmt.Errorf("graph: encode change-log: %w", perr)
 	}
-	bs.deleteRelByInfo(relDeleteInfoFromRelationship(r))
+	bs.deleteRelByInfo(relDeleteInfoFromRelationship(r), r)
 	bs.logChangeRaw(storecontract.ChangeForeignIncomingDelete, delPayload)
 	bs.idxMu.Unlock()
 
@@ -517,6 +535,13 @@ type RelDeleteInfo struct {
 	StartID snowflake.ID
 	EndID   snowflake.ID
 	Rev     uint64
+
+	// row carries the pre-read row of a deferred delete (prefetchRelDeleteInfo,
+	// a cascade or batch's locked re-read, an erasure plan) to deleteRelByInfo,
+	// whose planner-statistic decrement needs it (backlog 53). Unset by
+	// relDeleteInfoFromRelationship, so the open rebuild's descriptor map holds
+	// no rows.
+	row *types.Relationship
 }
 
 func relDeleteInfoFromRelationship(r *types.Relationship) RelDeleteInfo {
@@ -581,6 +606,7 @@ func (bs *Store) prefetchRelDeleteInfo(rid types.RelID) (RelDeleteInfo, error) {
 	}
 	info := relDeleteInfoFromRelationship(r)
 	info.Rev = rev
+	info.row = r
 	return info, nil
 }
 
@@ -624,8 +650,19 @@ func (bs *Store) relDeleteInfoStillIndexedLocked(info RelDeleteInfo) bool {
 }
 
 // deleteRelByInfo applies relationship deletion mutations using pre-read metadata.
+// old is the current row being deleted, read by the caller: the planner
+// statistics take exactly its contribution back out (backlog 53). old is nil
+// only when the row could not be read (PurgeRelationshipByInfo's residue
+// cleanup); its contribution then stays until the next open rebuild, which
+// skips unreadable rows too.
 // Caller must hold bs.idxMu write lock. This method performs no reads — it cannot fail.
-func (bs *Store) deleteRelByInfo(info RelDeleteInfo) {
+func (bs *Store) deleteRelByInfo(info RelDeleteInfo, old *types.Relationship) {
+	bs.removeRelByInfo(info, old, true)
+}
+
+// removeRelByInfo is deleteRelByInfo; exLeg false records no ex-adjacency (an
+// undone create).
+func (bs *Store) removeRelByInfo(info RelDeleteInfo, old *types.Relationship, exLeg bool) {
 	// info.ID/startID/endID are raw snowflake.ID — RelDeleteInfo is shared with
 	// off-limits TieredStore code paths and must keep raw fields. Convert at
 	// each map access.
@@ -644,8 +681,8 @@ func (bs *Store) deleteRelByInfo(info RelDeleteInfo) {
 	// it: the deleted row's history stays on this store, and a rolled-back
 	// delete restores the current row without re-adding the history versions,
 	// so purging here would drop past versions from valid-time queries.
-	bs.removeRelPropertyTypeClassCountsByID(info.ID, info.RelType) // decrement via memoized contribution (the single delete seam)
-	bs.removeRelPropertyStatsCountsByID(info.ID, info.RelType)     // same memoized-delete seam for NDV+min/max
+	bs.removeRelPropertyTypeClassCounts(old) // the deleted row's own contribution (the single delete seam)
+	bs.removeRelPropertyStatsCounts(old)
 
 	// Type index cleanup.
 	if set, exists := bs.typeIdx[info.RelType]; exists {
@@ -673,14 +710,16 @@ func (bs *Store) deleteRelByInfo(info RelDeleteInfo) {
 	}
 
 	// Build delete ops. Both legs leave the live adjacency for the
-	// ex-adjacency in the same batch (backlog 50).
+	// ex-adjacency in the same batch (backlog 50), unless a create is undone.
 	ops := []writeOp{
 		{opType: writeOpDelete, key: storepkg.RelKey(info.ID)},
 		{opType: writeOpDelete, key: storepkg.RelTypeIndexKey(info.RelType, info.ID)},
 		{opType: writeOpDelete, key: storepkg.OutKey(info.StartID, info.RelType, info.EndID, info.ID)},
 		{opType: writeOpDelete, key: storepkg.InKey(info.EndID, info.RelType, info.StartID, info.ID)},
 	}
-	ops = append(ops, exAdjLegOps(writeOpSet, info.ID, info.StartID, info.EndID)...)
+	if exLeg {
+		ops = append(ops, exAdjLegOps(writeOpSet, info.ID, info.StartID, info.EndID)...)
+	}
 
 	bs.appendOps(ops...)
 	bs.relCount.Add(-1)
@@ -703,7 +742,7 @@ func (bs *Store) getRelLocked(rid types.RelID) (*types.Relationship, error) {
 	var r *types.Relationship
 	// Read before the snapshot opens — see LoadCleanAt.
 	epoch := bs.relCache.FlushEpoch()
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.RelKey(id))
 		if err == badgerv4.ErrKeyNotFound {
 			return ErrRelNotFound
@@ -783,7 +822,7 @@ func (bs *Store) prefetchRelNoFill(rid types.RelID, promote bool) (r *types.Rela
 		return nil, false, ErrRelNotFound
 	}
 
-	err = bs.db.View(func(txn *badgerv4.Txn) error {
+	err = bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.RelKey(id))
 		if err == badgerv4.ErrKeyNotFound {
 			return ErrRelNotFound

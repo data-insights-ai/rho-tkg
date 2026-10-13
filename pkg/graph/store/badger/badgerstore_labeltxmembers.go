@@ -259,7 +259,7 @@ func (bs *Store) ensureLabelTxMembersBuilt() error {
 
 	// Committed rows: scan the current-node (0x01) and node-history (0x07)
 	// keyspaces, decoding only the wire label tokens + TxFrom.
-	scanErr := bs.db.View(func(txn *badgerv4.Txn) error {
+	scanErr := bs.view(func(txn *badgerv4.Txn) error {
 		for _, prefix := range [][]byte{{storepkg.KeyNode}, {storepkg.KeyHistNode}} {
 			opts := badgerv4.DefaultIteratorOptions
 			opts.PrefetchValues = true
@@ -330,7 +330,7 @@ func (bs *Store) ensureRelTypeTxMembersBuilt() error {
 		bs.recordRelWireMembersLocked(rid, &w)
 	})
 
-	scanErr := bs.db.View(func(txn *badgerv4.Txn) error {
+	scanErr := bs.view(func(txn *badgerv4.Txn) error {
 		for _, prefix := range [][]byte{{storepkg.KeyRel}, {storepkg.KeyHistRel}} {
 			opts := badgerv4.DefaultIteratorOptions
 			opts.PrefetchValues = true

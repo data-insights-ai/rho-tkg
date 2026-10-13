@@ -1,5 +1,10 @@
 # v4 changes since 32568c4 that the v4 → v5 importer and the v5 migration contract must account for
 
+Historical retained source note at v4.51.1: main consolidated this file on 2026-10-12,
+but the v5 mapping additions are retained here as evidence. Current reader contracts and
+qualification status are in `docs/v5/PLAN.md` §8a and `docs/v5/reference/consumer-*.json`;
+this note does not qualify the v4.51.3 reader or create another roadmap.
+
 Updated 2026-10-12 (original handover 2026-10-10). For Markus (branch `v5`, `docs/v5/PLAN.md` §9 "Migration"). Source of truth is `CHANGELOG.md` on main
 (v4.44.0 … v4.51.1 at cutoff `dbd74cf45c65c1086798012e92453315cab75143`); this note lists only what changes how a v4 store must be READ or MAPPED. This note changes no importer implementation.
 

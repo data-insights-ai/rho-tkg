@@ -1,0 +1,5 @@
+--- FAIL: TestTemporalIndexLabelOnDiskKeepsHistoryAfterReopen (0.53s)
+    temporal_fold_ondisk_test.go:53: after a rebuilding reopen: NodesByLabelAt(t1) = 0 nodes, want the node's first version
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.561s
+FAIL

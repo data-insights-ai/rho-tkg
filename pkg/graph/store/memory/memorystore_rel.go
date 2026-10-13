@@ -287,7 +287,23 @@ func (ms *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 // DeleteRelationship removes a relationship and cleans up type + adjacency indexes.
 // Returns ErrRelNotFound if the relationship does not exist.
 func (ms *Store) DeleteRelationship(rid types.RelID) error {
-	return ms.deleteRelationshipRouted(rid, 0)
+	return ms.deleteRelationshipRouted(rid, 0, true)
+}
+
+var (
+	_ storecontract.RelCreateUndoCapability       = (*Store)(nil)
+	_ storecontract.ScopedRelCreateUndoCapability = (*Store)(nil)
+)
+
+// UndoRelationshipCreate implements store.RelCreateUndoCapability:
+// DeleteRelationship without the ex-adjacency legs.
+func (ms *Store) UndoRelationshipCreate(rid types.RelID) error {
+	return ms.deleteRelationshipRouted(rid, 0, false)
+}
+
+// UndoRelationshipCreateScoped implements store.ScopedRelCreateUndoCapability.
+func (ms *Store) UndoRelationshipCreateScoped(rid types.RelID, token uint64) error {
+	return ms.deleteRelationshipRouted(rid, token, false)
 }
 
 // DeleteRelationshipScoped mirrors DeleteRelationship but routes the
@@ -299,10 +315,12 @@ func (ms *Store) DeleteRelationshipScoped(rid types.RelID, token uint64) error {
 	if token == 0 {
 		return ms.DeleteRelationship(rid)
 	}
-	return ms.deleteRelationshipRouted(rid, token)
+	return ms.deleteRelationshipRouted(rid, token, true)
 }
 
-func (ms *Store) deleteRelationshipRouted(rid types.RelID, token uint64) error {
+// deleteRelationshipRouted removes rid; exLeg records its legs in the
+// ex-adjacency (a delete; not an undone create).
+func (ms *Store) deleteRelationshipRouted(rid types.RelID, token uint64, exLeg bool) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -317,7 +335,7 @@ func (ms *Store) deleteRelationshipRouted(rid types.RelID, token uint64) error {
 		return err
 	}
 
-	if err := ms.deleteRelLocked(rid); err != nil {
+	if err := ms.removeRelLocked(rid, exLeg); err != nil {
 		return err
 	}
 	return ms.logRelHardDeleteRoutedLocked(rid.SnowflakeID(), token)
@@ -325,7 +343,11 @@ func (ms *Store) deleteRelationshipRouted(rid types.RelID, token uint64) error {
 
 // deleteRelLocked removes a relationship and cleans up indexes.
 // Caller must hold ms.mu write lock.
-func (ms *Store) deleteRelLocked(id types.RelID) error {
+func (ms *Store) deleteRelLocked(id types.RelID) error { return ms.removeRelLocked(id, true) }
+
+// removeRelLocked is deleteRelLocked; exLeg false records no ex-adjacency
+// (an undone create).
+func (ms *Store) removeRelLocked(id types.RelID, exLeg bool) error {
 	if err := ms.faultInLocked(id); err != nil { // ADR-0011 overlay: deleting a sealed row
 		return err
 	}
@@ -338,10 +360,12 @@ func (ms *Store) deleteRelLocked(id types.RelID) error {
 	ms.removeRelTypeIndex(id, r.TypeToken().Value())
 
 	// Adjacency cleanup — O(1) delete from hash sets; both legs move to the
-	// ex-adjacency (backlog 50).
+	// ex-adjacency (backlog 50) unless a create is undone.
 	removeAdjLocked(ms.outIdx, r.StartNodeID(), id)
 	removeAdjLocked(ms.inIdx, r.EndNodeID(), id)
-	ms.addExAdjLocked(id, r)
+	if exLeg {
+		ms.addExAdjLocked(id, r)
+	}
 
 	indexpkg.RemoveRelFromPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
 	ms.adjustRelPropertyTypeClassCounts(r, -1)

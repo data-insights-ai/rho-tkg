@@ -80,7 +80,9 @@ func (bs *Store) putMovedRelLocked(id snowflake.ID, r *types.Relationship) {
 // AFTER idxMu is released (flush takes idxMu.RLock — calling it under
 // idxMu.Lock would self-deadlock).
 //
-//   - SyncWrites mode: every mutation flushes synchronously (unchanged).
+//   - SyncWrites mode: every mutation flushes synchronously, except inside a
+//     store.MutationFlushHoldCapability hold (a durable group), which leaves
+//     the writes pending until the hold bound or the group's DurableFlush.
 //   - Async mode: when the pending write buffer reaches MaxPendingWrites the
 //     WRITER flushes synchronously — backpressure instead of unbounded
 //     growth. Without this bound, a sustained burst faster than the flush
@@ -94,6 +96,9 @@ func (bs *Store) flushIfNeeded() error {
 		return nil
 	}
 	if bs.syncWrites {
+		if bs.flushHold.Load() && !bs.holdFull() {
+			return nil
+		}
 		return bs.flush()
 	}
 	if bs.maxPending > 0 && bs.pendingLen() >= bs.maxPending {
@@ -334,7 +339,9 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 		requeue()
 		return fmt.Errorf("graph: write batch flush: %w", err)
 	}
-	if !bs.syncWrites {
+	if bs.syncWrites {
+		bs.syncedFlushes.Add(1) // Badger synced the batch (SyncCountForTest)
+	} else {
 		// In the WAL but not fsynced: the next DurableFlush must sync.
 		bs.unsynced.Store(true)
 	}
@@ -344,10 +351,15 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 	// stop consulting the parked snapshot. Leaving it set lets a stale overlay
 	// linger — most visibly, a Clear() that wipes the history keyspace would let
 	// these entries resurface as phantom history IDs. flushMu serializes flush(),
-	// so bs.flushing is still exactly this `ops`; clear it under wbMu.
+	// so bs.flushing is still exactly this `ops`; clear it under wbMu. Read
+	// snapshots that predate the commit re-pin (commitGen) before they miss it.
+	bs.commitGen.Add(1)
 	bs.wbMu.Lock()
 	bs.flushing = nil
 	bs.wbMu.Unlock()
+	if h := bs.flushClearedTestHook; h != nil {
+		h() // tests only: a reader inside the window after the overlay dropped the rows
+	}
 
 	// Step 3: Mark cache entries clean — version-aware.
 	// Only clears dirty on entries whose dirtyVer matches the snapshot.

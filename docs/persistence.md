@@ -21,7 +21,7 @@ On-disk format versioning: every persisted `NodeWire`/`RelWire` row carries a pe
 
 **Threat model — the transaction-time tail is deliberately OUTSIDE the content hash.** TxFrom/TxTo have never been part of `ComputeNode/RelHash` (the hash keys on labels/type + properties + id + version, not transaction time), so a patched buffer replicates verbatim and passes `Verify*Chain` unchanged — that is exactly what makes the patch sound. The corollary is that the tail's integrity rests on TRANSPORT and STORAGE integrity (the msgpack framing, the Badger WriteBatch, the change-log co-commit), NOT on the entity hash: a bit-flip in the persisted tail is not detected by `Verify*Chain` (it never was — this is unchanged from v1, where TxFrom was also unhashed). `PatchWireTemporalTail` marker-validates the fixed slot before writing (fail-closed with `ErrCorruptWire`) so a MIS-FED in-process buffer is never silently corrupted, but it does not and cannot cryptographically bind the stamped time to the row's content.
 
-Write-pressure bound: `badger.Config.MaxPendingWrites` (default 100,000 ops; negative disables; moot under `SyncWrites`) bounds the async write buffer. It is a backend-level knob with no `graph.Config` mirror — reach it by constructing the `badger.Store` yourself and passing it as `Config.Store` (the same is true of `badger.Config.FlushInterval` below). Dirty cache entries are never evicted by design, so without the bound a sustained burst faster than `FlushInterval` grows memory without limit; at the bound the writing call flushes synchronously (backpressure), and a failing backpressure flush surfaces its error to the writer with the ops requeued. `Store.PendingWriteCount()` exposes the pressure signal.
+Write-pressure bound: `badger.Config.MaxPendingWrites` (default 100,000 ops; negative disables; under `SyncWrites` it bounds only the writes a `DurableCommit` group holds, which then flush in steps) bounds the async write buffer. It is a backend-level knob with no `graph.Config` mirror — reach it by constructing the `badger.Store` yourself and passing it as `Config.Store` (the same is true of `badger.Config.FlushInterval` below). Dirty cache entries are never evicted by design, so without the bound a sustained burst faster than `FlushInterval` grows memory without limit; at the bound the writing call flushes synchronously (backpressure), and a failing backpressure flush surfaces its error to the writer with the ops requeued. `Store.PendingWriteCount()` exposes the pressure signal.
 
 Sync writes: set `Config.SyncWrites: true` to eliminate the 100ms async flush window — each write is flushed to disk synchronously (Badger `WithSyncWrites(true)` + immediate `flush()` after every store call). This removes the in-memory buffer vulnerability at the cost of higher write latency. `FlushInterval` is forced to 0 and the background flush goroutine is not started when `SyncWrites` is true. Badger index definition mutations (`Create*Index` / `Drop*Index` for property, temporal, high-frequency, and vector indexes) use the same synchronous flush path after releasing `idxMu`; split relationship helper writeOps used by Tiered routing and repair do too.
 
@@ -32,13 +32,13 @@ The badger backend acknowledges a write when it is applied in memory, not when i
 | Mode | Process crash (kill -9, panic) | OS crash / power loss |
 |---|---|---|
 | Default (`SyncWrites=false`, `FlushInterval`=100ms, `MaxPendingWrites`=100,000) | Loses every acknowledged write still in the async buffer: normally up to ~100 ms of writes, up to `MaxPendingWrites` ops under a burst. Flushed batches survive (they are in Badger's log, in the OS page cache). | Additionally may lose recently flushed batches: Badger does not fsync without `SyncWrites`. |
-| `SyncWrites=true` | Nothing acknowledged is lost: each Store call is flushed and fsynced before it returns. | Same. |
-| `graph.Config.DurableCommit=true` (default off) | A `GraphTx` commit (`Tx().Run*`), `Batch.Execute` or strong-ingest group is on disk when its door returns: one flush of the whole pending buffer plus a WAL fsync per open shard that took writes; a failed flush returns `ErrCommitNotDurable` with the group committed in memory and still pending. Standalone mutations and concurrent-mode ingest keep the async window. | Narrower: Badger's `Sync` covers only the active memtable WAL and the current value-log file, so rows of a group whose flush crossed a memtable or value-log switch can be unsynced after the return; use `SyncWrites` for strict power-loss durability. |
+| `SyncWrites=true` | Nothing acknowledged is lost: each Store call is flushed and fsynced before it returns — except inside a `DurableCommit` group (`GraphTx` mutations, `Batch.Execute`, `Rollback`), whose writes are held and fsynced together when the group's door returns. | Same. |
+| `graph.Config.DurableCommit=true` (default off) | A `GraphTx` commit (`Tx().Run*`), `Batch.Execute` or strong-ingest group is on disk when its door returns: one flush of the whole pending buffer plus a WAL fsync per open shard that took writes; a failed flush returns `ErrCommitNotDurable` with the group committed in memory and still pending. Standalone mutations and concurrent-mode ingest keep the async window. | Narrower: Badger's `Sync` covers only the active memtable WAL and the current value-log file, so rows of a group whose flush crossed a memtable or value-log switch can be unsynced after the return; use `SyncWrites` for strict power-loss durability; with both, a group costs one Badger-synced WriteBatch at its commit, not one sync per mutation (backlog 52). |
 
 Atomicity across a crash is per flush, not per logical operation group:
 
 - A flush writes one `WriteBatch` (data + counters + change-log records + LSN watermark). Badger may split a very large `WriteBatch` into several internal transactions, so even one flush is not guaranteed all-or-nothing at that size.
-- A multi-entity `g.Tx()` is **not** crash-atomic in any mode: its rows are flushed by the ordinary async flush or per call under `SyncWrites`, so a crash before `Commit` can persist part of it (see `docs/architecture.md`, "Transaction isolation — what v4 actually guarantees"). `DurableCommit` adds durability on return, not atomicity: before the return a crash can keep any subset, and a flush above about 15 % of `MemTableSize` is split by Badger (all-or-nothing on disk is v5; `docs/architecture.md`, "Durable-on-return commit").
+- A multi-entity `g.Tx()` is **not** crash-atomic in any mode: its rows are flushed by the ordinary async flush or per call under `SyncWrites` (at the commit inside a `DurableCommit` group), so a crash before `Commit` can persist part of it (see `docs/architecture.md`, "Transaction isolation — what v4 actually guarantees"). `DurableCommit` adds durability on return, not atomicity: before the return a crash can keep any subset, and a flush above about 15 % of `MemTableSize` is split by Badger (all-or-nothing on disk is v5; `docs/architecture.md`, "Durable-on-return commit").
 - The strong ingest mode (`g.Ingest()`, `Sync`) coalesces a group's flushes (`store.GroupCommitCapability`; the group is flushed before it is acknowledged), the closest v4 has to an atomic multi-entity write; crash atomicity is still not promised (batch size limits and background flushes can split it).
 - `tiered.Store` cross-shard relationship writes are two shard commits; a crash between them leaves residue that `RunRepair` resolves.
 
@@ -254,6 +254,47 @@ With `graph.Config.ChangeLog` (or `badger.Config.ChangeLog` / `memory.WithChange
 **Restoring a chain.** `graph.RestoreInto(cfg, dir)` opens a graph from `cfg`, then discovers exactly one full backup (`backup-<lsn>-full.tkg`) and zero or more delta backups (`backup-<since>-to-<to>-delta.tkg`) in `dir`. Before replaying anything it reads every file's header (`HeaderOf` — cheap, does not consume entity/change records) and validates the WHOLE chain is gapless: the full backup's cursor must equal the first delta's `From`, and each subsequent delta's `From` must equal the previous file's `To` — the same pairwise invariant `ExportSince`/`ImportMerge` already enforce one delta at a time, checked here across the whole set so a missing or foreign file is reported by name up front instead of surfacing as an `ImportMerge` failure partway through an already-mutated graph. A cursor-epoch mismatch (a delta from an unrelated graph lineage) fails closed with a wrapped `ErrCursorUnknown`; an LSN gap (a missing delta, or deltas that don't chain) fails closed with a wrapped `ErrDeltaBaseMismatch` — both name the offending file. Zero or more than one full backup in `dir` is also an error (nothing to guess from). On success, `RestoreInto` has replayed `Import` (the full backup) then `ImportMerge` (each delta, oldest first) and returns the opened graph, ready for use; on any failure it closes what it opened before returning the error.
 
 **Deferred.** `MetaSet` does not yet emit a record (the `ChangeMeta` tag is reserved); and LSN-watermark-driven log GC (pruning records below the minimum replica-acked LSN) lands with read replicas — on tiered, a whole retention-dropped event shard drops its log segment with it, so consumers must checkpoint before a shard is retention-dropped (the same discipline any log-truncation policy requires).
+
+## Clean reopen: keys plus the open image (backlog 54, no option)
+
+A badger open used to decode every current row to rebuild the RAM indexes (liveness sets, label / type /
+adjacency maps, planner statistics, and the property, relationship-property, composite, temporal,
+relationship-type temporal, high-frequency and vector index contents), so it grew with the store: 14.3 s for
+519 K nodes / 436 K relationships in the ai-soc shape, 24.8 s on ai-soc's own store. Since v4.51.3 a writable
+`Close` that flushed cleanly ends with the **open image**: the index contents above and the planner statistics,
+chunked under `0x0F tkg_open_image_c<i>` (512 KiB each) and a header `0x0F tkg_open_image` (magic, chunk count,
+length, CRC-32C) written last in its own commit. `Close` holds the flush lock from the image's drained check until
+the store is marked closed, so a write racing `Close` cannot commit between the encode and the header. The next
+open trusts the image only if that header is still the store's newest badger version (`db.MaxVersion()`): any
+later commit — writes of a session that crashed, a write by an older release that knows nothing of the image, a
+raw badger write — and any missing chunk, length or checksum mismatch or decode error sends the open to the full
+rebuild. That rebuild also repairs the keys: a crash inside a flush badger split into several transactions can
+leave label, type or adjacency keys that disagree with the rows, which a rebuild skips but a trusted image would
+believe, so a writable rebuild deletes the keys it skips and writes the ones a row needs and the keyspace lacks
+(a failed repair suppresses the session's image; a read-only rebuild repairs nothing and writes none). A trusted
+open then:
+
+- builds liveness, ordinals, label / type / adjacency maps and counters from the entity and index **keys** alone
+  (no value read);
+- installs each defined index from the image (temporal envelopes restricted to the label's or type's current
+  members, as a rebuild would keep them); an index the image lacks (still being created at `Close`, a
+  pending `TemporalIndexOnDisk` backfill) is rebuilt from its rows as before;
+- restores the planner statistics the closing process held: presence and type-class counters, and per
+  accumulator the HyperLogLog registers, the ordered family, the typed min/max and the dirty flag. They are
+  therefore not a full rebuild's: the NDV sketch keeps values deleted in earlier sessions (NDV never decreases,
+  `docs/query-planners.md`), and a dirty min/max is rescanned by the next `PropertyStats` read, which then
+  returns the exact values a rebuild finds. An image without statistics (closed with `DisablePlannerStats`, or
+  while they were still deferred) defers them: the first statistics read builds them from the current rows, as a
+  full open would, holding the flush and index write locks — readers and writers wait for that one scan — and a
+  failed scan returns its error and stays deferred;
+- fills node integrity hashes on first use.
+
+Measured on the ai-soc shape: `tasks/evidence/open-cost/03-open-time.txt`. Read-only opens read the image and
+never write one. A store whose rows were damaged on disk after a clean close (no commit) opens on the fast path
+and reports the damage when the row is read, where the full rebuild skipped and counted it
+(`IndexRebuildStats`). A raw badger commit that only deletes keys can be dropped by a bottom-level compaction,
+which leaves the header the newest version again and the image trusted; rho-tkg's own deletes commit together
+with their counters, so only raw writers can hit this.
 
 ## Persistent property index (opt-in, `PropertyIndexOnDisk`)
 

@@ -52,6 +52,7 @@ func TestGraphTx_RollbackPanicSafe(t *testing.T) {
 
 	// Inject a panicking store so Rollback panics when deleting created rels.
 	g.store = &deleteRelPanicStore{g.store}
+	g.relCreateUndo, g.scopedRelCreateUndo = relCreateUndoCapabilities(g.store) // the wrapper's DeleteRelationship undoes
 
 	// Call Rollback from a goroutine so the panic is recoverable.
 	panicCaught := make(chan bool, 1)

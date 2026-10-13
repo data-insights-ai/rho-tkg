@@ -457,7 +457,7 @@ func (bs *Store) scanPropTxRows(curKind, histKind byte, visit func(id snowflake.
 	if bs.propTxScanTestHook != nil {
 		bs.propTxScanTestHook()
 	}
-	return bs.db.View(func(txn *badgerv4.Txn) error {
+	return bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = true
 

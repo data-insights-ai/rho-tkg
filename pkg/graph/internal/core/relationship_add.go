@@ -46,7 +46,7 @@ func (c *Core) deletePartialRelationshipForRollback(r *types.Relationship) error
 	if r == nil {
 		return storepkg.ErrRelNotFound
 	}
-	return c.store.DeleteRelationship(r.ID())
+	return c.undoRelationshipCreate(0, r.ID())
 }
 
 // =============================================================================

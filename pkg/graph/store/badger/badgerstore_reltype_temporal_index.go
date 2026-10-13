@@ -128,10 +128,11 @@ func (bs *Store) persistRelTypeTemporalIndexDefs() {
 
 // loadRelTypeTemporalIndexes rebuilds the persisted rel-type temporal indexes
 // at open, after loadIndexes built the type index: each from the type's
-// current rows and their history, as CreateRelTemporalIndex builds it.
-func (bs *Store) loadRelTypeTemporalIndexes() error {
+// current rows and their history, as CreateRelTemporalIndex builds it — or,
+// after a clean close, from the open image without reading a row.
+func (bs *Store) loadRelTypeTemporalIndexes(img *openImage) error {
 	var tokens []uint16
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.RelTypeTemporalIndexDefsKey)
 		if errors.Is(err, badgerv4.ErrKeyNotFound) {
 			return nil
@@ -153,6 +154,25 @@ func (bs *Store) loadRelTypeTemporalIndexes() error {
 		rids := bs.relTypeRelIDsSnapshotLocked(tok)
 		bs.idxMu.RUnlock()
 		if done {
+			continue
+		}
+		if entries, ok := img.takeRelTemporal(tok); ok {
+			// The runtime envelope keeps deleted relationships (append-only,
+			// see deleteRelByInfo); the open keeps the type's current members,
+			// as buildRelTypeTemporalIndex would.
+			members := make(map[types.RelID]struct{}, len(rids))
+			for _, rid := range rids {
+				members[rid] = struct{}{}
+			}
+			ti := indexpkg.NewTemporalIndex()
+			for _, e := range entries {
+				if _, ok := members[types.RelID(e.ID)]; ok {
+					ti.AddKnownAbsent(e.ID, e.From, e.To)
+				}
+			}
+			bs.idxMu.Lock()
+			bs.relTypeTemporalIndexes[tok] = ti
+			bs.idxMu.Unlock()
 			continue
 		}
 		ti, err := bs.buildRelTypeTemporalIndex(rids)

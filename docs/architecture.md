@@ -1,4 +1,4 @@
-# Architecture — tkg/v4 (v4.51.2)
+# Architecture — tkg/v4 (v4.51.3)
 
 Temporal Knowledge Graph v4 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
@@ -276,7 +276,7 @@ Most point and query reads acquire `g.mu.RLock()`: they are blocked while a tx/b
 - **Tx vs tx / batch:** serialized (`txMu`). Two transactions never interleave.
 - **Tx vs standalone reads:** every tx mutation is applied to the Store immediately. A concurrent standalone reader sees the transaction's uncommitted rows before `Commit` (dirty read), and sees them disappear again after `Rollback`.
 - **Tx vs standalone writes:** entity locks are taken and released per call, not held until commit. A standalone write can land on an entity between two calls of an open transaction. `Rollback` restores the transaction's pre-transaction snapshot of that entity and therefore **overwrites the standalone write** (lost update).
-- **Crash:** the tx's rows reach disk through the normal async flush (or per call under `SyncWrites`); a crash before `Commit` can leave part of the transaction persisted. With `Config.DurableCommit`, `Commit` (and `Batch.Execute`, the strong ingest applier) does not return success before one durable flush — the pending buffer as one WriteBatch plus a WAL fsync on every open shard that took writes — so a crash after the return keeps the whole group; see "Durable-on-return commit" below. The change-log is scoped: a rolled-back or uncommitted transaction emits no records, so replicas never see its rows.
+- **Crash:** the tx's rows reach disk through the normal async flush (or per call under `SyncWrites`, except inside a `DurableCommit` group, which syncs at its commit); a crash before `Commit` can leave part of the transaction persisted. With `Config.DurableCommit`, `Commit` (and `Batch.Execute`, the strong ingest applier) does not return success before one durable flush — the pending buffer as one WriteBatch plus a WAL fsync on every open shard that took writes — so a crash after the return keeps the whole group; see "Durable-on-return commit" below. The change-log is scoped: a rolled-back or uncommitted transaction emits no records, so replicas never see its rows.
 
 This is the v4.1.0 performance trade-off (standalone mutations and reads on disjoint entities run in parallel with an open tx). Use `g.Tx()` when no standalone writer touches the same entities concurrently, or serialize those writers yourself; use `g.Batch()` when readers must never observe a partial group (it holds `g.mu.Lock()` for the whole execution). Isolated transactions (private write set applied atomically at commit, locks held to commit) are a v5 item.
 
@@ -412,6 +412,7 @@ The implementation is split across 77 themed production files; the principal one
 - `badgerstore_meta.go` — counts, registry persistence, cache hit/miss accessors.
 - `badgerstore_flush.go` — async write batch + flush loop + dirty tracking + write-pressure backpressure + `publishMoveLocked` (a with-history write appends its history row to the pending buffer before it changes the entity cache, so a reader at a fixed pin that reads the current row and then history never misses the moved row).
 - `badgerstore_durable.go` — `DurableFlush` (`Config.DurableCommit`, below).
+- `badgerstore_flush_hold.go` — `store.MutationFlushHoldCapability`: the per-mutation `SyncWrites` flush held inside a durable group (below).
 - `badgerstore_history_presence.go`, `badgerstore_history_stamps.go`, `badgerstore_propertytxmembers.go`, `badgerstore_labeltxmembers.go` — the RAM sidecars below.
 - `badgerstore_format.go` — on-disk wire-format version marker (verify/stamp at open).
 - `badgerstore_changelog.go`, `badgerstore_composite_index.go`, `badgerstore_docvalues.go`, `badgerstore_property_disk.go` (0x0A), `badgerstore_temporal_disk.go` (0x0B), `badgerstore_retention_purge.go`, `badgerstore_history_delta.go` — the later capability layers.
@@ -440,6 +441,11 @@ Two layers, both backward compatible with pre-versioning directories:
 - `loadIndexes` still tolerates corrupt rows (skip + warn + counter
   reconcile), but a FUTURE per-row version is not damage — it fails the open
   instead of silently dropping the row.
+- A clean `Close` writes the open image (`badgerstore_open_image.go`, backlog 54);
+  an open that trusts it (its header is the newest badger commit) reads keys and
+  the image instead of decoding rows; planner statistics travel in the image
+  too, and only an image without them defers them to their first read
+  (`badgerstore_planner_stats_deferred.go`).
 
 Bump protocol (documented on `CurrentWireFormatVersion`): a version bump must
 update the custom msgpack encoders (lesson 39), the decode path, and the
@@ -447,8 +453,8 @@ marker logic together.
 
 ### Write-Pressure Bound
 
-`Config.MaxPendingWrites` (default 100,000 ops; negative disables; moot under
-`SyncWrites`) bounds the async write buffer: dirty cache entries are never
+`Config.MaxPendingWrites` (default 100,000 ops; negative disables; under
+`SyncWrites` it bounds only a durable group's held flushes, below) bounds the async write buffer: dirty cache entries are never
 evicted by design, so without a bound a sustained burst faster than
 `FlushInterval` grows memory without limit. At the bound, the writing call
 flushes synchronously (backpressure); a failing backpressure flush surfaces
@@ -486,8 +492,27 @@ committed in memory, its operations stay pending (requeued), and the next
 successful flush persists them; until then a crash can lose them. `RunWithLSN`
 still returns the group's LSN and `Batch.Execute` its result (with a
 `durable-commit` `BatchError`), so a caller never has to re-apply a committed
-group. Rollback never flushes. Standalone mutations and concurrent-mode ingest
+group. Rollback never flushes (under `SyncWrites` it ends with one durable flush, below). Standalone mutations and concurrent-mode ingest
 `Submit` keep the async flush.
+
+Under `SyncWrites` (strict power-loss durability: Badger fsyncs the WAL after
+every write and syncs a value-log file it retires, so no memtable or value-log
+switch leaves a gap) the store flushes every mutation. Inside a durable group
+that cost one Badger sync per mutation (~1 s per 530-op group, backlog 52), so
+the graph holds it (`store.MutationFlushHoldCapability`, badger only): each
+`GraphTx` mutation, the whole `Batch.Execute` window and a `Rollback` run under
+the exclusive graph lock with the per-mutation flush held, and the group's one
+`DurableFlush` commits the held writes as one WriteBatch that Badger syncs
+(Badger may split it into several synced commits). The exclusive lock keeps
+every other mutation out of the hold, so a standalone write still returns
+synced. A held buffer that reaches `MaxPendingWrites` flushes (synced) in
+steps; a `Rollback` ends with one durable flush, because part of the group can
+already be on disk. Without `DurableCommit`, `SyncWrites` still syncs every
+mutation; tiered and sharded stores keep per-mutation syncs. Side effect: with
+both flags each `GraphTx` mutation takes the exclusive `c.mu.Lock` instead of
+the shared one, so standalone writers, readers and concurrent ingest lanes wait
+for each tx mutation (in-memory work only; the sync runs at the commit, outside
+the lock). The hold is released exactly once, under the holder's lock.
 
 "Crash" above means a process crash. Power loss is narrower: Badger v4's
 `db.Sync()` fsyncs only the active memtable's WAL and the current value-log
@@ -1170,7 +1195,7 @@ Import treats record streams as untrusted input. `ImportOptions.MaxStagedBytes =
 | v3.0.66 | `GraphTx.GetNode`, `GraphTx.AddRelationshipByID`, `GraphTx.AddRelationshipByIDIfAbsent` for transactional graph writes |
 | v3.0.67 | Cross-shard incoming relationship type filter fix — `inIdx` changed from `map[ID]struct{}` to `map[ID]uint16` (relID → typeToken; today `inEdge{startNodeID, typeToken}`) |
 
-The table records the v3.0 build-out only. Every later release (v3.0.68 – v4.51.2) is in `CHANGELOG.md`; the sections above describe the current code.
+The table records the v3.0 build-out only. Every later release (v3.0.68 – v4.51.3) is in `CHANGELOG.md`; the sections above describe the current code.
 
 ---
 

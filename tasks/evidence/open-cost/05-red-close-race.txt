@@ -1,0 +1,77 @@
+--- FAIL: TestCloseImageExcludesWriteRacingClose (0.12s)
+    badgerstore_open_image_test.go:189: reopen trusted an image that misses the write racing Close:
+         got: counts nodes=21 rels=0
+        epochs node=21 rel=0 salt=0 coarse=0
+        hash 1  <nil>
+        hash 10  <nil>
+        hash 11  <nil>
+        hash 12  <nil>
+        hash 13  <nil>
+        hash 14  <nil>
+        hash 15  <nil>
+        hash 16  <nil>
+        hash 17  <nil>
+        hash 18  <nil>
+        hash 19  <nil>
+        hash 2  <nil>
+        hash 20  <nil>
+        hash 3  <nil>
+        hash 4  <nil>
+        hash 5  <nil>
+        hash 6  <nil>
+        hash 7  <nil>
+        hash 8  <nil>
+        hash 9  <nil>
+        hash 99  <nil>
+        label 11 [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 99]
+        labelcount 11 21
+        labelepoch 11 21
+        node 1 ord=1
+        node 10 ord=10
+        node 11 ord=11
+        node 12 ord=12
+        node 13 ord=13
+        node 14 ord=14
+        node 15 ord=15
+        node 16 ord=16
+        node 17 ord=17
+        no
+        want: counts nodes=21 rels=0
+        epochs node=21 rel=0 salt=0 coarse=0
+        hash 1  <nil>
+        hash 10  <nil>
+        hash 11  <nil>
+        hash 12  <nil>
+        hash 13  <nil>
+        hash 14  <nil>
+        hash 15  <nil>
+        hash 16  <nil>
+        hash 17  <nil>
+        hash 18  <nil>
+        hash 19  <nil>
+        hash 2  <nil>
+        hash 20  <nil>
+        hash 3  <nil>
+        hash 4  <nil>
+        hash 5  <nil>
+        hash 6  <nil>
+        hash 7  <nil>
+        hash 8  <nil>
+        hash 9  <nil>
+        hash 99  <nil>
+        label 11 [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 99]
+        labelcount 11 21
+        labelepoch 11 21
+        node 1 ord=1
+        node 10 ord=10
+        node 11 ord=11
+        node 12 ord=12
+        node 13 ord=13
+        node 14 ord=14
+        node 15 ord=15
+        node 16 ord=16
+        node 17 ord=17
+        no
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.129s
+FAIL

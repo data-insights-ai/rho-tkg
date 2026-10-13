@@ -1,0 +1,11 @@
+--- FAIL: TestCleanReopenCostNotLinear (2.92s)
+    clean_reopen_test.go:111: rows decoded at a clean reopen: 3000 entities -> 4629, 30000 entities -> 46312
+    clean_reopen_test.go:113: clean reopen decodes rows linear in the store: 3000 entities -> 4629 rows, 30000 entities -> 46312 rows
+--- FAIL: TestCleanReopenMatchesFullRebuild (1.38s)
+    --- FAIL: TestCleanReopenMatchesFullRebuild/onDisk=false (0.70s)
+        clean_reopen_test.go:311: clean reopen: clean reopen decoded 1132 rows
+    --- FAIL: TestCleanReopenMatchesFullRebuild/onDisk=true (0.68s)
+        clean_reopen_test.go:311: clean reopen: clean reopen decoded 1107 rows
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	4.346s
+FAIL

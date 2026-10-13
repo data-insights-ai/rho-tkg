@@ -8,41 +8,9 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestShardedDeletedIterationCapabilityWired proves the AFTER state of BACKLOG
-// 21d/20f: a sharded-backed Core now wires c.deletedIter (non-nil), where before
-// this change it was always nil for *sharded.Store (the type was absent from
-// nativeStoreTypes/isExactNativeStore AND, before stats_iter.go grew
-// ForEachDeletedNodeID/ForEachDeletedRelID, did not even satisfy
-// storepkg.DeletedIterationCapability). This is a WHITE-BOX check
-// (deliberately, not a black-box query-result assertion): the deleted-rel fold's
-// fallback path (forEachRelHistoryIDByDepthTrusted, a full history scan) is
-// ALSO correct, just O(total history) instead of O(deleted only) — so a pure
-// "the query returns the right relationships" assertion would pass identically
-// whether or not the capability is wired, and would not distinguish the
-// before/after states this WP is supposed to prove.
-func TestShardedDeletedIterationCapabilityWired(t *testing.T) {
-	t.Parallel()
-	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
-	if err != nil {
-		t.Fatalf("sharded.New: %v", err)
-	}
-	g, err := New(Config{Store: st})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer g.Close()
-
-	if g.deletedIter == nil {
-		t.Fatal("c.deletedIter is nil for a sharded-backed Core — DeletedIterationCapability not wired (BACKLOG 21d regression)")
-	}
-}
-
-// TestShardedDeletedIterationCapability_AdjacencyAtTFold is the downstream-
-// consumer proof: OutgoingRelsAt/IncomingRelsAt correctly fold in a DELETED
-// relationship on a sharded-backed graph — i.e. the capability is not just
-// wired (see above) but actually load-bearing for the adjacency-at-t door that
-// documents itself as using DeletedIterationCapability
-// (temporal_queries.go:OutgoingRelsAt's doc comment).
+// TestShardedDeletedIterationCapability_AdjacencyAtTFold: OutgoingRelsAt /
+// IncomingRelsAt reach a DELETED relationship on a sharded-backed graph (since
+// backlog 50 through the store's ex-adjacency).
 //
 // This package cannot exercise the "rel's own shard differs from its
 // endpoints' shard" case with hand-crafted IDs (sharded's mkNodeID/mkRelID
@@ -68,9 +36,6 @@ func TestShardedDeletedIterationCapability_AdjacencyAtTFold(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	defer g.Close()
-	if g.deletedIter == nil {
-		t.Fatal("c.deletedIter is nil for a sharded-backed Core — precondition for this test failed")
-	}
 
 	ctx := context.Background()
 	// Explicit tkg_valid_from on the nodes so the query instants below are

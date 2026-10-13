@@ -141,7 +141,7 @@ func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 	var n *types.Node
 	// Read before the snapshot opens — see LoadCleanAt.
 	epoch := bs.nodeCache.FlushEpoch()
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.NodeKey(id))
 		if err == badgerv4.ErrKeyNotFound {
 			return ErrNodeNotFound
@@ -259,15 +259,7 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 	v, status := bs.nodeCache.Get(id)
 	switch status {
 	case indexpkg.CacheHit:
-		hash := badgerNodeIntegrityHash(v)
-		bs.idxMu.Lock()
-		if _, exists := bs.nodeIDs[nid]; exists {
-			bs.nodeHashes[nid] = hash
-			bs.idxMu.Unlock()
-			return hash, nil
-		}
-		bs.idxMu.Unlock()
-		return "", ErrNodeNotFound
+		return bs.fillNodeHash(nid, badgerNodeIntegrityHash(v))
 	case indexpkg.CacheDeleted:
 		return "", ErrNodeNotFound
 	}
@@ -275,7 +267,7 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 	var n *types.Node
 	// Read before the snapshot opens — see LoadCleanAt.
 	epoch := bs.nodeCache.FlushEpoch()
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.NodeKey(id))
 		if err == badgerv4.ErrKeyNotFound {
 			return ErrNodeNotFound
@@ -302,14 +294,26 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 	hash = badgerNodeIntegrityHash(n)
 	n.Freeze() // shared between cache and caller
 	bs.nodeCache.LoadCleanAt(id, n, epoch)
+	return bs.fillNodeHash(nid, hash)
+}
+
+// fillNodeHash records a hash computed from a row read without the lock. The
+// hash map fills on first use (a clean open leaves it empty, backlog 54).
+// Every node-row write sets the map under idxMu, so a hash already present
+// was set by a write at least as new as the row read here: keep it.
+func (bs *Store) fillNodeHash(nid types.NodeID, hash string) (string, error) {
 	bs.idxMu.Lock()
-	if _, exists := bs.nodeIDs[nid]; exists {
-		bs.nodeHashes[nid] = hash
+	if _, exists := bs.nodeIDs[nid]; !exists {
 		bs.idxMu.Unlock()
-		return hash, nil
+		return "", ErrNodeNotFound
+	}
+	if cur, ok := bs.nodeHashes[nid]; ok {
+		hash = cur
+	} else {
+		bs.nodeHashes[nid] = hash
 	}
 	bs.idxMu.Unlock()
-	return "", ErrNodeNotFound
+	return hash, nil
 }
 
 // EndpointIntegrityHashes returns both endpoint hashes while avoiding the
@@ -972,7 +976,7 @@ func (bs *Store) prefetchNodeNoFill(nid types.NodeID, promote bool) (n *types.No
 
 	// Node exists in-memory but not in cache (flushed + evicted from LRU).
 	// Read from Badger without holding any lock.
-	err = bs.db.View(func(txn *badgerv4.Txn) error {
+	err = bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.NodeKey(id))
 		if err == badgerv4.ErrKeyNotFound {
 			return ErrNodeNotFound
@@ -1016,7 +1020,7 @@ func (bs *Store) getNodeLocked(nid types.NodeID) (*types.Node, error) {
 	var n *types.Node
 	// Read before the snapshot opens — see LoadCleanAt.
 	epoch := bs.nodeCache.FlushEpoch()
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.NodeKey(id))
 		if err == badgerv4.ErrKeyNotFound {
 			return ErrNodeNotFound

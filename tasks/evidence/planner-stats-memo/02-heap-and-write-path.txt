@@ -1,0 +1,54 @@
+# backlog 53: retained heap and write-path cost, before (cddc0997) vs after (fix). 2026-10-12T18:59:51+02:00
+
+## Retained relationship planner-stat heap (stats on minus stats off, same writes, store flushed)
+## TestRelPlannerStatsMemoBounded/heap, 4 props per rel (3 indexable), from 01-red.txt / 02-green.txt
+before: badgerstore_rel_planner_stats_memo_test.go:28: planner-stat heap: 5879448 B at 10K rels, 60665952 B at 100K rels, growth 608.7 B per rel
+after:  badgerstore_rel_planner_stats_memo_test.go:28: planner-stat heap: 73784 B at 10K rels, 117168 B at 100K rels, growth 0.5 B per rel
+
+## Write path per door (BenchmarkRelPlannerStatsWritePath), interleaved A/B, 6 runs each, median.
+## Host load ~20 (other agents): ns/op is noisy; B/op and allocs/op are exact.
+## $ before.test / after.test = go test -c of ./pkg/graph/store/badger at base and with the fix
+delete   after  median  14180 ns/op  4162 B/op  71 allocs/op n=6
+delete   before median  13554 ns/op  4135 B/op  68 allocs/op n=6
+put      after  median   7264 ns/op  3478 B/op  32 allocs/op n=6
+put      before median   7678 ns/op  4252 B/op  45 allocs/op n=6
+replace  after  median   3094 ns/op  1680 B/op  27 allocs/op n=6
+replace  before median   3591 ns/op  2332 B/op  36 allocs/op n=6
+
+## raw
+before BenchmarkRelPlannerStatsWritePath/put-32         	   20000	      8087 ns/op	    4252 B/op	      45 allocs/op
+before BenchmarkRelPlannerStatsWritePath/replace-32     	   20000	      3404 ns/op	    2332 B/op	      36 allocs/op
+before BenchmarkRelPlannerStatsWritePath/delete-32      	   20000	     16412 ns/op	    4151 B/op	      68 allocs/op
+after BenchmarkRelPlannerStatsWritePath/put-32         	   20000	      7846 ns/op	    3478 B/op	      32 allocs/op
+after BenchmarkRelPlannerStatsWritePath/replace-32     	   20000	      3162 ns/op	    1680 B/op	      27 allocs/op
+after BenchmarkRelPlannerStatsWritePath/delete-32      	   20000	     11590 ns/op	    4154 B/op	      71 allocs/op
+before BenchmarkRelPlannerStatsWritePath/put-32         	   20000	      7319 ns/op	    4252 B/op	      45 allocs/op
+before BenchmarkRelPlannerStatsWritePath/replace-32     	   20000	      3502 ns/op	    2332 B/op	      36 allocs/op
+before BenchmarkRelPlannerStatsWritePath/delete-32      	   20000	     13981 ns/op	    4144 B/op	      68 allocs/op
+after BenchmarkRelPlannerStatsWritePath/put-32         	   20000	      8484 ns/op	    3478 B/op	      32 allocs/op
+after BenchmarkRelPlannerStatsWritePath/replace-32     	   20000	      3709 ns/op	    1680 B/op	      27 allocs/op
+after BenchmarkRelPlannerStatsWritePath/delete-32      	   20000	     14355 ns/op	    4179 B/op	      71 allocs/op
+before BenchmarkRelPlannerStatsWritePath/put-32         	   20000	      7279 ns/op	    4253 B/op	      45 allocs/op
+before BenchmarkRelPlannerStatsWritePath/replace-32     	   20000	      3906 ns/op	    2332 B/op	      36 allocs/op
+before BenchmarkRelPlannerStatsWritePath/delete-32      	   20000	     11781 ns/op	    4126 B/op	      68 allocs/op
+after BenchmarkRelPlannerStatsWritePath/put-32         	   20000	      6643 ns/op	    3478 B/op	      32 allocs/op
+after BenchmarkRelPlannerStatsWritePath/replace-32     	   20000	      2710 ns/op	    1680 B/op	      27 allocs/op
+after BenchmarkRelPlannerStatsWritePath/delete-32      	   20000	     14978 ns/op	    4154 B/op	      71 allocs/op
+before BenchmarkRelPlannerStatsWritePath/put-32         	   20000	      8036 ns/op	    4253 B/op	      45 allocs/op
+before BenchmarkRelPlannerStatsWritePath/replace-32     	   20000	      3359 ns/op	    2332 B/op	      36 allocs/op
+before BenchmarkRelPlannerStatsWritePath/delete-32      	   20000	     13127 ns/op	    4126 B/op	      68 allocs/op
+after BenchmarkRelPlannerStatsWritePath/put-32         	   20000	      4916 ns/op	    3478 B/op	      32 allocs/op
+after BenchmarkRelPlannerStatsWritePath/replace-32     	   20000	      3026 ns/op	    1680 B/op	      27 allocs/op
+after BenchmarkRelPlannerStatsWritePath/delete-32      	   20000	     13459 ns/op	    4138 B/op	      71 allocs/op
+before BenchmarkRelPlannerStatsWritePath/put-32         	   20000	      8137 ns/op	    4252 B/op	      45 allocs/op
+before BenchmarkRelPlannerStatsWritePath/replace-32     	   20000	      4329 ns/op	    2332 B/op	      36 allocs/op
+before BenchmarkRelPlannerStatsWritePath/delete-32      	   20000	     15752 ns/op	    4159 B/op	      68 allocs/op
+after BenchmarkRelPlannerStatsWritePath/put-32         	   20000	      6683 ns/op	    3478 B/op	      32 allocs/op
+after BenchmarkRelPlannerStatsWritePath/replace-32     	   20000	      3164 ns/op	    1680 B/op	      27 allocs/op
+after BenchmarkRelPlannerStatsWritePath/delete-32      	   20000	     14005 ns/op	    4171 B/op	      71 allocs/op
+before BenchmarkRelPlannerStatsWritePath/put-32         	   20000	      6731 ns/op	    4253 B/op	      45 allocs/op
+before BenchmarkRelPlannerStatsWritePath/replace-32     	   20000	      3680 ns/op	    2332 B/op	      36 allocs/op
+before BenchmarkRelPlannerStatsWritePath/delete-32      	   20000	     12172 ns/op	    4126 B/op	      68 allocs/op
+after BenchmarkRelPlannerStatsWritePath/put-32         	   20000	      8074 ns/op	    3478 B/op	      32 allocs/op
+after BenchmarkRelPlannerStatsWritePath/replace-32     	   20000	      2818 ns/op	    1680 B/op	      27 allocs/op
+after BenchmarkRelPlannerStatsWritePath/delete-32      	   20000	     15202 ns/op	    4196 B/op	      71 allocs/op

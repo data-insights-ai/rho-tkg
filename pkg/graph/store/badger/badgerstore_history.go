@@ -41,7 +41,7 @@ func (bs *Store) truncateHistoryByPrefixRouted(prefix []byte, keepVersions int, 
 
 	// Collect all keys from Badger.
 	var allKeys []string
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
@@ -135,7 +135,7 @@ func (bs *Store) historyTruncateDeleteKeys(prefix []byte, keepVersions int) (del
 	overlayEntries, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
 
 	var allKeys []string
-	scanErr := bs.db.View(func(txn *badgerv4.Txn) error {
+	scanErr := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
@@ -260,7 +260,7 @@ func (bs *Store) trimHistoryFromPrefixRouted(prefix []byte, minVersion uint32, l
 	overlayEntries, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, minVersion)
 
 	var persisted []string
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
@@ -402,7 +402,7 @@ func (bs *Store) maxHistoryID(prefix byte) (snowflake.ID, error) {
 		}
 	}
 
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		opts.Reverse = true

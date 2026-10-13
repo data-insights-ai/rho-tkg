@@ -97,6 +97,9 @@ func (bs *Store) prefetchCascadeDeleteRows(nid types.NodeID) (cascadeDeletePrefe
 		}
 		infos[relID] = info
 	}
+	if bs.relDeletePrefetchTestHook != nil {
+		bs.relDeletePrefetchTestHook()
+	}
 	return cascadeDeletePrefetch{node: nodeInfo, rels: infos}, nil
 }
 
@@ -153,6 +156,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 			RelType: r.TypeToken().Value(),
 			StartID: r.StartNodeID().SnowflakeID(),
 			EndID:   r.EndNodeID().SnowflakeID(),
+			row:     r,
 		})
 	}
 
@@ -189,7 +193,7 @@ func (bs *Store) cascadeDeleteApply(nid types.NodeID, prefetched cascadeDeletePr
 		bs.purgeOrphanRelIDLockedWithIndexKeys(relID, orphanKeys[i])
 	}
 	for _, info := range toDelete {
-		bs.deleteRelByInfo(info)
+		bs.deleteRelByInfo(info, info.row)
 	}
 
 	// Get node data for label cleanup.
@@ -475,7 +479,7 @@ func (bs *Store) relationshipIndexKeysForRel(relID snowflake.ID) ([][]byte, erro
 		keys = append(keys, []byte(k))
 	})
 
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 

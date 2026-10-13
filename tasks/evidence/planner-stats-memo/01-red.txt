@@ -1,0 +1,42 @@
+# backlog 53 RED: base cddc0997 (v4.51.2) + the two new tests, no fix. 2026-10-12T18:57:02+02:00
+$ go test ./pkg/graph/store/badger/ ./pkg/graph/ -run TestRelPlannerStatsMemoBounded -count=1 -v
+    badgerstore_rel_planner_stats_memo_test.go:28: planner-stat heap: 5879448 B at 10K rels, 60665952 B at 100K rels, growth 608.7 B per rel
+    badgerstore_rel_planner_stats_memo_test.go:30: planner-stat heap grows 608.7 B per relationship written (10K: 5879448 B, 100K: 60665952 B); want a constant (≤ 8 B/rel)
+    badgerstore_rel_planner_stats_memo_test.go:102: split-write legs: put, replace with another class, delete step 1: w Count = 12, recount 13
+    badgerstore_rel_planner_stats_memo_test.go:102: split-write legs: put, replace with another class, delete step 1: w Min/Max = 0/5, recount 0/99
+    badgerstore_rel_planner_stats_memo_test.go:102: split-write legs: put, replace with another class, delete step 3: w Count = 13, recount 12
+    badgerstore_rel_planner_stats_memo_test.go:102: split-write leg purged by descriptor step 1: w Count = 12, recount 13
+    badgerstore_rel_planner_stats_memo_test.go:102: split-write leg purged by descriptor step 1: w Min/Max = 0/5, recount -1/5
+--- FAIL: TestRelPlannerStatsMemoBounded (5.47s)
+    --- FAIL: TestRelPlannerStatsMemoBounded/heap (5.35s)
+    --- PASS: TestRelPlannerStatsMemoBounded/batch_delete (0.00s)
+    --- FAIL: TestRelPlannerStatsMemoBounded/split-write_legs:_put,_replace_with_another_class,_delete (0.01s)
+    --- FAIL: TestRelPlannerStatsMemoBounded/split-write_leg_purged_by_descriptor (0.04s)
+    --- PASS: TestRelPlannerStatsMemoBounded/foreign_incoming_stub (0.05s)
+    --- PASS: TestRelPlannerStatsMemoBounded/purge_adjacent_rels (0.01s)
+    --- PASS: TestRelPlannerStatsMemoBounded/node_cascade (0.01s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	5.495s
+--- PASS: TestRelPlannerStatsMemoBounded (0.45s)
+    --- PASS: TestRelPlannerStatsMemoBounded/memory/delete (0.00s)
+    --- PASS: TestRelPlannerStatsMemoBounded/memory/replace_in_place_with_another_class (0.00s)
+    --- PASS: TestRelPlannerStatsMemoBounded/memory/update_with_history_to_another_class (0.00s)
+    --- PASS: TestRelPlannerStatsMemoBounded/memory/delete_property_in_a_tx (0.00s)
+    --- PASS: TestRelPlannerStatsMemoBounded/memory/tx_rollback_restores_a_deleted_rel (0.00s)
+    --- PASS: TestRelPlannerStatsMemoBounded/memory/cascade_delete (0.00s)
+    --- PASS: TestRelPlannerStatsMemoBounded/memory/retention_purge (0.00s)
+    --- PASS: TestRelPlannerStatsMemoBounded/memory/replica_apply (0.01s)
+    --- PASS: TestRelPlannerStatsMemoBounded/memory/IO.Import (0.01s)
+    --- PASS: TestRelPlannerStatsMemoBounded/badger/delete (0.00s)
+    --- PASS: TestRelPlannerStatsMemoBounded/badger/replace_in_place_with_another_class (0.05s)
+    --- PASS: TestRelPlannerStatsMemoBounded/badger/update_with_history_to_another_class (0.05s)
+    --- PASS: TestRelPlannerStatsMemoBounded/badger/delete_property_in_a_tx (0.02s)
+    --- PASS: TestRelPlannerStatsMemoBounded/badger/tx_rollback_restores_a_deleted_rel (0.02s)
+    --- PASS: TestRelPlannerStatsMemoBounded/badger/cascade_delete (0.01s)
+    --- PASS: TestRelPlannerStatsMemoBounded/badger/retention_purge (0.01s)
+    --- PASS: TestRelPlannerStatsMemoBounded/badger/replica_apply (0.04s)
+    --- PASS: TestRelPlannerStatsMemoBounded/badger/IO.Import (0.05s)
+    --- PASS: TestRelPlannerStatsMemoBounded/badger/reopen (0.18s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.500s
+FAIL

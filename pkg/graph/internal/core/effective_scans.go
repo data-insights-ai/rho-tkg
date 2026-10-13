@@ -16,8 +16,9 @@ import (
 //
 // Every effective scan is a candidate gather (under the read lock) followed by
 // streamNodeTimelines / streamRelTimelines: each candidate's timeline is read
-// by the per-entity body (nodeEffectiveTimelineLocked, under its own read lock
-// and entity lock — the snapshot rule of the per-entity door), filtered by the
+// by the per-entity body (nodeEffectiveTimelineFrom, under the read lock and
+// its entity lock — the snapshot rule of the per-entity door — through one
+// store read snapshot per scan, effective_scan_reads.go), filtered by the
 // door's row predicate, and handed to fn without graph locks. The doors differ
 // only in their candidate set and predicate; the resolution is the per-entity
 // door's, so a scan's segments of an entity equal that entity's timeline
@@ -30,52 +31,35 @@ var ErrInvalidDirection = errors.New("graph: invalid relationship direction")
 
 // streamNodeTimelines streams the effective timeline at pin of each id (in
 // order; an unknown id is skipped) as the segments whose row keep accepts
-// (keep nil: every segment); fn returning false stops.
+// (keep nil: every segment); fn returning false stops. The timelines are read
+// through streamEntityTimelines (one store snapshot per scan, backlog 55).
 func (c *Core) streamNodeTimelines(ids []types.NodeID, pin types.Instant, keep func(*types.Node) bool, fn func(temporal.NodeSegment) bool) error {
-	for _, id := range ids {
-		var segs []temporal.NodeSegment
-		err := c.readUnderRLock(func() error {
-			var err error
-			segs, err = c.nodeEffectiveTimelineLocked(id, pin)
-			return err
-		})
-		if errors.Is(err, storepkg.ErrNodeNotFound) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
+	return streamEntityTimelines(c, ids, func(rd entityReads, id types.NodeID) ([]temporal.NodeSegment, error) {
+		segs, err := c.nodeEffectiveTimelineFrom(rd, id, pin)
+		return skipUnknown(segs, err, storepkg.ErrNodeNotFound)
+	}, func(_ types.NodeID, segs []temporal.NodeSegment) bool {
 		for _, s := range segs {
 			if (keep == nil || keep(s.Node)) && !fn(s) {
-				return nil
+				return false
 			}
 		}
-	}
-	return nil
+		return true
+	})
 }
 
 // streamRelTimelines is streamNodeTimelines for relationships.
 func (c *Core) streamRelTimelines(ids []types.RelID, pin types.Instant, keep func(*types.Relationship) bool, fn func(temporal.RelSegment) bool) error {
-	for _, id := range ids {
-		var segs []temporal.RelSegment
-		err := c.readUnderRLock(func() error {
-			var err error
-			segs, err = c.relEffectiveTimelineLocked(id, pin)
-			return err
-		})
-		if errors.Is(err, storepkg.ErrRelNotFound) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
+	return streamEntityTimelines(c, ids, func(rd entityReads, id types.RelID) ([]temporal.RelSegment, error) {
+		segs, err := c.relEffectiveTimelineFrom(rd, id, pin)
+		return skipUnknown(segs, err, storepkg.ErrRelNotFound)
+	}, func(_ types.RelID, segs []temporal.RelSegment) bool {
 		for _, s := range segs {
 			if (keep == nil || keep(s.Rel)) && !fn(s) {
-				return nil
+				return false
 			}
 		}
-	}
-	return nil
+		return true
+	})
 }
 
 // firstOccurrences returns ids without repeats, in the order of their first
@@ -130,7 +114,7 @@ func (t *TempOps) ForEachNodeEffective(pin types.Instant, fn func(temporal.NodeS
 	}); err != nil {
 		return err
 	}
-	return c.streamNodeTimelines(ids, pin, nil, fn)
+	return c.streamNodeTimelines(ascending(ids), pin, nil, fn)
 }
 
 // ForEachRelEffective is ForEachNodeEffective for relationships (each
@@ -163,7 +147,7 @@ func (t *TempOps) ForEachRelEffective(pin types.Instant, fn func(temporal.RelSeg
 	}); err != nil {
 		return err
 	}
-	return c.streamRelTimelines(ids, pin, nil, fn)
+	return c.streamRelTimelines(ascending(ids), pin, nil, fn)
 }
 
 // NodesEffectiveByIDs streams NodeEffectiveTimeline(id, pin) for each id, in
@@ -296,7 +280,7 @@ func (t *TempOps) ForEachRelEffectiveAtNodes(nodeIDs []types.NodeID, dir tempora
 		}
 		return len(toks) == 0 || slices.ContainsFunc(toks, r.HasTypeTokenRaw)
 	}
-	return c.streamRelTimelines(ids, pin, keep, fn)
+	return c.streamRelTimelines(ascending(ids), pin, keep, fn)
 }
 
 // nodeLabelsCandidatesAt is nodeLabelCandidatesAt (TxPin: pin) for several
@@ -448,7 +432,7 @@ func (c *Core) forEachNodeEffectiveByLabels(labels []string, pin types.Instant, 
 	}); err != nil {
 		return err
 	}
-	return c.streamNodeTimelines(ids, pin, func(n *types.Node) bool {
+	return c.streamNodeTimelines(ascending(ids), pin, func(n *types.Node) bool {
 		return slices.ContainsFunc(toks, n.HasLabelTokenRaw)
 	}, fn)
 }

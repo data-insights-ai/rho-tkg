@@ -62,9 +62,10 @@ Where the 744 B go (analysis, component sizes):
 - `PropertySlice`: 8 properties × 32 B = 256 B (`pkg/types/propertyslice.go:76-83`, `Value any`), plus the boxed values.
 - Store maps: ~110 B. `rels`, `typeIdx`, `outIdx`, `inIdx` (`pkg/graph/store/memory/memorystore.go:60-70`).
 
-Why the disk mode is worse, not better: the badger store keeps a per-relationship
+Why the disk mode is worse, not better: the badger store kept a per-relationship
 planner-statistics memo in RAM, `relTypeClassContrib` and `relStatsContrib`
-(`pkg/graph/store/badger/badgerstore.go:594`, `:622`). It also keeps `relIDs`,
+(`pkg/graph/store/badger/badgerstore.go:594`, `:622`; removed by backlog 53, the
+delete now takes the deleted row's own contribution back out). It also keeps `relIDs`,
 `relRevs` and `typeIdx` (`:416-427`) whatever the disk flags say. In the
 analysis heap profile `heapdisk1600k` (measured, the analysis's ~1.6 M-HOP synthetic day),
 `addRelPropertyStatsCounts` and `addRelPropertyTypeClassCounts` retain 1.32 GB and

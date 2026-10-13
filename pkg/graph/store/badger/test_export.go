@@ -227,6 +227,14 @@ func (bs *Store) GCDoneForTest() <-chan struct{}    { return bs.gcDone }
 // has issued. Exported solely for tests; not for production use.
 func (bs *Store) DurableSyncCountForTest() int64 { return bs.durableSyncs.Load() }
 
+// SyncCountForTest returns the number of syncs this store asked of Badger for
+// row data: WriteBatch commits Badger synced (SyncWrites) plus DurableFlush's
+// WAL fsyncs. Badger splits a batch above its transaction size limit into
+// several synced commits; this counts the batch once. Not for production use.
+func (bs *Store) SyncCountForTest() int64 {
+	return bs.syncedFlushes.Load() + bs.durableSyncs.Load()
+}
+
 // FailNextFlushForTest makes the next flush that has something to write fail
 // with err just before its WriteBatch commits, through the real requeue path
 // (the operations go back to the pending buffer). Not for production use.
@@ -244,3 +252,12 @@ func (bs *Store) SetMoveTestHookForTest(fn func()) { bs.moveTestHook = fn }
 // SetAsOfAfterCurrentTestHookForTest installs asOfAfterCurrentTestHook (see
 // the Store field). Exported solely for tests; not for production use.
 func (bs *Store) SetAsOfAfterCurrentTestHookForTest(fn func()) { bs.asOfAfterCurrentTestHook = fn }
+
+// ReadTxnsTotalForTest reports the badger read transactions the read paths of
+// every store in this process have opened (backlog 55's seam). Not for
+// production use.
+func ReadTxnsTotalForTest() int64 { return readTxnsTotal.Load() }
+
+// OpenReadTxnsForTest reports the snapshot read transactions open in this
+// process right now (backlog 55's seam). Not for production use.
+func OpenReadTxnsForTest() int64 { return openReadTxns.Load() }

@@ -1,0 +1,39 @@
+# backlog 53 mutants, 2026-10-12T19:20:17+02:00: go test -race -run TestRelPlannerStatsMemoBounded ./pkg/graph/store/badger/
+
+## mutant: batch fallback row (badgerstore_rel_batch.go: removed 'row:     r,')
+--- FAIL: TestRelPlannerStatsMemoBounded (83.51s)
+        badgerstore_rel_planner_stats_memo_test.go:122: batch delete after a replace in the prefetch window step 1: w type classes = [10 0 1 0 0], recount [10 0 0 0 0]
+        badgerstore_rel_planner_stats_memo_test.go:122: batch delete after a replace in the prefetch window step 1: w Count = 11, recount 10
+--- FAIL: TestRelPlannerStatsMemoBoundedConcurrentDoors (1.80s)
+    badgerstore_rel_planner_stats_memo_test.go:192: round 6: w type classes = [14 0 0 0 0], recount [13 0 0 0 0]
+    badgerstore_rel_planner_stats_memo_test.go:192: round 6: w Count = 14, recount 13
+    badgerstore_rel_planner_stats_memo_test.go:192: round 6: kind type classes = [0 0 14 0 0], recount [0 0 13 0 0]
+    badgerstore_rel_planner_stats_memo_test.go:192: round 6: kind Count = 14, recount 13
+    badgerstore_rel_planner_stats_memo_test.go:192: round 6: score type classes = [14 0 0 0 0], recount [13 0 0 0 0]
+    badgerstore_rel_planner_stats_memo_test.go:192: round 6: score Count = 14, recount 13
+    badgerstore_rel_planner_stats_memo_test.go:192: round 6: tags type classes = [0 0 0 0 14], recount [0 0 0 0 13]
+    badgerstore_rel_planner_stats_memo_test.go:192: round 7: w type classes = [16 0 0 0 0], recount [15 0 0 0 0]
+
+## mutant: cascade fallback row (badgerstore_node_batch.go: removed 'row:     r,')
+--- FAIL: TestRelPlannerStatsMemoBounded (62.67s)
+        badgerstore_rel_planner_stats_memo_test.go:122: cascade after a replace in the prefetch window step 1: w type classes = [7 0 0 0 0], recount [6 0 0 0 0]
+        badgerstore_rel_planner_stats_memo_test.go:122: cascade after a replace in the prefetch window step 1: w Count = 7, recount 6
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	64.237s
+FAIL
+
+## mutant: erasure row (badgerstore_exact_erasure.go: removed 'relPlan.current.row = rel')
+--- FAIL: TestRelPlannerStatsMemoBounded (35.08s)
+        badgerstore_rel_planner_stats_memo_test.go:122: exact erasure step 1: w type classes = [12 0 0 0 0], recount [10 0 0 0 0]
+        badgerstore_rel_planner_stats_memo_test.go:122: exact erasure step 1: w Count = 12, recount 10
+        badgerstore_rel_planner_stats_memo_test.go:122: exact erasure step 1: kind type classes = [0 0 12 0 0], recount [0 0 10 0 0]
+        badgerstore_rel_planner_stats_memo_test.go:122: exact erasure step 1: kind Count = 12, recount 10
+        badgerstore_rel_planner_stats_memo_test.go:122: exact erasure step 1: score type classes = [12 0 0 0 0], recount [10 0 0 0 0]
+        badgerstore_rel_planner_stats_memo_test.go:122: exact erasure step 1: score Count = 12, recount 10
+        badgerstore_rel_planner_stats_memo_test.go:122: exact erasure step 1: tags type classes = [0 0 0 0 12], recount [0 0 0 0 10]
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	36.658s
+FAIL
+
+## unmutated
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	81.745s

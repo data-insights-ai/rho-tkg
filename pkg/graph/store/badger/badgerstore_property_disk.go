@@ -205,7 +205,7 @@ func (bs *Store) maintainPropertyIndexesPurge(id snowflake.ID) []writeOp {
 			ops = append(ops, writeOp{opType: writeOpDelete, key: kb})
 		}
 	})
-	_ = bs.db.View(func(txn *badgerv4.Txn) error {
+	_ = bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		for tok := range tokens {
@@ -272,7 +272,7 @@ func (bs *Store) propertyIndexDiskEqualityCandidatesLocked(propKeyToken uint16, 
 	})
 
 	var nids []types.NodeID
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
@@ -349,7 +349,7 @@ func (bs *Store) propertyIndexDiskRangeCandidatesLocked(propKeyToken uint16, lo,
 	})
 
 	var nids []types.NodeID
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
@@ -469,7 +469,7 @@ func (bs *Store) propertyIndexDiskRangeOrderedEntriesLocked(propKeyToken uint16,
 	})
 
 	var entries []diskOrderedEntry
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
@@ -601,7 +601,7 @@ func (bs *Store) propertyIndexDiskPrefixEntriesLocked(keyPrefix []byte) ([]diskS
 	})
 
 	var entries []diskStrOrderedEntry
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
@@ -657,7 +657,7 @@ func (bs *Store) purgePropertyKeyDiskEntriesLocked(propertyKey string) ([]writeO
 			ops = append(ops, writeOp{opType: writeOpDelete, key: keyCopy})
 		}
 	})
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)

@@ -779,7 +779,7 @@ func (mrb *mergeRollback) rollback() error {
 	//    (DeleteRelationship clears the current row but not the 0x08 history
 	//    keyspace; an interrupted with-history merge may have written rel history).
 	for _, id := range mrb.relOrder {
-		if err := c.store.DeleteRelationship(id); err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
+		if err := c.undoRelationshipCreate(0, id); err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 			grab(err)
 		}
 		if err := c.store.TruncateRelHistory(id, 0); err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {

@@ -75,8 +75,8 @@ type Core struct {
 	filteredVector        storepkg.FilteredVectorSearchCapability
 	vectorIndexOptions    storepkg.VectorIndexOptionsCapability
 	depthHistory          storepkg.DepthHistoryIterationCapability
-	deletedIter           storepkg.DeletedIterationCapability
-	deletedDepthIter      storepkg.DepthDeletedIterationCapability
+	relCreateUndo         storepkg.RelCreateUndoCapability       // undoRelationshipCreate
+	scopedRelCreateUndo   storepkg.ScopedRelCreateUndoCapability // undoRelationshipCreate
 	// exAdj is the store's ex-adjacency (backlog 50) once it covers every
 	// relationship (backfillExAdjacencyBestEffort); nil = the adjacency doors
 	// fold every relationship with history instead (forEachRelExAdjacentID).
@@ -105,6 +105,9 @@ type Core struct {
 	// chain loaded. It lets a test assert the STRUCTURAL cost of a pinned lookup
 	// (chain loads), which wall time cannot pin. nil in production.
 	chainLoadTestHook func()
+	// scanReadTestHook, when set (tests only), is called before each entity an
+	// effective scan reads, under the graph read lock (streamEntityTimelines).
+	scanReadTestHook func()
 	// belief watermarks (BACKLOG 10c): a store that maintains, per entity, the
 	// maximum TxFrom ever recorded across its whole version chain lets
 	// nodeAtLockedTx/relAtLockedTx take a SAFE current-row-only fast path for
@@ -123,6 +126,9 @@ type Core struct {
 	// resolver stays the single selection authority: the SAME resolveNodeChain
 	// runs on skeletons and again after winner hydration.
 	temporalMetaHistory storepkg.TemporalMetaHistoryCapability
+	// readSnapshots — effective scans read their timelines through one store
+	// read snapshot (backlog 55, effective_scan_reads.go). nil = per-entity reads.
+	readSnapshots storepkg.ReadSnapshotCapability
 	// currentStamps — the current-row half of LatestStamps (backlog 42): a
 	// row's stamps without the row (badger: the temporal block of a cache
 	// miss). nil = store declines or a wrapper only inherits it, so
@@ -205,6 +211,11 @@ type Core struct {
 	// (GraphTx.Commit, Batch.Execute) calls it once before returning success
 	// (flushDurableCommit). Nil = off, no flush on commit.
 	durableFlush storepkg.DurableFlushCapability
+	// flushHold is set when DurableCommit is on and the store flushes every
+	// mutation (Badger SyncWrites): a group's mutations run under c.mu.Lock
+	// with the store's per-mutation flush held, and the group's one
+	// DurableFlush makes them durable (backlog 52). Nil = no hold.
+	flushHold storepkg.MutationFlushHoldCapability
 	// allowTxBackfill enables the privileged transaction-time backfill doors:
 	// when true, create doors honor a caller-supplied tkg_tx_from (or
 	// AddWithTx) instead of stamping c.now(), and DeleteWithTx / UpdateWithTx
@@ -686,10 +697,15 @@ type Config struct {
 	// ErrCapabilityNotSupported when missing. Every in-tree backend
 	// (memory.Store, badger.Store, tiered.Store) satisfies the full
 	// composition.
-	Store                storepkg.MandatoryStore
-	BadgerDir            string
-	BadgerInMemory       bool
-	Validation           ValidationLimits
+	Store          storepkg.MandatoryStore
+	BadgerDir      string
+	BadgerInMemory bool
+	Validation     ValidationLimits
+	// SyncWrites makes the badger-backed store flush every mutation before it
+	// returns and Badger fsync each write (strict power-loss durability). Under
+	// DurableCommit the mutations of a commit group are synced together at the
+	// group's durable commit instead (see DurableCommit). Ignored when Store is
+	// provided explicitly (set it on the store's own config).
 	SyncWrites           bool
 	Compression          options.CompressionType
 	ZSTDCompressionLevel int
@@ -880,7 +896,8 @@ type Config struct {
 	// writes the pending write buffer and fsyncs the write-ahead log of every
 	// open shard that took writes. A crash after the door returned keeps the
 	// whole group; a crash before it returned can keep any subset (not
-	// promised either way). Rollback never flushes. A failed flush returns
+	// promised either way). Rollback never flushes (except under SyncWrites,
+	// below). A failed flush returns
 	// ErrCommitNotDurable: the group is committed in memory and stays pending
 	// for the next flush. Not covered: standalone mutations and
 	// concurrent-mode ingest Submit, which keep the async flush. A buffer
@@ -889,7 +906,17 @@ type Config struct {
 	// only the active memtable WAL and the current value-log file, so rows of
 	// a group whose flush filled the memtable (or a value-log file) can stay
 	// unsynced after the return — safe against a process crash, not a power
-	// loss; use SyncWrites for strict power-loss durability. New fails with
+	// loss; use SyncWrites for strict power-loss durability. With SyncWrites
+	// on a badger store a group costs one synced WriteBatch, not one sync per
+	// mutation: its mutations (each GraphTx mutation, the Batch.Execute window,
+	// a Rollback) run under the exclusive graph lock with the per-mutation
+	// flush held (store.MutationFlushHoldCapability), the held buffer flushes
+	// in steps at MaxPendingWrites, and a Rollback ends with one durable flush
+	// (part of the group can already be on disk). Side effect: with both
+	// flags, each GraphTx mutation takes the exclusive graph lock instead of
+	// the shared one, so standalone writers, readers and concurrent ingest
+	// lanes wait for each tx mutation (microseconds of in-memory work; the
+	// sync is at the commit, outside the lock). New fails with
 	// ErrCapabilityNotSupported when the store has no stable storage (memory
 	// store, BadgerInMemory, an in-memory tiered or sharded store). Default
 	// false: no flush on commit, today's behavior.
@@ -1393,39 +1420,6 @@ func depthHistoryIterationCapability(store storepkg.MandatoryStore) storepkg.Dep
 	}
 	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.DepthHistoryIterationCapability)(nil)).Elem(),
 		"ForEachNodeHistoryIDByDepth", "ForEachRelHistoryIDByDepth") {
-		return nil
-	}
-	return cap
-}
-
-func deletedIterationCapability(store storepkg.MandatoryStore) storepkg.DeletedIterationCapability {
-	cap, ok := store.(storepkg.DeletedIterationCapability)
-	if !ok {
-		return nil
-	}
-	// Deleted iteration is an optional acceleration. Wrappers that only inherit
-	// the native methods must fall through so wrapper-injected ForEach*HistoryID
-	// behaviour remains observable on the candidate-fold path.
-	if isExactNativeStore(store) {
-		return cap
-	}
-	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.DeletedIterationCapability)(nil)).Elem(),
-		"ForEachDeletedNodeID", "ForEachDeletedRelID") {
-		return nil
-	}
-	return cap
-}
-
-func depthDeletedIterationCapability(store storepkg.MandatoryStore) storepkg.DepthDeletedIterationCapability {
-	cap, ok := store.(storepkg.DepthDeletedIterationCapability)
-	if !ok {
-		return nil
-	}
-	if isExactNativeStore(store) {
-		return cap
-	}
-	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.DepthDeletedIterationCapability)(nil)).Elem(),
-		"ForEachDeletedNodeIDByDepth", "ForEachDeletedRelIDByDepth") {
 		return nil
 	}
 	return cap
@@ -1960,6 +1954,9 @@ func New(config Config) (*Core, error) {
 			return nil, fmt.Errorf("graph: Config.DurableCommit needs a store with stable storage (a disk badger, tiered or sharded store): %w", storepkg.ErrCapabilityNotSupported)
 		}
 		c.durableFlush = df
+		if h, ok := store.(storepkg.MutationFlushHoldCapability); ok && h.FlushesEveryMutation() {
+			c.flushHold = h
+		}
 	}
 	c.preEncodedPut = nativePreEncodedPut(store)
 	// Ownership-transfer put (lever #2) is independent of the §4.5 pre-encode
@@ -1988,12 +1985,11 @@ func New(config Config) (*Core, error) {
 	c.filteredVector = filteredVectorSearchCapability(store)
 	c.vectorIndexOptions = vectorIndexOptionsCapability(store)
 	c.depthHistory = depthHistoryIterationCapability(store)
-	c.deletedIter = deletedIterationCapability(store)
+	c.relCreateUndo, c.scopedRelCreateUndo = relCreateUndoCapabilities(store)
 	c.changeFeed = changeFeedCapability(store)
 	c.changeLogEnabled = changeLogStatusEnabled(store)
 	c.txLogScope = txChangeLogScope(store, c.changeLogEnabled)
 	c.scopedChangeLog = scopedTxCapability(store)
-	c.deletedDepthIter = depthDeletedIterationCapability(store)
 	c.labelTxMembers = labelTxMembershipCapability(store)
 	c.relTypeTxMembers = relTypeTxMembershipCapability(store)
 	c.labelTxLookup = labelTxMemberLookupCapability(store)
@@ -2003,6 +1999,7 @@ func New(config Config) (*Core, error) {
 	c.nodeBeliefWatermark = nodeBeliefWatermarkCapability(store)
 	c.relBeliefWatermark = relBeliefWatermarkCapability(store)
 	c.temporalMetaHistory = temporalMetaHistoryCapability(store)
+	c.readSnapshots = readSnapshotCapability(store)
 	c.currentStamps = currentStampsCapability(store)
 	c.memberIDs = memberIDsCapability(store)
 	c.relValidEnds, c.nodeValidEnds = validEndCapabilities(store)

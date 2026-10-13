@@ -60,7 +60,7 @@ func TestRelPropertyTypeClassCounts_ExactPartition(t *testing.T) {
 		}
 
 		// Node-cascade delete (b's deletion removes ALL remaining KNOWS rels via the
-		// read-free deleteRelByInfo path — the badger memoized-contribution seam).
+		// badger deleteRelByInfo seam, decrementing from each deleted row).
 		if err := g.Nodes().Delete(ctx, b.ID()); err != nil {
 			t.Fatalf("cascade delete node b: %v", err)
 		}
@@ -71,8 +71,8 @@ func TestRelPropertyTypeClassCounts_ExactPartition(t *testing.T) {
 	})
 }
 
-// TestRelPropertyTypeClassCounts_Reopen proves the badger counters + memoized
-// contributions rebuild from loadIndexes at open (so deletes after reopen still
+// TestRelPropertyTypeClassCounts_Reopen proves the badger counters rebuild
+// from loadIndexes at open (so deletes after reopen still
 // decrement precisely — the "survives restart" rule).
 func TestRelPropertyTypeClassCounts_Reopen(t *testing.T) {
 	ctx := context.Background()
@@ -104,8 +104,7 @@ func TestRelPropertyTypeClassCounts_Reopen(t *testing.T) {
 	if c, _ := g2.Stats().RelPropertyTypeClassCounts("KNOWS", "weight"); c.Numeric != 4 {
 		t.Fatalf("after reopen Numeric = %d, want 4 (counters not rebuilt)", c.Numeric)
 	}
-	// A delete after reopen must decrement — proves the contribution sidecar was
-	// rebuilt too (else the read-free delete would find no contribution and drift).
+	// A delete after reopen must decrement exactly what the rebuild counted.
 	if err := g2.Rels().Delete(ctx, first); err != nil {
 		t.Fatalf("delete after reopen: %v", err)
 	}

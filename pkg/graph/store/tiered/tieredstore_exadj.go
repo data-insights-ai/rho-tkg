@@ -12,8 +12,10 @@ var _ storecontract.ExAdjacencyCapability = (*Store)(nil)
 // Ex-adjacency on tiered (store.ExAdjacencyCapability, backlog 50). A node's
 // adjacency lives on the shard that holds the node: the out-leg of a
 // relationship on its start node's shard (with the entity), the in-leg on its
-// end node's shard. The shard that drops a leg (deleteRelByInfo,
-// DeleteRelEntityAndOut, DeleteRelIncoming) records its ex-adjacency there, and
+// end node's shard. The shard that drops a leg of a deleted relationship
+// (deleteRelByInfo, DeleteRelEntityAndOut, DeleteRelIncoming) records its
+// ex-adjacency there — a move between shards (archive, restore) or a create
+// rollback deletes nothing and records none (Remove*Placement) — and
 // a history row with other endpoints than the live row records each leg on its
 // endpoint's shard (noteHistoryRowLegs). A node may have left the shard it was
 // on (deleted, archived), so a read unions every shard the node can have

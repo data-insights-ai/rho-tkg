@@ -1,7 +1,7 @@
 package core
 
 import (
-	"errors"
+	"cmp"
 	"reflect"
 	"slices"
 
@@ -65,21 +65,22 @@ func fallbackCands[T ~int64](ids []T) []validEndCand {
 }
 
 // streamValidFrom reads each candidate's timeline (read: nil when the entity
-// is unknown), streams the segments keep accepts when one of them ends at or
-// after validFrom or is open, and hands the timeline's exact end back to the
-// index (refine; nil on the fallback) when the candidate was read at a pin at
-// or above its stamp and its bound was looser.
+// is unknown; ascending by ID, through streamEntityTimelines), streams the
+// segments keep accepts when one of them ends at or after validFrom or is
+// open, and hands the timeline's exact end back to the index (refine; nil on
+// the fallback) when the candidate was read at a pin at or above its stamp
+// and its bound was looser.
 func streamValidFrom[S any](c *Core, cands []validEndCand, pin, validFrom types.Instant,
-	read func(id int64) ([]S, error), to func(S) types.Instant, keep func(S) bool,
+	read func(rd entityReads, id int64) ([]S, error), to func(S) types.Instant, keep func(S) bool,
 	refine func(id int64, gen uint64, end types.Instant), fn func(S) bool) error {
-	for _, cd := range cands {
+	cands = slices.Clone(cands)
+	slices.SortFunc(cands, func(a, b validEndCand) int { return cmp.Compare(a.ID, b.ID) })
+	return streamEntityTimelines(c, cands, func(rd entityReads, cd validEndCand) ([]S, error) {
 		if c.chainLoadTestHook != nil {
 			c.chainLoadTestHook()
 		}
-		segs, err := read(cd.ID)
-		if err != nil {
-			return err
-		}
+		return read(rd, cd.ID)
+	}, func(cd validEndCand, segs []S) bool {
 		if refine != nil && pin >= cd.Stamp {
 			if end := segmentsEnd(segs, to); end < cd.Bound {
 				refine(cd.ID, cd.Gen, end)
@@ -93,15 +94,15 @@ func streamValidFrom[S any](c *Core, cands []validEndCand, pin, validFrom types.
 			}
 		}
 		if !reaches {
-			continue
+			return true
 		}
 		for _, s := range segs {
 			if keep(s) && !fn(s) {
-				return nil
+				return false
 			}
 		}
-	}
-	return nil
+		return true
+	})
 }
 
 // segmentsEnd is the effective valid end of a timeline (segment ValidTo, 0 =
@@ -176,17 +177,9 @@ func (t *TempOps) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom 
 		}
 	}
 	return streamValidFrom(c, cands, pin, validFrom,
-		func(id int64) ([]temporal.RelSegment, error) {
-			var segs []temporal.RelSegment
-			err := c.readUnderRLock(func() error {
-				var err error
-				segs, err = c.relEffectiveTimelineLocked(types.RelID(id), pin)
-				return err
-			})
-			if errors.Is(err, storepkg.ErrRelNotFound) {
-				return nil, nil
-			}
-			return segs, err
+		func(rd entityReads, id int64) ([]temporal.RelSegment, error) {
+			segs, err := c.relEffectiveTimelineFrom(rd, types.RelID(id), pin)
+			return skipUnknown(segs, err, storepkg.ErrRelNotFound)
 		},
 		func(s temporal.RelSegment) types.Instant { return s.ValidTo },
 		func(s temporal.RelSegment) bool { return s.Rel.HasTypeTokenRaw(tok) },
@@ -247,17 +240,9 @@ func (t *TempOps) ForEachNodeEffectiveByLabelsFrom(labels []string, pin, validFr
 		}
 	}
 	return streamValidFrom(c, cands, pin, validFrom,
-		func(id int64) ([]temporal.NodeSegment, error) {
-			var segs []temporal.NodeSegment
-			err := c.readUnderRLock(func() error {
-				var err error
-				segs, err = c.nodeEffectiveTimelineLocked(types.NodeID(id), pin)
-				return err
-			})
-			if errors.Is(err, storepkg.ErrNodeNotFound) {
-				return nil, nil
-			}
-			return segs, err
+		func(rd entityReads, id int64) ([]temporal.NodeSegment, error) {
+			segs, err := c.nodeEffectiveTimelineFrom(rd, types.NodeID(id), pin)
+			return skipUnknown(segs, err, storepkg.ErrNodeNotFound)
 		},
 		func(s temporal.NodeSegment) types.Instant { return s.ValidTo },
 		func(s temporal.NodeSegment) bool { return slices.ContainsFunc(toks, s.Node.HasLabelTokenRaw) },
