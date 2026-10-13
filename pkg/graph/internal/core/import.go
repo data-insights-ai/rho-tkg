@@ -147,6 +147,7 @@ func (o *IOOps) Import(r io.Reader, opts tkgio.ImportOptions) error {
 		return err
 	}
 	rollback.emptyTarget = emptyTarget
+	rollback.applyNodeRetention = opts.ApplyNodeRetention
 	// The replay commits the bootstrap-handoff applied-LSN watermark as it goes
 	// (see the SnapshotLSN block in importReplayRecordsLocked). Rollback unwinds
 	// the DATA, so without capturing the prior value a failed import leaves a
@@ -638,6 +639,11 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 	if err := c.importRelRetentionLocked(header.RelRetention); err != nil {
 		return err
 	}
+	if rollback != nil && rollback.applyNodeRetention {
+		if err := c.importNodeRetentionLocked(header.NodeRetention); err != nil {
+			return err
+		}
+	}
 	if header.SnapshotLSN > 0 {
 		current, err := c.appliedLSNLocked()
 		if err != nil {
@@ -941,6 +947,9 @@ type importRollback struct {
 	nodeOrder   []types.NodeID
 	rels        map[types.RelID]importRelSnapshot
 	relOrder    []types.RelID
+
+	// applyNodeRetention is ImportOptions.ApplyNodeRetention (backlog 21).
+	applyNodeRetention bool
 }
 
 type importNodeSnapshot struct {

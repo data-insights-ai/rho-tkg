@@ -36,6 +36,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `Store.PurgeRelLegResidue` (the tiered sweep primitive).
 - **Export header carries both retention watermark families** by name (omitted when no purge ran); import applies
   the relationship family, so a replica bootstrapped after a relationship purge refuses the low pins too.
+- **`io.ImportOptions.ApplyNodeRetention`** (opt-in): import also raises the node-label retention watermarks the
+  export header carries, so an import of an export taken after a node purge refuses the pins below the purge as its
+  source does. Off by default: the node watermarks are ignored, as before.
 
 ### Fixed
 
@@ -50,12 +53,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `Batch.Execute`, a purge waits for an open transaction; the wait honours `ctx`, so a purge called while its own
   goroutine holds an open transaction returns `ctx.Err()` when `ctx` ends instead of blocking for good
   (`TestRetentionPurgeWaitHonoursCtx`).
-
-### Deprecated
-
-- **`IO().Import` will apply the exported NODE retention watermarks** in a later patch (docs/stability.md ritual):
-  from this release the export header carries them; once applied, an import of an export taken after a node purge
-  refuses the pins below the purge as the source does, instead of answering them incompletely.
 
 ### Changed
 

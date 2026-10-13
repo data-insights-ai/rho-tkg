@@ -101,9 +101,8 @@ type exportHeader struct {
 	// NodeRetention is the per-label node-purge family, RelRetention the
 	// per-type relationship-purge family; omitted when no purge ever ran, so a
 	// graph without retention exports the same header as before. Import
-	// applies RelRetention (max-monotonic); NodeRetention is carried for a
-	// later release to apply (docs/stability.md: it changes what an imported
-	// graph answers below a node watermark).
+	// applies RelRetention (max-monotonic), and NodeRetention when
+	// ImportOptions.ApplyNodeRetention is set.
 	NodeRetention map[string]int64 `msgpack:"nrw,omitempty"`
 	RelRetention  map[string]int64 `msgpack:"rrw,omitempty"`
 }

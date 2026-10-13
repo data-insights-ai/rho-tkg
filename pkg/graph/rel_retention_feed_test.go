@@ -164,3 +164,43 @@ func TestRelRetentionPurgeFeed(t *testing.T) {
 		}
 	}
 }
+
+// TestImportApplyNodeRetention (backlog 21): an export taken after a node
+// purge carries the node watermark; Import ignores it by default (as before)
+// and applies it with ImportOptions.ApplyNodeRetention.
+func TestImportApplyNodeRetention(t *testing.T) {
+	ctx := context.Background()
+	src, err := graphpkg.New(graphpkg.Config{AllowRetentionPurge: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+	if _, err := src.Nodes().Add(ctx, []string{"Event"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := src.Nodes().Add(ctx, []string{"Overview"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	pin, _ := src.Temporal().NowTx()
+	if _, err := src.Admin().PurgeExpiredNodes(ctx, adminpkg.PurgePolicy{Label: "Event", Before: pin}); err != nil {
+		t.Fatal(err)
+	}
+	var snap bytes.Buffer
+	if err := src.IO().Export(&snap); err != nil {
+		t.Fatal(err)
+	}
+	for _, apply := range []bool{false, true} {
+		dst, err := graphpkg.New(graphpkg.Config{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := dst.IO().Import(bytes.NewReader(snap.Bytes()), tkgio.ImportOptions{ApplyNodeRetention: apply}); err != nil {
+			t.Fatal(err)
+		}
+		_, err = dst.Nodes().ByLabel("Overview", store.QueryOpts{TxPin: pin - 1})
+		if apply != errors.Is(err, graphpkg.ErrRetentionExpired) {
+			t.Fatalf("ApplyNodeRetention=%v: ByLabel below the node watermark err = %v", apply, err)
+		}
+		_ = dst.Close()
+	}
+}

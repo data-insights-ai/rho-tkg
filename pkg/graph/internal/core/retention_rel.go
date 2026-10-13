@@ -323,3 +323,20 @@ func relsAtTxPin(validAt, txAt types.Instant) types.Instant {
 	}
 	return validAt
 }
+
+// importNodeRetentionLocked raises this graph's node-label watermarks to the
+// imported ones (ImportOptions.ApplyNodeRetention). A name the imported
+// registry does not hold, or a non-positive value, is a corrupt export.
+// Caller holds c.mu.Lock.
+func (c *Core) importNodeRetentionLocked(byName map[string]int64) error {
+	for name, wm := range byName {
+		tok, ok := c.labels.Lookup(name)
+		if !ok || wm <= 0 {
+			return fmt.Errorf("%w: node retention watermark %q = %d", ErrCorruptExport, name, wm)
+		}
+		if err := c.advanceRetentionWatermark(tok, types.Instant(wm)); err != nil {
+			return fmt.Errorf("import: node retention watermark: %w", err)
+		}
+	}
+	return nil
+}
