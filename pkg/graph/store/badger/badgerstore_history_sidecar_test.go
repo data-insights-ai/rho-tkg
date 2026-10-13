@@ -11,9 +11,9 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 41: both packed sidecars over thousands of IDs (many table blocks),
+// Backlog 41: both columnar sidecars over thousands of IDs (table growth),
 // against the history door. The build races writers that add IDs between the
-// seeded ones; then random steps insert IDs (block splits), raise versions
+// seeded ones; then random steps insert IDs (table growth), raise versions
 // (in place), overwrite a row with lower stamps, trim all rows (delete, then
 // a probe removes the ID), truncate, re-import (trim all, rewrite from
 // version 0 with older stamps), flush, and reopen (a clean Close writes the
@@ -21,7 +21,7 @@ import (
 // After each check every ID agrees: HasHistory == (rows > 0), HistoryStamps
 // == fold(rows), and the history-ID walk (read from the presence table) ==
 // the IDs with rows.
-func TestHistorySidecars_ManyBlocksDifferential(t *testing.T) {
+func TestHistorySidecars_Differential(t *testing.T) {
 	pks, iks := presenceKinds(), idOverlayKinds()
 	for ki, sk := range stampKinds() {
 		pk, ik := pks[ki], iks[ki]

@@ -2,12 +2,14 @@ package badger
 
 import (
 	"fmt"
+	"math/rand"
 	"runtime"
 	"slices"
 	"testing"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -218,56 +220,104 @@ func medianBytes(measure func() int64) int64 {
 	return s[1]
 }
 
-// BenchmarkHistorySidecarLookup measures one HasNodeHistory and one
-// NodeHistoryStamps call on built sidecars over 10 K / 100 K / 1 M IDs with
-// history (hit) and IDs without (miss): the per-ID lookup cost the backlog 41
-// representation must not regress.
+// BenchmarkHistorySidecarAtScale measures the sidecars over 1 M rel IDs with
+// one history row each: the first call's build (scan plus install), a lookup
+// on a built sidecar (an ID with history, one without), and a history write
+// of a new random ID noted into both built sidecars (the maintenance every
+// write pays under the write-buffer lock).
 //
-//	go test ./pkg/graph/store/badger/ -run '^$' -bench BenchmarkHistorySidecarLookup -benchmem
-func BenchmarkHistorySidecarLookup(b *testing.B) {
-	for _, n := range []int{10_000, 100_000, 1_000_000} {
-		b.Run(fmt.Sprintf("ids=%d", n), func(b *testing.B) {
-			bs, err := New(Config{InMemory: true, FlushInterval: time.Hour})
-			if err != nil {
-				b.Fatal(err)
-			}
-			b.Cleanup(func() { _ = bs.Close() })
-			ids := sidecarRAMIDs(n)
-			if err := writeSidecarRAMRows(bs, ids, 0); err != nil {
-				b.Fatal(err)
-			}
-			probe := make([]types.NodeID, 4096)
-			for i := range probe {
-				probe[i] = types.NodeID(snowflake.ID(ids[(i*7919)%n]))
-			}
-			for _, door := range []string{"HasHistory", "LatestStamps"} {
-				for _, miss := range []int64{0, 1} {
-					name := door + "/hit"
-					if miss == 1 {
-						name = door + "/miss"
-					}
-					b.Run(name, func(b *testing.B) {
-						call := func(id types.NodeID) (bool, error) {
-							if door == "HasHistory" {
-								return bs.HasNodeHistory(id)
-							}
-							_, _, has, err := bs.NodeHistoryStamps(id)
-							return has, err
-						}
-						if _, err := call(probe[0]); err != nil {
-							b.Fatal(err)
-						}
-						b.ReportAllocs()
-						b.ResetTimer()
-						for i := 0; i < b.N; i++ {
-							id := probe[i%len(probe)] + types.NodeID(miss)
-							if has, err := call(id); err != nil || has == (miss == 1) {
-								b.Fatalf("%d: %v, %v", id, has, err)
-							}
-						}
-					})
-				}
-			}
-		})
+//	go test ./pkg/graph/store/badger/ -run '^$' -bench BenchmarkHistorySidecarAtScale
+func BenchmarkHistorySidecarAtScale(b *testing.B) {
+	const n = 1_000_000
+	bs, err := New(Config{InMemory: true, FlushInterval: time.Hour})
+	if err != nil {
+		b.Fatal(err)
 	}
+	b.Cleanup(func() { _ = bs.Close() })
+	if err := bs.PutNode(types.NewNode(1, 1, nil)); err != nil {
+		b.Fatal(err)
+	}
+	ids := sidecarRAMIDs(n)
+	for i, id := range ids {
+		r := types.NewRelationship(types.RelID(snowflake.ID(id)), 5, 1, 1)
+		r.SetTemporal(&types.TemporalMetadata{ValidFrom: 1, TxFrom: types.Instant(id), TxTo: types.Instant(id + 1)})
+		if err := bs.PutRelVersion(r.ID(), 0, r); err != nil {
+			b.Fatal(err)
+		}
+		if i%50_000 == 49_999 {
+			if err := bs.Flush(); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+	if err := bs.Flush(); err != nil {
+		b.Fatal(err)
+	}
+	has := func(id int64) bool {
+		ok, err := bs.HasRelHistory(types.RelID(snowflake.ID(id)))
+		if err != nil {
+			b.Fatal(err)
+		}
+		return ok
+	}
+	stamps := func(id int64) bool {
+		_, _, ok, err := bs.RelHistoryStamps(types.RelID(snowflake.ID(id)))
+		if err != nil {
+			b.Fatal(err)
+		}
+		return ok
+	}
+	b.Run("build/HasHistory", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			resetHistoryPresenceForBench(bs, &bs.histRelPresence)
+			if !has(ids[0]) {
+				b.Fatal("miss")
+			}
+		}
+	})
+	b.Run("build/LatestStamps", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			resetHistoryStampsForBench(bs, &bs.histRelStamps)
+			if !stamps(ids[0]) {
+				b.Fatal("miss")
+			}
+		}
+	})
+	probe := make([]int64, 4096)
+	for i := range probe {
+		probe[i] = ids[(i*7919)%n]
+	}
+	for _, d := range []struct {
+		name string
+		fn   func(int64) bool
+	}{{"HasHistory", has}, {"LatestStamps", stamps}} {
+		for _, miss := range []int64{0, 1} {
+			b.Run(fmt.Sprintf("lookup/%s/miss=%v", d.name, miss == 1), func(b *testing.B) {
+				for i := 0; i < b.N; i++ {
+					if d.fn(probe[i&4095]+miss) != (miss == 0) {
+						b.Fatal("wrong answer")
+					}
+				}
+			})
+		}
+	}
+	r := types.NewRelationship(types.RelID(snowflake.ID(2)), 5, 1, 1)
+	r.SetTemporal(&types.TemporalMetadata{ValidFrom: 1, TxFrom: 1_000, TxTo: 2_000})
+	value, err := storepkg.MarshalRelWire(r)
+	if err != nil {
+		b.Fatal(err)
+	}
+	rng := rand.New(rand.NewSource(41)) // #nosec G404 -- deterministic benchmark data
+	b.Run("insert/random-new-ID", func(b *testing.B) {
+		keys := make([][]byte, b.N)
+		for i := range keys {
+			keys[i] = storepkg.HistRelKey(snowflake.ID(2+2*rng.Int63n(1<<40)), 0) // even: never a seeded ID
+		}
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			bs.wbMu.Lock()
+			bs.noteHistoryKey(writeOp{opType: writeOpSet, key: keys[i], value: value})
+			bs.wbMu.Unlock()
+		}
+	})
 }

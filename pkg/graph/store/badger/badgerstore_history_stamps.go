@@ -51,10 +51,10 @@ var _ storecontract.HistoryStampsCapability = (*Store)(nil)
 // A store opened with Config.HistoryPresenceProbeOnly (tiered cold shards)
 // never builds and reads per ID.
 //
-// RAM: O(IDs with history) in a packed idTable (backlog 41): 29 B per ID (ID,
-// top, two stamps, routing) after a build, about 39 B after inserts split blocks
-// (TestHistorySidecarRAMPerID; a Go map paid 52-84 B). The build streams the
-// scan's per-ID folds into the table, so it never holds a map either.
+// RAM: O(IDs with history) in a columnar idTable (backlog 41): 28 B per slot
+// (ID, top, two stamps) at most 80 % full (TestHistorySidecarRAMPerID; a Go
+// map paid 52-84 B per ID). The build streams the scan's per-ID folds into
+// the table, so it never holds a map either.
 type historyStamps struct {
 	buildMu sync.Mutex // serializes builds; Clear holds it for its whole run
 	built   atomic.Bool
@@ -283,8 +283,8 @@ func (bs *Store) buildHistoryStamps(p *historyStamps, kind byte) error {
 // writes (overlay captured BEFORE the badger view, lesson 64; a buffered SET
 // replaces and a buffered DELETE masks its committed key) and the committed
 // rows, reading each value's temporal fields only. The committed walk visits
-// one ID's rows together in ascending ID order, so each fold streams into the
-// table as the walk leaves the ID; the buffered rows fold in afterwards.
+// one ID's rows together, so each fold goes into the table as the walk leaves
+// the ID; the buffered rows fold in afterwards.
 func (bs *Store) scanHistoryStamps(kind byte) (idTable[stampPair], error) {
 	node := kind == storepkg.KeyHistNode
 	sets := make(map[string][]byte)
@@ -309,7 +309,7 @@ func (bs *Store) scanHistoryStamps(kind byte) (idTable[stampPair], error) {
 	curID, open := snowflake.ID(0), false
 	emit := func() {
 		if open {
-			out.appendAscending(curID, cur.top, stampPair{from: cur.from, to: cur.to})
+			out.put(curID, cur.top, stampPair{from: cur.from, to: cur.to})
 		}
 	}
 	// fold folds one row into cur (the walk's ID) or, for a buffered row,

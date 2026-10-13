@@ -19,17 +19,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   timeline pointwise oracle 3 to 2, `TestCurrentStampsDifferential` 24 to 8, rel-segment differentials 3 to 2;
   Each test's coverage check still passes at the smaller size. Evidence: `tasks/evidence/ci-race/`.
 
-- **badger: the history-presence set and the history-stamps sidecar take less than half the RAM** (backlog 41).
-  Both were Go maps (presence 24-38 B per ID with history, stamps 52-84 B, both 76-121 B at 10 K-1 M IDs);
-  both are now a packed table sorted by ID (struct-of-arrays blocks of 256 IDs, a radix directory over the
-  blocks, a 16-entry summary per block), kept separate so each door still builds only its own: HasHistory and
-  the bulk as-of doors 13 B per ID after the build and 18 B after inserts split blocks, LatestStamps 29 / 39 B,
-  both 42 / 57 B (`TestHistorySidecarRAMPerID` against the v4.51.4 maps,
-  `tasks/evidence/badger-read-cost/41-02-red.txt`, `41-06-green.txt`). The stamps build streams its scan
-  into the table instead of folding into a map first. Cost: a built-set lookup takes 6-14 ns more at 1 M IDs
-  (store level 17-20 ns to 24-34 ns), a maintained history write about 40 ns more, the builds are unchanged
-  (`41-04-bench-*.txt`, loaded machine). Behaviour, lazy builds, write maintenance and `Clear` are unchanged;
-  the open image (54) does not persist either structure, a reopened store rebuilds them on first use.
+- **badger: the history-presence set and the history-stamps sidecar take about 30 % less RAM** (backlog 41).
+  Both were Go maps; both are now an open-addressing table with linear probing and columnar slots (IDs, top
+  versions, and for stamps the two stamps; at most 80 % full, delete by backward shift), kept separate so
+  each door still builds only its own. Measured per ID with history (`TestHistorySidecarRAMPerID`, built /
+  after 50 % more IDs were written): HasHistory and the bulk as-of doors 15.7-25.2 / 16.8-26.2 B (was
+  23.6-37.8 / 25.2-38.2), LatestStamps 36.7-58.7 / 39.1-61.1 B (was 52.5-83.8 / 56.0-84.7), both 52.4-83.9
+  / 55.9-87.3 B (was 76.1-121.5 / 81.2-122.9) at 10 K-1 M IDs. At 1 M rel IDs (`BenchmarkHistorySidecarAtScale`,
+  medians of 3 on a loaded machine): build 0.29 s presence / 0.53 s stamps (was 0.69 / 1.75 s), lookup
+  9-18 ns (was 24-27 ns), a history write of a new random ID noted into both built sidecars 0.70 us (was
+  1.29 us). Evidence: `tasks/evidence/badger-read-cost/41-02-red.txt`, `41-04-bench-*.txt`, `41-06-green.txt`.
+  The open image (54) persists neither structure; a reopened store rebuilds them on first use.
 
 ### Fixed
 
