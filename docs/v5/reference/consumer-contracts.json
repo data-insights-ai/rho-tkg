@@ -1032,135 +1032,333 @@
     "Present": "PropertyTypeClassCounts value receiver; return sum of Numeric, NaN, String, Bool, Other (excluding Missing)"
   },
   "current_v4_source_delta": {
-    "captured_date": "2026-10-12",
+    "captured_date": "2026-10-13",
     "repository": "rho-tkg",
-    "commit": "dbd74cf45c65c1086798012e92453315cab75143",
-    "tree": "072c1c0647294462de8a9599cd0ccf30989e9509",
-    "release": "v4.51.1",
-    "previous_integrated_main": "44303a17a391d663cd48567c55bbb9ee85cdf892",
-    "extends_historical_source_delta": "source_delta_history[0] (v4.51.0); its obligations and evidence remain unchanged",
-    "evidence_level": "Source-only integration, not behavioral/consumer/phase acceptance. Historical consumer signatures and v4.51.0 qualification remain unchanged.",
-    "qualification": "The v4.51.1 reader passes all ten narrow migration-preflight gates; see tools/v5-migrate/evidence/main4511-993e89a6.json. Aggregate/hosted gates and consumer integration remain separate. Historical v4.51.0 evidence is unchanged.",
-    "dependencies": "No upstream go.mod/go.sum, nested v5/tool module or workflow/gate changes. The migration module now requires v4.51.1 and its local replacement selects the integrated root reader. This prepares requalification; archived receipts retain their original reader pins.",
+    "commit": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
+    "tree": "bff43cd530891fdafeaff327e8db3ef6b49e93b7",
+    "release": "v4.51.3",
+    "previous_integrated_main": "cddc099789f04ab3889a13f5ad62e039da2767f3",
+    "extends_historical_source_delta": "source_delta_history preserves v4.51.0/v4.51.1 pins, obligations and passing receipts unchanged; v4.51.2 source obligations are explicitly included here.",
+    "evidence_level": "Source-only main reconciliation; signatures/source hashes do not establish behavioral, adapter or phase acceptance.",
+    "qualification": "v4.51.3 current reader qualification PENDING. Existing ten-gate v4.51.1 receipt tools/v5-migrate/evidence/main4511-993e89a6.json remains historical; new source/evidence must name the integrated root and v4.51.3 reader.",
+    "dependencies": "Upstream root go.mod/go.sum and workflow unchanged. Migration module require is prepared at v4.51.3 with local root/v5 replacements; no runtime or checksum download performed. Focused v5 CI policy and qualified v5 sources remain unchanged.",
     "contract_extensions": [
       {
-        "id": "v4511-current-and-history-stamps",
-        "v4_doors": [
-          "CurrentStampsCapability.NodeCurrentStamps(id types.NodeID) (RowStamps, error)",
-          "CurrentStampsCapability.RelCurrentStamps(id types.RelID) (RowStamps, error)",
-          "RowStamps{TxFrom, TxTo, DeletedAt types.Instant; Version uint32}",
-          "HistoryStampsCapability.NodeHistoryStamps(id types.NodeID) (txFrom, txTo types.Instant, has bool, err error)",
-          "HistoryStampsCapability.RelHistoryStamps(id types.RelID) (txFrom, txTo types.Instant, has bool, err error)"
+        "id": "v4512-retained-lives-adjacency-valid-end",
+        "contract": [
+          "ExAdjacencyCapability.ForEachExAdjacentRelID(nodeID types.NodeID, incoming bool, fn func(types.RelID) bool) error",
+          "ExAdjacencyCapability.NoteExAdjacentRel(id types.RelID, startID, endID types.NodeID) error",
+          "RelValidEndCapability.RelValidEndCandidates(typeToken uint16, pin, validFrom types.Instant) ([]ValidEndCandidate, error)",
+          "RelValidEndCapability.RefineRelValidEnd(id types.RelID, gen uint64, end types.Instant)",
+          "NodeValidEndCapability.NodeValidEndCandidates(labelTokens []uint16, pin, validFrom types.Instant) ([]ValidEndCandidate, error)",
+          "NodeValidEndCapability.RefineNodeValidEnd(id types.NodeID, gen uint64, end types.Instant)"
         ],
-        "mapping_obligation": "consumer-migration.json: current_v4_source_delta.obligations/v4511-current-and-history-stamps",
-        "acceptance_status": "pending-v5"
+        "required_v5_mapping": "Source histories must remain reachable across tiered shard changes/reimported lives. Current adjacency union ex-adjacency is a sound historical candidate superset; duplicate/unordered IDs need exact resolver filtering. Actual deletes/history endpoints keep both legs; old existing legs cannot be erased merely because they also look like move/undo residue. Valid-end bounds only prune where sound at the requested belief pin; ValidTo==validFrom counts, open/untimed rows and invalidated/unknown bounds remain candidates. Callback false/pin/retention refusals and node/relationship parity persist; neither candidate index certifies a cut.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
+            "path": "pkg/graph/store/capabilities.go",
+            "sha256": "a890fd977b1bb50abbda48ffe2610e359da4a5d67c2f5f32e127801bb3ca2c51",
+            "matching_lines": [
+              862
+            ],
+            "anchor": "type ExAdjacencyCapability"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
+            "path": "pkg/graph/store/valid_end.go",
+            "sha256": "b39aad7c7b5884a11fe9eb3a7f4a791a6739c7d1fccb1991020c2b55cc42b196",
+            "matching_lines": [
+              57
+            ],
+            "anchor": "type RelValidEndCapability"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
+            "path": "pkg/graph/store/tiered/tieredstore_read_history_rel.go",
+            "sha256": "d9772664e75ea39433ee3420b364b11247c060406e40d5a598424a52d64876bc",
+            "matching_lines": [
+              80,
+              92,
+              114,
+              660,
+              679
+            ],
+            "anchor": "GetRelHistory"
+          }
+        ],
+        "required_tests": [
+          "Deleted/reimported cross-shard node and relationship history, changed endpoints and old pins match timeline/state oracle.",
+          "Valid-end equal-boundary, open/untimed, retracted, reverse-order imported rows and stale generation/pin checks retain exact sets."
+        ],
+        "ownership": "rho exact storage/access/preservation; sigma/ai-soc adapter consumption in their repositories",
+        "acceptance_status": "pending-v5",
+        "title": "Retained tiered lives, ex-adjacency and valid-end candidates (4.51.2)"
       },
       {
-        "id": "v4511-member-id-candidates",
-        "v4_doors": [
-          "MemberIDsCapability.NodeIDsByLabel(labelToken uint16) ([]types.NodeID, error)",
-          "MemberIDsCapability.RelIDsByType(typeToken uint16) ([]types.RelID, error)"
+        "id": "v4513-live-read-snapshot",
+        "contract": [
+          "ReadSnapshotCapability.NewReadSnapshot() ReadSnapshot",
+          "ReadSnapshot.GetNode(id types.NodeID) (*types.Node, error)",
+          "ReadSnapshot.GetRelationship(id types.RelID) (*types.Relationship, error)",
+          "ReadSnapshot.HasNodeHistory(id types.NodeID) (bool, error)",
+          "ReadSnapshot.HasRelHistory(id types.RelID) (bool, error)",
+          "ReadSnapshot.NodeHistoryTemporalMeta(id types.NodeID) ([]VersionTemporalMeta, error)",
+          "ReadSnapshot.RelHistoryTemporalMeta(id types.RelID) ([]VersionTemporalMeta, error)",
+          "ReadSnapshot.GetNodeVersion(id types.NodeID, version uint32) (*types.Node, error)",
+          "ReadSnapshot.GetRelVersion(id types.RelID, version uint32) (*types.Relationship, error)",
+          "ReadSnapshot.GetNodeHistory(id types.NodeID) ([]*types.Node, error)",
+          "ReadSnapshot.GetRelHistory(id types.RelID) ([]*types.Relationship, error)",
+          "ReadSnapshot.Release()",
+          "ReadSnapshot.Close()"
         ],
-        "mapping_obligation": "consumer-migration.json: current_v4_source_delta.obligations/v4511-member-id-candidates",
-        "acceptance_status": "pending-v5"
+        "required_v5_mapping": "An accelerator answers the per-entity store read at the moment of each call, consulting live cache/overlay and re-pinning after commitGen changes; it is not a frozen graph-wide read, retention lease or certified cut. It is not concurrency-safe. Hold store lifecycle exclusion during reads and Release all iterator/transaction pins before callback or exclusion release; Close is idempotent Release and the next read can re-open. Graph effective scans buffer at most 256 candidate timelines per read-lock hold, emit outside locks and may pre-read up to255 unused candidates after false; by-ID first-occurrence order and declared relationship semantics remain. Explicit native/wrapper capability negotiation cannot bypass overridden row methods; memory/tiered retain ordinary fallback. Importer source quiescence still covers writes/imports/retention/DDL across the whole preflight.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
+            "path": "pkg/graph/store/read_snapshot.go",
+            "sha256": "88bdafb2fb10447368dc746c2ccd270808d3b2116b6e60e2ed1af4fe4966e354",
+            "matching_lines": [
+              27
+            ],
+            "anchor": "type ReadSnapshot interface"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
+            "path": "pkg/graph/internal/core/effective_scan_reads.go",
+            "sha256": "9ae8c68e53ccf5296faf2ad4d5eabb8705b454e877b5807de4f0f30f53a57e9e",
+            "matching_lines": [
+              155
+            ],
+            "anchor": "func streamEntityTimelines"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
+            "path": "pkg/graph/store/badger/badgerstore_read_snapshot.go",
+            "sha256": "a11a9e9bd35c1b65cf7144b782ad4b8b22608b80bea0703e063f5afc6577679c",
+            "matching_lines": [
+              89
+            ],
+            "anchor": "func (s *readSnapshot) pinned"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
+            "path": "pkg/graph/store/sharded/read_snapshot.go",
+            "sha256": "9c9509807b9ee515fece3a4f83187469731f67bea03bc500cf52613b3b21107f",
+            "matching_lines": [
+              15
+            ],
+            "anchor": "func (s *Store) NewReadSnapshot"
+          }
+        ],
+        "required_tests": [
+          "Per-entity oracle parity through pending overlay, commit/flush/Clear windows, deleted/reimported lives, duplicate IDs and chunk boundaries.",
+          "Callbacks mutate/reenter/early-stop with no open read transaction or iterator pins; wrapper overrides, sharded slots and unsupported fallback remain authoritative."
+        ],
+        "ownership": "rho exact storage/access/preservation; sigma/ai-soc adapter consumption in their repositories",
+        "acceptance_status": "pending-v5",
+        "title": "ReadSnapshot accelerator and chunked scans (4.51.3)"
       },
       {
-        "id": "v4511-column-other-and-type-alignment",
-        "v4_doors": [
-          "ColumnData.Other [][]bool",
-          "RelColumnOtherSource.Other(i, c int) bool",
-          "ClassifyScalar(v any) (k ColumnKind, i64 int64, f64 float64, s string, b bool, ok bool)"
+        "id": "v4513-mutation-flush-hold",
+        "contract": [
+          "MutationFlushHoldCapability.FlushesEveryMutation() bool",
+          "MutationFlushHoldCapability.HoldMutationFlushes()",
+          "MutationFlushHoldCapability.ReleaseMutationFlushes()"
         ],
-        "mapping_obligation": "consumer-migration.json: current_v4_source_delta.obligations/v4511-column-other-and-type-alignment",
-        "acceptance_status": "pending-v5"
+        "required_v5_mapping": "FlushesEveryMutation gates the optional badger-only hold. Caller holds exclusive graph mutation lock for each hold and performs DurableFlush before durable acknowledgement; Release does not flush. The configured pending bound can cause multiple intermediate flushes (negative disables it), and rollback restores end in a durable flush. Standalone writes stay synced; failure at group flush is ErrCommitNotDurable with the group already visible/committed in memory and retryable pending durability. GroupCommitCapability stays separate and unchanged. This timing/power-loss improvement does not create v5 atomic groups or private-write isolation from v4 timestamps or buffered rows.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
+            "path": "pkg/graph/store/capabilities.go",
+            "sha256": "a890fd977b1bb50abbda48ffe2610e359da4a5d67c2f5f32e127801bb3ca2c51",
+            "matching_lines": [
+              1493
+            ],
+            "anchor": "type MutationFlushHoldCapability"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
+            "path": "pkg/graph/store/badger/badgerstore_flush_hold.go",
+            "sha256": "73d928e070244937b525846e7528c49f3b560375bb6dfd267b6cf0e68ffb690f",
+            "matching_lines": [
+              17
+            ],
+            "anchor": "func (bs *Store) HoldMutationFlushes"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
+            "path": "pkg/graph/internal/core/durable_commit.go",
+            "sha256": "f09d2afc21c002d6416e57d2c3f44377e948b44f75ed8da7329b66f6fd63920e",
+            "matching_lines": [
+              48
+            ],
+            "anchor": "func (c *Core) flushHeldGroup"
+          }
+        ],
+        "required_tests": [
+          "Bounded split group, rollback, failed flush/retry and concurrent standalone writes preserve errors.Is and documented before-return subset semantics; actual sync count/durable reopen are separate from atomicity."
+        ],
+        "ownership": "rho exact storage/access/preservation; sigma/ai-soc adapter consumption in their repositories",
+        "acceptance_status": "pending-v5",
+        "title": "SyncWrites durable commit group hold (4.51.3)"
       },
       {
-        "id": "v4511-broader-declared-effective-scans",
-        "v4_doors": [
-          "ForEachNodeEffective(pin types.Instant, fn func(NodeSegment) bool) error",
-          "ForEachRelEffective(pin types.Instant, fn func(RelSegment) bool) error",
-          "NodesEffectiveByIDs(ids []types.NodeID, pin types.Instant, fn func(NodeSegment) bool) error",
-          "RelsEffectiveByIDs(ids []types.RelID, pin types.Instant, fn func(RelSegment) bool) error",
-          "ForEachRelEffectiveAtNodes(nodeIDs []types.NodeID, dir Direction, relTypes []string, pin types.Instant, fn func(RelSegment) bool) error",
-          "ForEachNodeEffectiveByLabels(labels []string, pin types.Instant, fn func(NodeSegment) bool) error",
-          "Direction uint8: Outgoing=1, Incoming=2; graph.ErrInvalidDirection"
+        "id": "v4513-create-undo-placement",
+        "contract": [
+          "RelCreateUndoCapability.UndoRelationshipCreate(id types.RelID) error",
+          "ScopedRelCreateUndoCapability.UndoRelationshipCreateScoped(id types.RelID, token uint64) error",
+          "badger.Store.RemoveRelEntityAndOutPlacement(id snowflake.ID) (RelDeleteInfo, error)",
+          "badger.Store.RemoveRelIncomingPlacement(info RelDeleteInfo) error"
         ],
-        "mapping_obligation": "consumer-migration.json: current_v4_source_delta.obligations/v4511-broader-declared-effective-scans",
-        "acceptance_status": "pending-v5"
+        "required_v5_mapping": "UndoRelationshipCreate is DeleteRelationship with the same typed errors/change record, but without ex-adjacency for never-committed creates. Scoped token0 uses plain undo. Core uses native/explicit wrapper declaration only; inherited hooks are refused and fallback DeleteRelationship remains sound with extra candidates. Tiered placement removal suppresses ex-legs for live moves, while genuine deletes retain both legs. Existing ex-adjacency keys have no origin proof and cannot be blindly cleaned because earlier deleted lives may still need them. V5 imports logical history/identity and declared provenance, not stale candidate keys as graph facts.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
+            "path": "pkg/graph/store/capabilities.go",
+            "sha256": "a890fd977b1bb50abbda48ffe2610e359da4a5d67c2f5f32e127801bb3ca2c51",
+            "matching_lines": [
+              875
+            ],
+            "anchor": "type RelCreateUndoCapability"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
+            "path": "pkg/graph/internal/core/rel_create_undo.go",
+            "sha256": "50c50e888d024a27944d429ae167fbdf2bd12a4d195a10bb6383fbbfa93918a8",
+            "matching_lines": [
+              19
+            ],
+            "anchor": "func (c *Core) undoRelationshipCreate"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
+            "path": "pkg/graph/store/badger/badgerstore_partial.go",
+            "sha256": "f5357705c0c349eb64140272c06bcc46c68d387adfeefd3fa94247e3f01c548b",
+            "matching_lines": [
+              195
+            ],
+            "anchor": "func (bs *Store) RemoveRelEntityAndOutPlacement"
+          }
+        ],
+        "required_tests": [
+          "Failed create, GraphTx/batch/import/ImportMerge undo and tiered cross-shard move leave no new false legs; real deletes retain old-cut endpoint completeness and wrapper/scoped failures preserve sentinels."
+        ],
+        "ownership": "rho exact storage/access/preservation; sigma/ai-soc adapter consumption in their repositories",
+        "acceptance_status": "pending-v5",
+        "title": "Undone creates and placement moves avoid false historical legs (4.51.3)"
+      },
+      {
+        "id": "v4513-derived-open-image-stats",
+        "contract": [],
+        "required_v5_mapping": "The CRC-protected open image is derived acceleration and trusted only if its header is the newest badger commit; missing/corrupt/old/foreign-write images fall back to full row rebuild. Writable rebuild repairs stale/missing label/type/adjacency keys before a future image; read-only rebuild repairs/writes no image and failed repair suppresses image. Clean-open corruption can surface when the row is read instead of during rebuild. Raw delete-only external writes can compact away and defeat newest-header detection; no raw-writer completeness claim. Restored NDV retains deleted earlier-session values (never decreases), dirty extrema still rescan, absent/disabled stats defer until first stats read and failed scan stays deferred. Relationship stats remove the actual old-row contribution rather than per-rel resident memos; tiered split-write stats remain exact but tiered capability decline is not zero. Import/export must validate actual source rows/semantics, preserve opaque raw evidence and not treat derived images, counts or sketches as certified truth.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
+            "path": "pkg/graph/store/badger/badgerstore_open_image.go",
+            "sha256": "9089b3fe136676422420e33e6dc9b11672f778cf6cc708d80b7677a107a8cc8c",
+            "matching_lines": [
+              43
+            ],
+            "anchor": "const openImageName"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
+            "path": "pkg/graph/store/badger/badgerstore_index_repair.go",
+            "sha256": "4e65c82bd27d9669fb9a6bbe776ae167d525b739ea4482b4220d78f65e4ec8bb",
+            "matching_lines": [
+              102
+            ],
+            "anchor": "func (bs *Store) commitKeyRepair"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
+            "path": "pkg/graph/store/badger/badgerstore_planner_stats_deferred.go",
+            "sha256": "075ccf1756d56feca56e8c53c33b6079109719f286ef1fa69a06a5be194ddfe6",
+            "matching_lines": [
+              50
+            ],
+            "anchor": "func (bs *Store) ensurePlannerStats"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
+            "path": "pkg/graph/store/badger/badgerstore_rel_property_stats.go",
+            "sha256": "5da0d52f4df46c130096b837a5ee0b8c37a9b72c06bcc60a41067f34bce84823",
+            "matching_lines": [
+              148,
+              152
+            ],
+            "anchor": "removeRelPropertyStatsCounts"
+          }
+        ],
+        "required_tests": [
+          "Clean-image/full-rebuild effective timeline and index parity, damaged/foreign/crashed/read-only cases, stale-key repair failure and LabelIndexOnDisk temporal envelopes.",
+          "Preserve/stat-price exact counts versus estimated NDV and dirty min/max after deletion/reopen; DisablePlannerStats/unsupported errors remain explicit; row codecs and migration findings remain stable."
+        ],
+        "ownership": "rho exact storage/access/preservation; sigma/ai-soc adapter consumption in their repositories",
+        "acceptance_status": "pending-v5",
+        "title": "Clean reopen image, stale-key repair and planner statistics (4.51.3)"
       }
     ],
-    "source_evidence": [
-      {
-        "repository": "rho-tkg",
-        "commit": "dbd74cf45c65c1086798012e92453315cab75143",
-        "path": "pkg/graph/store/current_stamps.go",
-        "sha256": "8d94c4cb719b7056c41e7b1df0e0fd3f4718274a6cba7d1c958b4cd535a9e315",
-        "matching_lines": [
-          44
-        ],
-        "anchor": "type CurrentStampsCapability"
-      },
-      {
-        "repository": "rho-tkg",
-        "commit": "dbd74cf45c65c1086798012e92453315cab75143",
-        "path": "pkg/graph/store/history_stamps.go",
-        "sha256": "d80ab0d0e333cd9756bf767b7b81cafdb13eeb36b72834fc4403f2e5d3ac725f",
-        "matching_lines": [
-          20
-        ],
-        "anchor": "type HistoryStampsCapability"
-      },
-      {
-        "repository": "rho-tkg",
-        "commit": "dbd74cf45c65c1086798012e92453315cab75143",
-        "path": "pkg/graph/store/member_ids.go",
-        "sha256": "78faccf03f68d145aa9b2b89818055152abaa8f2ebb348e87493a639650cb8f6",
-        "matching_lines": [
-          19
-        ],
-        "anchor": "type MemberIDsCapability"
-      },
-      {
-        "repository": "rho-tkg",
-        "commit": "dbd74cf45c65c1086798012e92453315cab75143",
-        "path": "pkg/graph/store/capabilities.go",
-        "sha256": "8031dc7d18bbd6b733bbb4d50679651e20b853dd8a774b8907506a99a1ca34a2",
-        "matching_lines": [
-          1346
-        ],
-        "anchor": "Other [][]bool"
-      },
-      {
-        "repository": "rho-tkg",
-        "commit": "dbd74cf45c65c1086798012e92453315cab75143",
-        "path": "pkg/graph/store/column_batch_build.go",
-        "sha256": "11ac76537e15a1adb5675408c8c2535579dc3be7f906b0431667bdccf143601f",
-        "matching_lines": [
-          425
-        ],
-        "anchor": "type RelColumnOtherSource"
-      },
-      {
-        "repository": "rho-tkg",
-        "commit": "dbd74cf45c65c1086798012e92453315cab75143",
-        "path": "pkg/graph/temporal/api.go",
-        "sha256": "c3f0233aff9dd2af3782baf90ba52d26cb55114b6783276e607e2358f78fd2af",
-        "matching_lines": [
-          16
-        ],
-        "anchor": "type Ops interface"
-      },
-      {
-        "repository": "rho-tkg",
-        "commit": "dbd74cf45c65c1086798012e92453315cab75143",
-        "path": "pkg/graph/temporal/segment.go",
-        "sha256": "d9d1a992e3c93b7015c151489edec7aebcc020ac271ff6a1abf1008dbe240bc1",
-        "matching_lines": [
-          33
-        ],
-        "anchor": "type Direction"
-      }
-    ]
+    "interfaces": {
+      "ExAdjacencyCapability": [
+        "ForEachExAdjacentRelID(nodeID types.NodeID, incoming bool, fn func(types.RelID) bool) error",
+        "NoteExAdjacentRel(id types.RelID, startID, endID types.NodeID) error"
+      ],
+      "RelCreateUndoCapability": [
+        "UndoRelationshipCreate(id types.RelID) error"
+      ],
+      "ScopedRelCreateUndoCapability": [
+        "UndoRelationshipCreateScoped(id types.RelID, token uint64) error"
+      ],
+      "MutationFlushHoldCapability": [
+        "FlushesEveryMutation() bool",
+        "HoldMutationFlushes()",
+        "ReleaseMutationFlushes()"
+      ],
+      "ReadSnapshotCapability": [
+        "NewReadSnapshot() ReadSnapshot"
+      ],
+      "ReadSnapshot": [
+        "GetNode(id types.NodeID) (*types.Node, error)",
+        "GetRelationship(id types.RelID) (*types.Relationship, error)",
+        "HasNodeHistory(id types.NodeID) (bool, error)",
+        "HasRelHistory(id types.RelID) (bool, error)",
+        "NodeHistoryTemporalMeta(id types.NodeID) ([]VersionTemporalMeta, error)",
+        "RelHistoryTemporalMeta(id types.RelID) ([]VersionTemporalMeta, error)",
+        "GetNodeVersion(id types.NodeID, version uint32) (*types.Node, error)",
+        "GetRelVersion(id types.RelID, version uint32) (*types.Relationship, error)",
+        "GetNodeHistory(id types.NodeID) ([]*types.Node, error)",
+        "GetRelHistory(id types.RelID) ([]*types.Relationship, error)",
+        "Release()",
+        "Close()"
+      ],
+      "RelValidEndCapability": [
+        "RelValidEndCandidates(typeToken uint16, pin, validFrom types.Instant) ([]ValidEndCandidate, error)",
+        "RefineRelValidEnd(id types.RelID, gen uint64, end types.Instant)"
+      ],
+      "NodeValidEndCapability": [
+        "NodeValidEndCandidates(labelTokens []uint16, pin, validFrom types.Instant) ([]ValidEndCandidate, error)",
+        "RefineNodeValidEnd(id types.NodeID, gen uint64, end types.Instant)"
+      ]
+    }
   },
   "source_delta_history": [
     {
@@ -1237,6 +1435,137 @@
         "LabelTxMemberLookupCapability": "LabelTxMembersOf(token uint16, ids []types.NodeID, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error",
         "RelTypeTxMemberLookupCapability": "RelTypeTxMembersOf(token uint16, ids []types.RelID, fn func(id types.RelID, firstTxFrom types.Instant) bool) error"
       }
+    },
+    {
+      "captured_date": "2026-10-12",
+      "repository": "rho-tkg",
+      "commit": "dbd74cf45c65c1086798012e92453315cab75143",
+      "tree": "072c1c0647294462de8a9599cd0ccf30989e9509",
+      "release": "v4.51.1",
+      "previous_integrated_main": "44303a17a391d663cd48567c55bbb9ee85cdf892",
+      "extends_historical_source_delta": "source_delta_history[0] (v4.51.0); its obligations and evidence remain unchanged",
+      "evidence_level": "Source-only integration, not behavioral/consumer/phase acceptance. Historical consumer signatures and v4.51.0 qualification remain unchanged.",
+      "qualification": "The v4.51.1 reader passes all ten narrow migration-preflight gates; see tools/v5-migrate/evidence/main4511-993e89a6.json. Aggregate/hosted gates and consumer integration remain separate. Historical v4.51.0 evidence is unchanged.",
+      "dependencies": "No upstream go.mod/go.sum, nested v5/tool module or workflow/gate changes. The migration module now requires v4.51.1 and its local replacement selects the integrated root reader. This prepares requalification; archived receipts retain their original reader pins.",
+      "contract_extensions": [
+        {
+          "id": "v4511-current-and-history-stamps",
+          "v4_doors": [
+            "CurrentStampsCapability.NodeCurrentStamps(id types.NodeID) (RowStamps, error)",
+            "CurrentStampsCapability.RelCurrentStamps(id types.RelID) (RowStamps, error)",
+            "RowStamps{TxFrom, TxTo, DeletedAt types.Instant; Version uint32}",
+            "HistoryStampsCapability.NodeHistoryStamps(id types.NodeID) (txFrom, txTo types.Instant, has bool, err error)",
+            "HistoryStampsCapability.RelHistoryStamps(id types.RelID) (txFrom, txTo types.Instant, has bool, err error)"
+          ],
+          "mapping_obligation": "consumer-migration.json: current_v4_source_delta.obligations/v4511-current-and-history-stamps",
+          "acceptance_status": "pending-v5"
+        },
+        {
+          "id": "v4511-member-id-candidates",
+          "v4_doors": [
+            "MemberIDsCapability.NodeIDsByLabel(labelToken uint16) ([]types.NodeID, error)",
+            "MemberIDsCapability.RelIDsByType(typeToken uint16) ([]types.RelID, error)"
+          ],
+          "mapping_obligation": "consumer-migration.json: current_v4_source_delta.obligations/v4511-member-id-candidates",
+          "acceptance_status": "pending-v5"
+        },
+        {
+          "id": "v4511-column-other-and-type-alignment",
+          "v4_doors": [
+            "ColumnData.Other [][]bool",
+            "RelColumnOtherSource.Other(i, c int) bool",
+            "ClassifyScalar(v any) (k ColumnKind, i64 int64, f64 float64, s string, b bool, ok bool)"
+          ],
+          "mapping_obligation": "consumer-migration.json: current_v4_source_delta.obligations/v4511-column-other-and-type-alignment",
+          "acceptance_status": "pending-v5"
+        },
+        {
+          "id": "v4511-broader-declared-effective-scans",
+          "v4_doors": [
+            "ForEachNodeEffective(pin types.Instant, fn func(NodeSegment) bool) error",
+            "ForEachRelEffective(pin types.Instant, fn func(RelSegment) bool) error",
+            "NodesEffectiveByIDs(ids []types.NodeID, pin types.Instant, fn func(NodeSegment) bool) error",
+            "RelsEffectiveByIDs(ids []types.RelID, pin types.Instant, fn func(RelSegment) bool) error",
+            "ForEachRelEffectiveAtNodes(nodeIDs []types.NodeID, dir Direction, relTypes []string, pin types.Instant, fn func(RelSegment) bool) error",
+            "ForEachNodeEffectiveByLabels(labels []string, pin types.Instant, fn func(NodeSegment) bool) error",
+            "Direction uint8: Outgoing=1, Incoming=2; graph.ErrInvalidDirection"
+          ],
+          "mapping_obligation": "consumer-migration.json: current_v4_source_delta.obligations/v4511-broader-declared-effective-scans",
+          "acceptance_status": "pending-v5"
+        }
+      ],
+      "source_evidence": [
+        {
+          "repository": "rho-tkg",
+          "commit": "dbd74cf45c65c1086798012e92453315cab75143",
+          "path": "pkg/graph/store/current_stamps.go",
+          "sha256": "8d94c4cb719b7056c41e7b1df0e0fd3f4718274a6cba7d1c958b4cd535a9e315",
+          "matching_lines": [
+            44
+          ],
+          "anchor": "type CurrentStampsCapability"
+        },
+        {
+          "repository": "rho-tkg",
+          "commit": "dbd74cf45c65c1086798012e92453315cab75143",
+          "path": "pkg/graph/store/history_stamps.go",
+          "sha256": "d80ab0d0e333cd9756bf767b7b81cafdb13eeb36b72834fc4403f2e5d3ac725f",
+          "matching_lines": [
+            20
+          ],
+          "anchor": "type HistoryStampsCapability"
+        },
+        {
+          "repository": "rho-tkg",
+          "commit": "dbd74cf45c65c1086798012e92453315cab75143",
+          "path": "pkg/graph/store/member_ids.go",
+          "sha256": "78faccf03f68d145aa9b2b89818055152abaa8f2ebb348e87493a639650cb8f6",
+          "matching_lines": [
+            19
+          ],
+          "anchor": "type MemberIDsCapability"
+        },
+        {
+          "repository": "rho-tkg",
+          "commit": "dbd74cf45c65c1086798012e92453315cab75143",
+          "path": "pkg/graph/store/capabilities.go",
+          "sha256": "8031dc7d18bbd6b733bbb4d50679651e20b853dd8a774b8907506a99a1ca34a2",
+          "matching_lines": [
+            1346
+          ],
+          "anchor": "Other [][]bool"
+        },
+        {
+          "repository": "rho-tkg",
+          "commit": "dbd74cf45c65c1086798012e92453315cab75143",
+          "path": "pkg/graph/store/column_batch_build.go",
+          "sha256": "11ac76537e15a1adb5675408c8c2535579dc3be7f906b0431667bdccf143601f",
+          "matching_lines": [
+            425
+          ],
+          "anchor": "type RelColumnOtherSource"
+        },
+        {
+          "repository": "rho-tkg",
+          "commit": "dbd74cf45c65c1086798012e92453315cab75143",
+          "path": "pkg/graph/temporal/api.go",
+          "sha256": "c3f0233aff9dd2af3782baf90ba52d26cb55114b6783276e607e2358f78fd2af",
+          "matching_lines": [
+            16
+          ],
+          "anchor": "type Ops interface"
+        },
+        {
+          "repository": "rho-tkg",
+          "commit": "dbd74cf45c65c1086798012e92453315cab75143",
+          "path": "pkg/graph/temporal/segment.go",
+          "sha256": "d9d1a992e3c93b7015c151489edec7aebcc020ac271ff6a1abf1008dbe240bc1",
+          "matching_lines": [
+            33
+          ],
+          "anchor": "type Direction"
+        }
+      ]
     }
   ]
 }

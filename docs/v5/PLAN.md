@@ -914,19 +914,25 @@ A build or that smoke suite alone cannot establish semantic compatibility.
    `TxAt` no longer implies valid-at-now, other readers cannot observe a
    `GraphTx`'s private writes, and IDs no longer encode placement. Those changes are listed per consumer in V6.
 
-#### Current v4 compatibility delta (cutoff 2026-10-12)
+#### Current v4 compatibility delta (cutoff 2026-10-13)
 
 The current rho source baseline for this acceptance record is main
-`dbd74cf45c65c1086798012e92453315cab75143`, **v4.51.1**. This extends the
+`6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1`, **v4.51.3**, following integrated
+`cddc0997`/v4.51.2. This extends the
 historical consumer inventories above; their commits/hashes and old reproduction
 runs remain historical and unchanged. It does not assert that those consumers
 have upgraded or that a v5 adapter/importer has passed.
 
 | Current v4 contract | Required v5 mapping / consumer obligation |
 |---|---|
+| Retained lives, ex-adjacency and valid-end scans (v4.51.2) | Preserve earlier tiered lives across reimport/shard changes, both historical endpoint directions and exact resolver filtering of current/ex-adjacency supersets. Valid-end candidates are sound bounds, not answers: equal end boundary counts, open/untimed and unknown/stale/past-pin rows remain eligible; node/relationship and named/generic doors must agree. Old unsupported paths retain exact fallback. |
+| Live `ReadSnapshotCapability` / `ReadSnapshot` and chunked timelines (v4.51.3) | Per-entity reads consult live overlays/cache and re-pin after commit/clear; this is an accelerator, not a frozen graph cut. It is not concurrent-safe. Release iterator/transaction pins before callbacks or lifecycle exclusion ends; Close is Release. Up to256 timelines may be read before callbacks; by-ID order, declared relationship state, early stop and wrapper overrides remain authoritative. Importer source quiescence still spans the call. |
+| `MutationFlushHoldCapability` (v4.51.3) | Hold bounded badger SyncWrites mutations under exclusive graph lock, Release without flush, DurableFlush before acknowledgement; pending bounds can split the group. Preserve rollback durability, standalone sync and ErrCommitNotDurable's already-committed state. GroupCommit remains distinct; none of this recovers atomic v5 groups/private writes from v4 timestamps. |
+| Create undo versus real deletes and placement moves (v4.51.3) | Plain/scoped UndoRelationshipCreate and leg-less partial placement removals avoid false ex-adjacency for never-committed/moved rows; real deletes keep both legs. Preserve typed errors, scoped change-log routing and wrapper/fallback behavior. Existing legs have no provenance for safe blanket removal. |
+| Clean-open image, key repair and persisted/deferred statistics (v4.51.3) | Treat newest-header/CRC-checked images as derived acceleration, with full row rebuild fallback for incompatible/crashed/foreign/corrupt cases; writable stale-key repair precedes image trust, read-only/failing repair writes no image. Actual row corruption may surface on read. Restored NDV can retain deleted-session values; dirty extrema rescan and deferred stats build on demand or stay deferred on failure. Preserve counts/unsupported errors and logical timeline parity; raw external delete-only compaction is no completeness proof. |
 | Current/history stamps and ID membership (v4.51.1) | `CurrentStampsCapability` / `HistoryStampsCapability` are row/history stamp accelerators, not full integrity/completeness proofs or cuts; partial decode can answer a corrupt body. `MemberIDsCapability` lists ascending current index IDs, then history widening and exact hydration resolve state. Retain pending-write, sentinel, tiered-owner/history-fold and native/sharded-wrapper override semantics. |
 | `ColumnData.Other` / `RelColumnOtherSource`, alignment and integer widths (v4.51.1) | Held values outside a typed column are marked `Other` with `Null=true` and zero slots; same-selection row fallback preserves them. Optional sources without Other do not prove absence. Typed arrays/Null/Other stay aligned, including leading/all absences and batches. Preserve v4 scalar normalization/refusal while retaining raw exact integer kinds separately. |
-| Broader temporal state scans (v4.51.1) | Carry all six `ForEachNodeEffective` / `ForEachRelEffective` / `NodesEffectiveByIDs` / `RelsEffectiveByIDs` / `ForEachRelEffectiveAtNodes` / `ForEachNodeEffectiveByLabels` contracts and `Direction` / `ErrInvalidDirection`. Relationship state is declared; label union, first-occurrence ID order, per-entity timeline/pin gates and callbacks outside locks remain explicit. Seeded current-adjacency plus all-history gather preserves earlier reimported endpoints but costs O(H); it is not output-sensitive or a certified graph cut. |
+| Broader temporal state scans (v4.51.1) | Carry all six `ForEachNodeEffective` / `ForEachRelEffective` / `NodesEffectiveByIDs` / `RelsEffectiveByIDs` / `ForEachRelEffectiveAtNodes` / `ForEachNodeEffectiveByLabels` contracts and `Direction` / `ErrInvalidDirection`. Relationship state is declared; label union, first-occurrence ID order, per-entity timeline/pin gates and callbacks outside locks remain explicit. The v4.51.1 all-history gather is historical: v4.51.2 current/ex-adjacency gathering narrows supported native paths; unsupported paths retain full-history fallback. Neither gathering nor per-entity snapshot isolation certifies a graph cut. |
 | NDV-only statistics and per-type history counts (v4.51.0) | Carry `PropertyNDV` / `RelPropertyNDV` estimated NDV/current Count without forcing exact Min/Max work; retain unsupported/disabled refusals. `RelHistoryCountByType` counts history-bearing identities including deleted ones; supported zero is safe, ID/type reuse can overcount, and decline is not zero. |
 | Empty intersections and historical seek candidates (v4.51.0) | Known-label empty DocValues intersections are served (`ok=true`, no rows). Label/type ever-member lookup is a sound historical candidate superset, never current-membership filtering; exact chain resolution and unsupported/depth fallbacks remain authoritative. |
 | Adjacency, relationship columns and cache freshness (v4.51.0) | History-free pure valid-time shortcuts preserve full-resolver answers; pins/deletes/history keep full resolution. Preserve ascending IDs, endpoint ordinals, immutable held columns and exact patch/rebuild parity. Per-type degree epochs and global column epochs have separate scopes; neither certifies a cut. Historical v4 performance observations are not v5 measurements. |
@@ -944,11 +950,15 @@ The current-source obligations and hashes extend the historical fixtures in
 They do not implement new v5 public doors or qualify a reader by themselves.
 Each changed reader must pass the complete narrow preflight gates against its
 recorded source; current implementation status belongs in the backlog. Previous
-source-delta records and reader qualifications remain immutable history. Upstream backlog
-49/50 still delimit tiered reimport-history and legacy pinned-adjacency completeness;
-this merge neither repairs lost source history nor assigns those omissions to v5.
+source-delta records and reader qualifications remain immutable history. Historical backlog 49/50 described earlier tiered-history and pinned-adjacency
+limits; v4.51.2 fixes those reader paths. A current reader cannot recover source
+bytes already lost by older writers, and source-history ambiguity remains explicit.
 
-The pinned source and release contracts are recorded in
+The current source-only v4.51.3 contracts/signatures and pending qualification are recorded in
+[consumer contracts](reference/consumer-contracts.json) and
+[migration obligations](reference/consumer-migration.json). The ten narrow migration
+gates must be requalified against the integrated v4.51.3 root; archived v4.51.0/v4.51.1 receipts
+and consumer pins remain unchanged. The historical source contracts are retained in
 [the importer handover](../../tasks/v4-changes-for-v5-importer-20261010.md).
 Preserve raw audit/author/signature/source-time evidence, original hashes and
 format/writer provenance separately from v5 revision IDs and synthetic import

@@ -23,11 +23,18 @@ is locally requalified by the new
 [raw evidence archive](evidence/main4511-993e89a6.tar.gz). All ten gates passed
 serially with Go 1.26.9 darwin/arm64 and independently checked pinned scanner
 builds, each bounded to 180 seconds and sampled process-tree RSS of 4096 MiB.
-Observed coverage is 96.2% overall and 100% for both preflight functions. The
-module requires v4.51.1; its local replacements select the source-equivalent
+Observed coverage is 96.2% overall and 100% for both preflight functions. That qualification
+required v4.51.1; its local replacements select the source-equivalent
 integrated root recorded in that receipt. Archived qualification pins remain
 unchanged. This narrow local result does not qualify whole-root/hosted gates,
 original history completeness, destination import or full V6.
+
+The current module require is prepared for v4.51.3/main `6c6bb954`; its local
+replacement selects the integrated root reader. Current-reader requalification is
+**pending**: rerun only the ten narrow module gates and existing nonempty node/rel
+preflight cases, recording new exact source/profile/scanner receipts. Historical
+observations and pins above remain unchanged. Live read snapshots/open images are
+source accelerators, never an import cut or proof of missing history.
 
 The caller quiesces source writes, imports, retention and DDL across a call,
 supplies capture/reader identity and evidence, and designates an explicit v5
