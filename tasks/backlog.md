@@ -319,6 +319,8 @@ Missing: `BenchmarkRelAtTx/{plain,cascaded}/{hot,cold}` with targets < 1 µs pla
 
 Measured 2026-10-12 (`tasks/evidence/badger-read-cost/41-01-sidecar-ram-per-id.txt`, the two map shapes at 10 K / 100 K / 1 M IDs): presence 30.6 / 23.6 / 37.7 B/ID, stamps 65.6 / 52.5 / 83.8 B/ID, both 96 / 76 / 121 B/ID; one stamps-shaped map saves the presence map, 31 % (37.7 B/ID at 1 M) — but only for a store whose callers use both `HasHistory` and `LatestStamps`. Not merged: a caller of `HasHistory` (or the bulk as-of doors, which build the presence set) alone would pay the stamps entry, 84 instead of 38 B/ID at 1 M (+122 %), and its key-only build would become a value build; the presence `top` (an upper bound a SET raises) and the stamps `top` (exact, a lowering overwrite marks the ID unknown) would share one protocol whose unknown set the bulk as-of `bound` must then also treat as unresolved. Reopen when a consumer runs both doors on one store and reports the RAM; then the merged map plus a red memory-per-ID gate.
 
+Built 2026-10-13 without the merge (v4.51.5 batch): both structures became columnar open-addressing tables, each still built only by its own door: presence 16-26 B/ID, stamps 37-61 B/ID, both 52-87 B/ID (was 24-38 / 52-85 / 76-123); at 1 M IDs lookups 9-18 ns (was 24-27), builds 0.29 / 0.53 s (was 0.69 / 1.75 s) (`tasks/evidence/badger-read-cost/41-0*`, CHANGELOG [Unreleased]).
+
 ### 45. Internal sentinels reach callers but have no exported alias
 
 *MEDIUM (API)* — found by the doc review of `docs/errors.md` (group C, 2026-10-10).
