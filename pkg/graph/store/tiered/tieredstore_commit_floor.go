@@ -22,10 +22,12 @@ var _ storecontract.CommitFloorCapability = (*Store)(nil)
 // floor any non-reference shard has persisted.
 const shardCommitFloorKey = "tx_commit_floor_shards"
 
-// shardCommitFloor is the persisted value of shardCommitFloorKey.
+// shardCommitFloor tracks shardCommitFloorKey: written is the value in the
+// reference shard, synced the part of it known fsynced.
 type shardCommitFloor struct {
 	mu      sync.Mutex
-	durable types.Instant
+	written types.Instant
+	synced  types.Instant
 }
 
 // loadShardCommitFloor reads the persisted value at open; a malformed value
@@ -45,26 +47,36 @@ func (ts *Store) loadShardCommitFloor() error {
 	if v < 0 {
 		return fmt.Errorf("graph: shard commit floor: negative value %d", v)
 	}
-	ts.shardFloor.durable = types.Instant(v)
+	ts.shardFloor.written, ts.shardFloor.synced = types.Instant(v), types.Instant(v)
 	return nil
 }
 
 // persistShardCommitFloor is every non-reference shard's
 // badger.Config.OnCommitFloor: it raises the reference shard's entry to floor
-// before that shard's rows can commit. Monotone under its mutex, so concurrent
-// shard flushes never lower it.
-func (ts *Store) persistShardCommitFloor(floor types.Instant) error {
+// before that shard's rows can commit. Inside a durable flush (durable) the
+// entry is fsynced before it returns (MetaSetDurable), so the event rows a
+// DurableCommit makes durable never outlive their floor on a power loss; a
+// background flush writes it without an fsync. Monotone under its mutex, so
+// concurrent shard flushes never lower it.
+func (ts *Store) persistShardCommitFloor(floor types.Instant, durable bool) error {
 	ts.shardFloor.mu.Lock()
 	defer ts.shardFloor.mu.Unlock()
-	if floor <= ts.shardFloor.durable {
+	f := &ts.shardFloor
+	target := max(floor, f.written)
+	if floor <= f.written && (!durable || floor <= f.synced) {
 		return nil
 	}
 	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, uint64(floor)) // #nosec G115 -- a stored stamp, non-negative
-	if err := ts.refShard.MetaSet(shardCommitFloorKey, buf); err != nil {
+	binary.BigEndian.PutUint64(buf, uint64(target)) // #nosec G115 -- a stored stamp, non-negative
+	if durable {
+		if err := ts.refShard.MetaSetDurable(shardCommitFloorKey, buf); err != nil {
+			return err
+		}
+		f.synced = target
+	} else if err := ts.refShard.MetaSet(shardCommitFloorKey, buf); err != nil {
 		return err
 	}
-	ts.shardFloor.durable = floor
+	f.written = target
 	return nil
 }
 
@@ -72,7 +84,7 @@ func (ts *Store) persistShardCommitFloor(floor types.Instant) error {
 // entry: the next shard flush with rows writes it again.
 func (ts *Store) resetShardCommitFloor() {
 	ts.shardFloor.mu.Lock()
-	ts.shardFloor.durable = 0
+	ts.shardFloor.written, ts.shardFloor.synced = 0, 0
 	ts.shardFloor.mu.Unlock()
 }
 
@@ -87,7 +99,7 @@ func (ts *Store) StoredCommitFloor() (types.Instant, error) {
 		return 0, err
 	}
 	ts.shardFloor.mu.Lock()
-	shards := ts.shardFloor.durable
+	shards := ts.shardFloor.written
 	ts.shardFloor.mu.Unlock()
 	return max(ref, shards), nil
 }

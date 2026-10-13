@@ -26,13 +26,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   key in the open's existing read) and about 75 µs per 1,060-row flush with no allocation
   (`04-flush-cost.txt`, under 1 % of a 13.5 ms durable group), where a scan would make the crash open linear in
   history. Sharded folds its slots; tiered keeps its event and archive shards' floor on the reference shard, written
-  ahead of each shard's batch (cold shards are not opened at open); read-only opens and replicas read the same key.
+  ahead of each shard's batch (cold shards are not opened at open) and fsynced there before a `DurableFlush` fsyncs
+  the rows it covers, background flushes paying no fsync; read-only opens and replicas read the same key.
   Memory with a `SegmentDir` had the same gap even after a clean `Close` (its MetaKV is RAM): its floor is the newest
   stamp of the sealed rows loaded from the directory, folded while they are installed.
 
 ### Changed
 
-- **Docs: power-loss durability needs `DurableCommit` + `SyncWrites`** (backlog 15, closed): stated on
+- **Docs: power-loss durability needs `DurableCommit` + `SyncWrites`** on a badger or sharded store (backlog 15,
+  closed; tiered has no `SyncWrites`, so its groups stay process-crash safe only): stated on
   `Config.DurableCommit`, `Config.SyncWrites` and in `docs/persistence.md`; measured 13.5 ms per 530-op group
   against 12.5 ms for `DurableCommit` alone (`tasks/evidence/aisoc-commit-cost/52-bench.txt`).
 

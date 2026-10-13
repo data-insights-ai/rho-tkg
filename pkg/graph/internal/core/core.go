@@ -705,9 +705,12 @@ type Config struct {
 	// returns and Badger fsync each write (strict power-loss durability). Under
 	// DurableCommit the mutations of a commit group are synced together at the
 	// group's durable commit instead (see DurableCommit). Power-loss durability
-	// of a commit group needs both flags: DurableCommit + SyncWrites cost
-	// 13.5 ms per 530-op group against 12.5 ms for DurableCommit alone
-	// (backlog 15, tasks/evidence/aisoc-commit-cost/52-bench.txt). Ignored
+	// of a commit group needs both flags, on the badger and sharded stores
+	// (badger.Config / sharded.Config SyncWrites): DurableCommit + SyncWrites
+	// cost 13.5 ms per 530-op group against 12.5 ms for DurableCommit alone
+	// (backlog 15, tasks/evidence/aisoc-commit-cost/52-bench.txt). The tiered
+	// store has no SyncWrites: its DurableCommit groups are process-crash safe
+	// only. Ignored
 	// when Store is provided explicitly (set it on the store's own config).
 	SyncWrites           bool
 	Compression          options.CompressionType
@@ -909,9 +912,11 @@ type Config struct {
 	// only the active memtable WAL and the current value-log file, so rows of
 	// a group whose flush filled the memtable (or a value-log file) can stay
 	// unsynced after the return — safe against a process crash, not a power
-	// loss. Power-loss durability needs DurableCommit + SyncWrites: measured
-	// 13.5 ms per 530-op group against 12.5 ms for DurableCommit alone
-	// (backlog 15, tasks/evidence/aisoc-commit-cost/52-bench.txt). With
+	// loss. Power-loss durability needs DurableCommit + SyncWrites on a badger
+	// or sharded store: measured 13.5 ms per 530-op group against 12.5 ms for
+	// DurableCommit alone (backlog 15, tasks/evidence/aisoc-commit-cost/
+	// 52-bench.txt). The tiered store has no SyncWrites, so its groups keep
+	// that power-loss limit. With
 	// SyncWrites on a badger store a group costs one synced WriteBatch, not
 	// one sync per mutation: its mutations (each GraphTx mutation, the Batch.Execute window,
 	// a Rollback) run under the exclusive graph lock with the per-mutation

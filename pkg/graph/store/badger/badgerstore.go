@@ -384,7 +384,12 @@ type Config struct {
 	// The tiered store sets it on every shard but the reference shard, whose
 	// open does not see a cold shard. A non-nil error aborts the flush. When
 	// nil, the floor rides the row WriteBatch into this store (standalone).
-	OnCommitFloor func(floor types.Instant) error
+	// durable is true inside a DurableFlush: the hook must then make the floor
+	// durable before it returns (it is called before the batch, and again
+	// before the write-ahead-log fsync for rows a background flush wrote), so
+	// a power loss cannot keep a row whose floor it lost. A background flush
+	// passes false and pays no fsync.
+	OnCommitFloor func(floor types.Instant, durable bool) error
 	// EncryptionKey enables AES encryption-at-rest (SSTables, value log, WAL,
 	// and Badger's own key registry). Length must be 0 (disabled — the
 	// default, byte-for-byte the pre-encryption on-disk format), 16, 24, or 32
@@ -939,6 +944,7 @@ type Store struct {
 	// sync count per commit group (SyncCountForTest, backlog 52).
 	unsynced      atomic.Bool
 	durableSyncs  atomic.Int64
+	metaSyncs     atomic.Int64 // fsyncs issued by MetaSetDurable (MetaSyncCountForTest)
 	syncedFlushes atomic.Int64
 
 	// flushHold is set between HoldMutationFlushes and ReleaseMutationFlushes
@@ -985,10 +991,12 @@ type Store struct {
 	// Commit floor (badgerstore_commit_floor.go): commitFloor is the newest
 	// row stamp written (loaded at open); commitFloorDurable the value the
 	// persisted key holds (guarded by flushMu; 0 after Clear wiped it);
-	// onCommitFloor is Config.OnCommitFloor.
+	// onCommitFloor is Config.OnCommitFloor; inDurableFlush marks a
+	// DurableFlush's flush (guarded by flushMu).
 	commitFloor        atomic.Int64
 	commitFloorDurable int64
-	onCommitFloor      func(types.Instant) error
+	onCommitFloor      func(types.Instant, bool) error
+	inDurableFlush     bool
 
 	// Per-transaction change-log scope (store.TxChangeLogScope). When a tx/batch
 	// opens a scope, scopeActive diverts record production into scopeLog — the

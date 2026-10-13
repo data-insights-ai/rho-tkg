@@ -528,9 +528,11 @@ file. A memtable switch during the flush (`ensureRoomForWrite`) retires the old
 WAL without an fsync, and a finished value-log file is fsynced only under
 `SyncWrites`, so rows of a group whose flush filled the memtable or a value-log
 file can still be unsynced after `DurableFlush` returned. Power-loss durability
-needs `DurableCommit` + `SyncWrites`: measured 13.5 ms per 530-op group against
-12.5 ms for `DurableCommit` alone (backlog 15, closed in 4.51.4 by this
-measurement; `tasks/evidence/aisoc-commit-cost/52-bench.txt`).
+needs `DurableCommit` + `SyncWrites` on a badger or sharded store: measured
+13.5 ms per 530-op group against 12.5 ms for `DurableCommit` alone (backlog 15,
+closed in 4.51.4 by this measurement; `tasks/evidence/aisoc-commit-cost/52-bench.txt`).
+The tiered store has no `SyncWrites`, so a tiered group keeps this power-loss
+limit (process-crash safe only).
 
 `DurableFlush` re-checks the store's closed state under `flushMu`: `Close`
 sets `closing` before its final flush, which needs `flushMu`, so a durable

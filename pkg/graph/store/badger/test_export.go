@@ -227,6 +227,9 @@ func (bs *Store) GCDoneForTest() <-chan struct{}    { return bs.gcDone }
 // has issued. Exported solely for tests; not for production use.
 func (bs *Store) DurableSyncCountForTest() int64 { return bs.durableSyncs.Load() }
 
+// MetaSyncCountForTest reports how many fsyncs MetaSetDurable issued.
+func (bs *Store) MetaSyncCountForTest() int64 { return bs.metaSyncs.Load() }
+
 // SyncCountForTest returns the number of syncs this store asked of Badger for
 // row data: WriteBatch commits Badger synced (SyncWrites) plus DurableFlush's
 // WAL fsyncs. Badger splits a batch above its transaction size limit into

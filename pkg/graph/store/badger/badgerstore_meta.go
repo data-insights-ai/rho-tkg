@@ -331,6 +331,7 @@ func (bs *Store) MetaSetDurable(key string, value []byte) error {
 		if err := bs.db.Sync(); err != nil {
 			return fmt.Errorf("graph: sync meta %q: %w", key, err)
 		}
+		bs.metaSyncs.Add(1)
 	}
 	return nil
 }

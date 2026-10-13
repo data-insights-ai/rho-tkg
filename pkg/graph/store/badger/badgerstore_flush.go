@@ -275,7 +275,7 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 	}
 	floorInBatch := floor > bs.commitFloorDurable
 	if floorInBatch && bs.onCommitFloor != nil {
-		if err := bs.onCommitFloor(types.Instant(floor)); err != nil {
+		if err := bs.onCommitFloor(types.Instant(floor), bs.inDurableFlush); err != nil {
 			requeue()
 			return fmt.Errorf("graph: write-ahead commit floor: %w", err)
 		}
