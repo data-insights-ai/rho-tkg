@@ -140,9 +140,15 @@ type tombstoneSpec struct {
 // reader pinned before the delete then reset the delete-stamped ValidTo to 0,
 // reporting the closed entity as open-ended (a later write changing a
 // historical answer). DeletedAt and TxTo are always the delete instant.
-func stampDeleteTombstone(tm *types.TemporalMetadata, at types.Instant, retract bool) {
+//
+// clamped reports a close scheduled after the delete that the tombstone
+// clamped: a valid end earlier pins read changed (backlog 25), which the
+// caller reports to the pinned caches after its store write
+// (noteClampedClose).
+func stampDeleteTombstone(tm *types.TemporalMetadata, at types.Instant, retract bool) (clamped bool) {
 	tm.DeletedAt = at
 	tm.Retracted = retract
+	clamped = tm.ValidTo > at
 	if tm.ValidTo == 0 || tm.ValidTo > at {
 		tm.ValidTo = at
 	}
@@ -150,6 +156,7 @@ func stampDeleteTombstone(tm *types.TemporalMetadata, at types.Instant, retract 
 		tm.TxFrom = at
 	}
 	tm.TxTo = at
+	return clamped
 }
 
 func (c *Core) nodeCurrentVersionStart(n *types.Node) types.Instant {

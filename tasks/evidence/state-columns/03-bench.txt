@@ -1,0 +1,97 @@
+# Backlog 28 bench: BenchmarkStateColumns (pkg/graph/internal/core/state_columns_bench_test.go), 100 K entities,
+# every tenth updated after the pin, each iteration at a new valid instant ("now"); 32-core host, 2026-10-13.
+# go test -run '^$' -bench BenchmarkStateColumns -benchmem ./pkg/graph/internal/core/
+#
+# summary (ns/op)                 before (fold)      after (cut)     unpinned columns
+# memory node count_state           133,888,356          193,515          -
+# memory node scan_state            210,249,566        2,651,234         20,164,369
+# memory rel  count_state           120,810,493          211,017          -
+# memory rel  scan_state            186,859,930        7,228,941         36,582,156
+# badger node count_state           508,159,525          230,915          -
+# badger node scan_state          1,049,522,189        2,136,810         22,280,698
+# badger rel  count_state           736,448,107          239,456          -
+# badger rel  scan_state          1,201,635,468        5,134,583         58,588,638
+# the build (count at a new pin, second ask): memory node 91 ms, rel 170 ms; badger node 551 ms, rel 934 ms
+# (about one fold; the first ask of a pin is the fold itself). After: the first build is untimed (b.Loop).
+#
+## before (main dc2d8b9c, -benchtime=5x)
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkHistorySidecarLookup/ids=10000/HasHistory/hit-32         	88595590	        15.88 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=10000/HasHistory/miss-32        	70078699	        15.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=10000/LatestStamps/hit-32       	78869115	        14.58 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=10000/LatestStamps/miss-32      	59513577	        17.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=100000/HasHistory/hit-32        	74365664	        16.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=100000/HasHistory/miss-32       	57398534	        22.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=100000/LatestStamps/hit-32      	75972374	        17.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=100000/LatestStamps/miss-32     	56799231	        23.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=1000000/HasHistory/hit-32       	56006594	        21.35 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=1000000/HasHistory/miss-32      	73740352	        20.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=1000000/LatestStamps/hit-32     	56134527	        21.76 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=1000000/LatestStamps/miss-32    	64922485	        16.96 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistoryStampsNote/untracked-32                           	48164966	        29.73 ns/op	      24 B/op	       1 allocs/op
+BenchmarkHistoryStampsNote/built-32                               	 8208907	       148.9 ns/op	      24 B/op	       1 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelHasHistory/entities=200K/density=0.1%/build-32   	   13118	     87572 ns/op	       200.0 ids	        51.36 setB/id	   20467 B/op	      91 allocs/op
+BenchmarkRelHasHistory/entities=200K/density=0.1%/hit-32     	100000000	        11.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/entities=200K/density=0.1%/miss-32    	94978381	        11.58 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/entities=200K/density=1%/build-32     	    1610	    748788 ns/op	      2000 ids	        39.72 setB/id	  274396 B/op	     386 allocs/op
+BenchmarkRelHasHistory/entities=200K/density=1%/hit-32       	86599798	        12.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/entities=200K/density=1%/miss-32      	100000000	        15.12 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHasHistory/entities=200K/density=0.1%/build-32  	   14190	     80604 ns/op	       200.0 ids	        52.24 setB/id	   20315 B/op	      85 allocs/op
+BenchmarkNodeHasHistory/entities=200K/density=0.1%/hit-32    	114146036	        10.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHasHistory/entities=200K/density=0.1%/miss-32   	96056796	        11.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHasHistory/entities=200K/density=1%/build-32    	    1303	   1008568 ns/op	      2000 ids	        39.77 setB/id	  273505 B/op	     318 allocs/op
+BenchmarkNodeHasHistory/entities=200K/density=1%/hit-32      	87062497	        17.45 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHasHistory/entities=200K/density=1%/miss-32     	97268205	        12.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHistoryStamps/entities=200K/density=1%/build-32  	     596	   1721549 ns/op	      2000 ids	        84.77 setB/id	  654693 B/op	     437 allocs/op
+BenchmarkRelHistoryStamps/entities=200K/density=1%/hit-32    	87738166	        12.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHistoryStamps/entities=200K/density=1%/miss-32   	92389065	        11.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHistoryStamps/entities=200K/density=1%/build-32 	     750	   1977013 ns/op	      2000 ids	        84.77 setB/id	  653839 B/op	     374 allocs/op
+BenchmarkNodeHistoryStamps/entities=200K/density=1%/hit-32   	74770537	        17.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHistoryStamps/entities=200K/density=1%/miss-32  	89056122	        13.18 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkHistorySidecarLookup/ids=10000/HasHistory/hit-32         	88137720	        14.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=10000/HasHistory/miss-32        	75880224	        14.88 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=10000/LatestStamps/hit-32       	78680300	        14.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=10000/LatestStamps/miss-32      	88774454	        16.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=100000/HasHistory/hit-32        	71831614	        15.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=100000/HasHistory/miss-32       	58878892	        18.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=100000/LatestStamps/hit-32      	68037921	        16.51 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=100000/LatestStamps/miss-32     	63685909	        20.80 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=1000000/HasHistory/hit-32       	53313060	        24.09 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=1000000/HasHistory/miss-32      	43270696	        23.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=1000000/LatestStamps/hit-32     	55342149	        21.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarLookup/ids=1000000/LatestStamps/miss-32    	68500983	        17.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistoryStampsNote/untracked-32                           	49247835	        22.11 ns/op	      24 B/op	       1 allocs/op
+BenchmarkHistoryStampsNote/built-32                               	 8134568	       148.8 ns/op	      24 B/op	       1 allocs/op
+PASS
+
+## after (-benchtime=20x)
+BenchmarkStateColumns/memory/node/count_state-32         	      20	    193515 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStateColumns/memory/node/scan_state-32          	      20	   2651234 ns/op	 4357350 B/op	      70 allocs/op
+BenchmarkStateColumns/memory/node/count_state_new_pin-32 	      20	  91474068 ns/op	78079321 B/op	  820423 allocs/op
+BenchmarkStateColumns/memory/node/scan_unpinned-32       	      20	  20164369 ns/op	 1861536 B/op	      42 allocs/op
+BenchmarkStateColumns/memory/rel/count_state-32          	      20	    211017 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStateColumns/memory/rel/scan_state-32           	      20	   7228941 ns/op	 4455744 B/op	      74 allocs/op
+BenchmarkStateColumns/memory/rel/count_state_new_pin-32  	      20	 169752692 ns/op	95562358 B/op	  910481 allocs/op
+BenchmarkStateColumns/memory/rel/scan_unpinned-32        	      20	  36582156 ns/op	 1197305 B/op	      46 allocs/op
+BenchmarkStateColumns/badger/node/count_state-32         	      20	    230915 ns/op	       7 B/op	       0 allocs/op
+BenchmarkStateColumns/badger/node/scan_state-32          	      20	   2136810 ns/op	 4357374 B/op	      70 allocs/op
+BenchmarkStateColumns/badger/node/count_state_new_pin-32 	      20	 551284377 ns/op	223152080 B/op	 2743939 allocs/op
+BenchmarkStateColumns/badger/node/scan_unpinned-32       	      20	  22280698 ns/op	 8998612 B/op	  190532 allocs/op
+BenchmarkStateColumns/badger/rel/count_state-32          	      20	    239456 ns/op	       7 B/op	       0 allocs/op
+BenchmarkStateColumns/badger/rel/scan_state-32           	      20	   5134583 ns/op	 4455804 B/op	      75 allocs/op
+BenchmarkStateColumns/badger/rel/count_state_new_pin-32  	      20	 934221965 ns/op	275892102 B/op	 2964088 allocs/op
+BenchmarkStateColumns/badger/rel/scan_unpinned-32        	      20	  58588638 ns/op	11007914 B/op	  215409 allocs/op
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	46.681s

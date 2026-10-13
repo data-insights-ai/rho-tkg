@@ -22,7 +22,10 @@ import (
 // exactly like RelsByType answers it — each relationship's version under opts,
 // history included — not from the store's current rows (scan_temporal_opts.go).
 // It is validated like RelsByType (ErrConflictingTemporalOpts, compaction and
-// retention watermarks).
+// retention watermarks). The state form (TxAt with ValidAt) reads each type's
+// state cut at TxAt (backlog 28, state_columns.go), built on the second read
+// at the pin, and calls fn without graph locks. At every temporal opt the batches
+// carry no ordinals (Ordinals, StartOrdinals, EndOrdinals 0).
 func (c *Core) ScanRelColumns(relType string, props []string, opts storepkg.QueryOpts,
 	fn func(*storepkg.RelColumnBatch) bool) (ok bool, err error) {
 
@@ -34,6 +37,15 @@ func (c *Core) ScanRelColumns(relType string, props []string, opts storepkg.Quer
 	if temporal && has {
 		if err := c.validateTemporalQueryOptsScan(opts, c.relTypeRetentionScope(relType)); err != nil {
 			return true, err
+		}
+		if v, pin, state := c.stateCutQuery(opts); state {
+			names := []string{relType}
+			if relType == "" {
+				c.mu.RLock()
+				names = c.relTypes.ExportNames() // index = token; token 0 is reserved
+				c.mu.RUnlock()
+			}
+			return true, c.scanRelColumnsState(names, props, opts, v, pin, fn)
 		}
 	}
 	c.mu.RLock()

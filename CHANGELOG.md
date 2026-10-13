@@ -40,6 +40,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   export header carries, so an import of an export taken after a node purge refuses the pins below the purge as its
   source does. Off by default: the node watermarks are ignored, as before.
 
+- **State cuts for the state form of the count and column doors** (backlog 28, sigma-tkgd 2026-10-09):
+  `CountByLabelAt` / `CountByTypeAt` and `ScanNodeColumns` / `ScanRelColumns` with `TxAt` (and `ValidAt`) answer
+  from the label's or type's effective-timeline segments at the pin, built on the second read at that pin and
+  cached per (label or type, pin) for every valid time, instead of folding every candidate's rows per call. The
+  answer equals the row fold (`TestCountByLabelAtStateColumnPath`, break cases on all four backends). After the
+  first build a count or scan reads no row: 0 rows decoded at 10 K and 100 K (before 12 K/21 K and 120 K/210 K,
+  `tasks/evidence/state-columns/`); 100 K nodes, badger: count 508 ms to 0.23 ms, scan 1.05 s to 2.1 ms (memory
+  134 ms to 0.19 ms, 210 ms to 2.7 ms); the build costs about one fold. Invalidation is the as-of column set's
+  (history rewrites at or below a cached pin; relationship replica applies and a delete that clamps a scheduled
+  close now report too); one LRU budget of 256 MiB per graph; a cut is cached only once every write stamped at or
+  below its pin has landed. `store.NodeColumnSource` / `ScanColumnsFromNodeSource` (experimental, with the column
+  scans): the node sibling of `ScanColumnsFromRelSource`.
+
 ### Fixed
 
 - **Node retention purge: the as-of column cache is invalidated after the rows are removed** (R14). The bump ran at
@@ -55,6 +68,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`TestRetentionPurgeWaitHonoursCtx`).
 
 ### Changed
+
+- **Temporal column scans carry no ordinals** (backlog 28; experimental surface): `ScanNodeColumns` /
+  `ScanRelColumns` with any temporal opt report `Ordinals`, `StartOrdinals` and `EndOrdinals` as 0, as for a
+  store that numbers none. They reported the winning row's stored numbering, which a later update or delete
+  changed (0 after a delete, endpoint ordinals 0 once a relationship's row moved to history), so the answer at a
+  pin changed after a later write (`TestStateColumnPath_ConcurrentWrites`, red on main). sigma-tkgd reads no
+  ordinals at a read coordinate.
 
 - **CI race gate sharded; slowest `-short -race` tests sized for 4-vCPU runners** (todo request 24; no API
   change). The GitHub `test` job ran `go test -short -race ./...` on one 4-vCPU runner, where pkg/graph,
