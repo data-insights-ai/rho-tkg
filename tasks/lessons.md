@@ -596,3 +596,9 @@ requests, review findings and the next patch batch are started right away (ledge
 tag). Ask only for what CLAUDE.md section 1 allows (irreversible or destructive, options that differ materially, not decided by
 chat or memory). The old "never start agents he did not ask for" rule is gone.
 Detector: a "Gewählt: not started ... Anders: sag fix N" line; four ai-soc blockers sat for hours as "waits for René's go".
+
+## 82. A Release Is Not Green Until GitHub CI Is Green
+
+Rule: the release gate is `make ci-docker` AND the GitHub CI run of the pushed commit; check `gh run list --branch main --workflow CI` before reporting a release done and fix a red CI before the next tag.
+Trigger: René 2026-10-13 "why is the ci pipeline always failing?" — CI `test` (race on 4-vCPU runners) timed out on every main push since 2026-10-10 (v4.50.1–v4.51.4) while the local 32-core gate passed; nobody looked.
+Detector: a tag whose CI run is not `success`.

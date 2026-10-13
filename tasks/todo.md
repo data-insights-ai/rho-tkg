@@ -31,6 +31,7 @@ per release, and the open queue. Older wave ledgers (per-step red tests, merges,
 | 21 | "Remove or rewrite this stupid rule" + "Also consolidate md.files and rules" (2026-10-12) | rule removed (lesson 81); repo md consolidated by a Sonnet agent: lessons 1390 to 598 lines with a rules digest, HANDOVER 434 to 189, seven task files folded into git history | `wc -l`; docs tests green |
 | 22 | "Worth it? 15 … and 44 … are real durability edges" (2026-10-12) | done — v4.51.4: 44 fixed; 15 closed by docs (both flags = strict, 13.5 vs 12.5 ms) | `tasks/backlog.md` 15, 44 |
 | 23 | "Why on hold?" (2026-10-13) — 41, 28, 21 | in progress (v4.51.5): no valid hold reason; three Opus builds | `tasks/backlog.md` 21, 28, 41 |
+| 24 | "And why is the ci pipeline always failing?" (2026-10-13) | in progress: GitHub CI `test` job (make test-race on 4-vCPU ubuntu-latest) hits Go's 10-min per-package timeout in pkg/graph, internal/core, store/memory since 2026-10-10 (last green 0a1d1ff6); local ci-docker on 32 cores passes, so it went unseen. Fix: shard the race job (port v5 `scripts/test-race.sh` + matrix), cut the slowest -short oracles; release gate gains "GitHub CI green" | `gh run list --branch main --workflow CI` green |
 
 ## Releases (one line each; all gates `make ci-docker` exit 0, consumers build + vet)
 
