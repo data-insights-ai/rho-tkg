@@ -248,7 +248,9 @@ CDC, and checks old/current views after the updates. Its dependency capture uses
 bounded real point reads; history and CDC use the existing 128-row paging doors.
 `run-local.sh cost-cell small` reuses the four actual FDB containers, triple SSD
 configuration and fresh volumes, recording all server/client process RSS and
-all four data/log directories. The FDB fixture durably admits externally supplied
+all four data/log directories. Artifact writes use a directory-scoped file
+handle and exclusive creation, preserving originals and refusing path escape.
+The FDB fixture durably admits externally supplied
 fixed IDs; it does not implement rho allocator/recipient issuance. The native
 runner includes actual issuance and setup coordination, so those setup costs are
 reported separately without claiming identical allocation contracts.

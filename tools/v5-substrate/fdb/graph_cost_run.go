@@ -153,7 +153,7 @@ func (h *harness) graphCostOriginal(x transaction, o outcome) (changeGroup, erro
 }
 func graphCostCheckView(view graphView, p graphCostProfile, want int64) error {
 	nodes := p.nodes()
-	if len(view.Nodes) != 3 || len(view.IdentityEdges) != int(p.Facts) || len(view.VisibleEdges) != int(p.Facts) || len(view.Outgoing) != int(p.Facts) || len(view.Incoming) != int(p.Facts) {
+	if len(view.Nodes) != 3 || uint64(len(view.IdentityEdges)) != p.Facts || uint64(len(view.VisibleEdges)) != p.Facts || uint64(len(view.Outgoing)) != p.Facts || uint64(len(view.Incoming)) != p.Facts {
 		return errMismatch
 	}
 	// Owner0 contains two distinct heads; compare declared node identities/lives.
@@ -194,12 +194,13 @@ func runGraphCost(db fdb.Database, p graphCostProfile) (err error) {
 	if directory == "" {
 		return errInvalid
 	}
+	artifactRoot, err := os.OpenRoot(directory)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, artifactRoot.Close()) }()
 	open := func(name string) (*os.File, *json.Encoder, error) {
-		f, err := os.OpenFile(directory+"/"+name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-		if err != nil {
-			return nil, nil, err
-		}
-		return f, json.NewEncoder(f), nil
+		return openGraphCostArtifact(artifactRoot, name)
 	}
 	latency, samples, err := open("fdb-cost-latency.jsonl")
 	if err != nil {
@@ -385,4 +386,14 @@ func runGraphCost(db fdb.Database, p graphCostProfile) (err error) {
 		return err
 	}
 	return errors.Join(encoder.Encode(result), file.Close())
+}
+
+// Artifact names remain scoped to the caller-selected directory handle.
+// O_EXCL preserves originals; traversal and closed-root errors remain intact.
+func openGraphCostArtifact(root *os.Root, name string) (*os.File, *json.Encoder, error) {
+	file, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return nil, nil, err
+	}
+	return file, json.NewEncoder(file), nil
 }

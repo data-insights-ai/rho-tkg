@@ -112,9 +112,9 @@ bounded_docker 600 run --name "$build_name" --memory 1024m --cpus 2 \
   --env "FDB_LAUNCH_MODE=$mode" --env "FDB_COST_QUALIFY=$cost_qualify" \
   --mount "type=bind,source=$out,target=/evidence" "$source_image" /bin/bash -c '
     timeout --signal=KILL 180s bash prepare-client.sh && timeout --signal=KILL 180s go mod download &&
-    { [ "$FDB_LAUNCH_MODE" != cost-cell ] || {
+    { { [ "$FDB_LAUNCH_MODE" != cost-cell ] && [ "$FDB_LAUNCH_MODE" != static ]; } || {
       timeout --signal=KILL 180s go vet ./... > /evidence/cost-vet.txt 2>&1 &&
-      if [ "$FDB_COST_QUALIFY" = 1 ]; then
+      if [ "$FDB_COST_QUALIFY" = 1 ] || [ "$FDB_LAUNCH_MODE" = static ]; then
         timeout --signal=KILL 180s go test -timeout 170s -count=1 -json -covermode=atomic -coverprofile=/evidence/cost-profile-normal.out -run "^TestGraphCost(ProfileExactRoutingAndBoundedShapes|ProjectionRemembersOldAndRejectsPartialPosting)$" ./... > /evidence/cost-profile-normal-tests.jsonl 2>&1 &&
         timeout --signal=KILL 180s go test -timeout 170s -race -count=1 -json -covermode=atomic -coverprofile=/evidence/cost-profile-race.out -run "^TestGraphCost(ProfileExactRoutingAndBoundedShapes|ProjectionRemembersOldAndRejectsPartialPosting)$" ./... > /evidence/cost-profile-tests.jsonl 2>&1
       else

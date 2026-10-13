@@ -2,12 +2,53 @@ package main
 
 import (
 	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 )
 
 func TestGraphCostProfileExactRoutingAndBoundedShapes(t *testing.T) {
+	t.Run("ArtifactsStayWithinOwnedRoot", func(t *testing.T) {
+		directory := t.TempDir()
+		inside := filepath.Join(directory, "artifacts")
+		if err := os.Mkdir(inside, 0700); err != nil {
+			t.Fatal(err)
+		}
+		root, err := os.OpenRoot(inside)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := root.Close(); err != nil && !errors.Is(err, fs.ErrClosed) {
+				t.Error("artifact root cleanup", err)
+			}
+		})
+		file, encoder, err := openGraphCostArtifact(root, "retained.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := errors.Join(encoder.Encode("original"), file.Close()); err != nil {
+			t.Fatal(err)
+		}
+		if f, e, err := openGraphCostArtifact(root, "retained.json"); !errors.Is(err, fs.ErrExist) || f != nil || e != nil {
+			t.Fatal("existing original overwritten", f, e, err)
+		}
+		if f, e, err := openGraphCostArtifact(root, "../escaped.json"); err == nil || f != nil || e != nil {
+			t.Fatal("artifact escaped root", f, e, err)
+		}
+		if _, err := os.Stat(filepath.Join(directory, "escaped.json")); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatal("escaped file was created", err)
+		}
+		if err := root.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if f, e, err := openGraphCostArtifact(root, "closed.json"); !errors.Is(err, fs.ErrClosed) || f != nil || e != nil {
+			t.Fatal("closed root accepted output", f, e, err)
+		}
+	})
 	t.Run("CLIAndSubmissionRefusal", func(t *testing.T) {
 		for _, raw := range []string{"", strings.Repeat(" ", 1025), "{", `{"version":1,"facts":2,"crossPercent":0,"writers":1,"unexpected":true}`, `{"version":1,"facts":2,"crossPercent":0,"writers":1} {}`, `{"version":1,"facts":2,"crossPercent":0,"writers":8}`} {
 			t.Setenv("RHO_GRAPH_COST_SPEC", raw)
