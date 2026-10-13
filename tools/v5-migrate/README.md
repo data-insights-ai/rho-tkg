@@ -29,10 +29,10 @@ integrated root recorded in that receipt. Archived qualification pins remain
 unchanged. This narrow local result does not qualify whole-root/hosted gates,
 original history completeness, destination import or full V6.
 
-The current module require is prepared for v4.51.3/main `6c6bb954`; its local
+The current module require is prepared for v4.51.4/main `a1248ffc`; its local
 replacement selects the integrated root reader. Current-reader requalification is
 **pending**: rerun only the ten narrow module gates and existing nonempty node/rel
-preflight cases, recording new exact source/profile/scanner receipts. Historical
+preflight cases, recording new exact source/profile/scanner receipts. The dated v4.51.3 source-only checkpoint remains unchanged. Historical
 observations and pins above remain unchanged. Live read snapshots/open images are
 source accelerators, never an import cut or proof of missing history.
 

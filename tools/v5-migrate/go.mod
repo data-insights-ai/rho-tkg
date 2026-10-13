@@ -3,7 +3,7 @@ module github.com/data-insights-ai/rho-tkg/tools/v5-migrate
 go 1.26.9
 
 require (
-	github.com/data-insights-ai/rho-tkg/v4 v4.51.3
+	github.com/data-insights-ai/rho-tkg/v4 v4.51.4
 	github.com/data-insights-ai/rho-tkg/v5 v5.0.0
 )
 

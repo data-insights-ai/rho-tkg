@@ -917,14 +917,16 @@ A build or that smoke suite alone cannot establish semantic compatibility.
 #### Current v4 compatibility delta (cutoff 2026-10-13)
 
 The current rho source baseline for this acceptance record is main
-`6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1`, **v4.51.3**, following integrated
-`cddc0997`/v4.51.2. This extends the
+`a1248ffc9fcd4d2fd9425de8b578feb88c46b016`, **v4.51.4**, following integrated
+`6c6bb954`/v4.51.3 and `cddc0997`/v4.51.2. This extends the
 historical consumer inventories above; their commits/hashes and old reproduction
 runs remain historical and unchanged. It does not assert that those consumers
 have upgraded or that a v5 adapter/importer has passed.
 
 | Current v4 contract | Required v5 mapping / consumer obligation |
 |---|---|
+| Persisted commit-floor and crash reopen (v4.51.4) | `CommitFloorCapability.StoredCommitFloor` covers surviving row TxFrom/TxTo/DeletedAt; `OnCommitFloor(floor, durable)` writes/fsyncs tiered reference-floor before covered shard rows. Memory SegmentDir covers sealed rows, sharded folds slots. Seed after load, preserve malformed/unsupported errors and foreign-input checks; a floor is not valid time, source completeness, a global transaction order or a certified cut. Preserve raw stamps/provenance and old-writer ambiguity. |
+| Documented durability modes (v4.51.4) | Group power-loss durability needs DurableCommit + SyncWrites on badger/sharded; tiered remains process-crash safe. Reference-floor fsync is an ordering guarantee, not whole-tiered power-loss or v5 atomicity/private-write proof. Before-return subsets and ErrCommitNotDurable semantics remain explicit. |
 | Retained lives, ex-adjacency and valid-end scans (v4.51.2) | Preserve earlier tiered lives across reimport/shard changes, both historical endpoint directions and exact resolver filtering of current/ex-adjacency supersets. Valid-end candidates are sound bounds, not answers: equal end boundary counts, open/untimed and unknown/stale/past-pin rows remain eligible; node/relationship and named/generic doors must agree. Old unsupported paths retain exact fallback. |
 | Live `ReadSnapshotCapability` / `ReadSnapshot` and chunked timelines (v4.51.3) | Per-entity reads consult live overlays/cache and re-pin after commit/clear; this is an accelerator, not a frozen graph cut. It is not concurrent-safe. Release iterator/transaction pins before callbacks or lifecycle exclusion ends; Close is Release. Up to256 timelines may be read before callbacks; by-ID order, declared relationship state, early stop and wrapper overrides remain authoritative. Importer source quiescence still spans the call. |
 | `MutationFlushHoldCapability` (v4.51.3) | Hold bounded badger SyncWrites mutations under exclusive graph lock, Release without flush, DurableFlush before acknowledgement; pending bounds can split the group. Preserve rollback durability, standalone sync and ErrCommitNotDurable's already-committed state. GroupCommit remains distinct; none of this recovers atomic v5 groups/private writes from v4 timestamps. |
@@ -954,10 +956,10 @@ source-delta records and reader qualifications remain immutable history. Histori
 limits; v4.51.2 fixes those reader paths. A current reader cannot recover source
 bytes already lost by older writers, and source-history ambiguity remains explicit.
 
-The current source-only v4.51.3 contracts/signatures and pending qualification are recorded in
+The current source-only v4.51.4 contracts/signatures and pending qualification are recorded in
 [consumer contracts](reference/consumer-contracts.json) and
 [migration obligations](reference/consumer-migration.json). The ten narrow migration
-gates must be requalified against the integrated v4.51.3 root; archived v4.51.0/v4.51.1 receipts
+gates must be requalified against the integrated v4.51.4 root; archived v4.51.0/v4.51.1 receipts
 and consumer pins remain unchanged. The historical source contracts are retained in
 [the importer handover](../../tasks/v4-changes-for-v5-importer-20261010.md).
 Preserve raw audit/author/signature/source-time evidence, original hashes and
