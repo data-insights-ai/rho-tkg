@@ -48,9 +48,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first build a count or scan reads no row: 0 rows decoded at 10 K and 100 K (before 12 K/21 K and 120 K/210 K,
   `tasks/evidence/state-columns/`); 100 K nodes, badger: count 508 ms to 0.23 ms, scan 1.05 s to 2.1 ms (memory
   134 ms to 0.19 ms, 210 ms to 2.7 ms); the build costs about one fold. Invalidation is the as-of column set's
-  (history rewrites at or below a cached pin; relationship replica applies and a delete that clamps a scheduled
-  close now report too); one LRU budget of 256 MiB per graph; a cut is cached only once every write stamped at or
-  below its pin has landed. `store.NodeColumnSource` / `ScanColumnsFromNodeSource` (experimental, with the column
+  epoch, bumped by a history rewrite at or below a cached pin and now also by relationship replica applies at or
+  below it, an `UpdateInPlace` (it rewrites the row every pin reads; this also fixes the `TxPin` as-of column
+  set, which kept the old value) and a delete that clamps a scheduled close; one build per key at a time, and a
+  build that failed or did not fit is not repeated at that epoch; one LRU budget of 256 MiB per graph; a cut is cached only once every write stamped at or
+  below its pin has landed, checked without waiting for any lock (a count inside a scan callback folds).
+  `fn` of a column scan runs without graph locks when the cut answers, under the read lock when the fold does.
+  `store.NodeColumnSource` / `ScanColumnsFromNodeSource` (experimental, with the column
   scans): the node sibling of `ScanColumnsFromRelSource`.
 
 ### Fixed

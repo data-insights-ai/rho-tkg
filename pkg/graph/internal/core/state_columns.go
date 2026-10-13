@@ -33,8 +33,11 @@ import (
 //
 // A cut is built on the second ask for its (kind, token, pin): a pin read
 // once costs the fold, as before. Invalidation is the as-of column set's
-// (asOfColumnCache, shared epoch and pin bound): a state at a pin changes only by a history rewrite at or below
-// it, never by a forward write. A cut is cached only once every write stamped
+// (asOfColumnCache, shared epoch and pin bound): a state at a pin changes by a
+// history rewrite at or below it, an in-place update (UpdateInPlace rewrites
+// the row every pin reads) or a delete that clamps a scheduled close
+// (backlog 25), each of which bumps the epoch after its store write; other
+// forward writes leave it. A cut is cached only once every write stamped
 // at or below its pin has landed (pinLanded). Memory: one byte budget per
 // graph for all cuts (stateCutBudget), least recently used evicted first; a
 // cut over the budget answers its call and is not kept.
@@ -79,14 +82,29 @@ type stateCut struct {
 	dictIndex  map[string]uint64 // build only
 }
 
-func newStateCut(epoch uint64, keys []string) *stateCut {
-	return &stateCut{
+// newStateCut sizes the arrays for n segments (one per candidate, the common
+// case), so the bytes the budget counts are the bytes held.
+func newStateCut(epoch uint64, keys []string, n int, rel bool) *stateCut {
+	cut := &stateCut{
 		epoch:     epoch,
 		keys:      keys,
+		ids:       make([]uint64, 0, n),
+		from:      make([]types.Instant, 0, n),
+		to:        make([]types.Instant, 0, n),
+		vf:        make([]int64, 0, n),
+		vt:        make([]int64, 0, n),
 		tags:      make([][]uint8, len(keys)),
 		bits:      make([][]uint64, len(keys)),
 		dictIndex: map[string]uint64{},
 	}
+	for k := range keys {
+		cut.tags[k] = make([]uint8, 0, n)
+		cut.bits[k] = make([]uint64, 0, n)
+	}
+	if rel {
+		cut.start, cut.end = make([]types.NodeID, 0, n), make([]types.NodeID, 0, n)
+	}
+	return cut
 }
 
 // add appends one segment whose winning row is row (with its endpoints for a
@@ -142,9 +160,9 @@ func (cut *stateCut) seal() *stateCut {
 	return cut
 }
 
-// bytes is the RAM the cut holds (the budget's unit).
+// bytes is the RAM the cut holds (the budget's unit), counted by capacity.
 func (cut *stateCut) bytes() int64 {
-	n := int64(len(cut.ids))
+	n := int64(cap(cut.ids))
 	size := n * (8 + 16 + 16) // ids, from/to, vf/vt
 	if cut.start != nil {
 		size += n * 16
@@ -261,12 +279,16 @@ func (c *Core) stateCutQuery(opts storepkg.QueryOpts) (v, pin types.Instant, ok 
 }
 
 // pinLanded reports whether every write stamped at or below pin has landed,
-// so a cut built now stays the state at pin (in-flight writes): under the
+// so a cut built now stays the state at pin (in-flight writes): holding the
 // write lock no standalone write (read lock), batch, ingest group or apply
 // (write lock) is in flight; every later clock stamp is above lastInstant and
-// an open transaction's writes are stamped after its start.
+// an open transaction's writes are stamped after its start. It never waits:
+// when any lock holder is active (a writer, a reader, the caller itself inside
+// a scan callback) it reports false and the caller folds; a later ask retries.
 func (c *Core) pinLanded(pin types.Instant) bool {
-	c.mu.Lock()
+	if !c.mu.TryLock() {
+		return false
+	}
 	landed := types.Instant(c.lastInstant.Load())
 	if start := types.Instant(c.openTxStart.Load()); start != 0 && start < landed {
 		landed = start
@@ -278,10 +300,12 @@ func (c *Core) pinLanded(pin types.Instant) bool {
 
 // stateCutFor returns the cut of key holding keys: the cached one, else one
 // built now (and cached when it fits the budget) once key was asked for
-// before (admitCut). nil when the cut path does not answer — the first ask
-// for key, a closed graph, the pin has writes in flight, the build failed (a per-entity
-// compaction or retention stub below the pin, a closed graph) or a history
-// rewrite raced the build — and the caller folds.
+// before (admitCut). One build per key at a time: a concurrent miss waits for
+// it and takes its cut. nil when the cut path does not answer — the first ask
+// for key, a closed graph, the pin has writes in flight or a lock holder is
+// active (pinLanded), a build that failed (a per-entity compaction or
+// retention stub below the pin) or did not fit the budget at this epoch
+// (cutDeclined), or a history rewrite raced the build — and the caller folds.
 func (c *Core) stateCutFor(key stateCutKey, keys []string) *stateCut {
 	if c.closed.Load() {
 		return nil // the fold reports the closed graph
@@ -292,20 +316,77 @@ func (c *Core) stateCutFor(key stateCutKey, keys []string) *stateCut {
 	if cut := a.getCut(key, keys, epoch); cut != nil {
 		return cut
 	}
-	if !a.admitCut(key) || !c.pinLanded(key.pin) {
+	if a.declined(key, epoch) || !a.admitCut(key) {
 		return nil
 	}
-	cut, err := c.buildStateCut(key, a.cutKeysFor(key, keys), epoch)
-	if err != nil || !a.putCut(key, cut) {
+	done, lead := a.joinCutBuild(key)
+	if !lead {
+		<-done
+		return a.getCut(key, keys, epoch)
+	}
+	defer a.endCutBuild(key, done)
+	if !c.pinLanded(key.pin) {
 		return nil
+	}
+	a.cutBuilds.Add(1)
+	cut, err := c.buildStateCut(key, a.cutKeysFor(key, keys), epoch)
+	if err != nil {
+		a.decline(key, epoch)
+		return nil
+	}
+	kept, current := a.putCut(key, cut)
+	if !current {
+		return nil
+	}
+	if !kept {
+		a.decline(key, epoch) // over the budget: this call's answer only
 	}
 	return cut
+}
+
+// joinCutBuild registers the caller as key's builder (lead) or returns the
+// channel the running build closes when it ends.
+func (a *asOfColumnCache) joinCutBuild(key stateCutKey) (done chan struct{}, lead bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if ch, running := a.cutBuilding[key]; running {
+		return ch, false
+	}
+	ch := make(chan struct{})
+	a.cutBuilding[key] = ch
+	return ch, true
+}
+
+func (a *asOfColumnCache) endCutBuild(key stateCutKey, done chan struct{}) {
+	a.mu.Lock()
+	delete(a.cutBuilding, key)
+	a.mu.Unlock()
+	close(done)
+}
+
+// decline remembers that key's build at epoch failed or did not fit; entries
+// of older epochs are dropped, and the set is bounded like cutSeen.
+func (a *asOfColumnCache) decline(key stateCutKey, epoch uint64) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for k, e := range a.cutDeclined {
+		if e != epoch || len(a.cutDeclined) >= stateCutSeen {
+			delete(a.cutDeclined, k)
+		}
+	}
+	a.cutDeclined[key] = epoch
+}
+
+func (a *asOfColumnCache) declined(key stateCutKey, epoch uint64) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	e, ok := a.cutDeclined[key]
+	return ok && e == epoch
 }
 
 // buildStateCut reads the cut through the effective scans' per-entity
 // timeline (the candidates ByLabel / ByType gather at the pin).
 func (c *Core) buildStateCut(key stateCutKey, keys []string, epoch uint64) (*stateCut, error) {
-	cut := newStateCut(epoch, keys)
 	if key.rel {
 		var ids []types.RelID
 		if err := c.readUnderRLock(func() error {
@@ -315,6 +396,7 @@ func (c *Core) buildStateCut(key stateCutKey, keys []string, epoch uint64) (*sta
 		}); err != nil {
 			return nil, err
 		}
+		cut := newStateCut(epoch, keys, len(ids), true)
 		err := c.streamRelTimelines(ascending(ids), key.pin, func(r *types.Relationship) bool { return r.HasTypeTokenRaw(key.tok) },
 			func(s temporal.RelSegment) bool {
 				cut.add(uint64(s.Rel.ID()), s.ValidFrom, s.ValidTo, s.Rel) // #nosec G115 -- a snowflake ID
@@ -324,9 +406,6 @@ func (c *Core) buildStateCut(key stateCutKey, keys []string, epoch uint64) (*sta
 			})
 		if err != nil {
 			return nil, err
-		}
-		if cut.start == nil {
-			cut.start, cut.end = []types.NodeID{}, []types.NodeID{}
 		}
 		return cut.seal(), nil
 	}
@@ -338,6 +417,7 @@ func (c *Core) buildStateCut(key stateCutKey, keys []string, epoch uint64) (*sta
 	}); err != nil {
 		return nil, err
 	}
+	cut := newStateCut(epoch, keys, len(ids), false)
 	err := c.streamNodeTimelines(ascending(ids), key.pin, func(n *types.Node) bool { return n.HasLabelTokenRaw(key.tok) },
 		func(s temporal.NodeSegment) bool {
 			cut.add(uint64(s.Node.ID()), s.ValidFrom, s.ValidTo, s.Node) // #nosec G115 -- a snowflake ID
@@ -368,11 +448,18 @@ func (c *Core) countStateCut(rel bool, name string, opts storepkg.QueryOpts) (in
 	return cut.count(v, opts.After, opts.Limit), true
 }
 
-func (c *Core) stateCutToken(rel bool, name string) (uint16, bool) {
-	if rel {
-		return c.lookupRelTypeQueryToken(name)
-	}
-	return c.labels.Lookup(name)
+// stateCutToken looks the label or type up under the graph read lock (false
+// also on a closed graph: the fold reports it).
+func (c *Core) stateCutToken(rel bool, name string) (tok uint16, known bool) {
+	_ = c.readUnderRLock(func() error {
+		if rel {
+			tok, known = c.lookupRelTypeQueryToken(name)
+		} else {
+			tok, known = c.labels.Lookup(name)
+		}
+		return nil
+	})
+	return tok, known
 }
 
 // scanNodeColumnsStateCut serves ScanNodeColumns at the state form from the
@@ -385,7 +472,7 @@ func (c *Core) scanNodeColumnsStateCut(label string, props []string, opts storep
 	if !ok {
 		return false, nil
 	}
-	tok, known := c.labels.Lookup(label)
+	tok, known := c.stateCutToken(false, label)
 	if !known {
 		return false, nil
 	}
@@ -405,8 +492,11 @@ func (c *Core) scanRelColumnsState(names []string, props []string, opts storepkg
 
 	stopped := false
 	for _, name := range names {
-		tok, known := c.lookupRelTypeQueryToken(name)
-		if name == "" || !known {
+		if name == "" {
+			continue
+		}
+		tok, known := c.stateCutToken(true, name)
+		if !known {
 			continue
 		}
 		named := func(b *storepkg.RelColumnBatch) bool {
@@ -480,15 +570,15 @@ func (a *asOfColumnCache) cutKeysFor(key stateCutKey, keys []string) []string {
 }
 
 // putCut caches cut for key unless a history rewrite advanced the epoch since
-// its build (false: the cut may be torn and must not answer). It drops the
-// key's previous cut and every cut of an older epoch, then evicts least
-// recently used cuts until the new one fits the budget; a cut over the
-// budget is not kept (it still answers the call that built it).
-func (a *asOfColumnCache) putCut(key stateCutKey, cut *stateCut) bool {
+// its build (current=false: the cut may be torn and must not answer). It
+// drops the key's previous cut and every cut of an older epoch, then evicts
+// least recently used cuts until the new one fits the budget; a cut over the
+// budget is not kept (kept=false; it still answers the call that built it).
+func (a *asOfColumnCache) putCut(key stateCutKey, cut *stateCut) (kept, current bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.epoch.Load() != cut.epoch {
-		return false
+		return false, false
 	}
 	for k, old := range a.cuts {
 		if k == key || old.epoch != cut.epoch {
@@ -497,13 +587,13 @@ func (a *asOfColumnCache) putCut(key stateCutKey, cut *stateCut) bool {
 	}
 	size := cut.bytes()
 	if size > a.cutBudget {
-		return true
+		return false, true
 	}
 	a.evictCutsLocked(a.cutBudget - size)
 	a.cuts[key] = cut
 	a.cutOrder = append(a.cutOrder, key)
 	a.cutBytes += size
-	return true
+	return true, true
 }
 
 // evictCutsLocked drops least recently used cuts until they hold at most

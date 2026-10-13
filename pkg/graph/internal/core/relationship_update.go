@@ -548,6 +548,9 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 	if err := c.store.ReplaceRelationship(current); err != nil {
 		return nil, false, err
 	}
+	// The row every pin reads changed in place: a history rewrite for the
+	// pinned caches (as-of sets, state cuts), after the store write.
+	c.asOfColumns.bump()
 
 	c.opRelUpdates.Add(1)
 	return current, true, nil

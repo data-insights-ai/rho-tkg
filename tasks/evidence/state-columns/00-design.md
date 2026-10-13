@@ -42,7 +42,7 @@ replica, so the cut equals the fold, bug included, until 25 is fixed at its root
 change the state at the pin (pin stability), so the cache survives write-active ingest.
 
 **In-flight writes.** A cut is built only when every write stamped at or below the pin has landed: under a
-momentary `c.mu.Lock` barrier (standalone writes run under the read lock; batches, ingest and applies under
+`c.mu.TryLock` (never waits; the fold answers when it fails) (standalone writes run under the read lock; batches, ingest and applies under
 the write lock) read `landed = min(lastInstant, openTxStart while a tx is open)`; build iff pin <= landed.
 An update in flight also holds its entity lock, which the per-entity read takes; a create does not, hence
 the barrier. `notePin(pin)` runs before the epoch is read; `put` drops a build whose epoch moved.

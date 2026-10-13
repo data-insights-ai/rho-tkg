@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	badgerpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -446,4 +447,87 @@ func stTok(t *testing.T, e *ccEnt) uint16 {
 		t.Fatalf("no token for the tracked %s", e.kind())
 	}
 	return tok
+}
+
+// TestStateColumnPath_InPlaceUpdate: UpdateInPlace rewrites the row a cached
+// cut was built from (no history row); the next state read equals the fold.
+func TestStateColumnPath_InPlaceUpdate(t *testing.T) {
+	ccRun(t, false, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
+		e := mk(t)
+		id := e.add("A", 1000, nil)
+		e.add("B", 1000, nil)
+		pin := e.pin()
+		valids := []types.Instant{2000}
+		stCheck(t, e, "before", []types.Instant{pin}, valids) // builds the cut
+		var err error
+		if e.rel {
+			_, err = e.g.Rels.UpdateInPlace(e.ctx, types.RelID(id), map[string]any{"x": int64(9)})
+		} else {
+			_, err = e.g.Nodes.UpdateInPlace(e.ctx, types.NodeID(id), map[string]any{"x": int64(9)})
+		}
+		if err != nil {
+			t.Fatalf("UpdateInPlace: %v", err)
+		}
+		stCheck(t, e, "after UpdateInPlace", []types.Instant{pin}, valids)
+	})
+}
+
+// TestStateColumnPath_CountInsideScanCallback: a state count called from a
+// fold-path scan callback (which runs under the graph read lock) answers; the
+// cut build never waits for the write lock.
+func TestStateColumnPath_CountInsideScanCallback(t *testing.T) {
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	useTestClock(t, g)
+	e := newCCEnt(t, g, false)
+	e.add("A", 1000, nil)
+	pin := e.pin()
+	done := make(chan int, 1)
+	go func() {
+		n := 0
+		_, _ = g.ScanNodeColumns(ccLabel, nil, storepkg.QueryOpts{TxPin: pin}, func(*storepkg.ColumnBatch) bool {
+			for range 2 { // the second ask builds the cut
+				n, _ = g.Nodes.CountByLabelAt(ccLabel, storepkg.QueryOpts{ValidAt: 2000, TxAt: pin})
+			}
+			return true
+		})
+		done <- n
+	}()
+	select {
+	case n := <-done:
+		if n != 1 {
+			t.Fatalf("count inside the callback: %d, want 1", n)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a state count inside a scan callback deadlocked")
+	}
+}
+
+// TestStateColumnPath_OversizedBuildsOnce: a cut over the budget is built
+// once per key and epoch (then the fold answers), not on every ask.
+func TestStateColumnPath_OversizedBuildsOnce(t *testing.T) {
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	useTestClock(t, g)
+	e := newCCEnt(t, g, false)
+	e.add("A", 1000, nil)
+	e.add("B", 1000, nil)
+	pin := e.pin()
+	g.asOfColumns.setStateCutBudgetForTest(t, 1)
+	var reads int
+	g.scanReadTestHook = func() { reads++ }
+	for range 5 {
+		if n, err := g.Nodes.CountByLabelAt(ccLabel, storepkg.QueryOpts{ValidAt: 2000, TxAt: pin}); err != nil || n != 2 {
+			t.Fatalf("count %d, %v; want 2", n, err)
+		}
+	}
+	if reads != 2 {
+		t.Fatalf("5 asks of an oversized cut read %d entity timelines; want 2 (one build)", reads)
+	}
 }

@@ -66,12 +66,18 @@ type asOfColumnCache struct {
 
 	// The state cuts (state_columns.go): cached by key, least recently used
 	// first in cutOrder, cutBytes of them held against cutBudget; cutSeen the
-	// last keys asked for once (admitCut).
-	cuts      map[stateCutKey]*stateCut
-	cutOrder  []stateCutKey
-	cutBytes  int64
-	cutBudget int64
-	cutSeen   []stateCutKey
+	// last keys asked for once (admitCut); cutBuilding the builds in flight
+	// (one per key); cutDeclined the epoch at which a key's build failed or
+	// did not fit the budget (the fold answers until the epoch moves);
+	// cutBuilds counts builds.
+	cuts        map[stateCutKey]*stateCut
+	cutOrder    []stateCutKey
+	cutBytes    int64
+	cutBudget   int64
+	cutSeen     []stateCutKey
+	cutBuilding map[stateCutKey]chan struct{}
+	cutDeclined map[stateCutKey]uint64
+	cutBuilds   atomic.Int64
 }
 
 type asOfCacheKey struct {
@@ -87,9 +93,11 @@ const asOfCacheCap = 64
 
 func newAsOfColumnCache() *asOfColumnCache {
 	return &asOfColumnCache{
-		cols:      make(map[asOfCacheKey]*indexpkg.LabelDocValues),
-		cuts:      make(map[stateCutKey]*stateCut),
-		cutBudget: stateCutBudget,
+		cols:        make(map[asOfCacheKey]*indexpkg.LabelDocValues),
+		cuts:        make(map[stateCutKey]*stateCut),
+		cutBudget:   stateCutBudget,
+		cutBuilding: make(map[stateCutKey]chan struct{}),
+		cutDeclined: make(map[stateCutKey]uint64),
 	}
 }
 
@@ -213,6 +221,7 @@ func (a *asOfColumnCache) clear() {
 	a.order = nil
 	a.cuts = make(map[stateCutKey]*stateCut)
 	a.cutOrder, a.cutBytes, a.cutSeen = nil, 0, nil
+	a.cutDeclined = make(map[stateCutKey]uint64)
 	a.mu.Unlock()
 }
 
