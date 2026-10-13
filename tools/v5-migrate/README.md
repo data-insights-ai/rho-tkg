@@ -29,12 +29,16 @@ integrated root recorded in that receipt. Archived qualification pins remain
 unchanged. This narrow local result does not qualify whole-root/hosted gates,
 original history completeness, destination import or full V6.
 
-The current module require is prepared for v4.51.4/main `a1248ffc`; its local
-replacement selects the integrated root reader. Current-reader requalification is
-**pending**: rerun only the ten narrow module gates and existing nonempty node/rel
-preflight cases, recording new exact source/profile/scanner receipts. The dated v4.51.3 source-only checkpoint remains unchanged. Historical
-observations and pins above remain unchanged. Live read snapshots/open images are
-source accelerators, never an import cut or proof of missing history.
+The current v4.51.4/main `a1248ffc` reader is locally requalified at integrated
+root `9e805ddc` by the [ten-gate receipt](evidence/main4514-9e805ddc.json) and
+[raw archive](evidence/main4514-9e805ddc.tar.gz). All ten existing module gates
+passed serially with Go 1.26.9 darwin/arm64, owned pinned scanner builds, and the
+same 180-second/4096-MiB sampled process-tree bounds. Existing nonempty node/rel
+preflight cases ran; coverage remains 96.2% overall and 100% for both public
+preflight functions. This qualifies the local reader mapping only, without
+whole-root or V6 acceptance. Dated source checkpoints and historical observations
+remain unchanged. Live read snapshots/open images are source accelerators, never
+an import cut or proof of missing history.
 
 The caller quiesces source writes, imports, retention and DDL across a call,
 supplies capture/reader identity and evidence, and designates an explicit v5
