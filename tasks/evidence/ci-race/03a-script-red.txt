@@ -1,0 +1,102 @@
+FAIL: list = root race gate: 4 other packages, 9 core names, 4 exhaustive shards
+root race gate: core shard 1/4, 3 names, -run ^(ExampleH|TestC|TestI)$
+root race gate: core shard 2/4, 2 names, -run ^(FuzzG|TestD)$
+root race gate: core shard 3/4, 2 names, -run ^(TestA|TestE)$
+root race gate: core shard 4/4, 2 names, -run ^(TestB|TestF)$
+root race gate: all root packages and core shards passed, want ["other","graph","memory","core-1","core-2","core-3","core-4"]
+FAIL: other ran: test -short -race -count=1 example.com/m/pkg/a example.com/m/pkg/graph example.com/m/pkg/graph/store/memory example.com/m/pkg/z
+test -short -race -count=1 -run ^(ExampleH|TestC|TestI)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(FuzzG|TestD)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestA|TestE)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestB|TestF)$ example.com/m/pkg/graph/internal/core
+FAIL: graph ran: test -short -race -count=1 example.com/m/pkg/a example.com/m/pkg/graph example.com/m/pkg/graph/store/memory example.com/m/pkg/z
+test -short -race -count=1 -run ^(ExampleH|TestC|TestI)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(FuzzG|TestD)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestA|TestE)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestB|TestF)$ example.com/m/pkg/graph/internal/core
+FAIL: memory ran: test -short -race -count=1 example.com/m/pkg/a example.com/m/pkg/graph example.com/m/pkg/graph/store/memory example.com/m/pkg/z
+test -short -race -count=1 -run ^(ExampleH|TestC|TestI)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(FuzzG|TestD)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestA|TestE)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestB|TestF)$ example.com/m/pkg/graph/internal/core
+FAIL: core-1 ran 5 times
+FAIL: core-1 ran: test -short -race -count=1 example.com/m/pkg/a example.com/m/pkg/graph example.com/m/pkg/graph/store/memory example.com/m/pkg/z
+test -short -race -count=1 -run ^(ExampleH|TestC|TestI)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(FuzzG|TestD)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestA|TestE)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestB|TestF)$ example.com/m/pkg/graph/internal/core
+FAIL: core-2 ran 5 times
+FAIL: core-2 ran: test -short -race -count=1 example.com/m/pkg/a example.com/m/pkg/graph example.com/m/pkg/graph/store/memory example.com/m/pkg/z
+test -short -race -count=1 -run ^(ExampleH|TestC|TestI)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(FuzzG|TestD)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestA|TestE)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestB|TestF)$ example.com/m/pkg/graph/internal/core
+FAIL: core-3 ran 5 times
+FAIL: core-3 ran: test -short -race -count=1 example.com/m/pkg/a example.com/m/pkg/graph example.com/m/pkg/graph/store/memory example.com/m/pkg/z
+test -short -race -count=1 -run ^(ExampleH|TestC|TestI)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(FuzzG|TestD)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestA|TestE)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestB|TestF)$ example.com/m/pkg/graph/internal/core
+FAIL: core-4 ran 5 times
+FAIL: core-4 ran: test -short -race -count=1 example.com/m/pkg/a example.com/m/pkg/graph example.com/m/pkg/graph/store/memory example.com/m/pkg/z
+test -short -race -count=1 -run ^(ExampleH|TestC|TestI)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(FuzzG|TestD)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestA|TestE)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestB|TestF)$ example.com/m/pkg/graph/internal/core
+FAIL: core shards cover ExampleH ExampleH ExampleH ExampleH TestC TestC TestC TestC TestI)$ example.com/m/pkg/graph/internal/core TestI)$ example.com/m/pkg/graph/internal/core TestI)$ example.com/m/pkg/graph/internal/core TestI)$ example.com/m/pkg/graph/internal/core, want ExampleH FuzzG TestA TestB TestC TestD TestE TestF TestI
+FAIL: full sequence ran 5 parts: test -short -race -count=1 example.com/m/pkg/a example.com/m/pkg/graph example.com/m/pkg/graph/store/memory example.com/m/pkg/z
+test -short -race -count=1 -run ^(ExampleH|TestC|TestI)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(FuzzG|TestD)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestA|TestE)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestB|TestF)$ example.com/m/pkg/graph/internal/core
+FAIL: RACE_SHARD with 1 shard accepted
+FAIL: RACE_SHARD='core-0' accepted
+FAIL: RACE_SHARD='core-0' ran: test -short -race -count=1 example.com/m/pkg/a example.com/m/pkg/graph example.com/m/pkg/graph/store/memory example.com/m/pkg/z
+test -short -race -count=1 -run ^(ExampleH|TestC|TestI)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(FuzzG|TestD)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestA|TestE)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestB|TestF)$ example.com/m/pkg/graph/internal/core
+FAIL: RACE_SHARD='core-5' accepted
+FAIL: RACE_SHARD='core-5' ran: test -short -race -count=1 example.com/m/pkg/a example.com/m/pkg/graph example.com/m/pkg/graph/store/memory example.com/m/pkg/z
+test -short -race -count=1 -run ^(ExampleH|TestC|TestI)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(FuzzG|TestD)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestA|TestE)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestB|TestF)$ example.com/m/pkg/graph/internal/core
+FAIL: RACE_SHARD='core-x' accepted
+FAIL: RACE_SHARD='core-x' ran: test -short -race -count=1 example.com/m/pkg/a example.com/m/pkg/graph example.com/m/pkg/graph/store/memory example.com/m/pkg/z
+test -short -race -count=1 -run ^(ExampleH|TestC|TestI)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(FuzzG|TestD)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestA|TestE)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestB|TestF)$ example.com/m/pkg/graph/internal/core
+FAIL: RACE_SHARD='core-' accepted
+FAIL: RACE_SHARD='core-' ran: test -short -race -count=1 example.com/m/pkg/a example.com/m/pkg/graph example.com/m/pkg/graph/store/memory example.com/m/pkg/z
+test -short -race -count=1 -run ^(ExampleH|TestC|TestI)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(FuzzG|TestD)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestA|TestE)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestB|TestF)$ example.com/m/pkg/graph/internal/core
+FAIL: RACE_SHARD='foo' accepted
+FAIL: RACE_SHARD='foo' ran: test -short -race -count=1 example.com/m/pkg/a example.com/m/pkg/graph example.com/m/pkg/graph/store/memory example.com/m/pkg/z
+test -short -race -count=1 -run ^(ExampleH|TestC|TestI)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(FuzzG|TestD)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestA|TestE)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestB|TestF)$ example.com/m/pkg/graph/internal/core
+FAIL: RACE_SHARD='other ' accepted
+FAIL: RACE_SHARD='other ' ran: test -short -race -count=1 example.com/m/pkg/a example.com/m/pkg/graph example.com/m/pkg/graph/store/memory example.com/m/pkg/z
+test -short -race -count=1 -run ^(ExampleH|TestC|TestI)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(FuzzG|TestD)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestA|TestE)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestB|TestF)$ example.com/m/pkg/graph/internal/core
+FAIL: RACE_SHARD='graph/x' accepted
+FAIL: RACE_SHARD='graph/x' ran: test -short -race -count=1 example.com/m/pkg/a example.com/m/pkg/graph example.com/m/pkg/graph/store/memory example.com/m/pkg/z
+test -short -race -count=1 -run ^(ExampleH|TestC|TestI)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(FuzzG|TestD)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestA|TestE)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestB|TestF)$ example.com/m/pkg/graph/internal/core
+FAIL: RACE_SHARD='list2' accepted
+FAIL: RACE_SHARD='list2' ran: test -short -race -count=1 example.com/m/pkg/a example.com/m/pkg/graph example.com/m/pkg/graph/store/memory example.com/m/pkg/z
+test -short -race -count=1 -run ^(ExampleH|TestC|TestI)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(FuzzG|TestD)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestA|TestE)$ example.com/m/pkg/graph/internal/core
+test -short -race -count=1 -run ^(TestB|TestF)$ example.com/m/pkg/graph/internal/core
+31 failure(s)
+exit 1

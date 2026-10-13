@@ -1,0 +1,7 @@
+MUTANT isolated-left-in-other: killed
+MUTANT core-shard-not-selected: killed
+MUTANT isolated-runs-always: killed
+MUTANT unknown-selector-accepted: killed
+MUTANT selector-on-one-shard: killed
+MUTANT other-runs-always: killed
+MUTANT round-robin-off-by-one: killed

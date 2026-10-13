@@ -30,6 +30,44 @@ jobs:
       - run: make vet
       - run: make build
       - run: make test
+
+  # The race gate's parts, read from scripts/test-race.sh (no Go needed), so
+  # the matrix below cannot drift from the script: "other", the isolated
+  # packages (pkg/graph, store/memory) and core in four exhaustive batches of
+  # whole top-level tests. On one 4-vCPU runner these packages shared the CPUs
+  # and pkg/graph, core and memory each crossed Go's 10 min package timeout.
+  race-plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      parts: ${{ steps.plan.outputs.parts }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: make test-race-script
+      - id: plan
+        run: echo "parts=$(RACE_SHARD=list bash scripts/test-race.sh 4)" >> "$GITHUB_OUTPUT"
+
+  # One job per part; each part is its own `go test` invocation with Go's
+  # default 10 min timeout (no -timeout override). Measured <= 5 min per part
+  # at GOMAXPROCS=4 (tasks/evidence/ci-race/).
+  race:
+    needs: race-plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        part: ${{ fromJSON(needs.race-plan.outputs.parts) }}
+    name: race (${{ matrix.part }})
+    env:
+      ROOT_RACE_CORE_SHARDS: "4"
+      RACE_SHARD: ${{ matrix.part }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
       - run: make test-race
 
   # Blocking: fails below the 80% floor (project rule, Testing Rules #7).

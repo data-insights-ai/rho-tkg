@@ -2,11 +2,13 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := build
 
-.PHONY: tools build test test-v test-race test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker check ci clean check-metakv-reap
+.PHONY: tools build test test-v test-race test-race-script test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker check ci clean check-metakv-reap
 
 BENCH_COUNT ?= 1
 BENCH_TIME ?= 1s
 PROD_BENCH_COUNT ?= 1
+# CI opts into four exhaustive core batches; local defaults remain unsplit.
+ROOT_RACE_CORE_SHARDS ?= 1
 GOLANGCI_LINT_VERSION ?= v2.13.2
 GOSEC_VERSION ?= v2.29.0
 GOVULNCHECK_VERSION ?= v1.7.0
@@ -23,9 +25,15 @@ test:
 test-v:
 	go test -short -count=1 -v ./...
 
-# Run tests with race detector
+# Run tests with race detector. Local default: one unsplit `go test ./...`.
+# CI: ROOT_RACE_CORE_SHARDS=4 plus RACE_SHARD=<part> runs one matrix part
+# (scripts/test-race.sh; RACE_SHARD=list prints the parts).
 test-race:
-	go test -short -race -count=1 ./...
+	$(SHELL) scripts/test-race.sh "$(ROOT_RACE_CORE_SHARDS)"
+
+# Tests of the race-gate script itself (fake go, no toolchain needed).
+test-race-script:
+	$(SHELL) scripts/test-race-test.sh
 
 # Run integration tests (long-running, not short)
 test-integration:

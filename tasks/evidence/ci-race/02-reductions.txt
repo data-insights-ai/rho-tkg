@@ -1,0 +1,33 @@
+ci-race 02 — size cuts of the slowest -short -race tests (before = HEAD a1248ffc, after = this branch)
+
+Rule: only repetition shrinks (seeds, IDs), only in -short under -race (core/graph) or -short (memory cursor);
+full sizes stay behind !testing.Short(); no case, door, backend or assertion removed. Each cut keeps the test's
+generator-coverage / per-seed checks, which act as the guard that the smaller size still exercises everything.
+
+Timing: race test binaries (go test -c -race) of both trees, run back to back, -test.short -test.run '^T$',
+GOMAXPROCS=4, taskset 4 CPUs, /usr/bin/time (wall; host load 20-40 from other work).
+
+| test                                                         | cut (-short, race)         | before   | after   |
+|--------------------------------------------------------------|----------------------------|----------|---------|
+| core TestRetractionOracle_NeverRecordedWorld                 | seeds/backend 3 -> 2       | 130.0 s  | 80.5 s  |
+| core TestEffectiveTimeline_PointwiseOracle                   | seeds/backend 3 -> 2       |  59.4 s  | 38.8 s  |
+| graph TestCurrentStampsDifferential                          | seeds/backend 24 -> 8      |  70.4 s  | 25.8 s  |
+| graph TestRelSegmentsDifferentialOracleOnDisk                | seeds 3 -> 2               |  45.2 s  | 28.4 s  |
+| graph TestRelSegmentsDifferentialOracle                      | seeds 3 -> 2               |  46.6 s  | 38.7 s  |
+| memory TestMemoryStore_AllNodeHistoryIDsFrom_CursorMatches.. | IDs 10000 -> 2000 (-short) |  57.4 s  |  2.6 s  |
+
+Guards that still pass at the smaller size (after-runs PASS above and in the full package runs):
+- Retraction: retractions > 0 and retractions next to an earlier life > 0 over all backends.
+- ET pointwise: per seed, "compaction trimmed versions but no pin refused" check; every entity x pin compared.
+- CurrentStamps: every op kind (updateNode ... updateInPlace) succeeded and above-head / deleted / revived
+  coverage reached, per backend, at 8 seeds.
+- RelSegments: per seed sealed, superseded sealed rows, corrections and close+delete steps all taken.
+- Memory cursor: 2000 IDs = 3 full pages of 512 + a short tail; pageSize 1 and 1<<20 edges kept. The pageSize=1
+  walk is quadratic (each page re-sorts the whole ID set), hence the -short size.
+
+Tried and reverted: TestTxBackfillOracle_CrossBackend 24 -> 8 seeds. Its generator-coverage check failed
+(12 door/op kinds never accepted); the smallest passing count is 24 (non-race sweep: 8:12 missing, 10:8,
+12:6, 14:6, 16:5, 18:5, 20:3, 22:3, 24:0). It stays at 24 seeds (~70 s alone); sharding carries it.
+
+Not cut: memory TestSegments_* (layouts and row counts are the cases: seal boundaries, byte growth per
+segment count), core TestAtTxEndsAtDelete (shape x door x backend matrix, every cell a break case).

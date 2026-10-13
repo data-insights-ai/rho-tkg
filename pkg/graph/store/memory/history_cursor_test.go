@@ -167,7 +167,13 @@ func pageThroughNodeHistory(t *testing.T, ms *Store, pageSize int) []types.NodeI
 func TestMemoryStore_AllNodeHistoryIDsFrom_CursorMatchesUnpaginated(t *testing.T) {
 	t.Parallel()
 	ms := New()
-	want := seedNodeHistory(t, ms, 10000)
+	// Each page re-sorts the whole history ID set, so the pageSize=1 walk is
+	// quadratic: -short seeds 2000 IDs (3 full pages of 512 plus a 464-ID tail).
+	n := 10000
+	if testing.Short() {
+		n = 2000
+	}
+	want := seedNodeHistory(t, ms, n)
 
 	got := pageThroughNodeHistory(t, ms, 512)
 	if !reflect.DeepEqual(got, want) {
