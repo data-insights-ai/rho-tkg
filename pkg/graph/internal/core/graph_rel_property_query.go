@@ -37,7 +37,7 @@ func (r *RelOps) ByTypeAndProperty(typeName, key string, value any, opts storepk
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts, c.relTypeRetentionScope(typeName)); err != nil {
 		return nil, err
 	}
 	if err := c.validateRelTypeQueryName(typeName); err != nil {

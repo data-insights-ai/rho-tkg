@@ -146,9 +146,13 @@ func (a *AdminOps) PurgeExpiredNodes(ctx context.Context, policy PurgePolicy) (P
 		}
 	}
 
+	if c.purgeChunkHook != nil {
+		c.purgeChunkHook()
+	}
+
 	// (3) Physical purge, chunked (the store self-locks per chunk; the graph lock
 	// is NOT held across the range — invariant 5).
-	report, err := c.purgeRangeAllChunks(ctx, token, policy.Before, policy.Mode)
+	report, err := c.purgeRangeAllChunks(ctx, token, policy.Before, policy.Mode, true)
 	report.Watermark = types.Instant(c.retentionMaxWatermark.Load())
 	return report, err
 }
@@ -184,7 +188,18 @@ func (c *Core) purgeChunk(token uint16, before types.Instant, mode PurgeMode) (s
 // skipping the reap here would leave a PERMANENT ghost owner barring its value
 // forever with no remaining path to fix it (short of an operator-side manual
 // `Constraints().ReleaseOwnership` call).
-func (c *Core) purgeRangeAllChunks(ctx context.Context, token uint16, before types.Instant, mode PurgeMode) (report PurgeReport, err error) {
+//
+// excludeTx (the admin door) runs each chunk under c.txMu, as
+// purgeRelRangeAllChunks does: an open transaction that touched a victim
+// would otherwise fail its Rollback on the purged row (backlog 21,
+// tasks/evidence/rel-retention/03-red-node-tx-rollback.txt). The apply
+// path holds c.mu and must not take c.txMu (lock order txMu → mu).
+func (c *Core) purgeRangeAllChunks(ctx context.Context, token uint16, before types.Instant, mode PurgeMode, excludeTx bool) (report PurgeReport, err error) {
+	// The removal can change the as-of belief at any pin (a node minted below
+	// the boundary was believed at every later pin): invalidate the as-of
+	// column cache AFTER the chunks, on every exit path (R14 — a bump before
+	// them lets a column built in between be cached as current).
+	defer c.asOfColumns.bump()
 	owners := c.foreverOwnerSnapshot() // nil ⇒ no forever constraints ⇒ no reaping
 	var reap map[types.NodeID]struct{}
 	defer func() {
@@ -201,7 +216,16 @@ func (c *Core) purgeRangeAllChunks(ctx context.Context, token uint16, before typ
 			err = cerr
 			return report, err
 		}
+		if excludeTx {
+			if lerr := c.lockTxMuCtx(ctx); lerr != nil {
+				err = lerr
+				return report, err
+			}
+		}
 		res, perr := c.purgeChunk(token, before, mode)
+		if excludeTx {
+			c.txMu.Unlock()
+		}
 		if perr != nil {
 			err = perr
 			return report, err
@@ -245,6 +269,6 @@ func (c *Core) applyRangePurgeLocked(body storeutil.RangePurgeBody) error {
 	if err := c.advanceRetentionWatermark(token, before); err != nil {
 		return err
 	}
-	_, err := c.purgeRangeAllChunks(context.Background(), token, before, mode)
+	_, err := c.purgeRangeAllChunks(context.Background(), token, before, mode, false)
 	return err
 }

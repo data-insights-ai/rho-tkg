@@ -34,7 +34,7 @@ func (n *NodeOps) ByLabelAndProperty(label, key string, value any, opts storepkg
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 		return nil, err
 	}
 	if err := c.validateIndexLabel(label); err != nil {
@@ -138,7 +138,7 @@ func (n *NodeOps) ByLabelAndProperties(label string, values map[string]any, opts
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 		return nil, err
 	}
 	if err := c.validateIndexLabel(label); err != nil {

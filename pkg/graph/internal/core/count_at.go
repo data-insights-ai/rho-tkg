@@ -32,7 +32,7 @@ func (n *NodeOps) CountByLabelAt(label string, opts storepkg.QueryOpts) (int, er
 	if err := c.validateIndexLabel(label); err != nil {
 		return 0, err
 	}
-	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 		return 0, err
 	}
 	var count int
@@ -59,7 +59,7 @@ func (r *RelOps) CountByTypeAt(typeName string, opts storepkg.QueryOpts) (int, e
 	if err := c.validateRelTypeQueryName(typeName); err != nil {
 		return 0, err
 	}
-	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts, c.relTypeRetentionScope(typeName)); err != nil {
 		return 0, err
 	}
 	var count int

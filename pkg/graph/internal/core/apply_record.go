@@ -57,8 +57,9 @@ func (c *Core) applyChangeRecordLocked(rec storepkg.ChangeRecord) error {
 //   - ChangeMeta / ChangeClear: metadata marker and full wipe, no entity wire.
 //   - ChangeForeignIncomingDelete: body is ForeignIncomingDeleteBody (rel ID +
 //     END-node ID for routing) — identifiers only, no temporal metadata.
-//   - ChangeRangePurge: names a PREDICATE the replica RE-EXECUTES locally, so
-//     any resulting stamp is minted by this node's own c.now().
+//   - ChangeRangePurge / ChangeRelRangePurge: name a PREDICATE the replica
+//     RE-EXECUTES locally, so any resulting stamp is minted by this node's own
+//     c.now().
 func recordCommitStamp(rec storepkg.ChangeRecord) types.Instant {
 	switch rec.Tag {
 	case storepkg.ChangeNodePut:
@@ -195,6 +196,12 @@ func (c *Core) applyChangeRecordInnerLocked(rec storepkg.ChangeRecord) error {
 			return err
 		}
 		return c.applyRangePurgeLocked(body)
+	case storepkg.ChangeRelRangePurge:
+		body, err := storeutil.DecodeRelRangePurge(rec.Payload)
+		if err != nil {
+			return err
+		}
+		return c.applyRelRangePurgeLocked(body)
 	case storepkg.ChangeClear:
 		// Captured BEFORE Clear (BACKLOG 13l), mirroring Admin.Reset(): a
 		// replica's id_slot_lease is data-independent orchestrator state that

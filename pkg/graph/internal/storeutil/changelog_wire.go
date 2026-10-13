@@ -29,6 +29,7 @@ var (
 	_ msgpack.CustomEncoder = RelDeleteBody{}
 	_ msgpack.CustomEncoder = ForeignIncomingDeleteBody{}
 	_ msgpack.CustomEncoder = RangePurgeBody{}
+	_ msgpack.CustomEncoder = RelRangePurgeBody{}
 	_ msgpack.CustomEncoder = HistoryVersionNodeBody{}
 	_ msgpack.CustomEncoder = HistoryVersionRelBody{}
 	_ msgpack.CustomEncoder = HistoryTruncateBody{}
@@ -40,6 +41,7 @@ var (
 	_ msgpack.CustomDecoder = (*RelDeleteBody)(nil)
 	_ msgpack.CustomDecoder = (*ForeignIncomingDeleteBody)(nil)
 	_ msgpack.CustomDecoder = (*RangePurgeBody)(nil)
+	_ msgpack.CustomDecoder = (*RelRangePurgeBody)(nil)
 	_ msgpack.CustomDecoder = (*HistoryVersionNodeBody)(nil)
 	_ msgpack.CustomDecoder = (*HistoryVersionRelBody)(nil)
 	_ msgpack.CustomDecoder = (*HistoryTruncateBody)(nil)
@@ -402,6 +404,57 @@ func (b *RangePurgeBody) DecodeMsgpack(dec *msgpack.Decoder) error {
 		switch key {
 		case "l":
 			b.LabelToken, err = dec.DecodeUint16()
+		case "b":
+			b.Before, err = dec.DecodeInt64()
+		case "m":
+			b.Mode, err = dec.DecodeUint8()
+		default:
+			err = dec.Skip()
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// --- RelRangePurgeBody ---
+
+func (b RelRangePurgeBody) EncodeMsgpack(enc *msgpack.Encoder) error {
+	fields := 2
+	if b.Mode != 0 {
+		fields++
+	}
+	if err := enc.EncodeMapLen(fields); err != nil {
+		return err
+	}
+	if err := encodeStringUint16Field(enc, "t", b.TypeToken); err != nil {
+		return err
+	}
+	if err := encodeStringInt64Field(enc, "b", b.Before); err != nil {
+		return err
+	}
+	if b.Mode != 0 {
+		if err := encodeStringUint8Field(enc, "m", b.Mode); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (b *RelRangePurgeBody) DecodeMsgpack(dec *msgpack.Decoder) error {
+	n, err := dec.DecodeMapLen()
+	if err != nil {
+		return err
+	}
+	for i := 0; i < n; i++ {
+		key, err := dec.DecodeString()
+		if err != nil {
+			return err
+		}
+		switch key {
+		case "t":
+			b.TypeToken, err = dec.DecodeUint16()
 		case "b":
 			b.Before, err = dec.DecodeInt64()
 		case "m":

@@ -17,6 +17,7 @@ func TestChangeTagString(t *testing.T) {
 		ChangeForeignIncoming:       "ForeignIncoming",
 		ChangeForeignIncomingDelete: "ForeignIncomingDelete",
 		ChangeRangePurge:            "RangePurge",
+		ChangeRelRangePurge:         "RelRangePurge",
 		ChangeTag(0):                "ChangeTag(unknown)",
 		ChangeTag(200):              "ChangeTag(unknown)",
 	}
@@ -28,12 +29,12 @@ func TestChangeTagString(t *testing.T) {
 }
 
 func TestChangeTagValid(t *testing.T) {
-	for tag := ChangeNodePut; tag <= ChangeRangePurge; tag++ {
+	for tag := ChangeNodePut; tag <= ChangeRelRangePurge; tag++ {
 		if !tag.Valid() {
 			t.Errorf("tag %v should be valid", tag)
 		}
 	}
-	for _, tag := range []ChangeTag{0, ChangeRangePurge + 1, 255} {
+	for _, tag := range []ChangeTag{0, ChangeRelRangePurge + 1, 255} {
 		if tag.Valid() {
 			t.Errorf("tag %d should be invalid", byte(tag))
 		}
@@ -57,6 +58,7 @@ func TestChangeTagWireNumbersStable(t *testing.T) {
 		ChangeForeignIncoming:       11,
 		ChangeForeignIncomingDelete: 12,
 		ChangeRangePurge:            13,
+		ChangeRelRangePurge:         14,
 	}
 	for tag, want := range pinned {
 		if byte(tag) != want {

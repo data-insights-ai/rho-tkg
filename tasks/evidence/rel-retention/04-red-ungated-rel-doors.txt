@@ -1,0 +1,77 @@
+# RED 2026-10-13: the relationship doors without a retention gate (backlog 21 finding c) answer a pin below the EVENT watermark with a silently incomplete set. Gated next with the relationship family only (their node-purge behaviour unchanged).
+--- FAIL: TestRelRetentionWatermarkGatesScans (0.16s)
+    --- FAIL: TestRelRetentionWatermarkGatesScans/memory (0.03s)
+        rel_retention_purge_test.go:467: OutgoingForNodesAtPin below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: IncomingForNodesAtPin untyped below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: OutgoingForNodesAtTx below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: IncomingForNodesAtTx untyped below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsByTypePropertyAt below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsByTypePropertyDuring below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsAt below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsDuring below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsRelating below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsAtTx below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsDuringTx below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: NeighborsAt below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: OutgoingRelsAt below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: IncomingRelsAt below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: Snapshot below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: Diff below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: DiffCallback below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+    --- FAIL: TestRelRetentionWatermarkGatesScans/badger (0.04s)
+        rel_retention_purge_test.go:467: OutgoingForNodesAtPin below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: IncomingForNodesAtPin untyped below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: OutgoingForNodesAtTx below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: IncomingForNodesAtTx untyped below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsByTypePropertyAt below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsByTypePropertyDuring below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsAt below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsDuring below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsRelating below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsAtTx below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsDuringTx below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: NeighborsAt below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: OutgoingRelsAt below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: IncomingRelsAt below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: Snapshot below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: Diff below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: DiffCallback below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+    --- FAIL: TestRelRetentionWatermarkGatesScans/sharded (0.05s)
+        rel_retention_purge_test.go:467: OutgoingForNodesAtPin below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: IncomingForNodesAtPin untyped below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: OutgoingForNodesAtTx below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: IncomingForNodesAtTx untyped below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsByTypePropertyAt below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsByTypePropertyDuring below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsAt below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsDuring below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsRelating below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsAtTx below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsDuringTx below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: NeighborsAt below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: OutgoingRelsAt below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: IncomingRelsAt below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: Snapshot below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: Diff below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: DiffCallback below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+    --- FAIL: TestRelRetentionWatermarkGatesScans/tiered (0.04s)
+        rel_retention_purge_test.go:467: OutgoingForNodesAtPin below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: IncomingForNodesAtPin untyped below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: OutgoingForNodesAtTx below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: IncomingForNodesAtTx untyped below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsByTypePropertyAt below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsByTypePropertyDuring below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsAt below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsDuring below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsRelating below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsAtTx below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: RelsDuringTx below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: NeighborsAt below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: OutgoingRelsAt below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: IncomingRelsAt below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: Snapshot below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: Diff below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+        rel_retention_purge_test.go:467: DiffCallback below the EVENT watermark: err = <nil>, want ErrRetentionExpired
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.169s
+FAIL

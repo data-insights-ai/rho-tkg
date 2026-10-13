@@ -95,7 +95,7 @@ func (t *TempOps) ForEachNodeEffective(pin types.Instant, fn func(temporal.NodeS
 	if fn == nil {
 		return grapherr.ErrNilCallback
 	}
-	if err := c.validateEffectiveScanPin(pin); err != nil {
+	if err := c.validateEffectiveScanPin(pin, scopeNodes); err != nil {
 		return err
 	}
 	var ids []types.NodeID
@@ -128,7 +128,7 @@ func (t *TempOps) ForEachRelEffective(pin types.Instant, fn func(temporal.RelSeg
 	if fn == nil {
 		return grapherr.ErrNilCallback
 	}
-	if err := c.validateEffectiveScanPin(pin); err != nil {
+	if err := c.validateEffectiveScanPin(pin, scopeAllRels); err != nil {
 		return err
 	}
 	var ids []types.RelID
@@ -194,6 +194,11 @@ func (t *TempOps) RelsEffectiveByIDs(ids []types.RelID, pin types.Instant, fn fu
 	if err := c.validateEffectivePin(pin); err != nil {
 		return err
 	}
+	for _, id := range ids {
+		if err := c.checkRelTypePointRetention(id, pin); err != nil {
+			return err
+		}
+	}
 	return c.streamRelTimelines(firstOccurrences(ids), pin, nil, fn)
 }
 
@@ -239,7 +244,10 @@ func (t *TempOps) ForEachRelEffectiveAtNodes(nodeIDs []types.NodeID, dir tempora
 			return err
 		}
 	}
-	if err := c.validateEffectiveScanPin(pin); err != nil {
+	if err := c.validateEffectiveScanPin(pin, scopeNodes); err != nil {
+		return err
+	}
+	if err := c.checkRelTypesRetention(relTypes, pin); err != nil {
 		return err
 	}
 	outgoing := dir == temporal.Outgoing
@@ -413,7 +421,7 @@ func (c *Core) forEachNodeEffectiveByLabels(labels []string, pin types.Instant, 
 			return err
 		}
 	}
-	if err := c.validateEffectiveScanPin(pin); err != nil {
+	if err := c.validateEffectiveScanPin(pin, scopeNodes); err != nil {
 		return err
 	}
 	var (

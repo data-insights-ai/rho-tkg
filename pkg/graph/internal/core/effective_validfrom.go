@@ -147,7 +147,7 @@ func (t *TempOps) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom 
 	if err := c.validateRelTypeQueryName(typeName); err != nil {
 		return err
 	}
-	if err := c.validateEffectiveScanPin(pin); err != nil {
+	if err := c.validateEffectiveScanPin(pin, c.relTypeRetentionScope(typeName)); err != nil {
 		return err
 	}
 	var (
@@ -206,7 +206,7 @@ func (t *TempOps) ForEachNodeEffectiveByLabelsFrom(labels []string, pin, validFr
 			return err
 		}
 	}
-	if err := c.validateEffectiveScanPin(pin); err != nil {
+	if err := c.validateEffectiveScanPin(pin, scopeNodes); err != nil {
 		return err
 	}
 	var (

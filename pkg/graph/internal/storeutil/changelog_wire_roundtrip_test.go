@@ -31,6 +31,8 @@ func TestChangeBodyRoundTrip(t *testing.T) {
 		{"ForeignIncomingDeleteBody", ForeignIncomingDeleteBody{RelID: 9, EndID: 11}, &ForeignIncomingDeleteBody{}},
 		{"RangePurgeBody_min", RangePurgeBody{LabelToken: 3, Before: 1000}, &RangePurgeBody{}},
 		{"RangePurgeBody_mode", RangePurgeBody{LabelToken: 3, Before: 1000, Mode: 1}, &RangePurgeBody{}},
+		{"RelRangePurgeBody_min", RelRangePurgeBody{TypeToken: 3, Before: 1000}, &RelRangePurgeBody{}},
+		{"RelRangePurgeBody_mode", RelRangePurgeBody{TypeToken: 3, Before: 1000, Mode: 1}, &RelRangePurgeBody{}},
 		{"HistoryVersionNodeBody", HistoryVersionNodeBody{Version: 4, Wire: nw}, &HistoryVersionNodeBody{}},
 		{"HistoryVersionRelBody", HistoryVersionRelBody{Version: 4, Wire: rw}, &HistoryVersionRelBody{}},
 		{"HistoryTruncateBody_min", HistoryTruncateBody{ID: 13, Bound: 3}, &HistoryTruncateBody{}},

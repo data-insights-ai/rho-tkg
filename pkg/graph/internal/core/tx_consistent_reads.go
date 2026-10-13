@@ -221,7 +221,7 @@ func (tx *GraphTx) AllNodes(opts storepkg.QueryOpts) ([]*types.Node, error) {
 		return nil, err
 	}
 	defer tx.unlockActiveCore()
-	if err := tx.g.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := tx.g.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 		return nil, err
 	}
 	return tx.g.allNodesLocked(opts)
@@ -236,7 +236,7 @@ func (tx *GraphTx) NodesByLabel(label string, opts storepkg.QueryOpts) ([]*types
 	if err := tx.g.validateIndexLabel(label); err != nil {
 		return nil, err
 	}
-	if err := tx.g.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := tx.g.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 		return nil, err
 	}
 	return tx.g.nodesByLabelLocked(label, opts)
@@ -248,7 +248,7 @@ func (tx *GraphTx) NodesByLabelAndProperty(label, key string, value any, opts st
 		return nil, err
 	}
 	defer tx.unlockActiveCore()
-	if err := tx.g.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := tx.g.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 		return nil, err
 	}
 	if err := tx.g.validateIndexLabel(label); err != nil {
@@ -309,7 +309,7 @@ func (tx *GraphTx) AllRels(opts storepkg.QueryOpts) ([]*types.Relationship, erro
 		return nil, err
 	}
 	defer tx.unlockActiveCore()
-	if err := tx.g.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := tx.g.validateTemporalQueryOptsScan(opts, scopeAllRels); err != nil {
 		return nil, err
 	}
 	return tx.g.allRelsLocked(opts)
@@ -324,7 +324,7 @@ func (tx *GraphTx) RelsByType(typeName string, opts storepkg.QueryOpts) ([]*type
 	if err := tx.g.validateRelTypeQueryName(typeName); err != nil {
 		return nil, err
 	}
-	if err := tx.g.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := tx.g.validateTemporalQueryOptsScan(opts, tx.g.relTypeRetentionScope(typeName)); err != nil {
 		return nil, err
 	}
 	return tx.g.relsByTypeLocked(typeName, opts)
@@ -652,6 +652,9 @@ func (tx *GraphTx) RelAsOf(id types.RelID, txTime types.Instant) (*types.Relatio
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err
 	}
+	if err := tx.g.checkRelTypePointRetention(id, txTime); err != nil {
+		return nil, err
+	}
 	return tx.g.relAsOfLocked(id, txTime)
 }
 
@@ -710,7 +713,7 @@ func (tx *GraphTx) SearchNearest(label, propertyKey string, query []float32, k i
 		return nil, err
 	}
 	defer tx.unlockActiveCore()
-	if err := tx.g.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := tx.g.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 		return nil, err
 	}
 	if err := tx.g.validateIndexLabel(label); err != nil {
@@ -728,7 +731,7 @@ func (tx *GraphTx) SearchNearestScored(label, propertyKey string, query []float3
 		return nil, err
 	}
 	defer tx.unlockActiveCore()
-	if err := tx.g.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := tx.g.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 		return nil, err
 	}
 	if err := tx.g.validateIndexLabel(label); err != nil {

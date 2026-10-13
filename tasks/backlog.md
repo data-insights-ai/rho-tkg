@@ -29,7 +29,7 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 | 13 | MEDIUM | Ingest applier attributes group errors by numeric entity id, not by kind | open; `groupApplyError` still keys `idToGroup` by `types.EntityID` (`core/ingest.go`) |
 | 16 | MEDIUM (contract) | Range folds under an interval: predicate-anywhere or value at the resolved version? | open; decision pending; behaviour documented in the v4.44.0 CHANGELOG |
 | 20 | LOW (TEST-GAP, perf) | Effective-read cost: RelAtTx benchmark targets unmeasured | fixes 1a (v4.44.1), 1b (v4.46.0), 1c (v4.47.0), 2a (v4.46.0) shipped; only the RelAtTx benchmarks remain |
-| 21 | FEATURE | Purge relationships by age, gate retention reads per type | open; no `PurgeExpiredRels` in the tree; sigma: not blocking until `@overview` starts |
+| 21 | FEATURE | Purge relationships by age, gate retention reads per type | built on its branch (v4.51.5 batch, `PurgeExpiredRels` + per-type gate), not yet merged; sigma: not blocking until `@overview` starts |
 | 22 | MEDIUM (not reproduced) | Badger rel temporal index create races concurrent writes | open; `CreateRelTemporalIndex` still uses the snapshot / unlocked build / install shape |
 | 23 | LOW (perf, unmeasured) | `changeFeedPage` prefetches past its page | open; `PrefetchValues = true`, no `opts.Prefix` (`badgerstore_changelog.go:648-659`) |
 | 25 | MEDIUM | A future close followed by a delete changes the answer at an earlier pin | open; `stampDeleteTombstone` still clamps (`core/temporal.go:133-137`) |
@@ -240,7 +240,7 @@ Missing: `BenchmarkRelAtTx/{plain,cascaded}/{hot,cold}` with targets < 1 µs pla
 
 ### 21. Purge relationships by age, gate retention reads per type
 
-*FEATURE* — open; no `PurgeExpiredRels` in the tree; sigma: not blocking until `@overview` starts.
+*FEATURE* — built on its branch (v4.51.5 batch, `PurgeExpiredRels` + per-type gate), not yet merged; sigma: not blocking until `@overview` starts.
 
 **Purge relationships by age, and gate retention reads per type** (FEATURE, requested by sigma-tkgd's temporal overview design 2026-10-09; decided 2026-10-09). sigma keeps a long-lived overview (nodes `Overview` + `ov_*`, rels `OV_PAIR`), written back once per cut, and lets raw event RELATIONSHIPS age out. The full spec below was folded in from the removed handover `tasks/handover-overview-retention-20261009.md` (code citations were at main `0622da6` and have moved).
 

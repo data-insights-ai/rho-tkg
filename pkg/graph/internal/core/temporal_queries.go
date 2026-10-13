@@ -79,6 +79,12 @@ func (t *TempOps) RelsAt(at types.Instant) ([]*types.Relationship, error) {
 }
 
 func (c *Core) relationshipsAtLocked(at types.Instant) ([]*types.Relationship, error) {
+	// Relationship-purge watermarks (backlog 21): the doors on this helper
+	// had no retention gate, so only the relationship family applies (their
+	// node-purge behaviour is unchanged).
+	if err := c.checkRelsOnlyRetention("", at); err != nil {
+		return nil, err
+	}
 	var result []*types.Relationship
 	err := c.forEachKnownRelID(func(id types.RelID) error {
 		r, err := c.relAtLocked(id, at)
@@ -253,6 +259,12 @@ func (t *TempOps) RelsDuring(start, end types.Instant) ([]*types.Relationship, e
 }
 
 func (c *Core) relsDuringLocked(start, end types.Instant) ([]*types.Relationship, error) {
+	// Relationship-purge watermarks (backlog 21): the doors on this helper
+	// had no retention gate, so only the relationship family applies (their
+	// node-purge behaviour is unchanged).
+	if err := c.checkRelsOnlyRetention("", start); err != nil {
+		return nil, err
+	}
 	var result []*types.Relationship
 	err := c.forEachKnownRelID(func(id types.RelID) error {
 		r, err := c.getRelVersionDuring(id, start, end)
@@ -371,6 +383,12 @@ func (t *TempOps) RelsRelating(from, to types.Instant, rels types.AllenRelationS
 }
 
 func (c *Core) relsRelatingLocked(from, to types.Instant, rels types.AllenRelationSet) ([]*types.Relationship, error) {
+	// Relationship-purge watermarks (backlog 21): the doors on this helper
+	// had no retention gate, so only the relationship family applies (their
+	// node-purge behaviour is unchanged).
+	if err := c.checkRelsOnlyRetention("", from); err != nil {
+		return nil, err
+	}
 	var result []*types.Relationship
 	err := c.forEachKnownRelID(func(id types.RelID) error {
 		r, err := c.findRelVersionRelating(id, from, to, rels, nil)
@@ -795,6 +813,12 @@ func (t *TempOps) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.N
 }
 
 func (c *Core) neighborsAtLocked(nodeID types.NodeID, at types.Instant) ([]*types.Node, error) {
+	// Relationship-purge watermarks (backlog 21): the doors on this helper
+	// had no retention gate, so only the relationship family applies (their
+	// node-purge behaviour is unchanged).
+	if err := c.checkRelsOnlyRetention("", at); err != nil {
+		return nil, err
+	}
 	if _, err := c.nodeAtLocked(nodeID, at); err != nil {
 		return nil, err
 	}
@@ -925,6 +949,12 @@ func (t *TempOps) directionalRelsAt(nodeID types.NodeID, at types.Instant, outgo
 }
 
 func (c *Core) directionalRelsAtLocked(nodeID types.NodeID, at types.Instant, outgoing bool) ([]*types.Relationship, error) {
+	// Relationship-purge watermarks (backlog 21): the doors on this helper
+	// had no retention gate, so only the relationship family applies (their
+	// node-purge behaviour is unchanged).
+	if err := c.checkRelsOnlyRetention("", at); err != nil {
+		return nil, err
+	}
 	if _, err := c.nodeAtLocked(nodeID, at); err != nil {
 		return nil, err
 	}
@@ -1233,6 +1263,12 @@ func (t *TempOps) RelsByTypePropertyAt(relType, key string, value any, at types.
 }
 
 func (c *Core) relsByTypePropertyAtLocked(relType, key string, value any, at types.Instant) ([]*types.Relationship, error) {
+	// Relationship-purge watermarks (backlog 21): the doors on this helper
+	// had no retention gate, so only the relationship family applies (their
+	// node-purge behaviour is unchanged).
+	if err := c.checkRelsOnlyRetention(relType, at); err != nil {
+		return nil, err
+	}
 	targetKey := indexpkg.PropertyValueKey(value)
 	tok, ok := c.lookupRelTypeQueryToken(relType)
 	if !ok {
@@ -1418,6 +1454,9 @@ func (t *TempOps) RelAtTx(id types.RelID, validAt, txAt types.Instant) (*types.R
 	}
 	var result *types.Relationship
 	err := c.readUnderRLock(func() error {
+		if err := c.checkRelTypePointRetention(id, txAt); err != nil {
+			return err
+		}
 		r, err := c.relAtLockedTx(id, validAt, txAt)
 		result = r
 		return err
@@ -1488,6 +1527,12 @@ func (t *TempOps) RelsAtTx(validAt, txAt types.Instant) ([]*types.Relationship, 
 }
 
 func (c *Core) relsAtLockedTx(validAt, txAt types.Instant) ([]*types.Relationship, error) {
+	// Relationship-purge watermarks (backlog 21): the doors on this helper
+	// had no retention gate, so only the relationship family applies (their
+	// node-purge behaviour is unchanged).
+	if err := c.checkRelsOnlyRetention("", relsAtTxPin(validAt, txAt)); err != nil {
+		return nil, err
+	}
 	var result []*types.Relationship
 	err := c.forEachKnownRelID(func(id types.RelID) error {
 		r, err := c.relAtLockedTx(id, validAt, txAt)
@@ -1592,6 +1637,12 @@ func (t *TempOps) RelsDuringTx(from, to, txAt types.Instant) ([]*types.Relations
 }
 
 func (c *Core) relsDuringTxLocked(start, end, txAt types.Instant) ([]*types.Relationship, error) {
+	// Relationship-purge watermarks (backlog 21): the doors on this helper
+	// had no retention gate, so only the relationship family applies (their
+	// node-purge behaviour is unchanged).
+	if err := c.checkRelsOnlyRetention("", relsAtTxPin(start, txAt)); err != nil {
+		return nil, err
+	}
 	var result []*types.Relationship
 	err := c.forEachKnownRelID(func(id types.RelID) error {
 		r, err := c.findRelVersionMatchingDuringTx(id, start, end, txAt, nil)
@@ -1612,6 +1663,12 @@ func (c *Core) relsDuringTxLocked(start, end, txAt types.Instant) ([]*types.Rela
 }
 
 func (c *Core) relsByTypePropertyDuringLocked(relType, key string, value any, start, end types.Instant) ([]*types.Relationship, error) {
+	// Relationship-purge watermarks (backlog 21): the doors on this helper
+	// had no retention gate, so only the relationship family applies (their
+	// node-purge behaviour is unchanged).
+	if err := c.checkRelsOnlyRetention(relType, start); err != nil {
+		return nil, err
+	}
 	targetKey := indexpkg.PropertyValueKey(value)
 	tok, ok := c.lookupRelTypeQueryToken(relType)
 	if !ok {

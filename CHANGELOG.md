@@ -6,6 +6,54 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`Admin().PurgeExpiredRels(ctx, RelPurgePolicy{Type, Mode, Before}) (RelPurgeReport, error)`** (backlog 21,
+  sigma-tkgd overview retention): hard-removes the relationships of one type minted before `Before` — live and ended
+  (deleted, deleted at a caller instant, cascade-ended, retracted, re-imported lives) — with their legs, ex-adjacency,
+  indexes, counters, sidecars and whole history; nodes untouched. `RelPurgeReport{RelsPurged, Watermark}`. Same
+  gates and order as `PurgeExpiredNodes` (watermark, then one change record, then 256-relationship chunks;
+  idempotent, resumable); only `PurgeByAge` (`PurgeByValidTo` → `ErrInvalidPurgePolicy`); an unknown type is a
+  no-op. Memory, badger, sharded (per-shard fan-out) and tiered (every shard, cold ones opened for the call, then a
+  leg-residue sweep on the endpoints' shards). On badger a chunk selects its victims in O(chunk) reads (the type's
+  index keys and the history IDs, each walk resumed from a per-type cursor): 25,000 relationships beside 20,000
+  deleted ones of another type 2.26 s → 1.16 s (`tasks/evidence/rel-retention/09-f2-selection.txt`).
+- **Per-type retention gate**: a relationship purge advances only its type's watermark
+  (`retention_rel_watermark/<type token>`, max-monotonic, and `retention_rel_max_watermark`, kept in RAM from open).
+  A read of that type, or of every type, pinned below it fails with `ErrRetentionExpired`; other types and every node
+  read are answered (an `EVENT` purge never fails an `Overview` or `OV_PAIR` read). The scan doors take the scope
+  of what they read; the relationship point doors (`RelAsOf`, `RelAtTx`, `RelEffectiveTimeline`,
+  `RelsEffectiveByIDs`) check the relationship's type; the relationship doors that had no retention gate (`RelsAt`,
+  `RelsDuring`, `RelsRelating`, `RelsByTypeProperty*`, `RelsAtTx`, `RelsDuringTx`, `NeighborsAt`,
+  `Outgoing`/`IncomingRelsAt`, `Snapshot`, `Diff*`, `Outgoing`/`IncomingForNodesAtTx`/`AtPin`, their `GraphTx`
+  mirrors) check the relationship watermarks only — their node-purge behaviour is unchanged. No-retention path: one
+  atomic load. `Admin().Reset` clears the relationship watermarks.
+- **Change tag `store.ChangeRelRangePurge` (14)**, body `RelRangePurgeBody{type token, boundary, mode}`: a replica
+  re-runs the predicate and advances its own type watermark; `ChangeOpOf` / `DecodeChangeIdentity` answer
+  `ErrNoEntityIdentity`; `ImportMerge` captures nothing. An older binary stops at the unknown tag: upgrade
+  replicas first; an older binary ignores the relationship watermarks: no downgrade after the first relationship
+  purge. Optional store capabilities `store.RelRetentionPurgeCapability` / `RelRangePurgeLogCapability`; badger
+  `Store.PurgeRelLegResidue` (the tiered sweep primitive).
+- **Export header carries both retention watermark families** by name (omitted when no purge ran); import applies
+  the relationship family, so a replica bootstrapped after a relationship purge refuses the low pins too.
+- **`io.ImportOptions.ApplyNodeRetention`** (opt-in): import also raises the node-label retention watermarks the
+  export header carries, so an import of an export taken after a node purge refuses the pins below the purge as its
+  source does. Off by default: the node watermarks are ignored, as before.
+
+### Fixed
+
+- **Node retention purge: the as-of column cache is invalidated after the rows are removed** (R14). The bump ran at
+  the watermark advance, before the chunks: an as-of column built in between (at a pin at or above the boundary)
+  read the not-yet-removed node, was cached as current, and kept answering the purged node — on all four backends
+  (`TestRetentionPurgeAsOfBumpAfterRows`, `tasks/evidence/rel-retention/01-red.txt`).
+- **Retention purges wait for an open transaction.** A purge chunk ran under an open `GraphTx` that had touched its
+  victim, and the transaction's `Rollback` then failed (`node not found` / `relationship not found`); each chunk
+  of both purge doors now takes the transaction lock (`TestNodeRetentionPurgeTxRollback`,
+  `TestRelRetentionPurgeTxRollbackNoResurrection`, `tasks/evidence/rel-retention/02-*`, `03-*`). Like
+  `Batch.Execute`, a purge waits for an open transaction; the wait honours `ctx`, so a purge called while its own
+  goroutine holds an open transaction returns `ctx.Err()` when `ctx` ends instead of blocking for good
+  (`TestRetentionPurgeWaitHonoursCtx`).
+
 ### Changed
 
 - **CI race gate sharded; slowest `-short -race` tests sized for 4-vCPU runners** (todo request 24; no API
