@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "kind": "Source-only4514 current-main extension, not runtime/consumer/phase qualification",
+  "priorSourceCheckpoint": "2bccd8d4e0965236e875aba0115e652b9170fda3",
+  "priorReceiptSHA256": "f3008a0ecf662948745c86ea95afe3861efa742ee800ba2bbccf9925d1949a8a",
+  "mainCommit": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
+  "previousMain": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
+  "release": "v4.51.4",
+  "mainMergeCommit": "1fe32a4feb8dba4e9b486ac3eceebb8fd9c6e611",
+  "mappingCommit": "926b9d6d7fb54d01d85522052e57f2611342ec0a",
+  "changedPaths": 39,
+  "changedGoFiles": 19,
+  "changedGoSHA256": {
+    "pkg/graph/clock_floor_crash_test.go": "2e72f800b38ae61724eb309335f20301d8e1207199b0099351894190d3b37aa2",
+    "pkg/graph/internal/core/core.go": "51ca7fa73be91610868e03881bf84a659718dc5558d8a7b6b34fae7aadbe9721",
+    "pkg/graph/internal/core/instant_floor.go": "8705f650904fb36ea61e40f5f9365d8a9abb22137dfccb9f97f3a696966c11e4",
+    "pkg/graph/store/badger/badgerstore.go": "ff4e10afc14d5ecd4caa292da9a87bb2aecd1326f92e7fe8898632b3756ad0e7",
+    "pkg/graph/store/badger/badgerstore_commit_floor.go": "cf5d9593736d987fe5f58a1f946f1f42a1bfc960c474697cabc806b83b58b374",
+    "pkg/graph/store/badger/badgerstore_commit_floor_test.go": "ca52700327e793567943cd9ea62b7e4330add29791c8951f62a972bc7b19e466",
+    "pkg/graph/store/badger/badgerstore_durable.go": "65907a6072ad0af73f209d29ba3bd3661b5ffdbe705d5e68388c75585a888e1f",
+    "pkg/graph/store/badger/badgerstore_flush.go": "370241ffcc9f5a5ebfd2b57342ff83eb3af339dc78647b319dfd176b602f1d88",
+    "pkg/graph/store/badger/badgerstore_meta.go": "7d225ba303b34dae07329a468da74449dcd56529366833c9cf827e456cf440dc",
+    "pkg/graph/store/badger/test_export.go": "0d8225f4d398c862f178170d44bdec9321e696e57e278fbcbaa5e3003386d4c3",
+    "pkg/graph/store/commit_floor.go": "ecbeae56db8bf57e29e84c8a81a14b03c0fd1ca7c2957612c45a933f9d0fb2c6",
+    "pkg/graph/store/memory/memorystore.go": "992741316811deb7cf8c65cb95a644a2c069c8c46edc74f2e3d29b5f05e9feca",
+    "pkg/graph/store/memory/memorystore_commit_floor.go": "12c911f668a4b59fa020171726fecb7f816d1a838ae1fe1c575cc790b7819ffa",
+    "pkg/graph/store/memory/memorystore_segments_dir.go": "5c89ef20db83be99bdb434d42412baf56ba0937283126f14b98428a9fa9e3075",
+    "pkg/graph/store/sharded/commit_floor.go": "42baa07dece8c9ea4c6f805cf1c061402539f876de897eed38a569c1ce537935",
+    "pkg/graph/store/tiered/tieredstore.go": "cb9241788daa35c0ba096fe1e46abc4a9d72eafb7beb5f8ce77bbbda25588254",
+    "pkg/graph/store/tiered/tieredstore_commit_floor.go": "c340ae34ef287ab80af95eb5bb9512de707f34242da307001b8d6b0e7edbd203",
+    "pkg/graph/store/tiered/tieredstore_commit_floor_test.go": "c7237887c4f5c0b6ddaba167ffdc7e37a1f30ab29256367787cf15c270ecad32",
+    "pkg/graph/temporal/api.go": "426148ad527c354514cadac7beb8afb5db5adf40f4efa1cf48763b966ae02a9f"
+  },
+  "preserved": {
+    "v5AndFocusedCI": "Byte-identical current rootc13f50be",
+    "Unreleased": "Exact current c13 body",
+    "releasedTail": "Byte-identical latestmain from4.51.4 onward",
+    "consumerHistory": "Every previous current-source object moved unchanged into history; pinned consumer payload unchanged",
+    "v4513Receipt": "Untouched dated source-only checkpoint",
+    "v4PkgDifferences": {
+      "pkg/graph/internal/core/ingest.go": "906cce172a5a43ec17cc3d3fde9b6af721b88c5488578c4624570243edde7950",
+      "pkg/graph/store/memory/memorystore_index_3phase_more_test.go": "03caec0806c7915e88c4d13148fb499f70223db01d18508507c04e11cae23d01"
+    }
+  },
+  "newPublicContracts": [
+    "CommitFloorCapability.StoredCommitFloor() (types.Instant, error)",
+    "badger.Config.OnCommitFloor func(floor types.Instant, durable bool) error",
+    "NowTx unchanged signature, seedCommitFloor strengthens surviving-row clock coverage after crash; not a certified cut/global order"
+  ],
+  "qualificationPending": {
+    "importer": "Prepared require4514/localrootreplace; ten narrow module gates with existing nonempty node/relationship cases and new exact reader/tool/profile receipt",
+    "clockCompatibility": [
+      "pkg/graph TestCrashReopenNowTxAboveStoredStamps (its real child entry is invoked by parent, not as standalone successful evidence)",
+      "badger TestStoredCommitFloor / TestStoredCommitFloor_MalformedAndClosed",
+      "tiered TestShardCommitFloorSyncedByDurableFlush / TestShardCommitFloorRewrittenAfterClear",
+      "existing core NowTx/foreign-stamp/reset and durable SyncWrites group compatibility selected by root after review"
+    ],
+    "previous4513Compat": "Live snapshot release/re-pin, create-undo/real-delete legs, clean image/full rebuild/repair/stats obligations still required; historical receipts remain separate",
+    "independentPlanValidation": "Refresh current PLAN hash only after reviewed mapping; archived reproduction/consumer pins unchanged"
+  },
+  "runtimeExecuted": false,
+  "noPushTagOrRootWorktreeWrites": true
+}
