@@ -312,7 +312,7 @@ func (c *Core) stateCutFor(key stateCutKey, keys []string) *stateCut {
 	}
 	a := c.asOfColumns
 	a.notePin(key.pin) // before the epoch is read (asOfColumnCache.notePin)
-	epoch := a.currentEpoch()
+	epoch := a.cutEpoch(key.rel)
 	if cut := a.getCut(key, keys, epoch); cut != nil {
 		return cut
 	}
@@ -542,6 +542,22 @@ func (a *asOfColumnCache) admitCut(key stateCutKey) bool {
 	return false
 }
 
+// cutEpoch is the epoch a cut of the kind is built and checked under: the
+// as-of epoch, plus for relationship cuts the relationship-cut epoch a
+// relationship purge advances (bumpRelCuts) without discarding the node
+// label columns (backlog 21: a relationship purge keeps them warm). Both only
+// grow, so the sum moves whenever either does.
+func (a *asOfColumnCache) cutEpoch(rel bool) uint64 {
+	if rel {
+		return a.epoch.Load() + a.relCutEpoch.Load()
+	}
+	return a.epoch.Load()
+}
+
+// bumpRelCuts invalidates every relationship cut (after a relationship purge's
+// removals) and nothing else.
+func (a *asOfColumnCache) bumpRelCuts() { a.relCutEpoch.Add(1) }
+
 // getCut returns the cut cached for key under epoch holding every key of
 // keys (nil otherwise) and marks it most recently used.
 func (a *asOfColumnCache) getCut(key stateCutKey, keys []string, epoch uint64) *stateCut {
@@ -577,11 +593,11 @@ func (a *asOfColumnCache) cutKeysFor(key stateCutKey, keys []string) []string {
 func (a *asOfColumnCache) putCut(key stateCutKey, cut *stateCut) (kept, current bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.epoch.Load() != cut.epoch {
+	if a.cutEpoch(key.rel) != cut.epoch {
 		return false, false
 	}
 	for k, old := range a.cuts {
-		if k == key || old.epoch != cut.epoch {
+		if k == key || old.epoch != a.cutEpoch(k.rel) {
 			a.dropCutLocked(k)
 		}
 	}

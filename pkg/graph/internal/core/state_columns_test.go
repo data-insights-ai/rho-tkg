@@ -531,3 +531,24 @@ func TestStateColumnPath_OversizedBuildsOnce(t *testing.T) {
 		t.Fatalf("5 asks of an oversized cut read %d entity timelines; want 2 (one build)", reads)
 	}
 }
+
+// TestStateColumnPath_RelPurge: PurgeExpiredRels removes relationships a
+// cached cut holds; the next state read at a pin above the watermark equals
+// the fold.
+func TestStateColumnPath_RelPurge(t *testing.T) {
+	g, err := New(Config{AllowRetentionPurge: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	useTestClock(t, g)
+	e := newCCEnt(t, g, true)
+	e.add("A", 1000, nil)
+	e.add("B", 1000, nil)
+	pin := e.pin()
+	stCheck(t, e, "before the purge", []types.Instant{pin}, []types.Instant{2000}) // builds the cut
+	if _, err := g.Admin.PurgeExpiredRels(e.ctx, RelPurgePolicy{Type: ccType, Before: pin}); err != nil {
+		t.Fatalf("PurgeExpiredRels: %v", err)
+	}
+	stCheck(t, e, "after the purge", []types.Instant{pin}, []types.Instant{2000})
+}

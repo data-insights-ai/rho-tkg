@@ -78,6 +78,7 @@ type asOfColumnCache struct {
 	cutBuilding map[stateCutKey]chan struct{}
 	cutDeclined map[stateCutKey]uint64
 	cutBuilds   atomic.Int64
+	relCutEpoch atomic.Uint64 // cutEpoch
 }
 
 type asOfCacheKey struct {

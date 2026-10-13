@@ -50,7 +50,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   134 ms to 0.19 ms, 210 ms to 2.7 ms); the build costs about one fold. Invalidation is the as-of column set's
   epoch, bumped by a history rewrite at or below a cached pin and now also by relationship replica applies at or
   below it, an `UpdateInPlace` (it rewrites the row every pin reads; this also fixes the `TxPin` as-of column
-  set, which kept the old value) and a delete that clamps a scheduled close; one build per key at a time, and a
+  set, which kept the old value), a delete that clamps a scheduled close, and `PurgeExpiredRels` (relationship cuts
+  only, so node as-of columns stay warm); one build per key at a time, and a
   build that failed or did not fit is not repeated at that epoch; one LRU budget of 256 MiB per graph; a cut is cached only once every write stamped at or
   below its pin has landed, checked without waiting for any lock (a count inside a scan callback folds).
   `fn` of a column scan runs without graph locks when the cut answers, under the read lock when the fold does.
