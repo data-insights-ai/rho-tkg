@@ -106,7 +106,7 @@ func resetHistoryStampsForBench(bs *Store, p *historyStamps) {
 	bs.wbMu.Lock()
 	p.mu.Lock()
 	p.tracking = false
-	p.has, p.unknown = nil, nil
+	p.has, p.unknown = idTable[stampPair]{}, nil
 	p.built.Store(false)
 	p.mu.Unlock()
 	bs.wbMu.Unlock()
@@ -180,7 +180,6 @@ func BenchmarkHistoryStampsNote(b *testing.B) {
 		b.Run(name, func(b *testing.B) {
 			var p historyStamps
 			if tracking {
-				p.has = make(map[snowflake.ID]stampEntry)
 				p.unknown = make(map[snowflake.ID]uint64)
 				p.tracking = true
 				p.built.Store(true)

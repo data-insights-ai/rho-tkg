@@ -2,6 +2,7 @@ package badger
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"math"
 	"slices"
@@ -47,12 +48,11 @@ var _ storecontract.HistoryPresenceCapability = (*Store)(nil)
 // holds buildMu, so a scan never straddles a wipe, and drops the set with the
 // write buffer; the next call rebuilds it.
 //
-// RAM: O(IDs with history), measured 30-52 B per ID (30 B at 10 K IDs, 40 B at
-// 2 K, 52 B at 200: map growth; setB/id in BenchmarkRelHasHistory), the same
-// with and without the uint32 top (the map slot is padded to 16 B either way:
-// 30.1 B/ID before and after at 10 K IDs); not built until the first
-// HasNodeHistory / HasRelHistory / bulk as-of call (HistoryPresenceStats
-// reports it).
+// RAM: O(IDs with history) in a packed idTable (backlog 41): 13 B per ID
+// (ID, top, routing) after a build, about 18 B after inserts split blocks
+// (TestHistorySidecarRAMPerID; a Go map paid 24-38 B); not built until the
+// first HasNodeHistory / HasRelHistory / bulk as-of call
+// (HistoryPresenceStats reports it).
 type historyPresence struct {
 	buildMu sync.Mutex // serializes builds; Clear holds it for its whole run
 	built   atomic.Bool
@@ -62,9 +62,9 @@ type historyPresence struct {
 	// history" only while it has not moved since the scan began.
 	deletes atomic.Uint64
 
-	mu       sync.RWMutex // guards has, unknown, stamp; taken inside wbMu by notes
-	tracking bool         // written under wbMu AND mu; notes read it under wbMu
-	has      map[snowflake.ID]uint32
+	mu       sync.RWMutex      // guards has, unknown, stamp; taken inside wbMu by notes
+	tracking bool              // written under wbMu AND mu; notes read it under wbMu
+	has      idTable[struct{}] // ID -> top
 	unknown  map[snowflake.ID]uint64
 	stamp    uint64
 }
@@ -90,7 +90,7 @@ func (p *historyPresence) note(id snowflake.ID, version uint64, isDelete bool) {
 	switch {
 	case isDelete:
 		p.deletes.Add(1)
-		delete(p.has, id)
+		p.has.remove(id)
 		p.stamp++
 		p.unknown[id] = p.stamp
 	case len(p.unknown) > 0 && p.unknown[id] != 0:
@@ -100,8 +100,8 @@ func (p *historyPresence) note(id snowflake.ID, version uint64, isDelete bool) {
 		p.stamp++
 		p.unknown[id] = p.stamp
 	default:
-		if top, ok := p.has[id]; !ok || clampTop(version) > top {
-			p.has[id] = clampTop(version)
+		if top, _, ok := p.has.get(id); !ok || clampTop(version) > top {
+			p.has.put(id, clampTop(version), struct{}{})
 		}
 	}
 	p.mu.Unlock()
@@ -116,13 +116,14 @@ func (p *historyPresence) resetLocked() {
 	p.mu.Lock()
 	p.built.Store(false)
 	p.tracking = false
-	p.has, p.unknown = nil, nil
+	p.has, p.unknown = idTable[struct{}]{}, nil
 	p.mu.Unlock()
 }
 
 // HistoryPresenceStats reports the RAM history-presence sets: whether each
 // kind's set is built and how many IDs it holds (IDs with history plus IDs
-// awaiting a probe after a history delete). The set costs 30-52 B per ID (measured, top version included).
+// awaiting a probe after a history delete). The set costs 13-18 B per ID
+// (measured, top version included).
 type HistoryPresenceStats struct {
 	NodesBuilt bool
 	RelsBuilt  bool
@@ -139,7 +140,7 @@ func (bs *Store) HistoryPresenceStats() HistoryPresenceStats {
 	size := func(p *historyPresence) int {
 		p.mu.RLock()
 		defer p.mu.RUnlock()
-		return len(p.has) + len(p.unknown)
+		return p.has.Len() + len(p.unknown)
 	}
 	return HistoryPresenceStats{
 		NodesBuilt: bs.histNodePresence.built.Load(),
@@ -190,7 +191,7 @@ func (bs *Store) hasHistory(p *historyPresence, kind byte, id snowflake.ID, prob
 		}
 	}
 	p.mu.RLock()
-	_, has := p.has[id]
+	has := p.has.contains(id)
 	var stamp uint64
 	var unresolved bool
 	if !has && len(p.unknown) > 0 {
@@ -214,7 +215,7 @@ func (bs *Store) hasHistory(p *historyPresence, kind byte, id snowflake.ID, prob
 	if cur, ok := p.unknown[id]; ok && cur == stamp {
 		delete(p.unknown, id)
 		if present {
-			p.has[id] = top
+			p.has.put(id, top, struct{}{})
 		}
 	}
 	p.mu.Unlock()
@@ -276,7 +277,7 @@ func (b *bulkPresence) bound(id snowflake.ID) (limit int64, ok bool) {
 		return 0, false
 	}
 	b.p.mu.RLock()
-	top, has := b.p.has[id]
+	top, _, has := b.p.has.get(id)
 	unresolved := false
 	if !has && len(b.p.unknown) > 0 {
 		_, unresolved = b.p.unknown[id]
@@ -303,7 +304,7 @@ func (bs *Store) buildHistoryPresence(p *historyPresence, kind byte) error {
 	bs.wbMu.Lock()
 	p.mu.Lock()
 	if !p.tracking {
-		p.has = make(map[snowflake.ID]uint32)
+		p.has = idTable[struct{}]{}
 		p.unknown = make(map[snowflake.ID]uint64)
 		p.tracking = true
 	}
@@ -318,19 +319,23 @@ func (bs *Store) buildHistoryPresence(p *historyPresence, kind byte) error {
 		bs.historyPresenceBuildHook()
 	}
 
+	// The scan is ascending: it streams into a fresh table, then the SETs
+	// noted since tracking began (few: the build window) merge by max.
 	p.mu.Lock()
+	var built idTable[struct{}]
 	for _, e := range tops {
-		if _, noted := p.unknown[e.id]; noted {
-			continue
+		if _, noted := p.unknown[e.id]; !noted {
+			built.appendAscending(e.id, e.top, struct{}{})
 		}
-		if cur, noted := p.has[e.id]; noted {
-			if e.top > cur {
-				p.has[e.id] = e.top
-			}
-			continue
-		}
-		p.has[e.id] = e.top
 	}
+	for _, b := range p.has.blocks {
+		for i, id := range b.ids {
+			if cur, _, ok := built.get(id); !ok || b.tops[i] > cur {
+				built.put(id, b.tops[i], struct{}{})
+			}
+		}
+	}
+	p.has = built
 	p.built.Store(true)
 	p.mu.Unlock()
 	return nil
@@ -347,9 +352,10 @@ type idTop struct {
 	top uint32
 }
 
-// scanHistoryTops returns every ID with a history row and its highest version:
-// the buffered writes (overlay captured BEFORE the badger view, lesson 64) and
-// the committed keys, key-only. A pending delete masks its committed key.
+// scanHistoryTops returns every ID with a history row and its highest version,
+// in ascending ID order: the buffered writes (overlay captured BEFORE the
+// badger view, lesson 64) and the committed keys, key-only. A pending delete
+// masks its committed key.
 // An ID of up to historyForwardRows rows is walked forward; a deeper one costs a
 // reverse seek to the end of its key range and a seek to the next ID.
 func (bs *Store) scanHistoryTops(kind byte) ([]idTop, error) {
@@ -448,8 +454,11 @@ func (bs *Store) scanHistoryTops(kind byte) ([]idTop, error) {
 			delete(pending, out[i].id)
 		}
 	}
-	for id, top := range pending {
-		out = append(out, idTop{id: id, top: top})
+	if len(pending) > 0 {
+		for id, top := range pending {
+			out = append(out, idTop{id: id, top: top})
+		}
+		slices.SortFunc(out, func(a, b idTop) int { return cmp.Compare(a.id, b.id) })
 	}
 	return out, nil
 }
@@ -544,10 +553,7 @@ func (bs *Store) presenceIDsSorted(p *historyPresence) (ids []snowflake.ID, unkn
 		return nil, nil, false
 	}
 	p.mu.RLock()
-	ids = make([]snowflake.ID, 0, len(p.has)+len(p.unknown))
-	for id := range p.has {
-		ids = append(ids, id)
-	}
+	ids = p.has.appendIDs(make([]snowflake.ID, 0, p.has.Len()+len(p.unknown))) // ascending
 	if len(p.unknown) > 0 {
 		unknown = make(map[snowflake.ID]struct{}, len(p.unknown))
 		for id := range p.unknown {
@@ -556,7 +562,9 @@ func (bs *Store) presenceIDsSorted(p *historyPresence) (ids []snowflake.ID, unkn
 		}
 	}
 	p.mu.RUnlock()
-	slices.Sort(ids)
+	if len(unknown) > 0 {
+		slices.Sort(ids)
+	}
 	return ids, unknown, true
 }
 

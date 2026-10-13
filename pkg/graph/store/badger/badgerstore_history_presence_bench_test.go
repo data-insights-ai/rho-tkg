@@ -108,7 +108,7 @@ func resetHistoryPresenceForBench(bs *Store, p *historyPresence) {
 	bs.wbMu.Lock()
 	p.mu.Lock()
 	p.tracking = false
-	p.has, p.unknown = nil, nil
+	p.has, p.unknown = idTable[struct{}]{}, nil
 	p.built.Store(false)
 	p.mu.Unlock()
 	bs.wbMu.Unlock()
