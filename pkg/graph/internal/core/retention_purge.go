@@ -217,7 +217,10 @@ func (c *Core) purgeRangeAllChunks(ctx context.Context, token uint16, before typ
 			return report, err
 		}
 		if excludeTx {
-			c.txMu.Lock()
+			if lerr := c.lockTxMuCtx(ctx); lerr != nil {
+				err = lerr
+				return report, err
+			}
 		}
 		res, perr := c.purgeChunk(token, before, mode)
 		if excludeTx {

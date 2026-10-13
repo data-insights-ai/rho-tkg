@@ -127,9 +127,13 @@ func (a *API) Export(w io.Writer) error {
 //
 // Retention watermarks (backlog 21): the export header carries both families;
 // Import raises this graph's relationship-type watermarks to the exported ones.
-// Planned change (docs/stability.md, announced in v4.51.5): a later patch also
-// applies the exported node-label watermarks, so an import of an export taken
-// after a node purge refuses the pins below the purge as its source does.
+//
+// Deprecated: Import's current behaviour of ignoring the exported node-label
+// retention watermarks is deprecated as of v4.51.5 (docs/stability.md ritual;
+// the method itself stays). Incompatible change in v4.51.6 or later: Import
+// also applies them, so an import of an export taken after a node purge refuses
+// the pins below the purge as its source does instead of answering them
+// incompletely.
 func (a *API) Import(r io.Reader, opts ImportOptions) error {
 	ops, err := a.ready()
 	if err != nil {

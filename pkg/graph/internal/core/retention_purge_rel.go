@@ -124,7 +124,9 @@ func (c *Core) purgeRelRangeAllChunks(ctx context.Context, token uint16, before 
 			return purged, err
 		}
 		if excludeTx {
-			c.txMu.Lock()
+			if err := c.lockTxMuCtx(ctx); err != nil {
+				return purged, err
+			}
 		}
 		res, err := c.relRetentionPurge.PurgeRelsByTypeBefore(token, before, retentionPurgeChunk)
 		if excludeTx {
@@ -157,4 +159,31 @@ func (c *Core) applyRelRangePurgeLocked(body storeutil.RelRangePurgeBody) error 
 	}
 	_, err := c.purgeRelRangeAllChunks(context.Background(), body.TypeToken, before, false)
 	return err
+}
+
+// lockTxMuCtx takes c.txMu, the lock an open transaction holds from Begin to
+// Commit/Rollback, or returns ctx.Err() when ctx ends first: a purge called
+// while its own goroutine holds an open transaction would otherwise wait for
+// good. An abandoned acquire is released as soon as it lands.
+func (c *Core) lockTxMuCtx(ctx context.Context) error {
+	if c.txMu.TryLock() {
+		return nil
+	}
+	acquired := make(chan struct{})
+	abandoned := make(chan struct{})
+	go func() {
+		c.txMu.Lock()
+		select {
+		case acquired <- struct{}{}:
+		case <-abandoned:
+			c.txMu.Unlock()
+		}
+	}()
+	select {
+	case <-acquired:
+		return nil
+	case <-ctx.Done():
+		close(abandoned)
+		return ctx.Err()
+	}
 }

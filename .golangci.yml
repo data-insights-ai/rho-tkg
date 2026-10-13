@@ -51,6 +51,12 @@ linters:
       # tiered were already listed; memory and sharded are the same category.
       - path: pkg/graph/store/(badger|tiered|memory|sharded)/
         text: "should have comment or be unexported"
+      # IO().Import stays: its Deprecated marker announces a behaviour change
+      # (backlog 21, docs/stability.md ritual: it will apply the exported node
+      # retention watermarks), so the repository's own calls are not warnings.
+      - linters:
+          - staticcheck
+        text: 'SA1019: .*io\.API\)\.Import is deprecated'
 formatters:
   enable:
     - gofmt

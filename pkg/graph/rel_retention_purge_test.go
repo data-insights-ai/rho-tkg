@@ -558,7 +558,6 @@ func assertRelGateMatrix(t *testing.T, g *graphpkg.Graph, f relRetentionFixture)
 		}},
 		{"RelsAsOf", func() error { _, err := g.Temporal().RelsAsOf(f.pinLow); return err }},
 		{"RelAsOf purged", func() error { _, err := g.Temporal().RelAsOf(f.purged["live-out"], f.pinLow); return err }},
-		{"RelAsOf survivor of the type", func() error { _, err := g.Temporal().RelAsOf(f.boundary, f.pinLow); return err }},
 		{"RelAtTx purged", func() error {
 			_, err := g.Temporal().RelAtTx(f.purged["mutated"], f.pinLow, f.pinLow)
 			return err
@@ -717,6 +716,25 @@ func assertTxRelGates(t *testing.T, g *graphpkg.Graph, f relRetentionFixture) {
 	}
 	if _, err := tx.RelsByType("OV_PAIR", store.QueryOpts{TxPin: f.pinLow}); err != nil {
 		t.Errorf("tx RelsByType(OV_PAIR): %v", err)
+	}
+}
+
+// TestRelPointGateAnswersLaterIDs (backlog 21 F3): a relationship ID minted
+// at or after every relationship watermark cannot have been purged, so a
+// point read of it at a low pin answers normally (here: no version at the
+// pin), not ErrRetentionExpired.
+func TestRelPointGateAnswersLaterIDs(t *testing.T) {
+	g, _ := relRetentionBackends()[0].open(t, graphpkg.Config{AllowRetentionPurge: true, AllowTxBackfill: true})
+	f := buildRelRetentionFixture(t, g)
+	purgeRels(t, g, "EVENT", f.before)
+	unknown := g.Rels().NextID()
+	for name, id := range map[string]types.RelID{"unknown later ID": unknown, "survivor minted at Before": f.boundary} {
+		if _, err := g.Temporal().RelAsOf(id, f.pinLow); err == nil || errors.Is(err, graphpkg.ErrRetentionExpired) {
+			t.Fatalf("RelAsOf(%s) = %v, want the door's own answer (no version at the pin)", name, err)
+		}
+	}
+	if _, err := g.Temporal().RelAsOf(f.purged["deleted"], f.pinLow); !errors.Is(err, graphpkg.ErrRetentionExpired) {
+		t.Fatalf("RelAsOf(purged ID) = %v, want ErrRetentionExpired", err)
 	}
 }
 

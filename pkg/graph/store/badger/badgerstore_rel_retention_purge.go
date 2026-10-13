@@ -1,8 +1,10 @@
 package badger
 
 import (
+	"errors"
 	"fmt"
-	"slices"
+
+	badgerv4 "github.com/dgraph-io/badger/v4"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -59,7 +61,7 @@ type relPurgeVictim struct {
 // idxMu, each live row (deleteRelByInfo: row, type key, both legs, counters,
 // statistics), the whole history, the ex-adjacency legs of every row and the
 // RAM sidecars, all in ONE flush. No change-log record. Nodes are untouched.
-func (bs *Store) PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, chunk int) (storecontract.RetentionPurgeResult, error) {
+func (bs *Store) PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, chunk int) (_ storecontract.RetentionPurgeResult, err error) {
 	var zero storecontract.RetentionPurgeResult
 	if err := bs.checkWritable(); err != nil {
 		return zero, err
@@ -67,6 +69,15 @@ func (bs *Store) PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, c
 	if before <= 0 || typeToken == 0 {
 		return zero, nil
 	}
+	// A failed chunk may have advanced the cursor past victims it did not
+	// remove: the next call starts over.
+	defer func() {
+		if err != nil {
+			bs.relPurgeMu.Lock()
+			delete(bs.relPurgeCursor, typeToken)
+			bs.relPurgeMu.Unlock()
+		}
+	}()
 	defer bs.bumpRelEpoch()
 	if chunk <= 0 {
 		chunk = defaultRetentionPurgeChunk
@@ -116,6 +127,9 @@ func (bs *Store) PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, c
 		for _, k := range histKeys {
 			ops = append(ops, writeOp{opType: writeOpDelete, key: []byte(k)})
 		}
+		// A type-index key whose row is gone would be selected again by every
+		// chunk: it goes too (a no-op for a row deleteRelByInfo just removed).
+		ops = append(ops, writeOp{opType: writeOpDelete, key: storepkg.RelTypeIndexKey(typeToken, v.id.SnowflakeID())})
 		for _, l := range v.legs {
 			ops = append(ops, exAdjLegOps(writeOpDelete, v.id.SnowflakeID(), l.StartID.SnowflakeID(), l.EndID.SnowflakeID())...)
 		}
@@ -132,53 +146,103 @@ func (bs *Store) PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, c
 	return storecontract.RetentionPurgeResult{RelsPurged: len(victims), More: more, PurgedRels: purged}, nil
 }
 
+// relPurgeCursor is where a type's chunked purge resumes: live is the last
+// type-index ID taken, hist the last history ID examined.
+type relPurgeCursor struct {
+	live, hist types.RelID
+}
+
 // relPurgeCandidates selects up to chunk relationship IDs of typeToken minted
-// before `before`: current rows first, then history-only IDs of the type.
+// before `before`, in O(chunk) reads: current rows by an ascending walk of the
+// type's index keys, then history-only IDs of the type by an ascending walk of
+// the history IDs, each resumed from the type's cursor (the IDs below it were
+// taken or examined by earlier chunks, and the purged keys' tombstones are
+// not walked again). Each walk stops at the first ID minted at or after the
+// boundary; the cursor is dropped when both finish, so a rerun starts over.
+// The caller flushed the write buffer, so the committed keys are current.
 // more reports that at least one further candidate exists.
 func (bs *Store) relPurgeCandidates(typeToken uint16, before types.Instant, chunk int) (ids []types.RelID, more bool, err error) {
 	minted := func(id types.RelID) bool { return storepkg.SnowflakeInstant(id.SnowflakeID()) < before }
-	bs.idxMu.RLock()
-	live := bs.relTypeRelIDsSnapshotLocked(typeToken)
-	bs.idxMu.RUnlock()
-	slices.Sort(live)
-	for _, id := range live {
-		if !minted(id) {
-			continue
+	bs.relPurgeMu.Lock()
+	cur := bs.relPurgeCursor[typeToken]
+	bs.relPurgeMu.Unlock()
+	save := func(c relPurgeCursor, done bool) {
+		bs.relPurgeMu.Lock()
+		defer bs.relPurgeMu.Unlock()
+		if done {
+			delete(bs.relPurgeCursor, typeToken)
+			return
 		}
-		if len(ids) >= chunk {
-			return ids, true, nil
+		if bs.relPurgeCursor == nil {
+			bs.relPurgeCursor = make(map[uint16]relPurgeCursor)
 		}
-		ids = append(ids, id)
+		bs.relPurgeCursor[typeToken] = c
 	}
-	var after types.RelID
+
+	prefix := storepkg.RelTypeIndexKey(typeToken, 0)[:3]
+	if err := bs.view(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Seek(storepkg.RelTypeIndexKey(typeToken, cur.live.SnowflakeID()+1)); it.ValidForPrefix(prefix); it.Next() {
+			key := it.Item().Key()
+			if len(key) != storepkg.SizeRelTypeIdx {
+				continue
+			}
+			id := types.RelID(storepkg.ParseIDFromKey(key, 3))
+			if !minted(id) {
+				return nil // ascending: every later ID is minted later
+			}
+			if len(ids) >= chunk {
+				more = true
+				return nil
+			}
+			ids = append(ids, id)
+			cur.live = id
+		}
+		return nil
+	}); err != nil {
+		return nil, false, err
+	}
+	if more {
+		save(cur, false)
+		return ids, true, nil
+	}
+
 	for {
-		page, perr := bs.AllRelHistoryIDsFrom(after, relHistoryIDPage)
+		page, perr := bs.AllRelHistoryIDsFrom(cur.hist, relHistoryIDPage)
 		if perr != nil {
 			return nil, false, perr
 		}
 		for _, id := range page {
 			if !minted(id) {
-				return ids, false, nil // ascending: every later ID is minted later
+				save(cur, true)
+				return ids, false, nil
 			}
 			if bs.HasRelID(id.SnowflakeID()) {
-				continue // current here: selected above when of the type
+				cur.hist = id
+				continue // current: the index walk selects it when of the type
 			}
 			tok, ok, terr := bs.relHistoryTypeToken(id)
 			if terr != nil {
 				return nil, false, terr
 			}
 			if !ok || tok != typeToken {
+				cur.hist = id
 				continue
 			}
 			if len(ids) >= chunk {
+				save(cur, false)
 				return ids, true, nil
 			}
 			ids = append(ids, id)
+			cur.hist = id
 		}
 		if len(page) < relHistoryIDPage {
+			save(cur, true)
 			return ids, false, nil
 		}
-		after = page[len(page)-1]
 	}
 }
 
@@ -203,6 +267,13 @@ func (bs *Store) relPurgeLegs(id types.RelID) ([]storecontract.PurgedRel, error)
 	rows, err := bs.GetRelHistory(id)
 	if err != nil {
 		return nil, err
+	}
+	// The current row too: a plain delete between this read and the write
+	// lock moves it into the ex-adjacency, which the write must then drop.
+	if cur, cerr := bs.GetRelationship(id); cerr == nil {
+		rows = append(rows, cur)
+	} else if !errors.Is(cerr, ErrRelNotFound) {
+		return nil, cerr
 	}
 	var legs []storecontract.PurgedRel
 	for _, r := range rows {

@@ -1020,6 +1020,12 @@ type Store struct {
 	// store.ScopedTxChangeLog's doc comment. Both fields guarded by wbMu.
 	scopedTokenSeq uint64
 	scopedLogs     map[uint64][][]byte
+
+	// relPurgeCursor (backlog 21, badgerstore_rel_retention_purge.go) is, per
+	// relationship type, where a chunked relationship purge's walks resume
+	// (the last type-index and history IDs examined); cleared when they finish.
+	relPurgeMu     sync.Mutex
+	relPurgeCursor map[uint16]relPurgeCursor
 }
 
 var (
@@ -2361,6 +2367,9 @@ func (bs *Store) Clear() error {
 	bs.labelTxMembersBuilt.Store(false)
 	bs.relTypeTxMembers = nil // rel-type mirror
 	bs.relTypeMembersBuilt.Store(false)
+	bs.relPurgeMu.Lock()
+	bs.relPurgeCursor = nil // backlog 21: a cleared store has nothing to resume
+	bs.relPurgeMu.Unlock()
 	bs.dropPropertyTxMembersLocked() // property sidecars; an in-flight build discards its scan
 	bs.nodeBeliefWatermark = nil     // drop the lazy belief-watermark sidecar; rebuilt on next use
 	bs.nodeBeliefWatermarkBuilt.Store(false)

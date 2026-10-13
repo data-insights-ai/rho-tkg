@@ -15,7 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   gates and order as `PurgeExpiredNodes` (watermark, then one change record, then 256-relationship chunks;
   idempotent, resumable); only `PurgeByAge` (`PurgeByValidTo` → `ErrInvalidPurgePolicy`); an unknown type is a
   no-op. Memory, badger, sharded (per-shard fan-out) and tiered (every shard, cold ones opened for the call, then a
-  leg-residue sweep on the endpoints' shards).
+  leg-residue sweep on the endpoints' shards). On badger a chunk selects its victims in O(chunk) reads (the type's
+  index keys and the history IDs, each walk resumed from a per-type cursor): 25,000 relationships beside 20,000
+  deleted ones of another type 2.26 s → 1.16 s (`tasks/evidence/rel-retention/09-f2-selection.txt`).
 - **Per-type retention gate**: a relationship purge advances only its type's watermark
   (`retention_rel_watermark/<type token>`, max-monotonic, and `retention_rel_max_watermark`, kept in RAM from open).
   A read of that type, or of every type, pinned below it fails with `ErrRetentionExpired`; other types and every node
@@ -45,7 +47,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   victim, and the transaction's `Rollback` then failed (`node not found` / `relationship not found`); each chunk
   of both purge doors now takes the transaction lock (`TestNodeRetentionPurgeTxRollback`,
   `TestRelRetentionPurgeTxRollbackNoResurrection`, `tasks/evidence/rel-retention/02-*`, `03-*`). Like
-  `Batch.Execute`, a purge called while the same goroutine holds an open transaction now waits for it.
+  `Batch.Execute`, a purge waits for an open transaction; the wait honours `ctx`, so a purge called while its own
+  goroutine holds an open transaction returns `ctx.Err()` when `ctx` ends instead of blocking for good
+  (`TestRetentionPurgeWaitHonoursCtx`).
 
 ### Deprecated
 

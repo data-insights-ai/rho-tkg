@@ -211,7 +211,11 @@ func (c *Core) checkRelTypePointRetention(id types.RelID, pin types.Instant) err
 	if pin == 0 {
 		return nil
 	}
-	if int64(pin) >= c.retentionRelMaxWatermark.Load() {
+	relMax := c.retentionRelMaxWatermark.Load()
+	// A relationship minted at or after every relationship watermark was never
+	// a purge candidate (a purge takes mint < Before <= the max): its rows
+	// are whole, so the door answers it normally.
+	if int64(pin) >= relMax || int64(id.MintInstant()) >= relMax {
 		return nil
 	}
 	tok, ok, err := c.relTypeTokenForRetention(id)

@@ -115,6 +115,51 @@ func TestNodeRetentionPurgeTxRollback(t *testing.T) {
 	}
 }
 
+// TestRetentionPurgeWaitHonoursCtx (backlog 21 F1): a purge waiting for an
+// open transaction (e.g. one the caller's own goroutine holds) returns
+// ctx.Err() when ctx ends instead of blocking for good.
+func TestRetentionPurgeWaitHonoursCtx(t *testing.T) {
+	g, err := graphpkg.New(graphpkg.Config{AllowRetentionPurge: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	ctx := context.Background()
+	m, _ := g.Nodes().Add(ctx, []string{"Machine"}, nil)
+	e, _ := g.Nodes().Add(ctx, []string{"Event"}, nil)
+	if _, err := g.Rels().Add(ctx, "EVENT", e, m, nil); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := g.Tx().Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for name, purge := range map[string]func(context.Context) error{
+		"nodes": func(c context.Context) error {
+			_, err := g.Admin().PurgeExpiredNodes(c, adminpkg.PurgePolicy{Label: "Event", Before: farFuture})
+			return err
+		},
+		"rels": func(c context.Context) error {
+			_, err := g.Admin().PurgeExpiredRels(c, adminpkg.RelPurgePolicy{Type: "EVENT", Before: farFuture})
+			return err
+		},
+	} {
+		cctx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+		done := make(chan error, 1)
+		go func() { done <- purge(cctx) }()
+		select {
+		case err := <-done:
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Errorf("%s: err = %v, want context.DeadlineExceeded", name, err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Errorf("%s: the purge ignored ctx while waiting for the open transaction", name)
+		}
+		cancel()
+	}
+}
+
 // TestRelRetentionPurgeConcurrent (backlog 21, run under -race): a purge of
 // the old EVENT relationships while writers add and delete new ones and
 // readers scan both types. Afterwards no relationship minted below the
