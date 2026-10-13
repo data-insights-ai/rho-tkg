@@ -1,0 +1,3 @@
+One final-source actual instrumented two-fact CROSS cell exercised directory-scoped artifact creation/closing, original transactions, complete CDC and retained old/current/phantom/posting checks. The same current source ran exactly two cost-profile normal/race parents. Exact-block current-only coverage reaches82% for graph_cost_profile.go and80.913% for graph_cost_run.go.
+
+Configured statics are reused from the identical executable source; no scanner/fullmodule/longcell repeats or performance claim. All owned Docker resources were cleaned. Earlier source profiles, local missing-clientRSS and monitor/security failures remain separate and immutable. Native fixture changes are excluded.
