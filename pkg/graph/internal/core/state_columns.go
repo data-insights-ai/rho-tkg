@@ -300,8 +300,9 @@ func (c *Core) pinLanded(pin types.Instant) bool {
 
 // stateCutFor returns the cut of key holding keys: the cached one, else one
 // built now (and cached when it fits the budget) once key was asked for
-// before (admitCut). One build per key at a time: a concurrent miss waits for
-// it and takes its cut. nil when the cut path does not answer — the first ask
+// before (admitCut). One build per key at a time: a concurrent miss takes the
+// lead's cut only when that build has finished, else it folds (no waiting
+// under a possibly held read lock). nil when the cut path does not answer — the first ask
 // for key, a closed graph, the pin has writes in flight or a lock holder is
 // active (pinLanded), a build that failed (a per-entity compaction or
 // retention stub below the pin) or did not fit the budget at this epoch
@@ -321,8 +322,16 @@ func (c *Core) stateCutFor(key stateCutKey, keys []string) *stateCut {
 	}
 	done, lead := a.joinCutBuild(key)
 	if !lead {
-		<-done
-		return a.getCut(key, keys, epoch)
+		// Never wait for another goroutine's build: the caller may hold the
+		// graph read lock (a count inside a scan callback), the lead re-takes
+		// it per chunk, and a queued writer would then block both. Join only
+		// a build that has already finished; otherwise fold.
+		select {
+		case <-done:
+			return a.getCut(key, keys, epoch)
+		default:
+			return nil
+		}
 	}
 	defer a.endCutBuild(key, done)
 	if !c.pinLanded(key.pin) {

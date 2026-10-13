@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.51.5] - 2026-10-13
+
 ### Added
 
 - **`Admin().PurgeExpiredRels(ctx, RelPurgePolicy{Type, Mode, Before}) (RelPurgeReport, error)`** (backlog 21,
@@ -21,7 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Per-type retention gate**: a relationship purge advances only its type's watermark
   (`retention_rel_watermark/<type token>`, max-monotonic, and `retention_rel_max_watermark`, kept in RAM from open).
   A read of that type, or of every type, pinned below it fails with `ErrRetentionExpired`; other types and every node
-  read are answered (an `EVENT` purge never fails an `Overview` or `OV_PAIR` read). The scan doors take the scope
+  read are answered (an `EVENT` purge never fails an `Overview` or `OV_PAIR` read). After a purge, a point read (`RelAtTx` / `RelAsOf`) of an unknown relationship ID minted before the cutoff, at a pin below the relationship max watermark, returns `ErrRetentionExpired` instead of `ErrRelNotFound`. The scan doors take the scope
   of what they read; the relationship point doors (`RelAsOf`, `RelAtTx`, `RelEffectiveTimeline`,
   `RelsEffectiveByIDs`) check the relationship's type; the relationship doors that had no retention gate (`RelsAt`,
   `RelsDuring`, `RelsRelating`, `RelsByTypeProperty*`, `RelsAtTx`, `RelsDuringTx`, `NeighborsAt`,
@@ -72,6 +74,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   goroutine holds an open transaction returns `ctx.Err()` when `ctx` ends instead of blocking for good
   (`TestRetentionPurgeWaitHonoursCtx`).
 
+- **memory: a history-ID cursor page costs O(page + log n)**, not O(n). `AllNodeHistoryIDsFrom` /
+  `AllRelHistoryIDsFrom` copied and sorted every history ID on each page, so a full cursor walk was quadratic
+  (10,000 IDs at page size 1: 50.6 s under race, now 1.1 s). The sorted key set is now cached and rebuilt only after
+  the key set changes; answers are unchanged (`TestHistoryIDsCursor*`).
+
 ### Changed
 
 - **Temporal column scans carry no ordinals** (backlog 28; experimental surface): `ScanNodeColumns` /
@@ -103,13 +110,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   9-18 ns (was 24-27 ns), a history write of a new random ID noted into both built sidecars 0.70 us (was
   1.29 us). Evidence: `tasks/evidence/badger-read-cost/41-02-red.txt`, `41-04-bench-*.txt`, `41-06-green.txt`.
   The open image (54) persists neither structure; a reopened store rebuilds them on first use.
-
-### Fixed
-
-- **memory: a history-ID cursor page costs O(page + log n)**, not O(n). `AllNodeHistoryIDsFrom` /
-  `AllRelHistoryIDsFrom` copied and sorted every history ID on each page, so a full cursor walk was quadratic
-  (10,000 IDs at page size 1: 50.6 s under race, now 1.1 s). The sorted key set is now cached and rebuilt only after
-  the key set changes; answers are unchanged (`TestHistoryIDsCursor*`).
 
 ## [4.51.4] - 2026-10-13
 

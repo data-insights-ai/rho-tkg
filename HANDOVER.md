@@ -1,16 +1,14 @@
-# HANDOVER — rho-tkg v4 line (rewritten 2026-10-12, main at v4.51.4)
+# HANDOVER — rho-tkg v4 line (rewritten 2026-10-12, main at v4.51.5)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go 1.26.9; a Go
-library, not a database). Latest tag `v4.51.4`. Read, in this order: this file, `tasks/lessons.md` (digest at the top),
+library, not a database). Latest tag `v4.51.5`. Read, in this order: this file, `tasks/lessons.md` (digest at the top),
 `tasks/todo.md` (user requests, open queue with the per-step red tests), `tasks/backlog.md` (specs), `CHANGELOG.md` top.
 History (what shipped, why) is in `CHANGELOG.md` and git, not here.
 
 ## 1. Open requests and next steps (newest user message first; do these, do not ask)
 
-1. **v4.51.4 released 2026-10-13** (44: crash reopen above every stored stamp; 15 closed by docs). v4.51.3 released 2026-10-12 (52, 53, 54, 55, F1–F6). Next tag: v4.51.5 (PATCH only). Next work: new consumer requests, then the on-hold items below.
-2. **On hold, not blocking:** 41 (merge the history-stamps sidecar into the presence set; measured, saves only where both
-   doors run), 28 (state column fast path; design first, waits for sigma's input), 21 (retention `PurgeExpiredRels` + per-type
-   gate; full spec in backlog 21; waits for sigma's `@overview`).
+1. **v4.51.5 released 2026-10-13** (21, 28, 41; CI race split, GitHub CI green). **v4.51.4 released 2026-10-13** (44: crash reopen above every stored stamp; 15 closed by docs). v4.51.3 released 2026-10-12 (52, 53, 54, 55, F1–F6). Next tag: v4.51.6 (PATCH only). Next work: new consumer requests, then the on-hold items below.
+2. **On hold:** nothing (41, 28, 21 shipped in v4.51.5).
 3. **Md consolidation** (René 2026-10-12 "consolidate md files and rules"): done by the Sonnet agent of this commit; review
    `tasks/todo.md` request 21.
 4. Standing: tick the ledger and the releases table at every release (lesson 80); keep `AGENTS.md`/`README.md`/`docs/architecture.md`
