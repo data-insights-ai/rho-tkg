@@ -242,6 +242,7 @@ func (es *EventShard) currentTier() ShardTier {
 type Store struct {
 	mu                sync.RWMutex                                    // protects hotShard + eventShards during rotation
 	refShard          *BadgerStore                                    // reference shard (always hot)
+	shardFloor        shardCommitFloor                                // non-reference shards' commit floor, kept on refShard (tieredstore_commit_floor.go)
 	mutationEpochs    badger.SharedMutationEpochs                     // advanced by every shard (badgerCfg injects it); NodeMutationEpoch / RelMutationEpoch read it
 	propKeyReg        atomic.Pointer[registrypkg.PropertyKeyRegistry] // single canonical property-key registry, injected into every shard at open
 	refActiveReqs     atomic.Int64                                    // refcount for refShard — Close spin-waits on this before refShard.Close()
@@ -563,6 +564,10 @@ func New(cfg Config) (*Store, error) {
 		ts.propKeyReg.Store(reg)
 	}
 	if err := ts.loadHistoryLives(); err != nil {
+		_ = refStore.Close() // best-effort cleanup; returning primary error
+		return nil, err
+	}
+	if err := ts.loadShardCommitFloor(); err != nil {
 		_ = refStore.Close() // best-effort cleanup; returning primary error
 		return nil, err
 	}
@@ -1160,6 +1165,7 @@ func (ts *Store) Clear() error {
 	}
 	ts.relLives.reset() // their meta entries went with the reference shard
 	ts.nodeLives.reset()
+	ts.resetShardCommitFloor()
 	// An empty store has nothing to backfill: keep the next open from walking.
 	if err := ref.MetaSet(historyLivesBackfilledKey, []byte{1}); err != nil {
 		refCheckin()
@@ -1398,6 +1404,9 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 			}
 			return ts.refShard.SavePropertyKeyRegistry(reg)
 		}
+		// Same seam for the commit floor (tieredstore_commit_floor.go): the
+		// reference shard keeps it, ahead of this shard's rows.
+		cfg.OnCommitFloor = ts.persistShardCommitFloor
 	}
 	// Change-log: slave this shard's LSNs to the store-global allocator and, for
 	// non-reference shards, persist the allocator watermark to the reference

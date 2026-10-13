@@ -307,6 +307,7 @@ type Store struct {
 	sealers         sync.WaitGroup         // background sealers; Close waits for them
 	sealedRowBuilds atomic.Uint64          // Relationships built from sealed rows (measurement)
 	segDir          *segdir.Dir            // ADR-0011 S3: the segment directory (nil = in-RAM segments)
+	segCommitFloor  types.Instant          // newest transaction stamp of the rows loaded from segDir (memorystore_commit_floor.go)
 }
 
 // bumpNodeEpoch marks every cached DocValues column potentially stale. Called by

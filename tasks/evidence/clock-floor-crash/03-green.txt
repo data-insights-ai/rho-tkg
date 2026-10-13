@@ -1,0 +1,51 @@
+# GREEN after the fix: TestCrashReopenNowTxAboveStoredStamps (all backends) + badger TestStoredCommitFloor. Mutants killed: sharded folds only the anchor (slot1-newest fails), tiered hook off (event-shard-newest fails), history rows skipped (every crash case fails).
+=== RUN   TestCrashReopenNowTxAboveStoredStamps
+=== RUN   TestCrashReopenNowTxAboveStoredStamps/badger/clean
+=== RUN   TestCrashReopenNowTxAboveStoredStamps/badger/crash
+=== RUN   TestCrashReopenNowTxAboveStoredStamps/badger/trusted-image-then-crash
+=== RUN   TestCrashReopenNowTxAboveStoredStamps/badger/crash/read-only-reopen
+=== RUN   TestCrashReopenNowTxAboveStoredStamps/badger-sync/crash
+=== RUN   TestCrashReopenNowTxAboveStoredStamps/tiered/crash/event-shard-newest
+=== RUN   TestCrashReopenNowTxAboveStoredStamps/tiered/crash/rel-newest
+=== RUN   TestCrashReopenNowTxAboveStoredStamps/sharded/crash/anchor-newest
+=== RUN   TestCrashReopenNowTxAboveStoredStamps/sharded/crash/slot1-newest
+=== RUN   TestCrashReopenNowTxAboveStoredStamps/replica/crash
+=== RUN   TestCrashReopenNowTxAboveStoredStamps/memory/segment-dir-reopen
+--- PASS: TestCrashReopenNowTxAboveStoredStamps (2.08s)
+    --- PASS: TestCrashReopenNowTxAboveStoredStamps/badger/clean (0.16s)
+    --- PASS: TestCrashReopenNowTxAboveStoredStamps/badger/crash (0.14s)
+    --- PASS: TestCrashReopenNowTxAboveStoredStamps/badger/trusted-image-then-crash (0.15s)
+    --- PASS: TestCrashReopenNowTxAboveStoredStamps/badger/crash/read-only-reopen (0.15s)
+    --- PASS: TestCrashReopenNowTxAboveStoredStamps/badger-sync/crash (0.20s)
+    --- PASS: TestCrashReopenNowTxAboveStoredStamps/tiered/crash/event-shard-newest (0.32s)
+    --- PASS: TestCrashReopenNowTxAboveStoredStamps/tiered/crash/rel-newest (0.31s)
+    --- PASS: TestCrashReopenNowTxAboveStoredStamps/sharded/crash/anchor-newest (0.20s)
+    --- PASS: TestCrashReopenNowTxAboveStoredStamps/sharded/crash/slot1-newest (0.29s)
+    --- PASS: TestCrashReopenNowTxAboveStoredStamps/replica/crash (0.11s)
+    --- PASS: TestCrashReopenNowTxAboveStoredStamps/memory/segment-dir-reopen (0.04s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	2.122s
+=== RUN   TestStoredCommitFloor
+=== RUN   TestStoredCommitFloor/empty_store
+=== RUN   TestStoredCommitFloor/current_node_row
+=== RUN   TestStoredCommitFloor/history_tombstone_only
+=== RUN   TestStoredCommitFloor/history_rel_row
+=== RUN   TestStoredCommitFloor/an_older_row_never_lowers_it
+=== RUN   TestStoredCommitFloor/delta-encoded_history_row
+=== RUN   TestStoredCommitFloor/Clear_then_rows:_re-persisted,_not_lowered
+=== RUN   TestStoredCommitFloor/Clear_without_rows_after:_nothing_stored
+=== RUN   TestStoredCommitFloor/read-only_reopen
+--- PASS: TestStoredCommitFloor (0.99s)
+    --- PASS: TestStoredCommitFloor/empty_store (0.13s)
+    --- PASS: TestStoredCommitFloor/current_node_row (0.12s)
+    --- PASS: TestStoredCommitFloor/history_tombstone_only (0.15s)
+    --- PASS: TestStoredCommitFloor/history_rel_row (0.10s)
+    --- PASS: TestStoredCommitFloor/an_older_row_never_lowers_it (0.10s)
+    --- PASS: TestStoredCommitFloor/delta-encoded_history_row (0.10s)
+    --- PASS: TestStoredCommitFloor/Clear_then_rows:_re-persisted,_not_lowered (0.10s)
+    --- PASS: TestStoredCommitFloor/Clear_without_rows_after:_nothing_stored (0.10s)
+    --- PASS: TestStoredCommitFloor/read-only_reopen (0.08s)
+=== RUN   TestStoredCommitFloor_MalformedAndClosed
+--- PASS: TestStoredCommitFloor_MalformedAndClosed (0.09s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.095s

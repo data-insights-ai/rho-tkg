@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`store.CommitFloorCapability`** (optional, backlog 44; memory, badger, tiered, sharded): `StoredCommitFloor()`,
+  at least the newest TxFrom/TxTo/DeletedAt of every row the store holds after any crash. **badger
+  `Config.OnCommitFloor`**: the hook a composite store uses to keep a shard's floor elsewhere (tiered: the
+  reference shard).
+
+### Fixed
+
+- **A crash reopen no longer hands out `NowTx()` and new stamps below stored rows** (backlog 44, lesson 71). The
+  commit-clock floor watermark was written only by `Close`, so after a crash that followed a burst (or
+  `AdvanceClock`) whose floor outran the wall, `NowTx()` reopened at the wall, below committed stamps, and a fresh
+  write could be stamped before existing ones (red: up to an hour below in `TestCrashReopenNowTxAboveStoredStamps`,
+  `tasks/evidence/clock-floor-crash/01-red.txt`). Design: every badger flush that writes rows puts the floor (the
+  newest stamp of every entity and history row it has written, decoded from the batch) first in its own WriteBatch,
+  and `graph.New` raises the clock to it — chosen over a scan at open because it is exact for every door (replica
+  apply and import included, whatever their order against a background flush), costs nothing at open (one 8-byte
+  key in the open's existing read) and about 75 µs per 1,060-row flush with no allocation
+  (`04-flush-cost.txt`, under 1 % of a 13.5 ms durable group), where a scan would make the crash open linear in
+  history. Sharded folds its slots; tiered keeps its event and archive shards' floor on the reference shard, written
+  ahead of each shard's batch (cold shards are not opened at open); read-only opens and replicas read the same key.
+  Memory with a `SegmentDir` had the same gap even after a clean `Close` (its MetaKV is RAM): its floor is the newest
+  stamp of the sealed rows loaded from the directory, folded while they are installed.
+
+### Changed
+
+- **Docs: power-loss durability needs `DurableCommit` + `SyncWrites`** (backlog 15, closed): stated on
+  `Config.DurableCommit`, `Config.SyncWrites` and in `docs/persistence.md`; measured 13.5 ms per 530-op group
+  against 12.5 ms for `DurableCommit` alone (`tasks/evidence/aisoc-commit-cost/52-bench.txt`).
+
 ## [4.51.3] - 2026-10-12
 
 ### Added

@@ -265,11 +265,36 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 		return fmt.Errorf("graph: write-ahead property-key registry: %w", err)
 	}
 
+	// Step 1.6: the commit floor (badgerstore_commit_floor.go) covers every
+	// row stamp in this batch before any row can be durable: through the
+	// owner's hook ahead of the batch, else as the batch's first entry.
+	floor, err := bs.batchCommitFloor(ops)
+	if err != nil {
+		requeue()
+		return err
+	}
+	floorInBatch := floor > bs.commitFloorDurable
+	if floorInBatch && bs.onCommitFloor != nil {
+		if err := bs.onCommitFloor(types.Instant(floor)); err != nil {
+			requeue()
+			return fmt.Errorf("graph: write-ahead commit floor: %w", err)
+		}
+		bs.commitFloor.Store(floor)
+		bs.commitFloorDurable = floor
+		floorInBatch = false
+	}
+
 	// Step 2: Write all ops + counters + change-log records to Badger via one
 	// WriteBatch (blind writes, no OCC).
 	wb := bs.db.NewWriteBatch()
 	defer wb.Cancel() // no-op if Flush already called
 
+	if floorInBatch {
+		if err := wb.SetEntry(commitFloorEntry(floor)); err != nil {
+			requeue()
+			return fmt.Errorf("graph: write batch set commit floor: %w", err)
+		}
+	}
 	for _, op := range ops {
 		switch op.opType {
 		case writeOpSet:
@@ -338,6 +363,10 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 	if err := wb.Flush(); err != nil {
 		requeue()
 		return fmt.Errorf("graph: write batch flush: %w", err)
+	}
+	if floorInBatch {
+		bs.commitFloor.Store(floor)
+		bs.commitFloorDurable = floor
 	}
 	if bs.syncWrites {
 		bs.syncedFlushes.Add(1) // Badger synced the batch (SyncCountForTest)

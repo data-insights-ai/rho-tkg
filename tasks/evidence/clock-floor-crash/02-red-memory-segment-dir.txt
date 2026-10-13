@@ -1,0 +1,9 @@
+# memory + SegmentDir RED (found after the badger fix): the sealed rows outlive the process, the RAM MetaKV does not, so even a clean Close leaves no floor.
+=== RUN   TestCrashReopenNowTxAboveStoredStamps
+=== RUN   TestCrashReopenNowTxAboveStoredStamps/memory/segment-dir-reopen
+    clock_floor_crash_test.go:415: NowTx() after reopen = 1791868804915 <= newest stored stamp 1791872404909 (3599994 ms below): a pin at NowTx misses committed rows
+--- FAIL: TestCrashReopenNowTxAboveStoredStamps (0.05s)
+    --- FAIL: TestCrashReopenNowTxAboveStoredStamps/memory/segment-dir-reopen (0.05s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.050s
+FAIL

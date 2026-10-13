@@ -446,6 +446,14 @@ Two layers, both backward compatible with pre-versioning directories:
   the image instead of decoding rows; planner statistics travel in the image
   too, and only an image without them defers them to their first read
   (`badgerstore_planner_stats_deferred.go`).
+- Every flush that writes rows puts the commit floor first in its WriteBatch
+  (`badgerstore_commit_floor.go`, backlog 44): the newest TxFrom/TxTo/DeletedAt
+  of every entity and history row the store has written, decoded from the
+  batch. The open loads it and the graph raises its commit clock to it
+  (`store.CommitFloorCapability`), so a crash reopen stays above every stored
+  stamp without the Close-time watermark; tiered shards other than the
+  reference shard hand it to `Config.OnCommitFloor`, which keeps it on the
+  reference shard ahead of their batch.
 
 Bump protocol (documented on `CurrentWireFormatVersion`): a version bump must
 update the custom msgpack encoders (lesson 39), the decode path, and the
@@ -519,9 +527,10 @@ the lock). The hold is released exactly once, under the holder's lock.
 file. A memtable switch during the flush (`ensureRoomForWrite`) retires the old
 WAL without an fsync, and a finished value-log file is fsynced only under
 `SyncWrites`, so rows of a group whose flush filled the memtable or a value-log
-file can still be unsynced after `DurableFlush` returned. `SyncWrites` is the
-setting for strict power-loss durability (backlog 15 tracks syncing the retired
-WAL on switch, or measuring `SyncWrites`' cost instead).
+file can still be unsynced after `DurableFlush` returned. Power-loss durability
+needs `DurableCommit` + `SyncWrites`: measured 13.5 ms per 530-op group against
+12.5 ms for `DurableCommit` alone (backlog 15, closed in 4.51.4 by this
+measurement; `tasks/evidence/aisoc-commit-cost/52-bench.txt`).
 
 `DurableFlush` re-checks the store's closed state under `flushMu`: `Close`
 sets `closing` before its final flush, which needs `flushMu`, so a durable

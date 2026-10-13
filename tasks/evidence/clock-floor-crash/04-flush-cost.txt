@@ -1,0 +1,12 @@
+# flush-side cost: batchCommitFloor over 530 current + 530 history node rows (go test -bench BenchmarkBatchCommitFloor -benchtime 2000x -count 5)
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkBatchCommitFloor-32    	    2000	     75721 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBatchCommitFloor-32    	    2000	     77300 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBatchCommitFloor-32    	    2000	     75084 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBatchCommitFloor-32    	    2000	     78973 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBatchCommitFloor-32    	    2000	     77572 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.123s
