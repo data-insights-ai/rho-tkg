@@ -240,3 +240,30 @@ cgroup samples and Docker stats are snapshots, not deployment peak; Docker stats
 may subtract inactive file cache. Test-client peak includes Go compilation and
 race instrumentation. No large-data/vendor performance or space verdict follows
 from this small functional workload.
+
+The selected `cost-cell` mode uses three fixed endpoint nodes and the declared
+relationship/life interval from `RHO_GRAPH_COST_SPEC`. It creates N relationships
+with typed `p=5`, updates all N to `p=6`, retains the complete history and original
+CDC, and checks old/current views after the updates. Its dependency capture uses
+bounded real point reads; history and CDC use the existing 128-row paging doors.
+`run-local.sh cost-cell small` reuses the four actual FDB containers, triple SSD
+configuration and fresh volumes, recording all server/client process RSS and
+all four data/log directories. The FDB fixture durably admits externally supplied
+fixed IDs; it does not implement rho allocator/recipient issuance. The native
+runner includes actual issuance and setup coordination, so those setup costs are
+reported separately without claiming identical allocation contracts.
+
+`../cost-cell.py --plan` preserves the reviewed 10k/100k/1M × 0/10/50/100% cross ×
+1/8/32-writer matrix and five fresh runs. The current source supports writer1;
+concurrent writers and the native one-million-fact multi-grant setup remain
+pending. `--probe` explicitly records one feasibility cell, and `--compare`
+checks the completed native/FDB retained-output witnesses. Execution requires
+the genuine qualified paired-fault inputs; local cost cells remain
+single-machine distributed tests. The pinned SDK profile tests and two-fact local/cross functional paths are
+qualified separately from the incomplete native10k measurement. `FDB_COST_QUALIFY=1`
+runs only the two cost test parents in normal/race mode and instruments the actual
+client for coverage, including a read-only stale-configuration refusal. These
+instrumented results make no performance claim. The controller preserves
+functional success but refuses cost qualification when no actual client PID was
+sampled, instrumentation is enabled, or its mode is unknown. Full10k matched
+measurements and the remaining matrix remain pending; no engine is selected.

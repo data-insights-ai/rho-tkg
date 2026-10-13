@@ -36,9 +36,20 @@ type graphView struct {
 }
 
 func validGraphConfig(c config) bool {
-	return c.Nodes == [2]uint64{} || c.Nodes[0] != 0 && c.Nodes[1] != 0 && c.Nodes[0] != c.Nodes[1]
+	if c.Cost != (graphCostProfile{}) {
+		return validGraphCostProfile(c)
+	}
+	return c.CostScope == (lifecycleScope{}) && (c.Nodes == [2]uint64{} || c.Nodes[0] != 0 && c.Nodes[1] != 0 && c.Nodes[0] != c.Nodes[1])
 }
 func (c config) validEndpoint(e endpoint) bool {
+	if c.Cost != (graphCostProfile{}) {
+		for _, node := range c.Cost.nodes() {
+			if e == node {
+				return true
+			}
+		}
+		return false
+	}
 	return c.Nodes != [2]uint64{} && e.Owner < 2 && e.Node == c.Nodes[e.Owner] && e.Life != 0
 }
 func lifeKey(e endpoint) string { return fmt.Sprintf("node/%016x/life/%016x", e.Node, e.Life) }
@@ -59,7 +70,7 @@ func graphEffects(command graphCommand) [2][]effect {
 	for _, kind := range []string{"edge", "out", "in"} {
 		g := uint8(0)
 		if kind == "in" {
-			g = 1
+			g = command.Edge.Target.Owner
 		}
 		e := effect{Key: edgeKey(kind, command.Edge), Value: command.Edge.Value}
 		if command.Kind == "edge-close" {
@@ -82,11 +93,11 @@ func graphReadKeys(command graphCommand) [2][]string {
 	keys[0] = []string{edgeKey("edge", command.Edge)}
 	if command.Kind != "edge-close" {
 		keys[0] = append(keys[0], lifeKey(command.Edge.Source))
-		keys[1] = []string{lifeKey(command.Edge.Target)}
+		keys[command.Edge.Target.Owner] = append(keys[command.Edge.Target.Owner], lifeKey(command.Edge.Target))
 	}
 	if command.Kind != "edge-create" {
 		keys[0] = append(keys[0], edgeKey("out", command.Edge))
-		keys[1] = append(keys[1], edgeKey("in", command.Edge))
+		keys[command.Edge.Target.Owner] = append(keys[command.Edge.Target.Owner], edgeKey("in", command.Edge))
 	}
 	for g := range keys {
 		slices.Sort(keys[g])
@@ -113,7 +124,7 @@ func (h *harness) validateGraphShape(x transaction) error {
 			return errInvalid
 		}
 	case "edge-create", "edge-update", "edge-close":
-		if command.Node != (endpoint{}) || command.Edge.ID == 0 || !h.config.validEndpoint(command.Edge.Source) || !h.config.validEndpoint(command.Edge.Target) || command.Edge.Source.Owner != 0 || command.Edge.Target.Owner != 1 || len(x.Participants) != 2 || command.Kind == "edge-close" && command.Edge.Value != 0 {
+		if command.Node != (endpoint{}) || command.Edge.ID == 0 || !h.config.validEndpoint(command.Edge.Source) || !h.config.validEndpoint(command.Edge.Target) || command.Edge.Source.Owner != 0 || h.config.Cost == (graphCostProfile{}) && command.Edge.Target.Owner != 1 || len(x.Participants) != 1+int(command.Edge.Target.Owner) || command.Kind == "edge-close" && command.Edge.Value != 0 {
 			return errInvalid
 		}
 	default:
@@ -238,7 +249,7 @@ func (h *harness) checkGraphNative(tr fdb.ReadTransaction, x transaction) (strin
 		for _, posting := range []struct {
 			group uint8
 			kind  string
-		}{{0, "out"}, {1, "in"}} {
+		}{{0, "out"}, {command.Edge.Target.Owner, "in"}} {
 			orphans, err := h.graphRows(tr, posting.group, fmt.Sprintf("%s/%016x/", posting.kind, command.Edge.ID))
 			if err != nil {
 				return "", err
@@ -265,7 +276,7 @@ func (h *harness) checkGraphNative(tr fdb.ReadTransaction, x transaction) (strin
 	for _, entry := range []struct {
 		group uint8
 		kind  string
-	}{{0, "out"}, {1, "in"}} {
+	}{{0, "out"}, {command.Edge.Target.Owner, "in"}} {
 		rows, err := h.graphRows(tr, entry.group, fmt.Sprintf("%s/%016x/", entry.kind, command.Edge.ID))
 		if err != nil {
 			return "", err
@@ -286,7 +297,7 @@ func (h *harness) checkGraphNative(tr fdb.ReadTransaction, x transaction) (strin
 func (h *harness) graphTransaction(id string, coordinator uint8, command graphCommand, s snapshot) transaction {
 	x := transaction{Graph: h.config.Graph, Topology: h.config.Topology, ID: id, Request: "request/" + id, Coordinator: coordinator, GraphChange: new(command)}
 	// A malformed descriptor remains an invalid transaction, never an array panic.
-	if command.Node.Owner > 1 {
+	if command.Node.Owner > 1 || command.Edge.Source.Owner > 1 || command.Edge.Target.Owner > 1 {
 		return x
 	}
 	effects, keys := graphEffects(command), graphReadKeys(command)
@@ -315,8 +326,8 @@ func parseGraphEdge(kind, key string, v int64, c config) (graphEdge, error) {
 		}
 		ids[i] = n
 	}
-	e := graphEdge{ID: ids[0], Source: endpoint{0, ids[1], ids[2]}, Target: endpoint{1, ids[3], ids[4]}, Value: v}
-	if !c.validEndpoint(e.Source) || !c.validEndpoint(e.Target) {
+	e := graphEdge{ID: ids[0], Source: endpoint{0, ids[1], ids[2]}, Target: endpoint{c.graphNodeOwner(ids[3]), ids[3], ids[4]}, Value: v}
+	if !c.validEndpoint(e.Source) || !c.validEndpoint(e.Target) || c.Cost == (graphCostProfile{}) && e.Target.Owner != 1 {
 		return graphEdge{}, errInvalid
 	}
 	return e, nil
@@ -330,7 +341,7 @@ func (h *harness) projectGraph(s snapshot) (graphView, error) {
 		return view, errInvalid
 	}
 	lives := map[endpoint]bool{}
-	heads := map[uint8]bool{}
+	heads := map[uint64]bool{}
 	edges := map[string]graphEdge{}
 	rows := map[string]value{}
 	identities := map[uint64]bool{}
@@ -347,21 +358,24 @@ func (h *harness) projectGraph(s snapshot) (graphView, error) {
 				node, e1 := strconv.ParseUint(parts[1], 16, 64)
 				life, e2 := strconv.ParseUint(parts[3], 16, 64)
 				e := endpoint{uint8(g), node, life}
-				if e1 != nil || e2 != nil || !h.config.validEndpoint(e) || lifeKey(e) != key || heads[e.Owner] {
+				if e1 != nil || e2 != nil || !h.config.validEndpoint(e) || lifeKey(e) != key || heads[e.Node] {
 					return view, errInvalid
 				}
-				heads[e.Owner] = true
+				heads[e.Node] = true
 				lives[e] = true
 				view.Nodes = append(view.Nodes, e)
 			}
 			for _, kind := range []string{"edge", "out", "in"} {
 				if strings.HasPrefix(key, kind+"/") {
-					if kind == "in" && g != 1 || kind != "in" && g != 0 {
+					if kind != "in" && g != 0 {
 						return view, errInvalid
 					}
 					e, err := parseGraphEdge(kind, key, v.Value, h.config)
 					if err != nil {
 						return view, err
+					}
+					if kind == "in" && uint8(g) != e.Target.Owner {
+						return view, errInvalid
 					}
 					rows[key] = v
 					if kind == "edge" {

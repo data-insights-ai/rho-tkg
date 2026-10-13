@@ -39,14 +39,21 @@ func main() {
 }
 
 func run() error {
-	if len(os.Args) != 2 || (os.Args[1] != "smoke" && os.Args[1] != "graph-smoke" && os.Args[1] != "lifecycle-trace" && !strings.HasPrefix(os.Args[1], "fault-") && !strings.HasPrefix(os.Args[1], "graph-fault-") && !strings.HasPrefix(os.Args[1], "paired-fault-")) {
-		return fmt.Errorf("usage: fdb-spike smoke|graph-smoke|lifecycle-trace|fault-*|graph-fault-*|paired-fault-*")
+	if len(os.Args) != 2 || (os.Args[1] != "smoke" && os.Args[1] != "graph-smoke" && os.Args[1] != "lifecycle-trace" && os.Args[1] != "cost-cell" && !strings.HasPrefix(os.Args[1], "fault-") && !strings.HasPrefix(os.Args[1], "graph-fault-") && !strings.HasPrefix(os.Args[1], "paired-fault-")) {
+		return fmt.Errorf("usage: fdb-spike smoke|graph-smoke|lifecycle-trace|cost-cell|fault-*|graph-fault-*|paired-fault-*")
 	}
 	db, err := openDB()
 	if err != nil {
 		return err
 	}
 	defer db.Close()
+	if os.Args[1] == "cost-cell" {
+		spec, err := graphCostSpecFromEnv()
+		if err != nil {
+			return err
+		}
+		return runGraphCost(db, spec)
+	}
 	if strings.HasPrefix(os.Args[1], "paired-fault-") {
 		return runPairedGraphFault(db, os.Args[1])
 	}

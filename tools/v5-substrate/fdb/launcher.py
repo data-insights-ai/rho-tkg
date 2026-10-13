@@ -109,6 +109,7 @@ def main():
         scopes = {
             "static": "pinned compilation/static tools; no cluster or fault schedule",
             "lifecycle-trace": "one physical host, four logical FDB zones; lifecycle trace, no external kill schedule",
+            "cost-cell": "single-machine distributed: four logical FDB fault-domain containers; real graph cost cell, no independent physical-host-loss/LAN-WAN or engine-selection claim",
             "graph-fault": "one physical host, four logical FDB zones; functional graph faults only",
             "paired-graph-fault": "one physical host, four logical FDB zones; paired fixed graph process faults only",
             "paired-tests": "one physical host, four logical FDB zones; normal/race/coverage tests, no external kill schedule",

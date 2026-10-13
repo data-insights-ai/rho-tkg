@@ -6,7 +6,9 @@ exec 3>&1 # Preserve the original output channel through redirected failures.
 cd "$(dirname "$0")"
 mode=${1:-test}
 profile=${2:-small}
-case "$mode" in smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|static) ;; *) echo 'usage: run-local.sh [smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|static] [small|large]' >&2; exit 2;; esac
+cost_qualify=${FDB_COST_QUALIFY:-0}
+case "$cost_qualify" in 0|1) ;; *) echo 'FDB_COST_QUALIFY must be 0 or 1' >&2; exit 2;; esac
+case "$mode" in smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|cost-cell|static) ;; *) echo 'usage: run-local.sh [smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|cost-cell|static] [small|large]' >&2; exit 2;; esac
 runtime='foundationdb/foundationdb@sha256:c61744624e479d370a0120176e518bb569a2a18ee9abceaf7022c4367b54f1db'
 tag="rho-v5-fdb-$(date +%s)-$$"
 out="$PWD/artifacts/$tag"
@@ -107,8 +109,24 @@ bounded_docker 180 pull "$runtime" >"$out/pull-runtime.log" 2>&1
 bounded_docker 300 build --target source -t "$source_image" . >"$out/build-source.log" 2>&1
 build_name="$tag-prebuild"; containers+=("$build_name")
 bounded_docker 600 run --name "$build_name" --memory 1024m --cpus 2 \
+  --env "FDB_LAUNCH_MODE=$mode" --env "FDB_COST_QUALIFY=$cost_qualify" \
   --mount "type=bind,source=$out,target=/evidence" "$source_image" /bin/bash -c '
-    timeout --signal=KILL 180s bash prepare-client.sh && timeout --signal=KILL 180s go mod download && timeout --signal=KILL 180s go build -o /usr/local/bin/fdb-spike .
+    timeout --signal=KILL 180s bash prepare-client.sh && timeout --signal=KILL 180s go mod download &&
+    { [ "$FDB_LAUNCH_MODE" != cost-cell ] || {
+      timeout --signal=KILL 180s go vet ./... > /evidence/cost-vet.txt 2>&1 &&
+      if [ "$FDB_COST_QUALIFY" = 1 ]; then
+        timeout --signal=KILL 180s go test -timeout 170s -count=1 -json -covermode=atomic -coverprofile=/evidence/cost-profile-normal.out -run "^TestGraphCost(ProfileExactRoutingAndBoundedShapes|ProjectionRemembersOldAndRejectsPartialPosting)$" ./... > /evidence/cost-profile-normal-tests.jsonl 2>&1 &&
+        timeout --signal=KILL 180s go test -timeout 170s -race -count=1 -json -covermode=atomic -coverprofile=/evidence/cost-profile-race.out -run "^TestGraphCost(ProfileExactRoutingAndBoundedShapes|ProjectionRemembersOldAndRejectsPartialPosting)$" ./... > /evidence/cost-profile-tests.jsonl 2>&1
+      else
+        timeout --signal=KILL 180s go test -timeout 170s -count=1 -json -run "^TestGraphCost(ProfileExactRoutingAndBoundedShapes|ProjectionRemembersOldAndRejectsPartialPosting)$" ./... > /evidence/cost-profile-tests.jsonl 2>&1
+      fi
+    }; } && {
+      if [ "$FDB_LAUNCH_MODE" = cost-cell ] && [ "$FDB_COST_QUALIFY" = 1 ]; then
+        timeout --signal=KILL 180s go build -race -cover -coverpkg=./... -o /usr/local/bin/fdb-spike .
+      else
+        timeout --signal=KILL 180s go build -o /usr/local/bin/fdb-spike .
+      fi
+    }
     result=$?
     cat /sys/fs/cgroup/memory.peak > /evidence/build-memory-peak.txt
     cat /sys/fs/cgroup/memory.stat > /evidence/build-memory-stat.txt
@@ -174,7 +192,7 @@ client() {
   if ! capture_client "$name" "$command-$client_index"; then result=1; fi
   return "$result"
 }
-client smoke
+if [ "$mode" != cost-cell ]; then client smoke; fi
 if [ "$mode" = test ] || [ "$mode" = graph-fault ] || [ "$mode" = paired-tests ] || [ "$mode" = paired-graph-fault ] || [ "$mode" = lifecycle-trace ]; then
   name="$tag-tests"; containers+=("$name")
   bounded_docker 310 run --name "$name" --network "$tag" --memory "${client_mib}m" --cpus 0.5 \
@@ -191,7 +209,7 @@ if [ "$mode" = test ] || [ "$mode" = graph-fault ] || [ "$mode" = paired-tests ]
       cat /sys/fs/cgroup/memory.stat > /evidence/test-client-memory-stat.txt; exit "$result"' -- "$mode" >"$out/tests.txt" 2>&1
   capture_client "$name" tests
 fi
-if [ "$mode" != smoke ] && [ "$mode" != lifecycle-trace ] && [ "$mode" != paired-tests ]; then
+if [ "$mode" != smoke ] && [ "$mode" != lifecycle-trace ] && [ "$mode" != paired-tests ] && [ "$mode" != cost-cell ]; then
   prefix=fault
   if [ "$mode" = graph-fault ]; then prefix=graph-fault; fi
   if [ "$mode" = paired-graph-fault ]; then prefix=paired-fault; fi
@@ -264,17 +282,51 @@ if [ "$mode" != smoke ] && [ "$mode" != lifecycle-trace ] && [ "$mode" != paired
     python3 -B paired_controller.py "$out/paired-fault-terminal-$client_index.json" "$out" "$out/paired-graph-fault-trace.json"
   fi
 fi
+if [ "$mode" = cost-cell ]; then
+  : "${RHO_GRAPH_COST_SPEC:?explicit reviewed cost specification required}"
+  cost_seconds=${FDB_COST_SECONDS:-180}
+  case "$cost_seconds" in *[!0-9]*|'') echo 'invalid finite cost deadline' >&2; exit 2;; esac
+  if [ "$cost_seconds" -lt 1 ] || [ "$cost_seconds" -gt 1800 ]; then echo 'cost deadline outside1..1800seconds' >&2; exit 2; fi
+  phase_deadline=$((SECONDS+cost_seconds+180))
+  name="$tag-cost"; containers+=("$name")
+  mkdir -p "$out/cost-cover"
+  printf '%s\n' "$cost_qualify" >"$out/cost-instrumented.txt"
+  python3 -c 'import time; print(time.monotonic_ns())' >"$out/cost-controller-start-nanos.txt"
+  docker run -d --name "$name" --network "$tag" --memory "${client_mib}m" --cpus 0.5 \
+    --env "FDB_CONNECTION_STRING=$connection" --env "RHO_GRAPH_COST_SPEC=$RHO_GRAPH_COST_SPEC" --env "FDB_COST_QUALIFY=$cost_qualify" --env FDB_COST_ARTIFACT=/evidence --env GOCOVERDIR=/evidence/cost-cover \
+    --mount "type=bind,source=$out,target=/evidence" "$client_image" fdb-spike cost-cell >"$out/cost-client-id.txt"
+  if ! python3 -B cost_monitor.py --seconds "$cost_seconds" --output "$out/cost-process-rss.jsonl" --servers "${servers[@]}" --client "$name" >"$out/cost-monitor.stdout" 2>"$out/cost-monitor.stderr"; then
+    docker logs "$name" >"$out/cost-client.stdout" 2>"$out/cost-client.stderr" || true
+    docker inspect "$name" >"$out/cost-failed-inspect.json" || true
+    exit 1
+  fi
+  docker logs "$name" >"$out/cost-client.stdout" 2>"$out/cost-client.stderr"
+  stop_client "$name" cost-client
+  capture_client "$name" cost-client
+  python3 -c 'import time; print(time.monotonic_ns())' >"$out/cost-controller-end-nanos.txt"
+fi
 if [ "$mode" = lifecycle-trace ]; then client lifecycle-trace; fi
 wait_healthy "${servers[0]}" "$out/status-after.json"
 for i in 0 1 2 3; do
   docker exec "${servers[$i]}" /bin/bash -c 'date -u +%FT%T.%NZ; cat /sys/fs/cgroup/memory.current; cat /sys/fs/cgroup/memory.peak; cat /sys/fs/cgroup/memory.stat' >"$out/zone$i-cgroup-final.txt"
   docker exec "${servers[$i]}" du -s -B1 /var/fdb/data /var/fdb/logs >"$out/zone$i-disk.txt"
+  if [ "$mode" = cost-cell ]; then
+    docker exec "${servers[$i]}" /bin/bash -c 'find /var/fdb/data /var/fdb/logs -type f -printf "%s\n" | awk "{total+=\$1} END {printf \"%.0f\\n\",total}"' >"$out/zone$i-file-length-bytes.txt"
+  fi
   inspect_resources "${servers[$i]}" server "$out/zone$i-final-inspect.json"
 done
 docker stats --no-stream --format '{{json .}}' "${servers[@]}" >"$out/server-stats.jsonl"
 name="$tag-native"; containers+=("$name")
 docker run --name "$name" --network none --memory "${client_mib}m" --cpus 0.5 "$client_image" /bin/bash -c 'go version; fdbcli --version; sha256sum /usr/local/lib/libfdb_c.so /usr/local/include/foundationdb/*; ldd /usr/local/lib/libfdb_c.so' >"$out/native.txt"
 capture_client "$name" native
+if [ "$mode" = cost-cell ] && [ "$cost_qualify" = 1 ]; then
+  name="$tag-cost-cover"; containers+=("$name")
+  bounded_docker 180 run --name "$name" --network none --memory "${client_mib}m" --cpus 0.5 \
+    --mount "type=bind,source=$out,target=/evidence" "$client_image" /bin/bash -c '
+      timeout --signal=KILL 180s go tool covdata textfmt -i=/evidence/cost-cover -o=/evidence/cost-client-coverage.out &&
+      timeout --signal=KILL 180s go tool cover -func=/evidence/cost-client-coverage.out'
+  capture_client "$name" cost-cover
+fi
 if [ "$mode" = test ] || [ "$mode" = graph-fault ] || [ "$mode" = paired-tests ] || [ "$mode" = paired-graph-fault ] || [ "$mode" = lifecycle-trace ]; then
   name="$tag-cover"; containers+=("$name")
   docker run --name "$name" --network none --memory "${client_mib}m" --cpus 0.5 --mount "type=bind,source=$out,target=/evidence" "$client_image" go tool cover -func=/evidence/coverage.out >"$out/coverage-functions.txt"

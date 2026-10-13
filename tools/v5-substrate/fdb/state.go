@@ -32,6 +32,8 @@ type config struct {
 	Limits    limits
 	Nodes     [2]uint64        `json:",omitzero"`
 	Lifecycle lifecycleProfile `json:",omitzero"`
+	Cost      graphCostProfile `json:",omitzero"`
+	CostScope lifecycleScope   `json:",omitzero"`
 }
 type read struct {
 	Key     string
@@ -209,7 +211,7 @@ func put(tr fdb.Transaction, k fdb.Key, v any) error {
 }
 func newHarness(db fdb.Database, c config) (*harness, error) {
 	l := c.Limits
-	if c.Format != 2 || !validGraphConfig(c) || !validLifecycleProfile(c) || !validName(c.Graph) || c.Topology == 0 || c.Epochs[0] == 0 || c.Epochs[1] == 0 || l.Bytes < 8192 || l.Bytes > 16<<20 || l.Transactions < 1 || l.Transactions > 1024 || l.Versions < 1 || l.Versions > 65536 || l.Certificates < 1 || l.Certificates > 1024 {
+	if c.Format != 2 || !validGraphConfig(c) || !validLifecycleProfile(c) || !validName(c.Graph) || c.Topology == 0 || c.Epochs[0] == 0 || c.Epochs[1] == 0 || l.Bytes < 8192 || l.Bytes > graphCostLimit(c).Bytes || l.Transactions < 1 || l.Transactions > graphCostLimit(c).Transactions || l.Versions < 1 || l.Versions > graphCostLimit(c).Versions || l.Certificates < 1 || l.Certificates > 1024 {
 		return nil, errInvalid
 	}
 	h := &harness{db, c}
@@ -707,7 +709,7 @@ func (h *harness) current() (snapshot, error) {
 				return nil, e
 			}
 			s.Generations[g] = m.Generation
-			// #nosec G115 -- newHarness admits Versions <= 65,536, fitting every supported Go int.
+			// #nosec G115 -- newHarness admits legacy Versions<=65,536 or selected cost Versions<=6,000,003, fitting every supported Go int.
 			rows, e := tr.GetRange(prefixRange(h.prefix(g)+"current/"), fdb.RangeOptions{Limit: int(h.config.Limits.Versions) + 1}).GetSliceWithError()
 			if e != nil {
 				return nil, e

@@ -59,6 +59,9 @@ func validLifecycleProfile(c config) bool {
 	return p.Values[0].Kind == "i64" && p.Values[1].Kind == "i64" && p.Values[0].I64 != p.Values[1].I64
 }
 func (h *harness) validateLifecycle(x transaction) error {
+	if h.config.Cost != (graphCostProfile{}) {
+		return h.validateGraphCostLifecycle(x)
+	}
 	p := h.config.Lifecycle
 	if p == (lifecycleProfile{}) {
 		if x.Lifecycle != nil {
