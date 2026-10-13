@@ -704,8 +704,14 @@ type Config struct {
 	// SyncWrites makes the badger-backed store flush every mutation before it
 	// returns and Badger fsync each write (strict power-loss durability). Under
 	// DurableCommit the mutations of a commit group are synced together at the
-	// group's durable commit instead (see DurableCommit). Ignored when Store is
-	// provided explicitly (set it on the store's own config).
+	// group's durable commit instead (see DurableCommit). Power-loss durability
+	// of a commit group needs both flags, on the badger and sharded stores
+	// (badger.Config / sharded.Config SyncWrites): DurableCommit + SyncWrites
+	// cost 13.5 ms per 530-op group against 12.5 ms for DurableCommit alone
+	// (backlog 15, tasks/evidence/aisoc-commit-cost/52-bench.txt). The tiered
+	// store has no SyncWrites: its DurableCommit groups are process-crash safe
+	// only. Ignored
+	// when Store is provided explicitly (set it on the store's own config).
 	SyncWrites           bool
 	Compression          options.CompressionType
 	ZSTDCompressionLevel int
@@ -906,9 +912,13 @@ type Config struct {
 	// only the active memtable WAL and the current value-log file, so rows of
 	// a group whose flush filled the memtable (or a value-log file) can stay
 	// unsynced after the return — safe against a process crash, not a power
-	// loss; use SyncWrites for strict power-loss durability. With SyncWrites
-	// on a badger store a group costs one synced WriteBatch, not one sync per
-	// mutation: its mutations (each GraphTx mutation, the Batch.Execute window,
+	// loss. Power-loss durability needs DurableCommit + SyncWrites on a badger
+	// or sharded store: measured 13.5 ms per 530-op group against 12.5 ms for
+	// DurableCommit alone (backlog 15, tasks/evidence/aisoc-commit-cost/
+	// 52-bench.txt). The tiered store has no SyncWrites, so its groups keep
+	// that power-loss limit. With
+	// SyncWrites on a badger store a group costs one synced WriteBatch, not
+	// one sync per mutation: its mutations (each GraphTx mutation, the Batch.Execute window,
 	// a Rollback) run under the exclusive graph lock with the per-mutation
 	// flush held (store.MutationFlushHoldCapability), the held buffer flushes
 	// in steps at MaxPendingWrites, and a Rollback ends with one durable flush
@@ -2124,13 +2134,23 @@ func New(config Config) (*Core, error) {
 	// so NowTx()/c.now() stay above every persisted TxFrom across a reopen (a burst
 	// whose monotonic floor outran the wall leaves stamps above the reopened wall).
 	// Deliberately NOT fail-closed, unlike the watermarks above: an absent or
-	// unreadable floor is the expected state after an unclean shutdown, and it
-	// self-heals as the wall clock advances past the drift (lesson 71).
+	// unreadable floor is the expected state after an unclean shutdown, where
+	// the store's commit floor (seedCommitFloor below) covers the rows (lesson 71).
 	c.seedInstantFloor()
 
 	// ADR-0011: declare bulk relationship types last, once registries are
 	// loaded, so a declared name resolves to its persisted token.
 	if err := c.declareRelSegments(config.RelSegments, config.SegmentMemoryBudget, config.SegmentDir); err != nil {
+		if config.Store == nil {
+			_ = store.Close()
+		}
+		return nil, err
+	}
+
+	// The watermark above is written only by Close; after a crash the store's
+	// commit floor (persisted with the rows, backlog 44) is what covers them.
+	// After the segment directory: its sealed rows are part of the floor.
+	if err := c.seedCommitFloor(); err != nil {
 		if config.Store == nil {
 			_ = store.Close()
 		}

@@ -1,0 +1,3 @@
+0 issues.
+exit=0
+gosec exit=0

@@ -68,6 +68,27 @@ func (c *Core) seedInstantFloor() {
 	c.advanceInstantFloor(seeded)
 }
 
+// seedCommitFloor raises the commit-clock floor to the store's commit floor
+// (store.CommitFloorCapability, backlog 44): the newest transaction stamp of
+// any row the store holds, persisted with the rows themselves. It is what keeps
+// NowTx() and new stamps above stored rows after a crash, when the Close-time
+// watermark (seedInstantFloor) is stale or absent. No plausibility bound: the
+// rows carrying these stamps are already in the store, exactly as for a
+// replica apply (advanceInstantFloor); the value is a decoded row stamp, not an
+// independent blob. A store without the capability keeps the watermark alone.
+func (c *Core) seedCommitFloor() error {
+	cf, ok := c.store.(storepkg.CommitFloorCapability)
+	if !ok {
+		return nil
+	}
+	floor, err := cf.StoredCommitFloor()
+	if err != nil {
+		return fmt.Errorf("graph: read commit floor: %w", err)
+	}
+	c.advanceInstantFloor(floor)
+	return nil
+}
+
 // plausibleForeignStamp bounds a transaction stamp that arrived from OUTSIDE
 // this process against the host's wall clock, using the same tolerance
 // advanceClockFloor applies to a caller-supplied HLC merge (~10 years —
@@ -121,8 +142,9 @@ func (c *Core) checkImportedStamp(inst types.Instant) error {
 // watermark so the next open can reseed it (seedInstantFloor). Called from Close
 // before store.Close (which flushes it). No-op without MetaKV or when nothing was
 // minted (floor 0). A clean shutdown restores the floor EXACTLY; after an unclean
-// shutdown (no Close) the watermark is stale/absent and the floor falls back to
-// the wall clock, self-healing as the wall advances past the drift. lastInstant
+// shutdown (no Close) the watermark is stale/absent and the store's commit floor
+// (seedCommitFloor, persisted with the rows) covers every row that survived;
+// only reservations that wrote no row are lost. lastInstant
 // is read atomically — a late straggler mutation racing Close cannot commit
 // (closed is already set), so the persisted floor still covers every committed
 // write.
