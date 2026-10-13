@@ -1,0 +1,29 @@
+# backlog 44 RED, before the fix (main 6c6bb954 + the new test only), 2026-10-13. badger/clean passes (Close wrote the watermark); every crash case reopens about an hour below the stored stamps.
+=== RUN   TestCrashReopenNowTxAboveStoredStamps
+=== RUN   TestCrashReopenNowTxAboveStoredStamps/badger/clean
+=== RUN   TestCrashReopenNowTxAboveStoredStamps/badger/crash
+    clock_floor_crash_test.go:352: NowTx() after reopen = 1791868384340 <= newest stored stamp 1791871984262 (3599922 ms below): a pin at NowTx misses committed rows
+=== RUN   TestCrashReopenNowTxAboveStoredStamps/badger/trusted-image-then-crash
+    clock_floor_crash_test.go:352: NowTx() after reopen = 1791868384488 <= newest stored stamp 1791871984401 (3599913 ms below): a pin at NowTx misses committed rows
+=== RUN   TestCrashReopenNowTxAboveStoredStamps/badger/crash/read-only-reopen
+    clock_floor_crash_test.go:352: NowTx() after reopen = 1791868384668 <= newest stored stamp 1791871984545 (3599877 ms below): a pin at NowTx misses committed rows
+=== RUN   TestCrashReopenNowTxAboveStoredStamps/badger-sync/crash
+    clock_floor_crash_test.go:352: NowTx() after reopen = 1791868384816 <= newest stored stamp 1791871984695 (3599879 ms below): a pin at NowTx misses committed rows
+=== RUN   TestCrashReopenNowTxAboveStoredStamps/tiered/crash
+    clock_floor_crash_test.go:352: NowTx() after reopen = 1791868385106 <= newest stored stamp 1791871984887 (3599781 ms below): a pin at NowTx misses committed rows
+=== RUN   TestCrashReopenNowTxAboveStoredStamps/sharded/crash
+    clock_floor_crash_test.go:352: NowTx() after reopen = 1791868385323 <= newest stored stamp 1791871985218 (3599895 ms below): a pin at NowTx misses committed rows
+=== RUN   TestCrashReopenNowTxAboveStoredStamps/replica/crash
+    clock_floor_crash_test.go:352: NowTx() after reopen = 1791868385467 <= newest stored stamp 1791871985421 (3599954 ms below): a pin at NowTx misses committed rows
+--- FAIL: TestCrashReopenNowTxAboveStoredStamps (1.39s)
+    --- PASS: TestCrashReopenNowTxAboveStoredStamps/badger/clean (0.13s)
+    --- FAIL: TestCrashReopenNowTxAboveStoredStamps/badger/crash (0.14s)
+    --- FAIL: TestCrashReopenNowTxAboveStoredStamps/badger/trusted-image-then-crash (0.14s)
+    --- FAIL: TestCrashReopenNowTxAboveStoredStamps/badger/crash/read-only-reopen (0.15s)
+    --- FAIL: TestCrashReopenNowTxAboveStoredStamps/badger-sync/crash (0.19s)
+    --- FAIL: TestCrashReopenNowTxAboveStoredStamps/tiered/crash (0.33s)
+    --- FAIL: TestCrashReopenNowTxAboveStoredStamps/sharded/crash (0.20s)
+    --- FAIL: TestCrashReopenNowTxAboveStoredStamps/replica/crash (0.11s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.424s
+FAIL

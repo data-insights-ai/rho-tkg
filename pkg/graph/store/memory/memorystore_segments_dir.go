@@ -180,6 +180,9 @@ func (ms *Store) installLoadedSegmentLocked(tok uint16, sg *memSeg) {
 	// Verified at open: a decode error here is impossible short of memory
 	// corruption, and the rows already counted stay counted.
 	_ = sg.seg.Scan(func(_ int, r *types.Relationship) bool {
+		if tm := r.Temporal(); tm != nil { // every stored row, served or masked (commit floor)
+			ms.segCommitFloor = max(ms.segCommitFloor, tm.TxFrom, tm.TxTo, tm.DeletedAt)
+		}
 		id := r.ID()
 		if cur, ok := ms.rels[id]; ok {
 			if cur.Version() == r.Version() && cur.Integrity() != nil && cur.Integrity().Hash == r.Integrity().Hash {

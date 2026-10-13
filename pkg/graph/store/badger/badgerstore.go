@@ -377,6 +377,19 @@ type Config struct {
 	// records are already durable; the watermark is belt-and-braces, so the store
 	// logs but does not roll back). nil = no watermark persistence (standalone).
 	OnChangeLogFlush func() error
+	// OnCommitFloor, when non-nil, receives the commit floor (the newest
+	// transaction stamp of every row the store has written,
+	// store.CommitFloorCapability) from flush() — BEFORE the row WriteBatch —
+	// whenever it grew, and must persist it where the owner's open reads it.
+	// The tiered store sets it on every shard but the reference shard, whose
+	// open does not see a cold shard. A non-nil error aborts the flush. When
+	// nil, the floor rides the row WriteBatch into this store (standalone).
+	// durable is true inside a DurableFlush: the hook must then make the floor
+	// durable before it returns (it is called before the batch, and again
+	// before the write-ahead-log fsync for rows a background flush wrote), so
+	// a power loss cannot keep a row whose floor it lost. A background flush
+	// passes false and pays no fsync.
+	OnCommitFloor func(floor types.Instant, durable bool) error
 	// EncryptionKey enables AES encryption-at-rest (SSTables, value log, WAL,
 	// and Badger's own key registry). Length must be 0 (disabled — the
 	// default, byte-for-byte the pre-encryption on-disk format), 16, 24, or 32
@@ -931,6 +944,7 @@ type Store struct {
 	// sync count per commit group (SyncCountForTest, backlog 52).
 	unsynced      atomic.Bool
 	durableSyncs  atomic.Int64
+	metaSyncs     atomic.Int64 // fsyncs issued by MetaSetDurable (MetaSyncCountForTest)
 	syncedFlushes atomic.Int64
 
 	// flushHold is set between HoldMutationFlushes and ReleaseMutationFlushes
@@ -974,6 +988,15 @@ type Store struct {
 	// onChangeLogFlush (Config.OnChangeLogFlush) persists the store-global
 	// allocator watermark after a log-bearing flush commits. nil = standalone.
 	onChangeLogFlush func() error
+	// Commit floor (badgerstore_commit_floor.go): commitFloor is the newest
+	// row stamp written (loaded at open); commitFloorDurable the value the
+	// persisted key holds (guarded by flushMu; 0 after Clear wiped it);
+	// onCommitFloor is Config.OnCommitFloor; inDurableFlush marks a
+	// DurableFlush's flush (guarded by flushMu).
+	commitFloor        atomic.Int64
+	commitFloorDurable int64
+	onCommitFloor      func(types.Instant, bool) error
+	inDurableFlush     bool
 
 	// Per-transaction change-log scope (store.TxChangeLogScope). When a tx/batch
 	// opens a scope, scopeActive diverts record production into scopeLog — the
@@ -1193,6 +1216,7 @@ func New(cfg Config) (*Store, error) {
 		sharedEpochs:            cfg.SharedMutationEpochs,
 		ords:                    newOrdinals(cfg),
 		onChangeLogFlush:        cfg.OnChangeLogFlush,
+		onCommitFloor:           cfg.OnCommitFloor,
 		maxPending:              maxPending,
 		holdMaxPending:          holdMaxPending,
 		flushInt:                flushInt,
@@ -1735,6 +1759,10 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			return err
 		}
 		bs.relCount.Store(relCount)
+
+		if err := bs.loadCommitFloor(txn); err != nil {
+			return err
+		}
 
 		// Seed the change-log LSN allocator so new LSNs continue strictly
 		// monotonic across restart and no LSN is ever reissued. LastLSNKey
@@ -2281,6 +2309,9 @@ func (bs *Store) Clear() error {
 	}
 	bs.flushMu.Lock()
 	defer bs.flushMu.Unlock()
+	// Clear wipes the persisted commit floor with the meta keys; the next flush
+	// re-persists the (never lowered) commitFloor with its rows.
+	bs.commitFloorDurable = 0
 
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()

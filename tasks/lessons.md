@@ -527,9 +527,9 @@ Rule (absorbs 61): `Core.now()` is `max(wall, last+1)`, so above 1 write/ms stam
 (`lastInstant` = 0) or a foreign stamp (replica apply, bootstrap import) a new write can get a `TxFrom` below a committed one
 (silent; `TxFrom` is not hashed). Persist the floor as a MetaKV watermark on `Close`, reseed on open (`seedInstantFloor`); advance
 it at the central apply seam (`recordCommitStamp`) and per replayed wire on `Import`; only system TX stamps pull it
-(`maxCommitStamp`), never `ValidFrom/ValidTo`. After a crash it falls back to the wall (backlog 44). "Every door" is a MOVING set:
+(`maxCommitStamp`), never `ValidFrom/ValidTo`. A crash loses the Close watermark: the store persists a commit floor with the rows (the newest stamp of every row it flushes, decoded from the batch, so no door can miss it) and `New` raises the clock to it (`seedCommitFloor`, backlog 44). "Every door" is a MOVING set:
 re-audit on rebase, enumerate unhandled change tags with a reason. Reads use `c.readNow()` = max(wall, floor).
-Detector: `TestNowTx_ReopenAfterBurst_MonotonicFloorAnachronism`, `TestNowTx_ReplicaCoversAppliedFutureTxFrom`, `TestInstantFloor_PreservedAcrossReset`.
+Detector: `TestNowTx_ReopenAfterBurst_MonotonicFloorAnachronism`, `TestCrashReopenNowTxAboveStoredStamps`, `TestNowTx_ReplicaCoversAppliedFutureTxFrom`, `TestInstantFloor_PreservedAcrossReset`.
 
 ## 72. An Externally-Filed Perf Diagnosis Names A Plausible Mechanism — Reproduce And Profile Before Touching The Named Component
 

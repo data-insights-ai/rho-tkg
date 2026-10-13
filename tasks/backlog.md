@@ -27,7 +27,6 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 | 7 | FEATURE (limitation) | Caller-instant delete of a row with a scheduled close | open; `DeleteWithTx` refuses `ValidTo >= t` with `ErrTxOrder` (R8, v4.44.0) |
 | 10 | FEATURE | Tiered store: remaining work after composite + rel temporal indexes | indexes shipped in v4.45.0; (a) sequential-scan rebuild and (b) rel property indexes / node `TemporalCandidateCapability` on tiered open |
 | 13 | MEDIUM | Ingest applier attributes group errors by numeric entity id, not by kind | open; `groupApplyError` still keys `idToGroup` by `types.EntityID` (`core/ingest.go`) |
-| 15 | MEDIUM | Durable commit: power-loss gap on a memtable switch | open; documented on `Config.DurableCommit` (v4.44.0); scheduling: René |
 | 16 | MEDIUM (contract) | Range folds under an interval: predicate-anywhere or value at the resolved version? | open; decision pending; behaviour documented in the v4.44.0 CHANGELOG |
 | 20 | LOW (TEST-GAP, perf) | Effective-read cost: RelAtTx benchmark targets unmeasured | fixes 1a (v4.44.1), 1b (v4.46.0), 1c (v4.47.0), 2a (v4.46.0) shipped; only the RelAtTx benchmarks remain |
 | 21 | FEATURE | Purge relationships by age, gate retention reads per type | open; no `PurgeExpiredRels` in the tree; sigma: not blocking until `@overview` starts |
@@ -41,7 +40,6 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 | 39 | LOW (not tested) | Per-entity compaction stubs survive `Admin().Reset` | open; `reapCompactionForReset` still leaves the stubs (`core/compaction.go:285`) |
 | 40 | LOW (cosmetic) | A cascade resumption may end at an earlier life's own bound | open |
 | 41 | MEDIUM (RAM) | Merge the history stamps sidecar into the presence set | open; measured 2026-10-12, not merged (saves 31 % only where both doors run, +122 % for HasHistory alone) |
-| 44 | MEDIUM (traced, not reproduced) | Commit-clock floor persisted only at Close | open; filed 2026-10-10 from the v5 plan review §6.5 (file removed, in git history) |
 | 45 | MEDIUM (API) | Internal sentinels reach callers but have no exported alias; `ErrMixedNumericColumn` is outside the errors inventory test | open; found by the doc review of `docs/errors.md` 2026-10-10 |
 | 46 | LOW (stale comments) | Code comments that contradict the code or cite ADRs no longer in `docs/adr/` | open; found by the doc reviews 2026-10-10 |
 | 47 | LOW (unverified claims) | `NodesByLabelAt` vs K1; a RAM budget for the property sidecars | open; each needs a real check before it becomes work |
@@ -1076,12 +1074,6 @@ Composite and relationship temporal indexes on tiered shipped in v4.45.0 (ai-soc
 
 **Ingest applier attributes group errors by numeric entity id, not by kind** (MEDIUM, found 2026-10-09 writing `TestSessionSetVersionInterval_FailedGroupShape`): the strong-async applier keys group-error attribution by the numeric id, so a missing node id and a missing rel id with the same number attribute errors to the wrong group. Minted snowflake ids never collide across the two generators, but caller-supplied ids (`AddByID`, `Import`) can (the rollback-snapshot rule in AGENTS.md "Data Model" already keys by kind + id for the same reason). Red test first: two groups, a node and a rel with the same numeric id, each missing; each group gets its own sentinel. Fix: key by (kind, id).
 
-### 15. Durable commit: power-loss gap on a memtable switch
-
-*MEDIUM* — open; documented on `Config.DurableCommit` (v4.44.0); scheduling: René.
-
-**Durable commit: power-loss gap on a memtable switch** (MEDIUM, follows item 11, found by the item-11 review 2026-10-09): `Config.DurableCommit`'s `DurableFlush` ends with badger `db.Sync()`, which fsyncs only the active memtable's WAL and the current value-log file (badger v4.9.2 `db.go:705-709`). A flush that fills the memtable switches to a new one in `ensureRoomForWrite` (`db.go:1015-1040`) without syncing the retired WAL, and a finished value-log file is synced only under `SyncWrites` (`memtable.go:408`), so rows of a group that crossed a switch can be unsynced after `DurableFlush` returned: process-crash safe, not power-loss safe (documented on `Config.DurableCommit`, `store.DurableFlushCapability`, docs/architecture.md "Durable-on-return commit"). Options: (a) sync the retired memtable WAL (and the finished vlog file) on switch when a durable flush is in progress — needs a badger hook or a fork; (b) measure `SyncWrites` cost against `DurableCommit` on a group workload and recommend it for strict durability. Red test first: a group larger than one memtable, a power-loss-shaped check (fsync accounting or a dm-flakey/`LD_PRELOAD` drop of unsynced pages). Scheduling: René.
-
 ### 16. Range folds under an interval: predicate-anywhere or value at the resolved version?
 
 *MEDIUM (contract)* — open; decision pending; behaviour documented in the v4.44.0 CHANGELOG.
@@ -1175,14 +1167,6 @@ Missing: `BenchmarkRelAtTx/{plain,cascaded}/{hot,cold}` with targets < 1 µs pla
 
 Measured 2026-10-12 (`tasks/evidence/badger-read-cost/41-01-sidecar-ram-per-id.txt`, the two map shapes at 10 K / 100 K / 1 M IDs): presence 30.6 / 23.6 / 37.7 B/ID, stamps 65.6 / 52.5 / 83.8 B/ID, both 96 / 76 / 121 B/ID; one stamps-shaped map saves the presence map, 31 % (37.7 B/ID at 1 M) — but only for a store whose callers use both `HasHistory` and `LatestStamps`. Not merged: a caller of `HasHistory` (or the bulk as-of doors, which build the presence set) alone would pay the stamps entry, 84 instead of 38 B/ID at 1 M (+122 %), and its key-only build would become a value build; the presence `top` (an upper bound a SET raises) and the stamps `top` (exact, a lowering overwrite marks the ID unknown) would share one protocol whose unknown set the bulk as-of `bound` must then also treat as unresolved. Reopen when a consumer runs both doors on one store and reports the RAM; then the merged map plus a red memory-per-ID gate.
 
-### 44. Commit-clock floor persisted only at Close
-
-*MEDIUM (traced, not reproduced)* — open; filed 2026-10-10 from the v5 plan review §6.5 (`git log -- tasks/review-v5-plan-vs-code-20261009.md`).
-
-A crash after a burst whose monotonic floor outran the wall reopens with `NowTx` below committed stamps (lesson 71's reopen case on the crash path): `persistInstantFloor` is called only from `Close` (`core/core.go`, `core/instant_floor.go:129`), and `seedInstantFloor` reseeds only from that watermark. Red test first: a crash-shaped child (exit without `Close`) after writes stamped ahead of the wall, reopen, assert `NowTx()` and a fresh write's `TxFrom` exceed every stored `TxFrom`. Fix candidates: persist the floor with the durable commit / flush, or reseed from the newest stored stamp at open.
-
----
-
 ### 45. Internal sentinels reach callers but have no exported alias
 
 *MEDIUM (API)* — found by the doc review of `docs/errors.md` (group C, 2026-10-10).
@@ -1258,6 +1242,8 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Item 53 (HIGH, ai-soc) — rel planner-stat memos one RAM entry per rel | `[4.51.3]` Fixed; evidence `tasks/evidence/planner-stats-memo/` |
 | Item 54 (HIGH, ai-soc) — badger open linear in history | `[4.51.3]` Changed (open image incl. planner stats, stale-key repair); evidence `tasks/evidence/open-cost/` |
 | Item 55 (MEDIUM, ai-soc + sigma) — effective scans one badger txn per rel | `[4.51.3]` Changed; evidence `tasks/evidence/effective-scans/55-*` |
+| Item 44 (MEDIUM) — commit-clock floor persisted only at Close: a crash reopened `NowTx` below stored stamps | `[4.51.4]` Fixed (commit floor persisted with the rows, `store.CommitFloorCapability`); evidence `tasks/evidence/clock-floor-crash/` |
+| Item 15 (MEDIUM) — durable commit power-loss gap on a memtable switch | `[4.51.4]` docs: power loss needs `DurableCommit` + `SyncWrites` (13.5 ms vs 12.5 ms per 530-op group, `tasks/evidence/aisoc-commit-cost/52-bench.txt`) |
 | Item 48 (FEATURE, sigma-tkgd) — `ColumnData.Other`: column-scan cells held outside the column (node and rel batches); typed slots aligned with `Null` | `[4.51.1]` Added; evidence `tasks/evidence/column-other/` |
 | Item 35 (FEATURE, sigma-tkgd) — broader effective scans: `ForEachNodeEffective` / `ForEachRelEffective`, `ForEachRelEffectiveAtNodes`, `NodesEffectiveByIDs` / `RelsEffectiveByIDs`, `ForEachNodeEffectiveByLabels` | `[4.51.1]` Added; evidence `tasks/evidence/effective-scans/` |
 | Item 11 (FEATURE) — durable-on-return commit `Config.DurableCommit` | `[4.44.0]` Added (power-loss gap: item 15) |

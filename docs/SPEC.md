@@ -782,8 +782,11 @@ Plus index definitions (`prop_indexes`, `rel_prop_indexes`,
 `high_frequency_index_defs`, `vector_index_defs`, `composite_index_defs`),
 one-shot markers (`property_index_on_disk_built`,
 `temporal_index_on_disk_built`, `history_anchor_interval`), counters
-(`node_count`, `rel_count`), and the graph layer's `MetaKVCapability` entries,
-stored under the same `0x0F/<name>` encoding (e.g. `schema_version`,
+(`node_count`, `rel_count`), the commit floor (`tx_commit_floor`, 8B
+big-endian: the newest TxFrom/TxTo/DeletedAt of every row written, first entry
+of each flush that carries rows; tiered keeps its other shards' floor in the
+reference shard's `tx_commit_floor_shards`; backlog 44), and the graph
+layer's `MetaKVCapability` entries, stored under the same `0x0F/<name>` encoding (e.g. `schema_version`,
 `graph_epoch`, `tx_instant_floor`, `unique_constraints`,
 `compacted_through_tx`, `id_slot_lease`, `rel_exadj_built`). The ex-adjacency
 (backlog 50) has its own keyspace `0x0D/<8B nodeID>/<1B dir>/<8B relID>`.
