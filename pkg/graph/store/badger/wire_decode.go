@@ -2,6 +2,7 @@ package badger
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -9,7 +10,20 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
+// rowDecodeHook, when set, runs once per entity row (current or history)
+// decoded by any Store in the process. A test seam only (open-cost tests count
+// the rows a reopen decodes); nil in production, so a decode pays one atomic
+// load.
+var rowDecodeHook atomic.Pointer[func()]
+
+func noteRowDecode() {
+	if h := rowDecodeHook.Load(); h != nil {
+		(*h)()
+	}
+}
+
 func (bs *Store) decodeNodeWireForKey(w storepkg.NodeWire, expected snowflake.ID) (*types.Node, error) {
+	noteRowDecode()
 	if err := bs.resolveNodeWireKeys(&w); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidStoreMutation, err)
 	}
@@ -36,6 +50,7 @@ func (bs *Store) decodeNodeHistoryWireForKey(w storepkg.NodeWire, expected snowf
 }
 
 func (bs *Store) decodeRelWireForKey(w storepkg.RelWire, expected snowflake.ID) (*types.Relationship, error) {
+	noteRowDecode()
 	if err := bs.resolveRelWireKeys(&w); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidStoreMutation, err)
 	}

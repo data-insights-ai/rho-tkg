@@ -134,11 +134,16 @@ func TestValidEndIndex_Fold(t *testing.T) {
 			t.Errorf("%s: notes fold to bound %d stamp %d unknown %v, want bound %d stamp %d", c.name, bound, stamp, unknown, c.bound, c.stamp)
 		}
 		// Install (a build or a re-read) folds the stored rows, history by
-		// version then the current row, to the same answer.
-		ix2 := builtIndex()
-		ix2.Install(7, c.stored)
-		if b2, s2, _ := state(ix2, 7); b2 != c.bound || s2 != c.stamp {
-			t.Errorf("%s: Install folds to bound %d stamp %d, want %d %d", c.name, b2, s2, c.bound, c.stamp)
+		// version then the current row, to the same answer, in whatever order
+		// the store hands them over (memory reads its history from a map).
+		reversed := slices.Clone(c.stored)
+		slices.Reverse(reversed)
+		for _, stored := range [][]ValidEndRow{c.stored, reversed} {
+			ix2 := builtIndex()
+			ix2.Install(7, stored)
+			if b2, s2, _ := state(ix2, 7); b2 != c.bound || s2 != c.stamp {
+				t.Errorf("%s: Install(%v) folds to bound %d stamp %d, want %d %d", c.name, stored, b2, s2, c.bound, c.stamp)
+			}
 		}
 	}
 }

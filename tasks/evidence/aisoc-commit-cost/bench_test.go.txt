@@ -71,10 +71,10 @@ func TestAisocShape(t *testing.T) {
 	for _, c := range []struct {
 		n    string
 		d, s bool
-	}{{"badger plain", false, false}, {"badger Durable", true, false}, {"badger Sync", false, true}, {"badger Durable+Sync", true, true}} {
+	}{{"badger plain", false, false}, {"badger Durable", true, false}, {"badger Sync", false, true}, {"badger Durable+Sync", true, true}, {"badger Durable+ChangeLog", true, false}} {
 		if o := os.Getenv("ONLY"); o != "" && o != c.n {
 			continue
 		}
-		run(t, c.n, graph.Config{BadgerDir: t.TempDir(), DurableCommit: c.d, SyncWrites: c.s}, commits, recs)
+		run(t, c.n, graph.Config{BadgerDir: t.TempDir(), DurableCommit: c.d, SyncWrites: c.s, ChangeLog: c.n == "badger Durable+ChangeLog"}, commits, recs)
 	}
 }

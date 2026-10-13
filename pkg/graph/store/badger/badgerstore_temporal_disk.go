@@ -117,7 +117,7 @@ func (bs *Store) maintainTemporalIndexDiskPurge(id snowflake.ID) []writeOp {
 			ops = append(ops, writeOp{opType: writeOpDelete, key: kb})
 		}
 	})
-	_ = bs.db.View(func(txn *badgerv4.Txn) error {
+	_ = bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		for tok := range bs.temporalIndexes {
@@ -165,7 +165,7 @@ func (bs *Store) purgeTemporalIndexDiskEntriesLocked(labelToken uint16) ([]write
 			ops = append(ops, writeOp{opType: writeOpDelete, key: keyCopy})
 		}
 	})
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)

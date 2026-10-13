@@ -1,0 +1,12 @@
+# mutant A: tiered DeleteRelationship cross-shard uses the leg-less placement doors
+--- FAIL: TestCrossShardDeleteKeepsExAdjacencyLegs (0.02s)
+    tieredstore_exadj_test.go:139: withHistory=false: legs out=[] in=[], want both to hold 806092402332402688
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.022s
+FAIL
+# mutant B: tiered DeleteRelWithHistory cross-shard in-leg uses RemoveRelIncomingPlacement
+--- FAIL: TestCrossShardDeleteKeepsExAdjacencyLegs (0.02s)
+    tieredstore_exadj_test.go:139: withHistory=true: legs out=[806092665753764864] in=[], want both to hold 806092665753764864
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.025s
+FAIL

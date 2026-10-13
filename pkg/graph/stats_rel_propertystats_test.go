@@ -190,8 +190,8 @@ func TestRelPropertyStats_UpdateChangesStats(t *testing.T) {
 }
 
 // TestRelPropertyStats_CascadeDeleteViaNodeDelete proves a node-cascade
-// delete (which removes rels via badger's read-free deleteRelByInfo path —
-// the memoized-contribution seam) decrements RelPropertyStats' presence
+// delete (which removes rels via badger's deleteRelByInfo seam, decrementing
+// from each deleted row) decrements RelPropertyStats' presence
 // counter to zero with no drift, mirroring
 // TestRelPropertyTypeClassCounts_ExactPartition's cascade scenario.
 func TestRelPropertyStats_CascadeDeleteViaNodeDelete(t *testing.T) {
@@ -218,7 +218,7 @@ func TestRelPropertyStats_CascadeDeleteViaNodeDelete(t *testing.T) {
 }
 
 // TestRelPropertyStats_Reopen proves the badger presence counters + NDV/min-
-// max accumulator + memoized contributions rebuild from loadIndexes at open,
+// max accumulator rebuild from loadIndexes at open,
 // mirroring TestRelPropertyTypeClassCounts_Reopen's "survives restart" rule.
 func TestRelPropertyStats_Reopen(t *testing.T) {
 	ctx := context.Background()
@@ -258,9 +258,8 @@ func TestRelPropertyStats_Reopen(t *testing.T) {
 		t.Fatalf("after reopen = %+v, want Count=4 Min=0 Max=3 (counters not rebuilt)", stats)
 	}
 
-	// A delete after reopen must decrement — proves the memoized-contribution
-	// sidecar was rebuilt too (else the read-free delete would find no
-	// contribution and drift), and a rescan must recompute Min correctly.
+	// A delete after reopen must decrement exactly what the rebuild counted,
+	// and a rescan must recompute Min correctly.
 	if err := g2.Rels().Delete(ctx, first); err != nil {
 		t.Fatalf("delete after reopen: %v", err)
 	}

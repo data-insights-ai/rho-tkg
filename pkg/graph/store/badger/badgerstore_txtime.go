@@ -57,7 +57,7 @@ func (bs *Store) reverseScanHistoryVersion(prefix []byte, consider func(version 
 	// after commit) and is in the overlay; a row committed before the View is
 	// in the snapshot.
 	pendingSets, pendingDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
-	return bs.db.View(func(txn *badgerv4.Txn) error {
+	return bs.view(func(txn *badgerv4.Txn) error {
 		return bs.reverseScanHistoryVersionInTxnOverlay(txn, prefix, pendingSets, pendingDeletes, consider)
 	})
 }
@@ -351,7 +351,7 @@ func (bs *Store) liveHistoryKeyExists(key []byte) (bool, error) {
 	if op, ok := bs.lookupPending(string(key)); ok {
 		return op.opType != writeOpDelete, nil
 	}
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		_, err := txn.Get(key)
 		return err
 	})

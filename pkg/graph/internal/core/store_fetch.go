@@ -114,6 +114,10 @@ func (c *Core) relIDsFromNodeMapRows(nodeIDs []types.NodeID, typeToken uint16, r
 
 func (c *Core) getCurrentNode(id types.NodeID) (*types.Node, error) {
 	n, err := c.store.GetNode(id)
+	return c.trustedCurrentNode(id, n, err)
+}
+
+func (c *Core) trustedCurrentNode(id types.NodeID, n *types.Node, err error) (*types.Node, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -128,6 +132,10 @@ func (c *Core) getCurrentNode(id types.NodeID) (*types.Node, error) {
 
 func (c *Core) getCurrentRelationship(id types.RelID) (*types.Relationship, error) {
 	r, err := c.store.GetRelationship(id)
+	return c.trustedCurrentRel(id, r, err)
+}
+
+func (c *Core) trustedCurrentRel(id types.RelID, r *types.Relationship, err error) (*types.Relationship, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -142,6 +150,10 @@ func (c *Core) getCurrentRelationship(id types.RelID) (*types.Relationship, erro
 
 func (c *Core) getNodeHistory(id types.NodeID) ([]*types.Node, error) {
 	history, err := c.store.GetNodeHistory(id)
+	return c.trustedNodeHistory(id, history, err)
+}
+
+func (c *Core) trustedNodeHistory(id types.NodeID, history []*types.Node, err error) ([]*types.Node, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -156,6 +168,10 @@ func (c *Core) getNodeHistory(id types.NodeID) ([]*types.Node, error) {
 
 func (c *Core) getRelHistory(id types.RelID) ([]*types.Relationship, error) {
 	history, err := c.store.GetRelHistory(id)
+	return c.trustedRelHistory(id, history, err)
+}
+
+func (c *Core) trustedRelHistory(id types.RelID, history []*types.Relationship, err error) ([]*types.Relationship, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -170,6 +186,10 @@ func (c *Core) getRelHistory(id types.RelID) ([]*types.Relationship, error) {
 
 func (c *Core) getNodeVersion(id types.NodeID, version uint32) (*types.Node, error) {
 	n, err := c.store.GetNodeVersion(id, version)
+	return c.trustedNodeVersion(id, version, n, err)
+}
+
+func (c *Core) trustedNodeVersion(id types.NodeID, version uint32, n *types.Node, err error) (*types.Node, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -184,6 +204,10 @@ func (c *Core) getNodeVersion(id types.NodeID, version uint32) (*types.Node, err
 
 func (c *Core) getRelVersion(id types.RelID, version uint32) (*types.Relationship, error) {
 	r, err := c.store.GetRelVersion(id, version)
+	return c.trustedRelVersion(id, version, r, err)
+}
+
+func (c *Core) trustedRelVersion(id types.RelID, version uint32, r *types.Relationship, err error) (*types.Relationship, error) {
 	if err != nil {
 		return nil, err
 	}

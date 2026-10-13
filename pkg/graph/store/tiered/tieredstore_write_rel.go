@@ -218,7 +218,7 @@ func (ts *Store) putRelationshipLocked(r *types.Relationship, mode relCreateMode
 		if err := entityShard.PutRelEntityAndOut(r); err != nil {
 			// Roll back the in/ write so the partial state isn't left visible.
 			info := RelDeleteInfo{ID: relID, RelType: relType, StartID: startID, EndID: endID}
-			if rbErr := inShard.DeleteRelIncoming(info); rbErr != nil {
+			if rbErr := inShard.RemoveRelIncomingPlacement(info); rbErr != nil {
 				return fmt.Errorf("tiered: put cross-shard relationship entity failed after in/ write: %w (rollback in/ failed: %v)", err, rbErr)
 			}
 			return err
@@ -231,7 +231,7 @@ func (ts *Store) putRelationshipLocked(r *types.Relationship, mode relCreateMode
 	}
 	if err := inShard.PutRelIncoming(endID, startID, relType, relID); err != nil {
 		// Roll back the entity/out write so the partial state isn't left visible.
-		if _, rbErr := entityShard.DeleteRelEntityAndOut(relID); rbErr != nil {
+		if _, rbErr := entityShard.RemoveRelEntityAndOutPlacement(relID); rbErr != nil {
 			return fmt.Errorf("tiered: put cross-shard relationship in/ failed after entity write: %w (rollback entity/out failed: %v)", err, rbErr)
 		}
 		return err
@@ -303,7 +303,7 @@ func (ts *Store) putRelationshipWithEndpointHashesLocked(r *types.Relationship) 
 		}
 		if err := entityShard.PutRelEntityAndOut(r); err != nil {
 			info := RelDeleteInfo{ID: relID, RelType: relType, StartID: startID, EndID: endID}
-			if rbErr := inShard.DeleteRelIncoming(info); rbErr != nil {
+			if rbErr := inShard.RemoveRelIncomingPlacement(info); rbErr != nil {
 				return restoreHashes(fmt.Errorf("tiered: put cross-shard relationship entity failed after in/ write: %w (rollback in/ failed: %v)", err, rbErr))
 			}
 			return restoreHashes(err)
@@ -314,7 +314,7 @@ func (ts *Store) putRelationshipWithEndpointHashesLocked(r *types.Relationship) 
 		return restoreHashes(err)
 	}
 	if err := inShard.PutRelIncoming(endID, startID, relType, relID); err != nil {
-		if _, rbErr := entityShard.DeleteRelEntityAndOut(relID); rbErr != nil {
+		if _, rbErr := entityShard.RemoveRelEntityAndOutPlacement(relID); rbErr != nil {
 			return restoreHashes(fmt.Errorf("tiered: put cross-shard relationship in/ failed after entity write: %w (rollback entity/out failed: %v)", err, rbErr))
 		}
 		return restoreHashes(err)
@@ -338,6 +338,19 @@ func (ts *Store) ReplaceRelationship(r *types.Relationship) error {
 }
 
 func (ts *Store) DeleteRelationship(rid types.RelID) error {
+	return ts.deleteRelationship(rid, false)
+}
+
+var _ storecontract.RelCreateUndoCapability = (*Store)(nil)
+
+// UndoRelationshipCreate implements store.RelCreateUndoCapability:
+// DeleteRelationship without the ex-adjacency legs (the shards' undo and
+// placement doors).
+func (ts *Store) UndoRelationshipCreate(rid types.RelID) error {
+	return ts.deleteRelationship(rid, true)
+}
+
+func (ts *Store) deleteRelationship(rid types.RelID, undo bool) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
@@ -373,20 +386,25 @@ func (ts *Store) DeleteRelationship(rid types.RelID) error {
 
 	if startShard == endShard {
 		// Same shard: delegate entirely.
+		if undo {
+			return entityShard.UndoRelationshipCreate(types.RelID(id))
+		}
 		return entityShard.DeleteRelationship(types.RelID(id))
+	}
+	removeEntity, removeIncoming := entityShard.DeleteRelEntityAndOut, endShard.DeleteRelIncoming
+	if undo {
+		removeEntity, removeIncoming = entityShard.RemoveRelEntityAndOutPlacement, endShard.RemoveRelIncomingPlacement
 	}
 
 	// Cross-shard: delete entity+out from entity shard, in/ from in shard.
 	// On failure of the second leg, restore the entity+out write so a re-read
 	// still observes the rel rather than leaving a phantom in/ entry on the
 	// end-node shard.
-	info, err := entityShard.DeleteRelEntityAndOut(id)
+	info, err := removeEntity(id)
 	if err != nil {
 		return err
 	}
-
-	inShard := endShard
-	if err := inShard.DeleteRelIncoming(info); err != nil {
+	if err := removeIncoming(info); err != nil {
 		if rbErr := entityShard.PutRelEntityAndOut(r); rbErr != nil {
 			return fmt.Errorf("tiered: delete cross-shard relationship in/ failed after entity/out delete: %w (rollback entity/out failed: %v)", err, rbErr)
 		}

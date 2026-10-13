@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // DurableFlushSupported implements store.DurableFlushCapability: a disk store
@@ -57,11 +58,22 @@ func (bs *Store) DurableFlush() error {
 		return ErrStoreClosed
 	}
 	bs.idxMu.RLock()
-	if err := bs.flushIndexLocked(false); err != nil {
+	bs.inDurableFlush = true
+	err := bs.flushIndexLocked(false)
+	bs.inDurableFlush = false
+	if err != nil {
 		return err
 	}
 	if !bs.unsynced.Swap(false) {
 		return nil
+	}
+	// Rows a background flush wrote are fsynced below: their floor, kept by
+	// the owner (Config.OnCommitFloor), must be durable first.
+	if bs.onCommitFloor != nil {
+		if err := bs.onCommitFloor(types.Instant(bs.commitFloor.Load()), true); err != nil {
+			bs.unsynced.Store(true)
+			return fmt.Errorf("graph: durable flush: commit floor: %w", err)
+		}
 	}
 	if injected := bs.failNextSync.Swap(nil); injected != nil { // test seam
 		bs.unsynced.Store(true)

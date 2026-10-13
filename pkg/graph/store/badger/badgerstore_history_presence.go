@@ -163,7 +163,7 @@ func (bs *Store) HasNodeHistory(id types.NodeID) (bool, error) {
 	if err := storecontract.ValidateNodeID(id); err != nil {
 		return false, err
 	}
-	return bs.hasHistory(&bs.histNodePresence, storepkg.KeyHistNode, id.SnowflakeID())
+	return bs.hasHistory(&bs.histNodePresence, storepkg.KeyHistNode, id.SnowflakeID(), bs.probeHistoryPresence)
 }
 
 // HasRelHistory is HasNodeHistory for relationships.
@@ -174,12 +174,14 @@ func (bs *Store) HasRelHistory(id types.RelID) (bool, error) {
 	if err := storecontract.ValidateRelID(id); err != nil {
 		return false, err
 	}
-	return bs.hasHistory(&bs.histRelPresence, storepkg.KeyHistRel, id.SnowflakeID())
+	return bs.hasHistory(&bs.histRelPresence, storepkg.KeyHistRel, id.SnowflakeID(), bs.probeHistoryPresence)
 }
 
-func (bs *Store) hasHistory(p *historyPresence, kind byte, id snowflake.ID) (bool, error) {
+// probe answers an ID the set does not decide (probeHistoryPresence, or a read
+// snapshot's equivalent).
+func (bs *Store) hasHistory(p *historyPresence, kind byte, id snowflake.ID, probe func(kind byte, id snowflake.ID, wantTop bool) (bool, uint32, error)) (bool, error) {
 	if bs.historyPresenceProbeOnly {
-		present, _, err := bs.probeHistoryPresence(kind, id, false)
+		present, _, err := probe(kind, id, false)
 		return present, err
 	}
 	if !p.built.Load() {
@@ -201,7 +203,7 @@ func (bs *Store) hasHistory(p *historyPresence, kind byte, id snowflake.ID) (boo
 	if !unresolved {
 		return false, nil
 	}
-	present, top, err := bs.probeHistoryPresence(kind, id, true)
+	present, top, err := probe(kind, id, true)
 	if err != nil {
 		return false, err
 	}
@@ -375,7 +377,7 @@ func (bs *Store) scanHistoryTops(kind byte) ([]idTop, error) {
 
 	var out []idTop
 	prefix := []byte{kind}
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		fopts := badgerv4.DefaultIteratorOptions
 		fopts.PrefetchValues = false
 		fit := txn.NewIterator(fopts)
@@ -495,7 +497,7 @@ func (bs *Store) probeHistoryPresence(kind byte, id snowflake.ID, wantTop bool) 
 			return true, 0, nil
 		}
 	}
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		if wantTop {
@@ -572,7 +574,7 @@ func (bs *Store) forEachPresentHistoryID(p *historyPresence, kind byte, skip fun
 			continue
 		}
 		if _, probe := unknown[id]; probe {
-			has, err := bs.hasHistory(p, kind, id)
+			has, err := bs.hasHistory(p, kind, id, bs.probeHistoryPresence)
 			if err != nil {
 				return true, err
 			}

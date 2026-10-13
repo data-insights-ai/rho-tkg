@@ -9,3 +9,6 @@ strace -f -c (30 commits): Durable 76 msync + 7 fsync (~2.5/commit); Sync 24,662
 Cause: SyncWrites mode flushes every mutation synchronously (store/badger/badgerstore_flush.go:82,105),
 one Badger sync per mutation; DurableCommit alone flushes the group as one WriteBatch + one sync
 (badgerstore_durable.go:14-34) but leaves a power-loss gap when the flush crosses a memtable switch.
+
+ChangeLog overhead, same shape, 2 alternating runs (2026-10-12, v4.51.2): Durable 13.2 / 13.0 ms per commit;
+Durable+ChangeLog 13.7 / 16.5 ms (+4 % / +27 %, loaded host).

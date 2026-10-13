@@ -114,6 +114,60 @@ func TestExAdjacency(t *testing.T) {
 	}
 }
 
+// TestUndoRelationshipCreate: the undo doors remove the relationship like
+// DeleteRelationship, record no ex-adjacency, and fail like it on a missing,
+// invalid or closed target (the scoped door with token 0 too).
+func TestUndoRelationshipCreate(t *testing.T) {
+	a, b, rid := currentNodeID(1), currentNodeID(2), currentRelID(10)
+	for _, be := range currentBackends() {
+		t.Run(be.name, func(t *testing.T) {
+			st := be.open(t)
+			u, ok := st.(storecontract.RelCreateUndoCapability)
+			if !ok {
+				t.Fatalf("%T lacks RelCreateUndoCapability", st)
+			}
+			undos := []func(types.RelID) error{u.UndoRelationshipCreate}
+			if s, ok := st.(storecontract.ScopedRelCreateUndoCapability); ok {
+				undos = append(undos, func(id types.RelID) error { return s.UndoRelationshipCreateScoped(id, 0) })
+			}
+			for _, n := range []types.NodeID{a, b} {
+				if err := st.PutNode(types.NewNode(n, 1, nil)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ex := st.(storecontract.ExAdjacencyCapability)
+			for _, undo := range undos {
+				if err := st.PutRelationship(exRel(rid, 0, a, b)); err != nil {
+					t.Fatal(err)
+				}
+				if err := undo(rid); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := st.GetRelationship(rid); !errors.Is(err, storecontract.ErrRelNotFound) {
+					t.Fatalf("after undo GetRelationship = %v, want ErrRelNotFound", err)
+				}
+				if out, in := exAdjOf(t, ex, a, false), exAdjOf(t, ex, b, true); len(out)+len(in) != 0 {
+					t.Fatalf("undo left ex-adjacency out=%v in=%v", out, in)
+				}
+				if err := undo(rid); !errors.Is(err, storecontract.ErrRelNotFound) {
+					t.Fatalf("second undo = %v, want ErrRelNotFound", err)
+				}
+				if err := undo(0); !errors.Is(err, storecontract.ErrInvalidStoreMutation) {
+					t.Fatalf("undo(0) = %v, want ErrInvalidStoreMutation", err)
+				}
+			}
+			if err := st.Close(); err != nil {
+				t.Fatal(err)
+			}
+			for _, undo := range undos {
+				if err := undo(rid); !errors.Is(err, storecontract.ErrStoreClosed) {
+					t.Fatalf("closed undo = %v, want ErrStoreClosed", err)
+				}
+			}
+		})
+	}
+}
+
 // TestExAdjacencySurvivesReopen: badger keeps the ex-adjacency on disk.
 func TestExAdjacencySurvivesReopen(t *testing.T) {
 	a, b, rid := currentNodeID(1), currentNodeID(2), currentRelID(10)

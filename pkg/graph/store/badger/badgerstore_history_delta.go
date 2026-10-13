@@ -46,7 +46,7 @@ func (bs *Store) readHistoryRaw(key []byte) ([]byte, error) {
 		return out, nil
 	}
 	var out []byte
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(key)
 		if err == badgerv4.ErrKeyNotFound {
 			return ErrVersionNotFound

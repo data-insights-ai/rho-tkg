@@ -1,0 +1,6 @@
+=== RUN   TestEffectiveScanHoldsNoReadTxnDuringFn
+--- PASS: TestEffectiveScanHoldsNoReadTxnDuringFn (0.09s)
+=== RUN   TestEffectiveScanResetFromFn
+--- PASS: TestEffectiveScanResetFromFn (0.15s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.275s

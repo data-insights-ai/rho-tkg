@@ -864,6 +864,25 @@ type ExAdjacencyCapability interface {
 	NoteExAdjacentRel(id types.RelID, startID, endID types.NodeID) error
 }
 
+// RelCreateUndoCapability is OPTIONAL, beside ExAdjacencyCapability: the
+// graph layer removes a relationship whose create it is undoing (a failed
+// create's partial write, a rolled-back transaction's or a failed import's
+// created relationship) through UndoRelationshipCreate. It is
+// DeleteRelationship (same errors, same change-log record) without the
+// ex-adjacency legs: the relationship never committed, so no reader may find
+// it through its endpoints. A store without it is undone by DeleteRelationship
+// (sound, an extra candidate per endpoint).
+type RelCreateUndoCapability interface {
+	UndoRelationshipCreate(id types.RelID) error
+}
+
+// ScopedRelCreateUndoCapability is UndoRelationshipCreate with the change-log
+// record routed into a ScopedTxChangeLog buffer, as DeleteRelationshipScoped
+// (token 0: UndoRelationshipCreate).
+type ScopedRelCreateUndoCapability interface {
+	UndoRelationshipCreateScoped(id types.RelID, token uint64) error
+}
+
 // DepthDeletedIterationCapability is the depth-aware counterpart of
 // DeletedIterationCapability. Tiered backends implement it so history-aware
 // queries can combine deleted-only iteration with shard-depth filtering.
@@ -1455,6 +1474,26 @@ type RelColumnScanCapability interface {
 type GroupCommitCapability interface {
 	BeginGroupCommit()
 	EndGroupCommit() error
+}
+
+// MutationFlushHoldCapability lets Config.DurableCommit commit a group on a
+// store that flushes and syncs every mutation (Badger SyncWrites) with one
+// synced write instead of one per mutation (backlog 52). Between
+// HoldMutationFlushes and ReleaseMutationFlushes the store skips the
+// per-mutation flush; the held writes stay pending until the group's
+// DurableFlush (or any earlier flush) commits them, and the store still
+// flushes when the held buffer reaches its pending-write bound, so a large
+// group flushes in steps instead of growing without limit.
+//
+// The caller holds the graph's exclusive write lock for the whole hold, so no
+// other mutation (a standalone write, whose SyncWrites flush is owed to its
+// own caller) can run inside it, and calls DurableFlush before reporting the
+// group durable. FlushesEveryMutation reports whether the store flushes every
+// mutation at all; only then is a hold worth the exclusive lock.
+type MutationFlushHoldCapability interface {
+	FlushesEveryMutation() bool
+	HoldMutationFlushes()
+	ReleaseMutationFlushes()
 }
 
 // DurableFlushCapability makes every write the backend has accepted durable on

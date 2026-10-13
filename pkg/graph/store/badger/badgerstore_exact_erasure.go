@@ -246,6 +246,7 @@ func (bs *Store) buildExactErasurePlanLocked(
 			}
 			if rel, err := bs.getRelLocked(rid); err == nil {
 				relPlan.current = relDeleteInfoFromRelationship(rel)
+				relPlan.current.row = rel
 				relPlan.hasCurrent = true
 			}
 		}
@@ -325,7 +326,7 @@ func (bs *Store) exactErasurePropertyIndexOpsLocked(id snowflake.ID) ([]writeOp,
 			ops = append(ops, writeOp{opType: writeOpDelete, key: key})
 		}
 	})
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
@@ -358,7 +359,7 @@ func (bs *Store) exactErasureTemporalIndexOpsLocked(id snowflake.ID) ([]writeOp,
 			ops = append(ops, writeOp{opType: writeOpDelete, key: key})
 		}
 	})
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
@@ -385,7 +386,7 @@ func (bs *Store) applyExactErasurePlanLocked(plan exactErasurePlan) storecontrac
 		if relPlan.live {
 			result.RelsRemoved++
 			if relPlan.hasCurrent {
-				bs.deleteRelByInfo(relPlan.current)
+				bs.deleteRelByInfo(relPlan.current, relPlan.current.row)
 			} else {
 				bs.appendOps(writeOp{
 					opType: writeOpDelete,
@@ -629,7 +630,7 @@ func (bs *Store) exactErasureRelationshipClosureLocked(
 		}
 		return inspect(rid, rel)
 	}
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = true
 		it := txn.NewIterator(opts)
@@ -730,7 +731,7 @@ func (bs *Store) exactErasureChangeLogRetainedLocked() (bool, error) {
 		return true, nil
 	}
 	retained := false
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
@@ -752,8 +753,6 @@ func (bs *Store) purgeExactRelSidecarsLocked(rid types.RelID) {
 	bs.maintainRelTypeTemporalIndexesPurge(raw)
 	delete(bs.relValidIdx, rid)
 	delete(bs.relBeliefWatermark, rid)
-	bs.relStatsContrib.Delete(raw)
-	bs.relTypeClassContrib.Delete(raw)
 	for tok, members := range bs.relTypeTxMembers {
 		delete(members, rid)
 		if len(members) == 0 {
@@ -774,7 +773,7 @@ func (bs *Store) purgeExactNodeSidecarsLocked(nid types.NodeID) {
 }
 
 func (bs *Store) rebuildExactErasurePlannerSketchesLocked() {
-	if bs.disablePlannerStats {
+	if bs.plannerStatsOff() {
 		return
 	}
 	bs.propertyStats = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyStatsAccumulator)

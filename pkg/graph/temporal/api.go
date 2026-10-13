@@ -344,7 +344,8 @@ func (a *API) RelAsOf(id types.RelID, txTime types.Instant) (*types.Relationship
 // snapshot everything committed so far. Every committed entity has TxFrom <=
 // NowTx(); every later mutation is stamped strictly greater. Reading it advances
 // the commit clock by one tick (reserving the instant), which is what makes the
-// separation strict and the value correct across a Close/reopen — a bare
+// separation strict and the value correct across a Close/reopen, and after a
+// crash above every row the store kept (store.CommitFloorCapability) — a bare
 // wall-clock pin is unsafe because a burst of mutations can outrun the wall.
 //
 //	pin, _ := g.Temporal().NowTx()

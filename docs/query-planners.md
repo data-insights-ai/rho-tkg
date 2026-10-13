@@ -94,7 +94,8 @@ on that node. See the `Signal/tags` case in
 Backed by the OPTIONAL `store.NodePropertyKeyStatsCapability` — every in-tree
 backend implements it (memory / badger maintain a counter per
 `(label token, property key)` pair, updated on every node-mutation door and
-rebuilt at index load so the count survives a restart; tiered folds
+rebuilt at index load so the count survives a restart — after a clean badger
+close restored from the open image (`docs/persistence.md` "Clean reopen"); tiered folds
 reference + archive + open event shards, same O(open shards) shape as the
 other counters). A store that omits the capability declines with
 `store.ErrCapabilityNotSupported` (re-exported as `graph.ErrCapabilityNotSupported`)
@@ -135,7 +136,8 @@ O(1) amortized on memory/badger — the NDV sketch and min/max are maintained
 incrementally on the SAME node-mutation doors as the `NodeCountByLabelAndPropertyKey`
 presence counter (`PutNode`/`ReplaceNode`/`DeleteNode`/`DeleteNodeCascade`/
 `Add`+`RemoveNodeLabelToken`/batch variants), and rebuilt from the persisted
-node rows at badger index load — so the count/NDV/min/max all survive a
+node rows at badger index load (after a clean close: restored as the closing
+process held them, NDV sketch and dirty flag included) — so the count/NDV/min/max all survive a
 restart exactly like the presence counter does. The ONE non-O(1) case: after
 the node holding the current `Min` or `Max` is deleted (or replaced with a
 different value), the NEXT `PropertyStats` call for that pair pays an
@@ -184,7 +186,8 @@ this same first-observed-in-the-scan-order rule from scratch.
 
 **NDV never decreases.** HyperLogLog has no removal operation — a deleted
 value's contribution to the sketch persists until the sketch is rebuilt from
-scratch (badger index load / process restart; the memory backend has no
+scratch (a badger open that rebuilds from the rows — a clean reopen restores
+the persisted sketch and keeps it; the memory backend has no
 "rebuild" moment since it never restarts with existing data). A planner
 reading `NDV` after heavy churn should treat it as "distinct values EVER
 observed for currently-tracked nodes," not "distinct values held by the

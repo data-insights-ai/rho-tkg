@@ -1,0 +1,9 @@
+# review fix 1 RED: tiered DurableFlush never fsyncs the reference-shard floor entry (MetaSet, no sync) while it fsyncs the event rows it covers.
+=== RUN   TestShardCommitFloorSyncedByDurableFlush
+    tieredstore_commit_floor_test.go:70: durable flush writes the rows: reference-shard floor fsyncs = 0, want >= 1
+--- FAIL: TestShardCommitFloorSyncedByDurableFlush (0.32s)
+=== RUN   TestShardCommitFloorRewrittenAfterClear
+--- PASS: TestShardCommitFloorRewrittenAfterClear (7.76s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	8.132s
+FAIL

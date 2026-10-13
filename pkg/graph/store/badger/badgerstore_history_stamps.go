@@ -301,7 +301,7 @@ func (bs *Store) scanHistoryStamps(kind byte) (map[snowflake.ID]stampEntry, erro
 		return nil
 	}
 	prefix := []byte{kind}
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false // decode inside Value(), no staging copy
 		it := txn.NewIterator(opts)

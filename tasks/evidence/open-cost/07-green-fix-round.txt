@@ -1,0 +1,77 @@
+=== RUN   TestCleanReopenCostNotLinear
+    clean_reopen_test.go:113: rows decoded at a clean reopen: 3000 entities -> 4, 30000 entities -> 4
+--- PASS: TestCleanReopenCostNotLinear (1.03s)
+=== RUN   TestCleanReopenMatchesFullRebuild
+=== RUN   TestCleanReopenMatchesFullRebuild/onDisk=false
+=== RUN   TestCleanReopenMatchesFullRebuild/onDisk=true
+--- PASS: TestCleanReopenMatchesFullRebuild (6.96s)
+=== RUN   TestTemporalIndexLabelOnDiskKeepsHistoryAfterReopen
+--- PASS: TestTemporalIndexLabelOnDiskKeepsHistoryAfterReopen (0.14s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	8.169s
+=== RUN   TestCleanReopenDeferredStateUnderConcurrentWrites
+--- PASS: TestCleanReopenDeferredStateUnderConcurrentWrites (0.42s)
+=== RUN   TestCleanReopenRestoresPlannerStats
+=== RUN   TestCleanReopenRestoresPlannerStats/NodePropertyNDV
+=== RUN   TestCleanReopenRestoresPlannerStats/NodePropertyNDVSketch
+=== RUN   TestCleanReopenRestoresPlannerStats/RelPropertyStats
+=== RUN   TestCleanReopenRestoresPlannerStats/NodePropertyTypeClassCounts
+=== RUN   TestCleanReopenRestoresPlannerStats/NodePropertyStats
+=== RUN   TestCleanReopenRestoresPlannerStats/RelPropertyNDV
+=== RUN   TestCleanReopenRestoresPlannerStats/RelPropertyTypeClassCounts
+=== RUN   TestCleanReopenRestoresPlannerStats/NodeCountByLabelAndPropertyKey
+=== RUN   TestCleanReopenRestoresPlannerStats/NodePropertyStatsSketch
+--- PASS: TestCleanReopenRestoresPlannerStats (0.38s)
+=== RUN   TestFirstStatsReadThroughEachDoorAfterDeferredOpen
+=== RUN   TestFirstStatsReadThroughEachDoorAfterDeferredOpen/NodeCountByLabelAndPropertyKey
+=== RUN   TestFirstStatsReadThroughEachDoorAfterDeferredOpen/NodePropertyStatsSketch
+=== RUN   TestFirstStatsReadThroughEachDoorAfterDeferredOpen/NodePropertyNDV
+=== RUN   TestFirstStatsReadThroughEachDoorAfterDeferredOpen/NodePropertyNDVSketch
+=== RUN   TestFirstStatsReadThroughEachDoorAfterDeferredOpen/RelPropertyStats
+=== RUN   TestFirstStatsReadThroughEachDoorAfterDeferredOpen/NodePropertyTypeClassCounts
+=== RUN   TestFirstStatsReadThroughEachDoorAfterDeferredOpen/NodePropertyStats
+=== RUN   TestFirstStatsReadThroughEachDoorAfterDeferredOpen/RelPropertyNDV
+=== RUN   TestFirstStatsReadThroughEachDoorAfterDeferredOpen/RelPropertyTypeClassCounts
+--- PASS: TestFirstStatsReadThroughEachDoorAfterDeferredOpen (0.56s)
+=== RUN   TestPlannerStatsBuildFailureRetries
+--- PASS: TestPlannerStatsBuildFailureRetries (0.16s)
+=== RUN   TestCloseImageExcludesWriteRacingClose
+--- PASS: TestCloseImageExcludesWriteRacingClose (0.56s)
+=== RUN   TestOpenImageHeaderGuards
+=== RUN   TestOpenImageHeaderGuards/checksum
+=== RUN   TestOpenImageHeaderGuards/length
+=== RUN   TestOpenImageHeaderGuards/magic
+--- PASS: TestOpenImageHeaderGuards (0.73s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	2.842s
+=== RUN   TestTieredCleanReopenMatchesFullRebuild
+--- PASS: TestTieredCleanReopenMatchesFullRebuild (1.59s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	1.671s
+=== RUN   TestShardedCleanReopenMatchesFullRebuild
+--- PASS: TestShardedCleanReopenMatchesFullRebuild (1.25s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	1.297s
+=== RUN   TestPropertyStatsAccumulatorCodecRoundTrip
+=== RUN   TestPropertyStatsAccumulatorCodecRoundTrip/uint16
+=== RUN   TestPropertyStatsAccumulatorCodecRoundTrip/uint32
+=== RUN   TestPropertyStatsAccumulatorCodecRoundTrip/sparse
+=== RUN   TestPropertyStatsAccumulatorCodecRoundTrip/int
+=== RUN   TestPropertyStatsAccumulatorCodecRoundTrip/int8
+=== RUN   TestPropertyStatsAccumulatorCodecRoundTrip/int16
+=== RUN   TestPropertyStatsAccumulatorCodecRoundTrip/int64
+=== RUN   TestPropertyStatsAccumulatorCodecRoundTrip/uint
+=== RUN   TestPropertyStatsAccumulatorCodecRoundTrip/uint64
+=== RUN   TestPropertyStatsAccumulatorCodecRoundTrip/dense
+=== RUN   TestPropertyStatsAccumulatorCodecRoundTrip/empty
+=== RUN   TestPropertyStatsAccumulatorCodecRoundTrip/int32
+=== RUN   TestPropertyStatsAccumulatorCodecRoundTrip/string
+=== RUN   TestPropertyStatsAccumulatorCodecRoundTrip/unordered
+=== RUN   TestPropertyStatsAccumulatorCodecRoundTrip/uint8
+=== RUN   TestPropertyStatsAccumulatorCodecRoundTrip/float32
+=== RUN   TestPropertyStatsAccumulatorCodecRoundTrip/float64
+--- PASS: TestPropertyStatsAccumulatorCodecRoundTrip (0.00s)
+=== RUN   TestPropertyStatsAccumulatorCodecRejectsDamage
+--- PASS: TestPropertyStatsAccumulatorCodecRejectsDamage (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	0.012s

@@ -372,8 +372,13 @@ func (bs *Store) foldTemporalHistoryEnvelopes(tokens []uint16) error {
 		ti, ok := bs.temporalIndexes[tok]
 		var ids []types.NodeID
 		if ok {
-			for id := range bs.labelIdx[tok] {
-				ids = append(ids, id)
+			// Through the snapshot helper, not labelIdx: under LabelIndexOnDisk
+			// the map is empty and the fold silently dropped every history
+			// envelope (backlog 54 found it).
+			var err error
+			if ids, err = bs.labelNodeIDsSnapshotLocked(tok); err != nil {
+				bs.idxMu.RUnlock()
+				return fmt.Errorf("graph: temporal-index history envelope fold (label %d): %w", tok, err)
 			}
 		}
 		bs.idxMu.RUnlock()

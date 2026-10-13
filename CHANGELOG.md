@@ -493,6 +493,170 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   imported-package and two required-module advisories are unreachable. Final
   consolidated root+v5 CI remains pending; no other v4 API or behavior change.
 
+## [4.51.4] - 2026-10-13
+
+### Added
+
+- **`store.CommitFloorCapability`** (optional, backlog 44; memory, badger, tiered, sharded): `StoredCommitFloor()`,
+  at least the newest TxFrom/TxTo/DeletedAt of every row the store holds after any crash. **badger
+  `Config.OnCommitFloor`**: the hook a composite store uses to keep a shard's floor elsewhere (tiered: the
+  reference shard).
+
+### Fixed
+
+- **A crash reopen no longer hands out `NowTx()` and new stamps below stored rows** (backlog 44, lesson 71). The
+  commit-clock floor watermark was written only by `Close`, so after a crash that followed a burst (or
+  `AdvanceClock`) whose floor outran the wall, `NowTx()` reopened at the wall, below committed stamps, and a fresh
+  write could be stamped before existing ones (red: up to an hour below in `TestCrashReopenNowTxAboveStoredStamps`,
+  `tasks/evidence/clock-floor-crash/01-red.txt`). Design: every badger flush that writes rows puts the floor (the
+  newest stamp of every entity and history row it has written, decoded from the batch) first in its own WriteBatch,
+  and `graph.New` raises the clock to it — chosen over a scan at open because it is exact for every door (replica
+  apply and import included, whatever their order against a background flush), costs nothing at open (one 8-byte
+  key in the open's existing read) and about 75 µs per 1,060-row flush with no allocation
+  (`04-flush-cost.txt`, under 1 % of a 13.5 ms durable group), where a scan would make the crash open linear in
+  history. Sharded folds its slots; tiered keeps its event and archive shards' floor on the reference shard, written
+  ahead of each shard's batch (cold shards are not opened at open) and fsynced there before a `DurableFlush` fsyncs
+  the rows it covers, background flushes paying no fsync; read-only opens and replicas read the same key.
+  Memory with a `SegmentDir` had the same gap even after a clean `Close` (its MetaKV is RAM): its floor is the newest
+  stamp of the sealed rows loaded from the directory, folded while they are installed.
+
+### Changed
+
+- **Docs: power-loss durability needs `DurableCommit` + `SyncWrites`** on a badger or sharded store (backlog 15,
+  closed; tiered has no `SyncWrites`, so its groups stay process-crash safe only): stated on
+  `Config.DurableCommit`, `Config.SyncWrites` and in `docs/persistence.md`; measured 13.5 ms per 530-op group
+  against 12.5 ms for `DurableCommit` alone (`tasks/evidence/aisoc-commit-cost/52-bench.txt`).
+
+## [4.51.3] - 2026-10-12
+
+### Added
+
+- **`store.ReadSnapshotCapability` / `store.ReadSnapshot`** (optional, backlog 55): one read snapshot an effective
+  scan reads a chunk of candidates through — badger one read transaction plus forward-walking iterators (unordered
+  doors visit IDs ascending), sharded one per slot.
+- **`store.MutationFlushHoldCapability`** (optional, backlog 52), implemented by the badger store: holds the
+  per-mutation flush while a `DurableCommit` group runs, so the group commits as one synced WriteBatch.
+- **`store.RelCreateUndoCapability`** (`UndoRelationshipCreate`; memory, badger, tiered, sharded) and
+  **`store.ScopedRelCreateUndoCapability`** (`UndoRelationshipCreateScoped`; memory, badger), optional (backlog 50
+  review F1): `DeleteRelationship` without the ex-adjacency legs, for undoing a create.
+- **badger `RemoveRelEntityAndOutPlacement` / `RemoveRelIncomingPlacement`** (backlog 50 review F1): the leg-less
+  doors a tiered move uses to drop a relationship's placement on the shard it leaves.
+
+### Changed
+
+- **A clean badger reopen no longer decodes every row** (backlog 54, requested by ai-soc: `graph.New` took 24.8 s
+  on its 519 K-node / 436 K-relationship store, linear in the store). Profile of the open on that shape
+  (`tasks/evidence/open-cost/01-profile.txt`): property-index rebuild 4.7 s, relationship row decode 3.1 s, node
+  row decode 2.8 s, relationship planner statistics 1.8 s, key scans 1.2 s; the `*OnDisk` modes still decoded
+  every row (13.6 s), so no default changes. A writable `Close` that flushed cleanly now writes the **open image**
+  under the flush lock, after its final flush (the property, relationship-property, composite, temporal,
+  relationship-type temporal, high-frequency and vector index contents and the planner statistics, `0x0F
+  tkg_open_image*`, CRC-32C, header last in its own commit). `New` trusts it only while that header is the
+  store's newest badger commit, and then builds liveness, label / type / adjacency maps and counters from the keys
+  alone, installs the indexes and the planner statistics from the image and fills node integrity hashes on first
+  use. Any later commit (a crashed session's writes, a write by an older release, a raw badger write), a missing
+  chunk, a length or checksum mismatch or a decode error falls back to the full rebuild; read-only opens use the
+  image and never write one. Tiered and sharded shards are badger stores and get it per shard
+  (`TestTieredCleanReopenMatchesFullRebuild`, `TestShardedCleanReopenMatchesFullRebuild`, cross-shard
+  relationships). Measured on the ai-soc shape (`tasks/evidence/open-cost/03-open-time.txt`, same binary and
+  host): `graph.New` 10.3-10.5 s with the full rebuild -> 2.3-2.4 s (quiet host); the rest follows the keys
+  (about 2.8 M entity and index keys into the RAM maps); the first planner-statistics read 6-7 µs; `Close` 0.3 s. Rows decoded by a clean reopen plus one ai-soc
+  record: 4 at 3 K and at 30 K entities (was 4,629 and 46,312; `TestCleanReopenCostNotLinear`, 100 K vs 1 M
+  outside `-short`). `TestCleanReopenMatchesFullRebuild` compares every RAM structure after a reopen with a full
+  rebuild (default and all-`OnDisk` configs; break cases: crash without `Close`, read-only open, an older store
+  without the image, a foreign write after `Close`, a damaged chunk, writes after the reopen, switching the
+  `OnDisk` modes on); `TestCloseImageExcludesWriteRacingClose` a write racing `Close`.
+  What a reopen restores differs from a full rebuild in three places, all within the documented contracts:
+  (1) planner statistics are the closing process's — the NDV sketch keeps values deleted in earlier sessions
+  (NDV never decreases, `docs/query-planners.md`), and min/max keep their dirty flag, so the next `PropertyStats`
+  read rescans them to the exact values a rebuild finds; a full rebuild starts the sketch from the current rows.
+  An image without statistics (closed with `DisablePlannerStats`, or while they were still deferred) defers them:
+  the first statistics read builds them from the current rows, as a full open would, holding the flush and index
+  write locks, so readers and writers wait for that one scan; a failed scan returns its error and stays deferred.
+  (2) A row damaged on disk after a clean close (no commit) is reported when read instead of being skipped at open
+  (`IndexRebuildStats`). (3) A raw badger write that only deletes keys can disappear in a bottom-level
+  compaction, after which the header is again the newest commit and the image is trusted; rho-tkg's own deletes
+  commit with their counters, so this concerns raw writers only.
+  Index keys: a crash inside a flush badger split into several transactions can leave label, type, outgoing or
+  incoming keys that disagree with the rows. The full rebuild always took the rows as the truth and skipped such
+  keys, but left them on disk, and a clean reopen trusts every key of a live entity, so the next clean `Close` would
+  have frozen a stale key into answers (`CountByLabel` counting a node without the label). A writable rebuilding
+  open now repairs them: it deletes each key it skips because its row disagrees or does not exist, and writes each
+  key a decoded row needs and the keyspace lacks; if that write fails, the session writes no image. A read-only
+  rebuild repairs nothing and writes no image. Keys of undecodable rows, incoming legs without a local row (tiered
+  cross-shard) and outgoing keys whose start lives on another shard stay as they are
+  (`TestCleanReopenAfterStaleIndexKeys`, red `tasks/evidence/open-cost/08-red-stale-keys.txt`;
+  `TestFailedKeyRepairWritesNoImage`).
+
+- **Effective scans read through one store snapshot per chunk** (backlog 55; ai-soc restart, sigma restore). Every
+  door that streams per-entity timelines reads 256 candidates per hold of the read lock, each under its entity lock,
+  through one `store.ReadSnapshot` (see Added); it is discarded before `fn` runs. Reads see
+  the cache and write buffer live and re-pin after every flush or `Clear` (`commitGen`), so answers are unchanged.
+  Transactions per scan: 0-2 for 10 and 60 entities (before 16-36 and 96-217). 100 K relationships with history,
+  reopened store, 1,024-row cache: 3.2-3.7 s → 1.6-1.9 s, 1.16 → 0.69 GB per scan (`BenchmarkEffectiveScanCold`,
+  `tasks/evidence/effective-scans/55-*.txt`). Memory and tiered read per entity as before. Visible only in timing:
+  `fn` may get an entity's segments up to 255 entities after it was read, and a scan stopped by `fn` may have read
+  up to 255 entities it never streams. The gather of `ForEachRelEffectiveAtNodes` still reads each adjacent row.
+
+### Fixed
+
+- **Relationship planner statistics no longer keep one RAM entry per relationship** (backlog 53, ai-soc). The badger
+  store memoized each relationship's property classes and values (`relTypeClassContrib`, `relStatsContrib`) so a
+  delete could decrement the presence, min/max and type-class counters, and never evicted the memo: ≈ 600 B per
+  relationship in the test shape, ≈ 57 % of ai-soc's 30 GB heap at 7.7 M rows. Every delete and replace seam now
+  takes the old row's own contribution back out (the delete seam already had the row in hand), so the statistics'
+  RAM follows the number of distinct (type, key) statistics: 0.5 B per relationship measured between 10 K and
+  100 K relationships (`TestRelPlannerStatsMemoBounded`). Write path: put −13 allocs (4252 → 3478 B/op), replace
+  −9 allocs, delete +3 allocs (the deleted row's value keys). The tiered split-write leg `PutRelEntityAndOut` now
+  counts the presence and min/max statistics like every other door that makes a row current, so the store's
+  counters equal a recount after a split-write put, replace and delete (they drifted before). No graph-door
+  answer changes; tiered still declines the capability. Evidence `tasks/evidence/planner-stats-memo/`.
+
+- **`Config.DurableCommit` with `SyncWrites` syncs once per commit group, not once per mutation** (backlog 52,
+  ai-soc): the ai-soc 530-op `GraphTx` group took 990 ms (one Badger sync per mutation, ~822 msync per group) and
+  takes 13.5 ms (`tasks/evidence/aisoc-commit-cost/52-bench.txt`; `DurableCommit` alone 12.5 ms, plain badger 5.1 ms,
+  `SyncWrites` alone unchanged at ~1 s). Each `GraphTx` mutation, the `Batch.Execute` window and a `Rollback` run under
+  the exclusive graph lock with the store's per-mutation flush held (`store.MutationFlushHoldCapability`, see
+  Added), and the group's one `DurableFlush` commits the held writes as one WriteBatch that
+  Badger syncs; the held buffer flushes in steps at `MaxPendingWrites`, and a `Rollback` ends with one durable flush.
+  Design choice: Badger `SyncWrites` fsyncs the WAL after every write and syncs each value-log file it retires, so
+  one synced batch keeps strict power-loss durability across a memtable or value-log switch; closing that switch gap
+  inside `DurableFlush` instead would need fsyncs of Badger's retired memtable WALs, which Badger does not expose.
+  Contract: unchanged within what `DurableCommit` documents — a crash before the commit returned keeps any subset of
+  the group, and a failed group flush returns `ErrCommitNotDurable` at the commit (a write error inside such a group
+  now surfaces there instead of at the mutation call); standalone mutations still return synced (the exclusive lock
+  keeps them out of the hold); `SyncWrites` without `DurableCommit`, and tiered or sharded stores, keep per-mutation
+  syncs. Side effect: with both flags each `GraphTx` mutation takes the exclusive graph lock (`c.mu.Lock`) instead
+  of the shared one, so standalone writers, readers and concurrent ingest lanes wait for each tx mutation (in-memory
+  work; the sync runs at the commit, outside the lock). Not folded into `store.GroupCommitCapability`: its
+  `EndGroupCommit` flushes and its window holds without the `MaxPendingWrites` bound (the strong ingest applier's
+  contract), while a durable group needs a release per mutation that does not flush, and adding methods to that
+  exported interface would break its implementers. Red test `TestDurableCommitSyncWritesSyncsPerGroup` (syncs per group counted by
+  `badger.Store.SyncCountForTest`, 10 vs 500 ops, plus crash children for split, rollback, retry and concurrent
+  standalone writes).
+- **Moves and undone creates no longer write ex-adjacency keys** (backlog 50, v4.51.2 review F1): tiered
+  `ArchiveNode` / `RestoreNode` moved live relationships between shards, and a failed create (tiered cross-shard, a
+  graph create's partial write, a rolled-back transaction, a failed `IO.Import` or `ImportMerge`) removed its
+  relationship, through the delete doors, which record an ex-adjacency leg per dropped key: stale keys naming a
+  relationship that was still live or never committed. Answers were correct (each candidate is resolved and
+  dropped); the keys cost disk or RAM and a candidate read per temporal adjacency query of the endpoint. Moves now use
+  the leg-less badger move doors and undone creates the new undo capabilities (both under Added); a store without
+  them is undone by `DeleteRelationship`, as before. Real deletes keep both legs.
+  Keys already written by v4.51.2 are not removed: a key carries no provenance, and the same key may be a
+  still-needed leg of an earlier deleted life of that relationship.
+
+- **`LabelIndexOnDisk` + a temporal index lost history envelopes at open and at `CreateTemporal`** (found by backlog
+  54's oracle test): `foldTemporalHistoryEnvelopes` listed the label's members from the RAM label map, which is empty
+  in that mode, so each node's envelope held its current version only and the temporal candidate prune dropped a
+  node whose earlier version matched: `NodesByLabelAt(label, t1)` after a reopen returned 0 nodes for a node valid
+  at t1 and updated since (`TestTemporalIndexLabelOnDiskKeepsHistoryAfterReopen`, red output
+  `tasks/evidence/open-cost/02b-red-ondisk-fold.txt`). The fold now reads the members through the disk-aware label
+  snapshot.
+- **`PropertyIndexOnDisk` re-read every labelled row at every open** when the index was already on disk (the rows
+  were loaded and dropped), and a store created with the option and no registry never got its "built" marker, so
+  each open walked the rows again. Both skip now; with the rows no longer read, a full rebuild in that mode no
+  longer counts unreadable rows in `IndexRebuildStats().PropertySkipped` (the node scan still skips and logs them).
+
 ## [4.51.2] - 2026-10-12
 
 ### Added

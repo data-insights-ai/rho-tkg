@@ -1,0 +1,7 @@
+# review fixes GREEN: floor fsynced on the reference shard by DurableFlush (both paths), none on background flush; Clear rewrite (mutant without resetShardCommitFloor fails). Mutant without the pre-sync hook fails step 3.
+=== RUN   TestShardCommitFloorSyncedByDurableFlush
+--- PASS: TestShardCommitFloorSyncedByDurableFlush (0.18s)
+=== RUN   TestShardCommitFloorRewrittenAfterClear
+--- PASS: TestShardCommitFloorRewrittenAfterClear (5.81s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	6.023s

@@ -684,7 +684,7 @@ func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 	// reconstruction: a delta reconstruct point-reads the interval anchor via a
 	// separate read txn, which is cleaner done outside the current one.
 	var raw []byte
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(key)
 		if err == badgerv4.ErrKeyNotFound {
 			return ErrVersionNotFound
@@ -768,7 +768,7 @@ func (bs *Store) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, error) {
 
 	// Collect from Badger.
 	entries := make(map[string][]byte) // key string -> value bytes
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = true
 		opts.Prefix = prefix // bound the scan and the value prefetch to this entity (backlog 20)
@@ -881,7 +881,7 @@ func (bs *Store) nodeHistoryVersionsFromPrefix(prefix []byte, startVersion uint3
 	}
 
 	seekKey := historyVersionSeekKey(prefix, startVersion)
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = true
 		opts.Prefix = prefix // bound the scan and the value prefetch to this entity (backlog 20)
@@ -1174,7 +1174,7 @@ func (bs *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.N
 	pendingIdx := 0
 	emitted := make(map[snowflake.ID]struct{}) // dedup across pending + Badger
 
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)

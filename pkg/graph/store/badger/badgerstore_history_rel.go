@@ -95,8 +95,8 @@ func (bs *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	// Refresh the rel property index (property values may have changed).
 	bs.maintainRelPropertyIndexesRemove(old, id)
 	bs.maintainRelTypeTemporalIndexesRemove(old, id) // BACKLOG 21c
-	bs.removeRelPropertyTypeClassCountsByID(id, old.TypeToken().Value())
-	bs.removeRelPropertyStatsCountsByID(id, old.TypeToken().Value())
+	bs.removeRelPropertyTypeClassCounts(old)
+	bs.removeRelPropertyStatsCounts(old)
 	bs.bumpRelRevLocked(rid)                                   // this door always re-reads via getRelLocked above, but must still bump so a concurrent ReplaceRelationship's prefetch detects this write (BACKLOG 18b)
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(current))   // BACKLOG 10c
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(prevState)) // BACKLOG 10c — the demoted history row
@@ -183,7 +183,7 @@ func (bs *Store) deleteRelWithHistoryRouted(rid types.RelID, prevVersion uint32,
 	bs.recordRelRowLocked(tombstone)                           // backlog 8
 	// The tombstone first, then the removal (appends its delete ops to pending
 	// under the lock; no record — emitted here).
-	bs.publishMoveLocked([]writeOp{{opType: writeOpSet, key: histKey, value: tombData}}, func() { bs.deleteRelByInfo(info) })
+	bs.publishMoveLocked([]writeOp{{opType: writeOpSet, key: histKey, value: tombData}}, func() { bs.deleteRelByInfo(info, r) })
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeRelDelete, delPayload, token)
 	bs.idxMu.Unlock()
 	if logErr != nil {
@@ -299,7 +299,7 @@ func (bs *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 	// Fall through to Badger. Copy the raw value out before reconstruction (a
 	// delta reconstruct point-reads the interval anchor via a separate txn).
 	var raw []byte
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(key)
 		if err == badgerv4.ErrKeyNotFound {
 			return ErrVersionNotFound
@@ -374,7 +374,7 @@ func (bs *Store) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationship, er
 	overlay, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
 
 	entries := make(map[string][]byte)
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = true
 		opts.Prefix = prefix // bound the scan and the value prefetch to this entity (backlog 20)
@@ -482,7 +482,7 @@ func (bs *Store) relHistoryVersionsFromPrefix(prefix []byte, startVersion uint32
 	}
 
 	seekKey := historyVersionSeekKey(prefix, startVersion)
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = true
 		opts.Prefix = prefix // bound the scan and the value prefetch to this entity (backlog 20)
@@ -765,7 +765,7 @@ func (bs *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 	pendingIdx := 0
 	emitted := make(map[snowflake.ID]struct{})
 
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
