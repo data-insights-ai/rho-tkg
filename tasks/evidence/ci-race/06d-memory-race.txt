@@ -1,0 +1,9 @@
+24.76 43.61 41.08 7/5446 1271185
+PASS
+before cursor test 10000 IDs, race, -short: wall 50.57 s
+PASS
+fix cursor test 10000 IDs, race, -short: wall 1.05 s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	250.826s
+root race gate: memory passed
+memory part: wall 294.12 s, cpu 280.35+17.51 s
+41.98 39.28 39.45 43/5425 1459638

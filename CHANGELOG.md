@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **CI race gate sharded; slowest `-short -race` tests sized for 4-vCPU runners** (todo request 24; no API
+  change). The GitHub `test` job ran `go test -short -race ./...` on one 4-vCPU runner, where pkg/graph,
+  internal/core and store/memory shared the CPUs with badger, tiered and index and each crossed Go's 10 min
+  package timeout on every main push since 2026-10-10. `scripts/test-race.sh` (ported from branch `v5`) gains
+  `RACE_SHARD`: a `race-plan` job lists the parts and a `race (<part>)` matrix job runs each one — `other`,
+  `graph`, `memory`, `core-1..4` (core's top-level tests in four exhaustive batches). `make test-race` locally
+  stays one unsplit run; `make ci-docker` is unchanged; script tests: `make test-race-script`. In `-short`
+  under race, fewer seeds (the full sizes stay without `-short`): retraction oracle 3 to 2 per backend, effective
+  timeline pointwise oracle 3 to 2, `TestCurrentStampsDifferential` 24 to 8, rel-segment differentials 3 to 2;
+  Each test's coverage check still passes at the smaller size. Evidence: `tasks/evidence/ci-race/`.
+
+### Fixed
+
+- **memory: a history-ID cursor page costs O(page + log n)**, not O(n). `AllNodeHistoryIDsFrom` /
+  `AllRelHistoryIDsFrom` copied and sorted every history ID on each page, so a full cursor walk was quadratic
+  (10,000 IDs at page size 1: 50.6 s under race, now 1.1 s). The sorted key set is now cached and rebuilt only after
+  the key set changes; answers are unchanged (`TestHistoryIDsCursor*`).
+
 ## [4.51.4] - 2026-10-13
 
 ### Added

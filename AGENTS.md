@@ -74,7 +74,7 @@ Status: v4.51.4. **`CHANGELOG.md` is the source of truth for version history, mi
 make build          # verify compilation
 make test           # unit tests (short mode, no cache)
 make test-v         # verbose tests
-make test-race      # race detector — always run for concurrent code
+make test-race      # race detector — always run for concurrent code (CI: sharded, see below)
 make test-integration  # integration tests (long-running)
 make bench-graph-baseline    # repeatable graph API benchmark baseline
 make bench-graph-production-small  # production-shaped graph benchmark suite
@@ -116,6 +116,16 @@ Security tools are pinned by the Makefile and both security commands are clean,
 blocking gates. `#nosec` annotations document audited non-security conversions
 and deterministic/randomized algorithms at the exact call site; new unannotated
 findings fail CI. Golangci-lint still uses its pull-request new-issues mode.
+
+**Race gate in GitHub CI.** `make test-race` locally is one unsplit `go test -short -race ./...`. CI (4-vCPU
+runners) runs it as a matrix through `scripts/test-race.sh` (ported from branch `v5`): `race-plan` reads the parts
+(`RACE_SHARD=list bash scripts/test-race.sh 4`), and one `race (<part>)` job per part runs
+`ROOT_RACE_CORE_SHARDS=4 RACE_SHARD=<part> make test-race`. Parts: `other` (every package not listed next),
+`graph` (pkg/graph), `memory` (store/memory), `core-1..4` (internal/core, whole top-level tests round-robin by
+name). Every part is its own `go test` with Go's default 10 min timeout; keep each under 5 min at GOMAXPROCS=4
+(`tasks/evidence/ci-race/`). A new randomized oracle sizes its `-short` + race run for that budget (fewer seeds,
+same cases, full size behind `!testing.Short()`), and its generator-coverage check must still pass at that size.
+Script tests: `make test-race-script`. Reproduce one part: `RACE_SHARD=core-2 ROOT_RACE_CORE_SHARDS=4 make test-race`.
 
 Single test: `go test -run TestFoo ./pkg/types/`
 Coverage check: `go tool cover -func=coverage.out` (after `make cover`)
