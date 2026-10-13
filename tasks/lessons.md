@@ -602,3 +602,9 @@ Detector: a "Gewählt: not started ... Anders: sag fix N" line; four ai-soc bloc
 Rule: the release gate is `make ci-docker` AND the GitHub CI run of the pushed commit; check `gh run list --branch main --workflow CI` before reporting a release done and fix a red CI before the next tag.
 Trigger: René 2026-10-13 "why is the ci pipeline always failing?" — CI `test` (race on 4-vCPU runners) timed out on every main push since 2026-10-10 (v4.50.1–v4.51.4) while the local 32-core gate passed; nobody looked.
 Detector: a tag whose CI run is not `success`.
+
+## 83. Test Enough To Prove The Item, Then Build
+
+Rule: one compact red test per item (the key break cases), then the code. No mutation runs, probe tests, oversized tables or benchmarks unless the item is about speed or RAM; reviewers read and reason instead of writing tests. Supersedes the mutant/probe parts of 78 and 79.
+Trigger: René 2026-10-13 "I think you're testing too much. Focus on more development work."
+Detector: evidence files named *mutant* or *probe*, or a test file longer than the code it tests.
