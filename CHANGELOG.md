@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.51.4] - 2026-10-13
+
 ### Added
 
 - **`store.CommitFloorCapability`** (optional, backlog 44; memory, badger, tiered, sharded): `StoredCommitFloor()`,

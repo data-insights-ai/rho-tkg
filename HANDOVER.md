@@ -1,13 +1,13 @@
-# HANDOVER — rho-tkg v4 line (rewritten 2026-10-12, main at v4.51.3)
+# HANDOVER — rho-tkg v4 line (rewritten 2026-10-12, main at v4.51.4)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go 1.26.9; a Go
-library, not a database). Latest tag `v4.51.3`. Read, in this order: this file, `tasks/lessons.md` (digest at the top),
+library, not a database). Latest tag `v4.51.4`. Read, in this order: this file, `tasks/lessons.md` (digest at the top),
 `tasks/todo.md` (user requests, open queue with the per-step red tests), `tasks/backlog.md` (specs), `CHANGELOG.md` top.
 History (what shipped, why) is in `CHANGELOG.md` and git, not here.
 
 ## 1. Open requests and next steps (newest user message first; do these, do not ask)
 
-1. **v4.51.3 released 2026-10-12** (52, 53, 54, 55, F1–F6; gate exit 0, coverage 87.7 %; consumers notified). Next tag: v4.51.4 (PATCH only). Next work: new consumer requests, then the on-hold items below.
+1. **v4.51.4 released 2026-10-13** (44: crash reopen above every stored stamp; 15 closed by docs). v4.51.3 released 2026-10-12 (52, 53, 54, 55, F1–F6). Next tag: v4.51.5 (PATCH only). Next work: new consumer requests, then the on-hold items below.
 2. **On hold, not blocking:** 41 (merge the history-stamps sidecar into the presence set; measured, saves only where both
    doors run), 28 (state column fast path; design first, waits for sigma's input), 21 (retention `PurgeExpiredRels` + per-type
    gate; full spec in backlog 21; waits for sigma's `@overview`).
