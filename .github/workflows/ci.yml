@@ -72,7 +72,7 @@ jobs:
 
   # Blocking: fails below the 80% floor (project rule, Testing Rules #7).
   # `make cover-gate` runs its own short-mode suite over ./pkg/... — separate
-  # from the test job's race run above — so the floor is measured and
+  # from the race job's runs above — so the floor is measured and
   # enforced on every push and PR, not only when someone remembers to run
   # `make cover` locally.
   coverage:

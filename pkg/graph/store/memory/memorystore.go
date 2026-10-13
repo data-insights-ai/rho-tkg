@@ -87,6 +87,10 @@ type Store struct {
 	// Version history — pre-mutation snapshots keyed by entity ID and version.
 	nodeHistory map[types.NodeID]map[uint32]*types.Node
 	relHistory  map[types.RelID]map[uint32]*types.Relationship
+	// nodeHistoryIDs / relHistoryIDs: the sorted key sets of nodeHistory /
+	// relHistory for the All*HistoryIDsFrom cursor (memorystore_history_ids.go).
+	nodeHistoryIDs atomic.Pointer[[]types.NodeID]
+	relHistoryIDs  atomic.Pointer[[]types.RelID]
 
 	// Property indexes — label+property → value → set of node IDs.
 	propertyIndexes map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex

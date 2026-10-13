@@ -14,7 +14,7 @@ GOMAXPROCS=4, taskset 4 CPUs, /usr/bin/time (wall; host load 20-40 from other wo
 | graph TestCurrentStampsDifferential                          | seeds/backend 24 -> 8      |  70.4 s  | 25.8 s  |
 | graph TestRelSegmentsDifferentialOracleOnDisk                | seeds 3 -> 2               |  45.2 s  | 28.4 s  |
 | graph TestRelSegmentsDifferentialOracle                      | seeds 3 -> 2               |  46.6 s  | 38.7 s  |
-| memory TestMemoryStore_AllNodeHistoryIDsFrom_CursorMatches.. | IDs 10000 -> 2000 (-short) |  57.4 s  |  2.6 s  |
+| memory TestMemoryStore_AllNodeHistoryIDsFrom_CursorMatches.. | none: product fix (06-*)   |  50.6 s  |  1.1 s  |
 
 Guards that still pass at the smaller size (after-runs PASS above and in the full package runs):
 - Retraction: retractions > 0 and retractions next to an earlier life > 0 over all backends.
@@ -22,8 +22,9 @@ Guards that still pass at the smaller size (after-runs PASS above and in the ful
 - CurrentStamps: every op kind (updateNode ... updateInPlace) succeeded and above-head / deleted / revived
   coverage reached, per backend, at 8 seeds.
 - RelSegments: per seed sealed, superseded sealed rows, corrections and close+delete steps all taken.
-- Memory cursor: 2000 IDs = 3 full pages of 512 + a short tail; pageSize 1 and 1<<20 edges kept. The pageSize=1
-  walk is quadratic (each page re-sorts the whole ID set), hence the -short size.
+- Memory cursor: not cut (review fix 1). The walk was quadratic in product code (each page re-sorted every
+  history ID); fixed in memorystore_history_ids.go, test back at 10,000 IDs in every mode (06a red, 06b green,
+  06d race times).
 
 Tried and reverted: TestTxBackfillOracle_CrossBackend 24 -> 8 seeds. Its generator-coverage check failed
 (12 door/op kinds never accepted); the smallest passing count is 24 (non-race sweep: 8:12 missing, 10:8,
