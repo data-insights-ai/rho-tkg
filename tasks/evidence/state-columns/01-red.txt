@@ -1,0 +1,47 @@
+# Backlog 28 RED, main dc2d8b9c (no code change), 2026-10-13
+# go test -count=1 -run 'TestCountByLabelAtStateColumnPath|TestStateColumnPath_' ./pkg/graph/internal/core/ -v
+# 1) rows decoded per state count / scan after the first build grow with the label (badger, CacheCapacity 1):
+#    node and rel [count scan] = [11997 20998] at 10 K, [119997 209998] at 100 K (want constant).
+# 2) the doors' scan differs from the oracle: the fold reports each winning row's stored ordinals; the oracle
+#    (target contract) reports none at a read coordinate. ConcurrentWrites shows why: on the fold itself the
+#    Ordinals at a fixed pin change while later deletes land (badger: 20 21 ... -> 0 0 ...), i.e. a pinned
+#    answer changed after a later write. Memory/badger fail on it; sharded/tiered have no column scan (ok=false).
+# 3) badger: a repeated state count/scan at the same pin decodes rows again (BreakCases, earlier run: 4 and 4, want 0).
+    state_columns_test.go:246: rows decoded per state count / scan after the first build: 10000 entities [11997 20998], 100000 entities [119997 209998]
+    state_columns_test.go:249: rows decoded per state count / scan grow with the label: [11997 20998] at 10000, [119997 209998] at 100000; want constant
+    state_columns_test.go:253: doors differ from the row fold: n=10000: count 10000, fold 10000, scan equal to the fold: false; n=100000: count 100000, fold 100000, scan equal to the fold: false
+    state_columns_test.go:246: rows decoded per state count / scan after the first build: 10000 entities [11997 20998], 100000 entities [119997 209998]
+    state_columns_test.go:249: rows decoded per state count / scan grow with the label: [11997 20998] at 10000, [119997 209998] at 100000; want constant
+    state_columns_test.go:253: doors differ from the row fold: n=10000: count 10000, fold 10000, scan equal to the fold: false; n=100000: count 100000, fold 100000, scan equal to the fold: false
+--- FAIL: TestCountByLabelAtStateColumnPath (18.40s)
+    --- FAIL: TestCountByLabelAtStateColumnPath/node (7.33s)
+    --- FAIL: TestCountByLabelAtStateColumnPath/rel (11.06s)
+    state_columns_test.go:322: [node before the later writes] {Limit:0 After:0 ValidAt:1000 ValidStart:0 ValidEnd:0 TxAt:1791875377802 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: doors differ from the row fold:
+    state_columns_test.go:322: [rel before the later writes] {Limit:0 After:0 ValidAt:1000 ValidStart:0 ValidEnd:0 TxAt:1791875377805 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: doors differ from the row fold:
+    state_columns_test.go:322: [node before the later writes] {Limit:0 After:0 ValidAt:1000 ValidStart:0 ValidEnd:0 TxAt:1791875377804 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: doors differ from the row fold:
+    state_columns_test.go:322: [rel before the later writes] {Limit:0 After:0 ValidAt:1000 ValidStart:0 ValidEnd:0 TxAt:1791875377809 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: doors differ from the row fold:
+--- FAIL: TestStateColumnPath_BreakCases (0.13s)
+    --- FAIL: TestStateColumnPath_BreakCases/memory/node (0.00s)
+    --- FAIL: TestStateColumnPath_BreakCases/memory/rel (0.00s)
+    --- FAIL: TestStateColumnPath_BreakCases/badger/node (0.00s)
+    --- FAIL: TestStateColumnPath_BreakCases/badger/rel (0.00s)
+    --- PASS: TestStateColumnPath_BreakCases/sharded/node (0.02s)
+    --- PASS: TestStateColumnPath_BreakCases/sharded/rel (0.02s)
+    --- PASS: TestStateColumnPath_BreakCases/tiered/node (0.02s)
+    --- PASS: TestStateColumnPath_BreakCases/tiered/rel (0.05s)
+    state_columns_test.go:381: [node] a read during the writes differs from the fold at the pin:
+    state_columns_test.go:381: [rel] a read during the writes differs from the fold at the pin:
+    state_columns_test.go:381: [node] a read during the writes differs from the fold at the pin:
+    state_columns_test.go:381: [rel] a read during the writes differs from the fold at the pin:
+--- FAIL: TestStateColumnPath_ConcurrentWrites (0.21s)
+    --- FAIL: TestStateColumnPath_ConcurrentWrites/memory/node (0.00s)
+    --- FAIL: TestStateColumnPath_ConcurrentWrites/memory/rel (0.00s)
+    --- FAIL: TestStateColumnPath_ConcurrentWrites/badger/node (0.02s)
+    --- FAIL: TestStateColumnPath_ConcurrentWrites/badger/rel (0.06s)
+    --- PASS: TestStateColumnPath_ConcurrentWrites/sharded/node (0.02s)
+    --- PASS: TestStateColumnPath_ConcurrentWrites/sharded/rel (0.04s)
+    --- PASS: TestStateColumnPath_ConcurrentWrites/tiered/node (0.02s)
+    --- PASS: TestStateColumnPath_ConcurrentWrites/tiered/rel (0.03s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	18.784s
+FAIL

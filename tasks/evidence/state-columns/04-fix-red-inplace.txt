@@ -1,0 +1,6 @@
+--- FAIL: TestStateColumnPath_InPlaceUpdate (0.15s)
+    --- FAIL: TestStateColumnPath_InPlaceUpdate/memory/node (0.00s)
+        state_columns_test.go:470: [node after UpdateInPlace] {Limit:0 After:0 ValidAt:2000 ValidStart:0 ValidEnd:0 TxAt:1791879448381 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: doors differ
+    --- FAIL: TestStateColumnPath_InPlaceUpdate/memory/rel (0.00s)
+        state_columns_test.go:470: [rel after UpdateInPlace] {Limit:0 After:0 ValidAt:2000 ValidStart:0 ValidEnd:0 TxAt:1791879448383 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: doors differ 
+    --- FAIL: TestStateColumnPath_InPlaceUpdate/badger/node (0.00s)

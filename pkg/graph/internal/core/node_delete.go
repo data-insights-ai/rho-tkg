@@ -419,6 +419,7 @@ func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *t
 	}
 
 	// Build relationship tombstones (dedup self-loops).
+	clamped := false
 	var relTombstones []storepkg.RelTombstone
 	var cascadeRelIDs []types.RelID
 	if len(outRels) != 0 || len(inRels) != 0 {
@@ -440,7 +441,7 @@ func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *t
 				tmR = &types.TemporalMetadata{}
 				tombstone.SetTemporal(tmR)
 			}
-			stampDeleteTombstone(tmR, now, spec.retract)
+			clamped = stampDeleteTombstone(tmR, now, spec.retract) || clamped
 			relTombstones = append(relTombstones, storepkg.RelTombstone{
 				ID:          types.RelID(rid),
 				PrevVersion: r.Version(),
@@ -456,7 +457,7 @@ func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *t
 		tmN = &types.TemporalMetadata{}
 		current.SetTemporal(tmN)
 	}
-	stampDeleteTombstone(tmN, now, spec.retract)
+	clamped = stampDeleteTombstone(tmN, now, spec.retract) || clamped
 
 	// Single atomic call: PutRelVersion×N + PutNodeVersion + DeleteNodeCascade.
 	// Routes through the BACKLOG 11f scoped sibling when ctx carries a scoped
@@ -472,6 +473,7 @@ func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *t
 			if err := scoped.DeleteNodeWithHistoryScoped(id, current.Version(), current, relTombstones, token); err != nil {
 				return nil, err
 			}
+			c.noteClampedClose(clamped)
 			c.opNodeDeletes.Add(1)
 			if len(cascadeRelIDs) != 0 {
 				c.opRelDeletes.Add(int64(len(cascadeRelIDs)))
@@ -482,6 +484,7 @@ func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *t
 	if err := c.store.DeleteNodeWithHistory(id, current.Version(), current, relTombstones); err != nil {
 		return nil, err
 	}
+	c.noteClampedClose(clamped)
 	c.opNodeDeletes.Add(1)
 	if len(cascadeRelIDs) != 0 {
 		c.opRelDeletes.Add(int64(len(cascadeRelIDs)))

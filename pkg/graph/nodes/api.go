@@ -657,7 +657,9 @@ func (a *API) CountByLabel(label string) (int, error) {
 // nodes: the exact count at the read coordinate in opts (valid time, a
 // transaction-time pin, Depth, After, Limit). The label's counter when opts
 // has no temporal filter, the as-of column set cached for the label and pin
-// when one is; otherwise a pass over ByLabel's candidates that decides a
+// when one is; with TxAt (and ValidAt) the label's state cut at TxAt, cached
+// for the label and pin from the second read on (no row read then);
+// otherwise a pass over ByLabel's candidates that decides a
 // candidate on its current row where that row alone answers. See
 // core.NodeOps.CountByLabelAt.
 func (a *API) CountByLabelAt(label string, opts storepkg.QueryOpts) (int, error) {

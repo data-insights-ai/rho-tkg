@@ -1,0 +1,5 @@
+# fix 2 red (pinLanded took c.mu.Lock): TestStateColumnPath_CountInsideScanCallback deadlocks; the test fails
+# at 5 s and its cleanup (Close) then hangs until the 10 min test timeout panics. Stack tail:
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-a8d0690c9fe4fa054/pkg/graph/internal/core/state_columns_test.go:483 +0x17
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-a8d0690c9fe4fa054/pkg/graph/internal/core/state_columns_test.go:505 +0x307
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-a8d0690c9fe4fa054/pkg/graph/internal/core/state_columns_test.go:493 +0x72

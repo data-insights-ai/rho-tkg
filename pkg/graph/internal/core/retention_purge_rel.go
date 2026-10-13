@@ -118,6 +118,11 @@ func (a *AdminOps) PurgeExpiredRels(ctx context.Context, policy RelPurgePolicy) 
 // for while holding c.txMu, so it must not take c.txMu (lock order txMu → mu);
 // a replica has no transactions.
 func (c *Core) purgeRelRangeAllChunks(ctx context.Context, token uint16, before types.Instant, excludeTx bool) (int, error) {
+	// The removal changes the state at pins above the watermark (the type's
+	// state cuts hold the purged relationships): invalidate the relationship
+	// cuts AFTER the chunks, on every exit path, as the node purge does; the
+	// node as-of columns stay warm (TestRelRetentionPurgeKeepsAsOfCache).
+	defer c.asOfColumns.bumpRelCuts()
 	purged := 0
 	for {
 		if err := ctx.Err(); err != nil {

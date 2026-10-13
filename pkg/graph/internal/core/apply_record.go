@@ -396,7 +396,7 @@ func (c *Core) applyNodePutLocked(body storeutil.NodePutBody, rec storepkg.Chang
 	if err := c.verifyImportedNodeHash(n, body.Wire.ID, "node"); err != nil {
 		return err
 	}
-	c.noteAppliedNodeTxFrom(n.Temporal())
+	c.noteAppliedTxFrom(n.Temporal())
 	id := n.InternalID()
 	local, gerr := c.store.GetNode(id)
 	if errors.Is(gerr, storepkg.ErrNodeNotFound) {
@@ -588,10 +588,11 @@ func (c *Core) applyForeignIncomingDeleteLocked(body storeutil.ForeignIncomingDe
 // applyNodeDeleteLocked reports every delete it applies to the as-of column
 // cache (the caller holds c.mu.Lock, so no build interleaves): a with-history
 // delete feeds the node tombstone's end — min(TxTo, DeletedAt), not its TxFrom
-// — to the node detector (a tombstone at or below a cached pin, or below the
-// applied high-water mark, ends a cached belief) and each cascaded rel
-// tombstone's end to the high-water mark; a hard delete removes every version
-// of the node, so it bumps outright.
+// — to both detectors (a tombstone at or below a cached pin, or below the
+// applied high-water mark, ends a cached belief), each cascaded rel
+// tombstone's end too, and bumps when a tombstone clamped a scheduled close
+// (closeClamped); a hard delete removes every version of the node, so it
+// bumps outright.
 func (c *Core) applyNodeDeleteLocked(body storeutil.NodeDeleteBody) error {
 	id := types.NodeID(body.ID)
 	if !body.WithHistory {
@@ -622,6 +623,7 @@ func (c *Core) applyNodeDeleteLocked(body storeutil.NodeDeleteBody) error {
 	if err != nil {
 		return fmt.Errorf("graph: apply: node delete tombstone %d: %w: %v", body.ID, ErrCorruptExport, err)
 	}
+	clamped := closeClamped(local.Temporal(), nodeTomb.Temporal())
 	relTombs := make([]storepkg.RelTombstone, 0, len(body.RelTombstones))
 	for i := range body.RelTombstones {
 		rw := body.RelTombstones[i]
@@ -633,6 +635,7 @@ func (c *Core) applyNodeDeleteLocked(body storeutil.NodeDeleteBody) error {
 		if rerr != nil {
 			return fmt.Errorf("graph: apply: cascade tombstone rel %d: %w", rw.ID, rerr)
 		}
+		clamped = clamped || closeClamped(localRel.Temporal(), rt.Temporal())
 		relTombs = append(relTombs, storepkg.RelTombstone{
 			ID:          types.RelID(rw.ID),
 			PrevVersion: localRel.Version(),
@@ -642,24 +645,35 @@ func (c *Core) applyNodeDeleteLocked(body storeutil.NodeDeleteBody) error {
 	if err := c.store.DeleteNodeWithHistory(id, local.Version(), nodeTomb, relTombs); err != nil {
 		return err
 	}
-	c.noteAppliedNodeStamp(tombstoneEnd(nodeTomb.Temporal()))
+	c.noteAppliedStamp(tombstoneEnd(nodeTomb.Temporal()))
 	for i := range relTombs {
-		c.asOfColumns.noteAppliedTx(tombstoneEnd(relTombs[i].Tombstone.Temporal()))
+		c.noteAppliedStamp(tombstoneEnd(relTombs[i].Tombstone.Temporal()))
 	}
+	c.noteClampedClose(clamped)
 	return nil
 }
 
+// closeClamped reports whether tomb, the delete tombstone of a row whose
+// stored temporal metadata was prev, clamped a close prev scheduled after
+// the delete (stampDeleteTombstone's clamp, backlog 25).
+func closeClamped(prev, tomb *types.TemporalMetadata) bool {
+	end := tombstoneEnd(tomb)
+	return prev != nil && end > 0 && prev.ValidTo > end
+}
+
 // applyRelDeleteLocked feeds a with-history tombstone's end (min(TxTo,
-// DeletedAt)) to the high-water detector, as applyRelPutLocked feeds a rel's
-// TxFrom. A rel never stales a cached column (the cache holds node label
-// columns only), so neither path checks the cached pins and a hard rel delete
-// reports nothing.
+// DeletedAt)) to both detectors, as applyRelPutLocked feeds a rel's TxFrom
+// (the state cuts hold relationship types), and reports a clamped scheduled
+// close; a hard rel delete removes every version, so it bumps outright.
 func (c *Core) applyRelDeleteLocked(body storeutil.RelDeleteBody) error {
 	id := types.RelID(body.ID)
 	if !body.WithHistory {
 		err := c.store.DeleteRelationship(id)
 		if errors.Is(err, storepkg.ErrRelNotFound) {
 			return nil
+		}
+		if err == nil {
+			c.asOfColumns.bump()
 		}
 		return err
 	}
@@ -677,10 +691,12 @@ func (c *Core) applyRelDeleteLocked(body storeutil.RelDeleteBody) error {
 	if err != nil {
 		return fmt.Errorf("graph: apply: rel delete tombstone %d: %w: %v", body.ID, ErrCorruptExport, err)
 	}
+	clamped := closeClamped(local.Temporal(), tomb.Temporal())
 	if err := c.store.DeleteRelWithHistory(id, local.Version(), tomb); err != nil {
 		return err
 	}
-	c.asOfColumns.noteAppliedTx(tombstoneEnd(tomb.Temporal()))
+	c.noteAppliedStamp(tombstoneEnd(tomb.Temporal()))
+	c.noteClampedClose(clamped)
 	return nil
 }
 
@@ -698,7 +714,7 @@ func (c *Core) applyNodeHistoryVersionLocked(body storeutil.HistoryVersionNodeBo
 	if err := c.verifyImportedNodeHash(n, body.Wire.ID, "node version"); err != nil {
 		return err
 	}
-	c.noteAppliedNodeTxFrom(n.Temporal())
+	c.noteAppliedTxFrom(n.Temporal())
 	return c.store.PutNodeVersion(n.InternalID(), uint32(body.Version), n) // #nosec G115 — version from our own wire
 }
 

@@ -478,6 +478,9 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 	if err := c.store.ReplaceNode(current); err != nil {
 		return nil, false, uniqueHold.storeWriteFailed(err)
 	}
+	// The row every pin reads changed in place: a history rewrite for the
+	// pinned caches (as-of sets, state cuts), after the store write.
+	c.asOfColumns.bump()
 
 	c.opNodeUpdates.Add(1)
 	return current, true, nil
