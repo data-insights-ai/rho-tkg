@@ -147,10 +147,13 @@ func (s *graphSourceServer) openCertified(ctx context.Context, cert graphCertifi
 			e = errLimit
 		}
 	}
+	if e == nil && s.beforePublication != nil {
+		s.beforePublication(lease)
+	}
 	s.mu.Lock()
 	s.pending--
-	if e == nil && s.closed {
-		e = replica.ErrStopped
+	if e == nil {
+		e = s.publicationContextLocked(ctx, lease)
 	}
 	if e == nil {
 		for j, l := range s.slots {

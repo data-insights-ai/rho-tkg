@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "e7dade97807e49efbef92afcb6f73fbb2f0606f8",
+  "baseCommit": "3c25e2c82185f7ee94abe2bdb076164046979ed4",
+  "originalReviewedSourceOnlyCommit": "57a5e04353f2da8f4adc7b261f2e963b538cfcab",
+  "alignedSourceOnlyCommit": "09ae55e2e328200e933dd86a02aaec416a30dfee",
+  "scope": "Native retained-source final publication boundary and one bounded P09 actual AS5/log-publication/physical-bank pin/retained-CDC-start schedule, plus six direct capture/close compatibility parents. In-process two-partition/three-native-voter fixtures; no new public feed API or complete V2/engine/fault-matrix acceptance.",
+  "behavior": "If call, server or lease context is cancelled after genuine native capture, creation returns zero metadata/cookie and preserves errors.Is cancellation causes. Closed owner retains ErrStopped. Native view/moveMeta cleanup remains outside server/Host locks. Capture/admission/consensus/storage semantics unchanged.",
+  "sourceSHA256": {
+    "v5/internal/graphapply/certified_graph_source.go": "dde4529749dde4b79c04e06e48e428b8cf700f2aed9726483aba789a34b9a4a3",
+    "v5/internal/graphapply/graph_source_publication_gc_test.go": "ff4caf6b91878c5c17b7e7cb40d98babe15930aa7cac7a3abe4be8c102eb823a",
+    "v5/internal/graphapply/graph_source_publication_test.go": "ac2d90165c71e813f8e8771479b1f7baacb08c27dc91d49ade843c8379f86456",
+    "v5/internal/graphapply/graph_source_session.go": "78e9b3ca68277152347277ddd2c341ad8f600ab7f7e7118ef7c05f12eabfc683",
+    "v5/internal/graphapply/range_move_source.go": "31ab50b49e11e52899f2269b0f9884ec1393058a7b3f557250349c6650bb5fdb"
+  },
+  "parents": [
+    "TestGraphSourcePublicationCancelledAfterNativeCaptureReturnsNoCookie",
+    "TestGraphSourcePublicationPinsActualRetiredBankAndRetainedCDCStart",
+    "TestGraphSourceSessionDirectAdmissionReplayAndLifetime",
+    "TestGraphSourceExpiryCancelsPausedNativeData",
+    "TestGraphSourceDirectCloseCancelsPausedNativeData",
+    "TestCertifiedGraphSourceNativeCaptureRefusesWrongMissingCancelledAndClosedAuthority",
+    "TestCertifiedGraphSourceNativeCaptureRetainsExactHistoricalRootAndOwnsSessionLifetime",
+    "TestRangeMoveFrozenNativeTTLClosesCaptureAndManifestWithoutRecapture"
+  ],
+  "redControl": {
+    "session": 62940,
+    "exitCode": 1,
+    "failedCases": [
+      "TestGraphSourcePublicationCancelledAfterNativeCaptureReturnsNoCookie/configuration/operation",
+      "TestGraphSourcePublicationCancelledAfterNativeCaptureReturnsNoCookie/configuration/owner",
+      "TestGraphSourcePublicationCancelledAfterNativeCaptureReturnsNoCookie/certified/operation",
+      "TestGraphSourcePublicationCancelledAfterNativeCaptureReturnsNoCookie/certified/owner",
+      "TestGraphSourcePublicationCancelledAfterNativeCaptureReturnsNoCookie/move/operation",
+      "TestGraphSourcePublicationCancelledAfterNativeCaptureReturnsNoCookie/move/owner"
+    ],
+    "failure": "Every case reached actual native capture then returned zero=false, err=nil after call/owner cancellation. No fixture failures/skips. Original six-case source+raw logs retained.",
+    "cleanup": "Registered fixture cleanup reported no errors; RED fails before positive ledger assertions. No external native child-process probes or clean process-reap claim."
+  },
+  "gates": {
+    "normal": {
+      "session": 6296,
+      "terminalExit": 0,
+      "passedParents": 8,
+      "passedSubtests": 10,
+      "failed": 0,
+      "skipped": 0,
+      "elapsedSeconds": 28.432,
+      "peakTreeRSSMiB": 960.031
+    },
+    "race": {
+      "session": 22237,
+      "terminalExit": 0,
+      "passedParents": 8,
+      "passedSubtests": 10,
+      "failed": 0,
+      "skipped": 0,
+      "elapsedSeconds": 43.083,
+      "peakTreeRSSMiB": 929.156
+    },
+    "coverage": {
+      "session": 74996,
+      "terminalExit": 0,
+      "passedParents": 8,
+      "passedSubtests": 10,
+      "failed": 0,
+      "skipped": 0,
+      "elapsedSeconds": 28.718,
+      "peakTreeRSSMiB": 1079.344
+    },
+    "vet": {
+      "session": 64342,
+      "terminalExit": 0,
+      "elapsedSeconds": 1.694,
+      "peakTreeRSSMiB": 287.625
+    },
+    "final-lint": {
+      "session": 20748,
+      "terminalExit": 0,
+      "elapsedSeconds": 30.174,
+      "peakTreeRSSMiB": 1664.719
+    },
+    "coverfunc": {
+      "session": null,
+      "terminalExit": 0,
+      "elapsedSeconds": 0.325,
+      "peakTreeRSSMiB": 1.172
+    }
+  },
+  "coverage": {
+    "sharedNewGuardPercent": 100.0,
+    "profileSHA256": "4db5d8df6e8d53397d194ac1ec89261bf70d5f97fefc374fff7adb704d2b0865",
+    "scope": "Exact eight-parent selection; not full-module coverage. Three caller redirections and nil-default latch paths exercised."
+  },
+  "intermediateFailures": [
+    {
+      "kind": "mechanical test style",
+      "session": 89828,
+      "finding": "QF1003 tagged switch; replaced equivalent string if chain",
+      "originalRawLimitation": "Original lint raw files accidentally overwritten by second unchanged-source lint after correction helper used wrong module-relative path. Exact original tool-output metrics retained in first-lint-observation.json; second raw failure retained."
+    },
+    {
+      "kind": "qualifier working-directory setup",
+      "finding": "One go-list inventory invocation used root module path; refused directory-not-found before behavior execution; raw retained and corrected to v5 module."
+    },
+    {
+      "kind": "fixture API selection",
+      "session": 19699,
+      "finding": "Current LifeBound cross-edge projection used one-partition source and correctly returned ErrDistributedParticipantRequired. Replaced only that current assertion with genuine two-partition view at actual completed cut; exact old/current assertions preserved. All seven cancellation cases and six compatibility parents already passed."
+    }
+  ],
+  "witnesses": [
+    "All seven final cancellation/closed-owner cases assert zero result, original cause, native root closure, exact view/view-byte restoration, zero pending/live slot; closed owner also terminates Close.",
+    "Pause after actual certified view acquisition before cookie publication; source real recovery prefix compacted, original source-owned MsgSnap/AS5 prepared stream activated through actual Driver Ready.",
+    "Retired physical bank reuse refuses while prepublication view owns it. Published cookie retains exact old generation/index/image; old cut is nonempty and changes remain invisible there.",
+    "Actual A-only resolution exists; real Fresh resolves B before exposing completed certified cut. Both original TxID envelopes decode and every application envelope from old cut to completed cut remains byte-exact on all native voters after publication.",
+    "Last captured owner release permits inactive bank reuse/abort; active generation remains2 and old nonempty graph cut reconstructs from durable retained certificate/root in active AS5 bank."
+  ],
+  "limits": {
+    "perCommandWallSeconds": 180,
+    "perCommandAggregateRSSMiB": 4096,
+    "goTestTimeoutSeconds": 150,
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOMEMLIMIT": "2GiB",
+      "GOFLAGS": "-p=1",
+      "GOWORK": "off",
+      "GOTOOLCHAIN": "local"
+    },
+    "noBoundsWidened": true
+  },
+  "toolsSHA256": {
+    "go": "318dee99db233501f6c419fbb4616e5a345ed0b831dbd6c7669b24e1ff8e9e2e",
+    "golangci-lint": "5a88e04e56c1ccd7617c01666df23e5767d7a12cf21bac2c02e3170d67a27eef",
+    "limiter": "6dc4e0362827ecd0854436b9fa1a812342b693d65ba093291d358b359e733283"
+  },
+  "staticScopeNote": "Standalone scoped vet passed before test-only tagged-switch/projection corrections. Final pinned package lint includes govet and passed on frozen final source. No standalone vet rerun/full module gates.",
+  "archive": {
+    "path": "tasks/evidence/v2-source-publication-p09-20261012/qualification.tar.gz",
+    "bytes": 165585,
+    "members": 67,
+    "sha256": "f3e15b0b2b070ecf9a32f65fff7e307f08445fa8cc235020230a61de0fc0e0b9"
+  },
+  "rawEvidenceSHA256": {
+    "coverage-watchdog.json": "0ab0ac683a52b850936b6124812aab8ab41c3e974607f3a30d255244fcc3237d",
+    "coverage.jsonl": "ac8b1bff39a9e4776b9b37f0f326a69ce2b32bb2e2c714ef8e4e3fa496d902d7",
+    "coverage.out": "4db5d8df6e8d53397d194ac1ec89261bf70d5f97fefc374fff7adb704d2b0865",
+    "coverage.stderr": "b41ab020a60c3086c824695d5e96bd069082a7b18b9f7f986b95c54ba1c80d07",
+    "coverfunc-watchdog.json": "4418861808df668b014e6ad497f9b1bda47a2a097651ca80969a60bc7d43521c",
+    "coverfunc.stderr": "0a94227fbf33ce84408342757d53d2d6f79cca8b08ec6d51de5099046ba6795d",
+    "coverfunc.stdout": "413bb21ca068d66eedf4337bc89fbd543b906c2be964c89e9c65b32462be889f",
+    "final-format-watchdog.json": "dfcfa74b6ce089c1c7795f5156a0c4d04f78c8d2c91a14bea5f4f71bea06f805",
+    "final-format.stderr": "8a1183401202b4cafbe03948b03d64122ed89db39955c8a7fbcacaa6e7cbd012",
+    "final-format.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "final-lint-watchdog.json": "23da48531ed9a3ca635d4e2c7f697379df6c0fc6b1297afddf63b371443609c0",
+    "final-lint.stderr": "33eb327cf220dffc98d16671bad7cc442b376f05a7541c2505efb10a8515f7fe",
+    "final-lint.stdout": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47",
+    "final-source-hashes.json": "4f3d3b7ec1eefa3a99f8c51ee6c57c4592c9e61128fe6eeee841eb8fcc5091d1",
+    "first-inventory-watchdog.json": "7ac9031449c099fd2620343db80d23fd4ac0b687947507645929fd37e76968a7",
+    "first-inventory.stderr": "a45110416230d9442dbdd67bf990cd25202daa2168fae86fda39c5801adfbfcb",
+    "first-inventory.stdout": "8173820bd3a47d0c9491c36179b6631e7f8eedd12fe778a8bd6059030cf96f3c",
+    "first-lint-observation.json": "053af0dafc9ae8df4c847e4c96977a343be00fa07d0d45cbe8445376c83fbb43",
+    "first-normal-gc-source.go.txt": "eb1a56bf9fc12997f725eb16a00ed7b36893c3b30da20238de84828b437bdd3c",
+    "first-normal-selected.json": "690e8ad863be30ef8756150a6a9ea6a408607c84c93b336dc534bd7b1826080d",
+    "first-normal-watchdog.json": "1122e5a6d73f5354ee6eb2b0c09e30a13ef2b6855ef598567ad148f803c555ba",
+    "first-normal.jsonl": "5e07baa2397b4a4a4083b0762ba5accc8543c48836f84550c36877a2d2fd34e9",
+    "first-normal.stderr": "d4955fc5ed843fafe5bb84f2fe206a0e334c8f0526a97af0266b3d3113f27da1",
+    "fixed-format-watchdog.json": "06a0ce7b86bd0b9147712ee55d215ecc6036d9b806b9deca4e19471623312769",
+    "fixed-format.stderr": "9a3e9251acc6069e050f1d46946bf13279e49e47117ea047d1909d2c9d8b166f",
+    "fixed-format.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "format-watchdog.json": "c706c8094f0200b30a4c80f27a3e6c09db578a4cdf3f0c499e451fd9c616c7b8",
+    "format.stderr": "6ea9e0403a25d8673f2c12fd1836dbfdeb263169bf9d447b7651d2b7f946bf5f",
+    "format.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gc-format-watchdog.json": "5c5bb46851a5ccb5d046a97cd8791b57f064ac6dbb49f9169e4b40ff2c94a0ce",
+    "gc-format.stderr": "8af48b7b42613abec5a9d62db6c6d82dc9783c6533ac1a0439d4ceed5d950ab8",
+    "gc-format.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "inputs.json": "3f80d12a5272745552de3eabadd217b5398ec7e9ad64789f57275208a9839e5a",
+    "inventory-watchdog.json": "230347c2c3dc6a0cf379b3ed987a18005c401cc6cbda10affe95fa2059929127",
+    "inventory.stderr": "1f611bd56eeea4f2a3073e1021c5104170116cef3dc46b06148609065dd9a95d",
+    "inventory.stdout": "34273b60db11da9209981f4747ab70d410307621dcbc4cdd2ebea8673686fa67",
+    "limit-local.py": "6dc4e0362827ecd0854436b9fa1a812342b693d65ba093291d358b359e733283",
+    "lint-watchdog.json": "2332efb6911699c943b00cbaeafafe7eacfaf72dba67e7853391fa77ce1435c8",
+    "lint.stderr": "109f33848a54cfd7d28b7ff9761e7209f38029a9ebdde9ca43ac8be5b0861315",
+    "lint.stdout": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47",
+    "normal-watchdog.json": "4e4086ed3174622e373fc3657a8fd3ad3d30f2597f7b090bfd17b7ccb0a95e27",
+    "normal.jsonl": "cbb6ea99016928e057c4104771366c0262a99b125d278da8d8bd57534391f933",
+    "normal.stderr": "ddd3a55699b997d0dab87bf190317a0064a8dfddaf2eec5b5294e52c431be06f",
+    "race-watchdog.json": "f02d7e94cfcccac0741b6b5be98c30658bd1386c891c78b597441c01d9e5a30a",
+    "race.jsonl": "37ee362ccaaa04b18f7ddb833b8f6d64fac6497516416d6d9e9910150e4afce4",
+    "race.stderr": "46b1fa119b330211c2ef4a1a41a543549d256a74647e30e98d2f11e1bc460e41",
+    "red-source/certified_graph_source.go": "c3c538507b5580b733b046604358d81ab9741588e051e7f644f8dc2913fdf0db",
+    "red-source/graph_source_publication_gc_test.go": "eb1a56bf9fc12997f725eb16a00ed7b36893c3b30da20238de84828b437bdd3c",
+    "red-source/graph_source_publication_test.go": "32511b28df893ef2709d9d75e0b43f2a535a6911e4f48060e0355ab384b6da1d",
+    "red-source/graph_source_session.go": "78e0ea077a8261395fca064941b7450adc6ed8b0555b28fdec6cac0f693863b9",
+    "red-source/range_move_source.go": "cf15d828691c5801018fd3b90a466707fdd456aed8caddcdca783fbd53074fca",
+    "red-source/source-hashes.json": "d8b29c924d6f960a115063a5c9c866729c822f4d0d81a7d329b0ec4923e1a672",
+    "red-watchdog.json": "b13db992d84b7f28d9c1d3646318b522ad74f29c97da9eb02743759e4c8a167d",
+    "red.jsonl": "24ae270d7114b312081c7e212af49ea5308f7b5a70da760d55b3b7937dfea129",
+    "red.stderr": "516842fd5ff07cc7a8271b9ae09e2650526a71610120c9327e8a739d15efcb62",
+    "second-lint-watchdog.json": "700bf0315791fef87d1e1ba5f98ae1ab6662c087d6e67eea672ed9448884f921",
+    "second-lint.stderr": "8899b9f39cff47498e96d28335af6b4431a02b9c36c5bc4440df762b1e4cd98f",
+    "second-lint.stdout": "8ba894d5062be6c65b791edec5966e06942835e17c5b9ed5daf7ac45c0cc9188",
+    "selected.json": "853740546697d7f95692fd1ecf255045208a0d7ad06ad2a7688d46745d357454",
+    "source-diff.patch": "ba38fab2ba4f17f7ab26bc532ea45dcabcd2b082747b8941688a67779a7d64b8",
+    "switch-format-watchdog.json": "42b4e5697971f49d65f449809439dee7e9b7d5a82dc90650db00097d9117494b",
+    "switch-format.stderr": "9976c4c2a439972b33ba1d4ad38d62480b3cd4720850a6e780eb1d495b484e5d",
+    "switch-format.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchain-version.txt": "4b7369cf043da7b3b8d638a16011a35d6de2efe861e0bd344fb0011f91515b9e",
+    "vet-watchdog.json": "f342d59c4de6518d224ea81110c0009cde00ca6cd7d4ee40273b77913f5edbf8",
+    "vet.stderr": "a2ecd606d950fe087eb28e47b781f96fb14d3635156a7a5b961dbe8e11696829",
+    "vet.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "runtimeLease": "All terminal handles consumed; explicitly released to P07/v2 before source/evidence packaging.",
+  "limitations": [
+    "No process-kill, power-loss, external FDB comparison or physical-host claims.",
+    "Retain-all/backpressure semantics preserved; unreachable physical generations and recovery-log prefix reclamation distinguished from graph-history expiry.",
+    "No public standalone feed/cursor assembler implemented or claimed; P07 combined handoff/CDC remains separate lane.",
+    "Historical audit and qualification pins unchanged."
+  ]
+}

@@ -545,6 +545,22 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    all 15 incarnations. This closes the selected recovery/paired-fault component,
    not remaining fault/cost matrices or the engine decision. Prefix fallback may
    require additional syncs and still has no performance claim.
+   [Source publication and pin reclamation](evidence/v2-source-publication-p09-20261012/receipt.json)
+   and the [combined P07 handoff](evidence/v2-p07-combined-handoff-cdc-20261012/receipt.json)
+   are now integrated and locally qualified. Publication refuses cancellation
+   after capture, returning no cookie and releasing its native views. Actual AS5
+   activation preserves a captured old bank until the last owner releases it,
+   with the original retained CDC start intact. P07 combines a lost committed
+   reply, partial participant installation, exact retry, handoff, target follower
+   reopen, stale authority refusals and genuine recovery-prefix reclamation;
+   exact old/current graph and index answers and complete original CDC survive.
+   P09's eight focused parents and P07's single composed parent pass normal,
+   race and scoped coverage; configured scoped vet/lint pass and the new
+   publication guard is fully covered. These are in-process six-voter component
+   proofs; portable public feeds, remaining fault/cost matrices and V2 closure
+   remain open. Routine hosted recovery integration is qualified by the
+   [focused CI record](evidence/change-aware-ci-20261012/hosted-ci-bb439e35.json);
+   the newly integrated P07/P09 source still requires its combined checkpoint.
    The
    [bounded voting/control model](evidence/v2-graph-lifecycle-admission/replacement-model.py)
    passes 5,040 event schedules and 11 finite checks, independently rerun against

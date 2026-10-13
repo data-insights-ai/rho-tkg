@@ -413,6 +413,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Internal v5 retained-source creation now checks call, owner and lease
+  cancellation again after native capture and before publishing a cookie.
+  Refusals return zero metadata, preserve cancellation causes and closed-owner
+  errors, and release captured views outside server and Host locks.
+
 - Fixed internal v5 replica catch-up stalling when a valid native Raft Ready
   exceeds retained application capacity although ordered prefixes fit. Recovery
   now persists and applies bounded prefixes while preserving the original commit
