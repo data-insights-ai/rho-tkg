@@ -1,0 +1,190 @@
+{
+  "run": {
+    "status": "completed",
+    "conclusion": "success",
+    "headSha": "c13f50be4a8894914abff190674f345cd520fecd",
+    "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38353916483"
+  },
+  "capturedAt": "2026-10-13T07:57:54.857086+00:00",
+  "jobs": [
+    {
+      "name": "changes",
+      "conclusion": "success",
+      "databaseId": 115152303983,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38353916483/job/115152303983"
+    },
+    {
+      "name": "lint (v5, v5/go.mod, ../.golangci.yml, false)",
+      "conclusion": "success",
+      "databaseId": 115152346789,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38353916483/job/115152346789"
+    },
+    {
+      "name": "focused (v5, v5/go.mod, ../.golangci.yml, false)",
+      "conclusion": "success",
+      "databaseId": 115152346799,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38353916483/job/115152346799"
+    },
+    {
+      "name": "security (v5, v5/go.mod, ../.golangci.yml, false)",
+      "conclusion": "success",
+      "databaseId": 115152346928,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38353916483/job/115152346928"
+    },
+    {
+      "name": "comparison-correctness",
+      "conclusion": "skipped",
+      "databaseId": 115152347834,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38353916483/job/115152347834"
+    },
+    {
+      "name": "coverage",
+      "conclusion": "skipped",
+      "databaseId": 115152347860,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38353916483/job/115152347860"
+    },
+    {
+      "name": "test",
+      "conclusion": "skipped",
+      "databaseId": 115152348085,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38353916483/job/115152348085"
+    },
+    {
+      "name": "migration-preflight",
+      "conclusion": "skipped",
+      "databaseId": 115152348158,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38353916483/job/115152348158"
+    },
+    {
+      "name": "external-fdb-record",
+      "conclusion": "skipped",
+      "databaseId": 115152348466,
+      "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38353916483/job/115152348466"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": 11792770154,
+      "name": "focused-behavior-v5",
+      "size_in_bytes": 188766,
+      "digest": "sha256:122b6e6be936b15a15a2623094c59bb30c70c118aaa210f831a0dddd75d079f1",
+      "expires_at": "2026-10-27T06:01:27Z"
+    }
+  ],
+  "selection": {
+    "module": "v5",
+    "paths": [
+      "CHANGELOG.md",
+      "tasks/backlog.md",
+      "tasks/evidence/v2-p07-combined-handoff-cdc-20261012/raw.tar.gz",
+      "tasks/evidence/v2-p07-combined-handoff-cdc-20261012/receipt.json",
+      "tasks/evidence/v2-source-publication-p09-20261012/qualification.tar.gz",
+      "tasks/evidence/v2-source-publication-p09-20261012/receipt.json",
+      "v5/internal/graphapply/certified_graph_source.go",
+      "v5/internal/graphapply/graph_source_publication_gc_test.go",
+      "v5/internal/graphapply/graph_source_publication_test.go",
+      "v5/internal/graphapply/graph_source_session.go",
+      "v5/internal/graphapply/range_move_p07_retained_cdc_test.go",
+      "v5/internal/graphapply/range_move_source.go"
+    ],
+    "selections": [
+      {
+        "packages": [
+          "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply"
+        ],
+        "parents": [
+          "TestCertifiedGraphActualAS5ActivationKeepsHeldCertifiedSourceAndReopensCut",
+          "TestCertifiedGraphFollowerBarrierReopenAndHeldCutHistory",
+          "TestCertifiedGraphSourceAuthenticatedCaptureChecksBindingBudgetAndCancellationLifetime",
+          "TestCertifiedGraphSourceInfoCodecOwnsNativeHistoricalMetadataAndRejectsInvalidFields",
+          "TestCertifiedGraphSourceInfoDecoderRejectsTruncatedResealedAndOversizedMetadata",
+          "TestCertifiedGraphSourceNativeCaptureRefusesWrongMissingCancelledAndClosedAuthority",
+          "TestCertifiedGraphSourceNativeCaptureRetainsExactHistoricalRootAndOwnsSessionLifetime",
+          "TestGraphReplacementActivationNativeHistoryAllocatorAndLifetime",
+          "TestGraphReplacementAdmissionNativeSurvivingQuorumAllAgreements",
+          "TestGraphReplacementRevocationFencesHostAndSourceBeforeAsyncClose",
+          "TestGraphSourceDirectCloseCancelsPausedNativeData",
+          "TestGraphSourceExpiryCancelsPausedNativeData",
+          "TestGraphSourceHostCloseDetachesBeforeEventRefusal",
+          "TestGraphSourcePublicationCancelledAfterNativeCaptureReturnsNoCookie",
+          "TestGraphSourcePublicationPinsActualRetiredBankAndRetainedCDCStart",
+          "TestGraphSourceSessionDirectAdmissionReplayAndLifetime",
+          "TestPartitionWritesBothGroupsPreserveTypedAuthorityHistoryAndReopen",
+          "TestRangeMoveCompletedHandoffCopiesNativeCrossDecisionsAndDedupWithKeeperOffline",
+          "TestRangeMoveP07LostCommittedRequestRetainedCutAndCDCThroughReclaim",
+          "TestRangeMovePartialActivationRestoresOriginalCommitAndOldCertifiedCut"
+        ]
+      }
+    ]
+  },
+  "observedBehavior": [
+    {
+      "file": "coverage-0.jsonl",
+      "sha256": "cdebea6e3dff861e6af4aeb749411b808e8168332c49d0c0efb85f9d0e8f39d6",
+      "bytes": 914034,
+      "passedParents": 20,
+      "passedCases": 72,
+      "requiredPass": [
+        "TestGraphSourcePublicationCancelledAfterNativeCaptureReturnsNoCookie",
+        "TestGraphSourcePublicationPinsActualRetiredBankAndRetainedCDCStart",
+        "TestRangeMoveP07LostCommittedRequestRetainedCutAndCDCThroughReclaim"
+      ],
+      "packageSeconds": {
+        "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply": 9.8
+      }
+    },
+    {
+      "file": "normal-0.jsonl",
+      "sha256": "639d49b43883ad6a86d627243bcbee44b227c08134687c41df5b3276f4659ad3",
+      "bytes": 913892,
+      "passedParents": 20,
+      "passedCases": 72,
+      "requiredPass": [
+        "TestGraphSourcePublicationCancelledAfterNativeCaptureReturnsNoCookie",
+        "TestGraphSourcePublicationPinsActualRetiredBankAndRetainedCDCStart",
+        "TestRangeMoveP07LostCommittedRequestRetainedCutAndCDCThroughReclaim"
+      ],
+      "packageSeconds": {
+        "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply": 9.064
+      }
+    },
+    {
+      "file": "race-0.jsonl",
+      "sha256": "cc986469f0337ad0253ff381a1ccbb219137636c7f75afda4f4d882a6600c6e0",
+      "bytes": 913828,
+      "passedParents": 20,
+      "passedCases": 72,
+      "requiredPass": [
+        "TestGraphSourcePublicationCancelledAfterNativeCaptureReturnsNoCookie",
+        "TestGraphSourcePublicationPinsActualRetiredBankAndRetainedCDCStart",
+        "TestRangeMoveP07LostCommittedRequestRetainedCutAndCDCThroughReclaim"
+      ],
+      "packageSeconds": {
+        "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply": 64.892
+      }
+    }
+  ],
+  "rawArtifactMembers": {
+    "coverage-0.jsonl": {
+      "sha256": "cdebea6e3dff861e6af4aeb749411b808e8168332c49d0c0efb85f9d0e8f39d6",
+      "bytes": 914034
+    },
+    "coverage-0.out": {
+      "sha256": "53c35ef868a6adb14524dc8e9fd3f51fb9369a56a4cf10effd3e313c8df66185",
+      "bytes": 936462
+    },
+    "normal-0.jsonl": {
+      "sha256": "639d49b43883ad6a86d627243bcbee44b227c08134687c41df5b3276f4659ad3",
+      "bytes": 913892
+    },
+    "race-0.jsonl": {
+      "sha256": "cc986469f0337ad0253ff381a1ccbb219137636c7f75afda4f4d882a6600c6e0",
+      "bytes": 913828
+    },
+    "selection.json": {
+      "sha256": "2775f8e5786eb1d94ea57c03df08114090858450470437e48faa20a9191b5456",
+      "bytes": 2480
+    }
+  },
+  "scope": "Integrated P07/P09 and directly affected source/capture compatibility: exact twenty parents and seventy-two parent/subtest cases pass once in each normal/race/scoped coverage mode with no skips/failures. v5 build/fmt/vet/configured lint/security/vulnerability pass. Full suites, comparison, migration and external FDB intentionally outside this routine checkpoint. Does not close remaining fault/cost matrix, engine choice, public feed or full V2."
+}

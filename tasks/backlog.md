@@ -560,7 +560,9 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    proofs; portable public feeds, remaining fault/cost matrices and V2 closure
    remain open. Routine hosted recovery integration is qualified by the
    [focused CI record](evidence/change-aware-ci-20261012/hosted-ci-bb439e35.json);
-   the newly integrated P07/P09 source still requires its combined checkpoint.
+   the [combined P07/P09 checkpoint](evidence/change-aware-ci-20261012/hosted-ci-c13f50be.json)
+   passes all 20 selected parents in normal/race/scoped coverage, plus the v5
+   build and static gates. Unrelated full suites were not repeated.
    The
    [bounded voting/control model](evidence/v2-graph-lifecycle-admission/replacement-model.py)
    passes 5,040 event schedules and 11 finite checks, independently rerun against
