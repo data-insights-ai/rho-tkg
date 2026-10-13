@@ -1,0 +1,542 @@
+{
+  "kind": "migration-preflight-current-v4-reader-local-qualification",
+  "date": "2026-10-13",
+  "source": {
+    "qualification_commit": "9e805ddc530436fa36148aacb370c5ae624f0b73",
+    "qualification_tree": "2d2d996e2a422292bf54d14f33738bf6e4c870f7",
+    "upstream_main": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
+    "upstream_release": "v4.51.4",
+    "reader_selection": "v4.51.4 requirement with local replace ../.. selects exact integrated root; v5 public values selected with local replace ../../v5. Local source qualification, not shipped binary reproduction.",
+    "input_manifest": "inputs.json",
+    "source_equality": "Every captured tracked Go/module/Makefile/config source hash unchanged after all ten gates."
+  },
+  "environment": {
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off",
+    "GOTOOLCHAIN": "local",
+    "GOBIN": "/var/tmp/rho-v5-migrate-main4514-20261013/scanner-bin",
+    "PATH": "/var/tmp/rho-v5-migrate-main4514-20261013/scanner-bin:/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin:/opt/homebrew/bin:/usr/bin:/bin"
+  },
+  "compiler_path": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+  "compiler_sha256": "318dee99db233501f6c419fbb4616e5a345ed0b831dbd6c7669b24e1ff8e9e2e",
+  "toolchain_VERSION_sha256": "4b7369cf043da7b3b8d638a16011a35d6de2efe861e0bd344fb0011f91515b9e",
+  "limits": {
+    "wall_seconds_per_command": 180,
+    "sampled_process_tree_rss_mib": 4096,
+    "limiter_sha256": "6dc4e0362827ecd0854436b9fa1a812342b693d65ba093291d358b359e733283",
+    "qualification": "Serial commands under exclusive heavy lease; sampled watchdog is not a kernel resource or power-loss guarantee."
+  },
+  "scanner_executable_sha256": {
+    "golangci-lint": "5a88e04e56c1ccd7617c01666df23e5767d7a12cf21bac2c02e3170d67a27eef",
+    "gosec": "37117fce9ed7012d9f754b01b49a76f059595fa8fc05c6bb9eff8c7b9bd8c2da",
+    "govulncheck": "7e84b57e53de1ac85b4ac78d003cb6c043e6defce77e38b71a6f5907680ea178"
+  },
+  "ten_gate_targets": [
+    "fmt-check",
+    "vet",
+    "build",
+    "test",
+    "test-race",
+    "cover-gate",
+    "tools",
+    "lint",
+    "security",
+    "vulncheck"
+  ],
+  "checks": {
+    "compiler-env": {
+      "gate": false,
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "env",
+        "GOVERSION",
+        "GOOS",
+        "GOARCH",
+        "GOROOT",
+        "GOMOD",
+        "GOWORK"
+      ],
+      "supervisorPID": 46837,
+      "startedUnix": 1791884583.719297,
+      "finishedUnix": 1791884583.8160331,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "env",
+          "GOVERSION",
+          "GOOS",
+          "GOARCH",
+          "GOROOT",
+          "GOMOD",
+          "GOWORK"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 0.031,
+        "elapsed_s": 0.049,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "modules": {
+      "gate": false,
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "list",
+        "-m",
+        "-json",
+        "all"
+      ],
+      "supervisorPID": 46841,
+      "startedUnix": 1791884583.8163772,
+      "finishedUnix": 1791884583.896301,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "list",
+          "-m",
+          "-json",
+          "all"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 6.203,
+        "elapsed_s": 0.044,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "fmt-check": {
+      "gate": true,
+      "command": [
+        "make",
+        "fmt-check",
+        "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+      ],
+      "supervisorPID": 46845,
+      "startedUnix": 1791884583.896636,
+      "finishedUnix": 1791884584.2658198,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "make",
+          "fmt-check",
+          "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 4.328,
+        "elapsed_s": 0.333,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "vet": {
+      "gate": true,
+      "command": [
+        "make",
+        "vet",
+        "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+      ],
+      "supervisorPID": 46860,
+      "startedUnix": 1791884584.266168,
+      "finishedUnix": 1791884592.59709,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "make",
+          "vet",
+          "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 367.828,
+        "elapsed_s": 8.293,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "build": {
+      "gate": true,
+      "command": [
+        "make",
+        "build",
+        "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+      ],
+      "supervisorPID": 47062,
+      "startedUnix": 1791884592.597478,
+      "finishedUnix": 1791884592.956372,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "make",
+          "build",
+          "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 4.672,
+        "elapsed_s": 0.319,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "test": {
+      "gate": true,
+      "command": [
+        "make",
+        "test",
+        "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+      ],
+      "supervisorPID": 47076,
+      "startedUnix": 1791884592.957045,
+      "finishedUnix": 1791884596.128533,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "make",
+          "test",
+          "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 242.312,
+        "elapsed_s": 3.133,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "test-race": {
+      "gate": true,
+      "command": [
+        "make",
+        "test-race",
+        "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+      ],
+      "supervisorPID": 47191,
+      "startedUnix": 1791884596.128948,
+      "finishedUnix": 1791884608.9608479,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "make",
+          "test-race",
+          "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 379.281,
+        "elapsed_s": 12.794,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "cover-gate": {
+      "gate": true,
+      "command": [
+        "make",
+        "cover-gate",
+        "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+      ],
+      "supervisorPID": 47431,
+      "startedUnix": 1791884608.961226,
+      "finishedUnix": 1791884610.713983,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "make",
+          "cover-gate",
+          "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 317.469,
+        "elapsed_s": 1.715,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "tools": {
+      "gate": true,
+      "command": [
+        "make",
+        "tools",
+        "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+      ],
+      "supervisorPID": 47485,
+      "startedUnix": 1791884610.7146308,
+      "finishedUnix": 1791884622.114645,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "make",
+          "tools",
+          "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1321.297,
+        "elapsed_s": 11.363,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "golangci-lint-identity": {
+      "gate": false,
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "version",
+        "-m",
+        "/var/tmp/rho-v5-migrate-main4514-20261013/scanner-bin/golangci-lint"
+      ],
+      "supervisorPID": 47663,
+      "startedUnix": 1791884622.115076,
+      "finishedUnix": 1791884622.19556,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "version",
+          "-m",
+          "/var/tmp/rho-v5-migrate-main4514-20261013/scanner-bin/golangci-lint"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 6.125,
+        "elapsed_s": 0.043,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "gosec-identity": {
+      "gate": false,
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "version",
+        "-m",
+        "/var/tmp/rho-v5-migrate-main4514-20261013/scanner-bin/gosec"
+      ],
+      "supervisorPID": 47667,
+      "startedUnix": 1791884622.1959481,
+      "finishedUnix": 1791884622.277784,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "version",
+          "-m",
+          "/var/tmp/rho-v5-migrate-main4514-20261013/scanner-bin/gosec"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 6.5,
+        "elapsed_s": 0.043,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "govulncheck-identity": {
+      "gate": false,
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "version",
+        "-m",
+        "/var/tmp/rho-v5-migrate-main4514-20261013/scanner-bin/govulncheck"
+      ],
+      "supervisorPID": 47671,
+      "startedUnix": 1791884622.278255,
+      "finishedUnix": 1791884622.3595011,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "version",
+          "-m",
+          "/var/tmp/rho-v5-migrate-main4514-20261013/scanner-bin/govulncheck"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 6.125,
+        "elapsed_s": 0.044,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "lint": {
+      "gate": true,
+      "command": [
+        "make",
+        "lint",
+        "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+      ],
+      "supervisorPID": 47675,
+      "startedUnix": 1791884622.359966,
+      "finishedUnix": 1791884626.889786,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "make",
+          "lint",
+          "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 511.406,
+        "elapsed_s": 4.492,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "security": {
+      "gate": true,
+      "command": [
+        "make",
+        "security",
+        "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+      ],
+      "supervisorPID": 47745,
+      "startedUnix": 1791884626.8902578,
+      "finishedUnix": 1791884628.129637,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "make",
+          "security",
+          "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 114.688,
+        "elapsed_s": 1.199,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "vulncheck": {
+      "gate": true,
+      "command": [
+        "make",
+        "vulncheck",
+        "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+      ],
+      "supervisorPID": 47780,
+      "startedUnix": 1791884628.130144,
+      "finishedUnix": 1791884630.7048051,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "make",
+          "vulncheck",
+          "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1145.031,
+        "elapsed_s": 2.535,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    }
+  },
+  "coverage_percent": {
+    "PreflightNode": 100.0,
+    "PreflightRel": 100.0,
+    "mapSpan": 80.0,
+    "total": 96.2
+  },
+  "coverage_out_sha256": "3158ad5abdcdae2f7e18060b936c0680eb0d623fa24ec955dc071ec16b582ef0",
+  "tool_session": {
+    "execSession": 62108,
+    "terminalExit": 0,
+    "terminalChunk": "406f86"
+  },
+  "raw_evidence_sha256": {
+    "build-profile.json": "c4aeac7f19b660785c285b3c920cb280a45f4857683b4f0de3324e081472ce93",
+    "build.stderr": "e6f180b52c015ef7e2cc76ae3a229e523f0487f9a437da5d33c4d51f9a1ad99a",
+    "build.stdout": "509b7ed4a8f9284703d62cb0b52cda1b51bae80bd93551d22789debec0a3606e",
+    "checks.json": "68d87a7e27428e3559af5ca64df9423d5eb92f825cfb96ab8c0d6523add9e204",
+    "compiler-env-profile.json": "00c26938651df3793e54d7898081f3e53f73e6a530664575b3754c28b2c03ca3",
+    "compiler-env.stderr": "bb2b184555c71277e56896e40f221a461a4e922b3339d8416d9c905c01106470",
+    "compiler-env.stdout": "4a2f24fea7d945f246f27c0a5da38920512c52d4b3ab29cdd229db9be2036791",
+    "cover-gate-profile.json": "b9c129cb45293e95fabd5c805628934c6dc14fc88ad7cc77107091cffc723277",
+    "cover-gate.stderr": "bbfed36607fa5e759917ef5a5c978149b785ca089725cfdf6a3596b9a04690f5",
+    "cover-gate.stdout": "afce94c260555e126b2f224cd62df46be24329bb356a15b12a075ca27c723538",
+    "coverage.out": "3158ad5abdcdae2f7e18060b936c0680eb0d623fa24ec955dc071ec16b582ef0",
+    "fmt-check-profile.json": "87468cb738f192d0602501bcad31d04c44d7e065b2e944c962db0fb22d398ca3",
+    "fmt-check.stderr": "fe3855ca9b56fb1bcc9d7abd8e3deaa8c65d65bc4a920f41dd53793e4894b054",
+    "fmt-check.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "golangci-lint-identity-profile.json": "136a444ec5a43afd0461856c9f059c5f72f8574592bc5d4aeb6c3e5297119755",
+    "golangci-lint-identity.stderr": "dd7a01649f3d152a57d125ba3abb9f881ff04e590e87989e9d7adbd686f89891",
+    "golangci-lint-identity.stdout": "14cd823c5d3387286d43930516c87c610f040291025eeffadc7a29ae7da43c17",
+    "gosec-identity-profile.json": "70fb4f8d3b80dad16773d6128bc727bb340341a488c3f3042280b14c7887a65a",
+    "gosec-identity.stderr": "42392e880410682ba9065eff6e54bc65a68cecbf15769f32667ec396f2a42438",
+    "gosec-identity.stdout": "33a126d4ae8cb3dafe539bbc9f45f802999c3ac354b2a2da939c75fe1a699dc4",
+    "govulncheck-identity-profile.json": "44940461d8b6f9697776d1a21c80dec910d943e0b82766d7512e0dcdb7455a6a",
+    "govulncheck-identity.stderr": "c5571dfacbb777dc2ffde1234787e227584502684d026a18dfa33a7f634163e9",
+    "govulncheck-identity.stdout": "68a7c0e5d6646d4ee3cdac787f6a706b511a75715c276fa309843424dd01bb30",
+    "inputs.json": "3e1c14d35cefdc2add167d41c51b90ab274bcd7d793646352434baf2f53f8284",
+    "limit-local.py": "6dc4e0362827ecd0854436b9fa1a812342b693d65ba093291d358b359e733283",
+    "lint-profile.json": "9b22e6c2dafe8def0dc18f80bb1b5ace4f108420b504ecbce2b4dc1b706b9c18",
+    "lint.stderr": "fe259e3402071fe30e590765589543a48f3340566346e6a22c31a2cfc0c59f6a",
+    "lint.stdout": "00f177aa93e25dab97a2e3a562aa1ae0a9ad9c1633f7bb44d5521fd86e4cf37a",
+    "modules-profile.json": "b0d9bfe517431ab5e4fbd248e3e442c514072de8be91dd14d8f8642df891db55",
+    "modules.stderr": "f3fb6f15fd01a6402f3892d4297d53c5bb37e2510ff5f68e7b163f530859deba",
+    "modules.stdout": "9db80c81fdeb41b5fee20dbdc26d4ce0190f9748a35d0c3f379292998058c37a",
+    "run.py": "e52142a071cb8e098a6b9ecf2abf189ea2f5b8f83964806c3524926a6bca8c00",
+    "security-profile.json": "2fe2bd5fb8673e7fa50f435c8cd88befdeb5a45be731e57e0fb79920835ffc29",
+    "security.stderr": "58b848d0a91a7c1afd68e1bc03a728a767baa884cb0b87a97fff405fc44fd3ef",
+    "security.stdout": "ffa2a3655d00bd12c472ede0133900028c85946568c25a4f7a2987ee8fad5bd9",
+    "session-terminal.json": "5ac68a6978864a6073ca0071ed97888339f8428d74d7652d7ebaac71c766999f",
+    "source/Makefile": "0c2cdff5a87140703f96491331e72658cea9ae0ce9be734f27f46d507ae52b40",
+    "source/faults_test.go": "c37f202143a0e42889741afab3181068f8269da0189087e7e1bd7810f78a43a2",
+    "source/go.mod": "a136732f5c65fc19681132d831c2bcf68696d8f3840cd93fb6e73ccebc243dad",
+    "source/go.sum": "3ce9a23bdfe08f06dafe9749bede3b9358c8edac54f15cc54fab9ef0792c31cb",
+    "source/preflight.go": "811233b5eb93eea7b8075d3e1ac193ccc5f2de6303101ac4532f55233c2b506a",
+    "source/preflight_test.go": "7485b02ee04c71e20ca9eb36763ba8615e8f6bbe759d105d6fa1af51364ceb36",
+    "test-profile.json": "e995e840596dce3a36b3201082a385345dd16212d17270bb25fdc174c28712db",
+    "test-race-profile.json": "b56694e9f2313d3d877916b0939b7886751abe03a20578e375395bd04edd899f",
+    "test-race.stderr": "9c1984f37011360f0f058710d21793cc7907fec26947297d2d26876f9233dc28",
+    "test-race.stdout": "4ba86fc3536bee31b8c5e2eb05ea7f5a7013ef26ec94b415aa2aaa9fa7b5d3c6",
+    "test.stderr": "6189d2a9e70c2714726a88cc701aa02d2fec2948c8339162210743ac1aeaa585",
+    "test.stdout": "902883799313f52ca2e90f53e476ca05ef21d1f4d4f314c08699d8a96dd8e2f0",
+    "toolchain-VERSION": "4b7369cf043da7b3b8d638a16011a35d6de2efe861e0bd344fb0011f91515b9e",
+    "tools-profile.json": "2036914de55ebd39a3d0c768229724767f31b6501d72f5d6825ca56e62ea43fe",
+    "tools.stderr": "f7c4d97e389198fa4ee6fc029ba36bb6d22af19cf14a7dc03f90890e4f1c2558",
+    "tools.stdout": "0960144baa58f843e73876b39e2cc2efb0a5cc93627ea1a15c4d98831583f510",
+    "upstream-main-ci-jobs.json": "3dc0866ac0349ea55c04e1d27406037152e346077b76babcb7f63b865bb798ad",
+    "upstream-main-ci.json": "3dc0866ac0349ea55c04e1d27406037152e346077b76babcb7f63b865bb798ad",
+    "upstream-test-job.log": "ac86acaa23823f0e497e1e910d2ad2b90c5961d901287670a88d6278c5e8d888",
+    "vet-profile.json": "f39f03c38942295c31cf985a492e728febc385dfe3b59a04b051f1becab59629",
+    "vet.stderr": "d76e20a2f0e7406636ec62a04acef2fe54882760cc6d3130b01be103a685bed8",
+    "vet.stdout": "16afbf8503d3eda0fa5ae085937d73c19b0828b91c4bfa47e14c64ade3f80fdd",
+    "vulncheck-profile.json": "920ed1ed0a1e3d2e2565aabb4031acc879e1082bf60059bf7aa9ad5cb7c23cd7",
+    "vulncheck.stderr": "38c0c89dae5634e68f44b837a56340d1b1bb7d36b6f436dde8290b742e9fd064",
+    "vulncheck.stdout": "8ab522a426c2484da7a6e5d139353b2b5e1d0945647a8ce0615f77d17d3d1614"
+  },
+  "archive": {
+    "file": "main4514-9e805ddc.tar.gz",
+    "bytes": 255372,
+    "sha256": "f2b1c56ef3a613dc6d6d1ad43fb3a35e85f25eadf3df73eac5b2a4142df69d92"
+  },
+  "historical_evidence": "All v4.50.1/v4.51.0/v4.51.1 receipts and dated v4.51.3/v4.51.4 source-only integration receipts remain unchanged.",
+  "scope": "Only retained effective-state per-entity PreflightNode/PreflightRel mapping against the exact integrated v4.51.4 source reader at an explicit pin; existing tests, no new mirror. No original-history completeness, authenticated writer, destination import/restore/certified cut, whole-root/hosted qualification, performance/capacity, physical-host or V2\u2013V7/V6 closure. Exact upstream CI metadata/log retained as separate evidence, not part of these ten local gates."
+}
