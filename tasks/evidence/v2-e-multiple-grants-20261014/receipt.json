@@ -1,0 +1,2612 @@
+{
+  "scope": "Qualification only of reviewed bounded writer1 cost grant setup at68236a0a. No corrective Go changes.",
+  "source_commit": "68236a0a31f44899aa2a7795d1f916106206b4a7",
+  "source_inventory": "final.source-inventory.json",
+  "original_profile_red": {
+    "source": "a1cd034c3e2e9d49a62b26b030f5c1d307371a43",
+    "patch": "before-fix-guard.patch",
+    "classification": "Compiled and ran the self-contained original-profile guard; semantic refusal2,000,006IDs>1,048,576 MaxBlockSize. This is not a compile refusal or a million-fact workload."
+  },
+  "compiler": {
+    "path": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+    "sha256": "318dee99db233501f6c419fbb4616e5a345ed0b831dbd6c7669b24e1ff8e9e2e",
+    "version": "go version go1.26.9 darwin/arm64"
+  },
+  "gates": [
+    {
+      "mode": "red",
+      "source_commit": "a1cd034c3e2e9d49a62b26b030f5c1d307371a43",
+      "command": {
+        "cwd": "/var/tmp/rho-v2-e-grants-red-20261014/v5",
+        "command": [
+          "python3",
+          "/var/tmp/rho-v2-e-grants-evidence-20261014/limit-local.py",
+          "--rss-mib",
+          "4096",
+          "--seconds",
+          "180",
+          "--report",
+          "/var/tmp/rho-v2-e-grants-evidence-20261014/red.watchdog.json",
+          "--",
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-timeout=150s",
+          "-v",
+          "-work",
+          "-run=^TestNativeGraphCostMillionFactProfileUsesBoundedGrantBlocks$",
+          "./internal/graphapply"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2",
+          "GOMEMLIMIT": "2GiB",
+          "GOFLAGS": "-p=1",
+          "GOWORK": "off",
+          "GOTOOLCHAIN": "local",
+          "PATH": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/usr/local/go/bin:/Users/markusnissl/.codex/packages/standalone/releases/0.162.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg03h015q:/Users/markusnissl/.codex/tmp/arg0/codex-arg05Feg6O:/Users/markusnissl/.codex/packages/standalone/releases/0.162.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0emR3eT:/Users/markusnissl/.codex/packages/standalone/releases/0.161.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0cqPGiY:/Users/markusnissl/.codex/packages/standalone/releases/0.160.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0f4nAi9:/Users/markusnissl/.codex/packages/standalone/releases/0.160.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0UsPrPG:/Users/markusnissl/.codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg04bYMhn:/Users/markusnissl/.codex/packages/standalone/releases/0.159.2-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0MP66Ba:/Users/markusnissl/.codex/packages/standalone/releases/0.159.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0rXqGkx:/Users/markusnissl/.codex/packages/standalone/releases/0.158.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg07YU9q1:/Users/markusnissl/.codex/packages/standalone/releases/0.157.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0Ly7AVz:/Users/markusnissl/.grok/bin:/Users/markusnissl/.opencode/bin:/Users/markusnissl/.antigravity/antigravity/bin:/Users/markusnissl/Library/pnpm/bin:/Users/markusnissl/.sdkman/candidates/java/current/bin:/Users/markusnissl/.sdkman/candidates/gradle/current/bin:/Users/markusnissl/.bun/bin:/Users/markusnissl/.deno/bin:/Users/markusnissl/google-cloud-sdk/bin:/Users/markusnissl/.nvm/versions/node/v24.19.0/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.cache/lm-studio/bin:/Users/markusnissl/.composer/vendor/bin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.local/bin",
+          "RHO_GRAPH_PROCESS_ARTIFACT": "/var/tmp/rho-v2-e-grants-evidence-20261014/red-artifacts"
+        },
+        "tool_sha256": "318dee99db233501f6c419fbb4616e5a345ed0b831dbd6c7669b24e1ff8e9e2e"
+      },
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-timeout=150s",
+          "-v",
+          "-work",
+          "-run=^TestNativeGraphCostMillionFactProfileUsesBoundedGrantBlocks$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1025.438,
+        "elapsed_s": 10.731,
+        "exit_code": 1,
+        "reason": "command-failed"
+      }
+    },
+    {
+      "mode": "normal",
+      "source_commit": "68236a0a31f44899aa2a7795d1f916106206b4a7",
+      "command": {
+        "cwd": "/var/tmp/rho-v2-e-grants-qualification-20261014/v5",
+        "command": [
+          "python3",
+          "/var/tmp/rho-v2-e-grants-evidence-20261014/limit-local.py",
+          "--rss-mib",
+          "4096",
+          "--seconds",
+          "180",
+          "--report",
+          "/var/tmp/rho-v2-e-grants-evidence-20261014/normal.watchdog.json",
+          "--",
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-timeout=150s",
+          "-v",
+          "-work",
+          "-run=^(TestNativeGraphCostMillionFactProfileUsesBoundedGrantBlocks|TestNativeGraphCostMultipleGrantsSmallActualProcesses)$",
+          "./internal/graphapply"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2",
+          "GOMEMLIMIT": "2GiB",
+          "GOFLAGS": "-p=1",
+          "GOWORK": "off",
+          "GOTOOLCHAIN": "local",
+          "PATH": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/usr/local/go/bin:/Users/markusnissl/.codex/packages/standalone/releases/0.162.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg03h015q:/Users/markusnissl/.codex/tmp/arg0/codex-arg05Feg6O:/Users/markusnissl/.codex/packages/standalone/releases/0.162.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0emR3eT:/Users/markusnissl/.codex/packages/standalone/releases/0.161.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0cqPGiY:/Users/markusnissl/.codex/packages/standalone/releases/0.160.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0f4nAi9:/Users/markusnissl/.codex/packages/standalone/releases/0.160.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0UsPrPG:/Users/markusnissl/.codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg04bYMhn:/Users/markusnissl/.codex/packages/standalone/releases/0.159.2-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0MP66Ba:/Users/markusnissl/.codex/packages/standalone/releases/0.159.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0rXqGkx:/Users/markusnissl/.codex/packages/standalone/releases/0.158.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg07YU9q1:/Users/markusnissl/.codex/packages/standalone/releases/0.157.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0Ly7AVz:/Users/markusnissl/.grok/bin:/Users/markusnissl/.opencode/bin:/Users/markusnissl/.antigravity/antigravity/bin:/Users/markusnissl/Library/pnpm/bin:/Users/markusnissl/.sdkman/candidates/java/current/bin:/Users/markusnissl/.sdkman/candidates/gradle/current/bin:/Users/markusnissl/.bun/bin:/Users/markusnissl/.deno/bin:/Users/markusnissl/google-cloud-sdk/bin:/Users/markusnissl/.nvm/versions/node/v24.19.0/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.cache/lm-studio/bin:/Users/markusnissl/.composer/vendor/bin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.local/bin",
+          "RHO_GRAPH_PROCESS_ARTIFACT": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts"
+        },
+        "tool_sha256": "318dee99db233501f6c419fbb4616e5a345ed0b831dbd6c7669b24e1ff8e9e2e"
+      },
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-timeout=150s",
+          "-v",
+          "-work",
+          "-run=^(TestNativeGraphCostMillionFactProfileUsesBoundedGrantBlocks|TestNativeGraphCostMultipleGrantsSmallActualProcesses)$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1000.266,
+        "elapsed_s": 48.515,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    {
+      "mode": "race",
+      "source_commit": "68236a0a31f44899aa2a7795d1f916106206b4a7",
+      "command": {
+        "cwd": "/var/tmp/rho-v2-e-grants-qualification-20261014/v5",
+        "command": [
+          "python3",
+          "/var/tmp/rho-v2-e-grants-evidence-20261014/limit-local.py",
+          "--rss-mib",
+          "4096",
+          "--seconds",
+          "180",
+          "--report",
+          "/var/tmp/rho-v2-e-grants-evidence-20261014/race.watchdog.json",
+          "--",
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-race",
+          "-count=1",
+          "-timeout=150s",
+          "-v",
+          "-work",
+          "-run=^(TestNativeGraphCostMillionFactProfileUsesBoundedGrantBlocks|TestNativeGraphCostMultipleGrantsSmallActualProcesses)$",
+          "./internal/graphapply"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2",
+          "GOMEMLIMIT": "2GiB",
+          "GOFLAGS": "-p=1",
+          "GOWORK": "off",
+          "GOTOOLCHAIN": "local",
+          "PATH": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/usr/local/go/bin:/Users/markusnissl/.codex/packages/standalone/releases/0.162.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg03h015q:/Users/markusnissl/.codex/tmp/arg0/codex-arg05Feg6O:/Users/markusnissl/.codex/packages/standalone/releases/0.162.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0emR3eT:/Users/markusnissl/.codex/packages/standalone/releases/0.161.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0cqPGiY:/Users/markusnissl/.codex/packages/standalone/releases/0.160.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0f4nAi9:/Users/markusnissl/.codex/packages/standalone/releases/0.160.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0UsPrPG:/Users/markusnissl/.codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg04bYMhn:/Users/markusnissl/.codex/packages/standalone/releases/0.159.2-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0MP66Ba:/Users/markusnissl/.codex/packages/standalone/releases/0.159.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0rXqGkx:/Users/markusnissl/.codex/packages/standalone/releases/0.158.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg07YU9q1:/Users/markusnissl/.codex/packages/standalone/releases/0.157.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0Ly7AVz:/Users/markusnissl/.grok/bin:/Users/markusnissl/.opencode/bin:/Users/markusnissl/.antigravity/antigravity/bin:/Users/markusnissl/Library/pnpm/bin:/Users/markusnissl/.sdkman/candidates/java/current/bin:/Users/markusnissl/.sdkman/candidates/gradle/current/bin:/Users/markusnissl/.bun/bin:/Users/markusnissl/.deno/bin:/Users/markusnissl/google-cloud-sdk/bin:/Users/markusnissl/.nvm/versions/node/v24.19.0/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.cache/lm-studio/bin:/Users/markusnissl/.composer/vendor/bin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.local/bin",
+          "RHO_GRAPH_PROCESS_ARTIFACT": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts"
+        },
+        "tool_sha256": "318dee99db233501f6c419fbb4616e5a345ed0b831dbd6c7669b24e1ff8e9e2e"
+      },
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-race",
+          "-count=1",
+          "-timeout=150s",
+          "-v",
+          "-work",
+          "-run=^(TestNativeGraphCostMillionFactProfileUsesBoundedGrantBlocks|TestNativeGraphCostMultipleGrantsSmallActualProcesses)$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 994.438,
+        "elapsed_s": 95.427,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    {
+      "mode": "coverage",
+      "source_commit": "68236a0a31f44899aa2a7795d1f916106206b4a7",
+      "command": {
+        "cwd": "/var/tmp/rho-v2-e-grants-qualification-20261014/v5",
+        "command": [
+          "python3",
+          "/var/tmp/rho-v2-e-grants-evidence-20261014/limit-local.py",
+          "--rss-mib",
+          "4096",
+          "--seconds",
+          "180",
+          "--report",
+          "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage.watchdog.json",
+          "--",
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-timeout=150s",
+          "-v",
+          "-work",
+          "-coverprofile=/var/tmp/rho-v2-e-grants-evidence-20261014/coverage.out",
+          "-run=^(TestNativeGraphCostMillionFactProfileUsesBoundedGrantBlocks|TestNativeGraphCostMultipleGrantsSmallActualProcesses)$",
+          "./internal/graphapply"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2",
+          "GOMEMLIMIT": "2GiB",
+          "GOFLAGS": "-p=1",
+          "GOWORK": "off",
+          "GOTOOLCHAIN": "local",
+          "PATH": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/usr/local/go/bin:/Users/markusnissl/.codex/packages/standalone/releases/0.162.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg03h015q:/Users/markusnissl/.codex/tmp/arg0/codex-arg05Feg6O:/Users/markusnissl/.codex/packages/standalone/releases/0.162.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0emR3eT:/Users/markusnissl/.codex/packages/standalone/releases/0.161.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0cqPGiY:/Users/markusnissl/.codex/packages/standalone/releases/0.160.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0f4nAi9:/Users/markusnissl/.codex/packages/standalone/releases/0.160.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0UsPrPG:/Users/markusnissl/.codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg04bYMhn:/Users/markusnissl/.codex/packages/standalone/releases/0.159.2-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0MP66Ba:/Users/markusnissl/.codex/packages/standalone/releases/0.159.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0rXqGkx:/Users/markusnissl/.codex/packages/standalone/releases/0.158.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg07YU9q1:/Users/markusnissl/.codex/packages/standalone/releases/0.157.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0Ly7AVz:/Users/markusnissl/.grok/bin:/Users/markusnissl/.opencode/bin:/Users/markusnissl/.antigravity/antigravity/bin:/Users/markusnissl/Library/pnpm/bin:/Users/markusnissl/.sdkman/candidates/java/current/bin:/Users/markusnissl/.sdkman/candidates/gradle/current/bin:/Users/markusnissl/.bun/bin:/Users/markusnissl/.deno/bin:/Users/markusnissl/google-cloud-sdk/bin:/Users/markusnissl/.nvm/versions/node/v24.19.0/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.cache/lm-studio/bin:/Users/markusnissl/.composer/vendor/bin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.local/bin",
+          "RHO_GRAPH_PROCESS_ARTIFACT": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts"
+        },
+        "tool_sha256": "318dee99db233501f6c419fbb4616e5a345ed0b831dbd6c7669b24e1ff8e9e2e"
+      },
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-timeout=150s",
+          "-v",
+          "-work",
+          "-coverprofile=/var/tmp/rho-v2-e-grants-evidence-20261014/coverage.out",
+          "-run=^(TestNativeGraphCostMillionFactProfileUsesBoundedGrantBlocks|TestNativeGraphCostMultipleGrantsSmallActualProcesses)$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1050.859,
+        "elapsed_s": 36.114,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    {
+      "mode": "vet",
+      "source_commit": "68236a0a31f44899aa2a7795d1f916106206b4a7",
+      "command": {
+        "cwd": "/var/tmp/rho-v2-e-grants-qualification-20261014/v5",
+        "command": [
+          "python3",
+          "/var/tmp/rho-v2-e-grants-evidence-20261014/limit-local.py",
+          "--rss-mib",
+          "4096",
+          "--seconds",
+          "180",
+          "--report",
+          "/var/tmp/rho-v2-e-grants-evidence-20261014/vet.watchdog.json",
+          "--",
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "vet",
+          "./internal/graphapply"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2",
+          "GOMEMLIMIT": "2GiB",
+          "GOFLAGS": "-p=1",
+          "GOWORK": "off",
+          "GOTOOLCHAIN": "local",
+          "PATH": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/usr/local/go/bin:/Users/markusnissl/.codex/packages/standalone/releases/0.162.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg03h015q:/Users/markusnissl/.codex/tmp/arg0/codex-arg05Feg6O:/Users/markusnissl/.codex/packages/standalone/releases/0.162.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0emR3eT:/Users/markusnissl/.codex/packages/standalone/releases/0.161.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0cqPGiY:/Users/markusnissl/.codex/packages/standalone/releases/0.160.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0f4nAi9:/Users/markusnissl/.codex/packages/standalone/releases/0.160.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0UsPrPG:/Users/markusnissl/.codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg04bYMhn:/Users/markusnissl/.codex/packages/standalone/releases/0.159.2-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0MP66Ba:/Users/markusnissl/.codex/packages/standalone/releases/0.159.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0rXqGkx:/Users/markusnissl/.codex/packages/standalone/releases/0.158.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg07YU9q1:/Users/markusnissl/.codex/packages/standalone/releases/0.157.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0Ly7AVz:/Users/markusnissl/.grok/bin:/Users/markusnissl/.opencode/bin:/Users/markusnissl/.antigravity/antigravity/bin:/Users/markusnissl/Library/pnpm/bin:/Users/markusnissl/.sdkman/candidates/java/current/bin:/Users/markusnissl/.sdkman/candidates/gradle/current/bin:/Users/markusnissl/.bun/bin:/Users/markusnissl/.deno/bin:/Users/markusnissl/google-cloud-sdk/bin:/Users/markusnissl/.nvm/versions/node/v24.19.0/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.cache/lm-studio/bin:/Users/markusnissl/.composer/vendor/bin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.local/bin",
+          "RHO_GRAPH_PROCESS_ARTIFACT": "/var/tmp/rho-v2-e-grants-evidence-20261014/vet-artifacts"
+        },
+        "tool_sha256": "318dee99db233501f6c419fbb4616e5a345ed0b831dbd6c7669b24e1ff8e9e2e"
+      },
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "vet",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 206.594,
+        "elapsed_s": 1.151,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    {
+      "mode": "lint",
+      "source_commit": "68236a0a31f44899aa2a7795d1f916106206b4a7",
+      "command": {
+        "cwd": "/var/tmp/rho-v2-e-grants-qualification-20261014/v5",
+        "command": [
+          "python3",
+          "/var/tmp/rho-v2-e-grants-evidence-20261014/limit-local.py",
+          "--rss-mib",
+          "4096",
+          "--seconds",
+          "180",
+          "--report",
+          "/var/tmp/rho-v2-e-grants-evidence-20261014/lint.watchdog.json",
+          "--",
+          "/var/tmp/rho-v5-migrate-main4517-0eb0a0ac-20261014/scanner-bin/golangci-lint",
+          "run",
+          "--config",
+          "../.golangci.yml",
+          "./internal/graphapply"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2",
+          "GOMEMLIMIT": "2GiB",
+          "GOFLAGS": "-p=1",
+          "GOWORK": "off",
+          "GOTOOLCHAIN": "local",
+          "PATH": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/usr/local/go/bin:/Users/markusnissl/.codex/packages/standalone/releases/0.162.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg03h015q:/Users/markusnissl/.codex/tmp/arg0/codex-arg05Feg6O:/Users/markusnissl/.codex/packages/standalone/releases/0.162.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0emR3eT:/Users/markusnissl/.codex/packages/standalone/releases/0.161.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0cqPGiY:/Users/markusnissl/.codex/packages/standalone/releases/0.160.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0f4nAi9:/Users/markusnissl/.codex/packages/standalone/releases/0.160.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0UsPrPG:/Users/markusnissl/.codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg04bYMhn:/Users/markusnissl/.codex/packages/standalone/releases/0.159.2-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0MP66Ba:/Users/markusnissl/.codex/packages/standalone/releases/0.159.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0rXqGkx:/Users/markusnissl/.codex/packages/standalone/releases/0.158.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg07YU9q1:/Users/markusnissl/.codex/packages/standalone/releases/0.157.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0Ly7AVz:/Users/markusnissl/.grok/bin:/Users/markusnissl/.opencode/bin:/Users/markusnissl/.antigravity/antigravity/bin:/Users/markusnissl/Library/pnpm/bin:/Users/markusnissl/.sdkman/candidates/java/current/bin:/Users/markusnissl/.sdkman/candidates/gradle/current/bin:/Users/markusnissl/.bun/bin:/Users/markusnissl/.deno/bin:/Users/markusnissl/google-cloud-sdk/bin:/Users/markusnissl/.nvm/versions/node/v24.19.0/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.cache/lm-studio/bin:/Users/markusnissl/.composer/vendor/bin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.local/bin",
+          "RHO_GRAPH_PROCESS_ARTIFACT": "/var/tmp/rho-v2-e-grants-evidence-20261014/lint-artifacts"
+        },
+        "tool_sha256": "5a88e04e56c1ccd7617c01666df23e5767d7a12cf21bac2c02e3170d67a27eef"
+      },
+      "watchdog": {
+        "command": [
+          "/var/tmp/rho-v5-migrate-main4517-0eb0a0ac-20261014/scanner-bin/golangci-lint",
+          "run",
+          "--config",
+          "../.golangci.yml",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1740.047,
+        "elapsed_s": 35.849,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    {
+      "mode": "security",
+      "source_commit": "68236a0a31f44899aa2a7795d1f916106206b4a7",
+      "command": {
+        "cwd": "/var/tmp/rho-v2-e-grants-qualification-20261014/v5",
+        "command": [
+          "python3",
+          "/var/tmp/rho-v2-e-grants-evidence-20261014/limit-local.py",
+          "--rss-mib",
+          "4096",
+          "--seconds",
+          "180",
+          "--report",
+          "/var/tmp/rho-v2-e-grants-evidence-20261014/security.watchdog.json",
+          "--",
+          "/var/tmp/rho-v5-migrate-main4517-0eb0a0ac-20261014/scanner-bin/gosec",
+          "-quiet",
+          "./internal/graphapply"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2",
+          "GOMEMLIMIT": "2GiB",
+          "GOFLAGS": "-p=1",
+          "GOWORK": "off",
+          "GOTOOLCHAIN": "local",
+          "PATH": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/usr/local/go/bin:/Users/markusnissl/.codex/packages/standalone/releases/0.162.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg03h015q:/Users/markusnissl/.codex/tmp/arg0/codex-arg05Feg6O:/Users/markusnissl/.codex/packages/standalone/releases/0.162.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0emR3eT:/Users/markusnissl/.codex/packages/standalone/releases/0.161.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0cqPGiY:/Users/markusnissl/.codex/packages/standalone/releases/0.160.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0f4nAi9:/Users/markusnissl/.codex/packages/standalone/releases/0.160.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0UsPrPG:/Users/markusnissl/.codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg04bYMhn:/Users/markusnissl/.codex/packages/standalone/releases/0.159.2-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0MP66Ba:/Users/markusnissl/.codex/packages/standalone/releases/0.159.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0rXqGkx:/Users/markusnissl/.codex/packages/standalone/releases/0.158.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg07YU9q1:/Users/markusnissl/.codex/packages/standalone/releases/0.157.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0Ly7AVz:/Users/markusnissl/.grok/bin:/Users/markusnissl/.opencode/bin:/Users/markusnissl/.antigravity/antigravity/bin:/Users/markusnissl/Library/pnpm/bin:/Users/markusnissl/.sdkman/candidates/java/current/bin:/Users/markusnissl/.sdkman/candidates/gradle/current/bin:/Users/markusnissl/.bun/bin:/Users/markusnissl/.deno/bin:/Users/markusnissl/google-cloud-sdk/bin:/Users/markusnissl/.nvm/versions/node/v24.19.0/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.cache/lm-studio/bin:/Users/markusnissl/.composer/vendor/bin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.local/bin",
+          "RHO_GRAPH_PROCESS_ARTIFACT": "/var/tmp/rho-v2-e-grants-evidence-20261014/security-artifacts"
+        },
+        "tool_sha256": "37117fce9ed7012d9f754b01b49a76f059595fa8fc05c6bb9eff8c7b9bd8c2da"
+      },
+      "watchdog": {
+        "command": [
+          "/var/tmp/rho-v5-migrate-main4517-0eb0a0ac-20261014/scanner-bin/gosec",
+          "-quiet",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 445.609,
+        "elapsed_s": 2.258,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    }
+  ],
+  "CI_mapping": {
+    "commit": "9c7542f864934aeab979eee0ffc86733715ec781",
+    "status": "Reviewed queued two-parent mapping patch is archived. It is outside frozen68236a0a and was not installed or independently tested here."
+  },
+  "results": [
+    {
+      "mode": "normal",
+      "directory": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921",
+      "spec": {
+        "version": 1,
+        "facts": 17,
+        "crossPercent": 100,
+        "writers": 1
+      },
+      "raw_grants": 3,
+      "old_current_observations": 34,
+      "CDCRecords": 231,
+      "CDCChanges": 54,
+      "completed": [
+        17,
+        17
+      ],
+      "Reaped": 6,
+      "OldCut": {
+        "Certificates": [
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAACgAAAAAAAAAYQAAAAAAAAAoAAAAAAAAAF9HUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAIAAAAAAAAAFwAAAAAAAABOatGwGCuNRd4MPYwHHeT10UEl4m9Rchu3dViZwvNwzMAAAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwgB4NAtG306BvJX+lplzIwvbXLoJ+nsVhIJTCqNQwgQFC1DZpWyF6d2w2MpR2N3jCkE+5q9bZWwVNIFn1MhueYs=",
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAACgAAAAAAAAAMwAAAAAAAAAoAAAAAAAAADFHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAMAAAAAAAAAFAAAAAAAAAAI53JG8CyWSct8NhkuvgmY5NdJWEFThT4/cmD9PyIrqq0AAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwvCos0EH6KEJmT5n6GD6Zz43TgWKEkO7EMvNBDWV6btglRUGYC5zFzs2xQY/ziV+mo0CjvQkGD80EHhkYwk4ZqA="
+        ]
+      },
+      "FinalCut": {
+        "Certificates": [
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAAEoAAAAAAAAAqQAAAAAAAABKAAAAAAAAAKdHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAIAAAAAAAAAKAAAAAAAAABfAoD+rVhgGllkdzuWU04ny9CJb+gU1jgmy/xN5A7TvJoAAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwkOZ/1m+BZFhEV4pwMEG+OsDWYi1oX5JmzJIPAHybfCV+F7ZUz5zFpq7sK6pOaZMIpIhuBjh7RGyD9X3xROarSc=",
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAAEoAAAAAAAAAWQAAAAAAAABKAAAAAAAAAFdHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAMAAAAAAAAAJQAAAAAAAAAIvU7FPUpGIJNeclkTrD3cK4ZI8E1p6NRUgHxs+Pn7QNQAAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwjkLtL+a9Lav/m0F1rGILfg8AKbqYhUMxRHaDv8LGHlF+gwglIW2gr6JGr0xi6XPZ6EMIN+f3v9QK3gazl/GWGA="
+        ]
+      },
+      "IDAdmission": "fixed fixture IDs admitted by actual installed allocator/recipient grants and fresh bindings; no Recipient.Acquire or Cursor.Next issuance",
+      "TimingScope": "LocalAckTiming covers setup/create/update ordinary Submit RPCs and waits; State is a cost-only checked volatile Driver.Applied hint without Checkpoint/full stats, never ACK authority. Original retained Outcome/CDC alone proves ACK. Cost non-State replies omit unrequested checkpoint/full statistics but preserve native results and store errors; explicit default State diagnostics and all non-cost replies remain full. TransportTiming covers all queued hub traffic including setup/checkpoints/oracles, overlaps client timings, and Step includes IPC plus native driver/application work, not pure fsync. Fixed-size totals and one int64 timestamp per queued job preserve the existing 64-byte job allowance."
+    },
+    {
+      "mode": "normal",
+      "directory": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345",
+      "spec": {
+        "version": 1,
+        "facts": 17,
+        "crossPercent": 0,
+        "writers": 1
+      },
+      "raw_grants": 3,
+      "old_current_observations": 34,
+      "CDCRecords": 53,
+      "CDCChanges": 54,
+      "completed": [
+        17,
+        17
+      ],
+      "Reaped": 6,
+      "OldCut": {
+        "Certificates": [
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAABcAAAAAAAAALgAAAAAAAAAXAAAAAAAAACxHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAIAAAAAAAAAFwAAAAAAAABOcjUzzex0enzGzB8cvwvf1y9n6udOzdno0V+sHxGmeYoAAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwkQytS2/8oqUgG9/xM0fOHd/aW7hra2BOtl+bjoTtJ5qCFrgmcSmVhf3LJD7BLhJyn+4udXnDraDtgiGe1BIMd0=",
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAABcAAAAAAAAAEQAAAAAAAAAGAAAAAAAAAAtHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAMAAAAAAAAAAwAAAAAAAAAIjJmNR8XuO6QvUXhlwNSwJ34H4xf3wOAy3jPtzo4VT+oAAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwrArJaKFn6pWCQORIdDzcwDAAkRPIEZrO1rQ8H/isz688G2cKzd2shrSuDzXhO9FdQnPsQ4S+qLjNoW4JVkmjzY="
+        ]
+      },
+      "FinalCut": {
+        "Certificates": [
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAACgAAAAAAAAAQwAAAAAAAAAoAAAAAAAAAEFHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAIAAAAAAAAAKAAAAAAAAABfIm3auCwhPXRV/Lzicql43SDUh8TDLSnboNzcAymnzS4AAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwlVWEHky0rcGtro6lwISf2XAk4LST3G0ppyFtkG3u0+bru0HhdEXiYBEVnx4BMAalpV9HdyjsVMFICuzAEnBImU=",
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAACgAAAAAAAAAFQAAAAAAAAAGAAAAAAAAAAtHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAMAAAAAAAAAAwAAAAAAAAAIjJmNR8XuO6QvUXhlwNSwJ34H4xf3wOAy3jPtzo4VT+oAAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwrArJaKFn6pWCQORIdDzcwDAAkRPIEZrO1rQ8H/isz68/SqLHKnReZO8qhXGG+Rs90M6M/B3bCQ5f90l+Yat9eY="
+        ]
+      },
+      "IDAdmission": "fixed fixture IDs admitted by actual installed allocator/recipient grants and fresh bindings; no Recipient.Acquire or Cursor.Next issuance",
+      "TimingScope": "LocalAckTiming covers setup/create/update ordinary Submit RPCs and waits; State is a cost-only checked volatile Driver.Applied hint without Checkpoint/full stats, never ACK authority. Original retained Outcome/CDC alone proves ACK. Cost non-State replies omit unrequested checkpoint/full statistics but preserve native results and store errors; explicit default State diagnostics and all non-cost replies remain full. TransportTiming covers all queued hub traffic including setup/checkpoints/oracles, overlaps client timings, and Step includes IPC plus native driver/application work, not pure fsync. Fixed-size totals and one int64 timestamp per queued job preserve the existing 64-byte job allowance."
+    },
+    {
+      "mode": "race",
+      "directory": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390",
+      "spec": {
+        "version": 1,
+        "facts": 17,
+        "crossPercent": 0,
+        "writers": 1
+      },
+      "raw_grants": 3,
+      "old_current_observations": 34,
+      "CDCRecords": 53,
+      "CDCChanges": 54,
+      "completed": [
+        17,
+        17
+      ],
+      "Reaped": 6,
+      "OldCut": {
+        "Certificates": [
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAABcAAAAAAAAALgAAAAAAAAAXAAAAAAAAACxHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAIAAAAAAAAAFwAAAAAAAABOpzLP79gWVAsZJqtfHhGEOfZSH5S1NdBTxouu4ZuFjc4AAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwhOCeng7RJlZE8FumYsMzLoETB4KJBX3UK0S7SvwyBXAC7hiM1We77lT1A2akAu8N9DZ8VX9aia9CDXg8XjxV+4=",
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAABcAAAAAAAAAEQAAAAAAAAAGAAAAAAAAAAtHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAMAAAAAAAAAAwAAAAAAAAAIDSMp9JvxBs153DyCemczUQMcm08IVvFOILOYAvqSez8AAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwqagXZmLoh25azjd5rIJ94aqUhVRJK4VKMgJw5aVFux0NDM7qrL1sS5O7yOKew7YZxeQO9noePRVa9lkkRlIdZ0="
+        ]
+      },
+      "FinalCut": {
+        "Certificates": [
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAACgAAAAAAAAAQwAAAAAAAAAoAAAAAAAAAEFHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAIAAAAAAAAAKAAAAAAAAABfourrYJMzHugz+weXcJm20HUDO0zHl2X1+FYTsYSgtwMAAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwrQdRL/+4Xms/KNkSL93iXpA+hDEoINUMxdqNjK2yn4EyhA+EAnLkmhTKuV7aeeos8q91pzAWMa/h4BTgU6eYM0=",
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAACgAAAAAAAAAFQAAAAAAAAAGAAAAAAAAAAtHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAMAAAAAAAAAAwAAAAAAAAAIDSMp9JvxBs153DyCemczUQMcm08IVvFOILOYAvqSez8AAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwqagXZmLoh25azjd5rIJ94aqUhVRJK4VKMgJw5aVFux0VNZ2/dBwwMKX+VFGeKPM2wp09oykBwi2gaO/SkbsuzY="
+        ]
+      },
+      "IDAdmission": "fixed fixture IDs admitted by actual installed allocator/recipient grants and fresh bindings; no Recipient.Acquire or Cursor.Next issuance",
+      "TimingScope": "LocalAckTiming covers setup/create/update ordinary Submit RPCs and waits; State is a cost-only checked volatile Driver.Applied hint without Checkpoint/full stats, never ACK authority. Original retained Outcome/CDC alone proves ACK. Cost non-State replies omit unrequested checkpoint/full statistics but preserve native results and store errors; explicit default State diagnostics and all non-cost replies remain full. TransportTiming covers all queued hub traffic including setup/checkpoints/oracles, overlaps client timings, and Step includes IPC plus native driver/application work, not pure fsync. Fixed-size totals and one int64 timestamp per queued job preserve the existing 64-byte job allowance."
+    },
+    {
+      "mode": "race",
+      "directory": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527",
+      "spec": {
+        "version": 1,
+        "facts": 17,
+        "crossPercent": 100,
+        "writers": 1
+      },
+      "raw_grants": 3,
+      "old_current_observations": 34,
+      "CDCRecords": 231,
+      "CDCChanges": 54,
+      "completed": [
+        17,
+        17
+      ],
+      "Reaped": 6,
+      "OldCut": {
+        "Certificates": [
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAACgAAAAAAAAAYQAAAAAAAAAoAAAAAAAAAF9HUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAIAAAAAAAAAFwAAAAAAAABOQ6/oJtNnjg6Wf1XnLS5nO1q7jj63wHcsUOZgQQdvLnEAAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwhut6uDGpWS7uCQ55NajHzlgtf2fagAzFZOLLjxoBeSkoKrvvrfUDjsy6jEFgiCFkceZtDHhavPCLod83RP/NeA=",
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAACgAAAAAAAAAMwAAAAAAAAAoAAAAAAAAADFHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAMAAAAAAAAAFAAAAAAAAAAIo4GbrvSRPo4JCwrHVIJTrFtYC7lah+BlBjSAxmyy60YAAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwvPY0W5OhMWIVxKxINnMX4hXVVoCQ+vZvTXV4HI92RCxWtOHRvIriR+3vTJcTI1Amoh0jdVQ4FCPBpo6EV29eHU="
+        ]
+      },
+      "FinalCut": {
+        "Certificates": [
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAAEoAAAAAAAAAqQAAAAAAAABKAAAAAAAAAKdHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAIAAAAAAAAAKAAAAAAAAABfrKzkCpNZy7PyLE7dpi4Umi3nGrqtNn7P0l+AJyyWYbUAAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwkjzpq9c8ijQlFMFVAhxe3mqZDkUwjVk1uiC9YOhVYrx7sI6JkhE9iWjj8mWstOynRqdSb6ExpcuAD3o1AFWJVE=",
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAAEoAAAAAAAAAWQAAAAAAAABKAAAAAAAAAFdHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAMAAAAAAAAAJQAAAAAAAAAIHUosvL37KEox6yK9S/8Bo16Fb5DrUb/B/ivIl/IaThoAAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwrm/qldUJAfTivPgoEu0EHy+WWLx/EMM5BiIVabokTMDXCa+hd4XNnAGDQ0BCFR/9QMG5+FBOG/VdOwK2qje85s="
+        ]
+      },
+      "IDAdmission": "fixed fixture IDs admitted by actual installed allocator/recipient grants and fresh bindings; no Recipient.Acquire or Cursor.Next issuance",
+      "TimingScope": "LocalAckTiming covers setup/create/update ordinary Submit RPCs and waits; State is a cost-only checked volatile Driver.Applied hint without Checkpoint/full stats, never ACK authority. Original retained Outcome/CDC alone proves ACK. Cost non-State replies omit unrequested checkpoint/full statistics but preserve native results and store errors; explicit default State diagnostics and all non-cost replies remain full. TransportTiming covers all queued hub traffic including setup/checkpoints/oracles, overlaps client timings, and Step includes IPC plus native driver/application work, not pure fsync. Fixed-size totals and one int64 timestamp per queued job preserve the existing 64-byte job allowance."
+    },
+    {
+      "mode": "coverage",
+      "directory": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567",
+      "spec": {
+        "version": 1,
+        "facts": 17,
+        "crossPercent": 100,
+        "writers": 1
+      },
+      "raw_grants": 3,
+      "old_current_observations": 34,
+      "CDCRecords": 231,
+      "CDCChanges": 54,
+      "completed": [
+        17,
+        17
+      ],
+      "Reaped": 6,
+      "OldCut": {
+        "Certificates": [
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAACgAAAAAAAAAYQAAAAAAAAAoAAAAAAAAAF9HUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAIAAAAAAAAAFwAAAAAAAABOMJhzfBs1cIQhKOnIoQ517sXLzqC38ewNzRZ23Ni6OA0AAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwnzhE8UnKfvKZz2tVc5KnYq+Pu5cRkdtQqbeNzShq3wZPZnH8Zs9T0ls7hlbggFCwgm5yOIc5waHfs9etr5QVJE=",
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAACgAAAAAAAAAMwAAAAAAAAAoAAAAAAAAADFHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAMAAAAAAAAAFAAAAAAAAAAIAIEU8WlXNgILkHyt1Ntr+kwlE/maaU3iNqmK7zU/si0AAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwr/KpI4VNqOvsMKZG1HOU+mvwwfVUiau2IFBg87Q14GO56wVyZSTwwoHrGebJbzyR89BYb4yHE2fFryzTbjVBLs="
+        ]
+      },
+      "FinalCut": {
+        "Certificates": [
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAAEoAAAAAAAAAqQAAAAAAAABKAAAAAAAAAKdHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAIAAAAAAAAAKAAAAAAAAABfNKvec7fSHxlXYfB7znrS/VpCmRyum6qyk7H3CTW/BK0AAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwoAdszP7ANXOy6Efz93iImIESb/tNMWuGeY20Kk4QFYrx/HHjPKArMKZaBf/7cGpxEo6dDtGoSzo7bPClKCKlbo=",
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAAEoAAAAAAAAAWQAAAAAAAABKAAAAAAAAAFdHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAMAAAAAAAAAJQAAAAAAAAAIOkIiWFQw1i5W3kSBSNh+DF0HPC7W/dxeyolaox/4qM0AAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwsKIPhVBU5N2Tz12R4KMqyH/jk6Uwm1zKKAE+4oE7aJJqrJbMhbNZwcm4yL0Da/ZdPxUyhwkN+oPrx9m2QNLYOQ="
+        ]
+      },
+      "IDAdmission": "fixed fixture IDs admitted by actual installed allocator/recipient grants and fresh bindings; no Recipient.Acquire or Cursor.Next issuance",
+      "TimingScope": "LocalAckTiming covers setup/create/update ordinary Submit RPCs and waits; State is a cost-only checked volatile Driver.Applied hint without Checkpoint/full stats, never ACK authority. Original retained Outcome/CDC alone proves ACK. Cost non-State replies omit unrequested checkpoint/full statistics but preserve native results and store errors; explicit default State diagnostics and all non-cost replies remain full. TransportTiming covers all queued hub traffic including setup/checkpoints/oracles, overlaps client timings, and Step includes IPC plus native driver/application work, not pure fsync. Fixed-size totals and one int64 timestamp per queued job preserve the existing 64-byte job allowance."
+    },
+    {
+      "mode": "coverage",
+      "directory": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408",
+      "spec": {
+        "version": 1,
+        "facts": 17,
+        "crossPercent": 0,
+        "writers": 1
+      },
+      "raw_grants": 3,
+      "old_current_observations": 34,
+      "CDCRecords": 53,
+      "CDCChanges": 54,
+      "completed": [
+        17,
+        17
+      ],
+      "Reaped": 6,
+      "OldCut": {
+        "Certificates": [
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAABcAAAAAAAAALgAAAAAAAAAXAAAAAAAAACxHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAIAAAAAAAAAFwAAAAAAAABOdMUFHl1VQbIm69EzxqSuuYoEHvJZcN5WzDvJ985zPMQAAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwt1eXAtAyz+V/4ahH6CiJm3KB/pDkSCO898NZIeF/fMM6lGcB0Rhzig+JMZkJTfJP9cEt4i2WBn4fk7FDQGa3es=",
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAABcAAAAAAAAAEQAAAAAAAAAGAAAAAAAAAAtHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAMAAAAAAAAAAwAAAAAAAAAIEYPCIGr2CGqTKM/FZgvzSKruSXWdXP+i9ZCC1L206R8AAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwpXBnI2SSOywnGktJLmPRnSKbXzyHZTU1n3zRMzffnHCbvns9vh0as8rvjAnV7L6lEB9U6zgUv4ofvKR7uPu0oA="
+        ]
+      },
+      "FinalCut": {
+        "Certificates": [
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAACgAAAAAAAAAQwAAAAAAAAAoAAAAAAAAAEFHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAIAAAAAAAAAKAAAAAAAAABfZG9GUzCcCY1ILHlA1seNv3XbBVWewaEeuuVCnnri1MkAAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwlYdmYLnmOlW4FFs3RBf2nam3TBWD8hAibuxRjUU49Yf4AkIaHTB8HbezewYtG554zPx/aiuK6j/U92R/zxayPo=",
+          "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxQTc27CiHlREHjlzz3tOZ3IpVuajTUqolPpC3K+dNwTXAAAAAAAAACgAAAAAAAAAFQAAAAAAAAAGAAAAAAAAAAtHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAMAAAAAAAAAAwAAAAAAAAAIEYPCIGr2CGqTKM/FZgvzSKruSXWdXP+i9ZCC1L206R8AAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwpXBnI2SSOywnGktJLmPRnSKbXzyHZTU1n3zRMzffnHCvX1f+3Tz8m4WuNOuvkoHRC+ccWKL8EusDF/HDpRmWEQ="
+        ]
+      },
+      "IDAdmission": "fixed fixture IDs admitted by actual installed allocator/recipient grants and fresh bindings; no Recipient.Acquire or Cursor.Next issuance",
+      "TimingScope": "LocalAckTiming covers setup/create/update ordinary Submit RPCs and waits; State is a cost-only checked volatile Driver.Applied hint without Checkpoint/full stats, never ACK authority. Original retained Outcome/CDC alone proves ACK. Cost non-State replies omit unrequested checkpoint/full statistics but preserve native results and store errors; explicit default State diagnostics and all non-cost replies remain full. TransportTiming covers all queued hub traffic including setup/checkpoints/oracles, overlaps client timings, and Step includes IPC plus native driver/application work, not pure fsync. Fixed-size totals and one int64 timestamp per queued job preserve the existing 64-byte job allowance."
+    }
+  ],
+  "cleanup": {
+    "owned_runtime_processes": [],
+    "terminal": "red expected1; normal/race/coverage/vet/lint/security0; all six finite cell results reaped6 and final owner residue assertions passed",
+    "scope": "Each runtime cell is six real durable OS child processes; profile-only RED starts none. No Docker or installed tool workloads were used."
+  },
+  "coverage_scope": "4.6% parent scoped diagnostic; actual OS child runs do not aggregate their production coverage into this parent profile. Not a full coverage/public-method80% gate.",
+  "authority": "Fixed fixture IDs are admitted by actual installed HOME32+8 and REMOTE2 grants/fresh bindings; no Recipient.Acquire/Cursor.Next issuance claim. Raw Reserve/Install originals are in grants.jsonl. Original retained Outcome/CDC, all-voter equality and retained certificates remain the ACK/cut authority. Driver.Applied is only volatile polling progress.",
+  "qualified_oracles": [
+    "Each of6 runtime cells17creates+17updates,34 streamed old/current observations(p5/p6),54 logical changes; local53 retained records/cross231, exact old/current certificate/index and raw all-voter Outcome/CDC comparisons",
+    "Phantom entity5 absent at both cuts, asserted in source but not separately streamed. Every cell final Views/PinnedBytes zero and6cleanOSchildreaps.",
+    "Raw latency/client/queue/Step timings preserved with explicit overlap; Step includes IPC+driver/application and is not purefsync."
+  ],
+  "open_acceptance": [
+    "Physical same-directory native cost-runner reopen and exact old/current/index/CDC after restart are NOT exercised by these parents.",
+    "Duplicate grant replay is NOT exercised by these parents. Accepted P08 semantics may carry only through production source equivalence; this receipt does not claim cost-runner replay qualification.",
+    "No1M runtime,8/32writers, matched10k performance result, full matrix/fullV2 or release claim."
+  ],
+  "archive": {
+    "path": "raw.tar.gz",
+    "bytes": 443480,
+    "sha256": "3092611cc9d921698bbaa5cdd9472d16b04c3441d9ec205f4fc775763478d481",
+    "members": [
+      {
+        "path": "before-fix-guard.patch",
+        "bytes": 1271,
+        "sha256": "6d3a5357706e5b03183e89a086c5ee8756daab75da90b2e69b300605f0bedeac"
+      },
+      {
+        "path": "cleanup.json",
+        "bytes": 338,
+        "sha256": "b24a275a6e7c2e8f5b734887ebb3a5a802c4f2ba58222f16e238ccafeff8e25f"
+      },
+      {
+        "path": "compiler.json",
+        "bytes": 232,
+        "sha256": "d28fe74a319aba756f46df7b9776e0e26b5599e383e6f04a63c40563fd1af733"
+      },
+      {
+        "path": "coverage-artifacts/rho-native-cost-2553930567/cdc.jsonl",
+        "bytes": 320416,
+        "sha256": "b692f516a5b32b3ce92d13a3ab66c05be974600ba01d4b863a581ca77a53115b"
+      },
+      {
+        "path": "coverage-artifacts/rho-native-cost-2553930567/grants.jsonl",
+        "bytes": 1225,
+        "sha256": "7e1a82f6c0f11403c50324de6317c355f0869c2aae82a08137528b189d569e5b"
+      },
+      {
+        "path": "coverage-artifacts/rho-native-cost-2553930567/latency.jsonl",
+        "bytes": 11277,
+        "sha256": "b9fdc4d97958fb8fc620cb72d2bed2ced5ac700ca4d3f290db9fea931dd21064"
+      },
+      {
+        "path": "coverage-artifacts/rho-native-cost-2553930567/native-cost-result.json",
+        "bytes": 4470,
+        "sha256": "96ebef719cdab7d249d0b787d7d3a81bea35a035de8dd1324b27e32c56306772"
+      },
+      {
+        "path": "coverage-artifacts/rho-native-cost-2553930567/observations.jsonl",
+        "bytes": 11395,
+        "sha256": "cc375ccf6c58f82744f50c2b4b36d434d3d57782a56fe3d66961d65f6fed870e"
+      },
+      {
+        "path": "coverage-artifacts/rho-native-cost-2664247408/cdc.jsonl",
+        "bytes": 121416,
+        "sha256": "eaa7fb4da14b31ba2c5eba2ab58b20a6c380e07621d98d1fe8e37f937e8fbd46"
+      },
+      {
+        "path": "coverage-artifacts/rho-native-cost-2664247408/grants.jsonl",
+        "bytes": 1225,
+        "sha256": "dce7cb8db9cedc2fc5b3a716b5ac3e8edaae2bae35240a5fe212bab8c0486f19"
+      },
+      {
+        "path": "coverage-artifacts/rho-native-cost-2664247408/latency.jsonl",
+        "bytes": 12116,
+        "sha256": "80b7d3760000ea5e99a66148ef94f83aedc65df88ee4e3e4841b863534e0c864"
+      },
+      {
+        "path": "coverage-artifacts/rho-native-cost-2664247408/native-cost-result.json",
+        "bytes": 4466,
+        "sha256": "7f07f00078ed968ba3b93c651e383859a12f3cade08e2eb7919745118b5d3d2d"
+      },
+      {
+        "path": "coverage-artifacts/rho-native-cost-2664247408/observations.jsonl",
+        "bytes": 11355,
+        "sha256": "28da6bbed288fc69c5e8ac1c2edc04319007b2a18cd56f6614c7dde9192f9cb1"
+      },
+      {
+        "path": "coverage.binary.json",
+        "bytes": 280,
+        "sha256": "115bb3f7f856606cdff673bc49be5b2ca968fda4ea90eb2140cdd0556ed3fe1f"
+      },
+      {
+        "path": "coverage.command.json",
+        "bytes": 3867,
+        "sha256": "91061e171f2e0bf0139beb44c8363fc535ecc31a36423e1255471c35d762e957"
+      },
+      {
+        "path": "coverage.out",
+        "bytes": 928810,
+        "sha256": "34e915ac9552d9cbf10d4cf1309b8cdf8d24b305742b7cdecafad5b7ef3ec3e9"
+      },
+      {
+        "path": "coverage.stderr.txt",
+        "bytes": 626,
+        "sha256": "51084c259b89bb07c3a53795c3ccb9c164fe2b5de67072ec75fe87ef5f9dc8a9"
+      },
+      {
+        "path": "coverage.stdout.txt",
+        "bytes": 9532,
+        "sha256": "e656dec423e9fcfe55375be6a480e608b89958741baf1ac72a0a8b1e1a116022"
+      },
+      {
+        "path": "coverage.watchdog.json",
+        "bytes": 604,
+        "sha256": "cc16c24065773018425ec192c4daa6fc2d2c334b251d64c0a96f6ded2e0d2954"
+      },
+      {
+        "path": "final.source-inventory.json",
+        "bytes": 92348,
+        "sha256": "867868ecf51535bcf9721190dbbc07c5c98cfa2baed89d99ebcb673a7593eb49"
+      },
+      {
+        "path": "finite-cell-summary.json",
+        "bytes": 21276,
+        "sha256": "9b947a87613faafcee05cff6768576c59aa1fcfd159eb984508e62c4c9645375"
+      },
+      {
+        "path": "limit-local.py",
+        "bytes": 7270,
+        "sha256": "6dc4e0362827ecd0854436b9fa1a812342b693d65ba093291d358b359e733283"
+      },
+      {
+        "path": "lint.command.json",
+        "bytes": 3621,
+        "sha256": "48fe60b6c0254350b96cb25158cc00d39e53f65b1cc79a80088eb473dcd1d8d0"
+      },
+      {
+        "path": "lint.stderr.txt",
+        "bytes": 331,
+        "sha256": "7690d807543a829c8755819c520aa75444dabe05ca94e4740e0453aa58c7b0f7"
+      },
+      {
+        "path": "lint.stdout.txt",
+        "bytes": 10,
+        "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+      },
+      {
+        "path": "lint.watchdog.json",
+        "bytes": 366,
+        "sha256": "b3176809a39c583f49a0fa4e0a2ccf5c591d015e69d199ad79e863a37d361da7"
+      },
+      {
+        "path": "normal-artifacts/rho-native-cost-1226144921/cdc.jsonl",
+        "bytes": 320416,
+        "sha256": "bb5c166eaac8061c2a9e3c6fc2351d1bda1aa6989847097fcda66d1b4299e19d"
+      },
+      {
+        "path": "normal-artifacts/rho-native-cost-1226144921/grants.jsonl",
+        "bytes": 1225,
+        "sha256": "3d514229636fa69624b7d337d22886795f8156ff83a74f7b48cdc1bb3a5fd4f7"
+      },
+      {
+        "path": "normal-artifacts/rho-native-cost-1226144921/latency.jsonl",
+        "bytes": 11282,
+        "sha256": "24094a13018a7564403e161dc5681388fe95d24141be170c608d9727dafdbe23"
+      },
+      {
+        "path": "normal-artifacts/rho-native-cost-1226144921/native-cost-result.json",
+        "bytes": 4469,
+        "sha256": "96511823c10a1a2112da4f243938795b44bd6ff0e64faccde21fa23cc0a360cd"
+      },
+      {
+        "path": "normal-artifacts/rho-native-cost-1226144921/observations.jsonl",
+        "bytes": 11395,
+        "sha256": "cc375ccf6c58f82744f50c2b4b36d434d3d57782a56fe3d66961d65f6fed870e"
+      },
+      {
+        "path": "normal-artifacts/rho-native-cost-4190824345/cdc.jsonl",
+        "bytes": 121416,
+        "sha256": "f40b7d27c922d80eae36807c1cc9acb3edee4e6aaff4a39437579fd218343baf"
+      },
+      {
+        "path": "normal-artifacts/rho-native-cost-4190824345/grants.jsonl",
+        "bytes": 1225,
+        "sha256": "94af8fc2c524c6a273a6f145243e57d42ed6c28b812e39018ade437f0eba8bb6"
+      },
+      {
+        "path": "normal-artifacts/rho-native-cost-4190824345/latency.jsonl",
+        "bytes": 12123,
+        "sha256": "c4a8ed4b56ece4cd908e1c4386d5d80048d7d3604dca7904fe7ae06b7447a088"
+      },
+      {
+        "path": "normal-artifacts/rho-native-cost-4190824345/native-cost-result.json",
+        "bytes": 4466,
+        "sha256": "e1ee4179828f88a3963f8f4a438c95028be93b0c9122ca5ec3ab5cea5167d471"
+      },
+      {
+        "path": "normal-artifacts/rho-native-cost-4190824345/observations.jsonl",
+        "bytes": 11355,
+        "sha256": "28da6bbed288fc69c5e8ac1c2edc04319007b2a18cd56f6614c7dde9192f9cb1"
+      },
+      {
+        "path": "normal.binary.json",
+        "bytes": 277,
+        "sha256": "fb8d12a6746133840fdf44345202c77dd7d6514c7bfc6713c15a641cc7c52251"
+      },
+      {
+        "path": "normal.command.json",
+        "bytes": 3786,
+        "sha256": "69654cdebec26dfc5c4e8afedfb68aad2453c5d818e99a17101270b6d7516216"
+      },
+      {
+        "path": "normal.stderr.txt",
+        "bytes": 552,
+        "sha256": "be7b21a747b9717f4aa94e6d4b62e35cad7e3bcae433a02fbb31e905c514d3ec"
+      },
+      {
+        "path": "normal.stdout.txt",
+        "bytes": 9466,
+        "sha256": "e2cd2297ee97805f360968b3b98398b5e37d1cd714c7cace6dea79b950846849"
+      },
+      {
+        "path": "normal.watchdog.json",
+        "bytes": 527,
+        "sha256": "6d7e3ec650733e7ac8a9d2521e525e7251b25d4bec030385606122f97019c250"
+      },
+      {
+        "path": "queued-ci-mapping.patch",
+        "bytes": 2097,
+        "sha256": "3005398dda6889cc29b48c84f06dde79377eff78e6b78a3732a32b86877ec666"
+      },
+      {
+        "path": "race-artifacts/rho-native-cost-2490649390/cdc.jsonl",
+        "bytes": 121416,
+        "sha256": "aa8c59926d50f6a6509a523de55b47d08fd24f8cdca96a1f8d4f4875c04305fe"
+      },
+      {
+        "path": "race-artifacts/rho-native-cost-2490649390/grants.jsonl",
+        "bytes": 1225,
+        "sha256": "4cc81707de3b6918d9d756c6b762f284c88c55616121434482701f75afb016ab"
+      },
+      {
+        "path": "race-artifacts/rho-native-cost-2490649390/latency.jsonl",
+        "bytes": 12233,
+        "sha256": "833e15c2973f6ab49b52eadd250cd00240cb799e6b4d1bc84ec5b33dad26e7bd"
+      },
+      {
+        "path": "race-artifacts/rho-native-cost-2490649390/native-cost-result.json",
+        "bytes": 4470,
+        "sha256": "6b9aaf9b20451b587461fda4bab88bece56a670dc3425b7df5c298b3b29580af"
+      },
+      {
+        "path": "race-artifacts/rho-native-cost-2490649390/observations.jsonl",
+        "bytes": 11355,
+        "sha256": "28da6bbed288fc69c5e8ac1c2edc04319007b2a18cd56f6614c7dde9192f9cb1"
+      },
+      {
+        "path": "race-artifacts/rho-native-cost-4128368527/cdc.jsonl",
+        "bytes": 320416,
+        "sha256": "83096f8cc0bd7fa7baccd7f79f7fd69e399af56cd3b3dc39f0b3076bb0941e85"
+      },
+      {
+        "path": "race-artifacts/rho-native-cost-4128368527/grants.jsonl",
+        "bytes": 1225,
+        "sha256": "0cca3b38a8ead4a6b66cd7a83f36c18ee5f7c3afa79dd17c423bb060b18fc8f1"
+      },
+      {
+        "path": "race-artifacts/rho-native-cost-4128368527/latency.jsonl",
+        "bytes": 11384,
+        "sha256": "7af9c832344d412ff7a6d7600fd3b28a74db6cc3f2a4088e695245078c95a1fe"
+      },
+      {
+        "path": "race-artifacts/rho-native-cost-4128368527/native-cost-result.json",
+        "bytes": 4468,
+        "sha256": "621c212130d1a5b724c682eafbcd1ddb1677270178f91b5cbcfe5b3599b9f3cd"
+      },
+      {
+        "path": "race-artifacts/rho-native-cost-4128368527/observations.jsonl",
+        "bytes": 11395,
+        "sha256": "cc375ccf6c58f82744f50c2b4b36d434d3d57782a56fe3d66961d65f6fed870e"
+      },
+      {
+        "path": "race.binary.json",
+        "bytes": 276,
+        "sha256": "233061c506ebaf0546ff84c96d6ecc293b8ae9e8fc70911036fc1dca02c1d3f3"
+      },
+      {
+        "path": "race.command.json",
+        "bytes": 3795,
+        "sha256": "92723b4b824f02638a27336b3437b2191798539110a1168a3458996dc573e54e"
+      },
+      {
+        "path": "race.stderr.txt",
+        "bytes": 561,
+        "sha256": "39bb67b5f67bdb10103c289312f19986aaf0b9df825441c8f9683586dd91c1ba"
+      },
+      {
+        "path": "race.stdout.txt",
+        "bytes": 9469,
+        "sha256": "26b37b0f692f688e937ba8e5431f78b1e25b94a6d857d71fb888487bf7e5d5aa"
+      },
+      {
+        "path": "race.watchdog.json",
+        "bytes": 539,
+        "sha256": "57fac89df485dbf18c20a2685818e29704b0a589213a1df1302c2d7e5b4add28"
+      },
+      {
+        "path": "red.binary.json",
+        "bytes": 274,
+        "sha256": "2940b40a3f98af3385b5b1e207e9abda1935d23437943b0a336594adf2e58bf1"
+      },
+      {
+        "path": "red.command.json",
+        "bytes": 3714,
+        "sha256": "c7d245d734169b9bdb34712fd9ba3368bf61e34d551d950db8053893a5e860c9"
+      },
+      {
+        "path": "red.source-inventory.json",
+        "bytes": 92171,
+        "sha256": "5070f7e39a1092f8b81d875151102a0abc319a4da855be6d8a23b691193f20fb"
+      },
+      {
+        "path": "red.stderr.txt",
+        "bytes": 501,
+        "sha256": "417610c0c06e16b319d6289f16e9307282b8b3ac675b6730d9444074a996688f"
+      },
+      {
+        "path": "red.stdout.txt",
+        "bytes": 425,
+        "sha256": "2cf34dd7946fd9f264487f57ff4b60c3ee6f4ac1d31b9a0cd9b5fe745f2851d7"
+      },
+      {
+        "path": "red.watchdog.json",
+        "bytes": 476,
+        "sha256": "292a7b70030e2e5cc81d0dd633be86c6b873094a8995cfd21c1c2591e624a769"
+      },
+      {
+        "path": "run.py",
+        "bytes": 2334,
+        "sha256": "88cc2d9472f5c5a95f8928b7d5f76bc2336c443bb2386ef0512390c9fa75c253"
+      },
+      {
+        "path": "scanner-provenance/after-tools-golangci-lint-build.txt",
+        "bytes": 19505,
+        "sha256": "201a8c190da2adf271295dccd2a28ac0d8593c386d6bfc974525fca0cb781ba1"
+      },
+      {
+        "path": "scanner-provenance/after-tools-golangci-lint-version.txt",
+        "bytes": 154,
+        "sha256": "5644aa8e116a125b49c8e7bccf4515686b8b7312ecb1b195c06c8a7aa5ff175a"
+      },
+      {
+        "path": "scanner-provenance/after-tools-gosec-build.txt",
+        "bytes": 4620,
+        "sha256": "94323999bee049c2268c6ddf7289f7b62a3d3a1c095e5e8eb1d7343741bbd36c"
+      },
+      {
+        "path": "scanner-provenance/after-tools-gosec-version.txt",
+        "bytes": 36,
+        "sha256": "c61e4d5622fe9449bd0810e944e583a8e330a8b9d0c394513f5f68b64a94e200"
+      },
+      {
+        "path": "scanner-provenance/after-tools-govulncheck-build.txt",
+        "bytes": 856,
+        "sha256": "b70fc48b73d048766430480df56977aca4703710b4976933e97181e37d2424c0"
+      },
+      {
+        "path": "scanner-provenance/after-tools-govulncheck-version.txt",
+        "bytes": 108,
+        "sha256": "f872dc8e4877391b12229c7fbc08e9fd9666a60e0571140f09dce7270472a21e"
+      },
+      {
+        "path": "scanner-provenance/after-tools-scanner-sha256.json",
+        "bytes": 254,
+        "sha256": "b5111533cd550c363c4fce3afaeff3bfc3af1f4ce788c490851b4ccb0a95ce91"
+      },
+      {
+        "path": "security.command.json",
+        "bytes": 3584,
+        "sha256": "adec50a97c5fa01939bc59d81fb839f6e8519057399b411adef6394f9f173c9b"
+      },
+      {
+        "path": "security.stderr.txt",
+        "bytes": 292,
+        "sha256": "32f052e25ed5a99f2ee81d6d4c8c0879e2f83ee33a5a20f76136e4ca0d90f39a"
+      },
+      {
+        "path": "security.stdout.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "security.watchdog.json",
+        "bytes": 319,
+        "sha256": "31a3571551f33f0c7937ca6c715dddb220308f5d9bdfd094310525942a55be23"
+      },
+      {
+        "path": "source/final/native_graph_cost_grants_harness_test.go",
+        "bytes": 5198,
+        "sha256": "2e80a0ed0ef1b3a3bb3fd74279b17966c81e10bcd2380c90b56762e9df2755f9"
+      },
+      {
+        "path": "source/final/native_graph_cost_grants_test.go",
+        "bytes": 2335,
+        "sha256": "1cd5d8783e41094d958acdfa9a193b4b33c6a59f1411e5333c673e79aeff470f"
+      },
+      {
+        "path": "source/final/native_graph_cost_harness_test.go",
+        "bytes": 25183,
+        "sha256": "c1bd8d76651badc593fe44bb1d8227800680ccecfc5db04558d4c83f88243687"
+      },
+      {
+        "path": "source/final/native_graph_cost_test.go",
+        "bytes": 39285,
+        "sha256": "aa004bb7119451f3e2f77c0761fcfcab60d2a045cac2132b261c65e9a4d12cc4"
+      },
+      {
+        "path": "source/red/native_graph_cost_grants_test.go",
+        "bytes": 981,
+        "sha256": "d848e5f6152ca17363e6ab16d0c018800e43692d456825f71e5fa90d4d4eb0d4"
+      },
+      {
+        "path": "source/red/native_graph_cost_harness_test.go",
+        "bytes": 25557,
+        "sha256": "c8ee8d1d6ef4867eee9de79e8cc6d6615a8b985be6b8206d65656b3d9be9bd63"
+      },
+      {
+        "path": "source/red/native_graph_cost_test.go",
+        "bytes": 38800,
+        "sha256": "7661299814d9dd684b61122371ba4804f532eb1fc5715d3d76f6f7253f498e4f"
+      },
+      {
+        "path": "vet.command.json",
+        "bytes": 3589,
+        "sha256": "03e1c3d8ea16cfebc5b34452b529895c05a1679652a17a26d146cc505ee30028"
+      },
+      {
+        "path": "vet.stderr.txt",
+        "bytes": 307,
+        "sha256": "0b397fa3c8dc3e2d43904ad1057cc426018acf8a7413511dda2f98c77b586466"
+      },
+      {
+        "path": "vet.stdout.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "vet.watchdog.json",
+        "bytes": 334,
+        "sha256": "9597e360e837e6b0bb9e8db2cabf0a03ca51d44d73b85878ac1eb7a3cca0a2dd"
+      }
+    ]
+  },
+  "external_originals": [
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/before-fix-guard.patch",
+      "bytes": 1271,
+      "sha256": "6d3a5357706e5b03183e89a086c5ee8756daab75da90b2e69b300605f0bedeac"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/cleanup.json",
+      "bytes": 338,
+      "sha256": "b24a275a6e7c2e8f5b734887ebb3a5a802c4f2ba58222f16e238ccafeff8e25f"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/compiler.json",
+      "bytes": 232,
+      "sha256": "d28fe74a319aba756f46df7b9776e0e26b5599e383e6f04a63c40563fd1af733"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/cdc.jsonl",
+      "bytes": 320416,
+      "sha256": "b692f516a5b32b3ce92d13a3ab66c05be974600ba01d4b863a581ca77a53115b"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/grants.jsonl",
+      "bytes": 1225,
+      "sha256": "7e1a82f6c0f11403c50324de6317c355f0869c2aae82a08137528b189d569e5b"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/latency.jsonl",
+      "bytes": 11277,
+      "sha256": "b9fdc4d97958fb8fc620cb72d2bed2ced5ac700ca4d3f290db9fea931dd21064"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/native-cost-result.json",
+      "bytes": 4470,
+      "sha256": "96ebef719cdab7d249d0b787d7d3a81bea35a035de8dd1324b27e32c56306772"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/observations.jsonl",
+      "bytes": 11395,
+      "sha256": "cc375ccf6c58f82744f50c2b4b36d434d3d57782a56fe3d66961d65f6fed870e"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/cdc.jsonl",
+      "bytes": 121416,
+      "sha256": "eaa7fb4da14b31ba2c5eba2ab58b20a6c380e07621d98d1fe8e37f937e8fbd46"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/grants.jsonl",
+      "bytes": 1225,
+      "sha256": "dce7cb8db9cedc2fc5b3a716b5ac3e8edaae2bae35240a5fe212bab8c0486f19"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/latency.jsonl",
+      "bytes": 12116,
+      "sha256": "80b7d3760000ea5e99a66148ef94f83aedc65df88ee4e3e4841b863534e0c864"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/native-cost-result.json",
+      "bytes": 4466,
+      "sha256": "7f07f00078ed968ba3b93c651e383859a12f3cade08e2eb7919745118b5d3d2d"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/observations.jsonl",
+      "bytes": 11355,
+      "sha256": "28da6bbed288fc69c5e8ac1c2edc04319007b2a18cd56f6614c7dde9192f9cb1"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage.binary.json",
+      "bytes": 280,
+      "sha256": "115bb3f7f856606cdff673bc49be5b2ca968fda4ea90eb2140cdd0556ed3fe1f"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage.command.json",
+      "bytes": 3867,
+      "sha256": "91061e171f2e0bf0139beb44c8363fc535ecc31a36423e1255471c35d762e957"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage.graphapply.test",
+      "bytes": 30531858,
+      "sha256": "126e499ad78966d58206c5a9284a41fa629c80c26e9b3199d4e43edeab92d9de"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage.out",
+      "bytes": 928810,
+      "sha256": "34e915ac9552d9cbf10d4cf1309b8cdf8d24b305742b7cdecafad5b7ef3ec3e9"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage.stderr.txt",
+      "bytes": 626,
+      "sha256": "51084c259b89bb07c3a53795c3ccb9c164fe2b5de67072ec75fe87ef5f9dc8a9"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage.stdout.txt",
+      "bytes": 9532,
+      "sha256": "e656dec423e9fcfe55375be6a480e608b89958741baf1ac72a0a8b1e1a116022"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage.watchdog.json",
+      "bytes": 604,
+      "sha256": "cc16c24065773018425ec192c4daa6fc2d2c334b251d64c0a96f6ded2e0d2954"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/final.source-inventory.json",
+      "bytes": 92348,
+      "sha256": "867868ecf51535bcf9721190dbbc07c5c98cfa2baed89d99ebcb673a7593eb49"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/finite-cell-summary.json",
+      "bytes": 21276,
+      "sha256": "9b947a87613faafcee05cff6768576c59aa1fcfd159eb984508e62c4c9645375"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/limit-local.py",
+      "bytes": 7270,
+      "sha256": "6dc4e0362827ecd0854436b9fa1a812342b693d65ba093291d358b359e733283"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/lint.command.json",
+      "bytes": 3621,
+      "sha256": "48fe60b6c0254350b96cb25158cc00d39e53f65b1cc79a80088eb473dcd1d8d0"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/lint.stderr.txt",
+      "bytes": 331,
+      "sha256": "7690d807543a829c8755819c520aa75444dabe05ca94e4740e0453aa58c7b0f7"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/lint.stdout.txt",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/lint.watchdog.json",
+      "bytes": 366,
+      "sha256": "b3176809a39c583f49a0fa4e0a2ccf5c591d015e69d199ad79e863a37d361da7"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/cdc.jsonl",
+      "bytes": 320416,
+      "sha256": "bb5c166eaac8061c2a9e3c6fc2351d1bda1aa6989847097fcda66d1b4299e19d"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/grants.jsonl",
+      "bytes": 1225,
+      "sha256": "3d514229636fa69624b7d337d22886795f8156ff83a74f7b48cdc1bb3a5fd4f7"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/latency.jsonl",
+      "bytes": 11282,
+      "sha256": "24094a13018a7564403e161dc5681388fe95d24141be170c608d9727dafdbe23"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/native-cost-result.json",
+      "bytes": 4469,
+      "sha256": "96511823c10a1a2112da4f243938795b44bd6ff0e64faccde21fa23cc0a360cd"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/observations.jsonl",
+      "bytes": 11395,
+      "sha256": "cc375ccf6c58f82744f50c2b4b36d434d3d57782a56fe3d66961d65f6fed870e"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/cdc.jsonl",
+      "bytes": 121416,
+      "sha256": "f40b7d27c922d80eae36807c1cc9acb3edee4e6aaff4a39437579fd218343baf"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/grants.jsonl",
+      "bytes": 1225,
+      "sha256": "94af8fc2c524c6a273a6f145243e57d42ed6c28b812e39018ade437f0eba8bb6"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/latency.jsonl",
+      "bytes": 12123,
+      "sha256": "c4a8ed4b56ece4cd908e1c4386d5d80048d7d3604dca7904fe7ae06b7447a088"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/native-cost-result.json",
+      "bytes": 4466,
+      "sha256": "e1ee4179828f88a3963f8f4a438c95028be93b0c9122ca5ec3ab5cea5167d471"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/observations.jsonl",
+      "bytes": 11355,
+      "sha256": "28da6bbed288fc69c5e8ac1c2edc04319007b2a18cd56f6614c7dde9192f9cb1"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal.binary.json",
+      "bytes": 277,
+      "sha256": "fb8d12a6746133840fdf44345202c77dd7d6514c7bfc6713c15a641cc7c52251"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal.command.json",
+      "bytes": 3786,
+      "sha256": "69654cdebec26dfc5c4e8afedfb68aad2453c5d818e99a17101270b6d7516216"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal.graphapply.test",
+      "bytes": 29656418,
+      "sha256": "9744e7d93ec85df48df9a303ddeec9ccc2698f931c8b1d4ba564e36f66f14321"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal.stderr.txt",
+      "bytes": 552,
+      "sha256": "be7b21a747b9717f4aa94e6d4b62e35cad7e3bcae433a02fbb31e905c514d3ec"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal.stdout.txt",
+      "bytes": 9466,
+      "sha256": "e2cd2297ee97805f360968b3b98398b5e37d1cd714c7cace6dea79b950846849"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal.watchdog.json",
+      "bytes": 527,
+      "sha256": "6d7e3ec650733e7ac8a9d2521e525e7251b25d4bec030385606122f97019c250"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/queued-ci-mapping.patch",
+      "bytes": 2097,
+      "sha256": "3005398dda6889cc29b48c84f06dde79377eff78e6b78a3732a32b86877ec666"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/cdc.jsonl",
+      "bytes": 121416,
+      "sha256": "aa8c59926d50f6a6509a523de55b47d08fd24f8cdca96a1f8d4f4875c04305fe"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/grants.jsonl",
+      "bytes": 1225,
+      "sha256": "4cc81707de3b6918d9d756c6b762f284c88c55616121434482701f75afb016ab"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/latency.jsonl",
+      "bytes": 12233,
+      "sha256": "833e15c2973f6ab49b52eadd250cd00240cb799e6b4d1bc84ec5b33dad26e7bd"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/native-cost-result.json",
+      "bytes": 4470,
+      "sha256": "6b9aaf9b20451b587461fda4bab88bece56a670dc3425b7df5c298b3b29580af"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/observations.jsonl",
+      "bytes": 11355,
+      "sha256": "28da6bbed288fc69c5e8ac1c2edc04319007b2a18cd56f6614c7dde9192f9cb1"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/cdc.jsonl",
+      "bytes": 320416,
+      "sha256": "83096f8cc0bd7fa7baccd7f79f7fd69e399af56cd3b3dc39f0b3076bb0941e85"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/grants.jsonl",
+      "bytes": 1225,
+      "sha256": "0cca3b38a8ead4a6b66cd7a83f36c18ee5f7c3afa79dd17c423bb060b18fc8f1"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/latency.jsonl",
+      "bytes": 11384,
+      "sha256": "7af9c832344d412ff7a6d7600fd3b28a74db6cc3f2a4088e695245078c95a1fe"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/native-cost-result.json",
+      "bytes": 4468,
+      "sha256": "621c212130d1a5b724c682eafbcd1ddb1677270178f91b5cbcfe5b3599b9f3cd"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/observations.jsonl",
+      "bytes": 11395,
+      "sha256": "cc375ccf6c58f82744f50c2b4b36d434d3d57782a56fe3d66961d65f6fed870e"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race.binary.json",
+      "bytes": 276,
+      "sha256": "233061c506ebaf0546ff84c96d6ecc293b8ae9e8fc70911036fc1dca02c1d3f3"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race.command.json",
+      "bytes": 3795,
+      "sha256": "92723b4b824f02638a27336b3437b2191798539110a1168a3458996dc573e54e"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race.graphapply.test",
+      "bytes": 41854098,
+      "sha256": "4d1986311d31996b218ef5b8d25ac99fb320fbbaddf39c41d1f00cf5464598cb"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race.stderr.txt",
+      "bytes": 561,
+      "sha256": "39bb67b5f67bdb10103c289312f19986aaf0b9df825441c8f9683586dd91c1ba"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race.stdout.txt",
+      "bytes": 9469,
+      "sha256": "26b37b0f692f688e937ba8e5431f78b1e25b94a6d857d71fb888487bf7e5d5aa"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race.watchdog.json",
+      "bytes": 539,
+      "sha256": "57fac89df485dbf18c20a2685818e29704b0a589213a1df1302c2d7e5b4add28"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/red.binary.json",
+      "bytes": 274,
+      "sha256": "2940b40a3f98af3385b5b1e207e9abda1935d23437943b0a336594adf2e58bf1"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/red.command.json",
+      "bytes": 3714,
+      "sha256": "c7d245d734169b9bdb34712fd9ba3368bf61e34d551d950db8053893a5e860c9"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/red.graphapply.test",
+      "bytes": 29639890,
+      "sha256": "0f3011c51e7f7034054cfd4297fcf5e953f195a0c43de7b6dc0962e705034a29"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/red.source-inventory.json",
+      "bytes": 92171,
+      "sha256": "5070f7e39a1092f8b81d875151102a0abc319a4da855be6d8a23b691193f20fb"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/red.stderr.txt",
+      "bytes": 501,
+      "sha256": "417610c0c06e16b319d6289f16e9307282b8b3ac675b6730d9444074a996688f"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/red.stdout.txt",
+      "bytes": 425,
+      "sha256": "2cf34dd7946fd9f264487f57ff4b60c3ee6f4ac1d31b9a0cd9b5fe745f2851d7"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/red.watchdog.json",
+      "bytes": 476,
+      "sha256": "292a7b70030e2e5cc81d0dd633be86c6b873094a8995cfd21c1c2591e624a769"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/run.py",
+      "bytes": 2334,
+      "sha256": "88cc2d9472f5c5a95f8928b7d5f76bc2336c443bb2386ef0512390c9fa75c253"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/scanner-provenance/after-tools-golangci-lint-build.txt",
+      "bytes": 19505,
+      "sha256": "201a8c190da2adf271295dccd2a28ac0d8593c386d6bfc974525fca0cb781ba1"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/scanner-provenance/after-tools-golangci-lint-version.txt",
+      "bytes": 154,
+      "sha256": "5644aa8e116a125b49c8e7bccf4515686b8b7312ecb1b195c06c8a7aa5ff175a"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/scanner-provenance/after-tools-gosec-build.txt",
+      "bytes": 4620,
+      "sha256": "94323999bee049c2268c6ddf7289f7b62a3d3a1c095e5e8eb1d7343741bbd36c"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/scanner-provenance/after-tools-gosec-version.txt",
+      "bytes": 36,
+      "sha256": "c61e4d5622fe9449bd0810e944e583a8e330a8b9d0c394513f5f68b64a94e200"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/scanner-provenance/after-tools-govulncheck-build.txt",
+      "bytes": 856,
+      "sha256": "b70fc48b73d048766430480df56977aca4703710b4976933e97181e37d2424c0"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/scanner-provenance/after-tools-govulncheck-version.txt",
+      "bytes": 108,
+      "sha256": "f872dc8e4877391b12229c7fbc08e9fd9666a60e0571140f09dce7270472a21e"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/scanner-provenance/after-tools-scanner-sha256.json",
+      "bytes": 254,
+      "sha256": "b5111533cd550c363c4fce3afaeff3bfc3af1f4ce788c490851b4ccb0a95ce91"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/security.command.json",
+      "bytes": 3584,
+      "sha256": "adec50a97c5fa01939bc59d81fb839f6e8519057399b411adef6394f9f173c9b"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/security.stderr.txt",
+      "bytes": 292,
+      "sha256": "32f052e25ed5a99f2ee81d6d4c8c0879e2f83ee33a5a20f76136e4ca0d90f39a"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/security.stdout.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/security.watchdog.json",
+      "bytes": 319,
+      "sha256": "31a3571551f33f0c7937ca6c715dddb220308f5d9bdfd094310525942a55be23"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/source/final/native_graph_cost_grants_harness_test.go",
+      "bytes": 5198,
+      "sha256": "2e80a0ed0ef1b3a3bb3fd74279b17966c81e10bcd2380c90b56762e9df2755f9"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/source/final/native_graph_cost_grants_test.go",
+      "bytes": 2335,
+      "sha256": "1cd5d8783e41094d958acdfa9a193b4b33c6a59f1411e5333c673e79aeff470f"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/source/final/native_graph_cost_harness_test.go",
+      "bytes": 25183,
+      "sha256": "c1bd8d76651badc593fe44bb1d8227800680ccecfc5db04558d4c83f88243687"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/source/final/native_graph_cost_test.go",
+      "bytes": 39285,
+      "sha256": "aa004bb7119451f3e2f77c0761fcfcab60d2a045cac2132b261c65e9a4d12cc4"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/source/red/native_graph_cost_grants_test.go",
+      "bytes": 981,
+      "sha256": "d848e5f6152ca17363e6ab16d0c018800e43692d456825f71e5fa90d4d4eb0d4"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/source/red/native_graph_cost_harness_test.go",
+      "bytes": 25557,
+      "sha256": "c8ee8d1d6ef4867eee9de79e8cc6d6615a8b985be6b8206d65656b3d9be9bd63"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/source/red/native_graph_cost_test.go",
+      "bytes": 38800,
+      "sha256": "7661299814d9dd684b61122371ba4804f532eb1fc5715d3d76f6f7253f498e4f"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/vet.command.json",
+      "bytes": 3589,
+      "sha256": "03e1c3d8ea16cfebc5b34452b529895c05a1679652a17a26d146cc505ee30028"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/vet.stderr.txt",
+      "bytes": 307,
+      "sha256": "0b397fa3c8dc3e2d43904ad1057cc426018acf8a7413511dda2f98c77b586466"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/vet.stdout.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/vet.watchdog.json",
+      "bytes": 334,
+      "sha256": "9597e360e837e6b0bb9e8db2cabf0a03ca51d44d73b85878ac1eb7a3cca0a2dd"
+    }
+  ],
+  "exclusions": {
+    "executables": "Four actual RED/normal/race/coverage executables retained externally with *.binary.json path+SHA; excluded from archive.",
+    "native_store_files": "Preserved externally below each cell numeric voter directory, excluded from archive and SHA receipt; listed here with path/size. No whole durable-store copy needed for this finite receipt.",
+    "files": [
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/1/000004.log",
+        "bytes": 502371
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/1/000005.log",
+        "bytes": 1016267
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/1/000007.log",
+        "bytes": 676617
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/1/000009.sst",
+        "bytes": 212883
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/1/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/1/MANIFEST-000001",
+        "bytes": 220
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/1/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/1/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/1/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/2/000004.log",
+        "bytes": 502371
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/2/000005.log",
+        "bytes": 1016267
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/2/000007.log",
+        "bytes": 676617
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/2/000009.sst",
+        "bytes": 212883
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/2/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/2/MANIFEST-000001",
+        "bytes": 220
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/2/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/2/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/2/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/3/000004.log",
+        "bytes": 502371
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/3/000005.log",
+        "bytes": 1016267
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/3/000007.log",
+        "bytes": 676617
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/3/000009.sst",
+        "bytes": 212878
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/3/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/3/MANIFEST-000001",
+        "bytes": 220
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/3/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/3/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/3/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/4/000002.log",
+        "bytes": 246786
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/4/000004.log",
+        "bytes": 507174
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/4/000005.log",
+        "bytes": 576006
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/4/000006.sst",
+        "bytes": 130588
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/4/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/4/MANIFEST-000001",
+        "bytes": 98
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/4/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/4/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/4/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/5/000002.log",
+        "bytes": 246786
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/5/000004.log",
+        "bytes": 507174
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/5/000005.log",
+        "bytes": 576006
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/5/000006.sst",
+        "bytes": 130590
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/5/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/5/MANIFEST-000001",
+        "bytes": 98
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/5/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/5/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/5/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/6/000002.log",
+        "bytes": 246786
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/6/000004.log",
+        "bytes": 507174
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/6/000005.log",
+        "bytes": 576006
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/6/000006.sst",
+        "bytes": 130589
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/6/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/6/MANIFEST-000001",
+        "bytes": 98
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/6/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/6/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2553930567/6/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/1/000002.log",
+        "bytes": 243723
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/1/000004.log",
+        "bytes": 303715
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/1/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/1/MANIFEST-000001",
+        "bytes": 39
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/1/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/1/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/1/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/2/000002.log",
+        "bytes": 243723
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/2/000004.log",
+        "bytes": 303715
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/2/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/2/MANIFEST-000001",
+        "bytes": 39
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/2/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/2/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/2/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/3/000002.log",
+        "bytes": 243723
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/3/000004.log",
+        "bytes": 303715
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/3/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/3/MANIFEST-000001",
+        "bytes": 39
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/3/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/3/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/3/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/4/000002.log",
+        "bytes": 117392
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/4/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/4/MANIFEST-000001",
+        "bytes": 39
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/4/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/4/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/4/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/5/000002.log",
+        "bytes": 117392
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/5/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/5/MANIFEST-000001",
+        "bytes": 39
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/5/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/5/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/5/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/6/000002.log",
+        "bytes": 117392
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/6/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/6/MANIFEST-000001",
+        "bytes": 39
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/6/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/6/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/coverage-artifacts/rho-native-cost-2664247408/6/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/1/000004.log",
+        "bytes": 502371
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/1/000005.log",
+        "bytes": 1016259
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/1/000007.log",
+        "bytes": 676609
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/1/000009.sst",
+        "bytes": 212895
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/1/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/1/MANIFEST-000001",
+        "bytes": 220
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/1/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/1/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/1/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/2/000004.log",
+        "bytes": 502371
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/2/000005.log",
+        "bytes": 1016259
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/2/000007.log",
+        "bytes": 676609
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/2/000009.sst",
+        "bytes": 212895
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/2/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/2/MANIFEST-000001",
+        "bytes": 220
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/2/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/2/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/2/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/3/000004.log",
+        "bytes": 502371
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/3/000005.log",
+        "bytes": 1016259
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/3/000007.log",
+        "bytes": 676609
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/3/000009.sst",
+        "bytes": 212890
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/3/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/3/MANIFEST-000001",
+        "bytes": 220
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/3/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/3/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/3/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/4/000002.log",
+        "bytes": 246786
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/4/000004.log",
+        "bytes": 507174
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/4/000005.log",
+        "bytes": 575996
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/4/000006.sst",
+        "bytes": 131067
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/4/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/4/MANIFEST-000001",
+        "bytes": 98
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/4/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/4/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/4/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/5/000002.log",
+        "bytes": 246786
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/5/000004.log",
+        "bytes": 507174
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/5/000005.log",
+        "bytes": 575996
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/5/000006.sst",
+        "bytes": 131067
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/5/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/5/MANIFEST-000001",
+        "bytes": 98
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/5/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/5/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/5/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/6/000002.log",
+        "bytes": 246786
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/6/000004.log",
+        "bytes": 507174
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/6/000005.log",
+        "bytes": 575996
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/6/000006.sst",
+        "bytes": 131076
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/6/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/6/MANIFEST-000001",
+        "bytes": 98
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/6/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/6/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-1226144921/6/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/1/000002.log",
+        "bytes": 243723
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/1/000004.log",
+        "bytes": 303715
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/1/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/1/MANIFEST-000001",
+        "bytes": 39
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/1/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/1/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/1/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/2/000002.log",
+        "bytes": 243723
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/2/000004.log",
+        "bytes": 303715
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/2/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/2/MANIFEST-000001",
+        "bytes": 39
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/2/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/2/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/2/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/3/000002.log",
+        "bytes": 243723
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/3/000004.log",
+        "bytes": 303715
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/3/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/3/MANIFEST-000001",
+        "bytes": 39
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/3/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/3/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/3/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/4/000002.log",
+        "bytes": 117392
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/4/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/4/MANIFEST-000001",
+        "bytes": 39
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/4/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/4/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/4/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/5/000002.log",
+        "bytes": 117392
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/5/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/5/MANIFEST-000001",
+        "bytes": 39
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/5/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/5/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/5/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/6/000002.log",
+        "bytes": 117392
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/6/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/6/MANIFEST-000001",
+        "bytes": 39
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/6/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/6/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/normal-artifacts/rho-native-cost-4190824345/6/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/1/000002.log",
+        "bytes": 243724
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/1/000004.log",
+        "bytes": 303717
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/1/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/1/MANIFEST-000001",
+        "bytes": 39
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/1/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/1/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/1/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/2/000002.log",
+        "bytes": 243724
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/2/000004.log",
+        "bytes": 303717
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/2/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/2/MANIFEST-000001",
+        "bytes": 39
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/2/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/2/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/2/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/3/000002.log",
+        "bytes": 243724
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/3/000004.log",
+        "bytes": 303717
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/3/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/3/MANIFEST-000001",
+        "bytes": 39
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/3/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/3/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/3/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/4/000002.log",
+        "bytes": 117393
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/4/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/4/MANIFEST-000001",
+        "bytes": 39
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/4/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/4/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/4/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/5/000002.log",
+        "bytes": 117393
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/5/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/5/MANIFEST-000001",
+        "bytes": 39
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/5/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/5/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/5/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/6/000002.log",
+        "bytes": 117393
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/6/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/6/MANIFEST-000001",
+        "bytes": 39
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/6/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/6/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-2490649390/6/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/1/000004.log",
+        "bytes": 502371
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/1/000005.log",
+        "bytes": 1016283
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/1/000007.log",
+        "bytes": 676601
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/1/000009.sst",
+        "bytes": 212623
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/1/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/1/MANIFEST-000001",
+        "bytes": 220
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/1/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/1/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/1/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/2/000004.log",
+        "bytes": 502371
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/2/000005.log",
+        "bytes": 1016283
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/2/000007.log",
+        "bytes": 676601
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/2/000009.sst",
+        "bytes": 212619
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/2/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/2/MANIFEST-000001",
+        "bytes": 220
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/2/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/2/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/2/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/3/000004.log",
+        "bytes": 502371
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/3/000005.log",
+        "bytes": 1016283
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/3/000007.log",
+        "bytes": 676601
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/3/000009.sst",
+        "bytes": 212619
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/3/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/3/MANIFEST-000001",
+        "bytes": 220
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/3/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/3/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/3/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/4/000002.log",
+        "bytes": 246786
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/4/000004.log",
+        "bytes": 507188
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/4/000005.log",
+        "bytes": 575992
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/4/000006.sst",
+        "bytes": 131145
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/4/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/4/MANIFEST-000001",
+        "bytes": 98
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/4/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/4/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/4/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/5/000002.log",
+        "bytes": 246786
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/5/000004.log",
+        "bytes": 507188
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/5/000005.log",
+        "bytes": 575992
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/5/000006.sst",
+        "bytes": 131148
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/5/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/5/MANIFEST-000001",
+        "bytes": 98
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/5/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/5/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/5/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/6/000002.log",
+        "bytes": 246786
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/6/000004.log",
+        "bytes": 507188
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/6/000005.log",
+        "bytes": 575992
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/6/000006.sst",
+        "bytes": 131146
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/6/LOCK",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/6/MANIFEST-000001",
+        "bytes": 98
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/6/OPTIONS-000003",
+        "bytes": 2778
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/6/marker.format-version.000001.013",
+        "bytes": 0
+      },
+      {
+        "path": "/var/tmp/rho-v2-e-grants-evidence-20261014/race-artifacts/rho-native-cost-4128368527/6/marker.manifest.000001.MANIFEST-000001",
+        "bytes": 0
+      }
+    ]
+  }
+}
