@@ -84,6 +84,9 @@ func (v *ApplicationView) PrepareApplicationRetention(ctx context.Context, next 
 	if budget.Rows > p.MaxPageRows || budget.Bytes > p.MaxPageBytes || len(command) > s.limits.MaxEntryBytes-frameOverhead {
 		return nil, work, ErrLimit
 	}
+	if section := s.meta.Retention.Cursor.Section; section > 0 && section < 6 {
+		return nil, work, ErrLimit
+	}
 	if next.InstalledIndex > s.meta.Hard.GetCommit() || next.InstalledIndex > s.meta.Last {
 		return nil, work, ErrInvalid
 	}
