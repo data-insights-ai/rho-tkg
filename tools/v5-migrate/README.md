@@ -29,7 +29,7 @@ integrated root recorded in that receipt. Archived qualification pins remain
 unchanged. This narrow local result does not qualify whole-root/hosted gates,
 original history completeness, destination import or full V6.
 
-The current v4.51.4/main `a1248ffc` reader is locally requalified at integrated
+The historical v4.51.4/main `a1248ffc` reader is locally requalified at integrated
 root `9e805ddc` by the [ten-gate receipt](evidence/main4514-9e805ddc.json) and
 [raw archive](evidence/main4514-9e805ddc.tar.gz). All ten existing module gates
 passed serially with Go 1.26.9 darwin/arm64, owned pinned scanner builds, and the
@@ -39,6 +39,16 @@ preflight functions. This qualifies the local reader mapping only, without
 whole-root or V6 acceptance. Dated source checkpoints and historical observations
 remain unchanged. Live read snapshots/open images are source accelerators, never
 an import cut or proof of missing history.
+
+The current source is v4.51.5/main `c23c8b04`. Local replacements select its
+integrated reader; its ten narrow migration gates remain pending. The historical
+v4.51.4 receipt above and [finite reader checks](../../tasks/evidence/current-reader-9e805ddc-20261014/receipt.json)
+remain pinned to `9e805ddc`. Upstream v4.51.5 CI success and exact affected-file
+source equivalence do not replace merged-source preflight qualification.
+Relationship retention now refuses affected old pins; preflight does not capture
+global source watermark families or perform import. Per-type retention, state
+column cuts and zero temporal ordinals have explicit consumer obligations in
+[PLAN §8a](../../docs/v5/PLAN.md); full V6 remains open.
 
 The caller quiesces source writes, imports, retention and DDL across a call,
 supplies capture/reader identity and evidence, and designates an explicit v5

@@ -914,17 +914,21 @@ A build or that smoke suite alone cannot establish semantic compatibility.
    `TxAt` no longer implies valid-at-now, other readers cannot observe a
    `GraphTx`'s private writes, and IDs no longer encode placement. Those changes are listed per consumer in V6.
 
-#### Current v4 compatibility delta (cutoff 2026-10-13)
+#### Current v4 compatibility delta (cutoff 2026-10-14)
 
 The current rho source baseline for this acceptance record is main
-`a1248ffc9fcd4d2fd9425de8b578feb88c46b016`, **v4.51.4**, following integrated
-`6c6bb954`/v4.51.3 and `cddc0997`/v4.51.2. This extends the
+`c23c8b049627ee0272f4f5f671f4bcdf455f5c64`, **v4.51.5**, following integrated
+`a1248ffc`/v4.51.4, `6c6bb954`/v4.51.3 and `cddc0997`/v4.51.2. This extends the
 historical consumer inventories above; their commits/hashes and old reproduction
 runs remain historical and unchanged. It does not assert that those consumers
 have upgraded or that a v5 adapter/importer has passed.
 
 | Current v4 contract | Required v5 mapping / consumer obligation |
 |---|---|
+| Per-type relationship retention (v4.51.5) | `PurgeExpiredRels` removes live/ended relationships and all retained lives minted strictly before the cutoff; nodes and unrelated types remain answerable. Preserve scoped `ErrRetentionExpired` gates across named/generic/count/column/adjacency/snapshot/diff/GraphTx doors, unknown-old versus newer-ID behavior, reset/reopen, transaction exclusion and context cancellation. Watermark precedes predicate record and resumable chunks; tiered includes cold/history endpoint residue. Raw loss/watermarks require explicit v5 cut/lease policy, never automatic mint-time-to-group-retention conversion. |
+| Retention feed and import (v4.51.5) | Tag14 `ChangeRelRangePurge` has no entity identity and replays a relationship predicate; older readers stop at the unknown tag and ignore relationship watermarks, so upgrade first and do not downgrade after a purge. Export carries both watermark families by name; import always applies relationship watermarks, node watermarks only with `ApplyNodeRetention`. Preflight neither imports nor captures these global watermark families. Preserve refusal/provenance without claiming complete history or atomic v5 erasure. |
+| State count/column cuts and temporal ordinals (v4.51.5) | Cached effective segments at `TxAt` retain row-fold equality, membership, ordering, bounds and scalar/Null/Other/mixed-numeric behavior. `TxAt` alone still means source valid now; `TxPin` is newest-record semantics. Cache admission, after-write invalidation, single builds and 256-MiB LRU are acceleration, not certified cuts/RSS proof. Cached callbacks run outside locks, fallback callbacks retain read lock. ALL temporal column paths carry zero entity/endpoint ordinals; adapters must use actual IDs and certified v5 authority. |
+| History sidecar tables and cursor cache (v4.51.5) | Preserve pending/flushing overlays, unresolved-generation probes and exact temporal-field folds through columnar id tables; partial decoding remains distinct from integrity/completeness. Memory cursor pages retain sorted IDs and copied buffers after additions/removals/reimport under concurrent reads. Source memory/time observations do not qualify v5 performance. |
 | Persisted commit-floor and crash reopen (v4.51.4) | `CommitFloorCapability.StoredCommitFloor` covers surviving row TxFrom/TxTo/DeletedAt; `OnCommitFloor(floor, durable)` writes/fsyncs tiered reference-floor before covered shard rows. Memory SegmentDir covers sealed rows, sharded folds slots. Seed after load, preserve malformed/unsupported errors and foreign-input checks; a floor is not valid time, source completeness, a global transaction order or a certified cut. Preserve raw stamps/provenance and old-writer ambiguity. |
 | Documented durability modes (v4.51.4) | Group power-loss durability needs DurableCommit + SyncWrites on badger/sharded; tiered remains process-crash safe. Reference-floor fsync is an ordering guarantee, not whole-tiered power-loss or v5 atomicity/private-write proof. Before-return subsets and ErrCommitNotDurable semantics remain explicit. |
 | Retained lives, ex-adjacency and valid-end scans (v4.51.2) | Preserve earlier tiered lives across reimport/shard changes, both historical endpoint directions and exact resolver filtering of current/ex-adjacency supersets. Valid-end candidates are sound bounds, not answers: equal end boundary counts, open/untimed and unknown/stale/past-pin rows remain eligible; node/relationship and named/generic doors must agree. Old unsupported paths retain exact fallback. |
@@ -956,11 +960,14 @@ source-delta records and reader qualifications remain immutable history. Histori
 limits; v4.51.2 fixes those reader paths. A current reader cannot recover source
 bytes already lost by older writers, and source-history ambiguity remains explicit.
 
-The current source-only v4.51.4 contracts/signatures and pending qualification are recorded in
+The current source-only v4.51.5 contracts/signatures and pending qualification are recorded in
 [consumer contracts](reference/consumer-contracts.json) and
 [migration obligations](reference/consumer-migration.json). The ten narrow migration
-gates must be requalified against the integrated v4.51.4 root; archived v4.51.0/v4.51.1 receipts
-and consumer pins remain unchanged. The historical source contracts are retained in
+gates must be requalified against the integrated v4.51.5 root. The ten-gate migration
+receipt and three bounded compatibility lanes at `9e805ddc` qualify historical
+v4.51.4 source only; archived receipts and consumer pins remain unchanged.
+Exact upstream v4.51.5 CI and source equivalence are recorded separately from
+merged-source runtime and V6 acceptance. The historical source contracts are retained in
 [the importer handover](../../tasks/v4-changes-for-v5-importer-20261010.md).
 Preserve raw audit/author/signature/source-time evidence, original hashes and
 format/writer provenance separately from v5 revision IDs and synthetic import

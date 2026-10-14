@@ -23,7 +23,10 @@ import (
 
 // scanNodeColumnsTemporalLocked serves ScanNodeColumns under a temporal opt:
 // ByLabel's resolved versions projected into column batches by the shared row
-// path. Callers hold c.mu (R or W) and have validated opts.
+// path, without ordinals: a winning row's stored ordinal is the numbering of
+// the moment it was read (a later update or delete moves or clears it), so
+// the answer at a pin would change after a later write. Callers hold c.mu (R
+// or W) and have validated opts.
 func (c *Core) scanNodeColumnsTemporalLocked(label string, props []string, opts storepkg.QueryOpts,
 	fn func(*storepkg.ColumnBatch) bool) error {
 
@@ -31,7 +34,10 @@ func (c *Core) scanNodeColumnsTemporalLocked(label string, props []string, opts 
 	if err != nil {
 		return err
 	}
-	return storepkg.ScanColumnsFromNodes(nodes, props, fn)
+	return storepkg.ScanColumnsFromNodes(nodes, props, func(b *storepkg.ColumnBatch) bool {
+		clear(b.Ordinals) // a read coordinate numbers no row
+		return fn(b)
+	})
 }
 
 // scanRelColumnsTemporalLocked serves ScanRelColumns under a temporal opt for
@@ -53,6 +59,9 @@ func (c *Core) scanRelColumnsTemporalLocked(names []string, props []string, opts
 		stopped := false
 		err = storepkg.ScanColumnsFromRels(rels, props, func(b *storepkg.RelColumnBatch) bool {
 			b.RelType = name
+			clear(b.Ordinals) // a read coordinate numbers no row
+			clear(b.StartOrdinals)
+			clear(b.EndOrdinals)
 			if !fn(b) {
 				stopped = true
 				return false

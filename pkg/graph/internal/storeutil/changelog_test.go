@@ -250,6 +250,27 @@ func TestChangeBody_RoundTrip(t *testing.T) {
 		}
 	})
 
+	t.Run("RelRangePurge", func(t *testing.T) {
+		b := RelRangePurgeBody{TypeToken: 7, Before: 123456}
+		p, _ := MarshalChangeBody(b)
+		got, err := DecodeRelRangePurge(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, b) {
+			t.Fatalf("got %+v want %+v", got, b)
+		}
+		// A label-purge body is not a relationship-purge body: its "l" key is
+		// skipped, so the type token stays 0 (no node token leaks in).
+		lp, _ := MarshalChangeBody(RangePurgeBody{LabelToken: 7, Before: 123456})
+		if got, err := DecodeRelRangePurge(lp); err != nil || got.TypeToken != 0 {
+			t.Fatalf("label body decoded as %+v, %v", got, err)
+		}
+		if _, err := DecodeRelRangePurge([]byte{0xc1}); err == nil {
+			t.Fatal("corrupt payload decoded")
+		}
+	})
+
 	t.Run("ForeignIncomingDelete", func(t *testing.T) {
 		b := ForeignIncomingDeleteBody{RelID: 3003, EndID: 4004}
 		p, _ := MarshalChangeBody(b)

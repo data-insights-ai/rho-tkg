@@ -85,6 +85,16 @@ const (
 	// (label token + boundary + mode). Idempotent: re-executing below an
 	// already-advanced watermark is a no-op.
 	ChangeRangePurge ChangeTag = 13
+
+	// ChangeRelRangePurge is a relationship retention range purge (backlog 21):
+	// the relationship sibling of ChangeRangePurge, naming the PREDICATE
+	// "relationships of type T minted before B". A replica re-executes it
+	// against its own state and advances its own per-type watermark. Body is
+	// RelRangePurgeBody (type token + boundary + mode). A separate tag, not a
+	// kind field on tag 13: a replica that predates it stops at the unknown tag
+	// instead of purging NODES of the label that happens to share the token, so
+	// replicas are upgraded first. Idempotent.
+	ChangeRelRangePurge ChangeTag = 14
 )
 
 // String renders the tag for diagnostics and tests.
@@ -116,6 +126,8 @@ func (t ChangeTag) String() string {
 		return "ForeignIncomingDelete"
 	case ChangeRangePurge:
 		return "RangePurge"
+	case ChangeRelRangePurge:
+		return "RelRangePurge"
 	default:
 		return "ChangeTag(unknown)"
 	}
@@ -123,7 +135,7 @@ func (t ChangeTag) String() string {
 
 // Valid reports whether t is a known change tag.
 func (t ChangeTag) Valid() bool {
-	return t >= ChangeNodePut && t <= ChangeRangePurge
+	return t >= ChangeNodePut && t <= ChangeRelRangePurge
 }
 
 // ChangeRecord is one entry of the durable ordered change-log (op-log). LSN is

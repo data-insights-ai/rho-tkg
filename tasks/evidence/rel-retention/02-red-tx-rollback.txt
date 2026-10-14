@@ -1,0 +1,14 @@
+# mutant: RED tx rollback: purge chunk without c.txMu (pkg/graph/internal/core/retention_purge_rel.go)
+# go test -count=1 -run TestRelRetentionPurgeTxRollbackNoResurrection ./pkg/graph/
+--- FAIL: TestRelRetentionPurgeTxRollbackNoResurrection (0.02s)
+    --- FAIL: TestRelRetentionPurgeTxRollbackNoResurrection/memory (0.00s)
+        rel_retention_race_test.go:57: graph: relationship not found
+    --- FAIL: TestRelRetentionPurgeTxRollbackNoResurrection/badger (0.00s)
+        rel_retention_race_test.go:57: graph: relationship not found
+    --- FAIL: TestRelRetentionPurgeTxRollbackNoResurrection/sharded (0.01s)
+        rel_retention_race_test.go:57: graph: relationship not found
+    --- FAIL: TestRelRetentionPurgeTxRollbackNoResurrection/tiered (0.00s)
+        rel_retention_race_test.go:57: graph: relationship not found
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.025s
+FAIL

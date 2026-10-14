@@ -232,7 +232,8 @@ func (c *Core) restoreInstantFloorAfterReset() error {
 // whole delta atomically.
 func (c *Core) checkImportedRecordStamp(rec storepkg.ChangeRecord) error {
 	// stamp == 0 means "this tag carries no transaction stamp" (ChangeMeta,
-	// ChangeClear, ChangeRangePurge, ChangeForeignIncomingDelete, the history
+	// ChangeClear, ChangeRangePurge, ChangeRelRangePurge,
+	// ChangeForeignIncomingDelete, the history
 	// truncations). There is nothing to bound, and rejecting it would misdiagnose
 	// a perfectly valid record as corruption.
 	if stamp := recordCommitStamp(rec); stamp != 0 && !c.plausibleForeignStamp(stamp) {

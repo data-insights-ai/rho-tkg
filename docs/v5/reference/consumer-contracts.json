@@ -1032,129 +1032,277 @@
     "Present": "PropertyTypeClassCounts value receiver; return sum of Numeric, NaN, String, Bool, Other (excluding Missing)"
   },
   "current_v4_source_delta": {
-    "captured_date": "2026-10-13",
+    "captured_date": "2026-10-14",
     "repository": "rho-tkg",
-    "commit": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
-    "tree": "c78c194123ea96b0c43806882a8584aace88b52b",
-    "release": "v4.51.4",
-    "previous_integrated_main": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
-    "extends_historical_source_delta": "source_delta_history preserves all prior v4.51.0/4.51.1/4.51.3 source objects and receipts unchanged; the current delta adds v4.51.4 obligations.",
-    "evidence_level": "Source-only main reconciliation; signatures/source hashes do not establish behavioral, adapter or phase acceptance.",
-    "qualification": "v4.51.4 reader qualification PENDING; all historical qualifications and dated v4.51.3 source checkpoint remain unchanged.",
-    "dependencies": "Upstream root go.mod/go.sum and workflows unchanged. Prepared migration module requires v4.51.4 with local root/v5 replacements; no Go/runtime or download performed.",
+    "commit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+    "tree": "f2a0ebb3066f5a7385e8341bfdbae9c9b4b7daaa",
+    "release": "v4.51.5",
+    "previous_integrated_main": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
+    "extends_historical_source_delta": "Every prior source object is retained unchanged in source_delta_history, including v4.51.4; archived consumer pins are unchanged.",
+    "evidence_level": "Source-only reconciliation. Exact upstream CI proof is separate; merged-source runtime, adapter, importer and phase acceptance remain pending.",
+    "qualification": "Current integrated v4.51.5 reader qualification PENDING. Historical v4.51.4 ten-gate migration receipt and three finite compatibility lanes at9e805ddc remain source-qualified history.",
+    "dependencies": "Root/v5 go.mod/go.sum unchanged upstream; CI race scheduling changed. Migration requires v4.51.5 with existing local root/v5 replacements; no dependency download/compiler/scanner execution after9e runtime lease.",
     "contract_extensions": [
       {
-        "id": "v4514-persisted-commit-floor",
+        "id": "v4515-scoped-relationship-retention",
         "contract": [
-          "CommitFloorCapability.StoredCommitFloor() (types.Instant, error)",
-          "badger.Config.OnCommitFloor func(floor types.Instant, durable bool) error",
-          "Temporal.NowTx() (types.Instant, error) (unchanged signature; crash-reopen clock coverage strengthened)"
+          "Admin().PurgeExpiredRels(ctx context.Context, policy RelPurgePolicy) (RelPurgeReport, error)",
+          "RelPurgePolicy{Type string, Mode PurgeMode, Before types.Instant}",
+          "RelPurgeReport{RelsPurged int, Watermark types.Instant}",
+          "RelRetentionPurgeCapability.PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, chunk int) (RetentionPurgeResult, error)",
+          "RelRangePurgeLogCapability.LogRelRangePurge(typeToken uint16, before types.Instant, mode uint8) error"
         ],
-        "required_v5_mapping": "The optional floor conservatively covers surviving current/history row TxFrom/TxTo/DeletedAt; it is not valid time, a latest-row or absence/completeness proof, transaction grouping, an HLC/global order or a certified graph cut. Badger puts it first in each row batch, including split, replica and import paths. Sharded folds slots; tiered writes non-reference shard floor ahead on the reference shard and fsyncs it before DurableFlush covers rows, including earlier background flushes; background hooks use durable=false. Memory SegmentDir derives the floor only from persisted sealed relationship rows; ordinary RAM rows do not survive. Core seeds after segment loading and preserves error refusal; existing stored-row floor uses no foreign-input plausibility clamp, while raw import/merge/caller clock bounds remain separate. A zero/missing historical floor does not repair older lost rows or prove an older writer covered every persisted stamp. Keep raw source stamps and writer provenance, then create v5 revisions at v5 certified cuts.",
+        "required_v5_mapping": "V4 age purge removes current and ended relationships of one immutable type minted strictly before Before, including every retained life, historical endpoints, adjacency/ex-adjacency, indexes and sidecars; nodes remain. Only PurgeByAge is admitted. Preserve nil/context/writable/AllowRetentionPurge/capability gates, unknown-type no-op and errors.Is. The per-type max-monotonic watermark precedes one predicate change record and 256-relationship chunks; chunks wait for open GraphTx with context cancellation. Partial progress/retry is recoverable, not an atomic v5 transaction. Tiered opens cold shards for the call and sweeps historical endpoint-leg residue; sharded fans out. Below a type watermark, named/generic/count/column/adjacency/snapshot/diff and GraphTx doors must refuse the affected scope, while unrelated types and node scopes remain answerable. Unknown old relationship IDs conservatively refuse below the relationship maximum; newer IDs remain ordinary absent. Reset clears the family. Preserve raw source loss/watermark evidence; v5 cut/lease expiry needs an explicit policy, never implicit v4 mint-time-to-group-retention conversion, global cut or completeness proof.",
         "evidence": [
           {
             "repository": "rho-tkg",
-            "commit": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
-            "path": "pkg/graph/store/commit_floor.go",
-            "sha256": "ecbeae56db8bf57e29e84c8a81a14b03c0fd1ca7c2957612c45a933f9d0fb2c6",
+            "commit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+            "path": "pkg/graph/admin/api.go",
+            "sha256": "3396b6a7fb7d5caca2ee3080689328055eb9243c381ddbb521a1d1de4d918f90",
             "matching_lines": [
-              17
+              175
             ],
-            "anchor": "type CommitFloorCapability"
+            "anchor": "func (a *API) PurgeExpiredRels"
           },
           {
             "repository": "rho-tkg",
-            "commit": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
-            "path": "pkg/graph/store/badger/badgerstore_commit_floor.go",
-            "sha256": "cf5d9593736d987fe5f58a1f946f1f42a1bfc960c474697cabc806b83b58b374",
-            "matching_lines": [
-              58
-            ],
-            "anchor": "func (bs *Store) batchCommitFloor"
-          },
-          {
-            "repository": "rho-tkg",
-            "commit": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
-            "path": "pkg/graph/store/badger/badgerstore.go",
-            "sha256": "ff4e10afc14d5ecd4caa292da9a87bb2aecd1326f92e7fe8898632b3756ad0e7",
-            "matching_lines": [
-              392
-            ],
-            "anchor": "OnCommitFloor func"
-          },
-          {
-            "repository": "rho-tkg",
-            "commit": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
-            "path": "pkg/graph/store/tiered/tieredstore_commit_floor.go",
-            "sha256": "c340ae34ef287ab80af95eb5bb9512de707f34242da307001b8d6b0e7edbd203",
+            "commit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+            "path": "pkg/graph/internal/core/retention_purge_rel.go",
+            "sha256": "8b9116203bb159074e1c847ebc038d804fe974cf346335000636780ba51fba07",
             "matching_lines": [
               61
             ],
-            "anchor": "func (ts *Store) persistShardCommitFloor"
+            "anchor": "func (a *AdminOps) PurgeExpiredRels"
           },
           {
             "repository": "rho-tkg",
-            "commit": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
-            "path": "pkg/graph/store/memory/memorystore_commit_floor.go",
-            "sha256": "12c911f668a4b59fa020171726fecb7f816d1a838ae1fe1c575cc790b7819ffa",
+            "commit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+            "path": "pkg/graph/internal/core/retention_rel.go",
+            "sha256": "3a612e1177223c0ba7c3241f5bbb37caed90efa555e731a3ce2ea05c345400ba",
             "matching_lines": [
-              17
+              210
             ],
-            "anchor": "func (ms *Store) StoredCommitFloor"
+            "anchor": "func (c *Core) checkRelTypePointRetention"
           },
           {
             "repository": "rho-tkg",
-            "commit": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
-            "path": "pkg/graph/internal/core/instant_floor.go",
-            "sha256": "8705f650904fb36ea61e40f5f9365d8a9abb22137dfccb9f97f3a696966c11e4",
+            "commit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+            "path": "pkg/graph/store/capabilities.go",
+            "sha256": "f01b4d9c3554a73e103246e9e3df8ed7a987d354d166c1efca4671f9de6ec97e",
             "matching_lines": [
-              79
+              781
             ],
-            "anchor": "func (c *Core) seedCommitFloor"
+            "anchor": "type RelRetentionPurgeCapability"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+            "path": "pkg/graph/store/tiered/rel_retention_purge.go",
+            "sha256": "b6867621856cf8a98c6c6d98ec7a045160571f1b3c6f416ce2a10acd02ea7f22",
+            "matching_lines": [
+              28
+            ],
+            "anchor": "func (ts *Store) PurgeRelsByTypeBefore"
           }
         ],
         "required_tests": [
-          "Crash reopen after burst/AdvanceClock without Close, current/history/replica/import row stamp coverage, split batches and callback failure/retry; NowTx and subsequent stamps stay above retained row stamps.",
-          "Tiered cold/archive shard coverage without lazy-open plus reference-floor durable-before-row sync, sharded slot max, memory sealed segments and malformed/unsupported/read-only floor sentinel behavior.",
-          "Preflight node/relationship raw stamps and historical scopes remain unchanged under the new reader; no wall-clock/floor-to-cut conversion."
+          "Exact multi-type/node and deleted/reimported/history-only sets at before/equal/after mint and pin boundaries; named/generic/count/column/GraphTx parity, errors.Is and unknown/new ID distinctions.",
+          "Cross-shard historical endpoints, cold/archive sweep, repeated chunks/partial errors, rollback exclusion/context cancellation, reset/reopen and post-removal cache invalidation."
         ],
-        "ownership": "rho storage/time preservation; sigma/ai-soc adapter consumption in their repositories",
+        "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
         "acceptance_status": "pending-v5"
       },
       {
-        "id": "v4514-durability-mode-contract",
+        "id": "v4515-retention-feed-and-import",
         "contract": [
-          "Config.DurableCommit + Config.SyncWrites on badger/sharded",
-          "tiered DurableCommit: process-crash safety only"
+          "store.ChangeRelRangePurge ChangeTag = 14",
+          "RelRangePurgeBody{TypeToken uint16, Before int64, Mode uint8}",
+          "io.ImportOptions.ApplyNodeRetention bool"
         ],
-        "required_v5_mapping": "Documented group power-loss durability requires both DurableCommit and SyncWrites on badger/sharded. DurableCommit alone can leave retired WAL/value-log files unsynced across switches; tiered has no SyncWrites and remains process-crash safe only. Reference-floor fsync protects the clock-before-row ordering but does not upgrade that whole tiered power-loss contract. A pre-return crash can still preserve a subset and v4 GraphTx is not crash-atomic/private like v5; report acknowledged durability and failure-model equivalence explicitly instead of deriving atomic v5 transactions from source timestamps.",
+        "required_v5_mapping": "Tag14 is a relationship predicate, never tag13 node semantics or an entity mutation: ChangeOpOf/DecodeChangeIdentity return ErrNoEntityIdentity. Replica apply re-executes the predicate and advances local type watermarks; ImportMerge validates/captures no undo rows for this range predicate. Preserve upgrade-first/unknown-tag refusal and no downgrade after relationship purge, because older readers ignore relationship watermarks. Export headers carry both watermark families by resolved names. Import always applies relationship watermarks and applies node watermarks only with ApplyNodeRetention, off by default. Preserve source loss/refusal and actual import failure behavior; v4 headers do not certify a v5 retained cut, completeness or atomic erasure. Preflight reads an already-open graph and neither exports/imports nor captures these global watermark families; reader qualification must exercise ErrRetentionExpired on affected pins.",
         "evidence": [
           {
             "repository": "rho-tkg",
-            "commit": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
-            "path": "docs/persistence.md",
-            "sha256": "548e16b04e12096adde7c8051546ba06574efb7d38f2a44b6a0a1e451d6e6d2c",
+            "commit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+            "path": "pkg/graph/store/changefeed.go",
+            "sha256": "a9917b325808529efa89f913b60cec1946e5e2b3d83dd3f1f962ff5fdca74ec7",
             "matching_lines": [
-              36
+              97
             ],
-            "anchor": "Power-loss durability needs"
+            "anchor": "ChangeRelRangePurge ChangeTag = 14"
           },
           {
             "repository": "rho-tkg",
-            "commit": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
-            "path": "pkg/graph/store/badger/badgerstore_durable.go",
-            "sha256": "65907a6072ad0af73f209d29ba3bd3661b5ffdbe705d5e68388c75585a888e1f",
+            "commit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+            "path": "pkg/graph/internal/storeutil/changelog.go",
+            "sha256": "cccf656f0dfc04280175e151a5f9ae3ba558794196a30a28449d11f4d43f280c",
             "matching_lines": [
-              12,
-              40
+              110
             ],
-            "anchor": "func (bs *Store) DurableFlush"
+            "anchor": "type RelRangePurgeBody"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+            "path": "pkg/graph/internal/core/export.go",
+            "sha256": "daaece629d3c71b28178942c787a063793dd92dd37447d1ebb7bfe7c0cbc862e",
+            "matching_lines": [
+              107
+            ],
+            "anchor": "RelRetention  map"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+            "path": "pkg/graph/io/api.go",
+            "sha256": "1fc385d8a42438db805db49dab2193715cba89f741499ca6215b51b0a596f363",
+            "matching_lines": [
+              91
+            ],
+            "anchor": "ApplyNodeRetention bool"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+            "path": "pkg/graph/internal/core/import_merge.go",
+            "sha256": "6da6c88c3c8f666b268efd23b6f350ff670988a91fd6de316604d21e21aa4d34",
+            "matching_lines": [
+              436
+            ],
+            "anchor": "case storepkg.ChangeRelRangePurge:"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+            "path": "pkg/graph/replication/change_identity.go",
+            "sha256": "7fca22074d94b4fe61c3236f360ac18b6cdce3447fff66fb8cb2bc4ea1f80604",
+            "matching_lines": [
+              107,
+              189
+            ],
+            "anchor": "store.ChangeRelRangePurge:"
           }
         ],
         "required_tests": [
-          "Selected durable group switch/crash/rollback/refusal cases preserve source contract and distinguish process-kill from declared power-loss model; requalification receipts state modes rather than import durability claims."
+          "One range record/replay/reset/import bootstrap and type-name translation; unknown-tag refusal/no entity identity; node watermark opt-in versus relationship always-on.",
+          "Nonempty node/relationship preflight and refused purged pins preserve raw provenance and errors.Is; destination import/completeness remains separate."
         ],
-        "ownership": "rho durability preservation; consumers explicitly select supported modes",
+        "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v4515-effective-state-column-cuts",
+        "contract": [
+          "Nodes().CountByLabelAt(label string, opts QueryOpts) (int, error)",
+          "Rels().CountByTypeAt(typeName string, opts QueryOpts) (int, error)",
+          "Graph.ScanNodeColumns / ScanRelColumns with temporal QueryOpts",
+          "store.NodeColumnSource and ScanColumnsFromNodeSource"
+        ],
+        "required_v5_mapping": "State TxAt (optionally ValidAt; otherwise source valid now), no TxPin/interval and DepthAll, caches effective timeline segments by kind/token/pin on the second ask. Equal row-fold answers at every valid instant, identity order, membership, pagination and declared endpoints remain required; TxPin stays newest-record/as-of. Cache admission checks writes at/below pin landed without waiting. History rewrites, in-place updates, clamped scheduled closes and node/relationship replica stamps invalidate after writes; relationship purge invalidates relationship cuts after removal while node caches remain. One build per key and 256-MiB LRU representation budget are accelerators, not certified cuts or process RSS bounds. Cut callbacks run outside graph locks; fold callbacks retain read lock. Preserve scalar normalization, Null/Other alignment, mixed-numeric refusal and row fallback. ALL temporal column options carry zero entity/endpoint ordinals on both cached and fold paths; current non-temporal ordinals remain separate. Consumers cannot use temporal ordinals as identity/placement. V5 selectors use certified authority/native axes and retain point/event/extent distinctions.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+            "path": "pkg/graph/internal/core/state_columns.go",
+            "sha256": "e235be6984ff6f38c8abc74bb8d41f3c9d6ff7abc9cc9a9db41e6fd4e021dd80",
+            "matching_lines": [
+              270
+            ],
+            "anchor": "func (c *Core) stateCutQuery"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+            "path": "pkg/graph/internal/core/state_columns.go",
+            "sha256": "e235be6984ff6f38c8abc74bb8d41f3c9d6ff7abc9cc9a9db41e6fd4e021dd80",
+            "matching_lines": [
+              288
+            ],
+            "anchor": "func (c *Core) pinLanded"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+            "path": "pkg/graph/column_scan.go",
+            "sha256": "67959abedb8b2bd0d5c6c9bd072211a8185c704d79df41c52751d7c9d45754d4",
+            "matching_lines": [
+              58
+            ],
+            "anchor": "func (g *Graph) ScanNodeColumns"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+            "path": "pkg/graph/internal/core/scan_temporal_opts.go",
+            "sha256": "54255df66c13a056448a864f53bd053caf82e5169c6f7076320910dc1796a739",
+            "matching_lines": [
+              38,
+              62
+            ],
+            "anchor": "clear(b.Ordinals)"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+            "path": "pkg/graph/store/column_batch_build.go",
+            "sha256": "2c66103c37a0a563d2fc716ef8645c1ff1efd4a4d57b419c4f9b688a0089823d",
+            "matching_lines": [
+              537
+            ],
+            "anchor": "type NodeColumnSource"
+          }
+        ],
+        "required_tests": [
+          "Mutation-then-historical row/count/column parity across stores, labels/types/ends/retraction/reimport, scalar/Other/mixed-numeric branches and exact zero temporal ordinals.",
+          "Concurrent writes, replica past/equal-pin rows, close clamp/in-place update, callback reentry, one-build/oversize/epoch/eviction and purge cache scopes."
+        ],
+        "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v4515-history-sidecar-and-cursor-acceleration",
+        "contract": [
+          "badger.Store.NodeHistoryStamps / RelHistoryStamps and HasNodeHistory / HasRelHistory (unchanged signatures)",
+          "memory.Store.AllNodeHistoryIDsFrom / AllRelHistoryIDsFrom (unchanged signatures)"
+        ],
+        "required_v5_mapping": "Presence/tops and stamps use separate mutex-owned columnar open-addressed tables with pending/flushing overlays, generation-fenced unresolved probes and exact temporal-field folds; temporal-only decoding is not full body/integrity proof. Cold HistoryPresenceProbeOnly keeps per-ID probing. Memory history-ID cursors cache sorted keys, invalidate on additions/rebuild after removals and return copied pages in unchanged order under concurrent readers. This is acceleration, not new history, leases, certified source cuts or v5 performance/RSS evidence. Preserve deletion/lowering overwrite/Clear/reimport and unresolved-top fallbacks.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+            "path": "pkg/graph/store/badger/badgerstore_history_idtable.go",
+            "sha256": "5a49eef4bd2b0c44300eaa5aeb10d8963b5bce6cb1d5642256f3d0c7afc50198",
+            "matching_lines": [
+              19
+            ],
+            "anchor": "type idTable"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+            "path": "pkg/graph/store/badger/badgerstore_history_stamps.go",
+            "sha256": "4ed09bbce688c4fafdb3768b3b0681548dff24947c5e830f45e013f972963b40",
+            "matching_lines": [
+              182
+            ],
+            "anchor": "func (bs *Store) NodeHistoryStamps"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+            "path": "pkg/graph/store/memory/memorystore_history_ids.go",
+            "sha256": "d6e9d9895e68fb43c3d10812ba05cce8236fb5884a7094af14218d1214d34dfb",
+            "matching_lines": [
+              25
+            ],
+            "anchor": "func (ms *Store) sortedNodeHistoryIDsLocked"
+          }
+        ],
+        "required_tests": [
+          "Differential presence/stamp folds through pending/flush/delete/lowering overwrite/Clear/reopen/unresolved probes with Node/Rel parity.",
+          "Exact cursor pages after add/trim/purge/Clear/reimport, caller mutation and concurrent reads; no phantom/missing IDs or completeness inference."
+        ],
+        "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
         "acceptance_status": "pending-v5"
       }
     ],
@@ -1201,6 +1349,18 @@
       ],
       "CommitFloorCapability": [
         "StoredCommitFloor() (types.Instant, error)"
+      ],
+      "RelRetentionPurgeCapability": [
+        "PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, chunk int) (RetentionPurgeResult, error)"
+      ],
+      "RelRangePurgeLogCapability": [
+        "LogRelRangePurge(typeToken uint16, before types.Instant, mode uint8) error"
+      ],
+      "NodeColumnSource": [
+        "Len() int",
+        "Row(i int) (id types.NodeID, validFrom, validTo int64)",
+        "Value(i, c int) (kind ColumnKind, i64 int64, f64 float64, s string, b bool, ok bool)",
+        "Other(i, c int) bool"
       ]
     }
   },
@@ -1737,6 +1897,179 @@
         "NodeValidEndCapability": [
           "NodeValidEndCandidates(labelTokens []uint16, pin, validFrom types.Instant) ([]ValidEndCandidate, error)",
           "RefineNodeValidEnd(id types.NodeID, gen uint64, end types.Instant)"
+        ]
+      }
+    },
+    {
+      "captured_date": "2026-10-13",
+      "repository": "rho-tkg",
+      "commit": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
+      "tree": "c78c194123ea96b0c43806882a8584aace88b52b",
+      "release": "v4.51.4",
+      "previous_integrated_main": "6c6bb954df12aa5e59cfdd4f9c1f189dc25bf5e1",
+      "extends_historical_source_delta": "source_delta_history preserves all prior v4.51.0/4.51.1/4.51.3 source objects and receipts unchanged; the current delta adds v4.51.4 obligations.",
+      "evidence_level": "Source-only main reconciliation; signatures/source hashes do not establish behavioral, adapter or phase acceptance.",
+      "qualification": "v4.51.4 reader qualification PENDING; all historical qualifications and dated v4.51.3 source checkpoint remain unchanged.",
+      "dependencies": "Upstream root go.mod/go.sum and workflows unchanged. Prepared migration module requires v4.51.4 with local root/v5 replacements; no Go/runtime or download performed.",
+      "contract_extensions": [
+        {
+          "id": "v4514-persisted-commit-floor",
+          "contract": [
+            "CommitFloorCapability.StoredCommitFloor() (types.Instant, error)",
+            "badger.Config.OnCommitFloor func(floor types.Instant, durable bool) error",
+            "Temporal.NowTx() (types.Instant, error) (unchanged signature; crash-reopen clock coverage strengthened)"
+          ],
+          "required_v5_mapping": "The optional floor conservatively covers surviving current/history row TxFrom/TxTo/DeletedAt; it is not valid time, a latest-row or absence/completeness proof, transaction grouping, an HLC/global order or a certified graph cut. Badger puts it first in each row batch, including split, replica and import paths. Sharded folds slots; tiered writes non-reference shard floor ahead on the reference shard and fsyncs it before DurableFlush covers rows, including earlier background flushes; background hooks use durable=false. Memory SegmentDir derives the floor only from persisted sealed relationship rows; ordinary RAM rows do not survive. Core seeds after segment loading and preserves error refusal; existing stored-row floor uses no foreign-input plausibility clamp, while raw import/merge/caller clock bounds remain separate. A zero/missing historical floor does not repair older lost rows or prove an older writer covered every persisted stamp. Keep raw source stamps and writer provenance, then create v5 revisions at v5 certified cuts.",
+          "evidence": [
+            {
+              "repository": "rho-tkg",
+              "commit": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
+              "path": "pkg/graph/store/commit_floor.go",
+              "sha256": "ecbeae56db8bf57e29e84c8a81a14b03c0fd1ca7c2957612c45a933f9d0fb2c6",
+              "matching_lines": [
+                17
+              ],
+              "anchor": "type CommitFloorCapability"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
+              "path": "pkg/graph/store/badger/badgerstore_commit_floor.go",
+              "sha256": "cf5d9593736d987fe5f58a1f946f1f42a1bfc960c474697cabc806b83b58b374",
+              "matching_lines": [
+                58
+              ],
+              "anchor": "func (bs *Store) batchCommitFloor"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
+              "path": "pkg/graph/store/badger/badgerstore.go",
+              "sha256": "ff4e10afc14d5ecd4caa292da9a87bb2aecd1326f92e7fe8898632b3756ad0e7",
+              "matching_lines": [
+                392
+              ],
+              "anchor": "OnCommitFloor func"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
+              "path": "pkg/graph/store/tiered/tieredstore_commit_floor.go",
+              "sha256": "c340ae34ef287ab80af95eb5bb9512de707f34242da307001b8d6b0e7edbd203",
+              "matching_lines": [
+                61
+              ],
+              "anchor": "func (ts *Store) persistShardCommitFloor"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
+              "path": "pkg/graph/store/memory/memorystore_commit_floor.go",
+              "sha256": "12c911f668a4b59fa020171726fecb7f816d1a838ae1fe1c575cc790b7819ffa",
+              "matching_lines": [
+                17
+              ],
+              "anchor": "func (ms *Store) StoredCommitFloor"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
+              "path": "pkg/graph/internal/core/instant_floor.go",
+              "sha256": "8705f650904fb36ea61e40f5f9365d8a9abb22137dfccb9f97f3a696966c11e4",
+              "matching_lines": [
+                79
+              ],
+              "anchor": "func (c *Core) seedCommitFloor"
+            }
+          ],
+          "required_tests": [
+            "Crash reopen after burst/AdvanceClock without Close, current/history/replica/import row stamp coverage, split batches and callback failure/retry; NowTx and subsequent stamps stay above retained row stamps.",
+            "Tiered cold/archive shard coverage without lazy-open plus reference-floor durable-before-row sync, sharded slot max, memory sealed segments and malformed/unsupported/read-only floor sentinel behavior.",
+            "Preflight node/relationship raw stamps and historical scopes remain unchanged under the new reader; no wall-clock/floor-to-cut conversion."
+          ],
+          "ownership": "rho storage/time preservation; sigma/ai-soc adapter consumption in their repositories",
+          "acceptance_status": "pending-v5"
+        },
+        {
+          "id": "v4514-durability-mode-contract",
+          "contract": [
+            "Config.DurableCommit + Config.SyncWrites on badger/sharded",
+            "tiered DurableCommit: process-crash safety only"
+          ],
+          "required_v5_mapping": "Documented group power-loss durability requires both DurableCommit and SyncWrites on badger/sharded. DurableCommit alone can leave retired WAL/value-log files unsynced across switches; tiered has no SyncWrites and remains process-crash safe only. Reference-floor fsync protects the clock-before-row ordering but does not upgrade that whole tiered power-loss contract. A pre-return crash can still preserve a subset and v4 GraphTx is not crash-atomic/private like v5; report acknowledged durability and failure-model equivalence explicitly instead of deriving atomic v5 transactions from source timestamps.",
+          "evidence": [
+            {
+              "repository": "rho-tkg",
+              "commit": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
+              "path": "docs/persistence.md",
+              "sha256": "548e16b04e12096adde7c8051546ba06574efb7d38f2a44b6a0a1e451d6e6d2c",
+              "matching_lines": [
+                36
+              ],
+              "anchor": "Power-loss durability needs"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
+              "path": "pkg/graph/store/badger/badgerstore_durable.go",
+              "sha256": "65907a6072ad0af73f209d29ba3bd3661b5ffdbe705d5e68388c75585a888e1f",
+              "matching_lines": [
+                12,
+                40
+              ],
+              "anchor": "func (bs *Store) DurableFlush"
+            }
+          ],
+          "required_tests": [
+            "Selected durable group switch/crash/rollback/refusal cases preserve source contract and distinguish process-kill from declared power-loss model; requalification receipts state modes rather than import durability claims."
+          ],
+          "ownership": "rho durability preservation; consumers explicitly select supported modes",
+          "acceptance_status": "pending-v5"
+        }
+      ],
+      "interfaces": {
+        "ExAdjacencyCapability": [
+          "ForEachExAdjacentRelID(nodeID types.NodeID, incoming bool, fn func(types.RelID) bool) error",
+          "NoteExAdjacentRel(id types.RelID, startID, endID types.NodeID) error"
+        ],
+        "RelCreateUndoCapability": [
+          "UndoRelationshipCreate(id types.RelID) error"
+        ],
+        "ScopedRelCreateUndoCapability": [
+          "UndoRelationshipCreateScoped(id types.RelID, token uint64) error"
+        ],
+        "MutationFlushHoldCapability": [
+          "FlushesEveryMutation() bool",
+          "HoldMutationFlushes()",
+          "ReleaseMutationFlushes()"
+        ],
+        "ReadSnapshotCapability": [
+          "NewReadSnapshot() ReadSnapshot"
+        ],
+        "ReadSnapshot": [
+          "GetNode(id types.NodeID) (*types.Node, error)",
+          "GetRelationship(id types.RelID) (*types.Relationship, error)",
+          "HasNodeHistory(id types.NodeID) (bool, error)",
+          "HasRelHistory(id types.RelID) (bool, error)",
+          "NodeHistoryTemporalMeta(id types.NodeID) ([]VersionTemporalMeta, error)",
+          "RelHistoryTemporalMeta(id types.RelID) ([]VersionTemporalMeta, error)",
+          "GetNodeVersion(id types.NodeID, version uint32) (*types.Node, error)",
+          "GetRelVersion(id types.RelID, version uint32) (*types.Relationship, error)",
+          "GetNodeHistory(id types.NodeID) ([]*types.Node, error)",
+          "GetRelHistory(id types.RelID) ([]*types.Relationship, error)",
+          "Release()",
+          "Close()"
+        ],
+        "RelValidEndCapability": [
+          "RelValidEndCandidates(typeToken uint16, pin, validFrom types.Instant) ([]ValidEndCandidate, error)",
+          "RefineRelValidEnd(id types.RelID, gen uint64, end types.Instant)"
+        ],
+        "NodeValidEndCapability": [
+          "NodeValidEndCandidates(labelTokens []uint16, pin, validFrom types.Instant) ([]ValidEndCandidate, error)",
+          "RefineNodeValidEnd(id types.NodeID, gen uint64, end types.Instant)"
+        ],
+        "CommitFloorCapability": [
+          "StoredCommitFloor() (types.Instant, error)"
         ]
       }
     }

@@ -1,0 +1,26 @@
+ci-race 04 — every race part as CI runs it, locally at GOMAXPROCS=4 with -race
+
+Command per part: RACE_SHARD=<part> ROOT_RACE_CORE_SHARDS=4 GOMAXPROCS=4 taskset -c <4 CPUs> make -s test-race
+(/usr/bin/time; wall includes the race build and, for core, the -list build). Two waves of concurrent parts on
+disjoint 4-CPU sets; host (Ryzen 9 7950X3D, 32 CPUs) load avg 20-40 from other work throughout.
+
+| part   | job wall          | slowest package inside (go test "ok" time) | CPU     | result |
+|--------|-------------------|--------------------------------------------|---------|--------|
+| other  | 297 s (5.0 min)   | store/badger 164 s, tiered 138 s, index 67 s | 652 s | pass |
+| graph  | 277 s (4.6 min)   | pkg/graph 262 s                            | 312 s   | pass   |
+| memory | 212 s (3.5 min)   | store/memory 198 s                         | 216 s   | pass   |
+| core-1 | 253 s (4.2 min)   | core (550 names) 188 s                     | 629 s   | pass   |
+| core-2 | 146 s (2.4 min)   | core (550 names) 78 s                      | 304 s   | pass   |
+| core-3 | 134 s (2.2 min)   | core (549 names) 64 s                      | 221 s   | pass   |
+| core-4 | 142 s (2.4 min)   | core (549 names) 136 s                     | 321 s   | pass   |
+
+Before (01): the same CI job ran all of it in one invocation set; alone core needed 359 s, pkg/graph 292 s,
+memory 237 s, and together on 4 vCPU each crossed 600 s.
+
+Go's timeout is per package invocation: the largest is pkg/graph at 262 s (44 % of 600 s). "other"'s 297 s is
+job wall for 42 packages, its largest package 164 s.
+
+Calibration (how local pinned-CPU numbers relate to the runner): CI's non-race `make test` step re-run here
+(base tree, GOMAXPROCS=4, same pinning, load 25-40) took core 197 s (CI 165), memory 150 s (CI 135),
+pkg/graph 387 s (CI 125), badger 256 s (CI 67), tiered 228 s (CI 55). Under this host load the local numbers
+are at or above the runner's, not below; the GitHub run is the real proof (René pushes and watches it).

@@ -43,6 +43,12 @@ func (t *TempOps) Snapshot(at types.Instant) (*temporalpkg.GraphSnapshot, error)
 // snapshotAt computes the graph snapshot at t without acquiring any
 // graph-level lock. Caller must hold c.mu.Lock.
 func (c *Core) snapshotAt(t types.Instant) (*temporalpkg.GraphSnapshot, error) {
+	// Relationship-purge watermarks (backlog 21): the doors on this helper
+	// had no retention gate, so only the relationship family applies (their
+	// node-purge behaviour is unchanged).
+	if err := c.checkRelsOnlyRetention("", t); err != nil {
+		return nil, err
+	}
 	nodes, err := c.nodesAtLocked(t)
 	if err != nil {
 		return nil, err
@@ -196,6 +202,13 @@ func (t *TempOps) DiffCallback(t1, t2 types.Instant, h temporalpkg.DiffHandlers)
 	}
 	if !diffWantsNodes(h) && !diffWantsRels(h) {
 		return nil
+	}
+	// Relationship-purge watermarks (backlog 21) at the earlier pin; the node
+	// family is not gated here (unchanged).
+	if diffWantsRels(h) {
+		if err := c.checkRelsOnlyRetention("", t1); err != nil {
+			return err
+		}
 	}
 	return c.diffCallback(t1, t2, h)
 }

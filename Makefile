@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := build
 
-.PHONY: tools build test test-v test-race test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker check ci clean check-metakv-reap
+.PHONY: tools build test test-v test-race test-race-script test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker check ci clean check-metakv-reap
 
 BENCH_COUNT ?= 1
 BENCH_TIME ?= 1s
@@ -60,9 +60,14 @@ test:
 test-v:
 	go test -short -count=1 -v ./...
 
-# Run tests with race detector
+# Run tests with race detector. Local default remains unsplit; full CI selects
+# one isolated package or exhaustive core batch with RACE_SHARD.
 test-race:
 	$(SHELL) scripts/test-race.sh "$(ROOT_RACE_CORE_SHARDS)"
+
+# Fake-Go script checks (no Go compilation or runtime).
+test-race-script:
+	$(SHELL) scripts/test-race-test.sh
 
 # Run integration tests (long-running, not short)
 test-integration:

@@ -104,7 +104,7 @@ func ChangeOpOf(rec store.ChangeRecord) (ChangeOp, error) {
 		return ChangeOpHistoryVersion, nil
 	case store.ChangeNodeHistoryTruncate, store.ChangeRelHistoryTruncate:
 		return ChangeOpHistoryTruncate, nil
-	case store.ChangeMeta, store.ChangeClear, store.ChangeRangePurge:
+	case store.ChangeMeta, store.ChangeClear, store.ChangeRangePurge, store.ChangeRelRangePurge:
 		return ChangeOpUnknown, ErrNoEntityIdentity
 	default:
 		return ChangeOpUnknown, fmt.Errorf("%w: unknown change-log tag %d", store.ErrCorruptWire, byte(rec.Tag))
@@ -186,9 +186,9 @@ func DecodeChangeIdentity(rec store.ChangeRecord) (EntityKind, snowflake.ID, err
 			return EntityKindUnknown, 0, err
 		}
 		return EntityKindRelationship, snowflake.ID(b.RelID), nil
-	case store.ChangeRangePurge:
-		// Names a PREDICATE ("label L older than T"), not a single entity —
-		// same "no entity identity" shape as ChangeMeta/ChangeClear.
+	case store.ChangeRangePurge, store.ChangeRelRangePurge:
+		// Names a PREDICATE ("label L / type T older than B"), not a single
+		// entity — same "no entity identity" shape as ChangeMeta/ChangeClear.
 		return EntityKindUnknown, 0, ErrNoEntityIdentity
 	case store.ChangeMeta, store.ChangeClear:
 		return EntityKindUnknown, 0, ErrNoEntityIdentity

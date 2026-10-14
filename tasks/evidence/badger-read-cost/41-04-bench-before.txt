@@ -1,0 +1,36 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkHistorySidecarAtScale/build/HasHistory-32         	       2	 685582154 ns/op	164134564 B/op	   57097 allocs/op
+BenchmarkHistorySidecarAtScale/build/LatestStamps-32       	       1	1747302512 ns/op	335746872 B/op	   65495 allocs/op
+BenchmarkHistorySidecarAtScale/lookup/HasHistory/miss=false-32         	39660319	        27.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarAtScale/lookup/HasHistory/miss=true-32          	64989825	        24.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarAtScale/lookup/LatestStamps/miss=false-32       	42090577	        26.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarAtScale/lookup/LatestStamps/miss=true-32        	52253503	        23.95 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarAtScale/insert/random-new-ID-32                 	 1000000	      1287 ns/op	     242 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkHistorySidecarAtScale/build/HasHistory-32         	       3	 339600032 ns/op	164134432 B/op	   57010 allocs/op
+BenchmarkHistorySidecarAtScale/build/LatestStamps-32       	       2	 971910772 ns/op	335779096 B/op	   65315 allocs/op
+BenchmarkHistorySidecarAtScale/lookup/HasHistory/miss=false-32         	55203141	        21.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarAtScale/lookup/HasHistory/miss=true-32          	67189099	        17.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarAtScale/lookup/LatestStamps/miss=false-32       	56721306	        22.91 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarAtScale/lookup/LatestStamps/miss=true-32        	62839434	        18.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarAtScale/insert/random-new-ID-32                 	 1751415	       908.6 ns/op	     268 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkHistorySidecarAtScale/build/HasHistory-32         	       2	 824989016 ns/op	164131168 B/op	   57121 allocs/op
+BenchmarkHistorySidecarAtScale/build/LatestStamps-32       	       1	2338519710 ns/op	335755576 B/op	   65647 allocs/op
+BenchmarkHistorySidecarAtScale/lookup/HasHistory/miss=false-32         	61329337	        33.35 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarAtScale/lookup/HasHistory/miss=true-32          	35265280	        30.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarAtScale/lookup/LatestStamps/miss=false-32       	34780815	        39.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarAtScale/lookup/LatestStamps/miss=true-32        	63812536	        29.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHistorySidecarAtScale/insert/random-new-ID-32                 	  865590	      1704 ns/op	     210 B/op	       0 allocs/op
+PASS

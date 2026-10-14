@@ -54,6 +54,9 @@ func TestRetractionOracle_NeverRecordedWorld(t *testing.T) {
 	}
 	if isRaceEnabled() {
 		seeds = 3
+		if testing.Short() {
+			seeds = 2 // the 4-vCPU CI race run; the coverage check below still holds
+		}
 	}
 	// A longer sweep: RT_ORACLE_SEEDS=200 go test -run TestRetractionOracle_NeverRecordedWorld
 	if n, err := strconv.Atoi(os.Getenv("RT_ORACLE_SEEDS")); err == nil && n > 0 {

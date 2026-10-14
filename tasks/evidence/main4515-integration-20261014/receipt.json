@@ -1,0 +1,223 @@
+{
+  "schemaVersion": 1,
+  "kind": "Source-only v4.51.5 integration and consumer obligations; historical receipts preserved",
+  "mainCommit": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+  "previousMain": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
+  "release": "v4.51.5",
+  "mainMergeCommit": "36e321b19b1af3778cfb6ebde10081ed53a6d15e",
+  "sourceScriptCompatibilityFix": "ef8f95299f6ceb0bca1d858194527e1dc6323c43",
+  "changedPaths": 147,
+  "changedGoFiles": 88,
+  "allChangedGoByteIdenticalToUpstream": true,
+  "preservedRootPkgDifferences": {
+    "pkg/graph/internal/core/ingest.go": "906cce172a5a43ec17cc3d3fde9b6af721b88c5488578c4624570243edde7950",
+    "pkg/graph/store/memory/memorystore_index_3phase_more_test.go": "03caec0806c7915e88c4d13148fb499f70223db01d18508507c04e11cae23d01"
+  },
+  "preserved": {
+    "v5Tree": "7072d77ca1edc8d9d51c824f207781171a385d54",
+    "Unreleased": "Byte-identical65051618 body",
+    "releasedTail": "Byte-identicalc23c8b04 from4.51.5 onward",
+    "historicalReceiptsSHA256": {
+      "tasks/evidence/main4514-integration-20261013/receipt.json": "eaf93404fa4bf8675c265e256f2ec043126fc11caa56aeec9028e9f10a168170",
+      "tasks/evidence/main4513-integration-20261013/receipt.json": "f3008a0ecf662948745c86ea95afe3861efa742ee800ba2bbccf9925d1949a8a",
+      "tools/v5-migrate/evidence/main4514-9e805ddc.json": "490f174ef5824887b2b37da77a8113233c5fd6924fa2761e626e8230d741ce88",
+      "tools/v5-migrate/evidence/main4514-9e805ddc.tar.gz": "f2b1c56ef3a613dc6d6d1ad43fb3a35e85f25eadf3df73eac5b2a4142df69d92"
+    },
+    "consumerHistory": [
+      {
+        "path": "docs/v5/reference/consumer-contracts.json",
+        "currentDeltaSHA256": "deadadda1cad05bf19d586c4a97dfe23806977dc16dc0e275488563b49a5fcba",
+        "priorObjectsPreserved": true
+      },
+      {
+        "path": "docs/v5/reference/consumer-migration.json",
+        "currentDeltaSHA256": "b49ffb3fe148a437739568c00cf5c560f1ed526c5aacfe899221943f4b41b507",
+        "priorObjectsPreserved": true
+      }
+    ],
+    "rootAndV5ModuleFiles": "Upstream root/v5 go.mod/go.sum unchanged; v5 entire subtree unchanged."
+  },
+  "upstreamProof": {
+    "run": 38374787959,
+    "headSha": "c23c8b049627ee0272f4f5f671f4bcdf455f5c64",
+    "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38374787959",
+    "status": "completed",
+    "overallConclusion": "success",
+    "jobs": [
+      {
+        "name": "security",
+        "id": 115220346726,
+        "conclusion": "success"
+      },
+      {
+        "name": "coverage",
+        "id": 115220346939,
+        "conclusion": "success"
+      },
+      {
+        "name": "test",
+        "id": 115220346985,
+        "conclusion": "success"
+      },
+      {
+        "name": "race-plan",
+        "id": 115220347088,
+        "conclusion": "success"
+      },
+      {
+        "name": "lint",
+        "id": 115220348805,
+        "conclusion": "skipped"
+      },
+      {
+        "name": "race (graph)",
+        "id": 115220410040,
+        "conclusion": "success"
+      },
+      {
+        "name": "race (core-4)",
+        "id": 115220410070,
+        "conclusion": "success"
+      },
+      {
+        "name": "race (memory)",
+        "id": 115220410083,
+        "conclusion": "success"
+      },
+      {
+        "name": "race (other)",
+        "id": 115220410123,
+        "conclusion": "success"
+      },
+      {
+        "name": "race (core-2)",
+        "id": 115220410179,
+        "conclusion": "success"
+      },
+      {
+        "name": "race (core-3)",
+        "id": 115220410212,
+        "conclusion": "success"
+      },
+      {
+        "name": "race (core-1)",
+        "id": 115220410217,
+        "conclusion": "success"
+      }
+    ],
+    "scope": "Exact upstream root source only: normal suite and seven race matrix parts passed (other/graph/memory/core1-4); 2208 core top-level selectors disjoint across4x552. Both normal/race use -short; crash parents and durable crash tail are excluded. Upstream lint is skipped. Upstream includes neither v5 nor local preserved ingest and memory-test differences; success is not merged-source runtime/importer/consumer qualification.",
+    "rawRunSHA256": "7b14d06de0e135277cddff79b1d4d822b0691e368753b3fa7b299460eba96e47",
+    "jobLogHashes": {
+      "race-core-1-job-api.log": "1e1eefbaf7164d072163e4ec68f67d3afd2fb23f7d0eae8dd06fd7da5ef2c519",
+      "race-core-2-job-api.log": "6b88193bcaff23ce4b854ec546489def80201bddb8ddde38c656d27c9555adb4",
+      "race-core-3-job-api.log": "8a2be53fcad69a2f83b753eb5a2e843704096fec596a8dc912fdfb2ce13e36fc",
+      "race-core-4-job-api.log": "dafb81cc3ecd27f50b3b9a58176420413b84fd46e66b6c489fc3e69352c2d36c",
+      "race-graph-job-api.log": "f040b2155f4a01b19ef667465ed055d0304fde1d711f3ed2a84b4a869062f9c9",
+      "race-memory-job-api.log": "17e162ae3110252a86b4675129a396d0f72333e39b8ad3b90e6efa5baf9850d4",
+      "race-other-job-api.log": "7840d3bbe2602cc1efbfdfc0b415f7996a29b958cb12b96b8113d386d737dbe7",
+      "test-job-api.log": "7d1f4bd6e9df121283f98917f83efd779ff12c19aec410e4f8effa53e49c19d4"
+    },
+    "allChangedGoMatched": "Every changed v4515 Go file is byte-identical to exact upstream run source; source manifests retain exceptions outside the delta."
+  },
+  "ciReconciliation": {
+    "policy": "Preserved change-aware focused selectors, module/security/tool gates; upstream root race-plan/race matrix runs only full scope. Full v5 graphapply batching retained; local default unsplit and go timeout unchanged.",
+    "integrationFix": "Bash3.2 set-u empty arrays broke v5 profile after upstream merge. Guard nonempty isolated arrays; expanded fake-Go fixture rejects upstream script (red exit1) and passes fixed root/v5 paths, parent batching and invalid-selector refusal (green exit0).",
+    "lightweightChecks": [
+      "fake-Go race script red/green",
+      "16 Python change-planning policy tests passed",
+      "bash syntax/root+v5 list plans passed",
+      "JSON/source/immutable-history hashes passed",
+      "independent reference validation refreshed only current PLAN hash; historical/revised/generated corpora unchanged; finite design checks passed"
+    ],
+    "additionalGoRuntime": false,
+    "scannersRerun": false,
+    "rawDiffCheck": "Source/docs diff check clean; upstream raw benchmark/error logs retain their literal trailing whitespace."
+  },
+  "runtimeExecutedAgainst4515": false,
+  "currentQualificationPending": {
+    "migration": "Existing10 narrow v5-migrate gates against exact integrated4515source, fresh compiler/profile/source receipt and nonempty node/relationship cases; include actual affected retention refusal coverage before V6 claims.",
+    "selectedAffectedProofProposal": [
+      {
+        "package": "./pkg/graph/internal/core",
+        "parents": [
+          "TestCountByLabelAtStateColumnPath",
+          "TestStateColumnPath_BreakCases",
+          "TestStateColumnPath_ConcurrentWrites",
+          "TestStateColumnPath_Eviction",
+          "TestStateColumnPath_InPlaceUpdate",
+          "TestStateColumnPath_CountInsideScanCallback",
+          "TestStateColumnPath_OversizedBuildsOnce",
+          "TestStateColumnPath_RelPurge"
+        ]
+      },
+      {
+        "package": "./pkg/graph",
+        "parents": [
+          "TestPurgeExpiredRelsByAge",
+          "TestPurgeExpiredRelsByAge_Refusals",
+          "TestRelRetentionWatermarkGatesScans",
+          "TestRelPointGateAnswersLaterIDs",
+          "TestRelRetentionWatermarkSurvivesReopen",
+          "TestRelRetentionPurgeFeed",
+          "TestImportApplyNodeRetention",
+          "TestRelRetentionPurgeTxRollbackNoResurrection",
+          "TestNodeRetentionPurgeTxRollback",
+          "TestRetentionPurgeWaitHonoursCtx",
+          "TestRelRetentionPurgeConcurrent"
+        ]
+      },
+      {
+        "package": "./pkg/graph/store/badger",
+        "parents": [
+          "TestHistorySidecars_Differential",
+          "TestHistorySidecarRAMPerID",
+          "TestPurgeRelLegResidue"
+        ]
+      },
+      {
+        "package": "./pkg/graph/store/memory",
+        "parents": [
+          "TestHistoryIDsCursorPageCostIndependentOfStoreSize",
+          "TestHistoryIDsCursorFollowsKeySetChanges",
+          "TestHistoryIDsCursorConcurrentReadersAndWriter"
+        ]
+      },
+      {
+        "package": "./pkg/graph/store",
+        "parents": [
+          "TestColumnDrivers_NodeAndRelAgree",
+          "TestPurgeRelsByTypeBefore",
+          "TestLogRelRangePurge"
+        ]
+      },
+      {
+        "package": "./pkg/graph/store/tiered",
+        "parents": [
+          "TestTieredRelPurge_ColdStartRefEnd"
+        ]
+      },
+      {
+        "package": "./pkg/graph/admin",
+        "parents": [
+          "TestAPINilReceiversReturnErrNilGraph",
+          "TestAPIForwardsEveryMethod"
+        ]
+      },
+      {
+        "package": "./pkg/graph/internal/storeutil",
+        "parents": [
+          "TestChangeBody_RoundTrip",
+          "TestChangeBodyDecoders_FailClosedOnGarbage"
+        ]
+      }
+    ],
+    "constraints": "Proposal only, NOT RUN: finite -short normal/race/scoped coverage with source-named parents (compiled inventory still pending), serial shared heavy-runtime lease, Go1.26.9,180s/4096MiB watchdog and150sGo deadline, stopfirstfailure. Reuse exact affected-file upstream proof where fit; no full suites or scanners rerun by this owner. No full V0-V7/consumer/import acceptance."
+  },
+  "rawArchive": {
+    "file": "raw.tar.gz",
+    "sha256": "1c93279db2fd7f679a5cf045a87ed33bdb146a99ef18eefbcaaafc437fea4cac",
+    "bytes": 101883,
+    "contains": "Frozen changed-source manifest, literal exact-main job logs/metadata/compiled core selectors, fake-Go red/green and policy logs."
+  },
+  "ownership": "Only owned main4513 integration tree changed; foreign canonical main untouched. Local commits only; no push/tag. Heavy runtime lease released after exact historical9e lanes; none held by this owner."
+}

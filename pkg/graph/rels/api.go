@@ -542,7 +542,9 @@ func (a *API) CountByType(typeName string) (int, error) {
 
 // CountByTypeAt returns len(ByType(typeName, opts)) without building the
 // relationships: the exact count at the read coordinate in opts. The type's
-// counter when opts has no temporal filter; otherwise a pass over ByType's
+// counter when opts has no temporal filter; with TxAt (and ValidAt) the
+// type's state cut at TxAt, cached for the type and pin from the second read
+// on (no row read then); otherwise a pass over ByType's
 // candidates that decides a candidate on its current row where that row alone
 // answers. See core.RelOps.CountByTypeAt.
 func (a *API) CountByTypeAt(typeName string, opts storepkg.QueryOpts) (int, error) {

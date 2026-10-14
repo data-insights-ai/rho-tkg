@@ -67,6 +67,14 @@ func TestColumnDrivers_NodeAndRelAgree(t *testing.T) {
 			},
 		},
 		{
+			// A held non-scalar (a list) is absent in the column and Other.
+			name: "list_is_other",
+			rows: []map[string]any{
+				{"a": int64(1), "b": "x", "c": true},
+				{"a": []any{int64(2)}, "b": "y", "c": false},
+			},
+		},
+		{
 			name: "all_absent",
 			rows: []map[string]any{{}, {}},
 		},
@@ -111,6 +119,17 @@ func TestColumnDrivers_NodeAndRelAgree(t *testing.T) {
 			}
 			if relErr == nil && srcCols != relCols {
 				t.Errorf("source driver produced DIFFERENT columns:\n source: %s\n    rel: %s", srcCols, relCols)
+			}
+			var nodeSrcCols string
+			nodeSrcErr := ScanColumnsFromNodeSource(nodeSliceSource{nodes, props}, len(props), func(b *ColumnBatch) bool {
+				nodeSrcCols += renderColumns(&b.ColumnData, len(props), len(b.IDs))
+				return true
+			})
+			if !errors.Is(nodeSrcErr, relErr) && !errors.Is(relErr, nodeSrcErr) {
+				t.Fatalf("node source driver disagrees on the ERROR: node source=%v rel=%v", nodeSrcErr, relErr)
+			}
+			if relErr == nil && nodeSrcCols != relCols {
+				t.Errorf("node source driver produced DIFFERENT columns:\n node source: %s\n         rel: %s", nodeSrcCols, relCols)
 			}
 			if !errors.Is(nodeErr, relErr) && !errors.Is(relErr, nodeErr) {
 				t.Fatalf("drivers disagree on the ERROR: node=%v rel=%v", nodeErr, relErr)
@@ -194,5 +213,32 @@ func (s relSliceSource) Value(i, c int) (ColumnKind, int64, float64, string, boo
 
 func (s relSliceSource) Other(i, c int) bool {
 	_, found := s.rels[i].GetProperty(s.props[c])
+	return found
+}
+
+// nodeSliceSource adapts nodes to NodeColumnSource for the agreement test
+// (the graph's state cut stands behind it in production).
+type nodeSliceSource struct {
+	nodes []*types.Node
+	props []string
+}
+
+func (s nodeSliceSource) Len() int { return len(s.nodes) }
+
+func (s nodeSliceSource) Row(i int) (types.NodeID, int64, int64) {
+	vf, vt, _ := s.nodes[i].ValidRange()
+	return s.nodes[i].InternalID(), int64(vf), int64(vt)
+}
+
+func (s nodeSliceSource) Value(i, c int) (ColumnKind, int64, float64, string, bool, bool) {
+	v, found := s.nodes[i].GetProperty(s.props[c])
+	if !found {
+		return 0, 0, 0, "", false, false
+	}
+	return ClassifyScalar(v)
+}
+
+func (s nodeSliceSource) Other(i, c int) bool {
+	_, found := s.nodes[i].GetProperty(s.props[c])
 	return found
 }

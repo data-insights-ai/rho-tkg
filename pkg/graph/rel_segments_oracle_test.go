@@ -691,7 +691,11 @@ func TestRelSegmentsDifferentialOracle(t *testing.T) {
 // runSegOracle is the differential oracle; segDir names the declared
 // replica's segment directory ("" = in-RAM segments, S2).
 func runSegOracle(t *testing.T, segDir func(*testing.T) string) {
-	for _, seed := range []int64{1, 2, 3} {
+	seeds := []int64{1, 2, 3}
+	if testing.Short() && isRaceEnabled() {
+		seeds = seeds[:2] // the 4-vCPU CI race run; every per-seed check below still runs
+	}
+	for _, seed := range seeds {
 		t.Run(fmt.Sprint("seed", seed), func(t *testing.T) {
 			r := rand.New(rand.NewSource(seed))
 			o := newSegOracleDir(t, 48<<10, segDir(t)) // ~60 HOP rows per seal

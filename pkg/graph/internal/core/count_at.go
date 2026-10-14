@@ -15,11 +15,14 @@ import (
 // Without a temporal filter and without pagination or Depth it is the store's
 // label counter (O(1), CountByLabel). With TxPin alone it answers from the
 // as-of column set DocValuesSnapshotAsOf / ForEachDocValuesAsOf cached for the
-// label and pin, when one is (no pass). Otherwise it resolves the same
-// candidates ByLabel resolves, with two savings: a candidate whose current row
-// alone decides the answer is decided on the row the label scan already read
-// (no copy, no history read), and nothing is materialized, sorted or
-// paginated (the count of matches above After, capped at Limit).
+// label and pin, when one is (no pass). With TxAt (and ValidAt) it counts the
+// segments containing ValidAt of the label's state cut at TxAt (backlog 28,
+// state_columns.go: built on the second read at the pin, then no row read).
+// Otherwise it resolves the same candidates ByLabel resolves, with two
+// savings: a candidate whose current row alone decides the answer is decided
+// on the row the label scan already read (no copy, no history read), and
+// nothing is materialized, sorted or paginated (the count of matches above
+// After, capped at Limit).
 //
 // Errors are ByLabel's (a malformed label, invalid or conflicting options,
 // ErrRetentionExpired for a pin before a retention watermark, ErrGraphClosed).
@@ -32,8 +35,11 @@ func (n *NodeOps) CountByLabelAt(label string, opts storepkg.QueryOpts) (int, er
 	if err := c.validateIndexLabel(label); err != nil {
 		return 0, err
 	}
-	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 		return 0, err
+	}
+	if n, ok := c.countStateCut(false, label, opts); ok {
+		return n, nil
 	}
 	var count int
 	err := c.readUnderRLock(func() error {
@@ -49,8 +55,9 @@ func (n *NodeOps) CountByLabelAt(label string, opts storepkg.QueryOpts) (int, er
 
 // CountByTypeAt is CountByLabelAt for relationships: len(ByType(typeName,
 // opts)) without building the result. The type's counter without a temporal
-// filter (CountByType); otherwise ByType's candidates, a candidate whose
-// current row alone decides decided on the type scan's row.
+// filter (CountByType); the type's state cut with TxAt (and ValidAt);
+// otherwise ByType's candidates, a candidate whose current row alone decides
+// decided on the type scan's row.
 func (r *RelOps) CountByTypeAt(typeName string, opts storepkg.QueryOpts) (int, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -59,8 +66,11 @@ func (r *RelOps) CountByTypeAt(typeName string, opts storepkg.QueryOpts) (int, e
 	if err := c.validateRelTypeQueryName(typeName); err != nil {
 		return 0, err
 	}
-	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts, c.relTypeRetentionScope(typeName)); err != nil {
 		return 0, err
+	}
+	if n, ok := c.countStateCut(true, typeName, opts); ok {
+		return n, nil
 	}
 	var count int
 	err := c.readUnderRLock(func() error {

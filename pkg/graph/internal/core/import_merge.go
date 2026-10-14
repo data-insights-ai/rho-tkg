@@ -433,6 +433,15 @@ func (c *Core) captureMergeRecord(mrb *mergeRollback, rec storepkg.ChangeRecord,
 		}
 		return nil
 
+	case storepkg.ChangeRelRangePurge:
+		// The relationship predicate (backlog 21): same reasoning as
+		// ChangeRangePurge above — capture nothing, validate the payload;
+		// applyRelRangePurgeLocked is idempotent.
+		if _, err := storeutil.DecodeRelRangePurge(rec.Payload); err != nil {
+			return corruptDelta(rec, "relationship range purge", err)
+		}
+		return nil
+
 	case storepkg.ChangeClear, storepkg.ChangeMeta:
 		return fmt.Errorf("%w: change tag %s is not valid in a delta merge", ErrCorruptExport, rec.Tag)
 

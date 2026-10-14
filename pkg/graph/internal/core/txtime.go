@@ -116,6 +116,9 @@ func (t *TempOps) RelAsOf(id types.RelID, txTime types.Instant) (*types.Relation
 	}
 	var result *types.Relationship
 	err := c.readUnderRLock(func() error {
+		if err := c.checkRelTypePointRetention(id, txTime); err != nil {
+			return err
+		}
 		r, err := c.relAsOfLocked(id, txTime)
 		result = r
 		return err
@@ -301,7 +304,7 @@ func (c *Core) nodesAsOfLocked(txTime types.Instant) ([]*types.Node, error) {
 	if err := c.checkScanCompactionAt(txTime); err != nil {
 		return nil, err
 	}
-	if err := c.checkScanRetentionAt(txTime); err != nil {
+	if err := c.checkScanRetentionAt(txTime, scopeNodes); err != nil {
 		return nil, err
 	}
 	var result []*types.Node
@@ -392,7 +395,7 @@ func (c *Core) relsAsOfLocked(txTime types.Instant) ([]*types.Relationship, erro
 	if err := c.checkScanCompactionAt(txTime); err != nil {
 		return nil, err
 	}
-	if err := c.checkScanRetentionAt(txTime); err != nil {
+	if err := c.checkScanRetentionAt(txTime, scopeAllRels); err != nil {
 		return nil, err
 	}
 	var result []*types.Relationship

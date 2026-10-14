@@ -1,0 +1,28 @@
+ci-race 03 — race gate shards
+
+Script: scripts/test-race.sh, ported byte-identical from origin/v5 (Markus, 21c75dbd; commit "ci: port
+scripts/test-race.sh from origin/v5 unchanged"), then extended:
+- RACE_SHARD=<part> runs one part (4-shard mode only); RACE_SHARD=list prints the parts as JSON (no Go needed);
+  unset = every part in sequence (the v5 behaviour); a selector with 1 shard, or an unknown one, is refused
+  before any go command runs.
+- root profile: pkg/graph and store/memory are isolated packages (own invocation, own CI job); "other" is
+  every remaining package; core stays split by Markus's round-robin of compiled top-level names.
+- v5 profile untouched (no isolated packages).
+
+Layout (RACE_SHARD=list): ["other","graph","memory","core-1","core-2","core-3","core-4"]
+Real inventory: 45 packages = 42 other + 2 isolated + core; core 2198 compiled names -> 550/550/549/549,
+exhaustive and disjoint (the script's own check; every part log prints "<part> passed").
+
+CI: race-plan job (make test-race-script, then the list) -> race matrix job per part
+(ROOT_RACE_CORE_SHARDS=4 RACE_SHARD=<part> make test-race), fail-fast off, job timeout 30 min. No -timeout
+flag added: every part keeps Go's default 10 min per package. `make test-race` locally = one unsplit
+`go test -short -race -count=1 ./...` (script exec with 1 shard); ci-docker unchanged.
+
+Script tests (scripts/test-race-test.sh, fake go, `make test-race-script`):
+ red against the verbatim v5 script: 03a-script-red.txt (31 failures)
+ green after the extension: 03b-script-green.txt
+ mutants of the extension, each killed: 03c-script-mutants.txt
+Break cases: unknown / out-of-range / malformed selectors (core-0, core-5, core-x, core-, foo, "other ",
+graph/x, list2) run nothing and fail; selector with 1 shard refused; isolated packages never in "other";
+core shards exhaustive + disjoint; a failing part fails the run without the completion marker.
+shellcheck v0.10.0 and actionlint 1.7.7: clean.

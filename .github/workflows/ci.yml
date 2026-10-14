@@ -106,32 +106,55 @@ jobs:
       - run: make vet
       - run: make build
       - run: make test
-      # Root v4's large core inventory runs in four exhaustive sequential batches.
-      # Each parent retains all subtests and Go's default package timeout.
-      # Let Go select CPU concurrency from the runner's affinity and CPU quota.
-      - name: Root race tests with exhaustive core batches
-        if: matrix.module == '.'
-        env:
-          GOFLAGS: "-p=1 -parallel=4"
-          ROOT_RACE_CORE_SHARDS: "4"
-          GOMEMLIMIT: "2GiB"
-        run: |
-          uname -a
-          nproc
-          free -h
-          for resource in /sys/fs/cgroup/cpu.max /sys/fs/cgroup/memory.max /sys/fs/cgroup/cpu/cpu.cfs_quota_us /sys/fs/cgroup/cpu/cpu.cfs_period_us /sys/fs/cgroup/memory/memory.limit_in_bytes; do
-            if [ -r "$resource" ]; then
-              printf '%s: ' "$resource"
-              cat "$resource"
-            fi
-          done
-          make test-race
       # v5 graphapply has the same whole-parent batching contract as root core.
       - name: v5 race tests with exhaustive graphapply batches
         if: matrix.module == 'v5'
         env:
           V5_RACE_GRAPHAPPLY_SHARDS: "4"
         run: make test-race
+  # The race gate's parts, read from scripts/test-race.sh (no Go needed), so
+  # the matrix below cannot drift from the script: "other", the isolated
+  # packages (pkg/graph, store/memory) and core in four exhaustive batches of
+  # whole top-level tests. On one 4-vCPU runner these packages shared the CPUs
+  # and pkg/graph, core and memory each crossed Go's 10 min package timeout.
+  race-plan:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      parts: ${{ steps.plan.outputs.parts }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: make test-race-script
+      - id: plan
+        run: echo "parts=$(RACE_SHARD=list bash scripts/test-race.sh 4)" >> "$GITHUB_OUTPUT"
+
+  # One job per part; each part is its own `go test` invocation with Go's
+  # default 10 min timeout (no -timeout override). Measured <= 5 min per part
+  # at GOMAXPROCS=4 (tasks/evidence/ci-race/).
+  race:
+    needs: [changes, race-plan]
+    if: needs.changes.outputs.full == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        part: ${{ fromJSON(needs.race-plan.outputs.parts) }}
+    name: race (${{ matrix.part }})
+    env:
+      ROOT_RACE_CORE_SHARDS: "4"
+      RACE_SHARD: ${{ matrix.part }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Root race tests with exhaustive core batches
+        run: make test-race
+
   coverage:
     needs: changes
     if: needs.changes.outputs.full == 'true'

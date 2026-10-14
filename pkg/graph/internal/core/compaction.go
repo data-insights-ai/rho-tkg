@@ -378,16 +378,20 @@ func (c *Core) checkScanCompactionAt(pin types.Instant) error {
 // validateTemporalQueryOpts: the cross-field TxPin conflict check plus the
 // compaction watermark pre-check. Every generic scan door (ByLabel / ByType /
 // All / property / vector, standalone and tx-side) validates through here.
-func (c *Core) validateTemporalQueryOptsScan(opts storepkg.QueryOpts) error {
+//
+// scope names what the scan covers (retention.go): node scans fail below the
+// node-purge watermark only, relationship scans also below their type's (or,
+// for every type, the max) relationship-purge watermark (backlog 21).
+func (c *Core) validateTemporalQueryOptsScan(opts storepkg.QueryOpts, scope retentionScope) error {
 	if err := validateTemporalQueryOpts(opts); err != nil {
 		return err
 	}
 	if err := c.checkScanCompaction(opts); err != nil {
 		return err
 	}
-	// Retention (ADR-0008): a pin below the graph's max retention watermark means
+	// Retention (ADR-0008): a pin below a retention watermark in scope means
 	// some purged entity is missing — fail the whole scan closed.
-	return c.checkScanRetention(opts)
+	return c.checkScanRetention(opts, scope)
 }
 
 // -----------------------------------------------------------------------------

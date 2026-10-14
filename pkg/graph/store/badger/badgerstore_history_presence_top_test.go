@@ -16,7 +16,7 @@ import (
 // mutants in tasks/evidence/bulk-asof-presence/mutants-2.txt cover each rule.
 
 func newPresenceForTest() *historyPresence {
-	return &historyPresence{tracking: true, has: map[snowflake.ID]uint32{}, unknown: map[snowflake.ID]uint64{}}
+	return &historyPresence{tracking: true, unknown: map[snowflake.ID]uint64{}}
 }
 
 func TestHistoryPresenceNoteTop(t *testing.T) {
@@ -51,7 +51,7 @@ func TestHistoryPresenceNoteTop(t *testing.T) {
 			for _, o := range tc.ops {
 				p.note(id, o.version, o.del)
 			}
-			top, has := p.has[id]
+			top, _, has := p.has.get(id)
 			_, unknown := p.unknown[id]
 			if has != tc.wantHas || unknown != tc.wantUnknown || (has && top != tc.wantTop) {
 				t.Fatalf("has=%v top=%d unknown=%v; want has=%v top=%d unknown=%v", has, top, unknown, tc.wantHas, tc.wantTop, tc.wantUnknown)
@@ -77,8 +77,8 @@ func TestHistoryPresenceSetIntoUnknownMovesStamp(t *testing.T) {
 func TestBulkPresenceBound(t *testing.T) {
 	t.Parallel()
 	p := newPresenceForTest()
-	p.has[1] = 5
-	p.has[2] = topUnbounded
+	p.has.put(1, 5, struct{}{})
+	p.has.put(2, topUnbounded, struct{}{})
 	p.unknown[3] = 1
 	p.built.Store(true)
 	bs := &Store{}

@@ -46,7 +46,13 @@ const (
 // opts, history included (deleted nodes, a label held only on an earlier
 // version), with that version's ValidFrom/ValidTo, validated the same way
 // (ErrConflictingTemporalOpts). It is never served from the current rows. Cost:
-// that of ByLabel under the same opts.
+// that of ByLabel under the same opts, except TxAt (with ValidAt, or alone:
+// valid "now"): the label's
+// state cut at TxAt, cached for the label and pin from the second read on (no
+// row read then, and fn runs without graph locks; a first ask of the pin, a
+// build that failed or did not fit, or a pin with writes in flight is the
+// fold, which calls fn under the read lock). At a temporal opt the batches
+// carry no ordinals (Ordinals 0): a read coordinate numbers no row.
 //
 // The callback MUST NOT retain the batch: its slices are reused between calls.
 func (g *Graph) ScanNodeColumns(label string, props []string, opts QueryOpts,
@@ -75,7 +81,8 @@ func (g *Graph) ScanNodeColumns(label string, props []string, opts QueryOpts,
 // ID).
 //
 // A temporal opts is answered exactly as Rels().ByType(relType, opts) answers it
-// (per type for the empty type name), never from the current rows — see
+// (per type for the empty type name), never from the current rows, from each
+// type's state cut for TxAt (with ValidAt or alone), with no ordinals — see
 // ScanNodeColumns.
 //
 // The callback MUST NOT retain the batch: its slices are reused between calls.

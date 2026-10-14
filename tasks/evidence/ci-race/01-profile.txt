@@ -1,0 +1,43 @@
+ci-race 01 — race profile before the change (HEAD a1248ffc), 2026-10-13
+
+Command per package: GOMAXPROCS=4 taskset -c <4 CPUs> go test -short -race -count=1 -timeout 60m -json <pkg>
+(graph, core, memory concurrently on disjoint 4-CPU sets of a 32-CPU host; host load avg 14-22 from other
+work at start, so absolute walls are upper-side; the -json elapsed of a parallel test counts from its resume.)
+Raw: scratchpad prof/before-{graph,core,memory,other}.json.
+
+== the three CI-failing packages, each alone on 4 CPUs: package wall, then top 15 top-level tests ==
+PACKAGE pass    291.5s pkg/graph
+PACKAGE pass    358.6s pkg/graph/internal/core
+PACKAGE pass    237.0s pkg/graph/store/memory
+     sec  package                   test
+   142.6  pkg/graph/internal/core   TestRetractionOracle_NeverRecordedWorld
+    94.2  pkg/graph/internal/core   TestTxBackfillOracle_CrossBackend
+    83.4  pkg/graph/internal/core   TestEffectiveTimeline_PointwiseOracle
+    74.4  pkg/graph                 TestCurrentStampsDifferential
+    45.9  pkg/graph                 TestRelSegmentsDifferentialOracleOnDisk
+    43.6  pkg/graph/store/memory    TestMemoryStore_AllNodeHistoryIDsFrom_CursorMatchesUnpaginated
+    40.8  pkg/graph                 TestRelSegmentsDifferentialOracle
+    39.8  pkg/graph/store/memory    TestSegments_AnswersDoNotDependOnSealBoundaries
+    37.8  pkg/graph/store/memory    TestSegments_StringColumnBytesDoNotGrowWithSegmentCount
+    28.4  pkg/graph/store/memory    TestSegmentDir_S2SuiteOverMappedFiles
+    26.0  pkg/graph/internal/core   TestTxRollbackKeepsCascadeRows
+    23.1  pkg/graph/internal/core   TestEffectiveTimeline_ScanMatchesGenericDoor
+    22.0  pkg/graph/internal/core   TestPinnedPropertyDoorsAgree
+    21.2  pkg/graph/internal/core   TestCascadeVersionsUniqueAndPastStable
+    20.0  pkg/graph                 TestCleanReopenMatchesFullRebuild
+
+== every other package (all but core and pkg/graph) in one go test, -p 4, GOMAXPROCS=4, 4 CPUs ==
+wall incl. build 387 s, exit 0. Packages above 15 s:
+PACKAGE pass    299.7s pkg/graph/store/memory
+PACKAGE pass    198.4s pkg/graph/store/badger
+PACKAGE pass    166.9s pkg/graph/store/tiered
+PACKAGE pass     77.7s pkg/graph/internal/index
+PACKAGE pass     43.1s pkg/graph/internal/segment
+PACKAGE pass     20.9s bench/temporalreplay
+PACKAGE pass     17.5s pkg/graph/store/sharded
+
+Reading: alone on 4 CPUs core takes 359 s, pkg/graph 292 s, memory 237 s. CI runs all ~50 packages in one
+`go test ./...` with -p 4 on 4 vCPU, so these three share the CPUs with badger, tiered and index; memory alone
+237 s vs 300 s next to badger/tiered here, and in CI (all of them together) each of the three crossed Go's
+600 s default package timeout (run 38355789742). Root cause: package concurrency on 4 vCPU plus a few
+oversized -short -race oracles. Fix: one CI job per race part (03) and size cuts of the longest tests (02).

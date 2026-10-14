@@ -1,0 +1,4 @@
+--- FAIL: TestStateColumnPath_RelPurge (0.00s)
+    state_columns_test.go:553: [rel after the purge] {Limit:0 After:0 ValidAt:2000 ValidStart:0 ValidEnd:0 TxAt:1791880777305 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}: doors differ from the row fold:
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.004s

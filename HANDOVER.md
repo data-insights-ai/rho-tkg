@@ -1,16 +1,14 @@
-# HANDOVER — rho-tkg v4 line (rewritten 2026-10-12, main at v4.51.4)
+# HANDOVER — rho-tkg v4 line (rewritten 2026-10-12, main at v4.51.5)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go 1.26.9; a Go
-library, not a database). Latest tag `v4.51.4`. Read, in this order: this file, `tasks/lessons.md` (digest at the top),
+library, not a database). Latest tag `v4.51.5`. Read, in this order: this file, `tasks/lessons.md` (digest at the top),
 `tasks/todo.md` (user requests, open queue with the per-step red tests), `tasks/backlog.md` (specs), `CHANGELOG.md` top.
 History (what shipped, why) is in `CHANGELOG.md` and git, not here.
 
 ## 1. Open requests and next steps (newest user message first; do these, do not ask)
 
-1. **v4.51.4 released 2026-10-13** (44: crash reopen above every stored stamp; 15 closed by docs). v4.51.3 released 2026-10-12 (52, 53, 54, 55, F1–F6). Next tag: v4.51.5 (PATCH only). Next work: new consumer requests, then the on-hold items below.
-2. **On hold, not blocking:** 41 (merge the history-stamps sidecar into the presence set; measured, saves only where both
-   doors run), 28 (state column fast path; design first, waits for sigma's input), 21 (retention `PurgeExpiredRels` + per-type
-   gate; full spec in backlog 21; waits for sigma's `@overview`).
+1. **v4.51.5 released 2026-10-13** (21, 28, 41; CI race split, GitHub CI green). **v4.51.4 released 2026-10-13** (44: crash reopen above every stored stamp; 15 closed by docs). v4.51.3 released 2026-10-12 (52, 53, 54, 55, F1–F6). Next tag: v4.51.6 (PATCH only). Next work: new consumer requests, then the on-hold items below.
+2. **On hold:** nothing (41, 28, 21 shipped in v4.51.5).
 3. **Md consolidation** (René 2026-10-12 "consolidate md files and rules"): done by the Sonnet agent of this commit; review
    `tasks/todo.md` request 21.
 4. Standing: tick the ledger and the releases table at every release (lesson 80); keep `AGENTS.md`/`README.md`/`docs/architecture.md`
@@ -104,8 +102,10 @@ V0/V1 are accepted and V2 remains open. Exact finite source/test receipts live u
 `docs/v5/HANDOVER.md` is external review, reconciled against PLAN, not permission to reduce those
 gates or push/merge main. `docs/v5-analysis.md` §5 keeps the 45-family consumer mapping; immutable
 sigma/ai-soc inventories and current v4 source deltas are in `docs/v5/reference/consumer-*.json`.
-The current reader is main `a1248ffc`/v4.51.4; its importer/consumer qualification is pending,
-separate from historical v4.50.1/v4.51.0/v4.51.1 receipts and reported consumer adoption.
+The current reader is main `c23c8b04`/v4.51.5; its merged-source importer/consumer
+qualification is pending. Historical v4.51.4 migration/finite-reader receipts at
+`9e805ddc` and earlier qualifications remain immutable; exact upstream CI/source
+equivalence is separate from consumer adoption and V6 acceptance.
 **Markus integrates v5; this handover authorizes no main push/tag/release** (decision 5).
 The v4 author's `origin/v5` read-only boundary remains; authorized v5 maintenance keeps shared
 CHANGELOG/backlog/lessons/AGENTS/Makefile/CI changes when reconciling main.

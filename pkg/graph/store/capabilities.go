@@ -762,6 +762,34 @@ type RangePurgeLogCapability interface {
 	LogRangePurge(labelToken uint16, before types.Instant, mode uint8) error
 }
 
+// RelRetentionPurgeCapability is OPTIONAL (backlog 21), the relationship
+// sibling of RetentionPurgeCapability. PurgeRelsByTypeBefore HARD-removes up to
+// `chunk` relationships of typeToken whose IMMUTABLE snowflake mint-time is <
+// before, live AND ended alike (a relationship's type never changes, so every
+// row of it carries typeToken): the current row, both adjacency legs and the
+// ex-adjacency legs of every row, the type/property/temporal index entries, the
+// counters, the sidecars, and the WHOLE version history including the
+// tombstone. Nodes are never touched. Candidates are the live rows of the type
+// united with the IDs that have history rows of the type and no live row. Each
+// call is one atomic batch on a single-machine backend and reports
+// RelsPurged (every relationship removed, live or ended), More (the caller
+// loops until false) and PurgedRels (routing descriptors of the removed
+// relationships, for a partitioned backend's leg-residue sweep). It emits NO
+// change-log record: the graph layer owns the single ChangeRelRangePurge and
+// the per-type retention watermark. Idempotent: a relationship already gone
+// is skipped.
+type RelRetentionPurgeCapability interface {
+	PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, chunk int) (RetentionPurgeResult, error)
+}
+
+// RelRangePurgeLogCapability is OPTIONAL (backlog 21), beside
+// RelRetentionPurgeCapability: it appends ONE ChangeRelRangePurge record — the
+// predicate a replica re-executes — to the store's change-log. No-op (nil)
+// when the store has no change-log enabled.
+type RelRangePurgeLogCapability interface {
+	LogRelRangePurge(typeToken uint16, before types.Instant, mode uint8) error
+}
+
 // HistoryVersionPageCapability is OPTIONAL. Backends that can page through an
 // individual entity's history chain implement it so export and other streaming
 // readers do not have to materialize every version for one heavily updated

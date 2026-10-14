@@ -194,6 +194,10 @@ class CurrentRepository(unittest.TestCase):
         self.assertIn("full_validation:", text)
         self.assertIn("make cover-gate", text)
         self.assertIn("Root race tests with exhaustive core batches", text)
+        self.assertIn("  race-plan:\n    needs: changes\n    if: needs.changes.outputs.full == 'true'", text)
+        self.assertIn("  race:\n    needs: [changes, race-plan]\n    if: needs.changes.outputs.full == 'true'", text)
+        self.assertIn("RACE_SHARD: ${{ matrix.part }}", text)
+        self.assertIn("v5 race tests with exhaustive graphapply batches", text)
         self.assertIn("if: needs.changes.outputs.matrix !=", text)
 
 

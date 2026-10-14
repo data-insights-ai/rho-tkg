@@ -1,0 +1,8 @@
+--- FAIL: TestRelPointGateAnswersLaterIDs (0.03s)
+    rel_retention_purge_test.go:733: RelAsOf(later unknown ID) = graph: entities purged per retention policy below the requested time, want ErrRelNotFound
+--- FAIL: TestRetentionPurgeWaitHonoursCtx (4.00s)
+    rel_retention_race_test.go:157: rels: the purge ignored ctx while waiting for the open transaction
+    rel_retention_race_test.go:157: nodes: the purge ignored ctx while waiting for the open transaction
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	4.044s
+FAIL
