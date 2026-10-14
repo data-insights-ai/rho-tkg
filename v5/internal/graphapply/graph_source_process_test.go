@@ -1129,6 +1129,12 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			t.Error(e)
 		}
 	}()
+	incidents := &nativeGraphCostIncidentSessions{ctx: ctx, coordinator: coordinator, spec: o.cost}
+	defer func() {
+		if err := incidents.close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	p05 := newP05ProcessSessions(ctx, certifiedSessions, o)
 	defer func() {
 		if err := p05.close(); err != nil {
@@ -1411,6 +1417,8 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			case processCostObserve:
 				if o.cost == nil {
 					e = errInvalid
+				} else if bytes.HasPrefix(r.data, []byte(nativeIncidentMarker)) {
+					out.aux, e = incidents.serve(workerCtx, r)
 				} else if len(r.data) != 0 {
 					out.aux, e = nativeGraphCostIndexObserve(workerCtx, certifiedSessions, r)
 				} else {
@@ -1603,6 +1611,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				coordinator, e = pairedGraphFaultReconnect(ctx, h, coordinator, certifiedSessions, moveCoordinator, server, r, len(workers)+len(paused)+len(controlWorkers), len(queue), active != nil)
 				if e == nil {
 					certifiedSessions.coordinator = coordinator
+					incidents.coordinator = coordinator
 				}
 			case processCostRecords:
 				if o.cost == nil {

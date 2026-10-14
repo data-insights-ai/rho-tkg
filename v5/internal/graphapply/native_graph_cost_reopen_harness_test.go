@@ -212,57 +212,11 @@ func nativeGraphCostEqualArtifacts(t *testing.T, n *certifiedProcessNetwork, lef
 	}
 }
 
-// A fresh authenticated At operation owns each predicate's entire continuation
-// and hydration ledger. Pages NEVER reopen a session or reset its native budget.
+// Incident proofs use a genuine cumulative query owner across all chunks.
+// Typed identity probes retain their existing bounded authenticated At owner.
 func nativeGraphCostIndexes(t *testing.T, n *certifiedProcessNetwork, spec nativeGraphCostSpec, cut graphCut, want int64, stream *json.Encoder) {
 	t.Helper()
-	for _, endpoint := range []uint64{1, 3, spec.remoteNode()} {
-		for _, life := range []uint64{0, endpoint + 1} {
-			handle, actual := nativeGraphCostOpen(t, n, graphReadAt, cut)
-			if !reflect.DeepEqual(actual, cut) {
-				t.Fatal("cost index At substituted cut")
-			}
-			var cursor, seen, nextFact uint64
-			complete := false
-			for pageCount := uint64(0); pageCount <= spec.Facts; pageCount++ {
-				response := n.all[2].call(t, processRequest{op: processCostObserve, index: handle, entity: endpoint, data: nativeGraphCostIndexInput(1, life, cursor)})
-				page, err := nativeGraphCostDecodeIndexPage(response.aux)
-				if err != nil || page.Kind != 1 || page.Endpoint != endpoint || page.Life != life || page.Cursor != cursor {
-					t.Fatal("actual cost incident page", err)
-				}
-				for _, row := range page.Rows {
-					for nextFact < spec.Facts && endpoint != 1 && (endpoint == 3) == spec.cross(nextFact) {
-						nextFact++
-					}
-					if nextFact >= spec.Facts {
-						t.Fatal("cost endpoint index extra candidate", endpoint, row)
-					}
-					edge, bound, target, targetLife := spec.edge(nextFact)
-					x := row.Entity
-					if x.ID != edge || !x.Found || !x.Effective || x.Kind != byte(graphstate.Relationship) || x.Type != "edge" || x.Mode != byte(graphstate.LifeBound) || x.Source != 1 || x.Target != target || x.EffectiveLife != bound || !x.Presence.Present || x.Presence.Kind != "life" || x.Presence.Handle != bound || len(x.Labels) != 0 || row.SourceLife != 2 || row.TargetLife != targetLife || !x.Property.Present || x.Property.Kind != "i64" || x.Property.Revision == 0 || x.Property.I64 != want || x.Property.Handle != uint64(want) || x.Property.Provenance != 4+nextFact+boolUint(want == 6)*spec.Facts {
-						t.Fatal("cost exact indexed retained candidate", endpoint, life, nextFact, row)
-					}
-					seen++
-					nextFact++
-				}
-				if err := stream.Encode(page); err != nil {
-					t.Fatal(err)
-				}
-				if page.Complete {
-					complete = true
-					break
-				}
-				cursor = page.Next
-			}
-			for nextFact < spec.Facts && endpoint != 1 && (endpoint == 3) == spec.cross(nextFact) {
-				nextFact++
-			}
-			if !complete || nextFact != spec.Facts || endpoint == 1 && seen != spec.Facts {
-				t.Fatal("cost endpoint index incomplete/omitted", endpoint, life, seen)
-			}
-			n.all[2].call(t, processRequest{op: processSourceCertifiedClose, index: handle})
-		}
-	}
+	nativeGraphCostIncidentIndexes(t, n, spec, cut, want, stream)
 	handle, actual := nativeGraphCostOpen(t, n, graphReadAt, cut)
 	if !reflect.DeepEqual(actual, cut) {
 		t.Fatal("cost identity At substituted cut")

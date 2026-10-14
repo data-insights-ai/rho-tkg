@@ -281,12 +281,15 @@ class RealGitSelection(unittest.TestCase):
                    "TestNativeGraphCostMultipleGrantsSmallActualProcesses",
                    "TestNativeGraphCostPhysicalReopenAndIndexesSmallActualProcesses",
                    "TestNativeGraphCostReopenIndexPagesRejectMalformedAndOversizedInput",
+                   "TestNativeGraphCostIncidentOwnerRetainsOldCutAndRefusesExhaustedLateCookies",
+                   "TestNativeGraphCostIncidentEnvelopeRejectsUnownedSequenceAndExtraInput",
                    "TestNativeGraphCostIndependentClientsSmallActualProcesses",
                    "TestNativeGraphCostRequestACKFindsOriginalBehindLaterAppliedEntry",
                    "TestNativeGraphCostAttemptLineageAndWindowAreBoundedAndRequestJoined",
                    "TestNativeGraphCostThirtyTwoCommandWindowRejectsOtherWaveOriginals"}
         for fixture in ("native_graph_cost_test.go", "native_graph_cost_harness_test.go",
                         "native_graph_cost_grants_harness_test.go", "native_graph_cost_reopen_harness_test.go",
+                        "native_graph_cost_incident_harness_test.go",
                         "native_graph_cost_parallel_harness_test.go", "native_graph_cost_runner_test.go"):
             with self.subTest(fixture=fixture):
                 path = self.directory / fixture
@@ -319,6 +322,20 @@ class RealGitSelection(unittest.TestCase):
         names = CI.graph_selection(self.directory, [fixture, parent], {
             fixture: [("type", "costFixture")], parent: [("func", "TestNativeGraphCostCell")]})
         self.assertIn("TestNativeGraphCostCell", names)
+
+    def test_shared_child_incident_fixture_has_finite_named_consumers(self):
+        path = self.directory / "graph_source_process_test.go"
+        path.write_text("package graphapply\ntype sharedChild struct{}\n")
+        names = set(CI.graph_selection(self.directory, [path], {path: [("type", "sharedChild")]}))
+        self.assertIn("TestNativeGraphCostIncidentOwnerRetainsOldCutAndRefusesExhaustedLateCookies", names)
+        self.assertIn("TestNativeGraphCostIncidentEnvelopeRejectsUnownedSequenceAndExtraInput", names)
+        self.assertNotIn("TestNativeGraphCostCell", names)
+        path.write_text("package graphapply\nfunc childHelper() {}\n")
+        (self.directory / "unreviewed_test.go").write_text("package graphapply\nfunc TestUnreviewed(t *testing.T) { childHelper() }\n")
+        helpers = set(CI.graph_selection(self.directory, [path], {path: [("func", "childHelper")]}))
+        self.assertEqual(helpers, set(CI.FIXTURE_COMPAT[path.name]) | set(CI.GRAPH_COMPAT))
+        self.assertNotIn("TestUnreviewed", helpers)
+
 
     def test_unknown_fixture_type_or_production_scope_requires_full(self):
         fixture = self.directory / "unknown_test.go"
