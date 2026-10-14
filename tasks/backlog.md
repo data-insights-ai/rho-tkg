@@ -189,8 +189,8 @@ all A–F exit requirements; implementation status never implies acceptance.
    its direct normal/race/scoped coverage checks and v5 lint/security pass.
    Audit the remaining clauses separately rather than reopening these selected
    components without a changed source or uncovered requirement.
-2. **Close B's remaining serialization requirements.** A high-effort Sol 6.1
-   worker is implementing the real P05 API gap: a historical read followed by a dependent write,
+2. **Close B's remaining serialization requirements.** The P05 source now
+   implements a historical read followed by a dependent write,
    absent keys, empty ranges, temporal predicates, endpoint-life/revision ABA,
    and topology/catalog/profile dependencies. Enumerate existing coverage first;
    add the missing production schedules and fix any demonstrated shared cause.
@@ -236,8 +236,9 @@ all A–F exit requirements; implementation status never implies acceptance.
    verifies all 494 raw members, 27 frozen source inputs, actual terminals and
    86.01% helper coverage. The later raw artifact writer/checker is integrated
    source, not SDK-qualified output; neither establishes a capacity cell.
-   Implement genuine 8/32 writers with request-bound acknowledgements, bounded admission,
-   phase barriers and explicit abort/replan/unknown-result attempt lineage.
+   Native source now implements genuine 8/32 clients with request-bound acknowledgements,
+   bounded admission, phase barriers and immutable terminal/pending attempt lineage;
+   execution is deferred. Implement the equivalent FDB writer paths.
    Preserve the engines' actual conflict and ordering semantics. Qualify tiny
    paired runs before executing larger measurements. Separately
    finish equivalent FDB role/domain faults, unknown commits, pins/GC and
@@ -254,7 +255,7 @@ all A–F exit requirements; implementation status never implies acceptance.
    from comparable correctness, durability, total cost, deployment and maintenance
    evidence before V3 format freeze.
 6. **Run one coordinated V2 acceptance gate.** Reconcile main at a recorded
-   cutoff (last fetched main is `945fffc3`/v4.52.1; current v5 source includes v4.51.8),
+   cutoff (latest observed main is `8c856fc9`/v4.53.0; current v5 source includes v4.51.8),
    review relevant handover/consumer/CI deltas and integrate required changes.
    Preserve historical qualification rather than relabelling it as current.
    On the final integrated revision run full phase CI/race/coverage/security and
@@ -263,24 +264,31 @@ all A–F exit requirements; implementation status never implies acceptance.
    decision recorded, no unresolved correctness failure, and the exact branch
    revision pushed with passing applicable hosted gates. V3–V7 remain separate.
 
-Implementation handoff: P05 is source-integrated at `9e677135`, including the
-canonical schema setup correction; its resumed lookup/completion shares one
-ledger. Native reopen/index source is integrated through `80cf0e03`, including
-the released cost-worker dispatch. The FDB raw artifact writer/checker from
-`2bcb91f8`/`66a8e36b` is also integrated source. These implementations await
-runtime acceptance. The normal P05 compiler/setup failures are preserved and
-are not passes; a compilation-only check of the coherent P05/native source
-succeeds without executing tests. Next source packages cover conditional
-recovery-credit sizing, authenticated remote capacity recovery, durable pins/GC,
-actual writer concurrency and immutable column publication. Follow the owner's
-implementation-first ordering above; qualify the integrated result afterward.
+Implementation handoff: P05 is source-integrated at `9e677135` with canonical
+schema setup and at `99ef2d7c` with conditional recovery-credit sizing and a
+fixed-operation history verifier. Native reopen/index source through `80cf0e03`
+now has independent 8/32 clients and immutable attempts at `2e481ff5`/`d9e6f289`.
+Authenticated remote capacity recovery and the released native child dispatch
+are integrated at `b02ff3e2`/`0fcefb65`; source review also corrected its
+secondary-footprint admission. The FDB raw writer/checker from `66a8e36b` has
+typed chunks and immutable manifests at `3afc715a`, plus durable pin/reference
+ownership and bounded derived-generation collection at `bbf27fcc`; `45939437`
+preserves the caller's owner ticket on every unsuccessful hidden-handle cleanup. Source KV
+history, cuts and CDC remain retained; derived collection does not close source
+application GC. All these later sources await runtime acceptance. Earlier P05
+compiler/setup failures remain recorded failures; the earlier compilation-only
+checkpoint does not qualify this new source. Next source packages cover native
+durable cut/feed pins and GC, bounded high-degree continuation, actual FDB
+column-runner/comparator wiring and writer concurrency, then the remaining
+fault/workload integration. Follow the owner's implementation-first ordering
+above; qualify the integrated result afterward.
 Existing accepted components stay closed unless their source or required
 behavior changes.
 
-Worker lanes: Sol 6.1/high for P05 and remaining B protocol gaps, then C/D;
-Sol 6.1/medium for finite native reopen/index runner changes, with root review
-of its proposal before implementation; Sol 6.1/high for FDB streaming,
-equivalent faults and comparison integration, then F execution. The
+Worker lanes: Sol 6.1/high for native protocol recovery and durable pins/GC,
+then C/D; Sol 6.1/high for bounded high-degree incident continuation (the
+medium-effort native reopen/index and 8/32-client source packages are integrated);
+Sol 6.1/high for FDB column-runner, writer and comparison integration. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
 serialize heavy local fault/benchmark workloads under the shared resource lease.
