@@ -130,7 +130,7 @@ cover:
 # instead of silently lowering the floor.
 COVER_MIN ?= 80
 cover-gate:
-	@go test -short -count=1 -coverpkg=./pkg/... -coverprofile=coverage.pkg.out ./pkg/... > /dev/null
+	@go test -short -count=1 -coverpkg=./pkg/... -coverprofile=coverage.pkg.out ./pkg/... > coverage.test.log 2>&1 || { grep -E -B2 -A20 -- '--- FAIL|^FAIL|panic:' coverage.test.log | head -200; exit 1; }
 	@total=$$(go tool cover -func=coverage.pkg.out | awk '/^total:/ {gsub("%","",$$3); print $$3}'); \
 	awk -v t=$$total -v min=$(COVER_MIN) 'BEGIN { if (t+0 < min+0) { printf "coverage gate: total=%s%% < min=%s%% — failing\n", t, min; exit 1 } else { printf "coverage gate: total=%s%% >= min=%s%% — ok\n", t, min } }'
 

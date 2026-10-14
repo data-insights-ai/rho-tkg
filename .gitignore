@@ -41,3 +41,4 @@ coverage.pkg.out
 # bench/ suite: per-machine baselines and bench-check scratch output —
 # never committed (see bench/README.md).
 bench/local-*
+coverage.test.log
