@@ -374,7 +374,11 @@ revision checks preserve current anchors, retry outcomes and retained CDC.
 Fresh runner/artifact wiring is source-integrated at `e34d9783`: genuine held old
 reads, expired-new-open refusal, bounded durable collector resume, complete
 retained originals and COMMIT/ABORT replay bind separate version6 artifacts.
-Its controller/checker integration and runtime qualification remain open; default
+Its bounded controller/checker is source-integrated at `690ede3c`, joining
+held old reads, actual collection progress/seal and unique original/replay
+inventories on the existing comparison spool. Pre-GC logical/column census stays
+separate from post-GC physical anchors; native retain-all and FDB source-retirement
+profiles do not establish equal storage efficiency. Runtime qualification remains open; default
 retain-all behavior and ordinary formats stay unchanged. These integrations close source packages,
 not V2 E/F qualification or comparative efficiency acceptance.
 Existing accepted components stay closed unless their source or required
