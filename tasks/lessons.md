@@ -6,6 +6,8 @@ N"): never renumber or reuse. "merged into N" / "superseded by N" stubs keep a n
 
 ## Rules digest (standing rules; the number owns the detail)
 
+- Trace the cause before asking or adding; consolidate duplicate paths, notes and rules instead of layering, docs
+  rewritten in place (84).
 - Act, do not offer: open work with a clear next step (consumer request, review finding, patch batch) starts now; ask only for the
   irreversible or materially different (81). Tick the ledger and doc targets at every release (80, 41).
 - Red first: a failing break-the-code test before the fix, a clean root-cause fix at the shared seam, no "known limitation" in
@@ -609,6 +611,11 @@ Rule: one compact red test per item (the key break cases), then the code. No mut
 Trigger: René 2026-10-13 "I think you're testing too much. Focus on more development work."
 Detector: evidence files named *mutant* or *probe*, or a test file longer than the code it tests.
 
-## 84. No Unreflected Questions To René
+## 84. Trace The Cause, Then Consolidate: No Unreflected Questions, No Layers On Top
 
-René 2026-10-14 (standing rule, also in ~/CLAUDE.md): before any design question to René, (1) trace where it really comes from in the current code (file:line, not an old note); (2) look for a strategy that removes the question (fix the cause upstream, a standard, an existing mechanism); (3) if one works, solve it. Ask only the remainder, naming the cause and each rejected strategy in one line.
+René 2026-10-14 (standing rules, also in ~/CLAUDE.md). Before a design question to René: trace where it really comes from in the
+current code (file:line, not an old note), look for a strategy that removes it (fix the cause upstream, a standard, an existing
+mechanism) and solve it if one works; ask only the remainder, naming the cause and each rejected strategy in one line.
+Consolidate, don't add: when two code paths, notes or rules do the same job, merge them into one and delete the rest instead of
+a fix, layer or note on top; check for duplication first, it is often the real bug. Docs too (lessons, backlog, HANDOVER):
+rewrite in place, delete outdated entries, never only append.
