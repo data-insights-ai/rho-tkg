@@ -34,9 +34,9 @@ import (
 // re-import stored before backlog 38 can leave a gap too. The check above the
 // current row is therefore exact (nodeHasHistoryAbove, backlog 70): the point
 // read of current+1 answers the dense chain, and only when it misses one page
-// read of at most one row looks past a gap. The stores' own bulk as-of fast
-// paths (memory history[v+1], badger's point read of key current+1) still
-// probe current+1 only.
+// read of at most one row looks past a gap. The stores' as-of fast paths use
+// the same rule (memory historyHasVersionAbove, badger liveHistoryAbove /
+// snapshotHistoryAbove).
 
 // nodeHasHistoryAbove reports whether node id has a history row above
 // version v. Exact (backlog 70): the point read of v+1 answers the common

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -344,6 +345,68 @@ func TestTxRollbackAppendsAboveCompactionGap(t *testing.T) {
 			}
 			if h := relHistoryVersions(t, g, rid); rcur.Version() != 0 || fmt.Sprint(h) != "[3]" {
 				t.Fatalf("rel rollback: current v%d history %v, want v0 [3]", rcur.Version(), h)
+			}
+		})
+	}
+}
+
+// Backlog 70, the stores' as-of fast paths: after a compaction gap above the
+// current row (current v0, history [3]) the row above the gap is the newest
+// belief and must answer as of the head pin — point and bulk, nodes and
+// relationships — as the as-of rule over the whole chain answers. The fast
+// paths probed only current+1 and answered the current row.
+func TestStoreAsOfAboveCompactionGap(t *testing.T) {
+	for _, be := range r10Backends() {
+		t.Run(be.name, func(t *testing.T) {
+			g, err := New(be.cfg())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = g.Close() })
+			st, ok := g.store.(storepkg.TransactionTimeQueryCapability)
+			if !ok {
+				t.Skip("no transaction-time doors")
+			}
+			nid := compactionGap(t, g)
+			rid := relCompactionGap(t, g)
+			pin := g.peekNow()
+			// The reference: the as-of rule over the whole chain.
+			h, err := g.store.GetNodeHistory(nid)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cur, err := g.store.GetNode(nid)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want, ok := storeutil.SelectAsOfWithCurrent(h, cur, true, pin); !ok || want.Version() != 3 {
+				t.Fatalf("the as-of rule answers v%d (%v), the test expects v3", want.Version(), ok)
+			}
+			n, err := st.NodeAsOf(nid, pin)
+			if err != nil || n.Version() != 3 {
+				t.Errorf("NodeAsOf: v%d %v, want v3 (the row above the gap)", n.Version(), err)
+			}
+			r, err := st.RelAsOf(rid, pin)
+			if err != nil || r.Version() != 3 {
+				t.Errorf("RelAsOf: v%d %v, want v3", r.Version(), err)
+			}
+			nodes, err := st.NodesAsOf(pin)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, x := range nodes {
+				if x.ID() == nid && x.Version() != 3 {
+					t.Errorf("NodesAsOf: v%d, want v3", x.Version())
+				}
+			}
+			rels, err := st.RelsAsOf(pin)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, x := range rels {
+				if x.ID() == rid && x.Version() != 3 {
+					t.Errorf("RelsAsOf: v%d, want v3", x.Version())
+				}
 			}
 		})
 	}

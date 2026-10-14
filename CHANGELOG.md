@@ -47,7 +47,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   bound of the top version (memory: raised by its one history-write funnel; badger: the history presence set)
   without reading rows when nothing lies above: Update cost unchanged (`11-update-cost-allocator.txt`); sharded
   gains the page read (`HistoryVersionPageCapability`, routed to the slot). The
-  stores' own bulk as-of fast paths still probe current+1. Tests:
+  stores' as-of fast paths (point and bulk `NodeAsOf` / `NodesAsOf` and the rel twins, memory and badger) answered
+  the current row where the row above the gap is the newest belief; they now use the same rule: the per-ID upper
+  bound says no row lies above (no read), else current+1, else a pass over the versions (memory) or the history
+  scan (badger) decides (`TestStoreAsOfAboveCompactionGap`, red: `12-red-store-asof-gap.txt`). Tests:
   `TestVersionAllocatorAboveCompactionGap`, `TestTxRollbackAppendsAboveCompactionGap` (nodes and relationships;
   red: `tasks/evidence/r10-write/10-red-allocator-gap.txt`), the 68b twin now with deletes, closes and this
   shape inside a GraphTx.

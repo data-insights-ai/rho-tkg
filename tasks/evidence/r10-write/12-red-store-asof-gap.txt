@@ -1,0 +1,15 @@
+# 2026-10-14T23:41:16+02:00 red: the stores' as-of fast paths across a compaction gap (before the fix)
+    effective_head_write_test.go:387: NodeAsOf: v0 <nil>, want v3 (the row above the gap)
+    effective_head_write_test.go:391: RelAsOf: v0 <nil>, want v3
+    effective_head_write_test.go:399: NodesAsOf: v0, want v3
+    effective_head_write_test.go:408: RelsAsOf: v0, want v3
+    effective_head_write_test.go:387: NodeAsOf: v0 <nil>, want v3 (the row above the gap)
+    effective_head_write_test.go:391: RelAsOf: v0 <nil>, want v3
+    effective_head_write_test.go:399: NodesAsOf: v0, want v3
+    effective_head_write_test.go:408: RelsAsOf: v0, want v3
+--- FAIL: TestStoreAsOfAboveCompactionGap (0.00s)
+    --- FAIL: TestStoreAsOfAboveCompactionGap/memory (0.00s)
+    --- FAIL: TestStoreAsOfAboveCompactionGap/badger (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.011s
+FAIL
