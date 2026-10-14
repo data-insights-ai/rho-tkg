@@ -112,16 +112,28 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 		}
 		end := min(start+storecontract.ColumnScanBatchRows, len(ids))
 		resetColumnBatch(batch, len(props))
-		for ord := start; ord < end; ord++ {
-			if !validTimeMatches(effectiveValidFrom(vf[ord], ids[ord]), vt[ord], qFrom, qTo) {
-				continue
-			}
-			batch.IDs = append(batch.IDs, ids[ord])
-			batch.Ordinals = append(batch.Ordinals, ords[ord])
-			batch.ValidFrom = append(batch.ValidFrom, vf[ord])
-			batch.ValidTo = append(batch.ValidTo, vt[ord])
+		if unfilteredWindow(qTo) {
+			batch.IDs = append(batch.IDs, ids[start:end]...)
+			batch.Ordinals = append(batch.Ordinals, ords[start:end]...)
+			batch.ValidFrom = append(batch.ValidFrom, vf[start:end]...)
+			batch.ValidTo = append(batch.ValidTo, vt[start:end]...)
 			for c, v := range views {
-				appendFromView(&batch.ColumnData, c, v, ord)
+				for ord := start; ord < end; ord++ {
+					appendFromView(&batch.ColumnData, c, v, ord)
+				}
+			}
+		} else {
+			for ord := start; ord < end; ord++ {
+				if !validTimeMatches(effectiveValidFrom(vf[ord], ids[ord].SnowflakeID()), vt[ord], qFrom, qTo) {
+					continue
+				}
+				batch.IDs = append(batch.IDs, ids[ord])
+				batch.Ordinals = append(batch.Ordinals, ords[ord])
+				batch.ValidFrom = append(batch.ValidFrom, vf[ord])
+				batch.ValidTo = append(batch.ValidTo, vt[ord])
+				for c, v := range views {
+					appendFromView(&batch.ColumnData, c, v, ord)
+				}
 			}
 		}
 		if len(batch.IDs) == 0 {
@@ -181,12 +193,21 @@ func validTimeMatches(f, t, start, end int64) bool {
 // then saw [mint, +inf) where the memory backend saw eternal.
 //
 // Applying it here keeps the filter's behaviour bit-identical to before.
-func effectiveValidFrom(f int64, id interface{ SnowflakeID() snowflake.ID }) int64 {
+//
+// It takes the snowflake ID, not an interface over the entity ID: converting a
+// NodeID or RelID to an interface boxed it, one allocation per filtered row
+// (sigma-tkgd round 6 request 10).
+func effectiveValidFrom(f int64, id snowflake.ID) int64 {
 	if f != 0 {
 		return f
 	}
-	return int64(storeutil.SnowflakeInstant(id.SnowflakeID()))
+	return int64(storeutil.SnowflakeInstant(id))
 }
+
+// unfilteredWindow reports whether every row of [start, end) passes the valid-time
+// window: true without a filter (end == 0), so the scan copies the block's
+// rows as runs instead of testing and appending them one by one.
+func unfilteredWindow(qTo int64) bool { return qTo == 0 }
 
 func columnKindOf(v indexpkg.ColumnView) storecontract.ColumnKind {
 	if v.Type == indexpkg.ColString {

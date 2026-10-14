@@ -1,0 +1,23 @@
+--- FAIL: TestScanRelColumns_AllocationsDoNotGrowWithRows (0.04s)
+    --- FAIL: TestScanRelColumns_AllocationsDoNotGrowWithRows/unfiltered (0.00s)
+        badgerstore_column_scan_allocs_test.go:96: props []: 4106 allocations for 4096 rows, want at most 64
+    --- FAIL: TestScanRelColumns_AllocationsDoNotGrowWithRows/valid-at (0.00s)
+        badgerstore_column_scan_allocs_test.go:96: props []: 4106 allocations for 4096 rows, want at most 64
+    --- FAIL: TestScanRelColumns_AllocationsDoNotGrowWithRows/interval (0.00s)
+        badgerstore_column_scan_allocs_test.go:96: props []: 4106 allocations for 4096 rows, want at most 64
+    --- FAIL: TestScanRelColumns_AllocationsDoNotGrowWithRows/unfiltered#01 (0.00s)
+        badgerstore_column_scan_allocs_test.go:96: props [w]: 4141 allocations for 4096 rows, want at most 64
+    --- FAIL: TestScanRelColumns_AllocationsDoNotGrowWithRows/valid-at#01 (0.00s)
+        badgerstore_column_scan_allocs_test.go:96: props [w]: 4141 allocations for 4096 rows, want at most 64
+    --- FAIL: TestScanRelColumns_AllocationsDoNotGrowWithRows/interval#01 (0.00s)
+        badgerstore_column_scan_allocs_test.go:96: props [w]: 4141 allocations for 4096 rows, want at most 64
+--- FAIL: TestScanNodeColumns_AllocationsDoNotGrowWithRows (0.04s)
+    --- FAIL: TestScanNodeColumns_AllocationsDoNotGrowWithRows/unfiltered (0.00s)
+        badgerstore_column_scan_allocs_test.go:125: 4136 allocations for 4096 rows, want at most 64
+    --- FAIL: TestScanNodeColumns_AllocationsDoNotGrowWithRows/valid-at (0.00s)
+        badgerstore_column_scan_allocs_test.go:125: 4136 allocations for 4096 rows, want at most 64
+    --- FAIL: TestScanNodeColumns_AllocationsDoNotGrowWithRows/interval (0.00s)
+        badgerstore_column_scan_allocs_test.go:125: 4136 allocations for 4096 rows, want at most 64
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.352s
+FAIL

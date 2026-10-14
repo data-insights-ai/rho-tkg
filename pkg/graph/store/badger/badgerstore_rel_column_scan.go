@@ -95,20 +95,38 @@ func (bs *Store) scanRelColumnsColumnar(token uint16, props []string, opts store
 		}
 		end := min(start+storecontract.ColumnScanBatchRows, len(ids))
 		resetRelColumnBatch(batch, len(props))
-		for ord := start; ord < end; ord++ {
-			if !validTimeMatches(effectiveValidFrom(vf[ord], ids[ord]), vt[ord], qFrom, qTo) {
-				continue
-			}
-			batch.IDs = append(batch.IDs, ids[ord])
-			batch.Ordinals = append(batch.Ordinals, ords[ord])
-			batch.StartOrdinals = append(batch.StartOrdinals, startOrds[ord])
-			batch.EndOrdinals = append(batch.EndOrdinals, endOrds[ord])
-			batch.StartIDs = append(batch.StartIDs, types.NodeID(startView.Ints[ord]))
-			batch.EndIDs = append(batch.EndIDs, types.NodeID(endView.Ints[ord]))
-			batch.ValidFrom = append(batch.ValidFrom, vf[ord])
-			batch.ValidTo = append(batch.ValidTo, vt[ord])
+		if unfilteredWindow(qTo) {
+			// Every row of the block: the snapshot's arrays copied as runs
+			// (round 6 request 10), no test or append per row.
+			batch.IDs = append(batch.IDs, ids[start:end]...)
+			batch.Ordinals = append(batch.Ordinals, ords[start:end]...)
+			batch.StartOrdinals = append(batch.StartOrdinals, startOrds[start:end]...)
+			batch.EndOrdinals = append(batch.EndOrdinals, endOrds[start:end]...)
+			batch.StartIDs = appendNodeIDs(batch.StartIDs, startView.Ints[start:end])
+			batch.EndIDs = appendNodeIDs(batch.EndIDs, endView.Ints[start:end])
+			batch.ValidFrom = append(batch.ValidFrom, vf[start:end]...)
+			batch.ValidTo = append(batch.ValidTo, vt[start:end]...)
 			for c, v := range views {
-				appendFromView(&batch.ColumnData, c, v, ord)
+				for ord := start; ord < end; ord++ {
+					appendFromView(&batch.ColumnData, c, v, ord)
+				}
+			}
+		} else {
+			for ord := start; ord < end; ord++ {
+				if !validTimeMatches(effectiveValidFrom(vf[ord], ids[ord].SnowflakeID()), vt[ord], qFrom, qTo) {
+					continue
+				}
+				batch.IDs = append(batch.IDs, ids[ord])
+				batch.Ordinals = append(batch.Ordinals, ords[ord])
+				batch.StartOrdinals = append(batch.StartOrdinals, startOrds[ord])
+				batch.EndOrdinals = append(batch.EndOrdinals, endOrds[ord])
+				batch.StartIDs = append(batch.StartIDs, types.NodeID(startView.Ints[ord]))
+				batch.EndIDs = append(batch.EndIDs, types.NodeID(endView.Ints[ord]))
+				batch.ValidFrom = append(batch.ValidFrom, vf[ord])
+				batch.ValidTo = append(batch.ValidTo, vt[ord])
+				for c, v := range views {
+					appendFromView(&batch.ColumnData, c, v, ord)
+				}
 			}
 		}
 		if len(batch.IDs) == 0 {
@@ -119,6 +137,15 @@ func (bs *Store) scanRelColumnsColumnar(token uint16, props []string, opts store
 		}
 	}
 	return true
+}
+
+// appendNodeIDs appends raw endpoint IDs of a snapshot's reserved endpoint
+// column as node IDs.
+func appendNodeIDs(dst []types.NodeID, raw []int64) []types.NodeID {
+	for _, id := range raw {
+		dst = append(dst, types.NodeID(id))
+	}
+	return dst
 }
 
 func newRelColumnBatch(nCols int) *storecontract.RelColumnBatch {

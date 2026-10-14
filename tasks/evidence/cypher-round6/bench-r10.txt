@@ -1,0 +1,18 @@
+== before round 1 load { 218.79 78.72 39.46 }
+BenchmarkRelEndpointColumnScan/memory/unfiltered         	      50	   7187828 ns/op	 2310600 B/op	      13 allocs/op
+BenchmarkRelEndpointColumnScan/badger/unfiltered         	      50	   3964943 ns/op	 2310682 B/op	  262158 allocs/op
+== after round 1 load { 249.68 89.83 43.86 }
+BenchmarkRelEndpointColumnScan/memory/unfiltered         	      50	  10453968 ns/op	 2310600 B/op	      13 allocs/op
+BenchmarkRelEndpointColumnScan/badger/unfiltered         	      50	    527284 ns/op	  213487 B/op	      13 allocs/op
+== before round 2 load { 261.03 97.48 47.10 }
+BenchmarkRelEndpointColumnScan/memory/unfiltered         	      50	   7833053 ns/op	 2310600 B/op	      13 allocs/op
+BenchmarkRelEndpointColumnScan/badger/unfiltered         	      50	   4581168 ns/op	 2310695 B/op	  262158 allocs/op
+== after round 2 load { 268.15 101.67 48.88 }
+BenchmarkRelEndpointColumnScan/memory/unfiltered         	      50	   6594745 ns/op	 2310600 B/op	      13 allocs/op
+BenchmarkRelEndpointColumnScan/badger/unfiltered         	      50	    976205 ns/op	  213499 B/op	      13 allocs/op
+== before round 3 load { 271.96 107.95 51.72 }
+BenchmarkRelEndpointColumnScan/memory/unfiltered         	      50	   7419327 ns/op	 2310600 B/op	      13 allocs/op
+BenchmarkRelEndpointColumnScan/badger/unfiltered         	      50	  10174757 ns/op	 2310758 B/op	  262159 allocs/op
+== after round 3 load { 302.40 122.85 58.03 }
+BenchmarkRelEndpointColumnScan/memory/unfiltered         	      50	  18898689 ns/op	 2310600 B/op	      13 allocs/op
+BenchmarkRelEndpointColumnScan/badger/unfiltered         	      50	    591414 ns/op	  213492 B/op	      13 allocs/op

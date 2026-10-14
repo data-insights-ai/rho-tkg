@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Badger column scans allocate nothing per row** (sigma-tkgd round 6 request 10). `ScanRelColumns` and
+  `ScanNodeColumns` on the columnar path converted each row's ID to an interface to derive a missing valid-from,
+  one allocation per row whether or not a valid-time filter was set (1,049,588 allocations a run of sigma-tkgd's
+  StarCandidatesSkewedCold badger). The derivation now takes the snowflake ID, and without a filter a block's IDs,
+  ordinals, endpoints and validity are copied as runs from the snapshot. Same rows, same order. 262,144
+  relationships of one type, no property, snapshot built: 4.0-10.2 ms, 262,158 allocations, 2.3 MB -> 0.53-0.98 ms,
+  13 allocations, 0.21 MB (load 220-300). Tests `TestScanRelColumns_AllocationsDoNotGrowWithRows`,
+  `TestScanNodeColumns_AllocationsDoNotGrowWithRows`; bench `BenchmarkRelEndpointColumnScan`; evidence
+  `tasks/evidence/cypher-round6/`.
+
 ## [4.51.8] - 2026-10-14
 
 ### Added
