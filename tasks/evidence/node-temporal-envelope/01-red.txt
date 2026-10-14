@@ -1,0 +1,23 @@
+# 01-red: base 81742d78 + red tests (badger then memory), go test -short -count=1 -run TestNodeTemporalEnvelope_|TestMemoryNodeTemporalEnvelope_
+--- FAIL: TestNodeTemporalEnvelope_PutNodeVersionCovered (0.02s)
+    badgerstore_node_temporal_envelope_test.go:35: prune at 150 kept [] (ok=true), want [8030]: it holds a row valid there
+--- FAIL: TestNodeTemporalEnvelope_CreatePruneBeforeHistoryFold (0.02s)
+    badgerstore_node_temporal_envelope_test.go:53: prune at 150 kept [] (ok=true), want [8031]: it holds a row valid there
+--- FAIL: TestNodeTemporalEnvelope_LabelReAddOnLiveNode (0.08s)
+    badgerstore_node_temporal_envelope_test.go:84: prune at 150 kept [] (ok=true), want [8032]: it holds a row valid there
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.152s
+FAIL
+--- FAIL: TestMemoryNodeTemporalEnvelope_PutNodeVersionCovered (0.00s)
+    memorystore_node_temporal_envelope_test.go:60: prune at 150 kept [] (ok=true), want [8030]: it holds a row valid there
+--- FAIL: TestMemoryNodeTemporalEnvelope_UpdateDuringCreate (0.00s)
+    memorystore_node_temporal_envelope_test.go:86: prune at 150 kept [] (ok=true), want [8031]: it holds a row valid there
+    memorystore_node_temporal_envelope_test.go:86: prune at 5500 kept [] (ok=true), want [8031]: it holds a row valid there
+--- FAIL: TestMemoryNodeTemporalEnvelope_LabelReAddOnLiveNode (0.00s)
+    memorystore_node_temporal_envelope_test.go:108: prune at 150 kept [] (ok=true), want [8032]: it holds a row valid there
+--- FAIL: TestMemoryNodeTemporalEnvelope_RecreateDeletedNode (0.00s)
+    memorystore_node_temporal_envelope_test.go:125: prune at 150 kept [] (ok=true), want [8033]: it holds a row valid there
+    memorystore_node_temporal_envelope_test.go:125: prune at 5500 kept [] (ok=true), want [8033]: it holds a row valid there
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.005s
+FAIL

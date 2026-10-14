@@ -92,7 +92,7 @@ func (ms *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	ms.addNodeToCompositeIndexesLocked(updatedNode, rawID)
-	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
+	ms.addNodeToTemporalIndexesLocked(updatedNode, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
@@ -179,7 +179,7 @@ func (ms *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	ms.addNodeToCompositeIndexesLocked(updatedNode, rawID)
-	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
+	ms.addNodeToTemporalIndexesLocked(updatedNode, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
@@ -406,8 +406,9 @@ func (ms *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types
 	}
 
 	ms.putNodeHistoryRowLocked(nid, version, n)
-	ms.recordNodeLabelMembersLocked(n)                   // a historical version may carry labels the current row dropped
-	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c — the cascade's bounded-correction append door
+	ms.extendNodeVersionTemporalLocked(n, nid.SnowflakeID()) // backlog 56: a covered node's envelope holds every row
+	ms.recordNodeLabelMembersLocked(n)                       // a historical version may carry labels the current row dropped
+	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n))     // BACKLOG 10c — the cascade's bounded-correction append door
 	return ms.logNodeHistoryVersionRoutedLocked(version, n, token)
 }
 
@@ -867,7 +868,7 @@ func (ms *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 	ms.addNodePropertyKeyCounts(current)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, current, rawID)
 	ms.addNodeToCompositeIndexesLocked(current, rawID)
-	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, current, rawID)
+	ms.addNodeToTemporalIndexesLocked(current, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, current, rawID)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err

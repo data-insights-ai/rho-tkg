@@ -258,6 +258,10 @@ func highFrequencyBucketDuration(bucketMillis int64) (time.Duration, error) {
 	return bucketSize, nil
 }
 
+// temporalCreateBeforeFoldHook, set only by tests, runs in CreateTemporalIndex
+// after the current-row backfill is merged and before the history fold.
+var temporalCreateBeforeFoldHook func()
+
 // CreateTemporalIndex creates a temporal index on nodes with the given label token.
 // Three-phase approach (same as CreatePropertyIndex) for safe concurrent operation.
 // Returns ErrTemporalIndexExists if the index already exists.
@@ -321,8 +325,12 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 		backfill = append(backfill, nodeEntry{id: rawID, from: from, to: to})
 	}
 
-	// Phase 3: Merge backfill into live index under write Lock.
-	// Skip IDs that were touched by concurrent mutations during Phase 2.
+	// Phase 3: Merge backfill into live index under write Lock. The index stays
+	// Building (readers skip it) until the history fold below is in: a
+	// published envelope of current rows alone would prune a node by a past
+	// row (backlog 56). An ID written since Phase 1 gets its fetched row by
+	// Extend (a union: the write folded its own row, and an older row is still
+	// a row the ID had).
 	bs.idxMu.Lock()
 	if err := requireTemporalIndexCurrentForCreate(bs.temporalIndexes, labelToken, liveTI); err != nil {
 		bs.idxMu.Unlock()
@@ -334,7 +342,8 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 			continue // node deleted during Phase 2
 		}
 		if liveTI.WasMutated(entry.id) {
-			continue // a concurrent write already maintained RAM + (if enabled) disk for this ID
+			liveTI.Extend(entry.id, entry.from, entry.to) // RAM only: the write maintained disk
+			continue
 		}
 		liveTI.AddKnownAbsent(entry.id, entry.from, entry.to)
 		if bs.temporalIdxOnDisk {
@@ -345,73 +354,117 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 			})
 		}
 	}
-	liveTI.Building = false
-	liveTI.ClearMutationTracking()
-	bs.persistTemporalIndexDefs()
 	if len(diskOps) > 0 {
 		bs.appendOps(diskOps...)
 	}
 	bs.idxMu.Unlock()
+	if temporalCreateBeforeFoldHook != nil {
+		temporalCreateBeforeFoldHook()
+	}
 
-	// The backfill above recorded only each node's CURRENT version. Fold its
-	// history versions into the per-node ENVELOPE so a past valid interval that
-	// differs from the current one stays a candidate (sound superset).
-	if err := bs.foldTemporalHistoryEnvelopes([]uint16{labelToken}); err != nil {
+	// Phase 4: read the history of the label's members without the lock.
+	_, foldIDs, folds, err := bs.temporalHistoryFolds(labelToken)
+	if err != nil {
+		bs.idxMu.Lock()
+		deleteTemporalIndexIfCurrent(bs.temporalIndexes, labelToken, liveTI)
+		bs.idxMu.Unlock()
 		return err
 	}
+
+	// Phase 5: fold and publish. An ID written since Phase 1 that Phase 4 did
+	// not read (re-created, given a label or a PutNodeVersion after the member
+	// snapshot) has its history folded here, under the lock, so no write lands
+	// between that read and the publish.
+	bs.idxMu.Lock()
+	if err := requireTemporalIndexCurrentForCreate(bs.temporalIndexes, labelToken, liveTI); err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
+	late := liveTI.Mutated
+	liveTI.ClearMutationTracking()
+	for _, f := range folds {
+		liveTI.Extend(f.id, f.from, f.to)
+	}
+	for id := range late {
+		if _, read := foldIDs[id]; read {
+			continue
+		}
+		if err := bs.foldNodeHistoryLocked(liveTI, id); err != nil {
+			deleteTemporalIndexIfCurrent(bs.temporalIndexes, labelToken, liveTI)
+			bs.idxMu.Unlock()
+			return fmt.Errorf("graph: create temporal index: %w", err)
+		}
+	}
+	liveTI.Building = false
+	bs.persistTemporalIndexDefs() // skips a Building index
+	bs.idxMu.Unlock()
 	return bs.flushIfNeeded()
+}
+
+// temporalFoldEntry is one history row's valid-time bounds.
+type temporalFoldEntry struct {
+	id       snowflake.ID
+	from, to types.Instant
+}
+
+// temporalHistoryFolds snapshots the members of tok under idxMu.RLock and
+// reads their history without the lock (GetNodeHistory never re-enters
+// idxMu). It returns the index seen, the member IDs read, and every history
+// row's bounds; a member deleted concurrently is skipped. ti is nil when tok
+// has no temporal index.
+func (bs *Store) temporalHistoryFolds(tok uint16) (*indexpkg.TemporalIndex, map[snowflake.ID]struct{}, []temporalFoldEntry, error) {
+	bs.idxMu.RLock()
+	ti, ok := bs.temporalIndexes[tok]
+	var ids []types.NodeID
+	if ok {
+		// Through the snapshot helper, not labelIdx: under LabelIndexOnDisk
+		// the map is empty and the fold silently dropped every history
+		// envelope (backlog 54 found it).
+		var err error
+		if ids, err = bs.labelNodeIDsSnapshotLocked(tok); err != nil {
+			bs.idxMu.RUnlock()
+			return nil, nil, nil, fmt.Errorf("graph: temporal-index history envelope fold (label %d): %w", tok, err)
+		}
+	}
+	bs.idxMu.RUnlock()
+	if !ok {
+		return nil, nil, nil, nil
+	}
+	read := make(map[snowflake.ID]struct{}, len(ids))
+	var folds []temporalFoldEntry
+	for _, id := range ids {
+		read[id.SnowflakeID()] = struct{}{}
+		hist, err := bs.GetNodeHistory(id)
+		if err != nil {
+			if errors.Is(err, ErrNodeNotFound) {
+				continue // deleted concurrently — its current row is already gone
+			}
+			return nil, nil, nil, fmt.Errorf("graph: temporal-index history envelope fold (label %d): %w", tok, err)
+		}
+		for _, hv := range hist {
+			if hv == nil {
+				continue
+			}
+			f, t := indexpkg.NodeTemporalBounds(id.SnowflakeID(), hv.Temporal())
+			folds = append(folds, temporalFoldEntry{id.SnowflakeID(), f, t})
+		}
+	}
+	return ti, read, folds, nil
 }
 
 // foldTemporalHistoryEnvelopes folds every history version's valid-time bounds
 // into the per-node ENVELOPE of each temporal index in tokens (sound superset).
-// The current-version rebuild/backfill records only each node's latest version;
-// this pass adds the historical versions via Extend, so a past interval that
-// differs from the current one stays covered by the envelope. Two-phase (snapshot
-// member IDs under idxMu → read history with GetNodeHistory unlocked → Extend under
-// idxMu) so GetNodeHistory never re-enters idxMu. Called after loadIndexes (all
-// tokens) and after each CreateTemporalIndex (one token); tolerant of nodes deleted
-// concurrently.
+// The current-version rebuild records only each node's latest version; this
+// pass adds the historical versions via Extend, so a past interval that
+// differs from the current one stays covered by the envelope. Called after
+// loadIndexes (all tokens); tolerant of nodes deleted concurrently.
 func (bs *Store) foldTemporalHistoryEnvelopes(tokens []uint16) error {
 	for _, tok := range tokens {
-		bs.idxMu.RLock()
-		ti, ok := bs.temporalIndexes[tok]
-		var ids []types.NodeID
-		if ok {
-			// Through the snapshot helper, not labelIdx: under LabelIndexOnDisk
-			// the map is empty and the fold silently dropped every history
-			// envelope (backlog 54 found it).
-			var err error
-			if ids, err = bs.labelNodeIDsSnapshotLocked(tok); err != nil {
-				bs.idxMu.RUnlock()
-				return fmt.Errorf("graph: temporal-index history envelope fold (label %d): %w", tok, err)
-			}
+		ti, _, folds, err := bs.temporalHistoryFolds(tok)
+		if err != nil {
+			return err
 		}
-		bs.idxMu.RUnlock()
-		if !ok || len(ids) == 0 {
-			continue
-		}
-		type foldEntry struct {
-			id       snowflake.ID
-			from, to types.Instant
-		}
-		var folds []foldEntry
-		for _, id := range ids {
-			hist, err := bs.GetNodeHistory(id)
-			if err != nil {
-				if errors.Is(err, ErrNodeNotFound) {
-					continue // deleted concurrently — its current row is already gone
-				}
-				return fmt.Errorf("graph: temporal-index history envelope fold (label %d): %w", tok, err)
-			}
-			for _, hv := range hist {
-				if hv == nil {
-					continue
-				}
-				f, t := indexpkg.NodeTemporalBounds(id.SnowflakeID(), hv.Temporal())
-				folds = append(folds, foldEntry{id.SnowflakeID(), f, t})
-			}
-		}
-		if len(folds) == 0 {
+		if ti == nil || len(folds) == 0 {
 			continue
 		}
 		bs.idxMu.Lock()
@@ -425,8 +478,49 @@ func (bs *Store) foldTemporalHistoryEnvelopes(tokens []uint16) error {
 	return nil
 }
 
-// foldRecreatedNodeHistoryLocked is called by a node create door before it
-// adds n: for every label of n whose published temporal index does not cover
+// foldNodeHistoryLocked extends ti by every history row of id; the RAM history
+// presence set answers "has none" without a read. Caller holds idxMu.Lock (lock
+// order idxMu -> presence buildMu -> wbMu; the history read takes only wbMu and
+// a read transaction).
+func (bs *Store) foldNodeHistoryLocked(ti *indexpkg.TemporalIndex, id snowflake.ID) error {
+	has, err := bs.hasHistory(&bs.histNodePresence, storepkg.KeyHistNode, id, bs.probeHistoryPresence)
+	if err != nil || !has {
+		return err
+	}
+	hist, err := bs.getNodeHistoryByPrefix(storepkg.HistNodePrefix(id))
+	if err != nil {
+		return err
+	}
+	for _, hv := range hist {
+		if hv != nil {
+			from, to := indexpkg.NodeTemporalBounds(id, hv.Temporal())
+			ti.Extend(id, from, to)
+		}
+	}
+	return nil
+}
+
+// extendNodeVersionTemporalLocked folds a PutNodeVersion row into the index of
+// each of its labels that covers id (its envelope then holds every row of id)
+// or is still Building (the create folds the history of every ID written
+// meanwhile). An uncovered ID stays uncovered and is never pruned: extending
+// it here would vouch for this one row while its other rows stay outside.
+// Caller holds idxMu.Lock.
+func (bs *Store) extendNodeVersionTemporalLocked(n *types.Node, id snowflake.ID) {
+	from, to := indexpkg.NodeTemporalBounds(id, n.Temporal())
+	for i := 0; i < n.LabelTokenCount(); i++ {
+		ti := bs.temporalIndexes[n.LabelTokenRawAt(i)]
+		if ti == nil {
+			continue
+		}
+		if _, _, covered := ti.EnvelopeOf(id); covered || ti.Building {
+			ti.Extend(id, from, to)
+		}
+	}
+}
+
+// foldRecreatedNodeHistoryLocked is called by a node create door, and by a
+// label-add door (backlog 56), before it adds n: for every label of n whose published temporal index does not cover
 // id, id may be a deleted node whose history is still on disk (deleted before
 // the index was built, or before a reopen rebuilt it), and the new row alone
 // would make the envelope vouch for less than the ID holds. Its history is

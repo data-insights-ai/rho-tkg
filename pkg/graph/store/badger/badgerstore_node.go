@@ -813,6 +813,12 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 		bs.idxMu.Unlock()
 		return err
 	}
+	// A label re-added to a live node: that label's index may not cover the
+	// ID while its history holds rows with the label (backlog 56).
+	if err := bs.foldRecreatedNodeHistoryLocked(updatedNode, id); err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
 	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(bs.vectorIndexes, updatedNode, id)
 	if err != nil {
 		bs.idxMu.Unlock()
