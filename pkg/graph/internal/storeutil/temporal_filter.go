@@ -57,14 +57,26 @@ func EnvelopeOverlaps(from, to types.Instant, opts storepkg.QueryOpts) bool {
 // Point-in-time: from <= t AND (to == 0 OR to > t)
 // Interval:      from < end AND (to == 0 OR to > start)
 func MatchesTemporalFilter(id snowflake.ID, tm *types.TemporalMetadata, opts storepkg.QueryOpts) bool {
+	return MatchesTemporalFilterFrom(EntityValidFrom(id, tm), tm, opts)
+}
+
+// MatchesTemporalFilterFrom is MatchesTemporalFilter with the row's effective
+// valid-from already resolved (from), for a caller that knows more about the
+// row than its metadata — the core's materialized-row doors, which start a
+// later version without a valid-from where the chain resolver starts it.
+func MatchesTemporalFilterFrom(from types.Instant, tm *types.TemporalMetadata, opts storepkg.QueryOpts) bool {
+	var to types.Instant
+	if tm != nil {
+		to = tm.ValidTo
+	}
 	if opts.ValidAt != 0 {
-		return MatchesPointInTime(id, tm, opts.ValidAt)
+		return from <= opts.ValidAt && (to == 0 || to > opts.ValidAt)
 	}
 	if opts.ValidStart > 0 && opts.ValidEnd > 0 {
 		if opts.ValidStart >= opts.ValidEnd {
 			return false
 		}
-		return MatchesInterval(id, tm, opts.ValidStart, opts.ValidEnd)
+		return from < opts.ValidEnd && (to == 0 || to > opts.ValidStart)
 	}
 	return true // no filter
 }

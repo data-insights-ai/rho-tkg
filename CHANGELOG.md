@@ -6,6 +6,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A later version without a valid-from got a third start on the materialized-row doors** (backlog 62).
+  `NodeMatchesValidTime` / `RelMatchesValidTime` and `NodeInterval` / `RelInterval` (so `RelateNodes` /
+  `RelateRels`) started such a row (version > 0, `ValidFrom` 0, e.g. a plain `Update`) at its ID's mint instant,
+  while `NodeAt` / `RelAt` and the effective timeline start it at its update instant (`UpdatedAt`): the row
+  matched valid instants before it existed. They now take the resolver's start (`nodeSortValidFrom`).
+  Test `TestRowDoorsAgreeWithResolverOnAnUntimedUpdate`; evidence `tasks/evidence/valid-from-source/`.
+
+### Deprecated
+
+- **The start of a row without a valid-from changes in v4.52.3** (backlog 62, sigma-tkgd observation 2026-10-14).
+  Today an untimed create starts at its ID's mint instant (snowflake wall clock) and an untimed update at its
+  `TxFrom` (commit clock, which runs ahead under bursts; batch and ingest mint IDs before they stamp `TxFrom`;
+  `AddWithTx` stamps a `TxFrom` before the mint), so no single instant sees one burst consistently. From v4.52.3
+  every row without a valid-from, version 0 and later, is valid from its `TxFrom`, on every valid-time door
+  (`NodeAt` / `RelAt`, `NodeAtTx` / `RelAtTx`, `NodesAt[Tx]`, `ByLabel` / `ByType` with `ValidAt`, the effective
+  timelines and their scans, `RelateNodes` / `RelateRels`, the column scans' valid-time filter); a row without a
+  `TxFrom` (legacy) keeps its `UpdatedAt` or mint instant. A later version after `UpdateInPlace` starts at its
+  `TxFrom`, no longer at the in-place write's `UpdatedAt`. Marked `// Deprecated:` on `temporal.API`
+  `NodeMatchesValidTime`, `RelMatchesValidTime`, `NodeInterval`, `RelInterval` (no consumer calls them in
+  production code, so the marker breaks no consumer lint; the timelines, `RelateNodes` / `RelateRels` and
+  `MintInstant` are called in sigma-tkgd production code and carry a doc note instead). Adapt: detect an untimed
+  create by "first segment `ValidFrom` == the first version's `TxFrom`" (`TxStamps`), not "== `MintInstant()`".
+  Further consequences from v4.52.3: (1) a read at wall-clock "now" right after a create can miss it (the commit
+  clock runs ahead of the wall clock under bursts; updates already behave so): read "now" via
+  `g.Temporal().NowTx()` or at the write's `TxFrom`; (2) an `Update` whose `tkg_valid_from` is at or before the
+  current version's `TxFrom` returns `ErrValidFromBeforePrevious` (today the bound for an untimed create is its mint
+  instant); (3) a temporal constraint (`ConstraintRelWithinEndpoints`) compares a relationship's start with an
+  untimed endpoint's `TxFrom`, no longer its mint instant.
+- **An update that sets only `tkg_valid_to` becomes a close in v4.52.3** (backlog 65). Today `Update` (and the
+  `GraphTx`, batch and ingest twins) copies the end onto a new version that starts at the update instant without a
+  check, so a past end writes an empty or inverted row and the entity stays valid; `UpdateInPlace` stores the end
+  unchecked too. From v4.52.3 such an update closes the current version as `CloseVersion` does (one helper): the
+  version keeps its start and ends at `tkg_valid_to`, and an end at or before that start returns
+  `ErrInvalidTimeRange` (`UpdateInPlace`: an end at or before the row's start). `CloseVersion` itself changes with
+  it: today its closing row starts at the close instant, so `CloseVersion(t)` with `t` before that instant leaves
+  the entity valid until the close was written; from v4.52.3 the closed row keeps the version's start. No
+  `// Deprecated:` marker: `Update` is called in sigma-tkgd and ai-soc production code, so a marker would break
+  their lint; doc notes on `Nodes()` / `Rels()` `Update` and `UpdateInPlace`.
+
 ## [4.52.1] - 2026-10-14
 
 ### Added
@@ -63,6 +104,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Graph users were not affected: `g.Tier().Archive` / `Restore`
   hold the graph's exclusive lock. Test `TestRefArchiveReadersSeeMovedEntityOnce`; evidence
   `tasks/evidence/tiered-move-readers/`.
+
 
 ## [4.52.0] - 2026-10-14
 

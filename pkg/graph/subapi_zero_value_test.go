@@ -527,14 +527,14 @@ func TestSubAPIZeroValuesReturnErrNilGraph(t *testing.T) {
 		}},
 		{name: "Temporal.NodeInterval", fn: func(t *testing.T) error {
 			var a temporalpkg.API
-			start, end, err := a.NodeInterval(nil)
+			start, end, err := a.NodeInterval(nil) //nolint:staticcheck // behaviour notice, backlog 62
 			requireZero(t, start)
 			requireZero(t, end)
 			return err
 		}},
 		{name: "Temporal.RelInterval", fn: func(t *testing.T) error {
 			var a temporalpkg.API
-			start, end, err := a.RelInterval(nil)
+			start, end, err := a.RelInterval(nil) //nolint:staticcheck // behaviour notice, backlog 62
 			requireZero(t, start)
 			requireZero(t, end)
 			return err
