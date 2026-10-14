@@ -7,7 +7,7 @@ History (what shipped, why) is in `CHANGELOG.md` and git, not here.
 
 ## 1. Focus and next steps (René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC"; queue ordered by what ai-soc and sigma need)
 
-1. **Tag v4.52.1** with what is green: 58 (tiered tx-membership / valid-end, sigma R2), 60 (tiered move readers), R8 guard test. Final Fable review + `make ci-docker` running (ETA 15:45); then tag, GitHub CI, notify sigma + ai-soc.
+1. **v4.52.1 released 2026-10-14** (58, 60, guard tests). Next tag v4.52.2: 61 step 1 (integrity switch + binary reader), 62/65 step A (deprecations), 63 (Elements index) as they pass review.
 2. **sigma Derived write-back (todo row 33):** R6 = backlog 63 `PropertyIndexOptions{Elements: true}` (building); R7 = backlog 64 `ExciseNodeValidity` (+ rel mirror), starts after 62 (both touch the resolver); R8 done (guard test).
 3. **Integrity-hash switch (row 31, backlog 61):** building; notify ai-soc when it ships.
 4. **One valid-from source (row 32, backlog 62) + Update-with-valid_to closes like CloseVersion (backlog 65):** deprecation in v4.52.2, change in v4.52.3; building.

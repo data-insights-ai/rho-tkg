@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.52.1] - 2026-10-14
+
 ### Added
 
 - **Tiered tx-membership sidecars and valid-end acceleration** (backlog 58, sigma-tkgd R2): the tiered store now
