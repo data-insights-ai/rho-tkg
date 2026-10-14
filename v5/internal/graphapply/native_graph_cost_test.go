@@ -650,7 +650,7 @@ func runNativeGraphCost(t *testing.T, s nativeGraphCostSpec) {
 	started := time.Now()
 	n := newNativeGraphCostNetwork(t, s)
 	result := nativeGraphCostResult{Version: 1, Runner: "certified-16-command-checkpoints-v2", CheckpointCommands: nativeGraphCostBatchCommands, Engine: "native-raft", Spec: s, Deployment: "single-machine distributed: two three-voter durable process groups", Directory: n.dir, UsefulFacts: s.Facts, SetupNodes: 3, Creates: s.Facts, Updates: s.Facts}
-	result.TimingScope = "LocalAckTiming covers setup/create/update ordinary Submit RPCs and waits; State is a cost-only checked volatile Driver.Applied hint without Checkpoint/full stats, never ACK authority. Original retained Outcome/CDC alone proves ACK. Ordinary diagnostics/checkpoints remain full. TransportTiming covers all queued hub traffic including setup/checkpoints/oracles, overlaps client timings, and Step includes IPC plus native driver/application work, not pure fsync. Fixed-size totals and one int64 timestamp per queued job preserve the existing 64-byte job allowance."
+	result.TimingScope = "LocalAckTiming covers setup/create/update ordinary Submit RPCs and waits; State is a cost-only checked volatile Driver.Applied hint without Checkpoint/full stats, never ACK authority. Original retained Outcome/CDC alone proves ACK. Cost non-State replies omit unrequested checkpoint/full statistics but preserve native results and store errors; explicit default State diagnostics and all non-cost replies remain full. TransportTiming covers all queued hub traffic including setup/checkpoints/oracles, overlaps client timings, and Step includes IPC plus native driver/application work, not pure fsync. Fixed-size totals and one int64 timestamp per queued job preserve the existing 64-byte job allowance."
 	// Source records and observations are streamed, never accumulated per fact.
 	open := func(name string) (*os.File, *json.Encoder) {
 		f, err := os.OpenFile(filepath.Join(n.dir, name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
@@ -807,6 +807,12 @@ func TestNativeGraphCostAckPollMarkerRequiresCostChildAndKeepsDefaultDiagnostics
 		full := p.call(t, processRequest{op: processStateOp})
 		if len(full.image) == 0 || full.stats[statGeneration] == 0 || len(full.handles) != 2 {
 			t.Fatal("default State lost full diagnostics", cost, full)
+		}
+		// Genuine native work retains its normal result/error framing. Only the
+		// explicit cost embedding omits unrequested diagnostic metadata.
+		tick := p.call(t, processRequest{op: processTick})
+		if tick.applied != full.applied || tick.ready != full.ready || cost && (tick.stats != ([statCount]uint64{}) || tick.cutID != ([32]byte{}) || tick.manifestID != ([32]byte{})) || !cost && tick.stats[statGeneration] == 0 {
+			t.Fatal("cost/non-cost native reply diagnostic contract", cost, tick)
 		}
 		marked := processRequest{op: processStateOp, entity: 2}
 		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)

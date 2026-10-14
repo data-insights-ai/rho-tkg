@@ -1452,7 +1452,14 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		err = errors.Join(err, markerErr)
 		if r.op != processClose && !ackPoll {
 			var e error
-			response.stats, response.cutID, response.manifestID, e = processStats(h.machine.store)
+			if o.cost != nil && r.op != processStateOp {
+				// The cost embedding requests diagnostics explicitly with State.
+				// Native operations and retained Outcome/CDC remain authoritative;
+				// repeated diagnostic checkpoint copies are not part of their API.
+				_, e = h.machine.store.LastIndex()
+			} else {
+				response.stats, response.cutID, response.manifestID, e = processStats(h.machine.store)
+			}
 			err = errors.Join(err, e)
 		}
 		response.applied = h.driver.Applied()
