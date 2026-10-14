@@ -34,12 +34,15 @@ type p02FenceArtifact struct {
 	Trace                  pairedFaultTrace
 	Phases                 []p06Phase
 	SourceCaptures         []p06Phase
+	Encounters             []p06Phase
 	Fences                 []p06LocalRecord
 	Stage                  *p02StageMarker
 	Processes              []pairedFaultProcess
 	Old, Current, Retained p06Observation
 	DelayedLocal           *p06LocalRecord
+	DelayedLocalReplay     *p06LocalRecord
 	Retries                []pairedFaultRetry
+	PendingCaller          []byte
 	Records                []lifecycleRawRecord
 }
 
@@ -118,11 +121,12 @@ func (m *p02StageMachine) Stage(entry replica.Entry, budget raftlog.ApplicationB
 	return raftlog.ApplicationBatch{}, errLimit
 }
 
-func p02Phase(f *pairedGraphFaultNetwork, actor uint64, after bool) (<-chan pairedFaultBoundary, func(), func() ([]p06Phase, []p06Phase)) {
+func p02Phase(f *pairedGraphFaultNetwork, actor uint64, after bool) (<-chan pairedFaultBoundary, func(), func() ([]p06Phase, []p06Phase, []p06Phase)) {
 	entered, release := make(chan pairedFaultBoundary, 1), make(chan struct{})
 	var mu sync.Mutex
 	var phases []p06Phase
 	var sources []p06Phase
+	var encounters []p06Phase
 	var first sync.Once
 	hub := f.n.all[actor].mux.hub
 	hub.mu.Lock()
@@ -149,6 +153,15 @@ func p02Phase(f *pairedGraphFaultNetwork, actor uint64, after bool) (<-chan pair
 		q, err := decodeGraphSourceRequest(request)
 		if err != nil {
 			return err
+		}
+		if q.kind == sourceCrossRead || q.kind == sourceRequestLookup || q.kind == sourceSubmit {
+			mu.Lock()
+			if len(encounters) >= 64 {
+				mu.Unlock()
+				return errLimit
+			}
+			encounters = append(encounters, p06Phase{origin, partition, bytes.Clone(request), bytes.Clone(reply)})
+			mu.Unlock()
 		}
 		if q.kind == sourceOpen {
 			mu.Lock()
@@ -180,13 +193,13 @@ func p02Phase(f *pairedGraphFaultNetwork, actor uint64, after bool) (<-chan pair
 	}
 	hub.mu.Unlock()
 	resume := sync.OnceFunc(func() { close(release) })
-	finish := func() ([]p06Phase, []p06Phase) {
+	finish := func() ([]p06Phase, []p06Phase, []p06Phase) {
 		hub.mu.Lock()
 		hub.beforeRelay, hub.afterRelay = nil, nil
 		hub.mu.Unlock()
 		mu.Lock()
 		defer mu.Unlock()
-		return append([]p06Phase(nil), phases...), append([]p06Phase(nil), sources...)
+		return append([]p06Phase(nil), phases...), append([]p06Phase(nil), sources...), append([]p06Phase(nil), encounters...)
 	}
 	f.t.Cleanup(func() { resume(); finish() })
 	return entered, resume, finish
@@ -231,12 +244,33 @@ func p02MaybePhase(wire []byte) crossPhase {
 }
 func p02Fence(f *pairedGraphFaultNetwork, actor, bound uint64) p06LocalRecord {
 	p := p06LocalProposal(f, actor, certifiedPrepareFence, bound, nil)
-	r := p06Submit(f, actor, p)
+	r := p02SubmitWhilePaused(f, actor, p)
 	g, err := decodeGraphCutResult(r.Outcome)
 	if err != nil || g.phase != graphCutFence || g.status != graphCutApplied || g.round != bound || g.index != r.Index || len(r.CDC) != 0 {
 		f.t.Fatal("P02 genuine retained fence", g, err)
 	}
 	return r
+}
+
+// Intentional source gates remain pending. Drain actual native packets only;
+// waiting for every caller/relay owner would retire this gate by timeout.
+func p02SubmitWhilePaused(f *pairedGraphFaultNetwork, actor uint64, p allocationProposal) p06LocalRecord {
+	wire, err := encodeCertifiedProcessProposal(p)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	group := f.n.group(actor)
+	group.event(f.t, actor, processRequest{op: processPropose, data: wire})
+	f.packetDrain()
+	state := f.n.all[actor].call(f.t, processRequest{op: processStateOp})
+	r := f.n.all[actor].call(f.t, processRequest{op: processEntryRecord, index: state.applied})
+	for id, voter := range group.nodes {
+		got := voter.call(f.t, processRequest{op: processEntryRecord, index: state.applied})
+		if !bytes.Equal(got.outcome, r.outcome) || !bytes.Equal(got.changes, r.changes) || got.stats[statCommit] < state.applied {
+			f.t.Fatal("P02 native progress original differs", id)
+		}
+	}
+	return p06LocalRecord{p.target.partition, state.applied, bytes.Clone(p.wire), bytes.Clone(r.outcome), bytes.Clone(r.changes)}
 }
 func p02CheckLocalCloseCDC(t *testing.T, record p06LocalRecord, round uint64) {
 	t.Helper()
@@ -276,16 +310,35 @@ func p02ElectLiveLeader(f *pairedGraphFaultNetwork, prior, next uint64) {
 	hub.mu.Lock()
 	hub.packetFilter = previous
 	hub.mu.Unlock()
-	f.heal(next)
+	// These nearby live voters need no snapshot transfer. Keep the intentional
+	// original relay pending while actual native checkpoints catch up.
+	group := f.n.group(next)
+	for range 32 {
+		group.event(f.t, next, processRequest{op: processTick})
+		group.event(f.t, next, processRequest{op: processCertifiedRead, entity: uint64(observeConfiguration)})
+		f.packetDrain()
+		base := f.n.all[next].call(f.t, processRequest{op: processStateOp})
+		healthy := base.ready
+		for _, child := range group.nodes {
+			r := child.call(f.t, processRequest{op: processStateOp})
+			healthy = healthy && r.applied == base.applied && bytes.Equal(r.image, base.image)
+		}
+		if healthy {
+			return
+		}
+	}
+	f.t.Fatal("P02 live predecessor did not catch up under genuine successor")
 }
 func p02Votes(f *pairedGraphFaultNetwork, phases []p06Phase, proposal allocationProposal, decision crossStatus) (crossManifest, [2]crossStatus) {
-	if len(phases) != 6 {
+	if len(phases) < 6 || len(phases) > 11 {
 		f.t.Fatal("P02 complete Register/Prepare/Decide/Resolve capture", len(phases))
 	}
 	var manifest crossManifest
 	var votes [2]crossStatus
 	var original []byte
-	for index, phase := range phases {
+	seen := make(map[[2]uint64][]byte)
+	index := 0
+	for _, phase := range phases {
 		q, err := decodeGraphSourceRequest(phase.Request)
 		p := p06SourceProposal(f.t, phase.Request)
 		command, _, e := decodeCrossCommand(p.wire, defaultMaterializerLimits())
@@ -297,16 +350,26 @@ func p02Votes(f *pairedGraphFaultNetwork, phases []p06Phase, proposal allocation
 		if err != nil {
 			f.t.Fatal(err)
 		}
-		if index == 0 {
+		if original == nil {
 			manifest, original = m, command.manifest
 			p06BindBusiness(f.t, proposal, m)
 		}
 		reply, err := decodeGraphWireResponse(phase.Reply)
 		status, serr := decodeCrossStatus(reply.body)
-		want := []crossPhase{crossRegister, crossPrepare, crossPrepare, crossDecide, crossResolve, crossResolve}[index]
-		if err != nil || serr != nil || reply.err != nil || reply.kind != q.kind || reply.sequence != q.sequence || reply.nonce != q.nonce || reply.peer.scope != p.target || !bytes.Equal(original, command.manifest) || command.phase != want || status.phase != want || status.tx != manifest.tx || status.digest != manifest.digest {
+		if err != nil || serr != nil || reply.err != nil || reply.kind != q.kind || reply.sequence != q.sequence || reply.nonce != q.nonce || reply.peer.scope != p.target || !bytes.Equal(original, command.manifest) || status.phase != command.phase || status.tx != manifest.tx || status.digest != manifest.digest {
 			f.t.Fatal("P02 authentic original phase", index, err, serr)
 		}
+		key := [2]uint64{status.ns.partition, uint64(status.phase)}
+		if prior, ok := seen[key]; ok {
+			if !bytes.Equal(prior, reply.body) {
+				f.t.Fatal("P02 election recovery changed original phase", key)
+			}
+			continue
+		}
+		if index >= 6 || command.phase != []crossPhase{crossRegister, crossPrepare, crossPrepare, crossDecide, crossResolve, crossResolve}[index] {
+			f.t.Fatal("P02 original phase order", index)
+		}
+		seen[key] = bytes.Clone(reply.body)
 		if index == 1 || index == 2 {
 			votes[index-1] = status
 			if !status.yes {
@@ -320,12 +383,32 @@ func p02Votes(f *pairedGraphFaultNetwork, phases []p06Phase, proposal allocation
 		if status.ns.partition == 8 {
 			members = []uint64{4, 5, 6}
 		}
+		var retainedOriginal []byte
 		for _, id := range members {
 			r := f.n.all[id].call(f.t, processRequest{op: processEntryRecord, index: status.index})
-			if !bytes.Equal(r.outcome, reply.body) || r.stats[statCommit] < status.index || r.stats[statCheckpoint] < status.index {
-				f.t.Fatal("P02 actual all-voter original", id, status.index)
+			matches := bytes.Equal(r.outcome, reply.body)
+			if status.phase == crossRegister {
+				// observeCrossTransaction projects Register from the original R
+				// control record, omitting the stored installed floor. Bind that
+				// deliberate projection to the actual captured coordinator floor.
+				part, found := manifest.part(status.ns.partition)
+				actual, err := decodeCrossStatus(r.outcome)
+				want := crossStatus{ns: status.ns, tx: status.tx, digest: status.digest, phase: crossRegister, index: status.index, floor: part.floor}
+				projected := want
+				projected.floor = 0
+				matches = found && err == nil && actual == want && status == projected
+			}
+			if retainedOriginal == nil {
+				retainedOriginal = bytes.Clone(r.outcome)
+			}
+			if !matches || !bytes.Equal(r.outcome, retainedOriginal) || r.stats[statCommit] < status.index || r.stats[statCheckpoint] < status.index {
+				f.t.Fatalf("P02 actual all-voter original member=%d index=%d phase=%d checkpoint=%d commit=%d expected=%x actual=%x", id, status.index, status.phase, r.stats[statCheckpoint], r.stats[statCommit], reply.body, r.outcome)
 			}
 		}
+		index++
+	}
+	if index != 6 {
+		f.t.Fatal("P02 missing genuine original phase", index)
 	}
 	if decision.round <= votes[0].floor || decision.round <= votes[1].floor || decision.digest != sha256.Sum256(original) {
 		f.t.Fatal("P02 COMMIT did not exceed both genuine voted floors", votes, decision)
@@ -338,20 +421,15 @@ func p02Votes(f *pairedGraphFaultNetwork, phases []p06Phase, proposal allocation
 func p02HoldFenceACK(f *pairedGraphFaultNetwork, leader, index uint64) (<-chan replica.Packet, func()) {
 	packets := make(chan replica.Packet, 2)
 	seen := make(map[[3]uint64]bool)
+	var mu sync.Mutex
 	ns, _ := certifiedProcessNamespace(leader)
 	spec := partitionCodecRequest(f.t, 1, defaultMaterializerLimits())
 	part, _ := spec.declaration.Partition(ns.partition)
 	binding := raftlog.ApplicationBinding{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(ns.graph), Partition: ns.partition, Group: part.Group}, SemanticContractID: certifiedGraphSemanticContractID()}
 	hub := f.n.all[leader].mux.hub
-	hub.mu.Lock()
-	prior := hub.packetFilter
-	hub.packetFilter = func(packet replica.Packet) (bool, error) {
-		if prior != nil {
-			drop, err := prior(packet)
-			if drop || err != nil {
-				return drop, err
-			}
-		}
+	group := f.n.group(leader)
+	priorDrop := group.dropPacket
+	hold := func(packet replica.Packet) (bool, error) {
 		if packet.To != leader {
 			return false, nil
 		}
@@ -367,6 +445,8 @@ func p02HoldFenceACK(f *pairedGraphFaultNetwork, leader, index uint64) (<-chan r
 			return false, nil
 		}
 		key := [3]uint64{packet.From, message.GetTerm(), message.GetIndex()}
+		mu.Lock()
+		defer mu.Unlock()
 		// Exact native cumulative ACK replay does not consume another slot or
 		// poison a voter. Keep the first two original packets, with a finite
 		// distinct-message ledger; later valid queued ACKs remain withheld.
@@ -384,8 +464,29 @@ func p02HoldFenceACK(f *pairedGraphFaultNetwork, leader, index uint64) (<-chan r
 		}
 		return true, nil
 	}
+	hub.mu.Lock()
+	prior := hub.packetFilter
+	hub.packetFilter = func(packet replica.Packet) (bool, error) {
+		if prior != nil {
+			drop, err := prior(packet)
+			if drop || err != nil {
+				return drop, err
+			}
+		}
+		return hold(packet)
+	}
 	hub.mu.Unlock()
-	return packets, sync.OnceFunc(func() { hub.mu.Lock(); hub.packetFilter = prior; hub.mu.Unlock() })
+	group.dropPacket = func(packet replica.Packet) bool {
+		if priorDrop != nil && priorDrop(packet) {
+			return true
+		}
+		drop, err := hold(packet)
+		if err != nil {
+			f.t.Fatal("P02 synchronous native packet error", err)
+		}
+		return drop
+	}
+	return packets, sync.OnceFunc(func() { hub.mu.Lock(); hub.packetFilter = prior; hub.mu.Unlock(); group.dropPacket = priorDrop })
 }
 func p02AwaitStage(f *pairedGraphFaultNetwork, leader uint64, proposal allocationProposal) p02StageMarker {
 	deadline := time.NewTimer(10 * time.Second)

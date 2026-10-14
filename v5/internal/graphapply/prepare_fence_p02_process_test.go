@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 )
 
@@ -18,7 +20,7 @@ import (
 // They do not certify the complete P02/network/storage campaign family.
 func TestPrepareFenceP02ActualOrderingAcrossElection(t *testing.T) {
 	for _, schedule := range []string{"delayed-A-prepare", "A-before-B-after", "persisted-fence-before-application"} {
-		t.Run(schedule, func(t *testing.T) {
+		passed := t.Run(schedule, func(t *testing.T) {
 			if schedule == "persisted-fence-before-application" {
 				t.Setenv("RHO_GRAPH_P02_STAGE", "1")
 			}
@@ -83,12 +85,31 @@ func TestPrepareFenceP02ActualOrderingAcrossElection(t *testing.T) {
 				case <-time.After(10 * time.Second):
 					t.Fatal("P02 original did not finish after election")
 				}
-				result, err = decodeGraphProcessCoordinatorResult(answer.response)
-				if err != nil || answer.err != nil || !result.decision.commit {
-					t.Fatal("P02 original completion", result, err, answer.err)
+				pending, err := decodeGraphProcessCoordinatorResult(answer.response)
+				unavailable := errors.Is(answer.err, graphstore.ErrSourceUnavailable) || errors.Is(answer.err, replica.ErrUnavailable)
+				if !errors.Is(err, errCrossProcessPending) || !unavailable || pending.decision != (crossStatus{}) {
+					t.Fatal("P02 original follower route must truthfully return pending", pending, err, answer.err)
 				}
+				artifact.PendingCaller = p06ProcessWire(t, answer.response)
 				f.drain()
-				phases, captures = finish()
+				phases, captures, artifact.Encounters = finish()
+				if len(phases) < 2 {
+					t.Fatal("P02 original delayed Prepare did not reach a genuine voter")
+				}
+				actor = 6
+				p03Reconnect(f, actor)
+				_, releaseRecovery, finishRecovery := p02Phase(f, actor, false)
+				releaseRecovery()
+				result = f.run(actor, proposal)
+				if result.resume != pending.resume {
+					t.Fatal("P02 recovery changed original qualified identity")
+				}
+				recovery, sources, encounters := finishRecovery()
+				artifact.Encounters = append(artifact.Encounters, encounters...)
+				if len(sources) != 0 {
+					t.Fatal("P02 recovery replanned instead of retaining the original manifest")
+				}
+				phases = append(phases, recovery...)
 			} else {
 				// This ordinary local proposal is genuinely produced before the
 				// fence. Its actual installation happens after successor recovery.
@@ -144,6 +165,9 @@ func TestPrepareFenceP02ActualOrderingAcrossElection(t *testing.T) {
 					t.Fatal(err)
 				}
 				f.elect(1, 2)
+				// Capture this genuine new election entry before the following
+				// transaction can cross native log-reclamation boundaries.
+				f.records(from)
 				// Original retained fence must apply after the new election. No
 				// copied marker creates its result or makes a follower certified.
 				r := f.n.all[2].call(t, processRequest{op: processEntryRecord, index: marker.Index})
@@ -158,10 +182,13 @@ func TestPrepareFenceP02ActualOrderingAcrossElection(t *testing.T) {
 				// Capture all phases without pausing a second operation.
 				release()
 				result = f.run(actor, proposal)
-				phases, captures = finish()
+				phases, captures, artifact.Encounters = finish()
 				if !result.decision.commit {
 					t.Fatal("P02 original cross operation aborted after durable fence")
 				}
+				// Preserve inspected election no-op entries before replacement
+				// snapshot sealing can compact the original Raft prefix.
+				f.records(from)
 				artifact.Processes = append(artifact.Processes, f.replace(1))
 				for _, member := range []uint64{1, 2, 3} {
 					original := f.n.all[member].call(t, processRequest{op: processEntryRecord, index: marker.Index})
@@ -180,6 +207,14 @@ func TestPrepareFenceP02ActualOrderingAcrossElection(t *testing.T) {
 				// Retain the ordinary local proposal until the cross operation's
 				// exact CDC/export below, then apply it through the genuine Host.
 				artifact.DelayedLocal = &p06LocalRecord{Proposal: local.wire}
+			}
+			artifact.Phases, artifact.SourceCaptures = phases, captures
+			encounters, err := json.MarshalIndent(artifact, "", "  ")
+			if err != nil || len(encounters) > 8<<20 {
+				t.Fatal("P02 encountered phase encoding", err)
+			}
+			if err := os.WriteFile(filepath.Join(f.n.dir, "p02-encountered-"+schedule+".json"), append(encounters, '\n'), 0600); err != nil {
+				t.Fatal(err)
 			}
 			manifest, votes := p02Votes(f, phases, proposal, result.decision)
 			p02BindSources(t, captures, manifest, artifact.Stage)
@@ -224,8 +259,13 @@ func TestPrepareFenceP02ActualOrderingAcrossElection(t *testing.T) {
 			}
 			artifact.Records = p06Records(f, base, f.indexes())
 			artifact.Phases, artifact.SourceCaptures, artifact.Trace = phases, captures, f.trace
+			cohortBase := f.indexes()
 			f.stopAll()
 			f.reopenAll()
+			// Capture new election no-op entries before Fresh read fences can
+			// trigger native Raft log reclamation. The shared ledger retains
+			// only inspected originals, never inferred empty-record proofs.
+			f.records(cohortBase)
 			retained := p06Observe(f, 4, graphReadAt, oldCut)
 			current := p06Observe(f, 4, graphReadFresh, graphCut{})
 			if !reflect.DeepEqual(retained, old) || !reflect.DeepEqual(current.View, artifact.Current.View) {
@@ -235,14 +275,20 @@ func TestPrepareFenceP02ActualOrderingAcrossElection(t *testing.T) {
 			if schedule == "persisted-fence-before-application" {
 				replayActor = 1
 			}
-			artifact.Retries = append(artifact.Retries, f.replay(replayActor, "edge-create", proposal, result, base))
+			artifact.Retries = append(artifact.Retries, f.replay(replayActor, "edge-create", proposal, result, cohortBase))
 			if artifact.DelayedLocal != nil {
 				local := allocationProposal{target: proposal.target, wire: artifact.DelayedLocal.Proposal}
 				from := f.indexes()
 				duplicate := p06Submit(f, 1, local)
-				if !bytes.Equal(duplicate.Outcome, artifact.DelayedLocal.Outcome) || len(duplicate.CDC) != 0 {
-					t.Fatal("P02 delayed local duplicate changed original/CDC")
+				ns, _ := certifiedProcessNamespace(1)
+				original, err := decodePartitionGraphOutcome(artifact.DelayedLocal.Outcome, ns)
+				replayed, rerr := decodePartitionGraphOutcome(duplicate.Outcome, ns)
+				want := original
+				want.disposition = requestReplay
+				if err != nil || rerr != nil || original.disposition != applied || replayed != want || duplicate.Index <= original.index || len(duplicate.CDC) != 0 {
+					t.Fatal("P02 delayed local duplicate changed original/CDC", original, replayed, err, rerr)
 				}
+				artifact.DelayedLocalReplay = &duplicate
 				for _, record := range p06Records(f, from, f.indexes()) {
 					if len(record.CDC) != 0 {
 						t.Fatal("P02 duplicate local emitted extra CDC")
@@ -263,5 +309,8 @@ func TestPrepareFenceP02ActualOrderingAcrossElection(t *testing.T) {
 			}
 			t.Log("P02 actual original/fence/election/history artifact", path)
 		})
+		if !passed {
+			return
+		}
 	}
 }
