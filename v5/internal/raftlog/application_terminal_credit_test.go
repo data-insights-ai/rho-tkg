@@ -122,6 +122,9 @@ func TestApplicationViewCheckTerminalBankOwnsActualCompleteHistoricalRoster(t *t
 	if equal, _, err := nilView.CheckTerminalBank(t.Context(), nil, ReadBudget{1, 4096}); equal || !errors.Is(err, ErrInvalid) {
 		t.Fatalf("nil owner: %v", err)
 	}
+	if equal, _, err := nilView.CheckRetainedRootFeed(t.Context(), 1, [32]byte{1}, 1, ReadBudget{2, 4096}); equal || !errors.Is(err, ErrInvalid) {
+		t.Fatalf("nil retained source owner: %v", err)
+	}
 	s := boundedControlStore(t, func(c *Config) {
 		c.Recovery = ApplicationRecoveryConfig{Version: 2}
 		c.Application.MaxInstallBytes = 8192
