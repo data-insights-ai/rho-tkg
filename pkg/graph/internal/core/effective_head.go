@@ -107,7 +107,7 @@ type headStripe struct {
 func headWeight(e *headEntry) int { return len(e.pieces) + 1 }
 
 func (h *headCache) stripe(k headKey) *headStripe {
-	x := uint64(k.id) * 0x9E3779B97F4A7C15 // Fibonacci hash: snowflake IDs share low bits
+	x := uint64(k.id) * 0x9E3779B97F4A7C15 // #nosec G115 — bit-pattern hash only; Fibonacci hash: snowflake IDs share low bits
 	if k.rel {
 		x ^= 1 << 63
 	}
