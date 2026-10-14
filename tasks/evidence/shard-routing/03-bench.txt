@@ -1,0 +1,14 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkTimestampToEventShard28-32     	 8174853	       170.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTimestampToEventShard700-32    	  366960	      3301 ns/op	       0 B/op	       0 allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkTimestampToEventShard28-32     	55794212	        22.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTimestampToEventShard700-32    	33355344	        32.82 ns/op	       0 B/op	       0 allocs/op
+
+(first block: before, linear scan; second: after, binary search)

@@ -3,6 +3,7 @@ package tiered
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -62,12 +63,38 @@ func (ts *Store) timestampToEventShardEntry(id snowflake.ID) *EventShard {
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
 
-	for _, es := range ts.eventShards {
-		if !created.Before(es.timeStart) && created.Before(es.timeEnd) {
-			return es
-		}
+	if es := shardWindowFor(ts.shardIndex, created); es != nil {
+		return es
 	}
 	return ts.hotShard // fallback: newest shard (always open)
+}
+
+// reindexShardsLocked rebuilds shardIndex from eventShards, sorted by
+// timeStart. Caller holds ts.mu.Lock (or owns the Store exclusively, as New
+// does). Every insert into or delete from eventShards must be followed by it.
+// timeEnd changes in place at rotation, but windows do not overlap, so the
+// timeStart order is unaffected.
+func (ts *Store) reindexShardsLocked() {
+	idx := make([]*EventShard, 0, len(ts.eventShards))
+	for _, es := range ts.eventShards {
+		idx = append(idx, es)
+	}
+	sort.Slice(idx, func(i, j int) bool { return idx[i].timeStart.Before(idx[j].timeStart) })
+	ts.shardIndex = idx
+}
+
+// shardWindowFor returns the shard in idx (sorted by timeStart, windows
+// non-overlapping) whose [timeStart, timeEnd) contains created, or nil.
+func shardWindowFor(idx []*EventShard, created time.Time) *EventShard {
+	// First shard starting after created; its predecessor is the only candidate.
+	i := sort.Search(len(idx), func(i int) bool { return idx[i].timeStart.After(created) })
+	if i == 0 {
+		return nil
+	}
+	if es := idx[i-1]; created.Before(es.timeEnd) {
+		return es
+	}
+	return nil
 }
 
 func (ts *Store) idOutsideHotShardWindow(id snowflake.ID) bool {
