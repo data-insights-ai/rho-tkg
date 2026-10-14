@@ -619,3 +619,7 @@ mechanism) and solve it if one works; ask only the remainder, naming the cause a
 Consolidate, don't add: when two code paths, notes or rules do the same job, merge them into one and delete the rest instead of
 a fix, layer or note on top; check for duplication first, it is often the real bug. Docs too (lessons, backlog, HANDOVER):
 rewrite in place, delete outdated entries, never only append.
+
+## 85. Comment Trimming Is Editing, Not A Script
+
+2026-10-14: a second comment pass cut 15,982 → 10,371 lines in 266 files with sentence-boundary scripts run by six Sonnet agents. The Opus check found ~260 passages to restore: sentences cut mid-word with a period added, and dropped `Concurrency:` / `Caller holds` / `Errors:` / `lesson N` / format-marker paragraphs, so exported godoc lost its contract and surviving comments pointed at deleted text. Rule: trim comments by hand, file by file. Never cut inside a sentence. Never drop lock-order, caller-holds, crash-ordering, re-entrancy, error/nil/ownership/concurrency contract or format-compatibility lines. Every comment pass gets an Opus check of the diff for lost invariants before merge. The pass was discarded, not patched.
