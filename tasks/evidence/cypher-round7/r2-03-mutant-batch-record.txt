@@ -1,0 +1,3 @@
+--- FAIL: TestTrackRelTypeDegrees (0.01s)
+    --- FAIL: TestTrackRelTypeDegrees/memory (0.00s)
+        rel_degree_track_test.go:112: a transaction with AddRelationships: applied=false (counts 1->2, applies 2->2), want applied=true

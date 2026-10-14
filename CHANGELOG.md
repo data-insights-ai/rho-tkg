@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - **Valid-time excise: `Temporal().ExciseNodeValidity(ctx, id, a, b)` / `ExciseRelValidity`** (backlog 64, sigma R7,
-  v4.53.0). Ends an entity's validity over `[a, b)` and keeps it outside: reads with a valid instant in `[a, b)`
+  v4.54.0). Ends an entity's validity over `[a, b)` and keeps it outside: reads with a valid instant in `[a, b)`
   answer `ErrNoVersionValidAt` (point, label, property and interval doors, effective timelines), reads outside keep
   their answers, pins before the call see the unsplit version. Works on the current version (open or closed), a
   historical one and across several; a later `SetNodeVersionInterval` over the hole fills it again. Append-only,
@@ -93,6 +93,118 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   migrates. Tests `TestUpdateValidToClosesTheVersion` (incl. WithTx batch and ingest units),
   `TestTxUpdateValidToClosesLikeCloseVersion` (four backends, twin stores); `TestDocValues_ExpiredNodeStillCounted`
   now gives its expired node a start before the close.
+
+## [4.53.0] - 2026-10-14
+
+Minor release, the sigma-tkgd store requests, round 7 (new public API): badger batch relationship creates read their
+endpoints through one snapshot (faster than one-by-one); opt-in per-type degree counts (`Stats().TrackRelTypeDegrees`);
+`Nodes()/Rels().LendByIDs` lend many rows per call (one read snapshot on badger, concurrent-safe);
+`CountByLabelPropertyValue` / `CountByTypePropertyValue` exact equality counts from a property index; ordered
+(ID, value) index walks without reading rows; multi-label columns built from a member label's columns instead of
+re-reading records. Read-only doors cost nothing on writes; untracked graphs pay one atomic load per create.
+
+### Added
+
+- **`Nodes().LendByIDs` / `Rels().LendByIDs`: lend many rows in one read** (sigma-tkgd round 7 request 3: a parallel
+  record scan's workers called `Lend` per ID, on badger one read transaction per node). `LendByIDs(ctx, ids,
+  fn(i, row) bool)` lends each ID's current row under `Lend`'s contract (frozen, no copy where `Lend` makes none)
+  and calls `fn` with the ID's position in `ids`; absent IDs are skipped, calls come in ascending ID order, `fn`
+  runs with no lock held and false stops it. Chunks of 4,096 IDs, each under one read: badger serves a chunk's
+  cache misses through one re-pinning snapshot in key order (no cache fill), memory under one store lock, other
+  stores per ID; the context is checked per chunk; concurrent calls are safe. New optional store capability
+  `store.EntityLendBatchCapability` (memory, badger). Read-only, no write cost. 300,000 nodes in batches of 4,096
+  (`BenchmarkLendByIDs`): badger per-ID `Lend` 2.85 / 1.73 / 1.63 us per node at 1 / 4 / 16 goroutines,
+  `LendByIDs` 1.12 / 0.38 / 0.24 us; memory 46 / 135 / 140 ns against 16 / 13 / 31 ns. Tests `TestLendByIDs`
+  (every backend, nodes and relationships, oracle `Lend`), `TestLendByIDs_ConcurrentWithWriters`,
+  `TestLendSortedColdRowsOneSnapshot`, `TestMemoryStoreLendSorted`; evidence `tasks/evidence/cypher-round7/r3-*`.
+- **Exact equality counts from a property index** (sigma-tkgd round 7 request 4):
+  `Nodes().CountByLabelPropertyValue(label, key, value, opts)` / `Rels().CountByTypePropertyValue(type, key, value,
+  opts)` return `(count, exact, err)`: the entities whose value equals `value` under Cypher equality (numbers by
+  value across every stored width, a float32 compared as its float64 widening, no string/number crossing, nil and
+  NaN count 0), summed from the index's per-value sets (`PropertyIndex.EqualCount`: set sizes, no row and no ID
+  read). `exact=false`, no error, is the decline a planner probes per (label, key): no index, tiered, badger
+  `PropertyIndexOnDisk` (nodes), an index being built, an Elements index, a number of magnitude 2^53 or more, a
+  temporal value, a list or map, an unknown label or type, temporal opts. Memory, badger, sharded (summed over
+  slots). Read-only, no write cost. 300,000 nodes, 3,000 equal to 7 (`BenchmarkCountByPropertyValue`): the int64
+  and float64 lookups counted 0.32 ms memory / 7.8-10.2 ms badger, the count 0.28-0.29 us on both. Tests
+  `TestCountByPropertyValue` (every backend against a brute-force Cypher-equality count after writes, updates and
+  deletes; declines), `TestEqualCountMatchesCypherEquality`, store tests; evidence
+  `tasks/evidence/cypher-round7/r4-*`.
+- **Ordered index walks without the row** (sigma-tkgd round 7 request 5: a grouping by an indexed property as a
+  group source): `Nodes().ForEachIDByLabelPropertyRangeOrdered(ctx, label, key, min, max, inclMin, inclMax, desc,
+  opts, fn(id, value))`, the string twin `ForEachIDByLabelPropertyPrefix`, and the `Rels()` mirrors
+  `ForEachIDByTypePropertyRangeOrdered` / `ForEachIDByTypePropertyPrefix` stream (ID, stored value) in value order,
+  ties by ID ascending, from the property index alone (`PropertyIndex.RangeOrderedValuePage` /
+  `PrefixOrderedValuePage`: the value is recovered from the per-type value sets of a sort key, the bounds applied
+  exactly). Pages of 256 under the store's read lock, fn with no lock held, ctx checked every 4,096 entries.
+  `ErrIndexNotFound` reports every unsupported case (temporal opts, tiered, sharded, external stores, badger
+  `PropertyIndexOnDisk` for nodes, no index, Elements, an index being built, an integer past 2^53). Memory, badger.
+  Read-only, no write cost; the row doors' paging is unchanged (the key capture is off for them). 300,000 nodes
+  (`BenchmarkForEachIDOrdered`): badger 2.8 us per node through the ordered row door, 0.09 us here; memory 0.13
+  against 0.09-0.10 us. Tests `TestForEachIDOrdered` (every backend, brute-force oracle over the rows, both
+  directions, exact bounds, prefixes, early stop, cancellation, declines), `TestOrderedValuePagesMatchBruteForce`,
+  store tests (badger: no read transaction); evidence `tasks/evidence/cypher-round7/r5-*`.
+- **Opt-in maintained degree counts per relationship type** (sigma-tkgd round 5 request 5, reopened and built in
+  round 7 request 2): `Stats().TrackRelTypeDegrees(type)` / `UntrackRelTypeDegrees(type)`. For a tracked type,
+  `RelTypeDegreeStats` keeps the per-node out- and in-counts after its first count and applies the relationships
+  created since (the create kernel records start and end of every relationship it creates of a tracked type:
+  Add, AddByID, AddByIDIfAbsent, Import, their transaction mirrors, `AddRelationships`, Batch) instead of counting
+  the type again after each write to it. Sound by an accounting identity checked under the graph's write lock:
+  the type's mutation stamp moved by exactly the number of recorded creates; any other change (delete, update,
+  rollback, another door, a type sharing the stamp's stripe) fails it and the type is counted again, as before.
+  Reopen criterion measured (`BenchmarkRelTypeDegreeStatsRecount`): the recount after a write to the type itself
+  is 0.7 ms at 10,000 and 12-16 ms at 100,000 relationships of the type; tracked, a write plus a read is 1.5-3.9 us
+  at 10,000 and 2.3-6.6 us at 100,000 (memory, badger). Cost only for a tracked type: two per-node maps (about
+  40-50 B per distinct endpoint), up to 65,536 recorded creates between reads, a short lock per create, the write
+  lock for O(creates since) at a read. Plain write paths: one atomic load per create; `BenchmarkTxCreateRelationships`
+  before/after untracked within noise (memory 2.46 / 2.50 ms by ID, 2.31 / 2.22 ms batch; badger 9.1 / 8.8 ms,
+  8.7 / 8.4 ms; `r2-05`, `r2-06`). Tiered, sharded and external stores (no per-type stamp) count as before. New
+  optional store capability `store.RelTypeDegreeCountsCapability` (badger). Tests `TestTrackRelTypeDegrees` (every
+  recording door applied, every other change recounted, stats against a count), `..._ConcurrentWriters` (race),
+  `TestBadgerRelTypeDegreeCounts`; evidence `tasks/evidence/cypher-round7/r2-*`.
+
+### Changed
+
+- **Badger batch relationship create reads its endpoints through one snapshot** (sigma-tkgd round 7 request 1:
+  `GraphTx.AddRelationships` was slower than one `AddRelationship` per binding, 4,862 against 4,011 ms for five
+  statements of 50,000 bindings). Cause: `PutRelationshipsBatch` checks that every endpoint row is live and
+  decodes (the contract a corrupt endpoint row fails), and a batch's endpoints had mostly left the node cache
+  (a bulk statement writes all starts, then all ends, then the relationships), so it opened one badger read
+  transaction per endpoint; one by one, each relationship follows its two nodes and finds them cached. Now the
+  check (`ensureNodeRowsLive`, also behind `OutgoingRelationshipsForNodes` / `IncomingRelationshipsForNodes`)
+  answers cache hits under one lock and reads the misses in key order through one forward iterator of a
+  re-pinning scan snapshot, without filling the cache; the error is still the one of the first failing endpoint
+  in the batch's order. The shared scan snapshot reaches a target at most four keys ahead with `Next` instead of
+  `Seek` (consecutive IDs), which every bulk row read through it (`forEachNodeBulk`, `forEachRelBulk`) gets too.
+  Same answers; no write-path cost. Measured (`BenchmarkTxCreateRelationshipsSizes`, sigma-tkgd's statement shape,
+  one CPU, medians of four interleaved rounds, time inside the relationship calls per relationship): badger 5 x
+  50,000 13.9 -> 9.6 us (one by one 15.0 us), 1 x 50,000 11.4 -> 8.4 us, 10,000 3.6 -> 3.4 us, 1,000 2.2 -> 2.1 us;
+  the whole statement in bulk now beats binding by binding (5 x 50,000: 18.9 against 20.6 us per binding, before
+  23.6). Memory unchanged (batch 1.5-2.3 us against one by one 1.7-2.2 us, within the load's spread). Evidence
+  `tasks/evidence/cypher-round7/r1-*`.
+- **A label intersection's columns come from a member label's columns** (sigma-tkgd round 7 request 6: on badger
+  the cold `ForEachDocValuesMulti` build was 83 % of a multi-label aggregation, re-reading every member node).
+  (1) The intersection is collected as a slice driven by the smallest label (no intermediate set). (2) When a
+  member label's cached columns are fresh (its epoch: badger per label, memory the store's) and hold every key
+  as a usable column with validity columns, the intersection's snapshot is that label's rows carrying every
+  other label (`indexpkg.SubsetDocValues`: the same IDs, validity columns, zone map and per-key classification
+  a build from the nodes gives, dictionaries renumbered); else, as before, the nodes are read (also where the
+  member's column is unbuildable for a key, since a mixed column of the whole label may be uniform on the
+  intersection). Same answers; no write cost. 200,000 :A nodes, 100,000 also :B, one :B write per read
+  (`BenchmarkDocValuesMultiCold`, one CPU, three interleaved rounds): badger 193-199 -> 48 ms, 175 -> 42 MB per
+  rebuild; memory 84-86 -> 66-70 ms. Telemetry `MultiColumnFromMemberCount()` on both stores. Tests
+  `TestSubsetDocValuesEqualsBuild` (deep-equal to the build over random rows and subsets),
+  `TestDocValuesMultiFromMemberColumns` (memory, badger: rows against the nodes through writes, label changes,
+  a stale member column, an unbuildable member column); evidence `tasks/evidence/cypher-round7/r6-*`.
+
+### Fixed
+
+- **Badger batch creates keep the belief watermark** (found with round 7 request 1): `PutNodesBatch` and
+  `PutRelationshipsBatch` did not bump the belief-watermark sidecar as `PutNode` / `PutRelationship` and the
+  memory store's batch doors do, so once the sidecar was built, a batch-created entity had no watermark and its
+  point reads lost the current-row fast path (answers were right, by the slow path). Test
+  `TestBatchPutsBumpBeliefWatermarks`.
+
 ## [4.52.2] - 2026-10-14
 
 ### Added

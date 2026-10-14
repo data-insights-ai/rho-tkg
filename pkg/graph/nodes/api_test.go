@@ -27,6 +27,9 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "AddWithTx", run: func() error { _, err := nilAPI.AddWithTx(ctx, []string{"Node"}, nil, 1000); return err }},
 		{name: "Get", run: func() error { _, err := nilAPI.Get(context.Background(), id); return err }},
 		{name: "Lend", run: func() error { _, err := nilAPI.Lend(context.Background(), id); return err }},
+		{name: "LendByIDs", run: func() error {
+			return nilAPI.LendByIDs(context.Background(), []types.NodeID{id}, func(int, *types.Node) bool { return true })
+		}},
 		{name: "GetWithContext", run: func() error { _, err := nilAPI.Get(ctx, id); return err }},
 		{name: "GetByIDs", run: func() error { _, err := nilAPI.GetByIDs([]types.NodeID{id}); return err }},
 		{name: "Update", run: func() error { _, err := nilAPI.Update(context.Background(), id, nil); return err }},
@@ -131,6 +134,9 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "Get", run: func() error { _, err := api.Get(context.Background(), id); return err }},
 		{name: "GetWithContext", run: func() error { _, err := api.Get(ctx, id); return err }},
 		{name: "Lend", run: func() error { _, err := api.Lend(ctx, id); return err }},
+		{name: "LendByIDs", run: func() error {
+			return api.LendByIDs(ctx, []types.NodeID{id}, func(int, *types.Node) bool { return true })
+		}},
 		{name: "GetByIDs", run: func() error { _, err := api.GetByIDs([]types.NodeID{id}); return err }},
 		{name: "Update", run: func() error {
 			_, err := api.Update(context.Background(), id, map[string]any{"name": "Grace"})
@@ -206,7 +212,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	}
 
 	wantCalls := []string{
-		"Add", "Add", "AddWithTx", "Get", "Get", "Lend", "GetByIDs",
+		"Add", "Add", "AddWithTx", "Get", "Get", "Lend", "LendByIDs", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
 		"Delete", "Delete", "DeleteWithTx", "Retract", "RetractWithTx", "UpdateWithTx", "Import", "AddByIDIfAbsent", "GetOrCreateByKey", "All", "ForEach", "ForEach", "ByLabel", "ByLabelAndProperty", "ByLabelAndProperties",
 		"Count", "CountByLabel", "SetProperty", "DeleteProperty",
@@ -279,6 +285,14 @@ func (s *nodeOpsSpy) Get(ctx context.Context, id types.NodeID) (*types.Node, err
 	s.record("Get")
 	s.lastID = id
 	return nil, s.err
+}
+
+func (s *nodeOpsSpy) LendByIDs(ctx context.Context, ids []types.NodeID, fn func(int, *types.Node) bool) error {
+	s.record("LendByIDs")
+	if len(ids) > 0 {
+		s.lastID = ids[0]
+	}
+	return s.err
 }
 
 func (s *nodeOpsSpy) Lend(ctx context.Context, id types.NodeID) (*types.Node, error) {
@@ -393,6 +407,21 @@ func (s *nodeOpsSpy) ByLabel(label string, opts storepkg.QueryOpts) ([]*types.No
 	s.lastLabel = label
 	s.lastOpts = opts
 	return nil, s.err
+}
+
+func (s *nodeOpsSpy) CountByLabelPropertyValue(label, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error) {
+	s.record("CountByLabelPropertyValue")
+	return 0, false, s.err
+}
+
+func (s *nodeOpsSpy) ForEachIDByLabelPropertyRangeOrdered(ctx context.Context, label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error {
+	s.record("ForEachIDByLabelPropertyRangeOrdered")
+	return s.err
+}
+
+func (s *nodeOpsSpy) ForEachIDByLabelPropertyPrefix(ctx context.Context, label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error {
+	s.record("ForEachIDByLabelPropertyPrefix")
+	return s.err
 }
 
 func (s *nodeOpsSpy) RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {

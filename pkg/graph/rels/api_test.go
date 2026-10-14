@@ -45,6 +45,9 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		}},
 		{name: "Get", run: func() error { _, err := nilAPI.Get(context.Background(), relID); return err }},
 		{name: "Lend", run: func() error { _, err := nilAPI.Lend(context.Background(), relID); return err }},
+		{name: "LendByIDs", run: func() error {
+			return nilAPI.LendByIDs(context.Background(), []types.RelID{relID}, func(int, *types.Relationship) bool { return true })
+		}},
 		{name: "GetWithContext", run: func() error { _, err := nilAPI.Get(ctx, relID); return err }},
 		{name: "GetByIDs", run: func() error { _, err := nilAPI.GetByIDs([]types.RelID{relID}); return err }},
 		{name: "Update", run: func() error { _, err := nilAPI.Update(context.Background(), relID, nil); return err }},
@@ -185,6 +188,9 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "Get", run: func() error { _, err := api.Get(context.Background(), relID); return err }},
 		{name: "GetWithContext", run: func() error { _, err := api.Get(ctx, relID); return err }},
 		{name: "Lend", run: func() error { _, err := api.Lend(ctx, relID); return err }},
+		{name: "LendByIDs", run: func() error {
+			return api.LendByIDs(ctx, []types.RelID{relID}, func(int, *types.Relationship) bool { return true })
+		}},
 		{name: "GetByIDs", run: func() error { _, err := api.GetByIDs([]types.RelID{relID}); return err }},
 		{name: "Update", run: func() error {
 			_, err := api.Update(context.Background(), relID, map[string]any{"since": 2027})
@@ -278,7 +284,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 
 	wantCalls := []string{
 		"Add", "Add", "AddWithTx", "AddByID", "AddByID",
-		"AddByIDIfAbsent", "AddByIDIfAbsent", "AddByIDForeignEnd", "RecordForeignIncoming", "Get", "Get", "Lend", "GetByIDs",
+		"AddByIDIfAbsent", "AddByIDIfAbsent", "AddByIDForeignEnd", "RecordForeignIncoming", "Get", "Get", "Lend", "LendByIDs", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
 		"Delete", "Delete", "DeleteWithTx", "Retract", "RetractWithTx", "UpdateWithTx", "Import", "All",
 		"ForEach", "ForEach", "ForEachOutgoing", "ForEachIncoming", "ByType",
@@ -392,6 +398,14 @@ func (s *relOpsSpy) Get(ctx context.Context, id types.RelID) (*types.Relationshi
 	s.record("Get")
 	s.lastRelID = id
 	return nil, s.err
+}
+
+func (s *relOpsSpy) LendByIDs(ctx context.Context, ids []types.RelID, fn func(int, *types.Relationship) bool) error {
+	s.record("LendByIDs")
+	if len(ids) > 0 {
+		s.lastRelID = ids[0]
+	}
+	return s.err
 }
 
 func (s *relOpsSpy) Lend(ctx context.Context, id types.RelID) (*types.Relationship, error) {
@@ -516,6 +530,21 @@ func (s *relOpsSpy) ForEachByTypePropertyRangeOrdered(typeName, propKey string, 
 	s.record("ForEachByTypePropertyRangeOrdered")
 	s.lastType = typeName
 	s.lastOpts = opts
+	return s.err
+}
+
+func (s *relOpsSpy) CountByTypePropertyValue(typeName, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error) {
+	s.record("CountByTypePropertyValue")
+	return 0, false, s.err
+}
+
+func (s *relOpsSpy) ForEachIDByTypePropertyRangeOrdered(ctx context.Context, typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error {
+	s.record("ForEachIDByTypePropertyRangeOrdered")
+	return s.err
+}
+
+func (s *relOpsSpy) ForEachIDByTypePropertyPrefix(ctx context.Context, typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error {
+	s.record("ForEachIDByTypePropertyPrefix")
 	return s.err
 }
 

@@ -217,20 +217,14 @@ func (bs *Store) buildMultiColumns(toks []uint16, key string, requested []string
 	gen := bs.multiLabelEpoch(toks)
 
 	bs.idxMu.RLock()
-	set := bs.intersectLabelsLocked(toks)
-	n := len(set)
+	ids := bs.intersectLabelsLocked(toks)
+	bs.idxMu.RUnlock()
 	// An EMPTY intersection is served (an empty snapshot, round 5 request 3):
 	// the caller cannot tell it from the labels' counts, and a decline sent it
 	// to look for a common member itself. Only over-cap declines.
-	if n > indexpkg.MaxDocValuesNodes {
-		bs.idxMu.RUnlock()
+	if len(ids) > indexpkg.MaxDocValuesNodes {
 		return nil, true
 	}
-	ids := make([]types.NodeID, 0, n)
-	for id := range set {
-		ids = append(ids, id)
-	}
-	bs.idxMu.RUnlock()
 
 	keys := requested
 	bs.docMu.Lock()
@@ -270,8 +264,16 @@ func (bs *Store) buildMultiColumns(toks []uint16, key string, requested []string
 		}
 	}
 
-	getProp, getTemporal := bs.bulkNodeGetters(ids)
-	col = indexpkg.BuildLabelDocValues(gen, ids, keys, getProp, getTemporal)
+	// From a member label's fresh columns when one holds every key (round 7
+	// request 6): the intersection's rows are a subset of its rows, so no
+	// node row is read; else the record read below.
+	if sub := bs.multiColumnsFromMember(toks, gen, keys); sub != nil {
+		col = sub
+		bs.multiFromMember.Add(1)
+	} else {
+		getProp, getTemporal := bs.bulkNodeGetters(ids)
+		col = indexpkg.BuildLabelDocValues(gen, ids, keys, getProp, getTemporal)
+	}
 	bs.columnRebuilds.Add(1)
 	// Intersections are NOT persisted: the disk key is per single label, and an
 	// A-and-B snapshot is not reconstructible from either one's blob.
@@ -297,10 +299,11 @@ func (bs *Store) bulkNodePropGetter(ids []types.NodeID) func(types.NodeID, strin
 	return getProp
 }
 
-// intersectLabelsLocked returns the node IDs present in EVERY label token, driven
-// by the smallest set (O(min |label|) probes). Returns nil if any token is
-// unknown/empty. Must hold bs.idxMu (read lock).
-func (bs *Store) intersectLabelsLocked(toks []uint16) map[types.NodeID]struct{} {
+// intersectLabelsLocked returns the node IDs present in EVERY label token,
+// driven by the smallest set (O(min |label|) probes), as a slice (no
+// intermediate set). Returns nil if any token is unknown/empty. Must hold
+// bs.idxMu (read lock).
+func (bs *Store) intersectLabelsLocked(toks []uint16) []types.NodeID {
 	if len(toks) == 0 {
 		return nil
 	}
@@ -314,20 +317,61 @@ func (bs *Store) intersectLabelsLocked(toks []uint16) map[types.NodeID]struct{} 
 			smallest = s
 		}
 	}
-	out := make(map[types.NodeID]struct{}, len(smallest))
+	out := make([]types.NodeID, 0, len(smallest))
 	for id := range smallest {
-		inAll := true
-		for _, t := range toks {
-			if _, ok := bs.labelIdx[t][id]; !ok {
-				inAll = false
-				break
-			}
-		}
-		if inAll {
-			out[id] = struct{}{}
+		if bs.inAllLabelsLocked(toks, id) {
+			out = append(out, id)
 		}
 	}
 	return out
+}
+
+// inAllLabelsLocked reports whether id carries every label of toks. Must
+// hold bs.idxMu (read lock).
+func (bs *Store) inAllLabelsLocked(toks []uint16, id types.NodeID) bool {
+	for _, t := range toks {
+		if _, ok := bs.labelIdx[t][id]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// multiColumnsFromMember builds an intersection's snapshot at gen from the
+// cached columns of its smallest member label that is fresh (built at the
+// label's current epoch) and holds every key with validity columns, taking
+// that label's rows that carry every other label
+// (indexpkg.SubsetDocValues). nil when no member qualifies or a key is not
+// buildable on the member: the caller reads the records.
+func (bs *Store) multiColumnsFromMember(toks []uint16, gen uint64, keys []string) *indexpkg.LabelDocValues {
+	var src *indexpkg.LabelDocValues
+	bs.docMu.Lock()
+	for _, t := range toks {
+		c := bs.docColumns[t]
+		if c == nil || c.Epoch() != bs.labelEpoch(t) || !c.HasAll(keys) || !c.HasTemporal() {
+			continue
+		}
+		if src == nil || c.Len() < src.Len() {
+			src = c
+		}
+	}
+	bs.docMu.Unlock()
+	if src == nil {
+		return nil
+	}
+	bs.idxMu.RLock()
+	var ords []int
+	for o, id := range src.IDs() {
+		if bs.inAllLabelsLocked(toks, id) {
+			ords = append(ords, o)
+		}
+	}
+	bs.idxMu.RUnlock()
+	sub, ok := indexpkg.SubsetDocValues(gen, src, ords, keys)
+	if !ok {
+		return nil
+	}
+	return sub
 }
 
 // buildLabelColumns builds a fresh immutable snapshot over the full label

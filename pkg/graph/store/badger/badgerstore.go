@@ -446,6 +446,9 @@ type Store struct {
 	columnExtends  atomic.Uint64
 	columnPatches  atomic.Uint64
 	columnRebuilds atomic.Uint64
+	// multiFromMember counts the label-intersection snapshots taken from a
+	// member label's columns instead of the records (round 7 request 6).
+	multiFromMember atomic.Uint64
 	// relEpoch is a distinct generation counter bumped on every relationship write:
 	// the expand-aggregation column path reads adjacency, so its re-check must see edge
 	// mutations. Separate from nodeEpoch so node-only column caches survive edge writes.

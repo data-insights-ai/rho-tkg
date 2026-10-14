@@ -34,6 +34,7 @@ type scanSnapshot struct {
 	pinned uint64        // epoch read immediately before txn opened
 	txn    *badgerv4.Txn
 	it     *badgerv4.Iterator
+	last   []byte // the key seekAfterMiss sought last on it (nil: none yet)
 }
 
 func newScanSnapshot(db *badgerv4.DB, epoch func() uint64) *scanSnapshot {
@@ -69,10 +70,12 @@ func (s *scanSnapshot) anyTxn() *badgerv4.Txn {
 // absent. Same precondition as txnAfterMiss. Keys must be sought in ascending
 // order between re-pins; the iterator is re-created with each new snapshot.
 //
-// PrefetchValues=false is LOAD-BEARING: the iterator does a Seek per target ID
-// (not a linear Next-scan), and badger's value prefetch re-fills a value window
-// on every Seek, almost all of it discarded. prefetch=true is much SLOWER than
-// the per-row Txn.Get path it replaced. Do not flip this.
+// A target at most seekSteps keys past the iterator's position is reached
+// with Next calls (stepTo), a farther one or one below the last target with a
+// Seek. PrefetchValues=false is LOAD-BEARING: badger's value prefetch
+// re-fills a value window on every Seek, almost all of it discarded.
+// prefetch=true is much SLOWER than the per-row Txn.Get path it replaced. Do
+// not flip this.
 func (s *scanSnapshot) seekAfterMiss(key []byte) *badgerv4.Item {
 	txn := s.txnAfterMiss() // a re-pin closes the old iterator
 	if s.it == nil {
@@ -80,7 +83,10 @@ func (s *scanSnapshot) seekAfterMiss(key []byte) *badgerv4.Item {
 		iopts.PrefetchValues = false
 		s.it = txn.NewIterator(iopts)
 	}
-	s.it.Seek(key)
+	if s.last == nil || bytes.Compare(key, s.last) < 0 || !s.stepTo(key) {
+		s.it.Seek(key)
+	}
+	s.last = append(s.last[:0], key...)
 	if !s.it.Valid() {
 		return nil // past end of keyspace — absent
 	}
@@ -91,12 +97,34 @@ func (s *scanSnapshot) seekAfterMiss(key []byte) *badgerv4.Item {
 	return item
 }
 
+// stepTo moves a positioned iterator forward to the first key at or after key
+// with at most seekSteps Next calls, reporting whether it got there; false
+// leaves the Seek to the caller. Ascending targets that lie close together
+// (the rows of consecutive IDs) then cost a Next each instead of a Seek
+// through every level of the tree.
+func (s *scanSnapshot) stepTo(key []byte) bool {
+	for range seekSteps {
+		if !s.it.Valid() {
+			return false
+		}
+		if bytes.Compare(s.it.Item().Key(), key) >= 0 {
+			return true
+		}
+		s.it.Next()
+	}
+	return s.it.Valid() && bytes.Compare(s.it.Item().Key(), key) >= 0
+}
+
+// seekSteps bounds stepTo: past it a Seek is cheaper than more Next calls.
+const seekSteps = 4
+
 // close releases the iterator and transaction. Safe to call repeatedly.
 func (s *scanSnapshot) close() {
 	if s.it != nil {
 		s.it.Close()
 		s.it = nil
 	}
+	s.last = nil
 	if s.txn != nil {
 		endReadTxn(s.txn, true)
 		s.txn = nil

@@ -272,7 +272,7 @@ var PropertyIndexOnDiskBuiltKey = MetaKey("property_index_on_disk_built")
 var TemporalIndexOnDiskBuiltKey = MetaKey("temporal_index_on_disk_built_v2")
 
 // TemporalIndexOnDiskBuiltV1Key is the marker of a keyspace keyed by the mint
-// start (before v4.53.0). The rebuild deletes it, so an older release that
+// start (before v4.54.0). The rebuild deletes it, so an older release that
 // opens the store afterwards rebuilds its own keyspace instead of trusting rows
 // keyed by the TxFrom start.
 var TemporalIndexOnDiskBuiltV1Key = MetaKey("temporal_index_on_disk_built")

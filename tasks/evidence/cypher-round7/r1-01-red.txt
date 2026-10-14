@@ -1,0 +1,6 @@
+--- FAIL: TestPutRelationshipsBatchReadsColdEndpointsInOneSnapshot (0.01s)
+    badgerstore_rel_batch_endpoints_test.go:39: PutRelationshipsBatch over 400 cold endpoints opened 400 read transactions; want at most 2 (one snapshot)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.300s
+FAIL
+limit: {"command": ["go", "test", "-count=1", "-run", "TestPutRelationshipsBatchReadsColdEndpointsInOneSnapshot|TestPutRelationshipsBatchColdEndpointErrorOrder|TestBadgerStorePutRelationshipPropagatesCorruptEndpointRows", "./pkg/graph/store/badger/"], "rss_limit_mib": 8192.0, "wall_limit_s": 600.0, "sample_interval_s": 0.05, "peak_tree_rss_mib": 821.953, "elapsed_s": 2.749, "exit_code": 1, "reason": "command-failed"}

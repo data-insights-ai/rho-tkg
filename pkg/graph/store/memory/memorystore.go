@@ -173,7 +173,10 @@ type Store struct {
 	appendDelta    appendDeltaState
 	columnExtends  atomic.Uint64
 	columnRebuilds atomic.Uint64
-	docColumns     map[uint16]*indexpkg.LabelDocValues
+	// multiFromMember counts the label-intersection snapshots taken from a
+	// member label's columns instead of the nodes (round 7 request 6).
+	multiFromMember atomic.Uint64
+	docColumns      map[uint16]*indexpkg.LabelDocValues
 	// relColumns is the rel-type keyed sibling of docColumns, carrying endpoint
 	// columns alongside properties. Stamped with the store-wide relEpoch.
 	relColumns map[uint16]*indexpkg.DocValues[types.RelID]

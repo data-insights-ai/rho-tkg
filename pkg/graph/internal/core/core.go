@@ -56,7 +56,8 @@ type Core struct {
 	// slot). Same length as laneGenerators.
 	laneSlots             []uint8
 	store                 storepkg.MandatoryStore
-	relDegrees            relDegreeCache // StatOps.RelTypeDegreeStats, keyed on the relationship epochs
+	relDegrees            relDegreeCache   // StatOps.RelTypeDegreeStats, keyed on the relationship epochs
+	relDegreeTrack        relDegreeTracker // StatOps.TrackRelTypeDegrees: maintained counts of opted-in types
 	generatedCreate       generatedcreate.Capability
 	endpointHash          storepkg.EndpointIntegrityHashCapability
 	endpointHashWrite     generatedcreate.RelationshipEndpointHashCapability

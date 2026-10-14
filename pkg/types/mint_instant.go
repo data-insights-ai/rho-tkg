@@ -3,7 +3,7 @@ package types
 import "github.com/data-insights-ai/rho-tkg/v4/pkg/internal/idlayout"
 
 // MintInstant returns the instant this node ID was minted, in Unix
-// milliseconds (the snowflake wall clock). Since v4.53.0 (backlog 62) the graph
+// milliseconds (the snowflake wall clock). Since v4.54.0 (backlog 62) the graph
 // starts a row without a valid-from at its TxFrom, so this instant is the
 // derived start only of a legacy row that carries neither a ValidFrom nor a
 // TxFrom; to tell an untimed create from its first segment, compare the

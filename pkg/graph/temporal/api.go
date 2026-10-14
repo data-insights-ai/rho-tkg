@@ -869,7 +869,7 @@ func (a *API) DiffCallback(t1, t2 types.Instant, h DiffHandlers) error {
 
 // NodeInterval returns the interval [valid_from, valid_to) for n.
 //
-// A row without a valid-from starts at its TxFrom (backlog 62, v4.53.0: was
+// A row without a valid-from starts at its TxFrom (backlog 62, v4.54.0: was
 // the ID's mint instant for a create, UpdatedAt for a later version).
 func (a *API) NodeInterval(n *types.Node) (start, end types.Instant, err error) {
 	ops, err := a.ready()
@@ -881,7 +881,7 @@ func (a *API) NodeInterval(n *types.Node) (start, end types.Instant, err error) 
 
 // RelInterval returns the interval [valid_from, valid_to) for r.
 //
-// A row without a valid-from starts at its TxFrom (backlog 62, v4.53.0: was
+// A row without a valid-from starts at its TxFrom (backlog 62, v4.54.0: was
 // the ID's mint instant for a create, UpdatedAt for a later version).
 func (a *API) RelInterval(r *types.Relationship) (start, end types.Instant, err error) {
 	ops, err := a.ready()
@@ -898,7 +898,7 @@ func (a *API) RelInterval(r *types.Relationship) (start, end types.Instant, err 
 // or nil node — a post-filter consumer treats either as "excluded", which is
 // the safe default. See core.TempOps.NodeMatchesValidTime.
 //
-// A row without a valid-from starts at its TxFrom (backlog 62, v4.53.0: was
+// A row without a valid-from starts at its TxFrom (backlog 62, v4.54.0: was
 // the ID's mint instant for a create, UpdatedAt for a later version).
 func (a *API) NodeMatchesValidTime(n *types.Node, opts storepkg.QueryOpts) bool {
 	ops, err := a.ready()
@@ -915,7 +915,7 @@ func (a *API) NodeMatchesValidTime(n *types.Node, opts storepkg.QueryOpts) bool 
 // post-filter consumer treats either as "excluded", which is the safe default.
 // See core.TempOps.RelMatchesValidTime.
 //
-// A row without a valid-from starts at its TxFrom (backlog 62, v4.53.0: was
+// A row without a valid-from starts at its TxFrom (backlog 62, v4.54.0: was
 // the ID's mint instant for a create, UpdatedAt for a later version).
 func (a *API) RelMatchesValidTime(r *types.Relationship, opts storepkg.QueryOpts) bool {
 	ops, err := a.ready()

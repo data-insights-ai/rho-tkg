@@ -29,6 +29,7 @@ type Ops interface {
 	RecordForeignIncoming(ctx context.Context, edge storepkg.ForeignIncomingEdge) error
 	Get(ctx context.Context, id types.RelID) (*types.Relationship, error)
 	Lend(ctx context.Context, id types.RelID) (*types.Relationship, error)
+	LendByIDs(ctx context.Context, ids []types.RelID, fn func(i int, row *types.Relationship) bool) error
 	MaxOrdinal() (uint32, bool, error)
 	ScanKeepsOrder(typeName string) (bool, error)
 	GetByIDs(ids []types.RelID) ([]*types.Relationship, error)
@@ -49,6 +50,9 @@ type Ops interface {
 	ForEachByTypePropertyRange(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	ForEachByTypePropertyRangeOrdered(typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	RangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
+	ForEachIDByTypePropertyRangeOrdered(ctx context.Context, typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error
+	ForEachIDByTypePropertyPrefix(ctx context.Context, typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error
+	CountByTypePropertyValue(typeName, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error)
 	ForEachByTypePropertyPrefix(typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	Count() (int, error)
 	CountByType(typeName string) (int, error)
@@ -199,6 +203,25 @@ func (a *API) Lend(ctx context.Context, id types.RelID) (*types.Relationship, er
 	return ops.Lend(ctx, id)
 }
 
+// LendByIDs lends the current row of each relationship in ids as Lend does (frozen,
+// no copy where Lend makes none) and calls fn(i, row) for each ID that names
+// a relationship, i its position in ids; an ID naming none is skipped (fn is not
+// called for it). Calls come in ascending ID order (equal IDs in ids'
+// order); fn returning false stops; fn runs with no lock held. The IDs are
+// read in chunks of 4,096, each under one read: badger reads a chunk's rows
+// missing from its cache through one snapshot in key order (not cached),
+// memory under one lock, other stores per ID. The context is checked before
+// each chunk. Safe for concurrent calls. Errors: an error for a nil fn,
+// ErrInvalidStoreMutation for a non-positive ID (before any read),
+// ErrGraphClosed, the context's error, a store read error.
+func (a *API) LendByIDs(ctx context.Context, ids []types.RelID, fn func(i int, row *types.Relationship) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.LendByIDs(ctx, ids, fn)
+}
+
 // MaxOrdinal is nodes.API.MaxOrdinal for relationships
 // (types.Relationship.Ordinal); on a memory store a relationship of a declared
 // segment type carries 0.
@@ -237,7 +260,7 @@ func (a *API) GetByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 // An update that sets tkg_valid_to without tkg_valid_from closes the current
 // version as CloseVersion does: the version keeps its start and ends at
 // tkg_valid_to; an end at or before that start returns ErrInvalidTimeRange and
-// writes nothing (backlog 65, v4.53.0).
+// writes nothing (backlog 65, v4.54.0).
 func (a *API) Update(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -265,7 +288,7 @@ func (a *API) UpdateWithTx(ctx context.Context, id types.RelID, updates map[stri
 // UpdateInPlace updates a relationship in place honoring ctx (no version branch).
 //
 // A tkg_valid_to at or before the row's effective start returns
-// ErrInvalidTimeRange (backlog 65, v4.53.0).
+// ErrInvalidTimeRange (backlog 65, v4.54.0).
 func (a *API) UpdateInPlace(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -507,6 +530,44 @@ func (a *API) RangeCardinality(typeName, propKey string, min, max float64, inclM
 		return 0, false, err
 	}
 	return ops.RangeCardinality(typeName, propKey, min, max, inclMin, inclMax, opts)
+}
+
+// ForEachIDByTypePropertyRangeOrdered is the relationship mirror of
+// nodes.API.ForEachIDByLabelPropertyRangeOrdered over a type's property index.
+func (a *API) ForEachIDByTypePropertyRangeOrdered(ctx context.Context, typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachIDByTypePropertyRangeOrdered(ctx, typeName, propKey, min, max, inclMin, inclMax, desc, opts, fn)
+}
+
+// ForEachIDByTypePropertyPrefix is the relationship mirror of
+// nodes.API.ForEachIDByLabelPropertyPrefix.
+func (a *API) ForEachIDByTypePropertyPrefix(ctx context.Context, typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachIDByTypePropertyPrefix(ctx, typeName, propKey, prefix, desc, opts, fn)
+}
+
+// CountByTypePropertyValue counts the type's relationships whose propKey value equals value as
+// Cypher equality keeps it (3 matches 3 and 3.0 of every stored width, no
+// string/number crossing, nil and NaN count 0), from the property index's
+// value sets, no relationship read. exact=false with no error declines (count
+// otherwise): no property index on (type, propKey), a store without the
+// capability (tiered, external stores), badger with PropertyIndexOnDisk
+// (nodes), an index being built, an Elements index, a number of magnitude
+// 2^53 or more, a temporal value, a list or map, an unknown type, or a
+// temporal QueryOpts. exact tells a planner whether exact counts are
+// available for (type, propKey).
+func (a *API) CountByTypePropertyValue(typeName, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.CountByTypePropertyValue(typeName, propKey, value, opts)
 }
 
 // ForEachByTypePropertyPrefix streams relationships whose STRING propKey value

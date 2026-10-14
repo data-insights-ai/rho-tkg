@@ -1,0 +1,4 @@
+--- FAIL: TestLendByIDs (0.02s)
+    --- FAIL: TestLendByIDs/memory (0.00s)
+        lend_by_ids_test.go:110: fn(0, node 811739914664968192): ids[0] = 811739914671292416
+    --- FAIL: TestLendByIDs/badger (0.00s)

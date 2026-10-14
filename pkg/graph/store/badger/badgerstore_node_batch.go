@@ -636,6 +636,7 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 		bs.nodeIDs[nd.nid] = struct{}{}
 		bs.nodeHashes[nd.nid] = badgerNodeIntegrityHash(n)
 		bs.bumpNodeRevLocked(nd.nid)
+		bs.bumpNodeBeliefWatermarkLocked(nd.nid, nodeTxFrom(n)) // BACKLOG 10c, as PutNode
 
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.NodeKey(nd.id), value: nd.data})
 		labelCount := n.LabelTokenCount()
