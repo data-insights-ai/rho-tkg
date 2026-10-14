@@ -114,7 +114,7 @@ func TestRecoveryLedgerRejectsInvalidAndOverflowWithoutPublication(t *testing.T)
 			t.Fatal(g, err)
 		}
 	}
-	for _, c := range []ApplicationRecoveryConfig{{Version: 0}, {Version: 2}} {
+	for _, c := range []ApplicationRecoveryConfig{{Version: 0}, {Version: 3}} {
 		m := applicationRecoveryMetadata{Config: c}
 		if got, err := m.reserve(r, p, l); !errors.Is(err, ErrInvalid) || !reflect.DeepEqual(got, m) {
 			t.Fatal(got, err)
