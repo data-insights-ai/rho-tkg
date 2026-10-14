@@ -20,8 +20,6 @@ func (ts *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return nil, err
 	}
-	move := ts.lockMoveRead() // route and read see the row on one shard
-	defer move.unlock()
 	shard, checkin, isArchive, err := ts.shardForRelIDCheckedWithArchive(rid)
 	if err != nil {
 		return nil, err
@@ -86,8 +84,6 @@ func (ts *Store) GetRelHistory(rid types.RelID) ([]*types.Relationship, error) {
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return nil, err
 	}
-	move := ts.lockMoveRead() // route and read see the row on one shard
-	defer move.unlock()
 	shard, checkin, isArchive, err := ts.shardForRelIDCheckedWithArchive(rid)
 	if err != nil {
 		return nil, err
@@ -138,8 +134,6 @@ func (ts *Store) RelHistoryVersionsFrom(rid types.RelID, startVersion uint32, li
 	if err := storecontract.ValidateHistoryPageLimit(limit); err != nil {
 		return nil, err
 	}
-	move := ts.lockMoveRead() // route and read see the row on one shard
-	defer move.unlock()
 	shard, checkin, isArchive, err := ts.shardForRelIDCheckedWithArchive(rid)
 	if err != nil {
 		return nil, err

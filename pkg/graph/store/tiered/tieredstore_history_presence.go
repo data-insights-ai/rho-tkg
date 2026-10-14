@@ -23,8 +23,6 @@ func (ts *Store) HasNodeHistory(nid types.NodeID) (bool, error) {
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return false, err
 	}
-	move := ts.lockMoveRead() // route and read see the row on one shard
-	defer move.unlock()
 	return walkNodeHistoryShards(ts, nid, func(s *BadgerStore) (bool, error) { return s.HasNodeHistory(nid) }, orPresence)
 }
 
@@ -38,8 +36,6 @@ func (ts *Store) HasRelHistory(rid types.RelID) (bool, error) {
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return false, err
 	}
-	move := ts.lockMoveRead() // route and read see the row on one shard
-	defer move.unlock()
 	return walkRelHistoryShards(ts, rid, func(s *BadgerStore) (bool, error) { return s.HasRelHistory(rid) }, orPresence)
 }
 
@@ -56,6 +52,7 @@ func orPresence(a, b bool) bool { return a || b }
 // GetNodeHistory's check, except that a current row whose temporal block
 // decodes but whose body does not is live here where GetNodeHistory fails
 // (the asymmetry HasNodeHistory already documents for history rows).
+// No moveMu: ArchiveNode/RestoreNode leave history rows on their shard and the walk falls back to every shard (TestRefArchiveReadersSeeMovedEntityOnce).
 func walkNodeHistoryShards[T any](ts *Store, nid types.NodeID, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
 	var zero T
 	store, checkin, isArchive, err := ts.shardForNodeIDCheckedWithArchive(nid)
@@ -86,6 +83,7 @@ func walkNodeHistoryShards[T any](ts *Store, nid types.NodeID, ask func(*BadgerS
 
 // walkRelHistoryShards is walkNodeHistoryShards for relationships, walking
 // the shards GetRelHistory reads.
+// No moveMu: ArchiveNode/RestoreNode leave history rows on their shard and the walk falls back to every shard (TestRefArchiveReadersSeeMovedEntityOnce).
 func walkRelHistoryShards[T any](ts *Store, rid types.RelID, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
 	var zero T
 	shard, checkin, isArchive, probe, err := ts.routeRelShard(rid)

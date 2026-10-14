@@ -51,10 +51,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   one `ArchiveNode` moved between the route and the read. `GetNode`, `LendNode`, `NodeIntegrityHash`,
   `EndpointIntegrityHashes`, `GetNodesByIDs`, `GetRelationship`, `LendRelationship`, `GetRelationshipsByIDs`,
   `Outgoing`/`IncomingRelationships` (and their `ForNodes` forms), `Outgoing`/`IncomingDegree`,
-  `Node`/`RelCurrentStamps`, `HasNode`/`HasRelHistory`, the node/relationship version and history reads and the
-  history-walk part of `Node`/`RelHistoryStamps` now hold the same read lock across route and read (the history doors
-  did not go red in the test without it: history rows stay where they were written and the walks fall back to every
-  shard; they are locked so route and read agree); `ArchiveNode` / `RestoreNode` read relationships through the unlocked
+  `Node`/`RelCurrentStamps` now hold the same read lock across route and read. The history reads
+  (`HasNode`/`HasRelHistory`, `Node`/`RelHistoryStamps`, the version and history reads) take no lock: history rows
+  stay on the shard they were written to and the walks fall back to every shard, so a move in either gap leaves their
+  answer unchanged (guard cases in the same test); `ArchiveNode` / `RestoreNode` read relationships through the unlocked
   route. One uncontended `RLock` per call, no allocation: `GetNode` 2 allocs / 112 B (reference) and 3 / 128 B
   (archived) before and after, median 160.5 → 175 ns (reference) and 180.5 → 178.5 ns (archived), alternating runs
   on one pinned core of a loaded host. Write doors still route without the lock: a direct `tiered.Store` user must not write during a move (the graph layer fences them with its exclusive lock; documented on `ArchiveNode` / `RestoreNode`).

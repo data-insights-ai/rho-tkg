@@ -19,8 +19,6 @@ func (ts *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return nil, err
 	}
-	move := ts.lockMoveRead() // route and read see the row on one shard
-	defer move.unlock()
 	shard, checkin, isArchive, err := ts.shardForNodeIDCheckedWithArchive(nid)
 	if err != nil {
 		return nil, err
@@ -85,8 +83,6 @@ func (ts *Store) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return nil, err
 	}
-	move := ts.lockMoveRead() // route and read see the row on one shard
-	defer move.unlock()
 	store, checkin, isArchive, err := ts.shardForNodeIDCheckedWithArchive(nid)
 	if err != nil {
 		return nil, err
@@ -137,8 +133,6 @@ func (ts *Store) NodeHistoryVersionsFrom(nid types.NodeID, startVersion uint32, 
 	if err := storecontract.ValidateHistoryPageLimit(limit); err != nil {
 		return nil, err
 	}
-	move := ts.lockMoveRead() // route and read see the row on one shard
-	defer move.unlock()
 	store, checkin, isArchive, err := ts.shardForNodeIDCheckedWithArchive(nid)
 	if err != nil {
 		return nil, err

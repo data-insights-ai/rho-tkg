@@ -45,13 +45,9 @@ func (ts *Store) NodeHistoryStamps(nid types.NodeID) (types.Instant, types.Insta
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return 0, 0, false, err
 	}
-	// Only the walk holds moveMu: GetNodeHistory below takes it itself.
-	move := ts.lockMoveRead()
-	defer move.unlock()
 	got, err := walkNodeHistoryShards(ts, nid, func(s *BadgerStore) (shardStamps, error) {
 		return shardAnswer(s.NodeHistoryStamps(nid))
 	}, mergeShardStamps)
-	move.unlock()
 	if err != nil {
 		return 0, 0, false, err
 	}
@@ -79,13 +75,9 @@ func (ts *Store) RelHistoryStamps(rid types.RelID) (types.Instant, types.Instant
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return 0, 0, false, err
 	}
-	// Only the walk holds moveMu: GetRelHistory below takes it itself.
-	move := ts.lockMoveRead()
-	defer move.unlock()
 	got, err := walkRelHistoryShards(ts, rid, func(s *BadgerStore) (shardStamps, error) {
 		return shardAnswer(s.RelHistoryStamps(rid))
 	}, mergeShardStamps)
-	move.unlock()
 	if err != nil {
 		return 0, 0, false, err
 	}
