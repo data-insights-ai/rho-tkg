@@ -1,0 +1,158 @@
+{
+  "kind": "root-reviewed focused hosted qualification; selected components only",
+  "run_id": 38581097190,
+  "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38581097190",
+  "source_commit": "e8a33c4d5b8714b8cef631a167f0ad1e9a697878",
+  "focused_base": "5cc915c7d4ef2b63f1dbe4d6f8915341e7f0cf76",
+  "conclusion": "success",
+  "root_verified_source_inputs": 590,
+  "root_source_match": "same 590 Go/testdata/toolchain/workflow inputs at d05ae3d1; qualification remains pinned to e8a33c4d",
+  "counts": {
+    "normal": {
+      "selected_parents": 19,
+      "parent_pass": 18,
+      "parent_skip": [
+        "TestReplicatedGraphChild"
+      ],
+      "subcase_pass": 21
+    },
+    "race": {
+      "selected_parents": 19,
+      "parent_pass": 18,
+      "parent_skip": [
+        "TestReplicatedGraphChild"
+      ],
+      "subcase_pass": 21
+    },
+    "coverage": {
+      "selected_parents": 19,
+      "parent_pass": 18,
+      "parent_skip": [
+        "TestReplicatedGraphChild"
+      ],
+      "subcase_pass": 21
+    }
+  },
+  "scoped_parent_coverage": {
+    "covered": 7102,
+    "statements": 13953,
+    "percent": 50.899448147351826,
+    "limitation": "diagnostic parent-only profile; excludes separately executed OS child production; not full coverage acceptance"
+  },
+  "static_jobs": [
+    {
+      "job_id": 115911014838,
+      "name": "security (v5, v5/go.mod, ../.golangci.yml, false)",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Run make tools",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run make security",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run make vulncheck",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "job_id": 115911014954,
+      "name": "security (., go.mod, .golangci.yml, true)",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Run make tools",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run make security",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run make vulncheck",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "job_id": 115911014960,
+      "name": "focused (., go.mod, .golangci.yml, true)",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Run make -C \".\" fmt-check",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run make -C \".\" vet",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run make -C \".\" build",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "job_id": 115911015053,
+      "name": "focused (v5, v5/go.mod, ../.golangci.yml, false)",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Run make -C \"v5\" fmt-check",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run make -C \"v5\" vet",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run make -C \"v5\" build",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "job_id": 115911015335,
+      "name": "lint (v5, v5/go.mod, ../.golangci.yml, false)",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Run golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "job_id": 115911015382,
+      "name": "lint (., go.mod, .golangci.yml, true)",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Run golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ],
+  "raw_archive": {
+    "path": "hosted-e8a33c4d-raw.tar.gz",
+    "bytes": 459443,
+    "sha256": "088d4e758b714a0ac78e3b64efcb021eeacc6f31bff877963a674ecf52af10be"
+  },
+  "artifact_zip_sha256": "9fd7a6a53f8dee8c8939e7c5685ba289c21dfb9e0923bab3d9875a77563caf31",
+  "raw_manifest_sha256": "542eca33c5d8ea5391e206c50b061bee4e3916e2e2f8a3bccf9d6a0562d4c4d4",
+  "limits": [
+    "external-fdb-record validates existing source-bound receipts; no new FDB runtime",
+    "root focused behavior step skipped because no root Go behavior changed",
+    "full test/race/coverage, migration and comparison jobs intentionally skipped",
+    "native checkpoint7dc1f42b/P05/reopen changes not present in this hosted source",
+    "not V2 completion or release acceptance",
+    "TestNativeGraphCostMillionFactProfileUsesBoundedGrantBlocks is setup/profile guard only; no million-fact runtime",
+    "hosted artifact contains only selection/events/scoped coverage; no durable voter directories, runtime binaries or full cost/original CDC files"
+  ]
+}

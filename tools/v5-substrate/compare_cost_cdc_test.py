@@ -105,6 +105,66 @@ def native_fixture(groups):
     # Genuine batched exporter orders records by partition within ≤16 commands.
     return sorted(rows,key=lambda r:(r['Partition'],r['Index']))
 
+def raw_fixture(groups, result):
+    """Synthetic v2 header/footer wrappers, genuine historical group bodies.
+
+    This exercises byte/state validation, never a new SDK acceptance receipt.
+    """
+    checker=module('raw-cdc','compare-cost-cdc.py')
+    result=copy.deepcopy(result);result.update(version=2,oracleFormat=checker.RAW_FORMAT)
+    encoded=lambda body:base64.b64encode(body).decode()
+    stored=lambda key,value:{'Key':encoded(key),'Value':encoded(checker.go_json(value))}
+    config=result['Config'];history,current={},{};native_bytes=[0,0];versions=[0,0];generation=[0,0];sequences=[0,0]
+    max_meta={k:(1<<64)-1 for k in ('Floor','Generation','Versions','Transactions','Certificates','Bytes','Groups')}
+    for g in range(2):
+        native_bytes[g]=len(checker.fdb_key(config,g,'meta','config'))+len(checker.go_json(config))+len(checker.fdb_key(config,g,'meta','state'))+len(checker.go_json(max_meta))
+    cuts=[stored(checker.fdb_key(config,0,'cut',checker.go_json(result[k]).hex()),result[k]) for k in ('InitialCut','OldCut','FinalCut')]
+    native_bytes[0]+=sum(len(base64.b64decode(r[k])) for r in cuts for k in ('Key','Value'))
+    cdc=[]
+    for group in groups:
+        outcome=group['Outcome'];owner=outcome['Coordinator'];sequences[owner]+=1
+        row={'Group':owner,'Key':encoded((f"g{owner}/{config['Graph'].encode().hex()}/changes/{outcome['Sequence']:016x}/"+outcome['Request'].encode().hex()).encode()),'Value':encoded(checker.go_json(group)),
+             'IDKey':encoded(checker.fdb_key(config,owner,'id',outcome['ID'])),'IDValue':encoded(checker.go_json(outcome)),
+             'RequestKey':encoded(checker.fdb_key(config,owner,'request',outcome['Request'])),'RequestValue':encoded(checker.go_json(outcome))}
+        native_bytes[owner]+=sum(len(base64.b64decode(v)) for k,v in row.items() if k!='Group');cdc.append(row)
+        for part in group['Tx']['Participants']:generation[part['Group']]+=1
+        for write in group['Writes']:
+            g,key,after=write['Group'],write['Key'],write['After'];versions[g]+=1
+            hk=(f"g{g}/{config['Graph'].encode().hex()}/history/{after['Round']:016x}/"+key.encode().hex()).encode()
+            ck=checker.fdb_key(config,g,'current',key);body=checker.go_json(after)
+            history[(g,hk)]={'Group':g,'Key':encoded(hk),'Value':encoded(body)}
+            if (g,ck) in current:native_bytes[g]-=len(ck)+len(base64.b64decode(current[(g,ck)]['Value']))
+            current[(g,ck)]={'Group':g,'Key':encoded(ck),'Value':encoded(body)}
+            native_bytes[g]+=len(hk)+len(body)+len(ck)+len(body)
+    metadata=[{'Floor':result['FinalCut']['Round'],'Generation':generation[g],'Versions':versions[g],'Transactions':sequences[g],'Certificates':3 if g==0 else 0,'Bytes':native_bytes[g],'Groups':sequences[g]} for g in range(2)]
+    header={'Type':'header','Format':checker.RAW_FORMAT,'Stream':'','Config':config,'InitialCut':result['InitialCut'],'OldCut':result['OldCut'],'FinalCut':result['FinalCut'],'Policy':{'PageRows':1,'PageBytes':65536},'Metadata':metadata,
+            'ConfigRecords':[stored(checker.fdb_key(config,g,'meta','config'),config) for g in range(2)],'MetadataRecords':[stored(checker.fdb_key(config,g,'meta','state'),metadata[g]) for g in range(2)],'CutRecords':cuts}
+    cdc.sort(key=lambda r:(lambda o:(o['Round'],o['Coordinator'],o['Request']))(json.loads(base64.b64decode(r['Value']))['Outcome']))
+    streams={'history':[history[k] for k in sorted(history)],'current':[current[k] for k in sorted(current)],'cdc':cdc}
+    result['StreamEnds']=[]
+    for name in ('history','current','cdc'):
+        counts=[sum(r['Group']==g for r in streams[name]) for g in range(2)]
+        result['StreamEnds'].append({'Rows':counts,'Groups':result['FinalCut']['Groups'],'Metadata':metadata})
+    return result,header,streams
+
+
+def raw_native_bounds(native, facts):
+    bounds=native_bounds(native);certificates=[]
+    for partition in (3,8):
+        index=max(r['Index'] for r in native if r['Partition']==partition and r['Original']['Provenance']<=3+facts)
+        certificates.append(sealed(b'GSC\1'+bytes.fromhex(GRAPH)+struct.pack('>Q',partition)+b'\1'*96+b'\2'*32+struct.pack('>QQQQ',250,index+2,200,index)+native_image(partition,index)))
+    return bounds|{'oldCut':{'Certificates':certificates}}
+
+
+def native_observations(native,facts):
+    out=[]
+    for value in (5,6):
+        for i in range(facts):
+            create=next(r for r in native if r['CDCClass']=='logical' and r['Original']['Provenance']==4+i)
+            logical=next(r for r in native if r['CDCClass']=='logical' and r['Original']['Provenance']==4+i+(facts if value==6 else 0))
+            entity=copy.deepcopy(create['Entities'][0]);entity.update(effective=True,effectiveLife=entity['id']+1,presence=create['Changes'][0]['After'],property=logical['Changes'][-1]['After']);out.append(entity)
+    return out
+
 class Replay(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory(); self.root=Path(self.tmp.name)
@@ -123,6 +183,94 @@ class Replay(unittest.TestCase):
     def compare(self,native=None,fdb=None):
         checker=module('cdc','compare-cost-cdc.py')
         return checker.compare_streams(*self.streams(native,fdb),self.result['spec'],self.result['Config'],self.result['FinalCut'],native_bounds(self.native))
+
+    def raw_compare(self, mutate=None, policy=None):
+        checker=module('raw-cdc','compare-cost-cdc.py')
+        result,header,streams=raw_fixture(self.groups,self.result)
+        if mutate:mutate(result,header,streams)
+        directory=self.root/'raw';directory.mkdir(exist_ok=True)
+        for name,records in streams.items():
+            payload=checker.go_json(header|{'Stream':name})+b'\n'+b''.join(checker.go_json({'Type':'row','Row':r})+b'\n' for r in records)
+            footer={'Type':'footer','Rows':[sum(r['Group']==g for r in records) for g in range(2)],'Groups':header['FinalCut']['Groups'],'Metadata':header['Metadata'],'PayloadSHA256':hashlib.sha256(payload).hexdigest()}
+            (directory/f'fdb-cost-{name}.jsonl').write_bytes(payload+checker.go_json(footer)+b'\n')
+        (directory/'fdb-cost-operation-groups.jsonl').write_bytes(b''.join(checker.go_json(g)+b'\n' for g in self.groups))
+        samples=[]
+        for group in self.groups:
+            ordinal=group['Tx']['Lifecycle']['Provenance'];phase,fact,node,edge=checker.fixture(result['spec'],ordinal)
+            samples.append({'phase':phase,'fact':fact,'cross':bool(edge and edge['Target']['Owner']),'ProposalNanos':1,'AckNanos':1,'VerificationNanos':1,'ProposalAttempts':1,'CommitAttempts':1,'Outcome':group['Outcome']})
+        (directory/'fdb-cost-latency.jsonl').write_bytes(b''.join(checker.go_json(s)+b'\n' for s in samples))
+        native=self.root/'native.jsonl';native.write_bytes(b''.join(checker.go_json(r)+b'\n' for r in self.native))
+        observations=self.root/'observations.jsonl';observations.write_bytes(b''.join(checker.go_json(r)+b'\n' for r in native_observations(self.native,result['spec']['facts'])))
+        if policy is None:policy=checker.Policy(1<<20,16<<10,4096,512<<10)
+        try:
+            return checker.compare_streams(native,directory/'fdb-cost-cdc.jsonl',result['spec'],result['Config'],result['FinalCut'],raw_native_bounds(self.native,result['spec']['facts']),spool_directory=self.root,spool_policy=policy,raw_result=result,observations_path=observations)
+        finally:
+            self.assertEqual(list(self.root.glob('.cost-spool-*')),[])
+
+    def test_raw_original_history_current_sparse_parity_and_setup_order(self):
+        report=self.raw_compare()
+        self.assertTrue(report['equal']);self.assertEqual(report['logicalGroups'],7)
+        self.assertEqual(report['fdb']['history']['rows'],[10,5]);self.assertEqual(report['fdb']['current']['rows'],[6,3])
+        self.assertEqual(report['oracleFormat'],'fdb-graph-cost-raw-v2')
+        self.assertLessEqual(report['comparisonState']['peak_file_bytes'],1<<20)
+        self.assertFalse(report['comparisonState']['cache_is_process_rss_limit'])
+        self.assertIn('three-entry',report['fdb']['orderContract'])
+
+    def test_raw_equal_count_rehashed_wrong_rows_and_foreign_bindings_refuse(self):
+        def body_change(row,key,value):
+            body=json.loads(base64.b64decode(row['Value']));body[key]=value
+            row['Value']=base64.b64encode(module('raw-cdc','compare-cost-cdc.py').go_json(body)).decode()
+        mutations=(
+            ('history value',lambda r,h,s:body_change(s['history'][-1],'Value',55)),
+            ('current predecessor',lambda r,h,s:body_change(s['current'][0],'Version',99)),
+            ('current duplicate',lambda r,h,s:s['current'].__setitem__(1,copy.deepcopy(s['current'][0]))),
+            ('history reorder',lambda r,h,s:s['history'].reverse()),
+            ('original substitution',lambda r,h,s:s['cdc'][0].__setitem__('IDValue',s['cdc'][-1]['IDValue'])),
+            ('raw request key',lambda r,h,s:s['cdc'][0].__setitem__('RequestKey',base64.b64encode(b'foreign').decode())),
+            ('raw enumeration order',lambda r,h,s:s['cdc'].__setitem__(slice(0,3),[s['cdc'][0],s['cdc'][2],s['cdc'][1]])),
+            ('cut bytes',lambda r,h,s:h['CutRecords'][1].__setitem__('Value',h['CutRecords'][2]['Value'])),
+            ('metadata',lambda r,h,s:h['Metadata'][0].__setitem__('Generation',99)),
+            ('missing current',lambda r,h,s:s['current'].pop()),
+            ('format relabel',lambda r,h,s:r.__setitem__('version',1)),
+        )
+        for name,mutate in mutations:
+            with self.subTest(name=name),self.assertRaises(ValueError):self.raw_compare(mutate)
+
+    def test_raw_missing_mixed_eof_and_private_spool_quota_refuse(self):
+        checker=module('raw-cdc','compare-cost-cdc.py')
+        self.raw_compare()
+        directory=self.root/'raw';path=directory/'fdb-cost-current.jsonl';original=path.read_bytes()
+        result,_,_=raw_fixture(self.groups,self.result)
+        def compare():
+            return checker.compare_streams(self.root/'native.jsonl',directory/'fdb-cost-cdc.jsonl',result['spec'],result['Config'],result['FinalCut'],raw_native_bounds(self.native,2),spool_directory=self.root,raw_result=result,observations_path=self.root/'observations.jsonl')
+        for raw in (b''.join(original.splitlines(keepends=True)[:-1]),original+b'{}\n',original.replace(b'"Stream":"current"',b'"Stream":"history"',1)):
+            path.write_bytes(raw)
+            with self.assertRaises(ValueError):compare()
+            self.assertEqual(list(self.root.glob('.cost-spool-*')),[])
+        path.write_bytes(original)
+        with self.assertRaisesRegex(ValueError,'capacity|quota'):
+            self.raw_compare(policy=checker.Policy(8192,4096,1024,4096))
+
+    def test_controller_raw_format_requires_all_bound_artifacts(self):
+        self.raw_compare();checker=module('raw-cdc','compare-cost-cdc.py')
+        result,_,_=raw_fixture(self.groups,self.result);directory=self.root/'raw'
+        (directory/'fdb-cost-result.json').write_bytes(checker.go_json(result)+b'\n')
+        bounds=raw_native_bounds(self.native,2)
+        hashes=lambda root:{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in root.iterdir() if p.is_file()}
+        native={'completedCell':True,'spec':result['spec'],'result':{'directory':str(self.root),'CDCFrom':bounds['from'],'CDCThrough':bounds['through'],'FinalCut':bounds['finalCut'],'OldCut':bounds['oldCut']},'artifacts':hashes(self.root)}
+        # The unchanged native filename contract is cdc.jsonl.
+        (self.root/'cdc.jsonl').write_bytes((self.root/'native.jsonl').read_bytes())
+        (self.root/'native-cost-result.json').write_text(json.dumps(native['result']));native['artifacts']=hashes(self.root)
+        fdb={'completedCell':True,'spec':result['spec'],'result':result,'FDBArtifacts':str(directory),'launchReceipt':{'sha256':hashes(directory)}}
+        left,right=self.root/'native-receipt.json',self.root/'fdb-receipt.json'
+        left.write_text(json.dumps(native));right.write_text(json.dumps(fdb))
+        report=CELL.compare_cells(left,right);self.assertEqual(report['oracleFormat'],checker.RAW_FORMAT)
+        for missing in ('fdb-cost-history.jsonl','fdb-cost-operation-groups.jsonl','fdb-cost-latency.jsonl'):
+            bad=copy.deepcopy(fdb);bad['launchReceipt']['sha256'].pop(missing);right.write_text(json.dumps(bad))
+            with self.assertRaisesRegex(ValueError,'hash-bound'):CELL.compare_cells(left,right)
+        bad=copy.deepcopy(fdb);bad['result'].pop('oracleFormat');right.write_text(json.dumps(bad))
+        with self.assertRaisesRegex(ValueError,'format'):CELL.compare_cells(left,right)
+        self.assertEqual(list(self.root.glob('.cost-spool-*')),[])
 
     def test_actual_fdb_cross_and_synthetic_native_groups_equal(self):
         result=self.compare();self.assertTrue(result['equal']);self.assertEqual(result['logicalGroups'],7);self.assertEqual(result['componentChanges'],9)

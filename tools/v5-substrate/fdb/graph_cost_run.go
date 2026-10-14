@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"reflect"
-	"strings"
 	"time"
 
 	"github.com/apple/foundationdb/bindings/go/src/fdb"
@@ -35,6 +34,8 @@ type graphCostResult struct {
 	Config                                                   config
 	CDCGroups, LogicalComponentChanges, PhysicalGraphChanges uint64
 	IDAdmission                                              string
+	OracleFormat                                             string                `json:"oracleFormat,omitempty"`
+	StreamEnds                                               [3]graphCostStreamEnd `json:",omitzero"`
 }
 
 func graphCostSpecFromEnv() (graphCostProfile, error) {
@@ -206,13 +207,23 @@ func runGraphCost(db fdb.Database, p graphCostProfile) (err error) {
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, latency.Close()) }()
-	cdc, records, err := open("fdb-cost-cdc.jsonl")
+	latencyClosed := false
+	defer func() {
+		if !latencyClosed {
+			err = errors.Join(err, latency.Close())
+		}
+	}()
+	cdc, records, err := open("fdb-cost-operation-groups.jsonl")
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, cdc.Close()) }()
-	result := graphCostResult{Version: 1, Engine: "foundationdb", Spec: p, Deployment: "single-machine distributed: four logical fault-domain containers, triple ssd", Config: c, SetupNodes: 3, Creates: p.Facts, Updates: p.Facts, IDAdmission: "fixed declared fixture IDs/ranges; this adapter has no rho allocator protocol"}
+	cdcClosed := false
+	defer func() {
+		if !cdcClosed {
+			err = errors.Join(err, cdc.Close())
+		}
+	}()
+	result := graphCostResult{Version: 2, Engine: "foundationdb", Spec: p, Deployment: "single-machine distributed: four logical fault-domain containers, triple ssd", Config: c, SetupNodes: 3, Creates: p.Facts, Updates: p.Facts, IDAdmission: "fixed declared fixture IDs/ranges; this adapter has no rho allocator protocol"}
 	initial, err := h.fresh([]uint8{0, 1}, nil)
 	if err != nil {
 		return err
@@ -331,61 +342,21 @@ func runGraphCost(db fdb.Database, p graphCostProfile) (err error) {
 		}
 	}
 	begin := time.Now()
-	for _, read := range []struct {
-		cut   cut
-		value int64
-	}{{old, 5}, {cut{result.FinalCut}, 6}} {
-		s, err := h.at(read.cut, 128, nil)
-		if err != nil {
-			return err
-		}
-		if uint64(len(s.Values[0])+len(s.Values[1])) != 3+3*p.Facts {
-			return errMismatch
-		}
-		view, err := h.projectGraph(s)
-		if err != nil {
-			return err
-		}
-		if err := graphCostCheckView(view, p, read.value); err != nil {
-			return err
-		}
-		for _, rows := range s.Values {
-			for key := range rows {
-				if strings.HasPrefix(key, fmt.Sprintf("edge/%016x/", uint64(5))) {
-					return errMismatch
-				}
-			}
-		}
-		file, encoder, err := open(fmt.Sprintf("fdb-cost-view-%d.json", read.value))
-		if err != nil {
-			return err
-		}
-		writeErr := encoder.Encode(struct {
-			Cut      certificate
-			Snapshot snapshot
-			View     graphView
-		}{read.cut.record, s, view})
-		if err := errors.Join(writeErr, file.Close()); err != nil {
-			return err
-		}
+	latencyClosed, cdcClosed = true, true
+	if err := errors.Join(latency.Close(), cdc.Close()); err != nil {
+		return err
 	}
-	groups, err := h.changes(initial, cut{result.FinalCut}, 128)
+	ends, err := h.graphCostArtifacts(artifactRoot, initial, old, cut{result.FinalCut}, graphCostStreamPolicy{PageRows: 128, PageBytes: 16 << 20})
 	if err != nil {
 		return err
 	}
-	if uint64(len(groups)) != 3+2*p.Facts || result.CDCGroups != 3+2*p.Facts || result.LogicalComponentChanges != 3+3*p.Facts || result.PhysicalGraphChanges != 3+6*p.Facts {
+	if ends[2].Rows[0]+ends[2].Rows[1] != 3+2*p.Facts || ends[0].Rows[0]+ends[0].Rows[1] != 3+6*p.Facts || ends[1].Rows[0]+ends[1].Rows[1] != 3+3*p.Facts || result.CDCGroups != 3+2*p.Facts || result.LogicalComponentChanges != 3+3*p.Facts || result.PhysicalGraphChanges != 3+6*p.Facts {
 		return errMismatch
 	}
-	if _, err := h.current(); err != nil {
-		return err
-	}
+	result.StreamEnds, result.OracleFormat = ends, graphCostRawFormat
 	result.VerificationNanos = time.Since(begin).Nanoseconds()
 	result.TotalNanos = time.Since(started).Nanoseconds()
-	file, encoder, err := open("fdb-cost-result.json")
-	if err != nil {
-		return err
-	}
-	return errors.Join(encoder.Encode(result), file.Close())
+	return publishGraphCostResult(artifactRoot, result)
 }
 
 // Artifact names remain scoped to the caller-selected directory handle.

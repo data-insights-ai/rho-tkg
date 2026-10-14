@@ -6,12 +6,41 @@ import json
 from pathlib import Path
 import struct
 
+from comparison_spool import Policy, Spool, u64
+
 SCOPE = {"kind": "all", "axisProfile": "Q", "axisVersion": 1,
          "canonicalUnit": "millisecond", "reference": "posix-unix-epoch:1970-01-01T00:00:00Z:v1"}
 GRAPH = "01000000000000000000000000000000"
 PARTITIONS = {3: 0, 8: 1}
 LINE_BYTES = 64 << 10
 BATCH_OPERATIONS = 16
+RAW_FORMAT = "fdb-graph-cost-raw-v2"
+ARTIFACT_LINE_BYTES = 512 << 10
+# Explicit verifier policy for this first-cell integration, not an approved
+# million-fact capacity cap. Cache is a SQLite target, never a process RSS cap.
+SMALL_POLICY = Policy(1 << 30, 8 << 20, 4096, ARTIFACT_LINE_BYTES)
+
+
+class StoredState:
+    """Sparse decoded predecessors stored as raw BLOBs, one lookup at a time."""
+    def __init__(self, spool, namespace):
+        self.spool, self.namespace = spool, namespace
+
+    def key(self, key):
+        require(all(type(v) in (int, str) for v in key), "sparse state coordinate/name type")
+        return b"".join(u64(v) if type(v) is int else v.encode() for v in key)
+
+    def get(self, key, default=None):
+        raw = self.spool.find(self.namespace, self.key(key))
+        return default if raw is None else json.loads(raw, object_pairs_hook=pairs)
+
+    def __setitem__(self, key, value):
+        key, body = self.key(key), go_json(value)
+        prior = self.spool.find(self.namespace, key)
+        if prior is None:
+            self.spool.insert(self.namespace, key, body)
+        else:
+            self.spool.replace(self.namespace, key, prior, body)
 
 
 def require(condition, message):
@@ -58,7 +87,9 @@ def rows(path, maximum):
 
 def raw_bytes(value):
     require(type(value) is str, "raw original missing")
-    return base64.b64decode(value, validate=True)
+    raw = base64.b64decode(value, validate=True)
+    require(base64.b64encode(raw).decode() == value, "noncanonical base64")
+    return raw
 
 
 def fixed_body(raw, magic, length):
@@ -203,6 +234,7 @@ def native_group(records, spec, ordinal, previous, definitions):
         before, after = canonical_cell(change["Before"]), canonical_cell(change["After"])
         changes.append({"key": key, "scope": change["AllScope"], "before": before, "after": after})
         previous[key] = change["After"]
+        previous.spool.insert(b"native-cell-history", previous.key(key) + u64(ordinal), go_json(change["After"]))
     declarations = native_declarations(row, definitions)
     return {"operation": name, "coordinator": owner, "effects": changes, **declarations}
 
@@ -226,7 +258,7 @@ def native_declarations(row, definitions):
 
 
 def native_prefix(bounds):
-    fields(bounds, "from through finalCut")
+    require(set(bounds) in ({"from", "through", "finalCut"}, {"from", "through", "finalCut", "oldCut"}), "native bound fields")
     require(type(bounds["from"]) is list and type(bounds["through"]) is list and len(bounds["from"]) == len(bounds["through"]) == 2, "native retained prefix bounds")
     for start, end in zip(bounds["from"], bounds["through"]):
         require(integer(start) <= integer(end), "native retained prefix order")
@@ -242,13 +274,29 @@ def native_prefix(bounds):
     return images
 
 
-def native_groups(path, spec, bounds, stats):
+def native_old_prefix(bounds):
+    fields(bounds["oldCut"], "Certificates")
+    require(len(bounds["oldCut"]["Certificates"]) == 2, "native old full-scope cut")
+    old = {}
+    for n, partition in enumerate(PARTITIONS):
+        body = fixed_body(raw_bytes(bounds["oldCut"]["Certificates"][n]), b"GSC\1", 392)
+        final = fixed_body(raw_bytes(bounds["finalCut"]["Certificates"][n]), b"GSC\1", 392)
+        require(body[:152] == final[:152], "native old/final immutable cut binding")
+        round_, index, source_round, source_index = struct.unpack(">QQQQ", body[-204:-172])
+        require(0 < source_round <= round_ and bounds["from"][n] < source_index < index and source_index <= bounds["through"][n], "native old certified prefix")
+        old[partition] = source_index, hashlib.sha256(body[-172:]).hexdigest()
+    return old
+
+
+def native_groups(path, spec, bounds, stats, spool):
     pending, last_provenance = {}, {}
     certified_images = native_prefix(bounds)
+    old = native_old_prefix(bounds) if "oldCut" in bounds else {}
+    old_seen = set()
     boundaries = {}
     last_indexes = dict(zip(PARTITIONS, bounds["from"]))
-    previous, definitions = {}, set()
-    requests, transactions, bindings = set(), set(), hashlib.sha256()
+    previous, definitions = StoredState(spool, b"native-before"), set()
+    bindings = hashlib.sha256()
     next_ordinal, total = 1, 3 + 2 * spec["facts"]
     for row in rows(path, 128 * total + 16):
         original = native_original(row)
@@ -260,6 +308,9 @@ def native_groups(path, spec, bounds, stats):
         if original["Kind"] == "no-application-output" and partition in boundaries:
             require(boundary["Generation"] == boundaries[partition]["Generation"] and boundary["ImageSHA256"] == boundaries[partition]["ImageSHA256"], "empty output changed retained root")
         boundaries[partition] = boundary
+        if partition in old and index == old[partition][0]:
+            require(boundary["ImageSHA256"] == old[partition][1], "native old retained root image")
+            old_seen.add(partition)
         if original["Kind"] in ("read-control", "no-application-output"):
             stats["controls"] += 1
             continue
@@ -275,11 +326,11 @@ def native_groups(path, spec, bounds, stats):
                 break
             canonical = native_group(group, spec, next_ordinal, previous, definitions)
             original = group[0]["Original"]
-            request = original["Coordinator"], original["Request"]
-            transaction = original["Coordinator"], original["Transaction"]
-            require(request not in requests and transaction not in transactions, "native original request/transaction bijection")
-            requests.add(request)
-            transactions.add(transaction)
+            request = u64(original["Coordinator"]) + bytes.fromhex(original["Request"])
+            transaction = u64(original["Coordinator"]) + bytes.fromhex(original["Transaction"])
+            require(spool.find(b"native-request", request) is None and spool.find(b"native-transaction", transaction) is None, "native original request/transaction bijection")
+            spool.insert(b"native-request", request, go_json(group))
+            spool.insert(b"native-transaction", transaction, bytes.fromhex(original["Digest"]))
             binding = {k: original[k] for k in ("Graph", "Coordinator", "Request", "Transaction", "Digest", "Provenance")}
             bindings.update(json.dumps(binding, sort_keys=True, separators=(",", ":")).encode() + b"\n")
             del pending[next_ordinal]
@@ -288,6 +339,7 @@ def native_groups(path, spec, bounds, stats):
     require(not pending and next_ordinal == total + 1, "native incomplete logical groups")
     require(list(last_indexes.values()) == bounds["through"], "native incomplete retained prefix")
     require(all(boundaries.get(p, {}).get("ImageSHA256") == expected for p, expected in certified_images.items()), "native final retained root image")
+    require(old_seen == set(old), "native missing old certified prefix boundary")
     stats["originalBindingsSHA256"] = bindings.hexdigest()
 
 
@@ -394,8 +446,8 @@ def fdb_logical(group, command, spec, ordinal, definitions):
     return {"operation": name, "coordinator": owner, "effects": changes, "entities": entities, "lives": lives, "values": values}
 
 
-def fdb_groups(path, spec, config, final_cut, stats):
-    physical, definitions = {}, set()
+def fdb_groups(path, spec, config, final_cut, stats, spool):
+    physical, definitions = StoredState(spool, b"fdb-before"), set()
     generations, sequences = [0, 0], [0, 0]
     total = 3 + 2 * spec["facts"]
     count = 0
@@ -412,7 +464,244 @@ def fdb_groups(path, spec, config, final_cut, stats):
     stats["originalBindingsSHA256"] = bindings.hexdigest()
 
 
-def compare_streams(native_path, fdb_path, spec, config, final_cut, native_bounds):
+def fdb_key(config, group, kind, name):
+    prefix = f"g{group}/{config['Graph'].encode().hex()}/"
+    return (prefix + kind + "/" + name.encode().hex()).encode()
+
+
+def decoded_body(raw):
+    require(0 < len(raw) <= LINE_BYTES, "native raw body byte bound")
+    value = json.loads(raw, object_pairs_hook=pairs, parse_constant=lambda _: require(False, "nonfinite JSON"))
+    require(raw == go_json(value), "noncanonical native raw body")
+    return value
+
+
+def raw_binding(record, key, value):
+    fields(record, "Key Value")
+    require(raw_bytes(record["Key"]) == key and raw_bytes(record["Value"]) == go_json(value), "raw metadata/config/cut binding")
+
+
+def artifact_header(header, name, result):
+    fields(header, "Type Format Stream Config InitialCut OldCut FinalCut Policy Metadata ConfigRecords MetadataRecords CutRecords")
+    require(header["Type"] == "header" and header["Format"] == RAW_FORMAT and header["Stream"] == name, "artifact header/format/stream")
+    for key in ("Config", "InitialCut", "OldCut", "FinalCut"):
+        require(same(header[key], result[key]), "mixed artifact/result " + key)
+    fields(header["Policy"], "PageRows PageBytes")
+    integer(header["Policy"]["PageRows"], 1, 128)
+    integer(header["Policy"]["PageBytes"], 1, 16 << 20)
+    config = header["Config"]
+    require(len(header["Metadata"]) == len(header["ConfigRecords"]) == len(header["MetadataRecords"]) == 2 and len(header["CutRecords"]) == 3, "complete native header inventory")
+    for g, metadata in enumerate(header["Metadata"]):
+        fields(metadata, "Floor Generation Versions Transactions Certificates Bytes Groups")
+        for value in metadata.values():
+            integer(value)
+        require(metadata["Floor"] == header["FinalCut"]["Round"] and metadata["Groups"] == header["FinalCut"]["Groups"][g] and metadata["Transactions"] == metadata["Groups"], "quiescent native metadata")
+        for key in ("Bytes", "Transactions", "Versions", "Certificates"):
+            require(metadata[key] <= config["Limits"][key], "native metadata quota")
+        raw_binding(header["ConfigRecords"][g], fdb_key(config, g, "meta", "config"), config)
+        raw_binding(header["MetadataRecords"][g], fdb_key(config, g, "meta", "state"), metadata)
+    count = config["Cost"]["facts"]
+    for n, key in enumerate(("InitialCut", "OldCut", "FinalCut")):
+        cut = header[key]
+        fields(cut, "Graph Topology Epochs Scope Round Groups")
+        require(cut["Graph"] == config["Graph"] and cut["Topology"] == config["Topology"] and same(cut["Epochs"], config["Epochs"]) and raw_bytes(cut["Scope"]) == b"\0\1", "foreign cut namespace/full scope")
+        integer(cut["Round"], 1)
+        require(same(cut["Groups"], ([0, 0], [2 + count, 1], [2 + 2 * count, 1])[n]), "fixed writer1 cut membership")
+        raw_binding(header["CutRecords"][n], fdb_key(config, 0, "cut", go_json(cut).hex()), cut)
+    require(header["InitialCut"]["Round"] < header["OldCut"]["Round"] < header["FinalCut"]["Round"], "old/final cut order")
+
+
+def artifact_rows(path, name, result, stats):
+    """Raw order and original bytes survive; no footer or trailing-row shortcut."""
+    maximum = 3 + 6 * result["spec"]["facts"]
+    digest, counts, header, footer_seen = hashlib.sha256(), [0, 0], None, False
+    with Path(path).open("rb") as source:
+        for number in range(maximum + 3):
+            line = source.readline(ARTIFACT_LINE_BYTES + 1)
+            if not line:
+                break
+            require(len(line) <= ARTIFACT_LINE_BYTES and line.endswith(b"\n") and not footer_seen, "artifact line/EOF bound")
+            value = json.loads(line, object_pairs_hook=pairs, parse_constant=lambda _: require(False, "nonfinite JSON"))
+            require(type(value) is dict, "artifact JSON object required")
+            require(line == go_json(value) + b"\n", "noncanonical artifact JSONL")
+            if number == 0:
+                artifact_header(value, name, result)
+                header = value
+                digest.update(line)
+                yield header
+            elif value.get("Type") == "footer":
+                fields(value, "Type Rows Groups Metadata PayloadSHA256")
+                require(same(value["Rows"], counts) and same(value["Groups"], header["FinalCut"]["Groups"]) and same(value["Metadata"], header["Metadata"]) and value["PayloadSHA256"] == digest.hexdigest(), "artifact incomplete/mixed footer")
+                footer_seen = True
+            else:
+                fields(value, "Type Row")
+                require(value["Type"] == "row" and sum(counts) < maximum, "artifact row type/count")
+                row = value["Row"]
+                fields(row, "Group Key Value" + (" IDKey IDValue RequestKey RequestValue" if name == "cdc" else ""))
+                integer(row["Group"], 0, 1)
+                raw = {key: raw_bytes(body) for key, body in row.items() if key != "Group"}
+                require(0 < len(raw["Key"]) <= 1024 and 0 < len(raw["Value"]) <= LINE_BYTES and sum(map(len, raw.values())) <= header["Policy"]["PageBytes"], "raw row admission/key/value")
+                counts[row["Group"]] += 1
+                digest.update(line)
+                yield {"Group": row["Group"], **raw}
+        require(header is not None and footer_seen and not source.read(1), "missing/truncated/extra artifact EOF")
+    index = ("history", "current", "cdc").index(name)
+    end = result["StreamEnds"][index]
+    fields(end, "Rows Groups Metadata")
+    require(same(end, {"Rows": counts, "Groups": header["FinalCut"]["Groups"], "Metadata": header["Metadata"]}), "result/EOF binding")
+    stats[name] = {"rows": counts, "payloadSHA256": digest.hexdigest()}
+
+
+def put_raw(spool, namespace, key, body):
+    prior = spool.find(namespace, key)
+    if prior is None:
+        spool.insert(namespace, key, body)
+    else:
+        spool.replace(namespace, key, prior, body)
+
+
+def fdb_raw_groups(path, spec, config, final_cut, stats, spool, result):
+    reader = artifact_rows(path, "cdc", result, stats)
+    header = next(reader, None)
+    require(header is not None, "missing CDC header")
+    physical, definitions = StoredState(spool, b"fdb-before"), set()
+    generations, sequences, versions, current_counts = [0, 0], [0, 0], [0, 0], [0, 0]
+    native_bytes = [0, 0]
+    maximum_metadata = {k: (1 << 64) - 1 for k in ("Floor", "Generation", "Versions", "Transactions", "Certificates", "Bytes", "Groups")}
+    for g in range(2):
+        native_bytes[g] = (len(fdb_key(config, g, "meta", "config")) + len(go_json(config)) +
+                           len(fdb_key(config, g, "meta", "state")) + len(go_json(maximum_metadata)))
+    for record in header["CutRecords"]:
+        native_bytes[0] += len(raw_bytes(record["Key"])) + len(raw_bytes(record["Value"]))
+    pending, ordinal_next, previous_order = {}, 1, None
+    bindings = hashlib.sha256()
+    total = 3 + 2 * spec["facts"]
+    for raw in reader:
+        group = decoded_body(raw["Value"])
+        ordinal = integer(group["Tx"]["Lifecycle"]["Provenance"], 1, total)
+        require(ordinal <= max(3, ordinal_next) and ordinal not in pending, "writer1 bounded setup/execution identity order")
+        canonical = fdb_group(group, spec, ordinal, config, physical, generations, sequences, definitions)
+        outcome = group["Outcome"]
+        order = outcome["Round"], outcome["Coordinator"], outcome["Request"]
+        require(previous_order is None or previous_order < order, "raw CDC deterministic enumeration order")
+        previous_order = order
+        owner = outcome["Coordinator"]
+        prefix = f"g{owner}/{config['Graph'].encode().hex()}/"
+        expected_key = (prefix + f"changes/{outcome['Sequence']:016x}/" + outcome["Request"].encode().hex()).encode()
+        require(raw["Group"] == owner and raw["Key"] == expected_key and raw["IDKey"] == fdb_key(config, owner, "id", outcome["ID"]) and raw["RequestKey"] == fdb_key(config, owner, "request", outcome["Request"]) and raw["IDValue"] == raw["RequestValue"] == go_json(outcome), "raw original ID/request/sequence binding")
+        require(header["InitialCut"]["Round"] < outcome["Round"] <= final_cut["Round"] and (outcome["Round"] <= header["OldCut"]["Round"]) == (ordinal <= 3 + spec["facts"]), "original old/final cut membership")
+        spool.insert(b"fdb-id", raw["IDKey"], raw["IDValue"])
+        spool.insert(b"fdb-request", raw["RequestKey"], raw["RequestValue"])
+        spool.insert(b"fdb-operation", u64(ordinal), raw["Value"])
+        native_bytes[owner] += sum(len(body) for body in raw.values() if type(body) is bytes)
+        for write in group["Writes"]:
+            g, key, after = write["Group"], write["Key"], write["After"]
+            body = go_json(after)
+            current_key = fdb_key(config, g, "current", key)
+            history_key = (f"g{g}/{config['Graph'].encode().hex()}/history/{after['Round']:016x}/" + key.encode().hex()).encode()
+            spool.insert(b"fdb-history", history_key, body)
+            prior = spool.find(b"fdb-current", current_key)
+            if prior is None:
+                current_counts[g] += 1
+            else:
+                native_bytes[g] -= len(current_key) + len(prior)
+            put_raw(spool, b"fdb-current", current_key, body)
+            native_bytes[g] += len(history_key) + len(body) + len(current_key) + len(body)
+            versions[g] += 1
+        stats["physicalWrites"] += len(group["Writes"])
+        for key in ("Key", "Value", "IDKey", "IDValue", "RequestKey", "RequestValue"):
+            bindings.update(u64(len(raw[key])) + raw[key])
+        pending[ordinal] = canonical
+        require(len(pending) <= 3, "fixed writer1 setup buffer")
+        while ordinal_next in pending:
+            yield pending.pop(ordinal_next)
+            ordinal_next += 1
+    require(not pending and ordinal_next == total + 1 and sequences == final_cut["Groups"], "incomplete raw original operations/watermarks")
+    for g, metadata in enumerate(header["Metadata"]):
+        require(metadata["Versions"] == versions[g] and metadata["Generation"] == generations[g] and metadata["Certificates"] == (3 if g == 0 else 0) and metadata["Bytes"] == native_bytes[g], "exact retained metadata census")
+    operation_count = 0
+    for operation_count, group in enumerate(rows(Path(path).with_name("fdb-cost-operation-groups.jsonl"), total), 1):
+        require(go_json(group) == spool.lookup(b"fdb-operation", u64(operation_count)), "per-operation original execution order/binding")
+    require(operation_count == total, "incomplete per-operation original file")
+    samples = 0
+    for samples, sample in enumerate(rows(Path(path).with_name("fdb-cost-latency.jsonl"), total), 1):
+        fields(sample, "phase fact cross ProposalNanos AckNanos VerificationNanos ProposalAttempts CommitAttempts Outcome")
+        phase, fact, node, edge = fixture(spec, samples)
+        require(sample["phase"] == phase and type(sample["fact"]) is int and sample["fact"] == fact and type(sample["cross"]) is bool and sample["cross"] == bool(edge and edge["Target"]["Owner"]), "per-request timing identity")
+        for name in ("ProposalNanos", "AckNanos", "VerificationNanos"):
+            integer(sample[name], 0, (1 << 63) - 1)
+        for name in ("ProposalAttempts", "CommitAttempts"):
+            integer(sample[name], 1, (1 << 31) - 1)
+        name, owner = operation(spec, samples)
+        require(go_json(sample["Outcome"]) == spool.lookup(b"fdb-id", fdb_key(config, owner, "id", name)), "per-request timing original receipt")
+    require(samples == total, "incomplete per-request timings")
+    for name, expected_counts in (("history", versions), ("current", current_counts)):
+        reader = artifact_rows(Path(path).with_name("fdb-cost-" + name + ".jsonl"), name, result, stats)
+        actual_header = next(reader, None)
+        require(same(actual_header, header | {"Stream": name}), "mixed native stream headers")
+        previous_key, counts = None, [0, 0]
+        for row in reader:
+            key = row["Group"], row["Key"]
+            require(previous_key is None or previous_key < key, "raw history/current duplicate/reordered row")
+            previous_key = key
+            require(row["Value"] == spool.lookup(b"fdb-" + name.encode(), row["Key"]), "raw history/current differs from exact original physical write")
+            counts[row["Group"]] += 1
+            if name == "history":
+                value = decoded_body(row["Value"])
+                if value["Round"] <= header["OldCut"]["Round"]:
+                    logical = row["Key"].split(b"/", 4)[-1]
+                    current_key = fdb_key(config, row["Group"], "current", bytes.fromhex(logical.decode()).decode())
+                    put_raw(spool, b"fdb-old", current_key, row["Value"])
+        require(counts == expected_counts, "missing native retained history/current rows")
+    stats["originalBindingsSHA256"] = bindings.hexdigest()
+    stats["orderContract"] = "raw (Round,Coordinator,Request) unchanged; execution originals provenance1,2,3 bind independent setup rounds through fixed three-entry buffer"
+
+
+def retained_observations(path, spec, config, spool):
+    """Actual point cells match actual canonical CDC and every raw posting copy."""
+    source, digest = iter(rows(path, 2 * spec["facts"])), hashlib.sha256()
+    state = StoredState(spool, b"native-before")
+    for value in (5, 6):
+        namespace = b"fdb-old" if value == 5 else b"fdb-current"
+        for fact in range(spec["facts"]):
+            entity = next(source, None)
+            require(entity is not None, "missing native retained point")
+            fields(entity, "id found kind source target mode type presence effective effectiveLife labels property")
+            ordinal = 4 + fact + (spec["facts"] if value == 6 else 0)
+            _, _, _, edge = fixture(spec, ordinal)
+            identity, life = edge["ID"], edge["ID"] + 1
+            require(same({k:entity[k] for k in ("id", "found", "kind", "source", "target", "mode", "type", "effective", "effectiveLife", "labels")},
+                         {"id": identity, "found": True, "kind": 2, "source": edge["Source"]["Node"], "target": edge["Target"]["Node"], "mode": 1, "type": "edge", "effective": True, "effectiveLife": life, "labels": None}), "native retained endpoint/life/declaration")
+            for key, cell, provenance in (((identity, 0, 1, ""), entity["presence"], 4 + fact), ((identity, life, 3, "p"), entity["property"], ordinal)):
+                canonical_cell(cell)
+                require(go_json(cell) == spool.lookup(b"native-cell-history", state.key(key) + u64(provenance)), "native retained cell differs from its exact original revision")
+            _, _, effects, _ = fdb_contract(spec, ordinal)
+            physical = None
+            for owner, writes in effects.items():
+                for write in writes:
+                    raw = spool.lookup(namespace, fdb_key(config, owner, "current", write["Key"]))
+                    if physical is None:
+                        physical = decoded_body(raw)
+                    require(raw == go_json(physical) and physical["Value"] == value and physical["Version"] == (1 if value == 5 else 2) and physical["TxID"] == operation(spec, ordinal)[0], "retained raw edge/out/in correspondence")
+            for node in (edge["Source"], edge["Target"]):
+                logical = f"node/{node['Node']:016x}/life/{node['Life']:016x}"
+                alive = decoded_body(spool.lookup(namespace, fdb_key(config, node["Owner"], "current", logical)))
+                require(alive["Value"] == alive["Version"] == 1 and alive["Deleted"] is False, "retained endpoint life")
+            digest.update(go_json({"id": identity, "source": edge["Source"]["Node"], "target": edge["Target"]["Node"], "life": life, "value": value, "operationProvenance": ordinal}) + b"\n")
+    require(next(source, None) is None, "extra native retained point")
+    return digest.hexdigest()
+
+
+def compare_streams(native_path, fdb_path, spec, config, final_cut, native_bounds, *, spool_directory=None, spool_policy=SMALL_POLICY, raw_result=None, observations_path=None):
+    owner = Path(native_path).parent if spool_directory is None else spool_directory
+    with Spool(owner, spool_policy) as spool:
+        report = _compare_streams(native_path, fdb_path, spec, config, final_cut, native_bounds, spool, raw_result, observations_path)
+        report["comparisonState"] = spool.report()
+        report["cleanup"] = "private spool removed on success/failure; raw inputs unchanged"
+        return report
+
+
+def _compare_streams(native_path, fdb_path, spec, config, final_cut, native_bounds, spool, raw_result, observations_path):
     fields(spec, "version facts crossPercent writers")
     integer(spec["facts"], 1, 1_000_000)
     require(type(spec["version"]) is type(spec["writers"]) is type(spec["crossPercent"]) is int and spec["version"] == 1 and spec["writers"] == 1 and spec["crossPercent"] in (0, 10, 50, 100), "fixed writer1 cost spec")
@@ -429,8 +718,18 @@ def compare_streams(native_path, fdb_path, spec, config, final_cut, native_bound
         integer(watermark)
     integer(final_cut["Round"], 1)
     native_stats, fdb_stats = {"records": 0, "controls": 0}, {"physicalWrites": 0}
-    left = native_groups(native_path, spec, native_bounds, native_stats)
-    right = fdb_groups(fdb_path, spec, config, final_cut, fdb_stats)
+    left = native_groups(native_path, spec, native_bounds, native_stats, spool)
+    if raw_result is None:
+        right = fdb_groups(fdb_path, spec, config, final_cut, fdb_stats, spool)
+    else:
+        fields(raw_result, "version engine spec deployment SetupNodes Creates Updates CompletedCreates CompletedUpdates SetupNanos WritesNanos VerificationNanos TotalNanos InitialCut OldCut FinalCut Config CDCGroups LogicalComponentChanges PhysicalGraphChanges IDAdmission oracleFormat StreamEnds")
+        require(observations_path is not None and "oldCut" in native_bounds, "raw parity requires actual retained observations/old cut")
+        require(type(raw_result["version"]) is int and raw_result["version"] == 2 and raw_result["oracleFormat"] == RAW_FORMAT and same(raw_result["Config"], config) and same(raw_result["FinalCut"], final_cut), "mixed raw result format/config/cut")
+        require(same(raw_result["spec"], spec) and len(raw_result["StreamEnds"]) == 3, "raw result specification/complete EOF set")
+        for name, expected in (("SetupNodes", 3), ("Creates", count), ("Updates", count), ("CompletedCreates", count), ("CompletedUpdates", count), ("CDCGroups", 3 + 2 * count), ("LogicalComponentChanges", 3 + 3 * count), ("PhysicalGraphChanges", 3 + 6 * count)):
+            require(type(raw_result[name]) is int and raw_result[name] == expected, "raw result exact cardinality")
+        require(raw_result["engine"] == "foundationdb" and raw_result["IDAdmission"] == "fixed declared fixture IDs/ranges; this adapter has no rho allocator protocol", "raw engine/admission identity")
+        right = fdb_raw_groups(fdb_path, spec, config, final_cut, fdb_stats, spool, raw_result)
     digest, groups, components = hashlib.sha256(), 0, 0
     while True:
         native, fdb = next(left, None), next(right, None)
@@ -442,7 +741,11 @@ def compare_streams(native_path, fdb_path, spec, config, final_cut, native_bound
         components += len(native["effects"])
         digest.update(json.dumps(native, sort_keys=True, separators=(",", ":")).encode() + b"\n")
     require(groups == 3 + 2 * spec["facts"] and components == 3 + 3 * spec["facts"], "complete logical cardinality")
-    return {"equal": True, "logicalGroups": groups, "componentChanges": components,
+    report = {"equal": True, "logicalGroups": groups, "componentChanges": components,
             "canonicalLogicalCDCSHA256": digest.hexdigest(), "native": native_stats, "fdb": fdb_stats,
             "nativeCodecBoundary": "cost-only qualified native decoder binds retained same-index views/originals/canonical CDC; Python checks outcome seals/fields, certified prefix/root hashes and complete decoded logical records",
             "scope": "fixed writer1 create/update contract; numeric rounds/indexes and physical protocol/replica layouts are validated per engine"}
+    if raw_result is not None:
+        report["canonicalRetainedOutputSHA256"] = retained_observations(observations_path, spec, config, spool)
+        report["oracleFormat"] = RAW_FORMAT
+    return report

@@ -173,7 +173,10 @@ all A–F exit requirements; implementation status never implies acceptance.
    normal/race/scoped coverage and affected statics, all 111 qualified child
    incarnations are reaped, and [independent root review](evidence/v2-p02-fence-election-20261014/root-review.json)
    verifies all 94 archive members and replays all nine genuine traces. Broader
-   P02 clauses and applicable hosted integration checks remain separate.
+   P02 clauses remain separate. [Focused hosted qualification at `e8a33c4d`](evidence/v2-ci-cost-scope-20261014/hosted-e8a33c4d.json)
+   passes the selected P01/P02 and finite cost parents in normal/race/coverage,
+   with affected build/static jobs. Its source pin predates P05 and the later
+   runner changes; it is not qualification of those implementations.
    P01's [Fresh/After outside-scope-coordinator component](evidence/v2-p01-outside-scope-20261014/receipt.json)
    is locally accepted and integrated after normal/race/scoped coverage and
    affected statics; [root review](evidence/v2-p01-outside-scope-20261014/root-review.json)
@@ -222,7 +225,8 @@ all A–F exit requirements; implementation status never implies acceptance.
    actual grant streams. This does not execute the 1M cell. The
    [private quota-limited comparison spool](evidence/v2-comparison-spool-20261014/root-review.json)
    is integrated as a helper with five direct tests passing independently; it
-   is still unwired. Next finish real six-process same-directory reopen,
+   is now wired in source to the raw comparison checker, with runtime acceptance
+   deferred. Source now also wires six-process same-directory reopen,
    original-outcome/CDC replay and bounded native index/endpoint paging, then
    wire FDB history/current/CDC streaming into the comparison checker with
    complete raw-byte/identity/order/watermark checks. The
@@ -230,11 +234,12 @@ all A–F exit requirements; implementation status never implies acceptance.
    is now accepted and integrated after real SDK/server normal/race/scoped
    coverage, vet/lint/security; [root review](evidence/v2-fdb-cost-stream-20261014/root-review.json)
    verifies all 494 raw members, 27 frozen source inputs, actual terminals and
-   86.01% helper coverage. It remains unwired and establishes no capacity cell.
-   Qualify actual tiny paired runs before implementing
-   genuine 8/32 writers: request-bound acknowledgements, bounded admission,
+   86.01% helper coverage. The later raw artifact writer/checker is integrated
+   source, not SDK-qualified output; neither establishes a capacity cell.
+   Implement genuine 8/32 writers with request-bound acknowledgements, bounded admission,
    phase barriers and explicit abort/replan/unknown-result attempt lineage.
-   Preserve the engines' actual conflict and ordering semantics. Separately
+   Preserve the engines' actual conflict and ordering semantics. Qualify tiny
+   paired runs before executing larger measurements. Separately
    finish equivalent FDB role/domain faults, unknown commits, pins/GC and
    chunk/manifest publication; native prepare-stage hooks are not FDB evidence.
    E closes when both FDB layouts and the native runner execute those cases with
@@ -258,19 +263,19 @@ all A–F exit requirements; implementation status never implies acceptance.
    decision recorded, no unresolved correctness failure, and the exact branch
    revision pushed with passing applicable hosted gates. V3–V7 remain separate.
 
-Immediate handoff order: review and qualify P05 first, then the native
-same-directory reopen/index checkpoint (`7dc1f42b`), then the FDB raw artifact
-writer and comparison checkpoints (`2bcb91f8`, `66a8e36b`). These are source
-checkpoints, not accepted runtime components. P05's final shared resume-budget
-correction is frozen at `408555a7` and awaits independent source/runtime review;
-the native package has a
-deferred shared-child patch; the FDB writer has not run against the actual SDK.
-Close each with its affected normal/race/coverage/static checks and exact
-artifact review before opening another source package in that lane. The
-acceptance inventory records uncovered clauses while these checks run; it is
-not a prerequisite documentation project that delays the first gate. Larger
-cells start only after a complete tiny paired cell passes. Existing accepted
-components stay closed unless their source or required behavior changes.
+Implementation handoff: P05 is source-integrated at `9e677135`, including the
+canonical schema setup correction; its resumed lookup/completion shares one
+ledger. Native reopen/index source is integrated through `80cf0e03`, including
+the released cost-worker dispatch. The FDB raw artifact writer/checker from
+`2bcb91f8`/`66a8e36b` is also integrated source. These implementations await
+runtime acceptance. The normal P05 compiler/setup failures are preserved and
+are not passes; a compilation-only check of the coherent P05/native source
+succeeds without executing tests. Next source packages cover conditional
+recovery-credit sizing, authenticated remote capacity recovery, durable pins/GC,
+actual writer concurrency and immutable column publication. Follow the owner's
+implementation-first ordering above; qualify the integrated result afterward.
+Existing accepted components stay closed unless their source or required
+behavior changes.
 
 Worker lanes: Sol 6.1/high for P05 and remaining B protocol gaps, then C/D;
 Sol 6.1/medium for finite native reopen/index runner changes, with root review

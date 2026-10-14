@@ -183,6 +183,32 @@ def compare_cells(native_path, fdb_path):
     module_spec = importlib.util.spec_from_file_location("actual_cost_cdc", ROOT / "compare-cost-cdc.py")
     checker = importlib.util.module_from_spec(module_spec)
     module_spec.loader.exec_module(checker)
+    version, format_ = fdb["result"].get("version"), fdb["result"].get("oracleFormat")
+    if type(version) is not int or (version, format_) not in ((1, None), (2, checker.RAW_FORMAT)):
+        raise ValueError("missing/mixed FDB oracle format; historical v1 is not v2 proof")
+    if version == 2:
+        required = {"fdb-cost-result.json", "fdb-cost-history.jsonl", "fdb-cost-current.jsonl",
+                    "fdb-cost-cdc.jsonl", "fdb-cost-operation-groups.jsonl", "fdb-cost-latency.jsonl"}
+        if not required <= fdb["launchReceipt"]["sha256"].keys() or not {"cdc.jsonl", "observations.jsonl", "native-cost-result.json"} <= native["artifacts"].keys():
+            raise ValueError("complete raw EOF/original/observation artifacts must be hash-bound")
+        if any(name.startswith("fdb-cost-view-") for name in fdb["launchReceipt"]["sha256"]):
+            raise ValueError("mixed legacy view/raw oracle artifacts")
+        actual_result = json.loads((right_root / "fdb-cost-result.json").read_text())
+        actual_native = json.loads((left_root / "native-cost-result.json").read_text())
+        if not checker.same(actual_result, fdb["result"]) or not checker.same(actual_native, native["result"]):
+            raise ValueError("sealed native/FDB result differs from controller result")
+        bounds = {"from": native["result"]["CDCFrom"], "through": native["result"]["CDCThrough"],
+                  "finalCut": native["result"]["FinalCut"], "oldCut": native["result"]["OldCut"]}
+        cdc = checker.compare_streams(left_root / "cdc.jsonl", right_root / "fdb-cost-cdc.jsonl", spec,
+                                      fdb["result"]["Config"], fdb["result"]["FinalCut"], bounds,
+                                      spool_directory=Path(native_path).resolve().parent,
+                                      raw_result=fdb["result"], observations_path=left_root / "observations.jsonl")
+        return {"equal": True, "spec": spec, "relationshipFacts": facts, "setupNodes": 3,
+                "usefulCreateTransactions": facts, "usefulUpdateTransactions": facts,
+                "retainedPointObservations": 2 * facts, "exactLogicalComponentChanges": cdc["componentChanges"],
+                "completeLogicalCDC": cdc, "oracleFormat": format_,
+                "canonicalRetainedOutputSHA256": cdc["canonicalRetainedOutputSHA256"],
+                "scope": "fixed writer1 raw native/FDB history/current/CDC parity; private quota-bound verifier spool; no capacity/engine-selection/fullmatrix acceptance"}
     cdc = checker.compare_streams(left_root / "cdc.jsonl", right_root / "fdb-cost-cdc.jsonl", spec,
                                   fdb["result"]["Config"], fdb["result"]["FinalCut"],
                                   {"from": native["result"]["CDCFrom"], "through": native["result"]["CDCThrough"],
