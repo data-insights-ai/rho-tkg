@@ -1381,6 +1381,8 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			case processCostObserve:
 				if o.cost == nil {
 					e = errInvalid
+				} else if len(r.data) != 0 {
+					out.aux, e = nativeGraphCostIndexObserve(workerCtx, certifiedSessions, r)
 				} else {
 					out.aux, e = nativeGraphCostObserve(workerCtx, certifiedSessions, r)
 				}
