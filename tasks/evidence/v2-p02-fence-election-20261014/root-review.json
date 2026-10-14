@@ -1,0 +1,158 @@
+{
+  "scope": "Independent root review of the finite P02 component; not whole P02/V2 or current full-module qualification",
+  "integratedSourceCommit": "6fc7a0ce",
+  "qualifiedSourceCommit": "b4d0d01ad934a44515c2a2a192a0e5b3a71db064",
+  "archive": {
+    "path": "raw.tar.gz",
+    "sha256": "c39f5c31ccd54097313c39a8256b38e97bda909a504bbc0419671dea4eb76c8e",
+    "bytes": 1167991,
+    "membersVerified": 94,
+    "manifest": "raw-manifest.json"
+  },
+  "sourceHashes": {
+    "v5/internal/graphapply/prepare_fence_p02_process_test.go": "18799d02060883a05895ba910467a6face6edc8d87335648c7044b187a9efad6",
+    "v5/internal/graphapply/prepare_fence_p02_harness_test.go": "3bd9f2ad27bff64b56990c4ee61ecd039f7518e12dee9d74b0c1e03db4cd75e2",
+    "v5/internal/graphapply/replicated_process_test.go": "0dab4c28e0c6a8e6fccfe567d52b0c56e4d583b78d9c90edce0591f10b106b62",
+    "tools/v5-substrate/check-p02-history.py": "3588064fe190d7773884fe147bf2456dc8b081f5bf4e7a8fcc21e2c17f337ab7",
+    "scripts/ci-changes.py": "d97e53b6d501fbc676fbaa58dd25e969b1592939a107308c42f69307614ae1b9",
+    "scripts/ci-changes-test.py": "d93557923e67a2cc2dc153a1f4656877d6657c1cf8e6276c14ae0b1ed0f73fa0"
+  },
+  "sixRecordedSourceHashesMatchIntegratedBytes": true,
+  "frozenGoModuleInputs": 577,
+  "matchingIntegratedInputs": 575,
+  "differentInputs": [
+    "v5/internal/graphapply/graph_source_process_test.go",
+    "v5/internal/graphapply/native_graph_cost_test.go"
+  ],
+  "additionalInputs": [
+    "v5/internal/graphapply/cross_process_p04_identity_test.go"
+  ],
+  "carryReview": "Both different inputs are the reviewed cc8 cost-only response diagnostics and its test. P02 uses the ordinary non-cost process fixture; o.cost is nil, so full original diagnostics remain unchanged. The added P04 file declares its test/helper without changing the P02 call path. No production Go differs from the frozen qualification.",
+  "rawGateReview": {
+    "normal": "actual parent, all three cases and package PASS23.302s; no skip/fail",
+    "race": "actual parent, all three cases and package PASS80.045s; no skip/fail",
+    "coverage": "actual parent, all three cases and package PASS32.312s; no skip/fail; scoped diagnostic6.6%",
+    "statics": "actual vet/lint/gosec watchdog terminal0; pinned binaries still match recorded SHA256"
+  },
+  "traceReplay": [
+    {
+      "member": "coverage/p02-A-before-B-after.json",
+      "sha256": "56cafbe513a5c38a7142bf349a5d54a933a260e43dff428e18fa719a898a57ea",
+      "serialWitness": [
+        "edge-create"
+      ],
+      "votedFloors": [
+        6,
+        106
+      ],
+      "commitRound": 107
+    },
+    {
+      "member": "coverage/p02-delayed-A-prepare.json",
+      "sha256": "b5386e7b80fc2274da8b01499731d6330e0fe3c735eb8ede8a8ac4a2451bdff1",
+      "serialWitness": [
+        "edge-create"
+      ],
+      "votedFloors": [
+        106,
+        6
+      ],
+      "commitRound": 107
+    },
+    {
+      "member": "coverage/p02-persisted-fence-before-application.json",
+      "sha256": "9b86835cfcc4872a219d5d6a03d1116ef3df3572cc27131ec0d4b89946fdf27e",
+      "serialWitness": [
+        "edge-create",
+        "node-close"
+      ],
+      "votedFloors": [
+        106,
+        6
+      ],
+      "commitRound": 107
+    },
+    {
+      "member": "normal-attempt10/p02-A-before-B-after.json",
+      "sha256": "4f77da97b6956a9d5859be2a4af2405d064083e41920cc14eefdac399fed2acd",
+      "serialWitness": [
+        "edge-create"
+      ],
+      "votedFloors": [
+        6,
+        106
+      ],
+      "commitRound": 107
+    },
+    {
+      "member": "normal-attempt10/p02-delayed-A-prepare.json",
+      "sha256": "a887c1a6f2fce1fc507ed4460d240a4ff36b8051d9b1bcf2655718e8d69aed15",
+      "serialWitness": [
+        "edge-create"
+      ],
+      "votedFloors": [
+        106,
+        6
+      ],
+      "commitRound": 107
+    },
+    {
+      "member": "normal-attempt10/p02-persisted-fence-before-application.json",
+      "sha256": "769e3e0d3cd978c44ae01d515ca03d1b27e0f6c2c59285522fa17efd1866d657",
+      "serialWitness": [
+        "edge-create",
+        "node-close"
+      ],
+      "votedFloors": [
+        106,
+        6
+      ],
+      "commitRound": 107
+    },
+    {
+      "member": "race/p02-A-before-B-after.json",
+      "sha256": "3e7132c5eb311b15860992ffd3c35941982be1c669346c0d317070f77083c3c2",
+      "serialWitness": [
+        "edge-create"
+      ],
+      "votedFloors": [
+        6,
+        106
+      ],
+      "commitRound": 107
+    },
+    {
+      "member": "race/p02-delayed-A-prepare.json",
+      "sha256": "84a1ea634c4f9692adaeb35ed21a4af6b6067fda7f146a2a128a474b844b5b75",
+      "serialWitness": [
+        "edge-create"
+      ],
+      "votedFloors": [
+        106,
+        6
+      ],
+      "commitRound": 107
+    },
+    {
+      "member": "race/p02-persisted-fence-before-application.json",
+      "sha256": "216f40b799997209ea66e31c618b7e428dcd2321a0792c0b09e63e3a3b095e6d",
+      "serialWitness": [
+        "edge-create",
+        "node-close"
+      ],
+      "votedFloors": [
+        106,
+        6
+      ],
+      "commitRound": 107
+    }
+  ],
+  "cleanup": "Actual qualified log output records111 incarnations,108 clean exits and3 deliberate Stage leader SIGKILLs, all reaped. Prior nine failed attempts remain failure-only evidence.",
+  "reviewedSemantics": [
+    "Original Register query intentionally projects the retained R control and omits its stored floor; all three voters retain identical actual outcome bytes.",
+    "Original local outcome replay changes only its documented requestReplay disposition; original identity/hash/index are retained and no new CDC is emitted.",
+    "Genuine new election no-op entries are captured before log reclamation; no inferred or fabricated no-op record is inserted.",
+    "Installed captured rounds remain separate from durable read fences; actual voted floors exceed their relevant fences and COMMIT strictly exceeds both votes."
+  ],
+  "remaining": "Applicable hosted checks for the integrated revision, uncovered broader P02/fault clauses, and the final coordinated V2 gate remain separate."
+}

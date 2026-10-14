@@ -158,19 +158,36 @@ Execution plan to finish V2 (2026-10-14; keep the A–F scope above):
    production test, source revision and receipt, or a concrete missing case.
    Reuse accepted E15–E18/P08/P03/P06/P07/P09 evidence within its scope; a new
    case is needed only for an uncovered requirement or an invalidated source.
-   P02's author now reports all three process schedules passing normal, race,
-   scoped coverage and affected statics, with all nine independent trace bridges
-   passing; receipt packaging and source/evidence integration review remain
-   pending. P01's Fresh/After outside-scope-coordinator draft is
-   source-only. The [finite P04/cost-response checkpoint](evidence/v2-p04-cost-response-20261014/receipt.json)
+   The [finite P02 component](evidence/v2-p02-fence-election-20261014/receipt.json)
+   is now locally accepted and integrated: all three process schedules pass
+   normal/race/scoped coverage and affected statics, all 111 qualified child
+   incarnations are reaped, and [independent root review](evidence/v2-p02-fence-election-20261014/root-review.json)
+   verifies all 94 archive members and replays all nine genuine traces. Broader
+   P02 clauses and applicable hosted integration checks remain separate.
+   P01's [Fresh/After outside-scope-coordinator component](evidence/v2-p01-outside-scope-20261014/receipt.json)
+   is locally accepted and integrated after normal/race/scoped coverage and
+   affected statics; [root review](evidence/v2-p01-outside-scope-20261014/root-review.json)
+   verifies its 71 archive members and 77 original external hashes. This is a
+   six-disk-voter in-process component, not an OS-process fault or independently
+   streamed serial-history proof. The
+   [finite P04/cost-response checkpoint](evidence/v2-p04-cost-response-20261014/receipt.json)
    is integrated with its frozen qualification; the [clone-only follow-up](evidence/v2-p04-clone-followup-20261014/receipt.json)
-   still needs affected compile/lint and its direct normal test. Close these
-   components before extending their fixtures or starting new broad campaigns.
-2. **Close B's remaining serialization requirements.** After P01, assign a
-   high-effort Sol 6.1 worker to the P05 gap: a historical read followed by a dependent write,
+   is closed by [hosted qualification at `5cc915c7`](evidence/v2-p04-clone-followup-20261014/hosted-5cc915c7.json):
+   its direct normal/race/scoped coverage checks and v5 lint/security pass.
+   Audit the remaining clauses separately rather than reopening these selected
+   components without a changed source or uncovered requirement.
+2. **Close B's remaining serialization requirements.** A high-effort Sol 6.1
+   worker is implementing the real P05 API gap: a historical read followed by a dependent write,
    absent keys, empty ranges, temporal predicates, endpoint-life/revision ABA,
    and topology/catalog/profile dependencies. Enumerate existing coverage first;
    add the missing production schedules and fix any demonstrated shared cause.
+   The proposed opt-in read captures an authenticated complete dependency
+   condition before returning data; dependent writes bind that original condition
+   to durable request identity and validate it again at actual prepare application.
+   Unchanged reads must really commit; changed state or authority must require
+   caller restart, and unavailable authority must remain unavailable. Ordinary
+   unconditional writes retain their contract. Source-only checkpoints are not
+   accepted implementation or P05 evidence.
    Finish uncovered P03/P04/P06 clauses from the same inventory, including
    partial installation, decision races, complete predicate locking and recovery.
    B closes only when every clause has an authentic history accepted by the
@@ -187,12 +204,20 @@ Execution plan to finish V2 (2026-10-14; keep the A–F scope above):
    only with exact oracle agreement, no acknowledged durable loss, recovery after
    restored authority and all owned processes/handles reaped. SIGKILL does not
    substitute for torn-write or power-loss-model evidence.
-4. **Build E's executable comparison prerequisites in parallel.** The comparison
-   worker first qualifies the source-only native multiple-grant setup with the
-   compact profile guard and actual small local/cross process cases. Next finish
-   bounded native index/endpoint paging and FDB history/current/CDC streaming,
-   with a private quota-limited comparison spool and complete raw-byte/identity/
-   order/watermark checks. Qualify actual tiny paired runs before implementing
+4. **Build E's executable comparison prerequisites in parallel.** The
+   [native multiple-grant setup](evidence/v2-e-multiple-grants-20261014/receipt.json)
+   is locally accepted and integrated for the compact profile guard and actual
+   17-fact local/cross process cases; [root review](evidence/v2-e-multiple-grants-20261014/root-review.json)
+   verifies all 86 archive members, 90 original external hashes and the six
+   actual grant streams. This does not execute the 1M cell. The
+   [private quota-limited comparison spool](evidence/v2-comparison-spool-20261014/root-review.json)
+   is integrated as a helper with five direct tests passing independently; it
+   is still unwired. Next finish real six-process same-directory reopen,
+   original-outcome/CDC replay and bounded native index/endpoint paging, then
+   qualify and wire FDB history/current/CDC streaming into the comparison
+   checker with complete raw-byte/identity/order/watermark checks. FDB's new
+   helper/test source remains uncompiled and unqualified pending root review.
+   Qualify actual tiny paired runs before implementing
    genuine 8/32 writers: request-bound acknowledgements, bounded admission,
    phase barriers and explicit abort/replan/unknown-result attempt lineage.
    Preserve the engines' actual conflict and ordering semantics. Separately
@@ -219,9 +244,10 @@ Execution plan to finish V2 (2026-10-14; keep the A–F scope above):
    decision recorded, no unresolved correctness failure, and the exact branch
    revision pushed with passing applicable hosted gates. V3–V7 remain separate.
 
-Worker lanes: Sol 6.1/high for P02, then C/D; Sol 6.1/medium for the bounded
-P01 fixture, followed by Sol 6.1/high for P05 and remaining B protocol gaps;
-Sol 6.1/high for E/comparison, then F execution. The
+Worker lanes: Sol 6.1/high for P05 and remaining B protocol gaps, then C/D;
+Sol 6.1/medium for finite native reopen/index runner changes, with root review
+of its proposal before implementation; Sol 6.1/high for FDB streaming,
+equivalent faults and comparison integration, then F execution. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
 serialize heavy local fault/benchmark workloads under the shared resource lease.

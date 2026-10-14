@@ -1,0 +1,22 @@
+{
+  "scope": "Private disposable verifier state helper; still unwired, no engine/capacity acceptance",
+  "integratedSourceCommit": "70379484",
+  "authorSourceCommit": "49dffdcca86bc0c5b583e14b9050d4474b7b2331",
+  "sourceHashes": {
+    "tools/v5-substrate/comparison_spool.py": "263098f25bdf7ca03886ae24ef5cf9ce9168475dbf472382d66e8d9c83e94b8f",
+    "tools/v5-substrate/comparison_spool_test.py": "02ad753dc15c6924d65afd7f19dcd950d4d3c7112c8e28231505ea5e2bdd9a58"
+  },
+  "rawArchive": {
+    "path": "raw.tar.gz",
+    "sha256": "a3fbc14bde32a007484756a09f062f63e34ca7742cd0937574aaefb4b7acd772",
+    "membersVerified": 8
+  },
+  "review": "Complete helper/test API read. BLOB identity, uint64 byte ordering, exact predecessor replacement, duplicate/missing/quota refusal, indexed bounded walk and caller-directory cleanup checked. No graph model or production dependency.",
+  "independentValidation": "Root ran the five unchanged direct tests with recorded Python3.14.3 on integrated source:5PASS,0skip,0.011s. Actual cache target16KiB/database quota64KiB fixture policy; no process RSS guarantee.",
+  "remaining": [
+    "wire bounded checker state",
+    "actual FDB history/current/CDC streaming",
+    "native complete endpoint/index paging and physical reopen",
+    "large paired resource qualification"
+  ]
+}

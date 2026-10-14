@@ -1,0 +1,18 @@
+{
+  "scope": "Finite P01 native in-process disk-voter component; no OS-process fault or independent streamed serial-history acceptance",
+  "integratedSourceCommit": "7ceb477f",
+  "authorSourceCommit": "52d2f238d28d6a72f3965a3e43d2f6fe70975d04",
+  "sourceFile": "v5/internal/graphapply/certified_graph_p01_scope_test.go",
+  "sourceSHA256": "c87b1be95ab9314a1dde9dabca2ec1142de015f6b3d4606b7f7396273be0b50b",
+  "archive": {
+    "path": "raw.tar.gz",
+    "sha256": "870ef4fde1de4ff6fa47fcb0a36cb8965f6978db084fd8b1da7017853b9c5b19",
+    "bytes": 151404,
+    "membersVerified": 71
+  },
+  "externalOriginalHashesVerified": 77,
+  "rawGateReview": "Exact parent+Fresh+After and package PASS in final normal/race/scoped coverage; vet/lint/gosec actual terminal0 with final source binding. Initial two fixture failures retained; individual unchanged P04 parent passes within the first failed package, without a package success claim.",
+  "sourceReview": "Fresh request has mode only; After carries the original receipt. Genuine B COMMIT/B-only installation while A remains original YES; authenticated decision reply held/cancelled/retried; no A fence/certificate before required authority and no B data source. A label/scalar/index/phantom answers and held/reopened old certificate are exact. Fully scoped cross-edge hydration remains its separate E15/E18 contract.",
+  "carryReview": "All production Go matches the author commit. Additional P02/P03/P06 process tests, the inactive P02 child hook and cost-only grant test helpers do not change P01 in-process call paths.",
+  "remaining": "Applicable hosted integrated checks, missing broader P01 clauses and full B/V2 oracle audit remain separate."
+}

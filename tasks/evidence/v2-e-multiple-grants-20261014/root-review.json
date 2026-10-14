@@ -1,0 +1,40 @@
+{
+  "scope": "Finite writer1 multiple-grant setup qualification only; no capacity or full E acceptance",
+  "authorSourceCommit": "68236a0a31f44899aa2a7795d1f916106206b4a7",
+  "integratedSourceCommit": "a3b705bb",
+  "evidenceCommit": "b8f976a6",
+  "archive": {
+    "path": "raw.tar.gz",
+    "sha256": "3092611cc9d921698bbaa5cdd9472d16b04c3441d9ec205f4fc775763478d481",
+    "bytes": 443480,
+    "membersVerified": 86
+  },
+  "frozenGoModuleInputs": 576,
+  "matchingIntegratedInputs": 575,
+  "differentInput": [
+    "v5/internal/graphapply/replicated_process_test.go"
+  ],
+  "carryReview": "Only shared child constructor differs: the reviewed inactive P02 hook delegates to the original openAllocationHost when its test-only Stage environment is absent. All production Go and the four cost grant source files are exact; this is functional carry, no timing-equivalence/performance claim.",
+  "costSourceHashes": {
+    "v5/internal/graphapply/native_graph_cost_grants_harness_test.go": "2e80a0ed0ef1b3a3bb3fd74279b17966c81e10bcd2380c90b56762e9df2755f9",
+    "v5/internal/graphapply/native_graph_cost_grants_test.go": "1cd5d8783e41094d958acdfa9a193b4b33c6a59f1411e5333c673e79aeff470f",
+    "v5/internal/graphapply/native_graph_cost_harness_test.go": "c1bd8d76651badc593fe44bb1d8227800680ccecfc5db04558d4c83f88243687",
+    "v5/internal/graphapply/native_graph_cost_test.go": "aa004bb7119451f3e2f77c0761fcfcab60d2a045cac2132b261c65e9a4d12cc4"
+  },
+  "rawGateReview": "Actual semantic original-profile RED against a1cd034c; final exact profile+17-fact local/cross parents and package PASS in normal/race/scoped coverage; actual vet/lint/gosec terminal0. All six runtime cells report six clean child reaps and zero owners.",
+  "rawGrantStreams": [
+    "coverage-artifacts/rho-native-cost-2553930567/grants.jsonl",
+    "coverage-artifacts/rho-native-cost-2664247408/grants.jsonl",
+    "normal-artifacts/rho-native-cost-1226144921/grants.jsonl",
+    "normal-artifacts/rho-native-cost-4190824345/grants.jsonl",
+    "race-artifacts/rho-native-cost-2490649390/grants.jsonl",
+    "race-artifacts/rho-native-cost-4128368527/grants.jsonl"
+  ],
+  "grantCorrespondence": "All six streams contain actual nonempty Reserve/Install outcomes for HOME1/count32, HOME2/count8 and REMOTE1/count2. Source-bound Host fresh-binding validation checks their genuine installed ranges, graph/recipient/session/publication. Input selection is not Cursor.Next issuance.",
+  "externalOriginalHashesVerified": 90,
+  "remaining": [
+    "Physical same-directory native cost-runner reopen and exact old/current/index/CDC after restart are NOT exercised by these parents.",
+    "Duplicate grant replay is NOT exercised by these parents. Accepted P08 semantics may carry only through production source equivalence; this receipt does not claim cost-runner replay qualification.",
+    "No1M runtime,8/32writers, matched10k performance result, full matrix/fullV2 or release claim."
+  ]
+}

@@ -1,0 +1,142 @@
+{
+  "sourceCommit": "49dffdcca86bc0c5b583e14b9050d4474b7b2331",
+  "base": "68236a0a31f44899aa2a7795d1f916106206b4a7",
+  "newSourcePaths": {
+    "tools/v5-substrate/comparison_spool.py": "263098f25bdf7ca03886ae24ef5cf9ce9168475dbf472382d66e8d9c83e94b8f",
+    "tools/v5-substrate/comparison_spool_test.py": "02ad753dc15c6924d65afd7f19dcd950d4d3c7112c8e28231505ea5e2bdd9a58"
+  },
+  "grants68236a0aInputHashesUnchanged": true,
+  "existingCheckerSHA256": {
+    "tools/v5-substrate/compare-cost-cdc.py": "eac28bfe8b245a1729bad609a02cfd0a902c3dfca4fee01e5327b2eb67fd7f91",
+    "tools/v5-substrate/cost-cell.py": "df47d8adddaa01ddcb2b21904a9151de25a1bc34f8bdd9e2fa42ac2bae705d0b"
+  },
+  "qualification": "five direct private-spool Python unit parents only; no checker/FDB/native/capacity integration",
+  "test": {
+    "command": [
+      "/opt/homebrew/opt/python@3.14/bin/python3.14",
+      "-B",
+      "tools/v5-substrate/comparison_spool_test.py",
+      "-v"
+    ],
+    "exit": 0,
+    "parents": [
+      "test_consumer_failure_and_active_walk_cleanup",
+      "test_duplicate_original_and_transaction_refuse_and_cleanup",
+      "test_page_quota_and_blob_type_refuse_and_cleanup",
+      "test_raw_uint64_predecessor_walk_and_success_cleanup",
+      "test_wrong_predecessor_and_missing_state_refuse_and_cleanup"
+    ],
+    "skips": 0,
+    "reportedSeconds": 0.008
+  },
+  "prerequisiteFailure": {
+    "exit": 1,
+    "classification": "pre-helper module absence; unittest parents not executed; no old behavioral failure claim"
+  },
+  "python": {
+    "version": "3.14.3 (main, Feb  3 2026, 15:32:20) [Clang 17.0.0 (clang-1700.6.3.2)]",
+    "executable": "/opt/homebrew/opt/python@3.14/bin/python3.14",
+    "executableSHA256": "cbf84109626aa1013bbe408fbb9590bd0f1c1548f038b2221c6b8b87de26ca43"
+  },
+  "sqlite": {
+    "version": "3.53.2",
+    "extension": "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/lib-dynload/_sqlite3.cpython-314-darwin.so",
+    "extensionSHA256": "8b751990131722185775f5d532c89d4588285c88b23112d2758a4594721aa3ac",
+    "compileOptions": [
+      "ATOMIC_INTRINSICS=1",
+      "COMPILER=clang-21.0.0",
+      "DEFAULT_AUTOVACUUM",
+      "DEFAULT_CACHE_SIZE=-2000",
+      "DEFAULT_FILE_FORMAT=4",
+      "DEFAULT_JOURNAL_SIZE_LIMIT=-1",
+      "DEFAULT_MMAP_SIZE=0",
+      "DEFAULT_PAGE_SIZE=4096",
+      "DEFAULT_PCACHE_INITSZ=20",
+      "DEFAULT_RECURSIVE_TRIGGERS",
+      "DEFAULT_SECTOR_SIZE=4096",
+      "DEFAULT_SYNCHRONOUS=2",
+      "DEFAULT_WAL_AUTOCHECKPOINT=1000",
+      "DEFAULT_WAL_SYNCHRONOUS=2",
+      "DEFAULT_WORKER_THREADS=0",
+      "DIRECT_OVERFLOW_READ",
+      "ENABLE_API_ARMOR",
+      "ENABLE_COLUMN_METADATA",
+      "ENABLE_DBSTAT_VTAB",
+      "ENABLE_FTS3",
+      "ENABLE_FTS3_PARENTHESIS",
+      "ENABLE_FTS5",
+      "ENABLE_GEOPOLY",
+      "ENABLE_MATH_FUNCTIONS",
+      "ENABLE_MEMORY_MANAGEMENT",
+      "ENABLE_PERCENTILE",
+      "ENABLE_PREUPDATE_HOOK",
+      "ENABLE_RTREE",
+      "ENABLE_SESSION",
+      "ENABLE_STAT4",
+      "ENABLE_UNLOCK_NOTIFY",
+      "MALLOC_SOFT_LIMIT=1024",
+      "MAX_ATTACHED=10",
+      "MAX_COLUMN=2000",
+      "MAX_COMPOUND_SELECT=500",
+      "MAX_DEFAULT_PAGE_SIZE=8192",
+      "MAX_EXPR_DEPTH=1000",
+      "MAX_FUNCTION_ARG=1000",
+      "MAX_LENGTH=1000000000",
+      "MAX_LIKE_PATTERN_LENGTH=50000",
+      "MAX_MMAP_SIZE=0x7fff0000",
+      "MAX_PAGE_COUNT=0xfffffffe",
+      "MAX_PAGE_SIZE=65536",
+      "MAX_SQL_LENGTH=1000000000",
+      "MAX_TRIGGER_DEPTH=1000",
+      "MAX_VARIABLE_NUMBER=250000",
+      "MAX_VDBE_OP=250000000",
+      "MAX_WORKER_THREADS=8",
+      "MUTEX_PTHREADS",
+      "SYSTEM_MALLOC",
+      "TEMP_STORE=1",
+      "THREADSAFE=1",
+      "USE_URI"
+    ]
+  },
+  "actualSpoolReport": {
+    "cache_is_process_rss_limit": false,
+    "cached_statements": 8,
+    "journal_mode": "off",
+    "mmap_bytes": 0,
+    "page_bytes": 4096,
+    "peak_allocated_bytes": 8192,
+    "peak_file_bytes": 8192,
+    "policy": {
+      "cache_bytes": 16384,
+      "max_disk_bytes": 65536,
+      "max_key_bytes": 64,
+      "max_value_bytes": 1024
+    },
+    "sqlite_version": "3.53.2",
+    "temp_store": "memory; no SQL temp tables/sorts",
+    "walk_plan": "SEARCH state USING PRIMARY KEY (namespace=? AND key>?)"
+  },
+  "testPolicyIsCapacityAcceptance": false,
+  "callerInputsAndPrivateSpoolCleanup": "asserted directly on success/state failure/page quota/consumer failure",
+  "raw": {
+    "path": "/var/tmp/rho-v5-comparison-spool-20261014/raw.tar.gz",
+    "sha256": "a3fbc14bde32a007484756a09f062f63e34ca7742cd0937574aaefb4b7acd772",
+    "members": {
+      "red-stdout.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "red-stderr.txt": "9a74a46851885a2a92b28dd74e69338d54acd8c1a5d076e794b52d402e33e5b6",
+      "initial-normal-stdout.txt": "74e9965e490051c6f3b1796ccbdd28bb204aff1b3159e636f40ec434692aebd5",
+      "initial-normal-stderr.txt": "f5f495ec2ba8c12aaad0b64f736bb3d5fcc0904457780c1f9ba7c1875c083404",
+      "normal-stdout.txt": "74e9965e490051c6f3b1796ccbdd28bb204aff1b3159e636f40ec434692aebd5",
+      "normal-stderr.txt": "c8230b9204de64282e47375c9ccdbe48693364917d0033596591f7491bbb883a",
+      "comparison_spool.py": "263098f25bdf7ca03886ae24ef5cf9ce9168475dbf472382d66e8d9c83e94b8f",
+      "comparison_spool_test.py": "02ad753dc15c6924d65afd7f19dcd950d4d3c7112c8e28231505ea5e2bdd9a58"
+    }
+  },
+  "sourceEquivalence": "Commit touches exactly two new Python files; all existing tracked files, grants source and large checkers unchanged",
+  "remaining": [
+    "root API/source review",
+    "checker wiring",
+    "actual FDB current/history/CDC streaming",
+    "paired large-layout resource qualification"
+  ]
+}
