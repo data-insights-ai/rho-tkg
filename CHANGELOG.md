@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.55.1] - 2026-10-15
+
 ### Changed
 
 - **sigma's read-then-correct cut no longer copies the history: corrections and GraphTx rollback snapshots from the
