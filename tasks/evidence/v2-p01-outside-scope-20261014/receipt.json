@@ -1,0 +1,1227 @@
+{
+  "scope": {
+    "source_commit": "52d2f238d28d6a72f3965a3e43d2f6fe70975d04",
+    "P01": "Two sequential Fresh/After scenarios; each uses six actual disk-backed native Driver/Host voters inside one test process. B8 coordinator, Tx touches A/B, B COMMIT and B-only label installation, A original YES plus zeroCDC, scope only A3. No OS-process or quorum-loss claim.",
+    "oracles": [
+      "Original Tx/digest/manifest/votes and exact B CDC all voters; complete source-authenticated B decision held then actual cancellation/pending; no A fence/certificate publication while held; original decision retry unchanged; one A data certificate >=D and zero B data-source captures",
+      "Current A label and scalar9 exact, candidate9 exactly{1}, phantom999 candidates empty and phantomentity7 absent; held/reopened physical oldAt has absent scalar/index/label and exact original certificate",
+      "All six participants resolve unchanged Tx/digest/manifest/round; B decision remains immutable; views/workers/source services close before actual six-voter reopen; test Cleanup closes final sessions and Hosts"
+    ],
+    "fixture_failures": [
+      "24fd2aed: noncertified partial B posting cannot hydrate missing A primary, graphstore corrupt catalog. Fixture correction, no production defect claim.",
+      "852a009d: scoped cross-edge primary hydration requires B endpoint authority, genuine graphstore ErrScopeUnavailable. Paired node effects keep requested A data assertions in scope; full cross-edge hydration belongs to E15/E18."
+    ],
+    "clone_followup": "Direct P04 parent normal PASS1.81s in failed-normal1 combined invocation, P04 revised source4dcd9f57 unchanged through final52d. Final affected package lint and normal compile check also bind that source. Earlier cc8 P04 race/coverage evidence remains historical; no repeat campaign.",
+    "coverage": "Scoped P01 production-path coverage31.4% is diagnostic, not full-suite coverage or an80% public-method gate.",
+    "not_claimed": [
+      "Full P01 fault matrix",
+      "Six OS processes",
+      "Complete packageB/V2 acceptance",
+      "Production speed improvement",
+      "New benchmark"
+    ]
+  },
+  "compiler": {
+    "path": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+    "sha256": "318dee99db233501f6c419fbb4616e5a345ed0b831dbd6c7669b24e1ff8e9e2e",
+    "version": "go version go1.26.9 darwin/arm64"
+  },
+  "gates": [
+    {
+      "mode": "compile",
+      "command": {
+        "cwd": "/var/tmp/rho-v2-ack-attribution-20261014/v5",
+        "command": [
+          "python3",
+          "/var/tmp/rho-v2-p01-evidence-20261014/limit-local.py",
+          "--rss-mib",
+          "4096",
+          "--seconds",
+          "180",
+          "--report",
+          "/var/tmp/rho-v2-p01-evidence-20261014/compile.watchdog.json",
+          "--",
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-timeout=150s",
+          "-run=^$",
+          "./internal/graphapply"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2",
+          "GOMEMLIMIT": "2GiB",
+          "GOFLAGS": "-p=1",
+          "GOWORK": "off",
+          "GOTOOLCHAIN": "local",
+          "PATH": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/usr/local/go/bin:/Users/markusnissl/.codex/packages/standalone/releases/0.162.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg03h015q:/Users/markusnissl/.codex/tmp/arg0/codex-arg05Feg6O:/Users/markusnissl/.codex/packages/standalone/releases/0.162.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0emR3eT:/Users/markusnissl/.codex/packages/standalone/releases/0.161.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0cqPGiY:/Users/markusnissl/.codex/packages/standalone/releases/0.160.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0f4nAi9:/Users/markusnissl/.codex/packages/standalone/releases/0.160.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0UsPrPG:/Users/markusnissl/.codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg04bYMhn:/Users/markusnissl/.codex/packages/standalone/releases/0.159.2-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0MP66Ba:/Users/markusnissl/.codex/packages/standalone/releases/0.159.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0rXqGkx:/Users/markusnissl/.codex/packages/standalone/releases/0.158.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg07YU9q1:/Users/markusnissl/.codex/packages/standalone/releases/0.157.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0Ly7AVz:/Users/markusnissl/.grok/bin:/Users/markusnissl/.opencode/bin:/Users/markusnissl/.antigravity/antigravity/bin:/Users/markusnissl/Library/pnpm/bin:/Users/markusnissl/.sdkman/candidates/java/current/bin:/Users/markusnissl/.sdkman/candidates/gradle/current/bin:/Users/markusnissl/.bun/bin:/Users/markusnissl/.deno/bin:/Users/markusnissl/google-cloud-sdk/bin:/Users/markusnissl/.nvm/versions/node/v24.19.0/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.cache/lm-studio/bin:/Users/markusnissl/.composer/vendor/bin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.local/bin"
+        },
+        "tool_sha256": "318dee99db233501f6c419fbb4616e5a345ed0b831dbd6c7669b24e1ff8e9e2e"
+      },
+      "source": {
+        "source_commit": "24fd2aedaca721d926eb3db2384061d3fa206b74",
+        "source_file": "v5/internal/graphapply/certified_graph_p01_scope_test.go",
+        "source_sha256": "1a6ad5dc14908e9cead085d055b6d9ffceb266b89a686768f6730c2df6b8ad67"
+      },
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-timeout=150s",
+          "-run=^$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 951.281,
+        "elapsed_s": 6.961,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    {
+      "mode": "normal",
+      "command": {
+        "cwd": "/var/tmp/rho-v2-ack-attribution-20261014/v5",
+        "command": [
+          "python3",
+          "/var/tmp/rho-v2-p01-evidence-20261014/limit-local.py",
+          "--rss-mib",
+          "4096",
+          "--seconds",
+          "180",
+          "--report",
+          "/var/tmp/rho-v2-p01-evidence-20261014/normal.watchdog.json",
+          "--",
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-timeout=150s",
+          "-v",
+          "-work",
+          "-run=^TestCertifiedGraphP01CoordinatorOutsideRequestedDataScope$",
+          "./internal/graphapply"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2",
+          "GOMEMLIMIT": "2GiB",
+          "GOFLAGS": "-p=1",
+          "GOWORK": "off",
+          "GOTOOLCHAIN": "local",
+          "PATH": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/usr/local/go/bin:/Users/markusnissl/.codex/packages/standalone/releases/0.162.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg03h015q:/Users/markusnissl/.codex/tmp/arg0/codex-arg05Feg6O:/Users/markusnissl/.codex/packages/standalone/releases/0.162.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0emR3eT:/Users/markusnissl/.codex/packages/standalone/releases/0.161.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0cqPGiY:/Users/markusnissl/.codex/packages/standalone/releases/0.160.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0f4nAi9:/Users/markusnissl/.codex/packages/standalone/releases/0.160.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0UsPrPG:/Users/markusnissl/.codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg04bYMhn:/Users/markusnissl/.codex/packages/standalone/releases/0.159.2-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0MP66Ba:/Users/markusnissl/.codex/packages/standalone/releases/0.159.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0rXqGkx:/Users/markusnissl/.codex/packages/standalone/releases/0.158.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg07YU9q1:/Users/markusnissl/.codex/packages/standalone/releases/0.157.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0Ly7AVz:/Users/markusnissl/.grok/bin:/Users/markusnissl/.opencode/bin:/Users/markusnissl/.antigravity/antigravity/bin:/Users/markusnissl/Library/pnpm/bin:/Users/markusnissl/.sdkman/candidates/java/current/bin:/Users/markusnissl/.sdkman/candidates/gradle/current/bin:/Users/markusnissl/.bun/bin:/Users/markusnissl/.deno/bin:/Users/markusnissl/google-cloud-sdk/bin:/Users/markusnissl/.nvm/versions/node/v24.19.0/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.cache/lm-studio/bin:/Users/markusnissl/.composer/vendor/bin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.local/bin"
+        },
+        "tool_sha256": "318dee99db233501f6c419fbb4616e5a345ed0b831dbd6c7669b24e1ff8e9e2e"
+      },
+      "source": {
+        "source_commit": "52d2f238d28d6a72f3965a3e43d2f6fe70975d04",
+        "source_file": "v5/internal/graphapply/certified_graph_p01_scope_test.go",
+        "source_sha256": "c87b1be95ab9314a1dde9dabca2ec1142de015f6b3d4606b7f7396273be0b50b"
+      },
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-timeout=150s",
+          "-v",
+          "-work",
+          "-run=^TestCertifiedGraphP01CoordinatorOutsideRequestedDataScope$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 943.531,
+        "elapsed_s": 11.205,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    {
+      "mode": "race",
+      "command": {
+        "cwd": "/var/tmp/rho-v2-ack-attribution-20261014/v5",
+        "command": [
+          "python3",
+          "/var/tmp/rho-v2-p01-evidence-20261014/limit-local.py",
+          "--rss-mib",
+          "4096",
+          "--seconds",
+          "180",
+          "--report",
+          "/var/tmp/rho-v2-p01-evidence-20261014/race.watchdog.json",
+          "--",
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-race",
+          "-count=1",
+          "-timeout=150s",
+          "-v",
+          "-work",
+          "-run=^TestCertifiedGraphP01CoordinatorOutsideRequestedDataScope$",
+          "./internal/graphapply"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2",
+          "GOMEMLIMIT": "2GiB",
+          "GOFLAGS": "-p=1",
+          "GOWORK": "off",
+          "GOTOOLCHAIN": "local",
+          "PATH": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/usr/local/go/bin:/Users/markusnissl/.codex/packages/standalone/releases/0.162.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg03h015q:/Users/markusnissl/.codex/tmp/arg0/codex-arg05Feg6O:/Users/markusnissl/.codex/packages/standalone/releases/0.162.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0emR3eT:/Users/markusnissl/.codex/packages/standalone/releases/0.161.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0cqPGiY:/Users/markusnissl/.codex/packages/standalone/releases/0.160.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0f4nAi9:/Users/markusnissl/.codex/packages/standalone/releases/0.160.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0UsPrPG:/Users/markusnissl/.codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg04bYMhn:/Users/markusnissl/.codex/packages/standalone/releases/0.159.2-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0MP66Ba:/Users/markusnissl/.codex/packages/standalone/releases/0.159.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0rXqGkx:/Users/markusnissl/.codex/packages/standalone/releases/0.158.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg07YU9q1:/Users/markusnissl/.codex/packages/standalone/releases/0.157.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0Ly7AVz:/Users/markusnissl/.grok/bin:/Users/markusnissl/.opencode/bin:/Users/markusnissl/.antigravity/antigravity/bin:/Users/markusnissl/Library/pnpm/bin:/Users/markusnissl/.sdkman/candidates/java/current/bin:/Users/markusnissl/.sdkman/candidates/gradle/current/bin:/Users/markusnissl/.bun/bin:/Users/markusnissl/.deno/bin:/Users/markusnissl/google-cloud-sdk/bin:/Users/markusnissl/.nvm/versions/node/v24.19.0/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.cache/lm-studio/bin:/Users/markusnissl/.composer/vendor/bin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.local/bin"
+        },
+        "tool_sha256": "318dee99db233501f6c419fbb4616e5a345ed0b831dbd6c7669b24e1ff8e9e2e"
+      },
+      "source": {
+        "source_commit": "52d2f238d28d6a72f3965a3e43d2f6fe70975d04",
+        "source_file": "v5/internal/graphapply/certified_graph_p01_scope_test.go",
+        "source_sha256": "c87b1be95ab9314a1dde9dabca2ec1142de015f6b3d4606b7f7396273be0b50b"
+      },
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-race",
+          "-count=1",
+          "-timeout=150s",
+          "-v",
+          "-work",
+          "-run=^TestCertifiedGraphP01CoordinatorOutsideRequestedDataScope$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 990.469,
+        "elapsed_s": 18.122,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    {
+      "mode": "coverage",
+      "command": {
+        "cwd": "/var/tmp/rho-v2-ack-attribution-20261014/v5",
+        "command": [
+          "python3",
+          "/var/tmp/rho-v2-p01-evidence-20261014/limit-local.py",
+          "--rss-mib",
+          "4096",
+          "--seconds",
+          "180",
+          "--report",
+          "/var/tmp/rho-v2-p01-evidence-20261014/coverage.watchdog.json",
+          "--",
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-timeout=150s",
+          "-v",
+          "-work",
+          "-coverprofile=/var/tmp/rho-v2-p01-evidence-20261014/coverage.out",
+          "-run=^TestCertifiedGraphP01CoordinatorOutsideRequestedDataScope$",
+          "./internal/graphapply"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2",
+          "GOMEMLIMIT": "2GiB",
+          "GOFLAGS": "-p=1",
+          "GOWORK": "off",
+          "GOTOOLCHAIN": "local",
+          "PATH": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/usr/local/go/bin:/Users/markusnissl/.codex/packages/standalone/releases/0.162.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg03h015q:/Users/markusnissl/.codex/tmp/arg0/codex-arg05Feg6O:/Users/markusnissl/.codex/packages/standalone/releases/0.162.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0emR3eT:/Users/markusnissl/.codex/packages/standalone/releases/0.161.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0cqPGiY:/Users/markusnissl/.codex/packages/standalone/releases/0.160.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0f4nAi9:/Users/markusnissl/.codex/packages/standalone/releases/0.160.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0UsPrPG:/Users/markusnissl/.codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg04bYMhn:/Users/markusnissl/.codex/packages/standalone/releases/0.159.2-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0MP66Ba:/Users/markusnissl/.codex/packages/standalone/releases/0.159.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0rXqGkx:/Users/markusnissl/.codex/packages/standalone/releases/0.158.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg07YU9q1:/Users/markusnissl/.codex/packages/standalone/releases/0.157.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0Ly7AVz:/Users/markusnissl/.grok/bin:/Users/markusnissl/.opencode/bin:/Users/markusnissl/.antigravity/antigravity/bin:/Users/markusnissl/Library/pnpm/bin:/Users/markusnissl/.sdkman/candidates/java/current/bin:/Users/markusnissl/.sdkman/candidates/gradle/current/bin:/Users/markusnissl/.bun/bin:/Users/markusnissl/.deno/bin:/Users/markusnissl/google-cloud-sdk/bin:/Users/markusnissl/.nvm/versions/node/v24.19.0/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.cache/lm-studio/bin:/Users/markusnissl/.composer/vendor/bin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.local/bin"
+        },
+        "tool_sha256": "318dee99db233501f6c419fbb4616e5a345ed0b831dbd6c7669b24e1ff8e9e2e"
+      },
+      "source": {
+        "source_commit": "52d2f238d28d6a72f3965a3e43d2f6fe70975d04",
+        "source_file": "v5/internal/graphapply/certified_graph_p01_scope_test.go",
+        "source_sha256": "c87b1be95ab9314a1dde9dabca2ec1142de015f6b3d4606b7f7396273be0b50b"
+      },
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-timeout=150s",
+          "-v",
+          "-work",
+          "-coverprofile=/var/tmp/rho-v2-p01-evidence-20261014/coverage.out",
+          "-run=^TestCertifiedGraphP01CoordinatorOutsideRequestedDataScope$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1034.641,
+        "elapsed_s": 11.182,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    {
+      "mode": "vet",
+      "command": {
+        "cwd": "/var/tmp/rho-v2-ack-attribution-20261014/v5",
+        "command": [
+          "python3",
+          "/var/tmp/rho-v2-p01-evidence-20261014/limit-local.py",
+          "--rss-mib",
+          "4096",
+          "--seconds",
+          "180",
+          "--report",
+          "/var/tmp/rho-v2-p01-evidence-20261014/vet.watchdog.json",
+          "--",
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "vet",
+          "./internal/graphapply"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2",
+          "GOMEMLIMIT": "2GiB",
+          "GOFLAGS": "-p=1",
+          "GOWORK": "off",
+          "GOTOOLCHAIN": "local",
+          "PATH": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/usr/local/go/bin:/Users/markusnissl/.codex/packages/standalone/releases/0.162.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg03h015q:/Users/markusnissl/.codex/tmp/arg0/codex-arg05Feg6O:/Users/markusnissl/.codex/packages/standalone/releases/0.162.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0emR3eT:/Users/markusnissl/.codex/packages/standalone/releases/0.161.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0cqPGiY:/Users/markusnissl/.codex/packages/standalone/releases/0.160.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0f4nAi9:/Users/markusnissl/.codex/packages/standalone/releases/0.160.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0UsPrPG:/Users/markusnissl/.codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg04bYMhn:/Users/markusnissl/.codex/packages/standalone/releases/0.159.2-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0MP66Ba:/Users/markusnissl/.codex/packages/standalone/releases/0.159.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0rXqGkx:/Users/markusnissl/.codex/packages/standalone/releases/0.158.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg07YU9q1:/Users/markusnissl/.codex/packages/standalone/releases/0.157.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0Ly7AVz:/Users/markusnissl/.grok/bin:/Users/markusnissl/.opencode/bin:/Users/markusnissl/.antigravity/antigravity/bin:/Users/markusnissl/Library/pnpm/bin:/Users/markusnissl/.sdkman/candidates/java/current/bin:/Users/markusnissl/.sdkman/candidates/gradle/current/bin:/Users/markusnissl/.bun/bin:/Users/markusnissl/.deno/bin:/Users/markusnissl/google-cloud-sdk/bin:/Users/markusnissl/.nvm/versions/node/v24.19.0/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.cache/lm-studio/bin:/Users/markusnissl/.composer/vendor/bin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.local/bin"
+        },
+        "tool_sha256": "318dee99db233501f6c419fbb4616e5a345ed0b831dbd6c7669b24e1ff8e9e2e"
+      },
+      "source": {
+        "source_commit": "52d2f238d28d6a72f3965a3e43d2f6fe70975d04",
+        "source_file": "v5/internal/graphapply/certified_graph_p01_scope_test.go",
+        "source_sha256": "c87b1be95ab9314a1dde9dabca2ec1142de015f6b3d4606b7f7396273be0b50b"
+      },
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "vet",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 211.734,
+        "elapsed_s": 1.413,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    {
+      "mode": "lint",
+      "command": {
+        "cwd": "/var/tmp/rho-v2-ack-attribution-20261014/v5",
+        "command": [
+          "python3",
+          "/var/tmp/rho-v2-p01-evidence-20261014/limit-local.py",
+          "--rss-mib",
+          "4096",
+          "--seconds",
+          "180",
+          "--report",
+          "/var/tmp/rho-v2-p01-evidence-20261014/lint.watchdog.json",
+          "--",
+          "/var/tmp/rho-v5-migrate-main4517-0eb0a0ac-20261014/scanner-bin/golangci-lint",
+          "run",
+          "--config",
+          "../.golangci.yml",
+          "./internal/graphapply"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2",
+          "GOMEMLIMIT": "2GiB",
+          "GOFLAGS": "-p=1",
+          "GOWORK": "off",
+          "GOTOOLCHAIN": "local",
+          "PATH": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/usr/local/go/bin:/Users/markusnissl/.codex/packages/standalone/releases/0.162.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg03h015q:/Users/markusnissl/.codex/tmp/arg0/codex-arg05Feg6O:/Users/markusnissl/.codex/packages/standalone/releases/0.162.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0emR3eT:/Users/markusnissl/.codex/packages/standalone/releases/0.161.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0cqPGiY:/Users/markusnissl/.codex/packages/standalone/releases/0.160.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0f4nAi9:/Users/markusnissl/.codex/packages/standalone/releases/0.160.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0UsPrPG:/Users/markusnissl/.codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg04bYMhn:/Users/markusnissl/.codex/packages/standalone/releases/0.159.2-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0MP66Ba:/Users/markusnissl/.codex/packages/standalone/releases/0.159.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0rXqGkx:/Users/markusnissl/.codex/packages/standalone/releases/0.158.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg07YU9q1:/Users/markusnissl/.codex/packages/standalone/releases/0.157.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0Ly7AVz:/Users/markusnissl/.grok/bin:/Users/markusnissl/.opencode/bin:/Users/markusnissl/.antigravity/antigravity/bin:/Users/markusnissl/Library/pnpm/bin:/Users/markusnissl/.sdkman/candidates/java/current/bin:/Users/markusnissl/.sdkman/candidates/gradle/current/bin:/Users/markusnissl/.bun/bin:/Users/markusnissl/.deno/bin:/Users/markusnissl/google-cloud-sdk/bin:/Users/markusnissl/.nvm/versions/node/v24.19.0/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.cache/lm-studio/bin:/Users/markusnissl/.composer/vendor/bin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.local/bin"
+        },
+        "tool_sha256": "5a88e04e56c1ccd7617c01666df23e5767d7a12cf21bac2c02e3170d67a27eef"
+      },
+      "source": {
+        "source_commit": "52d2f238d28d6a72f3965a3e43d2f6fe70975d04",
+        "source_file": "v5/internal/graphapply/certified_graph_p01_scope_test.go",
+        "source_sha256": "c87b1be95ab9314a1dde9dabca2ec1142de015f6b3d4606b7f7396273be0b50b"
+      },
+      "watchdog": {
+        "command": [
+          "/var/tmp/rho-v5-migrate-main4517-0eb0a0ac-20261014/scanner-bin/golangci-lint",
+          "run",
+          "--config",
+          "../.golangci.yml",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1705.094,
+        "elapsed_s": 35.194,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    {
+      "mode": "security",
+      "command": {
+        "cwd": "/var/tmp/rho-v2-ack-attribution-20261014/v5",
+        "command": [
+          "python3",
+          "/var/tmp/rho-v2-p01-evidence-20261014/limit-local.py",
+          "--rss-mib",
+          "4096",
+          "--seconds",
+          "180",
+          "--report",
+          "/var/tmp/rho-v2-p01-evidence-20261014/security.watchdog.json",
+          "--",
+          "/var/tmp/rho-v5-migrate-main4517-0eb0a0ac-20261014/scanner-bin/gosec",
+          "-quiet",
+          "./internal/graphapply"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2",
+          "GOMEMLIMIT": "2GiB",
+          "GOFLAGS": "-p=1",
+          "GOWORK": "off",
+          "GOTOOLCHAIN": "local",
+          "PATH": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/usr/local/go/bin:/Users/markusnissl/.codex/packages/standalone/releases/0.162.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg03h015q:/Users/markusnissl/.codex/tmp/arg0/codex-arg05Feg6O:/Users/markusnissl/.codex/packages/standalone/releases/0.162.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0emR3eT:/Users/markusnissl/.codex/packages/standalone/releases/0.161.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0cqPGiY:/Users/markusnissl/.codex/packages/standalone/releases/0.160.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0f4nAi9:/Users/markusnissl/.codex/packages/standalone/releases/0.160.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0UsPrPG:/Users/markusnissl/.codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg04bYMhn:/Users/markusnissl/.codex/packages/standalone/releases/0.159.2-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0MP66Ba:/Users/markusnissl/.codex/packages/standalone/releases/0.159.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0rXqGkx:/Users/markusnissl/.codex/packages/standalone/releases/0.158.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg07YU9q1:/Users/markusnissl/.codex/packages/standalone/releases/0.157.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0Ly7AVz:/Users/markusnissl/.grok/bin:/Users/markusnissl/.opencode/bin:/Users/markusnissl/.antigravity/antigravity/bin:/Users/markusnissl/Library/pnpm/bin:/Users/markusnissl/.sdkman/candidates/java/current/bin:/Users/markusnissl/.sdkman/candidates/gradle/current/bin:/Users/markusnissl/.bun/bin:/Users/markusnissl/.deno/bin:/Users/markusnissl/google-cloud-sdk/bin:/Users/markusnissl/.nvm/versions/node/v24.19.0/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.cache/lm-studio/bin:/Users/markusnissl/.composer/vendor/bin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.local/bin"
+        },
+        "tool_sha256": "37117fce9ed7012d9f754b01b49a76f059595fa8fc05c6bb9eff8c7b9bd8c2da"
+      },
+      "source": {
+        "source_commit": "52d2f238d28d6a72f3965a3e43d2f6fe70975d04",
+        "source_file": "v5/internal/graphapply/certified_graph_p01_scope_test.go",
+        "source_sha256": "c87b1be95ab9314a1dde9dabca2ec1142de015f6b3d4606b7f7396273be0b50b"
+      },
+      "watchdog": {
+        "command": [
+          "/var/tmp/rho-v5-migrate-main4517-0eb0a0ac-20261014/scanner-bin/gosec",
+          "-quiet",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 408.219,
+        "elapsed_s": 2.0,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    }
+  ],
+  "fixture_failures": [
+    {
+      "path": "failed-normal1",
+      "source": {
+        "source_commit": "24fd2aedaca721d926eb3db2384061d3fa206b74",
+        "source_file": "v5/internal/graphapply/certified_graph_p01_scope_test.go",
+        "source_sha256": "1a6ad5dc14908e9cead085d055b6d9ffceb266b89a686768f6730c2df6b8ad67"
+      },
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-timeout=150s",
+          "-v",
+          "-work",
+          "-run=^(TestCertifiedGraphP01CoordinatorOutsideRequestedDataScope|TestCrossProcessP04FrozenParticipantsEpochsAndDigestsSurviveDelayedVoteAndReopen)$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 435.266,
+        "elapsed_s": 5.879,
+        "exit_code": 1,
+        "reason": "command-failed"
+      }
+    },
+    {
+      "path": "failed-normal2",
+      "source": {
+        "source_commit": "852a009ddc00bd90095b2b0ca5cabe95cf982d25",
+        "source_file": "v5/internal/graphapply/certified_graph_p01_scope_test.go",
+        "source_sha256": "f31633fc4118926896c0008f4e66f01ab485b2848e8250260988cf7f5b25990d"
+      },
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-timeout=150s",
+          "-v",
+          "-work",
+          "-run=^TestCertifiedGraphP01CoordinatorOutsideRequestedDataScope$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 959.922,
+        "elapsed_s": 9.997,
+        "exit_code": 1,
+        "reason": "command-failed"
+      }
+    }
+  ],
+  "clone_direct_normal_evidence": "failed-normal1/normal.stdout.txt, individual P04 PASS1.81s; parent package fails only P01 fixture. P04 source SHA is unchanged final4dcd9f57efebcfbdc38877b40dd48c97e34348c2727db0d400386b2384429aed.",
+  "cleanup": {
+    "owned_runtime_processes": [],
+    "status": "All owned watchdog/compiler/test/static invocations terminal; no owned live runtime. Native voters are in-process, not OS children. Test PASS includes t.Cleanup closure; pre-reopen Views/ViewBytes zero and source services explicit close asserted in source."
+  },
+  "archive": {
+    "path": "raw.tar.gz",
+    "sha256": "870ef4fde1de4ff6fa47fcb0a36cb8965f6978db084fd8b1da7017853b9c5b19",
+    "bytes": 151404,
+    "members": [
+      {
+        "path": "cleanup.json",
+        "bytes": 308,
+        "sha256": "4d479e316e058163f5826bcf82826d190db5448720be73a9f478f98d67de36c2"
+      },
+      {
+        "path": "compile.command.json",
+        "bytes": 3535,
+        "sha256": "3bee7165fff9ffec428339bc9a0506ad682be6a4e8473f242b8b85328b11b2d3"
+      },
+      {
+        "path": "compile.source-binding.json",
+        "bytes": 230,
+        "sha256": "0c332126b94003d9915402f8334a81cb54dc9fb62fa530ae68376771c77d69e5"
+      },
+      {
+        "path": "compile.stderr.txt",
+        "bytes": 348,
+        "sha256": "cbe8b0757d5f6548763f21aabcd1b80b6e7b65fb3a8f43053d73173f32190ab9"
+      },
+      {
+        "path": "compile.stdout.txt",
+        "bytes": 89,
+        "sha256": "9145e5e0948a63f95ca570aba83fa7cd11e3ea712a723f71058adfaf3c38cfb8"
+      },
+      {
+        "path": "compile.watchdog.json",
+        "bytes": 387,
+        "sha256": "a16bfb6c5e2c79fd283450aabc7ed76c667815eaa700cd5600e37bf6271c0510"
+      },
+      {
+        "path": "compiler.json",
+        "bytes": 232,
+        "sha256": "d28fe74a319aba756f46df7b9776e0e26b5599e383e6f04a63c40563fd1af733"
+      },
+      {
+        "path": "coverage.binary.json",
+        "bytes": 275,
+        "sha256": "de790d4a63e16e12ba0b4f342263c610da81544c91b7a3e472ab34db4a1e1ca2"
+      },
+      {
+        "path": "coverage.command.json",
+        "bytes": 3688,
+        "sha256": "0976377abeb070d9b0c7419682f372b479dd85a75830dd7ea9f8a0a0db6dd646"
+      },
+      {
+        "path": "coverage.out",
+        "bytes": 928810,
+        "sha256": "c3239d03cb091f7fce83840990ea9e59048e3a47ee4133d7772e4230615e0739"
+      },
+      {
+        "path": "coverage.source-binding.json",
+        "bytes": 230,
+        "sha256": "7340b0139d2838a36532c91e4201a3e1a9b98fe28cac80ddb1f74f554fa160e4"
+      },
+      {
+        "path": "coverage.stderr.txt",
+        "bytes": 563,
+        "sha256": "a50d4bdcc420d6b201555df1f6350eeb93739fc0798204b52bb89f1976c827a0"
+      },
+      {
+        "path": "coverage.stdout.txt",
+        "bytes": 31044,
+        "sha256": "2d5bc79173b26468a8c68c49b9220d5e4b32f5a3d6bfa2c5fd58c663356bfb7f"
+      },
+      {
+        "path": "coverage.watchdog.json",
+        "bytes": 541,
+        "sha256": "c2d6cf921c85a3b9e24dc4a414dcf3e1dbe55ac9d480a730c51c74216b788b77"
+      },
+      {
+        "path": "failed-normal1/binary.json",
+        "bytes": 281,
+        "sha256": "028b61f36201539b6ec5db60becbb878ce7b90961878785aa03fef2235ba98a3"
+      },
+      {
+        "path": "failed-normal1/normal.command.json",
+        "bytes": 3697,
+        "sha256": "b1020aba6f21014430b89acf00e689d1f0e1eef520bbd2ae8f29373d2bfbbce6"
+      },
+      {
+        "path": "failed-normal1/normal.stderr.txt",
+        "bytes": 581,
+        "sha256": "bbb26bdde288479a68c2d987fc4201de76b76f8b3645c5be0abf00492507d660"
+      },
+      {
+        "path": "failed-normal1/normal.stdout.txt",
+        "bytes": 27819,
+        "sha256": "31e33bc5c4a9037cda8751595041051ba9c41814691562410092da04823a5609"
+      },
+      {
+        "path": "failed-normal1/normal.watchdog.json",
+        "bytes": 555,
+        "sha256": "05910d98622a56ffc81b1b4f88e0ea6ff7910fa99bcecb423b36a3ed28cfc203"
+      },
+      {
+        "path": "failed-normal1/source-binding.json",
+        "bytes": 230,
+        "sha256": "0c332126b94003d9915402f8334a81cb54dc9fb62fa530ae68376771c77d69e5"
+      },
+      {
+        "path": "failed-normal1/source.go",
+        "bytes": 10756,
+        "sha256": "1a6ad5dc14908e9cead085d055b6d9ffceb266b89a686768f6730c2df6b8ad67"
+      },
+      {
+        "path": "failed-normal2/binary.json",
+        "bytes": 281,
+        "sha256": "8437228b249ce16ab597d9a19a5704f002738c1ac6358a20965e5572f9601612"
+      },
+      {
+        "path": "failed-normal2/normal.command.json",
+        "bytes": 3614,
+        "sha256": "cda23dcafc717c4f89765a66778ee23a712609093ba82ab91ea1d8432c78fd14"
+      },
+      {
+        "path": "failed-normal2/normal.stderr.txt",
+        "bytes": 498,
+        "sha256": "51f4d6927874a10b6a431d3a9240722f6c3b8b2aa12af08c80c41a7b651ded57"
+      },
+      {
+        "path": "failed-normal2/normal.stdout.txt",
+        "bytes": 12717,
+        "sha256": "6fda0849f7926a3e66ea1948107408c41479bdd558fb1480d725451b89839bb9"
+      },
+      {
+        "path": "failed-normal2/normal.watchdog.json",
+        "bytes": 472,
+        "sha256": "454088511277043b45d03ee43949c1e655d52537d3355f983eb1946d3511bf9c"
+      },
+      {
+        "path": "failed-normal2/source-binding.json",
+        "bytes": 230,
+        "sha256": "38365b784113b4c7298b85d1f10711930047491beda05e211a02d08dbb6c71ad"
+      },
+      {
+        "path": "failed-normal2/source.go",
+        "bytes": 11445,
+        "sha256": "f31633fc4118926896c0008f4e66f01ab485b2848e8250260988cf7f5b25990d"
+      },
+      {
+        "path": "limit-local.py",
+        "bytes": 7270,
+        "sha256": "6dc4e0362827ecd0854436b9fa1a812342b693d65ba093291d358b359e733283"
+      },
+      {
+        "path": "lint.command.json",
+        "bytes": 3509,
+        "sha256": "28b95f3aec03efe4cb6eeaceae82d34b5e2d80155dd62885332e7569afaab507"
+      },
+      {
+        "path": "lint.source-binding.json",
+        "bytes": 230,
+        "sha256": "7340b0139d2838a36532c91e4201a3e1a9b98fe28cac80ddb1f74f554fa160e4"
+      },
+      {
+        "path": "lint.stderr.txt",
+        "bytes": 331,
+        "sha256": "e0cd1964aed48260c82213e9a11a04e14644d8f8626f6ab8f75c1c3cfa82e941"
+      },
+      {
+        "path": "lint.stdout.txt",
+        "bytes": 10,
+        "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+      },
+      {
+        "path": "lint.watchdog.json",
+        "bytes": 366,
+        "sha256": "c878e3d74bfbd4e4e3da0aab70622d69d73baef38c6418090ea8a8cc31647db8"
+      },
+      {
+        "path": "normal.binary.json",
+        "bytes": 273,
+        "sha256": "4c07437b61db1911f75ee11568d1c5ef0ceeded73c6d68c651f01d714304bfa8"
+      },
+      {
+        "path": "normal.command.json",
+        "bytes": 3614,
+        "sha256": "cda23dcafc717c4f89765a66778ee23a712609093ba82ab91ea1d8432c78fd14"
+      },
+      {
+        "path": "normal.source-binding.json",
+        "bytes": 230,
+        "sha256": "7340b0139d2838a36532c91e4201a3e1a9b98fe28cac80ddb1f74f554fa160e4"
+      },
+      {
+        "path": "normal.stderr.txt",
+        "bytes": 494,
+        "sha256": "8d6646b3fad11587295402df1387039e8999d1018ec5736ff074e7858f12f903"
+      },
+      {
+        "path": "normal.stdout.txt",
+        "bytes": 30984,
+        "sha256": "e047109d6c226c214686e4e9fd1ad4fd211be326c11f2c7441eee55ac56cb144"
+      },
+      {
+        "path": "normal.watchdog.json",
+        "bytes": 468,
+        "sha256": "f6214290904f2d3cc4b40d915c78ecd06c6c0ca9835349e022723cbab501bafd"
+      },
+      {
+        "path": "qualification-scope.json",
+        "bytes": 2110,
+        "sha256": "642ef8d87b1e89f6088ac79fa03be717112c1100d3a3d9d18cd429f28d75ee9e"
+      },
+      {
+        "path": "race.binary.json",
+        "bytes": 270,
+        "sha256": "54785691ca98dc7a450a19fbecfe661f3ffc9edb74f6db706d40b3f85f835afb"
+      },
+      {
+        "path": "race.command.json",
+        "bytes": 3625,
+        "sha256": "936292ff3db10b21d3b3b63f30cffe2d3b2f1b0e398108516105ec257470b047"
+      },
+      {
+        "path": "race.source-binding.json",
+        "bytes": 230,
+        "sha256": "7340b0139d2838a36532c91e4201a3e1a9b98fe28cac80ddb1f74f554fa160e4"
+      },
+      {
+        "path": "race.stderr.txt",
+        "bytes": 502,
+        "sha256": "0fcd0b7510a781cc95c79050e7e102359b347205d512b5f959e5af1cabc312f9"
+      },
+      {
+        "path": "race.stdout.txt",
+        "bytes": 30984,
+        "sha256": "979250512a2dbc8c3c9c32ad0ea5914bc20c42c057f4af360ebe50125fe05721"
+      },
+      {
+        "path": "race.watchdog.json",
+        "bytes": 481,
+        "sha256": "823d81cbaf0037ff00d3c64f237238b2dd407138cc855e7e342f228930d92ec0"
+      },
+      {
+        "path": "run.py",
+        "bytes": 2017,
+        "sha256": "3395c2ec1217da4e4ab27bbe576cbacd36fc895e2f18a41560efc834956cb89d"
+      },
+      {
+        "path": "scanner-provenance/after-tools-golangci-lint-build.txt",
+        "bytes": 19505,
+        "sha256": "201a8c190da2adf271295dccd2a28ac0d8593c386d6bfc974525fca0cb781ba1"
+      },
+      {
+        "path": "scanner-provenance/after-tools-golangci-lint-version.txt",
+        "bytes": 154,
+        "sha256": "5644aa8e116a125b49c8e7bccf4515686b8b7312ecb1b195c06c8a7aa5ff175a"
+      },
+      {
+        "path": "scanner-provenance/after-tools-gosec-build.txt",
+        "bytes": 4620,
+        "sha256": "94323999bee049c2268c6ddf7289f7b62a3d3a1c095e5e8eb1d7343741bbd36c"
+      },
+      {
+        "path": "scanner-provenance/after-tools-gosec-version.txt",
+        "bytes": 36,
+        "sha256": "c61e4d5622fe9449bd0810e944e583a8e330a8b9d0c394513f5f68b64a94e200"
+      },
+      {
+        "path": "scanner-provenance/after-tools-govulncheck-build.txt",
+        "bytes": 856,
+        "sha256": "b70fc48b73d048766430480df56977aca4703710b4976933e97181e37d2424c0"
+      },
+      {
+        "path": "scanner-provenance/after-tools-govulncheck-version.txt",
+        "bytes": 108,
+        "sha256": "f872dc8e4877391b12229c7fbc08e9fd9666a60e0571140f09dce7270472a21e"
+      },
+      {
+        "path": "scanner-provenance/after-tools-scanner-sha256.json",
+        "bytes": 254,
+        "sha256": "b5111533cd550c363c4fce3afaeff3bfc3af1f4ce788c490851b4ccb0a95ce91"
+      },
+      {
+        "path": "security.command.json",
+        "bytes": 3468,
+        "sha256": "12f3c68660a10b418df54907dee31f9dae5758523b0393d7fc540569d4ca051b"
+      },
+      {
+        "path": "security.source-binding.json",
+        "bytes": 230,
+        "sha256": "7340b0139d2838a36532c91e4201a3e1a9b98fe28cac80ddb1f74f554fa160e4"
+      },
+      {
+        "path": "security.stderr.txt",
+        "bytes": 290,
+        "sha256": "73c30416016c1b63c953ae1082e7ee2f44db412d147404e63e7ac1b5d148d0e1"
+      },
+      {
+        "path": "security.stdout.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "security.watchdog.json",
+        "bytes": 317,
+        "sha256": "b5eaad0495ba470fd29203761afab4992299d44abf9bd932ccb3f7348409d82b"
+      },
+      {
+        "path": "source/.golangci.yml",
+        "bytes": 1865,
+        "sha256": "7084dd0d2272f3c27ac89fc503f6672f9960ae2da47c85cefcfb27951f8caf69"
+      },
+      {
+        "path": "source/v5/go.mod",
+        "bytes": 1801,
+        "sha256": "3bf8baf02d354420ddf87b8865f20b854bb606f04e0f0988f0f9eed2d89e8a24"
+      },
+      {
+        "path": "source/v5/go.sum",
+        "bytes": 12085,
+        "sha256": "5679a7aa94d5ee71f5737dea65a4fa71ed69109c45b877b1dd1639ae5e6e60f0"
+      },
+      {
+        "path": "source/v5/internal/graphapply/certified_graph_p01_scope_test.go",
+        "bytes": 13313,
+        "sha256": "c87b1be95ab9314a1dde9dabca2ec1142de015f6b3d4606b7f7396273be0b50b"
+      },
+      {
+        "path": "source/v5/internal/graphapply/cross_process_p04_identity_test.go",
+        "bytes": 9248,
+        "sha256": "4dcd9f57efebcfbdc38877b40dd48c97e34348c2727db0d400386b2384429aed"
+      },
+      {
+        "path": "source-inventory.json",
+        "bytes": 74989,
+        "sha256": "6c0809f1e14e8040a5b92c438de9e4357f015034dac3f4dbc421d936fc656d7b"
+      },
+      {
+        "path": "vet.command.json",
+        "bytes": 3478,
+        "sha256": "0b4d9bf685ccb44a11a787f9755da6643779e252682b0bcddf7a07ed690314dc"
+      },
+      {
+        "path": "vet.source-binding.json",
+        "bytes": 230,
+        "sha256": "7340b0139d2838a36532c91e4201a3e1a9b98fe28cac80ddb1f74f554fa160e4"
+      },
+      {
+        "path": "vet.stderr.txt",
+        "bytes": 307,
+        "sha256": "b2c5ca263eb4751cab263196dcf9f61a3227989feafbfdeae236b189d9a56568"
+      },
+      {
+        "path": "vet.stdout.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "vet.watchdog.json",
+        "bytes": 334,
+        "sha256": "263d3c35b2e07fe11ea797b8621674075addf96bcdd37e692ccb3713c53e6e48"
+      }
+    ]
+  },
+  "external_originals": [
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/cleanup.json",
+      "bytes": 308,
+      "sha256": "4d479e316e058163f5826bcf82826d190db5448720be73a9f478f98d67de36c2"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/compile.command.json",
+      "bytes": 3535,
+      "sha256": "3bee7165fff9ffec428339bc9a0506ad682be6a4e8473f242b8b85328b11b2d3"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/compile.source-binding.json",
+      "bytes": 230,
+      "sha256": "0c332126b94003d9915402f8334a81cb54dc9fb62fa530ae68376771c77d69e5"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/compile.stderr.txt",
+      "bytes": 348,
+      "sha256": "cbe8b0757d5f6548763f21aabcd1b80b6e7b65fb3a8f43053d73173f32190ab9"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/compile.stdout.txt",
+      "bytes": 89,
+      "sha256": "9145e5e0948a63f95ca570aba83fa7cd11e3ea712a723f71058adfaf3c38cfb8"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/compile.watchdog.json",
+      "bytes": 387,
+      "sha256": "a16bfb6c5e2c79fd283450aabc7ed76c667815eaa700cd5600e37bf6271c0510"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/compiler.json",
+      "bytes": 232,
+      "sha256": "d28fe74a319aba756f46df7b9776e0e26b5599e383e6f04a63c40563fd1af733"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/coverage.binary.json",
+      "bytes": 275,
+      "sha256": "de790d4a63e16e12ba0b4f342263c610da81544c91b7a3e472ab34db4a1e1ca2"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/coverage.command.json",
+      "bytes": 3688,
+      "sha256": "0976377abeb070d9b0c7419682f372b479dd85a75830dd7ea9f8a0a0db6dd646"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/coverage.graphapply.test",
+      "bytes": 30416194,
+      "sha256": "a23d9880b9b590ddaef9ca248461b81b3c4ede7a0c083d0f0a96869c0d273b5a"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/coverage.out",
+      "bytes": 928810,
+      "sha256": "c3239d03cb091f7fce83840990ea9e59048e3a47ee4133d7772e4230615e0739"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/coverage.source-binding.json",
+      "bytes": 230,
+      "sha256": "7340b0139d2838a36532c91e4201a3e1a9b98fe28cac80ddb1f74f554fa160e4"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/coverage.stderr.txt",
+      "bytes": 563,
+      "sha256": "a50d4bdcc420d6b201555df1f6350eeb93739fc0798204b52bb89f1976c827a0"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/coverage.stdout.txt",
+      "bytes": 31044,
+      "sha256": "2d5bc79173b26468a8c68c49b9220d5e4b32f5a3d6bfa2c5fd58c663356bfb7f"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/coverage.watchdog.json",
+      "bytes": 541,
+      "sha256": "c2d6cf921c85a3b9e24dc4a414dcf3e1dbe55ac9d480a730c51c74216b788b77"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/failed-normal1/binary.json",
+      "bytes": 281,
+      "sha256": "028b61f36201539b6ec5db60becbb878ce7b90961878785aa03fef2235ba98a3"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/failed-normal1/graphapply.test",
+      "bytes": 29557266,
+      "sha256": "0e84002b44325487214f237e2574cad20c14532fb8a272cd79666d603c2f96b9"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/failed-normal1/normal.command.json",
+      "bytes": 3697,
+      "sha256": "b1020aba6f21014430b89acf00e689d1f0e1eef520bbd2ae8f29373d2bfbbce6"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/failed-normal1/normal.stderr.txt",
+      "bytes": 581,
+      "sha256": "bbb26bdde288479a68c2d987fc4201de76b76f8b3645c5be0abf00492507d660"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/failed-normal1/normal.stdout.txt",
+      "bytes": 27819,
+      "sha256": "31e33bc5c4a9037cda8751595041051ba9c41814691562410092da04823a5609"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/failed-normal1/normal.watchdog.json",
+      "bytes": 555,
+      "sha256": "05910d98622a56ffc81b1b4f88e0ea6ff7910fa99bcecb423b36a3ed28cfc203"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/failed-normal1/source-binding.json",
+      "bytes": 230,
+      "sha256": "0c332126b94003d9915402f8334a81cb54dc9fb62fa530ae68376771c77d69e5"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/failed-normal1/source.go",
+      "bytes": 10756,
+      "sha256": "1a6ad5dc14908e9cead085d055b6d9ffceb266b89a686768f6730c2df6b8ad67"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/failed-normal2/binary.json",
+      "bytes": 281,
+      "sha256": "8437228b249ce16ab597d9a19a5704f002738c1ac6358a20965e5572f9601612"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/failed-normal2/graphapply.test",
+      "bytes": 29557266,
+      "sha256": "a30f155f0137a0ff0d3f8d89c15b7ae5f822df0ceaf2011d117ddd04b68f7a3f"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/failed-normal2/normal.command.json",
+      "bytes": 3614,
+      "sha256": "cda23dcafc717c4f89765a66778ee23a712609093ba82ab91ea1d8432c78fd14"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/failed-normal2/normal.stderr.txt",
+      "bytes": 498,
+      "sha256": "51f4d6927874a10b6a431d3a9240722f6c3b8b2aa12af08c80c41a7b651ded57"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/failed-normal2/normal.stdout.txt",
+      "bytes": 12717,
+      "sha256": "6fda0849f7926a3e66ea1948107408c41479bdd558fb1480d725451b89839bb9"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/failed-normal2/normal.watchdog.json",
+      "bytes": 472,
+      "sha256": "454088511277043b45d03ee43949c1e655d52537d3355f983eb1946d3511bf9c"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/failed-normal2/source-binding.json",
+      "bytes": 230,
+      "sha256": "38365b784113b4c7298b85d1f10711930047491beda05e211a02d08dbb6c71ad"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/failed-normal2/source.go",
+      "bytes": 11445,
+      "sha256": "f31633fc4118926896c0008f4e66f01ab485b2848e8250260988cf7f5b25990d"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/limit-local.py",
+      "bytes": 7270,
+      "sha256": "6dc4e0362827ecd0854436b9fa1a812342b693d65ba093291d358b359e733283"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/lint.command.json",
+      "bytes": 3509,
+      "sha256": "28b95f3aec03efe4cb6eeaceae82d34b5e2d80155dd62885332e7569afaab507"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/lint.source-binding.json",
+      "bytes": 230,
+      "sha256": "7340b0139d2838a36532c91e4201a3e1a9b98fe28cac80ddb1f74f554fa160e4"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/lint.stderr.txt",
+      "bytes": 331,
+      "sha256": "e0cd1964aed48260c82213e9a11a04e14644d8f8626f6ab8f75c1c3cfa82e941"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/lint.stdout.txt",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/lint.watchdog.json",
+      "bytes": 366,
+      "sha256": "c878e3d74bfbd4e4e3da0aab70622d69d73baef38c6418090ea8a8cc31647db8"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/normal.binary.json",
+      "bytes": 273,
+      "sha256": "4c07437b61db1911f75ee11568d1c5ef0ceeded73c6d68c651f01d714304bfa8"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/normal.command.json",
+      "bytes": 3614,
+      "sha256": "cda23dcafc717c4f89765a66778ee23a712609093ba82ab91ea1d8432c78fd14"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/normal.graphapply.test",
+      "bytes": 29557266,
+      "sha256": "3f439c11937703f1769693217ad9e1ab4dc13136fe15457d5ff03641f11461c2"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/normal.source-binding.json",
+      "bytes": 230,
+      "sha256": "7340b0139d2838a36532c91e4201a3e1a9b98fe28cac80ddb1f74f554fa160e4"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/normal.stderr.txt",
+      "bytes": 494,
+      "sha256": "8d6646b3fad11587295402df1387039e8999d1018ec5736ff074e7858f12f903"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/normal.stdout.txt",
+      "bytes": 30984,
+      "sha256": "e047109d6c226c214686e4e9fd1ad4fd211be326c11f2c7441eee55ac56cb144"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/normal.watchdog.json",
+      "bytes": 468,
+      "sha256": "f6214290904f2d3cc4b40d915c78ecd06c6c0ca9835349e022723cbab501bafd"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/package.py",
+      "bytes": 3624,
+      "sha256": "508b354b5b3abf99343a13a581ad6b0ddc68017d901b168534854ba371c2987e"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/qualification-scope.json",
+      "bytes": 2110,
+      "sha256": "642ef8d87b1e89f6088ac79fa03be717112c1100d3a3d9d18cd429f28d75ee9e"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/race.binary.json",
+      "bytes": 270,
+      "sha256": "54785691ca98dc7a450a19fbecfe661f3ffc9edb74f6db706d40b3f85f835afb"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/race.command.json",
+      "bytes": 3625,
+      "sha256": "936292ff3db10b21d3b3b63f30cffe2d3b2f1b0e398108516105ec257470b047"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/race.graphapply.test",
+      "bytes": 41705426,
+      "sha256": "0879b57fb8c3cdfc0f9498aac250f68e4e0249fea5426e31f6e60acb7a3d07aa"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/race.source-binding.json",
+      "bytes": 230,
+      "sha256": "7340b0139d2838a36532c91e4201a3e1a9b98fe28cac80ddb1f74f554fa160e4"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/race.stderr.txt",
+      "bytes": 502,
+      "sha256": "0fcd0b7510a781cc95c79050e7e102359b347205d512b5f959e5af1cabc312f9"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/race.stdout.txt",
+      "bytes": 30984,
+      "sha256": "979250512a2dbc8c3c9c32ad0ea5914bc20c42c057f4af360ebe50125fe05721"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/race.watchdog.json",
+      "bytes": 481,
+      "sha256": "823d81cbaf0037ff00d3c64f237238b2dd407138cc855e7e342f228930d92ec0"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/run.py",
+      "bytes": 2017,
+      "sha256": "3395c2ec1217da4e4ab27bbe576cbacd36fc895e2f18a41560efc834956cb89d"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/scanner-provenance/after-tools-golangci-lint-build.txt",
+      "bytes": 19505,
+      "sha256": "201a8c190da2adf271295dccd2a28ac0d8593c386d6bfc974525fca0cb781ba1"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/scanner-provenance/after-tools-golangci-lint-version.txt",
+      "bytes": 154,
+      "sha256": "5644aa8e116a125b49c8e7bccf4515686b8b7312ecb1b195c06c8a7aa5ff175a"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/scanner-provenance/after-tools-gosec-build.txt",
+      "bytes": 4620,
+      "sha256": "94323999bee049c2268c6ddf7289f7b62a3d3a1c095e5e8eb1d7343741bbd36c"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/scanner-provenance/after-tools-gosec-version.txt",
+      "bytes": 36,
+      "sha256": "c61e4d5622fe9449bd0810e944e583a8e330a8b9d0c394513f5f68b64a94e200"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/scanner-provenance/after-tools-govulncheck-build.txt",
+      "bytes": 856,
+      "sha256": "b70fc48b73d048766430480df56977aca4703710b4976933e97181e37d2424c0"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/scanner-provenance/after-tools-govulncheck-version.txt",
+      "bytes": 108,
+      "sha256": "f872dc8e4877391b12229c7fbc08e9fd9666a60e0571140f09dce7270472a21e"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/scanner-provenance/after-tools-scanner-sha256.json",
+      "bytes": 254,
+      "sha256": "b5111533cd550c363c4fce3afaeff3bfc3af1f4ce788c490851b4ccb0a95ce91"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/security.command.json",
+      "bytes": 3468,
+      "sha256": "12f3c68660a10b418df54907dee31f9dae5758523b0393d7fc540569d4ca051b"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/security.source-binding.json",
+      "bytes": 230,
+      "sha256": "7340b0139d2838a36532c91e4201a3e1a9b98fe28cac80ddb1f74f554fa160e4"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/security.stderr.txt",
+      "bytes": 290,
+      "sha256": "73c30416016c1b63c953ae1082e7ee2f44db412d147404e63e7ac1b5d148d0e1"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/security.stdout.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/security.watchdog.json",
+      "bytes": 317,
+      "sha256": "b5eaad0495ba470fd29203761afab4992299d44abf9bd932ccb3f7348409d82b"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/source/.golangci.yml",
+      "bytes": 1865,
+      "sha256": "7084dd0d2272f3c27ac89fc503f6672f9960ae2da47c85cefcfb27951f8caf69"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/source/v5/go.mod",
+      "bytes": 1801,
+      "sha256": "3bf8baf02d354420ddf87b8865f20b854bb606f04e0f0988f0f9eed2d89e8a24"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/source/v5/go.sum",
+      "bytes": 12085,
+      "sha256": "5679a7aa94d5ee71f5737dea65a4fa71ed69109c45b877b1dd1639ae5e6e60f0"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/source/v5/internal/graphapply/certified_graph_p01_scope_test.go",
+      "bytes": 13313,
+      "sha256": "c87b1be95ab9314a1dde9dabca2ec1142de015f6b3d4606b7f7396273be0b50b"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/source/v5/internal/graphapply/cross_process_p04_identity_test.go",
+      "bytes": 9248,
+      "sha256": "4dcd9f57efebcfbdc38877b40dd48c97e34348c2727db0d400386b2384429aed"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/source-inventory.json",
+      "bytes": 74989,
+      "sha256": "6c0809f1e14e8040a5b92c438de9e4357f015034dac3f4dbc421d936fc656d7b"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/vet.command.json",
+      "bytes": 3478,
+      "sha256": "0b4d9bf685ccb44a11a787f9755da6643779e252682b0bcddf7a07ed690314dc"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/vet.source-binding.json",
+      "bytes": 230,
+      "sha256": "7340b0139d2838a36532c91e4201a3e1a9b98fe28cac80ddb1f74f554fa160e4"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/vet.stderr.txt",
+      "bytes": 307,
+      "sha256": "b2c5ca263eb4751cab263196dcf9f61a3227989feafbfdeae236b189d9a56568"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/vet.stdout.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/var/tmp/rho-v2-p01-evidence-20261014/vet.watchdog.json",
+      "bytes": 334,
+      "sha256": "263d3c35b2e07fe11ea797b8621674075addf96bcdd37e692ccb3713c53e6e48"
+    }
+  ],
+  "exclusions": [
+    "Actual test executables retained outside repo at hash-bound *.binary.json paths; not committed.",
+    "Temporary native durable stores are fixture-owned and cleaned by test; no whole-store copies.",
+    "No new long benchmark, OS-process fault matrix, full suite, vuln scan, or performance qualification."
+  ],
+  "observations": "All protocol/graph/CDC/cut assertions are in the source-bound genuine tests; their full values are not separately streamed. Raw Go output supplies parent/subcase and cleanup terminals; no fabricated proof/response or independent-oracle acceptance claim."
+}
