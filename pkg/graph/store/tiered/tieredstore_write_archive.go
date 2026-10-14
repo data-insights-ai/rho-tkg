@@ -28,6 +28,12 @@ var ErrCrossShardArchiveRel = errors.New("graph: cross-shard archive relationshi
 // relationship placement moves and the temporary destination node write. If a
 // rollback step itself fails, the returned error includes both the primary
 // failure and the rollback failure.
+//
+// Concurrency: ArchiveNode holds moveMu for the whole move, so reads (scans
+// and point reads) see the node on exactly one shard. Writes route without
+// moveMu: a direct tiered.Store user must not write the moving node or its
+// relationships during a move. The graph layer fences this with c.mu
+// (g.Tier().Archive takes the exclusive lock).
 func (ts *Store) ArchiveNode(nid types.NodeID) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
@@ -124,6 +130,8 @@ func (ts *Store) ArchiveNode(nid types.NodeID) error {
 // Cross-store atomicity follows ArchiveNode: completed relationship placement
 // moves and the temporary destination node write are rolled back on failure, and
 // rollback failures are included in the returned error.
+//
+// Concurrency: as ArchiveNode — reads are fenced by moveMu, writes are not.
 func (ts *Store) RestoreNode(nid types.NodeID) error {
 	if err := ts.checkOpen(); err != nil {
 		return err

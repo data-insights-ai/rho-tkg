@@ -249,7 +249,7 @@ type Store struct {
 	refArchive        atomic.Pointer[BadgerStore]                     // nil until first archive/restore or DepthAll with archive catalog; atomic so reads need not hold archiveMu
 	archiveMu         sync.Mutex                                      // serializes lazy-open of refArchive (single-flight)
 	migrateMu         sync.Mutex                                      // serializes concurrent MigrateFromBadger calls against this Store (BACKLOG 19k)
-	moveMu            sync.RWMutex                                    // ArchiveNode/RestoreNode hold it; a door reading the reference shard and then the archive read-holds it across both (refAndArchive, lockMoveRead)
+	moveMu            sync.RWMutex                                    // ArchiveNode/RestoreNode hold it; reads of the reference shard and the archive (and point routes) read-hold it (refAndArchive, lockMoveRead); writes do not, so a direct user must not write during a move (the graph fences with c.mu)
 	fanoutRefReadHook func()                                          // test-only: refArchiveGapHook runs it between a door's reference shard read and its archive read
 	archiveActiveReqs atomic.Int64                                    // refcount for refArchive — Close spin-waits on this before archive.Close()
 	eventShards       map[string]*EventShard                          // name -> event shard

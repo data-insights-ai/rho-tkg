@@ -771,6 +771,7 @@ func appendNodeHistorySource(sources *[]nodeHistorySource, store *BadgerStore, h
 
 func (ts *Store) nodeHistoryWithArchive(nid types.NodeID, skip *BadgerStore, history []*types.Node) ([]*types.Node, error) {
 	sources := nodeHistorySourcesFrom(skip, history)
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, err := ts.checkoutArchive()
 	if err != nil {
 		return nil, err

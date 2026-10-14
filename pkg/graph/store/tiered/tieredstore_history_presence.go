@@ -118,6 +118,7 @@ func walkRelHistoryShards[T any](ts *Store, rid types.RelID, ask func(*BadgerSto
 // relHistoryWithArchive: the owner's answer merged with the archive's.
 func historyWalkWithArchive[T any](ts *Store, skip *BadgerStore, acc T, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
 	var zero T
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, err := ts.checkoutArchive()
 	if err != nil {
 		return zero, err

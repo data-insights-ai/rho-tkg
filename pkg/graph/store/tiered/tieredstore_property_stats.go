@@ -87,6 +87,8 @@ func (ts *Store) foldNodePropertySketches(labelToken uint16, propertyKey string,
 		return nil
 	}
 
+	move := ts.lockMoveRead() // a node moved mid-read would count twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return storecontract.PropertyStats{}, err
@@ -100,6 +102,7 @@ func (ts *Store) foldNodePropertySketches(labelToken uint16, propertyKey string,
 		return storecontract.PropertyStats{}, err
 	}
 
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 	if archiveErr != nil {
 		return storecontract.PropertyStats{}, archiveErr
@@ -114,6 +117,7 @@ func (ts *Store) foldNodePropertySketches(labelToken uint16, propertyKey string,
 			return storecontract.PropertyStats{}, err
 		}
 	}
+	move.unlock()
 
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(DepthAll)

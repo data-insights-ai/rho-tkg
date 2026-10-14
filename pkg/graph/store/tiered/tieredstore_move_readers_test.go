@@ -178,6 +178,28 @@ func TestRefArchiveReadersSeeMovedEntityOnce(t *testing.T) {
 			ids, err := m.ts.AllNodeHistoryIDsFrom(0, 0)
 			return countID(ids, m.a), err
 		})},
+		{"NodePropertyStats", plain(func(m moveRace) (int, error) {
+			st, err := m.ts.NodePropertyStats(m.label, "k")
+			return int(st.Count), err
+		})},
+		{"GetNodeHistory", plain(func(m moveRace) (int, error) {
+			rows, err := m.ts.GetNodeHistory(m.a)
+			return len(rows), err
+		})},
+		{"HasNodeHistory", plain(func(m moveRace) (int, error) {
+			ok, err := m.ts.HasNodeHistory(m.a)
+			if ok {
+				return 1, err
+			}
+			return 0, err
+		})},
+		{"NodeHistoryStamps", plain(func(m moveRace) (int, error) {
+			from, _, ok, err := m.ts.NodeHistoryStamps(m.a)
+			if !ok {
+				return 0, err
+			}
+			return int(from), err
+		})},
 		{"GetNode", plain(func(m moveRace) (int, error) {
 			if _, err := m.ts.GetNode(m.a); err != nil {
 				return 0, nil

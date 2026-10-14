@@ -1,0 +1,27 @@
+    tieredstore_move_readers_test.go:284: ArchiveNode during the read: got 2, want 1 (no move in flight)
+    tieredstore_move_readers_test.go:284: RestoreNode during the read: got 0, want 1 (no move in flight)
+    tieredstore_move_readers_test.go:278: door never reached its archive read (answered from the reference shard)
+    tieredstore_move_readers_test.go:278: door never reached its archive read (answered from the reference shard)
+    tieredstore_move_readers_test.go:278: door never reached its archive read (answered from the reference shard)
+--- FAIL: TestRefArchiveReadersSeeMovedEntityOnce (1.03s)
+    --- FAIL: TestRefArchiveReadersSeeMovedEntityOnce/NodePropertyStats/ArchiveNode (0.08s)
+    --- FAIL: TestRefArchiveReadersSeeMovedEntityOnce/NodePropertyStats/RestoreNode (0.18s)
+    --- SKIP: TestRefArchiveReadersSeeMovedEntityOnce/GetNodeHistory/ArchiveNode (0.06s)
+    --- PASS: TestRefArchiveReadersSeeMovedEntityOnce/GetNodeHistory/RestoreNode (0.11s)
+    --- SKIP: TestRefArchiveReadersSeeMovedEntityOnce/HasNodeHistory/ArchiveNode (0.14s)
+    --- PASS: TestRefArchiveReadersSeeMovedEntityOnce/HasNodeHistory/RestoreNode (0.15s)
+    --- SKIP: TestRefArchiveReadersSeeMovedEntityOnce/NodeHistoryStamps/ArchiveNode (0.12s)
+    --- PASS: TestRefArchiveReadersSeeMovedEntityOnce/NodeHistoryStamps/RestoreNode (0.17s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	1.219s
+FAIL
+# second run: hook also between the reference and archive history reads (nodeHistoryWithArchive, historyWalkWithArchive); history doors still unlocked
+--- PASS: TestRefArchiveReadersSeeMovedEntityOnce (1.14s)
+    --- PASS: TestRefArchiveReadersSeeMovedEntityOnce/GetNodeHistory/ArchiveNode (0.09s)
+    --- PASS: TestRefArchiveReadersSeeMovedEntityOnce/GetNodeHistory/RestoreNode (0.20s)
+    --- PASS: TestRefArchiveReadersSeeMovedEntityOnce/HasNodeHistory/ArchiveNode (0.29s)
+    --- PASS: TestRefArchiveReadersSeeMovedEntityOnce/HasNodeHistory/RestoreNode (0.19s)
+    --- PASS: TestRefArchiveReadersSeeMovedEntityOnce/NodeHistoryStamps/ArchiveNode (0.16s)
+    --- PASS: TestRefArchiveReadersSeeMovedEntityOnce/NodeHistoryStamps/RestoreNode (0.19s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	2.273s

@@ -38,8 +38,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Tiered scans no longer see a node twice or not at all while `ArchiveNode` / `RestoreNode` moves it** (backlog 60).
   `NodesByLabel`, `NodesByLabelAndProperty`, `NodesByLabelAndProperties`, `RelationshipsByType`, `AllNodes`,
   `AllNodeIDs`, `AllRelationships`, `AllRelIDs` (each at `DepthAll`), `ForEachNodeID`, `ForEachRelID`, `NodeCount`,
-  `NodeCountByLabel`, `NodeCountByLabelAndPropertyKey`, `NodePropertyTypeClassCounts`, `RelationshipCount` and
-  `RelCountByType` read the reference shard and then the archive; a move between the two reads returned the node
+  `NodeCountByLabel`, `NodeCountByLabelAndPropertyKey`, `NodePropertyTypeClassCounts`, `NodePropertyStats` /
+  `NodePropertyNDV` (their `Count`), `RelationshipCount` and `RelCountByType` read the reference shard and then the archive; a move between the two reads returned the node
   (and its relationship) twice or counted it twice (`ArchiveNode`: the archive copy is written before the reference
   delete), or dropped it (`RestoreNode`: the reference write lands after the reference read, the archive delete before
   the archive read). They now take the move lock's read side across the two reads, as the tx-membership fan-out does;
@@ -51,11 +51,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   one `ArchiveNode` moved between the route and the read. `GetNode`, `LendNode`, `NodeIntegrityHash`,
   `EndpointIntegrityHashes`, `GetNodesByIDs`, `GetRelationship`, `LendRelationship`, `GetRelationshipsByIDs`,
   `Outgoing`/`IncomingRelationships` (and their `ForNodes` forms), `Outgoing`/`IncomingDegree`,
-  `Node`/`RelCurrentStamps`, `HasNode`/`HasRelHistory` and the node/relationship version and history reads now hold
-  the same read lock across route and read; `ArchiveNode` / `RestoreNode` read relationships through the unlocked
+  `Node`/`RelCurrentStamps`, `HasNode`/`HasRelHistory`, the node/relationship version and history reads and the
+  history-walk part of `Node`/`RelHistoryStamps` now hold the same read lock across route and read (the history doors
+  did not go red in the test without it: history rows stay where they were written and the walks fall back to every
+  shard; they are locked so route and read agree); `ArchiveNode` / `RestoreNode` read relationships through the unlocked
   route. One uncontended `RLock` per call, no allocation: `GetNode` 2 allocs / 112 B (reference) and 3 / 128 B
   (archived) before and after, median 160.5 → 175 ns (reference) and 180.5 → 178.5 ns (archived), alternating runs
-  on one pinned core of a loaded host. Write doors still route without the lock (the graph layer fences them).
+  on one pinned core of a loaded host. Write doors still route without the lock: a direct `tiered.Store` user must not write during a move (the graph layer fences them with its exclusive lock; documented on `ArchiveNode` / `RestoreNode`).
   Graph users were not affected: `g.Tier().Archive` / `Restore`
   hold the graph's exclusive lock. Test `TestRefArchiveReadersSeeMovedEntityOnce`; evidence
   `tasks/evidence/tiered-move-readers/`.
