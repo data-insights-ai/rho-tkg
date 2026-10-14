@@ -37,7 +37,7 @@ def plan():
             "cells": [specification(n, c, w) for n in FACTS for c in CROSS for w in WRITERS],
             "firstWorkload": "three setup nodes; N relationship creates(p=5), N updates(p=6); retained old/current graph and complete CDC",
             "remainingWorkloads": ["contention/empty-range guards", "Stable/After", "correction/old-cut index scans", "snapshot-feed", "columns", "range transfer/pins"],
-            "implementationStatus": {"native": "writer1 test-support runner; single-grant ID limit explicitly enforced",
+            "implementationStatus": {"native": "writer1 test-support runner; multiple-grant setup qualified at seventeen facts; physical reopen/index source implemented, runtime qualification deferred",
                                      "FDB": "writer1 real cost source/launcher present; qualification and same-dataset measurements pending",
                                      "writers8/32": "not yet available; refuse execution"}}
 
