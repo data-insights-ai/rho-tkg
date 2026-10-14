@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"syscall"
 	"testing"
 	"time"
@@ -80,6 +81,8 @@ type nativeGraphCostResult struct {
 	Directory                                              string              `json:"directory"`
 	UsefulFacts                                            uint64              `json:"usefulFacts"`
 	SetupNodes                                             int                 `json:"setupNodes"`
+	GrantBlockSize                                         uint64
+	IDAdmission                                            string
 	Creates, Updates                                       uint64
 	SetupNanos, WritesNanos, VerificationNanos, TotalNanos int64
 	PersistedFileBytes                                     uint64 `json:"persistedFileBytes"`
@@ -97,7 +100,7 @@ type nativeGraphCostResult struct {
 	TimingScope                                            string                   `json:"timingScope"`
 }
 
-func newNativeGraphCostNetwork(t *testing.T, spec nativeGraphCostSpec) *certifiedProcessNetwork {
+func newNativeGraphCostNetworkWithBlock(t *testing.T, spec nativeGraphCostSpec, block uint64) *certifiedProcessNetwork {
 	t.Helper()
 	if err := spec.validate(); err != nil {
 		t.Fatal(err)
@@ -110,10 +113,20 @@ func newNativeGraphCostNetwork(t *testing.T, spec nativeGraphCostSpec) *certifie
 	if err != nil {
 		t.Fatal(err)
 	}
+	grants, err := os.OpenFile(filepath.Join(dir, "grants.jsonl"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := grants.Close(); err != nil {
+			t.Error("cost grant receipt close", err)
+		}
+	}()
+	grantStream := json.NewEncoder(grants)
 	n := &certifiedProcessNetwork{all: make(map[uint64]*graphProcess), dir: dir, leaders: [2]uint64{1, 4}}
 	t.Log("native cost durable directories", dir)
 	for id := uint64(1); id <= 6; id++ {
-		n.all[id] = startGraphProcess(t, filepath.Join(dir, fmt.Sprint(id)), id, "RHO_GRAPH_CERTIFIED_PROCESS=1", "RHO_GRAPH_SOURCE_PROCESS=1", "RHO_GRAPH_COST_SPEC="+string(wire))
+		n.all[id] = startGraphProcess(t, filepath.Join(dir, fmt.Sprint(id)), id, "RHO_GRAPH_CERTIFIED_PROCESS=1", "RHO_GRAPH_SOURCE_PROCESS=1", "RHO_GRAPH_COST_SPEC="+string(wire), "RHO_GRAPH_COST_BLOCK_SIZE="+strconv.FormatUint(block, 10))
 	}
 	attachGraphProcessMuxesWithLimit(t, n.all, spec.deliveries())
 	hub := n.all[1].mux.hub
@@ -139,7 +152,7 @@ func newNativeGraphCostNetwork(t *testing.T, spec nativeGraphCostSpec) *certifie
 	n.action(t, 1, certifiedInitialize, 3, nil)
 	n.read(t, 1, observeConfiguration, 0)
 	n.action(t, 1, certifiedInitialize, 8, nil)
-	for _, r := range []struct{ actor, id, partition, count uint64 }{{1, 1, 3, spec.homeCount()}, {4, 2, 8, 2}} {
+	for _, r := range []struct{ actor, id, partition uint64 }{{1, 1, 3}, {4, 2, 8}} {
 		n.read(t, r.actor, observeConfiguration, 0)
 		n.action(t, r.actor, certifiedBeginRecipient, r.id, nil)
 		n.read(t, 1, observeRecipient, r.id)
@@ -155,15 +168,7 @@ func newNativeGraphCostNetwork(t *testing.T, spec nativeGraphCostSpec) *certifie
 		n.action(t, 1, certifiedRecipientTransition, r.partition, []byte{byte(publishDeclaredRecipient)})
 		n.read(t, r.actor, observeRecipient, r.id)
 		n.action(t, r.actor, certifiedOpenRecipient, 0, nil)
-		n.read(t, 1, observeRecipient, r.id)
-		n.read(t, 1, observeAllocator, 0)
-		input := graphE17GrantInput(1, r.count)
-		n.action(t, 1, certifiedReserve, 0, input)
-		n.group(1).event(t, 1, processRequest{op: processCertifiedRead, entity: uint64(observeGrant), data: input})
-		if !n.all[1].call(t, processRequest{op: processStateOp}).ready {
-			t.Fatal("actual cost grant ReadIndex incomplete")
-		}
-		n.action(t, 1, certifiedInstallGrant, r.partition, nil)
+		nativeGraphCostInstallGrants(t, n, spec, r.id, r.partition, block, grantStream)
 	}
 	return n
 }
@@ -646,10 +651,15 @@ func nativeGraphCostFileBytes(dir string) (uint64, uint64, error) {
 	return total, allocated, err
 }
 func runNativeGraphCost(t *testing.T, s nativeGraphCostSpec) {
+	runNativeGraphCostWithBlock(t, s, min(s.homeCount(), idalloc.MaxBlockSize))
+}
+func runNativeGraphCostWithBlock(t *testing.T, s nativeGraphCostSpec, block uint64) {
 	t.Helper()
 	started := time.Now()
-	n := newNativeGraphCostNetwork(t, s)
+	n := newNativeGraphCostNetworkWithBlock(t, s, block)
 	result := nativeGraphCostResult{Version: 1, Runner: "certified-16-command-checkpoints-v2", CheckpointCommands: nativeGraphCostBatchCommands, Engine: "native-raft", Spec: s, Deployment: "single-machine distributed: two three-voter durable process groups", Directory: n.dir, UsefulFacts: s.Facts, SetupNodes: 3, Creates: s.Facts, Updates: s.Facts}
+	result.GrantBlockSize = block
+	result.IDAdmission = "fixed fixture IDs admitted by actual installed allocator/recipient grants and fresh bindings; no Recipient.Acquire or Cursor.Next issuance"
 	result.TimingScope = "LocalAckTiming covers setup/create/update ordinary Submit RPCs and waits; State is a cost-only checked volatile Driver.Applied hint without Checkpoint/full stats, never ACK authority. Original retained Outcome/CDC alone proves ACK. Cost non-State replies omit unrequested checkpoint/full statistics but preserve native results and store errors; explicit default State diagnostics and all non-cost replies remain full. TransportTiming covers all queued hub traffic including setup/checkpoints/oracles, overlaps client timings, and Step includes IPC plus native driver/application work, not pure fsync. Fixed-size totals and one int64 timestamp per queued job preserve the existing 64-byte job allowance."
 	// Source records and observations are streamed, never accumulated per fact.
 	open := func(name string) (*os.File, *json.Encoder) {

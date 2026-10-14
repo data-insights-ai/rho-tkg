@@ -14,7 +14,6 @@ import (
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
-	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
@@ -78,10 +77,11 @@ func nativeGraphCostProfile(s *nativeGraphCostSpec, init *declaredInitCommand, l
 	if err := s.validate(); err != nil {
 		return err
 	}
-	if s.homeCount() > idalloc.MaxBlockSize {
-		return fmt.Errorf("single-grant cost profile needs %d IDs, allocator MaxBlockSize=%d: %w", s.homeCount(), idalloc.MaxBlockSize, errLimit)
+	block, err := nativeGraphCostBlockSize(*s)
+	if err != nil {
+		return err
 	}
-	init.maxBlock = s.homeCount()
+	init.maxBlock = block
 	// Logical retained quotas are explicit per dataset, never resident/RSS limits.
 	// Every old root, graph version, original outcome, CDC and index remains.
 	retainedBytes, retainedRecords := uint64(64<<20)+s.Facts*(64<<10), uint64(65536)+s.Facts*512
@@ -94,14 +94,7 @@ func (o *certifiedProcessOwners) grantParameters(data []byte) (uint64, uint64, e
 	if o.cost == nil {
 		return graphE17GrantParameters(o.host, data)
 	}
-	if len(data) != 16 {
-		return 0, 0, errInvalid
-	}
-	sequence, count := binary.BigEndian.Uint64(data[:8]), binary.BigEndian.Uint64(data[8:])
-	if sequence != 1 || count == 0 || count > o.cost.homeCount() {
-		return 0, 0, errInvalid
-	}
-	return sequence, count, nil
+	return nativeGraphCostGrantParameters(o, data)
 }
 
 // Inputs select declared typed operations; the actual Host authenticates grants,
@@ -119,7 +112,6 @@ func nativeGraphCostProposal(o *certifiedProcessOwners, r processRequest, id req
 	if err != nil {
 		return allocationProposal{}, err
 	}
-	grant := grantReference{session: o.recipient.session, sequence: 1}
 	var ops []graphstate.Operation
 	var claims []freshBinding
 	provenance := r.index
@@ -135,7 +127,7 @@ func nativeGraphCostProposal(o *certifiedProcessOwners, r processRequest, id req
 			owner, life = o.cost.remoteNode(), o.cost.remoteNode()+1
 		}
 		ops = []graphstate.Operation{{Kind: graphstate.CreateNode, Owner: graphstate.EntityID(owner), Life: graphstate.LifeID(life), Scope: scope, Record: graphstate.EntityRecord{Interpretation: graphstate.InterpretationObservation, TemporalRole: graphstate.TemporalRoleValidity}}}
-		claims = []freshBinding{{role: entityBinding, id: owner, grant: grant}, {role: lifeBinding, owner: graphstate.EntityID(owner), id: life, grant: grant}}
+		claims = []freshBinding{{role: entityBinding, id: owner}, {role: lifeBinding, owner: graphstate.EntityID(owner), id: life}}
 	} else {
 		if len(r.data) != 8 {
 			return allocationProposal{}, errInvalid
@@ -149,14 +141,20 @@ func nativeGraphCostProposal(o *certifiedProcessOwners, r processRequest, id req
 		provenance = 4 + i
 		if r.index == 4 {
 			ops = append(ops, graphstate.Operation{Kind: graphstate.CreateRelationship, Owner: graphstate.EntityID(edge), Life: graphstate.LifeID(life), Scope: scope, Record: graphstate.EntityRecord{Type: "edge", Source: 1, Target: graphstate.EntityID(target), Mode: graphstate.LifeBound, Interpretation: graphstate.InterpretationAssertedRelation, TemporalRole: graphstate.TemporalRoleOccurrenceTime}, Binding: graphstate.LifeRecord{SourceLife: 2, TargetLife: graphstate.LifeID(targetLife)}})
-			claims = append(claims, freshBinding{role: entityBinding, id: edge, grant: grant}, freshBinding{role: lifeBinding, owner: graphstate.EntityID(edge), id: life, grant: grant})
+			claims = append(claims, freshBinding{role: entityBinding, id: edge}, freshBinding{role: lifeBinding, owner: graphstate.EntityID(edge), id: life})
 		} else {
 			value, valueID = 6, 6
 			provenance = 4 + o.cost.Facts + i
 		}
 		ops = append(ops, graphstate.Operation{Kind: graphstate.Set, Owner: graphstate.EntityID(edge), Life: graphstate.LifeID(life), Scope: scope, Name: "p", Value: graphstate.I64(value), ValueID: graphstate.ValueID(valueID)})
 		if i == 0 {
-			claims = append(claims, freshBinding{role: valueBinding, id: valueID, grant: grant})
+			claims = append(claims, freshBinding{role: valueBinding, id: valueID})
+		}
+	}
+	for i := range claims {
+		claims[i].grant, err = nativeGraphCostFreshGrant(o, claims[i].id)
+		if err != nil {
+			return allocationProposal{}, err
 		}
 	}
 	return o.host.PreparePartitionGraphOperations(id, ops, provenance, claims)
