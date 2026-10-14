@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
@@ -107,6 +109,7 @@ const (
 	processP05Resume
 	processP05Close
 	processP05Proposal
+	processNativeFaultControl
 )
 
 // IPC IDs identify this process event only. No storage/send/prepared capability
@@ -215,7 +218,7 @@ func decodeProcessRequest(b []byte) (processRequest, error) {
 	r := processRequest{incarnation: c.array(), sequence: c.u64(), op: c.tag(), index: c.u64(), entity: c.u64()}
 	r.data = c.field(processFrameBytes)
 	r.packet = processDecodePacket(&c)
-	if r.sequence == 0 || r.op < processCampaign || r.op > processP05Proposal || len(c.b) != 0 {
+	if r.sequence == 0 || r.op < processCampaign || r.op > processNativeFaultControl || len(c.b) != 0 {
 		c.err = errCorrupt
 	}
 	return r, c.err
@@ -1523,6 +1526,7 @@ const (
 
 type certifiedProcessOwners struct {
 	cost        *nativeGraphCostSpec
+	fault       *nativeFaultFS
 	host        *allocationHost
 	proof       allocationProof
 	readID      allocationReadID
@@ -1822,7 +1826,32 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 		t.Fatal(err)
 	}
 	create := os.Getenv("RHO_GRAPH_PROCESS_REOPEN") != "1"
-	s, err := raftlog.Open(raftlog.Config{Dir: os.Getenv("RHO_GRAPH_PROCESS_DIR"), Create: create, Limits: l, Application: p, Controls: controls, Recovery: recovery, Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(n.graph), Partition: n.partition, Group: part.Group}, Contract: contract, Limits: raftlog.ApplicationTransferLimits{MaxExports: 2, MaxChunkRows: 64, MaxChunkBytes: 256 << 10, MaxStagedBytes: 16 << 20, MaxStagedRecords: 8192, MaxPinnedLogicalBytes: 64 << 20}}, Generations: generations, PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 4096}, Replication: raftlog.ApplicationReplicationConfig{Voters: voters}, SemanticContractID: agreement})
+	var fault *nativeFaultFS
+	var faultFS vfs.FS
+	switch os.Getenv("RHO_GRAPH_NATIVE_FAULT_PROCESS") {
+	case "", "off":
+	case "1":
+		fault, err = newNativeFaultFS(os.Getenv("RHO_GRAPH_PROCESS_DIR"), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		faultFS = fault
+		if kind := os.Getenv("RHO_GRAPH_NATIVE_FAULT_START"); kind != "" {
+			if create || kind != "directory-sync" {
+				t.Fatal("startup fault requires same-directory reopen directory Sync")
+			}
+			arm, encodeErr := json.Marshal(nativeFaultControl{Version: 1, Action: "arm", Cookie: fault.state.Cookie, Sequence: 1, Kind: kind, Nth: 1})
+			if encodeErr != nil {
+				t.Fatal(encodeErr)
+			}
+			if _, err := fault.control(arm); err != nil {
+				t.Fatal(err)
+			}
+		}
+	default:
+		t.Fatal("unknown native fault process profile")
+	}
+	s, err := raftlog.Open(raftlog.Config{Dir: os.Getenv("RHO_GRAPH_PROCESS_DIR"), FS: faultFS, Create: create, Limits: l, Application: p, Controls: controls, Recovery: recovery, Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(n.graph), Partition: n.partition, Group: part.Group}, Contract: contract, Limits: raftlog.ApplicationTransferLimits{MaxExports: 2, MaxChunkRows: 64, MaxChunkBytes: 256 << 10, MaxStagedBytes: 16 << 20, MaxStagedRecords: 8192, MaxPinnedLogicalBytes: 64 << 20}}, Generations: generations, PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 4096}, Replication: raftlog.ApplicationReplicationConfig{Voters: voters}, SemanticContractID: agreement})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1847,7 +1876,7 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 			t.Error(err)
 		}
 	}()
-	o := certifiedProcessOwners{host: h, cost: cost}
+	o := certifiedProcessOwners{host: h, cost: cost, fault: fault}
 	if _, err := io.ReadFull(rand.Reader, o.incarnation[:]); err != nil {
 		t.Fatal(err)
 	}

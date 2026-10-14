@@ -81,6 +81,13 @@ class Planning(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 self.docs_action(["tools/v5-substrate/compare-cost-cdc.py"])
 
+    def test_fault_checker_dispatches_its_finite_private_guards_once(self):
+        for paths in [[path] for path in CI.FAULT_INPUTS] + [list(CI.FAULT_INPUTS)]:
+            with self.subTest(paths=paths), patch.object(CI.subprocess,"run") as run:
+                CI.cdc(paths)
+                self.assertEqual([call.args[0] for call in run.call_args_list],
+                                 [[sys.executable,"-B","tools/v5-substrate/native_fault_schedule_check_test.py"]])
+
     def test_full_cdc_action_runs_only_its_exact_replay_without_reference_or_go(self):
         with patch.object(sys, "argv", ["ci-changes.py", "cdc", "--base", "fixture"]), \
              patch.object(CI, "changed_paths", return_value=["docs/v5/PLAN.md", "tools/v5-substrate/cost-cell.py"]), \
@@ -277,6 +284,7 @@ class RealGitSelection(unittest.TestCase):
             "prepared_lock_p06_harness_test.go": {"TestPreparedLockP06FirstYESLeaderKillOriginalRecovery"},
             "coordinator_loss_p03_harness_test.go": {"TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply"},
             "prepare_fence_p02_harness_test.go": {"TestPrepareFenceP02ActualOrderingAcrossElection"},
+            "native_graph_fault_schedule_harness_test.go": set(CI.FAULT_PARENTS),
         }
         for name, parents in fixtures.items():
             with self.subTest(fixture=name):
@@ -321,7 +329,7 @@ class RealGitSelection(unittest.TestCase):
         path = self.directory / "graph_source_process_test.go"
         path.write_text("package graphapply\ntype graphProcessHub struct{}\n")
         selected = set(CI.graph_selection(self.directory, [path], {path: [("type", "graphProcessHub")]}))
-        self.assertEqual(selected, set(CI.COST_PARENTS) | set(CI.GRAPH_COMPAT) |
+        self.assertEqual(selected, set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.GRAPH_COMPAT) |
                          {"TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput",
                           "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts"})
         self.assertNotIn("TestNativeGraphCostCell", selected)
@@ -517,7 +525,7 @@ class CurrentRepository(unittest.TestCase):
     def test_checked_compatibility_names_exist_in_current_sources(self):
         directory = CI.ROOT / "v5/internal/graphapply"
         names = set().union(*(CI.parent_names(p) for p in directory.glob("*_test.go")))
-        self.assertTrue(set(CI.GRAPH_COMPAT) | set(CI.COST_PARENTS) <= names)
+        self.assertTrue(set(CI.GRAPH_COMPAT) | set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) <= names)
         self.assertIn("TestGraphReplacementAdmissionNativeSurvivingQuorumAllAgreements", CI.GRAPH_COMPAT)
 
     def test_explicit_cost_cell_is_short_guarded_before_profile(self):

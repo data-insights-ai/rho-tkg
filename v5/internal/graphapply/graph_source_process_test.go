@@ -96,10 +96,12 @@ type graphProcessHub struct {
 	costStarted                      time.Time
 	idle                             chan struct{}
 	// Optional test transport schedule; protected by mu and never graph authority.
-	beforeRelay  func(context.Context, uint64, uint64, []byte) error
-	afterRelay   func(context.Context, uint64, uint64, []byte, []byte) error
-	relayTargets map[uint64]map[uint64]uint64
-	packetFilter func(replica.Packet) (bool, error)
+	beforeRelay         func(context.Context, uint64, uint64, []byte) error
+	afterRelay          func(context.Context, uint64, uint64, []byte, []byte) error
+	relayTargets        map[uint64]map[uint64]uint64
+	packetFilter        func(replica.Packet) (bool, error)
+	nativeFaultSchedule *nativeFaultPacketScheduler
+	scheduledPackets    int // charged held/duplicate frames within existing caps
 	// Paired-only actual MsgSnap transport owners share the original queue byte
 	// allowance; neither these IDs nor the copied packets grant activation.
 	pairedSnapshots bool
@@ -443,7 +445,7 @@ func (h *graphProcessHub) enqueue(origin uint64, packets []replica.Packet, handl
 		}
 		cost := cap(packet.Payload) + 64
 		h.mu.Lock()
-		full := cost > processQueueBytes-h.packetBytes-h.snapshotBytes
+		full := cost > processQueueBytes-h.packetBytes-h.snapshotBytes || !packet.Snapshot && len(h.packets)+h.scheduledPackets >= processPacketCount
 		if packet.Snapshot {
 			if !h.pairedSnapshots || snapshotAt >= len(handles) || handles[snapshotAt] == 0 {
 				h.mu.Unlock()
@@ -487,6 +489,14 @@ func (h *graphProcessHub) enqueue(origin uint64, packets []replica.Packet, handl
 	return nil
 }
 func (h *graphProcessHub) packetLoop() {
+	defer func() {
+		h.mu.Lock()
+		schedule := h.nativeFaultSchedule
+		h.mu.Unlock()
+		if schedule != nil {
+			_, _ = schedule.close(h)
+		}
+	}()
 	for {
 		select {
 		case <-h.ctx.Done():
@@ -498,6 +508,7 @@ func (h *graphProcessHub) packetLoop() {
 			h.inFlight++
 			full := h.delivered > h.deliveryLimit
 			filter := h.packetFilter
+			schedule := h.nativeFaultSchedule
 			timed := h.costTiming != nil
 			if timed {
 				age := time.Since(h.costStarted).Nanoseconds() - job.enqueuedNanos
@@ -528,33 +539,12 @@ func (h *graphProcessHub) packetLoop() {
 					continue
 				}
 			}
-			ctx, cancel := context.WithTimeout(h.ctx, 10*time.Second)
-			var stepStarted time.Time
-			if timed {
-				stepStarted = time.Now()
-			}
-			r, err := h.peer(job.packet.To).exchange(ctx, processRequest{op: processStep, packet: job.packet})
-			var stepNanos int64
-			if timed {
-				stepNanos = time.Since(stepStarted).Nanoseconds()
-			}
-			cancel()
-			if err == nil {
-				err = processResponseError(r)
-			}
-			if err == nil {
-				err = h.enqueue(job.packet.To, r.packets, r.handles...)
-			}
+			err := h.deliverFaultScheduled(job, schedule, timed)
 			if err != nil {
 				h.peer(job.origin).fail(err)
 			}
 			h.mu.Lock()
 			h.inFlight--
-			if timed {
-				h.costTiming.StepCount++
-				h.costTiming.StepNanos += stepNanos
-				h.costTiming.StepMaxNanos = max(h.costTiming.StepMaxNanos, stepNanos)
-			}
 			h.costProgressLocked()
 			h.mu.Unlock()
 			h.changed()
@@ -566,6 +556,64 @@ func (h *graphProcessHub) packetLoop() {
 			}
 		}
 	}
+}
+
+func (h *graphProcessHub) deliverFaultScheduled(job graphProcessPacketJob, schedule *nativeFaultPacketScheduler, timed bool) (err error) {
+	jobs, count := [2]graphProcessPacketJob{job}, 1
+	base := h.ctx
+	if schedule != nil {
+		jobs, count, err = schedule.route(h, job)
+		defer func() {
+			if err != nil {
+				schedule.failed(err)
+			}
+			schedule.done(h)
+		}()
+		if err != nil {
+			return err
+		}
+		base = schedule.ctx
+	}
+	for i := range count {
+		if i > 0 {
+			h.mu.Lock()
+			h.delivered++
+			full := h.delivered > h.deliveryLimit
+			h.mu.Unlock()
+			if full {
+				return errLimit
+			}
+		}
+		actual := jobs[i]
+		ctx, cancel := context.WithTimeout(base, 10*time.Second)
+		var start time.Time
+		if timed {
+			start = time.Now()
+		}
+		r, err := h.peer(actual.packet.To).exchange(ctx, processRequest{op: processStep, packet: actual.packet})
+		var nanos int64
+		if timed {
+			nanos = time.Since(start).Nanoseconds()
+		}
+		cancel()
+		if timed {
+			h.mu.Lock()
+			h.costTiming.StepCount++
+			h.costTiming.StepNanos += nanos
+			h.costTiming.StepMaxNanos = max(h.costTiming.StepMaxNanos, nanos)
+			h.mu.Unlock()
+		}
+		if err == nil {
+			err = processResponseError(r)
+		}
+		if err == nil {
+			err = h.enqueue(actual.packet.To, r.packets, r.handles...)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 func (m *graphProcessMux) relayLoop() {
 	for {
@@ -1692,6 +1740,12 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					response.aux, e = pairedGraphFaultRecordWire(ctx, h, r.index)
 				} else {
 					response.aux, e = nativeLifecycleRecordWire(ctx, h, r.index)
+				}
+			case processNativeFaultControl:
+				if r.index != 0 || r.entity != 0 {
+					e = errInvalid
+				} else {
+					response.aux, e = o.fault.control(r.data)
 				}
 			case processP08ChangedGraph:
 				var original allocationProposal
