@@ -146,6 +146,14 @@ func TestNativeGraphCostIncidentEnvelopeRejectsUnownedSequenceAndExtraInput(t *t
 			t.Fatal("bad incident embedding input", err)
 		}
 	}
+
+	closeWire, err := nativeGraphCostIncidentInput(nativeGraphCostIncidentRequest{Action: nativeIncidentClose, Cookie: nativeGraphCostIncidentCookie{1, [16]byte{1}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !nativeGraphCostIncidentCloseControl(processRequest{op: processCostObserve, data: closeWire}) || nativeGraphCostIncidentCloseControl(processRequest{op: processCostObserve, data: good}) || nativeGraphCostIncidentCloseControl(processRequest{op: processCostObserve, index: 1, data: closeWire}) {
+		t.Fatal("owner cleanup lane admission changed ordinary requests or admitted malformed close")
+	}
 	invalid, _ := nativeGraphCostIncidentInput(nativeGraphCostIncidentRequest{Action: nativeIncidentNext, Cookie: nativeGraphCostIncidentCookie{1, [16]byte{1}}})
 	if _, err := nativeGraphCostIncidentDecodeInput(processRequest{data: invalid}); !errors.Is(err, errInvalid) {
 		t.Fatal("unbound sequence accepted", err)

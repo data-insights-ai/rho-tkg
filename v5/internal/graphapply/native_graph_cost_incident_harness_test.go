@@ -152,6 +152,16 @@ func nativeGraphCostIncidentDecodeInput(r processRequest) (nativeGraphCostIncide
 	}
 	return q, nil
 }
+
+// Cleanup admission selects only the existing one-control-worker lane. The
+// cookie is checked by serve; this predicate grants no owner/data authority.
+func nativeGraphCostIncidentCloseControl(r processRequest) bool {
+	if r.op != processCostObserve || !bytes.HasPrefix(r.data, []byte(nativeIncidentMarker)) {
+		return false
+	}
+	q, err := nativeGraphCostIncidentDecodeInput(r)
+	return err == nil && q.Action == nativeIncidentClose
+}
 func nativeGraphCostIncidentBudget(l materializerLimits, rows, invocations int) (certifiedIncidentBudget, error) {
 	grant, err := incidentGrant(l, rows)
 	if err != nil {

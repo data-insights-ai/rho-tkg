@@ -1346,6 +1346,9 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		return nil
 	}
 	isSourceClose := func(r processRequest) bool {
+		if o.cost != nil && nativeGraphCostIncidentCloseControl(r) {
+			return true
+		}
 		if r.op != processSourceServe {
 			return false
 		}
