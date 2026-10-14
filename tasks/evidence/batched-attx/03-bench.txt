@@ -1,0 +1,30 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkNodesAtTxByIDs/memory/loop-32    	    2000	     47684 ns/op	   56203 B/op	     900 allocs/op
+BenchmarkNodesAtTxByIDs/memory/loop-32    	    2000	     48494 ns/op	   56203 B/op	     900 allocs/op
+BenchmarkNodesAtTxByIDs/memory/loop-32    	    2000	     50837 ns/op	   56200 B/op	     900 allocs/op
+BenchmarkNodesAtTxByIDs/memory/loop-32    	    2000	     48753 ns/op	   56200 B/op	     900 allocs/op
+BenchmarkNodesAtTxByIDs/memory/loop-32    	    2000	     44651 ns/op	   56200 B/op	     900 allocs/op
+BenchmarkNodesAtTxByIDs/memory/loop-32    	    2000	     44762 ns/op	   56200 B/op	     900 allocs/op
+BenchmarkNodesAtTxByIDs/memory/batch-32   	    2000	     46827 ns/op	   60336 B/op	     905 allocs/op
+BenchmarkNodesAtTxByIDs/memory/batch-32   	    2000	     47868 ns/op	   60339 B/op	     905 allocs/op
+BenchmarkNodesAtTxByIDs/memory/batch-32   	    2000	     48732 ns/op	   60336 B/op	     905 allocs/op
+BenchmarkNodesAtTxByIDs/memory/batch-32   	    2000	     46418 ns/op	   60336 B/op	     905 allocs/op
+BenchmarkNodesAtTxByIDs/memory/batch-32   	    2000	     40868 ns/op	   60336 B/op	     905 allocs/op
+BenchmarkNodesAtTxByIDs/memory/batch-32   	    2000	     45090 ns/op	   60336 B/op	     905 allocs/op
+BenchmarkNodesAtTxByIDs/badger/loop-32    	    2000	    290117 ns/op	  227681 B/op	    3049 allocs/op
+BenchmarkNodesAtTxByIDs/badger/loop-32    	    2000	    542313 ns/op	  233079 B/op	    3100 allocs/op
+BenchmarkNodesAtTxByIDs/badger/loop-32    	    2000	    297536 ns/op	  233075 B/op	    3100 allocs/op
+BenchmarkNodesAtTxByIDs/badger/loop-32    	    2000	    306400 ns/op	  233075 B/op	    3100 allocs/op
+BenchmarkNodesAtTxByIDs/badger/loop-32    	    2000	    271324 ns/op	  233074 B/op	    3100 allocs/op
+BenchmarkNodesAtTxByIDs/badger/loop-32    	    2000	    261891 ns/op	  233074 B/op	    3100 allocs/op
+BenchmarkNodesAtTxByIDs/badger/batch-32   	    2000	    208256 ns/op	  197195 B/op	    2321 allocs/op
+BenchmarkNodesAtTxByIDs/badger/batch-32   	    2000	    204527 ns/op	  197196 B/op	    2321 allocs/op
+BenchmarkNodesAtTxByIDs/badger/batch-32   	    2000	    225097 ns/op	  197196 B/op	    2321 allocs/op
+BenchmarkNodesAtTxByIDs/badger/batch-32   	    2000	    206386 ns/op	  197195 B/op	    2321 allocs/op
+BenchmarkNodesAtTxByIDs/badger/batch-32   	    2000	    207764 ns/op	  197191 B/op	    2321 allocs/op
+BenchmarkNodesAtTxByIDs/badger/batch-32   	    2000	    198866 ns/op	  197195 B/op	    2321 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	7.660s

@@ -488,188 +488,152 @@
   "current_v4_source_delta": {
     "captured_date": "2026-10-14",
     "repository": "rho-tkg",
-    "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
-    "tree": "352e3650964dd38f7f346a5cb28a59aaaf7b0c12",
-    "release": "v4.51.7",
-    "previous_integrated_main": "a77b1301a3f2430dcd39437f6ea698954b65d843",
-    "extends_historical_source_delta": "Every prior source object, including v4.51.6 source-only observations and v4.51.5 qualification, is retained unchanged in source_delta_history; archived consumer pins and evidence remain unchanged.",
-    "evidence_level": "Source reconciliation plus separately recorded narrow retained-state preflight qualification at integrated 0eb0a0ac. Indexed selector/build, retention, consumer, performance and phase acceptance remain separate.",
-    "qualification": "QUALIFIED only for existing retained-state PreflightNode/PreflightRel mapping at integrated 0eb0a0ac by tools/v5-migrate/evidence/main4517-0eb0a0ac.json: exactly ten module targets passed once with absolute Go1.26.9, 96.2% overall and 100% both preflight functions. Startup canonical-path precheck refusal is retained; no target preceded or repeated after it. All 2250 frozen inputs unchanged. v4.51.6 was source-only; historical v4.51.5 receipt/consumer pins remain unchanged. No new indexed selector/build or retention refusal cases, destination importer, consumer execution or V6 acceptance. Newer main bf0050b2/v4.51.8 was observed during the run and is outside this exact v4.51.7 reader cutoff.",
-    "dependencies": "Root/v5 dependencies unchanged at this source cutoff; migration requires v4.51.7 with unchanged local root/v5 replacements. Preflight implementation/tests/Makefile/go.sum unchanged. Exact absolute compiler Go1.26.9 and cached scanner builds/modules/hashes verified, existing tools target preserved their bytes. No dependency upgrade, full root/v5 suite or newer-main qualification.",
-    "resolved_upstream_findings": [
-      {
-        "id": "v4-backlog-56-node-temporal-envelope-holes",
-        "status": "Upstream v4.51.7 source fix with selected raw badger/memory test evidence; not local reader/v5 acceptance",
-        "historical_observation": "Exact v4.51.6 unverified source finding remains in source_delta_history unchanged",
-        "evidence": [
-          {
-            "repository": "rho-tkg",
-            "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
-            "path": "tasks/backlog.md",
-            "sha256": "6f52f41da7fe581e68be53197bfce821fd327704859bea0f98c415e633e039d6",
-            "matching_lines": [
-              319
-            ],
-            "anchor": "### 56. Node temporal envelope holes"
-          }
-        ]
-      }
-    ],
+    "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+    "tree": "9842b13f11f12e93b832dc2784b97cee43970f49",
+    "release": "v4.51.8",
+    "previous_integrated_main": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
+    "extends_historical_source_delta": "All prior source objects, including qualified v4.51.7 and source-only v4.51.6, remain unchanged in source_delta_history; consumer pins and receipts stay historical.",
+    "evidence_level": "Source-only v4.51.8 reconciliation and dependency audit; no newer-reader runtime/scanner, batched consumer or phase acceptance.",
+    "qualification": "PENDING for v4.51.8. Historical v4.51.7 preflight is qualified at 0eb0a0ac by tools/v5-migrate/evidence/main4517-0eb0a0ac.json: ten targets,96.2% overall,100% both preflight functions. That frozen receipt does not extend to new sources. After an approved final reader cutoff the existing ten targets suffice for unchanged preflight mapping; no new preflight source/tests required. New batch consumer/selector/routing, retention and destination/V6 proofs remain separate.",
+    "dependencies": "Preflight code/tests/Makefile/go.sum and root/v5 dependencies unchanged; migration requires v4.51.8 with unchanged local replacements. Temporal Ops/new batch/shared point code is compiled; preflight calls byte-unchanged effective timelines/entityReads, not batched point reads. Tiered routing/depth filtering affect its fixtures. No Go/scanner/Docker executed for this newer source.",
     "obligations": [
       {
-        "id": "v4517-complete-node-temporal-envelopes",
+        "id": "v4518-batched-bitemporal-point-reads",
         "contract": [
-          "badger.Store / memory.Store.CreateTemporalIndex(labelToken uint16) error (unchanged signatures)",
-          "PutNodeVersion / PutNodeVersionScoped, AddNodeLabelToken / Scoped / WithHistory / WithHistoryScoped and node create/batch doors (unchanged signatures)",
-          "TemporalCandidateCapability.PruneTemporalCandidates(labelToken uint16, ids []types.NodeID, opts QueryOpts) ([]types.NodeID, bool)"
+          "temporal.API.NodesAtTxByIDs(ids []types.NodeID, validAt, txAt types.Instant) ([]*types.Node, error)",
+          "temporal.API.RelsAtTxByIDs(ids []types.RelID, validAt, txAt types.Instant) ([]*types.Relationship, error)",
+          "temporal.Ops adds both methods as a wiring seam; external Ops implementation is not the stable consumer contract"
         ],
-        "required_v5_mapping": "Covered or Building node envelopes take every written version carrying the label; an uncovered ID stays eligible instead of gaining an incomplete one-row envelope. Badger creation keeps Building until the complete build-start members history and first late-written IDs history are folded, including members that lose the label or are deleted meanwhile. Mutation/identity checks refuse dropped/replaced builds. Memory reads current/history maps together under RLock and re-folds mutated IDs live current plus all history at publication under the write lock. Plain/scoped/with-history label additions and memory recreate/create/batch paths fold retained history before covering an ID. Preserve old/new valid-time candidates, exact chain filtering, type/label namespaces and nil/unsupported/sentinel gates; Building flags and envelopes are derived supersets, never certified cuts or complete-history authority. These upstream source fixes address the prior v4.51.6 backlog56 observations; they do not qualify v5 selectors or consumers.",
+        "required_v5_mapping": "Return per-ID state-point answers aligned to every input position and in input order, including repeated IDs. Unknown/no-valid-version becomes nil; all other member/source, retention, compaction, invalid-ID, closed/nil-graph and pin errors fail the whole call with no rows and errors.Is identity. Validate all IDs before reading. Positive knowledge pins are required: unlike the old per-ID door txAt zero refuses; above the commit clock refuses even empty IDs. Resolve distinct IDs once; repeated result positions may alias and require DeepCopy before mutation. Relationships retain DECLARED state without endpoint-life masking. Live store read snapshots and 256-distinct-ID graph lock chunks optimize cost; writes may land between chunks, so no call-level isolation or certified cut is implied. Release snapshots between chunks and close on all exits; preserve native/wrapper/fallback trust checks. O(input IDs) input/output allocation is not arbitrary-batch or physical memory acceptance. V5 admission/cut policy must be explicit; source performance does not qualify v5 or consumer adoption.",
         "evidence": [
           {
             "repository": "rho-tkg",
-            "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
-            "path": "pkg/graph/store/badger/badgerstore_history_node.go",
-            "sha256": "1d39679836474a110cd8c48a66685b7fb8fdc2615a7094bebd368b2b53f89946",
+            "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+            "path": "pkg/graph/temporal/api.go",
+            "sha256": "dff0d93073572e2cc536fdd7a899e322ee4fed76c6558fb20a0cb02119ae7609",
             "matching_lines": [
-              620
+              467
             ],
-            "anchor": "func (bs *Store) putNodeVersionRouted"
+            "anchor": "func (a *API) NodesAtTxByIDs"
           },
           {
             "repository": "rho-tkg",
-            "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
-            "path": "pkg/graph/store/badger/badgerstore_index.go",
-            "sha256": "37b103b0b3dd423e21f6659a2cf108d33fd330d37e88d1a64adc4a476b5d9c26",
+            "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+            "path": "pkg/graph/temporal/api.go",
+            "sha256": "dff0d93073572e2cc536fdd7a899e322ee4fed76c6558fb20a0cb02119ae7609",
             "matching_lines": [
-              272
+              479
             ],
-            "anchor": "func (bs *Store) CreateTemporalIndex"
+            "anchor": "func (a *API) RelsAtTxByIDs"
           },
           {
             "repository": "rho-tkg",
-            "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
-            "path": "pkg/graph/store/badger/badgerstore_index.go",
-            "sha256": "37b103b0b3dd423e21f6659a2cf108d33fd330d37e88d1a64adc4a476b5d9c26",
+            "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+            "path": "pkg/graph/internal/core/batched_attx.go",
+            "sha256": "007c3d24cbcbcc050afe159cabfcd1e4d8e8986a85b19ddc753c41f4b4eea86f",
             "matching_lines": [
-              560
+              108
             ],
-            "anchor": "func (bs *Store) extendNodeVersionTemporalLocked"
+            "anchor": "func atTxByIDs"
           },
           {
             "repository": "rho-tkg",
-            "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
-            "path": "pkg/graph/store/memory/memorystore_index.go",
-            "sha256": "800fb52fab6a8e60c66c900c7b0252012284a236cc182733dee4d76144519445",
+            "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+            "path": "pkg/graph/internal/core/temporal_queries.go",
+            "sha256": "e55e06aa66e8d505126eeabc6adb1a0a5cd16510f35229ee8ebaa0b48721a41e",
             "matching_lines": [
-              468
+              543
             ],
-            "anchor": "func (ms *Store) CreateTemporalIndex"
+            "anchor": "func (c *Core) nodeAtFromCurrent"
           },
           {
             "repository": "rho-tkg",
-            "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
-            "path": "pkg/graph/store/memory/memorystore_index.go",
-            "sha256": "800fb52fab6a8e60c66c900c7b0252012284a236cc182733dee4d76144519445",
+            "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+            "path": "pkg/graph/internal/core/batched_attx_chunk_test.go",
+            "sha256": "ae95b545055519cf85aeba7060dfb4add2e28651a0617cf5455d823b4b03c681",
             "matching_lines": [
-              580
+              17
             ],
-            "anchor": "func (ms *Store) addNodeToTemporalIndexesLocked"
-          },
-          {
-            "repository": "rho-tkg",
-            "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
-            "path": "pkg/graph/store/memory/memorystore_history.go",
-            "sha256": "ef08de4c9d250e9a669c63477bad178947041d374503d078a3a531b15680f508",
-            "matching_lines": [
-              393
-            ],
-            "anchor": "func (ms *Store) putNodeVersionRouted"
+            "anchor": "func TestAtTxByIDsAcrossChunks"
           }
         ],
         "required_tests": [
-          "Node history-version writes, add-label with/without history, delete/recreate and writes during creation retain each old/current interval with badger/memory parity; uncovered and genuinely fresh IDs do not gain phantom answers.",
-          "Build-start members that leave the label/delete and first late-created/history-bearing IDs retain past candidate scope; Building pruning declines and concurrent memory history mutation must be race-free. Consumer exact row/pin/selector parity remains separate from the upstream source tests."
+          "Node/rel per-ID equality across supported backends after mutations, deleted/reimported/late/unknown identities and historical knowledge/valid pins; exact aligned nils/duplicates and current-versus-history answers.",
+          "Cross256-ID chunks, wrapper/source faults, zero/negative/future pins, invalid-ID precedence, retention/compaction and nil/closed APIs; declared row aliasing and store snapshot reuse cannot imply global/call-level isolation."
         ],
         "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
         "acceptance_status": "pending-v5",
-        "title": "complete node temporal envelopes (4.51.7)"
+        "title": "batched bitemporal point reads (4.51.8)"
       },
       {
-        "id": "v4517-node-temporal-disk-row-consistency",
+        "id": "v4518-tiered-window-routing",
         "contract": [
-          "badger.Config.TemporalIndexOnDisk bool (unchanged rebuild accelerator)",
-          "badger.Store.CreateTemporalIndex and writable New/reopen index rebuilding (unchanged public signatures)"
+          "Tiered timestamp-derived event-shard ownership and write-depth filtering (unchanged public signatures)",
+          "Sorted shardIndex over nonoverlapping event windows; same hot-shard fallback"
         ],
-        "required_v5_mapping": "The 0x0B keyspace remains a rebuild accelerator for current labeled rows, while RAM envelopes plus exact source resolution answer reads. Separate DiskWritten from semantic Mutated: a history-only PutNodeVersion does not suppress the current disk backfill; an actual label removal/delete or current-row write supersedes it and must not be overwritten. Failed/unpublished creates purge their owned label rows without touching a replaced index; a failed purge is left to writable open cleanup of labels with no definition. Read-only open does not perform that cleanup. After crash-style reopen, missing/duplicate current rows must not omit or duplicate a ByLabel result. No wire format, source data row, time interpretation, durability mode or certified-cut guarantee is inferred from repairing derived index rows.",
+        "required_v5_mapping": "Binary search chooses the nonempty half-open window containing source ID mint time; exact end routes to the next window, gaps/before/after retain hot fallback. Exclude zero-length duplicate starts. Open, rotation and purge unlink/re-link rebuild under the same owner lock; depth filtering uses ordered windows/tier snapshots. Preserve actual owner checkout, archive/reference probes, cold lifetime and historical/reimport state. Derived routing grants no ownership/cut authority; v5 opaque identity never derives current placement from source mint time. Upstream timings are not v5/consumer capacity measurements.",
         "evidence": [
           {
             "repository": "rho-tkg",
-            "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
-            "path": "pkg/graph/internal/index/temporal_index.go",
-            "sha256": "068dcf32fe8e3ad879e883dd1e6bfbae0161aed35cf15cf98701758a0c80d35a",
+            "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+            "path": "pkg/graph/store/tiered/tieredstore_routing.go",
+            "sha256": "9f71720b66922700f9134bfc5f8dc36ce37ad30b7fd351c646d6fe643c1575a7",
             "matching_lines": [
-              75
+              77
             ],
-            "anchor": "DiskWritten map"
+            "anchor": "func (ts *Store) reindexShardsLocked"
           },
           {
             "repository": "rho-tkg",
-            "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
-            "path": "pkg/graph/store/badger/badgerstore_temporal_disk.go",
-            "sha256": "b0d18886850e525fefa37eb378115ef4df0ab21c9d3b684cee075f853f48dc59",
+            "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+            "path": "pkg/graph/store/tiered/tieredstore_routing.go",
+            "sha256": "9f71720b66922700f9134bfc5f8dc36ce37ad30b7fd351c646d6fe643c1575a7",
             "matching_lines": [
-              68
+              94
             ],
-            "anchor": "func markTemporalDiskWritten"
+            "anchor": "func shardWindowFor"
           },
           {
             "repository": "rho-tkg",
-            "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
-            "path": "pkg/graph/store/badger/badgerstore_temporal_disk.go",
-            "sha256": "b0d18886850e525fefa37eb378115ef4df0ab21c9d3b684cee075f853f48dc59",
+            "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+            "path": "pkg/graph/store/tiered/tieredstore_write.go",
+            "sha256": "0899b91982c45ea54e7f273aa9bed4569a71a99652b78a4923be3e60ffffddc2",
             "matching_lines": [
-              239
+              1207
             ],
-            "anchor": "func (bs *Store) purgeUndefinedTemporalDiskRows"
+            "anchor": "func (ts *Store) depthFilter"
           },
           {
             "repository": "rho-tkg",
-            "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
-            "path": "pkg/graph/store/badger/badgerstore_index.go",
-            "sha256": "37b103b0b3dd423e21f6659a2cf108d33fd330d37e88d1a64adc4a476b5d9c26",
+            "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+            "path": "pkg/graph/store/tiered/retention_purge_drop.go",
+            "sha256": "91223a4351d75df6c5617c28c53b37e53a574993cee482fff051d4dc480166f5",
             "matching_lines": [
-              460
+              132,
+              148,
+              175,
+              228
             ],
-            "anchor": "func (bs *Store) abortTemporalCreateLocked"
+            "anchor": "ts.reindexShardsLocked()"
           },
           {
             "repository": "rho-tkg",
-            "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
-            "path": "pkg/graph/store/badger/badgerstore_node_temporal_envelope_final_test.go",
-            "sha256": "c124bc5e7bbfbdfd17ab330139a1a47b451e1504453fbc53b273dfbfb0d1249c",
+            "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+            "path": "pkg/graph/store/tiered/tieredstore_routing_zero_test.go",
+            "sha256": "6e91418282987f0f13de92eb88aacc3eda2bf264e00257f70501dcd4eb3be503",
             "matching_lines": [
-              47
+              11
             ],
-            "anchor": "func TestNodeTemporalEnvelope_PutNodeVersionDuringBuildOnDisk"
-          },
-          {
-            "repository": "rho-tkg",
-            "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
-            "path": "pkg/graph/store/badger/badgerstore_node_temporal_envelope_review_test.go",
-            "sha256": "145538a8faffebd7c64c741522334664585791bfcc0ea8b3c49818b76c3e0ccb",
-            "matching_lines": [
-              102
-            ],
-            "anchor": "func TestNodeTemporalEnvelope_OnDiskOrphanRowsAfterFailedCreate"
+            "anchor": "func TestTimestampToEventShardZeroLengthWindow"
           }
         ],
         "required_tests": [
-          "History-only mutation during build retains the current disk row after image-suppressed reopen; label loss/re-add at a different valid-from yields one exact ID, not duplicates.",
-          "Aborted/unpublished build rows do not contaminate a later create/reopen; writable cleanup/failure and unchanged read-only scope remain explicit. These selected upstream reopen tests do not imply physical-host/power-loss or whole-root acceptance."
+          "Exact linear-routing parity at starts/ends/gaps/outside windows and zero-length successive rotations; removed windows cannot remain reachable.",
+          "Open/rotation/purge unlink/re-link and depth filters preserve checkout and retained historical/reimport behavior; existing tiered reader fixtures do not qualify every topology/capacity."
         ],
         "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
         "acceptance_status": "pending-v5",
-        "title": "node temporal disk row consistency (4.51.7)"
+        "title": "tiered window routing (4.51.8)"
       }
     ]
   },
@@ -2162,6 +2126,194 @@
           "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
           "acceptance_status": "pending-v5",
           "title": "recreated id history envelopes (4.51.6)"
+        }
+      ]
+    },
+    {
+      "captured_date": "2026-10-14",
+      "repository": "rho-tkg",
+      "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
+      "tree": "352e3650964dd38f7f346a5cb28a59aaaf7b0c12",
+      "release": "v4.51.7",
+      "previous_integrated_main": "a77b1301a3f2430dcd39437f6ea698954b65d843",
+      "extends_historical_source_delta": "Every prior source object, including v4.51.6 source-only observations and v4.51.5 qualification, is retained unchanged in source_delta_history; archived consumer pins and evidence remain unchanged.",
+      "evidence_level": "Source reconciliation plus separately recorded narrow retained-state preflight qualification at integrated 0eb0a0ac. Indexed selector/build, retention, consumer, performance and phase acceptance remain separate.",
+      "qualification": "QUALIFIED only for existing retained-state PreflightNode/PreflightRel mapping at integrated 0eb0a0ac by tools/v5-migrate/evidence/main4517-0eb0a0ac.json: exactly ten module targets passed once with absolute Go1.26.9, 96.2% overall and 100% both preflight functions. Startup canonical-path precheck refusal is retained; no target preceded or repeated after it. All 2250 frozen inputs unchanged. v4.51.6 was source-only; historical v4.51.5 receipt/consumer pins remain unchanged. No new indexed selector/build or retention refusal cases, destination importer, consumer execution or V6 acceptance. Newer main bf0050b2/v4.51.8 was observed during the run and is outside this exact v4.51.7 reader cutoff.",
+      "dependencies": "Root/v5 dependencies unchanged at this source cutoff; migration requires v4.51.7 with unchanged local root/v5 replacements. Preflight implementation/tests/Makefile/go.sum unchanged. Exact absolute compiler Go1.26.9 and cached scanner builds/modules/hashes verified, existing tools target preserved their bytes. No dependency upgrade, full root/v5 suite or newer-main qualification.",
+      "resolved_upstream_findings": [
+        {
+          "id": "v4-backlog-56-node-temporal-envelope-holes",
+          "status": "Upstream v4.51.7 source fix with selected raw badger/memory test evidence; not local reader/v5 acceptance",
+          "historical_observation": "Exact v4.51.6 unverified source finding remains in source_delta_history unchanged",
+          "evidence": [
+            {
+              "repository": "rho-tkg",
+              "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
+              "path": "tasks/backlog.md",
+              "sha256": "6f52f41da7fe581e68be53197bfce821fd327704859bea0f98c415e633e039d6",
+              "matching_lines": [
+                319
+              ],
+              "anchor": "### 56. Node temporal envelope holes"
+            }
+          ]
+        }
+      ],
+      "obligations": [
+        {
+          "id": "v4517-complete-node-temporal-envelopes",
+          "contract": [
+            "badger.Store / memory.Store.CreateTemporalIndex(labelToken uint16) error (unchanged signatures)",
+            "PutNodeVersion / PutNodeVersionScoped, AddNodeLabelToken / Scoped / WithHistory / WithHistoryScoped and node create/batch doors (unchanged signatures)",
+            "TemporalCandidateCapability.PruneTemporalCandidates(labelToken uint16, ids []types.NodeID, opts QueryOpts) ([]types.NodeID, bool)"
+          ],
+          "required_v5_mapping": "Covered or Building node envelopes take every written version carrying the label; an uncovered ID stays eligible instead of gaining an incomplete one-row envelope. Badger creation keeps Building until the complete build-start members history and first late-written IDs history are folded, including members that lose the label or are deleted meanwhile. Mutation/identity checks refuse dropped/replaced builds. Memory reads current/history maps together under RLock and re-folds mutated IDs live current plus all history at publication under the write lock. Plain/scoped/with-history label additions and memory recreate/create/batch paths fold retained history before covering an ID. Preserve old/new valid-time candidates, exact chain filtering, type/label namespaces and nil/unsupported/sentinel gates; Building flags and envelopes are derived supersets, never certified cuts or complete-history authority. These upstream source fixes address the prior v4.51.6 backlog56 observations; they do not qualify v5 selectors or consumers.",
+          "evidence": [
+            {
+              "repository": "rho-tkg",
+              "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
+              "path": "pkg/graph/store/badger/badgerstore_history_node.go",
+              "sha256": "1d39679836474a110cd8c48a66685b7fb8fdc2615a7094bebd368b2b53f89946",
+              "matching_lines": [
+                620
+              ],
+              "anchor": "func (bs *Store) putNodeVersionRouted"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
+              "path": "pkg/graph/store/badger/badgerstore_index.go",
+              "sha256": "37b103b0b3dd423e21f6659a2cf108d33fd330d37e88d1a64adc4a476b5d9c26",
+              "matching_lines": [
+                272
+              ],
+              "anchor": "func (bs *Store) CreateTemporalIndex"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
+              "path": "pkg/graph/store/badger/badgerstore_index.go",
+              "sha256": "37b103b0b3dd423e21f6659a2cf108d33fd330d37e88d1a64adc4a476b5d9c26",
+              "matching_lines": [
+                560
+              ],
+              "anchor": "func (bs *Store) extendNodeVersionTemporalLocked"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
+              "path": "pkg/graph/store/memory/memorystore_index.go",
+              "sha256": "800fb52fab6a8e60c66c900c7b0252012284a236cc182733dee4d76144519445",
+              "matching_lines": [
+                468
+              ],
+              "anchor": "func (ms *Store) CreateTemporalIndex"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
+              "path": "pkg/graph/store/memory/memorystore_index.go",
+              "sha256": "800fb52fab6a8e60c66c900c7b0252012284a236cc182733dee4d76144519445",
+              "matching_lines": [
+                580
+              ],
+              "anchor": "func (ms *Store) addNodeToTemporalIndexesLocked"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
+              "path": "pkg/graph/store/memory/memorystore_history.go",
+              "sha256": "ef08de4c9d250e9a669c63477bad178947041d374503d078a3a531b15680f508",
+              "matching_lines": [
+                393
+              ],
+              "anchor": "func (ms *Store) putNodeVersionRouted"
+            }
+          ],
+          "required_tests": [
+            "Node history-version writes, add-label with/without history, delete/recreate and writes during creation retain each old/current interval with badger/memory parity; uncovered and genuinely fresh IDs do not gain phantom answers.",
+            "Build-start members that leave the label/delete and first late-created/history-bearing IDs retain past candidate scope; Building pruning declines and concurrent memory history mutation must be race-free. Consumer exact row/pin/selector parity remains separate from the upstream source tests."
+          ],
+          "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
+          "acceptance_status": "pending-v5",
+          "title": "complete node temporal envelopes (4.51.7)"
+        },
+        {
+          "id": "v4517-node-temporal-disk-row-consistency",
+          "contract": [
+            "badger.Config.TemporalIndexOnDisk bool (unchanged rebuild accelerator)",
+            "badger.Store.CreateTemporalIndex and writable New/reopen index rebuilding (unchanged public signatures)"
+          ],
+          "required_v5_mapping": "The 0x0B keyspace remains a rebuild accelerator for current labeled rows, while RAM envelopes plus exact source resolution answer reads. Separate DiskWritten from semantic Mutated: a history-only PutNodeVersion does not suppress the current disk backfill; an actual label removal/delete or current-row write supersedes it and must not be overwritten. Failed/unpublished creates purge their owned label rows without touching a replaced index; a failed purge is left to writable open cleanup of labels with no definition. Read-only open does not perform that cleanup. After crash-style reopen, missing/duplicate current rows must not omit or duplicate a ByLabel result. No wire format, source data row, time interpretation, durability mode or certified-cut guarantee is inferred from repairing derived index rows.",
+          "evidence": [
+            {
+              "repository": "rho-tkg",
+              "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
+              "path": "pkg/graph/internal/index/temporal_index.go",
+              "sha256": "068dcf32fe8e3ad879e883dd1e6bfbae0161aed35cf15cf98701758a0c80d35a",
+              "matching_lines": [
+                75
+              ],
+              "anchor": "DiskWritten map"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
+              "path": "pkg/graph/store/badger/badgerstore_temporal_disk.go",
+              "sha256": "b0d18886850e525fefa37eb378115ef4df0ab21c9d3b684cee075f853f48dc59",
+              "matching_lines": [
+                68
+              ],
+              "anchor": "func markTemporalDiskWritten"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
+              "path": "pkg/graph/store/badger/badgerstore_temporal_disk.go",
+              "sha256": "b0d18886850e525fefa37eb378115ef4df0ab21c9d3b684cee075f853f48dc59",
+              "matching_lines": [
+                239
+              ],
+              "anchor": "func (bs *Store) purgeUndefinedTemporalDiskRows"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
+              "path": "pkg/graph/store/badger/badgerstore_index.go",
+              "sha256": "37b103b0b3dd423e21f6659a2cf108d33fd330d37e88d1a64adc4a476b5d9c26",
+              "matching_lines": [
+                460
+              ],
+              "anchor": "func (bs *Store) abortTemporalCreateLocked"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
+              "path": "pkg/graph/store/badger/badgerstore_node_temporal_envelope_final_test.go",
+              "sha256": "c124bc5e7bbfbdfd17ab330139a1a47b451e1504453fbc53b273dfbfb0d1249c",
+              "matching_lines": [
+                47
+              ],
+              "anchor": "func TestNodeTemporalEnvelope_PutNodeVersionDuringBuildOnDisk"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
+              "path": "pkg/graph/store/badger/badgerstore_node_temporal_envelope_review_test.go",
+              "sha256": "145538a8faffebd7c64c741522334664585791bfcc0ea8b3c49818b76c3e0ccb",
+              "matching_lines": [
+                102
+              ],
+              "anchor": "func TestNodeTemporalEnvelope_OnDiskOrphanRowsAfterFailedCreate"
+            }
+          ],
+          "required_tests": [
+            "History-only mutation during build retains the current disk row after image-suppressed reopen; label loss/re-add at a different valid-from yields one exact ID, not duplicates.",
+            "Aborted/unpublished build rows do not contaminate a later create/reopen; writable cleanup/failure and unchanged read-only scope remain explicit. These selected upstream reopen tests do not imply physical-host/power-loss or whole-root acceptance."
+          ],
+          "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
+          "acceptance_status": "pending-v5",
+          "title": "node temporal disk row consistency (4.51.7)"
         }
       ]
     }

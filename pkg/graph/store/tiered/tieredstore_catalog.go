@@ -162,6 +162,7 @@ func (ts *Store) rotateHotShardLocked() error {
 	}
 	newES.initTier(TierHot)
 	ts.eventShards[newName] = newES
+	ts.reindexShardsLocked()
 	ts.hotShard = newES
 
 	for _, es := range coldDemotions {

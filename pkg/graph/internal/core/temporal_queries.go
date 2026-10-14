@@ -533,6 +533,14 @@ func (c *Core) nodeAtLockedTx(id types.NodeID, validAt, txAt types.Instant) (*ty
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
+	return c.nodeAtFromCurrent(entityReads{c: c}, id, current, validAt, txAt)
+}
+
+// nodeAtFromCurrent is nodeAtLockedTx after its gates and its current-row
+// read (current nil: no live row): the current-row shortcut, else the
+// history arms. NodesAtTxByIDs reads a batch's current rows itself and
+// enters here per ID.
+func (c *Core) nodeAtFromCurrent(rd entityReads, id types.NodeID, current *types.Node, validAt, txAt types.Instant) (*types.Node, error) {
 	c.afterCurrentRead(int64(id))
 	// BACKLOG 10c: skip the history fetch when the current row alone provably
 	// answers the query — see nodeCurrentAnswersAt's doc comment.
@@ -544,20 +552,20 @@ func (c *Core) nodeAtLockedTx(id types.NodeID, validAt, txAt types.Instant) (*ty
 	// point probe on per-version temporal metadata and decode ONLY the winner.
 	// Same resolver, same answer — see nodeAtViaTemporalMeta.
 	if c.temporalMetaHistory != nil {
-		if res, handled, err := c.nodeAtViaTemporalMeta(id, current, validAt, txAt); handled {
+		if res, handled, err := c.nodeAtViaTemporalMeta(rd, id, current, validAt, txAt); handled {
 			return res, err
 		}
 	}
-	return c.nodeAtFullChain(id, current, validAt, txAt)
+	return c.nodeAtFullChain(rd, id, current, validAt, txAt)
 }
 
 // nodeAtFullChain is nodeAtLockedTx's full-chain arm: materialize every
 // history row and resolve. The skeleton fast path above delegates here when
 // the capability is absent or declines; tests also call it directly to prove
 // fast/full equivalence on identical data.
-func (c *Core) nodeAtFullChain(id types.NodeID, current *types.Node, validAt, txAt types.Instant) (*types.Node, error) {
+func (c *Core) nodeAtFullChain(rd entityReads, id types.NodeID, current *types.Node, validAt, txAt types.Instant) (*types.Node, error) {
 
-	history, err := c.getNodeHistory(id)
+	history, err := rd.nodeHistory(id)
 	if err != nil {
 		return nil, err
 	}
@@ -589,8 +597,8 @@ func (c *Core) nodeAtFullChain(id types.NodeID, current *types.Node, validAt, tx
 // with the earlier life's history. handled=false declines the fast path (winner hydration failed,
 // e.g. a concurrent trim landed between the two reads) and the caller falls
 // back to the full-chain fold — an accelerator can be slower, never wrong.
-func (c *Core) nodeAtViaTemporalMeta(id types.NodeID, current *types.Node, validAt, txAt types.Instant) (*types.Node, bool, error) {
-	metas, err := c.temporalMetaHistory.NodeHistoryTemporalMeta(id)
+func (c *Core) nodeAtViaTemporalMeta(rd entityReads, id types.NodeID, current *types.Node, validAt, txAt types.Instant) (*types.Node, bool, error) {
+	metas, err := rd.nodeMeta(id)
 	if err != nil {
 		return nil, true, err
 	}
@@ -631,7 +639,7 @@ func (c *Core) nodeAtViaTemporalMeta(id types.NodeID, current *types.Node, valid
 		// the resolver's normalized copy of it).
 		return winner, true, nil
 	}
-	full, err := c.getNodeVersion(id, winner.Version())
+	full, err := rd.nodeVersion(id, winner.Version())
 	if err != nil {
 		return nil, false, nil
 	}
@@ -701,6 +709,11 @@ func (c *Core) relAtLockedTx(id types.RelID, validAt, txAt types.Instant) (*type
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
 	}
+	return c.relAtFromCurrent(entityReads{c: c}, id, current, validAt, txAt)
+}
+
+// relAtFromCurrent mirrors nodeAtFromCurrent for relationships.
+func (c *Core) relAtFromCurrent(rd entityReads, id types.RelID, current *types.Relationship, validAt, txAt types.Instant) (*types.Relationship, error) {
 	c.afterCurrentRead(int64(id))
 	// BACKLOG 10c: skip the history fetch when the current row alone provably
 	// answers the query — see nodeCurrentAnswersAt's doc comment (mirrored here).
@@ -710,12 +723,12 @@ func (c *Core) relAtLockedTx(id types.RelID, validAt, txAt types.Instant) (*type
 
 	// Selection-skeleton fast path — see nodeAtViaTemporalMeta (mirrored).
 	if c.temporalMetaHistory != nil {
-		if res, handled, err := c.relAtViaTemporalMeta(id, current, validAt, txAt); handled {
+		if res, handled, err := c.relAtViaTemporalMeta(rd, id, current, validAt, txAt); handled {
 			return res, err
 		}
 	}
 
-	history, err := c.getRelHistory(id)
+	history, err := rd.relHistory(id)
 	if err != nil {
 		return nil, err
 	}
@@ -736,8 +749,8 @@ func (c *Core) relAtLockedTx(id types.RelID, validAt, txAt types.Instant) (*type
 // relAtViaTemporalMeta mirrors nodeAtViaTemporalMeta for relationships (rule
 // 2: structural parity). Skeleton endpoints are zero — the point resolution
 // never reads them, and the winner is always hydrated before returning.
-func (c *Core) relAtViaTemporalMeta(id types.RelID, current *types.Relationship, validAt, txAt types.Instant) (*types.Relationship, bool, error) {
-	metas, err := c.temporalMetaHistory.RelHistoryTemporalMeta(id)
+func (c *Core) relAtViaTemporalMeta(rd entityReads, id types.RelID, current *types.Relationship, validAt, txAt types.Instant) (*types.Relationship, bool, error) {
+	metas, err := rd.relMeta(id)
 	if err != nil {
 		return nil, true, err
 	}
@@ -770,7 +783,7 @@ func (c *Core) relAtViaTemporalMeta(id types.RelID, current *types.Relationship,
 	if _, fromSkeleton := skeletons[skeletonKeyOf(winner.Version(), winner.Temporal())]; !fromSkeleton {
 		return winner, true, nil
 	}
-	full, err := c.getRelVersion(id, winner.Version())
+	full, err := rd.relVersion(id, winner.Version())
 	if err != nil {
 		return nil, false, nil
 	}

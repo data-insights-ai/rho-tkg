@@ -250,6 +250,10 @@ type temporalOpsSpy struct {
 	lastLabels   []string
 	// The valid-end bounded scans (backlog 51).
 	lastValidFrom types.Instant
+	// The batched point reads (backlog 57).
+	lastValidAt types.Instant
+	nodeRows    []*types.Node
+	relRows     []*types.Relationship
 }
 
 func (s *temporalOpsSpy) record(name string) { s.calls = append(s.calls, name) }

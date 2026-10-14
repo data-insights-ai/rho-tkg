@@ -251,6 +251,7 @@ type Store struct {
 	migrateMu         sync.Mutex                                      // serializes concurrent MigrateFromBadger calls against this Store (BACKLOG 19k)
 	archiveActiveReqs atomic.Int64                                    // refcount for refArchive — Close spin-waits on this before archive.Close()
 	eventShards       map[string]*EventShard                          // name -> event shard
+	shardIndex        []*EventShard                                   // eventShards sorted by timeStart; rebuilt by reindexShardsLocked on every insert/delete; guarded by mu
 	hotShard          *EventShard                                     // convenience pointer to current hot shard
 	ontology          *OntologyMapping
 	catalog           *ShardCatalog
@@ -631,6 +632,7 @@ func New(cfg Config) (*Store, error) {
 	}
 	es.initTier(TierHot)
 	ts.eventShards[hotName] = es
+	ts.reindexShardsLocked()
 	ts.hotShard = es
 
 	// Register hot shard in catalog if new.
@@ -757,6 +759,7 @@ func New(cfg Config) (*Store, error) {
 			ts.eventShards[entries[i].Name] = es
 		}
 	}
+	ts.reindexShardsLocked()
 
 	// Persist the demotions only after every shard mounted. A catalog saved
 	// before a failed open would claim a tier the store never reached.

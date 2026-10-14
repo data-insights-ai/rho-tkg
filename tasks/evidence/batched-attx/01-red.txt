@@ -1,0 +1,24 @@
+--- FAIL: TestRelsAtTxByIDsMatchesRelAtTx (0.00s)
+    batched_attx_test.go:202: batch(validAt 500, txAt 1791973867554): RelsAtTxByIDs: not implemented
+--- FAIL: TestAtTxByIDsGatesAsPerIDDoor (0.00s)
+    batched_attx_test.go:409: NodesAtTxByIDs([810951197949952000 810951197949624320], pin 1791973867543) = [], NodesAtTxByIDs: not implemented; want graph: entities purged per retention policy below the requested time
+--- FAIL: TestNodesAtTxByIDsMatchesNodeAtTx (0.00s)
+    --- FAIL: TestNodesAtTxByIDsMatchesNodeAtTx/memory/rels (0.00s)
+        batched_attx_test.go:189: batch(validAt 500, txAt 1791973867553): RelsAtTxByIDs: not implemented
+    --- FAIL: TestNodesAtTxByIDsMatchesNodeAtTx/memory/nodes (0.00s)
+        batched_attx_test.go:189: batch(validAt 500, txAt 1791973867551): NodesAtTxByIDs: not implemented
+    --- FAIL: TestNodesAtTxByIDsMatchesNodeAtTx/badger/rels (0.00s)
+        batched_attx_test.go:189: batch(validAt 500, txAt 1791973867556): RelsAtTxByIDs: not implemented
+    --- FAIL: TestNodesAtTxByIDsMatchesNodeAtTx/badger/nodes (0.00s)
+        batched_attx_test.go:189: batch(validAt 500, txAt 1791973867554): NodesAtTxByIDs: not implemented
+    --- FAIL: TestNodesAtTxByIDsMatchesNodeAtTx/tiered/nodes (0.01s)
+        batched_attx_test.go:189: batch(validAt 500, txAt 1791973867554): NodesAtTxByIDs: not implemented
+    --- FAIL: TestNodesAtTxByIDsMatchesNodeAtTx/sharded/rels (0.01s)
+        batched_attx_test.go:189: batch(validAt 500, txAt 1791973867556): RelsAtTxByIDs: not implemented
+    --- FAIL: TestNodesAtTxByIDsMatchesNodeAtTx/sharded/nodes (0.01s)
+        batched_attx_test.go:189: batch(validAt 500, txAt 1791973867554): NodesAtTxByIDs: not implemented
+    --- FAIL: TestNodesAtTxByIDsMatchesNodeAtTx/tiered/rels (0.01s)
+        batched_attx_test.go:189: batch(validAt 500, txAt 1791973867556): RelsAtTxByIDs: not implemented
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.029s
+FAIL
