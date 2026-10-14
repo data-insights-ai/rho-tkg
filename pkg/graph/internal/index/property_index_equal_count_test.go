@@ -16,7 +16,7 @@ import (
 func TestEqualCountMatchesCypherEquality(t *testing.T) {
 	stored := []any{
 		int(3), int8(3), int16(3), int32(3), int64(3), uint(3), uint8(3), uint16(3), uint32(3), uint64(3),
-		float32(3), float64(3), "3", true, false, float64(-0.0), int64(0), float32(0.1), float64(0.1),
+		float32(3), float64(3), "3", true, false, math.Copysign(0, -1), int64(0), float32(0.1), float64(0.1),
 		math.NaN(), math.Inf(1), float32(math.Inf(-1)), int64(-200), int16(-200), uint8(200), float64(2.5),
 		int64(1 << 53), "x", types.TemporalValue{Kind: 1, Value: "2026-01-01"},
 	}

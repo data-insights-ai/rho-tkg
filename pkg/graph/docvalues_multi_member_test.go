@@ -109,9 +109,10 @@ func TestDocValuesMultiFromMemberColumns(t *testing.T) {
 					labels = append(labels, "B")
 				}
 				props := map[string]any{"n": int64(i % 7), "s": fmt.Sprintf("s%d", i%5)}
-				if i%4 == 0 {
+				switch i % 4 {
+				case 0:
 					props["f"] = float64(i) / 2
-				} else if i%4 == 1 {
+				case 1:
 					props["f"] = int64(i)
 				}
 				// mixed: a string on A-only nodes, a number on A:B nodes.
