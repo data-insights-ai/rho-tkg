@@ -1,0 +1,8 @@
+--- FAIL: TestLabelReadAtTheUpdatesTxBoundary (0.05s)
+    --- FAIL: TestLabelReadAtTheUpdatesTxBoundary/memory (0.00s)
+        label_read_at_tx_boundary_test.go:91: at TxFrom-1: ByLabel, ForEachByLabel, NodeAt = [1 1 1], want 0 each
+    --- FAIL: TestLabelReadAtTheUpdatesTxBoundary/badger (0.04s)
+        label_read_at_tx_boundary_test.go:91: at TxFrom-1: ByLabel, ForEachByLabel, NodeAt = [1 1 1], want 0 each
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.071s
+FAIL
