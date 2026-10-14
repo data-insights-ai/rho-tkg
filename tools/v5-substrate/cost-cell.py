@@ -178,6 +178,15 @@ def compare_cells(native_path, fdb_path):
     for name, expected in fdb["launchReceipt"]["sha256"].items():
         if digest(right_root / name) != expected:
             raise ValueError("FDB retained witness changed: " + name)
+    if "cdc.jsonl" not in native["artifacts"] or "fdb-cost-cdc.jsonl" not in fdb["launchReceipt"]["sha256"]:
+        raise ValueError("both complete CDC streams must be hash-bound")
+    module_spec = importlib.util.spec_from_file_location("actual_cost_cdc", ROOT / "compare-cost-cdc.py")
+    checker = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(checker)
+    cdc = checker.compare_streams(left_root / "cdc.jsonl", right_root / "fdb-cost-cdc.jsonl", spec,
+                                  fdb["result"]["Config"], fdb["result"]["FinalCut"],
+                                  {"from": native["result"]["CDCFrom"], "through": native["result"]["CDCThrough"],
+                                   "finalCut": native["result"]["FinalCut"]})
     observed = hashlib.sha256()
     with (left_root / "observations.jsonl").open() as source:
         for value in (5, 6):
@@ -212,7 +221,8 @@ def compare_cells(native_path, fdb_path):
             raise ValueError("extra native retained point witness")
     return {"equal": True, "spec": spec, "relationshipFacts": facts, "setupNodes": 3,
             "usefulCreateTransactions": facts, "usefulUpdateTransactions": facts,
-            "retainedPointObservations": 2 * facts, "exactLogicalComponentChanges": 3 + 3 * facts,
+            "retainedPointObservations": 2 * facts, "exactLogicalComponentChanges": cdc["componentChanges"],
+            "completeLogicalCDC": cdc,
             "canonicalRetainedOutputSHA256": observed.hexdigest(),
             "scope": "single-machine distributed common fixed graph/history/CDC workload; allocation setup contracts differ; no engine selection or fullmatrix acceptance"}
 
