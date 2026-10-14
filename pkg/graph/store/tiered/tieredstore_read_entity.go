@@ -169,6 +169,7 @@ func routeRelRow[T any](ts *Store, rid types.RelID, row func(*BadgerStore, types
 		return rel, nil
 	}
 
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, err := ts.checkoutArchive()
 	if err != nil {
 		return zero, err

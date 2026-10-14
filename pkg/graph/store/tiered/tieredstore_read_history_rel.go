@@ -265,6 +265,7 @@ func (ts *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 	}
 	addAll(refIDs)
 
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 	if archiveErr != nil {
 		return nil, archiveErr

@@ -33,6 +33,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   property door; a shard error joined with the property door's off-reference finding is returned, no longer
   turned into `ErrIndexNotFound`. Test `TestTxMembersFanoutListsNodeRestoredMidRead`.
 
+### Fixed
+
+- **Tiered scans no longer see a node twice or not at all while `ArchiveNode` / `RestoreNode` moves it** (backlog 60).
+  `NodesByLabel`, `NodesByLabelAndProperty`, `NodesByLabelAndProperties`, `RelationshipsByType`, `AllNodes`,
+  `AllNodeIDs`, `AllRelationships`, `AllRelIDs` (each at `DepthAll`), `ForEachNodeID`, `ForEachRelID`, `NodeCount`,
+  `NodeCountByLabel`, `NodeCountByLabelAndPropertyKey`, `NodePropertyTypeClassCounts`, `RelationshipCount` and
+  `RelCountByType` read the reference shard and then the archive; a move between the two reads returned the node
+  (and its relationship) twice or counted it twice (`ArchiveNode`: the archive copy is written before the reference
+  delete), or dropped it (`RestoreNode`: the reference write lands after the reference read, the archive delete before
+  the archive read). They now take the move lock's read side across the two reads, as the tx-membership fan-out does;
+  `ForEachNodeID` / `ForEachRelID` collect both shards' IDs under it and call `fn` after releasing it. Not changed:
+  the DocValues folds (a move bumps `NodeMutationEpoch`, so the caller's Gate-2 re-check discards the answer) and
+  `AllNodeHistoryIDsFrom` / `AllRelHistoryIDsFrom` (history rows stay where they are, IDs are deduplicated). Still
+  open: point lookups (`GetNode`, `GetRelationship` and the doors routed like them) miss a node `RestoreNode` moves
+  between the route's reference and archive probes. Graph users were not affected: `g.Tier().Archive` / `Restore`
+  hold the graph's exclusive lock. Test `TestRefArchiveReadersSeeMovedEntityOnce`; evidence
+  `tasks/evidence/tiered-move-readers/`.
+
 ## [4.52.0] - 2026-10-14
 
 Minor release, the sigma-tkgd store requests, round 6 (new public API): badger column scans without a per-row

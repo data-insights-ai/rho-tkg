@@ -123,6 +123,7 @@ func (ts *Store) foldDocValuesServingEmpty(tokens []uint16, emptyServes bool, ca
 		return 0, false, nil
 	}
 
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, aerr := ts.checkoutArchive()
 	if aerr != nil {
 		return 0, false, aerr

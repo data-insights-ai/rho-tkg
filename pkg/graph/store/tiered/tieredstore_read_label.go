@@ -23,6 +23,8 @@ func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 	// a reference-primary node may carry an event extra label, and an
 	// event-primary node may carry a reference extra label. Query every relevant
 	// tier instead of treating the requested label class as an ownership shard.
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return nil, err
@@ -35,6 +37,7 @@ func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 
 	var archiveNodes []*types.Node
 	if opts.Depth == DepthAll {
+		ts.refArchiveGapHook()
 		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 		if archiveErr != nil {
 			return nil, archiveErr
@@ -47,6 +50,7 @@ func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 			}
 		}
 	}
+	move.unlock()
 
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(opts.Depth)
@@ -101,6 +105,8 @@ func (ts *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
 
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return nil, err
@@ -118,6 +124,7 @@ func (ts *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 	// AllRelationships gating policy.
 	var archiveRels []*types.Relationship
 	if opts.Depth == DepthAll {
+		ts.refArchiveGapHook()
 		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 		if archiveErr != nil {
 			return nil, archiveErr
@@ -130,6 +137,7 @@ func (ts *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 			}
 		}
 	}
+	move.unlock()
 
 	type result struct {
 		rels []*types.Relationship
@@ -185,6 +193,8 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 		return nil, fmt.Errorf("graph: nodes by label and property value: %w", err)
 	}
 
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return nil, err
@@ -197,6 +207,7 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 
 	var archiveNodes []*types.Node
 	if opts.Depth == DepthAll {
+		ts.refArchiveGapHook()
 		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 		if archiveErr != nil {
 			return nil, archiveErr
@@ -209,6 +220,7 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 			}
 		}
 	}
+	move.unlock()
 
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(opts.Depth)

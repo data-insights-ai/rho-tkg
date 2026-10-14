@@ -36,6 +36,8 @@ func (ts *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
 
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return nil, err
@@ -59,6 +61,7 @@ func (ts *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	// (reference data is not Depth-tiered, only event data is).
 	var archiveNodes []*types.Node
 	if opts.Depth == DepthAll {
+		ts.refArchiveGapHook()
 		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 		if archiveErr != nil {
 			return nil, archiveErr
@@ -71,6 +74,7 @@ func (ts *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 			}
 		}
 	}
+	move.unlock()
 
 	type result struct {
 		nodes []*types.Node
@@ -118,6 +122,8 @@ func (ts *Store) NodeCount() (int, error) {
 	ts.mu.RUnlock()
 
 	total := 0
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return 0, err
@@ -130,6 +136,7 @@ func (ts *Store) NodeCount() (int, error) {
 	total += n
 
 	// refArchive parity: archived nodes count toward the public total.
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 	if archiveErr != nil {
 		return 0, archiveErr
@@ -142,6 +149,7 @@ func (ts *Store) NodeCount() (int, error) {
 		}
 		total += an
 	}
+	move.unlock()
 
 	type result struct {
 		count int
@@ -181,6 +189,8 @@ func (ts *Store) NodeCountByLabel(token uint16) (int, error) {
 	}
 
 	total := 0
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return 0, err
@@ -192,6 +202,7 @@ func (ts *Store) NodeCountByLabel(token uint16) (int, error) {
 	}
 	total += n
 
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 	if archiveErr != nil {
 		return 0, archiveErr
@@ -204,6 +215,7 @@ func (ts *Store) NodeCountByLabel(token uint16) (int, error) {
 		}
 		total += an
 	}
+	move.unlock()
 
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(DepthAll)
@@ -250,6 +262,8 @@ func (ts *Store) NodeCountByLabelAndPropertyKey(token uint16, propertyKey string
 	}
 
 	total := 0
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return 0, err
@@ -261,6 +275,7 @@ func (ts *Store) NodeCountByLabelAndPropertyKey(token uint16, propertyKey string
 	}
 	total += n
 
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 	if archiveErr != nil {
 		return 0, archiveErr
@@ -273,6 +288,7 @@ func (ts *Store) NodeCountByLabelAndPropertyKey(token uint16, propertyKey string
 		}
 		total += an
 	}
+	move.unlock()
 
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(DepthAll)
@@ -320,6 +336,8 @@ func (ts *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
 
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return nil, err
@@ -337,6 +355,7 @@ func (ts *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 	// asked to exclude it. Same policy as AllNodes.
 	var archiveIDs []types.NodeID
 	if opts.Depth == DepthAll {
+		ts.refArchiveGapHook()
 		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 		if archiveErr != nil {
 			return nil, archiveErr
@@ -350,6 +369,7 @@ func (ts *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 			archiveIDs = typed
 		}
 	}
+	move.unlock()
 
 	type result struct {
 		ids []types.NodeID
@@ -400,48 +420,46 @@ func (ts *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
 	if fn == nil {
 		return errNilIterationCallback()
 	}
+	// The reference shard's and the archive's IDs are collected under one
+	// read hold on moveMu and emitted after it (fn may call back into the
+	// store), so an entity moved between the two reads is emitted once.
 	ids := make([]types.NodeID, 0)
+	collect := func(id types.NodeID) bool {
+		ids = append(ids, id)
+		return true
+	}
+	move := ts.lockMoveRead()
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return err
 	}
-	if err := ref.ForEachNodeID(func(id types.NodeID) bool {
-		ids = append(ids, id)
-		return true
-	}); err != nil {
-		refCheckin()
+	err = ref.ForEachNodeID(collect)
+	refCheckin()
+	if err != nil {
 		return err
 	}
-	refCheckin()
+
+	// Archive shard (cold-start safe + Close race-free via checkoutArchive).
+	ts.refArchiveGapHook()
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return archiveErr
+	}
+	if archive != nil {
+		err := archive.ForEachNodeID(collect)
+		archiveCheckin()
+		if err != nil {
+			return err
+		}
+	}
+	move.unlock()
 	for _, id := range ids {
 		if !fn(id) {
 			return nil
 		}
 	}
 
-	// Archive shard (cold-start safe + Close race-free via checkoutArchive).
-	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
-	if archiveErr != nil {
-		return archiveErr
-	}
-	if archive != nil {
-		ids = ids[:0]
-		err := archive.ForEachNodeID(func(id types.NodeID) bool {
-			ids = append(ids, id)
-			return true
-		})
-		archiveCheckin()
-		if err != nil {
-			return err
-		}
-		for _, id := range ids {
-			if !fn(id) {
-				return nil
-			}
-		}
-	}
-
-	// Event shards — sequential, depth=all.
 	ts.mu.RLock()
 	shards := ts.eventShardSnapshot(DepthAll)
 	ts.mu.RUnlock()

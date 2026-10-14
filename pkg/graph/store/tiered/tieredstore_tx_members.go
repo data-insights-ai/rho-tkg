@@ -97,9 +97,7 @@ func refAndArchive[T any](ts *Store, read func(bs *BadgerStore, ref bool) (T, er
 	if err != nil {
 		return ref, archived, false, err
 	}
-	if ts.fanoutRefReadHook != nil {
-		ts.fanoutRefReadHook()
-	}
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, err := ts.checkoutArchive()
 	if err != nil || archive == nil {
 		return ref, archived, false, err
@@ -107,6 +105,40 @@ func refAndArchive[T any](ts *Store, read func(bs *BadgerStore, ref bool) (T, er
 	defer archiveCheckin()
 	archived, err = read(archive, false)
 	return ref, archived, err == nil, err
+}
+
+// refArchiveGapHook runs the test-only fanoutRefReadHook (if set) in a door
+// that reads the reference shard and then the archive, between the two reads:
+// the window an ArchiveNode or RestoreNode could land in.
+func (ts *Store) refArchiveGapHook() {
+	if h := ts.fanoutRefReadHook; h != nil {
+		h()
+	}
+}
+
+// moveReadLock is a read hold on moveMu that a door releases once its
+// reference shard and archive reads are done (unlock is idempotent, so the
+// door may also defer it for its early returns). Lock order: moveMu before
+// ts.mu and archiveMu, as ArchiveNode and RestoreNode take them; a holder
+// must not call back into a door that takes moveMu again (a move waiting for
+// the write lock would block the second read lock).
+type moveReadLock struct {
+	ts   *Store
+	held bool
+}
+
+// lockMoveRead read-locks moveMu, so an ArchiveNode or RestoreNode cannot run
+// between the caller's reference shard read and its archive read.
+func (ts *Store) lockMoveRead() moveReadLock {
+	ts.moveMu.RLock()
+	return moveReadLock{ts: ts, held: true}
+}
+
+func (l *moveReadLock) unlock() {
+	if l.held {
+		l.held = false
+		l.ts.moveMu.RUnlock()
+	}
 }
 
 // txMember is one (entity, first transaction time) pair of a shard.

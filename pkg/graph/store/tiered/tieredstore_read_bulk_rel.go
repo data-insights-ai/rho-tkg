@@ -25,6 +25,8 @@ func (ts *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
 
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return nil, err
@@ -40,6 +42,7 @@ func (ts *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 	// in DepthHot/DepthWarm queries.
 	var archiveRels []*types.Relationship
 	if opts.Depth == DepthAll {
+		ts.refArchiveGapHook()
 		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 		if archiveErr != nil {
 			return nil, archiveErr
@@ -52,6 +55,7 @@ func (ts *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 			}
 		}
 	}
+	move.unlock()
 
 	type result struct {
 		rels []*types.Relationship
@@ -97,6 +101,8 @@ func (ts *Store) RelationshipCount() (int, error) {
 	ts.mu.RUnlock()
 
 	total := 0
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return 0, err
@@ -109,6 +115,7 @@ func (ts *Store) RelationshipCount() (int, error) {
 	total += n
 
 	// refArchive parity: archived rels count toward the public total.
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 	if archiveErr != nil {
 		return 0, archiveErr
@@ -121,6 +128,7 @@ func (ts *Store) RelationshipCount() (int, error) {
 		}
 		total += ar
 	}
+	move.unlock()
 
 	type result struct {
 		count int
@@ -163,6 +171,8 @@ func (ts *Store) RelCountByType(token uint16) (int, error) {
 	ts.mu.RUnlock()
 
 	total := 0
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return 0, err
@@ -175,6 +185,7 @@ func (ts *Store) RelCountByType(token uint16) (int, error) {
 	total += n
 
 	// refArchive parity: archived rels of this type count toward total.
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 	if archiveErr != nil {
 		return 0, archiveErr
@@ -187,6 +198,7 @@ func (ts *Store) RelCountByType(token uint16) (int, error) {
 		}
 		total += an
 	}
+	move.unlock()
 
 	type result struct {
 		count int
@@ -230,6 +242,8 @@ func (ts *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
 
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return nil, err
@@ -244,6 +258,7 @@ func (ts *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 	// refArchive parity: see AllNodeIDs above. Depth-gated to DepthAll.
 	var archiveIDs []types.RelID
 	if opts.Depth == DepthAll {
+		ts.refArchiveGapHook()
 		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 		if archiveErr != nil {
 			return nil, archiveErr
@@ -257,6 +272,7 @@ func (ts *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 			archiveIDs = typed
 		}
 	}
+	move.unlock()
 
 	type result struct {
 		ids []types.RelID
@@ -302,43 +318,43 @@ func (ts *Store) ForEachRelID(fn func(types.RelID) bool) error {
 	if fn == nil {
 		return errNilIterationCallback()
 	}
+	// The reference shard's and the archive's IDs are collected under one
+	// read hold on moveMu and emitted after it (fn may call back into the
+	// store), so an entity moved between the two reads is emitted once.
 	ids := make([]types.RelID, 0)
+	collect := func(id types.RelID) bool {
+		ids = append(ids, id)
+		return true
+	}
+	move := ts.lockMoveRead()
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return err
 	}
-	if err := ref.ForEachRelID(func(id types.RelID) bool {
-		ids = append(ids, id)
-		return true
-	}); err != nil {
-		refCheckin()
+	err = ref.ForEachRelID(collect)
+	refCheckin()
+	if err != nil {
 		return err
 	}
-	refCheckin()
-	for _, id := range ids {
-		if !fn(id) {
-			return nil
-		}
-	}
 
+	// Archive shard (cold-start safe + Close race-free via checkoutArchive).
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 	if archiveErr != nil {
 		return archiveErr
 	}
 	if archive != nil {
-		ids = ids[:0]
-		err := archive.ForEachRelID(func(id types.RelID) bool {
-			ids = append(ids, id)
-			return true
-		})
+		err := archive.ForEachRelID(collect)
 		archiveCheckin()
 		if err != nil {
 			return err
 		}
-		for _, id := range ids {
-			if !fn(id) {
-				return nil
-			}
+	}
+	move.unlock()
+	for _, id := range ids {
+		if !fn(id) {
+			return nil
 		}
 	}
 
