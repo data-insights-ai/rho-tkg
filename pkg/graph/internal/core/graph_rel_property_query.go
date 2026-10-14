@@ -110,7 +110,9 @@ func (c *Core) relsByTypeAndPropertyLocked(typeName, key string, value any, opts
 
 // relsByTypeAndProperty answers the (rel-type-token, property-key, value) query
 // with or without the accelerated index: RelationshipsByTypeAndProperty where
-// implemented, else type scan + filter. Mirror of nodesByLabelAndProperty.
+// implemented, else type scan + filter. Exact in-tree stores use
+// RelationshipsByTypeAndProperty; wrappers and mandatory-only backends fall back to
+// a type scan + filter. Mirror of nodesByLabelAndProperty.
 func (c *Core) relsByTypeAndProperty(tok uint16, key string, value any, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	wantKey := indexpkg.PropertyValueKey(value)
 	if wantKey == "" {

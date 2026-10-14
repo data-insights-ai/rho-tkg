@@ -529,7 +529,8 @@ func appendFloatKey(prefix string, val float64, bitSize int) string {
 //
 // Hash divergence by design: the integrity hash keeps the raw IEEE-754 bits, so
 // NaNs (and +-0) equal here can hash differently; a no-op CAS between them does
-// not advance the hash chain. See pkg/graph/internal/integrity/integrity_test.go.
+// not advance the hash chain, but a fresh SetProperty with a different NaN bit
+// pattern does advance it. See pkg/graph/internal/integrity/integrity_test.go.
 func PropertyValueEqual(cur, expected any) bool {
 	return propertyValueEqual(cur, expected, nil)
 }

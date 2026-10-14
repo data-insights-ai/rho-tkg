@@ -318,7 +318,9 @@ func (ts *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.N
 // forEachHistoryShard probes the shards that may own history after the live
 // entity index is deleted: refShard, refArchive (if present) and ALL event
 // shards. Cold shards must be included: a cross-shard relationship's history
-// lives on the start node's shard, which may have gone cold after the delete.
+// lives on the start node's shard, which may have gone cold after the delete. A
+// reference entity's history lives on the reference shard even when the timestamp
+// fallback selects an event shard.
 // Cold shards opened only for this read are closed after the callback so
 // broad scans do not accumulate Badger handles.
 func (ts *Store) forEachHistoryShard(skip *BadgerStore, fn func(*BadgerStore) (bool, error)) error {

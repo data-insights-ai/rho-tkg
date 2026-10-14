@@ -78,7 +78,8 @@ func (tx *GraphTx) getOrCreateByKeyLocked(ctx context.Context, label, propertyKe
 	}
 
 	// Miss: create under the SAME held stripe, routed through the tx's event/rollback
-	// bookkeeping instead of an immediate dispatch.
+	// bookkeeping instead of an immediate dispatch. The held stripe is passed so the
+	// create's unique kernel does not re-lock it (stripe mutexes are not reentrant).
 	props := make(map[string]any, len(extraProps)+1)
 	for k, v := range extraProps {
 		props[k] = v

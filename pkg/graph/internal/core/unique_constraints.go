@@ -276,6 +276,8 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 	// (ADR-0002 verifier note 2). Safe: a token is only allocated for a label absent
 	// from the registry, which has no nodes, so validateUniqueExisting cannot fail
 	// for it and a failed create leaves no orphan token. The pending overlay keys to it.
+	// Persisted so the record round-trips through Lookup at reopen
+	// (loadUniqueConstraints fails closed on a missing label).
 	labelTok, err := c.getOrCreateLabelPersisted(label)
 	if err != nil {
 		return err

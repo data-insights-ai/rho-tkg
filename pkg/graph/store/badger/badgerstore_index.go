@@ -327,7 +327,9 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 	// Phase 3: merge backfill under the write lock. The index stays Building (readers
 	// skip it) until the history fold below is in; current rows alone would let the
 	// envelope prune a node by a past row (backlog 56). Disk row is written unless a
-	// write since Phase 1 added/removed it (DiskWritten).
+	// write since Phase 1 added/removed it (DiskWritten). An ID written since Phase 1
+	// gets its fetched row by Extend (a union); a write that left disk untouched
+	// (PutNodeVersion) left the fetched current row current.
 	bs.idxMu.Lock()
 	if err := requireTemporalIndexCurrentForCreate(bs.temporalIndexes, labelToken, liveTI); err != nil {
 		bs.idxMu.Unlock()
@@ -407,6 +409,7 @@ type temporalFoldEntry struct {
 
 // nodeHistoryFolds reads history of ids without idxMu and returns the IDs read
 // and every history row's bounds; IDs with no node and no history are skipped.
+// GetNodeHistory never re-enters idxMu; it reads a deleted node's history too.
 func (bs *Store) nodeHistoryFolds(tok uint16, ids []types.NodeID) (map[snowflake.ID]struct{}, []temporalFoldEntry, error) {
 	read := make(map[snowflake.ID]struct{}, len(ids))
 	var folds []temporalFoldEntry
@@ -489,7 +492,7 @@ func (bs *Store) foldTemporalHistoryEnvelopes(tokens []uint16) error {
 
 // foldNodeHistoryLocked extends ti by every history row of id; the RAM presence
 // set answers "has none" without a read. Caller holds idxMu.Lock (order idxMu ->
-// presence buildMu -> wbMu).
+// presence buildMu -> wbMu); the history read takes only wbMu and a read transaction.
 func (bs *Store) foldNodeHistoryLocked(ti *indexpkg.TemporalIndex, id snowflake.ID) error {
 	has, err := bs.hasHistory(&bs.histNodePresence, storepkg.KeyHistNode, id, bs.probeHistoryPresence)
 	if err != nil || !has {
@@ -543,7 +546,7 @@ func (bs *Store) extendNodeVersionTemporalLocked(n *types.Node, id snowflake.ID)
 // id, a deleted node's history may still be on disk and the new row alone would
 // make the envelope vouch for less than the ID holds, so it is folded first (RAM
 // envelope only). A Building index needs nothing. Caller holds idxMu.Lock (order
-// idxMu -> presence buildMu -> wbMu).
+// idxMu -> presence buildMu -> wbMu); the history read takes only wbMu and a read transaction.
 func (bs *Store) foldRecreatedNodeHistoryLocked(n *types.Node, id snowflake.ID) error {
 	var hist []*types.Node
 	read := false

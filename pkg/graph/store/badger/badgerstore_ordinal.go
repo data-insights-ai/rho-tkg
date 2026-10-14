@@ -170,7 +170,8 @@ func (bs *Store) MaxRelOrdinal() uint32 {
 
 // NodeOrdinal returns the dense ordinal of a node this store holds a current row
 // for, else 0 (or with DisableOrdinals). Reads this store's map only, never
-// Config.ForeignNodeOrdinal.
+// Config.ForeignNodeOrdinal: the sharded store's slots resolve each other's
+// endpoints through it.
 func (bs *Store) NodeOrdinal(id types.NodeID) uint32 {
 	if bs == nil {
 		return 0

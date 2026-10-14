@@ -31,7 +31,6 @@ type GraphStats struct {
 	RelCacheMisses  int64
 }
 
-// Ops is the subset of *core.StatOps the stats sub-API forwards to.
 // Ops is the subset of *core.StatOps the stats sub-API forwards to; counters come
 // back as a tuple via SnapshotCounters() to keep the interface narrow.
 type Ops interface {

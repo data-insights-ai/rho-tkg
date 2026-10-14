@@ -236,6 +236,8 @@ func (n *Node) SetPropertiesCanonicalShared(ps PropertySlice) {
 
 // SetOwnedProperties replaces the node's property slice without copying; the
 // caller transfers ownership of ps. A consumed OwnedPropertySlice installs nil.
+// The caller must not mutate ps after this call; for graph-layer paths that just
+// got ps from NewPropertySlice (general callers use SetProperties).
 func (n *Node) SetOwnedProperties(ps OwnedPropertySlice) error {
 	if n == nil {
 		return ErrNilNode

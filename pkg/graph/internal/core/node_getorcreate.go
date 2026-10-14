@@ -78,7 +78,7 @@ func (c *Core) getOrCreateNodeByKey(ctx context.Context, label, propertyKey stri
 			return
 		}
 		if len(matches) > 0 {
-			// Hit: mutable copy of the lowest-ID match (scan rows are sorted by ID).
+			// Hit: mutable copy of the lowest-ID match (scan rows are sorted by ID and frozen).
 			node = matches[0].DeepCopy()
 			c.opNodeReads.Add(1)
 			return
