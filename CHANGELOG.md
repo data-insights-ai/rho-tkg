@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.52.2] - 2026-10-14
+
 ### Added
 
 - **Integrity-hash switch; binary hashes readable** (backlog 61, René from ai-soc's 232 B per edge of hashes):
