@@ -17,11 +17,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   shards takes the highest stamp and bound. `RefineRelValidEnd` / `RefineNodeValidEnd` are no-ops: an entity's rows
   can span shards (ArchiveNode, a re-import), so an entity with a loose fold (a valid-time close) is read on every
   call. `ForEachNodePropertyTxMember` answers from the reference shard's sidecar and declines with
-  `ErrIndexNotFound` when the archive or an event shard ever held a node with the label; `ForEachRelPropertyTxMember`
+  `ErrIndexNotFound` for an event-class label or an undeclared index (no fan-out), and when the archive or an event
+  shard ever held a node with the label (checked before the sidecar is read); `ForEachRelPropertyTxMember`
   always declines (tiered has no rel property index). The core now uses the label and type membership sidecars for
   DepthAll reads only (a depth-scoped read on tiered keeps the depth fold), and `Stats.RelHistoryCountByType` answers
-  on tiered (was ok=false). `ForEachRelEffectiveByTypeFrom` on tiered, 2,000 relationships over two event shards,
-  10 live: 2,000 → 10 timelines read, ~490 ms → ~11.5 µs per scan. Test `TestTieredTxMembershipAndValidEndMatchBadger`
+  on tiered (was ok=false): it runs the DepthAll history-ID fold plus a `RelTypeTxMembersOf` fan-out, both opening
+  closed cold shards. `ForEachRelEffectiveByTypeFrom` on tiered, 2,000 relationships over two event shards,
+  10 live: 2,000 → 10 timelines read, ~490 ms → ~11.5 µs per scan; with 7 of 8 event shards cold and
+  `MaxOpenColdShards` 0, 141 s → 0.59 s (temporal ByLabel over the same shards unchanged, ~17 s both). Test `TestTieredTxMembershipAndValidEndMatchBadger`
   (badger vs tiered with rotation, archive and a closed cold shard: capability answers and the core doors equal),
   bench `BenchmarkTieredRelEffectiveByTypeFrom`; evidence `tasks/evidence/tiered-capabilities/`.
 

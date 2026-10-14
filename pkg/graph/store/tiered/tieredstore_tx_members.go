@@ -184,36 +184,44 @@ var errLabelOffReference = errors.New("label member off the reference shard")
 // ForEachNodePropertyTxMember implements
 // store.NodePropertyTxMembershipCapability. A node property index lives on
 // the reference shard only (CreatePropertyIndex), so its sidecar sees only
-// that shard's rows. It answers from that sidecar when no other shard (the
-// archive, an event shard: an archived node, an event node carrying the
-// label as a secondary one) ever held a node with the label; otherwise, or
-// when the index is not declared or still being created on the reference
-// shard, it declines with store.ErrIndexNotFound and the core takes the
-// history fold.
+// that shard's rows. It declines with store.ErrIndexNotFound, cheapest test
+// first: an event-class label (never indexed), no declared index on the
+// reference shard, then any other shard (the archive, an event shard: an
+// archived node, an event node carrying the label as a secondary one) that
+// ever held a node with the label. Only then does it read the reference
+// shard's sidecar (which also declines while the index is being created).
+// On a decline the core takes the history fold.
 func (ts *Store) ForEachNodePropertyTxMember(labelToken uint16, propertyKey, valueKey string, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
 	if fn == nil {
 		return errNilIterationCallback()
 	}
-	ref, _, err := allShards(ts, func(bs *BadgerStore, isRef bool) ([]txMember[types.NodeID], error) {
+	if ts.ontology.ClassifyByToken(labelToken) != ClassReference {
+		return storecontract.ErrIndexNotFound
+	}
+	if has, err := ts.HasPropertyIndex(labelToken, propertyKey); err != nil || !has {
+		if err != nil {
+			return err
+		}
+		return storecontract.ErrIndexNotFound
+	}
+	_, _, err := allShards(ts, func(bs *BadgerStore, isRef bool) (struct{}, error) {
 		if isRef {
-			var out []txMember[types.NodeID]
-			err := bs.ForEachNodePropertyTxMember(labelToken, propertyKey, valueKey, func(id types.NodeID, tx types.Instant) bool {
-				out = append(out, txMember[types.NodeID]{id, tx})
-				return true
-			})
-			return out, err
+			return struct{}{}, nil
 		}
 		held := false
 		if err := bs.ForEachLabelTxMember(labelToken, func(types.NodeID, types.Instant) bool {
 			held = true
 			return false
 		}); err != nil {
-			return nil, err
+			return struct{}{}, err
 		}
 		if held {
-			return nil, errLabelOffReference
+			return struct{}{}, errLabelOffReference
 		}
-		return nil, nil
+		return struct{}{}, nil
 	})
 	if errors.Is(err, errLabelOffReference) {
 		return storecontract.ErrIndexNotFound
@@ -221,8 +229,21 @@ func (ts *Store) ForEachNodePropertyTxMember(labelToken uint16, propertyKey, val
 	if err != nil {
 		return err
 	}
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return err
+	}
+	var members []txMember[types.NodeID]
+	err = ref.ForEachNodePropertyTxMember(labelToken, propertyKey, valueKey, func(id types.NodeID, tx types.Instant) bool {
+		members = append(members, txMember[types.NodeID]{id, tx})
+		return true
+	})
+	refCheckin()
+	if err != nil {
+		return err
+	}
 	var u txMemberUnion[types.NodeID]
-	u.add(ref)
+	u.add(members)
 	u.emit(fn)
 	return nil
 }

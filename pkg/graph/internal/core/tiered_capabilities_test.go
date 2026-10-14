@@ -395,6 +395,7 @@ func TestTieredTxMembershipAndValidEndMatchBadger(t *testing.T) {
 	addNode("s4", []string{"Sig"}, nil)
 	addNode("s5", []string{"Sig", "Case"}, map[string]any{"status": "open"}) // a Case member on an event shard
 	addRel("r4", "LINK", "s4", "s3")
+	addRel("r5", "LINK", "s4", "s5")
 	setNode("s5", map[string]any{"status": "closed"})
 	both(func(i int, g *Core) (string, int64) {
 		must(g.Rels.Delete(ctx, types.RelID(ids[i]["r4"])))
@@ -416,6 +417,15 @@ func TestTieredTxMembershipAndValidEndMatchBadger(t *testing.T) {
 	}
 	if sort.Strings(hotNames); !slices.Equal(hotNames, []string{"s4", "s5"}) {
 		t.Errorf("tiered ByLabel(Sig, DepthHot) = %v, want [s4 s5]", hotNames)
+	}
+	hotRels, err := tg.Rels.ByType("LINK", storepkg.QueryOpts{TxPin: pinC[1], Depth: storepkg.DepthHot})
+	must(err)
+	var hotRelNames []string
+	for _, r := range hotRels {
+		hotRelNames = append(hotRelNames, nameOf(1, int64(r.ID())))
+	}
+	if sort.Strings(hotRelNames); !slices.Equal(hotRelNames, []string{"r5"}) {
+		t.Errorf("tiered ByType(LINK, DepthHot) = %v, want [r5]", hotRelNames)
 	}
 
 	// The first event shard goes cold and is closed on disk: the fan-out
