@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,6 +32,9 @@ type nativeGraphCostSample struct {
 	VerificationNanos              int64                    `json:"verificationNanos"`
 	ClientAttempts                 int                      `json:"clientAttempts"`
 	LocalAckTiming                 nativeGraphCostAckTiming `json:"localAckTiming"`
+	Operation                      nativeGraphCostOperation `json:"operation"`
+	ClientID                       int                      `json:"clientID"`
+	AdmissionNanos                 int64                    `json:"admissionNanos"`
 	phase, partition, index, round uint64
 	hash, digest                   [32]byte
 	tx                             [16]byte
@@ -91,8 +93,13 @@ type nativeGraphCostResult struct {
 	CDCFrom, CDCThrough                                                              [2]uint64
 	CDCChanges, CDCRecords                                                           uint64
 	CompletedCreates, CompletedUpdates                                               uint64
-	Reaped                                                                           int                      `json:"reaped"`
-	Runner                                                                           string                   `json:"runner"`
+	Reaped                                                                           int                                   `json:"reaped"`
+	Runner                                                                           string                                `json:"runner"`
+	ClientCompletions                                                                [nativeGraphCostWindowCommands]uint64 `json:"clientCompletions"`
+	ClientWindow, LocalAdmissions, CrossAdmissions                                   int
+	AdmissionScope                                                                   string
+	AdmissionNanos, PhaseWallNanos                                                   int64
+	Attempts, AbortedAttempts, SameAttemptRetries                                    uint64
 	CheckpointCommands                                                               int                      `json:"checkpointCommands"`
 	CheckpointNanos                                                                  int64                    `json:"checkpointNanos"`
 	LocalAckTiming                                                                   nativeGraphCostAckTiming `json:"localAckTiming"`
@@ -214,150 +221,9 @@ func nativeGraphCostCall(t *testing.T, ctx context.Context, p *graphProcess, req
 // timed acknowledgement separately; both remain in the measured total cost.
 func nativeGraphCostSubmit(t *testing.T, n *certifiedProcessNetwork, phase, i uint64, cross bool) nativeGraphCostSample {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-	sample := nativeGraphCostSample{Fact: i, Cross: cross, ClientAttempts: 1, Phase: "setup", phase: phase}
-	if phase == 4 {
-		sample.Phase = "create"
-	}
-	if phase == 5 {
-		sample.Phase = "update"
-	}
-	actor := uint64(1)
-	var data []byte
-	if phase == 3 {
-		actor = 4
-	}
-	if phase >= 4 {
-		data = make([]byte, 8)
-		binary.BigEndian.PutUint64(data, i)
-	}
-	start := time.Now()
-	response := nativeGraphCostCall(t, ctx, n.all[actor], processRequest{op: processCertifiedAction, entity: certifiedGraphCost, index: phase, data: data})
-	proposal, err := decodeCertifiedProcessProposal(response.aux)
+	sample, err := nativeGraphCostClientSubmit(t.Context(), n, nativeGraphCostSpec{}, phase, i, cross, 0, nil, nil)
 	if err != nil {
-		t.Fatal(err)
-	}
-	command, err := decodePartitionGraphCommand(proposal.wire, defaultMaterializerLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
-	sample.identity = [16]byte(command.request.id)
-	sample.ProposalNanos = time.Since(start).Nanoseconds()
-	sample.partition, sample.hash = proposal.target.partition, sha256.Sum256(proposal.wire)
-	start = time.Now()
-	if cross {
-		response = nativeGraphCostCall(t, ctx, n.all[1], processRequest{op: processSourceCoordinate, data: proposal.wire})
-		result, err := decodeGraphProcessCoordinatorResult(response)
-		// The coordinator's immutable business digest uses its canonical v1
-		// envelope; the caller's ordinary partition proposal can be v2.
-		command.version = 0
-		business, businessErr := encodePartitionGraphCommand(command, defaultMaterializerLimits())
-		if err != nil || businessErr != nil || result.resume.business != sha256.Sum256(business) || result.resume.scope != proposal.target || result.resume.request != command.request.id || result.resume.tx != crossTransactionID(command.request.ns, command.request.id) || result.decision.phase != crossDecide || !result.decision.commit || result.decision.round == 0 {
-			t.Fatal("actual cost durable cross acknowledgement", result, err)
-		}
-		// Run returns only after genuine immutable decision and every participant
-		// Resolve submit completed; retain its exact TX/digest/round for CDC checks.
-		sample.tx, sample.digest, sample.round = result.decision.tx, result.decision.digest, result.decision.round
-		l := defaultMaterializerLimits()
-		arena, err := graphstate.NewOutputBudget(l.outputBytes)
-		if err != nil {
-			t.Fatal(err)
-		}
-		manifest, err := decodeCrossManifest(response.changes, l, arena)
-		if err != nil || manifest.digest != sample.digest || manifest.tx != sample.tx || manifest.request.ns != command.request.ns || manifest.request.id != command.request.id || len(manifest.parts) == 0 || len(manifest.parts) > len(sample.participants) {
-			t.Fatal("cost actual coordinator participant footprint", err)
-		}
-		for i, part := range manifest.parts {
-			sample.participants[i] = part.binding.Partition
-		}
-	} else {
-		baseline := response.applied
-		wire, err := encodeCertifiedProcessProposal(proposal)
-		if err != nil {
-			t.Fatal(err)
-		}
-		callStarted := time.Now()
-		proposed := nativeGraphCostCall(t, ctx, n.all[actor], processRequest{op: processPropose, data: wire})
-		sample.LocalAckTiming.ProposeCount++
-		sample.LocalAckTiming.ProposeNanos += time.Since(callStarted).Nanoseconds()
-		if err := n.all[actor].mux.hub.enqueue(actor, proposed.packets); err != nil {
-			t.Fatal("cost ordinary caller-owned packetdelivery", err)
-		}
-		completed := false
-		var observed uint64
-		// The original fixture's finite per-call/queue/time bounds still apply.
-		// No arbitrary delay or quiet-transport assertion becomes commit authority.
-		for range 128 {
-			for id, peer := range n.all {
-				peer.mux.mu.Lock()
-				failure := peer.mux.err
-				peer.mux.mu.Unlock()
-				if failure != nil {
-					t.Fatal("cost actual recorded transport/child failure", id, failure)
-				}
-			}
-			callStarted = time.Now()
-			state := nativeGraphCostCall(t, ctx, n.all[actor], processRequest{op: processStateOp, entity: nativeGraphCostAckPollEntity})
-			sample.LocalAckTiming.StateCount++
-			sample.LocalAckTiming.StateNanos += time.Since(callStarted).Nanoseconds()
-			observed = state.applied
-			if state.applied <= baseline {
-				hub := n.all[actor].mux.hub
-				hub.mu.Lock()
-				idle := hub.inFlight == 0 && hub.packetBytes == 0 && len(hub.packets) == 0
-				hub.mu.Unlock()
-				if idle {
-					// Publication can race the first observation; confirm actual application
-					// once after terminal transport, never turn quietness into success.
-					callStarted = time.Now()
-					state = nativeGraphCostCall(t, ctx, n.all[actor], processRequest{op: processStateOp, entity: nativeGraphCostAckPollEntity})
-					sample.LocalAckTiming.StateCount++
-					sample.LocalAckTiming.StateNanos += time.Since(callStarted).Nanoseconds()
-					observed = state.applied
-					if observed <= baseline {
-						t.Fatal("cost terminal idle without durable acknowledgement", actor, phase, baseline, observed)
-					}
-				} else {
-					callStarted = time.Now()
-					select {
-					case <-n.all[actor].mux.hub.packetCompleted:
-					case <-ctx.Done():
-						t.Fatal("cost localack waiting actualtransport progress", actor, phase, baseline, observed, ctx.Err())
-					}
-					sample.LocalAckTiming.PacketWaitCount++
-					sample.LocalAckTiming.PacketWaitNanos += time.Since(callStarted).Nanoseconds()
-					continue
-				}
-			}
-			callStarted = time.Now()
-			record := nativeGraphCostCall(t, ctx, n.all[actor], processRequest{op: processEntryRecord, index: state.applied})
-			sample.LocalAckTiming.EntryRecordCount++
-			sample.LocalAckTiming.EntryRecordNanos += time.Since(callStarted).Nanoseconds()
-			ns, _ := certifiedProcessNamespace(actor)
-			original, err := decodePartitionGraphOutcome(record.outcome, ns)
-			if err != nil || original.identity != sample.identity || original.hash != sha256.Sum256(proposal.wire) || original.index != state.applied || original.reason != reasonNone || original.disposition != applied || len(record.changes) == 0 {
-				t.Fatal("actual cost durable local acknowledgement", original, err)
-			}
-			sample.index = original.index
-			completed = true
-			break
-		}
-		if !completed {
-			t.Fatal("cost durable local acknowledgement exhausted finite polls", actor, phase, baseline, observed)
-		}
-	}
-	sample.AckNanos = time.Since(start).Nanoseconds()
-	sample.ElapsedNanos = sample.ProposalNanos + sample.AckNanos
-	if cross {
-		if sample.LocalAckTiming != (nativeGraphCostAckTiming{}) {
-			t.Fatal("cross acknowledgement included ordinary-call timings")
-		}
-	} else {
-		a := sample.LocalAckTiming
-		if a.ProposeCount != 1 || a.EntryRecordCount != 1 || a.StateCount == 0 || a.PacketWaitCount >= a.StateCount || a.ProposeNanos <= 0 || a.StateNanos <= 0 || a.EntryRecordNanos <= 0 || a.PacketWaitNanos < 0 || a.ProposeNanos+a.StateNanos+a.PacketWaitNanos+a.EntryRecordNanos > sample.AckNanos {
-			t.Fatal("ordinary ACK timing counts/scope", a, sample.AckNanos)
-		}
+		t.Fatal("cost original Submit", err)
 	}
 	return sample
 }
@@ -367,7 +233,7 @@ func nativeGraphCostSubmit(t *testing.T, n *certifiedProcessNetwork, phase, i ui
 // page instead checks a genuine retained root at certificate.sourceIndex.
 func nativeGraphCostCheckpoint(t *testing.T, n *certifiedProcessNetwork, from *[2]uint64, stream *json.Encoder, spec nativeGraphCostSpec, commands []nativeGraphCostSample) (graphCut, uint64, uint64) {
 	t.Helper()
-	if len(commands) == 0 || len(commands) > nativeGraphCostBatchCommands {
+	if len(commands) == 0 || len(commands) > nativeGraphCostWindowCommands {
 		t.Fatal("cost checkpoint command bound")
 	}
 	handle, cut := nativeGraphCostOpen(t, n, graphReadFresh, graphCut{})
@@ -456,7 +322,7 @@ func nativeGraphCostCheckpoint(t *testing.T, n *certifiedProcessNetwork, from *[
 // Low bits retain exact component cardinality; the two high bits separately
 // require every original manifest participant, even when its business CDC is empty.
 func nativeGraphCostComplete(commands []nativeGraphCostSample, seen []byte) error {
-	if len(commands) == 0 || len(commands) > nativeGraphCostBatchCommands || len(seen) != len(commands) {
+	if len(commands) == 0 || len(commands) > nativeGraphCostWindowCommands || len(seen) != len(commands) {
 		return errInvalid
 	}
 	for i, command := range commands {
@@ -492,7 +358,7 @@ func nativeGraphCostComplete(commands []nativeGraphCostSample, seen []byte) erro
 }
 
 func nativeGraphCostVerifyRecord(spec nativeGraphCostSpec, commands []nativeGraphCostSample, seen []byte, record nativeLifecycleRecord, scope lifecycleAllScope) error {
-	if len(commands) == 0 || len(commands) > nativeGraphCostBatchCommands || len(seen) != len(commands) {
+	if len(commands) == 0 || len(commands) > nativeGraphCostWindowCommands || len(seen) != len(commands) {
 		return errInvalid
 	}
 	// A zero-byte control CDC is not a canonical nonempty business envelope.
@@ -663,10 +529,16 @@ func runNativeGraphCostWithBlock(t *testing.T, s nativeGraphCostSpec, block uint
 	t.Helper()
 	started := time.Now()
 	n := newNativeGraphCostNetworkWithBlock(t, s, block)
-	result := nativeGraphCostResult{Version: 1, Runner: "certified-16-command-checkpoints-v2", CheckpointCommands: nativeGraphCostBatchCommands, Engine: "native-raft", Spec: s, Deployment: "single-machine distributed: two three-voter durable process groups", Directory: n.dir, UsefulFacts: s.Facts, SetupNodes: 3, Creates: s.Facts, Updates: s.Facts}
+	result := nativeGraphCostResult{Version: 1, Runner: "independent-clients-request-bound-ack-v2", CheckpointCommands: nativeGraphCostWindowCommands, Engine: "native-raft", Spec: s, Deployment: "single-machine distributed: two three-voter durable process groups", Directory: n.dir, UsefulFacts: s.Facts, SetupNodes: 3, Creates: s.Facts, Updates: s.Facts}
+	result.ClientWindow, result.LocalAdmissions, result.CrossAdmissions = nativeGraphCostWindowCommands, nativeGraphCostLocalAdmissions, 1
+	if s.Writers == 1 {
+		result.ClientWindow = nativeGraphCostBatchCommands
+		result.CheckpointCommands = nativeGraphCostBatchCommands
+	}
+	result.AdmissionScope = "Actual independent clients; at most eight local Submit admissions or one exclusive cross Coordinate admission. Cross admission leaves the second source worker for authenticated service. Native event lane and packetLoop remain serial; unchanged pending16/sourceWorkers2. Operation deadlines include admission wait."
 	result.GrantBlockSize = block
 	result.IDAdmission = "fixed fixture IDs admitted by actual installed allocator/recipient grants and fresh bindings; no Recipient.Acquire or Cursor.Next issuance"
-	result.TimingScope = "Reopen timings cover pre-stop index/prefix verification, initial six-child stop, six-directory native restore/prefix comparison, completed native configuration ReadIndex, original At verification and bounded original grant replay separately. TransportTiming ends before original-cohort stop; RestartTransportTiming is a separate overlapping second-cohort total. Frozen CDCFrom/CDCThrough and write/ACK timers exclude election/replay protocol tails. LocalAckTiming covers setup/create/update ordinary Submit RPCs and waits; State is a cost-only checked volatile Driver.Applied hint without Checkpoint/full stats, never ACK authority. Original retained Outcome/CDC alone proves ACK. Cost non-State replies omit unrequested checkpoint/full statistics but preserve native results and store errors; explicit default State diagnostics and all non-cost replies remain full. TransportTiming covers all queued hub traffic including setup/checkpoints/oracles, overlaps client timings, and Step includes IPC plus native driver/application work, not pure fsync. Fixed-size totals and one int64 timestamp per queued job preserve the existing 64-byte job allowance."
+	result.TimingScope = "WritesNanos sums overlapping client elapsed times including admission and bounded artifact handoff; PhaseWallNanos is actual phase wall time. AdmissionNanos is a fixed aggregate, attempts.jsonl streams actual immutable attempt lineage; no whole-run map. Local request lookup selects the actual retained original mapping, never the latest applied entry. A Step broadcast wakes every waiting client but is never authority. Reopen timings cover pre-stop index/prefix verification, initial six-child stop, six-directory native restore/prefix comparison, completed native configuration ReadIndex, original At verification and bounded original grant replay separately. TransportTiming ends before original-cohort stop; RestartTransportTiming is a separate overlapping second-cohort total. Frozen CDCFrom/CDCThrough and write/ACK timers exclude election/replay protocol tails. LocalAckTiming covers setup/create/update ordinary Submit RPCs and waits; State is a cost-only checked volatile Driver.Applied hint without Checkpoint/full stats, never ACK authority. Original retained Outcome/CDC alone proves ACK. Cost non-State replies omit unrequested checkpoint/full statistics but preserve native results and store errors; explicit default State diagnostics and all non-cost replies remain full. TransportTiming covers all queued hub traffic including setup/checkpoints/oracles, overlaps client timings, and Step includes IPC plus native driver/application work, not pure fsync. Fixed-size totals and one int64 timestamp per queued job preserve the existing 64-byte job allowance."
 	// Source records and observations are streamed, never accumulated per fact.
 	open := func(name string) (*os.File, *json.Encoder) {
 		f, err := os.OpenFile(filepath.Join(n.dir, name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
@@ -681,6 +553,7 @@ func runNativeGraphCostWithBlock(t *testing.T, s nativeGraphCostSpec, block uint
 		return f, json.NewEncoder(f)
 	}
 	_, samples := open("latency.jsonl")
+	_, attempts := open("attempts.jsonl")
 	_, records := open("cdc.jsonl")
 	_, observations := open("observations.jsonl")
 	_, cohorts := open("cohorts.jsonl")
@@ -699,44 +572,10 @@ func runNativeGraphCostWithBlock(t *testing.T, s nativeGraphCostSpec, block uint
 	result.SetupNanos = time.Since(started).Nanoseconds()
 	var old, final graphCut
 	for _, phase := range []uint64{4, 5} {
-		commands := make([]nativeGraphCostSample, 0, nativeGraphCostBatchCommands)
-		var cut graphCut
-		for i := uint64(0); i < s.Facts; i++ {
-			sample := nativeGraphCostSubmit(t, n, phase, i, s.cross(i))
-			result.LocalAckTiming.add(sample.LocalAckTiming)
-			result.WritesNanos += sample.ElapsedNanos
-			if err := samples.Encode(sample); err != nil {
-				t.Fatal(err)
-			}
-			if phase == 4 {
-				result.CompletedCreates++
-			} else {
-				result.CompletedUpdates++
-			}
-			commands = append(commands, sample)
-			if len(commands) == nativeGraphCostBatchCommands || i+1 == s.Facts {
-				start := time.Now()
-				var c, r uint64
-				cut, c, r = nativeGraphCostCheckpoint(t, n, &from, records, s, commands)
-				result.CheckpointNanos += time.Since(start).Nanoseconds()
-				result.CDCChanges += c
-				result.CDCRecords += r
-				commands = commands[:0]
-				if (i+1)%256 == 0 || i+1 == s.Facts {
-					progress := struct {
-						Phase, CompletedCreates, CompletedUpdates, CDCChanges, CDCRecords uint64
-						ElapsedNanos                                                      int64
-						LocalAckTiming                                                    nativeGraphCostAckTiming
-						TransportTiming                                                   graphProcessCostTiming
-					}{phase, result.CompletedCreates, result.CompletedUpdates, result.CDCChanges, result.CDCRecords, time.Since(started).Nanoseconds(), result.LocalAckTiming, n.all[1].mux.hub.costTimingSnapshot()}
-					wire, err := json.Marshal(progress)
-					if err != nil {
-						t.Fatal(err)
-					}
-					t.Log("native-cost-progress", string(wire))
-				}
-			}
-		}
+		phaseStarted := time.Now()
+		cut := nativeGraphCostRunPhase(t, n, s, phase, &from, samples, attempts, records, &result, started)
+		result.PhaseWallNanos += time.Since(phaseStarted).Nanoseconds()
+
 		if phase == 4 {
 			old = cut
 			var err error
@@ -756,6 +595,13 @@ func runNativeGraphCostWithBlock(t *testing.T, s nativeGraphCostSpec, block uint
 			nativeGraphCostCheck(t, n, s, old, 5, observations)
 			nativeGraphCostCheck(t, n, s, cut, 6, observations)
 			result.VerificationNanos = time.Since(start).Nanoseconds()
+		}
+	}
+	if s.Facts > uint64(s.Writers) {
+		for client := range s.Writers {
+			if result.ClientCompletions[client] == 0 {
+				t.Fatal("declared independent client never completed", client)
+			}
 		}
 	}
 	if result.CDCChanges != 3+3*s.Facts {
@@ -915,7 +761,7 @@ func TestNativeGraphCostProfileAndRouting(t *testing.T) {
 			t.Fatal("cost profile changed resident limits")
 		}
 	}
-	for _, s := range []nativeGraphCostSpec{{}, {Version: 1, Facts: 10000, Writers: 8}, {Version: 1, Facts: 10000, Writers: 1, CrossPercent: 2}} {
+	for _, s := range []nativeGraphCostSpec{{}, {Version: 1, Facts: 10000, Writers: 2}, {Version: 1, Facts: 10000, Writers: 1, CrossPercent: 2}} {
 		if !errors.Is(s.validate(), errInvalid) {
 			t.Fatal("unsupported profile accepted", s)
 		}

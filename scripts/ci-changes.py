@@ -42,6 +42,7 @@ DEFINITIONS = re.compile(r"^(func(?:\s+\([^\n]*\))?|type|var|const)\s+(\w+)", re
 COST_FIXTURES = {
     "native_graph_cost_test.go", "native_graph_cost_harness_test.go",
     "native_graph_cost_grants_harness_test.go", "native_graph_cost_reopen_harness_test.go",
+    "native_graph_cost_parallel_harness_test.go", "native_graph_cost_runner_test.go",
 }
 COST_PARENTS = [
     "TestNativeGraphCostSmallActualProcesses", "TestNativeGraphCostProfileAndRouting",
@@ -50,6 +51,10 @@ COST_PARENTS = [
     "TestNativeGraphCostMultipleGrantsSmallActualProcesses",
     "TestNativeGraphCostPhysicalReopenAndIndexesSmallActualProcesses",
     "TestNativeGraphCostReopenIndexPagesRejectMalformedAndOversizedInput",
+    "TestNativeGraphCostIndependentClientsSmallActualProcesses",
+    "TestNativeGraphCostRequestACKFindsOriginalBehindLaterAppliedEntry",
+    "TestNativeGraphCostAttemptLineageAndWindowAreBoundedAndRequestJoined",
+    "TestNativeGraphCostThirtyTwoCommandWindowRejectsOtherWaveOriginals",
 ]
 FIXTURE_COMPAT = {
     **dict.fromkeys(COST_FIXTURES, COST_PARENTS),
@@ -59,7 +64,7 @@ FIXTURE_COMPAT = {
     "coordinator_loss_p03_harness_test.go": ["TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply"],
     "prepare_fence_p02_harness_test.go": ["TestPrepareFenceP02ActualOrderingAcrossElection"],
     "replicated_process_test.go": ["TestReplicatedProcessProtocolBoundaries", "TestReplicatedProcessShutdownReapsFailedCloseRPC"],
-    "graph_source_process_test.go": ["TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput", "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts"],
+    "graph_source_process_test.go": ["TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput", "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts", *COST_PARENTS],
 }
 # The complete-CDC replay tests consume these two frozen FDB archives directly.
 # Keep this finite dependency list in sync with compare_cost_cdc_test.py.

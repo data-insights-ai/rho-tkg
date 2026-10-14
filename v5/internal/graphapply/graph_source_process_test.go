@@ -91,6 +91,7 @@ type graphProcessHub struct {
 	packetBytes, delivered, inFlight int
 	deliveryLimit                    int
 	packetCompleted                  chan struct{}
+	costProgress                     chan struct{}           // cost-only broadcast generation, protected by mu
 	costTiming                       *graphProcessCostTiming // optional, protected by mu
 	costStarted                      time.Time
 	idle                             chan struct{}
@@ -133,6 +134,7 @@ func attachGraphProcessMuxesWithLimit(t *testing.T, all map[uint64]*graphProcess
 	hub := &graphProcessHub{ctx: ctx, cancel: cancel, peers: make(map[uint64]*graphProcessMux), packets: make(chan graphProcessPacketJob, processPacketCount), idle: make(chan struct{}, 1), deliveryLimit: limit}
 	if limit != processDeliveries {
 		hub.packetCompleted = make(chan struct{}, 1)
+		hub.costProgress = make(chan struct{})
 	}
 	for id, p := range all {
 		m := &graphProcessMux{p: p, id: id, hub: hub, pending: make(map[uint64]chan graphProcessAnswer), relays: make(map[uint64]context.CancelFunc), relayQueue: make(chan graphProcessRelayJob, processSourceWorkers)}
@@ -213,6 +215,9 @@ func (m *graphProcessMux) fail(err error) {
 	}
 	m.err = err
 	m.hub.changed()
+	m.hub.mu.Lock()
+	m.hub.costProgressLocked()
+	m.hub.mu.Unlock()
 	if m.hub.packetCompleted != nil {
 		select {
 		case m.hub.packetCompleted <- struct{}{}:
@@ -550,6 +555,7 @@ func (h *graphProcessHub) packetLoop() {
 				h.costTiming.StepNanos += stepNanos
 				h.costTiming.StepMaxNanos = max(h.costTiming.StepMaxNanos, stepNanos)
 			}
+			h.costProgressLocked()
 			h.mu.Unlock()
 			h.changed()
 			if h.packetCompleted != nil {
@@ -1366,7 +1372,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					var result crossProcessResult
 					result, e = coordinator.Run(workerCtx, original.request.id, original.request.operations, original.request.revision.Provenance(), original.request.claims)
 					if e == nil && o.cost != nil {
-						out.changes, e = nativeGraphCostCoordinatorManifest(workerCtx, h, result)
+						out.changes, e = nativeGraphCostCoordinatorProofWire(workerCtx, h, result)
 					}
 					if result.resume.request != (requestID{}) {
 						var encodeErr error
@@ -1584,7 +1590,11 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				if o.cost == nil {
 					e = errInvalid
 				} else {
-					response.aux, e = nativeGraphCostRecordWire(ctx, h, r.index)
+					if len(r.data) != 0 {
+						response.aux, e = nativeGraphCostRequestRecordWire(ctx, h, r)
+					} else {
+						response.aux, e = nativeGraphCostRecordWire(ctx, h, r.index)
+					}
 				}
 			case processLifecycleRecord:
 				if os.Getenv("RHO_GRAPH_PAIRED_PROCESS") == "1" {

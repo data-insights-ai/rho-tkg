@@ -280,9 +280,14 @@ class RealGitSelection(unittest.TestCase):
                    "TestNativeGraphCostMillionFactProfileUsesBoundedGrantBlocks",
                    "TestNativeGraphCostMultipleGrantsSmallActualProcesses",
                    "TestNativeGraphCostPhysicalReopenAndIndexesSmallActualProcesses",
-                   "TestNativeGraphCostReopenIndexPagesRejectMalformedAndOversizedInput"}
+                   "TestNativeGraphCostReopenIndexPagesRejectMalformedAndOversizedInput",
+                   "TestNativeGraphCostIndependentClientsSmallActualProcesses",
+                   "TestNativeGraphCostRequestACKFindsOriginalBehindLaterAppliedEntry",
+                   "TestNativeGraphCostAttemptLineageAndWindowAreBoundedAndRequestJoined",
+                   "TestNativeGraphCostThirtyTwoCommandWindowRejectsOtherWaveOriginals"}
         for fixture in ("native_graph_cost_test.go", "native_graph_cost_harness_test.go",
-                        "native_graph_cost_grants_harness_test.go", "native_graph_cost_reopen_harness_test.go"):
+                        "native_graph_cost_grants_harness_test.go", "native_graph_cost_reopen_harness_test.go",
+                        "native_graph_cost_parallel_harness_test.go", "native_graph_cost_runner_test.go"):
             with self.subTest(fixture=fixture):
                 path = self.directory / fixture
                 path.write_text("package graphapply\ntype sharedCost struct{}\nfunc sharedRunner() int { return 1 }\n")
@@ -294,6 +299,15 @@ class RealGitSelection(unittest.TestCase):
                 definitions = {p: CI.changed_definitions(p, base) for p in changed}
                 self.assertEqual(set(CI.graph_selection(self.directory, changed, definitions)),
                                  parents | set(CI.GRAPH_COMPAT))
+
+    def test_shared_child_cost_delta_keeps_finite_cost_and_transport_consumers(self):
+        path = self.directory / "graph_source_process_test.go"
+        path.write_text("package graphapply\ntype graphProcessHub struct{}\n")
+        selected = set(CI.graph_selection(self.directory, [path], {path: [("type", "graphProcessHub")]}))
+        self.assertEqual(selected, set(CI.COST_PARENTS) | set(CI.GRAPH_COMPAT) |
+                         {"TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput",
+                          "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts"})
+        self.assertNotIn("TestNativeGraphCostCell", selected)
 
     def test_cost_fixture_guard_preserves_changed_large_parent(self):
         fixture = self.directory / "native_graph_cost_harness_test.go"

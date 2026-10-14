@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"syscall"
 	"testing"
 	"time"
@@ -452,5 +453,48 @@ func TestGraphSourceProcessAlreadyCanceledExchangeDoesNotSend(t *testing.T) {
 	m.mu.Unlock()
 	if pending != 0 || failed != nil || sequence != 0 {
 		t.Fatal("canceled call sent/poisoned transport", pending, failed, sequence)
+	}
+}
+
+// A whole client window is verified against its originals, independently of
+// completion order; splitting this into wire-page sized windows would accept
+// or reject effects against the wrong commands after all 32 have committed.
+func TestNativeGraphCostThirtyTwoCommandWindowRejectsOtherWaveOriginals(t *testing.T) {
+	spec := nativeGraphCostSpec{Version: 1, Facts: 65, Writers: 32}
+	commands := make([]nativeGraphCostSample, nativeGraphCostWindowCommands)
+	records := make([]nativeLifecycleRecord, nativeGraphCostWindowCommands)
+	scope := lifecycleAllScope{}
+	for i := range commands {
+		fact := uint64(i + 1)
+		command := nativeGraphCostSample{phase: 5, Fact: fact, partition: 3, index: 100 + fact, identity: [16]byte{byte(i + 1)}, hash: [32]byte{byte(i + 1)}}
+		original := outcome{ns: namespace{graph: idalloc.GraphID{1}, partition: 3}, kind: graphOperations, identity: command.identity, hash: command.hash, index: command.index, disposition: applied}
+		wire, err := encodeTypedGraphOutcome(original, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		owner, life, _, _ := spec.edge(fact)
+		records[i] = nativeLifecycleRecord{Partition: 3, Index: command.index, Outcome: wire, CDC: []byte{1}, Changes: []nativeLifecycleChange{{Owner: owner, Life: life, Component: byte(graphstate.ScalarProperty), Name: "p", Scope: []byte{1}, Before: nativeLifecycleCell{Present: true, Kind: "i64", Handle: 5, I64: 5, Revision: 10, Provenance: 4 + fact}, After: nativeLifecycleCell{Present: true, Kind: "i64", Handle: 6, I64: 6, Revision: 11, Provenance: 4 + spec.Facts + fact}}}}
+		commands[i] = command
+	}
+	slices.Reverse(commands)
+	seen := make([]byte, len(commands))
+	for _, record := range records {
+		if err := nativeGraphCostVerifyRecord(spec, commands, seen, record, scope); err != nil {
+			t.Fatal("completion order changed identity join", err)
+		}
+	}
+	if err := nativeGraphCostComplete(commands, seen); err != nil {
+		t.Fatal(err)
+	}
+	other := slices.Clone(commands)
+	other[0].identity[0]++
+	if err := nativeGraphCostVerifyRecord(spec, other, make([]byte, len(other)), records[len(records)-1], scope); !errors.Is(err, errCorrupt) {
+		t.Fatal("other wave identity supplied completion", err)
+	}
+	if err := nativeGraphCostVerifyRecord(spec, commands[:16], make([]byte, 16), records[0], scope); !errors.Is(err, errCorrupt) {
+		t.Fatal("page-sized split accepted another half-window", err)
+	}
+	if err := nativeGraphCostVerifyRecord(spec, commands, seen, records[0], scope); !errors.Is(err, errCorrupt) {
+		t.Fatal("duplicate original/effect accepted", err)
 	}
 }

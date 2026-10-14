@@ -29,7 +29,7 @@ type nativeGraphCostSpec struct {
 }
 
 func (s nativeGraphCostSpec) validate() error {
-	if s.Version != 1 || s.Facts < 1 || s.Facts > 1_000_000 || s.Writers != 1 || s.CrossPercent != 0 && s.CrossPercent != 10 && s.CrossPercent != 50 && s.CrossPercent != 100 {
+	if s.Version != 1 || s.Facts < 1 || s.Facts > 1_000_000 || (s.Writers != 1 && s.Writers != 8 && s.Writers != 32) || s.CrossPercent != 0 && s.CrossPercent != 10 && s.CrossPercent != 50 && s.CrossPercent != 100 {
 		return errInvalid
 	}
 	return nil
@@ -233,14 +233,15 @@ func nativeGraphCostRecordWire(ctx context.Context, h *allocationHost, index uin
 	return wire, nil
 }
 
-const nativeGraphCostBatchCommands = 16
+const nativeGraphCostBatchCommands = 16 // retained wire page size; independent of client window
+const nativeGraphCostWindowCommands = 32
 const nativeGraphCostPageBytes = 1 << 20
 
 // Inspect the original coordinator receipt at its immutable decision index.
 // This is a bounded local read inside the original Coordinate worker; it never
 // submits a command or changes the general coordinator-result envelope.
 func nativeGraphCostCoordinatorManifest(ctx context.Context, h *allocationHost, result crossProcessResult) (wire []byte, err error) {
-	if ctx == nil || h == nil || h.machine == nil || h.machine.store == nil || result.resume.scope != h.machine.scope() || result.decision.ns != h.machine.ns || result.decision.tx != result.resume.tx || result.decision.phase != crossDecide || !result.decision.commit || result.decision.round == 0 {
+	if ctx == nil || h == nil || h.machine == nil || h.machine.store == nil || result.resume.scope != h.machine.scope() || result.decision.ns != h.machine.ns || result.decision.tx != result.resume.tx || result.decision.phase != crossDecide || result.decision.commit && result.decision.round == 0 {
 		return nil, errInvalid
 	}
 	view, err := h.machine.store.ApplicationView(result.decision.index)
@@ -414,7 +415,7 @@ func nativeGraphCostInspectRecord(ctx context.Context, h *allocationHost, record
 		}
 	default:
 		original, err := decodePartitionGraphOutcome(actualOutcome, h.machine.ns)
-		if err != nil || original.index != record.Index || original.kind != graphOperations || original.disposition != applied || original.reason != reasonNone || len(actualCDC) == 0 {
+		if err != nil || original.index != record.Index || original.kind != graphOperations || original.disposition != applied || original.reason == reasonNone && len(actualCDC) == 0 || original.reason != reasonNone && len(actualCDC) != 0 {
 			return out, errors.Join(errCorrupt, err)
 		}
 		stored, found, err := q.getBounded(outcomeKey(request{ns: original.ns, kind: original.kind, id: requestID(original.identity)}), graphOutcomeBytes)
@@ -423,7 +424,10 @@ func nativeGraphCostInspectRecord(ctx context.Context, h *allocationHost, record
 		}
 		metadata.Kind, metadata.Request, metadata.Transaction, metadata.Digest = "local-graph", hex.EncodeToString(original.identity[:]), hex.EncodeToString(original.identity[:]), hex.EncodeToString(original.hash[:])
 		metadata.Coordinator, metadata.Disposition, metadata.Reason = original.ns.partition, byte(original.disposition), byte(original.reason)
-		metadata.Participants, metadata.Commit = []uint64{original.ns.partition}, true
+		metadata.Participants, metadata.Commit = []uint64{original.ns.partition}, original.reason == reasonNone
+		if original.reason != reasonNone {
+			class = "protocol-empty"
+		}
 		bound = original
 	}
 	if len(actualCDC) == 0 {
