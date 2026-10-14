@@ -186,6 +186,7 @@ def native_original(row, *, parallel=False):
                     (phase, status, round_, index) == (original["Phase"], original["Disposition"], original["Round"], row["Index"]), "read-control original")
         return original
     require(kind in ("local-graph", "cross") and original["Coordinator"] in PARTITIONS and (parallel or original["Reason"] == 0), "unknown business original")
+    require(not parallel or original["Reason"] in (0,1,2,3,4,5,6,8,9,10,11), "unknown native retained refusal reason")
     for name, size in (("Request", 16), ("Transaction", 16), ("Digest", 32)):
         text = original[name]
         require(type(text) is str and len(text) == 2 * size and text == bytes.fromhex(text).hex() and int(text, 16) > 0, "original identity/digest")
