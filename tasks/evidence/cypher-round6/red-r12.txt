@@ -1,0 +1,11 @@
+--- FAIL: TestLabelReadAtReadsNoHistoryNodeTwice (0.00s)
+    --- FAIL: TestLabelReadAtReadsNoHistoryNodeTwice/memory (0.00s)
+        label_scan_at_test.go:223: ByLabel {Limit:0 After:0 ValidAt:500 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false} resolved 200 chains, the fixture has 14 nodes with history
+    --- FAIL: TestLabelReadAtReadsNoHistoryNodeTwice/badger (0.00s)
+        label_scan_at_test.go:223: ByLabel {Limit:0 After:0 ValidAt:500 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false} resolved 200 chains, the fixture has 14 nodes with history
+--- FAIL: TestForEachByLabelAtStreams (0.01s)
+    label_scan_at_test.go:275: a stop after the first row: 1 rows, 3072 chains resolved (at most 1024)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.542s
+FAIL
+limit: {"command": ["go", "test", "-count=1", "-run", "TestLabelReadAt|TestForEachByLabelAtStreams", "./pkg/graph/internal/core/"], "rss_limit_mib": 8192.0, "wall_limit_s": 900.0, "sample_interval_s": 0.05, "peak_tree_rss_mib": 3233.25, "elapsed_s": 16.158, "exit_code": 1, "reason": "command-failed"

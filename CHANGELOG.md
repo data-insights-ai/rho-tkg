@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`CountByLabelAt` / `CountByTypeAt` over a valid-time interval over-counted** (found by round 6 request 12 putting
+  both doors into the bitemporal oracle harness): their current-row shortcut called a current row that answers the
+  point query at the first instant of the interval it covers a match, where `ByLabel` / `ByType` (the chain
+  resolver) found none, e.g. 5 against 4 (`tasks/evidence/cypher-round6/red-r12-count-interval-on-main.txt`, seeds
+  of `TestBitemporalOracleHarness`, `TestTxBackfillOracle_CrossBackend`, `TestReImportLifeOracle`,
+  `TestEffectiveScans_MatchPerEntityTimeline`, memory and badger). The shortcut is gone; an interval count now
+  equals `len(ByLabel)` / `len(ByType)`. The harness checks both counts at every point and interval probe.
+
 ### Added
 
 - **`g.Nodes().ForEachDocValuesOrdinal` / `ForEachDocValuesMultiOrdinal`** (sigma-tkgd round 6 request 11): the
@@ -21,6 +31,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **A label (type) read at a valid-time coordinate answers a node (relationship) without history from the row it
+  read, streams and sorts nothing** (sigma-tkgd round 6 request 12; EnvelopePruneLarge: 5.02 of 5.02 s in
+  `ByLabel` at the coordinate). `ByLabel` / `ByType`, `ForEachByLabel` / `ForEachByType` and `CountByLabelAt` /
+  `CountByTypeAt` under a temporal filter gather their candidates in ascending ID order (the current members merged
+  with the ever-members or the history fold, no hash set), pair each with its current row in one forward walk and
+  answer an entity the store states has no history rows (`store.HistoryPresenceCapability`) from that row under a
+  pure valid-time filter (point or interval; the chain resolver over the one-row chain, round 5 request 6's rule),
+  instead of reading it again and loading its chain; other entities, `TxAt` and `TxPin` keep the full resolution.
+  The answers are the resolver's and come in ascending ID order with or without `NoSort`, so nothing is sorted.
+  `ForEachByLabel` / `ForEachByType` with a temporal filter no longer materialize `ByLabel`: they resolve 1,024
+  candidates per hold of the graph read lock and call `fn` with no lock held (an early stop resolves no further;
+  each entity is answered as of a moment between the call and its chunk). No write cost. 300,000 :Event nodes,
+  ValidAt 5000, `NoSort` (`BenchmarkLabelScanAt`, 1 CPU, before/after interleaved): memory `ForEachByLabel`
+  279-355 -> 73-75 ms, 1,680,870 -> 12 allocations; badger 3.07-3.12 s -> 0.63-0.88 s (the rest is the label's
+  current-row read); with the label's temporal index memory 134-192 -> 76-79 ms, badger 1.28-1.46 s -> 0.71-1.08
+  s; `CountByLabelAt` likewise. Tests `TestLabelReadAtAgreesWithTheResolver` (every backend, oracle =
+  `findNodeVersionForOpts` per node, two-phase, point and interval, NoSort, pagination),
+  `TestLabelReadAtReadsNoHistoryNodeTwice`, `TestForEachByLabelAtStreams`, `TestSingleVersionNodeMatchesResolver`,
+  `TestTypeReadAtAgreesWithTheResolver`.
 - **Badger column scans allocate nothing per row** (sigma-tkgd round 6 request 10). `ScanRelColumns` and
   `ScanNodeColumns` on the columnar path converted each row's ID to an interface to derive a missing valid-from,
   one allocation per row whether or not a valid-time filter was set (1,049,588 allocations a run of sigma-tkgd's
