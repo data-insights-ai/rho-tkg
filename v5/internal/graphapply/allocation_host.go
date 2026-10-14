@@ -284,7 +284,15 @@ func (h *allocationHost) Submit(p allocationProposal) (allocationEvent, error) {
 	if p.target != local || len(p.wire) < requestHeaderBytes || len(p.wire) > h.machine.limits.commandBytes {
 		return allocationEvent{}, errInvalid
 	}
-	if isRangeMoveWire(p.wire) {
+	if isGraphPinWire(p.wire) {
+		c, err := decodeGraphPinCommand(p.wire)
+		if err != nil || !h.machine.retainedPins() || c.scope != local {
+			return allocationEvent{}, errors.Join(errInvalid, err)
+		}
+		if err := h.preflightRetainedPin(c, p.wire); err != nil {
+			return allocationEvent{}, err
+		}
+	} else if isRangeMoveWire(p.wire) {
 		c, err := decodeRangeMoveCommand(p.wire)
 		if err != nil || !h.machine.rangeMoves() || c.scope != local {
 			return allocationEvent{}, errors.Join(errInvalid, err)
