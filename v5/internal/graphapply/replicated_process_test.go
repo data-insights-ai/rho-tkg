@@ -1784,7 +1784,7 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 		_ = s.Close()
 		t.Fatal(err)
 	}
-	h, err := openAllocationHost(m, id, replica.Config{Store: s, ApplicationSnapshotSends: replica.ApplicationSnapshotSendLimits{MaxOffers: 2, MaxOwnedBytes: 4 << 20}})
+	h, err := p02OpenAllocationHost(m, id, replica.Config{Store: s, ApplicationSnapshotSends: replica.ApplicationSnapshotSendLimits{MaxOffers: 2, MaxOwnedBytes: 4 << 20}})
 	if err != nil {
 		_ = s.Close()
 		t.Fatal(err)

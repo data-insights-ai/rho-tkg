@@ -42,6 +42,7 @@ FIXTURE_COMPAT = {
     "paired_graph_snapshot_harness_test.go": ["TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts"],
     "prepared_lock_p06_harness_test.go": ["TestPreparedLockP06FirstYESLeaderKillOriginalRecovery"],
     "coordinator_loss_p03_harness_test.go": ["TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply"],
+    "prepare_fence_p02_harness_test.go": ["TestPrepareFenceP02ActualOrderingAcrossElection"],
     "replicated_process_test.go": ["TestReplicatedProcessProtocolBoundaries", "TestReplicatedProcessShutdownReapsFailedCloseRPC"],
     "graph_source_process_test.go": ["TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput", "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts"],
 }
