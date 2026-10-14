@@ -1,0 +1,8 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelTemporalIndexRebuild/per-rel-32         	       3	2062428305 ns/op	     96973 rels/s
+BenchmarkRelTemporalIndexRebuild/sequential-32      	       3	 492878958 ns/op	    405779 rels/s
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	11.771s
