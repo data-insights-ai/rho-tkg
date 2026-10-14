@@ -325,8 +325,12 @@ is released for distributed column integration. Source logical GC,
 fresh-profile handoff and runtime qualification remain open. The native sparse
 retention configuration/contract is source-integrated at `51407447`: opt-in
 RLM9 metadata binds separate history floors and exact semantic/data anchors
-within existing quotas. AS7 publication, activation and the operative collector
-still require implementation. Complete retained terminal-bank comparison is
+within existing quotas. AS7 publication-header/export verification is
+source-integrated at `1d28230a`, binding actual family counts, required anchor
+hashes and recovery state; `700f68f2` also requires the final recovery root,
+so an extra old row cannot compensate for a missing required suffix endpoint.
+Import/prepared/activation, AD6 descriptor wiring and the operative collector
+still require implementation and qualification. Complete retained terminal-bank comparison is
 source-integrated at `045517ab`; graph Restore can detect unknown extra native
 owners instead of inspecting only the transient recovery owner. Its direct
 historical guard and existing unknown-version guard updates are authored only.
