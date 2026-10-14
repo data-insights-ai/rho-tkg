@@ -97,6 +97,13 @@ func (s *Store) PersistApplicationReady(rd raft.Ready, c *ApplicationSnapshotCla
 		m.Hard = h
 	}
 	m.Base, m.BaseTerm, m.Last, m.Applied = idx, term, idx, idx
+	if old.Retention.Config.enabled() {
+		if c.p.i.manifest.Version != 7 {
+			return root, ErrInvalid
+		}
+		m.Retention.State = cloneRetentionState(c.p.i.manifest.Retention)
+		m.Retention.Cursor = applicationRetentionCursor{}
+	}
 	m.BaseHash, m.LastHash = [32]byte{}, [32]byte{}
 	m.LogBytes, m.LogCount, m.App.TailBytes = 0, 0, 0
 	m.Snap = &pb.Snapshot{Metadata: c.expected.Metadata}
@@ -227,6 +234,7 @@ func (s *Store) PersistApplicationReady(rd raft.Ready, c *ApplicationSnapshotCla
 	i := c.p.i
 	i.closed = true
 	i.prepared = nil
+	i.releaseRetentionOwnership()
 	i.manifest = ApplicationSnapshotManifest{}
 	i.after = nil
 	i.state.last = nil

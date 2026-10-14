@@ -35,6 +35,7 @@ func cloneSnapshotManifest(m ApplicationSnapshotManifest) ApplicationSnapshotMan
 	m.ConfState = proto.Clone(m.ConfState).(*pb.ConfState)
 	m.RecoveryReservation = cloneRecoveryReservation(m.RecoveryReservation)
 	m.TerminalReservations = cloneTerminalBank(m.TerminalReservations)
+	m.Retention = cloneRetentionState(m.Retention)
 	return m
 }
 

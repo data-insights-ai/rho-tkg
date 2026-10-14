@@ -204,7 +204,11 @@ func validateRecoveryMetadata(m metadata, l Limits) error {
 	if m.Retention.Config.enabled() {
 		contract = 5
 	}
-	if c.enabled() && (m.Transfer.Contract.Version != contract || m.Recovery.Bytes > m.App.Policy.RetainedApplicationBytes || m.Recovery.Records != m.Applied || m.Recovery.Records > m.Recovery.Bytes/(9+appFrameBytes+recoveryRootFixedBytes)) {
+	recordsValid := m.Recovery.Records == m.Applied
+	if m.Retention.Config.enabled() {
+		recordsValid = m.Recovery.Records >= retainedThrough(m.Applied, m.Retention.State.RecoveryFloor) && m.Recovery.Records <= m.Applied
+	}
+	if c.enabled() && (m.Transfer.Contract.Version != contract || m.Recovery.Bytes > m.App.Policy.RetainedApplicationBytes || !recordsValid || m.Recovery.Records > m.Recovery.Bytes/(9+appFrameBytes+recoveryRootFixedBytes)) {
 		return ErrInvalid
 	}
 	if !c.enabled() {

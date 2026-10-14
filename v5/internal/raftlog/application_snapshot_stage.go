@@ -15,6 +15,7 @@ import (
 // transferred values are reframed for local keys. Network validation/cancellation
 // never poisons active data. Uncertain local durable failures remain fail-stop.
 type ApplicationImport struct {
+	retentionReservation    uint64
 	prepared                *PreparedApplicationSnapshot
 	after                   []byte
 	bank                    byte
@@ -49,7 +50,7 @@ func (s *Store) BeginApplicationImport(ctx context.Context, m ApplicationSnapsho
 	if m.SemanticContractID != s.meta.Rep.SemanticContractID {
 		return nil, ErrInvalid
 	}
-	if m.controls() != s.meta.Controls.Config.enabled() || (m.Version >= 5) != s.meta.Recovery.Config.enabled() || m.Version >= 5 && m.Version != s.meta.manifestVersion() {
+	if (m.Version == 7) != s.meta.Retention.Config.enabled() || m.controls() != s.meta.Controls.Config.enabled() || (m.Version >= 5) != s.meta.Recovery.Config.enabled() || m.Version >= 5 && m.Version != s.meta.manifestVersion() {
 		return nil, ErrInvalid
 	}
 	if !tc.enabled() || m.Identity != tc.Identity || m.Contract != tc.Contract {
@@ -74,6 +75,15 @@ func (s *Store) BeginApplicationImport(ctx context.Context, m ApplicationSnapsho
 	if b > tc.Limits.MaxStagedBytes || r > tc.Limits.MaxStagedRecords || b > s.meta.App.Policy.RetainedApplicationBytes || r > s.meta.App.Policy.RetainedApplicationRecords {
 		return nil, ErrLimit
 	}
+	// The owned bounded anchor array shares the existing transfer pin ledger.
+	// It survives verification/preparation and is released only with this import.
+	retentionReservation := uint64(0)
+	if m.Version == 7 {
+		retentionReservation = uint64(64 * len(m.Retention.Roots)) // #nosec G115 -- <=64 admitted anchors, including Go padding.
+		if err := s.admitSnapshotOwnership(retentionReservation); err != nil {
+			return nil, err
+		}
+	}
 	prospective := s.meta
 	bank := byte(1)
 	if s.meta.Gen.Limits.enabled() {
@@ -87,7 +97,7 @@ func (s *Store) BeginApplicationImport(ctx context.Context, m ApplicationSnapsho
 	if err != nil {
 		return nil, err
 	}
-	i := &ApplicationImport{bank: bank, generation: prospective.Gen.Banks[bank].Generation, s: s, manifest: cloneSnapshotManifest(m), id: id, state: snapshotVerifier{digest: snapshotSeed(m)}}
+	i := &ApplicationImport{retentionReservation: retentionReservation, bank: bank, generation: prospective.Gen.Banks[bank].Generation, s: s, manifest: cloneSnapshotManifest(m), id: id, state: snapshotVerifier{digest: snapshotSeed(m)}}
 	batch := s.db.NewBatch()
 	if err := batch.Set(dormantKey, i.descriptor(), nil); err != nil {
 		return nil, errors.Join(err, batch.Close())
@@ -101,6 +111,7 @@ func (s *Store) BeginApplicationImport(ctx context.Context, m ApplicationSnapsho
 		return nil, err
 	}
 	i.ref = ref
+	s.pinnedApplicationBytes += retentionReservation
 	s.applicationImport = i
 	return i, nil
 }
@@ -447,6 +458,7 @@ func (i *ApplicationImport) abortLocked() error {
 		return ErrLimit
 	}
 	if s.closed {
+		i.releaseRetentionOwnership()
 		i.closed = true
 		i.manifest = ApplicationSnapshotManifest{}
 		i.after = nil
@@ -468,6 +480,7 @@ func (i *ApplicationImport) abortLocked() error {
 		s.releasePreparedOwnership(i.prepared)
 		i.prepared = nil
 	}
+	i.releaseRetentionOwnership()
 	i.manifest = ApplicationSnapshotManifest{}
 	i.state.last = nil
 	i.after = nil
@@ -493,4 +506,10 @@ func (s *Store) cleanupApplicationImport() error {
 		return errors.Join(err, batch.Close())
 	}
 	return s.commit(s.meta, batch)
+}
+
+// Called under Store.mu at the exact import lifetime boundary, including Close.
+func (i *ApplicationImport) releaseRetentionOwnership() {
+	i.s.pinnedApplicationBytes -= i.retentionReservation
+	i.retentionReservation = 0
 }

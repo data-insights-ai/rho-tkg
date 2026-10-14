@@ -197,7 +197,7 @@ func (s *Store) validateGenerationMeta(m metadata) error {
 				return ErrInvalid
 			}
 		} else {
-			if b.State == bankActive || b.State != bankFree && (b.Generation == 0 || b.Through == 0 || b.Through == math.MaxUint64 || b.Through > g.Limits.MaxRecords/3) {
+			if b.State == bankActive || b.State != bankFree && (b.Generation == 0 || b.Through == 0 || b.Through == math.MaxUint64 || !m.Retention.Config.enabled() && b.Through > g.Limits.MaxRecords/3) {
 				return ErrInvalid
 			}
 			if b.State == bankFree && (b.Through != 0 || b.Bytes != 0 || b.Records != 0 || b.ReservedBytes != 0 || b.ReservedRecords != 0) {
@@ -206,7 +206,7 @@ func (s *Store) validateGenerationMeta(m metadata) error {
 			if b.State != bankStaging && (b.ReservedBytes != 0 || b.ReservedRecords != 0) {
 				return ErrInvalid
 			}
-			if b.State == bankStaging && (b.Bytes > b.ReservedBytes || b.Records > b.ReservedRecords || b.Through > b.ReservedRecords/3 || b.ReservedBytes < b.Through*3*(9+appFrameBytes)) {
+			if b.State == bankStaging && (b.Bytes > b.ReservedBytes || b.Records > b.ReservedRecords || !m.Retention.Config.enabled() && (b.Through > b.ReservedRecords/3 || b.ReservedBytes < b.Through*3*(9+appFrameBytes))) {
 				return ErrInvalid
 			}
 		}
@@ -348,7 +348,7 @@ func (s *Store) reserveGeneration(m ApplicationSnapshotManifest) (metadata, byte
 		if futureErr != nil {
 			return prospective, bank, futureErr
 		}
-		if m.Version == 6 {
+		if m.Version >= 6 {
 			terminal, err := terminalGrowth(applicationTerminalBank(m.TerminalReservations), s.meta.App.Policy, s.limits)
 			if err != nil {
 				return prospective, bank, err
@@ -361,6 +361,13 @@ func (s *Store) reserveGeneration(m ApplicationSnapshotManifest) (metadata, byte
 			imported.Recovery = snapshotRecoveryState(m)
 			imported.Recovery.Bytes = m.RecoveryBytes
 			imported.Recovery.Records = m.RecoveryRecords
+			if m.Version == 7 {
+				// Headroom includes both native and published immutable plan copies;
+				// the local deletion cursor is never imported as portable authority.
+				imported.Retention.State = m.Retention
+				imported.Retention.Cursor = applicationRetentionCursor{}
+				imported.Gen.Publication.Retention = &m.Retention
+			}
 			if err := terminalMetadataHeadroom(imported, s.limits); err != nil {
 				return prospective, bank, err
 			}

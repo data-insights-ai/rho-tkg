@@ -224,7 +224,7 @@ func cloneRecoveryReservation(r ApplicationRecoveryReservation) ApplicationRecov
 }
 
 func recoveryHashForManifest(m ApplicationSnapshotManifest) [32]byte {
-	if m.Version == 6 {
+	if m.Version >= 6 {
 		return nativeRecoveryRootDigest(snapshotRecoveryState(m))
 	}
 	if m.Version != 5 {
@@ -360,7 +360,7 @@ func (v *ApplicationView) RecoveryOwner(ctx context.Context, budget ReadBudget) 
 	var expectedNative *applicationRecoveryMetadata
 	if v.prepared != nil && v.index == v.prepared.i.manifest.Index {
 		expected = &v.prepared.i.manifest.RecoveryReservation
-		if v.prepared.i.manifest.Version == 6 {
+		if v.prepared.i.manifest.Version >= 6 {
 			imported := snapshotRecoveryState(v.prepared.i.manifest)
 			expectedNative = &imported
 		}
