@@ -51,7 +51,7 @@ class P06Replay(unittest.TestCase):
 
     def test_raw_seals_resume_binding_and_current_as_old_refuse(self):
         for name in ("proposal-seal", "changed-business", "resume", "current-as-old", "wrong-after"):
-            data = copy.deepcopy(CAPTURES[0])
+            data = copy.deepcopy(next(c for c in CAPTURES if c["Commit"]))
             if name == "current-as-old":
                 data["Retained"]["Native"] = copy.deepcopy(data["Current"]["Native"])
             elif name == "wrong-after":
