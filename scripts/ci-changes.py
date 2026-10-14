@@ -14,6 +14,12 @@ MODULES = {
     ".": {"module": ".", "go_mod": "go.mod", "config": ".golangci.yml", "only_new": True},
     "v5": {"module": "v5", "go_mod": "v5/go.mod", "config": "../.golangci.yml", "only_new": False},
 }
+ROOT_LARGE = {
+    "pkg/graph": "graph", "pkg/graph/internal/core": "core",
+    "pkg/graph/store/badger": "badger", "pkg/graph/store/memory": "memory",
+    "pkg/graph/store/tiered": "tiered",
+}
+MODES = ("normal", "race", "coverage")
 # Reviewed integration guards, including the old A contract which caught D's
 # cancellation regression. They supplement changed/companion tests, not replace
 # them. Every name is checked against the current compiled inventory.
@@ -65,12 +71,12 @@ def changed_paths(base, head):
 
 def plan(paths, full=False):
     if full:
-        return {"full": True, "paths": paths, "matrix": {"include": list(MODULES.values())}, "comparison": True, "migration": True,
+        return {"full": True, "paths": paths, "matrix": {"include": list(MODULES.values())}, "root_behavior": False, "comparison": True, "migration": True,
                 "external": any(p.startswith("tools/v5-substrate/fdb/") and "/evidence/" not in p and not p.endswith(".md") for p in paths)}
     if any(p in ("go.mod", "go.sum", "v5/go.mod", "v5/go.sum") for p in paths):
         fail("Dependency/toolchain changes require reviewed full scope")
     modules = set()
-    comparison = migration = external = False
+    comparison = migration = external = root_behavior = False
     for path in paths:
         p = Path(path)
         if path.startswith("tools/graph-compare/"):
@@ -84,6 +90,7 @@ def plan(paths, full=False):
                 fail("No routine Go policy for external tool module: " + path)
             module = "v5" if path.startswith("v5/") else "."
             modules.add(module)
+            root_behavior |= module == "."
             if module == "." and path.startswith("pkg/") and not path.endswith("_test.go"):
                 migration = True  # local replacement selects the current v4 reader
             if module == "v5" and path.startswith("v5/pkg/") and not path.endswith("_test.go"):
@@ -91,7 +98,7 @@ def plan(paths, full=False):
         elif path in ("Makefile", "v5/Makefile", ".golangci.yml", ".github/workflows/ci.yml", "scripts/test-race.sh"):
             modules.update(MODULES)  # static/build checks; no unchanged root suites
     return {"full": full, "paths": paths, "matrix": {"include": [MODULES[m] for m in sorted(modules)]},
-            "comparison": comparison, "migration": migration, "external": external}
+            "root_behavior": root_behavior, "comparison": comparison, "migration": migration, "external": external}
 
 
 def json_objects(text):
@@ -175,6 +182,8 @@ def validate_inventory(names, text, package):
 
 
 def execute(module, paths, output, base):
+    if module == ".":
+        fail("Root behavior requires the frozen root-plan/root-run partition gate")
     folder = ROOT / module
     packages = list(json_objects(command(["go", "list", "-json", "./..."], folder)))
     prefix = re.search(r"^module\s+(\S+)", (folder / "go.mod").read_text(), re.MULTILINE)[1]
@@ -223,6 +232,138 @@ def execute(module, paths, output, base):
     print("Focused checks passed; scoped coverage is diagnostic, not the full-module/release coverage gate.")
 
 
+def compiled_root_names(package):
+    # Same race/platform build constraints and sorted whole-parent assignment as
+    # the full race gate. -list compiles but does not run the tests.
+    text = command(["go", "test", "-short", "-race", "-count=1", "-list", "^(Test|Fuzz|Example)", package])
+    names = [line for line in text.splitlines() if re.fullmatch(r"(?:Test|Fuzz|Example)\w+", line)]
+    validate_inventory(names, text, package)
+    other = [line for line in text.splitlines() if line and line not in names and not line.startswith(("ok\t", "ok "))]
+    if other or len(names) != len(set(names)) or len(names) < 4:
+        fail("Incomplete/duplicate root compiled inventory")
+    return sorted(names)
+
+
+def root_inputs(head):
+    if command(["git", "rev-parse", "HEAD"]).strip() != head:
+        fail("Root plan checkout does not match its head")
+    # Include untracked inputs too: a newly injected Go/testdata file cannot
+    # silently change compilation after the plan was frozen.
+    paths = command(["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"]).split("\0")
+    selected = [p for p in set(paths) if p and not p.startswith(("v5/", "tools/")) and
+                (p.endswith(".go") or "testdata" in Path(p).parts or
+                 p in ("go.mod", "go.sum", "Makefile", "scripts/ci-changes.py", ".github/workflows/ci.yml"))]
+    return {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest() for p in sorted(selected)}
+
+
+def root_partitions(affected, core, inventory):
+    partitions = []
+    large = {core.rsplit("/pkg/", 1)[0] + "/" + path: name for path, name in ROOT_LARGE.items()}
+    other = [p for p in affected if p not in large]
+    if other:
+        partitions.append({"part": "other", "packages": other, "parents": None})
+    for package, name in sorted(large.items()):
+        if package not in affected:
+            continue
+        if name == "core":
+            if len(inventory) < 4 or inventory != sorted(set(inventory)):
+                fail("Root core needs a complete unique compiled inventory")
+            for index in range(4):
+                partitions.append({"part": "core-" + str(index + 1), "packages": [core], "parents": inventory[index::4]})
+        else:
+            partitions.append({"part": name, "packages": [package], "parents": None})
+    return partitions
+
+
+def prepare_root(paths, base, head, output):
+    inputs = root_inputs(head)
+    packages = list(json_objects(command(["go", "list", "-race", "-json", "./..."])))
+    prefix = re.search(r"^module\s+(\S+)", (ROOT / "go.mod").read_text(), re.MULTILINE)[1]
+    seeds = set()
+    for name in paths:
+        path = Path(name)
+        if name.startswith(("v5/", "tools/", "docs/", "tasks/")):
+            continue
+        if path.suffix == ".go" or "testdata" in path.parts:
+            parent = Path(*path.parts[:path.parts.index("testdata")]) if "testdata" in path.parts else path.parent
+            seeds.add(prefix + ("/" + parent.as_posix() if parent != Path(".") else ""))
+    known = [p["ImportPath"] for p in packages]
+    if len(known) != len(set(known)) or not seeds <= set(known):
+        fail("Unknown/duplicate affected root package scope")
+    affected = affected_packages(packages, seeds)
+    core = prefix + "/pkg/graph/internal/core"
+    inventory = compiled_root_names(core) if core in affected else []
+    data = {"version": 1, "head": head, "base": base, "paths": paths, "inputs": inputs,
+            "affected": affected, "core": core, "inventory": inventory, "modes": list(MODES),
+            "no_test_packages": sorted(p["ImportPath"] for p in packages if p["ImportPath"] in affected
+                                       and not p.get("TestGoFiles") and not p.get("XTestGoFiles")),
+            "core_scope": "exhaustive whole parents; no reviewed narrow root production selector",
+            "partitions": root_partitions(affected, core, inventory)}
+    if root_inputs(head) != inputs:
+        fail("Root source changed while preparing its plan")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(data, indent=2) + "\n")
+    digest = hashlib.sha256(output.read_bytes()).hexdigest()
+    matrix = {"include": [{"part": p["part"]} for p in data["partitions"]]}
+    if os.environ.get("GITHUB_OUTPUT"):
+        with Path(os.environ["GITHUB_OUTPUT"]).open("a") as f:
+            f.write("matrix=" + json.dumps(matrix, separators=(",", ":")) + "\nplan_sha=" + digest + "\n")
+    print(json.dumps({"matrix": matrix, "plan_sha": digest}, indent=2))
+    return data
+
+
+def run_root(plan_path, digest, part, output):
+    raw = plan_path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != digest:
+        fail("Frozen root plan digest mismatch")
+    data = json.loads(raw)
+    if data["version"] != 1 or data["modes"] != list(MODES) or root_inputs(data["head"]) != data["inputs"]:
+        fail("Frozen root plan source/modes mismatch")
+    if data["affected"] != sorted(set(data["affected"])) or data["partitions"] != root_partitions(data["affected"], data["core"], data["inventory"]):
+        fail("Root plan omits/duplicates packages or compiled parents")
+    selected = [p for p in data["partitions"] if p["part"] == part]
+    if len(selected) != 1:
+        fail("Unknown root partition: " + part)
+    selected = selected[0]
+    if selected["parents"] and compiled_root_names(data["core"]) != data["inventory"]:
+        fail("Root compiled inventory changed after planning")
+    output.mkdir(parents=True, exist_ok=True)
+    (output / "selection.json").write_text(json.dumps({"plan_sha256": digest, "head": data["head"], "part": part,
+                                                     "selection": selected, "modes": list(MODES)}, indent=2) + "\n")
+    for mode in MODES:
+        args = ["go", "test", "-short", "-count=1", "-json", "-timeout=10m"]
+        if mode == "race":
+            args.append("-race")
+        if mode == "coverage":
+            args += ["-covermode=atomic", "-coverprofile=" + str(output / "coverage.out")]
+        if selected["parents"]:
+            args += ["-run", "^(" + "|".join(re.escape(n) for n in selected["parents"]) + ")$"]
+        args += selected["packages"]
+        print("Focused root", part, mode, " ".join(args), flush=True)
+        with (output / (mode + ".jsonl")).open("w") as log:
+            subprocess.run(args, cwd=ROOT, stdout=log, check=True)
+        # A successful invocation with no matching parents is not qualification.
+        package_terminals, terminals, skipped = {}, set(), set()
+        with (output / (mode + ".jsonl")).open() as log:
+            for line in log:
+                e = json.loads(line)
+                if e["Action"] in ("pass", "skip") and "Test" not in e:
+                    package_terminals[e.get("Package")] = e["Action"]
+                if e["Action"] in ("pass", "skip") and "Test" in e and e.get("Package") in selected["packages"]:
+                    terminals.add(e.get("Test"))
+                    if e["Action"] == "skip":
+                        skipped.add(e["Test"])
+        no_tests = set(data["no_test_packages"])
+        bad_packages = any(status != "pass" and package not in no_tests for package, status in package_terminals.items())
+        if set(package_terminals) != set(selected["packages"]) or bad_packages or not set(selected["parents"] or []) <= terminals:
+            fail("Root partition has missing package/parent terminals in " + mode)
+        if root_inputs(data["head"]) != data["inputs"]:
+            fail("Root source changed during " + mode)
+        (output / (mode + "-summary.json")).write_text(json.dumps({"mode": mode, "package_terminals": package_terminals,
+            "selected_parents": selected["parents"], "skipped_tests": sorted(skipped), "scope": "focused partition; short-mode skips are not executed proof"}, indent=2) + "\n")
+    print("Focused root partition passed; its single scoped coverage profile is diagnostic, not full/release coverage.")
+
+
 def external_qualification(paths):
     """FDB needs its pinned native headers/runtime; this job does NOT run Go."""
     folder = ROOT / "tools/v5-substrate/fdb"
@@ -261,17 +402,24 @@ def docs(paths):
             json.loads(p.read_text())
     if any(p.startswith("docs/v5/reference/") or p == "docs/v5/PLAN.md" for p in paths):
         subprocess.run([sys.executable, "-B", "docs/v5/reference/independent/check.py"], cwd=ROOT, check=True)
+    cdc(paths)
+
+
+def cdc(paths):
     if COST_CDC_INPUTS.intersection(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/compare_cost_cdc_test.py"], cwd=ROOT, check=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("plan", "run", "docs", "external"))
+    parser.add_argument("action", choices=("plan", "run", "root-plan", "root-run", "docs", "cdc", "external"))
     parser.add_argument("--base")
     parser.add_argument("--head", default="HEAD")
     parser.add_argument("--module", choices=tuple(MODULES))
     parser.add_argument("--output", default="ci-focused")
+    parser.add_argument("--plan-file")
+    parser.add_argument("--plan-sha")
+    parser.add_argument("--part")
     args = parser.parse_args()
     if args.action == "plan":
         event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text()) if os.environ.get("GITHUB_EVENT_PATH") else {}
@@ -286,17 +434,26 @@ def main():
         print(json.dumps(result, indent=2))
         if os.environ.get("GITHUB_OUTPUT"):
             with Path(os.environ["GITHUB_OUTPUT"]).open("a") as f:
-                for key in ("full", "matrix", "comparison", "migration", "external", "base", "head"):
+                for key in ("full", "matrix", "root_behavior", "comparison", "migration", "external", "base", "head"):
                     if key == "external" and key not in result:
                         result[key] = False
                     value = json.dumps(result[key], separators=(",", ":")) if key not in ("base", "head") else result[key]
                     f.write(key + "=" + value + "\n")
+    elif args.action == "root-run":
+        if not args.plan_file or not args.plan_sha or not args.part:
+            fail("root-run needs plan-file, plan-sha and part")
+        run_root(Path(args.plan_file), args.plan_sha, args.part, Path(args.output).resolve())
     else:
         paths = changed_paths(args.base, args.head)
         if args.action == "run":
             execute(args.module, paths, Path(args.output).resolve(), args.base)
+        elif args.action == "root-plan":
+            head = command(["git", "rev-parse", args.head]).strip()
+            prepare_root(paths, args.base, head, Path(args.output).resolve())
         elif args.action == "docs":
             docs(paths)
+        elif args.action == "cdc":
+            cdc(paths)
         else:
             external_qualification(paths)
 

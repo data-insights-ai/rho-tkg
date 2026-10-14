@@ -1,0 +1,72 @@
+{
+  "kind": "focused-root-CI partition source correction; Python/fake-Go qualification only",
+  "date": "2026-10-14",
+  "base": "34debfc8753bef7151ecb3ef09c965a126f71ba1",
+  "source_sha256": {
+    ".github/workflows/ci.yml": "b4fbb52edfb9337bde1a5968855a88cb4357e163ea59d0463f65020ffa50035d",
+    "scripts/ci-changes.py": "8aeda59aea1f2f3560f25fdae6195fd5eb6ac064a40844fb96bd566b41e79241",
+    "scripts/ci-changes-test.py": "61efc5bff7eed353893c058d595fdff361ccc634e2185d8136d29406b9eecfa0"
+  },
+  "prior_hosted_run": {
+    "id": 38512187354,
+    "head": "52ad7a64850ab9b8e7af7e869281516eb76c566f",
+    "conclusion": "cancelled",
+    "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38512187354",
+    "focused_job": 115683040910,
+    "job_started": "2026-10-14T04:35:57Z",
+    "job_completed": "2026-10-14T05:06:18Z",
+    "authoritative_annotation": "The job has exceeded the maximum execution time of 30m0s",
+    "not_new_push_cancellation": "New 060 run 38514999662 was created at 05:07:59Z, after old run terminal 05:06:19Z.",
+    "normal": "all 31 selected packages passed",
+    "race": {
+      "graph": "PASS 328.730s",
+      "core": "FAIL 600.394s: panic: test timed out after 10m0s",
+      "badger": "started 05:04:18.829935502Z; no terminal before cancellation; runner cleanup killed badger.test",
+      "memory_and_tiered": "not started",
+      "coverage": "not started",
+      "attribution": "Whole core package timed out. JSON Test field does not prove that named test caused a deadlock or assertion failure."
+    },
+    "other_jobs": "changes/migration/lint/security/external PASS; full test/coverage and comparison SKIPPED",
+    "raw_artifact": {
+      "id": 11871505373,
+      "name": "focused-behavior-root",
+      "size_bytes": 2338634,
+      "sha256": "5e900826b5ea94631cb4fba9d3787657219ed694e0821ed1ef5ab453c4fe3e8c",
+      "retained_literal_local_path": "/var/tmp/rho-v5-focused-ci-audit-20261014/focused-behavior-root.zip",
+      "receipt_archive_scope": "API metadata, full focused job log, exact selection, derived package timeline, literal package terminals and timeout excerpts; original full JSONL zip is retained separately unchanged"
+    }
+  },
+  "change": {
+    "root": "Race-aware affected closure; one job per affected graph/badger/memory/tiered, small packages together; affected core uses four sorted round-robin exhaustive Test/Fuzz/Example whole-parent shards.",
+    "immutable_plan": "head/input hashes, compiled race inventory, package/parent assignment and modes frozen; external plan SHA required by each runner; source/inventory/terminal checks block drift or omitted proof.",
+    "modes": [
+      "normal",
+      "race",
+      "coverage"
+    ],
+    "job_timeout_minutes": 30,
+    "go_timeout": "10m",
+    "coverage": "one diagnostic scoped profile per partition; no full-module/release coverage claim",
+    "preserved": "root/v5 full test/race/coverage job bodies, v5 focused behavior, module fmt/vet/build/lint/security matrices and CDC exact input list",
+    "CDC": "Routine docs() retains complete replay gate; full=true executes the same finite changed-input gate without broadening JSON/reference checks.",
+    "root_core_narrow_selectors": "Not added; unknown production/helper scope never guesses finite parents."
+  },
+  "validation": {
+    "policy_tests": {
+      "exit": 0,
+      "tests": 29,
+      "log": "partition-green.log"
+    },
+    "red": "Old workflow lacked independent root partitions (19 tests, one expected failure).",
+    "corrected_fixture_attempt": "First fake-CLI check counted go list -json as a test; 28 vs 27 mode commands. Corrected the fixture filter to test commands; original failure retained.",
+    "structural_verification": "Full job bodies after test: byte-identical to base; pkg/v5/Go/module/Makefile/test-race.sh unchanged.",
+    "actual_local_Go_scanners_Docker": "NONE",
+    "new_hosted_partition_qualification": "PENDING: next genuine root source delta; no forced unchanged suites or manual base override.",
+    "current_060_hosted_run": "Not cancelled/restarted by this work."
+  },
+  "raw_archive": {
+    "file": "raw.tar.gz",
+    "sha256": "b35eec013932c161be26a3c80a1556d7aa53e4b67afe9ed4ee0f12fec3af3307",
+    "bytes": 24571
+  }
+}

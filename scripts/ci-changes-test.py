@@ -2,6 +2,7 @@
 """Small dispatch/selection guards; no Go/compiler or external runtime."""
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -51,6 +52,13 @@ class Planning(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 self.docs_action(["tools/v5-substrate/compare-cost-cdc.py"])
 
+    def test_full_cdc_action_runs_only_its_exact_replay_without_reference_or_go(self):
+        with patch.object(sys, "argv", ["ci-changes.py", "cdc", "--base", "fixture"]), \
+             patch.object(CI, "changed_paths", return_value=["docs/v5/PLAN.md", "tools/v5-substrate/cost-cell.py"]), \
+             patch.object(CI.subprocess, "run") as run:
+            CI.main()
+            run.assert_called_once_with([sys.executable, "-B", "tools/v5-substrate/compare_cost_cdc_test.py"], cwd=CI.ROOT, check=True)
+
     def test_docs_evidence_do_not_run_go_or_tools(self):
         p = CI.plan(["docs/v5/PLAN.md", "tasks/evidence/receipt.json", "tools/v5-migrate/evidence/old.json"])
         self.assertEqual(p["matrix"]["include"], [])
@@ -59,10 +67,13 @@ class Planning(unittest.TestCase):
     def test_v5_only_and_root_reader_modules(self):
         p = CI.plan(["v5/internal/replica/receiving.go"])
         self.assertEqual([m["module"] for m in p["matrix"]["include"]], ["v5"])
+        self.assertFalse(p["root_behavior"])
         self.assertFalse(p["migration"])
         p = CI.plan(["pkg/graph/internal/core/temporal.go"])
         self.assertEqual([m["module"] for m in p["matrix"]["include"]], ["."])
         self.assertTrue(p["migration"])
+        self.assertTrue(p["root_behavior"])
+        self.assertFalse(CI.plan([".github/workflows/ci.yml"])["root_behavior"])
 
     def test_dependency_shift_requires_explicit_full(self):
         with self.assertRaisesRegex(ValueError, "full_validation"):
@@ -229,6 +240,157 @@ class RealGitSelection(unittest.TestCase):
             CI.graph_selection(self.directory, [source], {})
 
 
+class RootPartitionCLI(unittest.TestCase):
+    """Real git/CLI/artifact flow; every Go call uses a fake executable."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        (self.root / "scripts").mkdir()
+        (self.root / "bin").mkdir()
+        self.script = self.root / "scripts/ci-changes.py"
+        self.script.write_bytes(Path(CI.__file__).read_bytes())
+        (self.root / "go.mod").write_text("module m\ngo 1.26.9\n")
+        self.core = "m/pkg/graph/internal/core"
+        self.names = sorted(["TestNode", "TestRel", "TestHistory", "TestGeneric", "TestNamed", "FuzzWire", "ExampleCore", "TestProcess"])
+        self.packages = [{"ImportPath": self.core, "TestGoFiles": ["core_test.go"]}] + [{"ImportPath": "m/" + p, "Imports": [self.core], "TestGoFiles": ["api_test.go"]}
+            for p in ["pkg/graph", "pkg/graph/store/badger", "pkg/graph/store/memory", "pkg/graph/store/tiered", "pkg/small"]]
+        source = self.root / "pkg/graph/internal/core/core.go"
+        source.parent.mkdir(parents=True)
+        source.write_text("package core\n")
+        fake = self.root / "bin/go"
+        fake.write_text("#!/usr/bin/env python3\nimport json,os,re,sys\nfrom pathlib import Path\n" +
+            "packages=" + repr(self.packages) + "\nnames=" + repr(self.names) + "\ncore=" + repr(self.core) + r"""
+args=sys.argv[1:]
+with Path(os.environ["FAKE_LOG"]).open("a") as f: f.write(json.dumps(args)+"\n")
+if args[0]=="list":
+    for p in packages:
+        if p["ImportPath"]==os.environ.get("FAKE_NO_TEST"): p.pop("TestGoFiles",None)
+    print("\n".join(json.dumps(p) for p in packages)); sys.exit(0)
+if "-list" in args:
+    if os.environ.get("FAKE_BAD_INVENTORY"): names.append("TestNode")
+    if os.environ.get("FAKE_DRIFT_INVENTORY"): names.append("TestNewParent")
+    print("\n".join(names)+"\nok\t"+core+"\t0.001s"); sys.exit(0)
+mode="race" if "-race" in args else "coverage" if "-covermode=atomic" in args else "normal"
+if os.environ.get("FAKE_FAIL_MODE")==mode: sys.exit(1)
+pattern=args[args.index("-run")+1] if "-run" in args else ".*"
+for p in [a for a in args if a.startswith("m/")]:
+    if p==core:
+        selected=[n for n in names if re.search(pattern,n)]
+        if os.environ.get("FAKE_OMIT_PARENT"): selected=selected[1:]
+        for n in selected: print(json.dumps({"Action":"pass","Package":p,"Test":n}))
+    if not os.environ.get("FAKE_OMIT_PACKAGE"):
+        print(json.dumps({"Action":"skip" if p==os.environ.get("FAKE_NO_TEST") else "pass","Package":p}))
+for a in args:
+    if a.startswith("-coverprofile="): Path(a.split("=",1)[1]).write_text("mode: atomic\n")
+""")
+        fake.chmod(0o755)
+        self.env = dict(os.environ, PATH=str(self.root / "bin") + os.pathsep + os.environ["PATH"],
+                        FAKE_LOG=str(self.root / "fake-calls.jsonl"), GITHUB_OUTPUT=str(self.root / "outputs"))
+        for args in [("init", "-q"), ("config", "user.name", "CI fixture"), ("config", "user.email", "ci@example.invalid"),
+                     ("add", "."), ("commit", "-qm", "base")]:
+            self.git(*args)
+        self.base = self.git("rev-parse", "HEAD")
+        source.write_text("package core\nfunc Changed() {}\n")
+        self.git("add", "."); self.git("commit", "-qm", "production change")
+        self.head = self.git("rev-parse", "HEAD")
+        self.plan = self.root / "plan.json"
+        result = self.cli("root-plan", "--base", self.base, "--head", self.head, "--output", str(self.plan))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.data = json.loads(self.plan.read_text())
+        self.digest = CI.hashlib.sha256(self.plan.read_bytes()).hexdigest()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def git(self, *args):
+        return subprocess.check_output(["git", *args], cwd=self.root, text=True).strip()
+
+    def cli(self, *args, **env):
+        return subprocess.run([sys.executable, "-B", str(self.script), *args], cwd=self.root,
+                              env=dict(self.env, **env), text=True, capture_output=True)
+
+    def run_part(self, part="core-1", **env):
+        return self.cli("root-run", "--plan-file", str(self.plan), "--plan-sha", self.digest,
+                        "--part", part, "--output", str(self.root / "out" / part), **env)
+
+    def rewrite_plan(self):
+        self.plan.write_text(json.dumps(self.data))
+        self.digest = CI.hashlib.sha256(self.plan.read_bytes()).hexdigest()
+
+    def test_exact_affected_packages_and_all_compiled_parent_modes(self):
+        parts = self.data["partitions"]
+        self.assertEqual({p["part"] for p in parts}, {"other", "graph", "badger", "memory", "tiered", "core-1", "core-2", "core-3", "core-4"})
+        assigned = [p for part in parts if part["parents"] is None for p in part["packages"]]
+        self.assertEqual(sorted(assigned), sorted(p["ImportPath"] for p in self.packages if p["ImportPath"] != self.core))
+        self.assertEqual(sorted(n for p in parts if p["parents"] for n in p["parents"]), self.names)
+        for part in parts:
+            result = self.run_part(part["part"])
+            self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(x) for x in (self.root / "fake-calls.jsonl").read_text().splitlines()]
+        self.assertTrue(all("-race" in c for c in calls if c[0] == "list" or "-list" in c))
+        runs = [c for c in calls if c[0] == "test" and "-json" in c]
+        self.assertEqual(len(runs), len(parts) * 3)
+        for i in range(0, len(runs), 3):
+            group = runs[i:i+3]
+            self.assertTrue(all("-short" in c and "-timeout=10m" in c for c in group))
+            self.assertNotIn("-race", group[0]); self.assertIn("-race", group[1])
+            self.assertIn("-covermode=atomic", group[2])
+            scopes = [([a for a in c if a.startswith("m/")], c[c.index("-run")+1] if "-run" in c else None) for c in group]
+            self.assertEqual(scopes[0], scopes[1]); self.assertEqual(scopes[0], scopes[2])
+
+    def test_plan_omission_duplicate_and_bogus_parent_are_refused(self):
+        for change in ("omission", "duplicate", "parent"):
+            with self.subTest(change=change):
+                self.rewrite_plan()
+                data = json.loads(self.plan.read_text())
+                if change == "omission": data["partitions"].pop()
+                elif change == "duplicate": data["partitions"].append(data["partitions"][0])
+                else: next(p for p in data["partitions"] if p["parents"])["parents"].append("TestBogus")
+                raw = json.dumps(data).encode()
+                self.plan.write_bytes(raw)
+                self.digest = CI.hashlib.sha256(raw).hexdigest()
+                self.assertIn("omits/duplicates", self.run_part().stderr)
+
+    def test_plan_digest_source_and_unknown_part_cannot_drift(self):
+        self.assertIn("Unknown root partition", self.run_part("unknown").stderr)
+        self.assertIn("compiled inventory changed", self.run_part(FAKE_DRIFT_INVENTORY="1").stderr)
+        self.plan.write_text(self.plan.read_text() + " ")
+        self.assertIn("digest mismatch", self.run_part().stderr)
+        self.rewrite_plan()
+        (self.root / "pkg/graph/internal/core/injected.go").write_text("package core\n")
+        self.assertIn("source/modes mismatch", self.run_part().stderr)
+
+    def test_failure_and_missing_parents_never_complete_or_run_coverage(self):
+        result = self.run_part(FAKE_FAIL_MODE="race")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("partition passed", result.stdout)
+        self.assertFalse((self.root / "out/core-1/coverage.jsonl").exists())
+        result = self.run_part(FAKE_OMIT_PARENT="1")
+        self.assertIn("missing package/parent terminals", result.stderr)
+        self.assertNotIn("partition passed", result.stdout)
+        result = self.run_part(FAKE_OMIT_PACKAGE="1")
+        self.assertIn("missing package/parent terminals", result.stderr)
+
+    def test_unknown_source_scope_and_duplicate_inventory_refuse_plan(self):
+        result = self.cli("root-plan", "--base", self.base, "--head", self.head, "--output", str(self.plan), FAKE_BAD_INVENTORY="1")
+        self.assertIn("duplicate root compiled inventory", result.stderr)
+        path = self.root / "pkg/unknown.go"
+        path.write_text("package unknown\n")
+        self.git("add", "."); self.git("commit", "-qm", "unknown package")
+        result = self.cli("root-plan", "--base", self.head, "--head", self.git("rev-parse", "HEAD"), "--output", str(self.plan))
+        self.assertIn("Unknown/duplicate affected root package scope", result.stderr)
+
+    def test_no_test_package_skip_is_explicit_and_not_behavior_proof(self):
+        result = self.cli("root-plan", "--base", self.base, "--head", self.head, "--output", str(self.plan), FAKE_NO_TEST="m/pkg/small")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.data = json.loads(self.plan.read_text()); self.rewrite_plan()
+        result = self.run_part("other", FAKE_NO_TEST="m/pkg/small")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        summary = json.loads((self.root / "out/other/normal-summary.json").read_text())
+        self.assertEqual(summary["package_terminals"], {"m/pkg/small": "skip"})
+        self.assertIn("not executed proof", summary["scope"])
+
+
 class CurrentRepository(unittest.TestCase):
     def test_checked_compatibility_names_exist_in_current_sources(self):
         directory = CI.ROOT / "v5/internal/graphapply"
@@ -241,6 +403,17 @@ class CurrentRepository(unittest.TestCase):
         cell = text.split("func TestNativeGraphCostCell(t *testing.T) {", 1)[1].split("\nfunc ", 1)[0]
         self.assertLess(cell.index("testing.Short()"), cell.index("nativeGraphCostSpecFromEnv()"))
         self.assertIn('t.Skip("explicit cost cell is excluded from routine short CI")', cell)
+
+    def test_root_behavior_has_independent_partition_jobs(self):
+        text = (CI.ROOT / ".github/workflows/ci.yml").read_text()
+        self.assertIn("  focused-root-plan:\n", text)
+        self.assertIn("  focused-root-behavior:\n", text)
+        self.assertIn("--plan-sha", text)
+        self.assertIn("if: matrix.module == 'v5'", text)
+        self.assertIn("matrix: ${{ fromJSON(needs.focused-root-plan.outputs.matrix) }}", text)
+        self.assertIn("name: focused-behavior-root-${{ matrix.part }}", text)
+        self.assertIn("if: steps.plan.outputs.full == 'true'", text)
+        self.assertIn("scripts/ci-changes.py cdc --base", text)
 
     def test_workflow_keeps_full_gates_and_empty_lint_guard(self):
         text = (CI.ROOT / ".github/workflows/ci.yml").read_text()

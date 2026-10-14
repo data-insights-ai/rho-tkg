@@ -28,6 +28,7 @@ jobs:
     outputs:
       full: ${{ steps.plan.outputs.full }}
       matrix: ${{ steps.plan.outputs.matrix }}
+      root_behavior: ${{ steps.plan.outputs.root_behavior }}
       comparison: ${{ steps.plan.outputs.comparison }}
       migration: ${{ steps.plan.outputs.migration }}
       external: ${{ steps.plan.outputs.external }}
@@ -47,6 +48,14 @@ jobs:
           CI_BASE: ${{ steps.plan.outputs.base }}
           CI_HEAD: ${{ steps.plan.outputs.head }}
         run: python3 -B scripts/ci-changes.py docs --base "$CI_BASE" --head "$CI_HEAD"
+      # Routine docs already runs this finite replay check. Full dispatch also
+      # checks changed CDC inputs without broadening its JSON/reference gate.
+      - name: Full-scope changed CDC replay checks
+        if: steps.plan.outputs.full == 'true'
+        env:
+          CI_BASE: ${{ steps.plan.outputs.base }}
+          CI_HEAD: ${{ steps.plan.outputs.head }}
+        run: python3 -B scripts/ci-changes.py cdc --base "$CI_BASE" --head "$CI_HEAD"
   # Main and explicit manual full validation retain the exhaustive gates below.
   # Routine v5 checks are deliberately not phase/release acceptance evidence.
   focused:
@@ -74,12 +83,76 @@ jobs:
       - run: make -C "${{ matrix.module }}" vet
       - run: make -C "${{ matrix.module }}" build
       - name: Affected behavior normal, race and scoped coverage
+        if: matrix.module == 'v5'
         run: python3 -B scripts/ci-changes.py run --module "${{ matrix.module }}" --base "$CI_BASE" --head "$CI_HEAD" --output "$RUNNER_TEMP/focused-${{ matrix.module == '.' && 'root' || 'v5' }}"
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && matrix.module == 'v5'
         with:
           name: focused-behavior-${{ matrix.module == '.' && 'root' || 'v5' }}
           path: ${{ runner.temp }}/focused-${{ matrix.module == '.' && 'root' || 'v5' }}
+          retention-days: 14
+  # Root behavior no longer bundles all large packages and three modes into one
+  # job. Freeze the exact affected package/compiled-parent assignment first.
+  focused-root-plan:
+    needs: changes
+    if: needs.changes.outputs.full != 'true' && needs.changes.outputs.root_behavior == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      plan_sha: ${{ steps.plan.outputs.plan_sha }}
+    env:
+      GOFLAGS: "-p=1"
+      GOMEMLIMIT: "2GiB"
+      CI_BASE: ${{ needs.changes.outputs.base }}
+      CI_HEAD: ${{ needs.changes.outputs.head }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - id: plan
+        run: python3 -B scripts/ci-changes.py root-plan --base "$CI_BASE" --head "$CI_HEAD" --output "$RUNNER_TEMP/root-plan/plan.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: focused-root-plan
+          path: ${{ runner.temp }}/root-plan/plan.json
+          retention-days: 14
+  focused-root-behavior:
+    needs: [changes, focused-root-plan]
+    if: needs.changes.outputs.full != 'true' && needs.focused-root-plan.outputs.matrix != '{"include":[]}'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.focused-root-plan.outputs.matrix) }}
+    name: focused root (${{ matrix.part }})
+    env:
+      GOFLAGS: "-p=1"
+      GOMEMLIMIT: "2GiB"
+      PLAN_SHA: ${{ needs.focused-root-plan.outputs.plan_sha }}
+      ROOT_PART: ${{ matrix.part }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: focused-root-plan
+          path: ${{ runner.temp }}/root-plan
+      - name: Partition behavior normal, race and single scoped coverage
+        run: python3 -B scripts/ci-changes.py root-run --plan-file "$RUNNER_TEMP/root-plan/plan.json" --plan-sha "$PLAN_SHA" --part "$ROOT_PART" --output "$RUNNER_TEMP/focused-root-$ROOT_PART"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: focused-behavior-root-${{ matrix.part }}
+          path: ${{ runner.temp }}/focused-root-${{ matrix.part }}
           retention-days: 14
   test:
     needs: changes
