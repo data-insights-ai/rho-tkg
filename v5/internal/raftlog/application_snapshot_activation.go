@@ -185,6 +185,15 @@ func (s *Store) PersistApplicationReady(rd raft.Ready, c *ApplicationSnapshotCla
 	if err := batch.DeleteRange(entryKey(0), entryEnd, nil); err != nil {
 		return fail(err)
 	}
+	if old.Retention.Config.enabled() {
+		// Cursor progress is local, never imported or visible to old view owners.
+		// The imported plan starts from its own canonical zero cursor.
+		for bank := range byte(2) {
+			if err := batch.Delete(retentionCursorKey(bank), nil); err != nil {
+				return fail(err)
+			}
+		}
+	}
 	if clearOld {
 		if err := batch.DeleteRange([]byte{bankTag(old.Gen.Active, appDataTag)}, []byte{bankTag(old.Gen.Active, appOutcomeTag) + 1}, nil); err != nil {
 			return fail(err)

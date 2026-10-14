@@ -59,7 +59,7 @@ type publicationMetadata struct {
 	Bank                           byte
 	Generation, Bytes, Records     uint64
 	ID                             [32]byte
-	Valid                          bool
+	Valid, Retired                 bool
 }
 
 const publicationMetaBytes = 4 + 6*8 + 32
@@ -79,6 +79,9 @@ func appendPublicationMeta(b []byte, p publicationMetadata) []byte {
 	var valid uint64
 	if p.Valid {
 		valid = 1
+		if p.Retention != nil && p.Retired {
+			valid = 2 // fresh AP4 status, immutable cut identity remains unchanged
+		}
 	}
 	for _, n := range []uint64{p.Limits.MaxTransferChunks, valid, uint64(p.Bank), p.Generation, p.Bytes, p.Records} {
 		b = binary.BigEndian.AppendUint64(b, n)
@@ -107,10 +110,10 @@ func decodePublicationMeta(b []byte) (publicationMetadata, []byte, error) {
 	for j := range n {
 		n[j] = binary.BigEndian.Uint64(b[4+j*8:])
 	}
-	if n[0] == 0 || n[0] > 1<<32 || n[1] > 1 || n[2] > 1 {
+	if n[0] == 0 || n[0] > 1<<32 || n[1] > 1 && (b[2] != 4 || n[1] != 2) || n[2] > 1 {
 		return publicationMetadata{}, nil, ErrCorrupt
 	}
-	p := publicationMetadata{Limits: ApplicationPublishedCutLimits{n[0]}, Valid: n[1] == 1, Bank: byte(n[2]), Generation: n[3], Bytes: n[4], Records: n[5]} // #nosec G115 -- n[2] is checked <= 1 before conversion to a bank tag.
+	p := publicationMetadata{Limits: ApplicationPublishedCutLimits{n[0]}, Valid: n[1] != 0, Retired: n[1] == 2, Bank: byte(n[2]), Generation: n[3], Bytes: n[4], Records: n[5]} // #nosec G115 -- n[2] is checked <= 1 before conversion to a bank tag.
 	copy(p.ID[:], b[52:84])
 	tail := b[publicationMetaBytes:]
 	if b[2] >= 2 {
@@ -239,6 +242,7 @@ func bindPublication(m *metadata, bank byte, generation, retainedBytes, retained
 	m.Gen.Publication.Bank, m.Gen.Publication.Generation = bank, generation
 	m.Gen.Publication.Bytes, m.Gen.Publication.Records = retainedBytes, retainedRecords
 	m.Gen.Publication.Valid = true
+	m.Gen.Publication.Retired = false
 	if m.Retention.Config.enabled() {
 		state := cloneRetentionState(m.Retention.State)
 		m.Gen.Publication.Retention = &state
@@ -258,10 +262,13 @@ func bindPublication(m *metadata, bank byte, generation, retainedBytes, retained
 }
 func holdsPublishedGeneration(m metadata, bank byte, generation uint64) bool {
 	p := m.Gen.Publication
-	return p.Limits.enabled() && p.Valid && p.Bank == bank && p.Generation == generation
+	return p.Limits.enabled() && p.Valid && !p.Retired && p.Bank == bank && p.Generation == generation
 }
 func validatePublicationMeta(m metadata) error {
 	p := m.Gen.Publication
+	if p.Retired && (!m.Retention.Config.enabled() || !p.Valid) {
+		return ErrInvalid
+	}
 	if p.Retention != nil {
 		if !m.Retention.Config.enabled() || !p.Valid || p.Retention.validate(m.Base) != nil {
 			return ErrInvalid
@@ -294,7 +301,7 @@ func validatePublicationMeta(m metadata) error {
 		return ErrInvalid
 	}
 	bank := m.Gen.Banks[p.Bank]
-	if bank.Generation != p.Generation || bank.State != bankActive && bank.State != bankRetired || bank.Through < m.Base || bank.Bytes < p.Bytes || bank.Records < p.Records {
+	if !p.Retired && (bank.Generation != p.Generation || bank.State != bankActive && bank.State != bankRetired || bank.Through < m.Base || bank.Bytes < p.Bytes || bank.Records < p.Records) {
 		return ErrInvalid
 	}
 	id, err := cutID(cutReference(m))
@@ -321,6 +328,9 @@ func (s *Store) PublishedApplicationCut() (ApplicationCutReference, error) {
 	}
 	if !s.meta.Gen.Publication.Limits.enabled() || !s.meta.Gen.Publication.Valid {
 		return ApplicationCutReference{}, ErrInvalid
+	}
+	if s.meta.Gen.Publication.Retired || s.meta.Retention.Config.enabled() && s.meta.Retention.State.RetiredCutID == s.meta.Gen.Publication.ID {
+		return ApplicationCutReference{}, ErrApplicationExpired
 	}
 	c := cutReference(s.meta)
 	c.ConfState = proto.Clone(c.ConfState).(*pb.ConfState)
@@ -384,7 +394,8 @@ func (s *Store) publishApplicationCut() (err error) {
 		return err
 	}
 	m := s.meta
-	if m.Applied <= m.Base {
+	rebaseSame := m.Retention.Config.enabled() && m.Gen.Publication.Retired && m.Applied == m.Base
+	if m.Applied <= m.Base && !rebaseSame {
 		s.mu.Unlock()
 		return raft.ErrSnapOutOfDate
 	}
@@ -393,11 +404,15 @@ func (s *Store) publishApplicationCut() (err error) {
 		s.mu.Unlock()
 		return err
 	}
-	e, _, hash, err := s.get(m.Applied)
-	if err != nil {
-		s.poison = err
-		s.mu.Unlock()
-		return err
+	term, hash := m.BaseTerm, m.BaseHash
+	if !rebaseSame {
+		e, _, retainedHash, err := s.get(m.Applied)
+		if err != nil {
+			s.poison = err
+			s.mu.Unlock()
+			return err
+		}
+		term, hash = e.GetTerm(), retainedHash
 	}
 	image, err := s.loadImage(imageKey, m.ImageBytes, m.ImageHash)
 	if err != nil {
@@ -411,7 +426,7 @@ func (s *Store) publishApplicationCut() (err error) {
 		return err
 	}
 	totalBytes, totalRecords := applicationTotals(m)
-	c := publicationCapture{controlBytes: m.Controls.Bytes, controlRecords: m.Controls.Records, bank: s.activeBank(), generation: s.activeGeneration(), index: m.Applied, term: e.GetTerm(), bytes: totalBytes, records: totalRecords, hash: hash, conf: canonicalConf(m.Conf), image: image, ref: ref}
+	c := publicationCapture{controlBytes: m.Controls.Bytes, controlRecords: m.Controls.Records, bank: s.activeBank(), generation: s.activeGeneration(), index: m.Applied, term: term, bytes: totalBytes, records: totalRecords, hash: hash, conf: canonicalConf(m.Conf), image: image, ref: ref}
 	hook := s.publicationCaptureHook
 	s.mu.Unlock()
 	defer func() { s.mu.Lock(); err = errors.Join(err, s.releaseGeneration(c.ref)); s.mu.Unlock() }()
@@ -423,6 +438,9 @@ func (s *Store) publishApplicationCut() (err error) {
 	prospective.Controls.Bytes, prospective.Controls.Records = c.controlBytes, c.controlRecords
 	if err := bindPublication(&prospective, c.bank, c.generation, c.bytes, c.records); err != nil {
 		return err
+	}
+	if rebaseSame && prospective.Gen.Publication.ID == m.Gen.Publication.ID {
+		return ErrCorrupt // a retired identity can never become live again
 	}
 	if err := checkMetadataLimit(prospective, s.limits); err != nil {
 		return err
@@ -442,20 +460,27 @@ func (s *Store) publishApplicationCut() (err error) {
 	if s.activeBank() != c.bank || s.activeGeneration() != c.generation {
 		return ErrInvalid
 	}
-	if c.index <= current.Base {
+	if c.index <= current.Base && !(rebaseSame && c.index == current.Base && current.Gen.Publication.Retired) {
 		return raft.ErrSnapOutOfDate
 	}
 	if c.index > current.Applied || c.index > current.Hard.GetCommit() || c.conf.Equivalent(current.Conf) != nil {
 		return ErrInvalid
 	}
-	retained, _, retainedHash, err := s.get(c.index)
-	if err != nil {
-		s.poison = err
-		return err
-	}
-	if retained.GetTerm() != c.term || retainedHash != c.hash {
-		s.poison = ErrCorrupt
-		return ErrCorrupt
+	if rebaseSame {
+		if current.BaseTerm != c.term || current.BaseHash != c.hash {
+			s.poison = ErrCorrupt
+			return ErrCorrupt
+		}
+	} else {
+		retained, _, retainedHash, err := s.get(c.index)
+		if err != nil {
+			s.poison = err
+			return err
+		}
+		if retained.GetTerm() != c.term || retainedHash != c.hash {
+			s.poison = ErrCorrupt
+			return ErrCorrupt
+		}
 	}
 	removed, err := s.rangeBytes(current.Base+1, c.index+1)
 	if err != nil {

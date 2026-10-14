@@ -199,6 +199,14 @@ func Open(c Config) (*Store, error) {
 			return fail(fmt.Errorf("%w: metadata: %v", ErrCorrupt, err))
 		}
 		s.meta = m
+		if m.Retention.Config.enabled() {
+			if _, err := s.loadRetentionCursor(m, nil); err != nil {
+				return fail(err)
+			}
+			if err := s.checkInactiveRetentionCursor(m); err != nil {
+				return fail(err)
+			}
+		}
 		if err := s.verifyRecoveryQueue(); err != nil {
 			return fail(err)
 		}

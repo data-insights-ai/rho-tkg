@@ -322,6 +322,11 @@ func (s *Store) clearGenerationBank(bank byte, generation uint64) error {
 			return errors.Join(err, b.Close())
 		}
 	}
+	if m.Retention.Config.enabled() {
+		if err := b.Delete(retentionCursorKey(bank), nil); err != nil {
+			return errors.Join(err, b.Close())
+		}
+	}
 	if err := b.Delete(dormantKey, nil); err != nil {
 		return errors.Join(err, b.Close())
 	}

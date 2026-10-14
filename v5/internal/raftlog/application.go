@@ -472,12 +472,19 @@ func (s *Store) InstallApplication(index uint64, b ApplicationBatch) error {
 		if a := b.RetentionAdmission; a.self != a || a.s != s || a.source == nil {
 			return ErrInvalid
 		}
-		stageWork := 2*added + unsignedLimit(len(b.Image)+1024) + unsignedLimit(64*(len(b.Writes)+len(b.ControlPuts)))
+		stageWork := 64 + 2*added + unsignedLimit(len(b.Image)+1024) + unsignedLimit(64*(len(b.Writes)+len(b.ControlPuts)))
 		for _, w := range b.ControlPuts {
 			stageWork += 128 + 4*controlPhysicalKeyBytes(w.Key)
 		}
 		if b.RetentionAdmission.workBytes < 1 || stageWork > unsignedLimit(p.MaxInstallBytes) || unsignedLimit(b.RetentionAdmission.workBytes) > unsignedLimit(p.MaxInstallBytes)-stageWork {
 			return ErrLimit
+		}
+		if s.meta.Retention.Cursor.Section > 0 && s.meta.Retention.Cursor.Section < 6 {
+			return ErrLimit // the installed original plan owns unfinished progress
+		}
+		if _, err := s.loadRetentionCursor(s.meta, nil); err != nil {
+			s.poison = err
+			return err
 		}
 		if err := b.RetentionAdmission.admitLocked(s, b); err != nil {
 			return err
@@ -593,7 +600,7 @@ func (s *Store) InstallApplication(index uint64, b ApplicationBatch) error {
 		work += 128 + 4*controlPhysicalKeyBytes(w.Key)
 	}
 	if b.RetentionAdmission != nil {
-		work += unsignedLimit(b.RetentionAdmission.workBytes)
+		work += 64 + unsignedLimit(b.RetentionAdmission.workBytes)
 	}
 	limit := unsignedLimit(p.MaxInstallBytes)
 	if work > limit {
@@ -1172,7 +1179,8 @@ func (s *Store) ApplicationRecord(ctx context.Context, index uint64, outcome boo
 
 // ApplicationUsage reports independent logical and bounded live-root ledgers.
 // CheckpointBytes/SnapshotBytes are the fixed-bounded consensus image copies;
-// RetainedBytes covers all immutable application namespaces. Do not interpret
+// RetainedBytes covers all immutable application namespaces plus the fresh
+// profile's separately reported local collector cursor. Do not interpret
 // their sum as physical disk, heap or OS-cache consumption.
 type ApplicationUsage struct {
 	RecoveryBytes, RecoveryRecords                         uint64
@@ -1197,6 +1205,9 @@ func (s *Store) ApplicationUsage() (ApplicationUsage, error) {
 	}
 	m := s.meta
 	totalBytes, totalRecords := applicationTotals(m)
+	cursorBytes, cursorRecords := retentionCursorUsage(m)
+	totalBytes += cursorBytes
+	totalRecords += cursorRecords
 	return ApplicationUsage{RetainedBytes: totalBytes, RetainedRecords: totalRecords, TailBytes: m.App.TailBytes, TailEntries: m.Last - m.Applied, CheckpointBytes: m.ImageBytes, SnapshotBytes: m.SnapBytes, Views: s.views, ViewBytes: s.viewBytes, GraphBytes: m.App.Bytes, GraphRecords: m.App.Records, ControlBytes: m.Controls.Bytes, ControlRecords: m.Controls.Records, RecoveryBytes: m.Recovery.Bytes, RecoveryRecords: m.Recovery.Records}, nil
 }
 
@@ -1233,6 +1244,9 @@ func (s *Store) ScrubApplication(ctx context.Context) (err error) {
 	p := s.meta.App.Policy
 	if !p.Enabled() {
 		return ErrInvalid
+	}
+	if s.meta.Retention.Config.enabled() {
+		return s.scrubRetainedApplicationLocked(ctx)
 	}
 	it, err := newApplicationIterator(s.db.NewIter, s.activeBank(), s.meta.Controls.Config.enabled(), s.meta.Recovery.Config.enabled())
 	if err != nil {

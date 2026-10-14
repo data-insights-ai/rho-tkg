@@ -94,12 +94,16 @@ func (s *Store) BeginPublishedApplicationExport(ctx context.Context, id [32]byte
 	if !p.Limits.enabled() || !p.Valid {
 		return nil, ErrInvalid
 	}
+	if s.meta.Retention.Config.enabled() && (id == p.ID && p.Retired || id == s.meta.Retention.State.RetiredCutID) {
+		return nil, ErrApplicationExpired
+	}
 	if id != p.ID {
 		return nil, raft.ErrSnapOutOfDate
 	}
 	// All components are policy-bounded at admission, hence this sum cannot wrap.
 	totalBytes, _ := applicationTotals(s.meta)
-	pin := totalBytes + s.meta.LogBytes + s.meta.ImageBytes + s.meta.SnapBytes + metadataBytes(s.meta) + 3
+	cursorBytes, _ := retentionCursorUsage(s.meta)
+	pin := cursorBytes + totalBytes + s.meta.LogBytes + s.meta.ImageBytes + s.meta.SnapBytes + metadataBytes(s.meta) + 3
 	for j, b := range s.meta.Gen.Banks {
 		if byte(j) != s.activeBank() {
 			pin += b.Bytes
