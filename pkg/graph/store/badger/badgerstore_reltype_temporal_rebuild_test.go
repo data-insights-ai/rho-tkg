@@ -468,3 +468,101 @@ func TestRelTemporalIndexRebuild_UpdateMidBuildKeepsPriorVersion(t *testing.T) {
 		t.Fatalf("%d of %d envelopes lost the pre-build version [100,200)", bad, n)
 	}
 }
+
+// relGetSeq runs fire(k) at the k-th cache lookup; lookups made while fire
+// runs (the writes it does) are not counted.
+type relGetSeq struct {
+	index.EntityCache[*types.Relationship]
+	seen   int
+	inFire bool
+	fire   func(k int)
+}
+
+func (c *relGetSeq) GetNoPromote(id snowflake.ID) (*types.Relationship, index.CacheStatus) {
+	if !c.inFire {
+		c.seen++
+		c.inFire = true
+		c.fire(c.seen)
+		c.inFire = false
+	}
+	return c.EntityCache.GetNoPromote(id)
+}
+
+// seedRace22 writes four flushed relationships of type 9, valid [100,200).
+func seedRace22(t *testing.T) (*Store, []*types.Relationship) {
+	t.Helper()
+	bs := newFlushParkStore(t, nil)
+	putTestNode(t, bs, 1, 7, nil)
+	putTestNode(t, bs, 2, 7, nil)
+	var rels []*types.Relationship
+	for i := range 4 {
+		r := types.NewRelationship(types.RelID(snowflake.ID(7000+i)), 9, 1, 2)
+		r.SetTemporal(&types.TemporalMetadata{ValidFrom: 100, ValidTo: 200})
+		if err := bs.PutRelationship(r); err != nil {
+			t.Fatal(err)
+		}
+		rels = append(rels, r)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	return bs, rels
+}
+
+func race22Update(t *testing.T, bs *Store, old *types.Relationship) {
+	t.Helper()
+	next := types.NewRelationship(old.ID(), 9, 1, 2)
+	next.SetTemporal(&types.TemporalMetadata{ValidFrom: 5000, ValidTo: 6000})
+	next.SetVersion(1)
+	if err := bs.ReplaceRelWithHistory(next, 0, old); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// race22MustKeep asserts that pruning at each instant keeps id: id holds a row
+// valid there, so dropping it is an unsound prune.
+func race22MustKeep(t *testing.T, bs *Store, id types.RelID, at ...types.Instant) {
+	t.Helper()
+	for _, v := range at {
+		kept, ok := bs.PruneRelTypeTemporalCandidates(9, []types.RelID{id}, QueryOpts{ValidAt: v})
+		if !ok || len(kept) != 1 {
+			t.Errorf("prune at %d kept %v (ok=%v), want [%d]: it holds a row valid there", v, kept, ok, id)
+		}
+	}
+}
+
+// Backlog 22: a relationship updated after the build read it, before the
+// install. Its new row [5000,6000) must be in the installed envelope.
+func TestCreateRelTemporalIndex_WriteBetweenSnapshotAndInstall(t *testing.T) {
+	bs, rels := seedRace22(t)
+	bs.relCache = &relGetSeq{EntityCache: bs.relCache, fire: func(k int) {
+		if k == 2 { // relationship 7000 is read; update it
+			race22Update(t, bs, rels[0])
+		}
+	}}
+	if err := bs.CreateRelTemporalIndex(9); err != nil {
+		t.Fatal(err)
+	}
+	race22MustKeep(t, bs, rels[0].ID(), 150, 5500)
+}
+
+// Updated before the build reaches it, its history row flushed after the
+// build read its history and before the second buffer read: the pre-build row
+// [100,200) must stay in the envelope.
+func TestCreateRelTemporalIndex_UpdateMidBuildHistoryFlushedLate(t *testing.T) {
+	bs, rels := seedRace22(t)
+	bs.relCache = &relGetSeq{EntityCache: bs.relCache, fire: func(k int) {
+		switch k {
+		case 1: // before relationship 7002 is reached
+			race22Update(t, bs, rels[2])
+		case 4: // 7002 is done
+			if err := bs.Flush(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}}
+	if err := bs.CreateRelTemporalIndex(9); err != nil {
+		t.Fatal(err)
+	}
+	race22MustKeep(t, bs, rels[2].ID(), 150, 5500)
+}

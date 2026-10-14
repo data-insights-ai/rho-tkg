@@ -25,11 +25,11 @@ import (
 // doc comment (badgerstore.go) for the RAM-only / not-persisted-across-reopen
 // scope decision.
 //
-// Simpler build than CreateTemporalIndex's 3-phase dance: the relationship IDs
-// are snapshotted under idxMu, the index is built from them WITHOUT the lock,
-// and then installed under idxMu. A relationship written or updated between
-// the snapshot and the install is not folded in (the write path's
-// maintenance finds no index yet) — a known race, backlog item 22.
+// Create is CreateTemporalIndex's 3-phase mutated-set install (backlog 22): a
+// Building index is installed with the ID snapshot, so every write during the
+// build already folds its row into it and records the ID; the build runs
+// without the lock; the recorded IDs are re-read in full; then the build is
+// merged in and the index published.
 
 // relTemporalBuildsTotal counts relationship temporal index builds across
 // every store in the process, including short-lived ones such as a recovery
@@ -58,27 +58,89 @@ func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 		return err
 	}
 
+	// Phase 1: install a Building index and snapshot the type's IDs. From here
+	// every write of the type extends the live index and records its ID
+	// (Extend marks Mutated); readers skip a Building index.
 	bs.idxMu.Lock()
 	if _, exists := bs.relTypeTemporalIndexes[relType]; exists {
 		bs.idxMu.Unlock()
 		return ErrTemporalIndexExists
 	}
+	live := indexpkg.NewTemporalIndex()
+	live.Building = true
+	live.Mutated = make(map[snowflake.ID]struct{})
+	bs.relTypeTemporalIndexes[relType] = live
 	rids := bs.relTypeRelIDsSnapshotLocked(relType)
 	bs.idxMu.Unlock()
 
-	ti, err := bs.buildRelTypeTemporalIndex(rids)
-	if err != nil {
+	fail := func(err error) error {
+		bs.idxMu.Lock()
+		deleteTemporalIndexIfCurrent(bs.relTypeTemporalIndexes, relType, live)
+		bs.idxMu.Unlock()
 		return fmt.Errorf("graph: create relationship temporal index: %w", err)
 	}
 
+	// Phase 2: build from the snapshot without the lock.
+	built, err := bs.buildRelTypeTemporalIndex(rids)
+	if err != nil {
+		return fail(err)
+	}
+
+	// Phase 3a: take the IDs written so far and re-read every row of each
+	// (current row and whole history, deleted ones included) without the lock.
+	// A write before the re-read is in what it reads; a write after it folds
+	// its new row into the live index itself, and its previous row is one the
+	// re-read or an earlier tracked write already folded. An ID first written
+	// after this point was read by Phase 2 in its pre-build state.
+	bs.idxMu.Lock()
+	written := slices.Collect(maps.Keys(live.Mutated))
+	live.Mutated = make(map[snowflake.ID]struct{})
+	bs.idxMu.Unlock()
+	refold, err := bs.relTemporalRowsOf(written)
+	if err != nil {
+		return fail(err)
+	}
+
+	// Phase 3b: merge (a union, so the order against the live writes does
+	// not matter) and publish.
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
-	if _, exists := bs.relTypeTemporalIndexes[relType]; exists {
-		return ErrTemporalIndexExists
+	if err := requireTemporalIndexCurrentForCreate(bs.relTypeTemporalIndexes, relType, live); err != nil {
+		return err
 	}
-	bs.relTypeTemporalIndexes[relType] = ti
+	built.ForEachEntry(func(e indexpkg.IntervalEntry) { live.Extend(e.ID, e.From, e.To) })
+	refold.ForEachEntry(func(e indexpkg.IntervalEntry) { live.Extend(e.ID, e.From, e.To) })
+	live.Building = false
+	live.ClearMutationTracking()
 	bs.persistRelTypeTemporalIndexDefs()
 	return nil
+}
+
+// relTemporalRowsOf folds every row of ids — the current one if any and the
+// whole history, also of a deleted relationship — into a fresh envelope index.
+// Point reads: ids are the relationships written during a create.
+func (bs *Store) relTemporalRowsOf(ids []snowflake.ID) (*indexpkg.TemporalIndex, error) {
+	ti := indexpkg.NewTemporalIndex()
+	for _, id := range ids {
+		rid := types.RelID(id)
+		r, err := bs.prefetchRelScan(rid)
+		switch {
+		case err == nil:
+			relBuildFold(ti, id, -1, r)
+		case !errors.Is(err, ErrRelNotFound):
+			return nil, err
+		}
+		hist, err := bs.GetRelHistory(rid)
+		if err != nil {
+			return nil, err
+		}
+		for _, hv := range hist {
+			if hv != nil {
+				relBuildFold(ti, id, int64(hv.Version()), hv)
+			}
+		}
+	}
+	return ti, nil
 }
 
 // buildRelTypeTemporalIndex folds the current row and every history version
@@ -355,7 +417,13 @@ func (bs *Store) foldRelBuildHistory(ti *indexpkg.TemporalIndex, snap *relBuildS
 // (ascending) to RelTypeTemporalIndexDefsKey, or deletes the key when none is
 // left. Caller holds the idxMu write lock. Mirror of persistTemporalIndexDefs.
 func (bs *Store) persistRelTypeTemporalIndexDefs() {
-	tokens := slices.Sorted(maps.Keys(bs.relTypeTemporalIndexes))
+	tokens := make([]uint16, 0, len(bs.relTypeTemporalIndexes))
+	for tok, ti := range bs.relTypeTemporalIndexes {
+		if ti != nil && !ti.Building {
+			tokens = append(tokens, tok)
+		}
+	}
+	slices.Sort(tokens)
 	if len(tokens) == 0 {
 		bs.appendOps(writeOp{opType: writeOpDelete, key: storepkg.RelTypeTemporalIndexDefsKey})
 		return
@@ -501,7 +569,7 @@ func (bs *Store) PruneRelTypeTemporalCandidates(relType uint16, ids []types.RelI
 	bs.idxMu.RLock()
 	defer bs.idxMu.RUnlock()
 	ti := bs.relTypeTemporalIndexes[relType]
-	if ti == nil {
+	if ti == nil || ti.Building {
 		return ids, false
 	}
 	kept := make([]types.RelID, 0, len(ids))

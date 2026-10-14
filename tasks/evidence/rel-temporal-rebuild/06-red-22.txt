@@ -1,0 +1,7 @@
+--- FAIL: TestCreateRelTemporalIndex_WriteBetweenSnapshotAndInstall (0.00s)
+    badgerstore_reltype_temporal_rebuild_test.go:546: prune at 5500 kept [] (ok=true), want [7000]: it holds a row valid there
+--- FAIL: TestCreateRelTemporalIndex_UpdateMidBuildHistoryFlushedLate (0.00s)
+    badgerstore_reltype_temporal_rebuild_test.go:567: prune at 150 kept [] (ok=true), want [7002]: it holds a row valid there
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.014s
+FAIL
