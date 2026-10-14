@@ -50,6 +50,8 @@ type Ops interface {
 	// NodesAt / RelAt / RelsAt respectively.
 	NodeAtTx(id types.NodeID, validAt, txAt types.Instant) (*types.Node, error)
 	RelAtTx(id types.RelID, validAt, txAt types.Instant) (*types.Relationship, error)
+	NodesAtTxByIDs(ids []types.NodeID, validAt, txAt types.Instant) ([]*types.Node, error)
+	RelsAtTxByIDs(ids []types.RelID, validAt, txAt types.Instant) ([]*types.Relationship, error)
 	NodesAtTx(validAt, txAt types.Instant) ([]*types.Node, error)
 	RelsAtTx(validAt, txAt types.Instant) ([]*types.Relationship, error)
 	NodesDuringTx(from, to, txAt types.Instant) ([]*types.Node, error)
@@ -441,6 +443,40 @@ func (a *API) RelAtTx(id types.RelID, validAt, txAt types.Instant) (*types.Relat
 		return nil, err
 	}
 	return ops.RelAtTx(id, validAt, txAt)
+}
+
+// NodesAtTxByIDs is NodeAtTx for many IDs at one (validAt, txAt): the result
+// is aligned to ids (same length and order; a repeated id is answered at each
+// position and the rows may alias), an element is nil where NodeAtTx returns
+// ErrNodeNotFound or ErrNoVersionValidAt, every other element is the row
+// NodeAtTx returns. Rows are shared frozen pointers (DeepCopy to mutate).
+// One graph read lock and one batched current-row read per call; only IDs
+// whose current row does not answer read their history. Empty ids returns an
+// empty slice.
+//
+// Errors (the call fails, no rows): ErrNilGraph, ErrGraphClosed,
+// ErrInvalidStoreMutation (an invalid id, before anything is read),
+// ErrInvalidTimeRange (txAt <= 0: a pin is required, unlike NodeAtTx's
+// txAt == 0), ErrTxPinTooNew (txAt above the commit clock), and a member's
+// ErrHistoryCompacted / ErrRetentionExpired (NodeAtTx's per-ID gates).
+func (a *API) NodesAtTxByIDs(ids []types.NodeID, validAt, txAt types.Instant) ([]*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.NodesAtTxByIDs(ids, validAt, txAt)
+}
+
+// RelsAtTxByIDs is NodesAtTxByIDs for relationships: each element is the row
+// RelAtTx returns, nil where it returns ErrRelNotFound or
+// ErrNoVersionValidAt; RelAtTx's gates. DECLARED view: not masked by
+// endpoint validity.
+func (a *API) RelsAtTxByIDs(ids []types.RelID, validAt, txAt types.Instant) ([]*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.RelsAtTxByIDs(ids, validAt, txAt)
 }
 
 // NodeEffectiveTimeline returns node id's state over valid time as recorded
