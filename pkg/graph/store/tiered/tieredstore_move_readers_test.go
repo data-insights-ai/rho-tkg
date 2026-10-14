@@ -1,15 +1,15 @@
 package tiered
 
 import (
-	"flag"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	snowflake "github.com/bds421/rho-snowflake-2026"
+	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
+	snowflakepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/snowflake"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
-
-var runOpenMoveRaces = flag.Bool("move-races-open", false, "run the point-lookup move races that are still open (backlog 60)")
 
 // moveRace is one reference node a (properties k="v", k2="w", one history version)
 // with one relationship a→b (one history version), all on the reference
@@ -224,13 +224,6 @@ func TestRefArchiveReadersSeeMovedEntityOnce(t *testing.T) {
 			archived bool
 		}{{"ArchiveNode", false}, {"RestoreNode", true}} {
 			t.Run(tc.name+"/"+mv.name, func(t *testing.T) {
-				// A point lookup routes (reference shard, then archive) and
-				// reads the routed shard afterwards; holding moveMu there
-				// needs a route the move itself can take without it.
-				openPoint := tc.name == "GetNode" || tc.name == "GetRelationship"
-				if openPoint && !*runOpenMoveRaces {
-					t.Skip("backlog 60: point lookups still miss a node RestoreNode moves mid-route (-move-races-open runs it)")
-				}
 				m := newMoveRace(t, mv.archived)
 				want, _, err := tc.measure(m)
 				if err != nil {
@@ -270,5 +263,46 @@ func TestRefArchiveReadersSeeMovedEntityOnce(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// BenchmarkTieredGetNodeMoveLock: GetNode on a reference node (answered by the
+// reference shard) and on an archived one (reference miss, then archive).
+func BenchmarkTieredGetNodeMoveLock(b *testing.B) {
+	for _, archived := range []bool{false, true} {
+		name := "Reference"
+		if archived {
+			name = "Archived"
+		}
+		b.Run(name, func(b *testing.B) {
+			ts, err := New(Config{InMemory: true, RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1})
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer ts.Close()
+			reg := registrypkg.NewLabelRegistry()
+			ts.SetLabelRegistry(reg)
+			caseTok, _ := reg.GetOrCreate("Case")
+			gen, err := snowflake.NewNode(7, snowflake.WithEpoch(snowflakepkg.Epoch), snowflake.WithMicroseconds(),
+				snowflake.WithNodeBits(5), snowflake.WithStepBits(10))
+			if err != nil {
+				b.Fatal(err)
+			}
+			n := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+			if err := ts.PutNode(n); err != nil {
+				b.Fatal(err)
+			}
+			if archived {
+				if err := ts.ArchiveNode(n.ID()); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := ts.GetNode(n.ID()); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }

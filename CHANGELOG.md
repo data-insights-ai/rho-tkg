@@ -45,9 +45,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the archive read). They now take the move lock's read side across the two reads, as the tx-membership fan-out does;
   `ForEachNodeID` / `ForEachRelID` collect both shards' IDs under it and call `fn` after releasing it. Not changed:
   the DocValues folds (a move bumps `NodeMutationEpoch`, so the caller's Gate-2 re-check discards the answer) and
-  `AllNodeHistoryIDsFrom` / `AllRelHistoryIDsFrom` (history rows stay where they are, IDs are deduplicated). Still
-  open: point lookups (`GetNode`, `GetRelationship` and the doors routed like them) miss a node `RestoreNode` moves
-  between the route's reference and archive probes. Graph users were not affected: `g.Tier().Archive` / `Restore`
+  `AllNodeHistoryIDsFrom` / `AllRelHistoryIDsFrom` (history rows stay where they are, IDs are deduplicated).
+  Point reads routed reference shard → archive → event shard missed a node or relationship `RestoreNode` moved
+  between the route's reference and archive probes (`ErrNodeNotFound` / `ErrRelNotFound` for a live entity), or
+  one `ArchiveNode` moved between the route and the read. `GetNode`, `LendNode`, `NodeIntegrityHash`,
+  `EndpointIntegrityHashes`, `GetNodesByIDs`, `GetRelationship`, `LendRelationship`, `GetRelationshipsByIDs`,
+  `Outgoing`/`IncomingRelationships` (and their `ForNodes` forms), `Outgoing`/`IncomingDegree`,
+  `Node`/`RelCurrentStamps`, `HasNode`/`HasRelHistory` and the node/relationship version and history reads now hold
+  the same read lock across route and read; `ArchiveNode` / `RestoreNode` read relationships through the unlocked
+  route. One uncontended `RLock` per call, no allocation: `GetNode` 2 allocs / 112 B (reference) and 3 / 128 B
+  (archived) before and after, median 160.5 → 175 ns (reference) and 180.5 → 178.5 ns (archived), alternating runs
+  on one pinned core of a loaded host. Write doors still route without the lock (the graph layer fences them).
+  Graph users were not affected: `g.Tier().Archive` / `Restore`
   hold the graph's exclusive lock. Test `TestRefArchiveReadersSeeMovedEntityOnce`; evidence
   `tasks/evidence/tiered-move-readers/`.
 

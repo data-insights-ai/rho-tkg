@@ -23,6 +23,8 @@ func (ts *Store) HasNodeHistory(nid types.NodeID) (bool, error) {
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return false, err
 	}
+	move := ts.lockMoveRead() // route and read see the row on one shard
+	defer move.unlock()
 	return walkNodeHistoryShards(ts, nid, func(s *BadgerStore) (bool, error) { return s.HasNodeHistory(nid) }, orPresence)
 }
 
@@ -36,6 +38,8 @@ func (ts *Store) HasRelHistory(rid types.RelID) (bool, error) {
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return false, err
 	}
+	move := ts.lockMoveRead() // route and read see the row on one shard
+	defer move.unlock()
 	return walkRelHistoryShards(ts, rid, func(s *BadgerStore) (bool, error) { return s.HasRelHistory(rid) }, orPresence)
 }
 

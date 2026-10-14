@@ -301,7 +301,7 @@ func (ts *Store) planRelationshipPlacementMoves(moving types.NodeID, relIDs []sn
 	moves := make([]relationshipPlacementMove, 0, len(relIDs))
 	for _, rawID := range relIDs {
 		rid := types.RelID(rawID)
-		rel, err := ts.GetRelationship(rid)
+		rel, err := ts.getRelationshipChecked(rid) // moveMu is write-held: GetRelationship would read-lock it
 		if errors.Is(err, ErrRelNotFound) {
 			continue
 		}
@@ -376,7 +376,7 @@ func (ts *Store) purgeOrRejectDestinationAdjacency(nodeID types.NodeID, destinat
 	rawID := nodeID.SnowflakeID()
 	for _, rawRelID := range mergeUniqueRelIDs(destination.OutgoingRelIDs(rawID), destination.IncomingRelIDs(rawID, 0)) {
 		rid := types.RelID(rawRelID)
-		if _, err := ts.GetRelationship(rid); err != nil {
+		if _, err := ts.getRelationshipChecked(rid); err != nil { // moveMu is write-held (ArchiveNode/RestoreNode)
 			if errors.Is(err, ErrRelNotFound) {
 				if purgeErr := destination.PurgeOrphanRelationshipIndexes(rid); purgeErr != nil {
 					return purgeErr
