@@ -40,6 +40,10 @@ var relTemporalBuildsTotal atomic.Int64
 // store of the process: the seam of the no-per-relationship-read test.
 var relTemporalBuildSeeks atomic.Int64
 
+// relTemporalBuildFoldHook, set only by tests, receives every row the build
+// folds: (id, history version), -1 for the current row.
+var relTemporalBuildFoldHook func(id snowflake.ID, version int64)
+
 // CreateRelTemporalIndex creates a temporal interval index on relationships
 // with the given rel-type token. Scans existing relationships of that type
 // (current + history, folding both into the per-rel valid-time ENVELOPE — the
@@ -87,9 +91,19 @@ func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 // scan (two transactions) per relationship. A walk steps with Next and seeks
 // only past a gap of more than relWalkMaxSteps foreign keys, so a dense type
 // costs one seek per range and a sparse one at most one seek per relationship.
-// Buffered history writes are snapshotted before the scan and win over it
-// (lesson 64), as getRelHistoryByPrefix does; the cache answers before the
-// row walk, as prefetchRelScan does.
+//
+// Snapshot rules (both reproduced as unsound prunes when broken):
+//   - The cache answers before the row walk, as prefetchRelScan does, so the
+//     walk follows scanSnapshot's rule: a flush that commits and evicts a row
+//     after the transaction opened leaves the snapshot without its latest
+//     version. The flush epoch is read before the transaction opens; a cache
+//     miss or a history fold under a changed epoch re-pins (new transaction,
+//     new walks). One transaction unless a flush lands mid-build.
+//   - Buffered history writes are snapshotted before the first transaction
+//     (lesson 64) and win over committed rows; a second snapshot after the
+//     walk is folded too, so a version an update moved into history during
+//     the build is not lost (widening is sound). Other writes during the
+//     build are backlog 22.
 func (bs *Store) buildRelTypeTemporalIndex(rids []types.RelID) (*indexpkg.TemporalIndex, error) {
 	bs.relTemporalBuilds.Add(1)
 	relTemporalBuildsTotal.Add(1)
@@ -105,36 +119,88 @@ func (bs *Store) buildRelTypeTemporalIndex(rids []types.RelID) (*indexpkg.Tempor
 	ids = slices.Compact(ids)
 	pending := bs.pendingRelHistoryRows(ids)
 
-	err := bs.view(func(txn *badgerv4.Txn) error {
-		rows := newRelBuildWalk(txn, storepkg.KeyRel)
-		defer rows.it.Close()
-		hist := newRelBuildWalk(txn, storepkg.KeyHistRel)
-		defer hist.it.Close()
-		for _, id := range ids {
-			r, ok, err := bs.relBuildCurrent(rows, id)
-			if err != nil {
-				return err
-			}
-			if !ok {
-				continue // deleted between snapshot and fetch
-			}
-			from, to := indexpkg.RelTemporalBounds(id, r.Temporal())
-			ti.Extend(id, from, to)
-			if err := bs.foldRelBuildHistory(ti, hist, id, pending[id]); err != nil {
-				return fmt.Errorf("history fold: %w", err)
-			}
+	snap := &relBuildSnap{db: bs.db, epoch: bs.relCache.FlushEpoch}
+	defer snap.close()
+	kept := make([]bool, len(ids))
+	for i, id := range ids {
+		r, ok, err := bs.relBuildCurrent(snap, id)
+		if err != nil {
+			return nil, err
 		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
+		if !ok {
+			continue // deleted between snapshot and fetch
+		}
+		kept[i] = true
+		relBuildFold(ti, id, -1, r)
+		if err := bs.foldRelBuildHistory(ti, snap, id, pending[id]); err != nil {
+			return nil, fmt.Errorf("history fold: %w", err)
+		}
+	}
+	after := bs.pendingRelHistoryRows(ids)
+	for i, id := range ids {
+		if !kept[i] {
+			continue
+		}
+		for version, row := range after[id] {
+			if row.del {
+				continue
+			}
+			hv, err := bs.historyRelTemporal(id, version, row.raw)
+			if err != nil {
+				return nil, fmt.Errorf("history fold: %w", err)
+			}
+			relBuildFold(ti, id, int64(version), hv) // #nosec G115 -- history versions are uint32
+		}
 	}
 	return ti, nil
+}
+
+// relBuildFold extends id's envelope by one row.
+func relBuildFold(ti *indexpkg.TemporalIndex, id snowflake.ID, version int64, r *types.Relationship) {
+	from, to := indexpkg.RelTemporalBounds(id, r.Temporal())
+	ti.Extend(id, from, to)
+	if relTemporalBuildFoldHook != nil {
+		relTemporalBuildFoldHook(id, version)
+	}
 }
 
 // relWalkMaxSteps bounds the foreign keys a build walk steps over with Next
 // before it seeks instead.
 const relWalkMaxSteps = 32
+
+// relBuildSnap is the build's read snapshot: one transaction and its two
+// walks, re-pinned when the relationship cache's flush epoch moved (see
+// scanSnapshot for the rule). One goroutine only.
+type relBuildSnap struct {
+	db         *badgerv4.DB
+	epoch      func() uint64
+	pinned     uint64
+	txn        *badgerv4.Txn
+	rows, hist *relBuildWalk
+}
+
+// current returns the snapshot, re-pinned if a flush landed since it opened.
+// Targets keep ascending across a re-pin: the new walks seek to the next one.
+func (s *relBuildSnap) current() *relBuildSnap {
+	if e := s.epoch(); s.txn == nil || e != s.pinned {
+		s.close()
+		s.pinned = e
+		s.txn = newReadTxn(s.db)
+		s.rows = newRelBuildWalk(s.txn, storepkg.KeyRel)
+		s.hist = newRelBuildWalk(s.txn, storepkg.KeyHistRel)
+	}
+	return s
+}
+
+func (s *relBuildSnap) close() {
+	if s.txn == nil {
+		return
+	}
+	s.rows.it.Close()
+	s.hist.it.Close()
+	endReadTxn(s.txn, true)
+	s.txn, s.rows, s.hist = nil, nil, nil
+}
 
 // relBuildWalk is a forward key walk over one key-tag range of a read
 // transaction, values not prefetched.
@@ -174,8 +240,8 @@ func (w *relBuildWalk) seekTo(target []byte) {
 
 // relBuildCurrent resolves id's current row as prefetchRelScan does — the
 // cache first, then the type's membership, then the row — with the row read
-// from the walk. ok=false: the relationship is gone.
-func (bs *Store) relBuildCurrent(w *relBuildWalk, id snowflake.ID) (*types.Relationship, bool, error) {
+// from the walk after the miss. ok=false: the relationship is gone.
+func (bs *Store) relBuildCurrent(snap *relBuildSnap, id snowflake.ID) (*types.Relationship, bool, error) {
 	switch v, status := bs.relCache.GetNoPromote(id); status {
 	case indexpkg.CacheHit:
 		return v, true, nil
@@ -188,6 +254,7 @@ func (bs *Store) relBuildCurrent(w *relBuildWalk, id snowflake.ID) (*types.Relat
 	if !exists {
 		return nil, false, nil
 	}
+	w := snap.current().rows // the epoch is read after the miss
 	key := storepkg.RelKey(id)
 	w.seekTo(key)
 	if !w.it.ValidForPrefix(w.prefix) || !bytes.Equal(w.it.Item().Key(), key) {
@@ -249,16 +316,16 @@ func (bs *Store) pendingRelHistoryRows(ids []snowflake.ID) map[snowflake.ID]map[
 // foldRelBuildHistory extends id's envelope by every history row: the walk's
 // committed rows not shadowed by a buffered write, then the buffered rows.
 // Only the temporal block is decoded (a delta carries it verbatim).
-func (bs *Store) foldRelBuildHistory(ti *indexpkg.TemporalIndex, w *relBuildWalk, id snowflake.ID, pending map[uint64]relBuildPendingRow) error {
+func (bs *Store) foldRelBuildHistory(ti *indexpkg.TemporalIndex, snap *relBuildSnap, id snowflake.ID, pending map[uint64]relBuildPendingRow) error {
 	extend := func(version uint64, raw []byte) error {
 		hv, err := bs.historyRelTemporal(id, version, raw)
 		if err != nil {
 			return err
 		}
-		from, to := indexpkg.RelTemporalBounds(id, hv.Temporal())
-		ti.Extend(id, from, to)
+		relBuildFold(ti, id, int64(version), hv) // #nosec G115 -- history versions are uint32
 		return nil
 	}
+	w := snap.current().hist
 	prefix := storepkg.HistRelPrefix(id)
 	for w.seekTo(prefix); w.it.ValidForPrefix(prefix); w.it.Next() {
 		item := w.it.Item()

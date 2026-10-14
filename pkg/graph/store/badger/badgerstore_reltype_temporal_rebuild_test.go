@@ -5,13 +5,18 @@ import (
 	"fmt"
 	"testing"
 
+	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // buildRelTypeTemporalIndexPerRel is the pre-10(a) build, kept as the oracle:
 // one current-row point read plus one history prefix scan per relationship.
-func buildRelTypeTemporalIndexPerRel(bs *Store, rids []types.RelID) (*index.TemporalIndex, error) {
+// fold, when set, receives every folded row: (id, version), -1 for the current row.
+func buildRelTypeTemporalIndexPerRel(bs *Store, rids []types.RelID, fold func(snowflake.ID, int64)) (*index.TemporalIndex, error) {
+	if fold == nil {
+		fold = func(snowflake.ID, int64) {}
+	}
 	ti := index.NewTemporalIndex()
 	for _, rid := range rids {
 		r, err := bs.prefetchRelScan(rid)
@@ -24,6 +29,7 @@ func buildRelTypeTemporalIndexPerRel(bs *Store, rids []types.RelID) (*index.Temp
 		rawID := rid.SnowflakeID()
 		from, to := index.RelTemporalBounds(rawID, r.Temporal())
 		ti.Extend(rawID, from, to)
+		fold(rawID, -1)
 		hist, err := bs.GetRelHistory(rid)
 		if err != nil {
 			if errors.Is(err, ErrRelNotFound) {
@@ -37,6 +43,7 @@ func buildRelTypeTemporalIndexPerRel(bs *Store, rids []types.RelID) (*index.Temp
 			}
 			hf, ht := index.RelTemporalBounds(rawID, hv.Temporal())
 			ti.Extend(rawID, hf, ht)
+			fold(rawID, int64(hv.Version()))
 		}
 	}
 	return ti, nil
@@ -146,7 +153,7 @@ func TestRelTemporalIndexRebuildSequential(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			open := func() *Store {
-				bs, err := New(Config{Dir: dir, HistoryDeltaEncoding: tc.delta, HistoryAnchorInterval: 2, FlushInterval: 1<<63 - 1})
+				bs, err := New(Config{Dir: dir, HistoryDeltaEncoding: tc.delta, HistoryAnchorInterval: 2, FlushInterval: 1<<63 - 1, CacheCapacity: 8})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -154,6 +161,23 @@ func TestRelTemporalIndexRebuildSequential(t *testing.T) {
 			}
 			bs := open()
 			seedRelTemporalRebuild(t, bs, n)
+			if !tc.reopen {
+				// Committed rows the cache released (the row walk answers), and
+				// buffered history rows shadowing committed ones.
+				if err := bs.Flush(); err != nil {
+					t.Fatal(err)
+				}
+				for _, i := range []int{11, 22, 44, 88} {
+					a := types.RelID(10_000 + 2*i)
+					if i >= n/2 {
+						a += 1000
+					}
+					base := types.Instant(1000 + 100*i)
+					if err := bs.PutRelVersion(a, 9, rebuildRel(a, rebuildTypeA, 9, base-20_000, base-19_000)); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
 			if tc.reopen {
 				if err := bs.Close(); err != nil {
 					t.Fatal(err)
@@ -172,14 +196,30 @@ func TestRelTemporalIndexRebuildSequential(t *testing.T) {
 				}
 			}
 
-			want, err := buildRelTypeTemporalIndexPerRel(bs, rids)
+			wantRows := make(map[[2]int64]bool)
+			want, err := buildRelTypeTemporalIndexPerRel(bs, rids, func(id snowflake.ID, v int64) { wantRows[[2]int64{int64(id), v}] = true })
 			if err != nil {
 				t.Fatal(err)
 			}
+			gotRows := make(map[[2]int64]bool)
+			relTemporalBuildFoldHook = func(id snowflake.ID, v int64) { gotRows[[2]int64{int64(id), v}] = true }
+			defer func() { relTemporalBuildFoldHook = nil }()
 			txns, seeks := readTxnsTotal.Load(), relTemporalBuildSeeks.Load()
 			got, err := bs.buildRelTypeTemporalIndex(rids)
 			if err != nil {
 				t.Fatal(err)
+			}
+			relTemporalBuildFoldHook = nil
+			// Every row the oracle folds, inner history rows included, and no other.
+			for k := range wantRows {
+				if !gotRows[k] {
+					t.Errorf("row %v (id, version; -1 = current) not folded", k)
+				}
+			}
+			for k := range gotRows {
+				if !wantRows[k] {
+					t.Errorf("row %v folded, the oracle has no such row", k)
+				}
 			}
 			txns, seeks = readTxnsTotal.Load()-txns, relTemporalBuildSeeks.Load()-seeks
 			t.Logf("%d snapshot ids, %d indexed: %d read txns, %d seeks", len(rids), want.Len(), txns, seeks)
@@ -263,7 +303,9 @@ func BenchmarkRelTemporalIndexRebuild(b *testing.B) {
 		name  string
 		build func([]types.RelID) (*index.TemporalIndex, error)
 	}{
-		{"per-rel", func(r []types.RelID) (*index.TemporalIndex, error) { return buildRelTypeTemporalIndexPerRel(bs, r) }},
+		{"per-rel", func(r []types.RelID) (*index.TemporalIndex, error) {
+			return buildRelTypeTemporalIndexPerRel(bs, r, nil)
+		}},
 		{"sequential", bs.buildRelTypeTemporalIndex},
 	} {
 		b.Run(bc.name, func(b *testing.B) {
@@ -275,5 +317,154 @@ func BenchmarkRelTemporalIndexRebuild(b *testing.B) {
 			}
 			b.ReportMetric(float64(n)*float64(b.N)/b.Elapsed().Seconds(), "rels/s")
 		})
+	}
+}
+
+type relGetHook struct {
+	index.EntityCache[*types.Relationship]
+	nth, seen int
+	fire      func()
+}
+
+func (c *relGetHook) GetNoPromote(id snowflake.ID) (*types.Relationship, index.CacheStatus) {
+	c.seen++
+	if c.seen == c.nth {
+		c.fire()
+	}
+	return c.EntityCache.GetNoPromote(id)
+}
+
+// Dirty rows at build start, a flush (commit + evict) lands mid-build.
+func TestRelTemporalIndexRebuild_FlushEvictDropsLiveRel(t *testing.T) {
+	bs := newFlushParkStore(t, func(c *Config) { c.CacheCapacity = 1 })
+	putTestNode(t, bs, 1, 7, nil)
+	putTestNode(t, bs, 2, 7, nil)
+	const n = 64
+	for i := 0; i < n; i++ {
+		r := types.NewRelationship(types.RelID(snowflake.ID(5000+i)), 9, 1, 2)
+		r.SetTemporal(&types.TemporalMetadata{ValidFrom: types.Instant(100 + i), ValidTo: types.Instant(200 + i)})
+		if err := bs.PutRelationship(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bs.idxMu.RLock()
+	rids := bs.relTypeRelIDsSnapshotLocked(9)
+	bs.idxMu.RUnlock()
+	fired := false
+	bs.relCache = &relGetHook{EntityCache: bs.relCache, nth: 2, fire: func() {
+		fired = true
+		if err := bs.Flush(); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	got, err := bs.buildRelTypeTemporalIndex(rids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fired {
+		t.Fatal("hook never fired")
+	}
+	if got.Len() != n {
+		t.Fatalf("index holds %d of %d live relationships (flush-evict mid-build dropped rows)", got.Len(), n)
+	}
+}
+
+// Same window, rel updated (with history) before the build: the new current
+// version is lost, the old one is read from the stale snapshot.
+func TestRelTemporalIndexRebuild_FlushEvictStaleVersion(t *testing.T) {
+	bs := newFlushParkStore(t, func(c *Config) { c.CacheCapacity = 1 })
+	putTestNode(t, bs, 1, 7, nil)
+	putTestNode(t, bs, 2, 7, nil)
+	const n = 16
+	var olds []*types.Relationship
+	for i := 0; i < n; i++ {
+		r := types.NewRelationship(types.RelID(snowflake.ID(6000+i)), 9, 1, 2)
+		r.SetTemporal(&types.TemporalMetadata{ValidFrom: 100, ValidTo: 200})
+		if err := bs.PutRelationship(r); err != nil {
+			t.Fatal(err)
+		}
+		olds = append(olds, r)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	for _, old := range olds {
+		next := types.NewRelationship(old.ID(), 9, 1, 2)
+		next.SetTemporal(&types.TemporalMetadata{ValidFrom: 5000, ValidTo: 6000})
+		next.SetVersion(1)
+		if err := bs.ReplaceRelWithHistory(next, 0, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bs.idxMu.RLock()
+	rids := bs.relTypeRelIDsSnapshotLocked(9)
+	bs.idxMu.RUnlock()
+	bs.relCache = &relGetHook{EntityCache: bs.relCache, nth: 2, fire: func() {
+		if err := bs.Flush(); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	got, err := bs.buildRelTypeTemporalIndex(rids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := 0
+	for _, rid := range rids {
+		_, to, ok := got.EnvelopeOf(rid.SnowflakeID())
+		if !ok || to < 6000 {
+			bad++
+		}
+	}
+	if bad > 0 {
+		t.Fatalf("%d of %d envelopes miss the current version [5000,6000)", bad, n)
+	}
+}
+
+// An update lands after the build's pending snapshot, before its cache lookup:
+// the prior (pre-build) version's interval must stay in the envelope.
+func TestRelTemporalIndexRebuild_UpdateMidBuildKeepsPriorVersion(t *testing.T) {
+	bs := newFlushParkStore(t, nil)
+	putTestNode(t, bs, 1, 7, nil)
+	putTestNode(t, bs, 2, 7, nil)
+	const n = 4
+	var olds []*types.Relationship
+	for i := 0; i < n; i++ {
+		r := types.NewRelationship(types.RelID(snowflake.ID(7000+i)), 9, 1, 2)
+		r.SetTemporal(&types.TemporalMetadata{ValidFrom: 100, ValidTo: 200})
+		if err := bs.PutRelationship(r); err != nil {
+			t.Fatal(err)
+		}
+		olds = append(olds, r)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	bs.idxMu.RLock()
+	rids := bs.relTypeRelIDsSnapshotLocked(9)
+	bs.idxMu.RUnlock()
+	inner := bs.relCache
+	bs.relCache = &relGetHook{EntityCache: inner, nth: 1, fire: func() {
+		for _, old := range olds {
+			next := types.NewRelationship(old.ID(), 9, 1, 2)
+			next.SetTemporal(&types.TemporalMetadata{ValidFrom: 5000, ValidTo: 6000})
+			next.SetVersion(1)
+			if err := bs.ReplaceRelWithHistory(next, 0, old); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}}
+	got, err := bs.buildRelTypeTemporalIndex(rids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := 0
+	for _, rid := range rids {
+		from, _, ok := got.EnvelopeOf(rid.SnowflakeID())
+		if !ok || from > 100 {
+			bad++
+		}
+	}
+	if bad > 0 {
+		t.Fatalf("%d of %d envelopes lost the pre-build version [100,200)", bad, n)
 	}
 }

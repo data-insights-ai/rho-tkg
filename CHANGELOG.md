@@ -12,8 +12,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   rebuild at a crash reopen and the tiered cold-to-warm promotion build the per-relationship envelope from one read
   transaction with two forward walks (relationship rows, relationship history) in ID order, instead of a point read
   plus a history prefix scan per relationship; a delta history row is folded from its temporal block without the
-  anchor read. Same envelopes (`TestRelTemporalIndexRebuildSequential` compares against the old build). 200,000
-  relationships with history, reopened store: 96,973 → 405,779 rels/s (4.2×; Ryzen 9 7950X3D)
+  anchor read. A flush that lands mid-build re-pins the snapshot (the scanSnapshot rule), and buffered history is
+  read before and after the walk. Same rows folded as the old build (`TestRelTemporalIndexRebuildSequential`). 200,000
+  relationships with history, reopened store: 78,919 → 304,166 rels/s (3.9×; 3.9–4.5× over three runs on a loaded host)
   (`tasks/evidence/rel-temporal-rebuild/03-bench.txt`). The create-vs-concurrent-write race (backlog 22) is
   unchanged.
 
