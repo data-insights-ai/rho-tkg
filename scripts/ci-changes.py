@@ -37,6 +37,15 @@ FIXTURE_COMPAT = {
     "replicated_process_test.go": ["TestReplicatedProcessProtocolBoundaries", "TestReplicatedProcessShutdownReapsFailedCloseRPC"],
     "graph_source_process_test.go": ["TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput", "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts"],
 }
+# The complete-CDC replay tests consume these two frozen FDB archives directly.
+# Keep this finite dependency list in sync with compare_cost_cdc_test.py.
+COST_CDC_INPUTS = {
+    "tools/v5-substrate/compare-cost-cdc.py",
+    "tools/v5-substrate/cost-cell.py",
+    "tools/v5-substrate/compare_cost_cdc_test.py",
+    "tasks/evidence/v2-fdb-cost-profile-20261013/raw.tar.gz",
+    "tasks/evidence/v2-fdb-cost-final-source-20261013/raw.tar.gz",
+}
 
 
 def command(args, cwd=None):
@@ -245,6 +254,17 @@ def external_qualification(paths):
     print("Recorded external source check only; no FDB execution, new fault/cost or engine acceptance claimed.")
 
 
+def docs(paths):
+    for path in paths:
+        p = ROOT / path
+        if p.is_file() and p.suffix == ".json":
+            json.loads(p.read_text())
+    if any(p.startswith("docs/v5/reference/") or p == "docs/v5/PLAN.md" for p in paths):
+        subprocess.run([sys.executable, "-B", "docs/v5/reference/independent/check.py"], cwd=ROOT, check=True)
+    if COST_CDC_INPUTS.intersection(paths):
+        subprocess.run([sys.executable, "-B", "tools/v5-substrate/compare_cost_cdc_test.py"], cwd=ROOT, check=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("plan", "run", "docs", "external"))
@@ -276,12 +296,7 @@ def main():
         if args.action == "run":
             execute(args.module, paths, Path(args.output).resolve(), args.base)
         elif args.action == "docs":
-            for path in paths:
-                p = ROOT / path
-                if p.is_file() and p.suffix == ".json":
-                    json.loads(p.read_text())
-            if any(p.startswith("docs/v5/reference/") or p == "docs/v5/PLAN.md" for p in paths):
-                subprocess.run([sys.executable, "-B", "docs/v5/reference/independent/check.py"], cwd=ROOT, check=True)
+            docs(paths)
         else:
             external_qualification(paths)
 

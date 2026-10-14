@@ -4,6 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -14,6 +15,42 @@ SPEC.loader.exec_module(CI)
 
 
 class Planning(unittest.TestCase):
+    def docs_action(self, paths):
+        with patch.object(sys, "argv", ["ci-changes.py", "docs", "--base", "fixture"]), patch.object(CI, "changed_paths", return_value=paths):
+            CI.main()
+
+    def test_docs_runs_complete_cdc_for_each_exact_input_once(self):
+        inputs = ["tools/v5-substrate/compare-cost-cdc.py", "tools/v5-substrate/cost-cell.py",
+                  "tools/v5-substrate/compare_cost_cdc_test.py",
+                  "tasks/evidence/v2-fdb-cost-profile-20261013/raw.tar.gz",
+                  "tasks/evidence/v2-fdb-cost-final-source-20261013/raw.tar.gz"]
+        for paths in [[p] for p in inputs] + [inputs, [inputs[0], inputs[0]]]:
+            with self.subTest(paths=paths), patch.object(CI.subprocess, "run") as run:
+                self.docs_action(paths)
+                run.assert_called_once_with([sys.executable, "-B", "tools/v5-substrate/compare_cost_cdc_test.py"], cwd=CI.ROOT, check=True)
+                p = CI.plan(paths)
+                self.assertEqual(p["matrix"]["include"], [])
+                self.assertFalse(p["comparison"] or p["migration"] or p["external"])
+
+    def test_docs_ignores_unrelated_evidence_and_preserves_reference_gate(self):
+        unrelated = ["tools/v5-substrate/README.md", "tasks/evidence/v2-fdb-cost-profile-20261013/README.md",
+                     "tasks/evidence/v2-fdb-cost-statics-20261013/raw.tar.gz",
+                     "tools/v5-substrate/fdb/evidence/README.md"]
+        with patch.object(CI.subprocess, "run") as run:
+            self.docs_action(unrelated)
+            run.assert_not_called()
+            self.docs_action(["docs/v5/PLAN.md", "tools/v5-substrate/cost-cell.py"])
+            self.assertEqual([c.args[0] for c in run.call_args_list], [
+                [sys.executable, "-B", "docs/v5/reference/independent/check.py"],
+                [sys.executable, "-B", "tools/v5-substrate/compare_cost_cdc_test.py"]])
+            for call in run.call_args_list:
+                self.assertEqual(call.kwargs, {"cwd": CI.ROOT, "check": True})
+
+    def test_docs_propagates_complete_cdc_failure(self):
+        with patch.object(CI.subprocess, "run", side_effect=subprocess.CalledProcessError(1, ["cdc-test"])):
+            with self.assertRaises(subprocess.CalledProcessError):
+                self.docs_action(["tools/v5-substrate/compare-cost-cdc.py"])
+
     def test_docs_evidence_do_not_run_go_or_tools(self):
         p = CI.plan(["docs/v5/PLAN.md", "tasks/evidence/receipt.json", "tools/v5-migrate/evidence/old.json"])
         self.assertEqual(p["matrix"]["include"], [])
