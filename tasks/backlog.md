@@ -41,7 +41,7 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 | 46 | LOW (stale comments) | Code comments that contradict the code or cite ADRs no longer in `docs/adr/` | open; found by the doc reviews 2026-10-10 |
 | 47 | LOW (unverified claims) | `NodesByLabelAt` vs K1; a RAM budget for the property sidecars | open; each needs a real check before it becomes work |
 | 56 | MEDIUM | Node temporal envelope holes: `PutNodeVersion`, `CreateTemporalIndex` publish-before-fold window, label add on a live node, memory re-create | done (Unreleased Fixed); all cases red, all fixed |
-| 57 | FEATURE (sigma R1) | Batched point read at (validAt, txAt): `NodesAtTxByIDs` / `RelsAtTxByIDs` | open; building |
+| 57 | FEATURE (sigma R1) | Batched point read at (validAt, txAt): `NodesAtTxByIDs` / `RelsAtTxByIDs` | done (Unreleased Added); badger -29% per 100 IDs, memory parity |
 | 58 | FEATURE (sigma R2) | Tiered: tx-membership sidecars (label/type, property value) and `*From` valid-end acceleration | open; after 59 |
 | 59 | PERF (sigma R3) | Tiered event-shard routing by mint instant: binary search instead of a linear window scan | open; building |
 | 52 | HIGH (ai-soc) | Durable commit under SyncWrites costs one fsync per mutation | in progress, v4.51.3 |
@@ -323,9 +323,9 @@ no budget; reopen only if a consumer reports memory pressure; then design a per-
 
 *MEDIUM* — every case went red (`tasks/evidence/node-temporal-envelope/01-red.txt`) and is fixed (`02-green.txt`, CHANGELOG [Unreleased] Fixed). (a) `PutNodeVersion` never extended the node temporal index — badger red, memory red: fixed (a covered or Building index takes the row). (b) Badger `CreateTemporalIndex` published before its history fold — red: fixed (stays Building until the fold, late writers' history folded at the publish); memory has no such window but skipped IDs written during its scan — red: fixed (refolds their live rows). (c) Label added back to a live node — badger red, memory red: fixed (add-label doors fold history into an uncovered index). (d) Memory re-create of a deleted node with history — red: fixed.
 
-### 57. Batched point read at (validAt, txAt)
+### 57. Batched point read at (validAt, txAt) — DONE (Unreleased)
 
-*FEATURE* — sigma-tkgd R1 (2026-10-14, design sigma-tkgd `tasks/history-via-rho-design.md`): sigma reads up to ~100 old rows per cut at one pin; `NodesEffectiveByIDs`/`RelsEffectiveByIDs` return whole timelines. Add `temporal.API.NodesAtTxByIDs(ids, validAt, txAt) ([]*types.Node, error)` and `RelsAtTxByIDs`: results aligned to ids, nil where `NodeAtTx` would return not-found or no row valid at validAt; call-level errors as `NodeAtTx` (pin checks, retention, compaction). Additive.
+*FEATURE* — sigma-tkgd R1 (2026-10-14, design sigma-tkgd `tasks/history-via-rho-design.md`): sigma reads up to ~100 old rows per cut at one pin; `NodesEffectiveByIDs`/`RelsEffectiveByIDs` return whole timelines. Add `temporal.API.NodesAtTxByIDs(ids, validAt, txAt) ([]*types.Node, error)` and `RelsAtTxByIDs`: results aligned to ids, nil where `NodeAtTx` would return not-found or no row valid at validAt; call-level errors as `NodeAtTx` (pin checks, retention, compaction). Additive. **Done:** both doors (CHANGELOG [Unreleased] Added); each ID runs the per-ID gates and body, one read lock per 256 IDs, one store read snapshot per call; a pin is required (`txAt <= 0` → `ErrInvalidTimeRange`, as the effective by-IDs doors). Red `tasks/evidence/batched-attx/01-red.txt`, green `02-green.txt`, bench `03-bench.txt` (100 IDs, half from history: badger 293 → 207 µs, memory 48 → 47 µs). `GetNodesByIDs` is not used: it fails the whole batch on one missing ID and badger answers it with one read per ID anyway; the read snapshot is the batch win.
 
 ### 58. Tiered: tx-membership sidecars and valid-end acceleration
 
