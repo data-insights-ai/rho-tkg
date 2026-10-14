@@ -1,0 +1,84 @@
+package graph_test
+
+import (
+	"context"
+	"testing"
+
+	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
+
+func r7Dump(g *graphpkg.Graph, id types.NodeID, pin types.Instant) string {
+	out := ""
+	for _, at := range []types.Instant{15, 25, 35, 55, 65} {
+		n, err := g.Temporal().NodeAtTx(id, at*1000, pin)
+		if err != nil {
+			out += " _"
+			continue
+		}
+		s, _ := n.GetProperty("s")
+		out += " " + s.(string)
+	}
+	return out
+}
+
+func TestZZR7Probe(t *testing.T) {
+	ctx := context.Background()
+	for _, b := range allStoreBackends()[:1] {
+		g := b.open(t)
+		// Case A: current open V [10,0); excise [20,30) as close + gap piece in one GraphTx.
+		n, _ := g.Nodes().Add(ctx, []string{"D"}, map[string]any{"tkg_valid_from": types.Instant(10_000), "s": "v"})
+		err := g.Tx().Run(func(tx *graphpkg.GraphTx) error {
+			if _, err := tx.UpdateNode(n.ID(), map[string]any{"tkg_valid_to": types.Instant(20_000)}); err != nil {
+				return err
+			}
+			_, err := tx.SetNodeVersionInterval(n.ID(), 30_000, 0, nil)
+			return err
+		})
+		t.Logf("A err=%v now:%s pre:%s", err, r7Dump(g, n.ID(), 0), r7Dump(g, n.ID(), n.Temporal().TxFrom))
+		// Case B: current closed V [10,50); excise [20,30).
+		m, _ := g.Nodes().Add(ctx, []string{"D"}, map[string]any{"tkg_valid_from": types.Instant(10_000), "tkg_valid_to": types.Instant(50_000), "s": "v"})
+		err = g.Tx().Run(func(tx *graphpkg.GraphTx) error {
+			if _, err := tx.UpdateNode(m.ID(), map[string]any{"tkg_valid_to": types.Instant(20_000)}); err != nil {
+				return err
+			}
+			_, err := tx.SetNodeVersionInterval(m.ID(), 30_000, 50_000, nil)
+			return err
+		})
+		t.Logf("B err=%v now:%s", err, r7Dump(g, m.ID(), 0))
+		// Case C: V [10,50) followed by W [50,0) (gap piece, open); excise [20,30) of V.
+		k, _ := g.Nodes().Add(ctx, []string{"D"}, map[string]any{"tkg_valid_from": types.Instant(10_000), "tkg_valid_to": types.Instant(50_000), "s": "v"})
+		_, err = g.Temporal().SetNodeVersionInterval(ctx, k.ID(), 50_000, 0, map[string]any{"s": "w"})
+		t.Logf("C setup err=%v now:%s", err, r7Dump(g, k.ID(), 0))
+		err = g.Tx().Run(func(tx *graphpkg.GraphTx) error {
+			_, err := tx.UpdateNode(k.ID(), map[string]any{"tkg_valid_to": types.Instant(20_000)})
+			return err
+		})
+		t.Logf("C close err=%v now:%s", err, r7Dump(g, k.ID(), 0))
+	}
+}
+
+func TestZZR7ProbeUpdateValidTo(t *testing.T) {
+	ctx := context.Background()
+	g := allStoreBackends()[0].open(t)
+	n, _ := g.Nodes().Add(ctx, []string{"D"}, map[string]any{"tkg_valid_from": types.Instant(10_000), "s": "v"})
+	u, err := g.Nodes().Update(ctx, n.ID(), map[string]any{"tkg_valid_to": types.Instant(20_000)})
+	t.Logf("update err=%v", err)
+	if u != nil {
+		tm := u.Temporal()
+		t.Logf("new row v%d valid [%d,%d) tx [%d,%d)", u.Version(), tm.ValidFrom, tm.ValidTo, tm.TxFrom, tm.TxTo)
+	}
+	h, _ := g.Nodes().History(n.ID())
+	for _, r := range h {
+		tm := r.Temporal()
+		t.Logf("hist v%d valid [%d,%d) tx [%d,%d)", r.Version(), tm.ValidFrom, tm.ValidTo, tm.TxFrom, tm.TxTo)
+	}
+	t.Logf("reads:%s", r7Dump(g, n.ID(), 0))
+	err = g.Nodes().CloseVersion(ctx, n.ID(), 20_000)
+	t.Logf("CloseVersion(20000) err=%v", err)
+	m, _ := g.Nodes().Add(ctx, []string{"D"}, map[string]any{"tkg_valid_from": types.Instant(10_000), "s": "v"})
+	err = g.Nodes().CloseVersion(ctx, m.ID(), 20_000)
+	t.Logf("fresh CloseVersion(20000) err=%v reads:%s", err, r7Dump(g, m.ID(), 0))
+	_, err = g.Temporal().SetNodeVersionInterval(ctx, m.ID(), 30_000, 0, nil)
+	t.Logf("then gap [30,0) err=%v reads:%s", err, r7Dump(g, m.ID(), 0))
+}

@@ -1,0 +1,17 @@
+=== RUN   TestZZR7Probe
+    zz_r7_probe_test.go:38: A err=<nil> now: v v v v v pre: v v v v v
+    zz_r7_probe_test.go:48: B err=graph: entity already closed now: v v v _ _
+    zz_r7_probe_test.go:52: C setup err=<nil> now: v v v w w
+    zz_r7_probe_test.go:57: C close err=<nil> now: v v v w w
+--- PASS: TestZZR7Probe (0.00s)
+=== RUN   TestZZR7ProbeUpdateValidTo
+    zz_r7_probe_test.go:66: update err=<nil>
+    zz_r7_probe_test.go:69: new row v1 valid [0,20000) tx [1791983143518,0)
+    zz_r7_probe_test.go:74: hist v0 valid [10000,0) tx [1791983143517,1791983143518)
+    zz_r7_probe_test.go:76: reads: v v v v v
+    zz_r7_probe_test.go:78: CloseVersion(20000) err=graph: entity already closed
+    zz_r7_probe_test.go:81: fresh CloseVersion(20000) err=<nil> reads: v _ _ _ _
+    zz_r7_probe_test.go:83: then gap [30,0) err=<nil> reads: v _ v v v
+--- PASS: TestZZR7ProbeUpdateValidTo (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.007s

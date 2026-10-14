@@ -1,0 +1,62 @@
+package graph_test
+
+import (
+	"context"
+	"testing"
+
+	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
+
+func TestZZR6Probe(t *testing.T) {
+	ctx := context.Background()
+	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
+		dl, sl := "Derived", "DerivedSupport"
+		if b.tiered {
+			dl, sl = "Ref", "Ref"
+		}
+		must := func(err error) {
+			t.Helper()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		must(g.Index().CreateProperty(dl, "ov_support"))
+		must(g.Index().CreateProperty(sl, "rel_id"))
+		d, err := g.Nodes().Add(ctx, []string{dl}, map[string]any{"ov_support": []int64{101, 102}})
+		must(err)
+		for _, v := range []any{int64(101), []int64{101, 102}} {
+			cur, err := g.Nodes().ByLabelAndProperty(dl, "ov_support", v, storepkg.QueryOpts{})
+			t.Logf("list shape: ByLabelAndProperty(ov_support=%v) current -> %d rows, err=%v", v, len(cur), err)
+		}
+		add := func(rel int64) *types.Node {
+			n, err := g.Nodes().Add(ctx, []string{sl}, map[string]any{"rel_id": rel, "of": int64(d.ID()), "ov_version": int64(d.Version())})
+			must(err)
+			return n
+		}
+		s101 := add(101)
+		add(102)
+		pin := s101.Temporal().TxFrom
+		// Derived version 2 drops 101, adds 103: same GraphTx in production.
+		must(g.Tx().Run(func(tx *graphpkg.GraphTx) error {
+			if _, err := tx.UpdateNode(d.ID(), map[string]any{"ov_support": []int64{102, 103}}); err != nil {
+				return err
+			}
+			return tx.DeleteNode(s101.ID())
+		}))
+		add(103)
+		for _, q := range []struct {
+			name string
+			opts storepkg.QueryOpts
+		}{{"current", storepkg.QueryOpts{}}, {"TxPin=before drop", storepkg.QueryOpts{TxPin: pin}}} {
+			rows, err := g.Nodes().ByLabelAndProperty(sl, "rel_id", int64(101), q.opts)
+			ofs := []any{}
+			for _, r := range rows {
+				of, _ := r.GetProperty("of")
+				ofs = append(ofs, of)
+			}
+			t.Logf("support-node shape: rel_id=101 %s -> %d rows of=%v (derived %d) err=%v", q.name, len(rows), ofs, d.ID(), err)
+		}
+	})
+}
