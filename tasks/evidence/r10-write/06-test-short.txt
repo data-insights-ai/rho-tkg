@@ -1,0 +1,54 @@
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	143.267s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin	0.011s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/constraints	0.008s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events	0.298s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/hash	0.010s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/index	0.007s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest	0.011s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/apiutil	0.005s
+2026/10/14 22:55:38 WARN tiered store repair fixed cross-shard inconsistencies orphaned_in_entries=1 stale_in_entries=0 missing_in_entries=0 shards_scanned=2 cross_shard_rels_checked=0
+--- FAIL: TestR10HeadTimelineCostIndependentOfHistory (2.92s)
+    --- FAIL: TestR10HeadTimelineCostIndependentOfHistory/badger (0.82s)
+        effective_timeline_head_test.go:125: node after standalone correction 0: 94 allocs per head read (limit 80)
+2026/10/14 22:55:48 ERROR graph: event handler panicked panic="intentional panic in handler" eventType=1 entityID=0
+2026/10/14 22:55:49 ERROR graph: index provider event handler failed provider=spatial eventType=1 entityID=812179452955230208 error=provider-failed
+2026/10/14 22:56:17 INFO graph: applied shard tier changes at open demoted=1 promoted=0 unsealed=0
+2026/10/14 22:56:18 INFO graph: applied shard tier changes at open demoted=0 promoted=1 unsealed=0
+2026/10/14 22:56:27 WARN label registry approaching capacity count=65534 max=65535
+2026/10/14 22:56:35 WARN label registry approaching capacity count=65534 max=65535
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	87.839s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate	0.003s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr	0.003s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	10.710s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity	0.004s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/locks	0.055s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry	0.075s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segdir	1.138s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segment	4.909s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/snowflake	0.003s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	0.415s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io	0.100s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes	0.008s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ontology	0.003s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/rels	0.008s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/replication	0.679s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/resolve	0.005s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/stats	0.005s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	3.706s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	131.899s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	71.562s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	9.400s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	151.057s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal	0.018s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/tier	0.018s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/internal/hash32	0.002s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/internal/idlayout	0.011s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/types	0.058s
+?   	github.com/data-insights-ai/rho-tkg/v4/pkg/types/internal/collisionone	[no test files]
+?   	github.com/data-insights-ai/rho-tkg/v4/pkg/types/internal/collisiontwo	[no test files]
+FAIL
+exit 1
+# rerun: TestR10HeadTimelineCostIndependentOfHistory (R10, counts process-wide mallocs) failed once above under the full ./pkg/... run
+# go test -run TestR10HeadTimelineCostIndependentOfHistory -count=5 ./pkg/graph/internal/core/: ok 5.498s
+# go test -short -count=1 ./pkg/graph/internal/core/: ok 59.669s
