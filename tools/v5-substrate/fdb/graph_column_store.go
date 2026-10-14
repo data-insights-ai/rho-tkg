@@ -15,6 +15,10 @@ import (
 )
 
 type graphColumnLedger struct{ Bytes, Generations, Chunks uint64 }
+
+// MaxWorkBytes accounts encoded chunk bodies plus authenticated original,
+// request/ID and physical history key/value bytes. Fixed binding/config/cut,
+// progress/guard and graph metadata checks and SDK retries are excluded.
 type graphColumnProgress struct {
 	Generation                   graphColumnGeneration
 	Metadata                     [2]metadata
@@ -402,6 +406,9 @@ func (s *graphColumnStore) seal(g graphColumnGeneration) (graphColumnManifest, e
 		if old != nil && !bytes.Equal(old, body) {
 			return nil, errMismatch
 		}
+		if err := s.ensureGuard(tr, manifest, old == nil); err != nil {
+			return nil, err
+		}
 		state.EOF = true
 		if err := put(tr, s.generationKey(g.ID, "progress"), state); err != nil {
 			return nil, err
@@ -415,27 +422,31 @@ func (s *graphColumnStore) seal(g graphColumnGeneration) (graphColumnManifest, e
 	return result.(graphColumnManifest), nil
 }
 
+func (s *graphColumnStore) manifestIn(tr fdb.ReadTransaction, id string) (graphColumnManifest, error) {
+	if s == nil || !validName(id) {
+		return graphColumnManifest{}, errInvalid
+	}
+	m, found, err := get[graphColumnManifest](tr, s.generationKey(id, "manifest"))
+	if err != nil {
+		return graphColumnManifest{}, err
+	}
+	if !found || m.Generation.ID != id {
+		return graphColumnManifest{}, errUnavailable
+	}
+	state, err := s.progress(tr, m.Generation, false)
+	if err != nil {
+		return graphColumnManifest{}, err
+	}
+	if !state.EOF || !graphColumnComplete(state) || !graphColumnSame(m, graphColumnManifestFor(state)) {
+		return graphColumnManifest{}, errUnavailable
+	}
+	return m, nil
+}
 func (s *graphColumnStore) manifest(id string) (graphColumnManifest, error) {
 	if s == nil || !validName(id) {
 		return graphColumnManifest{}, errInvalid
 	}
-	result, err := s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
-		m, found, err := get[graphColumnManifest](tr, s.generationKey(id, "manifest"))
-		if err != nil {
-			return nil, err
-		}
-		if !found || m.Generation.ID != id {
-			return nil, errUnavailable
-		}
-		state, err := s.progress(tr, m.Generation, false)
-		if err != nil {
-			return nil, err
-		}
-		if !state.EOF || !graphColumnComplete(state) || !graphColumnSame(m, graphColumnManifestFor(state)) {
-			return nil, errUnavailable
-		}
-		return m, nil
-	})
+	result, err := s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) { return s.manifestIn(tr, id) })
 	if err != nil {
 		return graphColumnManifest{}, err
 	}
@@ -542,8 +553,32 @@ func graphColumnCacheName(g graphColumnGeneration, ordinal uint64) string {
 // There is no cache-miss fallback or cache-only authority. Missing/foreign files,
 // wrong lengths/ordinals, or a partial generation return a zero EOF result.
 // Callbacks can receive a prefix before an error; only successful EOF is complete.
-func (s *graphColumnStore) walk(ctx context.Context, id string, at cut, cache *os.Root, emit func(graphColumnRow) error) (graphColumnManifest, error) {
+// Even callers without an external pin hold a durable physical read owner.
+// This closes the race with later retention initialization on another client.
+func (s *graphColumnStore) walk(ctx context.Context, id string, at cut, cache *os.Root, emit func(graphColumnRow) error) (end graphColumnManifest, err error) {
 	if s == nil || ctx == nil || emit == nil {
+		return end, errInvalid
+	}
+	owner, err := newGraphColumnRead(s, id, nil)
+	if err != nil {
+		return end, err
+	}
+	if err = owner.open(ctx); err != nil {
+		if errors.Is(err, errUnknown) {
+			err = errors.Join(err, columnReadCleanup(owner))
+		}
+		return end, err
+	}
+	defer func() {
+		err = errors.Join(err, columnReadCleanup(owner))
+		if err != nil {
+			end = graphColumnManifest{}
+		}
+	}()
+	return owner.walk(ctx, at, cache, emit)
+}
+func (s *graphColumnStore) walkOwned(ctx context.Context, id string, at cut, cache *os.Root, emit func(graphColumnRow) error, guard func(fdb.ReadTransaction) error) (graphColumnManifest, error) {
+	if s == nil || ctx == nil || emit == nil || guard == nil {
 		return graphColumnManifest{}, errInvalid
 	}
 	m, err := s.manifest(id)
@@ -580,6 +615,9 @@ func (s *graphColumnStore) walk(ctx context.Context, id string, at cut, cache *o
 			}
 		}
 		result, err := s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+			if err := guard(tr); err != nil {
+				return nil, err
+			}
 			if err := s.check(tr, m.Generation); err != nil {
 				return nil, err
 			}
@@ -663,6 +701,9 @@ func (s *graphColumnStore) walk(ctx context.Context, id string, at cut, cache *o
 		return graphColumnManifest{}, err
 	}
 	_, err = s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+		if err := guard(tr); err != nil {
+			return nil, err
+		}
 		if err := s.check(tr, m.Generation); err != nil {
 			return nil, err
 		}
