@@ -7,7 +7,7 @@ History (what shipped, why) is in `CHANGELOG.md` and git, not here.
 
 ## 1. Open requests and next steps (newest user message first; do these, do not ask)
 
-1. **v4.51.8 released 2026-10-14** (57, 59; 58 building). **v4.51.7 released 2026-10-14** (56). **v4.51.6 released 2026-10-14** (10a, 22, re-create fold). **v4.51.5 released 2026-10-13** (21, 28, 41; CI race split, GitHub CI green). **v4.51.4 released 2026-10-13** (44: crash reopen above every stored stamp; 15 closed by docs). v4.51.3 released 2026-10-12 (52, 53, 54, 55, F1–F6). Next tag: v4.51.9 (PATCH only). Next work: new consumer requests, then the on-hold items below.
+1. **v4.51.8 released 2026-10-14** (57, 59; 58 building). **v4.51.7 released 2026-10-14** (56). **v4.51.6 released 2026-10-14** (10a, 22, re-create fold). **v4.51.5 released 2026-10-13** (21, 28, 41; CI race split, GitHub CI green). **v4.51.4 released 2026-10-13** (44: crash reopen above every stored stamp; 15 closed by docs). v4.51.3 released 2026-10-12 (52, 53, 54, 55, F1–F6). Next tag: v4.52.1 (Markus released v4.52.0 on main) (PATCH only). Next work: new consumer requests, then the on-hold items below.
 2. **On hold:** nothing (41, 28, 21 shipped in v4.51.5).
 3. **Md consolidation** (René 2026-10-12 "consolidate md files and rules"): done by the Sonnet agent of this commit; review
    `tasks/todo.md` request 21.
