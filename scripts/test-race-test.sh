@@ -19,6 +19,14 @@ cat > "$work/bin/go" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ "\$1" == list ]]; then
+  if [[ "\${FAKE_GO_PROFILE-root}" == v5 ]]; then
+    case "\${@: -1}" in
+      ./...) printf '%s\n' $mod/internal/a $mod/internal/graphapply $mod/internal/z ;;
+      ./internal/graphapply) echo $mod/internal/graphapply ;;
+      *) exit 1 ;;
+    esac
+    exit 0
+  fi
   case "\${@: -1}" in
     ./...) printf '%s\n' $mod/pkg/a $mod/pkg/graph $core $mod/pkg/graph/store/memory $mod/pkg/z ;;
     ./pkg/graph/internal/core) echo $core ;;
@@ -30,7 +38,11 @@ if [[ "\$1" == list ]]; then
 fi
 if [[ " \$* " == *' -list '* ]]; then
   printf '%s\n' TestA TestB TestC TestD TestE TestF FuzzG ExampleH TestI
+  if [[ "\${FAKE_GO_PROFILE-root}" == v5 ]]; then
+  echo "ok  	$mod/internal/graphapply	0.1s"
+  else
   echo "ok  	$core	0.1s"
+  fi
   exit 0
 fi
 echo "\$*" >> "\$FAKE_GO_LOG"
@@ -100,6 +112,19 @@ done
 if FAKE_GO_FAIL=pkg/graph/store/memory run '' 4; then fail "a failing memory run passed the sequence"; fi
 grep -q 'passed' "$work/out" && fail "a failed sequence printed its completion marker"
 if FAKE_GO_FAIL=TestB run core-4 4; then fail "a failing core shard passed"; fi # sorted round-robin: TestB is core-4
+
+# 9. v5 has no isolated packages. Its four graphapply shards still retain
+# every parent and its subtests, including on Bash 3.2 with set -u.
+export FAKE_GO_PROFILE=v5
+run list 4 v5 || fail "v5 list exited nonzero"
+[[ "$(cat "$work/out")" == '["other","graphapply-1","graphapply-2","graphapply-3","graphapply-4"]' ]] || fail "v5 plan: $(cat "$work/out")"
+run '' 4 v5 || fail "v5 full sequence exited nonzero: $(cat "$work/out")"
+[[ $(log | wc -l) -eq 5 ]] || fail "v5 sequence ran: $(log)"
+grep -q 'all v5 packages and graphapply shards passed' "$work/out" || fail "v5 completion marker missing"
+run graphapply-4 4 v5 || fail "v5 graphapply-4 exited nonzero"
+[[ "$(log)" == "test -short -race -count=1 -run ^(TestB|TestF)\$ $mod/internal/graphapply" ]] || fail "v5 parent shard: $(log)"
+run core-1 4 v5 && fail "v5 accepted a root selector"
+[[ ! -s "$FAKE_GO_LOG" ]] || fail "v5 invalid selector ran tests"
 
 if (( failures > 0 )); then
   printf '%d failure(s)\n' "$failures" >&2

@@ -42,7 +42,12 @@ case "$shards" in
   *) fail "$split_name-shard count must be 1 or 4" ;;
 esac
 
-parts=(other "${isolated_names[@]}")
+# Bash 3.2 treats expansion of an empty array as unbound under set -u.
+# v5 has no isolated packages; only expand nonempty arrays.
+parts=(other)
+if (( ${#isolated_names[@]} > 0 )); then
+  parts+=("${isolated_names[@]}")
+fi
 for ((bucket=1; bucket<=shards; bucket++)); do
   parts+=("$split_name-$bucket")
 done
@@ -68,11 +73,14 @@ split_package=$(go list -race "$split_path")
 packages=$(go list -race ./...)
 [[ -n "$packages" ]] || fail "empty ${2-root} package inventory"
 isolated=()
-for path in "${isolated_paths[@]}"; do
-  package=$(go list -race "$path")
-  [[ -n "$package" && "$package" != *$'\n'* && "$package" != "$split_package" ]] || fail "expected one isolated package for $path"
-  isolated+=("$package")
-done
+if (( ${#isolated_paths[@]} > 0 )); then
+  for path in "${isolated_paths[@]}"; do
+    package=$(go list -race "$path")
+    [[ -n "$package" && "$package" != *$'\n'* && "$package" != "$split_package" ]] || fail "expected one isolated package for $path"
+    isolated+=("$package")
+  done
+fi
+
 other=()
 split_count=0
 isolated_count=0
@@ -82,12 +90,14 @@ while IFS= read -r package; do
     split_count=$((split_count + 1))
     continue
   fi
-  for iso in "${isolated[@]}"; do
-    if [[ "$package" == "$iso" ]]; then
-      isolated_count=$((isolated_count + 1))
-      continue 2
-    fi
-  done
+  if (( ${#isolated[@]} > 0 )); then
+    for iso in "${isolated[@]}"; do
+      if [[ "$package" == "$iso" ]]; then
+        isolated_count=$((isolated_count + 1))
+        continue 2
+      fi
+    done
+  fi
   other+=("$package")
 done <<< "$packages"
 (( split_count == 1 )) || fail "$split_name package must appear exactly once"
