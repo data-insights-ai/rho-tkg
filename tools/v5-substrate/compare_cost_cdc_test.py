@@ -282,6 +282,105 @@ class Replay(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def parallel_replay(self):
+        """Small explicitly synthetic attempt wrappers; no new SDK receipt.
+
+        Reuses the retained physical group shapes, changing the declared fresh
+        fixture identities in copies only. This is an offline policy guard.
+        """
+        c=module('parallel-replay','compare-cost-cdc.py')
+        result,groups=copy.deepcopy(self.result),copy.deepcopy(self.groups)
+        result['spec']['writers']=8;config=result['Config'];config['Cost']=result['spec'];config['Graph']='graph-cost-parallel-v1'
+        config['Limits']['Transactions']=3+2*result['spec']['facts']*64
+        config['Limits']['Bytes']+=2*result['spec']['facts']*63*2048
+        for key in ('InitialCut','OldCut','FinalCut'):result[key]['Graph']=config['Graph']
+        identities={}
+        for g in groups:
+            ordinal=g['Tx']['Lifecycle']['Provenance'];phase,fact,node,_=c.fixture(result['spec'],ordinal)
+            client=0 if node or fact==0 else 1;attempt=2 if ordinal==5 else 1
+            identities[g['Tx']['ID']]=f'cost-{phase}-{fact}-c{client}-a{attempt}'
+        for g in groups:
+            x,o=g['Tx'],g['Outcome'];x['Graph']=config['Graph'];x['ID']=identities[x['ID']];x['Request']='request/'+x['ID']
+            o.update(ID=x['ID'],Request=x['Request'],Digest=list(hashlib.sha256(c.go_json(x)).digest()))
+            for w in g['Writes']:
+                w['After']['TxID']=x['ID']
+                if 'Before' in w:w['Before']['TxID']=identities[w['Before']['TxID']]
+        result,header,streams=raw_fixture(groups,result)
+        dataset=list(hashlib.sha256(b'\1'+struct.pack('>QQ',2,100)+b'graph-v2').digest())
+        binding={'Version':1,'Config':config,'Dataset':dataset,'Window':32,'MaxAttempts':64,'MaxSubmissions':8,'MaxCallbacks':16,'TransactionMillis':3000,'OperationMillis':30000}
+        stored=lambda key,value:{'Key':base64.b64encode(key).decode(),'Value':base64.b64encode(c.go_json(value)).decode()}
+        binding_record=stored(c.fdb_key(config,0,'cost-parallel','binding'),binding)
+        def attempt(g,aborted=False):
+            x,o=copy.deepcopy(g['Tx']),copy.deepcopy(g['Outcome']);ordinal=x['Lifecycle']['Provenance'];phase,fact,node,_=c.fixture(result['spec'],ordinal)
+            client=0 if node or fact==0 else 1;number=2 if ordinal==5 and not aborted else 1
+            if aborted:
+                x['ID']=x['ID'].replace('-a2','-a1');x['Request']='request/'+x['ID'];o.update(Commit=False,Round=0,Sequence=0,Reason='generation',ID=x['ID'],Request=x['Request'],Digest=list(hashlib.sha256(c.go_json(x)).digest()))
+            return {'Operation':{'Dataset':dataset,'Phase':phase,'Fact':fact,'Ordinal':ordinal},'Engine':'foundationdb','ClientID':client,'AttemptOrdinal':number,
+                    'PreviousRequest':'request/cost-create-1-c1-a1' if number==2 else '', 'Request':x['Request'],'Transaction':x['ID'],'BodySHA256':list(hashlib.sha256(c.go_json(x)).digest()),'Proposal':base64.b64encode(c.go_json(x)).decode(),
+                    'Submissions':[{'Ordinal':1,'Callbacks':1,'Outcome':o,'Error':'','Retryable':False,'MaybeCommitted':False}], 'ReadCallbacks':2,'Classification':'aborted' if aborted else 'committed','Error':'',
+                    'Originals':[stored(c.fdb_key(config,o['Coordinator'],kind,o['ID'] if kind=='id' else o['Request']),o) for kind in ('id','request')],
+                    'Original':{'Key':None,'Value':None} if aborted else stored((f"g{o['Coordinator']}/{config['Graph'].encode().hex()}/changes/{o['Sequence']:016x}/"+o['Request'].encode().hex()).encode(),g)}
+        aborted=attempt(groups[4],True)
+        added=sum(len(base64.b64decode(r[k])) for r in aborted['Originals'] for k in ('Key','Value'))
+        charge=sum(len(base64.b64decode(binding_record[k])) for k in ('Key','Value'))
+        header['Metadata'][0]['Transactions']+=1;header['Metadata'][0]['Bytes']+=added+charge
+        for g in range(2):header['MetadataRecords'][g]=stored(c.fdb_key(config,g,'meta','state'),header['Metadata'][g])
+        old=copy.deepcopy(result);old['FinalCut']=old['OldCut'];_,old_header,_=raw_fixture(groups[:5],old)
+        duplicate=old_header['CutRecords'][-1];old_metadata=old_header['Metadata'];old_metadata[0]['Bytes']-=sum(len(base64.b64decode(duplicate[k])) for k in ('Key','Value'));old_metadata[0]['Certificates']=2
+        old_metadata[0]['Transactions']+=1;old_metadata[0]['Bytes']+=added+charge
+        barrier=lambda cut,metadata,count:{'Cut':cut,'Metadata':metadata,'Records':[stored(c.fdb_key(config,g,'meta','state'),metadata[g]) for g in range(2)],'Attempts':count,'AbortedAttempts':1}
+        end={'Format':c.PARALLEL_FORMAT,'Binding':binding,'BindingRecord':binding_record,'Old':barrier(result['OldCut'],old_metadata,6),'Final':barrier(result['FinalCut'],header['Metadata'],8),
+             'Attempts':8,'AbortedAttempts':1,'SubmitInvocations':8,'SDKCallbacks':8,'ReadCallbacks':16,'ClientCompletions':[2,2]+[0]*30,'PayloadSHA256':''}
+        records=[{'Type':'header','Format':c.PARALLEL_FORMAT,'Binding':binding,'Record':binding_record}]
+        for index,g in enumerate(groups):
+            if index==4:records.append({'Type':'attempt','Attempt':aborted})
+            records.append({'Type':'attempt','Attempt':attempt(g)})
+            if index in (4,6):records.append({'Type':'barrier','Phase':'create' if index==4 else 'update','Barrier':end['Old' if index==4 else 'Final']})
+        result.update(version=4,oracleFormat=c.PARALLEL_FORMAT,Parallel=end,IDAdmission='fixed declared fixture IDs/ranges; independent SDK clients, no rho allocator protocol')
+        return c,result,groups,header,streams,records
+
+    def test_parallel_authentic_abort_body_replan_and_attempt_eof_guards(self):
+        c,result,_,_,_,original=self.parallel_replay();path=self.root/'fdb-cost-attempts.jsonl'
+        def check(records,footer=True):
+            payload=b''.join(c.go_json(r)+b'\n' for r in records);result['Parallel']['PayloadSHA256']=hashlib.sha256(payload).hexdigest()
+            path.write_bytes(payload+(c.go_json({'Type':'footer','End':result['Parallel']})+b'\n' if footer else b''))
+            with c.Spool(self.root,c.Policy(2<<20,16<<10,4096,512<<10)) as spool:return c.fdb_parallel_attempts(path,result,spool)
+        sizes,counts=check(original)
+        self.assertEqual(counts,{'old':[1,0],'final':[1,0]});self.assertGreater(sizes['old'][0],0)
+        def wrong_body(records):
+            a=next(r['Attempt'] for r in records if r.get('Attempt',{}).get('Classification')=='aborted')
+            o=json.loads(base64.b64decode(a['Originals'][0]['Value']));o['Digest'][0]^=1
+            for pair in a['Originals']:pair['Value']=base64.b64encode(c.go_json(o)).decode()
+        def wrong_link(records):next(r['Attempt'] for r in records if r.get('Attempt',{}).get('AttemptOrdinal')==2)['PreviousRequest']=''
+        for name,mutate in (('paired original body',wrong_body),('unlinked fresh request',wrong_link)):
+            with self.subTest(name=name),self.assertRaises(ValueError):
+                bad=copy.deepcopy(original);mutate(bad);check(bad)
+        with self.assertRaises(ValueError):check(original,False)
+        self.assertEqual(list(self.root.glob('.cost-spool-*')),[])
+
+    def test_parallel_keyed_complete_groups_keep_raw_enumeration_and_completion_order(self):
+        c,result,groups,header,streams,records=self.parallel_replay();directory=self.root/'parallel';directory.mkdir()
+        payload=b''.join(c.go_json(r)+b'\n' for r in records);result['Parallel']['PayloadSHA256']=hashlib.sha256(payload).hexdigest()
+        (directory/'fdb-cost-attempts.jsonl').write_bytes(payload+c.go_json({'Type':'footer','End':result['Parallel']})+b'\n')
+        for name,raw in streams.items():
+            body=c.go_json(header|{'Stream':name})+b'\n'+b''.join(c.go_json({'Type':'row','Row':r})+b'\n' for r in raw)
+            footer={'Type':'footer','Rows':[sum(r['Group']==g for r in raw) for g in (0,1)],'Groups':header['FinalCut']['Groups'],'Metadata':header['Metadata'],'PayloadSHA256':hashlib.sha256(body).hexdigest()}
+            (directory/f'fdb-cost-{name}.jsonl').write_bytes(body+c.go_json(footer)+b'\n')
+        completed=[groups[0],groups[2],groups[1],groups[4],groups[3],groups[6],groups[5]]
+        (directory/'fdb-cost-operation-groups.jsonl').write_bytes(b''.join(c.go_json(g)+b'\n' for g in completed))
+        samples=[]
+        for g in completed:
+            ordinal=g['Tx']['Lifecycle']['Provenance'];phase,fact,node,edge=c.fixture(result['spec'],ordinal)
+            samples.append({'phase':phase,'fact':fact,'cross':bool(edge and edge['Target']['Owner']),'ProposalNanos':1,'AckNanos':1,'VerificationNanos':1,'ProposalAttempts':1,'CommitAttempts':1,'Outcome':g['Outcome'],
+                            'Operation':{'Dataset':result['Parallel']['Binding']['Dataset'],'Phase':phase,'Fact':fact,'Ordinal':ordinal},'ClientID':0 if node or fact==0 else 1})
+        (directory/'fdb-cost-latency.jsonl').write_bytes(b''.join(c.go_json(s)+b'\n' for s in samples))
+        with c.Spool(self.root,c.Policy(4<<20,16<<10,4096,512<<10)) as spool:
+            stats={'physicalWrites':0};logical=list(c.fdb_raw_groups(directory/'fdb-cost-cdc.jsonl',result['spec'],result['Config'],result['FinalCut'],stats,spool,result))
+            self.assertEqual([g['operation'] for g in logical],['cost-setup-0','cost-setup-1','cost-setup-2','cost-create-0','cost-create-1','cost-update-0','cost-update-1'])
+            self.assertEqual(stats['physicalWrites'],15)
+            self.assertEqual(c.column_old_metadata(result,spool),result['Parallel']['Old']['Metadata'])
+        self.assertEqual(list(self.root.glob('.cost-spool-*')),[])
+
     def streams(self,native=None,fdb=None):
         paths=[]
         for name,rows in [('native.jsonl',self.native if native is None else native),('fdb.jsonl',self.groups if fdb is None else fdb)]:
