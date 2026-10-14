@@ -328,6 +328,10 @@ Native derived change columns are source-integrated at `4e6da1db`, with genuine
 source-prefix frames, authenticated earlier originals for replay entries,
 bounded durable publication/cache and retained-cut reads. This slice is
 in-process and retain-all; distributed publisher wiring and source GC remain open.
+Native cost replay export/comparison is source-integrated at `2f46278f`: a later
+entry keeps its actual prefix/root and empty current CDC, joins the authentic
+earlier original frames, and is excluded from duplicate business folding only
+after that binding succeeds. The compact native and offline guards are unrun.
 FDB independent 8/32 writers are source-integrated at `45c61d84`, with bounded
 workers, actual paired retry/abort originals, completion-order-independent
 comparison and genuine post-commit policy observation (`e76c49c7`). Compact
