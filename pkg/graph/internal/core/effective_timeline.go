@@ -431,9 +431,9 @@ func (c *Core) nodeEffectiveTimelineFrom(rd entityReads, id types.NodeID, pin ty
 	}
 	// The head answer (backlog 68): kept per entity while the store's history
 	// token and the current row hold (effective_head.go). Only the plain
-	// point read uses it; the scans read through one snapshot.
+	// point read uses it; scans (rd.scan) never read or fill it.
 	var epoch uint64
-	if rd.snap == nil && current != nil {
+	if rd.snap == nil && !rd.scan && current != nil {
 		epoch = c.nodeHistoryEpoch(id)
 		if segs, ok := c.nodeHeadSegments(rd, id, current, pin, epoch); ok {
 			return segs, nil
@@ -499,9 +499,9 @@ func (c *Core) relEffectiveTimelineFrom(rd entityReads, id types.RelID, pin type
 	}
 	// The head answer (backlog 68): kept per entity while the store's history
 	// token and the current row hold (effective_head.go). Only the plain
-	// point read uses it; the scans read through one snapshot.
+	// point read uses it; scans (rd.scan) never read or fill it.
 	var epoch uint64
-	if rd.snap == nil && current != nil {
+	if rd.snap == nil && !rd.scan && current != nil {
 		epoch = c.relHistoryEpoch(id)
 		if segs, ok := c.relHeadSegments(rd, id, current, pin, epoch); ok {
 			return segs, nil

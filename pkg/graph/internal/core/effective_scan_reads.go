@@ -55,6 +55,9 @@ func readSnapshotCapability(store storepkg.MandatoryStore) storepkg.ReadSnapshot
 type entityReads struct {
 	c    *Core
 	snap storepkg.ReadSnapshot
+	// scan marks a multi-entity scan: it neither reads nor fills the
+	// head-pin cache, which serves repeated point reads of a small hot set.
+	scan bool
 }
 
 func (r entityReads) currentNode(id types.NodeID) (*types.Node, error) {
@@ -153,7 +156,7 @@ func (r entityReads) relHistory(id types.RelID) ([]*types.Relationship, error) {
 // lock is released; emit returning false stops. A read error stops the scan
 // once the entities read before it are emitted.
 func streamEntityTimelines[ID any, S any](c *Core, ids []ID, read func(entityReads, ID) ([]S, error), emit func(ID, []S) bool) error {
-	rd := entityReads{c: c}
+	rd := entityReads{c: c, scan: true}
 	if c.readSnapshots != nil {
 		rd.snap = c.readSnapshots.NewReadSnapshot()
 		defer rd.snap.Close()

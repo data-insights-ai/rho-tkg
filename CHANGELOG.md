@@ -57,7 +57,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pieces is not kept); the cache and the watch tables are striped under read-write locks, so parallel head reads
   share no exclusive lock (256 nodes from 32 goroutines: memory 440 -> 306 ns/op, badger 6.7 -> 1.5 us/op); a
   miss gathers the entry's facts inside the fold's own walk and adds only the entry itself (at 300 versions
-  +2 allocations, +216 B over the fold, `10-review-after.txt`).
+  +2 allocations, +216 B over the fold, `10-review-after.txt`). Limits: the cache serves point reads only (scans never read or fill it); the per-store token watch table keeps up to 64K entities per kind, so a hot set larger than that refolds on its next read (correct, slower).
 
 ## [4.54.0] - 2026-10-14
 
