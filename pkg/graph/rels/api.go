@@ -29,6 +29,7 @@ type Ops interface {
 	RecordForeignIncoming(ctx context.Context, edge storepkg.ForeignIncomingEdge) error
 	Get(ctx context.Context, id types.RelID) (*types.Relationship, error)
 	Lend(ctx context.Context, id types.RelID) (*types.Relationship, error)
+	LendByIDs(ctx context.Context, ids []types.RelID, fn func(i int, row *types.Relationship) bool) error
 	MaxOrdinal() (uint32, bool, error)
 	ScanKeepsOrder(typeName string) (bool, error)
 	GetByIDs(ids []types.RelID) ([]*types.Relationship, error)
@@ -197,6 +198,25 @@ func (a *API) Lend(ctx context.Context, id types.RelID) (*types.Relationship, er
 		return nil, err
 	}
 	return ops.Lend(ctx, id)
+}
+
+// LendByIDs lends the current row of each relationship in ids as Lend does (frozen,
+// no copy where Lend makes none) and calls fn(i, row) for each ID that names
+// a relationship, i its position in ids; an ID naming none is skipped (fn is not
+// called for it). Calls come in ascending ID order (equal IDs in ids'
+// order); fn returning false stops; fn runs with no lock held. The IDs are
+// read in chunks of 4,096, each under one read: badger reads a chunk's rows
+// missing from its cache through one snapshot in key order (not cached),
+// memory under one lock, other stores per ID. The context is checked before
+// each chunk. Safe for concurrent calls. Errors: an error for a nil fn,
+// ErrInvalidStoreMutation for a non-positive ID (before any read),
+// ErrGraphClosed, the context's error, a store read error.
+func (a *API) LendByIDs(ctx context.Context, ids []types.RelID, fn func(i int, row *types.Relationship) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.LendByIDs(ctx, ids, fn)
 }
 
 // MaxOrdinal is nodes.API.MaxOrdinal for relationships

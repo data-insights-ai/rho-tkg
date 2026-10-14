@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`Nodes().LendByIDs` / `Rels().LendByIDs`: lend many rows in one read** (sigma-tkgd round 7 request 3: a parallel
+  record scan's workers called `Lend` per ID, on badger one read transaction per node). `LendByIDs(ctx, ids,
+  fn(i, row) bool)` lends each ID's current row under `Lend`'s contract (frozen, no copy where `Lend` makes none)
+  and calls `fn` with the ID's position in `ids`; absent IDs are skipped, calls come in ascending ID order, `fn`
+  runs with no lock held and false stops it. Chunks of 4,096 IDs, each under one read: badger serves a chunk's
+  cache misses through one re-pinning snapshot in key order (no cache fill), memory under one store lock, other
+  stores per ID; the context is checked per chunk; concurrent calls are safe. New optional store capability
+  `store.EntityLendBatchCapability` (memory, badger). Read-only, no write cost. 300,000 nodes in batches of 4,096
+  (`BenchmarkLendByIDs`): badger per-ID `Lend` 2.85 / 1.73 / 1.63 us per node at 1 / 4 / 16 goroutines,
+  `LendByIDs` 1.12 / 0.38 / 0.24 us; memory 46 / 135 / 140 ns against 16 / 13 / 31 ns. Tests `TestLendByIDs`
+  (every backend, nodes and relationships, oracle `Lend`), `TestLendByIDs_ConcurrentWithWriters`,
+  `TestLendSortedColdRowsOneSnapshot`, `TestMemoryStoreLendSorted`; evidence `tasks/evidence/cypher-round7/r3-*`.
+
 ### Changed
 
 - **Badger batch relationship create reads its endpoints through one snapshot** (sigma-tkgd round 7 request 1:

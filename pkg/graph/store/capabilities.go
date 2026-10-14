@@ -68,6 +68,18 @@ type EntityLendCapability interface {
 	LendRelationship(id types.RelID) (*types.Relationship, error)
 }
 
+// EntityLendBatchCapability is OPTIONAL: EntityLendCapability for many IDs
+// in one read. LendNodesSorted sets out[i] to the row LendNode(ids[i]) lends,
+// or nil where the entity does not exist; ids are ascending (duplicates
+// allowed), already validated, and len(out) == len(ids). Any other read
+// error aborts the call. Badger serves a call from one read snapshot (rows
+// missing from its cache are read in key order and not cached); memory under
+// one read lock. LendRelationshipsSorted is the relationship mirror.
+type EntityLendBatchCapability interface {
+	LendNodesSorted(ids []types.NodeID, out []*types.Node) error
+	LendRelationshipsSorted(ids []types.RelID, out []*types.Relationship) error
+}
+
 // ScanOrderCapability is OPTIONAL: whether the streaming label and type scans
 // (ForEachNodeByLabel, ForEachRelByType) walk members in ascending ID order from
 // a list kept between scans (true: no per-scan collect or sort) or collect and
