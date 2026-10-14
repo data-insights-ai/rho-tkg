@@ -29,9 +29,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ID written during its scan, leaving only that write's row; it now folds the ID's live row and whole history. (c) A
   label added back to a live node covered it in that label's index with its current row only; the add-label doors
   now fold the node's history first, as the create doors do for a re-created node (badger since b6212758). (d) Memory
-  re-create of a deleted node with history had the same hole and the same fix. Tests
-  `TestNodeTemporalEnvelope_*` (badger), `TestMemoryNodeTemporalEnvelope_*`; evidence
-  `tasks/evidence/node-temporal-envelope/`.
+  re-create of a deleted node with history had the same hole and the same fix. The badger create's history fold
+  reads the members taken when the build started, not a fresh label snapshot, so a member that loses the label or
+  is deleted during the build keeps its history in the envelope. Under `TemporalIndexOnDisk` a create that fails or
+  crashes before it publishes no longer leaves 0x0B rows behind: its error paths purge the label's rows, and an open
+  purges the rows of every label with no definition (before, a later create of the label plus a crash reopen loaded
+  both rows and a temporal ByLabel read returned the node twice). `PutNodeVersion` takes the index lock for writing
+  only when one of the row's labels has a temporal index. Tests `TestNodeTemporalEnvelope_*` (badger),
+  `TestMemoryNodeTemporalEnvelope_*`; evidence `tasks/evidence/node-temporal-envelope/`.
 
 - **Badger `CreateRelTemporalIndex` no longer misses writes made during the build** (backlog 22): a relationship
   created, updated or given a history version between the ID snapshot and the install could be left with an envelope
