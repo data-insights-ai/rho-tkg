@@ -20,42 +20,25 @@ type PropertyIndex struct {
 	numKeys    sortedChunks[float64]
 	numBuckets map[float64]map[snowflake.ID]struct{}
 
-	// Ordered STRING view — see property_index_string_range.go. Distinct string
-	// values kept in lexicographic order (canonical bytes) so PREFIX / string
-	// range / sorted scans (`WHERE n.name STARTS WITH $p`) search the key set
-	// instead of scanning the label. Maintained alongside numKeys, for free,
-	// inside AddKey/removeKey — no new mutation call sites.
+	// Ordered STRING view — see property_index_string_range.go. Maintained
+	// alongside numKeys inside AddKey/removeKey.
 	strKeys    sortedChunks[string]
 	strBuckets map[string]map[snowflake.ID]struct{}
 
-	// numImpreciseCount counts CURRENTLY indexed entries whose exact integer
-	// magnitude exceeds 2^53, so their float64 sort key may collide with a
-	// neighbour. While > 0, RangeCardinality declines (the sorted-bucket sum
-	// could miscount near a collision) and the caller falls back to the
-	// over-select+exact-recheck scan. A COUNT rather than a sticky bool
-	// (BACKLOG 16j): addOrdered/removeOrdered increment/decrement it
-	// symmetrically for the SAME (id, vk) pair, so once every poisoning value
-	// is removed or updated away, RangeCardinality automatically re-enables —
-	// a value's lifetime evicting or eviction doesn't permanently disable
-	// exact counting for the index's whole remaining life. purgeOrdered (the
-	// corruption-path brute-force sweep) does NOT decrement it — it has no
-	// access to the purged id's original vk to know whether it was poisoning,
-	// and staying imprecise is the safe direction (falls back to the exact
-	// scan) rather than risking a wrong exact count.
+	// numImpreciseCount counts currently indexed entries whose integer
+	// magnitude exceeds 2^53 (float64 sort key may collide). While > 0,
+	// RangeCardinality declines and the caller falls back to the exact scan.
+	// A count, not a sticky bool (BACKLOG 16j): add/removeOrdered keep it
+	// symmetric per (id, vk). purgeOrdered does not decrement it (original vk
+	// unknown; staying imprecise is the safe direction).
 	numImpreciseCount int
 
-	// rangeCounts (round 4 R2, opt-in per index): the ordered numeric view
-	// keeps each value's multiplicity and per-chunk prefix sums (numKeys in
-	// counted mode), so RangeCardinality is two prefix sums instead of a walk
-	// over the range's distinct values. Fixed at creation. Off, the view and
-	// its write cost are exactly what they were before the option existed.
+	// rangeCounts (opt-in per index, fixed at creation): numKeys in counted
+	// mode, so RangeCardinality is two prefix sums instead of a walk.
 	rangeCounts bool
 
-	// elements (backlog 63, opt-in per index): each scalar element of a list
-	// value is a key (types.ForEachIndexableElementKey), so a lookup means
-	// "the list contains the value". Such an index keeps no ordered views
-	// (a range over elements is not a range over values): the range and
-	// prefix accessors report supported=false. Fixed at creation.
+	// elements (backlog 63, opt-in, fixed at creation): each list element is
+	// a key. No ordered views: range and prefix accessors report supported=false.
 	elements bool
 }
 
@@ -209,9 +192,8 @@ func PropertyValueKey(v any) string {
 	return types.IndexablePropertyValueKey(v)
 }
 
-// ElementsOf returns the selector types.Node.ForEachIndexKey takes for the
-// indexes of one label: whether (labelToken, propertyKey) is an Elements index.
-// It is consulted for list values only, so scalar-only rows never look it up.
+// ElementsOf returns the selector types.Node.ForEachIndexKey takes: whether
+// (labelToken, propertyKey) is an Elements index. Consulted for list values only.
 func ElementsOf(indexes map[PropertyIndexKey]*PropertyIndex, labelToken uint16) func(propertyKey string) bool {
 	return func(propertyKey string) bool {
 		return indexes[PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}].Elements()
@@ -225,9 +207,8 @@ func RelElementsOf(indexes map[RelPropertyIndexKey]*PropertyIndex, relTypeToken 
 	}
 }
 
-// AddEntityKeys indexes one entity's value of the index's key: the scalar
-// key, or every element key of an Elements index. The backfill and rebuild
-// paths of every store use it, so they key a row as the write path does.
+// AddEntityKeys indexes one entity's value: the scalar key, or every element
+// key of an Elements index. Backfill and rebuild use it to key rows as writes do.
 func (pi *PropertyIndex) AddEntityKeys(id snowflake.ID, propertyKey string, keys func(propertyKey string, elements bool, fn func(valueKey string) bool)) {
 	if pi == nil {
 		return
@@ -256,10 +237,8 @@ func AddNodeToPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex, n *ty
 	}
 }
 
-// PurgeNodeFromAllPropertyIndexes removes a node ID from every value set in
-// every property index. Brute-force O(V) fallback used when the node's data
-// is unavailable (corruption path). The normal path uses RemoveNodeFromPropertyIndexes
-// which is O(L*P) but requires the node object.
+// PurgeNodeFromAllPropertyIndexes removes a node ID from every property index.
+// Brute-force O(V) fallback for when the node is unavailable (corruption path).
 // Caller must hold the store's write lock.
 func PurgeNodeFromAllPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex, id snowflake.ID) {
 	for _, idx := range indexes {

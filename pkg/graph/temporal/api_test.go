@@ -80,9 +80,7 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 		t.Fatalf("typed-nil NodeAt = %v, want ErrNilGraph", err)
 	}
 
-	// NodeMatchesValidTime / RelMatchesValidTime return bool, not error: a
-	// not-ready graph must report "not valid" (false), the safe default for a
-	// post-filter consumer.
+	// NodeMatchesValidTime / RelMatchesValidTime return bool: a not-ready graph reports false.
 	var nilGraphAPI *API
 	if nilGraphAPI.NodeMatchesValidTime(nil, storepkg.QueryOpts{}) {
 		t.Fatal("nil-graph NodeMatchesValidTime = true, want false")

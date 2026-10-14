@@ -7,13 +7,12 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// A temporal envelope prunes: once it covers an ID it must cover every row the
-// ID has. These tests cover the ways an ID with history but no current row (a
-// deleted entity) became covered by one new row only.
+// A temporal envelope prunes, so once it covers an ID it must cover every row the
+// ID has. These tests pin the ways a deleted ID (history, no current row) became
+// covered by one new row only.
 
-// seedDeletedRel22 writes relationship 7010 of type 9 with history row
-// [100,200) and current row [5000,6000), then deletes it: history on disk, no
-// current row.
+// seedDeletedRel22 writes rel 7010 (type 9) with history [100,200) and current
+// [5000,6000), then deletes it.
 func seedDeletedRel22(t *testing.T, bs *Store) types.RelID {
 	t.Helper()
 	z := types.RelID(snowflake.ID(7010))
@@ -35,11 +34,9 @@ func seedDeletedRel22(t *testing.T, bs *Store) types.RelID {
 	return z
 }
 
-// Backlog 22 final review: a relationship deleted before the create (history
-// on disk, no current row) gets a PutRelVersion after Phase 3a took the
-// written IDs and before Phase 3b installs. The write folds that one version;
-// the install must fold the ID's other rows, or its envelope vouches for
-// [9000,9100) alone and a prune at 150 drops it.
+// Backlog 22 final review: a deleted rel gets a PutRelVersion after Phase 3a and
+// before Phase 3b. The install must fold the ID's other rows, or the envelope
+// vouches for [9000,9100) alone and a prune at 150 drops it.
 func TestCreateRelTemporalIndex_PutRelVersionOnDeletedRelAfter3aCollect(t *testing.T) {
 	bs, rels := seedRace22(t)
 	z := seedDeletedRel22(t, bs)
@@ -109,8 +106,8 @@ func TestRelTemporalIndex_RecreateDeletedRelAfterPublishBatch(t *testing.T) {
 	}
 }
 
-// seedDeletedNode writes node 8010 with label 7, history row [100,200) and
-// current row [5000,6000), then deletes it.
+// seedDeletedNode writes node 8010 (label 7) with history [100,200) and current
+// [5000,6000), then deletes it.
 func seedDeletedNode(t *testing.T, bs *Store) types.NodeID {
 	t.Helper()
 	nid := types.NodeID(snowflake.ID(8010))

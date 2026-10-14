@@ -8,14 +8,13 @@ import (
 var _ storecontract.HistoryPresenceCapability = (*Store)(nil)
 
 // HasNodeHistory reports whether GetNodeHistory(id) would return a row
-// (store.HistoryPresenceCapability). It walks exactly the shards
-// GetNodeHistory reads, in the same order and with the same errors, and asks
-// each one HasNodeHistory instead of reading its rows: the owning shard; for a
-// node live on the reference shard also the archive; for an archived node also
-// the reference shard; for a node live nowhere every history shard. Cold shards
-// are opened the way GetNodeHistory opens them (checkoutStoreForRead) — no new
-// open path — and answer by a per-ID key probe instead of building their RAM
-// set (a cold shard opens with badger Config.HistoryPresenceProbeOnly).
+// (store.HistoryPresenceCapability). It walks exactly the shards GetNodeHistory
+// reads, in the same order with the same errors, asking each HasNodeHistory
+// instead of reading rows: the owning shard; plus the archive for a node live
+// on the reference shard; plus the reference shard for an archived node; every
+// history shard for a node live nowhere. Cold shards open via
+// checkoutStoreForRead and answer by a per-ID key probe (badger
+// Config.HistoryPresenceProbeOnly).
 func (ts *Store) HasNodeHistory(nid types.NodeID) (bool, error) {
 	if err := ts.checkOpen(); err != nil {
 		return false, err
@@ -27,8 +26,7 @@ func (ts *Store) HasNodeHistory(nid types.NodeID) (bool, error) {
 }
 
 // HasRelHistory is HasNodeHistory for relationships, walking the shards
-// GetRelHistory reads (a cross-shard relationship's history lives with the
-// relationship row's shard).
+// GetRelHistory reads.
 func (ts *Store) HasRelHistory(rid types.RelID) (bool, error) {
 	if err := ts.checkOpen(); err != nil {
 		return false, err
@@ -41,18 +39,14 @@ func (ts *Store) HasRelHistory(rid types.RelID) (bool, error) {
 
 func orPresence(a, b bool) bool { return a || b }
 
-// walkNodeHistoryShards asks every shard GetNodeHistory reads for node nid, in
-// its order and with its errors, and merges the answers: the owning shard;
-// with the archive for a node live on the reference shard; with the reference
-// shard for an archived node; with every history shard for a node live
-// nowhere. HasNodeHistory and NodeHistoryStamps share it, so the presence and
-// the stamps of one ID always come from the same rows. Whether the node is live
-// on its shard is read through the shard's current-row stamps (the row's key
-// and temporal block, no decode, no copy, backlog 42): the same answer as
-// GetNodeHistory's check, except that a current row whose temporal block
-// decodes but whose body does not is live here where GetNodeHistory fails
-// (the asymmetry HasNodeHistory already documents for history rows).
-// No moveMu: ArchiveNode/RestoreNode leave history rows on their shard and the walk falls back to every shard (TestRefArchiveReadersSeeMovedEntityOnce).
+// walkNodeHistoryShards asks every shard GetNodeHistory reads for nid, in its
+// order and with its errors, and merges the answers (same shard rules as
+// HasNodeHistory). HasNodeHistory and NodeHistoryStamps share it so presence
+// and stamps of one ID come from the same rows. Liveness is read through the
+// shard's current-row stamps (backlog 42), the same answer as GetNodeHistory
+// except that a current row with a decodable temporal block but undecodable
+// body is live here. No moveMu: moves leave history on its shard and the walk
+// falls back to every shard (TestRefArchiveReadersSeeMovedEntityOnce).
 func walkNodeHistoryShards[T any](ts *Store, nid types.NodeID, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
 	var zero T
 	store, checkin, isArchive, err := ts.shardForNodeIDCheckedWithArchive(nid)
@@ -81,9 +75,8 @@ func walkNodeHistoryShards[T any](ts *Store, nid types.NodeID, ask func(*BadgerS
 	return historyWalkAnywhere(ts, store, acc, ask, merge)
 }
 
-// walkRelHistoryShards is walkNodeHistoryShards for relationships, walking
-// the shards GetRelHistory reads.
-// No moveMu: ArchiveNode/RestoreNode leave history rows on their shard and the walk falls back to every shard (TestRefArchiveReadersSeeMovedEntityOnce).
+// walkRelHistoryShards is walkNodeHistoryShards for relationships. No moveMu
+// (TestRefArchiveReadersSeeMovedEntityOnce).
 func walkRelHistoryShards[T any](ts *Store, rid types.RelID, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
 	var zero T
 	shard, checkin, isArchive, probe, err := ts.routeRelShard(rid)
@@ -136,8 +129,8 @@ func historyWalkWithArchive[T any](ts *Store, skip *BadgerStore, acc T, ask func
 }
 
 // historyWalkWithReference mirrors nodeHistoryWithReference /
-// relHistoryWithReference: the archive owner's answer merged with the
-// reference shard's.
+// relHistoryWithReference: the archive owner's answer merged with the reference
+// shard's.
 func historyWalkWithReference[T any](ts *Store, skip *BadgerStore, acc T, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
 	var zero T
 	ref, refCheckin, err := ts.checkoutRefShard()
@@ -156,8 +149,8 @@ func historyWalkWithReference[T any](ts *Store, skip *BadgerStore, acc T, ask fu
 }
 
 // historyWalkAnywhere mirrors the deleted-entity fan-out of GetNodeHistory /
-// GetRelHistory: every history shard is asked (the fan-out does not stop
-// early, so a shard error surfaces exactly as History's does).
+// GetRelHistory: every shard is asked, no early stop, so errors surface as in
+// History.
 func historyWalkAnywhere[T any](ts *Store, skip *BadgerStore, acc T, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
 	var zero T
 	err := ts.forEachHistoryShard(skip, func(candidate *BadgerStore) (bool, error) {

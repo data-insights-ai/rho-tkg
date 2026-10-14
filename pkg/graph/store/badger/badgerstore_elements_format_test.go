@@ -8,11 +8,9 @@ import (
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// Backlog 63: an Elements definition is a field an older binary skips, which
-// would load the index plain and key scalars only. A store that persists one
-// is stamped ElementsStoreFormatVersion, so a reader that predates it refuses
-// the open; a store without Elements keeps StoreFormatVersion and still opens
-// there. Node and relationship definitions both raise it.
+// Backlog 63: a store persisting an Elements definition (node or relationship) is
+// stamped ElementsStoreFormatVersion so an older reader refuses the open (it would
+// load the index plain); a store without Elements keeps StoreFormatVersion.
 func TestElementsIndexStampsFormatMarker(t *testing.T) {
 	elements := storecontract.PropertyIndexOptions{Elements: true}
 	for _, c := range []struct {
@@ -75,9 +73,8 @@ func TestElementsIndexStampsFormatMarker(t *testing.T) {
 	}
 }
 
-// An Elements definition reopened under PropertyIndexOnDisk would be served by
-// the shared on-disk keyspace, which keys scalars only (equality answers):
-// the open is refused.
+// An Elements definition reopened under PropertyIndexOnDisk is refused at open:
+// the shared on-disk keyspace keys scalars only.
 func TestElementsIndexRefusedOnDiskReopen(t *testing.T) {
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir})

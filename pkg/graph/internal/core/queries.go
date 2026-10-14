@@ -28,26 +28,18 @@ func (c *Core) lookupRelTypeQueryToken(typeName string) (uint16, bool) {
 
 // --- Store passthrough queries ---
 //
-// Get is defined alongside Delete in node_delete.go / relationship_delete.go;
-// the API 4.0 collapse merged the historical Get/Get pair into a
-// single context-aware Get.
-//
-// Every public read method below has a paired (*Core).*Locked helper that
-// runs the closure body without acquiring c.mu. The public method wraps the
-// helper under c.mu.RLock; the tx-side mirror in tx_consistent_reads.go
-// calls the helper directly under tx.mu (because BeginTx already holds
-// c.mu.Lock and sync.RWMutex is not reentrant — lesson 31). Validation that
-// does not touch shared state stays at the public-method layer so both the
-// standalone and the tx call paths get the same input checks.
+// Get lives in node_delete.go / relationship_delete.go. Every public read
+// has a paired (*Core).*Locked helper that runs the body without c.mu; the
+// public method wraps it in c.mu.RLock, the tx mirror (tx_consistent_reads.go)
+// calls it under tx.mu because BeginTx already holds c.mu.Lock and RWMutex is
+// not reentrant (lesson 31). Input validation stays at the public layer so
+// both paths check alike.
 
-// ByLabel returns nodes with the given label (resolved from string),
-// with optional pagination. Returns nil if the label is not registered.
-//
-// ByLabel opts carries a temporal filter (ValidAt or ValidStart/ValidEnd) the
-// query is history-aware: every known node (current + history) is scanned and
-// any version whose label set contained the requested label at the requested
-// time matches. Without a temporal filter, the call falls through to the
-// store-level label index for O(matches) lookup.
+// ByLabel returns nodes with the label (resolved from string), with optional
+// pagination; nil if the label is not registered. With a temporal filter
+// (ValidAt or ValidStart/ValidEnd) it is history-aware: every node (current +
+// history) is scanned and a version whose label set held the label at that
+// time matches. Otherwise it uses the store label index.
 func (n *NodeOps) ByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
@@ -72,23 +64,19 @@ func (n *NodeOps) ByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node,
 }
 
 // nodeRangeCardinalityScanner is the OPTIONAL store capability behind
-// NodeOps.RangeCardinality — an O(bitmap) range-count from the property index's
-// bit-sliced index (R1), with no node scan.
+// NodeOps.RangeCardinality (bit-sliced index count, no node scan).
 type nodeRangeCardinalityScanner interface {
 	NodeRangeCardinality(labelToken uint16, propKey string, min, max float64, inclMin, inclMax bool) (int64, bool, error)
 }
 
-// RangeCardinality returns the count of the label's nodes whose numeric propKey
-// value lies in [min,max] (inclusivity per flags) from the property index, NO
-// node scan: two prefix sums on an index created with
-// PropertyIndexOptions.RangeCounts (round 4 R2: O(log chunks) plus at most 512
-// counts each), else summed from the per-value bucket sizes — O(distinct values
-// in range). exact=false declines — the caller must scan-and-count — when the
-// store lacks the capability, the index is absent, the index is poisoned (it
-// holds an integer magnitude past 2^53, where float64 sort keys can collide), or
-// a temporal filter is set (the index is valid-time agnostic). Fractional values
-// and bounds are counted exactly. The bounds MUST capture the whole predicate;
-// the caller enforces that (only the count-over-pure-range fast path may use this).
+// RangeCardinality counts the label's nodes whose numeric propKey value lies
+// in [min,max] (inclusivity per flags) from the property index, no node scan:
+// prefix sums when the index has PropertyIndexOptions.RangeCounts, else
+// summed per-value buckets. exact=false declines (caller scans and counts)
+// when the store lacks the capability, the index is absent or poisoned (an
+// integer past 2^53), or a temporal filter is set (the index is valid-time
+// agnostic). The bounds MUST capture the whole predicate; the caller
+// enforces that.
 func (n *NodeOps) RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
@@ -122,14 +110,11 @@ type relRangeCardinalityScanner interface {
 	RelRangeCardinality(relTypeToken uint16, propKey string, min, max float64, inclMin, inclMax bool) (int64, bool, error)
 }
 
-// RangeCardinality is the relationship mirror of NodeOps.RangeCardinality: the count
-// of the type's relationships whose numeric propKey value lies in [min,max] summed
-// directly from the rel property index's per-value bucket sizes — O(distinct values
-// in range), NO rel scan. exact=false declines (the caller scans-and-counts) when the
-// store lacks the capability (tiered), the index
-// is absent or poisoned, or a temporal filter is set (the index is valid-time
-// agnostic). The bounds MUST capture the whole predicate (caller-enforced). This is
-// the rel ordering-soundness primitive for the ORDER BY r.prop LIMIT k push-down.
+// RangeCardinality is the relationship mirror of NodeOps.RangeCardinality,
+// summed from the rel property index's buckets, no rel scan. exact=false
+// declines when the store lacks the capability (tiered), the index is absent
+// or poisoned, or a temporal filter is set. Bounds MUST capture the whole
+// predicate. Backs the ORDER BY r.prop LIMIT k push-down.
 func (r *RelOps) RangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -157,32 +142,25 @@ func (r *RelOps) RangeCardinality(typeName, propKey string, min, max float64, in
 }
 
 // nodeLabelScanner is the OPTIONAL store capability behind
-// NodeOps.ForEachByLabel — streaming label scans whose peak memory stays
-// O(1) in the label's cardinality. Implemented by the in-tree memory and
-// badger stores; stores without it fall back to the materializing path.
+// NodeOps.ForEachByLabel: label scans with O(1) peak memory. Stores without
+// it use the materializing path.
 type nodeLabelScanner interface {
 	ForEachNodeByLabel(token uint16, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 }
 
-// ForEachByLabel streams nodes carrying the given label to fn in
-// snowflake-ID order; fn returning false stops the scan early. The
-// streaming sibling of ByLabel for scan consumers (count/filter/aggregate
-// pipelines) that must not materialize the full result slice.
+// ForEachByLabel streams nodes carrying the label to fn in snowflake-ID
+// order; fn returning false stops early. The streaming sibling of ByLabel
+// for scan consumers that must not materialize the result.
 //
-// Isolation is RELAXED relative to ByLabel: the scan capability snapshots
-// the ID set, then fetches rows and calls fn without holding graph locks —
-// fn may call back into the graph, and concurrent writers are neither
-// blocked nor observed atomically (deleted rows are skipped, new rows are
-// not seen). Rows are shared frozen pointers; fn must not mutate them.
+// Isolation is RELAXED: the IDs are snapshotted, then rows are fetched and fn
+// called without graph locks. fn may call back into the graph; concurrent
+// writers are neither blocked nor seen atomically. Rows are shared frozen
+// pointers; fn must not mutate them.
 //
-// A temporal-filter query streams too (round 6 request 12): ByLabel's answers
-// in ascending ID order (with or without NoSort; nothing is sorted), the
-// candidates resolved labelScanAtChunk at a time under the graph read lock
-// and handed to fn with no lock held, so a caller that stops early resolves
-// no further; each entity is answered as of a moment between the call and
-// its chunk's resolution. An entity without history rows is answered from
-// the row the label scan read (label_scan_at.go). A non-native store routes
-// a current-state scan through the materializing ByLabel path.
+// A temporal-filter query streams too: ByLabel's answers in ascending ID
+// order, resolved labelScanAtChunk at a time under the read lock and handed
+// to fn with no lock held (label_scan_at.go). A non-native store routes a
+// current-state scan through ByLabel.
 func (n *NodeOps) ForEachByLabel(label string, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
@@ -199,9 +177,7 @@ func (n *NodeOps) ForEachByLabel(label string, opts storepkg.QueryOpts, fn func(
 	}
 
 	if hasTemporalFilter(opts) {
-		// Streamed in ascending ID order, labelScanAtChunk candidates per
-		// hold of the read lock, fn called with no lock held (round 6
-		// request 12, label_scan_at.go).
+		// Ascending ID order; fn runs with no lock held (label_scan_at.go).
 		return c.forEachNodeByLabelAt(label, opts, fn)
 	}
 	scanner, native := c.store.(nodeLabelScanner)
@@ -241,23 +217,18 @@ type nodeRangeScanner interface {
 }
 
 // ForEachByLabelPropertyRange streams nodes carrying the label whose
-// NUMERIC propKey value lies within [min, max] (per the inclusivity
-// flags), in snowflake-ID order. The candidates come from the property
-// index's ordered numeric view, which OVER-SELECTS by design (float64
-// sort keys, ulp-widened bounds): fn must re-check its predicate with
-// exact comparison semantics. Returns storepkg.ErrIndexNotFound when no
-// property index with a usable ordered view exists for (label, propKey)
-// or the store lacks the capability — callers fall back to a label scan.
-// Same relaxed isolation and frozen-row contract as ForEachByLabel.
+// NUMERIC propKey value lies in [min, max], in snowflake-ID order. Candidates
+// come from the index's ordered numeric view, which OVER-SELECTS (float64
+// sort keys, ulp-widened bounds): fn must re-check with exact comparison.
+// Returns storepkg.ErrIndexNotFound when no usable index exists or the store
+// lacks the capability. Same isolation and frozen-row contract as
+// ForEachByLabel.
 //
-// A TEMPORAL QueryOpts (ValidAt / ValidStart+ValidEnd / TxAt / TxPin) is served
-// by a full fold instead (forEachNodeInRangeTemporal): ByLabel's resolved
-// version of every label member, kept when its value AT THE PIN is in range, in
-// ID order — the same value-at-t the ordered sibling uses. It needs no property
-// index, so it never returns ErrIndexNotFound, and it never filters current rows.
-// Under ValidStart+ValidEnd the range is tested on the ONE version ByLabel
-// resolves (the most recent overlapping one), unlike ByLabelAndProperty, which
-// matches a value held anywhere in the interval (backlog item 16).
+// A TEMPORAL QueryOpts is served by a full fold (forEachNodeInRangeTemporal):
+// the version ByLabel resolves, kept when its value AT THE PIN is in range.
+// No index needed, never ErrIndexNotFound. Under ValidStart+ValidEnd the
+// range tests the ONE resolved version, unlike ByLabelAndProperty, which
+// matches a value held anywhere in the interval (backlog 16).
 func (n *NodeOps) ForEachByLabelPropertyRange(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
@@ -295,40 +266,26 @@ func (n *NodeOps) ForEachByLabelPropertyRange(label, propKey string, min, max fl
 }
 
 // nodeOrderedRangeScanner is the OPTIONAL store capability behind
-// NodeOps.ForEachByLabelPropertyRangeOrdered — streaming NUMERIC range scans
-// that emit in contractual VALUE ORDER (the ORDER BY prop [LIMIT k] / top-k
-// access path). Implemented by the in-tree memory and badger stores.
+// NodeOps.ForEachByLabelPropertyRangeOrdered (ORDER BY prop [LIMIT k] path).
 type nodeOrderedRangeScanner interface {
 	ForEachNodeByLabelPropertyRangeOrdered(token uint16, propKey string, min, max float64, inclMin, inclMax, desc bool, fn func(*types.Node) bool) error
 }
 
 // ForEachByLabelPropertyRangeOrdered streams nodes carrying the label whose
-// NUMERIC propKey value lies within [min, max] to fn in CONTRACTUAL VALUE
-// ORDER — ascending, or descending when desc — with ties (equal values)
-// always broken by node ID ASCENDING in both directions. This is the ordered
-// / top-k access path: a query layer compiling `ORDER BY n.prop [ASC|DESC]
-// LIMIT k` streams here and returns false from fn once it has collected k
-// rows, so the LIMIT is pushed into the index and the scan stops at
-// O(k + log n) index work — never materializing the whole range.
+// NUMERIC propKey value lies in [min, max] to fn in CONTRACTUAL VALUE ORDER
+// (ascending, or descending when desc), ties by node ID ASCENDING in both
+// directions. A query layer compiling ORDER BY n.prop LIMIT k returns false
+// from fn after k rows, so the scan stops at O(k + log n) index work.
 //
-// The candidates come from the property index's ordered numeric view, which
-// OVER-SELECTS by design (float64 sort keys, ulp-widened bounds): fn MUST
-// re-check its predicate with exact comparison semantics (the door never
-// skips a boundary bucket — int64 magnitudes past 2^53 collapse onto
-// neighbouring sort keys, so the exact inclusivity check per inclMin/inclMax
-// is fn's responsibility).
+// Candidates come from the ordered numeric view, which OVER-SELECTS: fn MUST
+// re-check the exact bounds (int64 magnitudes past 2^53 collapse onto
+// neighbouring sort keys, so the door never skips a boundary bucket).
 //
-// Non-temporal opts take the index-backed fast path (O(k + log n) top-k) and
-// return storepkg.ErrIndexNotFound when no property index with a usable ordered
-// view exists for (label, propKey) or the store lacks the capability. A TEMPORAL
-// QueryOpts combination (ValidAt / ValidStart+ValidEnd / TxAt / TxPin) is instead
-// served by a SOUND FULL FOLD (Stage B): every label member is resolved to its
-// version at the pin, filtered to [min,max] on the value-AT-t, and sorted by that
-// value — so ordering over a past belief/valid state is correct and complete
-// (a value in range then but not now is included, and vice versa). The temporal
-// path needs no property index (it reads resolved node values directly) and is
-// O(N log N) in the label's temporal membership. Same relaxed isolation and
-// frozen-row contract as ForEachByLabel.
+// Non-temporal opts use the index (ErrIndexNotFound when no usable ordered
+// view exists or the store lacks the capability). A TEMPORAL QueryOpts is
+// served by a sound full fold (Stage B): every member resolved to its version
+// at the pin, filtered and sorted on the value AT t, O(N log N), no index.
+// Same isolation and frozen-row contract as ForEachByLabel.
 func (n *NodeOps) ForEachByLabelPropertyRangeOrdered(label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
@@ -340,11 +297,8 @@ func (n *NodeOps) ForEachByLabelPropertyRangeOrdered(label, propKey string, min,
 	if err := c.validateIndexLabel(label); err != nil {
 		return err
 	}
-	// Temporal ordered scan (Stage B): value-at-t is not indexed, so serve it as a
-	// SOUND FULL FOLD — resolve every label member to its version at the pin, keep
-	// those whose numeric value is in [min,max], sort by value. Needs no property
-	// index (it reads resolved node values directly). Non-temporal opts take the
-	// index-backed fast path below.
+	// Temporal ordered scan (Stage B): value-at-t is not indexed, so fold every
+	// label member's version at the pin, keep in-range values, sort by value.
 	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
 		if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 			return err
@@ -385,36 +339,25 @@ func (n *NodeOps) ForEachByLabelPropertyRangeOrdered(label, propKey string, min,
 }
 
 // nodePrefixScanner is the OPTIONAL store capability behind
-// NodeOps.ForEachByLabelPropertyPrefix — streaming STRING prefix scans that emit
-// in contractual lexicographic VALUE ORDER (the `WHERE n.k STARTS WITH $p
-// [ORDER BY n.k] [LIMIT k]` access path). Implemented by the in-tree memory and
-// badger stores.
+// NodeOps.ForEachByLabelPropertyPrefix (STARTS WITH [ORDER BY] [LIMIT k]).
 type nodePrefixScanner interface {
 	ForEachNodeByLabelPropertyPrefix(token uint16, propKey, prefix string, desc bool, fn func(*types.Node) bool) error
 }
 
 // ForEachByLabelPropertyPrefix streams nodes carrying the label whose STRING
-// propKey value begins with prefix, to fn in CONTRACTUAL VALUE ORDER —
-// lexicographic ascending, or descending when desc — with ties (equal values)
-// always broken by node ID ASCENDING in both directions. It is the string prefix
-// / `STARTS WITH` access path: a query layer compiling `WHERE n.k STARTS WITH $p
-// ORDER BY n.k [ASC|DESC] LIMIT k` streams here and returns false from fn once it
-// has k rows, so the LIMIT is pushed into the index (O(k + log n) index work — the
-// whole prefix range is never materialized). An empty prefix matches every string
-// value of the property.
+// propKey value begins with prefix to fn in CONTRACTUAL VALUE ORDER
+// (lexicographic ascending, or descending when desc), ties by node ID
+// ASCENDING in both directions. A LIMIT k is pushed into the index by
+// returning false from fn after k rows. An empty prefix matches every string
+// value.
 //
-// Candidates come from the property index's ordered STRING view, which — unlike
-// the numeric ordered view — is EXACT (string sort keys never collide), so fn
-// receives rows that already satisfy the prefix; fn still owns any further
-// predicate.
+// Candidates come from the ordered STRING view, which is EXACT (string sort
+// keys never collide), so fn receives rows already matching the prefix.
 //
-// Non-temporal opts take the index-backed fast path and return
-// storepkg.ErrIndexNotFound when no property index with a usable ordered view
-// exists for (label, propKey) or the store lacks the capability. A TEMPORAL
-// QueryOpts combination is served by a SOUND FULL FOLD (Stage B): every label
-// member is resolved to its version at the pin, filtered to the prefix on the
-// value-AT-t, and sorted lexicographically — needs no property index, O(N log N).
-// Same relaxed isolation and frozen-row contract as ForEachByLabel.
+// Non-temporal opts use the index (ErrIndexNotFound when no usable ordered
+// view exists or the store lacks the capability). A TEMPORAL QueryOpts is
+// served by a sound full fold (Stage B), O(N log N), no index. Same
+// isolation and frozen-row contract as ForEachByLabel.
 func (n *NodeOps) ForEachByLabelPropertyPrefix(label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
@@ -426,10 +369,8 @@ func (n *NodeOps) ForEachByLabelPropertyPrefix(label, propKey, prefix string, de
 	if err := c.validateIndexLabel(label); err != nil {
 		return err
 	}
-	// Temporal prefix scan (Stage B): value-at-t is not indexed, so serve it as a
-	// SOUND FULL FOLD — resolve every label member to its version at the pin, keep
-	// those whose string value begins with prefix, sort lexicographically. Needs no
-	// property index. Non-temporal opts take the index-backed fast path below.
+	// Temporal prefix scan (Stage B): value-at-t is not indexed, so fold every
+	// label member's version at the pin, keep matching strings, sort.
 	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
 		if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 			return err
@@ -488,12 +429,10 @@ func (c *Core) nodeLabelCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*ty
 	return current, candIDs, nil
 }
 
-// nodeLabelCandidateIDsAt is nodeLabelCandidatesAt for a caller that resolves
-// every candidate itself and needs no current row (the effective scans): the
-// label's current members come from store.MemberIDsCapability without reading
-// a row (backlog 33: each candidate's row is then read once, by its own
-// resolution), else from the rows. The capability's stores keep no tiers, so
-// opts.Depth selects nothing there (their NodesByLabel ignores it too).
+// nodeLabelCandidateIDsAt is nodeLabelCandidatesAt for callers that resolve
+// every candidate themselves and need no current row: current members come
+// from store.MemberIDsCapability without reading rows (backlog 33), else
+// from the rows. Those stores keep no tiers, so opts.Depth selects nothing.
 // Callers hold c.mu (R or W).
 func (c *Core) nodeLabelCandidateIDsAt(tok uint16, opts storepkg.QueryOpts) ([]types.NodeID, error) {
 	if c.memberIDs == nil {
@@ -512,32 +451,26 @@ func (c *Core) nodeLabelCandidateIDsAt(tok uint16, opts storepkg.QueryOpts) ([]t
 // valid-time envelope prune). Callers hold c.mu (R or W).
 func (c *Core) nodeLabelCandidatesFrom(tok uint16, currentIDs []types.NodeID, opts storepkg.QueryOpts) ([]types.NodeID, error) {
 
-	// Gather the candidate id set. K1: when the store owns a transaction-time
-	// label-membership sidecar, scope candidates to the label's ever-members
-	// (O(matches)) instead of folding ALL node history (O(everything that ever
-	// carried ANY label)); otherwise fold by depth. The chain resolver
-	// (findNodeVersionForOpts) stays the correctness authority — both the K1
-	// sidecar and the B4 envelope prune below are sound supersets, so any
-	// over-included candidate is rejected there. Wrapped stores decline the
-	// sidecar and take the full fold; a depth-scoped read on tiered keeps the
-	// depth fold (the sidecar answers for every shard).
+	// Gather candidate IDs. K1: with a transaction-time label-membership
+	// sidecar, scope to the label's ever-members (O(matches)) instead of folding
+	// all node history; otherwise fold by depth. The chain resolver
+	// (findNodeVersionForOpts) stays the authority: the sidecar and the B4
+	// envelope prune are sound supersets. Wrapped stores decline the sidecar; a
+	// depth-scoped read on tiered keeps the depth fold.
 	//
-	// The candidates come in ascending ID order (round 6 request 12): the
-	// current members (the stores hand them out sorted) merged with the IDs
-	// the gather adds, so a read pairs each candidate with its current row in
-	// one forward walk and never sorts its answers (label_scan_at.go).
+	// Candidates come in ascending ID order (current members merged with the
+	// gathered IDs), so a read walks forward once and never sorts
+	// (label_scan_at.go).
 	candIDs, err := c.nodeLabelCandidatesSorted(tok, currentIDs, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	// when the store owns a per-label valid-time ENVELOPE index, drop every
-	// candidate whose envelope provably cannot overlap the query's valid-time
-	// filter — WITHOUT loading its version chain. PruneTemporalCandidates returns
-	// ok=false (candidates unchanged) when opts carries no valid-time filter or no
-	// envelope covers this label. The envelope is a sound superset of every
-	// version's interval, so a kept id may still be rejected by the resolver, but a
-	// pruned id can never have matched (positive-evidence-only pruning).
+	// With a per-label valid-time ENVELOPE index, drop candidates whose envelope
+	// cannot overlap the query's valid-time filter without loading their chains.
+	// PruneTemporalCandidates returns ok=false (unchanged) when opts has no
+	// valid-time filter or no envelope covers the label. The envelope is a sound
+	// superset: pruning is positive-evidence-only.
 	if c.temporalCandidates != nil {
 		if kept, ok := c.temporalCandidates.PruneTemporalCandidates(tok, candIDs, opts); ok {
 			candIDs = kept
@@ -549,10 +482,9 @@ func (c *Core) nodeLabelCandidatesFrom(tok uint16, currentIDs []types.NodeID, op
 	return candIDs, nil
 }
 
-// nodeLabelCandidatesSorted is the candidate gather of nodeLabelCandidatesFrom
-// in ascending ID order: the K1 ever-members (pruned by the transaction-time
-// pin: an ever-member whose label arrived after the pin cannot match) or the history fold by depth,
-// united with currentIDs.
+// nodeLabelCandidatesSorted is the gather of nodeLabelCandidatesFrom in
+// ascending ID order: K1 ever-members (pruned by the tx-time pin) or the
+// history fold by depth, united with currentIDs.
 func (c *Core) nodeLabelCandidatesSorted(tok uint16, currentIDs []types.NodeID, opts storepkg.QueryOpts) ([]types.NodeID, error) {
 	if !slices.IsSorted(currentIDs) {
 		currentIDs = slices.Sorted(slices.Values(currentIDs))
@@ -602,18 +534,15 @@ func (c *Core) nodesByLabelLocked(label string, opts storepkg.QueryOpts) ([]*typ
 	return c.nodesByLabelTemporalLocked(tok, opts)
 }
 
-// ByType returns relationships with the given type (resolved from string),
-// with optional pagination. Returns nil if the type is not registered.
-//
-// ByType opts carries a temporal filter, every known relationship (current +
-// history) is scanned. The type token is structurally immutable, so the only
-// history-relevant information added by this scan is deleted/closed-out
-// relationships that the current type index no longer references. Without a
-// temporal filter, the call falls through to the store-level type index.
+// ByType returns relationships with the type (resolved from string), with
+// optional pagination; nil if the type is not registered. With a temporal
+// filter every relationship (current + history) is scanned; the type token
+// is immutable, so this only adds deleted/closed-out relationships the type
+// index no longer references. Otherwise it uses the store type index.
 //
 // DECLARED view under a temporal filter: each relationship's own asserted
-// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
-// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
+// validity, NOT masked by endpoint validity. Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt give the EFFECTIVE view.
 func (r *RelOps) ByType(typeName string, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -679,11 +608,10 @@ func (c *Core) relTypeCandidatesFrom(tok uint16, currentIDs []types.RelID, opts 
 		return nil, err
 	}
 
-	// BACKLOG 21c: when the store owns a per-rel-type valid-time ENVELOPE
-	// index, drop every candidate whose envelope provably cannot overlap the
-	// query's valid-time filter — the rel-side mirror of the temporalCandidates
-	// prune in nodesByLabelLocked. Sound superset: a kept id may still be
-	// rejected by the resolver, a pruned id never could have matched.
+	// Backlog 21c: with a per-rel-type valid-time ENVELOPE index, drop
+	// candidates whose envelope cannot overlap the query's valid-time filter (rel
+	// mirror of the temporalCandidates prune in nodesByLabelLocked). Sound
+	// superset.
 	if c.relTypeTemporalCandidates != nil {
 		if kept, ok := c.relTypeTemporalCandidates.PruneRelTypeTemporalCandidates(tok, candIDs, opts); ok {
 			candIDs = kept
@@ -743,37 +671,28 @@ func (c *Core) relsByTypeLocked(typeName string, opts storepkg.QueryOpts) ([]*ty
 	return c.relsByTypeTemporalLocked(tok, opts)
 }
 
-// relTypeScanner is the OPTIONAL store capability behind
-// RelOps.ForEachByType — streaming type scans whose peak memory stays O(1)
-// in the type's cardinality. Implemented by the in-tree memory and badger
-// stores; stores without it fall back to the materializing path.
+// relTypeScanner is the OPTIONAL store capability behind RelOps.ForEachByType:
+// type scans with O(1) peak memory. Stores without it use the materializing
+// path.
 type relTypeScanner interface {
 	ForEachRelByType(token uint16, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 }
 
-// ForEachByType streams relationships carrying the given type to fn in
-// snowflake-ID order; fn returning false stops the scan early. The
-// streaming sibling of ByType for scan consumers (count/filter/aggregate
-// pipelines) that must not materialize the full result slice.
+// ForEachByType streams relationships carrying the type to fn in
+// snowflake-ID order; fn returning false stops early. The streaming sibling
+// of ByType.
 //
-// Isolation is RELAXED relative to ByType: the scan capability snapshots
-// the ID set, then fetches rows and calls fn without holding graph locks —
-// fn may call back into the graph, and concurrent writers are neither
-// blocked nor observed atomically (deleted rows are skipped, new rows are
-// not seen). Rows are shared frozen pointers; fn must not mutate them.
+// Isolation is RELAXED: the IDs are snapshotted, then rows are fetched and fn
+// called without graph locks. fn may call back into the graph; concurrent
+// writers are neither blocked nor seen atomically. Rows are shared frozen
+// pointers; fn must not mutate them.
 //
-// A temporal-filter query streams too (round 6 request 12): ByType's answers
-// in ascending ID order (with or without NoSort; nothing is sorted), the
-// candidates resolved labelScanAtChunk at a time under the graph read lock
-// and handed to fn with no lock held, so a caller that stops early resolves
-// no further; each entity is answered as of a moment between the call and
-// its chunk's resolution. An entity without history rows is answered from
-// the row the type scan read (label_scan_at.go). A non-native store routes
-// a current-state scan through the materializing ByType path.
+// A temporal-filter query streams too: ByType's answers in ascending ID
+// order, resolved labelScanAtChunk at a time under the read lock and handed
+// to fn with no lock held (label_scan_at.go). A non-native store routes a
+// current-state scan through ByType.
 //
-// DECLARED view under a temporal filter: each relationship's own asserted
-// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
-// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
+// DECLARED view under a temporal filter, as ByType (not masked by endpoint validity).
 func (r *RelOps) ForEachByType(typeName string, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -822,20 +741,18 @@ func (r *RelOps) ForEachByType(typeName string, opts storepkg.QueryOpts, fn func
 }
 
 // relAdjacencyScanner is the OPTIONAL store capability behind
-// RelOps.ForEachOutgoing / ForEachIncoming — streaming adjacency scans for
-// hub-degree consumers (BFS expansion around power-law hubs) that must not
-// materialize a hub's full adjacency slice.
+// RelOps.ForEachOutgoing / ForEachIncoming: streaming adjacency scans for
+// hub-degree consumers that must not materialize a hub's adjacency.
 type relAdjacencyScanner interface {
 	ForEachOutgoingRel(nid types.NodeID, typeToken uint16, fn func(*types.Relationship) bool) error
 	ForEachIncomingRel(nid types.NodeID, typeToken uint16, fn func(*types.Relationship) bool) error
 }
 
 // ForEachOutgoing streams the node's outgoing relationships (optionally
-// type-filtered; empty typeName means all types) to fn in snowflake-ID
-// order; fn returning false stops the scan early. The streaming sibling of
-// Outgoing — same relaxed isolation and frozen-row contract as
-// ForEachByType. Unregistered typeName streams nothing (after verifying the
-// node exists, matching Outgoing).
+// type-filtered; empty typeName means all types) to fn in snowflake-ID order;
+// fn returning false stops early. Same isolation and frozen-row contract as
+// ForEachByType. An unregistered typeName streams nothing (after verifying
+// the node exists, as Outgoing does).
 func (r *RelOps) ForEachOutgoing(nodeID types.NodeID, typeName string, fn func(*types.Relationship) bool) error {
 	return r.forEachAdjacent(nodeID, typeName, false, fn)
 }
@@ -914,13 +831,11 @@ type relEndpointScanner interface {
 }
 
 // ForEachAdjacentEndpoint streams (relID, otherEndpoint) for the node's
-// adjacency in the given direction WITHOUT decoding relationship rows — for
-// traversals that need only the neighbour, not the relationship's properties
-// (the dominant per-edge cost on the disk-backed store is the rel-row decode).
-// Stores without the native capability fall back to decoding via
-// Outgoing/Incoming and projecting the endpoint (correct, identical results —
-// the in-memory store pays no decode anyway). Same relaxed isolation as
-// ForEachOutgoing; fn returning false stops the scan.
+// adjacency in the given direction WITHOUT decoding relationship rows, for
+// traversals that need only the neighbour. Stores without the native
+// capability decode via Outgoing/Incoming and project the endpoint (same
+// results). Same relaxed isolation as ForEachOutgoing; fn returning false
+// stops the scan.
 func (r *RelOps) ForEachAdjacentEndpoint(nodeID types.NodeID, typeName string, incoming bool, fn func(rel types.RelID, other types.NodeID) bool) error {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -982,38 +897,28 @@ func (r *RelOps) ForEachAdjacentEndpoint(nodeID types.NodeID, typeName string, i
 }
 
 // relEndpointScannerAt is the OPTIONAL store capability behind
-// RelOps.ForEachAdjacentEndpointAt — the temporal sibling of relEndpointScanner.
-// It yields the OTHER endpoint of edges passing the opts temporal filter while
-// rejecting expired edges from inline valid-time stamps WITHOUT decoding the
-// relationship row.
+// RelOps.ForEachAdjacentEndpointAt: yields the OTHER endpoint of edges
+// passing the opts temporal filter, rejecting expired edges from inline
+// valid-time stamps without decoding the row.
 type relEndpointScannerAt interface {
 	ForEachAdjacentEndpointAt(nid types.NodeID, typeToken uint16, incoming bool, opts storepkg.QueryOpts, fn func(rel types.RelID, other types.NodeID) bool) error
 }
 
 // ForEachAdjacentEndpointAt streams (relID, otherEndpoint) for the node's
 // adjacency in the given direction under the opts temporal filter (ValidAt /
-// ValidStart+ValidEnd / TxAt / TxPin). With a filter set the door is
-// VERSION-AWARE (v4.35.0; the transaction-time pins since the 2026-09-24 fix —
-// before, a TxAt- or TxPin-only query fell through to the live-row scan and
-// the pin was ignored):
-// each adjacent relationship resolves to the version valid under opts, exactly
-// as the node doors and Temporal().OutgoingRelsAt do, and a since-deleted
-// edge stays visible inside its window — see forEachAdjacentRelVersionLocked.
-// (Before v4.35.0 the door filtered the live row only, so an updated edge
-// vanished from earlier instants.) Under a pure valid-time filter a live
+// ValidStart+ValidEnd / TxAt / TxPin). With a filter the door is
+// VERSION-AWARE: each adjacent relationship resolves to the version valid
+// under opts, as the node doors and Temporal().OutgoingRelsAt do, and a
+// since-deleted edge stays visible inside its window
+// (forEachAdjacentRelVersionLocked). Under a pure valid-time filter a live
 // relationship without history rows (store.HistoryPresenceCapability) is
-// answered from the live row the door already read, without loading its
-// version chain (round 5 request 6; singleVersionAdjacency). With no temporal
-// filter set this is exactly ForEachAdjacentEndpoint. fn returning false
-// stops the scan.
+// answered from the live row (singleVersionAdjacency). Without a temporal
+// filter this is ForEachAdjacentEndpoint. fn returning false stops the scan.
 //
-// The stores' inline-stamp scanners (relEndpointScannerAt) are no longer
-// consulted under a temporal filter: a stamp can only prove the LIVE row
-// out-of-window, which says nothing about older versions.
+// The stores' inline-stamp scanners (relEndpointScannerAt) are not consulted
+// under a temporal filter: a stamp only proves the LIVE row out-of-window.
 //
-// DECLARED view under a temporal filter: each relationship's own asserted
-// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
-// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
+// DECLARED view under a temporal filter, as ByType (not masked by endpoint validity).
 func (r *RelOps) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(rel types.RelID, other types.NodeID) bool) error {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -1093,23 +998,19 @@ func (r *RelOps) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string,
 }
 
 // relRelScannerAt is the OPTIONAL store capability behind
-// RelOps.ForEachAdjacentRelAt — the decode-arm sibling of relEndpointScannerAt.
-// It streams DECODED relationship rows for edges passing the opts temporal
-// filter while SKIPPING the decode of inline-stamp-rejected edges.
+// RelOps.ForEachAdjacentRelAt: the decode-arm sibling of relEndpointScannerAt,
+// skipping the decode of inline-stamp-rejected edges.
 type relRelScannerAt interface {
 	ForEachAdjacentRelAt(nid types.NodeID, typeToken uint16, incoming bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 }
 
 // ForEachAdjacentRelAt streams the DECODED relationships for the node's
-// adjacency in the given direction under the opts temporal filter. With a
-// filter set the door is VERSION-AWARE (v4.35.0): it yields, per adjacent
-// relationship, the version valid under opts — see ForEachAdjacentEndpointAt
-// and forEachAdjacentRelVersionLocked. With no temporal filter this is exactly
-// ForEachOutgoing/ForEachIncoming. fn returning false stops the scan.
+// adjacency under the opts temporal filter. With a filter it is
+// VERSION-AWARE: per adjacent relationship, the version valid under opts (see
+// ForEachAdjacentEndpointAt). Without one it is ForEachOutgoing/Incoming. fn
+// returning false stops the scan.
 //
-// DECLARED view under a temporal filter: each relationship's own asserted
-// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
-// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
+// DECLARED view under a temporal filter, as ByType (not masked by endpoint validity).
 func (r *RelOps) ForEachAdjacentRelAt(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -1230,11 +1131,10 @@ func (c *Core) outgoingRelsLocked(nodeID types.NodeID, typeName string) ([]*type
 	return rels, nil
 }
 
-// OutgoingForNodes returns outgoing relationships for multiple nodes
-// in a single batched operation. Returns a map from nodeID to its outgoing rels
-// (sorted by ID). Nodes with zero outgoing rels are absent from the map.
-// If typeName is non-empty, only relationships of that type are returned.
-// Unregistered typeName returns nil, nil. nil/empty nodeIDs returns nil, nil.
+// OutgoingForNodes returns outgoing relationships for many nodes in one
+// batch: a map nodeID -> rels sorted by ID; nodes without any are absent. A
+// non-empty typeName filters by type; an unregistered one, or nil/empty
+// nodeIDs, returns nil, nil.
 func (r *RelOps) OutgoingForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -1290,11 +1190,10 @@ func (c *Core) outgoingRelsForNodesLocked(nodeIDs []types.NodeID, typeName strin
 	return rels, nil
 }
 
-// IncomingForNodes returns incoming relationships for multiple nodes
-// in a single batched operation. Returns a map from nodeID to its incoming rels
-// (sorted by ID). Nodes with zero incoming rels are absent from the map.
-// If typeName is non-empty, only relationships of that type are returned.
-// Unregistered typeName returns nil, nil. nil/empty nodeIDs returns nil, nil.
+// IncomingForNodes returns incoming relationships for many nodes in one
+// batch: a map nodeID -> rels sorted by ID; nodes without any are absent. A
+// non-empty typeName filters by type; an unregistered one, or nil/empty
+// nodeIDs, returns nil, nil.
 func (r *RelOps) IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -1350,47 +1249,31 @@ func (c *Core) incomingRelsForNodesLocked(nodeIDs []types.NodeID, typeName strin
 	return rels, nil
 }
 
-// OutgoingForNodesAtTx is the bitemporal (transaction-time-pinned) counterpart
-// of OutgoingForNodes: instead of the live adjacency index alone, it resolves
-// each candidate relationship's version through the SAME chain seam the generic
-// TxAt door uses (findRelVersionForOpts, which funnels through
-// filterRelChainByTxAt — the tombstone-normalization seam shared with
-// NodeAtTx/RelAtTx and the named as-of door).
+// OutgoingForNodesAtTx is the bitemporal (tx-time-pinned) counterpart of
+// OutgoingForNodes: each candidate relationship's version is resolved through
+// the chain seam the TxAt door uses (findRelVersionForOpts ->
+// filterRelChainByTxAt).
 //
-// SEMANTICS — this door agrees with the TxAt-pinned BITEMPORAL door
-// (QueryOpts{TxAt: txAt}) filtered by endpoint, NOT with a belief-state pin.
-// The TxAt arm applies a POINT valid-time probe at c.readNow() when no valid-time
-// opts are set (see the QueryOpts.TxAt warning): an edge whose valid interval
-// lies wholly in the past — a CloseVersion-ed edge, or a width-1 [t, t+1)
-// point-event edge — is SILENTLY DROPPED here even though it was believed at
-// txAt. For pure knowledge-time (belief-state) semantics that returns every
-// edge believed at the pin regardless of valid time, use OutgoingForNodesAtPin
-// / IncomingForNodesAtPin instead (agreeing with QueryOpts{TxPin} filtered by
-// endpoint). The two doors are deliberately distinct — do NOT treat this one as
-// a belief-state pin.
+// SEMANTICS: agrees with the TxAt-pinned BITEMPORAL door (QueryOpts{TxAt})
+// filtered by endpoint, NOT with a belief-state pin. The TxAt arm applies a
+// POINT valid-time probe at c.readNow() when no valid-time opts are set (see
+// the QueryOpts.TxAt warning), so an edge whose valid interval lies wholly in
+// the past (CloseVersion-ed, or width-1 point-event) is silently dropped even
+// though it was believed at txAt. For pure belief-state semantics use
+// OutgoingForNodesAtPin / IncomingForNodesAtPin.
 //
-// The candidate relationship-ID set is the live per-node adjacency (seeds the
-// common case) UNIONED with each seed's ex-adjacency — the relationships that
-// named it in a row its live adjacency no longer holds (deleted ones, earlier
-// lives of re-imported ones) — via forEachRelAdjacencyCandidateID, mirroring
-// the single-node OutgoingRelsAt/IncomingRelsAt fold (see AGENTS.md
-// "Adjacency-at-t fold uses the seed's ex-adjacency"). A relationship deleted after txAt is
-// therefore still visible (delete is a transaction-time tombstone, lesson 60);
-// one created after txAt is invisible; one deleted before txAt is invisible;
-// a backfilled relationship (AddWithTx) is visible from its backfilled TxFrom
-// onward, not from wall-clock creation time.
+// Candidates: the live adjacency UNIONED with each seed's ex-adjacency
+// (forEachRelAdjacencyCandidateID; AGENTS.md "Adjacency-at-t fold uses the
+// seed's ex-adjacency"). A relationship deleted after txAt is still visible
+// (delete is a tx-time tombstone, lesson 60); one created after, or deleted
+// before, txAt is not; a backfilled one (AddWithTx) is visible from its
+// backfilled TxFrom.
 //
-// txAt == 0 delegates to OutgoingForNodes verbatim (no TX filter — identical
-// to the generic ByType(opts) door's "TxAt==0 means no temporal filter"
-// convention, and it keeps existing callers of OutgoingForNodes unaffected —
-// this method is purely additive). An unregistered typeName still validates
-// that every requested node currently exists (mirrors OutgoingForNodes) and
-// returns (nil, nil) on success. Returned relationships are sorted by ID
-// within each node's slice.
+// txAt == 0 delegates to OutgoingForNodes. An unregistered typeName still
+// validates that every node exists and returns (nil, nil). Results are
+// sorted by ID within each node's slice.
 //
-// DECLARED view under a temporal filter: each relationship's own asserted
-// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
-// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
+// DECLARED view under a temporal filter, as ByType (not masked by endpoint validity).
 func (r *RelOps) OutgoingForNodesAtTx(nodeIDs []types.NodeID, typeName string, txAt types.Instant) (map[types.NodeID][]*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -1418,13 +1301,9 @@ func (r *RelOps) OutgoingForNodesAtTx(nodeIDs []types.NodeID, typeName string, t
 	return result, err
 }
 
-// IncomingForNodesAtTx is the bitemporal counterpart of IncomingForNodes. See
-// OutgoingForNodesAtTx for the resolution semantics (identical, mirrored for
-// the incoming direction).
-//
-// DECLARED view under a temporal filter: each relationship's own asserted
-// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
-// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
+// IncomingForNodesAtTx is the bitemporal counterpart of IncomingForNodes; see
+// OutgoingForNodesAtTx (mirrored). DECLARED view, not masked by endpoint
+// validity.
 func (r *RelOps) IncomingForNodesAtTx(nodeIDs []types.NodeID, typeName string, txAt types.Instant) (map[types.NodeID][]*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -1453,13 +1332,10 @@ func (r *RelOps) IncomingForNodesAtTx(nodeIDs []types.NodeID, typeName string, t
 }
 
 // directionalRelsForNodesAtTxLocked is the lock-free shared body of
-// OutgoingForNodesAtTx / IncomingForNodesAtTx. outgoing=true selects the
-// start-endpoint (outgoing) direction. See OutgoingForNodesAtTx for the
-// resolution semantics.
+// Outgoing/IncomingForNodesAtTx; outgoing=true selects the start-endpoint
+// direction.
 func (c *Core) directionalRelsForNodesAtTxLocked(nodeIDs []types.NodeID, typeName string, txAt types.Instant, outgoing bool) (map[types.NodeID][]*types.Relationship, error) {
-	// Relationship-purge watermarks (backlog 21): the doors on this helper
-	// had no retention gate, so only the relationship family applies (their
-	// node-purge behaviour is unchanged).
+	// Relationship-purge watermarks apply (backlog 21).
 	if err := c.checkRelsOnlyRetention(typeName, txAt); err != nil {
 		return nil, err
 	}
@@ -1547,55 +1423,37 @@ func (c *Core) directionalRelsForNodesAtTxLocked(nodeIDs []types.NodeID, typeNam
 	return result, nil
 }
 
-// OutgoingForNodesAtPin is the pure knowledge-time (belief-state) counterpart of
-// OutgoingForNodes / OutgoingForNodesAtTx: it returns every outgoing
-// relationship that was BELIEVED at the transaction-time pin, with NO valid-time
-// filtering. It agrees with ByType(QueryOpts{TxPin: pin}) filtered by endpoint,
-// BY CONSTRUCTION — every candidate is resolved through the SAME as-of
-// resolution the generic TxPin door uses (findRelVersionForOpts's TxPin arm ->
-// relAsOfLocked -> the chain resolver + storeutil.SelectAsOf), so the two doors
-// cannot drift (rule 17: two doors, same shape).
+// OutgoingForNodesAtPin is the pure belief-state counterpart of
+// OutgoingForNodes / OutgoingForNodesAtTx: every outgoing relationship
+// BELIEVED at the transaction-time pin, with NO valid-time filtering. It
+// agrees with ByType(QueryOpts{TxPin: pin}) filtered by endpoint BY
+// CONSTRUCTION: candidates go through the same as-of resolution as the TxPin
+// door (findRelVersionForOpts -> relAsOfLocked -> storeutil.SelectAsOf), so
+// the doors cannot drift (rule 17).
 //
-// This is the door to use for AS-OF-SYSTEM-TIME semantics. Unlike
-// OutgoingForNodesAtTx (which valid-filters at c.readNow() when no valid opts are
-// set and therefore silently drops an edge whose valid interval lies wholly in
-// the past — a CloseVersion-ed edge, or a width-1 [t, t+1) point-event edge),
-// this door returns EVERY edge believed at the pin: past-valid facts, point
-// events, and unset-valid_from (snowflake-fallback) edges alike. An edge
-// hard-deleted after the pin is still visible (delete is a transaction-time
-// tombstone); one created after the pin is invisible; one deleted before the pin
-// is invisible; a backfilled edge (AddWithTx) is visible from its backfilled
-// TxFrom onward.
+// Use this for AS-OF-SYSTEM-TIME semantics. Unlike OutgoingForNodesAtTx it
+// returns EVERY edge believed at the pin: past-valid facts, point events and
+// unset-valid_from edges alike. An edge hard-deleted after the pin is still
+// visible; one created after, or deleted before, the pin is not; a
+// backfilled edge (AddWithTx) is visible from its backfilled TxFrom.
 //
-// Candidate set — the live per-node adjacency of the CURRENTLY-EXISTING seeds
-// UNIONED with the ex-adjacency of EVERY seed (a deleted seed included) via
-// forEachRelAdjacencyCandidateID (see AGENTS.md "Adjacency-at-t fold uses the
-// seed's ex-adjacency"): a relationship's rows name a node its live adjacency
-// does not only when it is deleted or was re-imported with other endpoints.
+// Candidates: the live adjacency of the CURRENTLY-EXISTING seeds UNIONED with
+// the ex-adjacency of EVERY seed, deleted ones included
+// (forEachRelAdjacencyCandidateID; AGENTS.md "Adjacency-at-t fold uses the
+// seed's ex-adjacency").
 //
-// SEED TOLERANCE — unlike OutgoingForNodes/AtTx, this door does NOT hard-error
-// ErrNodeNotFound on a seed that is absent from CURRENT state. A seed that was
-// part of the belief state at the pin but was HARD-DELETED afterwards is
-// accepted: its live adjacency entries were purged by the cascade, so it is
-// excluded from the store's live-adjacency probe (which would otherwise
-// ErrNodeNotFound), but its pre-delete edges — themselves cascade-deleted, hence
-// present in the deleted-rel fold and still naming the seed as their (immutable)
-// endpoint — are recovered and returned. A seed created after the pin
-// contributes nothing (its live edges resolve to empty at the pin). A seed that
-// NEVER existed at the pin (or never existed at all) contributes nothing and is
-// SKIPPED SILENTLY — matching ByType{TxPin} filtered by endpoint, which simply
-// has no entry for such a node (no rel believed at the pin names it). Seed IDs
-// are still format-validated (ValidateNodeID), so a zero/invalid ID is rejected.
+// SEED TOLERANCE: unlike OutgoingForNodes/AtTx, a seed absent from CURRENT
+// state does NOT error with ErrNodeNotFound. A seed hard-deleted after the
+// pin is accepted: its cascade-deleted pre-delete edges still name it as
+// endpoint and are recovered. A seed created after the pin, or that never
+// existed, contributes nothing and is skipped silently (as ByType{TxPin}
+// filtered by endpoint). Seed IDs are still format-validated
+// (ValidateNodeID).
 //
-// pin == 0 delegates to OutgoingForNodes verbatim (belief-state at the zero
-// instant is "no pin" — identical to the generic ByType(QueryOpts{TxPin:0})
-// door's "no temporal filter" convention; the current-state door's
-// ErrNodeNotFound seed validation applies in that delegated case). Returned
-// relationships are sorted by ID within each node's slice.
+// pin == 0 delegates to OutgoingForNodes (including its ErrNodeNotFound seed
+// validation). Results are sorted by ID within each node's slice.
 //
-// DECLARED view under a temporal filter: each relationship's own asserted
-// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
-// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
+// DECLARED view under a temporal filter, as ByType (not masked by endpoint validity).
 func (r *RelOps) OutgoingForNodesAtPin(nodeIDs []types.NodeID, typeName string, pin types.Instant) (map[types.NodeID][]*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -1623,13 +1481,9 @@ func (r *RelOps) OutgoingForNodesAtPin(nodeIDs []types.NodeID, typeName string, 
 	return result, err
 }
 
-// IncomingForNodesAtPin is the belief-state counterpart of IncomingForNodes. See
-// OutgoingForNodesAtPin for the resolution semantics (identical, mirrored for
-// the incoming direction).
-//
-// DECLARED view under a temporal filter: each relationship's own asserted
-// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
-// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
+// IncomingForNodesAtPin is the belief-state counterpart of IncomingForNodes;
+// see OutgoingForNodesAtPin (mirrored). DECLARED view, not masked by
+// endpoint validity.
 func (r *RelOps) IncomingForNodesAtPin(nodeIDs []types.NodeID, typeName string, pin types.Instant) (map[types.NodeID][]*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -1658,13 +1512,10 @@ func (r *RelOps) IncomingForNodesAtPin(nodeIDs []types.NodeID, typeName string, 
 }
 
 // directionalRelsForNodesAtPinLocked is the lock-free shared body of
-// OutgoingForNodesAtPin / IncomingForNodesAtPin. outgoing=true selects the
-// start-endpoint (outgoing) direction. See OutgoingForNodesAtPin for the
-// resolution semantics and the seed-tolerance contract.
+// Outgoing/IncomingForNodesAtPin; outgoing=true selects the start-endpoint
+// direction. See OutgoingForNodesAtPin for the seed-tolerance contract.
 func (c *Core) directionalRelsForNodesAtPinLocked(nodeIDs []types.NodeID, typeName string, pin types.Instant, outgoing bool) (map[types.NodeID][]*types.Relationship, error) {
-	// Relationship-purge watermarks (backlog 21): the doors on this helper
-	// had no retention gate, so only the relationship family applies (their
-	// node-purge behaviour is unchanged).
+	// Relationship-purge watermarks apply (backlog 21).
 	if err := c.checkRelsOnlyRetention(typeName, pin); err != nil {
 		return nil, err
 	}
@@ -1680,22 +1531,17 @@ func (c *Core) directionalRelsForNodesAtPinLocked(nodeIDs []types.NodeID, typeNa
 	if hasType {
 		t, ok := c.lookupRelTypeQueryToken(typeName)
 		if !ok {
-			// Unregistered type: no relationship of this type exists at any pin.
-			// Tolerant (unlike the AtTx door, which validates node existence):
-			// the belief-state door never rejects seeds, so return no edges.
+			// Unregistered type: no edges at any pin; tolerant of seeds, unlike AtTx.
 			return nil, nil
 		}
 		tok = t
 	}
 
-	// Partition the requested seeds by CURRENT existence for the live-adjacency
-	// probe. A seed hard-deleted after the pin is NOT current (its live
-	// adjacency was purged by the cascade) — passing it to
-	// OutgoingRelationshipsForNodes would hard-error ErrNodeNotFound. We tolerate
-	// such seeds: their pre-delete edges are recovered purely through the
-	// seed's ex-adjacency below (a cascade-deleted edge's rows still name the
-	// deleted seed as its endpoint). `requested` keeps ALL
-	// deduped seeds so the endpoint filter still admits a deleted seed's edges.
+	// Partition seeds by CURRENT existence for the live-adjacency probe. A seed
+	// hard-deleted after the pin is not current (the cascade purged its live
+	// adjacency), and OutgoingRelationshipsForNodes would ErrNodeNotFound on it;
+	// its edges are recovered via the ex-adjacency below. `requested` keeps ALL
+	// deduped seeds so the endpoint filter still admits them.
 	requested := make(map[types.NodeID]struct{}, len(nodeIDs))
 	liveSeedIDs := make([]types.NodeID, 0, len(nodeIDs))
 	for _, id := range nodeIDs {
@@ -1772,9 +1618,8 @@ func (c *Core) directionalRelsForNodesAtPinLocked(nodeIDs []types.NodeID, typeNa
 }
 
 // OutgoingDegree returns the number of outgoing relationships from nodeID,
-// optionally filtered by type. It uses the store's DegreeCapability fast-path
-// (count from the adjacency index, no entity materialization) when available,
-// and otherwise falls back to len(Outgoing(...)).
+// optionally filtered by type, using the store's DegreeCapability (adjacency
+// count, no materialization) or else len(Outgoing(...)).
 func (r *RelOps) OutgoingDegree(nodeID types.NodeID, typeName string) (int, error) {
 	return r.degree(nodeID, typeName, true)
 }
@@ -1919,13 +1764,10 @@ func (r *RelOps) Count() (int, error) {
 	return c.relCount()
 }
 
-// All returns all nodes in the store, with optional pagination.
-//
-// History-aware when opts carries a temporal filter (ValidAt or
-// ValidStart/ValidEnd): merges current and history IDs, resolves each via
-// the version chain, and surfaces deleted entities that were valid at the
-// query time. Without a temporal filter the fast store-side pushdown path
-// is preserved.
+// All returns all nodes, with optional pagination. With a temporal filter
+// (ValidAt or ValidStart/ValidEnd) it is history-aware: current and history
+// IDs are merged and resolved via the version chain, surfacing deleted
+// entities valid at that time. Otherwise the store pushdown path is used.
 func (n *NodeOps) All(opts storepkg.QueryOpts) ([]*types.Node, error) {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
@@ -1982,15 +1824,12 @@ func (c *Core) allNodesLocked(opts storepkg.QueryOpts) ([]*types.Node, error) {
 	return result, nil
 }
 
-// ForEach streams all nodes matching opts to fn. For current-state unpaginated
-// scans it walks the store's node-ID iterator and fetches one row at a time, so
-// peak memory is O(1) in graph cardinality. Temporal and paginated scans fall
-// back to All to preserve the existing history-aware and ordering semantics.
-//
-// Isolation is relaxed, matching ForEachByLabel: the ID set is snapshotted by
-// the store iterator, then each row is fetched and fn is called without holding
-// graph locks. Concurrently deleted rows may be skipped; concurrently created
-// rows are not guaranteed to be seen.
+// ForEach streams all nodes matching opts to fn. Current-state unpaginated
+// scans walk the store's node-ID iterator, one row at a time (O(1) memory);
+// temporal and paginated scans fall back to All. Isolation is relaxed as in
+// ForEachByLabel: IDs are snapshotted, rows fetched and fn called without
+// graph locks; concurrently deleted rows may be skipped, created ones may be
+// missed.
 func (n *NodeOps) ForEach(opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
@@ -2034,18 +1873,13 @@ func (n *NodeOps) ForEach(opts storepkg.QueryOpts, fn func(*types.Node) bool) er
 	return iterErr
 }
 
-// All returns all relationships in the store, with optional
-// pagination.
+// All returns all relationships, with optional pagination. With a temporal
+// filter (ValidAt or ValidStart/ValidEnd) it is history-aware: current and
+// history IDs are merged and resolved via the version chain, surfacing
+// deleted relationships valid at that time. Otherwise the store pushdown
+// path is used.
 //
-// History-aware when opts carries a temporal filter (ValidAt or
-// ValidStart/ValidEnd): merges current and history IDs, resolves each via
-// the version chain, and surfaces deleted relationships that were valid at
-// the query time. Without a temporal filter the fast store-side pushdown
-// path is preserved.
-//
-// DECLARED view under a temporal filter: each relationship's own asserted
-// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
-// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
+// DECLARED view under a temporal filter, as ByType (not masked by endpoint validity).
 func (r *RelOps) All(opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -2102,21 +1936,13 @@ func (c *Core) allRelsLocked(opts storepkg.QueryOpts) ([]*types.Relationship, er
 	return result, nil
 }
 
-// ForEach streams all relationships matching opts to fn. For current-state
-// unpaginated scans it walks the store's rel-ID iterator and fetches one row
-// at a time, so peak memory is O(1) in graph cardinality. Temporal and
-// paginated scans fall back to All to preserve the existing history-aware and
-// ordering semantics. Mirrors NodeOps.ForEach exactly for Node/Rel test
-// parity (Testing Rule 2) — added alongside nodes.API.Iter / rels.API.Iter.
+// ForEach streams all relationships matching opts to fn; mirrors
+// NodeOps.ForEach (Testing Rule 2). Current-state unpaginated scans walk the
+// rel-ID iterator one row at a time (O(1) memory); temporal and paginated
+// scans fall back to All. Isolation is relaxed as in ForEachByType: IDs are
+// snapshotted, rows fetched and fn called without graph locks.
 //
-// Isolation is relaxed, matching ForEachByType: the ID set is snapshotted by
-// the store iterator, then each row is fetched and fn is called without
-// holding graph locks. Concurrently deleted rows may be skipped; concurrently
-// created rows are not guaranteed to be seen.
-//
-// DECLARED view under a temporal filter: each relationship's own asserted
-// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
-// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
+// DECLARED view under a temporal filter, as ByType (not masked by endpoint validity).
 func (r *RelOps) ForEach(opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -2244,10 +2070,8 @@ func (c *Core) relsByIDsLocked(ids []types.RelID) ([]*types.Relationship, error)
 
 // --- Per-label / per-type statistics ---
 
-// CountByLabel returns the number of nodes with the given label. O(1).
-// Returns 0 if the label has never been registered.
-//
-// Hot-path inlined: see NodeOps.Get for rationale (B4).
+// CountByLabel returns the number of nodes with the label, O(1); 0 if the
+// label was never registered. Hot-path inlined (see NodeOps.Get, B4).
 func (n *NodeOps) CountByLabel(label string) (int, error) {
 	c := n.c
 	if err := c.validateIndexLabel(label); err != nil {
@@ -2268,10 +2092,8 @@ func (n *NodeOps) CountByLabel(label string) (int, error) {
 	return count, err
 }
 
-// CountByType returns the number of relationships with the given type. O(1).
-// Returns 0 if the type has never been registered.
-//
-// Hot-path inlined: see NodeOps.Get for rationale (B4).
+// CountByType returns the number of relationships with the type, O(1); 0 if
+// the type was never registered. Hot-path inlined (see NodeOps.Get, B4).
 func (r *RelOps) CountByType(typeName string) (int, error) {
 	c := r.c
 	if err := c.validateRelTypeQueryName(typeName); err != nil {
@@ -2320,20 +2142,15 @@ type relRangeScanner interface {
 }
 
 // ForEachByTypePropertyRange streams relationships carrying the type whose
-// NUMERIC propKey value lies within [min, max] (per the inclusivity flags), in
-// snowflake-ID order — the relationship mirror of
-// NodeOps.ForEachByLabelPropertyRange. Candidates come from the rel property
-// index's ordered numeric view, which OVER-SELECTS by design (float64 sort
-// keys, ulp-widened bounds): fn must re-check its predicate with exact
-// comparison semantics. Returns storepkg.ErrIndexNotFound when no rel property
-// index with a usable ordered view exists for (type, propKey) or the store
-// lacks the capability — callers fall back to a type scan. Same relaxed
-// isolation and frozen-row contract as ForEachByType. A TEMPORAL QueryOpts is
-// served by a full fold over ByType's resolved versions (forEachRelInRangeTemporal),
-// the mirror of NodeOps.ForEachByLabelPropertyRange: value at the pin, ID order,
-// no property index needed, never current rows. Under ValidStart+ValidEnd the
-// range is tested on the version ByType resolves (the most recent overlapping
-// one), unlike ByTypeAndProperty's anywhere-in-the-interval match (backlog 16).
+// NUMERIC propKey value lies in [min, max], in snowflake-ID order; the
+// relationship mirror of NodeOps.ForEachByLabelPropertyRange. Candidates
+// OVER-SELECT (float64 sort keys, ulp-widened bounds): fn must re-check with
+// exact comparison. Returns storepkg.ErrIndexNotFound when no usable rel
+// index exists or the store lacks the capability. Same isolation and
+// frozen-row contract as ForEachByType. A TEMPORAL QueryOpts is served by a
+// full fold over ByType's resolved versions (forEachRelInRangeTemporal):
+// value at the pin, ID order, no index; under ValidStart+ValidEnd the range
+// tests the ONE resolved version, unlike ByTypeAndProperty (backlog 16).
 func (r *RelOps) ForEachByTypePropertyRange(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -2371,38 +2188,25 @@ func (r *RelOps) ForEachByTypePropertyRange(typeName, propKey string, min, max f
 }
 
 // relOrderedRangeScanner is the OPTIONAL store capability behind
-// RelOps.ForEachByTypePropertyRangeOrdered — the relationship mirror of
-// nodeOrderedRangeScanner (streaming NUMERIC range scans that emit in
-// contractual VALUE ORDER — the ORDER BY prop [LIMIT k] / top-k access path).
-// Implemented by the in-tree memory and badger stores (rel indexes are RAM-only).
+// RelOps.ForEachByTypePropertyRangeOrdered, the mirror of
+// nodeOrderedRangeScanner (rel indexes are RAM-only).
 type relOrderedRangeScanner interface {
 	ForEachRelByTypePropertyRangeOrdered(typeToken uint16, propKey string, min, max float64, inclMin, inclMax, desc bool, fn func(*types.Relationship) bool) error
 }
 
-// ForEachByTypePropertyRangeOrdered streams relationships carrying the type whose
-// NUMERIC propKey value lies within [min, max] to fn in CONTRACTUAL VALUE ORDER —
-// ascending, or descending when desc — with ties (equal values) always broken by
-// rel ID ASCENDING in both directions. It is the relationship mirror of
-// NodeOps.ForEachByLabelPropertyRangeOrdered (the ordered / top-k access path):
-// a query layer compiling `ORDER BY r.prop [ASC|DESC] LIMIT k` streams here and
-// returns false from fn once it has k rows, so the LIMIT is pushed into the index
-// and the scan stops at O(k + log n) index work — never materializing the whole
-// range.
+// ForEachByTypePropertyRangeOrdered streams relationships carrying the type
+// whose NUMERIC propKey value lies in [min, max] to fn in CONTRACTUAL VALUE
+// ORDER (ascending, or descending when desc), ties by rel ID ASCENDING in
+// both directions. Mirror of NodeOps.ForEachByLabelPropertyRangeOrdered: a
+// LIMIT k is pushed into the index by returning false from fn after k rows.
 //
-// Candidates come from the rel property index's ordered numeric view, which
-// OVER-SELECTS by design (float64 sort keys, ulp-widened bounds): fn MUST
-// re-check its predicate with exact comparison semantics.
+// Candidates OVER-SELECT: fn MUST re-check the exact bounds.
 //
-// Non-temporal opts take the index-backed fast path (O(k + log n) top-k) and
-// return storepkg.ErrIndexNotFound when no rel property index with a usable
-// ordered view exists for (type, propKey) or the store lacks the capability. A
-// TEMPORAL QueryOpts combination (ValidAt / ValidStart+ValidEnd / TxAt / TxPin) is
-// instead served by a SOUND FULL FOLD (Stage B): every rel of the type is
-// resolved to its version at the pin, filtered to [min,max] on the value-AT-t,
-// and sorted by that value — so ordering over a past belief/valid state is
-// correct and complete. The temporal path needs no rel property index (it reads
-// resolved rel values directly) and is O(N log N) in the type's temporal
-// membership. Same relaxed isolation and frozen-row contract as ForEachByType.
+// Non-temporal opts use the index (ErrIndexNotFound when no usable ordered
+// view exists or the store lacks the capability). A TEMPORAL QueryOpts is
+// served by a sound full fold (Stage B): every rel resolved to its version at
+// the pin, filtered and sorted on the value AT t, O(N log N), no index. Same
+// isolation and frozen-row contract as ForEachByType.
 func (r *RelOps) ForEachByTypePropertyRangeOrdered(typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -2414,10 +2218,8 @@ func (r *RelOps) ForEachByTypePropertyRangeOrdered(typeName, propKey string, min
 	if err := c.validateRelTypeQueryName(typeName); err != nil {
 		return err
 	}
-	// Temporal ordered scan (Stage B): value-at-t is not indexed, so serve it as a
-	// SOUND FULL FOLD — resolve every rel of the type to its version at the pin,
-	// keep those whose numeric value is in [min,max], sort by value. Needs no rel
-	// property index. Non-temporal opts take the index-backed fast path below.
+	// Temporal ordered scan (Stage B): value-at-t is not indexed, so fold every
+	// rel's version at the pin, keep in-range values, sort by value.
 	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
 		if err := c.validateTemporalQueryOptsScan(opts, c.relTypeRetentionScope(typeName)); err != nil {
 			return err
@@ -2458,28 +2260,22 @@ func (r *RelOps) ForEachByTypePropertyRangeOrdered(typeName, propKey string, min
 }
 
 // relPrefixScanner is the OPTIONAL store capability behind
-// RelOps.ForEachByTypePropertyPrefix — the relationship mirror of
-// nodePrefixScanner (streaming STRING prefix scans in contractual lex value
-// order). Implemented by the memory and badger stores.
+// RelOps.ForEachByTypePropertyPrefix, the mirror of nodePrefixScanner.
 type relPrefixScanner interface {
 	ForEachRelByTypePropertyPrefix(typeToken uint16, propKey, prefix string, desc bool, fn func(*types.Relationship) bool) error
 }
 
 // ForEachByTypePropertyPrefix streams relationships carrying the type whose
-// STRING propKey value begins with prefix, to fn in CONTRACTUAL VALUE ORDER —
-// lexicographic ascending, or descending when desc — with ties (equal values)
-// broken by rel ID ASCENDING in both directions. It is the relationship mirror of
-// NodeOps.ForEachByLabelPropertyPrefix (the `STARTS WITH` access path). fn
-// returning false stops the scan (LIMIT pushdown); an empty prefix matches every
-// string value.
+// STRING propKey value begins with prefix to fn in CONTRACTUAL VALUE ORDER
+// (lexicographic ascending, or descending when desc), ties by rel ID
+// ASCENDING in both directions. Mirror of
+// NodeOps.ForEachByLabelPropertyPrefix; fn returning false stops (LIMIT
+// pushdown); an empty prefix matches every string value.
 //
-// Non-temporal opts take the index-backed fast path and return
-// storepkg.ErrIndexNotFound when no usable rel property index exists for (type,
-// propKey) or the store lacks the capability. A TEMPORAL QueryOpts combination is
-// served by a SOUND FULL FOLD (Stage B): every rel of the type is resolved to its
-// version at the pin, filtered to the prefix on the value-AT-t, and sorted
-// lexicographically — needs no rel property index, O(N log N). Same relaxed
-// isolation and frozen-row contract as ForEachByType.
+// Non-temporal opts use the index (ErrIndexNotFound when no usable rel index
+// exists or the store lacks the capability). A TEMPORAL QueryOpts is served
+// by a sound full fold (Stage B), O(N log N), no index. Same isolation and
+// frozen-row contract as ForEachByType.
 func (r *RelOps) ForEachByTypePropertyPrefix(typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -2491,11 +2287,8 @@ func (r *RelOps) ForEachByTypePropertyPrefix(typeName, propKey, prefix string, d
 	if err := c.validateRelTypeQueryName(typeName); err != nil {
 		return err
 	}
-	// Temporal prefix scan (Stage B): value-at-t is not indexed, so serve it as a
-	// SOUND FULL FOLD — resolve every rel of the type to its version at the pin,
-	// keep those whose string value begins with prefix, sort lexicographically.
-	// Needs no rel property index. Non-temporal opts take the index-backed fast
-	// path below.
+	// Temporal prefix scan (Stage B): value-at-t is not indexed, so fold every
+	// rel's version at the pin, keep matching strings, sort.
 	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
 		if err := c.validateTemporalQueryOptsScan(opts, c.relTypeRetentionScope(typeName)); err != nil {
 			return err

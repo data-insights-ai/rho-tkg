@@ -21,11 +21,9 @@ func (ms *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	return ms.removeNodeLabelTokenWithHistoryRouted(nid, tok, updatedNode, prevVersion, prevState, 0)
 }
 
-// RemoveNodeLabelTokenWithHistoryScoped mirrors RemoveNodeLabelTokenWithHistory
-// but routes the change-log record into the store.ScopedTxChangeLog buffer
-// named by token instead of the eager pending log. token == 0 is exactly
-// RemoveNodeLabelTokenWithHistory. See memorystore_changelog_scoped.go
-// (BACKLOG 11f Batch D — foundation only).
+// RemoveNodeLabelTokenWithHistoryScoped is RemoveNodeLabelTokenWithHistory with the change-log record routed into the
+// ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
+// (memorystore_changelog_scoped.go, backlog 11f).
 func (ms *Store) RemoveNodeLabelTokenWithHistoryScoped(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node, token uint64) error {
 	if token == 0 {
@@ -107,11 +105,9 @@ func (ms *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	return ms.addNodeLabelTokenWithHistoryRouted(nid, tok, updatedNode, prevVersion, prevState, 0)
 }
 
-// AddNodeLabelTokenWithHistoryScoped mirrors AddNodeLabelTokenWithHistory but
-// routes the change-log record into the store.ScopedTxChangeLog buffer named
-// by token instead of the eager pending log. token == 0 is exactly
-// AddNodeLabelTokenWithHistory. See memorystore_changelog_scoped.go (BACKLOG
-// 11f Batch D — foundation only).
+// AddNodeLabelTokenWithHistoryScoped is AddNodeLabelTokenWithHistory with the change-log record routed into the
+// ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
+// (memorystore_changelog_scoped.go, backlog 11f).
 func (ms *Store) AddNodeLabelTokenWithHistoryScoped(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node, token uint64) error {
 	if token == 0 {
@@ -194,11 +190,9 @@ func (ms *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 	return ms.deleteRelWithHistoryRouted(rid, prevVersion, tombstone, 0)
 }
 
-// DeleteRelWithHistoryScoped mirrors DeleteRelWithHistory but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly
-// DeleteRelWithHistory. See memorystore_changelog_scoped.go (BACKLOG 11f
-// Batch C — foundation only).
+// DeleteRelWithHistoryScoped is DeleteRelWithHistory with the change-log record routed into the
+// ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
+// (memorystore_changelog_scoped.go, backlog 11f).
 func (ms *Store) DeleteRelWithHistoryScoped(rid types.RelID, prevVersion uint32, tombstone *types.Relationship, token uint64) error {
 	if token == 0 {
 		return ms.DeleteRelWithHistory(rid, prevVersion, tombstone)
@@ -251,11 +245,9 @@ func (ms *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 	return ms.deleteNodeWithHistoryRouted(nid, prevNodeVersion, nodeTombstone, relTombstones, 0)
 }
 
-// DeleteNodeWithHistoryScoped mirrors DeleteNodeWithHistory but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly
-// DeleteNodeWithHistory. See memorystore_changelog_scoped.go (BACKLOG 11f
-// Batch C — foundation only).
+// DeleteNodeWithHistoryScoped is DeleteNodeWithHistory with the change-log record routed into the
+// ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
+// (memorystore_changelog_scoped.go, backlog 11f).
 func (ms *Store) DeleteNodeWithHistoryScoped(nid types.NodeID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone, token uint64) error {
 	if token == 0 {
 		return ms.DeleteNodeWithHistory(nid, prevNodeVersion, nodeTombstone, relTombstones)
@@ -379,10 +371,9 @@ func (ms *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node)
 	return ms.putNodeVersionRouted(nid, version, n, 0)
 }
 
-// PutNodeVersionScoped mirrors PutNodeVersion but routes the change-log
-// record into the store.ScopedTxChangeLog buffer named by token instead of
-// the eager pending log. token == 0 is exactly PutNodeVersion. See
-// memorystore_changelog_scoped.go (BACKLOG 11f Batch E — foundation only).
+// PutNodeVersionScoped is PutNodeVersion with the change-log record routed into the
+// ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
+// (memorystore_changelog_scoped.go, backlog 11f).
 func (ms *Store) PutNodeVersionScoped(nid types.NodeID, version uint32, n *types.Node, token uint64) error {
 	if token == 0 {
 		return ms.PutNodeVersion(nid, version, n)
@@ -524,11 +515,9 @@ func (ms *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
 	return ms.truncateNodeHistoryRouted(nid, keepVersions, 0)
 }
 
-// TruncateNodeHistoryScoped mirrors TruncateNodeHistory but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly
-// TruncateNodeHistory. See memorystore_changelog_scoped.go (BACKLOG 11f
-// Batch F — foundation only).
+// TruncateNodeHistoryScoped is TruncateNodeHistory with the change-log record routed into the
+// ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
+// (memorystore_changelog_scoped.go, backlog 11f).
 func (ms *Store) TruncateNodeHistoryScoped(nid types.NodeID, keepVersions int, token uint64) error {
 	if token == 0 {
 		return ms.TruncateNodeHistory(nid, keepVersions)
@@ -587,10 +576,9 @@ func (ms *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relatio
 	return ms.putRelVersionRouted(rid, version, r, 0)
 }
 
-// PutRelVersionScoped mirrors PutRelVersion but routes the change-log record
-// into the store.ScopedTxChangeLog buffer named by token instead of the
-// eager pending log. token == 0 is exactly PutRelVersion. See
-// memorystore_changelog_scoped.go (BACKLOG 11f Batch E — foundation only).
+// PutRelVersionScoped is PutRelVersion with the change-log record routed into the
+// ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
+// (memorystore_changelog_scoped.go, backlog 11f).
 func (ms *Store) PutRelVersionScoped(rid types.RelID, version uint32, r *types.Relationship, token uint64) error {
 	if token == 0 {
 		return ms.PutRelVersion(rid, version, r)
@@ -615,12 +603,10 @@ func (ms *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 
 	ms.putRelHistoryRowLocked(rid, version, r)
 	ms.recordRelTypeMemberLocked(r) // transaction-time rel-type membership (history version)
-	// A live or already-covered relationship's envelope covers every row it
-	// has had since the index existed (a delete keeps the envelope), so this
-	// version's interval joins it (an imported or restored past version stays
-	// findable). An uncovered relationship without a current row stays
-	// uncovered and is never pruned — extending it here would vouch for this
-	// one version while its other history rows stay outside.
+	// A live or already-covered relationship's envelope covers every row since
+	// the index existed (a delete keeps it), so this version's interval joins it.
+	// An uncovered relationship without a current row stays uncovered and is
+	// never pruned: extending it would vouch for one version only.
 	if _, live := ms.rels[rid]; live || indexpkg.RelCoveredInTemporalIndexes(ms.relTypeTemporalIndexes, r, rid.SnowflakeID()) {
 		indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, r, rid.SnowflakeID())
 	}
@@ -740,11 +726,9 @@ func (ms *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {
 	return ms.truncateRelHistoryRouted(rid, keepVersions, 0)
 }
 
-// TruncateRelHistoryScoped mirrors TruncateRelHistory but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly TruncateRelHistory.
-// See memorystore_changelog_scoped.go (BACKLOG 11f Batch F — foundation
-// only).
+// TruncateRelHistoryScoped is TruncateRelHistory with the change-log record routed into the
+// ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
+// (memorystore_changelog_scoped.go, backlog 11f).
 func (ms *Store) TruncateRelHistoryScoped(rid types.RelID, keepVersions int, token uint64) error {
 	if token == 0 {
 		return ms.TruncateRelHistory(rid, keepVersions)
@@ -802,11 +786,9 @@ func (ms *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	return ms.replaceNodeWithHistoryRouted(current, prevVersion, prevState, 0)
 }
 
-// ReplaceNodeWithHistoryScoped mirrors ReplaceNodeWithHistory but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly
-// ReplaceNodeWithHistory. See memorystore_changelog_scoped.go (BACKLOG 11f
-// Batch B — foundation only).
+// ReplaceNodeWithHistoryScoped is ReplaceNodeWithHistory with the change-log record routed into the
+// ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
+// (memorystore_changelog_scoped.go, backlog 11f).
 func (ms *Store) ReplaceNodeWithHistoryScoped(current *types.Node, prevVersion uint32, prevState *types.Node, token uint64) error {
 	if token == 0 {
 		return ms.ReplaceNodeWithHistory(current, prevVersion, prevState)
@@ -882,11 +864,9 @@ func (ms *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 	return ms.replaceRelWithHistoryRouted(current, prevVersion, prevState, 0)
 }
 
-// ReplaceRelWithHistoryScoped mirrors ReplaceRelWithHistory but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly
-// ReplaceRelWithHistory. See memorystore_changelog_scoped.go (BACKLOG 11f
-// Batch B — foundation only).
+// ReplaceRelWithHistoryScoped is ReplaceRelWithHistory with the change-log record routed into the
+// ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
+// (memorystore_changelog_scoped.go, backlog 11f).
 func (ms *Store) ReplaceRelWithHistoryScoped(current *types.Relationship, prevVersion uint32, prevState *types.Relationship, token uint64) error {
 	if token == 0 {
 		return ms.ReplaceRelWithHistory(current, prevVersion, prevState)
@@ -1118,10 +1098,8 @@ func relAsOfLocked(current *types.Relationship, history map[uint32]*types.Relati
 }
 
 // historyHasVersionAbove reports whether a version-keyed history map holds a
-// version above v (a cascade row written while the current row kept its slot).
-// Versions are allocated densely (core version_alloc.go), so version v+1
-// decides — one map lookup, the probe the badger store and the core fallback
-// make too.
+// version above v (a cascade row written while the current row kept its
+// slot). Versions are dense (core version_alloc.go), so v+1 decides.
 func historyHasVersionAbove[T any](history map[uint32]T, v uint32) bool {
 	if v == math.MaxUint32 {
 		return false
@@ -1189,14 +1167,12 @@ func relCopyVisibleAtTxTime(r *types.Relationship, txTime types.Instant) *types.
 	return out
 }
 
-// normalizeTemporalVisibleAtTxTime rewinds tm to the belief state as of txTime:
-// a TxTo or delete recorded after txTime is removed. "ValidTo == DeletedAt"
-// marks a ValidTo the delete itself wrote (the row was open, or its scheduled
-// close was clamped to the delete), so it reopens; any other ValidTo is a close
-// recorded before the delete and is kept. The delete doors guarantee the marker
-// is unambiguous (stampDeleteTombstone / deleteInstantClearOfCloses in core).
-// A retraction recorded after txTime is removed with its delete (backlog 43):
-// the row reads as it was believed then.
+// normalizeTemporalVisibleAtTxTime rewinds tm to the belief state as of
+// txTime: a TxTo or delete recorded after txTime is removed. ValidTo ==
+// DeletedAt marks a ValidTo the delete itself wrote, so it reopens; any other
+// ValidTo is an earlier close and is kept (the delete doors keep the marker
+// unambiguous: stampDeleteTombstone / deleteInstantClearOfCloses in core;
+// backlog 43).
 func normalizeTemporalVisibleAtTxTime(tm *types.TemporalMetadata, txTime types.Instant) {
 	if tm == nil {
 		return
@@ -1220,11 +1196,9 @@ func (ms *Store) TrimNodeHistoryFrom(nid types.NodeID, minVersion uint32) error 
 	return ms.trimNodeHistoryFromRouted(nid, minVersion, 0)
 }
 
-// TrimNodeHistoryFromScoped mirrors TrimNodeHistoryFrom but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly
-// TrimNodeHistoryFrom. See memorystore_changelog_scoped.go (BACKLOG 11f
-// Batch F — foundation only).
+// TrimNodeHistoryFromScoped is TrimNodeHistoryFrom with the change-log record routed into the
+// ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
+// (memorystore_changelog_scoped.go, backlog 11f).
 func (ms *Store) TrimNodeHistoryFromScoped(nid types.NodeID, minVersion uint32, token uint64) error {
 	if token == 0 {
 		return ms.TrimNodeHistoryFrom(nid, minVersion)
@@ -1269,11 +1243,9 @@ func (ms *Store) TrimRelHistoryFrom(rid types.RelID, minVersion uint32) error {
 	return ms.trimRelHistoryFromRouted(rid, minVersion, 0)
 }
 
-// TrimRelHistoryFromScoped mirrors TrimRelHistoryFrom but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly TrimRelHistoryFrom.
-// See memorystore_changelog_scoped.go (BACKLOG 11f Batch F — foundation
-// only).
+// TrimRelHistoryFromScoped is TrimRelHistoryFrom with the change-log record routed into the
+// ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
+// (memorystore_changelog_scoped.go, backlog 11f).
 func (ms *Store) TrimRelHistoryFromScoped(rid types.RelID, minVersion uint32, token uint64) error {
 	if token == 0 {
 		return ms.TrimRelHistoryFrom(rid, minVersion)

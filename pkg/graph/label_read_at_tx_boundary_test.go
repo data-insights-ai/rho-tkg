@@ -12,16 +12,11 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestLabelReadAtTheUpdatesTxBoundary pins what sigma-tkgd's
-// TestSharedPinnedPointReadLooksUpTheNodesProperty relies on (its 2026-10-14
-// "v4.52.0 tiered" report): an update without a valid-from is valid from its
-// transaction time, so a read at valid time TxFrom-1 answers the earlier
-// version and a read at TxFrom the update, on every backend and through
-// every door sigma's plan calls (the label read at a coordinate, the point
-// read by node, the count). The transaction clock runs ahead of the wall
-// clock whenever several stamps fall in one millisecond, so a wall-clock
-// "now" taken after the update lands on either side of TxFrom; this test
-// reads at the two sides directly instead.
+// TestLabelReadAtTheUpdatesTxBoundary: an update without a valid-from is valid from
+// its transaction time, so a read at TxFrom-1 answers the earlier version and at
+// TxFrom the update, on every backend and door (label read, point read, count).
+// The tx clock runs ahead of the wall clock within one millisecond, so a wall-clock
+// "now" can land on either side; this test reads both sides directly.
 func TestLabelReadAtTheUpdatesTxBoundary(t *testing.T) {
 	ctx := context.Background()
 	backends := map[string]func(t *testing.T) graphpkg.Config{

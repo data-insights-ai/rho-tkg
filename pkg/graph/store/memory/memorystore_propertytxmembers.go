@@ -8,31 +8,22 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Property membership sidecars (backlog 8, memory arm):
-// store.RelPropertyTxMembershipCapability / NodePropertyTxMembershipCapability.
+// Property membership sidecars (backlog 8, memory arm): one
+// indexpkg.PropertyTxMembers per declared property index a temporal lookup asked
+// for (value key -> rels/nodes whose rows ever carried it, with the lowest
+// TxFrom); append-only supersets, the chain resolver stays the authority.
 //
-// One indexpkg.PropertyTxMembers per DECLARED property index that a temporal
-// lookup has asked for: value key -> every rel (node) whose rows ever carried
-// the value under the type (label), with the lowest TxFrom of those rows.
-// Append-only sound supersets; the core chain resolver stays the authority.
-//
-// LAZY: a sidecar exists only after the first ForEach*PropertyTxMember call
-// for its (scope, key) built it from the current rows (sealed segment rows
-// included) and every history row. After that every row the store keeps is
-// recorded where it enters the store: storedRel / historyRel / storedNode /
-// historyNode (memorystore_ordinal.go), the one seam every door's current and
-// history row passes, so no door can forget it. Everything runs under ms.mu,
-// so a build cannot miss a concurrent write.
-//
-// Removal: none per posting. Clear, an index drop, retention purge and exact
-// erasure drop the sidecars (an erased value must not survive in RAM); the
-// next lookup rebuilds them. Truncation and compaction keep them (a superset).
+// Lazy: built on the first ForEach*PropertyTxMember call from every current row
+// (sealed included) and history row, then every row is recorded where it enters
+// the store (storedRel / historyRel / storedNode / historyNode in
+// memorystore_ordinal.go), all under ms.mu. Clear, index drop, retention purge and
+// exact erasure drop the sidecars (an erased value must not survive in RAM);
+// truncation and compaction keep them (a superset).
 
 // recordRelRowLocked records one relationship row the store keeps (current or
-// history) into every lazily built membership sidecar: the K1 rel-type set and
-// the property sets. Every row, not only creates: a row's TxFrom lowers the
-// member's first-TxFrom bound (an unstamped row makes it 0), so a door that
-// rewrites or demotes a row must be seen too. Caller holds ms.mu (write).
+// history) into every built membership sidecar (K1 rel-type set and property
+// sets). Every row, not only creates: a row's TxFrom lowers the member's bound.
+// Caller holds ms.mu (write).
 func (ms *Store) recordRelRowLocked(r *types.Relationship) {
 	ms.recordRelTypeMemberLocked(r)
 	ms.recordRelPropTxLocked(r)
@@ -88,9 +79,9 @@ func (ms *Store) dropPropertyTxMembersLocked() {
 	ms.nodePropTxMembers = nil
 }
 
-// relPropTxSidecarLocked returns the built sidecar for key, building it first,
-// or nil when no rel property index is declared for key (or it is still being
-// created). Caller holds ms.mu (write).
+// relPropTxSidecarLocked returns the built sidecar for key (building it first), or
+// nil when no rel property index is declared or it is still being created.
+// Caller holds ms.mu (write).
 func (ms *Store) relPropTxSidecarLocked(key indexpkg.RelPropertyIndexKey) (*indexpkg.PropertyTxMembers[types.RelID], error) {
 	idx, ok := ms.relPropertyIndexes[key]
 	if !ok || idx.Mutated != nil {
@@ -111,8 +102,8 @@ func (ms *Store) relPropTxSidecarLocked(key indexpkg.RelPropertyIndexKey) (*inde
 			return true
 		})
 	}
-	// ADR-0011: every current row, sealed ones included. A decode error
-	// leaves the sidecar unbuilt and fails the read: it must be a superset.
+	// ADR-0011: every current row, sealed included; a decode error leaves the
+	// sidecar unbuilt (it must be a superset).
 	if err := ms.forEachCurrentRelLocked(func(r *types.Relationship) bool {
 		record(r)
 		return true
@@ -171,10 +162,9 @@ func (ms *Store) nodePropTxSidecarLocked(key indexpkg.PropertyIndexKey) *indexpk
 	return m
 }
 
-// readOrBuild runs read under ms.mu.RLock; when it reports the sidecar
-// is not built yet, it runs build under ms.mu.Lock instead (build re-checks
-// everything: another caller may have built or dropped it meanwhile). A built
-// sidecar is a read, so lookups do not serialize on the write lock.
+// readOrBuild runs read under ms.mu.RLock; if the sidecar is not built it runs
+// build under ms.mu.Lock (build re-checks everything), so built lookups do not
+// serialize on the write lock.
 func (ms *Store) readOrBuild(read func() (done bool, err error), build func() error) error {
 	ms.mu.RLock()
 	if err := ms.checkOpenLocked(); err != nil {

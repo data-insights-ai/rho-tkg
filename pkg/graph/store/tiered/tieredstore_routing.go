@@ -26,18 +26,12 @@ func (ts *Store) shardForNode(primaryLabel uint16) *BadgerStore {
 	return s
 }
 
-// IsReferenceLabel reports whether the given label NAME is reference-class
-// (routed to the reference shard). Event-class labels — the default for any
-// label not in RefLabels — return false. Classification is by name so it does
-// not depend on label-token registration timing, and it consults the SAME
-// ontology the router uses (shardForNode), so a label's class is consistent
-// with where its entities live.
-//
-// The core layer uses this to decide whether a unique constraint on the label
-// can be enforced globally on tiered: reference entities all live on the
-// reference shard (+ its cold archive), so ref-shard uniqueness IS global
-// uniqueness; an event label's values are spread across unbounded time shards
-// with no global value index, so unique enforcement is not offered there.
+// IsReferenceLabel reports whether the label NAME is reference-class (routed
+// to the reference shard); unlisted labels are event-class. It uses the same
+// ontology as shardForNode and does not depend on label-token registration.
+// The core layer uses it to decide whether a unique constraint is enforceable
+// globally: reference entities all live on the reference shard (+ archive);
+// event labels have no global value index.
 func (ts *Store) IsReferenceLabel(name string) bool {
 	return ts.ontology.ClassifyByName(name) == ClassReference
 }
@@ -53,10 +47,8 @@ func (ts *Store) shardForNodeID(id types.NodeID) (*BadgerStore, error) {
 	return store, nil
 }
 
-// timestampToEventShardEntry extracts the creation timestamp from a snowflake ID
-// and returns the *EventShard responsible for that timestamp. Callers then use
-// checkoutStore/checkinStore for safe concurrent access.
-// Falls back to hotShard if no window matches.
+// timestampToEventShardEntry returns the *EventShard whose window covers the
+// snowflake ID's timestamp (hotShard if none). Use checkoutStore/checkinStore.
 func (ts *Store) timestampToEventShardEntry(id snowflake.ID) *EventShard {
 	created := snowflakepkg.Layout.CreatedAt(id)
 
@@ -70,10 +62,8 @@ func (ts *Store) timestampToEventShardEntry(id snowflake.ID) *EventShard {
 }
 
 // reindexShardsLocked rebuilds shardIndex from eventShards, sorted by
-// timeStart. Caller holds ts.mu.Lock (or owns the Store exclusively, as New
-// does). Every insert into or delete from eventShards must be followed by it.
-// timeEnd changes in place at rotation, but windows do not overlap, so the
-// timeStart order is unaffected.
+// timeStart. Caller holds ts.mu.Lock (or owns the Store, as New does); run it
+// after every insert into or delete from eventShards.
 func (ts *Store) reindexShardsLocked() {
 	idx := make([]*EventShard, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {
@@ -115,17 +105,12 @@ func (ts *Store) idOutsideHotShardWindow(id snowflake.ID) bool {
 }
 
 // shardForRelIDChecked resolves the storage shard for a relationship ID and
-// increments activeReqs on any event shard returned, mirroring
-// shardForNodeIDChecked.
-//
-// Cross-shard relationships may live in a shard that does not match their
-// creation timestamp (the entity is stored in the start node's shard). The
-// timestamp candidate is checked first as a fast path, then every other event
-// shard (including cold shards) is probed in turn. Cold shards are included
-// because a cross-shard rel created while the start-node shard was warm can
-// later age to cold — the rel never moves, so the lookup must follow it.
-//
-// The caller MUST invoke the returned checkin function exactly once.
+// increments activeReqs on any event shard returned, like
+// shardForNodeIDChecked. A cross-shard relationship lives in its start node's
+// shard, which may not match its timestamp: the timestamp candidate is probed
+// first, then every other event shard including cold ones (the rel never
+// moves when its shard ages to cold). The caller MUST call the returned
+// checkin exactly once.
 func (ts *Store) shardForRelIDChecked(id types.RelID) (store *BadgerStore, checkin func(), err error) {
 	store, checkin, _, err = ts.shardForRelIDCheckedWithArchive(id)
 	return store, checkin, err
@@ -136,10 +121,9 @@ func (ts *Store) shardForRelIDCheckedWithArchive(id types.RelID) (store *BadgerS
 	return store, checkin, isArchive, err
 }
 
-// relRowProbe is what routeRelShard's probe of the returned shard found: the
-// shard holds the relationship's entity row (live), or reading it failed
-// (err: a corrupt but indexed row, which still occupies the ID). Neither set:
-// no shard holds the row.
+// relRowProbe is the result of routeRelShard's probe: live (shard holds the
+// entity row), err (corrupt but indexed row, which still occupies the ID), or
+// neither (no shard holds the row).
 type relRowProbe struct {
 	live bool
 	err  error
@@ -169,10 +153,8 @@ func (ts *Store) routeRelShard(id types.RelID) (store *BadgerStore, checkin func
 	}
 	refCheckin()
 
-	// Probe refArchive: ArchiveNode migrates a reference node AND its
-	// rels to refArchive, so archived rels live there after archive.
-	// Pin via checkoutArchive (mirrors the node resolver) so a
-	// concurrent Close cannot tear it down mid-use.
+	// Probe refArchive: ArchiveNode moves a node and its rels there. Pinned via
+	// checkoutArchive so a concurrent Close cannot tear it down.
 	ts.refArchiveGapHook()
 	archive, archiveCheckin, err := ts.checkoutArchive()
 	if err != nil {
@@ -226,12 +208,9 @@ func (ts *Store) routeRelShard(id types.RelID) (store *BadgerStore, checkin func
 }
 
 // relationshipRowExists is conservative for placement/collision checks: a
-// corrupt but indexed row still occupies the relationship ID until the caller
-// reads the row and surfaces the decode error. It reads the entity row through
-// the shard's current-row stamps (the row's key and temporal block, backlog
-// 42) instead of decoding and copying it: not found exactly where
-// GetRelationship misses the row, so the answer is the one GetRelationship
-// gave (a row whose body fails to decode exists either way).
+// corrupt but indexed row still occupies the ID until the caller reads it and
+// surfaces the decode error. It uses the shard's current-row stamps (backlog
+// 42) and misses exactly where GetRelationship misses.
 func relationshipRowExists(store *BadgerStore, id types.RelID) bool {
 	_, found, err := relCurrentStampsRow(store, id)
 	return found || err != nil
@@ -292,16 +271,12 @@ func nodeRowLive(store *BadgerStore, id types.NodeID) (bool, error) {
 	return true, nil
 }
 
-// shardForNodeIDChecked resolves the storage shard for a node ID and increments
-// its activeReqs counter so closeIdleShards cannot close the DB while the caller
-// is using the returned store pointer.
-//
-// The caller MUST invoke the returned checkin function exactly once when done
-// (typically via defer checkin()). Failing to call checkin() leaks activeReqs,
-// which prevents idle cold shards from ever being closed.
-//
-// refShard and refArchive are not subject to idle-close, but Close does close
-// them, so returned reference stores are pinned just like event shards.
+// shardForNodeIDChecked resolves the storage shard for a node ID and
+// increments its activeReqs so closeIdleShards cannot close the DB while the
+// caller uses the store. The caller MUST call the returned checkin exactly
+// once (defer checkin()); a leak keeps cold shards from ever closing.
+// refShard and refArchive are not idle-closed but Close closes them, so they
+// are pinned like event shards.
 func (ts *Store) shardForNodeIDChecked(id types.NodeID) (store *BadgerStore, checkin func(), err error) {
 	store, checkin, _, err = ts.shardForNodeIDCheckedWithArchive(id)
 	return store, checkin, err
@@ -321,13 +296,8 @@ func (ts *Store) shardForNodeIDCheckedWithArchive(id types.NodeID) (store *Badge
 	}
 	refCheckin()
 
-	// Archive probe — pin via checkoutArchive so a concurrent Close
-	// cannot tear down the underlying DB while the caller is using
-	// the returned pointer for GetNode / Update / etc. The previous
-	// no-op checkin was incorrect: refArchive IS closed by Close, just
-	// not by closeIdleShards. checkoutArchive also handles cold-start
-	// lazy-open via ensureRefArchive when the catalog has the entry but
-	// the in-memory pointer is nil.
+	// Archive probe: pinned via checkoutArchive (Close closes refArchive; it
+	// also lazy-opens via ensureRefArchive when only the catalog has the entry).
 	ts.refArchiveGapHook()
 	archive, archiveCheckin, err := ts.checkoutArchive()
 	if err != nil {

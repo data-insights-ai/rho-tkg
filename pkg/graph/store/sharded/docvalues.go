@@ -7,36 +7,25 @@ import (
 
 // DocValues (X5 columnar reads) on the sharded store.
 //
-// Each slot's badger shard builds and caches its own column snapshot over its
-// own members, exactly as a single badger store does; the sharded layer never
-// merges columns. A node lives on exactly one slot for its whole life (the
-// slot is part of its ID), so concatenating the slots' rows emits every label
-// member exactly once.
+// Each slot's badger shard builds and caches its own column snapshot; columns
+// are never merged. A node lives on one slot for life (the slot is in its ID),
+// so concatenating slots emits every member exactly once, slot by slot, each
+// in ascending ID order (not globally ascending); snapshot positions (RowAt)
+// follow the same order.
 //
-// Order: ForEachDocValues / ForEachDocValuesMulti stream slot by slot in slot
-// order, each slot's rows in that slot's ordinal (ascending ID) order; the
-// concatenation is not globally ascending by ID. A snapshot's positions
-// (RowAt) follow the same order.
+// Membership against decline: a shard's call returns ok=false both for "no
+// member" and for "column unbuildable" (mixed values, size cap). Each shard is
+// first bounded by its exact NodeCountByLabel (minimum over labels for an
+// intersection): no member -> skipped; members but declined -> the whole call
+// declines; no member anywhere also declines, as on badger.
 //
-// Membership against decline: a shard's own call returns ok=false both when it
-// has no member and when its column cannot be built (mixed values, over the
-// size cap). Skipping the second kind would silently drop members, so each
-// shard is first bounded by its exact NodeCountByLabel (the minimum over the
-// labels for an intersection): a shard with no member is skipped without
-// building anything, and a shard with members whose call declines makes the
-// whole call decline. No member on any shard declines too (the caller falls
-// back and finds zero rows), as on badger.
-//
-// gen: the sum over slots of the per-label epochs (NodeLabelMutationEpoch, for
-// an intersection the sum over its labels), sampled once before any shard is
-// read. Every node write bumps the epochs of its labels on the slot it lands
-// on, so the sum moves on every write to a member of the label on any slot; a
-// consumer re-checks NodeLabelMutationEpoch(label) (summed over the labels for
-// an intersection) after consuming the rows, the same Gate-2 as on badger.
+// gen: sum over slots of NodeLabelMutationEpoch (over labels for an
+// intersection), sampled once before any shard is read; a consumer re-checks it
+// after consuming rows (the Gate-2 of badger).
 
 // NodeLabelMutationEpoch sums the slots' per-label node-mutation epochs for
-// labelToken (see badger.Store.NodeLabelMutationEpoch): it advances whenever a
-// node carrying the label is written on any slot.
+// labelToken; it advances whenever a node carrying the label is written on any
+// slot.
 func (s *Store) NodeLabelMutationEpoch(labelToken uint16) uint64 {
 	if s == nil {
 		return 0
@@ -78,17 +67,15 @@ func shardMinLabelCount(shard *badger.Store, tokens []uint16) (int, error) {
 	return minCount, nil
 }
 
-// foldDocValues visits every shard in slot order. call runs only on a shard
-// with members (see the membership note above); its bool is the shard's
-// usable signal. gen is sampled before the first shard is read.
+// foldDocValues visits every shard in slot order; call runs only on shards
+// with members, its bool is the usable signal. gen is sampled first.
 func (s *Store) foldDocValues(tokens []uint16, call func(idx int, shard *badger.Store) (bool, error)) (gen uint64, ok bool, err error) {
 	return s.foldDocValuesServingEmpty(tokens, false, call)
 }
 
-// foldDocValuesServingEmpty is foldDocValues; with emptyServes a fold in which
-// no shard holds a member of every token (each one proved empty by its
-// counts) is served as an empty answer (ok=true) instead of declined: the
-// intersection door (round 5 request 3).
+// foldDocValuesServingEmpty is foldDocValues; with emptyServes a fold where
+// every shard is proved empty by its counts is served as empty (ok=true)
+// instead of declined: the intersection door.
 func (s *Store) foldDocValuesServingEmpty(tokens []uint16, emptyServes bool, call func(idx int, shard *badger.Store) (bool, error)) (gen uint64, ok bool, err error) {
 	if err := s.checkOpen(); err != nil {
 		return 0, false, err
@@ -119,10 +106,9 @@ func (s *Store) foldDocValuesServingEmpty(tokens []uint16, emptyServes bool, cal
 }
 
 // ForEachDocValues streams the requested property columns of labelToken's
-// nodes slot by slot (see the order note above). ok=false (no error) when the
-// column path cannot serve the label: no member, or a slot with members whose
-// column is unbuildable (mixed or unsupported values, over the size cap, a
-// shard without RAM label membership).
+// nodes slot by slot. ok=false (no error) when the column path cannot serve
+// the label: no member, an unbuildable column, or a shard without RAM label
+// membership.
 func (s *Store) ForEachDocValues(labelToken uint16, propKeys []string,
 	fn func(id types.NodeID, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
 	if s == nil {
@@ -145,8 +131,7 @@ func (s *Store) ForEachDocValues(labelToken uint16, propKeys []string,
 }
 
 // ForEachDocValuesMulti is ForEachDocValues over the intersection of
-// labelTokens (a multi-label pattern). Same order and decline contract; a
-// shard is bounded by its smallest label count.
+// labelTokens; a shard is bounded by its smallest label count.
 func (s *Store) ForEachDocValuesMulti(labelTokens []uint16, propKeys []string,
 	fn func(id types.NodeID, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
 	if s == nil {
@@ -172,9 +157,7 @@ func (s *Store) ForEachDocValuesMulti(labelTokens []uint16, propKeys []string,
 }
 
 // ForEachDocValuesOrdinal is ForEachDocValues with each row's node ordinal
-// (round 6 request 11): every slot numbers its nodes from the shared
-// allocator, so a slot's ordinals are the store's. Same order and decline
-// contract.
+// (slots number from the shared allocator, so ordinals are the store's).
 func (s *Store) ForEachDocValuesOrdinal(labelToken uint16, propKeys []string,
 	fn func(id types.NodeID, ordinal uint32, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
 	if s == nil {
@@ -224,10 +207,9 @@ func (s *Store) ForEachDocValuesMultiOrdinal(labelTokens []uint16, propKeys []st
 
 // DocValuesSnapshot returns a point-lookup and by-position reader over
 // labelToken's members on every slot: Row routes an ID to its own slot's
-// snapshot (no probing of the others), Len/RowAt read the slots' rows
-// concatenated in slot order. Each slot's snapshot is immutable once built,
-// so the reader pins no shard and is safe for concurrent use with a buffer
-// pair per goroutine. Same decline contract as ForEachDocValues.
+// snapshot, Len/RowAt read the slots concatenated in slot order. Snapshots are
+// immutable, so the reader pins no shard and is safe for concurrent use with a
+// buffer pair per goroutine. Same decline contract as ForEachDocValues.
 func (s *Store) DocValuesSnapshot(labelToken uint16, propKeys []string) (snap types.NodeColumnReader, gen uint64, ok bool, err error) {
 	if s == nil {
 		return nil, 0, false, ErrNilStore
@@ -262,8 +244,7 @@ func (s *Store) DocValuesSnapshot(labelToken uint16, propKeys []string) (snap ty
 }
 
 // columnSnapshot is the sharded types.NodeColumnRowReader: one immutable
-// snapshot per slot (nil for a slot without members), offsets[i] the position
-// of slot i's first row.
+// snapshot per slot (nil without members), offsets[i] the first row of slot i.
 type columnSnapshot struct {
 	store   *Store
 	readers []types.NodeColumnReader

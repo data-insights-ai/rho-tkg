@@ -12,19 +12,14 @@ var (
 	ErrNoVersionValidAt = errors.New("graph: no version valid at the given time")
 	ErrIndexExists      = errors.New("graph: property index already exists")
 	ErrIndexNotFound    = errors.New("graph: property index not found")
-	// ErrRelPropertyIndexUnsupported is returned by a backend that recognizes
-	// the relationship property-index capability but cannot serve it — the
-	// tiered store declines it (v1): relationships live on event shards by
-	// timestamp routing, so a rel-value equality index would be shard-local
-	// while the values it must find are spread across every shard. Distinct
-	// from ErrCapabilityNotSupported (which means the backend does not
-	// implement the capability at all). Query still works everywhere via the
-	// graph-layer type-scan fallback; only index creation declines.
+	// ErrRelPropertyIndexUnsupported is returned by a backend that recognizes the
+	// relationship property-index capability but cannot serve it (tiered: event
+	// shards are timestamp-routed). Distinct from ErrCapabilityNotSupported; queries
+	// still work via the type-scan fallback, only index creation declines.
 	ErrRelPropertyIndexUnsupported = errors.New("graph: relationship property indexes are not supported on this backend")
-	// ErrElementsIndexUnsupported is returned for an operation that cannot use
-	// an Elements property index (PropertyIndexOptions.Elements, backlog 63):
-	// Elements with RangeCounts, a unique constraint or GetOrCreateByKey on an
-	// Elements-indexed key, and ByLabelAndProperties over one.
+	// ErrElementsIndexUnsupported is returned for an operation that cannot use an
+	// Elements property index (backlog 63): Elements with RangeCounts, a unique
+	// constraint or GetOrCreateByKey on the key, ByLabelAndProperties over it.
 	ErrElementsIndexUnsupported   = errors.New("graph: not supported with an elements property index")
 	ErrTemporalIndexExists        = errors.New("graph: temporal index already exists")
 	ErrTemporalIndexNotFound      = errors.New("graph: temporal index not found")
@@ -43,91 +38,60 @@ var (
 	ErrTxDone                     = errors.New("graph: transaction already committed or rolled back")
 	ErrStoreClosed                = errors.New("graph: store already closed")
 	// ErrExactErasureRelationshipEscape is returned before any mutation when a
-	// current or historical relationship version touching a declared node is
-	// absent from the caller's declared relationship set. Exact erasure never
-	// infers or widens scope.
+	// relationship version touching a declared node is outside the declared
+	// relationship set; exact erasure never widens scope.
 	ErrExactErasureRelationshipEscape = errors.New("graph: exact erasure scope excludes a relationship touching a declared node")
-	// ErrExactErasureClosureLimit is returned before mutation when resolving or
-	// rechecking historical relationship closure exhausts a caller-declared
-	// identity or version bound.
+	// ErrExactErasureClosureLimit is returned before mutation when the closure
+	// exhausts a caller-declared identity or version bound.
 	ErrExactErasureClosureLimit = errors.New("graph: exact erasure relationship closure exceeds its bound")
 	// ErrExactErasureChangeLogRetained is returned before any mutation when the
-	// backend has an enabled, buffered, scoped, or persisted change-log record.
-	// Change records carry full entity payloads, so erasing graph rows while
-	// retaining the log would not be legal-erasure complete.
+	// backend holds any change-log material (records carry full payloads).
 	ErrExactErasureChangeLogRetained = errors.New("graph: exact erasure is unavailable while change-log material is retained")
 
-	// ErrCapabilityNotSupported is returned by graph operations that depend
-	// on an optional Store capability when the configured backend does not
-	// implement it. Callers MUST use errors.Is(err, ErrCapabilityNotSupported)
-	// — the wrapping message identifies the missing capability for
-	// diagnostics, but the sentinel is the contract.
+	// ErrCapabilityNotSupported is returned when an operation depends on an optional
+	// Store capability the backend lacks. Match with errors.Is; the wrapping message
+	// names the capability.
 	ErrCapabilityNotSupported = errors.New("graph: store does not support this capability")
 
-	// ErrSlotNotLocal is returned by a PARTITIONED store when an entity's snowflake
-	// slot is not owned by this store (its authority lives on another partition —
-	// ADR-0007/0010). The slot-sharded backend re-exports it as sharded.ErrSlotNotLocal
-	// (same value) so a point read routed to the wrong partition, and a foreign-
-	// incoming stub whose rel-ID slot is foreign, both fail closed with it. Declared
-	// here (not only in the sharded package) so the partition-agnostic graph layer
-	// can errors.Is against it — e.g. to recognize a Model-A stub during tx rollback.
+	// ErrSlotNotLocal is returned by a partitioned store when an entity's snowflake
+	// slot is not owned by this store (ADR-0007/0010). sharded re-exports it as
+	// sharded.ErrSlotNotLocal (same value); declared here so the graph layer can
+	// errors.Is against it (e.g. a Model-A stub during tx rollback).
 	ErrSlotNotLocal = errors.New("graph: entity slot not local to this partitioned store")
 
-	// ErrOrderedScanTemporal is a LEGACY sentinel retained for backward
-	// compatibility. The ordered / prefix scan doors used to DECLINE temporal
-	// QueryOpts with this error (the value ordering came from the valid-time-
-	// agnostic property index). As of Stage B those doors SERVE temporal opts via
-	// a sound full fold (values resolved at the pin, then sorted), so this error is
-	// no longer returned. It is kept exported so a consumer that still matches it
-	// with errors.Is keeps compiling.
+	// ErrOrderedScanTemporal is a legacy sentinel, no longer returned (ordered and
+	// prefix scans serve temporal opts by a full fold); kept for errors.Is callers.
 	ErrOrderedScanTemporal = errors.New("graph: ordered range scan is current-state only; temporal QueryOpts are not supported")
 
-	// ErrPrimaryRegistryStale is returned by the replica apply path when a
-	// refetched primary RegistrySnapshot has CapturedAtLSN < the record being
-	// applied — the primary's registry has not yet caught up to the record. It is
-	// RETRYABLE: a replication driver should pause and retry after the primary
-	// commits. Distinct from ErrRegistryDiverged (which is fatal).
+	// ErrPrimaryRegistryStale is returned by the replica apply path when the primary's
+	// refetched RegistrySnapshot has CapturedAtLSN below the record. Retryable, unlike
+	// ErrRegistryDiverged.
 	ErrPrimaryRegistryStale = errors.New("graph: primary registry snapshot is stale for this record")
 
-	// ErrRegistryDiverged is returned by the replica apply path when a refetched
-	// primary registry does NOT append-only-extend the replica's (the replica's
-	// names are not a prefix of the primary's). This is FATAL — the two
-	// registries have irreconcilably diverged; the replica must be re-bootstrapped.
-	// Not retryable.
+	// ErrRegistryDiverged is returned by the replica apply path when the primary
+	// registry does not append-only-extend the replica's. Fatal, not retryable:
+	// re-bootstrap the replica.
 	ErrRegistryDiverged = errors.New("graph: replica registry diverged from primary")
 
-	// ErrChangesNotAscending is returned by ApplyChanges when the supplied batch
-	// is not in strictly ascending LSN order. Ascending order is a caller
-	// contract; the batch path enforces it so a record below the running maximum
-	// is not silently swallowed by the watermark skip (which would leave a
-	// permanent gap in the replica's coverage). The successful prefix before the
-	// out-of-order record is still flushed and watermarked.
+	// ErrChangesNotAscending is returned by ApplyChanges when the batch is not in
+	// strictly ascending LSN order (a lower record would be swallowed by the
+	// watermark skip, leaving a gap). The successful prefix is still flushed.
 	ErrChangesNotAscending = errors.New("graph: change records not in ascending LSN order")
 
-	// ErrWireFormatVersionUnsupported is returned when persisted data declares
-	// an on-disk format version newer than this binary supports — either a
-	// store-level format marker written by a newer release, or an individual
-	// entity row carrying a newer per-row format version. The store fails
-	// closed instead of misdecoding fields it does not know about. Upgrade the
-	// binary; never strip the marker by hand.
+	// ErrWireFormatVersionUnsupported is returned when persisted data declares a
+	// format version (store marker or per-row) newer than this binary supports. The
+	// store fails closed; upgrade the binary, never strip the marker.
 	ErrWireFormatVersionUnsupported = errors.New("graph: on-disk wire format version not supported by this binary")
 
 	// ErrHistoryAnchorIntervalMismatch is returned at open when the configured
-	// HistoryAnchorInterval differs from the interval a store's existing delta
-	// history was written at (persisted marker). The interval is baked into the
-	// on-disk delta layout, so reading deltas at a different interval would silently
-	// reconstruct against the wrong anchor. Reopen at the original interval, or
-	// rewrite history to change it.
+	// HistoryAnchorInterval differs from the one the existing delta history was
+	// written at (persisted marker; it is baked into the on-disk layout). Reopen at
+	// the original interval or rewrite history.
 	ErrHistoryAnchorIntervalMismatch = errors.New("graph: configured HistoryAnchorInterval differs from the store's persisted delta-history interval")
 
-	// ErrCorruptWire is returned when msgpack decoding of a persisted or
-	// imported row fails in a way that indicates corrupt or hostile bytes —
-	// in particular when the underlying msgpack decoder PANICS rather than
-	// returning an error. The vmihailenco/msgpack decoder can panic via reflect
-	// on certain malformed inputs (e.g. a duplicate map key for an
-	// interface-typed struct field such as PropertyWire.Value), so the store
-	// trust boundary recovers and converts that panic into this sentinel: a
-	// single corrupt or adversarial row must never crash the process. Wraps the
-	// recovered panic value for diagnostics; callers match with errors.Is.
+	// ErrCorruptWire is returned when msgpack decoding of a persisted or imported row
+	// fails on corrupt or hostile bytes, including a decoder panic (e.g. a duplicate
+	// map key for an interface-typed field), which the store boundary recovers so one
+	// bad row cannot crash the process. Wraps the panic value; match with errors.Is.
 	ErrCorruptWire = errors.New("graph: corrupt wire data")
 )

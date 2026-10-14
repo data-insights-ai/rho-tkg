@@ -13,17 +13,13 @@ import (
 
 // --- Rotation and depth helpers ---
 
-// RotateHotShard demotes the current hot shard to warm and creates a new hot shard.
-//
-// Persistence order is transactional: the new badger shard is opened, the
-// catalog is mutated in-memory, and the catalog is persisted to disk
-// BEFORE any live in-memory topology mutation (hotShard pointer switch,
-// eventShards map insert, oldHot tier flip, warm→cold demotions). If the
-// persist fails, the in-memory catalog is rolled back from a snapshot, the
-// new badger shard is closed and removed, and the live topology is left
-// untouched. Without this discipline, a Save failure would leave the
-// process running with a switched-over hotShard but a durable catalog
-// describing the old topology — split-brain on restart.
+// RotateHotShard demotes the current hot shard to warm and creates a new hot
+// shard. The catalog is persisted BEFORE any live topology mutation
+// (hotShard switch, eventShards insert, tier flips, warm->cold demotions); on
+// a persist failure the catalog is rolled back from a snapshot, the new shard
+// is closed and removed, and the topology is untouched (no split-brain between
+// the live hot shard and the durable catalog). See docs/architecture.md (Shard
+// Lifecycle).
 func (ts *Store) RotateHotShard() error {
 	releaseLifecycle, err := ts.beginSequentialStoreWideOperation()
 	if err != nil {
@@ -49,16 +45,12 @@ func (ts *Store) rotateHotShardLocked() error {
 		return fmt.Errorf("graph: flush hot shard before rotation: %w", err)
 	}
 
-	// Align boundary to millisecond precision + 1ms: snowflake IDs encode
-	// time at millisecond resolution. Adding 1ms ensures entities created
-	// in the same millisecond as the rotation (which are in the old
-	// shard) resolve correctly.
+	// Boundary at millisecond precision + 1ms: snowflake IDs have ms resolution,
+	// so same-millisecond entities (old shard) still resolve there.
 	boundary := now.Truncate(time.Millisecond).Add(time.Millisecond)
 
-	// Compute the new shard's name and on-disk location. If the computed
-	// name collides with the old hot shard (rotation within the same
-	// window — forced rotation or edge timing), append a disambiguating
-	// suffix.
+	// New shard name/location; a name colliding with the old hot shard (same
+	// window) gets a disambiguating suffix.
 	newName := shardWindowName(now, ts.shardWindow)
 	windowStart := boundary
 	windowEnd := shardWindowStart(now, ts.shardWindow).Add(ts.shardWindow)
@@ -95,9 +87,7 @@ func (ts *Store) rotateHotShardLocked() error {
 		return fmt.Errorf("graph: create temporal indexes on new hot shard: %w", err)
 	}
 
-	// Snapshot the catalog before any mutation so we can roll back if
-	// Save() fails. After this point, every catalog mutation is
-	// considered tentative until persisted.
+	// Snapshot the catalog before any mutation for rollback if Save() fails.
 	catalogSnapshot := ts.catalog.snapshotShards()
 
 	// Compute warm→cold demotions. Captured separately so the live
@@ -127,10 +117,8 @@ func (ts *Store) rotateHotShardLocked() error {
 		ts.catalog.UpdateShardTier(es.name, TierCold)
 	}
 
-	// Persist the catalog. On failure, undo every tentative catalog
-	// mutation, close + remove the new badger shard, and return the
-	// error. Live in-memory topology has NOT been touched yet, so no
-	// rollback is needed there.
+	// Persist the catalog; on failure undo the catalog mutations and remove the
+	// new shard (live topology is not yet touched).
 	if !ts.inMemory {
 		if err := ts.catalog.Save(); err != nil {
 			ts.catalog.restoreShards(catalogSnapshot)
@@ -167,20 +155,16 @@ func (ts *Store) rotateHotShardLocked() error {
 
 	for _, es := range coldDemotions {
 		es.setTier(TierCold)
-		// Do NOT close the store here — let idle-close handle it safely
-		// (avoids closing while in-flight reads hold pointers from
-		// snapshots).
+		// Do NOT close here: idle-close handles it (in-flight reads may hold
+		// pointers).
 		freeColdRelTemporalIndexes(es.store, es.name)
 	}
 
-	// BACKLOG 19h: if a change-log scope is currently open (a tx/batch mid-flight
-	// triggered this rotation via checkRotation), hand the new shard into the open
-	// scope IMMEDIATELY — before this call returns and the triggering write
-	// reaches the new shard — so even that write is buffered into the scope
-	// instead of self-committing eagerly outside it (which DiscardLogScope on a
-	// later rollback could never reach). ts.scopeMu is a leaf lock, never held
-	// while acquiring ts.mu elsewhere, so taking it here while already holding
-	// ts.mu.Lock is safe.
+	// BACKLOG 19h: a rotation triggered mid-scope (checkRotation in a tx/batch)
+	// hands the new shard into the open change-log scope IMMEDIATELY, so even the
+	// triggering write is buffered instead of self-committing outside the scope
+	// (unreachable by DiscardLogScope). ts.scopeMu is a leaf lock, safe under
+	// ts.mu.Lock.
 	ts.scopeMu.Lock()
 	scopeOpen, scopeDivertOn := ts.scopeOpen, ts.scopeDivertOn
 	ts.scopeMu.Unlock()
@@ -232,9 +216,8 @@ func (ts *Store) checkRotation() error {
 
 // --- Registry file integration ---
 
-// SaveRegistries persists both registries atomically to the registry file.
-// Writing both halves in a single call eliminates the read-modify-write race
-// that existed when SaveLabelRegistry and SaveRelTypeRegistry were separate.
+// SaveRegistries persists both registries atomically in one call (no
+// read-modify-write race between the two halves).
 func (ts *Store) SaveRegistries(labelReg *registrypkg.LabelRegistry, relTypeReg *registrypkg.RelTypeRegistry) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
@@ -253,7 +236,6 @@ func (ts *Store) SaveRegistries(labelReg *registrypkg.LabelRegistry, relTypeReg 
 
 // SaveLabelRegistry persists the label registry to the registry file.
 // Deprecated: use SaveRegistries to avoid read-modify-write race.
-// Kept for backward compatibility with single-registry callers.
 func (ts *Store) SaveLabelRegistry(reg *registrypkg.LabelRegistry) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
@@ -300,7 +282,6 @@ func (ts *Store) LoadLabelRegistry(reg *registrypkg.LabelRegistry) (int, error) 
 
 // SaveRelTypeRegistry persists the reltype registry to the registry file.
 // Deprecated: use SaveRegistries to avoid read-modify-write race.
-// Kept for backward compatibility with single-registry callers.
 func (ts *Store) SaveRelTypeRegistry(reg *registrypkg.RelTypeRegistry) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
@@ -358,10 +339,8 @@ func (ts *Store) SetLabelRegistry(reg *registrypkg.LabelRegistry) {
 
 // --- Reference archive ---
 
-// openRefArchive lazily opens the reference archive BadgerStore.
-// Caller must hold ts.archiveMu.Lock to serialize against other openers.
-// The Load/Store pattern still applies for readers — archiveMu only protects
-// the open operation itself, not field access.
+// openRefArchive lazily opens the reference archive. Caller holds
+// ts.archiveMu.Lock (serializes openers only, not field access).
 func (ts *Store) openRefArchive() error {
 	if ts.refArchive.Load() != nil {
 		return nil
@@ -409,11 +388,9 @@ func (ts *Store) openRefArchive() error {
 	return nil
 }
 
-// ensureRefArchive opens the archive if needed. Thread-safe via archiveMu.
-// Refuses to re-open after Close has run — `closed` is set under archiveMu,
-// so an open call that wins the lock against Close completes first; one that
-// loses sees `closed == true` and returns ErrStoreClosed instead of opening
-// a fresh archive that would never be closed.
+// ensureRefArchive opens the archive if needed (archiveMu). Returns
+// ErrStoreClosed after Close: `closed` is set under archiveMu, so a loser of
+// the lock race never opens an archive that would never be closed.
 func (ts *Store) ensureRefArchive() error {
 	ts.archiveMu.Lock()
 	defer ts.archiveMu.Unlock()

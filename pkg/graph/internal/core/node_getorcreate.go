@@ -10,35 +10,21 @@ import (
 )
 
 // GetOrCreateByKey atomically returns the CURRENT node carrying value for
-// (label, propertyKey), or creates one if none exists — under a single value
-// lock so a storm of concurrent callers with the same key produces exactly one
-// create and every other caller returns that same node (returned bool reports
-// whether THIS call created it).
+// (label, propertyKey), or creates one if none exists, under a single value lock:
+// concurrent callers with the same key produce exactly one create. The bool
+// reports whether THIS call created it. Works WITHOUT a unique constraint
+// (ADR-0002); an active one is still honoured and shares the same stripe.
 //
-// The value lock alone makes the check-then-create atomic, so GetOrCreateByKey
-// works WITHOUT an active unique constraint on (label, propertyKey) (ADR-0002).
-// When such a constraint IS active it is still honoured (the created node passes
-// the same kernel), and the two mechanisms share the same stripe so they
-// serialize together.
+// Scope (backlog 9s): atomic only against callers in the value-stripe protocol
+// (other GetOrCreateByKey calls, writes under an ACTIVE unique constraint). A
+// PLAIN concurrent Add/Update of the same value with no constraint never touches
+// the stripe and can land a second node; create a unique constraint on
+// (label, propertyKey) to protect against every writer.
 //
-// BACKLOG 9s — scope of the guarantee: atomicity holds against every caller
-// that participates in the value-stripe protocol — other GetOrCreateByKey
-// calls, and any write whose value is under an ACTIVE unique constraint
-// (enforceUniqueForNode/enforceUniqueForNodeHeld take the same stripe). It
-// does NOT serialize against a PLAIN concurrent Add/Update writing the same
-// value when NO unique constraint exists on (label, propertyKey): value-
-// stripe locking is unique-constraint-enforcement machinery, so a plain
-// write with nothing constrained never touches the stripe and can land a
-// second node holding the value even while GetOrCreateByKey believes its
-// own check-then-create was atomic. Create a unique constraint on
-// (label, propertyKey) if protection against EVERY writer (not just other
-// GetOrCreateByKey callers) is required.
-//
-// value must be an indexable scalar (string / int / bool / Instant). Float
-// values are rejected with ErrUniqueUnsupportedType (bit-pattern equality is a
-// trap — lesson 25). extraProps are set on a freshly created node (the keyed
-// property always wins over any same key in extraProps); they are ignored on a
-// hit. The returned node is a mutable, independent copy (Get semantics).
+// value must be an indexable scalar (string / int / bool / Instant); floats are
+// rejected with ErrUniqueUnsupportedType (lesson 25). extraProps are set on a
+// created node (the keyed property wins) and ignored on a hit. The returned node
+// is a mutable, independent copy (Get semantics).
 func (n *NodeOps) GetOrCreateByKey(ctx context.Context, label, propertyKey string, value any, extraProps map[string]any) (*types.Node, bool, error) {
 	return n.c.getOrCreateNodeByKey(ctx, label, propertyKey, value, extraProps)
 }
@@ -57,8 +43,7 @@ func (c *Core) getOrCreateNodeByKey(ctx context.Context, label, propertyKey stri
 		return nil, false, err
 	}
 
-	// The value must be an indexable scalar — that is the lookup key. Reject
-	// float (bit-pattern equality trap) and non-scalar values up front.
+	// Reject float (bit-pattern equality trap, lesson 25) and non-scalar values up front.
 	valueKey := types.IndexablePropertyValueKey(value)
 	if valueKey == "" {
 		return nil, false, fmt.Errorf("%w: GetOrCreateByKey value for key %q is not an indexable scalar", ErrUniqueUnsupportedType, propertyKey)
@@ -67,8 +52,7 @@ func (c *Core) getOrCreateNodeByKey(ctx context.Context, label, propertyKey stri
 		return nil, false, fmt.Errorf("%w: GetOrCreateByKey does not support float values (key %q)", ErrUniqueUnsupportedType, propertyKey)
 	}
 
-	// Resolve/persist the label token so the value stripe is stable and a create
-	// binds to it. Minting a token for a not-yet-used label is harmless.
+	// Resolve/persist the label token so the value stripe is stable.
 	labelTok, err := c.getOrCreateLabelPersisted(label)
 	if err != nil {
 		return nil, false, err
@@ -84,8 +68,7 @@ func (c *Core) getOrCreateNodeByKey(ctx context.Context, label, propertyKey stri
 		opErr   error
 	)
 	ep, closeErr := c.runUnderRLock(func() {
-		// Hold the value stripe across the lookup AND the create so the whole
-		// check-then-create is atomic against every other caller of the same key.
+		// Hold the value stripe across lookup AND create (atomic check-then-create).
 		ordered := c.valueLocks.LockStripes([]uint8{stripe})
 		defer c.valueLocks.UnlockStripes(ordered)
 
@@ -95,15 +78,13 @@ func (c *Core) getOrCreateNodeByKey(ctx context.Context, label, propertyKey stri
 			return
 		}
 		if len(matches) > 0 {
-			// Hit — return a mutable copy of the lowest-ID match (scan rows are
-			// frozen and sorted by ID; determinism picks the first).
+			// Hit: mutable copy of the lowest-ID match (scan rows are sorted by ID).
 			node = matches[0].DeepCopy()
 			c.opNodeReads.Add(1)
 			return
 		}
 
-		// Miss — create under the SAME held stripe. Pass the held stripe so the
-		// create's own unique kernel does not try to re-lock it (non-reentrant).
+		// Miss: create under the SAME held stripe, passed down because it is non-reentrant.
 		props := make(map[string]any, len(extraProps)+1)
 		for k, v := range extraProps {
 			props[k] = v

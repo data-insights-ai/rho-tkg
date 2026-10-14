@@ -671,11 +671,8 @@ func TestCountByLabelAtForwards(t *testing.T) {
 	}
 }
 
-// The caller-instant doors must hand the instant, id and update map to the ops
-// verbatim. Catches a facade that drops the instant (forwards 0, which the
-// core reads as invalid), swaps it for the clock, forwards to the plain
-// Delete/Update, or rewrites the update map (e.g. injecting a reserved
-// tkg_tx_from/tkg_tx_to property instead of passing the argument).
+// The caller-instant doors must hand instant, id and update map to the ops verbatim
+// (no dropped instant, clock swap, plain Delete/Update, or injected reserved props).
 func TestAPIWithTxDoorsForwardInstantVerbatim(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -751,10 +748,8 @@ func TestAPILatestStampsForwardsAnswer(t *testing.T) {
 	}
 }
 
-// Backlog 43: the retraction doors must reach Ops.Retract / Ops.RetractWithTx
-// with the id and the instant verbatim. Catches a facade that forwards a
-// retraction to Delete / DeleteWithTx (Retract as Delete: the past stays
-// readable), drops the instant, or swaps the id.
+// Backlog 43: the retraction doors reach Ops.Retract / RetractWithTx with id and
+// instant verbatim (not Delete / DeleteWithTx, which leaves the past readable).
 func TestAPIRetractDoorsForwardVerbatim(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

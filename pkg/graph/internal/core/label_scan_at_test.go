@@ -11,18 +11,13 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Round 6 request 12 (sigma-tkgd, EnvelopePruneLarge: 5.02 of 5.02 s in
-// ByLabel at a valid-time coordinate, every candidate read a second time
-// through GetNode and its version resolved). A label read at a temporal
-// coordinate answers a node without history rows from the current row the
-// label scan already read; the doors stream in ascending ID order and resolve
-// only as far as the caller reads.
+// A label read at a temporal coordinate answers a node without history rows from
+// the current row the label scan already read (no second GetNode per candidate);
+// doors stream in ascending ID order and resolve only as far as the caller reads.
 
-// labelAtFixture builds :E nodes whose valid intervals are mixed (closed
-// before the probe instants, open, closed around them, starting after, no
-// valid-from), some of them updated after creation (a history row each), one
-// deleted, one that lost the label and one :Other node. It returns every node
-// ID it made and the IDs with history rows (updated, deleted, relabelled).
+// labelAtFixture builds :E nodes with mixed valid intervals, some updated (history
+// row), one deleted, one that lost the label, one :Other. Returns all IDs and the
+// IDs with history rows.
 func labelAtFixture(t *testing.T, g *Core, n int) (all, withHistory []types.NodeID) {
 	t.Helper()
 	ctx := context.Background()
@@ -73,9 +68,8 @@ func labelAtFixture(t *testing.T, g *Core, n int) (all, withHistory []types.Node
 	return all, withHistory
 }
 
-// labelAtOracle resolves every node the fixture made through the chain
-// resolver's own door, findNodeVersionForOpts: the IDs and versions a label
-// read at opts must answer, ascending by ID.
+// labelAtOracle resolves every fixture node through findNodeVersionForOpts: the IDs
+// and versions a label read at opts must answer, ascending by ID.
 func labelAtOracle(t *testing.T, g *Core, ids []types.NodeID, label string, opts storepkg.QueryOpts) []string {
 	t.Helper()
 	tok, ok := g.labels.Lookup(label)
@@ -129,11 +123,9 @@ var labelAtProbes = []storepkg.QueryOpts{
 	{ValidStart: 5000, ValidEnd: 1 << 50},
 }
 
-// TestLabelReadAtAgreesWithTheResolver: ByLabel, ForEachByLabel (with and
-// without NoSort) and CountByLabelAt at a point and over an interval answer
-// exactly the oracle's set, in ascending ID order, on every backend — the
-// updated nodes with their older version where it held, the deleted node in
-// its window, the node that left the label only where it held it.
+// TestLabelReadAtAgreesWithTheResolver: ByLabel, ForEachByLabel (NoSort or not) and
+// CountByLabelAt at a point and over an interval equal the oracle's set, in
+// ascending ID order, on every backend.
 func TestLabelReadAtAgreesWithTheResolver(t *testing.T) {
 	for _, be := range pinnedPropBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -200,11 +192,9 @@ func TestLabelReadAtAgreesWithTheResolver(t *testing.T) {
 	}
 }
 
-// TestLabelReadAtReadsNoHistoryNodeTwice: on the stores that state history
-// presence (memory, badger), a label read at a valid-time point or interval
-// resolves through the chain resolver's door only the nodes with history rows;
-// every other node is answered from the row the label scan read. Faulty
-// implementation it catches: the per-candidate GetNode and chain load.
+// TestLabelReadAtReadsNoHistoryNodeTwice: on stores stating history presence, a
+// valid-time label read resolves via the chain resolver only nodes with history
+// rows. Catches per-candidate GetNode and chain load.
 func TestLabelReadAtReadsNoHistoryNodeTwice(t *testing.T) {
 	for _, be := range pinnedPropBackends() {
 		if be.name != "memory" && be.name != "badger" {
@@ -243,11 +233,8 @@ func TestLabelReadAtReadsNoHistoryNodeTwice(t *testing.T) {
 	}
 }
 
-// TestForEachByLabelAtStreams: a label read at a valid-time coordinate
-// resolves only as far as the caller reads — a callback that stops after the
-// first row leaves the rest unresolved (at most one chunk). Faulty
-// implementation it catches: resolving and materializing every candidate
-// before the first callback.
+// TestForEachByLabelAtStreams: a callback that stops after the first row leaves the
+// rest unresolved (at most one chunk). Catches resolving every candidate up front.
 func TestForEachByLabelAtStreams(t *testing.T) {
 	g := pinnedPropBackends()[0].open(t)
 	ctx := context.Background()
@@ -287,9 +274,8 @@ func TestForEachByLabelAtStreams(t *testing.T) {
 	}
 }
 
-// TestSingleVersionNodeMatchesResolver holds firstVersionCovers equal to the
-// chain resolver over the one-row chain for first versions of every interval
-// shape, at instants on and around their bounds.
+// TestSingleVersionNodeMatchesResolver holds firstVersionCovers equal to the chain
+// resolver over the one-row chain, for every interval shape at and around its bounds.
 func TestSingleVersionNodeMatchesResolver(t *testing.T) {
 	g := pinnedPropBackends()[0].open(t)
 	ctx := context.Background()
@@ -346,9 +332,8 @@ func TestSingleVersionNodeMatchesResolver(t *testing.T) {
 	}
 }
 
-// TestTypeReadAtAgreesWithTheResolver is TestLabelReadAtAgreesWithTheResolver
-// for relationship types (ByType, ForEachByType, CountByTypeAt), and on memory
-// and badger holds the chain loads to the relationships with history.
+// TestTypeReadAtAgreesWithTheResolver is the label test for relationship types
+// (ByType, ForEachByType, CountByTypeAt); memory and badger also bound chain loads.
 func TestTypeReadAtAgreesWithTheResolver(t *testing.T) {
 	for _, be := range pinnedPropBackends() {
 		t.Run(be.name, func(t *testing.T) {

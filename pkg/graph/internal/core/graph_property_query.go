@@ -11,24 +11,15 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// ByLabelAndProperty returns nodes matching the label and property value,
-// with optional pagination. Resolves the label name to a token.
-// Returns nil if the label is not registered.
+// ByLabelAndProperty returns nodes matching the label and property value, with
+// optional pagination; nil if the label is not registered.
 //
-// Without a temporal filter, the call falls through to the store-level
-// property index for O(matches) lookup when the backend implements
-// PropertyIndexCapability; otherwise the graph layer falls back to a
-// label-scan + property filter using the mandatory NodesByLabel surface.
-// The fallback is correctness-preserving (every in-tree backend already
-// applies the same scan-and-filter internally when no property index
-// covers the (label, key) pair). When opts carries a temporal filter,
-// the candidate set is the union of (nodes currently matching
-// label+property — seeded via the same path) and (the nodes whose rows ever
-// carried the label and value: the store's property membership sidecar for a
-// declared index, backlog 8; else every known history ID). Each candidate is then resolved to its version overlapping the
-// requested time and the predicate re-checked against that historical
-// version, so a node whose label and property held at the requested
-// time is included even if a later version no longer matches.
+// Without a temporal filter it uses the store property index (O(matches)) when
+// the backend implements PropertyIndexCapability, else a label scan + filter.
+// With a temporal filter the candidates are the current matches plus the nodes
+// whose rows ever carried label and value (the property membership sidecar of a
+// declared index, backlog 8; else every known history ID); each is resolved to
+// its version at the requested time and the predicate re-checked there.
 func (n *NodeOps) ByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
@@ -113,26 +104,17 @@ func (c *Core) nodesByLabelAndPropertyLocked(label, key string, value any, opts 
 	return result, nil
 }
 
-// ByLabelAndProperties returns nodes matching the label AND every (key,
-// value) pair in values (AND-conjunction, EQUALITY-only in v1 — no
-// partial-prefix or range semantics; see docs/query-planners.md "Composite
-// property indexes"). values must supply exactly the 2..4 keys a composite
-// index declares to be eligible for acceleration — a superset or subset of
-// keys still answers correctly via the label-scan + post-filter fallback,
-// just without the O(matches) speedup. Resolves the label name to a token.
-// Returns nil if the label is not registered.
+// ByLabelAndProperties returns nodes matching the label AND every (key, value)
+// pair in values (EQUALITY-only; docs/query-planners.md "Composite property
+// indexes"). Exactly the 2..4 keys of a composite index are accelerated; other
+// key sets answer correctly via label scan + post-filter. Nil if the label is not
+// registered.
 //
-// Mirrors NodeOps.ByLabelAndProperty's structure exactly: without a temporal
-// filter, falls through to the store-level composite index for O(matches)
-// lookup when the backend implements CompositePropertyIndexCapability and a
-// matching definition exists; otherwise falls back to a label-scan +
-// property filter using the mandatory NodesByLabel surface. When opts
-// carries a temporal filter, the candidate set is the union of (nodes
-// currently matching label+properties) and (the intersection of the indexed
-// keys' property membership sidecars, backlog 8; else every known history
-// ID); each
-// candidate is resolved to its version overlapping the requested time and
-// the predicate re-checked against that historical version.
+// Same structure as ByLabelAndProperty: composite index when the backend
+// implements CompositePropertyIndexCapability and a definition matches, else
+// scan + filter. With a temporal filter the candidates are the current matches
+// plus the intersection of the indexed keys' membership sidecars (backlog 8; else
+// every known history ID), each re-checked at its version at the requested time.
 func (n *NodeOps) ByLabelAndProperties(label string, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
@@ -181,9 +163,8 @@ func (c *Core) nodesByLabelAndPropertiesLocked(label string, values map[string]a
 	if !ok {
 		return nil, nil
 	}
-	// A multi-key lookup is value equality on every key; a key with an
-	// Elements index (backlog 63) means "contains" on the single-key door, so
-	// the conjunction is refused rather than given a second meaning.
+	// Multi-key lookup is equality on every key; an Elements key (backlog 63) means
+	// "contains" on the single-key door, so the conjunction is refused.
 	for k := range values {
 		if err := c.refuseNodeElementsIndex(tok, k, "ByLabelAndProperties"); err != nil {
 			return nil, err

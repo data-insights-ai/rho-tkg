@@ -38,9 +38,8 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		frozen   *types.Relationship
 	}
 	serialized := make([]relData, len(rels))
-	// The frozen cache copy and the change-log payload are pure functions of
-	// the caller-owned finalized rel — built OUTSIDE idxMu (see PutNodesBatch:
-	// keeping them under the lock was the dominant concurrent-write cost).
+	// The frozen cache copy and change-log payload are pure functions of the finalized
+	// rel: built outside idxMu (see PutNodesBatch).
 	var putPayloads [][]byte
 	if bs.logEnabled.Load() {
 		putPayloads = make([][]byte, len(rels))
@@ -160,11 +159,9 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	return bs.flushIfNeeded()
 }
 
-// DeleteRelationshipsBatch deletes multiple relationships atomically using two-phase validation.
-// Phase 1: check all IDs exist, pre-read relationship metadata.
-// Phase 2: delete via deleteRelByInfo (mutation-only), preserving history.
-// Missing ID → ErrRelNotFound, zero mutations. Duplicate IDs are coalesced.
-// Nil/empty input → nil error.
+// DeleteRelationshipsBatch deletes relationships atomically in two phases: all
+// IDs exist (pre-read metadata), then deleteRelByInfo (history preserved). Missing
+// ID returns ErrRelNotFound with zero mutations; duplicates are coalesced; nil/empty returns nil.
 func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
@@ -183,9 +180,8 @@ func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 	}
 	typedIDs = uniqueRelIDs(typedIDs)
 
-	// Pre-build the change-log delete records (hard deletes, no tombstone), so a
-	// marshal error aborts before any op is enqueued. Indexed by typedIDs order,
-	// which the infos slice below preserves.
+	// Pre-build the delete records (hard deletes) so a marshal error aborts before any
+	// op is enqueued; indexed by typedIDs order, which infos preserves.
 	delPayloads := make([][]byte, len(typedIDs))
 	if bs.logEnabled.Load() {
 		for i, rid := range typedIDs {
@@ -249,9 +245,8 @@ func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 		}
 	}
 
-	// Phase 2: apply — all validated, mutations cannot fail. One ChangeRelDelete
-	// per relationship, under the same lock as the ops (deleteRelByInfo emits no
-	// record itself).
+	// Phase 2: apply; cannot fail. One ChangeRelDelete per rel under the same lock
+	// (deleteRelByInfo emits no record).
 	for i, info := range infos {
 		bs.deleteRelByInfo(info, info.row)
 		bs.logChangeRaw(storecontract.ChangeRelDelete, delPayloads[i])
