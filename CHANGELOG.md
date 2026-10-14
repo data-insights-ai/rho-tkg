@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`g.Nodes().ForEachDocValuesOrdinal` / `ForEachDocValuesMultiOrdinal`** (sigma-tkgd round 6 request 11): the
+  rows, order and `gen` of `ForEachDocValues` / `ForEachDocValuesMulti` with each node's dense ordinal beside its
+  ID, so a consumer marks and reads back rows by ordinal (an array) instead of by ID. The ordinals of a snapshot's
+  rows are read once, on the first ordinal read of that snapshot, and kept with it (badger shares the cache of
+  `ScanNodeColumns`; memory reads them under the lock that took the snapshot). Memory, badger, sharded; `ok=false`
+  where the plain door declines and where the store numbers no node (tiered, external stores, badger
+  `DisableOrdinals`). No write cost; memory 4 B per row of a snapshot read through these doors. 100,000 nodes, one
+  column: `ForEachDocValues` plus a `Lend` per row for the ordinal 6.5 ms (memory) / 255 ms (badger) -> 0.64 /
+  0.69 ms. Tests `TestForEachDocValuesOrdinal` (every backend, two-phase), `TestStoreForEachDocValuesOrdinal`,
+  `TestForEachDocValuesOrdinalDeclinesWithoutOrdinals`; bench `BenchmarkDocValuesOrdinals`.
+
 ### Changed
 
 - **Badger column scans allocate nothing per row** (sigma-tkgd round 6 request 10). `ScanRelColumns` and

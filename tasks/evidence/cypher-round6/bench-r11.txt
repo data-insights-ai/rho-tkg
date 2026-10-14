@@ -1,0 +1,5 @@
+BenchmarkDocValuesOrdinals/memory/values+lend         	      10	   6469358 ns/op	  643390 B/op	    9979 allocs/op
+BenchmarkDocValuesOrdinals/memory/values+ordinal      	      10	    642729 ns/op	   40230 B/op	       3 allocs/op
+BenchmarkDocValuesOrdinals/badger/values+lend         	      10	 255398062 ns/op	189402762 B/op	 2589521 allocs/op
+BenchmarkDocValuesOrdinals/badger/values+ordinal      	      10	    689583 ns/op	   40272 B/op	       3 allocs/op
+limit: {"command": ["go", "test", "-count=1", "-run", "^$", "-bench", "BenchmarkDocValuesOrdinals", "-benchmem", "-benchtime", "10x", "-cpu", "1", "./pkg/graph/"], "rss_limit_mib": 8192.0, "wall_limit_s": 900.0, "sample_interval_s": 0.05, "peak_tree_rss_mib": 1011.0, "elapsed_s": 6.594, "exit_code": 0, "reason": "completed"}

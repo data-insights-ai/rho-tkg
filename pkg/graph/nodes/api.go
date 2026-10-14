@@ -50,6 +50,8 @@ type Ops interface {
 	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	ForEachDocValues(label string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
 	ForEachDocValuesMulti(labels []string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
+	ForEachDocValuesOrdinal(label string, propKeys []string, fn func(types.NodeID, uint32, []any, []bool) bool) (uint64, bool, error)
+	ForEachDocValuesMultiOrdinal(labels []string, propKeys []string, fn func(types.NodeID, uint32, []any, []bool) bool) (uint64, bool, error)
 	DocValuesSnapshot(label string, propKeys []string) (types.NodeColumnReader, uint64, bool, error)
 	DocValuesSnapshotAsOf(label string, propKeys []string, txAt types.Instant) (types.NodeColumnReader, uint64, bool, error)
 	ForEachDocValuesAsOf(label string, propKeys []string, txAt types.Instant, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
@@ -541,6 +543,30 @@ func (a *API) ForEachDocValuesMulti(labels []string, propKeys []string, fn func(
 		return 0, false, err
 	}
 	return ops.ForEachDocValuesMulti(labels, propKeys, fn)
+}
+
+// ForEachDocValuesOrdinal is ForEachDocValues with each row's dense node
+// ordinal (types.Node.Ordinal) beside its ID: same rows, order and gen.
+// ok=false where ForEachDocValues declines and where the store numbers no
+// node (tiered, external stores, badger with DisableOrdinals); the caller then
+// uses ForEachDocValues. See core.NodeOps.ForEachDocValuesOrdinal.
+func (a *API) ForEachDocValuesOrdinal(label string, propKeys []string, fn func(id types.NodeID, ordinal uint32, vals []any, present []bool) bool) (uint64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.ForEachDocValuesOrdinal(label, propKeys, fn)
+}
+
+// ForEachDocValuesMultiOrdinal is ForEachDocValuesMulti with each row's node
+// ordinal, under ForEachDocValuesOrdinal's contract. See
+// core.NodeOps.ForEachDocValuesMultiOrdinal.
+func (a *API) ForEachDocValuesMultiOrdinal(labels []string, propKeys []string, fn func(id types.NodeID, ordinal uint32, vals []any, present []bool) bool) (uint64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.ForEachDocValuesMultiOrdinal(labels, propKeys, fn)
 }
 
 // DocValuesSnapshot returns a random-access point-lookup handle over a label's

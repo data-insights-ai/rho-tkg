@@ -189,6 +189,7 @@ func (ms *Store) ExactErase(req storecontract.ExactErasureRequest) (storecontrac
 	ms.dropPropertyTxMembersLocked()
 	ms.docColumns = make(map[uint16]*indexpkg.LabelDocValues)
 	ms.docColumnsMulti = make(map[string]*indexpkg.LabelDocValues)
+	ms.docOrdinals = docOrdinalCache{}
 	ms.bumpNodeEpoch()
 	ms.bumpRelEpoch()
 	return result, nil
