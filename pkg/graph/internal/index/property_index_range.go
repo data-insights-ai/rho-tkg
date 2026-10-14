@@ -36,6 +36,12 @@ type RangeOrderedCursor struct {
 // RangeNodeIDs: callers MUST post-filter exactly (lesson 23; int64 past 2^53,
 // lesson 25). supported=false only when the index is nil or an Elements index.
 func (pi *PropertyIndex) RangeOrderedPage(min, max float64, desc bool, after RangeOrderedCursor, limit int) (ids []snowflake.ID, next RangeOrderedCursor, done bool, supported bool) {
+	return pi.rangeOrderedPage(min, max, desc, after, limit, nil)
+}
+
+// rangeOrderedPage is RangeOrderedPage; a non-nil keys receives each ID's
+// sort key, aligned with ids.
+func (pi *PropertyIndex) rangeOrderedPage(min, max float64, desc bool, after RangeOrderedCursor, limit int, keys *[]float64) (ids []snowflake.ID, next RangeOrderedCursor, done bool, supported bool) {
 	if pi == nil || pi.elements {
 		return nil, RangeOrderedCursor{}, true, false
 	}
@@ -63,6 +69,9 @@ func (pi *PropertyIndex) RangeOrderedPage(min, max float64, desc bool, after Ran
 				continue
 			}
 			ids = append(ids, id)
+			if keys != nil {
+				*keys = append(*keys, k)
+			}
 			next = RangeOrderedCursor{has: true, val: k, id: id}
 			if len(ids) >= limit {
 				return false

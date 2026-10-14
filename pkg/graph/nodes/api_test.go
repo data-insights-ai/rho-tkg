@@ -412,6 +412,16 @@ func (s *nodeOpsSpy) CountByLabelPropertyValue(label, propKey string, value any,
 	return 0, false, s.err
 }
 
+func (s *nodeOpsSpy) ForEachIDByLabelPropertyRangeOrdered(ctx context.Context, label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error {
+	s.record("ForEachIDByLabelPropertyRangeOrdered")
+	return s.err
+}
+
+func (s *nodeOpsSpy) ForEachIDByLabelPropertyPrefix(ctx context.Context, label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error {
+	s.record("ForEachIDByLabelPropertyPrefix")
+	return s.err
+}
+
 func (s *nodeOpsSpy) RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
 	s.record("RangeCardinality")
 	s.lastLabel = label

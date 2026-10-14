@@ -33,6 +33,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestCountByPropertyValue` (every backend against a brute-force Cypher-equality count after writes, updates and
   deletes; declines), `TestEqualCountMatchesCypherEquality`, store tests; evidence
   `tasks/evidence/cypher-round7/r4-*`.
+- **Ordered index walks without the row** (sigma-tkgd round 7 request 5: a grouping by an indexed property as a
+  group source): `Nodes().ForEachIDByLabelPropertyRangeOrdered(ctx, label, key, min, max, inclMin, inclMax, desc,
+  opts, fn(id, value))`, the string twin `ForEachIDByLabelPropertyPrefix`, and the `Rels()` mirrors
+  `ForEachIDByTypePropertyRangeOrdered` / `ForEachIDByTypePropertyPrefix` stream (ID, stored value) in value order,
+  ties by ID ascending, from the property index alone (`PropertyIndex.RangeOrderedValuePage` /
+  `PrefixOrderedValuePage`: the value is recovered from the per-type value sets of a sort key, the bounds applied
+  exactly). Pages of 256 under the store's read lock, fn with no lock held, ctx checked every 4,096 entries.
+  `ErrIndexNotFound` reports every unsupported case (temporal opts, tiered, sharded, external stores, badger
+  `PropertyIndexOnDisk` for nodes, no index, Elements, an index being built, an integer past 2^53). Memory, badger.
+  Read-only, no write cost; the row doors' paging is unchanged (the key capture is off for them). 300,000 nodes
+  (`BenchmarkForEachIDOrdered`): badger 2.8 us per node through the ordered row door, 0.09 us here; memory 0.13
+  against 0.09-0.10 us. Tests `TestForEachIDOrdered` (every backend, brute-force oracle over the rows, both
+  directions, exact bounds, prefixes, early stop, cancellation, declines), `TestOrderedValuePagesMatchBruteForce`,
+  store tests (badger: no read transaction); evidence `tasks/evidence/cypher-round7/r5-*`.
 
 ### Changed
 

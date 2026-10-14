@@ -127,6 +127,23 @@ func (pi *PropertyIndex) PrefixNodeIDs(prefix string) (ids []types.NodeID, suppo
 // for the next page and done=true once exhausted. Never over-selects.
 // supported=false only when the index is nil or an Elements index.
 func (pi *PropertyIndex) PrefixOrderedPage(prefix string, desc bool, after StrOrderedCursor, limit int) (ids []snowflake.ID, next StrOrderedCursor, done bool, supported bool) {
+	return pi.prefixOrderedPage(prefix, desc, after, limit, nil)
+}
+
+// PrefixOrderedValuePage is PrefixOrderedPage with each ID's string value,
+// aligned with ids (round 7 request 5: an ordered walk that reads no row).
+// supported=false also while the index is being built (Mutated is set).
+func (pi *PropertyIndex) PrefixOrderedValuePage(prefix string, desc bool, after StrOrderedCursor, limit int) (ids []snowflake.ID, vals []string, next StrOrderedCursor, done bool, supported bool) {
+	if pi != nil && pi.Mutated != nil {
+		return nil, nil, StrOrderedCursor{}, true, false
+	}
+	ids, next, done, supported = pi.prefixOrderedPage(prefix, desc, after, limit, &vals)
+	return ids, vals, next, done, supported
+}
+
+// prefixOrderedPage is PrefixOrderedPage; a non-nil keys receives each ID's
+// string, aligned with ids.
+func (pi *PropertyIndex) prefixOrderedPage(prefix string, desc bool, after StrOrderedCursor, limit int, keys *[]string) (ids []snowflake.ID, next StrOrderedCursor, done bool, supported bool) {
 	if pi == nil || pi.elements {
 		return nil, StrOrderedCursor{}, true, false
 	}
@@ -152,6 +169,9 @@ func (pi *PropertyIndex) PrefixOrderedPage(prefix string, desc bool, after StrOr
 				continue
 			}
 			ids = append(ids, id)
+			if keys != nil {
+				*keys = append(*keys, k)
+			}
 			next = StrOrderedCursor{has: true, val: k, id: id}
 			if len(ids) >= limit {
 				return false

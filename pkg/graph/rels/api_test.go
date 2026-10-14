@@ -536,6 +536,16 @@ func (s *relOpsSpy) CountByTypePropertyValue(typeName, propKey string, value any
 	return 0, false, s.err
 }
 
+func (s *relOpsSpy) ForEachIDByTypePropertyRangeOrdered(ctx context.Context, typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error {
+	s.record("ForEachIDByTypePropertyRangeOrdered")
+	return s.err
+}
+
+func (s *relOpsSpy) ForEachIDByTypePropertyPrefix(ctx context.Context, typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error {
+	s.record("ForEachIDByTypePropertyPrefix")
+	return s.err
+}
+
 func (s *relOpsSpy) RangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
 	s.record("RangeCardinality")
 	s.lastType = typeName

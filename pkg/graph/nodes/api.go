@@ -49,6 +49,8 @@ type Ops interface {
 	ForEachByLabelPropertyRangeOrdered(label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	ForEachByLabelPropertyPrefix(label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
+	ForEachIDByLabelPropertyRangeOrdered(ctx context.Context, label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error
+	ForEachIDByLabelPropertyPrefix(ctx context.Context, label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error
 	CountByLabelPropertyValue(label, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error)
 	ForEachDocValues(label string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
 	ForEachDocValuesMulti(labels []string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
@@ -543,6 +545,35 @@ func (a *API) RangeCardinality(label, propKey string, min, max float64, inclMin,
 		return 0, false, err
 	}
 	return ops.RangeCardinality(label, propKey, min, max, inclMin, inclMax, opts)
+}
+
+// ForEachIDByLabelPropertyRangeOrdered streams (ID, value) of the label's
+// nodes whose numeric propKey value lies within [min, max] (inclusivity
+// applied exactly) in value order (descending when desc), ties by ID
+// ascending, from the property index alone: no node row is read. The value is
+// the stored one in its stored type. fn returning false stops; fn runs with
+// no lock held; the context is checked every 4,096 entries. ErrIndexNotFound
+// (reported, never a slower walk) for temporal opts, a store without the
+// door (tiered, sharded, external), badger PropertyIndexOnDisk, no index, an
+// Elements index, an index being built or one holding an integer past 2^53.
+func (a *API) ForEachIDByLabelPropertyRangeOrdered(ctx context.Context, label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachIDByLabelPropertyRangeOrdered(ctx, label, propKey, min, max, inclMin, inclMax, desc, opts, fn)
+}
+
+// ForEachIDByLabelPropertyPrefix is the string twin of
+// ForEachIDByLabelPropertyRangeOrdered: (ID, value) of the label's nodes
+// whose string value begins with prefix, in byte order (descending when
+// desc), ties by ID ascending, from the index alone. Same contract.
+func (a *API) ForEachIDByLabelPropertyPrefix(ctx context.Context, label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachIDByLabelPropertyPrefix(ctx, label, propKey, prefix, desc, opts, fn)
 }
 
 // CountByLabelPropertyValue counts the label's nodes whose propKey value equals value as

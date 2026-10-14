@@ -50,6 +50,8 @@ type Ops interface {
 	ForEachByTypePropertyRange(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	ForEachByTypePropertyRangeOrdered(typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	RangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
+	ForEachIDByTypePropertyRangeOrdered(ctx context.Context, typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error
+	ForEachIDByTypePropertyPrefix(ctx context.Context, typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error
 	CountByTypePropertyValue(typeName, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error)
 	ForEachByTypePropertyPrefix(typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	Count() (int, error)
@@ -529,6 +531,26 @@ func (a *API) RangeCardinality(typeName, propKey string, min, max float64, inclM
 		return 0, false, err
 	}
 	return ops.RangeCardinality(typeName, propKey, min, max, inclMin, inclMax, opts)
+}
+
+// ForEachIDByTypePropertyRangeOrdered is the relationship mirror of
+// nodes.API.ForEachIDByLabelPropertyRangeOrdered over a type's property index.
+func (a *API) ForEachIDByTypePropertyRangeOrdered(ctx context.Context, typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachIDByTypePropertyRangeOrdered(ctx, typeName, propKey, min, max, inclMin, inclMax, desc, opts, fn)
+}
+
+// ForEachIDByTypePropertyPrefix is the relationship mirror of
+// nodes.API.ForEachIDByLabelPropertyPrefix.
+func (a *API) ForEachIDByTypePropertyPrefix(ctx context.Context, typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachIDByTypePropertyPrefix(ctx, typeName, propKey, prefix, desc, opts, fn)
 }
 
 // CountByTypePropertyValue counts the type's relationships whose propKey value equals value as
