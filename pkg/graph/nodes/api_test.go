@@ -407,6 +407,11 @@ func (s *nodeOpsSpy) ByLabel(label string, opts storepkg.QueryOpts) ([]*types.No
 	return nil, s.err
 }
 
+func (s *nodeOpsSpy) CountByLabelPropertyValue(label, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error) {
+	s.record("CountByLabelPropertyValue")
+	return 0, false, s.err
+}
+
 func (s *nodeOpsSpy) RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
 	s.record("RangeCardinality")
 	s.lastLabel = label

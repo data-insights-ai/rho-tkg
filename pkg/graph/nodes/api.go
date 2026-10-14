@@ -49,6 +49,7 @@ type Ops interface {
 	ForEachByLabelPropertyRangeOrdered(label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	ForEachByLabelPropertyPrefix(label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
+	CountByLabelPropertyValue(label, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error)
 	ForEachDocValues(label string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
 	ForEachDocValuesMulti(labels []string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
 	ForEachDocValuesOrdinal(label string, propKeys []string, fn func(types.NodeID, uint32, []any, []bool) bool) (uint64, bool, error)
@@ -542,6 +543,24 @@ func (a *API) RangeCardinality(label, propKey string, min, max float64, inclMin,
 		return 0, false, err
 	}
 	return ops.RangeCardinality(label, propKey, min, max, inclMin, inclMax, opts)
+}
+
+// CountByLabelPropertyValue counts the label's nodes whose propKey value equals value as
+// Cypher equality keeps it (3 matches 3 and 3.0 of every stored width, no
+// string/number crossing, nil and NaN count 0), from the property index's
+// value sets, no node read. exact=false with no error declines (count
+// otherwise): no property index on (label, propKey), a store without the
+// capability (tiered, external stores), badger with PropertyIndexOnDisk
+// (nodes), an index being built, an Elements index, a number of magnitude
+// 2^53 or more, a temporal value, a list or map, an unknown label, or a
+// temporal QueryOpts. exact tells a planner whether exact counts are
+// available for (label, propKey).
+func (a *API) CountByLabelPropertyValue(label, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.CountByLabelPropertyValue(label, propKey, value, opts)
 }
 
 // ForEachDocValues (X5) streams the requested property columns for a label's nodes

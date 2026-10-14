@@ -20,6 +20,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `LendByIDs` 1.12 / 0.38 / 0.24 us; memory 46 / 135 / 140 ns against 16 / 13 / 31 ns. Tests `TestLendByIDs`
   (every backend, nodes and relationships, oracle `Lend`), `TestLendByIDs_ConcurrentWithWriters`,
   `TestLendSortedColdRowsOneSnapshot`, `TestMemoryStoreLendSorted`; evidence `tasks/evidence/cypher-round7/r3-*`.
+- **Exact equality counts from a property index** (sigma-tkgd round 7 request 4):
+  `Nodes().CountByLabelPropertyValue(label, key, value, opts)` / `Rels().CountByTypePropertyValue(type, key, value,
+  opts)` return `(count, exact, err)`: the entities whose value equals `value` under Cypher equality (numbers by
+  value across every stored width, a float32 compared as its float64 widening, no string/number crossing, nil and
+  NaN count 0), summed from the index's per-value sets (`PropertyIndex.EqualCount`: set sizes, no row and no ID
+  read). `exact=false`, no error, is the decline a planner probes per (label, key): no index, tiered, badger
+  `PropertyIndexOnDisk` (nodes), an index being built, an Elements index, a number of magnitude 2^53 or more, a
+  temporal value, a list or map, an unknown label or type, temporal opts. Memory, badger, sharded (summed over
+  slots). Read-only, no write cost. 300,000 nodes, 3,000 equal to 7 (`BenchmarkCountByPropertyValue`): the int64
+  and float64 lookups counted 0.32 ms memory / 7.8-10.2 ms badger, the count 0.28-0.29 us on both. Tests
+  `TestCountByPropertyValue` (every backend against a brute-force Cypher-equality count after writes, updates and
+  deletes; declines), `TestEqualCountMatchesCypherEquality`, store tests; evidence
+  `tasks/evidence/cypher-round7/r4-*`.
 
 ### Changed
 

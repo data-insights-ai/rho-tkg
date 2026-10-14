@@ -50,6 +50,7 @@ type Ops interface {
 	ForEachByTypePropertyRange(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	ForEachByTypePropertyRangeOrdered(typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	RangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
+	CountByTypePropertyValue(typeName, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error)
 	ForEachByTypePropertyPrefix(typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	Count() (int, error)
 	CountByType(typeName string) (int, error)
@@ -528,6 +529,24 @@ func (a *API) RangeCardinality(typeName, propKey string, min, max float64, inclM
 		return 0, false, err
 	}
 	return ops.RangeCardinality(typeName, propKey, min, max, inclMin, inclMax, opts)
+}
+
+// CountByTypePropertyValue counts the type's relationships whose propKey value equals value as
+// Cypher equality keeps it (3 matches 3 and 3.0 of every stored width, no
+// string/number crossing, nil and NaN count 0), from the property index's
+// value sets, no relationship read. exact=false with no error declines (count
+// otherwise): no property index on (type, propKey), a store without the
+// capability (tiered, external stores), badger with PropertyIndexOnDisk
+// (nodes), an index being built, an Elements index, a number of magnitude
+// 2^53 or more, a temporal value, a list or map, an unknown type, or a
+// temporal QueryOpts. exact tells a planner whether exact counts are
+// available for (type, propKey).
+func (a *API) CountByTypePropertyValue(typeName, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.CountByTypePropertyValue(typeName, propKey, value, opts)
 }
 
 // ForEachByTypePropertyPrefix streams relationships whose STRING propKey value
