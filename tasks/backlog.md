@@ -307,11 +307,24 @@ alternatives within existing quotas independently of transient transaction
 recovery. Snapshot admission funds both banks before staging and binds exact
 imported credit state. Operative graph pins, all-participant portable publication,
 explicit expiry and logical GC are still being implemented; storage substrate
-alone does not provide them. These new packages have source review and exact
+alone does not provide them. Complete retained terminal-bank comparison is
+source-integrated at `045517ab`; graph Restore can detect unknown extra native
+owners instead of inspecting only the transient recovery owner. Its direct
+historical guard and existing unknown-version guard updates are authored only.
+These new packages have source review and exact
 integration hashes only; compilation, authored guards and runtime qualification
 remain deferred to the integrated checkpoint.
 Existing accepted components stay closed unless their source or required
 behavior changes.
+
+The paired native cost/fault driver currently composes caller loss before Decide,
+committed Decide reply loss and one HOME leader SIGKILL with a healthy quorum,
+followed by clean six-volume reopen and original-request replay. This source
+inventory does not cover D's duplicate/reordered/asymmetric network schedules,
+unequal ticks/clock jumps, quorum/domain loss or graph-composed VFS/durable-image
+storage faults. These remain implementation work alongside native columns,
+contended/empty predicates, partial late correction, snapshot/feed and
+transfer-under-write cost workloads; their qualification follows integration.
 
 Worker lanes: Sol 6.1/high for native protocol recovery and durable pins/GC,
 then C/D; Sol 6.1/high for native column/fault-workload implementation (bounded
