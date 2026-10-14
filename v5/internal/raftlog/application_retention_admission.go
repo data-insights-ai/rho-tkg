@@ -66,6 +66,34 @@ func retentionMonotone(old, next ApplicationRetentionState) bool {
 	return next.PreviousID == old.ID && next.ID != old.ID && next.RootFloor >= old.RootFloor && next.FeedFloor >= old.FeedFloor && next.OutcomeFloor >= old.OutcomeFloor && next.RecoveryFloor >= old.RecoveryFloor && next.DataFloor >= old.DataFloor
 }
 
+// RetentionPlan returns an owned copy of this genuine view's CAPTURED native
+// plan. Enabled distinguishes the fresh zero/uninstalled state from a disabled
+// store. It does not re-read a later active plan, authorize anchor access or
+// grant deletion rights. Prepared views retain their actual imported bank/state.
+// The offered read ledger funds header/array ownership before any copy; no
+// canonical encoding/hash or point lookup is needed for this captured value.
+func (v *ApplicationView) RetentionPlan(ctx context.Context, budget ReadBudget) (state ApplicationRetentionState, enabled bool, work ApplicationProofWork, err error) {
+	if err := v.lock(ctx); err != nil {
+		return state, false, work, err
+	}
+	defer v.unlock()
+	p := v.s.meta.App.Policy
+	if budget.Rows < 1 || budget.Bytes < 1 {
+		return state, false, work, ErrInvalid
+	}
+	if budget.Rows > p.MaxPageRows || budget.Bytes > p.MaxPageBytes {
+		return state, false, work, ErrLimit
+	}
+	// One captured header and its owned root array; the conservative fixed
+	// envelope covers value copies independently of the wire representation.
+	cost := 512 + 2*retentionViewBytes(v.retention)
+	if cost > budget.Bytes {
+		return state, false, work, ErrLimit
+	}
+	work = ApplicationProofWork{Records: 1, Bytes: cost}
+	return cloneRetentionState(v.retention), v.s.meta.Retention.Config.enabled(), work, nil
+}
+
 // PrepareApplicationRetention authenticates an inert plan against this genuine
 // current root, complete native RS2 bank, retained anchors and the next ACTUAL
 // committed normal command. All observed lengths and owned plan arrays spend the

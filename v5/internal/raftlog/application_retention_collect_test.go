@@ -9,12 +9,25 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"go.etcd.io/raft/v3"
 )
 
 // Authored native floor/opaque Stage guard. Store fixture persistence does not
 // claim distributed graph GC, durable live-pin or fault acceptance.
 func TestApplicationRetentionFloorsAuthenticateCommandAndCapturedOwners(t *testing.T) {
+	legacy := generationStore(t, vfs.NewMem())
+	defer legacy.Close()
+	legacyView, err := legacy.ApplicationView(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state, enabled, _, err := legacyView.RetentionPlan(t.Context(), ReadBudget{Rows: 1, Bytes: 4096}); err != nil || enabled || !state.zero() {
+		t.Fatal("disabled plan reported as enabled empty plan", state, enabled, err)
+	}
+	if err := legacyView.Close(); err != nil {
+		t.Fatal(err)
+	}
 	policy := DefaultApplicationPolicy(1)
 	// Two ordinary installation allowances + the actual six-index census29
 	// + one valid eight-record completion exactly fit WITHOUT the cursor row.
@@ -45,6 +58,10 @@ func TestApplicationRetentionFloorsAuthenticateCommandAndCapturedOwners(t *testi
 		t.Fatal(err)
 	}
 	defer old.Close()
+	uninstalled, enabled, _, err := old.RetentionPlan(t.Context(), ReadBudget{Rows: 1, Bytes: 4096})
+	if err != nil || !enabled || !uninstalled.zero() {
+		t.Fatal("enabled uninstalled plan", uninstalled, enabled, err)
+	}
 	generationApply(t, s, "obsolete", KV{Key: []byte("key"), Value: []byte("obsolete")})
 	generationApply(t, s, "middle", KV{Key: []byte("key"), Value: []byte("middle")})
 	generationApply(t, s, "current", KV{Key: []byte("key"), Value: []byte("new")})
@@ -68,6 +85,9 @@ func TestApplicationRetentionFloorsAuthenticateCommandAndCapturedOwners(t *testi
 	command := []byte("install-floor")
 	persist(t, s, 6, 6, ent(6, 6, string(command)))
 	var nilView *ApplicationView
+	if _, _, _, err := nilView.RetentionPlan(t.Context(), ReadBudget{Rows: 1, Bytes: 4096}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("nil plan view", err)
+	}
 	if _, _, err := nilView.PrepareApplicationRetention(t.Context(), next, command, ReadBudget{Rows: 8, Bytes: policy.MaxPageBytes}); !errors.Is(err, ErrInvalid) {
 		t.Fatal("nil admission", err)
 	}
@@ -136,6 +156,19 @@ func TestApplicationRetentionFloorsAuthenticateCommandAndCapturedOwners(t *testi
 		t.Fatal(err)
 	}
 	defer current.Close()
+	planBefore := readyMetadataFingerprint(t, s)
+	if _, _, work, err := current.RetentionPlan(t.Context(), ReadBudget{Rows: 1, Bytes: 1}); !errors.Is(err, ErrLimit) || work != (ApplicationProofWork{}) || planBefore != readyMetadataFingerprint(t, s) {
+		t.Fatal("plan budget refusal copied or made progress", work, err)
+	}
+	captured, enabled, _, err := current.RetentionPlan(t.Context(), ReadBudget{Rows: 1, Bytes: 4096})
+	if err != nil || !enabled || captured.ID != admission.state.ID || captured.Roots[0].ImageHash != sha256.Sum256([]byte("genesis")) {
+		t.Fatal("actual captured plan", captured, enabled, err)
+	}
+	captured.Roots[0].ImageHash[0]++
+	again, _, _, err := current.RetentionPlan(t.Context(), ReadBudget{Rows: 1, Bytes: 4096})
+	if err != nil || again.Roots[0].ImageHash != sha256.Sum256([]byte("genesis")) {
+		t.Fatal("returned plan aliased native view", again, err)
+	}
 	getApplication(t, current, "key", "new", true, false)
 	if _, err := current.RootAt(t.Context(), 1, 32); !errors.Is(err, ErrApplicationExpired) {
 		t.Fatal("ordinary root used semantic/data anchor as old cut", err)
@@ -188,6 +221,9 @@ func TestApplicationRetentionFloorsAuthenticateCommandAndCapturedOwners(t *testi
 
 	if err := current.Close(); err != nil {
 		t.Fatal(err)
+	}
+	if _, _, _, err := current.RetentionPlan(t.Context(), ReadBudget{Rows: 1, Bytes: 4096}); !errors.Is(err, ErrClosed) {
+		t.Fatal("closed plan view", err)
 	}
 	if err := export.Close(); err != nil {
 		t.Fatal(err)
