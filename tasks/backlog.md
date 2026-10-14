@@ -337,7 +337,8 @@ and owner checks, captured independent expiry floors and a separate image-anchor
 door. `b8c8a0f6` covers the recovery-owner floor; `5f0fbb80` also prepays local
 cursor backing in explicit recovery creation. Operative collection, scrub and
 fresh graph handoff still require implementation; all these new sources await
-execution. Fresh initialization preserves retention
+execution. `ab650bbc` also refuses a replacement plan while native collection
+has unfinished cursor progress. Fresh initialization preserves retention
 configuration and prepays/publishes its actual recovery-root census at
 `9741c403`/`9f9116b5`; older initialization profiles retain their existing bytes.
 Complete retained terminal-bank comparison is
@@ -383,6 +384,13 @@ retain-all behavior and ordinary formats stay unchanged. These integrations clos
 not V2 E/F qualification or comparative efficiency acceptance.
 Existing accepted components stay closed unless their source or required
 behavior changes.
+
+FDB observed role/domain faults are source-integrated at `35e75e4c`: seven fresh
+cases in both coordinator orientations bind live co-resident roles, actual
+process/network actions, same-volume recovery and immutable request replay to
+complete old/current/index/CDC observations. Native Commit-issued caller loss
+grants no inferred decision. Execution, publication interruptions and remaining
+directed-message/workload schedules stay open; this does not close E.
 
 The paired native cost/fault driver currently composes caller loss before Decide,
 committed Decide reply loss and one HOME leader SIGKILL with a healthy quorum,
