@@ -224,6 +224,18 @@ func (v *ReadView) UniqueCandidates(ctx context.Context, predicate graphstate.Un
 // relationship IDs preserve parallel edges; one exclusive-ID continuation skips
 // all self-loop roles and repeated relationship-life entries across pages.
 func (v *ReadView) IncidentRelationships(ctx context.Context, predicate graphstate.IncidentPredicate, token graphstate.Cursor, budget graphstate.ReadBudget) (graphstate.EntityPage, error) {
+	return v.incidentRelationships(ctx, predicate, token, budget, budget.Rows)
+}
+
+// IncidentRelationshipsChunk retains ordinary work limits while bounding the
+// candidate output independently. It uses the same whole-ID-run merge seam.
+func (v *ReadView) IncidentRelationshipsChunk(ctx context.Context, predicate graphstate.IncidentPredicate, token graphstate.Cursor, budget graphstate.ReadBudget, rows int) (graphstate.EntityPage, error) {
+	if rows < 1 || rows > budget.Rows {
+		return graphstate.EntityPage{}, ErrInvalid
+	}
+	return v.incidentRelationships(ctx, predicate, token, budget, rows)
+}
+func (v *ReadView) incidentRelationships(ctx context.Context, predicate graphstate.IncidentPredicate, token graphstate.Cursor, budget graphstate.ReadBudget, rows int) (graphstate.EntityPage, error) {
 	if v == nil {
 		return graphstate.EntityPage{}, ErrInvalid
 	}
@@ -244,17 +256,10 @@ func (v *ReadView) IncidentRelationships(ctx context.Context, predicate graphsta
 			return graphstate.EntityPage{}, v.finish(q, err)
 		}
 	}
-	window, err := q.queryScope(predicate.Window)
+	hash, err := v.incidentFingerprint(q, predicate)
 	if err != nil {
 		return graphstate.EntityPage{}, v.finish(q, err)
 	}
-	if err := q.q.materialize(256); err != nil {
-		return graphstate.EntityPage{}, v.finish(q, err)
-	}
-	data := append([]byte("full:incident:v1\x00"), v.id[:]...)
-	data = appendComponent(data, graphstate.ComponentKey{Owner: predicate.Endpoint, Life: predicate.Life})
-	data = appendField(data, window)
-	hash := sha256.Sum256(data)
 	old, err := v.oldCursor(token, canonicalIncidentRecord, hash)
 	if err != nil {
 		return graphstate.EntityPage{}, v.finish(q, err)
@@ -305,7 +310,7 @@ func (v *ReadView) IncidentRelationships(ctx context.Context, predicate graphsta
 		if err = q.validateIncident(key); err != nil {
 			break
 		}
-		if err = entityPageAppend(q, &out, key.relationship, &output, min(budget.Bytes, v.limits.MaxOutputBytes-v.outputBytes), budget.Rows); err != nil {
+		if err = entityPageAppend(q, &out, key.relationship, &output, min(budget.Bytes, v.limits.MaxOutputBytes-v.outputBytes), rows); err != nil {
 			break
 		}
 		last = key.relationship
