@@ -493,6 +493,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   imported-package and two required-module advisories are unreachable. Final
   consolidated root+v5 CI remains pending; no other v4 API or behavior change.
 
+## [4.51.8] - 2026-10-14
+
+### Added
+
+- **Batched bitemporal point read** (backlog 57, sigma-tkgd R1): `g.Temporal().NodesAtTxByIDs(ids, validAt, txAt)` /
+  `RelsAtTxByIDs(ids, validAt, txAt)` return, aligned to `ids` (same length and order, a repeated ID answered at
+  each position), the row `NodeAtTx` / `RelAtTx` returns for each ID; an element is nil where the per-ID door
+  answers not-found or `ErrNoVersionValidAt`. Errors fail the call: `ErrGraphClosed`, an invalid ID
+  (`ErrInvalidStoreMutation`), `txAt <= 0` (`ErrInvalidTimeRange`; a pin is required), `txAt` above the commit clock
+  (`ErrTxPinTooNew`), a member's `ErrHistoryCompacted` / `ErrRetentionExpired`. Each ID runs the per-ID door's gates
+  and body; the batch checks open, IDs and pin once, holds the graph read lock once per 256 distinct IDs, reads through one
+  store read snapshot where the store has one (badger, sharded; a read-cost optimisation, not call-level isolation) and resolves a repeated ID once. 100 IDs, half
+  answered from history: badger 293 µs → 207 µs per call (-29%), memory 48 µs → 47 µs (parity). Tests
+  `TestNodesAtTxByIDsMatchesNodeAtTx` (memory, badger, sharded, tiered; nodes and rels against the per-ID door),
+  `TestAtTxByIDsGatesAsPerIDDoor`, `TestAtTxByIDsWrappers`, `BenchmarkNodesAtTxByIDs`; evidence
+  `tasks/evidence/batched-attx/`.
+
+### Changed
+
+- **Tiered event-shard routing is a binary search** (backlog 59): `timestampToEventShardEntry` and the write-path depth filter scanned every event shard per ID. The store now keeps `shardIndex`, the shards sorted by `timeStart` (windows do not overlap), rebuilt under `ts.mu` on every insert or delete of an event shard (open, rotation, purge drop and re-link), and routes with `sort.Search`; same hot-shard fallback for ids in a gap or outside all windows. 700 shards: 3301 ns to 33 ns per lookup; 28 shards: 170 ns to 22 ns.
+
 ## [4.51.7] - 2026-10-14
 
 ### Fixed

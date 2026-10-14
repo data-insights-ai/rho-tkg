@@ -917,14 +917,17 @@ A build or that smoke suite alone cannot establish semantic compatibility.
 #### Current v4 compatibility delta (cutoff 2026-10-14)
 
 The current rho source baseline for this acceptance record is main
-`9e9f0e0a8eb985f216948cbb6ce9556563a729db`, **v4.51.7**, following source-reconciled
-`a77b1301`/v4.51.6 and integrated `c23c8b04`/v4.51.5, `a1248ffc`/v4.51.4, `6c6bb954`/v4.51.3 and `cddc0997`/v4.51.2. This extends the
+`bf0050b2d62332867c8dc22946ed11eabdcd23ed`, **v4.51.8**, following qualified selected
+`9e9f0e0a`/v4.51.7, source-reconciled `a77b1301`/v4.51.6 and earlier integrated
+v4 records. This extends the
 historical consumer inventories above; their commits/hashes and old reproduction
 runs remain historical and unchanged. It does not assert that those consumers
 have upgraded or that a v5 adapter/importer has passed.
 
 | Current v4 contract | Required v5 mapping / consumer obligation |
 |---|---|
+| Batched state-point reads (v4.51.8) | `NodesAtTxByIDs` / `RelsAtTxByIDs` align per-ID answers to all positions/duplicates; absent/no-version becomes nil, other errors fail the whole call without rows. Positive knowledge pins are required; future pins refuse even empty input. Declared relationship state and row aliasing remain explicit. Distinct-ID resolution, 256-ID lock chunks and optional live store snapshots optimize cost, without call-level isolation or certified cuts. Preserve wrapper/sentinel/history semantics and explicit v5 admission. |
+| Tiered event-window routing (v4.51.8) | Search nonempty half-open source mint-time windows, exclude zero-length duplicate starts and retain hot fallback outside windows. Open/rotation/purge unlink/re-link rebuild ordered metadata under owner locks; depth filtering shares windows. Actual checkout/archive/cold history remains authoritative. V5 opaque IDs never derive placement from source mint time; upstream timings are not v5 capacity proof. |
 | Complete node temporal envelopes (v4.51.7) | Covered/Building history-version writes, label re-add and memory recreate preserve all retained intervals. Creation stays Building until build-start and late-written IDs have full history; memory reads histories under the lock and re-folds mutated live rows. Preserve exact filtering and uncovered fallback; upstream backlog56 source fixes do not qualify v5 selectors or consumers. |
 | Derived node temporal disk rows (v4.51.7) | Separate actual disk-row writes/removals from semantic mutations: history-only writes retain current backfill, removed labels cannot regain stale rows. Failed/unpublished creates and writable open purge undefined label rows; read-only scope is unchanged. Image-suppressed reopen must neither miss nor duplicate IDs. Derived repair is no certified-cut, wire-format or power-loss guarantee. |
 | Sequential relationship temporal rebuild (v4.51.6) | Derived sound envelopes preserve all current/history rows across pending/flushing full/delta data, flush-epoch re-pins and cache eviction; exact row/history resolution remains authoritative. Temporal-block decoding and clean-open images are acceleration, not integrity/completeness or certified-cut proof. Upstream rebuild throughput is not v5 performance evidence. |
@@ -965,10 +968,15 @@ source-delta records and reader qualifications remain immutable history. Histori
 limits; v4.51.2 fixes those reader paths. A current reader cannot recover source
 bytes already lost by older writers, and source-history ambiguity remains explicit.
 
-The current v4.51.7 source contracts are recorded in
+The current v4.51.8 source contracts are recorded in
 [consumer contracts](reference/consumer-contracts.json) and
 [migration obligations](reference/consumer-migration.json). The selected
-v4.51.7 reader passes the existing ten narrow module targets at integrated
+v4.51.8 reader is source-only and unqualified. Preflight still uses unchanged
+per-entity timelines/entityReads; new batch/helper code is compiled and tiered
+routing affects its fixtures. At the approved final cutoff, the existing ten
+targets need a fresh receipt; no new preflight code/tests are needed. Batched
+consumer/selector/routing and retention/destination proof remain separate.
+The historical v4.51.7 reader passed the ten narrow targets at integrated
 `0eb0a0ac` with absolute Go1.26.9, 96.2% overall coverage and 100% for both
 preflight functions; [the new receipt](../../tools/v5-migrate/evidence/main4517-0eb0a0ac.json)
 retains exact frozen inputs, scanner provenance and the pre-target pathname

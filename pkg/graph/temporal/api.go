@@ -50,6 +50,8 @@ type Ops interface {
 	// NodesAt / RelAt / RelsAt respectively.
 	NodeAtTx(id types.NodeID, validAt, txAt types.Instant) (*types.Node, error)
 	RelAtTx(id types.RelID, validAt, txAt types.Instant) (*types.Relationship, error)
+	NodesAtTxByIDs(ids []types.NodeID, validAt, txAt types.Instant) ([]*types.Node, error)
+	RelsAtTxByIDs(ids []types.RelID, validAt, txAt types.Instant) ([]*types.Relationship, error)
 	NodesAtTx(validAt, txAt types.Instant) ([]*types.Node, error)
 	RelsAtTx(validAt, txAt types.Instant) ([]*types.Relationship, error)
 	NodesDuringTx(from, to, txAt types.Instant) ([]*types.Node, error)
@@ -443,6 +445,45 @@ func (a *API) RelAtTx(id types.RelID, validAt, txAt types.Instant) (*types.Relat
 	return ops.RelAtTx(id, validAt, txAt)
 }
 
+// NodesAtTxByIDs is NodeAtTx for many IDs at one (validAt, txAt): the result
+// is aligned to ids (same length and order; a repeated id is answered at each
+// position and the rows may alias), an element is nil where NodeAtTx returns
+// ErrNodeNotFound or ErrNoVersionValidAt, every other element is the row
+// NodeAtTx returns. Rows at repeated positions are the same pointer;
+// DeepCopy before mutating. Each distinct ID runs NodeAtTx's gates and body
+// with its current row read per ID; the graph read lock is held once per 256
+// distinct IDs, through one store read snapshot per call where the store
+// offers one (badger, sharded). Batch, ingest and admin writers can land
+// between two such chunks, so each ID is read at one moment but the call as a
+// whole is not one snapshot: pin txAt at or below a value a write or NowTx
+// handed out for a repeatable answer. Only IDs whose current row does not
+// answer read their history. Empty ids returns an empty slice.
+//
+// Errors (the call fails, no rows): ErrNilGraph, ErrGraphClosed,
+// ErrInvalidStoreMutation (an invalid id, before anything is read),
+// ErrInvalidTimeRange (txAt <= 0: a pin is required, unlike NodeAtTx's
+// txAt == 0), ErrTxPinTooNew (txAt above the commit clock), and a member's
+// ErrHistoryCompacted / ErrRetentionExpired (NodeAtTx's per-ID gates).
+func (a *API) NodesAtTxByIDs(ids []types.NodeID, validAt, txAt types.Instant) ([]*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.NodesAtTxByIDs(ids, validAt, txAt)
+}
+
+// RelsAtTxByIDs is NodesAtTxByIDs for relationships: each element is the row
+// RelAtTx returns, nil where it returns ErrRelNotFound or
+// ErrNoVersionValidAt; RelAtTx's gates. DECLARED view: not masked by
+// endpoint validity.
+func (a *API) RelsAtTxByIDs(ids []types.RelID, validAt, txAt types.Instant) ([]*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.RelsAtTxByIDs(ids, validAt, txAt)
+}
+
 // NodeEffectiveTimeline returns node id's state over valid time as recorded
 // at transaction-time pin: NodeSegments ascending by ValidFrom, half-open,
 // non-overlapping, gaps omitted, adjacent segments holding different rows.
@@ -451,7 +492,7 @@ func (a *API) RelAtTx(id types.RelID, validAt, txAt types.Instant) (*types.Relat
 // ErrNoVersionValidAt. ValidFrom is the effective start, never 0 (the ID's
 // mint instant for a row without a recorded valid-from); a deleted node's last
 // segment ends at the delete instant; a node created after the pin returns
-// nil, nil. Rows are shared frozen pointers (DeepCopy to mutate).
+// nil, nil. Segments may share a row pointer; DeepCopy before mutating.
 //
 // NodeAsOf is the record door (the newest row recorded by a pin); this is the
 // state door's interval form. Errors: ErrNilGraph, ErrGraphClosed,

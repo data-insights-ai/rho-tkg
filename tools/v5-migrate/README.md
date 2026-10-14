@@ -57,7 +57,7 @@ global source watermark families or perform import. Per-type retention, state
 column cuts and zero temporal ordinals have explicit consumer obligations in
 [PLAN §8a](../../docs/v5/PLAN.md); full V6 remains open.
 
-The selected v4.51.7/main `9e9f0e0a` reader is narrowly qualified at integrated
+The historical v4.51.7/main `9e9f0e0a` reader is narrowly qualified at integrated
 root `0eb0a0ac` by the [new ten-target receipt](evidence/main4517-0eb0a0ac.json)
 and [raw archive](evidence/main4517-0eb0a0ac.tar.gz). All ten targets passed once
 with absolute Go1.26.9, pinned scanner versions/builds and unchanged cached
@@ -76,6 +76,17 @@ they neither create nor prune temporal indexes. Indexed selector/build, retentio
 refusal, consumer and destination-import proofs remain separate. Newer main
 `bf0050b2`/v4.51.8 was observed while this qualification ran; it is outside this
 exact v4.51.7 source cutoff and remains unqualified by this receipt.
+
+The selected current source is v4.51.8/main `bf0050b2`, source-reconciled only
+and unqualified. Preflight code/tests, Makefile and go.sum are unchanged. New
+batched state-point doors and shared point helpers are graph compile dependencies;
+preflight still calls unchanged per-entity effective timelines/entityReads.
+Tiered window routing/depth changes affect its existing tiered fixture lookups.
+After the approved final source cutoff, repeat the existing ten narrow targets
+with absolute Go1.26.9 and a fresh frozen-input receipt. No new preflight code or
+test is needed for these mapping cases; batched consumer, selector/routing,
+retention and destination-import acceptance remain separate. The historical
+v4.51.7 qualification above does not cover this new reader.
 
 The caller quiesces source writes, imports, retention and DDL across a call,
 supplies capture/reader identity and evidence, and designates an explicit v5

@@ -1,0 +1,5 @@
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered.test]
+pkg/graph/store/tiered/tieredstore_routing_search_test.go:35:5: ts.reindexShardsLocked undefined (type *Store has no field or method reindexShardsLocked)
+pkg/graph/store/tiered/tieredstore_routing_search_test.go:95:6: ts.reindexShardsLocked undefined (type *Store has no field or method reindexShardsLocked)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered [build failed]
+FAIL
