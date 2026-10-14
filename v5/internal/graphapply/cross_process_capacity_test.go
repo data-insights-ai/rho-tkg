@@ -237,4 +237,17 @@ func TestCrossProcessCapacityAuthenticatedPriorityAndImmutableDecision(t *testin
 			t.Fatal("refusal consumed/revived original quota", child, err)
 		}
 	})
+	t.Run("distinct secondary footprint quota", func(t *testing.T) {
+		// Inert arithmetic only: current coarse native profiles require every
+		// declared participant. This does not invent a narrower native manifest.
+		arena, err := graphstate.NewOutputBudget(4 << 20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		budget := newGraphRemoteBudget(defaultMaterializerLimits(), arena)
+		child, err := budget.capacityChild(2, 4096, 4*1+6, 4096, graphCapacityLimits{})
+		if err != nil || child.maxCalls != 10 || budget.calls != 10 || budget.maxCalls-budget.calls < 4*2+6 {
+			t.Fatal("secondary count changed desired completion floor", child, err)
+		}
+	})
 }

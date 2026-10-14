@@ -125,7 +125,7 @@ func (h *allocationHost) exportCapacityAuthority(proof crossCapacityProof, nonce
 		return crossCapacityAuthority{}, replica.ErrStopped
 	}
 	o := proof.observation
-	if proof.owner != h || o.source != h.machine.scope() || o.readID.session != h.session || o.readID.sequence == 0 || o.readID.sequence > h.issuedReads.Load() || o.index > h.driver.Applied() || o.nonce != nonce || o.prepareHash != prepareHash || proof.work != (graphstore.PageWork{Records: proof.work.Records, Bytes: proof.work.Bytes}) || proof.work.Records > limits.rows || proof.work.Bytes > limits.bytes || proof.output > limits.output {
+	if proof.owner != h || o.source != h.machine.scope() || o.readID.session != h.session || o.readID.sequence == 0 || o.readID.sequence > h.issuedReads.Load() || o.index > h.driver.Applied() || o.nonce != nonce || o.prepareHash != prepareHash || proof.work.Records < 0 || proof.work.Bytes < 0 || proof.output < 0 || proof.work.Records > limits.rows || proof.work.Bytes > limits.bytes || proof.output > limits.output {
 		return crossCapacityAuthority{}, errInvalid
 	}
 	encoded, err := encodeCrossCapacityObservation(o)
@@ -281,24 +281,31 @@ func (c *crossProcessCoordinator) recoverCapacity(ctx context.Context, desired c
 	if txID == manifest.tx && !bytes.Equal(lookup.manifest, desired.manifest) {
 		return ownDecision, errInvalid
 	}
-	// Admission precedes decode/allocation and every secondary phase. Original
-	// completion headroom stays on the shared parent rather than being borrowed.
-	closure, err := budget.capacityChild(len(manifest.parts), len(desired.manifest), 4*len(manifest.parts)+6, len(lookup.manifest)+4096, graphCapacityLimits{})
-	if err != nil {
-		return ownDecision, err
-	}
-	arena, ok := closure.output.(*graphstate.OutputBudget)
+	// The holder lookup already prepaid bounded decode ownership. Inspect its
+	// authentic footprint before sizing any secondary phases; its participant
+	// count need not match the blocked original's count.
+	decodeArena, ok := lookupBudget.output.(*graphstate.OutputBudget)
 	if !ok {
 		return ownDecision, errInvalid
 	}
-	loser, err := decodeCrossManifest(lookup.manifest, c.host.machine.limits, arena)
+	loser, err := decodeCrossManifest(lookup.manifest, c.host.machine.limits, decodeArena)
 	if err != nil || loser.tx != txID || loser.coordinator != coordinator || loser.configuration != manifest.configuration {
 		return ownDecision, errors.Join(errInvalid, err)
 	}
 	if err := o.checkManifest(loser); err != nil {
 		return ownDecision, err
 	}
-	if len(loser.parts) != len(manifest.parts) {
+	if len(loser.parts) < 1 || len(loser.parts) > 16 {
+		return ownDecision, errLimit
+	}
+	// Original completion headroom stays on the shared parent. This separate
+	// closure is funded using ONLY the actual retained holder's footprint.
+	closure, err := budget.capacityChild(len(manifest.parts), len(desired.manifest), 4*len(loser.parts)+6, len(lookup.manifest)+4096, graphCapacityLimits{})
+	if err != nil {
+		return ownDecision, err
+	}
+	arena, ok := closure.output.(*graphstate.OutputBudget)
+	if !ok {
 		return ownDecision, errInvalid
 	}
 	owner.budget = closure
