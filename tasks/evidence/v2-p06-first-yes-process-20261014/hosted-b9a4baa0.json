@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "run": 38534493358,
+  "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38534493358",
+  "head": "b9a4baa0d7c90a142b8829076270b0cc1461f8eb",
+  "status": "completed",
+  "conclusion": "success",
+  "scope": "Hosted focused P06 first-YES leader-loss parent, four A/B COMMIT/ABORT cells; not whole P06 family, P03, full V2 or release acceptance. Independent Python serial bridges remain local evidence in the immutable component receipt.",
+  "sourceSHA256": {
+    "v5/internal/graphapply/prepared_lock_p06_process_test.go": "a63ced2bd916b44fa9dc08c1b90baa0cda50bfc562970ca680a7adb2fe9574f9",
+    "v5/internal/graphapply/prepared_lock_p06_harness_test.go": "cc0815413df8037b9aa6f97d75a296e872f27b3626a371328a9dd4a8edd831cb",
+    "tools/v5-substrate/check-p06-history.py": "2e0529eada0b9ced31869d497ec13f479dd81a6b736eba52dd01cfe0c94f4c07",
+    "tools/v5-substrate/check_p06_history_test.py": "f7fe41e1067e3658f4cc8c0e7f78423a11299bbb2c22b9737ecce3ad12ce0a21"
+  },
+  "artifact": {
+    "id": 11879887456,
+    "name": "focused-behavior-v5",
+    "sizeBytes": 147123,
+    "downloadedAt": "2026-10-14",
+    "SHA256": {
+      "normal-0.jsonl": "cb0c90b266bd3ba49e3d9b7c1814200e569be50bfc638c84c2b7ef7dceceec19",
+      "race-0.jsonl": "93224b3b5e9b479e9745c1996b022d41ca00d86474655e825e3aeef4df332f48",
+      "coverage-0.jsonl": "3fc6ed6a903b2106d595dfed07a7a77bfd9d7d33a45bb858a96d4ce450513639",
+      "selection.json": "08e17c39553a548c5669379b18883635bdf7b7679011912d7c42fc11f860c998",
+      "coverage-0.out": "74ca9b2a8aceb7883ed000fb4b134a4e25dfe570d3b3333d3f810bd98637f2fd"
+    }
+  },
+  "gates": {
+    "normal": {
+      "parent": "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery",
+      "passedParents": 1,
+      "passedSubcases": 4,
+      "terminalTests": [
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator3/committrue",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator3/commitfalse",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator8/committrue",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator8/commitfalse",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery"
+      ]
+    },
+    "race": {
+      "parent": "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery",
+      "passedParents": 1,
+      "passedSubcases": 4,
+      "terminalTests": [
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator3/committrue",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator3/commitfalse",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator8/committrue",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator8/commitfalse",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery"
+      ]
+    },
+    "coverage": {
+      "parent": "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery",
+      "passedParents": 1,
+      "passedSubcases": 4,
+      "terminalTests": [
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator3/committrue",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator3/commitfalse",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator8/committrue",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator8/commitfalse",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery"
+      ]
+    }
+  },
+  "fullV2Acceptance": false
+}
