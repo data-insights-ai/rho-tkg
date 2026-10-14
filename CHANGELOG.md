@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.51.7] - 2026-10-14
+
 ### Fixed
 
 - **Node temporal envelopes cover every row of a covered node** (backlog 56, badger and memory): the per-label
