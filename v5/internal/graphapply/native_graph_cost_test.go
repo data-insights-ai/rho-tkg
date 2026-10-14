@@ -76,13 +76,17 @@ func (a *nativeGraphCostAckTiming) add(b nativeGraphCostAckTiming) {
 }
 
 type nativeGraphCostResult struct {
-	Version                                                                          int                 `json:"version"`
-	Engine                                                                           string              `json:"engine"`
-	Spec                                                                             nativeGraphCostSpec `json:"spec"`
-	Deployment                                                                       string              `json:"deployment"`
-	Directory                                                                        string              `json:"directory"`
-	UsefulFacts                                                                      uint64              `json:"usefulFacts"`
-	SetupNodes                                                                       int                 `json:"setupNodes"`
+	Version                                                                          int                        `json:"version"`
+	Engine                                                                           string                     `json:"engine"`
+	Layout                                                                           string                     `json:"layout,omitempty"`
+	ColumnInitialCut                                                                 lifecycleRawCut            `json:"columnInitialCut,omitzero"`
+	ColumnScope                                                                      string                     `json:"columnScope,omitempty"`
+	ColumnGenerations                                                                [2][2]nativeColumnManifest `json:"columnGenerations,omitzero"`
+	Spec                                                                             nativeGraphCostSpec        `json:"spec"`
+	Deployment                                                                       string                     `json:"deployment"`
+	Directory                                                                        string                     `json:"directory"`
+	UsefulFacts                                                                      uint64                     `json:"usefulFacts"`
+	SetupNodes                                                                       int                        `json:"setupNodes"`
 	GrantBlockSize                                                                   uint64
 	IDAdmission                                                                      string
 	Creates, Updates                                                                 uint64
@@ -527,9 +531,16 @@ func runNativeGraphCost(t *testing.T, s nativeGraphCostSpec) {
 }
 func runNativeGraphCostWithBlock(t *testing.T, s nativeGraphCostSpec, block uint64) {
 	t.Helper()
+	layout, err := nativeGraphCostLayout()
+	if err != nil {
+		t.Fatal(err)
+	}
 	started := time.Now()
 	n := newNativeGraphCostNetworkWithBlock(t, s, block)
 	result := nativeGraphCostResult{Version: 1, Runner: "independent-clients-request-bound-ack-v2", CheckpointCommands: nativeGraphCostWindowCommands, Engine: "native-raft", Spec: s, Deployment: "single-machine distributed: two three-voter durable process groups", Directory: n.dir, UsefulFacts: s.Facts, SetupNodes: 3, Creates: s.Facts, Updates: s.Facts}
+	if layout == "columns" {
+		result.Version, result.Runner, result.Layout = 2, "independent-clients-request-bound-ack-columns-v1", layout
+	}
 	result.ClientWindow, result.LocalAdmissions, result.CrossAdmissions = nativeGraphCostWindowCommands, nativeGraphCostLocalAdmissions, 1
 	if s.Writers == 1 {
 		result.ClientWindow = nativeGraphCostBatchCommands
@@ -557,6 +568,22 @@ func runNativeGraphCostWithBlock(t *testing.T, s nativeGraphCostSpec, block uint
 	_, records := open("cdc.jsonl")
 	_, observations := open("observations.jsonl")
 	_, cohorts := open("cohorts.jsonl")
+	var columns *json.Encoder
+	var initial graphCut
+	var columnPairs [2]nativeGraphCostColumnPair
+	if layout == "columns" {
+		_, columns = open("native-cost-columns.jsonl")
+		// A genuine Fresh initial cut precedes every business row. Protocol
+		// certification tails remain outside the existing business CDC baseline.
+		handle, cut := nativeGraphCostOpen(t, n, graphReadFresh, graphCut{})
+		n.all[2].call(t, processRequest{op: processSourceCertifiedClose, index: handle})
+		initial = cut
+		result.ColumnInitialCut, err = lifecycleRawCertificate(cut)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result.ColumnScope = "Fixed V2 typed native change columns: real partition-local publishers in voters1/4, explicit disjoint masks and exact full-cut/config/peer/policy/generation join of both genuine sealed source EOFs. Native retain-all source remains authoritative; immutable generation and finite cache files are additional owned child storage included in six-directory disk and process costs. Per-chunk raw originals, numeric columns and cache/native parity are streamed; no whole-history materialization or parent Host. Local seals require joined writers and local native source quiescence, not a simultaneous global transaction. One-minute held source ownership is the current comparison boundary; durable pin-backed long-query integration remains required. No derived GC. Prepaid counters are theoretical quotas, separate from actual payload/peer frames and process RSS."
+	}
 	var from [2]uint64
 	for g, id := range n.leaders {
 		from[g] = n.all[id].call(t, processRequest{op: processStateOp}).applied
@@ -583,6 +610,10 @@ func runNativeGraphCostWithBlock(t *testing.T, s nativeGraphCostSpec, block uint
 			if err != nil {
 				t.Fatal(err)
 			}
+			if columns != nil {
+				columnPairs[0] = nativeGraphCostColumnPublish(t, n, s, initial, old, [16]byte{1}, "old-seal", true, false, columns)
+				result.ColumnGenerations[0] = columnPairs[0].Manifests
+			}
 		} else {
 			var err error
 			final = cut
@@ -595,6 +626,11 @@ func runNativeGraphCostWithBlock(t *testing.T, s nativeGraphCostSpec, block uint
 			nativeGraphCostCheck(t, n, s, old, 5, observations)
 			nativeGraphCostCheck(t, n, s, cut, 6, observations)
 			result.VerificationNanos = time.Since(start).Nanoseconds()
+			if columns != nil {
+				columnPairs[1] = nativeGraphCostColumnPublish(t, n, s, initial, final, [16]byte{2}, "final-seal", false, true, columns)
+				result.ColumnGenerations[1] = columnPairs[1].Manifests
+				nativeGraphCostColumnReacquire(t, n, s, &columnPairs[0], "old-after-mutation", columns, false)
+			}
 		}
 	}
 	if s.Facts > uint64(s.Writers) {
@@ -608,6 +644,13 @@ func runNativeGraphCostWithBlock(t *testing.T, s nativeGraphCostSpec, block uint
 		t.Fatal("exact useful CDC cardinality", result.CDCChanges, 3+3*s.Facts)
 	}
 	nativeGraphCostReopen(t, n, s, block, old, final, &result, cohorts)
+	if columns != nil {
+		for i := range columnPairs {
+			for _, cached := range []bool{false, true} {
+				nativeGraphCostColumnReacquire(t, n, s, &columnPairs[i], fmt.Sprintf("reopen-%d-cached-%t", i, cached), columns, cached)
+			}
+		}
+	}
 	result.RestartTransportTiming = n.all[1].mux.hub.costTimingSnapshot()
 	stopStarted := time.Now()
 	result.Reaped = nativeGraphCostStop(t, n, 2, cohorts)
@@ -641,8 +684,10 @@ func TestNativeGraphCostSmallActualProcesses(t *testing.T) {
 	for _, cell := range []struct {
 		name         string
 		facts, cross uint64
-	}{{"0", 17, 0}, {"100", 17, 100}, {"two-facts-local", 2, 0}, {"two-facts-cross", 2, 100}} {
+		layout       string
+	}{{"0", 17, 0, "kv"}, {"100", 17, 100, "kv"}, {"two-facts-local", 2, 0, "kv"}, {"two-facts-cross", 2, 100, "kv"}, {"two-facts-columns", 2, 100, "columns"}} {
 		t.Run(cell.name, func(t *testing.T) {
+			t.Setenv("RHO_GRAPH_COST_LAYOUT", cell.layout)
 			runNativeGraphCost(t, nativeGraphCostSpec{Version: 1, Facts: cell.facts, CrossPercent: cell.cross, Writers: 1})
 		})
 	}

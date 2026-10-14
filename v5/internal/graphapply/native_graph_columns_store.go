@@ -185,7 +185,7 @@ func (s *nativeColumnStore) progress(id [16]byte) (nativeColumnProgress, error) 
 		return p, err
 	}
 	limit := s.binding.Policy
-	if p.Generation.ID != id || id == ([16]byte{}) || p.Generation.Binding != s.digest || p.Next > limit.MaxChunks || p.Rows > limit.MaxDecodedRows || p.Bytes > limit.MaxRetainedBytes || !p.Work.admit(nativeColumnWork{}, limit) || p.Frames < p.Next || p.Frames > p.Next*uint64(limit.ChunkRecords) || p.Rows > p.Frames*uint64(limit.ChunkRows) {
+	if p.Generation.ID != id || id == ([16]byte{}) || p.Generation.Binding != s.digest || p.Generation.Coverage != s.binding.Coverage || p.Generation.Coverage == 0 || p.Generation.Coverage > 3 || p.Next > limit.MaxChunks || p.Rows > limit.MaxDecodedRows || p.Bytes > limit.MaxRetainedBytes || !p.Work.admit(nativeColumnWork{}, limit) || p.Frames < p.Next || p.Frames > p.Next*uint64(limit.ChunkRecords) || p.Rows > p.Frames*uint64(limit.ChunkRows) {
 		return p, errCorrupt
 	}
 	var frames uint64
@@ -201,8 +201,14 @@ func (s *nativeColumnStore) progress(id [16]byte) (nativeColumnProgress, error) 
 		if boundary.Generation == 0 || initial.scope != final.scope || initial.configuration != final.configuration || initial.round > final.round || initial.sourceIndex > final.sourceIndex || p.Positions[g] < initial.sourceIndex || p.Positions[g] > final.sourceIndex {
 			return p, errCorrupt
 		}
-		frames += p.Positions[g] - initial.sourceIndex
-		if p.EOF && p.Positions[g] != final.sourceIndex {
+		covered := s.binding.Coverage&(1<<g) != 0
+		if !covered && p.Positions[g] != initial.sourceIndex {
+			return p, errCorrupt
+		}
+		if covered {
+			frames += p.Positions[g] - initial.sourceIndex
+		}
+		if p.EOF && covered && p.Positions[g] != final.sourceIndex {
 			return p, errCorrupt
 		}
 	}
@@ -262,7 +268,11 @@ func (s *nativeColumnStore) reserve(p *nativeColumnProgress, source *nativeColum
 }
 func (s *nativeColumnStore) reserveWork(p *nativeColumnProgress, source *nativeColumnSource, grant nativeColumnWork) error {
 	if p.Owner != source.owner {
-		grant = grant.add(source.openWork)
+		combined, err := grant.plus(source.openWork)
+		if err != nil {
+			return err
+		}
+		grant = combined
 	}
 	if !p.Work.admit(grant, s.binding.Policy) {
 		return errLimit
@@ -298,8 +308,9 @@ func (s *nativeColumnStore) page(ctx context.Context, id [16]byte, source *nativ
 		return nativeColumnManifest{}, err
 	}
 	if len(frames) == 0 {
+		expected := source.finalPositions()
 		for g := range 2 {
-			if next[g] != source.final[g].sourceIndex {
+			if next[g] != expected[g] {
 				return nativeColumnManifest{}, errCorrupt
 			}
 		}

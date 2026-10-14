@@ -1156,6 +1156,12 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			t.Error(err)
 		}
 	}()
+	columns := &nativeGraphCostColumnSessions{ctx: ctx, coordinator: coordinator, spec: o.cost, dir: os.Getenv("RHO_GRAPH_PROCESS_DIR")}
+	defer func() {
+		if err := columns.close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	p05 := newP05ProcessSessions(ctx, certifiedSessions, o)
 	defer func() {
 		if err := p05.close(); err != nil {
@@ -1378,7 +1384,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		return nil
 	}
 	isSourceClose := func(r processRequest) bool {
-		if o.cost != nil && nativeGraphCostIncidentCloseControl(r) {
+		if o.cost != nil && (nativeGraphCostIncidentCloseControl(r) || nativeGraphCostColumnCloseControl(r)) {
 			return true
 		}
 		if r.op != processSourceServe {
@@ -1466,6 +1472,8 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			case processCostObserve:
 				if o.cost == nil {
 					e = errInvalid
+				} else if bytes.HasPrefix(r.data, []byte(nativeColumnsMarker)) {
+					out.aux, e = columns.serve(workerCtx, r)
 				} else if bytes.HasPrefix(r.data, []byte(nativeIncidentMarker)) {
 					out.aux, e = incidents.serve(workerCtx, r)
 				} else if len(r.data) != 0 {
@@ -1661,6 +1669,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				if e == nil {
 					certifiedSessions.coordinator = coordinator
 					incidents.coordinator = coordinator
+					columns.coordinator = coordinator
 				}
 			case processCostRecords:
 				if o.cost == nil {
@@ -1853,9 +1862,10 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					stop()
 				}
 				wg.Wait()
+				e = columns.close()
 				if snapshots != nil {
 					h.mu.Lock()
-					e = snapshots.close(h.driver)
+					e = errors.Join(e, snapshots.close(h.driver))
 					h.mu.Unlock()
 				}
 				e = errors.Join(e, h.Close())

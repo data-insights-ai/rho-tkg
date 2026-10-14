@@ -26,6 +26,8 @@ type nativeColumnSource struct {
 	stop                     func() bool
 	closeErr                 error
 	owner                    [16]byte
+	coordinator              *crossProcessCoordinator
+	meter                    *nativeColumnTransportMeter
 	hosts                    [2]*allocationHost
 	views                    [2]*raftlog.ApplicationView
 	initial, final           [2]graphCertificate
@@ -48,33 +50,40 @@ func (e *nativeColumnSourceFailure) Error() string {
 }
 func (e *nativeColumnSourceFailure) Unwrap() error { return e.Cause }
 
+func nativeColumnLimitAllowance(policy raftlog.ApplicationPolicy, l materializerLimits, p nativeColumnPolicy) (open, grant nativeColumnWork, err error) {
+	if !policy.Enabled() || l.validate() != nil || p.validate() != nil {
+		return open, grant, errInvalid
+	}
+
+	// Application/decoder limits are immutable. Read metadata only; no
+	// historical view, Get, Root or control inspection precedes admission.
+	capture := nativeColumnWork{Records: 32 + 64*uint64(l.allocation.readRows), Bytes: 16384 + 64*uint64(l.allocation.readBytes) + 8*uint64(l.outputBytes) + 64*uint64(policy.MaxPageBytes) + 16*uint64(policy.MaxImageBytes), DecodedRows: uint64(8*l.maxAxes + 8*l.maxSchemas), OutputBytes: 16384 + 8*uint64(l.outputBytes)}
+	// All native decoder traversal/temporary ownership is funded BEFORE
+	// decoding and BEFORE this layout's ChunkRows refusal. Delivered wire
+	// bounds total decoded entries; the declared limits additionally bound
+	// per-group changes and all declaration tables. Catalog calls retain
+	// their own ordinary caps and can inspect collision/absent candidates.
+	catalogDefaults, graphDefaults := graphstore.DefaultLimits(), graphstore.DefaultGraphLimits()
+	catalogRows, catalogBytes := max(l.catalog.MaxReadRows, catalogDefaults.MaxReadRows), max(l.catalog.MaxReadBytes, catalogDefaults.MaxReadBytes)
+	declared := uint64(l.maxAxes+l.maxSchemas+3*l.maxClaims) + uint64(max(l.graph.Pages.MaxPatches, graphDefaults.Pages.MaxPatches))*(1+2*uint64(max(l.graph.Planner.Component.MaxChangePieces, state.DefaultLimits().MaxChangePieces)))
+	decoded := 8 * min(declared, uint64(p.FrameBytes))
+	count := uint64(p.ChunkRecords + 1)
+	page := nativeColumnWork{Records: count * (16 + uint64(p.ChunkRows*5+3)*uint64(catalogRows) + uint64(l.allocation.readRows)), Bytes: count * (8192 + 8*uint64(policy.MaxImageBytes) + 8*uint64(policy.MaxOutcomeBytes) + 8*uint64(policy.MaxChangeBytes) + uint64(p.ChunkRows*5+3)*uint64(catalogBytes) + 4*uint64(l.outputBytes) + uint64(16*p.ChunkBytes)), DecodedRows: count * decoded, OutputBytes: count * (4*uint64(l.outputBytes) + uint64(16*p.ChunkBytes))}
+	return capture, page, nil
+}
 func nativeColumnSourceAllowance(hosts [2]*allocationHost, p nativeColumnPolicy) (open, grant nativeColumnWork, err error) {
 	for _, h := range hosts {
 		if h == nil || h.machine == nil || h.machine.store == nil {
 			return open, grant, errInvalid
 		}
-		policy, l := h.machine.store.ApplicationLimits(), h.machine.limits
-		if !policy.Enabled() || l.validate() != nil {
-			return open, grant, errInvalid
+		capture, page, e := nativeColumnLimitAllowance(h.machine.store.ApplicationLimits(), h.machine.limits, p)
+		if e != nil {
+			return open, grant, e
 		}
-		// Application/decoder limits are immutable. Read metadata only; no
-		// historical view, Get, Root or control inspection precedes admission.
-		capture := nativeColumnWork{Records: 32 + 64*uint64(l.allocation.readRows), Bytes: 16384 + 64*uint64(l.allocation.readBytes) + 8*uint64(l.outputBytes) + 64*uint64(policy.MaxPageBytes) + 16*uint64(policy.MaxImageBytes), DecodedRows: uint64(8*l.maxAxes + 8*l.maxSchemas), OutputBytes: 16384 + 8*uint64(l.outputBytes)}
-		if !nativeColumnAdd(open.Records, capture.Records) || !nativeColumnAdd(open.Bytes, capture.Bytes) || !nativeColumnAdd(open.DecodedRows, capture.DecodedRows) || !nativeColumnAdd(open.OutputBytes, capture.OutputBytes) {
-			return open, grant, errLimit
+		open, err = open.plus(capture)
+		if err != nil {
+			return open, grant, err
 		}
-		open = open.add(capture)
-		// All native decoder traversal/temporary ownership is funded BEFORE
-		// decoding and BEFORE this layout's ChunkRows refusal. Delivered wire
-		// bounds total decoded entries; the declared limits additionally bound
-		// per-group changes and all declaration tables. Catalog calls retain
-		// their own ordinary caps and can inspect collision/absent candidates.
-		catalogDefaults, graphDefaults := graphstore.DefaultLimits(), graphstore.DefaultGraphLimits()
-		catalogRows, catalogBytes := max(l.catalog.MaxReadRows, catalogDefaults.MaxReadRows), max(l.catalog.MaxReadBytes, catalogDefaults.MaxReadBytes)
-		declared := uint64(l.maxAxes+l.maxSchemas+3*l.maxClaims) + uint64(max(l.graph.Pages.MaxPatches, graphDefaults.Pages.MaxPatches))*(1+2*uint64(max(l.graph.Planner.Component.MaxChangePieces, state.DefaultLimits().MaxChangePieces)))
-		decoded := 8 * min(declared, uint64(p.FrameBytes))
-		count := uint64(p.ChunkRecords + 1)
-		page := nativeColumnWork{Records: count * (16 + uint64(p.ChunkRows*5+3)*uint64(catalogRows) + uint64(l.allocation.readRows)), Bytes: count * (8192 + 8*uint64(policy.MaxImageBytes) + 8*uint64(policy.MaxOutcomeBytes) + 8*uint64(policy.MaxChangeBytes) + uint64(p.ChunkRows*5+3)*uint64(catalogBytes) + 4*uint64(l.outputBytes) + uint64(16*p.ChunkBytes)), DecodedRows: count * decoded, OutputBytes: count * (4*uint64(l.outputBytes) + uint64(16*p.ChunkBytes))}
 		grant.Records = max(grant.Records, page.Records)
 		grant.Bytes = max(grant.Bytes, page.Bytes)
 		grant.DecodedRows = max(grant.DecodedRows, page.DecodedRows)
@@ -84,6 +93,13 @@ func nativeColumnSourceAllowance(hosts [2]*allocationHost, p nativeColumnPolicy)
 		return open, grant, errLimit
 	}
 	return open, grant, nil
+}
+func nativeColumnPeerOpening(open nativeColumnWork, l materializerLimits) (nativeColumnWork, error) {
+	doubled, err := open.scaled(2)
+	if err != nil {
+		return nativeColumnWork{}, err
+	}
+	return doubled.plus(nativeColumnWork{Records: 2 * uint64(l.sourceRows), Bytes: 2 * uint64(l.sourceBytes), OutputBytes: 2 * uint64(l.outputBytes), RPCs: 2 * 1024, WireBytes: 4 * 1024 * uint64(graphSourceFrameBytes)})
 }
 
 func nativeColumnCutPair(c graphCut, hosts [2]*allocationHost) ([2]graphCertificate, error) {
@@ -142,7 +158,7 @@ func newNativeColumnSource(ctx context.Context, hosts [2]*allocationHost, initia
 	if err != nil {
 		return nil, err
 	}
-	s.binding = nativeColumnBinding{Version: 1, Layout: nativeColumnLayout, Agreement: sha256.Sum256([]byte("rho-tkg:V2:native-derived-change-columns:v1\x00complete-native-source;typed-i64;exact-native-scope;retain-all;no-authority\x00")), Policy: policy}
+	s.binding = nativeColumnBinding{Version: 1, Layout: nativeColumnLayout, Coverage: 3, Agreement: sha256.Sum256([]byte("rho-tkg:V2:native-derived-change-columns:v1\x00complete-native-source;typed-i64;exact-native-scope;retain-all;no-authority\x00")), Policy: policy}
 	for g, h := range hosts {
 		if first[g].configuration != last[g].configuration || first[g].scope != last[g].scope || first[g].round > last[g].round || first[g].sourceIndex > last[g].sourceIndex {
 			return nil, errInvalid
@@ -220,7 +236,7 @@ func (s *nativeColumnSource) generation(id [16]byte) (nativeColumnGeneration, er
 	if s == nil || id == ([16]byte{}) {
 		return nativeColumnGeneration{}, errInvalid
 	}
-	g := nativeColumnGeneration{ID: id, Binding: s.digest}
+	g := nativeColumnGeneration{ID: id, Binding: s.digest, Coverage: s.binding.Coverage}
 	for n := range 2 {
 		var err error
 		g.Sources[n].Initial, err = encodeGraphCertificate(s.initial[n])
@@ -293,6 +309,12 @@ func (s *nativeColumnSource) page(ctx context.Context, positions [2]uint64) (fra
 	defer done()
 	next = positions
 	for g := range 2 {
+		if !s.covers(g) {
+			if next[g] != s.initial[g].sourceIndex {
+				return nil, [2]uint64{}, errInvalid
+			}
+			continue
+		}
 		if next[g] < s.initial[g].sourceIndex || next[g] > s.final[g].sourceIndex {
 			return nil, [2]uint64{}, errInvalid
 		}
@@ -326,6 +348,9 @@ func (s *nativeColumnSource) page(ctx context.Context, positions [2]uint64) (fra
 		// Empty/end-of-prefix is still an actual live source operation. Closing
 		// the underlying store cannot turn cached endpoints into successful EOF.
 		for g, view := range s.views {
+			if !s.covers(g) {
+				continue
+			}
 			root, e := view.RootBounded(call, 172)
 			if e != nil || root.Generation != s.roots[g].Generation || root.Index != s.final[g].sourceIndex || root.ImageHash != s.roots[g].ImageHash || !bytes.Equal(root.Image, s.final[g].image[:]) {
 				return nil, [2]uint64{}, errors.Join(errCorrupt, e)
@@ -584,9 +609,10 @@ func nativeColumnCellFromSource(ctx context.Context, c *graphstore.Catalog, grap
 	return out, nil
 }
 
-// Seal is intentionally restricted to a quiescent comparative source. Current
-// native state is inspected under BOTH Host event locks through derived commit.
-// The old held views remain valid after later writes; read never requires this.
+// Seal is restricted to a quiescent comparative source. Current native state is
+// inspected under each COVERED Host event lock through the derived commit. A
+// local mask makes no simultaneous global quiescence claim. Old held views stay
+// valid after later writes; reads do not require publication quiescence.
 func (s *nativeColumnSource) quiescent(ctx context.Context, commit func() error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -599,11 +625,16 @@ func (s *nativeColumnSource) quiescent(ctx context.Context, commit func() error)
 	s.charged = s.charged.add(s.openWork)
 	call, done := s.operation(ctx)
 	defer done()
-	s.hosts[0].mu.Lock()
-	defer s.hosts[0].mu.Unlock()
-	s.hosts[1].mu.Lock()
-	defer s.hosts[1].mu.Unlock()
 	for g, h := range s.hosts {
+		if s.covers(g) {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+		}
+	}
+	for g, h := range s.hosts {
+		if !s.covers(g) {
+			continue
+		}
 		if h.unavailableLocked() {
 			return errNativeColumnChanged
 		}
@@ -632,9 +663,14 @@ func (s *nativeColumnSource) at(ctx context.Context, at graphCut) ([2]graphCerti
 	if err := s.check(ctx); err != nil {
 		return [2]graphCertificate{}, err
 	}
-	pair, err := nativeColumnCutPair(at, s.hosts)
+	pair, err := s.cutPair(at)
 	if err != nil {
 		return pair, err
+	}
+	for g := range 2 {
+		if pair[g].scope != s.final[g].scope || pair[g].configuration != s.final[g].configuration || pair[g].round < s.initial[g].round || pair[g].round > s.final[g].round || pair[g].sourceIndex < s.initial[g].sourceIndex || pair[g].sourceIndex > s.final[g].sourceIndex {
+			return pair, errInvalid
+		}
 	}
 	if !s.charged.admit(s.openWork, s.binding.Policy) {
 		return pair, errLimit
@@ -642,9 +678,14 @@ func (s *nativeColumnSource) at(ctx context.Context, at graphCut) ([2]graphCerti
 	s.charged = s.charged.add(s.openWork)
 	call, done := s.operation(ctx)
 	defer done()
+	if s.coordinator != nil {
+		if err = s.authenticateCut(call, at, false); err != nil {
+			return pair, err
+		}
+	}
 	for g, h := range s.hosts {
-		if pair[g].scope != s.final[g].scope || pair[g].configuration != s.final[g].configuration || pair[g].round < s.initial[g].round || pair[g].round > s.final[g].round || pair[g].sourceIndex < s.initial[g].sourceIndex || pair[g].sourceIndex > s.final[g].sourceIndex {
-			return pair, errInvalid
+		if !s.covers(g) {
+			continue
 		}
 		v, e := h.AtGraphCertificate(call, pair[g])
 		if e != nil {
@@ -655,4 +696,296 @@ func (s *nativeColumnSource) at(ctx context.Context, at graphCut) ([2]graphCerti
 		}
 	}
 	return pair, nil
+}
+
+func (s *nativeColumnSource) covers(group int) bool {
+	return group >= 0 && group < 2 && s.binding.Coverage&(1<<group) != 0
+}
+func (s *nativeColumnSource) finalPositions() [2]uint64 {
+	var out [2]uint64
+	for g := range 2 {
+		out[g] = s.initial[g].sourceIndex
+		if s.covers(g) {
+			out[g] = s.final[g].sourceIndex
+		}
+	}
+	return out
+}
+func (s *nativeColumnSource) cutPair(cut graphCut) ([2]graphCertificate, error) {
+	if s.coordinator == nil {
+		return nativeColumnCutPair(cut, s.hosts)
+	}
+	return nativeColumnPeerCutPair(s.coordinator, cut)
+}
+func nativeColumnPeerCutPair(c *crossProcessCoordinator, cut graphCut) (pair [2]graphCertificate, err error) {
+	if c == nil || c.host == nil || c.host.machine == nil || len(cut.certificates) != 2 || c.host.machine.declaration.Len() != 2 || len(c.transports) != 2 {
+		return pair, errInvalid
+	}
+	for g := range 2 {
+		part, ok := c.host.machine.declaration.PartitionAt(g)
+		if !ok {
+			return pair, errInvalid
+		}
+		actual := c.transports[part.Partition]
+		if actual == nil {
+			return pair, errInvalid
+		}
+		peer := actual.Peer()
+		if peer.voter == 0 || peer.scope.partition != part.Partition {
+			return pair, errInvalid
+		}
+		for _, cert := range cut.certificates {
+			if cert.scope == peer.scope {
+				if pair[g].index != 0 {
+					return pair, errInvalid
+				}
+				pair[g] = cert
+			}
+		}
+		if pair[g].index == 0 {
+			return pair, errInvalid
+		}
+		if _, err = encodeGraphCertificate(pair[g]); err != nil {
+			return pair, err
+		}
+	}
+	if pair[0].round != pair[1].round || pair[0].configuration != pair[1].configuration {
+		return pair, errInvalid
+	}
+	return pair, nil
+}
+
+type nativeColumnTransportMeter struct {
+	mu                                                        sync.Mutex
+	fundedCalls, fundedBytes, calls, requestBytes, replyBytes uint64
+	failed                                                    bool
+}
+type nativeColumnMeteredTransport struct {
+	actual graphPeerWireTransport
+	meter  *nativeColumnTransportMeter
+}
+
+func (t *nativeColumnMeteredTransport) Peer() graphPeerIdentity { return t.actual.Peer() }
+func (m *nativeColumnTransportMeter) fund(work nativeColumnWork) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.failed || !nativeColumnAdd(m.fundedCalls, work.RPCs) || !nativeColumnAdd(m.fundedBytes, work.WireBytes) {
+		return errLimit
+	}
+	m.fundedCalls += work.RPCs
+	m.fundedBytes += work.WireBytes
+	return nil
+}
+func (m *nativeColumnTransportMeter) snapshot() (uint64, uint64, uint64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.calls, m.requestBytes, m.replyBytes
+}
+func (t *nativeColumnMeteredTransport) RoundTrip(ctx context.Context, wire []byte) ([]byte, error) {
+	m := t.meter
+	m.mu.Lock()
+	if m.failed || m.requestBytes > m.fundedBytes || m.replyBytes > m.fundedBytes-m.requestBytes {
+		m.mu.Unlock()
+		return nil, errLimit
+	}
+	used := m.requestBytes + m.replyBytes
+	if m.calls >= m.fundedCalls || len(wire) > graphSourceFrameBytes || uint64(len(wire))+uint64(graphSourceFrameBytes) > m.fundedBytes-used {
+		m.mu.Unlock()
+		return nil, errLimit
+	}
+	m.calls++
+	m.requestBytes += uint64(len(wire))
+	m.mu.Unlock()
+	reply, err := t.actual.RoundTrip(ctx, wire)
+	m.mu.Lock()
+	if !nativeColumnAdd(m.replyBytes, uint64(len(reply))) {
+		m.failed = true
+		err = errors.Join(err, errLimit)
+	} else {
+		m.replyBytes += uint64(len(reply))
+		if len(reply) > graphSourceFrameBytes || m.requestBytes > m.fundedBytes || m.replyBytes > m.fundedBytes-m.requestBytes {
+			m.failed = true
+			err = errors.Join(err, errLimit)
+		}
+	}
+	m.mu.Unlock()
+	return reply, err
+}
+
+// Capture authenticates the ENTIRE actual cut/configuration through existing
+// source transport. It binds omitted peers but grants no EOF for their rows.
+// Each capture has ordinary finite RPC limits, prepaid on the SAME source owner.
+func (s *nativeColumnSource) authenticateCut(ctx context.Context, cut graphCut, capture bool) (err error) {
+	if s.coordinator == nil || s.meter == nil {
+		return errInvalid
+	}
+	if err = s.meter.fund(nativeColumnWork{RPCs: 1024, WireBytes: 2 * 1024 * uint64(graphSourceFrameBytes)}); err != nil {
+		return err
+	}
+	pair, err := s.cutPair(cut)
+	if err != nil {
+		return err
+	}
+	read, err := s.coordinator.OpenCertified(ctx, graphReadRequest{mode: graphReadAt, cut: cut}, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, read.Close()) }()
+	actual, err := read.Cut()
+	if err != nil || len(actual.certificates) != 2 || len(read.sources) != 2 {
+		return errors.Join(errInvalid, err)
+	}
+	for g, source := range read.sources {
+		remote, ok := source.(*remoteGraphSource)
+		if !ok || remote.certified == nil || remote.certified.certificate != pair[g] || actual.certificates[g] != pair[g] {
+			return errInvalid
+		}
+		info := remote.certified
+		cfg, err := encodeGraphGenesisConfig(info.configuration)
+		if err != nil {
+			return err
+		}
+		scope, err := encodeAllocationScope(remote.endpoint.peer.scope)
+		if err != nil {
+			return err
+		}
+		peer, err := boundedEncoding(256, func(w *boundedWriter) { w.add([]byte("NCP1")); w.field(scope); w.u64(remote.endpoint.peer.voter) })
+		if err != nil {
+			return err
+		}
+		if s.binding.Peers[g] == nil {
+			s.binding.Peers[g] = peer
+		} else if !bytes.Equal(s.binding.Peers[g], peer) {
+			return errInvalid
+		}
+		if s.binding.Configurations[g] == nil {
+			s.binding.Configurations[g] = cfg
+		} else if !bytes.Equal(s.binding.Configurations[g], cfg) {
+			return errInvalid
+		}
+		if s.roots[g].Generation != 0 && info.root.Generation != s.roots[g].Generation {
+			return errInvalid
+		}
+		if capture {
+			s.roots[g] = info.root
+			s.configurations[g] = info.configuration
+		}
+	}
+	if !bytes.Equal(s.binding.Configurations[0], s.binding.Configurations[1]) {
+		return errInvalid
+	}
+	return nil
+}
+
+// A genuine local publisher owns one native Host, not a reconstructed remote
+// Host. Coverage declares which complete raw prefix this generation contains.
+// Full-cut authentication precedes ownership; the separate peer generation must
+// independently reach its own genuine source EOF before a parent can join both.
+func newPartitionNativeColumnSource(ctx context.Context, c *crossProcessCoordinator, initial, final graphCut, p nativeColumnPolicy) (source *nativeColumnSource, err error) {
+	if ctx == nil || p.validate() != nil || p.MaxRPCs == 0 || p.MaxWireBytes == 0 {
+		return nil, errInvalid
+	}
+	first, err := nativeColumnPeerCutPair(c, initial)
+	if err != nil {
+		return nil, err
+	}
+	last, err := nativeColumnPeerCutPair(c, final)
+	if err != nil {
+		return nil, err
+	}
+	h := c.host
+	group := -1
+	for g := range 2 {
+		if last[g].scope == h.machine.scope() {
+			group = g
+		}
+		if first[g].scope != last[g].scope || first[g].configuration != last[g].configuration || first[g].round > last[g].round || first[g].sourceIndex > last[g].sourceIndex {
+			return nil, errInvalid
+		}
+	}
+	if group < 0 {
+		return nil, errInvalid
+	}
+	// Static native ceilings plus BOTH complete cut captures and local historical
+	// hydration are funded before any At/Get/Root/control/RPC effect. A failed
+	// capture retires the entire grant, even without trustworthy reply counters.
+	open, grant, err := nativeColumnSourceAllowance([2]*allocationHost{h, h}, p)
+	if err != nil {
+		return nil, err
+	}
+	open, err = nativeColumnPeerOpening(open, h.machine.limits)
+	if err != nil {
+		return nil, err
+	}
+	if !open.admit(grant, p) {
+		return nil, errLimit
+	}
+	owner, cancel := context.WithTimeout(ctx, p.Lifetime)
+	s := &nativeColumnSource{ctx: owner, cancel: cancel, initial: first, final: last, openWork: open, grant: grant, charged: open, meter: new(nativeColumnTransportMeter)}
+	s.hosts[group] = h
+	s.binding = nativeColumnBinding{Version: 1, Layout: nativeColumnLayout, Coverage: 1 << group, Policy: p, Agreement: sha256.Sum256([]byte("rho-tkg:V2:partition-local-native-change-columns:v1\x00authenticated-full-cuts;explicit-local-prefix-coverage;complete-native-originals;typed-i64;exact-native-scope;local-quiescence;retain-all;no-authority\x00"))}
+	wrapped := make(map[uint64]graphPeerWireTransport, 2)
+	for partition, actual := range c.transports {
+		wrapped[partition] = &nativeColumnMeteredTransport{actual, s.meter}
+	}
+	s.coordinator = &crossProcessCoordinator{host: h, transports: wrapped, streams: c.streams}
+	defer func() {
+		if err != nil {
+			err = &nativeColumnSourceFailure{Charged: open, Cause: errors.Join(err, s.Close())}
+		}
+	}()
+	s.owner, err = graphReadNonce()
+	if err != nil {
+		return nil, err
+	}
+	if err = s.authenticateCut(owner, initial, false); err != nil {
+		return nil, err
+	}
+	if err = s.authenticateCut(owner, final, true); err != nil {
+		return nil, err
+	}
+	v, err := h.AtGraphCertificate(owner, first[group])
+	if err != nil {
+		return nil, err
+	}
+	initialRoot, e := v.RootBounded(owner, 172)
+	e = errors.Join(e, v.Close())
+	if e != nil {
+		return nil, e
+	}
+	s.views[group], err = h.AtGraphCertificate(owner, last[group])
+	if err != nil {
+		return nil, err
+	}
+	root, err := s.views[group].RootBounded(owner, 172)
+	if err != nil {
+		return nil, err
+	}
+	retained, err := s.views[group].RootAt(owner, first[group].sourceIndex, 172)
+	if err != nil || retained.Generation != root.Generation || root.Generation != s.roots[group].Generation || root.Index != last[group].sourceIndex || !bytes.Equal(root.Image, last[group].image[:]) || !bytes.Equal(retained.Image, initialRoot.Image) {
+		return nil, errors.Join(errInvalid, err)
+	}
+	binding, err := s.views[group].ApplicationBinding(owner)
+	if err != nil || binding != h.machine.store.ApplicationBinding() || binding.SemanticContractID != last[group].scope.semantic {
+		return nil, errors.Join(errInvalid, err)
+	}
+	actual, found, err := s.views[group].Get(owner, genesisConfigurationKey(h.machine.ns), partitionGenesisConfigBytes)
+	if err != nil || !found || actual.Deleted || !bytes.Equal(actual.Value, s.binding.Configurations[group]) {
+		return nil, errors.Join(errCorrupt, err)
+	}
+	body, err := nativeColumnMetadata(s.binding)
+	if err != nil {
+		return nil, err
+	}
+	s.digest = sha256.Sum256(body)
+	s.mu.Lock()
+	err = owner.Err()
+	if err == nil {
+		s.stop = context.AfterFunc(owner, func() { _ = s.Close() })
+	}
+	s.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
 }
