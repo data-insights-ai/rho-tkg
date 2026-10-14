@@ -1,0 +1,21 @@
+# sigma-tkgd BenchmarkDerived_Write (internal/tyla/testing/benchmarks/realtime/writeback_test.go:272):
+# one write-back of 10 facts per op, each fact gaining one version of validity [1000,2000) in a GraphTx;
+# -benchtime 300x, so the facts grow from 1 to 300 versions (the number is the mean over that range).
+# Run through a go.work (sigma-tkgd + this worktree), sigma-tkgd unmodified (685b14a6a).
+
+before (rho main 1e2c3c3e):
+BenchmarkDerived_Write-32    300   2233872 ns/op   4073648 B/op   27703 allocs/op
+  cpu: GraphTx.SetNodeVersionInterval 31.9% (snapshotNodeLocked copyNodeHistory 20.0%, cascadeNode history 11.9%),
+       NodeEffectiveTimeline 17.8% (GetNodeHistory deep copies 9.6%, sweep 7.4%)
+
+after (this branch):
+BenchmarkDerived_Write-32    300   2413556 ns/op   2967751 B/op   21605 allocs/op
+BenchmarkDerived_Write-32    300   2191348 ns/op   2961663 B/op   21600 allocs/op
+BenchmarkDerived_Write-32    300   1705894 ns/op   2961466 B/op   21600 allocs/op
+  cpu: GraphTx.SetNodeVersionInterval 41.5% (snapshotNodeLocked copyNodeHistory 21.1%, cascadeNode history 19.5%),
+       NodeEffectiveTimeline 2.4%
+
+Budget (tasks/history-via-rho-design.md §4): 1 ms per 10 facts. The read is now O(segments); the write
+(GraphTx.SetNodeVersionInterval) still copies the node's whole history twice per correction (tx snapshot
+for rollback, cascade pre-chain), so the cut stays above budget at 300 versions. See 02-after.txt
+BenchmarkR10ReadThenWrite for the per-fact split at exactly 1/100/300 versions.

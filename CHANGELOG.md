@@ -37,6 +37,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestFormatMarkerOneTrackerAcrossFeatures`, the bitemporal oracle harness with the
   excise op; evidence `tasks/evidence/excise/`.
 
+- **Head-pin effective timeline in O(segments): `store.HistoryEpochCapability` and a per-entity head answer**
+  (backlog 68, sigma R10). `NodeEffectiveTimeline(id, pin)` / `RelEffectiveTimeline` at a pin at or above the
+  entity's newest `TxFrom` (sigma's Derived writer reads at `CommittedTx` every cut) folded the whole history
+  each call: at 300 versions of one validity the memory store deep-copied every row (64% of the read) and badger
+  decoded every row's temporal skeleton (71%), then the resolver swept them (~100-230 us memory, ~190-210 us
+  badger per read; sharded and tiered decoded full rows). No existing mechanism avoided it without losing
+  as-of history (history compaction refuses every pin below its watermark; the skeleton door is O(versions)),
+  and sigma's corrections are real (a new value over the same validity each cut), so nothing upstream removes
+  them. Now the graph keeps that head answer per entity as pieces naming their winning version, exact while the
+  store's new per-entity history token (`NodeHistoryEpoch` / `RelHistoryEpoch`: a watch table noted at the
+  store's one history-write funnel — count-checked on memory, `noteHistoryKey` on badger, the slot on sharded,
+  the largest token of the walked shards on tiered; tokens never reused) and the current row's version and
+  temporal block are unchanged; a `SetNodeVersionInterval` / excise correction extends it by its appended rows
+  where they cannot change how older rows resolve, any other write makes the next head read fold again.
+  Measured at 300 versions (`tasks/evidence/r10/`, 01-before -> 02-after): memory 150-230 us -> 0.4 us
+  (1226 -> 9 allocs), badger 190-210 us -> 3 us (1020 -> 44 allocs), independent of the version count; the same
+  for relationships. sigma's read-then-correct cut per fact at 300 versions: memory 0.74 -> 0.38 ms, badger
+  4.0 -> 3.3 ms — the GraphTx correction itself still copies the history (rollback snapshot and cascade
+  pre-chain), so the cut stays above sigma's 1 ms per 10 facts budget until the write side is addressed. Answers
+  are unchanged: `TestEffectiveHead_DifferentialOracle` (every answer equal to the fold at the head pin and at
+  random earlier pins after corrections, caller-instant corrections, GraphTx commits and rollbacks followed by
+  rewrites, excises, Updates, in-place validity rewrites, CloseVersion, deletes, re-imports and compaction, on
+  memory, badger, sharded and tiered), `TestHeadOverlay_MatchesFold`, `TestHistoryEpoch_Contract`,
+  `TestR10HeadTimelineCostIndependentOfHistory`; all nine break-the-code mutations caught
+  (`04-break-the-code.txt`).
+
 ### Changed
 
 - **Integrity hashes written as 32 raw bytes** (backlog 61, step 2; deprecated in v4.52.2 for v4.52.3; lands later than announced, in v4.54.0): the writer stores each
