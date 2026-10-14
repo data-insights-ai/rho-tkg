@@ -215,6 +215,10 @@ func (s *Store) admitRecoveryCreationLocked(commandBytes int, reserve Applicatio
 			return err
 		}
 	}
+	future, err = addRecoveryGrowth(future, retentionCursorGrowth(s.meta))
+	if err != nil {
+		return err
+	}
 	p := s.meta.App.Policy
 	bytes, records := applicationTotals(s.meta)
 	pending := s.meta.Last - s.meta.Applied + 2
