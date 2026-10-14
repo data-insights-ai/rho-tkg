@@ -1,0 +1,166 @@
+{
+  "schema": 1,
+  "scope": "two new private FDB raw-stream parents; real SDK on one physical host, four logical FDB zones; unwired helper only",
+  "qualifiedSourceCommit": "a53b158d7a5be3b1bae30d4f38cdbd46f1f93a8a",
+  "sourceUnchangedAcrossEveryAttempt": true,
+  "currentGoAndModuleInputs": {
+    "tools/v5-substrate/fdb/changes.go": "1348141cf3a0d9b433daeecda2b45bbea71cb65e080bc581297011504e3b1022",
+    "tools/v5-substrate/fdb/fault.go": "b849ee70161dd36099154e762023350f2c3b055fd238aac750372c8fcd3d1d3e",
+    "tools/v5-substrate/fdb/fault_contract_test.go": "459e6d8c10ccc9a3eebd4002c437d45f45162d7a48c62fca6455ad0ae350bbb7",
+    "tools/v5-substrate/fdb/go.mod": "15d92f0904b97b3fec0e0b23427994a095963da9b4afde3c20a32573e4e4672f",
+    "tools/v5-substrate/fdb/go.sum": "26bcf694e1b27910d09b654fcb3a852970358127d82581474e47c9afaba96618",
+    "tools/v5-substrate/fdb/graph_cost_profile.go": "06c67fa2d064c7abb58a44d1c9dcdb567846ef8cb668a43144dacfa63abbcf61",
+    "tools/v5-substrate/fdb/graph_cost_profile_test.go": "969349b8fca1878cc1a0e163d324def9e5c2d2854292d9b81257228ae6a41972",
+    "tools/v5-substrate/fdb/graph_cost_run.go": "74540090c455f5e10cf3056d57cbe0b97efb93ba3fc7154bdd7beedd422a08fe",
+    "tools/v5-substrate/fdb/graph_cost_stream.go": "b34790cd0c52e4eb19d3d72bc29a6e2e9e29fb0fad26a578bc6a482ddc3d3c05",
+    "tools/v5-substrate/fdb/graph_cost_stream_test.go": "2ba064961737b1b674460e2fbc28c27ba605507444be6eaa18da5c67f8175428",
+    "tools/v5-substrate/fdb/graph_fault.go": "307a21e60919d7a144ffd061bca4def76d3b50cd5321fdcf23fe12f48c787649",
+    "tools/v5-substrate/fdb/graph_oracle.go": "7a27850683ab0ea01160470a9a2be315ba31797fcb8ddf624741fdb3a99d613e",
+    "tools/v5-substrate/fdb/graph_progress_test.go": "de1f8ee51abc1a9a883369cdd2117fe897ac0fb907a61dd8d4a2b34e13aa97d4",
+    "tools/v5-substrate/fdb/graph_run.go": "966782e1ebb9c631596f5c98ddc42f54f3a79c2fc0aec5384cfdccc12b97f3fb",
+    "tools/v5-substrate/fdb/graph_slice.go": "6437373e0a6d3cd9c65842a864174b93fe33f27219bcc7394dc73bf51c0a6c18",
+    "tools/v5-substrate/fdb/graph_slice_test.go": "4b56553aa137e8a2b0519046f98de186d5c11df84d198559d580e87a9de3626a",
+    "tools/v5-substrate/fdb/lifecycle_profile.go": "66ba4cc1313840ee12a2591000fdaa6d8d6528f0995b9846c4073098871088aa",
+    "tools/v5-substrate/fdb/lifecycle_trace.go": "b7bebbde1ede5c9f81eaf76cc6cc83870cff95894cb001654de459b86d409f6e",
+    "tools/v5-substrate/fdb/lifecycle_trace_test.go": "031a5014ecaa7a8b5a2926e095661e7412d957811eb9c4fcaffc3de89020bfc2",
+    "tools/v5-substrate/fdb/main.go": "9747eb4241517f2170295ad34dbc29729d6667c217efa8a754a113918c5a342c",
+    "tools/v5-substrate/fdb/paired_graph_fault_trace.go": "44b3ba9e7dc6f4c321571bb840fa60db1a3e696612c03dd61923ff1766c0e316",
+    "tools/v5-substrate/fdb/paired_graph_fault_trace_test.go": "efb1489036247d8ce40df3538dbff3486152508f978efb6336e4e6e4d3ff8554",
+    "tools/v5-substrate/fdb/state.go": "08826e31a854c07578a481e4f3f35efd6170b234ce54e2036e3327d6677324a3",
+    "tools/v5-substrate/fdb/state_test.go": "5e09bc4e5e29306595681063c063c3a244b521db187d456c6b0396b32444df57"
+  },
+  "otherQualificationInputs": {
+    ".golangci.yml": "7084dd0d2272f3c27ac89fc503f6672f9960ae2da47c85cefcfb27951f8caf69",
+    "tools/v5-substrate/fdb/launcher.py": "e01ef3f5660719e38277194abb2fd377faed1bcf3dd4e901b388996da45dd417",
+    "tools/v5-substrate/fdb/cost_monitor.py": "42c871a81aeb5c8d8528b3c6f9b44bfb8d0b0bd432bac88808cf9363203f5468"
+  },
+  "bindingModule": "github.com/apple/foundationdb/bindings/go@v0.0.0-20260416192139-3ea44ce1d900",
+  "bindingSourceInventory": "bindings-source-sha256.json",
+  "image": "sha256:37cfcca63222ec499bec5e8ad7aad52dbf7529db36d5812b8eae2f0621aa92d6",
+  "goVersion": "go1.26.9 linux/arm64",
+  "FDBVersion": "7.3.77",
+  "FDBSource": "3ea44ce1d9003ad095e408039e1f755c319c4dfb",
+  "tests": {
+    "normal": {
+      "exactParents": [
+        "TestGraphCostStreamRejectsInvalidBoundsAndRawKeys",
+        "TestGraphCostStreamActualPagesOldCutOriginalsAndQuiescence"
+      ],
+      "failedOrSkipped": 0,
+      "watchdog": {
+        "secondsLimit": 180,
+        "rssLimitMiB": 4096,
+        "sampledPeakAggregateRSSKiB": 473172,
+        "elapsedSeconds": 6.193812416866422,
+        "reason": "completed",
+        "aggregateContainerMemoryAdmissionMiB": 4096,
+        "accounting": "sum of actual Linux processes sampled by docker top; cgroup hard limits separately recorded; not host Docker CLI RSS"
+      }
+    },
+    "race": {
+      "exactParents": [
+        "TestGraphCostStreamRejectsInvalidBoundsAndRawKeys",
+        "TestGraphCostStreamActualPagesOldCutOriginalsAndQuiescence"
+      ],
+      "failedOrSkipped": 0,
+      "watchdog": {
+        "secondsLimit": 180,
+        "rssLimitMiB": 4096,
+        "sampledPeakAggregateRSSKiB": 600636,
+        "elapsedSeconds": 28.39451549993828,
+        "reason": "completed",
+        "aggregateContainerMemoryAdmissionMiB": 4096,
+        "accounting": "sum of actual Linux processes sampled by docker top; cgroup hard limits separately recorded; not host Docker CLI RSS"
+      }
+    },
+    "cover": {
+      "exactParents": [
+        "TestGraphCostStreamRejectsInvalidBoundsAndRawKeys",
+        "TestGraphCostStreamActualPagesOldCutOriginalsAndQuiescence"
+      ],
+      "failedOrSkipped": 0,
+      "watchdog": {
+        "secondsLimit": 180,
+        "rssLimitMiB": 4096,
+        "sampledPeakAggregateRSSKiB": 494380,
+        "elapsedSeconds": 6.11190520785749,
+        "reason": "completed",
+        "aggregateContainerMemoryAdmissionMiB": 4096,
+        "accounting": "sum of actual Linux processes sampled by docker top; cgroup hard limits separately recorded; not host Docker CLI RSS"
+      }
+    }
+  },
+  "nativeWitnesses": {
+    "historyRows": [
+      12,
+      3
+    ],
+    "currentRows": [
+      7,
+      2
+    ],
+    "originalGroups": [
+      6,
+      1
+    ],
+    "pageRows": 1,
+    "pageBytes": 65536,
+    "exactOriginalPhysicalSets": true,
+    "oldCutAfterMutation": true,
+    "originalAndTruncatedCDCRefusals": true,
+    "quiescenceRefusalAfterFreshActualRequest": true
+  },
+  "coverage": {
+    "file": "graph_cost_stream.go",
+    "coveredStatements": 166,
+    "statements": 193,
+    "percent": 86.01036269430051,
+    "walkerEntryPercent": 100,
+    "wholeModuleTargetedPercent": 25.2,
+    "fullModuleAcceptance": false
+  },
+  "statics": {
+    "vet": "PASS",
+    "configuredLint": "PASS 0 issues",
+    "gosec": "PASS",
+    "lintVersion": "2.13.2",
+    "gosecModuleVersion": "v2.29.0",
+    "scannerCompiler": "go1.26.9 linux/arm64",
+    "reinstall": false,
+    "govulncheckRun": false,
+    "note": "Dependency/module inputs unchanged; no new vulnerability-scan claim."
+  },
+  "failuresPreserved": [
+    {
+      "attempt": "first",
+      "type": "environment",
+      "detail": "GOPROXY=off refused missing FDB module in Docker modulecache before Go tests; resolved by preserved pinned host modulecache read-only."
+    },
+    {
+      "attempt": "attempt-2",
+      "type": "environment",
+      "detail": "configure triple timed out with64MiB tmpfs state before any tests; disk-backed private directories used on attempt3."
+    }
+  ],
+  "cleanup": {
+    "allOwnedContainersRemoved": true,
+    "privateNetworkRemoved": true,
+    "newImagesOrVolumesCreated": false,
+    "ownedData": "Native bulk state remains external only under attempt3/state-zone*/data; no resumption/retention proof. All owned containers and network absent.",
+    "heavyLeaseReleased": true
+  },
+  "limitations": [
+    "PageBytes is post-SDK admission, not a hard native-client RSS cap.",
+    "Callbacks may emit partial rows on failure; zero terminal result means no EOF/footer success.",
+    "No runner or comparison-checker wiring, no native physical-reopen gate, no native/FDB index/endpoint stream wiring.",
+    "No capacity/concurrent-writer/matched-engine/full-V2 or independent physical-host/network fault acceptance.",
+    "Helper coverage86.01% does not constitute full-module coverage acceptance."
+  ],
+  "artifacts": {
+    "raw.tar.gz": "e5a66cedafe8822953a41de11eacfb3185808664750f41175b3af722bc11dd5b",
+    "source.tar.gz": "f00f3a5049af3f4f9f4cc2c7cbc26cad9dfc9d4b8e24665ca5869786022e9c68",
+    "raw-members-sha256.json": "c5f2081e68d804577495f064ccfba4c771b68f86c2a561f0cea313c75d4066d2",
+    "bindings-source-sha256.json": "44a82e9589f7984f587ba913c2f7ea3a75aa1d748ad0195d8f02c1e90d610149"
+  },
+  "rawMemberCount": 494
+}
