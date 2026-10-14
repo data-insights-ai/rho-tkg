@@ -102,10 +102,12 @@ V0/V1 are accepted and V2 remains open. Exact finite source/test receipts live u
 `docs/v5/HANDOVER.md` is external review, reconciled against PLAN, not permission to reduce those
 gates or push/merge main. `docs/v5-analysis.md` §5 keeps the 45-family consumer mapping; immutable
 sigma/ai-soc inventories and current v4 source deltas are in `docs/v5/reference/consumer-*.json`.
-The current reader is main `9e9f0e0a`/v4.51.7, source-reconciled but not yet
-qualified; v4.51.6 was source-only. Its minimum reader gate is the existing ten
-narrow targets with absolute Go1.26.9; indexed selector/build proof is separate.
-Upstream backlog56 now has selected source fixes/tests, not v5 acceptance.
+The selected reader cutoff is main `9e9f0e0a`/v4.51.7, narrowly qualified by
+`tools/v5-migrate/evidence/main4517-0eb0a0ac.json`: ten targets at integrated
+`0eb0a0ac` with absolute Go1.26.9, 96.2% overall and both preflight functions 100%.
+v4.51.6 was source-only; indexed selector/build proof remains separate.
+Upstream backlog56 selected fixes/tests do not establish v5 acceptance. Newer
+main `bf0050b2`/v4.51.8 was observed during the run and is outside this reader proof.
 Historical v4.51.5 nonempty retained-state cases passed at `da5d32e6` (96.2%,
 both preflight functions 100%); new retention/refusal and consumer/destination-import
 qualification remain pending. Historical `9e805ddc`/v4.51.4 and earlier receipts

@@ -1,0 +1,655 @@
+{
+  "kind": "v4-retained-state-migration-preflight-current-reader-qualification",
+  "date": "2026-10-14",
+  "source": {
+    "qualification_commit": "0eb0a0ac14964856fcc3f0edbc3054911a203867",
+    "qualification_tree": "ce8416d5ae605ceb88abec86be5de80e11dd2680",
+    "upstream_main": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
+    "upstream_release": "v4.51.7",
+    "reader_selection": "v4.51.7 requirement/local replace ../.. selects frozen integrated 0eb0a0ac; v5 public values use local replace ../../v5. Local source qualification, not shipped-binary reproduction.",
+    "input_manifest": "inputs.json",
+    "input_count": 2250,
+    "source_equality": "All 2250 frozen tracked Go/module/Makefile/lint input hashes remained unchanged across the ten actual targets and terminal check. Preflight code/tests unchanged. Later qualification metadata/docs are outside this source input manifest.",
+    "cutoff": "This receipt is exact v4.51.7 at 0eb/9e9. Root observed newer main bf0050b2/v4.51.8 during the run; that source was not merged or qualified here."
+  },
+  "environment": {
+    "GOTOOLCHAIN": "local",
+    "GOWORK": "off",
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOBIN": "/var/tmp/rho-v5-migrate-main4517-0eb0a0ac-20261014/scanner-bin",
+    "PATH": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin:/var/tmp/rho-v5-migrate-main4517-0eb0a0ac-20261014/scanner-bin:/Users/markusnissl/.codex/packages/standalone/releases/0.162.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.grok/bin:/Users/markusnissl/.opencode/bin:/Users/markusnissl/.antigravity/antigravity/bin:/Users/markusnissl/.bun/bin:/Users/markusnissl/google-cloud-sdk/bin:/Users/markusnissl/.nvm/versions/node/v24.19.0/bin:/Users/markusnissl/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/usr/local/go/bin:/Users/markusnissl/.codex/tmp/arg0/codex-arg03h015q:/Users/markusnissl/.codex/packages/standalone/releases/0.162.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg05Feg6O:/Users/markusnissl/.codex/packages/standalone/releases/0.162.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0emR3eT:/Users/markusnissl/.codex/packages/standalone/releases/0.161.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0cqPGiY:/Users/markusnissl/.codex/packages/standalone/releases/0.160.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0f4nAi9:/Users/markusnissl/.codex/packages/standalone/releases/0.160.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0UsPrPG:/Users/markusnissl/.codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg04bYMhn:/Users/markusnissl/.codex/packages/standalone/releases/0.159.2-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0MP66Ba:/Users/markusnissl/.codex/packages/standalone/releases/0.159.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0rXqGkx:/Users/markusnissl/.codex/packages/standalone/releases/0.158.0-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg07YU9q1:/Users/markusnissl/.codex/packages/standalone/releases/0.157.1-aarch64-apple-darwin/codex-path:/Users/markusnissl/.codex/tmp/arg0/codex-arg0Ly7AVz:/Users/markusnissl/.grok/bin:/Users/markusnissl/.opencode/bin:/Users/markusnissl/.antigravity/antigravity/bin:/Users/markusnissl/Library/pnpm/bin:/Users/markusnissl/.sdkman/candidates/java/current/bin:/Users/markusnissl/.sdkman/candidates/gradle/current/bin:/Users/markusnissl/.bun/bin:/Users/markusnissl/.deno/bin:/Users/markusnissl/google-cloud-sdk/bin:/Users/markusnissl/.nvm/versions/node/v24.19.0/bin:/Users/markusnissl/.local/bin:/Users/markusnissl/.docker/bin:/Users/markusnissl/Library/Application Support/JetBrains/Toolbox/scripts:/Users/markusnissl/.cache/lm-studio/bin:/Users/markusnissl/.composer/vendor/bin:/Users/markusnissl/.local/bin:/Users/markusnissl/.cache/lm-studio/bin:/Users/markusnissl/.composer/vendor/bin:/Users/markusnissl/.local/bin"
+  },
+  "compiler_path": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+  "compiler_sha256": "318dee99db233501f6c419fbb4616e5a345ed0b831dbd6c7669b24e1ff8e9e2e",
+  "compiler_verification": "Absolute go version/GOROOT/GOVERSION/GOMOD and binary hash checked at startup and immediately before normal/race/coverage; all show go1.26.9 darwin/arm64 and the canonical migration go.mod. Makefile version gate also ran per target.",
+  "limits": {
+    "wall_limit_seconds_per_target": 180,
+    "sampled_process_tree_rss_limit_mib_per_target": 4096,
+    "sample_interval_seconds": 0.25,
+    "scope": "Each target supervised by existing limit-local.py. Sampled descendant RSS is not a kernel allocation limit; no benchmark or aggregate root/v5 suite."
+  },
+  "scanner_reuse": {
+    "priorReceipt": "tools/v5-migrate/evidence/main4515-da5d32e6.json",
+    "priorReceiptSHA256": "983acec5efd3c0628e8cb238484fe2ac44efc0de11789b2abcd7ee86bf2444c1",
+    "binarySHA256": {
+      "golangci-lint": "5a88e04e56c1ccd7617c01666df23e5767d7a12cf21bac2c02e3170d67a27eef",
+      "gosec": "37117fce9ed7012d9f754b01b49a76f059595fa8fc05c6bb9eff8c7b9bd8c2da",
+      "govulncheck": "7e84b57e53de1ac85b4ac78d003cb6c043e6defce77e38b71a6f5907680ea178"
+    },
+    "identity": "Exact prior cached bytes copied to owned GOBIN. Actual versions/build metadata captured before and after existing make tools; all built with Go1.26.9 and pinned lint2.13.2/gosec2.29.0/vuln1.7.0. Gosec -version reports dev, while go version -m binds v2.29.0. Cached tools target ran once and preserved identical bytes."
+  },
+  "scanner_executable_sha256": {
+    "golangci-lint": "5a88e04e56c1ccd7617c01666df23e5767d7a12cf21bac2c02e3170d67a27eef",
+    "gosec": "37117fce9ed7012d9f754b01b49a76f059595fa8fc05c6bb9eff8c7b9bd8c2da",
+    "govulncheck": "7e84b57e53de1ac85b4ac78d003cb6c043e6defce77e38b71a6f5907680ea178"
+  },
+  "ten_gate_targets": [
+    "fmt-check",
+    "vet",
+    "build",
+    "test",
+    "test-race",
+    "cover-gate",
+    "tools",
+    "lint",
+    "security",
+    "vulncheck"
+  ],
+  "checks": {
+    "fmt-check": {
+      "target": "fmt-check",
+      "command": [
+        "make",
+        "fmt-check",
+        "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+      ],
+      "supervisorPID": 26365,
+      "startedUnix": 1791976077.48859,
+      "finishedUnix": 1791976078.072342,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "make",
+          "fmt-check",
+          "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 4.453,
+        "elapsed_s": 0.343,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "observedIdentities": {
+        "26365": "Wed Oct 14 13:07:57 2026    ",
+        "26369": "Wed Oct 14 13:07:57 2026    "
+      },
+      "observedIdentitiesAbsent": true
+    },
+    "vet": {
+      "target": "vet",
+      "command": [
+        "make",
+        "vet",
+        "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+      ],
+      "supervisorPID": 26429,
+      "startedUnix": 1791976078.1381629,
+      "finishedUnix": 1791976098.539955,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "make",
+          "vet",
+          "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 421.797,
+        "elapsed_s": 20.212,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "observedIdentities": {
+        "26429": "Wed Oct 14 13:07:58 2026    ",
+        "26432": "Wed Oct 14 13:07:58 2026    ",
+        "26444": "Wed Oct 14 13:07:58 2026    ",
+        "26531": "Wed Oct 14 13:07:58 2026    ",
+        "26551": "Wed Oct 14 13:07:59 2026    ",
+        "26582": "Wed Oct 14 13:07:59 2026    ",
+        "26596": "Wed Oct 14 13:07:59 2026    ",
+        "26651": "Wed Oct 14 13:08:00 2026    ",
+        "26756": "Wed Oct 14 13:08:01 2026    ",
+        "26768": "Wed Oct 14 13:08:01 2026    ",
+        "26821": "Wed Oct 14 13:08:02 2026    ",
+        "26845": "Wed Oct 14 13:08:02 2026    ",
+        "26907": "Wed Oct 14 13:08:02 2026    ",
+        "26919": "Wed Oct 14 13:08:02 2026    ",
+        "26940": "Wed Oct 14 13:08:03 2026    ",
+        "26960": "Wed Oct 14 13:08:03 2026    ",
+        "26977": "Wed Oct 14 13:08:03 2026    ",
+        "27140": "Wed Oct 14 13:08:05 2026    ",
+        "27165": "Wed Oct 14 13:08:05 2026    ",
+        "27162": "Wed Oct 14 13:08:05 2026    ",
+        "27208": "Wed Oct 14 13:08:06 2026    ",
+        "27518": "Wed Oct 14 13:08:08 2026    ",
+        "27619": "Wed Oct 14 13:08:09 2026    ",
+        "27814": "Wed Oct 14 13:08:12 2026    ",
+        "28183": "Wed Oct 14 13:08:15 2026    ",
+        "28216": "Wed Oct 14 13:08:16 2026    ",
+        "28234": "Wed Oct 14 13:08:16 2026    ",
+        "28310": "Wed Oct 14 13:08:16 2026    ",
+        "28368": "Wed Oct 14 13:08:17 2026    ",
+        "28390": "Wed Oct 14 13:08:17 2026    ",
+        "28417": "Wed Oct 14 13:08:17 2026    ",
+        "28446": "Wed Oct 14 13:08:18 2026    "
+      },
+      "observedIdentitiesAbsent": true
+    },
+    "build": {
+      "target": "build",
+      "command": [
+        "make",
+        "build",
+        "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+      ],
+      "supervisorPID": 28479,
+      "startedUnix": 1791976098.659341,
+      "finishedUnix": 1791976099.528554,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "make",
+          "build",
+          "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 91.391,
+        "elapsed_s": 0.612,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "observedIdentities": {
+        "28479": "Wed Oct 14 13:08:18 2026    ",
+        "28497": "Wed Oct 14 13:08:18 2026    ",
+        "28535": "Wed Oct 14 13:08:18 2026    ",
+        "28550": "Wed Oct 14 13:08:18 2026    "
+      },
+      "observedIdentitiesAbsent": true
+    },
+    "test": {
+      "target": "test",
+      "command": [
+        "make",
+        "test",
+        "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+      ],
+      "supervisorPID": 28625,
+      "startedUnix": 1791976099.647837,
+      "finishedUnix": 1791976103.9065359,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "make",
+          "test",
+          "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 350.094,
+        "elapsed_s": 4.013,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "observedIdentities": {
+        "28625": "Wed Oct 14 13:08:19 2026    ",
+        "28633": "Wed Oct 14 13:08:19 2026    ",
+        "28640": "Wed Oct 14 13:08:19 2026    ",
+        "28672": "Wed Oct 14 13:08:20 2026    ",
+        "28770": "Wed Oct 14 13:08:20 2026    ",
+        "28776": "Wed Oct 14 13:08:20 2026    ",
+        "28871": "Wed Oct 14 13:08:21 2026    ",
+        "28924": "Wed Oct 14 13:08:22 2026    ",
+        "28949": "Wed Oct 14 13:08:22 2026    ",
+        "29023": "Wed Oct 14 13:08:23 2026    ",
+        "29046": "Wed Oct 14 13:08:23 2026    "
+      },
+      "observedIdentitiesAbsent": true
+    },
+    "test-race": {
+      "target": "test-race",
+      "command": [
+        "make",
+        "test-race",
+        "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+      ],
+      "supervisorPID": 29121,
+      "startedUnix": 1791976104.025999,
+      "finishedUnix": 1791976120.805415,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "make",
+          "test-race",
+          "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 369.75,
+        "elapsed_s": 16.441,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "observedIdentities": {
+        "29121": "Wed Oct 14 13:08:24 2026    ",
+        "29126": "Wed Oct 14 13:08:24 2026    ",
+        "29136": "Wed Oct 14 13:08:24 2026    ",
+        "29163": "Wed Oct 14 13:08:24 2026    ",
+        "29241": "Wed Oct 14 13:08:24 2026    ",
+        "29216": "Wed Oct 14 13:08:24 2026    ",
+        "29262": "Wed Oct 14 13:08:25 2026    ",
+        "29256": "Wed Oct 14 13:08:25 2026    ",
+        "29284": "Wed Oct 14 13:08:25 2026    ",
+        "29277": "Wed Oct 14 13:08:25 2026    ",
+        "29309": "Wed Oct 14 13:08:25 2026    ",
+        "29353": "Wed Oct 14 13:08:26 2026    ",
+        "29319": "Wed Oct 14 13:08:25 2026    ",
+        "29371": "Wed Oct 14 13:08:26 2026    ",
+        "29389": "Wed Oct 14 13:08:26 2026    ",
+        "29385": "Wed Oct 14 13:08:26 2026    ",
+        "29451": "Wed Oct 14 13:08:26 2026    ",
+        "29450": "Wed Oct 14 13:08:26 2026    ",
+        "29465": "Wed Oct 14 13:08:27 2026    ",
+        "29483": "Wed Oct 14 13:08:27 2026    ",
+        "29494": "Wed Oct 14 13:08:27 2026    ",
+        "29508": "Wed Oct 14 13:08:28 2026    ",
+        "29550": "Wed Oct 14 13:08:28 2026    ",
+        "29609": "Wed Oct 14 13:08:28 2026    ",
+        "29632": "Wed Oct 14 13:08:29 2026    ",
+        "29622": "Wed Oct 14 13:08:29 2026    ",
+        "29650": "Wed Oct 14 13:08:29 2026    ",
+        "29644": "Wed Oct 14 13:08:29 2026    ",
+        "29736": "Wed Oct 14 13:08:29 2026    ",
+        "29800": "Wed Oct 14 13:08:29 2026    ",
+        "29813": "Wed Oct 14 13:08:30 2026    ",
+        "29828": "Wed Oct 14 13:08:30 2026    ",
+        "29821": "Wed Oct 14 13:08:30 2026    ",
+        "29841": "Wed Oct 14 13:08:30 2026    ",
+        "29900": "Wed Oct 14 13:08:31 2026    ",
+        "29890": "Wed Oct 14 13:08:30 2026    ",
+        "29928": "Wed Oct 14 13:08:31 2026    ",
+        "29948": "Wed Oct 14 13:08:31 2026    ",
+        "29967": "Wed Oct 14 13:08:31 2026    ",
+        "29989": "Wed Oct 14 13:08:32 2026    ",
+        "29981": "Wed Oct 14 13:08:32 2026    ",
+        "30012": "Wed Oct 14 13:08:32 2026    ",
+        "30032": "Wed Oct 14 13:08:32 2026    ",
+        "30094": "Wed Oct 14 13:08:32 2026    ",
+        "30116": "Wed Oct 14 13:08:33 2026    ",
+        "30134": "Wed Oct 14 13:08:33 2026    ",
+        "30153": "Wed Oct 14 13:08:33 2026    ",
+        "30173": "Wed Oct 14 13:08:34 2026    ",
+        "30204": "Wed Oct 14 13:08:34 2026    ",
+        "30226": "Wed Oct 14 13:08:34 2026    ",
+        "30291": "Wed Oct 14 13:08:34 2026    ",
+        "30292": "Wed Oct 14 13:08:34 2026    ",
+        "30316": "Wed Oct 14 13:08:35 2026    ",
+        "30314": "Wed Oct 14 13:08:35 2026    ",
+        "30351": "Wed Oct 14 13:08:35 2026    ",
+        "30337": "Wed Oct 14 13:08:35 2026    ",
+        "30372": "Wed Oct 14 13:08:35 2026    ",
+        "30373": "Wed Oct 14 13:08:35 2026    ",
+        "30377": "Wed Oct 14 13:08:35 2026    ",
+        "30451": "Wed Oct 14 13:08:36 2026    ",
+        "30474": "Wed Oct 14 13:08:36 2026    ",
+        "30592": "Wed Oct 14 13:08:37 2026    ",
+        "30616": "Wed Oct 14 13:08:37 2026    ",
+        "30646": "Wed Oct 14 13:08:37 2026    ",
+        "30647": "Wed Oct 14 13:08:37 2026    ",
+        "30676": "Wed Oct 14 13:08:37 2026    ",
+        "30669": "Wed Oct 14 13:08:37 2026    ",
+        "30709": "Wed Oct 14 13:08:38 2026    ",
+        "30737": "Wed Oct 14 13:08:38 2026    ",
+        "30738": "Wed Oct 14 13:08:38 2026    ",
+        "30764": "Wed Oct 14 13:08:38 2026    ",
+        "30756": "Wed Oct 14 13:08:38 2026    ",
+        "30830": "Wed Oct 14 13:08:39 2026    ",
+        "30852": "Wed Oct 14 13:08:39 2026    ",
+        "30883": "Wed Oct 14 13:08:39 2026    ",
+        "30904": "Wed Oct 14 13:08:39 2026    ",
+        "30930": "Wed Oct 14 13:08:40 2026    ",
+        "30954": "Wed Oct 14 13:08:40 2026    "
+      },
+      "observedIdentitiesAbsent": true
+    },
+    "cover-gate": {
+      "target": "cover-gate",
+      "command": [
+        "make",
+        "cover-gate",
+        "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+      ],
+      "supervisorPID": 31043,
+      "startedUnix": 1791976120.9366,
+      "finishedUnix": 1791976124.093013,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "make",
+          "cover-gate",
+          "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 182.531,
+        "elapsed_s": 2.901,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "observedIdentities": {
+        "31043": "Wed Oct 14 13:08:40 2026    ",
+        "31048": "Wed Oct 14 13:08:40 2026    ",
+        "31064": "Wed Oct 14 13:08:41 2026    ",
+        "31122": "Wed Oct 14 13:08:41 2026    ",
+        "31212": "Wed Oct 14 13:08:42 2026    ",
+        "31263": "Wed Oct 14 13:08:42 2026    ",
+        "31348": "Wed Oct 14 13:08:43 2026    ",
+        "31350": "Wed Oct 14 13:08:43 2026    ",
+        "31351": "Wed Oct 14 13:08:43 2026    ",
+        "31357": "Wed Oct 14 13:08:43 2026    ",
+        "31382": "Wed Oct 14 13:08:43 2026    ",
+        "31383": "Wed Oct 14 13:08:43 2026    ",
+        "31384": "Wed Oct 14 13:08:43 2026    ",
+        "31388": "Wed Oct 14 13:08:43 2026    ",
+        "31390": "Wed Oct 14 13:08:43 2026    "
+      },
+      "observedIdentitiesAbsent": true
+    },
+    "tools": {
+      "target": "tools",
+      "command": [
+        "make",
+        "tools",
+        "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+      ],
+      "supervisorPID": 31475,
+      "startedUnix": 1791976124.1843991,
+      "finishedUnix": 1791976128.086391,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "make",
+          "tools",
+          "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 84.141,
+        "elapsed_s": 3.661,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "observedIdentities": {
+        "31475": "Wed Oct 14 13:08:44 2026    ",
+        "31483": "Wed Oct 14 13:08:44 2026    ",
+        "31492": "Wed Oct 14 13:08:44 2026    ",
+        "32369": "Wed Oct 14 13:08:46 2026    ",
+        "32572": "Wed Oct 14 13:08:47 2026    "
+      },
+      "observedIdentitiesAbsent": true
+    },
+    "lint": {
+      "target": "lint",
+      "command": [
+        "make",
+        "lint",
+        "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+      ],
+      "supervisorPID": 32786,
+      "startedUnix": 1791976129.3597262,
+      "finishedUnix": 1791976135.51248,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "make",
+          "lint",
+          "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 634.453,
+        "elapsed_s": 5.879,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "observedIdentities": {
+        "32786": "Wed Oct 14 13:08:49 2026    ",
+        "32793": "Wed Oct 14 13:08:49 2026    ",
+        "32801": "Wed Oct 14 13:08:49 2026    ",
+        "32819": "Wed Oct 14 13:08:49 2026    "
+      },
+      "observedIdentitiesAbsent": true
+    },
+    "security": {
+      "target": "security",
+      "command": [
+        "make",
+        "security",
+        "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+      ],
+      "supervisorPID": 33692,
+      "startedUnix": 1791976135.586408,
+      "finishedUnix": 1791976136.747676,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "make",
+          "security",
+          "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 136.812,
+        "elapsed_s": 0.9,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "observedIdentities": {
+        "33692": "Wed Oct 14 13:08:55 2026    ",
+        "33696": "Wed Oct 14 13:08:55 2026    ",
+        "33711": "Wed Oct 14 13:08:55 2026    ",
+        "33724": "Wed Oct 14 13:08:55 2026    ",
+        "33767": "Wed Oct 14 13:08:56 2026    "
+      },
+      "observedIdentitiesAbsent": true
+    },
+    "vulncheck": {
+      "target": "vulncheck",
+      "command": [
+        "make",
+        "vulncheck",
+        "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+      ],
+      "supervisorPID": 33838,
+      "startedUnix": 1791976136.8405492,
+      "finishedUnix": 1791976141.197212,
+      "exitCode": 0,
+      "profile": {
+        "command": [
+          "make",
+          "vulncheck",
+          "GO=/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1231.672,
+        "elapsed_s": 4.042,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "observedIdentities": {
+        "33838": "Wed Oct 14 13:08:56 2026    ",
+        "33846": "Wed Oct 14 13:08:56 2026    ",
+        "33855": "Wed Oct 14 13:08:56 2026    ",
+        "33856": "Wed Oct 14 13:08:56 2026    ",
+        "33927": "Wed Oct 14 13:08:57 2026    "
+      },
+      "observedIdentitiesAbsent": true
+    }
+  },
+  "coverage_percent": {
+    "total": 96.2,
+    "PreflightNode": 100.0,
+    "PreflightRel": 100.0
+  },
+  "coverage_out_sha256": "3158ad5abdcdae2f7e18060b936c0680eb0d623fa24ec955dc071ec16b582ef0",
+  "test_scope": {
+    "source_inventory": "test-source-inventory.json",
+    "parents": [
+      "TestPreflightLossCollisionAndInvertedLegacyStampsRefuse",
+      "TestPreflightSourceErrorsAtEachReadLayer",
+      "TestPreflightRelKeepsDeclaredViewAfterEndpointClose",
+      "TestPreflightNilTemporalKeepsSourceMintAndAudit",
+      "TestPreflightRawAuditAndLaterZeroTilingStaySeparate",
+      "TestPreflightHistoricalCorrectionUsesEffectiveState",
+      "TestPreflightRetractionDeleteAndCloseRemainDistinct",
+      "TestPreflightZeroFallbackExactKindsAndOwnedEvidence",
+      "TestPreflightOneTickRequiresExactVerifiedProvenance",
+      "TestMapSpanExactExtremesAndFraction",
+      "TestPreflightRefusalsPreserveSourceSentinels"
+    ],
+    "parent_count": 11,
+    "selection": "Existing make test/test-race/cover-gate ran the whole migration module with -short -count=1 and no -run selection. Frozen tests have no Skip/Short branches. Each normal/race/coverage package terminal passed; source inventory is not a per-case JSON count or a separate compiled-list gate.",
+    "nonempty": "Both preflight functions directly invoked. Real node/relationship fixtures on four backends mutate then query old/new pins; exact segments/points, phantom isolation, deleted/retracted/closed lives, type/raw ownership, provenance ambiguity and source errors tested.",
+    "not_exercised": "No new index-build/selector, per-type-retention/refusal fixture, source-history completeness/authenticated writer, consumer adapter, destination importer, full-root/v5 suite, capacity/performance or V6 acceptance."
+  },
+  "attempts": {
+    "startup": {
+      "status": "pre-target canonical pathname refusal",
+      "gatesStarted": 0,
+      "compiler": "go1.26.9",
+      "actualGOMOD": "/private/var/tmp/rho-v5-v4516-reconcile-20261014/tools/v5-migrate/go.mod",
+      "declaredGOMOD": "/var/tmp/rho-v5-v4516-reconcile-20261014/tools/v5-migrate/go.mod",
+      "correction": "Require resolved file identity, preserving exact module/source hash; no source/gate changes or repeats"
+    },
+    "gates": "Exactly ten targets ran once. No backend target preceded or repeated after the startup pathname correction."
+  },
+  "cleanup": {
+    "exit": 0,
+    "targets": [
+      "fmt-check",
+      "vet",
+      "build",
+      "test",
+      "test-race",
+      "cover-gate",
+      "tools",
+      "lint",
+      "security",
+      "vulncheck"
+    ],
+    "all2250InputsUnchanged": true,
+    "observedIdentityCount": 161,
+    "observedIdentitiesAbsent": true,
+    "allWatchdogsTerminal": true
+  },
+  "raw_evidence_sha256": {
+    "Makefile": "0c2cdff5a87140703f96491331e72658cea9ae0ce9be734f27f46d507ae52b40",
+    "after-tools-golangci-lint-build.txt": "201a8c190da2adf271295dccd2a28ac0d8593c386d6bfc974525fca0cb781ba1",
+    "after-tools-golangci-lint-version.txt": "5644aa8e116a125b49c8e7bccf4515686b8b7312ecb1b195c06c8a7aa5ff175a",
+    "after-tools-gosec-build.txt": "94323999bee049c2268c6ddf7289f7b62a3d3a1c095e5e8eb1d7343741bbd36c",
+    "after-tools-gosec-version.txt": "c61e4d5622fe9449bd0810e944e583a8e330a8b9d0c394513f5f68b64a94e200",
+    "after-tools-govulncheck-build.txt": "b70fc48b73d048766430480df56977aca4703710b4976933e97181e37d2424c0",
+    "after-tools-govulncheck-version.txt": "f872dc8e4877391b12229c7fbc08e9fd9666a60e0571140f09dce7270472a21e",
+    "after-tools-scanner-sha256.json": "b5111533cd550c363c4fce3afaeff3bfc3af1f4ce788c490851b4ccb0a95ce91",
+    "build-watchdog.json": "8ffb9f83cf0ebed718a32b33a61acc176db36b5180e79c2a291c37405a533231",
+    "build.stderr": "1dae45bcf8926be772906f05e835d990f0d02d4607b0cdf536091b07a43f5fa0",
+    "build.stdout": "509b7ed4a8f9284703d62cb0b52cda1b51bae80bd93551d22789debec0a3606e",
+    "checks.json": "51095bee0323e291553f47ece3dd24c5e797da66fcbbfdd0d43fc79ed900af16",
+    "cover-gate-compiler.txt": "29e697b8523a1dbd0e5e70810bb382fa774f9b03540539699c73526751b1a9db",
+    "cover-gate-watchdog.json": "47c481831b3199d488f93a7be41bf40fc864b3baf98d387ec72b97cb0c8cc140",
+    "cover-gate.stderr": "9f1dcdd962876b0755ff8d07946b8b2655dfb7a1c95b6b651e37a47a8b3f87c3",
+    "cover-gate.stdout": "264d2316613bb6673104f7cf03c1211a39289b152e90f44693609eff24ccd46e",
+    "coverage.out": "3158ad5abdcdae2f7e18060b936c0680eb0d623fa24ec955dc071ec16b582ef0",
+    "environment.json": "79db04d3455cf174bdd32541665c842f3bc40160dac22f57f3a2236dfe91339e",
+    "failed-startup-runner.py": "cb4f460afdca2044e5d8aff40cb8c160a338c629fed36b71e0ba62a3ee7faf83",
+    "failed-startup.json": "63955a102262a7294427b966b05ddaba1ec4d03c933c77170793dc719e632197",
+    "faults_test.go": "c37f202143a0e42889741afab3181068f8269da0189087e7e1bd7810f78a43a2",
+    "fmt-check-watchdog.json": "5ec32a1cdab0f0742ed3d8c70dbd920f293603f9f81e9b8657f17ed26ec663f9",
+    "fmt-check.stderr": "f92e7ec70772f547d8894a5cfc4b6c7c7c3e994b9b0f2b1d9ad1b67bb451d0aa",
+    "fmt-check.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "go.mod": "48e68f47c745866982b336180914a830f9a86ee40446b847ca35b68419eade85",
+    "go.sum": "3ce9a23bdfe08f06dafe9749bede3b9358c8edac54f15cc54fab9ef0792c31cb",
+    "initial-compiler.txt": "29e697b8523a1dbd0e5e70810bb382fa774f9b03540539699c73526751b1a9db",
+    "initial-golangci-lint-build.txt": "201a8c190da2adf271295dccd2a28ac0d8593c386d6bfc974525fca0cb781ba1",
+    "initial-golangci-lint-version.txt": "5644aa8e116a125b49c8e7bccf4515686b8b7312ecb1b195c06c8a7aa5ff175a",
+    "initial-gosec-build.txt": "94323999bee049c2268c6ddf7289f7b62a3d3a1c095e5e8eb1d7343741bbd36c",
+    "initial-gosec-version.txt": "c61e4d5622fe9449bd0810e944e583a8e330a8b9d0c394513f5f68b64a94e200",
+    "initial-govulncheck-build.txt": "b70fc48b73d048766430480df56977aca4703710b4976933e97181e37d2424c0",
+    "initial-govulncheck-version.txt": "f872dc8e4877391b12229c7fbc08e9fd9666a60e0571140f09dce7270472a21e",
+    "initial-scanner-sha256.json": "b5111533cd550c363c4fce3afaeff3bfc3af1f4ce788c490851b4ccb0a95ce91",
+    "inputs.json": "f59ce28dc7a188c609e2d66a98536d2667a47db37e5f857095398ced73ca0d05",
+    "limit-local.py": "6dc4e0362827ecd0854436b9fa1a812342b693d65ba093291d358b359e733283",
+    "lint-watchdog.json": "99bca48b1f018e33e1758aedb4a85e8560b28c675026925d047b66c920e9e419",
+    "lint.stderr": "1329110ab25a308c4e2209cbd3f442f4150c09e543880db887c274a3a909f447",
+    "lint.stdout": "00f177aa93e25dab97a2e3a562aa1ae0a9ad9c1633f7bb44d5521fd86e4cf37a",
+    "preflight.go": "811233b5eb93eea7b8075d3e1ac193ccc5f2de6303101ac4532f55233c2b506a",
+    "preflight_test.go": "7485b02ee04c71e20ca9eb36763ba8615e8f6bbe759d105d6fa1af51364ceb36",
+    "run-gates.py": "feab38b3d024f7c812b65c738e19c0f0d8a3387eccc8d8a71b3e032b4aec2093",
+    "scanner-before-sha256.json": "b5111533cd550c363c4fce3afaeff3bfc3af1f4ce788c490851b4ccb0a95ce91",
+    "security-watchdog.json": "64d4c0755dda741e6e3d5116051c9cc9edf35694e57b47ecc962946078c44ad6",
+    "security.stderr": "f1905b82dbfb74e7b872a326e273af58580749244f800f3355572abd9c25d5fd",
+    "security.stdout": "ffa2a3655d00bd12c472ede0133900028c85946568c25a4f7a2987ee8fad5bd9",
+    "source.json": "94f9f984e6d78807b8d76c22197e266252dec27689770899bdd4c5b45766f456",
+    "terminal.json": "392e3524a869731bb8bdf66abe2b1b20462fbdd793270b8d869115ce93d8d6df",
+    "test-compiler.txt": "29e697b8523a1dbd0e5e70810bb382fa774f9b03540539699c73526751b1a9db",
+    "test-race-compiler.txt": "29e697b8523a1dbd0e5e70810bb382fa774f9b03540539699c73526751b1a9db",
+    "test-race-watchdog.json": "48512e8e50a44dc4ac265e7012f17f67c9b7bbee1239b6f0cfba22601bde0b2a",
+    "test-race.stderr": "fa70ee01576c0f2dff95797f410ef52323fc188c3993a3e3feadc1cf4d7c31d9",
+    "test-race.stdout": "8043840f8bed6401ca61095250839099fa2dcba80d8c3742c1b3ebb4ecb10d34",
+    "test-source-inventory.json": "969eb89395d4d81be783d327d7e7ba18e727e5f3007e86be301dc296e78ec832",
+    "test-watchdog.json": "a2da7894ae3db8817cf4868154335e4fac56df52f343511a9ad7e6ceba7d2bc2",
+    "test.stderr": "34c7957eb2d691e3038cdff79db51e6f85f55d5fdc718568a71c9a9bef4bb33b",
+    "test.stdout": "98506804b2746a9317c51aee39110820acb479c1379ac4d6315223733c224b14",
+    "tools-watchdog.json": "24ea9c8fc362f8495957ceaee91ca7955cc6467e79d88d13cc6ca68afd8d2eb2",
+    "tools.stderr": "2812472658ec8482883fb68fb5b811f925e20f3478271e5091009d99f8c3a4b5",
+    "tools.stdout": "0960144baa58f843e73876b39e2cc2efb0a5cc93627ea1a15c4d98831583f510",
+    "vet-watchdog.json": "7600fb0d492852007923d8093eb094b7c10c23e4a7224f5b883242b6bc268184",
+    "vet.stderr": "657302061897a6e64710d23495e856f7779772eaa5e3b62601092a2ecc718e17",
+    "vet.stdout": "16afbf8503d3eda0fa5ae085937d73c19b0828b91c4bfa47e14c64ade3f80fdd",
+    "vulncheck-watchdog.json": "2a5cbcd121e01f0c2d2bf7d8430491a15886da03de1ba21252653a1d8d867da5",
+    "vulncheck.stderr": "5adbd1e34926a93762b5afef60689fd53102d46abc0c9f5f7a51d4e0022c46f0",
+    "vulncheck.stdout": "8ab522a426c2484da7a6e5d139353b2b5e1d0945647a8ce0615f77d17d3d1614"
+  },
+  "archive": {
+    "file": "main4517-0eb0a0ac.tar.gz",
+    "sha256": "33b39c9fcb7dd249ec7ffcd57fe3a83387a7c42790acd99039360fd164aefde8",
+    "bytes": 161426,
+    "members": 66,
+    "verification": "Read back every member byte and hash after packing; source/helper/tool-provenance/command/watchdog/terminal evidence retained."
+  },
+  "external_frozen_source": {
+    "path": "/var/tmp/rho-v5-migrate-main4517-0eb0a0ac-20261014/source.tar.gz",
+    "sha256": "6ba28fe6171eb56a05cacffdc74b5d41f734a2d6d9f0274dbc7fff62af1e1c51",
+    "bytes": 5467701
+  },
+  "historical_evidence": {
+    "prior4515ReceiptSHA256": "983acec5efd3c0628e8cb238484fe2ac44efc0de11789b2abcd7ee86bf2444c1",
+    "prior4515ArchiveSHA256": "cdb19f942d0b3b6ee4c8be664b9600d8301404424291abafdf4538aa6f87c524",
+    "rule": "Historical v4.51.5 and v4.51.6 source-only objects/consumer pins remain unchanged; current mapping entry acceptances remain pending-v5."
+  },
+  "scope": "Only unchanged retained-state PreflightNode/PreflightRel mapping at explicit source pin on frozen integrated v4.51.7; no new local indexed selector/build or retention proofs, global watermarks/certified cuts, destination import/restore, whole-root/hosted/consumer/capacity or V0-V7/V6 closure."
+}

@@ -967,12 +967,16 @@ bytes already lost by older writers, and source-history ambiguity remains explic
 
 The current v4.51.7 source contracts are recorded in
 [consumer contracts](reference/consumer-contracts.json) and
-[migration obligations](reference/consumer-migration.json); current reader
-qualification is pending. The unchanged per-entity preflight does not create or
-prune temporal indexes, so its minimum requalification is the existing ten
-narrow module gates against the exact merged reader, with a fresh receipt.
-v4.51.6 had source-only reconciliation; v4.51.7 selected upstream node-envelope
-tests do not replace local reader or v5 index-build/selector qualification.
+[migration obligations](reference/consumer-migration.json). The selected
+v4.51.7 reader passes the existing ten narrow module targets at integrated
+`0eb0a0ac` with absolute Go1.26.9, 96.2% overall coverage and 100% for both
+preflight functions; [the new receipt](../../tools/v5-migrate/evidence/main4517-0eb0a0ac.json)
+retains exact frozen inputs, scanner provenance and the pre-target pathname
+refusal. The unchanged preflight neither creates nor prunes temporal indexes:
+selected upstream node-envelope tests and local reader proof do not qualify
+v5 index-build/selectors, retention refusals or consumer adapters. v4.51.6 was
+source-only. Main `bf0050b2`/v4.51.8 was observed during qualification and remains
+outside this exact reader cutoff; it is not qualified by this receipt.
 The historical v4.51.5 gates passed at integrated `da5d32e6` (96.2% overall,
 100% both preflight functions), using existing nonempty node/relationship cases;
 [that immutable receipt](../../tools/v5-migrate/evidence/main4515-da5d32e6.json)
