@@ -102,8 +102,10 @@ V0/V1 are accepted and V2 remains open. Exact finite source/test receipts live u
 `docs/v5/HANDOVER.md` is external review, reconciled against PLAN, not permission to reduce those
 gates or push/merge main. `docs/v5-analysis.md` §5 keeps the 45-family consumer mapping; immutable
 sigma/ai-soc inventories and current v4 source deltas are in `docs/v5/reference/consumer-*.json`.
-The current reader is main `a1248ffc`/v4.51.4; its importer/consumer qualification is pending,
-separate from historical v4.50.1/v4.51.0/v4.51.1 receipts and reported consumer adoption.
+The current reader is main `c23c8b04`/v4.51.5; its merged-source importer/consumer
+qualification is pending. Historical v4.51.4 migration/finite-reader receipts at
+`9e805ddc` and earlier qualifications remain immutable; exact upstream CI/source
+equivalence is separate from consumer adoption and V6 acceptance.
 **Markus integrates v5; this handover authorizes no main push/tag/release** (decision 5).
 The v4 author's `origin/v5` read-only boundary remains; authorized v5 maintenance keeps shared
 CHANGELOG/backlog/lessons/AGENTS/Makefile/CI changes when reconciling main.

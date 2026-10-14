@@ -8,6 +8,14 @@ This document is
 an API/semantic inventory, not a release approval or a second roadmap. Live phase
 status remains [tasks/backlog.md](../tasks/backlog.md).
 
+The current source extension is main `c23c8b04`/v4.51.5, recorded in
+[PLAN §8a](v5/PLAN.md) and the source-delta objects in the consumer references.
+Its scoped relationship retention, state column/zero-ordinal contract and
+history accelerators add obligations to this historical 45-family inventory.
+The [source reconciliation receipt](../tasks/evidence/main4515-integration-20261014/receipt.json)
+separates exact upstream CI/source equivalence from pending integrated-reader
+and consumer qualification; older inventories and acceptance pins remain unchanged.
+
 **Consumers cannot switch their graph engine to v5 yet.** Only
 `github.com/data-insights-ai/rho-tkg/v5/pkg/temporal` and `/pkg/types` are public.
 Graph storage, planning, application and replication implementations remain under

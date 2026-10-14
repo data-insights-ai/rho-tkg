@@ -72,7 +72,7 @@ Pinned fixtures: [consumer contracts](../docs/v5/reference/consumer-contracts.js
 and [migration obligations](../docs/v5/reference/consumer-migration.json) are
 reviewed specification/inventory evidence; consumer integration acceptance stays open.
 The [45-family v4→v5 mapping](../docs/v5-analysis.md#5-v4--v5-door-mapping)
-and the manifests' separate v4.51.1 source delta at `dbd74cf4` distinguish public
+and the manifests' current v4.51.5 source delta at `c23c8b04` distinguish public
 successors, internal machinery and unresolved API contracts. Their consumer proofs belong to
 V4/V6; historical acceptance pins below remain unchanged.
 The integrated v4.51.0 source and V6 preflight pass [hosted CI at `3ede096d`](evidence/e17-ci-deadline-20261012/hosted-ci-3ede096d.json):
@@ -102,6 +102,13 @@ passes all eight applicable jobs for this source baseline, including both
 modules' normal/race, coverage and security gates. Its migration/comparison
 jobs pass their existing scope; they do not establish the new consumer mapping,
 destination import or subsequently integrated replacement activation.
+Main `c23c8b04`/v4.51.5 is now source-integrated with scoped relationship
+retention, state count/column cuts, zero temporal ordinals and history acceleration
+obligations. Its [source receipt](evidence/main4515-integration-20261014/receipt.json)
+records exact upstream CI/source equivalence; integrated-reader/preflight and
+consumer qualification remain pending. The ten-gate v4.51.4 migration receipt
+and [three finite reader lanes](evidence/current-reader-9e805ddc-20261014/receipt.json)
+remain immutable historical proof at `9e805ddc`, without whole-root/V6 acceptance.
 [Substrate evaluation](../docs/v5/reference/substrate-evaluation.json) is
 research/execution-plan evidence only; no engine selection or V2/V3 acceptance.
 The original five recovered `docs/v5/reference/` files are byte-verified and
@@ -118,7 +125,7 @@ and reference JSON specify contracts/evidence, not completed engine gates.
 | V3 | Coordinate timeblock candidate independently validated (local commit `fa0c982`; scoped temporal+block coverage 95.7%, no exported method at 0%). Full engine seal/merge/recovery, paged structures and all-in budget/byte-ledger measurements remain open; resident-buffer prototype timings do not close V3 |
 | V4 | Production read/change APIs, historical cross-door parity, gap-free leased feed handoff and pinned sigma access-contract build and nonempty mutation-then-historical tests (the current signature/empty smoke is insufficient) |
 | V5 | Distributed access across 1/2/4/8 partitions, cross-edge/stall/rebalance/feed cases and sigma workload parity |
-| V6 | Retained-state migration preflight integrated and narrowly qualified against the v4.51.1 reader above; destination importer, consumer-repository migrations, retained-cut/CDC agreement and restore on a different topology remain open |
+| V6 | Retained-state preflight has historical narrow qualifications through v4.51.4 at `9e805ddc`; current v4.51.5 reader/preflight qualification is pending. Destination importer, consumer-repository migrations, retained-cut/CDC agreement and restore on a different topology remain open |
 | V7 | Versioned contracts/limits, full CI/race/coverage/security, distributed matrix and consumer suites; measured comparative space/time acceptance against Neo4j/TigerGraph/Memgraph plus v4, with reviewed excess-cost exceptions |
 
 V0 specification acceptance, 2026-10-10:

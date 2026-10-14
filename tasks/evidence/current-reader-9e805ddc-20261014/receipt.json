@@ -1,0 +1,760 @@
+{
+  "schemaVersion": 1,
+  "kind": "Finite historical integrated v4.51.4 reader compatibility; not whole-root or V0-V7 acceptance",
+  "sourceBase": "9e805ddc530436fa36148aacb370c5ae624f0b73",
+  "executionHead": "6505161813474685ac17e9948d70de1ee756f6fa",
+  "sourceGoIdenticalToBase": true,
+  "runtimeExecuted": true,
+  "lanes": [
+    {
+      "name": "01-graph-normal",
+      "exit_code": 0,
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-json",
+          "-count=1",
+          "-timeout=150s",
+          "./pkg/graph",
+          "-run",
+          "^(TestCrashReopenNowTxAboveStoredStamps|TestDurableCommitSyncWritesSyncsPerGroup)$"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 863.141,
+        "elapsed_s": 14.614,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "selection": {
+        "name": "01-graph-normal",
+        "parent_count": 2,
+        "case_count": 26,
+        "selected_parents": [
+          "TestCrashReopenNowTxAboveStoredStamps",
+          "TestDurableCommitSyncWritesSyncsPerGroup"
+        ],
+        "selected_cases": [
+          "TestCrashReopenNowTxAboveStoredStamps/badger/clean",
+          "TestCrashReopenNowTxAboveStoredStamps/badger/crash",
+          "TestCrashReopenNowTxAboveStoredStamps/badger/trusted-image-then-crash",
+          "TestCrashReopenNowTxAboveStoredStamps/badger/crash/read-only-reopen",
+          "TestCrashReopenNowTxAboveStoredStamps/badger-sync/crash",
+          "TestCrashReopenNowTxAboveStoredStamps/tiered/crash/event-shard-newest",
+          "TestCrashReopenNowTxAboveStoredStamps/tiered/crash/rel-newest",
+          "TestCrashReopenNowTxAboveStoredStamps/sharded/crash/anchor-newest",
+          "TestCrashReopenNowTxAboveStoredStamps/sharded/crash/slot1-newest",
+          "TestCrashReopenNowTxAboveStoredStamps/replica/crash",
+          "TestCrashReopenNowTxAboveStoredStamps/memory/segment-dir-reopen",
+          "TestDurableCommitSyncWritesSyncsPerGroup/tx",
+          "TestDurableCommitSyncWritesSyncsPerGroup/batch",
+          "TestDurableCommitSyncWritesSyncsPerGroup/rollback",
+          "TestDurableCommitSyncWritesSyncsPerGroup/held-buffer-bound",
+          "TestDurableCommitSyncWritesSyncsPerGroup/sync-writes-only",
+          "TestDurableCommitSyncWritesSyncsPerGroup/hold-release-pairs",
+          "TestDurableCommitSyncWritesSyncsPerGroup/above-txn-size-limit",
+          "TestDurableCommitSyncWritesSyncsPerGroup/not-durable-retry",
+          "TestDurableCommitSyncWritesSyncsPerGroup/crash/tx",
+          "TestDurableCommitSyncWritesSyncsPerGroup/crash/batch",
+          "TestDurableCommitSyncWritesSyncsPerGroup/crash/above-txn-size-limit",
+          "TestDurableCommitSyncWritesSyncsPerGroup/crash/rollback",
+          "TestDurableCommitSyncWritesSyncsPerGroup/crash/not-durable-no-retry",
+          "TestDurableCommitSyncWritesSyncsPerGroup/crash/not-durable-retry",
+          "TestDurableCommitSyncWritesSyncsPerGroup/crash/concurrent-standalone"
+        ],
+        "terminals": [
+          {
+            "test": "TestCrashReopenNowTxAboveStoredStamps/badger/clean",
+            "action": "pass",
+            "elapsed": 0.09
+          },
+          {
+            "test": "TestCrashReopenNowTxAboveStoredStamps/badger/crash",
+            "action": "pass",
+            "elapsed": 0.07
+          },
+          {
+            "test": "TestCrashReopenNowTxAboveStoredStamps/badger/trusted-image-then-crash",
+            "action": "pass",
+            "elapsed": 0.09
+          },
+          {
+            "test": "TestCrashReopenNowTxAboveStoredStamps/badger/crash/read-only-reopen",
+            "action": "pass",
+            "elapsed": 0.08
+          },
+          {
+            "test": "TestCrashReopenNowTxAboveStoredStamps/badger-sync/crash",
+            "action": "pass",
+            "elapsed": 0.08
+          },
+          {
+            "test": "TestCrashReopenNowTxAboveStoredStamps/tiered/crash/event-shard-newest",
+            "action": "pass",
+            "elapsed": 0.22
+          },
+          {
+            "test": "TestCrashReopenNowTxAboveStoredStamps/tiered/crash/rel-newest",
+            "action": "pass",
+            "elapsed": 0.21
+          },
+          {
+            "test": "TestCrashReopenNowTxAboveStoredStamps/sharded/crash/anchor-newest",
+            "action": "pass",
+            "elapsed": 0.13
+          },
+          {
+            "test": "TestCrashReopenNowTxAboveStoredStamps/sharded/crash/slot1-newest",
+            "action": "pass",
+            "elapsed": 0.15
+          },
+          {
+            "test": "TestCrashReopenNowTxAboveStoredStamps/replica/crash",
+            "action": "pass",
+            "elapsed": 0.08
+          },
+          {
+            "test": "TestCrashReopenNowTxAboveStoredStamps/memory/segment-dir-reopen",
+            "action": "pass",
+            "elapsed": 0.04
+          },
+          {
+            "test": "TestCrashReopenNowTxAboveStoredStamps",
+            "action": "pass",
+            "elapsed": 1.21
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/tx",
+            "action": "pass",
+            "elapsed": 0.05
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/batch",
+            "action": "pass",
+            "elapsed": 0.05
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/rollback",
+            "action": "pass",
+            "elapsed": 0.05
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/held-buffer-bound",
+            "action": "pass",
+            "elapsed": 0.05
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/sync-writes-only",
+            "action": "pass",
+            "elapsed": 0.07
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/hold-release-pairs",
+            "action": "pass",
+            "elapsed": 0.1
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/above-txn-size-limit",
+            "action": "pass",
+            "elapsed": 0.05
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/not-durable-retry",
+            "action": "pass",
+            "elapsed": 0.04
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/crash/tx",
+            "action": "pass",
+            "elapsed": 0.07
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/crash/batch",
+            "action": "pass",
+            "elapsed": 0.08
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/crash/above-txn-size-limit",
+            "action": "pass",
+            "elapsed": 0.07
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/crash/rollback",
+            "action": "pass",
+            "elapsed": 0.08
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/crash/not-durable-no-retry",
+            "action": "pass",
+            "elapsed": 0.07
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/crash/not-durable-retry",
+            "action": "pass",
+            "elapsed": 0.07
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/crash/concurrent-standalone",
+            "action": "pass",
+            "elapsed": 0.07
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup",
+            "action": "pass",
+            "elapsed": 0.96
+          },
+          {
+            "test": null,
+            "action": "pass",
+            "elapsed": 2.513
+          }
+        ],
+        "missing_terminals": []
+      }
+    },
+    {
+      "name": "02-graph-race-short",
+      "exit_code": 0,
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-json",
+          "-count=1",
+          "-timeout=150s",
+          "-race",
+          "-short",
+          "./pkg/graph",
+          "-run",
+          "^TestDurableCommitSyncWritesSyncsPerGroup$"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 827.562,
+        "elapsed_s": 17.845,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "selection": {
+        "name": "02-graph-race-short",
+        "parent_count": 1,
+        "case_count": 8,
+        "selected_parents": [
+          "TestDurableCommitSyncWritesSyncsPerGroup"
+        ],
+        "selected_cases": [
+          "TestDurableCommitSyncWritesSyncsPerGroup/tx",
+          "TestDurableCommitSyncWritesSyncsPerGroup/batch",
+          "TestDurableCommitSyncWritesSyncsPerGroup/rollback",
+          "TestDurableCommitSyncWritesSyncsPerGroup/held-buffer-bound",
+          "TestDurableCommitSyncWritesSyncsPerGroup/sync-writes-only",
+          "TestDurableCommitSyncWritesSyncsPerGroup/hold-release-pairs",
+          "TestDurableCommitSyncWritesSyncsPerGroup/above-txn-size-limit",
+          "TestDurableCommitSyncWritesSyncsPerGroup/not-durable-retry"
+        ],
+        "terminals": [
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/tx",
+            "action": "pass",
+            "elapsed": 0.09
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/batch",
+            "action": "pass",
+            "elapsed": 0.07
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/rollback",
+            "action": "pass",
+            "elapsed": 0.15
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/held-buffer-bound",
+            "action": "pass",
+            "elapsed": 0.11
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/sync-writes-only",
+            "action": "pass",
+            "elapsed": 0.15
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/hold-release-pairs",
+            "action": "pass",
+            "elapsed": 0.66
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/above-txn-size-limit",
+            "action": "pass",
+            "elapsed": 0.09
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup/not-durable-retry",
+            "action": "pass",
+            "elapsed": 0.09
+          },
+          {
+            "test": "TestDurableCommitSyncWritesSyncsPerGroup",
+            "action": "pass",
+            "elapsed": 1.4
+          },
+          {
+            "test": null,
+            "action": "pass",
+            "elapsed": 2.8689999999999998
+          }
+        ],
+        "missing_terminals": []
+      }
+    },
+    {
+      "name": "03-core-race-short",
+      "exit_code": 0,
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-json",
+          "-count=1",
+          "-timeout=150s",
+          "-race",
+          "-short",
+          "./pkg/graph/internal/core",
+          "-run",
+          "^(TestEffectiveScanTransactionsPerType|TestEffectiveScanTransactionsPerType_ConcurrentWrites|TestEffectiveScanHoldsNoReadTxnDuringFn|TestEffectiveScanResetFromFn)$"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 2425.016,
+        "elapsed_s": 31.985,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "selection": {
+        "name": "03-core-race-short",
+        "parent_count": 4,
+        "case_count": 56,
+        "selected_parents": [
+          "TestEffectiveScanHoldsNoReadTxnDuringFn",
+          "TestEffectiveScanResetFromFn",
+          "TestEffectiveScanTransactionsPerType",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites"
+        ],
+        "selected_cases": [
+          "TestEffectiveScanTransactionsPerType/memory/rel=false",
+          "TestEffectiveScanTransactionsPerType/memory/rel=true",
+          "TestEffectiveScanTransactionsPerType/badger/rel=false",
+          "TestEffectiveScanTransactionsPerType/badger/rel=true",
+          "TestEffectiveScanTransactionsPerType/sharded/rel=false",
+          "TestEffectiveScanTransactionsPerType/sharded/rel=true",
+          "TestEffectiveScanTransactionsPerType/tiered/rel=false",
+          "TestEffectiveScanTransactionsPerType/tiered/rel=true",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=false",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=false/by_name",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=false/all",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=false/by_ids",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=false/from",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=false/at_nodes_/_by_labels",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=true",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=true/by_name",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=true/all",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=true/by_ids",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=true/from",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=true/at_nodes_/_by_labels",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false/by_name",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false/all",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false/by_ids",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false/from",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false/at_nodes_/_by_labels",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true/by_name",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true/all",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true/by_ids",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true/from",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true/at_nodes_/_by_labels",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=false",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=false/by_name",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=false/all",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=false/by_ids",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=false/from",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=false/at_nodes_/_by_labels",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=true",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=true/by_name",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=true/all",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=true/by_ids",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=true/from",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=true/at_nodes_/_by_labels",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=false",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=false/by_name",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=false/all",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=false/by_ids",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=false/from",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=false/at_nodes_/_by_labels",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=true",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=true/by_name",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=true/all",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=true/by_ids",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=true/from",
+          "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=true/at_nodes_/_by_labels"
+        ],
+        "terminals": [
+          {
+            "test": "TestEffectiveScanHoldsNoReadTxnDuringFn",
+            "action": "pass",
+            "elapsed": 0.2
+          },
+          {
+            "test": "TestEffectiveScanResetFromFn",
+            "action": "pass",
+            "elapsed": 0.16
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType/memory/rel=false",
+            "action": "pass",
+            "elapsed": 0.04
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType/memory/rel=true",
+            "action": "pass",
+            "elapsed": 0.05
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType/badger/rel=false",
+            "action": "pass",
+            "elapsed": 0.12
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType/badger/rel=true",
+            "action": "pass",
+            "elapsed": 0.14
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType/sharded/rel=false",
+            "action": "pass",
+            "elapsed": 0.14
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType/sharded/rel=true",
+            "action": "pass",
+            "elapsed": 0.15
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType/tiered/rel=false",
+            "action": "pass",
+            "elapsed": 0.16
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType/tiered/rel=true",
+            "action": "pass",
+            "elapsed": 0.19
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType",
+            "action": "pass",
+            "elapsed": 1
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=false/by_name",
+            "action": "pass",
+            "elapsed": 0.01
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=false/all",
+            "action": "pass",
+            "elapsed": 0.01
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=false/by_ids",
+            "action": "pass",
+            "elapsed": 0.01
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=false/from",
+            "action": "pass",
+            "elapsed": 0.01
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=false/at_nodes_/_by_labels",
+            "action": "pass",
+            "elapsed": 0.01
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=false",
+            "action": "pass",
+            "elapsed": 0.04
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=true/by_name",
+            "action": "pass",
+            "elapsed": 0.01
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=true/all",
+            "action": "pass",
+            "elapsed": 0.01
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=true/by_ids",
+            "action": "pass",
+            "elapsed": 0.01
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=true/from",
+            "action": "pass",
+            "elapsed": 0.01
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=true/at_nodes_/_by_labels",
+            "action": "pass",
+            "elapsed": 0.01
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/memory/rel=true",
+            "action": "pass",
+            "elapsed": 0.04
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false/by_name",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false/all",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false/by_ids",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false/from",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false/at_nodes_/_by_labels",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=false",
+            "action": "pass",
+            "elapsed": 0.16
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true/by_name",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true/all",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true/by_ids",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true/from",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true/at_nodes_/_by_labels",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/badger/rel=true",
+            "action": "pass",
+            "elapsed": 0.19
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=false/by_name",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=false/all",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=false/by_ids",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=false/from",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=false/at_nodes_/_by_labels",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=false",
+            "action": "pass",
+            "elapsed": 0.21
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=true/by_name",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=true/all",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=true/by_ids",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=true/from",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=true/at_nodes_/_by_labels",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/sharded/rel=true",
+            "action": "pass",
+            "elapsed": 0.22
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=false/by_name",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=false/all",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=false/by_ids",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=false/from",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=false/at_nodes_/_by_labels",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=false",
+            "action": "pass",
+            "elapsed": 0.21
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=true/by_name",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=true/all",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=true/by_ids",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=true/from",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=true/at_nodes_/_by_labels",
+            "action": "pass",
+            "elapsed": 0.02
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites/tiered/rel=true",
+            "action": "pass",
+            "elapsed": 0.23
+          },
+          {
+            "test": "TestEffectiveScanTransactionsPerType_ConcurrentWrites",
+            "action": "pass",
+            "elapsed": 1.3
+          },
+          {
+            "test": null,
+            "action": "pass",
+            "elapsed": 4.251
+          }
+        ],
+        "missing_terminals": []
+      }
+    }
+  ],
+  "environment": {
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off",
+    "GOTOOLCHAIN": "local"
+  },
+  "shortScope": "Normal graph lane ran real crash parents and all 7 durable crash cases. Race-short graph lane returns before durable crash tail: those cases were not race-tested. Core race-short selection completed its four named parents. Selected top-level tests include every actual child entry compiled into the executable; crash child is invoked by the parent, never claimed as a standalone passing parent.",
+  "upstreamReuse": {
+    "run": 38355789742,
+    "headSha": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
+    "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38355789742",
+    "overallConclusion": "failure",
+    "badgerRaceSeconds": 344.453,
+    "tieredRaceSeconds": 155.857,
+    "literalEvidenceLines": [
+      "test\tUNKNOWN STEP\t2026-10-13T06:33:50.9849151Z ok  \tgithub.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger\t344.453s",
+      "test\tUNKNOWN STEP\t2026-10-13T06:36:27.3837360Z ok  \tgithub.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered\t155.857s"
+    ],
+    "otherStatus": "make test normal, coverage and security/vulncheck passed; lint skipped; full graph/core/memory race packages timed out. Full upstream CI was not green. Normal/make test uses -short and does not prove crash clock or durable crash tail.",
+    "rawFiles": {
+      "upstream-main4514-run.json": "efb74b41278f248c3520e262a83c351184a8f44e224d0ff0b14dd4be18b24a78",
+      "upstream-main4514-test.log": "ac86acaa23823f0e497e1e910d2ad2b90c5961d901287670a88d6278c5e8d888"
+    }
+  },
+  "cleanup": {
+    "owner": "Each watchdog invocation tracks its own child session/group and identities only; finally Tree.stop terminates tracked descendants and waits for child. Serial runner returned exit0; tool session95778 exited0; exclusive heavy runtime lease explicitly released to root. No foreign processes, worktrees or canonical main files cleaned.",
+    "ownershipLimits": "Evidence directory and source archive retained; owned worktree remains for root integration.",
+    "additionalRuntime": "None: no full suite, scanners, make cover or reruns executed."
+  },
+  "rawArchive": {
+    "file": "raw.tar.gz",
+    "sha256": "5dfd8401336bccba0798328d0c6f1dee4fe4ca5c6e5fe5c042ccc8e60d8f9ec5",
+    "bytes": 204693,
+    "contains": "Literal JSON test events, per-parent/case terminal selections, watchdog logs/records, run plan, source manifest and exact upstream run/test log."
+  },
+  "externalFrozenSourceArchive": {
+    "path": "/var/tmp/rho-v5-current-reader-finite-20261014/root-source.tar.gz",
+    "sha256": "ad7a074109471acc15ff04ec6cbd0c67d89933d03d752be175e70cb1cb8f0447",
+    "bytes": 3633569,
+    "sourceFiles": 1590
+  },
+  "remaining": "Current main4515 reader/runtime/migration qualification, whole-root gates, consumer adapters, destination import and full phase/release acceptance remain pending.",
+  "watchdogSourceSHA256": "6dc4e0362827ecd0854436b9fa1a812342b693d65ba093291d358b359e733283"
+}
