@@ -50,6 +50,13 @@ type PropertyIndex struct {
 	// over the range's distinct values. Fixed at creation. Off, the view and
 	// its write cost are exactly what they were before the option existed.
 	rangeCounts bool
+
+	// elements (backlog 63, opt-in per index): each scalar element of a list
+	// value is a key (types.ForEachIndexableElementKey), so a lookup means
+	// "the list contains the value". Such an index keeps no ordered views
+	// (a range over elements is not a range over values): the range and
+	// prefix accessors report supported=false. Fixed at creation.
+	elements bool
 }
 
 // NewPropertyIndex creates an empty property index.
@@ -60,16 +67,29 @@ func NewPropertyIndex() *PropertyIndex {
 }
 
 // NewPropertyIndexWith creates an empty property index; rangeCounts selects
-// the counted ordered view (see the rangeCounts field).
-func NewPropertyIndexWith(rangeCounts bool) *PropertyIndex {
+// the counted ordered view (see the rangeCounts field), elements the
+// per-element keys (see the elements field). The store refuses both together.
+func NewPropertyIndexWith(rangeCounts, elements bool) *PropertyIndex {
 	pi := NewPropertyIndex()
 	pi.rangeCounts = rangeCounts
+	pi.elements = elements
 	return pi
 }
 
 // RangeCounts reports whether the index was created with range counts.
 func (pi *PropertyIndex) RangeCounts() bool {
 	return pi != nil && pi.rangeCounts
+}
+
+// Elements reports whether the index keys each list element (backlog 63).
+func (pi *PropertyIndex) Elements() bool {
+	return pi != nil && pi.elements
+}
+
+// orderedViews reports whether the index maintains its ordered numeric and
+// string views (every index but an Elements one).
+func (pi *PropertyIndex) orderedViews() bool {
+	return !pi.elements
 }
 
 // Add inserts a node ID into the index for the given property value.
@@ -97,8 +117,10 @@ func (pi *PropertyIndex) AddKey(id snowflake.ID, vk string) {
 		pi.Entries[vk] = make(map[snowflake.ID]struct{})
 	}
 	pi.Entries[vk][id] = struct{}{}
-	pi.addOrdered(id, vk)
-	pi.addOrderedStr(id, vk)
+	if pi.orderedViews() {
+		pi.addOrdered(id, vk)
+		pi.addOrderedStr(id, vk)
+	}
 	if pi.Mutated != nil {
 		pi.Mutated[id] = struct{}{}
 	}
@@ -127,8 +149,10 @@ func (pi *PropertyIndex) removeKey(id snowflake.ID, vk string) {
 			delete(pi.Entries, vk)
 		}
 	}
-	pi.removeOrdered(id, vk)
-	pi.removeOrderedStr(id, vk)
+	if pi.orderedViews() {
+		pi.removeOrdered(id, vk)
+		pi.removeOrderedStr(id, vk)
+	}
 	if pi.Mutated != nil {
 		pi.Mutated[id] = struct{}{}
 	}
@@ -185,6 +209,35 @@ func PropertyValueKey(v any) string {
 	return types.IndexablePropertyValueKey(v)
 }
 
+// ElementsOf returns the selector types.Node.ForEachIndexKey takes for the
+// indexes of one label: whether (labelToken, propertyKey) is an Elements index.
+// It is consulted for list values only, so scalar-only rows never look it up.
+func ElementsOf(indexes map[PropertyIndexKey]*PropertyIndex, labelToken uint16) func(propertyKey string) bool {
+	return func(propertyKey string) bool {
+		return indexes[PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}].Elements()
+	}
+}
+
+// RelElementsOf is ElementsOf for the rel property indexes of one type.
+func RelElementsOf(indexes map[RelPropertyIndexKey]*PropertyIndex, relTypeToken uint16) func(propertyKey string) bool {
+	return func(propertyKey string) bool {
+		return indexes[RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}].Elements()
+	}
+}
+
+// AddEntityKeys indexes one entity's value of the index's key: the scalar
+// key, or every element key of an Elements index. The backfill and rebuild
+// paths of every store use it, so they key a row as the write path does.
+func (pi *PropertyIndex) AddEntityKeys(id snowflake.ID, propertyKey string, keys func(propertyKey string, elements bool, fn func(valueKey string) bool)) {
+	if pi == nil {
+		return
+	}
+	keys(propertyKey, pi.elements, func(vk string) bool {
+		pi.AddKey(id, vk)
+		return true
+	})
+}
+
 // AddNodeToPropertyIndexes indexes a node's properties into all matching property indexes.
 // Caller must hold the store's write lock.
 func AddNodeToPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex, n *types.Node, id snowflake.ID) {
@@ -193,7 +246,7 @@ func AddNodeToPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex, n *ty
 	}
 	for i := 0; i < n.LabelTokenCount(); i++ {
 		labelToken := n.LabelTokenRawAt(i)
-		n.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
+		n.ForEachIndexKey(ElementsOf(indexes, labelToken), func(propertyKey, valueKey string) bool {
 			key := PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 			if idx, ok := indexes[key]; ok {
 				idx.AddKey(id, valueKey)
@@ -235,7 +288,7 @@ func RemoveNodeFromPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex, 
 	}
 	for i := 0; i < n.LabelTokenCount(); i++ {
 		labelToken := n.LabelTokenRawAt(i)
-		n.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
+		n.ForEachIndexKey(ElementsOf(indexes, labelToken), func(propertyKey, valueKey string) bool {
 			key := PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 			if idx, ok := indexes[key]; ok {
 				idx.removeKey(id, valueKey)

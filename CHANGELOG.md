@@ -10,6 +10,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Elements property indexes** (backlog 63, sigma-tkgd R6): `PropertyIndexOptions{Elements: true}` indexes each
+  scalar element of a list value, so `ByLabelAndProperty(label, key, x, opts)` / `ByTypeAndProperty` on the index
+  mean "the list contains x" at current, `TxPin`, `TxAt`+`ValidAt` and interval reads and on the named `*At` /
+  `*During` doors. One key path: `types.ForEachIndexableElementKey` (scalar = one-element list, duplicates once,
+  nil / empty / nested elements add nothing, scalar rules per element, `[]byte` a blob) feeds the index writes, the
+  create backfill, the badger open rebuild and the per-element membership sidecar records (memory and badger, live
+  and build); every match test of those doors is `HasPropertyIndexKey(key, elements, target)`, so an element an
+  update removed matches at an earlier pin and not after. The index keeps no ordered view: range, prefix and
+  `RangeCardinality` decline on it as without an index. Refused with the new `ErrElementsIndexUnsupported`:
+  Elements with RangeCounts, an Elements index on a unique-constrained key, `CreateUnique` / `GetOrCreateByKey` on
+  an Elements-indexed key, `ByLabelAndProperties` over one. Memory, badger (definition key `el`, written only when
+  set; the open image carries its element entries), sharded, and tiered on reference labels (tiered now implements
+  `store.PropertyIndexOptionsCapability` on the reference shard and still refuses RangeCounts with
+  `ErrCapabilityNotSupported`; a DepthAll read answers the archive by a label scan with the same match); relationship
+  indexes on memory, badger and sharded. Badger `PropertyIndexOnDisk` refuses it (`ErrCapabilityNotSupported`).
+  Write cost of a row with 5 supports (`BenchmarkPropertyIndexElementsWrite`, host load ~79, ns noisy): memory
+  33 vs 22 allocs and 2,721 vs 1,885 B per row against a plain index on a scalar key of the same row (no index: 17
+  allocs, 1,321 B); badger 68 vs 57 allocs, 6.6 vs 5.8 KB. Test `TestPropertyIndexElementsContains`; evidence
+  `tasks/evidence/property-elements/`.
 - **Tiered tx-membership sidecars and valid-end acceleration** (backlog 58, sigma-tkgd R2): the tiered store now
   implements `LabelTxMembership`, `RelTypeTxMembership`, `LabelTxMemberLookup`, `RelTypeTxMemberLookup`,
   `NodePropertyTxMembership`, `RelPropertyTxMembership`, `RelValidEnd` and `NodeValidEnd`

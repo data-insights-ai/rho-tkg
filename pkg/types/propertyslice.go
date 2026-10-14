@@ -287,19 +287,153 @@ func (ps PropertySlice) indexableValueKey(key string) (string, bool) {
 	return "", false
 }
 
-func (ps PropertySlice) forEachIndexableValueKey(fn func(propertyKey, valueKey string) bool) {
+// forEachIndexKey is the one key iteration every property index consumes: a
+// scalar property yields its IndexablePropertyValueKey; a list property whose
+// key elements reports true (an Elements index, backlog 63) yields each
+// distinct scalar element's key. elements is asked only for list values, so a
+// nil elements, or a node without list properties, costs exactly the scalar
+// iteration.
+func (ps PropertySlice) forEachIndexKey(elements func(propertyKey string) bool, fn func(propertyKey, valueKey string) bool) {
 	if fn == nil {
 		return
 	}
 	for _, p := range ps {
-		valueKey := IndexablePropertyValueKey(p.Value)
-		if valueKey == "" {
+		if valueKey := IndexablePropertyValueKey(p.Value); valueKey != "" {
+			if !fn(p.Key, valueKey) {
+				return
+			}
 			continue
 		}
-		if !fn(p.Key, valueKey) {
+		if elements == nil || !isIndexableList(p.Value) || !elements(p.Key) {
+			continue
+		}
+		key := p.Key
+		if !ForEachIndexableElementKey(p.Value, func(valueKey string) bool { return fn(key, valueKey) }) {
 			return
 		}
 	}
+}
+
+// propertyIndexKeys calls fn with the index keys of key's value (see
+// ForEachIndexableElementKey; elements=false: the scalar key only).
+func (ps PropertySlice) propertyIndexKeys(key string, elements bool, fn func(valueKey string) bool) {
+	i := ps.searchKey(key)
+	if i >= len(ps) || ps[i].Key != key || fn == nil {
+		return
+	}
+	if !elements {
+		if vk := IndexablePropertyValueKey(ps[i].Value); vk != "" {
+			fn(vk)
+		}
+		return
+	}
+	ForEachIndexableElementKey(ps[i].Value, fn)
+}
+
+func (ps PropertySlice) hasIndexKey(key string, elements bool, targetKey string) bool {
+	i := ps.searchKey(key)
+	if i >= len(ps) || ps[i].Key != key {
+		return false
+	}
+	return IndexableValueHasKey(ps[i].Value, elements, targetKey)
+}
+
+// isIndexableList reports whether v is a list an Elements index expands.
+func isIndexableList(v any) bool {
+	switch v.(type) {
+	case []any, []string, []int, []int64, []float32, []float64, []bool:
+		return true
+	}
+	return false
+}
+
+// ForEachIndexableElementKey calls fn with the keys an Elements property index
+// (backlog 63) takes from v: a scalar's IndexablePropertyValueKey (a scalar is
+// a one-element list), else the key of each distinct indexable scalar element
+// of a list ([]any, []string, []int, []int64, []float32, []float64, []bool),
+// in first-occurrence order. Elements without a key (nil, nested lists, maps)
+// are skipped, as a scalar index skips them; []byte is a blob, not a list.
+// Returns false when fn stopped the iteration.
+func ForEachIndexableElementKey(v any, fn func(valueKey string) bool) bool {
+	if fn == nil {
+		return true
+	}
+	if vk := IndexablePropertyValueKey(v); vk != "" {
+		return fn(vk)
+	}
+	switch s := v.(type) {
+	case []any:
+		return forEachElementKey(s, fn)
+	case []string:
+		return forEachElementKey(s, fn)
+	case []int:
+		return forEachElementKey(s, fn)
+	case []int64:
+		return forEachElementKey(s, fn)
+	case []float32:
+		return forEachElementKey(s, fn)
+	case []float64:
+		return forEachElementKey(s, fn)
+	case []bool:
+		return forEachElementKey(s, fn)
+	}
+	return true
+}
+
+// elementKeyDedupLinear is the list length up to which duplicate element keys
+// are found by a linear scan over the keys already yielded (no map).
+const elementKeyDedupLinear = 16
+
+func forEachElementKey[T any](s []T, fn func(valueKey string) bool) bool {
+	var small [elementKeyDedupLinear]string
+	seen := small[:0]
+	var many map[string]struct{}
+	for _, e := range s {
+		vk := IndexablePropertyValueKey(e)
+		if vk == "" {
+			continue
+		}
+		switch {
+		case many != nil:
+			if _, dup := many[vk]; dup {
+				continue
+			}
+			many[vk] = struct{}{}
+		case slices.Contains(seen, vk):
+			continue
+		case len(seen) < elementKeyDedupLinear:
+			seen = append(seen, vk)
+		default:
+			many = make(map[string]struct{}, len(s))
+			for _, k := range seen {
+				many[k] = struct{}{}
+			}
+			many[vk] = struct{}{}
+		}
+		if !fn(vk) {
+			return false
+		}
+	}
+	return true
+}
+
+// IndexableValueHasKey reports whether v carries targetKey as an index key:
+// its scalar key equals targetKey, or, with elements, one of its list
+// elements' keys does (ForEachIndexableElementKey). An empty targetKey never
+// matches.
+func IndexableValueHasKey(v any, elements bool, targetKey string) bool {
+	if targetKey == "" {
+		return false
+	}
+	if vk := IndexablePropertyValueKey(v); vk != "" || !elements {
+		return vk == targetKey
+	}
+	found := false
+	ForEachIndexableElementKey(v, func(vk string) bool {
+		found = vk == targetKey
+		return !found
+	})
+	return found
 }
 
 func (ps PropertySlice) float32SliceCopy(key string) ([]float32, bool) {

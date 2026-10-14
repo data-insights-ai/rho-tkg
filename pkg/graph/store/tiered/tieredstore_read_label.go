@@ -200,6 +200,10 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 		return nil, err
 	}
 	refNodes, err := ref.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
+	var elemOpts storecontract.PropertyIndexOptions
+	if err == nil && opts.Depth == DepthAll {
+		elemOpts, _, err = ref.PropertyIndexOptions(labelToken, key)
+	}
 	refCheckin()
 	if err != nil {
 		return nil, err
@@ -213,7 +217,13 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 			return nil, archiveErr
 		}
 		if archive != nil {
-			archiveNodes, err = archive.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
+			if elemOpts.Elements {
+				// The archive keeps no property index; an Elements index on
+				// the reference shard means "contains" there too (backlog 63).
+				archiveNodes, err = archiveNodesContaining(archive, labelToken, key, value, stripDepth(opts))
+			} else {
+				archiveNodes, err = archive.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
+			}
 			archiveCheckin()
 			if err != nil {
 				return nil, err
@@ -259,4 +269,28 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 
 	merged := mergeNodeSlices(slices)
 	return applyNodePagination(merged, opts), nil
+}
+
+// archiveNodesContaining answers an Elements-index lookup on the archive shard,
+// which keeps no property index: the label's archived nodes whose key carries
+// value's key as a scalar or list element, with the archive's own pagination
+// semantics left to the caller's merge.
+func archiveNodesContaining(archive *BadgerStore, labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error) {
+	targetKey := types.IndexablePropertyValueKey(value)
+	if targetKey == "" {
+		return nil, nil
+	}
+	scan := opts
+	scan.Limit = 0
+	rows, err := archive.NodesByLabel(labelToken, scan)
+	if err != nil {
+		return nil, err
+	}
+	out := rows[:0]
+	for _, n := range rows {
+		if n.HasPropertyIndexKey(key, true, targetKey) {
+			out = append(out, n)
+		}
+	}
+	return out, nil
 }

@@ -114,6 +114,17 @@ func (ts *Store) forEachTemporalIndexShard(refs []temporalIndexShardRef, fn func
 }
 
 func (ts *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) error {
+	return ts.CreatePropertyIndexWithOptions(labelToken, propertyKey, storecontract.PropertyIndexOptions{})
+}
+
+var _ storecontract.PropertyIndexOptionsCapability = (*Store)(nil)
+
+// CreatePropertyIndexWithOptions creates the index with its options
+// (RangeCounts, Elements) where tiered keeps property indexes: on the
+// reference shard, for a reference label (ErrEventPropertyIndex otherwise).
+// The shard persists the options with the definition. RangeCounts is refused
+// with ErrCapabilityNotSupported: tiered answers no range count.
+func (ts *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey string, opts storecontract.PropertyIndexOptions) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
@@ -123,6 +134,12 @@ func (ts *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) erro
 	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
 		return err
 	}
+	if err := storecontract.ValidatePropertyIndexOptions(opts); err != nil {
+		return err
+	}
+	if opts.RangeCounts {
+		return fmt.Errorf("graph: create property index: no range counts on tiered: %w", storecontract.ErrCapabilityNotSupported)
+	}
 	if ts.ontology.ClassifyByToken(labelToken) != ClassReference {
 		return ErrEventPropertyIndex
 	}
@@ -131,7 +148,7 @@ func (ts *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) erro
 		return err
 	}
 	defer refCheckin()
-	return ref.CreatePropertyIndex(labelToken, propertyKey)
+	return ref.CreatePropertyIndexWithOptions(labelToken, propertyKey, opts)
 }
 
 func (ts *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error {

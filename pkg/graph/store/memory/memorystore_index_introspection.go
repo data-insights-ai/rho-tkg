@@ -132,7 +132,7 @@ func (ms *Store) PropertyIndexOptions(labelToken uint16, propertyKey string) (st
 		return storecontract.PropertyIndexOptions{}, false, err
 	}
 	idx, ok := ms.propertyIndexes[indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}]
-	return storecontract.PropertyIndexOptions{RangeCounts: idx.RangeCounts()}, ok, nil
+	return storecontract.PropertyIndexOptions{RangeCounts: idx.RangeCounts(), Elements: idx.Elements()}, ok, nil
 }
 
 // RelPropertyIndexOptions is the relationship mirror of PropertyIndexOptions.
@@ -149,5 +149,5 @@ func (ms *Store) RelPropertyIndexOptions(relTypeToken uint16, propertyKey string
 		return storecontract.PropertyIndexOptions{}, false, err
 	}
 	idx, ok := ms.relPropertyIndexes[indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}]
-	return storecontract.PropertyIndexOptions{RangeCounts: idx.RangeCounts()}, ok, nil
+	return storecontract.PropertyIndexOptions{RangeCounts: idx.RangeCounts(), Elements: idx.Elements()}, ok, nil
 }

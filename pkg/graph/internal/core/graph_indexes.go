@@ -21,10 +21,15 @@ func (i *IndexOps) CreateProperty(label, propertyKey string) error {
 // (round 4 R2: RangeCounts). Zero options are CreateProperty exactly. Non-zero
 // options need storepkg.PropertyIndexOptionsCapability; a store without it
 // (tiered, wrappers) returns ErrCapabilityNotSupported before anything is
-// created, rather than creating a plain index.
+// created, rather than creating a plain index. Elements (backlog 63) is
+// refused with ErrElementsIndexUnsupported together with RangeCounts or on a
+// key under a unique constraint.
 func (i *IndexOps) CreatePropertyWithOptions(label, propertyKey string, opts storepkg.PropertyIndexOptions) error {
 	c := i.c
 	if err := c.checkWritable(); err != nil {
+		return err
+	}
+	if err := storepkg.ValidatePropertyIndexOptions(opts); err != nil {
 		return err
 	}
 	return c.readUnderRLock(func() error {
@@ -33,6 +38,11 @@ func (i *IndexOps) CreatePropertyWithOptions(label, propertyKey string, opts sto
 		}
 		if err := c.validateIndexPropertyKey(propertyKey); err != nil {
 			return err
+		}
+		if opts.Elements {
+			if err := c.refuseUniqueKey(label, propertyKey); err != nil {
+				return err
+			}
 		}
 		cap, err := c.propertyIndexCap()
 		if err != nil {

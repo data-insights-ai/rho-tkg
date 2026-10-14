@@ -85,14 +85,14 @@ func (c *Core) nodesByLabelAndPropertyLocked(label, key string, value any, opts 
 		return nil, err
 	}
 
+	elements, err := c.nodeIndexElements(tok, key)
+	if err != nil {
+		return nil, err
+	}
 	var result []*types.Node
 	valueKeys := map[string]string{key: targetKey}
 	pred := func(n *types.Node) bool {
-		if !n.HasLabelTokenRaw(tok) {
-			return false
-		}
-		gotKey, found := n.IndexablePropertyValueKey(key)
-		return found && gotKey == targetKey
+		return n.HasLabelTokenRaw(tok) && n.HasPropertyIndexKey(key, elements, targetKey)
 	}
 	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
 	if err := c.forEachNodePropertyCandidateID(tok, valueKeys, currentIDs, opts, func(id types.NodeID) error {
@@ -180,6 +180,14 @@ func (c *Core) nodesByLabelAndPropertiesLocked(label string, values map[string]a
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil, nil
+	}
+	// A multi-key lookup is value equality on every key; a key with an
+	// Elements index (backlog 63) means "contains" on the single-key door, so
+	// the conjunction is refused rather than given a second meaning.
+	for k := range values {
+		if err := c.refuseNodeElementsIndex(tok, k, "ByLabelAndProperties"); err != nil {
+			return nil, err
+		}
 	}
 	if !temporal {
 		return c.nodesByLabelAndProperties(tok, values, opts)

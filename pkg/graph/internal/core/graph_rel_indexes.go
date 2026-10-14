@@ -35,6 +35,9 @@ func (i *IndexOps) CreateRelPropertyWithOptions(typeName, propertyKey string, op
 	if err := c.checkWritable(); err != nil {
 		return err
 	}
+	if err := storepkg.ValidatePropertyIndexOptions(opts); err != nil {
+		return err
+	}
 	return c.readUnderRLock(func() error {
 		if err := c.validateIndexName(typeName); err != nil {
 			return err

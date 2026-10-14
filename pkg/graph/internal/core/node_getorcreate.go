@@ -73,6 +73,9 @@ func (c *Core) getOrCreateNodeByKey(ctx context.Context, label, propertyKey stri
 	if err != nil {
 		return nil, false, err
 	}
+	if err := c.refuseNodeElementsIndex(labelTok, propertyKey, "GetOrCreateByKey"); err != nil {
+		return nil, false, err
+	}
 	stripe := uniqueValueStripe(labelTok, propertyKey, valueKey)
 
 	var (

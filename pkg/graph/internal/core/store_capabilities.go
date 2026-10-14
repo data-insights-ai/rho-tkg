@@ -132,7 +132,11 @@ func (c *Core) nodesByLabelAndProperty(tok uint16, key string, value any, opts s
 			return nil, err
 		}
 		if !c.propertyQueryTrust {
-			if err := validateNodesByLabelAndProperty(tok, key, wantKey, opts, nodes); err != nil {
+			elements, err := c.nodeIndexElements(tok, key)
+			if err != nil {
+				return nil, err
+			}
+			if err := validateNodesByLabelAndProperty(tok, key, wantKey, elements, opts, nodes); err != nil {
 				return nil, err
 			}
 			nodes = copyNodeRows(nodes)
@@ -154,18 +158,17 @@ func (c *Core) nodesByLabelAndProperty(tok uint16, key string, value any, opts s
 			return nil, err
 		}
 	}
+	elements, err := c.nodeIndexElements(tok, key)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]*types.Node, 0, len(candidates))
 	for _, n := range candidates {
-		gotKey, found := n.IndexablePropertyValueKey(key)
-		if !found || gotKey == "" {
-			// Stored value is also unindexable; refuse to claim
-			// equality through the empty sentinel.
-			continue
+		// HasPropertyIndexKey never matches through the empty key of an
+		// unindexable stored value.
+		if n.HasPropertyIndexKey(key, elements, wantKey) {
+			out = append(out, n)
 		}
-		if gotKey != wantKey {
-			continue
-		}
-		out = append(out, n)
 	}
 	out = storeutil.PaginateNodes(out, opts.After, opts.Limit)
 	if !c.storeRowsTrust {

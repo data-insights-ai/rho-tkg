@@ -371,6 +371,7 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 
 	if idx, ok := bs.propertyIndexes[key]; ok && idx.Mutated == nil {
 		// Indexed path: snapshot matching IDs.
+		elements := idx.Elements()
 		var nids []types.NodeID
 		if bs.propIdxOnDisk {
 			diskNids, dErr := bs.propertyIndexDiskLookupLocked(propKey, targetKey)
@@ -393,7 +394,7 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 		// Temporal pre-filter via Peek.
 		nids = bs.filterNodeIDsByTemporalPeek(nids, opts)
 
-		return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, nids, opts)
+		return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, elements, nids, opts)
 	}
 
 	// Fallback: snapshot label IDs, release lock, then scan properties.
@@ -410,10 +411,10 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 
 	// Sort label IDs, apply cursor skip, scan in order for property matches.
 	storepkg.SortNodeIDs(nids)
-	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, nids, opts)
+	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, false, nids, opts)
 }
 
-func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey, targetKey string, nids []types.NodeID, opts QueryOpts) ([]*types.Node, error) {
+func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey, targetKey string, elements bool, nids []types.NodeID, opts QueryOpts) ([]*types.Node, error) {
 	nids = storepkg.PaginateNodeIDs(nids, opts.After, 0)
 	if len(nids) == 0 {
 		return nil, nil
@@ -432,7 +433,7 @@ func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey, target
 		if !n.HasLabelTokenRaw(labelToken) {
 			continue
 		}
-		if valueKey, found := n.IndexablePropertyValueKey(propKey); found && valueKey == targetKey {
+		if n.HasPropertyIndexKey(propKey, elements, targetKey) {
 			if hasTemporal && !storepkg.MatchesTemporalFilter(nid.SnowflakeID(), n.Temporal(), opts) {
 				continue
 			}

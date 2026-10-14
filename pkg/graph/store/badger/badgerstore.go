@@ -1823,7 +1823,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					continue
 				}
 				seenProperty[key] = struct{}{}
-				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts)
+				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts, def.Elements)
 				if entries, ok := img.takeNodeProp(key); ok && !bs.propIdxOnDisk {
 					installValueIDs(entries, idx.AddKey)
 				} else if bs.propIdxOnDisk && !propIdxNeedsBuild {
@@ -1845,24 +1845,21 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 							}
 							continue
 						}
+						if !bs.propIdxOnDisk {
+							idx.AddEntityKeys(rawID, def.PropertyKey, n.ForEachPropertyIndexKey)
+							continue
+						}
+						// Disk mode: do NOT populate idx.Entries/numBuckets
+						// (the whole point is to keep entries off the RAM
+						// heap) — collect the one-time backfill op instead,
+						// only when this directory hasn't been backfilled
+						// before (propIdxNeedsBuild).
 						valueKey, found := n.IndexablePropertyValueKey(def.PropertyKey)
-						if !found {
-							continue
-						}
-						if bs.propIdxOnDisk {
-							// Disk mode: do NOT populate idx.Entries/numBuckets
-							// (the whole point is to keep entries off the RAM
-							// heap) — collect the one-time backfill op instead,
-							// only when this directory hasn't been backfilled
-							// before (propIdxNeedsBuild).
-							if propIdxNeedsBuild {
-								if op, ok := bs.propertyIndexDiskOp(def.PropertyKey, valueKey, rawID, writeOpSet); ok {
-									propIdxBackfillOps = append(propIdxBackfillOps, op)
-								}
+						if found && propIdxNeedsBuild {
+							if op, ok := bs.propertyIndexDiskOp(def.PropertyKey, valueKey, rawID, writeOpSet); ok {
+								propIdxBackfillOps = append(propIdxBackfillOps, op)
 							}
-							continue
 						}
-						idx.AddKey(rawID, valueKey)
 					}
 				}
 				bs.propertyIndexes[key] = idx
@@ -1897,7 +1894,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					continue
 				}
 				seenRelProperty[key] = struct{}{}
-				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts)
+				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts, def.Elements)
 				if entries, ok := img.takeRelProp(key); ok {
 					installValueIDs(entries, idx.AddKey)
 				} else if relIDs, ok := bs.typeIdx[def.RelTypeToken]; ok {
@@ -1913,9 +1910,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 							}
 							continue
 						}
-						if valueKey, found := r.IndexablePropertyValueKey(def.PropertyKey); found {
-							idx.AddKey(rawID, valueKey)
-						}
+						idx.AddEntityKeys(rawID, def.PropertyKey, r.ForEachPropertyIndexKey)
 					}
 				}
 				bs.relPropertyIndexes[key] = idx

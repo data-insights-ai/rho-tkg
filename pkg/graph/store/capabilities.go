@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -949,6 +950,32 @@ type PropertyIndexOptions struct {
 	// persist. Not available with badger's PropertyIndexOnDisk
 	// (ErrCapabilityNotSupported).
 	RangeCounts bool
+	// Elements (backlog 63) indexes each scalar element of a list value, so
+	// an equality lookup on the index (ByLabelAndProperty, ByTypeAndProperty,
+	// their temporal and named doors) means "the list contains the value". A
+	// non-list value is a one-element list; duplicates count once; an empty
+	// list, nil, and non-scalar elements (nested lists, maps) contribute no
+	// key; each element follows the scalar index rules (exact type, so int64
+	// 1 is not int 1). []byte is a blob, not a list. History reads use the
+	// membership sidecar per element, so an element an update removed still
+	// matches at an earlier pin. The index keeps no ordered view: range and
+	// prefix doors decline as without an index (ErrIndexNotFound, or an inexact
+	// count). Refused with ErrElementsIndexUnsupported: together with
+	// RangeCounts, a unique constraint or GetOrCreateByKey on the key, and
+	// ByLabelAndProperties over the key. Not available with badger's
+	// PropertyIndexOnDisk (ErrCapabilityNotSupported). Fixed at creation;
+	// persisted with the definition.
+	Elements bool
+}
+
+// ValidatePropertyIndexOptions refuses the option combinations no store
+// builds: Elements with RangeCounts (an Elements index keeps no ordered view)
+// is ErrElementsIndexUnsupported.
+func ValidatePropertyIndexOptions(opts PropertyIndexOptions) error {
+	if opts.Elements && opts.RangeCounts {
+		return fmt.Errorf("%w: Elements with RangeCounts", ErrElementsIndexUnsupported)
+	}
+	return nil
 }
 
 // PropertyIndexOptionsCapability is OPTIONAL: creating a node property index

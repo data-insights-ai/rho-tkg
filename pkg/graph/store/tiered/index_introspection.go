@@ -37,6 +37,23 @@ func (ts *Store) HasPropertyIndex(labelToken uint16, propertyKey string) (bool, 
 	return ref.HasPropertyIndex(labelToken, propertyKey)
 }
 
+// PropertyIndexOptions returns the options of the index on (labelToken,
+// propertyKey) from the reference shard, where tiered keeps property indexes.
+func (ts *Store) PropertyIndexOptions(labelToken uint16, propertyKey string) (storecontract.PropertyIndexOptions, bool, error) {
+	if err := ts.checkOpen(); err != nil {
+		return storecontract.PropertyIndexOptions{}, false, err
+	}
+	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+		return storecontract.PropertyIndexOptions{}, false, err
+	}
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return storecontract.PropertyIndexOptions{}, false, err
+	}
+	defer refCheckin()
+	return ref.PropertyIndexOptions(labelToken, propertyKey)
+}
+
 // HasTemporalIndex reports whether a temporal interval index exists on
 // labelToken, reading the store-level label list CreateTemporalIndex
 // maintains (the index itself fans out across every shard, but membership is

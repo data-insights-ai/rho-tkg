@@ -88,13 +88,13 @@ func (c *Core) relsByTypeAndPropertyLocked(typeName, key string, value any, opts
 		return nil, err
 	}
 
+	elements, err := c.relIndexElements(tok, key)
+	if err != nil {
+		return nil, err
+	}
 	var result []*types.Relationship
 	pred := func(r *types.Relationship) bool {
-		if !r.HasTypeTokenRaw(tok) {
-			return false
-		}
-		gotKey, found := r.IndexablePropertyValueKey(key)
-		return found && gotKey == targetKey
+		return r.HasTypeTokenRaw(tok) && r.HasPropertyIndexKey(key, elements, targetKey)
 	}
 	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
 	if err := c.forEachRelPropertyCandidateID(tok, key, targetKey, currentIDs, opts, func(id types.RelID) error {
@@ -134,7 +134,11 @@ func (c *Core) relsByTypeAndProperty(tok uint16, key string, value any, opts sto
 			return nil, err
 		}
 		if !c.relPropertyQueryTrust {
-			if err := validateRelsByTypeAndProperty(tok, key, wantKey, opts, rels); err != nil {
+			elements, err := c.relIndexElements(tok, key)
+			if err != nil {
+				return nil, err
+			}
+			if err := validateRelsByTypeAndProperty(tok, key, wantKey, elements, opts, rels); err != nil {
 				return nil, err
 			}
 			rels = copyRelationshipRows(rels)
@@ -154,16 +158,15 @@ func (c *Core) relsByTypeAndProperty(tok uint16, key string, value any, opts sto
 			return nil, err
 		}
 	}
+	elements, err := c.relIndexElements(tok, key)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]*types.Relationship, 0, len(candidates))
 	for _, r := range candidates {
-		gotKey, found := r.IndexablePropertyValueKey(key)
-		if !found || gotKey == "" {
-			continue
+		if r.HasPropertyIndexKey(key, elements, wantKey) {
+			out = append(out, r)
 		}
-		if gotKey != wantKey {
-			continue
-		}
-		out = append(out, r)
 	}
 	out = storeutil.PaginateRels(out, opts.After, opts.Limit)
 	if !c.storeRowsTrust {

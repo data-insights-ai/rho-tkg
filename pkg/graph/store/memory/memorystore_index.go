@@ -84,19 +84,23 @@ func (ms *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		ms.mu.Unlock()
 		return err
 	}
+	if err := storecontract.ValidatePropertyIndexOptions(opts); err != nil {
+		ms.mu.Unlock()
+		return err
+	}
 	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 	if _, exists := ms.propertyIndexes[key]; exists {
 		ms.mu.Unlock()
 		return ErrIndexExists
 	}
-	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts)
+	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts, opts.Elements)
 	liveIdx.Mutated = make(map[snowflake.ID]struct{})
 	ms.propertyIndexes[key] = liveIdx
 	nids := ms.labelNodeIDsSnapshotLocked(labelToken)
 	ms.mu.Unlock()
 
 	// Phase 2.
-	backfill := indexpkg.NewPropertyIndex()
+	backfill := indexpkg.NewPropertyIndexWith(false, opts.Elements)
 	for _, nid := range nids {
 		ms.mu.RLock()
 		n, ok := ms.nodes[nid]
@@ -105,9 +109,7 @@ func (ms *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		if !ok {
 			continue // deleted between snapshot and fetch
 		}
-		if valueKey, found := n.IndexablePropertyValueKey(propertyKey); found {
-			backfill.AddKey(nid.SnowflakeID(), valueKey)
-		}
+		backfill.AddEntityKeys(nid.SnowflakeID(), propertyKey, n.ForEachPropertyIndexKey)
 	}
 
 	// Phase 3.
@@ -1194,7 +1196,7 @@ func (ms *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 			return nil, nil
 		}
 		storepkg.SortNodeIDs(ids)
-		return ms.nodesByLabelPropertyFromIDs(labelToken, propKey, targetKey, ids, opts), nil
+		return ms.nodesByLabelPropertyFromIDs(labelToken, propKey, targetKey, idx.Elements(), ids, opts), nil
 	}
 
 	// Fallback: label scan + property filter.
@@ -1215,10 +1217,10 @@ func (ms *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 		return nil, nil
 	}
 	storepkg.SortNodeIDs(matchIDs)
-	return ms.nodesByLabelPropertyFromIDs(labelToken, propKey, targetKey, matchIDs, opts), nil
+	return ms.nodesByLabelPropertyFromIDs(labelToken, propKey, targetKey, false, matchIDs, opts), nil
 }
 
-func (ms *Store) nodesByLabelPropertyFromIDs(labelToken uint16, propKey, targetKey string, ids []types.NodeID, opts QueryOpts) []*types.Node {
+func (ms *Store) nodesByLabelPropertyFromIDs(labelToken uint16, propKey, targetKey string, elements bool, ids []types.NodeID, opts QueryOpts) []*types.Node {
 	ids = storepkg.PaginateNodeIDs(ids, opts.After, 0)
 	if len(ids) == 0 {
 		return nil
@@ -1235,7 +1237,7 @@ func (ms *Store) nodesByLabelPropertyFromIDs(labelToken uint16, propKey, targetK
 			if !n.HasLabelTokenRaw(labelToken) {
 				continue
 			}
-			if valueKey, found := n.IndexablePropertyValueKey(propKey); !found || valueKey != targetKey {
+			if !n.HasPropertyIndexKey(propKey, elements, targetKey) {
 				continue
 			}
 			if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), n.Temporal(), opts) {

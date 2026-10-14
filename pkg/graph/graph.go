@@ -307,7 +307,8 @@ type VectorIndexOptions = store.VectorIndexOptions
 
 // PropertyIndexOptions aliases store.PropertyIndexOptions — accepted by
 // g.Index().CreatePropertyWithOptions / CreateRelPropertyWithOptions
-// (RangeCounts: prefix-sum range counts, opt-in per index). Zero value = the
+// (RangeCounts: prefix-sum range counts; Elements: list-element keys, backlog
+// 63; both opt-in per index). Zero value = the
 // plain index.
 type PropertyIndexOptions = store.PropertyIndexOptions
 

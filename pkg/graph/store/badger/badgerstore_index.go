@@ -33,8 +33,10 @@ func (bs *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) erro
 
 // CreatePropertyIndexWithOptions is CreatePropertyIndex with
 // storecontract.PropertyIndexOptions (round 4 R2). The options persist with
-// the definition. RangeCounts needs the RAM index: with PropertyIndexOnDisk it
-// is refused (ErrCapabilityNotSupported).
+// the definition. RangeCounts and Elements need the RAM index: with
+// PropertyIndexOnDisk they are refused (ErrCapabilityNotSupported) — the disk
+// keyspace is shared by every label indexing the key, so it cannot hold one
+// index's element keys.
 func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey string, opts storecontract.PropertyIndexOptions) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
@@ -45,8 +47,14 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
 		return err
 	}
+	if err := storecontract.ValidatePropertyIndexOptions(opts); err != nil {
+		return err
+	}
 	if bs.propIdxOnDisk && opts.RangeCounts {
 		return fmt.Errorf("graph: create property index: range counts need the RAM index, not PropertyIndexOnDisk: %w", storecontract.ErrCapabilityNotSupported)
+	}
+	if bs.propIdxOnDisk && opts.Elements {
+		return fmt.Errorf("graph: create property index: an elements index needs the RAM index, not PropertyIndexOnDisk: %w", storecontract.ErrCapabilityNotSupported)
 	}
 	if bs.propIdxOnDisk {
 		if _, ok := bs.propKeyTokenFor(propertyKey); !ok {
@@ -62,7 +70,7 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		bs.idxMu.Unlock()
 		return ErrIndexExists
 	}
-	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts)
+	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts, opts.Elements)
 	liveIdx.Mutated = make(map[snowflake.ID]struct{})
 	bs.propertyIndexes[key] = liveIdx
 	nids, idErr := bs.labelNodeIDsSnapshotLocked(labelToken)
@@ -77,7 +85,7 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 	// nodes that existed before Phase 1 without the defensive copy required by
 	// the public GetNode boundary. Disk mode collects writeOps instead of
 	// populating a RAM PropertyIndex's Entries map.
-	backfill := indexpkg.NewPropertyIndex()
+	backfill := indexpkg.NewPropertyIndexWith(false, opts.Elements)
 	var diskOps []writeOp
 	for _, nid := range nids {
 		n, err := bs.prefetchNode(nid)
@@ -91,17 +99,15 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 			bs.idxMu.Unlock()
 			return fmt.Errorf("graph: create property index: %w", err)
 		}
-		valueKey, found := n.IndexablePropertyValueKey(propertyKey)
-		if !found {
-			continue
-		}
 		if bs.propIdxOnDisk {
-			if op, ok := bs.propertyIndexDiskOp(propertyKey, valueKey, nid.SnowflakeID(), writeOpSet); ok {
-				diskOps = append(diskOps, op)
+			if valueKey, found := n.IndexablePropertyValueKey(propertyKey); found {
+				if op, ok := bs.propertyIndexDiskOp(propertyKey, valueKey, nid.SnowflakeID(), writeOpSet); ok {
+					diskOps = append(diskOps, op)
+				}
 			}
 			continue
 		}
-		backfill.AddKey(nid.SnowflakeID(), valueKey)
+		backfill.AddEntityKeys(nid.SnowflakeID(), propertyKey, n.ForEachPropertyIndexKey)
 	}
 
 	// Phase 3: Merge backfill into live index under write Lock.
@@ -205,13 +211,16 @@ func (bs *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 }
 
 // propIdxDef is the serialization format for property index definitions.
-// RangeCounts (round 4 R2) is written only when set, so a plain index's
-// definition stays byte-identical; a binary without the field skips it and
-// loads the index plain (its range counts then walk).
+// RangeCounts (round 4 R2) and Elements (backlog 63) are written only when
+// set, so a plain index's definition stays byte-identical; a binary without a
+// field skips it and loads the index plain (range counts then walk; an
+// Elements index then answers equality, its open image's element entries
+// filtered out by the row re-check).
 type propIdxDef struct {
 	LabelToken  uint16 `msgpack:"l"`
 	PropertyKey string `msgpack:"p"`
 	RangeCounts bool   `msgpack:"rc,omitempty"`
+	Elements    bool   `msgpack:"el,omitempty"`
 }
 
 // vectorIdxDef is the serialization format for vector index definitions.
@@ -1176,7 +1185,7 @@ func (bs *Store) persistPropertyIndexDefs() {
 		if idx == nil || idx.Mutated != nil {
 			continue
 		}
-		defs = append(defs, propIdxDef{LabelToken: key.LabelToken, PropertyKey: key.PropertyKey, RangeCounts: idx.RangeCounts()})
+		defs = append(defs, propIdxDef{LabelToken: key.LabelToken, PropertyKey: key.PropertyKey, RangeCounts: idx.RangeCounts(), Elements: idx.Elements()})
 	}
 	if len(defs) == 0 {
 		bs.appendOps(writeOp{opType: writeOpDelete, key: storepkg.PropIndexDefsKey})

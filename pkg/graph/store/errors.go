@@ -21,22 +21,27 @@ var (
 	// implement the capability at all). Query still works everywhere via the
 	// graph-layer type-scan fallback; only index creation declines.
 	ErrRelPropertyIndexUnsupported = errors.New("graph: relationship property indexes are not supported on this backend")
-	ErrTemporalIndexExists         = errors.New("graph: temporal index already exists")
-	ErrTemporalIndexNotFound       = errors.New("graph: temporal index not found")
-	ErrInvalidTemporalIndexConfig  = errors.New("graph: invalid temporal index configuration")
-	ErrVectorIndexExists           = errors.New("graph: vector index already exists")
-	ErrVectorIndexNotFound         = errors.New("graph: vector index not found")
-	ErrDimensionMismatch           = errors.New("graph: vector dimension mismatch")
-	ErrInvalidVectorIndexConfig    = errors.New("graph: invalid vector index configuration")
-	ErrInvalidVectorValue          = errors.New("graph: invalid vector value")
-	ErrInvalidShardDepth           = errors.New("graph: invalid shard depth")
-	ErrInvalidTimeRange            = errors.New("graph: invalid time range")
-	ErrInvalidQueryLimit           = errors.New("graph: invalid query limit")
-	ErrInvalidQueryCursor          = errors.New("graph: invalid query cursor")
-	ErrInvalidStoreMutation        = errors.New("graph: invalid store mutation")
-	ErrNilStore                    = errors.New("graph: store must not be nil")
-	ErrTxDone                      = errors.New("graph: transaction already committed or rolled back")
-	ErrStoreClosed                 = errors.New("graph: store already closed")
+	// ErrElementsIndexUnsupported is returned for an operation that cannot use
+	// an Elements property index (PropertyIndexOptions.Elements, backlog 63):
+	// Elements with RangeCounts, a unique constraint or GetOrCreateByKey on an
+	// Elements-indexed key, and ByLabelAndProperties over one.
+	ErrElementsIndexUnsupported   = errors.New("graph: not supported with an elements property index")
+	ErrTemporalIndexExists        = errors.New("graph: temporal index already exists")
+	ErrTemporalIndexNotFound      = errors.New("graph: temporal index not found")
+	ErrInvalidTemporalIndexConfig = errors.New("graph: invalid temporal index configuration")
+	ErrVectorIndexExists          = errors.New("graph: vector index already exists")
+	ErrVectorIndexNotFound        = errors.New("graph: vector index not found")
+	ErrDimensionMismatch          = errors.New("graph: vector dimension mismatch")
+	ErrInvalidVectorIndexConfig   = errors.New("graph: invalid vector index configuration")
+	ErrInvalidVectorValue         = errors.New("graph: invalid vector value")
+	ErrInvalidShardDepth          = errors.New("graph: invalid shard depth")
+	ErrInvalidTimeRange           = errors.New("graph: invalid time range")
+	ErrInvalidQueryLimit          = errors.New("graph: invalid query limit")
+	ErrInvalidQueryCursor         = errors.New("graph: invalid query cursor")
+	ErrInvalidStoreMutation       = errors.New("graph: invalid store mutation")
+	ErrNilStore                   = errors.New("graph: store must not be nil")
+	ErrTxDone                     = errors.New("graph: transaction already committed or rolled back")
+	ErrStoreClosed                = errors.New("graph: store already closed")
 	// ErrExactErasureRelationshipEscape is returned before any mutation when a
 	// current or historical relationship version touching a declared node is
 	// absent from the caller's declared relationship set. Exact erasure never

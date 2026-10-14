@@ -46,7 +46,7 @@ func (pi *PropertyIndex) RelIDs(value any) []types.RelID {
 // supported=false only when the index is nil; an enabled view with no numeric
 // keys returns an authoritative empty result.
 func (pi *PropertyIndex) RangeRelIDs(min, max float64, inclMin, inclMax bool) (ids []types.RelID, supported bool) {
-	if pi == nil {
+	if pi == nil || pi.elements {
 		return nil, false
 	}
 	if pi.numKeys.n == 0 {
@@ -72,7 +72,7 @@ func AddRelToPropertyIndexes(indexes map[RelPropertyIndexKey]*PropertyIndex, r *
 		return
 	}
 	typeToken := r.TypeToken().Value()
-	r.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
+	r.ForEachIndexKey(RelElementsOf(indexes, typeToken), func(propertyKey, valueKey string) bool {
 		key := RelPropertyIndexKey{RelTypeToken: typeToken, PropertyKey: propertyKey}
 		if idx, ok := indexes[key]; ok {
 			idx.AddKey(id, valueKey)
@@ -89,7 +89,7 @@ func RemoveRelFromPropertyIndexes(indexes map[RelPropertyIndexKey]*PropertyIndex
 		return
 	}
 	typeToken := r.TypeToken().Value()
-	r.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
+	r.ForEachIndexKey(RelElementsOf(indexes, typeToken), func(propertyKey, valueKey string) bool {
 		key := RelPropertyIndexKey{RelTypeToken: typeToken, PropertyKey: propertyKey}
 		if idx, ok := indexes[key]; ok {
 			idx.removeKey(id, valueKey)

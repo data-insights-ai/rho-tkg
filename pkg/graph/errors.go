@@ -65,6 +65,7 @@ var (
 var (
 	ErrIndexExists                = storepkg.ErrIndexExists
 	ErrIndexNotFound              = storepkg.ErrIndexNotFound
+	ErrElementsIndexUnsupported   = storepkg.ErrElementsIndexUnsupported
 	ErrTemporalIndexExists        = storepkg.ErrTemporalIndexExists
 	ErrTemporalIndexNotFound      = storepkg.ErrTemporalIndexNotFound
 	ErrVectorIndexExists          = storepkg.ErrVectorIndexExists

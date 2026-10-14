@@ -200,6 +200,22 @@ func (c *Core) storeUniqueConstraintsLocked(mk storepkg.MetaKVCapability) error 
 // In-memory registry helpers (caller holds c.uniqueMu for the *Locked variants)
 // -----------------------------------------------------------------------------
 
+// refuseUniqueKey returns ErrElementsIndexUnsupported when (label, key) is
+// under a unique constraint: an Elements index (backlog 63) cannot serve it.
+func (c *Core) refuseUniqueKey(label, key string) error {
+	tok, ok := c.labels.Lookup(label)
+	if !ok {
+		return nil
+	}
+	c.uniqueMu.RLock()
+	_, exists := c.lookupConstraintLocked(tok, key)
+	c.uniqueMu.RUnlock()
+	if exists {
+		return fmt.Errorf("%w: key %q of label %q has a unique constraint", storepkg.ErrElementsIndexUnsupported, key, label)
+	}
+	return nil
+}
+
 func (c *Core) lookupConstraintLocked(labelTok uint16, key string) (*uniqueConstraintState, bool) {
 	byKey, ok := c.uniqueConstraints[labelTok]
 	if !ok {
@@ -296,6 +312,11 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 	// concurrent writers enforce during the validation window.
 	labelTok, err := c.getOrCreateLabelPersisted(label)
 	if err != nil {
+		return err
+	}
+	// An Elements index (backlog 63) keys list elements, not values: no
+	// uniqueness over it.
+	if err := c.refuseNodeElementsIndex(labelTok, propKey, "unique constraint"); err != nil {
 		return err
 	}
 

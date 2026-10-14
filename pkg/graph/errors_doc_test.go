@@ -32,6 +32,7 @@ var storeEntitySentinels = []string{
 var storeIndexSentinels = []string{
 	"ErrIndexExists",
 	"ErrIndexNotFound",
+	"ErrElementsIndexUnsupported",
 	"ErrTemporalIndexExists",
 	"ErrTemporalIndexNotFound",
 	"ErrVectorIndexExists",
