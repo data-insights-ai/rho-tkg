@@ -39,8 +39,8 @@ func main() {
 }
 
 func run() error {
-	if len(os.Args) != 2 || (os.Args[1] != "smoke" && os.Args[1] != "graph-smoke" && os.Args[1] != "lifecycle-trace" && os.Args[1] != "cost-cell" && !strings.HasPrefix(os.Args[1], "fault-") && !strings.HasPrefix(os.Args[1], "graph-fault-") && !strings.HasPrefix(os.Args[1], "paired-fault-") && !strings.HasPrefix(os.Args[1], "platform-fault-") && !strings.HasPrefix(os.Args[1], "column-fault-")) {
-		return fmt.Errorf("usage: fdb-spike smoke|graph-smoke|lifecycle-trace|cost-cell|fault-*|graph-fault-*|paired-fault-*|platform-fault-*|column-fault-*")
+	if len(os.Args) != 2 || (os.Args[1] != "smoke" && os.Args[1] != "graph-smoke" && os.Args[1] != "lifecycle-trace" && os.Args[1] != "cost-cell" && !strings.HasPrefix(os.Args[1], "fault-") && !strings.HasPrefix(os.Args[1], "graph-fault-") && !strings.HasPrefix(os.Args[1], "paired-fault-") && !strings.HasPrefix(os.Args[1], "platform-fault-") && !strings.HasPrefix(os.Args[1], "column-fault-") && !strings.HasPrefix(os.Args[1], "history-fault-")) {
+		return fmt.Errorf("usage: fdb-spike smoke|graph-smoke|lifecycle-trace|cost-cell|fault-*|graph-fault-*|paired-fault-*|platform-fault-*|column-fault-*|history-fault-*")
 	}
 	db, err := openDB()
 	if err != nil {
@@ -53,6 +53,9 @@ func run() error {
 			return err
 		}
 		return runGraphCost(db, spec)
+	}
+	if strings.HasPrefix(os.Args[1], "history-fault-") {
+		return runGraphHistoryFault(db, os.Args[1])
 	}
 	if strings.HasPrefix(os.Args[1], "column-fault-") {
 		return runGraphColumnFault(db, os.Args[1])

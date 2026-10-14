@@ -113,7 +113,12 @@ def main():
             hashes.update({str(p.relative_to(out)): hashlib.sha256(p.read_bytes()).hexdigest()
                            for directory in sorted(out.glob("column-publication-*")) if directory.is_dir()
                            for p in sorted(directory.rglob("*")) if p.is_file()})
+        if mode == "source-history-faults":
+            hashes.update({str(p.relative_to(out)): hashlib.sha256(p.read_bytes()).hexdigest()
+                           for directory in sorted(out.glob("source-history-*")) if directory.is_dir()
+                           for p in sorted(directory.rglob("*")) if p.is_file()})
         scopes = {
+            "source-history-faults": "one physical host; genuine source-history SDK owner and partial-collector SIGKILL/replacement, same retained owner Close and durable cursor resume; five COMMIT originals only, no ABORT/server-loss/power-loss/matrix/capacity acceptance",
             "static": "pinned compilation/static tools; no cluster or fault schedule",
             "lifecycle-trace": "one physical host, four logical FDB zones; lifecycle trace, no external kill schedule",
             "cost-cell": "single-machine distributed: four logical FDB fault-domain containers; real graph cost cell, no independent physical-host-loss/LAN-WAN or engine-selection claim",

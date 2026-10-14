@@ -673,11 +673,32 @@ func (s *graphHistoryRetention) open(ctx context.Context, token graphHistoryToke
 	if err != nil {
 		return nil, err
 	}
-	_, err = s.h.db.Transact(func(tr fdb.Transaction) (any, error) {
+	if err := r.open(ctx, token); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+// open acquires only this genuine factory-issued identity. Callers that must
+// survive process loss can save id before acquisition; saved bytes alone grant
+// no authority. Replacement handles authenticate the retained active owner via
+// check/walk/Close, rather than acquiring new authority after pin expiration.
+func (r *graphHistoryRead) open(ctx context.Context, token graphHistoryToken) error {
+	if r == nil || r.s == nil || ctx == nil || !historyOwnerValid(r.id) || r.id.Kind != "read" || r.id.State != historyActive || !sameCertificate(r.id.Cut, token.Cut) || r.id.PinRequest != token.Request {
+		return errInvalid
+	}
+	body, err := wire(token)
+	if err != nil {
+		return err
+	}
+	if sha256.Sum256(body) != r.id.PinDigest {
+		return errMismatch
+	}
+	_, err = r.s.h.db.Transact(func(tr fdb.Transaction) (any, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		o, found, err := s.owner(tr, token.Request)
+		o, found, err := r.s.owner(tr, token.Request)
 		if err != nil {
 			return nil, err
 		}
@@ -690,20 +711,21 @@ func (s *graphHistoryRetention) open(ctx context.Context, token graphHistoryToke
 		if o.State != historyActive {
 			return nil, errHistoryExpired
 		}
-		return nil, s.acquireIn(tr, r.id)
+		return nil, r.s.acquireIn(tr, r.id)
 	})
 	if err != nil {
 		err = graphHistoryCommitError(err)
 		if errors.Is(err, errUnknown) {
-			return nil, errors.Join(err, historyReadCleanup(r))
+			return errors.Join(err, historyReadCleanup(r))
 		}
-		return nil, err
+		return err
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, errors.Join(err, historyReadCleanup(r))
+		return errors.Join(err, historyReadCleanup(r))
 	}
-	return r, nil
+	return nil
 }
+
 func (r *graphHistoryRead) check(tr fdb.ReadTransaction) error {
 	o, found, err := r.s.owner(tr, r.id.Request)
 	if err != nil {
