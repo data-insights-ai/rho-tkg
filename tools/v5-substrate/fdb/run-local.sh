@@ -12,7 +12,7 @@ cost_retention=${RHO_GRAPH_COST_RETENTION:-off}
 case "$cost_layout" in kv|columns) ;; *) echo 'RHO_GRAPH_COST_LAYOUT must be kv or columns' >&2; exit 2;; esac
 case "$cost_retention" in off|source-v1) ;; *) echo 'RHO_GRAPH_COST_RETENTION must be off or source-v1' >&2; exit 2;; esac
 case "$cost_qualify" in 0|1) ;; *) echo 'FDB_COST_QUALIFY must be 0 or 1' >&2; exit 2;; esac
-case "$mode" in smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|cost-cell|static) ;; *) echo 'usage: run-local.sh [smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|cost-cell|static] [small|large]' >&2; exit 2;; esac
+case "$mode" in smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|cost-cell|static|platform-faults) ;; *) echo 'usage: run-local.sh [smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|cost-cell|static|platform-faults] [small|large]' >&2; exit 2;; esac
 runtime='foundationdb/foundationdb@sha256:c61744624e479d370a0120176e518bb569a2a18ee9abceaf7022c4367b54f1db'
 tag="rho-v5-fdb-$(date +%s)-$$"
 out="$PWD/artifacts/$tag"
@@ -213,7 +213,7 @@ if [ "$mode" = test ] || [ "$mode" = graph-fault ] || [ "$mode" = paired-tests ]
       cat /sys/fs/cgroup/memory.stat > /evidence/test-client-memory-stat.txt; exit "$result"' -- "$mode" >"$out/tests.txt" 2>&1
   capture_client "$name" tests
 fi
-if [ "$mode" != smoke ] && [ "$mode" != lifecycle-trace ] && [ "$mode" != paired-tests ] && [ "$mode" != cost-cell ]; then
+if [ "$mode" != platform-faults ] && [ "$mode" != smoke ] && [ "$mode" != lifecycle-trace ] && [ "$mode" != paired-tests ] && [ "$mode" != cost-cell ]; then
   prefix=fault
   if [ "$mode" = graph-fault ]; then prefix=graph-fault; fi
   if [ "$mode" = paired-graph-fault ]; then prefix=paired-fault; fi
@@ -309,6 +309,7 @@ if [ "$mode" = cost-cell ]; then
   capture_client "$name" cost-client
   python3 -c 'import time; print(time.monotonic_ns())' >"$out/cost-controller-end-nanos.txt"
 fi
+if [ "$mode" = platform-faults ]; then source run-platform-faults.sh; fi
 if [ "$mode" = lifecycle-trace ]; then client lifecycle-trace; fi
 wait_healthy "${servers[0]}" "$out/status-after.json"
 for i in 0 1 2 3; do

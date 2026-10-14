@@ -106,12 +106,16 @@ def main():
         out = Path(directory)
         hashes = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
                   for p in sorted(out.iterdir()) if p.is_file() and p.name != "receipt.json"}
+        if mode == "platform-faults":
+            hashes.update({str(p.relative_to(out)): hashlib.sha256(p.read_bytes()).hexdigest()
+                           for p in sorted(out.glob("platform-*/*")) if p.is_file()})
         scopes = {
             "static": "pinned compilation/static tools; no cluster or fault schedule",
             "lifecycle-trace": "one physical host, four logical FDB zones; lifecycle trace, no external kill schedule",
             "cost-cell": "single-machine distributed: four logical FDB fault-domain containers; real graph cost cell, no independent physical-host-loss/LAN-WAN or engine-selection claim",
             "graph-fault": "one physical host, four logical FDB zones; functional graph faults only",
             "paired-graph-fault": "one physical host, four logical FDB zones; paired fixed graph process faults only",
+            "platform-faults": "one physical host, four logical FDB zones; observed co-resident-role SIGKILL/same-volume restart, coordinator-domain and symmetric network isolation, native Commit-issued caller loss; finite four-operation cases, no matrix/power-loss/packet-reorder claim",
             "paired-tests": "one physical host, four logical FDB zones; normal/race/coverage tests, no external kill schedule",
             "test": "one physical host, four logical FDB zones; native tests and scalar faults",
             "smoke": "one physical host, four logical FDB zones; native scalar smoke only",
