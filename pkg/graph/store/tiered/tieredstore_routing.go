@@ -173,6 +173,7 @@ func (ts *Store) routeRelShard(id types.RelID) (store *BadgerStore, checkin func
 	// rels to refArchive, so archived rels live there after archive.
 	// Pin via checkoutArchive (mirrors the node resolver) so a
 	// concurrent Close cannot tear it down mid-use.
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, err := ts.checkoutArchive()
 	if err != nil {
 		return nil, nil, false, relRowProbe{}, err
@@ -327,6 +328,7 @@ func (ts *Store) shardForNodeIDCheckedWithArchive(id types.NodeID) (store *Badge
 	// not by closeIdleShards. checkoutArchive also handles cold-start
 	// lazy-open via ensureRefArchive when the catalog has the entry but
 	// the in-memory pointer is nil.
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, err := ts.checkoutArchive()
 	if err != nil {
 		return nil, nil, false, err

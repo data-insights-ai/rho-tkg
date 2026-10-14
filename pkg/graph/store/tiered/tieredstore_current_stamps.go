@@ -23,6 +23,8 @@ func (ts *Store) NodeCurrentStamps(nid types.NodeID) (storecontract.RowStamps, e
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return storecontract.RowStamps{}, err
 	}
+	move := ts.lockMoveRead() // route and read see the row on one shard
+	defer move.unlock()
 	store, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return storecontract.RowStamps{}, err
@@ -42,6 +44,8 @@ func (ts *Store) RelCurrentStamps(rid types.RelID) (storecontract.RowStamps, err
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return storecontract.RowStamps{}, err
 	}
+	move := ts.lockMoveRead() // route and read see the row on one shard
+	defer move.unlock()
 	return routeRelRow(ts, rid, relCurrentStampsRow)
 }
 

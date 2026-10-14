@@ -490,6 +490,8 @@ func (ts *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 	shardOpts := stripDepth(opts)
 	shardOpts.Limit, shardOpts.After = 0, 0
 
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return nil, err
@@ -502,6 +504,7 @@ func (ts *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 	parts := [][]*types.Node{refNodes}
 
 	if opts.Depth == DepthAll {
+		ts.refArchiveGapHook()
 		archive, archiveCheckin, err := ts.checkoutArchive()
 		if err != nil {
 			return nil, err
@@ -515,6 +518,7 @@ func (ts *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 			parts = append(parts, nodes)
 		}
 	}
+	move.unlock()
 
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(opts.Depth)

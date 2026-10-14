@@ -28,11 +28,17 @@ var ErrCrossShardArchiveRel = errors.New("graph: cross-shard archive relationshi
 // relationship placement moves and the temporary destination node write. If a
 // rollback step itself fails, the returned error includes both the primary
 // failure and the rollback failure.
+//
+// Concurrency: ArchiveNode holds moveMu for the whole move, so reads (scans
+// and point reads) see the node on exactly one shard. Writes route without
+// moveMu: a direct tiered.Store user must not write the moving node or its
+// relationships during a move. The graph layer fences this with c.mu
+// (g.Tier().Archive takes the exclusive lock).
 func (ts *Store) ArchiveNode(nid types.NodeID) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
-	ts.moveMu.Lock() // a tx-membership fan-out must see the node on one shard (allShards)
+	ts.moveMu.Lock() // a reader of the reference shard and the archive must see the node on one shard (lockMoveRead)
 	defer ts.moveMu.Unlock()
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return err
@@ -124,11 +130,13 @@ func (ts *Store) ArchiveNode(nid types.NodeID) error {
 // Cross-store atomicity follows ArchiveNode: completed relationship placement
 // moves and the temporary destination node write are rolled back on failure, and
 // rollback failures are included in the returned error.
+//
+// Concurrency: as ArchiveNode — reads are fenced by moveMu, writes are not.
 func (ts *Store) RestoreNode(nid types.NodeID) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
-	ts.moveMu.Lock() // a tx-membership fan-out must see the node on one shard (allShards)
+	ts.moveMu.Lock() // a reader of the reference shard and the archive must see the node on one shard (lockMoveRead)
 	defer ts.moveMu.Unlock()
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return err
@@ -301,7 +309,7 @@ func (ts *Store) planRelationshipPlacementMoves(moving types.NodeID, relIDs []sn
 	moves := make([]relationshipPlacementMove, 0, len(relIDs))
 	for _, rawID := range relIDs {
 		rid := types.RelID(rawID)
-		rel, err := ts.GetRelationship(rid)
+		rel, err := ts.getRelationshipChecked(rid) // moveMu is write-held: GetRelationship would read-lock it
 		if errors.Is(err, ErrRelNotFound) {
 			continue
 		}
@@ -376,7 +384,7 @@ func (ts *Store) purgeOrRejectDestinationAdjacency(nodeID types.NodeID, destinat
 	rawID := nodeID.SnowflakeID()
 	for _, rawRelID := range mergeUniqueRelIDs(destination.OutgoingRelIDs(rawID), destination.IncomingRelIDs(rawID, 0)) {
 		rid := types.RelID(rawRelID)
-		if _, err := ts.GetRelationship(rid); err != nil {
+		if _, err := ts.getRelationshipChecked(rid); err != nil { // moveMu is write-held (ArchiveNode/RestoreNode)
 			if errors.Is(err, ErrRelNotFound) {
 				if purgeErr := destination.PurgeOrphanRelationshipIndexes(rid); purgeErr != nil {
 					return purgeErr

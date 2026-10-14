@@ -29,6 +29,8 @@ func (ts *Store) NodePropertyTypeClassCounts(token uint16, propertyKey string) (
 		total.Other += c.Other
 	}
 
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return storecontract.PropertyTypeClassCounts{}, err
@@ -40,6 +42,7 @@ func (ts *Store) NodePropertyTypeClassCounts(token uint16, propertyKey string) (
 	}
 	add(n)
 
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 	if archiveErr != nil {
 		return storecontract.PropertyTypeClassCounts{}, archiveErr
@@ -52,6 +55,7 @@ func (ts *Store) NodePropertyTypeClassCounts(token uint16, propertyKey string) (
 		}
 		add(an)
 	}
+	move.unlock()
 
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(DepthAll)

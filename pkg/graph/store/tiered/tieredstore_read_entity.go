@@ -18,6 +18,8 @@ func (ts *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return nil, err
 	}
+	move := ts.lockMoveRead() // route and read see the row on one shard
+	defer move.unlock()
 	store, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return nil, err
@@ -35,6 +37,8 @@ func (ts *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return "", err
 	}
+	move := ts.lockMoveRead() // route and read see the row on one shard
+	defer move.unlock()
 	store, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return "", err
@@ -67,6 +71,8 @@ func (ts *Store) EndpointIntegrityHashes(startID, endID types.NodeID) (string, s
 	if err := storecontract.ValidateNodeID(endID); err != nil {
 		return "", "", err
 	}
+	move := ts.lockMoveRead() // route and read see the row on one shard
+	defer move.unlock()
 	startShard, startCheckin, err := ts.shardForNodeIDChecked(startID)
 	if err != nil {
 		return "", "", err
@@ -107,6 +113,8 @@ func (ts *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return nil, err
 	}
+	move := ts.lockMoveRead() // route and read see the row on one shard
+	defer move.unlock()
 	return ts.getRelationshipChecked(rid)
 }
 
@@ -122,6 +130,8 @@ func (ts *Store) LendNode(nid types.NodeID) (*types.Node, error) {
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return nil, err
 	}
+	move := ts.lockMoveRead() // route and read see the row on one shard
+	defer move.unlock()
 	store, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return nil, err
@@ -139,6 +149,8 @@ func (ts *Store) LendRelationship(rid types.RelID) (*types.Relationship, error) 
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return nil, err
 	}
+	move := ts.lockMoveRead() // route and read see the row on one shard
+	defer move.unlock()
 	return routeRelRow(ts, rid, lendRelationshipRow)
 }
 
@@ -169,6 +181,7 @@ func routeRelRow[T any](ts *Store, rid types.RelID, row func(*BadgerStore, types
 		return rel, nil
 	}
 
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, err := ts.checkoutArchive()
 	if err != nil {
 		return zero, err
@@ -245,6 +258,8 @@ func (ts *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 		return []*types.Node{n}, nil
 	}
 
+	move := ts.lockMoveRead() // route and read see the row on one shard
+	defer move.unlock()
 	if unique, ok := uniqueNodeIDsPreserveOrderIfDuplicate(ids); ok {
 		return ts.getNodesByIDsWithDuplicates(ids, unique)
 	}
@@ -331,6 +346,8 @@ func (ts *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship
 		return []*types.Relationship{r}, nil
 	}
 
+	move := ts.lockMoveRead() // route and read see the row on one shard
+	defer move.unlock()
 	unique := uniqueRelIDsPreserveOrder(ids)
 	found, err := ts.getUniqueRelationshipsByIDs(unique)
 	if err != nil {
@@ -588,6 +605,8 @@ func (ts *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 	}
 	// Entity + out/ are co-located in the node's shard. Use the checked
 	// resolver so a cold owner stays pinned for the duration of the read.
+	move := ts.lockMoveRead() // route and read see the row on one shard
+	defer move.unlock()
 	shard, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return nil, err
@@ -616,6 +635,8 @@ func (ts *Store) OutgoingRelationshipsForNodes(nodeIDs []types.NodeID, typeToken
 	}
 
 	queryNodeIDs := nodeIDs
+	move := ts.lockMoveRead() // route and read see the row on one shard
+	defer move.unlock()
 	if unique, ok := uniqueNodeIDsPreserveOrderIfDuplicate(nodeIDs); ok {
 		queryNodeIDs = unique
 	}
@@ -657,6 +678,8 @@ func (ts *Store) OutgoingDegree(nid types.NodeID, typeToken uint16) (int, error)
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return 0, err
 	}
+	move := ts.lockMoveRead() // route and read see the row on one shard
+	defer move.unlock()
 	shard, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return 0, err
@@ -683,6 +706,8 @@ func (ts *Store) IncomingDegree(nid types.NodeID, typeToken uint16) (int, error)
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return 0, err
 	}
+	move := ts.lockMoveRead() // route and read see the row on one shard
+	defer move.unlock()
 	shard, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return 0, err
@@ -707,6 +732,8 @@ func (ts *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 	}
 	// Get relIDs from the node's shard inIdx. The owner is checked out so a
 	// cold node shard cannot be closed mid-read.
+	move := ts.lockMoveRead() // route and read see the row on one shard
+	defer move.unlock()
 	shard, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return nil, err
@@ -786,6 +813,8 @@ func (ts *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 		uniqueNodeIDs = append(uniqueNodeIDs, tnid)
 	}
 
+	move := ts.lockMoveRead() // route and read see the row on one shard
+	defer move.unlock()
 	batches, err := ts.groupNodeIDsByShard(uniqueNodeIDs)
 	if err != nil {
 		return nil, err

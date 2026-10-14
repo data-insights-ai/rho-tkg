@@ -294,6 +294,7 @@ func (ts *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.N
 	addAll(refIDs)
 
 	// Reference archive (lazy-open + close-race safe via checkoutArchive).
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 	if archiveErr != nil {
 		return nil, archiveErr
@@ -764,6 +765,7 @@ func appendNodeHistorySource(sources *[]nodeHistorySource, store *BadgerStore, h
 
 func (ts *Store) nodeHistoryWithArchive(nid types.NodeID, skip *BadgerStore, history []*types.Node) ([]*types.Node, error) {
 	sources := nodeHistorySourcesFrom(skip, history)
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, err := ts.checkoutArchive()
 	if err != nil {
 		return nil, err

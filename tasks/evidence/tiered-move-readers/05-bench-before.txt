@@ -1,0 +1,25 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkTieredGetNodeMoveLock/Reference         	10678904	       108.5 ns/op	     112 B/op	       2 allocs/op
+BenchmarkTieredGetNodeMoveLock/Reference         	11132018	       108.5 ns/op	     112 B/op	       2 allocs/op
+BenchmarkTieredGetNodeMoveLock/Reference         	11015779	       129.7 ns/op	     112 B/op	       2 allocs/op
+BenchmarkTieredGetNodeMoveLock/Reference         	 9957848	       114.0 ns/op	     112 B/op	       2 allocs/op
+BenchmarkTieredGetNodeMoveLock/Reference         	 9975877	       114.1 ns/op	     112 B/op	       2 allocs/op
+BenchmarkTieredGetNodeMoveLock/Reference         	10634706	       117.7 ns/op	     112 B/op	       2 allocs/op
+BenchmarkTieredGetNodeMoveLock/Reference         	 9486544	       131.0 ns/op	     112 B/op	       2 allocs/op
+BenchmarkTieredGetNodeMoveLock/Reference         	 9761574	       124.5 ns/op	     112 B/op	       2 allocs/op
+BenchmarkTieredGetNodeMoveLock/Reference         	 9144481	       159.9 ns/op	     112 B/op	       2 allocs/op
+BenchmarkTieredGetNodeMoveLock/Reference         	 8949546	       120.4 ns/op	     112 B/op	       2 allocs/op
+BenchmarkTieredGetNodeMoveLock/Archived          	 7777815	       171.7 ns/op	     128 B/op	       3 allocs/op
+BenchmarkTieredGetNodeMoveLock/Archived          	 6323254	       158.5 ns/op	     128 B/op	       3 allocs/op
+BenchmarkTieredGetNodeMoveLock/Archived          	 8245276	       160.8 ns/op	     128 B/op	       3 allocs/op
+BenchmarkTieredGetNodeMoveLock/Archived          	 7699066	       153.8 ns/op	     128 B/op	       3 allocs/op
+BenchmarkTieredGetNodeMoveLock/Archived          	 7223850	       192.5 ns/op	     128 B/op	       3 allocs/op
+BenchmarkTieredGetNodeMoveLock/Archived          	 8677138	       140.0 ns/op	     128 B/op	       3 allocs/op
+BenchmarkTieredGetNodeMoveLock/Archived          	 7679612	       143.5 ns/op	     128 B/op	       3 allocs/op
+BenchmarkTieredGetNodeMoveLock/Archived          	10571680	       116.1 ns/op	     128 B/op	       3 allocs/op
+BenchmarkTieredGetNodeMoveLock/Archived          	 8923345	       138.4 ns/op	     128 B/op	       3 allocs/op
+BenchmarkTieredGetNodeMoveLock/Archived          	10013317	       139.6 ns/op	     128 B/op	       3 allocs/op
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	25.822s

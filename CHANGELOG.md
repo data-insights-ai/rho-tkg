@@ -33,6 +33,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   property door; a shard error joined with the property door's off-reference finding is returned, no longer
   turned into `ErrIndexNotFound`. Test `TestTxMembersFanoutListsNodeRestoredMidRead`.
 
+### Fixed
+
+- **Tiered scans no longer see a node twice or not at all while `ArchiveNode` / `RestoreNode` moves it** (backlog 60).
+  `NodesByLabel`, `NodesByLabelAndProperty`, `NodesByLabelAndProperties`, `RelationshipsByType`, `AllNodes`,
+  `AllNodeIDs`, `AllRelationships`, `AllRelIDs` (each at `DepthAll`), `ForEachNodeID`, `ForEachRelID`, `NodeCount`,
+  `NodeCountByLabel`, `NodeCountByLabelAndPropertyKey`, `NodePropertyTypeClassCounts`, `NodePropertyStats` /
+  `NodePropertyNDV` (their `Count`), `RelationshipCount` and `RelCountByType` read the reference shard and then the archive; a move between the two reads returned the node
+  (and its relationship) twice or counted it twice (`ArchiveNode`: the archive copy is written before the reference
+  delete), or dropped it (`RestoreNode`: the reference write lands after the reference read, the archive delete before
+  the archive read). They now take the move lock's read side across the two reads, as the tx-membership fan-out does;
+  `ForEachNodeID` / `ForEachRelID` collect both shards' IDs under it and call `fn` after releasing it. Not changed:
+  the DocValues folds (a move bumps `NodeMutationEpoch`, so the caller's Gate-2 re-check discards the answer) and
+  `AllNodeHistoryIDsFrom` / `AllRelHistoryIDsFrom` (history rows stay where they are, IDs are deduplicated).
+  Point reads routed reference shard → archive → event shard missed a node or relationship `RestoreNode` moved
+  between the route's reference and archive probes (`ErrNodeNotFound` / `ErrRelNotFound` for a live entity), or
+  one `ArchiveNode` moved between the route and the read. `GetNode`, `LendNode`, `NodeIntegrityHash`,
+  `EndpointIntegrityHashes`, `GetNodesByIDs`, `GetRelationship`, `LendRelationship`, `GetRelationshipsByIDs`,
+  `Outgoing`/`IncomingRelationships` (and their `ForNodes` forms), `Outgoing`/`IncomingDegree`,
+  `Node`/`RelCurrentStamps` now hold the same read lock across route and read. The history reads
+  (`HasNode`/`HasRelHistory`, `Node`/`RelHistoryStamps`, the version and history reads) take no lock: history rows
+  stay on the shard they were written to and the walks fall back to every shard, so a move in either gap leaves their
+  answer unchanged (guard cases in the same test); `ArchiveNode` / `RestoreNode` read relationships through the unlocked
+  route. One uncontended `RLock` per call, no allocation: `GetNode` 2 allocs / 112 B (reference) and 3 / 128 B
+  (archived) before and after, median 160.5 → 175 ns (reference) and 180.5 → 178.5 ns (archived), alternating runs
+  on one pinned core of a loaded host. Write doors still route without the lock: a direct `tiered.Store` user must not write during a move (the graph layer fences them with its exclusive lock; documented on `ArchiveNode` / `RestoreNode`).
+  Graph users were not affected: `g.Tier().Archive` / `Restore`
+  hold the graph's exclusive lock. Test `TestRefArchiveReadersSeeMovedEntityOnce`; evidence
+  `tasks/evidence/tiered-move-readers/`.
+
 ## [4.52.0] - 2026-10-14
 
 Minor release, the sigma-tkgd store requests, round 6 (new public API): badger column scans without a per-row
