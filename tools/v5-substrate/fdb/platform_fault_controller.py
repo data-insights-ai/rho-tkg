@@ -162,6 +162,15 @@ def client_command(ledger, name):
     return matches[0][0]
 
 
+def full_scope(encoded):
+    # certificate.Scope is []uint8: Go JSON delivers canonical base64 bytes.
+    require(isinstance(encoded, str), "actual encoded full scope required")
+    decoded = base64.b64decode(encoded, validate=True)
+    require(decoded == b"\x00\x01" and base64.b64encode(decoded).decode() == encoded,
+            "exact canonical A/B certificate scope")
+    return decoded
+
+
 def serial_binding(trace):
     """Feed observed complete entities/lives/postings to the existing oracle.
 
@@ -187,7 +196,7 @@ def serial_binding(trace):
     previous = initial = project(trace["steps"][0]["Before"])
     for step, operation in zip(trace["steps"], trace["operationMapping"], strict=True):
         require(project(step["Before"]) == previous and step["Operation"] == operation["Logical"] and
-                step["Cut"]["Scope"] == [0, 1] and step["Cut"]["Round"] == operation["Round"], "observed-prefix/cut/original continuity")
+                full_scope(step["Cut"]["Scope"]) == b"\x00\x01" and step["Cut"]["Round"] == operation["Round"], "observed-prefix/cut/original continuity")
         after = project(step["After"])
         changed = {key for key in previous.keys() | after.keys() if previous.get(key) != after.get(key)}
         require(step["Operation"] not in transactions, "duplicate original identity")

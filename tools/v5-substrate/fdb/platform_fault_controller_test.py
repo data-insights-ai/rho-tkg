@@ -20,6 +20,12 @@ class PlatformFaultBindingGuards(unittest.TestCase):
         with self.assertRaises(ValueError):
             controller.targets(rows, "unproved-packet-reorder")
 
+    def test_actual_go_scope_bytes_refuse_missing_reversed_or_normalized_array(self):
+        self.assertEqual(controller.full_scope("AAE="), b"\x00\x01")
+        for invalid in ("", "AA==", "AQA=", [0, 1]):
+            with self.assertRaises(ValueError):
+                controller.full_scope(invalid)
+
     def test_unavailable_is_actual_native_error_not_timeout_or_abort(self):
         row = {"Classification": "native-error", "NativeCode": 1031, "Error": "native timeout",
                "Outcome": {"Commit": False}}
