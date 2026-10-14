@@ -640,8 +640,11 @@ func (a *API) ForEachNodeEffectiveByLabels(labels []string, pin types.Instant, f
 //
 // Cost on memory and badger: the relationships of the type whose valid end is
 // at or after validFrom plus those written after pin, from a RAM valid-end
-// index the store keeps per queried type (built on the first call for a type
-// and tracked again on the first call after a reopen). Tiered keeps the index
+// index the store keeps per queried type. The first call for a type reads its
+// ever-members' temporal fields once (and builds the K1 membership sidecar if
+// no pinned scan did); after that every write of the type is folded in, and
+// writes of other types change nothing. A reopen tracks it again on the next
+// call. Tiered keeps the index
 // per shard and unions the shards' candidates (a closed cold shard is opened;
 // an entity whose rows bound its end loosely, such as a valid-time close, is
 // read on every call). Sharded answers the same through the unbounded door's
