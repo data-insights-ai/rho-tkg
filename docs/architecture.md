@@ -129,7 +129,7 @@ Caller-supplied temporal shadow inputs are also stripped before property validat
 - 1024 unique IDs per microsecond per generator
 - Stateless — no counter persistence, no crash recovery
 - Epoch and layout live once, in `pkg/internal/idlayout` (shared by `pkg/types` and `pkg/graph/internal/**`; `internal/snowflake` re-exports them)
-- Creation timestamp extractable via `snowflakepkg.Layout.Decompose(id).Time` or `DecomposeID(id).CreatedAt`; the public millisecond form is `types.NodeID.MintInstant()` / `types.RelID.MintInstant()` — the effective valid-from only of a legacy row without a recorded valid-from and `TxFrom`; a row without a valid-from starts at its `TxFrom` (backlog 62, v4.54.0)
+- Creation timestamp extractable via `snowflakepkg.Layout.Decompose(id).Time` or `DecomposeID(id).CreatedAt`; the public millisecond form is `types.NodeID.MintInstant()` / `types.RelID.MintInstant()`, the last fallback of a row's valid-from (api.md "Valid-time start (TxFrom)")
 
 ---
 
@@ -196,11 +196,11 @@ for in-flight `Initializable.Init` callbacks before invoking provider `Close`.
 | `tkg_created_at` | "the entity record came into existence at T" | system-derived (snowflake ID timestamp); caller may override at Add | always derivable — the shadow resolver applies the snowflake fallback |
 | `tkg_valid_from` | "the fact holds **in the world** from T" | only the domain — a recorder/curator with actual knowledge | `0` = no world-time claim made |
 
-Two doors expose two deliberate views of valid-time. The shadow resolver (`g.Resolve().NodeProperty(n, "tkg_valid_from")`) returns the RAW asserted value — `(Instant(0), ok=true)` when never asserted (`ok` is true because `TemporalMetadata` always exists; check the zero value, not `ok`). Temporal queries use the EFFECTIVE valid-from (explicit `ValidFrom`, else the ID's mint instant `MintInstant()`; inside a version chain a non-genesis row without one starts at its `UpdatedAt`), so an entity with unset `ValidFrom` is "eternal" through the shadow door but time-bounded through the query door. Shadow props report *stored/asserted* state; temporal queries report *effective* state. Writers must never default `tkg_valid_from := now()` without domain knowledge — that conflates TX with VT; consumers wanting "unstamped ⇒ valid since recorded" should implement it as an explicit, flagged heuristic on their side.
+Two doors expose two deliberate views of valid-time. The shadow resolver (`g.Resolve().NodeProperty(n, "tkg_valid_from")`) returns the RAW asserted value — `(Instant(0), ok=true)` when never asserted (`ok` is true because `TemporalMetadata` always exists; check the zero value, not `ok`). Temporal queries use the EFFECTIVE valid-from (explicit `ValidFrom`, else the row's `TxFrom`; api.md "Valid-time start (TxFrom)"), so an entity with unset `ValidFrom` is "eternal" through the shadow door but time-bounded through the query door. Shadow props report *stored/asserted* state; temporal queries report *effective* state. Writers must never default `tkg_valid_from := now()` without domain knowledge — that conflates TX with VT; consumers wanting "unstamped ⇒ valid since recorded" should implement it as an explicit, flagged heuristic on their side.
 
 **Canonical temporal predicates.** The effective-valid-from derivation and the point/interval predicates are defined ONCE, in `storeutil` (`EntityValidFrom`, `MatchesPointInTime`, `MatchesInterval`); the core graph layer delegates its `nodeValidFrom`/`relValidFrom`/validity helpers there and the store backends use the same functions for query push-down. Never redefine these semantics elsewhere — the cross-door equivalence test (`TestTemporalTwoDoorsAgreeOnLabelQueries`) asserts the named door, the generic `QueryOpts` door, and the per-ID resolver return identical sets.
 
-**Valid-time inheritance is cleared on every version boundary.** Every mutation that creates a new version by deep-copying the current one (Update, AddLabel/RemoveLabel, property mutations) clears the inherited `ValidFrom`/`ValidTo` before stamping, so `ValidFrom != 0` on a non-genesis version always means "caller-supplied" (lessons 33 and 42). Delete tombstones and `CloseVersion` set `ValidTo` deliberately — closing semantics, not inheritance.
+**Valid-time inheritance is cleared on every version boundary.** Every mutation that creates a new version by deep-copying the current one (Update, AddLabel/RemoveLabel, property mutations) clears the inherited `ValidFrom`/`ValidTo` before stamping, so `ValidFrom != 0` on a non-genesis version always means "caller-supplied" (lessons 33 and 42). Delete tombstones and `CloseVersion` set `ValidTo` deliberately (and `CloseVersion` stamps the version's start as `ValidFrom`) — closing semantics, not inheritance.
 
 **Cascade interval edits (`SetNodeVersionInterval`) are append-only and not wire-atomic.** The cascade never rewrites a stored row (lesson 46). It appends, at one new `TxFrom`, one row per piece of `[validFrom, validTo)` where the pre-correction state differs (each piece = the version valid there, as believed before the call, plus the `props` patch; a piece with no valid version uses the current row, the most recent version), plus a resumption row that re-asserts the state at `validTo`. On overlap the newer belief wins at read time. Appended rows take versions above every stored row, carry no `TxTo`/`DeletedAt`, and the newest row whose own interval is open takes the current slot. Unique constraints judge the built rows (`unique_cascade.go`); a hard-deleted entity is refused with `ErrEntityDeleted` (wraps `ErrNodeNotFound` / `ErrRelNotFound`). The rows are written sequentially under the entity lock, the new current row last. A crash mid-cascade leaves some appended rows without the rest; each row write is atomic and there is no in-progress marker.
 
@@ -242,7 +242,7 @@ This replaced the pre-v3.0.31 approach of materializing all IDs into slices (`al
 
 `BatchBuilder` -- fluent API with eager validation and deferred persistence. Queue methods are serialized by the builder, and update queues use the same update-map validation and provenance shadow-key extraction as standalone updates. Empty queued updates read at execute time so missing entities still fail, but successful empty updates do not count as `Updated` and do not publish update events. Successful batch creates increment graph add stats in the same units reported by `BatchResult.Created`. New relationship-type tokens are deferred until execute-time endpoint and temporal constraint checks pass; the queued relationship pointer is retokenized in place before persistence, and a final relationship write failure restores any newly allocated type token. Execute order: create nodes, create rels, update nodes, update rels, delete rels, delete nodes. Mutation events are buffered during replay and emitted after graph and builder locks are released via one `Publisher.PublishBatch` call, so async priority ordering is applied across the whole batch result. Returns `BatchResult` with counts and per-operation errors; any operation failure also makes `Execute` return an error wrapping `ErrBatchFailed`. Execute is one-shot and marks the builder done when replay starts; later queue calls or repeat Execute calls return `ErrBatchDone`.
 
-`CloseVersion` updates temporal metadata in-place without adding history. It is still a successful mutation write when it changes a node or relationship, so it increments `NodesUpdated`/`RelsUpdated` and publishes the corresponding update event. `t == 0` returns `ErrInvalidTimeRange`, and already-closed entities return `ErrAlreadyClosed` without changing update counters.
+`CloseVersion` writes a closing version that keeps the version's start (history row plus new current row, api.md "Closing a version"). It is a successful mutation write, so it increments `NodesUpdated`/`RelsUpdated` and publishes the corresponding update event. `t == 0` or `t` at or before the start returns `ErrInvalidTimeRange`, and already-closed entities return `ErrAlreadyClosed` without changing update counters. An update that sets only `tkg_valid_to` takes the same path.
 
 Direct Store history entry points are input boundaries, not trusted internals.
 `PutNodeVersion`, `PutRelVersion`, `DeleteNodeWithHistory`, and
@@ -422,22 +422,8 @@ Persistent Store using Badger v4 with async batch persistence.
 
 ### On-Disk Format Versioning
 
-Two layers, both backward compatible with pre-versioning directories:
+Two layers, per row (`fv`) and per store (the `wire_format_version` marker, verified at open before any row is decoded; tiered shards check it per shard). One tracker raises the marker (3, 4 binary hashes, 5 Elements, 6 void rows); a newer row or marker fails closed with `store.ErrWireFormatVersionUnsupported`. Home: `docs/persistence.md` "Format versions and markers", upgrade path "Upgrading a store"; row layout SPEC 9.1a.
 
-- **Per-row version**: `NodeWire`/`RelWire` carry `FormatVersion` (`fv`).
-  Absent (legacy rows) decodes as 0 and is treated as version 1. A checked
-  decode of a row with a version newer than
-  `storeutil.CurrentWireFormatVersion` fails closed with
-  `store.ErrWireFormatVersionUnsupported` — never zero-filled misdecoding.
-- **Store-level marker**: the meta key `wire_format_version` is verified at
-  open BEFORE any row is decoded. Newer marker → `New()` fails closed with
-  the same sentinel; absent → stamped (read-write opens only); lower →
-  raised. A present-but-unparsable marker is corruption and fails the open.
-  The marker (`storeutil.StoreFormatVersion`, 3 since v4.51.2) can sit above
-  `CurrentWireFormatVersion` (2): v4.51.2 raised it, with unchanged row encodings,
-  so that releases before the ex-adjacency index (backlog 50) refuse the store
-  instead of deleting relationships without it (`docs/stability.md`). A directory that persists an Elements property index is stamped 5 (`storeutil.ElementsStoreFormatVersion`; 4 is reserved), see api.md "Elements index".
-  Tiered shards inherit the check per shard.
 - `loadIndexes` still tolerates corrupt rows (skip + warn + counter
   reconcile), but a FUTURE per-row version is not damage — it fails the open
   instead of silently dropping the row.
@@ -455,9 +441,6 @@ Two layers, both backward compatible with pre-versioning directories:
   reference shard hand it to `Config.OnCommitFloor`, which keeps it on the
   reference shard ahead of their batch.
 
-Bump protocol (documented on `CurrentWireFormatVersion`): a version bump must
-update the custom msgpack encoders (lesson 39), the decode path, and the
-marker logic together.
 
 ### Write-Pressure Bound
 
