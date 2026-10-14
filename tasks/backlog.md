@@ -277,10 +277,9 @@ preserves the caller's owner ticket on every unsuccessful hidden-handle cleanup.
 history, cuts and CDC remain retained; derived collection does not close source
 application GC. All these later sources await runtime acceptance. Earlier P05
 compiler/setup failures remain recorded failures; the earlier compilation-only
-checkpoint does not qualify this new source. Next source packages cover native
-durable cut/feed pins and GC, bounded high-degree continuation, actual FDB
-column-runner/comparator wiring and writer concurrency, then the remaining
-fault/workload integration. Follow the owner's implementation-first ordering
+checkpoint does not qualify this new source. Next source packages cover portable
+cut/feed publication and source GC, distributed native column/cost wiring, then
+the remaining fault/workload integration. Follow the owner's implementation-first ordering
 above; qualify the integrated result afterward.
 Bounded incident continuation is source-integrated at `18d28001` with callback
 ownership corrected at `266ef78d`; `62764628` hydrates extra typed cells on that
@@ -305,15 +304,26 @@ AS6 snapshot binding and actual Ready activation at `b56db530`/`ffa905e7` plus
 the matching authored guard correction. A bounded separate bank reserves cleanup
 alternatives within existing quotas independently of transient transaction
 recovery. Snapshot admission funds both banks before staging and binds exact
-imported credit state. Operative graph pins, all-participant portable publication,
-explicit expiry and logical GC are still being implemented; storage substrate
-alone does not provide them. Complete retained terminal-bank comparison is
+imported credit state. The participant graph pin ledger and bound Host admission
+are source-integrated at `9c8a27a1`/`ee5257e8`: exact original cut/feed ownership,
+monotone feed advancement, replicated lease epochs, funded Release/Expire/Close
+and immutable original outcomes. All-participant portable publication, source
+logical GC and fresh-profile handoff remain open. Complete retained terminal-bank comparison is
 source-integrated at `045517ab`; graph Restore can detect unknown extra native
 owners instead of inspecting only the transient recovery owner. Its direct
 historical guard and existing unknown-version guard updates are authored only.
 These new packages have source review and exact
 integration hashes only; compilation, authored guards and runtime qualification
 remain deferred to the integrated checkpoint.
+Native derived change columns are source-integrated at `4e6da1db`, with genuine
+source-prefix frames, authenticated earlier originals for replay entries,
+bounded durable publication/cache and retained-cut reads. This slice is
+in-process and retain-all; distributed publisher wiring and source GC remain open.
+FDB independent 8/32 writers are source-integrated at `45c61d84`, with bounded
+workers, actual paired retry/abort originals, completion-order-independent
+comparison and genuine post-commit policy observation (`e76c49c7`). Compact
+guards are authored, not executed. These integrations close source packages,
+not V2 E/F qualification or comparative efficiency acceptance.
 Existing accepted components stay closed unless their source or required
 behavior changes.
 
@@ -329,12 +339,13 @@ transfer-under-write cost workloads; their qualification follows integration.
 Worker lanes: Sol 6.1/high for native protocol recovery and durable pins/GC,
 then C/D; Sol 6.1/high for native column/fault-workload implementation (bounded
 incident continuation, native reopen/index and 8/32-client source packages are integrated);
-Sol 6.1/high for actual FDB 8/32 writers and remaining source reclamation. The
+Sol 6.1/high for FDB source reclamation and remaining fault/workload parity. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
 serialize heavy local fault/benchmark workloads under the shared resource lease.
-Use affected checks per change and reusable pinned scanners; do not rerun
-unchanged full suites per patch. Report integrated/accepted packages and remaining
+Finish the full remaining V2 implementation before execution: correctness tests,
+then measurements, then demonstrated improvements. Running CI is not a source
+integration gate. Do not rerun unchanged full suites per patch. Report integrated/accepted packages and remaining
 requirements, rather than a percentage inferred from the number of tests written.
 
 The [latest native 10k run](evidence/v2-native-capacity-probe-20261014/receipt.json)
