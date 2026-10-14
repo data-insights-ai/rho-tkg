@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -1183,6 +1184,24 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 	if err != nil {
 		t.Fatal(err)
 	}
+	var decisionChanged <-chan struct{}
+	switch os.Getenv("RHO_GRAPH_DECISION_FAULT_PROCESS") {
+	case "", "off":
+	case "1":
+		member, parseErr := strconv.ParseUint(os.Getenv("RHO_GRAPH_PROCESS_ID"), 10, 64)
+		if parseErr != nil {
+			t.Fatal(parseErr)
+		}
+		o.decisions, err = newNativeDecisionOwner(ctx, coordinator, member)
+		if err != nil {
+			t.Fatal(err)
+		}
+		coordinator.beforeDecision = o.decisions.hold
+		decisionChanged = o.decisions.changed
+		defer o.decisions.close()
+	default:
+		t.Fatal("unknown native decision fault profile")
+	}
 	var moveCoordinator *rangeMoveCoordinator
 	if h.machine.rangeMoves() {
 		moveCoordinator, err = newRangeMoveCoordinatorOn(coordinator)
@@ -1250,6 +1269,8 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 	var pause bool
 	paused := make([]processRequest, 0, processSourceWorkers)
 	var pauseBarrier *processRequest
+	var decisionBarrier *processRequest
+	var decisionMask uint8
 	finish := func(c *graphProcessPumpCall, r graphProcessPumpReply) {
 		if c.ctx.Err() == nil {
 			c.reply <- r
@@ -1657,6 +1678,17 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			t.Fatal(err)
 		}
 		select {
+		case <-decisionChanged:
+			if decisionBarrier != nil {
+				body, err := o.decisions.ready(decisionMask)
+				if body != nil || err != nil {
+					request := *decisionBarrier
+					decisionBarrier = nil
+					if err := respond(request, processResponse{aux: body}, err); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
 		case e := <-inputErr:
 			if !errors.Is(e, io.EOF) {
 				t.Error(e)
@@ -1746,6 +1778,23 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					e = errInvalid
 				} else {
 					response.aux, e = o.fault.control(r.data)
+				}
+			case processNativeDecisionControl:
+				if r.index != 0 || r.entity != 0 || r.packet.From != 0 || r.packet.To != 0 || r.packet.Snapshot || len(r.packet.Payload) != 0 {
+					e = errInvalid
+				} else {
+					var mask uint8
+					response.aux, mask, event, e = o.decisions.control(r.data)
+					if e == nil && mask != 0 {
+						if decisionBarrier != nil {
+							e = errLimit
+						} else {
+							request := r
+							decisionBarrier = &request
+							decisionMask = mask
+							async = true
+						}
+					}
 				}
 			case processP08ChangedGraph:
 				var original allocationProposal
@@ -1865,6 +1914,13 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					ch <- graphProcessPumpReply{body: bytes.Clone(r.data), err: replyErr}
 				}
 			case processSourceCancel:
+				if decisionBarrier != nil && decisionBarrier.sequence == r.index {
+					request := *decisionBarrier
+					decisionBarrier = nil
+					if err := respond(request, processResponse{}, context.Canceled); err != nil {
+						t.Fatal(err)
+					}
+				}
 				if stop := workers[r.index]; stop != nil {
 					stop()
 				}

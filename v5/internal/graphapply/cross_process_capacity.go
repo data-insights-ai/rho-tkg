@@ -315,6 +315,11 @@ func (c *crossProcessCoordinator) recoverCapacity(ctx context.Context, desired c
 		if err != nil {
 			return ownDecision, err
 		}
+		if c.beforeDecision != nil {
+			if err := c.observeDecision(ctx, tx, proposal, arena); err != nil {
+				return ownDecision, err
+			}
+		}
 		if _, err := owner.submit(ctx, proposal); err != nil {
 			return ownDecision, err
 		}

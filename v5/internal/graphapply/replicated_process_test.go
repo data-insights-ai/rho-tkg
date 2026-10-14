@@ -110,6 +110,7 @@ const (
 	processP05Close
 	processP05Proposal
 	processNativeFaultControl
+	processNativeDecisionControl
 )
 
 // IPC IDs identify this process event only. No storage/send/prepared capability
@@ -218,7 +219,7 @@ func decodeProcessRequest(b []byte) (processRequest, error) {
 	r := processRequest{incarnation: c.array(), sequence: c.u64(), op: c.tag(), index: c.u64(), entity: c.u64()}
 	r.data = c.field(processFrameBytes)
 	r.packet = processDecodePacket(&c)
-	if r.sequence == 0 || r.op < processCampaign || r.op > processNativeFaultControl || len(c.b) != 0 {
+	if r.sequence == 0 || r.op < processCampaign || r.op > processNativeDecisionControl || len(c.b) != 0 {
 		c.err = errCorrupt
 	}
 	return r, c.err
@@ -1527,6 +1528,7 @@ const (
 type certifiedProcessOwners struct {
 	cost        *nativeGraphCostSpec
 	fault       *nativeFaultFS
+	decisions   *nativeDecisionOwner
 	host        *allocationHost
 	proof       allocationProof
 	readID      allocationReadID
@@ -1613,6 +1615,8 @@ func (o *certifiedProcessOwners) action(t *testing.T, r processRequest, init dec
 	binary.BigEndian.PutUint64(id[8:], r.sequence)
 	h := o.host
 	switch r.entity {
+	case certifiedNativeDecisionBusiness:
+		return nativeDecisionBusiness(o, r)
 	case certifiedPairedFaultProperty:
 		return pairedGraphFaultProperty(o, r, id)
 	case certifiedGraphCost:

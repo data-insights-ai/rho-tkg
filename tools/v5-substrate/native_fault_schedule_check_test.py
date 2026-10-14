@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Compact private grammar guards; no generated graph histories or processes."""
 import copy
+import base64
 import hashlib
 import importlib.util
 import json
@@ -64,6 +65,32 @@ class NativeFaultGrammar(unittest.TestCase):
     def test_unknown_case_has_no_success_or_timeout_fallback(self):
         with self.assertRaisesRegex(ValueError,"finite case"):
             C.check({"Version":1,"Profile":C.PROFILE,"Case":"timeout-abort"})
+
+    def test_queued_order_requires_both_admissions_and_actual_native_inputs(self):
+        # Grammar-only refusals: these arbitrary bytes never grant an original,
+        # completed capacity read, private stamp or genuine history authority.
+        encoded = lambda wire: base64.b64encode(wire).decode()
+        queue = dict(Version=1, Profile=C.DECISION_PROFILE, Order="commit-first",
+                     Cookie=[1]+[0]*15, Sequence=1, Member=4, PID=321, Mask=3,
+                     Queued=True, Closed=False, Accepted=[True,True], Errors=[0,0],
+                     Controls=6, PrepaidBytes=20<<20, BeforeApplied=10,
+                     AfterApplied=10, BeforeLastIndex=10, AfterLastIndex=12,
+                     Candidates=[encoded(b"abort"),encoded(b"commit")],
+                     EntryWires=[encoded(b"commit"),encoded(b"abort")])
+        for update, reason in (({"Accepted":[True,False]},"both genuine"),
+                               ({"AfterApplied":11},"before first application"),
+                               ({"AfterLastIndex":11},"two persisted"),
+                               ({"Cookie":[0]*16},"live owner"),
+                               ({"Sequence":2},"lifecycle"),
+                               ({"EntryWires":queue["Candidates"]},"native log inputs"),
+                               ({"Closed":True},"lifecycle")):
+            bad=copy.deepcopy(queue);bad.update(update)
+            with self.subTest(update=update), self.assertRaisesRegex(ValueError,reason):
+                C.decision_queue(bad,"commit-first")
+        with self.assertRaisesRegex(ValueError,"finite order"):
+            C.decision_queue(queue,"timeout-abort")
+        with self.assertRaisesRegex(ValueError,"fresh queued version"):
+            C.check({"Version":1,"Profile":C.DECISION_PROFILE,"Case":"commit-first","Queue":queue})
 
 
 if __name__=="__main__":

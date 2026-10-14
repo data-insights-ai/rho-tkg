@@ -64,6 +64,9 @@ COST_PARENTS = [
     "TestNativeColumnRequiredCostProfilesPrepayEveryFinitePass",
 ]
 FAULT_PARENTS = [
+    "TestNativeComposedFaultQueuedCapacityDecisionsKeepFirstOriginal",
+    "TestNativeDecisionSubmissionSeamChecksContextAfterCallbackWithoutHostLock",
+    "TestNativeDecisionOwnerCloseRetiresActualCandidateWithoutImportingWire",
     "TestNativeComposedFaultPartialInstallSurvivesDecisionLeaderLossAndDelayedResolve",
     "TestNativeFaultChildFilesystemRecordsOnlyActualMatchedOperations",
     "TestNativeFaultHeldAndDuplicatePacketsStayWithinOriginalOwnerBudget",
@@ -80,6 +83,7 @@ FIXTURE_COMPAT = {
     "coordinator_loss_p03_harness_test.go": ["TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply"],
     "prepare_fence_p02_harness_test.go": ["TestPrepareFenceP02ActualOrderingAcrossElection"],
     "native_graph_fault_schedule_harness_test.go": FAULT_PARENTS,
+    "native_graph_fault_decision_harness_test.go": FAULT_PARENTS,
     "replicated_process_test.go": ["TestReplicatedProcessProtocolBoundaries", "TestReplicatedProcessShutdownReapsFailedCloseRPC", *FAULT_PARENTS],
     "graph_source_process_test.go": ["TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput", "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts", *COST_PARENTS, *FAULT_PARENTS],
 }
@@ -192,7 +196,7 @@ def graph_selection(directory, changed, definitions):
         # Only actually edited top-level helper functions get consumer lookup.
         # Shared types/methods require a reviewed finite fixture guard list.
         helpers = {name for kind, name in edited if kind == "func" and name not in parent_names(path)}
-        if helpers and (path.name in COST_FIXTURES or path.name in ("graph_source_process_test.go", "native_graph_fault_schedule_harness_test.go")):
+        if helpers and (path.name in COST_FIXTURES or path.name in ("graph_source_process_test.go", "native_graph_fault_schedule_harness_test.go", "native_graph_fault_decision_harness_test.go")):
             tests |= set(FIXTURE_COMPAT[path.name])
         else:
             for candidate in directory.glob("*_test.go"):

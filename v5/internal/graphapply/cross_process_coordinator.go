@@ -40,6 +40,35 @@ type crossProcessCoordinator struct {
 	streams    map[uint64]*graphAuthenticatedStream
 	runs       map[[16]byte]*crossProcessRun
 	certified  *certifiedReadCoordinator
+	// Optional embedding fault seam, installed before publication. It observes
+	// owned copies of the actual constructed proposal and manifest. Mutating
+	// those observations cannot alter the retained original or submission.
+	// Callers retain their original deadline; no Host/event lock spans this call.
+	beforeDecision func(context.Context, crossTransaction, allocationProposal) error
+}
+
+// observeDecision is called only for an installed embedding seam. The caller's
+// already admitted output arena funds both exact-capacity observation copies;
+// an observer retaining them must additionally prepay its bounded lifetime.
+func (c *crossProcessCoordinator) observeDecision(ctx context.Context, tx crossTransaction, proposal allocationProposal, arena *graphstate.OutputBudget) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if arena == nil || len(tx.manifest) > c.host.machine.limits.commandBytes || len(proposal.wire) > c.host.machine.limits.commandBytes {
+		return errLimit
+	}
+	if err := arena.Reserve(len(tx.manifest) + len(proposal.wire)); err != nil {
+		return outputBudgetFailure(err)
+	}
+	manifest := make([]byte, len(tx.manifest))
+	copy(manifest, tx.manifest)
+	wire := make([]byte, len(proposal.wire))
+	copy(wire, proposal.wire)
+	tx.manifest, proposal.wire = manifest, wire
+	if err := c.beforeDecision(ctx, tx, proposal); err != nil {
+		return errors.Join(err, ctx.Err())
+	}
+	return ctx.Err()
 }
 
 func newCrossProcessCoordinator(h *allocationHost, transports map[uint64]graphPeerWireTransport) (*crossProcessCoordinator, error) {
@@ -391,6 +420,11 @@ func (c *crossProcessCoordinator) run(ctx context.Context, id requestID, ops []g
 			proposal, e := c.host.proposalFromAuthority(crossDecide, m.coordinator, run.tx, votes, arena)
 			if e != nil {
 				return result, fmt.Errorf("decision proposal: %w", e)
+			}
+			if c.beforeDecision != nil {
+				if e := c.observeDecision(ctx, run.tx, proposal, arena); e != nil {
+					return result, e
+				}
 			}
 			if _, e := coordinator.submit(ctx, proposal); e != nil {
 				return result, errors.Join(errCrossProcessPending, e)
