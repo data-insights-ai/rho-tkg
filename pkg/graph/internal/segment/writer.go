@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"hash/crc32"
 	"math"
 	"sort"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/internal/hash32"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -358,8 +358,9 @@ func (w *columns) assemble(s Schema, blockRows, pageRows int, nodes []int64, byI
 		for g := 0; g*blockRows < n; g++ {
 			leaf = leaf[:0]
 			for i := g * blockRows; i < min(n, (g+1)*blockRows); i++ {
-				h, _ := hex.DecodeString(w.leaves[i]) // validated by isLowerHex64
-				leaf = append(leaf, h...)
+				var h [32]byte
+				hash32.Decode(w.leaves[i], &h) // validated by isLowerHex64
+				leaf = append(leaf, h[:]...)
 			}
 			sum := sha256.Sum256(leaf)
 			roots = append(roots, sum[:]...)

@@ -16,6 +16,8 @@ const hashVerifyHistoryVersionBatchSize = 4096
 // Returns (true, nil) if the chain is valid. Returns (false, nil) if a hash
 // mismatch or broken PrevHash link is detected. Returns (false, err) on I/O
 // failure or if the node never existed (no current entity AND no history).
+// Returns (false, ErrIntegrityDisabled) on a graph opened with
+// Config.DisableIntegrityHashes.
 //
 // VerifyNodeChain deleted entities: if the current node is gone (storepkg.ErrNodeNotFound) but
 // history exists, verifies the history chain alone. Labels are extracted from
@@ -40,6 +42,9 @@ func (h *HashOps) VerifyNodeChain(id types.NodeID) (bool, error) {
 func (c *Core) verifyNodeChainLocked(id types.NodeID) (bool, error) {
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return false, err
+	}
+	if c.hashesOff {
+		return false, ErrIntegrityDisabled
 	}
 	current, err := c.getCurrentNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
@@ -260,6 +265,8 @@ func (c *Core) verifyNodeChainEntryContentLocked(entry *types.Node) (chainEntryM
 // Returns (true, nil) if the chain is valid. Returns (false, nil) if a hash
 // mismatch or broken PrevHash link is detected. Returns (false, err) on I/O
 // failure or if the relationship never existed (no current AND no history).
+// Returns (false, ErrIntegrityDisabled) on a graph opened with
+// Config.DisableIntegrityHashes.
 //
 // VerifyRelChain deleted entities: if the current relationship is gone (storepkg.ErrRelNotFound)
 // but history exists, verifies the history chain alone.
@@ -283,6 +290,9 @@ func (h *HashOps) VerifyRelChain(id types.RelID) (bool, error) {
 func (c *Core) verifyRelChainLocked(id types.RelID) (bool, error) {
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return false, err
+	}
+	if c.hashesOff {
+		return false, ErrIntegrityDisabled
 	}
 	current, err := c.getCurrentRelationship(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {

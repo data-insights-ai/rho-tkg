@@ -393,7 +393,7 @@ func (c *Core) applyNodePutLocked(body storeutil.NodePutBody, rec storepkg.Chang
 	if err := c.validatePropertySliceLimits(n.Properties()); err != nil {
 		return err
 	}
-	if err := c.verifyImportedNodeHash(n, body.Wire.ID, "node"); err != nil {
+	if err := c.admitImportedNodeHash(n, &body.Wire, "node"); err != nil {
 		return err
 	}
 	c.noteAppliedTxFrom(n.Temporal())
@@ -509,7 +509,7 @@ func (c *Core) applyRelPutLocked(body storeutil.RelPutBody, rec storepkg.ChangeR
 	if err := c.validatePropertySliceLimits(r.Properties()); err != nil {
 		return err
 	}
-	if err := c.verifyImportedRelHash(r, body.Wire.ID, "relationship"); err != nil {
+	if err := c.admitImportedRelHash(r, &body.Wire, "relationship"); err != nil {
 		return err
 	}
 	c.noteAppliedTxFrom(r.Temporal())
@@ -563,7 +563,7 @@ func (c *Core) applyForeignIncomingLocked(body storeutil.RelPutBody, rec storepk
 	if err := c.validatePropertySliceLimits(r.Properties()); err != nil {
 		return err
 	}
-	if err := c.verifyImportedRelHash(r, body.Wire.ID, "relationship"); err != nil {
+	if err := c.admitImportedRelHash(r, &body.Wire, "relationship"); err != nil {
 		return err
 	}
 	c.noteAppliedTxFrom(r.Temporal())
@@ -711,7 +711,7 @@ func (c *Core) applyNodeHistoryVersionLocked(body storeutil.HistoryVersionNodeBo
 	if err := c.validatePropertySliceLimits(n.Properties()); err != nil {
 		return err
 	}
-	if err := c.verifyImportedNodeHash(n, body.Wire.ID, "node version"); err != nil {
+	if err := c.admitImportedNodeHash(n, &body.Wire, "node version"); err != nil {
 		return err
 	}
 	c.noteAppliedTxFrom(n.Temporal())
@@ -729,7 +729,7 @@ func (c *Core) applyRelHistoryVersionLocked(body storeutil.HistoryVersionRelBody
 	if err := c.validatePropertySliceLimits(r.Properties()); err != nil {
 		return err
 	}
-	if err := c.verifyImportedRelHash(r, body.Wire.ID, "relationship version"); err != nil {
+	if err := c.admitImportedRelHash(r, &body.Wire, "relationship version"); err != nil {
 		return err
 	}
 	c.noteAppliedTxFrom(r.Temporal())

@@ -2319,7 +2319,7 @@ func (bs *Store) addRelationshipIndexesFromRow(info RelDeleteInfo) {
 // needs idxMu.RLock which Clear holds via idxMu.Lock for the same
 // duration. Releasing flushMu would only save a sync.Mutex acquisition
 // that is already serialised behind idxMu anyway.
-func (bs *Store) Clear() error {
+func (bs *Store) Clear() (err error) {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -2460,6 +2460,13 @@ func (bs *Store) Clear() error {
 	// The wipe below may drop the format marker: the next Elements definition
 	// re-raises it rather than trusting the cached value.
 	bs.formatMarker = 0
+	// Rows written after the wipe carry binary hashes (backlog 61): the
+	// wiped marker is stamped again once the wipe has succeeded.
+	defer func() {
+		if err == nil {
+			err = bs.restampBinaryHashMarker()
+		}
+	}()
 	bs.compositeIndexes = make(map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex)
 	bs.compositeIndexesByLabel = make(map[uint16][]indexpkg.CompositeIndexKey)
 	bs.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)

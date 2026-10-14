@@ -23,8 +23,9 @@ var maxReadableStoreFormatVersion uint16 = storepkg.MaxReadableStoreFormatVersio
 //   - StoreFormatVersion <= marker <= maxReadableStoreFormatVersion: open
 //     normally and keep the marker (a store that persisted an Elements
 //     definition stays at ElementsStoreFormatVersion).
-//   - marker < StoreFormatVersion: open normally and (read-write only)
-//     raise the marker to the current version, since rows written from now on
+//   - marker < the open stamp (openStampVersion: StoreFormatVersion, or
+//     BinaryHashStoreFormatVersion under the binary-hash writer): open
+//     normally and (read-write only) raise the marker to it, since rows written from now on
 //     may carry it — an older binary must then refuse at open instead of
 //     failing row-by-row mid-operation.
 //   - marker absent: pre-versioning directory, equivalent to version 1 —
@@ -64,15 +65,16 @@ func verifyAndStampWireFormatVersion(db *badgerv4.DB, readOnly bool) (uint16, er
 		return 0, fmt.Errorf("graph: store written by a newer release (on-disk wire format v%d, this binary supports up to v%d): %w",
 			stored, maxReadableStoreFormatVersion, storecontract.ErrWireFormatVersionUnsupported)
 	}
-	if readOnly || (present && stored >= storepkg.StoreFormatVersion) {
+	stamp := openStampVersion()
+	if readOnly || (present && stored >= stamp) {
 		return stored, nil
 	}
 	if err := db.Update(func(txn *badgerv4.Txn) error {
-		return txn.Set(storepkg.WireFormatVersionKey, formatMarkerValue(storepkg.StoreFormatVersion))
+		return txn.Set(storepkg.WireFormatVersionKey, formatMarkerValue(stamp))
 	}); err != nil {
 		return 0, fmt.Errorf("graph: stamp wire format marker: %w", err)
 	}
-	return storepkg.StoreFormatVersion, nil
+	return stamp, nil
 }
 
 func formatMarkerValue(v uint16) []byte {
@@ -90,6 +92,35 @@ func (bs *Store) raiseFormatMarkerLocked(v uint16) {
 	}
 	bs.formatMarker = v
 	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.WireFormatVersionKey, value: formatMarkerValue(v)})
+}
+
+// openStampVersion is the marker a writable open stamps when the store's is
+// lower: StoreFormatVersion, raised to BinaryHashStoreFormatVersion when the
+// writer writes binary integrity hashes (backlog 61,
+// storeutil.WritesBinaryHashes). A higher readable marker (an Elements store,
+// 5, whose every reader reads binary rows) is kept.
+func openStampVersion() uint16 {
+	if storepkg.WritesBinaryHashes() {
+		return storepkg.BinaryHashStoreFormatVersion
+	}
+	return storepkg.StoreFormatVersion
+}
+
+// restampBinaryHashMarker writes the binary-hash marker after Clear dropped
+// every key, when the writer writes binary hashes (rows written after the wipe
+// carry them). Caller holds idxMu (write).
+func (bs *Store) restampBinaryHashMarker() error {
+	if bs.readOnly || !storepkg.WritesBinaryHashes() || bs.formatMarker >= storepkg.BinaryHashStoreFormatVersion {
+		return nil
+	}
+	v := uint16(storepkg.BinaryHashStoreFormatVersion)
+	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+		return txn.Set(storepkg.WireFormatVersionKey, formatMarkerValue(v))
+	}); err != nil {
+		return fmt.Errorf("graph: stamp wire format marker after clear: %w", err)
+	}
+	bs.formatMarker = v
+	return nil
 }
 
 // validateHistoryAnchorInterval rejects an out-of-range configured interval at New

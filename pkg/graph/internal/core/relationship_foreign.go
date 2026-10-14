@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -75,7 +74,13 @@ func (c *Core) addRelationshipByIDForeignEndInternal(ctx context.Context, typeNa
 	if c.foreignEndpointRel == nil {
 		return nil, ErrForeignEndpointUnsupported
 	}
-	if err := fe.Validate(); err != nil {
+	check := fe
+	if c.hashesOff && check.Hash == "" {
+		// An off-graph (Config.DisableIntegrityHashes) stores no endpoint hash, so
+		// a peer with hashes off attests none; the rest of the provenance holds.
+		check.Hash = "-"
+	}
+	if err := check.Validate(); err != nil {
 		return nil, err
 	}
 	// Temporal constraints need the live foreign end node (unavailable here).
@@ -110,6 +115,9 @@ func (c *Core) addRelationshipByIDForeignEndInternal(ctx context.Context, typeNa
 		return nil, err
 	}
 	toHash := fe.Hash
+	if c.hashesOff {
+		toHash = "" // no hash is stored on an off-graph
+	}
 
 	id := c.nextRelID()
 	spec := relCreateSpec{relCreatePrep: prep, id: id, fromHash: fromHash, toHash: toHash}
@@ -204,7 +212,7 @@ func (c *Core) recordForeignIncomingInternal(ctx context.Context, edge storepkg.
 		}
 		// Recompute the content hash from the same inputs (keyed on the type NAME,
 		// not the local token) → byte-identical to the authoritative edge's tkg_hash.
-		hash, err := integrity.ComputeRelHashChecked(stub, edge.TypeName)
+		hash, err := c.relContentHash(stub, edge.TypeName)
 		if err != nil {
 			return nil, nil, fmt.Errorf("graph: compute foreign-incoming hash: %w", err)
 		}
@@ -213,6 +221,9 @@ func (c *Core) recordForeignIncomingInternal(ctx context.Context, edge storepkg.
 			PrevHash:     edge.PrevHash,
 			FromNodeHash: edge.FromHash,
 			ToNodeHash:   edge.ToHash,
+		}
+		if c.hashesOff { // the carried hashes are not stored on an off-graph
+			ig.PrevHash, ig.FromNodeHash, ig.ToNodeHash = "", "", ""
 		}
 		stub.SetIntegrity(ig)
 		// Temporal carried verbatim from the authoritative edge (edge.TxFrom is

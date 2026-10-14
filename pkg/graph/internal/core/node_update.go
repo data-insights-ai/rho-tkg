@@ -7,7 +7,6 @@ import (
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -246,7 +245,7 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 	stampAppendedRow(tm, now)
 
 	nodeLabels := c.nodeLabelsUnlocked(current)
-	hash, err := integrity.ComputeNodeHashChecked(current, nodeLabels)
+	hash, err := c.nodeContentHash(current, nodeLabels)
 	if err != nil {
 		return nil, false, fmt.Errorf("graph: compute node hash: %w", err)
 	}
@@ -454,7 +453,7 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 	}
 
 	nodeLabels := c.nodeLabelsUnlocked(current)
-	hash, err := integrity.ComputeNodeHashChecked(current, nodeLabels)
+	hash, err := c.nodeContentHash(current, nodeLabels)
 	if err != nil {
 		return nil, false, fmt.Errorf("graph: compute node hash: %w", err)
 	}

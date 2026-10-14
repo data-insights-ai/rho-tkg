@@ -2,9 +2,10 @@ package segment
 
 import (
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"sort"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/internal/hash32"
 )
 
 // A string column holds n strings: u32 n | u8 mode | body, where the body is
@@ -37,18 +38,7 @@ func allEmpty(vals []string) bool {
 	return true
 }
 
-func isLowerHex64(s string) bool {
-	if len(s) != 64 {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
-			return false
-		}
-	}
-	return true
-}
+func isLowerHex64(s string) bool { return hash32.Canonical(s) }
 
 // encodeSharedStrCol writes codes into a StringDict.
 func encodeSharedStrCol(codes []int64, pageRows int) []byte {
@@ -69,9 +59,10 @@ func encodeStrCol(vals []string, pageRows int) []byte {
 	}
 	if hex32 {
 		out = append(out, strHex32)
+		var b [32]byte
 		for _, v := range vals {
-			b, _ := hex.DecodeString(v) // checked by isLowerHex64
-			out = append(out, b...)
+			hash32.Decode(v, &b) // checked by isLowerHex64
+			out = append(out, b[:]...)
 		}
 		return out
 	}
@@ -218,7 +209,7 @@ func (c *strCol) at(i int) (string, error) {
 	}
 	switch c.mode {
 	case strHex32:
-		return hex.EncodeToString(c.blob[32*i : 32*i+32]), nil
+		return hash32.String(c.blob[32*i : 32*i+32]), nil
 	case strPlain:
 		lo := int64(0)
 		if i > 0 {

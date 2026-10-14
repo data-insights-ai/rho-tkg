@@ -1,0 +1,42 @@
+# Backlog 61: bytes per edge spent on integrity hashes.
+# RHO_INTEGRITY_BYTES=1 go test ./pkg/graph -run 'TestIntegrityBytesPerEdge$' -count=1 -v
+# Shape: 2,000 nodes (two properties), 20,000 relationships of four properties (pkg/graph/integrity_bytes_test.go).
+# badger: every badger row read back after Flush; "snappy" compresses consecutive rel rows in 4 KiB blocks as an
+# SST block is (ai-soc runs Snappy). memory: heap growth of the memory store per edge (GC'd HeapAlloc).
+
+## Where the bytes go (traced in code, main 490e29c1)
+- computed: core relationship_create_kernel.go:153 (rel content hash), the endpoint hashes copied from the endpoint
+  node rows at create (relationship_create_kernel.go:168-169, spec.fromHash/toHash), node_add.go:186 (node hash);
+- written: storeutil/wire_encode.go:172-178 (node h, ph) and :382-399 (rel h, ph, fnh, tnh), each a 64-hex string:
+  1 B fixstr key + 2 B str8 header + 64 B = 66-68 B a hash; a first-version relationship row carries three
+  (h, fnh, tnh) = 208 B raw. Hex does not compress except where nearby rows share an endpoint hash.
+- resident (memory store): first versions are compact (types/compact.go): the rel hash already 32 raw bytes, the
+  endpoint hashes shared strings with the node rows; updated/history versions keep RelIntegrity with hex strings.
+  badger keeps no row hash resident beyond its row cache.
+- ai-soc's 232 B/edge (tasks/edge-data-profile.md, ai-soc) is the disk row: h + fnh + tnh after Snappy.
+
+## Before (main 490e29c1, hex; the switch did not exist, both runs are hashes on)
+badger off=false rel row  366.9 B/edge raw,  252.4 B/edge snappy; node row  161.4 B/node; all keys+values  459.1 B/edge
+memory off=false resident  535.3 B/edge
+
+## After (this branch; the binary writer is step 2 of the rollout, forced in step 1 by SetBinaryHashWriterForTest)
+badger off=false binary=false rel row  366.9 B/edge raw,  251.2 B/edge snappy; node row  161.4 B/node; all keys+values  459.1 B/edge
+memory off=false resident  534.2 B/edge
+badger off=false binary=true  rel row  270.9 B/edge raw,  151.8 B/edge snappy; node row  129.4 B/node; all keys+values  359.9 B/edge
+memory off=false resident  533.8 B/edge
+badger off=true  binary=false rel row  158.9 B/edge raw,   43.5 B/edge snappy; node row   93.4 B/node; all keys+values  244.3 B/edge
+memory off=true  resident  527.3 B/edge
+
+## Hash bytes per edge (relationship row, badger)
+              raw      snappy
+hex (before)  208.0    208.8
+binary (on)   112.0    109.1
+off             0        0
+
+## Not changed
+- memory store resident: 535 -> 528 B/edge with hashes off (the node hash strings, 8 B/edge here). The compact rel
+  row keeps its 32-byte hash slot when off (the struct stays in the 96 B size class; 64 B would need a second
+  compact type: proposal, -32 B/edge resident with hashes off on the memory store).
+- non-compact rows in RAM (updated versions, history on the memory store) keep hex strings in types.RelIntegrity /
+  NodeIntegrity (64 B + 16 B header a hash): converting them means changing the integrity structs' storage behind
+  their exported string fields (proposal; hashes off already removes them).

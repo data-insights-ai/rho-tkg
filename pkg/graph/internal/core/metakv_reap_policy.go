@@ -43,6 +43,12 @@ package core
 //     capture-before-Clear, because the authoritative value is the in-memory
 //     lastInstant (which Clear never lowers), not the persisted blob — see
 //     restoreInstantFloorAfterReset (instant_floor.go).
+//   - integrityHashesMeta (Preserve): the Config.DisableIntegrityHashes setting
+//     the store's rows are written under (backlog 61). The graph keeps writing
+//     under it after the Clear; wiped, a reopen would take its rows for rows
+//     written before the setting existed (hashes on) and an off-store would be
+//     refused or mixed. Re-persisted from c.hashesOff, no capture needed — see
+//     restoreIntegrityModeAfterReset (integrity_switch.go).
 //   - idSlotLeaseMeta (Preserve): an EXTERNAL ORCHESTRATOR's failover hint
 //     (which snowflake slot this node is leased for) — data-independent
 //     identity, unrelated to the graph's own entities. Wiping it on a data
@@ -90,6 +96,7 @@ var metaKVFixedKeys = map[string]reapPolicy{
 	replicaAppliedLSNMeta:        reapPolicyReap,
 	idSlotLeaseMeta:              reapPolicyPreserve,
 	instantFloorMeta:             reapPolicyPreserve,
+	integrityHashesMeta:          reapPolicyPreserve,
 	uniqueForeverOwnersMeta:      reapPolicyReap,
 	schemaVersionKey:             reapPolicyReap,
 	retentionMaxWatermarkMeta:    reapPolicyReap,
