@@ -251,6 +251,9 @@ func (r *graphColumnRead) open(ctx context.Context) error {
 			return nil, errLimit
 		}
 		g.Readers++
+		if err := r.s.h.historyColumnAcquireIn(tr, r.id, m); err != nil {
+			return nil, err
+		}
 		return nil, r.s.controls(tr, columnControlWrite{r.s.generationKey(r.id.Generation, "owners"), g}, columnControlWrite{r.key(), record})
 	})
 	if err == nil && ctx.Err() != nil {
@@ -282,6 +285,9 @@ func (r *graphColumnRead) check(tr fdb.ReadTransaction) error {
 	}
 	if !guardFound {
 		return errUnavailable
+	}
+	if err := r.s.h.historyColumnCheckIn(tr, r.id, m); err != nil {
+		return err
 	}
 	if g.State != columnGuardActive || g.Readers == 0 || record.Manifest != g.Manifest {
 		return errMismatch
@@ -321,13 +327,16 @@ func (r *graphColumnRead) Close() error {
 		if !found {
 			// Authenticated cancellation conflicts with the SAME absent-key read in
 			// acquisition. An uncertain late acquisition cannot commit past this close.
+			if err := r.s.h.historyColumnCloseIn(tr, r.id); err != nil {
+				return nil, err
+			}
 			return nil, r.s.controls(tr, columnControlWrite{r.key(), graphColumnReadRecord{Owner: r.id, State: columnOwnerReleased}})
 		}
 		if record.Owner.Request != r.id.Request || record.Owner.Generation != r.id.Generation || !columnSameSecret(record.Owner.Secret, r.id.Secret) {
 			return nil, errMismatch
 		}
 		if record.State == columnOwnerReleased {
-			return nil, nil
+			return nil, r.s.h.historyColumnCloseIn(tr, r.id)
 		}
 		if record.State != columnOwnerActive {
 			return nil, errInvalid
@@ -348,6 +357,9 @@ func (r *graphColumnRead) Close() error {
 		}
 		g.Readers--
 		record.State = columnOwnerReleased
+		if err := r.s.h.historyColumnCloseIn(tr, r.id); err != nil {
+			return nil, err
+		}
 		return nil, r.s.controls(tr, columnControlWrite{r.key(), record}, columnControlWrite{r.s.generationKey(r.id.Generation, "owners"), g})
 	})
 	if err == nil {
@@ -653,6 +665,13 @@ func (v *graphColumnPins) pin(ctx context.Context, request, generation string, a
 			if prior.State != columnOwnerActive {
 				return nil, errColumnExpired
 			}
+			m, err := v.s.manifestIn(tr, generation)
+			if err != nil {
+				return nil, err
+			}
+			if err := v.s.h.historyColumnPinIn(tr, prior.Token, m); err != nil {
+				return nil, err
+			}
 			return prior.Token, nil
 		}
 		m, err := v.s.manifestIn(tr, generation)
@@ -685,6 +704,9 @@ func (v *graphColumnPins) pin(ctx context.Context, request, generation string, a
 			return nil, errLimit
 		}
 		guard.Pins++
+		if err := v.s.h.historyColumnPinIn(tr, token, m); err != nil {
+			return nil, err
+		}
 		if err := v.put(tr, columnControlWrite{columnPinKey(v.s, request), graphColumnPinRecord{Token: token, Intent: intent, State: columnOwnerActive}}); err != nil {
 			return nil, err
 		}
@@ -727,7 +749,7 @@ func (v *graphColumnPins) finish(ctx context.Context, request string, token grap
 		}
 		if record.State != columnOwnerActive {
 			if record.TerminalRequest == request && record.TerminalKind == kind {
-				return nil, nil
+				return nil, v.s.h.historyColumnPinFinishIn(tr, token, kind, request)
 			}
 			return nil, errColumnExpired
 		}
@@ -749,6 +771,9 @@ func (v *graphColumnPins) finish(ctx context.Context, request string, token grap
 		record.State = kind
 		record.TerminalRequest = request
 		record.TerminalKind = kind
+		if err := v.s.h.historyColumnPinFinishIn(tr, token, kind, request); err != nil {
+			return nil, err
+		}
 		if err := v.put(tr, columnControlWrite{columnPinKey(v.s, token.Request), record}); err != nil {
 			return nil, err
 		}
@@ -874,6 +899,9 @@ func (v *graphColumnPins) reference(ctx context.Context, request, name, generati
 		}
 		if ref.Generation != "" && generation == "" {
 			credit = -1
+		}
+		if err := v.s.h.historyColumnReferenceIn(tr, request, ref, next, v.s); err != nil {
+			return nil, err
 		}
 		if err := v.putWithCredit(tr, credit, columnControlWrite{v.recordKey("reference", name), next}, columnControlWrite{v.recordKey("reference-request", request), graphColumnReferenceRequest{Intent: intent, Reference: next}}); err != nil {
 			return nil, err

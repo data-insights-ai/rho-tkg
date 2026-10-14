@@ -27,6 +27,9 @@ type graphColumnProgress struct {
 	Chain                        [32]byte
 	Previous                     outcome
 	EOF                          bool
+	// Historical full-source publication census remains distinct from physical
+	// retained metadata after an explicitly selected source retirement.
+	PublicationHistory [2]uint64 `json:",omitzero"`
 }
 type graphColumnManifest struct {
 	Generation          graphColumnGeneration
@@ -140,7 +143,7 @@ func (s *graphColumnStore) check(tr fdb.ReadTransaction, g graphColumnGeneration
 		}
 	}
 	for _, c := range []certificate{g.Initial, g.Cut} {
-		if err := s.h.verifyCut(tr, cut{c}); err != nil {
+		if err := s.h.verifyCutIdentity(tr, cut{c}); err != nil {
 			return err
 		}
 	}
@@ -162,7 +165,7 @@ func (s *graphColumnStore) progress(tr fdb.ReadTransaction, g graphColumnGenerat
 		return graphColumnProgress{}, errInvalid
 	}
 	for group := uint8(0); group < 2; group++ {
-		if state.Sequences[group] > g.Cut.Groups[group] || state.History[group] > state.Metadata[group].Versions {
+		if state.Sequences[group] > g.Cut.Groups[group] || state.History[group] > graphColumnPublicationHistory(state)[group] {
 			return graphColumnProgress{}, errInvalid
 		}
 		if quiescent {
@@ -213,6 +216,13 @@ func (s *graphColumnStore) begin(g graphColumnGeneration) error {
 			}
 			state.Metadata[group] = m
 		}
+		census, err := s.h.historyPublicationIn(tr, state.Metadata)
+		if err != nil {
+			return nil, err
+		}
+		if census != [2]uint64{state.Metadata[0].Versions, state.Metadata[1].Versions} {
+			state.PublicationHistory = census
+		}
 		l.Bytes += reserved
 		l.Generations++
 		if err := put(tr, s.key("ledger"), l); err != nil {
@@ -242,13 +252,16 @@ func (s *graphColumnStore) original(tr fdb.ReadTransaction, g graphColumnGenerat
 		return group, 0, errMismatch
 	}
 	bytesRead := uint64(0)
+	missing := false
 	check := func(key fdb.Key, expected []byte) error {
+		missing = false
 		actual, err := tr.Get(key).Get()
 		if err != nil {
 			return err
 		}
 		bytesRead += uint64(len(key) + len(actual))
 		if !bytes.Equal(actual, expected) {
+			missing = actual == nil
 			return errUnavailable
 		}
 		return nil
@@ -274,7 +287,14 @@ func (s *graphColumnStore) original(tr fdb.ReadTransaction, g graphColumnGenerat
 			return fdb.Key(fmt.Sprintf("%shistory/%016x/%x", s.h.prefix(write.Group), v.Round, write.Key))
 		}
 		if err := check(key(write.After), body); err != nil {
-			return group, 0, err
+			if !errors.Is(err, errUnavailable) || !missing {
+				return group, 0, err
+			}
+			extra, err := s.h.historyLineageIn(tr, write.Group, write.Key, write.After)
+			if err != nil {
+				return group, 0, err
+			}
+			bytesRead += extra
 		}
 		if write.Before != nil {
 			if write.Before.Round >= write.After.Round {
@@ -285,7 +305,14 @@ func (s *graphColumnStore) original(tr fdb.ReadTransaction, g graphColumnGenerat
 				return group, 0, err
 			}
 			if err := check(key(*write.Before), body); err != nil {
-				return group, 0, err
+				if !errors.Is(err, errUnavailable) || !missing {
+					return group, 0, err
+				}
+				extra, err := s.h.historyLineageIn(tr, write.Group, write.Key, *write.Before)
+				if err != nil {
+					return group, 0, err
+				}
+				bytesRead += extra
 			}
 		}
 	}
@@ -376,11 +403,17 @@ func graphColumnComplete(p graphColumnProgress) bool {
 		return false
 	}
 	for group := range 2 {
-		if p.Metadata[group].Groups != g.Cut.Groups[group] || p.Metadata[group].Floor != g.Cut.Round || p.History[group] != p.Metadata[group].Versions {
+		if p.Metadata[group].Groups != g.Cut.Groups[group] || p.Metadata[group].Floor != g.Cut.Round || p.History[group] != graphColumnPublicationHistory(p)[group] {
 			return false
 		}
 	}
 	return true
+}
+func graphColumnPublicationHistory(p graphColumnProgress) [2]uint64 {
+	if p.PublicationHistory != [2]uint64{} {
+		return p.PublicationHistory
+	}
+	return [2]uint64{p.Metadata[0].Versions, p.Metadata[1].Versions}
 }
 func graphColumnManifestFor(p graphColumnProgress) graphColumnManifest {
 	return graphColumnManifest{Generation: p.Generation, Metadata: p.Metadata, Chunks: p.Next, Rows: p.Rows, Bytes: p.Bytes, History: p.History, Chain: p.Chain}

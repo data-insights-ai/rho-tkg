@@ -97,10 +97,10 @@ func (h *harness) changes(from, to cut, pageSize int) ([]changeGroup, error) {
 		count := uint64(0)
 		for {
 			result, err := h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
-				if err := h.verifyCut(tr, from); err != nil {
+				if err := h.verifyCutIdentity(tr, from); err != nil {
 					return nil, err
 				}
-				if err := h.verifyCut(tr, to); err != nil {
+				if err := h.verifyCutIdentity(tr, to); err != nil {
 					return nil, err
 				}
 				if err := h.checkConfig(tr, coordinator); err != nil {

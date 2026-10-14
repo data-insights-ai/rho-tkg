@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -340,6 +341,11 @@ func (h *harness) execute(tr fdb.Transaction, x transaction, digest [32]byte) (o
 	if idOK {
 		return outcome{}, errMismatch
 	}
+	// Original replay precedes retirement-busy admission. A collector never
+	// changes the immutable result of an already committed/aborted request.
+	if e := h.historyWriteIn(tr); e != nil {
+		return outcome{}, e
+	}
 	ms := [2]metadata{}
 	current := [2]map[string]value{}
 	floor := x.Dependency
@@ -583,6 +589,11 @@ func (h *harness) fresh(scope []uint8, after *outcome) (cut, error) {
 			}
 			return cut{cert}, nil
 		}
+		// Existing immutable cut replay remains available. A new certificate must
+		// not change the collector's frozen metadata during durable retirement.
+		if err := h.historyWriteIn(tr); err != nil {
+			return nil, err
+		}
 		m := ms[scope[0]]
 		if m.Certificates >= h.config.Limits.Certificates || uint64(len(k)+len(b)) > h.config.Limits.Bytes-m.Bytes {
 			return nil, errLimit
@@ -608,7 +619,7 @@ func (h *harness) fresh(scope []uint8, after *outcome) (cut, error) {
 func sameCertificate(a, b certificate) bool {
 	return a.Graph == b.Graph && a.Topology == b.Topology && a.Epochs == b.Epochs && a.Round == b.Round && a.Groups == b.Groups && slices.Equal(a.Scope, b.Scope)
 }
-func (h *harness) verifyCut(tr fdb.ReadTransaction, c cut) error {
+func (h *harness) verifyCutIdentity(tr fdb.ReadTransaction, c cut) error {
 	r := c.record
 	if !validScope(r.Scope) || r.Round == 0 {
 		return errInvalid
@@ -629,10 +640,65 @@ func (h *harness) verifyCut(tr fdb.ReadTransaction, c cut) error {
 	}
 	return nil
 }
+func (h *harness) verifyCut(tr fdb.ReadTransaction, c cut) error {
+	if err := h.verifyCutIdentity(tr, c); err != nil {
+		return err
+	}
+	return h.historyCutIn(tr, c)
+}
 
 // at pages immutable retained history in FRESH native transactions. Fencing
 // forbids later history <=B; no FDB native read-version pin is held or assumed.
 func (h *harness) at(c cut, pageSize int, between func()) (snapshot, error) {
+	if h == nil || pageSize < 1 || pageSize > 128 || !validScope(c.record.Scope) {
+		return snapshot{}, errInvalid
+	}
+	result, err := h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+		s, err := h.historyRetentionIn(tr)
+		if s == nil {
+			return nil, err
+		}
+		return s, err
+	})
+	if err != nil {
+		return snapshot{}, err
+	}
+	if result == nil {
+		return h.atLegacy(c, pageSize, between)
+	}
+	s := result.(*graphHistoryRetention)
+	owner, err := s.newRead(c, nil)
+	if err != nil {
+		return snapshot{}, err
+	}
+	_, err = h.db.Transact(func(tr fdb.Transaction) (any, error) { return nil, s.acquireIn(tr, owner.id) })
+	if err != nil {
+		err = graphHistoryCommitError(err)
+		if errors.Is(err, errUnknown) {
+			return snapshot{}, errors.Join(err, historyReadCleanup(owner))
+		}
+		return snapshot{}, err
+	}
+	view := snapshot{Values: [2]map[string]value{{}, {}}}
+	_, err = owner.walkPages(context.Background(), min(pageSize, s.binding.Policy.PageRows), func(row graphCostRawRow) error {
+		key, v, err := h.graphHistoryRow(row, c.record.Round)
+		if err != nil {
+			return err
+		}
+		if v.Deleted {
+			delete(view.Values[row.Group], key)
+		} else {
+			view.Values[row.Group][key] = v
+		}
+		return nil
+	}, between)
+	err = errors.Join(err, historyReadCleanup(owner))
+	if err != nil {
+		return snapshot{}, err
+	}
+	return view, nil
+}
+func (h *harness) atLegacy(c cut, pageSize int, between func()) (snapshot, error) {
 	s := snapshot{Values: [2]map[string]value{{}, {}}}
 	if h == nil || pageSize < 1 || pageSize > 128 || !validScope(c.record.Scope) {
 		return s, errInvalid

@@ -470,7 +470,9 @@ func (h *harness) graphCostParallelApply(parent context.Context, job graphCostPa
 				finalErr = errUnavailable
 				break
 			}
-			if !submission.Retryable && !submission.MaybeCommitted {
+			// Durable retirement-busy is graph authority, not an SDK predicate or
+			// ABORT. Fresh retention runner/artifact wiring must record it separately.
+			if !submission.Retryable && !submission.MaybeCommitted && !errors.Is(submission.cause, errHistoryBusy) {
 				finalErr = submission.cause
 				break
 			}

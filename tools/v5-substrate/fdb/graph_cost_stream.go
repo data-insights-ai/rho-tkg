@@ -67,7 +67,7 @@ func newGraphCostStream(h *harness, from, to cut, p graphCostStreamPolicy, emit 
 func (s *graphCostStream) check(tr fdb.ReadTransaction, captured bool) ([2]metadata, error) {
 	var actual [2]metadata
 	for _, c := range []cut{s.from, s.to} {
-		if err := s.h.verifyCut(tr, c); err != nil {
+		if err := s.h.verifyCutIdentity(tr, c); err != nil {
 			return actual, err
 		}
 	}
@@ -141,6 +141,14 @@ func (s *graphCostStream) page(group uint8, begin, end fdb.Key, kind byte) ([]gr
 	result, err := s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
 		if _, err := s.check(tr, true); err != nil {
 			return nil, err
+		}
+		if kind != 'D' {
+			if err := s.h.historyCutIn(tr, s.from); err != nil {
+				return nil, err
+			}
+			if err := s.h.historyCutIn(tr, s.to); err != nil {
+				return nil, err
+			}
 		}
 		rows, err := tr.GetRange(fdb.KeyRange{Begin: begin, End: end}, fdb.RangeOptions{Limit: s.policy.PageRows}).GetSliceWithError()
 		if err != nil {
