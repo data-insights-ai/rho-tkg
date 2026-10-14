@@ -26,7 +26,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   installs a Building index first (writes fold into it and record their IDs, prunes decline it, it is not persisted
   or imaged), builds unlocked, re-reads every row of the recorded IDs, then merges and publishes, as
   `CreateTemporalIndex` does (`TestCreateRelTemporalIndex_WriteBetweenSnapshotAndInstall`,
-  `TestCreateRelTemporalIndex_UpdateMidBuildHistoryFlushedLate`).
+  `TestCreateRelTemporalIndex_UpdateMidBuildHistoryFlushedLate`). An ID first written after the re-read took the
+  recorded IDs, whose rows the build never read (a deleted relationship with history, given a version or re-created
+  in that window), gets its history folded at the install under the lock; before, its envelope held that one write's
+  row and a prune at an older row's instant dropped it (`TestCreateRelTemporalIndex_PutRelVersionOnDeletedRelAfter3aCollect`).
+  The merge no longer records every built ID in the mutation set it is about to clear.
+- **Badger temporal indexes cover a re-created ID's history** (relationship type and node label indexes): creating
+  a relationship or node whose ID was deleted with its history kept, under a published index that did not cover the
+  ID (deleted before the index was built or before a reopen rebuilt it), added the new row alone, so a prune at an
+  old row's instant dropped the ID while its history held a row there. The create doors (`PutRelationship` and its
+  scoped / co-located / foreign-incoming forms, `PutRelationshipsBatch`, `PutRelEntityAndOut`, `PutNode`, the
+  `PutNodesBatch` family) now fold the ID's history first; the RAM history-presence set answers "no history" for a
+  new ID without a read, and index creation builds that set before taking the lock
+  (`TestRelTemporalIndex_RecreateDeletedRelAfterPublish{,Batch}`,
+  `TestTemporalIndex_RecreateDeletedNodeAfterPublish{,Batch}`).
 
 ## [4.51.5] - 2026-10-13
 

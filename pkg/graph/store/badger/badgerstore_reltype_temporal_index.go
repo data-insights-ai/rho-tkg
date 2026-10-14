@@ -57,6 +57,11 @@ func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 	if err := storecontract.ValidateRelTypeToken(relType); err != nil {
 		return err
 	}
+	// Build the history presence set before any lock: the install and every
+	// later create of an uncovered ID ask it under idxMu.
+	if err := bs.ensureHistoryPresenceBuilt(&bs.histRelPresence, storepkg.KeyHistRel); err != nil {
+		return fmt.Errorf("graph: create relationship temporal index: %w", err)
+	}
 
 	// Phase 1: install a Building index and snapshot the type's IDs. From here
 	// every write of the type extends the live index and records its ID
@@ -90,8 +95,7 @@ func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 	// (current row and whole history, deleted ones included) without the lock.
 	// A write before the re-read is in what it reads; a write after it folds
 	// its new row into the live index itself, and its previous row is one the
-	// re-read or an earlier tracked write already folded. An ID first written
-	// after this point was read by Phase 2 in its pre-build state.
+	// re-read or an earlier tracked write already folded.
 	bs.idxMu.Lock()
 	written := slices.Collect(maps.Keys(live.Mutated))
 	live.Mutated = make(map[snowflake.ID]struct{})
@@ -102,17 +106,79 @@ func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 	}
 
 	// Phase 3b: merge (a union, so the order against the live writes does
-	// not matter) and publish.
+	// not matter) and publish. An ID first written after the Phase 3a take
+	// whose earlier rows Phase 2 did not read (it had no current row when the
+	// walk reached it: deleted, history kept) has only that write's row in the
+	// live index: its history is folded here, under the lock, so no write can
+	// land between the read and the publish. A current row such an ID has was
+	// made during the build and folded by its write.
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
 	if err := requireTemporalIndexCurrentForCreate(bs.relTypeTemporalIndexes, relType, live); err != nil {
 		return err
 	}
+	late := live.Mutated
+	live.ClearMutationTracking() // the merge below records nothing
 	built.ForEachEntry(func(e indexpkg.IntervalEntry) { live.Extend(e.ID, e.From, e.To) })
 	refold.ForEachEntry(func(e indexpkg.IntervalEntry) { live.Extend(e.ID, e.From, e.To) })
+	for id := range late {
+		if _, _, ok := built.EnvelopeOf(id); ok {
+			continue
+		}
+		if _, _, ok := refold.EnvelopeOf(id); ok {
+			continue
+		}
+		if err := bs.foldRelHistoryLocked(live, id); err != nil {
+			deleteTemporalIndexIfCurrent(bs.relTypeTemporalIndexes, relType, live)
+			return fmt.Errorf("graph: create relationship temporal index: %w", err)
+		}
+	}
 	live.Building = false
-	live.ClearMutationTracking()
 	bs.persistRelTypeTemporalIndexDefs()
+	return nil
+}
+
+// foldRelHistoryLocked extends ti by every history row of id; the RAM history
+// presence set answers "has none" without a read. Caller holds idxMu.Lock (lock
+// order idxMu -> presence buildMu -> wbMu; the history read takes only wbMu and
+// a read transaction).
+func (bs *Store) foldRelHistoryLocked(ti *indexpkg.TemporalIndex, id snowflake.ID) error {
+	has, err := bs.hasHistory(&bs.histRelPresence, storepkg.KeyHistRel, id, bs.probeHistoryPresence)
+	if err != nil || !has {
+		return err
+	}
+	hist, err := bs.getRelHistoryByPrefix(storepkg.HistRelPrefix(id))
+	if err != nil {
+		return err
+	}
+	for _, hv := range hist {
+		if hv != nil {
+			from, to := indexpkg.RelTemporalBounds(id, hv.Temporal())
+			ti.Extend(id, from, to)
+		}
+	}
+	return nil
+}
+
+// foldRecreatedRelHistoryLocked is called by a create door before it adds r:
+// when the published index of r's type does not cover id, id may be a deleted
+// relationship whose history is still on disk (deleted before the index was
+// built, or before a reopen rebuilt it), and the new row alone would make the
+// envelope vouch for less than the ID holds. Its history is folded first — the
+// rule PutRelVersion keeps by leaving such an ID uncovered. A Building index
+// needs nothing: the create records the ID and the build reads its rows.
+// Caller holds idxMu.Lock.
+func (bs *Store) foldRecreatedRelHistoryLocked(r *types.Relationship, id snowflake.ID) error {
+	ti := bs.relTypeTemporalIndexes[r.TypeToken().Value()]
+	if ti == nil || ti.Building {
+		return nil
+	}
+	if _, _, covered := ti.EnvelopeOf(id); covered {
+		return nil
+	}
+	if err := bs.foldRelHistoryLocked(ti, id); err != nil {
+		return fmt.Errorf("graph: relationship temporal index history fold: %w", err)
+	}
 	return nil
 }
 
