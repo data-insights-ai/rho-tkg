@@ -70,6 +70,8 @@ type Ops interface {
 	ForEachNodeEffectiveByLabels(labels []string, pin types.Instant, fn func(NodeSegment) bool) error
 	ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom types.Instant, fn func(RelSegment) bool) error
 	ForEachNodeEffectiveByLabelsFrom(labels []string, pin, validFrom types.Instant, fn func(NodeSegment) bool) error
+	RelsEffectivePage(ctx context.Context, pin Pin, f Filter, after types.RelID, limit int) ([]RelSegment, types.RelID, error)
+	NodesEffectivePage(ctx context.Context, pin Pin, f Filter, after types.NodeID, limit int) ([]NodeSegment, types.NodeID, error)
 
 	// Cascade / timeline edit: an append-only valid-time correction. props is
 	// a patch (nil deletes a key) applied to the state valid in each piece of

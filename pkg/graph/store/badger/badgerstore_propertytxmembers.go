@@ -1,6 +1,7 @@
 package badger
 
 import (
+	"cmp"
 	"fmt"
 	"sync"
 	"time"
@@ -41,7 +42,7 @@ var (
 // per-member minimum, so scan and concurrent records commute. The result installs
 // only if generation and sidecar are unchanged; Clear, index drop, retention purge
 // and exact erasure drop the sidecars and move the generation.
-type propTxSidecar[ID comparable] struct {
+type propTxSidecar[ID cmp.Ordered] struct {
 	members *indexpkg.PropertyTxMembers[ID]
 	built   bool
 }

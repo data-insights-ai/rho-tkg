@@ -102,6 +102,11 @@ type Core struct {
 	// shard; its rel form always declines (no rel property index).
 	relPropTxMembers  storepkg.RelPropertyTxMembershipCapability
 	nodePropTxMembers storepkg.NodePropertyTxMembershipCapability
+	// relPropTxPage / nodePropTxPage page those sidecars in ID order above a
+	// cursor (backlog 69, the paged effective doors), resolved with the same
+	// discipline; nil = every type takes its ever-member gather.
+	relPropTxPage  storepkg.RelPropertyTxMemberPageCapability
+	nodePropTxPage storepkg.NodePropertyTxMemberPageCapability
 	// chainLoadTestHook, when set (tests only), is called once per candidate a
 	// generic temporal door hands to the per-entity resolver
 	// (findNodeVersionForOpts / findRelVersionForOpts), and once per entity a
@@ -1652,6 +1657,41 @@ func nodePropertyTxMembershipCapability(store storepkg.MandatoryStore) storepkg.
 	return cap
 }
 
+// relPropertyTxMemberPageCapability resolves the backlog-69 paged form of the
+// rel property membership sidecar with relPropertyTxMembershipCapability's
+// discipline (a wrapper that merely embeds a native store is forced to nil).
+func relPropertyTxMemberPageCapability(store storepkg.MandatoryStore) storepkg.RelPropertyTxMemberPageCapability {
+	cap, ok := store.(storepkg.RelPropertyTxMemberPageCapability)
+	if !ok {
+		return nil
+	}
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.RelPropertyTxMemberPageCapability)(nil)).Elem(),
+		"ForEachRelPropertyTxMemberAfter") {
+		return nil
+	}
+	return cap
+}
+
+// nodePropertyTxMemberPageCapability is the node twin of
+// relPropertyTxMemberPageCapability.
+func nodePropertyTxMemberPageCapability(store storepkg.MandatoryStore) storepkg.NodePropertyTxMemberPageCapability {
+	cap, ok := store.(storepkg.NodePropertyTxMemberPageCapability)
+	if !ok {
+		return nil
+	}
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.NodePropertyTxMemberPageCapability)(nil)).Elem(),
+		"ForEachNodePropertyTxMemberAfter") {
+		return nil
+	}
+	return cap
+}
+
 // changeFeedCapability resolves the optional change-log capability. Only the
 // exact native single-shard backends (memory, badger) own a coherent global
 // LSN sequence. A wrapper that merely EMBEDS a native store (e.g. a future
@@ -2066,6 +2106,8 @@ func New(config Config) (*Core, error) {
 	c.relTypeTxLookup = relTypeTxMemberLookupCapability(store)
 	c.relPropTxMembers = relPropertyTxMembershipCapability(store)
 	c.nodePropTxMembers = nodePropertyTxMembershipCapability(store)
+	c.relPropTxPage = relPropertyTxMemberPageCapability(store)
+	c.nodePropTxPage = nodePropertyTxMemberPageCapability(store)
 	c.nodeBeliefWatermark = nodeBeliefWatermarkCapability(store)
 	c.relBeliefWatermark = relBeliefWatermarkCapability(store)
 	c.temporalMetaHistory = temporalMetaHistoryCapability(store)

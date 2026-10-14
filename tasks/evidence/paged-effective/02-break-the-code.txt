@@ -1,0 +1,7 @@
+keepRow always true: CAUGHT by TestEffectivePage_CostFollowsPage, TestEffectivePage_CursorUnderConcurrentWrites, TestEffectivePage_DifferentialRandom, TestEffectivePage_ValueChangeTwoPhase
+valid filter ignored (nodes): CAUGHT by TestEffectivePage_DifferentialRandom, TestEffectivePage_ValueChangeTwoPhase
+merge without dedupe: CAUGHT by TestEffectivePage_DifferentialRandom
+sidecar stops after one fetch: CAUGHT by TestEffectivePage_CostFollowsPage
+fallback ignores the cursor: CAUGHT by TestEffectivePage_CostFollowsPage, TestEffectivePage_CursorUnderConcurrentWrites, TestEffectivePage_DifferentialRandom, TestEffectivePage_ValueChangeTwoPhase
+ordered view not maintained: CAUGHT by TestEffectivePage_DifferentialRandom, TestPropertyTxMembers_MembersAfter
+next off by one page rule: CAUGHT by TestEffectivePage_CostFollowsPage, TestEffectivePage_CursorUnderConcurrentWrites, TestEffectivePage_DifferentialRandom

@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Paged effective scans with a property filter: `Temporal().RelsEffectivePage(ctx, pin, filter, after, limit)` /
+  `NodesEffectivePage`** (backlog 69, ai-soc `GET /api/v1/tkg/asof`). One keyset page (ID > `after`, at most `limit`
+  entities, `next` = the last ID of a full page) of `ForEachRelEffective` / `ForEachNodeEffective` at `pin.Tx`
+  keeping the segments whose row carries `filter.Prop` = `filter.Eq` (index-key equality; a list, map or nil `Eq`
+  is `types.ErrUnsupportedValueType`) and that meet an optional valid instant, interval or open-ended
+  `[ValidStart, ∞)`, over every relationship type (node label); `limit` is 1..`temporal.MaxPageLimit` (10,000). Candidates come from the existing
+  transaction-time property membership sidecar (backlog 8) of each type's declared `(type, Prop)` index, now with
+  an ordered view per value (`PropertyTxMembers.OrderValue` / `MembersAfter`: opened by a value's first page, kept
+  by every write; 8.06 B per member over 1,000,000 members, built into exact-capacity chunks) so a page resumes at
+  the cursor instead of enumerating the value; the types merge in ID order. A type without the index (and every
+  type on tiered, which keeps no relationship property index) contributes its ever-members at the pin, gathered
+  per page, and a page reads their timelines until it fills (up to one effective walk of that type): declare the
+  index on every type and label that carries the property. New optional store capabilities
+  `RelPropertyTxMemberPageCapability` / `NodePropertyTxMemberPageCapability` (memory, badger, sharded). 100,000
+  relationships over 10 estates, one page of 500: 0.24 ms (memory) / 0.2 ms (badger) against 55 ms / 290-430 ms
+  for the filtered full walk. Differential against the full walk at random pins and valid filters with value
+  changes, deletes, closes, excise, interval corrections, retractions and writes between pages, on memory, badger,
+  sharded and tiered: `tasks/evidence/paged-effective/`.
+
 ## [4.54.0] - 2026-10-14
 
 ### Added

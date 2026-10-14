@@ -1,0 +1,26 @@
+--- FAIL: TestEffectivePage_Errors (0.00s)
+panic: runtime error: makeslice: cap out of range [recovered, repanicked]
+
+goroutine 52 [running]:
+testing.tRunner.func1.2({0x16c3340, 0x19ac2d0})
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:1974 +0x232
+testing.tRunner.func1()
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:1977 +0x349
+panic({0x16c3340?, 0x19ac2d0?})
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/runtime/panic.go:860 +0x13a
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.mergePage[...]({0x0, 0x0, 0x801e4019238}, 0x4000000000000001?)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab5f601499f0b38cf/pkg/graph/internal/core/effective_page.go:72 +0x45
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*TempOps).RelsEffectivePage.func3()
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab5f601499f0b38cf/pkg/graph/internal/core/effective_page.go:235 +0x3d
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).readUnderRLock(0x801e4256008, 0x801e4019428)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab5f601499f0b38cf/pkg/graph/internal/core/locks.go:86 +0xbc
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*TempOps).RelsEffectivePage(0x0?, {0x19b8088, 0x2c11b60}, {0x0?, 0x0?, 0x0?, 0x0?}, {{0x18e6592, 0x6}, {0x1663540, ...}}, ...)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab5f601499f0b38cf/pkg/graph/internal/core/effective_page.go:233 +0x3c7
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.TestEffectivePage_Errors(0x801e400ed88)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ab5f601499f0b38cf/pkg/graph/internal/core/effective_page_test.go:658 +0x8cb
+testing.tRunner(0x801e400ed88, 0x199a2f0)
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0xea
+created by testing.(*T).Run in goroutine 1
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0x4c5
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.036s
+FAIL
