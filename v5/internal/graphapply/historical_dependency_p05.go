@@ -53,7 +53,7 @@ func (v graphReadConditionValue) valid() bool {
 	}
 	for i, p := range v.parts {
 		c := p.certificate
-		if c.scope.semantic != conditionalGraphSemanticContractID() || p.prefix < c.index || p.prefix == math.MaxUint64 || p.authority == ([32]byte{}) {
+		if !conditionalGraphAgreement(c.scope.semantic) || p.prefix < c.index || p.prefix == math.MaxUint64 || p.authority == ([32]byte{}) {
 			return false
 		}
 		if _, err := encodeGraphCertificate(c); err != nil {
@@ -173,7 +173,7 @@ func (c *crossProcessCoordinator) OpenForUpdate(ctx context.Context, request gra
 	if c == nil || c.host == nil || c.host.machine == nil || ctx == nil {
 		return nil, errInvalid
 	}
-	if c.host.machine.SemanticContractID() != conditionalGraphSemanticContractID() {
+	if !conditionalGraphAgreement(c.host.machine.SemanticContractID()) {
 		return nil, errGraphCutScope
 	}
 	read, err := c.OpenCertified(ctx, request, nil)
@@ -413,7 +413,7 @@ func (s *graphPeerService) captureConditional(ctx context.Context, r graphSource
 	if rows < 16 || byteBudget < 32768 || output < 32768 {
 		return nil, errLimit
 	}
-	if s.host.machine.SemanticContractID() != conditionalGraphSemanticContractID() || cert.scope != s.peer.scope {
+	if !conditionalGraphAgreement(s.host.machine.SemanticContractID()) || cert.scope != s.peer.scope {
 		return nil, errInvalid
 	}
 	question := allocationQuery{kind: observeConfiguration, nonce: r.nonce}
@@ -738,7 +738,7 @@ func (m *declaredMaterializer) checkConditionalPrepare(q *reader, manifest cross
 	if manifest.condition == nil {
 		return true, nil
 	}
-	if m.SemanticContractID() != conditionalGraphSemanticContractID() {
+	if !conditionalGraphAgreement(m.SemanticContractID()) {
 		return false, errInvalid
 	}
 	part, ok := manifest.condition.part(m.ns.partition)

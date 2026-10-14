@@ -265,7 +265,11 @@ func (m *declaredMaterializer) validateRestoredState(q *reader, initializedOnly 
 		if initializedOnly {
 			return errNotInitialized
 		}
-		return m.seed(q)
+		err := m.seed(q)
+		if err == nil {
+			err = m.checkRetainedPinLedger(q)
+		}
+		return err
 	}
 	_, err = m.initialized(q)
 	if err == nil && crossGraphAgreement(m.SemanticContractID()) {
@@ -276,6 +280,9 @@ func (m *declaredMaterializer) validateRestoredState(q *reader, initializedOnly 
 	}
 	if err == nil {
 		err = m.checkRangeMoveState(q)
+	}
+	if err == nil {
+		err = m.checkRetainedPinLedger(q)
 	}
 	return err
 }
@@ -440,6 +447,9 @@ func (m *declaredMaterializer) Stage(entry replica.Entry, budget raftlog.Applica
 		return b, nil
 	}
 
+	if isGraphPinWire(entry.Data) {
+		return m.stageRetainedPin(&q, entry, budget)
+	}
 	if isRangeMoveWire(entry.Data) {
 		return m.stageRangeMove(&q, entry, budget)
 	}

@@ -36,7 +36,7 @@ func (m *declaredMaterializer) crossManifest(q *reader, wire []byte) (crossManif
 // catalog validation. Completed replay can inspect a supplied incoming-bank
 // view without borrowing the active store's historical catalog.
 func (m *declaredMaterializer) validateCrossManifestBinding(manifest crossManifest, cfg genesisAllocationConfig) error {
-	if manifest.condition != nil && m.SemanticContractID() != conditionalGraphSemanticContractID() {
+	if manifest.condition != nil && !conditionalGraphAgreement(m.SemanticContractID()) {
 		return errInvalid
 	}
 	digest, err := cfg.digest()

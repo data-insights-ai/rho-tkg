@@ -152,7 +152,7 @@ func (c *crossProcessCoordinator) run(ctx context.Context, id requestID, ops []g
 	}
 	l := c.host.machine.limits
 	if condition != nil {
-		if c.host.machine.SemanticContractID() != conditionalGraphSemanticContractID() {
+		if !conditionalGraphAgreement(c.host.machine.SemanticContractID()) {
 			return result, errGraphCutScope
 		}
 	}

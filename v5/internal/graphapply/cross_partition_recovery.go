@@ -108,6 +108,23 @@ func (m *declaredMaterializer) VerifyApplicationRecovery(ctx context.Context, da
 	if len(data) == 0 {
 		return purpose, nil
 	}
+	if isGraphPinWire(data) {
+		if !m.retainedPins() {
+			return purpose, errInvalid
+		}
+		l := m.limits.allocation
+		l.readRows = min(l.readRows, m.limits.sourceRows)
+		l.readBytes = min(l.readBytes, m.limits.sourceBytes)
+		q := reader{ctx: ctx, view: view, ns: m.ns, base: base, limits: l, bytes: cap(base.Image)}
+		if err := joinGraphOutputBudget(&q, graphRequest{}, 4096+8*len(data), m.limits); err != nil {
+			return purpose, err
+		}
+		c, err := decodeGraphPinCommand(data)
+		if err != nil {
+			return purpose, err
+		}
+		return m.retainedPinPurpose(&q, c, data)
+	}
 	if isRangeMoveWire(data) {
 		command, err := decodeRangeMoveCommand(data)
 		if err != nil || !m.rangeMoves() || command.scope != m.scope() {

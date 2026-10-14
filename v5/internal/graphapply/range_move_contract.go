@@ -19,7 +19,7 @@ func (m *declaredMaterializer) rangeMoves() bool {
 }
 
 func rangeMoveGraphAgreement(id raftlog.ApplicationSemanticContractID) bool {
-	return id == rangeMoveSemanticContractID() || id == conditionalGraphSemanticContractID()
+	return id == rangeMoveSemanticContractID() || conditionalGraphAgreement(id)
 }
 
 func newRangeMoveMaterializer(s *raftlog.Store, n namespace, d graphstore.OwnershipDeclaration, l materializerLimits) (*declaredMaterializer, error) {
