@@ -805,7 +805,8 @@ func (a *API) DiffCallback(t1, t2 types.Instant, h DiffHandlers) error {
 //
 // Deprecated: the start this method gives a row without a valid-from changes in
 // v4.52.3 (backlog 62): such a row is then valid from its TxFrom, no longer
-// from its ID's mint instant; why and how to adapt: NodeMatchesValidTime. The
+// from its ID's mint instant, because creates (wall clock) and updates (commit
+// clock) used two clocks that disagree under bursts; how to adapt: NodeMatchesValidTime. The
 // method itself stays; this marker is removed again in v4.52.3.
 func (a *API) NodeInterval(n *types.Node) (start, end types.Instant, err error) {
 	ops, err := a.ready()
@@ -819,7 +820,8 @@ func (a *API) NodeInterval(n *types.Node) (start, end types.Instant, err error) 
 //
 // Deprecated: the start this method gives a row without a valid-from changes in
 // v4.52.3 (backlog 62): such a row is then valid from its TxFrom, no longer
-// from its ID's mint instant; why and how to adapt: NodeMatchesValidTime. The
+// from its ID's mint instant, because creates (wall clock) and updates (commit
+// clock) used two clocks that disagree under bursts; how to adapt: NodeMatchesValidTime. The
 // method itself stays; this marker is removed again in v4.52.3.
 func (a *API) RelInterval(r *types.Relationship) (start, end types.Instant, err error) {
 	ops, err := a.ready()
@@ -865,7 +867,8 @@ func (a *API) NodeMatchesValidTime(n *types.Node, opts storepkg.QueryOpts) bool 
 //
 // Deprecated: the start this method gives a row without a valid-from changes in
 // v4.52.3 (backlog 62): such a row is then valid from its TxFrom, no longer
-// from its ID's mint instant; why and how to adapt: NodeMatchesValidTime. The
+// from its ID's mint instant, because creates (wall clock) and updates (commit
+// clock) used two clocks that disagree under bursts; how to adapt: NodeMatchesValidTime. The
 // method itself stays; this marker is removed again in v4.52.3.
 func (a *API) RelMatchesValidTime(r *types.Relationship, opts storepkg.QueryOpts) bool {
 	ops, err := a.ready()

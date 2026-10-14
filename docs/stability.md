@@ -35,6 +35,8 @@ func (g *Graph) SomeMethod() { ... }
 
 Removals and breaking changes land only at major-version boundaries or after a documented, released deprecation period.
 
+A bug fix that makes a door return the answer its documented contract (or the shared resolver it must agree with) already promises is not a behaviour change under this ritual: it ships in a patch, named under CHANGELOG "Fixed". Example: v4.52.2 aligned `NodeMatchesValidTime` / `RelMatchesValidTime` / `NodeInterval` / `RelInterval` and `RelateNodes` / `RelateRels` with `NodeAt` for a later version without a valid-from.
+
 ## Documented Exceptions To The Deprecation Ritual
 
 - **v4.46.0, the record doors' answer after a bounded cascade.** `NodeAsOf` / `RelAsOf` / `NodesAsOf` / `RelsAsOf`
