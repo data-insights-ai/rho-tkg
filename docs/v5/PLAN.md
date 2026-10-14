@@ -960,14 +960,18 @@ source-delta records and reader qualifications remain immutable history. Histori
 limits; v4.51.2 fixes those reader paths. A current reader cannot recover source
 bytes already lost by older writers, and source-history ambiguity remains explicit.
 
-The current source-only v4.51.5 contracts/signatures and pending qualification are recorded in
+The current v4.51.5 source contracts and qualification scope are recorded in
 [consumer contracts](reference/consumer-contracts.json) and
 [migration obligations](reference/consumer-migration.json). The ten narrow migration
-gates must be requalified against the integrated v4.51.5 root. The ten-gate migration
-receipt and three bounded compatibility lanes at `9e805ddc` qualify historical
-v4.51.4 source only; archived receipts and consumer pins remain unchanged.
-Exact upstream v4.51.5 CI and source equivalence are recorded separately from
-merged-source runtime and V6 acceptance. The historical source contracts are retained in
+gates pass at integrated `da5d32e6` with 96.2% overall coverage and 100% for both
+preflight functions, using existing nonempty node/relationship cases; the
+[new receipt](../../tools/v5-migrate/evidence/main4515-da5d32e6.json) retains the
+initial tools setup refusal and corrective run. New per-type-retention/preflight
+refusal cases, destination import, consumer obligations and full V6 remain open.
+The ten-gate migration receipt and three bounded compatibility lanes at
+`9e805ddc` remain historical v4.51.4 proof; archived receipts and consumer pins
+are unchanged. Exact upstream CI/source equivalence is separate from whole-root
+runtime and phase acceptance. The historical source contracts are retained in
 [the importer handover](../../tasks/v4-changes-for-v5-importer-20261010.md).
 Preserve raw audit/author/signature/source-time evidence, original hashes and
 format/writer provenance separately from v5 revision IDs and synthetic import

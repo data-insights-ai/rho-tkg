@@ -13,8 +13,10 @@ The current source extension is main `c23c8b04`/v4.51.5, recorded in
 Its scoped relationship retention, state column/zero-ordinal contract and
 history accelerators add obligations to this historical 45-family inventory.
 The [source reconciliation receipt](../tasks/evidence/main4515-integration-20261014/receipt.json)
-separates exact upstream CI/source equivalence from pending integrated-reader
-and consumer qualification; older inventories and acceptance pins remain unchanged.
+separates exact upstream CI/source equivalence from broader reader and consumer
+qualification. Existing retained-state preflight cases subsequently pass the ten
+narrow gates at `da5d32e6` (see [module receipt](../tools/v5-migrate/evidence/main4515-da5d32e6.json));
+older inventories and acceptance pins remain unchanged.
 
 **Consumers cannot switch their graph engine to v5 yet.** Only
 `github.com/data-insights-ai/rho-tkg/v5/pkg/temporal` and `/pkg/types` are public.

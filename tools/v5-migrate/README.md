@@ -40,11 +40,18 @@ whole-root or V6 acceptance. Dated source checkpoints and historical observation
 remain unchanged. Live read snapshots/open images are source accelerators, never
 an import cut or proof of missing history.
 
-The current source is v4.51.5/main `c23c8b04`. Local replacements select its
-integrated reader; its ten narrow migration gates remain pending. The historical
-v4.51.4 receipt above and [finite reader checks](../../tasks/evidence/current-reader-9e805ddc-20261014/receipt.json)
-remain pinned to `9e805ddc`. Upstream v4.51.5 CI success and exact affected-file
-source equivalence do not replace merged-source preflight qualification.
+The current v4.51.5/main `c23c8b04` reader is narrowly requalified at integrated
+root `da5d32e6` by the [ten-gate receipt](evidence/main4515-da5d32e6.json) and
+[raw archive](evidence/main4515-da5d32e6.tar.gz). All ten existing module gates
+passed with Go 1.26.9 darwin/arm64 and verified reused pinned scanners, bounded
+serially to 180 seconds/4096 MiB per command. Existing nonempty node/relationship
+cases ran; coverage is 96.2% overall and 100% for both preflight functions.
+An initial cache-only tools attempt refused Go's metadata lookup; its failure is
+retained, then only the four remaining targets ran in the original environment.
+All frozen source and scanner hashes stayed unchanged. The historical v4.51.4
+receipt above and [finite reader checks](../../tasks/evidence/current-reader-9e805ddc-20261014/receipt.json)
+remain pinned to `9e805ddc`. This qualifies the existing per-entity mapping cases,
+without whole-root or V6 acceptance; current-source consumer obligations remain open.
 Relationship retention now refuses affected old pins; preflight does not capture
 global source watermark families or perform import. Per-type retention, state
 column cuts and zero temporal ordinals have explicit consumer obligations in

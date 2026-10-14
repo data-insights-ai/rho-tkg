@@ -493,9 +493,9 @@
     "release": "v4.51.5",
     "previous_integrated_main": "a1248ffc9fcd4d2fd9425de8b578feb88c46b016",
     "extends_historical_source_delta": "Every prior source object is retained unchanged in source_delta_history, including v4.51.4; archived consumer pins are unchanged.",
-    "evidence_level": "Source-only reconciliation. Exact upstream CI proof is separate; merged-source runtime, adapter, importer and phase acceptance remain pending.",
-    "qualification": "Current integrated v4.51.5 reader qualification PENDING. Historical v4.51.4 ten-gate migration receipt and three finite compatibility lanes at9e805ddc remain source-qualified history.",
-    "dependencies": "Root/v5 go.mod/go.sum unchanged upstream; CI race scheduling changed. Migration requires v4.51.5 with existing local root/v5 replacements; no dependency download/compiler/scanner execution after9e runtime lease.",
+    "evidence_level": "Source reconciliation with separately recorded narrow current retained-state preflight qualification. Exact upstream CI is separate; broader root runtime, consumer adapters, destination import and phase acceptance remain pending.",
+    "qualification": "Existing retained-state PreflightNode/PreflightRel mapping narrowly QUALIFIED at integrated da5d32e6 by tools/v5-migrate/evidence/main4515-da5d32e6.json: all 10 module gates PASS, 96.2% overall, 100% both preflight functions. Initial cache-only tools refusal and corrective four targets retained. Existing nonempty cases only; new per-type-retention/preflight refusal fixture, destination importer, consumer execution and V6 remain pending. Historical receipts/source objects unchanged.",
+    "dependencies": "Root/v5 go.mod/go.sum unchanged upstream; CI race scheduling changed. Migration requires v4.51.5 with existing local root/v5 replacements. Source-qualified Go1.26.9 module gates/scanners passed at da5d32e6; verified prior scanner binaries stayed identical after cached pinned tools target. No new broad/root Go tests or dependency upgrade.",
     "obligations": [
       {
         "id": "v4515-scoped-relationship-retention",
