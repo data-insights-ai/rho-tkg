@@ -687,6 +687,9 @@ func snapshotRecoveryVersion(m ApplicationSnapshotManifest) byte {
 	return byte(m.Version - 4)
 }
 func (v snapshotVerifier) completeRetentionRuns(m ApplicationSnapshotManifest) error {
+	if m.Version >= 5 && v.recoveryThrough != m.Index {
+		return ErrCorrupt
+	}
 	for i, index := range v.envelopes {
 		floor := uint64(0)
 		if m.Version == 7 {

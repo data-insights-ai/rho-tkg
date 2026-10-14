@@ -161,6 +161,30 @@ func TestApplicationRetentionContractMetadataAndLegacyRefusal(t *testing.T) {
 	if err := missing.completeRetentionRuns(manifest); !errors.Is(err, ErrCorrupt) {
 		t.Fatal("required semantic anchor was omitted", err)
 	}
+	// Equal recovery row count/bytes cannot replace the final required root
+	// with an extra old row below the floor during source BuildManifest.
+	missingRecovery := snapshotVerifier{digest: snapshotSeed(manifest)}
+	for _, frame := range frames {
+		key, raw := frame.key, frame.raw
+		if key[0] == recoveryRootTag {
+			index := binary.BigEndian.Uint64(key[1:]) - 1
+			if index == 9 {
+				index = 1
+			}
+			key = appIndexKey(recoveryRootTag, index)
+			raw = appFrame(key, rs, false)
+		}
+		missingRecovery, err = missingRecovery.accept(manifest, key, raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if missingRecovery.recoveryRows != state.recoveryRows || missingRecovery.recoveryBytes != state.recoveryBytes {
+		t.Fatal("missing-tail fixture changed aggregate census")
+	}
+	if err := missingRecovery.completeRetentionRuns(manifest); !errors.Is(err, ErrCorrupt) {
+		t.Fatal("missing final recovery root escaped source completion", err)
+	}
 	badSource := appFrame(frames[1].key, []byte("different"), false)
 	badVerifier := snapshotVerifier{digest: snapshotSeed(manifest)}
 	if _, err := badVerifier.accept(manifest, frames[1].key, badSource); !errors.Is(err, ErrCorrupt) {
