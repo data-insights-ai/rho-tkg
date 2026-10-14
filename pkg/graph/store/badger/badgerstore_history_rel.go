@@ -240,7 +240,9 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 	// envelope), so this version's interval joins it (an imported or restored
 	// past version stays findable). An uncovered relationship without a current
 	// row stays uncovered and is never pruned — extending it here would vouch
-	// for this one version while its other rows stay outside.
+	// for this one version while its other rows stay outside. While the index
+	// is being created (Building), the version joins it and records the ID, and
+	// the create re-reads every row of the ID (backlog 22).
 	// A row whose endpoints are not the live row's joins the ex-adjacency in
 	// the same batch (backlog 50). Decided before the enqueue (which may run
 	// under idxMu.Lock): a delete landing in between adds the legs itself.
@@ -255,7 +257,7 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 			bs.recordRelTypeMemberLocked(r)
 			bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r))
 			bs.recordRelRowLocked(r) // backlog 8: tracking or built property sidecars
-			if _, live := bs.relIDs[rid]; live || indexpkg.RelCoveredInTemporalIndexes(bs.relTypeTemporalIndexes, r, id) {
+			if _, live := bs.relIDs[rid]; live || indexpkg.RelCoveredInTemporalIndexes(bs.relTypeTemporalIndexes, r, id) || indexpkg.RelTemporalIndexBuilding(bs.relTypeTemporalIndexes, r) {
 				bs.maintainRelTypeTemporalIndexesAdd(r, id)
 			}
 		},

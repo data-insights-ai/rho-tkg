@@ -917,14 +917,17 @@ A build or that smoke suite alone cannot establish semantic compatibility.
 #### Current v4 compatibility delta (cutoff 2026-10-14)
 
 The current rho source baseline for this acceptance record is main
-`c23c8b049627ee0272f4f5f671f4bcdf455f5c64`, **v4.51.5**, following integrated
-`a1248ffc`/v4.51.4, `6c6bb954`/v4.51.3 and `cddc0997`/v4.51.2. This extends the
+`a77b1301a3f2430dcd39437f6ea698954b65d843`, **v4.51.6**, following integrated
+`c23c8b04`/v4.51.5, `a1248ffc`/v4.51.4, `6c6bb954`/v4.51.3 and `cddc0997`/v4.51.2. This extends the
 historical consumer inventories above; their commits/hashes and old reproduction
 runs remain historical and unchanged. It does not assert that those consumers
 have upgraded or that a v5 adapter/importer has passed.
 
 | Current v4 contract | Required v5 mapping / consumer obligation |
 |---|---|
+| Sequential relationship temporal rebuild (v4.51.6) | Derived sound envelopes preserve all current/history rows across pending/flushing full/delta data, flush-epoch re-pins and cache eviction; exact row/history resolution remains authoritative. Temporal-block decoding and clean-open images are acceleration, not integrity/completeness or certified-cut proof. Upstream rebuild throughput is not v5 performance evidence. |
+| Building index and late-write installation (v4.51.6) | Building relationship indexes decline pruning and are not persisted/imaged. Track/re-read writes, including deleted history-bearing IDs first written after mutation collection, then union complete envelopes under identity/lock checks before publication. Covered nonoverlap may prune; uncovered candidates remain eligible. No global/private-write or cut authority is implied. |
+| Re-created node/relationship IDs (v4.51.6) | Published uncovered envelopes fold all retained history before the new create row, across standalone/scoped/batch/preencoded/owned/split-placement doors. Preserve earlier valid-time answers and exclude fresh-ID phantoms; retain source IDs/lives, stamps, hashes and provenance. Upstream backlog56 node-version/build-publication/label-add envelope holes remain unverified; this re-create fix does not establish whole-node selector parity. |
 | Per-type relationship retention (v4.51.5) | `PurgeExpiredRels` removes live/ended relationships and all retained lives minted strictly before the cutoff; nodes and unrelated types remain answerable. Preserve scoped `ErrRetentionExpired` gates across named/generic/count/column/adjacency/snapshot/diff/GraphTx doors, unknown-old versus newer-ID behavior, reset/reopen, transaction exclusion and context cancellation. Watermark precedes predicate record and resumable chunks; tiered includes cold/history endpoint residue. Raw loss/watermarks require explicit v5 cut/lease policy, never automatic mint-time-to-group-retention conversion. |
 | Retention feed and import (v4.51.5) | Tag14 `ChangeRelRangePurge` has no entity identity and replays a relationship predicate; older readers stop at the unknown tag and ignore relationship watermarks, so upgrade first and do not downgrade after a purge. Export carries both watermark families by name; import always applies relationship watermarks, node watermarks only with `ApplyNodeRetention`. Preflight neither imports nor captures these global watermark families. Preserve refusal/provenance without claiming complete history or atomic v5 erasure. |
 | State count/column cuts and temporal ordinals (v4.51.5) | Cached effective segments at `TxAt` retain row-fold equality, membership, ordering, bounds and scalar/Null/Other/mixed-numeric behavior. `TxAt` alone still means source valid now; `TxPin` is newest-record semantics. Cache admission, after-write invalidation, single builds and 256-MiB LRU are acceleration, not certified cuts/RSS proof. Cached callbacks run outside locks, fallback callbacks retain read lock. ALL temporal column paths carry zero entity/endpoint ordinals; adapters must use actual IDs and certified v5 authority. |
@@ -960,14 +963,18 @@ source-delta records and reader qualifications remain immutable history. Histori
 limits; v4.51.2 fixes those reader paths. A current reader cannot recover source
 bytes already lost by older writers, and source-history ambiguity remains explicit.
 
-The current v4.51.5 source contracts and qualification scope are recorded in
+The current v4.51.6 source contracts are recorded in
 [consumer contracts](reference/consumer-contracts.json) and
-[migration obligations](reference/consumer-migration.json). The ten narrow migration
-gates pass at integrated `da5d32e6` with 96.2% overall coverage and 100% for both
-preflight functions, using existing nonempty node/relationship cases; the
-[new receipt](../../tools/v5-migrate/evidence/main4515-da5d32e6.json) retains the
-initial tools setup refusal and corrective run. New per-type-retention/preflight
-refusal cases, destination import, consumer obligations and full V6 remain open.
+[migration obligations](reference/consumer-migration.json); current reader
+qualification is pending. The unchanged per-entity preflight does not create or
+prune temporal indexes, so its minimum requalification is the existing ten
+narrow module gates against the exact merged reader, with a fresh receipt.
+Index-build/selector parity and upstream backlog56 findings remain separate.
+The historical v4.51.5 gates passed at integrated `da5d32e6` (96.2% overall,
+100% both preflight functions), using existing nonempty node/relationship cases;
+[that immutable receipt](../../tools/v5-migrate/evidence/main4515-da5d32e6.json)
+retains the initial tools setup refusal and corrective run. New per-type-retention
+refusals, destination import, consumer obligations and full V6 remain open.
 The ten-gate migration receipt and three bounded compatibility lanes at
 `9e805ddc` remain historical v4.51.4 proof; archived receipts and consumer pins
 are unchanged. Exact upstream CI/source equivalence is separate from whole-root

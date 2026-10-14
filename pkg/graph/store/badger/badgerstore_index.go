@@ -268,6 +268,11 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return err
 	}
+	// Build the history presence set before any lock: every later create of
+	// an uncovered ID asks it under idxMu (foldRecreatedNodeHistoryLocked).
+	if err := bs.ensureHistoryPresenceBuilt(&bs.histNodePresence, storepkg.KeyHistNode); err != nil {
+		return fmt.Errorf("graph: create temporal index: %w", err)
+	}
 
 	// Phase 1: Install empty live index + snapshot IDs under write Lock.
 	bs.idxMu.Lock()
@@ -416,6 +421,50 @@ func (bs *Store) foldTemporalHistoryEnvelopes(tokens []uint16) error {
 			}
 		}
 		bs.idxMu.Unlock()
+	}
+	return nil
+}
+
+// foldRecreatedNodeHistoryLocked is called by a node create door before it
+// adds n: for every label of n whose published temporal index does not cover
+// id, id may be a deleted node whose history is still on disk (deleted before
+// the index was built, or before a reopen rebuilt it), and the new row alone
+// would make the envelope vouch for less than the ID holds. Its history is
+// folded first (RAM envelope only, as foldTemporalHistoryEnvelopes does). A
+// Building index needs nothing: the create's ID is live when the create's
+// history fold runs. The presence set answers "no history" without a read.
+// Caller holds idxMu.Lock (lock order idxMu -> presence buildMu -> wbMu; the
+// history read takes only wbMu and a read transaction).
+func (bs *Store) foldRecreatedNodeHistoryLocked(n *types.Node, id snowflake.ID) error {
+	var hist []*types.Node
+	read := false
+	for i := 0; i < n.LabelTokenCount(); i++ {
+		ti := bs.temporalIndexes[n.LabelTokenRawAt(i)]
+		if ti == nil || ti.Building {
+			continue
+		}
+		if _, _, covered := ti.EnvelopeOf(id); covered {
+			continue
+		}
+		if !read {
+			read = true
+			has, err := bs.hasHistory(&bs.histNodePresence, storepkg.KeyHistNode, id, bs.probeHistoryPresence)
+			if err != nil {
+				return fmt.Errorf("graph: temporal index history fold: %w", err)
+			}
+			if !has {
+				return nil
+			}
+			if hist, err = bs.getNodeHistoryByPrefix(storepkg.HistNodePrefix(id)); err != nil {
+				return fmt.Errorf("graph: temporal index history fold: %w", err)
+			}
+		}
+		for _, hv := range hist {
+			if hv != nil {
+				from, to := indexpkg.NodeTemporalBounds(id, hv.Temporal())
+				ti.Extend(id, from, to)
+			}
+		}
 	}
 	return nil
 }

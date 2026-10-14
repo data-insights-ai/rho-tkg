@@ -76,6 +76,10 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 		bs.idxMu.Unlock()
 		return ErrRelExists
 	}
+	if err := bs.foldRecreatedRelHistoryLocked(r, id); err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
 
 	// Update in-memory state.
 	bs.relCache.Put(id, bs.frozenRelRow(r))

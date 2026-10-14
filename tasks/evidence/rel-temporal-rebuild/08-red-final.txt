@@ -1,0 +1,18 @@
+--- FAIL: TestCreateRelTemporalIndex_PutRelVersionOnDeletedRelAfter3aCollect (0.04s)
+    badgerstore_temporal_index_recreate_test.go:72: prune at 150 kept [] (ok=true), want [7010]: it holds a row valid there
+    badgerstore_temporal_index_recreate_test.go:72: prune at 5500 kept [] (ok=true), want [7010]: it holds a row valid there
+--- FAIL: TestRelTemporalIndex_RecreateDeletedRelAfterPublish (0.00s)
+    badgerstore_temporal_index_recreate_test.go:88: prune at 150 kept [] (ok=true), want [7010]: it holds a row valid there
+    badgerstore_temporal_index_recreate_test.go:88: prune at 5500 kept [] (ok=true), want [7010]: it holds a row valid there
+--- FAIL: TestRelTemporalIndex_RecreateDeletedRelAfterPublishBatch (0.00s)
+    badgerstore_temporal_index_recreate_test.go:106: prune at 150 kept [] (ok=true), want [7010]: it holds a row valid there
+    badgerstore_temporal_index_recreate_test.go:106: prune at 5500 kept [] (ok=true), want [7010]: it holds a row valid there
+--- FAIL: TestTemporalIndex_RecreateDeletedNodeAfterPublish (0.04s)
+    badgerstore_temporal_index_recreate_test.go:162: prune at 150 kept [] (ok=true), want [8010]: it holds a row valid there
+    badgerstore_temporal_index_recreate_test.go:162: prune at 5500 kept [] (ok=true), want [8010]: it holds a row valid there
+--- FAIL: TestTemporalIndex_RecreateDeletedNodeAfterPublishBatch (0.04s)
+    badgerstore_temporal_index_recreate_test.go:179: prune at 150 kept [] (ok=true), want [8010]: it holds a row valid there
+    badgerstore_temporal_index_recreate_test.go:179: prune at 5500 kept [] (ok=true), want [8010]: it holds a row valid there
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.147s
+FAIL

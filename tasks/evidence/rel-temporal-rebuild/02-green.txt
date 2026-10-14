@@ -1,0 +1,16 @@
+=== RUN   TestRelTemporalIndexRebuildSequential
+=== RUN   TestRelTemporalIndexRebuildSequential/pending-full
+    badgerstore_reltype_temporal_rebuild_test.go:185: 104 snapshot ids, 102 indexed: 1 read txns, 1 seeks
+=== RUN   TestRelTemporalIndexRebuildSequential/pending-delta
+    badgerstore_reltype_temporal_rebuild_test.go:185: 104 snapshot ids, 102 indexed: 1 read txns, 1 seeks
+=== RUN   TestRelTemporalIndexRebuildSequential/reopened-full
+    badgerstore_reltype_temporal_rebuild_test.go:185: 104 snapshot ids, 102 indexed: 1 read txns, 4 seeks
+=== RUN   TestRelTemporalIndexRebuildSequential/reopened-delta
+    badgerstore_reltype_temporal_rebuild_test.go:185: 104 snapshot ids, 102 indexed: 1 read txns, 4 seeks
+--- PASS: TestRelTemporalIndexRebuildSequential (0.42s)
+    --- PASS: TestRelTemporalIndexRebuildSequential/pending-full (0.07s)
+    --- PASS: TestRelTemporalIndexRebuildSequential/pending-delta (0.07s)
+    --- PASS: TestRelTemporalIndexRebuildSequential/reopened-full (0.17s)
+    --- PASS: TestRelTemporalIndexRebuildSequential/reopened-delta (0.12s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.453s

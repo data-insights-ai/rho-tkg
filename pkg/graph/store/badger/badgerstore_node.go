@@ -60,6 +60,10 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 		bs.idxMu.Unlock()
 		return err
 	}
+	if err := bs.foldRecreatedNodeHistoryLocked(n, id); err != nil {
+		bs.idxMu.Unlock()
+		return err // only widened an envelope (sound), before the vector apply
+	}
 	// Apply the vector-index mutation immediately after its own prepare step,
 	// before any other RAM state (cache, label/property/temporal/HF indexes)
 	// commits — lesson 4 "preflight then apply": a failure here must not
