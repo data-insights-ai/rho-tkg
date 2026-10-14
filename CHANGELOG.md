@@ -19,7 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   them. Now the graph keeps that head answer per entity as pieces naming their winning version, exact while the
   store's new per-entity history token (`NodeHistoryEpoch` / `RelHistoryEpoch`: a watch table noted at the
   store's one history-write funnel — count-checked on memory, `noteHistoryKey` on badger, the slot on sharded,
-  the largest token of the walked shards on tiered; tokens never reused) and the current row's version and
+  on tiered the largest of the walked shards' tokens and a shard-set token drawn anew at every shard-set change;
+  tokens never reused) and the current row's version and
   temporal block are unchanged; a `SetNodeVersionInterval` / excise correction extends it by its appended rows
   where they cannot change how older rows resolve, any other write makes the next head read fold again.
   Measured at 300 versions (`tasks/evidence/r10/`, 01-before -> 02-after): memory 150-230 us -> 0.4 us
@@ -29,10 +30,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pre-chain), so the cut stays above sigma's 1 ms per 10 facts budget until the write side is addressed. Answers
   are unchanged: `TestEffectiveHead_DifferentialOracle` (every answer equal to the fold at the head pin and at
   random earlier pins after corrections, caller-instant corrections, GraphTx commits and rollbacks followed by
-  rewrites, excises, Updates, in-place validity rewrites, CloseVersion, deletes, re-imports and compaction, on
+  rewrites, excises, Updates, in-place validity rewrites, CloseVersion, deletes, re-imports, compaction, Clear,
+  retention purge and, on tiered, Archive / Restore, rotation and the idle close of cold shards, on
   memory, badger, sharded and tiered), `TestHeadOverlay_MatchesFold`, `TestHistoryEpoch_Contract`,
-  `TestR10HeadTimelineCostIndependentOfHistory`; all nine break-the-code mutations caught
-  (`04-break-the-code.txt`).
+  `TestR10HeadTimelineCostIndependentOfHistory`, `TestHeadCache_BoundedByPieces`; all 13 break-the-code mutations caught
+  (`04-break-the-code.txt`). Bounds and overhead: the cache holds at most 1M pieces per graph (an answer above 512
+  pieces is not kept); the cache and the watch tables are striped under read-write locks, so parallel head reads
+  share no exclusive lock (256 nodes from 32 goroutines: memory 440 -> 306 ns/op, badger 6.7 -> 1.5 us/op); a
+  miss gathers the entry's facts inside the fold's own walk and adds only the entry itself (at 300 versions
+  +2 allocations, +216 B over the fold, `10-review-after.txt`).
 
 ## [4.54.0] - 2026-10-14
 
