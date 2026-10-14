@@ -29,9 +29,11 @@ import (
 // left the current row in place) reads its history to find the top.
 //
 // Density is an assumption, shared with the as-of fast paths (memory
-// history[v+1], badger's point read of key current+1, the core fallback) and
-// the GraphTx rollback snapshot. Every write path of this package keeps it. A
-// gap directly above the current row — a direct Store.TruncateNodeHistory /
+// history[v+1], badger's point read of key current+1, the core fallback); the
+// GraphTx rollback snapshot checks exactly (nodeHistoryAtOrAbove, backlog
+// 68b). A gap directly above the current row — history compaction after
+// bounded corrections (it trims the oldest rows, here the ones directly above
+// the current row; backlog 70), a direct Store.TruncateNodeHistory /
 // TrimNodeHistoryFrom that removed version current+1 but kept a higher one, or
 // a re-import over an earlier life compacted below its top, stored before
 // backlog 38 (a re-import now starts above the chain's top) — makes all of

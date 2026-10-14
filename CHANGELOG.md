@@ -48,7 +48,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (1226 -> 9 allocs), badger 190-210 us -> 3 us (1020 -> 44 allocs), independent of the version count; the same
   for relationships. sigma's read-then-correct cut per fact at 300 versions: memory 0.74 -> 0.38 ms, badger
   4.0 -> 3.3 ms — the GraphTx correction itself still copies the history (rollback snapshot and cascade
-  pre-chain), so the cut stays above sigma's 1 ms per 10 facts budget until the write side is addressed. Answers
+  pre-chain), removed by backlog 68b (Changed, below). Answers
   are unchanged: `TestEffectiveHead_DifferentialOracle` (every answer equal to the fold at the head pin and at
   random earlier pins after corrections, caller-instant corrections, GraphTx commits and rollbacks followed by
   rewrites, excises, Updates, in-place validity rewrites, CloseVersion, deletes, re-imports, compaction, Clear,
@@ -60,6 +60,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   share no exclusive lock (256 nodes from 32 goroutines: memory 440 -> 306 ns/op, badger 6.7 -> 1.5 us/op); a
   miss gathers the entry's facts inside the fold's own walk and adds only the entry itself (at 300 versions
   +2 allocations, +216 B over the fold, `10-review-after.txt`). Limits: the cache serves point reads only (scans never read or fill it); the per-store token watch table keeps up to 64K entities per kind, so a hot set larger than that refolds on its next read (correct, slower).
+
+### Changed
+
+- **sigma's read-then-correct cut no longer copies the history: corrections and GraphTx rollback snapshots from the
+  head entry** (backlog 68b, sigma R10 write side). A `SetNodeVersionInterval` / excise correction (every door:
+  Temporal, `*WithTx`, GraphTx, BatchBuilder, ingest) read the entity's whole history for its pre-correction chain,
+  and the GraphTx rollback snapshot deep-copied it again whenever a bounded correction had left rows above the
+  current row (sigma's shape: every cut). When the entity's head entry (backlog 68) is valid at the write's start,
+  the correction now takes the highest version, the order rule of a caller instant, the resumption, the correction
+  pieces and the current-slot choice from the entry plus one point read per base row, and the snapshot is the
+  current row and the entry's highest version (rollback trims above it). The entry gains every row's own valid
+  bounds (at most 1,024 kept) and the newest open belief, gathered by the fold and kept by the overlay; without a
+  valid entry both read the history as before. No new store operation: removing the current row a transaction
+  moved into history below kept rows reuses `TrimNodeHistoryFrom` and a rewrite of the kept rows (only then);
+  sharded and tiered, which have no rollback trim, rewrite the history from the rows read at rollback instead of a
+  copy taken at the snapshot. Measured per fact at 300 versions (`BenchmarkR10CutPerFact`, read then GraphTx
+  correction, `tasks/evidence/r10-write/02-bench-before.txt` -> `05-bench-after.txt`): warm (the fact read at the
+  previous cut, sigma's steady state) memory 0.28-0.35 ms -> 6 us, badger 1.9-2.0 ms -> 16-24 us (3661 -> 59 and
+  25997 -> 153 allocs); cold (first read folds the history) memory 0.45-0.49 -> 0.14-0.19 ms, badger 2.2-2.5 ->
+  0.22-0.26 ms; at 1 version unchanged. Rows are byte-identical to the history path:
+  `TestEffectiveHeadWrite_TwinDifferential` (twin graphs, same IDs and clock, one plans from the entry and one
+  reads the history; corrections bounded and open, caller instants accepted and refused, excises, Updates,
+  in-place validity rewrites, CloseVersion, label changes, deletes and re-imports, GraphTx commits and rollbacks
+  of several mutations, rollback-then-rewrite, compaction, Clear, retention purge and the tiered shard moves, on
+  memory, badger, sharded and tiered; every rollback leaves the rows byte-identical to before its tx),
+  `TestHeadOverlay_MatchesFold` (106k planned corrections on random chains equal to the chain path),
+  `TestR10bCorrectionReadsBoundedHistory` (at most 4 history rows read per correction at 300 versions, red:
+  599); all 18 break-the-code mutations caught (`04-break-the-code.txt`).
+
+### Fixed
+
+- **GraphTx rollback kept the pre-transaction rows above a compaction gap** (found by the 68b twin; memory,
+  badger). History compaction trims the oldest history rows, which after bounded corrections lie directly above
+  the current row; the rollback snapshot probed only version current+1 (dense versions), took the trim path, and
+  the rollback trimmed every surviving pre-transaction row above the current one. The snapshot's check is now
+  exact (one history page read of at most one row). Test: `TestTxRollbackKeepsRowsAboveCompactionGap` (red on
+  memory and badger: `tasks/evidence/r10-write/03-red-compaction-gap-rollback.txt`).
 
 ## [4.54.0] - 2026-10-14
 

@@ -170,39 +170,52 @@ func TestTxRollbackKeepsRowsAboveCompactionGap(t *testing.T) {
 // BenchmarkR10CutPerFact: sigma's cut per fact at exactly N versions — read
 // the head-pin timeline, then one correction of the same validity in a
 // GraphTx, committed. b.N facts of N versions each, one cut per fact
-// (run with -benchtime=<k>x).
+// (run with -benchtime=<k>x). warm: the fact's timeline was read after its
+// last write (sigma's steady state: every cut reads); cold: never read, so
+// the cut's read folds the history.
 func BenchmarkR10CutPerFact(b *testing.B) {
 	for _, be := range r10Backends() {
 		for _, versions := range []int{1, 100, 300} {
-			b.Run(fmt.Sprintf("%s/versions=%d", be.name, versions), func(b *testing.B) {
-				g, err := New(be.cfg())
-				if err != nil {
-					b.Fatal(err)
-				}
-				b.Cleanup(func() { _ = g.Close() })
-				ids := make([]nodeIDArg, b.N)
-				for i := range ids {
-					ids[i] = nodeIDArg{r10Node(b, g, versions)}
-				}
-				b.ReportAllocs()
-				b.ResetTimer()
-				for i := range b.N {
-					id := ids[i].id
-					if _, err := g.Temporal.NodeEffectiveTimeline(id, g.peekNow()); err != nil {
-						b.Fatal(err)
-					}
-					tx, err := g.BeginTx()
-					if err != nil {
-						b.Fatal(err)
-					}
-					if _, err := tx.SetNodeVersionInterval(id, 1000, 2000, map[string]any{"ov_c1": int64(-i)}); err != nil {
-						b.Fatal(err)
-					}
-					if err := tx.Commit(); err != nil {
-						b.Fatal(err)
-					}
-				}
-			})
+			for _, warm := range []bool{true, false} {
+				b.Run(fmt.Sprintf("%s/versions=%d/warm=%v", be.name, versions, warm), func(b *testing.B) {
+					benchCutPerFact(b, be, versions, warm)
+				})
+			}
+		}
+	}
+}
+
+func benchCutPerFact(b *testing.B, be r10Backend, versions int, warm bool) {
+	g, err := New(be.cfg())
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = g.Close() })
+	ids := make([]nodeIDArg, b.N)
+	for i := range ids {
+		ids[i] = nodeIDArg{r10Node(b, g, versions)}
+		if warm {
+			if _, err := g.Temporal.NodeEffectiveTimeline(ids[i].id, g.peekNow()); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := range b.N {
+		id := ids[i].id
+		if _, err := g.Temporal.NodeEffectiveTimeline(id, g.peekNow()); err != nil {
+			b.Fatal(err)
+		}
+		tx, err := g.BeginTx()
+		if err != nil {
+			b.Fatal(err)
+		}
+		if _, err := tx.SetNodeVersionInterval(id, 1000, 2000, map[string]any{"ov_c1": int64(-i)}); err != nil {
+			b.Fatal(err)
+		}
+		if err := tx.Commit(); err != nil {
+			b.Fatal(err)
 		}
 	}
 }

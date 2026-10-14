@@ -1,29 +1,47 @@
-# 2026-10-14T22:26:09+02:00 base e61f1014 (main, before 68b) go version go1.26.9 linux/amd64
-# BenchmarkR10CutPerFact: sigma's cut per fact at exactly N versions (head-timeline read, GraphTx correction of [1000,2000), commit); -benchtime=20x -count=3
-BenchmarkR10CutPerFact/memory/versions=1-32         	      20	     27131 ns/op	    5238 B/op	      54 allocs/op
-BenchmarkR10CutPerFact/memory/versions=1-32         	      20	     25929 ns/op	    5263 B/op	      54 allocs/op
-BenchmarkR10CutPerFact/memory/versions=1-32         	      20	     18337 ns/op	    5263 B/op	      54 allocs/op
-BenchmarkR10CutPerFact/memory/versions=100-32       	      20	   1200300 ns/op	  251252 B/op	    1680 allocs/op
-BenchmarkR10CutPerFact/memory/versions=100-32       	      20	    858100 ns/op	  251218 B/op	    1679 allocs/op
-BenchmarkR10CutPerFact/memory/versions=100-32       	      20	    375897 ns/op	  251212 B/op	    1679 allocs/op
-BenchmarkR10CutPerFact/memory/versions=300-32       	      20	   2985156 ns/op	  756288 B/op	    4882 allocs/op
-BenchmarkR10CutPerFact/memory/versions=300-32       	      20	   3084976 ns/op	  755734 B/op	    4882 allocs/op
-BenchmarkR10CutPerFact/memory/versions=300-32       	      20	    946864 ns/op	  755973 B/op	    4882 allocs/op
-BenchmarkR10CutPerFact/badger/versions=1-32         	      20	     22056 ns/op	    7449 B/op	      76 allocs/op
-BenchmarkR10CutPerFact/badger/versions=1-32         	      20	     21694 ns/op	    7485 B/op	      76 allocs/op
-BenchmarkR10CutPerFact/badger/versions=1-32         	      20	     14624 ns/op	    7447 B/op	      76 allocs/op
-BenchmarkR10CutPerFact/badger/versions=100-32       	      20	   3571993 ns/op	  935848 B/op	    9553 allocs/op
-BenchmarkR10CutPerFact/badger/versions=100-32       	      20	   1480774 ns/op	  943932 B/op	    9650 allocs/op
-BenchmarkR10CutPerFact/badger/versions=100-32       	      20	   1867541 ns/op	  931612 B/op	    9480 allocs/op
-BenchmarkR10CutPerFact/badger/versions=300-32       	      20	   3194264 ns/op	 2723993 B/op	   26957 allocs/op
-BenchmarkR10CutPerFact/badger/versions=300-32       	      20	   3577586 ns/op	 2722850 B/op	   26957 allocs/op
-BenchmarkR10CutPerFact/badger/versions=300-32       	      20	   3621212 ns/op	 2724690 B/op	   26995 allocs/op
-ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	25.683s
+# 2026-10-14T22:52:15+02:00 base e61f1014 (main, before 68b) go version go1.26.9 linux/amd64
+# BenchmarkR10CutPerFact: sigma's cut per fact at exactly N versions (head-timeline read, GraphTx correction of [1000,2000), commit); -benchtime=50x -count=3
+BenchmarkR10CutPerFact/memory/versions=1/warm=true-32         	      50	      5298 ns/op	    5216 B/op	      54 allocs/op
+BenchmarkR10CutPerFact/memory/versions=1/warm=true-32         	      50	      3501 ns/op	    5216 B/op	      54 allocs/op
+BenchmarkR10CutPerFact/memory/versions=1/warm=true-32         	      50	      6338 ns/op	    5185 B/op	      54 allocs/op
+BenchmarkR10CutPerFact/memory/versions=1/warm=false-32        	      50	      4995 ns/op	    5226 B/op	      54 allocs/op
+BenchmarkR10CutPerFact/memory/versions=1/warm=false-32        	      50	      5338 ns/op	    5226 B/op	      54 allocs/op
+BenchmarkR10CutPerFact/memory/versions=1/warm=false-32        	      50	      4474 ns/op	    5201 B/op	      54 allocs/op
+BenchmarkR10CutPerFact/memory/versions=100/warm=true-32       	      50	     86669 ns/op	  178492 B/op	    1261 allocs/op
+BenchmarkR10CutPerFact/memory/versions=100/warm=true-32       	      50	     77398 ns/op	  178497 B/op	    1261 allocs/op
+BenchmarkR10CutPerFact/memory/versions=100/warm=true-32       	      50	     73083 ns/op	  178503 B/op	    1261 allocs/op
+BenchmarkR10CutPerFact/memory/versions=100/warm=false-32      	      50	    104070 ns/op	  251215 B/op	    1679 allocs/op
+BenchmarkR10CutPerFact/memory/versions=100/warm=false-32      	      50	    198073 ns/op	  251137 B/op	    1679 allocs/op
+BenchmarkR10CutPerFact/memory/versions=100/warm=false-32      	      50	     90497 ns/op	  251009 B/op	    1679 allocs/op
+BenchmarkR10CutPerFact/memory/versions=300/warm=true-32       	      50	    345041 ns/op	  526301 B/op	    3661 allocs/op
+BenchmarkR10CutPerFact/memory/versions=300/warm=true-32       	      50	    342329 ns/op	  526106 B/op	    3661 allocs/op
+BenchmarkR10CutPerFact/memory/versions=300/warm=true-32       	      50	    277757 ns/op	  526204 B/op	    3661 allocs/op
+BenchmarkR10CutPerFact/memory/versions=300/warm=false-32      	      50	    488955 ns/op	  755820 B/op	    4881 allocs/op
+BenchmarkR10CutPerFact/memory/versions=300/warm=false-32      	      50	    451964 ns/op	  755596 B/op	    4881 allocs/op
+BenchmarkR10CutPerFact/memory/versions=300/warm=false-32      	      50	    455989 ns/op	  755631 B/op	    4881 allocs/op
+BenchmarkR10CutPerFact/badger/versions=1/warm=true-32         	      50	     11214 ns/op	    7238 B/op	      74 allocs/op
+BenchmarkR10CutPerFact/badger/versions=1/warm=true-32         	      50	     10110 ns/op	    7229 B/op	      74 allocs/op
+BenchmarkR10CutPerFact/badger/versions=1/warm=true-32         	      50	      9680 ns/op	    7228 B/op	      74 allocs/op
+BenchmarkR10CutPerFact/badger/versions=1/warm=false-32        	      50	      9044 ns/op	    7267 B/op	      75 allocs/op
+BenchmarkR10CutPerFact/badger/versions=1/warm=false-32        	      50	      9188 ns/op	    7277 B/op	      75 allocs/op
+BenchmarkR10CutPerFact/badger/versions=1/warm=false-32        	      50	      9179 ns/op	    7267 B/op	      75 allocs/op
+BenchmarkR10CutPerFact/badger/versions=100/warm=true-32       	      50	    692443 ns/op	  859306 B/op	    9017 allocs/op
+BenchmarkR10CutPerFact/badger/versions=100/warm=true-32       	      50	    743548 ns/op	  867942 B/op	    9107 allocs/op
+BenchmarkR10CutPerFact/badger/versions=100/warm=true-32       	      50	    645133 ns/op	  867798 B/op	    9102 allocs/op
+BenchmarkR10CutPerFact/badger/versions=100/warm=false-32      	      50	    717772 ns/op	  927833 B/op	    9442 allocs/op
+BenchmarkR10CutPerFact/badger/versions=100/warm=false-32      	      50	    755743 ns/op	  929751 B/op	    9458 allocs/op
+BenchmarkR10CutPerFact/badger/versions=100/warm=false-32      	      50	    799706 ns/op	  930205 B/op	    9468 allocs/op
+BenchmarkR10CutPerFact/badger/versions=300/warm=true-32       	      50	   2041479 ns/op	 2524050 B/op	   25993 allocs/op
+BenchmarkR10CutPerFact/badger/versions=300/warm=true-32       	      50	   1901343 ns/op	 2524175 B/op	   26004 allocs/op
+BenchmarkR10CutPerFact/badger/versions=300/warm=true-32       	      50	   1877354 ns/op	 2523777 B/op	   25997 allocs/op
+BenchmarkR10CutPerFact/badger/versions=300/warm=false-32      	      50	   2186126 ns/op	 2723197 B/op	   26982 allocs/op
+BenchmarkR10CutPerFact/badger/versions=300/warm=false-32      	      50	   2487343 ns/op	 2723820 B/op	   26991 allocs/op
+BenchmarkR10CutPerFact/badger/versions=300/warm=false-32      	      50	   2348396 ns/op	 2722551 B/op	   26971 allocs/op
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	56.421s
 # BenchmarkR10ReadThenWrite (R10's bench: the node grows from N by b.N); -benchtime=300x
-BenchmarkR10ReadThenWrite/memory/versions=1-32         	     300	    163129 ns/op	  266661 B/op	    1867 allocs/op
-BenchmarkR10ReadThenWrite/memory/versions=100-32       	     300	    296208 ns/op	  439091 B/op	    3057 allocs/op
-BenchmarkR10ReadThenWrite/memory/versions=300-32       	     300	    582830 ns/op	  788220 B/op	    5460 allocs/op
-BenchmarkR10ReadThenWrite/badger/versions=1-32         	     300	   1478659 ns/op	 1239352 B/op	   13195 allocs/op
-BenchmarkR10ReadThenWrite/badger/versions=100-32       	     300	   2514530 ns/op	 2051032 B/op	   21466 allocs/op
-BenchmarkR10ReadThenWrite/badger/versions=300-32       	     300	   4727377 ns/op	 3645420 B/op	   39170 allocs/op
-ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	3.496s
+BenchmarkR10ReadThenWrite/memory/versions=1-32         	     300	   1341211 ns/op	  266775 B/op	    1867 allocs/op
+BenchmarkR10ReadThenWrite/memory/versions=100-32       	     300	    793548 ns/op	  439121 B/op	    3057 allocs/op
+BenchmarkR10ReadThenWrite/memory/versions=300-32       	     300	    343093 ns/op	  788085 B/op	    5460 allocs/op
+BenchmarkR10ReadThenWrite/badger/versions=1-32         	     300	   1137790 ns/op	 1227091 B/op	   13054 allocs/op
+BenchmarkR10ReadThenWrite/badger/versions=100-32       	     300	   1828076 ns/op	 2035317 B/op	   21318 allocs/op
+BenchmarkR10ReadThenWrite/badger/versions=300-32       	     300	   3399139 ns/op	 3644327 B/op	   39131 allocs/op
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	3.188s
