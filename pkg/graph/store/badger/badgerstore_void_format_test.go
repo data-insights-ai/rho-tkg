@@ -71,7 +71,7 @@ func TestVoidRowRaisesStoreFormatMarker(t *testing.T) {
 			if err := bs.Close(); err != nil {
 				t.Fatal(err)
 			}
-			marker(storepkg.StoreFormatVersion)
+			marker(openStampVersion()) // 3, or 4 under the binary-hash writer
 
 			bs = open()
 			put(bs, 1, true)

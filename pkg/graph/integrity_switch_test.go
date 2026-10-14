@@ -523,6 +523,32 @@ func TestIntegritySwitch(t *testing.T) {
 		}
 	})
 
+	// And the other way: a store the hex-hash writer wrote (step 1 and every
+	// older release, marker 3) opens, reads and verifies with this writer.
+	t.Run("badger/reads_hex_hash_store", func(t *testing.T) {
+		dir := t.TempDir()
+		restore := storeutil.SetBinaryHashWriterForTest(false)
+		g, _, err := isOpen(t, isBackends[1], dir, false)
+		if err != nil {
+			restore()
+			t.Fatal(err)
+		}
+		rows := isWrite(t, g)
+		err = g.Close()
+		restore()
+		if err != nil {
+			t.Fatal(err)
+		}
+		g, _, err = isOpen(t, isBackends[1], dir, false)
+		if err != nil {
+			t.Fatalf("open a hex-hash store with this release's writer: %v", err)
+		}
+		defer g.Close()
+		isCheckOn(t, g, rows)
+		more := isWrite(t, g)
+		isCheckOn(t, g, more)
+	})
+
 	// On disk: off writes no hash bytes; the binary-hash writer writes each
 	// hash as 32 raw bytes (the hex strings cost 64 + framing each).
 	t.Run("badger/bytes", func(t *testing.T) {

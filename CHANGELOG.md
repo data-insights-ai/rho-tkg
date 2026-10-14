@@ -33,6 +33,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Integrity hashes written as 32 raw bytes** (backlog 61, step 2; deprecated in v4.52.2): the writer stores each
+  canonical hash as its 32 raw bytes (row fv 4) and a writable open raises the badger store marker to 4 (a store
+  with a higher marker keeps it); callers still get the same 64-hex strings. A relationship row of the measured
+  shape: 366.9 → 270.9 B raw, 251.2 → 151.8 B Snappy. A store this release opens writable can be opened only by
+  v4.52.2 or later; exports and change feeds carry row fv 4, so readers and replicas need v4.52.2 or later first.
+
 - **A row without a valid-from is valid from its `TxFrom`** (backlog 62, deprecated in v4.52.2; sigma-tkgd
   observation). One start rule, `storeutil.EntityValidFrom`: explicit `ValidFrom`, else `TxFrom`, else (a legacy
   row without one) `UpdatedAt`, else the ID's mint instant — for an untimed create (was: its mint instant) and an

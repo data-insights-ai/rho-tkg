@@ -80,13 +80,12 @@ const VoidStoreFormatVersion = 6
 const MaxReadableStoreFormatVersion = VoidStoreFormatVersion
 
 // writesBinaryHashes selects the writer's hash form (backlog 61, a two-step
-// rollout under the deprecation ritual). Step 1 (this release): every reader
-// accepts binary hashes (row fv 4) and markers up to
-// MaxReadableStoreFormatVersion, the writer still writes hex. Step 2 (one
-// release later): the writer writes binary and a writable open raises the
-// marker to BinaryHashStoreFormatVersion, so a release before step 1 refuses
-// the store.
-const writesBinaryHashes = false
+// rollout under the deprecation ritual). Step 1 (the release before): every
+// reader accepts binary hashes (row fv 4) and markers up to
+// MaxReadableStoreFormatVersion, the writer wrote hex. Step 2 (this release):
+// the writer writes binary and a writable open raises the marker to
+// BinaryHashStoreFormatVersion, so a release before step 1 refuses the store.
+const writesBinaryHashes = true
 
 // binaryHashWriter is writesBinaryHashes, a variable only so a test can play
 // the other step's writer (SetBinaryHashWriterForTest).
