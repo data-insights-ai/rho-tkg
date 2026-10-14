@@ -74,36 +74,36 @@ func (a *nativeGraphCostAckTiming) add(b nativeGraphCostAckTiming) {
 }
 
 type nativeGraphCostResult struct {
-	Version                                                int                 `json:"version"`
-	Engine                                                 string              `json:"engine"`
-	Spec                                                   nativeGraphCostSpec `json:"spec"`
-	Deployment                                             string              `json:"deployment"`
-	Directory                                              string              `json:"directory"`
-	UsefulFacts                                            uint64              `json:"usefulFacts"`
-	SetupNodes                                             int                 `json:"setupNodes"`
-	GrantBlockSize                                         uint64
-	IDAdmission                                            string
-	Creates, Updates                                       uint64
-	SetupNanos, WritesNanos, VerificationNanos, TotalNanos int64
-	PersistedFileBytes                                     uint64 `json:"persistedFileBytes"`
-	AllocatedFileBytes                                     uint64 `json:"allocatedFileBytes"`
-	OldCut, FinalCut                                       lifecycleRawCut
-	CDCFrom, CDCThrough                                    [2]uint64
-	CDCChanges, CDCRecords                                 uint64
-	CompletedCreates, CompletedUpdates                     uint64
-	Reaped                                                 int                      `json:"reaped"`
-	Runner                                                 string                   `json:"runner"`
-	CheckpointCommands                                     int                      `json:"checkpointCommands"`
-	CheckpointNanos                                        int64                    `json:"checkpointNanos"`
-	LocalAckTiming                                         nativeGraphCostAckTiming `json:"localAckTiming"`
-	TransportTiming                                        graphProcessCostTiming   `json:"transportTiming"`
-	TimingScope                                            string                   `json:"timingScope"`
-	InitialReaped, ProcessInstances, GrantReplayCommands int
-	ReopenQualified bool
-	ReopenPrefixRecords uint64
+	Version                                                                          int                 `json:"version"`
+	Engine                                                                           string              `json:"engine"`
+	Spec                                                                             nativeGraphCostSpec `json:"spec"`
+	Deployment                                                                       string              `json:"deployment"`
+	Directory                                                                        string              `json:"directory"`
+	UsefulFacts                                                                      uint64              `json:"usefulFacts"`
+	SetupNodes                                                                       int                 `json:"setupNodes"`
+	GrantBlockSize                                                                   uint64
+	IDAdmission                                                                      string
+	Creates, Updates                                                                 uint64
+	SetupNanos, WritesNanos, VerificationNanos, TotalNanos                           int64
+	PersistedFileBytes                                                               uint64 `json:"persistedFileBytes"`
+	AllocatedFileBytes                                                               uint64 `json:"allocatedFileBytes"`
+	OldCut, FinalCut                                                                 lifecycleRawCut
+	CDCFrom, CDCThrough                                                              [2]uint64
+	CDCChanges, CDCRecords                                                           uint64
+	CompletedCreates, CompletedUpdates                                               uint64
+	Reaped                                                                           int                      `json:"reaped"`
+	Runner                                                                           string                   `json:"runner"`
+	CheckpointCommands                                                               int                      `json:"checkpointCommands"`
+	CheckpointNanos                                                                  int64                    `json:"checkpointNanos"`
+	LocalAckTiming                                                                   nativeGraphCostAckTiming `json:"localAckTiming"`
+	TransportTiming                                                                  graphProcessCostTiming   `json:"transportTiming"`
+	TimingScope                                                                      string                   `json:"timingScope"`
+	InitialReaped, ProcessInstances, GrantReplayCommands                             int
+	ReopenQualified                                                                  bool
+	ReopenPrefixRecords                                                              uint64
 	PreReopenVerificationNanos, InitialStopNanos, FinalStopNanos, ReopenRestoreNanos int64
-	ReopenAuthorityNanos, ReopenVerificationNanos, GrantReplayNanos int64
-	RestartTransportTiming graphProcessCostTiming
+	ReopenAuthorityNanos, ReopenVerificationNanos, GrantReplayNanos                  int64
+	RestartTransportTiming                                                           graphProcessCostTiming
 }
 
 func newNativeGraphCostNetworkWithBlock(t *testing.T, spec nativeGraphCostSpec, block uint64) *certifiedProcessNetwork {
@@ -766,7 +766,9 @@ func runNativeGraphCostWithBlock(t *testing.T, s nativeGraphCostSpec, block uint
 	stopStarted := time.Now()
 	result.Reaped = nativeGraphCostStop(t, n, 2, cohorts)
 	result.FinalStopNanos = time.Since(stopStarted).Nanoseconds()
-	if !result.ReopenQualified || result.InitialReaped != 6 || result.ProcessInstances != 12 || result.Reaped != 6 { t.Fatal("cost complete restart qualification missing") }
+	if !result.ReopenQualified || result.InitialReaped != 6 || result.ProcessInstances != 12 || result.Reaped != 6 {
+		t.Fatal("cost complete restart qualification missing")
+	}
 	for id := uint64(1); id <= 6; id++ {
 		size, allocated, err := nativeGraphCostFileBytes(filepath.Join(n.dir, fmt.Sprint(id)))
 		if err != nil {
