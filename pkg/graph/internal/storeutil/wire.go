@@ -2,6 +2,7 @@ package storeutil
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -17,7 +18,7 @@ const (
 // existed decode with FormatVersion == 0 and are treated as version 1 — the
 // two layouts are identical, the explicit field simply makes future layouts
 // self-describing. Decoding a row with a version GREATER than
-// maxReadableWireFormatVersion (RetractedWireFormatVersion, below)
+// maxReadableWireFormatVersion (BinaryHashWireFormatVersion, below)
 // fails closed with store.ErrWireFormatVersionUnsupported instead of silently
 // zero-filling fields this binary does not know about.
 //
@@ -42,8 +43,17 @@ const CurrentWireFormatVersion = 2
 // backlog 50: this release keeps the ex-adjacency index (0x0D) at every
 // relationship delete, and a release before it — which refuses a marker above
 // its own CurrentWireFormatVersion 2 — must not open the store and delete
-// relationships without it. Row encodings are unchanged.
+// relationships without it. Row encodings are unchanged. A feature raises it
+// further (BinaryHashStoreFormatVersion, ElementsStoreFormatVersion).
 const StoreFormatVersion = 3
+
+// BinaryHashStoreFormatVersion is the store-level marker of a directory whose
+// rows may carry binary integrity hashes (BinaryHashWireFormatVersion, backlog
+// 61): a release that cannot read them must refuse the store. A writable open
+// raises the marker to it (raiseFormatMarkerLocked, never lowering a higher
+// one) when this release's writer writes binary hashes (writesBinaryHashes);
+// every reader that knows a marker at or above it reads binary rows.
+const BinaryHashStoreFormatVersion = 4
 
 // ElementsStoreFormatVersion is the store-level marker of a directory that
 // persisted an Elements property index definition (backlog 63, definition key
@@ -59,6 +69,34 @@ const ElementsStoreFormatVersion = 5
 // opens (the max of every marker it knows how to read).
 const MaxReadableStoreFormatVersion = ElementsStoreFormatVersion
 
+// writesBinaryHashes selects the writer's hash form (backlog 61, a two-step
+// rollout under the deprecation ritual). Step 1 (this release): every reader
+// accepts binary hashes (row fv 4) and markers up to
+// MaxReadableStoreFormatVersion, the writer still writes hex. Step 2 (one
+// release later): the writer writes binary and a writable open raises the
+// marker to BinaryHashStoreFormatVersion, so a release before step 1 refuses
+// the store.
+const writesBinaryHashes = false
+
+// binaryHashWriter is writesBinaryHashes, a variable only so a test can play
+// the other step's writer (SetBinaryHashWriterForTest).
+var binaryHashWriter atomic.Bool
+
+func init() { binaryHashWriter.Store(writesBinaryHashes) }
+
+// WritesBinaryHashes reports whether the writer writes integrity hashes as
+// raw bytes (and a writable open raises the store marker to
+// BinaryHashStoreFormatVersion).
+func WritesBinaryHashes() bool { return binaryHashWriter.Load() }
+
+// SetBinaryHashWriterForTest switches the writer's hash form (and with it the
+// marker a writable open raises) and returns the restore. Test seam only: not
+// for production use.
+func SetBinaryHashWriterForTest(on bool) (restore func()) {
+	prev := binaryHashWriter.Swap(on)
+	return func() { binaryHashWriter.Store(prev) }
+}
+
 // RetractedWireFormatVersion is the per-row format version of a retraction
 // tombstone (Retracted, map key "rx", backlog 43). The layout is v2's; the
 // bump exists so a binary that predates the marker (it decodes fv <= 2 and
@@ -70,9 +108,22 @@ const MaxReadableStoreFormatVersion = ElementsStoreFormatVersion
 // plus "rx") still decode as retractions.
 const RetractedWireFormatVersion = 3
 
+// BinaryHashWireFormatVersion is the per-row format version of a row whose
+// integrity hashes (h, ph, fnh, tnh) are stored as 32 raw bytes (msgpack bin)
+// instead of 64 hex characters (backlog 61): 34 bytes a hash instead of 66.
+// The layout is v2's. Every row the binary-hash writer (writesBinaryHashes)
+// writes with a canonical hash carries it (a row of a graph with
+// Config.DisableIntegrityHashes has none and keeps the version it carries);
+// the bump exists so a binary that predates it — whose decoder
+// would read the 32 bytes as a 32-character hash — fails the row closed with
+// store.ErrWireFormatVersionUnsupported. Decoders read both forms (the map
+// value's msgpack type names its form), so every older row, export and change
+// feed still reads.
+const BinaryHashWireFormatVersion = 4
+
 // maxReadableWireFormatVersion is the highest per-row format version every
 // decoder accepts. A variable only so a test can play an older reader.
-var maxReadableWireFormatVersion uint8 = RetractedWireFormatVersion
+var maxReadableWireFormatVersion uint8 = BinaryHashWireFormatVersion
 
 // checkRowFormatVersion fails a row written by a newer release closed.
 func checkRowFormatVersion(what string, fv uint8) error {
@@ -83,10 +134,14 @@ func checkRowFormatVersion(what string, fv uint8) error {
 	return nil
 }
 
-// emittedRowFormatVersion is the fv an encoder writes: a retraction tombstone
-// is raised to RetractedWireFormatVersion (v2 layout), every other row keeps
-// the version it carries, so its bytes are unchanged.
-func emittedRowFormatVersion(fv uint8, retracted bool) uint8 {
+// emittedRowFormatVersion is the fv an encoder writes: a row with a binary
+// integrity hash is raised to BinaryHashWireFormatVersion, a retraction
+// tombstone to RetractedWireFormatVersion (both v2 layout), every other row
+// keeps the version it carries, so its bytes are unchanged.
+func emittedRowFormatVersion(fv uint8, retracted, binaryHash bool) uint8 {
+	if binaryHash && fv < BinaryHashWireFormatVersion {
+		return BinaryHashWireFormatVersion
+	}
 	if retracted && fv < RetractedWireFormatVersion {
 		return RetractedWireFormatVersion
 	}

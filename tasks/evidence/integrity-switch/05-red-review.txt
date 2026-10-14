@@ -1,0 +1,11 @@
+# Review round (c8afe710 review, findings 1 and 2): red before the fix. tiered/setting_written_durably added with the fix.
+--- FAIL: TestIntegritySwitch (2.63s)
+    --- FAIL: TestIntegritySwitch/badger/legacy (0.25s)
+        integrity_switch_test.go:310: empty store stamped off, reopened on: graph: the store was written with Config.DisableIntegrityHashes, it is not set now: graph: store was written under the other integrity-hash setting (Config.DisableIntegrityHashes)
+    --- FAIL: TestIntegritySwitch/badger/failed_open_persists_nothing (0.06s)
+        integrity_switch_test.go:332: failed New persisted the setting: [0], <nil>
+    --- FAIL: TestIntegritySwitch/badger/lost_key_judged_by_rows (0.03s)
+        integrity_switch_test.go:355: the integrity-hash setting was not written durably (no meta fsync)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	2.660s
+FAIL

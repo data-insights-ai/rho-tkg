@@ -1,11 +1,11 @@
 package segment
 
 import (
-	"encoding/hex"
 	"strings"
 	"sync"
 	"sync/atomic"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/internal/hash32"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -95,10 +95,9 @@ func (s *nodeDictSnap) sameHash(c uint64, h string) bool {
 	i := c >> 1
 	if c&1 == 0 {
 		var b [32]byte
-		if !isLowerHex64(h) {
+		if !hash32.Decode(h, &b) {
 			return false
 		}
-		_, _ = hex.Decode(b[:], []byte(h))
 		return string(s.raw[32*i:32*i+32]) == string(b[:])
 	}
 	return s.lit[i] == h
@@ -108,7 +107,7 @@ func (s *nodeDictSnap) sameHash(c uint64, h string) bool {
 func (s *nodeDictSnap) hashString(c uint64) string {
 	i := c >> 1
 	if c&1 == 0 {
-		return hex.EncodeToString(s.raw[32*i : 32*i+32])
+		return hash32.String(s.raw[32*i : 32*i+32])
 	}
 	return s.lit[i]
 }
@@ -136,11 +135,11 @@ func (t *dictTxn) commit() *nodeDictSnap {
 
 // hashBytes returns h's 32 raw bytes when it is 64-hex lowercase.
 func hashBytes(h string) ([]byte, bool) {
-	if !isLowerHex64(h) {
+	var b [32]byte
+	if !hash32.Decode(h, &b) {
 		return nil, false
 	}
-	b, _ := hex.DecodeString(h) // validated
-	return b, true
+	return b[:], true
 }
 
 func (t *dictTxn) newHash(h string) uint32 {

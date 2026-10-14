@@ -174,6 +174,12 @@ var adminResetSentinels = []string{
 	"ErrResetDisabled",
 }
 
+// Config.DisableIntegrityHashes (backlog 61)
+var integrityHashSentinels = []string{
+	"ErrIntegrityDisabled",
+	"ErrIntegrityModeMismatch",
+}
+
 // Config.DurableCommit (backlog 11)
 var durableCommitSentinels = []string{
 	"ErrCommitNotDurable",
@@ -355,6 +361,7 @@ func graphReexportSentinelNames() []string {
 	all = append(all, retentionSentinels...)
 	all = append(all, adminResetSentinels...)
 	all = append(all, durableCommitSentinels...)
+	all = append(all, integrityHashSentinels...)
 	all = append(all, exactErasureSentinels...)
 	all = append(all, ioSentinels...)
 	all = append(all, backupSentinels...)

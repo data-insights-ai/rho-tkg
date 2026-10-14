@@ -8,6 +8,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Integrity-hash switch; binary hashes readable** (backlog 61, René from ai-soc's 232 B per edge of hashes):
+  `Config.DisableIntegrityHashes` (default false = hashes on, today's behaviour) computes and stores no integrity
+  hash — `Hash`, `PrevHash`, `FromNodeHash`, `ToNodeHash` stay empty, resident and on disk; author, signature and
+  authorization are unaffected — for development and quick tests. Every write path hashes through one switch
+  (`core/integrity_switch.go`); with it set, `Hash().VerifyNodeChain` / `VerifyRelChain` and `Tier().VerifyShard`
+  return the new `ErrIntegrityDisabled` (never "valid"), `Config.RelSegments` is refused with it, an import or
+  replica apply verifies and drops the hashes it carries, and an on-graph refuses an off-graph's export
+  (`ErrCorruptExport`). The setting is persisted with the store (MetaKV `integrity_hashes`, kept across
+  `Admin().Reset()`); a reopen of a store with rows under the other setting fails `New` with the new
+  `ErrIntegrityModeMismatch` and writes nothing (without the key, the rows decide: hashed rows make an on-store,
+  unhashed rows an off-store; a store without rows takes the configured setting). The key is written durably
+  (new `MetaSetDurable` on the tiered and sharded stores) and only by a `New` that passed every check.
+  Readers now also accept integrity
+  hashes stored as 32 raw bytes (row fv 4) and badger store marker 4, handing out the same 64-hex strings; this
+  release still writes hex and marker 3 (see Deprecated). One hex/bytes conversion (`pkg/internal/hash32`) now
+  serves the wire, the compact frozen rows and the segments. Relationship row, 20,000 rels of four properties:
+  366.9 B raw / 251.2 B Snappy (hex), 270.9 / 151.8 B (binary writer), 158.9 / 43.5 B (hashes off). Test
+  `TestIntegritySwitch` (memory, badger, tiered: hashes present and a tampered row detected; off: no hash on any
+  row before and after a reopen, sentinel; reopen both ways; legacy store; Reset; a store written by the binary
+  writer read and extended; segments; import both ways; bytes on disk), `TestWireBinaryHashRoundTripAndLegacyHex`;
+  evidence `tasks/evidence/integrity-switch/`.
+
+
 - **Elements property indexes** (backlog 63, sigma-tkgd R6): `PropertyIndexOptions{Elements: true}` indexes each
   scalar element of a list value, so `ByLabelAndProperty(label, key, x, opts)` / `ByTypeAndProperty` on the index
   mean "the list contains x" at current, `TxPin`, `TxAt`+`ValidAt` and interval reads and on the named `*At` /
@@ -47,6 +70,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Test `TestRowDoorsAgreeWithResolverOnAnUntimedUpdate`; evidence `tasks/evidence/valid-from-source/`.
 
 ### Deprecated
+
+- **Hex integrity hashes on disk** (backlog 61): from v4.52.3 stores are written with binary hashes (marker 4);
+  opening such a store needs v4.52.2 or later. Why: a hash as 64 hex characters costs 66 bytes on disk, as raw
+  bytes 34 — about 100 B per edge (a relationship row carries three: 366.9 → 270.9 B raw, 251.2 → 151.8 B Snappy).
+  Not only stores: from v4.52.3 every row in an export file and in the change feed carries the binary hashes
+  (row fv 4), so an import, a restore or a replica running a release before v4.52.2 refuses those rows
+  (`ErrWireFormatVersionUnsupported`); upgrade readers and replicas to v4.52.2 or later first. Releases from this
+  one on read both forms; nothing changes for callers (the hashes are handed out as the same 64-hex strings).
+
 
 - **The start of a row without a valid-from changes in v4.52.3** (backlog 62, sigma-tkgd observation 2026-10-14).
   Today an untimed create starts at its ID's mint instant (snowflake wall clock) and an untimed update at its

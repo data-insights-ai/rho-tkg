@@ -10,7 +10,6 @@ import (
 
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -183,7 +182,7 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 		prevHash = ig.Hash
 	}
 	nodeLabels := c.nodeLabelsUnlocked(current)
-	hash, err := integrity.ComputeNodeHashChecked(current, nodeLabels)
+	hash, err := c.nodeContentHash(current, nodeLabels)
 	if err != nil {
 		return fmt.Errorf("graph: compute node hash: %w", err)
 	}
@@ -415,7 +414,7 @@ func (c *Core) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 		prevHash = ig.Hash
 	}
 	relTypeName := c.relTypeUnlocked(current)
-	hash, err := integrity.ComputeRelHashChecked(current, relTypeName)
+	hash, err := c.relContentHash(current, relTypeName)
 	if err != nil {
 		return fmt.Errorf("graph: compute relationship hash: %w", err)
 	}

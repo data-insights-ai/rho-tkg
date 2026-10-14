@@ -7,7 +7,6 @@ import (
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -106,7 +105,7 @@ func (c *Core) addNodesInternal(ctx context.Context, labels []string, props []ma
 				canonicalLabels = c.nodeLabelsUnlocked(n)
 			}
 		}
-		hash, err := integrity.ComputeNodeHashChecked(n, canonicalLabels)
+		hash, err := c.nodeContentHash(n, canonicalLabels)
 		if err != nil {
 			return nil, finish(fmt.Errorf("graph: compute node hash: %w", err))
 		}

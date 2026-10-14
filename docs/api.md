@@ -217,6 +217,7 @@ Node label add/remove, node/relationship property CAS, and node/relationship in-
 ### Hash chain verification (`g.Hash`)
 
 - `g.Hash().VerifyNodeChain(id) (bool, error)` / `VerifyRelChain(id) (bool, error)`. Tolerates deleted entities (verifies history alone when current entity is gone).
+- `Config.DisableIntegrityHashes` (backlog 61, default `false` = hashes on): off computes and stores no integrity hash — `Integrity().Hash`, `PrevHash`, `FromNodeHash`, `ToNodeHash` and the `tkg_hash` shadows stay empty (author, signature and authorization fields are unaffected) — and both Verify doors (and `g.Tier().VerifyShard`) return `ErrIntegrityDisabled` instead of an answer. For development and quick tests; production keeps the default. `Config.RelSegments` with hashes off fails `New` with `ErrIntegrityDisabled`. The setting is persisted with the store; reopening under the other setting fails `New` with `ErrIntegrityModeMismatch` (`docs/persistence.md`). Stored hashes are handed out as 64-character lowercase hex strings whether the row holds them as hex or as 32 raw bytes (backlog 61 rollout, `docs/persistence.md`).
 
 ### Transactions (`g.Tx`) and the imperative tx surface
 

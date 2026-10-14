@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -150,7 +149,7 @@ func (c *Core) buildRelFromSpec(ctx context.Context, spec relCreateSpec) func(ty
 		if err := r.SetOwnedProperties(spec.ps); err != nil {
 			return nil, nil, fmt.Errorf("graph: relationship properties: %w", err)
 		}
-		hash, err := integrity.ComputeRelHashChecked(r, spec.typeName)
+		hash, err := c.relContentHash(r, spec.typeName)
 		if err != nil {
 			return nil, nil, fmt.Errorf("graph: compute relationship hash: %w", err)
 		}

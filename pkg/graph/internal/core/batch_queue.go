@@ -3,7 +3,6 @@ package core
 import (
 	"fmt"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -86,7 +85,7 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 	if err != nil {
 		return nil, fmt.Errorf("graph: batch label: %w", err)
 	}
-	hashSuffix, err := integrity.PrecomputeNodeHashSuffixChecked(canonicalLabels, baseProps)
+	hashSuffix, err := b.g.nodeHashSuffix(canonicalLabels, baseProps)
 	if err != nil {
 		return nil, fmt.Errorf("graph: batch node hash: %w", err)
 	}
@@ -113,7 +112,7 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 			n.SetPropertiesCanonicalShared(baseProps)
 		}
 
-		hash := integrity.ComputeNodeHashFromSuffix(n.ID(), n.Version(), hashSuffix)
+		hash := b.g.nodeHashFromSuffix(n.ID(), n.Version(), hashSuffix)
 		nodeIntegrity := &types.NodeIntegrity{
 			Hash:               hash,
 			PrevHash:           "",
@@ -280,7 +279,7 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 		return nil, fmt.Errorf("graph: batch relationship properties: %w", err)
 	}
 
-	hash, err := integrity.ComputeRelHashChecked(r, typeName)
+	hash, err := b.g.relContentHash(r, typeName)
 	if err != nil {
 		return nil, fmt.Errorf("graph: batch relationship hash: %w", err)
 	}

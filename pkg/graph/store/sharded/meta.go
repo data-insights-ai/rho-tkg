@@ -26,6 +26,16 @@ func (s *Store) MetaSet(key string, value []byte) error {
 	return s.anchor().MetaSet(key, value)
 }
 
+// MetaSetDurable is MetaSet made durable before it returns (the anchor
+// shard's write-ahead log is fsynced): for a meta entry that must not be lost
+// while rows written after it to another slot survive a power loss.
+func (s *Store) MetaSetDurable(key string, value []byte) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
+	return s.anchor().MetaSetDurable(key, value)
+}
+
 func (s *Store) SaveRegistries(labelReg *registrypkg.LabelRegistry, relTypeReg *registrypkg.RelTypeRegistry) error {
 	if err := s.checkOpen(); err != nil {
 		return err

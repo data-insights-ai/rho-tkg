@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/internal/hash32"
 )
 
 const (
@@ -65,7 +67,8 @@ func compactRelCases() []compactRelCase {
 		{name: "short hash", tm: firstVersionTM(), ig: withIG(func(ig *RelIntegrity) { ig.Hash = testHashA[:63] })},
 		{name: "long hash", tm: firstVersionTM(), ig: withIG(func(ig *RelIntegrity) { ig.Hash = testHashA + "0" })},
 		{name: "non-hex hash", tm: firstVersionTM(), ig: withIG(func(ig *RelIntegrity) { ig.Hash = "g" + testHashA[1:] })},
-		{name: "empty hash", tm: firstVersionTM(), ig: withIG(func(ig *RelIntegrity) { ig.Hash = "" })},
+		{name: "empty hash (hashes off)", compact: true, tm: firstVersionTM(), ig: withIG(func(ig *RelIntegrity) { ig.Hash = "" })},
+		{name: "no hashes at all (hashes off)", compact: true, tm: firstVersionTM(), ig: withIG(func(ig *RelIntegrity) { ig.Hash, ig.FromNodeHash, ig.ToNodeHash = "", "", "" })},
 		{name: "no temporal", ig: base()},
 		{name: "no integrity", tm: firstVersionTM()},
 		{name: "no metadata"},
@@ -233,7 +236,7 @@ func compactNodeCases() []compactNodeCase {
 		{name: "empty non-nil signature", tm: firstVersionTM(), ig: withIG(func(ig *NodeIntegrity) { ig.Signature = []byte{} })},
 		{name: "authorized by", tm: firstVersionTM(), ig: withIG(func(ig *NodeIntegrity) { ig.AuthorizedBy = "b" })},
 		{name: "authorization level", tm: firstVersionTM(), ig: withIG(func(ig *NodeIntegrity) { ig.AuthorizationLevel = 1 })},
-		{name: "empty hash", tm: firstVersionTM(), ig: withIG(func(ig *NodeIntegrity) { ig.Hash = "" })},
+		{name: "empty hash (hashes off)", compact: true, tm: firstVersionTM(), ig: withIG(func(ig *NodeIntegrity) { ig.Hash = "" })},
 		{name: "no temporal", ig: base()},
 		{name: "no integrity", tm: firstVersionTM()},
 		{name: "no metadata"},
@@ -368,8 +371,8 @@ func TestDecodeCanonicalHash(t *testing.T) {
 		{strings.Repeat("0", 63) + "`", false},
 	} {
 		var dst [32]byte
-		if got := decodeCanonicalHash(c.in, &dst); got != c.ok {
-			t.Fatalf("decodeCanonicalHash(%q) = %t, want %t", c.in, got, c.ok)
+		if got := hash32.Decode(c.in, &dst); got != c.ok {
+			t.Fatalf("hash32.Decode(%q) = %t, want %t", c.in, got, c.ok)
 		}
 		if c.ok {
 			m := relMeta{hash: dst}

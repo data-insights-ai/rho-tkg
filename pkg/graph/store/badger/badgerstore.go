@@ -1946,7 +1946,7 @@ func (bs *Store) addRelationshipIndexesFromRow(info RelDeleteInfo) {
 // ahead of DropAll() and resurrect pre-Clear entities, and to block new flushes. In
 // SyncWrites mode concurrent mutations block for the duration of DropAll (accepted:
 // Clear is rare and admin-scoped).
-func (bs *Store) Clear() error {
+func (bs *Store) Clear() (err error) {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -2077,6 +2077,13 @@ func (bs *Store) Clear() error {
 	// The wipe below may drop the format marker: the next Elements definition
 	// re-raises it rather than trusting the cached value.
 	bs.formatMarker = 0
+	// Rows written after the wipe carry binary hashes (backlog 61): the
+	// wiped marker is stamped again once the wipe has succeeded.
+	defer func() {
+		if err == nil {
+			err = bs.restampBinaryHashMarker()
+		}
+	}()
 	bs.compositeIndexes = make(map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex)
 	bs.compositeIndexesByLabel = make(map[uint16][]indexpkg.CompositeIndexKey)
 	bs.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)

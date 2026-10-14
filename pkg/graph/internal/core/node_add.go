@@ -9,7 +9,6 @@ import (
 
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -183,7 +182,7 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 	if len(labels) != 1 {
 		canonicalLabels = c.nodeLabelsUnlocked(n)
 	}
-	hash, err := integrity.ComputeNodeHashChecked(n, canonicalLabels)
+	hash, err := c.nodeContentHash(n, canonicalLabels)
 	if err != nil {
 		return nil, finishLabels(fmt.Errorf("graph: compute node hash: %w", err))
 	}
@@ -480,7 +479,7 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	if len(labels) != 1 {
 		canonicalLabels = c.nodeLabelsUnlocked(n)
 	}
-	hash, err := integrity.ComputeNodeHashChecked(n, canonicalLabels)
+	hash, err := c.nodeContentHash(n, canonicalLabels)
 	if err != nil {
 		return nil, finishLabels(fmt.Errorf("graph: compute node hash: %w", err))
 	}

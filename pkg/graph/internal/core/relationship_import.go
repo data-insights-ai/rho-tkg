@@ -9,7 +9,6 @@ import (
 
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -181,7 +180,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 			return nil, nil, fmt.Errorf("graph: relationship import properties: %w", err)
 		}
 		r.SetVersion(life.version)
-		hash, err := integrity.ComputeRelHashChecked(r, typeName)
+		hash, err := c.relContentHash(r, typeName)
 		if err != nil {
 			return nil, nil, fmt.Errorf("graph: compute relationship hash: %w", err)
 		}

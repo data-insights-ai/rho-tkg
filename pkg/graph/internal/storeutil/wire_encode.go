@@ -1,6 +1,9 @@
 package storeutil
 
-import "github.com/vmihailenco/msgpack/v5"
+import (
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/internal/hash32"
+	"github.com/vmihailenco/msgpack/v5"
+)
 
 // EncodeMsgpack writes NodeWire with the same map keys as the struct tags in
 // wire.go, but avoids reflective omitempty checks on hot write paths.
@@ -8,7 +11,9 @@ func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	// v2+ emits tf/tt as a fixed-width, always-present trailing slot (last two
 	// map entries); v1/legacy keeps the omitempty mid-map form. See
 	// wire_temporal_tail.go.
-	fv := emittedRowFormatVersion(w.FormatVersion, w.Retracted)
+	var hb, pb [32]byte // integrity hashes as raw bytes (encodeHashField)
+	hBin, pBin := binaryHash(w.Hash, &hb), binaryHash(w.PrevHash, &pb)
+	fv := emittedRowFormatVersion(w.FormatVersion, w.Retracted, hBin || pBin)
 	v2 := fv >= 2
 	fields := 3 // id, pl, v
 	if fv != 0 {
@@ -169,12 +174,12 @@ func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 		}
 	}
 	if w.Hash != "" {
-		if err := encodeStringStringField(enc, "h", w.Hash); err != nil {
+		if err := encodeHashField(enc, "h", w.Hash, &hb, hBin); err != nil {
 			return err
 		}
 	}
 	if w.PrevHash != "" {
-		if err := encodeStringStringField(enc, "ph", w.PrevHash); err != nil {
+		if err := encodeHashField(enc, "ph", w.PrevHash, &pb, pBin); err != nil {
 			return err
 		}
 	}
@@ -214,7 +219,10 @@ func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 func (w RelWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	// v2+ emits tf/tt as a fixed-width, always-present trailing slot; v1/legacy
 	// keeps the omitempty mid-map form. See wire_temporal_tail.go.
-	fv := emittedRowFormatVersion(w.FormatVersion, w.Retracted)
+	var hb, pb, fb, tb [32]byte // integrity hashes as raw bytes (encodeHashField)
+	hBin, pBin := binaryHash(w.Hash, &hb), binaryHash(w.PrevHash, &pb)
+	fBin, tBin := binaryHash(w.FromNodeHash, &fb), binaryHash(w.ToNodeHash, &tb)
+	fv := emittedRowFormatVersion(w.FormatVersion, w.Retracted, hBin || pBin || fBin || tBin)
 	v2 := fv >= 2
 	fields := 5 // id, rt, s, e, v
 	if fv != 0 {
@@ -379,22 +387,22 @@ func (w RelWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 		}
 	}
 	if w.Hash != "" {
-		if err := encodeStringStringField(enc, "h", w.Hash); err != nil {
+		if err := encodeHashField(enc, "h", w.Hash, &hb, hBin); err != nil {
 			return err
 		}
 	}
 	if w.PrevHash != "" {
-		if err := encodeStringStringField(enc, "ph", w.PrevHash); err != nil {
+		if err := encodeHashField(enc, "ph", w.PrevHash, &pb, pBin); err != nil {
 			return err
 		}
 	}
 	if w.FromNodeHash != "" {
-		if err := encodeStringStringField(enc, "fnh", w.FromNodeHash); err != nil {
+		if err := encodeHashField(enc, "fnh", w.FromNodeHash, &fb, fBin); err != nil {
 			return err
 		}
 	}
 	if w.ToNodeHash != "" {
-		if err := encodeStringStringField(enc, "tnh", w.ToNodeHash); err != nil {
+		if err := encodeHashField(enc, "tnh", w.ToNodeHash, &tb, tBin); err != nil {
 			return err
 		}
 	}
@@ -561,6 +569,26 @@ func encodeStringStringField(enc *msgpack.Encoder, key, value string) error {
 		return err
 	}
 	return enc.EncodeString(value)
+}
+
+// binaryHash reports whether the writer writes s as 32 raw bytes (decoded
+// into b): it writes binary hashes (writesBinaryHashes) and s is canonical.
+func binaryHash(s string, b *[32]byte) bool {
+	return binaryHashWriter.Load() && hash32.Decode(s, b)
+}
+
+// encodeHashField writes an integrity hash as its 32 raw bytes (msgpack bin
+// 8) when bin (binaryHash), else as the string it is — the hex form, or an
+// exact round trip of a hash this library did not produce. The row's fv is
+// BinaryHashWireFormatVersion or above whenever one hash is binary.
+func encodeHashField(enc *msgpack.Encoder, key, s string, b *[32]byte, bin bool) error {
+	if err := enc.EncodeString(key); err != nil {
+		return err
+	}
+	if bin {
+		return enc.EncodeBytes(b[:])
+	}
+	return enc.EncodeString(s)
 }
 
 func encodeStringUint8Field(enc *msgpack.Encoder, key string, value uint8) error {
