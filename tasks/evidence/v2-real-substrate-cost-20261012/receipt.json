@@ -1,0 +1,437 @@
+{
+  "version": 1,
+  "sourceCheckpoint": "84d18299e2fb1b0eb29ecbaf6fedd93083a0092d",
+  "base": "b5bc3a0e",
+  "status": "native source checkpoint with qualified small guards and actual incomplete fixed-limit cell; FDB source is unqualified",
+  "nativeQualifiedScope": {
+    "sourceCommit": "84d18299",
+    "nativeQualifiedGoFiles": {
+      "v5/internal/graphapply/graph_source_process_test.go": "3f609d9b22147c60d54259a04f1e7be5e62f004204111ffc7af31992dab9b091",
+      "v5/internal/graphapply/native_graph_cost_harness_test.go": "90e6f40dcbd807a9faf62ab28e947b6b587f5738c9b0e925737551169ff14ebd",
+      "v5/internal/graphapply/native_graph_cost_test.go": "0aa6963d1ab9e9a472b1e47e9e24ed59e24263c2194966698dde0a970de949d9",
+      "v5/internal/graphapply/native_graph_lifecycle_harness_test.go": "104ec50577568229887c85ad518e9f9dcfd0f03728f639d72d49de8a5a718a4e",
+      "v5/internal/graphapply/replicated_process_test.go": "6bb7c7ca4e63af2a80bd9d35e00e4297e7a1adcd31b8b7871e6a58c2fd4b4f85"
+    },
+    "guards": [
+      "TestNativeGraphCostSmallActualProcesses",
+      "TestNativeGraphCostProfileAndRouting"
+    ],
+    "pairedGate": "TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts",
+    "smallActualBehavior": {
+      "100": {
+        "spec": {
+          "version": 1,
+          "facts": 2,
+          "crossPercent": 100,
+          "writers": 1
+        },
+        "sha256": {
+          "observations.jsonl": "a0a1aa14fcc7073d04a5cc475475de7c749f63c457dfd7aba4773159890cba8d",
+          "latency.jsonl": "ec8b9966f8ac431d0f05871329dcd5fb97792125394caf6bfff85425d3b292a4",
+          "cdc.jsonl": "ef77b025a84cd3ce100574c0a749171345ecffa8723206553fe7e91c3f000ad4",
+          "native-cost-result.json": "9b2aaa25dd7f9992dc098677c7a1e87ac0c23d9fd6735f34c72d8ce27ca13760"
+        }
+      },
+      "0": {
+        "spec": {
+          "version": 1,
+          "facts": 2,
+          "crossPercent": 0,
+          "writers": 1
+        },
+        "sha256": {
+          "observations.jsonl": "979785ac5243f0b0f11accf94ec6fa6d716cb0704a29d7dd7fa43ec7cc4f9e19",
+          "latency.jsonl": "e72653b2852fecd3cb534850d24237b6799051d6fd433d5d1392a8b5b3d7b531",
+          "cdc.jsonl": "b2f718ced29b339207ac999e67a81c655e1c12d7773b188f31d49906cbbc0858",
+          "native-cost-result.json": "50375b050b59cbd5e48fff643bda01118f5c06cd91abe927bf992e3bf557ab23"
+        }
+      }
+    },
+    "pairedActualComparison": {
+      "equal": true,
+      "fixtureID": "graph-fault-local-v1",
+      "logicalOperations": 6,
+      "completeLogicalCDCGroups": 6,
+      "componentChanges": 7,
+      "faultCases": 4,
+      "originalInputSHA256": {
+        "native-raft": {
+          "node-a": "1c08c1e7946b756b01fe0ed9df57d9e41b229fcc15d3fdebec0003616ebde2a1",
+          "node-b": "55e651c2a7cfd4e3fe9ccf0c2ee1379313880c42236676f0d7f3fa00e5c2e1df",
+          "edge-create": "af9948223fb63863edef7e0f6ff1b35a024575a62a38c123131bb8941c11bbd2",
+          "precommit-update": "7ddad643cd7cbcce6b047a4034b6f58362cd4ba4b1f26747b4b3e96e96dbc388",
+          "postcommit-update": "ae7cd4228ca8a36af86ecf35aa8f97b194b19d7953bdca3f0410b15ed9ca6bfa",
+          "zone-loss-update": "ec0048de3f83e77bc1e25158e780dd57a2b332eef2393c75b78231a46abc57b9"
+        },
+        "foundationdb": {
+          "node-a": "932bc6c089ee80d2bbc7ace86fc202502e1d059b497f7ed80d165d9b9bd214e5",
+          "node-b": "9be6fe5ea5a27eaab2c85b69d995ebee293d5a50c5da41268d7dbe4146ff31b9",
+          "edge-create": "d56063b4cb01bc4ad8c8bf2d28996db27865a81581725616599e380fb8e6331c",
+          "precommit-update": "788973f3d4385987ec2ff7da50daca71f265a4c52ea1f5f09fbb68a049680eb8",
+          "postcommit-update": "919e3e4658036ad843379c8b3b9a1b66f80b51f607102df27b2adbe8e32ccde6",
+          "zone-loss-update": "b38e94f29881835aa034707a8b400fea04a8a64011188e13d7c7444cb723dd71"
+        }
+      },
+      "FDBArtifactEvidence": {
+        "artifacts": 26,
+        "sealedCommandEvents": 221,
+        "backendSHA256": "b7f3df478fbb3c15c4ba8475107e360165fc8a008502977f36526eb7b1bb76bc"
+      },
+      "scope": "Local functional paired comparison only: not multi-host, power loss, arbitrary failure schedules, cost/performance or engine selection. Existing scalar, graph-fault and lifecycle encodings remain unchanged; this is a fresh fixture namespace.",
+      "nativeOpaqueCodecBoundary": "qualified actual exporter; not decoded into authority by Python",
+      "nativeSHA256": "31ab1bb82f2a7c06a23820eddbf98d227d17fcad245db9bae8d68fa0fd2c4339",
+      "fdbSHA256": "cde5dfee209c99c78de3cc43b31c78b7471dedc61f38b2ddeb98e7033cf8c14c"
+    },
+    "controller": "tools/v5-substrate/cost-cell.py; Python syntax checked, actual parity+native timeout path exercised; no completed10k or FDBsuccess-path qualification",
+    "FDBScope": "11 changed tools/v5-substrate/fdb files are source-only, not qualified; keep old recorded-source CI evidence tied to unchanged FDBinputs"
+  },
+  "qualification": {
+    "current-pair": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-json",
+        "-run",
+        "^TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 891.922,
+      "elapsed_s": 23.652,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "current-small-r2": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-json",
+        "-run",
+        "^TestNativeGraphCost(SmallActualProcesses|ProfileAndRouting)$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 406.875,
+      "elapsed_s": 7.407,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "current-vet": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "vet",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 308.609,
+      "elapsed_s": 1.406,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "current-lint": {
+      "command": [
+        "/var/tmp/rho-v6-preflight-evidence-20261012/bin/golangci-lint",
+        "run",
+        "--config",
+        "../.golangci.yml",
+        "--max-issues-per-linter=0",
+        "--max-same-issues=0",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 1641.359,
+      "elapsed_s": 34.3,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "current-binary": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-c",
+        "-o",
+        "/var/tmp/rho-v5-cost-runner-qualification-20261012/current-native-cost.test",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 798.812,
+      "elapsed_s": 4.15,
+      "exit_code": 0,
+      "reason": "completed"
+    }
+  },
+  "measurement": {
+    "version": 1,
+    "completedCell": false,
+    "failure": "declared watchdog time limit; no reported native operation/quota failure",
+    "watchdog": {
+      "command": [
+        "/private/var/tmp/rho-v5-cost-runner-qualification-20261012/current-native-cost.test",
+        "-test.run=^TestNativeGraphCostCell$",
+        "-test.v",
+        "-test.timeout=1860s"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 1800.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 236.672,
+      "elapsed_s": 1800.305,
+      "exit_code": 124,
+      "reason": "time-limit"
+    },
+    "counts": {
+      "ackDrainAndRootVerifiedCreates": 10000,
+      "ackDrainAndRootVerifiedUpdates": 6724,
+      "CDCRecords": 16731,
+      "nonemptyLogicalCDCGroups": 16727,
+      "logicalComponentChanges": 26727,
+      "retainedPointObservations": 0
+    },
+    "timings": {
+      "create": {
+        "samples": 10000,
+        "clientAttempts": 10000,
+        "timing": {
+          "proposalNanos": {
+            "sumSeconds": 11.958592492,
+            "p50Millis": 0.605563,
+            "p95Millis": 1.178209
+          },
+          "ackNanos": {
+            "sumSeconds": 522.376823972,
+            "p50Millis": 48.612792,
+            "p95Millis": 99.398458
+          },
+          "drainNanos": {
+            "sumSeconds": 374.879559826,
+            "p50Millis": 29.1224375,
+            "p95Millis": 85.272375
+          },
+          "verificationNanos": {
+            "sumSeconds": 160.197213677,
+            "p50Millis": 17.1101045,
+            "p95Millis": 31.745125
+          }
+        }
+      },
+      "update": {
+        "samples": 6724,
+        "clientAttempts": 6724,
+        "timing": {
+          "proposalNanos": {
+            "sumSeconds": 9.680218028,
+            "p50Millis": 0.7130205,
+            "p95Millis": 1.763958
+          },
+          "ackNanos": {
+            "sumSeconds": 316.48821057,
+            "p50Millis": 46.050333,
+            "p95Millis": 74.502
+          },
+          "drainNanos": {
+            "sumSeconds": 234.424186781,
+            "p50Millis": 29.593375,
+            "p95Millis": 65.119333
+          },
+          "verificationNanos": {
+            "sumSeconds": 92.425249699,
+            "p50Millis": 17.027646,
+            "p95Millis": 25.198916
+          }
+        }
+      }
+    },
+    "physicalStorageAfterUncleanStop": {
+      "allSixVoterDirectories": {
+        "1": {
+          "fileLengthBytes": 126090205,
+          "allocatedBytes": 126275584,
+          "files": 52
+        },
+        "2": {
+          "fileLengthBytes": 126139200,
+          "allocatedBytes": 126402560,
+          "files": 67
+        },
+        "3": {
+          "fileLengthBytes": 126139425,
+          "allocatedBytes": 126402560,
+          "files": 67
+        },
+        "4": {
+          "fileLengthBytes": 60660,
+          "allocatedBytes": 69632,
+          "files": 6
+        },
+        "5": {
+          "fileLengthBytes": 60660,
+          "allocatedBytes": 69632,
+          "files": 6
+        },
+        "6": {
+          "fileLengthBytes": 60660,
+          "allocatedBytes": 69632,
+          "files": 6
+        }
+      },
+      "fileLengthBytes": 378550810,
+      "allocatedBytes": 379289600,
+      "scope": "actual lengths/POSIX blocks after watchdog SIGKILL; includes every owned replica/log/history/index/metadata; trace outputs excluded; not a successful close/reopen/durability certification"
+    },
+    "cleanup": {
+      "observedWall": "2026-10-12T17:58:42.140251+02:00",
+      "scope": "outer watchdog SIGKILL at time limit; no successful Go child Close/Wait claim",
+      "nativeClientAndSixVoterIdentities": [
+        {
+          "pid": 72966,
+          "started": "Mon Oct 12 17:07:34 2026",
+          "gone": true,
+          "current": null
+        },
+        {
+          "pid": 72970,
+          "started": "Mon Oct 12 17:07:35 2026",
+          "gone": true,
+          "current": null
+        },
+        {
+          "pid": 72971,
+          "started": "Mon Oct 12 17:07:35 2026",
+          "gone": true,
+          "current": null
+        },
+        {
+          "pid": 72972,
+          "started": "Mon Oct 12 17:07:35 2026",
+          "gone": true,
+          "current": null
+        },
+        {
+          "pid": 72973,
+          "started": "Mon Oct 12 17:07:35 2026",
+          "gone": true,
+          "current": null
+        },
+        {
+          "pid": 72974,
+          "started": "Mon Oct 12 17:07:35 2026",
+          "gone": true,
+          "current": null
+        },
+        {
+          "pid": 72975,
+          "started": "Mon Oct 12 17:07:35 2026",
+          "gone": true,
+          "current": null
+        }
+      ]
+    },
+    "sourceFreezeSHA256": "f6b8d34f55e9e612ee4cb074f08e53665dc671299afd8fdc9a8bf5e517811a8e",
+    "sourceFiles": 580,
+    "artifactSHA256": {
+      "receipt.json": "1b9e429cace829b556c3f7bc40b3e8d590f1a81b53b0a9aa20f12cd3fe4a2c1e",
+      "watchdog.json": "3c98da4ac3034899d26a3e5b63e4992b828d23e32cd16d4b790d53aacd67e43f",
+      "stdout.txt": "d8eb4dd405ae5eee2aaa9d12e8ef88048b79bd7c4ed88cbff7bb2e478b5f8fb1",
+      "stderr.txt": "bbd1eeb9e1f093589c1cb52a0c2f13e9264447490bc3ab5e03f391633feda025",
+      "latency.jsonl": "c342b5202435c9aa0ea1b23d51077e0896eec7784852483c3ce3dcb83692c10b",
+      "cdc.jsonl": "49208f5467d1ce11711d243be609557485226dd04b94d4613c8e216d65d0fb7c",
+      "observations.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "sourceAudit": {
+    "examined": "cost submit/CDC/view/stats and declared local stage paths",
+    "fullRetentionScan": "not found in those per-write paths: RootBounded hashes only172-byte image; Stats uses serialized metadata; ApplicationView/Record use indexed Get; view opening validates fixed root nodes, not descendants",
+    "runnerPostACKRPCsPerUsefulWrite": {
+      "status": 8,
+      "CDCBase": 6,
+      "note": "both leader status calls plus normalized leader CDC and original bytes from three voters; extra zero-change certificate records add work"
+    },
+    "futureChange": "batch post-ACK verification through bounded actual historical-root/CDC pages if implemented, retaining exact per-write roots/original bytes and final old/current/phantom oracle. No production change or next long run authorized by this receipt",
+    "timingCaveat": "ACK includes real client IPC/Raft/persist/original-outcome observation; it is not pure disk engine time. PostACK drain and root checks are reported separately; remaining time includes setup, CDC and progress. Wall process timestamps and monotonic elapsed differ; cause not established.",
+    "deadlineSemantics": {
+      "inheritedRPCSeconds": 10,
+      "ackProgressWaitContextSeconds": 10,
+      "polls": 128,
+      "singleLogicalOperationDeadlineEnforced": false,
+      "qualification": "pollRPCs use inherited per-call contexts, not one shared ACKcontext; preserves original finite bounds",
+      "observedMaximumSeconds": {
+        "proposal": 3.020043209,
+        "ack": 0.777151125,
+        "drain": 1.082971834,
+        "voterRootCheck": 1.065699916
+      },
+      "nextChange": "thread shared operation context through existing exchange; do not label composed per-call enforcement a strict single10s write deadline"
+    }
+  },
+  "archive": {
+    "path": "raw.tar.gz",
+    "bytes": 5262139,
+    "sha256": "3100fa717facff2c3ef7bed294c067c3dbd5b7b2f80598a91a3d04d391dc59be",
+    "members": 42,
+    "sha256Members": {
+      "measurement/cdc.jsonl": "49208f5467d1ce11711d243be609557485226dd04b94d4613c8e216d65d0fb7c",
+      "measurement/current-local10k-cleanup.json": "85e34a41e1030fc550c002454e0ab5b98421590a90b5cdbb6d0a32af9eec4712",
+      "measurement/current-local10k-clock-observation.json": "f110c279ce365e60aa8dbce392c360e4eb5c72d638601d895b159098f6d5e14e",
+      "measurement/current-local10k-owned-processes.json": "b9876f36aee4f8b70a02591bf3ccb24e80af85e80f532bc324e6b449067006b4",
+      "measurement/current-local10k-summary.json": "2a2b60c97dab6859564279ff124b3cc41755f4ca9c96c8611591db8c14673eb6",
+      "measurement/latency.jsonl": "c342b5202435c9aa0ea1b23d51077e0896eec7784852483c3ce3dcb83692c10b",
+      "measurement/observations.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "measurement/receipt.json": "1b9e429cace829b556c3f7bc40b3e8d590f1a81b53b0a9aa20f12cd3fe4a2c1e",
+      "measurement/stderr.txt": "bbd1eeb9e1f093589c1cb52a0c2f13e9264447490bc3ab5e03f391633feda025",
+      "measurement/stdout.txt": "d8eb4dd405ae5eee2aaa9d12e8ef88048b79bd7c4ed88cbff7bb2e478b5f8fb1",
+      "measurement/watchdog.json": "3c98da4ac3034899d26a3e5b63e4992b828d23e32cd16d4b790d53aacd67e43f",
+      "qualification/current-binary.stderr": "0919f662607e7d26eef43c1e0ea0c7f8c1ff1bfc8c91a6088eb76cab7cf19525",
+      "qualification/current-binary.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "qualification/current-binary.watchdog.json": "9064aa3b3d95944a981edb861f3affb969dab50884ceac9c8c10e826ea2b400c",
+      "qualification/current-lint.stderr": "d436f6658a431ea305867a678dbc0f403a29812c42a444b8911d6e7ec5650143",
+      "qualification/current-lint.stdout": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47",
+      "qualification/current-lint.watchdog.json": "62bd128dcba63355a3c994e5b9b23713ae1f53543d50ec276bd0d2e85d519d84",
+      "qualification/current-pair-comparison.json": "50d6fb17ee88bb1c6767a568c7c1f531d1300316dae50429d66bc5cf6b6fe344",
+      "qualification/current-pair.jsonl": "ebc314cf0d029cb191d7618eaaf99127e59db2cdcb9649ec25f459b794b6433d",
+      "qualification/current-pair.stderr": "3995bb2ecedd911c7e5a62b26d2739ef2bc9a3f79583a794135ca9762a56f71e",
+      "qualification/current-pair.watchdog.json": "8102f995d0ebafbd9ddf6666adaf981b276bba3307bb11140004ad2cd609541d",
+      "qualification/current-small-r2.jsonl": "2749daf8feae2fdc7bfb4a903c975d8e9516442978e51d1210a2793524be6128",
+      "qualification/current-small-r2.stderr": "4dd08d2841c00ff9683c1848a9f629721a7e7b138144a79de8ee3efa35f13f84",
+      "qualification/current-small-r2.watchdog.json": "5e6e748d7369c981db329e39f00aa2bda84f5a7acc39c9c7ce83a0e64f2d4f64",
+      "qualification/current-vet.stderr": "c839fab55e616fe68f3fa26514099c806d5ac9bb6b8425840feec568cacaa1cd",
+      "qualification/current-vet.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "qualification/current-vet.watchdog.json": "a93e45dee91dca837567375c5dd1ec4420e506755168b5f3ab1c4fddfde44280",
+      "qualification/native-paired-graph-fault-trace.json": "31ab1bb82f2a7c06a23820eddbf98d227d17fcad245db9bae8d68fa0fd2c4339",
+      "setup-error/current-small.jsonl": "e79e5eec494db21281a86f8f48a5312e06333ee1259cbf442ea8626dfe659e1f",
+      "setup-error/current-small.stderr": "774df94c4525c95bbc0558fe463bab71bfc014ff0c5d9c6a644a76791fb812cd",
+      "setup-error/current-small.watchdog.json": "2537a723c092d3d8851e8b985ea52d9f3522384a0853bccc92d6cab9814da372",
+      "small/cross/cdc.jsonl": "ef77b025a84cd3ce100574c0a749171345ecffa8723206553fe7e91c3f000ad4",
+      "small/cross/latency.jsonl": "ec8b9966f8ac431d0f05871329dcd5fb97792125394caf6bfff85425d3b292a4",
+      "small/cross/native-cost-result.json": "9b2aaa25dd7f9992dc098677c7a1e87ac0c23d9fd6735f34c72d8ce27ca13760",
+      "small/cross/observations.jsonl": "a0a1aa14fcc7073d04a5cc475475de7c749f63c457dfd7aba4773159890cba8d",
+      "small/local/cdc.jsonl": "b2f718ced29b339207ac999e67a81c655e1c12d7773b188f31d49906cbbc0858",
+      "small/local/latency.jsonl": "e72653b2852fecd3cb534850d24237b6799051d6fd433d5d1392a8b5b3d7b531",
+      "small/local/native-cost-result.json": "50375b050b59cbd5e48fff643bda01118f5c06cd91abe927bf992e3bf557ab23",
+      "small/local/observations.jsonl": "979785ac5243f0b0f11accf94ec6fa6d716cb0704a29d7dd7fa43ec7cc4f9e19",
+      "source/current-native-qualified-scope.json": "b765d9d1282e9f34f77d294ddb0fdc2583b6c6b44f7d482a7a1320fc6cb44ae5",
+      "source/current-recovery-source.json": "0aa525fb136963e85a270e263d04f7f3f3f78d0db37f1ed930fbd5bc8185f318",
+      "source/current-source-freeze.json": "f6b8d34f55e9e612ee4cb074f08e53665dc671299afd8fdc9a8bf5e517811a8e"
+    }
+  },
+  "scope": "single-machine distributed, writer1/local,10k relationships+3setup nodes, useful creates/updates counted separately; full matrix/five fresh runs/FDB measurement/retained final oracles/engine selection pending",
+  "nativeOnlyReplay": {
+    "commit": "d4d24536c69e531c03ec22fdaa918a1c2bde6c50",
+    "base": "b5bc3a0e",
+    "changedGoFiles": 5,
+    "qualifiedBuildInputFilesByteIdentical": 568,
+    "sourceHashKeys": "source/current-source-freeze.json entries under v5 plus .golangci.yml; standalone FDBmodule/controller are not native build inputs",
+    "scope": "source-only five-file replay; no rerun required for identical native inputs; full17-file source checkpoint preserved"
+  }
+}
