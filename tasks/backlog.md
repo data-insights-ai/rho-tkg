@@ -25,11 +25,11 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 | 4 | HIGH? / MEDIUM? (traced, not reproduced) | Temporal semantics review 2026-09-24: traced findings | open; each needs a failing two-phase test first; code unchanged at the cited sites (`resolveOpenEndInstant`, `validInstantAfter` in `core/temporal.go`) |
 | 5 | MEDIUM (perf) | P7 row compaction follow-ups | open; options (a)-(d) unbuilt (P7 itself shipped in v4.40.0) |
 | 7 | FEATURE (limitation) | Caller-instant delete of a row with a scheduled close | open; `DeleteWithTx` refuses `ValidTo >= t` with `ErrTxOrder` (R8, v4.44.0) |
-| 10 | FEATURE | Tiered store: remaining work after composite + rel temporal indexes | indexes shipped in v4.45.0; (a) sequential-scan rebuild and (b) rel property indexes / node `TemporalCandidateCapability` on tiered open |
+| 10 | FEATURE | Tiered store: remaining work after composite + rel temporal indexes | indexes shipped in v4.45.0; (a) sequential-scan rebuild done (Unreleased, ≈ 4× vs the per-rel build); (b) rel property indexes / node `TemporalCandidateCapability` on tiered open |
 | 13 | MEDIUM | Ingest applier attributes group errors by numeric entity id, not by kind | open; `groupApplyError` still keys `idToGroup` by `types.EntityID` (`core/ingest.go`) |
 | 16 | MEDIUM (contract) | Range folds under an interval: predicate-anywhere or value at the resolved version? | open; decision pending; behaviour documented in the v4.44.0 CHANGELOG |
 | 20 | LOW (TEST-GAP, perf) | Effective-read cost: RelAtTx benchmark targets unmeasured | fixes 1a (v4.44.1), 1b (v4.46.0), 1c (v4.47.0), 2a (v4.46.0) shipped; only the RelAtTx benchmarks remain |
-| 22 | MEDIUM (not reproduced) | Badger rel temporal index create races concurrent writes | open; `CreateRelTemporalIndex` still uses the snapshot / unlocked build / install shape |
+| 22 | MEDIUM (reproduced) | Badger rel temporal index create races concurrent writes | done (Unreleased): 3-phase mutated-set install |
 | 23 | LOW (perf, unmeasured) | `changeFeedPage` prefetches past its page | open; `PrefetchValues = true`, no `opts.Prefix` (`badgerstore_changelog.go:648-659`) |
 | 25 | MEDIUM | A future close followed by a delete changes the answer at an earlier pin | open; `stampDeleteTombstone` still clamps (`core/temporal.go:133-137`) |
 | 26 | LOW (known limit) | Old chains with collided versions keep answering in the old version order | open; schedule only if a consumer holds such chains |
@@ -40,6 +40,7 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 | 45 | MEDIUM (API) | Internal sentinels reach callers but have no exported alias; `ErrMixedNumericColumn` is outside the errors inventory test | open; found by the doc review of `docs/errors.md` 2026-10-10 |
 | 46 | LOW (stale comments) | Code comments that contradict the code or cite ADRs no longer in `docs/adr/` | open; found by the doc reviews 2026-10-10 |
 | 47 | LOW (unverified claims) | `NodesByLabelAt` vs K1; a RAM budget for the property sidecars | open; each needs a real check before it becomes work |
+| 56 | MEDIUM (unverified, read from code) | Node temporal envelope holes: `PutNodeVersion`, `CreateTemporalIndex` publish-before-fold window, label add on a live node | open; red tests first |
 | 52 | HIGH (ai-soc) | Durable commit under SyncWrites costs one fsync per mutation | in progress, v4.51.3 |
 | 53 | HIGH (ai-soc) | Relationship planner-stat memos hold one RAM entry per relationship | in progress, v4.51.3 |
 | 54 | HIGH (ai-soc) | Badger open walks every current row (open linear in history) | in progress, v4.51.3 |
@@ -1141,9 +1142,9 @@ test passes.
 
 ### 10. Tiered store: remaining work after composite + rel temporal indexes
 
-*FEATURE* — indexes shipped in v4.45.0; (a) sequential-scan rebuild and (b) rel property indexes / node `TemporalCandidateCapability` on tiered open.
+*FEATURE* — indexes shipped in v4.45.0; (a) sequential-scan rebuild DONE (Unreleased); (b) rel property indexes / node `TemporalCandidateCapability` on tiered open.
 
-Composite and relationship temporal indexes on tiered shipped in v4.45.0 (ai-soc request 3; per-shard fan-out anchored by the reference shard; rel temporal 156 B/relationship, composite 310 B/node; the rel temporal index lives on reference + hot + warm shards only, cold demotion frees it, `PromoteColdShardsAtOpen` rebuilds it; ≈ 5.8–9.2 GB per indexed type at `ColdAfter` = 1 day). Remaining: (a) a sequential-scan rebuild — today one point read plus one history prefix scan per relationship (0.018–0.021 M rels/s), 29–54 min per day shard on reopen or promotion; (b) relationship property indexes (`CreateRelPropertyIndex` declines, `store/tiered/tieredstore_write.go`) and the node-side `TemporalCandidateCapability` are still declined on tiered.
+Composite and relationship temporal indexes on tiered shipped in v4.45.0 (ai-soc request 3; per-shard fan-out anchored by the reference shard; rel temporal 156 B/relationship, composite 310 B/node; the rel temporal index lives on reference + hot + warm shards only, cold demotion frees it, `PromoteColdShardsAtOpen` rebuilds it; ≈ 5.8–9.2 GB per indexed type at `ColdAfter` = 1 day). (a) DONE (Unreleased): the build was one point read plus one history prefix scan per relationship (0.018–0.021 M rels/s in the field, 29–54 min per day shard on a crash reopen or a cold-to-warm promotion); it is now one read transaction with two forward walks (rows, history) in ID order — 200,000 relationships with history, reopened store: 78,919 → 304,166 rels/s (3.9×, host load ≈ 15; 3.9–4.5× over three runs), `tasks/evidence/rel-temporal-rebuild/03-bench.txt`; field shard times not re-measured; backlog 22 (create races writes) fixed alongside. Remaining: (b) relationship property indexes (`CreateRelPropertyIndex` declines, `store/tiered/tieredstore_write.go`) and the node-side `TemporalCandidateCapability` are still declined on tiered.
 
 ### 13. Ingest applier attributes group errors by numeric entity id, not by kind
 
@@ -1165,7 +1166,7 @@ Missing: `BenchmarkRelAtTx/{plain,cascaded}/{hot,cold}` with targets < 1 µs pla
 
 ### 22. Badger rel temporal index create races concurrent writes
 
-*MEDIUM (not reproduced)* — open; `CreateRelTemporalIndex` still uses the snapshot / unlocked build / install shape.
+*MEDIUM (reproduced 2026-10-14)* — DONE (Unreleased): `CreateRelTemporalIndex` installs a Building index (writes fold in and record their IDs), builds unlocked, re-reads the recorded IDs' rows, merges and publishes; red tests `TestCreateRelTemporalIndex_WriteBetweenSnapshotAndInstall` and `_UpdateMidBuildHistoryFlushedLate` (`tasks/evidence/rel-temporal-rebuild/06-red-22.txt`).
 
 **Badger rel temporal index create races concurrent writes** (MEDIUM, pre-existing, NOT reproduced — read from code, review of backlog 10, 2026-10-09). `CreateRelTemporalIndex` (`store/badger/badgerstore_reltype_temporal_index.go`, the create body) snapshots the type's relationship IDs under `idxMu`, builds the envelope index unlocked and installs it; a relationship created or updated in the gap is not folded in, because `ExtendRelInTemporalIndexes` returns early while no index exists — lesson 74's lazy-build rule. A missed new relationship is merely uncovered (kept); a missed update of a covered one can leave its envelope short of a row, i.e. an unsound prune. On tiered this now runs against the hot shard while it ingests. Red test first with a write-generation guard (lesson 63): write between snapshot and install, then prune at the written row's interval; fix with the 3-phase mutated-set install `CreateTemporalIndex` uses. The header comment was corrected (it claimed the scan held `idxMu`).
 
@@ -1242,6 +1243,10 @@ rule itself); the header of `pkg/graph/internal/core/effective_timeline.go` (~li
 transaction-time membership; verify whether the named door can use K1 at all (a two-phase test with a churned label, memory/badger)
 before filing a fix. (b) "A RAM budget for the property sidecars": v4.48.0 measured 25-30 B per posting (97-117 B near-unique) and defined
 no budget; reopen only if a consumer reports memory pressure; then design a per-store budget that drops a sidecar and falls back to the fold.
+
+### 56. Node temporal envelope holes (unverified)
+
+*MEDIUM* — read from code by the backlog-22 final fix (2026-10-14), not tested. The node temporal index prunes, so a narrow envelope is an unsound answer. (a) `PutNodeVersion` never extends the node temporal index; (b) `CreateTemporalIndex` publishes before its history fold, a window with too-narrow envelopes; (c) adding a label to a live node covers it in that label's index with its current row only. Memory store not checked. Red test per case first; fix only the ones that go red.
 
 ## v5
 

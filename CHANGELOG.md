@@ -493,6 +493,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   imported-package and two required-module advisories are unreachable. Final
   consolidated root+v5 CI remains pending; no other v4 API or behavior change.
 
+## [4.51.6] - 2026-10-14
+
+### Changed
+
+- **Badger relationship temporal index build reads sequentially** (backlog 10(a)): `CreateRelTemporalIndex`, the
+  rebuild at a crash reopen and the tiered cold-to-warm promotion build the per-relationship envelope from one read
+  transaction with two forward walks (relationship rows, relationship history) in ID order, instead of a point read
+  plus a history prefix scan per relationship; a delta history row is folded from its temporal block without the
+  anchor read. A flush that lands mid-build re-pins the snapshot (the scanSnapshot rule), and buffered history is
+  read before and after the walk. Same rows folded as the old build (`TestRelTemporalIndexRebuildSequential`). 200,000
+  relationships with history, reopened store: 78,919 → 304,166–347,756 rels/s (3.9–4.5× over four runs on a loaded
+  host; `tasks/evidence/rel-temporal-rebuild/03-bench.txt`).
+
+### Fixed
+
+- **Badger `CreateRelTemporalIndex` no longer misses writes made during the build** (backlog 22): a relationship
+  created, updated or given a history version between the ID snapshot and the install could be left with an envelope
+  short of a row, so a prune at that row's instant dropped it (reproduced: an update after the build read the
+  relationship lost its new row; an update before it, with the history flushed late, lost the old row). Create now
+  installs a Building index first (writes fold into it and record their IDs, prunes decline it, it is not persisted
+  or imaged), builds unlocked, re-reads every row of the recorded IDs, then merges and publishes, as
+  `CreateTemporalIndex` does (`TestCreateRelTemporalIndex_WriteBetweenSnapshotAndInstall`,
+  `TestCreateRelTemporalIndex_UpdateMidBuildHistoryFlushedLate`). An ID first written after the re-read took the
+  recorded IDs, whose rows the build never read (a deleted relationship with history, given a version or re-created
+  in that window), gets its history folded at the install under the lock; before, its envelope held that one write's
+  row and a prune at an older row's instant dropped it (`TestCreateRelTemporalIndex_PutRelVersionOnDeletedRelAfter3aCollect`).
+  The merge no longer records every built ID in the mutation set it is about to clear.
+- **Badger temporal indexes cover a re-created ID's history** (relationship type and node label indexes): creating
+  a relationship or node whose ID was deleted with its history kept, under a published index that did not cover the
+  ID (deleted before the index was built or before a reopen rebuilt it), added the new row alone, so a prune at an
+  old row's instant dropped the ID while its history held a row there. The create doors (`PutRelationship` and its
+  scoped / co-located / foreign-incoming forms, `PutRelationshipsBatch`, `PutRelEntityAndOut`, `PutNode`, the
+  `PutNodesBatch` family) now fold the ID's history first; the RAM history-presence set answers "no history" for a
+  new ID without a read, and index creation builds that set before taking the lock
+  (`TestRelTemporalIndex_RecreateDeletedRelAfterPublish{,Batch}`,
+  `TestTemporalIndex_RecreateDeletedNodeAfterPublish{,Batch}`).
+
 ## [4.51.5] - 2026-10-13
 
 ### Added

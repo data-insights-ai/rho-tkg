@@ -1,13 +1,13 @@
-# HANDOVER — rho-tkg v4 line (rewritten 2026-10-12, main at v4.51.5)
+# HANDOVER — rho-tkg v4 line (rewritten 2026-10-12, main at v4.51.6)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go 1.26.9; a Go
-library, not a database). Latest tag `v4.51.5`. Read, in this order: this file, `tasks/lessons.md` (digest at the top),
+library, not a database). Latest tag `v4.51.6`. Read, in this order: this file, `tasks/lessons.md` (digest at the top),
 `tasks/todo.md` (user requests, open queue with the per-step red tests), `tasks/backlog.md` (specs), `CHANGELOG.md` top.
 History (what shipped, why) is in `CHANGELOG.md` and git, not here.
 
 ## 1. Open requests and next steps (newest user message first; do these, do not ask)
 
-1. **v4.51.5 released 2026-10-13** (21, 28, 41; CI race split, GitHub CI green). **v4.51.4 released 2026-10-13** (44: crash reopen above every stored stamp; 15 closed by docs). v4.51.3 released 2026-10-12 (52, 53, 54, 55, F1–F6). Next tag: v4.51.6 (PATCH only). Next work: new consumer requests, then the on-hold items below.
+1. **v4.51.6 released 2026-10-14** (10a, 22, re-create fold; 56 open). **v4.51.5 released 2026-10-13** (21, 28, 41; CI race split, GitHub CI green). **v4.51.4 released 2026-10-13** (44: crash reopen above every stored stamp; 15 closed by docs). v4.51.3 released 2026-10-12 (52, 53, 54, 55, F1–F6). Next tag: v4.51.7 (PATCH only). Next work: new consumer requests, then the on-hold items below.
 2. **On hold:** nothing (41, 28, 21 shipped in v4.51.5).
 3. **Md consolidation** (René 2026-10-12 "consolidate md files and rules"): done by the Sonnet agent of this commit; review
    `tasks/todo.md` request 21.
@@ -102,9 +102,11 @@ V0/V1 are accepted and V2 remains open. Exact finite source/test receipts live u
 `docs/v5/HANDOVER.md` is external review, reconciled against PLAN, not permission to reduce those
 gates or push/merge main. `docs/v5-analysis.md` §5 keeps the 45-family consumer mapping; immutable
 sigma/ai-soc inventories and current v4 source deltas are in `docs/v5/reference/consumer-*.json`.
-The current reader is main `c23c8b04`/v4.51.5. Existing nonempty retained-state
-preflight cases pass all ten narrow gates at integrated `da5d32e6` (96.2%, both
-preflight functions 100%); new retention/refusal and consumer/destination-import
+The current reader is main `a77b1301`/v4.51.6, source-reconciled but not yet
+qualified. Its minimum reader gate is the existing ten narrow preflight gates;
+indexed rebuild/selector proofs and upstream backlog56 node gaps are separate.
+Historical v4.51.5 nonempty retained-state cases passed at `da5d32e6` (96.2%,
+both preflight functions 100%); new retention/refusal and consumer/destination-import
 qualification remain pending. Historical `9e805ddc`/v4.51.4 and earlier receipts
 are immutable; exact upstream CI/source equivalence and this mapping slice do
 not establish consumer adoption or V6 acceptance.

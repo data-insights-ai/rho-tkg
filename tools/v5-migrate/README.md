@@ -40,7 +40,7 @@ whole-root or V6 acceptance. Dated source checkpoints and historical observation
 remain unchanged. Live read snapshots/open images are source accelerators, never
 an import cut or proof of missing history.
 
-The current v4.51.5/main `c23c8b04` reader is narrowly requalified at integrated
+The historical v4.51.5/main `c23c8b04` reader is narrowly requalified at integrated
 root `da5d32e6` by the [ten-gate receipt](evidence/main4515-da5d32e6.json) and
 [raw archive](evidence/main4515-da5d32e6.tar.gz). All ten existing module gates
 passed with Go 1.26.9 darwin/arm64 and verified reused pinned scanners, bounded
@@ -56,6 +56,18 @@ Relationship retention now refuses affected old pins; preflight does not capture
 global source watermark families or perform import. Per-type retention, state
 column cuts and zero temporal ordinals have explicit consumer obligations in
 [PLAN §8a](../../docs/v5/PLAN.md); full V6 remains open.
+
+The current source selection is v4.51.6/main `a77b1301`, with the same local
+replacements and unchanged preflight code/tests. Its narrow reader qualification
+is pending; the v4.51.5 receipt above remains immutable. Sequential relationship
+temporal-index rebuild, concurrent build installation and re-created-ID history
+folding have new source obligations in PLAN §8a. These preflight functions read
+per-entity effective timelines, raw history/current rows and chain verification;
+they neither create nor prune temporal indexes. Re-run the existing ten narrow
+module gates on the exact merged reader with a fresh receipt before qualifying
+it. Indexed selector/build and upstream backlog56 node-envelope gaps require
+separate proofs; no new index, retention or destination-import acceptance follows
+from the existing per-entity preflight cases.
 
 The caller quiesces source writes, imports, retention and DDL across a call,
 supplies capture/reader identity and evidence, and designates an explicit v5

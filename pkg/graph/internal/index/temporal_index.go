@@ -536,6 +536,13 @@ func RelCoveredInTemporalIndexes(idxs map[uint16]*TemporalIndex, r *types.Relati
 	return covered
 }
 
+// RelTemporalIndexBuilding reports whether the temporal index covering r's
+// type is still being created. Caller must hold the store's lock.
+func RelTemporalIndexBuilding(idxs map[uint16]*TemporalIndex, r *types.Relationship) bool {
+	ti, ok := idxs[r.TypeToken().Value()]
+	return ok && ti.Building
+}
+
 // RemoveRelFromTemporalIndexes is a NO-OP, mirroring RemoveNodeFromTemporalIndexes
 // — see that function's doc comment for the full append-only-envelope rationale.
 func RemoveRelFromTemporalIndexes(_ map[uint16]*TemporalIndex, _ *types.Relationship, _ snowflake.ID) {

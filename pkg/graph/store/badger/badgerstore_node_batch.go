@@ -656,6 +656,12 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 		}
 		vectorUpdates[i] = updates
 	}
+	for i, n := range nodes {
+		if err := bs.foldRecreatedNodeHistoryLocked(n, serialized[i].id); err != nil {
+			bs.idxMu.Unlock()
+			return err // a fold already done only widened an envelope: sound
+		}
+	}
 
 	// Phase 2: apply — all validated, safe to mutate.
 	ops := make([]writeOp, 0, len(nodes)*3) // entity + avg ~2 label indexes

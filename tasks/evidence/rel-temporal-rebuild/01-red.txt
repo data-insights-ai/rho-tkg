@@ -1,0 +1,13 @@
+--- FAIL: TestRelTemporalIndexRebuildSequential (0.38s)
+    --- FAIL: TestRelTemporalIndexRebuildSequential/pending-full (0.06s)
+        badgerstore_reltype_temporal_rebuild_test.go:192: build opened 102 read transactions for 104 relationships, want 1 (no per-relationship read)
+    --- FAIL: TestRelTemporalIndexRebuildSequential/pending-delta (0.06s)
+        badgerstore_reltype_temporal_rebuild_test.go:192: build opened 102 read transactions for 104 relationships, want 1 (no per-relationship read)
+    --- FAIL: TestRelTemporalIndexRebuildSequential/reopened-full (0.16s)
+        badgerstore_reltype_temporal_rebuild_test.go:192: build opened 204 read transactions for 104 relationships, want 1 (no per-relationship read)
+    --- FAIL: TestRelTemporalIndexRebuildSequential/reopened-delta (0.09s)
+        badgerstore_reltype_temporal_rebuild_test.go:192: build opened 204 read transactions for 104 relationships, want 1 (no per-relationship read)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.393s
+FAIL
+# note: red run of the test before the 100-key gap scenario and the seek bound 2->4 were added (same oracle + read-txn assertion)
