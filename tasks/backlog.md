@@ -255,7 +255,7 @@ all A–F exit requirements; implementation status never implies acceptance.
    from comparable correctness, durability, total cost, deployment and maintenance
    evidence before V3 format freeze.
 6. **Run one coordinated V2 acceptance gate.** Reconcile main at a recorded
-   cutoff (latest observed main is `8c856fc9`/v4.53.0; current v5 source includes v4.51.8),
+   cutoff (latest observed main source is `80f7f067`/v4.54.0; current v5 source includes v4.51.8),
    review relevant handover/consumer/CI deltas and integrate required changes.
    Preserve historical qualification rather than relabelling it as current.
    On the final integrated revision run full phase CI/race/coverage/security and
@@ -288,20 +288,35 @@ same active read, and the existing compact guard now calls the routed APIs
 directly. The owner retains one original certified cut, one genuine private
 cursor and one last chunk with cumulative prepaid work/RPC/output limits.
 Its current process-local lifetime follows the actual source TTL (at most one
-minute); native cost IPC wiring, durable pin integration and large-degree
-qualification remain open. FDB's explicit column-runner lane is source-integrated
+minute). Native cost IPC wiring is integrated at `8e151e20`/`2418b0cf`: one
+child-owned cookie and monotone sequence, bounded replay, cancellation and Close
+on the existing reserved cleanup lane. Receipts include completed source work,
+cumulative prepaid allowances and actual source RPC/frame bytes. Durable pin
+integration and large-degree qualification remain open. FDB's explicit column-runner lane is source-integrated
 at `0233899d`: old/current publication, held old reads, genuine cache bytes and
 bounded derived collection precede a fresh source-history/CDC census. Controller
-and independent column verification wiring are still being implemented. The
+and independent column verification are source-integrated at `570dc8f7`, including
+exact original-source/binary/cache/owner/EOF agreement and the actual live,
+tombstone and retired-lineage logical-byte census. The
 lane compares derived FDB columns with native logical/KV answers; it does not
 claim native column-layout parity, source KV reclamation or a qualified cost cell.
+Native terminal cleanup-credit storage is source-integrated at `6232f4ce`, with
+AS6 snapshot binding and actual Ready activation at `b56db530`/`ffa905e7` plus
+the matching authored guard correction. A bounded separate bank reserves cleanup
+alternatives within existing quotas independently of transient transaction
+recovery. Snapshot admission funds both banks before staging and binds exact
+imported credit state. Operative graph pins, all-participant portable publication,
+explicit expiry and logical GC are still being implemented; storage substrate
+alone does not provide them. These new packages have source review and exact
+integration hashes only; compilation, authored guards and runtime qualification
+remain deferred to the integrated checkpoint.
 Existing accepted components stay closed unless their source or required
 behavior changes.
 
 Worker lanes: Sol 6.1/high for native protocol recovery and durable pins/GC,
-then C/D; Sol 6.1/high for bounded high-degree incident continuation (the
-medium-effort native reopen/index and 8/32-client source packages are integrated);
-Sol 6.1/high for FDB column-runner, writer and comparison integration. The
+then C/D; Sol 6.1/high for native column/fault-workload implementation (bounded
+incident continuation, native reopen/index and 8/32-client source packages are integrated);
+Sol 6.1/high for actual FDB 8/32 writers and remaining source reclamation. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
 serialize heavy local fault/benchmark workloads under the shared resource lease.
