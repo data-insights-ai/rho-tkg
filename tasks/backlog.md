@@ -322,7 +322,11 @@ authenticated retained-source opens, exact original-outcome recovery and
 prepaid terminal cleanup. Its compact direct guards, including the finite-quota
 correction at `23ebabc1`, are authored only. The reviewed shared process harness
 is released for distributed column integration. Source logical GC,
-fresh-profile handoff and runtime qualification remain open. Complete retained terminal-bank comparison is
+fresh-profile handoff and runtime qualification remain open. The native sparse
+retention configuration/contract is source-integrated at `51407447`: opt-in
+RLM9 metadata binds separate history floors and exact semantic/data anchors
+within existing quotas. AS7 publication, activation and the operative collector
+still require implementation. Complete retained terminal-bank comparison is
 source-integrated at `045517ab`; graph Restore can detect unknown extra native
 owners instead of inspecting only the transient recovery owner. Its direct
 historical guard and existing unknown-version guard updates are authored only.
@@ -332,7 +336,12 @@ remain deferred to the integrated checkpoint.
 Native derived change columns are source-integrated at `4e6da1db`, with genuine
 source-prefix frames, authenticated earlier originals for replay entries,
 bounded durable publication/cache and retained-cut reads. This slice is
-in-process and retain-all; distributed publisher wiring and source GC remain open.
+in-process and retain-all. Distributed child-owned publication/read/cache and
+physical-restart wiring is source-integrated at `5e6ca422`, with authenticated
+full cuts, disjoint local prefixes and both genuine sealed EOFs before joining.
+The fresh column artifact has its own version; the ordinary KV artifact is
+unchanged. Bounded independent checker/controller integration, durable pin-backed
+ownership beyond the current minute lease and source GC remain open.
 Native cost replay export/comparison is source-integrated at `2f46278f`: a later
 entry keeps its actual prefix/root and empty current CDC, joins the authentic
 earlier original frames, and is excluded from duplicate business folding only
@@ -340,7 +349,12 @@ after that binding succeeds. The compact native and offline guards are unrun.
 FDB independent 8/32 writers are source-integrated at `45c61d84`, with bounded
 workers, actual paired retry/abort originals, completion-order-independent
 comparison and genuine post-commit policy observation (`e76c49c7`). Compact
-guards are authored, not executed. These integrations close source packages,
+guards are authored, not executed. The explicitly selected FDB source-history
+collector is source-integrated at `5685b659`: durable pre-deletion admission,
+held-read/pin/reference protection, resumable bounded deletion and exact original
+revision checks preserve current anchors, retry outcomes and retained CDC.
+Fresh runner/artifact wiring and runtime qualification remain open; default
+retain-all behavior and ordinary formats stay unchanged. These integrations close source packages,
 not V2 E/F qualification or comparative efficiency acceptance.
 Existing accepted components stay closed unless their source or required
 behavior changes.
