@@ -1,0 +1,10 @@
+# backlog 58 review fix 1 red: base 22963f4e + the test and its hook only, no fix
+# go test -short -race -count=1 -run TestTxMembersFanoutListsNodeRestoredMidRead ./pkg/graph/store/tiered/
+--- FAIL: TestTxMembersFanoutListsNodeRestoredMidRead (0.17s)
+    --- FAIL: TestTxMembersFanoutListsNodeRestoredMidRead/LabelTxMembership (0.05s)
+        tieredstore_tx_members_restore_race_test.go:75: node 811109558606856192 restored during the fan-out is missing: got map[]
+    --- FAIL: TestTxMembersFanoutListsNodeRestoredMidRead/NodeValidEndCandidates (0.12s)
+        tieredstore_tx_members_restore_race_test.go:75: node 811109561557876736 restored during the fan-out is missing: got map[]
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.201s
+FAIL

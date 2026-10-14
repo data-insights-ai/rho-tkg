@@ -249,6 +249,8 @@ type Store struct {
 	refArchive        atomic.Pointer[BadgerStore]                     // nil until first archive/restore or DepthAll with archive catalog; atomic so reads need not hold archiveMu
 	archiveMu         sync.Mutex                                      // serializes lazy-open of refArchive (single-flight)
 	migrateMu         sync.Mutex                                      // serializes concurrent MigrateFromBadger calls against this Store (BACKLOG 19k)
+	moveMu            sync.RWMutex                                    // ArchiveNode/RestoreNode hold it; allShards read-holds it across its reference and archive reads (tieredstore_tx_members.go)
+	fanoutRefReadHook func()                                          // test-only: runs in allShards between the reference shard's read and the archive's
 	archiveActiveReqs atomic.Int64                                    // refcount for refArchive — Close spin-waits on this before archive.Close()
 	eventShards       map[string]*EventShard                          // name -> event shard
 	shardIndex        []*EventShard                                   // eventShards sorted by timeStart; rebuilt by reindexShardsLocked on every insert/delete; guarded by mu
