@@ -238,6 +238,12 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 		bs.idxMu.Unlock()
 		return err
 	}
+	// A label re-added to a live node: that label's index may not cover the
+	// ID while its history holds rows with the label (backlog 56).
+	if err := bs.foldRecreatedNodeHistoryLocked(updatedNode, id); err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
 	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(bs.vectorIndexes, updatedNode, id)
 	if err != nil {
 		bs.idxMu.Unlock()
@@ -636,12 +642,13 @@ func (bs *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types
 	// for snapshot atomicity.
 	err = bs.enqueueVersionAgainstLazyBuilds(
 		func() bool {
-			return bs.labelTxMembersBuilt.Load() || bs.nodeBeliefWatermarkBuilt.Load() || len(bs.nodePropTx) > 0
+			return bs.labelTxMembersBuilt.Load() || bs.nodeBeliefWatermarkBuilt.Load() || len(bs.nodePropTx) > 0 || bs.nodeHasTemporalIndexLocked(n)
 		},
 		func() {
 			bs.recordNodeLabelMembersLocked(n)
 			bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n))
-			bs.recordNodeRowLocked(n) // backlog 8: tracking or built property sidecars
+			bs.recordNodeRowLocked(n)                 // backlog 8: tracking or built property sidecars
+			bs.extendNodeVersionTemporalLocked(n, id) // backlog 56: a covered node's envelope holds every row
 		},
 		func() error {
 			return bs.appendOpsLoggedRouted(storecontract.ChangeNodeHistoryVersion, logPayload, token, writeOp{opType: writeOpSet, key: key, value: data})

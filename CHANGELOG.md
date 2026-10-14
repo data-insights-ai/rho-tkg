@@ -21,6 +21,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Node temporal envelopes cover every row of a covered node** (backlog 56, badger and memory): the per-label
+  envelope prunes, and four doors left it short of a row, so a temporal ByLabel read dropped a node at an instant
+  only an older row held. (a) `PutNodeVersion` never extended it: a version written to a covered node now joins the
+  envelope of each of its labels (an uncovered ID stays uncovered, so it is never pruned). (b) Badger
+  `CreateTemporalIndex` published the current-row backfill before its history fold, so a prune in between saw current
+  rows only; the index now stays Building (prunes decline it) until the fold is in, and an ID written during the
+  build that the fold did not read gets its history folded at the publish under the lock. Memory's create skipped an
+  ID written during its scan, leaving only that write's row; it now folds the ID's live row and whole history. (c) A
+  label added back to a live node covered it in that label's index with its current row only; the add-label doors
+  now fold the node's history first, as the create doors do for a re-created node (badger since b6212758). (d) Memory
+  re-create of a deleted node with history had the same hole and the same fix. The badger create's history fold
+  reads the members taken when the build started, not a fresh label snapshot, so a member that loses the label or
+  is deleted during the build keeps its history in the envelope. Under `TemporalIndexOnDisk` a create that fails or
+  crashes before it publishes no longer leaves 0x0B rows behind: its error paths purge the label's rows, and an open
+  purges the rows of every label with no definition (before, a later create of the label plus a crash reopen loaded
+  both rows and a temporal ByLabel read returned the node twice). `PutNodeVersion` takes the index lock for writing
+  only when one of the row's labels has a temporal index. Tests `TestNodeTemporalEnvelope_*` (badger),
+  `TestMemoryNodeTemporalEnvelope_*`; evidence `tasks/evidence/node-temporal-envelope/`.
+
 - **Badger `CreateRelTemporalIndex` no longer misses writes made during the build** (backlog 22): a relationship
   created, updated or given a history version between the ID snapshot and the install could be left with an envelope
   short of a row, so a prune at that row's instant dropped it (reproduced: an update after the build read the
