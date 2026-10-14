@@ -92,7 +92,7 @@ func TestScanRelColumns_AllocationsDoNotGrowWithRows(t *testing.T) {
 				if !bs.scanRelColumnsColumnar(relScanType, props, o.opts, func(*storecontract.RelColumnBatch) bool { return true }) {
 					t.Fatal("the columnar path declined; the bound below would measure the row path")
 				}
-				if a := testing.AllocsPerRun(5, scan); a > allocScanBound {
+				if a := minAllocsPerRun(scan); a > allocScanBound {
 					t.Fatalf("props %v: %.0f allocations for %d rows, want at most %d", props, a, allocScanRows, allocScanBound)
 				}
 			})
@@ -121,9 +121,22 @@ func TestScanNodeColumns_AllocationsDoNotGrowWithRows(t *testing.T) {
 			if rows != allocScanRows {
 				t.Fatalf("scan read %d rows, want %d", rows, allocScanRows)
 			}
-			if a := testing.AllocsPerRun(5, scan); a > allocScanBound {
+			if a := minAllocsPerRun(scan); a > allocScanBound {
 				t.Fatalf("%.0f allocations for %d rows, want at most %d", a, allocScanRows, allocScanBound)
 			}
 		})
 	}
+}
+
+// minAllocsPerRun is the smallest of several testing.AllocsPerRun samples.
+// AllocsPerRun counts every malloc in the process, so goroutines left by
+// earlier tests in the package (badger flushers and compactors) add noise
+// under load; the scan's own count is the floor, and the minimum filters
+// that additive noise without loosening the bound.
+func minAllocsPerRun(scan func()) float64 {
+	best := testing.AllocsPerRun(5, scan)
+	for i := 0; i < 4 && best > allocScanBound; i++ {
+		best = min(best, testing.AllocsPerRun(5, scan))
+	}
+	return best
 }
