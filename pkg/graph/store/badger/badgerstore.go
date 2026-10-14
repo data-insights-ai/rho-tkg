@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -383,6 +384,11 @@ type Store struct {
 	histRelEpoch  atomic.Uint64
 	histNodeCount historyCount
 	histRelCount  historyCount
+	// History epochs (store.HistoryEpochCapability, backlog 68,
+	// badgerstore_history_epoch.go): per-ID watch tables noted by
+	// noteHistoryKey under wbMu, dropped by Clear.
+	histNodeEpochs storepkg.HistoryEpochs[snowflake.ID]
+	histRelEpochs  storepkg.HistoryEpochs[snowflake.ID]
 
 	// History presence (store.HistoryPresenceCapability,
 	// badgerstore_history_presence.go): per kind, a RAM set of IDs with history rows,
@@ -2074,6 +2080,8 @@ func (bs *Store) Clear() (err error) {
 	bs.histRelPresence.resetLocked()
 	bs.histNodeStamps.resetLocked()
 	bs.histRelStamps.resetLocked()
+	bs.histNodeEpochs.NoteAll()
+	bs.histRelEpochs.NoteAll()
 	// Drop any snapshot a just-completed flush parked, or rangePending would resurface
 	// pre-Clear history keys as phantom IDs.
 	bs.flushing = nil

@@ -62,6 +62,9 @@ func (bs *Store) noteHistoryKey(op writeOp) {
 			id, version := storepkg.ParseIDFromKey(key, 1), historyVersionFromKey(key)
 			bs.histNodePresence.note(id, version, op.opType == writeOpDelete)
 			bs.histNodeStamps.note(id, version, op, true)
+			bs.histNodeEpochs.Note(id, -1)
+		} else {
+			bs.histNodeEpochs.NoteAll()
 		}
 	case storepkg.KeyHistRel:
 		bs.histRelEpoch.Add(1)
@@ -69,6 +72,9 @@ func (bs *Store) noteHistoryKey(op writeOp) {
 			id, version := storepkg.ParseIDFromKey(key, 1), historyVersionFromKey(key)
 			bs.histRelPresence.note(id, version, op.opType == writeOpDelete)
 			bs.histRelStamps.note(id, version, op, false)
+			bs.histRelEpochs.Note(id, -1)
+		} else {
+			bs.histRelEpochs.NoteAll()
 		}
 	}
 }

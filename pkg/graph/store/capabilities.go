@@ -384,6 +384,20 @@ type TemporalMetaHistoryCapability interface {
 	RelHistoryTemporalMeta(id types.RelID) ([]VersionTemporalMeta, error)
 }
 
+// HistoryEpochCapability is OPTIONAL: a token per entity that changes whenever
+// that entity's history rows change, so a reader can keep a value derived from
+// the rows (the graph's head-pin effective timeline, backlog 68) and tell in
+// O(1) whether it still holds. NodeHistoryEpoch returns a nonzero token; two
+// calls on one open store return the same token only if no history row of the
+// ID was written, overwritten or removed between them. Tokens are never
+// reused within a process (a reopened store or another shard hands out new
+// ones). 0 means "no token": the caller must not reuse a derived value. The
+// current row is not covered.
+type HistoryEpochCapability interface {
+	NodeHistoryEpoch(id types.NodeID) (uint64, error)
+	RelHistoryEpoch(id types.RelID) (uint64, error)
+}
+
 // HistoryRollbackTrimCapability is OPTIONAL: transaction rollback without deep
 // copies of history chains. Superseded versions are appended at the previous
 // Version(), so rollback restores the current row and trims history at or after it.

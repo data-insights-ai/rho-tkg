@@ -51,6 +51,7 @@ func (ms *Store) putNodeHistoryRowLocked(nid types.NodeID, v uint32, row *types.
 		vr.Version = v
 		ms.nodeValidEnds.NoteRow(int64(nid), vr)
 	}
+	ms.nodeHistEpochs.Note(nid, len(inner))
 	f, t, d := row.TxStamps()
 	ms.histStampsMu.Lock()
 	ms.nodeHistStamps = noteHistStamps(ms.nodeHistStamps, nid, before, len(inner), overwrite, f, t, d)
@@ -74,6 +75,7 @@ func (ms *Store) putRelHistoryRowLocked(rid types.RelID, v uint32, row *types.Re
 		vr.Version = v
 		ms.relValidEnds.NoteRow(int64(rid), vr)
 	}
+	ms.relHistEpochs.Note(rid, len(inner))
 	f, t, d := row.TxStamps()
 	ms.histStampsMu.Lock()
 	ms.relHistStamps = noteHistStamps(ms.relHistStamps, rid, before, len(inner), overwrite, f, t, d)
@@ -108,6 +110,7 @@ func (ms *Store) invalidateNodeHistStampsLocked(nid types.NodeID) {
 	ms.histStampsMu.Lock()
 	delete(ms.nodeHistStamps, nid)
 	ms.histStampsMu.Unlock()
+	ms.nodeHistEpochs.Note(nid, len(ms.nodeHistory[nid]))
 }
 
 // NodeHistoryStamps returns the newest TxFrom and TxTo-or-DeletedAt over the
