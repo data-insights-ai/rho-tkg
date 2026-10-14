@@ -729,6 +729,12 @@ func TestNativeComposedFaultQueuedCapacityDecisionsKeepFirstOriginal(t *testing.
 			if !reflect.DeepEqual(old, reopened) {
 				t.Fatal("same-directory old cut changed")
 			}
+			localDecision := f.n.all[4].call(t, processRequest{op: processEntryRecord, index: result.decision.index})
+			localStatus, localErr := decodeCrossStatus(localDecision.outcome)
+			if localErr != nil || localStatus != result.decision || len(localDecision.changes) != 0 {
+				t.Fatal("replacement local retained first-D differs", localErr, localStatus)
+			}
+			p03Reconnect(f, 4) // Subsequent Fresh/Run require actual leader ReadIndex.
 			reopenedCurrent := p06Observe(f, 4, graphReadFresh, graphCut{})
 			if !reflect.DeepEqual(current.Native, reopenedCurrent.Native) {
 				t.Fatal("replacement changed first-decision participant effects")
