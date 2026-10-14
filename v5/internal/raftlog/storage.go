@@ -390,7 +390,7 @@ func (s *Store) Initialize(voters []uint64, image []byte) error {
 	if err := validateConf(cs, 1); err != nil {
 		return err
 	}
-	m := metadata{Recovery: s.meta.Recovery, Controls: s.meta.Controls, Rep: s.meta.Rep, Gen: s.meta.Gen, App: s.meta.App, Transfer: s.meta.Transfer, Base: 1, BaseTerm: 1, Last: 1, Applied: 1, Hard: &pb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))}, Conf: cs, ImageBytes: uint64(len(image)), SnapBytes: uint64(len(image)), Snap: &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(uint64(1)), Term: new(uint64(1)), ConfState: cs}}}
+	m := metadata{Retention: s.meta.Retention, Recovery: s.meta.Recovery, Controls: s.meta.Controls, Rep: s.meta.Rep, Gen: s.meta.Gen, App: s.meta.App, Transfer: s.meta.Transfer, Base: 1, BaseTerm: 1, Last: 1, Applied: 1, Hard: &pb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))}, Conf: cs, ImageBytes: uint64(len(image)), SnapBytes: uint64(len(image)), Snap: &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(uint64(1)), Term: new(uint64(1)), ConfState: cs}}}
 	prospective := m
 	if m.App.Policy.Enabled() {
 		prospective.App.Bytes = uint64(3*(9+appFrameBytes) + len(image))
