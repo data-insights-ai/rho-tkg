@@ -608,3 +608,7 @@ Detector: a tag whose CI run is not `success`.
 Rule: one compact red test per item (the key break cases), then the code. No mutation runs, probe tests, oversized tables or benchmarks unless the item is about speed or RAM; reviewers read and reason instead of writing tests. Supersedes the mutant/probe parts of 78 and 79.
 Trigger: René 2026-10-13 "I think you're testing too much. Focus on more development work."
 Detector: evidence files named *mutant* or *probe*, or a test file longer than the code it tests.
+
+## 84. No Unreflected Questions To René
+
+René 2026-10-14 (standing rule, also in ~/CLAUDE.md): before any design question to René, (1) trace where it really comes from in the current code (file:line, not an old note); (2) look for a strategy that removes the question (fix the cause upstream, a standard, an existing mechanism); (3) if one works, solve it. Ask only the remainder, naming the cause and each rejected strategy in one line.
