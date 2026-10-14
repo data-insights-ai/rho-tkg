@@ -13,6 +13,18 @@ func graphColumnTestPinPolicy() graphColumnPinPolicy {
 	return graphColumnPinPolicy{MaxRecords: 64, MaxBytes: 1 << 20, PageChunks: 1, PageBytes: 128 << 10, MaxWorkChunks: 8, MaxWorkBytes: 1 << 20, MaxOutputBytes: 1024}
 }
 func TestGraphColumnPinOwnershipAndCollectorAdmissionGuards(t *testing.T) {
+	// Hidden handles remain recoverable for every unsuccessful authenticated
+	// cleanup, including a non-native refusal. Successful Close needs no ticket.
+	owner := &graphColumnRead{id: graphColumnOwnerID{Request: "read", Generation: "g", Secret: [32]byte{1}}, walking: true}
+	err := columnReadCleanup(owner)
+	pending, ok := errors.AsType[*graphColumnReadPending](err)
+	if !ok || pending.Owner != owner || !errors.Is(err, errColumnInUse) || pending.Cause != errColumnInUse {
+		t.Fatal("cleanup refusal lost owner identity/cause", err)
+	}
+	owner.walking, owner.closed = false, true
+	if err := columnReadCleanup(owner); err != nil {
+		t.Fatal("successful authenticated close retained pending ticket", err)
+	}
 	for _, p := range []graphColumnPinPolicy{{}, {MaxRecords: 1}, {MaxRecords: 64, MaxBytes: 1 << 20, PageChunks: 33}} {
 		if !errors.Is(p.validate(), errInvalid) {
 			t.Fatal("invalid retention policy", p)

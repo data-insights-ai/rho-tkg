@@ -69,7 +69,7 @@ func (e *graphColumnReadPending) Error() string {
 func (e *graphColumnReadPending) Unwrap() error { return e.Cause }
 func columnReadCleanup(r *graphColumnRead) error {
 	err := r.Close()
-	if errors.Is(err, errUnknown) {
+	if err != nil {
 		return &graphColumnReadPending{Owner: r, Cause: err}
 	}
 	return err
