@@ -11,7 +11,7 @@ import (
 )
 
 // TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt (backlog 62): before
-// v4.52.3 the persisted 0x0B keyspace keyed an untimed row by its ID's mint
+// v4.53.0 the persisted 0x0B keyspace keyed an untimed row by its ID's mint
 // instant; the row now starts at its TxFrom, which a tx backfill puts BEFORE
 // the mint. A keyspace written under the old marker must not be trusted (its
 // envelope would start after the row and prune it at a valid instant): the open

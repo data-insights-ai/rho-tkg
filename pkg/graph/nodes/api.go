@@ -225,7 +225,7 @@ func (a *API) GetByIDs(ids []types.NodeID) ([]*types.Node, error) {
 // An update that sets tkg_valid_to without tkg_valid_from closes the current
 // version as CloseVersion does: the version keeps its start and ends at
 // tkg_valid_to; an end at or before that start returns ErrInvalidTimeRange and
-// writes nothing (backlog 65, v4.52.3).
+// writes nothing (backlog 65, v4.53.0).
 func (a *API) Update(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -253,7 +253,7 @@ func (a *API) UpdateWithTx(ctx context.Context, id types.NodeID, updates map[str
 // UpdateInPlace updates a node in place honoring ctx (no version chain entry).
 //
 // A tkg_valid_to at or before the row's effective start returns
-// ErrInvalidTimeRange (backlog 65, v4.52.3).
+// ErrInvalidTimeRange (backlog 65, v4.53.0).
 func (a *API) UpdateInPlace(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {
