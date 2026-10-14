@@ -65,6 +65,16 @@ type graphProcessAnswer struct {
 type graphProcessPacketJob struct {
 	origin uint64
 	packet replica.Packet
+	// Cost fixtures only. The timestamp keeps the queued job within the existing
+	// 64-byte admission allowance; no per-packet timing history is retained.
+	enqueuedNanos int64
+}
+
+// Aggregate embedding timings, not durability attribution. Queue age overlaps
+// client waits; Step exchange includes IPC and native driver/application work.
+type graphProcessCostTiming struct {
+	QueueCount, StepCount                              uint64
+	QueueNanos, QueueMaxNanos, StepNanos, StepMaxNanos int64
 }
 type graphProcessRelayJob struct {
 	envelope graphProcessEnvelope
@@ -81,6 +91,8 @@ type graphProcessHub struct {
 	packetBytes, delivered, inFlight int
 	deliveryLimit                    int
 	packetCompleted                  chan struct{}
+	costTiming                       *graphProcessCostTiming // optional, protected by mu
+	costStarted                      time.Time
 	idle                             chan struct{}
 	// Optional test transport schedule; protected by mu and never graph authority.
 	beforeRelay  func(context.Context, uint64, uint64, []byte) error
@@ -142,6 +154,15 @@ func (h *graphProcessHub) changed() {
 	case h.idle <- struct{}{}:
 	default:
 	}
+}
+
+func (h *graphProcessHub) costTimingSnapshot() graphProcessCostTiming {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.costTiming == nil {
+		return graphProcessCostTiming{}
+	}
+	return *h.costTiming
 }
 
 // This waits for embedding traffic/worker RPCs to settle, not for a certified
@@ -437,12 +458,16 @@ func (h *graphProcessHub) enqueue(origin uint64, packets []replica.Packet, handl
 		if !full {
 			h.packetBytes += cost
 		}
+		var enqueuedNanos int64
+		if h.costTiming != nil {
+			enqueuedNanos = time.Since(h.costStarted).Nanoseconds()
+		}
 		h.mu.Unlock()
 		if full {
 			return errLimit
 		}
 		select {
-		case h.packets <- graphProcessPacketJob{origin, packet}:
+		case h.packets <- graphProcessPacketJob{origin, packet, enqueuedNanos}:
 			h.changed()
 		default:
 			h.mu.Lock()
@@ -468,6 +493,13 @@ func (h *graphProcessHub) packetLoop() {
 			h.inFlight++
 			full := h.delivered > h.deliveryLimit
 			filter := h.packetFilter
+			timed := h.costTiming != nil
+			if timed {
+				age := time.Since(h.costStarted).Nanoseconds() - job.enqueuedNanos
+				h.costTiming.QueueCount++
+				h.costTiming.QueueNanos += age
+				h.costTiming.QueueMaxNanos = max(h.costTiming.QueueMaxNanos, age)
+			}
 			h.mu.Unlock()
 
 			if full {
@@ -492,7 +524,15 @@ func (h *graphProcessHub) packetLoop() {
 				}
 			}
 			ctx, cancel := context.WithTimeout(h.ctx, 10*time.Second)
+			var stepStarted time.Time
+			if timed {
+				stepStarted = time.Now()
+			}
 			r, err := h.peer(job.packet.To).exchange(ctx, processRequest{op: processStep, packet: job.packet})
+			var stepNanos int64
+			if timed {
+				stepNanos = time.Since(stepStarted).Nanoseconds()
+			}
 			cancel()
 			if err == nil {
 				err = processResponseError(r)
@@ -505,6 +545,11 @@ func (h *graphProcessHub) packetLoop() {
 			}
 			h.mu.Lock()
 			h.inFlight--
+			if timed {
+				h.costTiming.StepCount++
+				h.costTiming.StepNanos += stepNanos
+				h.costTiming.StepMaxNanos = max(h.costTiming.StepMaxNanos, stepNanos)
+			}
 			h.mu.Unlock()
 			h.changed()
 			if h.packetCompleted != nil {
