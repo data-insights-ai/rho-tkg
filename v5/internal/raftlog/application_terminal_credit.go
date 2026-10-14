@@ -678,3 +678,76 @@ func (v *ApplicationView) CheckTerminalBank(ctx context.Context, expected []Appl
 	}
 	return sameTerminalBank(bank, applicationTerminalBank(expected)), work, nil
 }
+
+// CheckRetainedRootFeed inspects actual retained source-root and feed-start
+// evidence at this exact owned bank. A start at index+1 denotes the authenticated
+// empty suffix after this captured prefix, not an invented empty record. Hash
+// and coordinates are inert; graph admission must bind them to its actual native
+// certificate. No payload copy or extra view/generation owner is created.
+func (v *ApplicationView) CheckRetainedRootFeed(ctx context.Context, sourceIndex uint64, imageHash [32]byte, feedStart uint64, budget ReadBudget) (equal bool, work ApplicationProofWork, err error) {
+	if err = v.lock(ctx); err != nil {
+		return false, work, err
+	}
+	defer v.unlock()
+	p := v.s.meta.App.Policy
+	if v.s.meta.Recovery.Config.Version != 2 || sourceIndex == 0 || sourceIndex > v.index || imageHash == ([32]byte{}) || feedStart == 0 || feedStart > v.index+1 || budget.Rows < 1 || budget.Bytes < 1 {
+		return false, work, ErrInvalid
+	}
+	if budget.Rows > p.MaxPageRows || budget.Bytes > p.MaxPageBytes {
+		return false, work, ErrLimit
+	}
+	const fixed = 256
+	if budget.Bytes < fixed {
+		return false, work, ErrLimit
+	}
+	work.Bytes = fixed
+	// Future logical GC must enforce this owner's captured native lower bound
+	// before these DB lookups. This profile currently reclaims no logical history.
+	inspect := func(index uint64, tag byte, limit int, root bool) (matches bool, opErr error) {
+		if work.Records >= budget.Rows {
+			return false, ErrLimit
+		}
+		key := bankIndexKey(v.bank, tag, index)
+		work.Records++
+		raw, closer, e := v.s.db.Get(key)
+		if e != nil {
+			return false, v.fail(storedReadFailure(e))
+		}
+		defer func() {
+			if e := closer.Close(); e != nil {
+				opErr = errors.Join(opErr, v.fail(e))
+				matches = false
+			}
+		}()
+		if len(raw) < appFrameBytes || len(raw) > appFrameBytes+limit {
+			return false, v.fail(ErrCorrupt)
+		}
+		dataBytes := len(raw) - appFrameBytes
+		cost := 2*len(key) + len(raw) + 4 + dataBytes
+		if root {
+			cost += dataBytes
+		}
+		if cost > budget.Bytes-work.Bytes {
+			return false, ErrLimit
+		}
+		work.Bytes += cost
+		data, deleted, e := inspectAppFrame(key, raw, limit)
+		if e != nil || deleted {
+			return false, v.fail(ErrCorrupt)
+		}
+		if e := ctx.Err(); e != nil {
+			return false, e
+		}
+		return !root || sha256.Sum256(data) == imageHash, nil
+	}
+	root, err := inspect(sourceIndex, appRootTag, p.MaxImageBytes, true)
+	if err != nil {
+		return false, work, err
+	}
+	if feedStart <= v.index {
+		if _, err := inspect(feedStart, appChangeTag, p.MaxChangeBytes, false); err != nil {
+			return false, work, err
+		}
+	}
+	return root, work, nil
+}

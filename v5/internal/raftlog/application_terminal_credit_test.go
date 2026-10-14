@@ -174,6 +174,18 @@ func TestApplicationViewCheckTerminalBankOwnsActualCompleteHistoricalRoster(t *t
 	if equal, _, err := now.CheckTerminalBank(t.Context(), []ApplicationRecoveryReservation{r}, ReadBudget{1, 1}); equal || !errors.Is(err, ErrLimit) || s.poison != nil {
 		t.Fatalf("shared read allowance: %v", err)
 	}
+	if equal, work, err := now.CheckRetainedRootFeed(t.Context(), 1, sha256.Sum256(image), 1, ReadBudget{2, budget.Bytes}); err != nil || !equal || work.Records != 2 {
+		t.Fatalf("actual old root and present empty feed: %v %+v %v", equal, work, err)
+	}
+	if equal, _, err := now.CheckRetainedRootFeed(t.Context(), 1, [32]byte{8}, 1, ReadBudget{2, budget.Bytes}); err != nil || equal {
+		t.Fatalf("inert hash minted root: %v %v", equal, err)
+	}
+	if equal, work, err := now.CheckRetainedRootFeed(t.Context(), 2, sha256.Sum256(image), 3, budget); err != nil || !equal || work.Records != 1 {
+		t.Fatalf("authenticated next feed start: %v %+v %v", equal, work, err)
+	}
+	if equal, _, err := now.CheckRetainedRootFeed(t.Context(), 1, sha256.Sum256(image), 1, ReadBudget{2, 256}); equal || !errors.Is(err, ErrLimit) || s.poison != nil {
+		t.Fatalf("actual-frame budget preflight: %v", err)
+	}
 	if err := now.Close(); err != nil {
 		t.Fatal(err)
 	}
