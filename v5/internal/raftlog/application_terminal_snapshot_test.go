@@ -77,7 +77,8 @@ func TestApplicationTerminalSnapshotExactBanksBindingAndOwnedCopies(t *testing.T
 	if err != nil || !bytes.Equal(old[:4], []byte{'A', 'S', 5, 0}) || snapshotRecoveryHash(legacy) != recoveryRootDigest(legacy.RecoveryReservation) {
 		t.Fatalf("legacy AS5 agreement: %v", err)
 	}
-	if _, err := ApplicationContractForPolicyWithRecovery(p, ApplicationControlConfig{Version: 1}, ApplicationRecoveryConfig{Version: 2}); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("activation profile exposed early: %v", err)
+	configured, err := ApplicationContractForPolicyWithRecovery(p, ApplicationControlConfig{Version: 1}, ApplicationRecoveryConfig{Version: 2})
+	if err != nil || configured != contract {
+		t.Fatalf("AS6 configured terminal contract: %v", err)
 	}
 }
