@@ -7,7 +7,7 @@ History (what shipped, why) is in `CHANGELOG.md` and git, not here.
 
 ## 1. Focus and next steps (René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC"; queue ordered by what ai-soc and sigma need)
 
-1. **v4.52.2 released; Markus released v4.53.0 (sigma round 7), merged.** Our next release is v4.54.0, content MERGED on local main (not pushed): 62/65 phase B + R9, 64 excise (sigma R7), 61 step 2 binary writer, one marker tracker (markers 4/5/6). NEXT: final Fable review of v4.52.2..HEAD, `GOFLAGS=-timeout=30m make ci-docker`, version lines to v4.54.0, consumer build check, tag, push, GitHub CI, notify sigma + ai-soc (ai-soc asked to be told), docs second pass (row 36) for the 61/62/65/64 files.
+1. **v4.54.0 released 2026-10-14** (on top of Markus v4.53.0): 62/65 phase B + R9, 64 excise (sigma R7), 61 step 2 binary writer, one marker tracker (markers 4/5/6). NEXT: final Fable review of v4.52.2..HEAD, `GOFLAGS=-timeout=30m make ci-docker`, version lines to v4.54.0, consumer build check, tag, push, GitHub CI, notify sigma + ai-soc (ai-soc asked to be told), docs second pass (row 36) for the 61/62/65/64 files.
 2. **sigma Derived write-back (todo row 33):** R6 = backlog 63 `PropertyIndexOptions{Elements: true}` (building); R7 = backlog 64 `ExciseNodeValidity` (+ rel mirror), starts after 62 (both touch the resolver); R8 done (guard test).
 3. **Integrity-hash switch (row 31, backlog 61):** building; notify ai-soc when it ships.
 4. **One valid-from source (row 32, backlog 62) + Update-with-valid_to closes like CloseVersion (backlog 65):** deprecation in v4.52.2, change in v4.53.0; building.

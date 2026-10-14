@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.54.0] - 2026-10-14
+
 ### Added
 
 - **Valid-time excise: `Temporal().ExciseNodeValidity(ctx, id, a, b)` / `ExciseRelValidity`** (backlog 64, sigma R7,
