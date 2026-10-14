@@ -1,0 +1,892 @@
+{
+  "date": "2026-10-14",
+  "scope": "Finite P02 native prepare/fence/election schedules only; not complete P02 family, full V2, power loss, full release coverage or old four-fault wrapper acceptance.",
+  "parent": "TestPrepareFenceP02ActualOrderingAcrossElection",
+  "cases": [
+    "delayed-A-prepare",
+    "A-before-B-after",
+    "persisted-fence-before-application"
+  ],
+  "sourceBaseCommit": "4b15598b",
+  "initialSourceCheckpoint": "aed8cbb0",
+  "qualificationSourceCommit": "b4d0d01ad934a44515c2a2a192a0e5b3a71db064",
+  "qualificationSourceNote": "Runtime used corrected uncommitted Go content based on aed8cbb0; final identical content committed afterward. All qualified Go/module SHA256 values match the complete frozen manifest.",
+  "sourceSHA256": {
+    "v5/internal/graphapply/prepare_fence_p02_process_test.go": "18799d02060883a05895ba910467a6face6edc8d87335648c7044b187a9efad6",
+    "v5/internal/graphapply/prepare_fence_p02_harness_test.go": "3bd9f2ad27bff64b56990c4ee61ecd039f7518e12dee9d74b0c1e03db4cd75e2",
+    "v5/internal/graphapply/replicated_process_test.go": "0dab4c28e0c6a8e6fccfe567d52b0c56e4d583b78d9c90edce0591f10b106b62",
+    "tools/v5-substrate/check-p02-history.py": "3588064fe190d7773884fe147bf2456dc8b081f5bf4e7a8fcc21e2c17f337ab7",
+    "scripts/ci-changes.py": "d97e53b6d501fbc676fbaa58dd25e969b1592939a107308c42f69307614ae1b9",
+    "scripts/ci-changes-test.py": "d93557923e67a2cc2dc153a1f4656877d6657c1cf8e6276c14ae0b1ed0f73fa0"
+  },
+  "frozenGoSourceUnchanged": true,
+  "environment": {
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off",
+    "GOTOOLCHAIN": "local"
+  },
+  "pinnedGo": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+  "goSHA256": "318dee99db233501f6c419fbb4616e5a345ed0b831dbd6c7669b24e1ff8e9e2e",
+  "gates": {
+    "normal": {
+      "status": "PASS",
+      "packageSeconds": 23.302,
+      "parentCount": 1,
+      "caseCount": 3,
+      "failed": 0,
+      "skipped": 0,
+      "cleanup": [
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=12 all-reaped=true successful=12 intentional-kills=0 calls=13553 bootstrapPackets=344 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=12 all-reaped=true successful=12 intentional-kills=0 calls=13610 bootstrapPackets=350 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=13 all-reaped=true successful=12 intentional-kills=1 calls=13238 bootstrapPackets=371 admitted=397312"
+      ],
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-json",
+          "-timeout=150s",
+          "-run",
+          "^TestPrepareFenceP02ActualOrderingAcrossElection$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 983.641,
+        "elapsed_s": 31.203,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "race": {
+      "status": "PASS",
+      "packageSeconds": 80.045,
+      "parentCount": 1,
+      "caseCount": 3,
+      "failed": 0,
+      "skipped": 0,
+      "cleanup": [
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=12 all-reaped=true successful=12 intentional-kills=0 calls=13553 bootstrapPackets=342 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=12 all-reaped=true successful=12 intentional-kills=0 calls=13612 bootstrapPackets=350 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=13 all-reaped=true successful=12 intentional-kills=1 calls=13239 bootstrapPackets=373 admitted=397312"
+      ],
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-json",
+          "-timeout=150s",
+          "-run",
+          "^TestPrepareFenceP02ActualOrderingAcrossElection$",
+          "-race",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 985.328,
+        "elapsed_s": 97.353,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "coverage": {
+      "status": "PASS",
+      "packageSeconds": 32.312,
+      "parentCount": 1,
+      "caseCount": 3,
+      "failed": 0,
+      "skipped": 0,
+      "cleanup": [
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=12 all-reaped=true successful=12 intentional-kills=0 calls=13553 bootstrapPackets=342 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=12 all-reaped=true successful=12 intentional-kills=0 calls=13612 bootstrapPackets=350 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=13 all-reaped=true successful=12 intentional-kills=1 calls=13238 bootstrapPackets=371 admitted=397312"
+      ],
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-json",
+          "-timeout=150s",
+          "-run",
+          "^TestPrepareFenceP02ActualOrderingAcrossElection$",
+          "-covermode=atomic",
+          "-coverprofile=/var/tmp/rho-v5-p02-runtime-20261014/coverage.out",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1123.031,
+        "elapsed_s": 46.084,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "vet": {
+      "status": "PASS",
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "vet",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 186.797,
+        "elapsed_s": 1.43,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "lint": {
+      "status": "PASS",
+      "watchdog": {
+        "command": [
+          "/var/tmp/rho-v5-migrate-main4517-0eb0a0ac-20261014/scanner-bin/golangci-lint",
+          "run",
+          "--config",
+          "../.golangci.yml",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1730.875,
+        "elapsed_s": 35.847,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    },
+    "security": {
+      "status": "PASS",
+      "watchdog": {
+        "command": [
+          "/var/tmp/rho-v5-migrate-main4517-0eb0a0ac-20261014/scanner-bin/gosec",
+          "-quiet",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 430.031,
+        "elapsed_s": 2.879,
+        "exit_code": 0,
+        "reason": "completed"
+      }
+    }
+  },
+  "historicalCompile": {
+    "command": [
+      "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+      "test",
+      "-c",
+      "-o",
+      "/var/tmp/rho-v5-p02-runtime-20261014/p02.test",
+      "./internal/graphapply"
+    ],
+    "rss_limit_mib": 4096.0,
+    "wall_limit_s": 180.0,
+    "sample_interval_s": 0.25,
+    "peak_tree_rss_mib": 942.625,
+    "elapsed_s": 14.712,
+    "exit_code": 0,
+    "reason": "completed"
+  },
+  "coverage": {
+    "percent": 6.6,
+    "scope": "Scoped parent-process production coverage diagnostic only; Go excludes test helpers and subprocess child profiles are not merged. No full-module 80% or release coverage claim."
+  },
+  "clauseBinding": {
+    "queuedPrepare": "Genuine pre-fence source capture and authenticated original crossPrepare are held before the participant receives it. Actual retained fence and election precede its Stage YES; original manifest, request, digest, retained vote and all encountered phase frames remain bound.",
+    "participantOrdering": "Actual A YES floor6 is retained before real A/B fences106; original caller returns truthful pending after B election. Fresh authenticated same-B-coordinator recovery retains the original A vote; B votes106; COMMIT107.",
+    "persistedFenceBeforeApplication": "Actual Stage wrapper observes original retained Raft entry Index/Term/Data/hash and HardCommit>=Index with prior checkpoint<Index, then actual A1 is SIGKILLed/reaped. A2 elected; same original fence applies before fresh source capture and YES106; COMMIT107. No manufactured floor/checkpoint/readiness.",
+    "delayedLocal": "Ordinary source-produced local A Close is prepared before the retained fence, installed only after successor recovery/cross COMMIT at its actual assigned round>106 and>107. Complete local CDC checked; duplicate original preserves original identity/hash/index/why and returns documented requestReplay with zero CDC.",
+    "historyRecovery": "Complete graph, both posting directions, bounded32 entity census, phantom absence, exact actual CDC, immutable original outcomes and old-cut equality checked before/after same-directory cohort reopen. Genuine election no-op entries captured before native compaction; no synthetic empty-entry proof."
+  },
+  "oracle": {
+    "status": "PASS",
+    "traces": 9,
+    "reports": [
+      {
+        "schedule": "persisted-fence-before-application",
+        "serial_witness": [
+          "edge-create",
+          "node-close"
+        ],
+        "votedFloors": [
+          106,
+          6
+        ],
+        "capturedInstalledFloors": {
+          "3": 6,
+          "8": 6
+        },
+        "fence": 106,
+        "commitRound": 107,
+        "phaseFrames": 6,
+        "attemptFrames": 11,
+        "fullP02Accepted": false,
+        "scope": "Finite native capture correspondence and observed serial/cut consistency; authentic Stage, application/kernel/CDC codec and complete export remain Go-qualified",
+        "path": "/var/tmp/rho-v5-p02-runtime-20261014/normal-attempt10-artifacts/rho-paired-graph-fault-1073535993/p02-persisted-fence-before-application.json",
+        "sha256": "769e3e0d3cd978c44ae01d515ca03d1b27e0f6c2c59285522fa17efd1866d657"
+      },
+      {
+        "schedule": "A-before-B-after",
+        "serial_witness": [
+          "edge-create"
+        ],
+        "votedFloors": [
+          6,
+          106
+        ],
+        "capturedInstalledFloors": {
+          "3": 6,
+          "8": 6
+        },
+        "fence": 106,
+        "commitRound": 107,
+        "phaseFrames": 8,
+        "attemptFrames": 17,
+        "fullP02Accepted": false,
+        "scope": "Finite native capture correspondence and observed serial/cut consistency; authentic Stage, application/kernel/CDC codec and complete export remain Go-qualified",
+        "path": "/var/tmp/rho-v5-p02-runtime-20261014/normal-attempt10-artifacts/rho-paired-graph-fault-1222412298/p02-A-before-B-after.json",
+        "sha256": "4f77da97b6956a9d5859be2a4af2405d064083e41920cc14eefdac399fed2acd"
+      },
+      {
+        "schedule": "delayed-A-prepare",
+        "serial_witness": [
+          "edge-create"
+        ],
+        "votedFloors": [
+          106,
+          6
+        ],
+        "capturedInstalledFloors": {
+          "3": 6,
+          "8": 6
+        },
+        "fence": 106,
+        "commitRound": 107,
+        "phaseFrames": 7,
+        "attemptFrames": 15,
+        "fullP02Accepted": false,
+        "scope": "Finite native capture correspondence and observed serial/cut consistency; authentic Stage, application/kernel/CDC codec and complete export remain Go-qualified",
+        "path": "/var/tmp/rho-v5-p02-runtime-20261014/normal-attempt10-artifacts/rho-paired-graph-fault-2777318591/p02-delayed-A-prepare.json",
+        "sha256": "a887c1a6f2fce1fc507ed4460d240a4ff36b8051d9b1bcf2655718e8d69aed15"
+      },
+      {
+        "schedule": "A-before-B-after",
+        "serial_witness": [
+          "edge-create"
+        ],
+        "votedFloors": [
+          6,
+          106
+        ],
+        "capturedInstalledFloors": {
+          "3": 6,
+          "8": 6
+        },
+        "fence": 106,
+        "commitRound": 107,
+        "phaseFrames": 8,
+        "attemptFrames": 17,
+        "fullP02Accepted": false,
+        "scope": "Finite native capture correspondence and observed serial/cut consistency; authentic Stage, application/kernel/CDC codec and complete export remain Go-qualified",
+        "path": "/var/tmp/rho-v5-p02-runtime-20261014/race-artifacts/rho-paired-graph-fault-1016743158/p02-A-before-B-after.json",
+        "sha256": "3e7132c5eb311b15860992ffd3c35941982be1c669346c0d317070f77083c3c2"
+      },
+      {
+        "schedule": "delayed-A-prepare",
+        "serial_witness": [
+          "edge-create"
+        ],
+        "votedFloors": [
+          106,
+          6
+        ],
+        "capturedInstalledFloors": {
+          "3": 6,
+          "8": 6
+        },
+        "fence": 106,
+        "commitRound": 107,
+        "phaseFrames": 7,
+        "attemptFrames": 15,
+        "fullP02Accepted": false,
+        "scope": "Finite native capture correspondence and observed serial/cut consistency; authentic Stage, application/kernel/CDC codec and complete export remain Go-qualified",
+        "path": "/var/tmp/rho-v5-p02-runtime-20261014/race-artifacts/rho-paired-graph-fault-3728966973/p02-delayed-A-prepare.json",
+        "sha256": "84a1ea634c4f9692adaeb35ed21a4af6b6067fda7f146a2a128a474b844b5b75"
+      },
+      {
+        "schedule": "persisted-fence-before-application",
+        "serial_witness": [
+          "edge-create",
+          "node-close"
+        ],
+        "votedFloors": [
+          106,
+          6
+        ],
+        "capturedInstalledFloors": {
+          "3": 6,
+          "8": 6
+        },
+        "fence": 106,
+        "commitRound": 107,
+        "phaseFrames": 6,
+        "attemptFrames": 11,
+        "fullP02Accepted": false,
+        "scope": "Finite native capture correspondence and observed serial/cut consistency; authentic Stage, application/kernel/CDC codec and complete export remain Go-qualified",
+        "path": "/var/tmp/rho-v5-p02-runtime-20261014/race-artifacts/rho-paired-graph-fault-4281044517/p02-persisted-fence-before-application.json",
+        "sha256": "216f40b799997209ea66e31c618b7e428dcd2321a0792c0b09e63e3a3b095e6d"
+      },
+      {
+        "schedule": "A-before-B-after",
+        "serial_witness": [
+          "edge-create"
+        ],
+        "votedFloors": [
+          6,
+          106
+        ],
+        "capturedInstalledFloors": {
+          "3": 6,
+          "8": 6
+        },
+        "fence": 106,
+        "commitRound": 107,
+        "phaseFrames": 8,
+        "attemptFrames": 17,
+        "fullP02Accepted": false,
+        "scope": "Finite native capture correspondence and observed serial/cut consistency; authentic Stage, application/kernel/CDC codec and complete export remain Go-qualified",
+        "path": "/var/tmp/rho-v5-p02-runtime-20261014/coverage-artifacts/rho-paired-graph-fault-2469173387/p02-A-before-B-after.json",
+        "sha256": "56cafbe513a5c38a7142bf349a5d54a933a260e43dff428e18fa719a898a57ea"
+      },
+      {
+        "schedule": "delayed-A-prepare",
+        "serial_witness": [
+          "edge-create"
+        ],
+        "votedFloors": [
+          106,
+          6
+        ],
+        "capturedInstalledFloors": {
+          "3": 6,
+          "8": 6
+        },
+        "fence": 106,
+        "commitRound": 107,
+        "phaseFrames": 7,
+        "attemptFrames": 15,
+        "fullP02Accepted": false,
+        "scope": "Finite native capture correspondence and observed serial/cut consistency; authentic Stage, application/kernel/CDC codec and complete export remain Go-qualified",
+        "path": "/var/tmp/rho-v5-p02-runtime-20261014/coverage-artifacts/rho-paired-graph-fault-3557419451/p02-delayed-A-prepare.json",
+        "sha256": "b5386e7b80fc2274da8b01499731d6330e0fe3c735eb8ede8a8ac4a2451bdff1"
+      },
+      {
+        "schedule": "persisted-fence-before-application",
+        "serial_witness": [
+          "edge-create",
+          "node-close"
+        ],
+        "votedFloors": [
+          106,
+          6
+        ],
+        "capturedInstalledFloors": {
+          "3": 6,
+          "8": 6
+        },
+        "fence": 106,
+        "commitRound": 107,
+        "phaseFrames": 6,
+        "attemptFrames": 11,
+        "fullP02Accepted": false,
+        "scope": "Finite native capture correspondence and observed serial/cut consistency; authentic Stage, application/kernel/CDC codec and complete export remain Go-qualified",
+        "path": "/var/tmp/rho-v5-p02-runtime-20261014/coverage-artifacts/rho-paired-graph-fault-471262655/p02-persisted-fence-before-application.json",
+        "sha256": "9b86835cfcc4872a219d5d6a03d1116ef3df3572cc27131ec0d4b89946fdf27e"
+      }
+    ],
+    "implementation": "check-p02-history.py imports unchanged existing P06 wire primitives and hash-pinned independent serial/cut oracle. Closed-endpoint observation adapter compares actual JSON witnesses, supplies no reducer. Old four-fault acceptance wrapper not invoked."
+  },
+  "failedAttempts": [
+    {
+      "attempt": 1,
+      "status": "RED\u2014not accepted fault evidence",
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-json",
+          "-timeout=150s",
+          "-run",
+          "^TestPrepareFenceP02ActualOrderingAcrossElection$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 539.453,
+        "elapsed_s": 45.001,
+        "exit_code": 1,
+        "reason": "command-failed"
+      },
+      "testTerminals": [
+        {
+          "Time": "2026-10-14T13:31:53.557823+02:00",
+          "Action": "fail",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection/delayed-A-prepare",
+          "Elapsed": 13.15
+        },
+        {
+          "Time": "2026-10-14T13:32:06.935368+02:00",
+          "Action": "fail",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection/A-before-B-after",
+          "Elapsed": 13.38
+        },
+        {
+          "Time": "2026-10-14T13:32:23.937023+02:00",
+          "Action": "fail",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection/persisted-fence-before-application",
+          "Elapsed": 17
+        },
+        {
+          "Time": "2026-10-14T13:32:23.937152+02:00",
+          "Action": "fail",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection",
+          "Elapsed": 43.53
+        }
+      ],
+      "cleanup": [
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=6 all-reaped=true successful=6 intentional-kills=0 calls=3291 bootstrapPackets=294 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=6 all-reaped=true successful=4 intentional-kills=0 calls=3254 bootstrapPackets=252 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=6 all-reaped=true successful=5 intentional-kills=0 calls=2858 bootstrapPackets=247 admitted=397312"
+      ]
+    },
+    {
+      "attempt": 2,
+      "status": "RED\u2014not accepted fault evidence",
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-json",
+          "-timeout=150s",
+          "-run",
+          "^TestPrepareFenceP02ActualOrderingAcrossElection$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 971.047,
+        "elapsed_s": 19.962,
+        "exit_code": 1,
+        "reason": "command-failed"
+      },
+      "testTerminals": [
+        {
+          "Time": "2026-10-14T13:44:40.789883+02:00",
+          "Action": "fail",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection/delayed-A-prepare",
+          "Elapsed": 12.98
+        },
+        {
+          "Time": "2026-10-14T13:44:40.7899+02:00",
+          "Action": "fail",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection",
+          "Elapsed": 12.98
+        }
+      ],
+      "cleanup": [
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=6 all-reaped=true successful=6 intentional-kills=0 calls=3291 bootstrapPackets=294 admitted=397312"
+      ]
+    },
+    {
+      "attempt": 3,
+      "status": "RED\u2014not accepted fault evidence",
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-json",
+          "-timeout=150s",
+          "-run",
+          "^TestPrepareFenceP02ActualOrderingAcrossElection$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 931.5,
+        "elapsed_s": 10.527,
+        "exit_code": 1,
+        "reason": "command-failed"
+      },
+      "testTerminals": [
+        {
+          "Time": "2026-10-14T13:49:31.232885+02:00",
+          "Action": "fail",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection/delayed-A-prepare",
+          "Elapsed": 3.38
+        },
+        {
+          "Time": "2026-10-14T13:49:31.232902+02:00",
+          "Action": "fail",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection",
+          "Elapsed": 3.38
+        }
+      ],
+      "cleanup": [
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=6 all-reaped=true successful=6 intentional-kills=0 calls=3387 bootstrapPackets=294 admitted=397312"
+      ]
+    },
+    {
+      "attempt": 4,
+      "status": "RED\u2014not accepted fault evidence",
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-json",
+          "-timeout=150s",
+          "-run",
+          "^TestPrepareFenceP02ActualOrderingAcrossElection$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1013.172,
+        "elapsed_s": 17.547,
+        "exit_code": 1,
+        "reason": "command-failed"
+      },
+      "testTerminals": [
+        {
+          "Time": "2026-10-14T13:56:52.551793+02:00",
+          "Action": "fail",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection/delayed-A-prepare",
+          "Elapsed": 4.11
+        },
+        {
+          "Time": "2026-10-14T13:56:52.551822+02:00",
+          "Action": "fail",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection",
+          "Elapsed": 4.11
+        }
+      ],
+      "cleanup": [
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=6 all-reaped=true successful=6 intentional-kills=0 calls=3387 bootstrapPackets=294 admitted=397312"
+      ]
+    },
+    {
+      "attempt": 5,
+      "status": "RED\u2014not accepted fault evidence",
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-json",
+          "-timeout=150s",
+          "-run",
+          "^TestPrepareFenceP02ActualOrderingAcrossElection$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1017.109,
+        "elapsed_s": 22.452,
+        "exit_code": 1,
+        "reason": "command-failed"
+      },
+      "testTerminals": [
+        {
+          "Time": "2026-10-14T13:59:13.907277+02:00",
+          "Action": "fail",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection/delayed-A-prepare",
+          "Elapsed": 13.2
+        },
+        {
+          "Time": "2026-10-14T13:59:13.907321+02:00",
+          "Action": "fail",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection",
+          "Elapsed": 13.2
+        }
+      ],
+      "cleanup": [
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=6 all-reaped=true successful=6 intentional-kills=0 calls=2998 bootstrapPackets=244 admitted=397312"
+      ]
+    },
+    {
+      "attempt": 6,
+      "status": "RED\u2014not accepted fault evidence",
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-json",
+          "-timeout=150s",
+          "-run",
+          "^TestPrepareFenceP02ActualOrderingAcrossElection$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 978.234,
+        "elapsed_s": 16.955,
+        "exit_code": 1,
+        "reason": "command-failed"
+      },
+      "testTerminals": [
+        {
+          "Time": "2026-10-14T13:59:58.813116+02:00",
+          "Action": "fail",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection/delayed-A-prepare",
+          "Elapsed": 7.6
+        },
+        {
+          "Time": "2026-10-14T13:59:58.813136+02:00",
+          "Action": "fail",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection",
+          "Elapsed": 7.6
+        }
+      ],
+      "cleanup": [
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=12 all-reaped=true successful=12 intentional-kills=0 calls=11453 bootstrapPackets=342 admitted=397312"
+      ]
+    },
+    {
+      "attempt": 7,
+      "status": "RED\u2014not accepted fault evidence",
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-json",
+          "-timeout=150s",
+          "-run",
+          "^TestPrepareFenceP02ActualOrderingAcrossElection$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1011.219,
+        "elapsed_s": 29.802,
+        "exit_code": 1,
+        "reason": "command-failed"
+      },
+      "testTerminals": [
+        {
+          "Time": "2026-10-14T14:02:46.900746+02:00",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection/delayed-A-prepare",
+          "Elapsed": 7.72
+        },
+        {
+          "Time": "2026-10-14T14:02:55.742631+02:00",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection/A-before-B-after",
+          "Elapsed": 8.84
+        },
+        {
+          "Time": "2026-10-14T14:03:00.187342+02:00",
+          "Action": "fail",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection/persisted-fence-before-application",
+          "Elapsed": 4.44
+        },
+        {
+          "Time": "2026-10-14T14:03:00.187356+02:00",
+          "Action": "fail",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection",
+          "Elapsed": 21.01
+        }
+      ],
+      "cleanup": [
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=12 all-reaped=true successful=12 intentional-kills=0 calls=13930 bootstrapPackets=344 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=12 all-reaped=true successful=12 intentional-kills=0 calls=14002 bootstrapPackets=350 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=3413 bootstrapPackets=307 admitted=397312"
+      ]
+    },
+    {
+      "attempt": 8,
+      "status": "RED\u2014not accepted fault evidence",
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-json",
+          "-timeout=150s",
+          "-run",
+          "^TestPrepareFenceP02ActualOrderingAcrossElection$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 964.609,
+        "elapsed_s": 24.997,
+        "exit_code": 1,
+        "reason": "command-failed"
+      },
+      "testTerminals": [
+        {
+          "Time": "2026-10-14T14:04:23.690291+02:00",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection/delayed-A-prepare",
+          "Elapsed": 6.85
+        },
+        {
+          "Time": "2026-10-14T14:04:30.631801+02:00",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection/A-before-B-after",
+          "Elapsed": 6.94
+        },
+        {
+          "Time": "2026-10-14T14:04:34.753991+02:00",
+          "Action": "fail",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection/persisted-fence-before-application",
+          "Elapsed": 4.12
+        },
+        {
+          "Time": "2026-10-14T14:04:34.754013+02:00",
+          "Action": "fail",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection",
+          "Elapsed": 17.91
+        }
+      ],
+      "cleanup": [
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=12 all-reaped=true successful=12 intentional-kills=0 calls=13553 bootstrapPackets=344 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=12 all-reaped=true successful=12 intentional-kills=0 calls=13610 bootstrapPackets=350 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=6 all-reaped=true successful=5 intentional-kills=1 calls=3315 bootstrapPackets=280 admitted=397312"
+      ]
+    },
+    {
+      "attempt": 9,
+      "status": "RED\u2014not accepted fault evidence",
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-json",
+          "-timeout=150s",
+          "-run",
+          "^TestPrepareFenceP02ActualOrderingAcrossElection$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1005.797,
+        "elapsed_s": 25.786,
+        "exit_code": 1,
+        "reason": "command-failed"
+      },
+      "testTerminals": [
+        {
+          "Time": "2026-10-14T14:05:36.248234+02:00",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection/delayed-A-prepare",
+          "Elapsed": 6.15
+        },
+        {
+          "Time": "2026-10-14T14:05:42.770139+02:00",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection/A-before-B-after",
+          "Elapsed": 6.52
+        },
+        {
+          "Time": "2026-10-14T14:05:49.008675+02:00",
+          "Action": "fail",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection/persisted-fence-before-application",
+          "Elapsed": 6.24
+        },
+        {
+          "Time": "2026-10-14T14:05:49.008689+02:00",
+          "Action": "fail",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestPrepareFenceP02ActualOrderingAcrossElection",
+          "Elapsed": 18.91
+        }
+      ],
+      "cleanup": [
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=12 all-reaped=true successful=12 intentional-kills=0 calls=13553 bootstrapPackets=342 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=12 all-reaped=true successful=12 intentional-kills=0 calls=13612 bootstrapPackets=350 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=13 all-reaped=true successful=12 intentional-kills=1 calls=12251 bootstrapPackets=371 admitted=397312"
+      ]
+    }
+  ],
+  "failureScope": "All nine RED normal attempts preserved literally with distinct source manifests. First RED cleanup included three unscheduled helper-timeout cleanup SIGKILLs; they are failure cleanup, never accepted fault schedule. Later RED attempts all reaped. Final qualified runs all owned children reaped, with one planned Stage leader SIGKILL per mode.",
+  "failureCorrections": [
+    "Packet-only fence/election drainage while intentional relay gate is held",
+    "Fresh authenticated same-coordinator recovery after truthful follower ReadIndex pending; preserve original and recovery phase frames",
+    "Exact documented Register source-query projection versus actual retained Register floor",
+    "Finite phase-attempt capture excludes unrelated data-row traffic",
+    "Capture genuine election no-op entries before native log reclamation and snapshot compaction",
+    "Documented local requestReplay disposition preserves the complete original outcome identity/hash/index"
+  ],
+  "cleanup": {
+    "lease": "explicitly released to root after all approved heavy gates terminal",
+    "qualifiedIncarnations": 111,
+    "cleanExits": 108,
+    "intentionalStageLeaderKills": 3,
+    "allReaped": true,
+    "watchdog": "180s/4096MiB aggregate; Go test150s; watchdog kills/reaps remaining owned descendants at each terminal",
+    "externalOriginalsPreserved": "/var/tmp/rho-v5-p02-runtime-20261014"
+  },
+  "remaining": "No approved finite component runtime gate remains. Source/receipt integration review and broader P02/V2 family acceptance are separate.",
+  "raw": {
+    "archive": "raw.tar.gz",
+    "sha256": "c39f5c31ccd54097313c39a8256b38e97bda909a504bbc0419671dea4eb76c8e",
+    "members": 94,
+    "bytes": 1167991,
+    "manifest": "raw-manifest.json"
+  }
+}
