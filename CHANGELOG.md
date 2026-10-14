@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Badger relationship temporal index build reads sequentially** (backlog 10(a)): `CreateRelTemporalIndex`, the
+  rebuild at a crash reopen and the tiered cold-to-warm promotion build the per-relationship envelope from one read
+  transaction with two forward walks (relationship rows, relationship history) in ID order, instead of a point read
+  plus a history prefix scan per relationship; a delta history row is folded from its temporal block without the
+  anchor read. A flush that lands mid-build re-pins the snapshot (the scanSnapshot rule), and buffered history is
+  read before and after the walk. Same rows folded as the old build (`TestRelTemporalIndexRebuildSequential`). 200,000
+  relationships with history, reopened store: 78,919 → 304,166–347,756 rels/s (3.9–4.5× over four runs on a loaded
+  host; `tasks/evidence/rel-temporal-rebuild/03-bench.txt`).
+
+### Fixed
+
+- **Badger `CreateRelTemporalIndex` no longer misses writes made during the build** (backlog 22): a relationship
+  created, updated or given a history version between the ID snapshot and the install could be left with an envelope
+  short of a row, so a prune at that row's instant dropped it (reproduced: an update after the build read the
+  relationship lost its new row; an update before it, with the history flushed late, lost the old row). Create now
+  installs a Building index first (writes fold into it and record their IDs, prunes decline it, it is not persisted
+  or imaged), builds unlocked, re-reads every row of the recorded IDs, then merges and publishes, as
+  `CreateTemporalIndex` does (`TestCreateRelTemporalIndex_WriteBetweenSnapshotAndInstall`,
+  `TestCreateRelTemporalIndex_UpdateMidBuildHistoryFlushedLate`).
+
 ## [4.51.5] - 2026-10-13
 
 ### Added
