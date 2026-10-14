@@ -35,12 +35,11 @@ func elemRelIDs(rs []*types.Relationship) []types.RelID {
 
 func elemWant(ns ...*types.Node) []types.NodeID { return elemNodeIDs(ns) }
 
-// elementsFixture writes the sigma shape under label: d1 a list with a
-// duplicate, d2 a scalar, d3 an empty list, d4 a mixed list, d5 nil. pin is a
-// transaction time after those writes and before d1's update, which drops
-// element 101 and adds 103. d6 gains element 501 after a temporal read built
-// the membership sidecar and loses it again: pin501 sees it, only through the
-// sidecar's per-element record of a later write.
+// elementsFixture writes the sigma shape under label (d1 list with duplicate,
+// d2 scalar, d3 empty list, d4 mixed list, d5 nil). pin sits after those writes
+// and before d1's update (drops 101, adds 103). d6 gains 501 after a temporal
+// read built the membership sidecar and loses it again: pin501 sees it only
+// through the sidecar.
 type elementsFixture struct {
 	d1, d2, d3, d4, d5, d6 *types.Node
 	pin, pin501, upd1      types.Instant
@@ -127,14 +126,10 @@ func checkElementsFixture(t *testing.T, g *graphpkg.Graph, label string, f eleme
 	}
 }
 
-// Backlog 63 (sigma R6): an index created with PropertyIndexOptions{Elements:
-// true} indexes each scalar element of a list value, and ByLabelAndProperty on
-// it means "the list contains the value" at current, TxPin, TxAt+ValidAt and
-// interval reads; an element an update removed stops matching after the update
-// and still matches at an earlier pin. Duplicates count once, an empty list and
-// nil match nothing, a scalar is a one-element list, a mixed list matches each
-// scalar element (exact type, no nested lists). Relationship parity on the
-// stores with rel property indexes; the refused combinations; reopen; on-disk.
+// Backlog 63 (sigma R6): an Elements index makes ByLabelAndProperty mean "the
+// list contains the value" at current, TxPin, TxAt+ValidAt and interval reads.
+// Pins duplicates once, empty/nil nothing, scalar as one-element list, mixed
+// lists (exact type, no nesting), rel parity, refused combinations, reopen, on-disk.
 func TestPropertyIndexElementsContains(t *testing.T) {
 	ctx := context.Background()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
@@ -291,10 +286,8 @@ func TestPropertyIndexElementsContains(t *testing.T) {
 	})
 }
 
-// Tiered keeps an Elements index on the reference shard only. A node whose
-// primary label is an event label but which also carries the Ref label lives
-// on an event shard, and an archived Ref node lives in the archive: both are
-// answered with the same "contains" match, at current and pinned reads.
+// Tiered keeps an Elements index on the reference shard only; event-shard and
+// archived Ref nodes answer with the same "contains" match, current and pinned.
 func TestPropertyIndexElementsTieredEventShardAndArchive(t *testing.T) {
 	ctx := context.Background()
 	ts, err := tiered.New(tiered.Config{InMemory: true, RefLabels: []string{"Ref"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1})

@@ -409,18 +409,11 @@ func validateRelRowPage(rels []*types.Relationship, opts storepkg.QueryOpts, sou
 	return nil
 }
 
-// validateNodesByIDRows checks that nodes is exactly the multiset of rows
-// GetNodesByIDs promises for ids: every requested ID present exactly as many
-// times as requested, in ascending order. It does NOT reject a store that
-// returns the SAME *types.Node pointer for a duplicate requested ID —
-// CLAUDE.md's documented contract explicitly permits aliasing ("Rows for
-// duplicate requested IDs may alias the same frozen pointer"), and a
-// spec-compliant untrusted Store choosing that representation is not
-// corruption (BACKLOG 14d). A prior pointer-identity check here rejected
-// exactly that legitimate case; it was also fully redundant with the
-// count-based check below for genuine over-return corruption (a store
-// returning MORE rows for one ID than requested — aliased or not — is
-// already caught when remaining[id] hits 0 on the extra row).
+// validateNodesByIDRows checks that nodes is exactly the multiset GetNodesByIDs
+// promises for ids: each requested ID present as often as requested, ascending.
+// It does NOT reject the same *types.Node pointer for a duplicate ID: CLAUDE.md
+// permits aliasing of rows for duplicate IDs (BACKLOG 14d). Over-return is caught
+// by the count check (remaining[id] hits 0 on the extra row).
 func validateNodesByIDRows(ids []types.NodeID, nodes []*types.Node) error {
 	remaining := make(map[types.NodeID]int, len(ids))
 	for _, id := range ids {
@@ -449,9 +442,8 @@ func validateNodesByIDRows(ids []types.NodeID, nodes []*types.Node) error {
 	return nil
 }
 
-// validateRelationshipsByIDRows mirrors validateNodesByIDRows for
-// GetRelationshipsByIDs (BACKLOG 14d) — see its doc comment for the
-// duplicate-ID-aliasing rationale.
+// validateRelationshipsByIDRows mirrors validateNodesByIDRows (BACKLOG 14d),
+// including duplicate-ID aliasing.
 func validateRelationshipsByIDRows(ids []types.RelID, rels []*types.Relationship) error {
 	remaining := make(map[types.RelID]int, len(ids))
 	for _, id := range ids {

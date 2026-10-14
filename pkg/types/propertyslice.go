@@ -13,28 +13,20 @@ import (
 // ErrReservedPrefix is returned when a property key uses the reserved "tkg_" prefix.
 var ErrReservedPrefix = errors.New("types: property key uses reserved tkg_ prefix")
 
-// ErrEmptyPropertyKey is returned when a property key is the empty string.
-// An empty key is never a meaningful property name, and — for wire-decoded
-// data specifically — is also the shape a PropertyWire takes when it is
-// neither valid v1 (raw Key) nor v2 (KeyToken-resolved Key) form: catching it
-// here, at the single validated Set() entry point, closes that gap without
-// needing a wire-layer-specific check (BACKLOG 15l).
+// ErrEmptyPropertyKey is returned when a property key is the empty string
+// (also the shape of an undecodable PropertyWire; BACKLOG 15l).
 var ErrEmptyPropertyKey = errors.New("types: property key must not be empty")
 
 // ErrUnsupportedValueType is returned when a property value contains a type
 // not on the exact allowlist consumed by hashing, copying, and wire encoding.
-// Graph databases store data, not application memory references.
 var ErrUnsupportedValueType = errors.New("types: unsupported property value type")
 
-// ErrUnsupportedMapType is returned when a property value is a map whose
-// key/value type is not supported by hashing and wire serialization. Only
-// map[string]any and map[string]string are accepted; everything else would
-// either panic at hash time or fail to round-trip through msgpack export.
+// ErrUnsupportedMapType is returned when a property value is a map other than
+// map[string]any or map[string]string.
 var ErrUnsupportedMapType = errors.New("types: unsupported map type — only map[string]any and map[string]string are supported")
 
 // ErrMaxDepthExceeded is returned when a property value exceeds the maximum
-// nesting depth. This prevents stack overflow from self-referential or
-// excessively deep structures.
+// nesting depth.
 var ErrMaxDepthExceeded = errors.New("types: property value exceeds maximum nesting depth")
 
 // maxPropertyDepth is the maximum nesting depth for property values.
@@ -82,27 +74,20 @@ type Property struct {
 // The sorted invariant is maintained by Set; never modify entries directly.
 type PropertySlice []Property
 
-// OwnedPropertySlice is an already validated, canonical property slice whose
-// ownership can be transferred into an entity without another defensive copy.
-// The unexported field prevents callers from fabricating one around unchecked
-// data; use NewOwnedPropertySlice to construct it. It is consumed by
-// SetOwnedProperties so accidental reuse cannot alias two entities.
+// OwnedPropertySlice is a validated, canonical property slice whose ownership
+// can be transferred into an entity without another copy. The unexported field
+// prevents fabricating one; use NewOwnedPropertySlice. SetOwnedProperties
+// consumes it so reuse cannot alias two entities.
 type OwnedPropertySlice struct {
 	ps *PropertySlice
 }
 
-// Set inserts or overwrites the property at key.
-// Returns an error if key has the reserved "tkg_" prefix.
-// Recursively validates the value using an exact allowlist — only the concrete
-// scalar, slice, and map types handled by hashing/copy/wire are accepted. All
-// other types (pointers, structs, arrays, channels, functions, aliases, etc.)
-// are rejected at any nesting depth unless explicitly registered as custom
-// property struct types.
-// Returns ErrMaxDepthExceeded if nesting exceeds maxPropertyDepth (32).
-// Stores a deep copy of accepted values and maintains the sorted-by-key invariant.
-//
-// For bulk construction, prefer NewPropertySlice (O(N log N)) over repeated
-// Set calls (O(N) per call due to binary-search insertion into a sorted slice).
+// Set inserts or overwrites the property at key, keeping the slice sorted.
+// Returns ErrReservedPrefix for a "tkg_" key, ErrEmptyPropertyKey for "",
+// ErrMaxDepthExceeded beyond maxPropertyDepth (32), and a wrapped
+// ErrUnsupportedValueType for any value outside the exact allowlist (unless a
+// registered custom struct type). Stores a deep copy. For bulk construction
+// prefer NewPropertySlice (O(N log N)) over repeated Set (O(N) each).
 func (ps *PropertySlice) Set(key string, value any) error {
 	if ps == nil {
 		return ErrNilPropertySlice
@@ -113,8 +98,7 @@ func (ps *PropertySlice) Set(key string, value any) error {
 	if IsShadowKey(key) {
 		return fmt.Errorf("%w: %q", ErrReservedPrefix, key)
 	}
-	// Accept time.Time as caller sugar: canonicalize to a TemporalValue before
-	// validation so the whole pipeline downstream sees only known types.
+	// time.Time is sugar: canonicalize to a TemporalValue before validation.
 	value, _ = canonicalizeTemporalValue(value)
 	if err := ValidatePropertyValue(value); err != nil {
 		return fmt.Errorf("%w: %q (got %T)", err, key, value)
@@ -134,25 +118,16 @@ func (ps *PropertySlice) Set(key string, value any) error {
 	return nil
 }
 
-// temporalValueFromTime renders a Go time.Time as the canonical stored temporal
-// property value: a zoned date-time (TemporalDateTime) in RFC 3339 form. The
-// zone offset is preserved in the ISO rendering, so the value round-trips
-// through storage without the type-erasure a plain string would suffer.
+// temporalValueFromTime renders a time.Time as a zoned TemporalDateTime in
+// RFC 3339 form (the zone offset round-trips through storage).
 func temporalValueFromTime(t time.Time) TemporalValue {
 	return TemporalValue{Kind: TemporalDateTime, Value: t.Format(time.RFC3339Nano)}
 }
 
-// canonicalizeTemporalValue rewrites a TOP-LEVEL time.Time property value to a
-// TemporalValue, so the rest of the property pipeline (validation, deep copy,
-// content hash, wire) never sees the time.Time type and needs no new case (the
-// "canonicalize at the door" rule). Returns (canonicalized, changed); a
-// non-time value is returned untouched (changed=false, zero allocation).
-//
-// Only the top-level value is canonicalized: a time.Time nested inside an []any
-// / map[string]any is NOT rewritten and is rejected by the allowlist validator.
-// A nested types.TemporalValue IS accepted (it round-trips through hash, copy
-// and wire); the sugar stays top-level only because a nested time.Time would
-// have to guess a kind, and callers that want a nested temporal state it.
+// canonicalizeTemporalValue rewrites a top-level time.Time to a TemporalValue so
+// the rest of the pipeline never sees time.Time. A nested time.Time is not
+// rewritten and is rejected by the validator (it would have to guess a kind); a
+// nested TemporalValue is accepted. Non-time values pass untouched.
 func canonicalizeTemporalValue(v any) (any, bool) {
 	if tm, ok := v.(time.Time); ok {
 		return temporalValueFromTime(tm), true
@@ -240,12 +215,9 @@ func isScalarPropertyValue(v any) bool {
 	}
 }
 
-// searchKey returns the index of the first entry whose Key is >= key — the
-// same position sort.Search would return — via an INLINE binary search.
-// sort.Search takes a comparator closure that cannot inline; for the per-row
-// property read that closure indirection was the DOMINANT cost (~150ms of a
-// 100k-row aggregation in profiling). The slice is kept sorted by Key (the
-// binary-search precondition), identical to the sort.Search contract.
+// searchKey returns the index of the first entry whose Key is >= key, by an
+// inline binary search (sort.Search's closure cannot inline and dominated the
+// per-row property read).
 func (ps PropertySlice) searchKey(key string) int {
 	lo, hi := 0, len(ps)
 	for lo < hi {
@@ -259,10 +231,8 @@ func (ps PropertySlice) searchKey(key string) int {
 	return lo
 }
 
-// Get returns the value for key and whether it was found.
-// Reference-type values are deep-copied so callers cannot mutate the
-// PropertySlice through the returned value.
-// Uses binary search on the sorted slice.
+// Get returns the value for key and whether it was found; reference-type
+// values are deep-copied.
 func (ps PropertySlice) Get(key string) (any, bool) {
 	i := ps.searchKey(key)
 	if i < len(ps) && ps[i].Key == key {
@@ -288,11 +258,9 @@ func (ps PropertySlice) indexableValueKey(key string) (string, bool) {
 }
 
 // forEachIndexKey is the one key iteration every property index consumes: a
-// scalar property yields its IndexablePropertyValueKey; a list property whose
-// key elements reports true (an Elements index, backlog 63) yields each
-// distinct scalar element's key. elements is asked only for list values, so a
-// nil elements, or a node without list properties, costs exactly the scalar
-// iteration.
+// scalar yields its IndexablePropertyValueKey; a list whose key elements
+// reports true (Elements index, backlog 63) yields each distinct element key.
+// elements is asked for list values only; nil means scalars only.
 func (ps PropertySlice) forEachIndexKey(elements func(propertyKey string) bool, fn func(propertyKey, valueKey string) bool) {
 	if fn == nil {
 		return
@@ -347,13 +315,12 @@ func isIndexableList(v any) bool {
 	return false
 }
 
-// ForEachIndexableElementKey calls fn with the keys an Elements property index
-// (backlog 63) takes from v: a scalar's IndexablePropertyValueKey (a scalar is
-// a one-element list), else the key of each distinct indexable scalar element
-// of a list ([]any, []string, []int, []int64, []float32, []float64, []bool),
-// in first-occurrence order. Elements without a key (nil, nested lists, maps)
-// are skipped, as a scalar index skips them; []byte is a blob, not a list.
-// Returns false when fn stopped the iteration.
+// ForEachIndexableElementKey calls fn with the keys an Elements index takes
+// from v (backlog 63): a scalar's key (a one-element list), else each distinct
+// indexable scalar element of a list ([]any, []string, []int, []int64,
+// []float32, []float64, []bool) in first-occurrence order. Keyless elements
+// (nil, nested lists, maps) are skipped; []byte is a blob. Returns false when
+// fn stopped the iteration.
 func ForEachIndexableElementKey(v any, fn func(valueKey string) bool) bool {
 	if fn == nil {
 		return true
@@ -380,8 +347,8 @@ func ForEachIndexableElementKey(v any, fn func(valueKey string) bool) bool {
 	return true
 }
 
-// elementKeyDedupLinear is the list length up to which duplicate element keys
-// are found by a linear scan over the keys already yielded (no map).
+// elementKeyDedupLinear is the list length up to which duplicate keys are found
+// by linear scan (no map).
 const elementKeyDedupLinear = 16
 
 func forEachElementKey[T any](s []T, fn func(valueKey string) bool) bool {
@@ -417,10 +384,9 @@ func forEachElementKey[T any](s []T, fn func(valueKey string) bool) bool {
 	return true
 }
 
-// IndexableValueHasKey reports whether v carries targetKey as an index key:
-// its scalar key equals targetKey, or, with elements, one of its list
-// elements' keys does (ForEachIndexableElementKey). An empty targetKey never
-// matches.
+// IndexableValueHasKey reports whether v carries targetKey as an index key: its
+// scalar key equals it or, with elements, one of its element keys does. An
+// empty targetKey never matches.
 func IndexableValueHasKey(v any, elements bool, targetKey string) bool {
 	if targetKey == "" {
 		return false
@@ -479,19 +445,16 @@ func (ps PropertySlice) float32SliceCopy(key string) ([]float32, bool) {
 	}
 }
 
-// IndexablePropertyValueKey computes a canonical key for property values that
-// can participate in property indexes and indexed equality queries. Scalar
-// float keys follow PropertyValueEqual semantics for signed zero and NaN while
-// preserving concrete float32/float64 type separation. It returns an empty
-// string for slices, maps, structs, and other non-scalar values.
+// IndexablePropertyValueKey computes a canonical key for values that can be
+// indexed (float keys follow PropertyValueEqual for signed zero and NaN, and
+// keep float32/float64 separate); "" for slices, maps, structs and other
+// non-scalars.
 func IndexablePropertyValueKey(v any) string {
 	switch val := v.(type) {
 	case string:
 		return "s:" + val
 	case TemporalValue:
-		// Type-prefixed key encoding: a temporal never collides with the
-		// plain string carrying the same ISO rendering. Built in one buffer
-		// (single alloc) instead of three concatenations.
+		// Type-prefixed so a temporal never collides with the plain string.
 		var buf [48]byte
 		b := strconv.AppendUint(append(buf[:0], "tv:"...), uint64(val.Kind), 10)
 		b = append(b, ':')
@@ -544,13 +507,7 @@ func IndexablePropertyValueKey(v any) string {
 }
 
 // appendIntKey / appendUintKey / appendFloatKey build a "prefix:number" index
-// key in a single heap allocation. The previous `prefix + strconv.FormatX(...)`
-// form allocated twice — once for the formatted number, once for the
-// concatenation — on every numeric property-equality lookup. Appending the
-// prefix and the digits into one stack buffer collapses that to the single
-// string() allocation, with byte-identical output. The buffers are sized for
-// the longest output (≤4-byte prefix + ≤24 digits/exponent) so the slice never
-// escapes to the heap before the string conversion.
+// key in a single allocation (stack buffer sized for the longest output).
 func appendIntKey(prefix string, val int64) string {
 	var buf [32]byte
 	return string(strconv.AppendInt(append(buf[:0], prefix...), val, 10))
@@ -566,18 +523,13 @@ func appendFloatKey(prefix string, val float64, bitSize int) string {
 	return string(strconv.AppendFloat(append(buf[:0], prefix...), val, 'g', -1, bitSize))
 }
 
-// PropertyValueEqual compares two property values with the exact equality
-// semantics used by graph compare-and-set operations. Concrete types must
-// match; NaN float32/float64 values compare equal, including when nested in
-// supported slices, maps, arrays, structs, pointers, or interfaces.
+// PropertyValueEqual compares two property values with the equality used by
+// compare-and-set: concrete types must match and NaNs compare equal, also when
+// nested.
 //
-// Hash divergence by design: the integrity-hash function preserves the raw
-// IEEE-754 bit pattern, so two NaN values that compare equal here can hash
-// differently (and so can ±0). PropertyValueEqual is the CAS short-circuit
-// contract; the hash is the durable-identity contract. A no-op CAS that
-// replaces one NaN bit pattern with another does NOT advance the hash
-// chain — but a fresh SetProperty with a different bit pattern does. See
-// pkg/graph/internal/integrity/integrity_test.go for the documenting tests.
+// Hash divergence by design: the integrity hash keeps the raw IEEE-754 bits, so
+// NaNs (and +-0) equal here can hash differently; a no-op CAS between them does
+// not advance the hash chain. See pkg/graph/internal/integrity/integrity_test.go.
 func PropertyValueEqual(cur, expected any) bool {
 	return propertyValueEqual(cur, expected, nil)
 }
@@ -782,9 +734,7 @@ func float64PropertyValueEqual(a, b float64) bool {
 	return a == b || (math.IsNaN(a) && math.IsNaN(b))
 }
 
-// DeepCopy returns a copy of the slice (independent from the original).
-// Reference-type values (slices, maps) are cloned so the copy is fully
-// independent. Primitives, strings, and other value types are safe as-is.
+// DeepCopy returns an independent copy; reference-type values are cloned.
 func (ps PropertySlice) DeepCopy() PropertySlice {
 	if ps == nil {
 		return nil
@@ -797,9 +747,7 @@ func (ps PropertySlice) DeepCopy() PropertySlice {
 }
 
 // ValidatePropertyValue recursively checks that v contains only allowlisted
-// exact types at any nesting depth. Slices, maps, and interface wrappers are
-// traversed.
-// Rejects at maxPropertyDepth to prevent stack overflow from deep/cyclic input.
+// exact types; it rejects beyond maxPropertyDepth.
 func ValidatePropertyValue(v any) error {
 	if v == nil {
 		return nil
@@ -810,20 +758,15 @@ func ValidatePropertyValue(v any) error {
 	if tv, ok := v.(TemporalValue); ok {
 		return tv.Validate()
 	}
-	// time.Time is accepted as caller sugar — Set / NewPropertySlice
-	// canonicalize it to a TemporalValue before it is stored, so downstream
-	// (deep copy, content hash, wire) only ever see the canonical type.
+	// time.Time is sugar, canonicalized to a TemporalValue before storage.
 	if _, ok := v.(time.Time); ok {
 		return nil
 	}
 	return validateReflectValue(reflect.ValueOf(v), 0)
 }
 
-// validateReflectValue uses an allowlist to accept only types that downstream
-// hashing, deep-copy, and wire reconstruction handle without type-erasure loss.
-// Containers (Slice, Map, Interface) are recursed with a depth counter to
-// prevent stack overflow from deep/cyclic structures.
-// Everything else (Ptr, Struct, Array, Chan, Func, UnsafePointer, etc.) is rejected.
+// validateReflectValue accepts only types that hashing, deep-copy and wire
+// reconstruction handle losslessly; containers recurse with a depth counter.
 func validateReflectValue(rv reflect.Value, depth int) error {
 	if depth > maxPropertyDepth {
 		return ErrMaxDepthExceeded
@@ -888,11 +831,8 @@ func validateReflectValue(rv reflect.Value, depth int) error {
 	// RegisterPropertyStructType (e.g. for spatial geometry types). This is
 	// the opt-in extension point; unregistered structs/pointers are rejected.
 	case reflect.Pointer, reflect.Struct:
-		// TemporalValue is accepted at ANY depth: hash, deep copy, heap
-		// accounting and equality all dispatch on the type per element, and
-		// the wire layer carries nested temporals in a reversible envelope,
-		// so a temporal inside an []any / map[string]any round-trips with its
-		// kind intact. A nested plain string is NOT reinterpreted as one.
+		// TemporalValue is accepted at any depth (nested temporals round-trip
+		// via a reversible wire envelope; a nested plain string is not reinterpreted).
 		if rv.Kind() == reflect.Struct && rv.Type() == propertyTypeTemporalValue {
 			tv, ok := rv.Interface().(TemporalValue)
 			if !ok {
@@ -949,10 +889,8 @@ func isAllowedPropertySliceType(t reflect.Type) bool {
 	}
 }
 
-// deepCopyValue clones known reference types so that mutations to the copy
-// never affect the original. Unknown types fall through to shallow copy,
-// which is safe for primitives, strings, and other immutable values.
-// Stops recursing at maxPropertyDepth to prevent stack overflow.
+// deepCopyValue clones known reference types; unknown types shallow-copy (safe
+// for immutables). Stops at maxPropertyDepth.
 func deepCopyValue(v any, depth int) any {
 	if v == nil {
 		return nil
@@ -969,9 +907,7 @@ func deepCopyValue(v any, depth int) any {
 		float32, float64:
 		return val
 
-	// TemporalValue is an immutable value type (kind + string): assignment IS
-	// the deep copy. Explicit so a nested temporal never reaches the reflect
-	// fallback.
+	// TemporalValue is immutable: assignment is the deep copy.
 	case TemporalValue:
 		return val
 
@@ -1056,10 +992,8 @@ func deepCopyValue(v any, depth int) any {
 		return cp
 
 	default:
-		// Custom registered types own their own deep-copy semantics. Keep
-		// this behind the built-in fast paths and the registration check so
-		// manually fabricated invalid PropertySlice values cannot invoke
-		// arbitrary unregistered user code through no-error accessors.
+		// Registered custom types own their deep copy; the registration check
+		// stops fabricated invalid slices from invoking unregistered user code.
 		if dc, ok := v.(DeepCopier); ok && isRegisteredPropertyValue(v) {
 			return preserveDeepCopyPointerShape(v, dc.DeepCopyValue())
 		}
@@ -1110,12 +1044,8 @@ func preserveDeepCopyPointerShape(original, copied any) any {
 	return ptr.Interface()
 }
 
-// reflectCopyValue uses reflection to clone unknown slice and map types.
-// Elements are recursively deep-copied via deepCopyValue so that nested
-// reference types (e.g., map[int][]string) are fully independent.
-// Returns v unchanged for primitives, strings, and other immutable values.
-// Note: unsupported value types are rejected by Set() at insertion time
-// and will never reach this function.
+// reflectCopyValue clones unknown slice and map types via reflection, deep-copying
+// elements. Unsupported types never reach it (Set rejects them).
 func reflectCopyValue(v any, depth int) any {
 	if depth > maxPropertyDepth {
 		return v // safety fallback: return as-is
@@ -1259,9 +1189,7 @@ func canonicalPropertySlice(ps PropertySlice) (PropertySlice, error) {
 }
 
 func canonicalPropertyValue(key string, value any) (any, error) {
-	// Accept time.Time as caller sugar: canonicalize to a TemporalValue before
-	// validation, mirroring Set/NewPropertySlice, so SetProperties-built
-	// entities hash identically to equivalent Set()-built ones (BACKLOG 6a).
+	// time.Time sugar, as in Set, so SetProperties hashes like Set (BACKLOG 6a).
 	value, _ = canonicalizeTemporalValue(value)
 	if err := ValidatePropertyValue(value); err != nil {
 		return nil, fmt.Errorf("%w: %q (got %T)", err, key, value)
@@ -1269,12 +1197,9 @@ func canonicalPropertyValue(key string, value any) (any, error) {
 	return copyValidatedPropertyValue(key, value)
 }
 
-// NewPropertySlice creates a PropertySlice from a map in O(N log N) time.
-// Allocates the result once, validates all values, deep-copies accepted
-// reference values, then sorts once — no per-key memmoves.
-// Returns nil, nil for nil or empty maps.
-// Returns ErrReservedPrefix if any key starts with "tkg_".
-// Returns ErrUnsupportedValueType if any value fails allowlist validation.
+// NewPropertySlice creates a PropertySlice from a map in O(N log N) (allocate
+// once, validate, deep-copy, sort once). Returns nil, nil for nil or empty maps,
+// ErrReservedPrefix for a "tkg_" key, ErrUnsupportedValueType for a bad value.
 func NewPropertySlice(m map[string]any) (PropertySlice, error) {
 	if len(m) == 0 {
 		return nil, nil

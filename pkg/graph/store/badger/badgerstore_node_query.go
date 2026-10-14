@@ -24,11 +24,8 @@ func (bs *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 	}
 	bs.idxMu.RLock()
 
-	// Temporal index fast path: avoids iterating the full label set when a
-	// temporal index exists and a temporal filter is active.
-	// When a temporal query is requested, the index result is always authoritative
-	// — nil means 0 matches, not "index not consulted." Do not fall through to
-	// the full label scan in that case.
+	// Temporal index fast path: with a temporal filter the index result is
+	// authoritative (nil means 0 matches), never fall through to the label scan.
 	if ti, ok := bs.temporalIndexes[token]; ok && !ti.Building {
 		var ids []snowflake.ID
 		temporalQuery := false
@@ -80,14 +77,12 @@ func (bs *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 		return nil, nil
 	}
 
-	// Order-independent consumers set NoSort to drop the O(n log n) sort
-	// (the term that makes large label scans grow superlinearly). Keyset
-	// pagination (After > 0) needs sorted order, so keep the sort then.
+	// NoSort drops the O(n log n) sort; keyset pagination (After > 0) needs it.
 	if !opts.NoSort || opts.After != 0 {
 		storepkg.SortNodeIDs(nids)
 	}
 
-	// Temporal pre-filter via Peek (zero allocation for cache hits).
+	// Temporal pre-filter via Peek.
 	nids = bs.filterNodeIDsByTemporalPeek(nids, opts)
 
 	return bs.fetchNodesByLabelIDs(token, nids, opts)
@@ -100,11 +95,9 @@ func (bs *Store) fetchNodesByLabelIDs(token uint16, ids []types.NodeID, opts Que
 	}
 	hasTemporal := storepkg.HasTemporalFilter(opts)
 
-	// Unbounded large scans (MATCH (n:L) RETURN n) decode the badger misses across
-	// cores — the CPU-bound msgpack decode is the serial floor (~3x measured on a
-	// 16-core box, badgerstore_node_bulk_bench_test.go). Limit'd scans keep the
-	// serial early-stopping door (parallel decode has no early stop). The label +
-	// temporal filter is applied post-decode, identical to the serial callback.
+	// Unbounded large scans decode badger misses across cores (decode is the serial
+	// floor); Limit'd scans keep the serial early-stopping door. Label and temporal
+	// filters apply post-decode, as in the serial callback.
 	if opts.Limit == 0 && len(ids) >= parallelDecodeMinIDs {
 		all, err := bs.collectNodesBulkParallel(ids)
 		if err != nil {
@@ -146,27 +139,19 @@ func (bs *Store) fetchNodesByLabelIDs(token uint16, ids []types.NodeID, opts Que
 	return nodes, nil
 }
 
-// forEachNodeBulk materializes the given (sorted, ascending) node IDs through ONE
-// forward-seeking badger iterator (value prefetch OFF — see scanSnapshot.seekAfterMiss)
-// instead of a separate bs.db.View + Txn.Get per node. The dominant per-node cost
-// of the old path was N distinct read transactions — each acquiring an oracle
-// read-timestamp (a global-lock contention point) and setting up a txn; this pays
-// that once per scan (plus once per flush that lands during it). fn is invoked for
-// every present node in ID order (frozen, scan-discipline: cache hits served
-// WITHOUT promotion); returning false stops early. Nodes absent from the store
-// (deleted / orphaned index entry) are skipped, matching the old
-// ErrNodeNotFound-continue behavior.
-//
-// Misses read through a scanSnapshot, which re-pins after a flush: a flush that
-// commits and evicts a row mid-scan must not leave the scan reading that row
-// from a snapshot that predates the commit (a dropped or replaced row).
+// forEachNodeBulk materializes the given ascending node IDs through ONE
+// forward-seeking badger iterator (prefetch off, see scanSnapshot.seekAfterMiss)
+// instead of a read transaction per node. fn sees each present node in ID order
+// (frozen, cache hits served without promotion); false stops. Absent nodes
+// (deleted, orphaned index entry) are skipped. Misses read through a
+// scanSnapshot that re-pins after a flush, so a row committed and evicted
+// mid-scan is never read from a stale snapshot.
 func (bs *Store) forEachNodeBulk(ids []types.NodeID, fn func(*types.Node) bool) error {
 	snap := newScanSnapshot(bs.db, bs.nodeCache.FlushEpoch)
 	defer snap.close()
 	for _, nid := range ids {
 		id := nid.SnowflakeID()
-		// Cache first (no promote — a full-cardinality scan must not pay one
-		// exclusive lock per row nor evict hot point-read entries).
+		// Cache first, no promote: a full scan must not lock per row or evict hot entries.
 		v, status := bs.nodeCache.GetNoPromote(id)
 		switch status {
 		case indexpkg.CacheHit:
@@ -177,8 +162,7 @@ func (bs *Store) forEachNodeBulk(ids []types.NodeID, fn func(*types.Node) bool) 
 		case indexpkg.CacheDeleted:
 			continue // tombstone — skip, as an orphaned index entry
 		}
-		// Miss → decode from badger via the shared iterator (opened lazily so a
-		// fully cache-resident scan never creates one).
+		// Miss: decode via the shared iterator (opened lazily).
 		item := snap.seekAfterMiss(storepkg.NodeKey(id))
 		if item == nil {
 			continue // deleted / orphaned index entry
@@ -207,9 +191,8 @@ func (bs *Store) forEachNodeBulk(ids []types.NodeID, fn func(*types.Node) bool) 
 	return nil
 }
 
-// AllNodes returns all stored nodes, with optional pagination and temporal filtering.
-// Snapshot nodeIDs under lock, sort + paginate, then fetch via GetNode.
-// Results are sorted by snowflake.ID for deterministic output.
+// AllNodes returns all stored nodes sorted by snowflake.ID, with optional
+// pagination and temporal filtering.
 func (bs *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
@@ -244,8 +227,8 @@ func (bs *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	return bs.fetchNodesWithTemporalFilter(nids, opts)
 }
 
-// GetNodesByIDs returns nodes for every requested ID.
-// Missing IDs return ErrNodeNotFound. Results are sorted by snowflake.ID.
+// GetNodesByIDs returns nodes for every requested ID, sorted by snowflake.ID;
+// a missing ID returns ErrNodeNotFound.
 func (bs *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
@@ -342,8 +325,8 @@ func uniqueNodeIDsPreserveOrder(ids []types.NodeID) []types.NodeID {
 	return unique
 }
 
-// NodesByLabelAndProperty returns nodes with the given label token and property
-// value, applying temporal/depth query options before cursor pagination.
+// NodesByLabelAndProperty returns nodes with the label token and property value,
+// applying temporal/depth options before cursor pagination.
 func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, value any, opts QueryOpts) ([]*types.Node, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
@@ -365,12 +348,12 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 		return nil, nil
 	}
 
-	// Snapshot matching IDs under RLock, then release before entity I/O.
+	// Snapshot matching IDs under RLock, release before entity I/O.
 	bs.idxMu.RLock()
 	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propKey}
 
 	if idx, ok := bs.propertyIndexes[key]; ok && idx.Mutated == nil {
-		// Indexed path: snapshot matching IDs.
+		// Indexed path.
 		elements := idx.Elements()
 		var nids []types.NodeID
 		if bs.propIdxOnDisk {
@@ -397,7 +380,7 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 		return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, elements, nids, opts)
 	}
 
-	// Fallback: snapshot label IDs, release lock, then scan properties.
+	// Fallback: label scan + property filter.
 	slog.Debug("graph: NodesByLabelAndProperty using full label scan (no property index)",
 		"labelToken", labelToken, "propertyKey", propKey)
 	nids, idErr := bs.labelNodeIDsSnapshotLocked(labelToken)
@@ -409,16 +392,15 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 		return nil, nil
 	}
 
-	// Sort label IDs, apply cursor skip, scan in order for property matches.
+	// Sorted scan for property matches.
 	storepkg.SortNodeIDs(nids)
 	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, false, nids, opts)
 }
 
-// NodesByLabelContainingProperty answers an Elements-index lookup (backlog 63)
-// on a store that holds no copy of that index — the tiered store's event
-// shards and archive, whose reference shard owns it: the label's nodes whose
-// propKey carries value's key as a scalar or as a list element, filtered while
-// the rows are fetched (nothing else is materialised).
+// NodesByLabelContainingProperty answers an Elements-index lookup (backlog 63) on a
+// store holding no copy of the index (tiered event shards and archive; the
+// reference shard owns it): the label's nodes whose propKey carries value's key as
+// a scalar or list element, filtered while the rows are fetched.
 func (bs *Store) NodesByLabelContainingProperty(labelToken uint16, propKey string, value any, opts QueryOpts) ([]*types.Node, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
@@ -482,10 +464,8 @@ func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey, target
 	return result, nil
 }
 
-// AllNodeIDs returns the IDs of all current nodes, with optional temporal
-// filtering and pagination. Non-temporal calls return only IDs without entity
-// deserialization; temporal calls fetch current entity metadata. O(N) in
-// nodeIDs map size.
+// AllNodeIDs returns the IDs of all current nodes with optional temporal filtering
+// and pagination; non-temporal calls deserialize no entities. O(N).
 func (bs *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
@@ -518,8 +498,7 @@ func (bs *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 	return nids, nil
 }
 
-// ForEachNodeID iterates over all current node IDs, calling fn for each.
-// Iteration stops early if fn returns false. No ordering guarantee.
+// ForEachNodeID calls fn for each current node ID; false stops. Unordered.
 func (bs *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
@@ -541,16 +520,8 @@ func (bs *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
 	return nil
 }
 
-// prefetchNode retrieves a node from cache or Badger WITHOUT holding idxMu.
-// Used as a pre-fetch step before acquiring idxMu.Lock() in write operations
-// (DeleteNode, ReplaceNode, RemoveNodeLabelToken) to avoid holding the global
-// write lock during slow disk I/O on cache misses.
-//
-// Callers MUST re-verify node existence under idxMu.Lock() after calling this
-// (TOCTOU guard). The returned node may be stale if a concurrent delete occurred
-// between the pre-fetch and the write lock acquisition — the re-verify catches this.
-//
-// Safety: nodeCache has its own internal mutex; db.View opens a read-only Badger
-// transaction — neither requires idxMu. Dirty (unflushed) nodes are always retained
-// in the LRU (soft capacity never evicts dirty entries), so a newly Put node that
-// has not yet been flushed to Badger will always be found in the cache.
+// prefetchNode retrieves a node from cache or Badger WITHOUT holding idxMu, so
+// write paths avoid holding the global write lock during disk I/O on a miss.
+// Callers MUST re-verify existence under idxMu.Lock() (TOCTOU): the node may be
+// stale after a concurrent delete. Safe without idxMu: the cache has its own
+// mutex, and dirty nodes are never evicted, so an unflushed Put is always found.

@@ -7,12 +7,9 @@ import (
 )
 
 // Elements property indexes (backlog 63, storepkg.PropertyIndexOptions.Elements):
-// a lookup on such an index means "the list contains the value". Every door
-// that answers an equality lookup on (label|type, key) asks these once and
-// passes the flag to types.Node/Relationship.HasPropertyIndexKey, so the
-// current read, the row validation, the scan fallback and the history re-check
-// of the temporal doors all apply the same match; the candidate ids come from
-// the store's index and its per-element membership sidecar.
+// a lookup means "the list contains the value". Every equality door asks once and
+// passes the flag to types.Node/Relationship.HasPropertyIndexKey so the current
+// read, row validation, scan fallback and temporal history re-check all match alike.
 
 // nodeIndexElements reports whether the node property index on (tok, key) is
 // an Elements index. A store without PropertyIndexOptionsCapability has none.
@@ -41,9 +38,8 @@ func (c *Core) relIndexElements(tok uint16, key string) (bool, error) {
 	return found && o.Elements, nil
 }
 
-// refuseNodeElementsIndex returns ErrElementsIndexUnsupported when (tok, key)
-// has an Elements index: what names the operation that needs value equality
-// (a unique constraint, GetOrCreateByKey, a multi-key lookup).
+// refuseNodeElementsIndex returns ErrElementsIndexUnsupported when (tok, key) has
+// an Elements index; what names the operation needing value equality.
 func (c *Core) refuseNodeElementsIndex(tok uint16, key, what string) error {
 	elements, err := c.nodeIndexElements(tok, key)
 	if err != nil {

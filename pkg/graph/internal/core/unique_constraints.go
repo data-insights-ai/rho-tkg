@@ -17,22 +17,15 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// =============================================================================
-// Unique property constraints (ADR-0002) — CORE stages a/b/c.
+// Unique property constraints (ADR-0002), CORE stages a/b/c.
 //
 // A unique constraint forbids two CURRENT nodes carrying the same value for a
-// constrained (label, property) pair (UniqueCurrent scope — the only scope
-// implemented in this release). History may hold duplicates; a value freed by
-// supersession or delete is immediately reusable.
-//
-// Persistence mirrors the asof_tags pattern exactly: one msgpack map under a
-// MetaKV key, decoded through SafeUnmarshal (fail closed), durable across
-// reopen, reaped by Admin().Reset, declines without MetaKV via
-// ErrCapabilityNotSupported, rejected on a read-only replica.
-//
-// Enforcement (Stage C) currently covers the STANDALONE node doors; batch / tx
-// / import enforcement is a follow-up wave (landing before any release tag).
-// =============================================================================
+// constrained (label, property) (UniqueCurrent scope). History may hold
+// duplicates; a freed value is immediately reusable. Persistence mirrors
+// asof_tags: one msgpack map under a MetaKV key, decoded via SafeUnmarshal (fail
+// closed), reaped by Admin().Reset, ErrCapabilityNotSupported without MetaKV,
+// rejected on a read-only replica. Enforcement covers the standalone node doors;
+// batch / tx / import enforcement is a follow-up.
 
 // uniqueConstraintsMeta is the MetaKV key holding the durable unique-constraint
 // registry. Distinct from asofTagsMeta / graphEpochMeta / replicaAppliedLSNMeta.
@@ -65,12 +58,9 @@ func uniqueConstraintCompositeKey(label, propKey string) string {
 }
 
 // uniqueMetaKV returns the store's MetaKV capability or a wrapped
-// ErrCapabilityNotSupported. The tiered backend is NO LONGER declined outright
-// (ADR-0005 §3.5 supersedes ADR-0002 Decision 5): reference-label constraints
-// enforce globally on the reference shard, and the durable registry rides
-// refShard's MetaKV. Event-label constraints are rejected up front in
-// createUnique with ErrUniqueEventLabelUnsupported, so they never reach the
-// registry — the classification is the gate, not this capability probe.
+// ErrCapabilityNotSupported. Tiered is accepted (ADR-0005 3.5 supersedes ADR-0002
+// Decision 5): reference-label constraints enforce on the reference shard and the
+// registry rides refShard's MetaKV; event labels are refused up front in createUnique.
 func (c *Core) uniqueMetaKV() (storepkg.MetaKVCapability, error) {
 	mk := c.metaKV
 	if mk == nil {
@@ -80,11 +70,8 @@ func (c *Core) uniqueMetaKV() (storepkg.MetaKVCapability, error) {
 }
 
 // rejectTieredEventLabel returns ErrUniqueEventLabelUnsupported when the store is
-// tiered AND the constrained label is event-class. Reference labels (and every
-// non-tiered backend) pass through. Classification anchors to the tiered store's
-// own ontology (the SAME classifier the router uses), so ref/event is consistent
-// with where the label's entities live. Called BEFORE any label token is minted
-// so a rejected event-label create never leaves an orphan token behind.
+// tiered AND the label is event-class (the router's own classifier). Called BEFORE
+// any label token is minted so a rejected create leaves no orphan token.
 func (c *Core) rejectTieredEventLabel(label string) error {
 	ts, ok := c.store.(*tiered.Store)
 	if !ok {
@@ -96,33 +83,27 @@ func (c *Core) rejectTieredEventLabel(label string) error {
 	return nil
 }
 
-// isFloatValueKey reports whether a canonical index value key encodes a
-// floating-point value (rejected for unique constraints — bit-pattern equality
-// is user-hostile, ADR-0002 default).
+// isFloatValueKey reports whether a canonical value key encodes a float (rejected
+// for unique constraints, ADR-0002).
 func isFloatValueKey(valueKey string) bool {
 	return strings.HasPrefix(valueKey, "f32:") || strings.HasPrefix(valueKey, "f64:")
 }
 
-// uniqueValueStripe computes the value-lock stripe for a constrained value.
-// The property key is folded into the hashed bytes (rather than passed as a
-// registry token) so the stripe is stable regardless of property-key
-// tokenization timing.
+// uniqueValueStripe computes the value-lock stripe. The property key is folded into
+// the hashed bytes, so the stripe does not depend on key tokenization timing.
 func uniqueValueStripe(labelTok uint16, key, valueKey string) uint8 {
 	b := make([]byte, 0, len(key)+1+len(valueKey))
 	b = append(b, key...)
 	b = append(b, 0x1f)
 	b = append(b, valueKey...)
-	// keyToken 0: the property key is already folded into the hashed bytes, so a
-	// stable stripe does not depend on property-key tokenization timing.
+	// keyToken 0: the key is already in the hash, see uniqueValueStripe.
 	return locks.ValueStripe(labelTok, 0, b)
 }
 
-// -----------------------------------------------------------------------------
-// Load / persist
-// -----------------------------------------------------------------------------
+// --- Load / persist ---
 
-// loadUniqueConstraints rehydrates the in-memory registry from MetaKV at open.
-// A missing key / no MetaKV yields an empty registry. Corrupt bytes fail closed.
+// loadUniqueConstraints rehydrates the registry from MetaKV at open; a missing key
+// or no MetaKV gives an empty registry, corrupt bytes fail closed.
 func (c *Core) loadUniqueConstraints() error {
 	c.uniqueConstraints = make(map[uint16]map[string]*uniqueConstraintState)
 	mk := c.metaKV
@@ -138,9 +119,8 @@ func (c *Core) loadUniqueConstraints() error {
 	for _, r := range recs {
 		tok, ok := c.labels.Lookup(r.Label)
 		if !ok {
-			// A persisted constraint whose label token is gone means the label
-			// registry and the constraint registry diverged on disk — fail
-			// closed rather than silently drop enforcement.
+			// A persisted constraint whose label token is gone means the registries diverged
+			// on disk: fail closed rather than drop enforcement.
 			return fmt.Errorf("graph: load unique constraints: %w: label %q not in registry", storepkg.ErrCorruptWire, r.Label)
 		}
 		c.installConstraintLocked(tok, r.PropKey, r.Label, constraintspkg.UniqueScope(r.Scope), true)
@@ -170,8 +150,7 @@ func loadUniqueConstraintRecords(mk storepkg.MetaKVCapability) ([]uniqueConstrai
 	return recs, nil
 }
 
-// storeUniqueConstraintsLocked persists all ACTIVE constraints. Caller holds
-// c.uniqueMu.
+// storeUniqueConstraintsLocked persists all ACTIVE constraints; caller holds c.uniqueMu.
 func (c *Core) storeUniqueConstraintsLocked(mk storepkg.MetaKVCapability) error {
 	m := make(map[string]uniqueConstraintRecord)
 	for _, byKey := range c.uniqueConstraints {
@@ -196,9 +175,7 @@ func (c *Core) storeUniqueConstraintsLocked(mk storepkg.MetaKVCapability) error 
 	return nil
 }
 
-// -----------------------------------------------------------------------------
-// In-memory registry helpers (caller holds c.uniqueMu for the *Locked variants)
-// -----------------------------------------------------------------------------
+// --- In-memory registry helpers (caller holds c.uniqueMu for *Locked variants) ---
 
 // refuseUniqueKey returns ErrElementsIndexUnsupported when (label, key) is
 // under a unique constraint: an Elements index (backlog 63) cannot serve it.
@@ -265,9 +242,7 @@ func (c *Core) totalConstraintsLocked() int {
 	return n
 }
 
-// -----------------------------------------------------------------------------
-// CreateUnique / DropUnique / UniqueConstraints
-// -----------------------------------------------------------------------------
+// --- CreateUnique / DropUnique / UniqueConstraints ---
 
 func (c *Core) createUnique(ctx context.Context, label, propKey string, scope constraintspkg.UniqueScope) error {
 	if err := c.checkWritable(); err != nil {
@@ -288,8 +263,7 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 	if err := c.validateIndexPropertyKey(propKey); err != nil {
 		return err
 	}
-	// Tiered: reject event-class labels up front (before minting a token) — their
-	// values are spread across unbounded time shards with no global value index.
+	// Tiered: reject event-class labels up front (no global value index across time shards).
 	if err := c.rejectTieredEventLabel(label); err != nil {
 		return err
 	}
@@ -298,50 +272,31 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 		return err
 	}
 
-	// Resolve (and persist) the label token so future writes carrying the label
-	// bind to it and the durable record can round-trip through Lookup at reopen.
-	//
-	// This resolves the token BEFORE validating existing data (ADR-0002 verifier
-	// note 2). Minting up front is safe: getOrCreateLabelPersisted only ALLOCATES
-	// a new token when the label is absent from the registry, and an absent label
-	// has no nodes — so validateUniqueExisting below cannot find offenders or a
-	// float value for it. A validation FAILURE therefore only happens for a label
-	// that already existed (whose token is not newly minted), so a failed create
-	// never leaves an orphan token behind. Keeping the token resolved up front
-	// also lets the pending overlay key its enforcement to it (Phase 1) so
-	// concurrent writers enforce during the validation window.
+	// Resolve (and persist) the label token before validating existing data
+	// (ADR-0002 verifier note 2). Safe: a token is only allocated for a label absent
+	// from the registry, which has no nodes, so validateUniqueExisting cannot fail
+	// for it and a failed create leaves no orphan token. The pending overlay keys to it.
 	labelTok, err := c.getOrCreateLabelPersisted(label)
 	if err != nil {
 		return err
 	}
 
-	// Phase 1: install a PENDING entry under lock so concurrent writers already
-	// enforce it while we validate existing data.
-	//
-	// The install itself also runs under c.mu.Lock() (BACKLOG 9c): a
-	// standalone write's addNodeInternal holds c.mu.RLock() for its ENTIRE
-	// duration (enforceUniqueForNodeHeld's check through the actual store
-	// write). If that check ran while hasUniqueConstraints() was still false,
-	// it took no value-stripe lock — so without this, such a write could
-	// still be in flight when installConstraintLocked runs, then commit its
-	// duplicate AFTER Phase 3 activates the constraint, with nothing having
-	// ever enforced it. Taking c.mu.Lock() here forces the install to wait
-	// until every already-in-flight write (holding c.mu.RLock()) has fully
-	// committed, so Phase 2's unlocked scan below is guaranteed to observe
-	// it; any write starting after this point sees the PENDING entry and
-	// self-enforces via the stripe lock. Released before Phase 2 (which
-	// takes its own c.mu.RLock() internally via validateUniqueExisting) —
-	// only the install itself needs the exclusion, not the whole scan.
+	// Phase 1: install a PENDING entry so concurrent writers enforce during validation.
+	// The install runs under c.mu.Lock() (BACKLOG 9c): a standalone write holds
+	// c.mu.RLock() from its unique check through the store write, and a check made
+	// while hasUniqueConstraints() was false took no stripe lock. The exclusive lock
+	// waits for every such in-flight write, so Phase 2's scan observes it; later
+	// writes see PENDING and self-enforce. Released before Phase 2, which takes its
+	// own RLock.
 	c.mu.Lock()
 	if c.closed.Load() {
 		c.mu.Unlock()
 		return ErrGraphClosed
 	}
-	// An Elements index (backlog 63) keys list elements, not values: no
-	// uniqueness over it. Checked under the exclusive lock: CreatePropertyWithOptions runs under
-	// c.mu.RLock for its whole create, so no Elements index can appear between
-	// this check and the install, and one created after it sees the pending
-	// constraint (refuseUniqueKey).
+	// An Elements index (backlog 63) keys list elements, not values: no uniqueness
+	// over it. Checked under the exclusive lock: CreatePropertyWithOptions holds
+	// c.mu.RLock for its whole create, so no Elements index can appear before the
+	// install, and a later one sees the pending constraint (refuseUniqueKey).
 	if err := c.refuseNodeElementsIndex(labelTok, propKey, "unique constraint"); err != nil {
 		c.mu.Unlock()
 		return err
@@ -361,9 +316,8 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 	c.uniqueMu.Unlock()
 	c.mu.Unlock()
 
-	// Auto-ensure a property index on (label, propKey) — an acceleration for the
-	// enforcement lookup (ADR default). Correctness holds without it (the store
-	// falls back to a label scan), so ErrIndexExists is benign.
+	// Auto-ensure a property index as acceleration for enforcement lookups; correct
+	// without it (label scan), so ErrIndexExists is benign.
 	if err := c.Index.CreateProperty(label, propKey); err != nil && !errors.Is(err, storepkg.ErrIndexExists) {
 		c.uninstallPendingConstraint(labelTok, propKey)
 		return fmt.Errorf("graph: unique constraint: ensure property index: %w", err)
@@ -384,15 +338,9 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 		return fmt.Errorf("%w: label %q key %q; offenders %v", ErrUniqueViolationExisting, label, propKey, offenders)
 	}
 
-	// Phase 3: activate + persist. BACKLOG 13j: on a persist failure, the
-	// uninstall happens INSIDE this same critical section (never releasing
-	// uniqueMu between the failed persist and the removal), so no concurrent
-	// reader can ever observe st.active=true for a constraint whose
-	// activation is about to be rolled back — the prior code unlocked
-	// uniqueMu before checking the persist error, then re-acquired it in
-	// uninstallPendingConstraint, leaving a narrow window where a concurrent
-	// writer could see (and be transiently rejected by) a constraint that
-	// was never actually durable.
+	// Phase 3: activate + persist. BACKLOG 13j: on persist failure the uninstall
+	// happens inside the same critical section (uniqueMu never released between), so
+	// no reader sees st.active=true for a constraint that was never durable.
 	c.uniqueMu.Lock()
 	st, ok := c.lookupConstraintLocked(labelTok, propKey)
 	if !ok {
@@ -409,9 +357,8 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 	}
 	c.uniqueMu.Unlock()
 
-	// UniqueForever: seed ownership from the current values so existing entities
-	// own the values they already hold (validation above guaranteed no current
-	// duplicates). A seed failure uninstalls the just-activated constraint.
+	// UniqueForever: seed ownership from current values (validation guaranteed no
+	// current duplicates). A seed failure uninstalls the just-activated constraint.
 	if scope == constraintspkg.UniqueForever {
 		if err := c.seedForeverOwnersFromCurrent(labelTok, propKey); err != nil {
 			c.uninstallActiveConstraint(labelTok, propKey, mk)
@@ -421,9 +368,8 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 	return nil
 }
 
-// uninstallActiveConstraint removes an active constraint and re-persists the
-// registry (best-effort) — used to unwind a constraint whose post-activation
-// seeding failed.
+// uninstallActiveConstraint removes an active constraint and re-persists
+// (best-effort); unwinds a failed post-activation seed.
 func (c *Core) uninstallActiveConstraint(labelTok uint16, key string, mk storepkg.MetaKVCapability) {
 	c.uniqueMu.Lock()
 	c.removeConstraintLocked(labelTok, key)
@@ -513,9 +459,8 @@ func (c *Core) dropUnique(ctx context.Context, label, propKey string) error {
 		c.installConstraintLocked(labelTok, propKey, removed.label, removed.scope, removed.active)
 		return err
 	}
-	// Dropping a UniqueForever constraint releases all its ownership claims, so a
-	// later re-create seeds cleanly from current state rather than inheriting
-	// stale owners (a dead ID would otherwise bar a value forever).
+	// Dropping a UniqueForever constraint releases its ownership claims so a re-create
+	// seeds cleanly (a dead ID would otherwise bar a value forever).
 	if removed.scope == constraintspkg.UniqueForever {
 		if err := c.purgeForeverOwnersLocked(labelTok, propKey, mk); err != nil {
 			return err
@@ -566,38 +511,28 @@ func (c *Core) reapUniqueConstraintsForReset() error {
 	return nil
 }
 
-// -----------------------------------------------------------------------------
-// Enforcement kernel (Stage C)
-// -----------------------------------------------------------------------------
+// --- Enforcement kernel (Stage C) ---
 
 // enforceUniqueForNode is consulted by the standalone create/update/CAS/label
-// doors after the finalized node state is built and BEFORE the store write. It
-// holds the value stripe(s) for every constrained value the node binds across
-// the index lookup and (via the returned hold) the caller's store write, so
-// two writers racing to claim the same value serialize to exactly one winner.
+// doors after the final node state is built and BEFORE the store write. It holds
+// the value stripe(s) of every constrained value the node binds across the index
+// lookup and (via the returned hold) the store write, so racing claimers
+// serialize to one winner. prev (may be nil) is the pre-mutation state: an
+// update that changes a constrained value also holds the OLD value's stripe.
 //
-// prev (may be nil) is the pre-mutation state: when an update changes a
-// constrained value, the OLD value's stripe is also held so a concurrent
-// claimer of the freed value serializes with this write (ADR lock rule).
-//
-// Returns a no-op hold fast when no constraints exist. On a violation, an
-// unsupported (float) value or a failed claim it withdraws the claims it made,
-// releases everything and returns the error; the caller must NOT proceed with
-// the write. On success the caller defers hold.release() and answers a failed
-// store write with hold.storeWriteFailed(err) before returning (the deferred
-// release then runs after the withdrawal).
+// Returns a no-op hold when no constraints exist. On a violation, float value or
+// failed claim it withdraws its claims, releases everything and returns the
+// error; the caller must NOT write. On success the caller defers hold.release()
+// and answers a failed store write with hold.storeWriteFailed(err) first.
 func (c *Core) enforceUniqueForNode(node *types.Node, prev *types.Node, selfID types.NodeID) (*uniqueHold, error) {
 	return c.enforceUniqueForNodeHeld(node, prev, selfID, nil)
 }
 
-// enforceUniqueForNodeHeld is enforceUniqueForNode with a set of value stripes
-// the caller ALREADY holds (`held`). Those stripes are NOT re-locked (a stripe
-// mutex is not reentrant), but their constrained values are still checked — the
-// caller's held stripe already serializes concurrent writers of any value that
-// maps to it (including hash collisions), so the check runs safely under it.
-// GetOrCreateByKey uses this to create a node while holding the keyed value's
-// stripe without self-deadlocking. The returned hold releases only the stripes
-// this call locked.
+// enforceUniqueForNodeHeld is enforceUniqueForNode with stripes the caller
+// ALREADY holds (`held`): not re-locked (stripe mutexes are not reentrant) but
+// their values are still checked, safe because the held stripe serializes any
+// value mapping to it. GetOrCreateByKey uses it. The hold releases only the
+// stripes this call locked.
 func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, selfID types.NodeID, held []uint8) (*uniqueHold, error) {
 	noop := &uniqueHold{}
 	if node == nil || !c.hasUniqueConstraints.Load() {
@@ -643,8 +578,7 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 	if len(checks) == 0 {
 		return noop, nil
 	}
-	// Deterministic claim order (the cascade's order): which claim of a call
-	// fails first never depends on map iteration.
+	// Deterministic claim order (the cascade's), independent of map iteration.
 	sort.Slice(checks, func(i, j int) bool {
 		return uniqueSeenKey(checks[i].labelTok, checks[i].key, checks[i].valueKey) <
 			uniqueSeenKey(checks[j].labelTok, checks[j].key, checks[j].valueKey)
@@ -652,14 +586,10 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 
 	hold := &uniqueHold{c: c, id: selfID, held: c.valueLocks.LockStripesExcept(stripes, held)}
 
-	// Pass 1: validate EVERY tuple read-only before claiming anything. A node
-	// can bind more than one constrained tuple (e.g. two UniqueForever keys,
-	// or one UniqueForever + one UniqueCurrent), so a refusal on a LATER tuple
-	// must not leave an earlier tuple's claim behind (BACKLOG 9e).
-	// checkForeverOwnership is the same read-only check the dry-run door uses.
-	// All of `checks`' value stripes are held for the whole call, so no
-	// concurrent writer can claim any of these exact values between this pass
-	// and the claim pass below.
+	// Pass 1: validate EVERY tuple read-only before claiming anything, so a refusal on
+	// a later tuple leaves no earlier claim behind (BACKLOG 9e). Same check as the
+	// dry-run door (checkForeverOwnership); the held stripes keep these values
+	// unclaimable by others until Pass 2.
 	for _, ck := range checks {
 		matches, err := c.nodesByLabelAndProperty(ck.labelTok, ck.key, ck.raw, storepkg.QueryOpts{})
 		if err != nil {
@@ -682,12 +612,10 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 			}
 		}
 	}
-	// Pass 2: every tuple passed its check — now durably claim each
-	// UniqueForever value (registry hit + different entity => violation; same
-	// entity, any version => pass, not recorded; miss => claim + persist,
-	// recorded in the hold). A claim that fails (its persist, item 29)
-	// withdraws the claims this pass already made, judged against the node's
-	// stored row, while the stripes are still held.
+	// Pass 2: claim each UniqueForever value (other owner => violation; same entity
+	// => pass, not recorded; miss => claim + persist, recorded in the hold). A failed
+	// claim (persist, item 29) withdraws this pass's claims, judged against the
+	// node's stored row, while the stripes are still held.
 	for _, ck := range checks {
 		if ck.scope != constraintspkg.UniqueForever {
 			continue
@@ -701,41 +629,28 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 	return hold, nil
 }
 
-// -----------------------------------------------------------------------------
-// ConstraintOps surface (g.Constraints())
-// -----------------------------------------------------------------------------
+// --- ConstraintOps surface (g.Constraints()) ---
 
-// CreateUnique registers a unique property constraint on (label, propertyKey)
-// with the default UniqueCurrent scope. See the constraints sub-API docs.
-//
-// The 3-phase install matters for concurrency: a PENDING placeholder is
-// installed under lock BEFORE existing-data validation runs, so concurrent
-// writers already enforce the constraint DURING the validation window — a write
-// racing CreateUnique is rejected as if the constraint were fully active. This
-// is by design: it prevents a duplicate slipping in between "existing data is
-// clean" and "constraint is active". Only if validation itself fails is the
-// pending placeholder removed and no enforcement remains.
+// CreateUnique registers a unique constraint on (label, propertyKey) with the
+// default UniqueCurrent scope. Install is 3-phase: a PENDING placeholder is
+// installed BEFORE existing-data validation, so writes racing CreateUnique are
+// rejected as if active and no duplicate slips in; if validation fails the
+// placeholder is removed.
 func (co *ConstraintOps) CreateUnique(ctx context.Context, label, propertyKey string) error {
 	return co.c.createUnique(ctx, label, propertyKey, constraintspkg.UniqueCurrent)
 }
 
-// CreateUniqueForever registers a UniqueForever value-ownership constraint on
-// (label, propertyKey): the FIRST entity to hold a value owns it permanently —
-// only that entity (any later version) may ever hold it, and every other node is
-// barred forever, across supersession, hard delete, and reopen. See the
-// constraints sub-API docs and ADR-0002 Decision 2.
+// CreateUniqueForever registers a UniqueForever constraint on (label,
+// propertyKey): the FIRST entity to hold a value owns it permanently (any later
+// version of it may hold it; everyone else is barred across supersession, hard
+// delete and reopen). ADR-0002 Decision 2.
 //
-// The ownership claim is made under the value lock and persisted immediately, so
-// it is durable and race-free. A call that then fails (its store write, or a
-// later claim) withdraws the claims it made under the same lock unless the
-// node's stored row carries the value (uniqueHold, unique_hold.go). A claim
-// made inside a
-// transaction that later ROLLS BACK is NOT auto-released (the durable claim is
-// not part of the tx snapshot) — the value stays barred (a dead entity ID owns
-// it). This is conservative (never admits a duplicate); an operator frees such a
-// value with Constraints().ReleaseOwnership. UniqueCurrent claims, by contrast,
-// are freed automatically on rollback (removing the created node removes its
-// index entry).
+// The claim is made under the value lock and persisted immediately. A call that
+// then fails withdraws its claims under the same lock unless the node's stored
+// row carries the value (uniqueHold, unique_hold.go). A claim made in a tx that
+// ROLLS BACK is NOT auto-released (not part of the tx snapshot): the value stays
+// barred until Constraints().ReleaseOwnership. UniqueCurrent claims are freed on
+// rollback.
 func (co *ConstraintOps) CreateUniqueForever(ctx context.Context, label, propertyKey string) error {
 	return co.c.createUnique(ctx, label, propertyKey, constraintspkg.UniqueForever)
 }

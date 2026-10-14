@@ -9,24 +9,9 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Capability interfaces — narrowed views of the full Store contract.
-//
-// The full Store interface is a 65-method aggregate. Splitting it into
-// behavioural clusters (this file) lets new backends implement only the
-// capabilities they actually support and lets call sites depend on the
-// narrowest surface that gets the job done.
-//
-// All capability interfaces are EMBEDDED into Store (see store.go), so every
-// existing implementation continues to satisfy Store as a whole — this is a
-// purely additive refactor. Future migrations can convert specific call
-// sites to depend on the narrowest capability without touching the
-// implementations.
-//
-// Optional capabilities (DepthHistoryIterationCapability,
-// HistoryVersionPageCapability, PropertyIndexCapability,
-// TemporalIndexCapability, VectorIndexCapability, HighFrequencyIndexCapability)
-// can be removed from a backend's Store implementation in a future major
-// version; consumers that rely on them type-assert before calling.
+// Capability interfaces: narrowed views of the full Store contract, all
+// embedded into Store (store.go). Optional capabilities are type-asserted by
+// consumers before use; MandatoryStore lists the required ones.
 
 // Lifecycle is the always-mandatory housekeeping subset every backend must
 // implement. Close releases resources; Clear truncates without removing
@@ -41,10 +26,9 @@ type Lifecycle interface {
 	Close() error
 }
 
-// NodeCRUDCapability is the node-mutation surface. Every backend must
-// implement it — node CRUD plus the label-mutation helpers required by the
-// graph's history-aware label flows. Label-mutation helpers validate that the
-// supplied current row adds or removes exactly the requested token.
+// NodeCRUDCapability is the node-mutation surface (mandatory), including the
+// label-mutation helpers; they validate that the supplied current row adds or
+// removes exactly the requested token.
 type NodeCRUDCapability interface {
 	PutNode(n *types.Node) error
 	GetNode(id types.NodeID) (*types.Node, error)
@@ -62,74 +46,50 @@ type NodeCRUDCapability interface {
 	AddNodeLabelToken(id types.NodeID, tok uint16, updatedNode *types.Node) error
 }
 
-// NodeIntegrityHashCapability is OPTIONAL. Backends that can expose a live
-// node's integrity hash without returning the full node can implement this to
-// let relationship creation capture endpoint hashes without forcing a defensive
-// node deep copy. The method must still validate that the node currently exists.
+// NodeIntegrityHashCapability is OPTIONAL: a live node's integrity hash without
+// the full node. It still validates that the node exists.
 type NodeIntegrityHashCapability interface {
 	NodeIntegrityHash(id types.NodeID) (string, error)
 }
 
-// EndpointIntegrityHashCapability is OPTIONAL. It is the batched form of
-// NodeIntegrityHashCapability for relationship creation paths that need both
-// endpoint hashes under one backend read window.
+// EndpointIntegrityHashCapability is OPTIONAL: both endpoint hashes under one read window.
 type EndpointIntegrityHashCapability interface {
 	EndpointIntegrityHashes(startID, endID types.NodeID) (string, string, error)
 }
 
 // EntityLendCapability is OPTIONAL. LendNode / LendRelationship return the
-// store's own current row by ID WITHOUT the defensive copy GetNode /
-// GetRelationship make: the shared, FROZEN pointer the plural reads
-// (GetNodesByIDs, label and type scans) already hand out. The row is never
-// mutated by the store (a write replaces it), so it stays a consistent
-// snapshot of the entity at the read for as long as the caller holds it; it
-// is not refreshed by later writes. Frozen mutators fail (ErrFrozenNode /
-// ErrFrozenRelationship, or panic for the no-error ones); DeepCopy thaws.
-// Missing IDs return the typed not-found sentinel, malformed IDs
-// ErrInvalidStoreMutation, a closed store ErrStoreClosed.
+// store's current row by ID WITHOUT the defensive copy: the shared, FROZEN
+// pointer the plural reads hand out, a snapshot at the read that later writes
+// do not refresh. Frozen mutators fail (ErrFrozenNode / ErrFrozenRelationship);
+// DeepCopy thaws. Errors: typed not-found, ErrInvalidStoreMutation for a
+// malformed ID, ErrStoreClosed.
 type EntityLendCapability interface {
 	LendNode(id types.NodeID) (*types.Node, error)
 	LendRelationship(id types.RelID) (*types.Relationship, error)
 }
 
-// ScanOrderCapability is OPTIONAL: a store's statement about its streaming
-// label and type scans (ForEachNodeByLabel, ForEachRelByType). True means the
-// scan walks the members in ascending ID order from a list the store keeps
-// between scans: it neither collects nor sorts the members per scan (the first
-// scan after the list was dropped sorts it once), so an early stop costs only
-// the rows read and a whole scan costs no O(n log n) sort. False means a scan
-// collects the members (and sorts them unless the caller passed NoSort). A
-// consumer pricing a scan charges the sort only where the answer is false. A
-// store without the capability is assumed to sort.
+// ScanOrderCapability is OPTIONAL: whether the streaming label and type scans
+// (ForEachNodeByLabel, ForEachRelByType) walk members in ascending ID order from
+// a list kept between scans (true: no per-scan collect or sort) or collect and
+// sort per scan unless NoSort (false). A store without it is assumed to sort.
 type ScanOrderCapability interface {
 	LabelScanKeepsOrder(labelToken uint16) bool
 	TypeScanKeepsOrder(relTypeToken uint16) bool
 }
 
-// AdjacentEndpointOrdinalCapability is OPTIONAL: ForEachAdjacentEndpoint
-// with the dense ordinals (OrdinalCapability) of each relationship and of its
-// other endpoint, read by the store while it walks the adjacency, so a
-// consumer numbering nodes and relationships needs no read per edge. An
-// ordinal is 0 where the store numbers none or the other endpoint has no
-// current row any more. Order and isolation as ForEachAdjacentEndpoint.
+// AdjacentEndpointOrdinalCapability is OPTIONAL: ForEachAdjacentEndpoint with the
+// dense ordinals (OrdinalCapability) of each relationship and its other endpoint;
+// 0 where none is numbered. Order and isolation as ForEachAdjacentEndpoint.
 type AdjacentEndpointOrdinalCapability interface {
 	ForEachAdjacentEndpointOrdinal(nid types.NodeID, typeToken uint16, incoming bool,
 		fn func(rel types.RelID, relOrdinal uint32, other types.NodeID, otherOrdinal uint32) bool) error
 }
 
-// ReadCosts is a store's statement of what its read doors cost through the
-// graph, in nanoseconds per row: nominal figures, the medians of
-// BenchmarkReadCosts (pkg/graph, one CPU, an Apple M4 Max, 4,000 and 20,000
-// nodes of four properties, 1.8 relationships per node) rounded to two
-// digits. They are magnitudes for a query planner to price access paths per
-// backend (a fetch on memory against one on badger differs a hundredfold),
-// not a promise for any machine.
-//
-// "Held" is a row the store keeps decoded in RAM, "decoded" one it reads from
-// its backing store. HeldRows says how many rows of each kind (nodes,
-// relationships) stay held: -1 every row, 0 a byte budget governs (the count
-// depends on the rows' size), n up to n rows per kind (per shard on tiered
-// and sharded).
+// ReadCosts states what a store's read doors cost through the graph, in
+// nanoseconds per row: nominal magnitudes for a planner to price access paths
+// per backend, not a promise. "Held" rows stay decoded in RAM, "decoded" rows
+// are read from the backing store. HeldRows: -1 every row, 0 a byte budget
+// governs, n up to n rows per kind (per shard on tiered and sharded).
 type ReadCosts struct {
 	Backend  string // "memory", "badger", "tiered", "sharded"
 	HeldRows int
@@ -139,38 +99,26 @@ type ReadCosts struct {
 	AdjacencyRelHeld, AdjacencyRelDecoded float64 // ForEachOutgoing / ForEachIncoming, per relationship
 }
 
-// HistoryCounts is how many nodes and relationships have history rows: the
-// IDs ForEachNodeHistoryID / ForEachRelHistoryID visit (an entity updated,
-// relabelled, closed or deleted at least once whose history the store still
-// holds, deleted entities included). A temporal read by property value
-// (Nodes().ByLabelAndProperty with a temporal QueryOpts) resolves every node
-// with history beside the current matches, so a query planner prices that
-// read with Nodes.
+// HistoryCounts is how many nodes and relationships have history rows (the IDs
+// ForEachNodeHistoryID / ForEachRelHistoryID visit, deleted entities included).
+// A temporal read by property value resolves every node with history, so a
+// planner prices it with Nodes.
 type HistoryCounts struct {
 	Nodes int
 	Rels  int
 }
 
-// HistoryCountCapability is OPTIONAL: the store's HistoryCounts, exact,
-// without a pass per call. Memory counts its history maps; badger caches a
-// count of its history keys against an epoch that every history key entering
-// its write buffer (and Clear) advances, so a call after a history change
-// recounts once; sharded sums its slots (an entity's rows live on one slot).
-// Tiered states none: an archive or restore moves a version chain between
-// shards, so a sum could count it twice.
+// HistoryCountCapability is OPTIONAL: the store's HistoryCounts, exact, without
+// a pass per call. Tiered states none (an archive or restore could be counted twice).
 type HistoryCountCapability interface {
 	NodeHistoryCount() (int, error)
 	RelHistoryCount() (int, error)
 }
 
 // HistoryPresenceCapability is OPTIONAL: whether one entity has at least one
-// history row, without reading the rows. The answer equals
-// len(GetNodeHistory(id)) > 0 (len(GetRelHistory(id)) > 0) at every moment,
-// pending writes included; an invalid id returns the same error. Memory reads
-// its history map; badger keeps a RAM set of the IDs with history rows, built
-// once by a key-only scan and maintained where every history key enters the
-// write buffer; sharded routes by slot; tiered routes like GetNodeHistory /
-// GetRelHistory. A store without it is answered with len(History(id)) > 0.
+// history row, without reading the rows. Equals len(GetNodeHistory(id)) > 0
+// (len(GetRelHistory(id)) > 0) at every moment, pending writes included; an
+// invalid id returns the same error.
 type HistoryPresenceCapability interface {
 	HasNodeHistory(id types.NodeID) (bool, error)
 	HasRelHistory(id types.RelID) (bool, error)
@@ -190,11 +138,10 @@ type RelationshipCRUDCapability interface {
 	DeleteRelationship(id types.RelID) error
 }
 
-// AdjacencyCapability is the outgoing/incoming relationship lookup surface
-// plus the batch ForNodes variants. Mandatory because it is on the hot path
-// of every traversal-shaped query. Explicit node IDs are all-or-error:
-// existing nodes with zero matching relationships return an empty result, but
-// any missing requested node returns ErrNodeNotFound.
+// AdjacencyCapability is the outgoing/incoming relationship lookup surface plus
+// the batch ForNodes variants (mandatory). Explicit node IDs are all-or-error:
+// a missing requested node returns ErrNodeNotFound; an existing node without
+// matches yields an empty result.
 type AdjacencyCapability interface {
 	OutgoingRelationships(nodeID types.NodeID, typeToken uint16) ([]*types.Relationship, error)
 	IncomingRelationships(nodeID types.NodeID, typeToken uint16) ([]*types.Relationship, error)
@@ -203,24 +150,18 @@ type AdjacencyCapability interface {
 	IncomingRelationshipsForNodes(nodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error)
 }
 
-// DegreeCapability is an OPTIONAL fast-path for counting a node's relationships
-// without materializing them. It returns the number of adjacency-index entries
-// for the node (type-filtered), which equals the count of the corresponding
-// AdjacencyCapability result in normal operation. The two can differ only by
-// transient, crash-induced orphan index entries (an in/out index key persisted
-// while its entity write was lost mid cross-shard write); those are reconciled
-// by repair/restart — the same consistency model adjacency reads rely on.
-//
-// Backends that do not implement this interface are served by the graph layer
-// via len(Outgoing/IncomingRelationships), so the capability is purely additive.
+// DegreeCapability is OPTIONAL: a node's type-filtered relationship count from
+// the adjacency index, without materializing. Equals the length of the matching
+// AdjacencyCapability result except for transient crash-induced orphan index
+// entries, which repair/restart reconciles. Without it the graph layer uses
+// len(Outgoing/IncomingRelationships).
 type DegreeCapability interface {
 	OutgoingDegree(nodeID types.NodeID, typeToken uint16) (int, error)
 	IncomingDegree(nodeID types.NodeID, typeToken uint16) (int, error)
 }
 
-// BulkReadCapability is the unfiltered/label-filtered listing surface. The
-// graph layer uses it for export, snapshot, and the `*ByLabel` /
-// `*ByType` query shapes.
+// BulkReadCapability is the unfiltered/label-filtered listing surface (export,
+// snapshot, the ByLabel / ByType query shapes).
 type BulkReadCapability interface {
 	NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error)
 	RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Relationship, error)
@@ -231,12 +172,9 @@ type BulkReadCapability interface {
 	GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship, error)
 }
 
-// BatchCapability is the batched-mutation surface used by BatchBuilder and
-// the import path. All-or-nothing: empty/nil input returns nil with zero
-// mutations. Delete batches treat duplicate IDs as one requested deletion
-// before validation and counter/index updates. DeleteNodesBatch removes only
-// unconnected node rows; connected batch deletes must use graph-level cascade
-// or history-aware delete flows.
+// BatchCapability is the batched-mutation surface (BatchBuilder, import).
+// All-or-nothing: empty/nil input returns nil. Delete batches treat duplicate IDs
+// as one deletion. DeleteNodesBatch removes only unconnected node rows.
 type BatchCapability interface {
 	PutNodesBatch(nodes []*types.Node) error
 	PutRelationshipsBatch(rels []*types.Relationship) error
@@ -244,71 +182,41 @@ type BatchCapability interface {
 	DeleteRelationshipsBatch(ids []types.RelID) error
 }
 
-// PreEncodedPutCapability is OPTIONAL — the ingest apply-side fast path
-// (ADR-0006 §4.5, Scenario B). PutNodesBatchPreEncoded persists nodes whose v2
-// ENTITY-ROW wire was pre-encoded on the producer thread (with a zero
-// transaction-time tail) and had that tail patched with the applier-stamped
-// TxFrom by the single applier — so the store SKIPS the second msgpack pass for
-// those rows. It is otherwise identical to PutNodesBatch (same validation,
-// duplicate check, indexing, change-log co-commit).
-//
-// wireBodies[i] is the patched pre-encoded buffer for nodes[i], or nil to signal
-// "re-encode node i" — the applier's CONSERVATIVE fallback whenever the buffer
-// could not be proven byte-identical to what the store would emit (e.g. a probe
-// label token was re-stamped to a different real token at apply). A backend MUST
-// treat a nil element exactly as PutNodesBatch would (encode at flush), so the
-// persisted bytes are IDENTICAL whether a row arrived pre-encoded or not.
-//
-// Provenance is by the typed in-process buffer the applier hands down, NEVER by
-// sniffing stored bytes: a backend must not decide a row is patchable from the
-// wire alone. Only the exact native memory/badger stores implement this; tiered
-// and wrapper stores decline (the graph layer type-asserts at wiring and falls
-// back to PutNodesBatch). The change-log put body is unaffected — it stays the
-// UNTOKENIZED encode-at-flush form so cross-backend feed parity is byte-identical.
+// PreEncodedPutCapability is OPTIONAL: the ingest apply-side fast path (ADR-0006
+// §4.5). PutNodesBatchPreEncoded behaves as PutNodesBatch for nodes whose v2
+// entity-row wire was pre-encoded (transaction-time tail patched with the
+// applier's TxFrom), skipping the second msgpack pass. wireBodies[i] nil means
+// "re-encode node i"; a backend MUST then treat it exactly as PutNodesBatch, so
+// persisted bytes are identical either way. Provenance is the typed in-process
+// buffer, never sniffed from stored bytes. Only the native memory and badger
+// stores implement it; the change-log put body stays the untokenized
+// encode-at-flush form (feed parity).
 type PreEncodedPutCapability interface {
 	PutNodesBatchPreEncoded(nodes []*types.Node, wireBodies [][]byte) error
 }
 
-// PreEncodedPutLogCapability is OPTIONAL — the change-log extension of
-// PreEncodedPutCapability (kept separate so existing implementers stay
-// source-compatible). logBodies[i], when non-nil, is the producer-thread
-// pre-encoded ChangeNodePut PAYLOAD for nodes[i] (untokenized wire, v2
-// temporal tail patched by the applier — the tail is TERMINAL in a create's
-// payload, see the storeutil pre-encode) and MUST be used verbatim as the
-// record body, skipping the second msgpack pass. A nil element means "build
-// the payload at the door" (the conservative fallback), which by the crown
-// equivalence produces byte-identical record bytes — cross-backend feed
-// parity is unaffected either way. Only meaningful when the store's
-// change-log is recording; with the log off, implementations behave exactly
-// like PutNodesBatchPreEncoded.
+// PreEncodedPutLogCapability is OPTIONAL: the change-log extension of
+// PreEncodedPutCapability. logBodies[i], when non-nil, is the pre-encoded
+// ChangeNodePut payload for nodes[i] and MUST be used verbatim as the record
+// body; nil means "build at the door" (byte-identical result). With the
+// change-log off it behaves as PutNodesBatchPreEncoded.
 type PreEncodedPutLogCapability interface {
 	PutNodesBatchPreEncodedLog(nodes []*types.Node, wireBodies, logBodies [][]byte) error
 }
 
-// OwnedPreEncodedPutCapability is OPTIONAL — the OWNERSHIP-TRANSFER variant of
-// PreEncodedPutLogCapability for the ingest bulk apply path. It behaves exactly
-// like PutNodesBatchPreEncodedLog EXCEPT the caller transfers ownership of the
-// nodes: it guarantees it will never read or mutate them again, so the store MAY
-// freeze each node IN PLACE and cache it directly instead of deep-copying it
-// into the cache. That deep copy (frozenNodeRow) is the single largest per-node
-// allocation on the apply path; skipping it is the point of this capability.
-//
-// CONTRACT: the store's cached (frozen) entry IS the passed object. The caller
-// MUST NOT touch a node after this call — behaviour is undefined otherwise. Use
-// ONLY for write-only creates that are never returned to the caller (the ingest
-// bulk door, keepResults==false); the graph layer enforces the gate. A store
-// that does not implement this is simply used via PutNodesBatchPreEncoded(Log),
-// which deep-copies as usual — the capability is a pure allocation optimization,
-// never a correctness requirement.
+// OwnedPreEncodedPutCapability is OPTIONAL: PutNodesBatchPreEncodedLog with
+// ownership transfer. The caller never reads or mutates the nodes again, so the
+// store MAY freeze them in place and cache them without a deep copy. Behaviour
+// is undefined if the caller touches a node afterwards; use only for write-only
+// creates whose results are not returned (the ingest bulk door, gated by the
+// graph layer). A pure allocation optimization.
 type OwnedPreEncodedPutCapability interface {
 	PutNodesBatchOwnedPreEncoded(nodes []*types.Node, wireBodies, logBodies [][]byte) error
 }
 
-// HistoryCapability is the version-history surface. Every backend must
-// implement it because the graph layer applies pre-mutation snapshots on
-// every Update*. The atomic ReplaceWith*History and Delete*WithHistory
-// methods exist so backends can avoid the "history written, then crash, then
-// data write fails" orphan window. DeleteNodeWithHistory relTombstones must
+// HistoryCapability is the version-history surface (mandatory). The atomic
+// ReplaceWith*History and Delete*WithHistory methods avoid a crash window between
+// the history write and the data write. DeleteNodeWithHistory relTombstones must
 // cover every live connected relationship exactly once.
 type HistoryCapability interface {
 	ReplaceNodeWithHistory(current *types.Node, prevVersion uint32, prevState *types.Node) error
@@ -333,11 +241,10 @@ type HistoryCapability interface {
 	DeleteRelWithHistory(id types.RelID, prevVersion uint32, tombstone *types.Relationship) error
 }
 
-// TransactionTimeQueryCapability is OPTIONAL. Backends that can inspect
-// current rows and version history under one backend read window can implement
-// this to avoid materializing every history slice for transaction-time reads.
-// Single-entity misses return ErrVersionNotFound; bulk queries omit misses and
-// return nil, nil when no entity existed at the requested transaction time.
+// TransactionTimeQueryCapability is OPTIONAL: transaction-time reads under one
+// read window without materializing every history slice. Single-entity misses
+// return ErrVersionNotFound; bulk queries omit misses and return nil, nil when
+// nothing existed at txTime.
 type TransactionTimeQueryCapability interface {
 	NodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node, error)
 	RelAsOf(id types.RelID, txTime types.Instant) (*types.Relationship, error)
@@ -345,52 +252,33 @@ type TransactionTimeQueryCapability interface {
 	RelsAsOf(txTime types.Instant) ([]*types.Relationship, error)
 }
 
-// LabelTxMembershipCapability is OPTIONAL. A backend that maintains a
-// transaction-time label-membership sidecar can enumerate, for a label token,
-// the node IDs that EVER carried it — in the current row OR any historical
-// version — each tagged with a lower bound on the transaction time of its
-// earliest acquisition of the label. This lets the graph layer make a pinned
-// label scan OUTPUT-SENSITIVE: the candidate set for a history-aware
-// ByLabel scan is scoped to the label's ever-members (O(matches)) instead of
-// the whole node-history fold (O(everything that ever carried ANY label)), and
-// a member whose earliest acquisition post-dates a transaction-time pin is
-// rejected WITHOUT loading its version chain.
+// LabelTxMembershipCapability is OPTIONAL: enumerates the node IDs that EVER
+// carried a label (current row or any version), each with firstTxFrom, a lower
+// bound on the transaction time of its earliest acquisition, so a pinned label
+// scan costs O(matches) instead of the whole history fold.
 //
-// Membership is APPEND-ONLY: removing a label from a node, or hard-deleting the
-// node, does NOT drop the member — a pin BEFORE the removal/delete must still
-// admit it as a candidate. The enumerated set is therefore a sound SUPERSET of
-// {nodes whose belief-state version at the pin carried token}; the core chain
-// resolver is the correctness authority and rejects the over-included
-// candidates, so a spurious member only costs a resolver probe, never a wrong
-// result. firstTxFrom is a LOWER bound (0 = unknown → never prune): pruning is
-// sound only as `pin < firstTxFrom → skip`.
+// Membership is append-only (removing the label or deleting the node keeps the
+// member): the set is a sound superset, the chain resolver stays the authority
+// and rejects over-included candidates. firstTxFrom 0 = unknown (never prune);
+// pruning is sound only as `pin < firstTxFrom -> skip`.
 type LabelTxMembershipCapability interface {
-	// ForEachLabelTxMember streams (id, firstTxFrom) for every node that ever
-	// carried token. fn returning false stops the scan. Order is unspecified.
-	// The sidecar is built lazily on first use, so the first call after open (or
-	// after Clear) pays a one-time build; subsequent calls are cheap.
+	// ForEachLabelTxMember streams (id, firstTxFrom) for every node that ever carried
+	// token; fn returning false stops. Order unspecified. The sidecar is built lazily
+	// on first use (after open or Clear).
 	ForEachLabelTxMember(token uint16, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
 }
 
 // RelTypeTxMembershipCapability is the relationship mirror of
-// LabelTxMembershipCapability. A relationship's type is structurally immutable,
-// so a rel of type T carried T in EVERY version — its ever-membership is exactly
-// {rels ever created with type T}, recorded once at creation. Same append-only
-// superset + lower-bound-prune contract.
+// LabelTxMembershipCapability; a rel's type is immutable, so its ever-members are
+// the rels ever created with the type. Same superset and prune contract.
 type RelTypeTxMembershipCapability interface {
 	ForEachRelTypeTxMember(token uint16, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
 }
 
 // LabelTxMemberLookupCapability is OPTIONAL: the point form of
-// LabelTxMembershipCapability, over the same sidecar and contract. For each ID
-// of ids that ever carried token (in its current row or any history row), fn
-// receives (id, firstTxFrom); an ID that never carried it is skipped. Order is
-// unspecified; fn returning false stops. It lets the graph layer scope a
-// temporal read by property value on a (label, key) without a declared index
-// to the history IDs that ever carried the label, instead of resolving the
-// version chain of every node with history (round 5 request 8). The first
-// call after open (or Clear) builds the sidecar, as ForEachLabelTxMember's
-// does.
+// LabelTxMembershipCapability over the same sidecar: for each of ids that ever
+// carried token, fn receives (id, firstTxFrom); others are skipped. Order
+// unspecified; fn returning false stops.
 type LabelTxMemberLookupCapability interface {
 	LabelTxMembersOf(token uint16, ids []types.NodeID, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
 }
@@ -401,50 +289,33 @@ type RelTypeTxMemberLookupCapability interface {
 	RelTypeTxMembersOf(token uint16, ids []types.RelID, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
 }
 
-// RelPropertyTxMembershipCapability is OPTIONAL (backlog 8). A backend that
-// keeps a transaction-time membership sidecar for a DECLARED relationship
-// property index (relType, key) can enumerate, for one canonical value key
-// (types.IndexablePropertyValueKey), the relationships whose rows EVER carried
-// that value under that type — the current row OR any history row, deleted
-// relationships included — each tagged with a lower bound on the transaction
-// time of the earliest row that carried it. It makes a temporal
-// ByTypeAndProperty lookup cost the value's ever-members instead of the
-// whole relationship history of the graph.
+// RelPropertyTxMembershipCapability is OPTIONAL (backlog 8): for a declared
+// relationship property index (relType, key) and one canonical value key
+// (types.IndexablePropertyValueKey), enumerates the relationships whose rows EVER
+// carried that value (current or history, deleted included) with a lower bound
+// on the earliest transaction time.
 //
-// The contract is the K1 one (RelTypeTxMembershipCapability): the set is an
-// APPEND-ONLY SOUND SUPERSET (a later value change, a delete, a truncation or
-// a compaction never drops a member), the core chain resolver stays the
-// correctness authority and rejects over-included candidates, and pruning is
-// sound only as `pin < firstTxFrom -> skip`; firstTxFrom 0 means unknown
-// (never prune) and stays 0.
-//
-// Returns store.ErrIndexNotFound, before calling fn, when no rel property
-// index is declared for (relType, key) (or one is still being created); the
-// caller then takes the full-history fold. The sidecar is built lazily on the
-// first call for a (relType, key) and maintained at every row write after
-// that; fn runs outside the store's locks and may re-enter the store; fn
-// returning false stops the enumeration. Order is unspecified.
+// Same contract as RelTypeTxMembershipCapability: append-only sound superset,
+// firstTxFrom 0 = unknown. Returns store.ErrIndexNotFound, before calling fn,
+// when no rel property index is declared (or it is still being created); the
+// caller then folds the full history. The sidecar is built lazily per
+// (relType, key) and maintained at every row write; fn runs outside store locks
+// and may re-enter the store; returning false stops. Order unspecified.
 type RelPropertyTxMembershipCapability interface {
 	ForEachRelPropertyTxMember(relTypeToken uint16, propertyKey, valueKey string, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
 }
 
 // NodePropertyTxMembershipCapability is the node twin of
-// RelPropertyTxMembershipCapability, keyed like the node property index
-// (label, key): it enumerates the nodes whose rows EVER carried the label and
-// the value IN THE SAME ROW. A temporal ByLabelAndProperty lookup matches a
-// node only through a version carrying both, so the set stays a sound superset
-// although labels are mutable. Same append-only, lower-bound and
-// ErrIndexNotFound contract.
+// RelPropertyTxMembershipCapability, keyed (label, key): nodes whose rows EVER
+// carried the label and the value in the same row. Same contract, including
+// ErrIndexNotFound.
 type NodePropertyTxMembershipCapability interface {
 	ForEachNodePropertyTxMember(labelToken uint16, propertyKey, valueKey string, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
 }
 
-// PropertyTxMembershipStats reports a store's property membership sidecars
-// (backlog 8): how many (scope, key) sidecars are built, how many postings
-// (one per entity and distinct value ever carried) they hold, and the summed
-// wall time of the lazy builds since open. Builds is the number of completed
-// builds (a sidecar dropped by Clear, retention purge, exact erasure or an
-// index drop is rebuilt on its next lookup).
+// PropertyTxMembershipStats reports the property membership sidecars (backlog 8):
+// sidecars built, postings held, completed lazy builds since open and their
+// summed wall time.
 type PropertyTxMembershipStats struct {
 	RelSidecars   int
 	NodeSidecars  int
@@ -454,137 +325,94 @@ type PropertyTxMembershipStats struct {
 	BuildDuration time.Duration
 }
 
-// PropertyTxMembershipStatsCapability is OPTIONAL: the sizes and build cost of
-// the property membership sidecars, so the lazy O(history) build is
-// observable.
+// PropertyTxMembershipStatsCapability is OPTIONAL: sidecar sizes and build cost.
 type PropertyTxMembershipStatsCapability interface {
 	PropertyTxMembershipStats() (PropertyTxMembershipStats, error)
 }
 
-// NodeBeliefWatermarkCapability is OPTIONAL. A backend that maintains, per
-// node, the MAXIMUM TxFrom ever recorded across the entity's ENTIRE version
-// chain (current row + every history row, no matter which door wrote it)
-// lets the graph layer restore a SAFE current-row-only fast path for
-// point-in-time queries: when the current row's own TxFrom equals the
-// watermark, current itself IS the newest belief anywhere in the chain, so
-// no history row can outrank it for any validAt at or after current's own
-// valid-from — the history fetch can be skipped entirely.
+// NodeBeliefWatermarkCapability is OPTIONAL (backlog 10c): the maximum TxFrom ever
+// recorded across a node's entire version chain (current row plus every history
+// row). When the current row's TxFrom equals it, current is the newest belief in
+// the chain, so a point-in-time query may skip the history fetch. A bounded
+// bitemporal correction can append a history row newer than an untouched current
+// row, which is why the check is explicit.
 //
-// This closes the exact gap that made the equivalent OLD fast path
-// (nodeCurrentAnswersAt / relCurrentAnswersAt, removed by BACKLOG 10b) UNSAFE:
-// a bounded bitemporal cascade correction can append a HISTORY row with a
-// NEWER TxFrom than an untouched, still-open current row, without ever
-// replacing current. The old shortcut had no signal to detect that; this
-// watermark makes the check explicit instead of assumed — BACKLOG 10c.
-//
-// (0, false) means "unknown" — sidecar not yet built, or the entity has never
-// been written through this store instance since its last (re)build. The
-// caller MUST treat "unknown" as "fall back to the full scan," never as
-// "watermark is 0" (which would incorrectly gate the fast path OPEN for an
-// untracked entity whenever current.TxFrom also happens to be 0/unset).
-//
-// LAZY, RAM-only, rebuilt after Close/reopen on next use — same shape as
-// LabelTxMembershipCapability / relValidIdx. Maintained incrementally
-// thereafter: every door that persists a current OR history row with a
-// TxFrom bumps the watermark to max(existing, that row's TxFrom); doors that
-// restore an OLD, already-recorded TxFrom verbatim (transaction rollback) are
-// safe no-ops, since max() is idempotent against a value already recorded.
+// (0, false) means unknown (sidecar not built, or entity not written since the
+// last build): the caller MUST fall back to the full scan, never read it as 0.
+// Lazy, RAM-only, rebuilt after reopen, maintained at every door that persists a
+// row with a TxFrom (max is idempotent, so rollback restores are no-ops).
 type NodeBeliefWatermarkCapability interface {
 	NodeBeliefWatermark(id types.NodeID) (types.Instant, bool)
 }
 
-// RelBeliefWatermarkCapability mirrors NodeBeliefWatermarkCapability for
-// relationships (rule 2: structural parity).
+// RelBeliefWatermarkCapability mirrors NodeBeliefWatermarkCapability for relationships.
 type RelBeliefWatermarkCapability interface {
 	RelBeliefWatermark(id types.RelID) (types.Instant, bool)
 }
 
-// VersionTemporalMeta is one history version's SELECTION-SCOPE temporal
-// skeleton: the version number plus the NUMERIC temporal instants a chain
-// resolver selects on. Temporal is nil when the stored row carried no temporal
-// block (mirroring the full decode). CONTRACT: selection scope only —
-// CreatedBy/UpdatedBy/BaseEntityID are deliberately absent, so a consumer must
-// hydrate the full row (GetNodeVersion/GetRelVersion) before returning any
-// version to a caller; a skeleton must never leave the resolution seam.
+// VersionTemporalMeta is one history version's selection-scope temporal skeleton
+// (version plus numeric instants). Temporal is nil when the row had no temporal
+// block. CreatedBy/UpdatedBy/BaseEntityID are absent: hydrate the full row
+// (GetNodeVersion/GetRelVersion) before returning a version to a caller.
 type VersionTemporalMeta struct {
 	Version  uint32
 	Temporal *types.TemporalMetadata
 }
 
-// TemporalMetaHistoryCapability is OPTIONAL. A backend that can enumerate an
-// entity's history versions' temporal metadata WITHOUT materializing full rows
-// (e.g. a partial wire decode that skips properties/labels/hashes) implements
-// it so the graph layer's historical-pin resolution can select the winning
-// version on skeletons and decode ONLY the winner — O(1) full decodes per
-// resolution instead of O(chain). Results are ascending by version and include
-// every history row (tombstone versions included), exactly matching
-// GetNodeHistory/GetRelHistory's row set. A backend without a cheaper-than-full
-// path simply does not implement this; the graph layer falls back to the full
-// history fetch with identical results (accelerator, never an answer change).
+// TemporalMetaHistoryCapability is OPTIONAL: an entity's history temporal metadata
+// without materializing full rows, so historical-pin resolution decodes only the
+// winner. Ascending by version, every history row (tombstones included), exactly
+// GetNodeHistory/GetRelHistory's row set. Without it the graph layer falls back
+// to the full fetch with identical results.
 type TemporalMetaHistoryCapability interface {
 	NodeHistoryTemporalMeta(id types.NodeID) ([]VersionTemporalMeta, error)
 	RelHistoryTemporalMeta(id types.RelID) ([]VersionTemporalMeta, error)
 }
 
-// HistoryRollbackTrimCapability is OPTIONAL. It supports transaction rollback
-// without eager deep copies of entire history chains. Graph mutation paths
-// append superseded versions at the entity's previous Version(); rollback can
-// therefore restore the pre-transaction current row and trim history entries
-// written at or after that version.
+// HistoryRollbackTrimCapability is OPTIONAL: transaction rollback without deep
+// copies of history chains. Superseded versions are appended at the previous
+// Version(), so rollback restores the current row and trims history at or after it.
 type HistoryRollbackTrimCapability interface {
 	TrimNodeHistoryFrom(id types.NodeID, minVersion uint32) error
 	TrimRelHistoryFrom(id types.RelID, minVersion uint32) error
 }
 
-// MetaKVCapability is OPTIONAL. Backends that can persist arbitrary
-// key/value metadata implement it so the graph layer can stamp schema
-// versions, migration markers, and other one-shot bookkeeping that has to
-// survive restarts. The key namespace is shared between graph-layer markers
-// (e.g. "schema_version") and any backend-specific entries — callers MUST
-// use distinct keys. MetaGet on a missing key returns nil, nil.
+// MetaKVCapability is OPTIONAL: persisted key/value metadata (schema versions,
+// migration markers). The key namespace is shared with backend entries, so
+// callers MUST use distinct keys. MetaGet on a missing key returns nil, nil.
 type MetaKVCapability interface {
 	MetaGet(key string) ([]byte, error)
 	MetaSet(key string, value []byte) error
 }
 
-// MetaWrite is one key/value entry for HistoryCompactionCapability. The Key is
-// the graph-layer meta key (the same namespace as MetaKVCapability); the backend
-// stamps it under its own MetaKey encoding. A nil Value deletes the key.
+// MetaWrite is one key/value entry for HistoryCompactionCapability: Key is the
+// graph-layer meta key (MetaKVCapability namespace); a nil Value deletes it.
 type MetaWrite struct {
 	Key   string
 	Value []byte
 }
 
-// ExactErasureBounds makes relationship-closure discovery finite. Every
-// current relationship row and temporal relationship version inspected counts
-// against MaxRelationshipVersions; every distinct relationship identity that
-// touches a declared node in any inspected version counts against
-// MaxRelationshipIdentities; and every distinct endpoint named by a matching
-// version counts against MaxEndpointNodeIdentities. All values must be positive
-// for node erasure.
-//
-// The version bound deliberately covers the global scan, not only matches.
-// A backend without a durable historical-endpoint index must never turn an
-// unbounded proof scan into an accidental legal-erasure API.
+// ExactErasureBounds makes closure discovery finite: every relationship row and
+// version inspected counts against MaxRelationshipVersions (the global scan, not
+// only matches), every distinct relationship touching a declared node against
+// MaxRelationshipIdentities, every distinct endpoint against MaxEndpointNodeIdentities.
+// All must be positive for node erasure.
 type ExactErasureBounds struct {
 	MaxRelationshipIdentities int
 	MaxRelationshipVersions   int
 	MaxEndpointNodeIdentities int
 }
 
-// ExactErasureClosureRequest asks the backend to resolve every relationship
-// identity whose current row or any temporal version references NodeIDs.
-// NodeIDs must be canonical (ascending and duplicate-free).
+// ExactErasureClosureRequest asks for every relationship identity whose current
+// row or any version references NodeIDs (canonical: ascending, duplicate-free).
 type ExactErasureClosureRequest struct {
 	NodeIDs []types.NodeID
 	Bounds  ExactErasureBounds
 }
 
 // ExactErasureRelationshipBinding is one current or historical relationship
-// version that touches the requested node set. Relationship endpoints and type
-// are returned because a semantic owner must classify the historical boundary
-// before deciding which endpoint nodes, if any, belong in its deletion plan.
-// Version is the persisted relationship version, not result ordering.
+// version touching the requested nodes, with endpoints and type so the semantic
+// owner can classify the boundary. Version is the persisted version, not an ordering.
 type ExactErasureRelationshipBinding struct {
 	RelationshipID types.RelID
 	TypeToken      uint16
@@ -595,22 +423,18 @@ type ExactErasureRelationshipBinding struct {
 }
 
 // ExactErasureClosure is the bounded historical endpoint proof for NodeIDs.
-// RelationshipIDs and EndpointNodeIDs are canonical (ascending,
-// duplicate-free). Bindings are canonical by relationship identity, version,
-// type, and endpoints and retain every distinct matching persisted shape.
-// EndpointNodeIDs includes the requested nodes named by a matching binding;
-// callers decide ownership and must not treat this list as a deletion request.
+// RelationshipIDs and EndpointNodeIDs are canonical; Bindings are canonical by
+// relationship, version, type and endpoints. EndpointNodeIDs is evidence, not a
+// deletion request.
 type ExactErasureClosure struct {
 	RelationshipIDs []types.RelID
 	EndpointNodeIDs []types.NodeID
 	Bindings        []ExactErasureRelationshipBinding
 }
 
-// ExactErasureRequest is the backend plan for one bounded, caller-scoped legal
-// erasure. NodeIDs and RelIDs must be canonical (ascending, duplicate-free) and
-// contain only positive IDs. MetaWrites are graph-layer records whose values can
-// retain erased entity information (UniqueForever ownership and per-entity
-// compaction stubs); they commit atomically with the row/index/history removal.
+// ExactErasureRequest is the plan for one bounded, caller-scoped legal erasure.
+// NodeIDs and RelIDs are canonical and positive. MetaWrites (UniqueForever
+// ownership, compaction stubs) commit atomically with the removal.
 type ExactErasureRequest struct {
 	NodeIDs    []types.NodeID
 	RelIDs     []types.RelID
@@ -618,78 +442,47 @@ type ExactErasureRequest struct {
 	MetaWrites []MetaWrite
 }
 
-// ExactErasureResult reports live rows removed. History/index-only cleanup is
-// intentionally not counted: callers use the canonical request digest as the
-// stable idempotency receipt, independent of whether this was the first run or
-// a retry.
+// ExactErasureResult counts live rows removed only; callers use the canonical
+// request digest as the idempotency receipt.
 type ExactErasureResult struct {
 	NodesRemoved int
 	RelsRemoved  int
 }
 
 // ExactErasureCapability is OPTIONAL. It hard-removes exactly the declared
-// node/relationship IDs: current rows, every temporal-history row, all current
-// secondary-index and temporal-membership residue, and the supplied metadata
-// writes, in one atomic backend commit and without tombstones or change records.
+// node/relationship IDs: current rows, every history row, index and membership
+// residue, and the metadata writes, in one atomic commit without tombstones or
+// change records.
 //
-// ExactErasureRelationshipClosure resolves the complete relationship identity
-// set for planning. ExactErase independently recomputes that closure while
-// holding the backend's destructive write exclusion and fails closed when the
-// caller omitted any identity. Planning is therefore deterministic, while a
-// current or historical relationship introduced after planning cannot escape.
-//
-// Before writing, it fails with ErrExactErasureRelationshipEscape when any
-// current OR historical relationship version touching a declared node names a
-// relationship outside RelIDs. Either operation fails with
-// ErrExactErasureClosureLimit before mutation when its finite proof bound is
-// exhausted.
-// It also fails with ErrExactErasureChangeLogRetained when ANY change-log
-// material exists, even if recording is currently disabled, because retained
-// records contain full historical payloads. Missing declared rows are success:
-// retries are idempotent and still scrub history/index residue.
+// ExactErasureRelationshipClosure resolves the relationship set for planning;
+// ExactErase recomputes it under the destructive write exclusion and fails
+// closed with ErrExactErasureRelationshipEscape when a relationship touching a
+// declared node is outside RelIDs. Either fails with ErrExactErasureClosureLimit
+// before mutation when the bound is exhausted, and ExactErase with
+// ErrExactErasureChangeLogRetained when any change-log material exists (even
+// with recording off). Missing declared rows are success (idempotent retry).
 type ExactErasureCapability interface {
 	ExactErasureRelationshipClosure(ExactErasureClosureRequest) (ExactErasureClosure, error)
 	ExactErase(ExactErasureRequest) (ExactErasureResult, error)
 }
 
-// HistoryCompactionCapability is OPTIONAL. It trims an entity's oldest history
-// versions AND persists the accompanying per-entity compaction stub (the
-// metaWrites). keepVersions has the same meaning as TruncateNodeHistory: retain
-// the newest keepVersions history versions and delete the rest.
-//
-// Single-shard backends (memory, badger) commit the trim and the metaWrites in
-// ONE atomic write, so a crash can never leave trimmed history without its stub
-// (a silently-incomplete chain) or a stub without the trim. The tiered backend
-// also implements it: because a node's whole chain is single-shard (B33) but the
-// stub must live on the reference shard (where the store-level MetaGet reads it),
-// the trim and the stub land on different shards and cannot share one batch;
-// tiered writes the stub BEFORE the trim so a crash between them fails closed
-// (over-rejection, repaired by an idempotent re-run) rather than silently
-// incomplete — see pkg/graph/store/tiered/tieredstore_compaction.go. The graph
-// watermark is NOT part of metaWrites; the graph layer routes it once via the
-// store-level MetaSet (see core/compaction.go advanceCompactionWatermark).
+// HistoryCompactionCapability is OPTIONAL: trims an entity's oldest history
+// (keepVersions as TruncateNodeHistory) AND persists the per-entity compaction
+// stub (metaWrites). Memory and badger commit both in one atomic write. Tiered
+// writes the stub BEFORE the trim (different shards), so a crash fails closed
+// and an idempotent re-run repairs. The graph watermark is not part of
+// metaWrites (core/compaction.go advanceCompactionWatermark).
 type HistoryCompactionCapability interface {
 	CompactNodeHistory(id types.NodeID, keepVersions int, metaWrites []MetaWrite) error
 	CompactRelHistory(id types.RelID, keepVersions int, metaWrites []MetaWrite) error
 }
 
-// RetentionPurgeResult reports what one PurgeNodesByLabelBefore chunk removed.
-// More is true when the label may still hold purgeable nodes below the boundary
-// (the caller loops until it is false) — it never under-reports completion.
-//
-// PurgedNodeIDs lists the node IDs this chunk removed. A single-machine backend
-// leaves it nil (its cascade already removed every co-located edge); a PARTITIONED
-// backend (sharded) uses it to sweep edges MINTED IN ANOTHER node's slot that
-// point at a purged node and therefore live on a different shard — the one edge
-// class a per-shard label purge cannot see (an event-as-END cross-shard edge).
-//
-// PurgedRels lists the relationships this chunk TOUCHED (removed at least one row
-// or adjacency leg of). The tiered backend — whose SPLIT-WRITE layout stores a
-// rel's entity+out-leg on the start node's shard and its in-leg on the end node's
-// shard — uses it to sweep each rel's residue on its OTHER endpoint shard (an
-// orphan in-leg, or a fully-local survivor→purged rel), which a per-shard label
-// purge leaves behind. Left nil by memory (single store) and unused by sharded
-// (co-located legs, node-ID sweep).
+// RetentionPurgeResult reports what one purge chunk removed. More is true when
+// purgeable nodes may remain (the caller loops until false). PurgedNodeIDs lets a
+// partitioned backend (sharded) sweep edges minted in another slot that point at
+// a purged node; nil on single-machine backends. PurgedRels lists relationships
+// touched, so tiered (split-write layout) can sweep residue on the other endpoint
+// shard; nil on memory, unused by sharded.
 type RetentionPurgeResult struct {
 	NodesPurged   int
 	RelsPurged    int
@@ -698,9 +491,8 @@ type RetentionPurgeResult struct {
 	PurgedRels    []PurgedRel
 }
 
-// PurgedRel is the routing descriptor of a relationship a purge touched — enough
-// for a partitioned backend to locate and clean the rel's residue on either
-// endpoint's shard without re-reading the (already-removed) row.
+// PurgedRel is the routing descriptor of a relationship a purge touched, enough
+// to clean its residue on either endpoint's shard without re-reading the row.
 type PurgedRel struct {
 	ID        types.RelID
 	TypeToken uint16
@@ -708,101 +500,64 @@ type PurgedRel struct {
 	EndID     types.NodeID
 }
 
-// RetentionPurgeCapability is OPTIONAL (ADR-0008 R2). It HARD-removes whole
-// aged-out nodes of a label WITHOUT tombstones — the range-scale removal door for
-// event-retention workloads, where a per-entity tombstoning delete would double
-// write volume just to delete.
+// RetentionPurgeCapability is OPTIONAL (ADR-0008 R2): hard-removes aged-out nodes
+// of a label without tombstones.
 //
 // PurgeNodesByLabelBefore removes up to `chunk` nodes carrying labelToken whose
-// IMMUTABLE snowflake-ID mint-time is < before, and for each removed node ALSO
-// removes: every connected relationship (both adjacency legs — so a surviving
-// endpoint's incoming index is cleaned, no phantom edge), ALL index entries
-// (label/property/temporal/vector), and the ENTIRE version history of the node
-// and each removed relationship. Each call is ONE atomic batch; the caller loops
-// on More. It emits NO per-entity change-log record — the graph layer emits ONE
-// logical ChangeRangePurge for the whole range and advances the retention
-// watermark only after a range is fully clean (crash mid-range re-runs to the
-// same end state; the R1 read-guard turns a below-watermark read into
-// ErrRetentionExpired). Purge is idempotent: a node already gone is skipped.
-//
-// The predicate is on snowflake mint-time (not ValidFrom / not a backfilled
-// TxFrom) because snowflake IDs are time-ordered, so "label L older than T" is a
-// clustered key range, and a backfilled fact below the boundary is rejected at
-// WRITE, never silently purged here.
+// immutable snowflake mint-time is < before, plus every connected relationship
+// (both adjacency legs), all index entries and the entire version history. Each
+// call is one atomic batch; the caller loops on More. It emits no per-entity
+// change-log record: the graph layer emits one ChangeRangePurge and advances the
+// retention watermark once the range is clean. Idempotent. The predicate is
+// mint-time (clustered key range), not ValidFrom or a backfilled TxFrom.
 type RetentionPurgeCapability interface {
 	PurgeNodesByLabelBefore(labelToken uint16, before types.Instant, chunk int) (RetentionPurgeResult, error)
 }
 
-// RetentionPurgeByValidToCapability is OPTIONAL (ADR-0008 R5). It is the ByValidTo
-// sibling of RetentionPurgeCapability: it HARD-removes nodes of a label whose
-// world-time validity ENDED before the boundary — current-version ValidTo != 0 &&
-// ValidTo < before — with the identical cascade/history/atomic-batch/More contract.
-// It is a SEPARATE optional interface (not folded into RetentionPurgeCapability) so
-// backends can offer age-purge without validity-purge and the addition stays a
-// purely additive, non-breaking capability.
-//
-// The predicate reads the node's CURRENT-version ValidTo. It is immutable-once-true:
-// a node that qualifies is CLOSED (ValidTo != 0), and the graph layer freezes a
-// closed entity against every interactive mutation door, so a selected victim's
-// ValidTo cannot change under a chunked selection — no separate under-lock re-confirm
-// is required. A node with an open interval (ValidTo == 0) is never purged by
-// validity. Implemented by the native memory + badger backends and fanned out by the
-// sharded/tiered stores.
+// RetentionPurgeByValidToCapability is OPTIONAL (ADR-0008 R5): the ByValidTo
+// sibling of RetentionPurgeCapability. Hard-removes nodes of a label whose
+// current-version ValidTo != 0 && ValidTo < before, with the same cascade,
+// history, atomic-batch and More contract. A closed entity is frozen against
+// interactive mutation, so the predicate cannot change under a chunked
+// selection; open nodes (ValidTo == 0) are never purged.
 type RetentionPurgeByValidToCapability interface {
 	PurgeNodesByLabelValidToBefore(labelToken uint16, before types.Instant, chunk int) (RetentionPurgeResult, error)
 }
 
-// RangePurgeLogCapability is OPTIONAL (ADR-0008 R3). It appends ONE
-// ChangeRangePurge record — the PREDICATE a replica re-executes — to the store's
-// change-log, co-committed like any other record. No-op (nil) when the store has
-// no change-log enabled. The graph layer calls it once per purge so a replica of
-// the primary converges by re-running the same range predicate against its own
-// LSN-consistent state (never per-entity delete records). Implemented by the
-// native memory + badger backends alongside RetentionPurgeCapability.
+// RangePurgeLogCapability is OPTIONAL (ADR-0008 R3): appends one ChangeRangePurge
+// record (the predicate a replica re-executes) to the change-log, co-committed;
+// nil no-op when the log is off. Called once per purge.
 type RangePurgeLogCapability interface {
 	LogRangePurge(labelToken uint16, before types.Instant, mode uint8) error
 }
 
-// RelRetentionPurgeCapability is OPTIONAL (backlog 21), the relationship
-// sibling of RetentionPurgeCapability. PurgeRelsByTypeBefore HARD-removes up to
-// `chunk` relationships of typeToken whose IMMUTABLE snowflake mint-time is <
-// before, live AND ended alike (a relationship's type never changes, so every
-// row of it carries typeToken): the current row, both adjacency legs and the
-// ex-adjacency legs of every row, the type/property/temporal index entries, the
-// counters, the sidecars, and the WHOLE version history including the
-// tombstone. Nodes are never touched. Candidates are the live rows of the type
-// united with the IDs that have history rows of the type and no live row. Each
-// call is one atomic batch on a single-machine backend and reports
-// RelsPurged (every relationship removed, live or ended), More (the caller
-// loops until false) and PurgedRels (routing descriptors of the removed
-// relationships, for a partitioned backend's leg-residue sweep). It emits NO
-// change-log record: the graph layer owns the single ChangeRelRangePurge and
-// the per-type retention watermark. Idempotent: a relationship already gone
-// is skipped.
+// RelRetentionPurgeCapability is OPTIONAL (backlog 21), the relationship sibling
+// of RetentionPurgeCapability. PurgeRelsByTypeBefore hard-removes up to `chunk`
+// relationships of typeToken whose immutable snowflake mint-time is < before,
+// live and ended alike: rows, both adjacency legs and ex-adjacency legs, index
+// entries, counters, sidecars and the whole version history. Nodes are never
+// touched. One atomic batch per call on a single-machine backend; reports
+// RelsPurged, More and PurgedRels. It emits no change-log record (the graph layer
+// owns ChangeRelRangePurge and the watermark). Idempotent.
 type RelRetentionPurgeCapability interface {
 	PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, chunk int) (RetentionPurgeResult, error)
 }
 
-// RelRangePurgeLogCapability is OPTIONAL (backlog 21), beside
-// RelRetentionPurgeCapability: it appends ONE ChangeRelRangePurge record — the
-// predicate a replica re-executes — to the store's change-log. No-op (nil)
-// when the store has no change-log enabled.
+// RelRangePurgeLogCapability is OPTIONAL (backlog 21): appends one
+// ChangeRelRangePurge record to the change-log; nil no-op when the log is off.
 type RelRangePurgeLogCapability interface {
 	LogRelRangePurge(typeToken uint16, before types.Instant, mode uint8) error
 }
 
-// HistoryVersionPageCapability is OPTIONAL. Backends that can page through an
-// individual entity's history chain implement it so export and other streaming
-// readers do not have to materialize every version for one heavily updated
-// entity. startVersion is inclusive, and limit 0 returns all remaining versions.
-// Results must be sorted by ascending Version().
+// HistoryVersionPageCapability is OPTIONAL: pages one entity's history chain for
+// export and streaming readers. startVersion is inclusive, limit 0 returns all
+// remaining; ascending by Version().
 type HistoryVersionPageCapability interface {
 	NodeHistoryVersionsFrom(id types.NodeID, startVersion uint32, limit int) ([]*types.Node, error)
 	RelHistoryVersionsFrom(id types.RelID, startVersion uint32, limit int) ([]*types.Relationship, error)
 }
 
-// StatsCapability is the counter surface used by `g.Stats().*` and by the
-// graph layer's internal accounting.
+// StatsCapability is the counter surface (g.Stats(), graph accounting).
 type StatsCapability interface {
 	NodeCount() (int, error)
 	RelationshipCount() (int, error)
@@ -810,23 +565,18 @@ type StatsCapability interface {
 	RelCountByType(token uint16) (int, error)
 }
 
-// NodePropertyKeyStatsCapability is an OPTIONAL statistics surface for stores
-// that maintain per-label property-key presence counts. The count is over
-// current nodes carrying labelToken with an indexable scalar propertyKey value.
-// It is intentionally key-presence only, not value-selectivity, so planners can
-// cheaply skip labels that cannot satisfy scalar equality lookups.
+// NodePropertyKeyStatsCapability is OPTIONAL: per-label property-key presence
+// counts over current nodes with an indexable scalar value. Presence only, not
+// value selectivity.
 type NodePropertyKeyStatsCapability interface {
 	NodeCountByLabelAndPropertyKey(labelToken uint16, propertyKey string) (int, error)
 }
 
-// IterationCapability is the iteration surface (ForEach + paginated AllIDs).
-// Distinct from BulkReadCapability because iteration returns IDs only — no
-// entity deserialisation, no deep copy. The graph layer uses iteration in
-// snapshot/diff and on the export path. Nil ForEach callbacks return
-// ErrInvalidStoreMutation. Non-nil callbacks are invoked outside backend locks,
-// Badger transactions, and Tiered shard checkouts so callback code may call
-// back into Store methods. History iterators must not let callback-created
-// higher IDs extend the active iteration, and async-buffered stores must make
+// IterationCapability is the ID iteration surface (ForEach + paginated AllIDs),
+// no entity deserialisation. Nil ForEach callbacks return ErrInvalidStoreMutation;
+// callbacks run outside backend locks, Badger transactions and Tiered shard
+// checkouts, so they may call back into Store. History iterators must not let
+// callback-created higher IDs extend the iteration; async-buffered stores make
 // pending history deletes visible to ID scans before flush.
 type IterationCapability interface {
 	AllNodeIDs(opts QueryOpts) ([]types.NodeID, error)
@@ -844,63 +594,46 @@ type IterationCapability interface {
 	ForEachRelHistoryID(fn func(types.RelID) bool) error
 }
 
-// DepthHistoryIterationCapability is OPTIONAL. Tiered backends implement it
-// so graph-layer history-aware queries can combine temporal filters with
-// shard-depth filtering without scanning history from tiers the caller
-// excluded. Single-shard backends may omit it because every valid depth
-// selector maps to the same shard. Nil callbacks return ErrInvalidStoreMutation.
+// DepthHistoryIterationCapability is OPTIONAL: tiered backends iterate history IDs
+// filtered by shard depth. Single-shard backends omit it. Nil callbacks return
+// ErrInvalidStoreMutation.
 type DepthHistoryIterationCapability interface {
 	ForEachNodeHistoryIDByDepth(depth ShardDepth, fn func(types.NodeID) bool) error
 	ForEachRelHistoryIDByDepth(depth ShardDepth, fn func(types.RelID) bool) error
 }
 
-// DeletedIterationCapability is OPTIONAL. Backends implement it so the graph
-// layer can fold ONLY deleted IDs (entities with history rows but no current
-// row) onto a narrow indexed candidate list when answering temporal adjacency
-// or label/property queries at a point/interval in the past. Without it the
-// graph layer falls back to iterating the full history set — correct but
-// O(total history) per query regardless of how narrow the candidate list is.
-//
-// Implementations must visit every ID that has at least one history version
-// AND no current row, and must not visit any ID that currently exists. Nil
-// callbacks return ErrInvalidStoreMutation. Callbacks are invoked outside
-// backend locks (same contract as ForEachNodeHistoryID).
+// DeletedIterationCapability is OPTIONAL: visits every ID with at least one
+// history version and no current row (and no existing ID), so temporal queries
+// fold only deleted IDs onto a narrow candidate list; without it the graph
+// iterates all history. Nil callbacks return ErrInvalidStoreMutation; callbacks
+// run outside backend locks.
 type DeletedIterationCapability interface {
 	ForEachDeletedNodeID(fn func(types.NodeID) bool) error
 	ForEachDeletedRelID(fn func(types.RelID) bool) error
 }
 
-// ExAdjacencyCapability is OPTIONAL (backlog 50). A node's ex-adjacency in a
-// direction holds every relationship ID that named the node as its start
-// (incoming=false) or end (incoming=true) in a row the live adjacency
-// (OutgoingRelationships / IncomingRelationships) does not tie to the node:
-// a deleted relationship, or an earlier life of one deleted and re-imported
-// with other endpoints. The store maintains it itself, in the same write as
-// every relationship delete (plain, cascade, batch, replica-applied) and every
-// history row (PutRelVersion) whose endpoints are not the live row's, so the
-// graph layer's adjacency doors gather a seed's candidates as its adjacency ∪
-// its ex-adjacency — O(the seed's ever-degree), not O(history).
+// ExAdjacencyCapability is OPTIONAL (backlog 50). A node's ex-adjacency holds every
+// relationship ID that named it as start (incoming=false) or end (incoming=true)
+// in a row the live adjacency does not tie to it (a deleted relationship, or an
+// earlier life re-imported with other endpoints). The store maintains it in the
+// same write as every relationship delete and every non-live-endpoint history
+// row, so adjacency doors gather candidates in O(ever-degree), not O(history).
 //
-// It is a sound superset: an entry may outlive the rows that justified it
-// (a compaction or a history trim keeps it; the doors resolve each candidate
-// on its own); a node's retention purge and exact erasure remove its entries
-// and the purged relationships'. NoteExAdjacentRel adds both legs of one row
-// (the graph layer's one-time backfill of a store written before the index
-// existed). Nil callbacks return ErrInvalidStoreMutation; callbacks run outside
-// backend locks; no ordering guarantee; an ID may repeat.
+// A sound superset: entries may outlive their justification (compaction, history
+// trim); retention purge and exact erasure remove them. NoteExAdjacentRel adds
+// both legs of one row (one-time backfill). Nil callbacks return
+// ErrInvalidStoreMutation; callbacks run outside locks; unordered; an ID may repeat.
 type ExAdjacencyCapability interface {
 	ForEachExAdjacentRelID(nodeID types.NodeID, incoming bool, fn func(types.RelID) bool) error
 	NoteExAdjacentRel(id types.RelID, startID, endID types.NodeID) error
 }
 
-// RelCreateUndoCapability is OPTIONAL, beside ExAdjacencyCapability: the
-// graph layer removes a relationship whose create it is undoing (a failed
-// create's partial write, a rolled-back transaction's or a failed import's
-// created relationship) through UndoRelationshipCreate. It is
-// DeleteRelationship (same errors, same change-log record) without the
-// ex-adjacency legs: the relationship never committed, so no reader may find
-// it through its endpoints. A store without it is undone by DeleteRelationship
-// (sound, an extra candidate per endpoint).
+// RelCreateUndoCapability is OPTIONAL, beside ExAdjacencyCapability:
+// UndoRelationshipCreate removes a relationship whose create is being undone
+// (failed create, rollback, failed import). It is DeleteRelationship (same errors,
+// same change-log record) without the ex-adjacency legs, since the relationship
+// never committed. Without it DeleteRelationship is used (sound, one extra
+// candidate per endpoint).
 type RelCreateUndoCapability interface {
 	UndoRelationshipCreate(id types.RelID) error
 }
@@ -912,24 +645,15 @@ type ScopedRelCreateUndoCapability interface {
 	UndoRelationshipCreateScoped(id types.RelID, token uint64) error
 }
 
-// DepthDeletedIterationCapability is the depth-aware counterpart of
-// DeletedIterationCapability. Tiered backends implement it so history-aware
-// queries can combine deleted-only iteration with shard-depth filtering.
-// Single-shard backends do not need it because every valid depth maps to the
-// same shard. Nil callbacks return ErrInvalidStoreMutation.
+// DepthDeletedIterationCapability is the depth-aware DeletedIterationCapability
+// (tiered). Nil callbacks return ErrInvalidStoreMutation.
 type DepthDeletedIterationCapability interface {
 	ForEachDeletedNodeIDByDepth(depth ShardDepth, fn func(types.NodeID) bool) error
 	ForEachDeletedRelIDByDepth(depth ShardDepth, fn func(types.RelID) bool) error
 }
 
-// PropertyIndexCapability is OPTIONAL. Backends that do not implement
-// property indexes should omit it; consumers that need property-indexed
-// lookup should type-assert and surface ErrCapabilityNotSupported (or a
-// purpose-specific sentinel) when the assertion fails.
-//
-// Today every Store implementation in this repository implements it; the
-// optional-ness is forward-looking for future read-only or analytic
-// backends that have no use for write-side index management.
+// PropertyIndexCapability is OPTIONAL: property index management and equality
+// lookup. Consumers type-assert and surface ErrCapabilityNotSupported when absent.
 type PropertyIndexCapability interface {
 	CreatePropertyIndex(labelToken uint16, propertyKey string) error
 	DropPropertyIndex(labelToken uint16, propertyKey string) error
@@ -937,40 +661,27 @@ type PropertyIndexCapability interface {
 }
 
 // PropertyIndexOptions configures a single-key property index (node or
-// relationship) at creation. The zero value is the index as it always was.
+// relationship) at creation; the zero value is the plain index. Options are fixed
+// at creation and persisted with the definition (see docs/api.md "Property index
+// options" and "Elements index").
 type PropertyIndexOptions struct {
-	// RangeCounts (round 4 R2) keeps each numeric value's multiplicity and
-	// per-chunk prefix sums in the index's ordered view, so RangeCardinality
-	// answers with two prefix sums — O(log chunks) plus at most 512 per-value
-	// counts each, independent of the range's width — instead of walking the
-	// range's distinct values. Cost: about 35 ns more per index add or remove
-	// of a numeric value and 8 B per distinct value (plus 8 B per 512-1,024
-	// values). Off, writes and memory are exactly as without the option.
-	// Fixed at creation; persisted with the definition where definitions
-	// persist. Not available with badger's PropertyIndexOnDisk
+	// RangeCounts keeps per-value multiplicity and per-chunk prefix sums so
+	// RangeCardinality is O(log chunks) independent of range width, at a small
+	// write and memory cost. Not available with badger's PropertyIndexOnDisk
 	// (ErrCapabilityNotSupported).
 	RangeCounts bool
-	// Elements (backlog 63) indexes each scalar element of a list value, so
-	// an equality lookup on the index (ByLabelAndProperty, ByTypeAndProperty,
-	// their temporal and named doors) means "the list contains the value". A
-	// non-list value is a one-element list; duplicates count once; an empty
-	// list, nil, and non-scalar elements (nested lists, maps) contribute no
-	// key; each element follows the scalar index rules (exact type, so int64
-	// 1 is not int 1). []byte is a blob, not a list. History reads use the
-	// membership sidecar per element, so an element an update removed still
-	// matches at an earlier pin. The index keeps no ordered view: range and
-	// prefix doors decline as without an index (ErrIndexNotFound, or an inexact
-	// count). Refused with ErrElementsIndexUnsupported: together with
-	// RangeCounts, a unique constraint or GetOrCreateByKey on the key, and
-	// ByLabelAndProperties over the key. Not available with badger's
-	// PropertyIndexOnDisk (ErrCapabilityNotSupported). Fixed at creation;
-	// persisted with the definition.
+	// Elements (backlog 63) indexes each scalar element of a list value, so an
+	// equality lookup means "the list contains the value". A non-list value is a
+	// one-element list; duplicates count once; empty lists, nil and non-scalar
+	// elements add no key; []byte is a blob. No ordered view: range and prefix doors
+	// decline. Refused with ErrElementsIndexUnsupported together with RangeCounts, a
+	// unique constraint or GetOrCreateByKey on the key, and ByLabelAndProperties over
+	// it; not available with PropertyIndexOnDisk (ErrCapabilityNotSupported).
 	Elements bool
 }
 
-// ValidatePropertyIndexOptions refuses the option combinations no store
-// builds: Elements with RangeCounts (an Elements index keeps no ordered view)
-// is ErrElementsIndexUnsupported.
+// ValidatePropertyIndexOptions refuses Elements with RangeCounts
+// (ErrElementsIndexUnsupported).
 func ValidatePropertyIndexOptions(opts PropertyIndexOptions) error {
 	if opts.Elements && opts.RangeCounts {
 		return fmt.Errorf("%w: Elements with RangeCounts", ErrElementsIndexUnsupported)
@@ -978,11 +689,9 @@ func ValidatePropertyIndexOptions(opts PropertyIndexOptions) error {
 	return nil
 }
 
-// PropertyIndexOptionsCapability is OPTIONAL: creating a node property index
-// with PropertyIndexOptions, and reading back the options an index was
-// created with. A store without it creates only plain indexes; the graph
-// refuses non-zero options there with ErrCapabilityNotSupported instead of
-// dropping them.
+// PropertyIndexOptionsCapability is OPTIONAL: creates a node property index with
+// PropertyIndexOptions and reads the options back. Without it the graph refuses
+// non-zero options with ErrCapabilityNotSupported.
 type PropertyIndexOptionsCapability interface {
 	CreatePropertyIndexWithOptions(labelToken uint16, propertyKey string, opts PropertyIndexOptions) error
 	// PropertyIndexOptions returns the options of the index on (labelToken,
@@ -990,168 +699,113 @@ type PropertyIndexOptionsCapability interface {
 	PropertyIndexOptions(labelToken uint16, propertyKey string) (opts PropertyIndexOptions, ok bool, err error)
 }
 
-// RelPropertyIndexOptionsCapability is the relationship mirror of
-// PropertyIndexOptionsCapability.
+// RelPropertyIndexOptionsCapability is the relationship mirror of PropertyIndexOptionsCapability.
 type RelPropertyIndexOptionsCapability interface {
 	CreateRelPropertyIndexWithOptions(relTypeToken uint16, propertyKey string, opts PropertyIndexOptions) error
 	RelPropertyIndexOptions(relTypeToken uint16, propertyKey string) (opts PropertyIndexOptions, ok bool, err error)
 }
 
-// RelPropertyIndexCapability is the relationship mirror of
-// PropertyIndexCapability (Node/Rel parity), keyed by rel-type token instead
-// of label token. OPTIONAL — a backend that has no use for accelerated
-// rel-value equality lookup may omit it, and the graph layer answers
-// RelsByTypeAndProperty by a type-scan + property filter over the mandatory
-// RelationshipsByType surface.
-//
-// The tiered store IMPLEMENTS this capability but its Create/Drop doors return
-// ErrRelPropertyIndexUnsupported: a shard-local rel-value index cannot answer a
-// query whose matches are scattered across timestamp-routed event shards. Its
-// RelationshipsByTypeAndProperty still answers correctly (unaccelerated
-// cross-shard scan+filter), so query semantics are uniform across backends.
+// RelPropertyIndexCapability is the relationship mirror of PropertyIndexCapability,
+// keyed by rel-type token. OPTIONAL: without it the graph answers
+// RelsByTypeAndProperty by type scan + filter. Tiered implements it but its
+// Create/Drop return ErrRelPropertyIndexUnsupported (event shards are
+// timestamp-routed); its lookup still answers by cross-shard scan + filter.
 type RelPropertyIndexCapability interface {
 	CreateRelPropertyIndex(relTypeToken uint16, propertyKey string) error
 	DropRelPropertyIndex(relTypeToken uint16, propertyKey string) error
 	RelationshipsByTypeAndProperty(relTypeToken uint16, key string, value any, opts QueryOpts) ([]*types.Relationship, error)
 }
 
-// CompositePropertyIndexCapability is OPTIONAL. A backend implements it to
-// accelerate an EQUALITY lookup across an ordered tuple of 2..4 property keys
-// under one label with O(matches) cost, instead of the label-scan +
-// post-filter every backend must still support for correctness (see
-// NodesByLabelAndProperties's doc comment). v1 is equality-only — no
-// partial-prefix or range semantics (a query must supply a value for every
-// declared key); see docs/query-planners.md "Composite property indexes" for
-// planner guidance on when this beats a single-key index + post-filter.
-//
-// Unlike PropertyIndexCapability, this is NOT embedded in Store: a backend
-// that never implements it (e.g. a sharded backend that only supports
-// reference-label single-key indexes today) still satisfies Store/
-// MandatoryStore unchanged, and the graph layer answers
-// NodesByLabelAndProperties correctly (unaccelerated) via its own
-// label-scan + post-filter fallback.
+// CompositePropertyIndexCapability is OPTIONAL: O(matches) EQUALITY lookup across
+// an ordered tuple of 2..4 property keys under one label (no prefix or range;
+// every declared key needs a value). Planner guidance: docs/query-planners.md
+// "Composite property indexes". Not embedded in Store: without it the graph
+// answers NodesByLabelAndProperties by label scan + post-filter.
 type CompositePropertyIndexCapability interface {
-	// CreateCompositePropertyIndex creates a composite index over the
-	// declared, ORDER-PRESERVING keys (2..4) under labelToken. Returns
-	// ErrIndexExists if an index for the exact same (labelToken, ordered
-	// keys) already exists — a different key ORDER for the same key SET is
-	// a distinct definition (no implicit dedup across orderings).
+	// CreateCompositePropertyIndex creates a composite index over the ordered keys
+	// (2..4) under labelToken. ErrIndexExists for the same ordered tuple; a different
+	// order of the same key set is a distinct definition.
 	CreateCompositePropertyIndex(labelToken uint16, keys []string) error
-	// DropCompositePropertyIndex removes the composite index declared over
-	// the exact ordered keys. Returns ErrIndexNotFound if no such
-	// definition exists.
+	// DropCompositePropertyIndex removes the index over the exact ordered keys;
+	// ErrIndexNotFound if absent.
 	DropCompositePropertyIndex(labelToken uint16, keys []string) error
-	// NodesByLabelAndProperties returns nodes carrying labelToken whose
-	// current row matches EVERY (key, value) pair in values (AND-conjunction,
-	// equality only). All of a matching composite index's declared keys must
-	// be present in values for the index to accelerate the call; otherwise
-	// (or when no matching composite index exists) implementations fall back
-	// to a label-scan + post-filter, mirroring PropertyIndexCapability's
-	// internal fallback contract.
+	// NodesByLabelAndProperties returns nodes carrying labelToken whose current row
+	// matches EVERY (key, value) pair (AND, equality). A matching index accelerates
+	// the call only when values has all its keys; otherwise it falls back to label
+	// scan + post-filter.
 	NodesByLabelAndProperties(labelToken uint16, values map[string]any, opts QueryOpts) ([]*types.Node, error)
 }
 
-// CompositeIndexIntrospectionCapability is OPTIONAL — the query-planner
-// existence door for composite definitions. A planner must KNOW whether a
-// matching composite definition exists before routing a multi-property
-// equality match through NodesByLabelAndProperties: without one, that door
-// falls back to a label scan + post-filter, which can be strictly worse than
-// the single-key property-index plan the planner would otherwise choose.
-// Kept separate from CompositePropertyIndexCapability so existing out-of-tree
-// implementations of that interface stay source-compatible.
+// CompositeIndexIntrospectionCapability is OPTIONAL: the planner existence door for
+// composite definitions (without one, NodesByLabelAndProperties is a scan that can
+// be worse than a single-key plan). Separate from CompositePropertyIndexCapability
+// for source compatibility.
 type CompositeIndexIntrospectionCapability interface {
-	// ListCompositePropertyIndexes returns the DECLARED, ORDER-PRESERVING
-	// key tuple of every composite index registered under labelToken (one
-	// entry per definition; distinct orderings of the same key set are
-	// distinct definitions). Unregistered labels return an empty slice, not
-	// an error. The returned slices are caller-owned copies. O(definitions
-	// on the label) — cheap enough to call per query. The store keeps no
-	// index-DDL epoch; the graph's g.Index().InventoryEpoch is the
-	// invalidation signal for a cached answer.
+	// ListCompositePropertyIndexes returns the declared ordered key tuple of every
+	// composite index under labelToken (empty for unregistered labels, caller-owned
+	// copies), O(definitions on the label). The graph's g.Index().InventoryEpoch is
+	// the cache invalidation signal.
 	ListCompositePropertyIndexes(labelToken uint16) ([][]string, error)
 }
 
-// PropertyIndexIntrospectionCapability is OPTIONAL — the query-planner
-// existence door for single-key property index definitions (BACKLOG 21b),
-// mirroring CompositeIndexIntrospectionCapability's role for composites: a
-// planner must know whether an accelerated path exists before routing a
-// single-property predicate, rather than inferring it from query latency.
+// PropertyIndexIntrospectionCapability is OPTIONAL (BACKLOG 21b): the planner
+// existence door for single-key property index definitions.
 type PropertyIndexIntrospectionCapability interface {
-	// HasPropertyIndex reports whether a property index exists on
-	// (labelToken, propertyKey). Unregistered labels return false, not an
-	// error. O(1). The store keeps no index-DDL epoch; the graph's
-	// g.Index().InventoryEpoch is the invalidation signal for a cached answer.
+	// HasPropertyIndex reports whether a property index exists on (labelToken,
+	// propertyKey), O(1); false for unregistered labels. Invalidation signal:
+	// g.Index().InventoryEpoch.
 	HasPropertyIndex(labelToken uint16, propertyKey string) (bool, error)
 }
 
-// TemporalIndexIntrospectionCapability is OPTIONAL — the query-planner
-// existence door for temporal interval index definitions (BACKLOG 21b). Only
-// one temporal index KIND (interval or high-frequency) can exist per label
-// (see HighFrequencyIndexCapability), so this answers "interval kind
-// specifically", not "any temporal acceleration exists".
+// TemporalIndexIntrospectionCapability is OPTIONAL (BACKLOG 21b): the planner
+// existence door for temporal interval index definitions. Answers "interval kind"
+// only; one temporal index kind (interval or high-frequency) exists per label.
 type TemporalIndexIntrospectionCapability interface {
-	// HasTemporalIndex reports whether a temporal interval index exists on
-	// labelToken. Unregistered labels return false, not an error.
+	// HasTemporalIndex reports whether a temporal interval index exists on labelToken;
+	// false for unregistered labels.
 	HasTemporalIndex(labelToken uint16) (bool, error)
 }
 
 // TemporalIndexListingCapability is OPTIONAL: the label and relationship-type
-// tokens that carry a temporal interval index, ascending, for a planner or an
-// index listing (SHOW INDEXES) that would otherwise probe every label with
-// HasTemporalIndex and could not probe relationship types at all. A store
-// without relationship-type temporal indexes lists none.
+// tokens carrying a temporal interval index, ascending (SHOW INDEXES), instead of
+// probing every label. A store without rel-type temporal indexes lists none.
 type TemporalIndexListingCapability interface {
 	TemporalIndexLabels() ([]uint16, error)
 	RelTemporalIndexTypes() ([]uint16, error)
 }
 
-// VectorIndexInfo is the declared configuration of a vector index — the read
-// side of VectorIndexOptions plus the two fields fixed at creation
-// (Dims/Metric) that CreateVectorWithOptions takes as separate parameters
-// rather than folding into VectorIndexOptions itself.
+// VectorIndexInfo is the declared configuration of a vector index: Dims and
+// Metric (fixed at creation) plus VectorIndexOptions.
 type VectorIndexInfo struct {
 	Dims    int
 	Metric  DistanceMetric
 	Options VectorIndexOptions
 }
 
-// VectorIndexIntrospectionCapability is OPTIONAL — the query-planner
-// existence+config door for vector index definitions (BACKLOG 21b). A
-// planner needs BOTH existence and dims/metric/engine BEFORE issuing
-// SearchNearest, so a dimension mismatch or an unexpectedly-brute-force
-// index is a routing decision, not a runtime error discovered mid-query.
+// VectorIndexIntrospectionCapability is OPTIONAL (BACKLOG 21b): the planner
+// existence and configuration door for vector index definitions, so dimension
+// mismatches and brute-force indexes are routing decisions.
 type VectorIndexIntrospectionCapability interface {
-	// VectorIndexInfo returns the declared configuration of the vector index
-	// on (labelToken, propertyKey), or (zero value, false) if none exists.
-	// Reflects the DEFINITION only (dims/metric/engine/tuning), never a
-	// runtime rebuild-status signal — see CLAUDE.md "Vector Indexes: Not
-	// persisted" for what does and does not survive restart.
+	// VectorIndexInfo returns the declared configuration of the vector index on
+	// (labelToken, propertyKey), or (zero, false). Definition only, no rebuild status
+	// (AGENTS.md "Vector Indexes").
 	VectorIndexInfo(labelToken uint16, propertyKey string) (VectorIndexInfo, bool, error)
 }
 
-// RelPropertyIndexIntrospectionCapability is OPTIONAL — the query-planner
-// existence door for relationship-type-scoped property index definitions
-// (BACKLOG 21b), mirroring PropertyIndexIntrospectionCapability for the rel
-// side.
+// RelPropertyIndexIntrospectionCapability is OPTIONAL (BACKLOG 21b): the rel-side
+// mirror of PropertyIndexIntrospectionCapability.
 type RelPropertyIndexIntrospectionCapability interface {
-	// HasRelPropertyIndex reports whether a relationship property index
-	// exists on (relTypeToken, propertyKey). Unregistered rel types return
-	// false, not an error.
+	// HasRelPropertyIndex reports whether a relationship property index exists on
+	// (relTypeToken, propertyKey); false for unregistered rel types.
 	HasRelPropertyIndex(relTypeToken uint16, propertyKey string) (bool, error)
 }
 
-// PropertyTypeClassCounts is the EXACT per-(label, property key) partition of
-// a label's current nodes by the type class of the key's value
-// (types.PropertyTypeClass — see its doc for the classification rule).
-// Maintained counters, O(1) to read, exact by construction: they are adjusted
-// on the SAME node-mutation doors (same call, same loop) as the
-// NodeCountByLabelAndPropertyKey presence counter, so the two can never
-// drift. Every field counts NODES (a node contributes to exactly one class
-// per key it carries).
-//
-// Missing (nodes carrying the label WITHOUT the key) is computed by the
-// graph layer as NodeCountByLabel − (Numeric+NaN+String+Bool+Other); store
-// implementations always return it as 0.
+// PropertyTypeClassCounts is the exact per-(label, key) partition of a label's
+// current nodes by the type class of the value (types.PropertyTypeClass). O(1)
+// maintained counters, adjusted on the same mutation doors as the
+// NodeCountByLabelAndPropertyKey presence counter, so they cannot drift. Each
+// node counts in exactly one class per key it carries. Missing is computed by
+// the graph layer (NodeCountByLabel minus the classes); stores return 0.
 type PropertyTypeClassCounts struct {
 	Numeric int64 // finite ints/uints/floats and ±Inf (orderable numbers)
 	NaN     int64 // float NaN values (numeric kind, unorderable)
@@ -1166,9 +820,8 @@ func (c PropertyTypeClassCounts) Present() int64 {
 	return c.Numeric + c.NaN + c.String + c.Bool + c.Other
 }
 
-// DocValuesColumn is what a label's DocValues snapshot (ForEachDocValues,
-// DocValuesSnapshot) holds for one property key, as nodes.API.DocValuesColumn
-// states it without building the column.
+// DocValuesColumn is what a label's DocValues snapshot holds for one property
+// key, as nodes.API.DocValuesColumn states it without building the column.
 type DocValuesColumn uint8
 
 const (
@@ -1183,10 +836,9 @@ const (
 	DocValuesString
 )
 
-// DocValuesColumnOf is the DocValues build rule over a key's exact value-class
-// counts on a label of labelCount members: the single statement of what
-// ForEachDocValues builds (TestDocValuesColumnAgreesWithTheBuild pins the two
-// together). maxRows is the column cap (index.MaxDocValuesNodes).
+// DocValuesColumnOf is the DocValues build rule over a key's value-class counts on
+// a label of labelCount members (TestDocValuesColumnAgreesWithTheBuild pins it to
+// ForEachDocValues). maxRows is the column cap (index.MaxDocValuesNodes).
 func DocValuesColumnOf(counts PropertyTypeClassCounts, labelCount, maxRows int) DocValuesColumn {
 	switch {
 	case labelCount <= 0 || labelCount > maxRows:
@@ -1202,155 +854,105 @@ func DocValuesColumnOf(counts PropertyTypeClassCounts, labelCount, maxRows int) 
 	}
 }
 
-// NodePropertyTypeClassCountsCapability is OPTIONAL — the exact O(1)
-// type-class cardinality door for query planners (ordering-soundness gates
-// like "the gap between label count and numeric count is nulls only" need
-// EXACT counts; the HLL-based NDV statistics are not usable there). See
-// PropertyTypeClassCounts for semantics.
+// NodePropertyTypeClassCountsCapability is OPTIONAL: exact O(1) type-class
+// cardinalities for planners (the HLL NDV statistics are not exact enough for
+// ordering-soundness gates). See PropertyTypeClassCounts.
 type NodePropertyTypeClassCountsCapability interface {
 	NodePropertyTypeClassCounts(labelToken uint16, propertyKey string) (PropertyTypeClassCounts, error)
 }
 
-// RelPropertyTypeClassCountsCapability is OPTIONAL — the relationship mirror of
-// NodePropertyTypeClassCountsCapability (rule 2): the exact per-(relType, property
-// key) partition of a type's current relationships by value class, the correctness
-// gate for the rel ORDER BY r.prop LIMIT k push-down. Implemented by the native
-// memory + badger stores and by sharded (the slots' counters summed: a
-// relationship's row lives on one slot); tiered declines. See
-// PropertyTypeClassCounts for semantics.
+// RelPropertyTypeClassCountsCapability is OPTIONAL: the relationship mirror, the
+// gate for the rel ORDER BY r.prop LIMIT k push-down. Memory, badger and sharded
+// (slot counters summed) implement it; tiered declines.
 type RelPropertyTypeClassCountsCapability interface {
 	RelPropertyTypeClassCounts(relTypeToken uint16, propertyKey string) (PropertyTypeClassCounts, error)
 }
 
-// TemporalIndexCapability is OPTIONAL — see the note on
-// PropertyIndexCapability.
+// TemporalIndexCapability is OPTIONAL, like PropertyIndexCapability.
 type TemporalIndexCapability interface {
 	CreateTemporalIndex(labelToken uint16) error
 	DropTemporalIndex(labelToken uint16) error
 }
 
-// TemporalCandidateCapability is OPTIONAL (B4). It lets the graph layer prune a
-// temporal query's candidate node-ID set against the per-label valid-time ENVELOPE
-// index — the valid-time analogue of the K1 label-membership sidecar. It is SOUND
-// for any store to implement: an id the index does not cover is always kept, so an
-// incomplete or wrapper-inherited index costs pruning recall, never correctness
-// (the chain resolver stays authoritative). A store without a temporal index for
-// the label returns ok=false, and the caller keeps every candidate.
+// TemporalCandidateCapability is OPTIONAL (B4): prunes a temporal query's candidate
+// node IDs against the per-label valid-time envelope index (docs/architecture.md
+// "Temporal envelope indexes"). Sound for any store: an id the index does not
+// cover is kept, so an incomplete index costs recall, never correctness.
 type TemporalCandidateCapability interface {
-	// PruneTemporalCandidates returns the subset of ids that may still satisfy the
-	// valid-time filter in opts (ValidAt point, or ValidStart/ValidEnd interval): an
-	// id whose envelope is present AND provably cannot overlap the query is dropped;
-	// every other id is kept. ok is false when no temporal index covers labelToken
-	// or opts carries no valid-time filter — the caller then keeps ids unchanged.
+	// PruneTemporalCandidates returns the ids that may still satisfy the valid-time
+	// filter in opts (ValidAt or ValidStart/ValidEnd); an id with a present envelope
+	// that provably cannot overlap is dropped. ok is false when no temporal index
+	// covers labelToken or opts has no valid-time filter; the caller keeps ids unchanged.
 	PruneTemporalCandidates(labelToken uint16, ids []types.NodeID, opts QueryOpts) (kept []types.NodeID, ok bool)
 }
 
-// RelTypeTemporalIndexCapability is OPTIONAL — the relationship-type mirror of
-// TemporalIndexCapability (BACKLOG 21c), keyed by rel-type token instead of
-// label token, in its own independent index namespace.
+// RelTypeTemporalIndexCapability is OPTIONAL: the relationship-type mirror of
+// TemporalIndexCapability (BACKLOG 21c), in its own index namespace.
 type RelTypeTemporalIndexCapability interface {
 	CreateRelTemporalIndex(relType uint16) error
 	DropRelTemporalIndex(relType uint16) error
 }
 
-// RelTypeTemporalCandidateCapability is OPTIONAL (B4 rel-side mirror,
-// BACKLOG 21c). It lets the graph layer prune a temporal query's candidate
-// relationship-ID set against the per-rel-type valid-time ENVELOPE index, the
-// same sound-superset contract as TemporalCandidateCapability: an id the
-// index does not cover is always kept, so an incomplete index costs pruning
-// recall, never correctness.
+// RelTypeTemporalCandidateCapability is OPTIONAL (BACKLOG 21c): the rel-type mirror
+// of TemporalCandidateCapability, same sound-superset contract.
 type RelTypeTemporalCandidateCapability interface {
-	// PruneRelTypeTemporalCandidates returns the subset of ids that may still
-	// satisfy the valid-time filter in opts. ok is false when no temporal index
-	// covers relType or opts carries no valid-time filter — the caller then
-	// keeps ids unchanged.
+	// PruneRelTypeTemporalCandidates returns the ids that may still satisfy the
+	// valid-time filter in opts; ok is false when no temporal index covers relType
+	// or opts has no valid-time filter.
 	PruneRelTypeTemporalCandidates(relType uint16, ids []types.RelID, opts QueryOpts) (kept []types.RelID, ok bool)
 }
 
-// VectorIndexCapability is OPTIONAL. The reference implementation is a
-// brute-force in-memory k-NN. Backends backed by a remote vector store
-// should plug in here without having to implement the rest of Store.
-// Implementations must reject indexed vectors and search queries containing
-// NaN or infinity with ErrInvalidVectorValue.
+// VectorIndexCapability is OPTIONAL: vector index management and k-NN search.
+// Implementations must reject indexed vectors and queries containing NaN or
+// infinity with ErrInvalidVectorValue.
 type VectorIndexCapability interface {
 	CreateVectorIndex(labelToken uint16, propertyKey string, dims int, metric DistanceMetric) error
 	DropVectorIndex(labelToken uint16, propertyKey string) error
 	SearchNearestNodes(labelToken uint16, propertyKey string, query []float32, k int, opts QueryOpts) ([]*types.Node, error)
 }
 
-// VectorIndexOptions configures the search engine and tuning chosen at
-// CreateVectorIndex time. Zero values select the documented defaults: the
-// approximate HNSW engine (see pkg/graph/internal/index/hnsw.go) with
-// M=16, EfConstruction=200, EfSearch=64 — see CLAUDE.md "Vector Indexes".
-// Additive: a backend need not implement VectorIndexOptionsCapability to
-// remain a conformant Store — it simply keeps handling CreateVectorIndex
-// through the mandatory VectorIndexCapability door with its own default
-// engine, and callers reaching for the options door on such a backend
-// silently fall back to plain CreateVectorIndex (opts unavailable).
+// VectorIndexOptions configures the engine and tuning at creation. Zero values
+// select the defaults: approximate HNSW with M=16, EfConstruction=200,
+// EfSearch=64 (AGENTS.md "Vector Indexes"). A backend without
+// VectorIndexOptionsCapability keeps its own default engine.
 type VectorIndexOptions struct {
-	// UseBruteForce selects the exact linear-scan k-NN engine instead of
-	// the default approximate HNSW engine — the escape hatch for
-	// exact-recall requirements (compliance workloads, small indexes,
-	// correctness oracles).
+	// UseBruteForce selects the exact linear-scan engine instead of HNSW (exact
+	// recall, small indexes, oracles).
 	UseBruteForce bool
 
-	// HNSW tuning. Ignored when UseBruteForce is true. Zero = default.
+	// HNSW tuning; ignored with UseBruteForce, zero = default.
 	M              int // Max bidirectional links per node above layer 0. Default 16.
 	EfConstruction int // Candidate list size while building. Default 200.
 	EfSearch       int // Candidate list size while searching. Default 64.
 }
 
-// VectorIndexOptionsCapability is OPTIONAL. A backend implementing it
-// accepts the engine/tuning choice in VectorIndexOptions at creation time
-// in addition to the mandatory VectorIndexCapability.CreateVectorIndex
-// door (which keeps working — it now defaults to the same HNSW engine with
-// VectorIndexOptions{} i.e. all-default tuning). Every in-tree backend
-// (memory/badger/tiered) implements this capability.
+// VectorIndexOptionsCapability is OPTIONAL: accepts VectorIndexOptions at creation
+// (CreateVectorIndex keeps working with defaults). Every in-tree backend
+// implements it.
 type VectorIndexOptionsCapability interface {
 	CreateVectorIndexWithOptions(labelToken uint16, propertyKey string, dims int, metric DistanceMetric, opts VectorIndexOptions) error
 }
 
-// FilteredVectorSearchCapability is OPTIONAL but strongly recommended for
-// any backend that exposes vector search under temporal filters or any
-// other graph-layer eligibility predicate. With it, the graph pushes the
-// eligibility filter into the search BEFORE the k-cut so the top-k is
-// taken from the eligible-only set.
-//
-// Backends that cannot natively pre-filter still expose useful behaviour
-// through `SearchNearestNodes`; the graph-layer fallback performs
-// iterative over-fetch (k → 2k → 4k …, clamped to the package-internal
-// overfetchCeiling = 65536) until k eligible results are accumulated or
-// the backend exhausts. For k > overfetchCeiling, the fallback returns
-// at most overfetchCeiling eligible matches; backends that need to serve
-// larger k correctly should implement this capability so the graph can
-// skip the loop and rely on the backend's pre-filtered top-k.
-//
-// snowflake.ID is the raw entity-ID type used by the predicate so the
-// hook is independent of the typed NodeID/RelID wrappers.
+// FilteredVectorSearchCapability is OPTIONAL but recommended: the graph pushes its
+// eligibility filter (temporal filters etc.) into the search BEFORE the k-cut.
+// Without it the graph over-fetches iteratively (k, 2k, 4k ... up to the internal
+// overfetchCeiling = 65536), so larger k needs this capability. snowflake.ID keeps
+// the hook independent of NodeID/RelID wrappers.
 type FilteredVectorSearchCapability interface {
 	SearchNearestFiltered(labelToken uint16, propertyKey string, query []float32, k int, filter func(rawID snowflake.ID) bool) ([]snowflake.ID, error)
 }
 
-// HighFrequencyIndexCapability is OPTIONAL — see the note on
-// PropertyIndexCapability. Implementations that have no need for the
-// time-bucketed amortised insertion path may omit it. Implementations must
-// reject bucket sizes that are not positive whole milliseconds with
-// ErrInvalidTemporalIndexConfig.
+// HighFrequencyIndexCapability is OPTIONAL, like PropertyIndexCapability: the
+// time-bucketed insertion path. Bucket sizes that are not positive whole
+// milliseconds are rejected with ErrInvalidTemporalIndexConfig.
 type HighFrequencyIndexCapability interface {
 	CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Duration) error
 	DropHighFrequencyIndex(labelToken uint16) error
 }
 
-// MandatoryStore is the embedded composition of capabilities every
-// implementation MUST satisfy. The graph layer's Core type narrows its
-// store field to MandatoryStore and type-asserts for optional capabilities
-// at the call sites that need them, returning ErrCapabilityNotSupported
-// (wrapped with the missing-capability name) on assertion miss.
-//
-// Out-of-tree backends that need to implement only a subset of
-// functionality can satisfy MandatoryStore alone; they will work for the
-// graph's core CRUD/history/iteration/stats surface and will surface
-// ErrCapabilityNotSupported for index operations they do not support.
+// MandatoryStore is the composition every implementation MUST satisfy. The graph
+// Core narrows its store to it and type-asserts optional capabilities, returning
+// ErrCapabilityNotSupported (naming the capability) on a miss.
 type MandatoryStore interface {
 	Lifecycle
 	NodeCRUDCapability
@@ -1374,52 +976,29 @@ const (
 	ColBool
 )
 
-// ColumnBatch is a block of node rows delivered as TYPED COLUMNS.
+// ColumnBatch is a block of node rows delivered as typed columns, converted in
+// the store where the stored type is known, so consumers read slices without
+// boxing each value through GetProperty.
 //
-// A consumer that wants scalars — a query engine, an exporter, an analytics pass —
-// otherwise receives []*types.Node and reads each property through GetProperty,
-// which hands back `any`. Values stored as Instant, int or int32 then cost one heap
-// box each to convert, and a caller that wants int64 columns cannot avoid it. This
-// carries the conversion into the store, where the stored type is already known,
-// and hands out slices the caller can read without boxing.
-//
-// Exactly one of Ints/Flts/Strs/Bools is populated per column, selected by Kinds,
-// with one slot per row. Null marks a row where the column holds no value; the
-// corresponding typed slot holds that type's zero value. Other (on ColumnData) tells
-// a row that holds the property in a shape the column cannot carry from one that
-// does not hold it.
+// Exactly one of Ints/Flts/Strs/Bools is populated per column (selected by
+// Kinds), one slot per row. Null marks a row without a value (zero typed slot).
+// Other (on ColumnData) tells a row holding the property in a shape the column
+// cannot carry from one that does not hold it.
 type ColumnBatch struct {
 	IDs []types.NodeID
-	// Ordinals is parallel to IDs: each node's dense ordinal
-	// (types.Node.Ordinal), 0 where the store numbers none (tiered, badger with
-	// DisableOrdinals).
+	// Ordinals is parallel to IDs: each node's dense ordinal (types.Node.Ordinal),
+	// 0 where the store numbers none (tiered, badger with DisableOrdinals).
 	Ordinals []uint32
-	// ValidFrom/ValidTo are parallel to IDs, in the same scan.
-	//
-	// A caller that only wanted property values would not need them — but a
-	// bitemporal consumer reading columns still has to know WHEN each row holds,
-	// and fetching that separately means holding the entity after all, which is
-	// exactly the materialisation a column scan exists to avoid. Zero means the
-	// node carries no temporal metadata; ValidTo zero also means open-ended, which
-	// is the store-wide convention.
+	// ValidFrom/ValidTo are parallel to IDs. Zero means no temporal metadata; ValidTo
+	// zero also means open-ended.
 	ValidFrom []int64
 	ValidTo   []int64
 	ColumnData
 }
 
-// ColumnData is the typed column payload, shared by ColumnBatch and
-// RelColumnBatch.
-//
-// It is a separate struct so the kind-resolution and refusal rules have exactly
-// ONE implementation across entity kinds. The alternative — a parallel set of
-// column fields on the relationship batch — is the same hazard the package comment
-// on ScanColumnsFromNodes warns about between BACKENDS, one level up: two copies
-// would be two chances to disagree about when a column refuses versus reports a row
-// absent, and a consumer would see nodes and relationships answer differently for
-// identically-shaped data.
-//
-// Embedded, so existing node consumers keep reading batch.Ints / batch.Kinds
-// unchanged.
+// ColumnData is the typed column payload shared by ColumnBatch and RelColumnBatch,
+// so kind resolution and refusal rules have one implementation across entity
+// kinds. Embedded, so batch.Ints / batch.Kinds read unchanged.
 type ColumnData struct {
 	Kinds []ColumnKind
 	Ints  [][]int64
@@ -1427,155 +1006,94 @@ type ColumnData struct {
 	Strs  [][]string
 	Bools [][]bool
 	Null  [][]bool
-	// Other mirrors SegmentColumnValues.Other: Other[c][k] means row k HOLDS
-	// property c, but not as a Kinds[c] value — a list, a map, a struct, a scalar
-	// of another kind (a string in an int column); read it from the row
-	// (Nodes().Get /
-	// Rels().Get, or ByLabel / ByType under the same QueryOpts). Such a cell is
-	// also Null[c][k] == true with a zero typed slot, so a reader that ignores
-	// Other sees it missing, as before Other existed. Not the partition of
-	// PropertyTypeClassCounts.Other (slices, maps, structs only).
-	//
-	// nil when no cell of the batch is Other (the common path allocates
-	// nothing); otherwise len(Other) == len(Kinds) and every Other[c] is
-	// parallel to Null[c]. Filled identically for node and relationship
-	// batches.
+	// Other mirrors SegmentColumnValues.Other: Other[c][k] means row k HOLDS property
+	// c, but not as a Kinds[c] value (list, map, struct, a scalar of another kind);
+	// read it from the row. Such a cell is also Null[c][k] == true with a zero typed
+	// slot. Not the PropertyTypeClassCounts.Other partition. nil when no cell is
+	// Other; otherwise len(Other) == len(Kinds), parallel to Null.
 	Other [][]bool
 }
 
-// RelColumnBatch is the relationship sibling of ColumnBatch.
-//
-// It carries StartIDs/EndIDs alongside the property columns because endpoints are
-// STRUCTURE, not an optional column: a traversal aggregation reading columns needs
-// (start, end, weight) together, and fetching endpoints separately means holding
-// the *types.Relationship after all — exactly the materialisation a column scan
-// exists to avoid.
-//
-// Same contract as ColumnBatch: batches arrive in ID order, fn MUST NOT retain the
-// batch (slices are reused across calls), and returning false stops the scan.
+// RelColumnBatch is the relationship sibling of ColumnBatch, with StartIDs/EndIDs
+// as structure (traversal aggregation needs (start, end, weight) together).
+// Same contract: ID order, fn MUST NOT retain the batch (slices are reused),
+// returning false stops.
 type RelColumnBatch struct {
-	// RelType names the relationship type of every row of the batch (a batch
-	// holds one type's rows). Set by the graph's ScanRelColumns door, which
-	// reads every type for an empty type name; empty at the store boundary.
+	// RelType names the relationship type of the batch's rows. Set by the graph's
+	// ScanRelColumns door (all types for an empty name); empty at the store boundary.
 	RelType string
 	IDs     []types.RelID
 	// Ordinals is parallel to IDs: each relationship's dense ordinal
-	// (types.Relationship.Ordinal, store.OrdinalCapability), so a consumer
-	// numbering relationships needs no read per row; 0 where the store numbers
-	// none (tiered, badger with DisableOrdinals, a declared segment type).
+	// (types.Relationship.Ordinal, store.OrdinalCapability); 0 where the store
+	// numbers none (tiered, badger with DisableOrdinals, a declared segment type).
 	Ordinals []uint32
 	StartIDs []types.NodeID
 	EndIDs   []types.NodeID
-	// StartOrdinals/EndOrdinals are parallel to IDs: the endpoints' dense
-	// ordinals (types.Relationship.StartOrdinal / EndOrdinal), so a consumer
-	// numbering nodes builds an adjacency by ordinal with no read per
-	// endpoint; 0 where the store numbers none (tiered, badger with
-	// DisableOrdinals, a declared segment type).
+	// StartOrdinals/EndOrdinals are parallel to IDs: the endpoints' dense ordinals;
+	// 0 where the store numbers none.
 	StartOrdinals []uint32
 	EndOrdinals   []uint32
-	// ValidFrom/ValidTo are parallel to IDs, for the same bitemporal reason as on
-	// ColumnBatch. Zero ValidTo means open-ended.
+	// ValidFrom/ValidTo are parallel to IDs as on ColumnBatch; zero ValidTo = open-ended.
 	ValidFrom []int64
 	ValidTo   []int64
 	ColumnData
 }
 
-// ErrMixedNumericColumn is returned when a scan cannot type a column.
-//
-// The scan capability is OPTIONAL. Backends that do not implement it are
-// unaffected; consumers type-assert and fall back to NodesByLabel.
-//
-// fn is called with batches in ID order and MUST NOT retain the batch — the slices
-// are reused across calls. Returning false stops the scan.
 // ErrMixedNumericColumn reports that a requested column holds both integral and
-// floating values, so it has no single type.
-//
-// The scan REFUSES rather than widening. Promoting such a column to float64 is
-// lossless for the values and NOT lossless for the caller: a consumer that decides
-// something from observing a mixed column — a query planner widening literals to
-// match, say — sees a uniform one instead and decides the opposite. Handing back a
-// typed column here would trade a visible refusal for a silent behaviour change.
+// floating values, so it has no single type. The scan refuses rather than
+// widening: a consumer deciding from a mixed column (a planner widening literals)
+// would otherwise see a uniform one and decide the opposite.
 var ErrMixedNumericColumn = errors.New("graph: column holds both integral and floating values")
 
-// NodeColumnScanCapability is implemented by backends that can deliver node rows
-// as typed columns. See ColumnBatch for why that matters and ErrMixedNumericColumn
-// for the one shape it refuses.
+// NodeColumnScanCapability is OPTIONAL: delivers node rows as typed columns, in ID
+// order; fn MUST NOT retain the batch and returning false stops. Consumers
+// type-assert and fall back to NodesByLabel. Refuses with ErrMixedNumericColumn.
 type NodeColumnScanCapability interface {
 	ScanNodeColumns(token uint16, props []string, opts QueryOpts,
 		fn func(*ColumnBatch) bool) error
 }
 
-// RelColumnScanCapability is implemented by backends that can deliver relationship
-// rows as typed columns, the sibling of NodeColumnScanCapability.
-//
-// Optional, like every capability here: consumers type-assert and fall back to
-// RelationshipsByType. Refuses on the same mixed-numeric shape, with the same
-// ErrMixedNumericColumn, because the refusal rules are shared code and not a
-// second implementation.
+// RelColumnScanCapability is OPTIONAL: the relationship sibling of
+// NodeColumnScanCapability; fallback RelationshipsByType, same refusal.
 type RelColumnScanCapability interface {
 	ScanRelColumns(token uint16, props []string, opts QueryOpts,
 		fn func(*RelColumnBatch) bool) error
 }
 
-// GroupCommitCapability coalesces the strong ingest applier's per-mutation
-// flushes. The caller serializes the entire Begin/End window with graph readers
-// and writers and bounds its memory footprint. EndGroupCommit flushes remaining
-// operations before acknowledgement, using the backend's configured durability.
-// A window is not a rollback transaction. A failed End must be reported to every
-// submitter; buffered operations may be retried by the backend's next flush.
-// Backend batch size limits, registry write-aheads and asynchronous background
-// flushing can require multiple physical writes. Crash atomicity is not promised.
-// Stores without this capability retain per-mutation flushing.
+// GroupCommitCapability coalesces the strong ingest applier's per-mutation flushes.
+// The caller serializes the Begin/End window with graph readers and writers and
+// bounds its memory. EndGroupCommit flushes before acknowledgement; a failed End
+// must be reported to every submitter. Not a rollback transaction, and crash
+// atomicity is not promised (backend batch limits can need several writes).
 type GroupCommitCapability interface {
 	BeginGroupCommit()
 	EndGroupCommit() error
 }
 
-// MutationFlushHoldCapability lets Config.DurableCommit commit a group on a
-// store that flushes and syncs every mutation (Badger SyncWrites) with one
-// synced write instead of one per mutation (backlog 52). Between
-// HoldMutationFlushes and ReleaseMutationFlushes the store skips the
-// per-mutation flush; the held writes stay pending until the group's
-// DurableFlush (or any earlier flush) commits them, and the store still
-// flushes when the held buffer reaches its pending-write bound, so a large
-// group flushes in steps instead of growing without limit.
-//
-// The caller holds the graph's exclusive write lock for the whole hold, so no
-// other mutation (a standalone write, whose SyncWrites flush is owed to its
-// own caller) can run inside it, and calls DurableFlush before reporting the
-// group durable. FlushesEveryMutation reports whether the store flushes every
-// mutation at all; only then is a hold worth the exclusive lock.
+// MutationFlushHoldCapability lets Config.DurableCommit commit a group on a store
+// that flushes every mutation (Badger SyncWrites) with one synced write (backlog
+// 52). Between HoldMutationFlushes and ReleaseMutationFlushes the store skips the
+// per-mutation flush (still flushing at its pending-write bound); the caller holds
+// the graph's exclusive write lock for the whole hold and calls DurableFlush
+// before reporting durable. FlushesEveryMutation says whether a hold is worth it.
 type MutationFlushHoldCapability interface {
 	FlushesEveryMutation() bool
 	HoldMutationFlushes()
 	ReleaseMutationFlushes()
 }
 
-// DurableFlushCapability makes every write the backend has accepted durable on
-// demand: Config.DurableCommit calls DurableFlush once at the end of each commit
-// group (GraphTx.Commit, Batch.Execute, the strong ingest applier) before the
-// door returns success.
+// DurableFlushCapability makes every accepted write durable on demand:
+// Config.DurableCommit calls DurableFlush once per commit group before returning
+// success. It writes the whole pending buffer and fsyncs the WAL on every open
+// shard (a clean or closed shard is skipped). On error the operations stay pending
+// and the group is not durable. A buffer over the transaction size limit is split,
+// so crash atomicity of a group is not promised.
 //
-// DurableFlush writes the whole pending write buffer (this group plus any earlier
-// unflushed writes) and fsyncs the write-ahead log, on every open shard of a
-// sharded or tiered store; a shard with nothing written since its last sync is
-// not synced again, and a closed shard is not opened. On error the buffered
-// operations stay pending for the next flush (nothing is dropped) and the caller
-// must treat the group as not durable. A buffer larger than the backend's
-// transaction size limit is split into several transactions by the backend, so
-// a crash during that flush can persist a subset: crash atomicity of a group is
-// not promised.
-//
-// Power-loss limit (Badger v4): its Sync fsyncs only the active memtable's WAL
-// and the current value-log file. A flush that fills the memtable retires the
-// WAL without an fsync, and a finished value-log file is synced only under
-// SyncWrites, so part of a group can be unsynced after DurableFlush returns.
-// It survives a process crash, not necessarily a power loss; SyncWrites is the
-// setting for strict power-loss durability.
-//
-// DurableFlushSupported reports whether the instance has stable storage at all
-// (false for an in-memory instance); a store without the capability, or one
-// reporting false, makes New with DurableCommit fail closed.
+// Power-loss limit (Badger v4): Sync fsyncs only the active memtable's WAL and
+// current value-log file, so part of a group can be unsynced after return: it
+// survives a process crash, not necessarily power loss (SyncWrites is the strict
+// setting). DurableFlushSupported is false for in-memory instances; a store
+// without the capability or reporting false makes New with DurableCommit fail closed.
 type DurableFlushCapability interface {
 	DurableFlushSupported() bool
 	DurableFlush() error

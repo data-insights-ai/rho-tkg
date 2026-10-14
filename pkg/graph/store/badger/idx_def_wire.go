@@ -2,27 +2,11 @@ package badger
 
 import "github.com/vmihailenco/msgpack/v5"
 
-// Hand-written msgpack encoders/decoders for the index-DEFINITION persistence
-// types (hfIdxDef, propIdxDef, vectorIdxDef, compositeIdxDef, relPropIdxDef —
-// BACKLOG 15v, same reflection audit as BACKLOG 15s/15t). These are ADMIN/
-// GROWTH-path types (persisted on index creation/removal, never per-entity-
-// write), so the win is smaller than 15s's hottest paths, but the pattern and
-// the underlying reflection cost (a generic per-field struct walk with
-// omitempty checks) are identical. Byte-identity with the previous
-// pure-reflection encoding is locked by the golden vectors in
-// idx_def_wire_golden_test.go (captured BEFORE these methods existed).
-// Map-key emission order matches each struct's field DECLARATION order.
-//
-// These types are persisted as top-level SLICES (msgpack.Marshal(defs), defs
-// []hfIdxDef etc.) — the outer slice-of-struct walk still goes through
-// msgpack's generic encodeArrayValue/DecodeArrayLen (reflect.Value.Index(i)
-// per element), since there is no dedicated slice fast path for a
-// caller-defined struct type. That per-element dispatch is cheap (a cached
-// type lookup, not a field walk) and is the same residual cost 15s/15t leave
-// in place for their own nested struct-slice fields; what these methods
-// eliminate is the expensive part — per-FIELD reflection with omitempty
-// testing — since each element's EncodeMsgpack/DecodeMsgpack is now called
-// directly once the per-element dispatch reaches it.
+// Hand-written msgpack codecs for the index-definition persistence types
+// (hfIdxDef, propIdxDef, vectorIdxDef, compositeIdxDef, relPropIdxDef; BACKLOG
+// 15v), admin-path types encoded without per-field reflection. Byte-identity with
+// the reflection encoding is locked by idx_def_wire_golden_test.go; map keys follow
+// struct field declaration order.
 
 var (
 	_ msgpack.CustomEncoder = hfIdxDef{}
@@ -274,9 +258,7 @@ func (d compositeIdxDef) EncodeMsgpack(enc *msgpack.Encoder) error {
 	if err := idxWireEncodeStringUint16Field(enc, "l", d.LabelToken); err != nil {
 		return err
 	}
-	// Keys []string already has msgpack's own dedicated zero-per-element-
-	// reflection fast path (encodeStringSliceValue) — enc.Encode dispatches to
-	// it directly, no further custom codec needed for this field.
+	// Keys []string has msgpack's own fast path; enc.Encode dispatches to it.
 	if err := enc.EncodeString("k"); err != nil {
 		return err
 	}
