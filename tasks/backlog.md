@@ -45,6 +45,7 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 | 58 | FEATURE (sigma R2) | Tiered: tx-membership sidecars (label/type, property value) and `*From` valid-end acceleration | DONE (Unreleased) |
 | 59 | PERF (sigma R3) | Tiered event-shard routing by mint instant: binary search instead of a linear window scan | done (Unreleased Changed); 700 shards 3301 -> 33 ns/op, evidence `tasks/evidence/shard-routing/` |
 | 60 | LOW (unverified, read from code) | Tiered ref-then-archive readers outside moveMu (NodesByLabel DepthAll, foldDocValuesServingEmpty, bulk/history scans) can straddle an ArchiveNode/RestoreNode | open; check each door's cross-shard contract first, red test before any fix |
+| 61 | FEATURE (René, ai-soc) | Integrity-hash switch (default on) and one binary hash path | open; building |
 | 52 | HIGH (ai-soc) | Durable commit under SyncWrites costs one fsync per mutation | in progress, v4.51.3 |
 | 53 | HIGH (ai-soc) | Relationship planner-stat memos hold one RAM entry per relationship | in progress, v4.51.3 |
 | 54 | HIGH (ai-soc) | Badger open walks every current row (open linear in history) | in progress, v4.51.3 |
