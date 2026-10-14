@@ -45,7 +45,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   chain's top). `nodeHasHistoryAbove` / `relHasHistoryAbove` are exact: the point read of current+1, and only
   when it misses one history page read of at most one row, which memory and badger answer from a per-ID upper
   bound of the top version (memory: raised by its one history-write funnel; badger: the history presence set)
-  without reading rows when nothing lies above: Update cost unchanged (`11-update-cost-allocator.txt`). The
+  without reading rows when nothing lies above: Update cost unchanged (`11-update-cost-allocator.txt`); sharded
+  gains the page read (`HistoryVersionPageCapability`, routed to the slot). The
   stores' own bulk as-of fast paths still probe current+1. Tests:
   `TestVersionAllocatorAboveCompactionGap`, `TestTxRollbackAppendsAboveCompactionGap` (nodes and relationships;
   red: `tasks/evidence/r10-write/10-red-allocator-gap.txt`), the 68b twin now with deletes, closes and this
