@@ -333,7 +333,10 @@ AS7 import/prepared/actual Ready activation and AD6 descriptor wiring are
 source-integrated at `edf266bd`, with exact owned anchor charging, incoming
 transient/terminal reservations and local-cursor reset. Native admission/floor,
 operative collection, scrub and fresh graph handoff still require implementation;
-all these new sources await execution. Complete retained terminal-bank comparison is
+all these new sources await execution. Fresh initialization preserves retention
+configuration and prepays/publishes its actual recovery-root census at
+`9741c403`/`9f9116b5`; older initialization profiles retain their existing bytes.
+Complete retained terminal-bank comparison is
 source-integrated at `045517ab`; graph Restore can detect unknown extra native
 owners instead of inspecting only the transient recovery owner. Its direct
 historical guard and existing unknown-version guard updates are authored only.
@@ -350,6 +353,8 @@ The fresh column artifact has its own version; the ordinary KV artifact is
 unchanged. Bounded independent checker/controller integration is source-integrated
 at `84225cc0`: exact raw originals, binary typed rows, initial/old/final cuts,
 sealed prefixes and actual cache bytes/ledgers share the existing finite spool.
+Owned native disk accounting streams directory entries at `fb5156b3`, retaining
+checked logical-byte/POSIX-block totals without a whole cache-file inventory.
 Durable pin-backed ownership beyond the current minute lease and source GC remain open.
 Native cost replay export/comparison is source-integrated at `2f46278f`: a later
 entry keeps its actual prefix/root and empty current CDC, joins the authentic
