@@ -201,9 +201,10 @@ func TestGraphCostParallelFreshBindingAndAuthenticatedAbortGuards(t *testing.T) 
 				t.Setenv("FDB_COST_ARTIFACT", t.TempDir())
 				t.Setenv("RHO_GRAPH_COST_LAYOUT", "kv")
 				profile := graphCostProfile{Version: 1, Facts: 33, CrossPercent: 100, Writers: writers}
-				// A fresh per-cell graph name is selected by the runner; clear only this
-				// test-owned namespace before the second distinct immutable profile.
-				if writers == 32 {
+				// The SDK fixture/launcher database is isolated. Clear only this
+				// test-owned fresh namespace before AND after each immutable profile,
+				// so a failed prior case or a rerun cannot silently adopt retained work.
+				cleanup := func() {
 					_, err := db.Transact(func(tr fdb.Transaction) (any, error) {
 						for g := uint8(0); g < 2; g++ {
 							tr.ClearRange(prefixRange((&harness{config: graphCostConfig("graph-cost-parallel-v1", profile)}).prefix(g)))
@@ -211,8 +212,13 @@ func TestGraphCostParallelFreshBindingAndAuthenticatedAbortGuards(t *testing.T) 
 						return nil, nil
 					})
 					if err != nil {
-						t.Fatal(err)
+						t.Error("test-owned parallel prefix cleanup", err)
 					}
+				}
+				t.Cleanup(cleanup)
+				cleanup()
+				if t.Failed() {
+					return
 				}
 				if err := runGraphCost(db, profile); err != nil {
 					t.Fatal(err)
