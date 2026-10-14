@@ -141,27 +141,32 @@ component does not close its whole fault family or V2.
 
 | Order | Remaining package | Closing evidence |
 |---|---|---|
-| A | Finish the current prepared-lock recovery and coordinator-loss components. [P06's four A/B × COMMIT/ABORT cells](evidence/v2-p06-first-yes-process-20261014/receipt.json) pass normal/race/scoped coverage and static gates with independent serial witnesses; locally integrated, hosted qualification pending. P03's actual coordinator-leader-loss component is source-reviewed; its finite normal run is next | Exact original decisions, restored conflict fencing, complete graph/index/CDC and old cuts after election/rejoin; targeted normal/race/coverage/static gates and reviewed integrated source |
+| A | Current recovery components integrated. [P06's four A/B × COMMIT/ABORT cells](evidence/v2-p06-first-yes-process-20261014/receipt.json) pass local normal/race/scoped coverage/static gates and independent serial witnesses; [hosted P06 qualification](evidence/v2-p06-first-yes-process-20261014/hosted-b9a4baa0.json) passes the same four cells in all three modes. [P03's A/B coordinator-leader-loss cells](evidence/v2-p03-coordinator-loss-20261014/receipt.json) pass local normal/race/scoped coverage/static gates; all six genuine captures independently replay with exact old-cut/CDC witnesses. P03's integrated hosted check remains pending | Exact original decisions, restored conflict fencing, complete graph/index/CDC and old cuts after election/rejoin; targeted normal/race/coverage/static gates and reviewed integrated source. These finite components do not close the broader P03/P06 families |
 | B | Complete P01–P06 production schedules: coordinator outside read scope; prepare/fence ordering; partial installation; frozen participant/digest and immutable decision; historical dependencies including absent keys, empty ranges, temporal predicates and endpoint-life ABA; conflicting transactions through failover | A requirement-to-case ledger covering every P01–P06 clause, with authentic native histories and the independent serial/cut oracle; no mixed, phantom or acknowledged-lost state |
 | C | Complete ownership, identity and reclamation: P07/P09 process interruptions during transfer/publication, stale authority and retry payload rejection, retained snapshot/feed lineage, expiration and application GC. Reuse P08 issuance/exhaustion proof unless changed source invalidates it | Same-directory recovery, original IDs/results, stale-owner refusal, pinned old-cut/CDC survival and safe reclamation; expired/unavailable remain distinct from exact-empty |
 | D | Finish graph-composed network, scheduler and storage campaigns | Lost/duplicate/reordered messages, asymmetric partitions, isolated leaders and quorum/domain loss; pause/unequal ticks/clock jumps; short/torn writes, EIO, ENOSPC, file/directory sync, snapshot rename/manifest and corrupt pages. Durable-image and real process evidence agree with the oracle. Bounded conflicting-transaction/fence/transfer exploration precedes recorded-seed soak |
 | E | Complete the equivalent FoundationDB fault/publication layers and runnable comparison matrix | Actual role/domain-loss and unknown-commit recovery, pins/GC and chunk/manifest failures; writer 8/32, native 1M multi-grant setup, both FDB layouts and bounded comparison state. Complete historical/index/CDC parity, cleanup and all-client/server resource accounting before accepting a cost cell |
 | F | Execute the declared matrix and select the engine, then run one coordinated V2 integration gate | 10k/100k/1M × 0/10/50/100% cross × 1/8/32 writers, five fresh repetitions per layout, all declared workloads and RTT profiles. Record total bytes, memory, throughput, latency, retries/recovery and complete oracle results. Written native/FDB deployment/cost/maintenance verdict; no missing acceptance rows or unresolved correctness failures |
 
-Immediate worker allocation: Sol 6.1/high for P06 qualification, Sol 6.1/high
-for P03, and Sol 6.1/medium for constant-space ACK timing attribution. The
-coordinator reviews and integrates. Close A first while B and performance
-diagnosis proceed; then assign the next finite B/C/D package to each freed
-worker. Implement in parallel, but keep heavy local fault/benchmark workloads
+Immediate worker allocation: Sol 6.1/high for P02 prepare/fence/election cases,
+Sol 6.1/high for the current v4.51.7 reader qualification, and Sol 6.1/medium
+for the finite P04 identity/decision cases and cost-embedding diagnosis. The
+coordinator reviews and integrates. P03/P06 components are integrated; remaining
+B and performance work proceeds, followed by finite C/D/E packages for freed
+workers. Implement in parallel, but keep heavy local fault/benchmark workloads
 separate so measurements are interpretable. Changes get affected checks;
 unchanged full suites are not repeated per patch. One integration gate follows
 the completed queue.
 
 The [latest native 10k run](evidence/v2-native-capacity-probe-20261014/receipt.json)
 reached its fixed 30-minute limit before final
-historical observations. Its ACK work dominates captured request timing, but
-queueing, polling and native Step costs are not yet separated. Attribute that
-cost, fix the measured cause and complete one matched 10k cell before launching
+historical observations. Its ACK work dominates captured request timing. The
+[bounded ACK timing and poll change](evidence/v2-ack-poll-20261014/receipt.json)
+passes the exact 17-fact local cell, routing/marker guards, normal/race/scoped
+coverage and affected static checks under Go1.26.9. Queue/Step timings overlap
+client timings; the earlier Go1.27 runs are historical only. No speed improvement
+or 10k cause is qualified. Establish the measured cause and complete one matched
+10k cell before launching
 larger/repeated cells. Preserve the full matrix and final history oracle.
 The base matrix alone is 180 runs per layout, before workload/RTT variants;
 this is substantial remaining execution, not an almost-finished gate. V3's
