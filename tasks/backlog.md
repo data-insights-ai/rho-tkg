@@ -239,7 +239,7 @@ Execution plan to finish V2 (2026-10-14; keep the A–F scope above):
    from comparable correctness, durability, total cost, deployment and maintenance
    evidence before V3 format freeze.
 6. **Run one coordinated V2 acceptance gate.** Reconcile main at a recorded
-   cutoff (live main is `c3bd7f71`/v4.52.0; current v5 source includes v4.51.8),
+   cutoff (last fetched main is `945fffc3`/v4.52.1; current v5 source includes v4.51.8),
    review relevant handover/consumer/CI deltas and integrate required changes.
    Preserve historical qualification rather than relabelling it as current.
    On the final integrated revision run full phase CI/race/coverage/security and
@@ -247,6 +247,20 @@ Execution plan to finish V2 (2026-10-14; keep the A–F scope above):
    by a subsequent correction. V2 closes with every A–F row accepted, the engine
    decision recorded, no unresolved correctness failure, and the exact branch
    revision pushed with passing applicable hosted gates. V3–V7 remain separate.
+
+Immediate handoff order: review and qualify P05 first, then the native
+same-directory reopen/index checkpoint (`7dc1f42b`), then the FDB raw artifact
+writer and comparison checkpoints (`2bcb91f8`, `66a8e36b`). These are source
+checkpoints, not accepted runtime components. P05's final shared resume-budget
+correction is frozen at `408555a7` and awaits independent source/runtime review;
+the native package has a
+deferred shared-child patch; the FDB writer has not run against the actual SDK.
+Close each with its affected normal/race/coverage/static checks and exact
+artifact review before opening another source package in that lane. The
+acceptance inventory records uncovered clauses while these checks run; it is
+not a prerequisite documentation project that delays the first gate. Larger
+cells start only after a complete tiny paired cell passes. Existing accepted
+components stay closed unless their source or required behavior changes.
 
 Worker lanes: Sol 6.1/high for P05 and remaining B protocol gaps, then C/D;
 Sol 6.1/medium for finite native reopen/index runner changes, with root review
