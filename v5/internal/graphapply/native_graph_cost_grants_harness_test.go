@@ -110,7 +110,7 @@ func nativeGraphCostInstallGrants(t *testing.T, n *certifiedProcessNetwork, s na
 	t.Helper()
 	grants := uint64(1)
 	if partition == 3 && block != 0 {
-		grants = (s.homeCount()+block-1)/block
+		grants = (s.homeCount() + block - 1) / block
 	}
 	if grants > 2 {
 		t.Fatal("cost setup exceeds two HOME blocks")
@@ -133,7 +133,7 @@ func nativeGraphCostInstallGrants(t *testing.T, n *certifiedProcessNetwork, s na
 		// not decoded cursor issuance or a fabricated stored grant observation.
 		if err := stream.Encode(struct {
 			Partition, Sequence, RequestedCount uint64
-			ReserveOutcome, InstallOutcome []byte
+			ReserveOutcome, InstallOutcome      []byte
 		}{partition, sequence, count, reserved.outcome, installed.outcome}); err != nil {
 			t.Fatal(err)
 		}

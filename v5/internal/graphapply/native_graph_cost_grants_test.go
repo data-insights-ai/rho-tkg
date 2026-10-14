@@ -46,7 +46,7 @@ func TestNativeGraphCostMillionFactProfileUsesBoundedGrantBlocks(t *testing.T) {
 // runner crosses the HOME grant boundary, then admits the remote endpoint.
 func TestNativeGraphCostMultipleGrantsSmallActualProcesses(t *testing.T) {
 	for _, cell := range []struct {
-		name string
+		name  string
 		cross uint64
 	}{{"local", 0}, {"cross", 100}} {
 		t.Run(cell.name, func(t *testing.T) {
