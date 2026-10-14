@@ -66,6 +66,13 @@ type TemporalIndex struct {
 	dirty    bool            // true when entries changed but slice not yet sorted/augmented
 	Building bool            // true while CreateTemporalIndex is still backfilling
 	Mutated  map[snowflake.ID]struct{}
+	// DiskWritten, non-nil only while a disk-backed (TemporalIndexOnDisk)
+	// create backfills, holds the IDs whose on-disk row a write added or
+	// removed since the build started: the create then writes no row for
+	// them (the write's row is newer than the backfill's fetch). Mutated
+	// cannot stand in: a PutNodeVersion marks it without a disk row, and a
+	// label removal writes a disk delete without marking it.
+	DiskWritten map[snowflake.ID]struct{}
 	// byID mirrors each id's current envelope bounds for O(1) EnvelopeOf lookups
 	// (the B4 candidate-prune primitive). Entries stays sorted-by-From for stabbing
 	// queries; byID stores BOUNDS (not slice positions), so a re-sort never

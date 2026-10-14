@@ -262,6 +262,10 @@ func highFrequencyBucketDuration(bucketMillis int64) (time.Duration, error) {
 // after the current-row backfill is merged and before the history fold.
 var temporalCreateBeforeFoldHook func()
 
+// temporalCreatePhase2Hook, set only by tests, runs in CreateTemporalIndex
+// after the Phase 2 fetch, before the Phase 3 merge takes idxMu.
+var temporalCreatePhase2Hook func()
+
 // CreateTemporalIndex creates a temporal index on nodes with the given label token.
 // Three-phase approach (same as CreatePropertyIndex) for safe concurrent operation.
 // Returns ErrTemporalIndexExists if the index already exists.
@@ -291,6 +295,9 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 	liveTI := indexpkg.NewTemporalIndex()
 	liveTI.Building = true
 	liveTI.Mutated = make(map[snowflake.ID]struct{})
+	if bs.temporalIdxOnDisk {
+		liveTI.DiskWritten = make(map[snowflake.ID]struct{})
+	}
 	bs.temporalIndexes[labelToken] = liveTI
 	nids, idErr := bs.labelNodeIDsSnapshotLocked(labelToken)
 	if idErr != nil {
@@ -324,13 +331,19 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 		from, to := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
 		backfill = append(backfill, nodeEntry{id: rawID, from: from, to: to})
 	}
+	if temporalCreatePhase2Hook != nil {
+		temporalCreatePhase2Hook()
+	}
 
 	// Phase 3: Merge backfill into live index under write Lock. The index stays
 	// Building (readers skip it) until the history fold below is in: a
 	// published envelope of current rows alone would prune a node by a past
 	// row (backlog 56). An ID written since Phase 1 gets its fetched row by
 	// Extend (a union: the write folded its own row, and an older row is still
-	// a row the ID had).
+	// a row the ID had). The disk row is written unless a write since Phase 1
+	// added or removed it (DiskWritten: its row is newer than the fetch, or
+	// the ID left the label); a write that left disk untouched
+	// (PutNodeVersion) left the fetched current row current.
 	bs.idxMu.Lock()
 	if err := requireTemporalIndexCurrentForCreate(bs.temporalIndexes, labelToken, liveTI); err != nil {
 		bs.idxMu.Unlock()
@@ -342,11 +355,11 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 			continue // node deleted during Phase 2
 		}
 		if liveTI.WasMutated(entry.id) {
-			liveTI.Extend(entry.id, entry.from, entry.to) // RAM only: the write maintained disk
-			continue
+			liveTI.Extend(entry.id, entry.from, entry.to)
+		} else {
+			liveTI.AddKnownAbsent(entry.id, entry.from, entry.to)
 		}
-		liveTI.AddKnownAbsent(entry.id, entry.from, entry.to)
-		if bs.temporalIdxOnDisk {
+		if _, written := liveTI.DiskWritten[entry.id]; bs.temporalIdxOnDisk && !written {
 			diskOps = append(diskOps, writeOp{
 				opType: writeOpSet,
 				key:    storepkg.TemporalIndexEntryKey(labelToken, entry.from, entry.id),
@@ -357,6 +370,7 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 	if len(diskOps) > 0 {
 		bs.appendOps(diskOps...)
 	}
+	liveTI.DiskWritten = nil
 	bs.idxMu.Unlock()
 	if temporalCreateBeforeFoldHook != nil {
 		temporalCreateBeforeFoldHook()
