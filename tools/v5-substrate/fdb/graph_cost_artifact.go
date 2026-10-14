@@ -185,8 +185,14 @@ func (h *harness) graphCostArtifacts(root *os.Root, initial, old, final cut, pol
 // Link publishes only the closed exclusive file and refuses an existing result.
 // The launcher must still prove exit0, owned cleanup and every artifact hash.
 func publishGraphCostResult(root *os.Root, result graphCostResult) error {
-	if root == nil || result.Version != 2 || result.OracleFormat != graphCostRawFormat {
+	if root == nil || !((result.Version == 2 && result.OracleFormat == graphCostRawFormat && result.Columns == nil) ||
+		(result.Version == 3 && result.OracleFormat == graphCostColumnFormat && result.Columns != nil && result.Columns.complete())) {
 		return errInvalid
+	}
+	if result.Columns != nil && (result.Config.Graph != "graph-cost-columns-v1" ||
+		!sameCertificate(result.Columns.Old.Generation.Initial, result.InitialCut) || !sameCertificate(result.Columns.Final.Generation.Initial, result.InitialCut) ||
+		!sameCertificate(result.Columns.Old.Generation.Cut, result.OldCut) || !sameCertificate(result.Columns.Final.Generation.Cut, result.FinalCut)) {
+		return errMismatch
 	}
 	file, encoder, err := openGraphCostArtifact(root, "fdb-cost-result.pending.json")
 	if err != nil {

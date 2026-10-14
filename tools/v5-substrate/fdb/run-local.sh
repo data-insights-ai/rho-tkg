@@ -7,6 +7,8 @@ cd "$(dirname "$0")"
 mode=${1:-test}
 profile=${2:-small}
 cost_qualify=${FDB_COST_QUALIFY:-0}
+cost_layout=${RHO_GRAPH_COST_LAYOUT:-kv}
+case "$cost_layout" in kv|columns) ;; *) echo 'RHO_GRAPH_COST_LAYOUT must be kv or columns' >&2; exit 2;; esac
 case "$cost_qualify" in 0|1) ;; *) echo 'FDB_COST_QUALIFY must be 0 or 1' >&2; exit 2;; esac
 case "$mode" in smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|cost-cell|static) ;; *) echo 'usage: run-local.sh [smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|cost-cell|static] [small|large]' >&2; exit 2;; esac
 runtime='foundationdb/foundationdb@sha256:c61744624e479d370a0120176e518bb569a2a18ee9abceaf7022c4367b54f1db'
@@ -293,7 +295,7 @@ if [ "$mode" = cost-cell ]; then
   printf '%s\n' "$cost_qualify" >"$out/cost-instrumented.txt"
   python3 -c 'import time; print(time.monotonic_ns())' >"$out/cost-controller-start-nanos.txt"
   docker run -d --name "$name" --network "$tag" --memory "${client_mib}m" --cpus 0.5 \
-    --env "FDB_CONNECTION_STRING=$connection" --env "RHO_GRAPH_COST_SPEC=$RHO_GRAPH_COST_SPEC" --env "FDB_COST_QUALIFY=$cost_qualify" --env FDB_COST_ARTIFACT=/evidence --env GOCOVERDIR=/evidence/cost-cover \
+    --env "FDB_CONNECTION_STRING=$connection" --env "RHO_GRAPH_COST_SPEC=$RHO_GRAPH_COST_SPEC" --env "RHO_GRAPH_COST_LAYOUT=$cost_layout" --env "FDB_COST_QUALIFY=$cost_qualify" --env FDB_COST_ARTIFACT=/evidence --env GOCOVERDIR=/evidence/cost-cover \
     --mount "type=bind,source=$out,target=/evidence" "$client_image" fdb-spike cost-cell >"$out/cost-client-id.txt"
   if ! python3 -B cost_monitor.py --seconds "$cost_seconds" --output "$out/cost-process-rss.jsonl" --servers "${servers[@]}" --client "$name" >"$out/cost-monitor.stdout" 2>"$out/cost-monitor.stderr"; then
     docker logs "$name" >"$out/cost-client.stdout" 2>"$out/cost-client.stderr" || true

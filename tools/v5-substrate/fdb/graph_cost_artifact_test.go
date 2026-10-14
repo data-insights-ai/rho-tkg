@@ -67,6 +67,93 @@ func TestGraphCostRawArtifactRefusesPartialEOFAndOverwrite(t *testing.T) {
 	}
 }
 
+// Source-only authored composition: typed columns, cache and reclamation are
+// genuine SDK calls. Execution/measurement belongs to the coordinated gate.
+func TestGraphCostColumnsActualHeldReadCacheAndDerivedCollection(t *testing.T) {
+	h := fixture(t, defaults())
+	directory := t.TempDir()
+	t.Setenv("FDB_COST_ARTIFACT", directory)
+	t.Setenv("RHO_GRAPH_COST_LAYOUT", "columns")
+	p := graphCostProfile{Version: 1, Facts: 2, CrossPercent: 100, Writers: 1}
+	if err := runGraphCost(h.db, p); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := root.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	body, err := root.ReadFile("fdb-cost-result.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := decode[graphCostResult](body)
+	if err != nil || result.Version != 3 || result.OracleFormat != graphCostColumnFormat || result.Config.Graph != "graph-cost-columns-v1" || result.Columns == nil || !result.Columns.complete() {
+		t.Fatal("column lane was not genuinely selected/sealed", result, err)
+	}
+	artifact, err := root.ReadFile("fdb-cost-columns.jsonl")
+	if err != nil || sha256.Sum256(artifact) != result.Columns.ArtifactSHA256 {
+		t.Fatal("column artifact hash", err)
+	}
+	var points, refusals int
+	var collected bool
+	for _, line := range bytes.Split(bytes.TrimSuffix(artifact, []byte{'\n'}), []byte{'\n'}) {
+		var kind struct{ Type string }
+		if err := json.Unmarshal(line, &kind); err != nil {
+			t.Fatal(err)
+		}
+		switch kind.Type {
+		case "point":
+			var point struct {
+				Type, Generation string
+				Owner            uint64
+				Found            bool
+				Row              graphColumnRow
+			}
+			if err := json.Unmarshal(line, &point); err != nil {
+				t.Fatal(err)
+			}
+			want := int64(6)
+			if point.Generation == "old" {
+				want = 5
+			}
+			if point.Found != (point.Owner != 5) || point.Found && (point.Row.Value != want || point.Row.Owner != point.Owner) || !point.Found && !graphColumnSameRow(point.Row, graphColumnRow{}) {
+				t.Fatal("old/final/phantom point", point)
+			}
+			points++
+		case "refusal":
+			refusals++
+		case "collect":
+			var collection struct {
+				Type   string
+				Budget graphColumnCollectBudget
+				Result graphColumnCollectResult
+				Absent []byte
+				Guard  graphCostStoredRecord
+			}
+			if err := json.Unmarshal(line, &collection); err != nil {
+				t.Fatal(err)
+			}
+			guard, err := decode[graphColumnGuard](collection.Guard.Value)
+			if err != nil || !collection.Result.Done || guard.State != columnGuardCollected || guard.DeletedBytes != result.Columns.Old.Bytes || !bytes.HasSuffix(collection.Absent, []byte("/chunk/0000000000000000")) {
+				t.Fatal("bounded actual derived collection", collection, err)
+			}
+			collected = true
+		}
+	}
+	if points != 6 || refusals != 4 || !collected || result.Columns.Old.Rows != 5 || result.Columns.Final.Rows != 7 {
+		t.Fatal("missing exact lifecycle", points, refusals, collected, result.Columns)
+	}
+	// These source EOFs were captured AFTER collection, not a pre-GC replay.
+	if result.StreamEnds[0].Rows != [2]uint64{10, 5} || result.StreamEnds[2].Groups != [2]uint64{6, 1} {
+		t.Fatal("derived collection lost retained source", result.StreamEnds)
+	}
+}
+
 // This direct runner parent requires real native SDK transactions through
 // fixture. It adds no fake FDB/model acceptance and is source-only until leased.
 func TestGraphCostRawArtifactsActualCutsOriginalsAndEOF(t *testing.T) {

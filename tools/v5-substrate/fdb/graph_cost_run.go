@@ -36,6 +36,7 @@ type graphCostResult struct {
 	IDAdmission                                              string
 	OracleFormat                                             string                `json:"oracleFormat,omitempty"`
 	StreamEnds                                               [3]graphCostStreamEnd `json:",omitzero"`
+	Columns                                                  *graphCostColumnEnd   `json:",omitempty"`
 }
 
 func graphCostSpecFromEnv() (graphCostProfile, error) {
@@ -177,7 +178,15 @@ func graphCostCheckView(view graphView, p graphCostProfile, want int64) error {
 }
 func runGraphCost(db fdb.Database, p graphCostProfile) (err error) {
 	started := time.Now()
-	c := graphCostConfig("graph-cost-v1", p)
+	layout := os.Getenv("RHO_GRAPH_COST_LAYOUT")
+	if layout != "" && layout != "kv" && layout != "columns" {
+		return errInvalid
+	}
+	graph := "graph-cost-v1"
+	if layout == "columns" {
+		graph = "graph-cost-columns-v1"
+	}
+	c := graphCostConfig(graph, p)
 	h, err := newHarness(db, c)
 	if err != nil {
 		return err
@@ -229,6 +238,14 @@ func runGraphCost(db fdb.Database, p graphCostProfile) (err error) {
 		return err
 	}
 	result.InitialCut = initial.record
+	var columns *graphCostColumnLane
+	if layout == "columns" {
+		columns, err = newGraphCostColumnLane(h, artifactRoot, initial)
+		if err != nil {
+			return err
+		}
+		defer func() { err = errors.Join(err, columns.Close()) }()
+	}
 	apply := func(phase string, i uint64, command graphCommand, provenance uint64) error {
 		begin := time.Now()
 		before, attempts, err := h.graphCostPointSnapshot(command)
@@ -337,6 +354,11 @@ func runGraphCost(db fdb.Database, p graphCostProfile) (err error) {
 		if phase == "create" {
 			old = certified
 			result.OldCut = certified.record
+			if columns != nil {
+				if err := columns.holdOld(certified); err != nil {
+					return err
+				}
+			}
 		} else {
 			result.FinalCut = certified.record
 		}
@@ -346,6 +368,16 @@ func runGraphCost(db fdb.Database, p graphCostProfile) (err error) {
 	if err := errors.Join(latency.Close(), cdc.Close()); err != nil {
 		return err
 	}
+	var columnEnd *graphCostColumnEnd
+	if columns != nil {
+		end, err := columns.finish(cut{result.FinalCut})
+		if err != nil {
+			return err
+		}
+		columnEnd = &end
+	}
+	// In the column lane this authentic source census follows derived collection:
+	// source history/current/original CDC must still reach all three real EOFs.
 	ends, err := h.graphCostArtifacts(artifactRoot, initial, old, cut{result.FinalCut}, graphCostStreamPolicy{PageRows: 128, PageBytes: 16 << 20})
 	if err != nil {
 		return err
@@ -354,6 +386,9 @@ func runGraphCost(db fdb.Database, p graphCostProfile) (err error) {
 		return errMismatch
 	}
 	result.StreamEnds, result.OracleFormat = ends, graphCostRawFormat
+	if columnEnd != nil {
+		result.Version, result.OracleFormat, result.Columns = 3, graphCostColumnFormat, columnEnd
+	}
 	result.VerificationNanos = time.Since(begin).Nanoseconds()
 	result.TotalNanos = time.Since(started).Nanoseconds()
 	return publishGraphCostResult(artifactRoot, result)
