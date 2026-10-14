@@ -277,8 +277,10 @@ def decision_manifest(source_wire, manifest, coordinator, scopes, before):
     require(P.business_hash(source_wire, coordinator) == P.business_hash(original_wire), "queued complete original business")
     configuration, declaration, routing, template = (m.take(32) for _ in range(4))
     require((configuration, declaration, routing) == (source["configuration"], source["declaration"], source["routing"]) and any(template) and m.number(4) == 2, "queued complete configuration/participants")
+    floors = {}
     for partition in (3, 8):
         actual, floor, k = m.number(), m.number(), P.Cursor(P.body(m.field(), b"GPK\1"))
+        floors[partition] = floor
         require(actual == partition and k.take(16) == tx and k.take(16) == P.GRAPH and k.number() == partition and k.number() == int.from_bytes(scopes[partition][40:48], "big"), "queued kernel ownership/namespace")
         require(tuple(k.take(32) for _ in range(4)) == (configuration, declaration, routing, template), "queued kernel configuration/template")
         effect = k.take(32)
@@ -292,7 +294,7 @@ def decision_manifest(source_wire, manifest, coordinator, scopes, before):
     expected = hashlib.sha256(b"rho-tkg:cross-transaction-id:v1\0" + P.GRAPH + struct.pack(">Q", coordinator) + source["request"]).digest()[:16]
     require(tx == expected, "queued qualified original identity")
     return dict(tx=tx, digest=hashlib.sha256(manifest).digest(), coordinator=coordinator,
-                configuration=configuration, routing=routing, source=source, wire=source_wire, manifest=manifest)
+                configuration=configuration, routing=routing, source=source, wire=source_wire, manifest=manifest, floors=floors)
 
 
 def decision_command(wire):
@@ -424,7 +426,13 @@ def decision_check(data):
     require(decision_a == statuses[(a["tx"], 3, 3)] and decision_b == statuses[(b["tx"], 8, 3)], "queued actual immutable decisions")
     first_index = queue["BeforeLastIndex"] + 1
     require(phases[b["tx"]][(8, 3)]["index"] == first_index and all(P.raw(records[(8, first_index+i)]["Outcome"]) == decision_b and not P.raw(records[(8, first_index+i)]["CDC"]) for i in range(2)), "queued second native decision did not retain first durable original")
-    require(registration_wire == statuses[(b["tx"], 8, 1)], "capacity Prepare differs from actual retained registration")
+    registration = bytearray(P.body(statuses[(b["tx"], 8, 1)], b"GCS\1"))
+    require(int.from_bytes(registration[81:89], "big") == b["floors"][8], "retained Register captured coordinator floor")
+    # The completed Register lookup projects only floor=0 from its immutable R
+    # control. All other bytes must match the genuine retained original exactly.
+    registration[81:89] = bytes(8)
+    projected_registration = b"GCS\1" + registration
+    require(registration_wire == projected_registration + hashlib.sha256(projected_registration).digest(), "capacity Prepare differs from actual retained Register projection")
     for s, wire in zip(commit["proofs"], commit["proof_wires"]):
         require(wire == statuses[(b["tx"], s["partition"], 2)], "all-YES candidate differs from actual retained votes")
     require(len(data["Pending"]) == 2, "queued pending caller census")
