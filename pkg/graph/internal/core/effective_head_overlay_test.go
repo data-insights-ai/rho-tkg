@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -51,7 +52,7 @@ func TestHeadOverlay_MatchesFold(t *testing.T) {
 		}
 		return out
 	}
-	answered, declined, entries := 0, 0, 0
+	answered, declined, entries, corrections := 0, 0, 0, 0
 	for iter := range 20000 {
 		n := 2 + rng.IntN(5)
 		chain := make([]*types.Node, 0, n+3)
@@ -93,6 +94,7 @@ func TestHeadOverlay_MatchesFold(t *testing.T) {
 		if got, want := e.pieces, toHead(fold); !slices.Equal(got, want) {
 			t.Fatalf("iter %d: entry %v, fold %v", iter, got, want)
 		}
+		corrections += checkHeadCorrection(t, g, rng, e, chain, cur, iter)
 		var appended []*types.Node
 		for k := range 1 + rng.IntN(3) {
 			atx := tx + types.Instant(1+k)
@@ -118,11 +120,86 @@ func TestHeadOverlay_MatchesFold(t *testing.T) {
 		if got, want := ov.pieces, toHead(g.nodeEffectivePieces(grown, gpin)); !slices.Equal(got, want) {
 			t.Fatalf("iter %d: overlay %v, fold %v\nchain%s\nappended%s", iter, got, want, headRows(chain), headRows(appended))
 		}
+		// The overlay keeps the correction facts (backlog 68b) the fold of
+		// the grown chain gathers.
+		var gf headFacts
+		effectivePiecesFacts(g, nodeKernel, grown, gpin, &gf)
+		if !gf.ok || !slices.Equal(ov.bounds, gf.bounds) || ov.open != gf.open || ov.maxVer != gf.maxVer {
+			t.Fatalf("iter %d: overlay facts bounds %v open %+v maxVer %d, fold %v %+v %d (ok %v)\nchain%s\nappended%s", iter,
+				ov.bounds, ov.open, ov.maxVer, gf.bounds, gf.open, gf.maxVer, gf.ok, headRows(chain), headRows(appended))
+		}
 	}
-	t.Logf("%d entries, %d overlays checked, %d declined", entries, answered, declined)
-	if answered < 1000 || declined < 1000 {
-		t.Fatalf("generator coverage: %d answered, %d declined", answered, declined)
+	t.Logf("%d entries, %d overlays checked, %d declined, %d corrections planned", entries, answered, declined, corrections)
+	if answered < 1000 || declined < 1000 || corrections < 1000 {
+		t.Fatalf("generator coverage: %d answered, %d declined, %d corrections", answered, declined, corrections)
 	}
+}
+
+// checkHeadCorrection plans random corrections of chain from its entry e
+// (chainFromHead, backlog 68b) and requires what the history read computes
+// (temporal_cascade.go): the resumption source and end, the correction
+// segments (bounds, base, gap) for a correction and an excise, and the
+// newest open belief. Returns the corrections checked.
+func checkHeadCorrection(t *testing.T, g *Core, rng *rand.Rand, e *headEntry, chain []*types.Node, cur *types.Node, iter int) int {
+	t.Helper()
+	pre := versionOrdered(slices.Clone(chain))
+	byVersion := map[uint32]*types.Node{}
+	for _, r := range chain {
+		byVersion[r.Version()] = r
+	}
+	read := func(v uint32) (*types.Node, error) {
+		if r, ok := byVersion[v]; ok {
+			return r, nil
+		}
+		return nil, storepkg.ErrVersionNotFound
+	}
+	var open openBelief
+	var top uint32
+	for _, r := range pre {
+		top = max(top, r.Version())
+		if _, end := g.nodeOwnBounds(r); end == 0 && !isVoidRow(r) {
+			open.note(beliefTx(r.Temporal()), r.Version())
+		}
+	}
+	checked := 0
+	for range 3 {
+		vf := types.Instant(50 * (1 + rng.IntN(30)))
+		var vt types.Instant
+		if rng.IntN(4) > 0 {
+			vt = vf + types.Instant(50*(1+rng.IntN(10)))
+		}
+		for _, void := range []bool{false, true} {
+			hc, ok := chainFromHead(g, e, cur, read, vf, vt, 0, void)
+			if !ok {
+				t.Fatalf("iter %d: no plan from a valid entry", iter)
+			}
+			want := fmt.Sprintf("max %d open %+v", top, open)
+			got := fmt.Sprintf("max %d open %+v", hc.maxVersion, hc.open)
+			if vt != 0 {
+				if src, err := g.resolveNodeVersionAt(slices.Clone(pre), vt); err == nil {
+					want += fmt.Sprintf(" src v%d end %d", src.Version(), nodeResumptionEnd(g, pre, vt))
+				}
+				if hc.hasSrc {
+					got += fmt.Sprintf(" src v%d end %d", hc.src.Version(), hc.srcEnd)
+				}
+			}
+			segs, err := g.nodeCorrectionSegments(pre, cur, vf, vt, void)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, s := range segs {
+				want += fmt.Sprintf(" [%d,%d) v%d gap=%v", s.from, s.to, s.base.Version(), s.gap)
+			}
+			for _, s := range hc.segments {
+				got += fmt.Sprintf(" [%d,%d) v%d gap=%v", s.from, s.to, s.base.Version(), s.gap)
+			}
+			if got != want {
+				t.Fatalf("iter %d: correction [%d,%d) void=%v from the entry:\n %s\nfrom the chain:\n %s\nchain%s", iter, vf, vt, void, got, want, headRows(chain))
+			}
+			checked++
+		}
+	}
+	return checked
 }
 
 func headRows(rows []*types.Node) string {

@@ -1,0 +1,208 @@
+package core
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"testing"
+
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+)
+
+// Backlog 68b (sigma R10, the write side): a correction of an entity whose
+// head entry is valid reads a few rows, not its history — the GraphTx
+// rollback snapshot and the cascade's pre-chain both used to copy every row.
+
+// r10bHistoryLimit is the history rows a correction with a valid entry may
+// read: the base rows of its pieces and the resumption source (one each in
+// sigma's shape), never the chain.
+const r10bHistoryLimit = 4
+
+func TestR10bCorrectionReadsBoundedHistory(t *testing.T) {
+	ctx := context.Background()
+	for _, be := range r10AllBackends(t) {
+		t.Run(be.name, func(t *testing.T) {
+			cfg := be.cfg()
+			cfg.AllowTxBackfill = true
+			g, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = g.Close() })
+			nid := r10Node(t, g, 300)
+			rid := r10Rel(t, g, 300)
+			read := func() {
+				if _, err := g.Temporal.NodeEffectiveTimeline(nid, g.peekNow()); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := g.Temporal.RelEffectiveTimeline(rid, g.peekNow()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			count := func(what string, fn func() error) {
+				t.Helper()
+				read() // sigma reads the timeline before every correction
+				rows := 0
+				g.historyRead = func(n int) { rows += n }
+				err := fn()
+				g.historyRead = nil
+				if err != nil {
+					t.Fatalf("%s: %v", what, err)
+				}
+				if rows > r10bHistoryLimit {
+					t.Errorf("%s: %d history rows read (limit %d)", what, rows, r10bHistoryLimit)
+				}
+			}
+			inTx := func(rollback bool, fn func(tx *GraphTx) error) func() error {
+				return func() error {
+					tx, err := g.BeginTx()
+					if err != nil {
+						return err
+					}
+					if err := fn(tx); err != nil {
+						_ = tx.Rollback()
+						return err
+					}
+					if rollback {
+						return tx.Rollback()
+					}
+					return tx.Commit()
+				}
+			}
+			for i := range 3 {
+				p := map[string]any{"ov_c1": int64(-i)}
+				count(fmt.Sprintf("node GraphTx correction %d, commit", i), inTx(false, func(tx *GraphTx) error {
+					_, err := tx.SetNodeVersionInterval(nid, 1000, 2000, p)
+					return err
+				}))
+				count(fmt.Sprintf("rel GraphTx correction %d, commit", i), inTx(false, func(tx *GraphTx) error {
+					_, err := tx.SetRelVersionInterval(rid, 1000, 2000, p)
+					return err
+				}))
+				count(fmt.Sprintf("node correction %d", i), func() error {
+					_, err := g.Temporal.SetNodeVersionInterval(ctx, nid, 1000, 2000, p)
+					return err
+				})
+				count(fmt.Sprintf("node correction %d at a caller instant", i), func() error {
+					f, to, _, _ := g.Nodes.LatestStamps(nid)
+					_, err := g.Temporal.SetNodeVersionIntervalWithTx(ctx, nid, 1000, 2000, p, max(f, to)+1)
+					return err
+				})
+				count(fmt.Sprintf("rel excise %d", i), func() error {
+					return g.Temporal.ExciseRelValidity(ctx, rid, 1900, 2000)
+				})
+				if g.historyTrim == nil {
+					continue // sharded, tiered: no rollback trim, a rollback rewrites the history
+				}
+				count(fmt.Sprintf("node GraphTx correction %d, rollback", i), inTx(true, func(tx *GraphTx) error {
+					_, err := tx.SetNodeVersionInterval(nid, 1000, 2000, p)
+					return err
+				}))
+			}
+		})
+	}
+}
+
+// A GraphTx rollback keeps the rows above a gap that history compaction left
+// directly above the current row (found by the 68b twin on the path without a
+// head entry): compaction trims the oldest history rows, which after bounded
+// corrections lie directly above the current row, and the snapshot probed
+// only version current+1 (dense versions), took the trim path and the
+// rollback trimmed the surviving pre-transaction rows.
+func TestTxRollbackKeepsRowsAboveCompactionGap(t *testing.T) {
+	ctx := context.Background()
+	for _, be := range r10AllBackends(t) {
+		t.Run(be.name, func(t *testing.T) {
+			g, err := New(be.cfg())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = g.Close() })
+			g.headWriteOff = true // the snapshot without a head entry
+			n, err := g.Nodes.Add(ctx, []string{"H"}, map[string]any{"a": int64(0)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			id := n.ID()
+			for i := range 3 {
+				if _, err := g.Temporal.SetNodeVersionInterval(ctx, id, 1000, 2000, map[string]any{"a": int64(i + 1)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := g.Admin.CompactHistoryNodes(ctx, RetentionPolicy{KeepVersions: 1}); err != nil {
+				if errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+					t.Skip("no history compaction")
+				}
+				t.Fatal(err)
+			}
+			versions := func() []uint32 {
+				h, err := g.store.GetNodeHistory(id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var out []uint32
+				for _, r := range h {
+					out = append(out, r.Version())
+				}
+				return out
+			}
+			before := versions()
+			if fmt.Sprint(before) != "[3]" {
+				t.Fatalf("after compaction: history %v, want [3] (the gap above current v0)", before)
+			}
+			tx, err := g.BeginTx()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := tx.SetNodeVersionInterval(id, 1000, 2000, map[string]any{"a": int64(9)}); err != nil {
+				t.Fatal(err)
+			}
+			if err := tx.Rollback(); err != nil {
+				t.Fatal(err)
+			}
+			if after := versions(); fmt.Sprint(after) != fmt.Sprint(before) {
+				t.Fatalf("rollback: history %v, before the tx %v", after, before)
+			}
+		})
+	}
+}
+
+// BenchmarkR10CutPerFact: sigma's cut per fact at exactly N versions — read
+// the head-pin timeline, then one correction of the same validity in a
+// GraphTx, committed. b.N facts of N versions each, one cut per fact
+// (run with -benchtime=<k>x).
+func BenchmarkR10CutPerFact(b *testing.B) {
+	for _, be := range r10Backends() {
+		for _, versions := range []int{1, 100, 300} {
+			b.Run(fmt.Sprintf("%s/versions=%d", be.name, versions), func(b *testing.B) {
+				g, err := New(be.cfg())
+				if err != nil {
+					b.Fatal(err)
+				}
+				b.Cleanup(func() { _ = g.Close() })
+				ids := make([]nodeIDArg, b.N)
+				for i := range ids {
+					ids[i] = nodeIDArg{r10Node(b, g, versions)}
+				}
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := range b.N {
+					id := ids[i].id
+					if _, err := g.Temporal.NodeEffectiveTimeline(id, g.peekNow()); err != nil {
+						b.Fatal(err)
+					}
+					tx, err := g.BeginTx()
+					if err != nil {
+						b.Fatal(err)
+					}
+					if _, err := tx.SetNodeVersionInterval(id, 1000, 2000, map[string]any{"ov_c1": int64(-i)}); err != nil {
+						b.Fatal(err)
+					}
+					if err := tx.Commit(); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	}
+}

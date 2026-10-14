@@ -21,7 +21,12 @@ type nodeSnapshot struct {
 	prev            *types.Node   // DeepCopy before first mutation
 	history         []*types.Node // DeepCopy fallback for stores without history trimming
 	historyTrimFrom uint32        // First history version written by this tx for the entity
-	useHistoryTrim  bool
+	// historyKeepTo (backlog 68b): the rows in (historyTrimFrom,
+	// historyKeepTo] were there before the tx and stay; the tx wrote the row
+	// at historyTrimFrom (the current row moved into history) and those
+	// above historyKeepTo. At or below historyTrimFrom: none kept.
+	historyKeepTo  uint32
+	useHistoryTrim bool
 }
 
 // relSnapshot captures pre-mutation state for rollback.
@@ -30,6 +35,7 @@ type relSnapshot struct {
 	prev            *types.Relationship   // DeepCopy before first mutation
 	history         []*types.Relationship // DeepCopy fallback for stores without history trimming
 	historyTrimFrom uint32                // First history version written by this tx for the entity
+	historyKeepTo   uint32                // see nodeSnapshot
 	useHistoryTrim  bool
 }
 
@@ -307,6 +313,20 @@ func (tx *GraphTx) snapshotCurrentNodeLocked(node *types.Node) error {
 	}
 
 	prev := node.DeepCopy()
+	// A valid head entry names the chain's highest version and proves no
+	// history row has the current row's version (backlog 68b): the tx's
+	// rows are the current row moved into history and those above it.
+	if top, ok := tx.g.nodeHeadTop(types.NodeID(id), node); ok {
+		tx.snapshotSet[key] = true
+		tx.updatedNodes = append(tx.updatedNodes, nodeSnapshot{
+			id:              id,
+			prev:            prev,
+			historyTrimFrom: node.Version(),
+			historyKeepTo:   top,
+			useHistoryTrim:  true,
+		})
+		return nil
+	}
 	if tx.g.historyTrim != nil {
 		if found, err := tx.nodeHistoryAtOrAbove(types.NodeID(id), node.Version()); err != nil {
 			return err
@@ -356,6 +376,18 @@ func (tx *GraphTx) snapshotCurrentRelLocked(rel *types.Relationship) error {
 	}
 
 	prev := rel.DeepCopy()
+	// A valid head entry — see snapshotCurrentNodeLocked (backlog 68b).
+	if top, ok := tx.g.relHeadTop(types.RelID(id), rel); ok {
+		tx.snapshotSet[key] = true
+		tx.updatedRels = append(tx.updatedRels, relSnapshot{
+			id:              id,
+			prev:            prev,
+			historyTrimFrom: rel.Version(),
+			historyKeepTo:   top,
+			useHistoryTrim:  true,
+		})
+		return nil
+	}
 	if tx.g.historyTrim != nil {
 		if found, err := tx.relHistoryAtOrAbove(types.RelID(id), rel.Version()); err != nil {
 			return err
@@ -1232,16 +1264,107 @@ func (tx *GraphTx) restoreDeletedRelHistory(snap deletedRelSnapshot) error {
 
 func (tx *GraphTx) restoreNodeSnapshotHistory(id types.NodeID, snap nodeSnapshot) error {
 	if snap.useHistoryTrim {
-		return tx.g.trimNodeHistoryFromScopedAware(tx.scopeToken, id, snap.historyTrimFrom)
+		return tx.removeNodeTxRows(id, snap.historyTrimFrom, snap.historyKeepTo)
 	}
 	return tx.restoreNodeHistory(id, snap.history)
 }
 
 func (tx *GraphTx) restoreRelSnapshotHistory(id types.RelID, snap relSnapshot) error {
 	if snap.useHistoryTrim {
-		return tx.g.trimRelHistoryFromScopedAware(tx.scopeToken, id, snap.historyTrimFrom)
+		return tx.removeRelTxRows(id, snap.historyTrimFrom, snap.historyKeepTo)
 	}
 	return tx.restoreRelHistory(id, snap.history)
+}
+
+// removeNodeTxRows removes the history rows the tx wrote for id: the row at
+// from and every row above keepTo (keepTo <= from: every row at or above
+// from); the rows in (from, keepTo] stay. With the rollback trim that is one
+// trim, plus — only when the tx moved the current row into history below
+// rows it keeps — a rewrite of those rows around the trim at from. Without
+// it (sharded, tiered) the history is rewritten from the rows read now.
+func (tx *GraphTx) removeNodeTxRows(id types.NodeID, from, keepTo uint32) error {
+	if tx.g.historyTrim == nil {
+		history, err := tx.g.getNodeHistory(id)
+		if err != nil {
+			return err
+		}
+		return tx.restoreNodeHistory(id, keepPreTxRows(history, from, keepTo))
+	}
+	if keepTo <= from {
+		return tx.g.trimNodeHistoryFromScopedAware(tx.scopeToken, id, from)
+	}
+	if err := tx.g.trimNodeHistoryFromScopedAware(tx.scopeToken, id, keepTo+1); err != nil {
+		return err
+	}
+	if _, err := tx.g.getNodeVersion(id, from); errors.Is(err, storepkg.ErrVersionNotFound) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	history, err := tx.g.getNodeHistory(id)
+	if err != nil {
+		return err
+	}
+	if err := tx.g.trimNodeHistoryFromScopedAware(tx.scopeToken, id, from); err != nil {
+		return err
+	}
+	for _, n := range history {
+		if n.Version() > from {
+			if err := tx.g.putNodeVersionScopedAwareToken(tx.scopeToken, id, n.Version(), n); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// removeRelTxRows mirrors removeNodeTxRows for relationships.
+func (tx *GraphTx) removeRelTxRows(id types.RelID, from, keepTo uint32) error {
+	if tx.g.historyTrim == nil {
+		history, err := tx.g.getRelHistory(id)
+		if err != nil {
+			return err
+		}
+		return tx.restoreRelHistory(id, keepPreTxRows(history, from, keepTo))
+	}
+	if keepTo <= from {
+		return tx.g.trimRelHistoryFromScopedAware(tx.scopeToken, id, from)
+	}
+	if err := tx.g.trimRelHistoryFromScopedAware(tx.scopeToken, id, keepTo+1); err != nil {
+		return err
+	}
+	if _, err := tx.g.getRelVersion(id, from); errors.Is(err, storepkg.ErrVersionNotFound) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	history, err := tx.g.getRelHistory(id)
+	if err != nil {
+		return err
+	}
+	if err := tx.g.trimRelHistoryFromScopedAware(tx.scopeToken, id, from); err != nil {
+		return err
+	}
+	for _, r := range history {
+		if r.Version() > from {
+			if err := tx.g.putRelVersionScopedAwareToken(tx.scopeToken, id, r.Version(), r); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// keepPreTxRows returns the rows of history below from and in (from,
+// keepTo]: the rows there before the tx (removeNodeTxRows).
+func keepPreTxRows[T interface{ Version() uint32 }](history []T, from, keepTo uint32) []T {
+	out := history[:0]
+	for _, r := range history {
+		if v := r.Version(); v < from || (v > from && v <= keepTo) {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // restoreRegistries de-allocates any label/rel-type token this tx allocated —

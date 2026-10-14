@@ -140,9 +140,12 @@ type Core struct {
 	// (effective_head.go). nil = store declines: every head read folds.
 	historyEpochs storepkg.HistoryEpochCapability
 	heads         headCache
-	headCacheOff  bool          // tests: fold every read (the differential oracle)
-	headHits      atomic.Uint64 // head reads answered from an entry
-	headOverlays  atomic.Uint64 // corrections that extended an entry
+	headCacheOff  bool           // tests: fold every read (the differential oracle)
+	headHits      atomic.Uint64  // head reads answered from an entry
+	headOverlays  atomic.Uint64  // corrections that extended an entry
+	headWriteOff  bool           // tests: corrections and tx snapshots read the whole history (backlog 68b twin)
+	headWrites    atomic.Uint64  // corrections planned from an entry (backlog 68b)
+	historyRead   func(rows int) // tests: called with the rows each history read returns
 	// readSnapshots — effective scans read their timelines through one store
 	// read snapshot (backlog 55, effective_scan_reads.go). nil = per-entity reads.
 	readSnapshots storepkg.ReadSnapshotCapability
