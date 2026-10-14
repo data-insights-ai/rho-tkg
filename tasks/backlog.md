@@ -561,6 +561,16 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    the [combined P07/P09 checkpoint](evidence/change-aware-ci-20261012/hosted-ci-c13f50be.json)
    passes all 20 selected parents in normal/race/scoped coverage, plus the v5
    build and static gates. Unrelated full suites were not repeated.
+   The [FoundationDB cost-runner source](evidence/v2-fdb-cost-final-source-20261013/receipt.json)
+   is now integrated: its two selected SDK parents pass normal/race, and the
+   actual instrumented two-fact cross-partition run preserves old/current
+   results, postings and CDC. Current-source coverage is 82.0%/80.9% for the
+   two new implementation files; configured lint/security/vulnerability gates
+   pass on the same executable source. Owned runtime resources are removed.
+   This is functional qualification only. Complete cross-engine CDC comparison,
+   matched uninstrumented cost cells, the full matrix and engine selection remain
+   open; the [focused-CI adapter](../tools/v5-substrate/fdb/evidence/cost-final-source-20261013.json)
+   preserves that distinction and the earlier failed attempts.
    The
    [bounded voting/control model](evidence/v2-graph-lifecycle-admission/replacement-model.py)
    passes 5,040 event schedules and 11 finite checks, independently rerun against
