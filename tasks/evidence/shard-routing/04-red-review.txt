@@ -1,0 +1,5 @@
+--- FAIL: TestTimestampToEventShardZeroLengthWindow (0.00s)
+    tieredstore_routing_zero_test.go:25: iter 26: routed to a, want h
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.004s
+FAIL

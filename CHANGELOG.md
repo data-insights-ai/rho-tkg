@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Tiered event-shard routing is a binary search** (backlog 59): `timestampToEventShardEntry` and the write-path depth filter scanned every event shard per ID. The store now keeps `shardIndex`, the shards sorted by `timeStart` (windows do not overlap), rebuilt under `ts.mu` on every insert or delete of an event shard (open, rotation, purge drop and re-link), and routes with `sort.Search`; same hot-shard fallback for ids in a gap or outside all windows. 700 shards: 3301 ns to 33 ns per lookup; 28 shards: 170 ns to 22 ns.
+
 ## [4.51.7] - 2026-10-14
 
 ### Fixed

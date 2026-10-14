@@ -3,6 +3,7 @@ package tiered
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -1233,8 +1234,8 @@ func (ts *Store) depthFilter(depth ShardDepth) (func(snowflake.ID) bool, func(),
 	}
 
 	ts.mu.RLock()
-	windows := make([]eventWindow, 0, len(ts.eventShards))
-	for _, es := range ts.eventShards {
+	windows := make([]eventWindow, 0, len(ts.shardIndex))
+	for _, es := range ts.shardIndex { // sorted by timeStart
 		windows = append(windows, eventWindow{
 			start: es.timeStart,
 			end:   es.timeEnd,
@@ -1252,10 +1253,10 @@ func (ts *Store) depthFilter(depth ShardDepth) (func(snowflake.ID) bool, func(),
 		}
 
 		created := snowflakepkg.Layout.CreatedAt(id)
-		for _, w := range windows {
-			if created.Before(w.start) || !created.Before(w.end) {
-				continue
-			}
+		// windows is sorted by start and non-overlapping: the last window
+		// starting at or before created is the only candidate.
+		if i := sort.Search(len(windows), func(i int) bool { return windows[i].start.After(created) }); i > 0 && created.Before(windows[i-1].end) {
+			w := windows[i-1]
 			switch depth {
 			case DepthHot:
 				return w.tier == TierHot

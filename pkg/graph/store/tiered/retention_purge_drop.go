@@ -129,6 +129,7 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 		return zero, false, nil // rotated/removed concurrently — skip
 	}
 	delete(ts.eventShards, es.name)
+	ts.reindexShardsLocked()
 	ts.mu.Unlock()
 
 	// (3) Drain in-flight requests. No new checkouts can arrive (unlinked), so
@@ -144,6 +145,7 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 	if !drained {
 		ts.mu.Lock()
 		ts.eventShards[es.name] = es // re-link — the row scan will handle it
+		ts.reindexShardsLocked()
 		ts.mu.Unlock()
 		return zero, false, nil
 	}
@@ -170,6 +172,7 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 	if !stillOnlyLabel {
 		ts.mu.Lock()
 		ts.eventShards[es.name] = es
+		ts.reindexShardsLocked()
 		ts.mu.Unlock()
 		return zero, false, nil
 	}
@@ -222,6 +225,7 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 		es.shardMu.Unlock()
 		ts.mu.Lock()
 		ts.eventShards[es.name] = es
+		ts.reindexShardsLocked()
 		ts.mu.Unlock()
 		if reopenErr != nil {
 			return zero, false, fmt.Errorf("graph: reopen shard %s after failed drop: %w (drop error: %v)", es.name, reopenErr, serr)
