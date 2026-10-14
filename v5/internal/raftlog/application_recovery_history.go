@@ -84,6 +84,27 @@ func ApplicationContractForPolicyWithRecovery(p ApplicationPolicy, c Application
 	return contract, nil
 }
 
+// ApplicationContractForPolicyWithRetention selects the fresh sparse-history
+// agreement without numerical quota changes. Disabled retention delegates to
+// the existing exact recovery contract. The value grants no GC authority and
+// must not be offered as portable evidence before its AS7 lifecycle is wired.
+func ApplicationContractForPolicyWithRetention(p ApplicationPolicy, c ApplicationControlConfig, r ApplicationRecoveryConfig, retention ApplicationRetentionConfig) (ApplicationContract, error) {
+	if err := retention.validate(); err != nil {
+		return ApplicationContract{}, err
+	}
+	contract, err := ApplicationContractForPolicyWithRecovery(p, c, r)
+	if err != nil {
+		return ApplicationContract{}, err
+	}
+	if retention.enabled() {
+		if c.Version != 1 || r.Version != 2 {
+			return ApplicationContract{}, ErrInvalid
+		}
+		contract.Version = 5
+	}
+	return contract, nil
+}
+
 // ApplicationRecovery reports immutable configured storage capability only.
 // Nil is disabled; a closed handle conveys no validity or phase authority.
 func (s *Store) ApplicationRecovery() ApplicationRecoveryConfig {

@@ -200,7 +200,11 @@ func validateRecoveryMetadata(m metadata, l Limits) error {
 			return err
 		}
 	}
-	if c.enabled() && (m.Transfer.Contract.Version != 2+c.Version || m.Recovery.Bytes > m.App.Policy.RetainedApplicationBytes || m.Recovery.Records != m.Applied || m.Recovery.Records > m.Recovery.Bytes/(9+appFrameBytes+recoveryRootFixedBytes)) {
+	contract := 2 + c.Version
+	if m.Retention.Config.enabled() {
+		contract = 5
+	}
+	if c.enabled() && (m.Transfer.Contract.Version != contract || m.Recovery.Bytes > m.App.Policy.RetainedApplicationBytes || m.Recovery.Records != m.Applied || m.Recovery.Records > m.Recovery.Bytes/(9+appFrameBytes+recoveryRootFixedBytes)) {
 		return ErrInvalid
 	}
 	if !c.enabled() {

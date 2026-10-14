@@ -47,8 +47,9 @@ func (l Limits) Validate() error {
 
 // Config selects explicit first-open-only creation; recovery never creates a missing DB.
 type Config struct {
-	Recovery ApplicationRecoveryConfig
-	Controls ApplicationControlConfig
+	Retention ApplicationRetentionConfig
+	Recovery  ApplicationRecoveryConfig
+	Controls  ApplicationControlConfig
 	// SemanticContractID opts fresh RLM6 into an immutable materializer agreement.
 	// Zero preserves older formats; existing stores cannot acquire/change it.
 	SemanticContractID ApplicationSemanticContractID
@@ -133,7 +134,11 @@ func Open(c Config) (*Store, error) {
 	initial.Rep.SemanticContractID = c.SemanticContractID
 	initial.Controls.Config = c.Controls
 	initial.Recovery.Config = c.Recovery
+	initial.Retention.Config = c.Retention
 	initial.Gen.Publication.RecoveryEnabled = c.Recovery.enabled()
+	if err := validateRetentionMetadata(initial); err != nil {
+		return nil, err
+	}
 	if err := validateRecoveryMetadata(initial, c.Limits); err != nil {
 		return nil, err
 	}
@@ -184,7 +189,7 @@ func Open(c Config) (*Store, error) {
 		if err := errors.Join(decodeErr, closeErr); err != nil {
 			return fail(err)
 		}
-		if m.App.Policy != c.Application || m.Transfer != c.Transfer || m.Gen.Limits != c.Generations || m.Gen.Publication.Limits != c.PublishedCuts || m.Rep.Config != c.Replication || m.Rep.SemanticContractID != c.SemanticContractID || m.Controls.Config != c.Controls || m.Recovery.Config != c.Recovery {
+		if m.App.Policy != c.Application || m.Transfer != c.Transfer || m.Gen.Limits != c.Generations || m.Gen.Publication.Limits != c.PublishedCuts || m.Rep.Config != c.Replication || m.Rep.SemanticContractID != c.SemanticContractID || m.Controls.Config != c.Controls || m.Recovery.Config != c.Recovery || m.Retention.Config != c.Retention {
 			return fail(ErrInvalid)
 		}
 		if err := checkPublicationHeadroom(m, c.Limits); err != nil {
@@ -260,6 +265,9 @@ func validateConf(cs *pb.ConfState, last uint64) error {
 }
 
 func (s *Store) validate(m metadata) error {
+	if err := validateRetentionMetadata(m); err != nil {
+		return err
+	}
 	if err := validateRecoveryMetadata(m, s.limits); err != nil {
 		return err
 	}
