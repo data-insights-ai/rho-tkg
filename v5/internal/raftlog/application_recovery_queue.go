@@ -84,6 +84,9 @@ func recoveryProjected(m metadata, l Limits, pending uint64) (applicationRecover
 		return applicationRecoveryGrowth{}, 0, 0, err
 	}
 	protected, err = addRecoveryGrowth(protected, terminal)
+	if err == nil {
+		protected, err = addRecoveryGrowth(protected, retentionCursorGrowth(m))
+	}
 	return protected, bytes, records, err
 }
 

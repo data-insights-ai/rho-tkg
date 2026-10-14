@@ -62,6 +62,17 @@ func (v *ApplicationView) ApplicationRecord(ctx context.Context, index uint64, o
 // metadata1024, key9, frame36+n, AV1 hash9+4+n, copy n and root-only hash n.
 // The caller operation reserves that policy ceiling; output cap is separate.
 func (v *ApplicationView) historyPayload(ctx context.Context, index uint64, tag byte, policyMax, ownedMax, factor int) ([]byte, error) {
+	if index < retentionFloor(v.retention, tag) {
+		return nil, ErrApplicationExpired
+	}
+	return v.retainedHistoryPayload(ctx, index, tag, policyMax, ownedMax, factor)
+}
+
+func (v *ApplicationView) historyPayloadAnchor(ctx context.Context, index uint64, policyMax, ownedMax int) ([]byte, error) {
+	return v.retainedHistoryPayload(ctx, index, appRootTag, policyMax, ownedMax, 4)
+}
+
+func (v *ApplicationView) retainedHistoryPayload(ctx context.Context, index uint64, tag byte, policyMax, ownedMax, factor int) ([]byte, error) {
 	if policyMax < 0 || policyMax > (math.MaxInt-1082)/factor {
 		return nil, ErrLimit
 	}

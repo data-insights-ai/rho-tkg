@@ -319,6 +319,10 @@ func (p *PreparedApplicationSnapshot) openReadView(ctx context.Context, index ui
 	if index > p.i.manifest.Index {
 		return nil, ErrInvalid
 	}
+	retention := p.i.manifest.Retention
+	if index < max(retention.RootFloor, retention.DataFloor) {
+		return nil, ErrApplicationExpired
+	}
 	if maxImageBytes > policy.MaxImageBytes || s.views >= policy.MaxViews {
 		return nil, ErrLimit
 	}
@@ -335,10 +339,11 @@ func (p *PreparedApplicationSnapshot) openReadView(ctx context.Context, index ui
 	if deleted {
 		inspectErr = ErrCorrupt
 	}
-	reservation := preparedSnapshotFixedBytes + uint64(len(data))
+	retentionBytes := retentionViewBytes(retention)
+	reservation := preparedSnapshotFixedBytes + uint64(len(data)+retentionBytes)
 	var refusal error
 	if inspectErr == nil {
-		if len(data) > maxImageBytes || len(data) > policy.MaxViewBytes-s.viewBytes {
+		if len(data) > maxImageBytes || len(data)+retentionBytes > policy.MaxViewBytes-s.viewBytes {
 			refusal = ErrLimit
 		} else {
 			refusal = s.admitSnapshotOwnership(reservation)
@@ -359,9 +364,9 @@ func (p *PreparedApplicationSnapshot) openReadView(ctx context.Context, index ui
 	if err != nil {
 		return nil, err
 	}
-	v := &ApplicationView{s: s, index: index, image: owned, bank: p.bank, generation: p.generation, ref: ref, prepared: p, reservation: reservation}
+	v := &ApplicationView{retention: retention, retentionBytes: retentionBytes, s: s, index: index, image: owned, bank: p.bank, generation: p.generation, ref: ref, prepared: p, reservation: reservation}
 	s.views++
-	s.viewBytes += len(owned)
+	s.viewBytes += len(owned) + retentionBytes
 	s.pinnedApplicationBytes += reservation
 	p.readers++
 	s.registerApplicationView(v)

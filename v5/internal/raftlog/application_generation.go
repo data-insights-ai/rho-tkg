@@ -357,6 +357,15 @@ func (s *Store) reserveGeneration(m ApplicationSnapshotManifest) (metadata, byte
 			if err != nil {
 				return prospective, bank, err
 			}
+			if m.Version == 7 {
+				imported := s.meta
+				imported.Retention.State = m.Retention
+				imported.Retention.Cursor = applicationRetentionCursor{}
+				future, err = addRecoveryGrowth(future, retentionCursorGrowth(imported))
+				if err != nil {
+					return prospective, bank, err
+				}
+			}
 			imported := s.meta
 			imported.Recovery = snapshotRecoveryState(m)
 			imported.Recovery.Bytes = m.RecoveryBytes

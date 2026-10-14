@@ -353,6 +353,10 @@ func (s *Store) admitTerminalCreationLocked(commandBytes int, r ApplicationRecov
 	if err != nil {
 		return err
 	}
+	future, err = addRecoveryGrowth(future, retentionCursorGrowth(s.meta))
+	if err != nil {
+		return err
+	}
 	retained, records := applicationTotals(s.meta)
 	pending := s.meta.Last - s.meta.Applied + 2
 	if err := recoveryFits(future, retained+pending*unsignedLimit(p.MaxInstallBytes), records+pending*applicationInstallRecords(s.meta), s.meta.LogBytes+uint64(commandBytes+2*(frameOverhead+9)), s.meta.LogCount+2, p, s.limits); err != nil {
@@ -629,6 +633,9 @@ func (v *ApplicationView) CheckTerminalBank(ctx context.Context, expected []Appl
 	if _, err := terminalGrowth(applicationTerminalBank(expected), p, v.s.limits); err != nil {
 		return false, work, err
 	}
+	if v.index < v.retention.RecoveryFloor {
+		return false, work, ErrApplicationExpired
+	}
 	const fixed = 256 + 4*9
 	if budget.Bytes < fixed {
 		return false, work, ErrLimit
@@ -695,6 +702,9 @@ func (v *ApplicationView) CheckRetainedRootFeed(ctx context.Context, sourceIndex
 	}
 	if budget.Rows > p.MaxPageRows || budget.Bytes > p.MaxPageBytes {
 		return false, work, ErrLimit
+	}
+	if sourceIndex < max(v.retention.RootFloor, v.retention.DataFloor) || feedStart < v.retention.FeedFloor {
+		return false, work, ErrApplicationExpired
 	}
 	const fixed = 256
 	if budget.Bytes < fixed {

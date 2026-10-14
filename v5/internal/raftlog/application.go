@@ -309,18 +309,19 @@ type KV struct {
 // BaseGeneration must match the captured local physical generation in RLM5;
 // zero is the legacy binding, never replicated semantic time/effect identity.
 type ApplicationBatch struct {
-	RecoveryAdmission *ApplicationRecoveryAdmission
-	RecoveryReserve   *ApplicationRecoveryReservation
-	RecoveryUse       *ApplicationRecoveryUse
-	TerminalReserve   *ApplicationRecoveryReservation
-	TerminalUse       *ApplicationRecoveryUse
-	BaseGeneration    uint64
-	BaseImageHash     [32]byte
-	BaseIndex         uint64
-	Image             []byte
-	Writes            []KV
-	Changes, Outcome  []byte
-	ControlPuts       []ApplicationControlPut
+	RetentionAdmission *ApplicationRetentionAdmission
+	RecoveryAdmission  *ApplicationRecoveryAdmission
+	RecoveryReserve    *ApplicationRecoveryReservation
+	RecoveryUse        *ApplicationRecoveryUse
+	TerminalReserve    *ApplicationRecoveryReservation
+	TerminalUse        *ApplicationRecoveryUse
+	BaseGeneration     uint64
+	BaseImageHash      [32]byte
+	BaseIndex          uint64
+	Image              []byte
+	Writes             []KV
+	Changes, Outcome   []byte
+	ControlPuts        []ApplicationControlPut
 }
 
 // ApplicationBudget bounds conservative encoded installation staging including
@@ -381,6 +382,11 @@ func (p ApplicationPolicy) measure(b ApplicationBatch) (uint64, uint64, error) {
 func (s *Store) InstallApplication(index uint64, b ApplicationBatch) error {
 	if s == nil {
 		return ErrInvalid
+	}
+	if b.RetentionAdmission != nil {
+		// Same publicationMu -> Store.mu order as snapshot publication/Close.
+		s.publicationMu.Lock()
+		defer s.publicationMu.Unlock()
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -462,6 +468,23 @@ func (s *Store) InstallApplication(index uint64, b ApplicationBatch) error {
 		return ErrLimit
 	}
 	prospective := s.meta
+	if b.RetentionAdmission != nil {
+		if a := b.RetentionAdmission; a.self != a || a.s != s || a.source == nil {
+			return ErrInvalid
+		}
+		stageWork := 2*added + unsignedLimit(len(b.Image)+1024) + unsignedLimit(64*(len(b.Writes)+len(b.ControlPuts)))
+		for _, w := range b.ControlPuts {
+			stageWork += 128 + 4*controlPhysicalKeyBytes(w.Key)
+		}
+		if b.RetentionAdmission.workBytes < 1 || stageWork > unsignedLimit(p.MaxInstallBytes) || unsignedLimit(b.RetentionAdmission.workBytes) > unsignedLimit(p.MaxInstallBytes)-stageWork {
+			return ErrLimit
+		}
+		if err := b.RetentionAdmission.admitLocked(s, b); err != nil {
+			return err
+		}
+		prospective.Retention.State = b.RetentionAdmission.state
+		prospective.Retention.Cursor = applicationRetentionCursor{}
+	}
 	if b.TerminalReserve != nil || b.TerminalUse != nil {
 		entry, _, _, err := s.get(index)
 		if err != nil {
@@ -533,10 +556,13 @@ func (s *Store) InstallApplication(index uint64, b ApplicationBatch) error {
 	if err := generationCharge(prospective, prospective.Last-index, s.limits); err != nil {
 		return err
 	}
-	e, _, _, err := s.get(index)
+	e, _, entryHash, err := s.get(index)
 	if err != nil {
 		s.poison = err
 		return err
+	}
+	if b.RetentionAdmission != nil && (b.RetentionAdmission.state.InstalledIndex != index || b.RetentionAdmission.entryHash != entryHash || b.RetentionAdmission.commandHash != sha256.Sum256(e.GetData())) {
+		return ErrInvalid
 	}
 	if e.GetType() != pb.EntryNormal {
 		return ErrInvalid
@@ -547,6 +573,7 @@ func (s *Store) InstallApplication(index uint64, b ApplicationBatch) error {
 		return ErrCorrupt
 	}
 	m := s.meta
+	m.Retention = prospective.Retention
 	m.Recovery = prospective.Recovery
 	m.Applied = index
 	m.App.Through = index
@@ -564,6 +591,9 @@ func (s *Store) InstallApplication(index uint64, b ApplicationBatch) error {
 	work := 2*added + uint64(len(b.Image)+1024) + uint64(64*(len(b.Writes)+len(b.ControlPuts)))
 	for _, w := range b.ControlPuts {
 		work += 128 + 4*controlPhysicalKeyBytes(w.Key)
+	}
+	if b.RetentionAdmission != nil {
+		work += unsignedLimit(b.RetentionAdmission.workBytes)
 	}
 	limit := unsignedLimit(p.MaxInstallBytes)
 	if work > limit {
@@ -716,21 +746,23 @@ type ApplicationRoot struct {
 // ApplicationView reads immutable MVCC versions at one retained root. It pins
 // no backend snapshot and keeps no per-record index. Close serializes with reads.
 type ApplicationView struct {
-	self, next  *ApplicationView
-	prepared    *PreparedApplicationSnapshot
-	reservation uint64
-	bank        byte
-	generation  uint64
-	ref         *generationRef
-	mu          sync.Mutex
-	s           *Store
-	index       uint64
-	image       []byte
-	closed      bool
+	retention      ApplicationRetentionState
+	retentionBytes int
+	self, next     *ApplicationView
+	prepared       *PreparedApplicationSnapshot
+	reservation    uint64
+	bank           byte
+	generation     uint64
+	ref            *generationRef
+	mu             sync.Mutex
+	s              *Store
+	index          uint64
+	image          []byte
+	closed         bool
 }
 
-// ApplicationView opens a bounded root handle. Roots never expire in this slice;
-// retained-data quotas backpressure writes instead of reclaiming view evidence.
+// ApplicationView opens a bounded root handle. Fresh retention captures native
+// historical lower bounds; other profiles retain their nonexpiring-root contract.
 func (s *Store) ApplicationView(index uint64) (*ApplicationView, error) {
 	if s == nil {
 		return nil, ErrInvalid
@@ -743,6 +775,10 @@ func (s *Store) ApplicationView(index uint64) (*ApplicationView, error) {
 	p := s.meta.App.Policy
 	if !p.Enabled() || index == 0 || index > s.meta.Applied {
 		return nil, ErrInvalid
+	}
+	retention := s.meta.Retention.State
+	if s.meta.Retention.Config.enabled() && index < max(retention.RootFloor, retention.DataFloor) {
+		return nil, ErrApplicationExpired
 	}
 	if s.views >= p.MaxViews {
 		return nil, ErrLimit
@@ -761,7 +797,8 @@ func (s *Store) ApplicationView(index uint64) (*ApplicationView, error) {
 	if deleted {
 		inspectErr = ErrCorrupt
 	}
-	fits := len(data) <= p.MaxViewBytes-s.viewBytes
+	retentionBytes := retentionViewBytes(retention)
+	fits := len(data)+retentionBytes <= p.MaxViewBytes-s.viewBytes
 	var owned []byte
 	if inspectErr == nil && fits {
 		owned = copyApplicationBytes(data)
@@ -778,8 +815,8 @@ func (s *Store) ApplicationView(index uint64) (*ApplicationView, error) {
 		return nil, err
 	}
 	s.views++
-	s.viewBytes += len(owned)
-	v := &ApplicationView{s: s, index: index, image: owned, bank: s.activeBank(), generation: s.activeGeneration(), ref: ref}
+	s.viewBytes += len(owned) + retentionBytes
+	v := &ApplicationView{retention: retention, retentionBytes: retentionBytes, s: s, index: index, image: owned, bank: s.activeBank(), generation: s.activeGeneration(), ref: ref}
 	s.registerApplicationView(v)
 	return v, nil
 }
@@ -857,7 +894,9 @@ func (v *ApplicationView) Close() error {
 	v.s.unregisterApplicationView(v)
 	v.closed = true
 	v.s.views--
-	v.s.viewBytes -= len(v.image)
+	v.s.viewBytes -= len(v.image) + v.retentionBytes
+	v.retention = ApplicationRetentionState{}
+	v.retentionBytes = 0
 	v.image = nil
 	if v.prepared != nil {
 		v.prepared.readers--
@@ -1099,6 +1138,9 @@ func (s *Store) ApplicationRecord(ctx context.Context, index uint64, outcome boo
 	}
 	if maxBytes > p.MaxPageBytes {
 		return nil, ErrLimit
+	}
+	if s.meta.Retention.Config.enabled() && index < retentionFloor(s.meta.Retention.State, tag) {
+		return nil, ErrApplicationExpired
 	}
 	key := bankIndexKey(s.activeBank(), tag, index)
 	raw, closer, err := s.db.Get(key)
