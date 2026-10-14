@@ -331,9 +331,13 @@ hashes and recovery state; `700f68f2` also requires the final recovery root,
 so an extra old row cannot compensate for a missing required suffix endpoint.
 AS7 import/prepared/actual Ready activation and AD6 descriptor wiring are
 source-integrated at `edf266bd`, with exact owned anchor charging, incoming
-transient/terminal reservations and local-cursor reset. Native admission/floor,
-operative collection, scrub and fresh graph handoff still require implementation;
-all these new sources await execution. Fresh initialization preserves retention
+transient/terminal reservations and local-cursor reset. Authenticated native floor
+admission is source-integrated at `24a5db50`, with exact committed command/source
+and owner checks, captured independent expiry floors and a separate image-anchor
+door. `b8c8a0f6` covers the recovery-owner floor; `5f0fbb80` also prepays local
+cursor backing in explicit recovery creation. Operative collection, scrub and
+fresh graph handoff still require implementation; all these new sources await
+execution. Fresh initialization preserves retention
 configuration and prepays/publishes its actual recovery-root census at
 `9741c403`/`9f9116b5`; older initialization profiles retain their existing bytes.
 Complete retained terminal-bank comparison is
