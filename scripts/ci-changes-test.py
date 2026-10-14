@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Small dispatch/selection guards; no Go/compiler or external runtime."""
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -19,6 +20,25 @@ class Planning(unittest.TestCase):
     def docs_action(self, paths):
         with patch.object(sys, "argv", ["ci-changes.py", "docs", "--base", "fixture"]), patch.object(CI, "changed_paths", return_value=paths):
             CI.main()
+
+    def test_dispatch_defaults_and_automatic_full_policy_are_preserved(self):
+        for kind, ref, event, full, base in [
+            ("workflow_dispatch", "refs/heads/v5", {}, True, "HEAD^"),
+            ("workflow_dispatch", "refs/heads/v5", {"inputs": {"full_validation": False}}, False, "HEAD^"),
+            ("workflow_dispatch", "refs/heads/main", {"inputs": {"full_validation": False}}, True, "HEAD^"),
+            ("push", "refs/heads/v5", {"before": "push-base", "inputs": {"focused_base": "invalid"}}, False, "push-base"),
+            ("pull_request", "refs/pull/1/merge", {"pull_request": {"base": {"ref": "main", "sha": "pr-base"}}}, True, "merged-base"),
+        ]:
+            with self.subTest(kind=kind, event=event), tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "event.json"
+                path.write_text(json.dumps(event))
+                with patch.dict(os.environ, {"GITHUB_EVENT_PATH": str(path), "GITHUB_EVENT_NAME": kind, "GITHUB_REF": ref}, clear=True), \
+                     patch.object(sys, "argv", ["ci-changes.py", "plan"]), \
+                     patch.object(CI, "command", return_value="merged-base"), \
+                     patch.object(CI, "changed_paths", return_value=[] ) as changed, patch.object(sys, "stdout", io.StringIO()) as out:
+                    CI.main()
+                changed.assert_called_once_with(base, "HEAD")
+                self.assertEqual(json.loads(out.getvalue())["full"], full)
 
     def test_docs_runs_complete_cdc_for_each_exact_input_once(self):
         inputs = ["tools/v5-substrate/compare-cost-cdc.py", "tools/v5-substrate/cost-cell.py",
@@ -177,6 +197,36 @@ class RealGitSelection(unittest.TestCase):
         self.git("add", ".")
         self.git("commit", "-qm", "fixture")
         return self.git("rev-parse", "HEAD")
+
+    def test_dispatch_focused_base_uses_real_ancestor_and_refuses_invalid_scope(self):
+        path = self.directory / "native_graph_cost_test.go"
+        path.write_text("package graphapply\n")
+        base = self.commit()
+        path.write_text("package graphapply\nfunc TestCost(t *testing.T) {}\n")
+        middle = self.commit()
+        (self.root / "note.md").write_text("later CI repair")
+        head = self.commit()
+        self.git("checkout", "-q", "--detach", base)
+        (self.root / "foreign.md").write_text("foreign branch")
+        foreign = self.commit()
+        self.git("checkout", "-q", "--detach", head)
+        event_path = self.root / "event.json"
+        blob = self.git("hash-object", "-w", "note.md")
+        def dispatch(focused, dispatched=head):
+            event_path.write_text(json.dumps({"inputs": {"full_validation": False, "focused_base": focused}}))
+            with patch.dict(os.environ, {"PATH": os.environ["PATH"], "GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/v5", "GITHUB_EVENT_PATH": str(event_path)}, clear=True), \
+                 patch.object(sys, "argv", ["ci-changes.py", "plan", "--head", dispatched]), patch.object(sys, "stdout", io.StringIO()) as out:
+                CI.main()
+            return json.loads(out.getvalue())
+        result = dispatch(base)
+        self.assertEqual(result["base"], base)
+        self.assertFalse(result["full"])
+        self.assertIn("v5/internal/graphapply/native_graph_cost_test.go", result["paths"])
+        self.assertNotIn("v5/internal/graphapply/native_graph_cost_test.go", dispatch("")["paths"])
+        for invalid, dispatched in [("HEAD^", head), (base[:8], head), ("x"*40, head), ("0"*40, head),
+                                     (blob, head), (head, head), (foreign, head), (head, middle)]:
+            with self.subTest(base=invalid, head=dispatched), self.assertRaises((ValueError, subprocess.CalledProcessError)):
+                dispatch(invalid, dispatched)
 
     def test_rename_reports_both_packages(self):
         path = self.directory / "old.go"
@@ -444,6 +494,10 @@ class CurrentRepository(unittest.TestCase):
         text = (CI.ROOT / ".github/workflows/ci.yml").read_text()
         self.assertIn("workflow_dispatch:", text)
         self.assertIn("full_validation:", text)
+        self.assertIn("      focused_base:\n", text)
+        self.assertIn("Optional full commit SHA ancestor for focused manual revalidation", text)
+        self.assertNotIn("${{ inputs.focused_base", text)
+        self.assertNotIn("${{ github.event.inputs.focused_base", text)
         self.assertIn("make cover-gate", text)
         self.assertIn("Root race tests with exhaustive core batches", text)
         self.assertIn("  race-plan:\n    needs: changes\n    if: needs.changes.outputs.full == 'true'", text)

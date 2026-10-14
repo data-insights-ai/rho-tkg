@@ -429,6 +429,25 @@ def cdc(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/compare_cost_cdc_test.py"], cwd=ROOT, check=True)
 
 
+def focused_dispatch_base(event, kind, head):
+    """Structured manual input only; automatic push/PR scope is unchanged."""
+    base = event.get("inputs", {}).get("focused_base", "") if kind == "workflow_dispatch" else ""
+    if base == "":
+        return None
+    if not isinstance(base, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", base):
+        fail("focused_base requires a full 40-hex commit SHA")
+    try:
+        if command(["git", "cat-file", "-t", base]).strip() != "commit":
+            fail("focused_base must name a genuine commit")
+        dispatched = command(["git", "rev-parse", "--verify", head + "^{commit}"]).strip()
+        if base.lower() == dispatched.lower():
+            fail("focused_base must differ from dispatched head")
+        command(["git", "merge-base", "--is-ancestor", base, dispatched])
+    except subprocess.CalledProcessError as error:
+        raise ValueError("focused_base must be an existing ancestor commit of dispatched head") from error
+    return base.lower()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("plan", "run", "root-plan", "root-run", "docs", "cdc", "external"))
@@ -444,7 +463,8 @@ def main():
         event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text()) if os.environ.get("GITHUB_EVENT_PATH") else {}
         kind = os.environ.get("GITHUB_EVENT_NAME", "push")
         full = os.environ.get("GITHUB_REF") == "refs/heads/main" or event.get("pull_request", {}).get("base", {}).get("ref") == "main" or kind == "workflow_dispatch" and str(event.get("inputs", {}).get("full_validation", "true")).lower() == "true"
-        base = args.base or event.get("before") or event.get("pull_request", {}).get("base", {}).get("sha") or "HEAD^"
+        focused_base = focused_dispatch_base(event, kind, args.head)
+        base = args.base or focused_base or event.get("before") or event.get("pull_request", {}).get("base", {}).get("sha") or "HEAD^"
         if kind == "pull_request":
             base = command(["git", "merge-base", base, args.head]).strip()
         paths = changed_paths(base, args.head)

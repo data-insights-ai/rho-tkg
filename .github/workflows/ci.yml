@@ -10,6 +10,11 @@ on:
         description: Full phase/release validation (both modules and tool gates)
         type: boolean
         default: true
+      focused_base:
+        description: Optional full commit SHA ancestor for focused manual revalidation
+        type: string
+        required: false
+        default: ""
 permissions:
   contents: read
 concurrency:
