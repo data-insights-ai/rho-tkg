@@ -21,7 +21,7 @@ const applicationSnapshotClaimFixedBytes uint64 = 2048
 // It contains no application image, local generation/voter policy or HardState.
 // Encoding does not prove receipt, Raft acceptance or authorize activation.
 func EncodeApplicationSnapshotDescriptor(m ApplicationSnapshotManifest) ([]byte, error) {
-	if m.Version != 2 && m.Version != 3 && m.Version != 4 && m.Version != 5 {
+	if m.Version != 2 && m.Version != 3 && m.Version != 4 && m.Version != 5 && m.Version != 6 {
 		return nil, ErrInvalid
 	}
 	if err := validateManifest(m); err != nil {
@@ -42,8 +42,8 @@ func EncodeApplicationSnapshotDescriptor(m ApplicationSnapshotManifest) ([]byte,
 	if m.Version >= 4 {
 		version = 3
 	}
-	if m.Version == 5 {
-		version = 4
+	if m.Version >= 5 {
+		version = byte(m.Version - 1)
 	}
 	b = append(b, 'A', 'D', version, 0)
 	if m.Version >= 3 {
@@ -62,10 +62,10 @@ func EncodeApplicationSnapshotDescriptor(m ApplicationSnapshotManifest) ([]byte,
 		b = binary.BigEndian.AppendUint64(b, m.ControlBytes)
 		b = binary.BigEndian.AppendUint64(b, m.ControlRecords)
 	}
-	if m.Version == 5 {
+	if m.Version >= 5 {
 		b = binary.BigEndian.AppendUint64(b, m.RecoveryBytes)
 		b = binary.BigEndian.AppendUint64(b, m.RecoveryRecords)
-		sum := recoveryRootDigest(m.RecoveryReservation)
+		sum := snapshotRecoveryHash(m)
 		b = append(b, sum[:]...)
 	}
 	b = append(b, m.ImageHash[:]...)

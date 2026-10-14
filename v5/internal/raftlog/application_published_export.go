@@ -34,8 +34,11 @@ func publishedManifestID(m ApplicationSnapshotManifest) [32]byte {
 	if m.Version == 3 {
 		domain = append([]byte("rho-tkg:application-snapshot-manifest:v3\x00"), m.SemanticContractID[:]...)
 	}
-	if m.Version == 5 {
+	if m.Version >= 5 {
 		domain = append([]byte("rho-tkg:application-snapshot-manifest:v5\x00"), m.SemanticContractID[:]...)
+		if m.Version == 6 {
+			domain = append([]byte("rho-tkg:application-snapshot-manifest:v6\x00"), m.SemanticContractID[:]...)
+		}
 	}
 	if m.Version == 4 {
 		domain = append([]byte("rho-tkg:application-snapshot-manifest:v4\x00"), m.SemanticContractID[:]...)
@@ -51,10 +54,10 @@ func publishedManifestID(m ApplicationSnapshotManifest) [32]byte {
 		b = binary.BigEndian.AppendUint64(b, m.ControlBytes)
 		b = binary.BigEndian.AppendUint64(b, m.ControlRecords)
 	}
-	if m.Version == 5 {
+	if m.Version >= 5 {
 		b = binary.BigEndian.AppendUint64(b, m.RecoveryBytes)
 		b = binary.BigEndian.AppendUint64(b, m.RecoveryRecords)
-		sum := recoveryRootDigest(m.RecoveryReservation)
+		sum := snapshotRecoveryHash(m)
 		b = append(b, sum[:]...)
 	}
 	return sha256.Sum256(b)
@@ -104,13 +107,17 @@ func (s *Store) BeginPublishedApplicationExport(ctx context.Context, id [32]byte
 		return nil, ErrLimit
 	}
 	var recovery ApplicationRecoveryReservation
+	var terminal applicationTerminalBank
 	if s.meta.Recovery.Config.enabled() {
 		var recoveryErr error
-		recovery, recoveryErr = s.loadRecoveryRootAt(p.Bank, s.meta.Base)
-		if recoveryErr != nil || recoveryRootDigest(recovery) != p.RecoveryHash {
+		recovery, terminal, recoveryErr = s.loadNativeRecoveryRootAt(p.Bank, s.meta.Base)
+		if recoveryErr != nil || nativeRecoveryRootDigest(applicationRecoveryMetadata{Config: s.meta.Recovery.Config, Reservation: recovery, Terminal: terminal}) != p.RecoveryHash {
 			return nil, errors.Join(ErrCorrupt, recoveryErr)
 		}
-		extra := uint64(256 + 32*len(recovery.Credits)) // admitted bounded credit owner, separate from image/cursors
+		extra := uint64(256 + 32*len(recovery.Credits))
+		if s.meta.Recovery.Config.Version == 2 {
+			extra += uint64(2*terminalBankBytes(terminal) + 128*len(terminal))
+		} // admitted bounded credit owner, separate from image/cursors
 		if pin > tc.Limits.MaxPinnedLogicalBytes-s.pinnedApplicationBytes || extra > tc.Limits.MaxPinnedLogicalBytes-s.pinnedApplicationBytes-pin {
 			return nil, ErrLimit
 		}
@@ -129,6 +136,7 @@ func (s *Store) BeginPublishedApplicationExport(ctx context.Context, id [32]byte
 	m := ApplicationSnapshotManifest{Version: s.meta.manifestVersion(), SemanticContractID: cut.SemanticContractID, CutID: id, Identity: cut.Identity, Contract: cut.Contract, Index: cut.Index, Term: cut.Term, ConfState: canonicalConf(cut.ConfState), Image: image, ImageHash: cut.ImageHash}
 	m.ControlBytes, m.ControlRecords = p.ControlBytes, p.ControlRecords
 	m.RecoveryBytes, m.RecoveryRecords, m.RecoveryReservation = p.RecoveryBytes, p.RecoveryRecords, recovery
+	m.TerminalReservations = []ApplicationRecoveryReservation(terminal)
 	m.NamespaceRecords = [4]uint64{p.Records - p.ControlRecords - p.RecoveryRecords - 3*m.Index, m.Index, m.Index, m.Index}
 	for j := range m.NamespaceBytes {
 		m.NamespaceBytes[j] = p.Bytes
@@ -196,7 +204,7 @@ func (e *ApplicationExport) BuildManifest(ctx context.Context, b ReadBudget) (bo
 		m.RecoveryBytes, m.RecoveryRecords = state.recoveryBytes, state.recoveryRows
 		// The image was checked at capture. Its cut ID must agree with the exact
 		// verified totals; no full-image encode/hash is hidden in this page's finish.
-		id, err := cutID(ApplicationCutReference{RecoveryBytes: m.RecoveryBytes, RecoveryRecords: m.RecoveryRecords, RecoveryHash: recoveryHashForManifest(m), SemanticContractID: m.SemanticContractID, Identity: m.Identity, Contract: m.Contract, Index: m.Index, Term: m.Term, ConfState: m.ConfState, ImageBytes: uint64(len(m.Image)), ImageHash: m.ImageHash, RetainedBytes: state.bytes, RetainedRecords: state.rows, ControlBytes: state.controlBytes, ControlRecords: state.controlRows})
+		id, err := cutID(ApplicationCutReference{RecoveryBytes: m.RecoveryBytes, RecoveryRecords: m.RecoveryRecords, RecoveryHash: snapshotRecoveryHash(m), SemanticContractID: m.SemanticContractID, Identity: m.Identity, Contract: m.Contract, Index: m.Index, Term: m.Term, ConfState: m.ConfState, ImageBytes: uint64(len(m.Image)), ImageHash: m.ImageHash, RetainedBytes: state.bytes, RetainedRecords: state.rows, ControlBytes: state.controlBytes, ControlRecords: state.controlRows})
 		if err != nil || id != m.CutID {
 			s.poison = ErrCorrupt
 			return false, ErrCorrupt
@@ -236,7 +244,7 @@ func (e *ApplicationExport) publishedPage(ctx context.Context, b ReadBudget, bui
 	if base > b.Bytes {
 		return chunk, state, ErrLimit
 	}
-	it, err := newApplicationIterator(e.snapshot.NewIter, e.bank, m.controls(), m.Version == 5)
+	it, err := newApplicationIterator(e.snapshot.NewIter, e.bank, m.controls(), m.Version >= 5)
 	if err != nil {
 		return chunk, state, err
 	}
@@ -330,7 +338,7 @@ func snapshotCursorIndex(k []byte, c ApplicationContract) (uint64, error) {
 		}
 		return index, nil
 	}
-	if k[0] < appRootTag || k[0] > appOutcomeTag && (c.Version != 3 || k[0] != recoveryRootTag) || len(k) != 9 {
+	if k[0] < appRootTag || k[0] > appOutcomeTag && (c.Version < 3 || k[0] != recoveryRootTag) || len(k) != 9 {
 		return 0, ErrCorrupt
 	}
 	index := binary.BigEndian.Uint64(k[1:])
@@ -433,7 +441,7 @@ func importDescriptorBytes(i *ApplicationImport) int {
 	if i.manifest.controls() {
 		n += 16
 	}
-	if i.manifest.Version == 5 {
+	if i.manifest.Version >= 5 {
 		n += 16
 	}
 	return n

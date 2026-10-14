@@ -127,6 +127,9 @@ func localApplicationKey(bank byte, key []byte) []byte {
 }
 func (m ApplicationSnapshotManifest) controls() bool { return m.Version >= 4 }
 func (m metadata) manifestVersion() uint32 {
+	if m.Recovery.Config.Version == 2 {
+		return 6
+	}
 	if m.Recovery.Config.enabled() {
 		return 5
 	}
@@ -140,7 +143,7 @@ func descriptorBytesForContract(id ApplicationSemanticContractID, c ApplicationC
 	if c.Version >= 2 {
 		n += 16
 	}
-	if c.Version == 3 {
+	if c.Version >= 3 {
 		n += 48
 	}
 	return n
@@ -152,4 +155,29 @@ func sameControlLogical(previous, current []byte, limit int) bool {
 	p, _, e := decodeControlKey(0, previous, limit)
 	q, _, f := decodeControlKey(0, current, limit)
 	return e == nil && f == nil && bytes.Equal(p, q)
+}
+
+// Snapshot roots bind both independently funded banks in the fresh AS6 profile.
+func snapshotRecoveryState(m ApplicationSnapshotManifest) applicationRecoveryMetadata {
+	version := uint32(1)
+	if m.Version == 6 {
+		version = 2
+	}
+	return applicationRecoveryMetadata{Config: ApplicationRecoveryConfig{Version: version}, Reservation: m.RecoveryReservation, Terminal: applicationTerminalBank(m.TerminalReservations)}
+}
+func snapshotRecoveryHash(m ApplicationSnapshotManifest) [32]byte {
+	if m.Version == 6 {
+		return nativeRecoveryRootDigest(snapshotRecoveryState(m))
+	}
+	return recoveryHashForManifest(m)
+}
+func cloneTerminalBank(bank []ApplicationRecoveryReservation) []ApplicationRecoveryReservation {
+	if len(bank) == 0 {
+		return nil
+	}
+	out := make([]ApplicationRecoveryReservation, len(bank))
+	for i, r := range bank {
+		out[i] = cloneRecoveryReservation(r)
+	}
+	return out
 }

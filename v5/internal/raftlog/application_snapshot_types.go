@@ -41,7 +41,7 @@ func (c ApplicationContract) numbers() []uint64 {
 	return []uint64{uint64(c.Version), unsignedLimit(c.MaxKeyBytes), unsignedLimit(c.MaxValueBytes), unsignedLimit(c.MaxImageBytes), unsignedLimit(c.MaxPageRows), unsignedLimit(c.MaxPageBytes), unsignedLimit(c.MaxInstallWrites), unsignedLimit(c.MaxInstallBytes), unsignedLimit(c.MaxChangeBytes), unsignedLimit(c.MaxOutcomeBytes)}
 }
 func (c ApplicationContract) validate() error {
-	if c.Version != 1 && c.Version != 2 && c.Version != 3 {
+	if c.Version != 1 && c.Version != 2 && c.Version != 3 && c.Version != 4 {
 		return ErrInvalid
 	}
 	for _, n := range c.numbers()[1:] {
@@ -114,6 +114,7 @@ func (c ApplicationTransferConfig) validate(p ApplicationPolicy) error {
 // SemanticContractID. Older formats require its zero value. Other versions refuse.
 type ApplicationSnapshotManifest struct {
 	RecoveryReservation              ApplicationRecoveryReservation
+	TerminalReservations             []ApplicationRecoveryReservation
 	RecoveryBytes, RecoveryRecords   uint64
 	SemanticContractID               ApplicationSemanticContractID
 	Version                          uint32

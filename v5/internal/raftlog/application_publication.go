@@ -159,8 +159,11 @@ func cutID(c ApplicationCutReference) ([32]byte, error) {
 	if c.ControlBytes > c.RetainedBytes || c.ControlRecords > c.RetainedRecords || c.Index > (c.RetainedRecords-c.ControlRecords)/3 {
 		return [32]byte{}, ErrInvalid
 	}
-	if c.Contract.Version == 3 {
+	if c.Contract.Version >= 3 {
 		domain = append([]byte("rho-tkg:published-application-cut:v4\x00"), c.SemanticContractID[:]...)
+		if c.Contract.Version == 4 {
+			domain = append([]byte("rho-tkg:published-application-cut:v5\x00"), c.SemanticContractID[:]...)
+		}
 		if c.RecoveryRecords != c.Index || c.RecoveryBytes > c.RetainedBytes-c.ControlBytes || c.RecoveryRecords > c.RetainedRecords-c.ControlRecords || c.RecoveryHash == ([32]byte{}) {
 			return [32]byte{}, ErrInvalid
 		}
@@ -176,7 +179,7 @@ func cutID(c ApplicationCutReference) ([32]byte, error) {
 		b = binary.BigEndian.AppendUint64(b, c.ControlBytes)
 		b = binary.BigEndian.AppendUint64(b, c.ControlRecords)
 	}
-	if c.Contract.Version == 3 {
+	if c.Contract.Version >= 3 {
 		b = binary.BigEndian.AppendUint64(b, c.RecoveryBytes)
 		b = binary.BigEndian.AppendUint64(b, c.RecoveryRecords)
 		b = append(b, c.RecoveryHash[:]...)
@@ -194,7 +197,7 @@ func bindPublication(m *metadata, bank byte, generation, retainedBytes, retained
 	if m.Recovery.Config.enabled() {
 		m.Gen.Publication.RecoveryBytes = m.Recovery.Bytes
 		m.Gen.Publication.RecoveryRecords = m.Recovery.Records
-		m.Gen.Publication.RecoveryHash = recoveryRootDigest(m.Recovery.Reservation)
+		m.Gen.Publication.RecoveryHash = nativeRecoveryRootDigest(m.Recovery)
 	}
 	id, err := cutID(cutReference(*m))
 	if err != nil {

@@ -34,6 +34,7 @@ func cloneSnapshotManifest(m ApplicationSnapshotManifest) ApplicationSnapshotMan
 	m.Image = copyApplicationBytes(m.Image)
 	m.ConfState = proto.Clone(m.ConfState).(*pb.ConfState)
 	m.RecoveryReservation = cloneRecoveryReservation(m.RecoveryReservation)
+	m.TerminalReservations = cloneTerminalBank(m.TerminalReservations)
 	return m
 }
 
@@ -246,7 +247,7 @@ func (e *ApplicationExport) Next(ctx context.Context, b ReadBudget) (chunk Appli
 	if b.Rows > l.MaxChunkRows || b.Bytes > l.MaxChunkBytes {
 		return chunk, ErrLimit
 	}
-	it, err := newApplicationIterator(e.snapshot.NewIter, e.bank, e.manifest.controls(), e.manifest.Version == 5)
+	it, err := newApplicationIterator(e.snapshot.NewIter, e.bank, e.manifest.controls(), e.manifest.Version >= 5)
 	if err != nil {
 		s.poison = err
 		return chunk, err
