@@ -408,14 +408,21 @@ column bytes to original outcomes and exact deletion debits. Source-history
 process restart, remaining directed-message/workload schedules and execution
 stay open; this does not close E.
 
-The paired native cost/fault driver currently composes caller loss before Decide,
+The paired native cost/fault driver composes caller loss before Decide,
 committed Decide reply loss and one HOME leader SIGKILL with a healthy quorum,
-followed by clean six-volume reopen and original-request replay. This source
-inventory does not cover D's duplicate/reordered/asymmetric network schedules,
-unequal ticks/clock jumps, quorum/domain loss or graph-composed VFS/durable-image
-storage faults. These remain implementation work alongside native columns,
-contended/empty predicates, partial late correction, snapshot/feed and
-transfer-under-write cost workloads; their qualification follows integration.
+followed by clean six-volume reopen and original-request replay. The bounded
+composed-fault source package at `2d9082e3` adds partial A installation with
+coordinator loss and delayed Resolve, immutable conflicting-original refusal,
+real packet drop/duplicate/reorder/directed partition and finite delays, matched
+WAL short-write/EIO/ENOSPC/file-sync failures, and directory-sync failure during
+genuine same-directory reopen. Its raw-prefix/original/serial bridge and owned
+process/queue accounting are authored, not executed. The queued capacity
+COMMIT/ABORT first-decision child-authority seam, old-leader schedules, unequal
+ticks/clock jumps, quorum/domain loss, torn/power-loss images, snapshot
+publication and corrupt pages remain implementation work. All eight declared
+cost workload dispatches and RTT/matrix integration also remain open; a finite
+packet delay is not a measured RTT profile. Qualification follows full source
+integration; this package does not close B or D.
 
 Worker lanes: Sol 6.1/high for native protocol recovery and durable pins/GC,
 then C/D; Sol 6.1/high for native column/fault-workload implementation (bounded
