@@ -186,12 +186,16 @@ func currentStampsBackends() []hasHistoryBackend {
 }
 
 // currentStampsSeeds is the seed count of TestCurrentStampsDifferential:
-// CURRENT_STAMPS_SEEDS, else 48 (24 in -short, at 100 steps instead of 300).
+// CURRENT_STAMPS_SEEDS, else 48 (24 in -short, at 100 steps instead of 300;
+// 8 in -short under -race, the 4-vCPU CI race run).
 func currentStampsSeeds() int {
 	if s := os.Getenv("CURRENT_STAMPS_SEEDS"); s != "" {
 		if n, err := strconv.Atoi(s); err == nil && n > 0 {
 			return n
 		}
+	}
+	if testing.Short() && isRaceEnabled() {
+		return 8
 	}
 	if testing.Short() {
 		return 24

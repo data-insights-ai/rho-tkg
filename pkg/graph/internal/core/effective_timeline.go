@@ -354,6 +354,9 @@ func (t *TempOps) RelEffectiveTimeline(id types.RelID, pin types.Instant) ([]tem
 	}
 	var out []temporal.RelSegment
 	err := c.readUnderRLock(func() error {
+		if err := c.checkRelTypePointRetention(id, pin); err != nil {
+			return err
+		}
 		var err error
 		out, err = c.relEffectiveTimelineLocked(id, pin)
 		return err
@@ -649,7 +652,7 @@ func (t *TempOps) ForEachRelEffectiveByType(typeName string, pin types.Instant, 
 	if err := c.validateRelTypeQueryName(typeName); err != nil {
 		return err
 	}
-	if err := c.validateEffectiveScanPin(pin); err != nil {
+	if err := c.validateEffectiveScanPin(pin, c.relTypeRetentionScope(typeName)); err != nil {
 		return err
 	}
 	var (
@@ -672,13 +675,13 @@ func (t *TempOps) ForEachRelEffectiveByType(typeName string, pin types.Instant, 
 }
 
 // validateEffectiveScanPin is validateEffectivePin plus the scan doors'
-// graph-watermark gates (validateTemporalQueryOptsScan with a TxPin).
-func (c *Core) validateEffectiveScanPin(pin types.Instant) error {
+// graph-watermark gates (validateTemporalQueryOptsScan with a TxPin) in scope.
+func (c *Core) validateEffectiveScanPin(pin types.Instant, scope retentionScope) error {
 	if err := c.validateEffectivePin(pin); err != nil {
 		return err
 	}
 	if err := c.checkScanCompactionAt(pin); err != nil {
 		return err
 	}
-	return c.checkScanRetentionAt(pin)
+	return c.checkScanRetentionAt(pin, scope)
 }

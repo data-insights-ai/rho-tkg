@@ -37,6 +37,12 @@ type PurgeMode = core.PurgeMode
 // PurgeReport summarizes a PurgeExpiredNodes run. See core.PurgeReport.
 type PurgeReport = core.PurgeReport
 
+// RelPurgePolicy bounds a relationship retention purge (backlog 21). See core.RelPurgePolicy.
+type RelPurgePolicy = core.RelPurgePolicy
+
+// RelPurgeReport summarizes a PurgeExpiredRels run. See core.RelPurgeReport.
+type RelPurgeReport = core.RelPurgeReport
+
 // ExactErasureRequest declares the complete bounded graph scope to erase.
 type ExactErasureRequest = core.ExactErasureRequest
 
@@ -73,6 +79,7 @@ type Ops interface {
 	CompactHistoryNodes(ctx context.Context, policy RetentionPolicy) (CompactReport, error)
 	CompactHistoryRels(ctx context.Context, policy RetentionPolicy) (CompactReport, error)
 	PurgeExpiredNodes(ctx context.Context, policy PurgePolicy) (PurgeReport, error)
+	PurgeExpiredRels(ctx context.Context, policy RelPurgePolicy) (RelPurgeReport, error)
 	ResolveExactErasure(ctx context.Context, request ExactErasureRequest) (ExactErasureResolution, error)
 	ExactErase(ctx context.Context, request ExactErasureRequest) (ExactErasureReceipt, error)
 	SealRelSegments(relType string) error
@@ -145,16 +152,32 @@ func (a *API) CompactHistoryRels(ctx context.Context, policy RetentionPolicy) (C
 // PurgeExpiredNodes hard-removes aged-out nodes of policy.Label below
 // policy.Before (with each node's edges, indexes, and full history) — no
 // tombstones (ADR-0008 R2). Requires Config.AllowRetentionPurge and a
-// RetentionPurgeCapability backend (memory or badger; tiered/sharded decline
-// until R4), and refuses while the change-log is enabled (replica re-execution is
-// R3). Advances the per-label retention watermark so a read pinned below the
-// boundary fails closed with ErrRetentionExpired. Idempotent + resumable.
+// RetentionPurgeCapability backend (memory, badger, sharded and tiered); with
+// the change-log on it emits one ChangeRangePurge record that a replica
+// re-executes (R3). Advances the per-label retention watermark so a read pinned
+// below the boundary fails closed with ErrRetentionExpired. Idempotent +
+// resumable; each chunk waits for an open transaction.
 func (a *API) PurgeExpiredNodes(ctx context.Context, policy PurgePolicy) (PurgeReport, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return PurgeReport{}, err
 	}
 	return ops.PurgeExpiredNodes(ctx, policy)
+}
+
+// PurgeExpiredRels hard-removes the relationships of policy.Type minted
+// before policy.Before — live and ended, each with its legs, indexes and whole
+// history; nodes untouched — and advances that type's retention watermark, so
+// a read of the type (or of every type) pinned below it fails closed with
+// ErrRetentionExpired while other types and nodes are answered (backlog 21).
+// Same gates as PurgeExpiredNodes; Mode must be PurgeByAge. See
+// core.AdminOps.PurgeExpiredRels.
+func (a *API) PurgeExpiredRels(ctx context.Context, policy RelPurgePolicy) (RelPurgeReport, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return RelPurgeReport{}, err
+	}
+	return ops.PurgeExpiredRels(ctx, policy)
 }
 
 // ResolveExactErasure canonicalizes a bounded request and expands its

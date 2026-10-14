@@ -97,6 +97,20 @@ func (m *shardedRWMutex) Lock() {
 	}
 }
 
+// TryLock takes every stripe without waiting, or none: false when a reader
+// or writer holds any stripe (the stripes taken so far are released).
+func (m *shardedRWMutex) TryLock() bool {
+	for i := range m.stripes {
+		if !m.stripes[i].mu.TryLock() {
+			for j := i - 1; j >= 0; j-- {
+				m.stripes[j].mu.Unlock()
+			}
+			return false
+		}
+	}
+	return true
+}
+
 // Unlock releases every stripe held by Lock, in reverse acquisition order.
 func (m *shardedRWMutex) Unlock() {
 	for i := len(m.stripes) - 1; i >= 0; i-- {

@@ -1,0 +1,48 @@
+# Backlog 28 GREEN, 2026-10-13
+# go test -count=1 -run 'TestCountByLabelAtStateColumnPath|TestStateColumnPath_|TestColumnDrivers_NodeAndRelAgree' ./pkg/graph/internal/core/ ./pkg/graph/store/ -v
+# rows decoded per state count / scan after the first build (badger, CacheCapacity 1): 0 / 0 at 10 K and 100 K
+# (red: [11997 20998] at 10 K, [119997 209998] at 100 K). Answers equal the row fold on memory, badger, sharded,
+# tiered, node and relationship, before and after later writes, a backfill, eviction and concurrent writes.
+    state_columns_test.go:249: rows decoded per state count / scan after the first build: 10000 entities [0 0], 100000 entities [0 0]
+    state_columns_test.go:249: rows decoded per state count / scan after the first build: 10000 entities [0 0], 100000 entities [0 0]
+--- PASS: TestCountByLabelAtStateColumnPath (10.76s)
+    --- PASS: TestCountByLabelAtStateColumnPath/node (3.87s)
+    --- PASS: TestCountByLabelAtStateColumnPath/rel (6.89s)
+--- PASS: TestStateColumnPath_BreakCases (0.45s)
+    --- PASS: TestStateColumnPath_BreakCases/memory/node (0.01s)
+    --- PASS: TestStateColumnPath_BreakCases/memory/rel (0.01s)
+    --- PASS: TestStateColumnPath_BreakCases/badger/node (0.02s)
+    --- PASS: TestStateColumnPath_BreakCases/badger/rel (0.04s)
+    --- PASS: TestStateColumnPath_BreakCases/sharded/node (0.06s)
+    --- PASS: TestStateColumnPath_BreakCases/sharded/rel (0.09s)
+    --- PASS: TestStateColumnPath_BreakCases/tiered/node (0.12s)
+    --- PASS: TestStateColumnPath_BreakCases/tiered/rel (0.11s)
+--- PASS: TestStateColumnPath_ConcurrentWrites (0.12s)
+    --- PASS: TestStateColumnPath_ConcurrentWrites/memory/node (0.01s)
+    --- PASS: TestStateColumnPath_ConcurrentWrites/memory/rel (0.00s)
+    --- PASS: TestStateColumnPath_ConcurrentWrites/badger/node (0.02s)
+    --- PASS: TestStateColumnPath_ConcurrentWrites/badger/rel (0.01s)
+    --- PASS: TestStateColumnPath_ConcurrentWrites/sharded/node (0.02s)
+    --- PASS: TestStateColumnPath_ConcurrentWrites/sharded/rel (0.02s)
+    --- PASS: TestStateColumnPath_ConcurrentWrites/tiered/node (0.02s)
+    --- PASS: TestStateColumnPath_ConcurrentWrites/tiered/rel (0.02s)
+--- PASS: TestStateColumnPath_Eviction (0.42s)
+    --- PASS: TestStateColumnPath_Eviction/memory/node (0.02s)
+    --- PASS: TestStateColumnPath_Eviction/memory/rel (0.04s)
+    --- PASS: TestStateColumnPath_Eviction/badger/node (0.04s)
+    --- PASS: TestStateColumnPath_Eviction/badger/rel (0.07s)
+    --- PASS: TestStateColumnPath_Eviction/sharded/node (0.03s)
+    --- PASS: TestStateColumnPath_Eviction/sharded/rel (0.03s)
+    --- PASS: TestStateColumnPath_Eviction/tiered/node (0.08s)
+    --- PASS: TestStateColumnPath_Eviction/tiered/rel (0.11s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	11.846s
+--- PASS: TestColumnDrivers_NodeAndRelAgree (0.00s)
+    --- PASS: TestColumnDrivers_NodeAndRelAgree/typed_mix_and_absent (0.00s)
+    --- PASS: TestColumnDrivers_NodeAndRelAgree/string_vs_number_is_absent (0.00s)
+    --- PASS: TestColumnDrivers_NodeAndRelAgree/mixed_numeric_refuses (0.00s)
+    --- PASS: TestColumnDrivers_NodeAndRelAgree/widened_integrals (0.00s)
+    --- PASS: TestColumnDrivers_NodeAndRelAgree/list_is_other (0.00s)
+    --- PASS: TestColumnDrivers_NodeAndRelAgree/all_absent (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.007s

@@ -1,0 +1,18 @@
+ci-race (todo request 24) — plan, written before the first edit (2026-10-13)
+
+Problem: GitHub CI `test` job (ubuntu-latest, 4 vCPU) runs `go test -short -race ./...`
+with -p 4: pkg/graph, internal/core and store/memory hit Go's 10-min per-package timeout.
+
+Steps and proofs
+1. Profile (01-profile.txt): -json, GOMAXPROCS=4, taskset 4 CPUs, three packages alone + all other packages.
+   "Red" = baseline: core 359 s, pkg/graph 292 s, memory 237 s alone on 4 CPUs; in CI they share 4 vCPU with
+   badger/tiered/index (-p 4), which is what pushed them past 600 s.
+2. Size cuts (02-reductions.txt): -short + race only; full size stays behind !testing.Short(); every
+   generator-coverage assertion (ops reached, refusals, retractions, seals) kept and must still pass at the smaller
+   size — that assertion is the break-the-code guard for each cut. Before/after time per test.
+3. Shards (03-shards.txt): port origin/v5 scripts/test-race.sh (core split by top-level tests, 4 shards), add a
+   per-shard selector for a CI matrix; `make test-race` local stays unsharded; ci-docker unchanged.
+   Break cases for the script: shard selector out of range / unknown, union of shards = full compiled inventory
+   (exhaustive, disjoint), empty shard refused.
+4. Target: every shard <= 5 min at GOMAXPROCS=4 + race on 4 CPUs (04-shard-times.txt).
+5. Gates: lint-docker, security-docker (05-gates.txt).

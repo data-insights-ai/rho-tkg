@@ -58,6 +58,7 @@ func (c *Core) loadRetentionWatermark() error {
 		return fmt.Errorf("graph: read retention watermark: %w: negative watermark %d", storepkg.ErrCorruptWire, wm)
 	}
 	c.retentionMaxWatermark.Store(wm)
+	c.raiseRetentionAnyMax(wm)
 	return nil
 }
 
@@ -67,17 +68,20 @@ func (c *Core) loadRetentionWatermark() error {
 // writes go through the store-level MetaSet (on tiered/sharded these route to the
 // reference/anchor shard, so the graph max lands globally on ONE shard). No purge
 // exists in R1 — this is the seam R2's purge calls after a range is fully clean.
+//
+// It does NOT invalidate the as-of column cache: the purge's rows are still
+// there. purgeRangeAllChunks bumps the cache after removing them (R14: a bump
+// before the removal lets a column built in between be cached as current).
 func (c *Core) advanceRetentionWatermark(labelToken uint16, w types.Instant) error {
 	if w <= 0 {
 		return nil
 	}
-	// A retention purge removes history below the boundary, which can change the
-	// as-of belief at any txAt < w — invalidate the as-of column cache.
-	c.asOfColumns.bump()
 	mk, err := c.retentionMetaKV()
 	if err != nil {
 		return err
 	}
+	c.retentionMu.Lock()
+	defer c.retentionMu.Unlock()
 	// Per-label watermark is max-monotonic (a purge never lowers a boundary).
 	cur, err := c.retentionWatermarkForLabel(labelToken)
 	if err != nil {
@@ -95,6 +99,7 @@ func (c *Core) advanceRetentionWatermark(labelToken uint16, w types.Instant) err
 		}
 		c.retentionMaxWatermark.Store(int64(w))
 	}
+	c.raiseRetentionAnyMax(int64(w))
 	return nil
 }
 
@@ -163,6 +168,10 @@ func (c *Core) retentionWatermarkForLabel(labelToken uint16) (int64, error) {
 // holds c.mu.Lock.
 func (c *Core) reapRetentionForReset() error {
 	c.retentionMaxWatermark.Store(0)
+	c.retentionAnyMax.Store(0)
+	if err := c.reapRelRetentionForReset(); err != nil {
+		return err
+	}
 	mk := c.metaKV
 	if mk == nil {
 		return nil
@@ -182,13 +191,15 @@ func (c *Core) reapRetentionForReset() error {
 // Answerability checks (ADR-0008 §2.2)
 // -----------------------------------------------------------------------------
 
-// checkScanRetention fails a scan whose transaction/valid pin falls before the
-// graph's maximum retention watermark: a scan cannot signal per entity, so a pin
-// below the max means SOME relevant label's purged entities are missing and the
-// whole scan fails closed with ErrRetentionExpired rather than returning a
-// silently-incomplete set. Gated by the lock-free graph max so the common
-// (no retention ever) path pays nothing.
-func (c *Core) checkScanRetention(opts storepkg.QueryOpts) error {
+// checkScanRetention fails a scan whose transaction/valid pin falls before a
+// retention watermark in its scope: a scan cannot signal per entity, so a pin
+// below a watermark means some purged entity is missing and the whole scan
+// fails closed with ErrRetentionExpired rather than returning a silently-
+// incomplete set. The node family is graph-wide (any label's purge); the
+// relationship family is per type (backlog 21, retention_rel.go). Gated by
+// the lock-free max over both families so the common (no retention ever)
+// path pays one atomic load.
+func (c *Core) checkScanRetention(opts storepkg.QueryOpts, scope retentionScope) error {
 	pin := opts.TxAt
 	if opts.TxPin != 0 {
 		pin = opts.TxPin
@@ -199,19 +210,29 @@ func (c *Core) checkScanRetention(opts storepkg.QueryOpts) error {
 	if pin == 0 {
 		pin = opts.ValidStart
 	}
-	return c.checkScanRetentionAt(pin)
+	return c.checkScanRetentionAt(pin, scope)
 }
 
 // checkScanRetentionAt is the pin-only scan gate (for the named txtime doors).
-func (c *Core) checkScanRetentionAt(pin types.Instant) error {
+func (c *Core) checkScanRetentionAt(pin types.Instant, scope retentionScope) error {
 	if pin == 0 {
 		return nil
 	}
-	max := c.retentionMaxWatermark.Load()
-	if max == 0 {
+	anyMax := c.retentionAnyMax.Load()
+	if anyMax == 0 || int64(pin) >= anyMax {
 		return nil
 	}
-	if int64(pin) < max {
+	if scope.nodes && int64(pin) < c.retentionMaxWatermark.Load() {
+		return ErrRetentionExpired
+	}
+	if !scope.rels {
+		return nil
+	}
+	wm := c.retentionRelMaxWatermark.Load()
+	if scope.relType != 0 {
+		wm = c.relRetentionWatermark(scope.relType)
+	}
+	if int64(pin) < wm {
 		return ErrRetentionExpired
 	}
 	return nil
@@ -248,13 +269,16 @@ func (c *Core) checkNodePointRetention(id types.NodeID, pin types.Instant) error
 	return nil
 }
 
-// checkRelPointRetention is the relationship point gate. Relationships carry a
-// rel-type, not labels, and are purged transitively with their endpoint events,
-// so R1 fails a below-max rel point read closed against the graph max (the
-// conservative fail-closed direction — a rel below the retention boundary may
-// have been purged with its event).
+// checkRelPointRetention is the relationship point gate of the node family.
+// Relationships carry a rel-type, not labels, and are purged transitively with
+// their endpoint events, so R1 fails a below-max rel point read closed against
+// the node graph max (the conservative fail-closed direction — a rel below the
+// retention boundary may have been purged with its event). The relationship
+// family (backlog 21) is checked by the point doors themselves
+// (checkRelTypePointRetention), not in the helpers the scans resolve their
+// candidates through: a scan already passed its own scoped gate.
 func (c *Core) checkRelPointRetention(pin types.Instant) error {
-	return c.checkScanRetentionAt(pin)
+	return c.checkScanRetentionAt(pin, scopeNodes)
 }
 
 // nodeLabelTokensForRetention returns the node's label tokens from its current

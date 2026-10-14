@@ -5,6 +5,7 @@ package memory
 
 import (
 	"fmt"
+	"slices"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -569,19 +570,11 @@ func (ms *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.N
 		return nil, err
 	}
 
-	if len(ms.nodeHistory) == 0 {
-		return nil, nil
-	}
-	ids := make([]types.NodeID, 0, len(ms.nodeHistory))
-	for id := range ms.nodeHistory {
-		ids = append(ids, id)
-	}
-	storepkg.SortNodeIDs(ids)
-	ids = storepkg.PaginateNodeIDs(ids, types.EntityID(after), limit)
+	ids := storepkg.PaginateNodeIDs(ms.sortedNodeHistoryIDsLocked(), types.EntityID(after), limit)
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	return ids, nil
+	return slices.Clone(ids), nil
 }
 
 // AllRelHistoryIDsFrom returns the IDs of relationships with version history,
@@ -600,19 +593,11 @@ func (ms *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 		return nil, err
 	}
 
-	if len(ms.relHistory) == 0 {
-		return nil, nil
-	}
-	ids := make([]types.RelID, 0, len(ms.relHistory))
-	for id := range ms.relHistory {
-		ids = append(ids, id)
-	}
-	storepkg.SortRelIDs(ids)
-	ids = storepkg.PaginateRelIDs(ids, types.EntityID(after), limit)
+	ids := storepkg.PaginateRelIDs(ms.sortedRelHistoryIDsLocked(), types.EntityID(after), limit)
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	return ids, nil
+	return slices.Clone(ids), nil
 }
 
 // --- Bulk queries ---

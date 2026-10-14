@@ -182,17 +182,20 @@ func TestAsOfColumnCache_TxRollbackInvalidates(t *testing.T) {
 func TestAsOfColumnCache_RealChokesBumpEpoch(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("retention-watermark", func(t *testing.T) {
-		g, _ := New(Config{})
+	// The retention purge bumps AFTER removing its rows (purgeRangeAllChunks,
+	// R14), not at the watermark advance (TestRetentionPurgeAsOfBumpAfterRows).
+	t.Run("retention-purge", func(t *testing.T) {
+		g, _ := New(Config{AllowRetentionPurge: true})
 		defer g.Close()
-		n, _ := g.Nodes.Add(ctx, []string{"Metric"}, nil)
-		tok, _ := g.labels.Lookup("Metric")
+		if _, err := g.Nodes.Add(ctx, []string{"Metric"}, nil); err != nil {
+			t.Fatal(err)
+		}
 		before := g.asOfColumns.currentEpoch()
-		if err := g.advanceRetentionWatermark(tok, txFromStamp(t, n.Temporal())+1); err != nil {
-			t.Fatalf("advanceRetentionWatermark: %v", err)
+		if _, err := g.Admin.PurgeExpiredNodes(ctx, PurgePolicy{Label: "Metric", Before: types.Instant(1 << 50)}); err != nil {
+			t.Fatalf("PurgeExpiredNodes: %v", err)
 		}
 		if g.asOfColumns.currentEpoch() == before {
-			t.Fatal("advanceRetentionWatermark did not bump the as-of epoch")
+			t.Fatal("the retention purge did not bump the as-of epoch")
 		}
 	})
 

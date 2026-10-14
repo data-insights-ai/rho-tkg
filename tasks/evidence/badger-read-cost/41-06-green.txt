@@ -1,0 +1,22 @@
+=== RUN   TestHistorySidecarRAMPerID
+=== RUN   TestHistorySidecarRAMPerID/ids=10000
+    badgerstore_history_sidecar_ram_test.go:77: ids=10000 built: HasHistory-only 19.1 B/ID (v4.51.4 29.6), LatestStamps-only 45.9 B/ID (v4.51.4 65.6), both 65.0 B/ID (v4.51.4 95.2)
+    badgerstore_history_sidecar_ram_test.go:77: ids=15000 after writes: HasHistory-only 26.2 B/ID (v4.51.4 38.2), LatestStamps-only 61.1 B/ID (v4.51.4 84.7), both 87.3 B/ID (v4.51.4 122.9)
+=== RUN   TestHistorySidecarRAMPerID/ids=100000
+    badgerstore_history_sidecar_ram_test.go:77: ids=100000 built: HasHistory-only 15.7 B/ID (v4.51.4 23.6), LatestStamps-only 36.7 B/ID (v4.51.4 52.5), both 52.4 B/ID (v4.51.4 76.1)
+    badgerstore_history_sidecar_ram_test.go:77: ids=150000 after writes: HasHistory-only 21.0 B/ID (v4.51.4 31.5), LatestStamps-only 48.9 B/ID (v4.51.4 70.0), both 69.9 B/ID (v4.51.4 101.5)
+=== RUN   TestHistorySidecarRAMPerID/ids=1000000
+    badgerstore_history_sidecar_ram_test.go:77: ids=1000000 built: HasHistory-only 25.2 B/ID (v4.51.4 37.7), LatestStamps-only 58.7 B/ID (v4.51.4 83.8), both 83.9 B/ID (v4.51.4 121.5)
+    badgerstore_history_sidecar_ram_test.go:77: ids=1500000 after writes: HasHistory-only 16.8 B/ID (v4.51.4 25.2), LatestStamps-only 39.1 B/ID (v4.51.4 56.0), both 55.9 B/ID (v4.51.4 81.2)
+--- PASS: TestHistorySidecarRAMPerID (16.25s)
+    --- PASS: TestHistorySidecarRAMPerID/ids=10000 (0.61s)
+    --- PASS: TestHistorySidecarRAMPerID/ids=100000 (1.52s)
+    --- PASS: TestHistorySidecarRAMPerID/ids=1000000 (14.12s)
+=== RUN   TestHistorySidecars_Differential
+=== RUN   TestHistorySidecars_Differential/node
+=== RUN   TestHistorySidecars_Differential/rel
+--- PASS: TestHistorySidecars_Differential (15.93s)
+    --- PASS: TestHistorySidecars_Differential/node (8.57s)
+    --- PASS: TestHistorySidecars_Differential/rel (7.37s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	32.236s

@@ -493,6 +493,111 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   imported-package and two required-module advisories are unreachable. Final
   consolidated root+v5 CI remains pending; no other v4 API or behavior change.
 
+## [4.51.5] - 2026-10-13
+
+### Added
+
+- **`Admin().PurgeExpiredRels(ctx, RelPurgePolicy{Type, Mode, Before}) (RelPurgeReport, error)`** (backlog 21,
+  sigma-tkgd overview retention): hard-removes the relationships of one type minted before `Before` — live and ended
+  (deleted, deleted at a caller instant, cascade-ended, retracted, re-imported lives) — with their legs, ex-adjacency,
+  indexes, counters, sidecars and whole history; nodes untouched. `RelPurgeReport{RelsPurged, Watermark}`. Same
+  gates and order as `PurgeExpiredNodes` (watermark, then one change record, then 256-relationship chunks;
+  idempotent, resumable); only `PurgeByAge` (`PurgeByValidTo` → `ErrInvalidPurgePolicy`); an unknown type is a
+  no-op. Memory, badger, sharded (per-shard fan-out) and tiered (every shard, cold ones opened for the call, then a
+  leg-residue sweep on the endpoints' shards). On badger a chunk selects its victims in O(chunk) reads (the type's
+  index keys and the history IDs, each walk resumed from a per-type cursor): 25,000 relationships beside 20,000
+  deleted ones of another type 2.26 s → 1.16 s (`tasks/evidence/rel-retention/09-f2-selection.txt`).
+- **Per-type retention gate**: a relationship purge advances only its type's watermark
+  (`retention_rel_watermark/<type token>`, max-monotonic, and `retention_rel_max_watermark`, kept in RAM from open).
+  A read of that type, or of every type, pinned below it fails with `ErrRetentionExpired`; other types and every node
+  read are answered (an `EVENT` purge never fails an `Overview` or `OV_PAIR` read). After a purge, a point read (`RelAtTx` / `RelAsOf`) of an unknown relationship ID minted before the cutoff, at a pin below the relationship max watermark, returns `ErrRetentionExpired` instead of `ErrRelNotFound`. The scan doors take the scope
+  of what they read; the relationship point doors (`RelAsOf`, `RelAtTx`, `RelEffectiveTimeline`,
+  `RelsEffectiveByIDs`) check the relationship's type; the relationship doors that had no retention gate (`RelsAt`,
+  `RelsDuring`, `RelsRelating`, `RelsByTypeProperty*`, `RelsAtTx`, `RelsDuringTx`, `NeighborsAt`,
+  `Outgoing`/`IncomingRelsAt`, `Snapshot`, `Diff*`, `Outgoing`/`IncomingForNodesAtTx`/`AtPin`, their `GraphTx`
+  mirrors) check the relationship watermarks only — their node-purge behaviour is unchanged. No-retention path: one
+  atomic load. `Admin().Reset` clears the relationship watermarks.
+- **Change tag `store.ChangeRelRangePurge` (14)**, body `RelRangePurgeBody{type token, boundary, mode}`: a replica
+  re-runs the predicate and advances its own type watermark; `ChangeOpOf` / `DecodeChangeIdentity` answer
+  `ErrNoEntityIdentity`; `ImportMerge` captures nothing. An older binary stops at the unknown tag: upgrade
+  replicas first; an older binary ignores the relationship watermarks: no downgrade after the first relationship
+  purge. Optional store capabilities `store.RelRetentionPurgeCapability` / `RelRangePurgeLogCapability`; badger
+  `Store.PurgeRelLegResidue` (the tiered sweep primitive).
+- **Export header carries both retention watermark families** by name (omitted when no purge ran); import applies
+  the relationship family, so a replica bootstrapped after a relationship purge refuses the low pins too.
+- **`io.ImportOptions.ApplyNodeRetention`** (opt-in): import also raises the node-label retention watermarks the
+  export header carries, so an import of an export taken after a node purge refuses the pins below the purge as its
+  source does. Off by default: the node watermarks are ignored, as before.
+
+- **State cuts for the state form of the count and column doors** (backlog 28, sigma-tkgd 2026-10-09):
+  `CountByLabelAt` / `CountByTypeAt` and `ScanNodeColumns` / `ScanRelColumns` with `TxAt` (and `ValidAt`) answer
+  from the label's or type's effective-timeline segments at the pin, built on the second read at that pin and
+  cached per (label or type, pin) for every valid time, instead of folding every candidate's rows per call. The
+  answer equals the row fold (`TestCountByLabelAtStateColumnPath`, break cases on all four backends). After the
+  first build a count or scan reads no row: 0 rows decoded at 10 K and 100 K (before 12 K/21 K and 120 K/210 K,
+  `tasks/evidence/state-columns/`); 100 K nodes, badger: count 508 ms to 0.23 ms, scan 1.05 s to 2.1 ms (memory
+  134 ms to 0.19 ms, 210 ms to 2.7 ms); the build costs about one fold. Invalidation is the as-of column set's
+  epoch, bumped by a history rewrite at or below a cached pin and now also by relationship replica applies at or
+  below it, an `UpdateInPlace` (it rewrites the row every pin reads; this also fixes the `TxPin` as-of column
+  set, which kept the old value), a delete that clamps a scheduled close, and `PurgeExpiredRels` (relationship cuts
+  only, so node as-of columns stay warm); one build per key at a time, and a
+  build that failed or did not fit is not repeated at that epoch; one LRU budget of 256 MiB per graph; a cut is cached only once every write stamped at or
+  below its pin has landed, checked without waiting for any lock (a count inside a scan callback folds).
+  `fn` of a column scan runs without graph locks when the cut answers, under the read lock when the fold does.
+  `store.NodeColumnSource` / `ScanColumnsFromNodeSource` (experimental, with the column
+  scans): the node sibling of `ScanColumnsFromRelSource`.
+
+### Fixed
+
+- **Node retention purge: the as-of column cache is invalidated after the rows are removed** (R14). The bump ran at
+  the watermark advance, before the chunks: an as-of column built in between (at a pin at or above the boundary)
+  read the not-yet-removed node, was cached as current, and kept answering the purged node — on all four backends
+  (`TestRetentionPurgeAsOfBumpAfterRows`, `tasks/evidence/rel-retention/01-red.txt`).
+- **Retention purges wait for an open transaction.** A purge chunk ran under an open `GraphTx` that had touched its
+  victim, and the transaction's `Rollback` then failed (`node not found` / `relationship not found`); each chunk
+  of both purge doors now takes the transaction lock (`TestNodeRetentionPurgeTxRollback`,
+  `TestRelRetentionPurgeTxRollbackNoResurrection`, `tasks/evidence/rel-retention/02-*`, `03-*`). Like
+  `Batch.Execute`, a purge waits for an open transaction; the wait honours `ctx`, so a purge called while its own
+  goroutine holds an open transaction returns `ctx.Err()` when `ctx` ends instead of blocking for good
+  (`TestRetentionPurgeWaitHonoursCtx`).
+
+- **memory: a history-ID cursor page costs O(page + log n)**, not O(n). `AllNodeHistoryIDsFrom` /
+  `AllRelHistoryIDsFrom` copied and sorted every history ID on each page, so a full cursor walk was quadratic
+  (10,000 IDs at page size 1: 50.6 s under race, now 1.1 s). The sorted key set is now cached and rebuilt only after
+  the key set changes; answers are unchanged (`TestHistoryIDsCursor*`).
+
+### Changed
+
+- **Temporal column scans carry no ordinals** (backlog 28; experimental surface): `ScanNodeColumns` /
+  `ScanRelColumns` with any temporal opt report `Ordinals`, `StartOrdinals` and `EndOrdinals` as 0, as for a
+  store that numbers none. They reported the winning row's stored numbering, which a later update or delete
+  changed (0 after a delete, endpoint ordinals 0 once a relationship's row moved to history), so the answer at a
+  pin changed after a later write (`TestStateColumnPath_ConcurrentWrites`, red on main). sigma-tkgd reads no
+  ordinals at a read coordinate.
+
+- **CI race gate sharded; slowest `-short -race` tests sized for 4-vCPU runners** (todo request 24; no API
+  change). The GitHub `test` job ran `go test -short -race ./...` on one 4-vCPU runner, where pkg/graph,
+  internal/core and store/memory shared the CPUs with badger, tiered and index and each crossed Go's 10 min
+  package timeout on every main push since 2026-10-10. `scripts/test-race.sh` (ported from branch `v5`) gains
+  `RACE_SHARD`: a `race-plan` job lists the parts and a `race (<part>)` matrix job runs each one — `other`,
+  `graph`, `memory`, `core-1..4` (core's top-level tests in four exhaustive batches). `make test-race` locally
+  stays one unsplit run; `make ci-docker` is unchanged; script tests: `make test-race-script`. In `-short`
+  under race, fewer seeds (the full sizes stay without `-short`): retraction oracle 3 to 2 per backend, effective
+  timeline pointwise oracle 3 to 2, `TestCurrentStampsDifferential` 24 to 8, rel-segment differentials 3 to 2;
+  Each test's coverage check still passes at the smaller size. Evidence: `tasks/evidence/ci-race/`.
+
+- **badger: the history-presence set and the history-stamps sidecar take about 30 % less RAM** (backlog 41).
+  Both were Go maps; both are now an open-addressing table with linear probing and columnar slots (IDs, top
+  versions, and for stamps the two stamps; at most 80 % full, delete by backward shift), kept separate so
+  each door still builds only its own. Measured per ID with history (`TestHistorySidecarRAMPerID`, built /
+  after 50 % more IDs were written): HasHistory and the bulk as-of doors 15.7-25.2 / 16.8-26.2 B (was
+  23.6-37.8 / 25.2-38.2), LatestStamps 36.7-58.7 / 39.1-61.1 B (was 52.5-83.8 / 56.0-84.7), both 52.4-83.9
+  / 55.9-87.3 B (was 76.1-121.5 / 81.2-122.9) at 10 K-1 M IDs. At 1 M rel IDs (`BenchmarkHistorySidecarAtScale`,
+  medians of 3 on a loaded machine): build 0.29 s presence / 0.53 s stamps (was 0.69 / 1.75 s), lookup
+  9-18 ns (was 24-27 ns), a history write of a new random ID noted into both built sidecars 0.70 us (was
+  1.29 us). Evidence: `tasks/evidence/badger-read-cost/41-02-red.txt`, `41-04-bench-*.txt`, `41-06-green.txt`.
+  The open image (54) persists neither structure; a reopened store rebuilds them on first use.
+
 ## [4.51.4] - 2026-10-13
 
 ### Added

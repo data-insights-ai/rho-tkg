@@ -29,15 +29,14 @@ import (
 // `epoch` is bumped on every such history rewrite; a cached column stamps the epoch
 // it was built under (via LabelDocValues.Epoch) and is discarded once the epoch
 // advances. Correctness rests on completeness of the bump sites (see the callers of
-// bump / notePastDatedWrite / noteAppliedTx / noteAppliedNodeStamp), never on a
+// bump / notePastDatedWrite / noteAppliedTx / noteAppliedStamp / noteClampedClose), never on a
 // per-entry validity check — and on their ORDER: a bump must follow the store
 // write it reports. A bump before the write lets a build that starts in between
 // read the new epoch, miss the row, and be cached as current (R14).
 //
-// The cache holds NODE label columns only (asOfCacheKey is a node label token):
-// a relationship write can never make a cached column stale. Relationship
-// stamps still feed the replica's high-water detector (noteAppliedTx), which is
-// conservative and entity-agnostic by design.
+// It also holds the state cuts of node labels AND relationship types
+// (stateCut, backlog 28) under the same epoch and pin bound, so every replica
+// stamp, node or relationship, feeds both detectors (noteAppliedStamp).
 type asOfColumnCache struct {
 	mu    sync.Mutex
 	epoch atomic.Uint64
@@ -64,6 +63,22 @@ type asOfColumnCache struct {
 	// tombstone, stamped between the two is "forward" to the mark yet inside the
 	// cached pin.
 	maxPin atomic.Int64
+
+	// The state cuts (state_columns.go): cached by key, least recently used
+	// first in cutOrder, cutBytes of them held against cutBudget; cutSeen the
+	// last keys asked for once (admitCut); cutBuilding the builds in flight
+	// (one per key); cutDeclined the epoch at which a key's build failed or
+	// did not fit the budget (the fold answers until the epoch moves);
+	// cutBuilds counts builds.
+	cuts        map[stateCutKey]*stateCut
+	cutOrder    []stateCutKey
+	cutBytes    int64
+	cutBudget   int64
+	cutSeen     []stateCutKey
+	cutBuilding map[stateCutKey]chan struct{}
+	cutDeclined map[stateCutKey]uint64
+	cutBuilds   atomic.Int64
+	relCutEpoch atomic.Uint64 // cutEpoch
 }
 
 type asOfCacheKey struct {
@@ -78,7 +93,13 @@ type asOfCacheKey struct {
 const asOfCacheCap = 64
 
 func newAsOfColumnCache() *asOfColumnCache {
-	return &asOfColumnCache{cols: make(map[asOfCacheKey]*indexpkg.LabelDocValues)}
+	return &asOfColumnCache{
+		cols:        make(map[asOfCacheKey]*indexpkg.LabelDocValues),
+		cuts:        make(map[stateCutKey]*stateCut),
+		cutBudget:   stateCutBudget,
+		cutBuilding: make(map[stateCutKey]chan struct{}),
+		cutDeclined: make(map[stateCutKey]uint64),
+	}
 }
 
 // notePastDatedWrite reports a primary write stamped with a caller transaction
@@ -107,11 +128,12 @@ func minPastDated(cur, t types.Instant) types.Instant {
 	return cur
 }
 
-// noteAppliedNodeStamp feeds a replica-applied NODE stamp — a put's TxFrom or a
-// tombstone's end (tombstoneEnd) — to both detectors: the high-water mark and
-// the cached-pin bound. Callers run it after verification (BACKLOG 12f) and
-// hold c.mu.Lock, so no build interleaves the apply's store write.
-func (c *Core) noteAppliedNodeStamp(t types.Instant) {
+// noteAppliedStamp feeds a replica-applied stamp — a put's TxFrom or a
+// tombstone's end (tombstoneEnd), node or relationship — to both detectors:
+// the high-water mark and the cached-pin bound (the state cuts hold
+// relationship types too). Callers run it after verification (BACKLOG 12f)
+// and hold c.mu.Lock, so no build interleaves the apply's store write.
+func (c *Core) noteAppliedStamp(t types.Instant) {
 	c.asOfColumns.noteAppliedTx(t)
 	c.asOfColumns.noteWriteAt(t)
 }
@@ -129,10 +151,9 @@ func tombstoneEnd(tm *types.TemporalMetadata) types.Instant {
 	return minPastDated(minPastDated(0, tm.TxTo), tm.DeletedAt)
 }
 
-// noteAppliedTxFrom feeds a replica-applied entity's transaction time to the as-of
-// cache's past-dated detector. A nil metadata or non-positive TxFrom is ignored.
-// Relationship applies use it as is (high-water mark only — a rel cannot stale a
-// node column); node applies use noteAppliedNodeTxFrom.
+// noteAppliedTxFrom feeds a replica-applied row's transaction time to the
+// as-of cache's detectors (noteAppliedStamp). A nil metadata or non-positive
+// TxFrom is ignored.
 //
 // BACKLOG 12f: every apply_record.go call site invokes this AFTER property/hash
 // verification succeeds, never before. A record that will ultimately be
@@ -145,16 +166,18 @@ func (c *Core) noteAppliedTxFrom(tm *types.TemporalMetadata) {
 	if tm == nil {
 		return
 	}
-	c.asOfColumns.noteAppliedTx(tm.TxFrom)
+	c.noteAppliedStamp(tm.TxFrom)
 }
 
-// noteAppliedNodeTxFrom is noteAppliedTxFrom for a node row: the TxFrom also
-// bumps when it lies at or below a cached pin (noteAppliedNodeStamp).
-func (c *Core) noteAppliedNodeTxFrom(tm *types.TemporalMetadata) {
-	if tm == nil {
-		return
+// noteClampedClose reports a delete that clamped a scheduled close (the row's
+// ValidTo lay after the delete instant, stampDeleteTombstone): the tombstone
+// rewrote a valid end every earlier pin reads (backlog 25), a history rewrite
+// for the cached pins whatever the delete's own stamp. Called after the
+// delete's store write.
+func (c *Core) noteClampedClose(clamped bool) {
+	if clamped {
+		c.asOfColumns.bump()
 	}
-	c.noteAppliedNodeStamp(tm.TxFrom)
 }
 
 // currentEpoch returns the epoch to stamp a build with (read BEFORE building so a
@@ -197,13 +220,16 @@ func (a *asOfColumnCache) clear() {
 	a.epoch.Add(1)
 	a.cols = make(map[asOfCacheKey]*indexpkg.LabelDocValues)
 	a.order = nil
+	a.cuts = make(map[stateCutKey]*stateCut)
+	a.cutOrder, a.cutBytes, a.cutSeen = nil, 0, nil
+	a.cutDeclined = make(map[stateCutKey]uint64)
 	a.mu.Unlock()
 }
 
 // noteAppliedTx records a replica apply's entity stamp: a forward apply advances the
 // high-water mark; an out-of-order (past-dated) apply bumps the epoch. A forward
 // stamp can still lie inside a cached pin — node applies add that check via
-// noteAppliedNodeStamp. txFrom <= 0 (no transaction time) is ignored.
+// noteAppliedStamp. txFrom <= 0 (no transaction time) is ignored.
 func (a *asOfColumnCache) noteAppliedTx(txFrom types.Instant) {
 	tf := int64(txFrom)
 	if tf <= 0 {

@@ -1,0 +1,34 @@
+# Backlog 41 RED: TestHistorySidecarRAMPerID (final form) on the v4.51.4 sidecar code (HEAD a1248ffc plus this test), 2026-10-13.
+# The store maps equal the v4.51.4 reference maps: LatestStamps-only and both doors are not lower (the gate); HasHistory-only differs by bytes (noise).
+=== RUN   TestHistorySidecarRAMPerID
+=== RUN   TestHistorySidecarRAMPerID/ids=10000
+    badgerstore_history_sidecar_ram_test.go:75: ids=10000 built: HasHistory-only 29.0 B/ID (v4.51.4 29.6), LatestStamps-only 65.6 B/ID (v4.51.4 65.6), both 94.6 B/ID (v4.51.4 95.2)
+    badgerstore_history_sidecar_ram_test.go:81: ids=10000 built: LatestStamps-only pays 65.6 B/ID, not lower than v4.51.4's 65.6
+    badgerstore_history_sidecar_ram_test.go:84: ids=10000 built: both doors pay 94.6 B/ID, not lower than v4.51.4's 95.2
+    badgerstore_history_sidecar_ram_test.go:75: ids=15000 after writes: HasHistory-only 38.2 B/ID (v4.51.4 38.2), LatestStamps-only 82.0 B/ID (v4.51.4 84.7), both 120.2 B/ID (v4.51.4 122.9)
+    badgerstore_history_sidecar_ram_test.go:78: ids=15000 after writes: HasHistory-only pays 38.2 B/ID, more than v4.51.4's 38.2
+    badgerstore_history_sidecar_ram_test.go:81: ids=15000 after writes: LatestStamps-only pays 82.0 B/ID, not lower than v4.51.4's 84.7
+    badgerstore_history_sidecar_ram_test.go:84: ids=15000 after writes: both doors pay 120.2 B/ID, not lower than v4.51.4's 122.9
+=== RUN   TestHistorySidecarRAMPerID/ids=100000
+    badgerstore_history_sidecar_ram_test.go:75: ids=100000 built: HasHistory-only 23.6 B/ID (v4.51.4 23.6), LatestStamps-only 52.5 B/ID (v4.51.4 52.5), both 76.1 B/ID (v4.51.4 76.1)
+    badgerstore_history_sidecar_ram_test.go:81: ids=100000 built: LatestStamps-only pays 52.5 B/ID, not lower than v4.51.4's 52.5
+    badgerstore_history_sidecar_ram_test.go:84: ids=100000 built: both doors pay 76.1 B/ID, not lower than v4.51.4's 76.1
+    badgerstore_history_sidecar_ram_test.go:75: ids=150000 after writes: HasHistory-only 31.5 B/ID (v4.51.4 31.5), LatestStamps-only 70.0 B/ID (v4.51.4 70.0), both 101.5 B/ID (v4.51.4 101.5)
+    badgerstore_history_sidecar_ram_test.go:78: ids=150000 after writes: HasHistory-only pays 31.5 B/ID, more than v4.51.4's 31.5
+    badgerstore_history_sidecar_ram_test.go:81: ids=150000 after writes: LatestStamps-only pays 70.0 B/ID, not lower than v4.51.4's 70.0
+    badgerstore_history_sidecar_ram_test.go:84: ids=150000 after writes: both doors pay 101.5 B/ID, not lower than v4.51.4's 101.5
+=== RUN   TestHistorySidecarRAMPerID/ids=1000000
+    badgerstore_history_sidecar_ram_test.go:75: ids=1000000 built: HasHistory-only 37.7 B/ID (v4.51.4 37.7), LatestStamps-only 83.8 B/ID (v4.51.4 83.8), both 121.5 B/ID (v4.51.4 121.5)
+    badgerstore_history_sidecar_ram_test.go:81: ids=1000000 built: LatestStamps-only pays 83.8 B/ID, not lower than v4.51.4's 83.8
+    badgerstore_history_sidecar_ram_test.go:84: ids=1000000 built: both doors pay 121.5 B/ID, not lower than v4.51.4's 121.5
+    badgerstore_history_sidecar_ram_test.go:75: ids=1500000 after writes: HasHistory-only 25.2 B/ID (v4.51.4 25.2), LatestStamps-only 56.0 B/ID (v4.51.4 56.0), both 81.2 B/ID (v4.51.4 81.2)
+    badgerstore_history_sidecar_ram_test.go:78: ids=1500000 after writes: HasHistory-only pays 25.2 B/ID, more than v4.51.4's 25.2
+    badgerstore_history_sidecar_ram_test.go:81: ids=1500000 after writes: LatestStamps-only pays 56.0 B/ID, not lower than v4.51.4's 56.0
+    badgerstore_history_sidecar_ram_test.go:84: ids=1500000 after writes: both doors pay 81.2 B/ID, not lower than v4.51.4's 81.2
+--- FAIL: TestHistorySidecarRAMPerID (12.66s)
+    --- FAIL: TestHistorySidecarRAMPerID/ids=10000 (0.09s)
+    --- FAIL: TestHistorySidecarRAMPerID/ids=100000 (0.90s)
+    --- FAIL: TestHistorySidecarRAMPerID/ids=1000000 (11.67s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	12.718s
+FAIL

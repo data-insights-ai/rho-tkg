@@ -14,7 +14,11 @@ import (
 // exactly like NodesByLabel answers it — each node's version under opts, history
 // included — not from the store's current rows (scan_temporal_opts.go). It is
 // validated like NodesByLabel (ErrConflictingTemporalOpts, compaction and
-// retention watermarks).
+// retention watermarks). The state form (TxAt, with ValidAt or alone) reads the label's
+// state cut at TxAt (backlog 28, state_columns.go), built on the second read
+// at the pin; fn then runs without graph locks (the fold, which answers the
+// first ask of a pin, calls it under the read lock). At every temporal opt the batches
+// carry no ordinals (Ordinals 0): a read coordinate numbers no row.
 func (c *Core) ScanNodeColumns(label string, props []string, opts storepkg.QueryOpts,
 	fn func(*storepkg.ColumnBatch) bool) (ok bool, err error) {
 
@@ -24,7 +28,10 @@ func (c *Core) ScanNodeColumns(label string, props []string, opts storepkg.Query
 	scanner, has := c.store.(storepkg.NodeColumnScanCapability)
 	temporal := hasTemporalFilter(opts)
 	if temporal && has {
-		if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+		if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
+			return true, err
+		}
+		if served, err := c.scanNodeColumnsStateCut(label, props, opts, fn); served {
 			return true, err
 		}
 	}

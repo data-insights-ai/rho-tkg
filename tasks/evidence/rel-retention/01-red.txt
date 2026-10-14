@@ -1,0 +1,66 @@
+# backlog 21 RED, 2026-10-13, base main 80aef8e4 + the new tests + a compile skeleton (PurgeExpiredRels returns ErrCapabilityNotSupported; the node purge calls the new retentionPurgeHook between watermark and chunks, bump order unchanged).
+# TestRetentionPurgeAsOfBumpAfterRows fails on the assertion: the node purge as-of bump-before-removing bug is REAL on all four backends (a purged node stays in the cached as-of column).
+
+--- FAIL: TestRelRetentionPurgeFeed (0.51s)
+    --- FAIL: TestRelRetentionPurgeFeed/badger (0.06s)
+        rel_retention_feed_test.go:85: graph: relationship retention purge: graph: store does not support this capability
+    --- FAIL: TestRelRetentionPurgeFeed/sharded (0.17s)
+        rel_retention_feed_test.go:85: graph: relationship retention purge: graph: store does not support this capability
+    --- FAIL: TestRelRetentionPurgeFeed/tiered (0.28s)
+        rel_retention_feed_test.go:85: graph: relationship retention purge: graph: store does not support this capability
+    rel_retention_feed_test.go:159: collected 0 tag-14 payloads, want 3
+--- FAIL: TestPurgeExpiredRelsByAge (0.33s)
+    --- FAIL: TestPurgeExpiredRelsByAge/memory (0.03s)
+        rel_retention_purge_test.go:236: PurgeExpiredRels(EVENT, 1791875146966): graph: relationship retention purge: graph: store does not support this capability
+    --- FAIL: TestPurgeExpiredRelsByAge/badger (0.10s)
+        rel_retention_purge_test.go:236: PurgeExpiredRels(EVENT, 1791875147067): graph: relationship retention purge: graph: store does not support this capability
+    --- FAIL: TestPurgeExpiredRelsByAge/sharded (0.11s)
+        rel_retention_purge_test.go:236: PurgeExpiredRels(EVENT, 1791875147168): graph: relationship retention purge: graph: store does not support this capability
+    --- FAIL: TestPurgeExpiredRelsByAge/tiered (0.09s)
+        rel_retention_purge_test.go:236: PurgeExpiredRels(EVENT, 1791875147253): graph: relationship retention purge: graph: store does not support this capability
+--- FAIL: TestPurgeExpiredRelsByAge_Refusals (0.00s)
+    rel_retention_purge_test.go:328: empty type: err = graph: relationship retention purge: graph: store does not support this capability, want graph: retention purge policy requires a non-empty Label, a positive Before, and a supported Mode
+--- FAIL: TestPurgeExpiredRelsByAge_ManyChunks (0.22s)
+    --- FAIL: TestPurgeExpiredRelsByAge_ManyChunks/memory (0.00s)
+        rel_retention_purge_test.go:389: PurgeExpiredRels(EVENT, 1125899906842624): graph: relationship retention purge: graph: store does not support this capability
+    --- FAIL: TestPurgeExpiredRelsByAge_ManyChunks/badger (0.03s)
+        rel_retention_purge_test.go:389: PurgeExpiredRels(EVENT, 1125899906842624): graph: relationship retention purge: graph: store does not support this capability
+    --- FAIL: TestPurgeExpiredRelsByAge_ManyChunks/sharded (0.07s)
+        rel_retention_purge_test.go:389: PurgeExpiredRels(EVENT, 1125899906842624): graph: relationship retention purge: graph: store does not support this capability
+    --- FAIL: TestPurgeExpiredRelsByAge_ManyChunks/tiered (0.12s)
+        rel_retention_purge_test.go:389: PurgeExpiredRels(EVENT, 1125899906842624): graph: relationship retention purge: graph: store does not support this capability
+--- FAIL: TestRelRetentionWatermarkGatesScans (0.27s)
+    --- FAIL: TestRelRetentionWatermarkGatesScans/memory (0.03s)
+        rel_retention_purge_test.go:417: PurgeExpiredRels(EVENT, 1791875147517): graph: relationship retention purge: graph: store does not support this capability
+    --- FAIL: TestRelRetentionWatermarkGatesScans/badger (0.06s)
+        rel_retention_purge_test.go:417: PurgeExpiredRels(EVENT, 1791875147568): graph: relationship retention purge: graph: store does not support this capability
+    --- FAIL: TestRelRetentionWatermarkGatesScans/sharded (0.11s)
+        rel_retention_purge_test.go:417: PurgeExpiredRels(EVENT, 1791875147670): graph: relationship retention purge: graph: store does not support this capability
+    --- FAIL: TestRelRetentionWatermarkGatesScans/tiered (0.07s)
+        rel_retention_purge_test.go:417: PurgeExpiredRels(EVENT, 1791875147750): graph: relationship retention purge: graph: store does not support this capability
+--- FAIL: TestRelRetentionWatermarkSurvivesReopen (0.10s)
+    rel_retention_purge_test.go:556: PurgeExpiredRels(EVENT, 1791875147851): graph: relationship retention purge: graph: store does not support this capability
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.534s
+FAIL
+--- FAIL: TestRetentionPurgeAsOfBumpAfterRows (0.13s)
+    --- FAIL: TestRetentionPurgeAsOfBumpAfterRows/memory (0.00s)
+        retention_purge_asof_test.go:61: after the purge: members [807716506650017792 807716506767163392], want exactly [807716506767163392]
+    --- FAIL: TestRetentionPurgeAsOfBumpAfterRows/badger (0.02s)
+        retention_purge_asof_test.go:61: after the purge: members [807716507170471936 807716507282309120], want exactly [807716507282309120]
+    --- FAIL: TestRetentionPurgeAsOfBumpAfterRows/sharded (0.07s)
+        retention_purge_asof_test.go:61: after the purge: members [807716509246128128 807716509366255616], want exactly [807716509366255616]
+    --- FAIL: TestRetentionPurgeAsOfBumpAfterRows/tiered (0.03s)
+        retention_purge_asof_test.go:61: after the purge: members [807716510377443328 807716510551375872], want exactly [807716510551375872]
+--- FAIL: TestRelRetentionPurgeKeepsAsOfCache (0.19s)
+    --- FAIL: TestRelRetentionPurgeKeepsAsOfCache/memory (0.00s)
+        retention_purge_asof_test.go:98: graph: relationship retention purge: graph: store does not support this capability
+    --- FAIL: TestRelRetentionPurgeKeepsAsOfCache/badger (0.05s)
+        retention_purge_asof_test.go:98: graph: relationship retention purge: graph: store does not support this capability
+    --- FAIL: TestRelRetentionPurgeKeepsAsOfCache/sharded (0.02s)
+        retention_purge_asof_test.go:98: graph: relationship retention purge: graph: store does not support this capability
+    --- FAIL: TestRelRetentionPurgeKeepsAsOfCache/tiered (0.11s)
+        retention_purge_asof_test.go:98: graph: relationship retention purge: graph: store does not support this capability
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.503s
+FAIL

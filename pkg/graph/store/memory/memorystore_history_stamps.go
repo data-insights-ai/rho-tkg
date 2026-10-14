@@ -41,6 +41,7 @@ func (ms *Store) putNodeHistoryRowLocked(nid types.NodeID, v uint32, row *types.
 	if !ok {
 		inner = make(map[uint32]*types.Node)
 		ms.nodeHistory[nid] = inner
+		ms.nodeHistoryIDs.Store(nil) // a new key
 	}
 	before := len(inner)
 	_, overwrite := inner[v]
@@ -62,6 +63,7 @@ func (ms *Store) putRelHistoryRowLocked(rid types.RelID, v uint32, row *types.Re
 	if !ok {
 		inner = make(map[uint32]*types.Relationship)
 		ms.relHistory[rid] = inner
+		ms.relHistoryIDs.Store(nil) // a new key
 	}
 	before := len(inner)
 	_, overwrite := inner[v]

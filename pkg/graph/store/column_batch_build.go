@@ -527,3 +527,96 @@ func ScanColumnsFromRelSource(src RelColumnSource, nProps int, fn func(*RelColum
 	}
 	return nil
 }
+
+// NodeColumnSource is the node sibling of RelColumnSource, read by
+// ScanColumnsFromNodeSource: Row(i) gives row i's ID and ValidRange (0 when
+// the row has no temporal metadata), Value(i, c) property c of row i already
+// classified (ClassifyScalar), ok=false when the row does not hold it as a
+// column scalar, and Other(i, c) whether row i holds property c all the same
+// (ColumnData.Other). The rows carry no ordinals (Ordinals are 0).
+type NodeColumnSource interface {
+	Len() int
+	Row(i int) (id types.NodeID, validFrom, validTo int64)
+	Value(i, c int) (kind ColumnKind, i64 int64, f64 float64, s string, b bool, ok bool)
+	Other(i, c int) bool
+}
+
+// ScanColumnsFromNodeSource is ScanColumnsFromNodes over a NodeColumnSource:
+// the same batches, kinds, absences, Other cells and refusal for the same
+// values in the same order (pinned by TestColumnDrivers_NodeAndRelAgree),
+// with Ordinals 0. Rows are taken in source order: the source must already be
+// in ID order.
+func ScanColumnsFromNodeSource(src NodeColumnSource, nProps int, fn func(*ColumnBatch) bool) error {
+	n := src.Len()
+	if n == 0 {
+		return nil
+	}
+	batch := &ColumnBatch{
+		IDs:        make([]types.NodeID, 0, min(n, ColumnScanBatchRows)),
+		Ordinals:   make([]uint32, 0, min(n, ColumnScanBatchRows)),
+		ValidFrom:  make([]int64, 0, min(n, ColumnScanBatchRows)),
+		ValidTo:    make([]int64, 0, min(n, ColumnScanBatchRows)),
+		ColumnData: NewColumnData(nProps),
+	}
+	kindKnown := make([]bool, nProps)
+	cd := &batch.ColumnData
+	reset := func() {
+		batch.IDs = batch.IDs[:0]
+		batch.Ordinals = batch.Ordinals[:0]
+		batch.ValidFrom = batch.ValidFrom[:0]
+		batch.ValidTo = batch.ValidTo[:0]
+		batch.reset(nProps)
+	}
+	for i := 0; i < n; i++ {
+		id, vf, vt := src.Row(i)
+		batch.IDs = append(batch.IDs, id)
+		batch.Ordinals = append(batch.Ordinals, 0)
+		batch.ValidFrom = append(batch.ValidFrom, vf)
+		batch.ValidTo = append(batch.ValidTo, vt)
+		for c := 0; c < nProps; c++ {
+			kind, i64, f64, str, b, ok := src.Value(i, c)
+			if !ok {
+				cd.appendAbsent(c, kindKnown[c])
+				if src.Other(i, c) {
+					cd.markOther(c, len(batch.IDs)-1)
+				}
+				continue
+			}
+			if !kindKnown[c] {
+				cd.Kinds[c], kindKnown[c] = kind, true
+				cd.alignTyped(c, len(cd.Null[c])) // the batch's earlier rows
+			}
+			if cd.Kinds[c] != kind {
+				if numericKind(cd.Kinds[c]) && numericKind(kind) {
+					return ErrMixedNumericColumn
+				}
+				cd.appendAbsent(c, true)
+				cd.markOther(c, len(batch.IDs)-1)
+				continue
+			}
+			cd.Null[c] = append(cd.Null[c], false)
+			switch kind {
+			case ColInt64:
+				cd.Ints[c] = append(cd.Ints[c], i64)
+			case ColFloat64:
+				cd.Flts[c] = append(cd.Flts[c], f64)
+			case ColString:
+				cd.Strs[c] = append(cd.Strs[c], str)
+			case ColBool:
+				cd.Bools[c] = append(cd.Bools[c], b)
+			}
+		}
+		if len(batch.IDs) >= ColumnScanBatchRows {
+			cd.seal(len(batch.IDs))
+			if !fn(batch) {
+				return nil
+			}
+			reset()
+		}
+	}
+	if len(batch.IDs) > 0 {
+		cd.seal(len(batch.IDs))
+		fn(batch)
+	}
+	return nil
+}

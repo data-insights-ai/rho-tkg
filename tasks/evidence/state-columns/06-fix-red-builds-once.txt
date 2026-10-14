@@ -1,0 +1,2 @@
+--- FAIL: TestStateColumnPath_OversizedBuildsOnce (0.00s)
+    state_columns_test.go:531: 5 asks of an oversized cut read 8 entity timelines; want 2 (one build)

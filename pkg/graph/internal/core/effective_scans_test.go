@@ -399,7 +399,7 @@ func esCheck(t *testing.T, o *txbOracle, pins []types.Instant, cov esCoverage, p
 // one batch member's own timeline door's (by IDs).
 func esRefused(g *Core, d esDoor, pin types.Instant, err error) bool {
 	if !d.ordered {
-		serr := g.validateEffectiveScanPin(pin)
+		serr := g.validateEffectiveScanPin(pin, scopeAllRels)
 		return serr != nil && etSameRefusal(err, serr)
 	}
 	for _, id := range d.ids {

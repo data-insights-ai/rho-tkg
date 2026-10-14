@@ -28,6 +28,7 @@ import (
 //	ChangeForeignIncoming                            -> RelPutBody (stub RelWire)
 //	ChangeForeignIncomingDelete                      -> ForeignIncomingDeleteBody
 //	ChangeRangePurge                                 -> RangePurgeBody
+//	ChangeRelRangePurge                              -> RelRangePurgeBody
 
 // NodePutBody is the ChangeNodePut payload. Wire is the new CURRENT node state
 // (built via NodeToWireChecked, so property keys are STRINGS — untokenized — and
@@ -101,6 +102,15 @@ type RangePurgeBody struct {
 	LabelToken uint16 `msgpack:"l"`
 	Before     int64  `msgpack:"b"`
 	Mode       uint8  `msgpack:"m,omitempty"`
+}
+
+// RelRangePurgeBody is the ChangeRelRangePurge payload (backlog 21): purge
+// every relationship of TypeToken minted before Before, under Mode (0 = ByAge,
+// the only mode). Like RangePurgeBody it carries no per-entity rows.
+type RelRangePurgeBody struct {
+	TypeToken uint16 `msgpack:"t"`
+	Before    int64  `msgpack:"b"`
+	Mode      uint8  `msgpack:"m,omitempty"`
 }
 
 // HistoryVersionNodeBody is the ChangeNodeHistoryVersion payload: a history row
@@ -333,6 +343,15 @@ func DecodeRangePurge(payload []byte) (RangePurgeBody, error) {
 	var b RangePurgeBody
 	if err := SafeUnmarshal(payload, &b); err != nil {
 		return RangePurgeBody{}, fmt.Errorf("change-log: range purge body: %w", err)
+	}
+	return b, nil
+}
+
+// DecodeRelRangePurge decodes a ChangeRelRangePurge payload.
+func DecodeRelRangePurge(payload []byte) (RelRangePurgeBody, error) {
+	var b RelRangePurgeBody
+	if err := SafeUnmarshal(payload, &b); err != nil {
+		return RelRangePurgeBody{}, fmt.Errorf("change-log: relationship range purge body: %w", err)
 	}
 	return b, nil
 }

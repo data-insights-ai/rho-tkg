@@ -1,0 +1,3 @@
+# backlog 21 fix round F2 (badger, scratch timing test not kept): purge of 25,000 EVENT rels (5,000 deleted) beside 20,000 deleted OTHER rels below the boundary, in-memory badger, one run each
+before (whole live set copied+sorted per chunk, history walk from ID 0 per chunk): 2.26 s
+after  (type-index key walk + history walk resumed from a per-type cursor): 1.16 s
