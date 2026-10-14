@@ -110,7 +110,8 @@ func TestApplicationTerminalBankBoundIdentityProjectionAndLegacyBytes(t *testing
 	if _, err := legacy.reserveTerminal(makeOwner(1), p, l); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("legacy terminal capability: %v", err)
 	}
-	if _, err := ApplicationContractForPolicyWithRecovery(p, ApplicationControlConfig{Version: 1}, ApplicationRecoveryConfig{Version: 2}); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("unfinished portable mode exposed: %v", err)
+	contract, err := ApplicationContractForPolicyWithRecovery(p, ApplicationControlConfig{Version: 1}, ApplicationRecoveryConfig{Version: 2})
+	if err != nil || contract.Version != 4 {
+		t.Fatalf("fresh terminal contract: %v", err)
 	}
 }

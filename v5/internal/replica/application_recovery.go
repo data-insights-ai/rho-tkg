@@ -22,7 +22,7 @@ func (d *Driver) bindApplicationRecoveryBatch(index uint64, b *raftlog.Applicati
 	if err != nil {
 		return err
 	}
-	if b.RecoveryReserve != nil || b.RecoveryUse != nil {
+	if b.RecoveryReserve != nil || b.RecoveryUse != nil || b.TerminalReserve != nil || b.TerminalUse != nil {
 		b.RecoveryAdmission = claim
 	}
 	return nil

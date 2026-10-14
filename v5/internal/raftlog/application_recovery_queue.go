@@ -603,7 +603,7 @@ func (s *Store) classifyRecoverySnapshotReady(rd raft.Ready, c *ApplicationSnaps
 		return nil, ErrLimit
 	}
 	verifier := s.recoveryVerifier
-	captured := applicationRecoveryMetadata{Config: s.meta.Recovery.Config, Reservation: c.p.i.manifest.RecoveryReservation}
+	captured := applicationRecoveryMetadata{Config: s.meta.Recovery.Config, Reservation: c.p.i.manifest.RecoveryReservation, Terminal: applicationTerminalBank(c.p.i.manifest.TerminalReservations)}
 	index := c.p.i.manifest.Index
 	s.mu.Unlock()
 	view, err := c.p.openReadView(context.Background(), index, s.applicationPolicy.MaxImageBytes, c)

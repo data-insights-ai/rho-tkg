@@ -343,10 +343,27 @@ func (s *Store) reserveGeneration(m ApplicationSnapshotManifest) (metadata, byte
 	if err != nil {
 		return prospective, bank, err
 	}
-	if m.Version == 5 {
+	if m.Version >= 5 {
 		future, futureErr := recoveryGrowthIfPresent(m.RecoveryReservation, s.meta.App.Policy, s.limits)
 		if futureErr != nil {
 			return prospective, bank, futureErr
+		}
+		if m.Version == 6 {
+			terminal, err := terminalGrowth(applicationTerminalBank(m.TerminalReservations), s.meta.App.Policy, s.limits)
+			if err != nil {
+				return prospective, bank, err
+			}
+			future, err = addRecoveryGrowth(future, terminal)
+			if err != nil {
+				return prospective, bank, err
+			}
+			imported := s.meta
+			imported.Recovery = snapshotRecoveryState(m)
+			imported.Recovery.Bytes = m.RecoveryBytes
+			imported.Recovery.Records = m.RecoveryRecords
+			if err := terminalMetadataHeadroom(imported, s.limits); err != nil {
+				return prospective, bank, err
+			}
 		}
 		if err := recoveryFits(future, size, rows, 0, 0, s.meta.App.Policy, s.limits); err != nil {
 			return prospective, bank, err

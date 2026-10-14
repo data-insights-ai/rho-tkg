@@ -49,7 +49,7 @@ func (s *Store) BeginApplicationImport(ctx context.Context, m ApplicationSnapsho
 	if m.SemanticContractID != s.meta.Rep.SemanticContractID {
 		return nil, ErrInvalid
 	}
-	if m.controls() != s.meta.Controls.Config.enabled() || (m.Version == 5) != s.meta.Recovery.Config.enabled() {
+	if m.controls() != s.meta.Controls.Config.enabled() || (m.Version >= 5) != s.meta.Recovery.Config.enabled() || m.Version >= 5 && m.Version != s.meta.manifestVersion() {
 		return nil, ErrInvalid
 	}
 	if !tc.enabled() || m.Identity != tc.Identity || m.Contract != tc.Contract {
@@ -133,7 +133,7 @@ func (i *ApplicationImport) descriptor() []byte {
 		b = binary.BigEndian.AppendUint64(b, i.state.controlBytes)
 		b = binary.BigEndian.AppendUint64(b, i.state.controlRows)
 	}
-	if i.manifest.Version == 5 {
+	if i.manifest.Version >= 5 {
 		b[2] = 5
 		b = binary.BigEndian.AppendUint64(b, i.state.recoveryBytes)
 		b = binary.BigEndian.AppendUint64(b, i.state.recoveryRows)
@@ -360,7 +360,7 @@ func (i *ApplicationImport) Verify(ctx context.Context) (err error) {
 func (i *ApplicationImport) verifyPage(ctx context.Context, m ApplicationSnapshotManifest, state snapshotVerifier) (next snapshotVerifier, complete bool, err error) {
 	s := i.s
 	l := s.meta.Transfer.Limits
-	it, err := newApplicationIterator(s.db.NewIter, i.bank, m.controls(), m.Version == 5)
+	it, err := newApplicationIterator(s.db.NewIter, i.bank, m.controls(), m.Version >= 5)
 	if err != nil {
 		return state, false, err
 	}

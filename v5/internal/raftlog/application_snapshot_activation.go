@@ -81,10 +81,10 @@ func (s *Store) PersistApplicationReady(rd raft.Ready, c *ApplicationSnapshotCla
 	}
 	m := old
 	if old.Recovery.Config.enabled() {
-		if c.p.i.manifest.Version != 5 {
+		if c.p.i.manifest.Version != s.meta.manifestVersion() {
 			return root, ErrInvalid
 		}
-		m.Recovery = applicationRecoveryMetadata{Config: old.Recovery.Config, Reservation: c.p.i.manifest.RecoveryReservation, Bytes: c.p.i.manifest.RecoveryBytes, Records: c.p.i.manifest.RecoveryRecords}
+		m.Recovery = applicationRecoveryMetadata{Config: old.Recovery.Config, Reservation: c.p.i.manifest.RecoveryReservation, Terminal: applicationTerminalBank(c.p.i.manifest.TerminalReservations), Bytes: c.p.i.manifest.RecoveryBytes, Records: c.p.i.manifest.RecoveryRecords}
 		if recoveryReady != nil {
 			m.Recovery.Queued = recoveryReady.Queued
 		}

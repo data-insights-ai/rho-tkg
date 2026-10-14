@@ -89,7 +89,7 @@ func (c ApplicationTransferConfig) validate(p ApplicationPolicy) error {
 	if !c.enabled() {
 		return nil
 	}
-	if !p.Enabled() || c.Contract.Version != 1 && c.Contract.Version != 2 && c.Contract.Version != 3 || func() bool {
+	if !p.Enabled() || c.Contract.Version != 1 && c.Contract.Version != 2 && c.Contract.Version != 3 && c.Contract.Version != 4 || func() bool {
 		want := ApplicationContractForPolicy(p)
 		want.Version = c.Contract.Version
 		return c.Contract != want
@@ -111,7 +111,7 @@ func (c ApplicationTransferConfig) validate(p ApplicationPolicy) error {
 // The digest binds ordered canonical records; ManifestID binds all metadata too.
 // Version zero or one selects the original AS1 bytes; AS1 decode normalizes to
 // zero. Version two binds an unbound CutID; version three requires and binds
-// SemanticContractID. Older formats require its zero value. Other versions refuse.
+// SemanticContractID. Older formats require its zero value. AS4/AS5 preserve native control/transient recovery history; AS6 also binds the separate terminal bank. Other versions refuse.
 type ApplicationSnapshotManifest struct {
 	RecoveryReservation              ApplicationRecoveryReservation
 	TerminalReservations             []ApplicationRecoveryReservation
