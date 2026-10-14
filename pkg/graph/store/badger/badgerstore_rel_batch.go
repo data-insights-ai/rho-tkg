@@ -106,6 +106,12 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		}
 		seen[rd.rid] = struct{}{}
 	}
+	for i, r := range rels {
+		if err := bs.foldRecreatedRelHistoryLocked(r, serialized[i].id); err != nil {
+			bs.idxMu.Unlock()
+			return err // a fold already done only widened an envelope: sound
+		}
+	}
 
 	// Phase 2: apply — all validated, safe to mutate.
 	ops := make([]writeOp, 0, len(rels)*4) // entity + type + out + in
