@@ -38,7 +38,7 @@ func TestHeadOverlay_MatchesFold(t *testing.T) {
 		}
 		if rng.IntN(12) == 0 {
 			tm.Void = true
-			if tm.ValidTo == 0 {
+			if tm.ValidTo == 0 && rng.IntN(2) == 0 { // an open void row: no door writes one (excise is bounded)
 				tm.ValidTo = tm.ValidFrom + 100
 			}
 		}
@@ -198,6 +198,25 @@ func checkHeadCorrection(t *testing.T, g *Core, rng *rand.Rand, e *headEntry, ch
 			}
 			checked++
 		}
+	}
+	// The current-slot choice against the chain's open belief: an appended
+	// open row recorded before it (no door does: appended rows are the
+	// newest beliefs) must not take the slot, one recorded after it must.
+	for _, dtx := range []types.Instant{-1, 1} {
+		r := types.NewNode(cur.ID(), 0, nil)
+		r.SetVersion(top + 1)
+		r.SetTemporal(&types.TemporalMetadata{ValidFrom: 100, TxFrom: open.tx + dtx})
+		var want *types.Node
+		for _, x := range append(slices.Clone(pre), r) {
+			if _, end := g.nodeOwnBounds(x); end == 0 && !isVoidRow(x) && (want == nil || nodeBeliefNewerThan(x, want)) {
+				want = x
+			}
+		}
+		got := headNewCurrent(g, nodeKernel, e.open, []*types.Node{r})
+		if (want == r) != (got == r) {
+			t.Fatalf("iter %d: appended open row at tx %d: takes the slot %v from the entry, %v from the chain%s", iter, open.tx+dtx, got == r, want == r, headRows(chain))
+		}
+		checked++
 	}
 	return checked
 }
