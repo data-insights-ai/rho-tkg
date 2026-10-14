@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.52.0] - 2026-10-14
+
+Minor release, the sigma-tkgd store requests, round 6 (new public API): badger column scans without a per-row
+allocation; `Nodes().ForEachDocValuesOrdinal` / `ForEachDocValuesMultiOrdinal` hand out each row's node ordinal
+(memory, badger, sharded; others report unsupported; ordinals kept lazily with the snapshot, 4 B per row on memory,
+no write cost); label and type reads at a valid-time point or interval answer entities without history from the row
+already read, stream in blocks of 1,024 and no longer sort. Fixed: `CountByLabelAt` / `CountByTypeAt` over a
+valid-time interval over-counted. A temporal `ForEachByLabel` answers each node as of a moment during the scan
+(within the door's documented relaxed isolation). Additive.
+
 ### Fixed
 
 - **`CountByLabelAt` / `CountByTypeAt` over a valid-time interval over-counted** (found by round 6 request 12 putting
