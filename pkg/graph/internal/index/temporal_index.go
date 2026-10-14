@@ -422,7 +422,6 @@ func PurgeNodeFromAllTemporalIndexes(idxs map[uint16]*TemporalIndex, id snowflak
 // rel-type token; label and rel-type token namespaces are independent and must
 // never share an index.
 
-// RelTemporalBounds returns the effective (from, to) for a relationship.
 // RelTemporalBounds returns the effective (from, to) for a relationship (same
 // computation as NodeTemporalBounds).
 func RelTemporalBounds(id snowflake.ID, tm *types.TemporalMetadata) (from, to types.Instant) {

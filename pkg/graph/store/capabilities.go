@@ -60,8 +60,9 @@ type EndpointIntegrityHashCapability interface {
 // EntityLendCapability is OPTIONAL. LendNode / LendRelationship return the
 // store's current row by ID WITHOUT the defensive copy: the shared, FROZEN
 // pointer the plural reads hand out, a snapshot at the read that later writes
-// do not refresh. Frozen mutators fail (ErrFrozenNode / ErrFrozenRelationship);
-// DeepCopy thaws. Errors: typed not-found, ErrInvalidStoreMutation for a
+// do not refresh. Frozen mutators fail (ErrFrozenNode / ErrFrozenRelationship, or
+// panic for the no-error ones); DeepCopy thaws. The store never mutates a lent row
+// (a write replaces it). Errors: typed not-found, ErrInvalidStoreMutation for a
 // malformed ID, ErrStoreClosed.
 type EntityLendCapability interface {
 	LendNode(id types.NodeID) (*types.Node, error)
@@ -91,7 +92,7 @@ type ScanOrderCapability interface {
 
 // AdjacentEndpointOrdinalCapability is OPTIONAL: ForEachAdjacentEndpoint with the
 // dense ordinals (OrdinalCapability) of each relationship and its other endpoint;
-// 0 where none is numbered. Order and isolation as ForEachAdjacentEndpoint.
+// 0 where none is numbered or the other endpoint has no current row any more. Order and isolation as ForEachAdjacentEndpoint.
 type AdjacentEndpointOrdinalCapability interface {
 	ForEachAdjacentEndpointOrdinal(nid types.NodeID, typeToken uint16, incoming bool,
 		fn func(rel types.RelID, relOrdinal uint32, other types.NodeID, otherOrdinal uint32) bool) error
@@ -186,7 +187,9 @@ type BulkReadCapability interface {
 
 // BatchCapability is the batched-mutation surface (BatchBuilder, import).
 // All-or-nothing: empty/nil input returns nil. Delete batches treat duplicate IDs
-// as one deletion. DeleteNodesBatch removes only unconnected node rows.
+// as one deletion. DeleteNodesBatch removes only unconnected node rows. Duplicate
+// IDs are coalesced before validation and counter/index updates. Connected node
+// deletes must use graph-level cascade or history-aware delete flows.
 type BatchCapability interface {
 	PutNodesBatch(nodes []*types.Node) error
 	PutRelationshipsBatch(rels []*types.Relationship) error
@@ -437,7 +440,8 @@ type ExactErasureRelationshipBinding struct {
 // ExactErasureClosure is the bounded historical endpoint proof for NodeIDs.
 // RelationshipIDs and EndpointNodeIDs are canonical; Bindings are canonical by
 // relationship, version, type and endpoints. EndpointNodeIDs is evidence, not a
-// deletion request.
+// deletion request. Bindings keep every distinct matching persisted shape;
+// EndpointNodeIDs includes the requested nodes named by a matching binding.
 type ExactErasureClosure struct {
 	RelationshipIDs []types.RelID
 	EndpointNodeIDs []types.NodeID
@@ -483,7 +487,9 @@ type ExactErasureCapability interface {
 // stub (metaWrites). Memory and badger commit both in one atomic write. Tiered
 // writes the stub BEFORE the trim (different shards), so a crash fails closed
 // and an idempotent re-run repairs. The graph watermark is not part of
-// metaWrites (core/compaction.go advanceCompactionWatermark).
+// metaWrites (core/compaction.go advanceCompactionWatermark). (Tiered: the chain
+// is single-shard (B33) but the stub lives on the reference shard where MetaGet
+// reads it; see tiered/tieredstore_compaction.go.)
 type HistoryCompactionCapability interface {
 	CompactNodeHistory(id types.NodeID, keepVersions int, metaWrites []MetaWrite) error
 	CompactRelHistory(id types.RelID, keepVersions int, metaWrites []MetaWrite) error
@@ -550,7 +556,9 @@ type RangePurgeLogCapability interface {
 // entries, counters, sidecars and the whole version history. Nodes are never
 // touched. One atomic batch per call on a single-machine backend; reports
 // RelsPurged, More and PurgedRels. It emits no change-log record (the graph layer
-// owns ChangeRelRangePurge and the watermark). Idempotent.
+// owns ChangeRelRangePurge and the watermark). Idempotent. Candidates: the type's
+// live rows plus IDs with history rows of the type and no live row; the removed
+// history includes the tombstone.
 type RelRetentionPurgeCapability interface {
 	PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, chunk int) (RetentionPurgeResult, error)
 }
@@ -1076,7 +1084,9 @@ type RelColumnScanCapability interface {
 // The caller serializes the Begin/End window with graph readers and writers and
 // bounds its memory. EndGroupCommit flushes before acknowledgement; a failed End
 // must be reported to every submitter. Not a rollback transaction, and crash
-// atomicity is not promised (backend batch limits can need several writes).
+// atomicity is not promised (backend batch limits can need several writes). After a
+// failed End the buffered ops stay pending for the next flush. Stores without this
+// capability keep per-mutation flushing.
 type GroupCommitCapability interface {
 	BeginGroupCommit()
 	EndGroupCommit() error

@@ -39,7 +39,9 @@ func (bs *Store) PutRelationshipCoLocated(r *types.Relationship) error {
 // PutRelationshipForeignIncoming writes a cross-machine incoming half-edge stub
 // (ADR-0010 Model A), co-located like PutRelationshipCoLocated but co-committing
 // ChangeForeignIncoming so a replica routes apply by the END-node slot (the rel-ID
-// slot is foreign). Called by the sharded store's RecordForeignIncoming.
+// slot is foreign). Called by the sharded store's RecordForeignIncoming. The stub's
+// rel-ID is in a foreign slot: reachable only via this shard's adjacency fold, never
+// a slot-routed GetRelationship.
 func (bs *Store) PutRelationshipForeignIncoming(r *types.Relationship) error {
 	return bs.putRelationship(r, false, true, 0)
 }
@@ -450,6 +452,7 @@ func (bs *Store) deleteRelationshipRouted(rid types.RelID, token uint64, exLeg b
 // (ADR-0010 section 3.3) on the END node's shard: the counterpart of
 // PutRelationshipForeignIncoming, co-committing ChangeForeignIncomingDelete with
 // the END-node ID. Returns ErrRelNotFound when absent (callers tolerate it).
+// Callers (cascade / replica apply) tolerate ErrRelNotFound for idempotency.
 func (bs *Store) DeleteRelationshipForeignIncoming(rid types.RelID) error {
 	if err := bs.checkWritable(); err != nil {
 		return err

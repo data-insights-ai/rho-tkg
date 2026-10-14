@@ -185,7 +185,8 @@ type Store struct {
 	// docColumns.
 	docColumnsMulti map[string]*indexpkg.LabelDocValues
 	// docOrdinals: node ordinals of a docColumns / docColumnsMulti snapshot's
-	// rows, valid while that snapshot is. Guarded by mu.
+	// rows, valid while that snapshot is. Guarded by mu. A node keeps its ordinal
+	// while it has a current row.
 	docOrdinals docOrdinalCache
 
 	// Change-log (op-log), opt-in via WithChangeLog. logSeq (monotonic LSN) and

@@ -107,7 +107,9 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 		return zero, false, nil // other labels present — row-scan handles it
 	}
 
-	// (2) Unlink from routing so no NEW checkout reaches the shard.
+	// (2) Unlink from routing so no NEW checkout reaches the shard. Once unlinked, a new
+	// edge to a purged-window node fails endpoint validation on the hot-shard fallback,
+	// so it adds no unswept residue; the drain captures an in-flight one.
 	ts.mu.Lock()
 	if ts.eventShards[es.name] != es {
 		ts.mu.Unlock()

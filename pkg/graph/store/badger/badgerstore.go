@@ -266,7 +266,9 @@ type Config struct {
 	// WriteBatch whenever it grew, and must persist it where the owner's open reads it.
 	// An error aborts the flush. When nil the floor rides the row WriteBatch.
 	// durable is true inside DurableFlush: the hook must make the floor durable before
-	// returning, so a power loss cannot keep a row whose floor it lost.
+	// returning, so a power loss cannot keep a row whose floor it lost. Called before the
+	// batch, and with durable=true again before DurableFlush's WAL fsync for rows a
+	// background flush wrote; a background flush passes false (no fsync).
 	OnCommitFloor func(floor types.Instant, durable bool) error
 	// EncryptionKey enables AES encryption-at-rest (SSTables, value log, WAL, key
 	// registry). Length must be 0 (disabled), 16, 24 or 32, else New fails with
@@ -524,7 +526,8 @@ type Store struct {
 	// pending under wbMu before the WriteBatch commit, cleared after it succeeds (merged
 	// back on failure). In between a row lives only here, so history, adjacency and
 	// label overlay scans must go through rangePending / lookupPending, which read both
-	// maps.
+	// maps. Entity point reads survive this window via the resident dirty cache;
+	// overlay scans must use rangePending/lookupPending.
 	flushing map[string]writeOp
 	// commitGen counts the commits that move buffered rows into Badger (flush,
 	// Clear): a read snapshot re-pins when it moved (badgerstore_read_snapshot.go).
@@ -579,7 +582,7 @@ type Store struct {
 	// historyScanTestHook runs in the full-history prefix readers and the lazy builds
 	// (membership sidecars, belief watermarks, relationshipIndexKeysForRel) after their
 	// Badger scan and before the overlay merge / install, so tests land a flush() commit
-	// there. Test-only.
+	// there. Test-only; called under idxMu.Lock, so a hook must not take idxMu.
 	historyScanTestHook func()
 	// flushClearedTestHook (tests only) runs inside flush right after the
 	// committed rows left the overlay (flushing cleared).
@@ -1951,7 +1954,8 @@ func (bs *Store) addRelationshipIndexesFromRow(info RelDeleteInfo) {
 // flushMu is taken first to drain any in-flight flush, which could otherwise race
 // ahead of DropAll() and resurrect pre-Clear entities, and to block new flushes. In
 // SyncWrites mode concurrent mutations block for the duration of DropAll (accepted:
-// Clear is rare and admin-scoped).
+// Clear is rare and admin-scoped). Releasing flushMu before DropAll would not help:
+// flush() also needs idxMu.RLock, which Clear holds via idxMu.Lock.
 func (bs *Store) Clear() (err error) {
 	if err := bs.checkWritable(); err != nil {
 		return err
@@ -2219,8 +2223,9 @@ func (bs *Store) IndexRebuildStats() IndexRebuildStats {
 }
 
 // SetPropertyKeyRegistry installs the property-key registry: subsequent writes
-// dictionary-encode property keys and reads resolve tokens back. Call before any
-// writes; effective from the next marshal/unmarshal. Nil disables tokenization.
+// dictionary-encode property keys and reads resolve tokens back. Safe to call before
+// any writes; effective from the next marshal/unmarshal. Nil disables tokenization
+// and keeps the pre-tokenization wire format.
 func (bs *Store) SetPropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) {
 	if bs == nil {
 		return

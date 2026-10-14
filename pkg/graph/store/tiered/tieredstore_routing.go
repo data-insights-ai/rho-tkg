@@ -63,7 +63,8 @@ func (ts *Store) timestampToEventShardEntry(id snowflake.ID) *EventShard {
 
 // reindexShardsLocked rebuilds shardIndex from eventShards, sorted by
 // timeStart. Caller holds ts.mu.Lock (or owns the Store, as New does); run it
-// after every insert into or delete from eventShards.
+// after every insert into or delete from eventShards. Rotation changes timeEnd in
+// place, but windows do not overlap, so the timeStart order is unaffected.
 func (ts *Store) reindexShardsLocked() {
 	idx := make([]*EventShard, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {

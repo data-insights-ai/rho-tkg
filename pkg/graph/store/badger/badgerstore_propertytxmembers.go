@@ -26,13 +26,18 @@ var (
 // TxFrom). RAM-only append-only supersets; the chain resolver stays the authority.
 //
 // Every door writing a current row records via maintain*IndexesAdd under
-// idxMu.Lock, every history row next to its belief-watermark bump. A sidecar in
+// idxMu.Lock, every history row next to its belief-watermark bump. History rows:
+// the demoted row of a *WithHistory door, a delete tombstone, and
+// PutRel/NodeVersion via enqueueVersionAgainstLazyBuilds. A sidecar in
 // relPropTx / nodePropTx is tracking; built marks it readable.
 //
 // Lazy build without blocking writers (lessons 63, 64, 74): under a per-sidecar
 // build mutex the build turns tracking on under idxMu.Lock, reads the invalidation
 // generation, releases idxMu, captures the write-buffer overlay, then scans
-// committed current and history rows in one view. The merge is a union with
+// committed current and history rows in one view. A row written before tracking
+// was on is in the overlay or the view (its door appended its op inside the same
+// idxMu section); a row written after is recorded by its door. A scan straddling an
+// invalidation is discarded and redone. The merge is a union with
 // per-member minimum, so scan and concurrent records commute. The result installs
 // only if generation and sidecar are unchanged; Clear, index drop, retention purge
 // and exact erasure drop the sidecars and move the generation.

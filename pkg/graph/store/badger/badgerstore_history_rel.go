@@ -228,10 +228,11 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 	// A live or covered rel's envelope covers every row since the index existed, so
 	// this version joins it. An uncovered rel without a current row stays uncovered
 	// (never pruned): extending would vouch for this one version only. While the index
-	// is Building the version joins it and records the ID (backlog 22).
+	// is Building the version joins it and records the ID (backlog 22). A delete keeps
+	// the envelope; while Building the create re-reads every row (backlog 22).
 	// A row whose endpoints differ from the live row's joins the ex-adjacency in the
-	// same batch (backlog 50), decided before the enqueue (a delete in between adds
-	// the legs itself).
+	// same batch (backlog 50), decided before the enqueue because the enqueue may run
+	// under idxMu.Lock (a delete in between adds the legs itself).
 	bs.idxMu.RLock()
 	ops := append([]writeOp{{opType: writeOpSet, key: key, value: data}}, bs.exAdjOpsForHistoryRowLocked(rid, r)...)
 	bs.idxMu.RUnlock()

@@ -83,7 +83,8 @@ func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 	}
 
 	// Phase 3a: take the IDs written so far and re-read every row of each (current and
-	// history, deleted too) without the lock. Later writes fold their own rows.
+	// history, deleted too) without the lock. Later writes fold their own rows. A write
+	// before the re-read is in what it reads; a write after folds its new row itself.
 	bs.idxMu.Lock()
 	written := slices.Collect(maps.Keys(live.Mutated))
 	live.Mutated = make(map[snowflake.ID]struct{})
@@ -96,7 +97,9 @@ func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 	// Phase 3b: merge (a union, order against live writes does not matter) and
 	// publish. An ID first written after the 3a take whose earlier rows Phase 2 did
 	// not read has its history folded here under the lock, so no write lands between
-	// read and publish.
+	// read and publish. Those are IDs with no current row when the walk reached them
+	// (deleted, history kept); a current row such an ID has was made during the build
+	// and folded by its write.
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
 	if err := requireTemporalIndexCurrentForCreate(bs.relTypeTemporalIndexes, relType, live); err != nil {
@@ -125,7 +128,7 @@ func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 
 // foldRelHistoryLocked extends ti by every history row of id; the RAM presence set
 // answers "has none" without a read. Caller holds idxMu.Lock (order idxMu ->
-// presence buildMu -> wbMu).
+// presence buildMu -> wbMu); the history read takes only wbMu and a read transaction.
 func (bs *Store) foldRelHistoryLocked(ti *indexpkg.TemporalIndex, id snowflake.ID) error {
 	has, err := bs.hasHistory(&bs.histRelPresence, storepkg.KeyHistRel, id, bs.probeHistoryPresence)
 	if err != nil || !has {
@@ -197,9 +200,12 @@ func (bs *Store) relTemporalRowsOf(ids []snowflake.ID) (*indexpkg.TemporalIndex,
 //   - The cache answers before the row walk, so the walk follows scanSnapshot's
 //     rule: the flush epoch is read before the transaction opens, and a cache miss
 //     or history fold under a changed epoch re-pins (new transaction and walks).
+//     Re-pin: a flush that commits and evicts a row after the txn opened leaves the
+//     snapshot without its latest version.
 //   - Buffered history writes are snapshotted before the first transaction
 //     (lesson 64) and win over committed rows; a second snapshot after the walk is
-//     folded too (widening is sound).
+//     folded too (widening is sound). Second snapshot: so a version moved into
+//     history during the build is not lost (other writes: backlog 22).
 func (bs *Store) buildRelTypeTemporalIndex(rids []types.RelID) (*indexpkg.TemporalIndex, error) {
 	bs.relTemporalBuilds.Add(1)
 	relTemporalBuildsTotal.Add(1)

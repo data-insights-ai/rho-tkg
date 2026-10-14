@@ -155,7 +155,7 @@ type nodeLabelScanner interface {
 // Isolation is RELAXED: the IDs are snapshotted, then rows are fetched and fn
 // called without graph locks. fn may call back into the graph; concurrent
 // writers are neither blocked nor seen atomically. Rows are shared frozen
-// pointers; fn must not mutate them.
+// pointers; fn must not mutate them. Deleted rows are skipped, new rows are not seen.
 //
 // A temporal-filter query streams too: ByLabel's answers in ascending ID
 // order, resolved labelScanAtChunk at a time under the read lock and handed
@@ -685,7 +685,7 @@ type relTypeScanner interface {
 // Isolation is RELAXED: the IDs are snapshotted, then rows are fetched and fn
 // called without graph locks. fn may call back into the graph; concurrent
 // writers are neither blocked nor seen atomically. Rows are shared frozen
-// pointers; fn must not mutate them.
+// pointers; fn must not mutate them. Deleted rows are skipped, new rows are not seen.
 //
 // A temporal-filter query streams too: ByType's answers in ascending ID
 // order, resolved labelScanAtChunk at a time under the read lock and handed
