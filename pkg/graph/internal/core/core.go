@@ -135,6 +135,14 @@ type Core struct {
 	// resolver stays the single selection authority: the SAME resolveNodeChain
 	// runs on skeletons and again after winner hydration.
 	temporalMetaHistory storepkg.TemporalMetaHistoryCapability
+	// historyEpochs — per-entity history tokens (backlog 68): the head-pin
+	// effective timeline is kept per entity while its token holds
+	// (effective_head.go). nil = store declines: every head read folds.
+	historyEpochs storepkg.HistoryEpochCapability
+	heads         headCache
+	headCacheOff  bool          // tests: fold every read (the differential oracle)
+	headHits      atomic.Uint64 // head reads answered from an entry
+	headOverlays  atomic.Uint64 // corrections that extended an entry
 	// readSnapshots — effective scans read their timelines through one store
 	// read snapshot (backlog 55, effective_scan_reads.go). nil = per-entity reads.
 	readSnapshots storepkg.ReadSnapshotCapability
@@ -2111,6 +2119,7 @@ func New(config Config) (*Core, error) {
 	c.nodeBeliefWatermark = nodeBeliefWatermarkCapability(store)
 	c.relBeliefWatermark = relBeliefWatermarkCapability(store)
 	c.temporalMetaHistory = temporalMetaHistoryCapability(store)
+	c.historyEpochs = historyEpochCapability(store)
 	c.readSnapshots = readSnapshotCapability(store)
 	c.currentStamps = currentStampsCapability(store)
 	c.memberIDs = memberIDsCapability(store)

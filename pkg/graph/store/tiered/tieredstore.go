@@ -14,6 +14,7 @@ import (
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	lockspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/locks"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	badger "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
@@ -240,6 +241,11 @@ func (es *EventShard) currentTier() ShardTier {
 // Event entities (Signal, Alert) live in time-windowed event shards.
 // Phase 3a: exactly one hot event shard. Phases 3b-3e add warm/cold/archive.
 type Store struct {
+	// histTopoEpoch is a history token (storeutil.NextHistoryEpoch) drawn
+	// anew whenever the shard set changes (reindexShardsLocked, Clear): it is
+	// folded into every HistoryEpoch answer, so a shard leaving the history
+	// walk moves every token (tieredstore_history_epoch.go).
+	histTopoEpoch     atomic.Uint64
 	mu                sync.RWMutex                                    // protects hotShard + eventShards during rotation
 	refShard          *BadgerStore                                    // reference shard (always hot)
 	shardFloor        shardCommitFloor                                // non-reference shards' commit floor, kept on refShard (tieredstore_commit_floor.go)
@@ -1150,6 +1156,7 @@ func (ts *Store) Clear() error {
 
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
+	defer ts.histTopoEpoch.Store(storeutil.NextHistoryEpoch())
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}

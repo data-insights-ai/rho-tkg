@@ -8,6 +8,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	snowflakepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/snowflake"
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -66,6 +67,7 @@ func (ts *Store) timestampToEventShardEntry(id snowflake.ID) *EventShard {
 // after every insert into or delete from eventShards. Rotation changes timeEnd in
 // place, but windows do not overlap, so the timeStart order is unaffected.
 func (ts *Store) reindexShardsLocked() {
+	ts.histTopoEpoch.Store(storeutil.NextHistoryEpoch()) // the shard set may change: every history token moves
 	idx := make([]*EventShard, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {
 		// A zero-length shard (two rotations in one millisecond) holds no

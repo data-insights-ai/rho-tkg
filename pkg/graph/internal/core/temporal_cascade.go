@@ -141,6 +141,8 @@ func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT ty
 		// after it would be a belief no door reads consistently (backlog 14).
 		return nil, nodeDeletedErr(id)
 	}
+	// The head answer before any write (backlog 68, effective_head.go).
+	headBefore := c.nodeHeadBeforeWrite(id, current)
 
 	maxVersion := current.Version()
 	for _, h := range history {
@@ -343,6 +345,11 @@ func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT ty
 		}
 	}
 
+	headCur := current
+	if curIsNew {
+		headCur = newCurrent
+	}
+	c.nodeHeadAfterWrite(id, headBefore, appended, headCur)
 	c.opNodeUpdates.Add(1)
 	return newVer, nil
 }
@@ -728,6 +735,7 @@ func (c *Core) cascadeRel(ctx context.Context, id types.RelID, newVF, newVT type
 		// Hard-deleted — see the node cascade (backlog 14).
 		return nil, relDeletedErr(id)
 	}
+	headBefore := c.relHeadBeforeWrite(id, current)
 
 	maxVersion := current.Version()
 	for _, h := range history {
@@ -857,6 +865,11 @@ func (c *Core) cascadeRel(ctx context.Context, id types.RelID, newVF, newVT type
 		}
 	}
 
+	headCur := current
+	if curIsNew {
+		headCur = newCurrent
+	}
+	c.relHeadAfterWrite(id, headBefore, appended, headCur)
 	c.opRelUpdates.Add(1)
 	return newVer, nil
 }

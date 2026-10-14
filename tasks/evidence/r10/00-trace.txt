@@ -1,0 +1,45 @@
+# sigma R10 trace (rho main 1e2c3c3e, sigma-tkgd 685b14a6a), 2026-10-14
+
+## Where NodeEffectiveTimeline's cost goes at 300 versions of one validity (head pin)
+CPU profiles of BenchmarkR10NodeEffectiveTimelineHead/*/versions=300 (01-before.txt):
+- memory (~100-230 us): 64% loading the history — memory GetNodeHistory deep-copies every row
+  (store/memory/memorystore_history.go:462, reached from effective_timeline.go:420 rd.nodeHistory);
+  35% the resolver sweep and its allocations (effectivePieces / effectiveSweep, effective_timeline.go:118,170:
+  write-order sort, origin map, clone, interval heap). 1226 allocs per read.
+- badger (~190-210 us): 71% the selection-skeleton read — prefix iteration and DecodeWireTemporalMeta of every
+  history value (store/badger/badgerstore_temporalmeta.go:53 via effective_timeline.go:493); 21% the sweep.
+  Only the one winner is hydrated. 1020 allocs per read.
+- sharded / tiered: no skeleton door; full rows decoded: ~13.5k / ~10.7k allocs per read
+  (03-red-cost-test.txt).
+So the read is O(history) in both the load and the sweep; decode/copy dominates.
+
+## Existing mechanisms
+- History compaction (CompactNodeHistory, internal/core/compaction.go): trims the OLDEST versions by count
+  (KeepVersions / KeepSince), lowered only to keep hash linkage (anchorSafeTrim, compaction.go:409). In both
+  probes (00-compaction-probe.txt) the head answer survived and the head read fell to 0.9 us (memory) / 5 us
+  (badger), but every pin below the compaction watermark is refused with ErrHistoryCompacted. sigma reads older
+  beliefs as-of (design g4) and never compacts (tasks/history-via-rho-design.md §2.6). Not usable.
+- Selection skeletons (TemporalMetaHistoryCapability, badger only): already used; still O(versions) decodes.
+- History stamps / presence sidecars (backlog 30, 42): O(1) per entity, but answer stamps, not the timeline.
+- Effective-timeline caching: none existed (stateCut in state_columns.go caches a label's cut per pin for column
+  scans, invalidated by any write to the label: no help for a point read after a write).
+- As-of rule (SelectAsOf, NodeAsOf): the RECORD door; answers the newest row at the pin, not the state over
+  valid time, so it cannot replace the timeline (and it is O(versions) too).
+=> No existing mechanism gives O(segments) at the head pin without losing as-of history.
+
+## Upstream (sigma)
+- Writer: internal/tyla/application/incremental/overview_graph.go:375 reconcile reads the fact's full timeline at
+  the committed pin (:403 timeline -> derived_read.go:46 NodeEffectiveTimeline), appends a version with
+  SetNodeVersionInterval when (validity, content) is not contained in a believed run (:442), voids uncovered
+  stretches (:452). Equal content already writes nothing (:417, g8).
+- The 300 versions are real corrections: the benchmark (writeback_test.go:283-284) and ai-soc's growing window
+  counts / min-max write a new value over the same validity every cut; sigma confirmed (coordinator, 2026-10-14).
+  ExciseNodeValidity (v4.54.0) would replace the ov_void marker writes, not the corrections, and the writer must
+  still read the believed timeline every cut; a writer-side cache is ruled out (other sessions write the same
+  nodes). => Not removable upstream; a rho change is needed.
+
+## The write half (context; not part of R10's ask)
+Per fact and cut at 300 versions, BenchmarkR10ReadThenWrite: memory 0.74 ms, badger 4.0 ms; the GraphTx
+correction itself copies the whole history twice: the tx rollback snapshot (tx.go:325 copyNodeHistory — the
+trim-only snapshot is skipped because a cascade leaves history rows above the current row's version) and the
+cascade pre-chain (temporal_cascade.go:132 getNodeHistory).

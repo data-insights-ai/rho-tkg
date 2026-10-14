@@ -249,6 +249,10 @@ type Store struct {
 	histStampsMu   sync.RWMutex
 	nodeHistStamps map[types.NodeID]histStampsEntry
 	relHistStamps  map[types.RelID]histStampsEntry
+	// History epochs (HistoryEpochCapability, backlog 68,
+	// memorystore_history_epoch.go): count-checked watch tables.
+	nodeHistEpochs storeutil.HistoryEpochs[types.NodeID]
+	relHistEpochs  storeutil.HistoryEpochs[types.RelID]
 
 	// ADR-0011 S2: declared bulk relationship types and their in-RAM column
 	// segments (see memorystore_segments.go). All nil/zero until a type is

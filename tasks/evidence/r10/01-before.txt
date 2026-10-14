@@ -1,0 +1,53 @@
+# 2026-10-14T20:34:41+02:00 1e2c3c3e go version go1.26.9 linux/amd64
+# rho: NodeEffectiveTimeline at the head pin, one node with N versions of validity [1000,2000) (2000 reads each)
+BenchmarkR10NodeEffectiveTimelineHead/memory/versions=1-32         	    2000	       720.7 ns/op	     592 B/op	       7 allocs/op
+BenchmarkR10NodeEffectiveTimelineHead/memory/versions=1-32         	    2000	       758.9 ns/op	     592 B/op	       7 allocs/op
+BenchmarkR10NodeEffectiveTimelineHead/memory/versions=1-32         	    2000	       381.4 ns/op	     592 B/op	       7 allocs/op
+BenchmarkR10NodeEffectiveTimelineHead/memory/versions=100-32       	    2000	     46532 ns/op	   73320 B/op	     424 allocs/op
+BenchmarkR10NodeEffectiveTimelineHead/memory/versions=100-32       	    2000	     49476 ns/op	   73322 B/op	     424 allocs/op
+BenchmarkR10NodeEffectiveTimelineHead/memory/versions=100-32       	    2000	     54032 ns/op	   73320 B/op	     424 allocs/op
+BenchmarkR10NodeEffectiveTimelineHead/memory/versions=300-32       	    2000	    149677 ns/op	  230094 B/op	    1226 allocs/op
+BenchmarkR10NodeEffectiveTimelineHead/memory/versions=300-32       	    2000	    233030 ns/op	  230089 B/op	    1226 allocs/op
+BenchmarkR10NodeEffectiveTimelineHead/memory/versions=300-32       	    2000	    168966 ns/op	  230088 B/op	    1226 allocs/op
+BenchmarkR10NodeEffectiveTimelineHead/badger/versions=1-32         	    2000	       413.5 ns/op	     592 B/op	       7 allocs/op
+BenchmarkR10NodeEffectiveTimelineHead/badger/versions=1-32         	    2000	       686.5 ns/op	     592 B/op	       7 allocs/op
+BenchmarkR10NodeEffectiveTimelineHead/badger/versions=1-32         	    2000	       563.9 ns/op	     592 B/op	       7 allocs/op
+BenchmarkR10NodeEffectiveTimelineHead/badger/versions=100-32       	    2000	     89284 ns/op	   79207 B/op	     437 allocs/op
+BenchmarkR10NodeEffectiveTimelineHead/badger/versions=100-32       	    2000	     69880 ns/op	   85812 B/op	     455 allocs/op
+BenchmarkR10NodeEffectiveTimelineHead/badger/versions=100-32       	    2000	     72446 ns/op	   86751 B/op	     457 allocs/op
+BenchmarkR10NodeEffectiveTimelineHead/badger/versions=300-32       	    2000	    190746 ns/op	  204170 B/op	    1020 allocs/op
+BenchmarkR10NodeEffectiveTimelineHead/badger/versions=300-32       	    2000	    208720 ns/op	  204425 B/op	    1020 allocs/op
+BenchmarkR10NodeEffectiveTimelineHead/badger/versions=300-32       	    2000	    189173 ns/op	  204378 B/op	    1021 allocs/op
+# rho: RelEffectiveTimeline, same shape
+BenchmarkR10RelEffectiveTimelineHead/memory/versions=1-32         	    2000	       815.3 ns/op	     688 B/op	       8 allocs/op
+BenchmarkR10RelEffectiveTimelineHead/memory/versions=1-32         	    2000	       684.5 ns/op	     688 B/op	       8 allocs/op
+BenchmarkR10RelEffectiveTimelineHead/memory/versions=1-32         	    2000	       597.7 ns/op	     688 B/op	       8 allocs/op
+BenchmarkR10RelEffectiveTimelineHead/memory/versions=100-32       	    2000	     46354 ns/op	   76584 B/op	     425 allocs/op
+BenchmarkR10RelEffectiveTimelineHead/memory/versions=100-32       	    2000	     52607 ns/op	   76585 B/op	     425 allocs/op
+BenchmarkR10RelEffectiveTimelineHead/memory/versions=100-32       	    2000	     55823 ns/op	   76584 B/op	     425 allocs/op
+BenchmarkR10RelEffectiveTimelineHead/memory/versions=300-32       	    2000	    151227 ns/op	  239752 B/op	    1227 allocs/op
+BenchmarkR10RelEffectiveTimelineHead/memory/versions=300-32       	    2000	    212285 ns/op	  239755 B/op	    1227 allocs/op
+BenchmarkR10RelEffectiveTimelineHead/memory/versions=300-32       	    2000	    170909 ns/op	  239752 B/op	    1227 allocs/op
+BenchmarkR10RelEffectiveTimelineHead/badger/versions=1-32         	    2000	       575.3 ns/op	     624 B/op	       7 allocs/op
+BenchmarkR10RelEffectiveTimelineHead/badger/versions=1-32         	    2000	       471.3 ns/op	     624 B/op	       7 allocs/op
+BenchmarkR10RelEffectiveTimelineHead/badger/versions=1-32         	    2000	       517.0 ns/op	     624 B/op	       7 allocs/op
+BenchmarkR10RelEffectiveTimelineHead/badger/versions=100-32       	    2000	     81398 ns/op	   86801 B/op	     445 allocs/op
+BenchmarkR10RelEffectiveTimelineHead/badger/versions=100-32       	    2000	     75244 ns/op	   91901 B/op	     455 allocs/op
+BenchmarkR10RelEffectiveTimelineHead/badger/versions=100-32       	    2000	     75522 ns/op	   92292 B/op	     456 allocs/op
+BenchmarkR10RelEffectiveTimelineHead/badger/versions=300-32       	    2000	    202587 ns/op	  205408 B/op	    1023 allocs/op
+BenchmarkR10RelEffectiveTimelineHead/badger/versions=300-32       	    2000	    205369 ns/op	  205447 B/op	    1023 allocs/op
+BenchmarkR10RelEffectiveTimelineHead/badger/versions=300-32       	    2000	    211267 ns/op	  204439 B/op	    1021 allocs/op
+# rho: one more SetNodeVersionInterval of the same validity at N (300 writes, so N grows to N+300)
+BenchmarkR10SetNodeVersionInterval/memory/versions=1-32         	     300	     54602 ns/op	  101215 B/op	     631 allocs/op
+BenchmarkR10SetNodeVersionInterval/memory/versions=100-32       	     300	     97233 ns/op	  166544 B/op	    1027 allocs/op
+BenchmarkR10SetNodeVersionInterval/memory/versions=300-32       	     300	    185240 ns/op	  298871 B/op	    1827 allocs/op
+BenchmarkR10SetNodeVersionInterval/badger/versions=1-32         	     300	    638077 ns/op	  559622 B/op	    5969 allocs/op
+BenchmarkR10SetNodeVersionInterval/badger/versions=100-32       	     300	    891656 ns/op	  934234 B/op	    9827 allocs/op
+BenchmarkR10SetNodeVersionInterval/badger/versions=300-32       	     300	   1790197 ns/op	 1724328 B/op	   18579 allocs/op
+# rho: sigma's cut per fact: read the head timeline, then write one more version in a GraphTx (300 cuts on top of N)
+BenchmarkR10ReadThenWrite/memory/versions=1-32         	     300	    238494 ns/op	  378748 B/op	    2481 allocs/op
+BenchmarkR10ReadThenWrite/memory/versions=100-32       	     300	    393225 ns/op	  624956 B/op	    4067 allocs/op
+BenchmarkR10ReadThenWrite/memory/versions=300-32       	     300	    735809 ns/op	 1122917 B/op	    7269 allocs/op
+BenchmarkR10ReadThenWrite/badger/versions=1-32         	     300	   1398256 ns/op	 1351720 B/op	   13713 allocs/op
+BenchmarkR10ReadThenWrite/badger/versions=100-32       	     300	   2161705 ns/op	 2224284 B/op	   22253 allocs/op
+BenchmarkR10ReadThenWrite/badger/versions=300-32       	     300	   4035342 ns/op	 3936573 B/op	   40571 allocs/op

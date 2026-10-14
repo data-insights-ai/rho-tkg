@@ -119,6 +119,16 @@ func effectivePieces[T interface {
 	comparable
 	storeutil.TemporalRow
 }](c *Core, k *chainKernel[T], chain []T, pin types.Instant) []effPiece[T] {
+	return effectivePiecesFacts(c, k, chain, pin, nil)
+}
+
+// effectivePiecesFacts is effectivePieces that also fills facts (when not
+// nil) for a head entry (effective_head.go), from the rows the fold already
+// walks: no extra copy, sort or classification.
+func effectivePiecesFacts[T interface {
+	comparable
+	storeutil.TemporalRow
+}](c *Core, k *chainKernel[T], chain []T, pin types.Instant, facts *headFacts) []effPiece[T] {
 	if len(chain) == 1 {
 		// An entity without history: the sweep below on one row, without its
 		// allocations (one row is monotonic; its positional bounds, capped by
@@ -155,11 +165,18 @@ func effectivePieces[T interface {
 			origin[r] = i
 		}
 	}
+	if facts != nil && len(filtered) == len(chain) {
+		gatherHeadFacts(facts, c, k, filtered)
+	}
 	filtered = dropRetractedLives(filtered)
 	if len(filtered) == 0 {
 		return nil
 	}
-	return effectiveSweep(c, k, filtered, origin, false)
+	pieces, cascade := effectiveSweep(c, k, filtered, origin, false)
+	if facts != nil {
+		facts.cascade = cascade
+	}
+	return pieces
 }
 
 // effectiveSweep is effectivePieces after the transaction-time filter: the
@@ -170,7 +187,7 @@ func effectivePieces[T interface {
 func effectiveSweep[T interface {
 	comparable
 	storeutil.TemporalRow
-}](c *Core, k *chainKernel[T], filtered []T, origin map[T]int, keepVoid bool) []effPiece[T] {
+}](c *Core, k *chainKernel[T], filtered []T, origin map[T]int, keepVoid bool) ([]effPiece[T], bool) {
 	caps := chainLifeEnds(filtered)
 
 	// The resolver's classification and order (it sorts its argument).
@@ -260,7 +277,7 @@ func effectiveSweep[T interface {
 		}
 		out = append(out, effPiece[T]{from: from, to: to, row: w, src: origin[w]})
 	}
-	return out
+	return out, cascade
 }
 
 // effHeap is a max-heap of intervals by priority.
@@ -412,8 +429,18 @@ func (c *Core) nodeEffectiveTimelineFrom(rd entityReads, id types.NodeID, pin ty
 			return nodeSegments(c.nodeEffectivePieces([]*types.Node{current}, pin), nil), nil
 		}
 	}
+	// The head answer (backlog 68): kept per entity while the store's history
+	// token and the current row hold (effective_head.go). Only the plain
+	// point read uses it; the scans read through one snapshot.
+	var epoch uint64
+	if rd.snap == nil && current != nil {
+		epoch = c.nodeHistoryEpoch(id)
+		if segs, ok := c.nodeHeadSegments(rd, id, current, pin, epoch); ok {
+			return segs, nil
+		}
+	}
 	if c.temporalMetaHistory != nil {
-		if segs, handled, err := c.nodeEffectiveViaTemporalMeta(rd, id, current, pin); handled {
+		if segs, handled, err := c.nodeEffectiveViaTemporalMeta(rd, id, current, pin, epoch); handled {
 			return segs, err
 		}
 	}
@@ -429,7 +456,15 @@ func (c *Core) nodeEffectiveTimelineFrom(rd entityReads, id types.NodeID, pin ty
 	if current != nil {
 		chain = append(chain, current)
 	}
-	return nodeSegments(c.nodeEffectivePieces(chain, pin), nil), nil
+	var facts *headFacts
+	if epoch != 0 {
+		facts = &headFacts{}
+	}
+	pieces := effectivePiecesFacts(c, nodeKernel, chain, pin, facts)
+	if facts != nil {
+		c.noteNodeHead(id, epoch, current, pieces, facts)
+	}
+	return nodeSegments(pieces, nil), nil
 }
 
 // relEffectiveTimelineLocked mirrors nodeEffectiveTimelineLocked.
@@ -462,8 +497,18 @@ func (c *Core) relEffectiveTimelineFrom(rd entityReads, id types.RelID, pin type
 			return relSegments(c.relEffectivePieces([]*types.Relationship{current}, pin), nil), nil
 		}
 	}
+	// The head answer (backlog 68): kept per entity while the store's history
+	// token and the current row hold (effective_head.go). Only the plain
+	// point read uses it; the scans read through one snapshot.
+	var epoch uint64
+	if rd.snap == nil && current != nil {
+		epoch = c.relHistoryEpoch(id)
+		if segs, ok := c.relHeadSegments(rd, id, current, pin, epoch); ok {
+			return segs, nil
+		}
+	}
 	if c.temporalMetaHistory != nil {
-		if segs, handled, err := c.relEffectiveViaTemporalMeta(rd, id, current, pin); handled {
+		if segs, handled, err := c.relEffectiveViaTemporalMeta(rd, id, current, pin, epoch); handled {
 			return segs, err
 		}
 	}
@@ -479,7 +524,15 @@ func (c *Core) relEffectiveTimelineFrom(rd entityReads, id types.RelID, pin type
 	if current != nil {
 		chain = append(chain, current)
 	}
-	return relSegments(c.relEffectivePieces(chain, pin), nil), nil
+	var facts *headFacts
+	if epoch != 0 {
+		facts = &headFacts{}
+	}
+	pieces := effectivePiecesFacts(c, relKernel, chain, pin, facts)
+	if facts != nil {
+		c.noteRelHead(id, epoch, current, pieces, facts)
+	}
+	return relSegments(pieces, nil), nil
 }
 
 // nodeEffectiveViaTemporalMeta cuts and resolves on selection skeletons
@@ -489,7 +542,7 @@ func (c *Core) relEffectiveTimelineFrom(rd entityReads, id types.RelID, pin type
 // and given the same TxAt normalization the resolver applies (lesson 60).
 // handled=false (a winner vanished between the reads, e.g. a concurrent trim)
 // falls back to the full-chain fold.
-func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, current *types.Node, pin types.Instant) ([]temporal.NodeSegment, bool, error) {
+func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, current *types.Node, pin types.Instant, epoch uint64) ([]temporal.NodeSegment, bool, error) {
 	metas, err := rd.nodeMeta(id)
 	if err != nil {
 		return nil, true, err
@@ -509,7 +562,14 @@ func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, cur
 	if current != nil {
 		chain = append(chain, current)
 	}
-	pieces := c.nodeEffectivePieces(chain, pin)
+	var facts *headFacts
+	if epoch != 0 {
+		facts = &headFacts{}
+	}
+	pieces := effectivePiecesFacts(c, nodeKernel, chain, pin, facts)
+	if facts != nil {
+		c.noteNodeHead(id, epoch, current, pieces, facts)
+	}
 	// Winners are told apart by origin, not by version: in a chain stored
 	// before backlog 38 a re-imported ID's current row shares version
 	// numbers with the earlier life's history.
@@ -544,7 +604,7 @@ func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, cur
 }
 
 // relEffectiveViaTemporalMeta mirrors nodeEffectiveViaTemporalMeta.
-func (c *Core) relEffectiveViaTemporalMeta(rd entityReads, id types.RelID, current *types.Relationship, pin types.Instant) ([]temporal.RelSegment, bool, error) {
+func (c *Core) relEffectiveViaTemporalMeta(rd entityReads, id types.RelID, current *types.Relationship, pin types.Instant, epoch uint64) ([]temporal.RelSegment, bool, error) {
 	metas, err := rd.relMeta(id)
 	if err != nil {
 		return nil, true, err
@@ -564,7 +624,14 @@ func (c *Core) relEffectiveViaTemporalMeta(rd entityReads, id types.RelID, curre
 	if current != nil {
 		chain = append(chain, current)
 	}
-	pieces := c.relEffectivePieces(chain, pin)
+	var facts *headFacts
+	if epoch != 0 {
+		facts = &headFacts{}
+	}
+	pieces := effectivePiecesFacts(c, relKernel, chain, pin, facts)
+	if facts != nil {
+		c.noteRelHead(id, epoch, current, pieces, facts)
+	}
 	// Winners are told apart by origin, not by version: in a chain stored
 	// before backlog 38 a re-imported ID's current row shares version
 	// numbers with the earlier life's history.
