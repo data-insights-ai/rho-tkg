@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "run": 38554672044,
+  "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38554672044",
+  "head": "404a9596ae294f1f67de37c13e59e7c19e05a292",
+  "qualifiedJobs": {
+    "focusedV5": "success",
+    "lintV5": "success",
+    "securityV5": "success"
+  },
+  "scope": "Hosted finite P03 A/B actual coordinator loss after durable COMMIT; remaining root jobs were still running when this component receipt was captured. No complete P03/P06 families, physical-host failure, full V2 or release acceptance. Independent serial/cut replay remains in local component proof.",
+  "sourceSHA256": {
+    "v5/internal/graphapply/coordinator_loss_p03_harness_test.go": "44baa18a93496255de358fcc26e045a8cbe55f9851ade576edd4d48e1ead8af4",
+    "v5/internal/graphapply/coordinator_loss_p03_process_test.go": "e21b832220c43a0f970e45f9a45b555a825ba413b52acd069ace7eb4fc0d8318",
+    "tools/v5-substrate/check-p03-history.py": "73dc080292be71cc6a73ed2e87b25423758e93aece27208ecf171c04027f9867",
+    "tools/v5-substrate/check_p03_history_test.py": "3f076f226914fe1adc4cfd9f5ab5ccd26a91e1abd76429f0a9ba6bfee53b4f32"
+  },
+  "artifact": {
+    "id": 11889856177,
+    "name": "focused-behavior-v5",
+    "sizeBytes": 156725,
+    "SHA256": {
+      "normal-0.jsonl": "589173fbf6ba7c1cad94cf1f9eb5c986e3eb420015821c0d0847df4ddbc07505",
+      "race-0.jsonl": "d154f8bb96a389c08d9fe476025ddf419c0b4151a9335b7ac645c646e372f0e1",
+      "coverage-0.jsonl": "380dc3bf16340fc7da6d7af679cfa155c205081df9c6ca8a18e48910e785faaa",
+      "selection.json": "574990a2aeebd758fdb1390539effe11e413a04814cc2f6f0447204248082a4a",
+      "coverage-0.out": "767aa43f72065c8a772c61f2867445c80c119b69e790d588a76047ee25f37674"
+    }
+  },
+  "gates": {
+    "normal": {
+      "passedParents": 1,
+      "passedSubcases": 2,
+      "terminalTests": [
+        "TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply/A",
+        "TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply/B",
+        "TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply"
+      ]
+    },
+    "race": {
+      "passedParents": 1,
+      "passedSubcases": 2,
+      "terminalTests": [
+        "TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply/A",
+        "TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply/B",
+        "TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply"
+      ]
+    },
+    "coverage": {
+      "passedParents": 1,
+      "passedSubcases": 2,
+      "terminalTests": [
+        "TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply/A",
+        "TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply/B",
+        "TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply"
+      ]
+    }
+  },
+  "fullV2Acceptance": false
+}
