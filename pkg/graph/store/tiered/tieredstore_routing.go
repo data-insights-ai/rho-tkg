@@ -77,6 +77,12 @@ func (ts *Store) timestampToEventShardEntry(id snowflake.ID) *EventShard {
 func (ts *Store) reindexShardsLocked() {
 	idx := make([]*EventShard, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {
+		// A zero-length shard (two rotations in one millisecond) holds no
+		// window and shares its timeStart with its successor: indexing it
+		// could hide the successor behind an unstable sort.
+		if !es.timeEnd.After(es.timeStart) {
+			continue
+		}
 		idx = append(idx, es)
 	}
 	sort.Slice(idx, func(i, j int) bool { return idx[i].timeStart.Before(idx[j].timeStart) })
