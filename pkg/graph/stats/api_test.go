@@ -449,6 +449,39 @@ func (s *statsOpsSpy) RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegre
 	return storepkg.RelTypeDegreeStats{Rels: 4, MaxOut: 3, Exact: true}, s.relCountByTypeErr
 }
 
+func (s *statsOpsSpy) TrackRelTypeDegrees(typeName string) error {
+	s.relTypeArg = typeName
+	return s.relCountByTypeErr
+}
+
+func (s *statsOpsSpy) UntrackRelTypeDegrees(typeName string) error {
+	s.relTypeArg = "un:" + typeName
+	return s.relCountByTypeErr
+}
+
+// TestTrackRelTypeDegreesForwards: the wrappers forward the type and the
+// error; a nil API fails closed.
+func TestTrackRelTypeDegreesForwards(t *testing.T) {
+	var nilAPI *API
+	if err := nilAPI.TrackRelTypeDegrees("KNOWS"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil TrackRelTypeDegrees error = %v", err)
+	}
+	if err := nilAPI.UntrackRelTypeDegrees("KNOWS"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil UntrackRelTypeDegrees error = %v", err)
+	}
+	ops := &statsOpsSpy{}
+	if err := New(ops).TrackRelTypeDegrees("KNOWS"); err != nil || ops.relTypeArg != "KNOWS" {
+		t.Fatalf("TrackRelTypeDegrees = %v, arg %q", err, ops.relTypeArg)
+	}
+	if err := New(ops).UntrackRelTypeDegrees("KNOWS"); err != nil || ops.relTypeArg != "un:KNOWS" {
+		t.Fatalf("UntrackRelTypeDegrees = %v, arg %q", err, ops.relTypeArg)
+	}
+	opErr := errors.New("boom")
+	if err := New(&statsOpsSpy{relCountByTypeErr: opErr}).TrackRelTypeDegrees("KNOWS"); !errors.Is(err, opErr) {
+		t.Fatalf("TrackRelTypeDegrees error = %v", err)
+	}
+}
+
 func TestRelTypeDegreeStatsForwards(t *testing.T) {
 	var nilAPI *API
 	if _, err := nilAPI.RelTypeDegreeStats("KNOWS"); !errors.Is(err, grapherr.ErrNilGraph) {

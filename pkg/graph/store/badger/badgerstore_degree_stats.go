@@ -14,17 +14,28 @@ var _ storecontract.RelTypeDegreeCapability = (*Store)(nil)
 // against the live relationship set. Declines (ok=false) with
 // AdjacencyIndexOnDisk, where the index is not in RAM.
 func (bs *Store) RelTypeDegreeStats(typeToken uint16) (storecontract.RelTypeDegreeStats, bool, error) {
+	out, in, rels, ok, err := bs.RelTypeDegreeCounts(typeToken)
+	if err != nil || !ok {
+		return storecontract.RelTypeDegreeStats{}, ok, err
+	}
+	return storecontract.DegreeStatsFromCounts(rels, out, in), true, nil
+}
+
+var _ storecontract.RelTypeDegreeCountsCapability = (*Store)(nil)
+
+// RelTypeDegreeCounts is RelTypeDegreeStats' pass with the per-node counts
+// (store.RelTypeDegreeCountsCapability); same decline.
+func (bs *Store) RelTypeDegreeCounts(typeToken uint16) (out, in map[types.NodeID]int64, rels int64, ok bool, err error) {
 	if err := bs.checkOpen(); err != nil {
-		return storecontract.RelTypeDegreeStats{}, false, err
+		return nil, nil, 0, false, err
 	}
 	bs.idxMu.RLock()
 	defer bs.idxMu.RUnlock()
 	if bs.adjOnDisk {
-		return storecontract.RelTypeDegreeStats{}, false, nil
+		return nil, nil, 0, false, nil
 	}
-	out := make(map[types.NodeID]int64)
-	in := make(map[types.NodeID]int64)
-	var rels int64
+	out = make(map[types.NodeID]int64)
+	in = make(map[types.NodeID]int64)
 	for end, edges := range bs.inIdx {
 		for rid, e := range edges {
 			if typeToken != 0 && e.typ != typeToken {
@@ -38,5 +49,5 @@ func (bs *Store) RelTypeDegreeStats(typeToken uint16) (storecontract.RelTypeDegr
 			in[end]++
 		}
 	}
-	return storecontract.DegreeStatsFromCounts(rels, out, in), true, nil
+	return out, in, rels, true, nil
 }

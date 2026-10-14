@@ -47,6 +47,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   against 0.09-0.10 us. Tests `TestForEachIDOrdered` (every backend, brute-force oracle over the rows, both
   directions, exact bounds, prefixes, early stop, cancellation, declines), `TestOrderedValuePagesMatchBruteForce`,
   store tests (badger: no read transaction); evidence `tasks/evidence/cypher-round7/r5-*`.
+- **Opt-in maintained degree counts per relationship type** (sigma-tkgd round 5 request 5, reopened and built in
+  round 7 request 2): `Stats().TrackRelTypeDegrees(type)` / `UntrackRelTypeDegrees(type)`. For a tracked type,
+  `RelTypeDegreeStats` keeps the per-node out- and in-counts after its first count and applies the relationships
+  created since (the create kernel records start and end of every relationship it creates of a tracked type:
+  Add, AddByID, AddByIDIfAbsent, Import, their transaction mirrors, `AddRelationships`, Batch) instead of counting
+  the type again after each write to it. Sound by an accounting identity checked under the graph's write lock:
+  the type's mutation stamp moved by exactly the number of recorded creates; any other change (delete, update,
+  rollback, another door, a type sharing the stamp's stripe) fails it and the type is counted again, as before.
+  Reopen criterion measured (`BenchmarkRelTypeDegreeStatsRecount`): the recount after a write to the type itself
+  is 0.7 ms at 10,000 and 12-16 ms at 100,000 relationships of the type; tracked, a write plus a read is 1.5-3.9 us
+  at 10,000 and 2.3-6.6 us at 100,000 (memory, badger). Cost only for a tracked type: two per-node maps (about
+  40-50 B per distinct endpoint), up to 65,536 recorded creates between reads, a short lock per create, the write
+  lock for O(creates since) at a read. Plain write paths: one atomic load per create; `BenchmarkTxCreateRelationships`
+  before/after untracked within noise (memory 2.46 / 2.50 ms by ID, 2.31 / 2.22 ms batch; badger 9.1 / 8.8 ms,
+  8.7 / 8.4 ms; `r2-05`, `r2-06`). Tiered, sharded and external stores (no per-type stamp) count as before. New
+  optional store capability `store.RelTypeDegreeCountsCapability` (badger). Tests `TestTrackRelTypeDegrees` (every
+  recording door applied, every other change recounted, stats against a count), `..._ConcurrentWriters` (race),
+  `TestBadgerRelTypeDegreeCounts`; evidence `tasks/evidence/cypher-round7/r2-*`.
 
 ### Changed
 

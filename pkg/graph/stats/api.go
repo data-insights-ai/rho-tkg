@@ -47,6 +47,8 @@ type Ops interface {
 	RelPropertyNDV(typeName, propertyKey string) (storepkg.PropertyNDV, error)
 	RelCountByType(typeName string) (int, error)
 	RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegreeStats, error)
+	TrackRelTypeDegrees(typeName string) error
+	UntrackRelTypeDegrees(typeName string) error
 	ReadCosts() (storepkg.ReadCosts, bool, error)
 	HistoryCounts() (storepkg.HistoryCounts, bool, error)
 	RelHistoryCountByType(typeName string) (int, bool, error)
@@ -179,6 +181,35 @@ func (a *API) RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegreeStats, 
 		return storepkg.RelTypeDegreeStats{}, err
 	}
 	return ops.RelTypeDegreeStats(typeName)
+}
+
+// TrackRelTypeDegrees opts a relationship type in to maintained degree counts
+// (opt-in, per type): after its next count, RelTypeDegreeStats applies the
+// relationships created since (every create door but a foreign-endpoint one)
+// instead of counting the type again after each write to it; a delete, an
+// update, a rollback or a write through another door counts again. Cost only
+// for a tracked type: two per-node count maps (about 40-50 B per distinct
+// endpoint), up to 65,536 recorded creates between reads, a short lock per
+// create, the graph's write lock for O(creates since) at a read. Other types
+// pay one atomic load per create. Counts again as without tracking where the
+// store keeps no per-type stamp (tiered, sharded, external stores). Errors: a
+// malformed type name, ErrGraphClosed.
+func (a *API) TrackRelTypeDegrees(typeName string) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.TrackRelTypeDegrees(typeName)
+}
+
+// UntrackRelTypeDegrees drops a type's maintained degree counts (a no-op for
+// an untracked type).
+func (a *API) UntrackRelTypeDegrees(typeName string) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.UntrackRelTypeDegrees(typeName)
 }
 
 // ReadCosts returns the store's nominal read costs in ns per row (by-ID Lend,

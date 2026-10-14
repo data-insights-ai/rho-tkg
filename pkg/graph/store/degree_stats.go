@@ -37,6 +37,15 @@ type RelTypeDegreeCapability interface {
 	RelTypeDegreeStats(typeToken uint16) (stats RelTypeDegreeStats, ok bool, err error)
 }
 
+// RelTypeDegreeCountsCapability is OPTIONAL: RelTypeDegreeCapability with
+// the per-node counts the stats fold from (out- and in-degree per node, the
+// type's relationship count), for a caller that keeps them
+// (StatOps.TrackRelTypeDegrees). typeToken must be a real type; ok=false
+// declines.
+type RelTypeDegreeCountsCapability interface {
+	RelTypeDegreeCounts(typeToken uint16) (out, in map[types.NodeID]int64, rels int64, ok bool, err error)
+}
+
 // DegreeStatsFromCounts folds per-node out- and in-counts into the stats
 // (Exact left false).
 func DegreeStatsFromCounts(rels int64, out, in map[types.NodeID]int64) RelTypeDegreeStats {

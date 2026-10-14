@@ -435,6 +435,11 @@ Recover closed investigation prose via `git log --all -- tasks/backlog.md` if ne
   expand's fanout from `RelTypeDegreeStats`) and states the recount after a write to the type itself, but has not
   measured it on a cold row; its cold harness writes another type, which round 5 request 9 already keeps from
   forcing a recount. Still not built; the reopen criterion is the measurement.
+  BUILT 2026-10-14 (round 7 request 2): measured in rho-tkg (`BenchmarkRelTypeDegreeStatsRecount`, three types of
+  n relationships): the recount after a write to the read type itself is 0.7 ms at n = 10,000 and 12-16 ms at
+  n = 100,000 (memory and badger) against 2-6 us for a write plus a cached read; a statement that writes a type
+  and plans a hop over it pays that per statement. Criterion met; built opt-in per type
+  (`Stats().TrackRelTypeDegrees`), see CHANGELOG [Unreleased]. Kept here as the record of the decision.
 - **Item 9 — property-keyed unique constraint on relationships (ai-soc request 4): WITHDRAWN 2026-10-09** (René,
   relayed by ai-soc: "rho-tkg already has unique snowflake ids"). ai-soc uses the snowflake ID as the global ID.
   Possible cheap follow-up, not requested: a relationship door that accepts a caller-supplied snowflake ID "if

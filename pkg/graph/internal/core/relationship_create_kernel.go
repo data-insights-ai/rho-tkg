@@ -310,6 +310,9 @@ func (c *Core) createRelWithTypeRollback(ctx context.Context, typeName string, m
 		}
 	}
 
+	if mode == relPersistPlain || mode == relPersistEndpointHashWrite || mode == relPersistImport {
+		c.noteRelsCreated(typeName, r) // degree tracking (StatOps.TrackRelTypeDegrees)
+	}
 	relTypeFinished = true
 	if err := c.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, typeName, nil); err != nil {
 		// The row is live; only the registry persistence failed. Surface the
