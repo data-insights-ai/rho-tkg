@@ -36,9 +36,21 @@ GRAPH_COMPAT = [
 ]
 PARENTS = re.compile(r"^\s*func\s+((?:Test|Fuzz)\w+)\s*\(", re.MULTILINE)
 DEFINITIONS = re.compile(r"^(func(?:\s+\([^\n]*\))?|type|var|const)\s+(\w+)", re.MULTILINE)
+# Shared cost fixtures feed both ordinary and refill paths. Their reviewed finite
+# scope excludes the env-gated large cell; an explicitly edited parent is still
+# selected below and retains its independent short-mode guard.
+COST_FIXTURES = {
+    "native_graph_cost_test.go", "native_graph_cost_harness_test.go",
+    "native_graph_cost_grants_harness_test.go",
+}
+COST_PARENTS = [
+    "TestNativeGraphCostSmallActualProcesses", "TestNativeGraphCostProfileAndRouting",
+    "TestNativeGraphCostAckPollMarkerRequiresCostChildAndKeepsDefaultDiagnostics",
+    "TestNativeGraphCostMillionFactProfileUsesBoundedGrantBlocks",
+    "TestNativeGraphCostMultipleGrantsSmallActualProcesses",
+]
 FIXTURE_COMPAT = {
-    "native_graph_cost_grants_harness_test.go": ["TestNativeGraphCostMillionFactProfileUsesBoundedGrantBlocks", "TestNativeGraphCostMultipleGrantsSmallActualProcesses"],
-    "native_graph_cost_harness_test.go": ["TestNativeGraphCostSmallActualProcesses", "TestNativeGraphCostProfileAndRouting"],
+    **dict.fromkeys(COST_FIXTURES, COST_PARENTS),
     "paired_graph_fault_harness_test.go": ["TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", "TestNativePairedGraphFaultNoOpUsesActualRetainedNormalEntry"],
     "paired_graph_snapshot_harness_test.go": ["TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts"],
     "prepared_lock_p06_harness_test.go": ["TestPreparedLockP06FirstYESLeaderKillOriginalRecovery"],
@@ -150,9 +162,12 @@ def graph_selection(directory, changed, definitions):
         # Only actually edited top-level helper functions get consumer lookup.
         # Shared types/methods require a reviewed finite fixture guard list.
         helpers = {name for kind, name in edited if kind == "func" and name not in parent_names(path)}
-        for candidate in directory.glob("*_test.go"):
-            if helpers and any(re.search(r"\b" + re.escape(name) + r"\b", candidate.read_text()) for name in helpers):
-                tests |= parent_names(candidate)
+        if helpers and path.name in COST_FIXTURES:
+            tests |= set(FIXTURE_COMPAT[path.name])
+        else:
+            for candidate in directory.glob("*_test.go"):
+                if helpers and any(re.search(r"\b" + re.escape(name) + r"\b", candidate.read_text()) for name in helpers):
+                    tests |= parent_names(candidate)
         unknown = [(kind, name) for kind, name in edited if kind != "func"]
         if unknown and not own:
             if path.name not in FIXTURE_COMPAT:
