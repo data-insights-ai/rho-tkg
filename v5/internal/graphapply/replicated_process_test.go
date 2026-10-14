@@ -1796,14 +1796,27 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 	if os.Getenv("RHO_GRAPH_CONDITIONAL_PROCESS") == "1" {
 		agreement, materializer = conditionalGraphSemanticContractID(), newConditionalGraphMaterializer
 	}
+	retention := os.Getenv("RHO_GRAPH_RETENTION_PROCESS") == "1"
+	if retention && (os.Getenv("RHO_GRAPH_RANGE_PROCESS") == "1" || os.Getenv("RHO_GRAPH_CONDITIONAL_PROCESS") == "1") {
+		t.Fatal("retention profile conflicts with RANGE/P05 profile")
+	}
+	if retention {
+		agreement, materializer = retainedGraphSemanticContractID(), newRetainedGraphMaterializer
+	}
 	cost, err := nativeGraphCostSpecFromEnv()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if retention && cost != nil {
+		t.Fatal("retention profile conflicts with COST profile")
 	}
 	if err := nativeGraphCostProfile(cost, &init, &l, &p, &generations); err != nil {
 		t.Fatal(err)
 	}
 	controls, recovery := raftlog.ApplicationControlConfig{Version: 1}, raftlog.ApplicationRecoveryConfig{Version: 1}
+	if retention {
+		recovery.Version = 2
+	}
 	contract, err := raftlog.ApplicationContractForPolicyWithRecovery(p, controls, recovery)
 	if err != nil {
 		t.Fatal(err)

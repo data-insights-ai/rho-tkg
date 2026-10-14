@@ -662,6 +662,28 @@ func pollGraphProcessCutSubmission(ctx context.Context, h *allocationHost, propo
 	if err != nil {
 		return baseline, scanned, nil, err, nil
 	}
+	return pollGraphProcessSubmission(ctx, h, proposal, baseline, scanned, 512, func(body []byte, index uint64) error {
+		result, err := decodeGraphCutResult(body)
+		if err != nil || result.index != index || result.phase != command.phase || result.round != command.round {
+			return errors.Join(errInvalid, err)
+		}
+		return nil
+	})
+}
+func pollGraphProcessPinSubmission(ctx context.Context, h *allocationHost, proposal allocationProposal, baseline uint64, scanned int) (uint64, int, []byte, error, error) {
+	command, err := decodeGraphPinCommand(proposal.wire)
+	if err != nil {
+		return baseline, scanned, nil, err, nil
+	}
+	return pollGraphProcessSubmission(ctx, h, proposal, baseline, scanned, uint64(h.machine.limits.commandBytes), func(body []byte, index uint64) error {
+		result, err := decodeGraphPinResult(body)
+		if err != nil || result.index > index || result.phase != command.phase || result.id != command.id || result.digest != command.digest || result.action != command.action {
+			return errors.Join(errInvalid, err)
+		}
+		return nil
+	})
+} // #nosec G115 -- immutable materializer command limit validated positive <=4MiB.
+func pollGraphProcessSubmission(ctx context.Context, h *allocationHost, proposal allocationProposal, baseline uint64, scanned int, commandBytes uint64, match func([]byte, uint64) error) (uint64, int, []byte, error, error) {
 	applied := h.driver.Applied()
 	for index := baseline + 1; index <= applied; index++ {
 		if scanned >= 1024 {
@@ -669,7 +691,7 @@ func pollGraphProcessCutSubmission(ctx context.Context, h *allocationHost, propo
 		}
 		scanned++
 		baseline = index
-		entries, e := h.machine.store.Entries(index, index+1, 512)
+		entries, e := h.machine.store.Entries(index, index+1, commandBytes)
 		if e != nil {
 			return baseline, scanned, nil, nil, e
 		}
@@ -689,9 +711,8 @@ func pollGraphProcessCutSubmission(ctx context.Context, h *allocationHost, propo
 		if e := ctx.Err(); e != nil {
 			return baseline, scanned, nil, e, nil
 		}
-		result, e := decodeGraphCutResult(body)
-		if e != nil || result.index != index || result.phase != command.phase || result.round != command.round {
-			return baseline, scanned, nil, nil, errors.Join(errInvalid, e)
+		if e := match(body, index); e != nil {
+			return baseline, scanned, nil, nil, e
 		}
 		return baseline, scanned, body, nil, nil
 	}
@@ -1298,6 +1319,17 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		if active == nil || active.kind != sourceSubmit {
 			return nil
 		}
+		if isGraphPinWire(active.proposal.wire) {
+			next, scanned, body, operationErr, eventErr := pollGraphProcessPinSubmission(active.ctx, h, active.proposal, active.baseline, active.scanned)
+			active.baseline, active.scanned = next, scanned
+			if eventErr != nil {
+				return eventErr
+			}
+			if body != nil || operationErr != nil {
+				finish(active, graphProcessPumpReply{body: body, err: operationErr})
+			}
+			return nil
+		}
 		if isGraphCutWire(active.proposal.wire) {
 			next, scanned, body, operationErr, eventErr := pollGraphProcessCutSubmission(active.ctx, h, active.proposal, active.baseline, active.scanned)
 			active.baseline, active.scanned = next, scanned
@@ -1353,7 +1385,21 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			return false
 		}
 		request, err := decodeGraphSourceRequest(r.data)
-		return err == nil && request.kind == sourceClose
+		if err != nil {
+			return false
+		}
+		if request.kind == sourceClose {
+			return true
+		}
+		if request.kind != sourceSubmit || !h.machine.retainedPins() {
+			return false
+		}
+		proposal, err := decodeGraphSourceProposal(request.command)
+		if err != nil || !isGraphPinWire(proposal.wire) {
+			return false
+		}
+		command, err := decodeGraphPinCommand(proposal.wire)
+		return err == nil && (command.phase == pinRelease || command.phase == pinExpire || command.phase == pinClose)
 	}
 	launch := func(r processRequest) error {
 		control := isSourceClose(r)

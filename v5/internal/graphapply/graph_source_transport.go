@@ -64,6 +64,30 @@ func graphErrorMask(err error) uint16 {
 	}
 	return mask
 }
+
+// GSR2 carries a separate fresh-profile classification; the sixteen GSR1
+// cause bits and ordinary response bytes retain their existing meaning.
+type graphRetentionWireError struct {
+	mask   uint16
+	status byte
+}
+
+func (e graphRetentionWireError) Error() string {
+	return "graphapply: retained source no longer admitted"
+}
+func (e graphRetentionWireError) Is(target error) bool {
+	return e.status == 1 && target == errGraphPinExpired || e.status == 2 && target == errGraphPinReleased || (graphWireError{e.mask}).Is(target)
+}
+func graphRetentionStatus(err error) byte {
+	if errors.Is(err, errGraphPinExpired) {
+		return 1
+	}
+	if errors.Is(err, errGraphPinReleased) {
+		return 2
+	}
+	return 0
+}
+
 func encodeGraphWireResponse(r graphWireResponse) ([]byte, error) {
 	scope, err := encodeAllocationScope(r.peer.scope)
 	if err != nil {
@@ -75,20 +99,44 @@ func encodeGraphWireResponse(r graphWireResponse) ([]byte, error) {
 	if r.err != nil && len(r.body) != 0 {
 		return nil, errInvalid
 	}
+	status := graphRetentionStatus(r.err)
+	if status != 0 && r.peer.scope.semantic != retainedGraphSemanticContractID() {
+		return nil, errInvalid
+	}
+	version := byte(1)
+	mask := graphErrorMask(r.err)
+	if status != 0 {
+		version = 2
+		mask = 0
+		for i, cause := range graphWireCauses {
+			if errors.Is(r.err, cause) {
+				mask |= 1 << i
+			}
+		}
+	}
 	return boundedEncoding(graphSourceFrameBytes, func(w *boundedWriter) {
-		w.add([]byte{'G', 'S', 'R', 1})
+		w.add([]byte{'G', 'S', 'R', version})
 		w.field(scope)
 		w.u64(r.peer.voter)
 		w.add(r.issuer[:])
 		w.tag(r.kind)
 		w.u64(r.sequence)
 		w.add(r.nonce[:])
-		w.u16(graphErrorMask(r.err))
+		w.u16(mask)
+		if version == 2 {
+			w.tag(status)
+		}
 		w.field(r.body)
 	})
 }
 func decodeGraphWireResponse(wire []byte) (graphWireResponse, error) {
-	body, err := graphBody(wire, "GSR\x01", graphSourceFrameBytes)
+	version := byte(1)
+	magic := "GSR\x01"
+	if len(wire) >= 4 && bytes.Equal(wire[:4], []byte{'G', 'S', 'R', 2}) {
+		version = 2
+		magic = "GSR\x02"
+	}
+	body, err := graphBody(wire, magic, graphSourceFrameBytes)
 	if err != nil {
 		return graphWireResponse{}, err
 	}
@@ -96,6 +144,10 @@ func decodeGraphWireResponse(wire []byte) (graphWireResponse, error) {
 	scope := c.field(allocationScopeBytes)
 	r := graphWireResponse{peer: graphPeerIdentity{voter: c.u64()}, issuer: c.array(), kind: c.tag(), sequence: c.u64(), nonce: c.array()}
 	mask := c.u16()
+	status := byte(0)
+	if version == 2 {
+		status = c.tag()
+	}
 	r.body = c.field(graphSourceFrameBytes - 512)
 	if c.err != nil || len(c.b) != 0 || int(mask) >= 1<<len(graphWireCauses) {
 		return graphWireResponse{}, errors.Join(errCorrupt, c.err)
@@ -104,7 +156,12 @@ func decodeGraphWireResponse(wire []byte) (graphWireResponse, error) {
 	if err != nil {
 		return graphWireResponse{}, err
 	}
-	if mask != 0 {
+	if version == 2 {
+		if status < 1 || status > 2 || r.peer.scope.semantic != retainedGraphSemanticContractID() || len(r.body) != 0 {
+			return graphWireResponse{}, errCorrupt
+		}
+		r.err = graphRetentionWireError{mask, status}
+	} else if mask != 0 {
 		r.err = graphWireError{mask}
 	}
 	if r.peer.voter == 0 || r.sequence == 0 || r.nonce == ([16]byte{}) || r.issuer == ([16]byte{}) || r.kind < sourceOpen || r.kind > sourceReplacementRead || mask != 0 && len(r.body) != 0 {

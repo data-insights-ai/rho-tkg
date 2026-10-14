@@ -85,7 +85,15 @@ func decodeGraphCertifiedSourceInfo(wire []byte) (graphCertifiedSourceInfo, erro
 	return i, nil
 }
 
-func (s *graphSourceServer) openCertified(ctx context.Context, cert graphCertificate, nonce [16]byte) (info graphCertifiedSourceInfo, err error) {
+func (s *graphSourceServer) openCertified(ctx context.Context, cert graphCertificate, nonce [16]byte) (graphCertifiedSourceInfo, error) {
+	return s.openCertifiedCapture(ctx, cert, nonce, nil, nil)
+}
+
+// Capture and final admission callbacks run with NO server mutex held. Native
+// ownership remains registered until publication or the shared failure cleanup;
+// callbacks may take Host.mu without creating a server.mu -> Host.mu inversion.
+// Nil callbacks preserve the ordinary certified capture byte/lifetime path.
+func (s *graphSourceServer) openCertifiedCapture(ctx context.Context, cert graphCertificate, nonce [16]byte, captureSource func(context.Context) (*raftlog.ApplicationView, genesisAllocationConfig, error), admit func(context.Context) error) (info graphCertifiedSourceInfo, err error) {
 	if s == nil || ctx == nil || nonce == ([16]byte{}) {
 		return info, errInvalid
 	}
@@ -116,11 +124,17 @@ func (s *graphSourceServer) openCertified(ctx context.Context, cert graphCertifi
 	defer s.captureWG.Done()
 	capture, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(s.ctx, cancel)
-	view, e := s.host.AtGraphCertificate(capture, cert)
+	var view *raftlog.ApplicationView
+	var e error
+	if captureSource == nil {
+		view, e = s.host.AtGraphCertificate(capture, cert)
+	} else {
+		view, info.configuration, e = captureSource(capture)
+	}
 	var lease *graphSourceLease
 	if e == nil {
 		info.root, e = view.RootBounded(capture, 172)
-		if e == nil {
+		if e == nil && captureSource == nil {
 			s.host.mu.Lock()
 			if s.host.unavailableLocked() {
 				e = replica.ErrStopped
@@ -150,8 +164,14 @@ func (s *graphSourceServer) openCertified(ctx context.Context, cert graphCertifi
 	if e == nil && s.beforePublication != nil {
 		s.beforePublication(lease)
 	}
+	if e == nil && admit != nil {
+		e = admit(ctx)
+	}
 	s.mu.Lock()
 	s.pending--
+	if e == nil && admit != nil && s.host.issuerUnavailable() {
+		e = replica.ErrStopped
+	}
 	if e == nil {
 		e = s.publicationContextLocked(ctx, lease)
 	}
