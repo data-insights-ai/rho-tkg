@@ -72,6 +72,7 @@ type certifiedIncidentChunk struct {
 	sequence uint64
 	complete bool
 	rows     []graphstate.Projection
+	work     graphstore.PageWork
 }
 type incidentCertifiedOpener func(context.Context, graphReadRequest, []uint64) (*certifiedGraphRead, error)
 type certifiedIncidentStream struct {
@@ -81,6 +82,7 @@ type certifiedIncidentStream struct {
 	ctx                       context.Context
 	cancel                    context.CancelFunc
 	open                      incidentCertifiedOpener
+	hydrateChunk              func(context.Context, graphstate.ReadView, *certifiedIncidentChunk) error
 	pin                       *certifiedGraphRead // process-local retained-cut ownership; not a durable pin
 	cut                       graphCut
 	scope                     []uint64
@@ -309,6 +311,13 @@ func (s *certifiedIncidentStream) hydrate(ctx context.Context, read *certifiedGr
 		}
 		chunk.rows = append(chunk.rows, projection)
 	}
+	// A fixed trusted owner hook may hydrate additional typed component cells
+	// on this same live read and ordinary ledgers. It cannot import authority.
+	if s.hydrateChunk != nil {
+		if err := s.hydrateChunk(ctx, read.full, chunk); err != nil {
+			return nil, next, err
+		}
+	}
 	if !page.Complete {
 		next, err = read.full.ExportIncidentContinuation(ctx, s.predicate, page.Next)
 	}
@@ -316,6 +325,7 @@ func (s *certifiedIncidentStream) hydrate(ctx context.Context, read *certifiedGr
 		return nil, next, err
 	}
 	w := read.Work()
+	chunk.work = w
 	if w.Records > s.grant.sourceRows || w.Bytes > s.grant.sourceBytes || w.DecodedCells > s.grant.decodedCells {
 		return nil, next, errLimit
 	}

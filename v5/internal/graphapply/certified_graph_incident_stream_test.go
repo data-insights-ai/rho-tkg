@@ -79,14 +79,23 @@ func TestCertifiedIncidentStreamRetainsCutAndCommitsOnlyHydratedChunks(t *testin
 		t.Fatal("invalid sequence dispatched")
 	}
 	rejected := errors.New("consumer rejected hydrated chunk")
-	if chunk, err := stream.Next(t.Context(), stream.request, 1, func(*certifiedIncidentChunk) error { return rejected }); chunk != nil || !errors.Is(err, rejected) {
+	stream.hydrateChunk = func(ctx context.Context, view graphstate.ReadView, chunk *certifiedIncidentChunk) error {
+		entity, err := view.Entity(ctx, chunk.rows[0].Record.ID)
+		if err != nil || !entity.Found || entity.View != view.Identity() {
+			t.Fatal("hook lost same live read", entity, err)
+		}
+		_ = stream.Charged()
+		return rejected
+	}
+	if chunk, err := stream.Next(t.Context(), stream.request, 1, nil); chunk != nil || !errors.Is(err, rejected) {
 		t.Fatal(chunk, err)
 	}
+	stream.hydrateChunk = nil
 	if stream.sequence != 0 || stream.started || stream.last != nil || stream.Charged().invocations != 2 {
 		t.Fatal("failed hydration committed or refunded")
 	}
 	first, err := stream.Next(t.Context(), stream.request, 1, nil)
-	if err != nil || first.complete || len(first.rows) != 1 || first.rows[0].Record.ID != 3 || !first.rows[0].Active || first.rows[0].Endpoints[1].ID != 17 {
+	if err != nil || first.complete || len(first.rows) != 1 || first.rows[0].Record.ID != 3 || !first.rows[0].Active || first.rows[0].Endpoints[1].ID != 17 || first.work.Records == 0 {
 		t.Fatal(first, err)
 	}
 	charged := stream.Charged()
