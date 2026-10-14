@@ -69,7 +69,7 @@ func (ms *Store) putNodeRouted(n *types.Node, token uint64) error {
 
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
 	ms.addNodeToCompositeIndexesLocked(n, rawID)
-	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, n, rawID)
+	ms.addNodeToTemporalIndexesLocked(n, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, n, rawID)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
@@ -279,7 +279,7 @@ func (ms *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	ms.addNodeToCompositeIndexesLocked(updatedNode, rawID)
-	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
+	ms.addNodeToTemporalIndexesLocked(updatedNode, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
@@ -350,7 +350,7 @@ func (ms *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	ms.addNodeToCompositeIndexesLocked(updatedNode, rawID)
-	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
+	ms.addNodeToTemporalIndexesLocked(updatedNode, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
@@ -417,7 +417,7 @@ func (ms *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 	ms.addNodePropertyKeyCounts(n)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
 	ms.addNodeToCompositeIndexesLocked(n, rawID)
-	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, n, rawID)
+	ms.addNodeToTemporalIndexesLocked(n, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, n, rawID)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
@@ -573,7 +573,7 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 		rawID := id.SnowflakeID()
 		indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
 		ms.addNodeToCompositeIndexesLocked(n, rawID)
-		indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, n, rawID)
+		ms.addNodeToTemporalIndexesLocked(n, rawID)
 		indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, n, rawID)
 		if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates[i], rawID); err != nil {
 			return err

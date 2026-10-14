@@ -2218,6 +2218,11 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			return err
 		}
 	}
+	if bs.temporalIdxOnDisk && !bs.readOnly {
+		if err := bs.purgeUndefinedTemporalDiskRows(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

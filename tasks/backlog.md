@@ -40,7 +40,7 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 | 45 | MEDIUM (API) | Internal sentinels reach callers but have no exported alias; `ErrMixedNumericColumn` is outside the errors inventory test | open; found by the doc review of `docs/errors.md` 2026-10-10 |
 | 46 | LOW (stale comments) | Code comments that contradict the code or cite ADRs no longer in `docs/adr/` | open; found by the doc reviews 2026-10-10 |
 | 47 | LOW (unverified claims) | `NodesByLabelAt` vs K1; a RAM budget for the property sidecars | open; each needs a real check before it becomes work |
-| 56 | MEDIUM (unverified, read from code) | Node temporal envelope holes: `PutNodeVersion`, `CreateTemporalIndex` publish-before-fold window, label add on a live node | open; red tests first |
+| 56 | MEDIUM | Node temporal envelope holes: `PutNodeVersion`, `CreateTemporalIndex` publish-before-fold window, label add on a live node, memory re-create | done (Unreleased Fixed); all cases red, all fixed |
 | 52 | HIGH (ai-soc) | Durable commit under SyncWrites costs one fsync per mutation | in progress, v4.51.3 |
 | 53 | HIGH (ai-soc) | Relationship planner-stat memos hold one RAM entry per relationship | in progress, v4.51.3 |
 | 54 | HIGH (ai-soc) | Badger open walks every current row (open linear in history) | in progress, v4.51.3 |
@@ -1244,9 +1244,9 @@ transaction-time membership; verify whether the named door can use K1 at all (a 
 before filing a fix. (b) "A RAM budget for the property sidecars": v4.48.0 measured 25-30 B per posting (97-117 B near-unique) and defined
 no budget; reopen only if a consumer reports memory pressure; then design a per-store budget that drops a sidecar and falls back to the fold.
 
-### 56. Node temporal envelope holes (unverified)
+### 56. Node temporal envelope holes — DONE (Unreleased)
 
-*MEDIUM* — read from code by the backlog-22 final fix (2026-10-14), not tested. The node temporal index prunes, so a narrow envelope is an unsound answer. (a) `PutNodeVersion` never extends the node temporal index; (b) `CreateTemporalIndex` publishes before its history fold, a window with too-narrow envelopes; (c) adding a label to a live node covers it in that label's index with its current row only. Memory store not checked. Red test per case first; fix only the ones that go red.
+*MEDIUM* — every case went red (`tasks/evidence/node-temporal-envelope/01-red.txt`) and is fixed (`02-green.txt`, CHANGELOG [Unreleased] Fixed). (a) `PutNodeVersion` never extended the node temporal index — badger red, memory red: fixed (a covered or Building index takes the row). (b) Badger `CreateTemporalIndex` published before its history fold — red: fixed (stays Building until the fold, late writers' history folded at the publish); memory has no such window but skipped IDs written during its scan — red: fixed (refolds their live rows). (c) Label added back to a live node — badger red, memory red: fixed (add-label doors fold history into an uncovered index). (d) Memory re-create of a deleted node with history — red: fixed.
 
 ## v5
 

@@ -1,0 +1,49 @@
+# 03-red-review: 217769f1 + review tests; findings 1 (MemberLeavesBeforeFold) and 2 (OnDiskOrphanRows) red; gap tests (RecreateDuringBuild, PlainAddLabel, memory PutNodeVersionDuringCreate / PlainAddLabel) pass on 217769f1 — their break checks follow below
+=== RUN   TestNodeTemporalEnvelope_MemberLeavesBeforeFold
+=== RUN   TestNodeTemporalEnvelope_MemberLeavesBeforeFold/remove-label
+    badgerstore_node_temporal_envelope_review_test.go:56: prune at 150 kept [] (ok=true), want [8040]: it holds a row valid there
+=== RUN   TestNodeTemporalEnvelope_MemberLeavesBeforeFold/delete
+    badgerstore_node_temporal_envelope_review_test.go:56: prune at 150 kept [] (ok=true), want [8040]: it holds a row valid there
+--- FAIL: TestNodeTemporalEnvelope_MemberLeavesBeforeFold (0.06s)
+=== RUN   TestNodeTemporalEnvelope_RecreateDuringBuild
+--- PASS: TestNodeTemporalEnvelope_RecreateDuringBuild (0.13s)
+=== RUN   TestNodeTemporalEnvelope_PlainAddLabelOnLiveNode
+--- PASS: TestNodeTemporalEnvelope_PlainAddLabelOnLiveNode (0.27s)
+=== RUN   TestNodeTemporalEnvelope_OnDiskOrphanRowsAfterFailedCreate
+    badgerstore_node_temporal_envelope_review_test.go:156: NodesByLabel(7, ValidAt 5800) = [8042 8042], want [8042] once
+--- FAIL: TestNodeTemporalEnvelope_OnDiskOrphanRowsAfterFailedCreate (0.26s)
+=== RUN   TestNodeTemporalEnvelope_PutNodeVersionCovered
+--- PASS: TestNodeTemporalEnvelope_PutNodeVersionCovered (0.03s)
+=== RUN   TestNodeTemporalEnvelope_CreatePruneBeforeHistoryFold
+--- PASS: TestNodeTemporalEnvelope_CreatePruneBeforeHistoryFold (0.08s)
+=== RUN   TestNodeTemporalEnvelope_LabelReAddOnLiveNode
+--- PASS: TestNodeTemporalEnvelope_LabelReAddOnLiveNode (0.07s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.076s
+FAIL
+--- PASS: TestMemoryNodeTemporalEnvelope_PutNodeVersionDuringCreate (0.00s)
+--- PASS: TestMemoryNodeTemporalEnvelope_PlainAddLabelOnLiveNode (0.00s)
+--- PASS: TestMemoryNodeTemporalEnvelope_PutNodeVersionCovered (0.00s)
+--- PASS: TestMemoryNodeTemporalEnvelope_UpdateDuringCreate (0.00s)
+--- PASS: TestMemoryNodeTemporalEnvelope_LabelReAddOnLiveNode (0.00s)
+--- PASS: TestMemoryNodeTemporalEnvelope_RecreateDeletedNode (0.00s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.015s
+## break 2: memory PutNodeVersion without the Building branch (memorystore_index.go:603)
+--- FAIL: TestMemoryNodeTemporalEnvelope_PutNodeVersionDuringCreate (0.00s)
+    memorystore_node_temporal_envelope_review_test.go:37: prune at 350 kept [] (ok=true), want [8034]: it holds a row valid there
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.021s
+FAIL
+## break 3: plain AddNodeLabelToken without the fold (badgerstore_node.go:818)
+--- FAIL: TestNodeTemporalEnvelope_PlainAddLabelOnLiveNode (0.01s)
+    badgerstore_node_temporal_envelope_review_test.go:96: prune at 150 kept [] (ok=true), want [8041]: it holds a row valid there
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.014s
+FAIL
+## break 1: late loop skips every ID (badgerstore_index.go:393 'read' -> 'read || true')
+--- FAIL: TestNodeTemporalEnvelope_RecreateDuringBuild (0.02s)
+    badgerstore_node_temporal_envelope_review_test.go:75: prune at 150 kept [] (ok=true), want [8010]: it holds a row valid there
+    badgerstore_node_temporal_envelope_review_test.go:75: prune at 5500 kept [] (ok=true), want [8010]: it holds a row valid there
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.039s
+FAIL

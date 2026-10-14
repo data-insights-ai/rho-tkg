@@ -503,26 +503,27 @@ func (ms *Store) CreateTemporalIndex(labelToken uint16) error {
 	}
 	backfill := make([]nodeEnvelope, 0, len(nids))
 	for _, nid := range nids {
+		rawID := nid.SnowflakeID()
+		var entry nodeEnvelope
+		// The history map is ranged under the RLock: a concurrent
+		// PutNodeVersion writes the same inner map.
 		ms.mu.RLock()
 		n, ok := ms.nodes[nid]
-		var hist map[uint32]*types.Node
 		if ok {
-			hist = ms.nodeHistory[nid]
+			from, to := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
+			entry = nodeEnvelope{id: rawID, intervals: []interval{{from, to}}}
+			for _, hv := range ms.nodeHistory[nid] {
+				if hv == nil {
+					continue
+				}
+				hf, ht := indexpkg.NodeTemporalBounds(rawID, hv.Temporal())
+				entry.intervals = append(entry.intervals, interval{hf, ht})
+			}
 		}
 		ms.mu.RUnlock()
 		phase2Yield() // test seam: ms.mu is provably unheld here
 		if !ok {
 			continue // deleted between snapshot and fetch
-		}
-		rawID := nid.SnowflakeID()
-		from, to := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
-		entry := nodeEnvelope{id: rawID, intervals: []interval{{from, to}}}
-		for _, hv := range hist {
-			if hv == nil {
-				continue
-			}
-			hf, ht := indexpkg.NodeTemporalBounds(rawID, hv.Temporal())
-			entry.intervals = append(entry.intervals, interval{hf, ht})
 		}
 		backfill = append(backfill, entry)
 	}
@@ -533,20 +534,77 @@ func (ms *Store) CreateTemporalIndex(labelToken uint16) error {
 	if err := requireTemporalIndexCurrentForCreate(ms.temporalIndexes, labelToken, liveTI); err != nil {
 		return err
 	}
+	// An ID written during Phase 2 folded only the row that write made: its
+	// current row and whole history are read here, under the lock, instead of
+	// the stale Phase 2 copy (backlog 56).
+	written := liveTI.Mutated
+	liveTI.ClearMutationTracking()
 	for _, entry := range backfill {
 		if _, alive := ms.nodes[types.NodeID(entry.id)]; !alive {
 			continue // node deleted during Phase 2
 		}
-		if liveTI.WasMutated(entry.id) {
-			continue // concurrent write already handled this ID (current + history) during Phase 2
+		if _, w := written[entry.id]; w {
+			continue // folded from the live rows below
 		}
 		for _, iv := range entry.intervals {
 			liveTI.Extend(entry.id, iv.from, iv.to)
 		}
 	}
+	for id := range written {
+		if cur, alive := ms.nodes[types.NodeID(id)]; alive {
+			from, to := indexpkg.NodeTemporalBounds(id, cur.Temporal())
+			liveTI.Extend(id, from, to)
+		}
+		ms.foldNodeHistoryLocked(liveTI, id)
+	}
 	liveTI.Building = false
-	liveTI.ClearMutationTracking()
 	return nil
+}
+
+// foldNodeHistoryLocked extends ti by every history row of id. Caller holds
+// ms.mu (write).
+func (ms *Store) foldNodeHistoryLocked(ti *indexpkg.TemporalIndex, id snowflake.ID) {
+	for _, hv := range ms.nodeHistory[types.NodeID(id)] {
+		if hv != nil {
+			from, to := indexpkg.NodeTemporalBounds(id, hv.Temporal())
+			ti.Extend(id, from, to)
+		}
+	}
+}
+
+// addNodeToTemporalIndexesLocked extends the envelope of every label of n by
+// its row. A published index that does not cover id yet (a re-created node, or
+// a label added back to a live node) first gets id's history: the new row
+// alone would make the envelope vouch for less than the ID holds (backlog 56).
+// Caller holds ms.mu (write).
+func (ms *Store) addNodeToTemporalIndexesLocked(n *types.Node, id snowflake.ID) {
+	for i := 0; i < n.LabelTokenCount(); i++ {
+		ti := ms.temporalIndexes[n.LabelTokenRawAt(i)]
+		if ti == nil || ti.Building {
+			continue
+		}
+		if _, _, covered := ti.EnvelopeOf(id); !covered {
+			ms.foldNodeHistoryLocked(ti, id)
+		}
+	}
+	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, n, id)
+}
+
+// extendNodeVersionTemporalLocked folds a PutNodeVersion row into the index of
+// each of its labels that covers id or is still Building (the create folds
+// the history of every ID written meanwhile). An uncovered ID stays uncovered
+// and is never pruned. Caller holds ms.mu (write).
+func (ms *Store) extendNodeVersionTemporalLocked(n *types.Node, id snowflake.ID) {
+	from, to := indexpkg.NodeTemporalBounds(id, n.Temporal())
+	for i := 0; i < n.LabelTokenCount(); i++ {
+		ti := ms.temporalIndexes[n.LabelTokenRawAt(i)]
+		if ti == nil {
+			continue
+		}
+		if _, _, covered := ti.EnvelopeOf(id); covered || ti.Building {
+			ti.Extend(id, from, to)
+		}
+	}
 }
 
 // requireTemporalIndexCurrentForCreate mirrors requirePropertyIndexCurrentForCreate
