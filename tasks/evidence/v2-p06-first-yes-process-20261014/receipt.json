@@ -1,0 +1,542 @@
+{
+  "schema": "rho-v5-p06-first-yes-process-evidence-v1",
+  "status": "PASS for finite four-cell P06 package; broader acceptance open",
+  "baselineCommit": "0601086705d60f024866a222ed624b0c37c55f7f",
+  "reviewedSourceCommit": "79bf3e2a28a89a61cfab180d737aab89e313342f",
+  "finalSourceCommit": "69ba379192941884e2a809a98c6d36b5789a495a",
+  "sourceSHA256": {
+    "v5/internal/graphapply/prepared_lock_p06_process_test.go": "a63ced2bd916b44fa9dc08c1b90baa0cda50bfc562970ca680a7adb2fe9574f9",
+    "v5/internal/graphapply/prepared_lock_p06_harness_test.go": "cc0815413df8037b9aa6f97d75a296e872f27b3626a371328a9dd4a8edd831cb",
+    "tools/v5-substrate/check-p06-history.py": "2e0529eada0b9ced31869d497ec13f479dd81a6b736eba52dd01cfe0c94f4c07",
+    "tools/v5-substrate/check_p06_history_test.py": "f7fe41e1067e3658f4cc8c0e7f78423a11299bbb2c22b9737ecce3ad12ce0a21"
+  },
+  "goInputCount": 571,
+  "qualifiedGoInputManifest": "normal-2/source-sha256.json",
+  "qualifiedStaticInputManifest": "statics/source-sha256.json",
+  "sourceQualification": "All normal/race/coverage and affected static Go inputs equal current bytes. Later Python test-only delta selects an actual COMMIT capture for wrong-after sensitivity; final checker unchanged and all four offline tests replayed against each successful lane. Saved source snapshots preserve historical bytes.",
+  "environment": {
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off",
+    "GOTOOLCHAIN": "local",
+    "scannerPATH": "Pinned Go 1.26.9 binary directory prepended"
+  },
+  "topology": "Single machine, actual six processes: two logical partitions (3,8), three Raft voters each; one killed leader reopened per cell",
+  "parent": "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery",
+  "gates": {
+    "normal-2": {
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-json",
+          "-timeout=150s",
+          "-run",
+          "^TestPreparedLockP06FirstYESLeaderKillOriginalRecovery$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1032.875,
+        "elapsed_s": 24.999,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "passedParents": 1,
+      "passedCells": [
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator3/committrue",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator3/commitfalse",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator8/committrue",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator8/commitfalse"
+      ],
+      "failedOrSkipped": 0,
+      "cleanup": [
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=6926 bootstrapPackets=319 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=5532 bootstrapPackets=327 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=6936 bootstrapPackets=319 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=5542 bootstrapPackets=329 admitted=397312"
+      ],
+      "namedKillReopenPIDs": [
+        19717,
+        19785,
+        19662,
+        19714,
+        19523,
+        19572,
+        19589,
+        19644
+      ],
+      "namedPIDsAbsent": true,
+      "proofs": [
+        {
+          "coordinator": 8,
+          "commit": false,
+          "serial_witness": [
+            "close-a",
+            "close-b"
+          ],
+          "records": 22,
+          "scope": "P06 finite original-binding/serial bridge; authentic extraction and complete graph/CDC assertions are qualified by the Go test",
+          "path": "/var/tmp/rho-v5-p06-process-qualification-20261014/normal-2/rho-paired-graph-fault-1209265759/p06-original-recovery.json",
+          "sha256": "c08b7930095cfad8a0c0d3984eedd49305fc439b1e55fdefe7c441710f47e0f6"
+        },
+        {
+          "coordinator": 8,
+          "commit": true,
+          "serial_witness": [
+            "edge",
+            "close-a"
+          ],
+          "records": 21,
+          "scope": "P06 finite original-binding/serial bridge; authentic extraction and complete graph/CDC assertions are qualified by the Go test",
+          "path": "/var/tmp/rho-v5-p06-process-qualification-20261014/normal-2/rho-paired-graph-fault-2407867768/p06-original-recovery.json",
+          "sha256": "fb9513593fd140a281c25fea45b9866335c678c920e7598d21b8a24eb030774d"
+        },
+        {
+          "coordinator": 3,
+          "commit": true,
+          "serial_witness": [
+            "edge",
+            "close-a"
+          ],
+          "records": 21,
+          "scope": "P06 finite original-binding/serial bridge; authentic extraction and complete graph/CDC assertions are qualified by the Go test",
+          "path": "/var/tmp/rho-v5-p06-process-qualification-20261014/normal-2/rho-paired-graph-fault-3551626839/p06-original-recovery.json",
+          "sha256": "918b1bb688718fe3b3e6b3a0bd834465ec4c9c0a7c777ea6adcd2313a620242b"
+        },
+        {
+          "coordinator": 3,
+          "commit": false,
+          "serial_witness": [
+            "close-a",
+            "close-b"
+          ],
+          "records": 22,
+          "scope": "P06 finite original-binding/serial bridge; authentic extraction and complete graph/CDC assertions are qualified by the Go test",
+          "path": "/var/tmp/rho-v5-p06-process-qualification-20261014/normal-2/rho-paired-graph-fault-3559911760/p06-original-recovery.json",
+          "sha256": "36fa20c94d692316e48dcf1839ed31b4189cdba2735053024822da7f3f6b1f1d"
+        }
+      ],
+      "offlineTests": 4
+    },
+    "race": {
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-race",
+          "-count=1",
+          "-json",
+          "-timeout=150s",
+          "-run",
+          "^TestPreparedLockP06FirstYESLeaderKillOriginalRecovery$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 964.719,
+        "elapsed_s": 71.071,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "passedParents": 1,
+      "passedCells": [
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator3/committrue",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator3/commitfalse",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator8/committrue",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator8/commitfalse"
+      ],
+      "failedOrSkipped": 0,
+      "cleanup": [
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=6926 bootstrapPackets=321 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=5532 bootstrapPackets=327 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=6936 bootstrapPackets=319 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=5542 bootstrapPackets=327 admitted=397312"
+      ],
+      "namedKillReopenPIDs": [
+        48058,
+        48210,
+        47788,
+        47942,
+        47189,
+        47346,
+        47510,
+        47638
+      ],
+      "namedPIDsAbsent": true,
+      "proofs": [
+        {
+          "coordinator": 8,
+          "commit": false,
+          "serial_witness": [
+            "close-a",
+            "close-b"
+          ],
+          "records": 22,
+          "scope": "P06 finite original-binding/serial bridge; authentic extraction and complete graph/CDC assertions are qualified by the Go test",
+          "path": "/var/tmp/rho-v5-p06-process-qualification-20261014/race/rho-paired-graph-fault-1222032871/p06-original-recovery.json",
+          "sha256": "e6d21c9154353446a3eb3a278324118307e803825a7104546a1a06404469ea6a"
+        },
+        {
+          "coordinator": 8,
+          "commit": true,
+          "serial_witness": [
+            "edge",
+            "close-a"
+          ],
+          "records": 21,
+          "scope": "P06 finite original-binding/serial bridge; authentic extraction and complete graph/CDC assertions are qualified by the Go test",
+          "path": "/var/tmp/rho-v5-p06-process-qualification-20261014/race/rho-paired-graph-fault-1411671050/p06-original-recovery.json",
+          "sha256": "5854e8720c3f978d9160a6ed517c79e7665dfa73716575dcdffba12e6207f70b"
+        },
+        {
+          "coordinator": 3,
+          "commit": true,
+          "serial_witness": [
+            "edge",
+            "close-a"
+          ],
+          "records": 21,
+          "scope": "P06 finite original-binding/serial bridge; authentic extraction and complete graph/CDC assertions are qualified by the Go test",
+          "path": "/var/tmp/rho-v5-p06-process-qualification-20261014/race/rho-paired-graph-fault-2764359356/p06-original-recovery.json",
+          "sha256": "785c6e614e521c9673f4eb10ea2c52acea35e68673a1a33ad5e714ae26b67021"
+        },
+        {
+          "coordinator": 3,
+          "commit": false,
+          "serial_witness": [
+            "close-a",
+            "close-b"
+          ],
+          "records": 22,
+          "scope": "P06 finite original-binding/serial bridge; authentic extraction and complete graph/CDC assertions are qualified by the Go test",
+          "path": "/var/tmp/rho-v5-p06-process-qualification-20261014/race/rho-paired-graph-fault-656880905/p06-original-recovery.json",
+          "sha256": "2b103a294d28efbf064fedf2930ebaf017c61604b22301a609f2bb8e0f9ab8aa"
+        }
+      ],
+      "offlineTests": 4
+    },
+    "coverage": {
+      "watchdog": {
+        "command": [
+          "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+          "test",
+          "-count=1",
+          "-json",
+          "-timeout=150s",
+          "-covermode=atomic",
+          "-coverprofile=/var/tmp/rho-v5-p06-process-qualification-20261014/coverage/coverage.out",
+          "-run",
+          "^TestPreparedLockP06FirstYESLeaderKillOriginalRecovery$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1073.656,
+        "elapsed_s": 27.424,
+        "exit_code": 0,
+        "reason": "completed"
+      },
+      "passedParents": 1,
+      "passedCells": [
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator3/committrue",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator3/commitfalse",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator8/committrue",
+        "TestPreparedLockP06FirstYESLeaderKillOriginalRecovery/coordinator8/commitfalse"
+      ],
+      "failedOrSkipped": 0,
+      "cleanup": [
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=6926 bootstrapPackets=321 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=5532 bootstrapPackets=327 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=6936 bootstrapPackets=321 admitted=397312",
+        "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=5542 bootstrapPackets=327 admitted=397312"
+      ],
+      "namedKillReopenPIDs": [
+        49660,
+        49745,
+        49333,
+        49423,
+        49515,
+        49628,
+        49427,
+        49512
+      ],
+      "namedPIDsAbsent": true,
+      "proofs": [
+        {
+          "coordinator": 8,
+          "commit": false,
+          "serial_witness": [
+            "close-a",
+            "close-b"
+          ],
+          "records": 22,
+          "scope": "P06 finite original-binding/serial bridge; authentic extraction and complete graph/CDC assertions are qualified by the Go test",
+          "path": "/var/tmp/rho-v5-p06-process-qualification-20261014/coverage/rho-paired-graph-fault-1692826721/p06-original-recovery.json",
+          "sha256": "626a21abf975c61ccb89638c95c92ce03e066ffe14cd55907ad9888ac36b03ea"
+        },
+        {
+          "coordinator": 3,
+          "commit": true,
+          "serial_witness": [
+            "edge",
+            "close-a"
+          ],
+          "records": 21,
+          "scope": "P06 finite original-binding/serial bridge; authentic extraction and complete graph/CDC assertions are qualified by the Go test",
+          "path": "/var/tmp/rho-v5-p06-process-qualification-20261014/coverage/rho-paired-graph-fault-49686424/p06-original-recovery.json",
+          "sha256": "d209506fc4cb49f95f2e75b319a0f99562d9245c9476c34a11f14319064c7158"
+        },
+        {
+          "coordinator": 8,
+          "commit": true,
+          "serial_witness": [
+            "edge",
+            "close-a"
+          ],
+          "records": 21,
+          "scope": "P06 finite original-binding/serial bridge; authentic extraction and complete graph/CDC assertions are qualified by the Go test",
+          "path": "/var/tmp/rho-v5-p06-process-qualification-20261014/coverage/rho-paired-graph-fault-503340556/p06-original-recovery.json",
+          "sha256": "e579b121318515360d90198a83c1d4f2d96f6fc0839be524ea1541646bab9219"
+        },
+        {
+          "coordinator": 3,
+          "commit": false,
+          "serial_witness": [
+            "close-a",
+            "close-b"
+          ],
+          "records": 22,
+          "scope": "P06 finite original-binding/serial bridge; authentic extraction and complete graph/CDC assertions are qualified by the Go test",
+          "path": "/var/tmp/rho-v5-p06-process-qualification-20261014/coverage/rho-paired-graph-fault-707007448/p06-original-recovery.json",
+          "sha256": "6278eae8d0963dcd9f12f8ad0a1123d78d85bd2612ee9a47fc7487e7c6dbb637"
+        }
+      ],
+      "offlineTests": 4
+    },
+    "vet": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "vet",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 206.891,
+      "elapsed_s": 1.131,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "lint": {
+      "command": [
+        "/var/tmp/rho-v6-preflight-evidence-20261012/bin/golangci-lint",
+        "run",
+        "--config",
+        "../.golangci.yml",
+        "--concurrency=2",
+        "--timeout=150s",
+        "--max-same-issues=0",
+        "--max-issues-per-linter=0",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 1741.422,
+      "elapsed_s": 33.194,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "security": {
+      "command": [
+        "/var/tmp/rho-v6-preflight-evidence-20261012/bin/gosec",
+        "-quiet",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 436.484,
+      "elapsed_s": 2.259,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "vuln": {
+      "command": [
+        "/var/tmp/rho-v6-preflight-evidence-20261012/bin/govulncheck",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 1714.406,
+      "elapsed_s": 3.594,
+      "exit_code": 0,
+      "reason": "completed"
+    }
+  },
+  "independentOracle": {
+    "path": "docs/v5/reference/independent/protocol/oracle.py",
+    "sha256": "a132b4e4981f3dcea485b7ee5dea0df48a906cdfcda4a75bec5ff9f1a5589d3a",
+    "entrypoint": "serial_witness",
+    "scope": "Existing unchanged mathematical serial/cut oracle; raw bindings and complete literal graph/CDC semantics are qualified by Go extraction and assertions, not a second graph reducer"
+  },
+  "retainedFailures": {
+    "normal-1": {
+      "reason": "ABORT fixture composition mutated a label observed by the existing fixed lifecycle oracle. Corrected to genuine endpoint-close; not a production bug claim.",
+      "failedCells": 2,
+      "passedCells": 2,
+      "allIncarnationsReaped": 26,
+      "artifacts": 2,
+      "sourcesAndLogsPreserved": true
+    },
+    "race/python-tests.stderr": {
+      "reason": "Wrong-after sensitivity selected glob-first ABORT capture, which has no committed edge value. One-line test-only selection of a COMMIT capture; final offline replay passes all three lanes.",
+      "preserved": true
+    }
+  },
+  "coverage": {
+    "productionPackageStatementPercent": 5.7,
+    "meaning": "Diagnostic scoped production graphapply coverage only; added *_test.go helpers are not instrumented; no new production/public methods or 80 percent helper acceptance claim"
+  },
+  "vulnerabilityResult": {
+    "calledVulnerabilities": 0,
+    "uncalledImportedPackageVulnerabilities": 2,
+    "uncalledRequiredModuleVulnerabilities": 2,
+    "effectiveTargetGo": "1.26.9",
+    "scannerModule": "v1.7.0",
+    "initialVersionQuery": "govulncheck-version.txt used host PATH and reports Go1.27.1; actual scan used pinned PATH as shown by vuln-effective-version.txt"
+  },
+  "limitations": [
+    "Only first-A-YES participant A1 leader SIGKILL; two coordinator orientations crossed with COMMIT/ABORT. Current-key/endpoint-life prepared guard, exact original duplicate phases, old/current whole graph/index/canonical CDC and serial binding close these cells.",
+    "No predicate/range guard campaign, alternate participant footprint, network/storage/VFS fault matrix, physical-host/power-loss guarantee, full P06 campaign, other P01-P09 closure, or full V2 acceptance.",
+    "No FDB comparison, cost/capacity/1M acceptance, release/tag/MR/push, or engine selection.",
+    "Offline JSON replay depends on authentic production extraction; raw hashes are integrity bindings, not independent process authenticity or fsync proof.",
+    "Resource reports sample aggregate descendant RSS every 0.25s; they do not claim kernel-enforced allocation ceilings."
+  ],
+  "rawArchive": {
+    "path": "raw.tar.gz",
+    "bytes": 541570,
+    "sha256": "8d890fb78ab94766c262a8756535f9181ce3b80f356f4e6e6830ee7aa751793c",
+    "memberCount": 104,
+    "membersSHA256": {
+      "compile-1/prepared_lock_p06_harness_test.go": "3be9d03f5d9457b696d863f986f1916f2fe61c95ee145b6e1d665b40820ee804",
+      "compile-1/prepared_lock_p06_process_test.go": "db1e1679ac190cad2857b9ee095ff4b16e01deb408002fa95f9d56d77956a148",
+      "compile-1/source-sha256.json": "5b3bf8554ba4a9b5c331ab297cf36968eb4eed8c950614d49c499a114d190dc1",
+      "compile-1/stderr.log": "a63cb9c6a194346cd4a675c5f2d80ef028391be5b09d25b2ab02367ce791ed31",
+      "compile-1/stdout.log": "4b6782d5f8706ebb265d99572deebdb552273a9ad150cfe5b17662a63c9800dc",
+      "compile-1/watchdog.json": "c8161cb490a3a3b1a8d7b527c2b143abca935d9e23830ca8d3c1d3e328fbcca2",
+      "coverage/check-p06-history.py": "2e0529eada0b9ced31869d497ec13f479dd81a6b736eba52dd01cfe0c94f4c07",
+      "coverage/check_p06_history_test.py": "8febb4b4fa31845eb90882354dea28b2ee994fd2af9bc58f2ab5b350a09e6ad1",
+      "coverage/coverage.jsonl": "18dff668aeff14da673776b01f1b1ad9315ae7097077fcb75ad1d84448f08ad5",
+      "coverage/coverage.out": "6244d3b64246b9a84afb13c4a2c4ef218e9b7d653e50f4730a91b48bfd9e068e",
+      "coverage/named-process-check.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "coverage/owned-source-sha256.json": "14c47bc165ad487b3a7b368d0defb9362edaadb9ce92c993a10ef6019a0769fe",
+      "coverage/prepared_lock_p06_harness_test.go": "cc0815413df8037b9aa6f97d75a296e872f27b3626a371328a9dd4a8edd831cb",
+      "coverage/prepared_lock_p06_process_test.go": "a63ced2bd916b44fa9dc08c1b90baa0cda50bfc562970ca680a7adb2fe9574f9",
+      "coverage/python-final.stderr": "119eb158af9c8a17b35e94789e871de6f57880473f2db9e480f799d8e7a49d2d",
+      "coverage/python-final.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "coverage/rho-paired-graph-fault-1692826721/p06-original-recovery.json": "626a21abf975c61ccb89638c95c92ce03e066ffe14cd55907ad9888ac36b03ea",
+      "coverage/rho-paired-graph-fault-49686424/p06-original-recovery.json": "d209506fc4cb49f95f2e75b319a0f99562d9245c9476c34a11f14319064c7158",
+      "coverage/rho-paired-graph-fault-503340556/p06-original-recovery.json": "e579b121318515360d90198a83c1d4f2d96f6fc0839be524ea1541646bab9219",
+      "coverage/rho-paired-graph-fault-707007448/p06-original-recovery.json": "6278eae8d0963dcd9f12f8ad0a1123d78d85bd2612ee9a47fc7487e7c6dbb637",
+      "coverage/serial-final.json": "5dc8da9551ed15be8ea898d9d54e12ab3ea255e86e320983a0bde5b773cfe2e2",
+      "coverage/serial-final.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "coverage/source-sha256.json": "1e86b353c3d1fb656eca3173bf4df9fb3db15bc71c542445bb88e0dff437739b",
+      "coverage/stderr.log": "3de16f84ba20213b4c724c680d56f6be26a2bd60c9c8371bc21217544de874a6",
+      "coverage/terminal-summary.json": "13551b983af02414dfe2972631ccb470cee333ee581dce58e02a57763e87bf7f",
+      "coverage/watchdog.json": "8d948abd5e91601bf4e2ef6bec6cf0cae59162ebfb7e7fb84650c61d0f528a8f",
+      "final-owned-source-sha256.json": "f1b840eb4884336090373ce9698f1e5157f6ab49f88dd1f9c3ef0d77a95c87ae",
+      "final-source/tools/v5-substrate/check-p06-history.py": "2e0529eada0b9ced31869d497ec13f479dd81a6b736eba52dd01cfe0c94f4c07",
+      "final-source/tools/v5-substrate/check_p06_history_test.py": "f7fe41e1067e3658f4cc8c0e7f78423a11299bbb2c22b9737ecce3ad12ce0a21",
+      "final-source/v5/internal/graphapply/prepared_lock_p06_harness_test.go": "cc0815413df8037b9aa6f97d75a296e872f27b3626a371328a9dd4a8edd831cb",
+      "final-source/v5/internal/graphapply/prepared_lock_p06_process_test.go": "a63ced2bd916b44fa9dc08c1b90baa0cda50bfc562970ca680a7adb2fe9574f9",
+      "normal-1/normal.jsonl": "9216e01c651e126d68fb2c3f7021e48f53f86aa56c2abe714184417b74f60b09",
+      "normal-1/prepared_lock_p06_harness_test.go": "3be9d03f5d9457b696d863f986f1916f2fe61c95ee145b6e1d665b40820ee804",
+      "normal-1/prepared_lock_p06_process_test.go": "db1e1679ac190cad2857b9ee095ff4b16e01deb408002fa95f9d56d77956a148",
+      "normal-1/rho-paired-graph-fault-1059909874/p06-original-recovery.json": "3a26defa35b682c449a6f2507c987d08c22cb64c28943d8bbbb91ce20ed7f68f",
+      "normal-1/rho-paired-graph-fault-2601801634/p06-original-recovery.json": "9a1f995cbab41336a97de1a1df9ccc0a82ed924ca99d1c95e6a77aa3dec04cbd",
+      "normal-1/source-sha256.json": "5b3bf8554ba4a9b5c331ab297cf36968eb4eed8c950614d49c499a114d190dc1",
+      "normal-1/stderr.log": "bfc77311c77623095b76d6c084a2815dc5bbe4b60b57d69cbd6f2f23166409bd",
+      "normal-1/watchdog.json": "5d8c8e964ce5546e7f9ba269821a1c80d25671add76ce61b03ce30fa0d52b356",
+      "normal-2/checkpoint.json": "e70df93cdb8b337ec87cb5df1c9a5922701649503a93829e1e0ad3ffdbbe1ec4",
+      "normal-2/named-process-check.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "normal-2/normal.jsonl": "1d7a50a245a4869cb4bda92f48945caaa6e61918665271aac1cb6cea31c455b0",
+      "normal-2/owned-source-sha256.json": "14c47bc165ad487b3a7b368d0defb9362edaadb9ce92c993a10ef6019a0769fe",
+      "normal-2/prepared_lock_p06_harness_test.go": "cc0815413df8037b9aa6f97d75a296e872f27b3626a371328a9dd4a8edd831cb",
+      "normal-2/prepared_lock_p06_process_test.go": "a63ced2bd916b44fa9dc08c1b90baa0cda50bfc562970ca680a7adb2fe9574f9",
+      "normal-2/python-final.stderr": "be996dbc6c975a794ece15a8b7e39a924ec7ecb834e0f0b1d94dff12a065112d",
+      "normal-2/python-final.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "normal-2/python-tests.stderr": "ed0770e91399d03f49edafc1bc5dba54194da2d7ac1bc29e9794edff19552db7",
+      "normal-2/python-tests.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "normal-2/rho-paired-graph-fault-1209265759/p06-original-recovery.json": "c08b7930095cfad8a0c0d3984eedd49305fc439b1e55fdefe7c441710f47e0f6",
+      "normal-2/rho-paired-graph-fault-2407867768/p06-original-recovery.json": "fb9513593fd140a281c25fea45b9866335c678c920e7598d21b8a24eb030774d",
+      "normal-2/rho-paired-graph-fault-3551626839/p06-original-recovery.json": "918b1bb688718fe3b3e6b3a0bd834465ec4c9c0a7c777ea6adcd2313a620242b",
+      "normal-2/rho-paired-graph-fault-3559911760/p06-original-recovery.json": "36fa20c94d692316e48dcf1839ed31b4189cdba2735053024822da7f3f6b1f1d",
+      "normal-2/serial-final.json": "7e3011e106c7bd6b8286070bc866b57b672b2894bb6fd45df54d989890d5971d",
+      "normal-2/serial-final.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "normal-2/serial-results.json": "4ee2612f9fe1a06dc2decb9fbcc33430f970ed21d4d5de876efb9fce7ad686de",
+      "normal-2/source-sha256.json": "1e86b353c3d1fb656eca3173bf4df9fb3db15bc71c542445bb88e0dff437739b",
+      "normal-2/stderr.log": "d9625e9ec774859268406a3aee2adc8ffefae9d1a3b9a7845accc3b4408448d2",
+      "normal-2/watchdog.json": "dc5e84e276738a4973e8b2f69f211170aa696f72b845295ccddc622eded5717b",
+      "oracle/oracle.py": "a132b4e4981f3dcea485b7ee5dea0df48a906cdfcda4a75bec5ff9f1a5589d3a",
+      "race/check-p06-history.py": "2e0529eada0b9ced31869d497ec13f479dd81a6b736eba52dd01cfe0c94f4c07",
+      "race/check_p06_history_test.py": "8febb4b4fa31845eb90882354dea28b2ee994fd2af9bc58f2ab5b350a09e6ad1",
+      "race/named-process-check.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "race/owned-source-sha256.json": "14c47bc165ad487b3a7b368d0defb9362edaadb9ce92c993a10ef6019a0769fe",
+      "race/prepared_lock_p06_harness_test.go": "cc0815413df8037b9aa6f97d75a296e872f27b3626a371328a9dd4a8edd831cb",
+      "race/prepared_lock_p06_process_test.go": "a63ced2bd916b44fa9dc08c1b90baa0cda50bfc562970ca680a7adb2fe9574f9",
+      "race/python-final.stderr": "119eb158af9c8a17b35e94789e871de6f57880473f2db9e480f799d8e7a49d2d",
+      "race/python-final.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "race/python-tests.stderr": "1dc460ec9a5426ddf2eb776287911b1acf3d38dac4ac20b21aaba375c1b48db7",
+      "race/python-tests.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "race/race.jsonl": "075d9d4c02b1ddeb6831ea5c0b6597a197add9d812d3014e6f540e612f3e5b29",
+      "race/rho-paired-graph-fault-1222032871/p06-original-recovery.json": "e6d21c9154353446a3eb3a278324118307e803825a7104546a1a06404469ea6a",
+      "race/rho-paired-graph-fault-1411671050/p06-original-recovery.json": "5854e8720c3f978d9160a6ed517c79e7665dfa73716575dcdffba12e6207f70b",
+      "race/rho-paired-graph-fault-2764359356/p06-original-recovery.json": "785c6e614e521c9673f4eb10ea2c52acea35e68673a1a33ad5e714ae26b67021",
+      "race/rho-paired-graph-fault-656880905/p06-original-recovery.json": "2b103a294d28efbf064fedf2930ebaf017c61604b22301a609f2bb8e0f9ab8aa",
+      "race/serial-final.json": "cf0d7b1526d8c6b9046ee94aeb0de3ae3166fefef3edd50ea00badbc6a2ac10d",
+      "race/serial-final.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "race/serial-results.json": "cf0d7b1526d8c6b9046ee94aeb0de3ae3166fefef3edd50ea00badbc6a2ac10d",
+      "race/serial.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "race/source-sha256.json": "1e86b353c3d1fb656eca3173bf4df9fb3db15bc71c542445bb88e0dff437739b",
+      "race/stderr.log": "dfa6623a969ee436db08aacdf0af2de3ffd66cd0af458fa2f59299b638105630",
+      "race/terminal-summary.json": "e5ea296bbebe5433c5848284bdd7ae1f8ef8e841eac30f774aeae8a37469340b",
+      "race/watchdog.json": "7bba752c913eefe5eb1e38f7afcd866525e7310ea27908d70b5f7c578307c361",
+      "statics/go-version.txt": "50dfaf2b461be90c530e329b6ae9c3159961579c2fb4848bbf472fe7af282db3",
+      "statics/golangci-lint-version.txt": "5644aa8e116a125b49c8e7bccf4515686b8b7312ecb1b195c06c8a7aa5ff175a",
+      "statics/gosec-buildinfo.txt": "6b60a45bff99d737eada515482af7abad1b65c610dcb593f49720f96a1d01b76",
+      "statics/gosec-version.txt": "c61e4d5622fe9449bd0810e944e583a8e330a8b9d0c394513f5f68b64a94e200",
+      "statics/govulncheck-version.txt": "4de77af2d73b7c1037154e6380832bb8d72de8549804c89fe0bd46b18a3da1c2",
+      "statics/lint-watchdog.json": "a01056ebae4583d3e38bc21e84fe1e372aae19dfdb1052f2e08902d98e867b3c",
+      "statics/lint.stderr": "6f208c80aea5db82450424c4b09b3c9999633b68ebfe3d43c9c9ed06dd529f0d",
+      "statics/lint.stdout": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47",
+      "statics/security-watchdog.json": "c63432003f99721ad0e820fa05cbcac07a9e82794fd202d13c8783428981051a",
+      "statics/security.stderr": "bbbbb1b5e17a32d205b0065a86327c9173cbe679683595be687422a9775d9c30",
+      "statics/security.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "statics/source-sha256.json": "1e1ea5990ffbfb1457fd5f67c140f963ce0ecb7f96a0f2201598f1a0ce94a753",
+      "statics/tools-sha256.json": "3123cb9c7e1ed8f4dd550f127e8e14c5f142edd2daa5356a339058c2207c9cf1",
+      "statics/vet-watchdog.json": "e5de290da06abb3c42c5334792163459fb116a87c0a72e4dc989c70c2c533778",
+      "statics/vet.stderr": "d597632dd24a9b1dcf7543974e91b9ac24de845e69d4624f1f4e5f7aea9e06ec",
+      "statics/vet.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "statics/vuln-effective-version.txt": "f872dc8e4877391b12229c7fbc08e9fd9666a60e0571140f09dce7270472a21e",
+      "statics/vuln-watchdog.json": "f891a31ce510e1adeea5b30b2cd833680c0c86708d86a3477218374e55c69d71",
+      "statics/vuln.stderr": "35da2b7d926b549ab6c0d8211b0ddd873deb1cb3b43dea4218438d0fcd258921",
+      "statics/vuln.stdout": "959780af8681f015203f3a00511efdb171d987e6a9671e4990c41adc2a1890c4",
+      "tools/limit-local.py": "6dc4e0362827ecd0854436b9fa1a812342b693d65ba093291d358b359e733283"
+    }
+  },
+  "cleanupSummary": {
+    "successfulLaneIncarnations": 84,
+    "namedKillReopenPIDsAbsent": 24,
+    "allOwnedHeavyHandlesTerminal": true,
+    "leaseReleasedToRoot": true
+  },
+  "staticScope": "Vet and configured lint analyze the affected graphapply package including test sources. Gosec and govulncheck use their default production-package scope, excluding test-only helpers; the corresponding production inputs are unchanged. No test-helper security coverage claim."
+}
