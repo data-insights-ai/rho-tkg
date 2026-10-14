@@ -727,11 +727,11 @@ lookup 227 ms to 0.13 ms on badger, 13.8 ms to 0.095 ms on memory, 221 ms to
 property lookups cost the value's ever-members, not the history of the
 graph".
 
-## Backend coverage (v4.49.0)
+## Backend coverage (v4.52.1)
 
 Which in-tree backend answers a primitive natively and which declines. Read from
 the method sets of `memory.Store`, `badger.Store`, `tiered.Store` and
-`sharded.Store` at v4.49.0; "no" is a decline or a slower fallback as stated in
+`sharded.Store` at v4.52.1; "no" is a decline or a slower fallback as stated in
 the primitive's own section.
 
 | Primitive | memory | badger | tiered | sharded |
@@ -746,8 +746,8 @@ the primitive's own section.
 | O(1) degree (`DegreeCapability`) | yes | yes | yes | no (O(degree)) |
 | Composite index, introspection | yes | yes | yes | yes |
 | Valid-time envelope prune: node temporal index / rel temporal index | yes / yes | yes / yes | no / yes (hot + warm shards) | yes / yes |
-| K1 label and rel-type transaction-time membership | yes | yes | no | no |
-| Property transaction-time membership (pinned property lookup) | yes | yes | no | yes |
+| K1 label and rel-type transaction-time membership | yes | yes | yes (DepthAll; union of the shards) | no |
+| Property transaction-time membership (pinned property lookup) | yes | yes | node: reference labels only; rel: no | yes |
 | `Stats().HistoryCounts()` | yes | yes | no (`ok=false`) | yes |
 | `HasHistory`, `LatestStamps` store capabilities | yes | yes | yes | yes |
 | `Stats().ReadCosts()` | yes | yes | yes | yes |
@@ -793,20 +793,14 @@ K1 (`store.LabelTxMembershipCapability`, `RelTypeTxMembershipCapability`) is an
 append-only sound superset kept in RAM, built lazily on the first temporal read
 after open (O(history) once) and maintained at every row write; removing a label,
 deleting the entity or compacting never drops a member. A member with an unset
-(0) first `TxFrom` is never pruned (4.48.0). Tiered, sharded and wrapper stores
-take the full fold, O(everything that ever had history). Its point form
+(0) first `TxFrom` is never pruned (4.48.0). Sharded and wrapper stores
+take the full fold, O(everything that ever had history). Tiered (backlog 58) unions its shards' sidecars for DepthAll reads and keeps the depth fold for a depth-scoped read (architecture.md, tiered "Tx-membership sidecars"). Its point form
 (`store.LabelTxMemberLookupCapability` / `RelTypeTxMemberLookupCapability`, v4.51.0)
 scopes a temporal property lookup without a declared index to the history IDs
 that ever carried the label (type): O(history IDs) map lookups instead of a
 version chain per history ID.
 
-Tiered and temporal indexes: since 4.45.0 tiered builds composite and relationship
-temporal indexes per shard (each shard keeps its own badger index over its own
-rows; the reference shard anchors the definitions). The relationship temporal
-index is bounded to hot and warm shards by default (a cold shard keeps none and a
-cold shard's relationships are never pruned, so answers are unchanged); resident
-cost measured at 4.45.0: about 156 B per indexed relationship, 310 B per node of
-a 3-key composite, both on every shard carrying the index.
+Tiered and temporal indexes: since 4.45.0 tiered builds composite and relationship temporal indexes per shard; the relationship temporal index is bounded to hot and warm shards (a cold shard's relationships are never pruned, so answers are unchanged). Anchoring, cost and the build: architecture.md, tiered "Composite and relationship temporal indexes".
 
 ## Planner doors added since 4.41.0
 
