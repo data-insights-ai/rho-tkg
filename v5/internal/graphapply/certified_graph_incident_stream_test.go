@@ -43,6 +43,24 @@ func TestCertifiedIncidentStreamRetainsCutAndCommitsOnlyHydratedChunks(t *testin
 		t.Fatal(err)
 	}
 	predicate := graphstate.IncidentPredicate{Endpoint: 1, Life: 2, Window: point}
+
+	// Direct composite API parity reuses this genuine native retained view.
+	direct, err := pinned.full.IncidentRelationshipsChunk(t.Context(), predicate, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}, 1)
+	if err != nil || direct.Complete || !slices.Equal(direct.Entities, []graphstate.EntityID{3}) {
+		t.Fatal(direct, err)
+	}
+	capsule, err := pinned.full.ExportIncidentContinuation(t.Context(), predicate, direct.Next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	imported, err := pinned.full.ImportIncidentContinuation(t.Context(), predicate, capsule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	following, err := pinned.full.IncidentRelationshipsChunk(t.Context(), predicate, imported, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}, 1)
+	if err != nil || !following.Complete || !slices.Equal(following.Entities, []graphstate.EntityID{5}) {
+		t.Fatal(following, err)
+	}
 	l := defaultMaterializerLimits()
 	grant, err := incidentGrant(l, 1)
 	if err != nil {
@@ -108,6 +126,14 @@ func TestCertifiedIncidentStreamRetainsCutAndCommitsOnlyHydratedChunks(t *testin
 	mutationTx, mutationProposal := n.crossPlan([]graphstate.Operation{{Kind: graphstate.Close, Owner: 17, Life: 18, Scope: ops[0].Scope}}, nil, 25)
 	mutationDecision := n.crossCommit(mutationTx, mutationProposal)
 	n.crossResolve(mutationDecision)
+
+	current := certifiedOpen(t, native, graphReadRequest{mode: graphReadFresh}, nil)
+	if _, err := current.full.ImportIncidentContinuation(t.Context(), predicate, capsule); !errors.Is(err, graphstore.ErrInvalid) {
+		t.Fatal("composite current root accepted old capsule", err)
+	}
+	if err := current.Close(); err != nil {
+		t.Fatal(err)
+	}
 	uncertain = true
 	if chunk, err := stream.Next(t.Context(), stream.request, 2, nil); chunk != nil || !errors.Is(err, graphstore.ErrSourceUnavailable) {
 		t.Fatal(chunk, err)
