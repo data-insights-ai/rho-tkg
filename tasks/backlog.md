@@ -335,10 +335,15 @@ transient/terminal reservations and local-cursor reset. Authenticated native flo
 admission is source-integrated at `24a5db50`, with exact committed command/source
 and owner checks, captured independent expiry floors and a separate image-anchor
 door. `b8c8a0f6` covers the recovery-owner floor; `5f0fbb80` also prepays local
-cursor backing in explicit recovery creation. Operative collection, scrub and
-fresh graph handoff still require implementation; all these new sources await
-execution. `ab650bbc` also refuses a replacement plan while native collection
-has unfinished cursor progress. Fresh initialization preserves retention
+cursor backing in explicit recovery creation. Operative native collection and
+sparse scrub are source-integrated at `cad0b51b`: bounded pages preserve exact
+floor predecessors and data anchors, co-sync namespace debits and a separately
+accounted resumable cursor, and retire a publication only when represented rows
+are deleted. Same-index sparse republication keeps the genuine term/hash and
+changes the cut identity without business or CDC progress. Graph-level floor,
+durable-pin and fresh-profile handoff wiring remain implementation work; all
+these new sources await execution. `ab650bbc` also refuses a replacement plan
+while native collection has unfinished cursor progress. Fresh initialization preserves retention
 configuration and prepays/publishes its actual recovery-root census at
 `9741c403`/`9f9116b5`; older initialization profiles retain their existing bytes.
 Complete retained terminal-bank comparison is
