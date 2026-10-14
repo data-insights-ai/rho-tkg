@@ -77,6 +77,7 @@ per release, and the open queue. Older wave ledgers (per-step red tests, merges,
 | v4.52.1 | (tag) | tiered tx-membership + valid-end acceleration (58, sigma R2), tiered ref/archive readers under moveMu (60), R8 + tx-boundary guard tests, merge of Markus v4.52.0 |
 | v4.52.2 | (tag) | integrity-hash switch + binary hash reader (61 step 1), Elements index (63, sigma R6), third-answer fix + deprecations for one valid-from source and valid_to close (62/65 phase A), docs pass (comments -37%) |
 | v4.54.0 | (tag) | excise doors (64, sigma R7), one valid-from source TxFrom (62), valid_to-only update closes like CloseVersion incl. GraphTx (65, sigma R9), binary hash writer (61 step 2), one format-marker tracker; on top of Markus v4.53.0 (sigma round 7) |
+| v4.55.0 | (tag) | RelsEffectivePage / NodesEffectivePage (69, ai-soc), head-pin effective timeline O(segments) (68 read side, sigma R10), docs second pass, comment restoration |
 
 ## Open queue (specs in `tasks/backlog.md`)
 
