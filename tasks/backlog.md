@@ -194,7 +194,7 @@ all A–F exit requirements; implementation status never implies acceptance.
    absent keys, empty ranges, temporal predicates, endpoint-life/revision ABA,
    and topology/catalog/profile dependencies. Enumerate existing coverage first;
    add the missing production schedules and fix any demonstrated shared cause.
-   The proposed opt-in read captures an authenticated complete dependency
+   The opt-in read captures an authenticated complete dependency
    condition before returning data; dependent writes bind that original condition
    to durable request identity and validate it again at actual prepare application.
    Unchanged reads must really commit; changed state or authority must require
@@ -282,6 +282,19 @@ durable cut/feed pins and GC, bounded high-degree continuation, actual FDB
 column-runner/comparator wiring and writer concurrency, then the remaining
 fault/workload integration. Follow the owner's implementation-first ordering
 above; qualify the integrated result afterward.
+Bounded incident continuation is source-integrated at `18d28001` with callback
+ownership corrected at `266ef78d`; `62764628` hydrates extra typed cells on that
+same active read, and the existing compact guard now calls the routed APIs
+directly. The owner retains one original certified cut, one genuine private
+cursor and one last chunk with cumulative prepaid work/RPC/output limits.
+Its current process-local lifetime follows the actual source TTL (at most one
+minute); native cost IPC wiring, durable pin integration and large-degree
+qualification remain open. FDB's explicit column-runner lane is source-integrated
+at `0233899d`: old/current publication, held old reads, genuine cache bytes and
+bounded derived collection precede a fresh source-history/CDC census. Controller
+and independent column verification wiring are still being implemented. The
+lane compares derived FDB columns with native logical/KV answers; it does not
+claim native column-layout parity, source KV reclamation or a qualified cost cell.
 Existing accepted components stay closed unless their source or required
 behavior changes.
 
