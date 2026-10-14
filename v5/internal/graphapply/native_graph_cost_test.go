@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -502,17 +503,34 @@ func boolUint(v bool) uint64 {
 // file lengths and actual POSIX allocated blocks. They exclude trace outputs.
 func nativeGraphCostFileBytes(dir string) (uint64, uint64, error) {
 	var total, allocated uint64
-	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
+	var walk func(string, os.FileInfo) error
+	walk = func(path string, info os.FileInfo) (err error) {
+		if info.IsDir() {
+			f, openErr := os.Open(path)
+			if openErr != nil {
+				return openErr
+			}
+			defer func() { err = errors.Join(err, f.Close()) }()
+			for {
+				// Directory order cannot affect these checked commutative sums.
+				// Keep only 32 real entries per active directory, rather than
+				// WalkDir's whole flat native column-cache file inventory.
+				entries, readErr := f.Readdir(32)
+				for _, entry := range entries {
+					if err := walk(filepath.Join(path, entry.Name()), entry); err != nil {
+						return err
+					}
+				}
+				if errors.Is(readErr, io.EOF) {
+					return nil
+				}
+				if readErr != nil {
+					return readErr
+				}
+			}
 		}
-		if entry.IsDir() {
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
+		// Readdir/Lstat retain the former WalkDir symlink behavior: charge the
+		// link itself and do not follow a link into another directory/tree.
 		stats, ok := info.Sys().(*syscall.Stat_t)
 		if !ok {
 			return errInvalid
@@ -520,11 +538,21 @@ func nativeGraphCostFileBytes(dir string) (uint64, uint64, error) {
 		if info.Size() < 0 || stats.Blocks < 0 {
 			return errCorrupt
 		}
-		total += uint64(info.Size())
-		allocated += uint64(stats.Blocks) * 512 // #nosec G115 -- actual nonnegative POSIX sizes/blocks checked above.
-		return nil
-	})
+		total, allocated, err = nativeGraphCostAccumulateFileBytes(total, allocated, uint64(info.Size()), uint64(stats.Blocks)) // #nosec G115 -- actual nonnegative POSIX sizes/blocks checked above.
+		return err
+	}
+	info, err := os.Lstat(dir)
+	if err == nil {
+		err = walk(dir, info)
+	}
 	return total, allocated, err
+}
+
+func nativeGraphCostAccumulateFileBytes(total, allocated, size, blocks uint64) (uint64, uint64, error) {
+	if blocks > ^uint64(0)/512 || size > ^uint64(0)-total || blocks*512 > ^uint64(0)-allocated {
+		return total, allocated, errLimit
+	}
+	return total + size, allocated + blocks*512, nil
 }
 func runNativeGraphCost(t *testing.T, s nativeGraphCostSpec) {
 	runNativeGraphCostWithBlock(t, s, min(s.homeCount(), idalloc.MaxBlockSize))
@@ -773,6 +801,46 @@ func TestNativeGraphCostCell(t *testing.T) {
 	runNativeGraphCost(t, *spec)
 }
 func TestNativeGraphCostProfileAndRouting(t *testing.T) {
+	// Compact actual filesystem parity: nested native/cache files and the
+	// symlink's own metadata are included, never the outside target tree.
+	dir := t.TempDir()
+	nested := filepath.Join(dir, "native-column-cache")
+	if err := os.Mkdir(nested, 0700); err != nil {
+		t.Fatal(err)
+	}
+	files := []string{filepath.Join(dir, "root.bin"), filepath.Join(nested, "chunk.bin")}
+	for _, file := range files {
+		if err := os.WriteFile(file, []byte("owned"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link := filepath.Join(nested, "outside-link")
+	if err := os.Symlink(filepath.Join(t.TempDir(), "unowned"), link); err != nil {
+		t.Fatal(err)
+	}
+	files = append(files, link)
+	var expected, allocated uint64
+	for _, file := range files {
+		info, err := os.Lstat(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stats, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || info.Size() < 0 || stats.Blocks < 0 {
+			t.Fatal("actual POSIX metadata")
+		}
+		expected += uint64(info.Size())         // #nosec G115 -- actual nonnegative size checked above.
+		allocated += uint64(stats.Blocks) * 512 // #nosec G115 -- actual small nonnegative POSIX block count checked above.
+	}
+	if bytes, blocks, err := nativeGraphCostFileBytes(dir); err != nil || bytes != expected || blocks != allocated {
+		t.Fatal("streamed owned filesystem cost", bytes, blocks, expected, allocated, err)
+	}
+	if total, allocated, err := nativeGraphCostAccumulateFileBytes(^uint64(0), 0, 1, 0); !errors.Is(err, errLimit) || total != ^uint64(0) || allocated != 0 {
+		t.Fatal("file byte sum overflow", total, allocated, err)
+	}
+	if _, _, err := nativeGraphCostAccumulateFileBytes(0, 0, 0, ^uint64(0)/512+1); !errors.Is(err, errLimit) {
+		t.Fatal("file block product overflow", err)
+	}
 	if size := reflect.TypeFor[graphProcessPacketJob]().Size(); size > 64 {
 		t.Fatal("cost timestamp exceeds existing queued-job admission allowance", size)
 	}
