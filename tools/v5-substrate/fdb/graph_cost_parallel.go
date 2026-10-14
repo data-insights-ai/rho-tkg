@@ -85,7 +85,11 @@ type graphCostParallelEnd struct {
 }
 
 func (e graphCostParallelEnd) complete(p graphCostProfile) bool {
-	if p.Writers != 8 && p.Writers != 32 || !validGraphCostProfile(e.Binding.Config) || e.Binding.Config.Cost != p || e.Format != graphCostParallelFormat || e.Binding != graphCostParallelPolicy(graphCostConfig(e.Binding.Config.Graph, p)) ||
+	format := graphCostParallelFormat
+	if graphCostRetainedConfig(e.Binding.Config) {
+		format = graphCostRetentionParallelFormat
+	}
+	if p.Writers != 8 && p.Writers != 32 || !validGraphCostProfile(e.Binding.Config) || e.Binding.Config.Cost != p || e.Format != format || e.Binding != graphCostParallelPolicy(graphCostConfig(e.Binding.Config.Graph, p)) ||
 		e.Attempts != 3+2*p.Facts+e.AbortedAttempts || e.Attempts > 3+2*p.Facts*graphCostParallelAttempts ||
 		e.Old.Attempts != 3+p.Facts+e.Old.AbortedAttempts || e.Old.Attempts > 3+p.Facts*graphCostParallelAttempts || e.Final.Attempts != e.Attempts || e.Final.AbortedAttempts != e.AbortedAttempts ||
 		e.SubmitInvocations < e.Attempts || e.SubmitInvocations > e.Attempts*graphCostParallelSubmissions ||
@@ -560,6 +564,13 @@ func runGraphCostParallel(db fdb.Database, p graphCostProfile) (err error) {
 	if layout == "columns" {
 		graph = "graph-cost-parallel-columns-v1"
 	}
+	retained, err := graphCostRetentionSelected()
+	if err != nil {
+		return err
+	}
+	if retained {
+		graph = graphCostRetentionGraph(layout, p.Writers)
+	}
 	if os.Getenv("FDB_COST_ARTIFACT") == "" {
 		return errInvalid
 	}
@@ -598,11 +609,14 @@ func runGraphCostParallel(db fdb.Database, p graphCostProfile) (err error) {
 	var payload hash.Hash = sha256.New()
 	attempts := json.NewEncoder(io.MultiWriter(attemptFile, payload))
 	end := graphCostParallelEnd{Format: graphCostParallelFormat, Binding: graphCostParallelPolicy(c), BindingRecord: binding}
+	if retained {
+		end.Format = graphCostRetentionParallelFormat
+	}
 	if err := attempts.Encode(struct {
 		Type, Format string
 		Binding      graphCostParallelBinding
 		Record       graphCostStoredRecord
-	}{"header", graphCostParallelFormat, end.Binding, binding}); err != nil {
+	}{"header", end.Format, end.Binding, binding}); err != nil {
 		return err
 	}
 	result := graphCostResult{Version: 4, Engine: "foundationdb", Spec: p, Config: c, Deployment: "single-machine distributed: four logical fault-domain containers, triple ssd", SetupNodes: 3, Creates: p.Facts, Updates: p.Facts, IDAdmission: "fixed declared fixture IDs/ranges; independent SDK clients, no rho allocator protocol"}
@@ -611,6 +625,14 @@ func runGraphCostParallel(db fdb.Database, p graphCostProfile) (err error) {
 		return err
 	}
 	result.InitialCut = initial.record
+	var retention *graphCostRetentionLane
+	if retained {
+		retention, err = newGraphCostRetentionLane(h, root, initial)
+		if err != nil {
+			return err
+		}
+		defer func() { err = errors.Join(err, retention.Close()) }()
+	}
 	var columns *graphCostColumnLane
 	if layout == "columns" {
 		columns, err = newGraphCostColumnLane(h, root, initial)
@@ -753,6 +775,11 @@ func runGraphCostParallel(db fdb.Database, p graphCostProfile) (err error) {
 		}
 		if name == "create" {
 			old, result.OldCut, end.Old = cert, cert.record, barrier
+			if retention != nil {
+				if err := retention.holdOld(cert); err != nil {
+					return err
+				}
+			}
 			if columns != nil {
 				if err := columns.holdOld(cert); err != nil {
 					return err
@@ -791,6 +818,16 @@ func runGraphCostParallel(db fdb.Database, p graphCostProfile) (err error) {
 		result.Version, result.OracleFormat, result.Columns = 5, graphCostParallelColumnFormat, &columnEnd
 	} else {
 		result.OracleFormat = graphCostParallelFormat
+	}
+	if retention != nil {
+		retentionEnd, err := retention.finish(cut{result.FinalCut}, columns)
+		if err != nil {
+			return err
+		}
+		result.Version, result.OracleFormat, result.Retention, result.Parallel = 6, graphCostRetentionFormat, &retentionEnd, &end
+		result.StreamEnds = retentionEnd.Sources
+		result.VerificationNanos, result.TotalNanos = time.Since(begin).Nanoseconds(), time.Since(started).Nanoseconds()
+		return publishGraphCostResult(root, result)
 	}
 	ends, err := h.graphCostArtifacts(root, initial, old, cut{result.FinalCut}, graphCostStreamPolicy{128, 16 << 20})
 	if err != nil {

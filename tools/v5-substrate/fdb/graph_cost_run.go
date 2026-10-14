@@ -34,10 +34,11 @@ type graphCostResult struct {
 	Config                                                   config
 	CDCGroups, LogicalComponentChanges, PhysicalGraphChanges uint64
 	IDAdmission                                              string
-	OracleFormat                                             string                `json:"oracleFormat,omitempty"`
-	StreamEnds                                               [3]graphCostStreamEnd `json:",omitzero"`
-	Columns                                                  *graphCostColumnEnd   `json:",omitempty"`
-	Parallel                                                 *graphCostParallelEnd `json:",omitempty"`
+	OracleFormat                                             string                 `json:"oracleFormat,omitempty"`
+	StreamEnds                                               [3]graphCostStreamEnd  `json:",omitzero"`
+	Columns                                                  *graphCostColumnEnd    `json:",omitempty"`
+	Parallel                                                 *graphCostParallelEnd  `json:",omitempty"`
+	Retention                                                *graphCostRetentionEnd `json:",omitempty"`
 }
 
 func graphCostSpecFromEnv() (graphCostProfile, error) {
@@ -198,6 +199,13 @@ func runGraphCost(db fdb.Database, p graphCostProfile) (err error) {
 	if layout == "columns" {
 		graph = "graph-cost-columns-v1"
 	}
+	retained, err := graphCostRetentionSelected()
+	if err != nil {
+		return err
+	}
+	if retained {
+		graph = graphCostRetentionGraph(layout, p.Writers)
+	}
 	c := graphCostConfig(graph, p)
 	h, err := newHarness(db, c)
 	if err != nil {
@@ -250,6 +258,14 @@ func runGraphCost(db fdb.Database, p graphCostProfile) (err error) {
 		return err
 	}
 	result.InitialCut = initial.record
+	var retention *graphCostRetentionLane
+	if retained {
+		retention, err = newGraphCostRetentionLane(h, artifactRoot, initial)
+		if err != nil {
+			return err
+		}
+		defer func() { err = errors.Join(err, retention.Close()) }()
+	}
 	var columns *graphCostColumnLane
 	if layout == "columns" {
 		columns, err = newGraphCostColumnLane(h, artifactRoot, initial)
@@ -366,6 +382,11 @@ func runGraphCost(db fdb.Database, p graphCostProfile) (err error) {
 		if phase == "create" {
 			old = certified
 			result.OldCut = certified.record
+			if retention != nil {
+				if err := retention.holdOld(certified); err != nil {
+					return err
+				}
+			}
 			if columns != nil {
 				if err := columns.holdOld(certified); err != nil {
 					return err
@@ -387,6 +408,16 @@ func runGraphCost(db fdb.Database, p graphCostProfile) (err error) {
 			return err
 		}
 		columnEnd = &end
+	}
+	if retention != nil {
+		end, err := retention.finish(cut{result.FinalCut}, columns)
+		if err != nil {
+			return err
+		}
+		result.Version, result.OracleFormat, result.Retention, result.Columns = 6, graphCostRetentionFormat, &end, columnEnd
+		result.StreamEnds = end.Sources
+		result.VerificationNanos, result.TotalNanos = time.Since(begin).Nanoseconds(), time.Since(started).Nanoseconds()
+		return publishGraphCostResult(artifactRoot, result)
 	}
 	// In the column lane this authentic source census follows derived collection:
 	// source history/current/original CDC must still reach all three real EOFs.

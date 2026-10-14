@@ -46,7 +46,7 @@ func graphCostConfig(graph string, p graphCostProfile) config {
 }
 func validGraphCostProfile(c config) bool {
 	p := c.Cost
-	parallel := (p.Writers == 8 || p.Writers == 32) && (c.Graph == "graph-cost-parallel-v1" || c.Graph == "graph-cost-parallel-columns-v1")
+	parallel := (p.Writers == 8 || p.Writers == 32) && (c.Graph == "graph-cost-parallel-v1" || c.Graph == "graph-cost-parallel-columns-v1" || graphCostRetainedConfig(c))
 	if p.Version != 1 || p.Facts < 1 || p.Facts > 1_000_000 || p.Writers != 1 && !parallel || p.CrossPercent != 0 && p.CrossPercent != 10 && p.CrossPercent != 50 && p.CrossPercent != 100 || c.Lifecycle != (lifecycleProfile{}) || c.CostScope != lifecycleConfig("validation").Lifecycle.Scope {
 		return false
 	}

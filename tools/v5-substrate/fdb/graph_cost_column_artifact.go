@@ -35,7 +35,7 @@ type graphCostColumnEnd struct {
 }
 
 func (e graphCostColumnEnd) complete() bool {
-	return e.Format == graphCostColumnFormat && e.SourceFormat == graphCostRawFormat && e.ReferenceLayout == "native-logical-kv-reference" &&
+	return (e.Format == graphCostColumnFormat && e.SourceFormat == graphCostRawFormat || e.Format == graphCostRetentionColumnFormat && e.SourceFormat == graphCostRetentionFormat) && e.ReferenceLayout == "native-logical-kv-reference" &&
 		e.PayloadSHA256 != [32]byte{} && e.ArtifactSHA256 != [32]byte{} && e.Old.Generation.ID == "old" && e.Final.Generation.ID == "final" &&
 		e.Counts.Chunks == e.Old.Chunks+e.Final.Chunks && e.Counts.WalkRows == 2*(e.Old.Rows+e.Final.Rows) && e.Counts.Points == 6 && e.Counts.Stages == 7 &&
 		e.Counts.Collections == e.Old.Chunks && e.Old.Chunks > 0 && e.Ledger.Generations == 2 && e.Ledger.Chunks == e.Final.Chunks &&
@@ -70,7 +70,7 @@ func graphCostColumnPolicies(p graphCostProfile) (graphColumnPolicy, graphColumn
 }
 
 func newGraphCostColumnLane(h *harness, root *os.Root, initial cut) (*graphCostColumnLane, error) {
-	if h == nil || root == nil || h.config.Graph != "graph-cost-columns-v1" && h.config.Graph != "graph-cost-parallel-columns-v1" || !validGraphCostProfile(h.config) {
+	if h == nil || root == nil || h.config.Graph != "graph-cost-columns-v1" && h.config.Graph != "graph-cost-parallel-columns-v1" && h.config.Graph != graphCostRetentionGraph("columns", h.config.Cost.Writers) || !validGraphCostProfile(h.config) {
 		return nil, errInvalid
 	}
 	policy, retention := graphCostColumnPolicies(h.config.Cost)
@@ -88,6 +88,9 @@ func newGraphCostColumnLane(h *harness, root *os.Root, initial cut) (*graphCostC
 	}
 	l := &graphCostColumnLane{s: s, pins: pins, root: root, file: file, payload: sha256.New(), whole: sha256.New(), initial: initial}
 	l.end.Format, l.end.SourceFormat, l.end.ReferenceLayout = graphCostColumnFormat, graphCostRawFormat, "native-logical-kv-reference"
+	if graphCostRetainedConfig(h.config) {
+		l.end.Format, l.end.SourceFormat = graphCostRetentionColumnFormat, graphCostRetentionFormat
+	}
 	body, err := wire(initial.record)
 	if err != nil {
 		return nil, errors.Join(err, l.Close())
@@ -100,7 +103,7 @@ func newGraphCostColumnLane(h *harness, root *os.Root, initial cut) (*graphCostC
 			InitialCut                                  certificate
 			StoragePagePolicy                           graphCostStreamPolicy
 			Records                                     []graphCostStoredRecord
-		}{"header", graphCostColumnFormat, graphCostRawFormat, l.end.ReferenceLayout, h.config, initial.record, graphCostStreamPolicy{graphCostColumnStorageRows, graphCostColumnStorageBytes}, records}, true)
+		}{"header", l.end.Format, l.end.SourceFormat, l.end.ReferenceLayout, h.config, initial.record, graphCostStreamPolicy{graphCostColumnStorageRows, graphCostColumnStorageBytes}, records}, true)
 	}
 	if err != nil {
 		return nil, errors.Join(err, l.Close())

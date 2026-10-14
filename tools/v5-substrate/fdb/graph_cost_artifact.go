@@ -185,11 +185,18 @@ func (h *harness) graphCostArtifacts(root *os.Root, initial, old, final cut, pol
 // Link publishes only the closed exclusive file and refuses an existing result.
 // The launcher must still prove exit0, owned cleanup and every artifact hash.
 func publishGraphCostResult(root *os.Root, result graphCostResult) error {
-	if root == nil || !((result.Version == 2 && result.OracleFormat == graphCostRawFormat && result.Columns == nil && result.Parallel == nil) ||
-		(result.Version == 3 && result.OracleFormat == graphCostColumnFormat && result.Columns != nil && result.Columns.complete() && result.Parallel == nil) ||
-		(result.Version == 4 && result.OracleFormat == graphCostParallelFormat && result.Columns == nil && result.Parallel != nil && result.Parallel.complete(result.Spec)) ||
-		(result.Version == 5 && result.OracleFormat == graphCostParallelColumnFormat && result.Columns != nil && result.Columns.complete() && result.Parallel != nil && result.Parallel.complete(result.Spec))) {
+	retained := result.Version == 6 && result.OracleFormat == graphCostRetentionFormat && result.Retention != nil
+	if root == nil || !((result.Retention == nil && ((result.Version == 2 && result.OracleFormat == graphCostRawFormat && result.Columns == nil && result.Parallel == nil) ||
+		(result.Version == 3 && result.OracleFormat == graphCostColumnFormat && result.Columns != nil && result.Columns.Format == graphCostColumnFormat && result.Columns.complete() && result.Parallel == nil) ||
+		(result.Version == 4 && result.OracleFormat == graphCostParallelFormat && result.Columns == nil && result.Parallel != nil && result.Parallel.Format == graphCostParallelFormat && result.Parallel.complete(result.Spec)) ||
+		(result.Version == 5 && result.OracleFormat == graphCostParallelColumnFormat && result.Columns != nil && result.Columns.Format == graphCostColumnFormat && result.Columns.complete() && result.Parallel != nil && result.Parallel.Format == graphCostParallelFormat && result.Parallel.complete(result.Spec)))) ||
+		(retained && result.Retention.complete(result.Spec) && result.Retention.Binding.Config == result.Config && result.Retention.Sources == result.StreamEnds &&
+			(result.Columns == nil || result.Columns.Format == graphCostRetentionColumnFormat && result.Columns.complete()) &&
+			(result.Parallel == nil && result.Spec.Writers == 1 || result.Parallel != nil && result.Parallel.Format == graphCostRetentionParallelFormat && result.Parallel.complete(result.Spec)))) {
 		return errInvalid
+	}
+	if retained && (!sameCertificate(result.Retention.Binding.Initial, result.InitialCut) || !sameCertificate(result.Retention.OldCut, result.OldCut) || !sameCertificate(result.Retention.FinalCut, result.FinalCut)) {
+		return errMismatch
 	}
 	columnGraph := "graph-cost-columns-v1"
 	if result.Parallel != nil {
@@ -197,6 +204,9 @@ func publishGraphCostResult(root *os.Root, result graphCostResult) error {
 		if result.Config != result.Parallel.Binding.Config || !sameCertificate(result.Parallel.Old.Cut, result.OldCut) || !sameCertificate(result.Parallel.Final.Cut, result.FinalCut) {
 			return errMismatch
 		}
+	}
+	if retained {
+		columnGraph = graphCostRetentionGraph("columns", result.Spec.Writers)
 	}
 	if result.Columns != nil && (result.Config.Graph != columnGraph ||
 		!sameCertificate(result.Columns.Old.Generation.Initial, result.InitialCut) || !sameCertificate(result.Columns.Final.Generation.Initial, result.InitialCut) ||
