@@ -625,18 +625,20 @@ func (m *graphProcessMux) relayLoop() {
 // precise error correlation even for native cross replies whose error has no ID.
 // Host Step/Tick/cancel and IPC remain on the independent event lane.
 type graphProcessPumpCall struct {
-	ctx        context.Context
-	kind       byte
-	allocation allocationQuery
-	cross      crossQuery
-	request    crossRequestQuestion
-	cut        graphCutQuery
-	move       rangeMoveQuery
-	baseline   uint64
-	scanned    int
-	proposal   allocationProposal
-	id         allocationReadID
-	reply      chan graphProcessPumpReply
+	ctx            context.Context
+	kind           byte
+	allocation     allocationQuery
+	cross          crossQuery
+	capacity       bool
+	capacityLimits graphCapacityLimits
+	request        crossRequestQuestion
+	cut            graphCutQuery
+	move           rangeMoveQuery
+	baseline       uint64
+	scanned        int
+	proposal       allocationProposal
+	id             allocationReadID
+	reply          chan graphProcessPumpReply
 }
 
 // advanceGraphProcessPumpQueue isolates the dispatcher queue transition; the
@@ -699,6 +701,7 @@ func pollGraphProcessCutSubmission(ctx context.Context, h *allocationHost, propo
 type graphProcessPumpReply struct {
 	allocation allocationReply
 	cross      crossReply
+	capacity   crossCapacityReply
 	request    crossRequestReply
 	cut        graphCutReply
 	move       rangeMoveReply
@@ -748,6 +751,10 @@ func (p *graphProcessChildPump) Move(ctx context.Context, q rangeMoveQuery) (ran
 func (p *graphProcessChildPump) Cross(ctx context.Context, q crossQuery) (crossReply, error) {
 	r, e := p.wait(&graphProcessPumpCall{ctx: ctx, kind: sourceCrossRead, cross: q})
 	return r.cross, e
+}
+func (p *graphProcessChildPump) Capacity(ctx context.Context, q allocationProposal, nonce [16]byte, limits graphCapacityLimits) (crossCapacityReply, error) {
+	r, e := p.wait(&graphProcessPumpCall{ctx: ctx, kind: sourceCrossRead, proposal: q, cross: crossQuery{nonce: nonce}, capacity: true, capacityLimits: limits})
+	return r.capacity, e
 }
 func (p *graphProcessChildPump) Request(ctx context.Context, q crossRequestQuestion) (crossRequestReply, error) {
 	r, e := p.wait(&graphProcessPumpCall{ctx: ctx, kind: sourceRequestLookup, request: q})
@@ -1172,7 +1179,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		if err := p08.event(&e); err != nil {
 			return err
 		}
-		if len(e.capacityReplies) != 0 || len(e.snapshotSends) != 0 && snapshots == nil {
+		if len(e.snapshotSends) != 0 && snapshots == nil {
 			return errInvalid
 		}
 		if active != nil {
@@ -1194,6 +1201,16 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					e.replies = nil
 				}
 			case sourceCrossRead:
+				if active.capacity {
+					if len(e.capacityReplies) > 0 {
+						if len(e.capacityReplies) != 1 || e.capacityReplies[0].id != active.id || e.capacityReplies[0].err == nil && (e.capacityReplies[0].proof.owner != h || e.capacityReplies[0].proof.observation.nonce != active.cross.nonce) {
+							return errInvalid
+						}
+						finish(active, graphProcessPumpReply{capacity: e.capacityReplies[0]})
+						e.capacityReplies = nil
+					}
+					break
+				}
 				if len(e.crossReplies) > 0 {
 					if len(e.crossReplies) != 1 || e.crossReplies[0].err == nil && e.crossReplies[0].proof.id != active.id {
 						return errInvalid
@@ -1218,6 +1235,9 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					e.requestReplies = nil
 				}
 			}
+		}
+		if len(e.capacityReplies) != 0 {
+			return errInvalid
 		}
 		if err := o.event(e); err != nil {
 			return err
@@ -1248,7 +1268,11 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		case sourceOpen:
 			event, err = h.Read(c.allocation)
 		case sourceCrossRead:
-			event, err = h.ReadCrossPhase(c.cross.tx, c.cross.phase, c.cross.nonce)
+			if c.capacity {
+				event, err = h.readCrossCapacityConflict(c.proposal, c.cross.nonce, c.capacityLimits)
+			} else {
+				event, err = h.ReadCrossPhase(c.cross.tx, c.cross.phase, c.cross.nonce)
+			}
 		case sourceRequestLookup:
 			event, err = h.readCrossRequest(c.request)
 		case sourceCutRead:
