@@ -573,10 +573,23 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    results, postings and CDC. Current-source coverage is 82.0%/80.9% for the
    two new implementation files; configured lint/security/vulnerability gates
    pass on the same executable source. Owned runtime resources are removed.
-   This is functional qualification only. Complete cross-engine CDC comparison,
-   matched uninstrumented cost cells, the full matrix and engine selection remain
-   open; the [focused-CI adapter](../tools/v5-substrate/fdb/evidence/cost-final-source-20261013.json)
+   This is functional qualification only. Matched uninstrumented cost cells,
+   the full matrix and engine selection remain open; the
+   [focused-CI adapter](../tools/v5-substrate/fdb/evidence/cost-final-source-20261013.json)
    preserves that distinction and the earlier failed attempts.
+   The [native cost runner](evidence/v2-native-cost-runner/receipt.json) now
+   checkpoints at most 16 actual acknowledgements through genuine certified
+   cuts, checking original records on all six voters. Its metadata comes from
+   retained application history and controls, preserving inspection after Raft
+   prefix compaction. Twelve selected parents pass normal/race/scoped coverage;
+   the later two-fact fixtures pass separately. The complete CDC comparator
+   checks every original group, effect and physical posting; genuine two-fact
+   LOCAL/CROSS pairs match seven groups and nine effects each. Seventeen-fact
+   native histories exercise full and partial batches. These finite proofs
+   preserve the [earlier incomplete 10,000-fact trial](evidence/v2-real-substrate-cost-20261012/receipt.json),
+   which reached the time limit before final retained-point verification.
+   Larger layouts, concurrent writers, resource qualification and the engine
+   decision remain open; comparison state currently grows with the fact count.
    The
    [bounded voting/control model](evidence/v2-graph-lifecycle-admission/replacement-model.py)
    passes 5,040 event schedules and 11 finite checks, independently rerun against
