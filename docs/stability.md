@@ -19,7 +19,7 @@ Breaking changes are reserved for v5.0.0 or later.
 
 Any method or field whose behavior or meaning will change receives a `// Deprecated:` godoc marker **at least one minor release before** the change lands. For example, deprecation in v4.12.0 permits incompatible change in v4.13.0 or later; it does not permit it in the same release.
 
-While René's patch-only rule holds (no minor versions until he asks, 2026-10-10), "minor release" here reads "release": the marker and a CHANGELOG `Deprecated` entry ship in one patch, with sigma-tkgd and ai-soc notified, and the change lands in a later patch. Additive, opt-in designs that change nothing for existing callers need no ritual and are preferred.
+Version numbers (René 2026-10-14): a release with a really new feature (a new door, option or capability) bumps the MINOR version; fixes, performance work and doc changes are PATCH releases. The ritual reads "release": the marker and a CHANGELOG `Deprecated` entry ship in one release, with sigma-tkgd and ai-soc notified, and the change lands in a later release. Additive, opt-in designs that change nothing for existing callers need no ritual and are preferred.
 
 An on-disk format change follows the same ritual, in two steps: the release that announces it (CHANGELOG `Deprecated`) already READS the new format, and the writer switches one release later, so an upgrade that has to be rolled back can always go back one release. Example, backlog 61: step 1 (the next patch) reads binary integrity hashes and store marker 4 while still writing hex and marker 3; step 2 (one patch later) writes binary hashes and stamps marker 4, which releases before step 1 refuse (`ErrWireFormatVersionUnsupported`).
 

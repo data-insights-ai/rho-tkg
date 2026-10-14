@@ -12,7 +12,7 @@ N"): never renumber or reuse. "merged into N" / "superseded by N" stubs keep a n
   irreversible or materially different (81). Tick the ledger and doc targets at every release (80, 41).
 - Red first: a failing break-the-code test before the fix, a clean root-cause fix at the shared seam, no "known limitation" in
   place of work (78, 27, 77).
-- Releases: PATCH only, batched, one gate; behaviour changes via the deprecation ritual, no new named exceptions (79); full
+- Releases: MINOR for a really new feature, PATCH otherwise (René 2026-10-14; was patch-only since 10-10), batched, one gate; behaviour changes via the deprecation ritual, no new named exceptions (79); full
   `make test-race` before a tag (66); a green workflow means its gates ran (75).
 - Reviews: one round per branch, authors run lint + security first; models: builds Opus, code reviews Opus high, final Fable
   review before tagging, doc work Sonnet (79).
