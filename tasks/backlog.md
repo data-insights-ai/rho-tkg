@@ -355,6 +355,10 @@ Applied/Blocked/Stale results remain immutable, original PLMs are preserved,
 and current source selection uses the genuine installed plan anchor. Its fresh
 profile constructor remains withheld pending transport and handoff wiring;
 graph logical key-family retirement is separate. These guards are authored only.
+Remote classification is integrated at `860f6b32`: the fresh collected profile
+preserves authenticated graph/native history expiry independently of pin
+expiry, unavailable authority and exact-empty data. Older response bytes and
+cause-bit meanings remain unchanged; old agreements reject the new status.
 `ab650bbc` also refuses a replacement plan
 while native collection has unfinished cursor progress. Fresh initialization preserves retention
 configuration and prepays/publishes its actual recovery-root census at
@@ -432,7 +436,14 @@ real packet drop/duplicate/reorder/directed partition and finite delays, matched
 WAL short-write/EIO/ENOSPC/file-sync failures, and directory-sync failure during
 genuine same-directory reopen. Its raw-prefix/original/serial bridge and owned
 process/queue accounting are authored, not executed. The queued capacity
-COMMIT/ABORT first-decision child-authority seam, old-leader schedules, unequal
+COMMIT/ABORT first-decision source package is integrated at `1ba59c78`: the
+original child retains two genuinely constructed private candidates, both actual
+native admissions precede either application's progress, and both queue orders
+bind persisted inputs to the immutable first decision, complete typed CDC,
+same-original retries and replacement state. The optional observation seam owns
+prepaid detached copies; cancellation never supplies a vote or decision.
+Its process parents and independent prefix/serial checker remain unexecuted.
+Old-leader schedules, unequal
 ticks/clock jumps, quorum/domain loss, torn/power-loss images, snapshot
 publication and corrupt pages remain implementation work. All eight declared
 cost workload dispatches and RTT/matrix integration also remain open; a finite
