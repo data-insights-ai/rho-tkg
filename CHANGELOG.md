@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Badger relationship temporal index build reads sequentially** (backlog 10(a)): `CreateRelTemporalIndex`, the
+  rebuild at a crash reopen and the tiered cold-to-warm promotion build the per-relationship envelope from one read
+  transaction with two forward walks (relationship rows, relationship history) in ID order, instead of a point read
+  plus a history prefix scan per relationship; a delta history row is folded from its temporal block without the
+  anchor read. Same envelopes (`TestRelTemporalIndexRebuildSequential` compares against the old build). 200,000
+  relationships with history, reopened store: 96,973 → 405,779 rels/s (4.2×; Ryzen 9 7950X3D)
+  (`tasks/evidence/rel-temporal-rebuild/03-bench.txt`). The create-vs-concurrent-write race (backlog 22) is
+  unchanged.
+
 ## [4.51.5] - 2026-10-13
 
 ### Added
