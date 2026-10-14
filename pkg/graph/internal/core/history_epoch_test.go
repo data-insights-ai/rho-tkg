@@ -138,6 +138,16 @@ func TestHistoryEpoch_Contract(t *testing.T) {
 				e = fresh(e, "after a compaction (rows removed only)")
 				same(e, "after the compaction, read again")
 			}
+			if be.name == "tiered" {
+				// A shard-set change (here a rotation; a retention drop or Clear
+				// likewise) moves every token: a shard can leave the history walk
+				// without a history write on the shards that stay.
+				if err := g.Admin.ForceRotate(); err != nil {
+					t.Fatal(err)
+				}
+				e = fresh(e, "after a shard-set change")
+				same(e, "after the shard-set change, read again")
+			}
 			re, err := g.historyEpochs.RelHistoryEpoch(rel)
 			if err != nil || re == 0 {
 				t.Fatalf("rel token %d, %v", re, err)

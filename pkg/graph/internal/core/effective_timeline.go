@@ -119,6 +119,16 @@ func effectivePieces[T interface {
 	comparable
 	storeutil.TemporalRow
 }](c *Core, k *chainKernel[T], chain []T, pin types.Instant) []effPiece[T] {
+	return effectivePiecesFacts(c, k, chain, pin, nil)
+}
+
+// effectivePiecesFacts is effectivePieces that also fills facts (when not
+// nil) for a head entry (effective_head.go), from the rows the fold already
+// walks: no extra copy, sort or classification.
+func effectivePiecesFacts[T interface {
+	comparable
+	storeutil.TemporalRow
+}](c *Core, k *chainKernel[T], chain []T, pin types.Instant, facts *headFacts) []effPiece[T] {
 	if len(chain) == 1 {
 		// An entity without history: the sweep below on one row, without its
 		// allocations (one row is monotonic; its positional bounds, capped by
@@ -155,11 +165,18 @@ func effectivePieces[T interface {
 			origin[r] = i
 		}
 	}
+	if facts != nil && len(filtered) == len(chain) {
+		gatherHeadFacts(facts, c, k, filtered)
+	}
 	filtered = dropRetractedLives(filtered)
 	if len(filtered) == 0 {
 		return nil
 	}
-	return effectiveSweep(c, k, filtered, origin, false)
+	pieces, cascade := effectiveSweep(c, k, filtered, origin, false)
+	if facts != nil {
+		facts.cascade = cascade
+	}
+	return pieces
 }
 
 // effectiveSweep is effectivePieces after the transaction-time filter: the
@@ -170,7 +187,7 @@ func effectivePieces[T interface {
 func effectiveSweep[T interface {
 	comparable
 	storeutil.TemporalRow
-}](c *Core, k *chainKernel[T], filtered []T, origin map[T]int, keepVoid bool) []effPiece[T] {
+}](c *Core, k *chainKernel[T], filtered []T, origin map[T]int, keepVoid bool) ([]effPiece[T], bool) {
 	caps := chainLifeEnds(filtered)
 
 	// The resolver's classification and order (it sorts its argument).
@@ -260,7 +277,7 @@ func effectiveSweep[T interface {
 		}
 		out = append(out, effPiece[T]{from: from, to: to, row: w, src: origin[w]})
 	}
-	return out
+	return out, cascade
 }
 
 // effHeap is a max-heap of intervals by priority.
@@ -439,9 +456,13 @@ func (c *Core) nodeEffectiveTimelineFrom(rd entityReads, id types.NodeID, pin ty
 	if current != nil {
 		chain = append(chain, current)
 	}
-	pieces := c.nodeEffectivePieces(chain, pin)
+	var facts *headFacts
 	if epoch != 0 {
-		c.noteNodeHead(id, epoch, chain, current, pieces, pin)
+		facts = &headFacts{}
+	}
+	pieces := effectivePiecesFacts(c, nodeKernel, chain, pin, facts)
+	if facts != nil {
+		c.noteNodeHead(id, epoch, current, pieces, facts)
 	}
 	return nodeSegments(pieces, nil), nil
 }
@@ -503,9 +524,13 @@ func (c *Core) relEffectiveTimelineFrom(rd entityReads, id types.RelID, pin type
 	if current != nil {
 		chain = append(chain, current)
 	}
-	pieces := c.relEffectivePieces(chain, pin)
+	var facts *headFacts
 	if epoch != 0 {
-		c.noteRelHead(id, epoch, chain, current, pieces, pin)
+		facts = &headFacts{}
+	}
+	pieces := effectivePiecesFacts(c, relKernel, chain, pin, facts)
+	if facts != nil {
+		c.noteRelHead(id, epoch, current, pieces, facts)
 	}
 	return relSegments(pieces, nil), nil
 }
@@ -537,9 +562,13 @@ func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, cur
 	if current != nil {
 		chain = append(chain, current)
 	}
-	pieces := c.nodeEffectivePieces(chain, pin)
+	var facts *headFacts
 	if epoch != 0 {
-		c.noteNodeHead(id, epoch, chain, current, pieces, pin)
+		facts = &headFacts{}
+	}
+	pieces := effectivePiecesFacts(c, nodeKernel, chain, pin, facts)
+	if facts != nil {
+		c.noteNodeHead(id, epoch, current, pieces, facts)
 	}
 	// Winners are told apart by origin, not by version: in a chain stored
 	// before backlog 38 a re-imported ID's current row shares version
@@ -595,9 +624,13 @@ func (c *Core) relEffectiveViaTemporalMeta(rd entityReads, id types.RelID, curre
 	if current != nil {
 		chain = append(chain, current)
 	}
-	pieces := c.relEffectivePieces(chain, pin)
+	var facts *headFacts
 	if epoch != 0 {
-		c.noteRelHead(id, epoch, chain, current, pieces, pin)
+		facts = &headFacts{}
+	}
+	pieces := effectivePiecesFacts(c, relKernel, chain, pin, facts)
+	if facts != nil {
+		c.noteRelHead(id, epoch, current, pieces, facts)
 	}
 	// Winners are told apart by origin, not by version: in a chain stored
 	// before backlog 38 a re-imported ID's current row shares version

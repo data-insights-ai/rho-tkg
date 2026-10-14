@@ -52,8 +52,17 @@ import (
 // the fold at every pin on memory, badger, sharded and tiered.
 // =============================================================================
 
-// headCacheCap bounds the entries per graph; at the cap the cache is dropped.
-const headCacheCap = 1 << 14
+// The cache is bounded by pieces, not entries (an entry weighs its pieces
+// plus one): at most headCacheMaxPieces over the graph, split evenly over
+// headCacheStripes stripes, each dropped whole when a put would pass its
+// share. An answer of more than headMaxEntryPieces pieces is not kept (its
+// reads fold, as before backlog 68).
+const (
+	headCacheStripes    = 64
+	headCacheMaxPieces  = 1 << 20
+	headMaxEntryPieces  = 512
+	headStripeMaxWeight = headCacheMaxPieces / headCacheStripes
+)
 
 // headPiece is one piece [from, to) (to 0: open) of a head answer; version
 // names the winning row (versions are unique in a cached chain).
@@ -81,29 +90,69 @@ type headKey struct {
 	id  snowflake.ID
 }
 
-// headCache holds the head answers of one graph.
+// headCache holds the head answers of one graph: striped by key under
+// read-write locks, so concurrent head reads of different entities share no
+// lock and a hit takes one stripe's read lock.
 type headCache struct {
-	mu sync.Mutex
-	m  map[headKey]*headEntry
+	stripes [headCacheStripes]headStripe
+}
+
+type headStripe struct {
+	mu     sync.RWMutex
+	m      map[headKey]*headEntry
+	weight int // pieces + entries held
+	_      [32]byte
+}
+
+func headWeight(e *headEntry) int { return len(e.pieces) + 1 }
+
+func (h *headCache) stripe(k headKey) *headStripe {
+	x := uint64(k.id) * 0x9E3779B97F4A7C15 // Fibonacci hash: snowflake IDs share low bits
+	if k.rel {
+		x ^= 1 << 63
+	}
+	return &h.stripes[x>>58] // top 6 bits: 64 stripes
 }
 
 func (h *headCache) get(k headKey) *headEntry {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.m[k]
+	s := h.stripe(k)
+	s.mu.RLock()
+	e := s.m[k]
+	s.mu.RUnlock()
+	return e
 }
 
+// put keeps e under k (nil drops k's entry). An entry above
+// headMaxEntryPieces is not kept: k's entry is dropped instead.
 func (h *headCache) put(k headKey, e *headEntry) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if e == nil {
-		delete(h.m, k)
+	s := h.stripe(k)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if old, ok := s.m[k]; ok {
+		s.weight -= headWeight(old)
+		delete(s.m, k)
+	}
+	if e == nil || len(e.pieces) > headMaxEntryPieces {
 		return
 	}
-	if h.m == nil || len(h.m) >= headCacheCap {
-		h.m = make(map[headKey]*headEntry)
+	w := headWeight(e)
+	if s.m == nil || s.weight+w > headStripeMaxWeight {
+		s.m, s.weight = make(map[headKey]*headEntry), 0
 	}
-	h.m[k] = e
+	s.m[k] = e
+	s.weight += w
+}
+
+// size reports the entries and the weight held (tests).
+func (h *headCache) size() (entries, weight int) {
+	for i := range h.stripes {
+		s := &h.stripes[i]
+		s.mu.RLock()
+		entries += len(s.m)
+		weight += s.weight
+		s.mu.RUnlock()
+	}
+	return entries, weight
 }
 
 // historyEpochCapability admits the history token unless a wrapper only
@@ -163,39 +212,53 @@ func (c *Core) headValid(k headKey, epoch uint64, curVer uint32, curTM types.Tem
 	return e
 }
 
-// headFromFold builds the entry for a chain (history rows, then current;
-// rows may be skeletons) folded at pin into pieces, or nil when the chain or
-// the pin does not qualify (see the section comment).
+// headFacts is what an entry needs from its chain, gathered by the fold
+// (effectivePiecesFacts) from the rows it already walks.
+type headFacts struct {
+	ok        bool // the chain qualifies (see gatherHeadFacts)
+	maxTx     types.Instant
+	maxTxTo   types.Instant
+	maxVer    uint32
+	lastStart types.Instant
+	lastEnd   types.Instant
+	cascade   bool // set from the sweep
+}
+
+// gatherHeadFacts fills f from filtered, the fold's chain in write order when every
+// row was recorded by the pin and none was normalized (the caller checks
+// that no row was dropped). It qualifies when no row carries a delete (no
+// life ends, no retraction) and versions are unique (write order is then
+// version order); a chain stored before backlog 38 with a version shared by
+// two rows does not.
+func gatherHeadFacts[T interface {
+	comparable
+	storeutil.TemporalRow
+}](f *headFacts, c *Core, k *chainKernel[T], filtered []T) {
+	for i, r := range filtered {
+		tm := r.Temporal()
+		if tm == nil || tm.DeletedAt != 0 || tm.Retracted || (i > 0 && filtered[i-1].Version() >= r.Version()) {
+			return
+		}
+		f.maxTx, f.maxTxTo = max(f.maxTx, tm.TxFrom), max(f.maxTxTo, tm.TxTo)
+	}
+	last := filtered[len(filtered)-1]
+	f.maxVer = last.Version()
+	f.lastStart, f.lastEnd = k.sortVF(c, last), last.Temporal().ValidTo
+	f.ok = true
+}
+
+// headFromFold builds the entry for a fold's pieces and facts, or nil when
+// the chain did not qualify or the answer is too large to keep.
 func headFromFold[T interface {
 	comparable
 	storeutil.TemporalRow
-}](c *Core, k *chainKernel[T], epoch uint64, chain []T, current T, pieces []effPiece[T], pin types.Instant) *headEntry {
-	if epoch == 0 || len(chain) < 2 {
+}](epoch uint64, current T, pieces []effPiece[T], f *headFacts) *headEntry {
+	if epoch == 0 || !f.ok || len(pieces) > headMaxEntryPieces {
 		return nil
 	}
-	e := &headEntry{epoch: epoch, curVer: current.Version(), curTM: temporalOf(current)}
-	byVersion := slices.Clone(chain)
-	slices.SortFunc(byVersion, func(a, b T) int { return cmp.Compare(a.Version(), b.Version()) })
-	for i, r := range byVersion {
-		tm := r.Temporal()
-		if tm == nil || tm.DeletedAt != 0 || tm.Retracted {
-			return nil
-		}
-		if i > 0 && byVersion[i-1].Version() == r.Version() {
-			return nil // a version shared by two rows (a pre-backlog-38 chain)
-		}
-		e.maxTx, e.maxTxTo = max(e.maxTx, tm.TxFrom), max(e.maxTxTo, tm.TxTo)
-	}
-	if pin < e.maxTx {
-		return nil
-	}
-	last := byVersion[len(byVersion)-1]
-	e.maxVer = last.Version()
-	e.lastStart, e.lastEnd = k.sortVF(c, last), last.Temporal().ValidTo
-	// The resolver's arm: its write order (version order: no deaths) checked
-	// by its own classifier (sortChain sorts its argument).
-	e.cascade = k.sortChain(c, byVersion)
-	e.pieces = make([]headPiece, len(pieces))
+	e := &headEntry{epoch: epoch, curVer: current.Version(), curTM: temporalOf(current),
+		maxTx: f.maxTx, maxTxTo: f.maxTxTo, maxVer: f.maxVer, cascade: f.cascade,
+		lastStart: f.lastStart, lastEnd: f.lastEnd, pieces: make([]headPiece, len(pieces))}
 	for i, p := range pieces {
 		e.pieces[i] = headPiece{from: p.from, to: p.to, version: p.row.Version()}
 	}
@@ -328,14 +391,14 @@ func (c *Core) relHeadSegments(rd entityReads, id types.RelID, current *types.Re
 }
 
 // noteNodeHead keeps the head answer a fold produced (no-op unless it qualifies).
-func (c *Core) noteNodeHead(id types.NodeID, epoch uint64, chain []*types.Node, current *types.Node, pieces []effPiece[*types.Node], pin types.Instant) {
-	if e := headFromFold(c, nodeKernel, epoch, chain, current, pieces, pin); e != nil {
+func (c *Core) noteNodeHead(id types.NodeID, epoch uint64, current *types.Node, pieces []effPiece[*types.Node], f *headFacts) {
+	if e := headFromFold(epoch, current, pieces, f); e != nil {
 		c.heads.put(headKey{id: id.SnowflakeID()}, e)
 	}
 }
 
-func (c *Core) noteRelHead(id types.RelID, epoch uint64, chain []*types.Relationship, current *types.Relationship, pieces []effPiece[*types.Relationship], pin types.Instant) {
-	if e := headFromFold(c, relKernel, epoch, chain, current, pieces, pin); e != nil {
+func (c *Core) noteRelHead(id types.RelID, epoch uint64, current *types.Relationship, pieces []effPiece[*types.Relationship], f *headFacts) {
+	if e := headFromFold(epoch, current, pieces, f); e != nil {
 		c.heads.put(headKey{rel: true, id: id.SnowflakeID()}, e)
 	}
 }

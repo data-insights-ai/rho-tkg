@@ -11,14 +11,18 @@ import (
 	"testing"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // The head-answer cache (effective_head.go, backlog 68) against the fold: a
 // random sequence of corrections (SetVersionInterval bounded and open, gaps,
 // at the clock and at a caller instant equal to the newest stamp), excises
-// (void rows), Updates (replacing rows: TxTo), CloseVersion, GraphTx commits
-// and rollbacks, deletes and history compaction, on nodes and relationships,
+// (void rows), Updates (replacing rows: TxTo), in-place validity rewrites,
+// CloseVersion, GraphTx commits and rollbacks followed by rewrites, deletes and
+// re-imports, history compaction, Clear (Admin.Reset), retention purge and, on
+// tiered, Archive / Restore, rotation and the idle close of cold shards, on
+// nodes and relationships,
 // on memory, badger, sharded and tiered. After every step each entity's
 // timeline is read twice at the head pin (a miss that keeps the answer, then
 // a hit) and at random earlier pins, and every answer must equal the fold
@@ -43,22 +47,28 @@ func TestEffectiveHead_DifferentialOracle(t *testing.T) {
 		seeds = n
 	}
 	var hits, overlays, checks uint64
+	opsAll := map[string]int{}
 	for _, be := range r10AllBackends(t) {
 		for s := range seeds {
 			seed := uint64(0x68_00 + s)
 			t.Run(fmt.Sprintf("%s/seed=%d", be.name, seed), func(t *testing.T) {
 				cfg := be.cfg()
-				cfg.AllowTxBackfill = true
+				cfg.AllowTxBackfill, cfg.AllowReset, cfg.AllowRetentionPurge = true, true, true
 				g, err := New(cfg)
 				if err != nil {
 					t.Fatal(err)
 				}
 				t.Cleanup(func() { _ = g.Close() })
-				h := &headOracle{t: t, g: g, rng: rand.New(rand.NewPCG(seed, 68))}
+				h := &headOracle{t: t, g: g, rng: rand.New(rand.NewPCG(seed, 68)), ops: map[string]int{}}
+				h.tiered, _ = g.store.(*tiered.Store)
 				h.setup()
 				for step := range steps {
 					h.step(step)
 					h.checkAll(fmt.Sprintf("step %d (%s)", step, h.last))
+				}
+				t.Logf("ops %v", h.ops)
+				for k, v := range h.ops {
+					opsAll[be.name+" "+k] += v
 				}
 				hits += g.headHits.Load()
 				overlays += g.headOverlays.Load()
@@ -69,6 +79,13 @@ func TestEffectiveHead_DifferentialOracle(t *testing.T) {
 	t.Logf("%d comparisons, %d head reads answered from an entry, %d corrections extended one", checks, hits, overlays)
 	if hits == 0 || overlays == 0 {
 		t.Fatalf("the generator never exercised the cache: %d hits, %d overlays", hits, overlays)
+	}
+	if !testing.Short() && !isRaceEnabled() {
+		for _, k := range []string{"memory purge", "tiered archive", "tiered restore", "tiered rotate", "tiered idle-close"} {
+			if opsAll[k] == 0 {
+				t.Errorf("the generator never ran %s: %v", k, opsAll)
+			}
+		}
 	}
 }
 
@@ -81,6 +98,8 @@ type headOracle struct {
 	pins   []types.Instant
 	last   string
 	checks uint64
+	tiered *tiered.Store
+	ops    map[string]int
 }
 
 func (h *headOracle) props() map[string]any {
@@ -89,6 +108,7 @@ func (h *headOracle) props() map[string]any {
 
 func (h *headOracle) setup() {
 	ctx := context.Background()
+	first := len(h.nodes)
 	for i := range 3 {
 		p := h.props()
 		if i > 0 {
@@ -97,7 +117,11 @@ func (h *headOracle) setup() {
 		if i == 2 {
 			p["tkg_valid_to"] = int64(900)
 		}
-		n, err := h.g.Nodes.Add(ctx, []string{"H"}, p)
+		labels := []string{"H"}
+		if i%2 == 0 {
+			labels = []string{"Ref", "H"} // a tiered reference node (primary label Ref): archivable
+		}
+		n, err := h.g.Nodes.Add(ctx, labels, p)
 		if err != nil {
 			h.t.Fatal(err)
 		}
@@ -106,7 +130,7 @@ func (h *headOracle) setup() {
 	for i := range 2 {
 		p := h.props()
 		p["tkg_valid_from"] = int64(50 + 100*i)
-		r, err := h.g.Rels.AddByID(ctx, "HR", h.nodes[0], h.nodes[1], p)
+		r, err := h.g.Rels.AddByID(ctx, "HR", h.nodes[first], h.nodes[first+1], p)
 		if err != nil {
 			h.t.Fatal(err)
 		}
@@ -219,8 +243,8 @@ func (h *headOracle) step(step int) {
 	case op < 93 && step > 10: // delete, or re-import a deleted relationship (a second life)
 		if _, gerr := g.Rels.Get(ctx, rid); errors.Is(gerr, storepkg.ErrRelNotFound) {
 			h.last = "Rels.Import (second life)"
-			s, err1 := g.Nodes.Get(ctx, h.nodes[0])
-			e, err2 := g.Nodes.Get(ctx, h.nodes[1])
+			s, err1 := g.Nodes.Get(ctx, h.nodes[len(h.nodes)-3])
+			e, err2 := g.Nodes.Get(ctx, h.nodes[len(h.nodes)-2])
 			if err1 == nil && err2 == nil {
 				_, err = g.Rels.Import(ctx, rid, "HR", s, e, map[string]any{"tkg_valid_from": int64(a), "life": int64(2)})
 			}
@@ -234,6 +258,49 @@ func (h *headOracle) step(step int) {
 		_, err = g.Admin.CompactHistoryNodes(ctx, RetentionPolicy{KeepVersions: keep})
 		if err == nil {
 			_, err = g.Admin.CompactHistoryRels(ctx, RetentionPolicy{KeepVersions: keep})
+		}
+	case op == 96 && step > 30 && h.rng.IntN(3) == 0: // Clear: everything goes, then new entities
+		h.last = "Admin.Reset, then new entities"
+		if err = g.Admin.Reset(); err == nil {
+			h.setup()
+		}
+	case op == 97: // retention purge: nodes whose validity ended (with their history)
+		before := types.Instant(50 * (1 + h.rng.IntN(40)))
+		h.last = fmt.Sprintf("PurgeExpiredNodes ByValidTo before %d", before)
+		_, err = g.Admin.PurgeExpiredNodes(ctx, PurgePolicy{Label: "H", Mode: PurgeByValidTo, Before: before})
+		h.ops["purge"]++
+	case op >= 98 && h.tiered != nil: // tiered: archive / restore, rotation, idle close of cold shards
+		switch h.rng.IntN(3) {
+		case 0:
+			ref := h.nodes[len(h.nodes)-1-2*h.rng.IntN(2)] // a node of the newest setup with the Ref label
+			h.last = fmt.Sprintf("Admin.Archive / Restore %v", ref)
+			if err = g.Admin.Archive(ref); err != nil {
+				h.ops["archive refused: "+err.Error()]++
+			} else {
+				h.ops["archive"]++
+				h.checkAll("after Archive")
+				if err = g.Admin.Restore(ref); err == nil {
+					h.ops["restore"]++
+				}
+			}
+		case 1:
+			h.last = "ForceRotate"
+			if err = g.Admin.ForceRotate(); err == nil {
+				h.ops["rotate"]++
+			}
+		default:
+			h.last = "demote event shards, close idle cold shards"
+			shards, lerr := g.Admin.ListShards()
+			if lerr == nil {
+				for i, sh := range shards {
+					if sh.Kind == tiered.ShardEvent && i < len(shards)-1 {
+						demoteToCold(h.tiered, sh.Name)
+					}
+				}
+				h.tiered.SetIdleTimeoutForTest(0)
+				h.tiered.CloseIdleShardsForTest()
+				h.ops["idle-close"]++
+			}
 		}
 	default:
 		h.last = "read only"

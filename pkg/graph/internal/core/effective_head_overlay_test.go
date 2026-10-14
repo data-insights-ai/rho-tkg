@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestHeadOverlay_MatchesFold drives headFromFold and headOverlay directly
+// TestHeadOverlay_MatchesFold drives the fold's head facts and headOverlay directly
 // with chains the doors do not produce today (an appended row recorded at a
 // replaced row's TxTo or below the newest TxFrom, a bounded row after an open
 // newest row, an appended row starting before the newest one, rows with a
@@ -68,15 +68,26 @@ func TestHeadOverlay_MatchesFold(t *testing.T) {
 		if rng.IntN(15) == 0 {
 			chain[rng.IntN(n)].Temporal().DeletedAt = tx
 		}
+		// A chain stored before backlog 38: two rows share a version (a
+		// segment cannot name its winner by version there).
+		shared := rng.IntN(20) == 0
+		if shared {
+			i := 1 + rng.IntN(n-1)
+			chain[i].SetVersion(chain[i-1].Version())
+		}
 		pin := tx
 		for _, r := range chain {
 			pin = max(pin, r.Temporal().TxTo)
 		}
 		cur := chain[len(chain)-1]
-		fold := g.nodeEffectivePieces(chain, pin)
-		e := headFromFold(g, nodeKernel, 1, chain, cur, fold, pin)
+		var facts headFacts
+		fold := effectivePiecesFacts(g, nodeKernel, chain, pin, &facts)
+		e := headFromFold(1, cur, fold, &facts)
 		if e == nil {
 			continue
+		}
+		if shared {
+			t.Fatalf("iter %d: an entry for a chain with a shared version%s", iter, headRows(chain))
 		}
 		entries++
 		if got, want := e.pieces, toHead(fold); !slices.Equal(got, want) {
