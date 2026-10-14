@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Tiered tx-membership sidecars and valid-end acceleration** (backlog 58, sigma-tkgd R2): the tiered store now
+  implements `LabelTxMembership`, `RelTypeTxMembership`, `LabelTxMemberLookup`, `RelTypeTxMemberLookup`,
+  `NodePropertyTxMembership`, `RelPropertyTxMembership`, `RelValidEnd` and `NodeValidEnd`
+  (`store/tiered/tieredstore_tx_members.go`). Each fans out to the reference shard, the archive and every event
+  shard (a closed cold shard is opened, as the DepthAll history fold it replaces opens it) and unions the per-shard
+  badger answers: each entity once with the lowest first transaction time; a valid-end candidate listed by several
+  shards takes the highest stamp and bound. `RefineRelValidEnd` / `RefineNodeValidEnd` are no-ops: an entity's rows
+  can span shards (ArchiveNode, a re-import), so an entity with a loose fold (a valid-time close) is read on every
+  call. `ForEachNodePropertyTxMember` answers from the reference shard's sidecar and declines with
+  `ErrIndexNotFound` for an event-class label or an undeclared index (no fan-out), and when the archive or an event
+  shard ever held a node with the label (checked before the sidecar is read); `ForEachRelPropertyTxMember`
+  always declines (tiered has no rel property index). The core now uses the label and type membership sidecars for
+  DepthAll reads only (a depth-scoped read on tiered keeps the depth fold), and `Stats.RelHistoryCountByType` answers
+  on tiered (was ok=false): it runs the DepthAll history-ID fold plus a `RelTypeTxMembersOf` fan-out, both opening
+  closed cold shards. `ForEachRelEffectiveByTypeFrom` on tiered, 2,000 relationships over two event shards,
+  10 live: 2,000 → 10 timelines read, ~490 ms → ~11.5 µs per scan; with 7 of 8 event shards cold and
+  `MaxOpenColdShards` 0, 141 s → 0.59 s (temporal ByLabel over the same shards unchanged, ~17 s both). Test `TestTieredTxMembershipAndValidEndMatchBadger`
+  (badger vs tiered with rotation, archive and a closed cold shard: capability answers and the core doors equal),
+  bench `BenchmarkTieredRelEffectiveByTypeFrom`; evidence `tasks/evidence/tiered-capabilities/`.
+
 ## [4.51.8] - 2026-10-14
 
 ### Added

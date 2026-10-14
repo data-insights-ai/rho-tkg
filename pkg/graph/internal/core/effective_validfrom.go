@@ -23,9 +23,9 @@ import (
 // "ends before validFrom" and "streams" partition the entities.
 //
 // Candidates come from the store's valid-end index where it keeps one
-// (store.RelValidEndCapability / NodeValidEndCapability: memory and badger),
-// else from the unbounded door's gather (tiered, sharded, wrappers: correct,
-// not accelerated). Either way each candidate's timeline is read by the
+// (store.RelValidEndCapability / NodeValidEndCapability: memory, badger, and
+// tiered as the union of its shards' indexes), else from the unbounded door's
+// gather (sharded, wrappers: correct, not accelerated). Either way each candidate's timeline is read by the
 // per-entity body and the rule above is applied to it, so the index only
 // decides which entities are read, never what streams. A candidate read at a
 // pin at or above its index stamp hands its exact end back (Refine), so an
@@ -134,8 +134,9 @@ func segmentsEnd[S any](segs []S, to func(S) types.Instant) types.Instant {
 // validFrom, plus those written after pin; the store's valid-end index
 // tracks the type on its first call (its K1 ever-members, each read once,
 // temporal fields only) and folds every write of it after that; writes of
-// types nobody queried change nothing. Tiered and sharded read every
-// candidate of the unbounded door.
+// types nobody queried change nothing. Tiered does the same per shard, opening
+// a closed cold shard, and never refines (an entity with a loose fold is read
+// on every call). Sharded reads every candidate of the unbounded door.
 func (t *TempOps) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom types.Instant, fn func(temporal.RelSegment) bool) error {
 	c := t.c
 	if err := c.checkOpen(); err != nil {

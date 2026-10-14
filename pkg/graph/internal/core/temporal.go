@@ -1131,11 +1131,11 @@ func (c *Core) forEachRelTypeTxCandidate(tok uint16, currentIDs []types.RelID, o
 	return nil
 }
 
-// propertyCandidateSidecarUsable reports whether a temporal property lookup
-// with this depth may take its candidates from a property membership sidecar:
-// a depth-scoped read on a store with depth-aware history keeps the depth fold
-// (tiered, which declines the sidecar anyway).
-func (c *Core) propertyCandidateSidecarUsable(depth storepkg.ShardDepth) bool {
+// membershipSidecarUsable reports whether a temporal read with this depth may
+// take its candidates from a membership sidecar (label/type or property
+// value): the sidecars answer for the whole store, so a depth-scoped read on
+// a store with depth-aware history (tiered) keeps the depth fold.
+func (c *Core) membershipSidecarUsable(depth storepkg.ShardDepth) bool {
 	return depth == storepkg.DepthAll || c.depthHistory == nil
 }
 
@@ -1152,7 +1152,7 @@ func (c *Core) propertyCandidateSidecarUsable(depth storepkg.ShardDepth) bool {
 // predicate, so they answer the same; the sidecar path loads only chains that
 // can carry the value.
 func (c *Core) forEachRelPropertyCandidateID(tok uint16, key, valueKey string, currentIDs []types.RelID, opts storepkg.QueryOpts, fn func(types.RelID) error) error {
-	if c.relPropTxMembers == nil || !c.propertyCandidateSidecarUsable(opts.Depth) {
+	if c.relPropTxMembers == nil || !c.membershipSidecarUsable(opts.Depth) {
 		return c.forEachRelHistoryCandidateOfType(tok, currentIDs, opts, fn)
 	}
 	pinTx := effectiveTxPin(opts)
@@ -1202,7 +1202,7 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key, valueKey string, c
 // pair at all: the history fold scoped to the label's ever-members
 // (forEachNodeHistoryCandidateOfLabel).
 func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]string, currentIDs []types.NodeID, opts storepkg.QueryOpts, fn func(types.NodeID) error) error {
-	if c.nodePropTxMembers == nil || !c.propertyCandidateSidecarUsable(opts.Depth) {
+	if c.nodePropTxMembers == nil || !c.membershipSidecarUsable(opts.Depth) {
 		return c.forEachNodeHistoryCandidateOfLabel(tok, currentIDs, opts, fn)
 	}
 	pinTx := effectiveTxPin(opts)
@@ -1572,7 +1572,7 @@ func (c *Core) getRelVersionDuring(id types.RelID, start, end types.Instant) (*t
 // the lookup, or for a depth-scoped read on a store with depth-aware history,
 // the full-history fold.
 func (c *Core) forEachNodeHistoryCandidateOfLabel(tok uint16, currentIDs []types.NodeID, opts storepkg.QueryOpts, fn func(types.NodeID) error) error {
-	if c.labelTxLookup == nil || !c.propertyCandidateSidecarUsable(opts.Depth) {
+	if c.labelTxLookup == nil || !c.membershipSidecarUsable(opts.Depth) {
 		return c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, fn)
 	}
 	var history []types.NodeID
@@ -1610,7 +1610,7 @@ func (c *Core) forEachNodeHistoryCandidateOfLabel(tok uint16, currentIDs []types
 // a temporal read by relationship property value under type tok (a type is
 // immutable, so an ever-member of tok is a relationship of type tok).
 func (c *Core) forEachRelHistoryCandidateOfType(tok uint16, currentIDs []types.RelID, opts storepkg.QueryOpts, fn func(types.RelID) error) error {
-	if c.relTypeTxLookup == nil || !c.propertyCandidateSidecarUsable(opts.Depth) {
+	if c.relTypeTxLookup == nil || !c.membershipSidecarUsable(opts.Depth) {
 		return c.forEachRelCandidateIDByDepth(currentIDs, opts.Depth, fn)
 	}
 	var history []types.RelID
