@@ -28,7 +28,13 @@ func graphCostLimit(c config) limits {
 	if c.Cost == (graphCostProfile{}) {
 		return limits{Bytes: 16 << 20, Transactions: 1024, Versions: 65536, Certificates: 1024}
 	}
-	return limits{Bytes: (64 << 20) + c.Cost.Facts*(64<<10), Transactions: 2*c.Cost.Facts + 3, Versions: 6*c.Cost.Facts + 3, Certificates: 1024}
+	count := 2*c.Cost.Facts + 3
+	bytes := (64 << 20) + c.Cost.Facts*(64<<10)
+	if c.Cost.Writers == 8 || c.Cost.Writers == 32 {
+		count = 3 + 2*c.Cost.Facts*graphCostParallelAttempts
+		bytes += 2 * c.Cost.Facts * (graphCostParallelAttempts - 1) * 2048
+	}
+	return limits{Bytes: bytes, Transactions: count, Versions: 6*c.Cost.Facts + 3, Certificates: 1024}
 }
 func graphCostConfig(graph string, p graphCostProfile) config {
 	c := defaults()
@@ -40,7 +46,8 @@ func graphCostConfig(graph string, p graphCostProfile) config {
 }
 func validGraphCostProfile(c config) bool {
 	p := c.Cost
-	if p.Version != 1 || p.Facts < 1 || p.Facts > 1_000_000 || p.Writers != 1 || p.CrossPercent != 0 && p.CrossPercent != 10 && p.CrossPercent != 50 && p.CrossPercent != 100 || c.Lifecycle != (lifecycleProfile{}) || c.CostScope != lifecycleConfig("validation").Lifecycle.Scope {
+	parallel := (p.Writers == 8 || p.Writers == 32) && (c.Graph == "graph-cost-parallel-v1" || c.Graph == "graph-cost-parallel-columns-v1")
+	if p.Version != 1 || p.Facts < 1 || p.Facts > 1_000_000 || p.Writers != 1 && !parallel || p.CrossPercent != 0 && p.CrossPercent != 10 && p.CrossPercent != 50 && p.CrossPercent != 100 || c.Lifecycle != (lifecycleProfile{}) || c.CostScope != lifecycleConfig("validation").Lifecycle.Scope {
 		return false
 	}
 	n := p.nodes()

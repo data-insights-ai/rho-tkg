@@ -37,10 +37,10 @@ def plan():
             "cells": [specification(n, c, w) for n in FACTS for c in CROSS for w in WRITERS],
             "firstWorkload": "three setup nodes; N relationship creates(p=5), N updates(p=6); retained old/current graph and complete CDC",
             "remainingWorkloads": ["contention/empty-range guards", "Stable/After", "correction/old-cut index scans", "snapshot-feed", "columns", "range transfer/pins"],
-            "implementationStatus": {"native": "writer1 test-support runner; multiple-grant setup qualified at seventeen facts; physical reopen/index source implemented, runtime qualification deferred",
-                                     "FDB": "writer1 KV raw streams and explicit immutable typed columns/pins/derived collection wired in source; new runtime qualification and same-dataset measurements pending",
+            "implementationStatus": {"native": "writer1/8/32 test-support runner source; multiple-grant setup qualified at seventeen facts; physical reopen/index and independent clients source implemented, runtime qualification deferred",
+                                     "FDB": "writer1 KV/columns and fresh8/32 independent SDK clients with immutable attempt policy wired in source; runtime qualification and same-dataset measurements pending",
                                      "columns": "FDB sealed typed generation against native logical KV reference; native column cost lane and paired column matrix remain open",
-                                     "writers8/32": "not yet available; refuse execution"}}
+                                     "writers8/32": "native/FDB source orchestration available with finite original-attempt admission; no qualified measurement or fullmatrix acceptance"}}
 
 
 def parity(native, fdb, artifacts):
@@ -126,7 +126,7 @@ def fdb_cell(args, spec, number, gate):
             if digest(artifacts / name) != expected:
                 raise ValueError("FDB actual artifact hash changed: " + name)
         result = json.loads((artifacts / "fdb-cost-result.json").read_text())
-        expected_format = (3, "fdb-graph-cost-columns-v1") if args.layout == "columns" else (2, "fdb-graph-cost-raw-v2")
+        expected_format = ((5, "fdb-graph-cost-parallel-columns-v1") if args.layout == "columns" else (4, "fdb-graph-cost-parallel-v1")) if spec["writers"] != 1 else ((3, "fdb-graph-cost-columns-v1") if args.layout == "columns" else (2, "fdb-graph-cost-raw-v2"))
         if (result.get("version"), result.get("oracleFormat")) != expected_format:
             raise ValueError("actual FDB result differs from requested persisted layout")
         if result["spec"] != spec or result["CompletedCreates"] != spec["facts"] or result["CompletedUpdates"] != spec["facts"] or result["CDCGroups"] != 3 + 2 * spec["facts"] or result["LogicalComponentChanges"] != 3 + 3 * spec["facts"]:
@@ -195,14 +195,19 @@ def compare_cells(native_path, fdb_path, *, comparison_disk_bytes=1 << 30, compa
     policy = checker.Policy(comparison_disk_bytes, comparison_cache_bytes, 4096, checker.ARTIFACT_LINE_BYTES)
     policy.validate()
     version, format_ = fdb["result"].get("version"), fdb["result"].get("oracleFormat")
-    allowed = ((3, checker.COLUMN_FORMAT),) if fdb_layout == "columns" else ((1, None), (2, checker.RAW_FORMAT))
+    parallel = spec["writers"] != 1
+    allowed = (((5,checker.PARALLEL_COLUMN_FORMAT),) if fdb_layout == "columns" else ((4,checker.PARALLEL_FORMAT),)) if parallel else (((3, checker.COLUMN_FORMAT),) if fdb_layout == "columns" else ((1, None), (2, checker.RAW_FORMAT)))
     if type(version) is not int or (version, format_) not in allowed:
         raise ValueError("missing/mixed FDB oracle format; historical v1 is not v2 proof")
-    if version in (2, 3):
+    if version in (2, 3, 4, 5):
         required = {"fdb-cost-result.json", "fdb-cost-history.jsonl", "fdb-cost-current.jsonl",
                     "fdb-cost-cdc.jsonl", "fdb-cost-operation-groups.jsonl", "fdb-cost-latency.jsonl"}
-        if version == 3:
+        if version in (3,5):
             required.add("fdb-cost-columns.jsonl")
+        if parallel:
+            required.add("fdb-cost-attempts.jsonl")
+            if not {"attempts.jsonl","latency.jsonl"} <= native["artifacts"].keys():
+                raise ValueError("genuine parallel native attempt/timing streams must be hash-bound")
         if not required <= fdb["launchReceipt"]["sha256"].keys() or not {"cdc.jsonl", "observations.jsonl", "native-cost-result.json"} <= native["artifacts"].keys():
             raise ValueError("complete raw EOF/original/observation artifacts must be hash-bound")
         if any(name.startswith("fdb-cost-view-") for name in fdb["launchReceipt"]["sha256"]):
@@ -225,7 +230,8 @@ def compare_cells(native_path, fdb_path, *, comparison_disk_bytes=1 << 30, compa
                 "canonicalRetainedOutputSHA256": cdc["canonicalRetainedOutputSHA256"],
                 "layouts": {"native": "logical-kv-reference", "FDB": fdb_layout},
                 "nativeColumnsCostParity": False,
-                "scope": ("fixed writer1 genuine FDB columns/source equivalence versus native logical KV reference; private quota-bound spool; no paired column cost/storage-efficiency/capacity/fullmatrix acceptance"
+                "scope": ("declared independent8/32 source contract with actual attempts/cut/causal joins; FDB columns use native logical KV reference; no runtime/capacity/storage-efficiency/fullmatrix acceptance" if parallel else
+                          "fixed writer1 genuine FDB columns/source equivalence versus native logical KV reference; private quota-bound spool; no paired column cost/storage-efficiency/capacity/fullmatrix acceptance"
                           if version == 3 else "fixed writer1 raw native/FDB history/current/CDC parity; private quota-bound verifier spool; no capacity/engine-selection/fullmatrix acceptance")}
     cdc = checker.compare_streams(left_root / "cdc.jsonl", right_root / "fdb-cost-cdc.jsonl", spec,
                                   fdb["result"]["Config"], fdb["result"]["FinalCut"],
@@ -304,8 +310,6 @@ def main():
         args.runs = 1
     if args.runs < RUNS and not args.probe:
         parser.error("at least five independent fresh runs required")
-    if args.writers != 1:
-        parser.error("requested concurrent writer mode is not implemented; no substitute cell")
     if args.engine == "native" and args.layout != "kv":
         parser.error("native column cost lane is not implemented; no KV relabelling")
     if not all((args.output, args.native_fault, args.fdb_fault, args.fdb_artifact_root)) or args.engine == "native" and not all((args.native_binary,args.watchdog)):

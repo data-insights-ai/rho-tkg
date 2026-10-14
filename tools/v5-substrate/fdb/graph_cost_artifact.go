@@ -185,11 +185,20 @@ func (h *harness) graphCostArtifacts(root *os.Root, initial, old, final cut, pol
 // Link publishes only the closed exclusive file and refuses an existing result.
 // The launcher must still prove exit0, owned cleanup and every artifact hash.
 func publishGraphCostResult(root *os.Root, result graphCostResult) error {
-	if root == nil || !((result.Version == 2 && result.OracleFormat == graphCostRawFormat && result.Columns == nil) ||
-		(result.Version == 3 && result.OracleFormat == graphCostColumnFormat && result.Columns != nil && result.Columns.complete())) {
+	if root == nil || !((result.Version == 2 && result.OracleFormat == graphCostRawFormat && result.Columns == nil && result.Parallel == nil) ||
+		(result.Version == 3 && result.OracleFormat == graphCostColumnFormat && result.Columns != nil && result.Columns.complete() && result.Parallel == nil) ||
+		(result.Version == 4 && result.OracleFormat == graphCostParallelFormat && result.Columns == nil && result.Parallel != nil && result.Parallel.complete(result.Spec)) ||
+		(result.Version == 5 && result.OracleFormat == graphCostParallelColumnFormat && result.Columns != nil && result.Columns.complete() && result.Parallel != nil && result.Parallel.complete(result.Spec))) {
 		return errInvalid
 	}
-	if result.Columns != nil && (result.Config.Graph != "graph-cost-columns-v1" ||
+	columnGraph := "graph-cost-columns-v1"
+	if result.Parallel != nil {
+		columnGraph = "graph-cost-parallel-columns-v1"
+		if result.Config != result.Parallel.Binding.Config || !sameCertificate(result.Parallel.Old.Cut, result.OldCut) || !sameCertificate(result.Parallel.Final.Cut, result.FinalCut) {
+			return errMismatch
+		}
+	}
+	if result.Columns != nil && (result.Config.Graph != columnGraph ||
 		!sameCertificate(result.Columns.Old.Generation.Initial, result.InitialCut) || !sameCertificate(result.Columns.Final.Generation.Initial, result.InitialCut) ||
 		!sameCertificate(result.Columns.Old.Generation.Cut, result.OldCut) || !sameCertificate(result.Columns.Final.Generation.Cut, result.FinalCut)) {
 		return errMismatch

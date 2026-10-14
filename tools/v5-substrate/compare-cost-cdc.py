@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stream the fixed writer1 cost CDC contract; opaque native codecs stay qualified."""
+"""Stream declared real cost cells; opaque native codec validation stays explicit."""
 import base64
 import hashlib
 import json
@@ -17,6 +17,8 @@ LINE_BYTES = 64 << 10
 BATCH_OPERATIONS = 16
 RAW_FORMAT = "fdb-graph-cost-raw-v2"
 COLUMN_FORMAT = "fdb-graph-cost-columns-v1"
+PARALLEL_FORMAT = "fdb-graph-cost-parallel-v1"
+PARALLEL_COLUMN_FORMAT = "fdb-graph-cost-parallel-columns-v1"
 COLUMN_LAYOUT = "scalar-cross-edge-i64-columns-v1"
 ARTIFACT_LINE_BYTES = 512 << 10
 # Explicit verifier policy for this first-cell integration, not an approved
@@ -145,7 +147,7 @@ def canonical_cell(cell):
     return {k: v for k, v in cell.items() if k != "revision"}
 
 
-def native_original(row):
+def native_original(row, *, parallel=False):
     fields(row, "Partition Index Outcome CDC Changes Entities Lives Values Original CDCClass RawHashes Logical SourceBoundary")
     original = row["Original"]
     fields(original, "Kind Graph Request Transaction Digest Partition Index Coordinator Provenance Round Phase Commit Reason Disposition Participants")
@@ -183,14 +185,18 @@ def native_original(row):
             require(phase in (1, 2) and status == 1 and original["Commit"] and
                     (phase, status, round_, index) == (original["Phase"], original["Disposition"], original["Round"], row["Index"]), "read-control original")
         return original
-    require(kind in ("local-graph", "cross") and original["Coordinator"] in PARTITIONS and original["Reason"] == 0, "unknown business original")
+    require(kind in ("local-graph", "cross") and original["Coordinator"] in PARTITIONS and (parallel or original["Reason"] == 0), "unknown business original")
     for name, size in (("Request", 16), ("Transaction", 16), ("Digest", 32)):
         text = original[name]
         require(type(text) is str and len(text) == 2 * size and text == bytes.fromhex(text).hex() and int(text, 16) > 0, "original identity/digest")
     namespace = bytes.fromhex(GRAPH) + struct.pack(">Q", row["Partition"])
+    require(not original["Commit"] or original["Reason"] == 0, "committed original refusal reason")
     if kind == "local-graph":
         body = fixed_body(outcome, b"GRO\4", 120)
-        require(body == b"\6" + namespace + bytes.fromhex(original["Request"]) + bytes.fromhex(original["Digest"]) + struct.pack(">QBH", row["Index"], 1, 0), "local original fields")
+        require(body == b"\6" + namespace + bytes.fromhex(original["Request"]) + bytes.fromhex(original["Digest"]) + struct.pack(">QBH", row["Index"], 1, original["Reason"]), "local original fields")
+        if parallel and not original["Commit"]:
+            require(original["Transaction"] == original["Request"] and original["Participants"] == [row["Partition"]] and original["Coordinator"] == row["Partition"] and original["Disposition"] == 1 and original["Phase"] == original["Round"] == original["Provenance"] == 0 and original["Reason"] > 0 and classification == "protocol-empty" and not cdc and not any(logical.values()), "local retained refusal classification")
+            return original
         require(original["Transaction"] == original["Request"] and original["Participants"] == [row["Partition"]]
                 and original["Coordinator"] == row["Partition"] and original["Commit"] and original["Disposition"] == 1 and original["Phase"] == 0 and original["Round"] > 0, "local original authority")
         require(classification == "logical" and cdc and logical["Components"] > 0, "local logical classification")
@@ -203,11 +209,14 @@ def native_original(row):
         derived = hashlib.sha256(b"rho-tkg:cross-transaction-id:v1\0" + coordinator + bytes.fromhex(original["Request"])).digest()[:16].hex()
         require(original["Transaction"] == derived and same(original["Participants"], [3, 8]), "cross request/participants")
         if phase == 4:
+            if parallel and not original["Commit"]:
+                require(round_ == 0 and not cdc and not any(logical.values()) and classification == "protocol-empty", "cross abort resolve classification")
+                return original
             require(original["Commit"] and round_ > 0 and cdc and classification in ("logical", "participant-empty"), "cross resolve classification")
             require((classification == "logical") == bool(sum(logical.values())), "cross logical classification")
         else:
             require(not cdc and not any(logical.values()) and classification == "protocol-empty", "cross protocol classification")
-            require(original["Commit"] == (phase == 3) and (round_ > 0) == (phase == 3), "cross decision phase")
+            require((parallel and phase == 3 and not original["Commit"] and round_ == 0) or original["Commit"] == (phase == 3) and (round_ > 0) == (phase == 3), "cross decision phase")
     return original
 
 
@@ -234,6 +243,7 @@ def native_group(records, spec, ordinal, previous, definitions):
         key = tuple(change[k] for k in ("Owner", "Life", "Component", "Name"))
         require(change["Before"] == previous.get(key, absent()), "native physical predecessor")
         require(change["After"]["revision"] == row["Original"]["Round"] and change["After"]["provenance"] == ordinal, "native original revision/provenance")
+        require(change["After"]["revision"] > change["Before"]["revision"], "native actual component predecessor revision order")
         before, after = canonical_cell(change["Before"]), canonical_cell(change["After"])
         changes.append({"key": key, "scope": change["AllScope"], "before": before, "after": after})
         previous[key] = change["After"]
@@ -346,6 +356,208 @@ def native_groups(path, spec, bounds, stats, spool):
     stats["originalBindingsSHA256"] = bindings.hexdigest()
 
 
+def native_parallel_proposal(raw, request, ordinal):
+    require(181 <= len(raw) <= LINE_BYTES and raw[:4] in (b"PGQ\1", b"PGQ\2") and hashlib.sha256(raw[:-32]).digest() == raw[-32:], "native immutable proposal envelope/seal")
+    require(raw[4] == 6 and raw[5:21] == bytes.fromhex(GRAPH) and raw[29:45] == request and all(any(raw[n:n+32]) for n in (45,77,109)), "native actual proposal namespace/identity/configuration")
+    partition = struct.unpack_from(">Q",raw,21)[0]
+    require(partition in PARTITIONS, "native proposal partition")
+    size = struct.unpack_from(">I",raw,141)[0]
+    require(145+size == len(raw)-32, "native proposal exact inner span")
+    inner = raw[145:-32]
+    require(len(inner) >= 97 and inner[:5] == b"PGO\1\6" and inner[5:45] == raw[5:45] and hashlib.sha256(inner[:-32]).digest() == inner[-32:], "native original nested request seal/identity")
+    revision, provenance = struct.unpack_from(">QQ",inner,45)
+    require(revision > 0 and provenance == ordinal, "native proposal actual revision/provenance")
+    return partition
+
+
+def native_parallel_manifest(raw, request, transaction, digest, proposal):
+    require(192 <= len(raw) <= LINE_BYTES and raw[:4] == b"GCM\1" and hashlib.sha256(raw[:-32]).digest() == raw[-32:] and hashlib.sha256(raw).digest() == digest, "native immutable actual manifest seal/digest")
+    require(raw[4:20] == transaction, "native manifest original transaction")
+    coordinator = struct.unpack_from(">Q",raw,20)[0]
+    size = struct.unpack_from(">I",raw,28)[0]
+    original = raw[32:32+size]
+    require(size <= LINE_BYTES and len(original) == size, "native manifest original span")
+    native_parallel_proposal(original,request,struct.unpack_from(">Q",proposal[145:-32],53)[0])
+    # The coordinator recaptures guards/revision on the same original request;
+    # authority/config/routing bytes and the source request identity stay fixed.
+    require(original[4:141] == proposal[4:141] and original[5:21] == bytes.fromhex(GRAPH), "native manifest actual business/configuration binding")
+    position = 32+size
+    require(position+132 <= len(raw)-32 and raw[position:position+96] == original[45:141] and any(raw[position+96:position+128]), "native manifest immutable layout digests")
+    count = struct.unpack_from(">I",raw,position+128)[0]
+    require(count == 2 and coordinator == 3, "fixed cost actual manifest footprint")
+    position += 132
+    parts = []
+    for _ in range(count):
+        require(position+20 <= len(raw)-32, "native manifest truncated participant")
+        partition,floor,size = struct.unpack_from(">QQI",raw,position)
+        position += 20
+        require(0 < size <= LINE_BYTES and position+size <= len(raw)-32 and floor < (1<<64)-1, "native manifest bounded kernel span")
+        # Prepared kernel semantics remain the actual qualified Go decoder's
+        # boundary; every raw byte is retained and manifest-hash bound here.
+        parts.append(partition); position += size
+    require(parts == [3,8] and position == len(raw)-32, "native actual participant inventory/trailing bytes")
+
+
+def native_parallel_attempts(path, spec, spool):
+    joined = StoredState(spool,b"native-attempt-join")
+    attempts,aborts,submissions,commits = 0,0,0,0
+    clients = [0]*32
+    for a in rows(path,8*spec["facts"]):
+        fields(a,"Operation Engine ClientID AttemptOrdinal PreviousRequest Request Transaction BodySHA256 BusinessSHA256 DecisionDigest OriginalIndex Round Classification Error SubmitInvocations Proposal Manifest Outcome CDC")
+        ordinal = parallel_operation(spec,a["Operation"])
+        phase,_,node,edge = fixture(spec,ordinal)
+        require(node is None, "native business attempt stream contains setup")
+        request = bytes(integer(v,0,255) for v in a["Request"])
+        transaction = bytes(integer(v,0,255) for v in a["Transaction"])
+        previous = bytes(integer(v,0,255) for v in a["PreviousRequest"])
+        require(len(request) == len(transaction) == len(previous) == 16 and any(request), "native attempt fixed identity fields")
+        client,number = integer(a["ClientID"],0,spec["writers"]-1),integer(a["AttemptOrdinal"],1,4)
+        prior = joined.get((ordinal,))
+        require((prior is None and number == 1 and not any(previous)) or prior is not None and prior["Classification"] in ("authoritative-abort","authoritative-conflict") and number == prior["AttemptOrdinal"]+1 and client == prior["ClientID"] and previous == bytes(prior["Request"]) and request != previous, "native actual fresh attempt lineage")
+        proposal = raw_bytes(a["Proposal"])
+        require(a["Engine"] == "native-raft" and a["Error"] == "" and hashlib.sha256(proposal).digest() == sha_array(a["BodySHA256"]), "native frozen actual body hash")
+        partition = native_parallel_proposal(proposal,request,ordinal)
+        require(partition == 3, "native actual business coordinator")
+        outcome,cdc = raw_bytes(a["Outcome"]),raw_bytes(a["CDC"])
+        cross = bool(edge["Target"]["Owner"])
+        index,round_ = integer(a["OriginalIndex"],1),integer(a["Round"])
+        classification = a["Classification"]
+        if cross:
+            digest = sha_array(a["DecisionDigest"])
+            business = bytearray(proposal[:-32]); business[3] = 1
+            business = bytes(business) + hashlib.sha256(business).digest()
+            require(sha_array(a["BusinessSHA256"]) == hashlib.sha256(business).digest(), "native frozen business body independent of proposal frame version")
+            manifest = raw_bytes(a["Manifest"])
+            native_parallel_manifest(manifest,request,transaction,digest,proposal)
+            derived = hashlib.sha256(b"rho-tkg:cross-transaction-id:v1\0" + bytes.fromhex(GRAPH)+u64(3)+request).digest()[:16]
+            require(transaction == derived, "native attempt cross transaction/request derivation")
+            body = fixed_body(outcome,b"GCS\1",135)
+            require(body[:72] == bytes.fromhex(GRAPH)+u64(3)+transaction+digest and body[72] == 3 and struct.unpack_from(">Q",body,73)[0] == index and struct.unpack_from(">Q",body,89)[0] == round_ and not cdc and body[-1] == 0, "native genuine original Decide binding")
+            committed = bool(body[-2]&2)
+            require(body[-2] <= 3 and committed == (classification == "commit") and (round_ > 0) == committed and classification in ("commit","authoritative-abort"), "native terminal cross classification")
+        else:
+            require(not any(transaction) and not any(sha_array(a["DecisionDigest"])) and not any(sha_array(a["BusinessSHA256"])) and a["Manifest"] is None and round_ == 0, "native local attempt union")
+            body = fixed_body(outcome,b"GRO\4",120)
+            require(body[:73] == b"\6"+bytes.fromhex(GRAPH)+u64(3)+request+sha_array(a["BodySHA256"]) and struct.unpack_from(">Q",body,73)[0] == index and body[81] == 1, "native original local request/body/index")
+            reason = struct.unpack_from(">H",body,82)[0]
+            committed = reason == 0
+            require((committed and classification == "commit" and cdc) or (not committed and classification == "authoritative-conflict" and reason in (8,11) and not cdc), "native authenticated local conflict classification")
+        count = integer(a["SubmitInvocations"],1,128)
+        attempts += 1; submissions += count; aborts += not committed; commits += committed
+        spool.insert(b"native-attempt-request",u64(partition)+request,go_json(a))
+        if committed:
+            spool.insert(b"native-useful-attempt",u64(ordinal),go_json(a)); clients[client] += 1
+        joined[(ordinal,)] = {k:a[k] for k in ("ClientID","AttemptOrdinal","Request","Classification")}
+    require(commits == 2*spec["facts"], "native complete useful attempt census")
+    for ordinal in range(4,4+2*spec["facts"]): require(joined.get((ordinal,),{}).get("Classification") == "commit", "native missing useful operation")
+    samples = 0
+    for sample in rows(Path(path).with_name("latency.jsonl"),2*spec["facts"]):
+        fields(sample,"phase fact cross elapsedNanos proposalNanos ackNanos drainNanos verificationNanos clientAttempts localAckTiming operation clientID admissionNanos")
+        ordinal = parallel_operation(spec,sample["operation"])
+        phase,fact,node,edge = fixture(spec,ordinal)
+        require(node is None and sample["phase"] == phase and type(sample["fact"]) is int and sample["fact"] == fact and type(sample["cross"]) is bool and sample["cross"] == bool(edge["Target"]["Owner"]), "native useful timing operation identity")
+        a = json.loads(spool.lookup(b"native-useful-attempt",u64(ordinal)),object_pairs_hook=pairs)
+        require(type(sample["clientID"]) is type(sample["clientAttempts"]) is int and sample["clientID"] == a["ClientID"] and sample["clientAttempts"] == a["AttemptOrdinal"], "native useful timing exact original attempt/client")
+        for key in ("elapsedNanos","proposalNanos","ackNanos","drainNanos","verificationNanos","admissionNanos"): integer(sample[key],0,(1<<63)-1)
+        fields(sample["localAckTiming"],"ProposeCount StateCount PacketWaitCount EntryRecordCount ProposeNanos StateNanos PacketWaitNanos EntryRecordNanos")
+        for value in sample["localAckTiming"].values(): integer(value,0,(1<<63)-1)
+        spool.insert(b"native-sample-output",u64(ordinal),go_json(sample)); samples += 1
+    require(samples == 2*spec["facts"], "native complete useful timing stream")
+    return {"Attempts":attempts,"AbortedAttempts":aborts,"SubmitInvocations":submissions,"ClientCompletions":clients}
+
+
+def native_parallel_groups(path,spec,bounds,stats,spool):
+    attempts = native_parallel_attempts(Path(path).with_name("attempts.jsonl"),spec,spool)
+    actual_result = json.loads(Path(path).with_name("native-cost-result.json").read_bytes(),object_pairs_hook=pairs)
+    require(actual_result.get("runner") == "independent-clients-request-bound-ack-v2" and actual_result.get("ClientWindow") == 32 and same(actual_result.get("spec"),spec) and same(actual_result.get("clientCompletions"),attempts["ClientCompletions"]) and actual_result.get("Attempts") == attempts["Attempts"] and actual_result.get("AbortedAttempts") == attempts["AbortedAttempts"] and actual_result.get("SameAttemptRetries") == attempts["SubmitInvocations"] - attempts["Attempts"], "native actual parallel result/attempt policy")
+    images,old = native_prefix(bounds),native_old_prefix(bounds)
+    last = dict(zip(PARTITIONS,bounds["from"]))
+    boundaries,old_seen = {},set()
+    total = 3+2*spec["facts"]
+    source_requests = StoredState(spool,b"native-source-request")
+    for row in rows(path,128*(3+8*spec["facts"])+16):
+        original = native_original(row,parallel=True)
+        partition,index = row["Partition"],row["Index"]
+        require(index == last[partition]+1 and index <= bounds["through"][PARTITIONS[partition]], "native actual parallel prefix missing/duplicate/reorder")
+        last[partition] = index; stats["records"] += 1
+        boundary = row["SourceBoundary"]
+        if original["Kind"] == "no-application-output" and partition in boundaries:
+            require(boundary["Generation"] == boundaries[partition]["Generation"] and boundary["ImageSHA256"] == boundaries[partition]["ImageSHA256"], "native empty frame changed source root")
+        boundaries[partition] = boundary
+        if index == old[partition][0]:
+            require(boundary["ImageSHA256"] == old[partition][1], "native old actual prefix image"); old_seen.add(partition)
+        if original["Kind"] in ("read-control","no-application-output"):
+            stats["controls"] += 1; continue
+        request = u64(original["Coordinator"])+bytes.fromhex(original["Request"])
+        attempt_body = spool.find(b"native-attempt-request",request)
+        if attempt_body is None:
+            ordinal = integer(original["Provenance"],1,3)
+            require(original["Kind"] == "local-graph" and original["Commit"], "foreign/unrecorded native business attempt")
+            spool.insert(b"native-setup-request",u64(ordinal),request)
+        else:
+            attempt = json.loads(attempt_body,object_pairs_hook=pairs)
+            ordinal = parallel_operation(spec,attempt["Operation"])
+            require(original["Provenance"] == ordinal or original["Kind"] == "local-graph" and not original["Commit"] and original["Provenance"] == 0, "native original/attempt provenance")
+            require((index <= old[partition][0]) == (attempt["Operation"]["Phase"] == "create"), "native actual attempt cut membership")
+            if original["Kind"] == "local-graph" or original["Phase"] == 3:
+                require(raw_bytes(row["Outcome"]) == raw_bytes(attempt["Outcome"]) and raw_bytes(row["CDC"]) == raw_bytes(attempt["CDC"]) and original["Index"] == attempt["OriginalIndex"], "native actual retained attempt frames")
+            digest = attempt["BodySHA256"] if original["Kind"] == "local-graph" else attempt["DecisionDigest"]
+            require(bytes.fromhex(original["Digest"]) == sha_array(digest), "native original/attempt exact digest")
+        key = request+u64(partition)+u64(original["Phase"])
+        spool.insert(b"native-phase",key,go_json(row))
+        info = source_requests.get((original["Coordinator"],original["Request"]),{"Ordinal":ordinal,"Inventory":[]})
+        require(info["Ordinal"] == ordinal and len(info["Inventory"]) < 6, "native finite actual phase inventory")
+        info["Inventory"].append([partition,original["Phase"]]); source_requests[(original["Coordinator"],original["Request"])] = info
+    require(list(last.values()) == bounds["through"] and old_seen == set(PARTITIONS) and all(boundaries[p]["ImageSHA256"] == images[p] for p in PARTITIONS) and actual_result.get("CDCRecords") == stats["records"], "native complete parallel retained cut/root EOF")
+    previous,definitions = StoredState(spool,b"native-before"),set()
+    bindings = hashlib.sha256()
+    seed_indexes = {}
+    # Lookup, not an SQL sort or dataset-sized join. Raw record enumeration has
+    # already been authenticated; canonical output follows logical identity.
+    for ordinal in range(1,total+1):
+        if ordinal <= 3: request = spool.lookup(b"native-setup-request",u64(ordinal))
+        else:
+            attempt = json.loads(spool.lookup(b"native-useful-attempt",u64(ordinal)),object_pairs_hook=pairs)
+            request = u64(3)+bytes(attempt["Request"])
+        info = source_requests.get((struct.unpack(">Q",request[:8])[0],request[8:].hex()))
+        require(info is not None and info["Ordinal"] == ordinal, "missing native useful source original")
+        records = [json.loads(spool.lookup(b"native-phase",request+u64(p)+u64(s)),object_pairs_hook=pairs) for p,s in info["Inventory"]]
+        phase,fact,_,_ = fixture(spec,ordinal)
+        if phase != "setup":
+            if fact == 0:
+                seed_indexes[phase] = max(r["Index"] for r in records if r["Partition"] == 3)
+            else:
+                require(all(r["Index"] > seed_indexes[phase] for r in records if r["Partition"] == 3), "native genuine value seed must precede dependents")
+        canonical = native_group(records,spec,ordinal,previous,definitions)
+        for row in records: require(row["Original"]["Commit"] or row["Original"]["Phase"] in (1,2), "ABORT original claimed useful completion")
+        first = records[0]["Original"]
+        spool.insert(b"native-request",request,go_json(records))
+        spool.insert(b"native-transaction",u64(first["Coordinator"])+bytes.fromhex(first["Transaction"]),bytes.fromhex(first["Digest"]))
+        bindings.update(go_json({k:first[k] for k in ("Graph","Coordinator","Request","Transaction","Digest","Provenance")})+b"\n")
+        yield json.loads(go_json(canonical),object_pairs_hook=pairs)
+    # Every retained refusal must correspond to its authentic recorded attempt.
+    # A first NO permits a shorter actual prepare prefix; never invent missing
+    # votes, empty CDC or a capacity-observation proof from reported counts.
+    for _,body in spool.walk(b"native-attempt-request"):
+        a = json.loads(body,object_pairs_hook=pairs)
+        if a["Classification"] == "commit": continue
+        request = u64(3)+bytes(a["Request"])
+        info = source_requests.get((3,bytes(a["Request"]).hex()))
+        require(info is not None, "missing native ABORT source original")
+        records = [json.loads(spool.lookup(b"native-phase",request+u64(p)+u64(s)),object_pairs_hook=pairs) for p,s in info["Inventory"]]
+        if a["Classification"] == "authoritative-conflict": require(info["Inventory"] == [[3,0]], "native local refusal phase inventory")
+        else:
+            inventory = sorted(info["Inventory"])
+            prepares = sorted(p for p,s in inventory if s == 2)
+            require(prepares in ([3],[3,8]) and inventory == sorted([[3,1],[3,3],[3,4],[8,4]]+[[p,2] for p in prepares]), "native ABORT complete actual prepare prefix/resolve footprint")
+            for row in records:
+                if row["Original"]["Phase"] == 2:
+                    status = fixed_body(raw_bytes(row["Outcome"]),b"GCS\1",135)
+                    require(bool(status[-2]&1) == (row["Partition"] != prepares[-1]), "native authoritative first-NO preparation")
+        require(all(not raw_bytes(r["CDC"]) and not r["Original"]["Commit"] for r in records), "native ABORT carried committed effects")
+    stats["originalBindingsSHA256"],stats["parallelAttempts"] = bindings.hexdigest(),attempts
+
+
 def fdb_contract(spec, ordinal):
     phase, index, node, edge = fixture(spec, ordinal)
     zero_node = {"Owner": 0, "Node": 0, "Life": 0}
@@ -376,7 +588,7 @@ def fdb_contract(spec, ordinal):
     return command, metadata, effects, reads
 
 
-def fdb_group(group, spec, ordinal, config, physical, generations, sequences, definitions):
+def fdb_group(group, spec, ordinal, config, physical, generations, sequences, definitions, *, parallel=False):
     fields(group, "Tx Outcome Writes")
     tx, outcome = group["Tx"], group["Outcome"]
     fields(tx, "Graph Topology ID Request Coordinator Dependency Participants GraphChange Lifecycle")
@@ -386,7 +598,7 @@ def fdb_group(group, spec, ordinal, config, physical, generations, sequences, de
     for name in ("Round", "Coordinator", "Sequence"):
         integer(outcome[name])
     name, owner = operation(spec, ordinal)
-    require(tx["Graph"] == config["Graph"] and tx["Topology"] == config["Topology"] and tx["ID"] == name and tx["Request"] == "request/" + name and tx["Coordinator"] == owner and tx["Dependency"] == 0, "FDB original request/namespace/order")
+    require(tx["Graph"] == config["Graph"] and tx["Topology"] == config["Topology"] and (parallel or tx["ID"] == name) and tx["Request"] == "request/" + tx["ID"] and tx["Coordinator"] == owner and tx["Dependency"] == 0, "FDB original request/namespace/order")
     command, metadata, effects, reads = fdb_contract(spec, ordinal)
     require(same(tx["GraphChange"], command) and same(tx["Lifecycle"], metadata), "FDB declared identity/provenance/definition")
     require([p["Group"] for p in tx["Participants"]] == sorted(effects), "FDB participant inventory")
@@ -498,7 +710,8 @@ def artifact_header(header, name, result):
         fields(metadata, "Floor Generation Versions Transactions Certificates Bytes Groups")
         for value in metadata.values():
             integer(value)
-        require(metadata["Floor"] == header["FinalCut"]["Round"] and metadata["Groups"] == header["FinalCut"]["Groups"][g] and metadata["Transactions"] == metadata["Groups"], "quiescent native metadata")
+        transactions = result["Parallel"]["Final"]["Metadata"][g]["Transactions"] if "Parallel" in result else metadata["Groups"]
+        require(metadata["Floor"] == header["FinalCut"]["Round"] and metadata["Groups"] == header["FinalCut"]["Groups"][g] and metadata["Transactions"] == transactions, "quiescent native metadata")
         for key in ("Bytes", "Transactions", "Versions", "Certificates"):
             require(metadata[key] <= config["Limits"][key], "native metadata quota")
         raw_binding(header["ConfigRecords"][g], fdb_key(config, g, "meta", "config"), config)
@@ -563,7 +776,151 @@ def put_raw(spool, namespace, key, body):
         spool.replace(namespace, key, prior, body)
 
 
+def parallel_operation(spec, value):
+    fields(value, "Dataset Phase Fact Ordinal")
+    ordinal = integer(value["Ordinal"], 1, 3 + 2 * spec["facts"])
+    phase, fact, _, _ = fixture(spec, ordinal)
+    dataset = hashlib.sha256(bytes([spec["version"]]) + struct.pack(">QQ", spec["facts"], spec["crossPercent"]) + b"graph-v2").digest()
+    require(same(value, {"Dataset": list(dataset), "Phase": phase, "Fact": fact, "Ordinal": ordinal}), "actual operation/dataset/provenance identity")
+    return ordinal
+
+
+def parallel_lines(path, maximum):
+    with Path(path).open("rb") as source:
+        for number in range(maximum):
+            line = source.readline(ARTIFACT_LINE_BYTES + 1)
+            if not line:
+                return
+            require(len(line) <= ARTIFACT_LINE_BYTES and line.endswith(b"\n"), "parallel line admission/termination")
+            row = json.loads(line, object_pairs_hook=pairs, parse_constant=lambda _: require(False, "nonfinite parallel JSON"))
+            require(type(row) is dict and line == go_json(row) + b"\n", "canonical parallel artifact")
+            yield row, line
+        require(not source.read(1), "parallel artifact row quota")
+
+
+def fdb_parallel_attempts(path, result, spool):
+    """All originals, including ABORT pairs, are raw native SDK observations."""
+    spec, config, end = result["spec"], result["Config"], result["Parallel"]
+    fields(end, "Format Binding BindingRecord Old Final Attempts AbortedAttempts SubmitInvocations SDKCallbacks ReadCallbacks ClientCompletions PayloadSHA256")
+    for key in ("Attempts","AbortedAttempts","SubmitInvocations","SDKCallbacks","ReadCallbacks"): integer(end[key])
+    expected = {"Version": 1, "Config": config, "Dataset": list(hashlib.sha256(bytes([spec["version"]]) + struct.pack(">QQ", spec["facts"], spec["crossPercent"]) + b"graph-v2").digest()),
+                "Window": 32, "MaxAttempts": 64, "MaxSubmissions": 8, "MaxCallbacks": 16, "TransactionMillis": 3000, "OperationMillis": 30000}
+    require(end["Format"] == PARALLEL_FORMAT and same(end["Binding"], expected), "fresh persisted parallel attempt policy")
+    raw_binding(end["BindingRecord"], fdb_key(config, 0, "cost-parallel", "binding"), expected)
+    counters = {n: 0 for n in ("Attempts", "AbortedAttempts", "SubmitInvocations", "SDKCallbacks", "ReadCallbacks")}
+    clients, commits = [0] * 32, 0
+    joined = StoredState(spool, b"fdb-attempt-join")
+    abort_bytes, abort_counts = {"old": [0, 0], "final": [0, 0]}, {"old": [0, 0], "final": [0, 0]}
+    payload, header_seen, footer_seen, barriers = hashlib.sha256(), False, False, 0
+    total = 3 + 2 * spec["facts"]
+    for row, line in parallel_lines(path, 7 + 3 + 2 * spec["facts"] * 64):
+        kind = row.get("Type")
+        require(not footer_seen, "extra parallel attempt after EOF")
+        if kind == "footer":
+            fields(row, "Type End")
+            require(same(row["End"], end) and payload.hexdigest() == end["PayloadSHA256"] and barriers == 2, "parallel result/footer/EOF seal")
+            footer_seen = True
+            continue
+        payload.update(line)
+        if not header_seen:
+            fields(row, "Type Format Binding Record")
+            require(kind == "header" and row["Format"] == PARALLEL_FORMAT and same(row["Binding"], expected) and same(row["Record"], end["BindingRecord"]), "parallel attempt header/binding")
+            header_seen = True
+            continue
+        if kind == "barrier":
+            fields(row, "Type Phase Barrier")
+            name = ("Old", "Final")[barriers] if barriers < 2 else ""
+            require(name and row["Phase"] == ("create" if name == "Old" else "update") and same(row["Barrier"], end[name]), "ordered actual parallel barrier")
+            b = row["Barrier"]
+            fields(b, "Cut Metadata Records Attempts AbortedAttempts")
+            integer(b["Attempts"]); integer(b["AbortedAttempts"])
+            require(same(b["Cut"], result["OldCut" if name == "Old" else "FinalCut"]) and b["Attempts"] == counters["Attempts"] and b["AbortedAttempts"] == counters["AbortedAttempts"] and commits == (3 + spec["facts"] if name == "Old" else total), "barrier drained authentic attempts/useful commits")
+            require(len(b["Metadata"]) == len(b["Records"]) == 2, "barrier metadata inventory")
+            for g, m in enumerate(b["Metadata"]):
+                fields(m, "Floor Generation Versions Transactions Certificates Bytes Groups")
+                for value in m.values(): integer(value)
+                raw_binding(b["Records"][g], fdb_key(config, g, "meta", "state"), m)
+                require(m["Floor"] == b["Cut"]["Round"] and m["Groups"] == b["Cut"]["Groups"][g] and m["Transactions"] == m["Groups"] + abort_counts[name.lower()][g], "barrier authentic paired ABORT transaction census")
+            barriers += 1
+            continue
+        fields(row, "Type Attempt")
+        require(kind == "attempt", "unknown parallel attempt row")
+        a = row["Attempt"]
+        fields(a, "Operation Engine ClientID AttemptOrdinal PreviousRequest Request Transaction BodySHA256 Proposal Submissions ReadCallbacks Classification Error Originals Original")
+        ordinal = parallel_operation(spec, a["Operation"])
+        phase, fact, node, _ = fixture(spec, ordinal)
+        require((barriers == 0 and phase in ("setup", "create")) or (barriers == 1 and phase == "update"), "attempt crossed drained old/final barrier")
+        client, number = integer(a["ClientID"], 0, spec["writers"] - 1), integer(a["AttemptOrdinal"], 1, 1 if node else 64)
+        prior = joined.get((ordinal,))
+        require((prior is None and number == 1 and a["PreviousRequest"] == "") or prior is not None and prior["Classification"] == "aborted" and number == prior["AttemptOrdinal"] + 1 and client == prior["ClientID"] and a["PreviousRequest"] == prior["Request"], "fresh request requires exact original ABORT lineage")
+        body = raw_bytes(a["Proposal"])
+        tx = decoded_body(body)
+        fields(tx, "Graph Topology ID Request Coordinator Dependency Participants GraphChange Lifecycle")
+        for key in ("Topology","Coordinator","Dependency"): integer(tx[key])
+        name, owner = operation(spec, ordinal)
+        name += f"-c{client}-a{number}"
+        command, lifecycle, effects, reads = fdb_contract(spec, ordinal)
+        require(a["Engine"] == "foundationdb" and a["Error"] == "" and a["Transaction"] == tx["ID"] == name and a["Request"] == tx["Request"] == "request/" + name and sha_array(a["BodySHA256"]) == hashlib.sha256(body).digest(), "frozen actual parallel ID/request/body")
+        require(tx["Graph"] == config["Graph"] and tx["Topology"] == config["Topology"] and tx["Coordinator"] == owner and tx["Dependency"] == 0 and same(tx["GraphChange"], command) and same(tx["Lifecycle"], lifecycle), "parallel actual command/config/provenance")
+        require([p["Group"] for p in tx["Participants"]] == sorted(effects), "parallel attempt complete participants")
+        for p in tx["Participants"]:
+            fields(p, "Group Epoch Generation Reads Effects")
+            g = integer(p["Group"], 0, 1)
+            require(p["Epoch"] == config["Epochs"][g] and integer(p["Generation"]) <= end["Final"]["Metadata"][g]["Generation"] and same(p["Effects"], effects[g]) and [r["Key"] for r in p["Reads"]] == reads[g], "parallel immutable participant/read/effect shape")
+            for r in p["Reads"]:
+                fields(r, "Key Version"); integer(r["Version"])
+        require(type(a["Originals"]) is list and len(a["Originals"]) == 2, "complete retained ID/request pair")
+        o = decoded_body(raw_bytes(a["Originals"][0]["Value"]))
+        fields(o, "Commit Round Digest ID Request Reason Coordinator Sequence")
+        for key in ("Round","Coordinator","Sequence"): integer(o[key])
+        require(type(o["Commit"]) is bool and o["ID"] == name and o["Request"] == a["Request"] and o["Coordinator"] == owner and sha_array(o["Digest"]) == hashlib.sha256(body).digest(), "retained attempt original identity/digest")
+        for record, kind in zip(a["Originals"], ("id", "request")):
+            raw_binding(record, fdb_key(config, owner, kind, o["ID"] if kind == "id" else o["Request"]), o)
+        for kind, record in zip((b"fdb-attempt-id", b"fdb-attempt-request"), a["Originals"]):
+            spool.insert(kind, raw_bytes(record["Key"]), raw_bytes(record["Value"]))
+        require(type(a["Submissions"]) is list and 1 <= len(a["Submissions"]) <= 8, "finite SAME-wire submissions")
+        for invocation, s in enumerate(a["Submissions"], 1):
+            fields(s, "Ordinal Callbacks Outcome Error Retryable MaybeCommitted")
+            require(type(s["Ordinal"]) is int and s["Ordinal"] == invocation and type(s["Error"]) is str and type(s["Retryable"]) is type(s["MaybeCommitted"]) is bool, "actual SAME-wire submission identity/classification")
+            counters["SubmitInvocations"] += 1
+            counters["SDKCallbacks"] += integer(s["Callbacks"], 1, 16)
+            if s["Error"]:
+                # A successful original may resolve ambiguity, but a later
+                # outer resubmission may only follow a retryable/unknown call.
+                if invocation < len(a["Submissions"]): require(s["Retryable"] or s["MaybeCommitted"], "definite SDK failure retried")
+            else:
+                require(same(s["Outcome"], o) and not s["Retryable"] and not s["MaybeCommitted"] and invocation == len(a["Submissions"]), "actual submission/original receipt")
+        counters["ReadCallbacks"] += integer(a["ReadCallbacks"], 2, 16 * 9)
+        counters["Attempts"] += 1
+        if o["Commit"]:
+            require(a["Classification"] == "committed" and o["Reason"] == "" and integer(o["Round"], 1) and integer(o["Sequence"], 1), "genuine useful COMMIT")
+            fields(a["Original"], "Key Value")
+            group = decoded_body(raw_bytes(a["Original"]["Value"]))
+            require(same(group["Tx"], tx) and same(group["Outcome"], o), "complete committed original attempt")
+            key = (f"g{owner}/{config['Graph'].encode().hex()}/changes/{o['Sequence']:016x}/" + o["Request"].encode().hex()).encode()
+            raw_binding(a["Original"], key, group)
+            spool.insert(b"fdb-useful-attempt", u64(ordinal), go_json(a))
+            commits += 1
+            if phase != "setup": clients[client] += 1
+        else:
+            require(a["Classification"] == "aborted" and o["Reason"] in ("generation", "revision") and o["Round"] == o["Sequence"] == 0 and same(a["Original"], {"Key": None, "Value": None}), "authenticated ABORT without committed CDC")
+            counters["AbortedAttempts"] += 1
+            size = sum(len(raw_bytes(r["Key"])) + len(raw_bytes(r["Value"])) for r in a["Originals"])
+            abort_counts["final"][owner] += 1; abort_bytes["final"][owner] += size
+            if phase != "update": abort_counts["old"][owner] += 1; abort_bytes["old"][owner] += size
+        joined[(ordinal,)] = {k: a[k] for k in ("ClientID", "AttemptOrdinal", "Request", "Classification")}
+    require(header_seen and footer_seen and all(end[k] == v for k, v in counters.items()) and same(end["ClientCompletions"], clients) and commits == total and end["Attempts"] == total + end["AbortedAttempts"], "complete authentic parallel attempt/result counts")
+    for ordinal in range(1, total + 1): require(joined.get((ordinal,), {}).get("Classification") == "committed", "logical operation lacks exactly one useful COMMIT")
+    for client in range(spec["writers"]): require(spec["facts"] <= spec["writers"] or clients[client] > 0, "declared independent client unused")
+    return abort_bytes, abort_counts
+
+
 def fdb_raw_groups(path, spec, config, final_cut, stats, spool, result):
+    parallel = "Parallel" in result
+    abort_bytes, abort_counts = fdb_parallel_attempts(Path(path).with_name("fdb-cost-attempts.jsonl"), result, spool) if parallel else ({"old": [0, 0], "final": [0, 0]}, {"old": [0, 0], "final": [0, 0]})
+    if parallel:
+        stats["parallelAttempts"] = {k: result["Parallel"][k] for k in ("Attempts", "AbortedAttempts", "SubmitInvocations", "SDKCallbacks", "ReadCallbacks", "ClientCompletions")}
+        spool.insert(b"fdb-abort-metadata", b"old", go_json({"Bytes": abort_bytes["old"], "Transactions": abort_counts["old"]}))
     reader = artifact_rows(path, "cdc", result, stats)
     header = next(reader, None)
     require(header is not None, "missing CDC header")
@@ -576,14 +933,21 @@ def fdb_raw_groups(path, spec, config, final_cut, stats, spool, result):
                            len(fdb_key(config, g, "meta", "state")) + len(go_json(maximum_metadata)))
     for record in header["CutRecords"]:
         native_bytes[0] += len(raw_bytes(record["Key"])) + len(raw_bytes(record["Value"]))
+    if parallel:
+        record = result["Parallel"]["BindingRecord"]
+        native_bytes[0] += len(raw_bytes(record["Key"])) + len(raw_bytes(record["Value"]))
+        for g in range(2): native_bytes[g] += abort_bytes["final"][g]
     pending, ordinal_next, previous_order = {}, 1, None
     bindings = hashlib.sha256()
     total = 3 + 2 * spec["facts"]
     for raw in reader:
         group = decoded_body(raw["Value"])
         ordinal = integer(group["Tx"]["Lifecycle"]["Provenance"], 1, total)
-        require(ordinal <= max(3, ordinal_next) and ordinal not in pending, "writer1 bounded setup/execution identity order")
-        canonical = fdb_group(group, spec, ordinal, config, physical, generations, sequences, definitions)
+        if not parallel: require(ordinal <= max(3, ordinal_next) and ordinal not in pending, "writer1 bounded setup/execution identity order")
+        canonical = fdb_group(group, spec, ordinal, config, physical, generations, sequences, definitions, parallel=parallel)
+        if parallel:
+            actual_attempt = decoded_body(spool.lookup(b"fdb-useful-attempt", u64(ordinal)))
+            require(raw["Value"] == raw_bytes(actual_attempt["Original"]["Value"]) and same(group["Tx"], decoded_body(raw_bytes(actual_attempt["Proposal"]))), "raw CDC is not genuine useful attempt original")
         outcome = group["Outcome"]
         order = outcome["Round"], outcome["Coordinator"], outcome["Request"]
         require(previous_order is None or previous_order < order, "raw CDC deterministic enumeration order")
@@ -614,28 +978,40 @@ def fdb_raw_groups(path, spec, config, final_cut, stats, spool, result):
         stats["physicalWrites"] += len(group["Writes"])
         for key in ("Key", "Value", "IDKey", "IDValue", "RequestKey", "RequestValue"):
             bindings.update(u64(len(raw[key])) + raw[key])
-        pending[ordinal] = canonical
-        require(len(pending) <= 3, "fixed writer1 setup buffer")
-        while ordinal_next in pending:
-            yield pending.pop(ordinal_next)
-            ordinal_next += 1
-    require(not pending and ordinal_next == total + 1 and sequences == final_cut["Groups"], "incomplete raw original operations/watermarks")
+        if parallel:
+            spool.insert(b"fdb-canonical", u64(ordinal), go_json(canonical))
+        else:
+            pending[ordinal] = canonical
+            require(len(pending) <= 3, "fixed writer1 setup buffer")
+            while ordinal_next in pending:
+                yield pending.pop(ordinal_next)
+                ordinal_next += 1
+    require(not pending and (parallel or ordinal_next == total + 1) and sequences == final_cut["Groups"], "incomplete raw original operations/watermarks")
     for g, metadata in enumerate(header["Metadata"]):
-        require(metadata["Versions"] == versions[g] and metadata["Generation"] == generations[g] and metadata["Certificates"] == (3 if g == 0 else 0) and metadata["Bytes"] == native_bytes[g], "exact retained metadata census")
+        require(metadata["Versions"] == versions[g] and metadata["Generation"] == generations[g] and metadata["Transactions"] == sequences[g] + abort_counts["final"][g] and metadata["Certificates"] == (3 if g == 0 else 0) and metadata["Bytes"] == native_bytes[g], "exact retained metadata census including authentic ABORT pairs")
+    if parallel: require(same(header["Metadata"], result["Parallel"]["Final"]["Metadata"]), "raw final metadata differs from drained authentic attempt barrier")
     operation_count = 0
     for operation_count, group in enumerate(rows(Path(path).with_name("fdb-cost-operation-groups.jsonl"), total), 1):
-        require(go_json(group) == spool.lookup(b"fdb-operation", u64(operation_count)), "per-operation original execution order/binding")
+        ordinal = integer(group["Tx"]["Lifecycle"]["Provenance"], 1, total) if parallel else operation_count
+        require(go_json(group) == spool.lookup(b"fdb-operation", u64(ordinal)), "per-operation original execution order/binding")
+        if parallel: spool.insert(b"fdb-operation-output", u64(ordinal), go_json(group))
     require(operation_count == total, "incomplete per-operation original file")
     samples = 0
     for samples, sample in enumerate(rows(Path(path).with_name("fdb-cost-latency.jsonl"), total), 1):
-        fields(sample, "phase fact cross ProposalNanos AckNanos VerificationNanos ProposalAttempts CommitAttempts Outcome")
-        phase, fact, node, edge = fixture(spec, samples)
+        fields(sample, "phase fact cross ProposalNanos AckNanos VerificationNanos ProposalAttempts CommitAttempts Outcome" + (" Operation ClientID" if parallel else ""))
+        ordinal = parallel_operation(spec, sample["Operation"]) if parallel else samples
+        phase, fact, node, edge = fixture(spec, ordinal)
         require(sample["phase"] == phase and type(sample["fact"]) is int and sample["fact"] == fact and type(sample["cross"]) is bool and sample["cross"] == bool(edge and edge["Target"]["Owner"]), "per-request timing identity")
         for name in ("ProposalNanos", "AckNanos", "VerificationNanos"):
             integer(sample[name], 0, (1 << 63) - 1)
         for name in ("ProposalAttempts", "CommitAttempts"):
             integer(sample[name], 1, (1 << 31) - 1)
-        name, owner = operation(spec, samples)
+        name, owner = operation(spec, ordinal)
+        if parallel:
+            attempt = decoded_body(spool.lookup(b"fdb-useful-attempt", u64(ordinal)))
+            require(sample["ClientID"] == attempt["ClientID"], "useful timing client binding")
+            name = attempt["Transaction"]
+            spool.insert(b"fdb-sample-output", u64(ordinal), go_json(sample))
         require(go_json(sample["Outcome"]) == spool.lookup(b"fdb-id", fdb_key(config, owner, "id", name)), "per-request timing original receipt")
     require(samples == total, "incomplete per-request timings")
     for name, expected_counts in (("history", versions), ("current", current_counts)):
@@ -657,7 +1033,11 @@ def fdb_raw_groups(path, spec, config, final_cut, stats, spool, result):
                     put_raw(spool, b"fdb-old", current_key, row["Value"])
         require(counts == expected_counts, "missing native retained history/current rows")
     stats["originalBindingsSHA256"] = bindings.hexdigest()
-    stats["orderContract"] = "raw (Round,Coordinator,Request) unchanged; execution originals provenance1,2,3 bind independent setup rounds through fixed three-entry buffer"
+    stats["orderContract"] = ("raw (Round,Coordinator,Request) and operation completion order unchanged; canonical parity joins exact operation identities in private spool; actual per-key predecessors and phase barriers validated" if parallel else "raw (Round,Coordinator,Request) unchanged; execution originals provenance1,2,3 bind independent setup rounds through fixed three-entry buffer")
+    if parallel:
+        for ordinal in range(1,total+1):
+            spool.lookup(b"fdb-operation-output",u64(ordinal)); spool.lookup(b"fdb-sample-output",u64(ordinal))
+            yield json.loads(spool.lookup(b"fdb-canonical",u64(ordinal)), object_pairs_hook=pairs)
 
 
 def retained_observations(path, spec, config, spool):
@@ -685,7 +1065,8 @@ def retained_observations(path, spec, config, spool):
                     raw = spool.lookup(namespace, fdb_key(config, owner, "current", write["Key"]))
                     if physical is None:
                         physical = decoded_body(raw)
-                    require(raw == go_json(physical) and physical["Value"] == value and physical["Version"] == (1 if value == 5 else 2) and physical["TxID"] == operation(spec, ordinal)[0], "retained raw edge/out/in correspondence")
+                original_tx = decoded_body(spool.lookup(b"fdb-operation", u64(ordinal)))["Tx"]["ID"]
+                require(raw == go_json(physical) and physical["Value"] == value and physical["Version"] == (1 if value == 5 else 2) and physical["TxID"] == original_tx, "retained raw edge/out/in correspondence")
             for node in (edge["Source"], edge["Target"]):
                 logical = f"node/{node['Node']:016x}/life/{node['Life']:016x}"
                 alive = decoded_body(spool.lookup(namespace, fdb_key(config, node["Owner"], "current", logical)))
@@ -758,6 +1139,13 @@ def column_old_metadata(result, spool):
     for name in ("InitialCut", "OldCut"):
         cut = result[name]
         sizes[0] += len(fdb_key(config, 0, "cut", go_json(cut).hex())) + len(go_json(cut))
+    abort_counts = [0, 0]
+    if "Parallel" in result:
+        record = result["Parallel"]["BindingRecord"]
+        sizes[0] += len(raw_bytes(record["Key"])) + len(raw_bytes(record["Value"]))
+        aborts = decoded_body(spool.lookup(b"fdb-abort-metadata", b"old"))
+        abort_counts = aborts["Transactions"]
+        for g in range(2): sizes[g] += aborts["Bytes"][g]
     generations, versions = [0, 0], [0, 0]
     for ordinal in range(1, 4 + result["spec"]["facts"]):
         raw = spool.lookup(b"fdb-operation", u64(ordinal))
@@ -777,7 +1165,7 @@ def column_old_metadata(result, spool):
         g = int(chr(key[1]))
         sizes[g] += len(key) + len(value)
     return [{"Floor": result["OldCut"]["Round"], "Generation": generations[g], "Versions": versions[g],
-             "Transactions": result["OldCut"]["Groups"][g], "Certificates": 2 if g == 0 else 0,
+             "Transactions": result["OldCut"]["Groups"][g] + abort_counts[g], "Certificates": 2 if g == 0 else 0,
              "Bytes": sizes[g], "Groups": result["OldCut"]["Groups"][g]} for g in range(2)]
 
 
@@ -812,6 +1200,7 @@ def column_artifacts(path, result, spool):
     pin_binding = {"Version": 1, "Columns": list(binding_sha), "Policy": pin_policy}
     manifests = {"old": end["Old"], "final": end["Final"]}  # Exactly two, never dataset-sized.
     old_metadata = column_old_metadata(result, spool)
+    if "Parallel" in result: require(same(old_metadata, result["Parallel"]["Old"]["Metadata"]), "column old metadata omits authentic retained attempt/binding bytes")
     for name, m in manifests.items():
         fields(m, "Generation Metadata Chunks Rows Bytes History Chain")
         g = m["Generation"]
@@ -1139,11 +1528,14 @@ def compare_streams(native_path, fdb_path, spec, config, final_cut, native_bound
 def _compare_streams(native_path, fdb_path, spec, config, final_cut, native_bounds, spool, raw_result, observations_path):
     fields(spec, "version facts crossPercent writers")
     integer(spec["facts"], 1, 1_000_000)
-    require(type(spec["version"]) is type(spec["writers"]) is type(spec["crossPercent"]) is int and spec["version"] == 1 and spec["writers"] == 1 and spec["crossPercent"] in (0, 10, 50, 100), "fixed writer1 cost spec")
+    require(type(spec["version"]) is type(spec["writers"]) is type(spec["crossPercent"]) is int and spec["version"] == 1 and spec["writers"] in (1,8,32) and spec["crossPercent"] in (0, 10, 50, 100), "declared cost spec")
     count = spec["facts"]
-    column_lane = raw_result is not None and raw_result.get("version") == 3 and raw_result.get("oracleFormat") == COLUMN_FORMAT
-    expected_config = {"Format": 2, "Graph": "graph-cost-columns-v1" if column_lane else "graph-cost-v1", "Topology": 1, "Epochs": [7, 11],
-                       "Limits": {"Bytes": (64 << 20) + count * (64 << 10), "Transactions": 3 + 2 * count, "Versions": 3 + 6 * count, "Certificates": 1024},
+    parallel = spec["writers"] != 1
+    require(not parallel or raw_result is not None and raw_result.get("version") in (4,5) and "Parallel" in raw_result, "parallel evidence requires fresh complete attempt format")
+    column_lane = raw_result is not None and (raw_result.get("version"),raw_result.get("oracleFormat")) in ((3,COLUMN_FORMAT),(5,PARALLEL_COLUMN_FORMAT))
+    graph = "graph-cost-parallel-columns-v1" if parallel and column_lane else "graph-cost-parallel-v1" if parallel else "graph-cost-columns-v1" if column_lane else "graph-cost-v1"
+    expected_config = {"Format": 2, "Graph": graph, "Topology": 1, "Epochs": [7, 11],
+                       "Limits": {"Bytes": (64 << 20) + count * (64 << 10) + (2*count*63*2048 if parallel else 0), "Transactions": 3 + 2 * count * (64 if parallel else 1), "Versions": 3 + 6 * count, "Certificates": 1024},
                        "Nodes": [1, 7 + 2 * count], "Cost": spec, "CostScope": SCOPE}
     require(same(config, expected_config), "FDB immutable cost contract")
     fields(final_cut, "Graph Topology Epochs Scope Round Groups")
@@ -1154,17 +1546,19 @@ def _compare_streams(native_path, fdb_path, spec, config, final_cut, native_boun
         integer(watermark)
     integer(final_cut["Round"], 1)
     native_stats, fdb_stats = {"records": 0, "controls": 0}, {"physicalWrites": 0}
-    left = native_groups(native_path, spec, native_bounds, native_stats, spool)
+    left = (native_parallel_groups if parallel else native_groups)(native_path, spec, native_bounds, native_stats, spool)
     if raw_result is None:
         right = fdb_groups(fdb_path, spec, config, final_cut, fdb_stats, spool)
     else:
-        fields(raw_result, "version engine spec deployment SetupNodes Creates Updates CompletedCreates CompletedUpdates SetupNanos WritesNanos VerificationNanos TotalNanos InitialCut OldCut FinalCut Config CDCGroups LogicalComponentChanges PhysicalGraphChanges IDAdmission oracleFormat StreamEnds" + (" Columns" if column_lane else ""))
+        fields(raw_result, "version engine spec deployment SetupNodes Creates Updates CompletedCreates CompletedUpdates SetupNanos WritesNanos VerificationNanos TotalNanos InitialCut OldCut FinalCut Config CDCGroups LogicalComponentChanges PhysicalGraphChanges IDAdmission oracleFormat StreamEnds" + (" Columns" if column_lane else "") + (" Parallel" if parallel else ""))
         require(observations_path is not None and "oldCut" in native_bounds, "raw parity requires actual retained observations/old cut")
-        require(type(raw_result["version"]) is int and (raw_result["version"], raw_result["oracleFormat"]) == ((3, COLUMN_FORMAT) if column_lane else (2, RAW_FORMAT)) and same(raw_result["Config"], config) and same(raw_result["FinalCut"], final_cut), "mixed raw result format/config/cut")
+        expected_format = (5,PARALLEL_COLUMN_FORMAT) if parallel and column_lane else (4,PARALLEL_FORMAT) if parallel else (3,COLUMN_FORMAT) if column_lane else (2,RAW_FORMAT)
+        require(type(raw_result["version"]) is int and (raw_result["version"], raw_result["oracleFormat"]) == expected_format and same(raw_result["Config"], config) and same(raw_result["FinalCut"], final_cut), "mixed raw result format/config/cut")
         require(same(raw_result["spec"], spec) and len(raw_result["StreamEnds"]) == 3, "raw result specification/complete EOF set")
         for name, expected in (("SetupNodes", 3), ("Creates", count), ("Updates", count), ("CompletedCreates", count), ("CompletedUpdates", count), ("CDCGroups", 3 + 2 * count), ("LogicalComponentChanges", 3 + 3 * count), ("PhysicalGraphChanges", 3 + 6 * count)):
             require(type(raw_result[name]) is int and raw_result[name] == expected, "raw result exact cardinality")
-        require(raw_result["engine"] == "foundationdb" and raw_result["IDAdmission"] == "fixed declared fixture IDs/ranges; this adapter has no rho allocator protocol", "raw engine/admission identity")
+        admission = "fixed declared fixture IDs/ranges; independent SDK clients, no rho allocator protocol" if parallel else "fixed declared fixture IDs/ranges; this adapter has no rho allocator protocol"
+        require(raw_result["engine"] == "foundationdb" and raw_result["IDAdmission"] == admission, "raw engine/admission identity")
         right = fdb_raw_groups(fdb_path, spec, config, final_cut, fdb_stats, spool, raw_result)
     digest, groups, components = hashlib.sha256(), 0, 0
     while True:
@@ -1180,7 +1574,7 @@ def _compare_streams(native_path, fdb_path, spec, config, final_cut, native_boun
     report = {"equal": True, "logicalGroups": groups, "componentChanges": components,
             "canonicalLogicalCDCSHA256": digest.hexdigest(), "native": native_stats, "fdb": fdb_stats,
             "nativeCodecBoundary": "cost-only qualified native decoder binds retained same-index views/originals/canonical CDC; Python checks outcome seals/fields, certified prefix/root hashes and complete decoded logical records",
-            "scope": "fixed writer1 create/update contract; numeric rounds/indexes and physical protocol/replica layouts are validated per engine"}
+            "scope": ("declared independent8/32 client create/update contract; complete attempts and per-key causality/cut membership; no common total round order, capacity, runtime or fullmatrix acceptance" if parallel else "fixed writer1 create/update contract; numeric rounds/indexes and physical protocol/replica layouts are validated per engine")}
     if raw_result is not None:
         report["canonicalRetainedOutputSHA256"] = retained_observations(observations_path, spec, config, spool)
         report["oracleFormat"] = raw_result["oracleFormat"]

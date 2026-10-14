@@ -37,6 +37,7 @@ type graphCostResult struct {
 	OracleFormat                                             string                `json:"oracleFormat,omitempty"`
 	StreamEnds                                               [3]graphCostStreamEnd `json:",omitzero"`
 	Columns                                                  *graphCostColumnEnd   `json:",omitempty"`
+	Parallel                                                 *graphCostParallelEnd `json:",omitempty"`
 }
 
 func graphCostSpecFromEnv() (graphCostProfile, error) {
@@ -53,7 +54,11 @@ func graphCostSpecFromEnv() (graphCostProfile, error) {
 	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
 		return p, errors.Join(errInvalid, err)
 	}
-	if !validGraphCostProfile(graphCostConfig("validation", p)) {
+	graph := "validation"
+	if p.Writers == 8 || p.Writers == 32 {
+		graph = "graph-cost-parallel-v1"
+	}
+	if !validGraphCostProfile(graphCostConfig(graph, p)) {
 		return p, errInvalid
 	}
 	return p, nil
@@ -65,34 +70,38 @@ func (h *harness) graphCostPointSnapshot(command graphCommand) (snapshot, int, e
 	attempts := 0
 	result, err := h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
 		attempts++
-		s := snapshot{Values: [2]map[string]value{{}, {}}}
-		keys := graphReadKeys(command)
-		for g := uint8(0); g < 2; g++ {
-			if err := h.checkConfig(tr, g); err != nil {
-				return nil, err
-			}
-			m, err := h.meta(tr, g)
-			if err != nil {
-				return nil, err
-			}
-			s.Generations[g] = m.Generation
-			for _, key := range keys[g] {
-				v, found, err := get[value](tr, h.key(g, "current", key))
-				if err != nil {
-					return nil, err
-				}
-				if found && !validGraphValue(v) {
-					return nil, errInvalid
-				}
-				s.Values[g][key] = v
-			}
-		}
-		return s, nil
+		return h.graphCostPointSnapshotIn(tr, command)
 	})
 	if err != nil {
 		return snapshot{}, attempts, err
 	}
 	return result.(snapshot), attempts, nil
+}
+
+func (h *harness) graphCostPointSnapshotIn(tr fdb.ReadTransaction, command graphCommand) (snapshot, error) {
+	s := snapshot{Values: [2]map[string]value{{}, {}}}
+	keys := graphReadKeys(command)
+	for g := uint8(0); g < 2; g++ {
+		if err := h.checkConfig(tr, g); err != nil {
+			return snapshot{}, err
+		}
+		m, err := h.meta(tr, g)
+		if err != nil {
+			return snapshot{}, err
+		}
+		s.Generations[g] = m.Generation
+		for _, key := range keys[g] {
+			v, found, err := get[value](tr, h.key(g, "current", key))
+			if err != nil {
+				return snapshot{}, err
+			}
+			if found && !validGraphValue(v) {
+				return snapshot{}, errInvalid
+			}
+			s.Values[g][key] = v
+		}
+	}
+	return s, nil
 }
 
 // Identical immutable validation and native commit implementation as submit;
@@ -177,6 +186,9 @@ func graphCostCheckView(view graphView, p graphCostProfile, want int64) error {
 	return nil
 }
 func runGraphCost(db fdb.Database, p graphCostProfile) (err error) {
+	if p.Writers != 1 {
+		return runGraphCostParallel(db, p)
+	}
 	started := time.Now()
 	layout := os.Getenv("RHO_GRAPH_COST_LAYOUT")
 	if layout != "" && layout != "kv" && layout != "columns" {

@@ -70,7 +70,7 @@ func graphCostColumnPolicies(p graphCostProfile) (graphColumnPolicy, graphColumn
 }
 
 func newGraphCostColumnLane(h *harness, root *os.Root, initial cut) (*graphCostColumnLane, error) {
-	if h == nil || root == nil || h.config.Graph != "graph-cost-columns-v1" || !validGraphCostProfile(h.config) {
+	if h == nil || root == nil || h.config.Graph != "graph-cost-columns-v1" && h.config.Graph != "graph-cost-parallel-columns-v1" || !validGraphCostProfile(h.config) {
 		return nil, errInvalid
 	}
 	policy, retention := graphCostColumnPolicies(h.config.Cost)
