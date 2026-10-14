@@ -23,7 +23,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   is deleted during the build keeps its history in the envelope. Under `TemporalIndexOnDisk` a create that fails or
   crashes before it publishes no longer leaves 0x0B rows behind: its error paths purge the label's rows, and an open
   purges the rows of every label with no definition (before, a later create of the label plus a crash reopen loaded
-  both rows and a temporal ByLabel read returned the node twice). `PutNodeVersion` takes the index lock for writing
+  both rows and a temporal ByLabel read returned the node twice). The badger create's backfill writes a node's
+  0x0B row unless a write since the build started added or removed that row: before, a `PutNodeVersion` during the
+  build suppressed the row (the node was missing after a crash reopen), and a node that lost the label during the
+  build got a stale row (a re-add with another `from` then left two rows, and a crash reopen returned it twice).
+  Memory's create read a node's history map after releasing the lock, a concurrent map read and write with a
+  `PutNodeVersion`; it now reads the rows under the lock. `PutNodeVersion` takes the index lock for writing
   only when one of the row's labels has a temporal index. Tests `TestNodeTemporalEnvelope_*` (badger),
   `TestMemoryNodeTemporalEnvelope_*`; evidence `tasks/evidence/node-temporal-envelope/`.
 

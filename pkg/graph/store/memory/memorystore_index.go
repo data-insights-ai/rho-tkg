@@ -503,26 +503,27 @@ func (ms *Store) CreateTemporalIndex(labelToken uint16) error {
 	}
 	backfill := make([]nodeEnvelope, 0, len(nids))
 	for _, nid := range nids {
+		rawID := nid.SnowflakeID()
+		var entry nodeEnvelope
+		// The history map is ranged under the RLock: a concurrent
+		// PutNodeVersion writes the same inner map.
 		ms.mu.RLock()
 		n, ok := ms.nodes[nid]
-		var hist map[uint32]*types.Node
 		if ok {
-			hist = ms.nodeHistory[nid]
+			from, to := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
+			entry = nodeEnvelope{id: rawID, intervals: []interval{{from, to}}}
+			for _, hv := range ms.nodeHistory[nid] {
+				if hv == nil {
+					continue
+				}
+				hf, ht := indexpkg.NodeTemporalBounds(rawID, hv.Temporal())
+				entry.intervals = append(entry.intervals, interval{hf, ht})
+			}
 		}
 		ms.mu.RUnlock()
 		phase2Yield() // test seam: ms.mu is provably unheld here
 		if !ok {
 			continue // deleted between snapshot and fetch
-		}
-		rawID := nid.SnowflakeID()
-		from, to := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
-		entry := nodeEnvelope{id: rawID, intervals: []interval{{from, to}}}
-		for _, hv := range hist {
-			if hv == nil {
-				continue
-			}
-			hf, ht := indexpkg.NodeTemporalBounds(rawID, hv.Temporal())
-			entry.intervals = append(entry.intervals, interval{hf, ht})
 		}
 		backfill = append(backfill, entry)
 	}

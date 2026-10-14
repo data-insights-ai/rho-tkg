@@ -48,9 +48,11 @@ func (bs *Store) maintainTemporalIndexDiskAdd(n *types.Node, id snowflake.ID) []
 	labelCount := n.LabelTokenCount()
 	for i := 0; i < labelCount; i++ {
 		tok := n.LabelTokenRawAt(i)
-		if _, ok := bs.temporalIndexes[tok]; !ok {
+		ti, ok := bs.temporalIndexes[tok]
+		if !ok {
 			continue
 		}
+		markTemporalDiskWritten(ti, id)
 		ops = append(ops, writeOp{
 			opType: writeOpSet,
 			key:    storepkg.TemporalIndexEntryKey(tok, from, id),
@@ -58,6 +60,15 @@ func (bs *Store) maintainTemporalIndexDiskAdd(n *types.Node, id snowflake.ID) []
 		})
 	}
 	return ops
+}
+
+// markTemporalDiskWritten records that a write maintained id's on-disk row of
+// ti while ti's create backfills (see TemporalIndex.DiskWritten). Caller
+// holds idxMu.
+func markTemporalDiskWritten(ti *indexpkg.TemporalIndex, id snowflake.ID) {
+	if ti != nil && ti.DiskWritten != nil {
+		ti.DiskWritten[id] = struct{}{}
+	}
 }
 
 // maintainTemporalIndexDiskRemove is the Remove counterpart of
@@ -74,9 +85,11 @@ func (bs *Store) maintainTemporalIndexDiskRemove(n *types.Node, id snowflake.ID)
 	labelCount := n.LabelTokenCount()
 	for i := 0; i < labelCount; i++ {
 		tok := n.LabelTokenRawAt(i)
-		if _, ok := bs.temporalIndexes[tok]; !ok {
+		ti, ok := bs.temporalIndexes[tok]
+		if !ok {
 			continue
 		}
+		markTemporalDiskWritten(ti, id)
 		ops = append(ops, writeOp{opType: writeOpDelete, key: storepkg.TemporalIndexEntryKey(tok, from, id)})
 	}
 	return ops
@@ -92,6 +105,9 @@ func (bs *Store) maintainTemporalIndexDiskRemove(n *types.Node, id snowflake.ID)
 func (bs *Store) maintainTemporalIndexDiskPurge(id snowflake.ID) []writeOp {
 	if !bs.temporalIdxOnDisk || len(bs.temporalIndexes) == 0 {
 		return nil
+	}
+	for _, ti := range bs.temporalIndexes {
+		markTemporalDiskWritten(ti, id)
 	}
 	var ops []writeOp
 	// Purge any unflushed SET for this ID under a tracked label FIRST — before
