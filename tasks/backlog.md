@@ -329,8 +329,11 @@ within existing quotas. AS7 publication-header/export verification is
 source-integrated at `1d28230a`, binding actual family counts, required anchor
 hashes and recovery state; `700f68f2` also requires the final recovery root,
 so an extra old row cannot compensate for a missing required suffix endpoint.
-Import/prepared/activation, AD6 descriptor wiring and the operative collector
-still require implementation and qualification. Complete retained terminal-bank comparison is
+AS7 import/prepared/actual Ready activation and AD6 descriptor wiring are
+source-integrated at `edf266bd`, with exact owned anchor charging, incoming
+transient/terminal reservations and local-cursor reset. Native admission/floor,
+operative collection, scrub and fresh graph handoff still require implementation;
+all these new sources await execution. Complete retained terminal-bank comparison is
 source-integrated at `045517ab`; graph Restore can detect unknown extra native
 owners instead of inspecting only the transient recovery owner. Its direct
 historical guard and existing unknown-version guard updates are authored only.
@@ -344,8 +347,10 @@ in-process and retain-all. Distributed child-owned publication/read/cache and
 physical-restart wiring is source-integrated at `5e6ca422`, with authenticated
 full cuts, disjoint local prefixes and both genuine sealed EOFs before joining.
 The fresh column artifact has its own version; the ordinary KV artifact is
-unchanged. Bounded independent checker/controller integration, durable pin-backed
-ownership beyond the current minute lease and source GC remain open.
+unchanged. Bounded independent checker/controller integration is source-integrated
+at `84225cc0`: exact raw originals, binary typed rows, initial/old/final cuts,
+sealed prefixes and actual cache bytes/ledgers share the existing finite spool.
+Durable pin-backed ownership beyond the current minute lease and source GC remain open.
 Native cost replay export/comparison is source-integrated at `2f46278f`: a later
 entry keeps its actual prefix/root and empty current CDC, joins the authentic
 earlier original frames, and is excluded from duplicate business folding only
@@ -357,7 +362,10 @@ guards are authored, not executed. The explicitly selected FDB source-history
 collector is source-integrated at `5685b659`: durable pre-deletion admission,
 held-read/pin/reference protection, resumable bounded deletion and exact original
 revision checks preserve current anchors, retry outcomes and retained CDC.
-Fresh runner/artifact wiring and runtime qualification remain open; default
+Fresh runner/artifact wiring is source-integrated at `e34d9783`: genuine held old
+reads, expired-new-open refusal, bounded durable collector resume, complete
+retained originals and COMMIT/ABORT replay bind separate version6 artifacts.
+Its controller/checker integration and runtime qualification remain open; default
 retain-all behavior and ordinary formats stay unchanged. These integrations close source packages,
 not V2 E/F qualification or comparative efficiency acceptance.
 Existing accepted components stay closed unless their source or required
