@@ -137,9 +137,36 @@ func TestCertifiedIncidentStreamRetainsCutAndCommitsOnlyHydratedChunks(t *testin
 	if err != nil || len(beginning.rows) != 1 || beginning.rows[0].Record.ID != 3 {
 		t.Fatal("new owner skipped genuine prefix", beginning, err)
 	}
+
+	// Consumer callbacks can inspect charges, while recursive Next refuses.
+	if _, err := fresh.Next(t.Context(), fresh.request, 1, func(*certifiedIncidentChunk) error {
+		if fresh.Charged().invocations != 2 {
+			t.Fatal("callback charge unavailable")
+		}
+		if _, err := fresh.Next(t.Context(), fresh.request, 2, nil); !errors.Is(err, errLimit) {
+			t.Fatal("recursive Next accepted", err)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	finalCharge := fresh.Charged()
 	if chunk, err := fresh.Next(t.Context(), fresh.request, 2, nil); chunk != nil || !errors.Is(err, errLimit) || fresh.sequence != 1 || fresh.Charged() != finalCharge {
 		t.Fatal("exhausted invocation advanced/refunded", chunk, err)
+	}
+
+	closing, err := remote.OpenIncidentStream(t.Context(), cut, nil, predicate, at, graphstate.Effective, 1, time.Now().Add(time.Minute), grant.add(grant))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chunk, err := closing.Next(t.Context(), closing.request, 1, func(*certifiedIncidentChunk) error {
+		_ = closing.Charged()
+		return closing.Close()
+	}); chunk != nil || !errors.Is(err, context.Canceled) || closing.sequence != 0 {
+		t.Fatal("callback Close committed or deadlocked", chunk, err)
+	}
+	if err := fresh.Close(); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := incidentProduct(math.MaxInt, 2); !errors.Is(err, errLimit) {
 		t.Fatal("overflow admitted", err)

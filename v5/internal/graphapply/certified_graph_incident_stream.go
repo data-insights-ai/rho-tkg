@@ -76,9 +76,10 @@ type certifiedIncidentChunk struct {
 type incidentCertifiedOpener func(context.Context, graphReadRequest, []uint64) (*certifiedGraphRead, error)
 type certifiedIncidentStream struct {
 	mu                        sync.Mutex
+	closeMu                   sync.Mutex
+	operation                 graphRequestGate
 	ctx                       context.Context
 	cancel                    context.CancelFunc
-	stop                      func() bool
 	open                      incidentCertifiedOpener
 	pin                       *certifiedGraphRead // process-local retained-cut ownership; not a durable pin
 	cut                       graphCut
@@ -141,7 +142,7 @@ func openCertifiedIncidentStream(ctx context.Context, open incidentCertifiedOpen
 		return nil, errors.Join(errInvalid, err)
 	}
 	owner, cancel := context.WithDeadline(ctx, deadline)
-	s := &certifiedIncidentStream{ctx: owner, cancel: cancel, open: open, cut: graphCut{certificates: slices.Clone(cut.certificates)}, scope: slices.Clone(scope), predicate: p, at: at, visible: visible, rows: rows, limits: l, grant: grant, remaining: budget}
+	s := &certifiedIncidentStream{operation: newGraphRequestGate(), ctx: owner, cancel: cancel, open: open, cut: graphCut{certificates: slices.Clone(cut.certificates)}, scope: slices.Clone(scope), predicate: p, at: at, visible: visible, rows: rows, limits: l, grant: grant, remaining: budget}
 	if s.request, err = graphReadNonce(); err != nil {
 		cancel()
 		return nil, err
@@ -170,7 +171,7 @@ func openCertifiedIncidentStream(ctx context.Context, open incidentCertifiedOpen
 	short, shortCancel := context.WithDeadline(owner, deadline)
 	s.ctx = short
 	s.cancel = func() { shortCancel(); cancel() }
-	s.stop = context.AfterFunc(short, func() { _ = s.Close() })
+	context.AfterFunc(short, func() { _ = s.Close() })
 	return s, nil
 }
 func minIncidentDeadline(a, b time.Time) time.Time {
@@ -184,36 +185,53 @@ func minIncidentDeadline(a, b time.Time) time.Time {
 // accept may reject a hydrated chunk before commit. Failure consumes the grant
 // but preserves the previous capsule/sequence and never publishes partial EOF.
 func (s *certifiedIncidentStream) Next(ctx context.Context, request [16]byte, sequence uint64, accept func(*certifiedIncidentChunk) error) (*certifiedIncidentChunk, error) {
-	if s == nil || ctx == nil {
+	if s == nil || ctx == nil || s.ctx == nil {
 		return nil, errInvalid
 	}
+	// Refuse overlapping/reentrant attempts. The owner gate never waits behind
+	// a callback that might invoke Next again or cancel the owner with Close.
+	if !s.operation.tryLock() {
+		return nil, errLimit
+	}
+	defer s.operation.unlock()
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if err := errors.Join(ctx.Err(), s.ctx.Err()); err != nil {
+		s.mu.Unlock()
 		return nil, err
 	}
 	if s.closed {
+		s.mu.Unlock()
 		return nil, graphstore.ErrClosed
 	}
 	if request != s.request || sequence == 0 {
+		s.mu.Unlock()
 		return nil, errInvalid
 	}
 	if s.last != nil && sequence == s.sequence {
+		last := s.last
+		s.mu.Unlock()
 		if accept != nil {
-			if err := accept(s.last); err != nil {
+			if err := accept(last); err != nil {
 				return nil, err
 			}
 		}
-		return s.last, nil
+		if err := errors.Join(ctx.Err(), s.ctx.Err()); err != nil {
+			return nil, err
+		}
+		return last, nil
 	}
 	if s.sequence == math.MaxUint64 || sequence != s.sequence+1 || s.last != nil && s.last.complete {
+		s.mu.Unlock()
 		return nil, errInvalid
 	}
 	if !s.remaining.admit(s.grant) {
+		s.mu.Unlock()
 		return nil, errLimit
 	}
 	s.remaining = s.remaining.subtract(s.grant)
 	s.charged = s.charged.add(s.grant)
+	started, capsule := s.started, s.capsule
+	s.mu.Unlock()
 	call, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(s.ctx, cancel)
 	defer func() { stop(); cancel() }()
@@ -221,7 +239,7 @@ func (s *certifiedIncidentStream) Next(ctx context.Context, request [16]byte, se
 	if err != nil {
 		return nil, err
 	}
-	chunk, next, err := s.hydrate(call, read, sequence)
+	chunk, next, err := s.hydrate(call, read, sequence, started, capsule)
 	err = errors.Join(err, read.Close())
 	if err == nil {
 		err = errors.Join(call.Err(), s.ctx.Err())
@@ -229,24 +247,29 @@ func (s *certifiedIncidentStream) Next(ctx context.Context, request [16]byte, se
 	if err == nil && accept != nil {
 		err = accept(chunk)
 	}
-	if err == nil {
-		err = errors.Join(call.Err(), s.ctx.Err())
-	}
 	if err != nil {
 		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := errors.Join(call.Err(), s.ctx.Err()); err != nil {
+		return nil, err
+	}
+	if s.closed {
+		return nil, graphstore.ErrClosed
 	}
 	s.capsule, s.started, s.sequence, s.last = next, true, sequence, chunk
 	return chunk, nil
 }
-func (s *certifiedIncidentStream) hydrate(ctx context.Context, read *certifiedGraphRead, sequence uint64) (*certifiedIncidentChunk, graphstore.PartitionIncidentContinuation, error) {
+func (s *certifiedIncidentStream) hydrate(ctx context.Context, read *certifiedGraphRead, sequence uint64, started bool, capsule graphstore.PartitionIncidentContinuation) (*certifiedIncidentChunk, graphstore.PartitionIncidentContinuation, error) {
 	var next graphstore.PartitionIncidentContinuation
 	actual, err := read.Cut()
 	if err != nil || !slices.Equal(actual.certificates, s.cut.certificates) || read.full == nil {
 		return nil, next, errors.Join(errInvalid, err)
 	}
 	token := graphstate.Cursor(0)
-	if s.started {
-		token, err = read.full.ImportIncidentContinuation(ctx, s.predicate, s.capsule)
+	if started {
+		token, err = read.full.ImportIncidentContinuation(ctx, s.predicate, capsule)
 	}
 	if err != nil {
 		return nil, next, err
@@ -307,24 +330,30 @@ func (s *certifiedIncidentStream) Charged() certifiedIncidentBudget {
 	return s.charged
 }
 func (s *certifiedIncidentStream) Close() error {
-	if s == nil {
+	if s == nil || s.cancel == nil {
 		return errInvalid
 	}
-	s.cancel() // cancel outstanding source RPCs before waiting for query serialization
+	s.cancel() // active attempts keep their own bounded source cleanup ownership
+	s.closeMu.Lock()
+	defer s.closeMu.Unlock()
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.closed {
-		return s.closeErr
+		err := s.closeErr
+		s.mu.Unlock()
+		return err
 	}
 	s.closed = true
-	if s.stop != nil {
-		s.stop()
-	}
-	if s.pin != nil {
-		s.closeErr = s.pin.Close()
-		s.pin = nil
-	}
+	pin := s.pin
+	s.pin = nil
 	s.capsule = graphstore.PartitionIncidentContinuation{}
 	s.last = nil
-	return s.closeErr
+	s.mu.Unlock()
+	var err error
+	if pin != nil {
+		err = pin.Close()
+	}
+	s.mu.Lock()
+	s.closeErr = err
+	s.mu.Unlock()
+	return err
 }
