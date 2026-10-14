@@ -6,11 +6,14 @@ The sealed values below exercise inert codec boundaries and the existing oracle,
 not issuer authentication, actual Prepare/decision or disk/process acceptance.
 """
 import argparse
+import base64
+import copy
 import hashlib
 import importlib.util
 from pathlib import Path
 import struct
 import unittest
+from unittest.mock import patch
 
 SPEC = importlib.util.spec_from_file_location("p05_bridge", Path(__file__).with_name("check-p05-history.py"))
 BRIDGE = importlib.util.module_from_spec(SPEC)
@@ -41,6 +44,43 @@ def fixture():
 
 
 class P05SourceGuards(unittest.TestCase):
+    def test_fixed_writes_refuse_collateral_or_wrong_scalar(self):
+        before, expected = {"A/winner": 0, "B/loser": 0}, {"A/winner": 5}
+        writes = BRIDGE.checked_writes(before, {"A/winner": 5, "B/loser": 0}, expected)
+        self.assertEqual(writes, {"A/winner": {"op": "put", "value": 5}})
+        for after in ({"A/winner": 5, "B/loser": 1}, {"A/winner": 6, "B/loser": 0}):
+            with self.subTest(after=after), self.assertRaises(ValueError):
+                BRIDGE.checked_writes(before, after, expected)
+
+    def test_condition_uses_own_cut_not_later_planning_read(self):
+        _, condition, _ = fixture()
+        certs = [p[0] for p in BRIDGE.condition(condition)]
+        own_cut = {"Certificates": [base64.b64encode(c).decode() for c in certs]}
+        own = {"A/read": 0, "B/read": 0}
+        # This mock isolates the binding guard; neither view has native authority.
+        with patch.object(BRIDGE, "projected", side_effect=lambda value: value):
+            self.assertEqual(BRIDGE.conditional_reads(condition, own_cut, own, own)[0]["values"], own)
+            with self.assertRaises(ValueError):
+                BRIDGE.conditional_reads(condition, own_cut, own, {**own, "B/read": 1})
+            changed_cut = copy.deepcopy(own_cut)
+            changed_cut["Certificates"][0] = base64.b64encode(BRIDGE.seal(certs[0][:-32][:164] + U64(12) + certs[0][172:-32])).decode()
+            with self.assertRaises(ValueError):
+                BRIDGE.conditional_reads(condition, changed_cut, own, own)
+
+    def test_fixed_all_state_refuses_hidden_history(self):
+        # Inert SC1 bytes exercise a literal fixture check, not an authenticated read.
+        header = b"SC\1\2" + b"a" * 16 + b"d" * 32
+        scope = b"TS\1\2" + header[4:] + b"\6"
+        old = header + struct.pack(">I", 0)
+        new = header + struct.pack(">I", 1) + BRIDGE.field(scope) + b"\1\2" + struct.pack(">QQQQ", 5, 9, 7, 101)
+        cells = lambda wire: [dict(Owner=1, Life=2, Name="p", Point=at, State=base64.b64encode(wire).decode(), Cell={}) for at in (0, 2)]
+        step = {"Before": {"Cells": cells(old)}, "After": {"Cells": cells(new)}}
+        op = dict(owner=1, life=2, name=b"p", scope=scope)
+        BRIDGE.scalar_states(step, op, 7, 101, 5)
+        step["After"]["Cells"] = cells(new + b"hidden")
+        with self.assertRaises(ValueError):
+            BRIDGE.scalar_states(step, op, 7, 101, 5)
+
     def test_exact_inert_outer_inner_and_business_binding(self):
         old, condition, outer = fixture()
         parsed = BRIDGE.manifest(outer)

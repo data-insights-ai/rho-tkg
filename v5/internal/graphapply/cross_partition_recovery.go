@@ -25,6 +25,12 @@ func (m *declaredMaterializer) crossReservation(manifest crossManifest, phase cr
 		commandBytes += len(p.kernel) + 32
 	}
 	commandBytes += 256 * len(manifest.parts)
+	if manifest.condition != nil {
+		// GCM2 adds its two-field/seal framing plus GUC1's fixed framing and
+		// one fixed392-byte GSC1 certificate/prefix/authority per participant.
+		// This is sizing only: do not allocate another encoded manifest here.
+		commandBytes += 84 + 436*len(manifest.condition.parts)
+	}
 	if commandBytes > m.limits.commandBytes {
 		return raftlog.ApplicationRecoveryReservation{}, errLimit
 	}

@@ -162,6 +162,48 @@ func TestHistoricalDependencyP05ConditionCodecAndAgreement(t *testing.T) {
 	if !certifiedGraphAgreement(conditionalGraphSemanticContractID()) || !rangeMoveGraphAgreement(conditionalGraphSemanticContractID()) || rangeMoveGraphAgreement(certifiedGraphSemanticContractID()) {
 		t.Fatal("conditional agreement must explicitly preserve both native capabilities")
 	}
+	// Inert encoder sizing at the admitted large participant bound: these
+	// copied kernels/certificates are not valid participant authority or effects.
+	sized := m
+	sized.parts = make([]crossPart, 16)
+	sizedValue := graphReadConditionValue{parts: make([]graphReadConditionPart, 16)}
+	proofs := make([]crossStatus, 16)
+	for i := range 16 {
+		sized.parts[i] = m.parts[i%len(m.parts)]
+		sized.parts[i].binding.Partition = uint64(i + 1)
+		sizedValue.parts[i] = got.parts[i%len(got.parts)]
+		sizedValue.parts[i].certificate.scope.partition = uint64(i + 1)
+		proofs[i] = crossStatus{ns: namespace{m.request.ns.graph, uint64(i + 1)}, tx: m.tx, digest: m.digest, phase: crossPrepare, index: 1, yes: true}
+	}
+	oldCredit, err := n.hosts[0][0].machine.crossReservation(sized, crossRegister)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldSized, err := encodeCrossManifest(sized, l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sized.condition = &sizedValue
+	newSized, err := encodeCrossManifest(sized, l)
+	if err != nil || len(newSized)-len(oldSized) != 84+436*16 {
+		t.Fatal("exact conditional envelope size", err, len(newSized)-len(oldSized))
+	}
+	newCredit, err := n.hosts[0][0].machine.crossReservation(sized, crossRegister)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command, err := encodeCrossCommand(crossCommand{ns: m.request.ns, phase: crossDecide, manifest: newSized, proofs: proofs}, l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, credit := range newCredit.Credits {
+		if credit.CommandBytes < len(command) || credit.CommandBytes-oldCredit.Credits[i].CommandBytes != len(newSized)-len(oldSized) {
+			t.Fatal("conditional credit underfunded encoded completion", i, len(command), credit)
+		}
+	}
+	if newCredit.Credits[0].RetainedBytes-oldCredit.Credits[0].RetainedBytes != 2*uint64(len(newSized)-len(oldSized)) {
+		t.Fatal("conditional prepared-original retention omitted wrapper")
+	}
 }
 
 func p05Schemas() []graphstate.PropertyDefinition {
@@ -922,7 +964,9 @@ func TestHistoricalDependencyP05ConditionalCrossWriteActualProcesses(t *testing.
 				}
 				committed = result
 				records = p05Records(t, f, from)
-				p05CommitCDC(t, records, result, []graphstate.ComponentKey{{Owner: 17, Life: 18, Kind: graphstate.ScalarProperty, Name: "p"}}, 0, 0, 1)
+				// ValueIdentity(5) was genuinely installed as11 by the insertion.
+				// Re-evaluation reuses it rather than minting requested fresh5.
+				p05CommitCDC(t, records, result, []graphstate.ComponentKey{{Owner: 17, Life: 18, Kind: graphstate.ScalarProperty, Name: "p"}}, 0, 0, 0)
 				artifact.Steps = append(artifact.Steps, p05Step{Name: "conditional-re-evaluation", Original: original.wire, Result: p05Result(t, result), Records: records, Before: reevaluated})
 				f.n.all[actor].call(t, processRequest{op: processP05Close, index: restarted})
 			case "temporal-life-value-ABA":
@@ -1067,6 +1111,18 @@ func TestHistoricalDependencyP05ConditionalCrossWriteActualProcesses(t *testing.
 			p05NoEffects(t, p05Records(t, f, from), result.resume.tx, true)
 			current, currentCut := p05Current(t, f, actor, graphReadFresh, graphCut{})
 			artifact.Current = current
+			if schedule == "write-skew-A-first" || schedule == "write-skew-B-first" {
+				winner, loser, valueID := uint64(1), uint64(17), uint64(5)
+				if actor == 4 {
+					winner, loser, valueID = 17, 1, 21
+				}
+				for _, at := range []int64{0, 2} {
+					cell := p05Cell(t, current, winner, "p", at)
+					if !cell.Present || cell.I64 != 5 || cell.Handle != valueID || cell.Revision != committed.decision.round || cell.Provenance != 101 || p05Cell(t, current, loser, "p", at) != p05Cell(t, old, loser, "p", at) {
+						t.Fatal("skew winner scalar/original revision or unchanged loser", at, cell)
+					}
+				}
+			}
 			if schedule == "temporal-life-value-ABA" {
 				oldCell, newCell := p05Cell(t, old, 3, "p", 2), p05Cell(t, current, 3, "p", 2)
 				if oldCell.I64 != 5 || newCell.I64 != 5 || oldCell.Handle != newCell.Handle || oldCell.Revision == newCell.Revision || p05Cell(t, old, 3, "p", 0) != p05Cell(t, current, 3, "p", 0) {

@@ -7,6 +7,7 @@ and durable process behavior require the separately qualified Go capture. Empty
 raw outputs stay opaque; this bridge never supplies missing events or decisions.
 """
 import argparse
+import copy
 import hashlib
 import importlib.util
 import json
@@ -267,15 +268,155 @@ def projected(observation):
     for name, items, keys in (("native", native["entities"], ("id",)), ("life", native["lives"], ("owner", "life")), ("posting", native["postings"], ("endpoint", "life"))):
         for item in items:
             add(item[keys[0]], name + "/" + "/".join(str(item[k]) for k in keys), item)
-    require(len(observation["Cells"]) == 16 and len(observation["Presence"]) == 8, "complete temporal observed cells")
+    owner_lives = ((1, 2), (17, 18), (3, 4), (9, 10))
+    require(len(observation["Cells"]) == 16 and {(c["Owner"], c["Life"], c["Name"], c["Point"]) for c in observation["Cells"]} == {(o, l, n, p) for o, l in owner_lives for n in ("p", "u") for p in (0, 2)}, "complete fixed temporal cell inventory")
+    require(len(observation["Presence"]) == 8 and {(c["Owner"], c["Point"]) for c in observation["Presence"]} == {(o, p) for o, _ in owner_lives for p in (0, 2)}, "complete fixed presence inventory")
     for cell in observation["Cells"]:
-        add(cell["Owner"], f'cell/{cell["Owner"]}/{cell["Life"]}/{cell["Name"]}/{cell["Point"]}', cell)
+        add(cell["Owner"], f'cell/{cell["Owner"]}/{cell["Life"]}/{cell["Name"]}/{cell["Point"]}', cell["Cell"])
     for presence in observation["Presence"]:
         add(presence["Owner"], f'presence/{presence["Owner"]}/{presence["Point"]}', presence)
     for name in ("Keys", "NodeUnique", "RelUnique", "AbsentEntity", "AbsentValue", "AbsentLife"):
         add(9, "footprint/" + name, observation[name])
     require(all(not e["found"] for e in native["phantomEntities"]), "phantom native entity")
     return result
+
+
+def operations(wire):
+    """Bounded original codec inspection, not planning or predicate evaluation."""
+    c = Cursor(body(pgq(wire)["inner"], b"PGO\1"))
+    c.take(41); c.number(); provenance = c.number()
+    require(c.number(4) == 1, "fixture has exactly one declared axis")
+    axis, profile, version = c.take(16), c.number(1), c.number(2)
+    c.field(); c.field()
+    require(profile == 2 and version == 1, "fixture rational axis")
+    count = c.number(4); require(1 <= count <= 4, "fixture operation count")
+    ops = []
+    for _ in range(count):
+        kind, owner, life = c.number(1), c.number(), c.number()
+        require(c.number(4) == 1, "operation axis index")
+        scope = c.field()
+        require(scope[:4] == b"TS\1\2" and scope[4:20] == axis, "original operation scope identity")
+        record = (c.number(), c.number(1), c.number(4), c.field(), c.number(), c.number(), c.number(1), c.number(1), c.number(1))
+        binding = tuple(c.number() for _ in range(4))
+        name, scalar, scalar_axis, value, present = c.field(), c.field(), c.number(4), c.number(), c.number(1)
+        require(scalar_axis == 0 and present == 0, "fixture scalar/operation flags")
+        ops.append(dict(kind=kind, owner=owner, life=life, scope=scope, record=record, binding=binding, name=name, scalar=scalar, value=value))
+    claims = c.number(4); require(claims <= 6, "fixture finite fresh claims")
+    c.take(65 * claims); c.end()
+    return provenance, ops
+
+
+def native_cell(handle, revision, provenance, kind="i64", value=0, present=True):
+    return dict(present=present, null=False, handle=handle, revision=revision, provenance=provenance, kind=kind, i64=value)
+
+
+def scalar_keys(owner, life, name):
+    group = "A" if owner < 17 else "B"
+    return {f"{group}/cell/{owner}/{life}/{name}/{at}" for at in (0, 2)}
+
+
+def checked_writes(before, after, expected):
+    """Exact fixture literals: neither arbitrary changed keys nor After values."""
+    require(before.keys() == after.keys(), "observed footprint changed shape")
+    changed = {k for k in before if before[k] != after[k]}
+    require(changed == expected.keys(), "collateral/missing original operation effects")
+    require(all(after[k] == value for k, value in expected.items()), "original operation literal/result mismatch")
+    return {k: {"op": "put", "value": copy.deepcopy(value)} for k, value in expected.items()}
+
+
+def conditional_reads(condition_wire, own_cut, own_observation, before):
+    """Use this original's captured read, not a later planning observation."""
+    observed = projected(own_observation)
+    require([p[0] for p in condition(condition_wire)] == cut(own_cut)[2] and before == observed, "conditional reads replaced by later planning observation")
+    return [{"kind": "range", "lo": "A/", "hi": "B0", "values": observed}]
+
+
+def scalar_states(step, op, round_, provenance, reference):
+    """Check fixed All or [2,3] fixture SC1 bytes; never replay a reducer."""
+    before = {x["Point"]: x for x in step["Before"]["Cells"] if (x["Owner"], x["Life"], x["Name"]) == (op["owner"], op["life"], op["name"].decode())}
+    after = {x["Point"]: x for x in step["After"]["Cells"] if (x["Owner"], x["Life"], x["Name"]) == (op["owner"], op["life"], op["name"].decode())}
+    require(set(before) == set(after) == {0, 2}, "complete scalar point observations")
+    old, actual = raw(before[0]["State"]), raw(after[0]["State"])
+    require(old == raw(before[2]["State"]) and actual == raw(after[2]["State"]) and old[:4] == actual[:4] == b"SC\1\2", "component state identity")
+    require(old[4:52] == actual[4:52] == op["scope"][4:52], "component/original axis binding")
+    updated = b"\1\2" + struct.pack(">QQQQ", reference, 9, round_, provenance)
+    scope = op["scope"]
+    if scope[52:] == b"\6":
+        entries = [(scope, updated)]
+    else:
+        # Literal closed rational [2,3] and its two exclusive complements.
+        two, three = b"\1\0\1\2\1\0\1\1", b"\1\0\1\3\1\0\1\1"
+        require(scope[52:] == b"\4\x82" + two + b"\x82" + three, "fixture partial scope changed")
+        cell = before[0]["Cell"]
+        require(cell["present"] and cell["i64"] == 5 and cell["handle"] == 5 and cell["provenance"] == 3, "ABA fixed original outside cell")
+        outside = b"\1\2" + struct.pack(">QQQQ", 5, 9, cell["revision"], 3)
+        entries = [(scope[:52] + b"\4\1\2" + two, outside), (scope, updated), (scope[:52] + b"\4\2" + three + b"\3", outside)]
+    expected = old[:52] + struct.pack(">I", len(entries)) + b"".join(field(s) + cell for s, cell in entries)
+    require(actual == expected, "unobserved/extra scalar history or incorrect literal revision")
+
+
+def fixture_writes(step, m, round_, schedule):
+    before, after = projected(step["Before"]), projected(step["After"])
+    provenance, ops = operations(raw(step["Original"]))
+    written_components = {(o["owner"], o["life"], o["name"].decode()) for o in ops if o["kind"] == 8}
+    old_states = {(c["Owner"], c["Life"], c["Name"], c["Point"]): raw(c["State"]) for c in step["Before"]["Cells"]}
+    require(all(raw(c["State"]) == old_states[(c["Owner"], c["Life"], c["Name"], c["Point"])] for c in step["After"]["Cells"] if (c["Owner"], c["Life"], c["Name"]) not in written_components), "collateral history outside original Set footprint")
+    expected = {}
+    zero_record, zero_binding = (0, 0, 0, b"", 0, 0, 0, 0, 0), (0, 0, 0, 0)
+    name = step["Name"]
+    if name in ("conditional-winner", "conditional-re-evaluation", "native-ABA-4", "native-ABA-5"):
+        require(len(ops) == 1, "single original Set")
+        op = ops[0]
+        owner = 17 if schedule == "write-skew-B-first" or name == "conditional-re-evaluation" else 1 if name == "conditional-winner" else 3
+        life, value, requested = owner + 1, 6 if name == "native-ABA-4" else 5, 21 if schedule == "write-skew-B-first" else 6 if name == "native-ABA-4" else 5
+        require((op["kind"], op["owner"], op["life"], op["name"], op["scalar"], op["value"], op["record"], op["binding"]) == (8, owner, life, b"p", b"\4" + struct.pack(">q", value), requested, zero_record, zero_binding), "Set original differs from fixed fixture")
+        require(provenance == (104 if name == "native-ABA-4" else 105 if name == "native-ABA-5" else 101), "Set provenance")
+        reference = 11 if name == "conditional-re-evaluation" else requested
+        scalar_states(step, op, round_, provenance, reference)
+        for key in scalar_keys(owner, life, "p"):
+            if key.endswith("/0") and name.startswith("native-ABA"):
+                continue
+            expected[key] = native_cell(reference, round_, provenance, value=value)
+    elif name == "unique-insertion":
+        require(provenance == 102 and len(ops) == 4, "unique insertion original")
+        signatures = [(o["kind"], o["owner"], o["life"], o["name"], o["scalar"], o["value"]) for o in ops]
+        require(signatures == [(1, 9, 10, b"", b"", 0), (8, 9, 10, b"u", b"\4" + struct.pack(">q", 5), 11), (2, 3, 4, b"", b"", 0), (8, 3, 4, b"u", b"\4" + struct.pack(">q", 6), 12)], "insertion operation footprint")
+        require(ops[0]["record"] == (0, 0, 0, b"", 0, 0, 0, 3, 1) and ops[2]["record"] == (0, 0, 0, b"edge", 1, 17, 1, 6, 2) and ops[2]["binding"] == (0, 0, 2, 18), "insertion immutable endpoint/declaration binding")
+        for owner, life, reference, value in ((9, 10, 11, 5), (3, 4, 12, 6)):
+            op = next(o for o in ops if o["owner"] == owner and o["kind"] == 8)
+            require(op["record"] == zero_record and op["binding"] == zero_binding, "Set adds undeclared structure")
+            scalar_states(step, op, round_, provenance, reference)
+            for key in scalar_keys(owner, life, "u"):
+                expected[key] = native_cell(reference, round_, provenance, value=value)
+            for at in (0, 2):
+                key = f"A/presence/{owner}/{at}"
+                expected[key] = dict(Owner=owner, Point=at, Cell=native_cell(life, round_, provenance, "life"), Effective=True, Life=life)
+            key = f"A/entity/{owner}"
+            expected[key] = copy.deepcopy(before[key])
+            expected[key].update(found=True, kind=1 if owner == 9 else 2, source=0 if owner == 9 else 1, target=0 if owner == 9 else 17, mode=0 if owner == 9 else 1, type="" if owner == 9 else "edge")
+        expected["A/native/3"] = dict(id=3, found=True, kind=2, source=1, target=17, mode=1, type="edge", presence=native_cell(4, round_, provenance, "life"), effective=True, effectiveLife=4, labels=None, property=native_cell(0, 0, 0, "absent", present=False))
+        expected["A/life/3/4"] = dict(owner=3, life=4, found=True, sourceLife=2, targetLife=18)
+        for owner, life in ((1, 0), (1, 2), (17, 0), (17, 18)):
+            prefix = "A" if owner == 1 else "B"
+            expected[f"{prefix}/posting/{owner}/{life}"] = dict(endpoint=owner, life=life, candidates=[3], declared=[3], effective=[3])
+        key = dict(Owner=9, Life=10, Kind=3, Name="u", Member=0)
+        expected["A/footprint/Keys"] = [key]
+        expected["A/footprint/NodeUnique"] = [dict(Owner=9, Life=10, Key=key)]
+        expected["A/footprint/RelUnique"] = [dict(Owner=3, Life=4, Key=dict(Owner=3, Life=4, Kind=3, Name="u", Member=0))]
+        for flag in ("AbsentEntity", "AbsentValue", "AbsentLife"):
+            expected["A/footprint/" + flag] = False
+    else:
+        require(name in ("native-ABA-6", "native-ABA-7") and len(ops) == 1, "unknown fixed operation")
+        op, closed = ops[0], name == "native-ABA-6"
+        require((op["kind"], op["owner"], op["life"], op["name"], op["scalar"], op["value"], op["record"], op["binding"], provenance) == (4 if closed else 3, 1, 2 if closed else 7, b"", b"", 0, zero_record, zero_binding, 106 if closed else 107), "Close/Reopen original changed")
+        require(op["scope"][52:] == b"\4\x82\1\0\1\2\1\0\1\1\x82\1\0\1\3\1\0\1\1", "Close/Reopen partial scope")
+        expected["A/presence/1/2"] = dict(Owner=1, Point=2, Cell=native_cell(0 if closed else 7, round_, provenance, "absent" if closed else "life", present=not closed), Effective=not closed, Life=0 if closed else 7)
+        if closed:
+            expected["A/presence/3/2"] = copy.deepcopy(before["A/presence/3/2"])
+            expected["A/presence/3/2"]["Effective"] = False
+        else:
+            expected["A/life/1/7"] = dict(owner=1, life=7, found=True, sourceLife=0, targetLife=0)
+    return checked_writes(before, after, expected)
 
 
 def check(data):
@@ -294,7 +435,10 @@ def check(data):
     require(projected(data["Retained"]) == initial and data["Retained"] == data["Old"], "current substituted for retained old history")
     transactions, rounds, observations, step_txs = {}, {}, [], set()
     previous = initial
-    for step in data["Steps"] or []:
+    steps = data["Steps"] or []
+    expected_steps = (["conditional-winner"] if data["Schedule"].startswith("write-skew") else ["unique-insertion", "conditional-re-evaluation"] if data["Schedule"] == "empty-range-and-absent-key-insertion" else [f"native-ABA-{i}" for i in (4, 5, 6, 7)] if data["Schedule"] == "temporal-life-value-ABA" else [])
+    require([s["Name"] for s in steps] == expected_steps, "fixed schedule operation inventory")
+    for index, step in enumerate(steps):
         before, after = projected(step["Before"]), projected(step["After"])
         require(before == previous, "observed committed-step continuity")
         r = result(raw(step["Result"]), scopes)
@@ -303,9 +447,18 @@ def check(data):
         require(normalized_business(raw(step["Original"]), m["coordinator"]) == normalized_business(m["original"], m["coordinator"]), "complete source business/retained inner original")
         require(r["tx"] not in step_txs and step["Name"] not in transactions, "duplicate observed business step")
         step_txs.add(r["tx"])
-        changed = {k for k in before.keys() | after.keys() if k not in before or k not in after or before[k] != after[k]}
-        require(changed, "committed step has no observed footprint")
-        transactions[step["Name"]] = {"reads": [{"kind": "range", "lo": "A/", "hi": "B0", "values": before}], "writes": {k: {"op": "put", "value": after[k]} if k in after else {"op": "delete"} for k in changed}}
+        conditional = step["Name"].startswith("conditional-")
+        require(bool(m["condition"]) == conditional, "conditional source original lost its read condition")
+        if conditional:
+            own_cut = data["Cut"] if step["Name"] == "conditional-winner" else steps[index - 1]["Cut"]
+            own_observation = data["Old"] if step["Name"] == "conditional-winner" else steps[index - 1]["After"]
+            reads = conditional_reads(m["condition"], own_cut, own_observation, before)
+        else:
+            # Only fixed native intrinsic dependencies for these unconditional
+            # originals; no earlier client predicate is inferred or revalidated.
+            keys = (["A/entity/1", "B/entity/17", "A/life/1/2", "B/life/17/18", "A/entity/9", "A/entity/3", "A/footprint/NodeUnique", "A/footprint/RelUnique"] if step["Name"] == "unique-insertion" else ["A/native/3", "A/life/3/4", "A/cell/3/4/p/2"] if step["Name"] in ("native-ABA-4", "native-ABA-5") else ["A/entity/1", "A/presence/1/2", "A/life/1/2" if step["Name"] == "native-ABA-6" else "A/life/1/7"])
+            reads = [{"kind": "key", "key": k, "exists": True, "value": before[k]} for k in keys]
+        transactions[step["Name"]] = {"reads": reads, "writes": fixture_writes(step, m, r["decision"]["round"], data["Schedule"])}
         rounds[step["Name"]] = r["decision"]["round"]
         _, round_, _ = cut(step["Cut"])
         observations.append({"event": step["Name"], "scope": ["A", "B"], "round": round_, "values": after})
