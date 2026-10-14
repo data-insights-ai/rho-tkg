@@ -449,10 +449,15 @@ func (a *API) RelAtTx(id types.RelID, validAt, txAt types.Instant) (*types.Relat
 // is aligned to ids (same length and order; a repeated id is answered at each
 // position and the rows may alias), an element is nil where NodeAtTx returns
 // ErrNodeNotFound or ErrNoVersionValidAt, every other element is the row
-// NodeAtTx returns. Rows are shared frozen pointers (DeepCopy to mutate).
-// One graph read lock and one batched current-row read per call; only IDs
-// whose current row does not answer read their history. Empty ids returns an
-// empty slice.
+// NodeAtTx returns. Rows at repeated positions are the same pointer;
+// DeepCopy before mutating. Each distinct ID runs NodeAtTx's gates and body
+// with its current row read per ID; the graph read lock is held once per 256
+// distinct IDs, through one store read snapshot per call where the store
+// offers one (badger, sharded). Batch, ingest and admin writers can land
+// between two such chunks, so each ID is read at one moment but the call as a
+// whole is not one snapshot: pin txAt at or below a value a write or NowTx
+// handed out for a repeatable answer. Only IDs whose current row does not
+// answer read their history. Empty ids returns an empty slice.
 //
 // Errors (the call fails, no rows): ErrNilGraph, ErrGraphClosed,
 // ErrInvalidStoreMutation (an invalid id, before anything is read),
@@ -487,7 +492,7 @@ func (a *API) RelsAtTxByIDs(ids []types.RelID, validAt, txAt types.Instant) ([]*
 // ErrNoVersionValidAt. ValidFrom is the effective start, never 0 (the ID's
 // mint instant for a row without a recorded valid-from); a deleted node's last
 // segment ends at the delete instant; a node created after the pin returns
-// nil, nil. Rows are shared frozen pointers (DeepCopy to mutate).
+// nil, nil. Segments may share a row pointer; DeepCopy before mutating.
 //
 // NodeAsOf is the record door (the newest row recorded by a pin); this is the
 // state door's interval form. Errors: ErrNilGraph, ErrGraphClosed,
