@@ -176,6 +176,24 @@ func (bs *Store) HasRelHistory(id types.RelID) (bool, error) {
 	return bs.hasHistory(&bs.histRelPresence, storepkg.KeyHistRel, id.SnowflakeID(), bs.probeHistoryPresence)
 }
 
+// historyTopBound returns the presence set's upper bound of id's highest
+// history version when the set decides it: built, the ID in has (not
+// unknown after a delete) and its top bounded. A history page from above the
+// bound is empty without an iterator (the graph's exact row-above probe,
+// backlog 70). ok false: read the keys.
+func (bs *Store) historyTopBound(p *historyPresence, id snowflake.ID) (uint32, bool) {
+	if bs.historyPresenceProbeOnly || !p.built.Load() {
+		return 0, false
+	}
+	p.mu.RLock()
+	top, _, ok := p.has.get(id)
+	p.mu.RUnlock()
+	if !ok || top == topUnbounded {
+		return 0, false
+	}
+	return top, true
+}
+
 // probe answers an ID the set does not decide (probeHistoryPresence, or a read
 // snapshot's equivalent).
 func (bs *Store) hasHistory(p *historyPresence, kind byte, id snowflake.ID, probe func(kind byte, id snowflake.ID, wantTop bool) (bool, uint32, error)) (bool, error) {

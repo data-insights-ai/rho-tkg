@@ -725,6 +725,9 @@ func (bs *Store) NodeHistoryVersionsFrom(nid types.NodeID, startVersion uint32, 
 		return nil, err
 	}
 	id := nid.SnowflakeID()
+	if top, ok := bs.historyTopBound(&bs.histNodePresence, id); ok && top < startVersion {
+		return nil, nil // nothing at or above startVersion: no iterator
+	}
 	prefix := storepkg.HistNodePrefix(id)
 	return bs.nodeHistoryVersionsFromPrefix(prefix, startVersion, limit)
 }

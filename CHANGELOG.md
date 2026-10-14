@@ -43,8 +43,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the next write took a version below surviving rows (an Update after `KeepVersions: 1` wrote v1 beside v3), and a
   GraphTx that appended twice to such an entity and rolled back kept a row (68b's snapshot trims above the
   chain's top). `nodeHasHistoryAbove` / `relHasHistoryAbove` are exact: the point read of current+1, and only
-  when it misses one history page read of at most one row (a seek on badger; the memory page read for one row is
-  one pass, no slice). The stores' own bulk as-of fast paths still probe current+1. Tests:
+  when it misses one history page read of at most one row, which memory and badger answer from a per-ID upper
+  bound of the top version (memory: raised by its one history-write funnel; badger: the history presence set)
+  without reading rows when nothing lies above: Update cost unchanged (`11-update-cost-allocator.txt`). The
+  stores' own bulk as-of fast paths still probe current+1. Tests:
   `TestVersionAllocatorAboveCompactionGap`, `TestTxRollbackAppendsAboveCompactionGap` (nodes and relationships;
   red: `tasks/evidence/r10-write/10-red-allocator-gap.txt`), the 68b twin now with deletes, closes and this
   shape inside a GraphTx.

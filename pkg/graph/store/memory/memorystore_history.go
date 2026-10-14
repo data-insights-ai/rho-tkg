@@ -488,20 +488,8 @@ func (ms *Store) NodeHistoryVersionsFrom(nid types.NodeID, startVersion uint32, 
 		return nil, nil
 	}
 
-	if limit == 1 {
-		// One row: the smallest version at or above startVersion, one pass,
-		// no slice (the graph's exact row-above probe, backlog 70).
-		var first uint32
-		found := false
-		for v := range inner {
-			if v >= startVersion && (!found || v < first) {
-				first, found = v, true
-			}
-		}
-		if !found {
-			return nil, nil
-		}
-		return []*types.Node{inner[first].DeepCopy()}, nil
+	if top, ok := ms.nodeHistTop[nid]; ok && top < startVersion {
+		return nil, nil // above every row (the graph's exact row-above probe, backlog 70)
 	}
 	versions := make([]uint32, 0, len(inner))
 	for v := range inner {
@@ -714,20 +702,8 @@ func (ms *Store) RelHistoryVersionsFrom(rid types.RelID, startVersion uint32, li
 		return nil, nil
 	}
 
-	if limit == 1 {
-		// One row: the smallest version at or above startVersion, one pass,
-		// no slice (the graph's exact row-above probe, backlog 70).
-		var first uint32
-		found := false
-		for v := range inner {
-			if v >= startVersion && (!found || v < first) {
-				first, found = v, true
-			}
-		}
-		if !found {
-			return nil, nil
-		}
-		return []*types.Relationship{inner[first].DeepCopy()}, nil
+	if top, ok := ms.relHistTop[rid]; ok && top < startVersion {
+		return nil, nil // above every row (the graph's exact row-above probe, backlog 70)
 	}
 	versions := make([]uint32, 0, len(inner))
 	for v := range inner {

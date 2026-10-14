@@ -249,6 +249,12 @@ type Store struct {
 	histStampsMu   sync.RWMutex
 	nodeHistStamps map[types.NodeID]histStampsEntry
 	relHistStamps  map[types.RelID]histStampsEntry
+	// nodeHistTop / relHistTop: per ID an upper bound of its highest history
+	// version, raised by every history row write (putNodeHistoryRowLocked);
+	// removals leave it an upper bound. A history page from above it is empty
+	// without a pass over the ID's rows (backlog 70). Guarded by mu.
+	nodeHistTop map[types.NodeID]uint32
+	relHistTop  map[types.RelID]uint32
 	// History epochs (HistoryEpochCapability, backlog 68,
 	// memorystore_history_epoch.go): count-checked watch tables.
 	nodeHistEpochs storeutil.HistoryEpochs[types.NodeID]
@@ -435,6 +441,7 @@ func (ms *Store) Clear() error {
 	ms.exOutIdx, ms.exInIdx = nil, nil
 	ms.nodeHistory = make(map[types.NodeID]map[uint32]*types.Node)
 	ms.relHistory = make(map[types.RelID]map[uint32]*types.Relationship)
+	ms.nodeHistTop, ms.relHistTop = nil, nil
 	ms.histStampsMu.Lock()
 	ms.nodeHistStamps, ms.relHistStamps = nil, nil
 	ms.histStampsMu.Unlock()

@@ -347,6 +347,9 @@ func (bs *Store) RelHistoryVersionsFrom(rid types.RelID, startVersion uint32, li
 		return nil, err
 	}
 	id := rid.SnowflakeID()
+	if top, ok := bs.historyTopBound(&bs.histRelPresence, id); ok && top < startVersion {
+		return nil, nil // nothing at or above startVersion: no iterator
+	}
 	prefix := storepkg.HistRelPrefix(id)
 	return bs.relHistoryVersionsFromPrefix(prefix, startVersion, limit)
 }

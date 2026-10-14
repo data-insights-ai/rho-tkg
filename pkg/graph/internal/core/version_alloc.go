@@ -41,7 +41,8 @@ import (
 // nodeHasHistoryAbove reports whether node id has a history row above
 // version v. Exact (backlog 70): the point read of v+1 answers the common
 // dense chain; when v+1 is absent one history page read of at most one row
-// from v+2 (a seek on badger) finds a row above a gap — history compaction
+// from v+2 (memory and badger answer it from their upper bound of the top version
+// without reading rows when none lies above) finds a row above a gap — history compaction
 // trims the oldest rows, which after bounded corrections lie directly above
 // the current row, and a probe of v+1 alone then answered "none above".
 func (c *Core) nodeHasHistoryAbove(id types.NodeID, v uint32) (bool, error) {
