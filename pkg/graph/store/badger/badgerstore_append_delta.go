@@ -265,3 +265,8 @@ func (bs *Store) clearAppendDelta(token uint16) {
 	bs.markPatchableLocked(token)
 	bs.appendMu.Unlock()
 }
+
+// MultiColumnFromMemberCount reports how many label-intersection snapshots
+// were taken from a member label's columns instead of the node rows (round 7
+// request 6); telemetry beside ColumnRebuildCount, which counts them too.
+func (bs *Store) MultiColumnFromMemberCount() uint64 { return bs.multiFromMember.Load() }

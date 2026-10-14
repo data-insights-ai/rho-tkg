@@ -158,15 +158,27 @@ func (ms *Store) multiDocColumns(toks []uint16, propKeys []string, withOrds bool
 	// on every call would re-probe the smaller label set (O(min|label|)) for
 	// nothing (the 50k-probe steady-state regression this avoids).
 	if col == nil || col.Epoch() != cur || !col.HasAll(propKeys) {
-		set := ms.intersectLabelsLocked(toks)
-		if len(set) > indexpkg.MaxDocValuesNodes {
-			return nil, nil, 0, false, nil // over cap → fall back
+		keys := propKeys
+		if col != nil {
+			keys = indexpkg.UnionKeys(col.Keys(), propKeys)
 		}
-		// An empty intersection is served: an empty snapshot (round 5
-		// request 3).
 		// Intersection membership, NOT single-label: a per-label append record cannot
-		// say whether an appended node joins A∩B, so this path always rebuilds.
-		col = ms.buildColumnsLocked(set, propKeys, col, cur)
+		// say whether an appended node joins A∩B, so this path always rebuilds:
+		// from a member label's fresh columns when one holds every key (round 7
+		// request 6, no node read), else from the nodes.
+		if sub := ms.multiColumnsFromMemberLocked(toks, cur, keys); sub != nil {
+			ms.columnRebuilds.Add(1)
+			ms.multiFromMember.Add(1)
+			col = sub
+		} else {
+			ids := ms.intersectLabelsLocked(toks)
+			if len(ids) > indexpkg.MaxDocValuesNodes {
+				return nil, nil, 0, false, nil // over cap → fall back
+			}
+			// An empty intersection is served: an empty snapshot (round 5
+			// request 3).
+			col = ms.buildColumnsFromIDsLocked(ids, keys, nil, cur)
+		}
 		ms.docColumnsMulti[key] = col
 	}
 	if !col.HasAll(propKeys) {
@@ -229,10 +241,11 @@ func (ms *Store) snapshotOrdinalsLocked(col *indexpkg.LabelDocValues) []uint32 {
 	return ords
 }
 
-// intersectLabelsLocked returns the set of node IDs present in EVERY label token,
-// driven by the smallest label set (so the probe count is O(min |label|)). Returns
-// nil (empty) if any token is unknown/empty. Must hold ms.mu.
-func (ms *Store) intersectLabelsLocked(toks []uint16) map[types.NodeID]struct{} {
+// intersectLabelsLocked returns the node IDs present in EVERY label token,
+// driven by the smallest label set (so the probe count is O(min |label|)), as
+// a slice (no intermediate set). Returns nil (empty) if any token is
+// unknown/empty. Must hold ms.mu.
+func (ms *Store) intersectLabelsLocked(toks []uint16) []types.NodeID {
 	if len(toks) == 0 {
 		return nil
 	}
@@ -246,20 +259,56 @@ func (ms *Store) intersectLabelsLocked(toks []uint16) map[types.NodeID]struct{} 
 			smallest = s
 		}
 	}
-	out := make(map[types.NodeID]struct{}, len(smallest))
+	out := make([]types.NodeID, 0, len(smallest))
 	for id := range smallest {
-		inAll := true
-		for _, t := range toks {
-			if _, ok := ms.labelIdx[t][id]; !ok {
-				inAll = false
-				break
-			}
-		}
-		if inAll {
-			out[id] = struct{}{}
+		if ms.inAllLabelsLocked(toks, id) {
+			out = append(out, id)
 		}
 	}
 	return out
+}
+
+// inAllLabelsLocked reports whether id carries every label of toks. Must hold
+// ms.mu.
+func (ms *Store) inAllLabelsLocked(toks []uint16, id types.NodeID) bool {
+	for _, t := range toks {
+		if _, ok := ms.labelIdx[t][id]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// multiColumnsFromMemberLocked builds an intersection's snapshot at cur from
+// the cached columns of its smallest member label that is fresh (built at
+// cur) and holds every key with validity columns, taking that label's rows
+// that carry every other label (indexpkg.SubsetDocValues). nil when no member
+// qualifies or a key is not buildable on it. Must hold ms.mu (write lock).
+func (ms *Store) multiColumnsFromMemberLocked(toks []uint16, cur uint64, keys []string) *indexpkg.LabelDocValues {
+	var src *indexpkg.LabelDocValues
+	for _, t := range toks {
+		c := ms.docColumns[t]
+		if c == nil || c.Epoch() != cur || !c.HasAll(keys) || !c.HasTemporal() {
+			continue
+		}
+		if src == nil || c.Len() < src.Len() {
+			src = c
+		}
+	}
+	if src == nil {
+		return nil
+	}
+	var ords []int
+	for o, id := range src.IDs() {
+		if ms.inAllLabelsLocked(toks, id) {
+			ords = append(ords, o)
+		}
+	}
+	sub, ok := indexpkg.SubsetDocValues(cur, src, ords, keys)
+	if !ok {
+		return nil
+	}
+	return sub
 }
 
 // DocValuesSnapshot returns a RANDOM-ACCESS point-lookup handle over a single
@@ -315,7 +364,13 @@ func (ms *Store) buildColumnsLocked(set map[types.NodeID]struct{}, requested []s
 	for id := range set {
 		ids = append(ids, id)
 	}
+	return ms.buildColumnsFromIDsLocked(ids, requested, old, cur)
+}
 
+// buildColumnsFromIDsLocked is buildColumnsLocked over a membership slice.
+// Must hold ms.mu (write lock).
+func (ms *Store) buildColumnsFromIDsLocked(ids []types.NodeID, requested []string,
+	old *indexpkg.LabelDocValues, cur uint64) *indexpkg.LabelDocValues {
 	keys := requested
 	if old != nil {
 		keys = indexpkg.UnionKeys(old.Keys(), requested)

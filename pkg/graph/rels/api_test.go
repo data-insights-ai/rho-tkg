@@ -188,7 +188,9 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "Get", run: func() error { _, err := api.Get(context.Background(), relID); return err }},
 		{name: "GetWithContext", run: func() error { _, err := api.Get(ctx, relID); return err }},
 		{name: "Lend", run: func() error { _, err := api.Lend(ctx, relID); return err }},
-		{name: "LendByIDs", run: func() error { return api.LendByIDs(ctx, []types.RelID{relID}, func(int, *types.Relationship) bool { return true }) }},
+		{name: "LendByIDs", run: func() error {
+			return api.LendByIDs(ctx, []types.RelID{relID}, func(int, *types.Relationship) bool { return true })
+		}},
 		{name: "GetByIDs", run: func() error { _, err := api.GetByIDs([]types.RelID{relID}); return err }},
 		{name: "Update", run: func() error {
 			_, err := api.Update(context.Background(), relID, map[string]any{"since": 2027})

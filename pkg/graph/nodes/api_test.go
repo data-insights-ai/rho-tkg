@@ -134,7 +134,9 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "Get", run: func() error { _, err := api.Get(context.Background(), id); return err }},
 		{name: "GetWithContext", run: func() error { _, err := api.Get(ctx, id); return err }},
 		{name: "Lend", run: func() error { _, err := api.Lend(ctx, id); return err }},
-		{name: "LendByIDs", run: func() error { return api.LendByIDs(ctx, []types.NodeID{id}, func(int, *types.Node) bool { return true }) }},
+		{name: "LendByIDs", run: func() error {
+			return api.LendByIDs(ctx, []types.NodeID{id}, func(int, *types.Node) bool { return true })
+		}},
 		{name: "GetByIDs", run: func() error { _, err := api.GetByIDs([]types.NodeID{id}); return err }},
 		{name: "Update", run: func() error {
 			_, err := api.Update(context.Background(), id, map[string]any{"name": "Grace"})

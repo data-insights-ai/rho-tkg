@@ -1,0 +1,4 @@
+--- FAIL: TestDocValuesMultiFromMemberColumns (0.01s)
+    --- FAIL: TestDocValuesMultiFromMemberColumns/memory (0.00s)
+        docvalues_multi_member_test.go:175: after an update, A's column stale: A:B rows differ from the nodes:
+    --- FAIL: TestDocValuesMultiFromMemberColumns/badger (0.01s)

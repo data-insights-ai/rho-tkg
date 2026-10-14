@@ -67,6 +67,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the whole statement in bulk now beats binding by binding (5 x 50,000: 18.9 against 20.6 us per binding, before
   23.6). Memory unchanged (batch 1.5-2.3 us against one by one 1.7-2.2 us, within the load's spread). Evidence
   `tasks/evidence/cypher-round7/r1-*`.
+- **A label intersection's columns come from a member label's columns** (sigma-tkgd round 7 request 6: on badger
+  the cold `ForEachDocValuesMulti` build was 83 % of a multi-label aggregation, re-reading every member node).
+  (1) The intersection is collected as a slice driven by the smallest label (no intermediate set). (2) When a
+  member label's cached columns are fresh (its epoch: badger per label, memory the store's) and hold every key
+  as a usable column with validity columns, the intersection's snapshot is that label's rows carrying every
+  other label (`indexpkg.SubsetDocValues`: the same IDs, validity columns, zone map and per-key classification
+  a build from the nodes gives, dictionaries renumbered); else, as before, the nodes are read (also where the
+  member's column is unbuildable for a key, since a mixed column of the whole label may be uniform on the
+  intersection). Same answers; no write cost. 200,000 :A nodes, 100,000 also :B, one :B write per read
+  (`BenchmarkDocValuesMultiCold`, one CPU, three interleaved rounds): badger 193-199 -> 48 ms, 175 -> 42 MB per
+  rebuild; memory 84-86 -> 66-70 ms. Telemetry `MultiColumnFromMemberCount()` on both stores. Tests
+  `TestSubsetDocValuesEqualsBuild` (deep-equal to the build over random rows and subsets),
+  `TestDocValuesMultiFromMemberColumns` (memory, badger: rows against the nodes through writes, label changes,
+  a stale member column, an unbuildable member column); evidence `tasks/evidence/cypher-round7/r6-*`.
 
 ### Fixed
 
