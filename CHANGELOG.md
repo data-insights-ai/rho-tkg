@@ -14,8 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   answers not-found or `ErrNoVersionValidAt`. Errors fail the call: `ErrGraphClosed`, an invalid ID
   (`ErrInvalidStoreMutation`), `txAt <= 0` (`ErrInvalidTimeRange`; a pin is required), `txAt` above the commit clock
   (`ErrTxPinTooNew`), a member's `ErrHistoryCompacted` / `ErrRetentionExpired`. Each ID runs the per-ID door's gates
-  and body; the batch checks open, IDs and pin once, holds the graph read lock once per 256 IDs, reads through one
-  store read snapshot where the store has one (badger, sharded) and resolves a repeated ID once. 100 IDs, half
+  and body; the batch checks open, IDs and pin once, holds the graph read lock once per 256 distinct IDs, reads through one
+  store read snapshot where the store has one (badger, sharded; a read-cost optimisation, not call-level isolation) and resolves a repeated ID once. 100 IDs, half
   answered from history: badger 293 µs → 207 µs per call (-29%), memory 48 µs → 47 µs (parity). Tests
   `TestNodesAtTxByIDsMatchesNodeAtTx` (memory, badger, sharded, tiered; nodes and rels against the per-ID door),
   `TestAtTxByIDsGatesAsPerIDDoor`, `TestAtTxByIDsWrappers`, `BenchmarkNodesAtTxByIDs`; evidence
