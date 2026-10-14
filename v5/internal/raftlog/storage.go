@@ -396,6 +396,16 @@ func (s *Store) Initialize(voters []uint64, image []byte) error {
 		prospective.App.Bytes = uint64(3*(9+appFrameBytes) + len(image))
 		prospective.App.Records = 3
 		prospective.App.Through = 1
+		if m.Retention.Config.enabled() {
+			if nativeRecoveryRootBytes(m.Recovery) > m.App.Policy.MaxValueBytes {
+				return ErrLimit
+			}
+			rb, rr, err := nativeRecoveryRootOverhead(m.Recovery)
+			if err != nil {
+				return err
+			}
+			prospective.Recovery.Bytes, prospective.Recovery.Records = rb, rr
+		}
 		syncActiveGeneration(&prospective)
 	}
 	if err := generationCharge(prospective, 0, s.limits); err != nil {
@@ -424,7 +434,11 @@ func (s *Store) Initialize(voters []uint64, image []byte) error {
 		}
 	}
 	if m.Gen.Publication.Limits.enabled() {
-		if err := bindPublication(&m, m.Gen.Active, m.Gen.Banks[m.Gen.Active].Generation, m.App.Bytes, m.App.Records); err != nil {
+		publicationBytes, publicationRecords := m.App.Bytes, m.App.Records
+		if m.Retention.Config.enabled() {
+			publicationBytes, publicationRecords = applicationTotals(m)
+		}
+		if err := bindPublication(&m, m.Gen.Active, m.Gen.Banks[m.Gen.Active].Generation, publicationBytes, publicationRecords); err != nil {
 			_ = b.Close()
 			return err
 		}
