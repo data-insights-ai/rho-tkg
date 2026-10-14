@@ -783,6 +783,13 @@ func (a *API) CloseVersion(ctx context.Context, id types.NodeID, t types.Instant
 }
 
 // History returns the version chain for a node.
+//
+// The chain holds the rows as written, including an excise's void pieces
+// (Temporal().Void, Temporal().ExciseNodeValidity): a void row asserts that
+// the node is absent over its [ValidFrom, ValidTo), it is not a state of the
+// node. A consumer that reads raw History intervals must skip void rows (or
+// read the effective timeline, NodeEffectiveTimeline, which never returns
+// them).
 func (a *API) History(id types.NodeID) ([]*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {

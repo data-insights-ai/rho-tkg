@@ -329,8 +329,7 @@ type Store struct {
 	labelOnDisk           bool                                          // answer label snapshots from the persisted keyspace
 	adjOnDisk             bool                                          // answer adjacency snapshots from the persisted keyspaces
 	propIdxOnDisk         bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
-	formatMarker          uint16                                        // store-level format marker on disk (raiseFormatMarkerLocked; guarded by idxMu)
-	voidMarker            atomic.Uint32                                 // marker the void-row raise last saw (voidMarkerOps)
+	formatMarker          uint16                                        // store-level format marker (raiseFormatMarkerPendingLocked; guarded by wbMu)
 	temporalIdxOnDisk     bool                                          // maintain the persisted 0x0B raw-entry log so loadIndexesScan can rebuild without a full node fetch per entity
 	disablePlannerStats   bool                                          // skip planner-stat maintenance (presence/NDV/min-max/type-class) on writes + open; the stat capabilities fail closed with ErrCapabilityNotSupported
 	openImageSuppressed   atomic.Bool                                   // the open's index-key repair failed: Close writes no image (badgerstore_index_repair.go)
@@ -945,7 +944,6 @@ func New(cfg Config) (*Store, error) {
 		gcDone:                  make(chan struct{}),
 		logger:                  cfg.Logger,
 	}
-	bs.voidMarker.Store(uint32(formatMarker))
 	// atomic.Bool cannot be set in a composite literal; set it before bs escapes.
 	bs.logEnabled.Store(cfg.ChangeLog && !cfg.ReadOnly)
 
@@ -2081,7 +2079,9 @@ func (bs *Store) Clear() (err error) {
 	bs.relPropertyIndexes = make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex)
 	// The wipe below may drop the format marker: the next Elements definition
 	// re-raises it rather than trusting the cached value.
+	bs.wbMu.Lock()
 	bs.formatMarker = 0
+	bs.wbMu.Unlock()
 	// Rows written after the wipe carry binary hashes (backlog 61): the
 	// wiped marker is stamped again once the wipe has succeeded.
 	defer func() {
@@ -2089,7 +2089,6 @@ func (bs *Store) Clear() (err error) {
 			err = bs.restampBinaryHashMarker()
 		}
 	}()
-	bs.voidMarker.Store(0)
 	bs.compositeIndexes = make(map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex)
 	bs.compositeIndexesByLabel = make(map[uint16][]indexpkg.CompositeIndexKey)
 	bs.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)

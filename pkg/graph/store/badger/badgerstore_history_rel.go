@@ -234,7 +234,6 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 	// the legs itself).
 	bs.idxMu.RLock()
 	ops := append([]writeOp{{opType: writeOpSet, key: key, value: data}}, bs.exAdjOpsForHistoryRowLocked(rid, r)...)
-	ops = append(ops, bs.voidMarkerOps(r.Temporal())...)
 	bs.idxMu.RUnlock()
 	err = bs.enqueueVersionAgainstLazyBuilds(
 		func() bool {
@@ -249,7 +248,7 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 			}
 		},
 		func() error {
-			return bs.appendOpsLoggedRouted(storecontract.ChangeRelHistoryVersion, logPayload, token, ops...)
+			return bs.appendOpsLoggedRoutedRaising(voidRowMarker(r.Temporal()), storecontract.ChangeRelHistoryVersion, logPayload, token, ops...)
 		},
 	)
 	if err != nil {

@@ -50,8 +50,8 @@ const StoreFormatVersion = 3
 // BinaryHashStoreFormatVersion is the store-level marker of a directory whose
 // rows may carry binary integrity hashes (BinaryHashWireFormatVersion, backlog
 // 61): a release that cannot read them must refuse the store. A writable open
-// raises the marker to it (raiseFormatMarkerLocked, never lowering a higher
-// one) when this release's writer writes binary hashes (writesBinaryHashes);
+// raises the marker to it (never lowering a higher one; the one tracker:
+// badger raiseFormatMarkerPendingLocked) when this release's writer writes binary hashes (writesBinaryHashes);
 // every reader that knows a marker at or above it reads binary rows.
 const BinaryHashStoreFormatVersion = 4
 

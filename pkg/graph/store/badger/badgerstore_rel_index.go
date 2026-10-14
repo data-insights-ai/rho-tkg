@@ -301,13 +301,14 @@ func (bs *Store) relTypeRelIDsSnapshotLocked(relTypeToken uint16) []types.RelID 
 // definitions to Badger. Caller holds idxMu. Mirror of persistPropertyIndexDefs.
 func (bs *Store) persistRelPropertyIndexDefs() {
 	var defs []relPropIdxDef
+	var marker uint16 // ElementsStoreFormatVersion when an Elements definition is persisted
 	for key, idx := range bs.relPropertyIndexes {
 		if idx == nil || idx.Mutated != nil {
 			continue // still being created (Phase 2) — not yet durable
 		}
 		defs = append(defs, relPropIdxDef{RelTypeToken: key.RelTypeToken, PropertyKey: key.PropertyKey, RangeCounts: idx.RangeCounts(), Elements: idx.Elements()})
 		if idx.Elements() {
-			bs.raiseFormatMarkerLocked(storepkg.ElementsStoreFormatVersion)
+			marker = storepkg.ElementsStoreFormatVersion
 		}
 	}
 	if len(defs) == 0 {
@@ -319,7 +320,7 @@ func (bs *Store) persistRelPropertyIndexDefs() {
 		slog.Error("graph: persist relationship property index defs: marshal failed", "error", err)
 		return // index still works in-memory; will retry on next change
 	}
-	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.RelPropIndexDefsKey, value: data})
+	bs.appendOpsRaising(marker, writeOp{opType: writeOpSet, key: storepkg.RelPropIndexDefsKey, value: data})
 }
 
 // maintainRelPropertyIndexesAdd / Remove are the write-path entry points every

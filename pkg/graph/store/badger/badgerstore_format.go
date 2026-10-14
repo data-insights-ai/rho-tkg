@@ -84,36 +84,32 @@ func formatMarkerValue(v uint16) []byte {
 	return val
 }
 
-// voidMarkerOps returns the op raising the store-level marker to
-// VoidStoreFormatVersion when a history row about to be written is an
-// excise's void piece and the marker is below it (none otherwise). The op
-// goes in the same pending batch as the row, so the row never reaches disk
-// without the marker that makes an older binary refuse the store.
-func (bs *Store) voidMarkerOps(tm *types.TemporalMetadata) []writeOp {
-	if !storepkg.IsVoid(tm) {
-		return nil
-	}
-	v := uint32(storepkg.VoidStoreFormatVersion)
-	for {
-		cur := bs.voidMarker.Load()
-		if cur >= v {
-			return nil
-		}
-		if bs.voidMarker.CompareAndSwap(cur, v) {
-			return []writeOp{{opType: writeOpSet, key: storepkg.WireFormatVersionKey, value: formatMarkerValue(uint16(v))}}
-		}
-	}
-}
+// One store-level marker (WireFormatVersionKey), raised monotonically by every
+// feature whose writes an older binary must not read: binary integrity hashes
+// (4, at a writable open), Elements index definitions (5), an excise's void
+// rows (6). bs.formatMarker is the marker on disk once the pending batch is
+// flushed; it is guarded by wbMu, and a raise lands in bs.pending in the same
+// wbMu section that appends the row or definition needing it, so the marker
+// never lags (or, flushed alone, leads) its cause, and since only a raise
+// writes the key into pending, the pending value is never lowered.
 
-// raiseFormatMarkerLocked raises the store-level marker to v in the pending
-// write buffer (the same flush as the definitions that need it) when it is
-// lower. Caller holds idxMu (write).
-func (bs *Store) raiseFormatMarkerLocked(v uint16) {
-	if bs.formatMarker >= v {
+// raiseFormatMarkerPendingLocked raises the marker to v (0: no raise) in the
+// pending batch when it is lower. Caller holds wbMu.
+func (bs *Store) raiseFormatMarkerPendingLocked(v uint16) {
+	if v == 0 || bs.formatMarker >= v {
 		return
 	}
 	bs.formatMarker = v
-	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.WireFormatVersionKey, value: formatMarkerValue(v)})
+	bs.pending[string(storepkg.WireFormatVersionKey)] = writeOp{opType: writeOpSet, key: storepkg.WireFormatVersionKey, value: formatMarkerValue(v)}
+}
+
+// voidRowMarker is the marker a history row needs: VoidStoreFormatVersion for
+// an excise's void piece (backlog 64), else none.
+func voidRowMarker(tm *types.TemporalMetadata) uint16 {
+	if storepkg.IsVoid(tm) {
+		return storepkg.VoidStoreFormatVersion
+	}
+	return 0
 }
 
 // openStampVersion is the marker a writable open stamps when the store's is
@@ -130,8 +126,10 @@ func openStampVersion() uint16 {
 
 // restampBinaryHashMarker writes the binary-hash marker after Clear dropped
 // every key, when the writer writes binary hashes (rows written after the wipe
-// carry them). Caller holds idxMu (write).
+// carry them). Caller holds idxMu (write); takes wbMu.
 func (bs *Store) restampBinaryHashMarker() error {
+	bs.wbMu.Lock()
+	defer bs.wbMu.Unlock()
 	if bs.readOnly || !storepkg.WritesBinaryHashes() || bs.formatMarker >= storepkg.BinaryHashStoreFormatVersion {
 		return nil
 	}

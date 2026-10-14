@@ -16,19 +16,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   one transaction instant for every row, under the entity lock: the cascade kernel writes void pieces
   (`types.TemporalMetadata.Void`) over the parts of `[a, b)` where a version was valid and the usual resumption
   from `b`. A void row never holds the current slot and never answers `NodeAsOf` / `RelAsOf`; `History()` returns
-  it marked. Twins: `*WithTx` (caller instant, the `SetNodeVersionIntervalWithTx` rules), `GraphTx` and
+  it marked (`Temporal().Void`), so a consumer reading raw History intervals must skip void rows. Twins: `*WithTx` (caller instant, the `SetNodeVersionIntervalWithTx` rules), `GraphTx` and
   `BatchBuilder` (the batch `*WithTx` twin refuses the whole unit). Refusals, nothing written: `b == 0`, `a <= 0`,
   `a >= b` (`ErrInvalidTimeRange`), no version valid in `[a, b)` (`ErrNoVersionValidAt`), unknown
   (`ErrNodeNotFound` / `ErrRelNotFound`) or deleted (`ErrEntityDeleted`). No existing mechanism modelled absence
   over a bounded interval (a retraction ends a whole life, a delete tombstone ends the life at its instant,
   `CloseVersion` closes only the open current row), so the flag is new. Format: a void row is written at row
   format version 5 (`storeutil.VoidWireFormatVersion`, key `vd`) and the badger store marker is raised to 6
-  (`VoidStoreFormatVersion`) in the batch that writes the first void row; a store without an excise keeps marker
-  3. An older binary refuses such a store at open and fails such a row closed (export, change feed, replica) with
+  (`VoidStoreFormatVersion`) in the batch that writes the first void row; a store without an excise keeps its
+  marker (4 under the binary-hash writer, 5 with an Elements definition). One monotonic tracker serves all three
+  markers (`raiseFormatMarkerPendingLocked`, under `wbMu`, in the section that appends the row or definition), so
+  an Elements definition written after a void row in one flush cannot lower 6 to 5; a row's format version is the
+  highest its features need (void 5 > binary hash 4 > retracted 3). An older binary refuses such a store at open and fails such a row closed (export, change feed, replica) with
   `ErrWireFormatVersionUnsupported`; it must not skip the key, since it would read the piece as a valid version.
-  (4 and 5 are the markers of backlogs 61 and 63.) Tests `TestExciseNodeValidity` / `TestExciseRelValidity` (memory,
+  Tests `TestExciseNodeValidity` / `TestExciseRelValidity` (memory,
   badger, tiered, sharded on disk with reopen), `TestExciseNodeValidityWithTx`, `TestExciseNodeValidityTxAndBatch`,
-  `TestVoidRow_FormatVersion5`, `TestVoidRowRaisesStoreFormatMarker`, the bitemporal oracle harness with the
+  `TestVoidRow_FormatVersion5`, `TestVoidRowWithBinaryHash_FormatVersionIsMax`, `TestVoidRowRaisesStoreFormatMarker`,
+  `TestFormatMarkerOneTrackerAcrossFeatures`, the bitemporal oracle harness with the
   excise op; evidence `tasks/evidence/excise/`.
 
 ### Changed
