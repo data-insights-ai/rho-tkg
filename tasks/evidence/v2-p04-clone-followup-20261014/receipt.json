@@ -1,0 +1,26 @@
+{
+  "scope": "Source-only standard-library shallow clone followup; no runtime qualification claim",
+  "qualified_source_commit": "cc8c8cdf99dbb16f53a0e46abc1fd9b29e8b1ecc",
+  "qualified_evidence_commit": "53c85469da4e7f31488c714cf52e063e00f3abb1",
+  "followup_source_commit": "3ed96fbb9d317024f32016ec6c56288df15aec71",
+  "file": "v5/internal/graphapply/cross_process_p04_identity_test.go",
+  "qualified_source_sha256": "6f0d4d291bc28280338022cd6089f1d3b804ebcbce7272119a66e5c06d1ebef7",
+  "followup_source_sha256": "4dcd9f57efebcfbdc38877b40dd48c97e34348c2727db0d400386b2384429aed",
+  "equivalence": [
+    "Only the slices import and two append-to-nil shallow clones changed to slices.Clone.",
+    "Both inputs are nonempty: ops contains the original relationship operation and m.parts contains the two frozen participants. Both forms preserve element order and values in independent backing storage.",
+    "Neither form recursively copies referenced element data. The existing adversarial mutations and assertions remain identical.",
+    "No production source, transport, admission, deadline, ACK authority, original retained Outcome/CDC, or explicit State diagnostics changed. No performance claim is made."
+  ],
+  "verification": {
+    "completed": "Source diff review, source SHA256 binding, git diff --check",
+    "runtime": "Not run for revised bytes: P02 owns the runtime lease.",
+    "pending": [
+      "Affected package test compilation using absolute Go 1.26.9",
+      "Affected package lint using pinned source-qualified tooling",
+      "Direct TestCrossProcessP04FrozenParticipantsEpochsAndDigestsSurviveDelayedVoteAndReopen normal parent using absolute Go 1.26.9"
+    ],
+    "execution": "After explicit lease handoff or equivalent hosted integrated checks; no repeat of the full normal/race/coverage/static campaign."
+  },
+  "evidence_boundary": "The immutable cc8 receipt and raw archive qualify their recorded source hashes only. They do not assert that revised clone-followup bytes were executed."
+}
