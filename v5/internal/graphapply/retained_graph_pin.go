@@ -22,10 +22,10 @@ func retainedGraphSemanticContractID() raftlog.ApplicationSemanticContractID {
 	return raftlog.ApplicationSemanticContractID(sha256.Sum256(append(base[:], []byte("durable-cut-feed-pins=participant-ledger-v1\x00terminal-bank=native-v2\x00lease-policy=replicated-epoch-v1\x00original-identity=issuer-request-v1\x00")...)))
 }
 func conditionalGraphAgreement(id raftlog.ApplicationSemanticContractID) bool {
-	return id == conditionalGraphSemanticContractID() || id == retainedGraphSemanticContractID()
+	return id == conditionalGraphSemanticContractID() || retainedGraphAgreement(id)
 }
 func (m *declaredMaterializer) retainedPins() bool {
-	return m != nil && m.SemanticContractID() == retainedGraphSemanticContractID()
+	return m != nil && retainedGraphAgreement(m.SemanticContractID())
 }
 func newRetainedGraphMaterializer(s *raftlog.Store, n namespace, d graphstore.OwnershipDeclaration, l materializerLimits) (*declaredMaterializer, error) {
 	if s == nil || s.ApplicationControls().Version != 1 || s.ApplicationRecovery().Version != 2 {
@@ -113,7 +113,7 @@ func pinLineage(p graphPinPart) ([32]byte, error) {
 	return sha256.Sum256(b), nil
 }
 func (m graphPinManifest) valid() bool {
-	if !m.publisher.valid() || m.publisher.semantic != retainedGraphSemanticContractID() || m.issuer == ([16]byte{}) || m.request == ([16]byte{}) || m.epoch >= math.MaxUint64-1 || m.expires <= m.epoch || m.expires == math.MaxUint64 || len(m.parts) == 0 || len(m.parts) > maxGraphPins {
+	if !m.publisher.valid() || !retainedGraphAgreement(m.publisher.semantic) || m.issuer == ([16]byte{}) || m.request == ([16]byte{}) || m.epoch >= math.MaxUint64-1 || m.expires <= m.epoch || m.expires == math.MaxUint64 || len(m.parts) == 0 || len(m.parts) > maxGraphPins {
 		return false
 	}
 	for i, p := range m.parts {
@@ -194,7 +194,7 @@ func decodeGraphPinManifest(wire []byte) (graphPinManifest, error) {
 	return m, nil
 }
 func (c graphPinCommand) valid() bool {
-	if !c.scope.valid() || c.scope.semantic != retainedGraphSemanticContractID() || c.issuer == ([16]byte{}) || c.action == ([16]byte{}) || c.phase < 1 || c.phase > 6 {
+	if !c.scope.valid() || !retainedGraphAgreement(c.scope.semantic) || c.issuer == ([16]byte{}) || c.action == ([16]byte{}) || c.phase < 1 || c.phase > 6 {
 		return false
 	}
 	if c.phase == pinAdvanceEpoch {
@@ -455,6 +455,11 @@ func (m *declaredMaterializer) checkPinSource(q *reader, p graphPinPart, h graph
 	cert, err := decodeGraphCertificate(actual)
 	if err != nil || cert != c {
 		return errors.Join(errInvalid, err)
+	}
+	if m.collectsHistory() {
+		if err := checkGraphCertificateRetention(q, cert); err != nil {
+			return err
+		}
 	}
 	// Validate graph meaning from the actual retained certificate's complete
 	// image, then compare that image hash and real feed position to native frames.

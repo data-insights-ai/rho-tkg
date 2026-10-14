@@ -68,6 +68,9 @@ func newDeclaredMaterializerBinding(s *raftlog.Store, n namespace, d graphstore.
 	if err := l.validate(); err != nil {
 		return nil, err
 	}
+	if agreement == collectedGraphSemanticContractID() && (s.ApplicationRetention().Version != 1 || s.ApplicationRecovery().Version != 2 || s.ApplicationControls().Version != 1) {
+		return nil, errInvalid
+	}
 	entry, found := d.Partition(n.partition)
 	if !found || !s.ApplicationLimits().Enabled() {
 		return nil, errInvalid
@@ -140,6 +143,11 @@ func (m *declaredMaterializer) seed(q *reader) error {
 }
 
 func (m *declaredMaterializer) initialized(q *reader) (configurationResult genesisAllocationConfig, err error) {
+	if m.collectsHistory() && q.arena == nil {
+		if err := joinGraphOutputBudget(q, graphRequest{}, 4096, m.limits); err != nil {
+			return genesisAllocationConfig{}, err
+		}
+	}
 	b, err := m.ownershipBudget(q)
 	if err != nil {
 		return genesisAllocationConfig{}, err
@@ -283,6 +291,13 @@ func (m *declaredMaterializer) validateRestoredState(q *reader, initializedOnly 
 	}
 	if err == nil {
 		err = m.checkRetainedPinLedger(q)
+	}
+	if err == nil && m.collectsHistory() {
+		_, c, _, planErr := activeGraphRetention(q)
+		err = planErr
+		if err == nil && c.scope != (allocationScope{}) && c.scope != m.scope() {
+			err = errCorrupt
+		}
 	}
 	return err
 }
@@ -447,6 +462,9 @@ func (m *declaredMaterializer) Stage(entry replica.Entry, budget raftlog.Applica
 		return b, nil
 	}
 
+	if isGraphRetentionWire(entry.Data) {
+		return m.stageGraphRetention(&q, entry, budget)
+	}
 	if isGraphPinWire(entry.Data) {
 		return m.stageRetainedPin(&q, entry, budget)
 	}

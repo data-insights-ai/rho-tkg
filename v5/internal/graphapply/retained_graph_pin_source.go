@@ -63,7 +63,7 @@ func decodeRetainedPinQuestion(wire []byte) (retainedPinQuestion, error) {
 	return q, nil
 }
 func encodeRetainedPinObservation(o retainedPinObservation) ([]byte, error) {
-	if !o.scope.valid() || o.scope.semantic != retainedGraphSemanticContractID() || o.read.session == ([16]byte{}) || o.read.sequence == 0 || o.nonce == ([16]byte{}) || o.index == 0 || o.configuration == ([32]byte{}) || o.status < 1 || o.status > 5 || o.rows < 0 || o.bytes < 0 || o.output < 0 || len(o.manifest) > graphPinManifestBytes {
+	if !o.scope.valid() || !retainedGraphAgreement(o.scope.semantic) || o.read.session == ([16]byte{}) || o.read.sequence == 0 || o.nonce == ([16]byte{}) || o.index == 0 || o.configuration == ([32]byte{}) || o.status < 1 || o.status > 5 || o.rows < 0 || o.bytes < 0 || o.output < 0 || len(o.manifest) > graphPinManifestBytes {
 		return nil, errInvalid
 	}
 	var result, owner []byte
@@ -311,7 +311,7 @@ func (m *declaredMaterializer) observeRetainedPin(ctx context.Context, question 
 }
 
 func (e *graphAuthenticatedEndpoint) retainedPinRead(ctx context.Context, manifest []byte) (out retainedPinObservation, err error) {
-	if e == nil || e.budget == nil || e.peer.scope.semantic != retainedGraphSemanticContractID() {
+	if e == nil || e.budget == nil || !retainedGraphAgreement(e.peer.scope.semantic) {
 		return out, errInvalid
 	}
 	b := e.budget

@@ -330,6 +330,22 @@ func (h *allocationHost) AtGraphCertificate(ctx context.Context, cert graphCerti
 	if e != nil || actual != cert {
 		return nil, errors.Join(errInvalid, e)
 	}
+	if h.machine.collectsHistory() {
+		l := h.machine.limits.allocation
+		l.readRows = min(l.readRows, h.machine.limits.sourceRows)
+		l.readBytes = min(l.readBytes, h.machine.limits.sourceBytes)
+		q := reader{ctx: ctx, view: current, ns: h.machine.ns, limits: l, rows: 1, bytes: 2048}
+		q.base, err = current.RootBounded(ctx, 172)
+		if err != nil {
+			return nil, err
+		}
+		if err := joinGraphOutputBudget(&q, graphRequest{}, 4096, h.machine.limits); err != nil {
+			return nil, err
+		}
+		if err := checkGraphCertificateRetention(&q, actual); err != nil {
+			return nil, err
+		}
+	}
 	source, err = h.machine.store.ApplicationView(cert.sourceIndex)
 	if err != nil {
 		return nil, err

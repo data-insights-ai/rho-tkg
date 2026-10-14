@@ -164,6 +164,9 @@ func graphResultError(status byte) error {
 // The predecessor is therefore an exact round prefix; its index is only a local
 // MVCC coordinate. A fence is deliberately NOT an installed round.
 func readGraphRoundPredecessor(q *reader, c [32]byte, b uint64) (round, index uint64, image [172]byte, err error) {
+	return selectGraphRoundPredecessor(q, c, b, false)
+}
+func selectGraphRoundPredecessor(q *reader, c [32]byte, b uint64, retained bool) (round, index uint64, image [172]byte, err error) {
 	lower := recordKey(q.ns, 9)
 	upper := partitionRoundMapKey(q.ns, b+1)
 	var before []byte
@@ -199,7 +202,15 @@ func readGraphRoundPredecessor(q *reader, c [32]byte, b uint64) (round, index ui
 			if e := chargeGraphWork(q, graphstore.PageWork{Bytes: 1024}); e != nil {
 				return 0, 0, image, e
 			}
-			root, e := q.view.RootAt(q.ctx, index, 172)
+			var root raftlog.ApplicationRoot
+			if retained {
+				index, root, e = retainedGraphRoundSource(q, c, round, index, image)
+			} else {
+				root, e = q.view.RootAt(q.ctx, index, 172)
+			}
+			if retained && e != nil {
+				return 0, 0, image, e
+			}
 			if e != nil || !bytes.Equal(root.Image, image[:]) {
 				return 0, 0, image, errors.Join(errCorrupt, e)
 			}
@@ -297,7 +308,7 @@ func (m *declaredMaterializer) stageGraphCut(q *reader, entry replica.Entry, bud
 			if lock != ([16]byte{}) {
 				return refuse(graphCutPending)
 			}
-			round, index, image, e := readGraphRoundPredecessor(q, configuration, c.round)
+			round, index, image, e := selectGraphRoundPredecessor(q, configuration, c.round, m.collectsHistory())
 			if e != nil {
 				if errors.Is(e, errLimit) || errors.Is(e, raftlog.ErrLimit) || errors.Is(e, graphstore.ErrResourceLimit) {
 					return refuse(graphCutLimit)
@@ -386,7 +397,15 @@ func (m *declaredMaterializer) checkCertifiedPrerequisites(q *reader, c [32]byte
 	if e := reserveComposer(q, 1024); e != nil {
 		return e
 	}
-	initial, e := q.view.RootAt(q.ctx, index, 172)
+	var initial raftlog.ApplicationRoot
+	if m.collectsHistory() {
+		initial, e = graphSemanticAnchor(q, index, 172)
+	} else {
+		initial, e = q.view.RootAt(q.ctx, index, 172)
+	}
+	if m.collectsHistory() && e != nil {
+		return e
+	}
 	if e != nil || !bytes.Equal(initial.Image, body[48:]) {
 		return errors.Join(errCorrupt, e)
 	}
