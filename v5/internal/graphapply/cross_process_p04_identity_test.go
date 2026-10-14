@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
@@ -173,7 +174,7 @@ func TestCrossProcessP04FrozenParticipantsEpochsAndDigestsSurviveDelayedVoteAndR
 	if _, err := n.hosts[0][0].DecideCrossTransaction(tx, []crossProof{firstProof}); !errors.Is(err, replica.ErrUnavailable) {
 		t.Fatal("P04 missing frozen participant became decision", err)
 	}
-	changedOps := append([]graphstate.Operation(nil), ops...)
+	changedOps := slices.Clone(ops)
 	changedOps = append(changedOps, graphstate.Operation{Kind: graphstate.AddLabel, Owner: 17, Life: 18, Scope: ops[0].Scope, Name: "p04-forbidden-extra-effect"})
 	changed, changedRegister := crossPlanAt(n, 0, id, changedOps, claims, 24)
 	changedManifest := decode(changed.manifest)
@@ -184,7 +185,7 @@ func TestCrossProcessP04FrozenParticipantsEpochsAndDigestsSurviveDelayedVoteAndR
 	// A correctly checksummed command carrying a substituted real kernel must
 	// also fail actual Host admission, rather than borrowing the first YES.
 	mixed := m
-	mixed.parts = append([]crossPart(nil), m.parts...)
+	mixed.parts = slices.Clone(m.parts)
 	mixed.parts[1] = changedManifest.parts[1]
 	command.manifest, err = encodeCrossManifest(mixed, n.hosts[0][0].machine.limits)
 	if err != nil {
