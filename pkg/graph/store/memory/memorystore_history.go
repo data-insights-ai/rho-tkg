@@ -488,6 +488,9 @@ func (ms *Store) NodeHistoryVersionsFrom(nid types.NodeID, startVersion uint32, 
 		return nil, nil
 	}
 
+	if top, ok := ms.nodeHistTop[nid]; ok && top < startVersion {
+		return nil, nil // above every row (the graph's exact row-above probe, backlog 70)
+	}
 	versions := make([]uint32, 0, len(inner))
 	for v := range inner {
 		if v >= startVersion {
@@ -699,6 +702,9 @@ func (ms *Store) RelHistoryVersionsFrom(rid types.RelID, startVersion uint32, li
 		return nil, nil
 	}
 
+	if top, ok := ms.relHistTop[rid]; ok && top < startVersion {
+		return nil, nil // above every row (the graph's exact row-above probe, backlog 70)
+	}
 	versions := make([]uint32, 0, len(inner))
 	for v := range inner {
 		if v >= startVersion {
@@ -951,7 +957,7 @@ func (ms *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node, 
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return nil, err
 	}
-	best := nodeAsOfLocked(ms.nodes[nid], ms.nodeHistory[nid], txTime)
+	best := nodeAsOfLocked(ms.nodes[nid], ms.nodeHistory[nid], ms.nodeHistTopOf(nid), txTime)
 	if best == nil {
 		return nil, ErrVersionNotFound
 	}
@@ -977,7 +983,7 @@ func (ms *Store) RelAsOf(rid types.RelID, txTime types.Instant) (*types.Relation
 	if err != nil {
 		return nil, err
 	}
-	best := relAsOfLocked(cur, ms.relHistory[rid], txTime)
+	best := relAsOfLocked(cur, ms.relHistory[rid], ms.relHistTopOf(rid), txTime)
 	if best == nil {
 		return nil, ErrVersionNotFound
 	}
@@ -1000,7 +1006,7 @@ func (ms *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 
 	result := make([]*types.Node, 0, len(ms.nodes))
 	for id, current := range ms.nodes {
-		if best := nodeAsOfLocked(current, ms.nodeHistory[id], txTime); best != nil {
+		if best := nodeAsOfLocked(current, ms.nodeHistory[id], ms.nodeHistTopOf(id), txTime); best != nil {
 			result = append(result, nodeCopyVisibleAtTxTime(best, txTime))
 		}
 	}
@@ -1008,7 +1014,7 @@ func (ms *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 		if _, live := ms.nodes[id]; live {
 			continue
 		}
-		if best := nodeAsOfLocked(nil, history, txTime); best != nil {
+		if best := nodeAsOfLocked(nil, history, math.MaxUint32, txTime); best != nil {
 			result = append(result, nodeCopyVisibleAtTxTime(best, txTime))
 		}
 	}
@@ -1044,7 +1050,7 @@ func (ms *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 				sealedLive[id] = struct{}{}
 			}
 		}
-		if best := relAsOfLocked(current, ms.relHistory[id], txTime); best != nil {
+		if best := relAsOfLocked(current, ms.relHistory[id], ms.relHistTopOf(id), txTime); best != nil {
 			result = append(result, relCopyVisibleAtTxTime(best, txTime))
 		}
 		return true
@@ -1058,7 +1064,7 @@ func (ms *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 		if _, live := sealedLive[id]; live {
 			continue
 		}
-		if best := relAsOfLocked(nil, history, txTime); best != nil {
+		if best := relAsOfLocked(nil, history, math.MaxUint32, txTime); best != nil {
 			result = append(result, relCopyVisibleAtTxTime(best, txTime))
 		}
 	}
@@ -1069,11 +1075,11 @@ func (ms *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 	return result, nil
 }
 
-func nodeAsOfLocked(current *types.Node, history map[uint32]*types.Node, txTime types.Instant) *types.Node {
+func nodeAsOfLocked(current *types.Node, history map[uint32]*types.Node, top uint32, txTime types.Instant) *types.Node {
 	// Fast path: the live current row answers when it is recorded by the pin
 	// and no history row sits above its version (the rule's current arm with
 	// nothing to outrank it — no slice is built).
-	if nodeMatchesTxTime(current, txTime) && !historyHasVersionAbove(history, current.Version()) {
+	if nodeMatchesTxTime(current, txTime) && !historyHasVersionAbove(history, current.Version(), top) {
 		return current
 	}
 	// The shared as-of selection rule (storeutil.SelectAsOfWithCurrent: the
@@ -1086,8 +1092,8 @@ func nodeAsOfLocked(current *types.Node, history map[uint32]*types.Node, txTime 
 	return best
 }
 
-func relAsOfLocked(current *types.Relationship, history map[uint32]*types.Relationship, txTime types.Instant) *types.Relationship {
-	if relMatchesTxTime(current, txTime) && !historyHasVersionAbove(history, current.Version()) {
+func relAsOfLocked(current *types.Relationship, history map[uint32]*types.Relationship, top uint32, txTime types.Instant) *types.Relationship {
+	if relMatchesTxTime(current, txTime) && !historyHasVersionAbove(history, current.Version(), top) {
 		return current
 	}
 	best, ok := storeutil.SelectAsOfWithCurrent(relHistoryVersionSlice(history), current, current != nil, txTime)
@@ -1099,13 +1105,42 @@ func relAsOfLocked(current *types.Relationship, history map[uint32]*types.Relati
 
 // historyHasVersionAbove reports whether a version-keyed history map holds a
 // version above v (a cascade row written while the current row kept its
-// slot). Versions are dense (core version_alloc.go), so v+1 decides.
-func historyHasVersionAbove[T any](history map[uint32]T, v uint32) bool {
-	if v == math.MaxUint32 {
+// slot). top is an upper bound of the highest version (nodeHistTopOf;
+// math.MaxUint32: none known): at or below v, nothing is read. Else v+1
+// decides the dense chain, and only when it is absent one pass over the
+// versions finds a row above a gap (history compaction trims the oldest rows,
+// which after bounded corrections lie directly above the current row;
+// backlog 70) — the rule of the graph's nodeHasHistoryAbove.
+func historyHasVersionAbove[T any](history map[uint32]T, v, top uint32) bool {
+	if v == math.MaxUint32 || top <= v {
 		return false
 	}
-	_, ok := history[v+1]
-	return ok
+	if _, ok := history[v+1]; ok {
+		return true
+	}
+	for w := range history {
+		if w > v {
+			return true
+		}
+	}
+	return false
+}
+
+// nodeHistTopOf returns node nid's upper bound of its highest history version
+// (math.MaxUint32 when none is kept). Caller holds mu.
+func (ms *Store) nodeHistTopOf(nid types.NodeID) uint32 {
+	if top, ok := ms.nodeHistTop[nid]; ok {
+		return top
+	}
+	return math.MaxUint32
+}
+
+// relHistTopOf mirrors nodeHistTopOf for relationships.
+func (ms *Store) relHistTopOf(rid types.RelID) uint32 {
+	if top, ok := ms.relHistTop[rid]; ok {
+		return top
+	}
+	return math.MaxUint32
 }
 
 // nodeHistoryVersionSlice flattens a version-keyed history map into the slice

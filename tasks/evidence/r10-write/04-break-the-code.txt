@@ -1,0 +1,44 @@
+# backlog 68b break-the-code mutations (scratch mutate.py): tests TestEffectiveHeadWrite_TwinDifferential, TestHeadOverlay_MatchesFold,
+# TestTxRollbackKeepsRowsAboveCompactionGap, TestR10bCorrectionReadsBoundedHistory, TestEffectiveHead_DifferentialOracle (-short).
+# First round: 15 caught, 2 missed (current-slot choice, void open rows: no door produces them), 1 mutation did not build.
+#   CAUGHT: resumption end at a bound equal to newVT (>= for >) by TestEffectiveHeadWrite_TwinDifferential, TestHeadOverlay_MatchesFold
+#   CAUGHT: winner at t covers a piece's own end (p.to >= t) by TestEffectiveHeadWrite_TwinDifferential, TestHeadOverlay_MatchesFold
+#   CAUGHT: a gap's base is version 0, not the template by TestEffectiveHeadWrite_TwinDifferential, TestHeadOverlay_MatchesFold
+#   CAUGHT: an excise merges a gap with a piece the template wins (splitGaps ignored) by TestHeadOverlay_MatchesFold
+#   CAUGHT: the trailing gap is dropped by TestEffectiveHeadWrite_TwinDifferential, TestHeadOverlay_MatchesFold, TestR10bCorrectionReadsBoundedHistory
+#   MISSED: the current slot ignores the chain's open belief
+#   CAUGHT: the highest version ignores the entry (current row only) by TestEffectiveHeadWrite_TwinDifferential
+#   CAUGHT: a caller instant at the newest stamp is not sent to the history read by TestEffectiveHeadWrite_TwinDifferential
+#   CAUGHT: a base row is read from the wrong version (cache keyed off by one) by TestEffectiveHeadWrite_TwinDifferential, TestHeadOverlay_MatchesFold
+#   CAUGHT: the fold keeps no own end in bounds by TestEffectiveHeadWrite_TwinDifferential, TestHeadOverlay_MatchesFold
+#   MISSED: the fold's open belief counts void rows
+#   CAUGHT: the overlay does not add an appended row's bounds by TestEffectiveHeadWrite_TwinDifferential, TestHeadOverlay_MatchesFold
+#   CAUGHT: the overlay does not note an appended open row by TestHeadOverlay_MatchesFold
+#   CAUGHT: the tx snapshot ignores the top (trims every row above the current one) by build: pkg/graph/internal/core/tx.go:319:5: declared and not used: top
+#   CAUGHT: the tx snapshot keeps every row up to the top (keepTo for trim) by TestEffectiveHeadWrite_TwinDifferential
+#   CAUGHT: a rollback leaves the demoted current row in history by TestEffectiveHeadWrite_TwinDifferential
+#   CAUGHT: a rollback without the trim keeps the demoted current row by TestEffectiveHeadWrite_TwinDifferential
+#   CAUGHT: the snapshot probes only current+1 (dense versions) by TestEffectiveHeadWrite_TwinDifferential, TestTxRollbackKeepsRowsAboveCompactionGap
+# The overlay test then gained open void rows and an appended open row recorded before / after the chain's open belief;
+# the snapshot mutation was rewritten to build. Final:
+CAUGHT: resumption end at a bound equal to newVT (>= for >) by TestEffectiveHeadWrite_TwinDifferential, TestHeadOverlay_MatchesFold
+CAUGHT: winner at t covers a piece's own end (p.to >= t) by TestEffectiveHeadWrite_TwinDifferential, TestHeadOverlay_MatchesFold
+CAUGHT: a gap's base is version 0, not the template by TestEffectiveHeadWrite_TwinDifferential, TestHeadOverlay_MatchesFold
+CAUGHT: an excise merges a gap with a piece the template wins (splitGaps ignored) by TestHeadOverlay_MatchesFold
+CAUGHT: the trailing gap is dropped by TestEffectiveHeadWrite_TwinDifferential, TestHeadOverlay_MatchesFold, TestR10bCorrectionReadsBoundedHistory
+CAUGHT: the current slot ignores the chain's open belief by TestHeadOverlay_MatchesFold
+CAUGHT: the highest version ignores the entry (current row only) by TestEffectiveHeadWrite_TwinDifferential
+CAUGHT: a caller instant at the newest stamp is not sent to the history read by TestEffectiveHeadWrite_TwinDifferential
+CAUGHT: a base row is read from the wrong version (cache keyed off by one) by TestEffectiveHeadWrite_TwinDifferential, TestHeadOverlay_MatchesFold
+CAUGHT: the fold keeps no own end in bounds by TestEffectiveHeadWrite_TwinDifferential, TestHeadOverlay_MatchesFold
+CAUGHT: the fold's open belief counts void rows by TestHeadOverlay_MatchesFold
+CAUGHT: the overlay does not add an appended row's bounds by TestEffectiveHeadWrite_TwinDifferential, TestHeadOverlay_MatchesFold
+CAUGHT: the overlay does not note an appended open row by TestHeadOverlay_MatchesFold
+CAUGHT: the tx snapshot ignores the top (trims every row above the current one) by TestEffectiveHeadWrite_TwinDifferential
+CAUGHT: the tx snapshot keeps every row up to the top (keepTo for trim) by TestEffectiveHeadWrite_TwinDifferential
+CAUGHT: a rollback leaves the demoted current row in history by TestEffectiveHeadWrite_TwinDifferential
+CAUGHT: a rollback without the trim keeps the demoted current row by TestEffectiveHeadWrite_TwinDifferential
+CAUGHT: the snapshot probes only current+1 (dense versions) by TestEffectiveHeadWrite_TwinDifferential, TestTxRollbackKeepsRowsAboveCompactionGap
+# backlog 70 (allocator exact across a compaction gap), after the rebase onto v4.55.0:
+CAUGHT: the allocator probes only current+1 (backlog 70, before the fix) by TestEffectiveHeadWrite_TwinDifferential, TestTxRollbackAppendsAboveCompactionGap, TestVersionAllocatorAboveCompactionGap
+CAUGHT: the rel allocator probes only current+1 by TestTxRollbackAppendsAboveCompactionGap, TestVersionAllocatorAboveCompactionGap

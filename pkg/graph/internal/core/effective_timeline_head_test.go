@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"math"
 	"runtime"
 	"testing"
 	"time"
@@ -68,21 +69,16 @@ func TestR10HeadTimelineCostIndependentOfHistory(t *testing.T) {
 			small := r10Node(t, g, 2)
 			big := r10Node(t, g, 300)
 			bigRel := r10Rel(t, g, 300)
+			// The minimum of five samples: mallocs counts the whole process,
+			// so another goroutine's allocations (a badger flush, a parallel
+			// test) can land in one sample (minAllocsPerRun in the badger
+			// column-scan alloc tests).
 			nodeAllocs := func(id any) uint64 {
-				return mallocs(func() {
-					for range 10 {
-						var err error
-						switch x := id.(type) {
-						case nodeIDArg:
-							_, err = g.Temporal.NodeEffectiveTimeline(x.id, g.peekNow())
-						case relIDArg:
-							_, err = g.Temporal.RelEffectiveTimeline(x.id, g.peekNow())
-						}
-						if err != nil {
-							t.Fatal(err)
-						}
-					}
-				}) / 10
+				best := uint64(math.MaxUint64)
+				for range 5 {
+					best = min(best, nodeAllocsOnce(t, g, id))
+				}
+				return best
 			}
 			// Warm: the first head read of an entity may fold its history.
 			_ = nodeAllocs(nodeIDArg{small})
@@ -131,4 +127,24 @@ func TestR10HeadTimelineCostIndependentOfHistory(t *testing.T) {
 			}
 		})
 	}
+}
+
+// nodeAllocsOnce is one sample of the allocations per head read of id
+// (nodeIDArg or relIDArg), over ten reads.
+func nodeAllocsOnce(t *testing.T, g *Core, id any) uint64 {
+	t.Helper()
+	return mallocs(func() {
+		for range 10 {
+			var err error
+			switch x := id.(type) {
+			case nodeIDArg:
+				_, err = g.Temporal.NodeEffectiveTimeline(x.id, g.peekNow())
+			case relIDArg:
+				_, err = g.Temporal.RelEffectiveTimeline(x.id, g.peekNow())
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}) / 10
 }

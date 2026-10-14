@@ -1,0 +1,17 @@
+# 2026-10-14T22:38:34+02:00 red: TestTxRollbackKeepsRowsAboveCompactionGap before the fix (pre-existing on main: the slow snapshot)
+=== RUN   TestTxRollbackKeepsRowsAboveCompactionGap
+=== RUN   TestTxRollbackKeepsRowsAboveCompactionGap/memory
+    effective_head_write_test.go:164: rollback: history [], before the tx [3]
+=== RUN   TestTxRollbackKeepsRowsAboveCompactionGap/badger
+    effective_head_write_test.go:164: rollback: history [], before the tx [3]
+=== RUN   TestTxRollbackKeepsRowsAboveCompactionGap/sharded
+    effective_head_write_test.go:134: no history compaction
+=== RUN   TestTxRollbackKeepsRowsAboveCompactionGap/tiered
+--- FAIL: TestTxRollbackKeepsRowsAboveCompactionGap (0.05s)
+    --- FAIL: TestTxRollbackKeepsRowsAboveCompactionGap/memory (0.00s)
+    --- FAIL: TestTxRollbackKeepsRowsAboveCompactionGap/badger (0.00s)
+    --- SKIP: TestTxRollbackKeepsRowsAboveCompactionGap/sharded (0.04s)
+    --- PASS: TestTxRollbackKeepsRowsAboveCompactionGap/tiered (0.01s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.055s
+FAIL

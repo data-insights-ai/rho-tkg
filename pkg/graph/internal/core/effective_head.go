@@ -61,6 +61,7 @@ const (
 	headCacheStripes    = 64
 	headCacheMaxPieces  = 1 << 20
 	headMaxEntryPieces  = 512
+	headMaxEntryBounds  = 2 * headMaxEntryPieces
 	headStripeMaxWeight = headCacheMaxPieces / headCacheStripes
 )
 
@@ -83,6 +84,28 @@ type headEntry struct {
 	lastStart types.Instant          // the newest row's start (resolver key)
 	lastEnd   types.Instant          // the newest row's own ValidTo (0: open)
 	pieces    []headPiece
+	// What a correction needs besides the pieces (backlog 68b,
+	// effective_head_write.go): every row's own valid bounds, sorted and
+	// distinct (nil: more than headMaxEntryBounds, not kept: corrections
+	// read the chain), and the newest belief among the rows whose own
+	// interval is open and not void.
+	bounds []types.Instant
+	open   openBelief
+}
+
+// openBelief is the newest belief (nodeBeliefNewerThan: higher TxFrom, then
+// higher version) among the rows noted; ok false: none.
+type openBelief struct {
+	tx      types.Instant
+	version uint32
+	ok      bool
+}
+
+// note keeps (tx, version) when it is a newer belief than the one kept.
+func (o *openBelief) note(tx types.Instant, version uint32) {
+	if !o.ok || tx > o.tx || (tx == o.tx && version > o.version) {
+		*o = openBelief{tx: tx, version: version, ok: true}
+	}
 }
 
 type headKey struct {
@@ -104,7 +127,7 @@ type headStripe struct {
 	_      [32]byte
 }
 
-func headWeight(e *headEntry) int { return len(e.pieces) + 1 }
+func headWeight(e *headEntry) int { return len(e.pieces) + len(e.bounds) + 1 }
 
 func (h *headCache) stripe(k headKey) *headStripe {
 	x := uint64(k.id) * 0x9E3779B97F4A7C15 // #nosec G115 — bit-pattern hash only; Fibonacci hash: snowflake IDs share low bits
@@ -222,6 +245,8 @@ type headFacts struct {
 	lastStart types.Instant
 	lastEnd   types.Instant
 	cascade   bool // set from the sweep
+	bounds    []types.Instant
+	open      openBelief
 }
 
 // gatherHeadFacts fills f from filtered, the fold's chain in write order when every
@@ -234,17 +259,37 @@ func gatherHeadFacts[T interface {
 	comparable
 	storeutil.TemporalRow
 }](f *headFacts, c *Core, k *chainKernel[T], filtered []T) {
+	bounds := make([]types.Instant, 0, 2*len(filtered))
 	for i, r := range filtered {
 		tm := r.Temporal()
 		if tm == nil || tm.DeletedAt != 0 || tm.Retracted || (i > 0 && filtered[i-1].Version() >= r.Version()) {
 			return
 		}
 		f.maxTx, f.maxTxTo = max(f.maxTx, tm.TxFrom), max(f.maxTxTo, tm.TxTo)
+		s, e := k.ownBounds(c, r)
+		bounds = append(bounds, s)
+		if e != 0 {
+			bounds = append(bounds, e)
+		} else if !tm.Void {
+			f.open.note(tm.TxFrom, r.Version())
+		}
 	}
 	last := filtered[len(filtered)-1]
 	f.maxVer = last.Version()
 	f.lastStart, f.lastEnd = k.sortVF(c, last), last.Temporal().ValidTo
+	f.bounds = sortedBounds(bounds)
 	f.ok = true
+}
+
+// sortedBounds sorts and de-duplicates b in place; nil when more than
+// headMaxEntryBounds remain.
+func sortedBounds(b []types.Instant) []types.Instant {
+	slices.Sort(b)
+	b = slices.Compact(b)
+	if len(b) > headMaxEntryBounds {
+		return nil
+	}
+	return slices.Clip(b)
 }
 
 // headFromFold builds the entry for a fold's pieces and facts, or nil when
@@ -258,7 +303,8 @@ func headFromFold[T interface {
 	}
 	e := &headEntry{epoch: epoch, curVer: current.Version(), curTM: temporalOf(current),
 		maxTx: f.maxTx, maxTxTo: f.maxTxTo, maxVer: f.maxVer, cascade: f.cascade,
-		lastStart: f.lastStart, lastEnd: f.lastEnd, pieces: make([]headPiece, len(pieces))}
+		lastStart: f.lastStart, lastEnd: f.lastEnd, pieces: make([]headPiece, len(pieces)),
+		bounds: f.bounds, open: f.open}
 	for i, p := range pieces {
 		e.pieces[i] = headPiece{from: p.from, to: p.to, version: p.row.Version()}
 	}
@@ -276,6 +322,10 @@ func headOverlay[T interface {
 	}
 	out := *e
 	out.pieces = slices.Clone(e.pieces)
+	var bounds []types.Instant
+	if e.bounds != nil {
+		bounds = slices.Clone(e.bounds)
+	}
 	for _, r := range appended {
 		tm := r.Temporal()
 		if tm == nil || tm.DeletedAt != 0 || tm.Retracted || tm.TxTo != 0 ||
@@ -296,7 +346,20 @@ func headOverlay[T interface {
 		out.pieces = paintHead(out.pieces, s, end, r.Version(), isVoidRow(r))
 		out.maxTx, out.maxVer = tm.TxFrom, r.Version()
 		out.lastStart, out.lastEnd = s, end
+		if bounds != nil {
+			bounds = append(bounds, s)
+			if end != 0 {
+				bounds = append(bounds, end)
+			}
+		}
+		if end == 0 && !tm.Void {
+			out.open.note(tm.TxFrom, r.Version())
+		}
 	}
+	if bounds != nil {
+		bounds = sortedBounds(bounds)
+	}
+	out.bounds = bounds
 	return &out
 }
 

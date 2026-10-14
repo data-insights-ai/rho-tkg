@@ -6,6 +6,62 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **sigma's read-then-correct cut no longer copies the history: corrections and GraphTx rollback snapshots from the
+  head entry** (backlog 68b, sigma R10 write side). A `SetNodeVersionInterval` / excise correction (every door:
+  Temporal, `*WithTx`, GraphTx, BatchBuilder, ingest) read the entity's whole history for its pre-correction chain,
+  and the GraphTx rollback snapshot deep-copied it again whenever a bounded correction had left rows above the
+  current row (sigma's shape: every cut). When the entity's head entry (backlog 68) is valid at the write's start,
+  the correction now takes the highest version, the order rule of a caller instant, the resumption, the correction
+  pieces and the current-slot choice from the entry plus one point read per base row, and the snapshot is the
+  current row and the entry's highest version (rollback trims above it). The entry gains every row's own valid
+  bounds (at most 1,024 kept) and the newest open belief, gathered by the fold and kept by the overlay; without a
+  valid entry both read the history as before. No new store operation: removing the current row a transaction
+  moved into history below kept rows reuses `TrimNodeHistoryFrom` and a rewrite of the kept rows (only then);
+  sharded and tiered, which have no rollback trim, rewrite the history from the rows read at rollback instead of a
+  copy taken at the snapshot. Measured per fact at 300 versions (`BenchmarkR10CutPerFact`, read then GraphTx
+  correction, `tasks/evidence/r10-write/02-bench-before.txt` -> `05-bench-after.txt`): warm (the fact read at the
+  previous cut, sigma's steady state) memory 0.28-0.35 ms -> 6 us, badger 1.9-2.0 ms -> 16-24 us (3661 -> 59 and
+  25997 -> 153 allocs); cold (first read folds the history) memory 0.45-0.49 -> 0.14-0.19 ms, badger 2.2-2.5 ->
+  0.22-0.26 ms; at 1 version unchanged. Rows are byte-identical to the history path:
+  `TestEffectiveHeadWrite_TwinDifferential` (twin graphs, same IDs and clock, one plans from the entry and one
+  reads the history; corrections bounded and open, caller instants accepted and refused, excises, Updates,
+  in-place validity rewrites, CloseVersion, label changes, deletes and re-imports, GraphTx commits and rollbacks
+  of several mutations, rollback-then-rewrite, compaction, Clear, retention purge and the tiered shard moves, on
+  memory, badger, sharded and tiered; every rollback leaves the rows byte-identical to before its tx),
+  `TestHeadOverlay_MatchesFold` (106k planned corrections on random chains equal to the chain path),
+  `TestR10bCorrectionReadsBoundedHistory` (at most 4 history rows read per correction at 300 versions, red:
+  599); all 18 break-the-code mutations caught (`04-break-the-code.txt`).
+
+### Fixed
+
+- **Versions are allocated above every stored row, also across a compaction gap** (backlog 70, found by the 68b
+  twin; memory, badger, tiered). History compaction trims the oldest history rows, which after bounded corrections
+  lie directly above the current row; the version allocator of every appending door (Update, CloseVersion, label
+  changes, property CAS, nodes and relationships) and the core as-of fast paths probed only version current+1, so
+  the next write took a version below surviving rows (an Update after `KeepVersions: 1` wrote v1 beside v3), and a
+  GraphTx that appended twice to such an entity and rolled back kept a row (68b's snapshot trims above the
+  chain's top). `nodeHasHistoryAbove` / `relHasHistoryAbove` are exact: the point read of current+1, and only
+  when it misses one history page read of at most one row, which memory and badger answer from a per-ID upper
+  bound of the top version (memory: raised by its one history-write funnel; badger: the history presence set)
+  without reading rows when nothing lies above: Update cost unchanged (`11-update-cost-allocator.txt`); sharded
+  gains the page read (`HistoryVersionPageCapability`, routed to the slot). The
+  stores' as-of fast paths (point and bulk `NodeAsOf` / `NodesAsOf` and the rel twins, memory and badger) answered
+  the current row where the row above the gap is the newest belief; they now use the same rule: the per-ID upper
+  bound says no row lies above (no read), else current+1, else a pass over the versions (memory) or the history
+  scan (badger) decides (`TestStoreAsOfAboveCompactionGap`, red: `12-red-store-asof-gap.txt`). Tests:
+  `TestVersionAllocatorAboveCompactionGap`, `TestTxRollbackAppendsAboveCompactionGap` (nodes and relationships;
+  red: `tasks/evidence/r10-write/10-red-allocator-gap.txt`), the 68b twin now with deletes, closes and this
+  shape inside a GraphTx.
+
+- **GraphTx rollback kept the pre-transaction rows above a compaction gap** (found by the 68b twin; memory,
+  badger). History compaction trims the oldest history rows, which after bounded corrections lie directly above
+  the current row; the rollback snapshot probed only version current+1 (dense versions), took the trim path, and
+  the rollback trimmed every surviving pre-transaction row above the current one. The snapshot's check is now
+  exact (one history page read of at most one row). Test: `TestTxRollbackKeepsRowsAboveCompactionGap` (red on
+  memory and badger: `tasks/evidence/r10-write/03-red-compaction-gap-rollback.txt`).
+
 ## [4.55.0] - 2026-10-14
 
 ### Added
