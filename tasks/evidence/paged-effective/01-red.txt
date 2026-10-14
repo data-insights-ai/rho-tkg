@@ -1,0 +1,136 @@
+--- FAIL: TestEffectivePage_Errors (0.00s)
+    effective_page_test.go:631: pin 0 rel=true: not implemented, want graph: invalid time range
+    effective_page_test.go:631: pin 0 rel=false: not implemented, want graph: invalid time range
+    effective_page_test.go:631: pin too new rel=true: not implemented, want graph: transaction-time pin is ahead of the commit clock
+    effective_page_test.go:631: pin too new rel=false: not implemented, want graph: transaction-time pin is ahead of the commit clock
+    effective_page_test.go:631: limit 0 rel=true: not implemented, want graph: invalid query limit
+    effective_page_test.go:631: limit 0 rel=false: not implemented, want graph: invalid query limit
+    effective_page_test.go:631: negative cursor rel=true: not implemented, want graph: invalid query cursor
+    effective_page_test.go:631: negative cursor rel=false: not implemented, want graph: invalid query cursor
+    effective_page_test.go:631: point and interval rel=true: not implemented, want graph: invalid time range
+    effective_page_test.go:631: point and interval rel=false: not implemented, want graph: invalid time range
+    effective_page_test.go:631: reversed interval rel=true: not implemented, want graph: invalid time range
+    effective_page_test.go:631: reversed interval rel=false: not implemented, want graph: invalid time range
+    effective_page_test.go:631: one-sided interval rel=true: not implemented, want graph: invalid time range
+    effective_page_test.go:631: one-sided interval rel=false: not implemented, want graph: invalid time range
+    effective_page_test.go:631: negative valid rel=true: not implemented, want graph: invalid time range
+    effective_page_test.go:631: negative valid rel=false: not implemented, want graph: invalid time range
+    effective_page_test.go:631: empty key rel=true: not implemented, want graph: name must not be empty
+    effective_page_test.go:631: empty key rel=false: not implemented, want graph: name must not be empty
+    effective_page_test.go:631: reserved key rel=true: not implemented, want types: property key uses reserved tkg_ prefix
+    effective_page_test.go:631: reserved key rel=false: not implemented, want types: property key uses reserved tkg_ prefix
+    effective_page_test.go:631: invalid value rel=true: not implemented, want types: unsupported property value type
+    effective_page_test.go:631: invalid value rel=false: not implemented, want types: unsupported property value type
+    effective_page_test.go:631: canceled rel=true: not implemented, want context canceled
+    effective_page_test.go:631: canceled rel=false: not implemented, want context canceled
+    effective_page_test.go:636: nil ctx: not implemented
+    effective_page_test.go:640: closed: not implemented
+--- FAIL: TestEffectivePage_ValueChangeTwoPhase (0.00s)
+    --- FAIL: TestEffectivePage_ValueChangeTwoPhase/memory/rel=true (0.00s)
+        effective_page_test.go:456: page after 0 limit 1 pin {Tx:1792008004001 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_ValueChangeTwoPhase/memory/rel=false (0.00s)
+        effective_page_test.go:456: page after 0 limit 1 pin {Tx:1792008004001 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_ValueChangeTwoPhase/badger/rel=false (0.01s)
+        effective_page_test.go:456: page after 0 limit 1 pin {Tx:1792008004001 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_ValueChangeTwoPhase/badger/rel=true (0.01s)
+        effective_page_test.go:456: page after 0 limit 1 pin {Tx:1792008004001 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_ValueChangeTwoPhase/sharded/rel=true (0.02s)
+        effective_page_test.go:456: page after 0 limit 1 pin {Tx:1792008004001 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_ValueChangeTwoPhase/tiered/rel=true (0.02s)
+        effective_page_test.go:411: declare: graph: relationship property indexes are not supported on this backend
+        effective_page_test.go:456: page after 0 limit 1 pin {Tx:1792008004001 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_ValueChangeTwoPhase/tiered/rel=false (0.02s)
+        effective_page_test.go:456: page after 0 limit 1 pin {Tx:1792008004001 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_ValueChangeTwoPhase/sharded/rel=false (0.02s)
+        effective_page_test.go:456: page after 0 limit 1 pin {Tx:1792008004001 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+--- FAIL: TestEffectivePage_CursorUnderConcurrentWrites (0.00s)
+    --- FAIL: TestEffectivePage_CursorUnderConcurrentWrites/memory/rel=true (0.00s)
+        effective_page_test.go:575: page after 0 limit 4 pin {Tx:1792003818457 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_CursorUnderConcurrentWrites/memory/rel=false (0.00s)
+        effective_page_test.go:575: page after 0 limit 4 pin {Tx:1792003818457 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_CursorUnderConcurrentWrites/badger/rel=true (0.01s)
+        effective_page_test.go:575: page after 0 limit 4 pin {Tx:1792003818467 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_CursorUnderConcurrentWrites/badger/rel=false (0.01s)
+        effective_page_test.go:575: page after 0 limit 4 pin {Tx:1792003818463 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_CursorUnderConcurrentWrites/sharded/rel=false (0.02s)
+        effective_page_test.go:575: page after 0 limit 4 pin {Tx:1792003818463 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_CursorUnderConcurrentWrites/tiered/rel=true (0.02s)
+        effective_page_test.go:575: page after 0 limit 4 pin {Tx:1792003818468 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_CursorUnderConcurrentWrites/sharded/rel=true (0.02s)
+        effective_page_test.go:575: page after 0 limit 4 pin {Tx:1792003818470 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_CursorUnderConcurrentWrites/tiered/rel=false (0.02s)
+        effective_page_test.go:575: page after 0 limit 4 pin {Tx:1792003818471 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+--- FAIL: TestEffectivePage_DifferentialRandom (0.00s)
+    --- FAIL: TestEffectivePage_DifferentialRandom/memory/rel=true/early=true/seed=0 (0.00s)
+        effective_page_test.go:347: page after 0 limit 2 pin {Tx:1792008001002 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_DifferentialRandom/memory/rel=false/early=true/seed=0 (0.00s)
+        effective_page_test.go:347: page after 0 limit 2 pin {Tx:1792008001000 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_DifferentialRandom/badger/rel=true/early=true/seed=0 (0.01s)
+        effective_page_test.go:347: page after 0 limit 2 pin {Tx:1792008001002 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_DifferentialRandom/badger/rel=false/early=true/seed=1 (0.01s)
+        effective_page_test.go:347: page after 0 limit 2 pin {Tx:1792008001000 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_DifferentialRandom/memory/rel=true/early=true/seed=1 (0.00s)
+        effective_page_test.go:347: page after 0 limit 2 pin {Tx:1792008001002 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_DifferentialRandom/memory/rel=true/early=false/seed=0 (0.00s)
+        effective_page_test.go:350: update: graph: entity already closed
+    --- FAIL: TestEffectivePage_DifferentialRandom/memory/rel=true/early=false/seed=1 (0.00s)
+        effective_page_test.go:350: touch: graph: entity already closed
+    --- FAIL: TestEffectivePage_DifferentialRandom/memory/rel=false/early=false/seed=0 (0.00s)
+        effective_page_test.go:350: close: graph: entity already closed
+    --- FAIL: TestEffectivePage_DifferentialRandom/badger/rel=true/early=false/seed=0 (0.01s)
+        effective_page_test.go:350: update: graph: entity already closed
+    --- FAIL: TestEffectivePage_DifferentialRandom/badger/rel=false/early=true/seed=0 (0.01s)
+        effective_page_test.go:347: page after 0 limit 2 pin {Tx:1792008001000 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_DifferentialRandom/memory/rel=false/early=true/seed=1 (0.00s)
+        effective_page_test.go:347: page after 0 limit 2 pin {Tx:1792008001000 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_DifferentialRandom/memory/rel=false/early=false/seed=1 (0.00s)
+        effective_page_test.go:350: close: graph: entity already closed
+    --- FAIL: TestEffectivePage_DifferentialRandom/badger/rel=true/early=false/seed=1 (0.01s)
+        effective_page_test.go:350: touch: graph: entity already closed
+    --- FAIL: TestEffectivePage_DifferentialRandom/badger/rel=true/early=true/seed=1 (0.01s)
+        effective_page_test.go:347: page after 0 limit 2 pin {Tx:1792008001002 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_DifferentialRandom/tiered/rel=true/early=true/seed=0 (0.01s)
+        effective_page_test.go:345: declare index 0: graph: relationship property indexes are not supported on this backend (backend declines; the door falls back)
+        effective_page_test.go:345: declare index 1: graph: relationship property indexes are not supported on this backend (backend declines; the door falls back)
+        effective_page_test.go:347: page after 0 limit 2 pin {Tx:1792008001002 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_DifferentialRandom/badger/rel=false/early=false/seed=1 (0.01s)
+        effective_page_test.go:350: close: graph: entity already closed
+    --- FAIL: TestEffectivePage_DifferentialRandom/sharded/rel=false/early=true/seed=1 (0.01s)
+        effective_page_test.go:347: page after 0 limit 2 pin {Tx:1792008001000 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_DifferentialRandom/badger/rel=false/early=false/seed=0 (0.02s)
+        effective_page_test.go:350: close: graph: entity already closed
+    --- FAIL: TestEffectivePage_DifferentialRandom/sharded/rel=true/early=true/seed=1 (0.02s)
+        effective_page_test.go:347: page after 0 limit 2 pin {Tx:1792008001002 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_DifferentialRandom/sharded/rel=true/early=true/seed=0 (0.02s)
+        effective_page_test.go:347: page after 0 limit 2 pin {Tx:1792008001002 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_DifferentialRandom/sharded/rel=true/early=false/seed=0 (0.02s)
+        effective_page_test.go:350: update: graph: entity already closed
+    --- FAIL: TestEffectivePage_DifferentialRandom/tiered/rel=false/early=true/seed=0 (0.02s)
+        effective_page_test.go:345: declare index 1: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Ev": graph: property indexes only supported for reference entities in Store (backend declines; the door falls back)
+        effective_page_test.go:347: page after 0 limit 2 pin {Tx:1792008001000 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_DifferentialRandom/tiered/rel=false/early=false/seed=0 (0.02s)
+        effective_page_test.go:350: close: graph: entity already closed
+    --- FAIL: TestEffectivePage_DifferentialRandom/sharded/rel=false/early=false/seed=1 (0.02s)
+        effective_page_test.go:350: close: graph: entity already closed
+    --- FAIL: TestEffectivePage_DifferentialRandom/tiered/rel=false/early=true/seed=1 (0.02s)
+        effective_page_test.go:345: declare index 1: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Ev": graph: property indexes only supported for reference entities in Store (backend declines; the door falls back)
+        effective_page_test.go:347: page after 0 limit 2 pin {Tx:1792008001000 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_DifferentialRandom/sharded/rel=true/early=false/seed=1 (0.01s)
+        effective_page_test.go:350: touch: graph: entity already closed
+    --- FAIL: TestEffectivePage_DifferentialRandom/sharded/rel=false/early=false/seed=0 (0.02s)
+        effective_page_test.go:350: close: graph: entity already closed
+    --- FAIL: TestEffectivePage_DifferentialRandom/tiered/rel=false/early=false/seed=1 (0.02s)
+        effective_page_test.go:350: close: graph: entity already closed
+    --- FAIL: TestEffectivePage_DifferentialRandom/tiered/rel=true/early=false/seed=0 (0.02s)
+        effective_page_test.go:350: update: graph: entity already closed
+    --- FAIL: TestEffectivePage_DifferentialRandom/sharded/rel=false/early=true/seed=0 (0.03s)
+        effective_page_test.go:347: page after 0 limit 2 pin {Tx:1792008001000 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+    --- FAIL: TestEffectivePage_DifferentialRandom/tiered/rel=true/early=false/seed=1 (0.02s)
+        effective_page_test.go:350: touch: graph: entity already closed
+    --- FAIL: TestEffectivePage_DifferentialRandom/tiered/rel=true/early=true/seed=1 (0.02s)
+        effective_page_test.go:345: declare index 0: graph: relationship property indexes are not supported on this backend (backend declines; the door falls back)
+        effective_page_test.go:345: declare index 1: graph: relationship property indexes are not supported on this backend (backend declines; the door falls back)
+        effective_page_test.go:347: page after 0 limit 2 pin {Tx:1792008001002 ValidAt:0 ValidStart:0 ValidEnd:0}: not implemented
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.052s
+FAIL

@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Paged effective scans with a property filter: `Temporal().RelsEffectivePage(ctx, pin, filter, after, limit)` /
+  `NodesEffectivePage`** (backlog 69, ai-soc `GET /api/v1/tkg/asof`). One keyset page (ID > `after`, at most `limit`
+  entities, `next` = the last ID of a full page) of `ForEachRelEffective` / `ForEachNodeEffective` at `pin.Tx`
+  keeping the segments whose row carries `filter.Prop` = `filter.Eq` (index-key equality) and that meet an optional
+  valid instant or interval, over every relationship type (node label). Candidates come from the existing
+  transaction-time property membership sidecar (backlog 8) of each type's declared `(type, Prop)` index, now with
+  an ordered view per value (`PropertyTxMembers.OrderValue` / `MembersAfter`: opened by a value's first page, kept
+  by every write) so a page resumes at the cursor instead of enumerating the value; the types merge in ID order.
+  A type without the index (and every type on tiered, which keeps no relationship property index) contributes its
+  ever-members at the pin, gathered per page. New optional store capabilities
+  `RelPropertyTxMemberPageCapability` / `NodePropertyTxMemberPageCapability` (memory, badger, sharded). 100,000
+  relationships over 10 estates, one page of 500: 0.24 ms (memory) / 0.2 ms (badger) against 55 ms / 290-430 ms
+  for the filtered full walk. Differential against the full walk at random pins and valid filters with value
+  changes, deletes, closes, excise, interval corrections, retractions and writes between pages, on memory, badger,
+  sharded and tiered: `tasks/evidence/paged-effective/`.
+
 ## [4.54.0] - 2026-10-14
 
 ### Added

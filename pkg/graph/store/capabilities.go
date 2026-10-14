@@ -325,6 +325,23 @@ type NodePropertyTxMembershipCapability interface {
 	ForEachNodePropertyTxMember(labelToken uint16, propertyKey, valueKey string, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
 }
 
+// RelPropertyTxMemberPageCapability is OPTIONAL (backlog 69): the members
+// RelPropertyTxMembershipCapability enumerates for one value, in ascending ID
+// order and resumed above a cursor — at most limit members with ID > after —
+// so a keyset-paged read costs about one page, not the whole value. Same
+// contract otherwise (append-only sound superset, firstTxFrom 0 = unknown,
+// store.ErrIndexNotFound before fn when no index is declared); fn runs
+// outside store locks.
+type RelPropertyTxMemberPageCapability interface {
+	ForEachRelPropertyTxMemberAfter(relTypeToken uint16, propertyKey, valueKey string, after types.RelID, limit int, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
+}
+
+// NodePropertyTxMemberPageCapability is the node twin of
+// RelPropertyTxMemberPageCapability, keyed (label, key).
+type NodePropertyTxMemberPageCapability interface {
+	ForEachNodePropertyTxMemberAfter(labelToken uint16, propertyKey, valueKey string, after types.NodeID, limit int, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
+}
+
 // PropertyTxMembershipStats reports the property membership sidecars (backlog 8):
 // sidecars built, postings held, completed lazy builds since open and their
 // summed wall time.
