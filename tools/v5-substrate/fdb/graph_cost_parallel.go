@@ -171,7 +171,31 @@ func (h *harness) graphCostInstallParallel() (graphCostStoredRecord, error) {
 	if err != nil {
 		return graphCostStoredRecord{}, err
 	}
-	return graphCostStoredRecord{bytes.Clone(key), bytes.Clone(body)}, nil
+	// Submitted tr.Set bytes are not an observation. Capture the genuine stored
+	// immutable binding after commit, under both actual full config checks.
+	observed, err := h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+		for g := uint8(0); g < 2; g++ {
+			if err := h.checkConfig(tr, g); err != nil {
+				return nil, err
+			}
+		}
+		raw, err := tr.Get(key).Get()
+		if err != nil {
+			return nil, err
+		}
+		if len(raw) == 0 || len(raw) > 64<<10 {
+			return nil, errUnavailable
+		}
+		stored, err := decode[graphCostParallelBinding](raw)
+		if err != nil || stored != binding || !bytes.Equal(raw, body) {
+			return nil, errors.Join(errMismatch, err)
+		}
+		return graphCostStoredRecord{bytes.Clone(key), bytes.Clone(raw)}, nil
+	})
+	if err != nil {
+		return graphCostStoredRecord{}, err
+	}
+	return observed.(graphCostStoredRecord), nil
 }
 
 // A decoded outcome is authority only when BOTH genuine immutable originals
