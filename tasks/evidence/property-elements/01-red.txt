@@ -1,0 +1,74 @@
+--- FAIL: TestPropertyIndexElementsContains (0.68s)
+    --- FAIL: TestPropertyIndexElementsContains/memory (0.01s)
+        property_index_elements_test.go:130: current 102: got [], want [811276227591438336 811276227595796480]
+        property_index_elements_test.go:130: current 103: got [], want [811276227591438336]
+        property_index_elements_test.go:130: current x: got [], want [811276227595796480]
+        property_index_elements_test.go:130: TxPin 101: got [811276227593109504], want [811276227591438336 811276227593109504]
+        property_index_elements_test.go:130: TxPin 102: got [], want [811276227591438336 811276227595796480]
+        property_index_elements_test.go:130: TxAt+ValidAt 101: got [811276227593109504], want [811276227591438336 811276227593109504]
+        property_index_elements_test.go:130: TxAt+interval 101: got [811276227593109504], want [811276227591438336 811276227593109504]
+        property_index_elements_test.go:130: PropertyOptions = {RangeCounts:false Elements:false}, true, <nil>; want Elements
+        property_index_elements_test.go:134: Elements+RangeCounts: <nil>, want ErrElementsIndexUnsupported
+        property_index_elements_test.go:137: CreateUnique on an Elements index: <nil>, want ErrElementsIndexUnsupported
+        property_index_elements_test.go:140: GetOrCreateByKey on an Elements index: <nil>, want ErrElementsIndexUnsupported
+        property_index_elements_test.go:143: ByLabelAndProperties over an Elements key: <nil>, want ErrElementsIndexUnsupported
+        property_index_elements_test.go:152: Elements index on a unique key: <nil>, want ErrElementsIndexUnsupported
+        property_index_elements_test.go:199: rel current b: got [], want [811276227710223360]
+        property_index_elements_test.go:199: rel TxPin a: got [811276227710944256], want [811276227710223360 811276227710944256]
+        property_index_elements_test.go:203: RelPropertyOptions = {RangeCounts:false Elements:false}, true, <nil>; want Elements
+    --- FAIL: TestPropertyIndexElementsContains/badger (0.04s)
+        property_index_elements_test.go:130: current 102: got [], want [811276228978966528 811276229035720704]
+        property_index_elements_test.go:130: current 103: got [], want [811276228978966528]
+        property_index_elements_test.go:130: current x: got [], want [811276229035720704]
+        property_index_elements_test.go:130: TxPin 101: got [811276229003935744], want [811276228978966528 811276229003935744]
+        property_index_elements_test.go:130: TxPin 102: got [], want [811276228978966528 811276229035720704]
+        property_index_elements_test.go:130: TxAt+ValidAt 101: got [811276229003935744], want [811276228978966528 811276229003935744]
+        property_index_elements_test.go:130: TxAt+interval 101: got [811276229003935744], want [811276228978966528 811276229003935744]
+        property_index_elements_test.go:130: PropertyOptions = {RangeCounts:false Elements:false}, true, <nil>; want Elements
+        property_index_elements_test.go:134: Elements+RangeCounts: <nil>, want ErrElementsIndexUnsupported
+        property_index_elements_test.go:137: CreateUnique on an Elements index: <nil>, want ErrElementsIndexUnsupported
+        property_index_elements_test.go:140: GetOrCreateByKey on an Elements index: <nil>, want ErrElementsIndexUnsupported
+        property_index_elements_test.go:143: ByLabelAndProperties over an Elements key: <nil>, want ErrElementsIndexUnsupported
+        property_index_elements_test.go:152: Elements index on a unique key: <nil>, want ErrElementsIndexUnsupported
+        property_index_elements_test.go:157: range scan over an Elements index: <nil>, want the decline
+        property_index_elements_test.go:199: rel current b: got [], want [811276229157422080]
+        property_index_elements_test.go:199: rel TxPin a: got [811276229159322624], want [811276229157422080 811276229159322624]
+        property_index_elements_test.go:203: RelPropertyOptions = {RangeCounts:false Elements:false}, true, <nil>; want Elements
+    --- FAIL: TestPropertyIndexElementsContains/tiered (0.09s)
+        property_index_elements_test.go:127: graph: store does not support this capability: PropertyIndexOptionsCapability
+    --- FAIL: TestPropertyIndexElementsContains/sharded (0.02s)
+        property_index_elements_test.go:130: current 102: got [], want [811276232309145600 811276232312193024]
+        property_index_elements_test.go:130: current 103: got [], want [811276232309145600]
+        property_index_elements_test.go:130: current x: got [], want [811276232312193024]
+        property_index_elements_test.go:130: TxPin 101: got [811276232311013376], want [811276232309145600 811276232311013376]
+        property_index_elements_test.go:130: TxPin 102: got [], want [811276232309145600 811276232312193024]
+        property_index_elements_test.go:130: TxAt+ValidAt 101: got [811276232311013376], want [811276232309145600 811276232311013376]
+        property_index_elements_test.go:130: TxAt+interval 101: got [811276232311013376], want [811276232309145600 811276232311013376]
+        property_index_elements_test.go:130: PropertyOptions = {RangeCounts:false Elements:false}, true, <nil>; want Elements
+        property_index_elements_test.go:134: Elements+RangeCounts: <nil>, want ErrElementsIndexUnsupported
+        property_index_elements_test.go:137: CreateUnique on an Elements index: <nil>, want ErrElementsIndexUnsupported
+        property_index_elements_test.go:140: GetOrCreateByKey on an Elements index: <nil>, want ErrElementsIndexUnsupported
+        property_index_elements_test.go:143: ByLabelAndProperties over an Elements key: <nil>, want ErrElementsIndexUnsupported
+        property_index_elements_test.go:152: Elements index on a unique key: <nil>, want ErrElementsIndexUnsupported
+        property_index_elements_test.go:199: rel current b: got [], want [811276232562902016]
+        property_index_elements_test.go:199: rel TxPin a: got [811276232564081664], want [811276232562902016 811276232564081664]
+        property_index_elements_test.go:203: RelPropertyOptions = {RangeCounts:false Elements:false}, true, <nil>; want Elements
+    --- FAIL: TestPropertyIndexElementsContains/reopen/badger (0.25s)
+        property_index_elements_test.go:244: current 102: got [], want [811276236844337152 811276236849645568]
+        property_index_elements_test.go:244: current 103: got [], want [811276236844337152]
+        property_index_elements_test.go:244: current x: got [], want [811276236849645568]
+        property_index_elements_test.go:244: TxPin 101: got [811276236847810560], want [811276236844337152 811276236847810560]
+        property_index_elements_test.go:244: TxPin 102: got [], want [811276236844337152 811276236849645568]
+        property_index_elements_test.go:244: TxAt+ValidAt 101: got [811276236847810560], want [811276236844337152 811276236847810560]
+        property_index_elements_test.go:244: TxAt+interval 101: got [811276236847810560], want [811276236844337152 811276236847810560]
+        property_index_elements_test.go:244: PropertyOptions = {RangeCounts:false Elements:false}, true, <nil>; want Elements
+        property_index_elements_test.go:252: after reopen, 777: [], <nil>; want [811276239070103552]
+    --- FAIL: TestPropertyIndexElementsContains/reopen/tiered (0.15s)
+        property_index_elements_test.go:236: graph: store does not support this capability: PropertyIndexOptionsCapability
+    --- FAIL: TestPropertyIndexElementsContains/on-disk_refused (0.12s)
+        property_index_elements_test.go:264: Elements on PropertyIndexOnDisk: <nil>, want ErrCapabilityNotSupported
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.700s
+FAIL
+
+# Note: run before the d6/501 sidecar-record cases and before the ValidAt-only case was dropped (existing resolver semantics, not this item).

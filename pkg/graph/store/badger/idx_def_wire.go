@@ -117,6 +117,9 @@ func (d propIdxDef) EncodeMsgpack(enc *msgpack.Encoder) error {
 	if d.RangeCounts {
 		fields++
 	}
+	if d.Elements {
+		fields++
+	}
 	if err := enc.EncodeMapLen(fields); err != nil {
 		return err
 	}
@@ -127,7 +130,12 @@ func (d propIdxDef) EncodeMsgpack(enc *msgpack.Encoder) error {
 		return err
 	}
 	if d.RangeCounts {
-		return idxWireEncodeStringBoolField(enc, "rc", true)
+		if err := idxWireEncodeStringBoolField(enc, "rc", true); err != nil {
+			return err
+		}
+	}
+	if d.Elements {
+		return idxWireEncodeStringBoolField(enc, "el", true)
 	}
 	return nil
 }
@@ -149,6 +157,8 @@ func (d *propIdxDef) DecodeMsgpack(dec *msgpack.Decoder) error {
 			d.PropertyKey, err = dec.DecodeString()
 		case "rc":
 			d.RangeCounts, err = dec.DecodeBool()
+		case "el":
+			d.Elements, err = dec.DecodeBool()
 		default:
 			err = dec.Skip()
 		}
@@ -305,6 +315,9 @@ func (d relPropIdxDef) EncodeMsgpack(enc *msgpack.Encoder) error {
 	if d.RangeCounts {
 		fields++
 	}
+	if d.Elements {
+		fields++
+	}
 	if err := enc.EncodeMapLen(fields); err != nil {
 		return err
 	}
@@ -315,7 +328,12 @@ func (d relPropIdxDef) EncodeMsgpack(enc *msgpack.Encoder) error {
 		return err
 	}
 	if d.RangeCounts {
-		return idxWireEncodeStringBoolField(enc, "rc", true)
+		if err := idxWireEncodeStringBoolField(enc, "rc", true); err != nil {
+			return err
+		}
+	}
+	if d.Elements {
+		return idxWireEncodeStringBoolField(enc, "el", true)
 	}
 	return nil
 }
@@ -337,6 +355,8 @@ func (d *relPropIdxDef) DecodeMsgpack(dec *msgpack.Decoder) error {
 			d.PropertyKey, err = dec.DecodeString()
 		case "rc":
 			d.RangeCounts, err = dec.DecodeBool()
+		case "el":
+			d.Elements, err = dec.DecodeBool()
 		default:
 			err = dec.Skip()
 		}

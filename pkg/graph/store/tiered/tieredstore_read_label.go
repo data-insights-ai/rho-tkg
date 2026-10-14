@@ -200,6 +200,10 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 		return nil, err
 	}
 	refNodes, err := ref.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
+	var elemOpts storecontract.PropertyIndexOptions
+	if err == nil {
+		elemOpts, _, err = ref.PropertyIndexOptions(labelToken, key)
+	}
 	refCheckin()
 	if err != nil {
 		return nil, err
@@ -213,7 +217,7 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 			return nil, archiveErr
 		}
 		if archive != nil {
-			archiveNodes, err = archive.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
+			archiveNodes, err = shardNodesByLabelAndProperty(archive, elemOpts.Elements, labelToken, key, value, stripDepth(opts))
 			archiveCheckin()
 			if err != nil {
 				return nil, err
@@ -238,7 +242,7 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 			return
 		}
 		defer release()
-		results[i].nodes, results[i].err = store.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
+		results[i].nodes, results[i].err = shardNodesByLabelAndProperty(store, elemOpts.Elements, labelToken, key, value, stripDepth(opts))
 	})
 
 	var slices [][]*types.Node
@@ -259,4 +263,16 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 
 	merged := mergeNodeSlices(slices)
 	return applyNodePagination(merged, opts), nil
+}
+
+// shardNodesByLabelAndProperty is one archive or event shard's part of a
+// property lookup. Those shards hold no copy of the reference shard's property
+// index, so for an Elements index (backlog 63) — a node with an event primary
+// label and a reference label lives on an event shard, an archived node in the
+// archive — they answer with the same "contains" match.
+func shardNodesByLabelAndProperty(store *BadgerStore, elements bool, labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error) {
+	if elements {
+		return store.NodesByLabelContainingProperty(labelToken, key, value, opts)
+	}
+	return store.NodesByLabelAndProperty(labelToken, key, value, opts)
 }

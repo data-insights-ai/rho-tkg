@@ -371,6 +371,7 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 
 	if idx, ok := bs.propertyIndexes[key]; ok && idx.Mutated == nil {
 		// Indexed path: snapshot matching IDs.
+		elements := idx.Elements()
 		var nids []types.NodeID
 		if bs.propIdxOnDisk {
 			diskNids, dErr := bs.propertyIndexDiskLookupLocked(propKey, targetKey)
@@ -393,7 +394,7 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 		// Temporal pre-filter via Peek.
 		nids = bs.filterNodeIDsByTemporalPeek(nids, opts)
 
-		return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, nids, opts)
+		return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, elements, nids, opts)
 	}
 
 	// Fallback: snapshot label IDs, release lock, then scan properties.
@@ -410,10 +411,42 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 
 	// Sort label IDs, apply cursor skip, scan in order for property matches.
 	storepkg.SortNodeIDs(nids)
-	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, nids, opts)
+	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, false, nids, opts)
 }
 
-func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey, targetKey string, nids []types.NodeID, opts QueryOpts) ([]*types.Node, error) {
+// NodesByLabelContainingProperty answers an Elements-index lookup (backlog 63)
+// on a store that holds no copy of that index — the tiered store's event
+// shards and archive, whose reference shard owns it: the label's nodes whose
+// propKey carries value's key as a scalar or as a list element, filtered while
+// the rows are fetched (nothing else is materialised).
+func (bs *Store) NodesByLabelContainingProperty(labelToken uint16, propKey string, value any, opts QueryOpts) ([]*types.Node, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateIndexPropertyKey(propKey); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateQueryOpts(opts); err != nil {
+		return nil, err
+	}
+	targetKey := indexpkg.PropertyValueKey(value)
+	if targetKey == "" {
+		return nil, nil
+	}
+	bs.idxMu.RLock()
+	nids, err := bs.labelNodeIDsSnapshotLocked(labelToken)
+	bs.idxMu.RUnlock()
+	if err != nil || len(nids) == 0 {
+		return nil, err
+	}
+	storepkg.SortNodeIDs(nids)
+	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, true, nids, opts)
+}
+
+func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey, targetKey string, elements bool, nids []types.NodeID, opts QueryOpts) ([]*types.Node, error) {
 	nids = storepkg.PaginateNodeIDs(nids, opts.After, 0)
 	if len(nids) == 0 {
 		return nil, nil
@@ -432,7 +465,7 @@ func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey, target
 		if !n.HasLabelTokenRaw(labelToken) {
 			continue
 		}
-		if valueKey, found := n.IndexablePropertyValueKey(propKey); found && valueKey == targetKey {
+		if n.HasPropertyIndexKey(propKey, elements, targetKey) {
 			if hasTemporal && !storepkg.MatchesTemporalFilter(nid.SnowflakeID(), n.Temporal(), opts) {
 				continue
 			}

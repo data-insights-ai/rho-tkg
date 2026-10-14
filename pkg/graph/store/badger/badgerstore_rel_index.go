@@ -28,6 +28,7 @@ type relPropIdxDef struct {
 	RelTypeToken uint16 `msgpack:"t"`
 	PropertyKey  string `msgpack:"p"`
 	RangeCounts  bool   `msgpack:"rc,omitempty"` // round 4 R2; written only when set
+	Elements     bool   `msgpack:"el,omitempty"` // backlog 63; written only when set
 }
 
 // CreateRelPropertyIndex creates a relationship property index for the given
@@ -57,6 +58,9 @@ func (bs *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
 		return err
 	}
+	if err := storecontract.ValidatePropertyIndexOptions(opts); err != nil {
+		return err
+	}
 
 	// Phase 1: install empty live index + snapshot rel IDs under idxMu.Lock.
 	bs.idxMu.Lock()
@@ -65,14 +69,14 @@ func (bs *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 		bs.idxMu.Unlock()
 		return ErrIndexExists
 	}
-	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts)
+	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts, opts.Elements)
 	liveIdx.Mutated = make(map[snowflake.ID]struct{})
 	bs.relPropertyIndexes[key] = liveIdx
 	rids := bs.relTypeRelIDsSnapshotLocked(relTypeToken)
 	bs.idxMu.Unlock()
 
 	// Phase 2: fetch relationship data OUTSIDE any lock.
-	backfill := indexpkg.NewPropertyIndex()
+	backfill := indexpkg.NewPropertyIndexWith(false, opts.Elements)
 	for _, rid := range rids {
 		r, err := bs.prefetchRelScan(rid)
 		if err != nil {
@@ -84,11 +88,7 @@ func (bs *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 			bs.idxMu.Unlock()
 			return fmt.Errorf("graph: create relationship property index: %w", err)
 		}
-		valueKey, found := r.IndexablePropertyValueKey(propertyKey)
-		if !found {
-			continue
-		}
-		backfill.AddKey(rid.SnowflakeID(), valueKey)
+		backfill.AddEntityKeys(rid.SnowflakeID(), propertyKey, r.ForEachPropertyIndexKey)
 	}
 
 	// Phase 3: merge backfill into live index under idxMu.Lock.
@@ -171,13 +171,14 @@ func (bs *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey str
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propKey}
 	if idx, ok := bs.relPropertyIndexes[key]; ok && idx.Mutated == nil {
 		rids := idx.RelIDs(value)
+		elements := idx.Elements()
 		bs.idxMu.RUnlock()
 		if len(rids) == 0 {
 			return nil, nil
 		}
 		storepkg.SortRelIDs(rids)
 		rids = bs.filterRelIDsByTemporalPeek(rids, opts)
-		return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, targetKey, rids, opts)
+		return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, targetKey, elements, rids, opts)
 	}
 
 	// Fallback: snapshot type IDs, release lock, then scan properties.
@@ -191,10 +192,10 @@ func (bs *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey str
 		return nil, nil
 	}
 	storepkg.SortRelIDs(rids)
-	return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, targetKey, rids, opts)
+	return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, targetKey, false, rids, opts)
 }
 
-func (bs *Store) fetchRelsByTypePropertyIDs(relTypeToken uint16, propKey, targetKey string, rids []types.RelID, opts QueryOpts) ([]*types.Relationship, error) {
+func (bs *Store) fetchRelsByTypePropertyIDs(relTypeToken uint16, propKey, targetKey string, elements bool, rids []types.RelID, opts QueryOpts) ([]*types.Relationship, error) {
 	rids = storepkg.PaginateRelIDs(rids, opts.After, 0)
 	if len(rids) == 0 {
 		return nil, nil
@@ -212,7 +213,7 @@ func (bs *Store) fetchRelsByTypePropertyIDs(relTypeToken uint16, propKey, target
 		if !r.HasTypeTokenRaw(relTypeToken) {
 			continue
 		}
-		if valueKey, found := r.IndexablePropertyValueKey(propKey); !found || valueKey != targetKey {
+		if !r.HasPropertyIndexKey(propKey, elements, targetKey) {
 			continue
 		}
 		if hasTemporal && !storepkg.MatchesTemporalFilter(rid.SnowflakeID(), r.Temporal(), opts) {
@@ -314,7 +315,10 @@ func (bs *Store) persistRelPropertyIndexDefs() {
 		if idx == nil || idx.Mutated != nil {
 			continue // still being created (Phase 2) — not yet durable
 		}
-		defs = append(defs, relPropIdxDef{RelTypeToken: key.RelTypeToken, PropertyKey: key.PropertyKey, RangeCounts: idx.RangeCounts()})
+		defs = append(defs, relPropIdxDef{RelTypeToken: key.RelTypeToken, PropertyKey: key.PropertyKey, RangeCounts: idx.RangeCounts(), Elements: idx.Elements()})
+		if idx.Elements() {
+			bs.raiseFormatMarkerLocked(storepkg.ElementsStoreFormatVersion)
+		}
 	}
 	if len(defs) == 0 {
 		bs.appendOps(writeOp{opType: writeOpDelete, key: storepkg.RelPropIndexDefsKey})

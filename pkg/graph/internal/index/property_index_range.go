@@ -66,7 +66,7 @@ type RangeOrderedCursor struct {
 // whole range. supported=false only when the index is nil; an enabled view
 // with no numeric keys returns an authoritative empty page (done=true).
 func (pi *PropertyIndex) RangeOrderedPage(min, max float64, desc bool, after RangeOrderedCursor, limit int) (ids []snowflake.ID, next RangeOrderedCursor, done bool, supported bool) {
-	if pi == nil {
+	if pi == nil || pi.elements {
 		return nil, RangeOrderedCursor{}, true, false
 	}
 	if limit <= 0 || pi.numKeys.n == 0 {
@@ -267,7 +267,7 @@ func (pi *PropertyIndex) purgeOrdered(id snowflake.ID) {
 // numeric keys returns an authoritative empty result (non-numeric values
 // compare null against numeric bounds and can never match).
 func (pi *PropertyIndex) RangeNodeIDs(min, max float64, inclMin, inclMax bool) (ids []types.NodeID, supported bool) {
-	if pi == nil {
+	if pi == nil || pi.elements {
 		return nil, false
 	}
 	if pi.numKeys.n == 0 {

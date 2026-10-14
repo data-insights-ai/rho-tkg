@@ -90,7 +90,7 @@ func TestRangeCardinality_PrefixSumsVsIteration(t *testing.T) {
 	}()
 	for trial := range 12 {
 		t.Run(fmt.Sprintf("trial%d", trial), func(t *testing.T) {
-			pi := NewPropertyIndexWith(true)
+			pi := NewPropertyIndexWith(true, false)
 			vals := map[snowflake.ID]float64{}
 			universe := 50 + rng.Intn(6000)
 			next := snowflake.ID(1)
@@ -177,7 +177,7 @@ func TestRangeCardinality_PrefixSumsVsIteration(t *testing.T) {
 // A NaN bound counts 0 on a counted index too.
 func TestRangeCardinality_CountedNaNBoundCountsNothing(t *testing.T) {
 	t.Parallel()
-	pi := NewPropertyIndexWith(true)
+	pi := NewPropertyIndexWith(true, false)
 	for i := range 10 {
 		pi.AddKey(snowflake.ID(i+1), numericVK(float64(i)))
 	}
@@ -263,7 +263,7 @@ func TestCountedChunks_DrainedChunkBetweenFullNeighbours(t *testing.T) {
 func TestRangeCardinality_PlainIndexKeepsNoCounts(t *testing.T) {
 	t.Parallel()
 	rng := rand.New(rand.NewSource(0xC0)) //nolint:gosec // deterministic test
-	plain, counted := NewPropertyIndex(), NewPropertyIndexWith(true)
+	plain, counted := NewPropertyIndex(), NewPropertyIndexWith(true, false)
 	if plain.RangeCounts() || !counted.RangeCounts() || (*PropertyIndex)(nil).RangeCounts() {
 		t.Fatal("RangeCounts does not report the creation option")
 	}

@@ -54,7 +54,7 @@ func (ms *Store) recordRelPropTxLocked(r *types.Relationship) {
 	tok := r.TypeToken().Value()
 	id := r.ID()
 	tx := relTxFrom(r)
-	r.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
+	r.ForEachIndexKey(indexpkg.RelElementsOf(ms.relPropertyIndexes, tok), func(propertyKey, valueKey string) bool {
 		if m := ms.relPropTxMembers[indexpkg.RelPropertyIndexKey{RelTypeToken: tok, PropertyKey: propertyKey}]; m != nil {
 			m.Record(valueKey, id, tx)
 		}
@@ -72,7 +72,7 @@ func (ms *Store) recordNodePropTxLocked(n *types.Node) {
 	tx := nodeTxFrom(n)
 	for i := 0; i < n.LabelTokenCount(); i++ {
 		label := n.LabelTokenRawAt(i)
-		n.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
+		n.ForEachIndexKey(indexpkg.ElementsOf(ms.propertyIndexes, label), func(propertyKey, valueKey string) bool {
 			if m := ms.nodePropTxMembers[indexpkg.PropertyIndexKey{LabelToken: label, PropertyKey: propertyKey}]; m != nil {
 				m.Record(valueKey, id, tx)
 			}
@@ -92,7 +92,8 @@ func (ms *Store) dropPropertyTxMembersLocked() {
 // or nil when no rel property index is declared for key (or it is still being
 // created). Caller holds ms.mu (write).
 func (ms *Store) relPropTxSidecarLocked(key indexpkg.RelPropertyIndexKey) (*indexpkg.PropertyTxMembers[types.RelID], error) {
-	if idx, ok := ms.relPropertyIndexes[key]; !ok || idx.Mutated != nil {
+	idx, ok := ms.relPropertyIndexes[key]
+	if !ok || idx.Mutated != nil {
 		return nil, nil
 	}
 	if m := ms.relPropTxMembers[key]; m != nil {
@@ -100,13 +101,15 @@ func (ms *Store) relPropTxSidecarLocked(key indexpkg.RelPropertyIndexKey) (*inde
 	}
 	start := time.Now()
 	m := indexpkg.NewPropertyTxMembers[types.RelID]()
+	elements := idx.Elements()
 	record := func(r *types.Relationship) {
 		if !r.HasTypeTokenRaw(key.RelTypeToken) {
 			return
 		}
-		if vk, found := r.IndexablePropertyValueKey(key.PropertyKey); found {
+		r.ForEachPropertyIndexKey(key.PropertyKey, elements, func(vk string) bool {
 			m.Record(vk, r.ID(), relTxFrom(r))
-		}
+			return true
+		})
 	}
 	// ADR-0011: every current row, sealed ones included. A decode error
 	// leaves the sidecar unbuilt and fails the read: it must be a superset.
@@ -132,7 +135,8 @@ func (ms *Store) relPropTxSidecarLocked(key indexpkg.RelPropertyIndexKey) (*inde
 
 // nodePropTxSidecarLocked is relPropTxSidecarLocked for a node index.
 func (ms *Store) nodePropTxSidecarLocked(key indexpkg.PropertyIndexKey) *indexpkg.PropertyTxMembers[types.NodeID] {
-	if idx, ok := ms.propertyIndexes[key]; !ok || idx.Mutated != nil {
+	idx, ok := ms.propertyIndexes[key]
+	if !ok || idx.Mutated != nil {
 		return nil
 	}
 	if m := ms.nodePropTxMembers[key]; m != nil {
@@ -140,13 +144,15 @@ func (ms *Store) nodePropTxSidecarLocked(key indexpkg.PropertyIndexKey) *indexpk
 	}
 	start := time.Now()
 	m := indexpkg.NewPropertyTxMembers[types.NodeID]()
+	elements := idx.Elements()
 	record := func(n *types.Node) {
 		if !n.HasLabelTokenRaw(key.LabelToken) {
 			return
 		}
-		if vk, found := n.IndexablePropertyValueKey(key.PropertyKey); found {
+		n.ForEachPropertyIndexKey(key.PropertyKey, elements, func(vk string) bool {
 			m.Record(vk, n.ID(), nodeTxFrom(n))
-		}
+			return true
+		})
 	}
 	for _, n := range ms.nodes {
 		record(n)

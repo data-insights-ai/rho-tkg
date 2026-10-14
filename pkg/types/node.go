@@ -332,7 +332,39 @@ func (n *Node) ForEachIndexablePropertyValueKey(fn func(propertyKey, valueKey st
 	if n == nil {
 		return
 	}
-	n.properties.forEachIndexableValueKey(fn)
+	n.properties.forEachIndexKey(nil, fn)
+}
+
+// ForEachIndexKey is ForEachIndexablePropertyValueKey for stores that keep
+// Elements property indexes (backlog 63): a list property whose key elements
+// reports true yields each distinct scalar element's key (see
+// types.ForEachIndexableElementKey). elements is consulted for list values
+// only; nil means scalars only.
+func (n *Node) ForEachIndexKey(elements func(propertyKey string) bool, fn func(propertyKey, valueKey string) bool) {
+	if n == nil {
+		return
+	}
+	n.properties.forEachIndexKey(elements, fn)
+}
+
+// ForEachPropertyIndexKey calls fn with the index keys of one property: its
+// scalar key, or with elements its distinct scalar elements' keys
+// (types.ForEachIndexableElementKey). A missing property yields nothing.
+func (n *Node) ForEachPropertyIndexKey(propertyKey string, elements bool, fn func(valueKey string) bool) {
+	if n == nil {
+		return
+	}
+	n.properties.propertyIndexKeys(propertyKey, elements, fn)
+}
+
+// HasPropertyIndexKey reports whether the property carries targetKey as an
+// index key: equality for a plain index, list membership with elements
+// (types.IndexableValueHasKey). The match test of every property-index read.
+func (n *Node) HasPropertyIndexKey(propertyKey string, elements bool, targetKey string) bool {
+	if n == nil {
+		return false
+	}
+	return n.properties.hasIndexKey(propertyKey, elements, targetKey)
 }
 
 // Float32SlicePropertyCopy returns a caller-owned []float32 copy for vector

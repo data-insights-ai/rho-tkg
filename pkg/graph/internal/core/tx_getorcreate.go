@@ -72,6 +72,9 @@ func (tx *GraphTx) getOrCreateByKeyLocked(ctx context.Context, label, propertyKe
 	if err != nil {
 		return nil, false, err
 	}
+	if err := c.refuseNodeElementsIndex(labelTok, propertyKey, "GetOrCreateByKey"); err != nil {
+		return nil, false, err
+	}
 	stripe := uniqueValueStripe(labelTok, propertyKey, valueKey)
 
 	// Hold the value stripe across the lookup AND the create so the whole

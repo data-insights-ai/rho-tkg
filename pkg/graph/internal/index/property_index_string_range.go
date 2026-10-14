@@ -116,7 +116,7 @@ func (pi *PropertyIndex) purgeOrderedStr(id snowflake.ID) {
 // string value. supported=false only when the index is nil; an enabled view with
 // no string keys returns an authoritative empty result.
 func (pi *PropertyIndex) PrefixNodeIDs(prefix string) (ids []types.NodeID, supported bool) {
-	if pi == nil {
+	if pi == nil || pi.elements {
 		return nil, false
 	}
 	if pi.strKeys.n == 0 {
@@ -146,7 +146,7 @@ func (pi *PropertyIndex) PrefixNodeIDs(prefix string) (ids []types.NodeID, suppo
 // index is nil; an enabled view with no string keys returns an authoritative
 // empty page (done=true).
 func (pi *PropertyIndex) PrefixOrderedPage(prefix string, desc bool, after StrOrderedCursor, limit int) (ids []snowflake.ID, next StrOrderedCursor, done bool, supported bool) {
-	if pi == nil {
+	if pi == nil || pi.elements {
 		return nil, StrOrderedCursor{}, true, false
 	}
 	if limit <= 0 || pi.strKeys.n == 0 {

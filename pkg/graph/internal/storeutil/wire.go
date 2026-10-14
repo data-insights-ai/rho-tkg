@@ -45,6 +45,20 @@ const CurrentWireFormatVersion = 2
 // relationships without it. Row encodings are unchanged.
 const StoreFormatVersion = 3
 
+// ElementsStoreFormatVersion is the store-level marker of a directory that
+// persisted an Elements property index definition (backlog 63, definition key
+// "el"). A binary that predates it would skip "el", load the index plain and
+// key scalars only, so every contains read would miss rows, also after a
+// re-upgrade trusting that binary's open image: it must refuse the store. The
+// marker is raised only when such a definition is persisted; every other store
+// keeps StoreFormatVersion. 4 is taken by the integrity-hash format (backlog
+// 61), so this is 5.
+const ElementsStoreFormatVersion = 5
+
+// MaxReadableStoreFormatVersion is the highest store-level marker this binary
+// opens (the max of every marker it knows how to read).
+const MaxReadableStoreFormatVersion = ElementsStoreFormatVersion
+
 // RetractedWireFormatVersion is the per-row format version of a retraction
 // tombstone (Retracted, map key "rx", backlog 43). The layout is v2's; the
 // bump exists so a binary that predates the marker (it decodes fv <= 2 and

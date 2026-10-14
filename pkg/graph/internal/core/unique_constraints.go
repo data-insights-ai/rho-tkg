@@ -200,6 +200,22 @@ func (c *Core) storeUniqueConstraintsLocked(mk storepkg.MetaKVCapability) error 
 // In-memory registry helpers (caller holds c.uniqueMu for the *Locked variants)
 // -----------------------------------------------------------------------------
 
+// refuseUniqueKey returns ErrElementsIndexUnsupported when (label, key) is
+// under a unique constraint: an Elements index (backlog 63) cannot serve it.
+func (c *Core) refuseUniqueKey(label, key string) error {
+	tok, ok := c.labels.Lookup(label)
+	if !ok {
+		return nil
+	}
+	c.uniqueMu.RLock()
+	_, exists := c.lookupConstraintLocked(tok, key)
+	c.uniqueMu.RUnlock()
+	if exists {
+		return fmt.Errorf("%w: key %q of label %q has a unique constraint", storepkg.ErrElementsIndexUnsupported, key, label)
+	}
+	return nil
+}
+
 func (c *Core) lookupConstraintLocked(labelTok uint16, key string) (*uniqueConstraintState, bool) {
 	byKey, ok := c.uniqueConstraints[labelTok]
 	if !ok {
@@ -320,6 +336,15 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 	if c.closed.Load() {
 		c.mu.Unlock()
 		return ErrGraphClosed
+	}
+	// An Elements index (backlog 63) keys list elements, not values: no
+	// uniqueness over it. Checked under the exclusive lock: CreatePropertyWithOptions runs under
+	// c.mu.RLock for its whole create, so no Elements index can appear between
+	// this check and the install, and one created after it sees the pending
+	// constraint (refuseUniqueKey).
+	if err := c.refuseNodeElementsIndex(labelTok, propKey, "unique constraint"); err != nil {
+		c.mu.Unlock()
+		return err
 	}
 	c.uniqueMu.Lock()
 	if _, exists := c.lookupConstraintLocked(labelTok, propKey); exists {

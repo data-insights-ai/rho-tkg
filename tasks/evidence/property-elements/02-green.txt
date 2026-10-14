@@ -1,0 +1,20 @@
+--- PASS: TestPropertyIndexElementsContains (1.03s)
+    --- PASS: TestPropertyIndexElementsContains/memory (0.01s)
+    --- PASS: TestPropertyIndexElementsContains/badger (0.02s)
+    --- PASS: TestPropertyIndexElementsContains/tiered (0.06s)
+    --- PASS: TestPropertyIndexElementsContains/sharded (0.02s)
+    --- PASS: TestPropertyIndexElementsContains/reopen/badger (0.22s)
+    --- PASS: TestPropertyIndexElementsContains/reopen/tiered (0.52s)
+    --- PASS: TestPropertyIndexElementsContains/on-disk_refused (0.19s)
+--- PASS: TestPropertyIndexOptionsSurviveReopen (1.24s)
+    --- PASS: TestPropertyIndexOptionsSurviveReopen/badger (0.47s)
+    --- PASS: TestPropertyIndexOptionsSurviveReopen/sharded (0.77s)
+--- PASS: TestPropertyIndexOptionsRefusedOnDiskIndex (0.25s)
+--- PASS: TestRangeCardinalityMatchesIteration (2.65s)
+    --- PASS: TestRangeCardinalityMatchesIteration/plain (1.80s)
+    --- PASS: TestRangeCardinalityMatchesIteration/rangecounts (0.84s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	5.223s
+--- PASS: TestForEachIndexableElementKey (0.00s)
+--- PASS: TestNodeRelIndexKeyDoors (0.00s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/types	0.010s

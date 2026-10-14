@@ -84,7 +84,7 @@ func (bs *Store) recordRelPropTxLocked(r *types.Relationship) {
 	tok := r.TypeToken().Value()
 	id := r.ID()
 	tx := relTxFrom(r)
-	r.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
+	r.ForEachIndexKey(indexpkg.RelElementsOf(bs.relPropertyIndexes, tok), func(propertyKey, valueKey string) bool {
 		if sc := bs.relPropTx[indexpkg.RelPropertyIndexKey{RelTypeToken: tok, PropertyKey: propertyKey}]; sc != nil {
 			sc.members.Record(valueKey, id, tx)
 		}
@@ -102,7 +102,7 @@ func (bs *Store) recordNodePropTxLocked(n *types.Node) {
 	tx := nodeTxFrom(n)
 	for i := 0; i < n.LabelTokenCount(); i++ {
 		label := n.LabelTokenRawAt(i)
-		n.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
+		n.ForEachIndexKey(indexpkg.ElementsOf(bs.propertyIndexes, label), func(propertyKey, valueKey string) bool {
 			if sc := bs.nodePropTx[indexpkg.PropertyIndexKey{LabelToken: label, PropertyKey: propertyKey}]; sc != nil {
 				sc.members.Record(valueKey, id, tx)
 			}
@@ -254,12 +254,13 @@ func (bs *Store) buildRelPropTx(key indexpkg.RelPropertyIndexKey) error {
 			bs.relPropTx[key] = sc // tracking from here on
 		}
 		gen := bs.propTxGen
+		elements := bs.relPropertyIndexes[key].Elements()
 		bs.idxMu.Unlock()
 
 		start := time.Now()
 		scratch := indexpkg.NewPropertyTxMembers[types.RelID]()
 		err := bs.scanPropTxRows(storepkg.KeyRel, storepkg.KeyHistRel, func(id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
-			return bs.recordRelRowPropTx(scratch, key, id, hist, version, raw, local)
+			return bs.recordRelRowPropTx(scratch, key, elements, id, hist, version, raw, local)
 		})
 		if err != nil {
 			return fmt.Errorf("graph: build relationship property membership: %w", err)
@@ -306,12 +307,13 @@ func (bs *Store) buildNodePropTx(key indexpkg.PropertyIndexKey) error {
 			bs.nodePropTx[key] = sc
 		}
 		gen := bs.propTxGen
+		elements := bs.propertyIndexes[key].Elements()
 		bs.idxMu.Unlock()
 
 		start := time.Now()
 		scratch := indexpkg.NewPropertyTxMembers[types.NodeID]()
 		err := bs.scanPropTxRows(storepkg.KeyNode, storepkg.KeyHistNode, func(id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
-			return bs.recordNodeRowPropTx(scratch, key, id, hist, version, raw, local)
+			return bs.recordNodeRowPropTx(scratch, key, elements, id, hist, version, raw, local)
 		})
 		if err != nil {
 			return fmt.Errorf("graph: build node property membership: %w", err)
@@ -338,7 +340,7 @@ func (bs *Store) buildNodePropTx(key indexpkg.PropertyIndexKey) error {
 // delta) and records its value for key when the row has key's type and
 // carries the property. Decoding goes through the same checked wire path as
 // every read, so the value key equals the one the property index computes.
-func (bs *Store) recordRelRowPropTx(m *indexpkg.PropertyTxMembers[types.RelID], key indexpkg.RelPropertyIndexKey, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
+func (bs *Store) recordRelRowPropTx(m *indexpkg.PropertyTxMembers[types.RelID], key indexpkg.RelPropertyIndexKey, elements bool, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
 	var w storepkg.RelWire
 	if hist && storepkg.HistoryValueKindOf(raw) == storepkg.HistoryDelta {
 		d, err := storepkg.DecodeRelHistoryDelta(raw)
@@ -369,15 +371,16 @@ func (bs *Store) recordRelRowPropTx(m *indexpkg.PropertyTxMembers[types.RelID], 
 	if r.ID().SnowflakeID() != id {
 		return fmt.Errorf("%w: relationship wire id %d does not match key %d", ErrInvalidStoreMutation, r.ID().SnowflakeID(), id)
 	}
-	if vk, found := r.IndexablePropertyValueKey(key.PropertyKey); found {
+	r.ForEachPropertyIndexKey(key.PropertyKey, elements, func(vk string) bool {
 		m.Record(vk, r.ID(), relTxFrom(r))
-	}
+		return true
+	})
 	return nil
 }
 
 // recordNodeRowPropTx is recordRelRowPropTx for node rows: the row must carry
 // key's label itself.
-func (bs *Store) recordNodeRowPropTx(m *indexpkg.PropertyTxMembers[types.NodeID], key indexpkg.PropertyIndexKey, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
+func (bs *Store) recordNodeRowPropTx(m *indexpkg.PropertyTxMembers[types.NodeID], key indexpkg.PropertyIndexKey, elements bool, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
 	var w storepkg.NodeWire
 	if hist && storepkg.HistoryValueKindOf(raw) == storepkg.HistoryDelta {
 		d, err := storepkg.DecodeNodeHistoryDelta(raw)
@@ -408,9 +411,10 @@ func (bs *Store) recordNodeRowPropTx(m *indexpkg.PropertyTxMembers[types.NodeID]
 	if n.ID().SnowflakeID() != id {
 		return fmt.Errorf("%w: node wire id %d does not match key %d", ErrInvalidStoreMutation, n.ID().SnowflakeID(), id)
 	}
-	if vk, found := n.IndexablePropertyValueKey(key.PropertyKey); found {
+	n.ForEachPropertyIndexKey(key.PropertyKey, elements, func(vk string) bool {
 		m.Record(vk, n.ID(), nodeTxFrom(n))
-	}
+		return true
+	})
 	return nil
 }
 

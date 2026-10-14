@@ -472,6 +472,7 @@ type Store struct {
 	labelOnDisk           bool                                          // answer label snapshots from the persisted keyspace
 	adjOnDisk             bool                                          // answer adjacency snapshots from the persisted keyspaces
 	propIdxOnDisk         bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
+	formatMarker          uint16                                        // store-level format marker on disk (raiseFormatMarkerLocked; guarded by idxMu)
 	temporalIdxOnDisk     bool                                          // maintain the persisted 0x0B raw-entry log so loadIndexesScan can rebuild without a full node fetch per entity
 	disablePlannerStats   bool                                          // skip planner-stat maintenance (presence/NDV/min-max/type-class) on writes + open; the stat capabilities fail closed with ErrCapabilityNotSupported
 	openImageSuppressed   atomic.Bool                                   // the open's index-key repair failed: Close writes no image (badgerstore_index_repair.go)
@@ -1133,7 +1134,8 @@ func New(cfg Config) (*Store, error) {
 	// directory stamped by a newer release must fail closed here, not surface
 	// as per-row decode failures (which loadIndexes would conflate with
 	// corruption / counter mismatch).
-	if err := verifyAndStampWireFormatVersion(db, cfg.ReadOnly); err != nil {
+	formatMarker, err := verifyAndStampWireFormatVersion(db, cfg.ReadOnly)
+	if err != nil {
 		_ = db.Close() // best-effort cleanup
 		return nil, err
 	}
@@ -1196,6 +1198,7 @@ func New(cfg Config) (*Store, error) {
 		resident:                cfg.ResidentCache,
 		heldRows:                heldRowsOf(capacity, cfg.ResidentCache),
 		pending:                 make(map[string]writeOp),
+		formatMarker:            formatMarker,
 		propertyIndexes:         make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex),
 		relPropertyIndexes:      make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex),
 		compositeIndexes:        make(map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex),
@@ -1818,12 +1821,19 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					return fmt.Errorf("graph: load property index definition label %d property %q: %w",
 						def.LabelToken, def.PropertyKey, err)
 				}
+				if def.Elements && bs.propIdxOnDisk {
+					// The disk keyspace keys scalars only and is shared by
+					// every label indexing the key: an Elements index would
+					// answer equality. Open it without PropertyIndexOnDisk.
+					return fmt.Errorf("graph: load property index definition label %d property %q: an elements index needs the RAM index, not PropertyIndexOnDisk: %w",
+						def.LabelToken, def.PropertyKey, storecontract.ErrCapabilityNotSupported)
+				}
 				key := indexpkg.PropertyIndexKey{LabelToken: def.LabelToken, PropertyKey: def.PropertyKey}
 				if _, exists := seenProperty[key]; exists {
 					continue
 				}
 				seenProperty[key] = struct{}{}
-				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts)
+				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts, def.Elements)
 				if entries, ok := img.takeNodeProp(key); ok && !bs.propIdxOnDisk {
 					installValueIDs(entries, idx.AddKey)
 				} else if bs.propIdxOnDisk && !propIdxNeedsBuild {
@@ -1845,24 +1855,21 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 							}
 							continue
 						}
+						if !bs.propIdxOnDisk {
+							idx.AddEntityKeys(rawID, def.PropertyKey, n.ForEachPropertyIndexKey)
+							continue
+						}
+						// Disk mode: do NOT populate idx.Entries/numBuckets
+						// (the whole point is to keep entries off the RAM
+						// heap) — collect the one-time backfill op instead,
+						// only when this directory hasn't been backfilled
+						// before (propIdxNeedsBuild).
 						valueKey, found := n.IndexablePropertyValueKey(def.PropertyKey)
-						if !found {
-							continue
-						}
-						if bs.propIdxOnDisk {
-							// Disk mode: do NOT populate idx.Entries/numBuckets
-							// (the whole point is to keep entries off the RAM
-							// heap) — collect the one-time backfill op instead,
-							// only when this directory hasn't been backfilled
-							// before (propIdxNeedsBuild).
-							if propIdxNeedsBuild {
-								if op, ok := bs.propertyIndexDiskOp(def.PropertyKey, valueKey, rawID, writeOpSet); ok {
-									propIdxBackfillOps = append(propIdxBackfillOps, op)
-								}
+						if found && propIdxNeedsBuild {
+							if op, ok := bs.propertyIndexDiskOp(def.PropertyKey, valueKey, rawID, writeOpSet); ok {
+								propIdxBackfillOps = append(propIdxBackfillOps, op)
 							}
-							continue
 						}
-						idx.AddKey(rawID, valueKey)
 					}
 				}
 				bs.propertyIndexes[key] = idx
@@ -1897,7 +1904,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					continue
 				}
 				seenRelProperty[key] = struct{}{}
-				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts)
+				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts, def.Elements)
 				if entries, ok := img.takeRelProp(key); ok {
 					installValueIDs(entries, idx.AddKey)
 				} else if relIDs, ok := bs.typeIdx[def.RelTypeToken]; ok {
@@ -1913,9 +1920,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 							}
 							continue
 						}
-						if valueKey, found := r.IndexablePropertyValueKey(def.PropertyKey); found {
-							idx.AddKey(rawID, valueKey)
-						}
+						idx.AddEntityKeys(rawID, def.PropertyKey, r.ForEachPropertyIndexKey)
 					}
 				}
 				bs.relPropertyIndexes[key] = idx
@@ -2452,6 +2457,9 @@ func (bs *Store) Clear() error {
 	// occupy top-k slots in SearchNearestNodes results.
 	bs.propertyIndexes = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
 	bs.relPropertyIndexes = make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex)
+	// The wipe below may drop the format marker: the next Elements definition
+	// re-raises it rather than trusting the cached value.
+	bs.formatMarker = 0
 	bs.compositeIndexes = make(map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex)
 	bs.compositeIndexesByLabel = make(map[uint16][]indexpkg.CompositeIndexKey)
 	bs.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)

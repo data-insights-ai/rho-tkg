@@ -104,7 +104,7 @@ func (pi *PropertyIndex) noteNumericPrecisionRemoved(vk string) {
 // bounds must already capture the WHOLE predicate and the query must be
 // non-temporal — the caller enforces that.
 func (pi *PropertyIndex) RangeCardinality(min, max float64, inclMin, inclMax bool) (int64, bool) {
-	if pi == nil || pi.numImpreciseCount > 0 {
+	if pi == nil || pi.elements || pi.numImpreciseCount > 0 {
 		return 0, false
 	}
 	if pi.rangeCounts {

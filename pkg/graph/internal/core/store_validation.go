@@ -12,13 +12,12 @@ import (
 // query that bypasses storeRowsTrust funnels through one of these helpers so
 // the trust boundary is uniform: validate before deep-copy.
 
-func validateNodesByLabelAndProperty(labelToken uint16, key, wantKey string, opts storepkg.QueryOpts, nodes []*types.Node) error {
+func validateNodesByLabelAndProperty(labelToken uint16, key, wantKey string, elements bool, opts storepkg.QueryOpts, nodes []*types.Node) error {
 	for _, n := range nodes {
 		if err := validateNodeByLabelRow(labelToken, n); err != nil {
 			return err
 		}
-		gotKey, found := n.IndexablePropertyValueKey(key)
-		if !found || gotKey != wantKey {
+		if !n.HasPropertyIndexKey(key, elements, wantKey) {
 			return fmt.Errorf("%w: property query node %d does not match property %q", storepkg.ErrInvalidStoreMutation, n.ID(), key)
 		}
 	}
@@ -47,13 +46,12 @@ func validateNodeByLabelRow(labelToken uint16, n *types.Node) error {
 	return nil
 }
 
-func validateRelsByTypeAndProperty(typeToken uint16, key, wantKey string, opts storepkg.QueryOpts, rels []*types.Relationship) error {
+func validateRelsByTypeAndProperty(typeToken uint16, key, wantKey string, elements bool, opts storepkg.QueryOpts, rels []*types.Relationship) error {
 	for _, r := range rels {
 		if err := validateRelationshipByTypeRow(typeToken, r); err != nil {
 			return err
 		}
-		gotKey, found := r.IndexablePropertyValueKey(key)
-		if !found || gotKey != wantKey {
+		if !r.HasPropertyIndexKey(key, elements, wantKey) {
 			return fmt.Errorf("%w: property query relationship %d does not match property %q", storepkg.ErrInvalidStoreMutation, r.ID(), key)
 		}
 	}
