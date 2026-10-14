@@ -299,16 +299,26 @@ type nativeGraphCostOriginal struct {
 	Reason, Disposition                              byte
 	Participants                                     []uint64
 }
+type nativeGraphCostBoundary struct {
+	Index, Generation uint64
+	ImageSHA256       string
+}
+
+// A replay entry retains its ACTUAL position/root and empty current CDC. These
+// earlier raw frames are read from the same native retained source, never from
+// expected commands or ACK artifacts. Their earlier index is not the new entry.
+type nativeGraphCostReplay struct {
+	Outcome, CDC, Registration []byte
+	Boundary, Previous         nativeGraphCostBoundary
+}
 type nativeGraphCostRecord struct {
 	nativeLifecycleRecord
 	Original       nativeGraphCostOriginal
 	CDCClass       string
+	Replay         *nativeGraphCostReplay `json:",omitzero"`
 	RawHashes      struct{ OutcomeSHA256, CDCSHA256 string }
-	SourceBoundary struct {
-		Index, Generation uint64
-		ImageSHA256       string
-	}
-	Logical struct{ Entities, Lives, Values, Components, Schemas int }
+	SourceBoundary nativeGraphCostBoundary
+	Logical        struct{ Entities, Lives, Values, Components, Schemas int }
 }
 
 func nativeGraphCostInspectRecord(ctx context.Context, h *allocationHost, record nativeLifecycleRecord) (out nativeGraphCostRecord, err error) {
@@ -348,6 +358,32 @@ func nativeGraphCostInspectRecord(ctx context.Context, h *allocationHost, record
 	}
 	if actualOutcome == nil || actualCDC == nil || record.Outcome == nil || record.CDC == nil || !bytes.Equal(actualOutcome, record.Outcome) || !bytes.Equal(actualCDC, record.CDC) {
 		return out, errCorrupt
+	}
+	// SAME-request retries can append later retained entries without repeating
+	// business CDC. Recognize only the native authenticated replay grammars.
+	var replayIndex uint64
+	if bytes.HasPrefix(actualOutcome, []byte("GCS\x01")) {
+		original, e := decodeCrossStatus(actualOutcome)
+		if e != nil || original.ns != h.machine.ns || original.index > record.Index {
+			return out, errors.Join(errCorrupt, e)
+		}
+		if original.index < record.Index {
+			replayIndex = original.index
+		}
+	} else if bytes.HasPrefix(actualOutcome, []byte("GRO\x04")) {
+		original, e := decodePartitionGraphOutcome(actualOutcome, h.machine.ns)
+		if e != nil || original.index > record.Index {
+			return out, errors.Join(errCorrupt, e)
+		}
+		if original.index < record.Index {
+			if original.disposition != requestReplay {
+				return out, errCorrupt
+			}
+			replayIndex = original.index
+		}
+	}
+	if replayIndex != 0 {
+		return nativeGraphCostInspectReplay(ctx, h, view, root, record, replayIndex)
 	}
 	l := h.machine.limits
 	arena, err := graphstate.NewOutputBudget(l.outputBytes)
@@ -467,6 +503,82 @@ func nativeGraphCostInspectRecord(ctx context.Context, h *allocationHost, record
 	out.RawHashes.OutcomeSHA256 = fmt.Sprintf("%x", sha256.Sum256(actualOutcome))
 	out.RawHashes.CDCSHA256 = fmt.Sprintf("%x", sha256.Sum256(actualCDC))
 	out.SourceBoundary.Index, out.SourceBoundary.Generation, out.SourceBoundary.ImageSHA256 = root.Index, root.Generation, fmt.Sprintf("%x", root.ImageHash)
+	return out, nil
+}
+
+func nativeGraphCostInspectReplay(ctx context.Context, h *allocationHost, view *raftlog.ApplicationView, root raftlog.ApplicationRoot, record nativeLifecycleRecord, index uint64) (out nativeGraphCostRecord, err error) {
+	if index == 0 || index >= record.Index || record.Index <= 1 || record.CDC == nil || len(record.CDC)+len(record.Changes)+len(record.Entities)+len(record.Lives)+len(record.Values) != 0 {
+		return out, errCorrupt
+	}
+	earlierOutcome, err := view.ApplicationRecord(ctx, index, true, 64<<10)
+	if err != nil {
+		return out, err
+	}
+	earlierCDC, err := view.ApplicationRecord(ctx, index, false, 1<<20)
+	if err != nil {
+		return out, err
+	}
+	earlierRoot, err := view.RootAt(ctx, index, 172)
+	if err != nil {
+		return out, err
+	}
+	previous, err := view.RootAt(ctx, record.Index-1, 172)
+	if err != nil {
+		return out, err
+	}
+	if earlierOutcome == nil || earlierCDC == nil || earlierRoot.Generation != root.Generation || previous.Generation != root.Generation || !bytes.Equal(previous.Image, root.Image) {
+		return out, errCorrupt
+	}
+	replay := &nativeGraphCostReplay{Outcome: earlierOutcome, CDC: earlierCDC, Boundary: nativeGraphCostBoundary{index, earlierRoot.Generation, fmt.Sprintf("%x", earlierRoot.ImageHash)}, Previous: nativeGraphCostBoundary{previous.Index, previous.Generation, fmt.Sprintf("%x", previous.ImageHash)}}
+	if bytes.HasPrefix(record.Outcome, []byte("GCS\x01")) {
+		status, e := decodeCrossStatus(earlierOutcome)
+		if e != nil || status.ns != h.machine.ns || status.index != index || !bytes.Equal(record.Outcome, earlierOutcome) {
+			return out, errors.Join(errCorrupt, e)
+		}
+		l := h.machine.limits
+		arena, e := graphstate.NewOutputBudget(l.outputBytes)
+		if e != nil {
+			return out, e
+		}
+		q := reader{ctx: ctx, view: view, ns: h.machine.ns, base: root, limits: l.allocation, arena: arena, bytes: cap(root.Image) + cap(record.Outcome) + cap(earlierOutcome) + cap(earlierCDC)}
+		registration, found, e := crossControl(&q, crossControlKey(q.ns, status.tx, 'R'), min(l.commandBytes, 1<<20))
+		if e != nil || !found || registration.Index > index || sha256.Sum256(registration.Value) != status.digest {
+			return out, errors.Join(errCorrupt, e)
+		}
+		replay.Registration = registration.Value
+	} else {
+		current, e := decodePartitionGraphOutcome(record.Outcome, h.machine.ns)
+		if e != nil {
+			return out, e
+		}
+		original, e := decodePartitionGraphOutcome(earlierOutcome, h.machine.ns)
+		if e != nil || original.index != index || original.disposition != applied || current.disposition != requestReplay || current.identity != original.identity || current.hash != original.hash || current.kind != original.kind || current.reason != original.reason {
+			return out, errors.Join(errCorrupt, e)
+		}
+	}
+	// Earlier originals must themselves be original-index entries. This is a
+	// bounded single level, never a recursive replay chain or latest-state alias.
+	raw, err := nativeGraphRecordRead(ctx, h, index, true)
+	if err != nil {
+		return out, err
+	}
+	if !bytes.Equal(raw.Outcome, earlierOutcome) || !bytes.Equal(raw.CDC, earlierCDC) {
+		return out, errCorrupt
+	}
+	original, err := nativeGraphCostInspectRecord(ctx, h, raw)
+	if err != nil {
+		return out, err
+	}
+	if original.Replay != nil || original.Original.Index != index || original.SourceBoundary != replay.Boundary {
+		return out, errCorrupt
+	}
+	if err := ctx.Err(); err != nil {
+		return out, err
+	}
+	out.nativeLifecycleRecord, out.Original, out.CDCClass, out.Replay = record, original.Original, "replay-empty", replay
+	out.RawHashes.OutcomeSHA256 = fmt.Sprintf("%x", sha256.Sum256(record.Outcome))
+	out.RawHashes.CDCSHA256 = fmt.Sprintf("%x", sha256.Sum256(record.CDC))
+	out.SourceBoundary = nativeGraphCostBoundary{root.Index, root.Generation, fmt.Sprintf("%x", root.ImageHash)}
 	return out, nil
 }
 

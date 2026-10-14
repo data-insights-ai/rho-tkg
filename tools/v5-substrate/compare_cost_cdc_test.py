@@ -575,6 +575,41 @@ class Replay(unittest.TestCase):
                 bad=copy.deepcopy(self.native); mutate(bad)
                 with self.assertRaises(ValueError): self.compare(native=bad)
 
+    def test_later_replay_entries_keep_actual_prefix_and_authenticated_earlier_originals(self):
+        c=module('native-replay','compare-cost-cdc.py')
+        native=copy.deepcopy(self.native)
+        prior=max((r for r in native if r['Partition']==3),key=lambda r:r['Index'])
+        # Explicit offline bytes, never a native execution receipt. The Go
+        # parent obtains local and cross sidecars from real retained originals.
+        original=next(r for r in native if r['Original']['Kind']=='local-graph' and r['Partition']==3)
+        entry=prior['Index']+1
+        outcome=bytearray(base64.b64decode(original['Outcome'])[:-32]);outcome[85]=2
+        row=copy.deepcopy(original);row.update(Index=entry,Outcome=sealed(bytes(outcome)),CDC='',Changes=None,Entities=None,Lives=None,Values=None,CDCClass='replay-empty')
+        row['Logical']={name:0 for name in row['Logical']}
+        row['SourceBoundary']=copy.deepcopy(prior['SourceBoundary']);row['SourceBoundary']['Index']=entry
+        row['RawHashes']={'OutcomeSHA256':hashlib.sha256(base64.b64decode(row['Outcome'])).hexdigest(),'CDCSHA256':hashlib.sha256(b'').hexdigest()}
+        row['Replay']={'Outcome':original['Outcome'],'CDC':original['CDC'],'Registration':None,'Boundary':copy.deepcopy(original['SourceBoundary']),'Previous':copy.deepcopy(prior['SourceBoundary'])}
+        native.insert(next(i for i,r in enumerate(native) if r['Partition']==8),row)
+        bounds=native_bounds(self.native);bounds['through'][0]=entry
+        body=bytearray(base64.b64decode(bounds['finalCut']['Certificates'][0])[:-32]);struct.pack_into('>Q',body,164,entry+2);struct.pack_into('>Q',body,180,entry)
+        bounds['finalCut']['Certificates'][0]=sealed(bytes(body))
+        def check(rows):return c.compare_streams(*self.streams(rows),self.result['spec'],self.result['Config'],self.result['FinalCut'],bounds)
+        proof=check(native);self.assertEqual(proof['native']['replays'],1);self.assertEqual(proof['logicalGroups'],7)
+        with c.Spool(self.root,c.Policy(1<<20,16<<10,4096,512<<10)) as spool:
+            spool.insert(b'native-entry',c.u64(3)+c.u64(original['Index']),c.go_json(original))
+            self.assertEqual(c.native_original(row,parallel=True,spool=spool),original['Original'])
+        self.assertEqual(proof['native']['records'],len(native))
+        for name,mutate in (
+            ('missing sidecar',lambda r:r.pop('Replay')),
+            ('wrong original CDC',lambda r:r['Replay'].__setitem__('CDC',base64.b64encode(b'foreign').decode())),
+            ('changed root',lambda r:r['SourceBoundary'].__setitem__('ImageSHA256','f'*64)),
+            ('current index substitution',lambda r:r['Original'].__setitem__('Index',entry)),
+            ('empty unknown original',lambda r:r['Replay'].__setitem__('Outcome',''))):
+            with self.subTest(name=name),self.assertRaises(ValueError):
+                bad=copy.deepcopy(native);mutate(next(r for r in bad if r['CDCClass']=='replay-empty'));check(bad)
+        with self.assertRaises(ValueError):check([r for r in native if r['CDCClass']!='replay-empty'])
+        self.assertEqual(list(self.root.glob('.cost-spool-*')),[])
+
     def test_reused_original_request_with_coherent_local_outcome_refuses(self):
         bad=copy.deepcopy(self.native)
         first=next(r for r in bad if r['Original']['Provenance']==1)

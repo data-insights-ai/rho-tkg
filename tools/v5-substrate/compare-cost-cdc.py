@@ -147,12 +147,42 @@ def canonical_cell(cell):
     return {k: v for k, v in cell.items() if k != "revision"}
 
 
-def native_original(row, *, parallel=False):
-    fields(row, "Partition Index Outcome CDC Changes Entities Lives Values Original CDCClass RawHashes Logical SourceBoundary")
+def native_replay(row, spool):
+    require(spool is not None and row["CDCClass"] == "replay-empty", "replay requires retained original source join")
+    original, replay = row["Original"], row["Replay"]
+    index = integer(original["Index"],1,row["Index"]-1)
+    require(original["Kind"] in ("local-graph","cross") and original["Partition"] == row["Partition"], "replay original namespace/index")
+    fields(replay,"Outcome CDC Registration Boundary Previous")
+    genuine = json.loads(spool.lookup(b"native-entry",u64(row["Partition"])+u64(index)),object_pairs_hook=pairs)
+    require("Replay" not in genuine and same(original,genuine["Original"]) and same(replay["Boundary"],genuine["SourceBoundary"]), "replay substituted earlier original identity/source")
+    require(raw_bytes(replay["Outcome"]) == raw_bytes(genuine["Outcome"]) and raw_bytes(replay["CDC"]) == raw_bytes(genuine["CDC"]), "replay original raw outcome/CDC sidecars")
+    require(not raw_bytes(row["CDC"]) and not any(row["Logical"].values()), "replay duplicated business effects")
+    fields(replay["Previous"],"Index Generation ImageSHA256")
+    prior, boundary = replay["Previous"],row["SourceBoundary"]
+    require(type(prior["Index"]) is int and prior["Index"] == row["Index"]-1 and same(prior | {"Index":row["Index"]},boundary), "replay changed actual source root")
+    if original["Kind"] == "local-graph":
+        require(replay["Registration"] is None and original["Disposition"] == 1, "local replay union/original disposition")
+        current = bytearray(raw_bytes(genuine["Outcome"]))
+        require(len(current) == 120 and current[:4] == b"GRO\4", "local replay original grammar")
+        current[85] = 2 # Native requestReplay, preserving the earlier original index.
+        current[-32:] = hashlib.sha256(current[:-32]).digest()
+        require(raw_bytes(row["Outcome"]) == bytes(current), "local replay changed original request/body/outcome")
+    else:
+        require(raw_bytes(row["Outcome"]) == raw_bytes(genuine["Outcome"]), "cross replay changed original phase/decision")
+        manifest = raw_bytes(replay["Registration"])
+        require(192 <= len(manifest) <= LINE_BYTES, "cross replay bounded genuine registration")
+        size = struct.unpack_from(">I",manifest,28)[0]
+        require(0 < size <= len(manifest)-64, "cross replay original request span")
+        native_parallel_manifest(manifest,bytes.fromhex(original["Request"]),bytes.fromhex(original["Transaction"]),bytes.fromhex(original["Digest"]),manifest[32:32+size])
+    return original
+
+
+def native_original(row, *, parallel=False, spool=None):
+    fields(row, "Partition Index Outcome CDC Changes Entities Lives Values Original CDCClass RawHashes Logical SourceBoundary" + (" Replay" if "Replay" in row else ""))
     original = row["Original"]
     fields(original, "Kind Graph Request Transaction Digest Partition Index Coordinator Provenance Round Phase Commit Reason Disposition Participants")
     integer(row["Partition"], 1)
-    require(original["Partition"] == row["Partition"] in PARTITIONS and original["Index"] == integer(row["Index"], 1), "native record coordinate")
+    require(original["Partition"] == row["Partition"] in PARTITIONS and integer(original["Index"],1) <= integer(row["Index"], 1), "native record coordinate")
     require(original["Graph"] == GRAPH and type(original["Commit"]) is bool, "native namespace/commit")
     for name in ("Partition", "Index", "Coordinator", "Provenance", "Round", "Phase", "Reason", "Disposition"):
         integer(original[name])
@@ -173,6 +203,9 @@ def native_original(row, *, parallel=False):
         require(row[name] is None or type(row[name]) is list, "native array")
         key = "Components" if name == "Changes" else name
         require(logical[key] == len(row[name] or []), "native decoded inventory")
+    if "Replay" in row:
+        return native_replay(row,spool)
+    require(original["Index"] == row["Index"], "original index is not actual entry without authenticated replay")
     kind, classification = original["Kind"], row["CDCClass"]
     if kind in ("read-control", "no-application-output"):
         require(classification == "read-control" and not cdc and not any(logical.values()), "unknown empty control")
@@ -313,13 +346,13 @@ def native_groups(path, spec, bounds, stats, spool):
     bindings = hashlib.sha256()
     next_ordinal, total = 1, 3 + 2 * spec["facts"]
     for row in rows(path, 128 * total + 16):
-        original = native_original(row)
+        original = native_original(row,spool=spool)
         partition, index = row["Partition"], row["Index"]
         require(index == last_indexes[partition] + 1 and index <= bounds["through"][PARTITIONS[partition]], "native missing/duplicate/reordered index")
         last_indexes[partition] = index
         stats["records"] += 1
         boundary = row["SourceBoundary"]
-        if original["Kind"] == "no-application-output" and partition in boundaries:
+        if (original["Kind"] == "no-application-output" or row["CDCClass"] == "replay-empty") and partition in boundaries:
             require(boundary["Generation"] == boundaries[partition]["Generation"] and boundary["ImageSHA256"] == boundaries[partition]["ImageSHA256"], "empty output changed retained root")
         boundaries[partition] = boundary
         if partition in old and index == old[partition][0]:
@@ -328,6 +361,10 @@ def native_groups(path, spec, bounds, stats, spool):
         if original["Kind"] in ("read-control", "no-application-output"):
             stats["controls"] += 1
             continue
+        if row["CDCClass"] == "replay-empty":
+            stats["replays"] = stats.get("replays",0)+1
+            continue
+        spool.insert(b"native-entry",u64(partition)+u64(index),go_json(row))
         ordinal = integer(original["Provenance"], next_ordinal, total)
         require(ordinal >= last_provenance.get(partition, 0), "native reordered operation")
         last_provenance[partition] = ordinal
@@ -477,18 +514,22 @@ def native_parallel_groups(path,spec,bounds,stats,spool):
     total = 3+2*spec["facts"]
     source_requests = StoredState(spool,b"native-source-request")
     for row in rows(path,128*(3+8*spec["facts"])+16):
-        original = native_original(row,parallel=True)
+        original = native_original(row,parallel=True,spool=spool)
         partition,index = row["Partition"],row["Index"]
         require(index == last[partition]+1 and index <= bounds["through"][PARTITIONS[partition]], "native actual parallel prefix missing/duplicate/reorder")
         last[partition] = index; stats["records"] += 1
         boundary = row["SourceBoundary"]
-        if original["Kind"] == "no-application-output" and partition in boundaries:
+        if (original["Kind"] == "no-application-output" or row["CDCClass"] == "replay-empty") and partition in boundaries:
             require(boundary["Generation"] == boundaries[partition]["Generation"] and boundary["ImageSHA256"] == boundaries[partition]["ImageSHA256"], "native empty frame changed source root")
         boundaries[partition] = boundary
         if index == old[partition][0]:
             require(boundary["ImageSHA256"] == old[partition][1], "native old actual prefix image"); old_seen.add(partition)
         if original["Kind"] in ("read-control","no-application-output"):
             stats["controls"] += 1; continue
+        if row["CDCClass"] == "replay-empty":
+            stats["replays"] = stats.get("replays",0)+1
+            continue
+        spool.insert(b"native-entry",u64(partition)+u64(index),go_json(row))
         request = u64(original["Coordinator"])+bytes.fromhex(original["Request"])
         attempt_body = spool.find(b"native-attempt-request",request)
         if attempt_body is None:
@@ -1574,7 +1615,7 @@ def _compare_streams(native_path, fdb_path, spec, config, final_cut, native_boun
     require(groups == 3 + 2 * spec["facts"] and components == 3 + 3 * spec["facts"], "complete logical cardinality")
     report = {"equal": True, "logicalGroups": groups, "componentChanges": components,
             "canonicalLogicalCDCSHA256": digest.hexdigest(), "native": native_stats, "fdb": fdb_stats,
-            "nativeCodecBoundary": "cost-only qualified native decoder binds retained same-index views/originals/canonical CDC; Python checks outcome seals/fields, certified prefix/root hashes and complete decoded logical records",
+            "nativeCodecBoundary": "cost-only native decoder binds actual retained entry roots and canonical earlier original sidecars for native replay entries; Python joins exact prior originals in the same finite spool, checks outcome seals/fields, complete certified prefix/root EOF and decoded logical records",
             "scope": ("declared independent8/32 client create/update contract; complete attempts and per-key causality/cut membership; no common total round order, capacity, runtime or fullmatrix acceptance" if parallel else "fixed writer1 create/update contract; numeric rounds/indexes and physical protocol/replica layouts are validated per engine")}
     if raw_result is not None:
         report["canonicalRetainedOutputSHA256"] = retained_observations(observations_path, spec, config, spool)

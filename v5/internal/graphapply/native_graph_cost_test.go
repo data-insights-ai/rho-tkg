@@ -771,3 +771,59 @@ func TestNativeGraphCostProfileAndRouting(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A later retained SAME-request entry is genuine zero-output replay, while its
+// original typed CDC remains at the earlier index after a subsequent mutation.
+func TestNativeGraphCostReplayOriginalRetainsActualEntryAndOldCDC(t *testing.T) {
+	n := newCertifiedGraphNetwork(t)
+	ops, claims := crossEdgeFixture(t, n)
+	h := n.hosts[0][0]
+	prepare := func(value int64, id uint64) allocationProposal {
+		p, err := h.PreparePartitionGraphOperations(n.requestID(), []graphstate.Operation{{Kind: graphstate.Set, Owner: 1, Life: 2, Scope: ops[0].Scope, Name: "p", Value: graphstate.I64(value), ValueID: graphstate.ValueID(id)}}, id+30, []freshBinding{{role: valueBinding, id: id, grant: claims[0].grant}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	proposal := prepare(5, 5)
+	original := n.submitPartitionGraph(0, proposal, reasonNone)
+	replay := n.submitPartitionGraph(0, proposal, reasonNone)
+	entry := h.driver.Applied()
+	if replay.disposition != requestReplay || replay.index != original.index || entry <= original.index {
+		t.Fatal(original, replay, entry)
+	}
+	n.submitPartitionGraph(0, prepare(6, 6), reasonNone)
+	raw, err := nativeGraphRecordRead(t.Context(), h, entry, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := nativeGraphCostInspectRecord(t.Context(), h, raw)
+	if err != nil || got.Index != entry || got.Original.Index != original.index || got.CDCClass != "replay-empty" || got.Replay == nil || got.CDC == nil || len(got.CDC)+len(got.Changes) != 0 {
+		t.Fatal(got, err)
+	}
+	old, err := nativeGraphRecordRead(t.Context(), h, original.index, true)
+	if err != nil || !bytes.Equal(got.Replay.Outcome, old.Outcome) || !bytes.Equal(got.Replay.CDC, old.CDC) || len(old.Changes) != 1 || old.Changes[0].After.I64 != 5 || got.Replay.Boundary.Index != original.index || got.Replay.Previous.Index != entry-1 || got.Replay.Previous.ImageSHA256 != got.SourceBoundary.ImageSHA256 {
+		t.Fatal("replay substituted current original", got, old, err)
+	}
+	bad := raw
+	bad.Outcome = bytes.Clone(raw.Outcome)
+	bad.Outcome[0] ^= 1
+	if _, err := nativeGraphCostInspectRecord(t.Context(), h, bad); !errors.Is(err, errCorrupt) {
+		t.Fatal(err)
+	}
+	tx, plan := n.crossPlan(ops, claims, 24)
+	decision := n.crossCommit(tx, plan)
+	n.crossResolve(decision)
+	n.crossResolve(decision)
+	for group := range 2 {
+		host := n.hosts[group][0]
+		raw, err := nativeGraphRecordRead(t.Context(), host, host.driver.Applied(), true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := nativeGraphCostInspectRecord(t.Context(), host, raw)
+		if err != nil || got.CDCClass != "replay-empty" || got.Replay == nil || len(got.Replay.Registration) == 0 || got.Original.Index >= got.Index || got.Original.Phase != byte(crossResolve) || got.Replay.CDC == nil || len(got.Replay.CDC) == 0 {
+			t.Fatal("cross replay lost original participant envelope", got, err)
+		}
+	}
+}
