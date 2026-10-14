@@ -1,0 +1,480 @@
+{
+  "scope": "Finite P03 native coordinator-leader loss after durable COMMIT before original caller reply. A/B cases only; no old four-fault pair, power-loss, full V2 or release acceptance.",
+  "date": "2026-10-14",
+  "baseCommit": "e724438a26491bafc8d30a7a4d7f3e3caaa96672",
+  "parent": "TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply",
+  "cases": {
+    "A": {
+      "partition": 3,
+      "leaderKilled": 1,
+      "originalCaller": 2,
+      "successor": 2,
+      "recoverer": 3
+    },
+    "B": {
+      "partition": 8,
+      "leaderKilled": 4,
+      "originalCaller": 5,
+      "successor": 5,
+      "recoverer": 6
+    }
+  },
+  "sourceSHA256": {
+    "v5/internal/graphapply/coordinator_loss_p03_harness_test.go": "44baa18a93496255de358fcc26e045a8cbe55f9851ade576edd4d48e1ead8af4",
+    "v5/internal/graphapply/coordinator_loss_p03_process_test.go": "e21b832220c43a0f970e45f9a45b555a825ba413b52acd069ace7eb4fc0d8318",
+    "tools/v5-substrate/check-p03-history.py": "73dc080292be71cc6a73ed2e87b25423758e93aece27208ecf171c04027f9867",
+    "tools/v5-substrate/check_p03_history_test.py": "3f076f226914fe1adc4cfd9f5ab5ccd26a91e1abd76429f0a9ba6bfee53b4f32"
+  },
+  "frozenGoSourceUnchanged": true,
+  "environment": {
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "GOWORK": "off",
+    "GOTOOLCHAIN": "local"
+  },
+  "pinnedGo": "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+  "gates": {
+    "normal": {
+      "passedParents": 1,
+      "passedSubcases": 2,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "terminalEvents": [
+        {
+          "Time": "2026-10-14T10:20:48.730272+02:00",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply/A",
+          "Elapsed": 12.77
+        },
+        {
+          "Time": "2026-10-14T10:21:01.326775+02:00",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply/B",
+          "Elapsed": 12.6
+        },
+        {
+          "Time": "2026-10-14T10:21:01.326787+02:00",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply",
+          "Elapsed": 25.37
+        },
+        {
+          "Time": "2026-10-14T10:21:01.327879+02:00",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Elapsed": 25.805
+        }
+      ]
+    },
+    "race": {
+      "passedParents": 1,
+      "passedSubcases": 2,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "terminalEvents": [
+        {
+          "Time": "2026-10-14T10:26:32.029049+02:00",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply/A",
+          "Elapsed": 44.26
+        },
+        {
+          "Time": "2026-10-14T10:27:16.830666+02:00",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply/B",
+          "Elapsed": 44.8
+        },
+        {
+          "Time": "2026-10-14T10:27:16.830682+02:00",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply",
+          "Elapsed": 89.06
+        },
+        {
+          "Time": "2026-10-14T10:27:17.836529+02:00",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Elapsed": 90.495
+        }
+      ]
+    },
+    "coverage": {
+      "passedParents": 1,
+      "passedSubcases": 2,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "terminalEvents": [
+        {
+          "Time": "2026-10-14T10:27:39.868387+02:00",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply/A",
+          "Elapsed": 14.11
+        },
+        {
+          "Time": "2026-10-14T10:27:52.338975+02:00",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply/B",
+          "Elapsed": 12.47
+        },
+        {
+          "Time": "2026-10-14T10:27:52.338999+02:00",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Test": "TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply",
+          "Elapsed": 26.58
+        },
+        {
+          "Time": "2026-10-14T10:27:52.358849+02:00",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Elapsed": 27.155
+        }
+      ]
+    }
+  },
+  "watchdogs": {
+    "format": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/gofmt",
+        "-w",
+        "v5/internal/graphapply/coordinator_loss_p03_process_test.go",
+        "v5/internal/graphapply/coordinator_loss_p03_harness_test.go"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 0.031,
+      "elapsed_s": 0.044,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "compile": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-c",
+        "-o",
+        "/var/tmp/rho-v5-p03-normal-20261014/p03.test",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 949.891,
+      "elapsed_s": 12.098,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "normal": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 437.016,
+      "elapsed_s": 26.955,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "race": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-race",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-run",
+        "^TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 975.312,
+      "elapsed_s": 104.736,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "coverage": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-count=1",
+        "-json",
+        "-timeout=150s",
+        "-covermode=atomic",
+        "-coverprofile=/var/tmp/rho-v5-p03-normal-20261014/coverage.out",
+        "-run",
+        "^TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply$",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 1073.203,
+      "elapsed_s": 34.227,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "vet": {
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "vet",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 187.688,
+      "elapsed_s": 1.415,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "lint": {
+      "command": [
+        "/var/tmp/rho-v5-migrate-main4514-20261013/scanner-bin/golangci-lint",
+        "run",
+        "--config",
+        "../.golangci.yml",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 1671.469,
+      "elapsed_s": 33.884,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "security": {
+      "command": [
+        "/var/tmp/rho-v5-migrate-main4514-20261013/scanner-bin/gosec",
+        "-quiet",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 433.047,
+      "elapsed_s": 2.223,
+      "exit_code": 0,
+      "reason": "completed"
+    },
+    "vulncheck": {
+      "command": [
+        "/var/tmp/rho-v5-migrate-main4514-20261013/scanner-bin/govulncheck",
+        "./internal/graphapply"
+      ],
+      "rss_limit_mib": 4096.0,
+      "wall_limit_s": 180.0,
+      "sample_interval_s": 0.25,
+      "peak_tree_rss_mib": 1716.891,
+      "elapsed_s": 3.899,
+      "exit_code": 0,
+      "reason": "completed"
+    }
+  },
+  "firstRuntimeFailure": null,
+  "cleanup": {
+    "normal": [
+      "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=13 all-reaped=true successful=12 intentional-kills=1 calls=41318 bootstrapPackets=334 admitted=397312",
+      "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=13 all-reaped=true successful=12 intentional-kills=1 calls=41308 bootstrapPackets=334 admitted=397312"
+    ],
+    "race": [
+      "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=13 all-reaped=true successful=12 intentional-kills=1 calls=41318 bootstrapPackets=334 admitted=397312",
+      "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=13 all-reaped=true successful=12 intentional-kills=1 calls=41308 bootstrapPackets=334 admitted=397312"
+    ],
+    "coverage": [
+      "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=13 all-reaped=true successful=12 intentional-kills=1 calls=41318 bootstrapPackets=334 admitted=397312",
+      "paired_graph_fault_harness_test.go:350: paired cleanup: incarnations=13 all-reaped=true successful=12 intentional-kills=1 calls=41308 bootstrapPackets=336 admitted=397312"
+    ]
+  },
+  "bridge": {
+    "genuineCaptures": 6,
+    "tests": 2,
+    "testExit": 0,
+    "oracleSHA256": "a132b4e4981f3dcea485b7ee5dea0df48a906cdfcda4a75bec5ff9f1a5589d3a",
+    "helperSHA256": {
+      "tools/v5-substrate/compare-graph-fault.py": "d0a78ffed9c9a78aa04449d4434516817ce4c81dfe86d4cb697460d25d1dcdf5",
+      "tools/v5-substrate/graph-fault-local-v1.json": "55ff660207f789cf70a948ed8fb43c36d4a2b496e4192bb6e4c8d58b15133d3c",
+      "tools/v5-substrate/fdb/compare-lifecycle.py": "645fbab3be5d85e8eeb97d515aaa151ddf0bf07167b8b01fd76c80843ad0500a"
+    },
+    "reports": [
+      {
+        "coordinator": 3,
+        "serial_witness": [
+          "node-a",
+          "node-b",
+          "edge-create",
+          "precommit-update",
+          "postcommit-update",
+          "zone-loss-update"
+        ],
+        "operations": 6,
+        "componentChanges": 7,
+        "oldReads": 7,
+        "fullFourFaultAccepted": false,
+        "scope": "P03 native observed-prefix serial/cut bridge; authentic extraction, decision and CDC codec binding stay Go-qualified",
+        "path": "/var/tmp/rho-v5-p03-normal-20261014/normal-artifacts/rho-paired-graph-fault-3772807089/native-p03-coordinator-A-trace.json",
+        "sha256": "8cb09246c8e892fdfeef5469fd54ca9c4f77ad644e599f0014662d5643cdc400"
+      },
+      {
+        "coordinator": 8,
+        "serial_witness": [
+          "node-a",
+          "node-b",
+          "edge-create",
+          "precommit-update",
+          "postcommit-update",
+          "zone-loss-update"
+        ],
+        "operations": 6,
+        "componentChanges": 7,
+        "oldReads": 7,
+        "fullFourFaultAccepted": false,
+        "scope": "P03 native observed-prefix serial/cut bridge; authentic extraction, decision and CDC codec binding stay Go-qualified",
+        "path": "/var/tmp/rho-v5-p03-normal-20261014/normal-artifacts/rho-paired-graph-fault-892463671/native-p03-coordinator-B-trace.json",
+        "sha256": "c46d69c9c33fe0309854146b4ca28742a6baab868c20b0d7507329772a308308"
+      },
+      {
+        "coordinator": 8,
+        "serial_witness": [
+          "node-a",
+          "node-b",
+          "edge-create",
+          "precommit-update",
+          "postcommit-update",
+          "zone-loss-update"
+        ],
+        "operations": 6,
+        "componentChanges": 7,
+        "oldReads": 7,
+        "fullFourFaultAccepted": false,
+        "scope": "P03 native observed-prefix serial/cut bridge; authentic extraction, decision and CDC codec binding stay Go-qualified",
+        "path": "/var/tmp/rho-v5-p03-normal-20261014/race-artifacts/rho-paired-graph-fault-1371937301/native-p03-coordinator-B-trace.json",
+        "sha256": "994c6db5317dc265bc61e9bdb21f2899fa1e476f40687829c279e7c3cb27c93a"
+      },
+      {
+        "coordinator": 3,
+        "serial_witness": [
+          "node-a",
+          "node-b",
+          "edge-create",
+          "precommit-update",
+          "postcommit-update",
+          "zone-loss-update"
+        ],
+        "operations": 6,
+        "componentChanges": 7,
+        "oldReads": 7,
+        "fullFourFaultAccepted": false,
+        "scope": "P03 native observed-prefix serial/cut bridge; authentic extraction, decision and CDC codec binding stay Go-qualified",
+        "path": "/var/tmp/rho-v5-p03-normal-20261014/race-artifacts/rho-paired-graph-fault-936510124/native-p03-coordinator-A-trace.json",
+        "sha256": "6edf1ad0f9b9581724e47e91b9e2410fee0ae309b26bb0799295902b0a5f2f9e"
+      },
+      {
+        "coordinator": 8,
+        "serial_witness": [
+          "node-a",
+          "node-b",
+          "edge-create",
+          "precommit-update",
+          "postcommit-update",
+          "zone-loss-update"
+        ],
+        "operations": 6,
+        "componentChanges": 7,
+        "oldReads": 7,
+        "fullFourFaultAccepted": false,
+        "scope": "P03 native observed-prefix serial/cut bridge; authentic extraction, decision and CDC codec binding stay Go-qualified",
+        "path": "/var/tmp/rho-v5-p03-normal-20261014/coverage-artifacts/rho-paired-graph-fault-2412313387/native-p03-coordinator-B-trace.json",
+        "sha256": "193af72d4c0714c28f3046e7ebd5e7e065e94d4531e41d2af4384b8cea504fbf"
+      },
+      {
+        "coordinator": 3,
+        "serial_witness": [
+          "node-a",
+          "node-b",
+          "edge-create",
+          "precommit-update",
+          "postcommit-update",
+          "zone-loss-update"
+        ],
+        "operations": 6,
+        "componentChanges": 7,
+        "oldReads": 7,
+        "fullFourFaultAccepted": false,
+        "scope": "P03 native observed-prefix serial/cut bridge; authentic extraction, decision and CDC codec binding stay Go-qualified",
+        "path": "/var/tmp/rho-v5-p03-normal-20261014/coverage-artifacts/rho-paired-graph-fault-2968055369/native-p03-coordinator-A-trace.json",
+        "sha256": "1daaf221c80206ef06df18686b10d17fcd494500b9e7899de69a80a5a10dba3b"
+      }
+    ],
+    "limits": "Observed-prefix serial/cut consistency; original prepared-read footprints not reconstructed. Native opaque codec/process authenticity and exact retained Decide outcomes remain Go-qualified. fullFourFaultAccepted=false."
+  },
+  "coverage": {
+    "coveredStatements": 600,
+    "statements": 13953,
+    "percent": 4.3,
+    "scope": "Exact parent diagnostic only; subprocess profiles not merged; no new production/public methods or full-module coverage acceptance."
+  },
+  "archive": {
+    "path": "raw.tar.gz",
+    "bytes": 1233557,
+    "sha256": "02e0624e4582e9054331e8b97c4f8345b3ebaa17d9bf4575a384761e779aa6e8",
+    "memberSHA256": {
+      "bridge-tests.log": "c01b6cf75030cfda6c01df1af44ff8ffe9fbdeaa2333517a2e9e781860447efe",
+      "checkpoint.json": "45356aaef7980d80d54c58e2ae45112dd66fa35206ed95b0f1cb81f2decfab1a",
+      "compile-watchdog.json": "2df3f131126f58afbb3a132bba44687be932b2efeab20c37f6a3c00847c6c176",
+      "compile.log": "af954166d2bb84d790821791921ce61b3cbcc339f108ad863b22d61d27709e9e",
+      "coverage-artifacts/rho-paired-graph-fault-2412313387/native-p03-coordinator-B-trace.json": "193af72d4c0714c28f3046e7ebd5e7e065e94d4531e41d2af4384b8cea504fbf",
+      "coverage-artifacts/rho-paired-graph-fault-2968055369/native-p03-coordinator-A-trace.json": "1daaf221c80206ef06df18686b10d17fcd494500b9e7899de69a80a5a10dba3b",
+      "coverage-watchdog.json": "b587c8cbf2c1341a7cdc15ee6719d1fa1260e3b64b429c595ca092e9f892ec5b",
+      "coverage.log": "4d926b8e77810ca38fea462ebbf54a05711c9cfa67a9b78ae74089b0d7a8c1a1",
+      "coverage.out": "6641c1b642fb14eec3cad25f6e2454771d7ccc2ee58ee57fb918a2cd77466385",
+      "format-watchdog.json": "727d5661770eda8c3f367503d53a5c147f09e39331990101682c93b9bd054951",
+      "format.log": "a9363dd67f68138898a1301b806e544f29c9927e15027fdb12a532b856368708",
+      "frozen-source.json": "85dc1d29fa357bde695292be85d20554bd0fdcc1a9602ab510838ffef4b5d476",
+      "lint-watchdog.json": "e8946ad2e1337ef802941b625c07c7c4e5783502f6b2154abd2e66aa3dfe97ee",
+      "lint.log": "7234c7c1164de0906d11e15af7b3c4434712897c85d13e72c199888a8da87a8b",
+      "normal-artifacts/rho-paired-graph-fault-3772807089/native-p03-coordinator-A-trace.json": "8cb09246c8e892fdfeef5469fd54ca9c4f77ad644e599f0014662d5643cdc400",
+      "normal-artifacts/rho-paired-graph-fault-892463671/native-p03-coordinator-B-trace.json": "c46d69c9c33fe0309854146b4ca28742a6baab868c20b0d7507329772a308308",
+      "normal-watchdog.json": "cebb44f69327234737f69046974473c86932c187c84565d25a88841db21685f9",
+      "normal.log": "a99e978cdee251ca938dd34cc7a52abed53818ea7e292f2048da42f1e1293210",
+      "race-artifacts/rho-paired-graph-fault-1371937301/native-p03-coordinator-B-trace.json": "994c6db5317dc265bc61e9bdb21f2899fa1e476f40687829c279e7c3cb27c93a",
+      "race-artifacts/rho-paired-graph-fault-936510124/native-p03-coordinator-A-trace.json": "6edf1ad0f9b9581724e47e91b9e2410fee0ae309b26bb0799295902b0a5f2f9e",
+      "race-watchdog.json": "8a07a058cceca1c355b51ab713798862edabee8d935e5dbc71190ac97f8fe664",
+      "race.log": "ca6b10d6555b9983c5207c0fdb8ffc4197512ed55190648342487b04c395b381",
+      "scanner-identities.log": "9d04abda0318f5617256de0bd2c43297d10f24d3d5e3ffb62c8d7b95981bea6d",
+      "security-watchdog.json": "ce772201f875656071bc35a86913b8f7b476f680f198963c6e3777751966bc45",
+      "security.log": "901c8a503ea0ba21de5b78b3fdd6b751520b9e3983530124558729e6f0904545",
+      "serial-cut-bridge.json": "c89ea88f5669a059d5fc96248277f4c7b30a94fa0f09b51ae1afabd713efb137",
+      "source/tools/v5-substrate/check-p03-history.py": "73dc080292be71cc6a73ed2e87b25423758e93aece27208ecf171c04027f9867",
+      "source/tools/v5-substrate/check_p03_history_test.py": "3f076f226914fe1adc4cfd9f5ab5ccd26a91e1abd76429f0a9ba6bfee53b4f32",
+      "source/v5/internal/graphapply/coordinator_loss_p03_harness_test.go": "44baa18a93496255de358fcc26e045a8cbe55f9851ade576edd4d48e1ead8af4",
+      "source/v5/internal/graphapply/coordinator_loss_p03_process_test.go": "e21b832220c43a0f970e45f9a45b555a825ba413b52acd069ace7eb4fc0d8318",
+      "vet-watchdog.json": "eb939493839883d984e3f2935558b9b95ce5a7c7f6a54f6541d5cacdc9948c91",
+      "vet.log": "8c8d3eb0c1415b5e5ac954f8995d8e7657639ab6895e398bab0d41ceeef326c8",
+      "vulncheck-watchdog.json": "6c4e530d62ee8b61fc5814a12231f5dd440b784d0eb5314d48f0180f028bc751",
+      "vulncheck.log": "d7ee58abbd5051627d6fe4452d0bde792c2fa24ff3644a0a0b05a58592c6946f"
+    }
+  },
+  "runtimeLease": "terminal and explicitly released to root; all owned child incarnations reaped"
+}
