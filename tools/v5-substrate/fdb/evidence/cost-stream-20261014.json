@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "qualifiedSourceCommit": "a53b158d7a5be3b1bae30d4f38cdbd46f1f93a8a",
+  "integratedSourceCommit": "04c93552",
+  "scope": "Recorded finite real-FDB7.3.77 helper qualification only; runner/checker wiring and full V2 remain open. CI reads these records and does not execute the native SDK.",
+  "finalSourceSHA256": {
+    "changes.go": "1348141cf3a0d9b433daeecda2b45bbea71cb65e080bc581297011504e3b1022",
+    "fault.go": "b849ee70161dd36099154e762023350f2c3b055fd238aac750372c8fcd3d1d3e",
+    "fault_contract_test.go": "459e6d8c10ccc9a3eebd4002c437d45f45162d7a48c62fca6455ad0ae350bbb7",
+    "go.mod": "15d92f0904b97b3fec0e0b23427994a095963da9b4afde3c20a32573e4e4672f",
+    "go.sum": "26bcf694e1b27910d09b654fcb3a852970358127d82581474e47c9afaba96618",
+    "graph_cost_profile.go": "06c67fa2d064c7abb58a44d1c9dcdb567846ef8cb668a43144dacfa63abbcf61",
+    "graph_cost_profile_test.go": "969349b8fca1878cc1a0e163d324def9e5c2d2854292d9b81257228ae6a41972",
+    "graph_cost_run.go": "74540090c455f5e10cf3056d57cbe0b97efb93ba3fc7154bdd7beedd422a08fe",
+    "graph_cost_stream.go": "b34790cd0c52e4eb19d3d72bc29a6e2e9e29fb0fad26a578bc6a482ddc3d3c05",
+    "graph_cost_stream_test.go": "2ba064961737b1b674460e2fbc28c27ba605507444be6eaa18da5c67f8175428",
+    "graph_fault.go": "307a21e60919d7a144ffd061bca4def76d3b50cd5321fdcf23fe12f48c787649",
+    "graph_oracle.go": "7a27850683ab0ea01160470a9a2be315ba31797fcb8ddf624741fdb3a99d613e",
+    "graph_progress_test.go": "de1f8ee51abc1a9a883369cdd2117fe897ac0fb907a61dd8d4a2b34e13aa97d4",
+    "graph_run.go": "966782e1ebb9c631596f5c98ddc42f54f3a79c2fc0aec5384cfdccc12b97f3fb",
+    "graph_slice.go": "6437373e0a6d3cd9c65842a864174b93fe33f27219bcc7394dc73bf51c0a6c18",
+    "graph_slice_test.go": "4b56553aa137e8a2b0519046f98de186d5c11df84d198559d580e87a9de3626a",
+    "lifecycle_profile.go": "66ba4cc1313840ee12a2591000fdaa6d8d6528f0995b9846c4073098871088aa",
+    "lifecycle_trace.go": "b7bebbde1ede5c9f81eaf76cc6cc83870cff95894cb001654de459b86d409f6e",
+    "lifecycle_trace_test.go": "031a5014ecaa7a8b5a2926e095661e7412d957811eb9c4fcaffc3de89020bfc2",
+    "main.go": "9747eb4241517f2170295ad34dbc29729d6667c217efa8a754a113918c5a342c",
+    "paired_graph_fault_trace.go": "44b3ba9e7dc6f4c321571bb840fa60db1a3e696612c03dd61923ff1766c0e316",
+    "paired_graph_fault_trace_test.go": "efb1489036247d8ce40df3538dbff3486152508f978efb6336e4e6e4d3ff8554",
+    "state.go": "08826e31a854c07578a481e4f3f35efd6170b234ce54e2036e3327d6677324a3",
+    "state_test.go": "5e09bc4e5e29306595681063c063c3a244b521db187d456c6b0396b32444df57"
+  },
+  "gates": {
+    "normal": {
+      "passedParents": 2,
+      "failedParents": 0,
+      "skippedParents": 0,
+      "parents": [
+        "TestGraphCostStreamRejectsInvalidBoundsAndRawKeys",
+        "TestGraphCostStreamActualPagesOldCutOriginalsAndQuiescence"
+      ],
+      "rawMember": "attempt-3/normal-logs.stdout",
+      "rawSHA256": "4e6d2214c49be5395655aa65746ee5c5687453c4ce944436cb22c1e511f21527"
+    },
+    "race": {
+      "passedParents": 2,
+      "failedParents": 0,
+      "skippedParents": 0,
+      "parents": [
+        "TestGraphCostStreamRejectsInvalidBoundsAndRawKeys",
+        "TestGraphCostStreamActualPagesOldCutOriginalsAndQuiescence"
+      ],
+      "rawMember": "attempt-3/race-logs.stdout",
+      "rawSHA256": "e41dfd2a05d3dcc047d470706afe6628f2d5748edb1d0bc93356105c137ead67"
+    },
+    "coverage": {
+      "passedParents": 2,
+      "failedParents": 0,
+      "skippedParents": 0,
+      "parents": [
+        "TestGraphCostStreamRejectsInvalidBoundsAndRawKeys",
+        "TestGraphCostStreamActualPagesOldCutOriginalsAndQuiescence"
+      ],
+      "rawMember": "attempt-3/cover-logs.stdout",
+      "rawSHA256": "4cf57178b040e8a9fb02d36ae1d2ecb7544081959058a2cb6b41a78c827a518b"
+    }
+  },
+  "runs": {
+    "passing_normal_race": {
+      "exit": 0,
+      "cleanupExit": 0,
+      "evidence": "tasks/evidence/v2-fdb-cost-stream-20261014/receipt.json",
+      "rawArchiveSHA256": "e5a66cedafe8822953a41de11eacfb3185808664750f41175b3af722bc11dd5b"
+    }
+  },
+  "toolchain": "go1.26.9 linux/arm64",
+  "nativeVersion": "7.3.77",
+  "coverage": {
+    "file": "graph_cost_stream.go",
+    "coveredStatements": 166,
+    "statements": 193,
+    "percent": 86.01036269430051,
+    "walkerEntryPercent": 100,
+    "wholeModuleTargetedPercent": 25.2,
+    "fullModuleAcceptance": false
+  }
+}

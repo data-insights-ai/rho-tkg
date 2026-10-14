@@ -214,9 +214,13 @@ Execution plan to finish V2 (2026-10-14; keep the A–F scope above):
    is integrated as a helper with five direct tests passing independently; it
    is still unwired. Next finish real six-process same-directory reopen,
    original-outcome/CDC replay and bounded native index/endpoint paging, then
-   qualify and wire FDB history/current/CDC streaming into the comparison
-   checker with complete raw-byte/identity/order/watermark checks. FDB's new
-   helper/test source remains uncompiled and unqualified pending root review.
+   wire FDB history/current/CDC streaming into the comparison checker with
+   complete raw-byte/identity/order/watermark checks. The
+   [finite FDB stream helper](evidence/v2-fdb-cost-stream-20261014/receipt.json)
+   is now accepted and integrated after real SDK/server normal/race/scoped
+   coverage, vet/lint/security; [root review](evidence/v2-fdb-cost-stream-20261014/root-review.json)
+   verifies all 494 raw members, 27 frozen source inputs, actual terminals and
+   86.01% helper coverage. It remains unwired and establishes no capacity cell.
    Qualify actual tiny paired runs before implementing
    genuine 8/32 writers: request-bound acknowledgements, bounded admission,
    phase barriers and explicit abort/replan/unknown-result attempt lineage.

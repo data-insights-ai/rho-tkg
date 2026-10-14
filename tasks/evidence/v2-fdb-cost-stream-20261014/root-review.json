@@ -1,0 +1,64 @@
+{
+  "scope": "Independent root source/evidence review of the finite real-FDB stream helper, still unwired; no E/F/V2 capacity or engine verdict.",
+  "integratedSourceCommit": "04c93552",
+  "integratedEvidenceCommit": "f9509b9c",
+  "authorSourceCommit": "a53b158d7a5be3b1bae30d4f38cdbd46f1f93a8a",
+  "rawMembersVerified": 494,
+  "frozenSourceMembersVerified": 27,
+  "allFrozenSourceInputsMatchIntegratedBytes": true,
+  "review": "Complete helper/test APIs and profile/change/config/cut contracts read. Verified row and byte admission semantics, exact cut/quiescent checks at page and EOF, canonical original ID/request binding, bounded two-head CDC merge, callback effects outside retries and zero terminal on failure.",
+  "actualTerminals": {
+    "normal": {
+      "passedParents": 2,
+      "failedParents": 0,
+      "skippedParents": 0,
+      "parents": [
+        "TestGraphCostStreamRejectsInvalidBoundsAndRawKeys",
+        "TestGraphCostStreamActualPagesOldCutOriginalsAndQuiescence"
+      ],
+      "rawMember": "attempt-3/normal-logs.stdout",
+      "rawSHA256": "4e6d2214c49be5395655aa65746ee5c5687453c4ce944436cb22c1e511f21527"
+    },
+    "race": {
+      "passedParents": 2,
+      "failedParents": 0,
+      "skippedParents": 0,
+      "parents": [
+        "TestGraphCostStreamRejectsInvalidBoundsAndRawKeys",
+        "TestGraphCostStreamActualPagesOldCutOriginalsAndQuiescence"
+      ],
+      "rawMember": "attempt-3/race-logs.stdout",
+      "rawSHA256": "e41dfd2a05d3dcc047d470706afe6628f2d5748edb1d0bc93356105c137ead67"
+    },
+    "coverage": {
+      "passedParents": 2,
+      "failedParents": 0,
+      "skippedParents": 0,
+      "parents": [
+        "TestGraphCostStreamRejectsInvalidBoundsAndRawKeys",
+        "TestGraphCostStreamActualPagesOldCutOriginalsAndQuiescence"
+      ],
+      "rawMember": "attempt-3/cover-logs.stdout",
+      "rawSHA256": "4cf57178b040e8a9fb02d36ae1d2ecb7544081959058a2cb6b41a78c827a518b"
+    }
+  },
+  "coverage": {
+    "file": "graph_cost_stream.go",
+    "coveredStatements": 166,
+    "statements": 193,
+    "percent": 86.01036269430051,
+    "walkerEntryPercent": 100,
+    "wholeModuleTargetedPercent": 25.2,
+    "fullModuleAcceptance": false
+  },
+  "statics": "Actual vet/lint/gosec containers exited0 without OOM; lint stdout0issues; pinned Linux tools builtGo1.26.9 verified. No new govulncheck claim.",
+  "nativeIdentity": "Actual LinuxGo1.26.9 compiler/link and FDB7.3.77 server/CLI/client/header hashes recorded; pinned binding source inventory retained. Actual status reports available/healthy/triple/min_replicas_remaining3.",
+  "cleanupRecordsVerified": 13,
+  "limits": [
+    "PageBytes is post-SDK admission, not a hard native-client RSS cap.",
+    "Callbacks may emit partial rows on failure; zero terminal result means no EOF/footer success.",
+    "No runner or comparison-checker wiring, no native physical-reopen gate, no native/FDB index/endpoint stream wiring.",
+    "No capacity/concurrent-writer/matched-engine/full-V2 or independent physical-host/network fault acceptance.",
+    "Helper coverage86.01% does not constitute full-module coverage acceptance."
+  ]
+}

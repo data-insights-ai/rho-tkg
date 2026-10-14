@@ -1,0 +1,29 @@
+{
+  "scope": "Finite CI planning correction and explicit focused revalidation; no Go behavior or V2 acceptance from Python policy tests.",
+  "integratedMappingCommit": "045be3d0",
+  "integratedFocusedBaseCommit": "3c2a9334",
+  "authorCommits": [
+    "a038be4a",
+    "e67984a8"
+  ],
+  "failedHostedRun": 38571122988,
+  "failedHostedHead": "560e852d961ff28423bd76cf7650290bb6c73ff0",
+  "failure": "Unknown changed graphapply fixture scope: native_graph_cost_test.go; actual build/vet/fmt/lint/security passed but Go behavior did not run.",
+  "sourceReview": "Complete policy API and changed tests read; reviewed finite shared fixture mapping and strict ancestor input; automatic push/PR scope and main full gates preserved; structured event parsing has no shell interpolation.",
+  "authorPythonGates": "Original mapping30 tests PASS; final focused-base32 tests PASS; genuine unknown-fixture and ignored-input REDs retained.",
+  "independentRootChecks": "All7 original mapping source/fixture hashes and16 raw hashes verified; all3 final source hashes and18 raw hashes verified. Exact real-Git range from5cc915c7 to integrated source selects19 parents including P01/P02 and all5 finite cost parents; large TestNativeGraphCostCell excluded. No Go runtime invoked.",
+  "rawMembersVerified": 36,
+  "rawArchiveSHA256": "f06bcc6af2a9c13a26abc824040997942750d0a206f058bcb8ea53747e386402",
+  "remaining": "Push integrated exact head, then after push jobs terminate dispatch full_validation=false with focused_base=5cc915c7d4ef2b63f1dbe4d6f8915341e7f0cf76; inspect actual affected normal/race/coverage terminals and statics.",
+  "independentRootPolicySuite": {
+    "command": [
+      "python3",
+      "-B",
+      "scripts/ci-changes-test.py"
+    ],
+    "exit": 0,
+    "tests": 32,
+    "seconds": 13.388,
+    "scope": "Python policy/real-Git/fake-Go CLI fixtures only; no actual Go/compiler/SDK runtime"
+  }
+}
