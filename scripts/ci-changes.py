@@ -43,6 +43,7 @@ COST_FIXTURES = {
     "native_graph_cost_test.go", "native_graph_cost_harness_test.go",
     "native_graph_cost_grants_harness_test.go", "native_graph_cost_reopen_harness_test.go",
     "native_graph_cost_incident_harness_test.go",
+    "native_graph_cost_columns_harness_test.go",
     "native_graph_cost_parallel_harness_test.go", "native_graph_cost_runner_test.go",
 }
 COST_PARENTS = [
@@ -58,6 +59,9 @@ COST_PARENTS = [
     "TestNativeGraphCostRequestACKFindsOriginalBehindLaterAppliedEntry",
     "TestNativeGraphCostAttemptLineageAndWindowAreBoundedAndRequestJoined",
     "TestNativeGraphCostThirtyTwoCommandWindowRejectsOtherWaveOriginals",
+    "TestNativeColumnsPublishResumeCacheAndRetainedCut",
+    "TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor",
+    "TestNativeColumnRequiredCostProfilesPrepayEveryFinitePass",
 ]
 FIXTURE_COMPAT = {
     **dict.fromkeys(COST_FIXTURES, COST_PARENTS),
@@ -75,6 +79,8 @@ COST_CDC_INPUTS = {
     "tools/v5-substrate/compare-cost-cdc.py",
     "tools/v5-substrate/cost-cell.py",
     "tools/v5-substrate/compare_cost_cdc_test.py",
+    "tools/v5-substrate/native_columns_check.py",
+    "tools/v5-substrate/cost_cell_test.py",
     "tasks/evidence/v2-fdb-cost-profile-20261013/raw.tar.gz",
     "tasks/evidence/v2-fdb-cost-final-source-20261013/raw.tar.gz",
 }
@@ -437,6 +443,8 @@ def docs(paths):
 def cdc(paths):
     if COST_CDC_INPUTS.intersection(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/compare_cost_cdc_test.py"], cwd=ROOT, check=True)
+        if {"tools/v5-substrate/cost-cell.py", "tools/v5-substrate/native_columns_check.py", "tools/v5-substrate/cost_cell_test.py"}.intersection(paths):
+            subprocess.run([sys.executable, "-B", "tools/v5-substrate/cost_cell_test.py"], cwd=ROOT, check=True)
 
 
 def focused_dispatch_base(event, kind, head):

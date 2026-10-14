@@ -749,4 +749,49 @@ class Replay(unittest.TestCase):
             bad=copy.deepcopy(self.native);change(bad)
             with self.assertRaises(ValueError):self.compare(native=bad)
 
+    def test_native_binary_columns_preserve_typed_bits_and_refuse_foreign_generation(self):
+        # Tiny explicit codec fixture only; no source capability or runtime receipt.
+        c=module('native-column-codec','compare-cost-cdc.py');h=c.native_columns_check;a=c.NATIVE_COLUMN_API
+        p={'ChunkRecords':16,'ChunkRows':2,'ChunkBytes':65536,'FrameBytes':32768}
+        generation={'ID':[1]+[0]*15,'Coverage':1,'Binding':[0]*32,'Sources':[]}
+        sealed=lambda body:body+hashlib.sha256(body).digest()
+        field=lambda body:struct.pack('>I',len(body))+body
+        image=sealed(b'GR\3\3'+bytes.fromhex(GRAPH)+struct.pack('>Q',3)+bytes(112))
+        # One row; the actual format has seven contiguous flags and fourteen
+        # numeric columns, independently bounded original and descriptor arenas.
+        flags=bytes([3,2,1,6,2,0,1])
+        numbers=[7,8,1,3,2,4,0,0,0,0,5,(1<<64)-7,11,4]
+        body=b'NCC1'+hashlib.sha256(h.sealed_json(a,generation)).digest()+bytes(8)+bytes(32)+struct.pack('>IQQ',1,3,11)+image
+        body+=b''.join(field(v) for v in (b'original',b'cdc',b'',b'',b''))+struct.pack('>I',1)+flags
+        body+=b''.join(struct.pack('>Q',v) for v in numbers)+field(b'p')+field(b'edge')+field(b'axis')+field(b'scope')
+        wire=sealed(body)
+        rows=h.chunk(a,wire,generation,0,bytes(32),p)[0]['Rows']
+        self.assertEqual(rows[0]['After']['Value'],-7)
+        self.assertEqual(rows[0]['After']['Revision'],11)
+        for gen,ordinal,chain in ((generation|{'ID':[2]+[0]*15},0,bytes(32)),(generation,1,bytes(32)),(generation,0,bytes([1])+bytes(31))):
+            with self.assertRaises(ValueError):h.chunk(a,wire,gen,ordinal,chain,p)
+        bad=bytearray(wire);bad[-1]^=1
+        with self.assertRaises(ValueError):h.chunk(a,bytes(bad),generation,0,bytes(32),p)
+
+    def test_native_initial_control_exemption_cannot_hide_later_or_different_roots(self):
+        c=module('native-column-tail','compare-cost-cdc.py');h=c.native_columns_check;a=c.NATIVE_COLUMN_API
+        sealed=lambda body:body+hashlib.sha256(body).digest()
+        image=sealed(b'GR\3\3'+bytes.fromhex(GRAPH)+struct.pack('>Q',3)+bytes(112))
+        outcome=sealed(b'GSO\1'+struct.pack('>BBQQ',1,1,2,11))
+        frame={'Partition':3,'Index':11,'Root':image,'Outcome':outcome,'CDC':b'','Registration':b'',
+               'OriginalOutcome':b'','OriginalCDC':b'','Rows':[]}
+        original={'Outcome':base64.b64encode(outcome).decode(),'CDC':''}
+        class PrefixOnly:
+            def lookup(self,*_):return a.go_json(original)
+            def find(self,*_):return None
+        initial={'sourceIndex':10,'image':image}
+        self.assertEqual(h.typed_rows(a,frame,b'',PrefixOnly(),initial,11,1),[])
+        with self.assertRaisesRegex(ValueError,'pre-baseline'):
+            h.typed_rows(a,frame,b'',PrefixOnly(),initial,10,1)
+        changed=bytearray(image[:-32]);changed[-1]^=1
+        with self.assertRaisesRegex(ValueError,'pre-baseline'):
+            h.typed_rows(a,frame|{'Root':sealed(changed)},b'',PrefixOnly(),initial,11,1)
+        with self.assertRaises(ValueError):
+            h.typed_rows(a,frame|{'Rows':[{}]},b'',PrefixOnly(),initial,11,1)
+
 if __name__=='__main__':unittest.main()

@@ -36,10 +36,10 @@ def plan():
     return {"minimumRuns": RUNS, "deployment": "single-machine distributed processes/containers",
             "cells": [specification(n, c, w) for n in FACTS for c in CROSS for w in WRITERS],
             "firstWorkload": "three setup nodes; N relationship creates(p=5), N updates(p=6); retained old/current graph and complete CDC",
-            "remainingWorkloads": ["contention/empty-range guards", "Stable/After", "correction/old-cut index scans", "snapshot-feed", "columns", "range transfer/pins"],
+            "remainingWorkloads": ["contention/empty-range guards", "Stable/After", "correction/old-cut index scans", "snapshot-feed", "range transfer/pins"],
             "implementationStatus": {"native": "writer1/8/32 test-support runner source; multiple-grant setup qualified at seventeen facts; physical reopen/index and independent clients source implemented, runtime qualification deferred",
                                      "FDB": "writer1 KV/columns and fresh8/32 independent SDK clients with immutable attempt policy wired in source; runtime qualification and same-dataset measurements pending",
-                                     "columns": "FDB sealed typed generation against native logical KV reference; native column cost lane and paired column matrix remain open",
+                                     "columns": "native partition-local typed binary publication/cache and FDB immutable generations wired in source; exact bounded dual-layout comparison available; durable native pin/long-query integration, runtime qualification and paired measurements pending",
                                      "writers8/32": "native/FDB source orchestration available with finite original-attempt admission; no qualified measurement or fullmatrix acceptance"}}
 
 
@@ -56,15 +56,16 @@ def parity(native, fdb, artifacts):
 
 
 def native_cell(args, spec, number, gate):
-    if args.layout != "kv":
-        raise ValueError("native immutable column cost lane is not implemented; no substitute layout")
-    root = args.output / f"native-{spec['facts']}-{spec['crossPercent']}-{spec['writers']}-run{number}"
+    if args.layout not in ("kv","columns"):
+        raise ValueError("unsupported genuine native layout")
+    root = args.output / f"native{'-columns' if args.layout == 'columns' else ''}-{spec['facts']}-{spec['crossPercent']}-{spec['writers']}-run{number}"
     root.mkdir(parents=True, exist_ok=False)
     binary = args.native_binary.resolve(strict=True)
     watchdog = args.watchdog.resolve(strict=True)
     # Only compiler/build artifacts may be reused. Each database/client/server
     # starts anew with an exclusive fresh durable directory below this run.
     environment = os.environ | {"RHO_GRAPH_PROCESS_ARTIFACT": str(root), "RHO_GRAPH_COST_SPEC": json.dumps(spec),
+                                "RHO_GRAPH_COST_LAYOUT": args.layout,
                                 "GOMAXPROCS": "2", "GOMEMLIMIT": "2GiB", "GOFLAGS": "-p=1",
                                 "GOWORK": "off", "GOTOOLCHAIN": "local"}
     command = [sys.executable, str(watchdog), "--rss-mib", "4096", "--seconds", str(args.benchmark_seconds),
@@ -74,7 +75,7 @@ def native_cell(args, spec, number, gate):
     with (root / "stdout.txt").open("wb") as stdout, (root / "stderr.txt").open("wb") as stderr:
         completed = subprocess.run(command, env=environment, stdout=stdout, stderr=stderr, check=False)
     measurement = json.loads((root / "watchdog.json").read_text())
-    receipt = {"version": 1, "spec": spec, "layout": "kv", "run": number, "exit": completed.returncode,
+    receipt = {"version": 2 if args.layout == "columns" else 1, "spec": spec, "layout": args.layout, "run": number, "exit": completed.returncode,
                "command": command, "environment": {k: environment[k] for k in ("GOMAXPROCS", "GOMEMLIMIT", "GOFLAGS", "GOWORK", "GOTOOLCHAIN")},
                "host": {"platform": platform.platform(), "machine": platform.machine()}, "faultParity": gate,
                "binarySHA256": digest(binary), "elapsedNanos": time.monotonic_ns() - started,
@@ -86,16 +87,43 @@ def native_cell(args, spec, number, gate):
         if measurement["exit_code"] != 0 or len(results) != 1:
             raise ValueError("successful command lacks exact one actual result")
         result = json.loads(results[0].read_text())
+        native_format(result,args.layout)
         if result["spec"] != spec or result["usefulFacts"] != spec["facts"] or result["Creates"] != spec["facts"] or result["Updates"] != spec["facts"] or result["setupNodes"] != 3 or result["reaped"] != 6 or result["CDCChanges"] != 3 + 3 * spec["facts"]:
             raise ValueError("actual native cardinality/result mismatch")
         receipt["result"] = result
         receipt["resultSHA256"] = digest(results[0])
         receipt["completedCell"] = True
         receipt["artifacts"] = {p.name: digest(p) for p in results[0].parent.iterdir() if p.is_file()}
+        if args.layout == "columns" and not NATIVE_COLUMN_ARTIFACTS <= receipt["artifacts"].keys():
+            raise ValueError("fresh native columns lack mandatory hash-bound complete source/seal artifacts")
     (root / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
     if completed.returncode != 0:
         raise ValueError(f"native cell refused/failed; exact failed receipt retained: {root}")
     return root
+
+
+NATIVE_COLUMN_ARTIFACTS = {"native-cost-result.json","native-cost-columns.jsonl","cdc.jsonl","observations.jsonl",
+                         "original-prefix-0.jsonl","original-prefix-1.jsonl","reopen-states.jsonl"}
+
+
+def native_format(result,layout):
+    if layout == "kv":
+        if result.get("version") != 1 or type(result.get("version")) is not int or result.get("layout") not in (None,"") or result.get("runner") != "independent-clients-request-bound-ack-v2":
+            raise ValueError("ordinary native KV requires unchanged Version1 artifact contract")
+        return
+    if layout != "columns" or type(result.get("version")) is not int or result.get("version") != 2 or result.get("layout") != "columns" or result.get("runner") != "independent-clients-request-bound-ack-columns-v1":
+        raise ValueError("native columns require fresh Version2 binary/source artifact contract")
+    initial,generations = result.get("columnInitialCut"),result.get("columnGenerations")
+    if type(initial) is not dict or set(initial) != {"Certificates"} or type(initial["Certificates"]) is not list or len(initial["Certificates"]) != 2 or type(generations) is not list or len(generations) != 2:
+        raise ValueError("native columns require actual initial cut and both complete generation pairs")
+    for pair in generations:
+        if type(pair) is not list or len(pair) != 2:
+            raise ValueError("native columns require both genuine partition seals")
+        for g,manifest in enumerate(pair):
+            generation = manifest.get("Generation",{}) if type(manifest) is dict else {}
+            id_ = generation.get("ID")
+            if type(id_) is not list or len(id_) != 16 or not all(type(v) is int and 0 <= v <= 255 for v in id_) or not any(id_) or type(generation.get("Coverage")) is not int or generation["Coverage"] != 1 << g or type(generation.get("Sources")) is not list or len(generation["Sources"]) != 2:
+                raise ValueError("native columns require complete disjoint generation/source seals")
 
 
 def fdb_cell(args, spec, number, gate):
@@ -176,8 +204,13 @@ def compare_cells(native_path, fdb_path, *, comparison_disk_bytes=1 << 30, compa
         raise ValueError("matching complete real cells required")
     spec = native["spec"]
     native_layout, fdb_layout = native.get("layout", "kv"), fdb.get("layout", "kv")
-    if native_layout != "kv" or fdb_layout not in ("kv", "columns"):
+    if native_layout not in ("kv", "columns") or fdb_layout not in ("kv", "columns"):
         raise ValueError("unsupported genuine native/FDB layout pair")
+    native_columns = native_layout == "columns"
+    if native_columns:
+        native_format(native["result"],native_layout)
+        if not NATIVE_COLUMN_ARTIFACTS <= native["artifacts"].keys():
+            raise ValueError("native columns complete initial/raw-prefix/binary/seal artifacts must be hash-bound")
     facts = spec["facts"]
     left_root = Path(native["result"]["directory"])
     right_root = Path(fdb["FDBArtifacts"])
@@ -195,6 +228,8 @@ def compare_cells(native_path, fdb_path, *, comparison_disk_bytes=1 << 30, compa
     policy = checker.Policy(comparison_disk_bytes, comparison_cache_bytes, 4096, checker.ARTIFACT_LINE_BYTES)
     policy.validate()
     version, format_ = fdb["result"].get("version"), fdb["result"].get("oracleFormat")
+    if native_columns and version not in (2,3,4,5):
+        raise ValueError("fresh native columns require complete raw FDB source/original artifacts")
     parallel = spec["writers"] != 1
     allowed = (((5,checker.PARALLEL_COLUMN_FORMAT),) if fdb_layout == "columns" else ((4,checker.PARALLEL_FORMAT),)) if parallel else (((3, checker.COLUMN_FORMAT),) if fdb_layout == "columns" else ((1, None), (2, checker.RAW_FORMAT)))
     if type(version) is not int or (version, format_) not in allowed:
@@ -222,15 +257,17 @@ def compare_cells(native_path, fdb_path, *, comparison_disk_bytes=1 << 30, compa
                                       fdb["result"]["Config"], fdb["result"]["FinalCut"], bounds,
                                       spool_directory=Path(native_path).resolve().parent,
                                       spool_policy=policy,
-                                      raw_result=fdb["result"], observations_path=left_root / "observations.jsonl")
+                                      raw_result=fdb["result"], observations_path=left_root / "observations.jsonl",
+                                      native_result=native["result"] if native_columns else None)
         return {"equal": True, "spec": spec, "relationshipFacts": facts, "setupNodes": 3,
                 "usefulCreateTransactions": facts, "usefulUpdateTransactions": facts,
                 "retainedPointObservations": 2 * facts, "exactLogicalComponentChanges": cdc["componentChanges"],
                 "completeLogicalCDC": cdc, "oracleFormat": format_,
                 "canonicalRetainedOutputSHA256": cdc["canonicalRetainedOutputSHA256"],
-                "layouts": {"native": "logical-kv-reference", "FDB": fdb_layout},
-                "nativeColumnsCostParity": False,
-                "scope": ("declared independent8/32 source contract with actual attempts/cut/causal joins; FDB columns use native logical KV reference; no runtime/capacity/storage-efficiency/fullmatrix acceptance" if parallel else
+                "layouts": {"native": "native-component-i64-change-columns-v1" if native_columns else "logical-kv-reference", "FDB": fdb_layout},
+                "nativeColumnsCostParity": native_columns and fdb_layout == "columns",
+                "scope": ("genuine native/FDB typed source and immutable generation/cache agreement with complete cut/original/EOF joins; distinct physical formats, allocation setup and retirement profiles; no runtime/capacity/storage-efficiency/fullmatrix acceptance" if native_columns else
+                          "declared independent8/32 source contract with actual attempts/cut/causal joins; FDB columns use native logical KV reference; no runtime/capacity/storage-efficiency/fullmatrix acceptance" if parallel else
                           "fixed writer1 genuine FDB columns/source equivalence versus native logical KV reference; private quota-bound spool; no paired column cost/storage-efficiency/capacity/fullmatrix acceptance"
                           if version == 3 else "fixed writer1 raw native/FDB history/current/CDC parity; private quota-bound verifier spool; no capacity/engine-selection/fullmatrix acceptance")}
     cdc = checker.compare_streams(left_root / "cdc.jsonl", right_root / "fdb-cost-cdc.jsonl", spec,
@@ -310,8 +347,6 @@ def main():
         args.runs = 1
     if args.runs < RUNS and not args.probe:
         parser.error("at least five independent fresh runs required")
-    if args.engine == "native" and args.layout != "kv":
-        parser.error("native column cost lane is not implemented; no KV relabelling")
     if not all((args.output, args.native_fault, args.fdb_fault, args.fdb_artifact_root)) or args.engine == "native" and not all((args.native_binary,args.watchdog)):
         parser.error("output, native binary/watchdog and actual fault parity inputs required")
     args.output = args.output.resolve()

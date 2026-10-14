@@ -43,12 +43,17 @@ class Planning(unittest.TestCase):
     def test_docs_runs_complete_cdc_for_each_exact_input_once(self):
         inputs = ["tools/v5-substrate/compare-cost-cdc.py", "tools/v5-substrate/cost-cell.py",
                   "tools/v5-substrate/compare_cost_cdc_test.py",
+                  "tools/v5-substrate/native_columns_check.py", "tools/v5-substrate/cost_cell_test.py",
                   "tasks/evidence/v2-fdb-cost-profile-20261013/raw.tar.gz",
                   "tasks/evidence/v2-fdb-cost-final-source-20261013/raw.tar.gz"]
         for paths in [[p] for p in inputs] + [inputs, [inputs[0], inputs[0]]]:
             with self.subTest(paths=paths), patch.object(CI.subprocess, "run") as run:
                 self.docs_action(paths)
-                run.assert_called_once_with([sys.executable, "-B", "tools/v5-substrate/compare_cost_cdc_test.py"], cwd=CI.ROOT, check=True)
+                expected = [[sys.executable, "-B", "tools/v5-substrate/compare_cost_cdc_test.py"]]
+                if {"tools/v5-substrate/cost-cell.py", "tools/v5-substrate/native_columns_check.py", "tools/v5-substrate/cost_cell_test.py"}.intersection(paths):
+                    expected.append([sys.executable, "-B", "tools/v5-substrate/cost_cell_test.py"])
+                self.assertEqual([c.args[0] for c in run.call_args_list], expected)
+                self.assertTrue(all(c.kwargs == {"cwd":CI.ROOT,"check":True} for c in run.call_args_list))
                 p = CI.plan(paths)
                 self.assertEqual(p["matrix"]["include"], [])
                 self.assertFalse(p["comparison"] or p["migration"] or p["external"])
@@ -63,7 +68,8 @@ class Planning(unittest.TestCase):
             self.docs_action(["docs/v5/PLAN.md", "tools/v5-substrate/cost-cell.py"])
             self.assertEqual([c.args[0] for c in run.call_args_list], [
                 [sys.executable, "-B", "docs/v5/reference/independent/check.py"],
-                [sys.executable, "-B", "tools/v5-substrate/compare_cost_cdc_test.py"]])
+                [sys.executable, "-B", "tools/v5-substrate/compare_cost_cdc_test.py"],
+                [sys.executable, "-B", "tools/v5-substrate/cost_cell_test.py"]])
             for call in run.call_args_list:
                 self.assertEqual(call.kwargs, {"cwd": CI.ROOT, "check": True})
 
@@ -77,7 +83,9 @@ class Planning(unittest.TestCase):
              patch.object(CI, "changed_paths", return_value=["docs/v5/PLAN.md", "tools/v5-substrate/cost-cell.py"]), \
              patch.object(CI.subprocess, "run") as run:
             CI.main()
-            run.assert_called_once_with([sys.executable, "-B", "tools/v5-substrate/compare_cost_cdc_test.py"], cwd=CI.ROOT, check=True)
+            self.assertEqual([c.args[0] for c in run.call_args_list], [
+                [sys.executable, "-B", "tools/v5-substrate/compare_cost_cdc_test.py"],
+                [sys.executable, "-B", "tools/v5-substrate/cost_cell_test.py"]])
 
     def test_docs_evidence_do_not_run_go_or_tools(self):
         p = CI.plan(["docs/v5/PLAN.md", "tasks/evidence/receipt.json", "tools/v5-migrate/evidence/old.json"])
@@ -286,10 +294,13 @@ class RealGitSelection(unittest.TestCase):
                    "TestNativeGraphCostIndependentClientsSmallActualProcesses",
                    "TestNativeGraphCostRequestACKFindsOriginalBehindLaterAppliedEntry",
                    "TestNativeGraphCostAttemptLineageAndWindowAreBoundedAndRequestJoined",
-                   "TestNativeGraphCostThirtyTwoCommandWindowRejectsOtherWaveOriginals"}
+                   "TestNativeGraphCostThirtyTwoCommandWindowRejectsOtherWaveOriginals",
+                   "TestNativeColumnsPublishResumeCacheAndRetainedCut",
+                   "TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor",
+                   "TestNativeColumnRequiredCostProfilesPrepayEveryFinitePass"}
         for fixture in ("native_graph_cost_test.go", "native_graph_cost_harness_test.go",
                         "native_graph_cost_grants_harness_test.go", "native_graph_cost_reopen_harness_test.go",
-                        "native_graph_cost_incident_harness_test.go",
+                        "native_graph_cost_incident_harness_test.go", "native_graph_cost_columns_harness_test.go",
                         "native_graph_cost_parallel_harness_test.go", "native_graph_cost_runner_test.go"):
             with self.subTest(fixture=fixture):
                 path = self.directory / fixture

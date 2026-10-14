@@ -6,8 +6,10 @@ import json
 import os
 from pathlib import Path
 import struct
+from types import SimpleNamespace
 
 from comparison_spool import Policy, Spool, u64
+import native_columns_check
 
 SCOPE = {"kind": "all", "axisProfile": "Q", "axisVersion": 1,
          "canonicalUnit": "millisecond", "reference": "posix-unix-epoch:1970-01-01T00:00:00Z:v1"}
@@ -335,7 +337,7 @@ def native_old_prefix(bounds):
     return old
 
 
-def native_groups(path, spec, bounds, stats, spool):
+def native_groups(path, spec, bounds, stats, spool, native_columns=False):
     pending, last_provenance = {}, {}
     certified_images = native_prefix(bounds)
     old = native_old_prefix(bounds) if "oldCut" in bounds else {}
@@ -352,6 +354,8 @@ def native_groups(path, spec, bounds, stats, spool):
         last_indexes[partition] = index
         stats["records"] += 1
         boundary = row["SourceBoundary"]
+        if native_columns:
+            native_columns_check.capture(NATIVE_COLUMN_API,row,spool)
         if (original["Kind"] == "no-application-output" or row["CDCClass"] == "replay-empty") and partition in boundaries:
             require(boundary["Generation"] == boundaries[partition]["Generation"] and boundary["ImageSHA256"] == boundaries[partition]["ImageSHA256"], "empty output changed retained root")
         boundaries[partition] = boundary
@@ -504,10 +508,11 @@ def native_parallel_attempts(path, spec, spool):
     return {"Attempts":attempts,"AbortedAttempts":aborts,"SubmitInvocations":submissions,"ClientCompletions":clients}
 
 
-def native_parallel_groups(path,spec,bounds,stats,spool):
+def native_parallel_groups(path,spec,bounds,stats,spool,native_columns=False):
     attempts = native_parallel_attempts(Path(path).with_name("attempts.jsonl"),spec,spool)
     actual_result = json.loads(Path(path).with_name("native-cost-result.json").read_bytes(),object_pairs_hook=pairs)
-    require(actual_result.get("runner") == "independent-clients-request-bound-ack-v2" and actual_result.get("ClientWindow") == 32 and same(actual_result.get("spec"),spec) and same(actual_result.get("clientCompletions"),attempts["ClientCompletions"]) and actual_result.get("Attempts") == attempts["Attempts"] and actual_result.get("AbortedAttempts") == attempts["AbortedAttempts"] and actual_result.get("SameAttemptRetries") == attempts["SubmitInvocations"] - attempts["Attempts"], "native actual parallel result/attempt policy")
+    expected_runner = native_columns_check.RUNNER if native_columns else "independent-clients-request-bound-ack-v2"
+    require(actual_result.get("runner") == expected_runner and actual_result.get("ClientWindow") == 32 and same(actual_result.get("spec"),spec) and same(actual_result.get("clientCompletions"),attempts["ClientCompletions"]) and actual_result.get("Attempts") == attempts["Attempts"] and actual_result.get("AbortedAttempts") == attempts["AbortedAttempts"] and actual_result.get("SameAttemptRetries") == attempts["SubmitInvocations"] - attempts["Attempts"], "native actual parallel result/attempt policy")
     images,old = native_prefix(bounds),native_old_prefix(bounds)
     last = dict(zip(PARTITIONS,bounds["from"]))
     boundaries,old_seen = {},set()
@@ -519,6 +524,8 @@ def native_parallel_groups(path,spec,bounds,stats,spool):
         require(index == last[partition]+1 and index <= bounds["through"][PARTITIONS[partition]], "native actual parallel prefix missing/duplicate/reorder")
         last[partition] = index; stats["records"] += 1
         boundary = row["SourceBoundary"]
+        if native_columns:
+            native_columns_check.capture(NATIVE_COLUMN_API,row,spool)
         if (original["Kind"] == "no-application-output" or row["CDCClass"] == "replay-empty") and partition in boundaries:
             require(boundary["Generation"] == boundaries[partition]["Generation"] and boundary["ImageSHA256"] == boundaries[partition]["ImageSHA256"], "native empty frame changed source root")
         boundaries[partition] = boundary
@@ -1558,16 +1565,16 @@ def column_stage(row, index, result, manifests, binding, pin_binding, held, toke
     return held, token
 
 
-def compare_streams(native_path, fdb_path, spec, config, final_cut, native_bounds, *, spool_directory=None, spool_policy=SMALL_POLICY, raw_result=None, observations_path=None):
+def compare_streams(native_path, fdb_path, spec, config, final_cut, native_bounds, *, spool_directory=None, spool_policy=SMALL_POLICY, raw_result=None, observations_path=None, native_result=None):
     owner = Path(native_path).parent if spool_directory is None else spool_directory
     with Spool(owner, spool_policy) as spool:
-        report = _compare_streams(native_path, fdb_path, spec, config, final_cut, native_bounds, spool, raw_result, observations_path)
+        report = _compare_streams(native_path, fdb_path, spec, config, final_cut, native_bounds, spool, raw_result, observations_path, native_result)
         report["comparisonState"] = spool.report()
         report["cleanup"] = "private spool removed on success/failure; raw inputs unchanged"
         return report
 
 
-def _compare_streams(native_path, fdb_path, spec, config, final_cut, native_bounds, spool, raw_result, observations_path):
+def _compare_streams(native_path, fdb_path, spec, config, final_cut, native_bounds, spool, raw_result, observations_path, native_result=None):
     fields(spec, "version facts crossPercent writers")
     integer(spec["facts"], 1, 1_000_000)
     require(type(spec["version"]) is type(spec["writers"]) is type(spec["crossPercent"]) is int and spec["version"] == 1 and spec["writers"] in (1,8,32) and spec["crossPercent"] in (0, 10, 50, 100), "declared cost spec")
@@ -1588,7 +1595,12 @@ def _compare_streams(native_path, fdb_path, spec, config, final_cut, native_boun
         integer(watermark)
     integer(final_cut["Round"], 1)
     native_stats, fdb_stats = {"records": 0, "controls": 0}, {"physicalWrites": 0}
-    left = (native_parallel_groups if parallel else native_groups)(native_path, spec, native_bounds, native_stats, spool)
+    native_column_lane = native_result is not None
+    if native_column_lane:
+        require(type(native_result) is dict and type(native_result.get("version")) is int and native_result.get("version") == 2 and native_result.get("layout") == "columns" and native_result.get("runner") == native_columns_check.RUNNER and same(native_result.get("spec"),spec), "fresh complete native column result required")
+        require(raw_result is not None and observations_path is not None and "oldCut" in native_bounds,
+                "native columns require complete raw peer originals and retained observations")
+    left = (native_parallel_groups if parallel else native_groups)(native_path, spec, native_bounds, native_stats, spool,native_column_lane)
     if raw_result is None:
         right = fdb_groups(fdb_path, spec, config, final_cut, fdb_stats, spool)
     else:
@@ -1622,4 +1634,14 @@ def _compare_streams(native_path, fdb_path, spec, config, final_cut, native_boun
         report["oracleFormat"] = raw_result["oracleFormat"]
         if column_lane:
             report["columns"] = column_artifacts(Path(fdb_path).with_name("fdb-cost-columns.jsonl"), raw_result, spool)
+    if native_column_lane:
+        report["nativeColumns"] = native_columns_check.verify(NATIVE_COLUMN_API,Path(native_path).with_name("native-cost-columns.jsonl"),native_result,spool,native_bounds)
     return report
+
+
+# Explicit fixed API avoids a circular import and works for loader-owned module
+# names. No caller supplies validators or grants verification/source authority.
+NATIVE_COLUMN_API = SimpleNamespace(require=require, fields=fields, integer=integer,
+    same=same, pairs=pairs, raw_bytes=raw_bytes, fixed_body=fixed_body, go_json=go_json,
+    GRAPH=GRAPH, PARTITIONS=PARTITIONS, SCOPE=SCOPE, parallel_lines=parallel_lines,
+    native_parallel_manifest=native_parallel_manifest, put_raw=put_raw)
