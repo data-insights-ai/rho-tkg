@@ -12,7 +12,7 @@ cost_retention=${RHO_GRAPH_COST_RETENTION:-off}
 case "$cost_layout" in kv|columns) ;; *) echo 'RHO_GRAPH_COST_LAYOUT must be kv or columns' >&2; exit 2;; esac
 case "$cost_retention" in off|source-v1) ;; *) echo 'RHO_GRAPH_COST_RETENTION must be off or source-v1' >&2; exit 2;; esac
 case "$cost_qualify" in 0|1) ;; *) echo 'FDB_COST_QUALIFY must be 0 or 1' >&2; exit 2;; esac
-case "$mode" in smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|cost-cell|static|platform-faults) ;; *) echo 'usage: run-local.sh [smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|cost-cell|static|platform-faults] [small|large]' >&2; exit 2;; esac
+case "$mode" in smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|cost-cell|static|platform-faults|column-publication-faults) ;; *) echo 'usage: run-local.sh [smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|cost-cell|static|platform-faults|column-publication-faults] [small|large]' >&2; exit 2;; esac
 runtime='foundationdb/foundationdb@sha256:c61744624e479d370a0120176e518bb569a2a18ee9abceaf7022c4367b54f1db'
 tag="rho-v5-fdb-$(date +%s)-$$"
 out="$PWD/artifacts/$tag"
@@ -213,7 +213,7 @@ if [ "$mode" = test ] || [ "$mode" = graph-fault ] || [ "$mode" = paired-tests ]
       cat /sys/fs/cgroup/memory.stat > /evidence/test-client-memory-stat.txt; exit "$result"' -- "$mode" >"$out/tests.txt" 2>&1
   capture_client "$name" tests
 fi
-if [ "$mode" != platform-faults ] && [ "$mode" != smoke ] && [ "$mode" != lifecycle-trace ] && [ "$mode" != paired-tests ] && [ "$mode" != cost-cell ]; then
+if [ "$mode" != column-publication-faults ] && [ "$mode" != platform-faults ] && [ "$mode" != smoke ] && [ "$mode" != lifecycle-trace ] && [ "$mode" != paired-tests ] && [ "$mode" != cost-cell ]; then
   prefix=fault
   if [ "$mode" = graph-fault ]; then prefix=graph-fault; fi
   if [ "$mode" = paired-graph-fault ]; then prefix=paired-fault; fi
@@ -308,6 +308,70 @@ if [ "$mode" = cost-cell ]; then
   stop_client "$name" cost-client
   capture_client "$name" cost-client
   python3 -c 'import time; print(time.monotonic_ns())' >"$out/cost-controller-end-nanos.txt"
+fi
+if [ "$mode" = column-publication-faults ]; then
+  phase_deadline=$((SECONDS+1800))
+  publication_client() {
+    local command="$1" destination="$2" result=0
+    client_index=$((client_index+1)); publication_client_name="$tag-publication-client$client_index"
+    containers+=("$publication_client_name")
+    bounded_docker 65 run --name "$publication_client_name" --network "$tag" --memory "${client_mib}m" --cpus 0.5 \
+      --env "FDB_CONNECTION_STRING=$connection" --env "FDB_COLUMN_FAULT_CASE=$publication_case" \
+      --env "FDB_COLUMN_FAULT_COORDINATOR=$publication_coord" --env "FDB_COLUMN_FAULT_GRAPH=$publication_graph" \
+      --env "FDB_COLUMN_FAULT_ARTIFACT=/evidence/$publication_key" --mount "type=bind,source=$out,target=/evidence" \
+      "$client_image" /bin/bash -c '
+        timeout --signal=KILL 55s fdb-spike "$1"; result=$?
+        cat /sys/fs/cgroup/memory.peak > "/evidence/$2/$3-memory-peak.txt"
+        cat /sys/fs/cgroup/memory.stat > "/evidence/$2/$3-memory-stat.txt"
+        exit "$result"' -- "$command" "$publication_key" "$client_index" >"$destination" 2>"$destination.stderr" || result=$?
+    stop_client "$publication_client_name" "$publication_key-client$client_index"
+    capture_client "$publication_client_name" "$publication_key-client$client_index" || result=1
+    return "$result"
+  }
+  publication_child() {
+    local phase="$1" command="$2" reached=0
+    publication_child_name="$tag-publication-$phase-$publication_case-$publication_coord"
+    containers+=("$publication_child_name")
+    docker run -d --name "$publication_child_name" --network "$tag" --memory "${client_mib}m" --cpus 0.5 \
+      --env "FDB_CONNECTION_STRING=$connection" --env "FDB_COLUMN_FAULT_CASE=$publication_case" \
+      --env "FDB_COLUMN_FAULT_COORDINATOR=$publication_coord" --env "FDB_COLUMN_FAULT_GRAPH=$publication_graph" \
+      --env "FDB_COLUMN_FAULT_ARTIFACT=/evidence/$publication_key" --mount "type=bind,source=$out,target=/evidence" \
+      "$client_image" fdb-spike "$command" >/dev/null
+    for attempt in {1..45}; do
+      docker logs "$publication_child_name" >"$publication_dir/$phase-marker.json" 2>"$publication_dir/$phase-marker.stderr"
+      if [ "$phase" = publication ]; then
+        if python3 -B column_publication_controller.py marker "$publication_dir/$phase-marker.json" "$publication_dir/state.json" 2>"$publication_dir/$phase-marker-validation.txt"; then reached=1; break; fi
+      elif python3 -B column_publication_controller.py gc-marker "$publication_dir/$phase-marker.json" "$publication_dir/state.json" 2>"$publication_dir/$phase-marker-validation.txt"; then reached=1; break; fi
+      sleep 1
+    done
+    [ "$reached" = 1 ] || { echo 'actual publication/collector native seam not reached' >&2; return 1; }
+    cp "$publication_dir/state.json" "$publication_dir/$phase-state.json"
+    docker inspect "$publication_child_name" >"$publication_dir/$phase.before.json"
+    docker exec "$publication_child_name" /bin/bash -c 'cat /sys/fs/cgroup/memory.peak; cat /sys/fs/cgroup/memory.stat' >"$publication_dir/$phase-memory.txt"
+    docker kill --signal KILL "$publication_child_name" >"$publication_dir/$phase-kill.txt"
+    docker inspect "$publication_child_name" >"$publication_dir/$phase.stopped.json"
+    python3 -B launcher.py killed "$publication_dir/$phase.stopped.json"
+    docker logs "$publication_child_name" >"$publication_dir/$phase-final.stdout" 2>"$publication_dir/$phase-final.stderr"
+    capture_client "$publication_child_name" "$publication_key-$phase"
+  }
+  for publication_case in chunk source-eof manifest-issued; do
+    for publication_coord in A B; do
+      publication_key="column-publication-$publication_case-$publication_coord"
+      publication_graph="column-publication-v1-$tag-$publication_case-$publication_coord"
+      publication_dir="$out/$publication_key"; mkdir "$publication_dir"
+      wait_healthy "${servers[0]}" "$publication_dir/healthy-before.json"
+      publication_ledger_start=$(python3 -B column_publication_controller.py ledger-start "$out/commands.jsonl")
+      publication_client column-fault-seed "$publication_dir/seed.json"
+      publication_child publication column-fault-publication-child
+      publication_client column-fault-recover "$publication_dir/recovery.json"
+      publication_recovery_client="$publication_client_name"
+      publication_child gc column-fault-gc-child
+      publication_client column-fault-terminal "$publication_dir/terminal.json"
+      printf '{"LedgerStart":%s,"Recovery":"%s","Terminal":"%s"}\n' "$publication_ledger_start" "$publication_recovery_client" "$publication_client_name" >"$publication_dir/clients.json"
+      wait_healthy "${servers[0]}" "$publication_dir/healthy-after.json"
+      python3 -B column_publication_controller.py finalize "$publication_dir" "$out/commands.jsonl"
+    done
+  done
 fi
 if [ "$mode" = platform-faults ]; then source run-platform-faults.sh; fi
 if [ "$mode" = lifecycle-trace ]; then client lifecycle-trace; fi

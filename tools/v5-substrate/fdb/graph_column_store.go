@@ -418,37 +418,41 @@ func graphColumnPublicationHistory(p graphColumnProgress) [2]uint64 {
 func graphColumnManifestFor(p graphColumnProgress) graphColumnManifest {
 	return graphColumnManifest{Generation: p.Generation, Metadata: p.Metadata, Chunks: p.Next, Rows: p.Rows, Bytes: p.Bytes, History: p.History, Chain: p.Chain}
 }
+
+// The ordinary publication and genuine Commit-issued fault child share this
+// exact native reducer. No external IO or observer runs in the transaction.
+func (s *graphColumnStore) sealIn(tr fdb.Transaction, g graphColumnGeneration) (graphColumnManifest, error) {
+	state, err := s.progress(tr, g, true)
+	if err != nil {
+		return graphColumnManifest{}, err
+	}
+	if !graphColumnComplete(state) {
+		return graphColumnManifest{}, errUnavailable
+	}
+	manifest := graphColumnManifestFor(state)
+	body, err := wire(manifest)
+	if err != nil || len(body) > 4096 {
+		return graphColumnManifest{}, errors.Join(errLimit, err)
+	}
+	old, err := tr.Get(s.generationKey(g.ID, "manifest")).Get()
+	if err != nil {
+		return graphColumnManifest{}, err
+	}
+	if old != nil && !bytes.Equal(old, body) {
+		return graphColumnManifest{}, errMismatch
+	}
+	if err := s.ensureGuard(tr, manifest, old == nil); err != nil {
+		return graphColumnManifest{}, err
+	}
+	state.EOF = true
+	if err := put(tr, s.generationKey(g.ID, "progress"), state); err != nil {
+		return graphColumnManifest{}, err
+	}
+	tr.Set(s.generationKey(g.ID, "manifest"), body)
+	return manifest, nil
+}
 func (s *graphColumnStore) seal(g graphColumnGeneration) (graphColumnManifest, error) {
-	result, err := s.h.db.Transact(func(tr fdb.Transaction) (any, error) {
-		state, err := s.progress(tr, g, true)
-		if err != nil {
-			return nil, err
-		}
-		if !graphColumnComplete(state) {
-			return nil, errUnavailable
-		}
-		manifest := graphColumnManifestFor(state)
-		body, err := wire(manifest)
-		if err != nil || len(body) > 4096 {
-			return nil, errors.Join(errLimit, err)
-		}
-		old, err := tr.Get(s.generationKey(g.ID, "manifest")).Get()
-		if err != nil {
-			return nil, err
-		}
-		if old != nil && !bytes.Equal(old, body) {
-			return nil, errMismatch
-		}
-		if err := s.ensureGuard(tr, manifest, old == nil); err != nil {
-			return nil, err
-		}
-		state.EOF = true
-		if err := put(tr, s.generationKey(g.ID, "progress"), state); err != nil {
-			return nil, err
-		}
-		tr.Set(s.generationKey(g.ID, "manifest"), body)
-		return manifest, nil
-	})
+	result, err := s.h.db.Transact(func(tr fdb.Transaction) (any, error) { return s.sealIn(tr, g) })
 	if err != nil {
 		return graphColumnManifest{}, graphColumnCommitError(err)
 	}
@@ -488,7 +492,23 @@ func (s *graphColumnStore) manifest(id string) (graphColumnManifest, error) {
 
 // Source callback IO/SDK uploads occur only AFTER ReadTransact returns. No
 // dataset map, full snapshot, caller-supplied completeness count or hash seal.
+type graphColumnPublicationEvent struct {
+	Stage       string
+	Generation  graphColumnGeneration
+	Ordinal     uint64
+	ChunkSHA256 [32]byte
+}
+type graphColumnPublicationObserver func(graphColumnPublicationEvent) error
+
 func (s *graphColumnStore) publish(ctx context.Context, id string, initial, final cut) (graphColumnManifest, error) {
+	return s.publishObserved(ctx, id, initial, final, nil)
+}
+
+// Nil is the ordinary path. Observers own no native transaction and cannot
+// supply completeness; errors withhold the manifest/EOF result. Their IO is
+// after each upload/ReadTransact returns for chunk events; only the source-eof
+// event follows verified source EOF. Neither event runs in an SDK retry.
+func (s *graphColumnStore) publishObserved(ctx context.Context, id string, initial, final cut, observe graphColumnPublicationObserver) (graphColumnManifest, error) {
 	if s == nil || ctx == nil || !validName(id) {
 		return graphColumnManifest{}, errInvalid
 	}
@@ -529,6 +549,11 @@ func (s *graphColumnStore) publish(ctx context.Context, id string, initial, fina
 		}
 		if err := s.upload(g, ordinal, chain, body); err != nil {
 			return err
+		}
+		if observe != nil {
+			if err := observe(graphColumnPublicationEvent{"chunk-upload-returned", g, ordinal, sha256.Sum256(body)}); err != nil {
+				return err
+			}
 		}
 		chain = graphColumnChain(chain, body)
 		ordinal++
@@ -571,6 +596,11 @@ func (s *graphColumnStore) publish(ctx context.Context, id string, initial, fina
 	}
 	if err := flush(); err != nil {
 		return graphColumnManifest{}, err
+	}
+	if observe != nil {
+		if err := observe(graphColumnPublicationEvent{Stage: "source-eof", Generation: g, Ordinal: ordinal}); err != nil {
+			return graphColumnManifest{}, err
+		}
 	}
 	// Actual source EOF already verified, and native durable progress separately
 	// requires every original sequence AND physical history census at this cut.
