@@ -57,18 +57,25 @@ global source watermark families or perform import. Per-type retention, state
 column cuts and zero temporal ordinals have explicit consumer obligations in
 [PLAN §8a](../../docs/v5/PLAN.md); full V6 remains open.
 
-The current source selection is v4.51.7/main `9e9f0e0a`, with unchanged local
-replacements and preflight code/tests. v4.51.6/main `a77b1301` was source-reconciled
-only; current reader qualification is pending and the v4.51.5 receipt above
-remains immutable. PLAN §8a records relationship rebuild/re-create obligations
-from v4.51.6 and the v4.51.7 node-envelope/history/label/build and derived disk-row
-fixes. Upstream selected tests are source evidence, not local reader acceptance.
-These preflight functions use per-entity effective timelines, raw history/current
-rows and chain verification; they neither create nor prune temporal indexes.
-Re-run the existing ten narrow module targets against the approved merged reader
-using an absolute Go1.26.9 path, then record a fresh exact-source receipt. Indexed
-selector/build, retention refusal and destination-import proofs remain separate;
-no broader acceptance follows from the existing per-entity preflight cases.
+The selected v4.51.7/main `9e9f0e0a` reader is narrowly qualified at integrated
+root `0eb0a0ac` by the [new ten-target receipt](evidence/main4517-0eb0a0ac.json)
+and [raw archive](evidence/main4517-0eb0a0ac.tar.gz). All ten targets passed once
+with absolute Go1.26.9, pinned scanner versions/builds and unchanged cached
+binary bytes. All 2250 frozen Go/module/Makefile/lint inputs remained unchanged;
+coverage is 96.2% overall and 100% for both preflight functions. A startup
+`/var/tmp` versus `/private/var/tmp` provenance check refused before any target
+began; the retained correction compares canonical file identity. Each target
+stayed within 180 seconds and sampled process-tree RSS of 4096 MiB; every observed
+owned identity is absent at terminal cleanup. The heavy lease is released.
+
+v4.51.6/main `a77b1301` had source-only reconciliation, and historical v4.51.5
+qualification remains immutable. PLAN §8a records relationship rebuild/re-create
+and node-envelope/derived disk-row obligations. These unchanged preflight readers
+use per-entity effective timelines, raw history/current rows and chain verification;
+they neither create nor prune temporal indexes. Indexed selector/build, retention
+refusal, consumer and destination-import proofs remain separate. Newer main
+`bf0050b2`/v4.51.8 was observed while this qualification ran; it is outside this
+exact v4.51.7 source cutoff and remains unqualified by this receipt.
 
 The caller quiesces source writes, imports, retention and DDL across a call,
 supplies capture/reader identity and evidence, and designates an explicit v5
