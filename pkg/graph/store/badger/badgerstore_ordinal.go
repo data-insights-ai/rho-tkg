@@ -10,20 +10,15 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Dense ordinals (store.OrdinalCapability) on the badger store. Ordinals are
-// not persisted: loadIndexes numbers the stored nodes and relationships 1..N
-// in ID order when the store opens, every write of a new ID takes the next
-// one, and the store keeps ID → ordinal maps in RAM (a leaf lock, ordMu, that
-// is never held while another lock is taken). Every row the store hands out
-// carries its entity's ordinal: the cached rows are built with it, a decoded
-// row looks it up. A history row of an entity that has no current row any
-// more carries 0, as does every row when Config.DisableOrdinals is set (the
-// tiered store sets it: a cold shard that closes and reopens would renumber
-// its entities while the store stays open).
+// Dense ordinals (store.OrdinalCapability). Not persisted: loadIndexes numbers
+// stored nodes and rels 1..N in ID order at open, each new ID takes the next, and
+// ID-to-ordinal maps live in RAM (leaf lock ordMu, never held while taking another
+// lock). Rows handed out carry their entity's ordinal; history rows of an entity
+// without a current row carry 0, as does every row with Config.DisableOrdinals
+// (tiered sets it: a reopened cold shard would renumber).
 
-// OrdinalAllocator hands out node and relationship ordinals. Several stores
-// that must not hand out the same ordinal (the sharded store's slots) share
-// one through Config.SharedOrdinals. The zero value is ready.
+// OrdinalAllocator hands out node and rel ordinals; stores that must not collide
+// (sharded slots) share one via Config.SharedOrdinals. Zero value is ready.
 type OrdinalAllocator struct {
 	nodes atomic.Uint32
 	rels  atomic.Uint32
@@ -173,10 +168,9 @@ func (bs *Store) MaxRelOrdinal() uint32 {
 	return bs.ords.alloc.MaxRelOrdinal()
 }
 
-// NodeOrdinal returns the dense ordinal of a node this store holds a current
-// row for, 0 otherwise (or with DisableOrdinals). It reads this store's map
-// only, never Config.ForeignNodeOrdinal: the sharded store's slots resolve
-// each other's endpoints through it.
+// NodeOrdinal returns the dense ordinal of a node this store holds a current row
+// for, else 0 (or with DisableOrdinals). Reads this store's map only, never
+// Config.ForeignNodeOrdinal.
 func (bs *Store) NodeOrdinal(id types.NodeID) uint32 {
 	if bs == nil {
 		return 0
@@ -184,9 +178,8 @@ func (bs *Store) NodeOrdinal(id types.NodeID) uint32 {
 	return bs.ords.node(id, false)
 }
 
-// endpointNodeOrdinal is the ordinal of a relationship's endpoint: this
-// store's, else the one Config.ForeignNodeOrdinal states for a node held
-// elsewhere.
+// endpointNodeOrdinal is this store's ordinal for a rel endpoint, else
+// Config.ForeignNodeOrdinal for a node held elsewhere.
 func (bs *Store) endpointNodeOrdinal(id types.NodeID) uint32 {
 	if ord := bs.ords.node(id, false); ord != 0 {
 		return ord
@@ -216,11 +209,9 @@ func (bs *Store) relEndpointOrdinals(r *types.Relationship) (start, end uint32) 
 // HasOrdinals is false when the store was opened with DisableOrdinals.
 func (bs *Store) HasOrdinals() bool { return bs != nil && bs.ords != nil && !bs.ords.disabled }
 
-// columnOrdinalCache holds the ordinals of a column snapshot's rows per
-// label and per relationship type, keyed by the snapshot itself: a snapshot is
-// immutable and replaced on every write that could change its rows, and an
-// entity keeps its ordinal while it has a current row, so the ordinals of one
-// snapshot's rows never change.
+// columnOrdinalCache holds ordinals of a column snapshot's rows per label and rel
+// type, keyed by the snapshot: snapshots are immutable and an entity keeps its
+// ordinal while current, so they never change.
 type columnOrdinalCache struct {
 	nodes map[uint16]snapshotOrdinals[types.NodeID]
 	rels  map[uint16]snapshotOrdinals[types.RelID]
@@ -244,9 +235,7 @@ func (bs *Store) labelColumnOrdinals(token uint16, col *indexpkg.LabelDocValues)
 	c, ok := bs.colOrds.nodes[token]
 	bs.docMu.Unlock()
 	if ok && (c.col == col || indexpkg.SameIDs(c.col, col)) {
-		// A patched snapshot shares its predecessor's ID vector (round 5
-		// request 4): same rows, so the same ordinals (an ordinal is fixed
-		// while the node is current).
+		// A patched snapshot shares its predecessor's ID vector: same rows, same ordinals.
 		if c.col != col {
 			bs.docMu.Lock()
 			bs.colOrds.nodes[token] = snapshotOrdinals[types.NodeID]{col: col, ords: c.ords}
@@ -288,11 +277,8 @@ func (bs *Store) multiColumnOrdinals(key string, col *indexpkg.LabelDocValues) [
 	return ords
 }
 
-// relColumnOrdinals is labelColumnOrdinals for a relationship type's
-// snapshot, with its endpoints' ordinals (starts, ends: the node IDs of the
-// snapshot's reserved endpoint columns, aligned with its IDs). An endpoint
-// keeps its ordinal while the relationship is current, so they are read once
-// per snapshot like the relationships' own.
+// relColumnOrdinals is labelColumnOrdinals for a rel type's snapshot, with its
+// endpoints' ordinals (starts, ends: aligned with its IDs), read once per snapshot.
 func (bs *Store) relColumnOrdinals(token uint16, col *indexpkg.DocValues[types.RelID], startIDs, endIDs []int64) (ords, starts, ends []uint32) {
 	bs.docMu.Lock()
 	c, ok := bs.colOrds.rels[token]
@@ -333,9 +319,8 @@ func (bs *Store) endpointOrdinals(raw []int64) []uint32 {
 	return out
 }
 
-// nodeOrdinals appends the ordinals of ids to out (0 for an ID without one, or
-// every ID when ordinals are off) under one read lock: the column scans' batch
-// fill.
+// nodeOrdinals appends the ordinals of ids to out (0 for none, or all when
+// ordinals are off) under one read lock: the column scans' batch fill.
 func (o *ordinals) nodeOrdinals(ids []types.NodeID, out []uint32) []uint32 {
 	if o == nil || o.disabled {
 		return append(out, make([]uint32, len(ids))...)

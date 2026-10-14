@@ -10,9 +10,9 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// buildRelTypeTemporalIndexPerRel is the pre-10(a) build, kept as the oracle:
-// one current-row point read plus one history prefix scan per relationship.
-// fold, when set, receives every folded row: (id, version), -1 for the current row.
+// buildRelTypeTemporalIndexPerRel is the pre-10(a) build, kept as the oracle: a
+// point read plus a history prefix scan per relationship. fold, when set, receives
+// every folded row: (id, version), -1 for the current row.
 func buildRelTypeTemporalIndexPerRel(bs *Store, rids []types.RelID, fold func(snowflake.ID, int64)) (*index.TemporalIndex, error) {
 	if fold == nil {
 		fold = func(snowflake.ID, int64) {}
@@ -61,11 +61,10 @@ func rebuildRel(id types.RelID, relType uint16, version uint32, from, to types.I
 	return r
 }
 
-// seedRelTemporalRebuild writes n relationships of type A interleaved by ID
-// with n of type B, then diverging lifecycles on type A: updates with history
-// (the envelope moves earlier and later), deletes, re-imports of a deleted ID,
-// and a history-only row written above the current version. Type B gets
-// history too, so the history range holds foreign rows between A's.
+// seedRelTemporalRebuild writes n rels of type A interleaved by ID with n of type
+// B, then diverging lifecycles on A (updates with history, deletes, re-imports, a
+// history-only row above the current version). B has history too, so the history
+// range holds foreign rows.
 func seedRelTemporalRebuild(t testing.TB, bs *Store, n int) {
 	t.Helper()
 	for _, id := range []types.NodeID{1, 2} {
@@ -136,9 +135,8 @@ func seedRelTemporalRebuild(t testing.TB, bs *Store, n int) {
 	}
 }
 
-// TestRelTemporalIndexRebuildSequential: the rel-type temporal index build
-// (backlog 10(a)) equals the per-relationship oracle on every envelope, and
-// reads the store in one transaction instead of one or two per relationship.
+// TestRelTemporalIndexRebuildSequential pins that the sequential build (backlog
+// 10(a)) equals the per-relationship oracle on every envelope, in one transaction.
 func TestRelTemporalIndexRebuildSequential(t *testing.T) {
 	const n = 120
 	for _, tc := range []struct {
@@ -254,10 +252,8 @@ func TestRelTemporalIndexRebuildSequential(t *testing.T) {
 	}
 }
 
-// BenchmarkRelTemporalIndexRebuild: the per-relationship build (before 10(a))
-// against the sequential one, on a reopened store of 200,000 relationships of
-// the indexed type, each with one history row, interleaved with 200,000 of
-// another type. Reports rels/s.
+// BenchmarkRelTemporalIndexRebuild: per-relationship vs sequential build on a
+// reopened store of 200,000 rels with one history row each. Reports rels/s.
 func BenchmarkRelTemporalIndexRebuild(b *testing.B) {
 	if testing.Short() {
 		b.Skip("seeds 400,000 relationships")

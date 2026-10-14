@@ -20,10 +20,9 @@ import (
 // on an event label in a Store. Only reference entities support indexes.
 var ErrEventPropertyIndex = errors.New("graph: property indexes only supported for reference entities in Store")
 
-// ErrPrimaryLabelClassMutation is returned when a label mutation would change a
-// node's primary-label ontology class (reference vs event). Such a change would
-// move the live entity to a different shard while leaving prior history on the
-// original shard, fragmenting the version chain.
+// ErrPrimaryLabelClassMutation is returned when a label mutation would change
+// a node's primary-label ontology class (reference vs event), which would
+// split the version chain across shards.
 var ErrPrimaryLabelClassMutation = errors.New("graph: label mutation would change primary-label class (reference<->event)")
 
 // ensurePrimaryLabelClassUnchanged compares the primary-label classes of the
@@ -48,12 +47,9 @@ type temporalIndexShardRef struct {
 	archive   bool
 }
 
-// temporalIndexShardRefsLocked builds the snapshot list of shards involved in
-// a temporal-index fanout operation. Caller MUST hold ts.mu (read or write
-// lock) for the duration of this call AND for any work that dereferences the
-// returned refs without separate pinning. Lock order across this and the
-// follow-on operations: ts.mu → archiveMu (via ensureTemporalIndexArchiveOpenLocked
-// and checkoutArchive). archiveMu must NOT be taken before ts.mu.
+// temporalIndexShardRefsLocked snapshots the shards of a temporal-index
+// fanout. Caller MUST hold ts.mu for this call and for any use of the refs.
+// Lock order: ts.mu -> archiveMu (never archiveMu first).
 func (ts *Store) temporalIndexShardRefsLocked() []temporalIndexShardRef {
 	refs := []temporalIndexShardRef{{name: "reference", reference: true}}
 	if ts.refArchive.Load() != nil || ts.hasArchiveShard() {
@@ -174,15 +170,12 @@ func (ts *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 
 // --- Relationship property indexes (K3b) ---
 //
-// The tiered store DECLINES relationship property index creation: relationships
-// are routed to event shards by timestamp, so a shard-local rel-value equality
-// index would only ever see the relationships in one shard while the values a
-// query must find are scattered across every shard. CreateRelPropertyIndex
-// returns ErrRelPropertyIndexUnsupported (a clear, distinct sentinel);
-// DropRelPropertyIndex returns ErrIndexNotFound (there is never such an index to
-// drop, and this keeps the graph-layer create-rollback clean). Queries still
-// work via RelationshipsByTypeAndProperty's cross-shard scan+filter, so
-// g.Rels().ByTypeAndProperty behaves uniformly across every backend.
+// The tiered store DECLINES relationship property indexes: rels are routed by
+// timestamp, so a shard-local index would see one shard only.
+// CreateRelPropertyIndex returns ErrRelPropertyIndexUnsupported;
+// DropRelPropertyIndex returns ErrIndexNotFound (keeps the graph-layer
+// create-rollback clean). Queries use RelationshipsByTypeAndProperty's
+// cross-shard scan+filter.
 
 // CreateRelPropertyIndex declines on the tiered store — see the note above.
 func (ts *Store) CreateRelPropertyIndex(relTypeToken uint16, propertyKey string) error {
@@ -213,10 +206,9 @@ func (ts *Store) DropRelPropertyIndex(relTypeToken uint16, propertyKey string) e
 	return storecontract.ErrIndexNotFound
 }
 
-// RelationshipsByTypeAndProperty answers the query by a cross-shard type scan +
-// property filter (no index exists on tiered). Correct, unaccelerated. Uses the
-// mandatory RelationshipsByType surface so it folds reference + archive + every
-// event shard.
+// RelationshipsByTypeAndProperty answers by a cross-shard type scan + property
+// filter (no index on tiered): correct, unaccelerated; folds reference,
+// archive and every event shard.
 func (ts *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, key string, value any, opts QueryOpts) ([]*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
@@ -238,10 +230,8 @@ func (ts *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, key string,
 		return nil, nil
 	}
 
-	// Scan the whole type at the requested depth (no pagination limit — the
-	// property predicate can drop arbitrary elements; no temporal filter — a
-	// temporal opt is applied to current rows below, matching memory/badger's
-	// RelationshipsByTypeAndProperty).
+	// Scan the whole type at the requested depth: no limit (the predicate can drop
+	// anything); the temporal opt is applied to current rows below.
 	candidates, err := ts.RelationshipsByType(relTypeToken, QueryOpts{Depth: opts.Depth})
 	if err != nil {
 		return nil, err
@@ -479,11 +469,11 @@ func (ts *Store) DropTemporalIndex(labelToken uint16) error {
 
 // --- High-frequency indexes ---
 
-// CreateHighFrequencyIndex creates a time-bucketed high-frequency index on nodes
-// with the given label token across all shards (reference + all event shards).
-// New hot shards created via rotation and lazily opened archives inherit the index.
-// Returns ErrInvalidTemporalIndexConfig if bucketSize is not a positive whole millisecond.
-// Returns ErrTemporalIndexExists if any temporal index already exists for this label.
+// CreateHighFrequencyIndex creates a time-bucketed high-frequency index on
+// nodes with labelToken across all shards; new hot shards and lazily opened
+// archives inherit it. Returns ErrInvalidTemporalIndexConfig if bucketSize is
+// not a positive whole millisecond, ErrTemporalIndexExists if one exists for
+// the label.
 func (ts *Store) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Duration) error {
 	releaseLifecycle, err := ts.beginSequentialStoreWideOperation()
 	if err != nil {
@@ -880,22 +870,18 @@ func ensureHighFrequencyIndexKind(store *BadgerStore, labelToken uint16, bucketS
 	return true, nil
 }
 
-// CreateVectorIndex creates a vector similarity index spanning all shards.
-// The index is maintained at the Store level (not per-shard). The index
-// defaults to the approximate HNSW engine; use CreateVectorIndexWithOptions
-// for the brute-force escape hatch or HNSW tuning.
-// Scans existing nodes across all shards to populate the index.
-// Returns ErrVectorIndexExists on duplicate.
+// CreateVectorIndex creates a vector similarity index spanning all shards,
+// maintained at Store level and populated from existing nodes. Defaults to
+// HNSW; see CreateVectorIndexWithOptions. Returns ErrVectorIndexExists on
+// duplicate.
 func (ts *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims int, metric DistanceMetric) error {
 	return ts.CreateVectorIndexWithOptions(labelToken, propertyKey, dims, metric, storecontract.VectorIndexOptions{})
 }
 
-// CreateVectorIndexWithOptions is CreateVectorIndex with additional control
-// over the search engine (opts.UseBruteForce) and HNSW tuning (opts.M /
-// EfConstruction / EfSearch). A zero-value opts is identical to
-// CreateVectorIndex (documented HNSW defaults). The chosen engine/tuning is
-// persisted in the vector index definition file so a restart rebuilds the
-// SAME engine rather than silently reverting to the default.
+// CreateVectorIndexWithOptions is CreateVectorIndex with control over the
+// engine (opts.UseBruteForce) and HNSW tuning (opts.M / EfConstruction /
+// EfSearch); zero opts equals CreateVectorIndex. The choice is persisted in
+// the definition so a restart rebuilds the same engine.
 func (ts *Store) CreateVectorIndexWithOptions(labelToken uint16, propertyKey string, dims int, metric DistanceMetric, opts storecontract.VectorIndexOptions) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
@@ -1021,13 +1007,10 @@ func (ts *Store) DropVectorIndex(labelToken uint16, propertyKey string) error {
 	return nil
 }
 
-// SearchNearestNodes returns the k nodes with vectors closest to query
-// under the index defined for labelToken+propertyKey.
-// Results are ordered by ascending distance (closest first).
-// Returns ErrVectorIndexNotFound if no index exists.
-// Returns ErrDimensionMismatch if query length differs from the index's dims.
-// Returns ErrInvalidVectorValue if query contains NaN or infinity.
-// Returns nil, nil if the index exists but has no entries.
+// SearchNearestNodes returns the k nodes closest to query under the index for
+// labelToken+propertyKey, ascending distance. Returns ErrVectorIndexNotFound
+// without an index, ErrDimensionMismatch on wrong query length,
+// ErrInvalidVectorValue on NaN/Inf, and nil, nil for an empty index.
 func (ts *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query []float32, k int, opts QueryOpts) ([]*types.Node, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
@@ -1060,13 +1043,10 @@ func (ts *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query
 		return nil, nil
 	}
 
-	// Depth gating mirrors NodesByLabel/AllNodes/RelationshipsByType:
-	// DepthHot/DepthWarm include live reference nodes but exclude refArchive,
-	// and event-shard nodes must match the requested hot/warm tier.
-	//
-	// Filtering happens BEFORE the heap selection (passed into searchNearest
-	// as the filter callback): otherwise a near-but-archived candidate
-	// could push a farther-but-eligible candidate out of the top-k.
+	// Depth gating mirrors NodesByLabel/AllNodes/RelationshipsByType. Filtering
+	// runs BEFORE the heap selection (searchNearest filter callback) so an
+	// archived near candidate cannot push an eligible farther one out of the
+	// top-k.
 	depthFilter, releaseDepthFilter, err := ts.depthFilter(opts.Depth)
 	if err != nil {
 		return nil, err
@@ -1151,17 +1131,11 @@ func (ts *Store) vectorTemporalFilter(vi *indexpkg.VectorIndex, key indexpkg.Vec
 	}, nil
 }
 
-// SearchNearestFiltered is the package-internal entry point used by the
-// Graph layer's TEMPORAL path to perform vector search with an
-// eligibility filter applied BEFORE the k-cut. The filter is combined with
-// current-row shape validation before the vector index heap selection.
-//
-// Depth gating is applied by Store.SearchNearestNodes. The graph layer uses
-// this filtered hook for temporal DepthAll queries and falls back to
-// SearchNearestNodes with QueryOpts.Depth when depth filtering is also needed.
-//
-// Returns raw snowflake.IDs in ascending distance order; the caller is
-// responsible for resolving entities (current or historical version).
+// SearchNearestFiltered is the package-internal entry for the Graph layer's
+// TEMPORAL path: eligibility filter (plus current-row shape validation) is
+// applied BEFORE the k-cut. Depth gating is done by Store.SearchNearestNodes;
+// the graph layer uses this hook for temporal DepthAll queries. Returns raw
+// IDs in ascending distance; the caller resolves entities.
 func (ts *Store) SearchNearestFiltered(labelToken uint16, propertyKey string, query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
@@ -1216,11 +1190,9 @@ func (ts *Store) SearchNearestFiltered(labelToken uint16, propertyKey string, qu
 }
 
 // depthFilter returns an eligibility predicate matching AllNodes/NodesByLabel:
-// DepthAll accepts every indexed node; DepthHot accepts live reference nodes
-// plus hot event-shard nodes; DepthWarm accepts live reference nodes plus
-// hot/warm event-shard nodes; refArchive is excluded from DepthHot/DepthWarm.
-// Filtering happens before vector heap selection so near-but-ineligible
-// candidates cannot crowd out farther eligible candidates from the top-k.
+// DepthAll accepts every indexed node; DepthHot live reference plus hot
+// event-shard nodes; DepthWarm live reference plus hot/warm event-shard nodes
+// (refArchive excluded). Applied before the heap selection.
 func (ts *Store) depthFilter(depth ShardDepth) (func(snowflake.ID) bool, func(), error) {
 	noop := func() {}
 	if err := validateDepth(depth); err != nil {

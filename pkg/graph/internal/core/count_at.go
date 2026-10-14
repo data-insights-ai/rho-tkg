@@ -5,26 +5,16 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// CountByLabelAt returns len(ByLabel(label, opts)) without building the
-// result: the exact number of nodes carrying label at the read coordinate in
-// opts (ValidAt, ValidStart/ValidEnd, TxAt, TxPin, Depth, After, Limit — the
-// same options and validation as ByLabel).
+// CountByLabelAt returns len(ByLabel(label, opts)) without building the result:
+// the exact number of nodes carrying label at the read coordinate in opts (same
+// options and validation as ByLabel). Errors are ByLabel's; an unknown label counts 0.
 //
-// Without a temporal filter and without pagination or Depth it is the store's
-// label counter (O(1), CountByLabel). With TxPin alone it answers from the
-// as-of column set DocValuesSnapshotAsOf / ForEachDocValuesAsOf cached for the
-// label and pin, when one is (no pass). With TxAt (and ValidAt) it counts the
-// segments containing ValidAt of the label's state cut at TxAt (backlog 28,
-// state_columns.go: built on the second read at the pin, then no row read).
-// Otherwise it resolves the same candidates ByLabel resolves, with two
-// savings: a candidate whose current row alone decides the answer is decided
-// on the row the label scan already read (no copy, no history read), and
-// nothing is materialized, sorted or paginated (the count of matches above
-// After, capped at Limit).
-//
-// Errors are ByLabel's (a malformed label, invalid or conflicting options,
-// ErrRetentionExpired for a pin before a retention watermark, ErrGraphClosed).
-// An unknown label counts 0.
+// Paths: no temporal filter/pagination/Depth is the store's O(1) label counter;
+// TxPin alone uses the cached as-of column set when present; TxAt (and ValidAt)
+// counts segments of the label's state cut (backlog 28, state_columns.go);
+// otherwise ByLabel's candidates are resolved, deciding a candidate on the row the
+// label scan already read when its current row alone decides, with nothing
+// materialized, sorted or paginated.
 func (n *NodeOps) CountByLabelAt(label string, opts storepkg.QueryOpts) (int, error) {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
@@ -51,11 +41,8 @@ func (n *NodeOps) CountByLabelAt(label string, opts storepkg.QueryOpts) (int, er
 	return count, nil
 }
 
-// CountByTypeAt is CountByLabelAt for relationships: len(ByType(typeName,
-// opts)) without building the result. The type's counter without a temporal
-// filter (CountByType); the type's state cut with TxAt (and ValidAt);
-// otherwise ByType's candidates, a candidate whose current row alone decides
-// decided on the type scan's row.
+// CountByTypeAt is CountByLabelAt for relationships: len(ByType(typeName, opts))
+// without building the result, with the same paths using the type counter and state cut.
 func (r *RelOps) CountByTypeAt(typeName string, opts storepkg.QueryOpts) (int, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -82,14 +69,12 @@ func (r *RelOps) CountByTypeAt(typeName string, opts storepkg.QueryOpts) (int, e
 	return count, nil
 }
 
-// unpaged reports whether opts reads the whole label or type: no cursor, no
-// limit, every tier.
+// unpaged reports whether opts reads the whole label or type: no cursor, no limit, every tier.
 func unpaged(opts storepkg.QueryOpts) bool {
 	return opts.After == 0 && opts.Limit == 0 && opts.Depth == storepkg.DepthAll
 }
 
-// pagedCount is the number of matches above after, capped at limit (0 = no
-// limit): the length ByLabel's / ByType's pagination leaves.
+// pagedCount is the number of matches above after, capped at limit (0 = no limit).
 type pagedCount struct {
 	after types.EntityID
 	limit int
@@ -133,8 +118,7 @@ func (c *Core) countNodesByLabelLocked(label string, opts storepkg.QueryOpts) (i
 	if err != nil {
 		return 0, err
 	}
-	// The candidates in ascending ID order with their current rows
-	// (label_scan_at.go): a node without history rows is decided on its row.
+	// Candidates in ascending ID order with their current rows (label_scan_at.go).
 	scan := c.newNodeLabelScanAt(tok, current, opts)
 	count := pagedCount{after: opts.After, limit: opts.Limit}
 	for _, id := range skipAfter(candIDs, opts.After) {
@@ -152,20 +136,13 @@ func (c *Core) countNodesByLabelLocked(label string, opts storepkg.QueryOpts) (i
 	return count.total(), nil
 }
 
-// nodeCurrentDecides reports whether a label read's current row alone
-// decides what findNodeVersionForOpts(id, opts, pred) finds (decided) and
-// whether that is the current row (matched), in findNodeVersionForOpts'
-// precedence:
-//   - TxPin: nodeAsOfLocked's current-row answer (no store as-of door, the
-//     row recorded by the pin and not superseded), after its compaction and
-//     retention checks;
-//   - ValidAt: nodeAtLockedTx's (nodeCurrentAnswersAt), after its checks.
-//
-// An interval read decides nothing here: the arm that called a current row
-// answering the point query at the first instant of the interval it covers a
-// match over-counted CountByLabelAt / CountByTypeAt against the bitemporal
-// oracle (round 6 request 12). A node without history rows is decided from
-// its row by singleVersionNodes instead.
+// nodeCurrentDecides reports whether a label read's current row alone decides what
+// findNodeVersionForOpts(id, opts, pred) finds (decided) and whether that is the
+// current row (matched), in its precedence: TxPin uses nodeAsOfLocked's current-row
+// answer (after compaction and retention checks); ValidAt uses nodeAtLockedTx's
+// (nodeCurrentAnswersAt). An interval read decides nothing here: treating the
+// current row as answering the interval's first instant over-counted against the
+// bitemporal oracle. A node without history rows is decided by singleVersionNodes.
 func (c *Core) nodeCurrentDecides(id types.NodeID, current *types.Node, opts storepkg.QueryOpts, pred func(*types.Node) bool) (decided, matched bool, err error) {
 	switch {
 	case opts.TxPin != 0:
@@ -232,8 +209,7 @@ func (c *Core) countRelsByTypeLocked(typeName string, opts storepkg.QueryOpts) (
 	return count.total(), nil
 }
 
-// relCurrentDecides is nodeCurrentDecides for relationships (relAsOfLocked's
-// and relAtLockedTx's current-row answers).
+// relCurrentDecides is nodeCurrentDecides for relationships.
 func (c *Core) relCurrentDecides(id types.RelID, current *types.Relationship, opts storepkg.QueryOpts, pred func(*types.Relationship) bool) (decided, matched bool, err error) {
 	switch {
 	case opts.TxPin != 0:

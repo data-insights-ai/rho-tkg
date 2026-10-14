@@ -8,12 +8,9 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkLabelScanAt is sigma-tkgd's EnvelopePruneLarge at the store door
-// (round 6 request 12): 300,000 :Event nodes without history whose valid
-// intervals are mixed (closed before the instant, open, closed around it,
-// starting after it, none), read with ForEachByLabel at ValidAt 5000 and
-// NoSort, and counted with CountByLabelAt; without and with the label's
-// valid-time index.
+// BenchmarkLabelScanAt: 300,000 :Event nodes without history and mixed valid
+// intervals, ForEachByLabel at ValidAt 5000 (NoSort) and CountByLabelAt, without
+// and with the label's valid-time index.
 func BenchmarkLabelScanAt(b *testing.B) {
 	for _, backend := range []struct {
 		name string

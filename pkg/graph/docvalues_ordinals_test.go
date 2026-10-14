@@ -18,14 +18,10 @@ type docRow struct {
 	present []bool
 }
 
-// TestForEachDocValuesOrdinal (sigma-tkgd round 6 request 11): the ordinal
-// doors hand out the rows ForEachDocValues / ForEachDocValuesMulti hand out,
-// in the same order, each with the node's ordinal — the one a point read of
-// the node carries. Two-phase: after a property write, a delete and a new
-// member, the rows and ordinals follow (a kept node keeps its ordinal, the
-// deleted one is gone, the new one has its own). An early stop stops. A store
-// without ordinals (tiered) declines with ok=false and no row; an unknown
-// label declines as ForEachDocValues does.
+// TestForEachDocValuesOrdinal: the ordinal doors hand out the rows ForEachDocValues
+// / Multi hand out, in order, with the node's ordinal (as a point read carries it),
+// following a write, delete and new member; early stop stops. A store without
+// ordinals (tiered) or an unknown label declines with ok=false and no row.
 func TestForEachDocValuesOrdinal(t *testing.T) {
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()

@@ -9,21 +9,16 @@ import (
 )
 
 // Transaction-time membership sidecars and valid-end indexes on the tiered
-// store (backlog 58, sigma-tkgd R2). Every shard is a badger store keeping
-// its own sidecars and valid-end index over its own rows, so the store-wide
-// answer is the fan-out over every shard that can hold a row: the reference
-// shard, the archive (when one exists) and every event shard. A closed cold
-// shard is opened, as the DepthAll history fold the answers replace opens it;
-// the core takes these answers for DepthAll reads only.
+// store (backlog 58). Each shard keeps its own over its own rows, so the
+// store-wide answer fans out over the reference shard, the archive (if any)
+// and every event shard (closed cold shards are opened, as the DepthAll
+// history fold does); the core uses these for DepthAll reads only.
 //
-// An entity's rows can sit on more than one shard (ArchiveNode moves the
-// current row to the archive and leaves the history on the reference shard;
-// a re-imported entity's earlier lives stay on their shard), so per-entity
-// answers are merged: each entity is emitted once, with the lowest first
-// transaction time any shard knows (indexpkg.MergeFirstTx: 0, unknown,
-// wins). Membership is append-only on every shard, so the union is the
-// whole store's ever-membership. fn runs after every shard is checked back
-// in, outside every lock.
+// An entity's rows can sit on several shards (ArchiveNode leaves history on
+// the reference shard), so per-entity answers are merged: emitted once with
+// the lowest first tx time (indexpkg.MergeFirstTx: 0, unknown, wins).
+// Membership is append-only, so the union is the ever-membership. fn runs
+// after every shard is checked in, outside every lock.
 
 var (
 	_ storecontract.LabelTxMembershipCapability        = (*Store)(nil)
@@ -37,21 +32,14 @@ var (
 )
 
 // allShards runs read on the reference shard, the archive (when one exists)
-// and every event shard (open ones concurrently, cold ones one at a time,
-// lazily opened), returning the reference shard's result first, then the
-// others' (ref tells read which shard it reads). read must be safe for
-// concurrent use.
+// and every event shard (open ones concurrently, cold ones one at a time),
+// returning the reference result first (ref tells read which shard it is).
+// read must be safe for concurrent use.
 //
 // The reference and archive reads run under moveMu's read lock, which
 // ArchiveNode and RestoreNode hold for their whole move. Without it a move
-// between the two reads can hide a node from both: RestoreNode writes the
-// node to the reference shard, then hard-deletes it from the archive (no
-// tombstone), so a reference read before the write and an archive read after
-// the delete both miss it whenever the archive builds its membership sidecar
-// or valid-end index after the delete (membership answers, the valid-end
-// candidates; the property door's off-reference check, below, likewise
-// misses an ArchiveNode between its archive check and its reference read).
-// Holding the lock, both reads see the node on exactly the shard it sits on.
+// between the two reads can hide a node from both (RestoreNode writes the
+// reference shard, then hard-deletes from the archive without a tombstone).
 func allShards[T any](ts *Store, read func(bs *BadgerStore, ref bool) (T, error)) (ref T, others []T, err error) {
 	if err = ts.checkOpen(); err != nil {
 		return ref, nil, err
@@ -107,21 +95,18 @@ func refAndArchive[T any](ts *Store, read func(bs *BadgerStore, ref bool) (T, er
 	return ref, archived, err == nil, err
 }
 
-// refArchiveGapHook runs the test-only fanoutRefReadHook (if set) in a door
-// that reads the reference shard and then the archive, between the two reads:
-// the window an ArchiveNode or RestoreNode could land in.
+// refArchiveGapHook runs the test-only fanoutRefReadHook between a door's
+// reference and archive reads: the window a move could land in.
 func (ts *Store) refArchiveGapHook() {
 	if h := ts.fanoutRefReadHook; h != nil {
 		h()
 	}
 }
 
-// moveReadLock is a read hold on moveMu that a door releases once its
-// reference shard and archive reads are done (unlock is idempotent, so the
-// door may also defer it for its early returns). Lock order: moveMu before
-// ts.mu and archiveMu, as ArchiveNode and RestoreNode take them; a holder
-// must not call back into a door that takes moveMu again (a move waiting for
-// the write lock would block the second read lock).
+// moveReadLock is a read hold on moveMu released by a door once its reference
+// and archive reads are done (unlock is idempotent). Lock order: moveMu before
+// ts.mu and archiveMu; a holder must not re-enter a door taking moveMu (a
+// waiting move would block the second read lock).
 type moveReadLock struct {
 	ts   *Store
 	held bool
@@ -233,16 +218,12 @@ func (ts *Store) RelTypeTxMembersOf(token uint16, ids []types.RelID, fn func(id 
 }
 
 // ForEachNodePropertyTxMember implements
-// store.NodePropertyTxMembershipCapability. A node property index lives on
-// the reference shard only (CreatePropertyIndex), so its sidecar sees only
-// that shard's rows. It declines with store.ErrIndexNotFound, cheapest test
-// first: an event-class label (never indexed), no declared index on the
-// reference shard, then any other shard (the archive, an event shard: an
-// archived node, an event node carrying the label as a secondary one) that
-// ever held a node with the label. The reference shard's sidecar (which also
-// declines while the index is being created) is read in the same fan-out, so
-// no ArchiveNode or RestoreNode falls between it and the archive check. On a
-// decline the core takes the history fold.
+// store.NodePropertyTxMembershipCapability. A node property index lives on the
+// reference shard only, so it declines with store.ErrIndexNotFound, cheapest
+// test first: an event-class label, no declared index on the reference shard,
+// then any other shard that ever held a node with the label. The reference
+// sidecar is read in the same fan-out so no move falls between it and the
+// archive check. On decline the core takes the history fold.
 func (ts *Store) ForEachNodePropertyTxMember(labelToken uint16, propertyKey, valueKey string, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
@@ -294,11 +275,9 @@ func (ts *Store) ForEachNodePropertyTxMember(labelToken uint16, propertyKey, val
 	return nil
 }
 
-// ForEachRelPropertyTxMember implements
-// store.RelPropertyTxMembershipCapability. The tiered store never holds a
-// relationship property index (CreateRelPropertyIndex is unsupported), so
-// it always declines with store.ErrIndexNotFound, as a store without the
-// declared index does.
+// ForEachRelPropertyTxMember implements store.RelPropertyTxMembershipCapability.
+// Tiered never holds a relationship property index, so it always declines with
+// store.ErrIndexNotFound.
 func (ts *Store) ForEachRelPropertyTxMember(relTypeToken uint16, propertyKey, valueKey string, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
@@ -309,13 +288,11 @@ func (ts *Store) ForEachRelPropertyTxMember(relTypeToken uint16, propertyKey, va
 	return storecontract.ErrIndexNotFound
 }
 
-// mergeValidEndCandidates merges per-shard valid-end candidates: an entity
-// listed by several shards gets the highest stamp and bound (an unknown
-// listing, Stamp ValidEndOpen, wins). The union is a sound superset: each
-// shard's fold bounds the segments of its own rows (a delete tombstone caps
-// only the rows of its own shard, which leaves the other shards' bounds
-// looser, never tighter), and a shard lists an entity whenever one of its
-// rows was stamped after the pin. Gen is 0: Refine is a no-op on tiered.
+// mergeValidEndCandidates merges per-shard candidates: an entity listed by
+// several shards gets the highest stamp and bound (unknown, Stamp
+// ValidEndOpen, wins). The union is a sound superset: a shard's fold bounds
+// only its own rows, so other shards' bounds stay looser, never tighter. Gen
+// is 0: Refine is a no-op on tiered.
 func mergeValidEndCandidates(ref []storecontract.ValidEndCandidate, others [][]storecontract.ValidEndCandidate) []storecontract.ValidEndCandidate {
 	if len(others) == 0 {
 		for i := range ref {
@@ -350,8 +327,7 @@ func mergeValidEndCandidates(ref []storecontract.ValidEndCandidate, others [][]s
 }
 
 // RelValidEndCandidates implements store.RelValidEndCapability over every
-// shard's valid-end index (each tracks the type on its first call, from its
-// own membership sidecar).
+// shard's valid-end index.
 func (ts *Store) RelValidEndCandidates(typeToken uint16, pin, validFrom types.Instant) ([]storecontract.ValidEndCandidate, error) {
 	ref, others, err := allShards(ts, func(bs *BadgerStore, _ bool) ([]storecontract.ValidEndCandidate, error) {
 		return bs.RelValidEndCandidates(typeToken, pin, validFrom)
@@ -363,11 +339,9 @@ func (ts *Store) RelValidEndCandidates(typeToken uint16, pin, validFrom types.In
 }
 
 // RefineRelValidEnd implements store.RelValidEndCapability as a no-op: a
-// shard's refined bound replaces its fold until the next write on that shard,
-// but the entity's rows can span shards (ArchiveNode, a re-import), and a
-// write on another shard would leave the refined bound standing for rows it
-// no longer bounds. An entity with a loose fold (a valid-time close leaves
-// the closed version's open predecessor in history) is read on every call.
+// shard's refined bound outlives writes on other shards, but an entity's rows
+// can span shards (ArchiveNode, re-import), so it could stand for rows it no
+// longer bounds. Loose-fold entities are read on every call.
 func (ts *Store) RefineRelValidEnd(types.RelID, uint64, types.Instant) {}
 
 // NodeValidEndCandidates implements store.NodeValidEndCapability (see

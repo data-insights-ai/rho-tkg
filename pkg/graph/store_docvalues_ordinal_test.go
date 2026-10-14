@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// docValuesOrdinalStore is the store door of round 6 request 11.
+// docValuesOrdinalStore is the store-level ordinal door.
 type docValuesOrdinalStore interface {
 	PutNode(*types.Node) error
 	GetNode(types.NodeID) (*types.Node, error)
@@ -18,10 +18,9 @@ type docValuesOrdinalStore interface {
 	Close() error
 }
 
-// TestStoreForEachDocValuesOrdinal calls each store's ordinal doors
-// directly: every row carries the ordinal of the node's stored row, an
-// intersection holds only the common members, and a badger store with
-// DisableOrdinals declines both doors (no row). A closed store fails.
+// TestStoreForEachDocValuesOrdinal calls each store's ordinal doors directly: rows
+// carry the stored ordinal, an intersection holds common members only, badger with
+// DisableOrdinals declines both doors, a closed store fails.
 func TestStoreForEachDocValuesOrdinal(t *testing.T) {
 	const la, lb = uint16(3), uint16(4)
 	stores := []struct {

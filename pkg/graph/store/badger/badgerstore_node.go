@@ -18,10 +18,9 @@ func (bs *Store) PutNode(n *types.Node) error {
 	return bs.putNodeRouted(n, 0)
 }
 
-// PutNodeScoped mirrors PutNode but routes the change-log record into the
-// store.ScopedTxChangeLog buffer named by token instead of the eager pending
-// log. token == 0 is exactly PutNode. See badgerstore_changelog_scoped.go
-// (BACKLOG 11f Batch A — foundation only).
+// PutNodeScoped is PutNode with the change-log record routed to the
+// store.ScopedTxChangeLog buffer named by token (0 = PutNode). See
+// badgerstore_changelog_scoped.go.
 func (bs *Store) PutNodeScoped(n *types.Node, token uint64) error {
 	if token == 0 {
 		return bs.PutNode(n)
@@ -64,11 +63,9 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 		bs.idxMu.Unlock()
 		return err // only widened an envelope (sound), before the vector apply
 	}
-	// Apply the vector-index mutation immediately after its own prepare step,
-	// before any other RAM state (cache, label/property/temporal/HF indexes)
-	// commits — lesson 4 "preflight then apply": a failure here must not
-	// leave other in-memory indexes reflecting a node that was never queued
-	// for durable write (BACKLOG 18e).
+	// Apply the vector-index mutation right after its own prepare step, before other
+	// RAM state commits (lesson 4, BACKLOG 18e): a failure must not leave other
+	// indexes reflecting a node that was never queued for durable write.
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
 		bs.idxMu.Unlock()
 		return err
@@ -111,10 +108,8 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 	return bs.flushIfNeeded()
 }
 
-// GetNode retrieves a node by its snowflake ID.
-// Cache-first: checks LRU cache, then nodeIDs (O(1) existence check),
-// then falls through to Badger only if the node is confirmed to exist.
-// Returns ErrNodeNotFound if the node does not exist.
+// GetNode retrieves a node by ID: LRU cache, then the nodeIDs existence check,
+// then Badger only if the node exists. Returns ErrNodeNotFound if it does not.
 func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
@@ -176,27 +171,13 @@ func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 	return n.DeepCopy(), nil
 }
 
-// getNodeInTxn is GetNode's body reading through an ALREADY-OPEN read
-// transaction instead of opening its own — used by NodesAsOf's single-transaction
-// bulk scan (BACKLOG 18k). Cache-first identically to GetNode: a cache hit or the
-// nodeIDs existence short-circuit costs nothing extra from batching, since only
-// the badger fallback read benefits from the shared txn. Do not use this for any
-// caller outside a bulk scan already holding a txn — GetNode remains the public,
-// self-transacting door for the ~110 other call sites.
-//
-// REQUIRES the caller to hold bs.idxMu (at least RLock) for the caller's ENTIRE
-// surrounding scan, not just this call — single-snapshot consistency (the
-// documented NodesAsOf/RelsAsOf contract) needs BOTH no writer mutating the
-// cache mid-scan (idxMu exclusion — every writer takes idxMu.Lock() around its
-// cache.Put(), see badgerstore_flush.go's lock-ordering note) AND badger's own
-// MVCC snapshot for the persisted-state fallback; the cache read alone is NOT
-// covered by the badger transaction's isolation, so without the caller's idxMu
-// hold a concurrent write could tear the scan (some entities pre-write, others
-// post-write, within one NodesAsOf call) despite the shared transaction. This
-// function does NOT take idxMu itself — doing so would self-deadlock once a
-// writer is queued behind the caller's outer hold (sync.RWMutex is not
-// reentrant: a writer waiting on the outer RLock blocks this function's own
-// RLock attempt too, per lesson 9).
+// getNodeInTxn is GetNode's body over an already-open read transaction
+// (NodesAsOf bulk scan, BACKLOG 18k). Cache-first like GetNode.
+// Caller must hold bs.idxMu (at least RLock) for the ENTIRE surrounding scan:
+// the cache read is not covered by badger's MVCC snapshot, and every writer takes
+// idxMu.Lock around cache.Put, so without it a write could tear the scan. This
+// function does not take idxMu itself: RWMutex is not reentrant and a queued
+// writer would self-deadlock it (lesson 9).
 func (bs *Store) getNodeInTxn(snap *scanSnapshot, nid types.NodeID) (*types.Node, error) {
 	id := nid.SnowflakeID()
 	v, status := bs.nodeCache.Get(id)
@@ -301,10 +282,9 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 	return bs.fillNodeHash(nid, hash)
 }
 
-// fillNodeHash records a hash computed from a row read without the lock. The
-// hash map fills on first use (a clean open leaves it empty, backlog 54).
-// Every node-row write sets the map under idxMu, so a hash already present
-// was set by a write at least as new as the row read here: keep it.
+// fillNodeHash records a hash computed from a row read without the lock. Every
+// node-row write sets the map under idxMu, so a hash already present is at least
+// as new as the row read here: keep it (backlog 54).
 func (bs *Store) fillNodeHash(nid types.NodeID, hash string) (string, error) {
 	bs.idxMu.Lock()
 	if _, exists := bs.nodeIDs[nid]; !exists {
@@ -365,22 +345,19 @@ func (bs *Store) bumpNodeRevLocked(nid types.NodeID) {
 	bs.sharedEpochs.node()
 }
 
-// bumpNodeEpoch marks every cached DocValues column stale. bumpNodeRevLocked
-// covers the non-delete writes; the delete and version-write paths (which do NOT
-// call it) call this directly. A spurious bump is safe — it only forces a rebuild.
+// bumpNodeEpoch marks every cached DocValues column stale. The delete and
+// version-write paths call it directly (bumpNodeRevLocked covers other writes).
+// A spurious bump only forces a rebuild.
 func (bs *Store) bumpNodeEpoch() {
 	bs.nodeEpoch.Add(1)
 	bs.sharedEpochs.node()
 }
 
 // bumpRelEpoch marks the adjacency view stale for the expand-aggregation column
-// path (which reads edges, not just node membership). Called by every relationship
-// mutation. A spurious bump is safe — it only forces a Gate-2 fall-back.
-//
-// It also advances relEpochCoarse, which invalidates EVERY rel-type column
-// snapshot. That is deliberate: this is the default door, so a mutation site that
-// has not opted into per-type precision (bumpRelEpochForType) must invalidate
-// everything rather than silently leave a type's columns stale.
+// path. Called by every relationship mutation; a spurious bump only forces a Gate-2
+// fall-back. It also advances relEpochCoarse, invalidating every rel-type column
+// snapshot: sites without per-type precision (bumpRelEpochForType) must not leave
+// a type's columns stale.
 func (bs *Store) bumpRelEpoch() {
 	bs.relEpoch.Add(1)
 	bs.sharedEpochs.rel()
@@ -425,9 +402,8 @@ func (bs *Store) currentNodeForPrefetchLocked(nid types.NodeID, info nodeDeleteI
 	return bs.getNodeLocked(nid)
 }
 
-// DeleteNode removes a node and its label index entries.
-// Returns ErrInvalidStoreMutation if the node still has connected relationships.
-// Returns ErrNodeNotFound if the node does not exist.
+// DeleteNode removes a node and its label index entries. ErrInvalidStoreMutation
+// if relationships are still attached; ErrNodeNotFound if absent.
 func (bs *Store) DeleteNode(nid types.NodeID) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
@@ -438,17 +414,14 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 	}
 	id := nid.SnowflakeID()
 
-	// Build the change-log delete record up front (DeleteNode is unconnected-only
-	// — no cascade rels, no tombstone), so a marshal error aborts before any op
-	// is enqueued.
+	// Build the change-log delete record up front (unconnected-only, no tombstone) so
+	// a marshal error aborts before any op is enqueued.
 	delPayload, err := bs.buildChangePayload(storepkg.NodeDeleteBody{ID: int64(id)})
 	if err != nil {
 		return fmt.Errorf("graph: encode change-log: %w", err)
 	}
 
-	// Pre-fetch node state before acquiring the write lock to avoid holding
-	// idxMu.Lock() during Badger disk I/O on cache misses (lock scope rule).
-	// prefetchNode checks the cache and falls through to db.View without any lock.
+	// Prefetch before the write lock so cache misses do not hold idxMu.Lock across Badger I/O.
 	if _, err := bs.prefetchNode(nid); err != nil {
 		return err
 	}
@@ -469,11 +442,8 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 		return fmt.Errorf("%w: node %d has connected relationships", ErrInvalidStoreMutation, nid)
 	}
 
-	// Re-read under the write lock. prefetchNode loaded the cache on the
-	// normal cache-miss path, so this is a cache hit unless the entry was
-	// evicted between prefetch and lock acquisition. Using the locked current
-	// row avoids cleaning indexes with stale labels if a direct Store caller
-	// deleted and recreated the same ID in the TOCTOU window.
+	// Re-read under the write lock: cleaning indexes from a stale prefetch would use
+	// old labels if the ID was deleted and recreated in the TOCTOU window.
 	n, err := bs.getNodeLocked(nid)
 	if err != nil {
 		bs.idxMu.Unlock()
@@ -519,18 +489,14 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 	return bs.flushIfNeeded()
 }
 
-// ReplaceNode overwrites an existing node's data in-place.
-// Returns ErrNodeNotFound if the node does not exist.
-// No label index changes — labels are immutable after creation.
-// Property indexes are updated to reflect property changes.
+// ReplaceNode overwrites a node's data in place. No label index changes (labels
+// are immutable); property indexes follow property changes. ErrNodeNotFound if absent.
 func (bs *Store) ReplaceNode(n *types.Node) error {
 	return bs.replaceNodeRouted(n, 0)
 }
 
-// ReplaceNodeScoped mirrors ReplaceNode but routes the change-log record
-// into the store.ScopedTxChangeLog buffer named by token instead of the
-// eager pending log. token == 0 is exactly ReplaceNode. See
-// badgerstore_changelog_scoped.go (BACKLOG 11f Batch E — foundation only).
+// ReplaceNodeScoped is ReplaceNode with the change-log record routed to the
+// ScopedTxChangeLog buffer named by token (0 = ReplaceNode).
 func (bs *Store) ReplaceNodeScoped(n *types.Node, token uint64) error {
 	if token == 0 {
 		return bs.ReplaceNode(n)
@@ -557,9 +523,7 @@ func (bs *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 		return err
 	}
 
-	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
-	// If the prefetched row is stale by the time the lock is acquired, fall back
-	// to the locked current row before cleaning secondary indexes.
+	// Prefetch before the write lock; if stale at lock time, use the locked current row.
 	oldInfo, prefetchErr := bs.prefetchNodeDeleteInfo(nid)
 
 	bs.idxMu.Lock()
@@ -598,11 +562,9 @@ func (bs *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 	ops = append(ops, bs.maintainTemporalIndexDiskRemove(old, id)...)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
-	// Apply the new vector-index entries right after the old ones are purged —
-	// before cache/property/temporal/HF-index state for the new row commits —
-	// so a failure here never leaves other indexes reflecting an unpersisted
-	// new row while the vector index has neither the old nor new entry
-	// (lesson 4 "preflight then apply", BACKLOG 18e).
+	// Apply the new vector entries right after the old ones are purged, before other
+	// index state commits (lesson 4, BACKLOG 18e), so a failure never leaves the
+	// vector index with neither entry.
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
 		bs.idxMu.Unlock()
 		return err
@@ -627,19 +589,15 @@ func (bs *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 	return bs.flushIfNeeded()
 }
 
-// RemoveNodeLabelToken removes tok from the label index for id and persists updatedNode.
-// updatedNode must already have the label removed (via RemoveLabelTokenRaw) and have its
-// version bumped. Version history must be written by the caller before this call.
-// Returns ErrNodeNotFound if the node does not exist.
+// RemoveNodeLabelToken removes tok from the label index for id and persists
+// updatedNode, which must already lack the label and have its version bumped. The
+// caller writes version history first. ErrNodeNotFound if absent.
 func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *types.Node) error {
 	return bs.removeNodeLabelTokenRouted(nid, tok, updatedNode, 0)
 }
 
-// RemoveNodeLabelTokenScoped mirrors RemoveNodeLabelToken but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly
-// RemoveNodeLabelToken. See badgerstore_changelog_scoped.go (BACKLOG 11f
-// Batch F — foundation only).
+// RemoveNodeLabelTokenScoped is RemoveNodeLabelToken with the change-log record
+// routed to the ScopedTxChangeLog buffer named by token (0 = unscoped).
 func (bs *Store) RemoveNodeLabelTokenScoped(nid types.NodeID, tok uint16, updatedNode *types.Node, token uint64) error {
 	if token == 0 {
 		return bs.RemoveNodeLabelToken(nid, tok, updatedNode)
@@ -664,9 +622,7 @@ func (bs *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 		return err
 	}
 
-	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
-	// If the prefetched row is stale by the time the lock is acquired, fall back
-	// to the locked current row before cleaning secondary indexes.
+	// Prefetch before the write lock; if stale at lock time, use the locked current row.
 	oldInfo, prefetchErr := bs.prefetchNodeDeleteInfo(nid)
 
 	bs.idxMu.Lock()
@@ -750,17 +706,13 @@ func (bs *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 }
 
 // AddNodeLabelToken adds tok to the label index for id and persists updatedNode.
-// No version bump; no history entry. Used by transaction rollback.
-// Returns ErrNodeNotFound if the node does not exist.
+// No version bump or history entry (transaction rollback). ErrNodeNotFound if absent.
 func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *types.Node) error {
 	return bs.addNodeLabelTokenRouted(nid, tok, updatedNode, 0)
 }
 
-// AddNodeLabelTokenScoped mirrors AddNodeLabelToken but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly AddNodeLabelToken.
-// See badgerstore_changelog_scoped.go (BACKLOG 11f Batch F — foundation
-// only).
+// AddNodeLabelTokenScoped is AddNodeLabelToken with the change-log record routed
+// to the ScopedTxChangeLog buffer named by token (0 = unscoped).
 func (bs *Store) AddNodeLabelTokenScoped(nid types.NodeID, tok uint16, updatedNode *types.Node, token uint64) error {
 	if token == 0 {
 		return bs.AddNodeLabelToken(nid, tok, updatedNode)
@@ -785,9 +737,7 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 		return err
 	}
 
-	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
-	// If the prefetched row is stale by the time the lock is acquired, fall back
-	// to the locked current row before cleaning secondary indexes.
+	// Prefetch before the write lock; if stale at lock time, use the locked current row.
 	oldInfo, prefetchErr := bs.prefetchNodeDeleteInfo(nid)
 
 	bs.idxMu.Lock()
@@ -868,9 +818,8 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	return bs.flushIfNeeded()
 }
 
-// NodesByLabel returns nodes with the given label token, with optional pagination
-// and temporal filtering. Results are sorted by snowflake.ID for deterministic output.
-// Uses the temporal index fast path when available and a temporal filter is set.
+// NodesByLabel returns nodes with the label token, with pagination and temporal
+// filtering, sorted by snowflake.ID. Uses the temporal index when available.
 func (bs *Store) loadNodeFromBadger(txn *badgerv4.Txn, id snowflake.ID) (*types.Node, error) {
 	item, err := txn.Get(storepkg.NodeKey(id))
 	if err == badgerv4.ErrKeyNotFound {
@@ -895,9 +844,8 @@ func (bs *Store) loadNodeFromBadger(txn *badgerv4.Txn, id snowflake.ID) (*types.
 	return n, err
 }
 
-// loadRelFromBadger reads and unmarshals a relationship within an existing
-// Badger transaction — the rel mirror of loadNodeFromBadger, used by the
-// rel-property-index rebuild at open (loadIndexes).
+// loadRelFromBadger reads a relationship within an existing Badger transaction
+// (rel-property-index rebuild at open).
 func (bs *Store) loadRelFromBadger(txn *badgerv4.Txn, id snowflake.ID) (*types.Relationship, error) {
 	item, err := txn.Get(storepkg.RelKey(id))
 	if err == badgerv4.ErrKeyNotFound {
@@ -922,10 +870,9 @@ func (bs *Store) loadRelFromBadger(txn *badgerv4.Txn, id snowflake.ID) (*types.R
 	return r, err
 }
 
-// NodesByLabelAndProperty returns nodes matching the label and property value,
-// with optional temporal filtering. Uses the property index if one exists;
-// falls back to label scan + property filter.
-// Results are sorted by snowflake.ID for deterministic output.
+// NodesByLabelAndProperty returns nodes matching label and property value, with
+// temporal filtering, sorted by snowflake.ID. Uses the property index if present,
+// else label scan + filter.
 func (bs *Store) prefetchNode(nid types.NodeID) (*types.Node, error) {
 	// Read before the badger read opens — see LoadCleanAt.
 	epoch := bs.nodeCache.FlushEpoch()
@@ -937,31 +884,21 @@ func (bs *Store) prefetchNode(nid types.NodeID) (*types.Node, error) {
 	return n, nil
 }
 
-// prefetchNodeScan is prefetchNode WITHOUT the cache fill on miss. Large
-// sequential scans (label, AllNodes, temporal range) must not insert into
-// the LRU: once the scanned cardinality exceeds the cache capacity,
-// fill-on-miss evicts exactly the entries the next pass needs (100%
-// steady-state miss rate — measured as a 12x per-row regression at 12k
-// nodes through the 10k default cache) and flushes hot point-read entries
-// as collateral. Cache hits are still served; misses pay one badger decode
-// and leave the cache untouched. The returned node is frozen either way.
+// prefetchNodeScan is prefetchNode without the cache fill on miss: scans larger
+// than the LRU would evict exactly the entries the next pass needs and flush hot
+// point reads. Hits are still served; the result is frozen either way.
 func (bs *Store) prefetchNodeScan(nid types.NodeID) (*types.Node, error) {
 	n, _, err := bs.prefetchNodeNoFill(nid, false) // scan: no promote
 	return n, err
 }
 
-// prefetchNodeNoFill is the shared core: cache lookup, then badger decode.
-// miss=true means n was decoded from badger (a cache-fill candidate);
-// miss=false means it came from the cache. The decoded node is frozen
-// before return because callers may publish it into the cache, and cache
-// entries must never be mutable.
+// prefetchNodeNoFill is the shared core. miss=true means n was decoded from
+// badger. The result is frozen because callers may publish it into the cache.
 func (bs *Store) prefetchNodeNoFill(nid types.NodeID, promote bool) (n *types.Node, miss bool, err error) {
 	id := nid.SnowflakeID()
-	// Point reads promote the hit to MRU (Get, exclusive lock + MoveToFront);
-	// scan reads do not (GetNoPromote, read lock, no recency write) — a
-	// full-cardinality scan must neither pay one exclusive lock per row (the
-	// concurrent-scan serialization point) nor evict hot point-read entries
-	// with rows it touches once.
+	// Point reads promote the hit to MRU (exclusive lock); scan reads do not
+	// (GetNoPromote, read lock), so a scan neither serializes on the lock nor
+	// evicts hot entries.
 	var v *types.Node
 	var status indexpkg.CacheStatus
 	if promote {

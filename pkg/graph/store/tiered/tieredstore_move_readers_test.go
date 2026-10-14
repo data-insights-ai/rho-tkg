@@ -90,16 +90,12 @@ func countID[T comparable](ids []T, id T) (c int) {
 	return c
 }
 
-// TestRefArchiveReadersSeeMovedEntityOnce: an ArchiveNode or RestoreNode that
-// runs between a door's reference shard read and its archive read must not
-// make the moved node (or its relationship) appear twice or vanish: each door
-// answers what it answers with no move in flight. The move runs concurrently
-// and the hook waits a bounded time for it, so a door that holds moves off
-// still finishes (and the move then runs after it).
-//
-// A DocValues fold returns its epoch snapshot; an answer whose epoch moved is
-// one the caller discards (Gate 2), so only an answer with an unchanged epoch
-// is checked.
+// TestRefArchiveReadersSeeMovedEntityOnce pins that an ArchiveNode or
+// RestoreNode running between a door's reference read and its archive read
+// never makes the moved node (or its rel) appear twice or vanish. The hook
+// waits a bounded time for the concurrent move. DocValues answers whose epoch
+// moved are discarded by the caller (Gate 2), so only unchanged-epoch answers
+// are checked.
 func TestRefArchiveReadersSeeMovedEntityOnce(t *testing.T) {
 	all := QueryOpts{Depth: DepthAll}
 	docValues := func(m moveRace, multi bool) (int, bool, error) {

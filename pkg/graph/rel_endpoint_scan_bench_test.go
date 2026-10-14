@@ -7,11 +7,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkRelEndpointColumnScan: the endpoint column scan of a star type
-// (64 hubs, 4,096 spokes each: 262,144 relationships), no property, no filter
-// — the pass sigma-tkgd's counted scan makes over a type's endpoints
-// (StarCandidatesSkewedCold, round 6 request 10). "valid-at" reads the same
-// type at an instant every row covers.
+// BenchmarkRelEndpointColumnScan: endpoint column scan of a star type (64 hubs x
+// 4,096 spokes), no property, no filter; "valid-at" reads at an instant every row covers.
 func BenchmarkRelEndpointColumnScan(b *testing.B) {
 	const hubs, spokes = 64, 4096
 	for _, backend := range []struct {

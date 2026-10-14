@@ -8,10 +8,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkDocValuesOrdinals: a label's 100,000 nodes read with one column
-// and each node's ordinal (sigma-tkgd round 6 request 11), per backend:
-// ForEachDocValues plus a Lend per row for the ordinal (what a consumer
-// numbering the rows paid before), and ForEachDocValuesOrdinal.
+// BenchmarkDocValuesOrdinals: 100,000 nodes read with one column and each ordinal,
+// per backend: ForEachDocValues plus a Lend per row vs ForEachDocValuesOrdinal.
 func BenchmarkDocValuesOrdinals(b *testing.B) {
 	const nodes = 100_000
 	for _, backend := range []struct {

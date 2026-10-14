@@ -8,12 +8,9 @@ import (
 // Relationship-side bulk queries.
 // Mirror layout of the node-side methods in tieredstore_read_bulk.go.
 
-// AllRelationships shares AllNodes's memory caveat (BACKLOG 19j,
-// tieredstore_read_bulk.go): every shard's full result is materialized
-// concurrently and merged before opts.Limit/opts.After is applied, so peak
-// memory is unbounded in the total relationship count, not reduced by
-// pagination. ForEachRelID (below) is a genuine O(one-shard) streaming
-// alternative for ID-only enumeration with no depth filtering.
+// AllRelationships shares AllNodes's memory caveat (BACKLOG 19j): every shard's
+// result is materialized before opts.Limit/opts.After apply. ForEachRelID is
+// the O(one-shard) streaming alternative (IDs only, no depth filtering).
 func (ts *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
@@ -37,9 +34,7 @@ func (ts *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 		return nil, err
 	}
 
-	// refArchive parity: see AllNodes above. Depth-gated to DepthAll —
-	// archive is the coldest tier of reference data and must not surface
-	// in DepthHot/DepthWarm queries.
+	// refArchive parity: see AllNodes; DepthAll only.
 	var archiveRels []*types.Relationship
 	if opts.Depth == DepthAll {
 		ts.refArchiveGapHook()
@@ -318,9 +313,8 @@ func (ts *Store) ForEachRelID(fn func(types.RelID) bool) error {
 	if fn == nil {
 		return errNilIterationCallback()
 	}
-	// The reference shard's and the archive's IDs are collected under one
-	// read hold on moveMu and emitted after it (fn may call back into the
-	// store), so an entity moved between the two reads is emitted once.
+	// Reference and archive IDs are collected under one moveMu read hold and
+	// emitted after it (fn may call back), so a moved entity is emitted once.
 	ids := make([]types.RelID, 0)
 	collect := func(id types.RelID) bool {
 		ids = append(ids, id)

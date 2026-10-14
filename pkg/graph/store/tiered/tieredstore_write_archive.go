@@ -15,25 +15,19 @@ import (
 // a non-reference entity.
 var ErrNotReferenceEntity = errors.New("graph: entity is not a reference entity")
 
-// ErrCrossShardArchiveRel is kept for errors.Is compatibility with older
-// callers. Current archive/restore paths migrate relationship placement
-// across the ref/archive boundary instead of returning this sentinel.
+// ErrCrossShardArchiveRel is kept for errors.Is compatibility; archive and
+// restore migrate relationship placement instead of returning it.
 var ErrCrossShardArchiveRel = errors.New("graph: cross-shard archive relationship migration failed")
 
 // ArchiveNode moves a reference node and all its relationships from refShard
-// to refArchive. Only reference entities can be archived.
-// The node must exist in refShard. Event nodes cannot be archived.
+// to refArchive; the node must exist in refShard and be reference-class.
+// Atomicity is explicit rollback of completed placement moves and the
+// temporary destination write; a failed rollback is joined to the primary error.
 //
-// Cross-store atomicity is implemented with explicit rollback of completed
-// relationship placement moves and the temporary destination node write. If a
-// rollback step itself fails, the returned error includes both the primary
-// failure and the rollback failure.
-//
-// Concurrency: ArchiveNode holds moveMu for the whole move, so reads (scans
-// and point reads) see the node on exactly one shard. Writes route without
-// moveMu: a direct tiered.Store user must not write the moving node or its
-// relationships during a move. The graph layer fences this with c.mu
-// (g.Tier().Archive takes the exclusive lock).
+// Concurrency: holds moveMu for the whole move, so reads see the node on
+// exactly one shard. Writes route without moveMu: a direct tiered.Store user
+// must not write the moving node or its rels; the graph layer fences this via
+// c.mu (g.Tier().Archive takes it exclusively).
 func (ts *Store) ArchiveNode(nid types.NodeID) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
@@ -92,8 +86,7 @@ func (ts *Store) ArchiveNode(nid types.NodeID) error {
 	}
 
 	// 5. Write node to refArchive, then move every touching relationship's
-	// entity/out leg and incoming leg to the shards implied by the new
-	// endpoint placement.
+	// entity/out and incoming legs to the shards implied by the new placement.
 	if err := archive.PutNode(node); err != nil {
 		return fmt.Errorf("graph: archive write node: %w", err)
 	}
@@ -110,9 +103,8 @@ func (ts *Store) ArchiveNode(nid types.NodeID) error {
 		committed = append(committed, move)
 	}
 
-	// 6. Delete the node row from refShard. Relationship indexes have already
-	// been moved; the cascade path is used here only to purge stale
-	// adjacency-only entries that had no live relationship row to move.
+	// 6. Delete the node row; the cascade only purges stale adjacency-only entries
+	// (rel indexes were already moved).
 	if err := ref.DeleteNodeCascade(types.NodeID(id)); err != nil {
 		rbErr := rollbackArchiveNodeState(committed, archive, types.NodeID(id))
 		if rbErr != nil {
@@ -124,14 +116,9 @@ func (ts *Store) ArchiveNode(nid types.NodeID) error {
 	return nil
 }
 
-// RestoreNode moves a reference node and all its relationships from refArchive
-// back to refShard. Reverse of ArchiveNode.
-//
-// Cross-store atomicity follows ArchiveNode: completed relationship placement
-// moves and the temporary destination node write are rolled back on failure, and
-// rollback failures are included in the returned error.
-//
-// Concurrency: as ArchiveNode — reads are fenced by moveMu, writes are not.
+// RestoreNode moves a reference node and its relationships from refArchive
+// back to refShard (reverse of ArchiveNode, same rollback and concurrency
+// contract: reads fenced by moveMu, writes not).
 func (ts *Store) RestoreNode(nid types.NodeID) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
@@ -148,9 +135,7 @@ func (ts *Store) RestoreNode(nid types.NodeID) error {
 	}
 	defer refCheckin()
 
-	// 1. Ensure archive is open and pin against concurrent Close. Without
-	// the pin, Close racing between Load and the reads/writes below could
-	// free the archive BadgerStore under us.
+	// 1. Ensure the archive is open and pin it so a racing Close cannot free it.
 	if err := ts.ensureRefArchive(); err != nil {
 		return err
 	}
@@ -208,9 +193,8 @@ func (ts *Store) RestoreNode(nid types.NodeID) error {
 		committed = append(committed, move)
 	}
 
-	// 6. Delete the node row from archive. Relationship placement has already
-	// moved away from the archived endpoint; the cascade path is used here only
-	// to purge stale adjacency-only entries that had no live relationship row.
+	// 6. Delete the node row from the archive; the cascade only purges stale
+	// adjacency-only entries (placement already moved).
 	if err := archive.DeleteNodeCascade(types.NodeID(id)); err != nil {
 		rbErr := rollbackArchiveNodeState(committed, ref, types.NodeID(id))
 		if rbErr != nil {
@@ -351,19 +335,11 @@ func (ts *Store) planRelationshipPlacementMoves(moving types.NodeID, relIDs []sn
 }
 
 // checkAndCleanArchiveNodeDestination validates that destination has no
-// conflicting node/relationship rows for nodeID before Archive/Restore
-// writes it there. UNLIKE every other preflight* function in this package
-// (preflightMigrateSource is pure read-only, the convention this file
-// otherwise follows), this one can MUTATE destination via
-// purgeOrRejectDestinationAdjacency: while scanning destination's adjacency
-// for nodeID it may discover a genuinely orphaned index entry (pointing at
-// a relationship that no longer exists anywhere) and purges it on the spot
-// (BACKLOG 19o). This is deliberate, not a check/apply-separation slip:
-// purging a confirmed-dead index entry is idempotent and safe regardless of
-// whether the surrounding Archive/Restore call ultimately succeeds or is
-// aborted by a later step — there is no "undo" needed for removing garbage
-// that shouldn't have existed. Named to make that side effect explicit
-// rather than reusing the misleading "preflight" (check-only) name.
+// conflicting node/relationship rows for nodeID before Archive/Restore writes
+// there. Unlike the read-only preflight* functions it can MUTATE destination:
+// purgeOrRejectDestinationAdjacency purges a confirmed-orphaned index entry
+// (pointing at a relationship that exists nowhere), which is idempotent and
+// safe whether or not the move later aborts (BACKLOG 19o).
 func (ts *Store) checkAndCleanArchiveNodeDestination(nodeID types.NodeID, destination *BadgerStore, moves []relationshipPlacementMove) error {
 	rawID := nodeID.SnowflakeID()
 	if destination.HasNodeID(rawID) {
@@ -399,8 +375,7 @@ func (ts *Store) purgeOrRejectDestinationAdjacency(nodeID types.NodeID, destinat
 }
 
 // migrateRelationshipPlacement moves a live relationship's keys between
-// shards. The relationship stays live, so the removals record no ex-adjacency
-// (the Remove*Placement doors).
+// shards; the removals record no ex-adjacency (Remove*Placement doors).
 func migrateRelationshipPlacement(move relationshipPlacementMove) error {
 	rel := move.rel
 	info := RelDeleteInfo{

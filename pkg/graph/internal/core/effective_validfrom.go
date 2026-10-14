@@ -11,31 +11,21 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// =============================================================================
-// Effective scans bounded by valid end (backlog 51, sigma-tkgd step 6)
+// Effective scans bounded by valid end (backlog 51).
 //
-// ForEachRelEffectiveByTypeFrom / ForEachNodeEffectiveByLabelsFrom are the
-// type and label scans restricted to the entities still effective at or after
-// a valid instant: an entity streams (its whole predicate-limited timeline, as
-// the unbounded door streams it) iff one of those segments ends at or after
-// validFrom or is open. Half-open segments [ValidFrom, ValidTo): a segment
-// whose ValidTo equals validFrom (last valid instant validFrom-1) counts, so
-// "ends before validFrom" and "streams" partition the entities.
-//
-// Candidates come from the store's valid-end index where it keeps one
-// (store.RelValidEndCapability / NodeValidEndCapability: memory, badger, and
-// tiered as the union of its shards' indexes), else from the unbounded door's
-// gather (sharded, wrappers: correct, not accelerated). Either way each candidate's timeline is read by the
-// per-entity body and the rule above is applied to it, so the index only
-// decides which entities are read, never what streams. A candidate read at a
-// pin at or above its index stamp hands its exact end back (Refine), so an
-// entity whose folded bound was loose is read once, not on every call.
-// =============================================================================
+// ForEachRelEffectiveByTypeFrom / ForEachNodeEffectiveByLabelsFrom stream an
+// entity (its whole predicate-limited timeline) iff one of its half-open segments
+// [ValidFrom, ValidTo) ends at or after validFrom or is open; a segment with
+// ValidTo == validFrom counts. Candidates come from the store's valid-end index
+// (store.RelValidEndCapability / NodeValidEndCapability: memory, badger, tiered as
+// the union of shards), else from the unbounded door's gather (sharded, wrappers:
+// correct, not accelerated). The index only decides which entities are read, never
+// what streams; a read at a pin at or above the index stamp hands the exact end
+// back (Refine) so a loose bound is read once.
 
-// validEndCapabilities resolves the valid-end indexes with the K1 discipline:
-// an exact native store, or a store declaring the methods itself; a wrapper
-// that merely embeds a native store is refused (its writes may bypass the
-// embedded store's index maintenance).
+// validEndCapabilities resolves the valid-end indexes with the K1 discipline: an
+// exact native store or one declaring the methods itself; a wrapper that merely
+// embeds a native store is refused (its writes may bypass index maintenance).
 func validEndCapabilities(store storepkg.MandatoryStore) (storepkg.RelValidEndCapability, storepkg.NodeValidEndCapability) {
 	trusted := func(capability reflect.Type, methods ...string) bool {
 		return isExactNativeStore(store) || !embedsNativeCapability(store, capability, methods...)
@@ -51,9 +41,8 @@ func validEndCapabilities(store storepkg.MandatoryStore) (storepkg.RelValidEndCa
 	return rel, node
 }
 
-// validEndCand is one entity a bounded scan reads, with what the store's
-// index knew when it listed it (store.ValidEndCandidate); a fallback
-// candidate has stamp store.ValidEndOpen and is never refined.
+// validEndCand is one entity a bounded scan reads, with what the store's index
+// knew when it listed it; a fallback candidate has stamp store.ValidEndOpen and is never refined.
 type validEndCand = storepkg.ValidEndCandidate
 
 func fallbackCands[T ~int64](ids []T) []validEndCand {
@@ -64,12 +53,10 @@ func fallbackCands[T ~int64](ids []T) []validEndCand {
 	return out
 }
 
-// streamValidFrom reads each candidate's timeline (read: nil when the entity
-// is unknown; ascending by ID, through streamEntityTimelines), streams the
-// segments keep accepts when one of them ends at or after validFrom or is
-// open, and hands the timeline's exact end back to the index (refine; nil on
-// the fallback) when the candidate was read at a pin at or above its stamp
-// and its bound was looser.
+// streamValidFrom reads each candidate's timeline (nil read = unknown entity;
+// ascending ID, via streamEntityTimelines), streams the segments keep accepts when
+// one ends at or after validFrom or is open, and refines the index with the exact
+// end when the candidate was read at a pin at or above its stamp.
 func streamValidFrom[S any](c *Core, cands []validEndCand, pin, validFrom types.Instant,
 	read func(rd entityReads, id int64) ([]S, error), to func(S) types.Instant, keep func(S) bool,
 	refine func(id int64, gen uint64, end types.Instant), fn func(S) bool) error {
@@ -105,9 +92,8 @@ func streamValidFrom[S any](c *Core, cands []validEndCand, pin, validFrom types.
 	})
 }
 
-// segmentsEnd is the effective valid end of a timeline (segment ValidTo, 0 =
-// open): store.ValidEndOpen when a segment is open, store.ValidEndNone without
-// segments.
+// segmentsEnd is the effective valid end of a timeline: store.ValidEndOpen when a
+// segment is open, store.ValidEndNone without segments.
 func segmentsEnd[S any](segs []S, to func(S) types.Instant) types.Instant {
 	end := storepkg.ValidEndNone
 	for _, s := range segs {
@@ -120,23 +106,16 @@ func segmentsEnd[S any](segs []S, to func(S) types.Instant) types.Instant {
 	return end
 }
 
-// ForEachRelEffectiveByTypeFrom is ForEachRelEffectiveByType restricted to the
-// relationships whose effective timeline at pin has a segment ending at or
-// after validFrom, or an open one (an untimed relationship never deleted is
-// always included; a deleted one ends at its delete instant; a retracted life
-// has no segment). Each streamed relationship streams its whole timeline,
-// exactly as the unbounded door does; validFrom at or below every end streams
-// what the unbounded door streams. Gates, isolation and errors are
-// ForEachRelEffectiveByType's.
+// ForEachRelEffectiveByTypeFrom is ForEachRelEffectiveByType restricted to
+// relationships with a timeline segment ending at or after validFrom, or open (an
+// untimed, never-deleted one is always included; a deleted one ends at its delete
+// instant). Each streamed relationship streams its whole timeline. Gates, isolation
+// and errors are ForEachRelEffectiveByType's.
 //
-// Cost: on memory and badger, reads the relationships of the type whose
-// valid end (as folded from their rows, or as last read) is at or after
-// validFrom, plus those written after pin; the store's valid-end index
-// tracks the type on its first call (its K1 ever-members, each read once,
-// temporal fields only) and folds every write of it after that; writes of
-// types nobody queried change nothing. Tiered does the same per shard, opening
-// a closed cold shard, and never refines (an entity with a loose fold is read
-// on every call). Sharded reads every candidate of the unbounded door.
+// Cost: memory/badger read the type's relationships whose folded or last-read valid
+// end is at or after validFrom, plus those written after pin; the index tracks a
+// type from its first call. Tiered does the same per shard (opening closed cold
+// shards) and never refines. Sharded reads every candidate of the unbounded door.
 func (t *TempOps) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom types.Instant, fn func(temporal.RelSegment) bool) error {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
@@ -187,13 +166,11 @@ func (t *TempOps) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom 
 		refine, fn)
 }
 
-// ForEachNodeEffectiveByLabelsFrom is ForEachNodeEffectiveByLabels restricted
-// to the nodes whose segments carrying one of the labels include one ending at
-// or after validFrom, or an open one (ForEachRelEffectiveByTypeFrom's rule on
-// the label-limited timeline). Gates, isolation, errors and cost are
-// ForEachRelEffectiveByTypeFrom's; the index bounds a node by its whole
-// timeline, so a node that carried a label once and lives on under other
-// labels is read and then skipped.
+// ForEachNodeEffectiveByLabelsFrom is ForEachNodeEffectiveByLabels restricted to
+// nodes whose label-carrying segments include one ending at or after validFrom, or
+// open. Gates, isolation, errors and cost are ForEachRelEffectiveByTypeFrom's; the
+// index bounds a node by its whole timeline, so a node that once carried the label
+// is read and then skipped.
 func (t *TempOps) ForEachNodeEffectiveByLabelsFrom(labels []string, pin, validFrom types.Instant, fn func(temporal.NodeSegment) bool) error {
 	c := t.c
 	if err := c.checkOpen(); err != nil {

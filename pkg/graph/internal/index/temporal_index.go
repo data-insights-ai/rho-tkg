@@ -12,8 +12,6 @@ import (
 )
 
 // maxInstant is the effective upper bound for an open-ended interval (To == 0).
-// Treating "still valid" as +∞ lets the same comparison drive both finite and
-// open intervals through the interval-tree pruning.
 const maxInstant = types.Instant(math.MaxInt64)
 
 // effTo maps a stored upper bound to its effective value: open-ended (0) is +∞.
@@ -33,32 +31,17 @@ type IntervalEntry struct {
 
 // TemporalIndex is a maxTo-augmented interval index keyed by (from ASC, id ASC).
 //
-// Entries is kept sorted by (From ASC, ID ASC). On top of it the index treats the
-// sorted slice as the in-order traversal of an implicit balanced BST (the root of
-// any sub-range is its midpoint — no node allocation). subMax[i] holds the maximum
-// effective upper bound (open-ended treated as +∞) over the subtree rooted at i.
-// That augmentation lets a stabbing query prune any subtree whose intervals have
-// all expired (maxTo <= probe) in O(1), giving output-sensitive O(log n + k) queries
-// instead of the previous O(n) scan over every interval that started before the probe.
+// Entries is sorted by (From, ID) and treated as the in-order traversal of an
+// implicit balanced BST (root = midpoint); subMax[i] is the max effective upper
+// bound (open = +inf) of the subtree at i, so stabbing queries prune expired
+// subtrees in O(1): O(log n + k) per query.
 //
-// Add/Remove are called under the store's write lock (ms.mu.Lock / bs.idxMu.Lock).
-// QueryAt/QueryOverlap are called under the store's read lock (RLock), which allows
-// multiple goroutines to query concurrently. sortIfDirty is protected by sortMu so
-// that concurrent readers do not race on the sort/augmentation transition.
+// Add/Remove run under the store's write lock; QueryAt/QueryOverlap under the
+// read lock. sortMu guards the lazy sort/augmentation for concurrent readers.
 //
-// Complexity (BACKLOG 16h corrected these — Add's prior doc claimed O(1)
-// amortized, but it has ALWAYS called Remove first for replace semantics,
-// so it was never actually O(1); Extend's O(n) scan is now O(1) via posByID):
-//   - Add:            O(n) — Remove(id) first for replace semantics, then an
-//     O(1) append
-//   - AddKnownAbsent: O(1) amortized append (no existing-id check)
-//   - Extend:         O(1) amortized — posByID lookup finds an existing
-//     entry directly; O(1) append if absent
-//   - Remove:         O(n) — must shift every surviving entry to preserve
-//     order; inherent to a filter-copy, not something posByID changes
-//   - QueryAt:        O(n log n) sort + O(n) augmentation + O(n) posByID
-//     rebuild (once per dirty batch), then O(log n + k) per stabbing query
-//   - QueryOverlap:   same as QueryAt
+// Cost: Add and Remove O(n) (Add replaces via Remove); AddKnownAbsent and
+// Extend O(1) amortized (posByID); first query after a mutation pays
+// O(n log n) sort + O(n) augmentation, then O(log n + k).
 type TemporalIndex struct {
 	sortMu   sync.Mutex      // serialises concurrent sort/augmentation transitions under RLock
 	Entries  []IntervalEntry // sorted by (From ASC, ID ASC) when not dirty
@@ -66,40 +49,25 @@ type TemporalIndex struct {
 	dirty    bool            // true when entries changed but slice not yet sorted/augmented
 	Building bool            // true while CreateTemporalIndex is still backfilling
 	Mutated  map[snowflake.ID]struct{}
-	// DiskWritten, non-nil only while a disk-backed (TemporalIndexOnDisk)
-	// create backfills, holds the IDs whose on-disk row a write added or
-	// removed since the build started: the create then writes no row for
-	// them (the write's row is newer than the backfill's fetch). Mutated
-	// cannot stand in: a PutNodeVersion marks it without a disk row, and a
-	// label removal writes a disk delete without marking it.
+	// DiskWritten, non-nil only while a disk-backed create backfills, holds the IDs
+	// whose on-disk row a write added or removed since the build started: the create
+	// then writes no row for them (the write's row is newer than the backfill's
+	// fetch). Mutated cannot stand in for it (PutNodeVersion marks without a disk
+	// row; label removal writes a disk delete without marking).
 	DiskWritten map[snowflake.ID]struct{}
-	// byID mirrors each id's current envelope bounds for O(1) EnvelopeOf lookups
-	// (the B4 candidate-prune primitive). Entries stays sorted-by-From for stabbing
-	// queries; byID stores BOUNDS (not slice positions), so a re-sort never
-	// invalidates it. Maintained in every entry mutator (Add / AddKnownAbsent /
-	// Extend / Remove).
+	// byID mirrors each id's envelope bounds for O(1) EnvelopeOf; bounds, not slice
+	// positions, so re-sorts never invalidate it. Kept by every entry mutator.
 	byID map[snowflake.ID]IntervalEntry
-	// posByID mirrors each id's CURRENT index into Entries — BACKLOG 16h. Unlike
-	// byID this DOES invalidate on reorder, so (unlike byID) it must be rebuilt
-	// after every sortIfDirty re-sort and after Remove's filter-copy shifts
-	// surviving entries down. It exists purely so Extend can find "does id
-	// already have an entry, and if so where" in O(1) instead of an O(n) linear
-	// scan — the O(n) scan on every call is what turns a bulk sequence of N
-	// Extend calls (e.g. importing a node's full history, one Extend per
-	// version) into O(n²) instead of O(n). Remove's own Entries rebuild stays
-	// O(n) per call either way (it must shift every surviving entry to preserve
-	// sort-adjacent order), so posByID does not change Remove's complexity —
-	// only Extend's, which is the actual per-node-mutation hot path the finding
-	// names.
+	// posByID mirrors each id's CURRENT slice position so Extend finds an existing
+	// entry in O(1) (a linear scan made N Extends O(n^2)). Unlike byID it must be
+	// rebuilt after every re-sort and after Remove shifts entries (backlog 16h).
 	posByID map[snowflake.ID]int
 }
 
 // EnvelopeOf returns the per-node valid-time envelope [from, to) recorded for id,
-// and ok=false when the index does not cover id. It is the B4 candidate-prune
-// primitive: the core resolver drops a temporal candidate ONLY when the index
-// vouches for it (ok) AND its envelope provably cannot overlap the query — an
-// id the index does not cover (ok=false) is never pruned, so incomplete index
-// membership costs recall of pruning, never correctness.
+// and ok=false when the index does not cover id. The core resolver prunes a
+// candidate ONLY when ok and the envelope provably cannot overlap the query; an
+// uncovered id is never pruned, so incomplete membership costs pruning, not correctness.
 func (ti *TemporalIndex) EnvelopeOf(id snowflake.ID) (from, to types.Instant, ok bool) {
 	if ti == nil || ti.byID == nil {
 		return 0, 0, false
@@ -156,20 +124,11 @@ func unionTo(a, b types.Instant) types.Instant {
 	return a
 }
 
-// Extend inserts an entry for id, or UNIONs it into the node's existing entry:
-// [min(From), unionTo(To)]. Where Add REPLACES with the current version's interval,
-// Extend GROWS a per-node VALID-TIME ENVELOPE across all versions. This is the
-// sound-superset property the core resolver needs for predicate-anywhere temporal
-// queries (rule 16): a node whose PAST version overlapped the probe must stay a
-// candidate even after its current version moves off it — the envelope keeps
-// covering the past interval, and the resolver filters the over-inclusion
-// precisely. Must be called under the store's write lock.
-//
-// BACKLOG 16h: finds an existing entry via posByID in O(1) rather than a
-// linear scan — the scan previously turned a bulk sequence of N Extend calls
-// (e.g. importing a node's full history, one Extend per version) into
-// O(n²), since Extend is called once PER NODE MUTATION to a
-// temporally-indexed label.
+// Extend inserts an entry for id, or UNIONs it into the existing entry:
+// [min(From), unionTo(To)]. Unlike Add (replace), this GROWS a per-node valid-time
+// ENVELOPE, so a node whose PAST version overlapped a probe stays a candidate
+// after its current version moves off (rule 16); the resolver filters the
+// over-inclusion. O(1) via posByID (backlog 16h). Caller holds the write lock.
 func (ti *TemporalIndex) Extend(id snowflake.ID, from, to types.Instant) {
 	if ti == nil {
 		return
@@ -235,10 +194,8 @@ func (ti *TemporalIndex) ClearMutationTracking() {
 	ti.Mutated = nil
 }
 
-// sortIfDirty sorts entries by (From ASC, ID ASC) and rebuilds the maxTo
-// augmentation if the index has been modified since the last query. Called at the
-// start of every query. sortMu serialises concurrent callers holding only the
-// store's read lock so that the sort/augmentation transition is observed atomically.
+// sortIfDirty sorts by (From, ID) and rebuilds the maxTo augmentation if modified
+// since the last query. sortMu serialises concurrent callers holding only the read lock.
 func (ti *TemporalIndex) sortIfDirty() {
 	if ti == nil {
 		return
@@ -257,10 +214,7 @@ func (ti *TemporalIndex) sortIfDirty() {
 		}
 		return cmp.Compare(a.ID, b.ID)
 	})
-	// posByID (BACKLOG 16h) tracks slice POSITION, unlike byID's sort-invariant
-	// bounds — a re-sort reorders every entry, so it must be rebuilt here. O(n),
-	// same complexity class as the sort/augmentation this function already does
-	// once per dirty batch, not once per entry.
+	// posByID tracks slice position, so a re-sort must rebuild it (O(n), once per dirty batch).
 	for i, e := range ti.Entries {
 		ti.setPos(e.ID, i)
 	}
@@ -301,14 +255,8 @@ func (ti *TemporalIndex) fillSubMax(lo, hi int) types.Instant {
 	return m
 }
 
-// Remove deletes the entry for id. O(n) — a filter-copy that shifts every
-// surviving entry left of the removed one, which posByID (BACKLOG 16h)
-// intentionally does not change: preserving relative order without breaking
-// the "posByID always reflects the current index" invariant needs the same
-// O(n) work either way, and Remove is not the bulk-mutation hot path Extend
-// is. No-op if id is not present. The filtered slice stays sorted, but the
-// maxTo augmentation now spans a stale length, so the index is marked dirty
-// to force a rebuild on the next query.
+// Remove deletes the entry for id (no-op if absent). O(n): a filter-copy shifts
+// survivors; marks the index dirty because subMax now spans a stale length.
 func (ti *TemporalIndex) Remove(id snowflake.ID) {
 	if ti == nil {
 		return
@@ -319,8 +267,7 @@ func (ti *TemporalIndex) Remove(id snowflake.ID) {
 		if e.ID == id {
 			continue
 		}
-		// Every surviving entry's position shifts as out grows — record its
-		// NEW index now rather than leaving posByID stale until the next sort.
+		// Every surviving entry's position shifts as out grows; record the new index now.
 		ti.setPos(e.ID, len(out))
 		out = append(out, e)
 	}
@@ -330,12 +277,8 @@ func (ti *TemporalIndex) Remove(id snowflake.ID) {
 	ti.dirty = true
 }
 
-// QueryAt returns IDs of all entries valid at instant t.
-// Condition: from <= t AND (to == 0 OR to > t).
-//
-// Walks the implicit balanced BST, pruning whole subtrees whose intervals have all
-// expired (subMax <= t) and right subtrees whose froms all exceed t. O(log n + k).
-// Returns a sorted slice of IDs.
+// QueryAt returns the sorted IDs of entries valid at instant t
+// (from <= t AND (to == 0 OR to > t)). O(log n + k).
 func (ti *TemporalIndex) QueryAt(t types.Instant) []snowflake.ID {
 	if ti == nil || len(ti.Entries) == 0 {
 		return nil
@@ -373,12 +316,8 @@ func (ti *TemporalIndex) stabAt(lo, hi int, t types.Instant, out *[]snowflake.ID
 	// e.From > t: every right-subtree from is even larger — skip it.
 }
 
-// QueryOverlap returns IDs of all entries whose interval overlaps [start, end).
-// Condition: from < end AND (to == 0 OR to > start).
-//
-// Walks the implicit balanced BST, pruning subtrees with subMax <= start (all end
-// before the query) and right subtrees whose froms all reach end. O(log n + k).
-// Returns a sorted slice of IDs.
+// QueryOverlap returns the sorted IDs of entries overlapping [start, end)
+// (from < end AND (to == 0 OR to > start)). O(log n + k).
 func (ti *TemporalIndex) QueryOverlap(start, end types.Instant) []snowflake.ID {
 	if ti == nil || len(ti.Entries) == 0 || start >= end {
 		return nil
@@ -435,23 +374,17 @@ func NodeTemporalBounds(id snowflake.ID, tm *types.TemporalMetadata) (from, to t
 	return
 }
 
-// AddNodeToTemporalIndexes folds the node's current effective [from,to) into every
-// temporal index covering one of its labels. Since B4 the temporal index is a
-// per-node valid-time ENVELOPE (a SOUND SUPERSET for the core resolver's
-// predicate-anywhere candidate narrowing), so this UNIONs (grows the envelope)
-// rather than replacing with the current version — it is an alias of
-// ExtendNodeInTemporalIndexes kept for the many existing maintenance call sites.
-// Caller must hold the store's write lock.
+// AddNodeToTemporalIndexes folds the node's effective [from,to) into every
+// temporal index covering one of its labels. Since B4 the index is a per-node
+// valid-time ENVELOPE (sound superset), so this UNIONs; alias of
+// ExtendNodeInTemporalIndexes. Caller holds the write lock.
 func AddNodeToTemporalIndexes(idxs map[uint16]*TemporalIndex, n *types.Node, id snowflake.ID) {
 	ExtendNodeInTemporalIndexes(idxs, n, id)
 }
 
-// ExtendNodeInTemporalIndexes UNIONs the node's current effective [from,to) into
-// the per-node envelope of every temporal index covering one of its labels. Unlike
-// AddNodeToTemporalIndexes (which REPLACES the entry with the current version's
-// interval), this GROWS the envelope so a node's past-version interval stays
-// covered — the sound-superset property the core resolver relies on for
-// predicate-anywhere temporal queries. Caller must hold the store's write lock.
+// ExtendNodeInTemporalIndexes UNIONs the node's effective [from,to) into the
+// envelope of every temporal index covering one of its labels, keeping past-version
+// intervals covered. Caller holds the write lock.
 func ExtendNodeInTemporalIndexes(idxs map[uint16]*TemporalIndex, n *types.Node, id snowflake.ID) {
 	if len(idxs) == 0 {
 		return
@@ -464,18 +397,11 @@ func ExtendNodeInTemporalIndexes(idxs map[uint16]*TemporalIndex, n *types.Node, 
 	}
 }
 
-// RemoveNodeFromTemporalIndexes is a NO-OP since B4. The temporal index is now a
-// per-node valid-time ENVELOPE that is APPEND-ONLY (grow-only) per node — mirroring
-// the K1 label-tx-membership sidecar: an update or delete must NOT shrink the
-// envelope, because a node's PAST version interval (and a deleted node's history)
-// must remain a candidate for predicate-anywhere / historical temporal queries. The
-// envelope is a SOUND SUPERSET; over-inclusion is filtered by the store's
-// current-row predicate (nodesByLabelFromIDs) and by the core chain resolver, both
-// of which stay authoritative. Removal that truly must shrink the index happens only
-// on index DROP (DropTemporalIndex) or corrupt-node purge
-// (PurgeNodeFromAllTemporalIndexes, which calls ti.Remove directly). Kept as a
-// no-op — rather than deleting its ~34 maintenance call sites — so the create /
-// update / delete / replace / batch write paths need no change.
+// RemoveNodeFromTemporalIndexes is a NO-OP since B4: the envelope is grow-only so
+// a node's past versions (and a deleted node's history) stay candidates for
+// historical temporal queries. Over-inclusion is filtered by nodesByLabelFromIDs and
+// the core chain resolver. Shrinking happens only on index drop
+// (DropTemporalIndex) or corrupt-node purge (PurgeNodeFromAllTemporalIndexes).
 func RemoveNodeFromTemporalIndexes(_ map[uint16]*TemporalIndex, _ *types.Node, _ snowflake.ID) {
 }
 
@@ -492,36 +418,27 @@ func PurgeNodeFromAllTemporalIndexes(idxs map[uint16]*TemporalIndex, id snowflak
 
 // --- Relationship-type temporal indexes (BACKLOG 21c) ---
 //
-// A relationship-type-keyed mirror of the label-keyed helpers above. The
-// underlying TemporalIndex type is entity-agnostic (keyed by raw
-// snowflake.ID), so relationship-type indexes reuse it directly against a
-// SEPARATE map (keyed by rel-type token, never merged with the label-token
-// map — the two token namespaces are independent registries and a numeric
-// collision between a label token and a rel-type token must not cross-pollute
-// their indexes).
+// Mirror of the label-keyed helpers above, held in a SEPARATE map keyed by
+// rel-type token; label and rel-type token namespaces are independent and must
+// never share an index.
 
 // RelTemporalBounds returns the effective (from, to) for a relationship.
-// Identical computation to NodeTemporalBounds (both delegate to the same
-// entity-agnostic storepkg.EntityValidFrom); kept as a separate name for
-// call-site clarity, matching this codebase's node/rel mirror convention.
+// RelTemporalBounds returns the effective (from, to) for a relationship (same
+// computation as NodeTemporalBounds).
 func RelTemporalBounds(id snowflake.ID, tm *types.TemporalMetadata) (from, to types.Instant) {
 	return NodeTemporalBounds(id, tm)
 }
 
-// AddRelToTemporalIndexes folds the relationship's current effective [from,to)
-// into the temporal index covering its type, if one exists. Alias of
-// ExtendRelInTemporalIndexes, mirroring AddNodeToTemporalIndexes. Caller must
-// hold the store's write lock.
+// AddRelToTemporalIndexes folds the relationship's effective [from,to) into the
+// temporal index covering its type, if any. Alias of ExtendRelInTemporalIndexes.
+// Caller holds the write lock.
 func AddRelToTemporalIndexes(idxs map[uint16]*TemporalIndex, r *types.Relationship, id snowflake.ID) {
 	ExtendRelInTemporalIndexes(idxs, r, id)
 }
 
-// ExtendRelInTemporalIndexes UNIONs the relationship's current effective
-// [from,to) into the per-relationship envelope of the temporal index covering
-// its type (a relationship has exactly one type, unlike a node's multiple
-// labels, so this indexes at most one map entry rather than looping). Grows
-// the envelope rather than replacing it — the same sound-superset property
-// AddNodeToTemporalIndexes relies on. Caller must hold the store's write lock.
+// ExtendRelInTemporalIndexes UNIONs the relationship's effective [from,to) into
+// the envelope of the temporal index covering its type (one type, so at most one
+// index). Caller holds the write lock.
 func ExtendRelInTemporalIndexes(idxs map[uint16]*TemporalIndex, r *types.Relationship, id snowflake.ID) {
 	if len(idxs) == 0 {
 		return
@@ -550,8 +467,7 @@ func RelTemporalIndexBuilding(idxs map[uint16]*TemporalIndex, r *types.Relations
 	return ok && ti.Building
 }
 
-// RemoveRelFromTemporalIndexes is a NO-OP, mirroring RemoveNodeFromTemporalIndexes
-// — see that function's doc comment for the full append-only-envelope rationale.
+// RemoveRelFromTemporalIndexes is a NO-OP, like RemoveNodeFromTemporalIndexes.
 func RemoveRelFromTemporalIndexes(_ map[uint16]*TemporalIndex, _ *types.Relationship, _ snowflake.ID) {
 }
 
