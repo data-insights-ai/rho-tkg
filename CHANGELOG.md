@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.53.0] - 2026-10-14
+
+Minor release, the sigma-tkgd store requests, round 7 (new public API): badger batch relationship creates read their
+endpoints through one snapshot (faster than one-by-one); opt-in per-type degree counts (`Stats().TrackRelTypeDegrees`);
+`Nodes()/Rels().LendByIDs` lend many rows per call (one read snapshot on badger, concurrent-safe);
+`CountByLabelPropertyValue` / `CountByTypePropertyValue` exact equality counts from a property index; ordered
+(ID, value) index walks without reading rows; multi-label columns built from a member label's columns instead of
+re-reading records. Read-only doors cost nothing on writes; untracked graphs pay one atomic load per create.
+
 ### Added
 
 - **`Nodes().LendByIDs` / `Rels().LendByIDs`: lend many rows in one read** (sigma-tkgd round 7 request 3: a parallel
