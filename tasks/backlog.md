@@ -151,15 +151,83 @@ component does not close its whole fault family or V2.
 | E | Complete the equivalent FoundationDB fault/publication layers and runnable comparison matrix | Actual role/domain-loss and unknown-commit recovery, pins/GC and chunk/manifest failures; writer 8/32, native 1M multi-grant setup, both FDB layouts and bounded comparison state. Complete historical/index/CDC parity, cleanup and all-client/server resource accounting before accepting a cost cell |
 | F | Execute the declared matrix and select the engine, then run one coordinated V2 integration gate | 10k/100k/1M × 0/10/50/100% cross × 1/8/32 writers, five fresh repetitions per layout, all declared workloads and RTT profiles. Record total bytes, memory, throughput, latency, retries/recovery and complete oracle results. Written native/FDB deployment/cost/maintenance verdict; no missing acceptance rows or unresolved correctness failures |
 
-Immediate worker allocation: Sol 6.1/high for P02 prepare/fence/election cases,
-Sol 6.1/high for the current v4.51.7 reader qualification, and Sol 6.1/medium
-for the finite P04 identity/decision cases and cost-embedding diagnosis. The
-coordinator reviews and integrates. P03/P06 components are integrated; remaining
-B and performance work proceeds, followed by finite C/D/E packages for freed
-workers. Implement in parallel, but keep heavy local fault/benchmark workloads
-separate so measurements are interpretable. Changes get affected checks;
-unchanged full suites are not repeated per patch. One integration gate follows
-the completed queue.
+Execution plan to finish V2 (2026-10-14; keep the A–F scope above):
+
+1. **Freeze the acceptance inventory and close the near-ready B components.**
+   Map each P01–P09 requirement and declared fault/workload to its existing
+   production test, source revision and receipt, or a concrete missing case.
+   Reuse accepted E15–E18/P08/P03/P06/P07/P09 evidence within its scope; a new
+   case is needed only for an uncovered requirement or an invalidated source.
+   P02's author now reports all three process schedules passing normal, race,
+   scoped coverage and affected statics, with all nine independent trace bridges
+   passing; receipt packaging and source/evidence integration review remain
+   pending. P01's Fresh/After outside-scope-coordinator draft is
+   source-only. The [finite P04/cost-response checkpoint](evidence/v2-p04-cost-response-20261014/receipt.json)
+   is integrated with its frozen qualification; the [clone-only follow-up](evidence/v2-p04-clone-followup-20261014/receipt.json)
+   still needs affected compile/lint and its direct normal test. Close these
+   components before extending their fixtures or starting new broad campaigns.
+2. **Close B's remaining serialization requirements.** After P01, assign a
+   high-effort Sol 6.1 worker to the P05 gap: a historical read followed by a dependent write,
+   absent keys, empty ranges, temporal predicates, endpoint-life/revision ABA,
+   and topology/catalog/profile dependencies. Enumerate existing coverage first;
+   add the missing production schedules and fix any demonstrated shared cause.
+   Finish uncovered P03/P04/P06 clauses from the same inventory, including
+   partial installation, decision races, complete predicate locking and recovery.
+   B closes only when every clause has an authentic history accepted by the
+   independent serial/cut oracle, exact graph/index/CDC answers and required
+   failure/reopen checks. Atomic installation alone is insufficient.
+3. **Close C, then D, using the freed protocol worker.** Complete P07/P09
+   interruptions around capture, staging, durable handoff, activation and pin
+   publication; reject stale owners and changed retry payloads, preserve original
+   results and pinned old-cut/feed lineage through reclamation, and exercise
+   explicit expiry. Then compose the existing native graph path with the
+   declared message, quorum/domain, scheduler and VFS/durable-image faults.
+   Freeze the finite transition/schedule list before running it; perform the
+   specified bounded ordering exploration before a recorded-seed soak. C/D close
+   only with exact oracle agreement, no acknowledged durable loss, recovery after
+   restored authority and all owned processes/handles reaped. SIGKILL does not
+   substitute for torn-write or power-loss-model evidence.
+4. **Build E's executable comparison prerequisites in parallel.** The comparison
+   worker first qualifies the source-only native multiple-grant setup with the
+   compact profile guard and actual small local/cross process cases. Next finish
+   bounded native index/endpoint paging and FDB history/current/CDC streaming,
+   with a private quota-limited comparison spool and complete raw-byte/identity/
+   order/watermark checks. Qualify actual tiny paired runs before implementing
+   genuine 8/32 writers: request-bound acknowledgements, bounded admission,
+   phase barriers and explicit abort/replan/unknown-result attempt lineage.
+   Preserve the engines' actual conflict and ordering semantics. Separately
+   finish equivalent FDB role/domain faults, unknown commits, pins/GC and
+   chunk/manifest publication; native prepare-stage hooks are not FDB evidence.
+   E closes when both FDB layouts and the native runner execute those cases with
+   complete historical/index/CDC parity, cleanup and all-process resource counts.
+5. **Complete a matched 10k cell, then execute F.** Diagnose any remaining slow
+   path from measured costs and change only the demonstrated cause. Require a
+   terminal old/current/index/CDC oracle, clean reopen and complete client/server
+   accounting in the native and matched FDB cell before running larger cells.
+   Then execute the full declared sizes/cross-percent/writer matrix, five fresh
+   repetitions, all workloads and delay profiles. Keep raw failures and costs;
+   missing or unsupported cells remain open. Record the native/FDB engine verdict
+   from comparable correctness, durability, total cost, deployment and maintenance
+   evidence before V3 format freeze.
+6. **Run one coordinated V2 acceptance gate.** Reconcile main at a recorded
+   cutoff (live main is `c3bd7f71`/v4.52.0; current v5 source includes v4.51.8),
+   review relevant handover/consumer/CI deltas and integrate required changes.
+   Preserve historical qualification rather than relabelling it as current.
+   On the final integrated revision run full phase CI/race/coverage/security and
+   the complete V2 requirement/evidence audit once; repeat only gates invalidated
+   by a subsequent correction. V2 closes with every A–F row accepted, the engine
+   decision recorded, no unresolved correctness failure, and the exact branch
+   revision pushed with passing applicable hosted gates. V3–V7 remain separate.
+
+Worker lanes: Sol 6.1/high for P02, then C/D; Sol 6.1/medium for the bounded
+P01 fixture, followed by Sol 6.1/high for P05 and remaining B protocol gaps;
+Sol 6.1/high for E/comparison, then F execution. The
+coordinator owns the inventory, source review, integration and acceptance
+decision. Keep one active source package per lane. Implement in parallel, but
+serialize heavy local fault/benchmark workloads under the shared resource lease.
+Use affected checks per change and reusable pinned scanners; do not rerun
+unchanged full suites per patch. Report integrated/accepted packages and remaining
+requirements, rather than a percentage inferred from the number of tests written.
 
 The [latest native 10k run](evidence/v2-native-capacity-probe-20261014/receipt.json)
 reached its fixed 30-minute limit before final
