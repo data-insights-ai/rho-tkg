@@ -47,8 +47,9 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 | 60 | LOW (unverified, read from code) | Tiered ref-then-archive readers outside moveMu (NodesByLabel DepthAll, foldDocValuesServingEmpty, bulk/history scans) can straddle an ArchiveNode/RestoreNode | open; check each door's cross-shard contract first, red test before any fix |
 | 61 | FEATURE (René, ai-soc) | Integrity-hash switch (default on) and one binary hash path | open; building |
 | 62 | SEMANTICS (sigma observation) | One valid-from source for untimed rows: TxFrom (today creates use the mint instant, updates TxFrom) | open; Deprecated in v4.52.1, change in v4.52.2 |
-| 63 | FEATURE (sigma R6) | Membership door: nodes/versions whose list property names given rel IDs (`ov_support`) | open; trace existing multi-value index first |
-| 64 | FEATURE (sigma R7) | Valid-time excise [a,b) of a node version, history kept in tx time | open; trace existing correction doors first |
+| 63 | FEATURE (sigma R6) | Membership by rel ID: list properties are not indexed (propertyslice.go:353); recommended: one indexed support node per (Derived, relID), no rho change; fallback `PropertyIndexOptions{Elements: true}` | design sent to sigma 2026-10-14 |
+| 64 | FEATURE (sigma R7) | Valid-time excise [a,b): new door `Temporal().ExciseNodeValidity` with void pieces (no existing composition: CloseVersion only on the open current row) | design sent to sigma 2026-10-14; build on their OK |
+| 65 | BUG (unverified fix, probe-verified symptom) | `Nodes().Update(id, {"tkg_valid_to": t})` on a node valid from > its update instant writes a row whose effective start is after its end; no error, the close silently does nothing | open; red test first (evidence tasks/evidence/sigma-r6-r8/r7-probe.txt) |
 | 52 | HIGH (ai-soc) | Durable commit under SyncWrites costs one fsync per mutation | in progress, v4.51.3 |
 | 53 | HIGH (ai-soc) | Relationship planner-stat memos hold one RAM entry per relationship | in progress, v4.51.3 |
 | 54 | HIGH (ai-soc) | Badger open walks every current row (open linear in history) | in progress, v4.51.3 |
