@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "scope": "Focused CI adapter for immutable final-source cost qualification: exactly two selected SDK test parents in normal/race and an actual instrumented two-fact cross100 functional client. No new runtime execution or capacity acceptance.",
+  "sourceCheckpoint": "406dbb4c24c8c60cfb5b2ac5c9e5c38391fd7669",
+  "finalSourceSHA256": {
+    ".dockerignore": "0d400629c8094c064d97fcf683dd29ac5b62856c38d2f3dc67ef67329b80ddda",
+    "Dockerfile": "7c045c41ba067848825a61261c758f98bfa32e3758f61beb5791aff9cf033619",
+    "changes.go": "1348141cf3a0d9b433daeecda2b45bbea71cb65e080bc581297011504e3b1022",
+    "check-static.sh": "cdf42b91673149f3e8caf95d03db68b504ef35a392471ef97cf16bdcce70d738",
+    "compare-lifecycle.py": "645fbab3be5d85e8eeb97d515aaa151ddf0bf07167b8b01fd76c80843ad0500a",
+    "compare_lifecycle_test.py": "13bfd7c387056208f1a91cda2a9d6afa0f560d82336b2748564dd1e684640319",
+    "cost_monitor.py": "42c871a81aeb5c8d8528b3c6f9b44bfb8d0b0bd432bac88808cf9363203f5468",
+    "fault.go": "b849ee70161dd36099154e762023350f2c3b055fd238aac750372c8fcd3d1d3e",
+    "fault_contract_test.go": "459e6d8c10ccc9a3eebd4002c437d45f45162d7a48c62fca6455ad0ae350bbb7",
+    "go.mod": "15d92f0904b97b3fec0e0b23427994a095963da9b4afde3c20a32573e4e4672f",
+    "go.sum": "26bcf694e1b27910d09b654fcb3a852970358127d82581474e47c9afaba96618",
+    "graph_cost_profile.go": "06c67fa2d064c7abb58a44d1c9dcdb567846ef8cb668a43144dacfa63abbcf61",
+    "graph_cost_profile_test.go": "969349b8fca1878cc1a0e163d324def9e5c2d2854292d9b81257228ae6a41972",
+    "graph_cost_run.go": "74540090c455f5e10cf3056d57cbe0b97efb93ba3fc7154bdd7beedd422a08fe",
+    "graph_fault.go": "307a21e60919d7a144ffd061bca4def76d3b50cd5321fdcf23fe12f48c787649",
+    "graph_oracle.go": "7a27850683ab0ea01160470a9a2be315ba31797fcb8ddf624741fdb3a99d613e",
+    "graph_progress_test.go": "de1f8ee51abc1a9a883369cdd2117fe897ac0fb907a61dd8d4a2b34e13aa97d4",
+    "graph_run.go": "966782e1ebb9c631596f5c98ddc42f54f3a79c2fc0aec5384cfdccc12b97f3fb",
+    "graph_slice.go": "6437373e0a6d3cd9c65842a864174b93fe33f27219bcc7394dc73bf51c0a6c18",
+    "graph_slice_test.go": "4b56553aa137e8a2b0519046f98de186d5c11df84d198559d580e87a9de3626a",
+    "launcher.py": "e01ef3f5660719e38277194abb2fd377faed1bcf3dd4e901b388996da45dd417",
+    "launcher_test.py": "76eda938f68efceb8409772f1ef6a4213c0ace1529d44f98b855f4bc86ca37b9",
+    "lifecycle_profile.go": "66ba4cc1313840ee12a2591000fdaa6d8d6528f0995b9846c4073098871088aa",
+    "lifecycle_trace.go": "b7bebbde1ede5c9f81eaf76cc6cc83870cff95894cb001654de459b86d409f6e",
+    "lifecycle_trace_test.go": "031a5014ecaa7a8b5a2926e095661e7412d957811eb9c4fcaffc3de89020bfc2",
+    "main.go": "9747eb4241517f2170295ad34dbc29729d6667c217efa8a754a113918c5a342c",
+    "paired_controller.py": "3df35c196a4463c1dff41c22116c2808f9b789c699f46d3f9d64dae3c80cd891",
+    "paired_controller_test.py": "ac3103479faccae8c0cc31a46862cc534b199aacced022eeeb43ea5081d6a77e",
+    "paired_graph_fault_trace.go": "44b3ba9e7dc6f4c321571bb840fa60db1a3e696612c03dd61923ff1766c0e316",
+    "paired_graph_fault_trace_test.go": "efb1489036247d8ce40df3538dbff3486152508f978efb6336e4e6e4d3ff8554",
+    "prepare-client.sh": "1656f1438237118559c18ea9183910aa098c8313a3dfc2d4a9d5160620f75a98",
+    "run-local.sh": "d27657d643f632a7caee2950989c9c2e4e6576a79cc33b8cee48fc18e9bfe7ba",
+    "state.go": "08826e31a854c07578a481e4f3f35efd6170b234ce54e2036e3327d6677324a3",
+    "state_test.go": "5e09bc4e5e29306595681063c063c3a244b521db187d456c6b0396b32444df57"
+  },
+  "controllerSourceSHA256": {
+    "tools/v5-substrate/cost-cell.py": "5050f62227507cd8042a201420f35801a400aa793fe31680e272252ccb2dcb7f"
+  },
+  "sourceFreeze": {
+    "archiveMember": "actual-sdk/source-sha256.txt",
+    "sha256": "0cf26191eedff13092d3becffbe92b4cc68a2bcb59170f1fbc3603219e5033de",
+    "runtimeAndStaticSourceEqual": true,
+    "READMEExcluded": "Documentation only; not an executable source input."
+  },
+  "runs": {
+    "passing_normal_race": {
+      "directory": "rho-v5-fdb-1791891744-94007",
+      "exit": 0,
+      "cleanupExit": 0,
+      "receiptSHA256": "87d5f37b688008655c581c1c95492cef66757fa376e316143da275d004acc20a",
+      "archiveMember": "actual-sdk/receipt.json",
+      "scope": "Both selected test modes and the instrumented functional client belong to the same final-source launcher terminal."
+    }
+  },
+  "gates": {
+    "normal": {
+      "passedParents": 2,
+      "failedParents": 0,
+      "skippedParents": 0,
+      "parents": [
+        "TestGraphCostProfileExactRoutingAndBoundedShapes",
+        "TestGraphCostProjectionRemembersOldAndRejectsPartialPosting"
+      ],
+      "seconds": 0.213,
+      "archiveMember": "actual-sdk/cost-profile-normal-tests.jsonl",
+      "sha256": "808a04e1761d686bc1e0010da0b53590abaa1269d3e1e0dc9fd612ed6f014212"
+    },
+    "race": {
+      "passedParents": 2,
+      "failedParents": 0,
+      "skippedParents": 0,
+      "parents": [
+        "TestGraphCostProfileExactRoutingAndBoundedShapes",
+        "TestGraphCostProjectionRemembersOldAndRejectsPartialPosting"
+      ],
+      "seconds": 4.819,
+      "archiveMember": "actual-sdk/cost-profile-tests.jsonl",
+      "sha256": "8825066f72eeb330137cf7cc6505e48a1cfcd851d8d4f814ae2f2637390159bf"
+    }
+  },
+  "evidence": {
+    "final-source": {
+      "receipt": "tasks/evidence/v2-fdb-cost-final-source-20261013/receipt.json",
+      "receiptSHA256": "bcb6da5e67e094ef09cc2bf9ef58e48af65f22019a99a2e0ffc33fdcf5bcfcad",
+      "archive": "tasks/evidence/v2-fdb-cost-final-source-20261013/raw.tar.gz",
+      "archiveSHA256": "ca62b5a168ba84fbded7e165007f44bb454e7b6605766dd46a880072b3163cf5"
+    },
+    "statics": {
+      "receipt": "tasks/evidence/v2-fdb-cost-statics-20261013/receipt.json",
+      "receiptSHA256": "b35138277fe405974796a86675c28cc80be6fb9074733238ea1a7ec811089897",
+      "archive": "tasks/evidence/v2-fdb-cost-statics-20261013/raw.tar.gz",
+      "archiveSHA256": "3837f21a9f82fd4fb71566e0e886ceaae8233421bb1c220b9478bc0bcf0f8ba2"
+    },
+    "profile": {
+      "receipt": "tasks/evidence/v2-fdb-cost-profile-20261013/receipt.json",
+      "receiptSHA256": "18ebc7911013563545ee57d590c16790aa06ccfd626e642463d825eb7297c207",
+      "archive": "tasks/evidence/v2-fdb-cost-profile-20261013/raw.tar.gz",
+      "archiveSHA256": "e8fd2e556076a7e46434fc673b6fb02aba5317a7ff0a1ee8e7f0519f90e694cd"
+    }
+  },
+  "finalSourceCoverage": {
+    "graph_cost_profile.go": {
+      "covered": 41,
+      "statements": 50,
+      "percent": 82.0
+    },
+    "graph_cost_run.go": {
+      "covered": 195,
+      "statements": 241,
+      "percent": 80.91286307053942
+    }
+  },
+  "measurementQualification": false,
+  "instrumentedFunctionalClient": true,
+  "cleanup": "terminal15836 exit0 consumed; all owned containers/volumes/network/imagetags independently absent, no live owned processes",
+  "limitations": [
+    "No Go, Docker or scanners run to construct this adapter; configured statics are reused only from identical executable source.",
+    "Original missing-client-RSS, monitor-race and security failures remain immutable in the profile/static bundles.",
+    "Instrumented two-fact functional validation grants no cost/RSS, matched 10k, five-run matrix, fault, engine-selection or full V2 acceptance.",
+    "cost-cell.py compares retained point values and postings; complete CDC/group streams are validated by each runner but are not cross-engine compared."
+  ]
+}
