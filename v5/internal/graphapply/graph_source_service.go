@@ -1,6 +1,7 @@
 package graphapply
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -235,6 +236,10 @@ func (s *graphPeerService) serve(ctx context.Context, wire []byte) ([]byte, erro
 			}
 		}
 	case sourceCertifiedOpen:
+		if bytes.HasPrefix(r.command, []byte{'G', 'U', 'Q', 1}) {
+			body, err = s.captureConditional(ctx, r)
+			break
+		}
 		var cert graphCertificate
 		cert, err = decodeGraphCertificate(r.command)
 		if err == nil && cert.scope != s.peer.scope {

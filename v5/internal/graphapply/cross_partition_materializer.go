@@ -36,12 +36,25 @@ func (m *declaredMaterializer) crossManifest(q *reader, wire []byte) (crossManif
 // catalog validation. Completed replay can inspect a supplied incoming-bank
 // view without borrowing the active store's historical catalog.
 func (m *declaredMaterializer) validateCrossManifestBinding(manifest crossManifest, cfg genesisAllocationConfig) error {
+	if manifest.condition != nil && m.SemanticContractID() != conditionalGraphSemanticContractID() {
+		return errInvalid
+	}
 	digest, err := cfg.digest()
 	if err != nil {
 		return err
 	}
 	if manifest.configuration != digest || manifest.declaration != m.declaration.Digest() || manifest.routing != cfg.routingDigest || manifest.request.ns.graph != m.ns.graph || len(manifest.parts) != m.declaration.Len() {
 		return errInvalid
+	}
+	if manifest.condition != nil {
+		if len(manifest.condition.parts) != m.declaration.Len() {
+			return errGraphCutScope
+		}
+		for _, p := range manifest.condition.parts {
+			if err := p.certificate.scope.check(m.declaration, cfg); err != nil {
+				return err
+			}
+		}
 	}
 	for i, p := range manifest.parts {
 		d, _ := m.declaration.PartitionAt(i)
@@ -287,7 +300,13 @@ func (m *declaredMaterializer) stageCrossPartition(q *reader, info graphstore.Ow
 		if e != nil {
 			return raftlog.ApplicationBatch{}, e
 		}
-		status.yes = true
+		status.yes, e = m.checkConditionalPrepare(q, manifest)
+		if e != nil {
+			return raftlog.ApplicationBatch{}, e
+		}
+		if !status.yes {
+			status.why = reasonReadConflict
+		}
 		if lock != ([16]byte{}) && lock != manifest.tx || !bytes.Equal(q.base.Image, part.binding.CapturedBase.Image) || floor != part.floor {
 			status.yes = false
 			status.why = reasonReadConflict

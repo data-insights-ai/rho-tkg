@@ -1116,6 +1116,12 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			t.Error(e)
 		}
 	}()
+	p05 := newP05ProcessSessions(ctx, certifiedSessions, o)
+	defer func() {
+		if err := p05.close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	requests := make(chan processRequest, processSourceWorkers)
 	inputErr := make(chan error, 1)
 	go func() {
@@ -1349,6 +1355,8 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			out := processResponse{}
 			var e error
 			switch r.op {
+			case processP05Open, processP05Observe, processP05Coordinate, processP05Resume, processP05Close:
+				out.aux, e = p05.serve(workerCtx, r)
 			case processSourceServe:
 				out.aux, e = service.serve(workerCtx, r.data)
 			case processSourceCoordinate:
@@ -1616,6 +1624,12 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				event, e = allocationP08ReadRequest(o, r)
 			case processCertifiedRead:
 				event, e = o.read(r)
+			case processP05Proposal:
+				var p allocationProposal
+				p, e = p05.proposal(ctx, r)
+				if e == nil {
+					response.aux, e = encodeCertifiedProcessProposal(p)
+				}
 			case processCertifiedAction:
 				var p allocationProposal
 				p, e = o.action(t, r, init)
@@ -1721,7 +1735,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					}
 					paused = nil
 				}
-			case processSourceServe, processSourceCoordinate, processSourceObserve, processSourceCertifiedOpen, processSourceCertifiedObserve, processSourceCertifiedClose, processRangeRun, processRangeResume, processRangeCertifiedDetail, processCertifiedIndexObserve, processLifecycleObserve, processPairedPendingOpen, processCostObserve:
+			case processP05Open, processP05Observe, processP05Coordinate, processP05Resume, processP05Close, processSourceServe, processSourceCoordinate, processSourceObserve, processSourceCertifiedOpen, processSourceCertifiedObserve, processSourceCertifiedClose, processRangeRun, processRangeResume, processRangeCertifiedDetail, processCertifiedIndexObserve, processLifecycleObserve, processPairedPendingOpen, processCostObserve:
 				if pause && r.op == processSourceServe && !isSourceClose(r) {
 					if len(paused) >= processSourceWorkers {
 						e = errLimit

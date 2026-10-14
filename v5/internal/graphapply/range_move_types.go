@@ -56,7 +56,7 @@ func (r rangeMoveIntent) valid() bool {
 	return r.id != (requestID{}) && r.source.valid() && r.target.valid() &&
 		r.source.partition != r.target.partition && r.source.graph == r.target.graph &&
 		r.source.declaration == r.target.declaration && r.source.topology == r.target.topology &&
-		r.source.semantic == r.target.semantic && r.source.semantic == rangeMoveSemanticContractID() &&
+		r.source.semantic == r.target.semantic && rangeMoveGraphAgreement(r.source.semantic) &&
 		r.publication.Validate() == nil && [16]byte(r.publication.Graph) == [16]byte(r.source.graph) &&
 		r.epoch >= r.publication.InitialEpoch && r.epoch < math.MaxUint64 &&
 		r.maxPages > 0 && r.maxPages <= 1024 && r.pageRows > 0 && r.pageRows <= 256 &&

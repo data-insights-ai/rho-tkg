@@ -55,6 +55,7 @@ type crossManifest struct {
 	configuration, declaration, routing, template [32]byte
 	digest                                        [32]byte
 	parts                                         []crossPart
+	condition                                     *graphReadConditionValue
 }
 type crossPart struct {
 	binding    graphstore.PreparedKernelBinding
@@ -208,6 +209,11 @@ func decodeCrossCommand(wire []byte, l materializerLimits) (crossCommand, int, e
 }
 
 func encodeCrossManifest(m crossManifest, l materializerLimits) ([]byte, error) {
+	if m.condition != nil {
+		value := *m.condition
+		m.condition = nil
+		return encodeConditionalCrossManifest(m, value, l)
+	}
 	return boundedEncoding(l.commandBytes, func(w *boundedWriter) {
 		w.add([]byte{'G', 'C', 'M', 1})
 		w.add(m.tx[:])
@@ -225,6 +231,14 @@ func encodeCrossManifest(m crossManifest, l materializerLimits) ([]byte, error) 
 	})
 }
 func decodeCrossManifest(wire []byte, l materializerLimits, arena *graphstate.OutputBudget) (crossManifest, error) {
+	if bytes.HasPrefix(wire, []byte{'G', 'C', 'M', 2}) {
+		m, value, err := decodeConditionalCrossManifest(wire, l, arena)
+		if err != nil {
+			return crossManifest{}, err
+		}
+		m.condition = new(value)
+		return m, nil
+	}
 	body, err := graphBody(wire, "GCM\x01", l.commandBytes)
 	if err != nil {
 		return crossManifest{}, err
@@ -363,4 +377,56 @@ func validateCrossPhaseProofs(r crossCommand, m crossManifest) error {
 		return errInvalid
 	}
 	return nil
+}
+
+// GCM2 preserves the exact old GCM1 manifest and complete condition. Only the
+// fresh conditional agreement admits it, with native evidence checked by Stage
+// before a YES kernel or effects. Older agreements continue to reject it.
+func encodeConditionalCrossManifest(m crossManifest, value graphReadConditionValue, l materializerLimits) ([]byte, error) {
+	m.condition = nil
+	base, err := encodeCrossManifest(m, l)
+	if err != nil {
+		return nil, err
+	}
+	condition, err := encodeGraphReadConditionValue(value, l)
+	if err != nil {
+		return nil, err
+	}
+	return boundedEncoding(l.commandBytes, func(w *boundedWriter) { w.add([]byte{'G', 'C', 'M', 2}); w.field(base); w.field(condition) })
+}
+func decodeConditionalCrossManifest(wire []byte, l materializerLimits, arena *graphstate.OutputBudget) (crossManifest, graphReadConditionValue, error) {
+	body, err := graphBody(wire, "GCM\x02", l.commandBytes)
+	if err != nil {
+		return crossManifest{}, graphReadConditionValue{}, err
+	}
+	if arena == nil {
+		return crossManifest{}, graphReadConditionValue{}, errInvalid
+	}
+	if err := arena.Reserve(1024 + 4*len(wire)); err != nil {
+		return crossManifest{}, graphReadConditionValue{}, outputBudgetFailure(err)
+	}
+	c := graphCursor{b: body}
+	base, condition := c.field(l.commandBytes), c.field(l.commandBytes)
+	if c.err != nil || len(c.b) != 0 || !bytes.HasPrefix(base, []byte{'G', 'C', 'M', 1}) {
+		return crossManifest{}, graphReadConditionValue{}, errors.Join(errCorrupt, c.err)
+	}
+	m, err := decodeCrossManifest(base, l, arena)
+	if err != nil {
+		return crossManifest{}, graphReadConditionValue{}, err
+	}
+	v, err := decodeGraphReadConditionValue(condition, l, arena)
+	if err != nil {
+		return crossManifest{}, graphReadConditionValue{}, err
+	}
+	if len(v.parts) != len(m.parts) {
+		return crossManifest{}, graphReadConditionValue{}, errCorrupt
+	}
+	for i, p := range v.parts {
+		b := m.parts[i].binding
+		if p.certificate.scope.partition != b.Partition || p.certificate.scope.graph != m.request.ns.graph || p.certificate.scope.declaration != m.declaration || p.certificate.configuration != m.configuration || p.certificate.scope.ownership != b.OwnershipEpoch || !bytes.Equal(p.certificate.image[:], b.CapturedBase.Image) {
+			return crossManifest{}, graphReadConditionValue{}, errCorrupt
+		}
+	}
+	m.digest = sha256.Sum256(wire)
+	return m, v, nil
 }

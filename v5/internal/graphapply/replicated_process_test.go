@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -100,6 +101,12 @@ const (
 	processCostObserve
 	processCostRecord
 	processCostRecords
+	processP05Open
+	processP05Observe
+	processP05Coordinate
+	processP05Resume
+	processP05Close
+	processP05Proposal
 )
 
 // IPC IDs identify this process event only. No storage/send/prepared capability
@@ -208,7 +215,7 @@ func decodeProcessRequest(b []byte) (processRequest, error) {
 	r := processRequest{incarnation: c.array(), sequence: c.u64(), op: c.tag(), index: c.u64(), entity: c.u64()}
 	r.data = c.field(processFrameBytes)
 	r.packet = processDecodePacket(&c)
-	if r.sequence == 0 || r.op < processCampaign || r.op > processCostRecords || len(c.b) != 0 {
+	if r.sequence == 0 || r.op < processCampaign || r.op > processP05Proposal || len(c.b) != 0 {
 		c.err = errCorrupt
 	}
 	return r, c.err
@@ -418,6 +425,31 @@ func startGraphProcess(t *testing.T, dir string, id uint64, extraEnv ...string) 
 	p := &graphProcess{cmd: exec.Command(os.Args[0], "-test.run=^TestReplicatedGraphChild$", "-test.count=1")}
 	p.cmd.Env = append(os.Environ(), "RHO_GRAPH_PROCESS_CHILD=1", "RHO_GRAPH_PROCESS_ID="+strconv.FormatUint(id, 10), "RHO_GRAPH_PROCESS_DIR="+dir, "GOMAXPROCS=1")
 	p.cmd.Env = append(p.cmd.Env, extraEnv...)
+	// Coverage is an explicit P05 qualification lane. Each incarnation owns a
+	// separate profile, including a reopen in the same graph directory.
+	conditional, childCover := false, false
+	for _, entry := range p.cmd.Env {
+		name, value, _ := strings.Cut(entry, "=")
+		switch name {
+		case "RHO_GRAPH_CONDITIONAL_PROCESS":
+			conditional = value == "1"
+		case "RHO_P05_CHILD_COVER":
+			childCover = value == "1"
+		}
+	}
+	if conditional && childCover {
+		if err := os.MkdirAll(dir, 0750); err != nil {
+			t.Fatal(err)
+		}
+		profile, err := os.CreateTemp(dir, "p05-child-cover-*.out")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := profile.Close(); err != nil {
+			t.Fatal(err)
+		}
+		p.cmd.Args = append(p.cmd.Args, "-test.coverprofile="+profile.Name())
+	}
 	var err error
 	p.stdin, err = p.cmd.StdinPipe()
 	if err != nil {
@@ -1614,6 +1646,9 @@ func (o *certifiedProcessOwners) action(t *testing.T, r processRequest, init dec
 		if os.Getenv("RHO_GRAPH_LIFECYCLE_PROCESS") == "1" || o.cost != nil {
 			schemas = nativeLifecycleSchemas()
 		}
+		if os.Getenv("RHO_GRAPH_CONDITIONAL_PROCESS") == "1" {
+			schemas = p05Schemas()
+		}
 		return h.PreparePartitionInitialization(r.index, bootstrapAttemptID(id), schemas, init.maxBlock, graphGenesisBinding(t), *init.routing, o.proof)
 	case certifiedBeginRecipient:
 		if r.index < 1 || r.index > 2 {
@@ -1755,6 +1790,11 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 		l.MaxRetainedBytes, l.MaxRetainedEntries = 256<<20, 65536
 		p.RetainedApplicationBytes, p.RetainedApplicationRecords = 256<<20, 65536
 		generations = raftlog.ApplicationGenerationLimits{MaxBytes: 512 << 20, MaxRecords: 131072}
+	}
+	// The explicit fresh conditional profile keeps RANGE quotas when requested,
+	// but always uses its distinct semantic ID on create AND same-directory reopen.
+	if os.Getenv("RHO_GRAPH_CONDITIONAL_PROCESS") == "1" {
+		agreement, materializer = conditionalGraphSemanticContractID(), newConditionalGraphMaterializer
 	}
 	cost, err := nativeGraphCostSpecFromEnv()
 	if err != nil {

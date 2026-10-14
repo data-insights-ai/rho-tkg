@@ -116,6 +116,12 @@ func (c *crossProcessCoordinator) matchBusiness(manifest []byte, wanted []byte, 
 	if err != nil {
 		return err
 	}
+	if m.condition != nil {
+		encoded, err = conditionalBusiness(encoded, *m.condition, c.host.machine.limits)
+		if err != nil {
+			return err
+		}
+	}
 	if !bytes.Equal(encoded, wanted) {
 		return errInvalid
 	}
@@ -126,26 +132,52 @@ func (c *crossProcessCoordinator) matchBusiness(manifest []byte, wanted []byte, 
 // qualified requests coalesce; unknown registration retains its exact original
 // bytes even if an applied quorum lookup presently reports absence.
 func (c *crossProcessCoordinator) Run(ctx context.Context, id requestID, ops []graphstate.Operation, provenance uint64, claims []freshBinding) (result crossProcessResult, err error) {
+	return c.run(ctx, id, ops, provenance, claims, nil, false, nil)
+}
+
+func (c *crossProcessCoordinator) run(ctx context.Context, id requestID, ops []graphstate.Operation, provenance uint64, claims []freshBinding, condition *graphReadCondition, resumeOnly bool, resumed *conditionalResumeInvocation) (result crossProcessResult, err error) {
 	if c == nil || c.host == nil || c.host.machine == nil || ctx == nil || id == (requestID{}) {
 		return result, errInvalid
 	}
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
+	if resumed != nil && (!resumeOnly || condition == nil || resumed.arena == nil || resumed.budget == nil || resumed.budget.output != resumed.arena || len(resumed.endpoints) != c.host.machine.declaration.Len()) {
+		return result, errInvalid
+	}
 	business, err := c.business(id, ops, provenance, claims)
 	if err != nil {
 		return result, err
 	}
 	l := c.host.machine.limits
-	output, err := graphstate.NewOutputBudget(l.outputBytes)
-	if err != nil {
-		return result, err
+	if condition != nil {
+		if c.host.machine.SemanticContractID() != conditionalGraphSemanticContractID() {
+			return result, errGraphCutScope
+		}
 	}
 	// Conservative shared source/output child: network, physical reads, decode,
 	// staging and private templates cannot each spend a fresh source allowance.
-	arena, err := output.Child(min(l.sourceBytes, l.outputBytes))
-	if err != nil {
-		return result, err
+	var arena *graphstate.OutputBudget
+	if resumed != nil {
+		arena = resumed.arena
+	} else {
+		output, e := graphstate.NewOutputBudget(l.outputBytes)
+		if e != nil {
+			return result, e
+		}
+		arena, err = output.Child(min(l.sourceBytes, l.outputBytes))
+		if err != nil {
+			return result, err
+		}
+	}
+	if condition != nil {
+		if err := arena.Reserve(1024 + 8*len(business) + 8192*len(condition.value.parts)); err != nil {
+			return result, outputBudgetFailure(err)
+		}
+		business, err = conditionalBusiness(business, condition.value, l)
+		if err != nil {
+			return result, err
+		}
 	}
 	if err := arena.Reserve(1024 + 8*len(business)); err != nil {
 		return result, outputBudgetFailure(err)
@@ -183,10 +215,16 @@ func (c *crossProcessCoordinator) Run(ctx context.Context, id requestID, ops []g
 		}
 		c.mu.Unlock()
 	}()
-	budget := newGraphRemoteBudget(l, arena)
-	endpoints, err := c.endpoints(budget)
-	if err != nil {
-		return result, err
+	var budget *graphRemoteBudget
+	var endpoints map[uint64]*graphAuthenticatedEndpoint
+	if resumed != nil {
+		budget, endpoints = resumed.budget, resumed.endpoints
+	} else {
+		budget = newGraphRemoteBudget(l, arena)
+		endpoints, err = c.endpoints(budget)
+		if err != nil {
+			return result, err
+		}
 	}
 	coordinator := endpoints[c.host.machine.ns.partition]
 	lookup, err := coordinator.lookup(ctx, resume.tx)
@@ -206,25 +244,60 @@ func (c *crossProcessCoordinator) Run(ctx context.Context, id requestID, ops []g
 		return result, errCrossProcessPending
 	}
 	if len(run.tx.manifest) == 0 {
+		if resumeOnly {
+			return result, errCrossProcessPending
+		}
+		if condition != nil {
+			if err := condition.stamp.owner.active(); err != nil {
+				return result, err
+			}
+		}
 		sources := make([]*remoteGraphSource, 0, c.host.machine.declaration.Len())
 		defer func() {
 			for _, source := range sources {
 				err = errors.Join(err, source.Close())
 			}
 		}()
-		captured := make([]capturedGraphSource, c.host.machine.declaration.Len())
-		for i := range captured {
-			part, _ := c.host.machine.declaration.PartitionAt(i)
-			source, e := endpoints[part.Partition].openSource(ctx)
-			if e != nil {
-				return result, e
+		var captured []capturedGraphSource
+		if condition != nil {
+			captured, err = borrowConditionSources(ctx, *condition, endpoints)
+			if err != nil {
+				return result, err
 			}
-			sources = append(sources, source)
-			captured[i] = capturedGraphSource{observation: source.info.observation, root: source.info.root, floor: source.info.floor, data: source}
+		} else {
+			captured = make([]capturedGraphSource, c.host.machine.declaration.Len())
+			for i := range captured {
+				part, _ := c.host.machine.declaration.PartitionAt(i)
+				source, e := endpoints[part.Partition].openSource(ctx)
+				if e != nil {
+					return result, e
+				}
+				sources = append(sources, source)
+				captured[i] = capturedGraphSource{observation: source.info.observation, root: source.info.root, floor: source.info.floor, data: source}
+			}
+		}
+
+		if condition != nil {
+			if err := checkConditionSources(condition.value, captured, c.host.machine.declaration); err != nil {
+				return result, err
+			}
 		}
 		manifest, e := c.host.planCrossCaptured(ctx, id, ops, provenance, claims, captured, arena, graphstore.PageWork{Records: 8 * len(captured), Bytes: 4096 * len(captured)})
 		if e != nil {
 			return result, e
+		}
+		if condition != nil {
+			decoded, err := decodeCrossManifest(manifest, l, arena)
+			if err != nil {
+				return result, err
+			}
+			if err := arena.Reserve(1024 + 8*len(manifest) + graphConditionPartBytes*len(condition.value.parts)); err != nil {
+				return result, outputBudgetFailure(err)
+			}
+			manifest, e = encodeConditionalCrossManifest(decoded, condition.value, l)
+			if e != nil {
+				return result, e
+			}
 		}
 		for _, source := range sources {
 			if e := source.Close(); e != nil {
@@ -246,6 +319,11 @@ func (c *crossProcessCoordinator) Run(ctx context.Context, id requestID, ops []g
 	}
 	arena = completion
 	if !lookup.present {
+		if condition != nil && !run.registrationAttempted {
+			if err := condition.stamp.owner.active(); err != nil {
+				return result, err
+			}
+		}
 		proposal, e := c.host.proposalFromAuthority(crossRegister, m.coordinator, run.tx, nil, arena)
 		if e != nil {
 			return result, fmt.Errorf("registration proposal: %w", e)

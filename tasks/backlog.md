@@ -153,6 +153,16 @@ component does not close its whole fault family or V2.
 
 Execution plan to finish V2 (2026-10-14; keep the A–F scope above):
 
+Owner execution ordering, 2026-10-14: finish and integrate the full remaining V2
+functionality first, then execute correctness qualification, measurements and
+evidence-driven improvements. The package order below describes dependencies;
+it does not require normal/race/coverage/static acceptance before starting the
+next implementation package. Source review and compilation establish coherent
+wiring during implementation; author direct tests alongside changes and run
+them at the integrated qualification checkpoint. CI runs in the background and
+must not gate source progress or pushes. Keep existing qualification scopes and
+all A–F exit requirements; implementation status never implies acceptance.
+
 1. **Freeze the acceptance inventory and close the near-ready B components.**
    Map each P01–P09 requirement and declared fault/workload to its existing
    production test, source revision and receipt, or a concrete missing case.

@@ -21,7 +21,7 @@ func (m *declaredMaterializer) certifiedReads() bool {
 }
 
 func certifiedGraphAgreement(id raftlog.ApplicationSemanticContractID) bool {
-	return id == certifiedGraphSemanticContractID() || id == rangeMoveSemanticContractID()
+	return id == certifiedGraphSemanticContractID() || rangeMoveGraphAgreement(id)
 }
 func newCertifiedGraphMaterializer(s *raftlog.Store, n namespace, d graphstore.OwnershipDeclaration, l materializerLimits) (*declaredMaterializer, error) {
 	if s == nil || s.ApplicationControls().Version != 1 || s.ApplicationRecovery().Version != 1 {

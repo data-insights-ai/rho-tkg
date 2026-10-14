@@ -27,6 +27,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Original request bytes and durable decisions survive uncertain replies;
   missing authority remains pending. Captured root metadata grants no live-peer,
   quorum or certified-cut authority, and required graph data uses source RPCs.
+  An opt-in fresh agreement adds complete-scope conditional reads and dependent
+  writes: native dependency prefixes are captured before the read is returned
+  and checked again before a prepare vote. Changed dependencies require a new
+  read and request; retained originals can resume after the read closes, sharing
+  one cumulative lookup and completion allowance.
   Native and remote readers share Fresh, Stable, At and After closure through
   persisted source certificates and exact retained roots. Remote control reads
   carry explicit cumulative work/ownership allowances; receipt validation
