@@ -524,3 +524,23 @@ func (s *Store) publishApplicationCut() (err error) {
 	}
 	return nil
 }
+
+// RetentionPublication reports only the actual current fresh-profile publication
+// ID and known-retired status, including when its portable reference has expired.
+// Fixed by-value metadata grants no source, lease, export or deletion rights and
+// clones no variable header. Native floor admission still rechecks this exact ID.
+func (s *Store) RetentionPublication() (id [32]byte, retired bool, err error) {
+	if s == nil {
+		return id, false, ErrInvalid
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.check(); err != nil {
+		return id, false, err
+	}
+	p := s.meta.Gen.Publication
+	if !s.meta.Retention.Config.enabled() || !p.Valid {
+		return id, false, ErrInvalid
+	}
+	return p.ID, p.Retired || s.meta.Retention.State.RetiredCutID == p.ID, nil
+}

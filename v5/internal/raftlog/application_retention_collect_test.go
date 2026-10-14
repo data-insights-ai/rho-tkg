@@ -25,6 +25,9 @@ func TestApplicationRetentionFloorsAuthenticateCommandAndCapturedOwners(t *testi
 	if state, enabled, _, err := legacyView.RetentionPlan(t.Context(), ReadBudget{Rows: 1, Bytes: 4096}); err != nil || enabled || !state.zero() {
 		t.Fatal("disabled plan reported as enabled empty plan", state, enabled, err)
 	}
+	if _, _, err := legacy.RetentionPublication(); !errors.Is(err, ErrInvalid) {
+		t.Fatal("disabled scalar publication", err)
+	}
 	if err := legacyView.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -78,6 +81,9 @@ func TestApplicationRetentionFloorsAuthenticateCommandAndCapturedOwners(t *testi
 	cut, err := s.PublishedApplicationCut()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if id, retired, err := s.RetentionPublication(); err != nil || retired || id != cut.ID {
+		t.Fatal("actual live scalar publication", id, retired, err)
 	}
 	next := ApplicationRetentionState{ID: [32]byte{7}, SourceIndex: 5, InstalledIndex: 6, SourceHash: sha256.Sum256([]byte("current")), RetiredCutID: cut.ID, RootFloor: 2, DataFloor: 4, FeedFloor: 6, OutcomeFloor: 5, RecoveryFloor: 5,
 		Roots: []ApplicationRetentionRoot{{Index: 1, ImageHash: sha256.Sum256([]byte("genesis"))}, {Index: 2, ImageHash: sha256.Sum256([]byte("old")), Data: true}},
@@ -233,6 +239,9 @@ func TestApplicationRetentionFloorsAuthenticateCommandAndCapturedOwners(t *testi
 		t.Fatal(err)
 	}
 	var nilStore *Store
+	if _, _, err := nilStore.RetentionPublication(); !errors.Is(err, ErrInvalid) {
+		t.Fatal("nil scalar publication", err)
+	}
 	if _, _, err := nilStore.CollectApplicationRetention(t.Context(), admission.state.ID, ReadBudget{Rows: 4, Bytes: 32768}); !errors.Is(err, ErrInvalid) {
 		t.Fatal("nil collector", err)
 	}
@@ -288,6 +297,9 @@ func TestApplicationRetentionFloorsAuthenticateCommandAndCapturedOwners(t *testi
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}
+	if _, _, err := s.RetentionPublication(); !errors.Is(err, ErrClosed) {
+		t.Fatal("closed scalar publication", err)
+	}
 	cfg.Create = false
 	s, err = Open(cfg)
 	if err != nil {
@@ -300,6 +312,9 @@ func TestApplicationRetentionFloorsAuthenticateCommandAndCapturedOwners(t *testi
 	progress, _, err = s.CollectApplicationRetention(t.Context(), admission.state.ID, ReadBudget{Rows: 4, Bytes: 32768})
 	if err != nil || progress.Section != 1 {
 		t.Fatal("first actual obsolete version delete", progress, err)
+	}
+	if id, retired, err := s.RetentionPublication(); err != nil || !retired || id != beforeCut.ID {
+		t.Fatal("exact retired scalar publication", id, retired, err)
 	}
 	if _, err := s.PublishedApplicationCut(); !errors.Is(err, ErrApplicationExpired) {
 		t.Fatal("deleted publication remained live", err)
