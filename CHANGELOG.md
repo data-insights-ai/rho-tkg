@@ -6,8 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [4.52.1] - 2026-10-14
-
 ### Added
 
 - **Elements property indexes** (backlog 63, sigma-tkgd R6): `PropertyIndexOptions{Elements: true}` indexes each
@@ -38,6 +36,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   33 vs 22 allocs and 2,721 vs 1,885 B per row against a plain index on a scalar key of the same row (no index: 17
   allocs, 1,321 B); badger 68 vs 57 allocs, 6.6 vs 5.8 KB. Test `TestPropertyIndexElementsContains`; evidence
   `tasks/evidence/property-elements/`.
+
+## [4.52.1] - 2026-10-14
+
+### Added
+
 - **Tiered tx-membership sidecars and valid-end acceleration** (backlog 58, sigma-tkgd R2): the tiered store now
   implements `LabelTxMembership`, `RelTypeTxMembership`, `LabelTxMemberLookup`, `RelTypeTxMemberLookup`,
   `NodePropertyTxMembership`, `RelPropertyTxMembership`, `RelValidEnd` and `NodeValidEnd`
