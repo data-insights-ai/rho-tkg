@@ -212,6 +212,13 @@ all A–F exit requirements; implementation status never implies acceptance.
    results and pinned old-cut/feed lineage through reclamation, and exercise
    explicit expiry. Then compose the existing native graph path with the
    declared message, quorum/domain, scheduler and VFS/durable-image faults.
+   Portable pin publication must finish all participant installs before its
+   final authenticated live-owner observation pass; proofs captured before
+   later installs cannot establish a common live publication point. Native
+   logical GC requires a fresh retention/snapshot contract: the existing AS6
+   format assumes continuous retained indexes and cannot describe deleted roots
+   or CDC. Preserve ordinary formats; bind sparse retained lineage, floors and
+   resumable deletion accounting explicitly, protecting held views and pins.
    Freeze the finite transition/schedule list before running it; perform the
    specified bounded ordering exploration before a recorded-seed soak. C/D close
    only with exact oracle agreement, no acknowledged durable loss, recovery after
@@ -255,8 +262,10 @@ all A–F exit requirements; implementation status never implies acceptance.
    from comparable correctness, durability, total cost, deployment and maintenance
    evidence before V3 format freeze.
 6. **Run one coordinated V2 acceptance gate.** Reconcile main at a recorded
-   cutoff (latest observed main source is `80f7f067`/v4.54.0; current v5 source includes v4.51.8),
+   cutoff (latest observed main source is `3e87d2cd`/v4.55.0; current v5 source includes v4.51.8),
    review relevant handover/consumer/CI deltas and integrate required changes.
+   The new effective-page and history-epoch/head-cache contracts belong in that
+   source/consumer reconciliation; the upstream handover is not release evidence.
    Preserve historical qualification rather than relabelling it as current.
    On the final integrated revision run full phase CI/race/coverage/security and
    the complete V2 requirement/evidence audit once; repeat only gates invalidated
