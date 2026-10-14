@@ -164,6 +164,9 @@ func TestCertifiedIncidentStreamRetainsCutAndCommitsOnlyHydratedChunks(t *testin
 		t.Fatal("exhausted invocation advanced/refunded", chunk, err)
 	}
 
+	if err := fresh.Close(); err != nil {
+		t.Fatal(err)
+	}
 	closing, err := remote.OpenIncidentStream(t.Context(), cut, nil, predicate, at, graphstate.Effective, 1, time.Now().Add(time.Minute), grant.add(grant))
 	if err != nil {
 		t.Fatal(err)
@@ -173,9 +176,6 @@ func TestCertifiedIncidentStreamRetainsCutAndCommitsOnlyHydratedChunks(t *testin
 		return closing.Close()
 	}); chunk != nil || !errors.Is(err, context.Canceled) || closing.sequence != 0 {
 		t.Fatal("callback Close committed or deadlocked", chunk, err)
-	}
-	if err := fresh.Close(); err != nil {
-		t.Fatal(err)
 	}
 	if _, err := incidentProduct(math.MaxInt, 2); !errors.Is(err, errLimit) {
 		t.Fatal("overflow admitted", err)
