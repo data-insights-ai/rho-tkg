@@ -223,7 +223,7 @@ func TestRetainedPinPortablePublisherNeedsPostInstallLiveOwners(t *testing.T) {
 		}
 	})
 	t.Run("actual ordinary quota cliff keeps exact originals recoverable", func(t *testing.T) {
-		n := retainedPinNetworkWithPolicy(t, func(p *raftlog.ApplicationPolicy) { p.RetainedApplicationRecords = 512 })
+		n := retainedPinNetworkWithPolicy(t, func(p *raftlog.ApplicationPolicy) { p.RetainedApplicationRecords = 520 })
 		_, publisher, _, _ := retainedPublisherFromNetwork(t, n)
 		request, err := publisher.Begin(t.Context(), n.requestID(), graphReadRequest{mode: graphReadFresh}, ^uint64(0)-1)
 		if err != nil {
