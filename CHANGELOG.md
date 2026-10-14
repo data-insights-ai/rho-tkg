@@ -30,6 +30,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   writer read and extended; segments; import both ways; bytes on disk), `TestWireBinaryHashRoundTripAndLegacyHex`;
   evidence `tasks/evidence/integrity-switch/`.
 
+### Changed
+
+- **Integrity hashes written as 32 raw bytes** (backlog 61, step 2 — ships in the patch AFTER the one carrying the
+  Deprecated entry below, which must move to that earlier release's section): the writer stores each canonical
+  hash as its 32 raw bytes (row fv 4) and a writable open raises the badger store marker to 4 (an Elements
+  store keeps 5); callers still get the same 64-hex
+  strings. A relationship row of the measured shape: 366.9 → 270.9 B raw, 251.2 → 151.8 B Snappy. A store this
+  release opens writable can be opened only by the release carrying step 1 or later.
+
 ### Deprecated
 
 - **Hex integrity hashes on disk** (backlog 61): from v4.52.3 stores are written with binary hashes (marker 4);
