@@ -1,7 +1,6 @@
 // API accessors for the Graph temporal-query surface (point-in-time, interval,
 // bitemporal, snapshot/diff, Allen). Lives in the same package as the temporal
-// types it returns (GraphSnapshot, SnapshotDiff, …) — collapsed in v3.4.0
-// post-cleanup from the previous pkg/graph/temporalapi sibling.
+// types it returns (GraphSnapshot, SnapshotDiff, …).
 package temporal
 
 import (
@@ -640,15 +639,13 @@ func (a *API) ForEachNodeEffectiveByLabels(labels []string, pin types.Instant, f
 // ForEachRelEffectiveByType's.
 //
 // Cost on memory and badger: the relationships of the type whose valid end is
-// at or after validFrom plus those written after pin, from a valid-end index
-// the store keeps per queried type: the first call for a type reads its
-// ever-members' temporal fields once (and builds the K1 membership sidecar if
-// no pinned scan did), every write of the type after that is folded, writes
-// of other types change nothing (RAM; tracked again on the first call after a
-// reopen). Tiered keeps the index per shard and unions the shards' candidates
-// (a closed cold shard is opened; an entity whose rows bound its end loosely,
-// such as a valid-time close, is read on every call). Sharded answers the
-// same through the unbounded door's candidates (not accelerated).
+// at or after validFrom plus those written after pin, from a RAM valid-end
+// index the store keeps per queried type (built on the first call for a type
+// and tracked again on the first call after a reopen). Tiered keeps the index
+// per shard and unions the shards' candidates (a closed cold shard is opened;
+// an entity whose rows bound its end loosely, such as a valid-time close, is
+// read on every call). Sharded answers the same through the unbounded door's
+// candidates (not accelerated).
 func (a *API) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom types.Instant, fn func(RelSegment) bool) error {
 	ops, err := a.ready()
 	if err != nil {
@@ -871,8 +868,7 @@ func (a *API) DiffCallback(t1, t2 types.Instant, h DiffHandlers) error {
 
 // NodeInterval returns the interval [valid_from, valid_to) for n.
 //
-// A row without a valid-from starts at its TxFrom (backlog 62, v4.54.0: was
-// the ID's mint instant for a create, UpdatedAt for a later version).
+// A row without a valid-from starts at its TxFrom (backlog 62).
 func (a *API) NodeInterval(n *types.Node) (start, end types.Instant, err error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -883,8 +879,7 @@ func (a *API) NodeInterval(n *types.Node) (start, end types.Instant, err error) 
 
 // RelInterval returns the interval [valid_from, valid_to) for r.
 //
-// A row without a valid-from starts at its TxFrom (backlog 62, v4.54.0: was
-// the ID's mint instant for a create, UpdatedAt for a later version).
+// A row without a valid-from starts at its TxFrom (backlog 62).
 func (a *API) RelInterval(r *types.Relationship) (start, end types.Instant, err error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -900,8 +895,7 @@ func (a *API) RelInterval(r *types.Relationship) (start, end types.Instant, err 
 // or nil node — a post-filter consumer treats either as "excluded", which is
 // the safe default. See core.TempOps.NodeMatchesValidTime.
 //
-// A row without a valid-from starts at its TxFrom (backlog 62, v4.54.0: was
-// the ID's mint instant for a create, UpdatedAt for a later version).
+// A row without a valid-from starts at its TxFrom (backlog 62).
 func (a *API) NodeMatchesValidTime(n *types.Node, opts storepkg.QueryOpts) bool {
 	ops, err := a.ready()
 	if err != nil {
@@ -917,8 +911,7 @@ func (a *API) NodeMatchesValidTime(n *types.Node, opts storepkg.QueryOpts) bool 
 // post-filter consumer treats either as "excluded", which is the safe default.
 // See core.TempOps.RelMatchesValidTime.
 //
-// A row without a valid-from starts at its TxFrom (backlog 62, v4.54.0: was
-// the ID's mint instant for a create, UpdatedAt for a later version).
+// A row without a valid-from starts at its TxFrom (backlog 62).
 func (a *API) RelMatchesValidTime(r *types.Relationship, opts storepkg.QueryOpts) bool {
 	ops, err := a.ready()
 	if err != nil {

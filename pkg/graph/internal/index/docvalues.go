@@ -31,7 +31,7 @@ import (
 
 // MaxDocValuesNodes caps a per-label column. Over the cap a store declines to
 // build (the consumer falls back to the per-node path), bounding column memory
-// rather than silently truncating. 10M numeric rows ≈ 165 MB/column.
+// rather than silently truncating.
 const MaxDocValuesNodes = 10_000_000
 
 // MultiLabelKey encodes a label-token tuple into an order-independent cache key
@@ -89,19 +89,16 @@ const (
 // representation is populated per col type.
 //
 // Storage is TYPED (`[]int64`/`[]float64`/`[]string`); the boxed `[]any` views the
-// older doors hand out are built LAZILY, on first use, and cached. That ordering is
-// deliberate and is the whole point of the layout:
+// boxed-column doors hand out are built LAZILY, on first use, and cached. That
+// ordering is deliberate and is the whole point of the layout:
 //
 //   - a typed reader (the column-scan capability) never materialises a boxed view
-//     at all, so it costs 8 bytes per numeric row and ZERO heap objects, against
-//     the 24 bytes (16B interface header + 8B boxed int64) and one object per row
-//     an eagerly-boxed column costs;
-//   - a boxed reader pays exactly what it paid when the column was boxed at build —
-//     once per snapshot, amortised over every read — so it does NOT regress. Boxing
-//     per read instead would allocate on every value, because Go heap-escapes an
-//     int64 on interface conversion outside the small-value cache. `[]any` is in the
-//     PUBLISHED contract (types.NodeColumnReader, nodes.API.ForEachDocValues), so
-//     that regression would land on every existing consumer.
+//     at all, so it holds no per-row heap objects;
+//   - a boxed reader pays the boxing once per snapshot, amortised over every read.
+//     Boxing per read instead would allocate on every value, because Go
+//     heap-escapes an int64 on interface conversion outside the small-value
+//     cache. `[]any` is in the PUBLISHED contract (types.NodeColumnReader,
+//     nodes.API.ForEachDocValues), so it must stay cheap for every consumer.
 //
 // Contains a sync.Once, so a docColumn must only ever be handled as *docColumn
 // (go vet's copylocks enforces this).
@@ -113,8 +110,7 @@ type docColumn struct {
 	// ColNumeric: typed storage in one of three exact states, so a column never
 	// carries an array it does not need. int64-vs-float64 must be PRESERVED (not
 	// collapsed to float64) or a consumer's accumulator stops being bit-exact above
-	// 2^53 — the invariant the previous boxed representation held via each value's
-	// dynamic type.
+	// 2^53.
 	//
 	//	isFloat == nil && flts == nil  -> uniformly int64  (values in ints)
 	//	isFloat == nil && ints == nil  -> uniformly float64 (values in flts)

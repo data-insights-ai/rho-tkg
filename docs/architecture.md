@@ -625,6 +625,15 @@ a full node fetch+decode per entity (the index itself stays RAM-resident at
 runtime). The two new keyspaces are backfilled from current node state exactly
 once, the first time their flag is turned on.
 
+Sizing figures behind these knobs (order of magnitude, measured): a label-index
+entry costs about 50-100 B of RAM (the ceiling at hundreds of millions of
+nodes) and `AdjacencyIndexOnDisk` saves about two map entries per relationship;
+a label scan over more nodes than `Config.CacheCapacity` holds decodes every
+miss from badger (about 3 µs per row) instead of hitting the cache (about
+0.1 µs per row), so size the cache to the scan working set; an 8-byte numeric
+DocValues row costs no per-row heap object, and a 10M-row numeric column
+(`index.MaxDocValuesNodes`, the cap) takes about 165 MB.
+
 ### Temporal envelope indexes (node label, relationship type)
 
 `g.Index().CreateTemporal(label)` and `CreateRelTemporal(type)` keep a RAM index of one envelope per entity: the earliest valid-from and latest valid-to over ALL its rows, current and history. A valid-time `ByLabel` / `ByType` read prunes an entity whose envelope misses the query instant without reading it. The prune is sound only if no row lies outside its entity's envelope, so the contract is: an entity the index does not cover is never pruned, and every write that adds a row to a covered entity extends the envelope in the same step.

@@ -14,15 +14,14 @@ import (
 
 // TransactionTimeQueryCapability (NodeAsOf / RelAsOf / NodesAsOf / RelsAsOf).
 //
-// The mandatory-store fallback in core/txtime.go answers a transaction-time
-// read by MATERIALIZING the entire version history of an entity (every version
-// decoded + deep-copied) and then linear-scanning it. These native methods
-// replace that with a bounded REVERSE scan: the history keys are ordered by
-// (entity, ascending version), so a reverse iterator visits versions
-// newest-first and stops as soon as the as-of rule is decided — O(versions
-// newer than the query, plus the one row that held the current slot) instead
-// of O(all versions). Adding the four methods directly to *Store auto-enables
-// the native path via nativeTransactionTimeQuery (core.go), no wiring change.
+// These native methods answer a transaction-time read with a bounded REVERSE
+// scan instead of the mandatory-store fallback in core/txtime.go (which
+// materializes the entity's whole version history): the history keys are
+// ordered by (entity, ascending version), so a reverse iterator visits
+// versions newest-first and stops as soon as the as-of rule is decided —
+// O(versions newer than the query, plus the one row that held the current
+// slot). Declaring the four methods on *Store enables the native path via
+// nativeTransactionTimeQuery (core.go).
 //
 // Selection semantics are storeutil.SelectAsOfWithCurrent's (shared with the
 // memory backend and the core fallback; see selectAsOfScan). Temporal
@@ -44,18 +43,14 @@ import (
 //
 // prefix is the 9-byte per-entity history prefix (HistNodePrefix / HistRelPrefix).
 func (bs *Store) reverseScanHistoryVersion(prefix []byte, consider func(version uint64, val []byte) (stop bool, err error)) error {
-	// Overlay BEFORE the View — the lesson-64 commit-window ordering. The
-	// previous shape captured the overlay INSIDE the View callback, i.e. AFTER
-	// badger assigned the transaction's snapshot instant: a concurrent flush()
-	// that committed a parked row and cleared `flushing` between the snapshot
-	// instant and the overlay read left the row in NEITHER view — dropped. The
-	// gap is nanoseconds when the goroutine runs uninterrupted (the old
-	// comment's "back-to-back" argument), but a descheduled goroutine widens
-	// it arbitrarily under load — a probability argument, not a correctness
-	// one. Capturing first makes it structural: a row committed after the
-	// capture was still in `flushing` at capture time (flush clears strictly
-	// after commit) and is in the overlay; a row committed before the View is
-	// in the snapshot.
+	// Overlay BEFORE the View — the lesson-64 commit-window ordering. Capturing
+	// the overlay INSIDE the View callback, i.e. AFTER badger assigned the
+	// transaction's snapshot instant, would let a concurrent flush() that
+	// committed a parked row and cleared `flushing` between the snapshot
+	// instant and the overlay read leave the row in NEITHER view. Capturing
+	// first makes it structural: a row committed after the capture was still in
+	// `flushing` at capture time (flush clears strictly after commit) and is in
+	// the overlay; a row committed before the View is in the snapshot.
 	pendingSets, pendingDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
 	return bs.view(func(txn *badgerv4.Txn) error {
 		return bs.reverseScanHistoryVersionInTxnOverlay(txn, prefix, pendingSets, pendingDeletes, consider)
@@ -75,10 +70,8 @@ func (bs *Store) reverseScanHistoryVersion(prefix []byte, consider func(version 
 // entity's overlay read happens later at T2, a flush that commits at T1
 // (T0 < T1 < T2) makes that version invisible to BOTH: the txn (opened
 // before the commit) and the now-drained live overlay (cleared after it) —
-// the exact "lesson 64" commit-window gap getNodeHistoryByPrefix closes by
-// capturing its overlay before opening its (per-call) View. NodesAsOf's
-// single-shared-txn-for-many-entities shape reopens that gap unless the
-// overlay is ALSO captured once, at the same instant as the txn snapshot.
+// the "lesson 64" commit-window gap. The overlay must therefore be captured
+// once, at the same instant as the txn snapshot.
 type historyOverlaySnapshot struct {
 	entries map[string][]byte
 	deletes map[string]struct{}
@@ -718,9 +711,8 @@ func (bs *Store) relAsOfPick(id snowflake.ID, current *types.Relationship, txTim
 // Winner decode: the default (non-delta) path decodes from the copied raw
 // bytes alone, no txn needed. Under opt-in HistoryDeltaEncoding a delta
 // winner's anchor read opens its OWN nested transaction (legal — badger read
-// txns nest fine — just not yet folded into the shared txn; BACKLOG 18k design
-// section 6a defers that elimination as a follow-up since delta mode is
-// opt-in/default-off).
+// txns nest fine — it is not folded into the shared txn since delta mode is
+// opt-in).
 func (bs *Store) nodeAsOfInTxn(snap *scanSnapshot, nid types.NodeID, txTime types.Instant, overlay historyOverlaySnapshot, presence *bulkPresence) (*types.Node, error) {
 	current, err := bs.getNodeInTxn(snap, nid)
 	if err != nil && !errors.Is(err, ErrNodeNotFound) {
@@ -766,16 +758,12 @@ func (bs *Store) relAsOfInTxn(snap *scanSnapshot, rid types.RelID, txTime types.
 // scan's entire duration — not just per-entity. For a past or NowTx txTime this
 // is unobservable either way — every concurrent write has TxFrom > txTime and is
 // excluded by classifyVersionAtTxTime regardless of snapshot/lock timing. For a
-// FUTURE txTime (rare — normal usage pins the present or the past) this is the
-// deliberate, tested, documented contract: a concurrent write racing the scan is
+// FUTURE txTime this is the contract: a concurrent write racing the scan is
 // EITHER fully excluded (blocks on idxMu until the scan completes, then applies)
 // OR fully preceded it — NEVER visible to some entities and not others within one
-// NodesAsOf call. This is an explicit, named trade: NodesAsOf/RelsAsOf are bulk,
-// infrequent, admin/reporting-style doors, not a hot per-mutation path, so
-// blocking writers for the scan's duration is the right trade for a genuine
-// consistency guarantee rather than a documentation-only promise (see
-// TestNodesAsOf_SingleSnapshotConsistencyUnderConcurrentWrite, which caught the
-// torn-read case a cache-hit-without-this-lock would otherwise allow).
+// NodesAsOf call. NodesAsOf/RelsAsOf are bulk, infrequent, admin/reporting-style
+// doors, so blocking writers for the scan's duration is the accepted trade (see
+// TestNodesAsOf_SingleSnapshotConsistencyUnderConcurrentWrite).
 func (bs *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err

@@ -38,9 +38,8 @@ const importMemoryStageLimit = 8 << 20 // 8 MiB before spilling to temp file.
 // map/slice allocation — a memory-exhaustion DoS at the import trust boundary.
 // The maps are created empty in newImportReplaySeen/newImportRollback and grow
 // naturally during replay, so this is a pure pre-sizing hint: a small cap keeps
-// the common-case optimization while bounding hostile amplification (a header
-// lying about 1M counts now reserves at most ~this many entries, ~hundreds of
-// KiB, not hundreds of MiB). See lessons.md 48.
+// the common-case optimization while bounding hostile amplification. See
+// lessons.md 48.
 const importPreallocLimit = 4096
 
 // importBodyPreallocCap bounds the buffer pre-allocated for an inbound record
@@ -635,14 +634,12 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 	// Monotonic, mirroring ApplyChange/ApplyChanges's enforced no-regression
 	// (BACKLOG 12c): a raw overwrite here could REGRESS an already-tailing
 	// replica's watermark if this snapshot is re-imported (or an older one is
-	// imported) onto a replica that has already applied past SnapshotLSN — the
-	// replica would then re-tail from the regressed point, re-applying already-
-	// seen records, and any change-log delete whose LSN falls in the
-	// re-applied range would (harmlessly, eventually) re-delete its entity —
-	// but the entity is MOMENTARILY resurrected by this import's own row data
-	// in the meantime. A snapshot's LSN advancing the watermark only when it's
-	// actually newer than what's already recorded closes that window: a
-	// same-or-older re-import leaves the existing (higher) watermark alone.
+	// imported) onto a replica that has already applied past SnapshotLSN. The
+	// replica would then re-tail from the regressed point, and an entity deleted
+	// in the re-applied range would be momentarily resurrected by this import's
+	// own row data. A snapshot's LSN advances the watermark only when it is
+	// newer than what is recorded: a same-or-older re-import leaves the existing
+	// (higher) watermark alone.
 	if err := c.importRelRetentionLocked(header.RelRetention); err != nil {
 		return err
 	}

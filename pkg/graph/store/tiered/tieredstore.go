@@ -112,11 +112,11 @@ type Config struct {
 	EncryptionKeyRotation time.Duration
 	// CacheBudgetBytes bounds EACH shard's entity caches (nodes, rels) by
 	// estimated resident BYTES rather than entry count. With one cache pair per
-	// open shard, CacheCapacity alone (an entry count, default 10,000 per cache)
-	// can pin hundreds of thousands of entities in heap across many shards
-	// regardless of their size; this knob bounds that by bytes. Soft limit
-	// (dirty entries are never evicted). 0 disables byte accounting. When set
-	// and CacheCapacity is 0, the byte budget alone governs.
+	// open shard, CacheCapacity alone (an entry count) can pin many entities in
+	// heap across many shards regardless of their size; this knob bounds that
+	// by bytes. Soft limit (dirty entries are never evicted). 0 disables byte
+	// accounting. When set and CacheCapacity is 0, the byte budget alone
+	// governs.
 	CacheBudgetBytes int64
 	// PropertyIndexOnDisk is the tiered sibling of badger.Config's
 	// PropertyIndexOnDisk: it does NOT change WHERE property indexes live —
@@ -133,14 +133,11 @@ type Config struct {
 	// there, harmless.
 	PropertyIndexOnDisk bool
 	// TemporalIndexOnDisk is the tiered sibling of badger.Config's
-	// TemporalIndexOnDisk: a rebuild-at-open accelerator for each shard's
-	// maxTo-augmented temporal interval index, NOT a RAM-vs-disk trade-off —
-	// the index always stays fully resident in RAM at runtime on every shard.
-	// false (default) rebuilds an existing temporal index definition via a
-	// full node fetch+decode per entity whenever a shard opens; true
-	// maintains a compact per-entity row in each shard's persisted 0x0B
-	// keyspace instead, so shard open streams straight from a prefix
-	// iteration over it. Passed through badgerCfg to EVERY shard (reference,
+	// TemporalIndexOnDisk: a rebuild-at-open accelerator, NOT a RAM-vs-disk
+	// trade-off — the index stays fully resident in RAM at runtime on every
+	// shard. true maintains a compact per-entity row in each shard's persisted
+	// 0x0B keyspace, so a shard open streams from a prefix iteration instead of
+	// decoding every node. Passed through badgerCfg to EVERY shard (reference,
 	// hot, warm, lazy cold/archive, and rotation-created) for uniformity.
 	TemporalIndexOnDisk bool
 	// DisablePlannerStats turns OFF the query-planner statistics (presence/NDV/
@@ -322,14 +319,13 @@ type Store struct {
 	scopeOpen     bool
 	scopeDivertOn bool
 
-	// nodeCreateLocks / relCreateLocks (BACKLOG 19q) replace a single
-	// whole-store create mutex with the SAME 256-shard per-ID striping
-	// internal/locks.Manager already provides for entity-level serialization
-	// elsewhere in this codebase (CLAUDE.md "Entity locks"). INVARIANT: the
+	// nodeCreateLocks / relCreateLocks (BACKLOG 19q) use the SAME 256-shard
+	// per-ID striping internal/locks.Manager provides for entity-level
+	// serialization elsewhere in this codebase (CLAUDE.md "Entity locks"). INVARIANT: the
 	// lock for entity ID X is held continuously from the start of X's
 	// duplicate-ID check through the completion of X's physical shard write
 	// (never released in between) — this is what closes the cross-shard/
-	// cross-class TOCTOU the whole-store mutex used to close, since two
+	// cross-class TOCTOU, since two
 	// concurrent creates for the SAME raw snowflake ID always hash to the
 	// SAME shard index and therefore fully serialize against each other,
 	// while two DIFFERENT IDs (the common case) proceed with no contention
@@ -667,13 +663,9 @@ func New(cfg Config) (*Store, error) {
 	shards := make([]*EventShard, len(entries))
 	warmIdx := make([]int, 0, len(entries))
 
-	// ColdAfter IS APPLIED HERE, not only at rotation.
-	//
-	// Demotion used to happen solely as a side effect of the hot shard
-	// rotating, so setting ColdAfter on an existing store changed nothing until
-	// the next rotation came round — a week, on a weekly window. That made the
-	// setting untestable on a live store and left every shard it should have
-	// demoted open in the meantime, which is the cost it exists to avoid.
+	// ColdAfter IS APPLIED HERE, not only at rotation, so setting it on an
+	// existing store takes effect at the next open instead of waiting for the
+	// next rotation.
 	//
 	// Deciding the tier BEFORE the mount loop is also what makes it pay: a
 	// shard classified cold here is never opened at all, rather than being
