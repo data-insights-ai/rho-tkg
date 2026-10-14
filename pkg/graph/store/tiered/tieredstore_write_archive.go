@@ -32,6 +32,8 @@ func (ts *Store) ArchiveNode(nid types.NodeID) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
+	ts.moveMu.Lock() // a tx-membership fan-out must see the node on one shard (allShards)
+	defer ts.moveMu.Unlock()
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return err
 	}
@@ -126,6 +128,8 @@ func (ts *Store) RestoreNode(nid types.NodeID) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
+	ts.moveMu.Lock() // a tx-membership fan-out must see the node on one shard (allShards)
+	defer ts.moveMu.Unlock()
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return err
 	}

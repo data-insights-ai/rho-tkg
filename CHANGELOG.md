@@ -18,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   can span shards (ArchiveNode, a re-import), so an entity with a loose fold (a valid-time close) is read on every
   call. `ForEachNodePropertyTxMember` answers from the reference shard's sidecar and declines with
   `ErrIndexNotFound` for an event-class label or an undeclared index (no fan-out), and when the archive or an event
-  shard ever held a node with the label (checked before the sidecar is read); `ForEachRelPropertyTxMember`
+  shard ever held a node with the label (checked in the same fan-out as the sidecar read); `ForEachRelPropertyTxMember`
   always declines (tiered has no rel property index). The core now uses the label and type membership sidecars for
   DepthAll reads only (a depth-scoped read on tiered keeps the depth fold), and `Stats.RelHistoryCountByType` answers
   on tiered (was ok=false): it runs the DepthAll history-ID fold plus a `RelTypeTxMembersOf` fan-out, both opening
@@ -27,6 +27,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `MaxOpenColdShards` 0, 141 s → 0.59 s (temporal ByLabel over the same shards unchanged, ~17 s both). Test `TestTieredTxMembershipAndValidEndMatchBadger`
   (badger vs tiered with rotation, archive and a closed cold shard: capability answers and the core doors equal),
   bench `BenchmarkTieredRelEffectiveByTypeFrom`; evidence `tasks/evidence/tiered-capabilities/`.
+  The fan-out reads the reference shard and the archive under a read lock that `ArchiveNode` and `RestoreNode` now
+  hold for their whole move, so a `RestoreNode` between the two reads (reference write, then a hard archive delete)
+  no longer drops the node from the membership answers and valid-end candidates, nor an `ArchiveNode` from the
+  property door; a shard error joined with the property door's off-reference finding is returned, no longer
+  turned into `ErrIndexNotFound`. Test `TestTxMembersFanoutListsNodeRestoredMidRead`.
 
 ## [4.52.0] - 2026-10-14
 

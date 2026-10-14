@@ -41,30 +41,27 @@ var (
 // lazily opened), returning the reference shard's result first, then the
 // others' (ref tells read which shard it reads). read must be safe for
 // concurrent use.
+//
+// The reference and archive reads run under moveMu's read lock, which
+// ArchiveNode and RestoreNode hold for their whole move. Without it a move
+// between the two reads can hide a node from both: RestoreNode writes the
+// node to the reference shard, then hard-deletes it from the archive (no
+// tombstone), so a reference read before the write and an archive read after
+// the delete both miss it whenever the archive builds its membership sidecar
+// or valid-end index after the delete (membership answers, the valid-end
+// candidates; the property door's off-reference check, below, likewise
+// misses an ArchiveNode between its archive check and its reference read).
+// Holding the lock, both reads see the node on exactly the shard it sits on.
 func allShards[T any](ts *Store, read func(bs *BadgerStore, ref bool) (T, error)) (ref T, others []T, err error) {
 	if err = ts.checkOpen(); err != nil {
 		return ref, nil, err
 	}
-	refStore, refCheckin, err := ts.checkoutRefShard()
+	ref, archived, hasArchive, err := refAndArchive(ts, read)
 	if err != nil {
 		return ref, nil, err
 	}
-	ref, err = read(refStore, true)
-	refCheckin()
-	if err != nil {
-		return ref, nil, err
-	}
-	archive, archiveCheckin, err := ts.checkoutArchive()
-	if err != nil {
-		return ref, nil, err
-	}
-	if archive != nil {
-		v, err := read(archive, false)
-		archiveCheckin()
-		if err != nil {
-			return ref, nil, err
-		}
-		others = append(others, v)
+	if hasArchive {
+		others = append(others, archived)
 	}
 	ts.mu.RLock()
 	shards := ts.eventShardSnapshot(DepthAll)
@@ -84,6 +81,32 @@ func allShards[T any](ts *Store, read func(bs *BadgerStore, ref bool) (T, error)
 		return ref, nil, err
 	}
 	return ref, append(others, results...), nil
+}
+
+// refAndArchive reads the reference shard, then the archive (when one
+// exists), under moveMu's read lock (see allShards).
+func refAndArchive[T any](ts *Store, read func(bs *BadgerStore, ref bool) (T, error)) (ref, archived T, hasArchive bool, err error) {
+	ts.moveMu.RLock()
+	defer ts.moveMu.RUnlock()
+	refStore, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return ref, archived, false, err
+	}
+	ref, err = read(refStore, true)
+	refCheckin()
+	if err != nil {
+		return ref, archived, false, err
+	}
+	if ts.fanoutRefReadHook != nil {
+		ts.fanoutRefReadHook()
+	}
+	archive, archiveCheckin, err := ts.checkoutArchive()
+	if err != nil || archive == nil {
+		return ref, archived, false, err
+	}
+	defer archiveCheckin()
+	archived, err = read(archive, false)
+	return ref, archived, err == nil, err
 }
 
 // txMember is one (entity, first transaction time) pair of a shard.
@@ -177,10 +200,6 @@ func (ts *Store) RelTypeTxMembersOf(token uint16, ids []types.RelID, fn func(id 
 	}, fn)
 }
 
-// errLabelOffReference marks a shard other than the reference shard that
-// holds an ever-member of the label (ForEachNodePropertyTxMember).
-var errLabelOffReference = errors.New("label member off the reference shard")
-
 // ForEachNodePropertyTxMember implements
 // store.NodePropertyTxMembershipCapability. A node property index lives on
 // the reference shard only (CreatePropertyIndex), so its sidecar sees only
@@ -188,9 +207,10 @@ var errLabelOffReference = errors.New("label member off the reference shard")
 // first: an event-class label (never indexed), no declared index on the
 // reference shard, then any other shard (the archive, an event shard: an
 // archived node, an event node carrying the label as a secondary one) that
-// ever held a node with the label. Only then does it read the reference
-// shard's sidecar (which also declines while the index is being created).
-// On a decline the core takes the history fold.
+// ever held a node with the label. The reference shard's sidecar (which also
+// declines while the index is being created) is read in the same fan-out, so
+// no ArchiveNode or RestoreNode falls between it and the archive check. On a
+// decline the core takes the history fold.
 func (ts *Store) ForEachNodePropertyTxMember(labelToken uint16, propertyKey, valueKey string, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
@@ -207,43 +227,37 @@ func (ts *Store) ForEachNodePropertyTxMember(labelToken uint16, propertyKey, val
 		}
 		return storecontract.ErrIndexNotFound
 	}
-	_, _, err := allShards(ts, func(bs *BadgerStore, isRef bool) (struct{}, error) {
+	// The reference shard returns its members, every other shard whether it
+	// ever held a node with the label.
+	type shardAnswer struct {
+		members []txMember[types.NodeID]
+		held    bool
+	}
+	ref, others, err := allShards(ts, func(bs *BadgerStore, isRef bool) (shardAnswer, error) {
+		var a shardAnswer
 		if isRef {
-			return struct{}{}, nil
+			err := bs.ForEachNodePropertyTxMember(labelToken, propertyKey, valueKey, func(id types.NodeID, tx types.Instant) bool {
+				a.members = append(a.members, txMember[types.NodeID]{id, tx})
+				return true
+			})
+			return a, err
 		}
-		held := false
-		if err := bs.ForEachLabelTxMember(labelToken, func(types.NodeID, types.Instant) bool {
-			held = true
+		err := bs.ForEachLabelTxMember(labelToken, func(types.NodeID, types.Instant) bool {
+			a.held = true
 			return false
-		}); err != nil {
-			return struct{}{}, err
-		}
-		if held {
-			return struct{}{}, errLabelOffReference
-		}
-		return struct{}{}, nil
+		})
+		return a, err
 	})
-	if errors.Is(err, errLabelOffReference) {
-		return storecontract.ErrIndexNotFound
-	}
 	if err != nil {
 		return err
 	}
-	ref, refCheckin, err := ts.checkoutRefShard()
-	if err != nil {
-		return err
-	}
-	var members []txMember[types.NodeID]
-	err = ref.ForEachNodePropertyTxMember(labelToken, propertyKey, valueKey, func(id types.NodeID, tx types.Instant) bool {
-		members = append(members, txMember[types.NodeID]{id, tx})
-		return true
-	})
-	refCheckin()
-	if err != nil {
-		return err
+	for _, a := range others {
+		if a.held {
+			return storecontract.ErrIndexNotFound
+		}
 	}
 	var u txMemberUnion[types.NodeID]
-	u.add(members)
+	u.add(ref.members)
 	u.emit(fn)
 	return nil
 }
