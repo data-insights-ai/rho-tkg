@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.51.6] - 2026-10-14
+
 ### Changed
 
 - **Badger relationship temporal index build reads sequentially** (backlog 10(a)): `CreateRelTemporalIndex`, the
