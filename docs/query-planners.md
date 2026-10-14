@@ -450,6 +450,10 @@ shape as the label/type counters, except that a genuinely missing `nodeID`
 still surfaces `store.ErrNodeNotFound` (existence is always checked; only the
 type-filter's absence is silent).
 
+## Access paths added in v4.53.0 (round 7)
+
+Four read-only doors for planners; contracts, declines and costs are in `docs/api.md` "Lending, exact counts and ordered walks". Planner view: `CountByLabelPropertyValue` / `CountByTypePropertyValue` give an exact equality count from the index's value sets (probe `exact` once per (label, key); `exact=false` means no exact count, fall back to `PropertyStats`); `ForEachIDByLabelPropertyRangeOrdered` / `...Prefix` feed a grouping or ordering by an indexed property without reading rows (`ErrIndexNotFound` means use the row doors); `LendByIDs` is the batch read for a parallel record scan; `Stats().TrackRelTypeDegrees(type)` keeps `RelTypeDegreeStats` incremental for a type that is written and read alternately.
+
 ## Staleness — `NodeMutationEpoch` / `RelMutationEpoch`
 
 `g.Nodes().NodeMutationEpoch()` and `g.Rels().RelMutationEpoch()` return a
