@@ -262,10 +262,11 @@ all A–F exit requirements; implementation status never implies acceptance.
    from comparable correctness, durability, total cost, deployment and maintenance
    evidence before V3 format freeze.
 6. **Run one coordinated V2 acceptance gate.** Reconcile main at a recorded
-   cutoff (latest observed main source is `3e87d2cd`/v4.55.0; current v5 source includes v4.51.8),
+   cutoff (latest observed main source is `e364456f`/v4.55.1; current v5 source includes v4.51.8),
    review relevant handover/consumer/CI deltas and integrate required changes.
-   The new effective-page and history-epoch/head-cache contracts belong in that
-   source/consumer reconciliation; the upstream handover is not release evidence.
+   The effective-page, history-epoch/head-cache, correction/rollback fast-path
+   and compaction-gap version-allocation contracts belong in that source/consumer
+   reconciliation; the upstream handover is not release evidence.
    Preserve historical qualification rather than relabelling it as current.
    On the final integrated revision run full phase CI/race/coverage/security and
    the complete V2 requirement/evidence audit once; repeat only gates invalidated
@@ -342,7 +343,9 @@ accounted resumable cursor, and retire a publication only when represented rows
 are deleted. Same-index sparse republication keeps the genuine term/hash and
 changes the cut identity without business or CDC progress. Graph-level floor,
 durable-pin and fresh-profile handoff wiring remain implementation work; all
-these new sources await execution. `ab650bbc` also refuses a replacement plan
+these new sources await execution. The bounded captured-view plan accessor is
+source-integrated at `3fcf9591`; it grants no anchor or deletion authority.
+`ab650bbc` also refuses a replacement plan
 while native collection has unfinished cursor progress. Fresh initialization preserves retention
 configuration and prepays/publishes its actual recovery-root census at
 `9741c403`/`9f9116b5`; older initialization profiles retain their existing bytes.
@@ -394,8 +397,16 @@ FDB observed role/domain faults are source-integrated at `35e75e4c`: seven fresh
 cases in both coordinator orientations bind live co-resident roles, actual
 process/network actions, same-volume recovery and immutable request replay to
 complete old/current/index/CDC observations. Native Commit-issued caller loss
-grants no inferred decision. Execution, publication interruptions and remaining
-directed-message/workload schedules stay open; this does not close E.
+grants no inferred decision. `e3b879b2` corrects its verifier to authenticate the
+actual Go byte-slice scope encoding. Publisher and derived-column collector
+process interruptions are source-integrated at `964e3555`: partial uploads,
+verified-source EOF and Commit-issued manifest replies recover the same
+generation; the actual held owner survives token expiry until authenticated
+Close, and a replacement SDK process resumes committed deletion progress.
+The independent verifier joins complete raw history/current/CDC and cached
+column bytes to original outcomes and exact deletion debits. Source-history
+process restart, remaining directed-message/workload schedules and execution
+stay open; this does not close E.
 
 The paired native cost/fault driver currently composes caller loss before Decide,
 committed Decide reply loss and one HOME leader SIGKILL with a healthy quorum,
