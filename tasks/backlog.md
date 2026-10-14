@@ -567,6 +567,14 @@ parallel, with one owner of the bounded local heavy-test resources at a time.
    the [combined P07/P09 checkpoint](evidence/change-aware-ci-20261012/hosted-ci-c13f50be.json)
    passes all 20 selected parents in normal/race/scoped coverage, plus the v5
    build and static gates. Unrelated full suites were not repeated.
+   The later [native-runner hosted checkpoint](evidence/focused-root-partitions-20261014/hosted-060.json)
+   passes 33 parents and 49 parent/subcases in each v5 mode, with two explicit
+   skips. Migration, lint and security pass; the bundled root job reaches its
+   30-minute limit before completing race and coverage. Graph, core, badger and
+   memory race results pass. The [root CI partition correction](evidence/focused-root-partitions-20261014/receipt.json)
+   preserves affected packages and exhaustive core parents in separate jobs.
+   Its 29 Python/fake-Go guards pass; hosted partition proof awaits a genuine
+   root source change. Full phase gates remain separate and unchanged.
    The [FoundationDB cost-runner source](evidence/v2-fdb-cost-final-source-20261013/receipt.json)
    is now integrated: its two selected SDK parents pass normal/race, and the
    actual instrumented two-fact cross-partition run preserves old/current
