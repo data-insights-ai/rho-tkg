@@ -19,8 +19,10 @@ import (
 // Persisted recipes contain only capacity-bearing Reserve/Use. Ephemeral
 // ApplyBefore observations and their refusal causes cannot enter metadata.
 type applicationRecoveryQueuedPurpose struct {
-	Reserve *ApplicationRecoveryReservation
-	Use     *ApplicationRecoveryUse
+	Reserve         *ApplicationRecoveryReservation
+	Use             *ApplicationRecoveryUse
+	TerminalReserve *ApplicationRecoveryReservation
+	TerminalUse     *ApplicationRecoveryUse
 }
 
 type applicationRecoveryQueued struct {
@@ -54,7 +56,7 @@ func recoveryProjected(m metadata, l Limits, pending uint64) (applicationRecover
 	records = pending * applicationInstallRecords(m)
 	previous := m.Applied
 	for _, q := range m.Recovery.Queued {
-		if q.Index <= previous || q.Index > m.Last || q.CommandDigest == ([32]byte{}) || q.Purpose.Reserve != nil && q.Purpose.Use != nil || q.Purpose.Reserve == nil && q.Purpose.Use == nil {
+		if q.Index <= previous || q.Index > m.Last || q.CommandDigest == ([32]byte{}) || !q.Purpose.valid() || q.Purpose.reservation() == nil && q.Purpose.use() == nil {
 			return applicationRecoveryGrowth{}, 0, 0, ErrInvalid
 		}
 		previous = q.Index
@@ -64,7 +66,7 @@ func recoveryProjected(m metadata, l Limits, pending uint64) (applicationRecover
 		if err != nil {
 			return applicationRecoveryGrowth{}, 0, 0, err
 		}
-		if q.Purpose.Use != nil {
+		if q.Purpose.use() != nil {
 			bytes -= unsignedLimit(p.MaxInstallBytes) - min(unsignedLimit(p.MaxInstallBytes), credit.RetainedBytes)
 			records -= applicationInstallRecords(m) - min(applicationInstallRecords(m), credit.RetainedRecords)
 		}
@@ -74,6 +76,14 @@ func recoveryProjected(m metadata, l Limits, pending uint64) (applicationRecover
 	if state.Reservation.ID != ([32]byte{}) {
 		protected, err = recoveryGrowth(state.Reservation, p, l)
 	}
+	if err != nil || state.Config.Version != 2 {
+		return protected, bytes, records, err
+	}
+	terminal, err := terminalGrowth(state.Terminal, p, l)
+	if err != nil {
+		return applicationRecoveryGrowth{}, 0, 0, err
+	}
+	protected, err = addRecoveryGrowth(protected, terminal)
 	return protected, bytes, records, err
 }
 
@@ -199,9 +209,12 @@ func appendRecoveryQueue(dst []byte, queued []applicationRecoveryQueued) []byte 
 	for _, q := range queued {
 		dst = binary.BigEndian.AppendUint64(dst, q.Index)
 		dst = append(dst, q.CommandDigest[:]...)
-		if q.Purpose.Reserve != nil {
-			r := q.Purpose.Reserve
-			dst = append(dst, 1)
+		if r := q.Purpose.reservation(); r != nil {
+			kind := byte(1)
+			if q.Purpose.terminal() {
+				kind = 3
+			}
+			dst = append(dst, kind)
 			dst = binary.BigEndian.AppendUint32(dst, uint32(76+recoveryCreditBytes*len(r.Credits))) // #nosec G115 -- reservation frame admitted <=64 KiB before encoding.
 			dst = binary.BigEndian.AppendUint64(dst, q.ReservationOriginIndex)
 			dst = append(dst, r.ID[:]...)
@@ -214,8 +227,12 @@ func appendRecoveryQueue(dst []byte, queued []applicationRecoveryQueued) []byte 
 				dst = binary.BigEndian.AppendUint64(dst, c.RetainedRecords)
 			}
 		} else {
-			u := q.Purpose.Use
-			dst = append(dst, 2)
+			u := q.Purpose.use()
+			kind := byte(2)
+			if q.Purpose.terminal() {
+				kind = 4
+			}
+			dst = append(dst, kind)
 			dst = binary.BigEndian.AppendUint32(dst, 128)
 			dst = append(dst, u.ID[:]...)
 			dst = append(dst, u.Digest[:]...)
@@ -260,7 +277,7 @@ func decodeRecoveryQueue(b []byte, p ApplicationPolicy, l Limits) ([]application
 		payload := b[:int(n)] // #nosec G115 -- n <= uint64(len(b)) above; conversion fits int before slicing.
 		b = b[int(n):]        // #nosec G115 -- n checked against delivered <=64 KiB frame.
 		switch kind {
-		case 1:
+		case 1, 3:
 			if len(payload) < 76 {
 				return nil, nil, ErrCorrupt
 			}
@@ -287,8 +304,12 @@ func decodeRecoveryQueue(b []byte, p ApplicationPolicy, l Limits) ([]application
 			if _, err := recoveryGrowth(*r, p, l); err != nil {
 				return nil, nil, ErrCorrupt
 			}
-			q.Purpose.Reserve = r
-		case 2:
+			if kind == 3 {
+				q.Purpose.TerminalReserve = r
+			} else {
+				q.Purpose.Reserve = r
+			}
+		case 2, 4:
 			if len(payload) != 128 {
 				return nil, nil, ErrCorrupt
 			}
@@ -301,7 +322,11 @@ func decodeRecoveryQueue(b []byte, p ApplicationPolicy, l Limits) ([]application
 			if u.RetireBefore > u.Phase {
 				return nil, nil, ErrCorrupt
 			}
-			q.Purpose.Use = u
+			if kind == 4 {
+				q.Purpose.TerminalUse = u
+			} else {
+				q.Purpose.Use = u
+			}
 			command := uint64(binary.BigEndian.Uint32(payload[104:108]))
 			if command > unsignedLimit(l.MaxEntryBytes-frameOverhead) {
 				return nil, nil, ErrCorrupt
@@ -322,6 +347,12 @@ func (s *Store) verifyRecoveryQueue() error {
 		}
 		if sha256.Sum256(e.GetData()) != q.CommandDigest {
 			return ErrCorrupt
+		}
+		if q.Purpose.terminal() {
+			if err := s.verifyTerminalQueued(q); err != nil {
+				return err
+			}
+			continue
 		}
 		if q.Purpose.Reserve != nil && q.ReservationOriginIndex < q.Index {
 			if q.ReservationOriginIndex <= s.meta.Applied {
@@ -353,6 +384,9 @@ func (s *Store) verifyRecoveryQueue() error {
 // installed. Replays reserve pending-install space but consume future credit
 // only while the applied/projected original phase still exists.
 func advanceRecoveryQueued(state applicationRecoveryMetadata, q applicationRecoveryQueued, p ApplicationPolicy, l Limits) (applicationRecoveryMetadata, ApplicationRecoveryCredit, error) {
+	if q.Purpose.terminal() {
+		return advanceTerminalQueued(state, q, p, l)
+	}
 	if q.Purpose.Reserve != nil {
 		if q.ReservationOriginIndex == 0 || q.ReservationOriginIndex > q.Index {
 			return state, ApplicationRecoveryCredit{}, ErrInvalid
@@ -412,7 +446,7 @@ func (s *Store) classifyRecoveryEntriesOutcome(entries []*pb.Entry, view *Applic
 		if eErr != nil {
 			return nil, eErr
 		}
-		if purpose.Reserve != nil && purpose.Use != nil || purpose.ApplyBefore != nil && (purpose.Reserve != nil || purpose.Use != nil) {
+		if !validRecoveryPurpose(purpose) {
 			return nil, ErrInvalid
 		}
 		if purpose.ApplyBefore != nil {
@@ -431,10 +465,21 @@ func (s *Store) classifyRecoveryEntriesOutcome(entries []*pb.Entry, view *Applic
 				if eErr != nil {
 					return nil, eErr
 				}
-				if prospective.Reserve != nil && prospective.Use != nil || prospective.ApplyBefore != nil && (prospective.Reserve != nil || prospective.Use != nil) {
+				if !validRecoveryPurpose(prospective) {
 					return nil, ErrInvalid
 				}
 				if prospective.ApplyBefore != nil && prospective.ApplyBefore.Owner != purpose.ApplyBefore.Owner || prospective.Use != nil && prospective.Use.CommandDigest != sha256.Sum256(future.GetData()) {
+					return nil, ErrInvalid
+				}
+				if prospective.TerminalReserve != nil {
+					if captured.Config.Version != 2 {
+						return nil, ErrInvalid
+					}
+					if _, err := terminalGrowth(applicationTerminalBank{*prospective.TerminalReserve}, s.applicationPolicy, s.limits); err != nil {
+						return nil, err
+					}
+				}
+				if prospective.TerminalUse != nil && (captured.Config.Version != 2 || prospective.TerminalUse.CommandDigest != sha256.Sum256(future.GetData()) || prospective.TerminalUse.RetireBefore != 0) {
 					return nil, ErrInvalid
 				}
 				if prospective.Reserve != nil {
@@ -444,6 +489,12 @@ func (s *Store) classifyRecoveryEntriesOutcome(entries []*pb.Entry, view *Applic
 				}
 			}
 			return dependency, err
+		}
+		if purpose.TerminalReserve != nil || purpose.TerminalUse != nil {
+			if err := s.classifyTerminalEntry(e, view, captured, r, purpose); err != nil {
+				return nil, err
+			}
+			continue
 		}
 		if purpose.Reserve == nil && purpose.Use == nil {
 			continue

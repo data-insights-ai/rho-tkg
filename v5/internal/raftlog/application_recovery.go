@@ -42,6 +42,7 @@ type ApplicationRecoveryUse struct {
 type applicationRecoveryMetadata struct {
 	Config         ApplicationRecoveryConfig
 	Reservation    ApplicationRecoveryReservation
+	Terminal       applicationTerminalBank
 	Queued         []applicationRecoveryQueued
 	Bytes, Records uint64
 	Staged         applicationRecoveryGrowth
@@ -53,7 +54,7 @@ type applicationRecoveryGrowth struct {
 
 func (c ApplicationRecoveryConfig) enabled() bool { return c.Version != 0 }
 func (c ApplicationRecoveryConfig) validate() error {
-	if c.Version > 1 {
+	if c.Version > 2 {
 		return ErrInvalid
 	}
 	return nil
@@ -166,10 +167,13 @@ const recoveryCreditBytes = 4 + 4 + 8 + 8
 
 func recoveryMetadataBytes(m applicationRecoveryMetadata) int {
 	n := recoveryMetadataFixedBytes + recoveryCreditBytes*len(m.Reservation.Credits) + 8 + 16 + 32
+	if m.Config.Version == 2 {
+		n += terminalBankBytes(m.Terminal)
+	}
 	for _, q := range m.Queued {
 		n += 45
-		if q.Purpose.Reserve != nil {
-			n += 76 + recoveryCreditBytes*len(q.Purpose.Reserve.Credits)
+		if r := q.Purpose.reservation(); r != nil {
+			n += 76 + recoveryCreditBytes*len(r.Credits)
 		} else {
 			n += 128
 		}
@@ -185,7 +189,18 @@ func validateRecoveryMetadata(m metadata, l Limits) error {
 		return ErrLimit
 	}
 	r := m.Recovery.Reservation
-	if c.enabled() && (m.Transfer.Contract.Version != 3 || m.Recovery.Bytes > m.App.Policy.RetainedApplicationBytes || m.Recovery.Records != m.Applied || m.Recovery.Records > m.Recovery.Bytes/(9+appFrameBytes+recoveryRootFixedBytes)) {
+	if c.Version != 2 && len(m.Recovery.Terminal) != 0 {
+		return ErrInvalid
+	}
+	if c.Version == 2 {
+		if err := terminalMetadataHeadroom(m, l); err != nil {
+			return err
+		}
+		if _, err := terminalGrowth(m.Recovery.Terminal, m.App.Policy, l); err != nil {
+			return err
+		}
+	}
+	if c.enabled() && (m.Transfer.Contract.Version != 2+c.Version || m.Recovery.Bytes > m.App.Policy.RetainedApplicationBytes || m.Recovery.Records != m.Applied || m.Recovery.Records > m.Recovery.Bytes/(9+appFrameBytes+recoveryRootFixedBytes)) {
 		return ErrInvalid
 	}
 	if !c.enabled() {
@@ -208,7 +223,11 @@ func validateRecoveryMetadata(m metadata, l Limits) error {
 	return err
 }
 func appendRecoveryMetadata(b []byte, m applicationRecoveryMetadata) []byte {
-	b = append(b, 'R', 'Y', 3, 0)
+	version := byte(3)
+	if m.Config.Version == 2 {
+		version = 4
+	}
+	b = append(b, 'R', 'Y', version, 0)
 	b = binary.BigEndian.AppendUint32(b, m.Config.Version)
 	b = append(b, m.Reservation.ID[:]...)
 	b = append(b, m.Reservation.Digest[:]...)
@@ -225,15 +244,18 @@ func appendRecoveryMetadata(b []byte, m applicationRecoveryMetadata) []byte {
 	for _, n := range []uint64{m.Staged.bytes, m.Staged.records, m.Staged.logBytes, m.Staged.logRecords} {
 		b = binary.BigEndian.AppendUint64(b, n)
 	}
+	if m.Config.Version == 2 {
+		b = appendTerminalBank(b, m.Terminal)
+	}
 	return b
 }
 func decodeRecoveryMetadata(b []byte, p ApplicationPolicy, l Limits) (applicationRecoveryMetadata, []byte, error) {
 	var m applicationRecoveryMetadata
-	if len(b) < recoveryMetadataFixedBytes || !bytes.Equal(b[:4], []byte{'R', 'Y', 3, 0}) {
+	if len(b) < recoveryMetadataFixedBytes || (!bytes.Equal(b[:4], []byte{'R', 'Y', 3, 0}) && !bytes.Equal(b[:4], []byte{'R', 'Y', 4, 0})) {
 		return m, nil, ErrCorrupt
 	}
 	m.Config.Version = binary.BigEndian.Uint32(b[4:8])
-	if m.Config.Version != 1 {
+	if m.Config.Version != uint32(b[2]-2) {
 		return m, nil, ErrCorrupt
 	}
 	copy(m.Reservation.ID[:], b[8:40])
@@ -273,17 +295,38 @@ func decodeRecoveryMetadata(b []byte, p ApplicationPolicy, l Limits) (applicatio
 	m.Bytes = binary.BigEndian.Uint64(tail[:8])
 	m.Records = binary.BigEndian.Uint64(tail[8:16])
 	m.Staged = applicationRecoveryGrowth{bytes: binary.BigEndian.Uint64(tail[16:24]), records: binary.BigEndian.Uint64(tail[24:32]), logBytes: binary.BigEndian.Uint64(tail[32:40]), logRecords: binary.BigEndian.Uint64(tail[40:48])}
-	return m, tail[48:], nil
+	tail = tail[48:]
+	if m.Config.Version == 2 {
+		m.Terminal, tail, err = decodeTerminalBank(tail, p, l)
+		if err != nil {
+			return applicationRecoveryMetadata{}, nil, err
+		}
+	} else {
+		for _, q := range m.Queued {
+			if q.Purpose.terminal() {
+				return applicationRecoveryMetadata{}, nil, ErrCorrupt
+			}
+		}
+	}
+	return m, tail, nil
 }
 
 func recoveryOutstanding(m metadata, l Limits) (applicationRecoveryGrowth, error) {
 	if err := validateRecoveryMetadata(m, l); err != nil {
 		return applicationRecoveryGrowth{}, err
 	}
-	if m.Recovery.Reservation.ID == ([32]byte{}) {
-		return applicationRecoveryGrowth{}, nil
+	if m.Recovery.Config.Version != 2 {
+		return recoveryGrowthIfPresent(m.Recovery.Reservation, m.App.Policy, l)
 	}
-	return recoveryGrowth(m.Recovery.Reservation, m.App.Policy, l)
+	g, err := recoveryGrowthIfPresent(m.Recovery.Reservation, m.App.Policy, l)
+	if err != nil {
+		return applicationRecoveryGrowth{}, err
+	}
+	t, err := terminalGrowth(m.Recovery.Terminal, m.App.Policy, l)
+	if err != nil {
+		return applicationRecoveryGrowth{}, err
+	}
+	return addRecoveryGrowth(g, t)
 }
 
 func (m applicationRecoveryMetadata) consume(use ApplicationRecoveryUse) (applicationRecoveryMetadata, ApplicationRecoveryCredit, error) {

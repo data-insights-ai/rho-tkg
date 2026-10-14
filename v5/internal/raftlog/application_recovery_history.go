@@ -68,6 +68,9 @@ func readRecoveryRoot(b []byte, p ApplicationPolicy, l Limits) (ApplicationRecov
 // storage profile. Disabled recovery preserves existing contracts byte-exact.
 // It adds no numerical quota or graph/cut/transaction authority.
 func ApplicationContractForPolicyWithRecovery(p ApplicationPolicy, c ApplicationControlConfig, r ApplicationRecoveryConfig) (ApplicationContract, error) {
+	if r.Version == 2 {
+		return ApplicationContract{}, ErrInvalid
+	}
 	if err := r.validate(); err != nil {
 		return ApplicationContract{}, err
 	}
@@ -79,7 +82,7 @@ func ApplicationContractForPolicyWithRecovery(p ApplicationPolicy, c Application
 		if !c.enabled() {
 			return ApplicationContract{}, ErrInvalid
 		}
-		contract.Version = 3
+		contract.Version = 2 + r.Version
 	}
 	return contract, nil
 }
@@ -187,7 +190,11 @@ func (s *Store) loadRecoveryRootAt(bank byte, index uint64) (r ApplicationRecove
 	if err != nil || deleted {
 		return r, ErrCorrupt
 	}
-	return readRecoveryRoot(data, s.applicationPolicy, s.limits)
+	r, _, readErr := readNativeRecoveryRoot(data, s.applicationPolicy, s.limits)
+	if readErr == nil && data[2] != byte(s.meta.Recovery.Config.Version) {
+		return ApplicationRecoveryReservation{}, ErrCorrupt
+	}
+	return r, readErr
 }
 func cloneRecoveryReservation(r ApplicationRecoveryReservation) ApplicationRecoveryReservation {
 	if len(r.Credits) > 0 {
@@ -324,17 +331,19 @@ func (v *ApplicationView) RecoveryOwner(ctx context.Context, budget ReadBudget) 
 	if e != nil || deleted {
 		return owner, work, v.fail(ErrCorrupt)
 	}
-	parsed, count, e := inspectRecoveryOwner(data, p, v.s.limits)
+	parsed, count, e := inspectNativeRecoveryOwner(data, p, v.s.limits)
 	if e != nil {
 		return owner, work, v.fail(e)
 	}
 	var expected *ApplicationRecoveryReservation
+	var expectedNative *applicationRecoveryMetadata
 	if v.prepared != nil && v.index == v.prepared.i.manifest.Index {
 		expected = &v.prepared.i.manifest.RecoveryReservation
 	} else if v.bank == v.s.activeBank() && v.generation == v.s.activeGeneration() && v.index == v.s.meta.Applied {
 		expected = &v.s.meta.Recovery.Reservation
+		expectedNative = &v.s.meta.Recovery
 	}
-	if expected != nil && (parsed.ID != expected.ID || parsed.Digest != expected.Digest || count != len(expected.Credits) || sha256.Sum256(data) != recoveryRootDigest(*expected)) {
+	if expected != nil && (parsed.ID != expected.ID || parsed.Digest != expected.Digest || count != len(expected.Credits) || sha256.Sum256(data) != expectedNativeRecoveryDigest(expectedNative, *expected)) {
 		return owner, work, v.fail(ErrCorrupt)
 	}
 	if e := ctx.Err(); e != nil {
@@ -354,6 +363,6 @@ func (s *Store) loadRecoveryOwnerAt(bank byte, index uint64) (out ApplicationRec
 	if err != nil || deleted {
 		return out, ErrCorrupt
 	}
-	out, _, err = inspectRecoveryOwner(data, s.applicationPolicy, s.limits)
+	out, _, err = inspectNativeRecoveryOwner(data, s.applicationPolicy, s.limits)
 	return out, err
 }

@@ -11,9 +11,11 @@ import (
 // It is never parsed from a generic command prefix by Store. The verifier must
 // check complete canonical command/binding/phase semantics, not just a header.
 type ApplicationRecoveryPurpose struct {
-	Reserve     *ApplicationRecoveryReservation
-	Use         *ApplicationRecoveryUse
-	ApplyBefore *ApplicationRecoveryApplyBefore
+	Reserve         *ApplicationRecoveryReservation
+	Use             *ApplicationRecoveryUse
+	ApplyBefore     *ApplicationRecoveryApplyBefore
+	TerminalReserve *ApplicationRecoveryReservation
+	TerminalUse     *ApplicationRecoveryUse
 }
 
 // ApplicationRecoveryApplyBefore requests reclassification after retirement of
@@ -111,7 +113,7 @@ func (s *Store) AdmitApplicationRecovery(ctx context.Context, data []byte) (*App
 	if s.meta.Applied != index || s.activeGeneration() != generation || s.meta.ImageHash != imageHash {
 		return nil, ErrInvalid
 	}
-	if purpose.Reserve != nil && purpose.Use != nil || purpose.ApplyBefore != nil && (purpose.Reserve != nil || purpose.Use != nil) {
+	if !validRecoveryPurpose(purpose) {
 		return nil, ErrInvalid
 	}
 	if purpose.ApplyBefore != nil {
@@ -120,10 +122,36 @@ func (s *Store) AdmitApplicationRecovery(ctx context.Context, data []byte) (*App
 		}
 		return nil, errors.Join(ErrApplicationPrerequisite, purpose.ApplyBefore.Refusal)
 	}
-	if purpose.Reserve == nil && purpose.Use == nil {
+	if purpose.Reserve == nil && purpose.Use == nil && purpose.TerminalReserve == nil && purpose.TerminalUse == nil {
 		if err := s.admitApplicationLocked(len(data)); err != nil {
 			return nil, err
 		}
+	} else if purpose.TerminalReserve != nil {
+		if err := s.admitTerminalCreationLocked(len(data), *purpose.TerminalReserve); err != nil {
+			return nil, err
+		}
+		owned, err := s.meta.Recovery.reserveTerminal(*purpose.TerminalReserve, s.meta.App.Policy, s.limits)
+		if err != nil {
+			return nil, err
+		}
+		r := owned.Terminal[owned.Terminal.find(purpose.TerminalReserve.ID)]
+		purpose.TerminalReserve = &r
+	} else if purpose.TerminalUse != nil {
+		use := *purpose.TerminalUse
+		if use.CommandDigest != sha256.Sum256(data) {
+			return nil, ErrInvalid
+		}
+		credit, err := s.meta.Recovery.terminalCredit(use)
+		if err != nil {
+			return nil, err
+		}
+		if len(data) > credit.CommandBytes {
+			return nil, ErrLimit
+		}
+		if err := s.admitTerminalUseLocked(len(data), use, credit); err != nil {
+			return nil, err
+		}
+		purpose.TerminalUse = &use
 	} else if purpose.Reserve != nil {
 		if _, err := recoveryGrowth(*purpose.Reserve, s.meta.App.Policy, s.limits); err != nil {
 			return nil, err
@@ -177,6 +205,15 @@ func (s *Store) admitRecoveryCreationLocked(commandBytes int, reserve Applicatio
 	}
 	if sameRecoveryReservation(s.meta.Recovery.Reservation, reserve) {
 		future = current
+	} else if s.meta.Recovery.Config.Version == 2 {
+		terminal, err := terminalGrowth(s.meta.Recovery.Terminal, s.meta.App.Policy, s.limits)
+		if err != nil {
+			return err
+		}
+		future, err = addRecoveryGrowth(future, terminal)
+		if err != nil {
+			return err
+		}
 	}
 	p := s.meta.App.Policy
 	bytes, records := applicationTotals(s.meta)
@@ -198,6 +235,13 @@ func (s *Store) admitRecoveryCreationLocked(commandBytes int, reserve Applicatio
 // and log backing. Applied credit alone cannot admit arbitrary queued copies.
 // This is a non-reserving preflight; serialized Persist repeats the same checks.
 func (s *Store) admitRecoveryUseLocked(commandBytes int, use ApplicationRecoveryUse, credit ApplicationRecoveryCredit) error {
+	return s.admitCreditUseLocked(commandBytes, applicationRecoveryQueuedPurpose{Use: &use}, credit)
+}
+func (s *Store) admitTerminalUseLocked(commandBytes int, use ApplicationRecoveryUse, credit ApplicationRecoveryCredit) error {
+	return s.admitCreditUseLocked(commandBytes, applicationRecoveryQueuedPurpose{TerminalUse: &use}, credit)
+}
+func (s *Store) admitCreditUseLocked(commandBytes int, purpose applicationRecoveryQueuedPurpose, credit ApplicationRecoveryCredit) error {
+	use := purpose.use()
 	m := s.meta
 	if m.Last >= math.MaxUint64-1 || len(m.Recovery.Queued)+1 > (maxMetadataBytes-recoveryMetadataFixedBytes)/256 {
 		return ErrLimit
@@ -205,7 +249,7 @@ func (s *Store) admitRecoveryUseLocked(commandBytes int, use ApplicationRecovery
 	n := len(m.Recovery.Queued)
 	queued := make([]applicationRecoveryQueued, n+1)
 	copy(queued, m.Recovery.Queued)
-	queued[n] = applicationRecoveryQueued{Index: m.Last + 1, CommandDigest: use.CommandDigest, Purpose: applicationRecoveryQueuedPurpose{Use: &use}, Credit: credit}
+	queued[n] = applicationRecoveryQueued{Index: m.Last + 1, CommandDigest: use.CommandDigest, Purpose: purpose, Credit: credit}
 	m.Recovery.Queued = queued
 	m.Last++
 	extra := uint64(commandBytes + frameOverhead + 9) // #nosec G115 -- sole caller passes len(data)<=validated credit.CommandBytes<=16 MiB-74; nonnegative +83 fits int/uint64.
@@ -277,7 +321,7 @@ func (s *Store) RecoveryAdmissionForCommittedEntry(ctx context.Context, index ui
 		if q.CommandDigest != sha256.Sum256(e.GetData()) {
 			return nil, ErrCorrupt
 		}
-		a := &ApplicationRecoveryAdmission{s: s, base: ApplicationRoot{Generation: s.activeGeneration(), Index: s.meta.Applied, ImageHash: s.meta.ImageHash}, hash: q.CommandDigest, purpose: ApplicationRecoveryPurpose{Reserve: q.Purpose.Reserve, Use: q.Purpose.Use}}
+		a := &ApplicationRecoveryAdmission{s: s, base: ApplicationRoot{Generation: s.activeGeneration(), Index: s.meta.Applied, ImageHash: s.meta.ImageHash}, hash: q.CommandDigest, purpose: ApplicationRecoveryPurpose{Reserve: q.Purpose.Reserve, Use: q.Purpose.Use, TerminalReserve: q.Purpose.TerminalReserve, TerminalUse: q.Purpose.TerminalUse}}
 		a.self = a
 		return a, nil
 	}
