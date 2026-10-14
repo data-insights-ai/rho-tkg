@@ -330,6 +330,9 @@ func (c *Core) resolveNodeVersionAtCapped(chain []*types.Node, t types.Instant, 
 			vStart, vEnd := c.nodeVersionBounds(chain, i)
 			vEnd = caps.end(entry, vEnd)
 			if vStart <= t && (vEnd == 0 || vEnd > t) {
+				if isVoidRow(entry) {
+					return nil, storepkg.ErrNoVersionValidAt // an excised piece wins: absent
+				}
 				return entry, nil
 			}
 		}
@@ -367,7 +370,7 @@ func (c *Core) resolveNodeVersionAtCapped(chain []*types.Node, t types.Instant, 
 			}
 		}
 	}
-	if best == nil {
+	if best == nil || isVoidRow(best) {
 		return nil, storepkg.ErrNoVersionValidAt
 	}
 	return best, nil
@@ -616,6 +619,9 @@ func (c *Core) resolveRelVersionAtCapped(chain []*types.Relationship, t types.In
 			vStart, vEnd := c.relVersionBounds(chain, i)
 			vEnd = caps.end(entry, vEnd)
 			if vStart <= t && (vEnd == 0 || vEnd > t) {
+				if isVoidRow(entry) {
+					return nil, storepkg.ErrNoVersionValidAt // an excised piece wins: absent
+				}
 				return entry, nil
 			}
 		}
@@ -645,7 +651,7 @@ func (c *Core) resolveRelVersionAtCapped(chain []*types.Relationship, t types.In
 			}
 		}
 	}
-	if best == nil {
+	if best == nil || isVoidRow(best) {
 		return nil, storepkg.ErrNoVersionValidAt
 	}
 	return best, nil

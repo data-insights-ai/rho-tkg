@@ -159,6 +159,18 @@ func effectivePieces[T interface {
 	if len(filtered) == 0 {
 		return nil
 	}
+	return effectiveSweep(c, k, filtered, origin, false)
+}
+
+// effectiveSweep is effectivePieces after the transaction-time filter: the
+// point resolver's answer over filtered (the resolver's input chain, in write
+// order) for every valid instant. origin maps a row to its index in the
+// caller's chain (nil: src stays 0). keepVoid keeps the pieces a void row
+// wins (voidMask); otherwise they are gaps, as the point resolver answers.
+func effectiveSweep[T interface {
+	comparable
+	storeutil.TemporalRow
+}](c *Core, k *chainKernel[T], filtered []T, origin map[T]int, keepVoid bool) []effPiece[T] {
 	caps := chainLifeEnds(filtered)
 
 	// The resolver's classification and order (it sorts its argument).
@@ -239,6 +251,9 @@ func effectivePieces[T interface {
 			to = cuts[j+1]
 		}
 		w := arr[h[0].pos]
+		if isVoidRow(w) && !keepVoid {
+			continue // an excised piece wins: a gap (resolveNodeVersionAtCapped)
+		}
 		if n := len(out); n > 0 && out[n-1].row == w && out[n-1].to == from {
 			out[n-1].to = to
 			continue

@@ -447,6 +447,30 @@ func (s *temporalOpsSpy) SetRelVersionIntervalWithTx(ctx context.Context, id typ
 	return nil, s.err
 }
 
+func (s *temporalOpsSpy) ExciseNodeValidity(ctx context.Context, id types.NodeID, a, b types.Instant) error {
+	s.record("ExciseNodeValidity")
+	s.lastIv = ivCall{id: int64(id), vf: a, vt: b}
+	return s.err
+}
+
+func (s *temporalOpsSpy) ExciseRelValidity(ctx context.Context, id types.RelID, a, b types.Instant) error {
+	s.record("ExciseRelValidity")
+	s.lastIv = ivCall{id: int64(id), vf: a, vt: b}
+	return s.err
+}
+
+func (s *temporalOpsSpy) ExciseNodeValidityWithTx(ctx context.Context, id types.NodeID, a, b, txFrom types.Instant) error {
+	s.record("ExciseNodeValidityWithTx")
+	s.lastIv = ivCall{id: int64(id), vf: a, vt: b, tx: txFrom}
+	return s.err
+}
+
+func (s *temporalOpsSpy) ExciseRelValidityWithTx(ctx context.Context, id types.RelID, a, b, txFrom types.Instant) error {
+	s.record("ExciseRelValidityWithTx")
+	s.lastIv = ivCall{id: int64(id), vf: a, vt: b, tx: txFrom}
+	return s.err
+}
+
 func (s *temporalOpsSpy) Snapshot(tm types.Instant) (*GraphSnapshot, error) {
 	s.record("Snapshot")
 	return nil, s.err

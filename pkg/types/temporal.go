@@ -54,6 +54,15 @@ type TemporalMetadata struct {
 	// past stays readable) carries false. Only meaningful together with
 	// DeletedAt != 0; stores reject it otherwise.
 	Retracted bool
+	// Void marks a piece an excise appended (Temporal().ExciseNodeValidity /
+	// ExciseRelValidity, backlog 64): belief, from TxFrom on, that the entity
+	// is absent over [ValidFrom, ValidTo). Where a void row wins the valid-time
+	// resolution the reads answer ErrNoVersionValidAt; it never holds the
+	// current slot, never answers an as-of read and carries no state of its
+	// own (its labels and properties are those of the version it voids).
+	// Always bounded (ValidTo != 0), never a tombstone; stores reject it
+	// otherwise.
+	Void bool
 }
 
 // BaseEntityID returns the opaque ID linking to the original entity in a

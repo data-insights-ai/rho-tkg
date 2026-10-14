@@ -38,6 +38,7 @@ type wireTemporalMetaPartial struct {
 	UpdatedAt     int64 `msgpack:"ua"`
 	DeletedAt     int64 `msgpack:"da"`
 	Retracted     bool  `msgpack:"rx"`
+	Void          bool  `msgpack:"vd"`
 }
 
 // DecodeWireTemporalMeta partially decodes a FULL (non-delta) node or rel wire
@@ -66,26 +67,26 @@ func DecodeWireTemporalMeta(raw []byte) (uint32, *types.TemporalMetadata, error)
 	if w.Version < 0 {
 		return 0, nil, fmt.Errorf("wire temporal meta: negative version %d: %w", w.Version, storepkg.ErrCorruptWire)
 	}
-	return uint32(w.Version), selectionTemporalMeta(w.HasTemporal, w.ValidFrom, w.ValidTo, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted), nil // #nosec G115 — non-negative checked above
+	return uint32(w.Version), selectionTemporalMeta(w.HasTemporal, w.ValidFrom, w.ValidTo, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted, w.Void), nil // #nosec G115 — non-negative checked above
 }
 
 // SelectionTemporalMetaOfNodeWire builds the selection-scope temporal metadata
 // from an already-decoded NodeWire (a delta row's Meta carries the target
 // version's temporal verbatim, so no partial decode is needed there).
 func SelectionTemporalMetaOfNodeWire(w NodeWire) *types.TemporalMetadata {
-	return selectionTemporalMeta(w.HasTemporal, w.ValidFrom, w.ValidTo, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted)
+	return selectionTemporalMeta(w.HasTemporal, w.ValidFrom, w.ValidTo, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted, w.Void)
 }
 
 // SelectionTemporalMetaOfRelWire mirrors SelectionTemporalMetaOfNodeWire.
 func SelectionTemporalMetaOfRelWire(w RelWire) *types.TemporalMetadata {
-	return selectionTemporalMeta(w.HasTemporal, w.ValidFrom, w.ValidTo, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted)
+	return selectionTemporalMeta(w.HasTemporal, w.ValidFrom, w.ValidTo, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted, w.Void)
 }
 
 // selectionTemporalMeta mirrors applyNodeWireFields' temporal construction for
 // the numeric instants and the retraction marker (a selection input: it caps
 // its life, chainLifeEnds): a temporal block exists iff HasTemporal (the
 // checked decoders reject payload-without-ht, so ht is authoritative).
-func selectionTemporalMeta(ht bool, vf, vt, tf, tt, ca, ua, da int64, rx bool) *types.TemporalMetadata {
+func selectionTemporalMeta(ht bool, vf, vt, tf, tt, ca, ua, da int64, rx, vd bool) *types.TemporalMetadata {
 	if !ht {
 		return nil
 	}
@@ -98,6 +99,7 @@ func selectionTemporalMeta(ht bool, vf, vt, tf, tt, ca, ua, da int64, rx bool) *
 		UpdatedAt: types.Instant(ua),
 		DeletedAt: types.Instant(da),
 		Retracted: rx,
+		Void:      vd,
 	}
 }
 

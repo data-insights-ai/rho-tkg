@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Valid-time excise: `Temporal().ExciseNodeValidity(ctx, id, a, b)` / `ExciseRelValidity`** (backlog 64, sigma R7,
+  v4.53.0). Ends an entity's validity over `[a, b)` and keeps it outside: reads with a valid instant in `[a, b)`
+  answer `ErrNoVersionValidAt` (point, label, property and interval doors, effective timelines), reads outside keep
+  their answers, pins before the call see the unsplit version. Works on the current version (open or closed), a
+  historical one and across several; a later `SetNodeVersionInterval` over the hole fills it again. Append-only,
+  one transaction instant for every row, under the entity lock: the cascade kernel writes void pieces
+  (`types.TemporalMetadata.Void`) over the parts of `[a, b)` where a version was valid and the usual resumption
+  from `b`. A void row never holds the current slot and never answers `NodeAsOf` / `RelAsOf`; `History()` returns
+  it marked. Twins: `*WithTx` (caller instant, the `SetNodeVersionIntervalWithTx` rules), `GraphTx` and
+  `BatchBuilder` (the batch `*WithTx` twin refuses the whole unit). Refusals, nothing written: `b == 0`, `a <= 0`,
+  `a >= b` (`ErrInvalidTimeRange`), no version valid in `[a, b)` (`ErrNoVersionValidAt`), unknown
+  (`ErrNodeNotFound` / `ErrRelNotFound`) or deleted (`ErrEntityDeleted`). No existing mechanism modelled absence
+  over a bounded interval (a retraction ends a whole life, a delete tombstone ends the life at its instant,
+  `CloseVersion` closes only the open current row), so the flag is new. Format: a void row is written at row
+  format version 5 (`storeutil.VoidWireFormatVersion`, key `vd`) and the badger store marker is raised to 6
+  (`VoidStoreFormatVersion`) in the batch that writes the first void row; a store without an excise keeps marker
+  3. An older binary refuses such a store at open and fails such a row closed (export, change feed, replica) with
+  `ErrWireFormatVersionUnsupported`; it must not skip the key, since it would read the piece as a valid version.
+  (4 and 5 are the markers of backlogs 61 and 63.) Tests `TestExciseNodeValidity` / `TestExciseRelValidity` (memory,
+  badger, tiered, sharded on disk with reopen), `TestExciseNodeValidityWithTx`, `TestExciseNodeValidityTxAndBatch`,
+  `TestVoidRow_FormatVersion5`, `TestVoidRowRaisesStoreFormatMarker`, the bitemporal oracle harness with the
+  excise op; evidence `tasks/evidence/excise/`.
+
 ### Changed
 
 - **A row without a valid-from is valid from its `TxFrom`** (backlog 62, deprecated in v4.52.2; sigma-tkgd

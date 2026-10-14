@@ -25,7 +25,7 @@ import (
 // slot holder was written (TxTo = that row's TxFrom); rows above s are cascade
 // rows (TxTo 0). The slot holder is live current, or a tombstone (TxTo ==
 // DeletedAt, after every TxFrom).
-func genCascadeAsofChain(rng *rand.Rand) []asofVersion {
+func genCascadeAsofChain(rng, voidRng *rand.Rand) []asofVersion {
 	n := 2 + rng.IntN(5)
 	s := rng.IntN(n - 1) // at least one row above the slot holder
 	chain := make([]asofVersion, n)
@@ -53,6 +53,11 @@ func genCascadeAsofChain(rng *rand.Rand) []asofVersion {
 			if chain[i].txTo >= chain[i].txFrom {
 				chain[i].txTo = 0
 			}
+		}
+		// An excise's void piece (backlog 64): never an as-of answer, the
+		// rule reads past it.
+		if chain[i].txTo == 0 && voidRng.IntN(3) == 0 {
+			chain[i].void = true
 		}
 	}
 	if rng.IntN(4) == 0 {
@@ -82,6 +87,7 @@ func TestBadgerAsOfCascadeShapesEquivalentToSelectAsOf(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	rng := rand.New(rand.NewPCG(0xCA5C, 0xADE5))
+	voidRng := rand.New(rand.NewPCG(0x701D, 0x64))
 	for _, endpoint := range []types.NodeID{types.NodeID(snowflake.ID(7)), types.NodeID(snowflake.ID(9))} {
 		if err := bs.PutNode(types.NewNode(endpoint, 1, nil)); err != nil {
 			t.Fatalf("PutNode endpoint %d: %v", endpoint, err)
@@ -103,7 +109,7 @@ func TestBadgerAsOfCascadeShapesEquivalentToSelectAsOf(t *testing.T) {
 	var rels []relCase
 	maxPin := types.Instant(0)
 	for e := 0; e < entities; e++ {
-		chain := genCascadeAsofChain(rng)
+		chain := genCascadeAsofChain(rng, voidRng)
 		nid := types.NodeID(snowflake.ID(100_000 + e*2))
 		rid := types.RelID(snowflake.ID(100_001 + e*2))
 		nc := nodeCase{id: nid}

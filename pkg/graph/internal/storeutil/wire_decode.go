@@ -153,6 +153,8 @@ func (w *NodeWire) DecodeMsgpack(dec *msgpack.Decoder) error {
 			w.DeletedAt, err = dec.DecodeInt64()
 		case "rx":
 			w.Retracted, err = dec.DecodeBool()
+		case "vd":
+			w.Void, err = dec.DecodeBool()
 		case "cb":
 			w.CreatedBy, err = dec.DecodeString()
 		case "ub":
@@ -228,6 +230,8 @@ func (w *RelWire) DecodeMsgpack(dec *msgpack.Decoder) error {
 			w.DeletedAt, err = dec.DecodeInt64()
 		case "rx":
 			w.Retracted, err = dec.DecodeBool()
+		case "vd":
+			w.Void, err = dec.DecodeBool()
 		case "cb":
 			w.CreatedBy, err = dec.DecodeString()
 		case "ub":

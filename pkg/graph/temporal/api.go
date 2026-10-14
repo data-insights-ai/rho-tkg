@@ -81,6 +81,12 @@ type Ops interface {
 	// (Config.AllowTxBackfill). See SetNodeVersionIntervalWithTx on API.
 	SetNodeVersionIntervalWithTx(ctx context.Context, id types.NodeID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant) (*types.Node, error)
 	SetRelVersionIntervalWithTx(ctx context.Context, id types.RelID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant) (*types.Relationship, error)
+	// Valid-time excise: the entity is absent over [a, b). See
+	// ExciseNodeValidity on API.
+	ExciseNodeValidity(ctx context.Context, id types.NodeID, a, b types.Instant) error
+	ExciseRelValidity(ctx context.Context, id types.RelID, a, b types.Instant) error
+	ExciseNodeValidityWithTx(ctx context.Context, id types.NodeID, a, b, txFrom types.Instant) error
+	ExciseRelValidityWithTx(ctx context.Context, id types.RelID, a, b, txFrom types.Instant) error
 
 	// Snapshot/Diff
 	Snapshot(t types.Instant) (*GraphSnapshot, error)
@@ -768,6 +774,66 @@ func (a *API) SetRelVersionIntervalWithTx(ctx context.Context, id types.RelID, v
 		return nil, err
 	}
 	return ops.SetRelVersionIntervalWithTx(ctx, id, validFrom, validTo, props, txFrom)
+}
+
+// ExciseNodeValidity ends node id's validity over [a, b) (sigma R7): reads
+// with a valid instant in [a, b) answer ErrNoVersionValidAt (NodeAt,
+// NodeAtTx, the label and property doors, the effective timeline), interval
+// reads no longer see the node there, and reads outside [a, b) keep their
+// answers. It splits the version valid over [a, b) — the current one, open or
+// closed, or a historical one, also several — and is append-only: the rows it
+// appends (void pieces over the parts of [a, b) where a version was valid, and
+// a resumption from b) all carry one transaction instant, recorded under the
+// node's entity lock, so pins before the call see the unsplit version.
+// History() returns the void pieces (Temporal().Void); they never hold the
+// current slot and never answer NodeAsOf. A later SetNodeVersionInterval over
+// [a, b) fills the hole again.
+//
+// Refusals, nothing written: b == 0 (an open tail is CloseVersion's), a <= 0
+// or a >= b (ErrInvalidTimeRange); no version valid anywhere in [a, b)
+// (ErrNoVersionValidAt); an unknown node (ErrNodeNotFound); a hard-deleted one
+// (ErrEntityDeleted). Twins with the same rules: GraphTx.ExciseNodeValidity
+// and BatchBuilder.ExciseNodeValidity.
+func (a *API) ExciseNodeValidity(ctx context.Context, id types.NodeID, from, to types.Instant) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ExciseNodeValidity(ctx, id, from, to)
+}
+
+// ExciseRelValidity is the relationship counterpart of ExciseNodeValidity.
+func (a *API) ExciseRelValidity(ctx context.Context, id types.RelID, from, to types.Instant) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ExciseRelValidity(ctx, id, from, to)
+}
+
+// ExciseNodeValidityWithTx is ExciseNodeValidity recorded at the caller's
+// transaction instant txFrom, with the rules of SetNodeVersionIntervalWithTx:
+// Config.AllowTxBackfill (ErrTxBackfillDisabled); txFrom a positive instant
+// not in the future (ErrInvalidTxFrom) and after every TxFrom and TxTo of the
+// node's chain (ErrTxOrder). The commit clock is not advanced. Twins:
+// GraphTx.ExciseNodeValidityWithTx and BatchBuilder.ExciseNodeValidityWithTx
+// (whole-unit pre-flight: one refusal refuses the batch).
+func (a *API) ExciseNodeValidityWithTx(ctx context.Context, id types.NodeID, from, to, txFrom types.Instant) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ExciseNodeValidityWithTx(ctx, id, from, to, txFrom)
+}
+
+// ExciseRelValidityWithTx is the relationship counterpart of
+// ExciseNodeValidityWithTx.
+func (a *API) ExciseRelValidityWithTx(ctx context.Context, id types.RelID, from, to, txFrom types.Instant) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ExciseRelValidityWithTx(ctx, id, from, to, txFrom)
 }
 
 // Snapshot captures the graph state at t. EFFECTIVE view: a relationship is

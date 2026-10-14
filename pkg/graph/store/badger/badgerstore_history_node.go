@@ -651,7 +651,8 @@ func (bs *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types
 			bs.extendNodeVersionTemporalLocked(n, id) // backlog 56: a covered node's envelope holds every row
 		},
 		func() error {
-			return bs.appendOpsLoggedRouted(storecontract.ChangeNodeHistoryVersion, logPayload, token, writeOp{opType: writeOpSet, key: key, value: data})
+			ops := append([]writeOp{{opType: writeOpSet, key: key, value: data}}, bs.voidMarkerOps(n.Temporal())...)
+			return bs.appendOpsLoggedRouted(storecontract.ChangeNodeHistoryVersion, logPayload, token, ops...)
 		},
 	)
 	if err != nil {
