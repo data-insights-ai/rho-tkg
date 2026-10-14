@@ -108,6 +108,13 @@ func (m *declaredMaterializer) VerifyApplicationRecovery(ctx context.Context, da
 	if len(data) == 0 {
 		return purpose, nil
 	}
+	if isGraphRetentionWire(data) {
+		command, err := decodeGraphRetentionCommand(data)
+		if err != nil || !m.collectsHistory() || command.scope != m.scope() {
+			return purpose, errors.Join(errInvalid, err)
+		}
+		return purpose, nil // ordinary credit, never a transient or terminal claim
+	}
 	if isGraphPinWire(data) {
 		if !m.retainedPins() {
 			return purpose, errInvalid
