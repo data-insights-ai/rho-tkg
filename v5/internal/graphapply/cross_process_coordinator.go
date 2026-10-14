@@ -10,6 +10,7 @@ import (
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
 )
 
@@ -346,6 +347,7 @@ func (c *crossProcessCoordinator) run(ctx context.Context, id requestID, ops []g
 		decision, err = coordinator.cross(ctx, m.tx, crossDecide, len(run.tx.manifest))
 	} else {
 		votes := make([]crossAuthority, 0, len(m.parts))
+		capacityAttempted := false
 		for _, part := range m.parts {
 			evidence := append([]crossAuthority{registration}, votes...)
 			proposal, e := c.host.proposalFromAuthority(crossPrepare, part.binding.Partition, run.tx, evidence, arena)
@@ -354,7 +356,24 @@ func (c *crossProcessCoordinator) run(ctx context.Context, id requestID, ops []g
 			}
 			status, e := endpoints[part.binding.Partition].submit(ctx, proposal)
 			if e != nil {
-				return result, errors.Join(errCrossProcessPending, e)
+				if capacityAttempted || !errors.Is(e, errLimit) && !errors.Is(e, raftlog.ErrLimit) {
+					return result, errors.Join(errCrossProcessPending, e)
+				}
+				capacityAttempted = true
+				recovered, helpErr := c.recoverCapacity(ctx, run.tx, m, proposal, endpoints, budget)
+				if helpErr != nil {
+					return result, errors.Join(errCrossProcessPending, e, helpErr)
+				}
+				if recovered.validSeal() {
+					decision = recovered
+					break
+				}
+				// Same exact proposal after another original's genuine settlement;
+				// no replanning or replacement of an uncertain business identity.
+				status, e = endpoints[part.binding.Partition].submit(ctx, proposal)
+				if e != nil {
+					return result, errors.Join(errCrossProcessPending, e)
+				}
 			}
 			if status.tx != m.tx || status.digest != m.digest {
 				return result, errInvalid
@@ -368,14 +387,16 @@ func (c *crossProcessCoordinator) run(ctx context.Context, id requestID, ops []g
 				break
 			}
 		}
-		proposal, e := c.host.proposalFromAuthority(crossDecide, m.coordinator, run.tx, votes, arena)
-		if e != nil {
-			return result, fmt.Errorf("decision proposal: %w", e)
+		if !decision.validSeal() {
+			proposal, e := c.host.proposalFromAuthority(crossDecide, m.coordinator, run.tx, votes, arena)
+			if e != nil {
+				return result, fmt.Errorf("decision proposal: %w", e)
+			}
+			if _, e := coordinator.submit(ctx, proposal); e != nil {
+				return result, errors.Join(errCrossProcessPending, e)
+			}
+			decision, err = coordinator.cross(ctx, m.tx, crossDecide, len(run.tx.manifest))
 		}
-		if _, e := coordinator.submit(ctx, proposal); e != nil {
-			return result, errors.Join(errCrossProcessPending, e)
-		}
-		decision, err = coordinator.cross(ctx, m.tx, crossDecide, len(run.tx.manifest))
 	}
 	if err != nil {
 		return result, errors.Join(errCrossProcessPending, err)

@@ -35,13 +35,19 @@ type crossCapacityQuestion struct {
 	nonce   [16]byte
 	hash    [32]byte
 	command crossCommand
+	limits  graphCapacityLimits // zero preserves the original native allowance
+	extra   int                 // bounded remote dispatch/Host decode owners
 }
 type crossCapacityProof struct {
 	owner       *allocationHost
 	observation crossCapacityObservation
 	binding     [32]byte
+	work        graphstore.PageWork
+	output      int
+	workBinding [32]byte
 }
 type crossCapacityReply struct {
+	id    allocationReadID
 	proof crossCapacityProof
 	err   error
 }
@@ -206,6 +212,12 @@ func (m *declaredMaterializer) readCrossResourceOwner(q *reader) (crossManifest,
 // request-bound observation of a different applied completion owner. It creates
 // no vote, decision, reservation or graph effect.
 func (h *allocationHost) ReadCrossCapacityConflict(prepare allocationProposal, nonce [16]byte) (allocationEvent, error) {
+	return h.readCrossCapacityConflict(prepare, nonce, graphCapacityLimits{})
+}
+
+// The remote embedding grants a bounded child of its existing invocation. The
+// ordinary public door selects precisely its previous machine policy.
+func (h *allocationHost) readCrossCapacityConflict(prepare allocationProposal, nonce [16]byte, grant graphCapacityLimits) (allocationEvent, error) {
 	if h == nil || nonce == ([16]byte{}) {
 		return allocationEvent{}, errInvalid
 	}
@@ -216,6 +228,9 @@ func (h *allocationHost) ReadCrossCapacityConflict(prepare allocationProposal, n
 	}
 	if h.machine == nil || h.driver == nil || prepare.target != h.machine.scope() || !crossGraphAgreement(h.machine.SemanticContractID()) {
 		return allocationEvent{}, errInvalid
+	}
+	if grant != (graphCapacityLimits{}) && (!grant.valid(h.machine.limits) || 8192+16*len(prepare.wire) > grant.output) {
+		return allocationEvent{}, errLimit
 	}
 	r, _, err := decodeCrossCommand(prepare.wire, h.machine.limits)
 	if err != nil || r.ns != h.machine.ns || r.phase != crossPrepare || r.conflict != nil {
@@ -230,7 +245,10 @@ func (h *allocationHost) ReadCrossCapacityConflict(prepare allocationProposal, n
 	h.sequence++
 	h.issuedReads.Store(h.sequence)
 	id := allocationReadID{h.session, h.sequence}
-	question := crossCapacityQuestion{nonce: nonce, hash: sha256.Sum256(prepare.wire), command: r}
+	question := crossCapacityQuestion{nonce: nonce, hash: sha256.Sum256(prepare.wire), command: r, limits: grant}
+	if grant != (graphCapacityLimits{}) {
+		question.extra = 8192 + 16*len(prepare.wire)
+	}
 	h.capacityPending[id] = question
 	context := append([]byte{'G', 'C', 'C', 1}, id.session[:]...)
 	context = binary.BigEndian.AppendUint64(context, id.sequence)
@@ -257,21 +275,25 @@ func (h *allocationHost) completeCrossCapacityRead(wire []byte, index uint64) (c
 		return crossCapacityReply{}, errInvalid
 	}
 	delete(h.capacityPending, id)
-	o, err := h.machine.observeCrossCapacity(q, index)
+	o, work, output, err := h.machine.observeCrossCapacity(q, index)
 	if err != nil {
-		return crossCapacityReply{err: err}, nil
+		return crossCapacityReply{id: id, err: err}, nil
 	}
 	o.readID = id
 	encoded, err := encodeCrossCapacityObservation(o)
 	if err != nil {
 		return crossCapacityReply{}, err
 	}
-	return crossCapacityReply{proof: crossCapacityProof{owner: h, observation: o, binding: sha256.Sum256(encoded)}}, nil
+	usage, err := encodeCapacityAuthorityBody(crossCapacityAuthority{observation: o, work: work, output: output})
+	if err != nil {
+		return crossCapacityReply{}, err
+	}
+	return crossCapacityReply{id: id, proof: crossCapacityProof{owner: h, observation: o, binding: sha256.Sum256(encoded), work: work, output: output, workBinding: sha256.Sum256(usage)}}, nil
 }
-func (m *declaredMaterializer) observeCrossCapacity(question crossCapacityQuestion, index uint64) (observation crossCapacityObservation, err error) {
+func (m *declaredMaterializer) observeCrossCapacity(question crossCapacityQuestion, index uint64) (observation crossCapacityObservation, work graphstore.PageWork, output int, err error) {
 	v, err := m.store.ApplicationView(index)
 	if err != nil {
-		return observation, err
+		return observation, work, output, err
 	}
 	defer func() {
 		err = errors.Join(err, v.Close())
@@ -281,34 +303,52 @@ func (m *declaredMaterializer) observeCrossCapacity(question crossCapacityQuesti
 	}()
 	base, err := v.RootBounded(context.Background(), 172)
 	if err != nil {
-		return observation, err
+		return observation, work, output, err
 	}
 	l := m.limits.allocation
 	l.readRows = min(l.readRows, m.limits.sourceRows)
 	l.readBytes = min(l.readBytes, m.limits.sourceBytes)
+	policy := m.limits
+	if question.limits != (graphCapacityLimits{}) {
+		if !question.limits.valid(m.limits) {
+			return observation, work, output, errInvalid
+		}
+		l.readRows = min(l.readRows, question.limits.rows)
+		l.readBytes = min(l.readBytes, question.limits.bytes)
+		policy.outputBytes = question.limits.output
+	}
 	q := reader{ctx: context.Background(), view: v, ns: m.ns, base: base, limits: l, bytes: cap(base.Image)}
+	defer func() {
+		work = graphstore.PageWork{Records: q.rows, Bytes: q.bytes}
+		if q.arena != nil {
+			output = q.arena.Used()
+		}
+	}()
+	if question.limits != (graphCapacityLimits{}) && 8192+8*(len(question.command.manifest)+4096+256*len(question.command.proofs))+question.extra > policy.outputBytes {
+		return observation, work, output, errLimit
+	}
 	_, decoded, err := decodeCrossCommandMustBound(question, m.limits)
 	if err != nil {
-		return observation, err
+		return observation, work, output, err
 	}
-	if err := joinGraphOutputBudget(&q, graphRequest{}, decoded, m.limits); err != nil {
-		return observation, err
+	if err := joinGraphOutputBudget(&q, graphRequest{}, decoded+question.extra, policy); err != nil {
+		return observation, work, output, err
 	}
 	desired, err := m.crossManifest(&q, question.command.manifest)
 	if err != nil {
-		return observation, err
+		return observation, work, output, err
 	}
 	if err := validateCrossPhaseProofs(question.command, desired); err != nil {
-		return observation, err
+		return observation, work, output, err
 	}
 	holder, found, err := m.readCrossResourceOwner(&q)
 	if err != nil {
-		return observation, err
+		return observation, work, output, err
 	}
 	if !found || holder.tx == desired.tx {
-		return observation, replica.ErrUnavailable
+		return observation, work, output, replica.ErrUnavailable
 	}
-	return crossCapacityObservation{source: m.scope(), configuration: desired.configuration, routing: desired.routing, generation: base.Generation, index: base.Index, imageHash: base.ImageHash, desired: desired.tx, desiredDigest: desired.digest, desiredCoordinator: desired.coordinator, holder: holder.tx, holderDigest: holder.digest, holderCoordinator: holder.coordinator, prepareHash: question.hash, nonce: question.nonce}, nil
+	return crossCapacityObservation{source: m.scope(), configuration: desired.configuration, routing: desired.routing, generation: base.Generation, index: base.Index, imageHash: base.ImageHash, desired: desired.tx, desiredDigest: desired.digest, desiredCoordinator: desired.coordinator, holder: holder.tx, holderDigest: holder.digest, holderCoordinator: holder.coordinator, prepareHash: question.hash, nonce: question.nonce}, work, output, nil
 }
 func decodeCrossCommandMustBound(q crossCapacityQuestion, l materializerLimits) (crossCommand, int, error) {
 	wire, err := encodeCrossCommand(q.command, l)

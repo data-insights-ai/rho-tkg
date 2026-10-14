@@ -165,6 +165,11 @@ func (h *allocationHost) cancelSourceRead(id allocationReadID) error {
 		wire = encodeCrossRequestContext(id, q)
 	} else if pending, ok := h.movePending[id]; ok {
 		wire = encodeRangeMoveReadContext(id, pending.question)
+	} else if pending, ok := h.capacityPending[id]; ok {
+		wire = append([]byte{'G', 'C', 'C', 1}, id.session[:]...)
+		wire = binary.BigEndian.AppendUint64(wire, id.sequence)
+		wire = append(wire, pending.hash[:]...)
+		wire = append(wire, pending.nonce[:]...)
 	} else {
 		return errInvalid
 	}
@@ -176,6 +181,7 @@ func (h *allocationHost) cancelSourceRead(id allocationReadID) error {
 	delete(h.requestPending, id)
 	delete(h.cutPending, id)
 	delete(h.movePending, id)
+	delete(h.capacityPending, id)
 	return nil
 }
 

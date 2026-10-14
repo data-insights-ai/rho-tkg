@@ -304,6 +304,10 @@ func (s *graphPeerService) serve(ctx context.Context, wire []byte) ([]byte, erro
 	case sourceClose:
 		err = s.sources.closeSource(r.cookie)
 	case sourceCrossRead:
+		if len(r.command) != 0 {
+			body, err = s.readCapacity(ctx, r)
+			break
+		}
 		var reply crossReply
 		reply, err = s.pump.Cross(ctx, crossQuery{tx: r.tx, nonce: r.nonce, phase: r.phase})
 		if err == nil {
