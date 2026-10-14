@@ -40,11 +40,25 @@ type nativeGraphCostSample struct {
 }
 
 // These RPC/wait totals partition only the ordinary ACK's measured calls.
-// State includes the child's Checkpoint. Hub queue/Step timings overlap these
+// State is a checked volatile progress hint only. Hub queue/Step timings overlap these
 // client timings and cannot be added to them or interpreted as pure fsync time.
 type nativeGraphCostAckTiming struct {
 	ProposeCount, StateCount, PacketWaitCount, EntryRecordCount uint64
 	ProposeNanos, StateNanos, PacketWaitNanos, EntryRecordNanos int64
+}
+
+const nativeGraphCostAckPollEntity uint64 = 2
+
+// This test-only marker suppresses diagnostics, never supplies ACK authority.
+// The sole proof remains the actual original retained Outcome/CDC after polling.
+func nativeGraphCostAckPoll(r processRequest, costChild bool) (bool, error) {
+	if r.op != processStateOp || r.entity != nativeGraphCostAckPollEntity {
+		return false, nil
+	}
+	if !costChild || r.index != 0 || len(r.data) != 0 || r.packet.From != 0 || r.packet.To != 0 || r.packet.Snapshot || len(r.packet.Payload) != 0 {
+		return false, errInvalid
+	}
+	return true, nil
 }
 
 func (a *nativeGraphCostAckTiming) add(b nativeGraphCostAckTiming) {
@@ -273,7 +287,7 @@ func nativeGraphCostSubmit(t *testing.T, n *certifiedProcessNetwork, phase, i ui
 				}
 			}
 			callStarted = time.Now()
-			state := nativeGraphCostCall(t, ctx, n.all[actor], processRequest{op: processStateOp})
+			state := nativeGraphCostCall(t, ctx, n.all[actor], processRequest{op: processStateOp, entity: nativeGraphCostAckPollEntity})
 			sample.LocalAckTiming.StateCount++
 			sample.LocalAckTiming.StateNanos += time.Since(callStarted).Nanoseconds()
 			observed = state.applied
@@ -286,7 +300,7 @@ func nativeGraphCostSubmit(t *testing.T, n *certifiedProcessNetwork, phase, i ui
 					// Publication can race the first observation; confirm actual application
 					// once after terminal transport, never turn quietness into success.
 					callStarted = time.Now()
-					state = nativeGraphCostCall(t, ctx, n.all[actor], processRequest{op: processStateOp})
+					state = nativeGraphCostCall(t, ctx, n.all[actor], processRequest{op: processStateOp, entity: nativeGraphCostAckPollEntity})
 					sample.LocalAckTiming.StateCount++
 					sample.LocalAckTiming.StateNanos += time.Since(callStarted).Nanoseconds()
 					observed = state.applied
@@ -636,7 +650,7 @@ func runNativeGraphCost(t *testing.T, s nativeGraphCostSpec) {
 	started := time.Now()
 	n := newNativeGraphCostNetwork(t, s)
 	result := nativeGraphCostResult{Version: 1, Runner: "certified-16-command-checkpoints-v2", CheckpointCommands: nativeGraphCostBatchCommands, Engine: "native-raft", Spec: s, Deployment: "single-machine distributed: two three-voter durable process groups", Directory: n.dir, UsefulFacts: s.Facts, SetupNodes: 3, Creates: s.Facts, Updates: s.Facts}
-	result.TimingScope = "LocalAckTiming covers setup/create/update ordinary Submit RPCs and waits; State includes Checkpoint. TransportTiming covers all queued hub traffic including setup/checkpoints/oracles, overlaps client timings, and Step includes IPC plus native driver/application work, not pure fsync. Fixed-size totals and one int64 timestamp per queued job preserve the existing 64-byte job allowance."
+	result.TimingScope = "LocalAckTiming covers setup/create/update ordinary Submit RPCs and waits; State is a cost-only checked volatile Driver.Applied hint without Checkpoint/full stats, never ACK authority. Original retained Outcome/CDC alone proves ACK. Ordinary diagnostics/checkpoints remain full. TransportTiming covers all queued hub traffic including setup/checkpoints/oracles, overlaps client timings, and Step includes IPC plus native driver/application work, not pure fsync. Fixed-size totals and one int64 timestamp per queued job preserve the existing 64-byte job allowance."
 	// Source records and observations are streamed, never accumulated per fact.
 	open := func(name string) (*os.File, *json.Encoder) {
 		f, err := os.OpenFile(filepath.Join(n.dir, name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
@@ -774,6 +788,63 @@ func TestNativeGraphCostSmallActualProcesses(t *testing.T) {
 		t.Run(cell.name, func(t *testing.T) {
 			runNativeGraphCost(t, nativeGraphCostSpec{Version: 1, Facts: cell.facts, CrossPercent: cell.cross, Writers: 1})
 		})
+	}
+}
+
+func TestNativeGraphCostAckPollMarkerRequiresCostChildAndKeepsDefaultDiagnostics(t *testing.T) {
+	for _, cost := range []bool{false, true} {
+		env := []string{"RHO_GRAPH_CERTIFIED_PROCESS=1", "RHO_GRAPH_SOURCE_PROCESS=1"}
+		if cost {
+			env = append(env, `RHO_GRAPH_COST_SPEC={"version":1,"facts":17,"crossPercent":0,"writers":1}`)
+		}
+		p := startGraphProcess(t, filepath.Join(t.TempDir(), "store"), 1, env...)
+		attachGraphProcessMuxes(t, map[uint64]*graphProcess{1: p})
+		t.Cleanup(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_ = p.shutdown(ctx, t.Failed())
+		})
+		full := p.call(t, processRequest{op: processStateOp})
+		if len(full.image) == 0 || full.stats[statGeneration] == 0 || len(full.handles) != 2 {
+			t.Fatal("default State lost full diagnostics", cost, full)
+		}
+		marked := processRequest{op: processStateOp, entity: 2}
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		light, err := p.exchange(ctx, marked)
+		cancel()
+		err = errors.Join(err, processResponseError(light))
+		if !cost {
+			if !errors.Is(err, errInvalid) {
+				t.Fatal("non-cost child accepted ACK-only marker", light, err)
+			}
+		} else {
+			if err != nil || light.applied != full.applied || light.ready != full.ready || len(light.image)+len(light.handles)+len(light.aux)+len(light.outcome)+len(light.changes) != 0 || light.stats != ([statCount]uint64{}) || light.cutID != ([32]byte{}) || light.manifestID != ([32]byte{}) {
+				t.Fatal("cost progress hint acquired diagnostics/authority", light, err)
+			}
+			for _, mutate := range []func(*processRequest){
+				func(r *processRequest) { r.index = 1 },
+				func(r *processRequest) { r.data = []byte{1} },
+				func(r *processRequest) { r.packet.From = 1 },
+				func(r *processRequest) { r.packet.To = 1 },
+				func(r *processRequest) { r.packet.Snapshot = true },
+				func(r *processRequest) { r.packet.Payload = []byte{1} },
+			} {
+				bad := marked
+				mutate(&bad)
+				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+				response, err := p.exchange(ctx, bad)
+				cancel()
+				if !errors.Is(errors.Join(err, processResponseError(response)), errInvalid) {
+					t.Fatal("malformed cost progress marker accepted", response, err)
+				}
+			}
+		}
+		ctx, cancel = context.WithTimeout(t.Context(), 10*time.Second)
+		if err := p.shutdown(ctx, false); err != nil {
+			cancel()
+			t.Fatal(err)
+		}
+		cancel()
 	}
 }
 

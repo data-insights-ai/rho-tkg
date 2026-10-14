@@ -1448,7 +1448,9 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			err = errors.Join(err, errLimit)
 		}
 		response.incarnation, response.sequence = o.incarnation, r.sequence
-		if r.op != processClose {
+		ackPoll, markerErr := nativeGraphCostAckPoll(r, o.cost != nil)
+		err = errors.Join(err, markerErr)
+		if r.op != processClose && !ackPoll {
 			var e error
 			response.stats, response.cutID, response.manifestID, e = processStats(h.machine.store)
 			err = errors.Join(err, e)
@@ -1620,6 +1622,18 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					event, e = h.Submit(p)
 				}
 			case processStateOp:
+				ackPoll, markerErr := nativeGraphCostAckPoll(r, o.cost != nil)
+				if markerErr != nil {
+					e = markerErr
+					break
+				}
+				if ackPoll {
+					// Keep Store closed/poisoned failures, but do not load/hash/copy
+					// diagnostic images. respond returns real volatile Applied only;
+					// the caller still requires the original retained Outcome/CDC.
+					_, e = h.machine.store.LastIndex()
+					break
+				}
 				_, response.image, e = h.machine.store.Checkpoint()
 				if e == nil && r.entity == 1 {
 					first, firstErr := h.machine.store.FirstIndex()
