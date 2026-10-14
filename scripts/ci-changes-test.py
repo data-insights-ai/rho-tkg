@@ -278,9 +278,11 @@ class RealGitSelection(unittest.TestCase):
         parents = {"TestNativeGraphCostSmallActualProcesses", "TestNativeGraphCostProfileAndRouting",
                    "TestNativeGraphCostAckPollMarkerRequiresCostChildAndKeepsDefaultDiagnostics",
                    "TestNativeGraphCostMillionFactProfileUsesBoundedGrantBlocks",
-                   "TestNativeGraphCostMultipleGrantsSmallActualProcesses"}
+                   "TestNativeGraphCostMultipleGrantsSmallActualProcesses",
+                   "TestNativeGraphCostPhysicalReopenAndIndexesSmallActualProcesses",
+                   "TestNativeGraphCostReopenIndexPagesRejectMalformedAndOversizedInput"}
         for fixture in ("native_graph_cost_test.go", "native_graph_cost_harness_test.go",
-                        "native_graph_cost_grants_harness_test.go"):
+                        "native_graph_cost_grants_harness_test.go", "native_graph_cost_reopen_harness_test.go"):
             with self.subTest(fixture=fixture):
                 path = self.directory / fixture
                 path.write_text("package graphapply\ntype sharedCost struct{}\nfunc sharedRunner() int { return 1 }\n")

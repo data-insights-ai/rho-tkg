@@ -41,13 +41,15 @@ DEFINITIONS = re.compile(r"^(func(?:\s+\([^\n]*\))?|type|var|const)\s+(\w+)", re
 # selected below and retains its independent short-mode guard.
 COST_FIXTURES = {
     "native_graph_cost_test.go", "native_graph_cost_harness_test.go",
-    "native_graph_cost_grants_harness_test.go",
+    "native_graph_cost_grants_harness_test.go", "native_graph_cost_reopen_harness_test.go",
 }
 COST_PARENTS = [
     "TestNativeGraphCostSmallActualProcesses", "TestNativeGraphCostProfileAndRouting",
     "TestNativeGraphCostAckPollMarkerRequiresCostChildAndKeepsDefaultDiagnostics",
     "TestNativeGraphCostMillionFactProfileUsesBoundedGrantBlocks",
     "TestNativeGraphCostMultipleGrantsSmallActualProcesses",
+    "TestNativeGraphCostPhysicalReopenAndIndexesSmallActualProcesses",
+    "TestNativeGraphCostReopenIndexPagesRejectMalformedAndOversizedInput",
 ]
 FIXTURE_COMPAT = {
     **dict.fromkeys(COST_FIXTURES, COST_PARENTS),

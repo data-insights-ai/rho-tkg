@@ -566,6 +566,15 @@ func nativeGraphCostEncodePage(page nativeGraphCostRecordPage) ([]byte, error) {
 // expected-command matching. Count/bytes are checked before collection allocation.
 // Missing/reordered/extra records cannot advance the retained prefix.
 func nativeGraphCostDecodePage(wire []byte, partition, from uint64, certificate graphCertificate) (nativeGraphCostRecordPage, error) {
+	if certificate.scope.partition != partition {
+		return nativeGraphCostRecordPage{}, errCorrupt
+	}
+	return nativeGraphCostDecodeRawPage(wire, partition, from, certificate.sourceIndex, certificate.image[:])
+}
+
+// A State-bound raw page proves retained bytes only. It grants no graph cut or
+// quorum authority; the certified caller above still supplies its real boundary.
+func nativeGraphCostDecodeRawPage(wire []byte, partition, from, end uint64, image []byte) (nativeGraphCostRecordPage, error) {
 	if len(wire) > nativeGraphCostPageBytes {
 		return nativeGraphCostRecordPage{}, errLimit
 	}
@@ -593,15 +602,15 @@ func nativeGraphCostDecodePage(wire []byte, partition, from uint64, certificate 
 			return page, errors.Join(errCorrupt, err)
 		}
 	}
-	if c.err != nil || len(c.b) != 0 || from > certificate.sourceIndex {
+	if c.err != nil || len(c.b) != 0 || from > end {
 		return page, errors.Join(errCorrupt, c.err)
 	}
-	want := min(certificate.sourceIndex-from, uint64(nativeGraphCostBatchCommands))
-	if certificate.scope.partition != partition || page.Partition != partition || page.End != certificate.sourceIndex || !bytes.Equal(page.Image, certificate.image[:]) || uint64(len(page.Records)) != want || page.Next != from+want {
+	want := min(end-from, uint64(nativeGraphCostBatchCommands))
+	if len(image) != 172 || page.Partition != partition || page.End != end || !bytes.Equal(page.Image, image) || uint64(len(page.Records)) != want || page.Next != from+want {
 		return page, errCorrupt
 	}
 	for i, record := range page.Records {
-		if record.Partition != partition || record.Index != from+1+uint64(i) {
+		if record.Partition != partition || record.Index != from+1+uint64(i) || record.Outcome == nil || record.CDC == nil {
 			return page, errCorrupt
 		}
 	}

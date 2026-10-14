@@ -98,6 +98,12 @@ type nativeGraphCostResult struct {
 	LocalAckTiming                                         nativeGraphCostAckTiming `json:"localAckTiming"`
 	TransportTiming                                        graphProcessCostTiming   `json:"transportTiming"`
 	TimingScope                                            string                   `json:"timingScope"`
+	InitialReaped, ProcessInstances, GrantReplayCommands int
+	ReopenQualified bool
+	ReopenPrefixRecords uint64
+	PreReopenVerificationNanos, InitialStopNanos, FinalStopNanos, ReopenRestoreNanos int64
+	ReopenAuthorityNanos, ReopenVerificationNanos, GrantReplayNanos int64
+	RestartTransportTiming graphProcessCostTiming
 }
 
 func newNativeGraphCostNetworkWithBlock(t *testing.T, spec nativeGraphCostSpec, block uint64) *certifiedProcessNetwork {
@@ -660,7 +666,7 @@ func runNativeGraphCostWithBlock(t *testing.T, s nativeGraphCostSpec, block uint
 	result := nativeGraphCostResult{Version: 1, Runner: "certified-16-command-checkpoints-v2", CheckpointCommands: nativeGraphCostBatchCommands, Engine: "native-raft", Spec: s, Deployment: "single-machine distributed: two three-voter durable process groups", Directory: n.dir, UsefulFacts: s.Facts, SetupNodes: 3, Creates: s.Facts, Updates: s.Facts}
 	result.GrantBlockSize = block
 	result.IDAdmission = "fixed fixture IDs admitted by actual installed allocator/recipient grants and fresh bindings; no Recipient.Acquire or Cursor.Next issuance"
-	result.TimingScope = "LocalAckTiming covers setup/create/update ordinary Submit RPCs and waits; State is a cost-only checked volatile Driver.Applied hint without Checkpoint/full stats, never ACK authority. Original retained Outcome/CDC alone proves ACK. Cost non-State replies omit unrequested checkpoint/full statistics but preserve native results and store errors; explicit default State diagnostics and all non-cost replies remain full. TransportTiming covers all queued hub traffic including setup/checkpoints/oracles, overlaps client timings, and Step includes IPC plus native driver/application work, not pure fsync. Fixed-size totals and one int64 timestamp per queued job preserve the existing 64-byte job allowance."
+	result.TimingScope = "Reopen timings cover pre-stop index/prefix verification, initial six-child stop, six-directory native restore/prefix comparison, completed native configuration ReadIndex, original At verification and bounded original grant replay separately. TransportTiming ends before original-cohort stop; RestartTransportTiming is a separate overlapping second-cohort total. Frozen CDCFrom/CDCThrough and write/ACK timers exclude election/replay protocol tails. LocalAckTiming covers setup/create/update ordinary Submit RPCs and waits; State is a cost-only checked volatile Driver.Applied hint without Checkpoint/full stats, never ACK authority. Original retained Outcome/CDC alone proves ACK. Cost non-State replies omit unrequested checkpoint/full statistics but preserve native results and store errors; explicit default State diagnostics and all non-cost replies remain full. TransportTiming covers all queued hub traffic including setup/checkpoints/oracles, overlaps client timings, and Step includes IPC plus native driver/application work, not pure fsync. Fixed-size totals and one int64 timestamp per queued job preserve the existing 64-byte job allowance."
 	// Source records and observations are streamed, never accumulated per fact.
 	open := func(name string) (*os.File, *json.Encoder) {
 		f, err := os.OpenFile(filepath.Join(n.dir, name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
@@ -677,6 +683,7 @@ func runNativeGraphCostWithBlock(t *testing.T, s nativeGraphCostSpec, block uint
 	_, samples := open("latency.jsonl")
 	_, records := open("cdc.jsonl")
 	_, observations := open("observations.jsonl")
+	_, cohorts := open("cohorts.jsonl")
 	var from [2]uint64
 	for g, id := range n.leaders {
 		from[g] = n.all[id].call(t, processRequest{op: processStateOp}).applied
@@ -690,7 +697,7 @@ func runNativeGraphCostWithBlock(t *testing.T, s nativeGraphCostSpec, block uint
 		result.CDCRecords += r
 	}
 	result.SetupNanos = time.Since(started).Nanoseconds()
-	var old graphCut
+	var old, final graphCut
 	for _, phase := range []uint64{4, 5} {
 		commands := make([]nativeGraphCostSample, 0, nativeGraphCostBatchCommands)
 		var cut graphCut
@@ -739,6 +746,7 @@ func runNativeGraphCostWithBlock(t *testing.T, s nativeGraphCostSpec, block uint
 			}
 		} else {
 			var err error
+			final = cut
 			result.FinalCut, err = lifecycleRawCertificate(cut)
 			if err != nil {
 				t.Fatal(err)
@@ -753,30 +761,21 @@ func runNativeGraphCostWithBlock(t *testing.T, s nativeGraphCostSpec, block uint
 	if result.CDCChanges != 3+3*s.Facts {
 		t.Fatal("exact useful CDC cardinality", result.CDCChanges, 3+3*s.Facts)
 	}
+	nativeGraphCostReopen(t, n, s, block, old, final, &result, cohorts)
+	result.RestartTransportTiming = n.all[1].mux.hub.costTimingSnapshot()
+	stopStarted := time.Now()
+	result.Reaped = nativeGraphCostStop(t, n, 2, cohorts)
+	result.FinalStopNanos = time.Since(stopStarted).Nanoseconds()
+	if !result.ReopenQualified || result.InitialReaped != 6 || result.ProcessInstances != 12 || result.Reaped != 6 { t.Fatal("cost complete restart qualification missing") }
 	for id := uint64(1); id <= 6; id++ {
-		state := n.all[id].call(t, processRequest{op: processStateOp})
-		if state.stats[statViews] != 0 || state.stats[statPinnedBytes] != 0 {
-			t.Fatal("cost final owner residue", id)
-		}
-	}
-	for id := uint64(1); id <= 6; id++ {
-		p := n.all[id]
-		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-		err := p.shutdown(ctx, false)
-		cancel()
-		if err != nil || p.cmd.ProcessState == nil || !p.cmd.ProcessState.Success() {
-			t.Fatal("cost child not cleanly reaped", id, err)
-		}
 		size, allocated, err := nativeGraphCostFileBytes(filepath.Join(n.dir, fmt.Sprint(id)))
 		if err != nil {
 			t.Fatal(err)
 		}
 		result.PersistedFileBytes += size
 		result.AllocatedFileBytes += allocated
-		result.Reaped++
 	}
 	result.TotalNanos = time.Since(started).Nanoseconds()
-	result.TransportTiming = n.all[1].mux.hub.costTimingSnapshot()
 	transport := result.TransportTiming
 	if transport.QueueCount == 0 || transport.StepCount == 0 || transport.StepCount > transport.QueueCount || transport.QueueNanos < transport.QueueMaxNanos || transport.QueueMaxNanos < 0 || transport.StepNanos < transport.StepMaxNanos || transport.StepMaxNanos <= 0 {
 		t.Fatal("completed cost transport timing counts/scope", transport)

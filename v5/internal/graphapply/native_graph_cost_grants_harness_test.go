@@ -123,18 +123,20 @@ func nativeGraphCostInstallGrants(t *testing.T, n *certifiedProcessNetwork, s na
 		n.read(t, 1, observeRecipient, recipient)
 		n.read(t, 1, observeAllocator, 0)
 		input := graphE17GrantInput(sequence, count)
-		_, reserved := n.action(t, 1, certifiedReserve, 0, input)
+		reserveWire, reserved := nativeGraphCostGrantAction(t, n, certifiedReserve, 0, input)
 		n.group(1).event(t, 1, processRequest{op: processCertifiedRead, entity: uint64(observeGrant), data: input})
 		if !n.all[1].call(t, processRequest{op: processStateOp}).ready {
 			t.Fatal("actual cost grant ReadIndex incomplete", partition, sequence)
 		}
-		_, installed := n.action(t, 1, certifiedInstallGrant, partition, nil)
+		installWire, installed := nativeGraphCostGrantAction(t, n, certifiedInstallGrant, partition, nil)
 		// Raw production originals. Requested range/count is correspondence,
 		// not decoded cursor issuance or a fabricated stored grant observation.
-		if err := stream.Encode(struct {
-			Partition, Sequence, RequestedCount uint64
-			ReserveOutcome, InstallOutcome      []byte
-		}{partition, sequence, count, reserved.outcome, installed.outcome}); err != nil {
+		if err := stream.Encode(nativeGraphCostGrantReceipt{
+			Partition: partition, Sequence: sequence, RequestedCount: count,
+			ReserveOutcome: reserved.outcome, InstallOutcome: installed.outcome,
+			ReserveCDC: reserved.changes, InstallCDC: installed.changes,
+			ReserveProposal: reserveWire, InstallProposal: installWire,
+		}); err != nil {
 			t.Fatal(err)
 		}
 	}
