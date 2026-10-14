@@ -1,18 +1,19 @@
-# HANDOVER — rho-tkg v4 line (rewritten 2026-10-12, main at v4.51.5)
+# HANDOVER — rho-tkg v4 line (rewritten 2026-10-14, main ahead of v4.52.0)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go 1.26.9; a Go
-library, not a database). Latest tag `v4.51.5`. Read, in this order: this file, `tasks/lessons.md` (digest at the top),
+library, not a database). Latest tag `v4.52.0` (Markus); own last `v4.51.8`. Read, in this order: this file, `tasks/lessons.md` (digest at the top),
 `tasks/todo.md` (user requests, open queue with the per-step red tests), `tasks/backlog.md` (specs), `CHANGELOG.md` top.
 History (what shipped, why) is in `CHANGELOG.md` and git, not here.
 
-## 1. Open requests and next steps (newest user message first; do these, do not ask)
+## 1. Focus and next steps (René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC"; queue ordered by what ai-soc and sigma need)
 
-1. **Last own release v4.51.8** (2026-10-14); Markus released **v4.52.0** on main the same day (merged). Release history: `CHANGELOG.md` and the releases table in `tasks/todo.md`. **Next tag v4.52.1** (PATCH only): 58 (tiered tx-membership / valid-end), 60 (tiered move readers; point lookups in progress). Next work: new consumer requests.
-2. **On hold:** nothing (41, 28, 21 shipped in v4.51.5).
-3. **Md consolidation** (René 2026-10-12 "consolidate md files and rules"): done by the Sonnet agent of this commit; review
-   `tasks/todo.md` request 21.
-4. Standing: tick the ledger and the releases table at every release (lesson 80); keep `AGENTS.md`/`README.md`/`docs/architecture.md`
-   version lines in step (lesson 41); residual backlog is the open table in `tasks/backlog.md`.
+1. **Tag v4.52.1** with what is green: 58 (tiered tx-membership / valid-end, sigma R2), 60 (tiered move readers), R8 guard test. Final Fable review + `make ci-docker` running (ETA 15:45); then tag, GitHub CI, notify sigma + ai-soc.
+2. **sigma Derived write-back (todo row 33):** R6 = backlog 63 `PropertyIndexOptions{Elements: true}` (building); R7 = backlog 64 `ExciseNodeValidity` (+ rel mirror), starts after 62 (both touch the resolver); R8 done (guard test).
+3. **Integrity-hash switch (row 31, backlog 61):** building; notify ai-soc when it ships.
+4. **One valid-from source (row 32, backlog 62) + Update-with-valid_to closes like CloseVersion (backlog 65):** deprecation in v4.52.2, change in v4.52.3; building.
+5. **Parked** (no consumer asking): backlog 0–5, 7, 10b, 13, 16, 20, 23, 25, 26, 31, 37, 39, 40, 45–47; tiered write doors without moveMu (store-level only).
+
+Status of running jobs: `scratchpad/status.txt` (session scratchpad). Decisions René made 2026-10-14: todo rows 29 (cleanup, v5 façade waits for Markus, no issue-#11 post, patch only) and 31.
 
 ## 2. Decisions (René 2026-10-12, `tasks/todo.md` row 20: "1) yes, why is this a question? 2) now, 3) yes 4) yes 5) no, Markus will do this 6) deprecation process 7) yes")
 
