@@ -243,14 +243,35 @@ func (m *graphProcessMux) send(r processRequest, ch chan graphProcessAnswer) (ui
 	return r.sequence, err
 }
 func (m *graphProcessMux) exchange(ctx context.Context, r processRequest) (processResponse, error) {
-	ch := make(chan graphProcessAnswer, 1)
-	seq, err := m.send(r, ch)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return processResponse{}, err
+	}
+	ch := make(chan graphProcessAnswer, 1)
+	// The initial send can block in a pipe write before the response select.
+	// Expiry closes that failed transport; once sent, the existing per-request
+	// cancellation and terminal-owner cleanup below retain their own lifetime.
+	sendStopped := make(chan struct{})
+	stopSend := func() bool { return true }
+	stopWatch := func() {}
+	if deadline, bounded := ctx.Deadline(); bounded {
+		// Manual cancellation after a complete frame must still cancel the
+		// original worker, rather than racing send completion and failing the
+		// whole stream. A blocked send retains the operation's original deadline.
+		watch, stop := context.WithDeadline(context.WithoutCancel(ctx), deadline)
+		stopWatch = stop
+		stopSend = context.AfterFunc(watch, func() { m.fail(errors.Join(ctx.Err(), watch.Err())); close(sendStopped) })
+	}
+	seq, err := m.send(r, ch)
+	if !stopSend() {
+		<-sendStopped
+	}
+	stopWatch()
+	if err != nil {
+		return processResponse{}, errors.Join(err, ctx.Err())
 	}
 	select {
 	case got := <-ch:
-		return got.response, got.err
+		return got.response, errors.Join(got.err, ctx.Err())
 	case <-ctx.Done():
 		// Cancel delivery is not worker termination. Keep the original response
 		// correlation until the child has released its operation/cleanup owner.
@@ -1291,6 +1312,9 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				if e == nil {
 					var result crossProcessResult
 					result, e = coordinator.Run(workerCtx, original.request.id, original.request.operations, original.request.revision.Provenance(), original.request.claims)
+					if e == nil && o.cost != nil {
+						out.changes, e = nativeGraphCostCoordinatorManifest(workerCtx, h, result)
+					}
 					if result.resume.request != (requestID{}) {
 						var encodeErr error
 						out.aux, encodeErr = encodeGraphProcessCoordinatorResult(result, e)
@@ -1485,6 +1509,12 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				coordinator, e = pairedGraphFaultReconnect(ctx, h, coordinator, certifiedSessions, moveCoordinator, server, r, len(workers)+len(paused)+len(controlWorkers), len(queue), active != nil)
 				if e == nil {
 					certifiedSessions.coordinator = coordinator
+				}
+			case processCostRecords:
+				if o.cost == nil {
+					e = errInvalid
+				} else {
+					response.aux, e = nativeGraphCostRecordsWire(ctx, h, r)
 				}
 			case processCostRecord:
 				if o.cost == nil {

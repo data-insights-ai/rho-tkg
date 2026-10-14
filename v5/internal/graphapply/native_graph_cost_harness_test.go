@@ -3,7 +3,9 @@ package graphapply
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +13,7 @@ import (
 	"os"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
@@ -230,4 +233,379 @@ func nativeGraphCostRecordWire(ctx context.Context, h *allocationHost, index uin
 		return nil, errLimit
 	}
 	return wire, nil
+}
+
+const nativeGraphCostBatchCommands = 16
+const nativeGraphCostPageBytes = 1 << 20
+
+// Inspect the original coordinator receipt at its immutable decision index.
+// This is a bounded local read inside the original Coordinate worker; it never
+// submits a command or changes the general coordinator-result envelope.
+func nativeGraphCostCoordinatorManifest(ctx context.Context, h *allocationHost, result crossProcessResult) (wire []byte, err error) {
+	if ctx == nil || h == nil || h.machine == nil || h.machine.store == nil || result.resume.scope != h.machine.scope() || result.decision.ns != h.machine.ns || result.decision.tx != result.resume.tx || result.decision.phase != crossDecide || !result.decision.commit || result.decision.round == 0 {
+		return nil, errInvalid
+	}
+	view, err := h.machine.store.ApplicationView(result.decision.index)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		err = errors.Join(err, view.Close())
+		if err != nil {
+			wire = nil
+		}
+	}()
+	root, err := view.RootBounded(ctx, 172)
+	if err != nil {
+		return nil, err
+	}
+	l := h.machine.limits
+	arena, err := graphstate.NewOutputBudget(l.outputBytes)
+	if err != nil {
+		return nil, err
+	}
+	limits := l.allocation
+	limits.readRows, limits.readBytes = min(limits.readRows, l.sourceRows), min(limits.readBytes, l.sourceBytes)
+	q := reader{ctx: ctx, view: view, ns: h.machine.ns, base: root, limits: limits, arena: arena, bytes: cap(root.Image)}
+	decision, found, err := crossControl(&q, crossControlKey(q.ns, result.resume.tx, 'D'), 256)
+	if err != nil || !found || decision.Index != result.decision.index {
+		return nil, errors.Join(errCorrupt, err)
+	}
+	status, err := decodeCrossStatus(decision.Value)
+	if err != nil || status != result.decision {
+		return nil, errors.Join(errCorrupt, err)
+	}
+	registration, found, err := crossControl(&q, crossControlKey(q.ns, result.resume.tx, 'R'), min(l.commandBytes, 1<<20))
+	if err != nil || !found || registration.Index > decision.Index || sha256.Sum256(registration.Value) != status.digest {
+		return nil, errors.Join(errCorrupt, err)
+	}
+	manifest, err := decodeCrossManifest(registration.Value, l, arena)
+	if err != nil || manifest.tx != result.resume.tx || manifest.request.id != result.resume.request || manifest.request.ns != h.machine.ns || manifest.coordinator != h.machine.ns.partition {
+		return nil, errors.Join(errCorrupt, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return registration.Value, nil
+}
+
+// Additive cost-only inspection metadata comes from genuine retained roots,
+// controls, outcomes and canonical CDC, never the runner's expected commands.
+// The existing lifecycle exporter remains unchanged.
+type nativeGraphCostOriginal struct {
+	Kind, Graph, Request, Transaction, Digest        string
+	Partition, Index, Coordinator, Provenance, Round uint64
+	Phase                                            byte
+	Commit                                           bool
+	Reason, Disposition                              byte
+	Participants                                     []uint64
+}
+type nativeGraphCostRecord struct {
+	nativeLifecycleRecord
+	Original       nativeGraphCostOriginal
+	CDCClass       string
+	RawHashes      struct{ OutcomeSHA256, CDCSHA256 string }
+	SourceBoundary struct {
+		Index, Generation uint64
+		ImageSHA256       string
+	}
+	Logical struct{ Entities, Lives, Values, Components, Schemas int }
+}
+
+func nativeGraphCostInspectRecord(ctx context.Context, h *allocationHost, record nativeLifecycleRecord) (out nativeGraphCostRecord, err error) {
+	if ctx == nil || h == nil || h.machine == nil || h.machine.store == nil || record.Index == 0 || record.Partition != h.machine.ns.partition {
+		return out, errInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return out, err
+	}
+	view, err := h.machine.store.ApplicationView(record.Index)
+	if err != nil {
+		return out, err
+	}
+	defer func() {
+		err = errors.Join(err, view.Close())
+		if err != nil {
+			out = nativeGraphCostRecord{}
+		}
+	}()
+	root, err := view.RootBounded(ctx, 172)
+	if err != nil {
+		return out, err
+	}
+	decodedRoot, err := graphstore.DecodeRoot(root.Image)
+	if err != nil || root.Index != record.Index || decodedRoot.Namespace() != (graphstore.Namespace{Graph: graphstate.GraphID(h.machine.ns.graph), Partition: record.Partition}) {
+		return out, errors.Join(errCorrupt, err)
+	}
+	// Missing frames fail in ApplicationRecord. Present empty frames remain
+	// nonnil; neither copied nil DTOs nor bytes.Equal(nil, empty) supply presence.
+	actualOutcome, err := view.ApplicationRecord(ctx, record.Index, true, 64<<10)
+	if err != nil {
+		return out, err
+	}
+	actualCDC, err := view.ApplicationRecord(ctx, record.Index, false, 1<<20)
+	if err != nil {
+		return out, err
+	}
+	if actualOutcome == nil || actualCDC == nil || record.Outcome == nil || record.CDC == nil || !bytes.Equal(actualOutcome, record.Outcome) || !bytes.Equal(actualCDC, record.CDC) {
+		return out, errCorrupt
+	}
+	l := h.machine.limits
+	arena, err := graphstate.NewOutputBudget(l.outputBytes)
+	if err != nil {
+		return out, err
+	}
+	limits := l.allocation
+	limits.readRows, limits.readBytes = min(limits.readRows, l.sourceRows), min(limits.readBytes, l.sourceBytes)
+	q := reader{ctx: ctx, view: view, ns: h.machine.ns, base: root, limits: limits, arena: arena, bytes: cap(root.Image) + cap(actualOutcome) + cap(actualCDC)}
+	metadata := nativeGraphCostOriginal{Graph: hex.EncodeToString(h.machine.ns.graph[:]), Partition: record.Partition, Index: record.Index, Participants: []uint64{}}
+	var bound outcome
+	class := ""
+	switch {
+	case len(actualOutcome) == 0:
+		if len(actualCDC) != 0 || record.Index <= 1 {
+			return out, errCorrupt
+		}
+		previous, err := view.RootAt(ctx, record.Index-1, 172)
+		if err != nil || previous.Generation != root.Generation || !bytes.Equal(previous.Image, root.Image) {
+			return out, errors.Join(errCorrupt, err)
+		}
+		// This witnesses actual present empty application records and unchanged
+		// application image. It makes no claim about the compacted Raft command.
+		metadata.Kind, class = "no-application-output", "read-control"
+	case bytes.HasPrefix(actualOutcome, []byte("GSO\x01")):
+		original, err := decodeGraphCutResult(actualOutcome)
+		if err != nil || original.index != record.Index || len(actualCDC) != 0 {
+			return out, errors.Join(errCorrupt, err)
+		}
+		metadata.Kind, metadata.Round, metadata.Phase, metadata.Disposition = "read-control", original.round, original.phase, original.status
+		metadata.Commit = original.status == graphCutApplied
+		class = "read-control"
+	case bytes.HasPrefix(actualOutcome, []byte("GCS\x01")):
+		original, err := decodeCrossStatus(actualOutcome)
+		if err != nil || original.ns != h.machine.ns || original.index != record.Index {
+			return out, errors.Join(errCorrupt, err)
+		}
+		stored, found, err := q.getBounded(crossKey(q.ns, original.tx), 256)
+		if err != nil || !found || !bytes.Equal(stored, actualOutcome) {
+			return out, errors.Join(errCorrupt, err)
+		}
+		registration, found, err := crossControl(&q, crossControlKey(q.ns, original.tx, 'R'), min(l.commandBytes, 1<<20))
+		if err != nil || !found || registration.Index > record.Index || sha256.Sum256(registration.Value) != original.digest {
+			return out, errors.Join(errCorrupt, err)
+		}
+		manifest, err := decodeCrossManifest(registration.Value, l, arena)
+		if err != nil || manifest.tx != original.tx || manifest.digest != original.digest {
+			return out, errors.Join(errCorrupt, err)
+		}
+		metadata.Kind, metadata.Request, metadata.Transaction, metadata.Digest = "cross", hex.EncodeToString(manifest.request.id[:]), hex.EncodeToString(original.tx[:]), hex.EncodeToString(original.digest[:])
+		metadata.Coordinator, metadata.Provenance, metadata.Round, metadata.Phase, metadata.Commit, metadata.Reason = manifest.coordinator, manifest.request.revision.Provenance(), original.round, byte(original.phase), original.commit, byte(original.why)
+		for _, part := range manifest.parts {
+			metadata.Participants = append(metadata.Participants, part.binding.Partition)
+		}
+		if len(actualCDC) == 0 {
+			if original.phase == crossResolve && original.commit {
+				return out, errCorrupt
+			}
+			class = "protocol-empty"
+		} else {
+			if original.phase != crossResolve || !original.commit || original.round == 0 {
+				return out, errCorrupt
+			}
+			bound = outcome{ns: original.ns, kind: graphOperations, identity: original.tx, hash: original.digest, index: original.index, disposition: applied}
+		}
+	default:
+		original, err := decodePartitionGraphOutcome(actualOutcome, h.machine.ns)
+		if err != nil || original.index != record.Index || original.kind != graphOperations || original.disposition != applied || original.reason != reasonNone || len(actualCDC) == 0 {
+			return out, errors.Join(errCorrupt, err)
+		}
+		stored, found, err := q.getBounded(outcomeKey(request{ns: original.ns, kind: original.kind, id: requestID(original.identity)}), graphOutcomeBytes)
+		if err != nil || !found || !bytes.Equal(stored, actualOutcome) {
+			return out, errors.Join(errCorrupt, err)
+		}
+		metadata.Kind, metadata.Request, metadata.Transaction, metadata.Digest = "local-graph", hex.EncodeToString(original.identity[:]), hex.EncodeToString(original.identity[:]), hex.EncodeToString(original.hash[:])
+		metadata.Coordinator, metadata.Disposition, metadata.Reason = original.ns.partition, byte(original.disposition), byte(original.reason)
+		metadata.Participants, metadata.Commit = []uint64{original.ns.partition}, true
+		bound = original
+	}
+	if len(actualCDC) == 0 {
+		if len(record.Changes)+len(record.Entities)+len(record.Lives)+len(record.Values) != 0 {
+			return out, errCorrupt
+		}
+	} else {
+		logical, err := decodeTypedChangeEnvelope(actualCDC, bound, l, true)
+		if err != nil {
+			return out, errors.Join(errCorrupt, err)
+		}
+		out.Logical.Entities, out.Logical.Lives, out.Logical.Values, out.Logical.Schemas = len(logical.entities), len(logical.lives), len(logical.values), len(logical.schemas)
+		for _, group := range logical.groups {
+			out.Logical.Components += len(group.Changes)
+			for _, change := range group.Changes {
+				revision := change.After().Revision()
+				if metadata.Kind == "local-graph" && metadata.Round == 0 {
+					metadata.Round, metadata.Provenance = revision.ID(), revision.Provenance()
+				}
+				if revision.ID() != metadata.Round || revision.Provenance() != metadata.Provenance {
+					return nativeGraphCostRecord{}, errCorrupt
+				}
+			}
+		}
+		if out.Logical.Components != len(record.Changes) || out.Logical.Entities != len(record.Entities) || out.Logical.Lives != len(record.Lives) || out.Logical.Values != len(record.Values) {
+			return nativeGraphCostRecord{}, errCorrupt
+		}
+		class = "logical"
+		if !logical.nonempty() {
+			class = "participant-empty"
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nativeGraphCostRecord{}, err
+	}
+	out.nativeLifecycleRecord, out.Original, out.CDCClass = record, metadata, class
+	out.RawHashes.OutcomeSHA256 = fmt.Sprintf("%x", sha256.Sum256(actualOutcome))
+	out.RawHashes.CDCSHA256 = fmt.Sprintf("%x", sha256.Sum256(actualCDC))
+	out.SourceBoundary.Index, out.SourceBoundary.Generation, out.SourceBoundary.ImageSHA256 = root.Index, root.Generation, fmt.Sprintf("%x", root.ImageHash)
+	return out, nil
+}
+
+type nativeGraphCostRecordPage struct {
+	Partition, End, Next uint64
+	Image                []byte
+	Records              []nativeGraphCostRecord
+}
+
+// Request index is the prior exported index; entity is the actual certificate
+// sourceIndex. Every page owns a genuine retained view at that exact boundary.
+// The typed leader path hydrates original records; other voters return raw
+// originals/CDC for exact equality. Neither copied root nor page grants a cut.
+func nativeGraphCostRecordsWire(ctx context.Context, h *allocationHost, r processRequest) (wire []byte, err error) {
+	if ctx == nil || h == nil || h.machine == nil || h.machine.store == nil || r.entity == 0 || r.index > r.entity || len(r.data) != 1 || r.data[0] > 1 {
+		return nil, errInvalid
+	}
+	view, err := h.machine.store.ApplicationView(r.entity)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		err = errors.Join(err, view.Close())
+		if err != nil {
+			wire = nil
+		}
+	}()
+	root, err := view.RootBounded(ctx, 172)
+	if err != nil {
+		return nil, err
+	}
+	page := nativeGraphCostRecordPage{Partition: h.machine.ns.partition, End: root.Index, Next: r.index, Image: root.Image, Records: []nativeGraphCostRecord{}}
+	owned := len(root.Image) + 256
+	for index := r.index + 1; index <= r.entity && len(page.Records) < nativeGraphCostBatchCommands; index++ {
+		var record nativeGraphCostRecord
+		if r.data[0] == 1 {
+			var raw nativeLifecycleRecord
+			raw, err = nativeGraphRecordRead(ctx, h, index, true)
+			if err == nil {
+				record, err = nativeGraphCostInspectRecord(ctx, h, raw)
+			}
+		} else {
+			record.Partition, record.Index = page.Partition, index
+			record.Outcome, err = view.ApplicationRecord(ctx, index, true, 64<<10)
+			if err == nil {
+				record.CDC, err = view.ApplicationRecord(ctx, index, false, 1<<20)
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+		encoded, e := json.Marshal(record)
+		if e != nil {
+			return nil, e
+		}
+		if len(encoded) > nativeLifecycleBytes || owned+len(encoded)+1 > nativeGraphCostPageBytes {
+			return nil, errLimit
+		}
+		owned += len(encoded) + 1
+		page.Records = append(page.Records, record)
+		page.Next = index
+	}
+	wire, err = nativeGraphCostEncodePage(page)
+	if len(wire) > nativeGraphCostPageBytes {
+		return nil, errLimit
+	}
+	return wire, err
+}
+
+func nativeGraphCostEncodePage(page nativeGraphCostRecordPage) ([]byte, error) {
+	if len(page.Image) != 172 || len(page.Records) > nativeGraphCostBatchCommands {
+		return nil, errLimit
+	}
+	wire, err := processEncoding(func(w *boundedWriter) {
+		w.add([]byte("GCP1"))
+		w.u64(page.Partition)
+		w.u64(page.End)
+		w.u64(page.Next)
+		w.field(page.Image)
+		w.u32(len(page.Records))
+		for _, record := range page.Records {
+			encoded, err := json.Marshal(record)
+			if err != nil {
+				w.err = err
+				return
+			}
+			if len(encoded) > nativeLifecycleBytes {
+				w.err = errLimit
+				return
+			}
+			w.field(encoded)
+		}
+	})
+	if len(wire) > nativeGraphCostPageBytes {
+		return nil, errLimit
+	}
+	return wire, err
+}
+
+// Validate the complete page, including empty root-only pages, before any
+// expected-command matching. Count/bytes are checked before collection allocation.
+// Missing/reordered/extra records cannot advance the retained prefix.
+func nativeGraphCostDecodePage(wire []byte, partition, from uint64, certificate graphCertificate) (nativeGraphCostRecordPage, error) {
+	if len(wire) > nativeGraphCostPageBytes {
+		return nativeGraphCostRecordPage{}, errLimit
+	}
+	c := graphCursor{b: wire}
+	if !bytes.Equal(c.take(4), []byte("GCP1")) {
+		return nativeGraphCostRecordPage{}, errCorrupt
+	}
+	page := nativeGraphCostRecordPage{Partition: c.u64(), End: c.u64(), Next: c.u64(), Image: bytes.Clone(c.field(172))}
+	n := c.count(nativeGraphCostBatchCommands, 4)
+	if c.err != nil {
+		return page, errors.Join(errCorrupt, c.err)
+	}
+	page.Records = make([]nativeGraphCostRecord, n)
+	for i := range page.Records {
+		encoded := c.field(nativeLifecycleBytes)
+		if c.err != nil {
+			return page, errors.Join(errCorrupt, c.err)
+		}
+		d := json.NewDecoder(bytes.NewReader(encoded))
+		d.DisallowUnknownFields()
+		if err := d.Decode(&page.Records[i]); err != nil {
+			return page, errors.Join(errCorrupt, err)
+		}
+		if err := d.Decode(new(any)); !errors.Is(err, io.EOF) {
+			return page, errors.Join(errCorrupt, err)
+		}
+	}
+	if c.err != nil || len(c.b) != 0 || from > certificate.sourceIndex {
+		return page, errors.Join(errCorrupt, c.err)
+	}
+	want := min(certificate.sourceIndex-from, uint64(nativeGraphCostBatchCommands))
+	if certificate.scope.partition != partition || page.Partition != partition || page.End != certificate.sourceIndex || !bytes.Equal(page.Image, certificate.image[:]) || uint64(len(page.Records)) != want || page.Next != from+want {
+		return page, errCorrupt
+	}
+	for i, record := range page.Records {
+		if record.Partition != partition || record.Index != from+1+uint64(i) {
+			return page, errCorrupt
+		}
+	}
+	return page, nil
 }

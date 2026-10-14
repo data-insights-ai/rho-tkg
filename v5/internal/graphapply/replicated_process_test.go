@@ -99,6 +99,7 @@ const (
 	processPairedPendingOpen
 	processCostObserve
 	processCostRecord
+	processCostRecords
 )
 
 // IPC IDs identify this process event only. No storage/send/prepared capability
@@ -207,7 +208,7 @@ func decodeProcessRequest(b []byte) (processRequest, error) {
 	r := processRequest{incarnation: c.array(), sequence: c.u64(), op: c.tag(), index: c.u64(), entity: c.u64()}
 	r.data = c.field(processFrameBytes)
 	r.packet = processDecodePacket(&c)
-	if r.sequence == 0 || r.op < processCampaign || r.op > processCostRecord || len(c.b) != 0 {
+	if r.sequence == 0 || r.op < processCampaign || r.op > processCostRecords || len(c.b) != 0 {
 		c.err = errCorrupt
 	}
 	return r, c.err

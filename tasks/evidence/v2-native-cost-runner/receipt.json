@@ -1,0 +1,766 @@
+{
+  "version": 1,
+  "status": "qualified internal test runner and finite actual CDC evidence; no cost matrix or engine acceptance",
+  "baseSourceCommit": "3b43f622e8cb0f7c22af4a5b7625b9ea001a2799",
+  "baselineQualifiedNativeCommit": "d4d24536c69e531c03ec22fdaa918a1c2bde6c50",
+  "finalSourceSHA256": {
+    "scripts/ci-changes-test.py": "273167fde7c7d31608d14fceb3773051d820f1c88655e3e6a74c0ccbf1a738f6",
+    "scripts/ci-changes.py": "cd9a439e7f32bda4e59bfbcd69730ef6c6d0d1cbd22e2b3c322ca6c865b8f93c",
+    "v5/internal/graphapply/graph_source_process_test.go": "e2fbea976b9f511be14038b32d6d52c2ddef1a79cb13457dfcedf2be37555ec0",
+    "v5/internal/graphapply/native_graph_cost_harness_test.go": "c8ee8d1d6ef4867eee9de79e8cc6d6615a8b985be6b8206d65656b3d9be9bd63",
+    "v5/internal/graphapply/native_graph_cost_test.go": "03841d3287078bc64f24df08d9fc2be6c7aaa70f168b4b1ab71c7b86a1fb676e",
+    "v5/internal/graphapply/replicated_process_test.go": "6fd3fdce4e306f95ae096263a2a2d342eeb6040e01ef299fb1325df72eb74dda",
+    "v5/internal/graphapply/native_graph_cost_runner_test.go": "3465600e1d61e3335af1ac018112fc24204c9979f944e1ae4f16e94b5c4be2e3"
+  },
+  "r2TwelveParentSourceSHA256": {
+    "scripts/ci-changes-test.py": "273167fde7c7d31608d14fceb3773051d820f1c88655e3e6a74c0ccbf1a738f6",
+    "scripts/ci-changes.py": "cd9a439e7f32bda4e59bfbcd69730ef6c6d0d1cbd22e2b3c322ca6c865b8f93c",
+    "v5/internal/graphapply/graph_source_process_test.go": "e2fbea976b9f511be14038b32d6d52c2ddef1a79cb13457dfcedf2be37555ec0",
+    "v5/internal/graphapply/native_graph_cost_harness_test.go": "c8ee8d1d6ef4867eee9de79e8cc6d6615a8b985be6b8206d65656b3d9be9bd63",
+    "v5/internal/graphapply/native_graph_cost_test.go": "6ad68ae50eed2d056abbd84d7645686a7d295343a96daab625906e100fa87fe2",
+    "v5/internal/graphapply/replicated_process_test.go": "6fd3fdce4e306f95ae096263a2a2d342eeb6040e01ef299fb1325df72eb74dda",
+    "v5/internal/graphapply/native_graph_cost_runner_test.go": "3465600e1d61e3335af1ac018112fc24204c9979f944e1ae4f16e94b5c4be2e3"
+  },
+  "laterSourceDelta": "Only two permanent facts=2 inputs added to SmallActualProcesses; existing17 names/inputs and all helpers unchanged. Only the new2 subcases rerun in all3 modes; r2 source snapshot archived.",
+  "preserved": {
+    "nativeGraphCostCheckSHA256": "4abb8843b695884568cae2726fc4f8c50b7dff4e6ae481f28d439e84cd628396",
+    "byteIdenticalToD4": true,
+    "entireLifecycleExporterSHA256": "104ec50577568229887c85ad518e9f9dcfd0f03728f639d72d49de8a5a718a4e",
+    "lifecycleExporterByteIdenticalToD4": true
+  },
+  "runtimeLimits": {
+    "wallSeconds": 180,
+    "aggregateRSSMiB": 4096,
+    "sampleIntervalSeconds": 0.25,
+    "GoTestTimeoutSeconds": 150,
+    "toolchain": "go1.26.9 darwin/arm64",
+    "GOMAXPROCS": 2,
+    "GOMEMLIMIT": "2GiB",
+    "GOFLAGS": "-p=1",
+    "scope": "sampled aggregate process tree, not kernel hard allocation guarantee"
+  },
+  "qualifications": {
+    "retained-r2": {
+      "normal": {
+        "command": [
+          "go",
+          "test",
+          "-short",
+          "-count=1",
+          "-failfast",
+          "-json",
+          "-timeout=150s",
+          "-run",
+          "^(TestNativeGraphCostRecordPagesRejectWrongBoundaryGapAndOversize|TestNativeGraphCostBatchedCDCStillRequiresExactOriginalAndEveryEffect|TestGraphSourceProcessInitialSendDeadlineClosesActualStoppedChildPipe|TestGraphSourceProcessAlreadyCanceledExchangeDoesNotSend|TestGraphSourceProcessCanceledExchangeRetainsOriginalUntilTerminal|TestGraphSourceProcessCanceledExchangePeerDeathCannotBeTerminalSuccess|TestGraphSourceProcessCanceledExchangeDeadlineRetiresUnconfirmedOwner|TestGraphSourceProcessQueuedCancellationRepliesOnceToOriginalPausedRequest|TestNativeGraphCostSmallActualProcesses|TestNativeGraphCostProfileAndRouting|TestReplicatedProcessProtocolBoundaries|TestReplicatedProcessShutdownReapsFailedCloseRPC)$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 927.25,
+        "elapsed_s": 65.871,
+        "exit_code": 0,
+        "reason": "completed",
+        "evidencePrefix": "r2-normal",
+        "passedParents": 12,
+        "failedParents": 0
+      },
+      "race": {
+        "command": [
+          "go",
+          "test",
+          "-short",
+          "-count=1",
+          "-failfast",
+          "-json",
+          "-timeout=150s",
+          "-race",
+          "-run",
+          "^(TestNativeGraphCostRecordPagesRejectWrongBoundaryGapAndOversize|TestNativeGraphCostBatchedCDCStillRequiresExactOriginalAndEveryEffect|TestGraphSourceProcessInitialSendDeadlineClosesActualStoppedChildPipe|TestGraphSourceProcessAlreadyCanceledExchangeDoesNotSend|TestGraphSourceProcessCanceledExchangeRetainsOriginalUntilTerminal|TestGraphSourceProcessCanceledExchangePeerDeathCannotBeTerminalSuccess|TestGraphSourceProcessCanceledExchangeDeadlineRetiresUnconfirmedOwner|TestGraphSourceProcessQueuedCancellationRepliesOnceToOriginalPausedRequest|TestNativeGraphCostSmallActualProcesses|TestNativeGraphCostProfileAndRouting|TestReplicatedProcessProtocolBoundaries|TestReplicatedProcessShutdownReapsFailedCloseRPC)$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 985.641,
+        "elapsed_s": 100.612,
+        "exit_code": 0,
+        "reason": "completed",
+        "evidencePrefix": "r2-race",
+        "passedParents": 12,
+        "failedParents": 0
+      },
+      "coverage": {
+        "command": [
+          "go",
+          "test",
+          "-short",
+          "-count=1",
+          "-failfast",
+          "-json",
+          "-timeout=150s",
+          "-covermode=atomic",
+          "-coverprofile=/var/tmp/rho-native-cost-runner-batch-20261014-qualification/retained-r2/coverage.out",
+          "-run",
+          "^(TestNativeGraphCostRecordPagesRejectWrongBoundaryGapAndOversize|TestNativeGraphCostBatchedCDCStillRequiresExactOriginalAndEveryEffect|TestGraphSourceProcessInitialSendDeadlineClosesActualStoppedChildPipe|TestGraphSourceProcessAlreadyCanceledExchangeDoesNotSend|TestGraphSourceProcessCanceledExchangeRetainsOriginalUntilTerminal|TestGraphSourceProcessCanceledExchangePeerDeathCannotBeTerminalSuccess|TestGraphSourceProcessCanceledExchangeDeadlineRetiresUnconfirmedOwner|TestGraphSourceProcessQueuedCancellationRepliesOnceToOriginalPausedRequest|TestNativeGraphCostSmallActualProcesses|TestNativeGraphCostProfileAndRouting|TestReplicatedProcessProtocolBoundaries|TestReplicatedProcessShutdownReapsFailedCloseRPC)$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1063.344,
+        "elapsed_s": 37.455,
+        "exit_code": 0,
+        "reason": "completed",
+        "evidencePrefix": "r2-coverage",
+        "passedParents": 12,
+        "failedParents": 0
+      },
+      "toolchain": {
+        "command": [
+          "go",
+          "version"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 3.234,
+        "elapsed_s": 0.045,
+        "exit_code": 0,
+        "reason": "completed",
+        "evidencePrefix": "r2-toolchain"
+      },
+      "vet": {
+        "command": [
+          "go",
+          "vet",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 301.109,
+        "elapsed_s": 1.752,
+        "exit_code": 0,
+        "reason": "completed",
+        "evidencePrefix": "r2-vet"
+      },
+      "lint": {
+        "command": [
+          "/var/tmp/rho-v6-preflight-evidence-20261012/bin/golangci-lint",
+          "run",
+          "--config",
+          "../.golangci.yml",
+          "--concurrency=2",
+          "--timeout=150s",
+          "--max-same-issues=0",
+          "--max-issues-per-linter=0",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1680.547,
+        "elapsed_s": 38.438,
+        "exit_code": 0,
+        "reason": "completed",
+        "evidencePrefix": "r2-lint"
+      },
+      "coverfunc": {
+        "command": [
+          "go",
+          "tool",
+          "cover",
+          "-func=/var/tmp/rho-native-cost-runner-batch-20261014-qualification/retained-r2/coverage.out"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 6.234,
+        "elapsed_s": 0.316,
+        "exit_code": 0,
+        "reason": "completed",
+        "evidencePrefix": "r2-coverfunc"
+      },
+      "large-env-short-skip": {
+        "command": [
+          "go",
+          "test",
+          "-short",
+          "-count=1",
+          "-json",
+          "-timeout=150s",
+          "-run",
+          "^TestNativeGraphCostCell$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 427.797,
+        "elapsed_s": 1.941,
+        "exit_code": 0,
+        "reason": "completed",
+        "evidencePrefix": "r2-large-env-short-skip"
+      }
+    },
+    "two-facts-r3": {
+      "normal": {
+        "command": [
+          "go",
+          "test",
+          "-count=1",
+          "-failfast",
+          "-json",
+          "-timeout=150s",
+          "-run",
+          "^TestNativeGraphCostSmallActualProcesses$/(two-facts-local|two-facts-cross)$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 964.594,
+        "elapsed_s": 13.618,
+        "exit_code": 0,
+        "reason": "completed",
+        "evidencePrefix": "r3-two-facts-normal",
+        "passedParents": 1,
+        "failedParents": 0,
+        "passedNewSubcases": [
+          "TestNativeGraphCostSmallActualProcesses/two-facts-cross",
+          "TestNativeGraphCostSmallActualProcesses/two-facts-local"
+        ]
+      },
+      "race": {
+        "command": [
+          "go",
+          "test",
+          "-count=1",
+          "-failfast",
+          "-json",
+          "-timeout=150s",
+          "-race",
+          "-run",
+          "^TestNativeGraphCostSmallActualProcesses$/(two-facts-local|two-facts-cross)$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 964.516,
+        "elapsed_s": 34.677,
+        "exit_code": 0,
+        "reason": "completed",
+        "evidencePrefix": "r3-two-facts-race",
+        "passedParents": 1,
+        "failedParents": 0,
+        "passedNewSubcases": [
+          "TestNativeGraphCostSmallActualProcesses/two-facts-cross",
+          "TestNativeGraphCostSmallActualProcesses/two-facts-local"
+        ]
+      },
+      "coverage": {
+        "command": [
+          "go",
+          "test",
+          "-count=1",
+          "-failfast",
+          "-json",
+          "-timeout=150s",
+          "-covermode=atomic",
+          "-coverprofile=/var/tmp/rho-native-cost-runner-batch-20261014-qualification/two-facts-r3/coverage.out",
+          "-run",
+          "^TestNativeGraphCostSmallActualProcesses$/(two-facts-local|two-facts-cross)$",
+          "./internal/graphapply"
+        ],
+        "rss_limit_mib": 4096.0,
+        "wall_limit_s": 180.0,
+        "sample_interval_s": 0.25,
+        "peak_tree_rss_mib": 1070.156,
+        "elapsed_s": 14.946,
+        "exit_code": 0,
+        "reason": "completed",
+        "evidencePrefix": "r3-two-facts-coverage",
+        "passedParents": 1,
+        "failedParents": 0,
+        "passedNewSubcases": [
+          "TestNativeGraphCostSmallActualProcesses/two-facts-cross",
+          "TestNativeGraphCostSmallActualProcesses/two-facts-local"
+        ]
+      }
+    }
+  },
+  "scopedCoverage": "r2 production graphapply28.4%; *_test.go helper code is not instrumented. No production/public API changes. This is not whole-module/release coverage.",
+  "pythonCISelectionGuards": {
+    "passed": 18,
+    "scope": "Python source selection tests; their printed Go calls are mocked"
+  },
+  "actualCells": [
+    {
+      "stage": "retained-r2",
+      "mode": "normal",
+      "spec": {
+        "version": 1,
+        "facts": 17,
+        "crossPercent": 0,
+        "writers": 1
+      },
+      "directory": "tasks/evidence/v2-native-cost-runner/r2-normal-17-0",
+      "reaped": 6,
+      "records": 53,
+      "changes": 54,
+      "classes": {
+        "logical": 37,
+        "read-control": 16
+      },
+      "CDCFrom": [
+        15,
+        6
+      ],
+      "CDCThrough": [
+        63,
+        11
+      ]
+    },
+    {
+      "stage": "retained-r2",
+      "mode": "normal",
+      "spec": {
+        "version": 1,
+        "facts": 17,
+        "crossPercent": 100,
+        "writers": 1
+      },
+      "directory": "tasks/evidence/v2-native-cost-runner/r2-normal-17-100",
+      "reaped": 6,
+      "records": 231,
+      "changes": 54,
+      "classes": {
+        "logical": 37,
+        "read-control": 24,
+        "protocol-empty": 136,
+        "participant-empty": 34
+      },
+      "CDCFrom": [
+        15,
+        6
+      ],
+      "CDCThrough": [
+        165,
+        87
+      ]
+    },
+    {
+      "stage": "retained-r2",
+      "mode": "race",
+      "spec": {
+        "version": 1,
+        "facts": 17,
+        "crossPercent": 0,
+        "writers": 1
+      },
+      "directory": "tasks/evidence/v2-native-cost-runner/r2-race-17-0",
+      "reaped": 6,
+      "records": 53,
+      "changes": 54,
+      "classes": {
+        "logical": 37,
+        "read-control": 16
+      },
+      "CDCFrom": [
+        15,
+        6
+      ],
+      "CDCThrough": [
+        63,
+        11
+      ]
+    },
+    {
+      "stage": "retained-r2",
+      "mode": "race",
+      "spec": {
+        "version": 1,
+        "facts": 17,
+        "crossPercent": 100,
+        "writers": 1
+      },
+      "directory": "tasks/evidence/v2-native-cost-runner/r2-race-17-100",
+      "reaped": 6,
+      "records": 231,
+      "changes": 54,
+      "classes": {
+        "logical": 37,
+        "read-control": 24,
+        "protocol-empty": 136,
+        "participant-empty": 34
+      },
+      "CDCFrom": [
+        15,
+        6
+      ],
+      "CDCThrough": [
+        165,
+        87
+      ]
+    },
+    {
+      "stage": "retained-r2",
+      "mode": "coverage",
+      "spec": {
+        "version": 1,
+        "facts": 17,
+        "crossPercent": 0,
+        "writers": 1
+      },
+      "directory": "tasks/evidence/v2-native-cost-runner/r2-coverage-17-0",
+      "reaped": 6,
+      "records": 53,
+      "changes": 54,
+      "classes": {
+        "logical": 37,
+        "read-control": 16
+      },
+      "CDCFrom": [
+        15,
+        6
+      ],
+      "CDCThrough": [
+        63,
+        11
+      ]
+    },
+    {
+      "stage": "retained-r2",
+      "mode": "coverage",
+      "spec": {
+        "version": 1,
+        "facts": 17,
+        "crossPercent": 100,
+        "writers": 1
+      },
+      "directory": "tasks/evidence/v2-native-cost-runner/r2-coverage-17-100",
+      "reaped": 6,
+      "records": 231,
+      "changes": 54,
+      "classes": {
+        "logical": 37,
+        "read-control": 24,
+        "protocol-empty": 136,
+        "participant-empty": 34
+      },
+      "CDCFrom": [
+        15,
+        6
+      ],
+      "CDCThrough": [
+        165,
+        87
+      ]
+    },
+    {
+      "stage": "two-facts-r3",
+      "mode": "normal",
+      "spec": {
+        "version": 1,
+        "facts": 2,
+        "crossPercent": 0,
+        "writers": 1
+      },
+      "directory": "tasks/evidence/v2-native-cost-runner/r3-normal-2-0",
+      "reaped": 6,
+      "records": 19,
+      "changes": 9,
+      "classes": {
+        "logical": 7,
+        "read-control": 12
+      },
+      "CDCFrom": [
+        15,
+        6
+      ],
+      "CDCThrough": [
+        29,
+        11
+      ]
+    },
+    {
+      "stage": "two-facts-r3",
+      "mode": "normal",
+      "spec": {
+        "version": 1,
+        "facts": 2,
+        "crossPercent": 100,
+        "writers": 1
+      },
+      "directory": "tasks/evidence/v2-native-cost-runner/r3-normal-2-100",
+      "reaped": 6,
+      "records": 43,
+      "changes": 9,
+      "classes": {
+        "logical": 7,
+        "read-control": 16,
+        "protocol-empty": 16,
+        "participant-empty": 4
+      },
+      "CDCFrom": [
+        15,
+        6
+      ],
+      "CDCThrough": [
+        41,
+        23
+      ]
+    },
+    {
+      "stage": "two-facts-r3",
+      "mode": "race",
+      "spec": {
+        "version": 1,
+        "facts": 2,
+        "crossPercent": 0,
+        "writers": 1
+      },
+      "directory": "tasks/evidence/v2-native-cost-runner/r3-race-2-0",
+      "reaped": 6,
+      "records": 19,
+      "changes": 9,
+      "classes": {
+        "logical": 7,
+        "read-control": 12
+      },
+      "CDCFrom": [
+        15,
+        6
+      ],
+      "CDCThrough": [
+        29,
+        11
+      ]
+    },
+    {
+      "stage": "two-facts-r3",
+      "mode": "race",
+      "spec": {
+        "version": 1,
+        "facts": 2,
+        "crossPercent": 100,
+        "writers": 1
+      },
+      "directory": "tasks/evidence/v2-native-cost-runner/r3-race-2-100",
+      "reaped": 6,
+      "records": 43,
+      "changes": 9,
+      "classes": {
+        "logical": 7,
+        "read-control": 16,
+        "protocol-empty": 16,
+        "participant-empty": 4
+      },
+      "CDCFrom": [
+        15,
+        6
+      ],
+      "CDCThrough": [
+        41,
+        23
+      ]
+    },
+    {
+      "stage": "two-facts-r3",
+      "mode": "coverage",
+      "spec": {
+        "version": 1,
+        "facts": 2,
+        "crossPercent": 0,
+        "writers": 1
+      },
+      "directory": "tasks/evidence/v2-native-cost-runner/r3-coverage-2-0",
+      "reaped": 6,
+      "records": 19,
+      "changes": 9,
+      "classes": {
+        "logical": 7,
+        "read-control": 12
+      },
+      "CDCFrom": [
+        15,
+        6
+      ],
+      "CDCThrough": [
+        29,
+        11
+      ]
+    },
+    {
+      "stage": "two-facts-r3",
+      "mode": "coverage",
+      "spec": {
+        "version": 1,
+        "facts": 2,
+        "crossPercent": 100,
+        "writers": 1
+      },
+      "directory": "tasks/evidence/v2-native-cost-runner/r3-coverage-2-100",
+      "reaped": 6,
+      "records": 43,
+      "changes": 9,
+      "classes": {
+        "logical": 7,
+        "read-control": 16,
+        "protocol-empty": 16,
+        "participant-empty": 4
+      },
+      "CDCFrom": [
+        15,
+        6
+      ],
+      "CDCThrough": [
+        41,
+        23
+      ]
+    }
+  ],
+  "independent17Parse": "independent-normal17-cdc-receipt.json",
+  "genuineTwoFactCDCComparison": "independent-actual-two-fact-comparison.json",
+  "redJournalDependency": {
+    "source": "red-journal-source-sha256.json",
+    "watchdog": "red-journal-watchdog.json",
+    "rawOutput": "red-journal-normal.jsonl",
+    "failure": "original Raft entry prefix already compacted; metadata moved to retained application views/controls/outcomes without disabling GC"
+  },
+  "historicalIncomplete10000FactTrial": {
+    "evidenceCommit": "c75064fd",
+    "repositoryReceipt": "tasks/evidence/v2-real-substrate-cost-20261012/receipt.json",
+    "observedReceiptSHA256": "a566d1cd4a33a952994324570a0ed4d1ed6b9f90ec05e04ad3e57e7d3857253c",
+    "completedCell": false,
+    "elapsedSeconds": 1800.305,
+    "peakRSSMiB": 236.672,
+    "verifiedCreates": 10000,
+    "verifiedUpdates": 6724,
+    "finalRetainedPointObservations": 0,
+    "cleanCloseOrReopenClaim": false,
+    "scope": "earlier actual watchdog SIGKILL and identity cleanup; these finite qualifications do not supersede the failed cost cell"
+  },
+  "scope": "writer1 finite LOCAL/CROSS tests on one machine. GenuineN2functional CDC matched against historicalCBC LOCAL and final406 CROSS FDB receipts. No matched17 FDB, full suite, large10k rerun, five fresh cost runs, throughput/RSS comparison, release/V2/engine acceptance or push.",
+  "evidenceArchive": {
+    "path": "raw.tar.gz",
+    "sha256": "64817b559dd2b8cae0ce9aa584446deb494cbdd610f9ca076d62bf14756d653c",
+    "members": 110,
+    "bytes": 522772,
+    "memberSHA256": {
+      "r2-race-watchdog.json": "582da5d1489cabe3b0ef4d6f7062648939bdb58b414cc9ecbb510380365f2318",
+      "r2-lint-watchdog.json": "4826571b26b6b47e40c57810ecc477b8a303919e9d84468d0c0954800a67f291",
+      "r2-qualified-source.tar.gz": "b3f3a8105a0b0e5bda0af742cf2fcc33e7ea2257f697c7d722503163729d20c6",
+      "r3-two-facts-fixture-only.patch": "18d909352c22d3f188b78b2431f2caca699284ece0381daa7536e7838e0c37e5",
+      "r2-coverfunc-watchdog.json": "a81755d899e8bf8eb3bcf43086044d17f5e3232889a5d6f82fca2abe170dddb6",
+      "independent-normal17-cdc-receipt.json": "b41e0d33e1f84662dbed83cfd06b9bd6e575cef542c0070dc4cb7172e38194a3",
+      "r2-coverage.jsonl": "8fa7fa4f044867c42328dee82e8f08fccdb9aa489910093bc4f5518871c1a20e",
+      "r2-parents.json": "4bd930d386760d1c4295e7d3de6a96f5a3dd84f44f3f3795f61675ea97ab93f1",
+      "r2-large-env-short-skip-watchdog.json": "b7d73ab066a3425f1c0ecba84eae42f0d5687fa4b13e80d6f6d377f8b86a2975",
+      "r2-toolchain.stdout": "50dfaf2b461be90c530e329b6ae9c3159961579c2fb4848bbf472fe7af282db3",
+      "r2-normal.jsonl": "dd199c216149a3facf517fe6376eb30c7665d8b0c0dcb7ed714bfd640b5adcba",
+      "r2-vet.stderr": "7e9959e312a9a2a75774cf5b3094a6f0e0f039fbe455cd1ab0e7f2a358837a2a",
+      "r2-source-sha256.json": "405bb01bb1d988b2c31a246bd34a16b7512dee6b944564420b08b44f7026f8e4",
+      "r2-coverfunc.stdout": "96b6b49d287e13727ae2c8271be2ae80a9a03966e1530eda25ef373e7ba1b198",
+      "r3-two-facts-race.jsonl": "fbdbee39c155c0d124397cc4691c5758b845759cf912e86966255d3861e2919c",
+      "r3-two-facts-selection.json": "0a3cc1c414c0652652beb453bbf1b2027dee55a74fcd88ee80c7e9687b174d29",
+      "r2-lint.stdout": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47",
+      "r2-coverage.stderr": "4ac4720c2efe26d5bb6a623de8f5d0a810b227272f2847b7421af5cfb0a4726b",
+      "r2-normal-command.json": "866005f9375c72e39f51c927f78d3a5df1d4202787a882e67445d4356a2465bb",
+      "r2-race.jsonl": "ecd019102aa070d4e8bee36dc2129c5bbdb32112347bc892de70f5cee604699e",
+      "initial-runner-checkpoint-source-sha256.json": "dff0745f350a723f6ed204f0376523c008af810545efa60447de657441960e26",
+      "red-journal-watchdog.json": "7a4ded119d15e59e2c14930c499d752319f37ee332b61e451101345ec1c7993b",
+      "r3-two-facts-coverage-watchdog.json": "0481fade5f896410b4e4f66679057d55ed5e33225caf7faf546cb48008377bd0",
+      "matched-fdb-2-local.jsonl": "e9e03c95c20f64a459fcb55ca821f15a1c958682cb9249abb709fbfda431d7b1",
+      "r2-normal-watchdog.json": "9a3272afab600cfbefcf8e2faf7d950727c2a1528ed7801b2955ad57bdc6096e",
+      "r3-two-facts-source-sha256.json": "ec4f7b2b5caef4b8c7499baed9faac7e28bb999b5a53f373318b5e7b29b42f9c",
+      "r3-two-facts-normal.jsonl": "90707244335525c2d63438b87ec5c5fb97b0a3125b247dd8abd36a99de3298b8",
+      "r2-lint.stderr": "fcc79c56e35b6ed69444b52790184ef32b5c22fa9c2519c9e58ae2b3df57e932",
+      "r3-two-facts-race.stderr": "e11e1aae0979aeecf7f5be467a10497f228b9c318426e3a8877ec5872273d46f",
+      "r2-toolchain-watchdog.json": "d50de93d0857795e4f9924885e1c45d3c9b299459ce0e074a305ddafa816af06",
+      "r2-normal.stderr": "3bc0af44f1df7cde0ef0177faa18262c8d4e81b7c6a11be5aa444d75451e37d4",
+      "r2-vet-command.json": "01b626fc7520a4479f03125c69283df36c422a87078abe3b5754e150501dc029",
+      "r2-coverfunc.stderr": "ee1bc48af9492f9e654db2cbbf27ff1aee69c8e1797e02a32d5b54a28ecd82e9",
+      "r3-two-facts-race-command.json": "edec74dd310bbfef7a806de50056f532c19b53fc040f66b8fd75f850c7c1d820",
+      "r2-large-env-short-skip-command.json": "37322a5c2c93041d10574bca078f873220a7a8c96c315a461b66eb2a8d30ba1e",
+      "red-journal-normal.jsonl": "d8e49be21d504b166616722957e2901953eefccd4a679a937c50983ee0588722",
+      "r2-coverfunc-command.json": "675274deb4bbaa8e854a0af0c71e39700de7a90bbab289fdf5fb3b6eebee61e5",
+      "red-journal-normal.stderr": "8d70d065209a9c69337222d37ff74d096bd166751ff1d940fdef4fffee0723aa",
+      "red-journal-source-sha256.json": "0f4829bcb063a8b360158b00f43476e67eae79bc124e2ff7749002c9352e2672",
+      "r2-vet.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "r3-two-facts-normal-watchdog.json": "9337893a22ab4fb09001e650403c90b16cce88cbfe21adfb171d0168b2066662",
+      "r2-coverage-watchdog.json": "272751607e2c1ea85abf0ea9b65e7146be69617b2f6b36be0d875ef49b7ab274",
+      "r3-two-facts-race-watchdog.json": "8dd2f82102e3d6bd2a1f27d7e8ff04670c4ed0bba76c893c4d82464320f8e0db",
+      "r2-toolchain.stderr": "1f37a0d2c30d28ab78dba0380980ff2789318c9e2e32a7f539705eb31bc4c9b0",
+      "r2-lint-command.json": "d3065f5900f20370e2e091fc227d2cd800889411d545c2b9ea31b118b93b3dd3",
+      "r2-large-env-short-skip.stdout": "c43e211ccb3a76ff55314fe379b390b9e7e501dfa7f24998d950f85e771ad5b6",
+      "r3-two-facts-coverage.out": "4d01d9c014950e5ed78ff1ad8760ace5aa59641673019743f23dfd9f76b1427e",
+      "r3-two-facts-normal.stderr": "4b7859906ddfd4148e89273959e229a526e0be6e8ba962f89fca2da167265410",
+      "qualified-d4-source-sha256.json": "59210841aeb2129f2da5c62988d86791668d4495fcfb59666440cbd63c9e0882",
+      "r2-vet-watchdog.json": "abeba8806e068f672a37e4c21b7e85f86e568bad1687249eb722ab58fcba1700",
+      "r2-toolchain-command.json": "b100cae7e42dfab50301b6eca0bfc6bf5d9e8e3d067300034afd6c40ffa7122d",
+      "r3-two-facts-normal-command.json": "6a6b3398bed0a596a07a0120e259065f41cf9418595ad454b93847ec6d3fb99e",
+      "r3-two-facts-coverage.stderr": "aba17bcd9d280dfeec12dff8f70deded2a0549d0cdd471110939cb84bd95a274",
+      "matched-fdb-2-cross.jsonl": "b9f49303f29fe86f7c82b923b45ce316b852d93a7d4b0cf2718ce2fbe8c45710",
+      "r3-two-facts-coverage.jsonl": "b7c2fea00a29b0a44b45be2f85850ce42a920d9b4ce63843c6fdf16f61985a49",
+      "r2-large-env-short-skip.stderr": "68560388205095c7128ad5c0ddfd663aa00cd4fd218fae59c535f31402b092e0",
+      "r3-two-facts-coverage-command.json": "5d69fd77c096387e52ea195a50d15b849a05b9eecadc0516a40e88af1408f617",
+      "r2-race-command.json": "d5ff8dd82e45e5b7dde99f12937c0414dc8e0230bffb7447a6181f39233153e8",
+      "r2-race.stderr": "d9730a4184c6a2894473f8a278edfe1d6f6864a1740e379d2e0ecce451d03478",
+      "r2-coverage.out": "c3d783521d761d15bc7acb9baa320496cf68384e583ebd4b9a45dec0e6351b17",
+      "r2-coverage-command.json": "676c0d596882d0da9ccd76bfe71b4d1de61b683579d2049ca086ae1e75cd91a0",
+      "independent-actual-two-fact-comparison.json": "28209f3a0fb1dc62a2afef8d5ec95be822f216d2f8d3e8aa4b88cf20ad0b2283",
+      "r2-normal-17-100/observations.jsonl": "ee87a51053d1d916adf2656b8d5aaa34c226baec7c5aae8e802b964441c7560d",
+      "r2-normal-17-100/latency.jsonl": "190ad0805bb38d686f29c845c78ff4e246f8a349d0c7e6327eec3c87765c1971",
+      "r2-normal-17-100/cdc.jsonl": "d2c425b6ce5b0cbfacf17dbeae52c1998e9ce1e357496067e6b87ab1dc0f813c",
+      "r2-normal-17-100/native-cost-result.json": "82ac28d39ef94d6f8bee95ae08310e2d2e1b75502a6849041fc96c1cffed98b9",
+      "r2-normal-17-0/observations.jsonl": "5c59e995f6dbb55c035878aea0a4d76802671f6a24794e37ec9b1c7d26942904",
+      "r2-normal-17-0/latency.jsonl": "0116b6c5be4d2b5d7eeba480b7ea5f22f88897891fa031736ff48c7e24f9d642",
+      "r2-normal-17-0/cdc.jsonl": "eaa6a0dd9dfbedae9ddde484c6e8243172ce2fd68f91d33263aee5193b7326e0",
+      "r2-normal-17-0/native-cost-result.json": "2c4c122d97b64948ff72bfbf3a34935201a1e001f5dd495d8f16ce33ea3c87c0",
+      "r3-race-2-100/observations.jsonl": "e01cf19f1ddb874b59725c2665cf47d4dfeac2eb7ed6a181fb9b3b1c4d748ae7",
+      "r3-race-2-100/latency.jsonl": "854b6b9ad8b053248863ceab089a00aa09f268e42518a2216280ca7362bc95b5",
+      "r3-race-2-100/cdc.jsonl": "0c461788b5aea4a994e9182058ecbdc74c58d124ea6629e25feeff35f6aa185d",
+      "r3-race-2-100/native-cost-result.json": "2d70353ebfacd0d57f6e543b464e7c34def5b1557aedac7397c788b84da4c30f",
+      "r3-race-2-0/observations.jsonl": "c8c0704e3020d35255a4bde7732dc49aabc20b08439291045a4a4b13ab0b1e17",
+      "r3-race-2-0/latency.jsonl": "af4aa79899d71e5acd63e5f5f63151180c036bb1aeeb0cad9597bfc7eea13f5d",
+      "r3-race-2-0/cdc.jsonl": "dc12ec8d75fdd9513b8abf85ba6cdd0f8bf04d16fe23280164f33bb59349ade5",
+      "r3-race-2-0/native-cost-result.json": "fa9dccd32e994bf7447c5353fef179357813f294f62e54dff51a356f01baa41e",
+      "r3-coverage-2-0/observations.jsonl": "c8c0704e3020d35255a4bde7732dc49aabc20b08439291045a4a4b13ab0b1e17",
+      "r3-coverage-2-0/latency.jsonl": "34635d144d8821cb72eed45b0f39efa8b4310e1a6e12487ca14d1205204b0ade",
+      "r3-coverage-2-0/cdc.jsonl": "ef339d2bebceebb066e83a49c130d5f79396f0de8447c0d2b7cc05062aec8f12",
+      "r3-coverage-2-0/native-cost-result.json": "e0c4b2187ef040e3d8c626c13f378d2a3d5154a7f32fd14e95a95573c289885f",
+      "r2-coverage-17-0/observations.jsonl": "5c59e995f6dbb55c035878aea0a4d76802671f6a24794e37ec9b1c7d26942904",
+      "r2-coverage-17-0/latency.jsonl": "2c9284c059b4b1646101b6423ea1d64cc9ce106ce9b03c8d8ae8600aeb96ce0e",
+      "r2-coverage-17-0/cdc.jsonl": "0a71c6577d3646dddb672035673fac0e2dbfdc66ff24a2e2f598f9d0b32cc67d",
+      "r2-coverage-17-0/native-cost-result.json": "13cf30dee60e12a56b258e0af5bb3fbbb153307308284236cd13c5d85a2026dc",
+      "r2-coverage-17-100/observations.jsonl": "ee87a51053d1d916adf2656b8d5aaa34c226baec7c5aae8e802b964441c7560d",
+      "r2-coverage-17-100/latency.jsonl": "dcc05e301400982d0571bb922b9f849aa3ac802d1eebb52f2954a41382e64bae",
+      "r2-coverage-17-100/cdc.jsonl": "2ce395aeaa90bd9b687b79677be2abb8af54770e377d7e3fd6bb2099c5c599ac",
+      "r2-coverage-17-100/native-cost-result.json": "d47be1d8dc839da2ef02bbd5b4dd145dae0862970a058c9798e02f5b83b5d9a1",
+      "r2-race-17-0/observations.jsonl": "5c59e995f6dbb55c035878aea0a4d76802671f6a24794e37ec9b1c7d26942904",
+      "r2-race-17-0/latency.jsonl": "572d20880d5c13e98a4685a81f5b72ceb07ae6cb25c5892fc322e0bae5a0b5ed",
+      "r2-race-17-0/cdc.jsonl": "a6640d6c86ee957ed647c7e0515061d759d0d51805fccc84903fe70f95ea08b1",
+      "r2-race-17-0/native-cost-result.json": "285235ce0d97a82095f20dea2a45801a40cee01c7259ea646645db3224c61316",
+      "r3-normal-2-100/observations.jsonl": "e01cf19f1ddb874b59725c2665cf47d4dfeac2eb7ed6a181fb9b3b1c4d748ae7",
+      "r3-normal-2-100/latency.jsonl": "8f3c92de12800b511f8273aa46ba728ca67a375ca2f1c5c29622a64d0fd0f6d6",
+      "r3-normal-2-100/cdc.jsonl": "1dbfebccc7a308e54a30a4da07fa27c258aab781a151090b77909951ac3a32f8",
+      "r3-normal-2-100/native-cost-result.json": "ae059a7129a0303e905f7b8e7e4875d6dde2e19cd1e8cf08c423f66023827804",
+      "r3-coverage-2-100/observations.jsonl": "e01cf19f1ddb874b59725c2665cf47d4dfeac2eb7ed6a181fb9b3b1c4d748ae7",
+      "r3-coverage-2-100/latency.jsonl": "0395ae511d667d9d1878f1086fb73b4cd410a46ca139292d91844b65b806e7ce",
+      "r3-coverage-2-100/cdc.jsonl": "f6d77e74f0ee7e7ae819158e79811254fd7dbdf5b225ed54c726d08baeb47234",
+      "r3-coverage-2-100/native-cost-result.json": "4e876467f0b3785b143ba021324cb93849e7ae8f72dfb36a01e73d7da7599214",
+      "r2-race-17-100/observations.jsonl": "ee87a51053d1d916adf2656b8d5aaa34c226baec7c5aae8e802b964441c7560d",
+      "r2-race-17-100/latency.jsonl": "a2b1ed7cb4e35507be6847db88bd9c579495e13e928156214c52187a4a3de528",
+      "r2-race-17-100/cdc.jsonl": "4c1430243ef99df0e4f6dffe7ea8a0883d2cd4a9c088f7f0b27abbbd2df1243b",
+      "r2-race-17-100/native-cost-result.json": "c95ef6bc2dec7661ab09ae9b495d2ddd7260d7d5aef2ef950b2c97fc5a203301",
+      "r3-normal-2-0/observations.jsonl": "c8c0704e3020d35255a4bde7732dc49aabc20b08439291045a4a4b13ab0b1e17",
+      "r3-normal-2-0/latency.jsonl": "f0c184a1fa4fc8779b8da734cb5f115962431a8897fe5c3984ca1e4d457fbd47",
+      "r3-normal-2-0/cdc.jsonl": "e52a9c4c8c4642a10cbbc219c60760813b78415cafeb3ea33e038f7f0222676d",
+      "r3-normal-2-0/native-cost-result.json": "7b5c3af4d57459d39d2df09b65aa1c7bfa2a598772bb5704399b59d48986bc33"
+    }
+  },
+  "evidenceReferences": "All named raw outputs/source snapshots/trace inputs beside receipt.json are exact hash-bound members of raw.tar.gz."
+}

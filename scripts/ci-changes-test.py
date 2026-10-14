@@ -170,6 +170,17 @@ class RealGitSelection(unittest.TestCase):
                 self.assertIn("TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", names)
         self.assertIn("TestNativePairedGraphFaultNoOpUsesActualRetainedNormalEntry", CI.FIXTURE_COMPAT["paired_graph_fault_harness_test.go"])
 
+    def test_cost_fixture_guard_preserves_changed_large_parent(self):
+        fixture = self.directory / "native_graph_cost_harness_test.go"
+        fixture.write_text("package graphapply\ntype costFixture struct{}\n")
+        names = CI.graph_selection(self.directory, [fixture], {fixture: [("type", "costFixture")]})
+        self.assertTrue({"TestNativeGraphCostSmallActualProcesses", "TestNativeGraphCostProfileAndRouting"} <= set(names))
+        parent = self.directory / "native_graph_cost_test.go"
+        parent.write_text("package graphapply\nfunc TestNativeGraphCostCell(t *testing.T) {}\n")
+        names = CI.graph_selection(self.directory, [fixture, parent], {
+            fixture: [("type", "costFixture")], parent: [("func", "TestNativeGraphCostCell")]})
+        self.assertIn("TestNativeGraphCostCell", names)
+
     def test_unknown_fixture_type_or_production_scope_requires_full(self):
         fixture = self.directory / "unknown_test.go"
         fixture.write_text("package graphapply\ntype unknown struct{}\n")
@@ -187,6 +198,12 @@ class CurrentRepository(unittest.TestCase):
         names = set().union(*(CI.parent_names(p) for p in directory.glob("*_test.go")))
         self.assertTrue(set(CI.GRAPH_COMPAT) <= names)
         self.assertIn("TestGraphReplacementAdmissionNativeSurvivingQuorumAllAgreements", CI.GRAPH_COMPAT)
+
+    def test_explicit_cost_cell_is_short_guarded_before_profile(self):
+        text = (CI.ROOT / "v5/internal/graphapply/native_graph_cost_test.go").read_text()
+        cell = text.split("func TestNativeGraphCostCell(t *testing.T) {", 1)[1].split("\nfunc ", 1)[0]
+        self.assertLess(cell.index("testing.Short()"), cell.index("nativeGraphCostSpecFromEnv()"))
+        self.assertIn('t.Skip("explicit cost cell is excluded from routine short CI")', cell)
 
     def test_workflow_keeps_full_gates_and_empty_lint_guard(self):
         text = (CI.ROOT / ".github/workflows/ci.yml").read_text()

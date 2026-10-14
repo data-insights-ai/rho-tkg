@@ -16,20 +16,26 @@ import (
 	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
 
 type nativeGraphCostSample struct {
-	Phase             string `json:"phase"`
-	Fact              uint64 `json:"fact"`
-	Cross             bool   `json:"cross"`
-	ElapsedNanos      int64  `json:"elapsedNanos"`
-	ProposalNanos     int64  `json:"proposalNanos"`
-	AckNanos          int64  `json:"ackNanos"`
-	DrainNanos        int64  `json:"drainNanos"`
-	VerificationNanos int64  `json:"verificationNanos"`
-	ClientAttempts    int    `json:"clientAttempts"`
+	Phase                          string `json:"phase"`
+	Fact                           uint64 `json:"fact"`
+	Cross                          bool   `json:"cross"`
+	ElapsedNanos                   int64  `json:"elapsedNanos"`
+	ProposalNanos                  int64  `json:"proposalNanos"`
+	AckNanos                       int64  `json:"ackNanos"`
+	DrainNanos                     int64  `json:"drainNanos"`
+	VerificationNanos              int64  `json:"verificationNanos"`
+	ClientAttempts                 int    `json:"clientAttempts"`
+	phase, partition, index, round uint64
+	hash, digest                   [32]byte
+	tx                             [16]byte
+	identity                       [16]byte
+	participants                   [2]uint64
 }
 type nativeGraphCostResult struct {
 	Version                                                int                 `json:"version"`
@@ -44,9 +50,13 @@ type nativeGraphCostResult struct {
 	PersistedFileBytes                                     uint64 `json:"persistedFileBytes"`
 	AllocatedFileBytes                                     uint64 `json:"allocatedFileBytes"`
 	OldCut, FinalCut                                       lifecycleRawCut
+	CDCFrom, CDCThrough                                    [2]uint64
 	CDCChanges, CDCRecords                                 uint64
 	CompletedCreates, CompletedUpdates                     uint64
-	Reaped                                                 int `json:"reaped"`
+	Reaped                                                 int    `json:"reaped"`
+	Runner                                                 string `json:"runner"`
+	CheckpointCommands                                     int    `json:"checkpointCommands"`
+	CheckpointNanos                                        int64  `json:"checkpointNanos"`
 }
 
 func newNativeGraphCostNetwork(t *testing.T, spec nativeGraphCostSpec) *certifiedProcessNetwork {
@@ -133,12 +143,26 @@ func nativeGraphCostOpen(t *testing.T, n *certifiedProcessNetwork, mode graphRea
 	return handle, actual
 }
 
+// One operation context covers proposal preparation and every original exchange
+// through its actual ACK. The mux separately bounds canceled-worker cleanup.
+func nativeGraphCostCall(t *testing.T, ctx context.Context, p *graphProcess, request processRequest) processResponse {
+	t.Helper()
+	response, err := p.exchange(ctx, request)
+	err = errors.Join(err, processResponseError(response), ctx.Err())
+	if err != nil {
+		t.Fatalf("cost composed operation op=%d: %v", request.op, err)
+	}
+	return response
+}
+
 // Acknowledgement is the actual immutable committed outcome, not Propose's
 // enqueue response. Transport settling and voter/oracle inspection follow the
 // timed acknowledgement separately; both remain in the measured total cost.
 func nativeGraphCostSubmit(t *testing.T, n *certifiedProcessNetwork, phase, i uint64, cross bool) nativeGraphCostSample {
 	t.Helper()
-	sample := nativeGraphCostSample{Fact: i, Cross: cross, ClientAttempts: 1, Phase: "setup"}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	sample := nativeGraphCostSample{Fact: i, Cross: cross, ClientAttempts: 1, Phase: "setup", phase: phase}
 	if phase == 4 {
 		sample.Phase = "create"
 	}
@@ -155,18 +179,43 @@ func nativeGraphCostSubmit(t *testing.T, n *certifiedProcessNetwork, phase, i ui
 		binary.BigEndian.PutUint64(data, i)
 	}
 	start := time.Now()
-	response := n.all[actor].call(t, processRequest{op: processCertifiedAction, entity: certifiedGraphCost, index: phase, data: data})
+	response := nativeGraphCostCall(t, ctx, n.all[actor], processRequest{op: processCertifiedAction, entity: certifiedGraphCost, index: phase, data: data})
 	proposal, err := decodeCertifiedProcessProposal(response.aux)
 	if err != nil {
 		t.Fatal(err)
 	}
+	command, err := decodePartitionGraphCommand(proposal.wire, defaultMaterializerLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sample.identity = [16]byte(command.request.id)
 	sample.ProposalNanos = time.Since(start).Nanoseconds()
+	sample.partition, sample.hash = proposal.target.partition, sha256.Sum256(proposal.wire)
 	start = time.Now()
 	if cross {
-		response = n.all[1].call(t, processRequest{op: processSourceCoordinate, data: proposal.wire})
+		response = nativeGraphCostCall(t, ctx, n.all[1], processRequest{op: processSourceCoordinate, data: proposal.wire})
 		result, err := decodeGraphProcessCoordinatorResult(response)
-		if err != nil || result.decision.phase != crossDecide || !result.decision.commit || result.decision.round == 0 {
+		// The coordinator's immutable business digest uses its canonical v1
+		// envelope; the caller's ordinary partition proposal can be v2.
+		command.version = 0
+		business, businessErr := encodePartitionGraphCommand(command, defaultMaterializerLimits())
+		if err != nil || businessErr != nil || result.resume.business != sha256.Sum256(business) || result.resume.scope != proposal.target || result.resume.request != command.request.id || result.resume.tx != crossTransactionID(command.request.ns, command.request.id) || result.decision.phase != crossDecide || !result.decision.commit || result.decision.round == 0 {
 			t.Fatal("actual cost durable cross acknowledgement", result, err)
+		}
+		// Run returns only after genuine immutable decision and every participant
+		// Resolve submit completed; retain its exact TX/digest/round for CDC checks.
+		sample.tx, sample.digest, sample.round = result.decision.tx, result.decision.digest, result.decision.round
+		l := defaultMaterializerLimits()
+		arena, err := graphstate.NewOutputBudget(l.outputBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		manifest, err := decodeCrossManifest(response.changes, l, arena)
+		if err != nil || manifest.digest != sample.digest || manifest.tx != sample.tx || manifest.request.ns != command.request.ns || manifest.request.id != command.request.id || len(manifest.parts) == 0 || len(manifest.parts) > len(sample.participants) {
+			t.Fatal("cost actual coordinator participant footprint", err)
+		}
+		for i, part := range manifest.parts {
+			sample.participants[i] = part.binding.Partition
 		}
 	} else {
 		baseline := response.applied
@@ -174,13 +223,11 @@ func nativeGraphCostSubmit(t *testing.T, n *certifiedProcessNetwork, phase, i ui
 		if err != nil {
 			t.Fatal(err)
 		}
-		proposed := n.all[actor].call(t, processRequest{op: processPropose, data: wire})
+		proposed := nativeGraphCostCall(t, ctx, n.all[actor], processRequest{op: processPropose, data: wire})
 		if err := n.all[actor].mux.hub.enqueue(actor, proposed.packets); err != nil {
 			t.Fatal("cost ordinary caller-owned packetdelivery", err)
 		}
 		completed := false
-		ackCtx, cancelAck := context.WithTimeout(t.Context(), 10*time.Second)
-		defer cancelAck()
 		var observed uint64
 		// The original fixture's finite per-call/queue/time bounds still apply.
 		// No arbitrary delay or quiet-transport assertion becomes commit authority.
@@ -193,7 +240,7 @@ func nativeGraphCostSubmit(t *testing.T, n *certifiedProcessNetwork, phase, i ui
 					t.Fatal("cost actual recorded transport/child failure", id, failure)
 				}
 			}
-			state := n.all[actor].call(t, processRequest{op: processStateOp})
+			state := nativeGraphCostCall(t, ctx, n.all[actor], processRequest{op: processStateOp})
 			observed = state.applied
 			if state.applied <= baseline {
 				hub := n.all[actor].mux.hub
@@ -203,7 +250,7 @@ func nativeGraphCostSubmit(t *testing.T, n *certifiedProcessNetwork, phase, i ui
 				if idle {
 					// Publication can race the first observation; confirm actual application
 					// once after terminal transport, never turn quietness into success.
-					state = n.all[actor].call(t, processRequest{op: processStateOp})
+					state = nativeGraphCostCall(t, ctx, n.all[actor], processRequest{op: processStateOp})
 					observed = state.applied
 					if observed <= baseline {
 						t.Fatal("cost terminal idle without durable acknowledgement", actor, phase, baseline, observed)
@@ -211,18 +258,19 @@ func nativeGraphCostSubmit(t *testing.T, n *certifiedProcessNetwork, phase, i ui
 				} else {
 					select {
 					case <-n.all[actor].mux.hub.packetCompleted:
-					case <-ackCtx.Done():
-						t.Fatal("cost localack waiting actualtransport progress", actor, phase, baseline, observed, ackCtx.Err())
+					case <-ctx.Done():
+						t.Fatal("cost localack waiting actualtransport progress", actor, phase, baseline, observed, ctx.Err())
 					}
 					continue
 				}
 			}
-			record := n.all[actor].call(t, processRequest{op: processEntryRecord, index: state.applied})
+			record := nativeGraphCostCall(t, ctx, n.all[actor], processRequest{op: processEntryRecord, index: state.applied})
 			ns, _ := certifiedProcessNamespace(actor)
 			original, err := decodePartitionGraphOutcome(record.outcome, ns)
-			if err != nil || original.hash != sha256.Sum256(proposal.wire) || original.index != state.applied || original.reason != reasonNone || original.disposition != applied || len(record.changes) == 0 {
+			if err != nil || original.identity != sample.identity || original.hash != sha256.Sum256(proposal.wire) || original.index != state.applied || original.reason != reasonNone || original.disposition != applied || len(record.changes) == 0 {
 				t.Fatal("actual cost durable local acknowledgement", original, err)
 			}
+			sample.index = original.index
 			completed = true
 			break
 		}
@@ -232,31 +280,25 @@ func nativeGraphCostSubmit(t *testing.T, n *certifiedProcessNetwork, phase, i ui
 	}
 	sample.AckNanos = time.Since(start).Nanoseconds()
 	sample.ElapsedNanos = sample.ProposalNanos + sample.AckNanos
-	start = time.Now()
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	err = drainGraphProcessMuxes(ctx, n.all)
-	cancel()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sample.DrainNanos = time.Since(start).Nanoseconds()
-	start = time.Now()
-	for g, leader := range n.leaders {
-		state := n.all[leader].call(t, processRequest{op: processStateOp})
-		for id, voter := range n.groups[g].nodes {
-			actual := voter.call(t, processRequest{op: processStateOp})
-			if actual.applied != state.applied || !bytes.Equal(actual.image, state.image) {
-				t.Fatal("cost actual voter/root mismatch", id)
-			}
-		}
-	}
-	sample.VerificationNanos = time.Since(start).Nanoseconds()
 	return sample
 }
-func nativeGraphCostRecords(t *testing.T, n *certifiedProcessNetwork, from *[2]uint64, stream *json.Encoder, spec nativeGraphCostSpec, phase, fact uint64) (uint64, uint64) {
+
+// A checkpoint first obtains a real two-partition certified cut. The live
+// drivers can be ahead because certification writes control entries; every
+// page instead checks a genuine retained root at certificate.sourceIndex.
+func nativeGraphCostCheckpoint(t *testing.T, n *certifiedProcessNetwork, from *[2]uint64, stream *json.Encoder, spec nativeGraphCostSpec, commands []nativeGraphCostSample) (graphCut, uint64, uint64) {
 	t.Helper()
-	var changes, records uint64
-	seen := make(map[byte]bool, 2)
+	if len(commands) == 0 || len(commands) > nativeGraphCostBatchCommands {
+		t.Fatal("cost checkpoint command bound")
+	}
+	handle, cut := nativeGraphCostOpen(t, n, graphReadFresh, graphCut{})
+	n.all[2].call(t, processRequest{op: processSourceCertifiedClose, index: handle})
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	if err := drainGraphProcessMuxes(ctx, n.all); err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	cancel()
 	axis := graphGenesisBinding(t).Axis()
 	scope, err := temporal.All(axis)
 	if err != nil {
@@ -270,46 +312,171 @@ func nativeGraphCostRecords(t *testing.T, n *certifiedProcessNetwork, from *[2]u
 	if err != nil {
 		t.Fatal(err)
 	}
-
+	seen := make([]byte, len(commands))
+	var changes, records uint64
 	for g, leader := range n.leaders {
-		end := n.all[leader].call(t, processRequest{op: processStateOp}).applied
-		if end < from[g] || end-from[g] > 128 {
-			t.Fatal("cost per-operation retained range exceeds original128", from, end)
+		partition := uint64(3)
+		if g == 1 {
+			partition = 8
 		}
-		for index := from[g] + 1; index <= end; index++ {
-			r := n.all[leader].call(t, processRequest{op: processCostRecord, index: index})
-			var record nativeLifecycleRecord
-			if err := json.Unmarshal(r.aux, &record); err != nil || record.Index != index {
-				t.Fatal("actual cost CDC", err)
+		var certificate graphCertificate
+		for _, c := range cut.certificates {
+			if c.scope.partition == partition {
+				certificate = c
 			}
-			for _, change := range record.Changes {
-				if seen[change.Component] || !nativeGraphCostChangeMatches(spec, phase, fact, change, expectedScope) {
-					t.Fatal("exact cost CDC effect/before/after", phase, fact, change)
-				}
-				seen[change.Component] = true
-			}
-			for id, p := range n.groups[g].nodes {
-				got := p.call(t, processRequest{op: processEntryRecord, index: index})
-				if !bytes.Equal(got.outcome, record.Outcome) || !bytes.Equal(got.changes, record.CDC) {
-					t.Fatal("cost voter CDC/original mismatch", id, index)
-				}
-			}
-			if err := stream.Encode(record); err != nil {
-				t.Fatal(err)
-			}
-			records++
-			changes += uint64(len(record.Changes))
 		}
-		from[g] = end
+		end := certificate.sourceIndex
+		if end < from[g] || end-from[g] > uint64(len(commands)*128+16) {
+			t.Fatal("bounded checkpoint retained prefix", from[g], end)
+		}
+		for {
+			request := processRequest{op: processCostRecords, index: from[g], entity: end, data: []byte{1}}
+			response := n.all[leader].call(t, request)
+			page, err := nativeGraphCostDecodePage(response.aux, partition, from[g], certificate)
+			if err != nil {
+				t.Fatal("actual typed retained page", err)
+			}
+			request.data[0] = 0
+			for id, voter := range n.groups[g].nodes {
+				if id == leader {
+					continue
+				}
+				response := voter.call(t, request)
+				actual, err := nativeGraphCostDecodePage(response.aux, partition, from[g], certificate)
+				if err != nil {
+					t.Fatal("exact retained voter certificate boundary", id, err)
+				}
+				for i, original := range page.Records {
+					if !bytes.Equal(actual.Records[i].Outcome, original.Outcome) || !bytes.Equal(actual.Records[i].CDC, original.CDC) {
+						t.Fatal("cost raw voter original/CDC mismatch", id, original.Index)
+					}
+				}
+			}
+			for _, record := range page.Records {
+				if err := nativeGraphCostVerifyRecord(spec, commands, seen, record.nativeLifecycleRecord, expectedScope); err != nil {
+					t.Fatal("exact batched original CDC", err, record.Index)
+				}
+				if err := stream.Encode(record); err != nil {
+					t.Fatal(err)
+				}
+				records++
+				changes += uint64(len(record.Changes))
+			}
+			from[g] = page.Next
+			if page.Next == end {
+				break
+			}
+		}
 	}
-	want := uint64(1)
-	if phase == 4 {
-		want = 2
+	if err := nativeGraphCostComplete(commands, seen); err != nil {
+		t.Fatal("cost exact checkpoint command cardinality", err)
 	}
-	if changes != want {
-		t.Fatal("cost exact per-operation CDC cardinality", phase, fact, changes, want)
+	return cut, changes, records
+}
+
+// Low bits retain exact component cardinality; the two high bits separately
+// require every original manifest participant, even when its business CDC is empty.
+func nativeGraphCostComplete(commands []nativeGraphCostSample, seen []byte) error {
+	if len(commands) == 0 || len(commands) > nativeGraphCostBatchCommands || len(seen) != len(commands) {
+		return errInvalid
 	}
-	return changes, records
+	for i, command := range commands {
+		if command.phase < 1 || command.phase > 5 {
+			return errInvalid
+		}
+		want := byte(1 << byte(graphstate.Presence))
+		if command.phase == 4 {
+			want |= 1 << byte(graphstate.ScalarProperty)
+		}
+		if command.phase == 5 {
+			want = 1 << byte(graphstate.ScalarProperty)
+		}
+		if command.Cross {
+			if command.participants[0] == 0 {
+				return errInvalid
+			}
+			for j, partition := range command.participants {
+				if partition == 0 {
+					continue
+				}
+				if partition != 3 && partition != 8 || j > 0 && partition <= command.participants[j-1] {
+					return errInvalid
+				}
+				want |= 1 << (6 + j)
+			}
+		}
+		if seen[i] != want {
+			return errCorrupt
+		}
+	}
+	return nil
+}
+
+func nativeGraphCostVerifyRecord(spec nativeGraphCostSpec, commands []nativeGraphCostSample, seen []byte, record nativeLifecycleRecord, scope lifecycleAllScope) error {
+	if len(commands) == 0 || len(commands) > nativeGraphCostBatchCommands || len(seen) != len(commands) {
+		return errInvalid
+	}
+	// A zero-byte control CDC is not a canonical nonempty business envelope.
+	if len(record.CDC) == 0 {
+		if len(record.Changes)+len(record.Entities)+len(record.Lives)+len(record.Values) != 0 {
+			return errCorrupt
+		}
+		return nil
+	}
+	matched := -1
+	var bound outcome
+	var participantBit byte
+	for i, command := range commands {
+		var original outcome
+		var bit byte
+		if command.Cross {
+			status, err := decodeCrossStatus(record.Outcome)
+			if err != nil || status.phase != crossResolve || !status.commit || status.index != record.Index || status.ns != (namespace{graph: idalloc.GraphID{1}, partition: record.Partition}) || status.tx != command.tx || status.digest != command.digest || status.round != command.round {
+				continue
+			}
+			for j, partition := range command.participants {
+				if partition != 0 && partition == record.Partition {
+					bit = 1 << (6 + j)
+				}
+			}
+			if bit == 0 {
+				continue
+			}
+			original = outcome{ns: status.ns, kind: graphOperations, identity: status.tx, hash: status.digest, index: status.index, disposition: applied}
+		} else {
+			var err error
+			original, err = decodePartitionGraphOutcome(record.Outcome, namespace{graph: idalloc.GraphID{1}, partition: command.partition})
+			if err != nil || record.Partition != command.partition || original.identity != command.identity || original.hash != command.hash || original.index != command.index || record.Index != command.index || original.reason != reasonNone || original.disposition != applied {
+				continue
+			}
+		}
+		if matched >= 0 {
+			return errCorrupt
+		}
+		matched, bound, participantBit = i, original, bit
+	}
+	if matched < 0 || participantBit != 0 && seen[matched]&participantBit != 0 {
+		return errCorrupt
+	}
+	if len(record.Changes) == 0 {
+		logical, err := decodeTypedChangeEnvelope(record.CDC, bound, defaultMaterializerLimits(), true)
+		if err != nil || logical.nonempty() || len(record.Entities)+len(record.Lives)+len(record.Values) != 0 {
+			return errors.Join(errCorrupt, err)
+		}
+	}
+	command := commands[matched]
+	for _, change := range record.Changes {
+		if !nativeGraphCostChangeMatches(spec, command.phase, command.Fact, change, scope) || change.Component >= 6 {
+			return errCorrupt
+		}
+		bit := byte(1 << change.Component)
+		if seen[matched]&bit != 0 {
+			return errCorrupt
+		}
+		seen[matched] |= bit
+	}
+	seen[matched] |= participantBit
+	return nil
 }
 func nativeGraphCostChangeMatches(s nativeGraphCostSpec, phase, fact uint64, c nativeLifecycleChange, expectedScope lifecycleAllScope) bool {
 	if c.AllScope != expectedScope || len(c.Scope) == 0 || !c.After.Present || c.After.Null || c.After.Revision == 0 {
@@ -414,7 +581,7 @@ func runNativeGraphCost(t *testing.T, s nativeGraphCostSpec) {
 	t.Helper()
 	started := time.Now()
 	n := newNativeGraphCostNetwork(t, s)
-	result := nativeGraphCostResult{Version: 1, Engine: "native-raft", Spec: s, Deployment: "single-machine distributed: two three-voter durable process groups", Directory: n.dir, UsefulFacts: s.Facts, SetupNodes: 3, Creates: s.Facts, Updates: s.Facts}
+	result := nativeGraphCostResult{Version: 1, Runner: "certified-16-command-checkpoints-v2", CheckpointCommands: nativeGraphCostBatchCommands, Engine: "native-raft", Spec: s, Deployment: "single-machine distributed: two three-voter durable process groups", Directory: n.dir, UsefulFacts: s.Facts, SetupNodes: 3, Creates: s.Facts, Updates: s.Facts}
 	// Source records and observations are streamed, never accumulated per fact.
 	open := func(name string) (*os.File, *json.Encoder) {
 		f, err := os.OpenFile(filepath.Join(n.dir, name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
@@ -435,49 +602,51 @@ func runNativeGraphCost(t *testing.T, s nativeGraphCostSpec) {
 	for g, id := range n.leaders {
 		from[g] = n.all[id].call(t, processRequest{op: processStateOp}).applied
 	}
+	result.CDCFrom = from
 	for phase := uint64(1); phase <= 3; phase++ {
-		nativeGraphCostSubmit(t, n, phase, 0, false)
-		c, r := nativeGraphCostRecords(t, n, &from, records, s, phase, 0)
+		command := nativeGraphCostSubmit(t, n, phase, 0, false)
+		_, c, r := nativeGraphCostCheckpoint(t, n, &from, records, s, []nativeGraphCostSample{command})
 		result.CDCChanges += c
 		result.CDCRecords += r
 	}
 	result.SetupNanos = time.Since(started).Nanoseconds()
 	var old graphCut
 	for _, phase := range []uint64{4, 5} {
+		commands := make([]nativeGraphCostSample, 0, nativeGraphCostBatchCommands)
+		var cut graphCut
 		for i := uint64(0); i < s.Facts; i++ {
 			sample := nativeGraphCostSubmit(t, n, phase, i, s.cross(i))
 			result.WritesNanos += sample.ElapsedNanos
 			if err := samples.Encode(sample); err != nil {
 				t.Fatal(err)
 			}
-			c, r := nativeGraphCostRecords(t, n, &from, records, s, phase, i)
-			result.CDCChanges += c
-			result.CDCRecords += r
 			if phase == 4 {
 				result.CompletedCreates++
 			} else {
 				result.CompletedUpdates++
 			}
-			if (i+1)%100 == 0 || i+1 == s.Facts {
-				stats := make(map[uint64][statCount]uint64, 6)
-				for id, peer := range n.all {
-					stats[id] = peer.call(t, processRequest{op: processStateOp}).stats
+			commands = append(commands, sample)
+			if len(commands) == nativeGraphCostBatchCommands || i+1 == s.Facts {
+				start := time.Now()
+				var c, r uint64
+				cut, c, r = nativeGraphCostCheckpoint(t, n, &from, records, s, commands)
+				result.CheckpointNanos += time.Since(start).Nanoseconds()
+				result.CDCChanges += c
+				result.CDCRecords += r
+				commands = commands[:0]
+				if (i+1)%256 == 0 || i+1 == s.Facts {
+					progress := struct {
+						Phase, CompletedCreates, CompletedUpdates, CDCChanges, CDCRecords uint64
+						ElapsedNanos                                                      int64
+					}{phase, result.CompletedCreates, result.CompletedUpdates, result.CDCChanges, result.CDCRecords, time.Since(started).Nanoseconds()}
+					wire, err := json.Marshal(progress)
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Log("native-cost-progress", string(wire))
 				}
-				progress := struct {
-					Phase                                                      uint64
-					CompletedCreates, CompletedUpdates, CDCChanges, CDCRecords uint64
-					ElapsedNanos                                               int64
-					Voters                                                     map[uint64][statCount]uint64
-				}{phase, result.CompletedCreates, result.CompletedUpdates, result.CDCChanges, result.CDCRecords, time.Since(started).Nanoseconds(), stats}
-				wire, err := json.Marshal(progress)
-				if err != nil {
-					t.Fatal(err)
-				}
-				t.Log("native-cost-progress", string(wire))
 			}
 		}
-		handle, cut := nativeGraphCostOpen(t, n, graphReadFresh, graphCut{})
-		n.all[2].call(t, processRequest{op: processSourceCertifiedClose, index: handle})
 		if phase == 4 {
 			old = cut
 			var err error
@@ -492,6 +661,7 @@ func runNativeGraphCost(t *testing.T, s nativeGraphCostSpec) {
 				t.Fatal(err)
 			}
 			start := time.Now()
+			result.CDCThrough = from
 			nativeGraphCostCheck(t, n, s, old, 5, observations)
 			nativeGraphCostCheck(t, n, s, cut, 6, observations)
 			result.VerificationNanos = time.Since(start).Nanoseconds()
@@ -501,11 +671,9 @@ func runNativeGraphCost(t *testing.T, s nativeGraphCostSpec) {
 		t.Fatal("exact useful CDC cardinality", result.CDCChanges, 3+3*s.Facts)
 	}
 	for id := uint64(1); id <= 6; id++ {
-		p := n.all[id]
-		state := p.call(t, processRequest{op: processStateOp})
-		leader := n.all[n.leaders[boolIndex(id > 3)]].call(t, processRequest{op: processStateOp})
-		if state.applied != leader.applied || !bytes.Equal(state.image, leader.image) || state.stats[statViews] != 0 || state.stats[statPinnedBytes] != 0 {
-			t.Fatal("cost final voter/root/owner mismatch", id)
+		state := n.all[id].call(t, processRequest{op: processStateOp})
+		if state.stats[statViews] != 0 || state.stats[statPinnedBytes] != 0 {
+			t.Fatal("cost final owner residue", id)
 		}
 	}
 	for id := uint64(1); id <= 6; id++ {
@@ -535,13 +703,20 @@ func runNativeGraphCost(t *testing.T, s nativeGraphCostSpec) {
 	t.Log("native cost actual result", filepath.Join(n.dir, "native-cost-result.json"))
 }
 func TestNativeGraphCostSmallActualProcesses(t *testing.T) {
-	for _, cross := range []uint64{0, 100} {
-		t.Run(fmt.Sprint(cross), func(t *testing.T) {
-			runNativeGraphCost(t, nativeGraphCostSpec{Version: 1, Facts: 2, CrossPercent: cross, Writers: 1})
+	for _, cell := range []struct {
+		name         string
+		facts, cross uint64
+	}{{"0", 17, 0}, {"100", 17, 100}, {"two-facts-local", 2, 0}, {"two-facts-cross", 2, 100}} {
+		t.Run(cell.name, func(t *testing.T) {
+			runNativeGraphCost(t, nativeGraphCostSpec{Version: 1, Facts: cell.facts, CrossPercent: cell.cross, Writers: 1})
 		})
 	}
 }
+
 func TestNativeGraphCostCell(t *testing.T) {
+	if testing.Short() {
+		t.Skip("explicit cost cell is excluded from routine short CI")
+	}
 	spec, err := nativeGraphCostSpecFromEnv()
 	if err != nil {
 		t.Fatal(err)
