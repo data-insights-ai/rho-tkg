@@ -210,13 +210,18 @@ class RealGitSelection(unittest.TestCase):
         self.assertNotIn("TestUnrelated", names)
 
     def test_reviewed_paired_fixture_types_have_finite_real_parent_scope(self):
-        for name in ("paired_graph_fault_harness_test.go", "paired_graph_snapshot_harness_test.go"):
+        fixtures = {
+            "paired_graph_fault_harness_test.go": {"TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", "TestNativePairedGraphFaultNoOpUsesActualRetainedNormalEntry"},
+            "paired_graph_snapshot_harness_test.go": {"TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts"},
+            "prepared_lock_p06_harness_test.go": {"TestPreparedLockP06FirstYESLeaderKillOriginalRecovery"},
+            "coordinator_loss_p03_harness_test.go": {"TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply"},
+        }
+        for name, parents in fixtures.items():
             with self.subTest(fixture=name):
                 path = self.directory / name
                 path.write_text("package graphapply\ntype pairedFixture struct{}\n")
                 names = CI.graph_selection(self.directory, [path], {path: [("type", "pairedFixture")]})
-                self.assertIn("TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", names)
-        self.assertIn("TestNativePairedGraphFaultNoOpUsesActualRetainedNormalEntry", CI.FIXTURE_COMPAT["paired_graph_fault_harness_test.go"])
+                self.assertEqual(set(names), parents | set(CI.GRAPH_COMPAT))
 
     def test_cost_fixture_guard_preserves_changed_large_parent(self):
         fixture = self.directory / "native_graph_cost_harness_test.go"
