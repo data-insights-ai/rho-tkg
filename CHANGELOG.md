@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.51.8] - 2026-10-14
+
 ### Added
 
 - **Batched bitemporal point read** (backlog 57, sigma-tkgd R1): `g.Temporal().NodesAtTxByIDs(ids, validAt, txAt)` /

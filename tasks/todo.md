@@ -1,4 +1,4 @@
-# todo — v4 main ledger (state 2026-10-14, main at v4.51.7)
+# todo — v4 main ledger (state 2026-10-14, main at v4.51.8)
 
 The first read is `HANDOVER.md` (open requests, next steps); full specs of open work are in `tasks/backlog.md`; what shipped is
 `CHANGELOG.md`; the rules are `tasks/lessons.md` (digest at the top). This file keeps the user requests with their state, one line
@@ -34,7 +34,7 @@ per release, and the open queue. Older wave ledgers (per-step red tests, merges,
 | 24 | "And why is the ci pipeline always failing?" (2026-10-13) | done — GitHub CI green on e23099f5 (all 7 race parts, test, coverage, security): GitHub CI `test` job (make test-race on 4-vCPU ubuntu-latest) hits Go's 10-min per-package timeout in pkg/graph, internal/core, store/memory since 2026-10-10 (last green 0a1d1ff6); local ci-docker on 32 cores passes, so it went unseen. Fix: shard the race job (port v5 `scripts/test-race.sh` + matrix), cut the slowest -short oracles; release gate gains "GitHub CI green" | `gh run list --branch main --workflow CI` green |
 | 25 | "There should be a separate agent which analyses what is necessary to have the V5 fully working for ai SOC and sigma tkgd" (2026-10-14) | done 2026-10-14 — v5 not usable by consumers yet (public API = pkg/types+pkg/temporal only); rho needs V2-pkg4, V3, V4+compat, V6, V7 | report file + per-consumer gap table with file:line evidence |
 | 26 | ai-soc-main (for René, 2026-10-14): "is rho-tkg ready for scaling?" (6 questions) | done — v4.51.6 + v4.51.7 (56); answered by message 2026-10-14 + correction; follow-up: backlog 10a built + backlog 22 (3-phase install; 10a review left a narrow write-mid-build gap main covers) (sequential-scan rel temporal index rebuild: crash reopen + cold→warm promotion, 29–54 min per day shard) | message sent; 10a: in code? `pkg/graph/store/badger/badgerstore_reltype_temporal_index.go:79` buildRelTypeTemporalIndex (point read + history prefix per rel); red test `TestRelTemporalIndexRebuildSequential` (rows read per rel ≤ 1 range pass; equals per-rel build incl. deleted, re-imported, history-only, concurrent write); proof: test green + bench rels/s before/after |
-| 27 | sigma-tkgd (for René, 2026-10-14): "R1 batched read of one version per ID at (validAt, txAt); R2 tiered tx-membership sidecars + *From acceleration; R3 O(1) shard routing by mint instant" | open — backlog 57 (R1), 59 (R3) building in parallel; 58 (R2) after 59 | 57: red `TestNodesAtTxByIDsMatchesNodeAtTx` (unknown, deleted, not valid at validAt, pin above clock, duplicates, empty, rels) in `pkg/graph/temporal` + core; 59: red `TestTimestampToEventShardBinarySearch` (boundaries, gap, before first, after last → hot) |
+| 27 | sigma-tkgd (for René, 2026-10-14): "R1 batched read of one version per ID at (validAt, txAt); R2 tiered tx-membership sidecars + *From acceleration; R3 O(1) shard routing by mint instant" | 57 + 59 done — v4.51.8; 58 (R2) building | 57: red `TestNodesAtTxByIDsMatchesNodeAtTx` (unknown, deleted, not valid at validAt, pin above clock, duplicates, empty, rels) in `pkg/graph/temporal` + core; 59: red `TestTimestampToEventShardBinarySearch` (boundaries, gap, before first, after last → hot) |
 
 ## Releases (one line each; all gates `make ci-docker` exit 0, consumers build + vet)
 
@@ -59,6 +59,7 @@ per release, and the open queue. Older wave ledgers (per-step red tests, merges,
 | v4.51.5 | (tag) | rel retention purge + per-type gate (21), state column cuts for pinned counts/scans (28), open-addressing history tables (41), CI race split, memory history cursor O(page + log n) |
 | v4.51.6 | (tag) | sequential rel temporal index rebuild 3.9–4.5× (10a), create folds writes made during the build (22), re-create of an uncovered ID folds its history (rel + node) |
 | v4.51.7 | (tag) | node temporal envelope holes on badger + memory (56): PutNodeVersion, create publish-before-fold, label re-add, memory re-create, on-disk orphan/missing rows after a crash, memory create concurrent-map fatal |
+| v4.51.8 | (tag) | batched point read NodesAtTxByIDs / RelsAtTxByIDs (57, sigma R1), tiered shard routing by binary search (59, sigma R3) |
 
 ## Open queue (specs in `tasks/backlog.md`)
 
