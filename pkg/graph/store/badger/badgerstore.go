@@ -473,7 +473,7 @@ type Store struct {
 	relTypeEpochs  [relTypeEpochStripes]atomic.Uint64
 	relEpochCoarse atomic.Uint64
 	// relAppendDeltas records pure inserts per rel type since that type's snapshot
-	// was built, letting a read EXTEND instead of rebuilding (measured 171x at 10k).
+	// was built, letting a read EXTEND instead of rebuilding.
 	columnsOnDisk   bool
 	relAppendMu     sync.Mutex
 	relAppendDeltas map[uint16]*relAppendDelta
@@ -1530,11 +1530,10 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 							idx.AddEntityKeys(rawID, def.PropertyKey, n.ForEachPropertyIndexKey)
 							continue
 						}
-						// Disk mode: do NOT populate idx.Entries/numBuckets
-						// (the whole point is to keep entries off the RAM
-						// heap) — collect the one-time backfill op instead,
-						// only when this directory hasn't been backfilled
-						// before (propIdxNeedsBuild).
+						// Disk mode: do NOT populate idx.Entries/numBuckets (entries stay
+						// off the RAM heap); collect the one-time backfill op instead,
+						// only when this directory has not been backfilled before
+						// (propIdxNeedsBuild).
 						valueKey, found := n.IndexablePropertyValueKey(def.PropertyKey)
 						if found && propIdxNeedsBuild {
 							if op, ok := bs.propertyIndexDiskOp(def.PropertyKey, valueKey, rawID, writeOpSet); ok {

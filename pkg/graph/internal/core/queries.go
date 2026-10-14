@@ -31,9 +31,9 @@ func (c *Core) lookupRelTypeQueryToken(typeName string) (uint16, bool) {
 // Get lives in node_delete.go / relationship_delete.go. Every public read
 // has a paired (*Core).*Locked helper that runs the body without c.mu; the
 // public method wraps it in c.mu.RLock, the tx mirror (tx_consistent_reads.go)
-// calls it under tx.mu because BeginTx already holds c.mu.Lock and RWMutex is
-// not reentrant (lesson 31). Input validation stays at the public layer so
-// both paths check alike.
+// calls it under tx.mu and its own brief c.mu.RLock (lockActiveCore), because
+// RWMutex is not reentrant (lesson 31). Input validation stays at the public
+// layer so both paths check alike.
 
 // ByLabel returns nodes with the label (resolved from string), with optional
 // pagination; nil if the label is not registered. With a temporal filter
@@ -2132,7 +2132,7 @@ func (c *Core) countByTypeLocked(typeName string) (int, error) {
 	return c.relCountByType(tok)
 }
 
-// (AllLabelCounts and AllRelTypeCounts moved to StatOps in stats.go.)
+// --- Relationship property-index scans ---
 
 // relRangeScanner is the OPTIONAL store capability behind
 // RelOps.ForEachByTypePropertyRange — the relationship mirror of

@@ -12,7 +12,7 @@ import (
 )
 
 // =============================================================================
-// Cascade timeline edit — append-only (since 994df82, 2026-06-12)
+// Cascade timeline edit — append-only
 //
 // SetNodeVersionInterval / SetRelVersionInterval record, at transaction time
 // `now`, the belief "[newVF, newVT) is `props` (a patch)" — `now` is the clock,
@@ -29,10 +29,9 @@ import (
 //     held at newVT, so the timeline after the target is unchanged (none when
 //     newVT is open).
 //
-// How an existing row [vf, vt) relates to the target is still described with
-// the old classification names, but now only as vocabulary for what the
-// appended rows do to the READ result — the stored row is untouched in every
-// case:
+// How an existing row [vf, vt) relates to the target is described with these
+// classification names, as vocabulary for what the appended rows do to the READ
+// result — the stored row is untouched in every case:
 //
 //   - keep            no overlap; reads unchanged
 //   - closeRight      vf < newVF < vt — reads of [newVF, vt) see the pieces
@@ -49,10 +48,7 @@ import (
 // (resolveNodeVersionAt). Pins before `now` therefore reconstruct the
 // pre-correction belief exactly, pins at or after it the corrected one. Every
 // row is an ordinary half-open span, including a one-tick [t, t+1) piece:
-// there is no sentinel width (the pre-994df82 in-place cascade marked an
-// eclipsed row as ValidTo == ValidFrom+1 and the resolvers skipped that
-// shape; nothing has written it since, and the skip was removed because it
-// hid legitimate one-tick rows).
+// there is no sentinel width, and the resolvers skip no shape.
 //
 // Integrity: TemporalMetadata is NOT part of the content hash (see
 // integrity.computeNodeHashWithBuffer). Each appended row gets a fresh hash and
@@ -68,8 +64,7 @@ import (
 // entity's chain, and the base is always a member of that chain. Any change to
 // how pieces or bases are chosen must re-run the full bitemporal oracle fuzz
 // harness (bitemporaloracle_test.go / bitemporaloracle_commitwindow_test.go) —
-// 10b's reverted fix attempts prove this file's bounds logic breaks in
-// non-obvious multi-cascade ways.
+// this file's bounds logic breaks in non-obvious multi-cascade ways (10b).
 //
 // "Current" slot: the newest belief among rows whose OWN interval is open
 // (ValidTo == 0) takes the store's current slot; the prior current moves to
@@ -201,13 +196,12 @@ func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT ty
 	// BACKLOG 10b: the resumption row's ValidTo is stamped EXPLICITLY here,
 	// via nodeResumptionEnd — the smallest own-interval boundary (any row's
 	// own vStart or vEnd) in the PRE-correction chain that is strictly after
-	// newVT. This is NOT "the positionally-next row after src" (that was
-	// tried and is UNSAFE on an already-cascaded preChain: src can be chosen
+	// newVT. This is NOT "the positionally-next row after src" (that is
+	// UNSAFE on an already-cascaded preChain: src can be chosen
 	// by BELIEF, not position, so the row positionally after it in a
 	// valid-from-sorted array can have an own vStart earlier than newVT
-	// itself, producing an inverted [newVT, earlier) interval — caught by the
-	// oracle harness during this fix's own verification). Own-interval bounds
-	// make every row's own [vStart, vEnd) a fixed, position-independent
+	// itself, producing an inverted [newVT, earlier) interval). Own-interval
+	// bounds make every row's own [vStart, vEnd) a fixed, position-independent
 	// interval, so the set of rows covering any t is piecewise-constant
 	// between consecutive own-boundary points — meaning the belief-winner
 	// (src) provably cannot change before the NEXT such boundary across ANY
@@ -483,7 +477,7 @@ func correctionCuts(bounds []types.Instant, newVF, newVT types.Instant) []types.
 // ascending-version preChain (the resolver sorts in place and classifies by
 // input order — lesson 73). Where NO version is valid (a gap: before the
 // entity's first valid-from, after a close, …) there is no then-valid state
-// to patch, so the piece keeps the pre-fix base: the template (the most
+// to patch, so the piece's base is the template (the most
 // recent version). That is a choice, not a derivation — a gap piece asserts a
 // state the entity was never believed to have, and the most recent state is
 // the least surprising content for it.

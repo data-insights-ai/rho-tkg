@@ -422,7 +422,7 @@ func (c *Core) sortNodeChainForResolve(chain []*types.Node) bool {
 // versionVisibleAtTx reports whether a version participates in valid-time
 // resolution as of transaction time txAt: the version must have been
 // RECORDED by then (TxFrom <= txAt). txAt == 0 means "no TX filter" (return
-// true unconditionally — preserves pre-bitemporal behaviour). A version
+// true unconditionally). A version
 // without TemporalMetadata is treated as visible to all TX times.
 //
 // Deliberately NOT bounded by TxTo (lesson 43). TxTo marks when the version
@@ -1041,14 +1041,13 @@ func (c *Core) forEachRelHistoryIDByDepthTrusted(depth storepkg.ShardDepth, fn f
 // greater than zero; a single one-sided or non-positive bound is treated as "no
 // filter" so the call falls through to the non-temporal fast path. Without this
 // guard the interval predicate `vStart < end && (vEnd == 0 || vEnd > start)`
-// collapses (e.g. with end <= 0) and rejects every entity, regressing
+// collapses (e.g. with end <= 0) and rejects every entity, which would break
 // AllNodes(storepkg.QueryOpts{ValidStart: t}) and similar non-active interval
 // callers.
 //
-// Implemented as a free function rather than a method on storepkg.QueryOpts because
-// storepkg.QueryOpts is now a type alias to internal/store.storepkg.QueryOpts after the
-// v3.1.17 restructure, and Go forbids defining methods on a non-local
-// aliased type.
+// Implemented as a free function rather than a method on storepkg.QueryOpts
+// because storepkg.QueryOpts is a type alias and Go forbids defining methods on
+// a non-local aliased type.
 func hasTemporalFilter(opts storepkg.QueryOpts) bool {
 	if opts.ValidAt != 0 {
 		return true

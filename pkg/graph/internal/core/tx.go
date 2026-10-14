@@ -73,7 +73,7 @@ type txSnapshotKey struct {
 }
 
 // GraphTx is a mutation transaction with snapshot-based rollback.
-// Path B (v4.1.0+): it holds c.txMu for its entire lifetime — serializing
+// It holds c.txMu for its entire lifetime — serializing
 // tx-vs-tx and tx-vs-batch — but NOT c.mu (the graph write lock) for its
 // whole duration. Each method takes c.mu briefly around its own body
 // (lockActiveCore()/lockActiveCoreWrite()), so concurrent standalone
@@ -144,11 +144,10 @@ type GraphTx struct {
 // doorCtx returns the context a GraphTx mutation method should pass to its
 // underlying *Internal helper: withScopeToken(ctx, tx.scopeToken) when the
 // tx is using the BACKLOG 11f token-routed mechanism (tx.g.scopedChangeLog
-// != nil), else a plain context.Background() — identical to every call site
-// before this mechanism existed. Every GraphTx mutation method that
-// previously passed a bare context.Background() to its *Internal call now
-// passes tx.doorCtx() instead; this is the ONE place that decision is made,
-// so no call site can drift out of sync with BeginTx's capability check.
+// != nil), else a plain context.Background(). Every GraphTx mutation method
+// passes tx.doorCtx() to its *Internal call; this is the ONE place that
+// decision is made, so no call site can drift out of sync with BeginTx's
+// capability check.
 func (tx *GraphTx) doorCtx() context.Context {
 	if tx.g.scopedChangeLog != nil {
 		return withScopeToken(context.Background(), tx.scopeToken)
@@ -179,27 +178,25 @@ func (tx *GraphTx) doorCtxFrom(ctx context.Context) context.Context {
 //
 // Inside the tx, each mutation/read method takes a brief c.mu.RLock
 // around its body so the *Internal/*Locked helpers see the same lock
-// context the standalone path provides. This closes the v3.4/v4.0.x
-// deadlock class: g.Nodes.ByLabel, g.Temporal.NodesAt, etc., called
-// inside an open tx no longer hang waiting for c.mu.RLock against a
-// writer that doesn't exist anymore.
+// context the standalone path provides, so g.Nodes.ByLabel,
+// g.Temporal.NodesAt, etc., called inside an open tx cannot deadlock on
+// c.mu.RLock (lesson 31).
 //
 // Events are buffered into c.txEventBuffer (still a global field —
 // c.txMu serialization keeps it single-writer) and published on Commit
 // (or discarded on Rollback). Standalone mutations use dispatchEvent
 // with a per-call publisher and never touch c.txEventBuffer.
 //
-// Isolation semantics (v4.1.0+): serialized against other transactions and
+// Isolation semantics: serialized against other transactions and
 // batches only. Tx mutations are write-through: a concurrent standalone
 // reader observes uncommitted tx rows before Commit. Entity locks are taken
 // and released per call by the *Internal mutation paths, not held until
 // Commit, so a standalone write can land on an entity between two tx calls;
 // Rollback restores the pre-transaction snapshot and overwrites that write.
 // Reads inside the tx may observe changes committed by concurrent standalone
-// ops. This is the price of the v3.4 -> v4.1.0 relaxation documented in
-// CHANGELOG [4.1.0] and docs/architecture.md ("Transaction isolation — what
-// v4 actually guarantees"). Code that needs isolation must serialize its
-// writers externally or use a batch.
+// ops. See docs/architecture.md ("Transaction isolation — what v4 actually
+// guarantees"). Code that needs isolation must serialize its writers
+// externally or use a batch.
 func (c *Core) BeginTx() (*GraphTx, error) {
 	c.txMu.Lock()
 	if c.closed.Load() {
@@ -536,11 +533,10 @@ func (tx *GraphTx) lockActive() error {
 //   - ErrTxDone if Commit/Rollback already ran
 //   - ErrGraphClosed if the graph has been closed since BeginTx
 //
-// This is the v4.1.0 path-B pattern for every tx mutation and read mirror:
-// hold c.mu.RLock briefly so the *Internal/*Locked helpers run with the
-// same lock context the standalone callers provide via runUnderRLock /
-// readUnderRLock, but DON'T hold c.mu.Lock for the tx lifetime (that's
-// what deadlocked g.Nodes.ByLabel inside a tx in v4.0.x).
+// This is the pattern for every tx mutation and read mirror: hold c.mu.RLock
+// briefly so the *Internal/*Locked helpers run with the same lock context the
+// standalone callers provide via runUnderRLock / readUnderRLock, but never
+// hold c.mu.Lock for the tx lifetime (lesson 31).
 func (tx *GraphTx) lockActiveCore() error {
 	if err := tx.lockActive(); err != nil {
 		return err
@@ -604,9 +600,9 @@ func (tx *GraphTx) endExclusiveWrite() {
 //     routing is decided per-call by an explicit argument — never a shared
 //     flag — a concurrent standalone mutation (also c.mu.RLock) can never
 //     have its record misrouted into this tx's buffer, so a shared RLock is
-//     sufficient. This is the actual point of BACKLOG 11f: a change-log-
-//     enabled tx no longer blocks concurrent standalone writers or
-//     concurrent-mode (Lanes:N) ingest for the duration of each mutation.
+//     sufficient. So a change-log-enabled tx does not block concurrent
+//     standalone writers or concurrent-mode (Lanes:N) ingest for the duration
+//     of each mutation.
 //   - Legacy (tx.g.txLogScope != nil, scopedChangeLog nil — store doesn't
 //     implement the full BACKLOG 11f contract): takes c.mu.Lock (EXCLUSIVE)
 //     and turns on record diversion (SetLogDivert) — so for the duration of
@@ -798,14 +794,11 @@ func (tx *GraphTx) checkpointRegistriesOnCommit() error {
 	defer tx.g.registryMu.Unlock()
 	// PERSIST WHEN THERE IS SOMETHING TO PERSIST, which is not the same as "a write happened".
 	//
-	// The previous condition checkpointed on every mutation-capable commit. Since
-	// SavePropertyKeyRegistry fsyncs, that was one full disk sync per write transaction
-	// whether or not any registry had changed -- and a workload whose transactions intern no
-	// new tokens (the steady state of any ingest, once its labels and property keys exist)
-	// paid a sync per commit forever. Measured on a signal-ingestion workload: 1.000 fsync per
-	// signal at 12.5ms, against ~30 tokens interned in total across the whole run.
+	// SavePropertyKeyRegistry fsyncs, so checkpointing on every mutation-capable commit would
+	// cost one full disk sync per write transaction whether or not any registry had changed;
+	// the steady state of any ingest interns no new tokens.
 	//
-	// The two things that genuinely need the checkpoint are kept:
+	// The two things that genuinely need the checkpoint:
 	//   - this transaction interned a token, so a row it wrote may reference one that is not
 	//     yet durable; and
 	//   - a previous checkpoint FAILED, which is what registryDirty records and what the
@@ -1429,7 +1422,7 @@ func (tx *GraphTx) restoreRegistries() error {
 // =============================================================================
 
 // GetNode reads a node by ID within the transaction.
-// Safe under v4.1.0 Path B: the tx does NOT hold c.mu for its whole lifetime
+// The tx does NOT hold c.mu for its whole lifetime
 // (only per-call, see lockActiveCore) — this method takes c.mu.RLock briefly,
 // like every other tx read mirror, so it observes ErrGraphClosed instead of
 // racing a concurrent Close (BACKLOG 11a).
@@ -1450,7 +1443,7 @@ func (tx *GraphTx) GetNode(id types.NodeID) (*types.Node, error) {
 }
 
 // GetRelationship reads a relationship by ID within the transaction.
-// Safe under v4.1.0 Path B: the tx does NOT hold c.mu for its whole lifetime
+// The tx does NOT hold c.mu for its whole lifetime
 // (only per-call, see lockActiveCore) — this method takes c.mu.RLock briefly,
 // like every other tx read mirror, so it observes ErrGraphClosed instead of
 // racing a concurrent Close (BACKLOG 11a).

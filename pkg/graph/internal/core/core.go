@@ -205,11 +205,8 @@ type Core struct {
 	// out of scope for this flip).
 	scopedChangeLog storepkg.ScopedTxCapability
 	// Metadata facet (ADR-0003) — durable arbitrary-KV + atomic history
-	// compaction. Both are bare optional capabilities (no wrapper-visibility
-	// dance): the store is fixed after New, so a nil handle is exactly the
-	// pre-consolidation "_, ok := c.store.(X) → !ok" decline, byte-for-byte.
-	// Resolved once here instead of at ~23 scattered call sites (the largest
-	// ad-hoc-assert sprawl STAGE 0 identified).
+	// compaction. Both are bare optional capabilities: the store is fixed after
+	// New, so a nil handle means the store declines the capability.
 	metaKV storepkg.MetaKVCapability
 	// hashesOff is Config.DisableIntegrityHashes (backlog 61): no content
 	// hash is computed or stored (integrity_switch.go).
@@ -276,13 +273,12 @@ type Core struct {
 	mu shardedRWMutex
 	// txMu serializes transaction/batch lifecycles (BeginTx → Commit/Rollback
 	// and BatchExecute). Held for the entire tx/batch lifetime instead of
-	// c.mu.Lock (which was held in v3.4 / v4.0.x). Standalone mutations and
-	// reads acquire c.mu.RLock and proceed concurrently with an open tx —
-	// only entity-level conflicts now block, not the whole graph. This
-	// closes the "read accessor inside a tx deadlocks against c.mu" bug
-	// class introduced in v3.4 (see lesson 31). The tx code path takes a
-	// brief c.mu.RLock around each mutation/read so the *Internal/*Locked
-	// helpers run with a non-zero lock context they expect.
+	// c.mu.Lock. Standalone mutations and reads acquire c.mu.RLock and proceed
+	// concurrently with an open tx, so only entity-level conflicts block. This
+	// avoids the "read accessor inside a tx deadlocks against c.mu" bug class
+	// (lesson 31). The tx code path takes a brief c.mu.RLock around each
+	// mutation/read so the *Internal/*Locked helpers run with the lock context
+	// they expect.
 	txMu sync.Mutex
 	// openTxStart is the start instant (GraphTx.StartInstant) of the open
 	// transaction, 0 when none is open: stored by BeginTx before it returns
@@ -472,13 +468,13 @@ var (
 	ErrValueTooLarge     = errors.New("graph: property value too large")
 	ErrNameTooLong       = errors.New("graph: name too long")
 	// ErrCommitClockExhausted rejects a write once transaction time has reached
-	// MaxInt64. The clock saturates rather than wrapping (wrapping made every
-	// later TxFrom negative), but a saturated clock hands out the SAME instant
-	// repeatedly, so two versions would be stamped identically and the superseded
-	// row's [TxFrom, TxTo) would collapse to zero width — invisible, TxFrom/TxTo
-	// being outside the integrity hash. Refusing the write is the only outcome
-	// that is neither silent nor wrong. Unreachable in practice: every untrusted
-	// door bounds its stamps (v4.24.5-9), so this is defence in depth.
+	// MaxInt64. The clock saturates rather than wrapping, but a saturated clock
+	// hands out the SAME instant repeatedly, so two versions would be stamped
+	// identically and the superseded row's [TxFrom, TxTo) would collapse to zero
+	// width — invisible, TxFrom/TxTo being outside the integrity hash. Refusing
+	// the write is the only outcome that is neither silent nor wrong. Unreachable
+	// in practice: every untrusted door bounds its stamps, so this is defence in
+	// depth.
 	ErrCommitClockExhausted = errors.New("graph: commit clock exhausted (transaction time reached its maximum)")
 	// ErrForeignStampImplausible rejects a cross-machine transaction stamp that
 	// is implausibly far past this host's clock. RecordForeignIncoming stores
@@ -761,11 +757,8 @@ type Config struct {
 	// DurableCommit the mutations of a commit group are synced together at the
 	// group's durable commit instead (see DurableCommit). Power-loss durability
 	// of a commit group needs both flags, on the badger and sharded stores
-	// (badger.Config / sharded.Config SyncWrites): DurableCommit + SyncWrites
-	// cost 13.5 ms per 530-op group against 12.5 ms for DurableCommit alone
-	// (backlog 15, tasks/evidence/aisoc-commit-cost/52-bench.txt). The tiered
-	// store has no SyncWrites: its DurableCommit groups are process-crash safe
-	// only. Ignored
+	// (badger.Config / sharded.Config SyncWrites). The tiered store has no
+	// SyncWrites: its DurableCommit groups are process-crash safe only. Ignored
 	// when Store is provided explicitly (set it on the store's own config).
 	SyncWrites           bool
 	Compression          options.CompressionType
@@ -774,8 +767,8 @@ type Config struct {
 	// badger-backed store constructed from BadgerDir/BadgerInMemory.
 	// 0 means the store default (10,000). Size it to the scan working set:
 	// label scans over more nodes than the cache holds decode every miss
-	// from badger (~3µs/row) instead of hitting the cache (~0.1µs/row).
-	// Ignored when Store is provided explicitly.
+	// from badger instead of hitting the cache. Ignored when Store is provided
+	// explicitly.
 	CacheCapacity int
 	// CacheBudgetBytes bounds each entity cache (nodes, rels) of the
 	// badger-backed store by estimated resident BYTES instead of entry
@@ -796,15 +789,13 @@ type Config struct {
 	ResidentCache bool
 	// LabelIndexOnDisk keeps the badger-backed store's label→nodes index
 	// out of RAM: label scans iterate the persisted label keyspace instead
-	// of an in-memory map (~50-100B per label entry — the memory ceiling
-	// at hundreds of millions of nodes). Existing data directories need no
-	// migration. Trade-off: label snapshots cost a disk prefix iteration.
+	// of an in-memory map. Existing data directories need no migration.
+	// Trade-off: label snapshots cost a disk prefix iteration.
 	// Ignored when Store is provided explicitly.
 	LabelIndexOnDisk bool
 	// AdjacencyIndexOnDisk is the adjacency sibling of LabelIndexOnDisk:
 	// outgoing/incoming snapshots come from the persisted adjacency
-	// keyspaces instead of the in-memory maps (~2 map entries per
-	// relationship — the largest index maps). No migration needed.
+	// keyspaces instead of the in-memory maps. No migration needed.
 	// Ignored when Store is provided explicitly.
 	AdjacencyIndexOnDisk bool
 	// PropertyIndexOnDisk is the property-index sibling of LabelIndexOnDisk:
@@ -849,9 +840,8 @@ type Config struct {
 	// HistoryDeltaEncoding turns ON anchor+delta storage for version-history rows
 	// on the badger backend (and tiered/sharded shards) — see
 	// badger.Config.HistoryDeltaEncoding. A full ANCHOR every 16 versions, deltas
-	// in between carrying only changed properties vs the interval anchor (~39% less
-	// history storage post-Snappy on wide history-heavy entities; ADR-0009 / B6).
-	// Reads accept both full and delta rows, so the flag is toggleable on an
+	// in between carrying only changed properties vs the interval anchor
+	// (ADR-0009 / B6). Reads accept both full and delta rows, so the flag is toggleable on an
 	// existing store with no migration. Default false (opt-in while it soaks);
 	// ignored when Store is supplied explicitly, and a no-op on the memory backend
 	// (which keeps full snapshots as the differential oracle).
@@ -968,23 +958,20 @@ type Config struct {
 	// a group whose flush filled the memtable (or a value-log file) can stay
 	// unsynced after the return — safe against a process crash, not a power
 	// loss. Power-loss durability needs DurableCommit + SyncWrites on a badger
-	// or sharded store: measured 13.5 ms per 530-op group against 12.5 ms for
-	// DurableCommit alone (backlog 15, tasks/evidence/aisoc-commit-cost/
-	// 52-bench.txt). The tiered store has no SyncWrites, so its groups keep
-	// that power-loss limit. With
-	// SyncWrites on a badger store a group costs one synced WriteBatch, not
-	// one sync per mutation: its mutations (each GraphTx mutation, the Batch.Execute window,
-	// a Rollback) run under the exclusive graph lock with the per-mutation
+	// or sharded store (backlog 15). The tiered store has no SyncWrites, so its
+	// groups keep that power-loss limit. With SyncWrites on a badger store a
+	// group costs one synced WriteBatch, not one sync per mutation: its
+	// mutations (each GraphTx mutation, the Batch.Execute window, a Rollback)
+	// run under the exclusive graph lock with the per-mutation
 	// flush held (store.MutationFlushHoldCapability), the held buffer flushes
 	// in steps at MaxPendingWrites, and a Rollback ends with one durable flush
 	// (part of the group can already be on disk). Side effect: with both
 	// flags, each GraphTx mutation takes the exclusive graph lock instead of
 	// the shared one, so standalone writers, readers and concurrent ingest
-	// lanes wait for each tx mutation (microseconds of in-memory work; the
-	// sync is at the commit, outside the lock). New fails with
-	// ErrCapabilityNotSupported when the store has no stable storage (memory
-	// store, BadgerInMemory, an in-memory tiered or sharded store). Default
-	// false: no flush on commit, today's behavior.
+	// lanes wait for each tx mutation (the sync is at the commit, outside the
+	// lock). New fails with ErrCapabilityNotSupported when the store has no
+	// stable storage (memory store, BadgerInMemory, an in-memory tiered or
+	// sharded store). Default false: no flush on commit.
 	DurableCommit bool
 
 	// IngestLanes is the number of extra per-lane UNIFIED ID generators built for
@@ -1386,10 +1373,7 @@ func nativeNodeIntegrityHash(store storepkg.MandatoryStore) storepkg.NodeIntegri
 // byte-for-byte. sharded.putNodesBatchInternal partitions the pre-encoded
 // wireBodies/logBodies arrays per shard WITH INDEX ALIGNMENT PRESERVED
 // specifically for this door (tested for byte-identity per shard against
-// unsharded badger — BACKLOG 20e; this was a routing gap, not a declined
-// capability: sharded's OwnedPreEncodedPutCapability, gated only by a plain
-// type-assertion below with no badger-only restriction, was already routed).
-// The memory store also IMPLEMENTS the capability (contract + direct test),
+// unsharded badger — BACKLOG 20e). The memory store also IMPLEMENTS the capability (contract + direct test),
 // but it stores live *types.Node objects and never serializes a row, so
 // pre-encoding there is pure wasted prepare work — it is deliberately NOT
 // routed (a nil handle disables the prepare-side pre-encode for memory
@@ -1709,7 +1693,7 @@ func nodePropertyTxMemberPageCapability(store storepkg.MandatoryStore) storepkg.
 // sharded backend, or tiered if it ever embedded a shard) would promote the
 // badger ChangeFeed methods and expose ONE shard's per-shard log as if it were
 // the cluster feed — force nil there so such a backend must implement a real
-// global feed itself. tiered.Store now provides a coherent store-global LSN
+// global feed itself. tiered.Store provides a coherent store-global LSN
 // sequence via its OWN allocator (ADR-0005 §2 — not shard promotion): the
 // store-level changeLogAllocator hands every shard's record a store-global LSN,
 // and ForEachChange/ChangeFeed/LastCommittedLSN k-way merge the per-shard logs by
@@ -2129,12 +2113,11 @@ func New(config Config) (*Core, error) {
 	c.relValidEnds, c.nodeValidEnds = validEndCapabilities(store)
 	// valid-time candidate prune is sound for ANY store that offers it (an
 	// unknown id is never pruned), so unlike the membership sidecar it needs no
-	// exact-native-store guard — a plain probe admits memory/badger now and
-	// tiered/sharded once they implement it.
+	// exact-native-store guard — a plain probe admits any store that implements it.
 	c.temporalCandidates, _ = store.(storepkg.TemporalCandidateCapability)
 	c.relTypeTemporalCandidates, _ = store.(storepkg.RelTypeTemporalCandidateCapability)
-	// Metadata facet: bare optional-capability probes, resolved once (byte-for-byte
-	// equal to the former per-site `_, ok := c.store.(X)` since store is immutable).
+	// Metadata facet: bare optional-capability probes, resolved once because the
+	// store is immutable after New.
 	c.metaKV, _ = store.(storepkg.MetaKVCapability)
 	c.historyCompaction, _ = store.(storepkg.HistoryCompactionCapability)
 	c.retentionPurge, _ = store.(storepkg.RetentionPurgeCapability)
@@ -2165,11 +2148,10 @@ func New(config Config) (*Core, error) {
 	// labels and reltypes — Close would then save the empty registry
 	// state back over the persisted mappings.
 	//
-	// Two interface shapes exist in-tree because badger and tiered
-	// landed at different times — badger.Store returns (bool, error)
-	// from its loaders while tiered.Store returns (int, error). Both
-	// are matched here so the rehydration is dispatched by capability
-	// rather than concrete type.
+	// Two interface shapes exist in-tree: badger.Store returns (bool, error)
+	// from its loaders while tiered.Store returns (int, error). Both are
+	// matched here so the rehydration is dispatched by capability rather than
+	// concrete type.
 	if config.Store != nil {
 		if lr, ok := store.(badgerRegistryLoader); ok {
 			loadedLabels := registrypkg.NewLabelRegistry()
@@ -2351,9 +2333,8 @@ func (c *Core) Close() error {
 		}
 
 		// An installed AsyncEventBus starts its own dispatcher goroutine
-		// (NewAsyncEventBus) that only exits via its own Close() — without
-		// this, every open/close cycle with an async bus configured leaked
-		// that goroutine permanently. Runs outside c.mu (Close blocks
+		// (NewAsyncEventBus) that only exits via its own Close(), so it must be
+		// closed here or the goroutine leaks. Runs outside c.mu (Close blocks
 		// draining the queue). Nil-safe / idempotent, and closed==true by
 		// now means no concurrent SetAsync/publishEvent can install or use a
 		// different bus underneath this call.

@@ -2,11 +2,8 @@
 // a Graph. The package declares a local interface (Ops) listing the methods
 // the API forwards; *core.NodeOps implements it implicitly.
 //
-// API 4.0 change: methods that previously came in (Foo, FooWithContext) pairs
-// (Add, Get, Update, UpdateInPlace, Delete, CompareAndSetProperty) collapsed
-// into a single context-aware method each. Pass context.Background() for the
-// previous no-context behavior. The historical *WithContext variants no
-// longer exist.
+// Each method takes a context (Add, Get, Update, UpdateInPlace, Delete,
+// CompareAndSetProperty); pass context.Background() when there is none.
 package nodes
 
 import (
@@ -248,7 +245,7 @@ func (a *API) GetByIDs(ids []types.NodeID) ([]*types.Node, error) {
 // An update that sets tkg_valid_to without tkg_valid_from closes the current
 // version as CloseVersion does: the version keeps its start and ends at
 // tkg_valid_to; an end at or before that start returns ErrInvalidTimeRange and
-// writes nothing (backlog 65, v4.54.0).
+// writes nothing (backlog 65).
 func (a *API) Update(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -276,7 +273,7 @@ func (a *API) UpdateWithTx(ctx context.Context, id types.NodeID, updates map[str
 // UpdateInPlace updates a node in place honoring ctx (no version chain entry).
 //
 // A tkg_valid_to at or before the row's effective start returns
-// ErrInvalidTimeRange (backlog 65, v4.54.0).
+// ErrInvalidTimeRange (backlog 65).
 func (a *API) UpdateInPlace(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -529,15 +526,16 @@ func (a *API) ForEachByLabelPropertyPrefix(label, propKey, prefix string, desc b
 // RangeCardinality returns the count of the label's nodes whose numeric propKey
 // value lies within [min, max] (inclusivity per flags) from the property index,
 // NO node scan. Cost depends on how the index was created: with
-// PropertyIndexOptions.RangeCounts (round 4 R2) two prefix sums over the
+// PropertyIndexOptions.RangeCounts two prefix sums over the
 // per-value counts, O(log chunks) plus at most 512 counts each, independent of
 // the range's width; without it (the default) a walk over the range's distinct
-// values summing their bucket sizes, O(distinct values in range) — the
-// contract as it always was. The second return is exact: false (count 0) when
-// the door does not answer — no index, a backend without the count (tiered,
-// badger with PropertyIndexOnDisk), an index poisoned by an integer past 2^53,
-// or temporal opts — and the caller must scan-and-count. A NaN bound counts 0. Fractional values and bounds are counted exactly. The bounds
-// must already capture the WHOLE predicate. See core.NodeOps.RangeCardinality.
+// values summing their bucket sizes, O(distinct values in range). The second
+// return is exact: false (count 0) when the door does not answer — no index, a
+// backend without the count (tiered, badger with PropertyIndexOnDisk), an index
+// poisoned by an integer past 2^53, or temporal opts — and the caller must
+// scan-and-count. A NaN bound counts 0. Fractional values and bounds are
+// counted exactly. The bounds must already capture the WHOLE predicate. See
+// core.NodeOps.RangeCardinality.
 func (a *API) RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
 	ops, err := a.ready()
 	if err != nil {

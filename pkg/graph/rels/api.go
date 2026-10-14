@@ -2,11 +2,9 @@
 // surface of a Graph. The package declares a local Ops interface listing the
 // methods it forwards to; *core.RelOps satisfies it implicitly.
 //
-// API 4.0 change: methods that previously came in (Foo, FooWithContext) pairs
-// (Add, AddByID, AddByIDIfAbsent, Get, Update, UpdateInPlace, Delete,
-// CompareAndSetProperty) collapsed into a single context-aware method each.
-// Pass context.Background() for the previous no-context behavior. The
-// historical *WithContext variants no longer exist.
+// Each method takes a context (Add, AddByID, AddByIDIfAbsent, Get, Update,
+// UpdateInPlace, Delete, CompareAndSetProperty); pass context.Background()
+// when there is none.
 package rels
 
 import (
@@ -260,7 +258,7 @@ func (a *API) GetByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 // An update that sets tkg_valid_to without tkg_valid_from closes the current
 // version as CloseVersion does: the version keeps its start and ends at
 // tkg_valid_to; an end at or before that start returns ErrInvalidTimeRange and
-// writes nothing (backlog 65, v4.54.0).
+// writes nothing (backlog 65).
 func (a *API) Update(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -288,7 +286,7 @@ func (a *API) UpdateWithTx(ctx context.Context, id types.RelID, updates map[stri
 // UpdateInPlace updates a relationship in place honoring ctx (no version branch).
 //
 // A tkg_valid_to at or before the row's effective start returns
-// ErrInvalidTimeRange (backlog 65, v4.54.0).
+// ErrInvalidTimeRange (backlog 65).
 func (a *API) UpdateInPlace(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -728,7 +726,7 @@ func (a *API) ForEachAdjacentEndpointOrdinal(nodeID types.NodeID, typeName strin
 
 // ForEachAdjacentEndpointAt streams (relID, otherEndpoint) for nodeID's
 // adjacency in the given direction under the opts temporal filter. With a
-// filter set the door is VERSION-AWARE (v4.35.0): each adjacent relationship
+// filter set the door is VERSION-AWARE: each adjacent relationship
 // resolves to the version valid under opts, like the node doors and
 // Temporal().OutgoingRelsAt, and a since-deleted edge stays visible inside
 // its window. fn returning false stops the scan.
@@ -747,7 +745,7 @@ func (a *API) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string, in
 
 // ForEachAdjacentRelAt streams the DECODED relationships for nodeID's adjacency
 // in the given direction under the opts temporal filter. With a filter set the
-// door is VERSION-AWARE (v4.35.0): it yields, per adjacent relationship, the
+// door is VERSION-AWARE: it yields, per adjacent relationship, the
 // version valid under opts — never a live row the filter rejects while an
 // older version matches. fn returning false stops the scan.
 // See core.RelOps.ForEachAdjacentRelAt.
