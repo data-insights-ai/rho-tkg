@@ -157,10 +157,10 @@ Owner execution ordering, 2026-10-14: finish and integrate the full remaining V2
 functionality first, then execute correctness qualification, measurements and
 evidence-driven improvements. The package order below describes dependencies;
 it does not require normal/race/coverage/static acceptance before starting the
-next implementation package. Source review and compilation establish coherent
-wiring during implementation; author direct tests alongside changes and run
-them at the integrated qualification checkpoint. CI runs in the background and
-must not gate source progress or pushes. Keep existing qualification scopes and
+next implementation package. Source review establishes coherent wiring during
+implementation; author direct tests alongside changes, then compile and execute
+them at the integrated qualification checkpoint. Do not start test, measurement
+or CI runs during this implementation stage. Keep existing qualification scopes and
 all A–F exit requirements; implementation status never implies acceptance.
 
 1. **Freeze the acceptance inventory and close the near-ready B components.**
@@ -316,8 +316,13 @@ recovery. Snapshot admission funds both banks before staging and binds exact
 imported credit state. The participant graph pin ledger and bound Host admission
 are source-integrated at `9c8a27a1`/`ee5257e8`: exact original cut/feed ownership,
 monotone feed advancement, replicated lease epochs, funded Release/Expire/Close
-and immutable original outcomes. All-participant portable publication, source
-logical GC and fresh-profile handoff remain open. Complete retained terminal-bank comparison is
+and immutable original outcomes. All-participant portable publication is
+source-integrated at `eda4e2af`, with post-install live-owner observations,
+authenticated retained-source opens, exact original-outcome recovery and
+prepaid terminal cleanup. Its compact direct guards, including the finite-quota
+correction at `23ebabc1`, are authored only. The reviewed shared process harness
+is released for distributed column integration. Source logical GC,
+fresh-profile handoff and runtime qualification remain open. Complete retained terminal-bank comparison is
 source-integrated at `045517ab`; graph Restore can detect unknown extra native
 owners instead of inspecting only the transient recovery owner. Its direct
 historical guard and existing unknown-version guard updates are authored only.
