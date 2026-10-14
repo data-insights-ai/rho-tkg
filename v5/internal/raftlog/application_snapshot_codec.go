@@ -92,7 +92,7 @@ func canonicalConf(c *pb.ConfState) *pb.ConfState {
 	return cs
 }
 func validateManifest(m ApplicationSnapshotManifest) error {
-	if m.Version > 6 || m.Version < 4 && (m.ControlBytes != 0 || m.ControlRecords != 0 || m.Contract.Version != 1) || m.Version == 4 && m.Contract.Version != 2 || m.Version == 5 && m.Contract.Version != 3 || m.Version == 6 && m.Contract.Version != 4 || m.Version < 6 && len(m.TerminalReservations) != 0 || m.Version < 5 && (m.RecoveryBytes != 0 || m.RecoveryRecords != 0 || m.RecoveryReservation.ID != ([32]byte{}) || m.RecoveryReservation.Digest != ([32]byte{}) || len(m.RecoveryReservation.Credits) != 0) || m.Version < 2 && m.CutID != [32]byte{} || m.Version < 3 && m.SemanticContractID != (ApplicationSemanticContractID{}) || m.Version >= 3 && m.SemanticContractID == (ApplicationSemanticContractID{}) {
+	if m.Version > 7 || m.Version < 4 && (m.ControlBytes != 0 || m.ControlRecords != 0 || m.Contract.Version != 1) || m.Version == 4 && m.Contract.Version != 2 || m.Version == 5 && m.Contract.Version != 3 || m.Version == 6 && m.Contract.Version != 4 || m.Version == 7 && m.Contract.Version != 5 || m.Version < 7 && !m.Retention.zero() || m.Version < 6 && len(m.TerminalReservations) != 0 || m.Version < 5 && (m.RecoveryBytes != 0 || m.RecoveryRecords != 0 || m.RecoveryReservation.ID != ([32]byte{}) || m.RecoveryReservation.Digest != ([32]byte{}) || len(m.RecoveryReservation.Credits) != 0) || m.Version < 2 && m.CutID != [32]byte{} || m.Version < 3 && m.SemanticContractID != (ApplicationSemanticContractID{}) || m.Version >= 3 && m.SemanticContractID == (ApplicationSemanticContractID{}) {
 		return ErrInvalid
 	}
 	if err := m.Identity.validate(); err != nil {
@@ -103,13 +103,17 @@ func validateManifest(m ApplicationSnapshotManifest) error {
 	}
 	if m.Version >= 5 {
 		minimumRoot := 9 + appFrameBytes + recoveryRootFixedBytes
-		if m.Version == 6 {
+		if m.Version >= 6 {
 			minimumRoot += 8
 		}
-		if m.RecoveryRecords != m.Index || m.RecoveryBytes < m.Index*uint64(minimumRoot) {
+		minimumRecords := m.Index
+		if m.Version == 7 {
+			minimumRecords = retainedThrough(m.Index, m.Retention.RecoveryFloor)
+		}
+		if m.Version < 7 && m.RecoveryRecords != m.Index || m.RecoveryRecords < minimumRecords || m.RecoveryRecords > m.RecoveryBytes/uint64(minimumRoot) {
 			return ErrCorrupt
 		}
-		if m.Version == 6 {
+		if m.Version >= 6 {
 			if _, err := terminalGrowth(applicationTerminalBank(m.TerminalReservations), portableRecoveryPolicy(), portableRecoveryLimits()); err != nil {
 				return err
 			}
@@ -138,12 +142,24 @@ func validateManifest(m ApplicationSnapshotManifest) error {
 	if proto.Size(m.ConfState) > 32768 {
 		return ErrLimit
 	}
-	if m.Index > math.MaxUint64/(9+appFrameBytes) {
+	if m.Version < 7 && m.Index > math.MaxUint64/(9+appFrameBytes) {
 		return ErrLimit
 	}
-	for j := 1; j < 4; j++ {
-		if m.NamespaceRecords[j] != m.Index || m.NamespaceBytes[j] < m.Index*(9+appFrameBytes) {
-			return ErrCorrupt
+	if m.Version == 7 {
+		if err := m.Retention.validate(m.Index); err != nil {
+			return err
+		}
+		minimum := [4]uint64{0, retainedRootMinimum(m.Index, m.Retention), retainedThrough(m.Index, m.Retention.FeedFloor), retainedThrough(m.Index, m.Retention.OutcomeFloor)}
+		for j := 1; j < 4; j++ {
+			if m.NamespaceRecords[j] < minimum[j] || m.NamespaceRecords[j] > 1<<40 || m.NamespaceRecords[j] > m.NamespaceBytes[j]/(9+appFrameBytes) {
+				return ErrCorrupt
+			}
+		}
+	} else {
+		for j := 1; j < 4; j++ {
+			if m.NamespaceRecords[j] != m.Index || m.NamespaceBytes[j] < m.Index*(9+appFrameBytes) {
+				return ErrCorrupt
+			}
 		}
 	}
 	b, r, err := snapshotTotals(m)
@@ -151,7 +167,7 @@ func validateManifest(m ApplicationSnapshotManifest) error {
 		return err
 	}
 	if m.Version >= 2 {
-		id, err := cutID(ApplicationCutReference{RecoveryBytes: m.RecoveryBytes, RecoveryRecords: m.RecoveryRecords, RecoveryHash: snapshotRecoveryHash(m), SemanticContractID: m.SemanticContractID, Identity: m.Identity, Contract: m.Contract, Index: m.Index, Term: m.Term, ConfState: m.ConfState, ImageBytes: uint64(len(m.Image)), ImageHash: m.ImageHash, RetainedBytes: b, RetainedRecords: r, ControlBytes: m.ControlBytes, ControlRecords: m.ControlRecords})
+		id, err := cutID(ApplicationCutReference{Retention: manifestRetention(m), RecoveryBytes: m.RecoveryBytes, RecoveryRecords: m.RecoveryRecords, RecoveryHash: snapshotRecoveryHash(m), SemanticContractID: m.SemanticContractID, Identity: m.Identity, Contract: m.Contract, Index: m.Index, Term: m.Term, ConfState: m.ConfState, ImageBytes: uint64(len(m.Image)), ImageHash: m.ImageHash, RetainedBytes: b, RetainedRecords: r, ControlBytes: m.ControlBytes, ControlRecords: m.ControlRecords})
 		if err != nil {
 			return err
 		}
@@ -184,6 +200,9 @@ func EncodeApplicationSnapshotManifest(m ApplicationSnapshotManifest) ([]byte, e
 	}
 	if m.Version >= 5 {
 		capacity += 16 + 4 + nativeRecoveryRootBytes(snapshotRecoveryState(m))
+	}
+	if m.Version == 7 {
+		capacity += 4 + portableRetentionBytes(m.Retention)
 	}
 	b := make([]byte, 0, capacity)
 	version := byte(1)
@@ -220,6 +239,10 @@ func EncodeApplicationSnapshotManifest(m ApplicationSnapshotManifest) ([]byte, e
 		b = binary.BigEndian.AppendUint32(b, uint32(nativeRecoveryRootBytes(snapshotRecoveryState(m))))
 		b = append(b, appendNativeRecoveryRoot(snapshotRecoveryState(m))...)
 	}
+	if m.Version == 7 {
+		b = binary.BigEndian.AppendUint32(b, uint32(portableRetentionBytes(m.Retention)))
+		b = appendPortableRetention(b, m.Retention)
+	}
 	b = append(b, cs...)
 	b = append(b, m.Image...)
 	return b, nil
@@ -231,7 +254,7 @@ func DecodeApplicationSnapshotManifest(b []byte, maxImageBytes int) (Application
 	if maxImageBytes < 1 || maxImageBytes > 64<<20 {
 		return m, ErrInvalid
 	}
-	if len(b) < snapshotManifestOverhead || (!bytes.Equal(b[:4], []byte{'A', 'S', 1, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 2, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 3, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 4, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 5, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 6, 0})) {
+	if len(b) < snapshotManifestOverhead || (!bytes.Equal(b[:4], []byte{'A', 'S', 1, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 2, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 3, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 4, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 5, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 6, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 7, 0})) {
 		return m, ErrCorrupt
 	}
 	// Preserve the original AS1/AS2 envelope ceiling and refusal classification.
@@ -244,6 +267,9 @@ func DecodeApplicationSnapshotManifest(b []byte, maxImageBytes int) (Application
 	}
 	if b[2] >= 5 {
 		maxBytes += 20 + maxMetadataBytes
+	}
+	if b[2] == 7 {
+		maxBytes += 4 + retentionMetadataFixedBytes + retentionRootBytes*maxApplicationRetentionRoots
 	}
 	if len(b) > maxBytes {
 		return m, ErrCorrupt
@@ -259,6 +285,9 @@ func DecodeApplicationSnapshotManifest(b []byte, maxImageBytes int) (Application
 		}
 		if m.Version >= 5 {
 			extra += 20 + recoveryRootFixedBytes
+		}
+		if m.Version == 7 {
+			extra += 4 + retentionMetadataFixedBytes
 		}
 		if len(b) < snapshotManifestOverhead+extra {
 			return m, ErrCorrupt
@@ -319,7 +348,7 @@ func DecodeApplicationSnapshotManifest(b []byte, maxImageBytes int) (Application
 		var recoveryErr error
 		var bank applicationTerminalBank
 		m.RecoveryReservation, bank, recoveryErr = readNativeRecoveryRoot(b[offset:offset+int(rn)], portableRecoveryPolicy(), portableRecoveryLimits())
-		if recoveryErr == nil && b[offset+2] != byte(m.Version-4) {
+		if recoveryErr == nil && b[offset+2] != snapshotRecoveryVersion(m) {
 			recoveryErr = ErrCorrupt
 		}
 		m.TerminalReservations = []ApplicationRecoveryReservation(bank)
@@ -327,6 +356,21 @@ func DecodeApplicationSnapshotManifest(b []byte, maxImageBytes int) (Application
 			return ApplicationSnapshotManifest{}, recoveryErr
 		}
 		offset += int(rn)
+	}
+	if m.Version == 7 {
+		if len(b)-offset < 4 {
+			return ApplicationSnapshotManifest{}, ErrCorrupt
+		}
+		n := binary.BigEndian.Uint32(b[offset : offset+4])
+		offset += 4
+		if n > uint32(retentionMetadataFixedBytes+retentionRootBytes*maxApplicationRetentionRoots) || uint64(n) > uint64(len(b)-offset) {
+			return ApplicationSnapshotManifest{}, ErrCorrupt
+		}
+		m.Retention, err = decodePortableRetention(b[offset:offset+int(n)], m.Index)
+		if err != nil {
+			return ApplicationSnapshotManifest{}, err
+		}
+		offset += int(n)
 	}
 	if cn > 32768 || in > uint64(maxImageBytes) {
 		return ApplicationSnapshotManifest{}, ErrLimit
@@ -365,6 +409,10 @@ func manifestID(m ApplicationSnapshotManifest) ([32]byte, error) {
 func snapshotSeed(m ApplicationSnapshotManifest) [32]byte {
 	h := sha256.New()
 	switch m.Version {
+	case 7:
+		_, _ = h.Write([]byte("rho-tkg:application-snapshot-records:v7\x00"))
+		_, _ = h.Write(m.SemanticContractID[:])
+		_, _ = h.Write(m.CutID[:])
 	case 6:
 		_, _ = h.Write([]byte("rho-tkg:application-snapshot-records:v6\x00"))
 		_, _ = h.Write(m.SemanticContractID[:])
@@ -430,6 +478,8 @@ type snapshotVerifier struct {
 	namespaceBytes, namespaceRows                [4]uint64
 	envelopes                                    [3]uint64
 	digest                                       [32]byte
+	retentionAnchors                             uint64
+	retentionSource                              bool
 	controlBytes, controlRows                    uint64
 	recoveryBytes, recoveryRows, recoveryThrough uint64
 }
@@ -452,7 +502,7 @@ func (v snapshotVerifier) accept(m ApplicationSnapshotManifest, k, raw []byte) (
 			return v, ErrCorrupt
 		}
 		index := binary.BigEndian.Uint64(k[1:])
-		if index != v.recoveryThrough+1 || index > m.Index {
+		if index > m.Index || m.Version < 7 && index != v.recoveryThrough+1 || m.Version == 7 && !sparseRetentionStep(v.recoveryThrough, index, m.Retention.RecoveryFloor) {
 			return v, ErrCorrupt
 		}
 		v.recoveryThrough = index
@@ -471,7 +521,11 @@ func (v snapshotVerifier) accept(m ApplicationSnapshotManifest, k, raw []byte) (
 			return v, ErrCorrupt
 		}
 		index := binary.BigEndian.Uint64(k[1:])
-		if index != v.envelopes[slot-1]+1 || index > m.Index {
+		floor := uint64(0)
+		if m.Version == 7 {
+			floor = []uint64{m.Retention.RootFloor, m.Retention.FeedFloor, m.Retention.OutcomeFloor}[slot-1]
+		}
+		if index > m.Index || m.Version < 7 && index != v.envelopes[slot-1]+1 || m.Version == 7 && !sparseRetentionStep(v.envelopes[slot-1], index, floor) {
 			return v, ErrCorrupt
 		}
 		v.envelopes[slot-1] = index
@@ -490,7 +544,7 @@ func (v snapshotVerifier) accept(m ApplicationSnapshotManifest, k, raw []byte) (
 	}
 	if slot == 5 {
 		r, bank, err := readNativeRecoveryRoot(data, portableRecoveryPolicy(), portableRecoveryLimits())
-		if err == nil && data[2] != byte(m.Version-4) {
+		if err == nil && data[2] != snapshotRecoveryVersion(m) {
 			err = ErrCorrupt
 		}
 		if err != nil {
@@ -498,6 +552,22 @@ func (v snapshotVerifier) accept(m ApplicationSnapshotManifest, k, raw []byte) (
 		}
 		if v.recoveryThrough == m.Index && (!sameRecoveryReservation(r, m.RecoveryReservation) || !sameTerminalBank(bank, applicationTerminalBank(m.TerminalReservations))) {
 			return v, ErrCorrupt
+		}
+	}
+	if slot == 1 && m.Version == 7 {
+		if m.Retention.ID != ([32]byte{}) && v.envelopes[0] == m.Retention.SourceIndex {
+			if sha256.Sum256(data) != m.Retention.SourceHash {
+				return v, ErrCorrupt
+			}
+			v.retentionSource = true
+		}
+		for i, root := range m.Retention.Roots {
+			if root.Index == v.envelopes[0] {
+				if sha256.Sum256(data) != root.ImageHash {
+					return v, ErrCorrupt
+				}
+				v.retentionAnchors |= uint64(1) << i
+			}
 		}
 	}
 	if slot == 1 && v.envelopes[0] == m.Index && !bytes.Equal(data, m.Image) {
@@ -545,10 +615,8 @@ func (v snapshotVerifier) complete(m ApplicationSnapshotManifest) error {
 	if v.namespaceBytes != m.NamespaceBytes || v.namespaceRows != m.NamespaceRecords || v.digest != m.RecordsHash || v.controlBytes != m.ControlBytes || v.controlRows != m.ControlRecords || v.recoveryBytes != m.RecoveryBytes || v.recoveryRows != m.RecoveryRecords || m.Version >= 5 && v.recoveryThrough != m.Index {
 		return ErrCorrupt
 	}
-	for _, index := range v.envelopes {
-		if index != m.Index {
-			return ErrCorrupt
-		}
+	if err := v.completeRetentionRuns(m); err != nil {
+		return err
 	}
 	return nil
 }
@@ -566,9 +634,14 @@ func DecodeApplicationSnapshotManifestForBinding(b []byte, maxImageBytes int, ex
 	if len(b) >= 4 && (bytes.Equal(b[:4], []byte{'A', 'S', 1, 0}) || bytes.Equal(b[:4], []byte{'A', 'S', 2, 0})) {
 		return ApplicationSnapshotManifest{}, ErrInvalid
 	}
-	if len(b) >= 4 && (b[2] == 5 || b[2] == 6) {
+	if len(b) >= 4 && (b[2] == 5 || b[2] == 6 || b[2] == 7) {
 		minimum := snapshotManifestOverhead + 100 + recoveryRootFixedBytes
-		if len(b) < minimum || len(b) > maxSnapshotManifestBytes+100+maxMetadataBytes || b[0] != 'A' || b[1] != 'S' || b[3] != 0 {
+		maximum := maxSnapshotManifestBytes + 100 + maxMetadataBytes
+		if b[2] == 7 {
+			minimum += 4 + retentionMetadataFixedBytes
+			maximum += 4 + retentionMetadataFixedBytes + retentionRootBytes*maxApplicationRetentionRoots
+		}
+		if len(b) < minimum || len(b) > maximum || b[0] != 'A' || b[1] != 'S' || b[3] != 0 {
 			return ApplicationSnapshotManifest{}, ErrCorrupt
 		}
 		if readIdentity(b[4:44]) != expected.Identity || !bytes.Equal(b[snapshotManifestOverhead+32:snapshotManifestOverhead+64], expected.SemanticContractID[:]) {
@@ -599,4 +672,41 @@ func DecodeApplicationSnapshotManifestForBinding(b []byte, maxImageBytes int, ex
 		return ApplicationSnapshotManifest{}, ErrCorrupt
 	}
 	return DecodeApplicationSnapshotManifest(b, maxImageBytes)
+}
+
+func manifestRetention(m ApplicationSnapshotManifest) *ApplicationRetentionState {
+	if m.Version != 7 {
+		return nil
+	}
+	return &m.Retention
+}
+func snapshotRecoveryVersion(m ApplicationSnapshotManifest) byte {
+	if m.Version >= 6 {
+		return 2
+	}
+	return byte(m.Version - 4)
+}
+func (v snapshotVerifier) completeRetentionRuns(m ApplicationSnapshotManifest) error {
+	for i, index := range v.envelopes {
+		floor := uint64(0)
+		if m.Version == 7 {
+			floor = []uint64{m.Retention.RootFloor, m.Retention.FeedFloor, m.Retention.OutcomeFloor}[i]
+		}
+		if retainedThrough(m.Index, floor) > 0 && index != m.Index {
+			return ErrCorrupt
+		}
+	}
+	if m.Version == 7 {
+		mask := uint64(math.MaxUint64)
+		if len(m.Retention.Roots) < 64 {
+			mask = (uint64(1) << len(m.Retention.Roots)) - 1
+		}
+		if m.Retention.ID != ([32]byte{}) && !v.retentionSource {
+			return ErrCorrupt
+		}
+		if v.retentionAnchors != mask {
+			return ErrCorrupt
+		}
+	}
+	return nil
 }

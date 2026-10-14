@@ -34,6 +34,9 @@ func metadataBytes(m metadata) uint64 {
 			if m.Gen.Publication.RecoveryEnabled {
 				n += 48
 			}
+			if m.Gen.Publication.Retention != nil {
+				n += unsignedLimit(4 + portableRetentionBytes(*m.Gen.Publication.Retention))
+			}
 		}
 	}
 	if m.Rep.Config.enabled() {

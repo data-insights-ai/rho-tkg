@@ -40,6 +40,9 @@ func publishedManifestID(m ApplicationSnapshotManifest) [32]byte {
 			domain = append([]byte("rho-tkg:application-snapshot-manifest:v6\x00"), m.SemanticContractID[:]...)
 		}
 	}
+	if m.Version == 7 {
+		domain = append([]byte("rho-tkg:application-snapshot-manifest:v7\x00"), m.SemanticContractID[:]...)
+	}
 	if m.Version == 4 {
 		domain = append([]byte("rho-tkg:application-snapshot-manifest:v4\x00"), m.SemanticContractID[:]...)
 	}
@@ -59,6 +62,9 @@ func publishedManifestID(m ApplicationSnapshotManifest) [32]byte {
 		b = binary.BigEndian.AppendUint64(b, m.RecoveryRecords)
 		sum := snapshotRecoveryHash(m)
 		b = append(b, sum[:]...)
+	}
+	if m.Version == 7 {
+		b = appendPortableRetention(b, m.Retention)
 	}
 	return sha256.Sum256(b)
 }
@@ -123,6 +129,13 @@ func (s *Store) BeginPublishedApplicationExport(ctx context.Context, id [32]byte
 		}
 		pin += extra
 	}
+	if p.Retention != nil {
+		extra := uint64(1024 + 3*portableRetentionBytes(*p.Retention))
+		if pin > tc.Limits.MaxPinnedLogicalBytes-s.pinnedApplicationBytes || extra > tc.Limits.MaxPinnedLogicalBytes-s.pinnedApplicationBytes-pin {
+			return nil, ErrLimit
+		}
+		pin += extra
+	}
 	image, err := s.loadPublishedImage()
 	if err != nil {
 		s.poison = err
@@ -137,7 +150,17 @@ func (s *Store) BeginPublishedApplicationExport(ctx context.Context, id [32]byte
 	m.ControlBytes, m.ControlRecords = p.ControlBytes, p.ControlRecords
 	m.RecoveryBytes, m.RecoveryRecords, m.RecoveryReservation = p.RecoveryBytes, p.RecoveryRecords, recovery
 	m.TerminalReservations = []ApplicationRecoveryReservation(terminal)
-	m.NamespaceRecords = [4]uint64{p.Records - p.ControlRecords - p.RecoveryRecords - 3*m.Index, m.Index, m.Index, m.Index}
+	if p.Retention != nil {
+		m.Retention = cloneRetentionState(*p.Retention)
+	}
+	if m.Version == 7 {
+		// These are temporary build ceilings, not claimed family counts. The
+		// bounded source pass computes each ACTUAL namespace census before a
+		// manifest/descriptor can escape; aggregate totals are already captured.
+		m.NamespaceRecords = [4]uint64{p.Records, p.Records, p.Records, p.Records}
+	} else {
+		m.NamespaceRecords = [4]uint64{p.Records - p.ControlRecords - p.RecoveryRecords - 3*m.Index, m.Index, m.Index, m.Index}
+	}
 	for j := range m.NamespaceBytes {
 		m.NamespaceBytes[j] = p.Bytes
 	}
@@ -191,20 +214,21 @@ func (e *ApplicationExport) BuildManifest(ctx context.Context, b ReadBudget) (bo
 			s.poison = ErrCorrupt
 			return false, ErrCorrupt
 		}
-		for _, index := range state.envelopes {
-			if index != e.manifest.Index {
-				s.poison = ErrCorrupt
-				return false, ErrCorrupt
-			}
+		if err := state.completeRetentionRuns(e.manifest); err != nil {
+			s.poison = err
+			return false, err
 		}
 		m := e.manifest
 		m.NamespaceBytes = state.namespaceBytes
+		if m.Version == 7 {
+			m.NamespaceRecords = state.namespaceRows
+		}
 		m.RecordsHash = state.digest
 		m.ControlBytes, m.ControlRecords = state.controlBytes, state.controlRows
 		m.RecoveryBytes, m.RecoveryRecords = state.recoveryBytes, state.recoveryRows
 		// The image was checked at capture. Its cut ID must agree with the exact
 		// verified totals; no full-image encode/hash is hidden in this page's finish.
-		id, err := cutID(ApplicationCutReference{RecoveryBytes: m.RecoveryBytes, RecoveryRecords: m.RecoveryRecords, RecoveryHash: snapshotRecoveryHash(m), SemanticContractID: m.SemanticContractID, Identity: m.Identity, Contract: m.Contract, Index: m.Index, Term: m.Term, ConfState: m.ConfState, ImageBytes: uint64(len(m.Image)), ImageHash: m.ImageHash, RetainedBytes: state.bytes, RetainedRecords: state.rows, ControlBytes: state.controlBytes, ControlRecords: state.controlRows})
+		id, err := cutID(ApplicationCutReference{Retention: manifestRetention(m), RecoveryBytes: m.RecoveryBytes, RecoveryRecords: m.RecoveryRecords, RecoveryHash: snapshotRecoveryHash(m), SemanticContractID: m.SemanticContractID, Identity: m.Identity, Contract: m.Contract, Index: m.Index, Term: m.Term, ConfState: m.ConfState, ImageBytes: uint64(len(m.Image)), ImageHash: m.ImageHash, RetainedBytes: state.bytes, RetainedRecords: state.rows, ControlBytes: state.controlBytes, ControlRecords: state.controlRows})
 		if err != nil || id != m.CutID {
 			s.poison = ErrCorrupt
 			return false, ErrCorrupt

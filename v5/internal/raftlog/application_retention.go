@@ -2,8 +2,10 @@ package raftlog
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
 	"math"
+	"slices"
 )
 
 // ApplicationRetentionConfig opts a fresh native store into sparse retained
@@ -195,4 +197,55 @@ func (s *Store) ApplicationRetention() ApplicationRetentionConfig {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.meta.Retention.Config
+}
+
+// Portable retention has no local collection cursor. The canonical header is
+// bounded by the same64-root/metadata limits and remains inert after decoding.
+func cloneRetentionState(s ApplicationRetentionState) ApplicationRetentionState {
+	s.Roots = slices.Clone(s.Roots)
+	return s
+}
+func portableRetentionBytes(s ApplicationRetentionState) int {
+	return retentionMetadataBytes(applicationRetentionMetadata{State: s})
+}
+func appendPortableRetention(b []byte, s ApplicationRetentionState) []byte {
+	return appendRetentionMetadata(b, applicationRetentionMetadata{Config: ApplicationRetentionConfig{Version: 1}, State: s})
+}
+func decodePortableRetention(b []byte, index uint64) (ApplicationRetentionState, error) {
+	r, tail, err := decodeRetentionMetadata(b, index)
+	if err != nil || len(tail) != 0 || r.Cursor != (applicationRetentionCursor{}) {
+		return ApplicationRetentionState{}, ErrCorrupt
+	}
+	if !bytes.Equal(appendPortableRetention(nil, r.State), b) {
+		return ApplicationRetentionState{}, ErrCorrupt
+	}
+	return r.State, nil
+}
+func retentionStateHash(s ApplicationRetentionState) [32]byte {
+	return sha256.Sum256(appendPortableRetention(nil, s))
+}
+func retainedThrough(index, floor uint64) uint64 {
+	start := max(uint64(1), floor)
+	if start > index {
+		return 0
+	}
+	return index - start + 1
+}
+func retainedRootMinimum(index uint64, s ApplicationRetentionState) uint64 {
+	n := retainedThrough(index, s.RootFloor)
+	for _, root := range s.Roots {
+		if root.Index < s.RootFloor {
+			n++
+		}
+	}
+	return n
+}
+func sparseRetentionStep(previous, index, floor uint64) bool {
+	if index <= previous {
+		return false
+	}
+	if index < max(uint64(1), floor) {
+		return true
+	}
+	return index == max(previous+1, max(uint64(1), floor))
 }

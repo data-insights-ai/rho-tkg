@@ -2,8 +2,10 @@ package raftlog
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	pb "go.etcd.io/raft/v3/raftpb"
 	"path/filepath"
 	"testing"
 )
@@ -73,6 +75,96 @@ func TestApplicationRetentionContractMetadataAndLegacyRefusal(t *testing.T) {
 	changed.Cursor.Hash = [32]byte{}
 	if err := changed.syntax(21); !errors.Is(err, ErrInvalid) {
 		t.Fatal("unbound local cursor", err)
+	}
+	// Inert independently assembled sparse frames exercise the fresh wire
+	// contract only. They are not a native installed plan or GC acceptance.
+	manifest := ApplicationSnapshotManifest{Version: 7, Identity: ApplicationIdentity{Graph: [16]byte{1}, Partition: 1, Group: [16]byte{2}}, Contract: fresh, SemanticContractID: ApplicationSemanticContractID{9}, Index: 12, Term: 2, ConfState: &pb.ConfState{Voters: []uint64{1, 2, 3}}, Image: []byte("r12")}
+	manifest.ImageHash = sha256.Sum256(manifest.Image)
+	manifest.Retention = ApplicationRetentionState{ID: [32]byte{11}, SourceIndex: 10, InstalledIndex: 11, SourceHash: sha256.Sum256([]byte("r10")), RootFloor: 10, FeedFloor: 10, OutcomeFloor: 10, RecoveryFloor: 10, DataFloor: 10, Roots: []ApplicationRetentionRoot{{Index: 1, ImageHash: sha256.Sum256([]byte("genesis"))}}}
+	type inertFrame struct{ key, raw []byte }
+	var frames []inertFrame
+	add := func(tag byte, index uint64, value []byte) {
+		key := appIndexKey(tag, index)
+		raw := appFrame(key, value, false)
+		frames = append(frames, inertFrame{key, raw})
+		cost := uint64(len(key) + len(raw))
+		if tag == recoveryRootTag {
+			manifest.RecoveryRecords++
+			manifest.RecoveryBytes += cost
+		} else {
+			slot := int(tag - appDataTag)
+			manifest.NamespaceRecords[slot]++
+			manifest.NamespaceBytes[slot] += cost
+		}
+	}
+	for _, root := range []struct {
+		index uint64
+		value string
+	}{{1, "genesis"}, {10, "r10"}, {11, "r11"}, {12, "r12"}} {
+		add(appRootTag, root.index, []byte(root.value))
+	}
+	for _, tag := range []byte{appChangeTag, appOutcomeTag} {
+		for index := uint64(10); index <= 12; index++ {
+			add(tag, index, []byte("native envelope"))
+		}
+	}
+	rs := appendNativeRecoveryRoot(applicationRecoveryMetadata{Config: recovery})
+	for index := uint64(10); index <= 12; index++ {
+		add(recoveryRootTag, index, rs)
+	}
+	total, records, err := snapshotTotals(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := ApplicationCutReference{Retention: manifestRetention(manifest), Identity: manifest.Identity, Contract: fresh, SemanticContractID: manifest.SemanticContractID, Index: 12, Term: 2, ConfState: manifest.ConfState, ImageBytes: uint64(len(manifest.Image)), ImageHash: manifest.ImageHash, RetainedBytes: total, RetainedRecords: records, RecoveryBytes: manifest.RecoveryBytes, RecoveryRecords: manifest.RecoveryRecords, RecoveryHash: snapshotRecoveryHash(manifest)}
+	manifest.CutID, err = cutID(ref)
+	if err != nil {
+		t.Fatal("sparse cut was treated as continuous history", err)
+	}
+	state := snapshotVerifier{digest: snapshotSeed(manifest)}
+	for _, frame := range frames {
+		state, err = state.accept(manifest, frame.key, frame.raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	manifest.RecordsHash = state.digest
+	if err := state.complete(manifest); err != nil {
+		t.Fatal("complete sparse census", err)
+	}
+	encodedManifest, err := EncodeApplicationSnapshotManifest(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decodedManifest, err := DecodeApplicationSnapshotManifestForBinding(encodedManifest, p.MaxImageBytes, ApplicationBinding{Identity: manifest.Identity, SemanticContractID: manifest.SemanticContractID})
+	if err != nil || !bytes.Equal(appendPortableRetention(nil, decodedManifest.Retention), appendPortableRetention(nil, manifest.Retention)) || decodedManifest.RecoveryRecords != 3 || decodedManifest.NamespaceRecords[1] != 4 {
+		t.Fatal("sparse AS7 header lost its actual census/anchors", err)
+	}
+	changedState := cloneRetentionState(manifest.Retention)
+	changedState.ID[0]++
+	changedRef := ref
+	changedRef.Retention = &changedState
+	changedID, err := cutID(changedRef)
+	if err != nil || changedID == manifest.CutID {
+		t.Fatal("cut identity ignored portable plan", err)
+	}
+	missing := snapshotVerifier{digest: snapshotSeed(manifest)}
+	for _, frame := range frames {
+		if frame.key[0] == appRootTag && binary.BigEndian.Uint64(frame.key[1:]) == 1 {
+			continue
+		}
+		missing, err = missing.accept(manifest, frame.key, frame.raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := missing.completeRetentionRuns(manifest); !errors.Is(err, ErrCorrupt) {
+		t.Fatal("required semantic anchor was omitted", err)
+	}
+	badSource := appFrame(frames[1].key, []byte("different"), false)
+	badVerifier := snapshotVerifier{digest: snapshotSeed(manifest)}
+	if _, err := badVerifier.accept(manifest, frames[1].key, badSource); !errors.Is(err, ErrCorrupt) {
+		t.Fatal("plan borrowed an unbound source image", err)
 	}
 	// Fresh configuration is genuinely persisted; the capability cannot be
 	// retrofitted on reopen. No store initialization or portable token is asserted.
