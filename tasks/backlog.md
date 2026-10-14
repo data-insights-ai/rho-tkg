@@ -341,10 +341,20 @@ sparse scrub are source-integrated at `cad0b51b`: bounded pages preserve exact
 floor predecessors and data anchors, co-sync namespace debits and a separately
 accounted resumable cursor, and retire a publication only when represented rows
 are deleted. Same-index sparse republication keeps the genuine term/hash and
-changes the cut identity without business or CDC progress. Graph-level floor,
-durable-pin and fresh-profile handoff wiring remain implementation work; all
+changes the cut identity without business or CDC progress. Graph transport,
+durable column-owner and fresh-profile handoff wiring remain implementation work; all
 these new sources await execution. The bounded captured-view plan accessor is
 source-integrated at `3fcf9591`; it grants no anchor or deletion authority.
+The fixed-size publication identity accessor is integrated at `12b2293f`.
+`f9a3a13a` separates committed floor installation from nondurable local
+reader/export counts; those owners still prevent physical deletion and retain
+their captured floors and export headers. Graph floor/source/original wiring is
+integrated at `178d4537` with ordinary-credit dispatch at `fe80a2b4`:
+authenticated pin and recovery rosters bound all six requested floors, installed
+Applied/Blocked/Stale results remain immutable, original PLMs are preserved,
+and current source selection uses the genuine installed plan anchor. Its fresh
+profile constructor remains withheld pending transport and handoff wiring;
+graph logical key-family retirement is separate. These guards are authored only.
 `ab650bbc` also refuses a replacement plan
 while native collection has unfinished cursor progress. Fresh initialization preserves retention
 configuration and prepays/publishes its actual recovery-root census at
@@ -405,8 +415,13 @@ generation; the actual held owner survives token expiry until authenticated
 Close, and a replacement SDK process resumes committed deletion progress.
 The independent verifier joins complete raw history/current/CDC and cached
 column bytes to original outcomes and exact deletion debits. Source-history
-process restart, remaining directed-message/workload schedules and execution
-stay open; this does not close E.
+process replacement is source-integrated at `0217659c`: the actual saved reader
+identity authenticates and closes its existing owner after token expiry, and a
+fresh SDK process resumes the exact committed physical-deletion cursor. Before
+and after streams bind nine original effects, six retained anchors and five
+unchanged COMMIT originals/CDC groups. This finite package does not cover ABORT,
+server loss or power loss. Remaining directed-message/workload schedules and
+execution stay open; this does not close E.
 
 The paired native cost/fault driver composes caller loss before Decide,
 committed Decide reply loss and one HOME leader SIGKILL with a healthy quorum,
