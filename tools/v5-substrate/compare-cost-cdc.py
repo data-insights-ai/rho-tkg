@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 from comparison_spool import Policy, Spool, u64
 import native_columns_check
+import fdb_retention_check
 
 SCOPE = {"kind": "all", "axisProfile": "Q", "axisVersion": 1,
          "canonicalUnit": "millisecond", "reference": "posix-unix-epoch:1970-01-01T00:00:00Z:v1"}
@@ -21,6 +22,7 @@ RAW_FORMAT = "fdb-graph-cost-raw-v2"
 COLUMN_FORMAT = "fdb-graph-cost-columns-v1"
 PARALLEL_FORMAT = "fdb-graph-cost-parallel-v1"
 PARALLEL_COLUMN_FORMAT = "fdb-graph-cost-parallel-columns-v1"
+RETAINED_FORMAT = fdb_retention_check.FORMAT
 COLUMN_LAYOUT = "scalar-cross-edge-i64-columns-v1"
 ARTIFACT_LINE_BYTES = 512 << 10
 # Explicit verifier policy for this first-cell integration, not an approved
@@ -747,7 +749,7 @@ def raw_binding(record, key, value):
 
 def artifact_header(header, name, result):
     fields(header, "Type Format Stream Config InitialCut OldCut FinalCut Policy Metadata ConfigRecords MetadataRecords CutRecords")
-    require(header["Type"] == "header" and header["Format"] == RAW_FORMAT and header["Stream"] == name, "artifact header/format/stream")
+    require(header["Type"] == "header" and header["Format"] == (RETAINED_FORMAT if "Retention" in result else RAW_FORMAT) and header["Stream"] == name, "artifact header/format/stream")
     for key in ("Config", "InitialCut", "OldCut", "FinalCut"):
         require(same(header[key], result[key]), "mixed artifact/result " + key)
     fields(header["Policy"], "PageRows PageBytes")
@@ -854,7 +856,8 @@ def fdb_parallel_attempts(path, result, spool):
     for key in ("Attempts","AbortedAttempts","SubmitInvocations","SDKCallbacks","ReadCallbacks"): integer(end[key])
     expected = {"Version": 1, "Config": config, "Dataset": list(hashlib.sha256(bytes([spec["version"]]) + struct.pack(">QQ", spec["facts"], spec["crossPercent"]) + b"graph-v2").digest()),
                 "Window": 32, "MaxAttempts": 64, "MaxSubmissions": 8, "MaxCallbacks": 16, "TransactionMillis": 3000, "OperationMillis": 30000}
-    require(end["Format"] == PARALLEL_FORMAT and same(end["Binding"], expected), "fresh persisted parallel attempt policy")
+    format_ = fdb_retention_check.PARALLEL_FORMAT if "Retention" in result else PARALLEL_FORMAT
+    require(end["Format"] == format_ and same(end["Binding"], expected), "fresh persisted parallel attempt policy")
     raw_binding(end["BindingRecord"], fdb_key(config, 0, "cost-parallel", "binding"), expected)
     counters = {n: 0 for n in ("Attempts", "AbortedAttempts", "SubmitInvocations", "SDKCallbacks", "ReadCallbacks")}
     clients, commits = [0] * 32, 0
@@ -873,7 +876,7 @@ def fdb_parallel_attempts(path, result, spool):
         payload.update(line)
         if not header_seen:
             fields(row, "Type Format Binding Record")
-            require(kind == "header" and row["Format"] == PARALLEL_FORMAT and same(row["Binding"], expected) and same(row["Record"], end["BindingRecord"]), "parallel attempt header/binding")
+            require(kind == "header" and row["Format"] == format_ and same(row["Binding"], expected) and same(row["Record"], end["BindingRecord"]), "parallel attempt header/binding")
             header_seen = True
             continue
         if kind == "barrier":
@@ -927,6 +930,8 @@ def fdb_parallel_attempts(path, result, spool):
             raw_binding(record, fdb_key(config, owner, kind, o["ID"] if kind == "id" else o["Request"]), o)
         for kind, record in zip((b"fdb-attempt-id", b"fdb-attempt-request"), a["Originals"]):
             spool.insert(kind, raw_bytes(record["Key"]), raw_bytes(record["Value"]))
+        if "Retention" in result:
+            spool.insert(b"retention-attempt", raw_bytes(a["Originals"][0]["Key"]), go_json(a))
         require(type(a["Submissions"]) is list and 1 <= len(a["Submissions"]) <= 8, "finite SAME-wire submissions")
         for invocation, s in enumerate(a["Submissions"], 1):
             fields(s, "Ordinal Callbacks Outcome Error Retryable MaybeCommitted")
@@ -965,6 +970,7 @@ def fdb_parallel_attempts(path, result, spool):
 
 
 def fdb_raw_groups(path, spec, config, final_cut, stats, spool, result):
+    retained = "Retention" in result
     parallel = "Parallel" in result
     abort_bytes, abort_counts = fdb_parallel_attempts(Path(path).with_name("fdb-cost-attempts.jsonl"), result, spool) if parallel else ({"old": [0, 0], "final": [0, 0]}, {"old": [0, 0], "final": [0, 0]})
     if parallel:
@@ -1009,6 +1015,8 @@ def fdb_raw_groups(path, spec, config, final_cut, stats, spool, result):
         spool.insert(b"fdb-id", raw["IDKey"], raw["IDValue"])
         spool.insert(b"fdb-request", raw["RequestKey"], raw["RequestValue"])
         spool.insert(b"fdb-operation", u64(ordinal), raw["Value"])
+        if retained:
+            spool.insert(b"retention-cdc", u64(owner) + u64(outcome["Sequence"]), raw["Value"])
         native_bytes[owner] += sum(len(body) for body in raw.values() if type(body) is bytes)
         for write in group["Writes"]:
             g, key, after = write["Group"], write["Key"], write["After"]
@@ -1016,6 +1024,8 @@ def fdb_raw_groups(path, spec, config, final_cut, stats, spool, result):
             current_key = fdb_key(config, g, "current", key)
             history_key = (f"g{g}/{config['Graph'].encode().hex()}/history/{after['Round']:016x}/" + key.encode().hex()).encode()
             spool.insert(b"fdb-history", history_key, body)
+            if retained and after["Round"] <= header["OldCut"]["Round"]:
+                put_raw(spool, b"fdb-old", current_key, body)
             prior = spool.find(b"fdb-current", current_key)
             if prior is None:
                 current_counts[g] += 1
@@ -1036,9 +1046,10 @@ def fdb_raw_groups(path, spec, config, final_cut, stats, spool, result):
                 yield pending.pop(ordinal_next)
                 ordinal_next += 1
     require(not pending and (parallel or ordinal_next == total + 1) and sequences == final_cut["Groups"], "incomplete raw original operations/watermarks")
-    for g, metadata in enumerate(header["Metadata"]):
+    source_metadata = result["Retention"]["Seal"]["Before"] if retained else header["Metadata"]
+    for g, metadata in enumerate(source_metadata):
         require(metadata["Versions"] == versions[g] and metadata["Generation"] == generations[g] and metadata["Transactions"] == sequences[g] + abort_counts["final"][g] and metadata["Certificates"] == (3 if g == 0 else 0) and metadata["Bytes"] == native_bytes[g], "exact retained metadata census including authentic ABORT pairs")
-    if parallel: require(same(header["Metadata"], result["Parallel"]["Final"]["Metadata"]), "raw final metadata differs from drained authentic attempt barrier")
+    if parallel: require(same(source_metadata, result["Parallel"]["Final"]["Metadata"]), "raw final metadata differs from drained authentic attempt barrier")
     operation_count = 0
     for operation_count, group in enumerate(rows(Path(path).with_name("fdb-cost-operation-groups.jsonl"), total), 1):
         ordinal = integer(group["Tx"]["Lifecycle"]["Provenance"], 1, total) if parallel else operation_count
@@ -1063,7 +1074,10 @@ def fdb_raw_groups(path, spec, config, final_cut, stats, spool, result):
             spool.insert(b"fdb-sample-output", u64(ordinal), go_json(sample))
         require(go_json(sample["Outcome"]) == spool.lookup(b"fdb-id", fdb_key(config, owner, "id", name)), "per-request timing original receipt")
     require(samples == total, "incomplete per-request timings")
+    if retained:
+        stats["sourceRetention"] = fdb_retention_check.verify(FDB_RETENTION_API, Path(path).with_name("fdb-cost-retention.jsonl"), result, spool)
     for name, expected_counts in (("history", versions), ("current", current_counts)):
+        if retained and name == "history": expected_counts = current_counts
         reader = artifact_rows(Path(path).with_name("fdb-cost-" + name + ".jsonl"), name, result, stats)
         actual_header = next(reader, None)
         require(same(actual_header, header | {"Stream": name}), "mixed native stream headers")
@@ -1073,6 +1087,10 @@ def fdb_raw_groups(path, spec, config, final_cut, stats, spool, result):
             require(previous_key is None or previous_key < key, "raw history/current duplicate/reordered row")
             previous_key = key
             require(row["Value"] == spool.lookup(b"fdb-" + name.encode(), row["Key"]), "raw history/current differs from exact original physical write")
+            if retained and name == "history":
+                value = decoded_body(row["Value"])
+                logical = bytes.fromhex(row["Key"].rsplit(b"/", 1)[1].decode()).decode()
+                require(row["Value"] == spool.lookup(b"fdb-current", fdb_key(config, row["Group"], "current", logical)), "retired row substituted for required physical anchor")
             counts[row["Group"]] += 1
             if name == "history":
                 value = decoded_body(row["Value"])
@@ -1235,7 +1253,9 @@ def column_artifacts(path, result, spool):
     """Validate actual sealed derived records; SQLite remains private verifier state."""
     end, config, spec = result["Columns"], result["Config"], result["spec"]
     fields(end, "Format SourceFormat ReferenceLayout PayloadSHA256 ArtifactSHA256 Old Final Counts Ledger PinLedger Storage")
-    require(end["Format"] == COLUMN_FORMAT and end["SourceFormat"] == RAW_FORMAT and end["ReferenceLayout"] == "native-logical-kv-reference", "column format/reference identity")
+    retained = "Retention" in result
+    column_format, source_format = (fdb_retention_check.COLUMN_FORMAT, RETAINED_FORMAT) if retained else (COLUMN_FORMAT, RAW_FORMAT)
+    require(end["Format"] == column_format and end["SourceFormat"] == source_format and end["ReferenceLayout"] == "native-logical-kv-reference", "column format/reference identity")
     prefix = f"g0/{config['Graph'].encode().hex()}/columns-v1/".encode()
     key = lambda name: prefix + name.encode()
     generation_key = lambda name, kind: key("generation/" + name.encode().hex() + "/" + kind)
@@ -1255,7 +1275,7 @@ def column_artifacts(path, result, spool):
         g = m["Generation"]
         fields(g, "Version ID Binding Initial Cut")
         require(same(g, {"Version": 1, "ID": name, "Binding": list(binding_sha), "Initial": result["InitialCut"], "Cut": result["OldCut" if name == "old" else "FinalCut"]}), "immutable column generation/config/cut binding")
-        metadata = old_metadata if name == "old" else result["StreamEnds"][0]["Metadata"]
+        metadata = old_metadata if name == "old" else result["Retention"]["Seal"]["Before"] if retained else result["StreamEnds"][0]["Metadata"]
         require(same(m["Metadata"], metadata) and same(m["History"], [v["Versions"] for v in metadata]), "complete actual source history census in manifest")
         require(integer(m["Rows"], 1, policy["MaxWorkRows"]) == sum(g["Cut"]["Groups"]) and 1 <= integer(m["Chunks"]) <= min(m["Rows"], policy["MaxChunks"]) and integer(m["Bytes"], 1) <= policy["MaxRetainedBytes"] and any(sha_array(m["Chain"])), "column manifest quotas/census")
     counters = {"Chunks": 0, "WalkRows": 0, "Points": 0, "Stages": 0, "Collections": 0}
@@ -1291,7 +1311,7 @@ def column_artifacts(path, result, spool):
             payload.update(line)
             if number == 0:
                 fields(row, "Type Format SourceFormat ReferenceLayout Config InitialCut StoragePagePolicy Records")
-                require(kind == "header" and row["Format"] == COLUMN_FORMAT and row["SourceFormat"] == RAW_FORMAT and row["ReferenceLayout"] == end["ReferenceLayout"] and same(row["Config"], config) and same(row["InitialCut"], result["InitialCut"]), "column header namespace/layout")
+                require(kind == "header" and row["Format"] == column_format and row["SourceFormat"] == source_format and row["ReferenceLayout"] == end["ReferenceLayout"] and same(row["Config"], config) and same(row["InitialCut"], result["InitialCut"]), "column header namespace/layout")
                 require(same(row["StoragePagePolicy"], {"PageRows": 32, "PageBytes": 32 * (65536 + 1024)}), "declared bounded post-SDK storage page policy")
                 records = column_records(row["Records"])
                 required = {key("binding"): go_json(binding), key("retention-v1/binding"): go_json(pin_binding),
@@ -1457,7 +1477,7 @@ def column_artifacts(path, result, spool):
                 count += 1
         require(count == manifests[name]["Chunks"], "complete cache directory census")
     return {"equal": True, "layout": COLUMN_LAYOUT, "artifactSHA256": whole.hexdigest(), "counts": counters, "storedLogicalBytes": storage,
-            "admissionCharges": {"columns": end["Ledger"], "pins": end["PinLedger"]}, "sourceKVGC": "not performed; exact source EOF follows derived collection",
+            "admissionCharges": {"columns": end["Ledger"], "pins": end["PinLedger"]}, "sourceKVGC": "fresh source-v1 retirement follows this complete pre-GC generation census" if retained else "not performed; exact source EOF follows derived collection",
             "referenceLayout": end["ReferenceLayout"], "nativeColumnsCostParity": False, "pointScope": "three selected generation-scan witnesses per cut; complete typed/cached walks; no indexed-point cost claim"}
 
 
@@ -1580,9 +1600,11 @@ def _compare_streams(native_path, fdb_path, spec, config, final_cut, native_boun
     require(type(spec["version"]) is type(spec["writers"]) is type(spec["crossPercent"]) is int and spec["version"] == 1 and spec["writers"] in (1,8,32) and spec["crossPercent"] in (0, 10, 50, 100), "declared cost spec")
     count = spec["facts"]
     parallel = spec["writers"] != 1
-    require(not parallel or raw_result is not None and raw_result.get("version") in (4,5) and "Parallel" in raw_result, "parallel evidence requires fresh complete attempt format")
-    column_lane = raw_result is not None and (raw_result.get("version"),raw_result.get("oracleFormat")) in ((3,COLUMN_FORMAT),(5,PARALLEL_COLUMN_FORMAT))
+    retained = raw_result is not None and (raw_result.get("version"),raw_result.get("oracleFormat")) == (6, RETAINED_FORMAT)
+    require(not parallel or raw_result is not None and raw_result.get("version") in (4,5,6) and "Parallel" in raw_result, "parallel evidence requires fresh complete attempt format")
+    column_lane = raw_result is not None and ((raw_result.get("version"),raw_result.get("oracleFormat")) in ((3,COLUMN_FORMAT),(5,PARALLEL_COLUMN_FORMAT)) or retained and "Columns" in raw_result)
     graph = "graph-cost-parallel-columns-v1" if parallel and column_lane else "graph-cost-parallel-v1" if parallel else "graph-cost-columns-v1" if column_lane else "graph-cost-v1"
+    if retained: graph = "graph-cost-" + ("parallel-" if parallel else "") + "retained-" + ("columns-" if column_lane else "") + "v1"
     expected_config = {"Format": 2, "Graph": graph, "Topology": 1, "Epochs": [7, 11],
                        "Limits": {"Bytes": (64 << 20) + count * (64 << 10) + (2*count*63*2048 if parallel else 0), "Transactions": 3 + 2 * count * (64 if parallel else 1), "Versions": 3 + 6 * count, "Certificates": 1024},
                        "Nodes": [1, 7 + 2 * count], "Cost": spec, "CostScope": SCOPE}
@@ -1604,9 +1626,10 @@ def _compare_streams(native_path, fdb_path, spec, config, final_cut, native_boun
     if raw_result is None:
         right = fdb_groups(fdb_path, spec, config, final_cut, fdb_stats, spool)
     else:
-        fields(raw_result, "version engine spec deployment SetupNodes Creates Updates CompletedCreates CompletedUpdates SetupNanos WritesNanos VerificationNanos TotalNanos InitialCut OldCut FinalCut Config CDCGroups LogicalComponentChanges PhysicalGraphChanges IDAdmission oracleFormat StreamEnds" + (" Columns" if column_lane else "") + (" Parallel" if parallel else ""))
+        fields(raw_result, "version engine spec deployment SetupNodes Creates Updates CompletedCreates CompletedUpdates SetupNanos WritesNanos VerificationNanos TotalNanos InitialCut OldCut FinalCut Config CDCGroups LogicalComponentChanges PhysicalGraphChanges IDAdmission oracleFormat StreamEnds" + (" Columns" if column_lane else "") + (" Parallel" if parallel else "") + (" Retention" if retained else ""))
         require(observations_path is not None and "oldCut" in native_bounds, "raw parity requires actual retained observations/old cut")
         expected_format = (5,PARALLEL_COLUMN_FORMAT) if parallel and column_lane else (4,PARALLEL_FORMAT) if parallel else (3,COLUMN_FORMAT) if column_lane else (2,RAW_FORMAT)
+        if retained: expected_format = (6, RETAINED_FORMAT)
         require(type(raw_result["version"]) is int and (raw_result["version"], raw_result["oracleFormat"]) == expected_format and same(raw_result["Config"], config) and same(raw_result["FinalCut"], final_cut), "mixed raw result format/config/cut")
         require(same(raw_result["spec"], spec) and len(raw_result["StreamEnds"]) == 3, "raw result specification/complete EOF set")
         for name, expected in (("SetupNodes", 3), ("Creates", count), ("Updates", count), ("CompletedCreates", count), ("CompletedUpdates", count), ("CDCGroups", 3 + 2 * count), ("LogicalComponentChanges", 3 + 3 * count), ("PhysicalGraphChanges", 3 + 6 * count)):
@@ -1645,3 +1668,9 @@ NATIVE_COLUMN_API = SimpleNamespace(require=require, fields=fields, integer=inte
     same=same, pairs=pairs, raw_bytes=raw_bytes, fixed_body=fixed_body, go_json=go_json,
     GRAPH=GRAPH, PARTITIONS=PARTITIONS, SCOPE=SCOPE, parallel_lines=parallel_lines,
     native_parallel_manifest=native_parallel_manifest, put_raw=put_raw)
+
+FDB_RETENTION_API = SimpleNamespace(require=require, fields=fields, integer=integer,
+    same=same, raw_bytes=raw_bytes, go_json=go_json, decoded_body=decoded_body,
+    raw_binding=raw_binding, fdb_key=fdb_key, sha_array=sha_array,
+    parallel_lines=parallel_lines, column_records=column_records, put_raw=put_raw,
+    column_old_metadata=column_old_metadata, fdb_contract=fdb_contract)

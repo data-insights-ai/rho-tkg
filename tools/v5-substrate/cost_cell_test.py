@@ -14,6 +14,28 @@ SPEC.loader.exec_module(CELL)
 
 
 class NativeColumnController(unittest.TestCase):
+    def test_explicit_fdb_retention_uses_fresh_enum_and_refuses_foreign_selection(self):
+        for writers in (1,8,32):
+            spec = CELL.specification(10000,100,writers)
+            for layout in ("kv","columns"):
+                self.assertEqual(CELL.fdb_format(spec,layout,"source-v1"),(6,"fdb-graph-cost-retained-v1"))
+                self.assertEqual(CELL.fdb_format(spec,layout,"off")[0],(3 if layout=="columns" else 2) if writers==1 else (5 if layout=="columns" else 4))
+        with self.assertRaises(ValueError): CELL.fdb_format(spec,"kv","foreign")
+        with self.assertRaises(ValueError): CELL.fdb_format(spec,"relabeled","source-v1")
+
+    def test_fdb_dispatch_always_overrides_inherited_source_profile(self):
+        spec = CELL.specification(10000,0,1)
+        for retention in ("off","source-v1"):
+            with self.subTest(retention=retention), tempfile.TemporaryDirectory() as tmp:
+                args = SimpleNamespace(layout="kv",fdb_retention=retention,output=Path(tmp),benchmark_seconds=60,probe=True)
+                def refused(command,**kw):
+                    self.assertEqual(kw["env"]["RHO_GRAPH_COST_RETENTION"],retention)
+                    self.assertEqual(kw["env"]["RHO_GRAPH_COST_LAYOUT"],"kv")
+                    return SimpleNamespace(returncode=1)
+                with patch.dict(os.environ,{"RHO_GRAPH_COST_RETENTION":"foreign"}),patch.object(CELL.subprocess,"run",side_effect=refused) as run:
+                    with self.assertRaisesRegex(ValueError,"artifact root"): CELL.fdb_cell(args,spec,1,{"synthetic-test-only":True})
+                    self.assertEqual(run.call_count,1)
+
     def test_fresh_native_column_contract_refuses_kv_relabelling_and_partial_seals(self):
         kv = {"version":1,"runner":"independent-clients-request-bound-ack-v2"}
         CELL.native_format(kv,"kv")

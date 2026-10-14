@@ -81,6 +81,8 @@ COST_CDC_INPUTS = {
     "tools/v5-substrate/compare_cost_cdc_test.py",
     "tools/v5-substrate/native_columns_check.py",
     "tools/v5-substrate/cost_cell_test.py",
+    "tools/v5-substrate/fdb_retention_check.py",
+    "tools/v5-substrate/fdb_retention_check_test.py",
     "tasks/evidence/v2-fdb-cost-profile-20261013/raw.tar.gz",
     "tasks/evidence/v2-fdb-cost-final-source-20261013/raw.tar.gz",
 }
@@ -445,6 +447,8 @@ def cdc(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/compare_cost_cdc_test.py"], cwd=ROOT, check=True)
         if {"tools/v5-substrate/cost-cell.py", "tools/v5-substrate/native_columns_check.py", "tools/v5-substrate/cost_cell_test.py"}.intersection(paths):
             subprocess.run([sys.executable, "-B", "tools/v5-substrate/cost_cell_test.py"], cwd=ROOT, check=True)
+        if {"tools/v5-substrate/compare-cost-cdc.py", "tools/v5-substrate/fdb_retention_check.py", "tools/v5-substrate/fdb_retention_check_test.py"}.intersection(paths):
+            subprocess.run([sys.executable, "-B", "tools/v5-substrate/fdb_retention_check_test.py"], cwd=ROOT, check=True)
 
 
 def focused_dispatch_base(event, kind, head):

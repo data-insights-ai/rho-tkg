@@ -794,4 +794,13 @@ class Replay(unittest.TestCase):
         with self.assertRaises(ValueError):
             h.typed_rows(a,frame|{'Rows':[{}]},b'',PrefixOnly(),initial,11,1)
 
+    def test_retained_version_is_a_distinct_full_raw_contract(self):
+        c=module('fresh-retained-enum','compare-cost-cdc.py')
+        def relabel(result,header,streams):
+            result.update(version=6,oracleFormat=c.RETAINED_FORMAT)
+        # A raw-v2 EOF cannot acquire source-retirement authority by relabelling
+        # its outer enum, even though the original business groups are genuine.
+        with self.assertRaises(ValueError): self.raw_compare(relabel)
+        self.assertEqual(list(self.root.glob('.cost-spool-*')),[])
+
 if __name__=='__main__':unittest.main()

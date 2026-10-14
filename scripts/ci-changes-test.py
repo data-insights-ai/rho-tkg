@@ -44,6 +44,7 @@ class Planning(unittest.TestCase):
         inputs = ["tools/v5-substrate/compare-cost-cdc.py", "tools/v5-substrate/cost-cell.py",
                   "tools/v5-substrate/compare_cost_cdc_test.py",
                   "tools/v5-substrate/native_columns_check.py", "tools/v5-substrate/cost_cell_test.py",
+                  "tools/v5-substrate/fdb_retention_check.py", "tools/v5-substrate/fdb_retention_check_test.py",
                   "tasks/evidence/v2-fdb-cost-profile-20261013/raw.tar.gz",
                   "tasks/evidence/v2-fdb-cost-final-source-20261013/raw.tar.gz"]
         for paths in [[p] for p in inputs] + [inputs, [inputs[0], inputs[0]]]:
@@ -52,6 +53,8 @@ class Planning(unittest.TestCase):
                 expected = [[sys.executable, "-B", "tools/v5-substrate/compare_cost_cdc_test.py"]]
                 if {"tools/v5-substrate/cost-cell.py", "tools/v5-substrate/native_columns_check.py", "tools/v5-substrate/cost_cell_test.py"}.intersection(paths):
                     expected.append([sys.executable, "-B", "tools/v5-substrate/cost_cell_test.py"])
+                if {"tools/v5-substrate/compare-cost-cdc.py", "tools/v5-substrate/fdb_retention_check.py", "tools/v5-substrate/fdb_retention_check_test.py"}.intersection(paths):
+                    expected.append([sys.executable, "-B", "tools/v5-substrate/fdb_retention_check_test.py"])
                 self.assertEqual([c.args[0] for c in run.call_args_list], expected)
                 self.assertTrue(all(c.kwargs == {"cwd":CI.ROOT,"check":True} for c in run.call_args_list))
                 p = CI.plan(paths)

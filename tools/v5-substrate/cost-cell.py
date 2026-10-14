@@ -127,10 +127,13 @@ def native_format(result,layout):
 
 
 def fdb_cell(args, spec, number, gate):
-    root = args.output / f"fdb-{spec['facts']}-{spec['crossPercent']}-{spec['writers']}-run{number}"
+    retention = getattr(args, "fdb_retention", "off")
+    expected_format = fdb_format(spec, args.layout, retention)
+    root = args.output / f"fdb{'-retained' if retention == 'source-v1' else ''}-{spec['facts']}-{spec['crossPercent']}-{spec['writers']}-run{number}"
     root.mkdir(parents=True, exist_ok=False)
     command = ["bash", str(ROOT / "fdb/run-local.sh"), "cost-cell", "small"]
-    environment = os.environ | {"RHO_GRAPH_COST_SPEC": json.dumps(spec), "RHO_GRAPH_COST_LAYOUT": args.layout, "FDB_COST_SECONDS": str(args.benchmark_seconds),
+    environment = os.environ | {"RHO_GRAPH_COST_SPEC": json.dumps(spec), "RHO_GRAPH_COST_LAYOUT": args.layout,
+                                "RHO_GRAPH_COST_RETENTION": retention, "FDB_COST_SECONDS": str(args.benchmark_seconds),
                                 "FDB_ADMISSION_MIB": "4096", "FDB_ADMISSION_CPUS": "2"}
     started = time.monotonic_ns()
     with (root / "stdout.txt").open("wb") as stdout, (root / "stderr.txt").open("wb") as stderr:
@@ -147,6 +150,8 @@ def fdb_cell(args, spec, number, gate):
                "controllerElapsedIncludingBuildNanos": time.monotonic_ns() - started,
                "FDBArtifacts": str(artifacts), "launchReceipt": launch, "completedCell": False,
                "setupContractDifference": "FDB accepts externally admitted fixed IDs in its actual durable configuration; native performs actual rho allocator/recipient issuance. No semantically equal allocator-overhead claim."}
+    if retention == "source-v1":
+        receipt.update(version=2, sourceRetention=retention)
     if completed.returncode == 0:
         if not launch["success"] or launch["cleanup_exit"] != 0:
             raise ValueError("FDB launch/cleanup did not qualify")
@@ -154,9 +159,10 @@ def fdb_cell(args, spec, number, gate):
             if digest(artifacts / name) != expected:
                 raise ValueError("FDB actual artifact hash changed: " + name)
         result = json.loads((artifacts / "fdb-cost-result.json").read_text())
-        expected_format = ((5, "fdb-graph-cost-parallel-columns-v1") if args.layout == "columns" else (4, "fdb-graph-cost-parallel-v1")) if spec["writers"] != 1 else ((3, "fdb-graph-cost-columns-v1") if args.layout == "columns" else (2, "fdb-graph-cost-raw-v2"))
         if (result.get("version"), result.get("oracleFormat")) != expected_format:
             raise ValueError("actual FDB result differs from requested persisted layout")
+        if retention == "source-v1" and (type(result.get("Retention")) is not dict or "fdb-cost-retention.jsonl" not in launch["sha256"]):
+            raise ValueError("fresh retained source requires complete hash-bound retention artifact")
         if result["spec"] != spec or result["CompletedCreates"] != spec["facts"] or result["CompletedUpdates"] != spec["facts"] or result["CDCGroups"] != 3 + 2 * spec["facts"] or result["LogicalComponentChanges"] != 3 + 3 * spec["facts"]:
             raise ValueError("actual FDB count/oracle mismatch")
         sampled, client_observed = 0, False
@@ -198,6 +204,14 @@ def fdb_cell(args, spec, number, gate):
     return root
 
 
+def fdb_format(spec, layout, retention):
+    if layout not in ("kv", "columns") or retention not in ("off", "source-v1"):
+        raise ValueError("unsupported explicit FDB layout/source-retention profile")
+    if retention == "source-v1": return 6, "fdb-graph-cost-retained-v1"
+    return (((5, "fdb-graph-cost-parallel-columns-v1") if layout == "columns" else (4, "fdb-graph-cost-parallel-v1"))
+            if spec["writers"] != 1 else ((3, "fdb-graph-cost-columns-v1") if layout == "columns" else (2, "fdb-graph-cost-raw-v2")))
+
+
 def compare_cells(native_path, fdb_path, *, comparison_disk_bytes=1 << 30, comparison_cache_bytes=8 << 20):
     native, fdb = (json.loads(Path(p).read_text()) for p in (native_path, fdb_path))
     if not native["completedCell"] or not fdb["completedCell"] or native["spec"] != fdb["spec"]:
@@ -228,17 +242,28 @@ def compare_cells(native_path, fdb_path, *, comparison_disk_bytes=1 << 30, compa
     policy = checker.Policy(comparison_disk_bytes, comparison_cache_bytes, 4096, checker.ARTIFACT_LINE_BYTES)
     policy.validate()
     version, format_ = fdb["result"].get("version"), fdb["result"].get("oracleFormat")
-    if native_columns and version not in (2,3,4,5):
+    if native_columns and version not in (2,3,4,5,6):
         raise ValueError("fresh native columns require complete raw FDB source/original artifacts")
     parallel = spec["writers"] != 1
     allowed = (((5,checker.PARALLEL_COLUMN_FORMAT),) if fdb_layout == "columns" else ((4,checker.PARALLEL_FORMAT),)) if parallel else (((3, checker.COLUMN_FORMAT),) if fdb_layout == "columns" else ((1, None), (2, checker.RAW_FORMAT)))
+    retained = fdb.get("sourceRetention") == "source-v1"
+    if fdb.get("sourceRetention") not in (None, "off", "source-v1"):
+        raise ValueError("unsupported recorded FDB source-retention profile")
+    if retained:
+        if type(fdb.get("version")) is not int or fdb["version"] != 2:
+            raise ValueError("fresh retention requires versioned controller receipt")
+        allowed = ((6, checker.RETAINED_FORMAT),)
     if type(version) is not int or (version, format_) not in allowed:
         raise ValueError("missing/mixed FDB oracle format; historical v1 is not v2 proof")
-    if version in (2, 3, 4, 5):
+    if version in (2, 3, 4, 5, 6):
         required = {"fdb-cost-result.json", "fdb-cost-history.jsonl", "fdb-cost-current.jsonl",
                     "fdb-cost-cdc.jsonl", "fdb-cost-operation-groups.jsonl", "fdb-cost-latency.jsonl"}
-        if version in (3,5):
+        if version in (3,5) or retained and fdb_layout == "columns":
             required.add("fdb-cost-columns.jsonl")
+        if retained:
+            required.add("fdb-cost-retention.jsonl")
+            if ("Columns" in fdb["result"]) != (fdb_layout == "columns") or ("Parallel" in fdb["result"]) != parallel:
+                raise ValueError("fresh retained layout/writer artifact union mismatch")
         if parallel:
             required.add("fdb-cost-attempts.jsonl")
             if not {"attempts.jsonl","latency.jsonl"} <= native["artifacts"].keys():
@@ -259,7 +284,7 @@ def compare_cells(native_path, fdb_path, *, comparison_disk_bytes=1 << 30, compa
                                       spool_policy=policy,
                                       raw_result=fdb["result"], observations_path=left_root / "observations.jsonl",
                                       native_result=native["result"] if native_columns else None)
-        return {"equal": True, "spec": spec, "relationshipFacts": facts, "setupNodes": 3,
+        report = {"equal": True, "spec": spec, "relationshipFacts": facts, "setupNodes": 3,
                 "usefulCreateTransactions": facts, "usefulUpdateTransactions": facts,
                 "retainedPointObservations": 2 * facts, "exactLogicalComponentChanges": cdc["componentChanges"],
                 "completeLogicalCDC": cdc, "oracleFormat": format_,
@@ -270,6 +295,10 @@ def compare_cells(native_path, fdb_path, *, comparison_disk_bytes=1 << 30, compa
                           "declared independent8/32 source contract with actual attempts/cut/causal joins; FDB columns use native logical KV reference; no runtime/capacity/storage-efficiency/fullmatrix acceptance" if parallel else
                           "fixed writer1 genuine FDB columns/source equivalence versus native logical KV reference; private quota-bound spool; no paired column cost/storage-efficiency/capacity/fullmatrix acceptance"
                           if version == 3 else "fixed writer1 raw native/FDB history/current/CDC parity; private quota-bound verifier spool; no capacity/engine-selection/fullmatrix acceptance")}
+        if retained:
+            report["sourceRetentionProfiles"] = {"native": "retain-all", "FDB": "source-v1", "equalStorageEfficiencyPolicy": False}
+            report["scope"] += "; FDB physical source retirement and native retain-all differ; no equal retention-policy/storage-efficiency claim"
+        return report
     cdc = checker.compare_streams(left_root / "cdc.jsonl", right_root / "fdb-cost-cdc.jsonl", spec,
                                   fdb["result"]["Config"], fdb["result"]["FinalCut"],
                                   {"from": native["result"]["CDCFrom"], "through": native["result"]["CDCThrough"],
@@ -320,6 +349,7 @@ def main():
     parser.add_argument("--compare", nargs=2, metavar=("NATIVE_RECEIPT", "FDB_RECEIPT"))
     parser.add_argument("--engine", choices=("native", "fdb"), default="native")
     parser.add_argument("--layout", choices=("kv", "columns"), default="kv")
+    parser.add_argument("--fdb-retention", choices=("off", "source-v1"), default="off", help="explicit fresh FDB source retirement profile; native retain-all policy is distinct")
     parser.add_argument("--comparison-disk-mib", type=int, default=1024, help="explicit whole-comparison private spool disk quota; no capacity qualification")
     parser.add_argument("--comparison-cache-mib", type=int, default=8, help="finite SQLite cache target, not process RSS; one policy for every comparison phase")
     parser.add_argument("--facts", type=int, choices=FACTS, default=10_000)
