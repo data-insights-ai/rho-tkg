@@ -37,13 +37,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **Integrity hashes written as 32 raw bytes** (backlog 61, step 2; deprecated in v4.52.2): the writer stores each
+- **Integrity hashes written as 32 raw bytes** (backlog 61, step 2; deprecated in v4.52.2 for v4.52.3; lands later than announced, in v4.54.0): the writer stores each
   canonical hash as its 32 raw bytes (row fv 4) and a writable open raises the badger store marker to 4 (a store
   with a higher marker keeps it); callers still get the same 64-hex strings. A relationship row of the measured
   shape: 366.9 → 270.9 B raw, 251.2 → 151.8 B Snappy. A store this release opens writable can be opened only by
   v4.52.2 or later; exports and change feeds carry row fv 4, so readers and replicas need v4.52.2 or later first.
 
-- **A row without a valid-from is valid from its `TxFrom`** (backlog 62, deprecated in v4.52.2; sigma-tkgd
+- **A row without a valid-from is valid from its `TxFrom`** (backlog 62, deprecated in v4.52.2 for v4.52.3; lands later than announced, in v4.54.0; sigma-tkgd
   observation). One start rule, `storeutil.EntityValidFrom`: explicit `ValidFrom`, else `TxFrom`, else (a legacy
   row without one) `UpdatedAt`, else the ID's mint instant — for an untimed create (was: its mint instant) and an
   untimed later version (was: its `UpdatedAt`) alike. One instant now sees one write burst in commit order: a
@@ -74,7 +74,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestUntimedRowsStartAtTxFrom`, `TestOneBurstReadsConsistentlyAtOneInstant` (four backends),
   `TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt`, `TestRelColumns_UnsetValidFromFiltersFromTxFrom`; evidence
   `tasks/evidence/valid-from-source/`.
-- **An update that sets only `tkg_valid_to` closes the version** (backlog 65, deprecated in v4.52.2). `Update` and
+- **An update that sets only `tkg_valid_to` closes the version** (backlog 65, deprecated in v4.52.2 for v4.52.3; lands later than announced, in v4.54.0). `Update` and
   its `GraphTx`, batch, ingest and `*WithTx` twins treat a `tkg_valid_to` without `tkg_valid_from` as
   `CloseVersion` does, through one helper (`checkNodeClose` / `checkRelClose` + `stampClose`: the version must be
   open, the end must follow its start, the temporal constraints must hold): the version keeps its start and ends at
