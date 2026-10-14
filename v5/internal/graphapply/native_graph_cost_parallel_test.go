@@ -23,7 +23,8 @@ func TestNativeGraphCostIndependentClientsSmallActualProcesses(t *testing.T) {
 			t.Run(cell.name+"/"+strconv.Itoa(writers), func(t *testing.T) {
 				// Seed plus a complete 32-client window, genuine old/new cuts, exact CDC,
 				// physical six-directory reopen and bounded original grant replay.
-				runNativeGraphCostWithBlock(t, nativeGraphCostSpec{Version: 1, Facts: 33, CrossPercent: cell.cross, Writers: writers}, 32)
+				// Block64 yields two home grants + one remote grant (six originals).
+				runNativeGraphCostWithBlock(t, nativeGraphCostSpec{Version: 1, Facts: 33, CrossPercent: cell.cross, Writers: writers}, 64)
 			})
 		}
 	}
