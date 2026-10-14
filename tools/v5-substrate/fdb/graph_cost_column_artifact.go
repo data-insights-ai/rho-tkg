@@ -15,8 +15,15 @@ import (
 )
 
 const graphCostColumnFormat = "fdb-graph-cost-columns-v1"
+const graphCostColumnStorageRows = 32
+const graphCostColumnStorageBytes = graphCostColumnStorageRows * ((64 << 10) + 1024)
 
 type graphCostColumnCounts struct{ Chunks, WalkRows, Points, Stages, Collections uint64 }
+type graphCostColumnStorage struct {
+	Records, Bytes, LiveChunkRecords, LiveChunkBytes uint64
+	TombstoneRecords, TombstoneBytes                 uint64
+	RetiredLineageRecords, RetiredLineageBytes       uint64
+}
 type graphCostColumnEnd struct {
 	Format, SourceFormat, ReferenceLayout string
 	PayloadSHA256, ArtifactSHA256         [32]byte
@@ -24,13 +31,15 @@ type graphCostColumnEnd struct {
 	Counts                                graphCostColumnCounts
 	Ledger                                graphColumnLedger
 	PinLedger                             graphColumnPinLedger
+	Storage                               graphCostColumnStorage
 }
 
 func (e graphCostColumnEnd) complete() bool {
 	return e.Format == graphCostColumnFormat && e.SourceFormat == graphCostRawFormat && e.ReferenceLayout == "native-logical-kv-reference" &&
 		e.PayloadSHA256 != [32]byte{} && e.ArtifactSHA256 != [32]byte{} && e.Old.Generation.ID == "old" && e.Final.Generation.ID == "final" &&
 		e.Counts.Chunks == e.Old.Chunks+e.Final.Chunks && e.Counts.WalkRows == 2*(e.Old.Rows+e.Final.Rows) && e.Counts.Points == 6 && e.Counts.Stages == 7 &&
-		e.Counts.Collections == e.Old.Chunks && e.Old.Chunks > 0 && e.Ledger.Generations == 2 && e.Ledger.Chunks == e.Final.Chunks
+		e.Counts.Collections == e.Old.Chunks && e.Old.Chunks > 0 && e.Ledger.Generations == 2 && e.Ledger.Chunks == e.Final.Chunks &&
+		e.Storage.Records == e.Final.Chunks+22 && e.Storage.LiveChunkRecords == e.Final.Chunks && e.Storage.LiveChunkBytes == e.Final.Bytes && e.Storage.TombstoneRecords == 9 && e.Storage.RetiredLineageRecords == 3
 }
 
 type graphCostColumnLane struct {
@@ -89,8 +98,9 @@ func newGraphCostColumnLane(h *harness, root *os.Root, initial cut) (*graphCostC
 			Type, Format, SourceFormat, ReferenceLayout string
 			Config                                      config
 			InitialCut                                  certificate
+			StoragePagePolicy                           graphCostStreamPolicy
 			Records                                     []graphCostStoredRecord
-		}{"header", graphCostColumnFormat, graphCostRawFormat, l.end.ReferenceLayout, h.config, initial.record, records}, true)
+		}{"header", graphCostColumnFormat, graphCostRawFormat, l.end.ReferenceLayout, h.config, initial.record, graphCostStreamPolicy{graphCostColumnStorageRows, graphCostColumnStorageBytes}, records}, true)
 	}
 	if err != nil {
 		return nil, errors.Join(err, l.Close())
@@ -483,6 +493,9 @@ func (l *graphCostColumnLane) finish(final cut) (end graphCostColumnEnd, err err
 	if err != nil {
 		return end, err
 	}
+	if err := l.storage(); err != nil {
+		return end, err
+	}
 	copy(l.end.PayloadSHA256[:], l.payload.Sum(nil))
 	if err := l.write(struct {
 		Type string
@@ -498,6 +511,91 @@ func (l *graphCostColumnLane) finish(final cut) (end graphCostColumnEnd, err err
 		return end, fmt.Errorf("column artifact incomplete: %w", errMismatch)
 	}
 	return l.end, nil
+}
+
+// Actual retained logical key/value bytes, not the reservation ledger and not
+// physical FDB replica/file allocation. Paging holds no complete namespace map.
+func (l *graphCostColumnLane) storage() error {
+	keyRange := prefixRange(l.s.prefix())
+	begin, end := keyRange.Begin.(fdb.Key), keyRange.End.(fdb.Key)
+	check := func(tr fdb.ReadTransaction) error {
+		if err := l.s.check(tr, l.end.Final.Generation); err != nil {
+			return err
+		}
+		ledger, err := l.s.ledger(tr)
+		if err != nil || ledger != l.end.Ledger {
+			return errors.Join(errMismatch, err)
+		}
+		pins, err := l.pins.ledger(tr)
+		if err != nil || pins != l.end.PinLedger {
+			return errors.Join(errMismatch, err)
+		}
+		return nil
+	}
+	for {
+		result, err := l.s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+			if err := check(tr); err != nil {
+				return nil, err
+			}
+			rows, err := tr.GetRange(fdb.KeyRange{Begin: begin, End: end}, fdb.RangeOptions{Limit: graphCostColumnStorageRows}).GetSliceWithError()
+			if err != nil {
+				return nil, err
+			}
+			if len(rows) > graphCostColumnStorageRows {
+				return nil, errLimit
+			}
+			out := make([]graphCostStoredRecord, 0, len(rows))
+			used := 0
+			var previous []byte
+			for _, row := range rows {
+				if len(row.Key) > 1024 || len(row.Value) == 0 || len(row.Value) > 64<<10 || bytes.Compare(row.Key, begin) < 0 || bytes.Compare(row.Key, end) >= 0 || previous != nil && bytes.Compare(previous, row.Key) >= 0 {
+					return nil, errLimit
+				}
+				used += len(row.Key) + len(row.Value)
+				if used > graphCostColumnStorageBytes {
+					return nil, errLimit
+				}
+				out = append(out, graphCostStoredRecord{bytes.Clone(row.Key), bytes.Clone(row.Value)})
+				previous = row.Key
+			}
+			return out, nil
+		})
+		if err != nil {
+			return err
+		}
+		rows := result.([]graphCostStoredRecord)
+		for _, row := range rows {
+			size := uint64(len(row.Key) + len(row.Value))
+			l.end.Storage.Records++
+			l.end.Storage.Bytes += size
+			if l.end.Storage.Records > l.end.Final.Chunks+22 || l.end.Storage.Bytes > l.s.binding.Policy.MaxRetainedBytes {
+				return errLimit
+			}
+			switch {
+			case bytes.HasPrefix(row.Key, l.s.generationKey("final", "chunk/")):
+				l.end.Storage.LiveChunkRecords++
+				l.end.Storage.LiveChunkBytes += size
+			case bytes.HasPrefix(row.Key, l.s.generationKey("old", "")):
+				l.end.Storage.RetiredLineageRecords++
+				l.end.Storage.RetiredLineageBytes += size
+			case bytes.HasPrefix(row.Key, l.s.key("read-owner/")), bytes.Equal(row.Key, columnPinKey(l.s, l.token.Request)):
+				l.end.Storage.TombstoneRecords++
+				l.end.Storage.TombstoneBytes += size
+			}
+			if err := l.write(struct {
+				Type   string
+				Record graphCostStoredRecord
+			}{"storage-row", row}, true); err != nil {
+				return err
+			}
+		}
+		if len(rows) < graphCostColumnStorageRows {
+			break
+		}
+		begin = fdb.Key(append(bytes.Clone(rows[len(rows)-1].Key), 0))
+	}
+	_, err := l.s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) { return nil, check(tr) })
+	return err
 }
 
 func (l *graphCostColumnLane) Close() error {

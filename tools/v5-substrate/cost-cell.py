@@ -38,7 +38,8 @@ def plan():
             "firstWorkload": "three setup nodes; N relationship creates(p=5), N updates(p=6); retained old/current graph and complete CDC",
             "remainingWorkloads": ["contention/empty-range guards", "Stable/After", "correction/old-cut index scans", "snapshot-feed", "columns", "range transfer/pins"],
             "implementationStatus": {"native": "writer1 test-support runner; multiple-grant setup qualified at seventeen facts; physical reopen/index source implemented, runtime qualification deferred",
-                                     "FDB": "writer1 real cost source/launcher present; qualification and same-dataset measurements pending",
+                                     "FDB": "writer1 KV raw streams and explicit immutable typed columns/pins/derived collection wired in source; new runtime qualification and same-dataset measurements pending",
+                                     "columns": "FDB sealed typed generation against native logical KV reference; native column cost lane and paired column matrix remain open",
                                      "writers8/32": "not yet available; refuse execution"}}
 
 
@@ -55,6 +56,8 @@ def parity(native, fdb, artifacts):
 
 
 def native_cell(args, spec, number, gate):
+    if args.layout != "kv":
+        raise ValueError("native immutable column cost lane is not implemented; no substitute layout")
     root = args.output / f"native-{spec['facts']}-{spec['crossPercent']}-{spec['writers']}-run{number}"
     root.mkdir(parents=True, exist_ok=False)
     binary = args.native_binary.resolve(strict=True)
@@ -71,7 +74,7 @@ def native_cell(args, spec, number, gate):
     with (root / "stdout.txt").open("wb") as stdout, (root / "stderr.txt").open("wb") as stderr:
         completed = subprocess.run(command, env=environment, stdout=stdout, stderr=stderr, check=False)
     measurement = json.loads((root / "watchdog.json").read_text())
-    receipt = {"version": 1, "spec": spec, "run": number, "exit": completed.returncode,
+    receipt = {"version": 1, "spec": spec, "layout": "kv", "run": number, "exit": completed.returncode,
                "command": command, "environment": {k: environment[k] for k in ("GOMAXPROCS", "GOMEMLIMIT", "GOFLAGS", "GOWORK", "GOTOOLCHAIN")},
                "host": {"platform": platform.platform(), "machine": platform.machine()}, "faultParity": gate,
                "binarySHA256": digest(binary), "elapsedNanos": time.monotonic_ns() - started,
@@ -99,7 +102,7 @@ def fdb_cell(args, spec, number, gate):
     root = args.output / f"fdb-{spec['facts']}-{spec['crossPercent']}-{spec['writers']}-run{number}"
     root.mkdir(parents=True, exist_ok=False)
     command = ["bash", str(ROOT / "fdb/run-local.sh"), "cost-cell", "small"]
-    environment = os.environ | {"RHO_GRAPH_COST_SPEC": json.dumps(spec), "FDB_COST_SECONDS": str(args.benchmark_seconds),
+    environment = os.environ | {"RHO_GRAPH_COST_SPEC": json.dumps(spec), "RHO_GRAPH_COST_LAYOUT": args.layout, "FDB_COST_SECONDS": str(args.benchmark_seconds),
                                 "FDB_ADMISSION_MIB": "4096", "FDB_ADMISSION_CPUS": "2"}
     started = time.monotonic_ns()
     with (root / "stdout.txt").open("wb") as stdout, (root / "stderr.txt").open("wb") as stderr:
@@ -111,7 +114,7 @@ def fdb_cell(args, spec, number, gate):
     if artifacts.parent != (ROOT / "fdb/artifacts").resolve() or not artifacts.name.startswith("rho-v5-fdb-"):
         raise ValueError("unexpected FDB artifact root")
     launch = json.loads((artifacts / "receipt.json").read_text())
-    receipt = {"version": 1, "spec": spec, "run": number, "exit": completed.returncode,
+    receipt = {"version": 1, "spec": spec, "layout": args.layout, "run": number, "exit": completed.returncode,
                "command": command, "faultParity": gate, "probe": args.probe, "minimumFiveRunAcceptance": False,
                "controllerElapsedIncludingBuildNanos": time.monotonic_ns() - started,
                "FDBArtifacts": str(artifacts), "launchReceipt": launch, "completedCell": False,
@@ -123,6 +126,9 @@ def fdb_cell(args, spec, number, gate):
             if digest(artifacts / name) != expected:
                 raise ValueError("FDB actual artifact hash changed: " + name)
         result = json.loads((artifacts / "fdb-cost-result.json").read_text())
+        expected_format = (3, "fdb-graph-cost-columns-v1") if args.layout == "columns" else (2, "fdb-graph-cost-raw-v2")
+        if (result.get("version"), result.get("oracleFormat")) != expected_format:
+            raise ValueError("actual FDB result differs from requested persisted layout")
         if result["spec"] != spec or result["CompletedCreates"] != spec["facts"] or result["CompletedUpdates"] != spec["facts"] or result["CDCGroups"] != 3 + 2 * spec["facts"] or result["LogicalComponentChanges"] != 3 + 3 * spec["facts"]:
             raise ValueError("actual FDB count/oracle mismatch")
         sampled, client_observed = 0, False
@@ -164,11 +170,14 @@ def fdb_cell(args, spec, number, gate):
     return root
 
 
-def compare_cells(native_path, fdb_path):
+def compare_cells(native_path, fdb_path, *, comparison_disk_bytes=1 << 30, comparison_cache_bytes=8 << 20):
     native, fdb = (json.loads(Path(p).read_text()) for p in (native_path, fdb_path))
     if not native["completedCell"] or not fdb["completedCell"] or native["spec"] != fdb["spec"]:
         raise ValueError("matching complete real cells required")
     spec = native["spec"]
+    native_layout, fdb_layout = native.get("layout", "kv"), fdb.get("layout", "kv")
+    if native_layout != "kv" or fdb_layout not in ("kv", "columns"):
+        raise ValueError("unsupported genuine native/FDB layout pair")
     facts = spec["facts"]
     left_root = Path(native["result"]["directory"])
     right_root = Path(fdb["FDBArtifacts"])
@@ -183,12 +192,17 @@ def compare_cells(native_path, fdb_path):
     module_spec = importlib.util.spec_from_file_location("actual_cost_cdc", ROOT / "compare-cost-cdc.py")
     checker = importlib.util.module_from_spec(module_spec)
     module_spec.loader.exec_module(checker)
+    policy = checker.Policy(comparison_disk_bytes, comparison_cache_bytes, 4096, checker.ARTIFACT_LINE_BYTES)
+    policy.validate()
     version, format_ = fdb["result"].get("version"), fdb["result"].get("oracleFormat")
-    if type(version) is not int or (version, format_) not in ((1, None), (2, checker.RAW_FORMAT)):
+    allowed = ((3, checker.COLUMN_FORMAT),) if fdb_layout == "columns" else ((1, None), (2, checker.RAW_FORMAT))
+    if type(version) is not int or (version, format_) not in allowed:
         raise ValueError("missing/mixed FDB oracle format; historical v1 is not v2 proof")
-    if version == 2:
+    if version in (2, 3):
         required = {"fdb-cost-result.json", "fdb-cost-history.jsonl", "fdb-cost-current.jsonl",
                     "fdb-cost-cdc.jsonl", "fdb-cost-operation-groups.jsonl", "fdb-cost-latency.jsonl"}
+        if version == 3:
+            required.add("fdb-cost-columns.jsonl")
         if not required <= fdb["launchReceipt"]["sha256"].keys() or not {"cdc.jsonl", "observations.jsonl", "native-cost-result.json"} <= native["artifacts"].keys():
             raise ValueError("complete raw EOF/original/observation artifacts must be hash-bound")
         if any(name.startswith("fdb-cost-view-") for name in fdb["launchReceipt"]["sha256"]):
@@ -202,17 +216,21 @@ def compare_cells(native_path, fdb_path):
         cdc = checker.compare_streams(left_root / "cdc.jsonl", right_root / "fdb-cost-cdc.jsonl", spec,
                                       fdb["result"]["Config"], fdb["result"]["FinalCut"], bounds,
                                       spool_directory=Path(native_path).resolve().parent,
+                                      spool_policy=policy,
                                       raw_result=fdb["result"], observations_path=left_root / "observations.jsonl")
         return {"equal": True, "spec": spec, "relationshipFacts": facts, "setupNodes": 3,
                 "usefulCreateTransactions": facts, "usefulUpdateTransactions": facts,
                 "retainedPointObservations": 2 * facts, "exactLogicalComponentChanges": cdc["componentChanges"],
                 "completeLogicalCDC": cdc, "oracleFormat": format_,
                 "canonicalRetainedOutputSHA256": cdc["canonicalRetainedOutputSHA256"],
-                "scope": "fixed writer1 raw native/FDB history/current/CDC parity; private quota-bound verifier spool; no capacity/engine-selection/fullmatrix acceptance"}
+                "layouts": {"native": "logical-kv-reference", "FDB": fdb_layout},
+                "nativeColumnsCostParity": False,
+                "scope": ("fixed writer1 genuine FDB columns/source equivalence versus native logical KV reference; private quota-bound spool; no paired column cost/storage-efficiency/capacity/fullmatrix acceptance"
+                          if version == 3 else "fixed writer1 raw native/FDB history/current/CDC parity; private quota-bound verifier spool; no capacity/engine-selection/fullmatrix acceptance")}
     cdc = checker.compare_streams(left_root / "cdc.jsonl", right_root / "fdb-cost-cdc.jsonl", spec,
                                   fdb["result"]["Config"], fdb["result"]["FinalCut"],
                                   {"from": native["result"]["CDCFrom"], "through": native["result"]["CDCThrough"],
-                                   "finalCut": native["result"]["FinalCut"]})
+                                   "finalCut": native["result"]["FinalCut"]}, spool_policy=policy)
     observed = hashlib.sha256()
     with (left_root / "observations.jsonl").open() as source:
         for value in (5, 6):
@@ -258,6 +276,9 @@ def main():
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--compare", nargs=2, metavar=("NATIVE_RECEIPT", "FDB_RECEIPT"))
     parser.add_argument("--engine", choices=("native", "fdb"), default="native")
+    parser.add_argument("--layout", choices=("kv", "columns"), default="kv")
+    parser.add_argument("--comparison-disk-mib", type=int, default=1024, help="explicit whole-comparison private spool disk quota; no capacity qualification")
+    parser.add_argument("--comparison-cache-mib", type=int, default=8, help="finite SQLite cache target, not process RSS; one policy for every comparison phase")
     parser.add_argument("--facts", type=int, choices=FACTS, default=10_000)
     parser.add_argument("--cross", type=int, choices=CROSS, default=0)
     parser.add_argument("--writers", type=int, choices=WRITERS, default=1)
@@ -274,7 +295,8 @@ def main():
     if args.plan:
         print(json.dumps(plan(), indent=2)); return
     if args.compare:
-        print(json.dumps(compare_cells(*args.compare), indent=2)); return
+        print(json.dumps(compare_cells(*args.compare, comparison_disk_bytes=args.comparison_disk_mib << 20,
+                                       comparison_cache_bytes=args.comparison_cache_mib << 20), indent=2)); return
     spec = specification(args.facts, args.cross, args.writers)
     if not 1 <= args.benchmark_seconds <= 1800:
         parser.error("benchmark watchdog must be1..1800seconds; qualification/build gates remain180seconds")
@@ -284,6 +306,8 @@ def main():
         parser.error("at least five independent fresh runs required")
     if args.writers != 1:
         parser.error("requested concurrent writer mode is not implemented; no substitute cell")
+    if args.engine == "native" and args.layout != "kv":
+        parser.error("native column cost lane is not implemented; no KV relabelling")
     if not all((args.output, args.native_fault, args.fdb_fault, args.fdb_artifact_root)) or args.engine == "native" and not all((args.native_binary,args.watchdog)):
         parser.error("output, native binary/watchdog and actual fault parity inputs required")
     args.output = args.output.resolve()

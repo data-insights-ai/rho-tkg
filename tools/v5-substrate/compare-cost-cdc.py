@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import json
+import os
 from pathlib import Path
 import struct
 
@@ -15,6 +16,8 @@ PARTITIONS = {3: 0, 8: 1}
 LINE_BYTES = 64 << 10
 BATCH_OPERATIONS = 16
 RAW_FORMAT = "fdb-graph-cost-raw-v2"
+COLUMN_FORMAT = "fdb-graph-cost-columns-v1"
+COLUMN_LAYOUT = "scalar-cross-edge-i64-columns-v1"
 ARTIFACT_LINE_BYTES = 512 << 10
 # Explicit verifier policy for this first-cell integration, not an approved
 # million-fact capacity cap. Cache is a SQLite target, never a process RSS cap.
@@ -692,6 +695,438 @@ def retained_observations(path, spec, config, spool):
     return digest.hexdigest()
 
 
+def sha_array(value):
+    require(type(value) is list and len(value) == 32 and all(type(v) is int and 0 <= v <= 255 for v in value), "SHA256 byte array")
+    return bytes(value)
+
+
+def column_typed_row(row, spool):
+    fields(row, "Kind Owner Life SourceNode SourceLife TargetNode TargetLife Value ValueID Provenance Round Sequence Coordinator Original")
+    original = raw_bytes(row["Original"])
+    require(0 < len(original) <= LINE_BYTES, "column original admitted before decode")
+    group = decoded_body(original)
+    ordinal = integer(group["Tx"]["Lifecycle"]["Provenance"], 1)
+    require(original == spool.lookup(b"fdb-operation", u64(ordinal)), "column original is not exact source CDC/request/history lineage")
+    command, lifecycle, outcome = group["Tx"]["GraphChange"], group["Tx"]["Lifecycle"], group["Outcome"]
+    node, edge = command["Node"], command["Edge"]
+    expected = {"Kind": 1 if command["Kind"] == "node-create" else 2 if command["Kind"] == "edge-create" else 3,
+                "Owner": node["Node"] if command["Kind"] == "node-create" else edge["ID"],
+                "Life": node["Life"] if command["Kind"] == "node-create" else lifecycle["EdgeLife"],
+                "SourceNode": edge["Source"]["Node"], "SourceLife": edge["Source"]["Life"],
+                "TargetNode": edge["Target"]["Node"], "TargetLife": edge["Target"]["Life"],
+                "Value": 1 if command["Kind"] == "node-create" else edge["Value"],
+                "ValueID": 0 if command["Kind"] == "node-create" else lifecycle["Definition"]["ID"],
+                "Provenance": ordinal, "Round": outcome["Round"], "Sequence": outcome["Sequence"],
+                "Coordinator": outcome["Coordinator"], "Original": row["Original"]}
+    require(same(row, expected), "typed column differs from actual scalar/endpoint/life/definition/axis original")
+    return group
+
+
+def column_chunk(body, generation, binding, ordinal, chain, policy, spool):
+    require(114 <= len(body) <= policy["ChunkBytes"], "binary chunk admitted byte bound")
+    require(body[:8] == b"RHOCLM01" and body[8:40] == binding and body[40:72] == hashlib.sha256(go_json(generation)).digest()
+            and body[72:80] == u64(ordinal) and body[80:112] == chain, "immutable chunk generation/ordinal/hash chain")
+    count = struct.unpack_from(">H", body, 112)[0]
+    require(1 <= count <= policy["ChunkRows"] <= 32, "binary typed chunk rows")
+    arena = 114 + count * 98
+    require(arena <= len(body), "binary typed chunk columns truncated")
+    names = ("Owner", "Life", "SourceNode", "SourceLife", "TargetNode", "TargetLife", "Value", "ValueID", "Provenance", "Round", "Sequence")
+    offset = 0
+    for row in range(count):
+        values = {name: struct.unpack_from(">Q", body, 114 + 2 * count + (column * count + row) * 8)[0]
+                  for column, name in enumerate(names)}
+        if values["Value"] >= 1 << 63:
+            values["Value"] -= 1 << 64
+        spans = 114 + 90 * count
+        start = struct.unpack_from(">I", body, spans + 4 * row)[0]
+        length = struct.unpack_from(">I", body, spans + 4 * count + 4 * row)[0]
+        require(start == offset and 0 < length <= len(body) - arena - offset, "canonical original arena spans")
+        original = body[arena + offset:arena + offset + length]
+        decoded = {"Kind": body[114 + row], **values, "Coordinator": body[114 + count + row],
+                   "Original": base64.b64encode(original).decode()}
+        group = column_typed_row(decoded, spool)
+        require(generation["Initial"]["Round"] < decoded["Round"] <= generation["Cut"]["Round"] and decoded["Sequence"] <= generation["Cut"]["Groups"][decoded["Coordinator"]], "column outside authenticated generation cut")
+        yield decoded, group
+        offset += length
+    require(arena + offset == len(body), "binary typed chunk trailing/missing bytes")
+
+
+def column_old_metadata(result, spool):
+    config = result["Config"]
+    maximum = {k: (1 << 64) - 1 for k in ("Floor", "Generation", "Versions", "Transactions", "Certificates", "Bytes", "Groups")}
+    sizes = [len(fdb_key(config, g, "meta", "config")) + len(go_json(config)) + len(fdb_key(config, g, "meta", "state")) + len(go_json(maximum)) for g in range(2)]
+    for name in ("InitialCut", "OldCut"):
+        cut = result[name]
+        sizes[0] += len(fdb_key(config, 0, "cut", go_json(cut).hex())) + len(go_json(cut))
+    generations, versions = [0, 0], [0, 0]
+    for ordinal in range(1, 4 + result["spec"]["facts"]):
+        raw = spool.lookup(b"fdb-operation", u64(ordinal))
+        group = decoded_body(raw)
+        o = group["Outcome"]
+        owner = o["Coordinator"]
+        key = (f"g{owner}/{config['Graph'].encode().hex()}/changes/{o['Sequence']:016x}/" + o["Request"].encode().hex()).encode()
+        sizes[owner] += len(key) + len(raw) + len(fdb_key(config, owner, "id", o["ID"])) + len(fdb_key(config, owner, "request", o["Request"])) + 2 * len(go_json(o))
+        for participant in group["Tx"]["Participants"]:
+            generations[participant["Group"]] += 1
+        for write in group["Writes"]:
+            g, value = write["Group"], write["After"]
+            key = (f"g{g}/{config['Graph'].encode().hex()}/history/{value['Round']:016x}/" + write["Key"].encode().hex()).encode()
+            versions[g] += 1
+            sizes[g] += len(key) + len(go_json(value))
+    for key, value in spool.walk(b"fdb-old"):
+        g = int(chr(key[1]))
+        sizes[g] += len(key) + len(value)
+    return [{"Floor": result["OldCut"]["Round"], "Generation": generations[g], "Versions": versions[g],
+             "Transactions": result["OldCut"]["Groups"][g], "Certificates": 2 if g == 0 else 0,
+             "Bytes": sizes[g], "Groups": result["OldCut"]["Groups"][g]} for g in range(2)]
+
+
+def column_work(group, config):
+    o = group["Outcome"]
+    owner = o["Coordinator"]
+    change_key = (f"g{owner}/{config['Graph'].encode().hex()}/changes/{o['Sequence']:016x}/" + o["Request"].encode().hex()).encode()
+    work = len(change_key) + len(go_json(group)) + len(fdb_key(config, owner, "id", o["ID"])) + len(fdb_key(config, owner, "request", o["Request"])) + 2 * len(go_json(o))
+    for write in group["Writes"]:
+        for value in (write.get("Before"), write["After"]):
+            if value is not None:
+                key = (f"g{write['Group']}/{config['Graph'].encode().hex()}/history/{value['Round']:016x}/" + write["Key"].encode().hex()).encode()
+                work += len(key) + len(go_json(value))
+    return work
+
+
+def column_artifacts(path, result, spool):
+    """Validate actual sealed derived records; SQLite remains private verifier state."""
+    end, config, spec = result["Columns"], result["Config"], result["spec"]
+    fields(end, "Format SourceFormat ReferenceLayout PayloadSHA256 ArtifactSHA256 Old Final Counts Ledger PinLedger Storage")
+    require(end["Format"] == COLUMN_FORMAT and end["SourceFormat"] == RAW_FORMAT and end["ReferenceLayout"] == "native-logical-kv-reference", "column format/reference identity")
+    prefix = f"g0/{config['Graph'].encode().hex()}/columns-v1/".encode()
+    key = lambda name: prefix + name.encode()
+    generation_key = lambda name, kind: key("generation/" + name.encode().hex() + "/" + kind)
+    retention = lambda kind, name: key("retention-v1/" + kind + "/" + name.encode().hex())
+    policy = {"ChunkRows": 32, "ChunkBytes": 65536, "MaxChunks": 1_000_000, "MaxGenerations": 2,
+              "MaxRetainedBytes": (64 << 20) + (6 + 3 * spec["facts"]) * (64 << 10),
+              "MaxWorkRows": 3 + 2 * spec["facts"], "MaxWorkBytes": (64 << 20) + (3 + 2 * spec["facts"]) * (512 << 10)}
+    binding = {"Version": 1, "Layout": COLUMN_LAYOUT, "Schema": "node-presence;edge-life-bound;property-p:i64;canonical-original:v1", "Config": config, "Scope": SCOPE, "Policy": policy}
+    binding_sha = hashlib.sha256(go_json(binding)).digest()
+    pin_policy = {"MaxRecords": 32, "MaxBytes": 256 << 10, "PageChunks": 1, "PageBytes": 128 << 10, "MaxWorkChunks": 1, "MaxWorkBytes": 128 << 10, "MaxOutputBytes": 1024}
+    pin_binding = {"Version": 1, "Columns": list(binding_sha), "Policy": pin_policy}
+    manifests = {"old": end["Old"], "final": end["Final"]}  # Exactly two, never dataset-sized.
+    old_metadata = column_old_metadata(result, spool)
+    for name, m in manifests.items():
+        fields(m, "Generation Metadata Chunks Rows Bytes History Chain")
+        g = m["Generation"]
+        fields(g, "Version ID Binding Initial Cut")
+        require(same(g, {"Version": 1, "ID": name, "Binding": list(binding_sha), "Initial": result["InitialCut"], "Cut": result["OldCut" if name == "old" else "FinalCut"]}), "immutable column generation/config/cut binding")
+        metadata = old_metadata if name == "old" else result["StreamEnds"][0]["Metadata"]
+        require(same(m["Metadata"], metadata) and same(m["History"], [v["Versions"] for v in metadata]), "complete actual source history census in manifest")
+        require(integer(m["Rows"], 1, policy["MaxWorkRows"]) == sum(g["Cut"]["Groups"]) and 1 <= integer(m["Chunks"]) <= min(m["Rows"], policy["MaxChunks"]) and integer(m["Bytes"], 1) <= policy["MaxRetainedBytes"] and any(sha_array(m["Chain"])), "column manifest quotas/census")
+    counters = {"Chunks": 0, "WalkRows": 0, "Points": 0, "Stages": 0, "Collections": 0}
+    chunk_next, chunk_rows, chunk_bytes, works = ({"old": 0, "final": 0} for _ in range(4))
+    chains = {"old": bytes(32), "final": bytes(32)}
+    sequences, histories = {"old": [0, 0], "final": [0, 0]}, {"old": [0, 0], "final": [0, 0]}
+    last_order, last_outcome = {"old": None, "final": None}, {}
+    walk_counts = {"old": 0, "old-cache": 0, "final": 0, "final-cache": 0}
+    chunk_eofs, walk_eofs, points, refusals = set(), set(), {"old": 0, "final": 0}, []
+    stages = ("old-held", "final-head", "expired-held", "reads-complete", "old-closed", "old-collected", "terminal")
+    held, token = None, None
+    collected_bytes, collected_chain = 0, bytes(32)
+    storage = {n: 0 for n in "Records Bytes LiveChunkRecords LiveChunkBytes TombstoneRecords TombstoneBytes RetiredLineageRecords RetiredLineageBytes".split()}
+    storage_previous, reader_counts = None, {"old": 0, "final": 0}
+    payload, whole, footer_seen = hashlib.sha256(), hashlib.sha256(), False
+    maximum = 4 * (end["Old"]["Rows"] + end["Final"]["Rows"]) + 256
+    with Path(path).open("rb") as source:
+        for number in range(maximum):
+            line = source.readline(ARTIFACT_LINE_BYTES + 1)
+            if not line:
+                break
+            require(len(line) <= ARTIFACT_LINE_BYTES and line.endswith(b"\n") and not footer_seen, "column artifact line/EOF bound")
+            row = json.loads(line, object_pairs_hook=pairs, parse_constant=lambda _: require(False, "nonfinite column JSON"))
+            require(type(row) is dict and line == go_json(row) + b"\n", "canonical column artifact record")
+            whole.update(line)
+            kind = row.get("Type")
+            if kind == "footer":
+                fields(row, "Type End")
+                expected = end | {"ArtifactSHA256": [0] * 32}
+                require(same(row["End"], expected) and sha_array(end["PayloadSHA256"]) == payload.digest(), "column footer/result/payload seal")
+                footer_seen = True
+                continue
+            payload.update(line)
+            if number == 0:
+                fields(row, "Type Format SourceFormat ReferenceLayout Config InitialCut StoragePagePolicy Records")
+                require(kind == "header" and row["Format"] == COLUMN_FORMAT and row["SourceFormat"] == RAW_FORMAT and row["ReferenceLayout"] == end["ReferenceLayout"] and same(row["Config"], config) and same(row["InitialCut"], result["InitialCut"]), "column header namespace/layout")
+                require(same(row["StoragePagePolicy"], {"PageRows": 32, "PageBytes": 32 * (65536 + 1024)}), "declared bounded post-SDK storage page policy")
+                records = column_records(row["Records"])
+                required = {key("binding"): go_json(binding), key("retention-v1/binding"): go_json(pin_binding),
+                            fdb_key(config, 0, "meta", "config"): go_json(config), fdb_key(config, 1, "meta", "config"): go_json(config),
+                            fdb_key(config, 0, "cut", go_json(result["InitialCut"]).hex()): go_json(result["InitialCut"])}
+                require(records == required, "column raw persisted binding/config/cut header")
+                for k, value in records.items():
+                    if k.startswith(prefix):
+                        spool.insert(b"column-control", k, value)
+            elif kind == "stage":
+                fields(row, "Type Name Records")
+                index = counters["Stages"]
+                require(index < len(stages) and row["Name"] == stages[index], "column lifecycle stage order")
+                held, token = column_stage(row, index, result, manifests, binding, pin_binding, held, token, spool)
+                counters["Stages"] += 1
+            elif kind == "chunk":
+                fields(row, "Type Generation CacheDirectory CacheFile Ordinal Length Rows SHA256 Record")
+                name = row["Generation"]
+                require(type(name) is str and name in manifests and name not in chunk_eofs and type(row["Ordinal"]) is int and row["Ordinal"] == chunk_next[name] and counters["Stages"] == 3, "column chunk scope/order")
+                m, ordinal = manifests[name], chunk_next[name]
+                records = column_records([row["Record"]])
+                k = generation_key(name, f"chunk/{ordinal:016x}")
+                require(set(records) == {k}, "raw chunk key/generation/ordinal")
+                body = records[k]
+                require(row["Length"] == integer(len(body)) and sha_array(row["SHA256"]) == hashlib.sha256(body).digest(), "actual binary chunk hash/length")
+                count = 0
+                for typed, original in column_chunk(body, m["Generation"], binding_sha, ordinal, chains[name], policy, spool):
+                    o = original["Outcome"]
+                    order = o["Round"], o["Coordinator"], o["Request"]
+                    require((last_order[name] is None or last_order[name] < order) and typed["Sequence"] == sequences[name][typed["Coordinator"]] + 1, "column original sequence/enumeration")
+                    last_order[name], last_outcome[name] = order, o
+                    sequences[name][typed["Coordinator"]] += 1
+                    for write in original["Writes"]:
+                        histories[name][write["Group"]] += 1
+                    spool.insert(b"column-original/" + name.encode(), u64(typed["Provenance"]), go_json(typed))
+                    spool.insert(b"column-row/" + name.encode(), u64(chunk_rows[name] + count), go_json(typed))
+                    works[name] += column_work(original, config)
+                    count += 1
+                require(type(row["Rows"]) is int and row["Rows"] == count, "binary chunk actual row count")
+                cache_name = "column-" + hashlib.sha256(go_json(m["Generation"])).hexdigest() + f"-{ordinal:016x}.bin"
+                require(row["CacheDirectory"] == "column-cache-" + name and row["CacheFile"] == cache_name, "cache immutable generation filename")
+                cache_path = Path(path).parent / row["CacheDirectory"] / cache_name
+                require(not cache_path.is_symlink() and not cache_path.parent.is_symlink(), "foreign cache link")
+                with cache_path.open("rb") as cache:
+                    require(cache.read(policy["ChunkBytes"] + 1) == body, "missing/foreign/partial actual chunk cache")
+                spool.insert(b"column-cache/" + name.encode(), cache_name.encode(), u64(ordinal))
+                spool.insert(b"column-chunk/" + name.encode(), u64(ordinal), body)
+                chains[name] = hashlib.sha256(chains[name] + hashlib.sha256(body).digest()).digest()
+                works[name] += len(body)
+                chunk_rows[name] += count
+                chunk_bytes[name] += len(k) + len(body)
+                chunk_next[name] += 1
+                counters["Chunks"] += 1
+            elif kind == "chunks-eof":
+                fields(row, "Type Generation Manifest")
+                name = row["Generation"]
+                require(type(name) is str and name in manifests and name not in chunk_eofs and same(row["Manifest"], manifests[name]), "column chunk EOF identity")
+                m = manifests[name]
+                require(chunk_next[name] == m["Chunks"] and chunk_rows[name] == m["Rows"] and chunk_bytes[name] == m["Bytes"] and chains[name] == sha_array(m["Chain"]) and sequences[name] == m["Generation"]["Cut"]["Groups"] and histories[name] == m["History"] and works[name] <= policy["MaxWorkBytes"], "complete binary generation original/history EOF")
+                chunk_eofs.add(name)
+            elif kind == "walk-row":
+                fields(row, "Type Name Generation Row")
+                name, generation = row["Name"], row["Generation"]
+                require(type(name) is str and name in walk_counts and name not in walk_eofs and type(generation) is str and generation == name.removesuffix("-cache") and generation in chunk_eofs, "column actual walk identity/EOF")
+                require(go_json(row["Row"]) == spool.lookup(b"column-row/" + generation.encode(), u64(walk_counts[name])), "typed walk/cache changed actual chunk rows/order")
+                walk_counts[name] += 1
+                counters["WalkRows"] += 1
+            elif kind == "walk-eof":
+                fields(row, "Type Name Generation Cut Rows Manifest")
+                name, generation = row["Name"], row["Generation"]
+                require(type(name) is str and name in walk_counts and name not in walk_eofs and type(generation) is str and generation == name.removesuffix("-cache") and same(row["Manifest"], manifests[generation]) and same(row["Cut"], manifests[generation]["Generation"]["Cut"]) and type(row["Rows"]) is int and row["Rows"] == walk_counts[name] == manifests[generation]["Rows"], "complete typed/cached walk EOF")
+                walk_eofs.add(name)
+            elif kind == "point":
+                fields(row, "Type Generation Owner Found Row")
+                name = row["Generation"]
+                require(type(name) is str and name in points and name + "-cache" in walk_eofs and points[name] < 3, "column selected point scope")
+                owner = (7, 7 + 2 * (spec["facts"] - 1), 5)[points[name]]
+                require(type(row["Owner"]) is int and row["Owner"] == owner and type(row["Found"]) is bool and row["Found"] == (owner != 5), "column point/phantom identity")
+                if owner == 5:
+                    require(same(row["Row"], {n: None if n == "Original" else 0 for n in "Kind Owner Life SourceNode SourceLife TargetNode TargetLife Value ValueID Provenance Round Sequence Coordinator Original".split()}), "phantom column point not exact empty")
+                else:
+                    ordinal = 4 + (owner - 7) // 2 + (spec["facts"] if name == "final" else 0)
+                    require(go_json(row["Row"]) == spool.lookup(b"column-original/" + name.encode(), u64(ordinal)), "column retained point substituted original/value/revision")
+                points[name] += 1
+                counters["Points"] += 1
+            elif kind == "refusal":
+                fields(row, "Type Name Error")
+                expected = (("expired-new-open", "fdb-column: retained generation or token expired", 2),
+                            ("held-old-collection", "fdb-column: retained generation has live owners or references", 2),
+                            ("retired-publication", "fdb-column: retained generation or token expired", 5),
+                            ("final-reference-collection", "fdb-column: retained generation has live owners or references", 6))
+                require(len(refusals) < 4 and (row["Name"], row["Error"], counters["Stages"]) == expected[len(refusals)], "explicit expiry/held/reference/retired refusal")
+                refusals.append(row["Name"])
+            elif kind == "collect":
+                fields(row, "Type Budget Result Absent Guard")
+                require(counters["Stages"] == 5 and points == {"old": 3, "final": 3}, "collection precedes complete owned reads/close")
+                budget, page, ordinal = row["Budget"], row["Result"], counters["Collections"]
+                require(same(budget, {"Chunks": 1, "Bytes": 128 << 10, "OutputBytes": 1024}), "collector admitted policy")
+                fields(page, "Generation Cursor DeletedBytes WorkChunks WorkBytes Done")
+                body = spool.lookup(b"column-chunk/old", u64(ordinal))
+                k = generation_key("old", f"chunk/{ordinal:016x}")
+                require(raw_bytes(row["Absent"]) == k, "actual absent derived chunk identity")
+                used = len(k) + len(body)
+                collected_bytes += used
+                collected_chain = hashlib.sha256(collected_chain + hashlib.sha256(body).digest()).digest()
+                done = ordinal + 1 == end["Old"]["Chunks"]
+                require(same(page, {"Generation": "old", "Cursor": ordinal + 1, "DeletedBytes": collected_bytes, "WorkChunks": 1, "WorkBytes": used, "Done": done}) and used <= budget["Bytes"] and len(go_json(page)) <= budget["OutputBytes"], "exact bounded collector cursor/accounting")
+                expected_guard = {"Manifest": list(hashlib.sha256(go_json(end["Old"])).digest()), "State": 3 if done else 2, "References": 0, "Pins": 0, "Readers": 0, "Cursor": ordinal + 1, "DeletedBytes": collected_bytes, "Chain": list(collected_chain)}
+                raw_binding(row["Guard"], generation_key("old", "owners"), expected_guard)
+                counters["Collections"] += 1
+            elif kind == "storage-row":
+                fields(row, "Type Record")
+                require(counters["Stages"] == 7, "terminal storage before closure")
+                records = column_records([row["Record"]])
+                k, value = next(iter(records.items()))
+                require(k.startswith(prefix) and (storage_previous is None or storage_previous < k), "column storage duplicate/foreign/order")
+                storage_previous = k
+                expected = spool.find(b"column-control", k)
+                if expected is not None:
+                    require(value == expected, "terminal column control differs from original lineage/stage")
+                elif k.startswith(generation_key("final", "chunk/")):
+                    ordinal_text = k.rsplit(b"/", 1)[-1]
+                    require(len(ordinal_text) == 16 and f"{int(ordinal_text, 16):016x}".encode() == ordinal_text, "terminal chunk coordinate")
+                    require(value == spool.lookup(b"column-chunk/final", u64(int(ordinal_text, 16))), "terminal live binary chunk changed")
+                else:
+                    require(k.startswith(key("read-owner/")), "unexpected retained column key")
+                    record = decoded_body(value)
+                    column_reader(record, manifests, token, False)
+                    require(k == key("read-owner/" + record["Owner"]["Request"].encode().hex()), "retained reader identity key")
+                if k.startswith(key("read-owner/")):
+                    record = decoded_body(value)
+                    column_reader(record, manifests, token, k == held)
+                    require(record["State"] == 2, "terminal reader is not a released tombstone")
+                    reader_counts[record["Owner"]["Generation"]] += 1
+                spool.insert(b"column-storage", k, value)
+                size = len(k) + len(value)
+                storage["Records"] += 1
+                storage["Bytes"] += size
+                if k.startswith(generation_key("final", "chunk/")):
+                    storage["LiveChunkRecords"] += 1
+                    storage["LiveChunkBytes"] += size
+                elif k.startswith(generation_key("old", "")):
+                    storage["RetiredLineageRecords"] += 1
+                    storage["RetiredLineageBytes"] += size
+                elif k.startswith(key("read-owner/")) or k == retention("pin", "hold-old"):
+                    storage["TombstoneRecords"] += 1
+                    storage["TombstoneBytes"] += size
+            else:
+                require(False, "unknown/misplaced column artifact kind")
+        require(footer_seen and not source.read(1) and whole.digest() == sha_array(end["ArtifactSHA256"]), "missing/truncated/extra column artifact seal")
+    require(same(counters, end["Counts"]) and counters == {"Chunks": end["Old"]["Chunks"] + end["Final"]["Chunks"], "WalkRows": 2 * (end["Old"]["Rows"] + end["Final"]["Rows"]), "Points": 6, "Stages": 7, "Collections": end["Old"]["Chunks"]} and len(refusals) == 4 and len(chunk_eofs) == 2 and len(walk_eofs) == 4, "complete column lifecycle counts/EOF")
+    require(collected_bytes == end["Old"]["Bytes"] and collected_chain == sha_array(end["Old"]["Chain"]), "complete derived generation collection")
+    require(same(storage, end["Storage"]) and storage["Records"] == end["Final"]["Chunks"] + 22 and storage["LiveChunkRecords"] == end["Final"]["Chunks"] and storage["LiveChunkBytes"] == end["Final"]["Bytes"] and storage["TombstoneRecords"] == 9 and storage["RetiredLineageRecords"] == 3 and reader_counts == {"old": 4, "final": 4}, "actual live/tombstone/retired namespace byte census")
+    for k, value in spool.walk(b"column-control"):
+        require(spool.lookup(b"column-storage", k) == value, "missing terminal control/lineage")
+    for name in manifests:
+        progress = decoded_body(spool.lookup(b"column-storage", generation_key(name, "progress")))
+        require(progress["WorkBytes"] == works[name] and same(progress["Previous"], last_outcome[name]), "exact declared publication work/original EOF binding")
+        count = 0
+        with os.scandir(Path(path).parent / ("column-cache-" + name)) as entries:
+            for entry in entries:
+                require(not entry.is_symlink() and entry.is_file(follow_symlinks=False) and spool.find(b"column-cache/" + name.encode(), entry.name.encode()) is not None, "unexpected cache file/generation")
+                count += 1
+        require(count == manifests[name]["Chunks"], "complete cache directory census")
+    return {"equal": True, "layout": COLUMN_LAYOUT, "artifactSHA256": whole.hexdigest(), "counts": counters, "storedLogicalBytes": storage,
+            "admissionCharges": {"columns": end["Ledger"], "pins": end["PinLedger"]}, "sourceKVGC": "not performed; exact source EOF follows derived collection",
+            "referenceLayout": end["ReferenceLayout"], "nativeColumnsCostParity": False, "pointScope": "three selected generation-scan witnesses per cut; complete typed/cached walks; no indexed-point cost claim"}
+
+
+def column_records(records):
+    require(type(records) is list and 1 <= len(records) <= 20, "bounded raw column control inventory")
+    out = {}
+    for record in records:
+        fields(record, "Key Value")
+        key, value = raw_bytes(record["Key"]), raw_bytes(record["Value"])
+        require(0 < len(key) <= 1024 and 0 < len(value) <= 65536 and key not in out, "column raw record duplicate/admission")
+        out[key] = value
+    return out
+
+
+def column_reader(record, manifests, token, pinned):
+    fields(record, "Owner Manifest PinRequest PinToken State")
+    fields(record["Owner"], "Request Generation Secret")
+    owner = record["Owner"]
+    secret = sha_array(owner["Secret"])
+    require(any(secret) and owner["Request"] == "read-" + secret[:16].hex() and type(owner["Generation"]) is str and owner["Generation"] in manifests and type(record["State"]) is int and record["State"] in (1, 2), "authenticated retained read-owner union")
+    require(sha_array(record["Manifest"]) == hashlib.sha256(go_json(manifests[owner["Generation"]])).digest(), "reader original generation/manifest")
+    require(record["PinRequest"] == ("hold-old" if pinned else "") and sha_array(record["PinToken"]) == (hashlib.sha256(go_json(token)).digest() if pinned else bytes(32)), "reader exact issued pin binding")
+
+
+def column_stage(row, index, result, manifests, binding, pin_binding, held, token, spool):
+    config, prefix = result["Config"], f"g0/{result['Config']['Graph'].encode().hex()}/columns-v1/".encode()
+    key = lambda name: prefix + name.encode()
+    genkey = lambda name, kind: key("generation/" + name.encode().hex() + "/" + kind)
+    retkey = lambda kind, name: key("retention-v1/" + kind + "/" + name.encode().hex())
+    records = column_records(row["Records"])
+    if index == 0:
+        owners = [k for k in records if k.startswith(key("read-owner/"))]
+        require(len(owners) == 1, "initial held reader inventory")
+        held = owners[0]
+        pin = decoded_body(records.get(retkey("pin", "hold-old"), b""))
+        fields(pin, "Token Intent State TerminalRequest TerminalKind")
+        token = pin["Token"]
+        fields(token, "Version Request Generation Columns Manifest Secret Cut FeedStart")
+        require(token["Version"] == 1 and type(token["Version"]) is int and token["Request"] == "hold-old" and token["Generation"] == "old" and sha_array(token["Columns"]) == hashlib.sha256(go_json(binding)).digest() and sha_array(token["Manifest"]) == hashlib.sha256(go_json(manifests["old"])).digest() and any(sha_array(token["Secret"])) and same(token["Cut"], result["OldCut"]) and same(token["FeedStart"], result["OldCut"]["Groups"]), "immutable actual issued pin token")
+    names = ("old",) if index == 0 else ("old", "final")
+    required = {key("ledger"), key("retention-v1/ledger"), fdb_key(config, 0, "meta", "state"), fdb_key(config, 1, "meta", "state"), held, retkey("pin", "hold-old"), retkey("reference", "head"), retkey("reference-request", "head-old")}
+    for name in names:
+        required.update(genkey(name, kind) for kind in ("manifest", "progress", "owners"))
+        required.add(fdb_key(config, 0, "cut", go_json(manifests[name]["Generation"]["Cut"]).hex()))
+    if index:
+        required.add(retkey("reference-request", "head-final"))
+    require(set(records) == required, "complete raw column lifecycle inventory")
+    metadata = manifests["old" if index == 0 else "final"]["Metadata"]
+    for g in range(2):
+        require(records[fdb_key(config, g, "meta", "state")] == go_json(metadata[g]), "column stage authentic source metadata")
+    for name in names:
+        m = manifests[name]
+        require(records[genkey(name, "manifest")] == go_json(m) and records[fdb_key(config, 0, "cut", go_json(m["Generation"]["Cut"]).hex())] == go_json(m["Generation"]["Cut"]), "original manifest/authenticated cut unchanged")
+        progress = decoded_body(records[genkey(name, "progress")])
+        fields(progress, "Generation Metadata Next Rows Bytes WorkBytes Sequences History Chain Previous EOF")
+        expected = {"Generation": m["Generation"], "Metadata": m["Metadata"], "Next": m["Chunks"], "Rows": m["Rows"], "Bytes": m["Bytes"], "WorkBytes": progress["WorkBytes"], "Sequences": m["Generation"]["Cut"]["Groups"], "History": m["History"], "Chain": m["Chain"], "Previous": progress["Previous"], "EOF": True}
+        require(same(progress, expected) and 0 < integer(progress["WorkBytes"]) <= binding["Policy"]["MaxWorkBytes"], "durable genuine source EOF/progress")
+        prior = spool.find(b"column-control", genkey(name, "progress"))
+        require(prior is None or prior == records[genkey(name, "progress")], "immutable original publication progress changed")
+        collected = name == "old" and index >= 5
+        guard = {"Manifest": list(hashlib.sha256(go_json(m)).digest()), "State": 3 if collected else 1,
+                 "References": 1 if (name == "old" and index == 0 or name == "final") else 0,
+                 "Pins": 1 if name == "old" and index <= 1 else 0, "Readers": 1 if name == "old" and index <= 3 else 0,
+                 "Cursor": m["Chunks"] if collected else 0, "DeletedBytes": m["Bytes"] if collected else 0, "Chain": m["Chain"] if collected else [0] * 32}
+        require(records[genkey(name, "owners")] == go_json(guard), "shared generation guard/reference/pin/read ownership stage")
+    pin = {"Token": token, "Intent": list(hashlib.sha256(go_json({"Columns": token["Columns"], "Generation": "old", "Cut": result["OldCut"]})).digest()),
+           "State": 1 if index <= 1 else 3, "TerminalRequest": "" if index <= 1 else "expire-old", "TerminalKind": 0 if index <= 1 else 3}
+    require(records[retkey("pin", "hold-old")] == go_json(pin), "authenticated terminal pin identity/tombstone")
+    reader = decoded_body(records[held])
+    column_reader(reader, manifests, token, True)
+    require(held == key("read-owner/" + reader["Owner"]["Request"].encode().hex()) and reader["Owner"]["Generation"] == "old" and reader["State"] == (1 if index <= 3 else 2), "held owner preserved across mutation/expiry until Close")
+    initial_reader = spool.find(b"column-held", held)
+    if initial_reader is None:
+        spool.insert(b"column-held", held, go_json(reader))
+    else:
+        require(same(reader | {"State": 1}, decoded_body(initial_reader)), "held reader identity substituted")
+    for name, request, version in (("old", "head-old", 1), ("final", "head-final", 2)):
+        if name not in names:
+            continue
+        reference = {"Name": "head", "Generation": name, "Version": version, "Manifest": list(hashlib.sha256(go_json(manifests[name])).digest())}
+        request_record = {"Intent": list(hashlib.sha256(go_json({"Name": "head", "Generation": name, "Expected": version - 1})).digest()), "Reference": reference}
+        require(records[retkey("reference-request", request)] == go_json(request_record), "immutable named-reference request/ABA revision")
+        if name == ("old" if index == 0 else "final"):
+            require(records[retkey("reference", "head")] == go_json(reference), "current durable named reference")
+    # Exact logical admission charges differ from actual stored/tombstone bytes.
+    admitted = names
+    charge = len(key("binding")) + len(go_json(binding)) + len(key("ledger")) + 256
+    charge += sum(8192 + len(genkey(name, "progress")) + len(genkey(name, "manifest")) + len(genkey(name, "owners")) + 4096 + manifests[name]["Bytes"] for name in admitted)
+    charge += (1 if index <= 2 else 8) * (len(held) + 4096)
+    if index >= 5:
+        charge -= manifests["old"]["Bytes"]
+    ledger = {"Bytes": charge, "Generations": len(admitted), "Chunks": sum(manifests[name]["Chunks"] for name in admitted) - (manifests["old"]["Chunks"] if index >= 5 else 0)}
+    require(records[key("ledger")] == go_json(ledger) and charge <= binding["Policy"]["MaxRetainedBytes"], "exact live/chunk/control reservation ledger")
+    pin_charge = len(key("retention-v1/binding")) + len(go_json(pin_binding)) + len(key("retention-v1/ledger")) + 256
+    pin_charge += sum(len(k) + 4096 for k in (retkey("reference", "head"), retkey("reference-request", "head-old"), retkey("pin", "hold-old")))
+    if index:
+        pin_charge += len(retkey("reference-request", "head-final")) + 4096
+    pin_ledger = {"Records": 5 if index == 0 else 6, "Bytes": pin_charge, "ReservedRecords": 1, "ReservedBytes": len(prefix) + len(b"retention-v1/reference-request/") + 256 + 4096}
+    require(records[key("retention-v1/ledger")] == go_json(pin_ledger), "pin/reference future-detach credit ledger")
+    if index == 6:
+        require(same(ledger, result["Columns"]["Ledger"]) and same(pin_ledger, result["Columns"]["PinLedger"]), "terminal quota ledgers bound to result")
+    for k, value in records.items():
+        if k.startswith(prefix):
+            put_raw(spool, b"column-control", k, value)
+    return held, token
+
+
 def compare_streams(native_path, fdb_path, spec, config, final_cut, native_bounds, *, spool_directory=None, spool_policy=SMALL_POLICY, raw_result=None, observations_path=None):
     owner = Path(native_path).parent if spool_directory is None else spool_directory
     with Spool(owner, spool_policy) as spool:
@@ -706,7 +1141,8 @@ def _compare_streams(native_path, fdb_path, spec, config, final_cut, native_boun
     integer(spec["facts"], 1, 1_000_000)
     require(type(spec["version"]) is type(spec["writers"]) is type(spec["crossPercent"]) is int and spec["version"] == 1 and spec["writers"] == 1 and spec["crossPercent"] in (0, 10, 50, 100), "fixed writer1 cost spec")
     count = spec["facts"]
-    expected_config = {"Format": 2, "Graph": "graph-cost-v1", "Topology": 1, "Epochs": [7, 11],
+    column_lane = raw_result is not None and raw_result.get("version") == 3 and raw_result.get("oracleFormat") == COLUMN_FORMAT
+    expected_config = {"Format": 2, "Graph": "graph-cost-columns-v1" if column_lane else "graph-cost-v1", "Topology": 1, "Epochs": [7, 11],
                        "Limits": {"Bytes": (64 << 20) + count * (64 << 10), "Transactions": 3 + 2 * count, "Versions": 3 + 6 * count, "Certificates": 1024},
                        "Nodes": [1, 7 + 2 * count], "Cost": spec, "CostScope": SCOPE}
     require(same(config, expected_config), "FDB immutable cost contract")
@@ -722,9 +1158,9 @@ def _compare_streams(native_path, fdb_path, spec, config, final_cut, native_boun
     if raw_result is None:
         right = fdb_groups(fdb_path, spec, config, final_cut, fdb_stats, spool)
     else:
-        fields(raw_result, "version engine spec deployment SetupNodes Creates Updates CompletedCreates CompletedUpdates SetupNanos WritesNanos VerificationNanos TotalNanos InitialCut OldCut FinalCut Config CDCGroups LogicalComponentChanges PhysicalGraphChanges IDAdmission oracleFormat StreamEnds")
+        fields(raw_result, "version engine spec deployment SetupNodes Creates Updates CompletedCreates CompletedUpdates SetupNanos WritesNanos VerificationNanos TotalNanos InitialCut OldCut FinalCut Config CDCGroups LogicalComponentChanges PhysicalGraphChanges IDAdmission oracleFormat StreamEnds" + (" Columns" if column_lane else ""))
         require(observations_path is not None and "oldCut" in native_bounds, "raw parity requires actual retained observations/old cut")
-        require(type(raw_result["version"]) is int and raw_result["version"] == 2 and raw_result["oracleFormat"] == RAW_FORMAT and same(raw_result["Config"], config) and same(raw_result["FinalCut"], final_cut), "mixed raw result format/config/cut")
+        require(type(raw_result["version"]) is int and (raw_result["version"], raw_result["oracleFormat"]) == ((3, COLUMN_FORMAT) if column_lane else (2, RAW_FORMAT)) and same(raw_result["Config"], config) and same(raw_result["FinalCut"], final_cut), "mixed raw result format/config/cut")
         require(same(raw_result["spec"], spec) and len(raw_result["StreamEnds"]) == 3, "raw result specification/complete EOF set")
         for name, expected in (("SetupNodes", 3), ("Creates", count), ("Updates", count), ("CompletedCreates", count), ("CompletedUpdates", count), ("CDCGroups", 3 + 2 * count), ("LogicalComponentChanges", 3 + 3 * count), ("PhysicalGraphChanges", 3 + 6 * count)):
             require(type(raw_result[name]) is int and raw_result[name] == expected, "raw result exact cardinality")
@@ -747,5 +1183,7 @@ def _compare_streams(native_path, fdb_path, spec, config, final_cut, native_boun
             "scope": "fixed writer1 create/update contract; numeric rounds/indexes and physical protocol/replica layouts are validated per engine"}
     if raw_result is not None:
         report["canonicalRetainedOutputSHA256"] = retained_observations(observations_path, spec, config, spool)
-        report["oracleFormat"] = RAW_FORMAT
+        report["oracleFormat"] = raw_result["oracleFormat"]
+        if column_lane:
+            report["columns"] = column_artifacts(Path(fdb_path).with_name("fdb-cost-columns.jsonl"), raw_result, spool)
     return report

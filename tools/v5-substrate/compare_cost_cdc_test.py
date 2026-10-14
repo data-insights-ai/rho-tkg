@@ -165,6 +165,114 @@ def native_observations(native,facts):
             entity=copy.deepcopy(create['Entities'][0]);entity.update(effective=True,effectiveLife=entity['id']+1,presence=create['Changes'][0]['After'],property=logical['Changes'][-1]['After']);out.append(entity)
     return out
 
+
+def column_fixture(directory, result, header, groups):
+    """Explicit synthetic binary/control replay, never an actual column receipt.
+
+    Reuses the retained group schema as input; there is no second graph model.
+    Actual SDK composition is authored separately in the Go direct test.
+    """
+    c=module('column-replay','compare-cost-cdc.py');config=result['Config'];n=result['spec']['facts']
+    enc=lambda b:base64.b64encode(b).decode()
+    sha=lambda v:list(hashlib.sha256(c.go_json(v)).digest())
+    prefix=f"g0/{config['Graph'].encode().hex()}/columns-v1/".encode()
+    key=lambda name:prefix+name.encode()
+    gkey=lambda name,kind:key('generation/'+name.encode().hex()+'/'+kind)
+    rkey=lambda kind,name:key('retention-v1/'+kind+'/'+name.encode().hex())
+    policy={'ChunkRows':32,'ChunkBytes':65536,'MaxChunks':1000000,'MaxGenerations':2,'MaxRetainedBytes':(64<<20)+(6+3*n)*(64<<10),'MaxWorkRows':3+2*n,'MaxWorkBytes':(64<<20)+(3+2*n)*(512<<10)}
+    binding={'Version':1,'Layout':c.COLUMN_LAYOUT,'Schema':'node-presence;edge-life-bound;property-p:i64;canonical-original:v1','Config':config,'Scope':SCOPE,'Policy':policy}
+    pb={'Version':1,'Columns':sha(binding),'Policy':{'MaxRecords':32,'MaxBytes':256<<10,'PageChunks':1,'PageBytes':128<<10,'MaxWorkChunks':1,'MaxWorkBytes':128<<10,'MaxOutputBytes':1024}}
+    def stored(k,v):return {'Key':enc(k),'Value':enc(v if type(v) is bytes else c.go_json(v))}
+    records=[stored(key('binding'),binding),stored(key('retention-v1/binding'),pb),*[stored(c.fdb_key(config,g,'meta','config'),config) for g in (0,1)],stored(c.fdb_key(config,0,'cut',c.go_json(result['InitialCut']).hex()),result['InitialCut'])]
+    out=[{'Type':'header','Format':c.COLUMN_FORMAT,'SourceFormat':c.RAW_FORMAT,'ReferenceLayout':'native-logical-kv-reference','Config':config,'InitialCut':result['InitialCut'],'StoragePagePolicy':{'PageRows':32,'PageBytes':32*(65536+1024)},'Records':records}]
+    manifests,progress,chunks,typed={},{},{},{}
+    for name,limit,cut in [('old',3+n,result['OldCut']),('final',3+2*n,result['FinalCut'])]:
+        selected=sorted(groups[:limit],key=lambda g:(g['Outcome']['Round'],g['Outcome']['Coordinator'],g['Outcome']['Request']))
+        generation={'Version':1,'ID':name,'Binding':sha(binding),'Initial':result['InitialCut'],'Cut':cut}
+        rows=[]
+        for group in selected:
+            command,m,o=group['Tx']['GraphChange'],group['Tx']['Lifecycle'],group['Outcome'];node,edge=command['Node'],command['Edge'];isnode=command['Kind']=='node-create'
+            rows.append({'Kind':1 if isnode else 2 if command['Kind']=='edge-create' else 3,'Owner':node['Node'] if isnode else edge['ID'],'Life':node['Life'] if isnode else m['EdgeLife'],'SourceNode':edge['Source']['Node'],'SourceLife':edge['Source']['Life'],'TargetNode':edge['Target']['Node'],'TargetLife':edge['Target']['Life'],'Value':1 if isnode else edge['Value'],'ValueID':0 if isnode else m['Definition']['ID'],'Provenance':m['Provenance'],'Round':o['Round'],'Sequence':o['Sequence'],'Coordinator':o['Coordinator'],'Original':enc(c.go_json(group))})
+        total=len(rows);arena=b'';offsets=[];lengths=[]
+        for row in rows:
+            raw=base64.b64decode(row['Original']);offsets.append(len(arena));lengths.append(len(raw));arena+=raw
+        numbers=('Owner','Life','SourceNode','SourceLife','TargetNode','TargetLife','Value','ValueID','Provenance','Round','Sequence')
+        body=b'RHOCLM01'+bytes(sha(binding))+bytes(sha(generation))+struct.pack('>Q',0)+bytes(32)+struct.pack('>H',total)+bytes(r['Kind'] for r in rows)+bytes(r['Coordinator'] for r in rows)+b''.join(struct.pack('>Q',r[name]%(1<<64)) for name in numbers for r in rows)+b''.join(struct.pack('>I',v) for v in offsets+lengths)+arena
+        if name=='old':
+            old=copy.deepcopy(result);old['FinalCut']=old['OldCut'];_,oldheader,_=raw_fixture(groups[:limit],old);metadata=oldheader['Metadata']
+            duplicate=oldheader['CutRecords'][-1];metadata[0]['Bytes']-=sum(len(base64.b64decode(duplicate[k])) for k in ('Key','Value'));metadata[0]['Certificates']=2
+        else:metadata=copy.deepcopy(header['Metadata'])
+        chain=list(hashlib.sha256(bytes(32)+hashlib.sha256(body).digest()).digest())
+        manifest={'Generation':generation,'Metadata':metadata,'Chunks':1,'Rows':total,'Bytes':len(gkey(name,'chunk/0000000000000000'))+len(body),'History':[m['Versions'] for m in metadata],'Chain':chain}
+        manifests[name]=manifest;chunks[name]=body;typed[name]=rows
+        progress[name]={'Generation':generation,'Metadata':metadata,'Next':1,'Rows':total,'Bytes':manifest['Bytes'],'WorkBytes':len(body)+sum(c.column_work(g,config) for g in selected),'Sequences':cut['Groups'],'History':manifest['History'],'Chain':chain,'Previous':selected[-1]['Outcome'],'EOF':True}
+    token={'Version':1,'Request':'hold-old','Generation':'old','Columns':sha(binding),'Manifest':sha(manifests['old']),'Secret':[99]+[0]*31,'Cut':result['OldCut'],'FeedStart':result['OldCut']['Groups']}
+    readers=[]
+    for number in range(1,9):
+        name='old' if number<=4 else 'final';secret=[number]+[0]*31
+        owner={'Request':'read-'+bytes(secret[:16]).hex(),'Generation':name,'Secret':secret}
+        readers.append({'Owner':owner,'Manifest':sha(manifests[name]),'PinRequest':'hold-old' if number==1 else '', 'PinToken':sha(token) if number==1 else [0]*32,'State':2})
+    heldkey=key('read-owner/'+readers[0]['Owner']['Request'].encode().hex());terminal={key('binding'):c.go_json(binding),key('retention-v1/binding'):c.go_json(pb)}
+    def stage(index):
+        names=['old'] if index==0 else ['old','final'];raw={}
+        charge=len(key('binding'))+len(c.go_json(binding))+len(key('ledger'))+256
+        charge+=sum(8192+len(gkey(name,'progress'))+len(gkey(name,'manifest'))+len(gkey(name,'owners'))+4096+manifests[name]['Bytes'] for name in names)
+        charge+=(1 if index<=2 else 8)*(len(heldkey)+4096)
+        if index>=5:charge-=manifests['old']['Bytes']
+        ledger={'Bytes':charge,'Generations':len(names),'Chunks':len(names)-(1 if index>=5 else 0)}
+        pinbytes=len(key('retention-v1/binding'))+len(c.go_json(pb))+len(key('retention-v1/ledger'))+256+sum(len(k)+4096 for k in (rkey('reference','head'),rkey('reference-request','head-old'),rkey('pin','hold-old')))+(len(rkey('reference-request','head-final'))+4096 if index else 0)
+        pl={'Records':5 if index==0 else 6,'Bytes':pinbytes,'ReservedRecords':1,'ReservedBytes':len(prefix)+len(b'retention-v1/reference-request/')+256+4096}
+        raw[key('ledger')]=ledger;raw[key('retention-v1/ledger')]=pl
+        metadata=manifests['old' if index==0 else 'final']['Metadata']
+        for g in (0,1):raw[c.fdb_key(config,g,'meta','state')]=metadata[g]
+        for name in names:
+            m=manifests[name];collected=name=='old' and index>=5
+            raw[gkey(name,'manifest')]=m;raw[gkey(name,'progress')]=progress[name]
+            raw[gkey(name,'owners')]={'Manifest':sha(m),'State':3 if collected else 1,'References':1 if name=='final' or index==0 else 0,'Pins':1 if name=='old' and index<=1 else 0,'Readers':1 if name=='old' and index<=3 else 0,'Cursor':1 if collected else 0,'DeletedBytes':m['Bytes'] if collected else 0,'Chain':m['Chain'] if collected else [0]*32}
+            raw[c.fdb_key(config,0,'cut',c.go_json(m['Generation']['Cut']).hex())]=m['Generation']['Cut']
+        raw[heldkey]=readers[0]|{'State':1 if index<=3 else 2}
+        raw[rkey('pin','hold-old')]={'Token':token,'Intent':sha({'Columns':token['Columns'],'Generation':'old','Cut':result['OldCut']}),'State':1 if index<=1 else 3,'TerminalRequest':'' if index<=1 else 'expire-old','TerminalKind':0 if index<=1 else 3}
+        for name,request,version in [('old','head-old',1),('final','head-final',2)]:
+            if name not in names:continue
+            ref={'Name':'head','Generation':name,'Version':version,'Manifest':sha(manifests[name])}
+            raw[rkey('reference-request',request)]={'Intent':sha({'Name':'head','Generation':name,'Expected':version-1}),'Reference':ref}
+            if name==('old' if index==0 else 'final'):raw[rkey('reference','head')]=ref
+        out.append({'Type':'stage','Name':('old-held','final-head','expired-held','reads-complete','old-closed','old-collected','terminal')[index],'Records':[stored(k,v) for k,v in raw.items()]})
+        for k,v in raw.items():
+            if k.startswith(prefix):terminal[k]=c.go_json(v)
+        return ledger,pl
+    stage(0);stage(1)
+    out.extend([{'Type':'refusal','Name':'expired-new-open','Error':'fdb-column: retained generation or token expired'},{'Type':'refusal','Name':'held-old-collection','Error':'fdb-column: retained generation has live owners or references'}]);stage(2)
+    for name in ('old','final'):
+        m=manifests[name];body=chunks[name];cachefile='column-'+hashlib.sha256(c.go_json(m['Generation'])).hexdigest()+'-0000000000000000.bin';cachedir=directory/('column-cache-'+name);cachedir.mkdir();(cachedir/cachefile).write_bytes(body)
+        out.append({'Type':'chunk','Generation':name,'CacheDirectory':cachedir.name,'CacheFile':cachefile,'Ordinal':0,'Length':len(body),'Rows':m['Rows'],'SHA256':list(hashlib.sha256(body).digest()),'Record':stored(gkey(name,'chunk/0000000000000000'),body)})
+        out.append({'Type':'chunks-eof','Generation':name,'Manifest':m})
+        for walk in (name,name+'-cache'):
+            out.extend({'Type':'walk-row','Name':walk,'Generation':name,'Row':r} for r in typed[name]);out.append({'Type':'walk-eof','Name':walk,'Generation':name,'Cut':m['Generation']['Cut'],'Rows':m['Rows'],'Manifest':m})
+        for owner in (7,7+2*(n-1),5):
+            row=next((r for r in reversed(typed[name]) if r['Owner']==owner),None)
+            out.append({'Type':'point','Generation':name,'Owner':owner,'Found':row is not None,'Row':row if row else {k:None if k=='Original' else 0 for k in typed[name][0]}})
+    stage(3);stage(4)
+    m=manifests['old'];guard={'Manifest':sha(m),'State':3,'References':0,'Pins':0,'Readers':0,'Cursor':1,'DeletedBytes':m['Bytes'],'Chain':m['Chain']}
+    out.append({'Type':'collect','Budget':{'Chunks':1,'Bytes':128<<10,'OutputBytes':1024},'Result':{'Generation':'old','Cursor':1,'DeletedBytes':m['Bytes'],'WorkChunks':1,'WorkBytes':m['Bytes'],'Done':True},'Absent':enc(gkey('old','chunk/0000000000000000')),'Guard':stored(gkey('old','owners'),guard)})
+    out.append({'Type':'refusal','Name':'retired-publication','Error':'fdb-column: retained generation or token expired'});stage(5)
+    out.append({'Type':'refusal','Name':'final-reference-collection','Error':'fdb-column: retained generation has live owners or references'});ledger,pl=stage(6)
+    terminal[gkey('final','chunk/0000000000000000')]=chunks['final']
+    for record in readers:terminal[key('read-owner/'+record['Owner']['Request'].encode().hex())]=c.go_json(record)
+    storage={k:0 for k in 'Records Bytes LiveChunkRecords LiveChunkBytes TombstoneRecords TombstoneBytes RetiredLineageRecords RetiredLineageBytes'.split()}
+    for k,v in sorted(terminal.items()):
+        out.append({'Type':'storage-row','Record':stored(k,v)});size=len(k)+len(v);storage['Records']+=1;storage['Bytes']+=size
+        kind='LiveChunk' if k.startswith(gkey('final','chunk/')) else 'RetiredLineage' if k.startswith(gkey('old','')) else 'Tombstone' if k.startswith(key('read-owner/')) or k==rkey('pin','hold-old') else None
+        if kind:storage[kind+'Records']+=1;storage[kind+'Bytes']+=size
+    end={'Format':c.COLUMN_FORMAT,'SourceFormat':c.RAW_FORMAT,'ReferenceLayout':'native-logical-kv-reference','PayloadSHA256':[0]*32,'ArtifactSHA256':[0]*32,'Old':manifests['old'],'Final':manifests['final'],'Counts':{'Chunks':2,'WalkRows':2*(manifests['old']['Rows']+manifests['final']['Rows']),'Points':6,'Stages':7,'Collections':1},'Ledger':ledger,'PinLedger':pl,'Storage':storage}
+    result.update(version=3,oracleFormat=c.COLUMN_FORMAT,Columns=end)
+    return out
+
+
+def seal_columns(directory, result, records):
+    c=module('column-seal','compare-cost-cdc.py');payload=b''.join(c.go_json(r)+b'\n' for r in records);end=result['Columns'];end['PayloadSHA256']=list(hashlib.sha256(payload).digest());end['ArtifactSHA256']=[0]*32
+    body=payload+c.go_json({'Type':'footer','End':end})+b'\n';end['ArtifactSHA256']=list(hashlib.sha256(body).digest());(directory/'fdb-cost-columns.jsonl').write_bytes(body)
+
 class Replay(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory(); self.root=Path(self.tmp.name)
@@ -184,23 +292,38 @@ class Replay(unittest.TestCase):
         checker=module('cdc','compare-cost-cdc.py')
         return checker.compare_streams(*self.streams(native,fdb),self.result['spec'],self.result['Config'],self.result['FinalCut'],native_bounds(self.native))
 
-    def raw_compare(self, mutate=None, policy=None):
+    def raw_compare(self, mutate=None, policy=None, columns=None):
         checker=module('raw-cdc','compare-cost-cdc.py')
-        result,header,streams=raw_fixture(self.groups,self.result)
+        groups,baseline=copy.deepcopy(self.groups),copy.deepcopy(self.result)
+        if columns is not None:
+            baseline['Config']['Graph']='graph-cost-columns-v1'
+            for group in groups:
+                group['Tx']['Graph']=baseline['Config']['Graph'];group['Outcome']['Digest']=list(hashlib.sha256(checker.go_json(group['Tx'])).digest())
+        result,header,streams=raw_fixture(groups,baseline)
         if mutate:mutate(result,header,streams)
         directory=self.root/'raw';directory.mkdir(exist_ok=True)
         for name,records in streams.items():
             payload=checker.go_json(header|{'Stream':name})+b'\n'+b''.join(checker.go_json({'Type':'row','Row':r})+b'\n' for r in records)
             footer={'Type':'footer','Rows':[sum(r['Group']==g for r in records) for g in range(2)],'Groups':header['FinalCut']['Groups'],'Metadata':header['Metadata'],'PayloadSHA256':hashlib.sha256(payload).hexdigest()}
             (directory/f'fdb-cost-{name}.jsonl').write_bytes(payload+checker.go_json(footer)+b'\n')
-        (directory/'fdb-cost-operation-groups.jsonl').write_bytes(b''.join(checker.go_json(g)+b'\n' for g in self.groups))
+        (directory/'fdb-cost-operation-groups.jsonl').write_bytes(b''.join(checker.go_json(g)+b'\n' for g in groups))
         samples=[]
-        for group in self.groups:
+        for group in groups:
             ordinal=group['Tx']['Lifecycle']['Provenance'];phase,fact,node,edge=checker.fixture(result['spec'],ordinal)
             samples.append({'phase':phase,'fact':fact,'cross':bool(edge and edge['Target']['Owner']),'ProposalNanos':1,'AckNanos':1,'VerificationNanos':1,'ProposalAttempts':1,'CommitAttempts':1,'Outcome':group['Outcome']})
         (directory/'fdb-cost-latency.jsonl').write_bytes(b''.join(checker.go_json(s)+b'\n' for s in samples))
         native=self.root/'native.jsonl';native.write_bytes(b''.join(checker.go_json(r)+b'\n' for r in self.native))
         observations=self.root/'observations.jsonl';observations.write_bytes(b''.join(checker.go_json(r)+b'\n' for r in native_observations(self.native,result['spec']['facts'])))
+        if columns is not None:
+            for name in ('old','final'):
+                cache=directory/('column-cache-'+name)
+                if cache.exists():
+                    for file in cache.iterdir():file.unlink()
+                    cache.rmdir()
+            records=column_fixture(directory,result,header,groups)
+            columns(result,records,directory)
+            seal_columns(directory,result,records)
+            (directory/'fdb-cost-result.json').write_bytes(checker.go_json(result)+b'\n')
         if policy is None:policy=checker.Policy(1<<20,16<<10,4096,512<<10)
         try:
             return checker.compare_streams(native,directory/'fdb-cost-cdc.jsonl',result['spec'],result['Config'],result['FinalCut'],raw_native_bounds(self.native,result['spec']['facts']),spool_directory=self.root,spool_policy=policy,raw_result=result,observations_path=observations)
@@ -215,6 +338,51 @@ class Replay(unittest.TestCase):
         self.assertLessEqual(report['comparisonState']['peak_file_bytes'],1<<20)
         self.assertFalse(report['comparisonState']['cache_is_process_rss_limit'])
         self.assertIn('three-entry',report['fdb']['orderContract'])
+
+    def test_column_binary_owned_read_cache_and_exact_terminal_census(self):
+        report=self.raw_compare(columns=lambda r,rows,d:None)
+        proof=report['columns']
+        self.assertEqual(report['oracleFormat'],'fdb-graph-cost-columns-v1')
+        self.assertEqual(proof['counts'],{'Chunks':2,'WalkRows':24,'Points':6,'Stages':7,'Collections':1})
+        self.assertEqual(proof['storedLogicalBytes']['Records'],23)
+        self.assertEqual(proof['storedLogicalBytes']['TombstoneRecords'],9)
+        self.assertEqual(proof['storedLogicalBytes']['RetiredLineageRecords'],3)
+        self.assertFalse(proof['nativeColumnsCostParity'])
+        self.assertIn('not performed',proof['sourceKVGC'])
+        directory=self.root/'raw';checker=module('column-controller','compare-cost-cdc.py')
+        result=json.loads((directory/'fdb-cost-result.json').read_bytes());bounds=raw_native_bounds(self.native,2)
+        native_result={'directory':str(self.root),'CDCFrom':bounds['from'],'CDCThrough':bounds['through'],'FinalCut':bounds['finalCut'],'OldCut':bounds['oldCut']}
+        (self.root/'cdc.jsonl').write_bytes((self.root/'native.jsonl').read_bytes());(self.root/'native-cost-result.json').write_bytes(checker.go_json(native_result))
+        hashes=lambda root:{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in root.iterdir() if p.is_file()}
+        native={'completedCell':True,'spec':result['spec'],'layout':'kv','result':native_result,'artifacts':hashes(self.root)}
+        fdb={'completedCell':True,'spec':result['spec'],'layout':'columns','result':result,'FDBArtifacts':str(directory),'launchReceipt':{'sha256':hashes(directory)}}
+        left,right=self.root/'native-receipt.json',self.root/'fdb-receipt.json';left.write_text(json.dumps(native));right.write_text(json.dumps(fdb))
+        self.assertFalse(CELL.compare_cells(left,right)['nativeColumnsCostParity'])
+        for mutate in (lambda f:f['launchReceipt']['sha256'].pop('fdb-cost-columns.jsonl'),lambda f:f.__setitem__('layout','kv')):
+            bad=copy.deepcopy(fdb);mutate(bad);right.write_text(json.dumps(bad))
+            with self.assertRaises(ValueError):CELL.compare_cells(left,right)
+
+    def test_column_rehashed_wrong_values_ownership_missing_eof_and_cache_refuse(self):
+        def wrong_binary(result, rows, directory):
+            chunk=next(r for r in rows if r['Type']=='chunk' and r['Generation']=='old');body=bytearray(base64.b64decode(chunk['Record']['Value']));n=chunk['Rows']
+            struct.pack_into('>Q',body,114+2*n+(6*n+3)*8,55)
+            chunk['Record']['Value']=base64.b64encode(body).decode();chunk['SHA256']=list(hashlib.sha256(body).digest())
+            (directory/chunk['CacheDirectory']/chunk['CacheFile']).write_bytes(body)
+        def wrong_point(result, rows, directory):
+            old=next(r for r in rows if r['Type']=='point' and r['Generation']=='old' and r['Owner']==7)
+            current=next(r for r in rows if r['Type']=='point' and r['Generation']=='final' and r['Owner']==7);old['Row']=copy.deepcopy(current['Row'])
+        def wrong_held(result, rows, directory):
+            stage=next(r for r in rows if r['Type']=='stage' and r['Name']=='expired-held')
+            record=next(r for r in stage['Records'] if b'/read-owner/' in base64.b64decode(r['Key']));body=json.loads(base64.b64decode(record['Value']));body['State']=2
+            record['Value']=base64.b64encode(module('column-bad-owner','compare-cost-cdc.py').go_json(body)).decode()
+        def wrong_order(result, rows, directory):
+            indexes=[i for i,r in enumerate(rows) if r['Type']=='walk-row' and r['Name']=='old'];rows[indexes[0]],rows[indexes[1]]=rows[indexes[1]],rows[indexes[0]]
+        def missing_eof(result, rows, directory):rows.remove(next(r for r in rows if r['Type']=='walk-eof' and r['Name']=='old-cache'))
+        def missing_tombstone(result, rows, directory):rows.remove(next(r for r in rows if r['Type']=='storage-row' and b'/read-owner/' in base64.b64decode(r['Record']['Key'])))
+        def wrong_cache(result, rows, directory):
+            chunk=next(r for r in rows if r['Type']=='chunk');path=directory/chunk['CacheDirectory']/chunk['CacheFile'];path.write_bytes(path.read_bytes()[:-1])
+        for name,mutate in (('binary value',wrong_binary),('old/current substitution',wrong_point),('held ownership',wrong_held),('walk reorder',wrong_order),('missing EOF',missing_eof),('missing tombstone',missing_tombstone),('truncated cache',wrong_cache)):
+            with self.subTest(name=name),self.assertRaises(ValueError):self.raw_compare(columns=mutate)
 
     def test_raw_equal_count_rehashed_wrong_rows_and_foreign_bindings_refuse(self):
         def body_change(row,key,value):
