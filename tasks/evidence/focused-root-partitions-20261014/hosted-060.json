@@ -1,0 +1,230 @@
+{
+  "kind": "Evidence-only followup: terminal hosted CI still uses pre-partition root bundling",
+  "date": "2026-10-14",
+  "run": 38514999662,
+  "head": "0601086705d60f024866a222ed624b0c37c55f7f",
+  "conclusion": "cancelled",
+  "url": "https://github.com/data-insights-ai/rho-tkg/actions/runs/38514999662",
+  "root_job": 115691787834,
+  "root_job_started": "2026-10-14T05:08:22Z",
+  "root_job_completed": "2026-10-14T05:38:44Z",
+  "authoritative_reason": "The job has exceeded the maximum execution time of 30m0s",
+  "behavior_step": {
+    "started": "2026-10-14T05:09:47Z",
+    "completed": "2026-10-14T05:38:36Z",
+    "conclusion": "cancelled"
+  },
+  "normal": "31/31 selected packages PASS, short-mode skips retain no executed proof",
+  "race": {
+    "passed_packages": 22,
+    "failed_packages": 0,
+    "package_test_timeout_panic": false,
+    "selected_large_packages": {
+      "graph": {
+        "terminal": "pass",
+        "elapsed": 267.108,
+        "first": "2026-10-14T05:17:14.666729918Z",
+        "last": "2026-10-14T05:21:41.774603859Z",
+        "parents": {
+          "run": 507,
+          "pass_": 498,
+          "skip": 9,
+          "fail": 0
+        }
+      },
+      "core": {
+        "terminal": "pass",
+        "elapsed": 431.087,
+        "first": "2026-10-14T05:22:50.070548462Z",
+        "last": "2026-10-14T05:30:01.157541567Z",
+        "parents": {
+          "run": 2208,
+          "pass_": 2205,
+          "skip": 3,
+          "fail": 0
+        }
+      },
+      "badger": {
+        "terminal": "pass",
+        "elapsed": 176.817,
+        "first": "2026-10-14T05:32:05.735054683Z",
+        "last": "2026-10-14T05:35:02.552527689Z",
+        "parents": {
+          "run": 929,
+          "pass_": 919,
+          "skip": 10,
+          "fail": 0
+        }
+      },
+      "memory": {
+        "terminal": "pass",
+        "elapsed": 188.339,
+        "first": "2026-10-14T05:35:11.711050333Z",
+        "last": "2026-10-14T05:38:20.049725133Z",
+        "parents": {
+          "run": 411,
+          "pass_": 404,
+          "skip": 7,
+          "fail": 0
+        }
+      },
+      "sharded": {
+        "terminal": null,
+        "elapsed": null,
+        "first": "2026-10-14T05:38:27.094286818Z",
+        "last": "2026-10-14T05:38:38.69580148Z",
+        "parents": {
+          "run": 108,
+          "pass_": 84,
+          "skip": 0,
+          "fail": 0
+        }
+      }
+    },
+    "unterminated": "sharded started 05:38:27.094286818Z; 108 top-level run/84 pass; no terminal; runner cleanup killed sharded.test",
+    "not_started": "Eight final packages, including tiered, had no race events; coverage mode absent."
+  },
+  "other_jobs": [
+    {
+      "id": 115691695992,
+      "name": "changes",
+      "conclusion": "success"
+    },
+    {
+      "id": 115691787597,
+      "name": "security (v5, v5/go.mod, ../.golangci.yml, false)",
+      "conclusion": "success"
+    },
+    {
+      "id": 115691787615,
+      "name": "lint (., go.mod, .golangci.yml, true)",
+      "conclusion": "success"
+    },
+    {
+      "id": 115691787681,
+      "name": "focused (v5, v5/go.mod, ../.golangci.yml, false)",
+      "conclusion": "success"
+    },
+    {
+      "id": 115691787688,
+      "name": "security (., go.mod, .golangci.yml, true)",
+      "conclusion": "success"
+    },
+    {
+      "id": 115691787738,
+      "name": "lint (v5, v5/go.mod, ../.golangci.yml, false)",
+      "conclusion": "success"
+    },
+    {
+      "id": 115691787781,
+      "name": "migration-preflight",
+      "conclusion": "success"
+    },
+    {
+      "id": 115691789295,
+      "name": "comparison-correctness",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 115691789508,
+      "name": "coverage",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 115691789542,
+      "name": "race (${{ matrix.part }})",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 115691789545,
+      "name": "race-plan",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 115691789572,
+      "name": "test",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 115691789579,
+      "name": "external-fdb-record",
+      "conclusion": "skipped"
+    }
+  ],
+  "qualification_limit": "Confirms aggregate 31-package x three-mode job timeout; no assertion/race failure or deadlock attribution. Unlike prior52ad, current core race is PASS431.087s, not FAIL600.394s. This old workflow gives no live partition acceptance/full coverage/phase-release proof.",
+  "raw_artifact": {
+    "id": 11872502044,
+    "name": "focused-behavior-root",
+    "bytes": 2339918,
+    "sha256": "f075bc609a76ba43f06ea0bec10aeaa23a072964fbf5997087ea8b678f9e80ed",
+    "retained_literal_local_path": "/var/tmp/rho-v5-focused-ci-audit-20261014/new-root-behavior.zip",
+    "archive_scope": "Full run/job/check/annotation metadata and job log; exact selection; derived package timeline; literal package terminal JSONL. Original complete JSONL zip retained separately unchanged."
+  },
+  "raw_archive": {
+    "file": "hosted-060-raw.tar.gz",
+    "bytes": 22595,
+    "sha256": "173bdbb0aab9a71850abb9d82f9fbc3607d4439597139264e92b55caaa7f2166"
+  },
+  "actions": "No source edits, policy reruns, local Go/scanners/Docker, cancellation or restart; old receipt immutable.",
+  "v5_scoped_artifact": {
+    "id": 11872067209,
+    "name": "focused-behavior-v5",
+    "compressed_bytes": 167944,
+    "literal_local_members": "/var/tmp/rho-v5-focused-ci-06010867-20261014/v5",
+    "member_sha256": {
+      "coverage-0.jsonl": "76ec9858d64ee573ac11f8887427ce80ccbdc6a56f0ae491941a1f4a62162405",
+      "coverage-0.out": "fbcc180ed81c1e1efa49979bbea15966a3f3d382d7f6a44e726e87b6da0eeffe",
+      "normal-0.jsonl": "afdf7148c26fcbca69809f9c4eb5e2a743fcc8894ee17a758f13d463c73a6554",
+      "race-0.jsonl": "8d680ab4432e3014d3442f721f4273868665bc26dc83326a5a2dbfd0eb543057",
+      "selection.json": "965235a75549ea0223204b68f6ad0fb9422ca315778a3c1c42a96147c992fad8"
+    },
+    "modes": {
+      "coverage-0.jsonl": {
+        "passing_parents": 33,
+        "passing_parents_and_subcases": 49,
+        "skipped_tests": [
+          "TestNativeGraphCostCell",
+          "TestReplicatedGraphChild"
+        ],
+        "failures": 0,
+        "package_terminal": {
+          "Time": "2026-10-14T05:17:22.698143886Z",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Elapsed": 31.492
+        }
+      },
+      "normal-0.jsonl": {
+        "passing_parents": 33,
+        "passing_parents_and_subcases": 49,
+        "skipped_tests": [
+          "TestNativeGraphCostCell",
+          "TestReplicatedGraphChild"
+        ],
+        "failures": 0,
+        "package_terminal": {
+          "Time": "2026-10-14T05:11:01.979995064Z",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Elapsed": 30.755
+        }
+      },
+      "race-0.jsonl": {
+        "passing_parents": 33,
+        "passing_parents_and_subcases": 49,
+        "skipped_tests": [
+          "TestNativeGraphCostCell",
+          "TestReplicatedGraphChild"
+        ],
+        "failures": 0,
+        "package_terminal": {
+          "Time": "2026-10-14T05:16:38.897083883Z",
+          "Action": "pass",
+          "Package": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply",
+          "Elapsed": 211.392
+        }
+      }
+    },
+    "limits": "Scoped hosted v5 normal/race/coverage passes only; two explicit short-mode skips are not executed proof. Full run remains cancelled/root incomplete; no broader v5/V2 or phase/release acceptance."
+  }
+}
