@@ -27,8 +27,12 @@ import (
 // Ordered views (backlog 69): OrderValue opens, for one value, an ascending
 // view of its members that Record keeps from then on, so MembersAfter pages
 // the members above a cursor in O(log n + page) instead of enumerating the
-// value. A view costs about 8 B per member and exists only for the values a
-// paged read asked for.
+// value. A view exists only for the values a paged read asked for; it is
+// built into full exact-capacity chunks and an ascending ID stream fills new
+// ones (sortedChunks.add): 8.06 B per member opened over 1,000,000 members,
+// 8.02 B grown by 1,000,000 ascending records (was 18.6 with the plain insert
+// path; BenchmarkPropertyTxMembersOrderedViewBytes,
+// tasks/evidence/paged-effective/09-view-bytes.txt).
 type PropertyTxMembers[ID cmp.Ordered] struct {
 	values   map[string]txPostings[ID]
 	postings int64
@@ -102,7 +106,7 @@ func (m *PropertyTxMembers[ID]) Record(vk string, id ID, tx types.Instant) {
 // orderNew adds a new member of vk to vk's ordered view, when one is open.
 func (m *PropertyTxMembers[ID]) orderNew(vk string, id ID) {
 	if o := m.ordered[vk]; o != nil {
-		o.insert(id)
+		o.add(id)
 	}
 }
 
@@ -127,10 +131,7 @@ func (m *PropertyTxMembers[ID]) OrderValue(vk string) bool {
 		ids = append(ids, id)
 	}
 	slices.Sort(ids)
-	o := &sortedChunks[ID]{}
-	for _, id := range ids {
-		o.insert(id)
-	}
+	o := newSortedChunksFrom(ids)
 	if m.ordered == nil {
 		m.ordered = make(map[string]*sortedChunks[ID])
 	}

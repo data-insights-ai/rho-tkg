@@ -83,6 +83,32 @@ func (o *sortedChunks[T]) insert(k T) {
 	}
 }
 
+// newSortedChunksFrom builds a set from DISTINCT ascending keys into full
+// chunks of orderedKeyChunk keys with exact capacity (no growth slack).
+func newSortedChunksFrom[T cmp.Ordered](sorted []T) *sortedChunks[T] {
+	o := &sortedChunks[T]{n: len(sorted)}
+	for start := 0; start < len(sorted); start += orderedKeyChunk {
+		o.chunks = append(o.chunks, slices.Clone(sorted[start:min(start+orderedKeyChunk, len(sorted))]))
+	}
+	return o
+}
+
+// add inserts a key known to be absent like insert, but a key above every
+// stored key goes to a new exact-capacity chunk once the last chunk holds
+// orderedKeyChunk keys, so an ascending stream (snowflake IDs) fills chunks
+// exactly instead of growing and splitting them.
+func (o *sortedChunks[T]) add(k T) {
+	if n := len(o.chunks); n > 0 {
+		last := o.chunks[n-1]
+		if len(last) >= orderedKeyChunk && k > last[len(last)-1] {
+			o.n++
+			o.chunks = append(o.chunks, append(make([]T, 0, orderedKeyChunk), k))
+			return
+		}
+	}
+	o.insert(k)
+}
+
 // remove deletes a key if present.
 func (o *sortedChunks[T]) remove(k T) {
 	ci := o.chunkIdx(k)

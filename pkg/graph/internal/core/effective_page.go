@@ -32,6 +32,10 @@ import (
 // entities with a kept segment.
 // =============================================================================
 
+// MaxEffectivePageLimit is the largest limit the paged effective doors accept
+// (temporal.MaxPageLimit); a larger one is ErrInvalidQueryLimit.
+const MaxEffectivePageLimit = temporal.MaxPageLimit
+
 // pageChunkMin / pageChunkMax bound one sidecar fetch.
 const (
 	pageChunkMin = 64
@@ -66,7 +70,7 @@ func (s *pageSource[ID]) fill(n int) error {
 // once (c.mu held). It returns fewer only when every source is exhausted.
 func mergePage[ID ~int64](srcs []*pageSource[ID], n int) ([]ID, error) {
 	chunk := min(max(n, pageChunkMin), pageChunkMax)
-	out := make([]ID, 0, n)
+	out := make([]ID, 0, min(n, chunk))
 	for len(out) < n {
 		best := -1
 		for i, s := range srcs {
@@ -148,14 +152,14 @@ func pageValidKeep(pin temporal.Pin) func(from, to types.Instant) bool {
 		at := pin.ValidAt
 		return func(from, to types.Instant) bool { return from <= at && (to == 0 || to > at) }
 	case pin.ValidStart != 0:
-		s, e := pin.ValidStart, pin.ValidEnd
-		return func(from, to types.Instant) bool { return from < e && (to == 0 || to > s) }
+		s, e := pin.ValidStart, pin.ValidEnd // e == 0: open-ended [s, inf)
+		return func(from, to types.Instant) bool { return (e == 0 || from < e) && (to == 0 || to > s) }
 	}
 	return func(types.Instant, types.Instant) bool { return true }
 }
 
 // validatePage checks the arguments both paged doors share and returns the
-// value's index key ("" = the value has none: an empty page).
+// value's index key.
 func (c *Core) validatePage(ctx context.Context, pin temporal.Pin, f temporal.Filter, after int64, limit int, scope retentionScope) (string, error) {
 	if err := c.checkOpen(); err != nil {
 		return "", err
@@ -163,8 +167,8 @@ func (c *Core) validatePage(ctx context.Context, pin temporal.Pin, f temporal.Fi
 	if err := checkCtx(ctx); err != nil {
 		return "", err
 	}
-	if limit < 1 {
-		return "", fmt.Errorf("%w: %d", ErrInvalidQueryLimit, limit)
+	if limit < 1 || limit > MaxEffectivePageLimit {
+		return "", fmt.Errorf("%w: %d (want 1..%d)", ErrInvalidQueryLimit, limit, MaxEffectivePageLimit)
 	}
 	if after < 0 {
 		return "", fmt.Errorf("%w: %d", ErrInvalidQueryCursor, after)
@@ -175,7 +179,7 @@ func (c *Core) validatePage(ctx context.Context, pin temporal.Pin, f temporal.Fi
 		return "", fmt.Errorf("%w: negative valid-time filter", ErrInvalidTimeRange)
 	case pin.ValidAt != 0 && interval:
 		return "", fmt.Errorf("%w: ValidAt and [ValidStart, ValidEnd) are exclusive", ErrInvalidTimeRange)
-	case interval && (pin.ValidStart == 0 || pin.ValidStart >= pin.ValidEnd):
+	case interval && (pin.ValidStart == 0 || pin.ValidEnd != 0 && pin.ValidStart >= pin.ValidEnd):
 		return "", fmt.Errorf("%w: valid interval [%d, %d)", ErrInvalidTimeRange, pin.ValidStart, pin.ValidEnd)
 	}
 	if f.Prop == "" {
@@ -187,17 +191,21 @@ func (c *Core) validatePage(ctx context.Context, pin temporal.Pin, f temporal.Fi
 	if err := types.ValidatePropertyValue(f.Eq); err != nil {
 		return "", fmt.Errorf("graph: effective page filter value: %w", err)
 	}
+	vk := types.IndexablePropertyValueKey(f.Eq)
+	if vk == "" {
+		return "", fmt.Errorf("graph: effective page filter value %T has no index key (a scalar is required): %w", f.Eq, types.ErrUnsupportedValueType)
+	}
 	if err := c.validateEffectiveScanPin(pin.Tx, scope); err != nil {
 		return "", err
 	}
-	return types.IndexablePropertyValueKey(f.Eq), nil
+	return vk, nil
 }
 
 // RelsEffectivePage implements temporal.API.RelsEffectivePage.
 func (t *TempOps) RelsEffectivePage(ctx context.Context, pin temporal.Pin, f temporal.Filter, after types.RelID, limit int) ([]temporal.RelSegment, types.RelID, error) {
 	c := t.c
 	vk, err := c.validatePage(ctx, pin, f, int64(after), limit, scopeAllRels)
-	if err != nil || vk == "" {
+	if err != nil {
 		return nil, 0, err
 	}
 	var srcs []*pageSource[types.RelID]
@@ -280,7 +288,7 @@ func (c *Core) relPageSource(tok uint16, key, vk string, pin types.Instant, afte
 func (t *TempOps) NodesEffectivePage(ctx context.Context, pin temporal.Pin, f temporal.Filter, after types.NodeID, limit int) ([]temporal.NodeSegment, types.NodeID, error) {
 	c := t.c
 	vk, err := c.validatePage(ctx, pin, f, int64(after), limit, scopeNodes)
-	if err != nil || vk == "" {
+	if err != nil {
 		return nil, 0, err
 	}
 	var srcs []*pageSource[types.NodeID]

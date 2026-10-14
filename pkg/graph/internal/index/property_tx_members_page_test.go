@@ -96,6 +96,26 @@ func TestPropertyTxMembers_MembersAfter(t *testing.T) {
 	if n != 5000 {
 		t.Fatalf("paged %d members, want 5000", n)
 	}
+	// Ascending members (new exact chunks) mixed with ones below the last
+	// (insert into a full chunk, split): one ascending page holds them all.
+	asc := NewPropertyTxMembers[types.RelID]()
+	asc.Record("v", 2, 1)
+	asc.OrderValue("v")
+	for i := 2; i <= 1500; i++ {
+		asc.Record("v", types.RelID(i*2), 1)
+	}
+	for _, id := range []types.RelID{1, 3, 1025, 2999} {
+		asc.Record("v", id, 1)
+	}
+	got, _ := asc.MembersAfter("v", 0, 5000)
+	if len(got) != 1504 {
+		t.Fatalf("ascending view holds %d members, want 1504", len(got))
+	}
+	for i := 1; i < len(got); i++ {
+		if got[i].ID <= got[i-1].ID {
+			t.Fatalf("ascending view out of order at %d: %d after %d", i, got[i].ID, got[i-1].ID)
+		}
+	}
 	var nilM *PropertyTxMembers[types.RelID]
 	if nilM.OrderValue("a") {
 		t.Fatal("nil OrderValue = true")

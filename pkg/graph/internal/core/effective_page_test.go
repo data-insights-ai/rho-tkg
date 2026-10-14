@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"slices"
 	"strings"
@@ -33,7 +34,7 @@ func epMatch(props map[string]any, vk string, pin temporal.Pin, from, to types.I
 	case pin.ValidAt != 0:
 		return from <= pin.ValidAt && (to == 0 || to > pin.ValidAt)
 	case pin.ValidStart != 0:
-		return from < pin.ValidEnd && (to == 0 || to > pin.ValidStart)
+		return (pin.ValidEnd == 0 || from < pin.ValidEnd) && (to == 0 || to > pin.ValidStart)
 	}
 	return true
 }
@@ -381,6 +382,7 @@ func TestEffectivePage_DifferentialRandom(t *testing.T) {
 								{Tx: pin},
 								{Tx: pin, ValidAt: vt},
 								{Tx: pin, ValidStart: vt, ValidEnd: vt + types.Instant(1+sc.rng.IntN(8000))},
+								{Tx: pin, ValidStart: vt}, // open-ended [vt, inf)
 							} {
 								for _, eq := range []any{"e0", "e1", "e2", "absent"} {
 									want := epOracle(t, g, rel, p, eq)
@@ -491,6 +493,9 @@ func TestEffectivePage_ValueChangeTwoPhase(t *testing.T) {
 					{"b after, any valid time", temporal.Pin{Tx: pin1}, "b", []int64{mover, stay}},
 					{"a after, valid now", temporal.Pin{Tx: pin1, ValidAt: later}, "a", nil},
 					{"b after, valid now", temporal.Pin{Tx: pin1, ValidAt: later}, "b", []int64{mover, stay}},
+					{"a open interval from before the move", temporal.Pin{Tx: pin1, ValidStart: moved - 1}, "a", []int64{mover, gone}},
+					{"a open interval from now", temporal.Pin{Tx: pin1, ValidStart: later}, "a", nil},
+					{"b open interval from now", temporal.Pin{Tx: pin1, ValidStart: later}, "b", []int64{mover, stay}},
 					{"a after, valid before the move", temporal.Pin{Tx: pin1, ValidAt: moved - 1}, "a", []int64{mover, gone}},
 					{"a interval across the move", temporal.Pin{Tx: pin1, ValidStart: moved - 1, ValidEnd: moved + 1}, "a", []int64{mover, gone}},
 					{"absent value", temporal.Pin{Tx: pin1}, "zz", nil},
@@ -636,7 +641,11 @@ func TestEffectivePage_Errors(t *testing.T) {
 		{"negative cursor", ctx, temporal.Pin{Tx: pin}, f, -1, 1, ErrInvalidQueryCursor},
 		{"point and interval", ctx, temporal.Pin{Tx: pin, ValidAt: 5, ValidStart: 1, ValidEnd: 9}, f, 0, 1, ErrInvalidTimeRange},
 		{"reversed interval", ctx, temporal.Pin{Tx: pin, ValidStart: 9, ValidEnd: 9}, f, 0, 1, ErrInvalidTimeRange},
-		{"one-sided interval", ctx, temporal.Pin{Tx: pin, ValidStart: 9}, f, 0, 1, ErrInvalidTimeRange},
+		{"end without start", ctx, temporal.Pin{Tx: pin, ValidEnd: 9}, f, 0, 1, ErrInvalidTimeRange},
+		{"limit above the cap", ctx, temporal.Pin{Tx: pin}, f, 0, MaxEffectivePageLimit + 1, ErrInvalidQueryLimit},
+		{"limit MaxInt", ctx, temporal.Pin{Tx: pin}, f, 0, math.MaxInt, ErrInvalidQueryLimit},
+		{"list value", ctx, temporal.Pin{Tx: pin}, temporal.Filter{Prop: epProp, Eq: []string{"a"}}, 0, 1, types.ErrUnsupportedValueType},
+		{"nil value", ctx, temporal.Pin{Tx: pin}, temporal.Filter{Prop: epProp}, 0, 1, types.ErrUnsupportedValueType},
 		{"negative valid", ctx, temporal.Pin{Tx: pin, ValidAt: -1}, f, 0, 1, ErrInvalidTimeRange},
 		{"empty key", ctx, temporal.Pin{Tx: pin}, temporal.Filter{Eq: "a"}, 0, 1, ErrEmptyName},
 		{"reserved key", ctx, temporal.Pin{Tx: pin}, temporal.Filter{Prop: "tkg_x", Eq: "a"}, 0, 1, types.ErrReservedPrefix},

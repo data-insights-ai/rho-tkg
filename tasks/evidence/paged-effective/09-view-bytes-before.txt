@@ -1,0 +1,3 @@
+BenchmarkPropertyTxMembersOrderedViewBytes/open-32         	       2	 190550004 ns/op	        18.56 B/member
+BenchmarkPropertyTxMembersOrderedViewBytes/grow-32         	       2	 260118010 ns/op	        18.61 B/member
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	0.913s
