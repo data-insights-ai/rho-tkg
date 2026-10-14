@@ -322,6 +322,9 @@ func (v *ApplicationView) RecoveryOwner(ctx context.Context, budget ReadBudget) 
 	if budget.Rows > p.MaxPageRows || budget.Bytes > p.MaxPageBytes {
 		return owner, work, ErrLimit
 	}
+	if v.index < v.retention.RecoveryFloor {
+		return owner, work, ErrApplicationExpired
+	}
 	const fixed = 128 + 4*9
 	if budget.Bytes < fixed {
 		return owner, work, ErrLimit
