@@ -18,6 +18,10 @@ import (
 // This bounded fixture selects a genuinely fresh recovery2/contract4 binding.
 // It reuses the existing native six-voter packet pump; it creates no processes.
 func retainedPinNetwork(t *testing.T) *allocationTestNetwork {
+	t.Helper()
+	return retainedPinNetworkWithPolicy(t, nil)
+}
+func retainedPinNetworkWithPolicy(t *testing.T, adjust func(*raftlog.ApplicationPolicy)) *allocationTestNetwork {
 	agreement := retainedGraphSemanticContractID()
 	t.Helper()
 	r := partitionCodecRequest(t, 1, defaultMaterializerLimits())
@@ -30,6 +34,9 @@ func retainedPinNetwork(t *testing.T) *allocationTestNetwork {
 			p.MaxInstallWrites = 256
 			p.RetainedApplicationRecords = 8192
 			p.RetainedApplicationBytes = 16 << 20
+			if adjust != nil {
+				adjust(&p)
+			}
 			controls := raftlog.ApplicationControlConfig{Version: 1}
 			recovery := raftlog.ApplicationRecoveryConfig{Version: 2}
 			contract, err := raftlog.ApplicationContractForPolicyWithRecovery(p, controls, recovery)
