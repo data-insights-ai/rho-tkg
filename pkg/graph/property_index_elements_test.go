@@ -43,7 +43,7 @@ func elemWant(ns ...*types.Node) []types.NodeID { return elemNodeIDs(ns) }
 // sidecar's per-element record of a later write.
 type elementsFixture struct {
 	d1, d2, d3, d4, d5, d6 *types.Node
-	pin, pin501            types.Instant
+	pin, pin501, upd1      types.Instant
 }
 
 func writeElementsFixture(t *testing.T, g *graphpkg.Graph, label string) elementsFixture {
@@ -78,7 +78,7 @@ func writeElementsFixture(t *testing.T, g *graphpkg.Graph, label string) element
 		}
 		return u.Temporal().TxFrom
 	}
-	update(f.d1, []int64{102, 103})
+	f.upd1 = update(f.d1, []int64{102, 103})
 	f.pin501 = update(f.d6, []int64{500, 501})
 	update(f.d6, []int64{500})
 	return f
@@ -106,6 +106,9 @@ func checkElementsFixture(t *testing.T, g *graphpkg.Graph, label string, f eleme
 		{"TxAt+ValidAt 101", int64(101), storepkg.QueryOpts{TxAt: f.pin, ValidAt: now}, elemWant(f.d1, f.d2)},
 		{"TxAt+ValidAt 103", int64(103), storepkg.QueryOpts{TxAt: f.pin, ValidAt: now}, nil},
 		{"TxAt+interval 101", int64(101), storepkg.QueryOpts{TxAt: f.pin, ValidStart: 1, ValidEnd: now + 3_600_000}, elemWant(f.d1, f.d2)},
+		{"ValidAt update 101", int64(101), storepkg.QueryOpts{ValidAt: f.upd1}, elemWant(f.d2)},
+		{"ValidAt before update 101", int64(101), storepkg.QueryOpts{ValidAt: f.upd1 - 1}, elemWant(f.d1, f.d2)},
+		{"ValidAt update 103", int64(103), storepkg.QueryOpts{ValidAt: f.upd1}, elemWant(f.d1)},
 		{"current 501", int64(501), storepkg.QueryOpts{}, nil},
 		{"TxPin 501 (sidecar record)", int64(501), storepkg.QueryOpts{TxPin: f.pin501}, elemWant(f.d6)},
 		{"TxPin 501 before it", int64(501), storepkg.QueryOpts{TxPin: f.pin}, nil},
@@ -157,6 +160,9 @@ func TestPropertyIndexElementsContains(t *testing.T) {
 		}
 		if _, err := g.Nodes().ByLabelAndProperties(label, map[string]any{"ov_support": int64(101), "k": "v"}, storepkg.QueryOpts{}); !errors.Is(err, graphpkg.ErrElementsIndexUnsupported) {
 			t.Errorf("ByLabelAndProperties over an Elements key: %v, want ErrElementsIndexUnsupported", err)
+		}
+		if err := g.Index().CreateComposite(label, []string{"k", "ov_support"}); !errors.Is(err, graphpkg.ErrElementsIndexUnsupported) {
+			t.Errorf("composite over an Elements key: %v, want ErrElementsIndexUnsupported", err)
 		}
 		if err := g.Constraints().CreateUnique(ctx, label, "u"); err != nil {
 			t.Fatal(err)
@@ -283,4 +289,63 @@ func TestPropertyIndexElementsContains(t *testing.T) {
 			t.Fatal("an index was left behind")
 		}
 	})
+}
+
+// Tiered keeps an Elements index on the reference shard only. A node whose
+// primary label is an event label but which also carries the Ref label lives
+// on an event shard, and an archived Ref node lives in the archive: both are
+// answered with the same "contains" match, at current and pinned reads.
+func TestPropertyIndexElementsTieredEventShardAndArchive(t *testing.T) {
+	ctx := context.Background()
+	ts, err := tiered.New(tiered.Config{InMemory: true, RefLabels: []string{"Ref"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := graphpkg.New(graphpkg.Config{Store: ts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	if err := g.Index().CreatePropertyWithOptions("Ref", "ov", elementsOpts); err != nil {
+		t.Fatal(err)
+	}
+	ev, err := g.Nodes().Add(ctx, []string{"Ev", "Ref"}, map[string]any{"ov": []int64{101, 102}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ar, err := g.Nodes().Add(ctx, []string{"Ref"}, map[string]any{"ov": []int64{101, 103}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := g.Nodes().Add(ctx, []string{"Ref"}, map[string]any{"ov": int64(101)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pin := ref.Temporal().TxFrom
+	time.Sleep(3 * time.Millisecond)
+	if err := ts.ArchiveNode(ar.ID()); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name  string
+		value any
+		opts  storepkg.QueryOpts
+		want  []types.NodeID
+	}{
+		{"current 101", int64(101), storepkg.QueryOpts{}, elemWant(ev, ar, ref)},
+		{"current 102 (event shard)", int64(102), storepkg.QueryOpts{}, elemWant(ev)},
+		{"current 103 (archive)", int64(103), storepkg.QueryOpts{}, elemWant(ar)},
+		{"hot depth 103", int64(103), storepkg.QueryOpts{Depth: storepkg.DepthHot}, nil},
+		{"TxPin 102", int64(102), storepkg.QueryOpts{TxPin: pin}, elemWant(ev)},
+		{"TxPin 103", int64(103), storepkg.QueryOpts{TxPin: pin}, elemWant(ar)},
+		{"TxPin 101", int64(101), storepkg.QueryOpts{TxPin: pin}, elemWant(ev, ar, ref)},
+	} {
+		got, err := g.Nodes().ByLabelAndProperty("Ref", "ov", c.value, c.opts)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if ids := elemNodeIDs(got); !slices.Equal(ids, c.want) {
+			t.Errorf("%s: got %v, want %v", c.name, ids, c.want)
+		}
+	}
 }

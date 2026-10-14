@@ -20,11 +20,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   update removed matches at an earlier pin and not after. The index keeps no ordered view: range, prefix and
   `RangeCardinality` decline on it as without an index. Refused with the new `ErrElementsIndexUnsupported`:
   Elements with RangeCounts, an Elements index on a unique-constrained key, `CreateUnique` / `GetOrCreateByKey` on
-  an Elements-indexed key, `ByLabelAndProperties` over one. Memory, badger (definition key `el`, written only when
-  set; the open image carries its element entries), sharded, and tiered on reference labels (tiered now implements
-  `store.PropertyIndexOptionsCapability` on the reference shard and still refuses RangeCounts with
-  `ErrCapabilityNotSupported`; a DepthAll read answers the archive by a label scan with the same match); relationship
-  indexes on memory, badger and sharded. Badger `PropertyIndexOnDisk` refuses it (`ErrCapabilityNotSupported`).
+  an Elements-indexed key (checked again under the constraint's install lock), `ByLabelAndProperties` and
+  `CreateComposite` over one. Memory, badger (definition key `el`; the open image carries its element entries),
+  sharded, and tiered on reference labels (tiered now implements `store.PropertyIndexOptionsCapability` on the
+  reference shard and still refuses RangeCounts with `ErrCapabilityNotSupported`; the event shards — a node with an
+  event primary label and the reference label — and the archive hold no copy of the index and answer with the same
+  match through badger's new `NodesByLabelContainingProperty`, filtered during the fetch); relationship indexes on
+  memory, badger and sharded. Badger `PropertyIndexOnDisk` refuses it at create and refuses to open a store holding
+  an Elements definition (`ErrCapabilityNotSupported`; the shared disk keyspace keys scalars only).
+  **Format marker:** a badger directory that persists an Elements definition is stamped store format 5
+  (`storeutil.ElementsStoreFormatVersion`; 4 is reserved for the integrity-hash format, backlog 61), so a binary
+  before this release refuses it with `ErrWireFormatVersionUnsupported` instead of loading the index plain and
+  keying scalars only (which a re-upgrade would then trust). This binary opens markers up to 5; a store without
+  Elements keeps marker 3. Dropping the Elements indexes does not lower the marker: once stamped, the store stays
+  closed to older binaries.
   Write cost of a row with 5 supports (`BenchmarkPropertyIndexElementsWrite`, host load ~79, ns noisy): memory
   33 vs 22 allocs and 2,721 vs 1,885 B per row against a plain index on a scalar key of the same row (no index: 17
   allocs, 1,321 B); badger 68 vs 57 allocs, 6.6 vs 5.8 KB. Test `TestPropertyIndexElementsContains`; evidence

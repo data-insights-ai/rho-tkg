@@ -10,13 +10,19 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
+// maxReadableStoreFormatVersion is the highest store-level marker this binary
+// opens. A variable only so a test can play an older reader.
+var maxReadableStoreFormatVersion uint16 = storepkg.MaxReadableStoreFormatVersion
+
 // verifyAndStampWireFormatVersion enforces the store-level on-disk format
 // contract at open, before any row is decoded:
 //
-//   - marker > StoreFormatVersion: the directory was written by a newer
-//     release — fail closed with ErrWireFormatVersionUnsupported rather than
-//     misdecoding rows whose layout this binary does not know.
-//   - marker == StoreFormatVersion: open normally.
+//   - marker > maxReadableStoreFormatVersion: the directory was written by a
+//     newer release — fail closed with ErrWireFormatVersionUnsupported rather
+//     than misdecoding rows whose layout this binary does not know.
+//   - StoreFormatVersion <= marker <= maxReadableStoreFormatVersion: open
+//     normally and keep the marker (a store that persisted an Elements
+//     definition stays at ElementsStoreFormatVersion).
 //   - marker < StoreFormatVersion: open normally and (read-write only)
 //     raise the marker to the current version, since rows written from now on
 //     may carry it — an older binary must then refuse at open instead of
@@ -24,9 +30,11 @@ import (
 //   - marker absent: pre-versioning directory, equivalent to version 1 —
 //     stamp the current version (read-write only).
 //
-// A marker that exists but cannot be parsed is corruption and fails closed
-// (lesson 10: counters and registry metadata must fail closed when corrupt).
-func verifyAndStampWireFormatVersion(db *badgerv4.DB, readOnly bool) error {
+// It returns the marker the directory carries after the call (0 when a
+// read-only open left it absent). A marker that exists but cannot be parsed
+// is corruption and fails closed (lesson 10: counters and registry metadata
+// must fail closed when corrupt).
+func verifyAndStampWireFormatVersion(db *badgerv4.DB, readOnly bool) (uint16, error) {
 	var stored uint16
 	present := false
 	err := db.View(func(txn *badgerv4.Txn) error {
@@ -50,23 +58,38 @@ func verifyAndStampWireFormatVersion(db *badgerv4.DB, readOnly bool) error {
 		})
 	})
 	if err != nil {
-		return fmt.Errorf("graph: wire format marker: %w", err)
+		return 0, fmt.Errorf("graph: wire format marker: %w", err)
 	}
-	if present && stored > storepkg.StoreFormatVersion {
-		return fmt.Errorf("graph: store written by a newer release (on-disk wire format v%d, this binary supports up to v%d): %w",
-			stored, storepkg.StoreFormatVersion, storecontract.ErrWireFormatVersionUnsupported)
+	if present && stored > maxReadableStoreFormatVersion {
+		return 0, fmt.Errorf("graph: store written by a newer release (on-disk wire format v%d, this binary supports up to v%d): %w",
+			stored, maxReadableStoreFormatVersion, storecontract.ErrWireFormatVersionUnsupported)
 	}
-	if readOnly || (present && stored == storepkg.StoreFormatVersion) {
-		return nil
+	if readOnly || (present && stored >= storepkg.StoreFormatVersion) {
+		return stored, nil
 	}
-	val := make([]byte, 2)
-	binary.BigEndian.PutUint16(val, uint16(storepkg.StoreFormatVersion))
 	if err := db.Update(func(txn *badgerv4.Txn) error {
-		return txn.Set(storepkg.WireFormatVersionKey, val)
+		return txn.Set(storepkg.WireFormatVersionKey, formatMarkerValue(storepkg.StoreFormatVersion))
 	}); err != nil {
-		return fmt.Errorf("graph: stamp wire format marker: %w", err)
+		return 0, fmt.Errorf("graph: stamp wire format marker: %w", err)
 	}
-	return nil
+	return storepkg.StoreFormatVersion, nil
+}
+
+func formatMarkerValue(v uint16) []byte {
+	val := make([]byte, 2)
+	binary.BigEndian.PutUint16(val, v)
+	return val
+}
+
+// raiseFormatMarkerLocked raises the store-level marker to v in the pending
+// write buffer (the same flush as the definitions that need it) when it is
+// lower. Caller holds idxMu (write).
+func (bs *Store) raiseFormatMarkerLocked(v uint16) {
+	if bs.formatMarker >= v {
+		return
+	}
+	bs.formatMarker = v
+	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.WireFormatVersionKey, value: formatMarkerValue(v)})
 }
 
 // validateHistoryAnchorInterval rejects an out-of-range configured interval at New

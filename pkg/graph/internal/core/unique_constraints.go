@@ -314,11 +314,6 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 	if err != nil {
 		return err
 	}
-	// An Elements index (backlog 63) keys list elements, not values: no
-	// uniqueness over it.
-	if err := c.refuseNodeElementsIndex(labelTok, propKey, "unique constraint"); err != nil {
-		return err
-	}
 
 	// Phase 1: install a PENDING entry under lock so concurrent writers already
 	// enforce it while we validate existing data.
@@ -341,6 +336,15 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 	if c.closed.Load() {
 		c.mu.Unlock()
 		return ErrGraphClosed
+	}
+	// An Elements index (backlog 63) keys list elements, not values: no
+	// uniqueness over it. Checked under the exclusive lock: CreatePropertyWithOptions runs under
+	// c.mu.RLock for its whole create, so no Elements index can appear between
+	// this check and the install, and one created after it sees the pending
+	// constraint (refuseUniqueKey).
+	if err := c.refuseNodeElementsIndex(labelTok, propKey, "unique constraint"); err != nil {
+		c.mu.Unlock()
+		return err
 	}
 	c.uniqueMu.Lock()
 	if _, exists := c.lookupConstraintLocked(labelTok, propKey); exists {

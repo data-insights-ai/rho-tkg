@@ -132,6 +132,15 @@ func (i *IndexOps) CreateComposite(label string, keys []string) error {
 				return err
 			}
 		}
+		// A composite is value equality on every key; over a key with an
+		// Elements index (backlog 63) it would give that key a second meaning.
+		if tok, ok := c.labels.Lookup(label); ok {
+			for _, k := range keys {
+				if err := c.refuseNodeElementsIndex(tok, k, "composite index"); err != nil {
+					return err
+				}
+			}
+		}
 		cap, err := c.compositeIndexCap()
 		if err != nil {
 			return err

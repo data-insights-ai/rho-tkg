@@ -1186,6 +1186,9 @@ func (bs *Store) persistPropertyIndexDefs() {
 			continue
 		}
 		defs = append(defs, propIdxDef{LabelToken: key.LabelToken, PropertyKey: key.PropertyKey, RangeCounts: idx.RangeCounts(), Elements: idx.Elements()})
+		if idx.Elements() {
+			bs.raiseFormatMarkerLocked(storepkg.ElementsStoreFormatVersion)
+		}
 	}
 	if len(defs) == 0 {
 		bs.appendOps(writeOp{opType: writeOpDelete, key: storepkg.PropIndexDefsKey})

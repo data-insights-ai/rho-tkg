@@ -316,6 +316,9 @@ func (bs *Store) persistRelPropertyIndexDefs() {
 			continue // still being created (Phase 2) — not yet durable
 		}
 		defs = append(defs, relPropIdxDef{RelTypeToken: key.RelTypeToken, PropertyKey: key.PropertyKey, RangeCounts: idx.RangeCounts(), Elements: idx.Elements()})
+		if idx.Elements() {
+			bs.raiseFormatMarkerLocked(storepkg.ElementsStoreFormatVersion)
+		}
 	}
 	if len(defs) == 0 {
 		bs.appendOps(writeOp{opType: writeOpDelete, key: storepkg.RelPropIndexDefsKey})
