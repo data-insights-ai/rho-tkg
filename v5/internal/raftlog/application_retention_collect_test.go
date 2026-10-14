@@ -37,7 +37,7 @@ func TestApplicationRetentionFloorsAuthenticateCommandAndCapturedOwners(t *testi
 		t.Fatal(err)
 	}
 	persist(t, s, 2, 2, ent(2, 2, "old"))
-	if err := s.InstallApplication(2, ApplicationBatch{BaseGeneration: s.ApplicationGeneration(), BaseIndex: 1, BaseImageHash: sha256.Sum256([]byte("genesis")), Image: []byte("old"), Writes: []KV{{Key: []byte("key"), Value: []byte("old")}}, Changes: []byte("change:old"), Outcome: []byte("outcome:old"), ControlPuts: []KV{{Key: []byte("original"), Value: []byte("immutable-decision")}}}); err != nil {
+	if err := s.InstallApplication(2, ApplicationBatch{BaseGeneration: s.ApplicationGeneration(), BaseIndex: 1, BaseImageHash: sha256.Sum256([]byte("genesis")), Image: []byte("old"), Writes: []KV{{Key: []byte("key"), Value: []byte("old")}}, Changes: []byte("change:old"), Outcome: []byte("outcome:old"), ControlPuts: []ApplicationControlPut{{Key: []byte("original"), Value: []byte("immutable-decision")}}}); err != nil {
 		t.Fatal(err)
 	}
 	old, err := s.ApplicationView(2)
