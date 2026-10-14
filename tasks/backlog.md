@@ -425,6 +425,10 @@ Recover closed investigation prose via `git log --all -- tasks/backlog.md` if ne
   calibration (C4s). Reopen when sigma-tkgd re-adopts the degree statistics and measures the recount after writes
   to the read type itself on its cold rows; then build it opt-in per type (built lazily on the first
   `RelTypeDegreeStats` of a type that opted in, maintained at the relationship write seams).
+  Re-evaluated 2026-10-14 (round 6): half met. sigma-tkgd re-adopted the statistic (`a04176971`, C4u: the weighed
+  expand's fanout from `RelTypeDegreeStats`) and states the recount after a write to the type itself, but has not
+  measured it on a cold row; its cold harness writes another type, which round 5 request 9 already keeps from
+  forcing a recount. Still not built; the reopen criterion is the measurement.
 - **Item 9 — property-keyed unique constraint on relationships (ai-soc request 4): WITHDRAWN 2026-10-09** (René,
   relayed by ai-soc: "rho-tkg already has unique snowflake ids"). ai-soc uses the snowflake ID as the global ID.
   Possible cheap follow-up, not requested: a relationship door that accepts a caller-supplied snowflake ID "if
