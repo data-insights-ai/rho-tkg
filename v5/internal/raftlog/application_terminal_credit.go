@@ -608,3 +608,73 @@ func terminalMetadataHeadroom(m metadata, l Limits) error {
 	} // #nosec G115 -- validated credit command ceiling is nonnegative <=16MiB.
 	return nil
 }
+
+// CheckTerminalBank compares the complete expected roster to the authentic
+// native bank at this owned view's exact bank/index. Expected is inert: equality
+// grants no publication, lease, cleanup or GC authority. Unknown extra native
+// owners make equality false. Work, including bounded decode ownership, spends
+// the caller's existing read ledger; no second allowance is created here.
+func (v *ApplicationView) CheckTerminalBank(ctx context.Context, expected []ApplicationRecoveryReservation, budget ReadBudget) (equal bool, work ApplicationProofWork, err error) {
+	if err = v.lock(ctx); err != nil {
+		return false, work, err
+	}
+	defer v.unlock()
+	p := v.s.meta.App.Policy
+	if v.s.meta.Recovery.Config.Version != 2 || budget.Rows < 1 || budget.Bytes < 1 {
+		return false, work, ErrInvalid
+	}
+	if budget.Rows > p.MaxPageRows || budget.Bytes > p.MaxPageBytes {
+		return false, work, ErrLimit
+	}
+	if _, err := terminalGrowth(applicationTerminalBank(expected), p, v.s.limits); err != nil {
+		return false, work, err
+	}
+	const fixed = 256 + 4*9
+	if budget.Bytes < fixed {
+		return false, work, ErrLimit
+	}
+	work.Bytes = fixed
+	key := appIndexKey(recoveryRootTag+v.bank, v.index)
+	work.Records = 1
+	raw, closer, e := v.s.db.Get(key)
+	if e != nil {
+		return false, work, v.fail(storedReadFailure(e))
+	}
+	defer func() {
+		if e := closer.Close(); e != nil {
+			err = errors.Join(err, v.fail(e))
+			equal = false
+		}
+	}()
+	if len(raw) < appFrameBytes || len(raw) > appFrameBytes+min(p.MaxValueBytes, maxMetadataBytes) {
+		return false, work, v.fail(ErrCorrupt)
+	}
+	dataBytes := len(raw) - appFrameBytes
+	cost := len(key) + len(raw) + len(key) + 4 + 8*dataBytes + 256 + terminalBankBytes(applicationTerminalBank(expected))
+	if cost > budget.Bytes-work.Bytes {
+		return false, work, ErrLimit
+	}
+	work.Bytes += cost
+	data, deleted, e := inspectAppFrame(key, raw, min(p.MaxValueBytes, maxMetadataBytes))
+	if e != nil || deleted || len(data) < 4 || data[2] != 2 {
+		return false, work, v.fail(ErrCorrupt)
+	}
+	r, bank, e := readNativeRecoveryRoot(data, p, v.s.limits)
+	if e != nil {
+		return false, work, v.fail(e)
+	}
+	var current *applicationRecoveryMetadata
+	if v.prepared != nil && v.index == v.prepared.i.manifest.Index {
+		captured := snapshotRecoveryState(v.prepared.i.manifest)
+		current = &captured
+	} else if v.bank == v.s.activeBank() && v.generation == v.s.activeGeneration() && v.index == v.s.meta.Applied {
+		current = &v.s.meta.Recovery
+	}
+	if current != nil && (!sameRecoveryReservation(r, current.Reservation) || !sameTerminalBank(bank, current.Terminal)) {
+		return false, work, v.fail(ErrCorrupt)
+	}
+	if err := ctx.Err(); err != nil {
+		return false, work, err
+	}
+	return sameTerminalBank(bank, applicationTerminalBank(expected)), work, nil
+}

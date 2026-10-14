@@ -2,6 +2,7 @@ package raftlog
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"errors"
 	"testing"
@@ -113,5 +114,70 @@ func TestApplicationTerminalBankBoundIdentityProjectionAndLegacyBytes(t *testing
 	contract, err := ApplicationContractForPolicyWithRecovery(p, ApplicationControlConfig{Version: 1}, ApplicationRecoveryConfig{Version: 2})
 	if err != nil || contract.Version != 4 {
 		t.Fatalf("fresh terminal contract: %v", err)
+	}
+}
+
+func TestApplicationViewCheckTerminalBankOwnsActualCompleteHistoricalRoster(t *testing.T) {
+	var nilView *ApplicationView
+	if equal, _, err := nilView.CheckTerminalBank(t.Context(), nil, ReadBudget{1, 4096}); equal || !errors.Is(err, ErrInvalid) {
+		t.Fatalf("nil owner: %v", err)
+	}
+	s := boundedControlStore(t, func(c *Config) {
+		c.Recovery = ApplicationRecoveryConfig{Version: 2}
+		c.Application.MaxInstallBytes = 8192
+	})
+	old, err := s.ApplicationView(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer old.Close()
+	r := ApplicationRecoveryReservation{ID: [32]byte{1}, Digest: [32]byte{2}, Credits: []ApplicationRecoveryCredit{{Phase: 1, CommandBytes: 128, RetainedBytes: 8192, RetainedRecords: 8}}}
+	verifier := recoveryAdmissionTestVerifier(func(_ context.Context, data []byte, _ *ApplicationView) (ApplicationRecoveryPurpose, error) {
+		if !bytes.Equal(data, []byte("publish-terminal")) {
+			return ApplicationRecoveryPurpose{}, ErrInvalid
+		}
+		return ApplicationRecoveryPurpose{TerminalReserve: &r}, nil
+	})
+	if err := s.BindApplicationRecoveryVerifier(s.ApplicationBinding(), verifier); err != nil {
+		t.Fatal(err)
+	}
+	persist(t, s, 2, 2, ent(2, 2, "publish-terminal"))
+	claim, err := s.RecoveryAdmissionForCommittedEntry(t.Context(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, image, err := s.Checkpoint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InstallApplication(2, ApplicationBatch{BaseGeneration: s.ApplicationGeneration(), BaseIndex: 1, BaseImageHash: sha256.Sum256(image), Image: image, TerminalReserve: &r, RecoveryAdmission: claim}); err != nil {
+		t.Fatal(err)
+	}
+	now, err := s.ApplicationView(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer now.Close()
+	budget := ReadBudget{1, s.ApplicationLimits().MaxPageBytes}
+	if equal, work, err := now.CheckTerminalBank(t.Context(), []ApplicationRecoveryReservation{r}, budget); err != nil || !equal || work.Records != 1 || work.Bytes <= 0 {
+		t.Fatalf("actual native owner: %v %+v %v", equal, work, err)
+	}
+	if equal, _, err := now.CheckTerminalBank(t.Context(), nil, budget); err != nil || equal {
+		t.Fatalf("unknown extra owner hidden: %v %v", equal, err)
+	}
+	if equal, _, err := old.CheckTerminalBank(t.Context(), nil, budget); err != nil || !equal {
+		t.Fatalf("old bank substituted current roster: %v %v", equal, err)
+	}
+	if equal, _, err := old.CheckTerminalBank(t.Context(), []ApplicationRecoveryReservation{r}, budget); err != nil || equal {
+		t.Fatalf("expected values minted authority: %v %v", equal, err)
+	}
+	if equal, _, err := now.CheckTerminalBank(t.Context(), []ApplicationRecoveryReservation{r}, ReadBudget{1, 1}); equal || !errors.Is(err, ErrLimit) || s.poison != nil {
+		t.Fatalf("shared read allowance: %v", err)
+	}
+	if err := now.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if equal, _, err := now.CheckTerminalBank(t.Context(), nil, budget); equal || !errors.Is(err, ErrClosed) {
+		t.Fatalf("closed owner: %v", err)
 	}
 }
