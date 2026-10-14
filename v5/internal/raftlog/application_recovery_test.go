@@ -794,7 +794,7 @@ func TestRecoveryPublicCapacityHelpersAndCommittedAdmission(t *testing.T) {
 		p ApplicationPolicy
 		c ApplicationControlConfig
 		r ApplicationRecoveryConfig
-	}{{ApplicationPolicy{}, control, native}, {p, ApplicationControlConfig{}, native}, {p, control, ApplicationRecoveryConfig{Version: 2}}} {
+	}{{ApplicationPolicy{}, control, native}, {p, ApplicationControlConfig{}, native}, {p, control, ApplicationRecoveryConfig{Version: 3}}} {
 		c, err := ApplicationContractForPolicyWithRecovery(row.p, row.c, row.r)
 		if !errors.Is(err, ErrInvalid) || c != (ApplicationContract{}) {
 			t.Fatal(c, err)
