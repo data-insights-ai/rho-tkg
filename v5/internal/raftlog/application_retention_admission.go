@@ -14,7 +14,8 @@ var ErrApplicationExpired = errors.New("raftlog: application history expired")
 
 // ApplicationRetentionAdmission is an opaque native Stage receipt, not a caller
 // plan certificate. Its exact source/command/bank binding survives source Close;
-// Install still rechecks the durable committed entry and all competing owners.
+// Install still rechecks the durable committed entry; physical collection waits
+// for every competing owner independently of replicated floor installation.
 // It grants no graph pin, semantic predicate or authority to delete rows.
 type ApplicationRetentionAdmission struct {
 	self        *ApplicationRetentionAdmission
@@ -220,20 +221,13 @@ func (v *ApplicationView) PrepareApplicationRetention(ctx context.Context, next 
 	return out, work, nil
 }
 
-// Called with publicationMu then Store.mu. All physical generation owners are
-// registered views/exports/imports/claims or the publication capture excluded by
-// publicationMu. Numerical generation reference counts provide no exemption.
+// Called with publicationMu then Store.mu. Floor-only installation neither
+// deletes data nor changes any owner's captured lower bounds/header. Local
+// owner counts therefore cannot decide application of a committed command.
+// Physical collection separately refuses EVERY registered owner until Close.
 func (a *ApplicationRetentionAdmission) admitLocked(s *Store, b ApplicationBatch) error {
 	if a == nil || a.self != a || a.s != s || a.source == nil || !s.meta.Retention.Config.enabled() || a.bank != s.activeBank() || a.generation != s.activeGeneration() || a.base != s.meta.Applied || a.imageHash != s.meta.ImageHash || a.previous != s.meta.Retention.State.ID || a.state.validate(s.meta.Applied+1) != nil || !retentionMonotone(s.meta.Retention.State, a.state) || a.state.RetiredCutID != s.meta.Gen.Publication.ID || sha256.Sum256(b.Image) != a.imageHash || len(b.Writes) != 0 {
 		return ErrInvalid
-	}
-	if s.applicationImport != nil || s.applicationVerifier || len(s.applicationExports) != 0 || len(s.applicationSnapshotClaims) != 0 {
-		return ErrLimit
-	}
-	for owner := s.applicationViews; owner != nil; owner = owner.next {
-		if owner != a.source || owner.self != owner || owner.s != s || owner.bank != a.bank || owner.generation != a.generation || owner.index != a.base {
-			return ErrLimit
-		}
 	}
 	return nil
 }

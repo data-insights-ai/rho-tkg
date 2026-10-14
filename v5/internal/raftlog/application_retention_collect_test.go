@@ -116,27 +116,52 @@ func TestApplicationRetentionFloorsAuthenticateCommandAndCapturedOwners(t *testi
 		t.Fatal(err)
 	}
 	batch := ApplicationBatch{RetentionAdmission: admission, BaseGeneration: s.ApplicationGeneration(), BaseIndex: 5, BaseImageHash: next.SourceHash, Image: []byte("current")}
-	before := readyMetadataFingerprint(t, s)
-	if err := s.InstallApplication(6, batch); !errors.Is(err, ErrLimit) || readyMetadataFingerprint(t, s) != before {
-		t.Fatal("unrelated held owner was excluded", err)
-	}
-	if err := old.Close(); err != nil {
+	// A pre-floor export owns its actual cutoff/header/backend snapshot. New
+	// floor admission cannot revoke it or make committed apply depend on local
+	// owner counts. Physical collection still waits for every such owner.
+	priorExport, err := s.BeginPublishedApplicationExport(t.Context(), cut.ID)
+	if err != nil {
 		t.Fatal(err)
 	}
+	defer priorExport.Close()
+	before := readyMetadataFingerprint(t, s)
 	copied := *admission
 	batch.RetentionAdmission = &copied
-	if err := s.InstallApplication(6, batch); !errors.Is(err, ErrInvalid) {
-		t.Fatal("copied native grant was accepted", err)
+	if err := s.InstallApplication(6, batch); !errors.Is(err, ErrInvalid) || readyMetadataFingerprint(t, s) != before {
+		t.Fatal("copied native grant", err)
 	}
 	batch.RetentionAdmission = admission
-	// The original Stage closes its exact reader before Driver installation.
-	// Neither its closed registration nor a numerical ref count exempts another.
 	if err := view.Close(); err != nil {
 		t.Fatal(err)
 	}
 	next.Roots[0].ImageHash[0]++
 	if err := s.InstallApplication(6, batch); err != nil {
-		t.Fatal("closed original source could not install exact grant", err)
+		t.Fatal("committed floor depended on local owners", err)
+	}
+	getApplication(t, old, "key", "old", true, false)
+	retainedPast, err := old.RootAt(t.Context(), 1, policy.MaxImageBytes)
+	if err != nil || string(retainedPast.Image) != "genesis" {
+		t.Fatal("floor revoked held historical root", retainedPast, err)
+	}
+	oldPlan, enabled, _, err := old.RetentionPlan(t.Context(), ReadBudget{Rows: 1, Bytes: 4096})
+	if err != nil || !enabled || !oldPlan.zero() {
+		t.Fatal("held view returned later active plan", oldPlan, err)
+	}
+	if _, _, err := s.CollectApplicationRetention(t.Context(), admission.state.ID, ReadBudget{Rows: 8, Bytes: 32768}); !errors.Is(err, ErrLimit) {
+		t.Fatal("collector ignored old held owner", err)
+	}
+	if err := old.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.CollectApplicationRetention(t.Context(), admission.state.ID, ReadBudget{Rows: 8, Bytes: 32768}); !errors.Is(err, ErrLimit) {
+		t.Fatal("collector ignored held export", err)
+	}
+	priorManifest := buildPublished(t, priorExport, ReadBudget{Rows: 8, Bytes: 8192})
+	if priorManifest.CutID != cut.ID || priorManifest.Index != cut.Index || !priorManifest.Retention.zero() {
+		t.Fatal("export borrowed later floor/header", priorManifest)
+	}
+	if err := priorExport.Close(); err != nil {
+		t.Fatal(err)
 	}
 	if s.meta.Retention.State.Roots[0].ImageHash != sha256.Sum256([]byte("genesis")) || s.meta.Retention.Cursor != (applicationRetentionCursor{}) {
 		t.Fatal("admission borrowed caller plan or manufactured cursor")
